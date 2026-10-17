@@ -22,7 +22,7 @@ const wip = { put: vi.fn(), subscribe: vi.fn((l: (wts: ReadonlySet<string>) => v
 
 function tab(branch: string) {
   useRuntime.setState({ tabs: { t: { repo: { id: 4, path: '/r' }, worktree: null, info: { remotes: [] }, sidebar: null } as never } });
-  const store = createStore(() => ({ repoPath: '/r', graph: { openWorktree: '/r', head: { branch, target: HEAD, detached: false, unborn: false }, worktrees: [] } }));
+  const store = createStore(() => ({ repoPath: '/r', watchHeadMove() {}, headWriteDone() {}, endHeadWatch() {}, graph: { openWorktree: '/r', head: { branch, target: HEAD, detached: false, unborn: false }, worktrees: [] } }));
   useTabViews.setState({ views: { t: { repo: 4, services: { wip }, store } as never } });
 }
 const file = (text: string) => ({ old: null, new: { size: text.length, binary: false, encoding: 'UTF-8', eol: 'Lf', text, base64: null, hash: 'h1' }, tooLarge: false, eolOnly: false, image: false });

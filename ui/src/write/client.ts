@@ -123,11 +123,15 @@ export async function runWrite<T>(ctx: WriteCtx, send: (confirmed: boolean, aske
   const cap = setTimeout(release, MENU_HOLD_MS);
   const attempt = async (asked: Confirmed): Promise<T | null> => {
     let outcome: T;
+    // A write the user started that moves HEAD (rebase, merge, reset, amend, pick…) brings the
+    // new tip into view once its graph arrives.
+    tabView(ctx.tabId)?.store?.getState().watchHeadMove();
     try {
       const r = await send(asked.autostash || asked.withoutIndex || asked.discard || asked.markers, asked);
       applyResult(ctx, r as WriteResult<unknown>);
       outcome = r.outcome;
     } catch (e) {
+      tabView(ctx.tabId)?.store?.getState().endHeadWatch();
       const err = toGbError(e);
       const q = question(err, asked);
       if (q) {
@@ -156,6 +160,7 @@ export async function runWrite<T>(ctx: WriteCtx, send: (confirmed: boolean, aske
       }));
       return null;
     }
+    tabView(ctx.tabId)?.store?.getState().headWriteDone();
     // The write succeeded. Every success path, a Retry from the error toast included, runs the
     // caller's follow-up here; if that throws, the write still stands: log it, no Retry.
     try {

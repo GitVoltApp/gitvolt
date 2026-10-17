@@ -93,6 +93,7 @@ function ConnectedGraph() {
   const alsoSelected = useMemo(() => new Set(pickedRows), [pickedRows]);
   const selectRow = useRepoView((s) => s.selectRow);
   const store = useRepoViewStore();
+  const revealHead = useRepoView((s) => s.revealHead);
   // --- 2D T18: the chip of a branch being rebased in the active worktree (refetched with the graph) ---
   const worktree = useRepoView(openWorktree);
   const rebasing = useMemo(() => rebasingChip(graph, worktree), [graph, worktree]);
@@ -147,6 +148,7 @@ function ConnectedGraph() {
       onWipContextMenu={onWipContextMenu}
       rowDim={rowDim}
       rebasing={rebasing}
+      revealTip={revealHead}
       rowEditor={rowEditor}
     />
   );

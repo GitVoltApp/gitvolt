@@ -12,3 +12,15 @@ export function anchoredScrollTop(oldRows: readonly { id: string }[], newRows: r
   if (before < 0 || after < 0) return scrollTop;
   return Math.max(0, scrollTop + (after - before) * rowH);
 }
+
+/**
+ * Scroll position that shows row `index` after a write the user started moved HEAD: unchanged
+ * while the row is fully on screen, else the row with `context` rows above it (a reveal's little
+ * look-back, as for the tip after a rebase). Clamped to the scrollable range.
+ */
+export function revealScrollTop(index: number, scrollTop: number, viewportH: number, rowH: number, rowCount: number, context = 2): number {
+  if (index < 0) return scrollTop;
+  if (index * rowH >= scrollTop && (index + 1) * rowH <= scrollTop + viewportH) return scrollTop;
+  const max = Math.max(0, rowCount * rowH - viewportH);
+  return Math.min(max, Math.max(0, (index - context) * rowH));
+}

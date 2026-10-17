@@ -133,6 +133,17 @@ export interface RepoViewState {
   setFilterKeep(keep: ReadonlySet<string> | null): void;
   setGraph(graph: GraphPayload): void;
   /**
+   * A write the user started is running (`watchHeadMove`). Once it has finished (`headWriteDone`),
+   * the first graph (of the next two) whose HEAD differs from the one before it reveals the new
+   * tip (`revealHead`): a rebase moves HEAD many times on the way, only its end counts. A passive
+   * refresh (a fetch, the watcher, another process) never reveals. `endHeadWatch` on failure.
+   */
+  watchHeadMove(): void;
+  headWriteDone(): void;
+  endHeadWatch(): void;
+  /** The tip to bring into view: a new object per HEAD move, so the same commit twice still scrolls. */
+  revealHead: { id: string } | null;
+  /**
    * The tab's watch is up (`true`, once `watchRepo` returned) or stopped (K44): while it's up,
    * the WIP rows' lists are held in memory (`services.wip`) and loaded ahead, so selecting a WIP
    * row renders them at once. Stopped, they're dropped and read on selection again.
@@ -512,6 +523,9 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       set({ selection: { kind: 'multi', ids, anchor: anchorId }, picks, parent: 0, diff: null, details: IDLE, message: IDLE, sections: [] });
     }
 
+    /** Set while a user-started write runs; see `watchHeadMove`. */
+    let headWatch: { from: string | null; done: boolean; left: number } | null = null;
+
     const state: RepoViewState = {
       repo,
       repoPath,
@@ -532,6 +546,19 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       fileListCursor: null,
       filterKeep: null,
       stickyHistory: null,
+      revealHead: null,
+
+      watchHeadMove() {
+        headWatch = { from: get().graph.head.target, done: false, left: 2 };
+      },
+
+      headWriteDone() {
+        if (headWatch) headWatch.done = true;
+      },
+
+      endHeadWatch() {
+        headWatch = null;
+      },
 
       setStickyHistory(mode) {
         const cur = get().stickyHistory;
@@ -550,6 +577,10 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       setGraph(next) {
         const prev = get();
         if (next === prev.graph) return;
+        const tip = next.head.target;
+        const moved = headWatch !== null && headWatch.done && tip !== null && tip !== headWatch.from;
+        if (moved || (headWatch?.done && --headWatch.left <= 0)) headWatch = null;
+        const reveal: Partial<RepoViewState> = moved ? { revealHead: { id: tip } } : {};
         const indexById = indexGraph(next);
         const remap = (i: number | null) => (i === null ? null : indexById.get(prev.graph.rows[i]?.id ?? '') ?? null);
         let selection: Selection = prev.selection;
@@ -568,8 +599,8 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         const p = prev.picks;
         const picks = p === NO_PICKS ? NO_PICKS : { rows: p.rows.map(remap).filter((i) => i !== null), anchor: remap(p.anchor), cursor: remap(p.cursor) };
         // The selected commit or worktree is gone: clear what was shown for it.
-        if (selection.kind === 'none' && prev.selection.kind !== 'none') return clearSelection({ graph: next, indexById });
-        set({ graph: next, indexById, selection, picks });
+        if (selection.kind === 'none' && prev.selection.kind !== 'none') return clearSelection({ graph: next, indexById, ...reveal });
+        set({ graph: next, indexById, selection, picks, ...reveal });
         services.wip.prefetch(openWip(next, repoPath));
         // Picked rows gone (K27): select those left anew, so two left are a compare and one a
         // single selection. The anchor and cursor, if gone, move to the row picked last.

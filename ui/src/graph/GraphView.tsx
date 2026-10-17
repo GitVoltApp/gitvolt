@@ -32,7 +32,7 @@ import { PinButton } from './PinButton';
 import { HScroll, HSCROLL_H } from './HScroll';
 import { labelsByRowOf, membershipOf } from './graphIndex';
 import { branchRows, type BranchMembership } from './membership';
-import { anchoredScrollTop } from './anchor';
+import { anchoredScrollTop, revealScrollTop } from './anchor';
 import { useGraphMetrics } from './metrics';
 import { connectorLine, useDevicePixelRatio } from './pixels';
 import { RefLabels } from './RefLabels';
@@ -278,6 +278,8 @@ const GraphRow = memo(function GraphRow({ row, dateFormat, repoId, index, start,
 
 export interface GraphViewProps {
   graph: GraphPayload;
+  /** The tip a write the user started moved HEAD to (a new object per move): scrolled into view, with a little context above, unless it already shows. */
+  revealTip?: { id: string } | null;
   /** A stable per-repo key (the repository's path) for per-repo view settings. */
   repoId: string;
   /**
@@ -320,7 +322,7 @@ export interface GraphViewProps {
   rowEditor?: RowEditor | null;
 }
 
-export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null }: GraphViewProps) {
+export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null, revealTip = null }: GraphViewProps) {
   const dateFormat = useAppState((s) => s.settings.dateFormat);
   const ownRef = useRef<HTMLDivElement>(null);
   const scrollRef = gridRef ?? ownRef;
@@ -561,6 +563,24 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   useLayoutEffect(() => {
     laidOut.current = { rows: graph.rows, selected };
   });
+
+  // After the anchor (same render as the new rows): a write the user started moved HEAD, so its
+  // tip shows. Once per request (also when <Activity> re-creates this effect), and even if the
+  // user scrolled meanwhile.
+  const revealed = useRef(revealTip);
+  useLayoutEffect(() => {
+    if (!revealTip || revealTip === revealed.current) return;
+    revealed.current = revealTip;
+    const el = scrollRef.current;
+    const i = graph.rows.findIndex((r) => r.id === revealTip.id);
+    if (!el || i < 0) return;
+    const next = revealScrollTop(i, el.scrollTop, el.clientHeight, metrics.rowH, graph.rows.length);
+    if (next === el.scrollTop) return;
+    el.scrollTop = next;
+    lastScroll.current = next;
+    canvas.current?.sync();
+    setScrollTop(next);
+  }, [revealTip, graph.rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A controlled selection can also move from outside (a parent SHA in the details panel):
   // bring it into view. Only on an actual change, so re-showing the graph after a diff keeps the

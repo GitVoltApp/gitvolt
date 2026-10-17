@@ -25,7 +25,7 @@ const wip = { put: vi.fn(), subscribe: vi.fn(() => () => {}) };
 function tab(branch: string | null, head: string | null, locals: Array<{ name: string; upstream: string | null }> = []) {
   const info = { remotes: [{ name: 'origin', url: 'x', host: 'gitlab.example.com', path: 'group/project', hostKind: 'gitlab' }, { name: 'alice', url: 'y', host: 'gitlab.example.com', path: 'alice/project', hostKind: 'gitlab' }] };
   useRuntime.setState({ tabs: { t: { repo: { id: 4, path: '/r' }, worktree: null, info, sidebar: { locals, remotes: [], worktrees: [], stashes: [], tags: [] } } as never } });
-  const store = createStore(() => ({ repoPath: '/r', graph: { openWorktree: '/r', head: { branch, target: head, detached: branch === null, unborn: false }, worktrees: [{ path: '/r', branch, head, isMain: true, locked: false, inProgress: null }] } }));
+  const store = createStore(() => ({ repoPath: '/r', watchHeadMove() {}, headWriteDone() {}, endHeadWatch() {}, graph: { openWorktree: '/r', head: { branch, target: head, detached: branch === null, unborn: false }, worktrees: [{ path: '/r', branch, head, isMain: true, locked: false, inProgress: null }] } }));
   useTabViews.setState({ views: { t: { repo: 4, services: { wip }, store } as never } });
 }
 

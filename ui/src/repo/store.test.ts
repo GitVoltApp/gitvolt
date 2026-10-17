@@ -23,6 +23,43 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 const change = (path: string, status: string): FileChange => ({ path, oldPath: null, status, additions: 1, deletions: 0, old: { kind: 'object', oid: B }, new: { kind: 'object', oid: A }, submodule: false });
 
 describe('repo view store', () => {
+  it('reveals the new tip only when a write the user started moved HEAD, and has finished', () => {
+    const { services } = fakeServices();
+    const s = createRepoViewStore(1, '/r', graph, services);
+    const moved = (target: string): GraphPayload => ({ ...graph, rows: [...graph.rows], head: { ...graph.head, target } });
+    // A passive refresh (fetch, watcher, another process) moving HEAD: no reveal.
+    s.getState().setGraph(moved(B));
+    expect(s.getState().revealHead).toBeNull();
+    // Mid-write (a rebase's own steps): HEAD moves on the way, nothing yet.
+    s.getState().watchHeadMove();
+    s.getState().setGraph(moved(C));
+    expect(s.getState().revealHead).toBeNull();
+    s.getState().headWriteDone();
+    s.getState().setGraph(moved(A));
+    expect(s.getState().revealHead).toEqual({ id: A });
+    // Once: the next refresh doesn't reveal again, and a failed write stops the watch.
+    const first = s.getState().revealHead;
+    s.getState().setGraph(moved(B));
+    expect(s.getState().revealHead).toBe(first);
+    s.getState().watchHeadMove();
+    s.getState().endHeadWatch();
+    s.getState().headWriteDone();
+    s.getState().setGraph(moved(C));
+    expect(s.getState().revealHead).toBe(first);
+  });
+
+  it('a write that leaves HEAD alone stops watching after two graphs', () => {
+    const { services } = fakeServices();
+    const s = createRepoViewStore(1, '/r', graph, services);
+    const moved = (target: string): GraphPayload => ({ ...graph, rows: [...graph.rows], head: { ...graph.head, target } });
+    s.getState().watchHeadMove();
+    s.getState().headWriteDone();
+    s.getState().setGraph(moved(A));
+    s.getState().setGraph(moved(A));
+    s.getState().setGraph(moved(B));
+    expect(s.getState().revealHead).toBeNull();
+  });
+
   it('latest selection wins even when an older response arrives last', async () => {
     const { services, resolve } = fakeServices();
     const s = createRepoViewStore(1, '/r', graph, services);

@@ -5,6 +5,13 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **The graph shows the new tip after a rebase:** when a rebase you started finishes (plain,
+  interactive, Continue, or a pull with rebase), the graph scrolls to the new HEAD if it is off
+  screen. The same goes for a merge, reset, cherry-pick, revert or amend that moves HEAD. A
+  fetch or a change made outside the app does not scroll.
+
 ## [0.7.1] - 2026-10-15
 
 ### Added

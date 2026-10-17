@@ -32,9 +32,22 @@ test.describe('integrate (spec #2 §13.1, §13.4)', () => {
         if (t) (window as unknown as { seen: string[] }).seen.push(t);
       }).observe(document.body, { subtree: true, childList: true, characterData: true });
     });
-    await labelMenu(page, 'main', 'Rebase topic onto main');
+    // Scrolled down while the rebase runs, the tip far above: when it finishes, the rebased tip
+    // is brought into view (a user's own write reveals HEAD).
+    const grid = page.getByRole('grid', { name: 'Commit graph' });
+    await grid.getByText('main', { exact: true }).first().click({ button: 'right' });
+    const item = page.getByRole('menuitem', { name: 'Rebase topic onto main', exact: true });
+    await grid.evaluate((g) => { g.scrollTop = g.scrollHeight; });
+    await expect.poll(() => grid.evaluate((g) => g.scrollTop)).toBeGreaterThan(300);
+    await item.click();
     await expect.poll(() => isAncestor(repo, 'main', 'topic')).toBe(true);
     expect(git(repo, 'rev-list', '--count', 'main..topic')).toBe('60');
+    await test.step('the rebased tip is brought into view', async () => {
+      const tip = git(repo, 'rev-parse', 'topic');
+      const tipRow = grid.locator(`[id="graph-row-${tip}"]`);
+      await expect(tipRow).toBeInViewport({ ratio: 1 });
+      expect(await grid.evaluate((g) => g.scrollTop)).toBeLessThan(100);
+    });
     const seen = await page.evaluate(() => (window as unknown as { seen: string[] }).seen);
     expect(seen.some((s) => /^Rebasing topic \(\d+\/60\)…/.test(s))).toBe(true);
   });
