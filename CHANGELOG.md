@@ -10,8 +10,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **A chip for a worktree with a detached HEAD:** a worktree with no branch checked out now has
   its own chip in the graph at its HEAD commit, with its folder name and the worktree icon, so
   the commits it keeps in the graph are explained. The current worktree's chip also says
-  "(detached)". Click it to switch the tab to that worktree, or right-click it for the
-  worktree's menu. Hover it to see the path.
+  "(detached)". Double-click it to switch the tab to that worktree (a click selects the
+  commit), or right-click it for the worktree's menu. Hover it to see the path.
 
 ### Fixed
 

@@ -394,33 +394,31 @@ describe("a worktree's detached-HEAD chip", () => {
     expect(container.querySelector('.ref-more')).toHaveTextContent(/^\+[12]$/);
   });
 
-  it('a plain click, a double-click and a right-click hand over the label; a modified click does nothing', () => {
-    const onClick = vi.fn();
+  it('a double-click and a right-click hand over the label; a click bubbles to the row to select it', () => {
+    const onRowClick = vi.fn();
     const onDoubleClick = vi.fn();
     const onContextMenu = vi.fn();
     const label = wt('wt-two');
-    const { container } = render(<RefLabels labels={[label, main]} color={0} width={600} onClick={onClick} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu} />);
+    const { container } = render(<div onClick={onRowClick}><RefLabels labels={[label, main]} color={0} width={600} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu} /></div>);
     const chip = container.querySelector<HTMLElement>('.ref-worktree')!;
-    fireEvent.click(chip, { ctrlKey: true });
-    fireEvent.click(chip, { shiftKey: true });
-    expect(onClick).not.toHaveBeenCalled();
     fireEvent.click(chip);
-    expect(onClick).toHaveBeenCalledWith(label, expect.anything());
+    expect(onRowClick).toHaveBeenCalledTimes(1);
+    expect(onDoubleClick).not.toHaveBeenCalled();
     fireEvent.doubleClick(chip);
     expect(onDoubleClick).toHaveBeenCalledWith(label, expect.anything());
     fireEvent.contextMenu(chip);
     expect(onContextMenu).toHaveBeenCalledWith(label, expect.anything());
   });
 
-  it("a hidden one's row in the hover stack: its tooltip, and a click hands it over", () => {
-    const onClick = vi.fn();
+  it("a hidden one's row in the hover stack: its tooltip, and a click bubbles to the row", () => {
+    const onRowClick = vi.fn();
     const hidden = wt('wt-hidden-in-the-stack');
-    const { container } = render(<RefLabels labels={[main, hidden]} color={0} width={90} onClick={onClick} sha={sha} />);
+    const { container } = render(<div onClick={onRowClick}><RefLabels labels={[main, hidden]} color={0} width={90} sha={sha} /></div>);
     fireEvent.mouseEnter(container.querySelector('.ref-more')!);
     const row = [...container.querySelectorAll<HTMLElement>('.ref-stack-row')].find((r) => r.textContent?.includes('wt-hidden-in-the-stack'))!;
     fireEvent.mouseEnter(row);
     expect(screen.getByRole('tooltip')).toHaveTextContent('/src/wt-hidden-in-the-stack (HEAD detached at ccccccc)');
     fireEvent.click(row);
-    expect(onClick).toHaveBeenCalledWith(hidden, expect.anything());
+    expect(onRowClick).toHaveBeenCalledTimes(1);
   });
 });

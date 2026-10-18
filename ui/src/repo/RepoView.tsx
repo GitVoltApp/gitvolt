@@ -11,7 +11,7 @@ import { GraphView } from '../graph/GraphView';
 import { rebasingChip } from '../integrate/rebasing';
 import type { RowDim } from '../graph/rowDim';
 import { graphRowMenu, labelMenu, monacoMenu, warmCommitMenu, wipMenu } from '../menu/menuEnv';
-import { graphLabelClick, graphLabelDoubleClick, graphRowDoubleClick } from '../graph/rowActions';
+import { graphLabelDoubleClick, graphRowDoubleClick } from '../graph/rowActions';
 import { useRowEditor } from '../graph/rowEditor';
 import { openContextMenu, useMenu, type MenuEventLike } from '../menu/menuStore';
 import { useRepoContext } from '../app/repoContext';
@@ -125,7 +125,6 @@ function ConnectedGraph() {
   }, [store]);
   // --- 2C T9: double-clicks (registered by the features that own them) and the WIP row's menu ---
   const onLabelDoubleClick = useCallback((row: RowPayload, label: RefLabel) => { graphLabelDoubleClick(store, row, label); }, [store]);
-  const onLabelClick = useCallback((row: RowPayload, label: RefLabel) => { graphLabelClick(store, row, label); }, [store]);
   const onRowDoubleClick = useCallback((row: RowPayload) => { graphRowDoubleClick(store, row); }, [store]);
   const onWipContextMenu = useCallback((e: MenuEventLike, row: RowPayload) => { openContextMenu(e, wipMenu(store, row)); }, [store]);
   // --- end 2C T9 ---
@@ -145,7 +144,6 @@ function ConnectedGraph() {
       onContextMenu={onContextMenu}
       onLabelContextMenu={onLabelContextMenu}
       onLabelDoubleClick={onLabelDoubleClick}
-      onLabelClick={onLabelClick}
       onRowDoubleClick={onRowDoubleClick}
       onWipContextMenu={onWipContextMenu}
       rowDim={rowDim}

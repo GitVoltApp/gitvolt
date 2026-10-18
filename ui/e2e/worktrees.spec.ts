@@ -59,7 +59,7 @@ test.describe('the active worktree (spec #2 §11.2)', () => {
       await expect(sidebarRow(page, 'wt-one')).toHaveClass(/is-head/);
       await expect(sidebarRow(page, 'repo')).not.toHaveClass(/is-head/);
     });
-    await test.step("a detached worktree has a chip of its own, named by its folder: clicking it switches to it, its menu is the worktree's", async () => {
+    await test.step("a detached worktree has a chip of its own, named by its folder: a click selects the row, a double-click switches to it, its menu is the worktree's", async () => {
       // A commit below its branch's tip, where no other chip crowds it.
       git(join(repo, '..', 'wt-two'), 'switch', '-q', '--detach', 'HEAD~1');
       const chip = grid(page).locator('.ref-worktree', { hasText: 'wt-two' });
@@ -69,6 +69,9 @@ test.describe('the active worktree (spec #2 §11.2)', () => {
       await expect(page.getByRole('menuitem', { name: 'Open in a new tab' })).toBeVisible();
       await page.keyboard.press('Escape');
       await chip.click();
+      await expect(repoButton(page)).not.toContainText('wt-two');
+      await expect(grid(page).getByRole('row').filter({ has: page.locator('.ref-worktree') })).toHaveAttribute('aria-selected', 'true');
+      await chip.dblclick();
       await expect(repoButton(page)).toContainText('wt-two');
       await expect(sidebarRow(page, 'wt-two')).toHaveClass(/is-head/);
       await expect(headChip(page)).toHaveText(/wt-two\s*\(detached\)/);

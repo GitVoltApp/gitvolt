@@ -36,8 +36,8 @@ const offs = [
     },
   }),
   registerSidebarDoubleClick('worktree', ({ tabId }, item) => { if (item.kind === 'worktree') setActiveWorktree(tabId, item.worktree.path); }),
-  // A worktree's detached-HEAD chip: a click or a double-click makes it the active one.
-  registerGraphDoubleClick({ label: switchToChip, labelClick: switchToChip }),
+  // A worktree's detached-HEAD chip: a double-click makes it the active one (a click selects the row).
+  registerGraphDoubleClick({ label: switchToChip }),
   registerGraphDoubleClick({
     row: (store, row) => {
       const tabId = tabIdOf(store);
