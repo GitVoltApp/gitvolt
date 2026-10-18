@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-18
+
 ### Fixed
 
 - **No more `git lfs version` storms:** without git-lfs installed, every focus of the window
