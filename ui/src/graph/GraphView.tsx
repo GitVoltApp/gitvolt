@@ -173,6 +173,8 @@ interface GraphRowProps {
   /** A double-click on a label chip (a branch checks out, spec #2 §9.3) or on the row (another
    * worktree's WIP row becomes the active one, §11.2). */
   onLabelDoubleClick?: (row: RowPayload, label: RefLabel) => void;
+  /** A plain click on a label chip (a worktree's detached-HEAD chip makes it the active one). */
+  onLabelClick?: (row: RowPayload, label: RefLabel) => void;
   onRowDoubleClick?: (row: RowPayload) => void;
   /** A right-click on a WIP row (the `wip` menu kind). */
   onWipContextMenu?: (e: MenuEventLike, row: RowPayload) => void;
@@ -196,7 +198,7 @@ const EDITOR_MIN_W = 200;
  * the view (as rows enter or leave the screen), not every row; a hover re-renders only the rows whose membership
  * chip appears or goes, and a branch focus (J22) only the rows whose `dimmed` changes.
  */
-const GraphRow = memo(function GraphRow({ row, dateFormat, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor }: GraphRowProps) {
+const GraphRow = memo(function GraphRow({ row, dateFormat, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onLabelClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor }: GraphRowProps) {
   const isWip = row.kind === 'wip';
   // A column at its minimum collapses its cells too (spec §8.4): icon-only chips, the avatar only.
   const authorAvatar = isCollapsed('author', cols.author);
@@ -248,6 +250,7 @@ const GraphRow = memo(function GraphRow({ row, dateFormat, repoId, index, start,
             sha={row.id}
             onContextMenu={onLabelContextMenu && ((label, e) => onLabelContextMenu(e, row, label))}
             onDoubleClick={onLabelDoubleClick && ((label) => onLabelDoubleClick(row, label))}
+            onClick={onLabelClick && ((label) => onLabelClick(row, label))}
           />
         </span>
       )}
@@ -313,6 +316,7 @@ export interface GraphViewProps {
   onLabelContextMenu?: (e: MouseEvent<HTMLElement>, row: RowPayload, label: RefLabel) => void;
   // --- 2C T9 ---
   onLabelDoubleClick?: (row: RowPayload, label: RefLabel) => void;
+  onLabelClick?: (row: RowPayload, label: RefLabel) => void;
   onRowDoubleClick?: (row: RowPayload) => void;
   onWipContextMenu?: (e: MenuEventLike, row: RowPayload) => void;
   // --- end 2C T9 ---
@@ -322,7 +326,7 @@ export interface GraphViewProps {
   rowEditor?: RowEditor | null;
 }
 
-export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null, revealTip = null }: GraphViewProps) {
+export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onLabelClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null, revealTip = null }: GraphViewProps) {
   const dateFormat = useAppState((s) => s.settings.dateFormat);
   const ownRef = useRef<HTMLDivElement>(null);
   const scrollRef = gridRef ?? ownRef;
@@ -695,6 +699,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
                   onContextMenu={onContextMenu && rowMenu}
                   onLabelContextMenu={onLabelContextMenu && labelMenu}
                   onLabelDoubleClick={onLabelDoubleClick}
+                  onLabelClick={onLabelClick}
                   onRowDoubleClick={onRowDoubleClick}
                   onWipContextMenu={onWipContextMenu && wipMenu}
                   context={row.id === contextRow}

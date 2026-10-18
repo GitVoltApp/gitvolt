@@ -4,7 +4,8 @@ import type { TagAnnotation } from "./TagAnnotation";
 
 export type RefLabel = { row: number, name: string, local: string | null, remotes: Array<RemoteRefLabel>, tag: boolean, isHead: boolean, worktree: string | null, 
 /**
- * The worktree (any, the open one included) whose HEAD is this local branch.
+ * The worktree (any, the open one included) whose HEAD is this local branch; on a worktree's
+ * detached-HEAD chip (no local, remote or tag), that worktree.
  */
 checkedOut: string | null, 
 /**

@@ -3,7 +3,7 @@
 //! and calls `assemble`.
 
 use crate::input::{GraphInput, GraphRequest, HeadIn, RefsIn, WorktreeIn};
-use crate::labels::build_labels;
+use crate::labels::{build_labels, worktree_name};
 use crate::layout::{layout, LayoutNode, NodeKind, Parent};
 use crate::payload::{GraphPayload, GraphWorktree, HeadPayload, InProgress, RowPayload, WipPayload};
 use crate::pins::{default_pair, fork_of, fork_payload, pin_pair, pinned_chains};
@@ -206,7 +206,7 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
                         mr_refs: vec![],
                         wip: Some(WipPayload {
                             worktree_path: wt.path.clone(),
-                            worktree_name: (!is_main).then(|| Path::new(&wt.path).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()),
+                            worktree_name: (!is_main).then(|| worktree_name(&wt.path)),
                             modified: counts.modified,
                             added: counts.added,
                             deleted: counts.deleted,
@@ -297,6 +297,18 @@ mod tests {
         WorktreeIn { path: path.into(), canonical: path.into(), head: Some(id(head)), branch: Some(format!("refs/heads/{branch}")), is_main, bare: false, prunable: false, locked: false }
     }
 
+    fn detached(path: &str, head: u8, is_main: bool) -> WorktreeIn {
+        WorktreeIn { branch: None, ..worktree(path, head, "", is_main) }
+    }
+
+    /// A detached-HEAD chip: (row, name, is_head, worktree, checked_out).
+    type Chip<'a> = (u32, &'a str, bool, Option<&'a str>, Option<&'a str>);
+
+    /// The detached-HEAD chips, in label order.
+    fn detached_chips(g: &GraphPayload) -> Vec<Chip<'_>> {
+        g.labels.iter().filter(|l| l.local.is_none() && !l.tag && l.remotes.is_empty()).map(|l| (l.row, l.name.as_str(), l.is_head, l.worktree.as_deref(), l.checked_out.as_deref())).collect()
+    }
+
     /// main: 1 ← 2 ← 4 (merging 3); feature: 1 ← 3.
     fn history() -> (GraphRequest, HashMap<Oid, CommitMeta>) {
         let commits = [commit(1, &[], 100, "Initial commit"), commit(2, &[1], 200, "Fix typo"), commit(3, &[1], 300, "Login form"), commit(4, &[2, 3], 400, "Merge branch 'feature'\n\nSee !12")];
@@ -365,6 +377,63 @@ mod tests {
         assert!(feature.is_head);
         assert_eq!(g.labels.iter().find(|l| l.name == "main").unwrap().worktree.as_deref(), Some("/demo/x"), "main is checked out elsewhere");
         assert_eq!(g.worktrees.len(), 2);
+    }
+
+    #[test]
+    fn a_lone_detached_main_worktree_is_plain_head() {
+        let (mut req, commits) = history();
+        req.input.worktrees = vec![detached("/demo/x", 2, true)];
+        req.input.refs.head = HeadIn { target: Some(id(2)), detached: true, ..Default::default() };
+        let g = build(&req, &commits).unwrap();
+        assert_eq!(detached_chips(&g), [(2, "HEAD", true, None, None)]);
+    }
+
+    #[test]
+    fn a_detached_main_worktree_beside_a_linked_one_gets_a_chip_named_by_its_folder() {
+        let (mut req, commits) = history();
+        req.input.worktrees = vec![detached("/demo/x", 2, true), worktree("/demo/wt", 3, "feature", false)];
+        req.input.refs.head = HeadIn { target: Some(id(2)), detached: true, ..Default::default() };
+        let g = build(&req, &commits).unwrap();
+        assert_eq!(detached_chips(&g), [(2, "x", true, None, Some("/demo/x"))], "no plain HEAD chip as well");
+        // Seen from the linked worktree, the main one's chip isn't HEAD's, and says where it is.
+        req.input.active = Some("/demo/wt".into());
+        let g = build(&req, &commits).unwrap();
+        assert_eq!(detached_chips(&g), [(2, "x", false, Some("/demo/x"), Some("/demo/x"))]);
+        assert!(g.labels.iter().find(|l| l.name == "feature").unwrap().is_head);
+    }
+
+    #[test]
+    fn a_detached_linked_worktree_gets_a_chip_after_the_branches_and_its_commits_stay() {
+        let (mut req, mut commits) = history();
+        // 5 is reachable from the linked worktree's HEAD alone.
+        commits.insert(id(5), commit(5, &[3], 500, "Spike"));
+        req.input.worktrees.push(detached("/demo/wt-spike", 5, false));
+        let g = build(&req, &commits).unwrap();
+        assert_eq!(summaries(&g)[0], "Spike");
+        assert_eq!(detached_chips(&g), [(0, "wt-spike", false, Some("/demo/wt-spike"), Some("/demo/wt-spike"))]);
+        // On a branch's commit, it comes after the branch.
+        req.input.worktrees[1] = detached("/demo/wt-spike", 3, false);
+        let g = build(&req, &commits).unwrap();
+        let at_feature: Vec<&str> = g.labels.iter().filter(|l| l.row == 1).map(|l| l.name.as_str()).collect();
+        assert_eq!(at_feature, ["feature", "wt-spike"]);
+        // A bare or prunable one has none.
+        req.input.worktrees[1].prunable = true;
+        assert!(detached_chips(&build(&req, &commits).unwrap()).is_empty());
+    }
+
+    #[test]
+    fn two_worktrees_detached_on_one_commit_get_a_chip_each() {
+        let (mut req, commits) = history();
+        req.input.worktrees = vec![detached("/demo/x", 3, true), detached("/demo/wt-a", 3, false), detached("/demo/wt-b", 3, false)];
+        req.input.active = Some("/demo/wt-b".into());
+        let g = build(&req, &commits).unwrap();
+        assert_eq!(
+            detached_chips(&g),
+            [(1, "wt-b", true, None, Some("/demo/wt-b")), (1, "x", false, Some("/demo/x"), Some("/demo/x")), (1, "wt-a", false, Some("/demo/wt-a"), Some("/demo/wt-a"))],
+            "the open one's first, as HEAD's"
+        );
+        let at_feature: Vec<&str> = g.labels.iter().filter(|l| l.row == 1).map(|l| l.name.as_str()).collect();
+        assert_eq!(at_feature, ["wt-b", "feature", "x", "wt-a"], "the branch before other worktrees' chips");
     }
 
     #[test]

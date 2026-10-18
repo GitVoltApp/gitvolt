@@ -1016,9 +1016,32 @@ mod tests {
         fixtures::basic(&r);
         r.git(&["switch", "-q", "--detach", "HEAD~1"]);
         let g = build(&r, BuildOptions::default()).await;
-        let head = g.labels.iter().find(|l| l.name == "HEAD").unwrap();
-        assert!(head.is_head);
+        // Beside wt-hotfix, HEAD's chip is the main worktree's, named by its folder.
+        let head = g.labels.iter().find(|l| l.is_head).unwrap();
+        let main = g.worktrees.iter().find(|w| w.is_main).unwrap();
+        assert_eq!((head.local.as_deref(), head.name.as_str()), (None, std::path::Path::new(&main.path).file_name().unwrap().to_str().unwrap()));
+        assert_eq!(head.checked_out.as_deref(), Some(main.path.as_str()));
         assert_eq!(g.rows[head.row as usize].summary, "Fix typo");
+        assert!(!g.labels.iter().any(|l| l.name == "HEAD"), "no plain HEAD chip as well");
+        // Alone, it's plain HEAD.
+        r.git(&["worktree", "remove", "--force", "wt-hotfix"]);
+        let g = build(&r, BuildOptions::default()).await;
+        let head = g.labels.iter().find(|l| l.is_head).unwrap();
+        assert_eq!((head.name.as_str(), head.checked_out.as_deref()), ("HEAD", None));
+    }
+
+    #[tokio::test]
+    async fn a_detached_linked_worktree_gets_a_chip_at_its_head() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let wt = r.root().join("wt-hotfix");
+        r.git(&["-C", wt.to_str().unwrap(), "switch", "-q", "--detach", "HEAD~1"]);
+        let g = build(&r, BuildOptions::default()).await;
+        let chip = g.labels.iter().find(|l| l.name == "wt-hotfix").unwrap();
+        assert_eq!((chip.local.as_deref(), chip.is_head, chip.tag), (None, false, false));
+        let path = g.worktrees.iter().find(|w| !w.is_main).unwrap().path.clone();
+        assert_eq!((chip.worktree.as_deref(), chip.checked_out.as_deref()), (Some(path.as_str()), Some(path.as_str())));
+        assert_eq!(g.rows[chip.row as usize].summary, "Merge branch 'feature/login'");
     }
 
     #[tokio::test]

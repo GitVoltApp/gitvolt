@@ -59,6 +59,24 @@ test.describe('the active worktree (spec #2 §11.2)', () => {
       await expect(sidebarRow(page, 'wt-one')).toHaveClass(/is-head/);
       await expect(sidebarRow(page, 'repo')).not.toHaveClass(/is-head/);
     });
+    await test.step("a detached worktree has a chip of its own, named by its folder: clicking it switches to it, its menu is the worktree's", async () => {
+      // A commit below its branch's tip, where no other chip crowds it.
+      git(join(repo, '..', 'wt-two'), 'switch', '-q', '--detach', 'HEAD~1');
+      const chip = grid(page).locator('.ref-worktree', { hasText: 'wt-two' });
+      await expect(chip).toBeVisible();
+      await expect(chip).not.toHaveClass(/ref-label-head/);
+      await chip.click({ button: 'right' });
+      await expect(page.getByRole('menuitem', { name: 'Open in a new tab' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await chip.click();
+      await expect(repoButton(page)).toContainText('wt-two');
+      await expect(sidebarRow(page, 'wt-two')).toHaveClass(/is-head/);
+      await expect(headChip(page)).toHaveText(/wt-two\s*\(detached\)/);
+      // Back on wt-one, for the steps below.
+      await repoButton(page).click();
+      await page.getByRole('menuitem', { name: /wt-one/ }).click();
+      await expect(sidebarRow(page, 'wt-one')).toHaveClass(/is-head/);
+    });
     await test.step('the WIP row menu and the repo button switch, and Undo targets the active worktree', async () => {
       await repoButton(page).click();
       await page.getByRole('menuitem', { name: /wt-two/ }).click();

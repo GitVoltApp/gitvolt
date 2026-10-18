@@ -161,7 +161,8 @@ pub struct RefLabel {
     pub tag: bool,
     pub is_head: bool,
     pub worktree: Option<String>,
-    /// The worktree (any, the open one included) whose HEAD is this local branch.
+    /// The worktree (any, the open one included) whose HEAD is this local branch; on a worktree's
+    /// detached-HEAD chip (no local, remote or tag), that worktree.
     pub checked_out: Option<String>,
     /// A local branch whose upstream has another branch name (`feature/a` tracking
     /// `origin/feature/b`): that upstream's short name, for the chip's warning (UX round 3, M.1).

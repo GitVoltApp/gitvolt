@@ -34,6 +34,16 @@ describe('withActive (spec #2 §11.2)', () => {
     expect(head).toMatchObject({ row: 3, isHead: true, local: null });
     expect(withActive(g, '/r').labels.some((l) => l.name === 'HEAD')).toBe(false);
   });
+  it("a detached worktree's own chip (labels.rs) becomes HEAD's on switching to it, and says where it is again after", () => {
+    const g0 = graph();
+    const chip = { row: 3, name: 'r-d', local: null, remotes: [], tag: false, isHead: false, worktree: '/r-d', checkedOut: '/r-d' };
+    const g = withActive({ ...g0, labels: [...g0.labels, chip] }, '/r-d');
+    expect(g.head.detached).toBe(true);
+    expect(g.labels.filter((l) => l.row === 3)).toEqual([{ ...chip, isHead: true, worktree: null }, expect.objectContaining({ name: 'y' })]);
+    expect(g.labels.some((l) => l.name === 'HEAD')).toBe(false);
+    const back = withActive(g, '/r');
+    expect(back.labels.filter((l) => l.row === 3)).toEqual([expect.objectContaining({ name: 'y' }), chip]);
+  });
   it('is the same object for the same graph and path', () => {
     const g = graph();
     expect(withActive(g, '/r-x')).toBe(withActive(g, '/r-x'));

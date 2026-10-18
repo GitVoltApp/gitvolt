@@ -16,6 +16,7 @@ import { tabIdOf } from '../app/tabStores';
 import type { WriteCtx } from '../write/client';
 import { withActiveSidebar } from '../worktrees/active';
 import { worktreeDisplay } from '../worktrees/paths';
+import { detachedWorktreeOf } from '../graph/worktreeLabel';
 import type { EditorContextMenuEvent } from '../diff/monaco/host';
 import { stagingRows } from '../diff/stagingMenu';
 import { useRuntime } from '../app/runtime';
@@ -561,7 +562,16 @@ export function tagMenu(store: RepoViewStore, sha: string, label: RefLabel): () 
 /** A right-click on a graph label chip (`GraphView`/`RefLabels`): dispatches to the commit or tag
  * menu by the label's own kind. */
 export function labelMenu(store: RepoViewStore, row: RowPayload, label: RefLabel): () => MenuRow[] {
+  const wt = detachedWorktreeOf(label);
+  if (wt) return worktreeMenu(store, wt, row.id);
   return label.tag ? tagMenu(store, row.id, label) : commitMenu(store, row, branchRefOf(label));
+}
+
+/** A worktree's detached-HEAD chip: the sidebar worktree row's menu (Switch to, Open in a new tab,
+ * Copy path and SHA, Remove…). */
+function worktreeMenu(store: RepoViewStore, path: string, head: string): () => MenuRow[] {
+  afterOpening(store);
+  return () => buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'worktree', path, branch: null, head }, fileMenuEnv(store));
 }
 
 /** The Monaco context menu's target: the open diff's side `e` fired on, at the commit (or working

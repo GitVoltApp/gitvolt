@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHIP_PAD, CHIP_SPACING, CONNECTOR_MIN, chipWidth, fitCount, moreWidth } from './chipFit';
+import { CHIP_PAD, CHIP_SPACING, CONNECTOR_MIN, chipWidth, fitCount, moreWidth, textWidth } from './chipFit';
 
 describe('fitCount', () => {
   const w = [80, 60, 70];
@@ -30,6 +30,15 @@ describe('chipWidth', () => {
   it("counts the upstream-name warning (UX round 3, M.1): the chip's width already holds it", () => {
     const branch = { row: 0, name: 'feature/a', local: 'refs/heads/feature/a', tag: false, isHead: false, worktree: null, checkedOut: null, remotes: [] };
     expect(chipWidth({ ...branch, upstreamMismatch: 'origin/feature/b' }, '12px sans-serif')).toBe(chipWidth(branch, '12px sans-serif') + 12 + 3);
+  });
+  it("counts a worktree's detached-HEAD chip's icon, and the active one's check and (detached)", () => {
+    const font = '12px sans-serif';
+    const other = { row: 0, name: 'wt-two', local: null, tag: false, isHead: false, worktree: '/src/wt-two', checkedOut: '/src/wt-two', remotes: [] };
+    const plain = { ...other, worktree: null, checkedOut: null };
+    expect(chipWidth(other, font)).toBe(chipWidth(plain, font) + 14 + 3);
+    const active = { ...other, isHead: true, worktree: null };
+    expect(chipWidth(active, font)).toBe(chipWidth(other, font) + 16 + 3 + 3 + textWidth('(detached)', font));
+    expect(chipWidth(active, font, true)).toBe(CHIP_PAD + 16 + 3 + 14);
   });
   it('counts an MR/PR badge as one more icon, beside the local and remote ones', () => {
     const branch = { row: 0, name: 'feature/a', local: 'refs/heads/feature/a', tag: false, isHead: false, worktree: null, checkedOut: null, remotes: [] };

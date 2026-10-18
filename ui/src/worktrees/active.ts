@@ -9,6 +9,7 @@ import { feedTabView, tabView } from '../app/tabStores';
 import { loadJournal } from '../undo/store';
 import { useToast } from '../ui/toastStore';
 import { worktreeDisplay } from './paths';
+import { detachedWorktreeOf } from '../graph/worktreeLabel';
 import { openRepoTab, tabWorktree } from '../app/tabs';
 
 /**
@@ -19,8 +20,10 @@ import { openRepoTab, tabWorktree } from '../app/tabs';
  * re-placement comes from the backend (Deviation 1).
  */
 
-const priority = (l: RefLabel) => (l.isHead ? 0 : l.local !== null ? 1 : !l.tag ? 2 : 3);
-const isDetachedHead = (l: RefLabel) => l.isHead && l.local === null && !l.tag && l.remotes.length === 0;
+// labels.rs's order: HEAD's, the branches, other worktrees' detached HEADs, remote-only, tags.
+const priority = (l: RefLabel) => (l.isHead ? 0 : l.local !== null ? 1 : detachedWorktreeOf(l) !== null ? 1.5 : !l.tag ? 2 : 3);
+/** The plain `HEAD` chip (a lone main worktree's, labels.rs): it moves with the active worktree. */
+const isPlainHead = (l: RefLabel) => l.isHead && l.local === null && !l.tag && l.remotes.length === 0 && l.checkedOut === null;
 const memo = new WeakMap<GraphPayload, Map<string, GraphPayload>>();
 
 /** The graph's HEAD marker, labels and open worktree for `active`; rows unchanged. */
@@ -30,12 +33,14 @@ export function withActive(g: GraphPayload, active: string): GraphPayload {
   const wt = g.worktrees.find((w) => w.path === active);
   if (!wt) return g;
   const head: HeadPayload = { branch: wt.branch, target: wt.head, detached: wt.branch === null && wt.head !== null, unborn: wt.head === null };
+  // A branch's chip and a worktree's detached-HEAD chip are HEAD's when their worktree is the
+  // active one, else they say where they're checked out.
   const labels: RefLabel[] = g.labels
-    .filter((l) => !isDetachedHead(l))
-    .map((l) => (l.local === null ? l : { ...l, isHead: l.checkedOut === active, worktree: l.checkedOut !== null && l.checkedOut !== active ? l.checkedOut : null }));
-  if (head.detached && head.target) {
+    .filter((l) => !isPlainHead(l))
+    .map((l) => (l.local === null && detachedWorktreeOf(l) === null ? l : { ...l, isHead: l.checkedOut === active, worktree: l.checkedOut !== null && l.checkedOut !== active ? l.checkedOut : null }));
+  if (head.detached && head.target && !labels.some((l) => l.isHead)) {
     const row = g.rows.findIndex((r) => r.id === head.target);
-    if (row >= 0) labels.push({ row, name: 'HEAD', local: null, remotes: [], tag: false, isHead: true, worktree: null, checkedOut: active });
+    if (row >= 0) labels.push({ row, name: 'HEAD', local: null, remotes: [], tag: false, isHead: true, worktree: null, checkedOut: null });
   }
   labels.sort((a, b) => a.row - b.row || priority(a) - priority(b));
   const out: GraphPayload = { ...g, head, labels, openWorktree: active };

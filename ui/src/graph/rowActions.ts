@@ -10,6 +10,8 @@ import type { RepoViewStore } from '../repo/store';
 export interface GraphDoubleClick {
   label?: (store: RepoViewStore, row: RowPayload, label: RefLabel) => boolean;
   row?: (store: RepoViewStore, row: RowPayload) => boolean;
+  /** A plain single click on a label chip (a worktree's detached-HEAD chip switches to it). */
+  labelClick?: (store: RepoViewStore, row: RowPayload, label: RefLabel) => boolean;
 }
 
 const handlers = new Set<GraphDoubleClick>();
@@ -21,6 +23,11 @@ export function registerGraphDoubleClick(h: GraphDoubleClick): () => void {
 
 export function graphLabelDoubleClick(store: RepoViewStore, row: RowPayload, label: RefLabel): boolean {
   for (const h of handlers) if (h.label?.(store, row, label)) return true;
+  return false;
+}
+
+export function graphLabelClick(store: RepoViewStore, row: RowPayload, label: RefLabel): boolean {
+  for (const h of handlers) if (h.labelClick?.(store, row, label)) return true;
   return false;
 }
 

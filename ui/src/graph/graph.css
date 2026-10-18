@@ -123,6 +123,9 @@
    widening Branch/Tag shows a long name whole. */
 .ref-label { display: inline-flex; gap: 3px; align-items: center; padding: 0 5px; height: var(--graph-chip-h); border-radius: 3px; --chip-mix: 25%; background: color-mix(in srgb, var(--lane-color) var(--chip-mix), transparent); color: var(--text-normal); min-width: 0; cursor: pointer; }
 .ref-name { overflow: hidden; text-overflow: ellipsis; }
+/* The active worktree's detached-HEAD chip (RefLabels.tsx): "(detached)" after its name, kept
+   whole while the name ellipsizes, a step quieter than it. */
+.ref-detached { flex: none; white-space: nowrap; opacity: 0.75; }
 /* Chips rest subdued, the lane colour at 25% (--graph-color-N-bg25), and light up
    to 45% with white text while their row is hovered or selected (H3). */
 .graph-row:hover .ref-label, .graph-row[aria-selected="true"] .ref-label { --chip-mix: 45%; color: var(--text-selected); }

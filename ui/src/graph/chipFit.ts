@@ -1,4 +1,5 @@
 import type { RefLabel } from '../api/gen/RefLabel';
+import { DETACHED, detachedWorktreeOf } from './worktreeLabel';
 
 /** The chip's fixed horizontal parts (graph.css `.ref-label`): 5 px padding each side, 3 px
  * between its items. The head check is ~0.76 chip-heights, the other icons 12-14 px. */
@@ -49,10 +50,14 @@ export function textWidth(name: string, font: string): number {
  * `iconOnly`: the chip shows no name (the compact column, a crowded detached HEAD). */
 export function chipWidth(label: RefLabel, font: string, iconOnly = false, mrBadge = false): number {
   const warn = label.upstreamMismatch ? 1 : 0;
-  const icons = warn + (label.isHead ? 1 : 0) + (label.tag ? 1 : 0) + (label.local ? 1 : 0) + label.remotes.length + (label.worktree ? 1 : 0) + (mrBadge ? 1 : 0);
-  const iconW = warn * WARN + (label.isHead ? HEAD_CHECK : 0) + (label.tag ? 12 : 0) + (label.local ? ICON : 0) + label.remotes.length * ICON + (label.worktree ? ICON : 0) + (mrBadge ? ICON : 0);
+  // A worktree's detached-HEAD chip always has the worktree icon, and the active one's "(detached)".
+  const wt = detachedWorktreeOf(label) !== null;
+  const tree = label.worktree || wt ? 1 : 0;
+  const icons = warn + (label.isHead ? 1 : 0) + (label.tag ? 1 : 0) + (label.local ? 1 : 0) + label.remotes.length + tree + (mrBadge ? 1 : 0);
+  const iconW = warn * WARN + (label.isHead ? HEAD_CHECK : 0) + (label.tag ? 12 : 0) + (label.local ? ICON : 0) + label.remotes.length * ICON + tree * ICON + (mrBadge ? ICON : 0);
   if (iconOnly) return CHIP_PAD + iconW + Math.max(0, icons - 1) * CHIP_GAP;
-  return CHIP_PAD + textWidth(label.name, font) + iconW + icons * CHIP_GAP;
+  const detached = wt && label.isHead ? CHIP_GAP + textWidth(DETACHED, font) : 0;
+  return CHIP_PAD + textWidth(label.name, font) + detached + iconW + icons * CHIP_GAP;
 }
 
 /** The rebasing chip's estimated width (RefLabels.tsx RebasingChip): the spinner, the name and

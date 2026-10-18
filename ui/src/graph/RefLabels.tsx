@@ -11,6 +11,7 @@ import { useHoverTooltip } from '../ui/HoverTooltip';
 import { CHIP_SPACING, chipFont, chipWidth, fitCount, rebasingWidth } from './chipFit';
 import { UpstreamWarning } from '../branches/UpstreamWarning';
 import { TagTip } from '../tags/TagTip';
+import { DETACHED, detachedWorktreeOf } from './worktreeLabel';
 // --- 4B T10 ---
 import { useRepoContext } from '../app/repoContext';
 import { MrBadge, useChipMr } from '../forge/MrBadge';
@@ -21,6 +22,11 @@ import { useShallow } from 'zustand/react/shallow';
 
 /** J22's branch-hover focus: a chip entered (the refs it stands for) or left (null). */
 type BranchHover = (refs: readonly string[] | null) => void;
+type LabelClick = (label: RefLabel, e: MouseEvent<HTMLElement>) => void;
+/** Only a plain primary click acts: a modified one extends the row selection, as on the row. */
+const plainClick = (e: MouseEvent<HTMLElement>, label: RefLabel, onClick: LabelClick) => {
+  if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) onClick(label, e);
+};
 const NO_REFS: readonly string[] = [];
 
 
@@ -73,8 +79,12 @@ function RebasingChip({ name }: { name: string }) {
 }
 // --- end 2D T18 ---
 
-/** The detached HEAD's label (snapshot.rs: named `HEAD`, no local, remote or tag). */
-export const isDetachedHead = (l: RefLabel) => l.isHead && l.name === 'HEAD' && l.local === null && !l.tag && l.remotes.length === 0;
+/** The detached HEAD's label (labels.rs: no local, remote or tag): the plain `HEAD` one, or the
+ * active worktree's, named by its folder. */
+export const isDetachedHead = (l: RefLabel) => l.isHead && l.local === null && !l.tag && l.remotes.length === 0;
+
+/** A worktree's detached-HEAD chip's tooltip: where it is, and the commit. */
+const worktreeTip = (path: string, sha: string | null) => `${path} (HEAD detached at ${sha ? sha.slice(0, 7) : 'this commit'})`;
 
 /** A chip's inside. `compact` (Branch/Tag at its minimum, spec §8.4): icons only, no name; the
  * hover copy (`full`) is never compact, so hovering names the ref. */
@@ -94,6 +104,7 @@ function ChipContent({ label, full = false, compact = false }: { label: RefLabel
   const checkingOut = pending === 'checkout' && !label.isHead;
   const spinHere: 'local' | number | null = !pending || label.isHead || checkingOut ? null : label.local ? 'local' : label.remotes.length ? 0 : null;
   // --- end 4B T10 ---
+  const wt = detachedWorktreeOf(label);
   return (
     <>
       {/* UX round 3, M.1: an upstream with another branch name, first in the chip (its width counted in chipFit.ts). */}
@@ -105,10 +116,14 @@ function ChipContent({ label, full = false, compact = false }: { label: RefLabel
       {label.tag && (label.annotation ? <Tag size={12} fill="currentColor" className="ref-tag-annotated" aria-label="annotated tag" /> : <Tag size={12} aria-label="tag" />)}
       {/* No tooltip on the name (F9): the expanded copy already shows it in full. */}
       {!(compact && !full) && <span className={full ? 'ref-name-full' : 'ref-name'}>{label.name}</span>}
+      {/* The active worktree's detached HEAD: it's HEAD, but no branch's. */}
+      {wt && label.isHead && !(compact && !full) && <span className="ref-detached">{DETACHED}</span>}
       {/* A non-HEAD chip has no check box: the spinner stands in for its first source icon, at its size, so the chip's width holds (chipFit). */}
       {label.local && <SourceIcon tip={`${label.local.replace(/^refs\/heads\//, '')} (Local)`}>{spinHere === 'local' ? <PendingMark action={pending!} size={SOURCE_OUTLINE} /> : <Laptop size={SOURCE_OUTLINE} aria-label="local" />}</SourceIcon>}
       {label.remotes.map((r, i) => <Fragment key={r.fullName}><SourceIcon tip={<RemoteTip remote={r} />}>{spinHere === i ? <PendingMark action={pending!} size={12} /> : <RemoteIcon kind={r.hostKind} host={r.host} remote={r.remote} size={12} tabId={tabId} />}</SourceIcon></Fragment>)}
-      {label.worktree && <SourceIcon tip={`Checked out in ${label.worktree}`}><TreePine size={SOURCE_OUTLINE} aria-label="checked out in another worktree" /></SourceIcon>}
+      {/* A worktree's detached-HEAD chip: the chip's own tooltip names its path. */}
+      {wt ? <span className="ref-icon"><TreePine size={SOURCE_OUTLINE} aria-label="worktree" /></span>
+        : label.worktree && <SourceIcon tip={`Checked out in ${label.worktree}`}><TreePine size={SOURCE_OUTLINE} aria-label="checked out in another worktree" /></SourceIcon>}
       {badge && <MrBadge tabId={tabId} kind={badge.kind} mr={badge.mr} size={SOURCE_OUTLINE} />}
     </>
   );
@@ -124,7 +139,7 @@ function ChipContent({ label, full = false, compact = false }: { label: RefLabel
  * collapses once the pointer leaves the copy. The copy is never smaller than the chip it covers,
  * so expanding can't move the pointer "out" and back in (no flicker at the edge).
  */
-function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranchHover, onContextMenu, onDoubleClick, stack, tip, ariaLabel }: { /** Omitted: the lane colour inherited from `.ref-labels`. */ color?: string; className?: string; content: (full: boolean) => ReactNode; stack?: () => ReactNode; refs?: readonly string[]; onBranchHover?: BranchHover; onContextMenu?: (e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (e: MouseEvent<HTMLElement>) => void; /** The chip's own instant tooltip (the rebasing and the icon-only detached HEAD chips). */ tip?: ReactNode; ariaLabel?: string }) {
+function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranchHover, onClick, onContextMenu, onDoubleClick, stack, tip, ariaLabel }: { /** Omitted: the lane colour inherited from `.ref-labels`. */ color?: string; className?: string; content: (full: boolean) => ReactNode; stack?: () => ReactNode; refs?: readonly string[]; onBranchHover?: BranchHover; onClick?: (e: MouseEvent<HTMLElement>) => void; onContextMenu?: (e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (e: MouseEvent<HTMLElement>) => void; /** The chip's own instant tooltip (the rebasing, the icon-only detached HEAD and the worktree chips). */ tip?: ReactNode; ariaLabel?: string }) {
   const [expanded, setExpanded] = useState(false);
   const { triggerProps, tooltip } = useHoverTooltip({ content: tip ?? null, disabled: tip === undefined });
   // J22: entering a branch chip starts its branch's focus, leaving ends it. A chip unmounted
@@ -152,6 +167,7 @@ function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranc
       style={color === undefined ? undefined : { ['--lane-color' as string]: color }}
       onMouseEnter={enter}
       onMouseLeave={leave}
+      onClick={onClick}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
     >
@@ -168,12 +184,13 @@ function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranc
 
 /** One row of the label stack (K77): a full chip for one ref. Hovering it starts that ref's
  * branch focus (J22), ended on leaving or unmounting; right-clicking opens that label's menu. */
-function StackRow({ label, sha, first, onBranchHover, onContextMenu, onDoubleClick }: { label: RefLabel; sha: string | null; first: boolean; onBranchHover?: BranchHover; onContextMenu?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void }) {
+function StackRow({ label, sha, first, onBranchHover, onClick, onContextMenu, onDoubleClick }: { label: RefLabel; sha: string | null; first: boolean; onBranchHover?: BranchHover; onClick?: LabelClick; onContextMenu?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void }) {
   const focusing = useRef<BranchHover | null>(null);
   useEffect(() => () => focusing.current?.(null), []);
-  // A tag's row has the tag's tooltip, as its chip does (UX round 3, M.2); not the first row, which
-  // lies over that chip and its own tooltip (`first`).
-  const { triggerProps, tooltip } = useHoverTooltip({ content: label.tag ? <TagTip annotation={label.annotation} sha={sha} /> : null, disabled: !label.tag || first });
+  // A tag's row has the tag's tooltip, as its chip does (UX round 3, M.2), and a worktree's its
+  // path; not the first row, which lies over that chip and its own tooltip (`first`).
+  const wt = detachedWorktreeOf(label);
+  const { triggerProps, tooltip } = useHoverTooltip({ content: label.tag ? <TagTip annotation={label.annotation} sha={sha} /> : wt ? worktreeTip(wt, sha) : null, disabled: !(label.tag || wt) || first });
   return (
     <span
       className="ref-stack-row"
@@ -191,6 +208,7 @@ function StackRow({ label, sha, first, onBranchHover, onContextMenu, onDoubleCli
         focusing.current?.(null);
         focusing.current = null;
       }}
+      onClick={onClick && ((e) => { e.stopPropagation(); plainClick(e, label, onClick); })}
       onContextMenu={onContextMenu && ((e) => { e.stopPropagation(); onContextMenu(label, e); })}
       onDoubleClick={onDoubleClick && ((e) => { e.stopPropagation(); onDoubleClick(label, e); })}
     >
@@ -207,7 +225,7 @@ function StackRow({ label, sha, first, onBranchHover, onContextMenu, onDoubleCli
  * open while the pointer is anywhere over it. Absolutely positioned from the row (as the single
  * copy is: `.col-labels` clips nothing it doesn't contain); measured once on mount, before paint.
  */
-function LabelStack({ labels, sha, onBranchHover, onContextMenu, onDoubleClick }: { labels: RefLabel[]; sha: string | null; onBranchHover?: BranchHover; onContextMenu?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void }) {
+function LabelStack({ labels, sha, onBranchHover, onClick, onContextMenu, onDoubleClick }: { labels: RefLabel[]; sha: string | null; onBranchHover?: BranchHover; onClick?: LabelClick; onContextMenu?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void }) {
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -231,7 +249,7 @@ function LabelStack({ labels, sha, onBranchHover, onContextMenu, onDoubleClick }
   }, []);
   return (
     <span ref={ref} className="ref-stack" aria-hidden="true">
-      {labels.map((l, i) => <StackRow key={`${i}:${l.name}`} label={l} sha={sha} first={i === 0} onBranchHover={onBranchHover} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} />)}
+      {labels.map((l, i) => <StackRow key={`${i}:${l.name}`} label={l} sha={sha} first={i === 0} onBranchHover={onBranchHover} onClick={onClick} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} />)}
     </span>
   );
 }
@@ -270,7 +288,7 @@ function DimChip({ membership, onBranchHover }: { membership: BranchMembership; 
  * `.ref-dim-slot`, which gives up its width before the real chip does and drops the dimmed chip
  * whole when it doesn't fit (graph.css), so it never truncates or displaces a real chip.
  */
-export function RefLabels({ labels, color, membership = null, onBranchHover, compact = false, width, onContextMenu, onDoubleClick, line, rebasing = null, sha = null }: {
+export function RefLabels({ labels, color, membership = null, onBranchHover, compact = false, width, onClick, onContextMenu, onDoubleClick, line, rebasing = null, sha = null }: {
   labels: RefLabel[];
   /** The row's commit: named in the icon-only detached HEAD chip's tooltip. */
   sha?: string | null;
@@ -286,6 +304,9 @@ export function RefLabels({ labels, color, membership = null, onBranchHover, com
   /** Right-clicking the row's own (first) label chip: the commit or tag menu for that branch or
    * tag (plan 1C Task 15). or any row of the hover stack (K77). Not on the `+N` badge or the dimmed membership chip. */
   onContextMenu?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void;
+  /** A plain (unmodified, primary) click on a label chip or a stack row: a worktree's
+   * detached-HEAD chip switches the tab to it. The row's press still selects it. */
+  onClick?: LabelClick;
   /** Double-clicking a label chip or a stack row (a branch checks out; spec #2 §9.3). The handler
    * stops the event, so the row's own double-click doesn't also fire. */
   onDoubleClick?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void;
@@ -318,7 +339,7 @@ export function RefLabels({ labels, color, membership = null, onBranchHover, com
   // The checked-out branch (HEAD's label always sorts first): its chip is always lit and its
   // connector is the graph line's width and colour (J21, graph.css; draw.ts `headRow`).
   const head = labels[0].isHead;
-  const stack = hidden > 0 ? () => <LabelStack labels={labels} sha={sha} onBranchHover={onBranchHover} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} /> : undefined;
+  const stack = hidden > 0 ? () => <LabelStack labels={labels} sha={sha} onBranchHover={onBranchHover} onClick={onClick} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} /> : undefined;
   return (
     // `--lane-color` is set here (not just on the chip) so `.ref-connector`, a sibling of the
     // chip, can read it too: it continues the connector drawn in the canvas (see draw.ts).
@@ -328,14 +349,15 @@ export function RefLabels({ labels, color, membership = null, onBranchHover, com
         <Chip
           key={`${i}:${l.name}`}
           color={c}
-          className={`ref-label${l.isHead ? ' ref-label-head' : ''}${iconOnly(l) ? ' compact' : ''}${i > 0 || rebasing ? ' ref-label-next' : ''}`}
+          className={`ref-label${l.isHead ? ' ref-label-head' : ''}${detachedWorktreeOf(l) ? ' ref-worktree' : ''}${iconOnly(l) ? ' compact' : ''}${i > 0 || rebasing ? ' ref-label-next' : ''}`}
           refs={chipRefs(l)}
           onBranchHover={onBranchHover}
+          onClick={onClick && ((e) => plainClick(e, l, onClick))}
           onContextMenu={onContextMenu && ((e) => onContextMenu(l, e))}
           onDoubleClick={onDoubleClick && ((e) => { e.stopPropagation(); onDoubleClick(l, e); })}
           stack={i === 0 ? stack : undefined}
           content={(full) => <ChipContent label={l} full={full} compact={iconOnly(l)} />}
-          tip={l.tag ? <TagTip annotation={l.annotation} sha={sha} /> : !compact && iconOnly(l) ? `HEAD (detached at ${sha ? sha.slice(0, 7) : 'this commit'})` : undefined}
+          tip={l.tag ? <TagTip annotation={l.annotation} sha={sha} /> : detachedWorktreeOf(l) ? worktreeTip(detachedWorktreeOf(l)!, sha) : !compact && iconOnly(l) ? `HEAD (detached at ${sha ? sha.slice(0, 7) : 'this commit'})` : undefined}
         />
       ))}
       {stack && <More count={hidden} stack={stack} head={head} />}

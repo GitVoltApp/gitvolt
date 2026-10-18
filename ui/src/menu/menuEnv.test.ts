@@ -15,7 +15,7 @@ import { closeCenterView, openCenterView, registerCenterView, useCenterViewEdito
 import { createRepoViewStore, fileViewTarget, targetFor } from '../repo/store';
 import { fakeServices } from '../repo/testServices';
 import { useToast } from '../ui/toastStore';
-import { commitTargetOf, compare, primaryBranchOf, copyMessage, fileMenuEnv, fileTargetOf, folderTargetOf, monacoMenu, monacoTargetFor, monacoTargetOf, rootOfSpec, sidebarItemMenu, sidebarRemoteMenu, splitRemoteRef, upstreamOf, type FileTarget, type MenuEnv } from './menuEnv';
+import { commitTargetOf, compare, primaryBranchOf, copyMessage, fileMenuEnv, fileTargetOf, folderTargetOf, labelMenu, monacoMenu, monacoTargetFor, monacoTargetOf, rootOfSpec, sidebarItemMenu, sidebarRemoteMenu, splitRemoteRef, upstreamOf, type FileTarget, type MenuEnv } from './menuEnv';
 import { buildMenu } from './registry';
 
 // `compare`/`copyMessage` reach the real clipboard (api/transport); fix round 1, item 7's unit
@@ -357,6 +357,14 @@ describe('the sidebar item menus', () => {
     expect(labelsOf(sidebarItemMenu(store(), item('stash', { target: 'c1', stash: { index: 0, id: 'c1', message: 'WIP', time: 0 } }))())).toEqual(['Copy SHA', 'Copy message', '---', 'Show in graph']);
     const wt = { path: '/wt/x', name: 'x', branch: 'x', head: 'c1', isMain: false, isCurrent: false };
     expect(labelsOf(sidebarItemMenu(store(), item('worktree', { target: 'c1', worktree: wt }))())).toEqual(['Copy path', 'Copy branch name', 'Copy SHA', '---', 'Open in file manager', '---', 'Show in graph']);
+  });
+
+  it("a worktree's detached-HEAD chip in the graph: that worktree's sidebar menu, its HEAD the chip's commit", () => {
+    const chip = label(2, 'x', false, [], { worktree: '/wt/x', checkedOut: '/wt/x' });
+    const wt = { path: '/wt/x', name: 'x', branch: null, head: 'c1', isMain: false, isCurrent: false };
+    const fromChip = labelMenu(store(), row('c1', ['c2']), chip)();
+    expect(labelsOf(fromChip)).toEqual(['Copy path', 'Copy SHA', '---', 'Open in file manager', '---', 'Show in graph']);
+    expect(labelsOf(fromChip)).toEqual(labelsOf(sidebarItemMenu(store(), item('worktree', { target: 'c1', worktree: wt }))()));
   });
 
   it('a remote: its name, redacted URL from the repo info, and its project page', () => {

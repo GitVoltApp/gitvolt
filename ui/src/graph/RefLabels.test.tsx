@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { RefLabel } from '../api/gen/RefLabel';
 import type { RemoteRefLabel } from '../api/gen/RemoteRefLabel';
 import { chipRefs } from './membership';
@@ -351,5 +351,76 @@ describe('RefLabels, several labels (K104)', () => {
     rerender(<RefLabels labels={[local('prod'), local('dev')]} color={0} />);
     expect(container.querySelector('.ref-more')).toHaveTextContent('+1');
     expect(container.querySelector('.ref-more')).not.toHaveClass('ref-more-head');
+  });
+});
+
+describe("a worktree's detached-HEAD chip", () => {
+  const sha = 'c'.repeat(40);
+  const wt = (name: string, isHead = false): RefLabel => ({ row: 0, name, local: null, tag: false, isHead, worktree: isHead ? null : `/src/${name}`, checkedOut: `/src/${name}`, remotes: [] });
+  const main: RefLabel = { row: 0, name: 'main', local: 'refs/heads/main', tag: false, isHead: false, worktree: null, checkedOut: null, remotes: [] };
+
+  it("another worktree's: its folder name and the worktree icon; hovering shows its path", () => {
+    const { container } = render(<RefLabels labels={[wt('wt-two')]} color={0} width={300} sha={sha} />);
+    const chip = container.querySelector<HTMLElement>('.ref-labels > .ref-label')!;
+    expect(chip).toHaveClass('ref-worktree');
+    expect(chip).not.toHaveClass('ref-label-head');
+    expect(chip.querySelector('.ref-name')).toHaveTextContent('wt-two');
+    expect(chip.querySelector('[aria-label="worktree"]')).not.toBeNull();
+    expect(chip).not.toHaveTextContent('(detached)');
+    fireEvent.mouseEnter(chip);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('/src/wt-two (HEAD detached at ccccccc)');
+  });
+
+  it("the active worktree's: HEAD's check and look, its name, then (detached); icon-only when crowded, like HEAD's", () => {
+    const { container, rerender } = render(<RefLabels labels={[wt('wt-one', true)]} color={0} width={300} sha={sha} />);
+    const chip = container.querySelector<HTMLElement>('.ref-labels > .ref-label')!;
+    expect(chip).toHaveClass('ref-label-head', 'ref-worktree');
+    expect(chip.querySelector('[aria-label="HEAD"]')).not.toBeNull();
+    expect(chip.querySelector('[aria-label="worktree"]')).not.toBeNull();
+    expect(chip.querySelector('.ref-name')).toHaveTextContent('wt-one');
+    expect(chip.querySelector('.ref-detached')).toHaveTextContent('(detached)');
+    rerender(<RefLabels labels={[wt('wt-one', true), main]} color={0} width={300} sha={sha} />);
+    const crowded = container.querySelector<HTMLElement>('.ref-labels > .ref-label-head')!;
+    expect(crowded).toHaveClass('compact');
+    expect(crowded.querySelector('.ref-name')).toBeNull();
+    expect(crowded.querySelector('[aria-label="worktree"]')).not.toBeNull();
+  });
+
+  it('several worktrees on one commit: a chip each, the overflow in +N as for branches', () => {
+    const many = [wt('wt-a'), wt('wt-b'), wt('wt-c')];
+    const { container, rerender } = render(<RefLabels labels={many} color={0} width={600} />);
+    expect([...container.querySelectorAll('.ref-labels > .ref-label .ref-name')].map((c) => c.textContent)).toEqual(['wt-a', 'wt-b', 'wt-c']);
+    rerender(<RefLabels labels={many} color={0} width={150} />);
+    expect(container.querySelector('.ref-more')).toHaveTextContent(/^\+[12]$/);
+  });
+
+  it('a plain click, a double-click and a right-click hand over the label; a modified click does nothing', () => {
+    const onClick = vi.fn();
+    const onDoubleClick = vi.fn();
+    const onContextMenu = vi.fn();
+    const label = wt('wt-two');
+    const { container } = render(<RefLabels labels={[label, main]} color={0} width={600} onClick={onClick} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu} />);
+    const chip = container.querySelector<HTMLElement>('.ref-worktree')!;
+    fireEvent.click(chip, { ctrlKey: true });
+    fireEvent.click(chip, { shiftKey: true });
+    expect(onClick).not.toHaveBeenCalled();
+    fireEvent.click(chip);
+    expect(onClick).toHaveBeenCalledWith(label, expect.anything());
+    fireEvent.doubleClick(chip);
+    expect(onDoubleClick).toHaveBeenCalledWith(label, expect.anything());
+    fireEvent.contextMenu(chip);
+    expect(onContextMenu).toHaveBeenCalledWith(label, expect.anything());
+  });
+
+  it("a hidden one's row in the hover stack: its tooltip, and a click hands it over", () => {
+    const onClick = vi.fn();
+    const hidden = wt('wt-hidden-in-the-stack');
+    const { container } = render(<RefLabels labels={[main, hidden]} color={0} width={90} onClick={onClick} sha={sha} />);
+    fireEvent.mouseEnter(container.querySelector('.ref-more')!);
+    const row = [...container.querySelectorAll<HTMLElement>('.ref-stack-row')].find((r) => r.textContent?.includes('wt-hidden-in-the-stack'))!;
+    fireEvent.mouseEnter(row);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('/src/wt-hidden-in-the-stack (HEAD detached at ccccccc)');
+    fireEvent.click(row);
+    expect(onClick).toHaveBeenCalledWith(hidden, expect.anything());
   });
 });
