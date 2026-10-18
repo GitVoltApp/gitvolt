@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-18
+
 ### Added
 
 - **A chip for a worktree with a detached HEAD:** a worktree with no branch checked out now has
