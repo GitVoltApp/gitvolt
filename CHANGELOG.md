@@ -5,6 +5,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **No more `git lfs version` storms:** without git-lfs installed, every focus of the window
+  (each click, under GNOME) ran `git lfs version` in every open repository. It now asks at most
+  once a minute, once in all, and only for repositories that use LFS.
+
 ## [0.7.2] - 2026-10-18
 
 ### Added

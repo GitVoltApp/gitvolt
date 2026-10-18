@@ -87,8 +87,9 @@ const offs = [
   // Checkouts, pulls, .gitattributes edits and git-lfs installed meanwhile (`refreshLfs`).
   onEvent(onLfsEvent),
   (() => {
-    window.addEventListener('focus', onLfsFocus);
-    return () => window.removeEventListener('focus', onLfsFocus);
+    const focused = () => onLfsFocus();
+    window.addEventListener('focus', focused);
+    return () => window.removeEventListener('focus', focused);
   })(),
 ];
 import.meta.hot?.dispose(() => { for (const off of offs) off(); });

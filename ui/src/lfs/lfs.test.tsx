@@ -35,7 +35,7 @@ const { useRuntime } = await import('../app/runtime');
 const { EMPTY_PROFILE, useAppState } = await import('../app/state');
 const { getAction } = await import('../app/actions');
 const { buildMenu } = await import('../menu/registry');
-const { useLfs, lfsDownloaded, onLfsEvent, onLfsFocus, REFRESH_MS } = await import('./store');
+const { useLfs, lfsDownloaded, onLfsEvent, onLfsFocus, resetLfsFocusThrottle, FOCUS_RECHECK_MS, REFRESH_MS } = await import('./store');
 const { LfsMark } = await import('./LfsMark');
 const { LfsNotice } = await import('./LfsNotice');
 const { LfsPlaceholder, lfsMissing } = await import('./LfsPlaceholder');
@@ -106,10 +106,28 @@ describe('Git LFS state', () => {
   });
 
   it('on the window\'s focus, a repository read without git-lfs is read again', async () => {
+    resetLfsFocusThrottle();
     useLfs.setState({ status: { 13: { used: true, version: null, installUrl: 'https://git-lfs.com', filter: true, patterns: [] }, 14: { used: true, version: '3.4.1', installUrl: 'https://git-lfs.com', filter: true, patterns: [] } } });
-    onLfsFocus();
+    onLfsFocus(1_000);
     await waitFor(() => expect(useLfs.getState().status[13]?.version).toBe('3.4.1'));
     expect(api.lfsStatus).toHaveBeenCalledExactlyOnceWith(13, true);
+  });
+
+  it('focus asks git at most once a minute, once for all repositories, and never for one without LFS', async () => {
+    resetLfsFocusThrottle();
+    const none = { version: null, installUrl: 'https://git-lfs.com', filter: false, patterns: [] };
+    useLfs.setState({ status: { 21: { used: true, ...none }, 22: { used: true, ...none }, 23: { used: false, ...none } } });
+    onLfsFocus(1_000);
+    await waitFor(() => expect(api.lfsStatus).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.lfsStatus).mock.calls).toEqual([[21, true], [22]]);
+    // Clicks refocus the window many times a second (GNOME): nothing more within the minute.
+    onLfsFocus(1_500);
+    onLfsFocus(1_000 + FOCUS_RECHECK_MS - 1);
+    expect(api.lfsStatus).toHaveBeenCalledTimes(2);
+    // A minute on, still without git-lfs: asked again.
+    useLfs.setState({ status: { 21: { used: true, ...none }, 22: { used: true, ...none } } });
+    onLfsFocus(1_000 + FOCUS_RECHECK_MS);
+    await waitFor(() => expect(api.lfsStatus).toHaveBeenCalledTimes(4));
   });
 
   it('a download moves the epoch the diff views reload on', () => {

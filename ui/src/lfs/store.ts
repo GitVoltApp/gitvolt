@@ -36,7 +36,8 @@ export function loadLfsStatus(repo: number, force = false, recheck = false): Pro
   if (!force && (useLfs.getState().status[repo] || failed.has(repo))) return Promise.resolve();
   failed.delete(repo);
   const p = Promise.resolve().then(() => (recheck ? api.lfsStatus(repo, true) : api.lfsStatus(repo))).then(
-    (s) => useLfs.setState((st) => ({ status: { ...st.status, [repo]: s } })),
+    // An unchanged answer leaves the store alone: every view showing LFS would render again.
+    (s) => useLfs.setState((st) => (JSON.stringify(st.status[repo]) === JSON.stringify(s) ? st : { status: { ...st.status, [repo]: s } })),
     (e: unknown) => {
       failed.add(repo);
       console.warn('[gitvolt] LFS status', e);
@@ -142,10 +143,26 @@ export function onLfsEvent(ev: AppEvent): void {
   else if (ev.type === 'opFinished' && ev.repo !== null && (ev.kind === 'lfs' || ev.kind === 'pull' || ev.kind === 'checkout')) refreshSoon(ev.repo, ev.kind === 'lfs' && ev.outcome === 'failed');
 }
 
-/** git-lfs may have been installed meanwhile: on the window's focus, repositories read without it
- * are read again. */
-export function onLfsFocus(): void {
-  for (const [repo, s] of Object.entries(useLfs.getState().status)) if (s && !s.version) void loadLfsStatus(Number(repo), true, true);
+/** How often the window's focus may ask git-lfs's version again. Focus comes often: under GNOME
+ * every click in the window refocuses it (the window manager's WM_TAKE_FOCUS). */
+export const FOCUS_RECHECK_MS = 60_000;
+let lastFocusRecheck = -Infinity;
+
+/** git-lfs may have been installed meanwhile: on the window's focus, at most once a minute, the
+ * repositories that use LFS but were read without git-lfs are read again. The core keeps one
+ * version for the session, so one of them asks git (`recheck`) and the rest reuse its answer. */
+export function onLfsFocus(now = performance.now()): void {
+  if (now - lastFocusRecheck < FOCUS_RECHECK_MS) return;
+  const repos = Object.entries(useLfs.getState().status).filter(([, s]) => s?.used && !s.version).map(([r]) => Number(r));
+  if (repos.length === 0) return;
+  lastFocusRecheck = now;
+  const [first, ...rest] = repos;
+  void loadLfsStatus(first, true, true).then(() => { for (const r of rest) void loadLfsStatus(r, true); });
+}
+
+/** Tests: the next focus may recheck again. */
+export function resetLfsFocusThrottle(): void {
+  lastFocusRecheck = -Infinity;
 }
 
 /** After a download, fetch or pull: every tab's cached diff contents are dropped (an LFS side
