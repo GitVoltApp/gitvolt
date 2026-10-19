@@ -56,19 +56,19 @@ The format, `schema` 1 (`release` is `null` while there's no published release):
 {
   "schema": 1,
   "release": {
-    "version": "0.6.0",
-    "tag": "v0.6.0",
+    "version": "0.7.3",
+    "tag": "v0.7.3",
     "prerelease": false,
     "published": "2026-10-13T03:04:03Z",
-    "url": "https://github.com/GitVoltApp/gitvolt/releases/tag/v0.6.0",
-    "sums": "https://github.com/GitVoltApp/gitvolt/releases/download/v0.6.0/SHA256SUMS",
+    "url": "https://github.com/GitVoltApp/gitvolt/releases/tag/v0.7.3",
+    "sums": "https://github.com/GitVoltApp/gitvolt/releases/download/v0.7.3/SHA256SUMS",
     "downloads": [
       {
         "os": "linux",
         "kind": "deb",
         "arch": "x86_64",
-        "file": "GitBolt_0.6.0_amd64.deb",
-        "url": "https://github.com/GitVoltApp/gitvolt/releases/download/v0.6.0/GitBolt_0.6.0_amd64.deb",
+        "file": "GitVolt_0.7.3_amd64.deb",
+        "url": "https://github.com/GitVoltApp/gitvolt/releases/download/v0.7.3/GitVolt_0.7.3_amd64.deb",
         "bytes": 165800042,
         "sha256": "264c81a9…"
       }

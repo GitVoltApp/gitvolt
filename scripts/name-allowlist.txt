@@ -11,7 +11,6 @@ CHANGELOG.md
 README.md
 ARCHITECTURE.md
 docs/dev-setup.md
-docs/website.md
 crates/gitvolt-core/src/legacy.rs
 crates/gitvolt-core/src/migrate.rs
 crates/gitvolt-core/src/instance.rs
