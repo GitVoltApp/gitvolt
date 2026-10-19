@@ -5,6 +5,13 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **Queued actions follow the branches you queue.** Queue a checkout behind a slow push and the
+  menus, double-click, the branch picker, Push, Pull and the palette now act on the branch that
+  checkout lands on, so you can keep queueing; before, they still offered the actions of the
+  branch checked out now. Queued resets and new branches you check out count too.
+
 ## [0.7.5] - 2026-10-19
 
 ### Added

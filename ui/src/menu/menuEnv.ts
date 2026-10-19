@@ -20,6 +20,7 @@ import { detachedWorktreeOf } from '../graph/worktreeLabel';
 import type { EditorContextMenuEvent } from '../diff/monaco/host';
 import { stagingRows } from '../diff/stagingMenu';
 import { useRuntime } from '../app/runtime';
+import { predictHead, withHeadLabels, withHeadSidebar } from '../pending/head';
 import { projectRemote, type ProjectRemote } from '../forge/urls';
 import { isAncestorIn } from '../graph/ancestry';
 import { labelsByRowOf, membershipOf } from '../graph/graphIndex';
@@ -285,11 +286,16 @@ export function fileMenuEnv(store: RepoViewStore): MenuEnv {
   const main = s.graph.worktrees.find((w) => w.isMain)?.path ?? s.repoPath;
   const byRow = labelsByRowOf(s.graph.labels);
   // --- end 2C T9 ---
+  // HEAD as the queued writes leave it (spec #2 §3.6): what's queued from this menu runs after them.
+  const now = { branch: head.branch?.replace(/^refs\/heads\//, '') ?? null, sha: head.target };
+  const next = rt?.repo ? predictHead(rt.repo.id, active, now) : now;
+  const moved = next.branch !== now.branch;
+  const sidebar = sidebarFor(s.repo, active);
   return {
     // --- 2C T9: the 2C menu env ---
     write: tabId && rt?.repo ? { tabId, repoId: rt.repo.id, worktree: active } : null,
-    sidebar: sidebarFor(s.repo, active),
-    labelsAt: (sha) => byRow.get(s.indexById.get(sha) ?? -1) ?? [],
+    sidebar: sidebar && moved ? withHeadSidebar(sidebar, next.branch) : sidebar,
+    labelsAt: (sha) => { const ls = byRow.get(s.indexById.get(sha) ?? -1) ?? []; return moved ? withHeadLabels(ls, next.branch) : ls; },
     activeWorktree: active,
     mainWorktree: main,
     inProgress: s.graph.worktrees.find((w) => w.path === active)?.inProgress ?? null,
@@ -297,14 +303,14 @@ export function fileMenuEnv(store: RepoViewStore): MenuEnv {
     // --- end 2C T9 ---
     isAncestor: (a, b) => isAncestorIn(s.graph.rows, s.indexById, a, b),
     // --- 3D T3 ---
-    stackOf: (branch) => stackFor(stacksOf(s.graph, stackBase(s.graph, sidebarFor(s.repo, active)?.remotes ?? [])), branch, head.branch?.replace(/^refs\/heads\//, '') ?? null),
+    stackOf: (branch) => stackFor(stacksOf(s.graph, stackBase(s.graph, sidebar?.remotes ?? [])), branch, next.branch),
     // --- end 3D T3 ---
     // --- 3B T5 ---
     commitInfo: (sha) => {
       const r = s.graph.rows[s.indexById.get(sha) ?? -1];
       return r ? { summary: r.summary, merge: r.parents.length > 1 } : null;
     },
-    remoteNames: rt?.info?.remotes.map((r) => r.name) ?? sidebarFor(s.repo, active)?.remotes.map((g) => g.name) ?? [],
+    remoteNames: rt?.info?.remotes.map((r) => r.name) ?? sidebar?.remotes.map((g) => g.name) ?? [],
     // --- end 3B T5 ---
     // --- 3B final fixes ---
     conflicted: s.graph.rows.find((r) => r.kind === 'wip' && r.wip?.worktreePath === active)?.wip?.conflicted ?? 0,
@@ -322,8 +328,8 @@ export function fileMenuEnv(store: RepoViewStore): MenuEnv {
       },
     },
     openers: openersSnapshot(),
-    headBranch: head.branch?.replace(/^refs\/heads\//, '') ?? null,
-    headSha: head.target,
+    headBranch: next.branch,
+    headSha: next.sha,
     inGraph: (sha) => s.indexById.has(sha),
     act: {
       copy: (text) => { copyText(text).then(() => toast('Copied'), () => toast('Copy failed')); },

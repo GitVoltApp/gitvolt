@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { checkoutLocal } from '../branches/checkout';
 import { useRepoContext } from '../app/repoContext';
 import { useRuntime } from '../app/runtime';
+import { useHeadBranch } from '../sync/push';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { RefPicker, type PickItem } from '../ui/RefPicker';
 
@@ -32,6 +33,8 @@ export function BranchPicker() {
   const { tabId } = useRepoContext();
   const head = useRuntime((s) => s.tabs[tabId]?.graph?.head);
   const locals = useRuntime((s) => s.tabs[tabId]?.sidebar?.locals) ?? NO_BRANCHES;
+  // The current branch once the queued writes ran: picking it does nothing, any other queues a checkout.
+  const current = useHeadBranch(tabId);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const label = head?.branch?.replace(/^refs\/heads\//, '') ?? (head?.target ? `HEAD (${head.target.slice(0, 7)})` : '—');
@@ -39,10 +42,10 @@ export function BranchPicker() {
   const items = useMemo<PickItem[]>(() => {
     const sorted = [...locals].sort((a, b) => (order === 'recent' ? b.tipTime - a.tipTime || byName(a.name, b.name) : byName(a.name, b.name)));
     return sorted.map((b) => ({
-      id: b.fullName, label: b.name, icon: b.isHead ? Check : GitBranch, current: b.isHead,
+      id: b.fullName, label: b.name, icon: b.name === current ? Check : GitBranch, current: b.name === current,
       detail: b.ahead || b.behind ? `${b.ahead}↑ ${b.behind}↓` : undefined,
     }));
-  }, [locals, order]);
+  }, [locals, order, current]);
   const toggle = {
     icon: order === 'alpha' ? ArrowDownAZ : Clock,
     label: order === 'alpha' ? 'Sorted A–Z: switch to most recent first' : 'Most recent first: switch to A–Z',
@@ -56,7 +59,7 @@ export function BranchPicker() {
   const pick = (item: PickItem) => {
     setAnchor(null);
     const b = locals.find((l) => l.fullName === item.id);
-    if (b && !b.isHead) checkoutLocal(tabId, b.name);
+    if (b && b.name !== current) checkoutLocal(tabId, b.name);
   };
   return (
     <>

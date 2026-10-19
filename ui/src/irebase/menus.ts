@@ -5,6 +5,7 @@ import type { CommitTarget, MenuEnv, SelectionTarget } from '../menu/menuEnv';
 import type { MenuRow } from '../menu/types';
 import { useToast } from '../ui/toastStore';
 import { writeCtx } from '../write/ctx';
+import { predictedHeadOf } from '../pending/head';
 import { openRebaseEditor } from './open';
 import { squashSelection } from './squash';
 
@@ -106,9 +107,10 @@ export function selectionFromHereRows(t: SelectionTarget, env: MenuEnv): MenuRow
   }];
 }
 
-/** HEAD's branch in tab `tabId` and its upstream (`origin/main`; null: none, or gone). Null on a detached HEAD. */
+/** HEAD's branch in tab `tabId` once the queued writes ran, and its upstream (`origin/main`;
+ * null: none, or gone). Null on a detached HEAD. */
 export function headOf(tabId: string): { branch: string; upstream: string | null } | null {
-  const branch = tabStore(tabId)?.getState().graph.head.branch?.replace(/^refs\/heads\//, '') ?? null;
+  const branch = predictedHeadOf(tabId).branch;
   if (!branch) return null;
   const local = useRuntime.getState().tabs[tabId]?.sidebar?.locals.find((b) => b.name === branch);
   return { branch, upstream: local?.upstream && !local.gone ? local.upstream.replace(/^refs\/remotes\//, '') : null };

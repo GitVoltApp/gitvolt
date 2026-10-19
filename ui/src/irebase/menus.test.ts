@@ -14,7 +14,7 @@ const wts = vi.hoisted(() => ({ list: [] as Array<{ path: string; inProgress: st
 vi.mock('../app/tabStores', () => ({ tabStore: () => ({ getState: () => ({ indexById: new Map([...rows.keys()].map((k, i) => [k, i])), graph: { rows: [...rows.values()], head, worktrees: wts.list } }) }) }));
 vi.mock('../write/ctx', () => ({ writeCtx: (tabId: string) => ({ tabId, repoId: 1, worktree: '/r' }) }));
 const locals = vi.hoisted(() => ({ list: [] as Array<{ name: string; upstream: string | null; gone: boolean }> }));
-vi.mock('../app/runtime', () => ({ useRuntime: { getState: () => ({ tabs: { t1: { sidebar: { locals: locals.list } } } }) } }));
+vi.mock('../app/runtime', () => ({ worktreeOf: () => null, useRuntime: { getState: () => ({ tabs: { t1: { sidebar: { locals: locals.list }, graph: { head, worktrees: [] } } } }) } }));
 
 const env = (over: Partial<MenuEnv> = {}) => ({ headBranch: 'topic', headSha: 'h', inProgress: null, write: { tabId: 't1', repoId: 1, worktree: '/r' }, isAncestor: () => true, ...over }) as unknown as MenuEnv;
 const label = (name: string, sha = 'm1'): CommitTarget => ({ sha, mrRefs: [], isWip: false, isStash: false, branch: { name, local: `refs/heads/${name}`, remotes: [] } });

@@ -1,6 +1,7 @@
 import { GitBranchPlus } from 'lucide-react';
 import { activeRuntime, activeTab, registerActions } from '../app/actions';
 import { worktreeOf } from '../app/runtime';
+import { predictedHeadOf } from '../pending/head';
 import { registerToolbarButton } from '../toolbar/registry';
 import { createBranchAt } from './create';
 import { offBranchMenus } from './menus';
@@ -23,8 +24,9 @@ const offs = [
     when: () => !!writeCtx() && !!activeRuntime()?.graph?.head.target,
     run: () => {
       const ctx = writeCtx();
-      const head = activeRuntime()?.graph?.head;
-      if (ctx && head?.target) void createBranchAt(ctx, { sha: head.target, ref: head.branch });
+      // HEAD once the queued writes ran: the branch starts where they leave it.
+      const head = ctx ? predictedHeadOf(ctx.tabId) : null;
+      if (ctx && head?.sha) void createBranchAt(ctx, { sha: head.sha, ref: head.branch && `refs/heads/${head.branch}` });
     },
   }]),
   registerToolbarButton({ action: 'branch.create', label: 'Branch', order: 30 }),

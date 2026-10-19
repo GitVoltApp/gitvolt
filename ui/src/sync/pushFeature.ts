@@ -14,7 +14,7 @@ import { runWrite } from '../write/client';
 import { writeCtx } from '../write/ctx';
 import { isTypingOrEditor } from '../ui/keys';
 import { offSyncMenu, registerSyncRows } from './menus';
-import { branchOf, defaultRemote, forcePush, headBranchOf, nothingToPush, pushBranch, pushLabel, pushTooltip } from './push';
+import { branchOf, defaultRemote, forcePush, headBranchOf, nothingToPush, pushBranch, pushLabel, pushTooltip, useHeadBranch } from './push';
 import { PushUpstreamPanel } from './PushUpstreamPanel';
 
 
@@ -61,14 +61,14 @@ const offs = [
   registerToolbarButton({
     action: 'sync.push', label: 'Push', order: 11,
     useView: ({ tabId }) => {
-      const head = useRuntime(() => headBranchOf(tabId));
+      const head = useHeadBranch(tabId);
       const b = useRuntime(() => branchOf(tabId, head));
       const pushing = useInFlight(tabId, 'push', b?.fullName ?? null);
       const v = pushTooltip(b, head, defaultRemote(tabId));
       return pushing && b ? { ...v, tooltip: `Pushing ${b.name}…` } : v;
     },
     useBusy: ({ tabId }) => {
-      const head = useRuntime(() => headBranchOf(tabId));
+      const head = useHeadBranch(tabId);
       const b = useRuntime(() => branchOf(tabId, head));
       return useInFlight(tabId, 'push', b?.fullName ?? null);
     },

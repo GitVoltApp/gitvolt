@@ -14,6 +14,7 @@ import { currentOrigin, type Origin } from '../ui/arm/origin';
 import { confirmAction } from '../ui/ConfirmDialog';
 import { useToast } from '../ui/toastStore';
 import { openWorktreeTab, setActiveWorktree } from '../worktrees/active';
+import { predictedHeadOf, withHeadMove, type HeadMove } from '../pending/head';
 import { endPending, startPending } from '../pending/store';
 import { runWrite, type WriteCtx } from '../write/client';
 
@@ -51,6 +52,18 @@ function refreshedSince(tabId: string, before: ReturnType<typeof snapshot>, maxM
   });
 }
 
+/** Where a checkout leaves HEAD (core `checkout.rs`'s cases): a remote branch with a local one
+ * already lands on the local branch, fast-forwarded when it's only behind. */
+function headMoveOf(tabId: string, target: CheckoutTarget, expect: Expect): HeadMove {
+  if (target.kind === 'detached') return { branch: null, sha: target.oid };
+  if (target.kind === 'branch') return { branch: target.name, sha: expect.refs[`refs/heads/${target.name}`] ?? undefined };
+  const name = target.local ?? target.branch;
+  const remoteRef = `refs/remotes/${target.remote}/${target.branch}`;
+  const local = useRuntime.getState().tabs[tabId]?.sidebar?.locals.find((b) => b.name === name);
+  const ff = !local || (local.upstream === remoteRef && local.ahead === 0 && local.behind > 0);
+  return { branch: name, sha: ff ? expect.refs[remoteRef] ?? undefined : local.target };
+}
+
 /** One checkout (§9.3); the backend resolves the case when it runs. Diverged asks Reset/Cancel.
  * A repository in the way ("<path> is a repository in the way of the checkout: move it first") is
  * a plain refusal: the error toast shows it, with no Retry and nothing to force. */
@@ -64,8 +77,12 @@ export async function checkout(ctx: WriteCtx, target: CheckoutTarget, expect: Ex
   const before = snapshot(ctx.tabId);
   let out: CheckoutOutcome | undefined;
   try {
-    out = (await runWrite(ctx, (ok) => api.checkout(ctx.repoId, ctx.worktree, target, expect, ok, onDiverged), { handle: (err) => offerWorktree(ctx, err), origin })) ?? undefined;
-    if (out && out.status !== 'diverged') await refreshedSince(ctx.tabId, before, HANDOFF_MAX_MS);
+    // What's queued after it acts on the branch it checks out, until the graph shows it there.
+    out = await withHeadMove(ctx, headMoveOf(ctx.tabId, target, expect), async () => {
+      const o = (await runWrite(ctx, (ok) => api.checkout(ctx.repoId, ctx.worktree, target, expect, ok, onDiverged), { handle: (err) => offerWorktree(ctx, err), origin })) ?? undefined;
+      if (o && o.status !== 'diverged') await refreshedSince(ctx.tabId, before, HANDOFF_MAX_MS);
+      return o;
+    });
   } finally {
     if (ref) endPending(ctx.tabId, ref, 'checkout');
   }
@@ -91,7 +108,10 @@ const ctxOf = (tabId: string): WriteCtx | null => {
   const worktree = worktreeOf(rt);
   return rt?.repo && worktree ? { tabId, repoId: rt.repo.id, worktree } : null;
 };
-const headOf = (tabId: string) => useRuntime.getState().tabs[tabId]?.graph?.head.target ?? null;
+/** HEAD's commit once the queued writes ran: what a checkout queued now expects. */
+const headOf = (tabId: string) => predictedHeadOf(tabId).sha;
+/** The checked-out branch once the queued writes ran: checking it out again does nothing. */
+const isHead = (tabId: string, name: string) => predictedHeadOf(tabId).branch === name;
 const shortLocal = (full: string) => full.replace(/^refs\/heads\//, '');
 
 /** A branch chip's double-click (§9.3): its local branch, else its remote one. Tags aren't branches. */
@@ -99,12 +119,12 @@ export function checkoutLabel(store: RepoViewStore, row: RowPayload, label: RefL
   const tabId = tabIdOf(store);
   const ctx = tabId ? ctxOf(tabId) : null;
   if (!ctx || label.tag || (!label.local && label.remotes.length === 0)) return false;
-  if (label.isHead) return true; // already checked out: nothing to do
   // Checked out in another worktree: go there (the refusal toast's Switch to it, done directly).
   if (label.local && label.worktree) {
     setActiveWorktree(ctx.tabId, label.worktree);
     return true;
   }
+  if (label.local && isHead(ctx.tabId, shortLocal(label.local))) return true; // already checked out: nothing to do
   const head = headOf(ctx.tabId);
   if (label.local) {
     void checkout(ctx, { kind: 'branch', name: shortLocal(label.local) }, { head, refs: { [label.local]: row.id } });
@@ -120,11 +140,11 @@ export function checkoutLabel(store: RepoViewStore, row: RowPayload, label: RefL
 export function checkoutSideItem({ tabId }: SidebarCtx, item: SideItem): void {
   const ctx = ctxOf(tabId);
   if (!ctx || !item.target) return;
-  if (item.kind === 'local' && item.branch.isHead) return;
   if (item.kind === 'local' && item.branch.worktree) {
     setActiveWorktree(tabId, item.branch.worktree);
     return;
   }
+  if (item.kind === 'local' && isHead(tabId, item.branch.name)) return;
   const head = headOf(tabId);
   if (item.kind === 'local') void checkout(ctx, { kind: 'branch', name: item.branch.name }, { head, refs: { [item.branch.fullName]: item.target } });
   if (item.kind === 'remote') void checkout(ctx, { kind: 'remote', remote: item.remote, branch: item.branch.name }, { head, refs: { [item.branch.fullName]: item.target } });

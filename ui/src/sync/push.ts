@@ -9,6 +9,7 @@ import { currentOrigin, type Origin } from '../ui/arm/origin';
 import { askChoice } from '../ui/ChoiceDialog';
 import { confirmAction } from '../ui/ConfirmDialog';
 import { useToast, type ToastAction } from '../ui/toastStore';
+import { predictedHeadOf, useHeadMoves } from '../pending/head';
 import { runOnce, withPending } from '../pending/store';
 import { runWrite, type WriteCtx } from '../write/client';
 import { notifyBranchPushed } from '../forge/usePolling';
@@ -19,14 +20,14 @@ import { showServerResult } from './serverOutput';
 export const branchOf = (tabId: string, name: string | null): LocalBranch | undefined =>
   name ? useRuntime.getState().tabs[tabId]?.sidebar?.locals.find((b) => b.name === name) : undefined;
 
-/** The branch the tab's active worktree has checked out, by its short name (`main`), from the
- * loaded graph (null: detached). The graph spells it as the full ref. */
-export function headBranchOf(tabId: string): string | null {
-  const rt = useRuntime.getState().tabs[tabId];
-  const active = rt?.worktree ?? rt?.repo?.path;
-  const wt = rt?.graph?.worktrees.find((w) => w.path === active);
-  const ref = wt ? wt.branch : rt?.graph?.head.branch ?? null;
-  return ref?.replace(/^refs\/heads\//, '') ?? null;
+/** The branch the tab's active worktree has checked out, by its short name (`main`; null:
+ * detached), once the queued writes ran (`predictedHeadOf`): what Push and Pull act on. */
+export const headBranchOf = (tabId: string): string | null => predictedHeadOf(tabId).branch;
+
+/** Hook form of `headBranchOf`: follows the graph and the queued writes. */
+export function useHeadBranch(tabId: string): string | null {
+  useRuntime(() => headBranchOf(tabId));
+  return useHeadMoves(() => headBranchOf(tabId));
 }
 
 /** The remote a new upstream defaults to: `origin` when there is one, else the first. */

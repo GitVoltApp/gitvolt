@@ -10,7 +10,7 @@ import { ICONS } from '../menu/icons';
 import { useInFlight } from '../pending/store';
 import { useQueuedKind } from '../queue/store';
 import { MODE_OF, pull, syncView } from '../sync/pull';
-import { branchOf, headBranchOf } from '../sync/push';
+import { branchOf, useHeadBranch } from '../sync/push';
 import { writeCtx } from '../write/ctx';
 import { isTypingTarget } from '../ui/keys';
 import { registerToolbarButton } from './registry';
@@ -64,7 +64,7 @@ const offs = [
     },
     useView: ({ tabId }) => {
       const mode = useAppState((s) => s.settings.syncButton);
-      const head = useRuntime(() => headBranchOf(tabId));
+      const head = useHeadBranch(tabId);
       const b = useRuntime(() => branchOf(tabId, head));
       const loaded = useRuntime((s) => !!s.tabs[tabId]?.sidebar && !!s.tabs[tabId]?.graph);
       if (mode !== 'fetchAll' && !loaded) return { label: 'Pull', tooltip: 'Loading…', disabled: true };
@@ -76,7 +76,7 @@ const offs = [
     },
     useBusy: ({ repoId, tabId }) => {
       const fetching = useInFlight(tabId, 'fetch', '');
-      const pulling = useInFlight(tabId, 'pull', headBranchOf(tabId) ?? '');
+      const pulling = useInFlight(tabId, 'pull', useHeadBranch(tabId) ?? '');
       const running = useOps((s) => Object.values(s.ops).some((o) => isShownFetch(o, repoId) || (o.kind === 'pull' && o.repo === repoId)));
       return fetching || pulling || running;
     },

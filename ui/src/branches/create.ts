@@ -5,6 +5,7 @@ import { tabStore } from '../app/tabStores';
 import { useColumnPrefs } from '../graph/columns';
 import { closeRowEditor, openRowEditor, type RowEditor } from '../graph/rowEditor';
 import { promptText } from '../ui/PromptDialog';
+import { withHeadMove } from '../pending/head';
 import { runWrite, type WriteCtx } from '../write/client';
 import { branchNameError } from './branchName';
 import { BranchNameInput } from './BranchNameInput';
@@ -24,7 +25,8 @@ export const branchCreateError = (tabId: string, v: string): string | null =>
 /** The write (§9.1): a CAS create, the upstream per autoSetupMerge, and a switch to it when
  * `checkout` (the default: the backend's create-and-checkout path, with its checks). */
 export async function createBranch(ctx: WriteCtx, start: BranchStart, name: string, checkout = true): Promise<void> {
-  await runWrite(ctx, (ok) => api.createBranch(ctx.repoId, ctx.worktree, { name, start: start.sha, startRef: start.ref, checkout, expect: { head: null, refs: { [`refs/heads/${name}`]: null } } }, ok));
+  const write = () => runWrite(ctx, (ok) => api.createBranch(ctx.repoId, ctx.worktree, { name, start: start.sha, startRef: start.ref, checkout, expect: { head: null, refs: { [`refs/heads/${name}`]: null } } }, ok));
+  await (checkout ? withHeadMove(ctx, { branch: name, sha: start.sha }, write) : write());
 }
 
 /** The dialog: only where the graph can't show the inline input. Check out is on by default. */
