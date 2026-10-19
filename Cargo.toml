@@ -23,7 +23,8 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-appender = "0.2.5"
 regex = "1.13"
-# GitBolt.app's Info.plist (XML or binary): `updates::install::leftover_legacy_bundle`.
+# macOS only: reads the Info.plist (XML or binary) of an app bundle left over from before the
+# rename (`updates::install::leftover_legacy_bundle`).
 plist = "1.10"
 # macOS only: the Trash (`updates::trash`).
 objc2-foundation = "0.3"

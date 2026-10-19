@@ -37,7 +37,6 @@ ui/src/app/adoptLegacyStorage.ts
 ui/src/main.tsx
 .github/workflows/mac-port.yml
 site/data/release.json
-Cargo.toml
 crates/gitvolt-core/src/api.rs
 crates/gitvolt-core/src/shelldata.rs
 crates/gitvolt-core/src/updates/mod.rs
