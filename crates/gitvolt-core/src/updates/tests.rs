@@ -154,7 +154,7 @@ async fn a_newer_release_is_offered_with_this_installs_package() {
     let state = s.updates.check(false, 1000).await.unwrap();
     let UpdateState::Available { release } = &state else { panic!("{state:?}") };
     assert_eq!((release.version.as_str(), release.name.as_str()), ("0.3.0", "GitVolt 0.3.0"));
-    assert_eq!(release.notes, "## Added\n- Updates");
+    assert_eq!(release.notes, [VersionNotes { version: "0.3.0".into(), published_at: Some("2026-10-07T12:00:00Z".into()), notes: "## Added\n- Updates".into() }]);
     assert_eq!(release.asset, Some(UpdateAsset { name: DEB.into(), size: PAYLOAD.len() as u64 }));
     assert_eq!(release.url, "https://github.example/GitVoltApp/gitvolt/releases/tag/v0.3.0");
     assert!(matches!(s.events.recv().await.unwrap(), AppEvent::UpdateChanged { state: UpdateState::Checking }));
@@ -162,6 +162,16 @@ async fn a_newer_release_is_offered_with_this_installs_package() {
     // Checked a moment ago: not due again for a day.
     assert!(!s.updates.due(1000 + CHECK_EVERY_SECS - 1));
     assert!(s.updates.due(1000 + CHECK_EVERY_SECS));
+}
+
+#[tokio::test]
+async fn an_update_across_three_releases_carries_all_their_notes_newest_first() {
+    let list = vec![release("v0.2.1", &[]), release("v0.3.0", &[DEB, "SHA256SUMS"]), release("v0.2.2", &[]), release("v0.2.0", &[])];
+    let s = setup(InstallKind::Deb, "0.2.0", FakeSource::with(list, &good_sums()));
+    let UpdateState::Available { release } = s.updates.check(false, 1000).await.unwrap() else { panic!() };
+    assert_eq!(release.version, "0.3.0");
+    let versions: Vec<_> = release.notes.iter().map(|n| n.version.as_str()).collect();
+    assert_eq!(versions, ["0.3.0", "0.2.2", "0.2.1"]);
 }
 
 #[tokio::test]
@@ -488,11 +498,11 @@ async fn a_check_during_a_download_leaves_it_alone() {
 
 #[test]
 fn states_serialize_as_the_ui_reads_them() {
-    let release = UpdateRelease { version: "0.3.0".into(), name: "GitVolt 0.3.0".into(), notes: String::new(), url: "u".into(), prerelease: false, published_at: None, asset: Some(UpdateAsset { name: DEB.into(), size: 9 }) };
+    let release = UpdateRelease { version: "0.3.0".into(), name: "GitVolt 0.3.0".into(), notes: Vec::new(), url: "u".into(), prerelease: false, published_at: None, asset: Some(UpdateAsset { name: DEB.into(), size: 9 }) };
     assert_eq!(serde_json::to_value(UpdateState::UpToDate).unwrap(), serde_json::json!({"state": "upToDate"}));
     assert_eq!(
         serde_json::to_value(UpdateState::Downloading { release, received: 3, total: 9 }).unwrap(),
-        serde_json::json!({"state": "downloading", "received": 3, "total": 9, "release": {"version": "0.3.0", "name": "GitVolt 0.3.0", "notes": "", "url": "u", "prerelease": false, "publishedAt": null, "asset": {"name": DEB, "size": 9}}})
+        serde_json::json!({"state": "downloading", "received": 3, "total": 9, "release": {"version": "0.3.0", "name": "GitVolt 0.3.0", "notes": [], "url": "u", "prerelease": false, "publishedAt": null, "asset": {"name": DEB, "size": 9}}})
     );
     assert_eq!(serde_json::to_value(InstallOutcome::Manual { command: "c".into(), reason: "r".into(), output: Some("o".into()) }).unwrap(), serde_json::json!({"outcome": "manual", "command": "c", "reason": "r", "output": "o"}));
 }

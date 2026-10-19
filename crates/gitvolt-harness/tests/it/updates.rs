@@ -56,7 +56,7 @@ async fn checks_downloads_verifies_and_records_the_install() {
     assert_eq!(state["state"], "available");
     assert_eq!(state["release"]["version"], "0.99.0", "not the draft, nor the pre-release: {state}");
     assert_eq!(state["release"]["asset"], json!({"name": DEB, "size": 300_000}));
-    assert_eq!(state["release"]["notes"], "## Added\n- Updates");
+    assert_eq!(state["release"]["notes"][0]["notes"], "## Added\n- Updates");
     assert_eq!(call(&h.api, "updateDownload").await.unwrap()["state"], "downloading");
     let state = settled(&h.api).await;
     assert_eq!(state["state"], "ready", "{state}");

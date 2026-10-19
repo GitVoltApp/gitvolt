@@ -118,6 +118,31 @@ function Action({ state, release, kind }: { state: UpdateState; release: UpdateR
   }
 }
 
+/** `Oct 19, 2026` for a release's publish time; empty when it has none. UTC, as the release's day. */
+function releaseDay(iso: string | null): string {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '';
+}
+
+/** The notes of every version from this install's up to the offered one, newest first. One version
+ * has no divider; several each get a muted label (not a heading: the bodies have their own). */
+function Notes({ release }: { release: UpdateRelease }) {
+  if (!release.notes.some((n) => n.notes.trim())) return <p className="update-notes-empty">No release notes.</p>;
+  const many = release.notes.length > 1;
+  return (
+    <>
+      {release.notes.map((n) => (
+        <section key={n.version} className="update-version">
+          {many && <div className="update-version-label">{[n.version, releaseDay(n.publishedAt)].filter(Boolean).join(' · ')}</div>}
+          {n.notes.trim()
+            ? <Suspense fallback={<p aria-busy="true">Loading…</p>}><ReleaseNotes text={n.notes} /></Suspense>
+            : <p className="update-notes-empty">No release notes.</p>}
+        </section>
+      ))}
+    </>
+  );
+}
+
 /**
  * The update dialog (from the status bar's pill, or About): the release's notes, rendered; its
  * package and size; and what installs it on this machine (the install kind the package baked
@@ -142,9 +167,7 @@ export function UpdateDialog() {
         <h2>{release.name}{release.prerelease && <span className="update-badge">Pre-release</span>}</h2>
         <p className="update-sub">You have GitVolt {info?.appVersion ?? '…'}.</p>
         <div className="update-notes" tabIndex={0} aria-label="Release notes">
-          {release.notes.trim()
-            ? <Suspense fallback={<p aria-busy="true">Loading…</p>}><ReleaseNotes text={release.notes} /></Suspense>
-            : <p className="update-notes-empty">No release notes.</p>}
+          <Notes release={release} />
         </div>
         {file}
         <Action state={state} release={release} kind={kind} />

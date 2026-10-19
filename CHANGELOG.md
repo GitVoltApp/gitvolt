@@ -5,6 +5,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Changed
+
+- **The update dialog shows every version you are skipping.** Updating from 0.7.4 to 0.7.6
+  now lists the release notes of 0.7.5 and 0.7.6, newest first, each under its version and date;
+  before, it showed only the newest.
+
 ## [0.7.6] - 2026-10-19
 
 ### Added

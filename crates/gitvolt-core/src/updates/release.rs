@@ -49,18 +49,25 @@ impl GhRelease {
     }
 }
 
-/// The newest release that's newer than `current`, with its version. Drafts never count; a
+/// Every release newer than `current`, newest first, each with its version. Drafts never count; a
 /// pre-release only with `include_pre` or when `current` is one itself (a pre-release build
 /// always sees the next pre-release). A tag that isn't a version is skipped.
-pub fn newest_update<'a>(releases: &'a [GhRelease], current: &Version, include_pre: bool) -> Option<(&'a GhRelease, Version)> {
+pub fn updates_since<'a>(releases: &'a [GhRelease], current: &Version, include_pre: bool) -> Vec<(&'a GhRelease, Version)> {
     let pre_ok = include_pre || current.is_prerelease();
-    releases
+    let mut newer: Vec<_> = releases
         .iter()
         .filter(|r| !r.draft)
         .filter_map(|r| Some((r, Version::parse(&r.tag_name)?)))
         .filter(|(r, v)| pre_ok || !(r.prerelease || v.is_prerelease()))
         .filter(|(_, v)| v > current)
-        .max_by(|a, b| a.1.cmp(&b.1))
+        .collect();
+    newer.sort_by(|a, b| b.1.cmp(&a.1));
+    newer
+}
+
+/// The newest release that's newer than `current`, with its version (the first of `updates_since`).
+pub fn newest_update<'a>(releases: &'a [GhRelease], current: &Version, include_pre: bool) -> Option<(&'a GhRelease, Version)> {
+    updates_since(releases, current, include_pre).into_iter().next()
 }
 
 /// The asset a `kind` install takes from the release of `version` (docs/releasing.md):
@@ -182,6 +189,23 @@ mod tests {
         assert_eq!(pick(&odd, "0.2.0", false), None);
         // The release of a pre-release build's version is newer than it.
         assert_eq!(pick(&[release("v0.4.0", false, false)], "0.4.0-rc.1", false).as_deref(), Some("v0.4.0"));
+    }
+
+    #[test]
+    fn updates_since_lists_every_newer_release_newest_first() {
+        let list = [
+            release("v0.3.0", false, false),
+            release("v0.2.2", false, false),
+            release("v0.2.1-rc.1", true, false),
+            release("v0.2.1", false, true),
+            release("nightly", false, false),
+            release("v0.2.0", false, false),
+            release("v0.2.3", false, false),
+        ];
+        let tags = |pre| updates_since(&list, &v("0.2.0"), pre).iter().map(|(r, _)| r.tag_name.clone()).collect::<Vec<_>>();
+        // The running version is out; the pre-release, the draft and the non-version tag are skipped; the target is in.
+        assert_eq!(tags(false), ["v0.3.0", "v0.2.3", "v0.2.2"]);
+        assert_eq!(tags(true), ["v0.3.0", "v0.2.3", "v0.2.2", "v0.2.1-rc.1"]);
     }
 
     #[test]

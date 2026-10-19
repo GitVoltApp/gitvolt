@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InstallKind } from '../api/gen/InstallKind';
 import type { UpdateRelease } from '../api/gen/UpdateRelease';
@@ -21,7 +21,7 @@ const { useUpdates, resetUpdatesForTest } = await import('./store');
 const { useAppInfo } = await import('../app/appInfo');
 const { useAppState, DEFAULT_SETTINGS } = await import('../app/state');
 
-const release: UpdateRelease = { version: '0.3.0', name: 'GitVolt 0.3.0', notes: '## Added\n\n- **Updates** from GitHub', url: 'https://github.example/GitVoltApp/gitvolt/releases/tag/v0.3.0', prerelease: false, publishedAt: null, asset: { name: 'GitVolt_0.3.0_amd64.deb', size: 98 * 1024 * 1024 } };
+const release: UpdateRelease = { version: '0.3.0', name: 'GitVolt 0.3.0', notes: [{ version: '0.3.0', publishedAt: null, notes: '## Added\n\n- **Updates** from GitHub' }], url: 'https://github.example/GitVoltApp/gitvolt/releases/tag/v0.3.0', prerelease: false, publishedAt: null, asset: { name: 'GitVolt_0.3.0_amd64.deb', size: 98 * 1024 * 1024 } };
 
 function open(kind: InstallKind, state: UpdateState) {
   useAppInfo.setState({ info: { appVersion: '0.2.0', build: null, gitVersion: '2.47.1', installKind: kind, home: null, legacyBundle: null } });
@@ -117,6 +117,26 @@ describe('UpdateDialog', () => {
     expect(screen.getByText(/SHA256SUMS doesn't list/)).toBeInTheDocument();
     fireEvent.click(button('Download again'));
     expect(api.updateDownload).toHaveBeenCalledTimes(2);
+  });
+
+  it('one version has no divider; several have one each, newest first; an empty body says so', async () => {
+    const one = open('deb', { state: 'available', release });
+    await screen.findByRole('heading', { name: 'Added' });
+    expect(one.querySelector('.update-version-label')).toBeNull();
+    cleanup();
+    const notes = [
+      { version: '0.3.0', publishedAt: '2026-10-19T12:00:00Z', notes: '### Fixed\n\n- Newest fix' },
+      { version: '0.2.2', publishedAt: '2026-10-12T12:00:00Z', notes: '' },
+      { version: '0.2.1', publishedAt: null, notes: '### Added\n\n- Older thing' },
+    ];
+    const d = open('deb', { state: 'available', release: { ...release, notes } });
+    await screen.findByRole('heading', { name: 'Fixed' });
+    expect([...d.querySelectorAll('.update-version-label')].map((e) => e.textContent)).toEqual(['0.3.0 · Oct 19, 2026', '0.2.2 · Oct 12, 2026', '0.2.1']);
+    expect(d.querySelectorAll('.update-version')[1]).toHaveTextContent('No release notes.');
+    cleanup();
+    const none = open('deb', { state: 'available', release: { ...release, notes: [notes[1]!, { ...notes[1]!, version: '0.2.1' }] } });
+    expect(none.querySelectorAll('.update-notes-empty')).toHaveLength(1);
+    expect(none.querySelector('.update-version-label')).toBeNull();
   });
 
   it('a pre-release says so', () => {

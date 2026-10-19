@@ -14,7 +14,7 @@ const { useUpdates, resetUpdatesForTest } = await import('./store');
 const { useAppInfo } = await import('../app/appInfo');
 const { useAppState, DEFAULT_SETTINGS } = await import('../app/state');
 
-const release: UpdateRelease = { version: '0.3.0', name: 'GitVolt 0.3.0', notes: '', url: 'https://github.example/r', prerelease: false, publishedAt: null, asset: { name: 'GitVolt_0.3.0_amd64.deb', size: 1000 } };
+const release: UpdateRelease = { version: '0.3.0', name: 'GitVolt 0.3.0', notes: [], url: 'https://github.example/r', prerelease: false, publishedAt: null, asset: { name: 'GitVolt_0.3.0_amd64.deb', size: 1000 } };
 const set = (state: UpdateState) => act(() => useUpdates.getState().setState(state));
 const pill = () => document.querySelector<HTMLButtonElement>('.sb-update');
 

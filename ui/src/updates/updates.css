@@ -32,6 +32,7 @@
 .update-dialog .update-sub { margin: -4px 0 0; color: var(--text-secondary); }
 .update-dialog .update-badge { padding: 1px 6px; border-radius: 8px; font-size: 11px; font-weight: 600; color: var(--orange); border: 1px solid color-mix(in srgb, var(--orange) 60%, transparent); }
 .update-notes { flex: 1 1 auto; min-height: 60px; max-height: 46vh; overflow: auto; padding: 4px 12px; background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 6px; }
+.update-version-label { position: sticky; top: 0; z-index: 1; margin: 0 -12px; padding: 6px 12px 4px; background: var(--app-bg0); border-bottom: 1px solid var(--section-border); color: var(--text-secondary); font-size: 11px; font-weight: 600; }
 .update-notes-empty { color: var(--text-secondary); font-style: italic; }
 .update-file { margin: 0; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
 .update-progress { display: flex; align-items: center; gap: 8px; }

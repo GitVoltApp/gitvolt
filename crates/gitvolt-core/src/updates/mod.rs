@@ -21,7 +21,7 @@ use crate::error::{GbError, GbErrorKind};
 use crate::events::{AppEvent, EventBus};
 use crate::forge::ForgeFuture;
 use install::{app_bundle, bundle_replaceable, install_command, leftover_legacy_bundle, manual_command, relaunch_command, InstallCommand, InstallKind};
-use release::{asset_name, check_sum, newest_update, sha256_file, GhRelease, SumCheck, SUMS_ASSET};
+use release::{asset_name, check_sum, updates_since, sha256_file, GhRelease, SumCheck, SUMS_ASSET};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -52,8 +52,8 @@ pub struct UpdateRelease {
     pub version: String,
     /// The release's title (`GitVolt 0.3.0`).
     pub name: String,
-    /// Its notes: GitHub-flavoured Markdown.
-    pub notes: String,
+    /// The notes of every release from the one after this install up to this one, newest first.
+    pub notes: Vec<VersionNotes>,
     /// The release page on GitHub.
     pub url: String,
     pub prerelease: bool,
@@ -61,6 +61,16 @@ pub struct UpdateRelease {
     /// This install's package; `None` for a build from source, or a release without one: the
     /// dialog then offers only the release page.
     pub asset: Option<UpdateAsset>,
+}
+
+/// One release's notes: GitHub-flavoured Markdown (empty when the release has none).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct VersionNotes {
+    pub version: String,
+    pub published_at: Option<String>,
+    pub notes: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -252,7 +262,8 @@ impl Updates {
             }
         };
         inner.last_check = Some(now);
-        let found = newest_update(&releases, &self.current, include_pre).map(|(r, v)| self.found(r, &v));
+        let newer = updates_since(&releases, &self.current, include_pre);
+        let found = newer.first().map(|(r, v)| self.found(r, v, &newer));
         let state = match &found {
             Some(f) => UpdateState::Available { release: f.release.clone() },
             None => UpdateState::UpToDate,
@@ -262,14 +273,14 @@ impl Updates {
         Ok(state)
     }
 
-    fn found(&self, r: &GhRelease, v: &Version) -> Found {
+    fn found(&self, r: &GhRelease, v: &Version, newer: &[(&GhRelease, Version)]) -> Found {
         let asset = asset_name(self.cfg.kind, v).and_then(|n| r.asset(&n));
         let version = v.without_build();
         Found {
             release: UpdateRelease {
                 name: r.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| format!("GitVolt {version}")),
                 version,
-                notes: r.body.clone().unwrap_or_default(),
+                notes: newer.iter().map(|(r, v)| VersionNotes { version: v.without_build(), published_at: r.published_at.clone(), notes: r.body.clone().unwrap_or_default() }).collect(),
                 url: r.html_url.clone(),
                 prerelease: r.prerelease || v.is_prerelease(),
                 published_at: r.published_at.clone(),
