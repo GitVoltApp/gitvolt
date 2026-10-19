@@ -7,22 +7,28 @@
   color: var(--text-on-accent);
   background: linear-gradient(120deg, var(--blue), color-mix(in srgb, var(--blue) 65%, var(--purple)));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 55%, transparent), 0 0 6px color-mix(in srgb, var(--blue) 45%, transparent);
-  animation: sb-update-glow 2.8s ease-in-out infinite;
+  position: relative;
   transition: filter var(--motion-fast);
+}
+/* The glow: a wider shadow on its own layer, only its opacity animated, so the compositor runs it
+   with no style or paint work on the main thread (a box-shadow animation repainted every frame and
+   kept the renderer busy while an update waited). A few breaths when the pill appears, then still. */
+.sb-update::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 70%, transparent), 0 0 11px color-mix(in srgb, var(--blue) 65%, transparent);
+  animation: sb-update-glow 2.8s ease-in-out 3;
 }
 .sb-update:hover { filter: brightness(1.12); }
 .sb-update:focus-visible { outline: 1px solid var(--text-selected); outline-offset: 2px; }
 .sb-update.failed {
   background: color-mix(in srgb, var(--orange) 85%, var(--panel-bg0));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--orange) 60%, transparent);
-  animation: none;
 }
+.sb-update.failed::after { content: none; }
 .sb-update-bar { display: block; width: 84px; height: 4px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--text-on-accent) 28%, transparent); }
 .sb-update-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--text-on-accent); transition: width 200ms linear; }
-@keyframes sb-update-glow {
-  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 70%, transparent), 0 0 11px color-mix(in srgb, var(--blue) 65%, transparent); }
-}
-@media (prefers-reduced-motion: reduce) { .sb-update { animation: none; } .sb-update-bar > span { transition: none; } }
+@keyframes sb-update-glow { 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sb-update::after { animation: none; } .sb-update-bar > span { transition: none; } }
 
 /* GitVolt's own version, right of git's. */
 .sb-version { cursor: default; }

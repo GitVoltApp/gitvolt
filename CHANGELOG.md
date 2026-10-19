@@ -11,6 +11,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   now lists the release notes of 0.7.5 and 0.7.6, newest first, each under its version and date;
   before, it showed only the newest.
 
+### Fixed
+
+- **No more high CPU while an update waits.** The status bar's "Update to …" pill glowed by
+  repainting every frame, which kept GitVolt busy for as long as the update went uninstalled. It
+  now glows a few times when it appears, on the GPU, then stays still.
+
 ## [0.7.6] - 2026-10-19
 
 ### Added
