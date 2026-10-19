@@ -5,6 +5,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Changed
+
+- **Cherry-pick a commit already on the branch,** to bring back a change a revert undid. A
+  commit whose changes are still there stops as an empty pick.
+
 ## [0.7.7] - 2026-10-19
 
 ### Changed

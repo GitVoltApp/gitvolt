@@ -24,8 +24,14 @@ describe('Cherry-pick and Revert rows (spec #3 §4.3)', () => {
     expect(labels(rows)).toEqual(['Cherry-pick onto main']);
     expect(actions(rows)[0].variants?.map((v) => v.label)).toEqual(['No commit']);
   });
-  it("a commit in HEAD's history: Revert only", () => {
-    expect(labels(pickRows([c(A)], env({ isAncestor: () => true })))).toEqual(['Revert this commit']);
+  it("a commit in HEAD's history: Cherry-pick (bringing back what a revert undid) and Revert", () => {
+    expect(labels(pickRows([c(A)], env({ isAncestor: () => true })))).toEqual(['Cherry-pick onto main', 'Revert this commit']);
+  });
+  it('HEAD itself: Revert only (picking it again is always empty)', () => {
+    expect(labels(pickRows([c(H)], env({ isAncestor: () => true })))).toEqual(['Revert this commit']);
+  });
+  it('a selection all in HEAD\'s history picks them all; a mixed one only the new ones', () => {
+    expect(labels(pickRows([c(A), c(B)], env({ isAncestor: () => true })))).toEqual(['Cherry-pick 2 commits onto main', 'Revert 2 commits']);
   });
   it('unknown ancestry shows both (the backend checks after the click)', () => {
     expect(labels(pickRows([c(A)], env({ isAncestor: () => null })))).toEqual(['Cherry-pick onto main', 'Revert this commit']);

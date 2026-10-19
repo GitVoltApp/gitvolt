@@ -11,11 +11,12 @@ type Env = Pick<MenuEnv, 'write' | 'headBranch' | 'headSha' | 'inProgress'> & Pa
 
 /**
  * The Commit group's Cherry-pick and Revert for `commits` (newest first) (spec #3 §4.3). Hidden
- * (Deviation 5): any merge commit among them (§3.7); Cherry-pick when every commit is already in
- * HEAD's history; Revert when one is known not to be. Unknown ancestry shows the row. Greyed
- * during another operation, over conflicted files (a stop without committing leaves them with
- * nothing in progress), or on a detached HEAD. A selection's Cherry-pick leaves out the commits
- * already in HEAD's history.
+ * (Deviation 5): any merge commit among them (§3.7); Revert when one is known not to be in HEAD's
+ * history. Unknown ancestry shows the row. Greyed during another operation, over conflicted files
+ * (a stop without committing leaves them with nothing in progress), or on a detached HEAD. A
+ * selection's Cherry-pick leaves out the commits already in HEAD's history, unless every one is
+ * (bringing back a commit a revert undid; one whose changes are still there stops as an empty
+ * pick). Never for HEAD itself: that pick is always empty.
  */
 export function pickRows(commits: readonly CommitRef[], env: Env): MenuRow[] {
   const ctx = env.write;
@@ -29,13 +30,17 @@ export function pickRows(commits: readonly CommitRef[], env: Env): MenuRow[] {
     if (x) void startSequence(ctx, kind, cs, { noCommit, branch: x, head: env.headSha });
   };
   const rows: MenuRow[] = [];
-  // 3B final fix (3): what's already in HEAD's history isn't picked again.
-  const picks = commits.filter((c) => inHead(c) !== true);
+  // 3B final fix (3): what's already in HEAD's history isn't picked again, unless that's all of
+  // them: then the pick is on purpose (bringing back what a revert undid).
+  const fresh = commits.filter((c) => inHead(c) !== true);
+  const again = fresh.length === 0 && !commits.some((c) => c.oid === env.headSha);
+  const picks = again ? commits : fresh;
   if (picks.length > 0) {
     const named = nameOf(picks);
+    const what = picks.length === 1 ? 'Cherry-pick' : `Cherry-pick ${picks.length} commits`;
     rows.push({
       kind: 'action', id: 'commit.cherryPick', icon: Cherry,
-      label: picks.length === 1 ? `Cherry-pick onto ${branch}` : `Cherry-pick ${picks.length} commits onto ${branch}`,
+      label: `${what} onto ${branch}`,
       tooltip: picks.length === 1 ? `Apply ${named} on top of ${branch}` : `Apply ${named} on top of ${branch}, oldest first`,
       run: go('cherryPick', picks, false), disabledReason: busy,
       variants: [{ id: 'noCommit', label: 'No commit', tooltip: `Apply the changes to ${branch}'s files and stage them, without committing`, run: go('cherryPick', picks, true), disabledReason: busy }],

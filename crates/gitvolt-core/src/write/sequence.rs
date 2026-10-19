@@ -1086,6 +1086,25 @@ mod tests {
     }
     // --- end 3B T1 fix round 2 ---
 
+    /// A commit already in HEAD's history, whose revert came after it, picks again: it's back.
+    #[tokio::test]
+    async fn a_reverted_commit_in_heads_history_cherry_picks_again() {
+        let data = tempfile::tempdir().unwrap();
+        let r = repo();
+        r.write("x.txt", "x\n");
+        r.git(&["add", "x.txt"]);
+        r.git(&["commit", "-q", "-m", "Add x"]);
+        let add = r.git(&["rev-parse", "HEAD"]);
+        r.git(&["revert", "--no-edit", &add]);
+        assert!(!r.path().join("x.txt").exists());
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        let res = call(&api, "cherryPick", req(id, &r, std::slice::from_ref(&add), false)).await.unwrap();
+        assert_eq!(res["outcome"], json!({"status": "done", "commits": 1, "committed": true}));
+        assert_eq!(std::fs::read_to_string(r.path().join("x.txt")).unwrap(), "x\n");
+        assert_eq!(r.git(&["log", "-1", "--format=%s"]), "Add x");
+    }
+
     // --- 3B T2 fix round 1 ---
 
     /// Finding D: a stop on commit 2 of 3; the user then edits a file only commit 3 changes.
