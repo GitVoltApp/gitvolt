@@ -55,3 +55,7 @@ Chromium (CEF) runtime. Read these before changing anything substantial:
 - **No layout shift:** loading and armed states reserve or overlay their own space.
 - **Every action is reachable by keyboard.** New shortcuts go in the shortcuts registry, so the
   Keyboard Shortcuts panel lists them.
+- **An idle app costs nothing.** No animation that never ends unless something is working (a
+  spinner while an op runs), and then only `transform` or `opacity`, which the compositor runs
+  alone. A decorative effect plays a few times and stops. No `requestAnimationFrame` or
+  `setInterval` loop that keeps running while nothing changes. See CONTRIBUTING.md › Code style.

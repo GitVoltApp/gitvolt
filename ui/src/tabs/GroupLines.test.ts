@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blendSpan, GHOST_MS, ghostLine, ghostShare, LINE_RAMP, lineSpan, trackGhost, visiblePart } from './GroupLines';
+import { blendSpan, GHOST_MS, ghostLine, ghostShare, LINE_RAMP, lineSpan, settling, trackGhost, visiblePart } from './GroupLines';
 
 // A chip 100..134, its pill 106..128; tabs of 100 after it.
 const chip = { left: 100, right: 134 };
@@ -77,5 +77,17 @@ describe('a dragged tab in a group\'s line: eased in and out, measured as drawn'
     // Its own one-tab group, dragged out: from the pill's left edge, to nothing.
     expect(blendSpan(null, { left: 106, right: 300 }, 0.5)).toEqual({ left: 106, right: 203 });
     expect(blendSpan({ left: 106, right: 300 }, null, 1)).toBeNull();
+  });
+});
+
+describe('settling: the lines follow the strip frame by frame only while something there will stop moving', () => {
+  const anim = (endTime: number) => ({ effect: { getComputedTiming: () => ({ endTime }) } }) as unknown as Animation;
+  const root = (...as: Animation[]) => ({ getAnimations: () => as });
+  it('a slide or fade (it ends) keeps them following; a spinner alone (it never ends) doesn\'t', () => {
+    expect(settling(root())).toBe(false);
+    expect(settling(root(anim(200)))).toBe(true);
+    expect(settling(root(anim(Infinity)))).toBe(false);
+    expect(settling(root(anim(Infinity), anim(200)))).toBe(true);
+    expect(settling({} as Pick<Element, 'getAnimations'>)).toBe(false);
   });
 });

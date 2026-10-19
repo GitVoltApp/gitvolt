@@ -90,6 +90,17 @@ plus the e2e specs for the areas you changed.
   [ARCHITECTURE.md](ARCHITECTURE.md#writes)). A new write method is listed in `WRITE_METHODS` in
   `crates/gitvolt-core/src/api.rs`; a new read gets a sample in the API test that checks reads
   never write.
+- An idle GitVolt uses no CPU, so animations are held to a budget:
+  - An animation that never ends (`infinite`) is only for work in progress (a spinner while an
+    operation runs), and animates only `transform` or `opacity`. The compositor runs those alone;
+    anything else (`box-shadow`, colours, sizes) restyles and repaints on the main thread every
+    frame. The update pill's endless `box-shadow` glow cost about 130 ms of main-thread time per
+    second at 60 Hz (twice that at 120 Hz), with the app otherwise idle; a spinner costs about 3.
+    `ui/src/theme/animations.css.test.ts` fails on an infinite animation of anything else.
+  - A decorative effect (a glow, a pulse) plays a few times, then stops.
+  - A `requestAnimationFrame` or `setInterval` loop stops when there's nothing left to follow:
+    one that waits on animations ignores the ones that never end (`settling` in
+    `ui/src/tabs/GroupLines.tsx`).
 
 ## Commit messages
 

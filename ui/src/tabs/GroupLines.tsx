@@ -131,6 +131,14 @@ const place = (el: HTMLElement | undefined, s: Span | null, origin: number) => {
   el.style.width = `${s ? s.right - s.left : 0}px`;
 };
 
+/** True while an animation that ends is running in `root` (a tab sliding, a chip fading): the lines
+ * follow it frame by frame. One that never ends (a spinner) doesn't count: following it would
+ * measure the strip every frame for as long as it's shown. */
+export function settling(root: Pick<Element, 'getAnimations'>): boolean {
+  if (typeof root.getAnimations !== 'function') return false;
+  return root.getAnimations({ subtree: true }).some((a) => a.effect?.getComputedTiming().endTime !== Infinity);
+}
+
 /**
  * Each group's top line, one element over its whole span, above the tabs and their separators: so
  * it's one unbroken stroke. Measured from the strip's items as drawn (after each render, and every
@@ -194,7 +202,7 @@ export function GroupLines({ strip, specs, moving, slotWindow }: {
     let frame = 0;
     const tick = () => {
       const easing = placeAll();
-      const busy = moving || easing || (typeof root.getAnimations === 'function' && root.getAnimations({ subtree: true }).length > 0);
+      const busy = moving || easing || settling(root);
       frame = busy ? requestAnimationFrame(tick) : 0;
     };
     tick();
