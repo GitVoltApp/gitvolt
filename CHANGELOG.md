@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-10-19
+
 ### Fixed
 
 - **macOS: folder buttons work.** Open directory, Settings › Default repos directory › Choose…,
