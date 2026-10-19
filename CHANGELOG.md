@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-10-19
+
 ### Added
 
 - **Drop commit:** right-click a commit on the current branch and choose Drop commit to rebase
