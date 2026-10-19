@@ -1,6 +1,7 @@
 import { Funnel, Trash2 } from 'lucide-react';
 import { useRef } from 'react';
 import { useRepoContext } from '../app/repoContext';
+import { wipFileCount } from '../format/wip';
 import { useRepoView } from '../repo/store';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { useDisarmOnChange } from '../ui/arm/useDisarmOnChange';
@@ -29,7 +30,7 @@ export function WipHeader() {
       ready = true;
       for (const f of sec.list.data.files) paths.add(f.path);
     }
-    return ready ? paths.size : wip ? wip.modified + wip.added + wip.deleted + wip.renamed + wip.conflicted : 0;
+    return ready ? paths.size : wip ? wipFileCount(wip) : 0;
   });
   // A linked worktree's branch is on its label; the main worktree's is HEAD's.
   const branch = useRepoView((s) => {

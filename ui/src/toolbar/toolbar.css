@@ -16,6 +16,13 @@
 .tb-btn:focus-visible { outline: 1px solid var(--blue); }
 .tb-btn:disabled, .tb-btn[aria-disabled="true"] { opacity: 0.6; cursor: default; }
 .tb-caret { min-width: 16px; padding: 0 2px; }
+.tb-btn[aria-pressed="true"], .tb-btn[aria-pressed="true"]:hover:not(:disabled) { background: var(--selected-row); color: var(--text-selected); cursor: default; }
+/* The jump to the WIP: tinted the WIP row's modified orange, so the changes stand out. */
+.tb-btn.tb-wip { color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orange) 40%, transparent); }
+.tb-btn.tb-wip:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--orange); background: color-mix(in srgb, var(--orange) 24%, transparent); }
+.tb-btn.tb-wip[aria-pressed="true"], .tb-btn.tb-wip[aria-pressed="true"]:hover:not(:disabled) { color: var(--text-selected); background: color-mix(in srgb, var(--orange) 30%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orange) 60%, transparent); }
+/* Hidden, a button keeps its place, so its neighbours never move. */
+.tb-hidden { visibility: hidden; }
 .spin { animation: gb-spin 1s linear infinite; }
 @keyframes gb-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

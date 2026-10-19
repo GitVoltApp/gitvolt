@@ -120,6 +120,36 @@ test('the WIP row and panel: its counts, its draft box, the unstaged and staged 
     await page.getByRole('button', { name: /Unstaged/ }).click();
     await expect(page.getByRole('listbox', { name: 'Unstaged' })).toBeVisible();
   });
+  await test.step("the toolbar's WIP button: from an older commit's file, it selects the WIP, closing a file the WIP doesn't change and switching one it does", async () => {
+    const wipButton = page.getByRole('toolbar', { name: 'Repository toolbar' }).getByRole('button', { name: '3 changes' });
+    const wipRow = rows(page).filter({ hasText: '// WIP' });
+    const older = rows(page).filter({ hasText: 'Rename guide and update assets' });
+    const panel = page.getByRole('complementary', { name: 'Commit details' });
+    const diff = page.getByRole('region', { name: 'Diff' });
+    await expect(wipButton).toHaveAttribute('aria-pressed', 'true');
+    // ws.txt: changed by that commit, not by the WIP. The diff closes and the WIP's lists show.
+    await older.click();
+    await panel.getByRole('option').filter({ hasText: 'ws.txt' }).click();
+    await expect(diff).toBeVisible();
+    await expect(wipButton).toHaveAttribute('aria-pressed', 'false');
+    await wipButton.click();
+    await expect(diff).toHaveCount(0);
+    await expect(wipRow).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('wip-header')).toContainText('3 file changes on');
+    await expect(wipButton).toHaveAttribute('aria-pressed', 'true');
+    // src/app.php: staged in the WIP. It stays open, on the WIP's staged side.
+    await older.click();
+    await panel.getByRole('option').filter({ hasText: 'app.php' }).click();
+    await expect(diff.locator('.editor.modified')).not.toContainText('// staged tweak');
+    await wipButton.click();
+    await expect(diff.locator('.editor.modified')).toContainText('// staged tweak');
+    await expect(page.getByRole('listbox', { name: 'Staged', exact: true }).getByRole('option', { selected: true })).toContainText('app.php');
+    // Its shortcut, from the graph.
+    await diff.getByRole('button', { name: 'Close diff' }).click();
+    await older.click();
+    await page.keyboard.press('Control+Shift+G');
+    await expect(wipRow).toHaveAttribute('aria-selected', 'true');
+  });
 });
 
 test('K44: the watched tab holds the WIP lists: they update live, and re-selecting the row reads nothing', async ({ page }) => {

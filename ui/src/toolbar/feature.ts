@@ -1,5 +1,6 @@
+import { FilePen } from 'lucide-react';
 import type { SyncButtonMode } from '../api/gen/SyncButtonMode';
-import { activeTab, registerActions } from '../app/actions';
+import { activeStore, activeTab, registerActions } from '../app/actions';
 import { runFetch } from '../app/fetchSchedule';
 import { isShownFetch, useOps } from '../app/ops';
 import { useRuntime } from '../app/runtime';
@@ -14,6 +15,7 @@ import { writeCtx } from '../write/ctx';
 import { isTypingTarget } from '../ui/keys';
 import { registerToolbarButton } from './registry';
 import { Toolbar } from './Toolbar';
+import { jumpToWip, openWipCount, useWipButtonView } from './wipJump';
 
 /** The toolbar (spec §6.3) in each repo tab's `toolbar` slot, and its Fetch (spec §15). */
 const repoTab = () => {
@@ -88,6 +90,14 @@ const offs = [
   // Search (spec §6.3) runs find's `edit.find` (W3-D: the graph's FindBox, or Monaco's find while
   // a diff is open). Until that action is registered, no button renders (no placeholder UI).
   registerToolbarButton({ action: 'edit.find', label: 'Search', placement: 'end', order: 20 }),
+  // Left of Actions and Search: the active worktree's changes, a click away from anywhere.
+  registerActions([{
+    id: 'view.goToWip', label: 'Go to working directory changes', group: 'View', icon: FilePen, tooltip: 'Show the working directory changes', shortcuts: ['Mod+Shift+G'],
+    yieldsTo: isTypingTarget,
+    when: () => { const s = activeStore()?.getState(); return !!s && openWipCount(s) > 0; },
+    run: () => { const store = activeStore(); if (store) jumpToWip(store); },
+  }]),
+  registerToolbarButton({ action: 'view.goToWip', placement: 'end', order: 5, className: 'tb-wip', useView: ({ tabId }) => useWipButtonView(tabId) }),
   registerTabSlot('toolbar', 'toolbar', Toolbar),
 ];
 // A dev-server hot update re-runs this module: release the old registrations first.

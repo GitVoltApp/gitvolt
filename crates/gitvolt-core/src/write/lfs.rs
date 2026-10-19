@@ -255,10 +255,12 @@ esac
     /// `git` that runs it.
     fn path_without_real_lfs(bin: &Path) -> std::ffi::OsString {
         let all: Vec<PathBuf> = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect();
-        let (kept, dropped): (Vec<_>, Vec<_>) = all.into_iter().partition(|d| !d.join("git-lfs").exists());
-        if !kept.iter().any(|d| d.join("git").is_file())
-            && let Some(git) = dropped.iter().map(|d| d.join("git")).find(|g| g.is_file())
-        {
+        // The git the tests would run anyway: the first on PATH. When its folder also holds a
+        // git-lfs (Homebrew's /opt/homebrew/bin), a later git (macOS's older /usr/bin/git) must
+        // not stand in for it: a shim in `bin` keeps it.
+        let first_git = all.iter().map(|d| d.join("git")).find(|g| g.is_file());
+        let kept: Vec<PathBuf> = all.into_iter().filter(|d| !d.join("git-lfs").exists()).collect();
+        if let Some(git) = first_git.filter(|g| g.parent().is_some_and(|d| d.join("git-lfs").exists())) {
             use std::os::unix::fs::PermissionsExt;
             let shim = bin.join("git");
             std::fs::write(&shim, format!("#!/bin/sh\nexec '{}' \"$@\"\n", git.display())).unwrap();

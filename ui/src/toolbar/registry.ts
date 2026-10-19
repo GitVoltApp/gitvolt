@@ -14,10 +14,15 @@ export type ToolbarPlacement = 'center' | 'end';
 /** What a button shows for its tab right now, when that's more than its action says: the
  * undo tooltip and its disabled reason (spec #2 §5.5). */
 export interface ButtonView {
-  tooltip: string;
+  /** The action's (with its shortcut) when left out. */
+  tooltip?: string;
   disabled: boolean;
   /** The caption, when it follows state. */
   label?: string;
+  /** Not shown, its place kept (no layout shift): the jump to the WIP with no changes. */
+  hidden?: boolean;
+  /** A toggle-like state: pressed while what it shows is shown. */
+  pressed?: boolean;
 }
 
 /** A split button's default picker (spec #2 §12.1): a heading over radio rows. Picking sets the
@@ -39,6 +44,8 @@ export interface ToolbarButton {
   placement?: ToolbarPlacement;
   /** Left to right within its placement, lower first. */
   order: number;
+  /** An extra class: a button that stands out (the jump to the WIP's tint). */
+  className?: string;
   /** A split button: these action ids are its dropdown, as menu rows. */
   menu?: string[];
   /** The caret opens this picker instead of a menu. */

@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Search } from 'lucide-react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { GraphPayload } from '../api/gen/GraphPayload';
 import type { LocalBranch } from '../api/gen/LocalBranch';
+import type { RowPayload } from '../api/gen/RowPayload';
 
 const api = vi.hoisted(() => ({ fetch: vi.fn(async () => ({ status: 'done', changed: false })) }));
 vi.mock('../api/client', () => ({ api, errorMessage: String, onEvent: () => () => {} }));
@@ -19,6 +21,9 @@ const { useOps } = await import('../app/ops');
 const useQueueModule = await import('../queue/store');
 const { useMenu } = await import('../menu/menuStore');
 const { useToast } = await import('../ui/toastStore');
+const { useTabViews } = await import('../app/tabStores');
+const { createRepoViewStore } = await import('../repo/store');
+const { fakeServices } = await import('../repo/testServices');
 
 const branch = (name: string, target: string, over: Partial<LocalBranch> = {}): LocalBranch => ({
   name, fullName: `refs/heads/${name}`, target, upstream: null, ahead: 0, behind: 0, gone: false, tipTime: 0, summary: '', author: '', isHead: false, worktree: null, checkedOut: null, pushTarget: null, pushBehind: null, rewritten: null, ...over,
@@ -39,6 +44,53 @@ describe('Toolbar (spec §6.3)', () => {
       repo: { id: 4, path: '/r', name: 'gitvolt', worktree: '/r' },
       graph: { rows: [], labels: [], maxLanes: 0, pinnedRefs: [], head: { branch: 'refs/heads/main', target: 'aaaaaaaaaa', detached: false, unborn: false }, truncated: false, worktrees: [] },
       sidebar: { locals: [branch('main', 'aaaaaaaaaa', { isHead: true }), branch('feature/login', 'bbbbbbbbbb', { ahead: 2, behind: 1 })], remotes: [], worktrees: [], stashes: [], tags: [] },
+    });
+  });
+
+  describe('the WIP button', () => {
+    const commit = (id: string): RowPayload => ({ id, kind: 'commit', lane: 0, color: 0, segments: [], summary: id, bodyFirstLine: '', authorName: '', authorEmail: '', authorTime: 0, committerTime: 0, parents: [], mrRefs: [], wip: null });
+    const wip = (modified: number, added = 0): RowPayload => ({ ...commit('wip:/r'), kind: 'wip', wip: { worktreePath: '/r', worktreeName: null, modified, added, deleted: 0, renamed: 0, conflicted: 0 } });
+    const graphOf = (rows: RowPayload[]) => ({ rows, labels: [], maxLanes: 1, pinnedRefs: [], head: { branch: 'refs/heads/main', target: 'a', detached: false, unborn: false }, truncated: false, worktrees: [] } as unknown as GraphPayload);
+    const withGraph = (rows: RowPayload[]) => {
+      const services = fakeServices();
+      const store = createRepoViewStore(4, '/r', graphOf(rows), services);
+      useTabViews.setState({ views: { t: { repo: 4, services, store } } });
+      return store;
+    };
+    const slot = () => document.querySelector('.toolbar .tb-end')!.firstElementChild as HTMLElement;
+
+    it('sits left of Actions and Search, shows the change count, and keeps its place when there are none', async () => {
+      const off = registerActions([{ id: 'edit.find', label: 'Find', group: 'Edit', icon: Search, tooltip: 'Find commits', run: vi.fn() }]);
+      const store = withGraph([wip(2, 1), commit('a')]);
+      renderToolbar();
+      const b = screen.getByRole('button', { name: '3 changes' });
+      expect([...document.querySelector('.toolbar .tb-end')!.children].map((c) => c.getAttribute('aria-label'))).toEqual(['3 changes', 'Search']);
+      expect(b).toHaveAttribute('aria-pressed', 'false');
+      fireEvent.mouseEnter(b);
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Show the working directory changes (Ctrl+Shift+G)');
+      act(() => store.getState().setGraph(graphOf([wip(1), commit('a')])));
+      expect(screen.getByRole('button', { name: '1 change' })).toBe(slot());
+      // Clean: hidden, out of the tab order, its place kept.
+      act(() => store.getState().setGraph(graphOf([commit('a')])));
+      expect(screen.queryByRole('button', { name: /change/ })).toBeNull();
+      expect(slot()).toHaveClass('tb-hidden');
+      expect(slot()).toHaveAttribute('tabindex', '-1');
+      off();
+      useTabViews.setState({ views: {} });
+    });
+
+    it('selects the WIP row on a click, then shows pressed, and a second click does nothing', () => {
+      const store = withGraph([wip(1), commit('a')]);
+      store.getState().selectRow(1);
+      renderToolbar();
+      fireEvent.click(screen.getByRole('button', { name: '1 change' }));
+      expect(store.getState().selection).toMatchObject({ kind: 'wip', index: 0 });
+      const b = screen.getByRole('button', { name: '1 change' });
+      expect(b).toHaveAttribute('aria-pressed', 'true');
+      const before = store.getState();
+      fireEvent.click(b);
+      expect(store.getState()).toBe(before);
+      useTabViews.setState({ views: {} });
     });
   });
 
@@ -121,7 +173,8 @@ describe('Toolbar (spec §6.3)', () => {
     const [, centre, end] = groups;
     const names = (g: Element) => [...g.querySelectorAll('[aria-label]')].map((b) => b.getAttribute('aria-label'));
     expect(names(centre).indexOf('Fetch')).toBeLessThan(names(centre).indexOf('MidBtn'));
-    expect(names(end)).toEqual(['EndBtn']);
+    // The WIP button's place is kept while there are no changes (no layout shift).
+    expect(names(end)).toEqual(['EndBtn', '0 changes']);
     offA(); offB(); offC();
   });
 
@@ -135,7 +188,7 @@ describe('Toolbar (spec §6.3)', () => {
     const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
     expect(names.indexOf('Search')).toBe(names.indexOf('Fetch options') + 1);
     const end = document.querySelector('.toolbar .tb-end')!;
-    expect([...end.children].map((b) => b.getAttribute('aria-label'))).toEqual(['Search']);
+    expect([...end.children].map((b) => b.getAttribute('aria-label'))).toEqual(['0 changes', 'Search']);
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(run).toHaveBeenCalledTimes(1);
     off();

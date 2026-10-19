@@ -288,6 +288,12 @@ export function openWorktree(s: Pick<RepoViewState, 'graph' | 'repoPath'>): stri
   return s.graph.openWorktree ?? s.repoPath;
 }
 
+/** The open worktree's WIP row (`-1`: it has no changes, so no row). */
+export function openWipIndex(s: Pick<RepoViewState, 'graph' | 'repoPath'>): number {
+  const open = openWorktree(s);
+  return s.graph.rows.findIndex((r) => r.kind === 'wip' && r.wip?.worktreePath === open);
+}
+
 /** The selected rows, in pick order: a single selection's one row, or the picks (K27). */
 function pickedRows(s: RepoViewState): readonly number[] {
   if (s.selection.kind === 'commit' || s.selection.kind === 'wip') return [s.selection.index];
@@ -347,8 +353,7 @@ const sourceFor = (services: RepoServices, spec: DiffSpec): Source<FileListPaylo
  * worktree's are read when its WIP row is selected (the backend keeps only its counts current,
  * so reading them ahead on every change would cost a status and numstat each time). */
 function openWip(g: GraphPayload, repoPath: string): string[] {
-  const open = openWorktree({ graph: g, repoPath });
-  return g.rows.some((r) => r.kind === 'wip' && r.wip?.worktreePath === open) ? [open] : [];
+  return openWipIndex({ graph: g, repoPath }) >= 0 ? [openWorktree({ graph: g, repoPath })] : [];
 }
 
 export function createRepoViewStore(repo: number, repoPath: string, graph: GraphPayload, services: RepoServices): RepoViewStore {

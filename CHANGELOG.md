@@ -5,6 +5,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **A button to jump to your changes:** while the current worktree has changes, the toolbar
+  shows their count left of Actions and Search ("3 changes"), tinted orange. Click it, or press
+  Ctrl+Shift+G (Cmd+Shift+G on macOS), to select the WIP row from anywhere. A file you had open
+  stays open on its working-directory diff when your changes touch it too, and closes otherwise.
+  The button stays pressed while the WIP row is selected.
+
 ## [0.7.4] - 2026-10-19
 
 ### Fixed
