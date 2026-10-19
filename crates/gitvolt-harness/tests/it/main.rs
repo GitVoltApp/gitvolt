@@ -30,3 +30,12 @@ mod markdown_images;
 mod showcase;
 mod updates;
 mod ws;
+
+// The in-process gix sees no host git config either (`testing::isolate_this_process`).
+ctor::declarative::ctor! {
+    #[ctor(unsafe)]
+    fn isolate_from_the_host_git_config() {
+        // SAFETY: before `main`, so on the only thread.
+        unsafe { gitvolt_core::testing::isolate_this_process() }
+    }
+}

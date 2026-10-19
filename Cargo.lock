@@ -2058,6 +2058,7 @@ version = "0.7.3"
 dependencies = [
  "base64 0.23.1",
  "block2",
+ "ctor",
  "dirs 7.0.0",
  "dispatch2",
  "dunce",
@@ -2132,6 +2133,7 @@ version = "0.7.3"
 dependencies = [
  "axum",
  "base64 0.23.1",
+ "ctor",
  "flate2",
  "futures-util",
  "gitvolt-core",

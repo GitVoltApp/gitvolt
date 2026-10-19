@@ -37,6 +37,30 @@ pub fn isolated_git_env() -> Vec<(OsString, OsString)> {
     .collect()
 }
 
+/// Puts `isolated_git_env` in this process's own environment too. The in-process gix reads the
+/// global and system config, as the app must (`git lfs install` writes `filter.lfs.*` to
+/// `~/.gitconfig`), so without this a developer's or CI runner's config still reaches the tests
+/// that open a repository, and any git a test spawns without the isolated env. Each test binary
+/// calls it before `main`, from a constructor.
+///
+/// # Safety
+/// No other thread may be reading or writing the environment.
+pub unsafe fn isolate_this_process() {
+    for (k, v) in isolated_git_env() {
+        // SAFETY: the caller's guarantee.
+        unsafe { std::env::set_var(k, v) };
+    }
+}
+
+#[cfg(test)]
+ctor::declarative::ctor! {
+    #[ctor(unsafe)]
+    fn isolate_unit_tests() {
+        // SAFETY: before `main`, so on the only thread.
+        unsafe { isolate_this_process() }
+    }
+}
+
 /// `None` if this machine can actually verify SSH-signed commits: `ssh-keygen` supports `-Y sign`
 /// (OpenSSH 8.2+, what git's own SSH signing uses) and git is new enough to understand
 /// `gpg.format = ssh` (2.34+). Otherwise `Some(reason)`, to print before skipping a test cleanly

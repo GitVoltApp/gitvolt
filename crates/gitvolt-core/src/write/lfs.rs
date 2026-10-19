@@ -250,14 +250,30 @@ esac
         bin
     }
 
+    /// PATH with `bin` first and no folder that holds a real git-lfs, so git only ever finds the
+    /// stand-in. When that leaves out git's own folder (Homebrew puts both in one), `bin` gets a
+    /// `git` that runs it.
+    fn path_without_real_lfs(bin: &Path) -> std::ffi::OsString {
+        let all: Vec<PathBuf> = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect();
+        let (kept, dropped): (Vec<_>, Vec<_>) = all.into_iter().partition(|d| !d.join("git-lfs").exists());
+        if !kept.iter().any(|d| d.join("git").is_file())
+            && let Some(git) = dropped.iter().map(|d| d.join("git")).find(|g| g.is_file())
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let shim = bin.join("git");
+            std::fs::write(&shim, format!("#!/bin/sh\nexec '{}' \"$@\"\n", git.display())).unwrap();
+            std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::env::join_paths(std::iter::once(bin.to_path_buf()).chain(kept)).unwrap()
+    }
+
     /// An API whose git finds the fake git-lfs, logging to `<dir>/log`.
     fn lfs_api(dir: &Path, data: &Path, object: Option<String>) -> crate::api::Api {
         use crate::git::GitCli;
         use crate::log::CommandLog;
         let bin = fake_lfs(dir);
-        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
         let mut env = crate::testing::isolated_git_env();
-        env.push(("PATH".into(), path.into()));
+        env.push(("PATH".into(), path_without_real_lfs(&bin)));
         env.push(("FAKE_LFS_LOG".into(), dir.join("log").into()));
         if let Some(o) = object {
             env.push(("FAKE_LFS_OBJECT".into(), o.into()));

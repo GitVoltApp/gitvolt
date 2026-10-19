@@ -25,3 +25,4 @@ flate2.workspace = true
 [dev-dependencies]
 tokio-tungstenite.workspace = true
 ureq.workspace = true
+ctor.workspace = true

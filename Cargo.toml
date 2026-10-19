@@ -81,6 +81,10 @@ zbus = "5.19"
 raw-window-handle = "0.6.2"
 # The active-tab file watcher (plan 1C Task 6): inotify on Linux.
 notify = "8.2.0"
+# Tests only: a constructor that isolates each test process from the host's git config before
+# `main` (gitvolt_core::testing::isolate_this_process). Already in the tree through tauri-utils;
+# same version and features.
+ctor = { version = "1.0.13", default-features = false }
 
 [patch.crates-io]
 # CEF issue #3002 idle-busy-loop workaround; see vendor/tauri-runtime-cef/GITVOLT-PATCH.md.

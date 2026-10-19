@@ -36,6 +36,8 @@ gitvolt-graph = { workspace = true, features = ["testing"] }
 insta.workspace = true
 # `#[tokio::test(start_paused = true)]` for the settings debounce test.
 tokio = { workspace = true, features = ["test-util"] }
+# Isolates the test process from the host's git config before `main` (`testing::isolate_this_process`).
+ctor.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation.workspace = true
