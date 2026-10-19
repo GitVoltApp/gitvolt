@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-10-19
+
 ### Added
 
 - **A button to jump to your changes:** while the current worktree has changes, the toolbar
