@@ -11,7 +11,9 @@ import './auth.css';
 /**
  * Spec §5.4: git's (or ssh's) credential prompt, one at a time; the credential helper decides
  * whether anything is remembered. Only user-started ops ever get here: GitVolt's own background
- * fetches never prompt (their askpass calls are refused, Review Focus 3).
+ * fetches never prompt (their askpass calls are refused, Review Focus 3). An HTTPS prompt tied to
+ * one remote of its op also offers that remote's SSH URL: choosing it cancels the prompt, and the
+ * op's caller switches the remote and runs the op again (`sshSwitch.ts`).
  */
 export function AuthModal() {
   const prompt = useOps((s) => s.prompts[0]);
@@ -41,9 +43,13 @@ const FOCUSABLE = 'input, button:not(:disabled)';
 function AuthForm({ prompt }: { prompt: AuthPrompt }) {
   const [value, setValue] = useState('');
   const form = useRef<HTMLFormElement>(null);
+  // A prompt the backend no longer has (answered, or its op ended) would otherwise stay up.
+  const gone = () => useOps.getState().apply({ type: 'authResolved', prompt: prompt.prompt });
   const answer = (v: string | null) => {
-    // A prompt the backend no longer has (answered, or its op ended) would otherwise stay up.
-    void api.authAnswer(prompt.prompt, v).catch(() => useOps.getState().apply({ type: 'authResolved', prompt: prompt.prompt }));
+    void api.authAnswer(prompt.prompt, v).catch(gone);
+  };
+  const chooseSsh = () => {
+    void api.authUseSsh(prompt.prompt).catch(gone);
   };
 
   // While open it owns the keyboard (ruling R6): it's in the key router's `menu` layer, so no key
@@ -98,6 +104,13 @@ function AuthForm({ prompt }: { prompt: AuthPrompt }) {
       >
         <h2><KeyRound size={16} aria-hidden /> Authentication required</h2>
         <p className="auth-prompt" id={`auth-text-${prompt.prompt}`}>{text}</p>
+        {prompt.ssh && (
+          <div className="auth-ssh">
+            <p>This remote uses HTTPS, so git needs a username and password.</p>
+            <button type="button" aria-describedby={`auth-ssh-${prompt.prompt}`} onClick={chooseSsh}>Use SSH for {prompt.ssh.remote} instead</button>
+            <code className="auth-ssh-url" id={`auth-ssh-${prompt.prompt}`}>{prompt.ssh.url}</code>
+          </div>
+        )}
         <input
           autoFocus
           autoComplete="off"

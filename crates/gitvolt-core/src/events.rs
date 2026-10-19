@@ -190,6 +190,8 @@ pub enum AppEvent {
         repo: Option<u32>,
         text: String,
         secret: bool,
+        /// An HTTPS prompt tied to one remote of the op: "Use SSH for <remote> instead".
+        ssh: Option<crate::askpass::SshOffer>,
     },
     AuthResolved {
         #[ts(type = "number")]
@@ -256,10 +258,10 @@ mod tests {
             serde_json::to_value(&ev).unwrap(),
             serde_json::json!({"type": "repoChanged", "repo": 1, "kinds": ["refs", "worktree"], "worktrees": ["/r"], "versions": {"/r": "00ff"}})
         );
-        let ev = AppEvent::AuthWaiting { prompt: 2, op: 5, repo: None, text: "Password: ".into(), secret: true };
+        let ev = AppEvent::AuthWaiting { prompt: 2, op: 5, repo: None, text: "Password: ".into(), secret: true, ssh: None };
         assert_eq!(
             serde_json::to_value(&ev).unwrap(),
-            serde_json::json!({"type": "authWaiting", "prompt": 2, "op": 5, "repo": null, "text": "Password: ", "secret": true})
+            serde_json::json!({"type": "authWaiting", "prompt": 2, "op": 5, "repo": null, "text": "Password: ", "secret": true, "ssh": null})
         );
         assert_eq!(serde_json::to_value(AppEvent::OpenRequested { path: "/r".into() }).unwrap(), serde_json::json!({"type": "openRequested", "path": "/r"}));
         let back: AppEvent = serde_json::from_value(serde_json::json!({"type": "refsUpdated", "repo": 4})).unwrap();

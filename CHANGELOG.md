@@ -11,6 +11,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   the branch without it, with no editor. Click the row again to confirm; Undo brings the commit
   back.
 
+- **Switch a remote to SSH from the password prompt:** when git asks for a username or password
+  for an HTTPS remote, the prompt offers "Use SSH for origin instead" and shows the SSH URL it
+  will set (the forge's own, when you have an account there). Click it and GitVolt switches the
+  remote and runs the fetch, pull or push again. If SSH fails too, the error offers Switch back
+  to HTTPS.
+
 ### Fixed
 
 - **Queued actions follow the branches you queue.** Queue a checkout behind a slow push and the

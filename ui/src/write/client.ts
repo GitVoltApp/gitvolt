@@ -1,9 +1,11 @@
 import type { GbError } from '../api/gen/GbError';
+import type { SshOffer } from '../api/gen/SshOffer';
 import type { WriteResult } from '../api/gen/WriteResult';
 import { useRuntime } from '../app/runtime';
 import { tabView } from '../app/tabStores';
 import { toastActionError } from '../debug/errorToast';
 import { toGbError } from '../errors/describe';
+import { sshSwitches, switchToSsh, toastAfterSwitch } from '../auth/sshSwitch';
 import { useToast } from '../ui/toastStore';
 import { currentOrigin, type Origin } from '../ui/arm/origin';
 import { holdOrigin } from '../ui/arm/store';
@@ -103,6 +105,8 @@ function question(err: GbError, asked: Confirmed): { req: ConfirmRequest; flag: 
  *   answered yes, and `asked` says which.
  * - The clean-restore warning (§6.2) and "Apply without restoring what was staged?" are asked
  *   here, and confirmed by sending again.
+ * - "Use SSH for <remote> instead" on its credential prompt (spec §5.4): the remote is switched,
+ *   then the same request is sent again; if that fails too, the toast offers Switch back to HTTPS.
  * - Any other failure goes through the error toast (R12) with Retry, Refresh and, for a held
  *   index lock, Remove stale lock (`writeErrorContext`). A cancel says nothing.
  *
@@ -121,7 +125,8 @@ export async function runWrite<T>(ctx: WriteCtx, send: (confirmed: boolean, aske
   // use the popover.
   const release = 'origin' in opts ? () => {} : holdOrigin();
   const cap = setTimeout(release, MENU_HOLD_MS);
-  const attempt = async (asked: Confirmed): Promise<T | null> => {
+  // `switched`: the remotes this write's prompts switched to SSH before this attempt.
+  const attempt = async (asked: Confirmed, switched: SshOffer[] = []): Promise<T | null> => {
     let outcome: T;
     // A write the user started that moves HEAD (rebase, merge, reset, amend, pick…) brings the
     // new tip into view once its graph arrives.
@@ -133,12 +138,17 @@ export async function runWrite<T>(ctx: WriteCtx, send: (confirmed: boolean, aske
     } catch (e) {
       tabView(ctx.tabId)?.store?.getState().endHeadWatch();
       const err = toGbError(e);
+      const ssh = sshSwitches(err);
+      if (ssh) {
+        release();
+        return (await switchToSsh(ctx, ssh)) ? attempt(asked, [...switched, ...ssh]) : null;
+      }
       const q = question(err, asked);
       if (q) {
         // Armed first, then the hold goes: the row stays armed in its open menu.
         const answer = confirmAction(q.req, origin);
         release();
-        return (await answer) ? attempt({ ...asked, [q.flag]: true }) : null;
+        return (await answer) ? attempt({ ...asked, [q.flag]: true }, switched) : null;
       }
       // A Stale undo, redo or banner (2A final M1) changed nothing, so no journalChanged comes:
       // reload it, so the toast's "Refreshed" is true and the toolbar names the real top.
@@ -153,6 +163,10 @@ export async function runWrite<T>(ctx: WriteCtx, send: (confirmed: boolean, aske
         return null;
       }
       // --- end 2C T9 ---
+      if (switched.length) {
+        toastAfterSwitch(ctx, switched, err);
+        return null;
+      }
       toastActionError(err, writeErrorContext(ctx.repoId, {
         // A retry never re-sends a destructive discard the user confirmed for an earlier attempt.
         retry: () => attempt({ ...asked, discard: false }).then(() => {}),

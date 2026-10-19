@@ -2,6 +2,9 @@ import { useEffect } from 'react';
 import { api, errorMessage } from '../api/client';
 import type { GbError } from '../api/gen/GbError';
 import type { MrHead } from '../api/gen/MrHead';
+import type { SshOffer } from '../api/gen/SshOffer';
+import { sshSwitches, switchToSsh, toastAfterSwitch } from '../auth/sshSwitch';
+import { writeCtx } from '../write/ctx';
 import { useToast } from '../ui/toastStore';
 import { showServerResult } from '../sync/serverOutput';
 import { openActivityLog } from './activityLog';
@@ -111,15 +114,17 @@ const failing = new Set<number>();
  * status-bar warning until a fetch succeeds. Errors: a background one goes to the bell's history
  * (once, when the failures start), a user's to a toast with git's message and an "Activity log"
  * link (§16.1, K96); a fetch that worked says nothing (7c303cc), a failure still toasts. A cancel is quiet. A user's fetch
- * that finds a background one running waits on that one: the Fetch button shows it as busy.
+ * that finds a background one running waits on that one: the Fetch button shows it as busy. "Use SSH for <remote> instead"
+ * on its credential prompt switches the remote, then fetches again (`sshSwitch.ts`).
  */
 export async function runFetch(tabId: string, background: boolean, remote?: string, mrHead?: MrHead): Promise<void> {
   // A background fetch has its own key: it must not light the Fetch button (K30).
   await runOnce(tabId, 'fetch', `${background ? 'bg:' : ''}${remote ?? ''}${mrHead ? `:${mrHead.number}` : ''}`, () => fetchNow(tabId, background, remote, mrHead));
 }
 
-/** `mrHead` (with `remote`): only that MR/PR's head (the MR view's Compare). */
-async function fetchNow(tabId: string, background: boolean, remote?: string, mrHead?: MrHead): Promise<void> {
+/** `mrHead` (with `remote`): only that MR/PR's head (the MR view's Compare). `switched`: the
+ * remotes this fetch's prompts switched to SSH before this run. */
+async function fetchNow(tabId: string, background: boolean, remote?: string, mrHead?: MrHead, switched: SshOffer[] = []): Promise<void> {
   const rt = useRuntime.getState().tabs[tabId];
   if (!rt?.repo) return;
   const repo = rt.repo;
@@ -147,9 +152,18 @@ async function fetchNow(tabId: string, background: boolean, remote?: string, mrH
       else useToast.getState().show('A fetch is already running');
     }
   } catch (e) {
+    const ssh = sshSwitches(e as GbError | null);
+    const ctx = writeCtx(tabId);
+    if (ssh && ctx) {
+      if (await switchToSsh(ctx, ssh)) await fetchNow(tabId, background, remote, mrHead, [...switched, ...ssh]);
+      return;
+    }
     if (remote === undefined) patch({ lastFetchAt: Date.now() });
     const kind = (e as GbError | null)?.kind;
-    if (kind === 'Cancelled') return;
+    if (kind === 'Cancelled') {
+      if (switched.length && ctx) toastAfterSwitch(ctx, switched, e as GbError, 'Fetch failed');
+      return;
+    }
     if (remote === undefined) patch({ remoteFetchErrors: failedRemotes(e as GbError | null, repo.id) });
     else {
       const named = failedRemotes(e as GbError | null, repo.id)[remote];
@@ -162,7 +176,8 @@ async function fetchNow(tabId: string, background: boolean, remote?: string, mrH
     const started = !failing.has(repo.id);
     failing.add(repo.id);
     // K96: long enough to read git's message, with the activity log (which keeps it) a click away.
-    if (!background) useToast.getState().show(`Fetch failed: ${text}`, { error: true, action: { label: 'Activity log', run: openActivityLog } });
+    if (!background && switched.length && ctx) toastAfterSwitch(ctx, switched, e as GbError, 'Fetch failed');
+    else if (!background) useToast.getState().show(`Fetch failed: ${text}`, { error: true, action: { label: 'Activity log', run: openActivityLog } });
     else if (started) useOps.getState().pushError(`Fetch failed (${repo.name}): ${text}`);
   }
 }

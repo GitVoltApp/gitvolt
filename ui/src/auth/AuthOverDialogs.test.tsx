@@ -21,7 +21,7 @@ const { About, useAbout } = await import('../app/About');
 const { useModalKeys } = await import('../app/modalKeys');
 
 const ask = (prompt: number) =>
-  act(() => useOps.getState().apply({ type: 'authWaiting', prompt, op: 1, repo: null, text: 'Enter passphrase for key: ', secret: true }));
+  act(() => useOps.getState().apply({ type: 'authWaiting', prompt, op: 1, repo: null, text: 'Enter passphrase for key: ', secret: true, ssh: null }));
 const resolve = (prompt: number) => act(() => useOps.getState().apply({ type: 'authResolved', prompt }));
 
 beforeEach(() => {

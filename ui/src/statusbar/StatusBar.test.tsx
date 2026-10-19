@@ -105,7 +105,7 @@ describe('StatusBar (spec §6.5)', () => {
   it('a prompt shows "Waiting for authentication…", whose Cancel cancels the op', () => {
     render(<StatusBar />);
     act(() => useOps.getState().apply({ type: 'opStarted', op: 4, kind: 'fetch', repo: 1, label: 'gitvolt', interactive: true }));
-    act(() => useOps.getState().apply({ type: 'authWaiting', prompt: 2, op: 4, repo: 1, text: 'Username: ', secret: false }));
+    act(() => useOps.getState().apply({ type: 'authWaiting', prompt: 2, op: 4, repo: 1, text: 'Username: ', secret: false, ssh: null }));
     expect(bar()).toHaveTextContent('Waiting for authentication…');
     expect(bar()).not.toHaveTextContent('Fetching…');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));

@@ -6,6 +6,13 @@
 .modal input { padding: 6px 8px; font: inherit; color: var(--text-selected); background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 4px; outline: none; }
 .modal input:focus { border-color: var(--blue); }
 .auth-prompt { margin: 0; word-break: break-all; }
+/* "Use SSH instead" (an HTTPS prompt tied to one remote): above the field, the URL it would set. */
+.auth-ssh { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 10px; background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 6px; }
+.auth-ssh p { margin: 0; color: var(--text-secondary); user-select: none; }
+.auth-ssh button { padding: 4px 10px; font: inherit; color: var(--text-normal); background: var(--control-bg); border: 1px solid var(--section-border); border-radius: 4px; cursor: pointer; }
+.auth-ssh button:hover { color: var(--text-selected); background: var(--hover-row); }
+.auth-ssh button:focus-visible { outline: 1px solid var(--text-selected); }
+.auth-ssh-url { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); word-break: break-all; }
 .auth-note { margin: 0; color: var(--text-secondary); font-size: 11px; user-select: none; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .modal-actions button { padding: 5px 14px; font: inherit; color: var(--text-normal); background: var(--control-bg); border: 1px solid var(--section-border); border-radius: 4px; cursor: pointer; }

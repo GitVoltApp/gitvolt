@@ -104,13 +104,13 @@ describe('normalise', () => {
       n([
         { type: 'opStarted', op: 70, kind: 'merge', repo: 1, label: 'merge', interactive: true },
         { type: 'opStashStep', op: 70, step: 'saving', message: 'Saving your changes' },
-        { type: 'authWaiting', prompt: 12, op: 70, repo: 1, text: 'Password', secret: true },
+        { type: 'authWaiting', prompt: 12, op: 70, repo: 1, text: 'Password', secret: true, ssh: null },
         { type: 'authResolved', prompt: 12 },
       ]),
     ).toEqual([
       { type: 'opStarted', op: 1, kind: 'merge', repo: 1, label: 'merge', interactive: true },
       { type: 'opStashStep', op: 1, step: 'saving', message: 'Saving your changes' },
-      { type: 'authWaiting', prompt: 1, op: 1, repo: 1, text: 'Password', secret: true },
+      { type: 'authWaiting', prompt: 1, op: 1, repo: 1, text: 'Password', secret: true, ssh: null },
       { type: 'authResolved', prompt: 1 },
     ]);
   });

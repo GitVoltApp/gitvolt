@@ -6,6 +6,7 @@ import type { OpKind } from '../api/gen/OpKind';
 import type { OpOutcome } from '../api/gen/OpOutcome';
 import type { ProgressStep } from '../api/gen/ProgressStep';
 import type { RemoteLine } from '../api/gen/RemoteLine';
+import type { SshOffer } from '../api/gen/SshOffer';
 import type { StashStep } from '../api/gen/StashStep';
 import { applyQueueEvent } from '../queue/store';
 import { applyJournalEvent } from '../undo/store';
@@ -24,7 +25,11 @@ export interface OpInfo {
   // --- end 2D T18 ---
 }
 /** An askpass prompt waiting for the user (spec §5.4), from `authWaiting` until `authResolved`. */
-export interface AuthPrompt { prompt: number; op: number; repo: number | null; text: string; secret: boolean }
+export interface AuthPrompt {
+  prompt: number; op: number; repo: number | null; text: string; secret: boolean;
+  /** An HTTPS prompt tied to one remote of its op: "Use SSH for <remote> instead". */
+  ssh: SshOffer | null;
+}
 /** A background error, kept for the status bar's bell (spec §16.1). */
 export interface BgError { at: number; message: string }
 /** One finished network op, for the activity log (K30), which a future Activity panel and Help →
@@ -136,7 +141,7 @@ export const useOps = create<OpsState>((set) => ({
         });
         break;
       case 'authWaiting':
-        set((s) => ({ prompts: [...s.prompts.filter((p) => p.prompt !== ev.prompt), { prompt: ev.prompt, op: ev.op, repo: ev.repo, text: ev.text, secret: ev.secret }] }));
+        set((s) => ({ prompts: [...s.prompts.filter((p) => p.prompt !== ev.prompt), { prompt: ev.prompt, op: ev.op, repo: ev.repo, text: ev.text, secret: ev.secret, ssh: ev.ssh }] }));
         break;
       case 'authResolved':
         set((s) => (s.prompts.some((p) => p.prompt === ev.prompt) ? { prompts: s.prompts.filter((p) => p.prompt !== ev.prompt) } : s));

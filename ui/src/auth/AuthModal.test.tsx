@@ -1,22 +1,26 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { KeyRound } from 'lucide-react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SshOffer } from '../api/gen/SshOffer';
 import { registerKeys } from '../ui/keyRouter';
 
 const authAnswer = vi.fn(async (..._a: unknown[]) => null as unknown);
-vi.mock('../api/client', () => ({ api: { authAnswer: (...a: unknown[]) => authAnswer(...a) }, onEvent: () => () => {} }));
+const authUseSsh = vi.fn(async (..._a: unknown[]) => null as unknown);
+vi.mock('../api/client', () => ({ api: { authAnswer: (...a: unknown[]) => authAnswer(...a), authUseSsh: (...a: unknown[]) => authUseSsh(...a) }, onEvent: () => () => {} }));
 const { AuthModal } = await import('./AuthModal');
 const { useOps } = await import('../app/ops');
 const { useMenu } = await import('../menu/menuStore');
 const { RefPicker } = await import('../ui/RefPicker');
 
-const ask = (prompt: number, text: string, secret: boolean) =>
-  act(() => useOps.getState().apply({ type: 'authWaiting', prompt, op: 1, repo: null, text, secret }));
+const ask = (prompt: number, text: string, secret: boolean, ssh: SshOffer | null = null) =>
+  act(() => useOps.getState().apply({ type: 'authWaiting', prompt, op: 1, repo: null, text, secret, ssh }));
+const ORIGIN: SshOffer = { remote: 'origin', url: 'git@gitlab.example.com:group/project.git' };
 
 describe('AuthModal', () => {
   beforeEach(() => {
     authAnswer.mockClear();
     authAnswer.mockImplementation(async () => null);
+    authUseSsh.mockClear();
     useOps.setState({ ops: {}, prompts: [], errors: [], unread: 0 });
   });
 
@@ -83,6 +87,39 @@ describe('AuthModal', () => {
     ask(10, 'Username: ', false);
     expect(useMenu.getState().rows).toBeNull();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('an HTTPS prompt tied to a remote offers its SSH URL; choosing it is all the modal sends', () => {
+    render(<AuthModal />);
+    ask(11, "Username for 'https://gitlab.example.com': ", false, ORIGIN);
+    expect(screen.getByText('This remote uses HTTPS, so git needs a username and password.')).toBeInTheDocument();
+    expect(screen.getByText('git@gitlab.example.com:group/project.git').tagName).toBe('CODE');
+    expect(screen.getByText('Remembering credentials is up to your git credential helper.')).toBeInTheDocument();
+    expect(screen.queryByText(/token/i)).toBeNull();
+    const use = screen.getByRole('button', { name: 'Use SSH for origin instead' });
+    expect(use).toHaveAccessibleDescription('git@gitlab.example.com:group/project.git');
+    expect(screen.getByLabelText('Answer')).toHaveFocus();
+    fireEvent.click(use);
+    expect(authUseSsh).toHaveBeenCalledWith(11);
+    expect(authAnswer).not.toHaveBeenCalled();
+  });
+
+  it('without a remote to tie it to, a prompt offers no SSH', () => {
+    render(<AuthModal />);
+    ask(12, "Enter passphrase for key '/home/ada/.ssh/id_ed25519': ", true);
+    expect(screen.queryByText(/This remote uses HTTPS/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Use SSH/ })).toBeNull();
+  });
+
+  it('Tab reaches the SSH button and stays inside the modal', () => {
+    render(<AuthModal />);
+    ask(13, "Password for 'https://ada@gitlab.example.com': ", true, ORIGIN);
+    const order: (string | null)[] = [];
+    for (let i = 0; i < 4; i++) {
+      fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+      order.push(document.activeElement?.textContent || document.activeElement?.getAttribute('aria-label') || null);
+    }
+    expect(order).toEqual(['Cancel', 'Submit', 'Use SSH for origin instead', 'Password']);
   });
 
   it('a prompt the backend no longer knows is dropped, so the modal never sticks', async () => {

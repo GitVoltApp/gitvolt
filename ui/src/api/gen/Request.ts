@@ -47,13 +47,13 @@ active?: string, } } | { "method": "commandLog" } | { "method": "requestLog" } |
 /**
  * A WIP file's stored version, opened (as a copy) when the working-tree file is gone.
  */
-fallback: BlobSource | null, } } | { "method": "loadState" } | { "method": "saveSettings", "params": { settings: AppSettings, } } | { "method": "saveProfile", "params": { profile: Profile, } } | { "method": "createProfile", "params": { name: string, color: string, } } | { "method": "switchProfile", "params": { id: string, } } | { "method": "deleteProfile", "params": { id: string, } } | { "method": "authAnswer", "params": { prompt: number, answer: string | null, } } | { "method": "cancelOp", "params": { op: number, } } | { "method": "fetch", "params": { repo: number, background: boolean, remote?: string, 
+fallback: BlobSource | null, } } | { "method": "loadState" } | { "method": "saveSettings", "params": { settings: AppSettings, } } | { "method": "saveProfile", "params": { profile: Profile, } } | { "method": "createProfile", "params": { name: string, color: string, } } | { "method": "switchProfile", "params": { id: string, } } | { "method": "deleteProfile", "params": { id: string, } } | { "method": "authAnswer", "params": { prompt: number, answer: string | null, } } | { "method": "authUseSsh", "params": { prompt: number, } } | { "method": "cancelOp", "params": { op: number, } } | { "method": "fetch", "params": { repo: number, background: boolean, remote?: string, 
 /**
  * With `remote`: only that MR/PR's head (`refs/merge-requests/<n>/head`,
  * `refs/pull/<n>/head`), into `refs/gitvolt/compare/<remote>/mr/<n>` or `…/pr/<n>`, so its
  * commits are in the graph (the MR view's Compare), and stay through a pruning fetch.
  */
-mrHead?: MrHead, } } | { "method": "addRemote", "params": { repo: number, worktree: string, name: string, url: string, } } | { "method": "removeRemote", "params": { repo: number, worktree: string, name: string, } } | { "method": "submodules", "params": { repo: number, worktree: string, } } | { "method": "submoduleUpdate", "params": { repo: number, worktree: string, path?: string, 
+mrHead?: MrHead, } } | { "method": "addRemote", "params": { repo: number, worktree: string, name: string, url: string, } } | { "method": "removeRemote", "params": { repo: number, worktree: string, name: string, } } | { "method": "switchRemoteToSsh", "params": { repo: number, worktree: string, remote: string, url: string, } } | { "method": "switchRemoteBack", "params": { repo: number, worktree: string, remote: string, } } | { "method": "submodules", "params": { repo: number, worktree: string, } } | { "method": "submoduleUpdate", "params": { repo: number, worktree: string, path?: string, 
 /**
  * Leave commits on no branch behind: a failure with `SubmoduleOrphans` asked.
  */

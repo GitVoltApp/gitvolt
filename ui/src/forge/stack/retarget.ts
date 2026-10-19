@@ -3,6 +3,7 @@ import { api, errorMessage } from '../../api/client';
 import type { ForgeKind } from '../../api/gen/ForgeKind';
 import type { LocalBranch } from '../../api/gen/LocalBranch';
 import { useRuntime } from '../../app/runtime';
+import { withSshRetry } from '../../auth/sshSwitch';
 import type { CommitTarget, MenuEnv } from '../../menu/menuEnv';
 import type { MenuRow } from '../../menu/types';
 import type { Stack } from '../../stacks/detect';
@@ -87,7 +88,7 @@ async function flow(ctx: WriteCtx, a: AfterMerge, target: ForgeTarget, origin: O
   const base = rebaseBase(ctx.tabId, target.remote, a.target);
   if (base.startsWith('refs/remotes/')) {
     try {
-      const f = await api.fetch(ctx.repoId, false, target.remote);
+      const f = await withSshRetry(ctx, () => api.fetch(ctx.repoId, false, target.remote));
       if (f.status !== 'done') {
         show(`${notRebased}: fetching ${target.remote} was skipped (${SKIP_WORDS[f.reason]})`, { error: true });
         return;

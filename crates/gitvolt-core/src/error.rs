@@ -108,6 +108,9 @@ pub enum ErrorDetail {
     /// assignee): `role` is `reviewers` or `assignees`. The toast says the message alone, and the
     /// row picks by swapping from then on.
     PeopleLimit { role: Box<str> },
+    /// `Cancelled`: the user chose "Use SSH for <remote> instead" on the op's credential prompt
+    /// (spec §5.4). The UI switches each remote to its SSH URL, then runs the op again.
+    UseSsh { remotes: Vec<crate::askpass::SshOffer> },
 }
 
 /// One remote a fetch couldn't get, with a short reason ("couldn't reach host", "authentication failed").

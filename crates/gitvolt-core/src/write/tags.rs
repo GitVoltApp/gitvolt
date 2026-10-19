@@ -123,6 +123,7 @@ impl WriteIntent for DeleteTag {
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {
         if let Some(r) = &self.remote {
             let target = format!(":{}", tag_ref(&self.name));
+            cx.note_remote(r, gix::remote::Direction::Push);
             let inv = cx.net_git(["push", "--progress", r.as_str(), target.as_str()]);
             let missing = || GbError::new(GbErrorKind::NotFound, format!("{r} has no tag {}", self.name));
             match cx.network(inv).await {
@@ -214,6 +215,7 @@ impl WriteIntent for PushTags {
             Some(t) => format!("{0}:{0}", tag_ref(t)),
             None => "--tags".to_string(),
         };
+        cx.note_remote(&self.remote, gix::remote::Direction::Push);
         let inv = cx.net_git(["push", "--progress", self.remote.as_str(), spec.as_str()]);
         let res = cx.network(inv).await;
         cx.touch(ChangeKind::Refs);

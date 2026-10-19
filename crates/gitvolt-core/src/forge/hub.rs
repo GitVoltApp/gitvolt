@@ -505,6 +505,17 @@ impl ForgeHub {
         Ok((Self::key(&profile.id, &account_host), provider, project))
     }
 
+    /// The SSH clone URL the forge gives for an https remote `url`'s project (a credential
+    /// prompt's "Use SSH instead", spec §5.4): it knows a self-hosted instance's SSH host and
+    /// port. `None` without an account for the host, or when the lookup fails.
+    pub async fn ssh_clone_url(&self, store: &Arc<SettingsStore>, url: &str) -> Option<String> {
+        let host = crate::remotes::forge_host(url)?;
+        let path = crate::remotes::parse_remote_url(url)?.path;
+        let (_, project) = self.project_on(store, &host, &path, false).await.ok()??;
+        let ssh = project.clone_ssh.trim();
+        (crate::write::remotes::remote_url_error(ssh).is_none()).then(|| ssh.to_string())
+    }
+
     /// `remote`'s project's forks, newest activity first, each naming its parent.
     pub async fn forks(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], remote: &str) -> Result<Vec<ForgeProject>, GbError> {
         let (key, provider, project) = self.project_for_remote(store, remotes, remote).await?;
@@ -1393,6 +1404,24 @@ mod tests {
 
     /// A commit author's email goes only to the forge hosting the repo (an account on one of its
     /// remotes' hosts), never to the profile's other accounts.
+    /// "Use SSH instead": the forge's own SSH URL (a self-hosted GitLab's SSH on another port),
+    /// for the account's host only.
+    #[tokio::test]
+    async fn the_forge_gives_an_https_remotes_ssh_url() {
+        const PORTED: &str = "gitlab.example.com:8443";
+        let p = FakeProvider::new(ForgeKind::GitLab, PORTED);
+        let ported = ForgeProject { clone_ssh: "ssh://git@gitlab.example.com:2222/group/project.git".into(), ..project(PORTED, "group/project", None, 1) };
+        p.projects.lock().unwrap().insert("group/project".into(), ported);
+        let conn = FakeConnector::with(TOKEN, p);
+        let hub = hub(conn, MemTokens::new(TokenStorage::Keyring));
+        let store = SettingsStore::in_memory();
+        assert_eq!(hub.ssh_clone_url(&store, "https://gitlab.example.com:8443/group/project.git").await, None, "no account yet");
+        hub.add_account(&store, PORTED, ForgeKind::GitLab, Secret::new(TOKEN)).await.unwrap();
+        assert_eq!(hub.ssh_clone_url(&store, "https://ada@gitlab.example.com:8443/group/project.git").await.as_deref(), Some("ssh://git@gitlab.example.com:2222/group/project.git"));
+        assert_eq!(hub.ssh_clone_url(&store, "https://gitlab.example.com:8443/group/missing.git").await, None, "no such project");
+        assert_eq!(hub.ssh_clone_url(&store, "https://gitlab.other.example/group/project.git").await, None, "another host");
+    }
+
     #[tokio::test]
     async fn an_authors_email_goes_only_to_the_forge_hosting_the_repo() {
         const OTHER: &str = "gitlab.other.example";

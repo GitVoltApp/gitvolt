@@ -8,6 +8,9 @@
 //! moves), every local config value that went (`remote.<name>.*`, the upstreams of the branches
 //! tracking it, `remote.pushDefault`: the entry's `config`, in the file's order) and its
 //! symbolic refs (`RemovedRemote`). Undo puts them back; redo removes them again.
+//!
+//! Use SSH instead (a credential prompt's offer, spec §5.4) and Switch back to HTTPS:
+//! `git remote set-url`. Config only, as Add remote: not journaled; Switch back is the way back.
 
 use crate::error::{gix_err, GbError, GbErrorKind};
 use crate::events::{ChangeKind, OpKind};
@@ -17,7 +20,7 @@ use crate::write::names::remote_name_error;
 use crate::write::{Plan, Pre, Staging, WriteCx, WriteIntent};
 use gix::bstr::ByteSlice;
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(crate) struct AddRemote {
     pub name: String,
@@ -71,6 +74,99 @@ impl WriteIntent for AddRemote {
         let inv = cx.git(["remote", "add", "--", self.name.as_str(), self.url.as_str()]);
         cx.run_git(inv).await?;
         cx.touch(ChangeKind::Config);
+        Ok(())
+    }
+}
+
+/// A remote this session switched to SSH (`SwitchRemoteUrl`), by (common dir, remote): the
+/// URL it replaced, which never goes to the UI (it may carry a user name or a token), and the
+/// SSH URL set, which must still be there to switch back.
+pub(crate) type SshSwitched = std::collections::HashMap<(PathBuf, String), (String, String)>;
+
+/// `remote.<name>.url` as the config says it now (`None`: no such remote, or no URL).
+fn configured_url(root: &Path, name: &str) -> Result<Option<String>, GbError> {
+    let repo = gix::open(root).map_err(gix_err)?;
+    Ok(repo.config_snapshot().string(format!("remote.{name}.url").as_str()).map(|v| v.to_str_lossy().into_owned()))
+}
+
+fn is_ssh_url(url: &str) -> bool {
+    let scp = !url.contains("://") && crate::remotes::parse_remote_url(url).is_some();
+    scp || (url.get(..6).is_some_and(|s| s.eq_ignore_ascii_case("ssh://")) && crate::remotes::parse_remote_url(url).is_some())
+}
+
+fn is_https_url(url: &str) -> bool {
+    url.get(..8).is_some_and(|s| s.eq_ignore_ascii_case("https://"))
+}
+
+/// Points remote `name` at `ssh` (the SSH URL a prompt offered), or with `None`, back at the
+/// HTTPS URL this session's switch replaced.
+pub(crate) struct SwitchRemoteUrl {
+    pub name: String,
+    pub ssh: Option<String>,
+}
+
+impl SwitchRemoteUrl {
+    fn switched(&self, api: &crate::api::Api, common: &Path) -> Option<(String, String)> {
+        api.ssh_switched.lock().unwrap_or_else(|e| e.into_inner()).get(&(common.to_path_buf(), self.name.clone())).cloned()
+    }
+}
+
+impl WriteIntent for SwitchRemoteUrl {
+    type Outcome = ();
+    fn kind(&self) -> OpKind {
+        OpKind::Branch
+    }
+    /// Never a URL: the HTTPS one may carry credentials.
+    fn label(&self) -> String {
+        match self.ssh {
+            Some(_) => format!("use SSH for remote {}", self.name),
+            None => format!("switch remote {} back to HTTPS", self.name),
+        }
+    }
+    fn undo(&self) -> Option<UndoKind> {
+        None
+    }
+    fn staging(&self) -> Staging {
+        Staging::Keep
+    }
+    async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
+        let current = configured_url(pre.root, &self.name)?.ok_or_else(|| GbError::new(GbErrorKind::NotFound, format!("No remote {}", self.name)))?;
+        match &self.ssh {
+            Some(url) => {
+                if let Some(why) = remote_url_error(url) {
+                    return Err(GbError::new(GbErrorKind::InvalidInput, why));
+                }
+                if !is_ssh_url(url) {
+                    return Err(GbError::new(GbErrorKind::InvalidInput, format!("{url} isn't an SSH URL")));
+                }
+                if !is_https_url(&current) {
+                    return Err(GbError::stale(format!("{} doesn't use HTTPS any more", self.name)));
+                }
+            }
+            None => {
+                let (_, ssh) = self.switched(pre.api, &pre.h.common_dir).ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, format!("{} wasn't switched to SSH in this session", self.name)))?;
+                if current != ssh {
+                    return Err(GbError::stale(format!("{}'s URL changed since it was switched to SSH", self.name)));
+                }
+            }
+        }
+        Ok(Plan::default())
+    }
+    async fn run(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {
+        let key = (cx.h.common_dir.clone(), self.name.clone());
+        let previous = configured_url(cx.root, &self.name)?.unwrap_or_default();
+        let to = match &self.ssh {
+            Some(url) => url.clone(),
+            None => self.switched(cx.api, &cx.h.common_dir).map(|(https, _)| https).ok_or_else(|| GbError::stale(format!("{} wasn't switched to SSH in this session", self.name)))?,
+        };
+        let inv = cx.git(["remote", "set-url", "--", self.name.as_str(), to.as_str()]);
+        cx.run_git(inv).await?;
+        cx.touch(ChangeKind::Config);
+        let mut switched = cx.api.ssh_switched.lock().unwrap_or_else(|e| e.into_inner());
+        match &self.ssh {
+            Some(url) => switched.insert(key, (previous, url.clone())),
+            None => switched.remove(&key),
+        };
         Ok(())
     }
 }
@@ -324,6 +420,40 @@ mod tests {
     use crate::testing::TestRepo;
     use crate::write::test_support::{api, call, open, repo, wt};
     use serde_json::json;
+
+    /// A prompt's "Use SSH instead", then Switch back to HTTPS: the URL it replaced (a user name
+    /// in it) comes back, and never reaches the outcome.
+    #[tokio::test]
+    async fn switches_a_remote_to_ssh_and_back_without_a_journal_entry() {
+        let data = tempfile::tempdir().unwrap();
+        let r = repo();
+        let https = "https://ada@gitlab.example.com/group/project.git";
+        r.git(&["remote", "add", "origin", https]);
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        let w = wt(r.path());
+        let back = |remote: &str| json!({"repo": id, "worktree": w, "remote": remote});
+        let e = call(&api, "switchRemoteBack", back("origin")).await.unwrap_err();
+        assert_eq!(e.kind, GbErrorKind::InvalidInput, "never switched");
+        let to = |url: &str| json!({"repo": id, "worktree": w, "remote": "origin", "url": url});
+        for bad in ["https://gitlab.example.com/group/project.git", "-oProxyCommand=x", "/srv/git/project.git"] {
+            assert_eq!(call(&api, "switchRemoteToSsh", to(bad)).await.unwrap_err().kind, GbErrorKind::InvalidInput, "{bad}");
+        }
+        let res = call(&api, "switchRemoteToSsh", to("git@gitlab.example.com:group/project.git")).await.unwrap();
+        assert!(res["outcome"].is_null() && res["journal"]["undo"].is_null(), "not journaled: {res}");
+        assert!(!res.to_string().contains("ada@"), "{res}");
+        assert_eq!(r.git(&["remote", "get-url", "origin"]), "git@gitlab.example.com:group/project.git");
+        let e = call(&api, "switchRemoteToSsh", to("git@gitlab.example.com:group/project.git")).await.unwrap_err();
+        assert_eq!(e.kind, GbErrorKind::Stale, "it isn't on HTTPS any more");
+        call(&api, "switchRemoteBack", back("origin")).await.unwrap();
+        assert_eq!(r.git(&["remote", "get-url", "origin"]), https);
+        // Changed outside GitVolt after the switch: Switch back leaves it alone.
+        call(&api, "switchRemoteToSsh", to("git@gitlab.example.com:group/project.git")).await.unwrap();
+        r.git(&["remote", "set-url", "origin", "git@gitlab.example.com:group/moved.git"]);
+        assert_eq!(call(&api, "switchRemoteBack", back("origin")).await.unwrap_err().kind, GbErrorKind::Stale);
+        assert_eq!(r.git(&["remote", "get-url", "origin"]), "git@gitlab.example.com:group/moved.git");
+        assert_eq!(call(&api, "switchRemoteBack", back("nope")).await.unwrap_err().kind, GbErrorKind::NotFound);
+    }
 
     #[tokio::test]
     async fn adds_a_remote_without_a_journal_entry_and_fetches_only_it() {

@@ -527,6 +527,11 @@ impl WriteCx<'_> {
         res.map_err(|e| crate::netops::user_cancelled(e, self.op))
     }
 
+    /// The remote the next transfer talks to, for its credential prompts (spec §5.4).
+    pub(crate) fn note_remote(&self, remote: &str, direction: gix::remote::Direction) {
+        crate::netops::note_op_remotes(self.op, self.root, Some(&[remote.to_string()]), direction);
+    }
+
     /// `git`, as a network command: `NO_EXT`, no timeout, lazy fetch allowed, trace2 for hooks.
     #[allow(dead_code)] // first caller: 2D's push (T11)
     pub(crate) fn net_git<I, S>(&self, args: I) -> GitInvocation

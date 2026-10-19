@@ -145,6 +145,7 @@ impl WriteIntent for PushIntent {
             _ => format!("refs/heads/{}", self.branch),
         };
         args.push(format!("{src}:refs/heads/{}", target.branch));
+        cx.note_remote(&target.remote, gix::remote::Direction::Push);
         let inv = cx.net_git(args);
         // §3.5: the transfer runs outside the write lock; `network` also captures server output.
         let res = cx.network(inv).await;
@@ -333,6 +334,7 @@ impl WriteIntent for PullIntent {
         let prune = if net.api.store.state().settings.prune { "--prune" } else { "--no-prune" };
         let args = ["fetch", self.remote.as_str(), prune, "--no-prune-tags"].into_iter().chain(["--progress"]);
         let (tx, progress) = crate::netops::forward_progress_to(net.api.bus.clone(), net.op.id, Some(net.output()));
+        crate::netops::note_op_remotes(net.op, net.root, Some(std::slice::from_ref(&self.remote)), gix::remote::Direction::Fetch);
         let inv = net.git(args).stream_stderr(tx);
         let mut res = net.api.cli.run(inv).await;
         let _ = progress.await;

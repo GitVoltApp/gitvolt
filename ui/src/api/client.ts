@@ -289,6 +289,10 @@ export const api = {
   addRemote: (repo: number, worktree: string, name: string, url: string) => call<WriteResult<null>>({ method: 'addRemote', params: { repo, worktree, name, url } }),
   /** `git remote remove` (journaled: Undo puts its config, remote branches and upstreams back). */
   removeRemote: (repo: number, worktree: string, name: string) => call<WriteResult<null>>({ method: 'removeRemote', params: { repo, worktree, name } }),
+  /** `git remote set-url` to the SSH URL a credential prompt offered (`useSsh`; not journaled). */
+  switchRemoteToSsh: (repo: number, worktree: string, remote: string, url: string) => call<WriteResult<null>>({ method: 'switchRemoteToSsh', params: { repo, worktree, remote, url } }),
+  /** Back to the HTTPS URL `switchRemoteToSsh` replaced this session (the backend keeps it). */
+  switchRemoteBack: (repo: number, worktree: string, remote: string) => call<WriteResult<null>>({ method: 'switchRemoteBack', params: { repo, worktree, remote } }),
   /** `git submodule status --recursive` (the Open in a tab picker). */
   submodules: (repo: number, worktree: string) => call<SubmoduleInfo[]>({ method: 'submodules', params: { repo, worktree } }),
   /** `git submodule update --init --recursive`, of `path` only when given (network; not journaled).
@@ -306,6 +310,8 @@ export const api = {
   cancelOp: (op: number) => call<null>({ method: 'cancelOp', params: { op } }),
   /** The answer to an askpass prompt (spec §5.4); `null` cancels it. */
   authAnswer: (prompt: number, answer: string | null) => call<null>({ method: 'authAnswer', params: { prompt, answer } }),
+  /** "Use SSH for <remote> instead" on a prompt that offers it: cancels it; its op fails with `useSsh`. */
+  authUseSsh: (prompt: number) => call<null>({ method: 'authUseSsh', params: { prompt } }),
   // Plan 1C Task 17: find (spec §8.7), over the last `graph` window.
   findText: (repo: number, query: string) => call<string[]>({ method: 'findText', params: { repo, query } }),
   findPaths: (repo: number, query: string) => call<string[]>({ method: 'findPaths', params: { repo, query } }),

@@ -207,13 +207,15 @@ fn remove_failed_clone(dest: &Path, top: Option<&Path>) {
 
 /// A clone or fetch whose credential prompt the user cancelled fails with an auth error; it's
 /// reported as cancelled. Only an auth error (2D T14 re-review m2): a later failure (a second key
-/// authenticated, then the push was rejected) shows as itself.
+/// authenticated, then the push was rejected) shows as itself. A prompt cancelled by "Use SSH
+/// instead" says which remotes to switch (`ErrorDetail::UseSsh`).
 pub(crate) fn user_cancelled(e: GbError, op: &OpEntry) -> GbError {
-    if prompt_dismissed(&e, op) {
-        GbError { kind: GbErrorKind::Cancelled, message: "Cancelled".into(), ..e }
-    } else {
-        e
+    if !prompt_dismissed(&e, op) {
+        return e;
     }
+    let switches = op.ssh_switches();
+    let detail = if switches.is_empty() { e.detail.clone() } else { Some(crate::error::ErrorDetail::UseSsh { remotes: switches }) };
+    GbError { kind: GbErrorKind::Cancelled, message: "Cancelled".into(), detail, ..e }
 }
 
 /// `e` is the auth failure of a credential prompt the user dismissed.
@@ -229,6 +231,17 @@ pub(crate) const NO_EXT: [&str; 2] = ["-c", "protocol.ext.allow=never"];
 /// the redactor so a URL's credentials never reach the log.
 pub(crate) fn display_command(args: &[&str]) -> String {
     crate::redact::redact(&format!("git {}", args.join(" ")))
+}
+
+/// Notes on `op` the remotes it talks to (`names`, else every remote in `fetch --all`'s order),
+/// so a credential prompt can say which one it's about (spec §5.4). Only a user's op prompts.
+pub(crate) fn note_op_remotes(op: &OpEntry, root: &Path, names: Option<&[String]>, direction: gix::remote::Direction) {
+    if !op.interactive {
+        return;
+    }
+    let Ok(repo) = gix::open(root) else { return };
+    let names = names.map_or_else(|| crate::remotes::remote_names_in_order(&repo), <[String]>::to_vec);
+    op.set_remotes(crate::remotes::op_remotes(&repo, &names, direction));
 }
 
 impl Api {
@@ -267,6 +280,7 @@ impl Api {
         // --- end 4A T7 ---
         let writes = self.repo_writes(&h);
         let op = self.ops.begin(OpKind::Fetch, Some(id), !background);
+        note_op_remotes(&op, &h.workdir, remote.as_ref().map(std::slice::from_ref), gix::remote::Direction::Fetch);
         // Spec #2 §3.6. A background fetch isn't a queue item: it runs only when the queue is
         // idle, and a user op cancels it. A user's fetch is one (Deviation 8): it holds the
         // running slot, never the write lock.
@@ -446,6 +460,32 @@ mod tests {
         assert_eq!(user_cancelled(auth(), &op).kind, GbErrorKind::Cancelled);
         assert_eq!(user_cancelled(GbError::new(GbErrorKind::NonFastForward, "rejected"), &op).kind, GbErrorKind::NonFastForward);
         assert_eq!(user_cancelled(GbError::new(GbErrorKind::HookFailed, "pre-receive"), &op).kind, GbErrorKind::HookFailed);
+        assert_eq!(user_cancelled(auth(), &op).detail, None, "a plain Cancel");
+        // "Use SSH instead" (spec §5.4): the Cancel says which remotes to switch, each once.
+        let offer = crate::askpass::SshOffer { remote: "origin".into(), url: "git@gitlab.example.com:group/project.git".into() };
+        op.note_ssh_switch(offer.clone());
+        op.note_ssh_switch(offer.clone());
+        let e = user_cancelled(auth(), &op);
+        assert_eq!((e.kind, e.detail), (GbErrorKind::Cancelled, Some(crate::error::ErrorDetail::UseSsh { remotes: vec![offer] })));
+    }
+
+    /// A user's fetch notes the remotes it reaches, for a prompt's "Use SSH instead"; a
+    /// background one, which never prompts, doesn't.
+    #[test]
+    fn a_users_op_notes_its_remotes() {
+        let r = TestRepo::new();
+        r.commit("a");
+        r.git(&["remote", "add", "origin", "https://gitlab.example.com/group/project.git"]);
+        r.git(&["remote", "add", "fork", "https://gitlab.example.com/ada/project.git"]);
+        let api = api();
+        let op = api.ops.begin(OpKind::Fetch, None, true);
+        note_op_remotes(&op, r.path(), None, gix::remote::Direction::Fetch);
+        assert_eq!(op.remotes().iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["origin", "fork"]);
+        note_op_remotes(&op, r.path(), Some(&["fork".to_string()]), gix::remote::Direction::Fetch);
+        assert_eq!(op.remotes().iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["fork"]);
+        let bg = api.ops.begin(OpKind::Fetch, None, false);
+        note_op_remotes(&bg, r.path(), None, gix::remote::Direction::Fetch);
+        assert!(bg.remotes().is_empty());
     }
 
     #[test]

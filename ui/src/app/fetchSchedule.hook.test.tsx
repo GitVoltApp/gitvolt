@@ -2,7 +2,7 @@ import { act, render } from '@testing-library/react';
 import { Activity } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const api = vi.hoisted(() => ({ fetch: vi.fn() }));
+const api = vi.hoisted(() => ({ fetch: vi.fn(), switchRemoteToSsh: vi.fn(), switchRemoteBack: vi.fn(), journalState: vi.fn() }));
 vi.mock('../api/client', () => ({
   api,
   errorMessage: (e: unknown) => (e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e)),
@@ -37,6 +37,21 @@ describe('runFetch', () => {
     expect(api.fetch).toHaveBeenCalledWith(4, false);
     expect(rt().lastFetchAt).toBeGreaterThan(0);
     expect(rt().fetchSkipped).toBeNull();
+  });
+
+  it('Use SSH instead switches the remote and fetches again; a failure then offers Switch back to HTTPS', async () => {
+    const origin = { remote: 'origin', url: 'git@gitlab.example.com:group/project.git' };
+    const useSsh = { kind: 'Cancelled', message: 'Cancelled', commandId: null, stderr: null, detail: { kind: 'useSsh', remotes: [origin] } };
+    api.switchRemoteToSsh.mockResolvedValue({ outcome: null, journal: {}, staging: {}, wip: null });
+    api.fetch.mockRejectedValueOnce(useSsh).mockResolvedValueOnce({ status: 'done', changed: true, server: { lines: 0, warning: null }, op: 2 });
+    await runFetch('t', false);
+    expect(api.switchRemoteToSsh).toHaveBeenCalledWith(4, '/r', 'origin', origin.url);
+    expect(api.fetch.mock.calls).toEqual([[4, false], [4, false]]);
+    expect(useToast.getState().message).toBeNull();
+    api.fetch.mockRejectedValueOnce(useSsh).mockRejectedValueOnce({ kind: 'AuthFailed', message: 'Permission denied (publickey).', commandId: null, stderr: null });
+    await runFetch('t', false);
+    expect(useToast.getState().message).toBe('Fetch failed after switching origin to SSH: Permission denied (publickey).');
+    expect(useToast.getState().actions.map((a) => a.label)).toEqual(['Switch back to HTTPS', 'Details']);
   });
 
   it("a one-remote fetch clears or sets only that remote's error, and leaves the schedule's time and skip alone", async () => {

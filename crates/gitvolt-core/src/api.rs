@@ -196,6 +196,12 @@ pub enum Request {
         prompt: u64,
         answer: Option<String>,
     },
+    /// "Use SSH for <remote> instead" on a credential prompt that offers it (`authWaiting.ssh`):
+    /// cancels the prompt, and its op ends as Cancelled with `ErrorDetail::UseSsh`. Returns `null`.
+    AuthUseSsh {
+        #[ts(type = "number")]
+        prompt: u64,
+    },
     /// Cancels a running network operation; unknown ids are ignored. Returns `null`.
     CancelOp {
         #[ts(type = "number")]
@@ -222,6 +228,12 @@ pub enum Request {
     /// `git remote remove <name>` (the Remote panel's right-click): `WriteResult<null>`. Journaled:
     /// Undo puts its config, its remote-tracking refs and the upstreams it took back.
     RemoveRemote { repo: u32, worktree: String, name: String },
+    /// `git remote set-url` to the SSH URL a credential prompt offered (`ErrorDetail::UseSsh`):
+    /// `WriteResult<null>`. Not journaled; `switchRemoteBack` restores the URL it replaced.
+    SwitchRemoteToSsh { repo: u32, worktree: String, remote: String, url: String },
+    /// Points `remote` back at the HTTPS URL `switchRemoteToSsh` replaced this session, while it
+    /// still has that SSH URL: `WriteResult<null>`.
+    SwitchRemoteBack { repo: u32, worktree: String, remote: String },
     /// `git submodule status --recursive` in `worktree`: `SubmoduleInfo[]`.
     Submodules { repo: u32, worktree: String },
     /// `git submodule update --init --recursive`, of the submodule at `path` only when given:
@@ -1219,7 +1231,7 @@ impl Request {
             Request::UpdateStatus | Request::UpdateCheck | Request::UpdateDownload | Request::UpdateCancel | Request::UpdateInstall | Request::UpdateRestart | Request::UpdateRemoveLegacyBundle => false,
             // Remote-tracking refs and objects.
             // --- 4A T7 ---
-            Request::AddRemote { .. } | Request::RemoveRemote { .. } => true,
+            Request::AddRemote { .. } | Request::RemoveRemote { .. } | Request::SwitchRemoteToSsh { .. } | Request::SwitchRemoteBack { .. } => true,
             // --- end 4A T7 ---
             Request::SubmoduleUpdate { .. } | Request::SubmoduleSync { .. } => true,
             Request::Submodules { .. } => false,
@@ -1353,6 +1365,7 @@ impl Request {
             | Request::SwitchProfile { .. }
             | Request::DeleteProfile { .. }
             | Request::AuthAnswer { .. }
+            | Request::AuthUseSsh { .. }
             | Request::CancelOp { .. }
             | Request::RepoInfo { .. }
             | Request::Sidebar { .. }
@@ -1469,6 +1482,9 @@ pub struct Api {
     pub(crate) ops: Arc<OpRegistry>,
     /// The per-session askpass socket (spec §5.4), once `start_askpass` ran.
     pub(crate) askpass: std::sync::OnceLock<Arc<AskpassServer>>,
+    /// The remotes this session switched to SSH from a credential prompt, with the URL each
+    /// replaced (`write::remotes::SwitchRemoteUrl`).
+    pub(crate) ssh_switched: Mutex<crate::write::remotes::SshSwitched>,
     /// The system folder picker (spec §13); `pickFolder` answers `null` without one.
     pub(crate) folder_picker: Option<FolderPicker>,
     /// The user's home, for the suggested repos folder (`~/repos`).
@@ -1685,6 +1701,7 @@ impl Api {
             store: SettingsStore::in_memory(),
             ops: Arc::new(OpRegistry::default()),
             askpass: std::sync::OnceLock::new(),
+            ssh_switched: Mutex::default(),
             folder_picker: None,
             home: crate::paths::home_dir(),
             scans: Mutex::new(HashMap::new()),
@@ -2094,6 +2111,14 @@ impl Api {
             return Ok(());
         }
         let server = AskpassServer::start(dir, exe, self.ops.clone(), self.bus.clone()).await?;
+        // An HTTPS prompt's "Use SSH instead" asks the forge for the project's SSH URL first.
+        if let Some(hub) = self.forge.clone() {
+            let store = self.store.clone();
+            server.set_forge_ssh_url(Arc::new(move |url: String| {
+                let (hub, store) = (hub.clone(), store.clone());
+                Box::pin(async move { hub.ssh_clone_url(&store, &url).await })
+            }));
+        }
         if let Err(extra) = self.askpass.set(server) {
             extra.close();
         }
@@ -2641,6 +2666,11 @@ impl Api {
                 server.answer(prompt, answer)?;
                 to_json(())
             }
+            Request::AuthUseSsh { prompt } => {
+                let server = self.askpass.get().ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, "askpass is not running"))?;
+                server.use_ssh(prompt)?;
+                to_json(())
+            }
             Request::CancelOp { op } => {
                 self.ops.cancel(op);
                 to_json(())
@@ -2662,6 +2692,16 @@ impl Api {
                     tracing::warn!(target: "gitvolt_core::write", "reopening the repository after removing a remote: {e}");
                 }
                 to_json(done?)
+            }
+            Request::SwitchRemoteToSsh { repo, worktree, remote, url } => {
+                let done = crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::remotes::SwitchRemoteUrl { name: remote, ssh: Some(url) }).await?;
+                self.reopen_repo(repo)?;
+                to_json(done)
+            }
+            Request::SwitchRemoteBack { repo, worktree, remote } => {
+                let done = crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::remotes::SwitchRemoteUrl { name: remote, ssh: None }).await?;
+                self.reopen_repo(repo)?;
+                to_json(done)
             }
             Request::Submodules { repo, worktree } => to_json(self.submodules(repo, &worktree).await?),
             Request::SubmoduleUpdate { repo, worktree, path, confirm } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::submodules::UpdateSubmodules { path, confirm: confirm.unwrap_or(false) }).await?),
@@ -5064,6 +5104,7 @@ mod tests {
             json!({"method": "switchProfile", "params": {"id": "none"}}),
             json!({"method": "deleteProfile", "params": {"id": "none"}}),
             json!({"method": "authAnswer", "params": {"prompt": 1, "answer": null}}),
+            json!({"method": "authUseSsh", "params": {"prompt": 1}}),
             json!({"method": "cancelOp", "params": {"op": 1}}),
             json!({"method": "repoInfo", "params": {"repo": id}}),
             json!({"method": "submodules", "params": {"repo": id, "worktree": wt}}),
@@ -5132,7 +5173,7 @@ mod tests {
     /// The methods that write (`is_write`), which the never-write test leaves out.
     const WRITE_METHODS: &[&str] = &["fetch", "clone", "testWrite", "undo", "redo", "undoEntry","applyKeptStash", "removeIndexLock", "stage", "unstage", "stageAll", "unstageAll", "stagingUndo", "stagingRedo", "writeWorktreeFile", "createWorktreeFile", "applySuggestion", "commit", "editHeadMessage", "settlePaused", "worktreeAdd", "worktreeRemove", "deleteBranch", "stagePatch", "createBranch", "renameBranch", "setUpstream", "push",
         // 4A T7
-        "addRemote", "removeRemote",
+        "addRemote", "removeRemote", "switchRemoteToSsh", "switchRemoteBack",
         "submoduleUpdate", "submoduleSync",
         // --- 2C T5: checkout ---
         "checkout",
@@ -5186,6 +5227,8 @@ mod tests {
             // --- 4A T7 ---
             json!({"method": "addRemote", "params": {"repo": id, "worktree": wt, "name": "x", "url": "/nonexistent/x.git"}}),
             json!({"method": "removeRemote", "params": {"repo": id, "worktree": wt, "name": "nonexistent-remote"}}),
+            json!({"method": "switchRemoteToSsh", "params": {"repo": id, "worktree": wt, "remote": "nonexistent-remote", "url": "git@git.example.com:group/project.git"}}),
+            json!({"method": "switchRemoteBack", "params": {"repo": id, "worktree": wt, "remote": "nonexistent-remote"}}),
             // --- end 4A T7 ---
             json!({"method": "submoduleUpdate", "params": {"repo": id, "worktree": wt, "path": "nope"}}),
             json!({"method": "submoduleSync", "params": {"repo": id, "worktree": wt}}),
@@ -5290,7 +5333,7 @@ mod tests {
     /// Samples that fail by design here: the harness-less `Api` has no log folder, URL opener,
     /// openers or askpass, and the profile samples name no existing profile. Each refusal comes
     /// before any repository access.
-    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart", "updateRemoveLegacyBundle"];
+    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "authUseSsh", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart", "updateRemoveLegacyBundle"];
 
     #[tokio::test(flavor = "multi_thread")]
     async fn no_read_request_writes_to_the_repository() {

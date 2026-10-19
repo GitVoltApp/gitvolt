@@ -9,6 +9,11 @@
 //! (compared in constant time). A request for an op that isn't running, or for op `0` (a git
 //! command outside any network op), is denied without reaching the UI.
 //!
+//! An HTTPS username or password prompt that can be tied to one remote of its op (`ssh_offer`)
+//! also offers "Use SSH for <remote> instead": the SSH URL the forge gives for the project, else
+//! one derived from the HTTPS URL. Choosing it cancels the prompt and notes the switch on the op,
+//! whose failure then says so (`netops::user_cancelled`); the UI switches the remote and retries.
+//!
 //! Windows: the "socket" is a named pipe private to this user, whose client's token user is
 //! checked ([`crate::platform::ipc`]). Git for Windows runs `GIT_ASKPASS` the same way (Git
 //! Credential Manager, when configured, prompts in its own window first), and OpenSSH for
@@ -16,7 +21,7 @@
 
 use crate::error::{GbError, GbErrorKind};
 use crate::events::{AppEvent, EventBus};
-use crate::ops::{OpId, OpRegistry};
+use crate::ops::{OpEntry, OpId, OpRegistry, OpRemote};
 use crate::platform::ipc;
 use crate::random::random_hex;
 use serde::{Deserialize, Serialize};
@@ -25,9 +30,10 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
+use ts_rs::TS;
 
 pub const ENV_SOCKET: &str = "GITVOLT_ASKPASS_SOCKET";
 pub const ENV_TOKEN: &str = "GITVOLT_ASKPASS_TOKEN";
@@ -48,6 +54,43 @@ struct ServerReply {
     answer: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     cancel: bool,
+}
+
+/// "Use SSH for `remote` instead" (spec §5.4): the remote a credential prompt is about, and the
+/// SSH URL it would get.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SshOffer {
+    pub remote: String,
+    pub url: String,
+}
+
+/// The forge's SSH clone URL for an https remote URL, when an account covers its host
+/// (`ForgeHub::ssh_clone_url`); the app's `Api` supplies it.
+pub type ForgeSshUrl = Arc<dyn Fn(String) -> futures_util::future::BoxFuture<'static, Option<String>> + Send + Sync>;
+
+/// git's HTTPS credential prompt (`Username for 'https://host': `, `Password for
+/// 'https://user@host': `): the host it's for, lowercase, with a non-default port as
+/// `remotes::forge_host` writes it. `None` for anything else: ssh's passphrase, PIN and host key
+/// questions, plain http.
+pub fn https_prompt_origin(prompt: &str) -> Option<String> {
+    let p = prompt.trim();
+    let url = p.strip_prefix("Username for '").or_else(|| p.strip_prefix("Password for '"))?.strip_suffix("':")?;
+    let (scheme, rest) = url.split_once("://")?;
+    if !scheme.eq_ignore_ascii_case("https") {
+        return None;
+    }
+    let host = rest.split('/').next()?.rsplit('@').next()?.to_ascii_lowercase();
+    let host = host.strip_suffix(":443").unwrap_or(&host);
+    (!host.is_empty() && !host.starts_with(':') && !host.contains('\'')).then(|| host.to_string())
+}
+
+/// The remote of an op that a prompt for `origin` is about: the first on that host over https,
+/// in the order the op reaches them. `None` when that one isn't `set-url`'s to switch.
+pub fn tied_remote<'a>(remotes: &'a [OpRemote], origin: &str) -> Option<&'a OpRemote> {
+    let https = |u: &str| u.trim().get(..8).is_some_and(|s| s.eq_ignore_ascii_case("https://"));
+    let first = remotes.iter().find(|r| https(&r.url) && crate::remotes::forge_host(&r.url).as_deref() == Some(origin))?;
+    first.settable.then_some(first)
 }
 
 /// Username prompts and ssh yes/no questions aren't secret; passwords, passphrases, PINs are.
@@ -92,15 +135,23 @@ fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+/// A prompt waiting for the user.
+struct Pending {
+    tx: oneshot::Sender<Option<String>>,
+    op: OpId,
+    ssh: Option<SshOffer>,
+}
+
 pub struct AskpassServer {
     path: PathBuf,
     pub(crate) token: String,
     exe: PathBuf,
     next_prompt: AtomicU64,
-    pending: Mutex<HashMap<u64, oneshot::Sender<Option<String>>>>,
+    pending: Mutex<HashMap<u64, Pending>>,
     ops: Arc<OpRegistry>,
     bus: EventBus,
     accept: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    forge_ssh_url: OnceLock<ForgeSshUrl>,
 }
 
 impl AskpassServer {
@@ -121,6 +172,7 @@ impl AskpassServer {
             ops,
             bus,
             accept: Mutex::new(None),
+            forge_ssh_url: OnceLock::new(),
         });
         let weak = Arc::downgrade(&server);
         let task = tokio::spawn(async move {
@@ -146,8 +198,13 @@ impl AskpassServer {
         self.accept.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn pending(&self) -> MutexGuard<'_, HashMap<u64, oneshot::Sender<Option<String>>>> {
+    fn pending(&self) -> MutexGuard<'_, HashMap<u64, Pending>> {
         self.pending.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Where an SSH offer looks for the forge's URL first (set once; later calls are ignored).
+    pub fn set_forge_ssh_url(&self, f: ForgeSshUrl) {
+        let _ = self.forge_ssh_url.set(f);
     }
 
     pub fn socket_path(&self) -> &Path {
@@ -172,14 +229,47 @@ impl AskpassServer {
 
     /// The user's answer to prompt `prompt` (`authAnswer`); `None` cancels it.
     pub fn answer(&self, prompt: u64, answer: Option<String>) -> Result<(), GbError> {
-        let tx = self.pending().remove(&prompt);
-        match tx {
-            Some(tx) => {
-                let _ = tx.send(answer);
+        let p = self.pending().remove(&prompt);
+        match p {
+            Some(p) => {
+                let _ = p.tx.send(answer);
                 Ok(())
             }
             None => Err(GbError::new(GbErrorKind::InvalidInput, format!("no pending prompt {prompt}"))),
         }
+    }
+
+    /// "Use SSH for <remote> instead" on prompt `prompt` (`authUseSsh`): its op notes the switch,
+    /// then the prompt is cancelled, so the op ends as Cancelled with the switch to make.
+    pub fn use_ssh(&self, prompt: u64) -> Result<(), GbError> {
+        let p = {
+            let mut pending = self.pending();
+            match pending.get(&prompt) {
+                None => return Err(GbError::new(GbErrorKind::InvalidInput, format!("no pending prompt {prompt}"))),
+                Some(p) if p.ssh.is_none() => return Err(GbError::new(GbErrorKind::InvalidInput, "This prompt can't switch to SSH")),
+                Some(_) => pending.remove(&prompt).expect("checked above"),
+            }
+        };
+        if let (Some(entry), Some(offer)) = (self.ops.get(p.op), p.ssh) {
+            entry.note_ssh_switch(offer);
+        }
+        let _ = p.tx.send(None);
+        Ok(())
+    }
+
+    /// What an HTTPS credential prompt offers instead: its remote's SSH URL, when the prompt's
+    /// host ties it to one remote of the op (`tied_remote`). The forge's URL first (a self-hosted
+    /// GitLab's SSH may be on its own host or port), given a moment; else one derived from the
+    /// https URL.
+    async fn ssh_offer(&self, entry: &OpEntry, text: &str) -> Option<SshOffer> {
+        let origin = https_prompt_origin(text)?;
+        let remote = tied_remote(&entry.remotes(), &origin)?.clone();
+        let forge = match self.forge_ssh_url.get() {
+            Some(f) => tokio::time::timeout(std::time::Duration::from_secs(2), f(remote.url.clone())).await.ok().flatten(),
+            None => None,
+        };
+        let url = forge.or_else(|| crate::remotes::ssh_url_from_https(&remote.url))?;
+        Some(SshOffer { remote: remote.name, url })
     }
 
     /// Stops answering and removes the socket (at app exit; also on drop).
@@ -233,10 +323,11 @@ impl AskpassServer {
         if entry.cancel.is_cancelled() {
             return None;
         }
+        let ssh = self.ssh_offer(&entry, &text).await;
         let id = self.next_prompt.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        self.pending().insert(id, tx);
-        self.bus.emit(AppEvent::AuthWaiting { prompt: id, op, repo: entry.repo, secret: is_secret(&text), text: crate::redact::redact(&text) });
+        self.pending().insert(id, Pending { tx, op, ssh: ssh.clone() });
+        self.bus.emit(AppEvent::AuthWaiting { prompt: id, op, repo: entry.repo, secret: is_secret(&text), text: crate::redact::redact(&text), ssh });
         // Also runs if this future is dropped (the client hung up): the modal always closes.
         let _resolved = Resolved { server: self, id };
         tokio::select! {
@@ -295,6 +386,96 @@ mod tests {
         assert!(is_secret("Password for 'https://ada@gitlab.example.com': "));
         assert!(is_secret("Enter passphrase for key '/home/ada/.ssh/id_ed25519': "));
         assert!(!is_secret("Are you sure you want to continue connecting (yes/no/[fingerprint])? "));
+    }
+
+    #[test]
+    fn classifies_https_credential_prompts() {
+        let origin = |p: &str| https_prompt_origin(p);
+        assert_eq!(origin("Username for 'https://gitlab.example.com': ").as_deref(), Some("gitlab.example.com"));
+        assert_eq!(origin("Password for 'https://ada@GitLab.example.com': ").as_deref(), Some("gitlab.example.com"));
+        assert_eq!(origin("Username for 'https://gitlab.example.com:8443': ").as_deref(), Some("gitlab.example.com:8443"));
+        assert_eq!(origin("Username for 'https://gitlab.example.com:443': ").as_deref(), Some("gitlab.example.com"));
+        assert_eq!(origin("Username for 'https://gitlab.example.com/group/project.git': ").as_deref(), Some("gitlab.example.com"), "credential.useHttpPath");
+        for none in [
+            "Username for 'http://gitlab.example.com': ",
+            "Enter passphrase for key '/home/ada/.ssh/id_ed25519': ",
+            "Are you sure you want to continue connecting (yes/no/[fingerprint])? ",
+            "Enter PIN for authenticator: ",
+            "git@gitlab.example.com's password: ",
+            "Password: ",
+        ] {
+            assert_eq!(origin(none), None, "{none}");
+        }
+    }
+
+    fn op_remote(name: &str, url: &str, settable: bool) -> OpRemote {
+        OpRemote { name: name.into(), url: url.into(), settable }
+    }
+
+    #[test]
+    fn a_prompt_is_tied_to_the_first_https_remote_on_its_host() {
+        let remotes = [
+            op_remote("mirror", "git@gitlab.example.com:group/project.git", true),
+            op_remote("origin", "https://gitlab.example.com/group/project.git", true),
+            op_remote("upstream", "https://gitlab.example.com/group/upstream.git", true),
+            op_remote("ported", "https://ada@gitlab.example.com:8443/group/project.git", true),
+            op_remote("aliased", "https://code.example.com/group/project.git", false),
+        ];
+        let tied = |origin: &str| tied_remote(&remotes, origin).map(|r| r.name.as_str());
+        assert_eq!(tied("gitlab.example.com"), Some("origin"), "the first of two on the host; never the SSH one");
+        assert_eq!(tied("gitlab.example.com:8443"), Some("ported"), "the port tells them apart");
+        assert_eq!(tied("code.example.com"), None, "set-url can't switch a rewritten URL");
+        assert_eq!(tied("github.com"), None, "no remote of the op is there");
+        assert_eq!(tied_remote(&[], "gitlab.example.com"), None, "an op without remotes (a clone)");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_https_prompt_offers_ssh_and_use_ssh_cancels_it_onto_the_op() {
+        let (_d, s, ops, bus) = server().await;
+        let mut rx = bus.subscribe();
+        let op = ops.begin(OpKind::Push, Some(1), true);
+        op.set_remotes(vec![op_remote("origin", "https://gitlab.example.com/group/project.git", true)]);
+        let s2 = s.clone();
+        let answering = tokio::spawn(async move {
+            let AppEvent::AuthWaiting { prompt, ssh, .. } = rx.recv().await.unwrap() else { panic!("expected authWaiting") };
+            assert_eq!(ssh, Some(SshOffer { remote: "origin".into(), url: "git@gitlab.example.com:group/project.git".into() }));
+            s2.use_ssh(prompt).unwrap();
+            assert_eq!(rx.recv().await.unwrap(), AppEvent::AuthResolved { prompt });
+            // An ssh question offers nothing, and can't be switched.
+            let AppEvent::AuthWaiting { prompt, ssh, .. } = rx.recv().await.unwrap() else { panic!("expected authWaiting") };
+            assert_eq!(ssh, None);
+            assert_eq!(s2.use_ssh(prompt).unwrap_err().kind, GbErrorKind::InvalidInput);
+            s2.answer(prompt, None).unwrap();
+        });
+        assert_eq!(ask(&s, &s.token, op.id, "Username for 'https://gitlab.example.com': ").await, 1, "the prompt is cancelled");
+        assert!(op.prompt_cancelled());
+        assert_eq!(op.ssh_switches(), [SshOffer { remote: "origin".into(), url: "git@gitlab.example.com:group/project.git".into() }]);
+        assert_eq!(ask(&s, &s.token, op.id, "Enter passphrase for key '/home/ada/.ssh/id_ed25519': ").await, 1);
+        answering.await.unwrap();
+        assert!(s.use_ssh(9999).is_err(), "unknown prompt ids are rejected");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_forges_ssh_url_comes_first() {
+        let (_d, s, ops, bus) = server().await;
+        s.set_forge_ssh_url(Arc::new(|url: String| Box::pin(async move { url.contains("group/project").then(|| "ssh://git@gitlab.example.com:2222/group/project.git".to_string()) })));
+        let mut rx = bus.subscribe();
+        let op = ops.begin(OpKind::Fetch, Some(1), true);
+        op.set_remotes(vec![op_remote("origin", "https://gitlab.example.com/group/project.git", true), op_remote("other", "https://gitlab.other.example/x/y", true)]);
+        let s2 = s.clone();
+        let answering = tokio::spawn(async move {
+            let mut offers = Vec::new();
+            for _ in 0..2 {
+                let AppEvent::AuthWaiting { prompt, ssh, .. } = rx.recv().await.unwrap() else { panic!("expected authWaiting") };
+                offers.push(ssh.map(|o| o.url));
+                s2.answer(prompt, None).unwrap();
+                rx.recv().await.unwrap();
+            }
+            offers
+        });
+        ask(&s, &s.token, op.id, "Username for 'https://gitlab.example.com': ").await;
+        ask(&s, &s.token, op.id, "Password for 'https://ada@gitlab.other.example': ").await;
+        assert_eq!(answering.await.unwrap(), [Some("ssh://git@gitlab.example.com:2222/group/project.git".into()), Some("git@gitlab.other.example:x/y.git".into())], "the forge's, else derived");
     }
 
     #[tokio::test(flavor = "multi_thread")]

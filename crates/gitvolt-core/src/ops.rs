@@ -4,6 +4,7 @@
 //! then killed as a process group, `GitCli::run`), and askpass looks the op up by the id in its
 //! environment to decide whether a credential prompt may reach the user (spec §5.4).
 
+use crate::askpass::SshOffer;
 use crate::events::OpKind;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -25,6 +26,19 @@ pub struct OpEntry {
     pub stop_requested: tokio::sync::Notify,
     auth_denied: AtomicBool,
     prompt_cancelled: AtomicBool,
+    /// The remotes it talks to, in the order it does (a credential prompt's remote, spec §5.4).
+    remotes: Mutex<Vec<OpRemote>>,
+    /// The remotes whose credential prompt the user turned into "Use SSH instead".
+    ssh_switches: Mutex<Vec<SshOffer>>,
+}
+
+/// One remote an op talks to (`remotes::op_remotes`): its URL for the op, and whether that's
+/// `remote.<name>.url` itself, which `git remote set-url` changes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpRemote {
+    pub name: String,
+    pub url: String,
+    pub settable: bool,
 }
 
 impl OpEntry {
@@ -47,6 +61,31 @@ impl OpEntry {
     pub fn prompt_cancelled(&self) -> bool {
         self.prompt_cancelled.load(Ordering::SeqCst)
     }
+
+    pub fn set_remotes(&self, remotes: Vec<OpRemote>) {
+        *lock(&self.remotes) = remotes;
+    }
+
+    pub fn remotes(&self) -> Vec<OpRemote> {
+        lock(&self.remotes).clone()
+    }
+
+    /// The user chose "Use SSH for <remote> instead" on one of its prompts (and so cancelled it).
+    pub fn note_ssh_switch(&self, offer: SshOffer) {
+        let mut all = lock(&self.ssh_switches);
+        if !all.iter().any(|o| o.remote == offer.remote) {
+            all.push(offer);
+        }
+    }
+
+    pub fn ssh_switches(&self) -> Vec<SshOffer> {
+        lock(&self.ssh_switches).clone()
+    }
+}
+
+/// Nothing here can leave a list half-updated, so a poisoned lock is still consistent.
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 pub struct OpRegistry {
@@ -69,7 +108,10 @@ impl OpRegistry {
     /// Registers a new op; it stays registered until the returned guard is dropped.
     pub fn begin(self: &Arc<Self>, kind: OpKind, repo: Option<u32>, interactive: bool) -> OpGuard {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
-        let entry = Arc::new(OpEntry { id, kind, repo, interactive, cancel: CancellationToken::new(), stop_requested: tokio::sync::Notify::new(), auth_denied: AtomicBool::new(false), prompt_cancelled: AtomicBool::new(false) });
+        let entry = Arc::new(OpEntry {
+            id, kind, repo, interactive, cancel: CancellationToken::new(), stop_requested: tokio::sync::Notify::new(), auth_denied: AtomicBool::new(false), prompt_cancelled: AtomicBool::new(false),
+            remotes: Mutex::default(), ssh_switches: Mutex::default(),
+        });
         self.ops().insert(id, entry.clone());
         OpGuard { entry, registry: self.clone() }
     }

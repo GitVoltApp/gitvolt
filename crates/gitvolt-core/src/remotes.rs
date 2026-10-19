@@ -74,6 +74,52 @@ pub fn remote_url(repo: &gix::Repository, remote: &str, direction: Direction) ->
     remote.url(direction).map(|u| u.to_bstring().to_str_lossy().into_owned())
 }
 
+/// The scp-style SSH URL for an `https://[user@]host[:port]/path[.git]` remote (a credential
+/// prompt's "Use SSH instead", spec §5.4): `git@host:path.git`. The user and the port go (an
+/// https port says nothing about SSH's); the path stays, nested groups and all. `None` for
+/// anything else: another scheme, no path, a query or fragment.
+pub fn ssh_url_from_https(url: &str) -> Option<String> {
+    let url = url.trim();
+    let (scheme, rest) = url.split_once("://")?;
+    if !scheme.eq_ignore_ascii_case("https") || rest.contains(['?', '#']) {
+        return None;
+    }
+    let (authority, path) = rest.split_once('/')?;
+    let host = authority.rsplit('@').next()?.split(':').next()?;
+    let path = path.trim_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let ok = |s: &str| !s.is_empty() && !s.starts_with('-') && !s.chars().any(|c| c.is_whitespace() || c.is_control());
+    (ok(host) && ok(path) && !host.contains(['[', ']'])).then(|| format!("git@{host}:{path}.git"))
+}
+
+/// The remotes in the order git's config lists them (`git fetch --all`'s order); a name once.
+pub fn remote_names_in_order(repo: &gix::Repository) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for s in repo.config_snapshot().plumbing().sections_by_name("remote").into_iter().flatten() {
+        if let Some(name) = s.header().subsection_name().map(|n| n.to_str_lossy().into_owned())
+            && !out.contains(&name)
+        {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// Each of `names` with its URL for `direction` (rewrites applied), for an op's credential
+/// prompts. `settable`: that URL is `remote.<name>.url` itself, which `git remote set-url`
+/// changes (not a `pushurl` or an `insteadOf` rewrite). A remote without a URL is left out.
+pub fn op_remotes(repo: &gix::Repository, names: &[String], direction: Direction) -> Vec<crate::ops::OpRemote> {
+    let config = repo.config_snapshot();
+    names
+        .iter()
+        .filter_map(|name| {
+            let url = remote_url(repo, name, direction)?;
+            let raw = config.string(format!("remote.{name}.url").as_str()).map(|v| v.to_str_lossy().into_owned());
+            Some(crate::ops::OpRemote { name: name.clone(), settable: raw.as_deref() == Some(url.as_str()), url })
+        })
+        .collect()
+}
+
 pub fn host_kind(host: &str) -> HostKind {
     let host = host.to_ascii_lowercase();
     if host == "github.com" || host.ends_with(".github.com") {
@@ -128,6 +174,42 @@ mod tests {
         assert_eq!(forge_host("/tmp/origin.git"), None);
         // Everyone else still sees the host alone.
         assert_eq!(parse_remote_url("https://gitlab.example.com:8443/group/project.git").unwrap().host, "gitlab.example.com");
+    }
+
+    #[test]
+    fn an_https_url_becomes_its_ssh_url() {
+        let ssh = |u: &str| ssh_url_from_https(u);
+        assert_eq!(ssh("https://gitlab.example.com/group/project.git").as_deref(), Some("git@gitlab.example.com:group/project.git"));
+        assert_eq!(ssh("https://gitlab.example.com/group/project").as_deref(), Some("git@gitlab.example.com:group/project.git"), ".git is added");
+        assert_eq!(ssh("https://ada@gitlab.example.com/group/project.git").as_deref(), Some("git@gitlab.example.com:group/project.git"), "the user goes");
+        assert_eq!(ssh("https://ada:hunter2@gitlab.example.com/group/project.git").as_deref(), Some("git@gitlab.example.com:group/project.git"), "and a password with it");
+        assert_eq!(ssh("https://gitlab.example.com:8443/group/project.git").as_deref(), Some("git@gitlab.example.com:group/project.git"), "the https port goes");
+        assert_eq!(ssh("https://gitlab.example.com/group/sub/deeper/project/").as_deref(), Some("git@gitlab.example.com:group/sub/deeper/project.git"), "nested groups stay");
+        assert_eq!(ssh("HTTPS://github.com/octo-org/widget").as_deref(), Some("git@github.com:octo-org/widget.git"));
+        for none in ["http://gitlab.example.com/group/project.git", "ssh://git@gitlab.example.com/group/project.git", "git@gitlab.example.com:group/project.git", "/srv/git/project.git", "file:///srv/git/project.git", "https://gitlab.example.com/", "https://gitlab.example.com", "https://gitlab.example.com/a/b?private_token=x", "https://-oProxyCommand=x/a/b"] {
+            assert_eq!(ssh(none), None, "{none}");
+        }
+    }
+
+    #[test]
+    fn op_remotes_come_in_config_order_and_say_whether_set_url_reaches_them() {
+        let r = crate::testing::TestRepo::new();
+        r.commit("a");
+        r.git(&["remote", "add", "zed", "https://gitlab.example.com/group/zed.git"]);
+        r.git(&["remote", "add", "alpha", "https://gitlab.example.com/group/alpha.git"]);
+        r.git(&["remote", "set-url", "--push", "alpha", "https://push.example.com/group/alpha.git"]);
+        r.git(&["config", "url.https://gitlab.example.com/.insteadOf", "gl:"]);
+        r.git(&["remote", "add", "short", "gl:group/short.git"]);
+        let repo = gix::open(r.path()).unwrap();
+        let names = remote_names_in_order(&repo);
+        assert_eq!(names, ["zed", "alpha", "short"]);
+        let got = |d| op_remotes(&repo, &names, d).into_iter().map(|o| (o.name, o.url, o.settable)).collect::<Vec<_>>();
+        assert_eq!(got(Direction::Fetch), [
+            ("zed".into(), "https://gitlab.example.com/group/zed.git".into(), true),
+            ("alpha".into(), "https://gitlab.example.com/group/alpha.git".into(), true),
+            ("short".into(), "https://gitlab.example.com/group/short.git".into(), false),
+        ]);
+        assert_eq!(got(Direction::Push)[1], ("alpha".into(), "https://push.example.com/group/alpha.git".into(), false), "a pushurl isn't what set-url changes");
     }
 
     #[test]

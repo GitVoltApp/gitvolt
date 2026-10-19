@@ -135,6 +135,7 @@ impl WriteIntent for DeleteBranch {
         if let Some(r) = &self.remote {
             let lease = format!("--force-with-lease=refs/heads/{}:{}", r.branch, r.lease);
             let target = format!("refs/heads/{}", r.branch);
+            cx.note_remote(&r.remote, gix::remote::Direction::Push);
             let inv = cx.net_git(["push", "--progress", lease.as_str(), r.remote.as_str(), "--delete", target.as_str()]);
             if let Err(mut e) = cx.network(inv).await {
                 // The lease failed: the remote moved since the tracking ref was fetched.

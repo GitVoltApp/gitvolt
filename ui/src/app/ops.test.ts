@@ -9,7 +9,7 @@ describe('ops store', () => {
     apply({ type: 'opStarted', op: 3, kind: 'clone', repo: null, label: '/r/x', interactive: true });
     apply({ type: 'opProgress', op: 3, phase: 'Receiving objects', percent: 40 });
     expect(useOps.getState().ops[3]).toMatchObject({ label: '/r/x', phase: 'Receiving objects', percent: 40 });
-    apply({ type: 'authWaiting', prompt: 9, op: 3, repo: null, text: 'Password: ', secret: true });
+    apply({ type: 'authWaiting', prompt: 9, op: 3, repo: null, text: 'Password: ', secret: true, ssh: null });
     expect(useOps.getState().prompts.map((p) => p.prompt)).toEqual([9]);
     apply({ type: 'authResolved', prompt: 9 });
     apply({ type: 'opFinished', op: 3, kind: 'clone', repo: null, outcome: 'ok', message: null, command: null });
@@ -31,7 +31,7 @@ describe('ops store', () => {
   it('an op that finishes drops its pending prompts too (the askpass child is gone)', () => {
     const { apply } = useOps.getState();
     apply({ type: 'opStarted', op: 1, kind: 'fetch', repo: 2, label: 'r', interactive: true });
-    apply({ type: 'authWaiting', prompt: 4, op: 1, repo: 2, text: 'Username: ', secret: false });
+    apply({ type: 'authWaiting', prompt: 4, op: 1, repo: 2, text: 'Username: ', secret: false, ssh: null });
     apply({ type: 'opFinished', op: 1, kind: 'fetch', repo: 2, outcome: 'cancelled', message: null, command: null });
     expect(useOps.getState().prompts).toEqual([]);
   });

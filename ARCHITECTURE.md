@@ -208,7 +208,10 @@ When git runs it, the binary connects to the app's per-session Unix socket
 prompt with the session's random token, and prints the answer. The app checks the peer's user
 (`SO_PEERCRED`) and the token, and shows a modal only for an operation the user started. A
 background fetch that needs credentials is denied at once and reported as skipped in the status
-bar. `docs/dev-setup.md` has a walk-through for trying this without real keys.
+bar. An HTTPS username or password prompt that its operation ties to one remote (by the prompt's
+host) also offers that remote's SSH URL, the forge's when an account covers the host, else
+derived from the HTTPS one. Choosing it cancels the prompt; the operation fails as Cancelled
+with the switch to make, and the UI runs `git remote set-url`, then the same request again. `docs/dev-setup.md` has a walk-through for trying this without real keys.
 
 ## The graph
 
