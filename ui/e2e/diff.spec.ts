@@ -423,7 +423,7 @@ test.describe('diff viewer controls', () => {
         requestAnimationFrame(probe);
       });
       await fileRow(page, 'src/app.php').click();
-      await expect.poll(() => painted(page), { timeout: 15_000 }).toContain('enum Suit');
+      await expect.poll(() => painted(page), { timeout: 15_000 }).toContain('Suit');
       const probes = await page.evaluate(() => { const w = window as unknown as { hiddenProbes: string[]; stopProbe: boolean }; w.stopProbe = true; return w.hiddenProbes; });
       expect(held).toBeGreaterThan(0);
       expect(probes.length).toBeGreaterThan(0);
@@ -440,10 +440,11 @@ test.describe('diff viewer controls', () => {
     // samples what is actually painted (`checkVisibility`: laid out, visible, no ancestor at
     // opacity 0), text and images, in every frame from the click on.
     await test.step('K7: a file, ×, then another: the first is never painted again (text and image pairs)', async () => {
-      // Text to text, text to image, image to image.
+      // Text to text, text to image, image to image. A text marker is one token: a highlighted
+      // line paints a text node per token.
       for (const [first, second, stale, fresh] of [
-        ['ws.txt', 'src/app.php', 'fn main() {', 'enum Suit'],
-        ['src/app.php', 'logo.png', 'enum Suit', 'img:6×4'],
+        ['ws.txt', 'src/app.php', 'fn main() {', 'Suit'],
+        ['src/app.php', 'logo.png', 'Suit', 'img:6×4'],
         ['logo.png', 'icon.svg', 'img:6×4', 'img:16×16'],
       ] as const) {
         const at = `${first}, ×, then ${second}`;
@@ -474,7 +475,7 @@ test.describe('diff viewer controls', () => {
       await diff(page).getByRole('button', { name: 'Close diff' }).click();
       const stop = await samplePainted(page);
       await fileRow(page, 'src/app.php').click();
-      await expect.poll(() => painted(page), { timeout: 15_000 }).toContain('enum Suit');
+      await expect.poll(() => painted(page), { timeout: 15_000 }).toContain('Suit');
       const frames = await stop();
       expect(frames.filter((f) => f.includes('fn main() {') || f.includes('img:'))).toEqual([]);
     });

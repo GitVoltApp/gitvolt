@@ -7,6 +7,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Changed
 
+- **Syntax highlighting no longer slows the app down.** Files are now highlighted in the
+  background, off the UI thread: a diff that opens far down a long file colours the lines you see
+  first, scrolling and typing stay smooth while the rest is done, and a diff you've seen before
+  is coloured as soon as it opens. Typing in the working-copy editor re-highlights only as far as
+  your change reaches.
+
 - **Cherry-pick a commit already on the branch,** to bring back a change a revert undid. A
   commit whose changes are still there stops as an empty pick.
 

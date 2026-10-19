@@ -4,9 +4,8 @@ import type { MonacoHost } from './host';
 
 // A fake Monaco that models what matters here: an editor created with an undefined theme falls
 // back to `vs` (light), as Monaco 0.57's theme service does, and a later defineTheme doesn't
-// re-apply it. The real @shikijs/monaco runs against it with a fake highlighter. Mocked modules
-// survive vi.resetModules, so `reset()` restores a pristine fake (shikiToMonaco wraps
-// `editor.create` and `editor.setTheme` in place).
+// re-apply it. shiki.ts runs against it with a fake highlight worker client. Mocked modules
+// survive vi.resetModules, so `reset()` restores a pristine fake.
 vi.mock('./setup', () => {
   type Listener = (e: unknown) => void;
   const state = {
@@ -233,21 +232,18 @@ vi.mock('./setup', () => {
 
 // A grammar load the test can hold open (`gate.wait`), to reorder prefs changes around it.
 const gate = vi.hoisted(() => ({ wait: null as Promise<void> | null }));
-vi.mock('shiki/core', () => ({
-  createHighlighterCore: vi.fn(async () => ({
-    getLoadedThemes: () => ['dark-plus'],
-    getTheme: () => ({ type: 'dark', colors: { 'editor.background': '#1e1e1e' }, settings: [] }),
-    setTheme: () => ({ colorMap: [] }),
-    getLoadedLanguages: () => [],
-    loadLanguage: async () => {
+vi.mock('../highlight/client', () => ({
+  highlightClient: async () => ({
+    themes: [{ name: 'dark-plus', theme: { type: 'dark', colors: { 'editor.background': '#1e1e1e' }, settings: [] }, colors: [] }],
+    loadLanguage: async (lang: string) => {
       if (gate.wait) await gate.wait;
+      return [lang];
     },
-  })),
+  }),
 }));
-vi.mock('shiki/engine/oniguruma', () => ({ createOnigurumaEngine: () => ({}) }));
+vi.mock('../highlight/modelTokens', () => ({ useWorkerTokens: () => {}, setTokenTheme: () => {} }));
 const copyText = vi.hoisted(() => vi.fn(async (_text: string) => {}));
 vi.mock('../../api/transport', () => ({ copyText }));
-vi.mock('shiki/wasm', () => ({ default: {} }));
 
 interface FakeCodeEditor { setPosition: ReturnType<typeof vi.fn>; setSelection: ReturnType<typeof vi.fn>; apiZones: Map<string, { after: number; height: number; ordinal?: number; domNode: HTMLElement; renderedFirst: boolean }>; isHidden(n: number): boolean; collecting: boolean; pendingScroll: boolean; scrollListeners: ((e: unknown) => void)[]; getContentHeight(): number; getBottomForLineNumber(n: number): number; getTopForPosition(n: number): number; getVisibleRanges(): { startLineNumber: number; endLineNumber: number }[]; zones: { after: number; height: number }[]; hidden: [number, number][]; heights: Record<number, number>; sizeListeners: ((e: unknown) => void)[]; scrollTop: number; inputs: ((e: unknown) => void)[]; getTopForLineNumber(n: number, includeViewZones?: boolean): number; getScrollHeight(): number; menus: ((e: unknown) => void)[]; mouseUps: ((e: unknown) => void)[]; focus: ReturnType<typeof vi.fn>; hasTextFocus: ReturnType<typeof vi.fn>; getPosition: ReturnType<typeof vi.fn>; findRun: ReturnType<typeof vi.fn>; updateOptions: ReturnType<typeof vi.fn>; setModel: ReturnType<typeof vi.fn>; setScrollTop: ReturnType<typeof vi.fn>; render: ReturnType<typeof vi.fn>; layoutListeners: Set<(e: unknown) => void> }
 interface FakeViewModel { model: { original: { text: string; dispose: ReturnType<typeof vi.fn> }; modified: { text: string; dispose: ReturnType<typeof vi.fn> } }; computed: boolean; dispose: ReturnType<typeof vi.fn>; finish(): void }
@@ -282,7 +278,7 @@ const prefs = { mode: 'inline', ignoreWhitespace: false, wordWrap: false } as co
 const diffReq = (path: string, language = 'plaintext', p: typeof prefs | { mode: 'hunk' | 'split' | 'inline'; ignoreWhitespace: boolean; wordWrap: boolean } = prefs) => ({ path, original: `${path} old\n`.repeat(200), modified: `${path} new\n`.repeat(200), language, prefs: p });
 const menuEvent = () => ({ target: { position: { lineNumber: 7 } }, event: { posx: 10, posy: 20, preventDefault: vi.fn() } });
 
-// The first import of the host's module graph (host.ts, @shikijs/monaco, the theme registrations)
+// The first import of the host's module graph (host.ts, shiki.ts, the theme registrations)
 // is its transform: ~100 ms idle, 3 s and more under load, which the first test paid inside its own
 // timeout. Paid once here, with the hook's budget; each test's fresh() then re-evaluates cached
 // modules.

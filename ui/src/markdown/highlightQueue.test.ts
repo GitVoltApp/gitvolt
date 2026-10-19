@@ -1,45 +1,31 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-const shiki = vi.hoisted(() => ({ ensureGrammar: vi.fn(async (l: string) => (l === 'nope' ? null : l)), tokensFor: vi.fn(() => ({ lines: [] })) }));
-vi.mock('../diff/monaco/shiki', () => shiki);
-// The idle scheduler, driven by hand: each pending callback is one task.
-const idle = vi.hoisted(() => ({ pending: [] as Array<() => void> }));
-vi.mock('./idle', () => ({ whenIdle: (fn: () => void) => { idle.pending.push(fn); return () => {}; } }));
-const { queueHighlight, SLICE_MS } = await import('./highlightQueue');
+const worker = vi.hoisted(() => ({ code: vi.fn(), cancel: vi.fn() }));
+vi.mock('../diff/highlight/client', () => ({
+  highlightClient: async () => ({
+    code: (code: string, lang: string, theme: string) => {
+      worker.code(code, lang, theme);
+      return { result: Promise.resolve({ lines: [[{ content: code }]] }), cancel: worker.cancel };
+    },
+  }),
+}));
+const { queueHighlight } = await import('./highlightQueue');
 
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0)); };
-async function runSlices(): Promise<number[]> {
-  const per: number[] = [];
-  while (idle.pending.length > 0) {
-    const before = shiki.tokensFor.mock.calls.length;
-    idle.pending.shift()!();
-    await settle();
-    per.push(shiki.tokensFor.mock.calls.length - before);
-  }
-  return per;
-}
 
-afterEach(() => { vi.restoreAllMocks(); shiki.tokensFor.mockClear(); });
-
-describe('the highlight queue (ruling 21)', () => {
-  it('tokenizes in idle slices of at most 25 ms, never every block in one task', async () => {
-    let now = 0;
-    vi.spyOn(performance, 'now').mockImplementation(() => now);
-    shiki.tokensFor.mockImplementation(() => { now += 10; return { lines: [] }; });
-    const jobs = Array.from({ length: 10 }, (_, i) => queueHighlight(`b${i}`, 'ts'));
-    const per = await runSlices();
-    await Promise.all(jobs.map((j) => j.result));
-    expect(SLICE_MS).toBe(25);
-    expect(per.reduce((a, b) => a + b, 0)).toBe(10);
-    expect(Math.max(...per)).toBeLessThanOrEqual(3);
+describe('the highlight queue', () => {
+  it("tokenizes a block in the highlight worker, in the editor theme; Shiki's language ids any case", async () => {
+    expect(await queueHighlight('const a', 'TS').result).toEqual({ lines: [[{ content: 'const a' }]] });
+    expect(worker.code).toHaveBeenCalledWith('const a', 'ts', expect.any(String));
   });
 
-  it('a cancelled job never runs, and an unknown language resolves plain', async () => {
-    const gone = queueHighlight('x', 'ts');
+  it('a language Shiki lacks (or GitVolt dropped) is plain without asking; a cancelled block never asks', async () => {
+    worker.code.mockClear();
+    expect(await queueHighlight('x', 'klingon').result).toBeNull();
+    expect(await queueHighlight('x', 'racket').result).toBeNull();
+    const gone = queueHighlight('y', 'ts');
     gone.cancel();
-    const unknown = queueHighlight('z', 'nope');
-    await runSlices();
-    expect(await unknown.result).toBeNull();
-    expect(shiki.tokensFor).not.toHaveBeenCalled();
+    await settle();
+    expect(worker.code).not.toHaveBeenCalled();
   });
 });

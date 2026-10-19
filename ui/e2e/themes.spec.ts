@@ -117,6 +117,8 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
     const host = diffRegion(page).locator('.monaco-host').first();
     await host.evaluate((el) => { (el as HTMLElement).dataset.keep = '1'; });
     await expect.poll(() => editorBg(page)).toBe(rgb(THEMES['default-dark'].colors['app-bg0'])); // today's #1c1e23
+    const keyword = diffRegion(page).locator('.editor.modified .view-line span span').filter({ hasText: /^function$/ }).first();
+    await expect(keyword).toHaveCSS('color', 'rgb(86, 156, 214)'); // dark-plus
     await page.keyboard.press('Control+P');
     await page.keyboard.type('>Theme: Darcula');
     await page.keyboard.press('Enter');
@@ -125,6 +127,8 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
     await page.keyboard.type('>Theme: Solarized Light');
     await page.keyboard.press('Enter');
     await expect.poll(() => editorBg(page)).toBe(rgb(THEMES['solarized-light'].colors['app-bg0']));
+    // The tokens follow: the highlight worker's, in the new theme's colours.
+    await expect(keyword).toHaveCSS('color', 'rgb(88, 110, 117)'); // solarized-light
     await expect(host).toHaveAttribute('data-keep', '1');
   });
   await test.step('the editor font size row (Settings > Editor) resizes the open diff live, clamped to 8-32', async () => {

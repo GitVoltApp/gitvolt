@@ -95,22 +95,31 @@ test.describe('UX round 2 G: editing a working-tree file in File View', () => {
     });
   });
 
-  test('View all files on the WIP opens an unchanged tracked file, editable (what a clean Edit stop needs)', async ({ page }) => {
+  test('View all files on the WIP opens an unchanged tracked file, editable (what a clean Edit stop needs); an edit re-highlights the lines after it', async ({ page }) => {
     const repo = freshFixture('wip_staging');
-    writeFileSync(join(repo, 'clean.txt'), 'clean 1\nclean 2\n');
-    git(repo, 'add', 'clean.txt');
+    writeFileSync(join(repo, 'clean.ts'), 'const one = 1;\nconst two = 2;\n');
+    git(repo, 'add', 'clean.ts');
     git(repo, 'commit', '-q', '-m', 'clean');
     await page.goto(openUrl(repo));
     await selectWip(page);
     await page.locator('.wip-view-bar').getByRole('button', { name: 'View all files' }).click();
-    await fileRow(page, 'unstaged', 'clean.txt').click();
-    await expect(fileView(page)).toContainText('clean 1', { timeout: 15_000 });
+    await fileRow(page, 'unstaged', 'clean.ts').click();
+    await expect(fileView(page)).toContainText('const one', { timeout: 15_000 });
+    // The second line's first token: `const`, a keyword, until a comment opened above takes it in.
+    const two = fileView(page).locator('.view-line').filter({ hasText: 'two' }).locator('span span').first();
+    await expect(two).toHaveCSS('color', 'rgb(86, 156, 214)');
     await fileView(page).click();
+    await page.keyboard.press('Control+Home');
+    await page.keyboard.type('/* ');
+    await expect(two).toHaveCSS('color', 'rgb(106, 153, 85)');
+    await page.keyboard.press('Control+Home');
+    for (let i = 0; i < 3; i++) await page.keyboard.press('Delete');
+    await expect(two).toHaveCSS('color', 'rgb(86, 156, 214)');
     await page.keyboard.press('Control+Home');
     await page.keyboard.type('edited ');
     await page.keyboard.press('Control+s');
     await expect(page.getByLabel('Unsaved changes')).toHaveCount(0);
-    expect(readFileSync(join(repo, 'clean.txt'), 'utf8')).toBe('edited clean 1\nclean 2\n');
+    expect(readFileSync(join(repo, 'clean.ts'), 'utf8')).toBe('edited const one = 1;\nconst two = 2;\n');
   });
 
 });

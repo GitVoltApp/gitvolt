@@ -67,7 +67,9 @@ export default defineConfig(({ mode }) => {
     base: demo ? './' : '/',
     plugins: [react(), grammars(), notices.main, ...(demo ? [demoPolicy(), demoData(process.env.GITVOLT_DEMO_DATA ? resolve(here('..'), process.env.GITVOLT_DEMO_DATA) : here('../site/demo-data'), here('src/demo/wasm/THIRD-PARTY-NOTICES-wasm.txt'))] : [])],
     define: { 'import.meta.env.VITE_GITVOLT_VERSION': JSON.stringify(uiVersion) },
-    worker: { plugins: () => [grammars(), notices.worker()] },
+    // ES workers: the highlight worker (diff/highlight/) loads each grammar as its own chunk, as the
+    // main build does; an IIFE worker inlines every dynamic import (all of Shiki's grammars).
+    worker: { format: 'es', plugins: () => [grammars(), notices.worker()] },
     clearScreen: false,
     server: { port, strictPort: true },
     preview: { headers: previewHeaders(mode) },

@@ -12,7 +12,7 @@ import { MdContextOverride } from './sideContext';
 import { MdSuggestionApply, MdSuggestionBase, replacedLines, suggestedLines, suggestionStart } from './suggestion';
 import type { MdCodeProps } from './types';
 
-/** Longer blocks stay plain: one would hold the main thread too long (ruling 21). */
+/** Longer blocks stay plain: one would hold up the highlight worker, and its spans the render (ruling 21). */
 export const HIGHLIGHT_MAX_CHARS = 16_384;
 
 const style = (t: { color?: string; fontStyle?: number }): CSSProperties => ({
