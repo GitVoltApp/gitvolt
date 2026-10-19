@@ -5,6 +5,13 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **macOS: folder buttons work.** Open directory, Settings › Default repos directory › Choose…,
+  Your repos' add and scan, and Create Worktree's Choose open the system's folder picker; they
+  did nothing before (#2). Open With › Other… is there too, choosing an app to open the file in.
+  Thanks to @Steven-Cleys (#3).
+
 ## [0.7.3] - 2026-10-18
 
 ### Fixed
