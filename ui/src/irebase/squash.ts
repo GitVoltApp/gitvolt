@@ -1,7 +1,7 @@
 import { api } from '../api/client';
 import { toGbError } from '../errors/describe';
 import { useToast } from '../ui/toastStore';
-import { currentOrigin } from '../ui/arm/origin';
+import { currentOrigin, type Origin } from '../ui/arm/origin';
 import { holdOrigin } from '../ui/arm/store';
 import { MENU_HOLD_MS, runWrite } from '../write/client';
 import { writeCtx } from '../write/ctx';
@@ -22,9 +22,18 @@ export async function squashSelection(tabId: string, branch: string, oids: strin
     await openRebaseEditor(tabId, { branch, base, preset });
     return;
   }
-  // The Squash row: its questions (autostash) arm it in place, its menu held open while the plan
-  // loads and the write's first answer comes (integrate.ts's pattern).
-  const origin = currentOrigin();
+  await runPreset(tabId, branch, base, preset, currentOrigin(), 'squash', `Squashed ${oids.length} commits into ${oldest.slice(0, 7)}`);
+}
+
+/** The Drop row: the plan from the commit's parent with only that commit dropped, run with no editor. */
+export async function dropCommit(tabId: string, branch: string, oid: string, base: string, origin: Origin | null = currentOrigin()): Promise<void> {
+  await runPreset(tabId, branch, base, { rows: { [oid]: 'drop' } }, origin, 'drop', `Dropped ${oid.slice(0, 7)}`);
+}
+
+/** Runs `preset` on the plan from `base` without the editor. The row's questions (autostash) arm it
+ * in place, its menu held open while the plan loads and the write's first answer comes
+ * (integrate.ts's pattern). */
+async function runPreset(tabId: string, branch: string, base: string, preset: Preset, origin: Origin | null, verb: string, done: string): Promise<void> {
   const release = holdOrigin();
   const ctx = writeCtx(tabId);
   if (!ctx) return release();
@@ -33,7 +42,7 @@ export async function squashSelection(tabId: string, branch: string, oids: strin
     state = fromPlan(await api.rebasePlan(ctx.repoId, ctx.worktree, branch, base), preset);
   } catch (e) {
     release();
-    useToast.getState().show(`Couldn't squash: ${toGbError(e).message}`, { error: true });
+    useToast.getState().show(`Couldn't ${verb}: ${toGbError(e).message}`, { error: true });
     return;
   }
   const why = problems(state);
@@ -49,7 +58,7 @@ export async function squashSelection(tabId: string, branch: string, oids: strin
   try {
     await runWrite(ctx, (_confirmed, asked) => api.interactiveRebase(ctx.repoId, ctx.worktree, { branch, base, expect: state.expect, rows, chips, confirmAutostash: asked.autostash }), {
       origin,
-      onSuccess: (o) => { if (o.status === 'done') useToast.getState().show(`Squashed ${oids.length} commits into ${oldest.slice(0, 7)}`); },
+      onSuccess: (o) => { if (o.status === 'done') useToast.getState().show(done); },
     });
   } finally {
     clearTimeout(cap);

@@ -70,9 +70,9 @@ test.describe('the commit and label context menus (spec §7 target table)', () =
       const menu = await commitMenu(page, 'Fix typo');
       // Spec #2 §14: 2C's Commit-group Reset row (placed early, right after the sync rows) and its
       // Branch group (Checkout ▸, Create worktree from ▸, Create branch here) sit above 1C's rows.
-      // Spec #3 §4.3: the Commit group gains Revert, Create tag here and Interactive rebase after this commit
+      // Spec #3 §4.3: the Commit group gains Revert, Create tag here, Interactive rebase after this commit and Drop commit
       // (no Cherry-pick: Fix typo is already on main).
-      await expect(menu.locator('[data-depth="0"] > [role="menuitem"] .ctx-label')).toHaveText(['Reset main to this commit', 'Checkout', 'Create worktree from', 'Create branch here', 'Revert this commit', 'Create tag here', 'Interactive rebase after this commit', 'Copy SHA', 'Copy message', 'Compare with working tree']);
+      await expect(menu.locator('[data-depth="0"] > [role="menuitem"] .ctx-label')).toHaveText(['Reset main to this commit', 'Checkout', 'Create worktree from', 'Create branch here', 'Revert this commit', 'Create tag here', 'Interactive rebase after this commit', 'Drop commit', 'Copy SHA', 'Copy message', 'Compare with working tree']);
       // The latency budgets (cold tripwire, warm median) live in menu-perf.spec.ts, so a loaded
       // machine can't fail this functional test. Here: the opening was timed, and wasn't absurd.
       const opened = await page.evaluate(() => window.__gbMenuLatency!);
@@ -100,7 +100,7 @@ test.describe('the commit and label context menus (spec §7 target table)', () =
         'Pull', 'Set upstream', 'Reset main to this commit',
         'Fast-forward feature/login to main', 'Interactive rebase main onto feature/login',
         'Checkout', 'Create worktree from', 'Create branch here',
-        'Revert this commit', 'Create tag here', 'Interactive rebase after this commit',
+        'Revert this commit', 'Create tag here', 'Interactive rebase after this commit', 'Drop commit',
         'Rename feature/login', 'Delete',
         'Copy branch name', 'Copy SHA', 'Copy message', 'Compare with HEAD',
       ];
@@ -157,8 +157,8 @@ test.describe('forge rows (a GitLab remote, fixtures.details) and the Monaco con
   test("a commit's forge rows; the Monaco context menu replaces Monaco's own, with Copy, Copy location, Forge link and Open in", async ({ page }) => {
     await test.step("MR references in the message get one Open row each, the issue reference none; Forge link on a plain commit: no known branch, so the label copies the permalink and there's no ⎇", async () => {
       const menu = await commitMenu(page, 'Rename guide and update assets');
-      // Spec #3 §4.3's Commit group (Revert, Create tag here, Interactive rebase after this commit) sits above the Forge rows.
-      await expect(rowLabels(menu)).resolves.toEqual(['Reset main to this commit', 'Checkout', 'Create worktree from', 'Create branch here', 'Revert this commit', 'Create tag here', 'Interactive rebase after this commit', 'Open !42', 'Open group/sub/project!7', 'Copy SHA', 'Copy message', 'Forge link', 'Compare with working tree']);
+      // Spec #3 §4.3's Commit group (Revert, Create tag here, Interactive rebase after this commit, Drop commit) sits above the Forge rows.
+      await expect(rowLabels(menu)).resolves.toEqual(['Reset main to this commit', 'Checkout', 'Create worktree from', 'Create branch here', 'Revert this commit', 'Create tag here', 'Interactive rebase after this commit', 'Drop commit', 'Open !42', 'Open group/sub/project!7', 'Copy SHA', 'Copy message', 'Forge link', 'Compare with working tree']);
       await expect(menu.getByRole('menuitem', { name: 'Open #12' })).toHaveCount(0);
       const forge = action(menu, 'Forge link');
       const sha = await row(page, 'Rename guide and update assets').getByTestId('sha').textContent();

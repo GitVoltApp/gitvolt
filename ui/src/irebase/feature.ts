@@ -6,7 +6,7 @@ import { registerMenu } from '../menu/registry';
 import type { CommitTarget, MenuEnv, SelectionTarget } from '../menu/menuEnv';
 import { registerCenterView } from '../repo/centerView';
 import { chipCopyRows, chipManageRows, type ChipTarget } from './chipMenu';
-import { fromHereRows, ontoRows, paletteRebase, paletteUsable, selectionFromHereRows, squashRows } from './menus';
+import { dropRows, fromHereRows, ontoRows, paletteRebase, paletteUsable, selectionFromHereRows, squashRows } from './menus';
 import { REBASE_VIEW } from './open';
 import { pruneSessions } from './session';
 import { registerKeyHints } from '../shortcuts/hints';
@@ -20,6 +20,7 @@ const offs = [
   registerCenterView(REBASE_VIEW, lazy(() => import('./RebaseEditor').then((m) => ({ default: m.RebaseEditor }))), { sidebar: 'hide', drivesSelection: true }),
   registerMenu<CommitTarget, MenuEnv>({ id: 'commit.irebase.onto', kind: 'commit', group: 'integrate', order: 1, rows: ontoRows }),
   registerMenu<CommitTarget, MenuEnv>({ id: 'commit.irebase.fromHere', kind: 'commit', group: 'commit', order: 30, rows: fromHereRows }),
+  registerMenu<CommitTarget, MenuEnv>({ id: 'commit.irebase.drop', kind: 'commit', group: 'commit', order: 31, rows: dropRows }),
   registerMenu<SelectionTarget, MenuEnv>({ id: 'selection.irebase.squash', kind: 'selection', group: 'squash', order: 0, rows: squashRows }),
   registerMenu<SelectionTarget, MenuEnv>({ id: 'selection.irebase.fromHere', kind: 'selection', group: 'rebase', order: 0, rows: selectionFromHereRows }),
   registerMenu<ChipTarget, object>({ id: 'chip.irebase.manage', kind: 'chip', group: 'manage', order: 0, rows: chipManageRows }),

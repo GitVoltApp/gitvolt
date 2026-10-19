@@ -5,6 +5,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **Drop commit:** right-click a commit on the current branch and choose Drop commit to rebase
+  the branch without it, with no editor. Click the row again to confirm; Undo brings the commit
+  back.
+
 ### Fixed
 
 - **Queued actions follow the branches you queue.** Queue a checkout behind a slow push and the

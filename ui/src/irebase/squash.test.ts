@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setOrigin, type Origin } from '../ui/arm/origin';
 import { useToast } from '../ui/toastStore';
-import { squashSelection } from './squash';
+import { dropCommit, squashSelection } from './squash';
 import { oid, plan } from './testPlan';
 
 const rebasePlan = vi.hoisted(() => vi.fn());
@@ -68,5 +68,19 @@ describe('multi-select Squash (spec #3 §2)', () => {
     await squashSelection('t1', 'topic', [oid('a'), oid('z')], oid('0'), false);
     expect(useToast.getState().message).toBe('Nothing below aaaaaaa A to squash it into');
     expect(interactiveRebase).not.toHaveBeenCalled();
+  });
+});
+
+describe('Drop commit', () => {
+  it('runs the plan from the parent with only that commit dropped', async () => {
+    rebasePlan.mockResolvedValue(plan({ chips: [] }));
+    interactiveRebase.mockResolvedValue(ok);
+    await dropCommit('t1', 'topic', oid('c'), oid('a'));
+    expect(rebasePlan).toHaveBeenCalledWith(1, '/r', 'topic', oid('a'));
+    const req = interactiveRebase.mock.calls[0][2];
+    const dropped = req.rows.filter((r: { action: string }) => r.action === 'drop').map((r: { oid: string }) => r.oid);
+    expect(dropped).toEqual([oid('c')]);
+    expect(req.rows.every((r: { action: string }) => r.action === 'pick' || r.action === 'drop')).toBe(true);
+    expect(useToast.getState().message).toBe('Dropped ccccccc');
   });
 });

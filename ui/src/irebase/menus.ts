@@ -1,4 +1,4 @@
-import { Combine, ListOrdered } from 'lucide-react';
+import { Combine, ListOrdered, Trash2 } from 'lucide-react';
 import { useRuntime } from '../app/runtime';
 import { tabStore } from '../app/tabStores';
 import type { CommitTarget, MenuEnv, SelectionTarget } from '../menu/menuEnv';
@@ -7,7 +7,9 @@ import { useToast } from '../ui/toastStore';
 import { writeCtx } from '../write/ctx';
 import { predictedHeadOf } from '../pending/head';
 import { openRebaseEditor } from './open';
-import { squashSelection } from './squash';
+import { confirmAction } from '../ui/ConfirmDialog';
+import { currentOrigin } from '../ui/arm/origin';
+import { dropCommit, squashSelection } from './squash';
 
 /*
  * The interactive rebase's entry points (spec #3 §4.3). Impossible rows are hidden, busy ones
@@ -18,6 +20,8 @@ import { squashSelection } from './squash';
  * - Onto Y: hidden on WIP and stash rows, when Y is HEAD's branch or at HEAD, and when HEAD is
  *   already in Y's history (nothing to rebase).
  * - After this commit: hidden at HEAD and for commits known not to be in HEAD's branch.
+ * - Drop commit: hidden on WIP and stash rows, for commits known not to be in HEAD's branch, and
+ *   for a merge or a root (a plan needs one parent). HEAD itself can be dropped.
  * - The selection's from here: from its oldest commit's parent.
  * - Selection rows: hidden unless every selected commit is a non-merge commit not known to be
  *   outside HEAD's branch, and the oldest has exactly one parent.
@@ -63,6 +67,29 @@ export function fromHereRows(t: CommitTarget, env: MenuEnv): MenuRow[] {
     kind: 'action', id: 'irebase.fromHere', label: 'Interactive rebase after this commit', icon: ListOrdered,
     tooltip: `Edit ${x}'s commits after ${short(t.sha)}`, disabledReason: busy(env),
     run: () => { if (env.headBranch) void openRebaseEditor(tabId, { branch: env.headBranch, base }); },
+  }];
+}
+
+/** "Drop commit": the interactive rebase from the commit's parent, it alone dropped, no editor.
+ * Arms in place (the branch is rewritten; Undo brings the commit back). */
+export function dropRows(t: CommitTarget, env: MenuEnv): MenuRow[] {
+  const x = headName(env);
+  if (!env.write || t.isWip || t.isStash || !x || !env.headSha) return [];
+  if (env.isAncestor?.(t.sha, env.headSha) === false) return [];
+  const row = rowOf(env, t.sha);
+  if (!row || row.parents.length !== 1) return [];
+  const [tabId, base, oid] = [env.write.tabId, row.parents[0], t.sha];
+  return [{
+    kind: 'action', id: 'irebase.drop', label: 'Drop commit', icon: Trash2,
+    tooltip: `Rebase ${x} without this commit`, disabledReason: busy(env),
+    run: () => void (async () => {
+      const origin = currentOrigin();
+      const ok = await confirmAction({
+        title: `Drop ${short(oid)}?`, body: `${x} is rebased without it. You can undo this.`, confirmLabel: 'Drop',
+        arm: `Click again to drop ${short(oid)}`, danger: true,
+      }, origin);
+      if (ok && env.headBranch) await dropCommit(tabId, env.headBranch, oid, base, origin);
+    })(),
   }];
 }
 

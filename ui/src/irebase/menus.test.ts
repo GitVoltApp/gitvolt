@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CommitTarget, MenuEnv, SelectionTarget } from '../menu/menuEnv';
 import type { MenuRow } from '../menu/types';
 import { useToast } from '../ui/toastStore';
-import { fromHereRows, ontoRows, paletteRebase, paletteUsable, selectionFromHereRows, squashRows } from './menus';
+import { dropRows, fromHereRows, ontoRows, paletteRebase, paletteUsable, selectionFromHereRows, squashRows } from './menus';
 
 const open = vi.hoisted(() => vi.fn(async () => true));
 const squash = vi.hoisted(() => vi.fn(async () => {}));
+const drop = vi.hoisted(() => vi.fn(async () => {}));
+const confirm = vi.hoisted(() => vi.fn(async () => true));
+vi.mock('../ui/ConfirmDialog', () => ({ confirmAction: confirm }));
 vi.mock('./open', () => ({ openRebaseEditor: open, REBASE_VIEW: 'irebase' }));
-vi.mock('./squash', () => ({ squashSelection: squash }));
+vi.mock('./squash', () => ({ squashSelection: squash, dropCommit: drop }));
 const rows = new Map<string, { parents: string[] }>([['c1', { parents: ['p1'] }], ['c2', { parents: ['c1'] }], ['m', { parents: ['a', 'b'] }], ['root', { parents: [] }]]);
 const head = vi.hoisted(() => ({ branch: 'refs/heads/topic' as string | null }));
 const wts = vi.hoisted(() => ({ list: [] as Array<{ path: string; inProgress: string | null }> }));
@@ -22,7 +25,7 @@ const commit = (sha: string): CommitTarget => ({ sha, mrRefs: [], isWip: false, 
 const act = (r: MenuRow[]) => r.filter((x): x is Extract<MenuRow, { kind: 'action' }> => x.kind === 'action');
 const sel: SelectionTarget = { commits: [{ oid: 'c2', summary: 'two', merge: false }, { oid: 'c1', summary: 'one', merge: false }] };
 
-beforeEach(() => { open.mockClear(); squash.mockClear(); wts.list = []; });
+beforeEach(() => { open.mockClear(); squash.mockClear(); drop.mockClear(); confirm.mockClear(); wts.list = []; });
 
 describe('interactive rebase menu rows (spec #3 §4.3)', () => {
   it('a branch chip: "Interactive rebase X onto Y", greyed while busy, hidden when there is nothing to rebase', () => {
@@ -139,5 +142,35 @@ describe('the palette\'s "Interactive rebase…" (Ruling 12)', () => {
     head.branch = null;
     paletteRebase('t1');
     expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe('Drop commit row', () => {
+  it("on a commit in HEAD's branch: arms, then drops it from its parent; the tooltip names the branch", async () => {
+    const [row] = act(dropRows(commit('c2'), env()));
+    expect(row.label).toBe('Drop commit');
+    expect(row.tooltip).toBe('Rebase topic without this commit');
+    row.run();
+    await vi.waitFor(() => expect(drop).toHaveBeenCalled());
+    expect((confirm.mock.calls[0] as unknown[])[0]).toMatchObject({ danger: true, arm: 'Click again to drop c2' });
+    expect((drop.mock.calls[0] as unknown[]).slice(0, 4)).toEqual(['t1', 'topic', 'c2', 'c1']);
+  });
+
+  it('a cancelled arm drops nothing', async () => {
+    confirm.mockResolvedValueOnce(false);
+    act(dropRows(commit('c2'), env()))[0].run();
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
+    expect(drop).not.toHaveBeenCalled();
+  });
+
+  it("hidden off HEAD's branch, on WIP and stash rows, a merge, a root and a detached HEAD; greyed while busy", () => {
+    expect(dropRows(commit('c2'), env({ isAncestor: () => false }))).toEqual([]);
+    expect(dropRows({ ...commit('c2'), isWip: true }, env())).toEqual([]);
+    expect(dropRows({ ...commit('c2'), isStash: true }, env())).toEqual([]);
+    expect(dropRows(commit('m'), env())).toEqual([]);
+    expect(dropRows(commit('root'), env())).toEqual([]);
+    expect(dropRows(commit('unloaded'), env())).toEqual([]);
+    expect(dropRows(commit('c2'), env({ headBranch: null }))).toEqual([]);
+    expect(act(dropRows(commit('c2'), env({ inProgress: 'rebase' })))[0].disabledReason).toBe('Finish or abort the rebase first');
   });
 });
