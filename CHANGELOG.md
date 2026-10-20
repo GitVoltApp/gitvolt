@@ -21,6 +21,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   selected instead of nothing, in any worktree. A file you had open stays open on the commit's
   diff of it, in the same view and at the same place; one the commit doesn't change closes.
 
+### Fixed
+
+- **Clicking a search result adds the reviewer.** In the reviewer, assignee and label searches
+  (Create MR/PR, the MR/PR view, Edit), a click on a match did nothing under GNOME: the list
+  closed as the button went down, so only the arrow keys and Enter could pick.
+
 ## [0.7.7] - 2026-10-19
 
 ### Changed

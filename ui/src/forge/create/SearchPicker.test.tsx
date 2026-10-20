@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api/client', () => ({ errorMessage: (e: unknown) => String((e as { message: string }).message) }));
-const { SearchPicker } = await import('./SearchPicker');
+const { SearchPicker, SEARCH_DEBOUNCE_MS } = await import('./SearchPicker');
 import type { PickOption } from './SearchPicker';
 
 const opt = (k: string): PickOption<string> => ({ key: k, label: k, value: k });
@@ -72,6 +72,34 @@ describe('SearchPicker (reviewers, assignees, labels)', () => {
     expect(await screen.findByText('No matches')).toBeTruthy();
     fireEvent.change(input, { target: { value: 'boom' } });
     expect((await screen.findByRole('alert')).textContent).toBe('gitlab.example.com rate limit reached: try again in 2 min');
+  });
+
+  // Under GNOME every press makes the window lose focus and get it back a few ms later
+  // (windowBlur.ts): closing the list on that blur took the pressed option away before its click.
+  it("a click on an option picks it through the window's focus bounce; a real blur still closes the list", async () => {
+    const search = vi.fn(async (q: string) => [opt(`${q}-1`), opt(`${q}-2`)]);
+    const onPick = vi.fn();
+    render(<SearchPicker label="Reviewers" chips={[]} onRemove={vi.fn()} search={search} onPick={onPick} />);
+    const input = screen.getByLabelText('Reviewers');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'gr' } });
+    const pressed = await screen.findByRole('option', { name: 'gr-2' });
+    const calls = search.mock.calls.length;
+    fireEvent.mouseDown(pressed);
+    const has = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    fireEvent.blur(input);
+    has.mockRestore();
+    fireEvent(window, new Event('focus'));
+    fireEvent.focus(input);
+    fireEvent.mouseUp(pressed);
+    expect(pressed.isConnected).toBe(true);
+    fireEvent.click(pressed);
+    expect(onPick).toHaveBeenCalledWith('gr-2');
+    await new Promise((r) => setTimeout(r, SEARCH_DEBOUNCE_MS + 20));
+    // The focus coming back is not a new search (that would replace the list under the pointer).
+    expect(search.mock.calls.slice(calls).map(([q]) => q)).toEqual(['']);
+    fireEvent.blur(input);
+    expect(screen.queryByRole('listbox')).toBeNull();
   });
 });
 

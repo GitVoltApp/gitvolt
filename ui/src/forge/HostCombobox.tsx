@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MutableRefObject, type Ref } from 'react';
+import { isWindowBlur, refocusWhenWindowReturns } from '../ui/windowBlur';
 
 export interface HostSuggestion { host: string; source: string }
 
@@ -54,7 +55,9 @@ export function HostCombobox({ value, suggestions, onChange, inputRef, onOpenCha
         autoComplete="off"
         value={value}
         onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        // Under GNOME a press anywhere bounces the window's focus (ui/windowBlur.ts): that blur
+        // would close the list before the press reaches its option.
+        onBlur={(e) => { if (isWindowBlur()) refocusWhenWindowReturns(e.currentTarget); else setOpen(false); }}
         onChange={(e) => { onChange(e.target.value); setOpen(true); setCursor(0); }}
         onKeyDown={onKey}
       />

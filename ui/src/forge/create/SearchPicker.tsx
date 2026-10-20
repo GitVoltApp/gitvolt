@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { errorMessage } from '../../api/client';
+import { isWindowBlur, refocusWhenWindowReturns } from '../../ui/windowBlur';
 import { debounce } from '../../util/debounce';
 import { chipStyle } from '../chipStyle';
 import { EmojiText } from '../emoji';
@@ -114,8 +115,10 @@ export function SearchPicker<T>({ label, chips, onRemove, search, peek, onPick, 
           value={q}
           spellCheck={false}
           autoComplete="off"
-          onFocus={() => { setOpen(true); go(q); }}
-          onBlur={() => setOpen(false)}
+          // A window blur keeps the list: under GNOME every press bounces the window's focus
+          // (windowBlur.ts), so closing on it unmounted the pressed option before its click.
+          onFocus={() => { if (open) return; setOpen(true); go(q); }}
+          onBlur={() => { if (isWindowBlur()) refocusWhenWindowReturns(inputRef.current); else setOpen(false); }}
           onChange={(e) => { seq.current++; setQ(e.target.value); setOpen(true); go(e.target.value); }}
           onKeyDown={onKey}
         />

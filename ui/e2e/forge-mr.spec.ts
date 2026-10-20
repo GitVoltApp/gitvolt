@@ -71,6 +71,41 @@ test.describe('merge requests (spec #4 §7, 4B)', () => {
       await expect(people.getByRole('button', { name: 'Remove Ada Lovelace' })).toBeVisible();
     });
 
+    // Under GNOME every press makes the window lose focus and get it back a few ms later
+    // (windowBlur.ts): the search's list used to close on that blur, taking the pressed option
+    // with it, so only the keyboard could pick.
+    await test.step("a reviewer picked with a click at a human pace, through GNOME's focus bounce", async () => {
+      await page.evaluate(() => {
+        const bounce = () => {
+          const el = document.activeElement;
+          const has = document.hasFocus;
+          document.hasFocus = () => false;
+          window.dispatchEvent(new FocusEvent('blur'));
+          el?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+          setTimeout(() => {
+            document.hasFocus = has;
+            window.dispatchEvent(new FocusEvent('focus'));
+            el?.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+          }, 5);
+        };
+        window.addEventListener('pointerdown', bounce, true);
+        (window as unknown as { offBounce(): void }).offBounce = () => window.removeEventListener('pointerdown', bounce, true);
+      });
+      const reviewers = view.locator('.people-card[data-row="reviewers"]');
+      await reviewers.getByRole('button', { name: 'Add reviewer' }).click();
+      await page.getByRole('combobox', { name: 'Reviewers' }).fill('gra');
+      const box = (await page.getByRole('option', { name: /Grace Hopper/ }).boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.waitForTimeout(80);
+      await page.mouse.up();
+      await expect(reviewers.getByRole('button', { name: 'Remove Grace Hopper' })).toBeVisible();
+      await page.evaluate(() => (window as unknown as { offBounce(): void }).offBounce());
+      await page.keyboard.press('Escape');
+      await reviewers.getByRole('button', { name: 'Remove Grace Hopper' }).click();
+      await expect(reviewers.getByRole('button', { name: 'Remove Grace Hopper' })).toBeHidden();
+    });
+
     await test.step('auto-merge while the pipeline runs: set, shown with who set it, cancelled', async () => {
       const seed = await forgeSeed(request);
       const m = (seed.gitlab as unknown as { mergeRequests: Array<Record<string, unknown>> }).mergeRequests.find((x) => x.iid === 12)!;
