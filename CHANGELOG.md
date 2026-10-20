@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-10-20
+
 ### Changed
 
 - **Syntax highlighting no longer slows the app down.** Files are now highlighted in the
