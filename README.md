@@ -304,6 +304,7 @@ See [docs/dev-setup.md](docs/dev-setup.md) for the full setup, including Chromiu
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release
 - [docs/dev-setup.md](docs/dev-setup.md): the full development setup
 - [docs/decisions/cef-over-webkitgtk.md](docs/decisions/cef-over-webkitgtk.md): why GitVolt runs on CEF rather than WebKitGTK
+- [docs/decisions/structural-diff-difftastic.md](docs/decisions/structural-diff-difftastic.md): why there's no structural diff mode, and what was tried
 - [docs/licensing.md](docs/licensing.md): licensing details
 
 ## License
