@@ -30,7 +30,7 @@ export function useMonacoHost(): MonacoHostState {
     loadMonacoHost().then(
       (h) => {
         loaded = h;
-        setEditorRelease(() => h.releaseDetached());
+        setEditorRelease(() => h.releaseDetached(), () => h.keepViewOnNextShow());
         if (live) setState({ host: h, error: null });
       },
       (e: unknown) => { if (live) setState({ host: null, error: errorMessage(e) }); },

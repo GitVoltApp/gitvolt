@@ -180,6 +180,23 @@ test('K44: the watched tab holds the WIP lists: they update live, and re-selecti
   // A request would be sent at once: give one a moment to show up before checking there's none.
   await page.waitForTimeout(300);
   expect(wipReads.length).toBe(before);
+
+  await test.step("a commit made outside (a terminal, an agent) takes the selected WIP row's place, with its open file", async () => {
+    const panel = page.getByRole('complementary', { name: 'Commit details' });
+    const diff = page.getByRole('region', { name: 'Diff' });
+    await page.getByRole('listbox', { name: 'Unstaged' }).getByRole('option').filter({ hasText: 'live.txt' }).click();
+    await expect(diff.locator('.editor.modified')).toContainText('live');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-qm', 'Committed elsewhere');
+    // The open file covers the graph: the details panel tells what's selected.
+    await expect(page.getByTestId('details-summary')).toHaveText('Committed elsewhere');
+    await expect(panel.getByRole('option', { selected: true })).toContainText('live.txt');
+    await expect(diff.getByRole('button', { name: 'Diff View', pressed: true })).toBeVisible();
+    await expect(diff.locator('.editor.modified')).toContainText('live');
+    await diff.getByRole('button', { name: 'Close diff' }).click();
+    await expect(rows(page).filter({ hasText: 'Committed elsewhere' })).toHaveAttribute('aria-selected', 'true');
+    await expect(wip).toHaveCount(0);
+  });
 });
 
 

@@ -3,7 +3,7 @@ import { createStore } from 'zustand/vanilla';
 import { useTabView } from '../app/tabStores';
 import { displayedOrder } from '../files/fileListPrefs';
 import { wipFileCount } from '../format/wip';
-import { openWipIndex, type DiffTarget, type RepoViewState, type RepoViewStore } from '../repo/store';
+import { openWipIndex, sameFile, type RepoViewState, type RepoViewStore } from '../repo/store';
 import type { ButtonView } from './registry';
 
 /**
@@ -25,9 +25,6 @@ export function onOpenWip(s: WipState): boolean {
   const i = openWipIndex(s);
   return i >= 0 && s.selection.kind === 'wip' && s.selection.index === i;
 }
-
-/** The same file: a path in common, a rename's old one included. */
-const sameFile = (a: DiffTarget, b: DiffTarget) => [a.path, a.oldPath].some((p) => p !== null && (p === b.path || p === b.oldPath));
 
 /** Runs `go` once the selected WIP's lists have settled (now, if they're held), or never if the
  * selection moves off that worktree first. */

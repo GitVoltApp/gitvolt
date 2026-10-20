@@ -16,6 +16,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **Cherry-pick a commit already on the branch,** to bring back a change a revert undid. A
   commit whose changes are still there stops as an empty pick.
 
+- **A commit selects itself when it takes the WIP's place.** When the working changes you were
+  looking at are committed or amended, here, in a terminal or by an agent, the new commit is
+  selected instead of nothing, in any worktree. A file you had open stays open on the commit's
+  diff of it, in the same view and at the same place; one the commit doesn't change closes.
+
 ## [0.7.7] - 2026-10-19
 
 ### Changed

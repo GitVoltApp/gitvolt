@@ -9,9 +9,11 @@ import type { DiffSpec } from '../api/gen/DiffSpec';
 import type { FileChange } from '../api/gen/FileChange';
 import type { FileListPayload } from '../api/gen/FileListPayload';
 import type { GraphPayload } from '../api/gen/GraphPayload';
+import { keepEditorPlace } from '../diff/editorRelease';
 import type { DiffLine } from '../diff/monaco/host';
 import { perf } from '../perf';
 import { contentKey, filesKey, isMutableKey, type RepoServices } from './services';
+import { wipKey } from './wipLists';
 
 /** Keyboard focus areas (spec §11.1). `sidebar` is registered by plan 1C. */
 export type FocusZone = 'sidebar' | 'graph' | 'files' | 'diff';
@@ -242,6 +244,9 @@ export function worktreeViewTarget(path: string, worktree: string, spec: DiffSpe
   return { key: `${filesKey(spec)}|all|${path}`, path, oldPath: null, status: '', old: { kind: 'absent' }, new: { kind: 'worktree', worktree }, view: 'file' };
 }
 
+/** The same file: a path in common, a rename's old one included. */
+export const sameFile = (a: DiffTarget, b: DiffTarget) => [a.path, a.oldPath].some((p) => p !== null && (p === b.path || p === b.oldPath));
+
 export const contentsRequest = (t: DiffTarget, force = false): ContentsRequest => ({ path: t.path, old: t.old, new: t.new, force, ...(t.oldPath ? { oldPath: t.oldPath } : {}) });
 
 export function selectedIndex(s: RepoViewState): number {
@@ -308,6 +313,27 @@ function anchorOf(s: RepoViewState): number | null {
 
 /** Rows `from` to `to`, inclusive, from `from` out. */
 const range = (from: number, to: number) => Array.from({ length: Math.abs(to - from) + 1 }, (_, k) => from + (to >= from ? k : -k));
+
+/**
+ * The row of the commit that took worktree `worktree`'s vanished WIP row's place: its HEAD moved,
+ * on the same branch, to a commit whose first parent is the old HEAD (a commit was made) or the
+ * old HEAD's first parent (an amend). `null` for any other move (a checkout, a reset, a rebase)
+ * or none (the changes were discarded or stashed).
+ */
+function commitAfterWip(prev: GraphPayload, next: GraphPayload, nextIndex: Map<string, number>, worktree: string, repoPath: string): number | null {
+  const wt = (g: GraphPayload) => g.worktrees.find((w) => w.path === worktree);
+  // The open worktree's HEAD is also the graph's own, for a graph that lists no worktrees.
+  const headOf = (g: GraphPayload) => wt(g)?.head ?? (worktree === openWorktree({ graph: g, repoPath }) ? g.head.target : null);
+  // A WIP row's parent is its worktree's HEAD.
+  const from = prev.rows.find((r) => r.wip?.worktreePath === worktree)?.parents[0] ?? headOf(prev);
+  const to = headOf(next);
+  if (!from || !to || from === to || wt(prev)?.branch !== wt(next)?.branch) return null;
+  const i = nextIndex.get(to);
+  if (i === undefined || (next.rows[i].kind !== 'commit' && next.rows[i].kind !== 'merge')) return null;
+  const parent = next.rows[i].parents[0];
+  const fromParent = prev.rows.find((r) => r.id === from)?.parents[0];
+  return parent === from || (fromParent !== undefined && parent === fromParent) ? i : null;
+}
 
 /** The file lists a selection shows, in order. */
 function sectionSpecs(selection: Selection, parent: number): { title: string | null; spec: DiffSpec }[] {
@@ -422,13 +448,14 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       set((st) => ({ ...extra, focus: zone, focusRequest: st.focusRequest + 1 }));
     }
 
-    function selectCommit(index: number) {
-      const rows = get().graph.rows;
+    /** `extra` goes in the same update: a refresh's new graph (whose row `index` is), an open file kept. */
+    function selectCommit(index: number, extra: Partial<RepoViewState> = {}) {
+      const rows = (extra.graph ?? get().graph).rows;
       const row = rows[index];
       const mySeq = ++seq;
       perf.start('details');
       const selection: Selection = { kind: 'commit', index, id: row.id };
-      set({ selection, picks: NO_PICKS, parent: 0, diff: null, details: IDLE, message: IDLE });
+      set({ selection, picks: NO_PICKS, parent: 0, diff: null, details: IDLE, message: IDLE, ...extra });
       loadCommit(row.id, mySeq);
       loadSections(sectionSpecs(selection, 0), mySeq);
       // The signature check starts with the details, not after them (the badge asks for the same
@@ -481,6 +508,30 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       } else {
         selectCommit(index);
       }
+    }
+
+    /**
+     * A WIP's open file `open`, kept open while the commit that took the WIP row's place (selected
+     * now) lists its files: then it moves to the same file there (by either path of a rename), in
+     * the same view and at the same place, or closes if the commit doesn't change it. Unsaved
+     * edits in it ask first (the leave guard); cancelled, the WIP's file stays open.
+     */
+    function carryToCommit(open: DiffTarget, id: string) {
+      const mySeq = seq;
+      const spec: DiffSpec = { kind: 'commit', id, parent: 0 };
+      const stillOpen = () => mySeq === seq && get().diff === open;
+      const settle = (list: FileListPayload | null) => {
+        if (!stillOpen()) return;
+        get().leaveThen(() => {
+          if (!stillOpen()) return;
+          const targets = list?.files.map((f) => targetFor(f, spec)) ?? [];
+          const i = targets.findIndex((t) => sameFile(t, open));
+          if (i < 0) return set({ diff: null });
+          keepEditorPlace();
+          state.openFile({ ...targets[i], view: open.view }, targets.slice(i + 1, i + 2));
+        });
+      };
+      services.files.get(filesKey(spec)).then(settle, () => settle(null));
     }
 
     /** Selects `picks` (all shown as selected) and compares `selection`'s endpoints. Like any
@@ -603,6 +654,20 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         }
         const p = prev.picks;
         const picks = p === NO_PICKS ? NO_PICKS : { rows: p.rows.map(remap).filter((i) => i !== null), anchor: remap(p.anchor), cursor: remap(p.cursor) };
+        if (selection.kind === 'none' && prev.selection.kind === 'wip') {
+          // A commit took the WIP row's place (or amended it): select it instead, with the WIP's
+          // open file, if it was one of the WIP's.
+          const worktree = prev.selection.worktree;
+          const took = commitAfterWip(prev.graph, next, indexById, worktree, repoPath);
+          if (took !== null) {
+            const d = prev.diff;
+            const open = d && [false, true].some((staged) => d.key.startsWith(`${wipKey(worktree, staged)}|`)) ? d : null;
+            selectCommit(took, { graph: next, indexById, diff: open, ...reveal });
+            services.wip.prefetch(openWip(next, repoPath));
+            if (open) carryToCommit(open, next.rows[took].id);
+            return;
+          }
+        }
         // The selected commit or worktree is gone: clear what was shown for it.
         if (selection.kind === 'none' && prev.selection.kind !== 'none') return clearSelection({ graph: next, indexById, ...reveal });
         set({ graph: next, indexById, selection, picks, ...reveal });
