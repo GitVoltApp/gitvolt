@@ -37,6 +37,19 @@ export const registerTokenization = <S extends TokenizerState>(languageId: strin
 /** `tokenizeEncoded`'s result: one line's tokens as (start offset, metadata) pairs. */
 export const encodedResult = (tokens: Uint32Array, endState: TokenizerState): EncodedTokenizationResult => new EncodedTokenizationResult(tokens, [], endState);
 
+/** A model's syntax token backend (TokenizerSyntaxTokenBackend): its tokenization state, which
+ * `BackgroundTokenStore.backgroundTokenizationFinished` sets to Completed (2) for good. */
+interface TokenBackend { _backgroundTokenizationState: number }
+const backend = (model: Model) => (model as unknown as { tokenization: { tokens: { get(): TokenBackend } } }).tokenization.tokens.get();
+
+/** Puts a model's tokenization back in progress (1), for a text tokenized again from the top (a
+ * theme change): Monaco has no way to, as its own tokenizers never do that. Its diff editor redraws
+ * Inline's removed lines (the original side's) when the state it read at the last token change
+ * changes, so they follow the new tokens once they're finished again. */
+export function restartTokenization(model: Model): void {
+  backend(model)._backgroundTokenizationState = 1;
+}
+
 /** Lines `from`… (1-based) for `BackgroundTokenStore.setTokens`, as (end offset, metadata) pairs.
  * Monaco keeps the arrays and edits them in place as the text changes: pass ones it can own. */
 export const tokenRun = (from: number, lines: Uint32Array[]): ContiguousMultilineTokens => new ContiguousMultilineTokens(from, lines);

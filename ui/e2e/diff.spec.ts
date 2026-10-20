@@ -8,6 +8,8 @@ import { fixtures, freshFixture, git, openUrl } from './fixtures';
 // a test keeps what it picked.
 const DIFF_PREFS_KEY = 'gitvolt.diffPrefs.v1';
 const COMMIT = 'Rename guide and update assets';
+const GREET_OLD = 'function greet(name, greeting) {\n  return greeting + ", " + name;\n}\n\nconst people = ["Ada", "Grace"];\nfor (const p of people) { console.log(greet(p, "Hello")); }\n';
+const GREET_NEW = 'function greet(name, greeting) {\n    return greeting + ", " + name;\n}\n\nconst people = ["Ada", "Grace"];\nfor (const p of people) {\n  console.log(greet(p, "Hi"));\n}\n';
 
 const fileRow = (page: Page, path: string) => page.getByRole('option').and(page.locator(`[data-path="${path}"]`));
 const diff = (page: Page) => page.getByRole('region', { name: 'Diff' });
@@ -335,9 +337,14 @@ test.describe('diff viewer controls', () => {
       // clipped by its group and no group overlaps another, whether the bar wraps or not.
       const repo = freshFixture('details');
       mkdirSync(join(repo, 'docs'), { recursive: true });
+      // A script with changed lines, for the Inline step below.
+      writeFileSync(join(repo, 'src/greet.js'), GREET_OLD);
+      git(repo, 'add', 'src/greet.js');
+      git(repo, 'commit', '-m', 'Add greet');
+      writeFileSync(join(repo, 'src/greet.js'), GREET_NEW);
       writeFileSync(join(repo, 'docs/keys.md'), '# Keys\n\n| Key | Action |\n| --- | --- |\n| Escape | Cancel |\n| Up, Down | Move |\n');
       writeFileSync(join(repo, 'docs/scores.csv'), 'name,score\nada,3\nbob,4\n');
-      git(repo, 'add', 'docs/keys.md', 'docs/scores.csv');
+      git(repo, 'add', 'docs/keys.md', 'docs/scores.csv', 'src/greet.js');
       git(repo, 'commit', '-m', 'Add narrow-bar docs');
       await page.goto(openUrl(repo));
       await page.getByRole('row').filter({ hasText: 'Add narrow-bar docs' }).click();
@@ -367,6 +374,18 @@ test.describe('diff viewer controls', () => {
         await page.keyboard.press('Escape');
       }
       await selectCommit(page); // the next step wants the details fixture's own commit
+    });
+
+    // Monaco draws Inline's removed lines once, from the original side's tokens at the time, and
+    // again only when that side reports its tokenization complete (modelTokens.ts).
+    await test.step("Inline's removed lines are syntax-coloured once the original side's tokens land", async () => {
+      await page.getByRole('row').filter({ hasText: 'Add narrow-bar docs' }).click();
+      await open(page, 'src/greet.js');
+      const removed = diff(page).locator('.editor.modified .view-zones .view-line');
+      await expect.poll(() => removed.count(), { timeout: 15_000 }).toBe(2);
+      await expect.poll(() => removed.evaluateAll((ls) => ls.flatMap((l) => [...l.querySelectorAll('span span')]).filter((s) => !s.classList.contains('mtk1')).length), { timeout: 5_000 }).toBeGreaterThan(0);
+      await page.keyboard.press('Escape');
+      await selectCommit(page);
     });
 
     await test.step('a toolbar click leaves the focus in the file list: ↓ then opens the next file', async () => {

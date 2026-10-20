@@ -4,7 +4,7 @@
 // highlighted file would show plain until monacoInternals.ts follows it.
 import { describe, expect, it, vi } from 'vitest';
 import * as monaco from 'monaco-editor/editor/editor.api';
-import { type BackgroundTokenStore, type TokenizerState, encodedResult, registerTokenization, tokenRun } from './monacoInternals';
+import { type BackgroundTokenStore, type TokenizerState, encodedResult, registerTokenization, restartTokenization, tokenRun } from './monacoInternals';
 
 class State implements TokenizerState {
   readonly line: number;
@@ -61,6 +61,42 @@ describe("Monaco's background tokenizer hook", () => {
     (model as unknown as { tokenization: { forceTokenization(n: number): void } }).tokenization.forceTokenization(3);
     expect(sync.mock.calls.map((c) => [c[0], c[2]])).toEqual([['xtwo', states[1]]]);
 
+    reg.dispose();
+    model.dispose();
+  });
+
+  // What its diff editor reads to redraw Inline's removed lines (diffEditorViewZones.js): the
+  // original model's state, on that model's token changes only.
+  it('reports the tokenization finished on the next token change, not at once; only a write that changes a line is one; a restart puts it back in progress', () => {
+    monaco.languages.register({ id: 'gv-probe-state' });
+    const state = new State(0);
+    const stores: BackgroundTokenStore[] = [];
+    const reg = registerTokenization('gv-probe-state', {
+      getInitialState: () => state,
+      tokenize: (_line, _eol, s) => ({ tokens: [], endState: s }),
+      tokenizeEncoded: (_line, _eol, s) => encodedResult(Uint32Array.of(0, 0x8001 * 3), s),
+      createBackgroundTokenizer(_m, store) { stores.push(store); return { dispose: () => {}, requestTokens: () => {} }; },
+    });
+    const model = monaco.editor.createModel('one\ntwo', 'gv-probe-state');
+    const internal = model as unknown as { tokenization: { backgroundTokenizationState: number }; onDidChangeTokens(f: () => void): void };
+    const completed = () => internal.tokenization.backgroundTokenizationState === 2;
+    const seen: boolean[] = [];
+    internal.onDidChangeTokens(() => seen.push(completed()));
+    const store = stores[0];
+    const meta = (fg: number) => ((fg << 15) | (2 << 24)) >>> 0;
+    store.setTokens([tokenRun(1, [Uint32Array.of(3, meta(5))])]);
+    store.backgroundTokenizationFinished();
+    expect(completed()).toBe(true);
+    expect(seen).toEqual([false]);
+    store.setTokens([tokenRun(1, [Uint32Array.of(3, meta(5))])]);
+    expect(seen).toEqual([false]);
+    store.setTokens([tokenRun(1, [Uint32Array.of(0, meta(5), 3, meta(5))])]);
+    expect(seen).toEqual([false, true]);
+
+    restartTokenization(model);
+    expect(completed()).toBe(false);
+    store.backgroundTokenizationFinished();
+    expect(completed()).toBe(true);
     reg.dispose();
     model.dispose();
   });

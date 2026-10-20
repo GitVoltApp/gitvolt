@@ -15,6 +15,7 @@ import {
   type TokenizerState,
   encodedResult,
   registerTokenization,
+  restartTokenization,
   tokenRun,
 } from './monacoInternals';
 import { type Change, plainMetadata } from './protocol';
@@ -97,7 +98,7 @@ export class ModelTokens implements BackgroundTokenizer {
       queueMicrotask(() => {
         if (this.disposed) return;
         this.show(0, n);
-        store.backgroundTokenizationFinished();
+        this.finish();
       });
     }
     live.add(this);
@@ -135,6 +136,24 @@ export class ModelTokens implements BackgroundTokenizer {
     this.store.setTokens([tokenRun(from + 1, lines)]);
   }
 
+  /**
+   * Every line's tokens are exact: tells Monaco. Its diff editor draws Inline's removed lines (this
+   * text, as the original side) from the store when the diff shows, and again only on a token change
+   * that comes after this signal: it reads the state on `onDidChangeTokens` alone
+   * (diffEditorViewZones.js). The store reports only a write that changes a line, and the lines
+   * already hold these tokens: so one line goes in with an empty token in front first (never
+   * painted: it's replaced in the same task), then as it is after the signal.
+   */
+  private finish(): void {
+    let line = 0;
+    while (line < this.toks.length && this.model.getLineLength(line + 1) === 0) line++;
+    if (line === this.toks.length) return this.store.backgroundTokenizationFinished();
+    const plain = plainMetadata(this.langBits);
+    this.store.setTokens([tokenRun(line + 1, [Uint32Array.of(0, plain, ...(this.toks[line] ?? [this.model.getLineLength(line + 1), plain]))])]);
+    this.store.backgroundTokenizationFinished();
+    this.show(line, line + 1);
+  }
+
   /** The sync tokenizer's answer for line `line` (1-based): the copy's tokens as start offsets. */
   tokensFor(line: number, text: string): Uint32Array {
     const t = this.toks[line - 1];
@@ -152,7 +171,7 @@ export class ModelTokens implements BackgroundTokenizer {
     if (m.kind === 'done') {
       if (m.version !== this.model.getVersionId() || this.known.some((k) => k !== EXACT)) return;
       cache.set(this.key ??= cacheKey(this.lang, theme, this.model.getValue()), [...this.toks] as Lines);
-      this.store.backgroundTokenizationFinished();
+      this.finish();
       return;
     }
     let runFrom = -1;
@@ -210,10 +229,12 @@ export class ModelTokens implements BackgroundTokenizer {
     this.edits = [];
     this.key = cacheKey(this.lang, theme, this.model.getValue());
     const cached = cache.get(this.key);
+    restartTokenization(this.model);
     if (cached && cached.length === this.toks.length) {
       this.toks = [...cached];
       this.known.fill(EXACT);
       this.show(0, this.toks.length);
+      this.finish();
     } else {
       this.known.fill(UNKNOWN);
     }

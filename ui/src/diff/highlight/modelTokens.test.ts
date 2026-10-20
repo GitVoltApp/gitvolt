@@ -8,6 +8,7 @@ const supports = new Map<string, TokenizationSupport<TokenizerState>>();
 vi.mock('./monacoInternals', () => ({
   registerTokenization: (lang: string, s: TokenizationSupport<TokenizerState>) => { supports.set(lang, s); return { dispose() {} }; },
   tokenRun: (from: number, lines: Uint32Array[]) => ({ from, lines }),
+  restartTokenization: (model: { restart(): void }) => model.restart(),
   encodedResult: (tokens: Uint32Array, endState: TokenizerState) => ({ tokens, endState }),
 }));
 
@@ -38,11 +39,33 @@ function fakeModel(text: string) {
   };
 }
 
+/** Monaco's store, as far as its diff editor sees it (diffEditorViewZones.js): it draws Inline's
+ * removed lines from the store, and again when the tokenization's completeness, read on each token
+ * change (a write that changes a line), differs from the last read. `drawn`: each drawing. */
 function fakeStore() {
   const runs: Array<{ from: number; lines: Uint32Array[] }> = [];
   const ends = new Map<number, TokenizerState>();
-  const store = { setTokens: (r: typeof runs) => runs.push(...r), setEndState: (n: number, s: TokenizerState) => void ends.set(n, s), backgroundTokenizationFinished: vi.fn() };
-  return { store: store as unknown as BackgroundTokenStore & { backgroundTokenizationFinished: ReturnType<typeof vi.fn> }, runs, ends };
+  const held: number[][] = [];
+  const drawn: number[][][] = [];
+  let complete = false;
+  let read = false;
+  const store = {
+    setTokens: (r: typeof runs) => {
+      runs.push(...r);
+      let changed = false;
+      for (const run of r) {
+        run.lines.forEach((l, i) => {
+          changed ||= held[run.from + i - 1]?.join() !== [...l].join();
+          held[run.from + i - 1] = [...l];
+        });
+      }
+      if (changed && complete !== read) drawn.push(held.map((l) => [...l]));
+      if (changed) read = complete;
+    },
+    setEndState: (n: number, s: TokenizerState) => void ends.set(n, s),
+    backgroundTokenizationFinished: vi.fn(() => { complete = true; }),
+  };
+  return { store: store as unknown as BackgroundTokenStore & { backgroundTokenizationFinished: ReturnType<typeof vi.fn> }, runs, ends, drawn, restart: () => { complete = false; } };
 }
 
 const posted: ToWorker[] = [];
@@ -70,8 +93,8 @@ const toks = (line: string) => {
   return out;
 };
 function open(text: string) {
-  const model = fakeModel(text);
   const s = fakeStore();
+  const model = Object.assign(fakeModel(text), { restart: s.restart });
   const before = posted.length;
   const tokenizer = support.createBackgroundTokenizer(model as never, s.store);
   const msg = posted.slice(before).find((m) => m.kind === 'open') as Extract<ToWorker, { kind: 'open' }>;
@@ -129,6 +152,36 @@ describe("Monaco's side of the highlight worker", () => {
     partial.done();
     expect(open('const z = 3\nconst w = 4').msg.known).toBe(false);
     again.tokenizer.dispose();
+    t.tokenizer.dispose();
+  });
+
+  it("says the text is finished before a token change Monaco sees, so its diff editor draws Inline's removed lines again: after the worker's pass, and from the cache", async () => {
+    const exact = [toks('fn one() {'), [0, meta(1)], toks('  two()')];
+    const t = open('fn one() {\n\n  two()');
+    // The lines on screen already hold the same tokens, guessed: the store reports no change for them.
+    t.reply({ version: 1, from: 0, exact: false, lines: exact });
+    t.reply({ version: 1, from: 0, exact: true, lines: exact });
+    expect(t.drawn).toEqual([]);
+    t.done();
+    expect(t.drawn).toEqual([exact]);
+    const again = open('fn one() {\n\n  two()');
+    await Promise.resolve();
+    expect(again.drawn).toEqual([exact]);
+    again.tokenizer.dispose();
+    t.tokenizer.dispose();
+  });
+
+  it("a theme change puts the text back in progress, so Monaco's diff editor draws Inline's removed lines in the new theme's tokens once they're in", () => {
+    const t = open('paint me\nagain');
+    t.reply({ version: 1, from: 0, exact: true, lines: [[8, meta(3)], [5, meta(4)]] });
+    t.done();
+    setTokenTheme('light');
+    t.reply({ version: 1, from: 0, exact: true, lines: [[8, meta(5)], [5, meta(6)]], epoch: 1 });
+    t.done(1, 1);
+    expect(t.drawn.at(-1)).toEqual([[8, meta(5)], [5, meta(6)]]);
+    // Back to a theme the cache has it in: at once.
+    setTokenTheme('dark');
+    expect(t.drawn.at(-1)).toEqual([[8, meta(3)], [5, meta(4)]]);
     t.tokenizer.dispose();
   });
 
