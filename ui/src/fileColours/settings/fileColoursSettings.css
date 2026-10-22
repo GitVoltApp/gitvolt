@@ -1,0 +1,18 @@
+.fc-strip { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--panel-bg0); border: 1px solid var(--blue); border-radius: 6px; }
+.fc-strip-row { display: flex; align-items: center; gap: 8px; }
+.fc-strip-spacer { flex: 1; }
+.fc-strip-pattern, .fc-try input { font: inherit; padding: 4px 8px; color: var(--text-selected); background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 4px; outline: none; }
+.fc-strip-pattern { min-width: 0; width: 220px; }
+.fc-strip-pattern:focus, .fc-try input:focus { border-color: var(--blue); }
+.fc-strip-scope { display: inline-flex; align-items: center; gap: 6px; }
+.fc-strip-scope i { width: 10px; height: 10px; border-radius: 3px; }
+.fc-strip-warn { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-normal); }
+.fc-strip-via { font-size: 11px; color: var(--text-secondary); }
+.fc-btn { font: inherit; padding: 4px 10px; color: var(--text-normal); background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 4px; cursor: pointer; }
+.fc-btn:hover:not(:disabled) { background: var(--hover-row); }
+.fc-btn:focus-visible { outline: 2px solid var(--focus-outline); outline-offset: 1px; }
+.fc-btn:disabled { opacity: 0.5; cursor: default; }
+.fc-btn.primary { color: var(--text-selected); border-color: var(--blue); }
+.fc-try input { width: 100%; box-sizing: border-box; }
+.fc-try-out { min-height: 1.5em; padding-top: 4px; font-size: 12px; color: var(--text-secondary); }
+.fc-share { display: flex; flex-wrap: wrap; gap: 8px; }
