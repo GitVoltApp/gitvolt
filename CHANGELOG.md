@@ -13,9 +13,39 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   the list and the badges. The icon turns while it runs. A refresh while one is running joins it,
   and none is sent while the forge's rate limit is spent. "Refresh the MR/PR" and "Refresh the
   MR/PR list" are in the command palette too.
+- **Branch presets.** A button right of the sidebar's branch filter switches the graph between
+  views: All (today's graph), All, collapsed, Mine, and presets you make from rules (show, hide or
+  collapse branches by trunk, checked out, author, name, remote or local, age, merged). A click
+  steps to the next preset, ▾ lists them all; Settings › Branch presets edits, reorders, copies
+  and pastes them.
+  - A collapsed branch keeps its newest and oldest commits around a dotted "⋮ N more commits" row.
+    Hovering or clicking it opens the hidden commits over the graph, lined up with its lanes,
+    without moving any rows; "Expand in graph" unfolds them in place.
+  - A preset can fold branches merged into the trunk into their merge commit (+N), and draws short
+    fading lines where hidden branches fork, listing them with Show.
+  - Hide branch and Show branch in a branch's menus, or Alt+click its chip or sidebar row, make the
+    repository's Custom preset. Hidden branches stay in the sidebar, struck through.
+- **Load older commits.** A row at the bottom of the graph loads the next batch of history and
+  keeps your place. The extra history unloads a few minutes after you're back near the top.
+- **File colours.** Per repository, scopes of path patterns (`**/tests/**`, `*.snap`) tint their
+  files in every file list and the open file's header, JetBrains style. A scope's folders can start
+  collapsed in tree view. A file's right-click menu offers "Colour `*.ext` files…" and "Colour
+  folder…"; Settings › File colours orders, edits and shares the scopes, with starters for tests,
+  generated files and docs.
+- **Theme editing.** Change any colour of a theme, or its graph lane colours (drag to reorder),
+  with GitVolt's own colour picker (HSL, hex, opacity); a built-in theme becomes "<theme> (Custom)"
+  and stays untouched. Themes copy as JSON, export to a file and paste back in. "Edit on the app"
+  shrinks Settings to a floating editor so you see the whole app change as you edit. Lane colours
+  you changed before become a custom copy of their theme.
+- **Relative dates.** Settings › Graph › "Show relative dates" ("5 minutes ago"); hovering a date
+  shows the other form.
 
 ### Changed
 
+- **Settings is redesigned.** A larger window with a search box over every setting and pages in
+  three groups: GitVolt, the profile and the open repository. A setting changed from its default
+  shows a dot and a ↺ to restore it. Git identity shows who commits are made as in the open
+  repository.
 - **File lists open as a tree by default.** The working-copy sections, commit details, compare and
   merge request changes show folders first until you switch to Path; a mode you already picked is
   kept.
