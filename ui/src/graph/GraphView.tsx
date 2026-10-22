@@ -14,6 +14,8 @@ import { formatDate } from '../format/date';
 import { Avatar } from '../avatars/Avatar';
 import { avatars } from '../avatars/avatarStore';
 import { useRepoContext } from '../app/repoContext';
+import { loadOlder, olderViewport } from '../app/runtime';
+import { LoadOlderRow } from './LoadOlderRow';
 import { buildMenu } from '../menu/registry';
 import { openContextMenu, openMenuAt, type MenuEventLike } from '../menu/menuStore';
 import { useContextTarget } from '../menu/contextTarget';
@@ -324,6 +326,7 @@ export interface GraphViewProps {
 
 export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null, revealTip = null }: GraphViewProps) {
   const dateFormat = useAppState((s) => s.settings.dateFormat);
+  const commitLimit = useAppState((s) => s.settings.commitLimit);
   const ownRef = useRef<HTMLDivElement>(null);
   const scrollRef = gridRef ?? ownRef;
   // The last scroll offset while visible: restored when <Activity> shows the graph again
@@ -446,7 +449,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   };
 
   const v = useVirtualizer({
-    count: graph.rows.length,
+    count: graph.rows.length + (graph.truncated ? 1 : 0),
     getScrollElement: () => scrollRef.current,
     estimateSize: () => metrics.rowH,
     overscan: 20,
@@ -469,7 +472,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   // A new avatar redraws the canvas only: rows don't take it as a prop, so memoized rows stay put.
   const avatarVersion = useSyncExternalStore(avatars.subscribe, avatars.version);
   // The tab's repo: its GitHub project is the backend's last place to look for an author's picture.
-  const tabRepo = useRepoContext().repoId;
+  const { repoId: tabRepo, tabId } = useRepoContext();
   // Ask for the avatars of the rows on screen plus AVATAR_OVERSCAN, latest set wins: a fast
   // scroll drops the queued requests of rows it went past. Re-asked on each arrival too, so an
   // image evicted while on screen comes back. Clamped: elastic overscroll (WebKit) gives a
@@ -511,6 +514,21 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
     if (el.scrollTop !== lastScroll.current) el.scrollTop = lastScroll.current;
     canvas.current?.sync();
   }, [scrollRef]);
+
+  // Load older commits: the viewport and selection feed the unload policy (runtime.ts), which
+  // arms one timeout when it could become due.
+  const reportOlder = (top: number) => {
+    if (!tabId) return;
+    olderViewport(tabId, Math.floor(top / metrics.rowH), Math.ceil((top + viewportH) / metrics.rowH) - 1, selected);
+  };
+  useEffect(() => { reportOlder(scrollRef.current?.scrollTop ?? 0); }, [selected, graph.rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const olderBtn = useRef<HTMLButtonElement>(null);
+  const [loadingOlderRow, setLoadingOlderRow] = useState(false);
+  const loadMore = () => {
+    if (!tabId || loadingOlderRow) return;
+    setLoadingOlderRow(true);
+    void loadOlder(tabId).finally(() => setLoadingOlderRow(false));
+  };
 
   const select = useCallback((i: number, mods: SelectMods = PLAIN) => {
     const clamped = Math.max(0, Math.min(graph.rows.length - 1, i));
@@ -619,6 +637,11 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
     }
     const page = Math.max(1, Math.floor(viewportH / metrics.rowH) - 1);
     const moves: Record<string, number> = { ArrowDown: selected + 1, ArrowUp: selected - 1, PageDown: selected + page, PageUp: selected - page, Home: 0, End: graph.rows.length - 1 };
+    if (e.key === 'ArrowDown' && graph.truncated && selected === graph.rows.length - 1 && olderBtn.current) {
+      e.preventDefault();
+      olderBtn.current.focus();
+      return;
+    }
     if (e.key in moves) {
       // Shift+↑/↓ extend the range from the anchor (K27). With a diff open the change keys
       // (J14) take them first, app-wide, and the graph is hidden anyway.
@@ -632,6 +655,12 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
       // left for other bindings.
       e.target === e.currentTarget && !e.ctrlKey && !e.altKey && !e.metaKey && onUnhandledKey?.(e.key)
     ) e.preventDefault();
+  };
+
+  const onOlderKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    scrollRef.current?.focus();
   };
 
   const copySha = useCallback((id: string) => {
@@ -666,11 +695,15 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
           const y = e.currentTarget.scrollTop;
           if (e.currentTarget.offsetParent !== null) lastScroll.current = y;
           if (!sameRowsOnScreen(y, scrollTop, viewportH, metrics.rowH)) setScrollTop(y);
+          reportOlder(y);
           setScrollLeft(e.currentTarget.scrollLeft);
         }}>
           <div style={{ height: v.getTotalSize(), width: Math.max(cols.total, viewportW), position: 'relative' }}>
             {v.getVirtualItems().map((item) => {
               const row = graph.rows[item.index];
+              if (!row) {
+                return <LoadOlderRow key="load-older" ref={olderBtn} start={item.start} rowH={metrics.rowH} loaded={graph.rows.length} batch={commitLimit} loading={loadingOlderRow} onLoad={loadMore} onKeyDown={onOlderKeyDown} />;
+              }
               const isSelected = item.index === selected || alsoSelected.has(item.index);
               return (
                 <GraphRow
