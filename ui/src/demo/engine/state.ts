@@ -29,6 +29,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   updateArchMethod: null,
   graphColorOverrides: {},
   customThemes: [],
+  // --- branch presets ---
+  builtinPresets: [{ id: 'all', inCycle: true }, { id: 'all-collapsed', inCycle: true }, { id: 'mine', inCycle: true }],
+  collapseHoverOpen: true,
+  collapsePlacement: 'keepDateOrder',
+  // --- end branch presets ---
 };
 
 export function defaultProfile(): Profile {

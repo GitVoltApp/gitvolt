@@ -72,7 +72,52 @@ pub enum Request {
         #[serde(default)]
         #[ts(optional)]
         active: Option<String>,
+        /// A branch preset to apply (`gitvolt_graph::ViewSpec`); absent (All): the plain graph.
+        #[serde(default)]
+        #[ts(optional)]
+        view: Option<gitvolt_graph::ViewSpec>,
     },
+    // --- branch presets ---
+    /// The reveal panel's rows for a collapsed run or a folded merge (`key`, as `expanded` spells
+    /// it) under `view`, opening `below` its row or above it: `RevealPayload | null`. Laid out
+    /// as `graph` with the same `limit`, `pin` and `active` did, on its cached walk.
+    GraphReveal {
+        repo: u32,
+        limit: Option<u32>,
+        #[serde(default)]
+        #[ts(optional)]
+        pin: Option<PinSetting>,
+        #[serde(default)]
+        #[ts(optional)]
+        active: Option<String>,
+        view: gitvolt_graph::ViewSpec,
+        key: String,
+        below: bool,
+    },
+    /// The settings page's live summary of `view` over the repository's window: `PresetPreview`.
+    BranchPresetPreview {
+        repo: u32,
+        limit: Option<u32>,
+        #[serde(default)]
+        #[ts(optional)]
+        pin: Option<PinSetting>,
+        view: gitvolt_graph::ViewSpec,
+    },
+    /// The `expanded` key that would make `sha`, a loaded commit `view` doesn't show as a row, a
+    /// row: `string | null`.
+    GraphHiddenOwner {
+        repo: u32,
+        limit: Option<u32>,
+        #[serde(default)]
+        #[ts(optional)]
+        pin: Option<PinSetting>,
+        #[serde(default)]
+        #[ts(optional)]
+        active: Option<String>,
+        view: gitvolt_graph::ViewSpec,
+        sha: String,
+    },
+    // --- end branch presets ---
     CommandLog,
     /// The request log (the Debug → Requests tab), oldest first.
     RequestLog,
@@ -1346,6 +1391,9 @@ impl Request {
             | Request::Diagnostics { .. }
             | Request::OpenLogsFolder
             | Request::Graph { .. }
+            | Request::GraphReveal { .. }
+            | Request::BranchPresetPreview { .. }
+            | Request::GraphHiddenOwner { .. }
             | Request::CommandLog
             | Request::RequestLog
             | Request::LaunchRepo
@@ -2350,38 +2398,12 @@ impl Api {
                 to_json(())
             }
             Request::OpenRepo { path } => to_json(self.open_repo(&path).await?),
-            Request::Graph { repo, limit, pin, rescan, active } => {
+            Request::Graph { repo, limit, pin, rescan, active, view } => {
                 let h = self.handle(repo)?;
-                // Checked against the build's own `git worktree list` (`build_graph_with_text`),
-                // so a switch's relayout runs one git process, not two.
-                let active = match active {
-                    Some(a) => Some(crate::platform::fs::canonicalize(Path::new(&a)).map_err(|_| GbError::new(GbErrorKind::InvalidInput, format!("{a} is not a worktree of this repository")))?),
-                    None => None,
-                };
+                let mut opts = self.build_options(&h, limit, pin, active, view)?;
                 // The watcher keeps the worktree shown responsive (the others throttled).
-                h.wip.set_active(active.as_deref().unwrap_or(&h.workdir));
-                let (pinned_ref, no_pin) = match pin {
-                    Some(PinSetting::Off) => (None, true),
-                    Some(PinSetting::Ref { name }) => (Some(name), false),
-                    Some(PinSetting::Auto) | None => (None, false),
-                };
-                // The default trunk follows the root of the remotes' forks, and the payload says
-                // whether this is a fork whatever the pin: cached data only, the build never waits
-                // on a forge (`forgeRepoProjects` refreshes it).
-                let forks = match &self.forge {
-                    Some(hub) => hub.cached_forks(&self.store, &self.forge_remotes_of(&h)),
-                    None => Default::default(),
-                };
-                let opts = BuildOptions {
-                    limit: limit.map(|l| l as usize).unwrap_or(crate::snapshot::DEFAULT_COMMIT_LIMIT),
-                    pinned_ref,
-                    no_pin,
-                    wip_cache: Some(h.wip.clone()),
-                    rescan: rescan.unwrap_or(false) || !self.status_is_watched(repo),
-                    active,
-                    walk_cache: Some(h.walk.clone()),
-                    forks,
-                };
+                h.wip.set_active(opts.active.as_deref().unwrap_or(&h.workdir));
+                opts.rescan = rescan.unwrap_or(false) || !self.status_is_watched(repo);
                 let (payload, texts) = build_graph_with_text(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts).await?;
                 {
                     // Find searches this window now; the path index carries over (find.rs).
@@ -2391,6 +2413,23 @@ impl Api {
                 }
                 to_json(payload)
             }
+            // --- branch presets ---
+            Request::GraphReveal { repo, limit, pin, active, view, key, below } => {
+                let h = self.handle(repo)?;
+                let opts = self.build_options(&h, limit, pin, active, Some(view))?;
+                to_json(crate::snapshot::reveal_graph(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts, &key, below).await?)
+            }
+            Request::BranchPresetPreview { repo, limit, pin, view } => {
+                let h = self.handle(repo)?;
+                let opts = self.build_options(&h, limit, pin, None, Some(view))?;
+                to_json(crate::snapshot::preview_graph(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts).await?)
+            }
+            Request::GraphHiddenOwner { repo, limit, pin, active, view, sha } => {
+                let h = self.handle(repo)?;
+                let opts = self.build_options(&h, limit, pin, active, Some(view))?;
+                to_json(crate::snapshot::hidden_owner(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts, &sha).await?)
+            }
+            // --- end branch presets ---
             Request::FindText { repo, query } => to_json(self.find_text(repo, &query)?),
             Request::FindPaths { repo, query } => to_json(self.find_paths(repo, &query).await?),
             Request::LocateCommit { repo, sha } => to_json(self.locate_commit(repo, &sha).await?),
@@ -3376,6 +3415,42 @@ impl Api {
         list
     }
 
+    /// How the graph reads (`graph`, `graphReveal`, `branchPresetPreview`, `graphHiddenOwner`)
+    /// lay `h` out: the window, the pin, the active worktree and the forks, and the view with
+    /// `now` filled in. `rescan` is left off.
+    fn build_options(&self, h: &RepoHandle, limit: Option<u32>, pin: Option<PinSetting>, active: Option<String>, view: Option<gitvolt_graph::ViewSpec>) -> Result<BuildOptions, GbError> {
+        // Checked against the build's own `git worktree list` (`build_graph_with_text`), so a
+        // switch's relayout runs one git process, not two.
+        let active = match active {
+            Some(a) => Some(crate::platform::fs::canonicalize(Path::new(&a)).map_err(|_| GbError::new(GbErrorKind::InvalidInput, format!("{a} is not a worktree of this repository")))?),
+            None => None,
+        };
+        let (pinned_ref, no_pin) = match pin {
+            Some(PinSetting::Off) => (None, true),
+            Some(PinSetting::Ref { name }) => (Some(name), false),
+            Some(PinSetting::Auto) | None => (None, false),
+        };
+        // The default trunk follows the root of the remotes' forks, and the payload says whether
+        // this is a fork whatever the pin: cached data only, the build never waits on a forge
+        // (`forgeRepoProjects` refreshes it).
+        let forks = match &self.forge {
+            Some(hub) => hub.cached_forks(&self.store, &self.forge_remotes_of(h)),
+            None => Default::default(),
+        };
+        let view = view.map(|v| gitvolt_graph::ViewSpec { now: self.now(), ..v });
+        Ok(BuildOptions {
+            limit: limit.map(|l| l as usize).unwrap_or(crate::snapshot::DEFAULT_COMMIT_LIMIT),
+            pinned_ref,
+            no_pin,
+            wip_cache: Some(h.wip.clone()),
+            rescan: false,
+            active,
+            walk_cache: Some(h.walk.clone()),
+            forks,
+            view,
+        })
+    }
+
     /// Repository `id`'s handle; a fresh one when its object store is running out of index
     /// slots (`odb_nearly_full`), so the packs written since it opened stay visible.
     pub(crate) fn handle(&self, id: u32) -> Result<Arc<RepoHandle>, GbError> {
@@ -4000,6 +4075,30 @@ mod tests {
         let absent = api.dispatch(req(serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}}))).await.unwrap();
         assert_eq!(absent["pinnedRefs"], auto["pinnedRefs"], "no pin is the default trunk");
     }
+
+    // --- branch presets ---
+    #[tokio::test]
+    async fn graph_with_a_view_still_answers() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let api = api();
+        let id = open(&api, &r).await;
+        let view = serde_json::json!({"rules": [], "otherwise": "show", "foldMerged": false, "ghostLines": false});
+        let plain = api.dispatch(req(serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}}))).await.unwrap();
+        assert!(plain.get("view").is_none(), "All's payload has no view");
+        let viewed = api.dispatch(req(serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null, "view": view}}))).await.unwrap();
+        assert_eq!(viewed["rows"], plain["rows"]);
+        let login = r.git(&["rev-parse", "feature/login"]);
+        let owner = api.dispatch(req(serde_json::json!({"method": "graphHiddenOwner", "params": {"repo": id, "limit": null, "view": view, "sha": login}}))).await.unwrap();
+        assert!(owner.is_null(), "a row has no hidden owner: {owner}");
+        let stale = api.dispatch(req(serde_json::json!({"method": "graphReveal", "params": {"repo": id, "limit": null, "view": view, "key": "branch:no-such-branch", "below": true}}))).await.unwrap();
+        assert!(stale.is_null(), "a stale key reveals nothing: {stale}");
+        let preview = api.dispatch(req(serde_json::json!({"method": "branchPresetPreview", "params": {"repo": id, "limit": null, "view": view}}))).await.unwrap();
+        assert!(preview["shown"].is_number(), "{preview}");
+        let bad = api.dispatch(req(serde_json::json!({"method": "graphReveal", "params": {"repo": id, "limit": null, "active": "/nonexistent", "view": view, "key": "branch:x", "below": false}}))).await;
+        assert!(bad.is_err(), "active is checked as for graph");
+    }
+    // --- end branch presets ---
 
     #[tokio::test]
     async fn save_export_writes_into_the_picked_folder_and_never_overwrites() {
@@ -5139,6 +5238,12 @@ mod tests {
             json!({"method": "diagnostics", "params": {"ui": {"userAgent": "t", "settings": {}}}}),
             json!({"method": "openLogsFolder"}),
             json!({"method": "graph", "params": {"repo": id, "limit": null}}),
+            // --- branch presets ---
+            json!({"method": "graph", "params": {"repo": id, "limit": null, "view": {"rules": [], "otherwise": "collapse", "foldMerged": true, "ghostLines": true}}}),
+            json!({"method": "graphReveal", "params": {"repo": id, "limit": null, "view": {"rules": [], "otherwise": "collapse", "foldMerged": true, "ghostLines": true}, "key": "branch:feature/login", "below": false}}),
+            json!({"method": "branchPresetPreview", "params": {"repo": id, "limit": null, "view": {"rules": [{"action": "hide", "matcher": {"kind": "commitsBy", "author": {"kind": "me"}}}], "otherwise": "show", "foldMerged": false, "ghostLines": false}}}),
+            json!({"method": "graphHiddenOwner", "params": {"repo": id, "limit": null, "view": {"rules": [], "otherwise": "hide", "foldMerged": false, "ghostLines": true}, "sha": login}}),
+            // --- end branch presets ---
             json!({"method": "commandLog"}),
             json!({"method": "requestLog"}),
             json!({"method": "launchRepo"}),

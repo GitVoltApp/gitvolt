@@ -9,6 +9,9 @@ declare module 'gitvolt-graph-wasm' {
     addCommits(commitsJson: string): number;
     build(requestJson: string): string;
     walkOrder(requestJson: string): string;
+    reveal(requestJson: string, key: string, below: boolean): string;
+    preview(requestJson: string): string;
+    hiddenOwner(requestJson: string, sha: string): string;
     readonly size: number;
   }
 }

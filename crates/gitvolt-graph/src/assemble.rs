@@ -5,7 +5,7 @@
 use crate::input::{GraphInput, GraphRequest, HeadIn, RefsIn, WorktreeIn};
 use crate::labels::{build_labels, worktree_name};
 use crate::layout::{layout, LayoutNode, NodeKind, Parent};
-use crate::payload::{GraphPayload, GraphWorktree, HeadPayload, InProgress, RowPayload, WipPayload};
+use crate::payload::{GraphPayload, GraphWorktree, HeadPayload, InProgress, PresetPreview, RevealPayload, RowPayload, WipPayload};
 use crate::pins::{default_pair, fork_of, fork_payload, pin_pair, pinned_chains};
 use crate::walk::{walk, walk_by_date, CommitMeta, WalkOptions, WalkResult};
 use crate::Oid;
@@ -184,6 +184,9 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
                         // Parsed by the walk from the full message: no second object lookup.
                         mr_refs: c.mr_refs.clone(),
                         wip: None,
+                        collapsed: None,
+                        fold: None,
+                        ghosts: vec![],
                     }
                 }
                 Entry::Wip(k) => {
@@ -213,6 +216,9 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
                             renamed: counts.renamed,
                             conflicted: counts.conflicted,
                         }),
+                        collapsed: None,
+                        fold: None,
+                        ghosts: vec![],
                     }
                 }
             }
@@ -245,20 +251,40 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
         open_worktree: worktrees.iter().find(|w| !w.bare && !w.prunable && w.canonical == here).map(|w| w.path.clone()),
         worktrees: worktrees_out,
         in_progress,
+        view: None,
     })
+}
+
+/// The walk `build` lays out: `limit` commits from `graph_tips` over commits in memory.
+fn walk_request(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>) -> WalkResult {
+    let input = &request.input;
+    let tips = graph_tips(&input.refs, &input.worktrees);
+    let opts = WalkOptions { limit: request.limit, first_parent_only: input.refs.stashes.iter().map(|s| s.id).collect() };
+    match walk(&tips, &opts, |id| Ok::<_, std::convert::Infallible>(commits.get(&id).cloned())) {
+        Ok(w) => w,
+        Err(never) => match never {},
+    }
 }
 
 /// The whole pipeline over commits already in memory (the website demo's): walk `limit` commits
 /// from `graph_tips`, then `assemble`.
 pub fn build(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>) -> Result<GraphPayload, String> {
-    let input = &request.input;
-    let tips = graph_tips(&input.refs, &input.worktrees);
-    let opts = WalkOptions { limit: request.limit, first_parent_only: input.refs.stashes.iter().map(|s| s.id).collect() };
-    let walked = match walk(&tips, &opts, |id| Ok::<_, std::convert::Infallible>(commits.get(&id).cloned())) {
-        Ok(w) => w,
-        Err(never) => match never {},
-    };
-    assemble(input, &walked)
+    assemble(&request.input, &walk_request(request, commits))
+}
+
+/// `crate::reveal` over commits in memory (the website demo's), on `build`'s walk.
+pub fn build_reveal(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>, key: &str, below: bool) -> Option<RevealPayload> {
+    crate::view::reveal(&request.input, &walk_request(request, commits), key, below)
+}
+
+/// `crate::preview` over commits in memory (the website demo's), on `build`'s walk.
+pub fn build_preview(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>) -> PresetPreview {
+    crate::view::preview(&request.input, &walk_request(request, commits))
+}
+
+/// `crate::hidden_owner` over commits in memory (the website demo's), on `build`'s walk.
+pub fn build_hidden_owner(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>, sha: &str) -> Option<String> {
+    crate::view::hidden_owner(&request.input, &walk_request(request, commits), sha)
 }
 
 /// The order `build`'s walk collects commits in (newest committer date first, before the
@@ -497,6 +523,17 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(graph_tips(&refs, &[worktree("/demo/.extra/x/wt", 5, "wt", false)]), [id(4), id(3), id(5), id(6), id(7)]);
+    }
+
+    #[test]
+    fn a_view_showing_everything_keeps_the_rows() {
+        let (mut req, commits) = history();
+        let plain = build(&req, &commits).unwrap();
+        req.input.view = Some(crate::ViewSpec::default());
+        let viewed = build(&req, &commits).unwrap();
+        assert_eq!(viewed.rows, plain.rows);
+        assert_eq!(build_reveal(&req, &commits, "branch:no-such-branch", false), None, "a stale key reveals nothing");
+        assert_eq!(build_hidden_owner(&req, &commits, &id(4).to_string()), None, "a row has no hidden owner");
     }
 
     #[test]

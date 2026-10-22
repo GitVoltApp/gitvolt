@@ -9,7 +9,7 @@ use crate::refs::{read_refs, RepoRefs};
 use crate::status::{parse_porcelain_v2, status_raw, summarize, WipCounts};
 use crate::walk::{walk, WalkOptions, WalkResult};
 use crate::worktree::{list_worktrees, Worktree};
-use gitvolt_graph::{GraphInput, HeadIn, Oid, RefIn, RefsIn, StashIn, WorktreeIn};
+use gitvolt_graph::{GraphInput, HeadIn, Oid, PresetPreview, RefIn, RefsIn, RevealPayload, StashIn, ViewSpec, WorktreeIn};
 use gix::ObjectId;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -37,13 +37,15 @@ pub struct BuildOptions {
     /// What the forge's cached data says about the remotes' forks (never a request): the default
     /// pin follows the root, and tells a fork (`default_pair`, `fork_of`).
     pub forks: ForkFacts,
+    /// The branch preset to apply (`GraphInput::view`); `None` (All): the plain graph.
+    pub view: Option<ViewSpec>,
 }
 
 pub use gitvolt_graph::ForkFacts;
 
 impl Default for BuildOptions {
     fn default() -> Self {
-        Self { limit: DEFAULT_COMMIT_LIMIT, pinned_ref: None, no_pin: false, wip_cache: None, rescan: false, active: None, walk_cache: None, forks: ForkFacts::default() }
+        Self { limit: DEFAULT_COMMIT_LIMIT, pinned_ref: None, no_pin: false, wip_cache: None, rescan: false, active: None, walk_cache: None, forks: ForkFacts::default(), view: None }
     }
 }
 
@@ -290,19 +292,69 @@ pub async fn build_graph(repo: gix::ThreadSafeRepository, workdir: PathBuf, cli:
 /// Like `build_graph`, plus each walked commit's lowercased full message (`summary + "\n" +
 /// body`), in walk order, for find (spec §8.7).
 pub async fn build_graph_with_text(repo: gix::ThreadSafeRepository, workdir: PathBuf, cli: GitCli, opts: BuildOptions) -> Result<(GraphPayload, Vec<(ObjectId, String)>), GbError> {
-    let worktrees = list_worktrees(&workdir).await?;
-    // `active` must be one of the usable worktrees (a crafted request can't lay out, or read the
-    // status of, an arbitrary directory); checked against this list, so no second listing.
+    let worktrees = listed_worktrees(&workdir, &opts).await?;
+    let wip = collect_wip(&cli, &worktrees, opts.wip_cache.as_deref(), opts.rescan).await;
+    tokio::task::spawn_blocking(move || assemble(&repo.to_thread_local(), &worktrees, wip, &workdir, &opts))
+        .await
+        .map_err(|e| GbError::other(format!("graph task failed: {e}")))?
+}
+
+/// The reveal panel for `key` under `opts.view` (`gitvolt_graph::reveal`), laid out as the last
+/// graph was: on the cached walk, with the WIP counts it read (no status run).
+pub async fn reveal_graph(repo: gix::ThreadSafeRepository, workdir: PathBuf, _cli: GitCli, opts: BuildOptions, key: &str, below: bool) -> Result<Option<RevealPayload>, GbError> {
+    let key = key.to_string();
+    over_cached_graph(repo, workdir, opts, move |input, walked| gitvolt_graph::reveal(input, walked, &key, below)).await
+}
+
+/// The settings page's live summary of `opts.view` (`gitvolt_graph::preview`), on the cached walk.
+pub async fn preview_graph(repo: gix::ThreadSafeRepository, workdir: PathBuf, _cli: GitCli, opts: BuildOptions) -> Result<PresetPreview, GbError> {
+    over_cached_graph(repo, workdir, opts, gitvolt_graph::preview).await
+}
+
+/// The `expanded` key that would make `sha` a row under `opts.view` (`gitvolt_graph::hidden_owner`),
+/// on the cached walk.
+pub async fn hidden_owner(repo: gix::ThreadSafeRepository, workdir: PathBuf, _cli: GitCli, opts: BuildOptions, sha: &str) -> Result<Option<String>, GbError> {
+    let sha = sha.to_string();
+    over_cached_graph(repo, workdir, opts, move |input, walked| gitvolt_graph::hidden_owner(input, walked, &sha)).await
+}
+
+/// `f` over the graph's input and walk as the last graph build had them: the walk cache, and the
+/// WIP counts that build cached (a worktree it has none for has no WIP row), so no git status runs.
+async fn over_cached_graph<T: Send + 'static>(repo: gix::ThreadSafeRepository, workdir: PathBuf, opts: BuildOptions, f: impl FnOnce(&GraphInput, &WalkResult) -> T + Send + 'static) -> Result<T, GbError> {
+    let worktrees = listed_worktrees(&workdir, &opts).await?;
+    let wip = cached_wip(&worktrees, opts.wip_cache.as_deref());
+    tokio::task::spawn_blocking(move || {
+        let (input, walked) = graph_input(&repo.to_thread_local(), &worktrees, wip, &workdir, &opts)?;
+        Ok(f(&input, &walked))
+    })
+    .await
+    .map_err(|e| GbError::other(format!("graph task failed: {e}")))?
+}
+
+/// `git worktree list`, with `opts.active` checked to be one of its usable worktrees (a crafted
+/// request can't lay out, or read the status of, an arbitrary directory); checked against this
+/// list, so no second listing.
+async fn listed_worktrees(workdir: &Path, opts: &BuildOptions) -> Result<Vec<Worktree>, GbError> {
+    let worktrees = list_worktrees(workdir).await?;
     if let Some(active) = &opts.active {
         let wanted = canonical(active);
         if !worktrees.iter().any(|w| !w.bare && !w.prunable && canonical(&w.path) == wanted) {
             return Err(GbError::new(crate::error::GbErrorKind::InvalidInput, format!("{} is not a worktree of this repository", active.display())));
         }
     }
-    let wip = collect_wip(&cli, &worktrees, opts.wip_cache.as_deref(), opts.rescan).await;
-    tokio::task::spawn_blocking(move || assemble(&repo.to_thread_local(), &worktrees, wip, &workdir, &opts))
-        .await
-        .map_err(|e| GbError::other(format!("graph task failed: {e}")))?
+    Ok(worktrees)
+}
+
+/// `collect_wip`'s rows from the cache alone: the counts the last graph build or the watcher read.
+fn cached_wip(worktrees: &[Worktree], cache: Option<&WipCache>) -> Vec<(usize, WipCounts)> {
+    let Some(cache) = cache else { return vec![] };
+    worktrees
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| !w.bare && !w.prunable && w.path.is_dir())
+        .filter_map(|(i, w)| Some((i, cache.get(&w.path)?.counts)))
+        .filter(|(i, c)| !c.is_empty() || crate::in_progress::mid_operation(&worktrees[*i].path))
+        .collect()
 }
 
 /// The commits the graph walks from (`gitvolt_graph::graph_tips`).
@@ -379,6 +431,16 @@ async fn collect_wip(cli: &GitCli, worktrees: &[Worktree], cache: Option<&WipCac
 }
 
 fn assemble(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, WipCounts)>, workdir: &Path, opts: &BuildOptions) -> Result<(GraphPayload, Vec<(ObjectId, String)>), GbError> {
+    let (input, walked) = graph_input(repo, worktrees, wip, workdir, opts)?;
+    // Unit tests and the harness (and so the e2e suite) verify every graph they build (the
+    // `testing` feature); a violation surfaces as an ordinary error, not a panic.
+    let payload = gitvolt_graph::assemble(&input, &walked).map_err(|e| GbError::other(format!("graph continuity violated: {e}")))?;
+    let texts = walked.commits.iter().map(|c| (to_gix(c.id), format!("{}\n{}", c.summary, c.body).to_lowercase())).collect();
+    Ok((payload, texts))
+}
+
+/// The graph pipeline's input for this repository, and the walk (through the walk cache).
+fn graph_input(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, WipCounts)>, workdir: &Path, opts: &BuildOptions) -> Result<(GraphInput, Arc<WalkResult>), GbError> {
     let refs = refs_input(read_refs(repo)?);
     let worktrees_in = worktrees_input(worktrees);
     // The tips come from the handle's own HEAD, whichever worktree is active: the active one's
@@ -397,12 +459,9 @@ fn assemble(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, Wip
         pinned_ref: opts.pinned_ref.clone(),
         no_pin: opts.no_pin,
         forks: opts.forks.clone(),
+        view: opts.view.clone(),
     };
-    // Unit tests and the harness (and so the e2e suite) verify every graph they build (the
-    // `testing` feature); a violation surfaces as an ordinary error, not a panic.
-    let payload = gitvolt_graph::assemble(&input, &walked).map_err(|e| GbError::other(format!("graph continuity violated: {e}")))?;
-    let texts = walked.commits.iter().map(|c| (to_gix(c.id), format!("{}\n{}", c.summary, c.body).to_lowercase())).collect();
-    Ok((payload, texts))
+    Ok((input, walked))
 }
 
 /// The walk from `tips`, served from the handle's walk cache when the tips, the window and the
@@ -593,6 +652,41 @@ mod tests {
         assert_eq!(g.rows[0].lane, 0, "main's WIP row is row 0, on the pinned trunk lane down to its HEAD (the pinned tip)");
         assert!(!g.truncated);
         assert!(g.head.branch.as_deref() == Some("refs/heads/main") && !g.head.unborn);
+    }
+
+    #[tokio::test]
+    async fn presets_fixture_shape() {
+        let r = TestRepo::new();
+        fixtures::presets(&r);
+        let g = build(&r, BuildOptions::default()).await;
+        let count = |k: NodeKind| g.rows.iter().filter(|x| x.kind == k).count();
+        assert_eq!(count(NodeKind::Commit) + count(NodeKind::Merge), 25, "{}", g.ascii());
+        assert_eq!((count(NodeKind::Stash), count(NodeKind::Wip), count(NodeKind::Merge)), (1, 0, 2), "{}", g.ascii());
+        let mut refs: Vec<&str> = g.labels.iter().flat_map(|l| l.local.iter().map(String::as_str).chain(l.remotes.iter().map(|x| x.full_name.as_str()))).collect();
+        refs.sort();
+        assert_eq!(
+            refs,
+            [
+                "refs/heads/feature/docs",
+                "refs/heads/feature/payments",
+                "refs/heads/main",
+                "refs/heads/mine/dock-panel",
+                "refs/heads/mine/fuel-gauge",
+                "refs/heads/release/1.2",
+                "refs/heads/spike/warp-gates",
+                "refs/remotes/origin/dependabot/npm/lodash-4.17.21",
+                "refs/remotes/origin/feature/docs",
+                "refs/remotes/origin/feature/payments",
+                "refs/remotes/origin/main",
+                "refs/remotes/origin/release/1.2",
+            ]
+        );
+        assert_eq!(g.pinned_refs, ["refs/heads/main", "refs/remotes/origin/main"]);
+        let dock = g.labels.iter().find(|l| l.name == "mine/dock-panel").unwrap();
+        assert!(dock.checked_out.as_deref().is_some_and(|p| p.ends_with("wt-dock")), "{:?}", dock.checked_out);
+        assert_eq!(r.git(&["config", "user.email"]), "you@example.com");
+        let summaries: Vec<&str> = g.rows.iter().map(|x| x.summary.as_str()).collect();
+        assert!(summaries.contains(&"Merge branch 'feature/trade-ui'") && summaries.contains(&"Changelog for 1.2"));
     }
 
     #[tokio::test]

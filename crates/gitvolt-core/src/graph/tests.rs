@@ -282,22 +282,22 @@ fn bottom_out_colour_matches_target_lane() {
 
 #[test]
 fn pack_roundtrip() {
-    let s = Segment { from_lane: 1023, to_lane: 7, half: Half::Full, color: 9, dashed: true };
+    let s = Segment { from_lane: 1023, to_lane: 7, half: Half::Full, color: 9, dashed: true, dotted: false };
     assert_eq!(Segment::unpack(s.pack()), s);
-    let t = Segment { from_lane: 0, to_lane: 0, half: Half::Top, color: 0, dashed: false };
+    let t = Segment { from_lane: 0, to_lane: 0, half: Half::Top, color: 0, dashed: false, dotted: false };
     assert_eq!(t.pack(), 0);
 }
 
 #[test]
 fn pack_golden_values() {
-    let s = Segment { from_lane: 1, to_lane: 2, half: Half::Bottom, color: 3, dashed: true };
+    let s = Segment { from_lane: 1, to_lane: 2, half: Half::Bottom, color: 3, dashed: true, dotted: false };
     assert_eq!(s.pack(), 1 | 2 << 10 | 1 << 20 | 3 << 22 | 1 << 26);
     assert_eq!(s.pack(), 0x04d00801, "Task 11's TS decoder test reuses this literal");
 
-    let clamped = Segment { from_lane: 2000, to_lane: 0, half: Half::Top, color: 0, dashed: false };
+    let clamped = Segment { from_lane: 2000, to_lane: 0, half: Half::Top, color: 0, dashed: false, dotted: false };
     assert_eq!(Segment::unpack(clamped.pack()).from_lane, 1023, "from_lane is clamped to the 10-bit field's max");
 
-    let masked = Segment { from_lane: 0, to_lane: 0, half: Half::Top, color: 0x1f, dashed: false };
+    let masked = Segment { from_lane: 0, to_lane: 0, half: Half::Top, color: 0x1f, dashed: false, dotted: false };
     assert_eq!(Segment::unpack(masked.pack()).color, 0xf, "color is masked to its 4-bit field");
 }
 
@@ -319,7 +319,7 @@ fn snapshot_criss_cross_octopus_stash_and_wip() {
 }
 
 fn seg(from: u16, to: u16, half: Half) -> Segment {
-    Segment { from_lane: from, to_lane: to, half, color: 0, dashed: false }
+    Segment { from_lane: from, to_lane: to, half, color: 0, dashed: false, dotted: false }
 }
 
 fn node(parents: Vec<Parent>) -> LayoutNode {

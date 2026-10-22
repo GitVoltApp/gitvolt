@@ -392,7 +392,7 @@ async fn the_watchers_echo_of_a_write_is_absorbed() {
     r.git(&["branch", "x", &c1]);
     let (api, _data) = api();
     let id = open(&api, r.path()).await;
-    api.dispatch(Request::Graph { repo: id, limit: None, pin: None, rescan: None, active: None }).await.unwrap();
+    api.dispatch(Request::Graph { repo: id, limit: None, pin: None, rescan: None, active: None, view: None }).await.unwrap();
     api.dispatch(Request::WatchRepo { repo: id }).await.unwrap();
     let mut rx = api.subscribe();
     write(&api, id, r.path(), expect_ref("refs/heads/x", Some(&c1)), TestIntent::MoveRef { name: "refs/heads/x".into(), to: Some(c2) }).await.unwrap();
