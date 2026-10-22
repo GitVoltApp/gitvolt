@@ -9,7 +9,7 @@ const changed = () => {
 };
 
 /**
- * A floating panel Settings can turn into (the theme editor's "Edit on the app"): while
+ * A floating panel Settings can turn into (the theme editor's "Edit mode"): while
  * `useSettingsUi.floating === id`, the overlay renders only `Component`, with no backdrop, no key
  * claim and no click-outside close, so the app behind stays usable. The panel handles its own keys
  * and calls `setFloating(null)` to bring Settings back.

@@ -34,14 +34,23 @@ function NameField({ theme }: { theme: CustomTheme }) {
 }
 
 /**
- * Under the cards: for a custom theme, its name and what to do with it (edit on the app, copy,
- * export, delete); for a built-in, a line saying an edit makes a copy. Both take the same height,
- * so the page doesn't move when one replaces the other.
+ * Under the cards: for a custom theme, its name and what to do with it (Edit mode, copy, export,
+ * delete); for a built-in, a line saying an edit makes a copy, and Edit mode (its first edit
+ * makes the copy there). Both take the same height, so the page doesn't move when one replaces
+ * the other.
  */
 export function EditingStrip() {
   const { def, custom } = useEditedTheme();
   const floating = useSettingsFloat('theme-editor');
-  if (!custom) return <div className="theme-strip theme-strip-hint">Change any colour below to make your own copy.</div>;
+  const editMode = floating && <button type="button" className="primary" data-float-opener="theme-editor" onClick={() => useSettingsUi.getState().setFloating('theme-editor')}>Edit mode</button>;
+  if (!custom) {
+    return (
+      <div className="theme-strip theme-strip-hint">
+        <span className="theme-strip-text">Change any colour below to make your own copy.</span>
+        {editMode && <span className="theme-strip-actions">{editMode}</span>}
+      </div>
+    );
+  }
 
   const base = THEMES[isThemeId(custom.base) ? custom.base : DEFAULT_THEME_ID].label;
   const remove = async (e: MouseEvent<HTMLButtonElement>) => {
@@ -63,7 +72,7 @@ export function EditingStrip() {
         Editing <NameField theme={custom} /> made from <b>{base}</b>; your other themes are untouched.
       </span>
       <span className="theme-strip-actions">
-        {floating && <button type="button" className="primary" data-float-opener="theme-editor" onClick={() => useSettingsUi.getState().setFloating('theme-editor')}>Edit on the app</button>}
+        {editMode}
         <button type="button" onClick={() => void copyTheme(def, custom)}>Copy as JSON</button>
         <button type="button" onClick={() => void exportTheme(def, custom)}>Export file…</button>
         <button type="button" className="danger" onClick={(e) => void remove(e)}>Delete</button>

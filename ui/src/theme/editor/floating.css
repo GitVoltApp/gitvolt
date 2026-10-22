@@ -1,4 +1,4 @@
-/* The floating theme editor (Edit on the app): a panel at the window's lower right, over the live
+/* The floating theme editor (Edit mode): a panel at the window's lower right, over the live
    app, with no backdrop. Above flyouts, under modals, menus and the colour picker. Dragging sets
    only its `transform`. */
 .theme-float { position: fixed; right: 24px; bottom: 24px; z-index: 700; display: flex; flex-direction: column; width: 320px; height: min(560px, 80vh); box-sizing: border-box; background: var(--panel-bg0); border: 1px solid var(--section-border); border-radius: 8px; box-shadow: 0 14px 40px var(--shadow-modal); color: var(--text-normal); font-size: 12px; overflow: hidden; }

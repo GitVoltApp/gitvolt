@@ -29,7 +29,7 @@ function inWindow(el: HTMLElement, at: Offset, next: Offset): Offset {
 }
 
 /**
- * Settings › Appearance's "Edit on the app": the theme editor as a small panel over the live app,
+ * Settings › Appearance's "Edit mode": the theme editor as a small panel over the live app,
  * which stays usable behind it (no backdrop, no dimming, no click-outside close, no claim on the
  * keys). Its title bar drags it (or Alt+arrows on it); Find a colour filters the colours. Done, or
  * Esc while focus is inside, brings Settings back on Appearance, focused on the button that opened it.

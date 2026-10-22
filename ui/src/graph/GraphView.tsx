@@ -218,8 +218,9 @@ const EDITOR_MIN_W = 200;
  * widths, label lists and membership objects, stable callbacks), so scrolling re-renders only
  * the view (as rows enter or leave the screen), not every row; a hover re-renders only the rows whose membership
  * chip appears or goes, and a branch focus (J22) only the rows whose `dimmed` changes.
+ * Settings › Appearance's live preview draws its rows with it too (theme/editor/LivePreview.tsx).
  */
-const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor, badges, domId }: GraphRowProps) {
+export const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor, badges, domId }: GraphRowProps) {
   const isWip = row.kind === 'wip';
   // A collapsed branch's ⋮ row: no commit behind it, so no menu, double-click or copy.
   const collapsed = row.kind === 'collapsed';

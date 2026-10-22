@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api/client', () => ({
@@ -23,13 +23,13 @@ function offset(): { x: number; y: number } {
   return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 0, y: 0 };
 }
 
-/** The app behind (a button), Settings on Appearance, then Edit on the app. happy-dom has no
+/** The app behind (a button), Settings on Appearance, then Edit mode. happy-dom has no
  * layout: the panel's box is its CSS place (320 × 560 at the lower right of 1024 × 768), moved by its offset. */
 function openFloating(behindClick = vi.fn()) {
   render(<><button type="button" onClick={behindClick}>Behind</button><SettingsOverlay /></>);
   screen.getByRole('button', { name: 'Behind' }).focus();
   act(() => useSettingsUi.getState().show('theme'));
-  fireEvent.click(screen.getByRole('button', { name: 'Edit on the app' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit mode' }));
   vi.spyOn(panel(), 'getBoundingClientRect').mockImplementation(() => {
     const { x, y } = offset();
     return new DOMRect(1024 - 24 - 320 + x, 768 - 24 - 560 + y, 320, 560);
@@ -50,7 +50,7 @@ describe('the floating theme editor', () => {
   it('takes the overlay\'s place with no backdrop, not modal, focused on Find a colour', () => {
     const { container } = render(<SettingsOverlay />);
     act(() => useSettingsUi.getState().show('theme'));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit on the app' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit mode' }));
     expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull();
     expect(panel()).toHaveAttribute('aria-modal', 'false');
     expect(container.querySelector('.modal-backdrop')).toBeNull();
@@ -93,7 +93,21 @@ describe('the floating theme editor', () => {
     expect(screen.getByRole('dialog', { name: 'Nord (Custom) (2)' })).toBeInTheDocument();
   });
 
-  it('Esc inside clears the find box first, then returns to Settings on Appearance, focused on Edit on the app', () => {
+  it('opens from a built-in theme too; its first edit there makes "<theme> (Custom)"', () => {
+    useAppState.setState({ settings: { ...DEFAULT_SETTINGS, theme: 'nord', customThemes: [] } });
+    render(<SettingsOverlay />);
+    act(() => useSettingsUi.getState().show('theme'));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit mode' }));
+    const field = within(screen.getByRole('dialog', { name: 'Nord' })).getByRole('textbox', { name: 'Panels' }) as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '#123456' } });
+    fireEvent.submit(field.form!);
+    const { theme, customThemes } = useAppState.getState().settings;
+    expect(customThemes.map((t) => t.name)).toEqual(['Nord (Custom)']);
+    expect(customThemes.find((t) => t.id === theme)?.colors).toEqual({ 'panel-bg0': '#123456' });
+    expect(screen.getByRole('dialog', { name: 'Nord (Custom)' })).toBeInTheDocument();
+  });
+
+  it('Esc inside clears the find box first, then returns to Settings on Appearance, focused on Edit mode', () => {
     openFloating();
     const find = screen.getByLabelText('Find a colour');
     fireEvent.change(find, { target: { value: 'pan' } });
@@ -104,7 +118,7 @@ describe('the floating theme editor', () => {
     expect(screen.queryByRole('dialog', { name: 'Nord (Custom)' })).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
     expect(useSettingsUi.getState().page).toBe('appearance');
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit on the app' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit mode' }));
     // Settings, closed, gives the focus back to the app behind, as it would have before.
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull();
@@ -119,7 +133,7 @@ describe('the floating theme editor', () => {
     expect(panel()).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit on the app' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit mode' }));
   });
 
   it('Esc in the colour picker closes the picker, not the panel', () => {
@@ -155,7 +169,7 @@ describe('the floating theme editor', () => {
     fireEvent.pointerMove(bar(), { pointerId: 1, clientX: 0, clientY: 0 });
     expect(offset()).toEqual({ x: -680, y: -184 });
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit on the app' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit mode' }));
     expect(offset()).toEqual({ x: -680, y: -184 });
   });
 
