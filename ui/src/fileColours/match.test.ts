@@ -62,7 +62,7 @@ describe('matcherFor', () => {
       const ps = paths(n);
       const scopes = twentyScopesOfFive();
       return () => { const x = matcherFor([...scopes]); for (const p of ps) x.scopeOf(p); };
-    }, 12_500);
+    }, 12_500, { rounds: 3 });
     expect(g.ratio, `12.5k: ${g.small.toFixed(0)} ms, 50k: ${g.large.toFixed(0)} ms`).toBeLessThan(8);
   }, 60_000);
 });
