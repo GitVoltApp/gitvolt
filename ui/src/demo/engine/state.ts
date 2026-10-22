@@ -66,7 +66,7 @@ const tabId = (name: string) => `demo-${name}`;
 /** Orbital's file colours, so the demo shows them on its opening commit (its common dir is its repo's .git). */
 const ORBITAL_FILE_COLOURS: Profile['fileColours'] = {
   [`${demoRoot('orbital', 'repo')}/.git`]: [
-    { id: 'demo-tests', name: 'Tests', tint: 'green', patterns: ['crates/*/tests/**', '**/*_test.rs'], startCollapsed: false },
+    { id: 'demo-render', name: 'Rendering', tint: 'violet', patterns: ['crates/orbital-render/**', '*.wgsl'], startCollapsed: false },
     { id: 'demo-docs', name: 'Docs', tint: 'blue', patterns: ['docs/**', '*.md'], startCollapsed: false },
     { id: 'demo-generated', name: 'Generated', tint: 'gray', patterns: ['assets/**'], startCollapsed: true },
   ] satisfies FileScope[],

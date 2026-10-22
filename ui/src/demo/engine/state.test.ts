@@ -45,7 +45,7 @@ test('opens a tab per open repo, grouped ones side by side, the active one activ
 test("the demo starts with Orbital's file colours", () => {
   const { fileColours } = initialState(manifest, 1600).profile;
   expect(Object.keys(fileColours)).toEqual(['/demo/orbital/.git']);
-  expect(fileColours['/demo/orbital/.git'].map((s) => [s.name, s.tint, s.startCollapsed])).toEqual([['Tests', 'green', false], ['Docs', 'blue', false], ['Generated', 'gray', true]]);
+  expect(fileColours['/demo/orbital/.git'].map((s) => [s.name, s.tint, s.startCollapsed])).toEqual([['Rendering', 'violet', false], ['Docs', 'blue', false], ['Generated', 'gray', true]]);
 });
 
 test('a frame under 1,280 px starts with a narrower sidebar and details panel', () => {
