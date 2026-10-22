@@ -4,7 +4,7 @@ import { escOwners } from '../../app/modalKeys';
 import { wheelAccumulator } from '../../image/zoom';
 import { registerKeys } from '../keyRouter';
 import { placeBelow } from '../HoverTooltip';
-import { formatColour, fromOklch, oklchPixel, parseColour, toOklch, type Oklch, type Rgba } from './colour';
+import { formatColour, fromOklch, maxChroma, oklchPixel, parseColour, toOklch, type Oklch, type Rgba } from './colour';
 import './colour.css';
 
 export interface ColourPickerProps {
@@ -189,9 +189,14 @@ export function ColourPicker({ value, alpha = false, label, anchor, onPreview, o
     setInvalid(false);
     onPreview(formatColour(next));
   };
-  const lch = held && sameRgb(fromOklch(held, cur.a), cur) ? held : toOklch(cur);
+  const wanted = held && sameRgb(fromOklch(held, cur.a), cur) ? held : toOklch(cur);
+  // What the square's pointer and the fields show: never past the gamut's edge. A chroma picked
+  // there stops at the edge; one that a lightness or hue change pushed past it comes back when
+  // the change is undone.
+  const lch = { ...wanted, c: maxChroma(wanted.l, wanted.h, wanted.c) };
   const setLch = (p: Partial<Oklch>) => {
-    const n = { ...lch, ...p };
+    const n = { ...wanted, ...p };
+    if (p.c !== undefined) n.c = maxChroma(n.l, n.h, n.c);
     setHeld(n);
     apply(fromOklch(n, cur.a));
   };

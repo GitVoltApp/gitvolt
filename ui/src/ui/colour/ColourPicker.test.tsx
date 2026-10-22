@@ -86,17 +86,33 @@ describe('ColourPicker', () => {
     }
   });
 
-  it('chroma beyond the gamut is emitted at the gamut edge, and held: lowering lightness brings it back', () => {
+  it("chroma never goes past the gamut's edge: a pick stops there, and the field and pointer show it", () => {
     const f = setup('#808080');
     oklchTab();
     type('Hue', '264');
     type('Chroma', '40');
-    expect(num('Chroma')).toBe(40);
     const edge = last(f).c;
     expect(edge).toBeLessThan(0.3);
+    expect(num('Chroma')).toBe(Math.round(edge * 100));
     expect(last(f).h).toBeCloseTo(264, 0);
-    type('Lightness', '45');
-    expect(last(f).c).toBeGreaterThan(edge);
+    const l = num('Lightness');
+    fireEvent.click(screen.getByRole('tab', { name: 'Picker' }));
+    expect(square()).toHaveAttribute('aria-valuetext', `Lightness ${l}, chroma ${Math.round(edge * 100)}`);
+    // ArrowRight at the edge stays at the edge.
+    fireEvent.keyDown(square(), { key: 'ArrowRight' });
+    expect(last(f).c).toBeCloseTo(edge, 2);
+  });
+
+  it('a chroma that a lightness change pushed past the edge comes back when the change is undone', () => {
+    const f = setup('#808080');
+    oklchTab();
+    type('Hue', '264');
+    type('Chroma', '40');
+    const [l, edge] = [num('Lightness'), last(f).c];
+    type('Lightness', '95');
+    expect(num('Chroma')).toBeLessThan(Math.round(edge * 100));
+    type('Lightness', String(l));
+    expect(last(f).c).toBeCloseTo(edge, 2);
   });
 
   it('a grey keeps the hue and chroma it was given', () => {
