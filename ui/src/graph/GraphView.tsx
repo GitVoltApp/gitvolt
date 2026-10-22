@@ -39,6 +39,7 @@ import { connectorLine, useDevicePixelRatio } from './pixels';
 import { RefLabels } from './RefLabels';
 import type { RowEditor } from './rowEditor';
 import { WipSummary } from './WipSummary';
+import { CollapsedCells, collapsedTexts } from './CollapsedRow';
 import { dimAllBut, ROW_DIM_CLASS, rowDimKindClass, strongerDim, useBranchFocus, type DimKind, type RowDim } from './rowDim';
 import './graph.css';
 import './extras.css';
@@ -78,7 +79,7 @@ function MessageCell({ row, repoId, width, messages, dim }: { row: RowPayload; r
   });
   return (
     <span role="gridcell" data-col="message" className={`col-msg${dim}`} style={{ width }} {...triggerProps}>
-      {isWip ? <WipSummary row={row} repoId={repoId} /> : <><span className="msg-summary">{row.kind === "stash" ? stashLabel(row.summary).text : row.summary}</span>{row.kind === "stash" && stashLabel(row.summary).branch && <span className="dim msg-body">{stashLabel(row.summary).branch}</span>}{row.bodyFirstLine && <span className="dim msg-body">{row.bodyFirstLine}</span>}</>}
+      {isWip ? <WipSummary row={row} repoId={repoId} /> : <><span className="msg-summary">{row.kind === "stash" ? stashLabel(row.summary).text : row.summary}</span>{row.kind === "stash" && stashLabel(row.summary).branch && <span className="dim msg-body">{stashLabel(row.summary).branch}</span>}{row.fold && <span className="fold-count" aria-label={`${row.fold.count} folded commits of ${row.fold.branch}`}>+{row.fold.count}</span>}{row.bodyFirstLine && <span className="dim msg-body">{row.bodyFirstLine}</span>}</>}
       {tooltip}
     </span>
   );
@@ -198,6 +199,8 @@ const EDITOR_MIN_W = 200;
  */
 const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor }: GraphRowProps) {
   const isWip = row.kind === 'wip';
+  // A collapsed branch's ⋮ row: no commit behind it, so no menu, double-click or copy.
+  const collapsed = row.kind === 'collapsed';
   // A column at its minimum collapses its cells too (spec §8.4): icon-only chips, the avatar only.
   const authorAvatar = isCollapsed('author', cols.author);
   // The row-dim mechanism's classes, on the text cells only (never the chips or the graph): the
@@ -212,6 +215,7 @@ const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, 
       role="row"
       aria-rowindex={index + 1}
       aria-selected={selected}
+      aria-label={collapsed && row.collapsed ? collapsedTexts(row.collapsed).label : undefined}
       className={context ? 'graph-row is-context' : 'graph-row'}
       // `top`, not `transform: translateY`: a transform would make each row its own
       // stacking context and trap the hover-expanded label chip under the canvas.
@@ -224,8 +228,8 @@ const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, 
       }}
       onMouseEnter={() => onHover(row.id, index, true)}
       onMouseLeave={() => onHover(row.id, index, false)}
-      onContextMenu={(e) => (isWip ? onWipContextMenu : onContextMenu)?.(e, row)}
-      onDoubleClick={onRowDoubleClick && (() => onRowDoubleClick(row))}
+      onContextMenu={collapsed ? undefined : (e) => (isWip ? onWipContextMenu : onContextMenu)?.(e, row)}
+      onDoubleClick={onRowDoubleClick && !collapsed ? () => onRowDoubleClick(row) : undefined}
     >
       {/* A hidden column (spec §8.4) has width 0 and no cell. */}
       {cols.labels > 0 && (
@@ -252,6 +256,7 @@ const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, 
         </span>
       )}
       <span role="gridcell" data-col="graph" style={{ width: cols.graph }} />
+      {collapsed ? <CollapsedCells row={row} cols={cols} dim={dim} /> : <>
       <MessageCell row={row} repoId={repoId} width={isWip ? cols.message + cols.author + cols.date : cols.message} messages={messages} dim={dim} />
       {cols.author > 0 && !isWip && (
         <span role="gridcell" data-col="author" className={`col-author${authorAvatar ? ' col-author-avatar' : ''}${dim}`} style={{ width: cols.author }}>
@@ -269,6 +274,7 @@ const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, 
           )}
         </span>
       )}
+      </>}
       {/* The empty space past the last column (W.2): takes the row's highlights to the panel's right
           edge. Not a gridcell: a click selects the row through the row's own handler. */}
       <span aria-hidden="true" data-col="filler" className="col-filler" />
@@ -619,7 +625,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
     if (e.key !== 'ContextMenu' && !(e.key === 'F10' && e.shiftKey)) return false;
     const row = graph.rows[selected];
     const el = row ? document.getElementById(graphRowId(row.id)) : null;
-    if (!row || !el || row.kind === 'wip' || !onContextMenu) return false;
+    if (!row || !el || row.kind === 'wip' || row.kind === 'collapsed' || !onContextMenu) return false;
     const r = el.getBoundingClientRect();
     rowMenu({ preventDefault() {}, stopPropagation() {}, clientX: r.left, clientY: r.bottom, timeStamp: performance.now() }, row);
     return true;

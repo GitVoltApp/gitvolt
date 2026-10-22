@@ -310,7 +310,7 @@ describe('graph.css selected and hovered rows (H14)', () => {
 describe('graph.css row text: the row-dim mechanism and its motion (J22)', () => {
   const tokens = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../theme/tokens.css'), 'utf8');
   const TEXT = ':is([data-col="message"], [data-col="author"], [data-col="date"], [data-col="sha"])';
-  const PARTS = ':is(.dim, .sha, .wip-tag, .wip-counts)';
+  const PARTS = ':is(.dim, .sha, .wip-tag, .wip-counts, .fold-count)';
 
   it('the text cells, and their own-coloured parts, ease their colour: 200 ms ease-in (the selection moving)', () => {
     expect(ruleBody(`.graph-row > ${TEXT}, .graph-row > [data-col] ${PARTS}`)).toMatch(/^\s*transition:\s*color var\(--motion-row-color\) ease-in;?\s*$/);

@@ -24,7 +24,7 @@ export const graphHandlers = {
   graph: async ({ repo, limit, pin, active, view }, ctx) => {
     const g = await ctx.repos.get(repo).graph(await graphOptions(ctx, repo, { limit, pin, active, view }));
     // Find searches the commits this graph shows, as the core's FindSnapshot (plan 1b's find.ts).
-    setFindWindow(ctx, repo, g.rows.filter((r) => r.kind !== 'wip').map((r) => r.id));
+    setFindWindow(ctx, repo, g.rows.filter((r) => r.kind !== 'wip' && r.kind !== 'collapsed').map((r) => r.id));
     return g;
   },
   // --- branch presets ---
