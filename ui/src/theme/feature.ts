@@ -12,7 +12,7 @@ import { THEME_IDS, THEMES } from './themes';
  * The theme actions (ruling R4; its own feature module, imported from `app/features.ts`): View →
  * "Theme…" opens Settings on the theme picker, and one palette-only "Theme: <Name>" per theme
  * (`menu: false`), so Ctrl+P `>Theme: Nord` switches in one go. Custom themes get theirs too,
- * registered again whenever the list changes. Settings › Appearance's "Edit on the app" turns
+ * registered again whenever the list changes. Settings › Appearance's "Edit mode" turns
  * Settings into the floating theme editor registered here.
  */
 const themeAction = (id: string, label: string): Action => ({

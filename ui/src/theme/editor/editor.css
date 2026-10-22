@@ -26,7 +26,7 @@
 /* The strip under the cards: its sentence (wrapping onto a second line when narrow) beside its
    buttons. The built-in's hint takes the same height, so nothing moves when one replaces the other. */
 .theme-strip { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; min-height: 66px; box-sizing: border-box; margin-top: 10px; padding: 6px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent); background: color-mix(in srgb, var(--blue) 8%, transparent); font-size: 12px; }
-.theme-strip-hint { display: flex; border-color: transparent; background: transparent; color: var(--text-secondary); }
+.theme-strip-hint { border-color: transparent; background: transparent; color: var(--text-secondary); }
 .theme-strip-text { min-width: 0; line-height: 26px; }
 .theme-strip-text b { color: var(--text-selected); }
 .theme-strip input.theme-name { width: 170px; height: 24px; box-sizing: border-box; margin: 0 2px; vertical-align: middle; font: inherit; line-height: 20px; padding: 0 8px; color: var(--text-selected); background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 4px; outline: none; }
@@ -48,7 +48,7 @@
 .theme-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* Colours: the rows beside the live preview, which goes under them in a narrow window. */
-.theme-colours-page { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; align-items: start; }
+.theme-colours-page { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
 @media (max-width: 900px) { .theme-colours-page { grid-template-columns: minmax(0, 1fr); } }
 .theme-colour-list { container-type: inline-size; }
 .theme-colour-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
@@ -71,11 +71,9 @@
 /* The live preview: a slice of graph, file list and diff in the applied theme's tokens. */
 .theme-preview { padding: 8px; border-radius: 8px; border: 1px solid var(--section-border); background: var(--app-bg0); font-size: 11px; color: var(--text-normal); user-select: none; }
 .theme-preview-title { margin-bottom: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
-.theme-preview-row { display: grid; grid-template-columns: 42px 34px minmax(0, 1fr); align-items: center; height: 24px; border-radius: 3px; }
-.theme-preview-row.selected { background: var(--selected-row); }
-.theme-preview-lanes { display: block; }
-.theme-preview-chip { justify-self: start; margin-left: 2px; padding: 1px 4px; border-radius: 2px; font-size: 9px; }
-.theme-preview-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-selected); }
-.theme-preview-file { display: flex; gap: 6px; margin-top: 6px; padding: 4px 6px; border-radius: 4px 4px 0 0; background: var(--panel-bg0); color: var(--text-normal); }
+/* The graph's own rows and canvas (LivePreview.tsx), edge to edge as in the graph panel, at the
+   app's text size; its own stacking context, as .graph-body is, so the chips stay above the canvas. */
+.theme-preview-graph { position: relative; margin: 0 -8px; overflow: hidden; isolation: isolate; font-size: 13px; pointer-events: none; }
+.theme-preview-file { display: flex; align-items: center; gap: 6px; margin-top: 6px; padding: 4px 6px; border-radius: 4px 4px 0 0; background: var(--panel-bg0); color: var(--text-normal); }
 .theme-preview-diff { padding: 0 6px 6px; border-radius: 0 0 4px 4px; background: var(--panel-bg0); }
 .theme-preview-line { padding: 1px 4px; font-family: var(--font-mono); font-size: 10px; white-space: pre; overflow: hidden; color: var(--text-selected); }

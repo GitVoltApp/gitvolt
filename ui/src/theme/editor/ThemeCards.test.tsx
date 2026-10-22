@@ -17,6 +17,7 @@ const { ThemeCards } = await import('./ThemeCards');
 const { EditingStrip } = await import('./EditingStrip');
 const { ThemeSelect } = await import('./ThemeSelect');
 const { SettingsOverlay } = await import('../../settings/frame/SettingsOverlay');
+const { registerSettingsFloat } = await import('../../settings/frame/floating');
 const { useSettingsUi } = await import('../../settings/schema');
 const { DEFAULT_SETTINGS, useAppState } = await import('../../app/state');
 const { ContextMenu } = await import('../../menu/ContextMenu');
@@ -83,11 +84,16 @@ describe('theme cards', () => {
 });
 
 describe('the editing strip', () => {
-  it('for a built-in: the hint, no strip', () => {
+  it('for a built-in: the hint and Edit mode, no name or theme actions', () => {
     use({ theme: 'nord' });
+    const off = registerSettingsFloat('theme-editor', () => null);
     render(<EditingStrip />);
     expect(screen.getByText('Change any colour below to make your own copy.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Theme name')).toBeNull();
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Edit mode']);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit mode' }));
+    expect(useSettingsUi.getState().floating).toBe('theme-editor');
+    act(() => { useSettingsUi.getState().setFloating(null); off(); });
   });
 
   it('for a custom theme: its name, which renames it on Enter or blur', () => {

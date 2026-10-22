@@ -34,9 +34,10 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   generated files and docs.
 - **Theme editing.** Change any colour of a theme, or its graph lane colours (drag to reorder),
   with GitVolt's own colour picker (HSL, hex, opacity; the mouse wheel steps a slider by 1); a
-  built-in theme becomes "<theme> (Custom)" and stays untouched. Themes copy as JSON, export to a file and paste back in. "Edit on the app"
-  shrinks Settings to a floating editor so you see the whole app change as you edit. Lane colours
-  you changed before become a custom copy of their theme.
+  built-in theme becomes "<theme> (Custom)" and stays untouched. Themes copy as JSON, export to a
+  file and paste back in. "Edit mode", on any theme, shrinks Settings to a floating editor so you
+  see the whole app change as you edit; the live preview beside the colours is the graph's own
+  drawing. Lane colours you changed before become a custom copy of their theme.
 - **Relative dates.** Settings › Graph › "Show relative dates" ("5 minutes ago"); hovering a date
   shows the other form.
 

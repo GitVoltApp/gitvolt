@@ -81,12 +81,12 @@ test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=
     await expect(page.locator('html')).toHaveAttribute('data-theme', /^custom-[0-9a-f]{8}$/);
     await expect.poll(laneColor).toBe('#123456');
   });
-  await test.step('Edit on the app: the floating editor leaves the app usable; Done returns to Settings', async () => {
+  await test.step('Edit mode: the floating editor leaves the app usable; Done returns to Settings', async () => {
     const panelBg = () => page.locator('html').evaluate((el) => el.style.getPropertyValue('--panel-bg0'));
     const floating = page.getByRole('dialog', { name: 'Nord (Custom)' });
     await page.keyboard.press('Control+,');
     await dialog(page).getByRole('button', { name: 'Appearance' }).click();
-    await dialog(page).getByRole('button', { name: 'Edit on the app' }).click();
+    await dialog(page).getByRole('button', { name: 'Edit mode' }).click();
     await expect(dialog(page)).toBeHidden();
     await expect(floating).toBeVisible();
     await expect(floating.getByRole('searchbox', { name: 'Find a colour' })).toBeFocused();
@@ -103,7 +103,7 @@ test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=
     await floating.getByRole('button', { name: 'Done' }).click();
     await expect(floating).toBeHidden();
     await expect(dialog(page).getByRole('region', { name: 'Appearance' })).toBeVisible();
-    await expect(dialog(page).getByRole('button', { name: 'Edit on the app' })).toBeFocused();
+    await expect(dialog(page).getByRole('button', { name: 'Edit mode' })).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(dialog(page)).toBeHidden();
   });
