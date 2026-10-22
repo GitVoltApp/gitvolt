@@ -170,6 +170,17 @@ impl LayoutState {
         }
     }
 
+    /// A line already running down into the rows to come, as a graph row's line runs on into a
+    /// reveal panel under it: lane `lane` waits for row `r` as its home, locked so no later child
+    /// moves it. Before the first `push`, one line per row.
+    pub(crate) fn enter(&mut self, lane: u16, r: u32) {
+        let lane = usize::from(lane);
+        if self.lanes.len() <= lane {
+            self.lanes.resize(lane + 1, None);
+        }
+        self.lanes[lane] = Some(Lane { home: true, locked: true, ..Lane::new(Wait::Row(r), false, false) });
+    }
+
     /// Lays out row `r`, which must come after every row pushed so far.
     pub fn push(&mut self, r: u32, node: &LayoutNode) -> GraphRow {
         // The lanes still kept for their pinned chains: nothing else opens in them.

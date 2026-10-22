@@ -45,12 +45,17 @@ pub(crate) const NO_ROW: u32 = u32::MAX;
 /// The graph of `input`'s repository over `walked` (the walk from `graph_tips`). `Err` only when
 /// the `testing` feature's continuity check finds a broken line.
 pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload, String> {
+    Ok(assemble_view(input, walked)?.0)
+}
+
+/// `assemble`, and the rows `input.view` left, which a reveal panel lines up with.
+pub(crate) fn assemble_view(input: &GraphInput, walked: &WalkResult) -> Result<(GraphPayload, Option<ViewRows>), String> {
     assemble_with(input, walked, |spec, index| crate::view::decide_window(input, spec, &walked.commits, index))
 }
 
-/// `assemble`, with `decide` standing for the rule engine when `input.view` is set (tests decide
-/// by hand).
-pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: impl FnOnce(&ViewSpec, &HashMap<Oid, usize>) -> Decided) -> Result<GraphPayload, String> {
+/// `assemble_view`, with `decide` standing for the rule engine when `input.view` is set (tests
+/// decide by hand).
+pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: impl FnOnce(&ViewSpec, &HashMap<Oid, usize>) -> Decided) -> Result<(GraphPayload, Option<ViewRows>), String> {
     let refs = &input.refs;
     let worktrees = &input.worktrees;
     let wip = &input.wip;
@@ -205,26 +210,10 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
             let segments = g.segments.iter().map(|s| s.pack()).collect();
             match e {
                 Entry::Commit(ci) => {
-                    let c = &commits[*ci];
                     RowPayload {
-                        id: c.id.to_string(),
-                        kind: n.kind,
-                        lane: g.lane,
-                        color: g.color,
-                        segments,
-                        summary: c.summary.clone(),
-                        body_first_line: c.body.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string(),
-                        author_name: c.author_name.clone(),
-                        author_email: c.author_email.clone(),
-                        author_time: c.author_time,
-                        committer_time: c.committer_time,
-                        parents: c.parents.iter().map(Oid::to_string).collect(),
-                        // Parsed by the walk from the full message: no second object lookup.
-                        mr_refs: c.mr_refs.clone(),
-                        wip: None,
-                        collapsed: None,
                         fold: view.as_ref().and_then(|v| v.fold_mark(*ci, commits)),
                         ghosts: view.as_ref().map(|v| v.ghosts(*ci, g.lane, commits, &index)).unwrap_or_default(),
+                        ..RowPayload::commit(&commits[*ci], n.kind, g, segments)
                     }
                 }
                 Entry::Collapsed(r) => RowPayload::collapsed(view.as_ref().expect("a ⋮ row comes from a view").collapsed_row(*r, commits), g.lane, g.color, segments),
@@ -279,7 +268,7 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
             GraphWorktree { path: w.path.clone(), branch: w.branch.clone(), head: w.head.map(|h| h.to_string()), is_main: w.is_main, locked: w.locked, in_progress }
         })
         .collect();
-    Ok(GraphPayload {
+    let payload = GraphPayload {
         fork: fork.as_ref().map(|f| fork_payload(refs, f)),
         rows,
         labels: build_labels(refs, &head, worktrees, here, &index, &row_of_commit),
@@ -291,7 +280,8 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
         worktrees: worktrees_out,
         in_progress,
         view: view.as_ref().map(ViewRows::payload),
-    })
+    };
+    Ok((payload, view))
 }
 
 /// The walk `build` lays out: `limit` commits from `graph_tips` over commits in memory.

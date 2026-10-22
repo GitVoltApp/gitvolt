@@ -1,7 +1,8 @@
 //! The graph's payload types, serialized to the UI (TypeScript from ts-rs, `just gen-types`, into
 //! ui/src/api/gen/ like the core's), and the per-worktree data it carries.
 
-use crate::layout::{NodeKind, Segment};
+use crate::layout::{GraphRow, NodeKind, Segment};
+use crate::walk::CommitMeta;
 use crate::{render_ascii, AsciiRow};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -243,6 +244,30 @@ impl GraphPayload {
 }
 
 impl RowPayload {
+    /// A commit's row, laid out as `g` with its packed `segments`: no WIP, fold mark or ghosts.
+    pub(crate) fn commit(c: &CommitMeta, kind: NodeKind, g: &GraphRow, segments: Vec<u32>) -> Self {
+        RowPayload {
+            id: c.id.to_string(),
+            kind,
+            lane: g.lane,
+            color: g.color,
+            segments,
+            summary: c.summary.clone(),
+            body_first_line: c.body.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string(),
+            author_name: c.author_name.clone(),
+            author_email: c.author_email.clone(),
+            author_time: c.author_time,
+            committer_time: c.committer_time,
+            parents: c.parents.iter().map(|p| p.to_string()).collect(),
+            // Parsed by the walk from the full message: no second object lookup.
+            mr_refs: c.mr_refs.clone(),
+            wip: None,
+            collapsed: None,
+            fold: None,
+            ghosts: vec![],
+        }
+    }
+
     /// The ⋮ row of a collapsed branch: its id `collapsed:<branch>`, no summary, author or
     /// parents, times 0.
     pub fn collapsed(row: CollapsedRow, lane: u16, color: u8, segments: Vec<u32>) -> Self {

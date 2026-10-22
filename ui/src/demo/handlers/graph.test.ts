@@ -3,6 +3,7 @@ import { gunzipSync } from 'node:zlib';
 import { describe, expect, test } from 'vitest';
 import type { GraphPayload } from '../../api/gen/GraphPayload';
 import type { RepoSummary } from '../../api/gen/RepoSummary';
+import type { RevealPayload } from '../../api/gen/RevealPayload';
 import type { ViewSpec } from '../../api/gen/ViewSpec';
 import { createRuntime } from '../runtime';
 import { goldenData, goldenManifest, WASM_GZ } from '../testing';
@@ -30,7 +31,7 @@ describe.skipIf(!existsSync(WASM_GZ))('the graph handler (needs `just demo-wasm`
     await expect(t.call({ method: 'graph', params: { repo: id, limit: null, active: '/elsewhere' } })).rejects.toMatchObject({ kind: 'InvalidInput', message: '/elsewhere is not a worktree of this repository' });
   });
 
-  test('a view applies through the WebAssembly pipeline; its preview counts every branch; graphReveal answers null until the reveal layout lands', async () => {
+  test('a view applies through the WebAssembly pipeline; its preview counts every branch; graphReveal lays out a fold and answers null for a stale key',async () => {
     const { loadGraphWasm } = await import('../engine/graph');
     const graph = await loadGraphWasm(gunzipSync(readFileSync(WASM_GZ)));
     const runtime = createRuntime({ manifest: goldenManifest(), data: goldenData(), graph });
@@ -57,5 +58,12 @@ describe.skipIf(!existsSync(WASM_GZ))('the graph handler (needs `just demo-wasm`
     expect(merge.fold).toEqual({ key: `fold:${merge.id}`, branch: 'feature/login', count: 2 });
     const gone = plain.rows.find((r) => r.summary === 'Login form')!;
     expect(await t.call({ method: 'graphHiddenOwner', params: { repo: id, limit: null, view: fold, sha: gone.id } })).toBe(`fold:${merge.id}`);
+    // Its reveal panel: the folded commits beside the trunk's lane, the trunk rows tagged.
+    const panel = (await t.call({ method: 'graphReveal', params: { repo: id, limit: null, view: fold, key: `fold:${merge.id}`, below: true } })) as RevealPayload;
+    expect(panel).toMatchObject({ key: `fold:${merge.id}`, branch: 'feature/login', count: 2 });
+    expect(panel.entryLane).toBeGreaterThan(merge.lane);
+    const login = panel.rows.find((r) => r.id === gone.id)!;
+    expect(login.lane).toBe(panel.entryLane);
+    expect(panel.tags.every((tag) => panel.rows[tag.row].lane === merge.lane)).toBe(true);
   });
 });
