@@ -149,10 +149,11 @@ test.describe('graph scroll perf probe', () => {
 
 /** A preset switch on the perf repo (its window: the 2000-commit default) re-lays out the walked
  * commits, no new walk. Most of the time is the debug harness building and sending the graph
- * (about 1 MB of rows): reloading All takes as long, and its times are logged beside. */
-const SWITCH_MS = 300;
+ * (about 1 MB of rows), which reloading All pays too; so the budget is the preset's own cost: the
+ * switch takes at most a quarter longer than reloading All (best of 3 each). */
+const OVER_ALL = 1.25;
 
-test(`switching the 4 000-commit repo to "All, collapsed" shows the new graph in under ${SWITCH_MS} ms (best of a few)`, { tag: '@budget' }, async ({ page }) => {
+test('switching the 4 000-commit repo to "All, collapsed" costs little more than reloading All (best of 3)', { tag: '@budget' }, async ({ page }) => {
   const repo = makePerfRepo(join(mkdtempSync(join(fixtures.notRepo, 'perf-')), 'big'));
   await page.goto(openUrl(repo));
   const grid = page.getByRole('grid', { name: 'Commit graph' });
@@ -171,7 +172,7 @@ test(`switching the 4 000-commit repo to "All, collapsed" shows the new graph in
   }), selector);
   const times: number[] = [];
   const back: number[] = [];
-  for (let i = 0; i < 5 && !(i >= 3 && Math.min(...times) < SWITCH_MS); i++) {
+  for (let i = 0; i < 3; i++) {
     times.push(await timed('.preset-main'));
     await expect(button).toHaveAttribute('data-preset', 'all-collapsed');
     expect(Number(await grid.getAttribute('aria-rowcount'))).toBeLessThan(Number(all));
@@ -181,5 +182,5 @@ test(`switching the 4 000-commit repo to "All, collapsed" shows the new graph in
   }
   const ms = (xs: number[]) => xs.map((t) => t.toFixed(1)).join(', ');
   console.log(`[budget] switch to All, collapsed (4 000 commits): ${ms(times)} ms; back to All: ${ms(back)} ms`);
-  if (budgetApplies()) expect(Math.min(...times), `switch times ${ms(times)} ms`).toBeLessThan(SWITCH_MS);
+  if (budgetApplies()) expect(Math.min(...times), `switch ${ms(times)} ms, All ${ms(back)} ms`).toBeLessThan(Math.min(...back) * OVER_ALL);
 });
