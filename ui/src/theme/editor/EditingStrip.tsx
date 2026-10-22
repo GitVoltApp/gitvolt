@@ -63,7 +63,7 @@ export function EditingStrip() {
         Editing <NameField theme={custom} /> made from <b>{base}</b>; your other themes are untouched.
       </span>
       <span className="theme-strip-actions">
-        {floating && <button type="button" className="primary" onClick={() => useSettingsUi.getState().setFloating('theme-editor')}>Edit on the app</button>}
+        {floating && <button type="button" className="primary" data-float-opener="theme-editor" onClick={() => useSettingsUi.getState().setFloating('theme-editor')}>Edit on the app</button>}
         <button type="button" onClick={() => void copyTheme(def, custom)}>Copy as JSON</button>
         <button type="button" onClick={() => void exportTheme(def, custom)}>Export file…</button>
         <button type="button" className="danger" onClick={(e) => void remove(e)}>Delete</button>

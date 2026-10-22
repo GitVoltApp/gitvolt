@@ -1,0 +1,17 @@
+/* The floating theme editor (Edit on the app): a panel at the window's lower right, over the live
+   app, with no backdrop. Above flyouts, under modals, menus and the colour picker. Dragging sets
+   only its `transform`. */
+.theme-float { position: fixed; right: 24px; bottom: 24px; z-index: 700; display: flex; flex-direction: column; width: 320px; height: min(560px, 80vh); box-sizing: border-box; background: var(--panel-bg0); border: 1px solid var(--section-border); border-radius: 8px; box-shadow: 0 14px 40px var(--shadow-modal); color: var(--text-normal); font-size: 12px; overflow: hidden; }
+.theme-float-bar { flex: none; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--section-border); color: var(--text-selected); cursor: move; user-select: none; touch-action: none; outline: none; }
+.theme-float-bar:focus-visible { box-shadow: inset 0 0 0 2px var(--focus-outline); border-radius: 8px 8px 0 0; }
+.theme-float-grip { flex: none; color: var(--text-disabled); }
+.theme-float-title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.theme-float-done { flex: none; font: inherit; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--button-primary); background: var(--button-primary); color: var(--text-on-accent); cursor: pointer; }
+.theme-float-done:focus-visible { outline: 2px solid var(--focus-outline); outline-offset: 1px; }
+.theme-float-find { flex: none; padding: 8px 10px 4px; }
+.theme-float-find .clearable { display: flex; }
+.theme-float-find input { flex: 1; min-width: 0; font: inherit; padding: 4px 8px; color: var(--text-selected); background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 5px; outline: none; }
+.theme-float-find input:focus { border-color: var(--blue); }
+.theme-float-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 10px 10px; }
+.theme-float .theme-colour { grid-template-columns: 22px minmax(0, 1fr) 86px; min-height: 28px; }
+.theme-float .theme-colour-groups + .theme-colour-group { margin-top: 8px; }

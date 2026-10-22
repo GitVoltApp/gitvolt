@@ -88,9 +88,10 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
  * The edited theme's colours: the core ones in four groups (two columns, one when `compact`),
  * then **All colours**, every token, behind a disclosure. A change to a built-in theme makes its
  * custom copy (edit.ts). `filter` keeps the rows whose name, note or token has it, and opens All
- * colours when only rows there match.
+ * colours when only rows there match. `children` goes between the core colours and All colours
+ * (the floating editor's lanes).
  */
-export function ThemeColourList({ filter, compact = false }: { filter?: string; compact?: boolean }) {
+export function ThemeColourList({ filter, compact = false, children }: { filter?: string; compact?: boolean; children?: ReactNode }) {
   const { def } = useEditedTheme();
   const [open, setOpen] = useState<boolean | null>(null);
   const q = filter?.trim().toLowerCase() ?? '';
@@ -112,6 +113,7 @@ export function ThemeColourList({ filter, compact = false }: { filter?: string; 
           })}
         </div>
       )}
+      {children}
       {all.length > 0 && (
         <button type="button" className="theme-all-toggle" aria-expanded={expanded} onClick={() => setOpen(!expanded)}>
           <ChevronRight size={14} aria-hidden />All colours<small>every token; the ones above set most of them</small>
@@ -126,7 +128,7 @@ export function ThemeColourList({ filter, compact = false }: { filter?: string; 
           ))}
         </div>
       )}
-      {!core.length && !all.length && <p className="theme-colour-none">No colour matches "{filter?.trim()}"</p>}
+      {!core.length && !all.length && !children && <p className="theme-colour-none">No colour matches "{filter?.trim()}"</p>}
     </div>
   );
 }

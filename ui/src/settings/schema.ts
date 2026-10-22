@@ -25,14 +25,15 @@ interface SettingsUi {
 }
 
 /** Settings' state: open, on which page, the search query, a deep link. `show(id)` opens it on
- * the page of setting `id` and focuses that setting; the settings themselves are in `registry.ts`. */
+ * the page of setting `id` and focuses that setting (Ctrl+, or the palette's `#` bring Settings
+ * back from a floating panel too); the settings themselves are in `registry.ts`. */
 export const useSettingsUi = create<SettingsUi>((set) => ({
   open: false,
   page: 'general',
   query: '',
   focus: null,
   floating: null,
-  show: (focus) => set((st) => ({ open: true, focus: focus ?? null, query: '', page: (focus && settingDef(focus)?.page) || st.page })),
+  show: (focus) => set((st) => ({ open: true, floating: null, focus: focus ?? null, query: '', page: (focus && settingDef(focus)?.page) || st.page })),
   setPage: (page) => set({ page, query: '', focus: null }),
   setQuery: (query) => set({ query }),
   setFloating: (floating) => set({ floating }),
