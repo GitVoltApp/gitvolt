@@ -15,6 +15,8 @@ const listMode = (page: Page, mode: 'Path' | 'Tree') => page.getByRole('toolbar'
 
 test.describe('file list and diff takeover', () => {
   test.beforeEach(async ({ page }) => {
+    // These specs are about the list view; Tree is the default.
+    await page.addInitScript(() => localStorage.setItem('gitvolt.fileList.v1', JSON.stringify({ mode: 'path', sort: 'path', advanceAfterStage: true })));
     await page.goto(openUrl(fixtures.details));
     await expect(page.getByRole('grid', { name: 'Commit graph' })).toBeVisible();
   });

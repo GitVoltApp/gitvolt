@@ -10,6 +10,7 @@ const rows = (page: Page) => page.getByRole('grid', { name: 'Commit graph' }).ge
 // long file, which Hunk shows (with its context) where the default Inline mode (amendment 3)
 // would leave it below Monaco's rendered lines.
 test('the WIP row and panel: its counts, its draft box, the unstaged and staged lists with their diffs, ↑/↓ across them, Path/Tree, sections and the handle', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('gitvolt.fileList.v1', JSON.stringify({ mode: 'path', sort: 'path', advanceAfterStage: true })));
   await page.addInitScript(() => localStorage.setItem('gitvolt.diffPrefs.v1', JSON.stringify({ mode: 'hunk', ignoreWhitespace: false, wordWrap: false })));
   await page.goto(openUrl(fixtures.details));
   await test.step('K47: the WIP row shows its per-type counts with the status icons', async () => {
@@ -153,6 +154,7 @@ test('the WIP row and panel: its counts, its draft box, the unstaged and staged 
 });
 
 test('K44: the watched tab holds the WIP lists: they update live, and re-selecting the row reads nothing', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('gitvolt.fileList.v1', JSON.stringify({ mode: 'path', sort: 'path', advanceAfterStage: true })));
   const repo = freshFixture('details');
   const wipReads: boolean[] = [];
   page.on('websocket', (ws) => ws.on('framesent', ({ payload }) => {

@@ -106,7 +106,7 @@ async function selectCommit(page: Page) {
 }
 async function openDiff(page: Page) {
   await selectCommit(page);
-  await page.getByRole('option').and(page.locator('[data-path="src/app.php"]')).click();
+  await page.locator('[role="option"][data-path="src/app.php"], [role="treeitem"][data-path="src/app.php"]').click();
   await expect(diffRegion(page).locator('.editor.modified .line-insert').first()).toBeVisible({ timeout: 15_000 });
 }
 // One page, one editor: the font size step uses the diff the theme step opened.

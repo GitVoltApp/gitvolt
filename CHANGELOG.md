@@ -5,6 +5,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Changed
+
+- **File lists open as a tree by default.** The working-copy sections, commit details, compare and
+  merge request changes show folders first until you switch to Path; a mode you already picked is
+  kept.
+
 ### Fixed
 
 - **The window should reopen on the monitor you left it on, at the size you closed it at.** With

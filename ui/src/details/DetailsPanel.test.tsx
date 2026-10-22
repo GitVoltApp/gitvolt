@@ -9,6 +9,7 @@ import type { RowPayload } from '../api/gen/RowPayload';
 import { createCommitMessageCache } from '../api/commitMessages';
 import { Loader } from '../data/loader';
 import { Lru } from '../data/lru';
+import { useFileListPrefs } from '../files/fileListPrefs';
 import { createServices } from '../repo/services';
 import { createRepoViewStore, RepoViewContext, type RepoViewStore } from '../repo/store';
 import { fakeServices, recordingServices } from '../repo/testServices';
@@ -49,6 +50,7 @@ function renderPanel(store: RepoViewStore) {
 }
 
 beforeEach(() => {
+  useFileListPrefs.setState({ mode: 'path' });
   for (const f of Object.values(api)) f.mockReset();
   api.commitDetails.mockImplementation(never);
   api.commitMessage.mockImplementation(never);

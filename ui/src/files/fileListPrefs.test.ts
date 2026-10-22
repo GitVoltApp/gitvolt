@@ -18,21 +18,28 @@ afterEach(() => {
 describe('file list prefs (feedback H31)', () => {
   it('Path/Tree and the sort survive a restart, under one versioned key; View all files does not', async () => {
     const first = await fresh();
-    expect(first.useFileListPrefs.getState()).toMatchObject({ mode: 'path', sort: 'path', allFiles: false });
-    first.useFileListPrefs.getState().set({ mode: 'tree' });
+    expect(first.useFileListPrefs.getState()).toMatchObject({ mode: 'tree', sort: 'path', allFiles: false });
+    first.useFileListPrefs.getState().set({ mode: 'path' });
     first.useFileListPrefs.getState().set({ sort: 'status', allFiles: true });
-    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({ mode: 'tree', sort: 'status', advanceAfterStage: true });
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({ mode: 'path', sort: 'status', advanceAfterStage: true });
     expect(Object.keys(localStorage)).toEqual([KEY]);
 
     const second = await fresh();
-    expect(second.useFileListPrefs.getState()).toMatchObject({ mode: 'tree', sort: 'status', allFiles: false });
+    expect(second.useFileListPrefs.getState()).toMatchObject({ mode: 'path', sort: 'status', allFiles: false });
+  });
+
+  it('is Tree when nothing is stored, and a stored Path wins', async () => {
+    expect((await fresh()).useFileListPrefs.getState().mode).toBe('tree');
+    localStorage.setItem(KEY, JSON.stringify({ mode: 'path', sort: 'path', advanceAfterStage: true }));
+    expect((await fresh()).useFileListPrefs.getState().mode).toBe('path');
   });
 
   it('Tree for the session leaves the stored Path/Tree alone, whatever else is saved meanwhile', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ mode: 'path', sort: 'path', advanceAfterStage: true }));
     const { useFileListPrefs } = await fresh();
+    expect(useFileListPrefs.getState().mode).toBe('path');
     useFileListPrefs.getState().treeForSession();
     expect(useFileListPrefs.getState().mode).toBe('tree');
-    expect(localStorage.getItem(KEY)).toBeNull();
     useFileListPrefs.getState().set({ sort: 'status' });
     expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({ mode: 'path', sort: 'status', advanceAfterStage: true });
     expect(useFileListPrefs.getState().mode).toBe('tree');
@@ -45,12 +52,12 @@ describe('file list prefs (feedback H31)', () => {
     for (const raw of ['{not json', 'null', '"tree"', '42', '[]']) {
       localStorage.setItem(KEY, raw);
       const { useFileListPrefs } = await fresh();
-      expect(useFileListPrefs.getState(), raw).toMatchObject({ mode: 'path', sort: 'path', allFiles: false });
+      expect(useFileListPrefs.getState(), raw).toMatchObject({ mode: 'tree', sort: 'path', allFiles: false });
     }
     localStorage.setItem(KEY, JSON.stringify({ mode: 'tree', sort: 'size', allFiles: true }));
     const { useFileListPrefs, parseFileListPrefs } = await fresh();
     expect(useFileListPrefs.getState()).toMatchObject({ mode: 'tree', sort: 'path', allFiles: false });
-    expect(parseFileListPrefs({ mode: 'list', sort: 'status' })).toEqual({ mode: 'path', sort: 'status', advanceAfterStage: true });
+    expect(parseFileListPrefs({ mode: 'list', sort: 'status' })).toEqual({ mode: 'tree', sort: 'status', advanceAfterStage: true });
   });
 
   it('keeps working in memory when storage reads and writes throw', async () => {
@@ -61,8 +68,8 @@ describe('file list prefs (feedback H31)', () => {
       throw new Error('quota');
     });
     const { useFileListPrefs } = await fresh();
-    expect(useFileListPrefs.getState()).toMatchObject({ mode: 'path', sort: 'path' });
-    useFileListPrefs.getState().set({ mode: 'tree' });
-    expect(useFileListPrefs.getState().mode).toBe('tree');
+    expect(useFileListPrefs.getState()).toMatchObject({ mode: 'tree', sort: 'path' });
+    useFileListPrefs.getState().set({ mode: 'path' });
+    expect(useFileListPrefs.getState().mode).toBe('path');
   });
 });
