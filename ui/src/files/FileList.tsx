@@ -19,6 +19,7 @@ import { useConflictSides } from '../conflicts/useOperation';
 import { useFileListPrefs } from './fileListPrefs';
 import { REVEAL_WAIT_MS, takeReveal, useFileReveal } from './reveal';
 import { allFolderPaths, buildRows, countByStatus, matchesFilter, NONE_COLLAPSED, rowIndent, stepFile, TREE, type FileListMode, type FileRow, type StatusCounts } from './fileTree';
+import { NEVER_COLLAPSED, useFolderCollapse } from './folderMemory';
 import { FilesFilter } from './FilesFilter';
 import { useWipFilter, wipFilterOf } from '../details/wipFilter';
 import { PathTooltip } from './RenamePaths';
@@ -231,6 +232,7 @@ export interface FileListHandle { hasFiles(): boolean; enter(edge: 'first' | 'la
 
 export function FileList({ list, spec, label, allFilesCommit: commitOf = null, allFilesWorktree = null, sharedMode = false, onLeave, renderActions, toolEnd, canCreate = true, ref }: { /** UX round 3 O.1: Create file… on the list's empty space (false: the WIP's Staged and Conflicted lists). */ canCreate?: boolean; renderActions?: (row: FileRow) => ReactNode; /** `sharedMode`: shown at the right end of the tool line (WIP: the section's +/− totals). */ toolEnd?: ReactNode; list: FileListPayload; spec: DiffSpec; label: string; allFilesCommit?: string | null; /** UX G.2: the WIP row's View all files, of this worktree's tracked files. */ allFilesWorktree?: string | null; sharedMode?: boolean; onLeave?: (dir: 1 | -1) => boolean; ref?: Ref<FileListHandle> }) {
   const store = useRepoViewStore();
+  const repoPath = useRepoView((s) => s.repoPath);
   const openFile = useRepoView((s) => s.openFile);
   const closeDiffTo = useRepoView((s) => s.closeDiffTo);
   const closeDiff = useRepoView((s) => s.closeDiff);
@@ -241,7 +243,6 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
   const allFilesWanted = allFilesWorktree ? wipAllFiles : commitOf ? commitAllFiles : false;
   const allFilesCommit = commitOf ?? (allFilesWorktree ? `${WORKTREE_SOURCE}${allFilesWorktree}` : null);
   const toggleAllFiles = () => setPrefs(allFilesWorktree ? { wipAllFiles: !wipAllFiles } : { allFiles: !commitAllFiles });
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [cursor, setCursor] = useState<Cursor | null>(null);
   // "View all files"' filter (feedback K18-K20): transient, never persisted, and only shown (or
   // applied) while View all files is on — cleared when it's turned off.
@@ -271,6 +272,8 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     if (!filterQuery) return unchanged;
     return { commit: unchanged.commit, paths: unchanged.paths.filter((p) => matchesFilter(p, filterQuery)) };
   }, [unchanged, filterQuery]);
+  const folders = useMemo(() => (mode === 'tree' ? allFolderPaths(filteredFiles, filteredUnchanged) : []), [mode, filteredFiles, filteredUnchanged]);
+  const [collapsed, setCollapsed] = useFolderCollapse(repoPath, folders, NEVER_COLLAPSED);
   const rowsFor = useCallback((c: ReadonlySet<string>) => buildRows({ files: filteredFiles, spec, unchanged: filteredUnchanged, mode, sort, collapsed: c }), [filteredFiles, spec, filteredUnchanged, mode, sort]);
   const rows = useMemo(() => rowsFor(collapsed), [rowsFor, collapsed]);
   // The rows with every directory expanded: ↑/↓ walk the files in this order (UX round 2), so a
@@ -577,7 +580,6 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     e.preventDefault();
   };
 
-  const folders = useMemo(() => (mode === 'tree' ? allFolderPaths(filteredFiles, filteredUnchanged) : []), [mode, filteredFiles, filteredUnchanged]);
   const allExpanded = folders.every((p) => !collapsed.has(p));
   const hasChangedRow = useMemo(() => rows.some((r) => r.kind === 'file' && r.change !== null), [rows]);
 

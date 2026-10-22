@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileChange } from '../api/gen/FileChange';
 import type { GraphPayload } from '../api/gen/GraphPayload';
 import { Loader } from '../data/loader';
@@ -10,6 +10,7 @@ import { contentsRequest, createRepoViewStore, RepoViewContext, targetFor } from
 import { fakeServices, recordingServices } from '../repo/testServices';
 import { DEFAULT_DENSITY, DENSITIES, DENSITY_METRICS, useDensity } from '../theme/density';
 import { FileList } from './FileList';
+import { useFolderMemory } from './folderMemory';
 import { rowIndent } from './fileTree';
 import { useFileListPrefs } from './fileListPrefs';
 import { revealInFileList, useFileReveal } from './reveal';
@@ -34,7 +35,7 @@ const rowEls = () => [...document.querySelectorAll<HTMLElement>('[role="option"]
 const listEl = () => document.querySelector<HTMLElement>('.file-list-scroll')!;
 
 describe('FileList', () => {
-  beforeEach(() => useDensity.setState({ density: DEFAULT_DENSITY }));
+  beforeEach(() => { useDensity.setState({ density: DEFAULT_DENSITY }); useFolderMemory.setState({ byRepo: {} }); });
 
   it('shows counts, renames, binary stats, and opens files with Up/Down', () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
@@ -745,5 +746,47 @@ describe('FileList', () => {
       fireEvent.click(screen.getByRole('button', { name: 'View all files' }));
       expect(screen.getByLabelText('Filter files')).toHaveValue('');
     });
+  });
+});
+describe('FileList folder memory', () => {
+  beforeEach(() => { useDensity.setState({ density: DEFAULT_DENSITY }); useFolderMemory.setState({ byRepo: {} }); useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false }); });
+  afterEach(cleanup);
+  const lists = (repo: string, count = 1) => render(
+    <RepoViewContext value={createRepoViewStore(1, repo, graph, fakeServices())}>
+      {Array.from({ length: count }, (_, i) => <div key={i} data-testid={`list${i}`}><FileList list={list} spec={spec} label={`Files ${i}`} /></div>)}
+    </RepoViewContext>,
+  );
+  const folder = (testId: string, path: string) => within(screen.getByTestId(testId)).getAllByRole('treeitem').find((r) => r.dataset.path === path)!;
+
+  it("a folder closed in one commit's list stays closed in the next commit's list", () => {
+    const first = lists('/r');
+    fireEvent.mouseDown(folder('list0', 'src'));
+    expect(folder('list0', 'src')).toHaveAttribute('aria-expanded', 'false');
+    first.unmount();
+    lists('/r');
+    expect(folder('list0', 'src')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it("the WIP's two lists share a folder's state", () => {
+    lists('/r', 2);
+    fireEvent.mouseDown(folder('list0', 'src'));
+    expect(folder('list1', 'src')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it("another repository's lists keep their own state", () => {
+    const first = lists('/r');
+    fireEvent.mouseDown(folder('list0', 'src'));
+    first.unmount();
+    lists('/other');
+    expect(folder('list0', 'src')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it("Collapse all is remembered for a new list's shared folders", () => {
+    const first = lists('/r');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+    first.unmount();
+    lists('/r');
+    expect(folder('list0', 'src')).toHaveAttribute('aria-expanded', 'false');
+    expect(folder('list0', 'docs')).toHaveAttribute('aria-expanded', 'false');
   });
 });
