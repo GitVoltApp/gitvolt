@@ -92,11 +92,13 @@ export interface TabForge {
   failures: number;
   /** The tab's review session, if one is open. */
   review: ReviewSession | null;
+  /** What a refresh button is fetching now: `list`, or an MR/PR's number (`refreshMrNow`, `refreshListNow`). */
+  refreshing: ReadonlyArray<'list' | number>;
 }
 
 export const EMPTY_FORGE: TabForge = {
   kind: null, remote: null, project: null, mapped: [], target: null, targetChosen: false, remoteErrors: {}, ownerAvatars: {}, me: null, byRef: {}, history: {}, upstreams: {}, filter: 'all', list: null,
-  details: {}, detailErrors: {}, discussions: {}, openMr: null, updatedAt: null, error: null, limitedUntil: null, cachedAt: null, failures: 0, review: null,
+  details: {}, detailErrors: {}, discussions: {}, openMr: null, updatedAt: null, error: null, limitedUntil: null, cachedAt: null, failures: 0, review: null, refreshing: [],
 };
 
 export const useForge = create<{ byTab: Record<string, TabForge> }>(() => ({ byTab: {} }));

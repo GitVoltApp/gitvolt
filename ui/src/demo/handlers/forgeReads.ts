@@ -16,7 +16,7 @@ const forgeFor = async (ctx: DemoContext, repo: number) => {
   return { demo, f: await forgeOf(ctx, demo.fs), r: await forgeRemotes(ctx, repo) };
 };
 
-export const forgeReadHandlers: Pick<HandlerTable, 'forgeAccounts' | 'forgeRepoProjects' | 'forgeProjectSettings' | 'forgeForks' | 'forgeMrList' | 'forgeBranchMrs' | 'forgeCachedMrs' | 'forgeMrDetail' | 'forgeMrDiscussions' | 'forgeProjectByPath' | 'forgePeopleLimits' | 'forgeImage' | 'forgeVideo'> = {
+export const forgeReadHandlers: Pick<HandlerTable, 'forgeAccounts' | 'forgeRepoProjects' | 'forgeProjectSettings' | 'forgeForks' | 'forgeMrList' | 'forgeBranchMrs' | 'forgeCachedMrs' | 'forgeRefresh' | 'forgeMrDetail' | 'forgeMrDiscussions' | 'forgeProjectByPath' | 'forgePeopleLimits' | 'forgeImage' | 'forgeVideo'> = {
   // The demo always has its one account, before any bundle has loaded too.
   forgeAccounts: async (_p, ctx) => accounts(await forgeOf(ctx, netOf(ctx).fs!)),
   forgeRepoProjects: async ({ repo }, ctx) => {
@@ -48,6 +48,8 @@ export const forgeReadHandlers: Pick<HandlerTable, 'forgeAccounts' | 'forgeRepoP
     const { demo, f, r } = await forgeFor(ctx, repo);
     return cachedMrs(f, r, refs, await tipsOf(demo, refs), filter);
   },
+  // The demo's forge keeps nothing a moment: there's nothing to forget.
+  forgeRefresh: async () => null,
   forgeMrDetail: async ({ repo, number }, ctx) => {
     const { f, r } = await forgeFor(ctx, repo);
     const t = await mrTarget(f, r);

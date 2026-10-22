@@ -372,6 +372,15 @@ impl ForgeHub {
         Ok(BranchMrs { kind: t.project.kind, remote: t.remote, mrs, history, fetched_at: open.fetched_at, poll_interval_secs: open.poll_interval_secs })
     }
 
+    /// A refresh (the button, not a poll): the target's provider forgets what it kept a moment
+    /// ago, so the reads that follow (the list, the badges, an MR/PR's detail and discussion) ask
+    /// the forge. Nothing is sent here; a spent rate limit still refuses those reads.
+    pub async fn expire_fresh(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload]) -> Result<(), GbError> {
+        let t = self.mr_target(store, remotes).await?;
+        t.provider.expire_fresh();
+        Ok(())
+    }
+
     pub async fn mr_detail(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], number: u64) -> Result<Fresh<ForgeMrDetail>, GbError> {
         let t = self.mr_target(store, remotes).await?;
         let r = t.provider.mr_detail(&t.project, number).await;
@@ -937,6 +946,14 @@ mod tests {
         assert!(hub.mr_discussions(&store, &remotes, 12).await.unwrap().value.is_empty());
         assert_eq!(hub.project_by_path(&store, &remotes, "alice/project").await.unwrap().fork_of.as_deref(), Some("group/project"));
         assert_eq!(hub.mr_detail(&store, &remotes, 99).await.unwrap_err().kind, GbErrorKind::NotFound);
+    }
+
+    #[tokio::test]
+    async fn a_refresh_makes_the_provider_forget_what_it_kept() {
+        let (p, hub, store, remotes) = setup().await;
+        hub.expire_fresh(&store, &remotes).await.unwrap();
+        hub.expire_fresh(&store, &remotes).await.unwrap();
+        assert_eq!(p.calls().iter().filter(|c| *c == "expire_fresh").count(), 2);
     }
 
     #[tokio::test]

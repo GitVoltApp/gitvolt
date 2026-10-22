@@ -593,3 +593,18 @@ async fn notifications_and_the_base_come_with_the_detail() {
     assert!(seeded(&f, 12).subscribers.is_empty());
 }
 // --- end MR round 2 ---
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refresh_asks_the_forge_again_within_the_fresh_window() {
+    let f = FakeForge::start().await;
+    let p = provider(&f, GITLAB_TOKEN);
+    let g = group(&p).await;
+    let asks = |f: &FakeForge| f.requests().iter().filter(|r| r.path.ends_with("/merge_requests")).count();
+    p.open_mrs(&g, MrFilter::All).await.unwrap();
+    let first = asks(&f);
+    p.open_mrs(&g, MrFilter::All).await.unwrap();
+    assert_eq!(asks(&f), first, "answered a moment ago: from memory");
+    ForgeProvider::expire_fresh(&p);
+    p.open_mrs(&g, MrFilter::All).await.unwrap();
+    assert!(asks(&f) > first, "a refresh asks the forge (conditionally: a 304 is cheap)");
+}

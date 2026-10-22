@@ -5,6 +5,15 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **A refresh button for merge requests and pull requests.** The MR/PR view's header and the
+  sidebar's MR/PR section each have one that asks the forge now, without waiting for the next
+  poll: the view's refreshes that MR/PR (details, discussion, pipeline, approvals), the sidebar's
+  the list and the badges. The icon turns while it runs. A refresh while one is running joins it,
+  and none is sent while the forge's rate limit is spent. "Refresh the MR/PR" and "Refresh the
+  MR/PR list" are in the command palette too.
+
 ### Changed
 
 - **File lists open as a tree by default.** The working-copy sections, commit details, compare and
