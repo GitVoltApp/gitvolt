@@ -34,6 +34,20 @@ describe('ColourPicker', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('a second click on the swatch closes the picker, keeping the colour, and does not reopen it', () => {
+    const f = setup();
+    type('Hex', '#ff0000');
+    const swatch = screen.getByRole('button', { name: 'Accent' });
+    fireEvent.pointerDown(swatch);
+    fireEvent.pointerUp(swatch);
+    fireEvent.click(swatch);
+    expect(f.onCommit).toHaveBeenCalledWith('#ff0000');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(swatch).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(swatch);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
   it('a click outside keeps the new colour', () => {
     const f = setup();
     type('Hex', '#ff0000');

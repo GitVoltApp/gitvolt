@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { escOwners } from '../../app/modalKeys';
 import { wheelAccumulator } from '../../image/zoom';
 import { registerKeys } from '../keyRouter';
+import { swallowGestureClick } from '../swallowClick';
 import { placeBelow } from '../HoverTooltip';
 import { formatColour, fromOklch, maxChroma, oklchPixel, parseColour, toOklch, type Oklch, type Rgba } from './colour';
 import './colour.css';
@@ -244,11 +245,13 @@ export function ColourPicker({ value, alpha = false, label, anchor, onPreview, o
   useEffect(() => {
     const down = (e: PointerEvent) => {
       if (e.target instanceof Node && box.current?.contains(e.target)) return;
+      // A press on the swatch that opened it is a toggle: it closes, and its click doesn't reopen.
+      if (e.target instanceof Node && anchor.contains(e.target)) swallowGestureClick((c) => c.target instanceof Node && anchor.contains(c.target));
       live.current.onCommit(formatColour(live.current.cur));
     };
     document.addEventListener('pointerdown', down, true);
     return () => document.removeEventListener('pointerdown', down, true);
-  }, []);
+  }, [anchor]);
 
   // The wheel over the square steps lightness, over a strip its value. (The OKLCH tab's rows take
   // their own wheel: they have no `data-step`.)
