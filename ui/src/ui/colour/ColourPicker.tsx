@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { RgbaColorPicker, RgbColorPicker } from 'react-colorful';
 import { escOwners } from '../../app/modalKeys';
+import { wheelAccumulator } from '../../image/zoom';
 import { registerKeys } from '../keyRouter';
 import { placeBelow } from '../HoverTooltip';
 import { formatColour, fromHsl, parseColour, toHsl, type Rgba } from './colour';
@@ -17,15 +18,43 @@ export interface ColourPickerProps {
   onCancel(): void;
 }
 
+type Hsl = { h: number; s: number; l: number };
 const FALLBACK: Rgba = { r: 0, g: 0, b: 0, a: 1 };
+const sameRgb = (x: Rgba, y: Rgba) => x.r === y.r && x.g === y.g && x.b === y.b;
+const clamp = (n: number, max: number) => Math.max(0, Math.min(max, n));
+
+/** The wheel over `ref` steps a value by 1 a notch (a trackpad's travel adds up to a notch), up for
+ * more, where `over` says a slider is under the pointer (elsewhere the wheel scrolls as usual). A
+ * native listener: React's wheel handler is passive, so it couldn't keep the page from scrolling. */
+function useWheelSteps(ref: RefObject<HTMLElement | null>, over: (target: Element) => boolean, step: (dir: 1 | -1, target: Element) => void) {
+  const live = useRef({ over, step });
+  live.current = { over, step };
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const turn = wheelAccumulator();
+    const wheel = (e: WheelEvent) => {
+      if (!(e.target instanceof Element) || !live.current.over(e.target)) return;
+      e.preventDefault();
+      const dir = turn(e);
+      if (dir !== 0) live.current.step(dir, e.target);
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, [ref]);
+}
+
+const ANYWHERE = () => true;
 
 function NumberRange({ label, value, max, onChange }: { label: string; value: number; max: number; onChange(v: number): void }) {
   const set = (raw: string) => {
     const n = Number(raw);
-    if (raw.trim() !== '' && Number.isFinite(n)) onChange(Math.max(0, Math.min(max, n)));
+    if (raw.trim() !== '' && Number.isFinite(n)) onChange(clamp(n, max));
   };
+  const row = useRef<HTMLDivElement>(null);
+  useWheelSteps(row, ANYWHERE, (dir) => onChange(clamp(Math.round(value) + dir, max)));
   return (
-    <div className="colour-range">
+    <div ref={row} className="colour-range">
       <span className="colour-range-label">{label}</span>
       <input type="range" min={0} max={max} step={1} value={Math.round(value)} aria-label={`${label} slider`} onChange={(e) => set(e.target.value)} />
       <input type="number" className="colour-num" min={0} max={max} value={Math.round(value)} aria-label={label} onChange={(e) => set(e.target.value)} />
@@ -44,6 +73,10 @@ export function ColourPicker({ value, alpha = false, label, anchor, onPreview, o
   const [tab, setTab] = useState<'picker' | 'hsl'>('picker');
   const [hex, setHex] = useState(() => formatColour(original.current));
   const [invalid, setInvalid] = useState(false);
+  // The HSL last set on the HSL tab or a hue wheel. Read back from RGB, HSL loses what rounding
+  // drops: near black or white every hue and saturation is one colour, so a lightness drag would
+  // come back with another hue. Kept while it still makes the current colour.
+  const [held, setHeld] = useState<Hsl | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; maxHeight?: number }>({ left: 0, top: 0 });
   const box = useRef<HTMLDivElement>(null);
   const live = useRef({ cur, onCommit, onCancel });
@@ -57,7 +90,7 @@ export function ColourPicker({ value, alpha = false, label, anchor, onPreview, o
     setInvalid(false);
     onPreview(formatColour(next));
   };
-  const hsl = toHsl(cur);
+  const hsl = held && sameRgb(fromHsl(held.h, held.s, held.l, cur.a), cur) ? held : toHsl(cur);
 
   useLayoutEffect(() => {
     const el = box.current!;
@@ -101,10 +134,16 @@ export function ColourPicker({ value, alpha = false, label, anchor, onPreview, o
     setCur(next);
     onPreview(formatColour(next));
   };
-  const setHsl = (p: Partial<{ h: number; s: number; l: number }>) => {
+  const setHsl = (p: Partial<Hsl>) => {
     const n = { ...hsl, ...p };
+    setHeld(n);
     apply(fromHsl(n.h, n.s, n.l, cur.a));
   };
+  const picker = useRef<HTMLDivElement>(null);
+  useWheelSteps(picker, (t) => t.closest('.react-colorful__hue, .react-colorful__alpha') !== null, (dir, t) => {
+    if (t.closest('.react-colorful__hue')) setHsl({ h: clamp(Math.round(hsl.h) + dir, 360) });
+    else apply({ ...cur, a: clamp(Math.round(cur.a * 100) + dir, 100) / 100 });
+  });
 
   return createPortal(
     <div
@@ -132,9 +171,11 @@ export function ColourPicker({ value, alpha = false, label, anchor, onPreview, o
         ))}
       </div>
       {tab === 'picker' ? (
-        alpha
-          ? <RgbaColorPicker color={cur} onChange={apply} />
-          : <RgbColorPicker color={{ r: cur.r, g: cur.g, b: cur.b }} onChange={(c) => apply({ ...c, a: 1 })} />
+        <div ref={picker}>
+          {alpha
+            ? <RgbaColorPicker color={cur} onChange={apply} />
+            : <RgbColorPicker color={{ r: cur.r, g: cur.g, b: cur.b }} onChange={(c) => apply({ ...c, a: 1 })} />}
+        </div>
       ) : (
         <div className="colour-hsl">
           <NumberRange label="Hue" value={hsl.h} max={360} onChange={(h) => setHsl({ h })} />

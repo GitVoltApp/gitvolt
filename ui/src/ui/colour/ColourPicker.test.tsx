@@ -51,6 +51,49 @@ describe('ColourPicker', () => {
     expect(f.onPreview).toHaveBeenLastCalledWith('rgba(92, 184, 92, 0.5)');
   });
 
+  it('dragging lightness to black and back keeps the hue and saturation', () => {
+    const f = setup('#3366cc');
+    fireEvent.click(screen.getByRole('tab', { name: 'HSL' }));
+    const [h, sat] = [screen.getByLabelText('Hue'), screen.getByLabelText('Saturation')].map((e) => (e as HTMLInputElement).value);
+    for (const l of ['10', '1', '0', '1', '30', '50']) type('Lightness slider', l);
+    expect(screen.getByLabelText('Hue')).toHaveValue(Number(h));
+    expect(screen.getByLabelText('Saturation')).toHaveValue(Number(sat));
+    expect(f.onPreview).toHaveBeenLastCalledWith('#3366cc');
+  });
+
+  it('the wheel over an HSL row steps it by 1 a notch; a trackpad adds up to a notch', () => {
+    setup('#3366cc');
+    fireEvent.click(screen.getByRole('tab', { name: 'HSL' }));
+    const hue = () => Number((screen.getByLabelText('Hue') as HTMLInputElement).value);
+    const start = hue();
+    fireEvent.wheel(screen.getByLabelText('Hue slider'), { deltaY: -100 });
+    expect(hue()).toBe(start + 1);
+    fireEvent.wheel(screen.getByLabelText('Hue'), { deltaY: 100 });
+    fireEvent.wheel(screen.getByLabelText('Hue'), { deltaY: 100 });
+    expect(hue()).toBe(start - 1);
+    fireEvent.wheel(screen.getByLabelText('Hue slider'), { deltaY: -20 });
+    expect(hue()).toBe(start - 1);
+    fireEvent.wheel(screen.getByLabelText('Hue slider'), { deltaY: -40 });
+    expect(hue()).toBe(start);
+    // At the very end it stays put; the wheel never scrolls the page under it.
+    type('Lightness', '100');
+    const notch = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+    screen.getByLabelText('Lightness slider').dispatchEvent(notch);
+    expect(screen.getByLabelText('Lightness')).toHaveValue(100);
+    expect(notch.defaultPrevented).toBe(true);
+  });
+
+  it("the wheel over the Picker tab's hue and opacity strips steps them by 1", () => {
+    const f = setup('rgba(255, 0, 0, 0.5)', true);
+    fireEvent.wheel(document.querySelector('.react-colorful__hue')!, { deltaY: -100 });
+    expect(f.onPreview).toHaveBeenLastCalledWith('rgba(255, 4, 0, 0.5)');
+    fireEvent.wheel(document.querySelector('.react-colorful__alpha')!, { deltaY: 100 });
+    expect(f.onPreview).toHaveBeenLastCalledWith('rgba(255, 4, 0, 0.49)');
+    const square = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+    document.querySelector('.react-colorful__saturation')!.dispatchEvent(square);
+    expect(square.defaultPrevented).toBe(false);
+  });
+
   it('the HSL tab edits through its number fields', () => {
     const f = setup('#ff0000');
     fireEvent.click(screen.getByRole('tab', { name: 'HSL' }));
