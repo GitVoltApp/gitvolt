@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type SyntheticEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { escOwners } from '../../app/modalKeys';
 import { wheelAccumulator } from '../../image/zoom';
@@ -23,6 +23,11 @@ const FALLBACK: Rgba = { r: 0, g: 0, b: 0, a: 1 };
 /** Black or white, whichever reads better on `bg`: the hex field shows the colour it names, and
  * while a theme colour previews, the field's own background may be the very colour being edited. */
 const textOn = (bg: string) => (contrastRatio('#000000', bg) >= contrastRatio('#ffffff', bg) ? '#000000' : '#ffffff');
+/** A portal still bubbles React events to the components around the swatch: a drag in the
+ * square would start dragging a sortable lane. They stop at the picker (native listeners, such as
+ * its own outside press, still see them). */
+const stop = (e: SyntheticEvent) => e.stopPropagation();
+const KEEP_INSIDE = { onPointerDown: stop, onMouseDown: stop, onClick: stop, onDoubleClick: stop, onContextMenu: stop, onDragStart: stop } as const;
 const sameRgb = (x: Rgba, y: Rgba) => x.r === y.r && x.g === y.g && x.b === y.b;
 const clamp = (n: number, max: number) => Math.max(0, Math.min(max, n));
 /** The chroma at the square's right edge and the Chroma slider's top (40 hundredths): sRGB's most
@@ -278,6 +283,7 @@ export function ColourPicker({ value, alpha = false, label, anchor, onPreview, o
     <div
       ref={box}
       className="colour-picker"
+      {...KEEP_INSIDE}
       role="dialog"
       aria-label={label}
       style={{ left: pos.left, top: pos.top, maxHeight: pos.maxHeight }}

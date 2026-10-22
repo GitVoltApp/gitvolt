@@ -44,6 +44,17 @@ describe('graph lanes', () => {
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
   });
 
+  it("dragging in lane 3's picker never drags the lane", () => {
+    render(<LaneColours />);
+    fireEvent.click(lane(3));
+    const square = within(screen.getByRole('dialog', { name: 'Lane 3 colour' })).getByRole('slider', { name: 'Chroma and lightness' });
+    fireEvent.pointerDown(square, { clientX: 10, clientY: 10, button: 0, isPrimary: true });
+    fireEvent.pointerMove(window, { clientX: 300, clientY: 10 });
+    expect(document.querySelector('[data-dragging], .is-dragging')).toBeNull();
+    fireEvent.pointerUp(window, { clientX: 300, clientY: 10 });
+    expect(settings().customThemes).toEqual([]);
+  });
+
   it('picking a colour for lane 3 previews on the graph, then commits #rrggbb', () => {
     render(<LaneColours />);
     fireEvent.click(lane(3));
