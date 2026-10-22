@@ -11,13 +11,14 @@ use crate::input::GraphInput;
 use crate::layout::{Half, LayoutNode, LayoutState, NodeKind, Parent, Segment};
 use crate::payload::{RevealPayload, RevealTag, RowPayload};
 use crate::presets::BranchUnit;
-use crate::view::{window_index, CommitState, ViewRows};
+use crate::view::{branch_key, run_key, window_index, CommitState, ViewRows};
 use crate::walk::{CommitMeta, WalkResult};
 use crate::Oid;
 use std::collections::{HashMap, HashSet};
 
-/// The panel for `key` (`"branch:<unit>"` or `"fold:<merge sha>"`) under `input.view`, opening
-/// `below` the row or above it (a fold's always opens below). `None` for an unknown or stale key.
+/// The panel for `key` (a run's `"branch:<unit>@<newest sha>"`, or `"fold:<merge sha>"`) under
+/// `input.view`, opening `below` the row or above it (a fold's always opens below). A unit's own
+/// `"branch:<unit>"` reveals its first run (the newest). `None` for an unknown or stale key.
 pub fn reveal(input: &GraphInput, walked: &WalkResult, key: &str, below: bool) -> Option<RevealPayload> {
     input.view.as_ref()?;
     let (graph, view) = assemble_view(input, walked).ok()?;
@@ -28,9 +29,10 @@ pub fn reveal(input: &GraphInput, walked: &WalkResult, key: &str, below: bool) -
         stashes: input.refs.stashes.iter().map(|s| s.id).collect(),
         view: &view,
         rows: graph.rows.iter().map(|r| (r.id.as_str(), r)).collect(),
+        dots: graph.rows.iter().filter_map(|r| Some((r.collapsed.as_ref()?.key.as_str(), r))).collect(),
     };
-    if let Some(name) = key.strip_prefix("branch:") {
-        cx.run_panel(key, name, below)
+    if let Some((name, newest)) = branch_key(key) {
+        cx.run_panel(name, newest, below)
     } else {
         cx.fold_panel(key, key.strip_prefix("fold:")?)
     }
@@ -54,6 +56,8 @@ struct Cx<'a> {
     view: &'a ViewRows,
     /// The graph's rows by id.
     rows: HashMap<&'a str, &'a RowPayload>,
+    /// The graph's ⋮ rows by key.
+    dots: HashMap<&'a str, &'a RowPayload>,
 }
 
 impl Cx<'_> {
@@ -65,9 +69,14 @@ impl Cx<'_> {
     fn graph_row(&self, c: usize) -> Option<&RowPayload> {
         match self.view.plan.state[c] {
             CommitState::Visible => self.rows.get(self.commits[c].id.to_string().as_str()).copied(),
-            CommitState::Run { unit } => self.rows.get(format!("collapsed:{}", self.view.d.units[unit].name).as_str()).copied(),
+            CommitState::Run { run } => self.dots.get(self.run_key(run).as_str()).copied(),
             CommitState::Folded { .. } | CommitState::Hidden => None,
         }
+    }
+
+    fn run_key(&self, run: usize) -> String {
+        let r = &self.view.plan.runs[run];
+        run_key(&self.view.d.units[r.unit].name, &self.commits[r.newest].id)
     }
 
     /// Pins `from`'s first-parent chain, while it stays among `members`, to `lane`.
@@ -83,9 +92,11 @@ impl Cx<'_> {
     /// commit and that one's parent (tagged "parent"). The run's line keeps the ⋮ row's lane: above,
     /// it runs off the bottom into the ⋮ row; below, it comes in from the top, and so does the
     /// parent's lane when the graph has it running past the ⋮ row.
-    fn run_panel(&self, key: &str, name: &str, below: bool) -> Option<RevealPayload> {
-        let run = self.view.plan.runs.iter().find(|r| self.view.d.units[r.unit].name == name)?;
-        let dots = *self.rows.get(format!("collapsed:{name}").as_str())?;
+    fn run_panel(&self, name: &str, newest: Option<Oid>, below: bool) -> Option<RevealPayload> {
+        let i = self.view.plan.runs.iter().position(|r| self.view.d.units[r.unit].name == name && newest.is_none_or(|n| self.commits[r.newest].id == n))?;
+        let run = &self.view.plan.runs[i];
+        let key = self.run_key(i);
+        let dots = *self.dots.get(key.as_str())?;
         let l = dots.lane;
         let parent = self.first_parent(run.oldest);
         let p_lane = parent.and_then(|p| self.graph_row(p)).map(|r| r.lane);
@@ -124,7 +135,7 @@ impl Cx<'_> {
         }
         let width = l.max(p_lane.unwrap_or(l)) + 1;
         let (rows, max_lanes) = self.lay_out(&Panel { rows, pinned, width, enter, trunk: HashSet::new() });
-        Some(RevealPayload { key: key.into(), branch: name.into(), count: run.middle.len() as u32, rows, tags, entry_lane: l, max_lanes })
+        Some(RevealPayload { key, branch: name.into(), count: run.middle.len() as u32, rows, tags, entry_lane: l, max_lanes })
     }
 
     /// A folded merge's panel, always below it: that stretch in full, in walk order. The trunk's
@@ -237,7 +248,7 @@ impl Cx<'_> {
 mod tests {
     use crate::layout::{Half, Segment};
     use crate::presets::{Matcher, PresetAction, Rule};
-    use crate::testkit::{commit, id, local, request, worktree};
+    use crate::testkit::{commit, id, local, remote, request, worktree};
     use crate::view::ViewSpec;
     use crate::{build, build_reveal, CommitMeta, GraphPayload, GraphRequest, Oid, RefIn, RevealPayload, RevealTag, RowPayload};
     use std::collections::HashMap;
@@ -300,11 +311,13 @@ mod tests {
     fn the_panel_above_lines_up_with_the_dotted_lane() {
         let (req, commits) = run(2000, vec![]);
         let g = build(&req, &commits).unwrap();
-        let dots = graph_row(&g, "collapsed:x");
+        let dots = graph_row(&g, &format!("collapsed:x@{}", id(15)));
         let l = dots.lane;
         assert_eq!(l, 1);
-        let p = build_reveal(&req, &commits, "branch:x", false).unwrap();
-        assert_eq!((p.key.as_str(), p.branch.as_str(), p.count, p.entry_lane, p.tags.clone()), ("branch:x", "x", 4, l, vec![]));
+        let key = format!("branch:x@{}", id(15));
+        let p = build_reveal(&req, &commits, &key, false).unwrap();
+        assert_eq!((p.key.clone(), p.branch.as_str(), p.count, p.entry_lane, p.tags.clone()), (key.clone(), "x", 4, l, vec![]));
+        assert_eq!(build_reveal(&req, &commits, "branch:x", false), Some(p.clone()), "the branch's own key: its first run");
         assert_eq!(ids(&p), shas(&[14, 13, 12, 11]));
         assert_eq!(lanes(&p), [l; 4]);
         assert!((0..4).flat_map(|r| segments(&p, r)).all(|s| s.from_lane >= l && s.to_lane >= l), "nothing left of the run's lane");
@@ -352,7 +365,7 @@ mod tests {
     #[test]
     fn a_stale_key_reveals_nothing() {
         let (req, commits) = run(2000, vec![]);
-        for key in ["branch:nope", "branch:main", "fold:nope", &format!("fold:{}", id(3)), "x", ""] {
+        for key in ["branch:nope", "branch:main", "fold:nope", &format!("fold:{}", id(3)), &format!("branch:x@{}", id(14)), "x", ""] {
             assert_eq!(build_reveal(&req, &commits, key, false), None, "{key}");
         }
         let mut plain = req.clone();
@@ -361,6 +374,23 @@ mod tests {
         let mut expanded = req;
         expanded.input.view = Some(ViewSpec { expanded: vec!["branch:x".into()], ..collapse_x() });
         assert_eq!(build_reveal(&expanded, &commits, "branch:x", false), None, "expanded: no run left");
+    }
+
+    #[test]
+    fn each_run_of_a_diverged_branch_reveals_its_own_commits() {
+        // x's shared commits 10..=15 from main's 2, then local x 20..=25 and origin/x 30..=35.
+        let mut cs = vec![c(1, &[], 100), c(2, &[1], 200), c(3, &[2], 300)];
+        for (first, from) in [(10, 2), (20, 15), (30, 15)] {
+            cs.extend((first..first + 6).map(|n| c(n, &[if n == first { from } else { n - 1 }], i64::from(n) * 100)));
+        }
+        let (req, commits) = request([local("main", 3), local("x", 25), remote("origin", "x", 35)], [worktree("/demo/x", 3, "main", true)], cs, 100);
+        let req = with(req, collapse_x());
+        for (newest, middle) in [(35, [34, 33, 32, 31]), (25, [24, 23, 22, 21]), (15, [14, 13, 12, 11])] {
+            let key = format!("branch:x@{}", id(newest));
+            let p = build_reveal(&req, &commits, &key, false).unwrap();
+            assert_eq!((p.key.as_str(), p.count), (key.as_str(), 4));
+            assert_eq!(ids(&p), shas(&middle));
+        }
     }
 
     /// main: 1 ← 2 ← 3 ← M(30, merging x's 12) ← 31; x: 10 (from 2), 11, 12, between main's
@@ -447,11 +477,17 @@ mod tests {
         for _ in 0..60 {
             let mut cs = vec![c(1, &[], 100)];
             let mut tips: Vec<Option<u8>> = vec![Some(1), None, None, None, None];
+            let mut remotes: Vec<Option<u8>> = vec![None; names.len()];
             let mut stashes = vec![];
             let mut plain = vec![1u8];
             for n in 2..=80u8 {
                 let b = rnd(names.len());
-                let base = tips[b].unwrap_or_else(|| plain[rnd(plain.len())]);
+                // A branch's remote one: left behind, then maybe moving on by itself (diverged).
+                if b > 0 && rnd(6) == 0 {
+                    remotes[b] = tips[b];
+                }
+                let on_remote = b > 0 && remotes[b].is_some() && rnd(2) == 0;
+                let base = if on_remote { remotes[b].unwrap() } else { tips[b].unwrap_or_else(|| plain[rnd(plain.len())]) };
                 let mut parents = vec![base];
                 if rnd(5) == 0
                     && let Some(other) = tips[rnd(names.len())].filter(|&t| t != base)
@@ -465,12 +501,17 @@ mod tests {
                 }
                 cs.push(c(n, &parents, i64::from(n) * 100));
                 plain.push(n);
+                if on_remote {
+                    remotes[b] = Some(n);
+                    continue;
+                }
                 tips[b] = Some(n);
                 if b > 0 && rnd(6) == 0 {
                     tips[b] = None;
                 }
             }
-            let refs: Vec<_> = names.iter().zip(&tips).filter_map(|(name, t)| Some(local(name, (*t)?))).collect();
+            let mut refs: Vec<_> = names.iter().zip(&tips).filter_map(|(name, t)| Some(local(name, (*t)?))).collect();
+            refs.extend(names.iter().zip(&remotes).filter_map(|(name, t)| Some(remote("origin", name, (*t)?))));
             let (mut req, store) = request(refs, [worktree("/demo/x", tips[0].unwrap(), "main", true)], cs, [20, 50, 100][rnd(3)]);
             req.input.refs.stashes = stashes.iter().enumerate().map(|(i, &n)| crate::StashIn { index: i, id: id(n), message: "On x: wip".into(), time: i64::from(n) * 100 }).collect();
             for _ in 0..3 {

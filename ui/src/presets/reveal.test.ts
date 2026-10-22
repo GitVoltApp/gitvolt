@@ -9,14 +9,15 @@ const row = (id: string): RowPayload => ({
   id, kind: 'commit', lane: 0, color: 0, segments: [], summary: id.slice(-2), bodyFirstLine: '', authorName: 'Ada', authorEmail: 'ada@example.com', authorTime: 0, committerTime: 0, parents: [], mrRefs: [], wip: null,
 });
 // Loaded but not rows under the preset: a collapsed run's middle commit, a folded commit, a hidden
-// branch's commit, each with what hides it. Expanding that key makes it a row.
-const HIDDEN: Record<string, string> = { [sha(0xa1)]: 'branch:feature/payments', [sha(0xb1)]: `fold:${sha(0xb0)}`, [sha(0xc1)]: 'branch:spike/warp-gates' };
+// branch's commit, each with what hides it (a run's key names its newest commit). Expanding that
+// key (a run's: its branch's) makes it a row.
+const HIDDEN: Record<string, string> = { [sha(0xa1)]: `branch:feature/payments@${sha(0xa0)}`, [sha(0xb1)]: `fold:${sha(0xb0)}`, [sha(0xc1)]: 'branch:spike/warp-gates' };
 const OUTSIDE = sha(0xdd);
 
 const impl = {
   graph: vi.fn(async (_repo: number, _limit: number, extra: { view?: ViewSpec }): Promise<GraphPayload> => {
     const expanded = extra.view?.expanded ?? [];
-    const rows = [row(sha(1)), row(sha(2)), ...Object.entries(HIDDEN).filter(([, key]) => expanded.includes(key)).map(([id]) => row(id))];
+    const rows = [row(sha(1)), row(sha(2)), ...Object.entries(HIDDEN).filter(([, key]) => expanded.some((k) => key === k || key.startsWith(`${k}@`))).map(([id]) => row(id))];
     return { rows, labels: [], maxLanes: 1, pinnedRefs: [], head: { branch: 'refs/heads/main', target: sha(1), detached: false, unborn: false }, truncated: false, worktrees: [], ...(extra.view ? { view: { branches: [], trunk: ['main'] } } : {}) };
   }),
   graphHiddenOwner: vi.fn(async (_repo: number, _limit: number, _extra: unknown, _view: ViewSpec, id: string) => HIDDEN[id] ?? null),

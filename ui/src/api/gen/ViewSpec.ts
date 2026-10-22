@@ -10,7 +10,7 @@ export type ViewSpec = { rules: Array<Rule>, otherwise: PresetAction, picks: Bra
  */
 trunkPatterns: Array<string>, 
 /**
- * Session expansions: "branch:<unit name>" or "fold:<merge sha>".
+ * Session expansions: "branch:<unit name>" (all of its runs) or "fold:<merge sha>".
  */
 expanded: Array<string>, placement: CollapsePlacement, 
 /**

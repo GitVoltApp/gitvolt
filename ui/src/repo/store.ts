@@ -27,7 +27,7 @@ export type Selection =
   | { kind: 'compare'; from: string; to: string }
   | { kind: 'compareWorktree'; from: string; worktree: string }
   /** A collapsed branch's ⋮ row (branch presets): it takes the keyboard cursor, but it's no
-   * commit, so nothing loads and the panel shows nothing. `id` is the row's (`collapsed:<branch>`). */
+   * commit, so nothing loads and the panel shows nothing. `id` is the row's (`collapsed:<branch>@<newest sha>`). */
   | { kind: 'collapsed'; index: number; id: string }
   /** Three or more rows (K27): their ids, top row (newest) first, and the id of the row a Shift
    * range starts from (spec #3 §4.3). No diff, no file lists. */

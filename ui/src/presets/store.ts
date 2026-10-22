@@ -87,12 +87,29 @@ export const showBranch = (tabId: string, name: string): void => pick(tabId, [na
 /** Shows several branches in one pick update (the ghost popover's "Show all"): one save, one reload. */
 export const showBranches = (tabId: string, names: string[]): void => pick(tabId, names, true);
 
-/** Unfolds `key` ("branch:<name>" or "fold:<sha>") in this tab until it switches presets.
- * Settles once the tab's graph has reloaded with it. */
+/** The `expanded` key that unfolds what `key` names: a collapsed run's own key
+ * ("branch:<name>@<newest sha>", one per line of history) unfolds its whole branch. */
+export const expandKeyOf = (key: string): string => (key.startsWith('branch:') ? key.replace(/@[0-9a-f]{40}$/, '') : key);
+
+/** Whether `key` (any of a branch's run keys, or its own) is unfolded in this tab. */
+export const isExpanded = (tabId: string, key: string): boolean => (usePresetSession.getState().expanded[tabId] ?? []).includes(expandKeyOf(key));
+
+/** Unfolds `key` ("branch:<name>", a run's key, or "fold:<sha>") in this tab until it switches
+ * presets or `collapse` folds it again. Settles once the tab's graph has reloaded with it. */
 export function expand(tabId: string, key: string): Promise<void> {
+  const k = expandKeyOf(key);
   const cur = usePresetSession.getState().expanded[tabId] ?? [];
-  if (cur.includes(key)) return Promise.resolve();
-  usePresetSession.setState((s) => ({ expanded: { ...s.expanded, [tabId]: [...cur, key] } }));
+  if (cur.includes(k)) return Promise.resolve();
+  usePresetSession.setState((s) => ({ expanded: { ...s.expanded, [tabId]: [...cur, k] } }));
+  return useRuntime.getState().refresh(tabId, { graphOnly: true });
+}
+
+/** Undoes `expand`: the preset decides `key` again. Settles once the tab's graph has reloaded. */
+export function collapse(tabId: string, key: string): Promise<void> {
+  const k = expandKeyOf(key);
+  const cur = usePresetSession.getState().expanded[tabId] ?? [];
+  if (!cur.includes(k)) return Promise.resolve();
+  usePresetSession.setState((s) => ({ expanded: { ...s.expanded, [tabId]: cur.filter((x) => x !== k) } }));
   return useRuntime.getState().refresh(tabId, { graphOnly: true });
 }
 

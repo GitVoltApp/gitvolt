@@ -5,7 +5,7 @@
 use crate::layout::{LayoutNode, NodeKind, Parent, LANE_COLORS};
 use crate::payload::{BranchView, CollapsedRow, DecidedBy, FoldMark, GhostBranch, ViewPayload};
 use crate::presets::{CollapsePlacement, PresetAction};
-use crate::view::{newest_tip, CommitState, Decided, ViewPlan, ViewSpec};
+use crate::view::{newest_tip, run_key, CommitState, Decided, ViewPlan, ViewSpec};
 use crate::walk::CommitMeta;
 use crate::Oid;
 use std::collections::{HashMap, HashSet};
@@ -18,7 +18,6 @@ pub(crate) struct ViewRows {
     run_at: HashMap<usize, usize>,
     /// The runs' oldest commits moved up under their ⋮ row (`PullTogether`).
     pulled: HashSet<usize>,
-    run_of_unit: HashMap<usize, usize>,
     /// A merge → its fold.
     fold_at: HashMap<usize, usize>,
     /// A row's ghost lines: the units, newest tip first.
@@ -32,10 +31,9 @@ impl ViewRows {
             CollapsePlacement::PullTogether => plan.runs.iter().map(|r| r.oldest).collect(),
             CollapsePlacement::KeepDateOrder => HashSet::new(),
         };
-        let run_of_unit = plan.runs.iter().enumerate().map(|(i, r)| (r.unit, i)).collect();
         let fold_at = plan.folds.iter().enumerate().map(|(i, f)| (f.merge, i)).collect();
         let ghosts = if spec.ghost_lines { ghost_units(&d, &plan, commits, index) } else { HashMap::new() };
-        ViewRows { d, plan, run_at, pulled, run_of_unit, fold_at, ghosts }
+        ViewRows { d, plan, run_at, pulled, fold_at, ghosts }
     }
 
     /// Whether the commit is a row at its own place in the walk (a pulled-together run's oldest
@@ -57,7 +55,7 @@ impl ViewRows {
     fn row_of(&self, ci: usize, row_of_commit: &[u32], collapsed_row: &[u32]) -> Option<u32> {
         match self.plan.state[ci] {
             CommitState::Visible => Some(row_of_commit[ci]),
-            CommitState::Run { unit } => Some(collapsed_row[self.run_of_unit[&unit]]),
+            CommitState::Run { run } => Some(collapsed_row[run]),
             CommitState::Folded { .. } | CommitState::Hidden => None,
         }
     }
@@ -89,7 +87,7 @@ impl ViewRows {
         for &m in &run.middle {
             for p in &commits[m].parents {
                 let parent = match index.get(p) {
-                    Some(&pi) if pi == run.oldest || self.plan.state[pi] == (CommitState::Run { unit: run.unit }) => continue,
+                    Some(&pi) if pi == run.oldest || self.plan.state[pi] == (CommitState::Run { run: r }) => continue,
                     Some(&pi) => match self.row_of(pi, row_of_commit, collapsed_row) {
                         Some(row) => Parent::Row(row),
                         None => continue,
@@ -104,12 +102,13 @@ impl ViewRows {
         LayoutNode { parents, kind: NodeKind::Collapsed, pinned: None, time: commits[run.middle[0]].committer_time }
     }
 
-    /// Run `r`'s ⋮ row: how many commits it holds and by how many authors (by email).
+    /// Run `r`'s ⋮ row: its key (`run_key`), how many commits it holds and by how many authors (by
+    /// email).
     pub(crate) fn collapsed_row(&self, r: usize, commits: &[CommitMeta]) -> CollapsedRow {
         let run = &self.plan.runs[r];
         let branch = self.d.units[run.unit].name.clone();
         let authors: HashSet<String> = run.middle.iter().map(|&m| commits[m].author_email.to_lowercase()).collect();
-        CollapsedRow { key: format!("branch:{branch}"), branch, count: run.middle.len() as u32, authors: authors.len() as u32 }
+        CollapsedRow { key: run_key(&branch, &commits[run.newest].id), branch, count: run.middle.len() as u32, authors: authors.len() as u32 }
     }
 
     /// The mark of a merge holding a folded branch.
@@ -182,7 +181,7 @@ mod tests {
     use crate::layout::{Half, NodeKind, Segment};
     use crate::payload::{BranchState, DecidedBy, GraphPayload};
     use crate::presets::{BranchPicks, CollapsePlacement, Matcher, PresetAction, Rule};
-    use crate::testkit::{commit, id, local, request, worktree};
+    use crate::testkit::{commit, id, local, remote, request, worktree};
     use crate::view::ViewSpec;
     use crate::{build, build_hidden_owner, build_preview, CommitMeta, GraphRequest, Oid, PresetPreview, StashIn};
     use std::collections::HashMap;
@@ -250,8 +249,8 @@ mod tests {
         assert_eq!((g.rows[0].lane, g.rows[3].lane), (dotted, dotted));
         assert!(segments(&g, 2).iter().any(|s| s.from_lane == dotted && s.half == Half::Full && s.dotted), "the dotted lane runs past c3");
         let row = g.rows[1].collapsed.as_ref().unwrap();
-        assert_eq!((row.key.as_str(), row.branch.as_str(), row.count, row.authors), ("branch:x", "x", 4, 2));
-        assert_eq!((g.rows[1].id.as_str(), g.rows[1].parents.len()), ("collapsed:x", 0));
+        assert_eq!((row.key.clone(), row.branch.as_str(), row.count, row.authors), (format!("branch:x@{}", id(15)), "x", 4, 2));
+        assert_eq!((g.rows[1].id.clone(), g.rows[1].parents.len()), (format!("collapsed:x@{}", id(15)), 0));
         assert_eq!(g.labels.iter().find(|l| l.name == "x").unwrap().row, 0);
     }
 
@@ -374,7 +373,7 @@ mod tests {
     fn hidden_owner_names_the_run_the_fold_or_the_hidden_branch() {
         let (req, commits) = history();
         let req = with(req, view(vec![rule(PresetAction::Collapse, "x")]));
-        assert_eq!(build_hidden_owner(&req, &commits, &id(12).to_string()).as_deref(), Some("branch:x"));
+        assert_eq!(build_hidden_owner(&req, &commits, &id(12).to_string()), Some(format!("branch:x@{}", id(15))), "its run's key");
         assert_eq!(build_hidden_owner(&req, &commits, &id(15).to_string()), None, "a row");
         assert_eq!(build_hidden_owner(&req, &commits, &id(99).to_string()), None, "not loaded");
         let (fold_req, fold_commits) = merged();
@@ -386,6 +385,35 @@ mod tests {
         req.input.refs.refs.push(local("w", 16));
         let req = with(req, view(vec![rule(PresetAction::Hide, "x, w")]));
         assert_eq!(build_hidden_owner(&req, &commits, &id(12).to_string()).as_deref(), Some("branch:w"));
+    }
+
+    /// main: 1 ← 2 ← 3; x's shared commits 10..=15 from 2, then local x 20..=25 and origin/x
+    /// 30..=35, both from 15; x collapsed.
+    fn diverged() -> (GraphRequest, HashMap<Oid, CommitMeta>) {
+        let mut cs = vec![c(1, &[], 100, "Initial commit"), c(2, &[1], 200, "c2"), c(3, &[2], 300, "c3")];
+        cs.extend(branch("x", 10, 15, 2).into_iter().chain(branch("x", 20, 25, 15)).chain(branch("x", 30, 35, 15)));
+        let (req, commits) = request([local("main", 3), local("x", 25), remote("origin", "x", 35)], [worktree("/demo/x", 3, "main", true)], cs, 100);
+        (with(req, view(vec![rule(PresetAction::Collapse, "x")])), commits)
+    }
+
+    #[test]
+    fn diverged_local_and_remote_branches_get_a_run_each() {
+        let (req, commits) = diverged();
+        let g = build(&req, &commits).unwrap();
+        assert_eq!(summaries(&g), ["x35", "⋮", "x30", "x25", "⋮", "x20", "x15", "⋮", "x10", "c3", "c2", "Initial commit"]);
+        let keys: Vec<String> = g.rows.iter().filter_map(|r| Some(r.collapsed.as_ref()?.key.clone())).collect();
+        assert_eq!(keys, [35, 25, 15].map(|n| format!("branch:x@{}", id(n))));
+        assert_eq!(g.labels.iter().find(|l| l.local.as_deref() == Some("refs/heads/x")).map(|l| l.row), Some(3), "the local tip is a row with its chip");
+        assert!(g.labels.iter().any(|l| l.row == 0 && l.remotes.iter().any(|r| r.full_name == "refs/remotes/origin/x")), "and the remote's tip");
+        // Each hidden commit names its own run; expanding the branch unfolds all three.
+        for (hidden, run) in [(33, 35), (22, 25), (12, 15)] {
+            assert_eq!(build_hidden_owner(&req, &commits, &id(hidden).to_string()), Some(format!("branch:x@{}", id(run))));
+        }
+        let mut spec = req.input.view.clone().unwrap();
+        spec.expanded = vec!["branch:x".into()];
+        let g = build(&with(req, spec), &commits).unwrap();
+        assert!(g.rows.iter().all(|r| r.kind != NodeKind::Collapsed));
+        assert_eq!(g.rows.len(), 21);
     }
 
     /// main: 1 ← 2 ← 3 (at 900); x (10..=12) and w (20..=21) from 2, newer than 3.
@@ -448,15 +476,24 @@ mod tests {
             (seed % n as u64) as usize
         };
         let names = ["main", "a", "b", "c", "d", "e"];
-        let (mut runs, mut folds, mut ghosts) = (0, 0, 0);
-        for _ in 0..60 {
+        let (mut runs, mut folds, mut ghosts, mut split) = (0, 0, 0, 0);
+        for _ in 0..120 {
             let mut commits = vec![c(1, &[], 100, "Initial commit")];
             let mut tips: Vec<Option<u8>> = vec![Some(1), None, None, None, None, None];
+            let mut remotes: Vec<Option<u8>> = vec![None; names.len()];
+            let mut last = 0;
             let mut stashes = vec![];
             let mut plain = vec![1u8];
             for n in 2..=70u8 {
-                let b = rnd(names.len());
-                let base = tips[b].unwrap_or_else(|| plain[rnd(plain.len())]);
+                // Often the same branch again, so its lines grow long enough to collapse.
+                let b = if rnd(2) == 0 { last } else { rnd(names.len()) };
+                last = b;
+                // A branch's remote one: left behind, then maybe moving on by itself (diverged).
+                if b > 0 && rnd(6) == 0 {
+                    remotes[b] = tips[b];
+                }
+                let on_remote = b > 0 && remotes[b].is_some() && rnd(2) == 0;
+                let base = if on_remote { remotes[b].unwrap() } else { tips[b].unwrap_or_else(|| plain[rnd(plain.len())]) };
                 let mut parents = vec![base];
                 if rnd(5) == 0
                     && let Some(other) = tips[rnd(names.len())].filter(|&t| t != base)
@@ -470,12 +507,17 @@ mod tests {
                 }
                 commits.push(c(n, &parents, i64::from(n) * 100, &format!("{}{n}", names[b])));
                 plain.push(n);
+                if on_remote {
+                    remotes[b] = Some(n);
+                    continue;
+                }
                 tips[b] = Some(n);
                 if b > 0 && rnd(6) == 0 {
                     tips[b] = None;
                 }
             }
-            let refs: Vec<_> = names.iter().zip(&tips).filter_map(|(name, t)| Some(local(name, (*t)?))).collect();
+            let mut refs: Vec<_> = names.iter().zip(&tips).filter_map(|(name, t)| Some(local(name, (*t)?))).collect();
+            refs.extend(names.iter().zip(&remotes).filter_map(|(name, t)| Some(remote("origin", name, (*t)?))));
             let mut wts = vec![worktree("/demo/x", tips[0].unwrap(), "main", true)];
             if let Some(i) = (1..names.len()).find(|&i| tips[i].is_some()) {
                 wts.push(worktree("/demo/wt", tips[i].unwrap(), names[i], false));
@@ -499,11 +541,13 @@ mod tests {
                     assert!(ids.contains(&w.parents[0].as_str()), "a WIP docks on a row: {spec:?}");
                 }
                 runs += g.rows.iter().filter(|r| r.collapsed.is_some()).count();
+                let mut branches = std::collections::HashSet::new();
+                split += g.rows.iter().filter_map(|r| r.collapsed.as_ref()).filter(|c| !branches.insert(&c.branch)).count();
                 folds += g.rows.iter().filter(|r| r.fold.is_some()).count();
                 ghosts += g.rows.iter().map(|r| r.ghosts.len()).sum::<usize>();
             }
         }
-        assert!(runs > 20 && folds > 20 && ghosts > 20, "the cases cover runs ({runs}), folds ({folds}) and ghosts ({ghosts})");
+        assert!(runs > 20 && folds > 20 && ghosts > 20 && split > 5, "the cases cover runs ({runs}), branches with several ({split}), folds ({folds}) and ghosts ({ghosts})");
     }
 
     #[test]

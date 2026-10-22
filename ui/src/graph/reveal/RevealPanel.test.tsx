@@ -25,8 +25,9 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 });
 
 const TAB = 't1';
-const KEY = 'branch:feature/payments';
 const sha = (n: number) => n.toString(16).padStart(40, '0');
+// A run's key: its branch and newest commit.
+const KEY = `branch:feature/payments@${sha(0xf0)}`;
 const row = (id: string, lane: number, o: Partial<RowPayload> = {}): RowPayload => ({
   id, kind: 'commit', lane, color: lane, segments: [], summary: `commit ${id.slice(-2)}`, bodyFirstLine: '', authorName: 'Ada Lovelace', authorEmail: 'ada@example.com', authorTime: 0, committerTime: 0, parents: [], mrRefs: [], wip: null, ...o,
 });
@@ -35,7 +36,7 @@ const COLLAPSED_AT = 10;
 const rows: RowPayload[] = [
   ...Array.from({ length: COLLAPSED_AT - 1 }, (_, i) => row(sha(i + 1), 0)),
   row(sha(0xf0), 1),
-  { ...row('collapsed:feature/payments', 1, { kind: 'collapsed', summary: '', authorName: '', authorEmail: '' }), collapsed: { key: KEY, branch: 'feature/payments', count: 58, authors: 3 } },
+  { ...row(`collapsed:feature/payments@${sha(0xf0)}`, 1, { kind: 'collapsed', summary: '', authorName: '', authorEmail: '' }), collapsed: { key: KEY, branch: 'feature/payments', count: 58, authors: 3 } },
   row(sha(0xf1), 1),
   ...Array.from({ length: 20 }, (_, i) => row(sha(0x100 + i), 0)),
 ];
@@ -107,7 +108,8 @@ describe('the reveal panel', () => {
     const { container } = render(view());
     act(() => openReveal(TAB, KEY, COLLAPSED_AT, false, true));
     fireEvent.click(container.querySelector('.reveal-expand')!);
-    expect(usePresetSession.getState().expanded[TAB]).toEqual([KEY]);
+    // The whole branch, all of its runs.
+    expect(usePresetSession.getState().expanded[TAB]).toEqual(['branch:feature/payments']);
     expect(tabReveal(TAB).open).toBeNull();
     expect(document.activeElement).toBe(container.querySelector('.graph-scroll'));
     usePresetSession.setState({ expanded: {} });

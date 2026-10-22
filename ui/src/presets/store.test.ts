@@ -11,7 +11,7 @@ vi.mock('../api/client', () => ({ api, errorMessage: (e: unknown) => String(e) }
 
 const { useRuntime } = await import('../app/runtime');
 const { useAppState, EMPTY_PROFILE, DEFAULT_SETTINGS } = await import('../app/state');
-const { cyclePreset, expand, hideBranch, setPreset, usePresetSession, viewSpecFor } = await import('./store');
+const { collapse, cyclePreset, expand, expandKeyOf, hideBranch, isExpanded, setPreset, usePresetSession, viewSpecFor } = await import('./store');
 
 const tab = (id: number, path: string) => ({ status: 'ready' as const, error: null, repo: { id, path, name: 'r', worktree: path }, graph: null, info: null, sidebar: null, lastFetchAt: 0, fetchSkipped: null, limit: null, worktree: null });
 const views = () => (api.graph.mock.calls as unknown as Array<[number, number, { view?: ViewSpec }]>).map(([repo, , extra]) => [repo, extra.view?.otherwise ?? null, extra.view?.expanded ?? null]);
@@ -46,6 +46,29 @@ describe('the preset store', () => {
     setPreset('b', 'mine');
     expect(usePresetSession.getState().expanded).toEqual({ c: ['branch:other'] });
     expect(viewSpecFor('a')?.expanded).toEqual([]);
+  });
+
+  it("a run's key expands its whole branch; collapse folds it again", async () => {
+    const sha = 'c0ffee'.padEnd(40, '0');
+    expect(expandKeyOf(`branch:feature/payments@${sha}`)).toBe('branch:feature/payments');
+    expect(expandKeyOf('branch:release@2')).toBe('branch:release@2');
+    expect(expandKeyOf(`fold:${sha}`)).toBe(`fold:${sha}`);
+    setPreset('a', 'all-collapsed');
+    await expand('a', `branch:feature/payments@${sha}`);
+    await expand('a', `fold:${sha}`);
+    expect(viewSpecFor('a')?.expanded).toEqual(['branch:feature/payments', `fold:${sha}`]);
+    expect(isExpanded('a', 'branch:feature/payments')).toBe(true);
+    expect(isExpanded('b', 'branch:feature/payments')).toBe(false);
+    api.graph.mockClear();
+    await collapse('a', 'branch:feature/payments');
+    expect(viewSpecFor('a')?.expanded).toEqual([`fold:${sha}`]);
+    expect(views()).toEqual([[1, 'collapse', [`fold:${sha}`]]]);
+    await collapse('a', `fold:${sha}`);
+    expect(viewSpecFor('a')?.expanded).toEqual([]);
+    // Nothing to collapse: no reload.
+    api.graph.mockClear();
+    await collapse('a', 'branch:feature/payments');
+    expect(api.graph).not.toHaveBeenCalled();
   });
 
   it('hiding a branch on a built-in switches to Custom, and unexpands it', () => {

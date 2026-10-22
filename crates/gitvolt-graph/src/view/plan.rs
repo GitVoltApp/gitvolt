@@ -2,7 +2,7 @@
 //! pass over the window in walk order (children first), then one over the commits' reach sets.
 
 use crate::payload::{BranchState, DecidedBy};
-use crate::presets::{BranchUnit, Decision, PresetAction, ReachSets};
+use crate::presets::{BranchUnit, CollapsePlacement, Decision, PresetAction, ReachSets};
 use crate::view::ViewSpec;
 use crate::walk::CommitMeta;
 use crate::Oid;
@@ -15,8 +15,9 @@ pub(crate) const MIN_COLLAPSED: usize = 3;
 pub(crate) enum CommitState {
     /// A row (a run's newest and oldest commits are rows too).
     Visible,
-    /// In the middle of `unit`'s collapsed run: its ⋮ row stands for it.
-    Run { unit: usize },
+    /// In the middle of collapsed run `run` (an index into `ViewPlan::runs`): its ⋮ row stands
+    /// for it.
+    Run { run: usize },
     /// Folded into the trunk merge at walk index `merge`.
     Folded { merge: usize },
     Hidden,
@@ -42,7 +43,8 @@ pub(crate) struct Fold {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ViewPlan {
     pub state: Vec<CommitState>,
-    /// At most one per collapsed unit, in unit order.
+    /// One per collapsed line of history (a unit can have several), in unit order, then walk
+    /// order of their newest commits.
     pub runs: Vec<Run>,
     /// In walk order of their merges.
     pub folds: Vec<Fold>,
@@ -74,8 +76,9 @@ pub(crate) struct Window<'a> {
 /// - With `fold_merged`, a merge on a trunk branch's first-parent line folds the commits only its
 ///   other parents reach (the oldest such merge holds a commit two of them reach), unless a shown
 ///   or collapsed branch needs them; a unit whose tips are all folded is `Folded`.
-/// - A commit only one collapsed unit reaches (hidden units aside) is in its run; one that two
-///   non-hidden units reach stays visible; the rest is hidden.
+/// - A commit only one collapsed unit reaches (hidden units aside) is in one of its runs, one per
+///   line of history (`lines`: diverged local and remote branches collapse apart, and no tip is
+///   inside a run); one that two non-hidden units reach stays visible; the rest is hidden.
 /// - A run keeps its newest and oldest commits as rows; one with fewer than `MIN_COLLAPSED`
 ///   commits between them, or one hiding a worktree's HEAD, isn't collapsed.
 pub(crate) fn plan(w: &Window, spec: &ViewSpec) -> ViewPlan {
@@ -145,6 +148,8 @@ pub(crate) fn plan(w: &Window, spec: &ViewSpec) -> ViewPlan {
 
     let hidden = |u: usize| w.decisions[u].action == PresetAction::Hide;
     let mut state = vec![CommitState::Hidden; n];
+    // The collapsed unit a commit is a run member of: `Run` or `Visible` once its line is known.
+    let mut member: Vec<Option<usize>> = vec![None; n];
     for c in (0..n).filter(|&c| !w.stash[c]) {
         state[c] = if shown[c] {
             CommitState::Visible
@@ -154,64 +159,54 @@ pub(crate) fn plan(w: &Window, spec: &ViewSpec) -> ViewPlan {
             let mut keeping = w.reach.units_reaching(c).filter(|&u| !hidden(u));
             match (keeping.next(), keeping.next()) {
                 (None, _) => CommitState::Hidden,
-                (Some(u), None) if w.decisions[u].action == PresetAction::Collapse => CommitState::Run { unit: u },
+                (Some(u), None) if w.decisions[u].action == PresetAction::Collapse => {
+                    member[c] = Some(u);
+                    CommitState::Visible
+                }
                 _ => CommitState::Visible,
             }
         };
     }
 
-    // Each collapsed unit's run, in walk order.
-    let mut members: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (c, s) in state.iter().enumerate() {
-        if let CommitState::Run { unit } = *s {
-            members.entry(unit).or_default().push(c);
-        }
-    }
     let mut is_head = vec![false; n];
     for &c in w.worktree_heads {
         is_head[c] = true;
     }
-    let mut units_with_runs: Vec<usize> = members.keys().copied().collect();
-    units_with_runs.sort_unstable();
     let mut runs = Vec::new();
-    for unit in units_with_runs {
-        let all = &members[&unit];
-        let (newest, oldest) = (all[0], all[all.len() - 1]);
-        let middle = all.get(1..all.len() - 1).unwrap_or_default();
+    for line in lines(w, &member) {
+        let (newest, oldest) = (line[0], line[line.len() - 1]);
+        let middle = line.get(1..line.len() - 1).unwrap_or_default();
         if middle.len() < MIN_COLLAPSED || middle.iter().any(|&c| is_head[c]) {
-            for &c in all {
-                state[c] = CommitState::Visible;
-            }
             continue;
         }
-        state[newest] = CommitState::Visible;
-        state[oldest] = CommitState::Visible;
-        runs.push(Run { unit, newest, middle: middle.to_vec(), oldest });
+        for &c in middle {
+            state[c] = CommitState::Run { run: runs.len() };
+        }
+        runs.push(Run { unit: member[newest].expect("a line's commits are members"), newest, middle: middle.to_vec(), oldest });
     }
+    keep_lines_downward(w, &mut state, &mut runs, spec.placement == CollapsePlacement::PullTogether);
 
     // Stashes follow their base: into its run's middle (on the oldest too, which a pulled-together
     // run moves up past the stash), its fold, or out of sight.
-    let run_of: HashMap<usize, usize> = runs.iter().enumerate().map(|(i, r)| (r.unit, i)).collect();
     let mut added = vec![false; runs.len()];
     for c in (0..n).filter(|&c| w.stash[c]) {
         let base = w.commits[c].parents.first().and_then(|p| w.index.get(p)).copied();
-        state[c] = match base.map(|b| (b, state[b])) {
-            None => CommitState::Visible,
-            Some((b, CommitState::Visible)) => match runs.iter().position(|r| r.oldest == b) {
-                Some(i) => {
-                    runs[i].middle.push(c);
-                    added[i] = true;
-                    CommitState::Run { unit: runs[i].unit }
-                }
-                None => CommitState::Visible,
-            },
-            Some((_, CommitState::Run { unit })) => {
-                let i = run_of[&unit];
-                runs[i].middle.push(c);
-                added[i] = true;
-                CommitState::Run { unit }
+        let into = match base.map(|b| (b, state[b])) {
+            None => None,
+            Some((b, CommitState::Visible)) => runs.iter().position(|r| r.oldest == b),
+            Some((_, CommitState::Run { run })) => Some(run),
+            Some((_, s)) => {
+                state[c] = s;
+                continue;
             }
-            Some((_, s)) => s,
+        };
+        state[c] = match into {
+            Some(run) => {
+                runs[run].middle.push(c);
+                added[run] = true;
+                CommitState::Run { run }
+            }
+            None => CommitState::Visible,
         };
     }
     for (r, _) in runs.iter_mut().zip(&added).filter(|(_, a)| **a) {
@@ -251,6 +246,123 @@ pub(crate) fn plan(w: &Window, spec: &ViewSpec) -> ViewPlan {
         }
     }
     ViewPlan { state, runs, folds, unit_state }
+}
+
+/// A collapsed unit's run members split into lines of history, each in walk order: its first
+/// commit is the line's newest, its last the oldest. A line starts at each of the unit's tips and
+/// wherever one tip's first-parent line reaches another's (the fork point of diverged local and
+/// remote branches, a local branch behind its remote, a pull that merged the remote's commit),
+/// and follows first parents down to the next start; a branch merged into a line (reached through
+/// a second parent only) goes with the line that merged it. So no tip is ever inside another
+/// line, and a unit with one tip is one line. Units in order, their lines in walk order of their
+/// starts.
+fn lines(w: &Window, member: &[Option<usize>]) -> Vec<Vec<usize>> {
+    let mut by_unit: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (c, u) in member.iter().enumerate() {
+        if let Some(u) = *u {
+            by_unit.entry(u).or_default().push(c);
+        }
+    }
+    let mut units: Vec<usize> = by_unit.keys().copied().collect();
+    units.sort_unstable();
+    let first_parent = |c: usize| w.commits[c].parents.first().and_then(|p| w.index.get(p)).copied();
+    let mut out = Vec::new();
+    for unit in units {
+        let mine = |c: usize| member[c] == Some(unit);
+        let mut tips: Vec<usize> = w.units[unit].tips.iter().filter_map(|t| w.index.get(t).copied()).filter(|&c| mine(c)).collect();
+        tips.sort_unstable();
+        tips.dedup();
+        // Each tip's first-parent line (`on_line`), newest tip first, down to where it meets a line
+        // already drawn. A commit one line reaches from another (where they fork, or one merged
+        // into the other) starts a line, so a line's ⋮ row never reaches into another's middle.
+        let mut on_line: HashMap<usize, usize> = HashMap::new();
+        for (k, &t) in tips.iter().enumerate() {
+            let mut cur = Some(t);
+            while let Some(c) = cur.filter(|&c| mine(c) && !on_line.contains_key(&c)) {
+                on_line.insert(c, k);
+                cur = first_parent(c);
+            }
+        }
+        let mut starts: HashSet<usize> = tips.iter().copied().collect();
+        for (&c, &k) in &on_line {
+            let crossing = w.commits[c].parents.iter().filter_map(|p| w.index.get(p)).filter(|p| on_line.get(p).is_some_and(|&j| j != k));
+            starts.extend(crossing);
+        }
+        // In walk order, a commit no line has reached yet starts one (a start, or a stray with no
+        // member child); each passes its line on to its first parent on the same tip line, and to
+        // any parent on no tip line.
+        let mut line_of: HashMap<usize, usize> = HashMap::new();
+        for &c in &by_unit[&unit] {
+            let l = match line_of.get(&c) {
+                Some(&l) => l,
+                None => {
+                    out.push(Vec::new());
+                    out.len() - 1
+                }
+            };
+            out[l].push(c);
+            for (k, p) in w.commits[c].parents.iter().enumerate() {
+                let Some(&p) = w.index.get(p) else { continue };
+                let follows = match on_line.get(&p) {
+                    None => true,
+                    Some(pl) => k == 0 && on_line.get(&c) == Some(pl),
+                };
+                if follows && mine(p) && !starts.contains(&p) && !line_of.contains_key(&p) {
+                    line_of.insert(p, l);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// A ⋮ row sits right under its run's newest commit, so a row reaching into another run's middle
+/// from below that run's ⋮ row would draw its line upward (lines of one branch merged into each
+/// other in a way `lines` doesn't split): that run isn't collapsed. Never the case for a branch
+/// with one line.
+fn keep_lines_downward(w: &Window, state: &mut [CommitState], runs: &mut Vec<Run>, pull: bool) {
+    // Runs are in unit order: one run per unit means one line each.
+    if runs.windows(2).all(|p| p[0].unit != p[1].unit) {
+        return;
+    }
+    let mut kept = vec![true; runs.len()];
+    loop {
+        let pulled: HashMap<usize, usize> = if pull { runs.iter().zip(&kept).filter(|(_, k)| **k).map(|(r, _)| (r.oldest, r.newest)).collect() } else { HashMap::new() };
+        // A row's place: a commit's own (a pulled-together oldest's under its ⋮ row), a run's ⋮ row's.
+        let place = |c: usize| match state[c] {
+            CommitState::Visible => Some(pulled.get(&c).map_or((c, 0), |&newest| (newest, 2))),
+            CommitState::Run { run } => Some((runs[run].newest, 1)),
+            CommitState::Folded { .. } | CommitState::Hidden => None,
+        };
+        let upward = (0..state.len()).find_map(|c| {
+            let from = place(c)?;
+            let own = match state[c] {
+                CommitState::Run { run } => Some(run),
+                _ => None,
+            };
+            w.commits[c].parents.iter().filter_map(|p| w.index.get(p)).find_map(|&p| match state[p] {
+                CommitState::Run { run } if Some(run) != own && place(p)? <= from => Some(run),
+                _ => None,
+            })
+        });
+        let Some(r) = upward else { break };
+        kept[r] = false;
+        for &c in &runs[r].middle {
+            state[c] = CommitState::Visible;
+        }
+    }
+    if kept.iter().all(|k| *k) {
+        return;
+    }
+    let mut next = 0;
+    let renumber: Vec<usize> = kept.iter().map(|&k| if k { next += 1; next - 1 } else { usize::MAX }).collect();
+    for s in state.iter_mut() {
+        if let CommitState::Run { run } = s {
+            *run = renumber[*run];
+        }
+    }
+    let mut keep = kept.iter();
+    runs.retain(|_| *keep.next().expect("one per run"));
 }
 
 /// A fold's branch: the unit whose tip is the merge's second parent, else one whose tip is among
@@ -428,8 +540,95 @@ pub(crate) mod tests {
         let h = branch_off_main(6, Collapse);
         let p = h.plan(&spec());
         assert_eq!(p.runs, [Run { unit: 1, newest: h.at(15), middle: [14, 13, 12, 11].map(|n| h.at(n)).to_vec(), oldest: h.at(10) }]);
-        assert_eq!(h.states(&p, &[15, 14, 11, 10]), [Visible, InRun { unit: 1 }, InRun { unit: 1 }, Visible]);
+        assert_eq!(h.states(&p, &[15, 14, 11, 10]), [Visible, InRun { run: 0 }, InRun { run: 0 }, Visible]);
         assert_eq!(p.unit_state[1], BranchState::Collapsed);
+    }
+
+    /// main: 1 ← 2 ← 3; x's shared commits 10..=15 from 2, then its local branch 20..=25 and its
+    /// remote one 30..=35 (newer), both from 15.
+    fn diverged() -> Hand {
+        let mut cs = vec![c(1, &[], "Initial commit"), c(2, &[1], "c2"), c(3, &[2], "c3")];
+        cs.extend(chain(2, 10, 15));
+        cs.extend(chain(15, 20, 25));
+        cs.extend(chain(15, 30, 35));
+        Hand::new(newest_first(cs), vec![unit("main", &[3]), unit("x", &[25, 35])], vec![trunk(), by_rule(Collapse)])
+    }
+
+    #[test]
+    fn diverged_local_and_remote_branches_collapse_apart() {
+        let h = diverged();
+        let p = h.plan(&spec());
+        let run = |newest: u8, middle: [u8; 4], oldest: u8| Run { unit: 1, newest: h.at(newest), middle: middle.map(|n| h.at(n)).to_vec(), oldest: h.at(oldest) };
+        assert_eq!(p.runs, [run(35, [34, 33, 32, 31], 30), run(25, [24, 23, 22, 21], 20), run(15, [14, 13, 12, 11], 10)], "each side, then the shared part");
+        assert_eq!(h.states(&p, &[35, 30, 25, 20, 15, 10]), [Visible; 6], "both tips, each run's ends");
+        assert_eq!(h.states(&p, &[34, 24, 14]), [InRun { run: 0 }, InRun { run: 1 }, InRun { run: 2 }]);
+        // Sides too short to collapse stay rows; the shared part still collapses.
+        let mut cs = vec![c(1, &[], "Initial commit"), c(2, &[1], "c2"), c(3, &[2], "c3")];
+        cs.extend(chain(2, 10, 15));
+        cs.extend(chain(15, 20, 21));
+        cs.extend(chain(15, 30, 31));
+        let h = Hand::new(newest_first(cs), vec![unit("main", &[3]), unit("x", &[21, 31])], vec![trunk(), by_rule(Collapse)]);
+        let p = h.plan(&spec());
+        assert_eq!(p.runs.iter().map(|r| (r.newest, r.oldest)).collect::<Vec<_>>(), [(h.at(15), h.at(10))]);
+        assert_eq!(h.states(&p, &[31, 30, 21, 20]), [Visible; 4]);
+    }
+
+    #[test]
+    fn a_local_branch_behind_its_remote_keeps_its_tip_a_row() {
+        // x: 10..=15 from 2, its remote one commit ahead at 16.
+        let mut cs = vec![c(1, &[], "Initial commit"), c(2, &[1], "c2"), c(3, &[2], "c3")];
+        cs.extend(chain(2, 10, 16));
+        let h = Hand::new(newest_first(cs), vec![unit("main", &[3]), unit("x", &[15, 16])], vec![trunk(), by_rule(Collapse)]);
+        let p = h.plan(&spec());
+        assert_eq!(p.runs, [Run { unit: 1, newest: h.at(15), middle: [14, 13, 12, 11].map(|n| h.at(n)).to_vec(), oldest: h.at(10) }]);
+        assert_eq!(h.states(&p, &[16, 15, 10]), [Visible; 3]);
+        // Ahead of it instead: the remote's tip is a row, and starts a line of its own.
+        let mut cs = vec![c(1, &[], "Initial commit"), c(2, &[1], "c2"), c(3, &[2], "c3")];
+        cs.extend(chain(2, 10, 19));
+        let h = Hand::new(newest_first(cs), vec![unit("main", &[3]), unit("x", &[19, 13])], vec![trunk(), by_rule(Collapse)]);
+        let p = h.plan(&spec());
+        assert_eq!(p.runs.iter().map(|r| (r.newest, r.oldest)).collect::<Vec<_>>(), [(h.at(19), h.at(14))], "13, 12, 11, 10: too few");
+        assert_eq!(h.states(&p, &[14, 13, 12, 11, 10]), [Visible; 5]);
+    }
+
+    #[test]
+    fn a_line_merged_into_another_splits_where_it_is_merged() {
+        // The remote line: 20..=23 from x's shared 15, merged into the local line at 33 (30..=37),
+        // then on to 40..=44, newer than the local tip.
+        let mut cs = vec![c(1, &[], "Initial commit"), c(2, &[1], "c2"), c(3, &[2], "c3")];
+        cs.extend(chain(2, 10, 15));
+        cs.extend(chain(15, 20, 23));
+        cs.extend(chain(15, 30, 37));
+        let at = cs.len() - 5;
+        cs[at] = c(33, &[32, 23], "Merge remote-tracking branch 'origin/x' into x");
+        cs.extend(chain(23, 40, 44));
+        let h = Hand::new(newest_first(cs), vec![unit("main", &[3]), unit("x", &[37, 44])], vec![trunk(), by_rule(Collapse)]);
+        let p = h.plan(&spec());
+        let ends: Vec<(usize, usize)> = p.runs.iter().map(|r| (r.newest, r.oldest)).collect();
+        assert_eq!(ends, [(h.at(44), h.at(40)), (h.at(37), h.at(30)), (h.at(15), h.at(10))], "23, where the local line merged it, starts one of its own (too short)");
+        assert_eq!(h.states(&p, &[23, 22, 21, 20]), [Visible; 4]);
+    }
+
+    #[test]
+    fn a_run_whose_middle_a_row_below_its_dots_reaches_stays_rows() {
+        // The remote line: 20..=23 from x's shared 15, then 60..=63, the newest. A side branch
+        // (30, 31) from its 22 is merged into the local line (40..=47) at 44; the side branch's
+        // 30 ends up the local run's oldest row, below the remote's ⋮ row, and its parent 22 would
+        // be in that run.
+        let mut cs = vec![c(1, &[], "Initial commit"), c(2, &[1], "c2"), c(3, &[2], "c3")];
+        cs.extend(chain(2, 10, 15));
+        cs.extend(chain(15, 20, 23));
+        cs.extend(chain(22, 30, 31));
+        cs.extend(chain(15, 40, 47));
+        let at = cs.len() - 4;
+        cs[at] = c(44, &[43, 31], "Merge branch 'side' into x");
+        cs.extend(chain(23, 60, 63));
+        let h = Hand::new(newest_first(cs), vec![unit("main", &[3]), unit("x", &[47, 63])], vec![trunk(), by_rule(Collapse)]);
+        let p = h.plan(&spec());
+        let ends: Vec<(usize, usize)> = p.runs.iter().map(|r| (r.newest, r.oldest)).collect();
+        assert_eq!(ends, [(h.at(47), h.at(30)), (h.at(15), h.at(10))]);
+        assert_eq!(h.states(&p, &[63, 62, 61, 60, 23, 22, 21, 20]), [Visible; 8]);
+        assert_eq!(h.states(&p, &[44, 31, 11]), [InRun { run: 0 }, InRun { run: 0 }, InRun { run: 1 }], "renumbered");
     }
 
     #[test]
@@ -582,7 +781,7 @@ pub(crate) mod tests {
             h.stash[i] = true;
         }
         let p = h.plan(&spec());
-        assert_eq!(h.states(&p, &[40, 41, 42]), [InRun { unit: 1 }, InRun { unit: 1 }, Visible]);
+        assert_eq!(h.states(&p, &[40, 41, 42]), [InRun { run: 0 }, InRun { run: 0 }, Visible]);
         let mut middle = [14, 13, 12, 11, 40, 41].map(|n| h.at(n));
         middle.sort_unstable();
         assert_eq!(p.runs[0].middle, middle);

@@ -750,7 +750,9 @@ mod tests {
         let collapsed: Vec<&RowPayload> = g.rows.iter().filter(|r| r.kind == NodeKind::Collapsed).collect();
         assert_eq!(collapsed.len(), 1, "only payments has three commits to hide\n{}", g.ascii());
         let c = collapsed[0].collapsed.as_ref().unwrap();
-        assert_eq!((c.key.as_str(), c.branch.as_str(), c.count, c.authors), ("branch:feature/payments", "feature/payments", 6, 2));
+        assert_eq!((c.branch.as_str(), c.count, c.authors), ("feature/payments", 6, 2));
+        let receipts = g.rows.iter().find(|r| r.summary == "Payments: receipts").unwrap();
+        assert_eq!(c.key, format!("branch:feature/payments@{}", receipts.id), "the run's key: its newest commit");
         let payments: Vec<&str> = g.rows.iter().map(|r| r.summary.as_str()).filter(|s| s.starts_with("Payments:")).collect();
         assert_eq!(payments, ["Payments: receipts", "Payments: ledger model"], "the newest and the oldest stay");
     }
@@ -803,7 +805,9 @@ mod tests {
         let reveal = |key: &str| Request::GraphReveal { repo, limit: None, pin: None, active: None, view: all_collapsed_view(), key: key.into(), below: false };
         let json = api.dispatch(reveal("branch:feature/payments")).await.unwrap();
         let p: gitvolt_graph::RevealPayload = serde_json::from_value(json).expect("a panel for payments' run");
-        assert_eq!((p.key.as_str(), p.count, p.rows.len()), ("branch:feature/payments", 6, 6));
+        assert!(p.key.starts_with("branch:feature/payments@"), "{}", p.key);
+        assert_eq!((p.count, p.rows.len()), (6, 6));
+        assert_eq!(api.dispatch(reveal(&p.key)).await.unwrap(), serde_json::to_value(&p).unwrap(), "by the run's own key");
         assert!(api.dispatch(reveal("branch:no-such-branch")).await.unwrap().is_null());
     }
 

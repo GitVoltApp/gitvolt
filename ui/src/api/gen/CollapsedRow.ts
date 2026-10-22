@@ -5,7 +5,8 @@
  */
 export type CollapsedRow = { 
 /**
- * "branch:<name>": its reveal panel's key, and its `expanded` key.
+ * "branch:<name>@<newest sha>": its reveal panel's key (a branch can have several runs, one
+ * per line of history). Its branch's `expanded` key, for all of them, is "branch:<name>".
  */
 key: string, branch: string, 
 /**

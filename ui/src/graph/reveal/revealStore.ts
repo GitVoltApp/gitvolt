@@ -4,8 +4,9 @@ import type { RevealPayload } from '../../api/gen/RevealPayload';
 import type { RowPayload } from '../../api/gen/RowPayload';
 import { viewRequest } from '../../presets/reveal';
 
-/** The reveal panel open in a tab: the ⋮ row's or folded merge's key ("branch:<name>",
- * "fold:<sha>"), its row, the side it opened on, and whether a click pinned it. */
+/** The reveal panel open in a tab: the ⋮ row's or folded merge's key ("branch:<name>@<newest
+ * sha>", one per run, or "fold:<sha>"), its row, the side it opened on, and whether a click
+ * pinned it. */
 export interface RevealOpen { key: string; rowIndex: number; below: boolean; pinned: boolean }
 /** Per tab. `cache`: fetched panels by `cacheKey`, `null` for a key the core no longer knows;
  * dropped with every new graph payload (the panel's rows are laid out on the graph's lanes). */

@@ -266,8 +266,11 @@ on the walked window and before the lane layout, so lanes close up around what i
   forge accounts' emails), only when a rule asks.
 - **Visibility** (`view/plan.rs`): a commit stays a row when a shown branch, the trunk, a detached
   HEAD or no branch at all reaches it; a stash goes with its base commit. Commits only one
-  collapsed branch reaches become a run: its newest and oldest stay rows, a ⋮ row stands for the
-  middle (at least 3 commits) and a dotted lane joins them. Shared commits never collapse. With
+  collapsed branch reaches become runs, one per line of history (a line starts at each of the
+  branch's tips and where its lines fork or merge, so a diverged local and remote collapse apart
+  and no tip is ever inside a run): a run's newest and oldest stay rows, a ⋮ row stands for the
+  middle (at least 3 commits) and a dotted lane joins them. A run's key (its reveal panel's) is
+  `branch:<name>@<newest sha>`; `branch:<name>` expands all of them. Shared commits never collapse. With
   folding on, a branch merged into the trunk's first-parent line folds into its merge, which
   carries a mark. The rest are hidden; where a branch hidden by a rule forks, its row carries
   ghost lines.

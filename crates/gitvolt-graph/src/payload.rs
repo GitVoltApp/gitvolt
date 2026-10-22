@@ -268,11 +268,11 @@ impl RowPayload {
         }
     }
 
-    /// The ⋮ row of a collapsed branch: its id `collapsed:<branch>`, no summary, author or
-    /// parents, times 0.
+    /// The ⋮ row of a collapsed run: its id `collapsed:<branch>@<newest sha>` (its key's), no
+    /// summary, author or parents, times 0.
     pub fn collapsed(row: CollapsedRow, lane: u16, color: u8, segments: Vec<u32>) -> Self {
         RowPayload {
-            id: format!("collapsed:{}", row.branch),
+            id: format!("collapsed:{}", row.key.strip_prefix("branch:").unwrap_or(&row.key)),
             kind: NodeKind::Collapsed,
             lane,
             color,
@@ -435,7 +435,8 @@ pub struct ViewPayload {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct CollapsedRow {
-    /// "branch:<name>": its reveal panel's key, and its `expanded` key.
+    /// "branch:<name>@<newest sha>": its reveal panel's key (a branch can have several runs, one
+    /// per line of history). Its branch's `expanded` key, for all of them, is "branch:<name>".
     pub key: String,
     pub branch: String,
     /// The commits folded into the row.

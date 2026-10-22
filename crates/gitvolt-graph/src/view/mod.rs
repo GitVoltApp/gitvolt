@@ -11,6 +11,7 @@ mod spec;
 pub(crate) use plan::{CommitState, ViewPlan};
 pub use reveal::reveal;
 pub(crate) use rows::ViewRows;
+pub(crate) use spec::{branch_key, run_key};
 pub use spec::ViewSpec;
 
 use crate::input::GraphInput;
@@ -101,10 +102,10 @@ pub(crate) fn preview_of(spec: &ViewSpec, d: &Decided, plan: &ViewPlan) -> Prese
     PresetPreview { rules, shown: count(BranchState::Shown), collapsed: count(BranchState::Collapsed), hidden: count(BranchState::Hidden), folded: plan.folds.len() as u32 }
 }
 
-/// The `expanded` key that would make `sha`, a loaded commit that isn't a row under
-/// `input.view`, a row: `"branch:<collapsed unit>"`, `"fold:<merge sha>"`, or
-/// `"branch:<hidden unit>"` for the hidden unit with the newest tip reaching it. `None` when it is
-/// a row or isn't loaded.
+/// What holds `sha`, a loaded commit that isn't a row under `input.view`: its collapsed run's key
+/// (`"branch:<unit>@<newest sha>"`, whose `expanded` key is `"branch:<unit>"`), `"fold:<merge
+/// sha>"`, or `"branch:<hidden unit>"` for the hidden unit with the newest tip reaching it. `None`
+/// when it is a row or isn't loaded.
 pub fn hidden_owner(input: &GraphInput, walked: &WalkResult, sha: &str) -> Option<String> {
     let spec = input.view.as_ref()?;
     let commits = &walked.commits;
@@ -119,7 +120,10 @@ pub fn hidden_owner(input: &GraphInput, walked: &WalkResult, sha: &str) -> Optio
 pub(crate) fn hidden_owner_of(commits: &[CommitMeta], index: &HashMap<Oid, usize>, d: &Decided, plan: &ViewPlan, stashes: &HashSet<Oid>, ci: usize) -> Option<String> {
     match plan.state[ci] {
         CommitState::Visible => None,
-        CommitState::Run { unit } => Some(format!("branch:{}", d.units[unit].name)),
+        CommitState::Run { run } => {
+            let r = &plan.runs[run];
+            Some(run_key(&d.units[r.unit].name, &commits[r.newest].id))
+        }
         CommitState::Folded { merge } => Some(format!("fold:{}", commits[merge].id)),
         CommitState::Hidden => {
             // A stash hides with its base commit.

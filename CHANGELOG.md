@@ -20,7 +20,9 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   and pastes them.
   - A collapsed branch keeps its newest and oldest commits around a dotted "⋮ N more commits" row.
     Hovering or clicking it opens the hidden commits over the graph, lined up with its lanes,
-    without moving any rows; "Expand in graph" unfolds them in place.
+    without moving any rows; "Expand in graph" unfolds the branch until you collapse it again from
+    its menu (Collapse branch; Fold merged branch on a merge), or switch presets. A branch whose
+    local and remote have diverged collapses each line on its own, so both tips stay rows.
   - A preset can fold branches merged into the trunk into their merge commit (+N), and draws short
     fading lines where hidden branches fork, listing them with Show.
   - Hide branch and Show branch in a branch's menus, or Alt+click its chip or sidebar row, make the

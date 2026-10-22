@@ -2,7 +2,7 @@
 
 use crate::payload::DecidedBy;
 use crate::presets::{name_matches, Author, BranchUnit, Decision, Facts, Matcher, PresetAction, UnitFacts};
-use crate::view::ViewSpec;
+use crate::view::{branch_key, ViewSpec};
 
 /// One decision per unit. The trunk shows; then an expansion this session shows; then a pick
 /// shows or hides; then the first matching rule decides; then Everything else. A checked-out unit
@@ -16,7 +16,7 @@ pub(crate) fn decide(spec: &ViewSpec, units: &[BranchUnit], facts: &Facts) -> Ve
             let rule = spec.rules.iter().position(|r| matches(&r.matcher, unit, f, spec.now)).map(|i| i as u16);
             let (action, by) = if f.trunk {
                 (PresetAction::Show, DecidedBy::Trunk)
-            } else if spec.expanded.iter().any(|k| k.strip_prefix("branch:") == Some(unit.name.as_str())) {
+            } else if spec.expanded.iter().any(|k| branch_key(k).is_some_and(|(name, _)| name == unit.name)) {
                 (PresetAction::Show, DecidedBy::Expanded)
             } else if spec.picks.shown.contains(&unit.name) {
                 (PresetAction::Show, DecidedBy::Picked)

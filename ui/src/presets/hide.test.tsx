@@ -17,6 +17,7 @@ const { useAppState, EMPTY_PROFILE, DEFAULT_SETTINGS } = await import('../app/st
 const { buildMenu } = await import('../menu/registry');
 const { keyHints } = await import('../shortcuts/hints');
 const { altClickBranch, unitNameOf } = await import('./altClick');
+const { usePresetSession } = await import('./store');
 await import('./branchMenus');
 const { GhostPopover } = await import('./GhostPopover');
 import type { CommitTarget, MenuEnv } from '../menu/menuEnv';
@@ -42,6 +43,7 @@ const menu = (b: ReturnType<typeof local>) => buildMenu<CommitTarget, MenuEnv>('
 
 beforeEach(() => {
   api.graph.mockClear();
+  usePresetSession.setState({ expanded: {} });
   useAppState.setState({ settings: DEFAULT_SETTINGS, profile: { ...EMPTY_PROFILE, repos: {} } });
   setView(view());
 });
@@ -80,6 +82,28 @@ describe('hiding one branch', () => {
     expect(menu(local('main'))[0].disabledReason).toBe('The trunk is always shown');
     setView(view([], { trunk: [] }));
     expect(menu(local('main'))[0].disabledReason).toBe('Checked out: always shown');
+  });
+
+  it('a branch expanded this session offers Collapse branch, which folds it again', () => {
+    expect(menu(local('feature/a')).map((r) => r.label)).toEqual(['Hide branch']);
+    usePresetSession.setState({ expanded: { t: ['branch:feature/a'], other: ['branch:feature/b'] } });
+    expect(menu(local('feature/a')).map((r) => r.label)).toEqual(['Hide branch', 'Collapse branch']);
+    // Another tab's expansion isn't this one's.
+    expect(menu(local('feature/b')).map((r) => r.label)).toEqual(['Hide branch']);
+    menu(local('feature/a'))[1].run();
+    expect(usePresetSession.getState().expanded.t).toEqual([]);
+    expect(api.graph).toHaveBeenCalled();
+  });
+
+  it("a merge whose fold is expanded offers Fold merged branch in its menu", () => {
+    const merge = 'a'.repeat(40);
+    const rows = () => buildMenu<CommitTarget, MenuEnv>('commit', { sha: merge, mrRefs: [], isWip: false, isStash: false, branch: null }, env)
+      .filter((r): r is Extract<MenuRow, { kind: 'action' }> => r.kind === 'action' && r.id.startsWith('presets.'));
+    expect(rows()).toEqual([]);
+    usePresetSession.setState({ expanded: { t: [`fold:${merge}`] } });
+    expect(rows().map((r) => r.label)).toEqual(['Fold merged branch']);
+    rows()[0].run();
+    expect(usePresetSession.getState().expanded.t).toEqual([]);
   });
 
   it('the hint is listed in the shortcuts panel', () => {
