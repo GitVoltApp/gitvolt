@@ -18,7 +18,6 @@ pub(crate) struct ConfigStamp {
 impl Api {
     /// The repository's `user.email` (through `GitCli`, so the profile's extra gitconfig applies)
     /// and every email of the active profile's forge accounts, lower-cased and de-duplicated.
-    #[allow(dead_code)] // the graph reads call it from the next task
     pub(crate) async fn me_emails(&self, h: &RepoHandle) -> Vec<String> {
         let stamp = ConfigStamp {
             config: std::fs::metadata(h.common_dir.join("config")).ok().and_then(|m| Some((m.modified().ok()?, m.len()))),
@@ -88,5 +87,25 @@ mod tests {
         // A longer value, so the stamp differs even on a coarse-grained clock.
         r.git(&["config", "user.email", "robin.other@example.com"]);
         assert_eq!(api.me_emails(&h).await, ["robin.other@example.com"]);
+    }
+
+    /// The `me` a view gets in the options a graph read lays out with.
+    async fn me_of(api: &Api, h: &crate::api::RepoHandle, author: gitvolt_graph::Author) -> Vec<String> {
+        use gitvolt_graph::{Matcher, PresetAction, Rule, ViewSpec};
+        let view = ViewSpec { rules: vec![Rule { action: PresetAction::Show, matcher: Matcher::CommitsBy { author } }], otherwise: PresetAction::Hide, ..Default::default() };
+        api.build_options(h, None, None, None, Some(view)).await.unwrap().view.unwrap().me
+    }
+
+    #[tokio::test]
+    async fn a_mine_view_uses_the_repo_identity() {
+        use gitvolt_graph::Author;
+        let r = TestRepo::new();
+        r.git(&["config", "user.email", "robin@example.com"]);
+        let api = api();
+        let h = handle(&api, &r).await;
+        assert_eq!(me_of(&api, &h, Author::Me).await, ["robin@example.com"]);
+        r.git(&["config", "user.email", "someone.else@example.com"]);
+        assert_eq!(me_of(&api, &h, Author::Me).await, ["someone.else@example.com"]);
+        assert!(me_of(&api, &h, Author::Person { who: "x".into() }).await.is_empty(), "no git process without a `me` rule");
     }
 }

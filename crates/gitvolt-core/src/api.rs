@@ -1467,7 +1467,6 @@ pub(crate) struct RepoHandle {
     pub(crate) walk: Arc<Mutex<Option<crate::snapshot::WalkCache>>>,
     /// The repository's `user.email` (`None`: unset) and the config it was read under
     /// (`Api::me_emails`).
-    #[allow(dead_code)] // read by `Api::me_emails`, which the graph reads call from E3
     pub(crate) me_email: Mutex<Option<(crate::me::ConfigStamp, Option<String>)>>,
 }
 
@@ -2400,7 +2399,7 @@ impl Api {
             Request::OpenRepo { path } => to_json(self.open_repo(&path).await?),
             Request::Graph { repo, limit, pin, rescan, active, view } => {
                 let h = self.handle(repo)?;
-                let mut opts = self.build_options(&h, limit, pin, active, view)?;
+                let mut opts = self.build_options(&h, limit, pin, active, view).await?;
                 // The watcher keeps the worktree shown responsive (the others throttled).
                 h.wip.set_active(opts.active.as_deref().unwrap_or(&h.workdir));
                 opts.rescan = rescan.unwrap_or(false) || !self.status_is_watched(repo);
@@ -2416,17 +2415,17 @@ impl Api {
             // --- branch presets ---
             Request::GraphReveal { repo, limit, pin, active, view, key, below } => {
                 let h = self.handle(repo)?;
-                let opts = self.build_options(&h, limit, pin, active, Some(view))?;
+                let opts = self.build_options(&h, limit, pin, active, Some(view)).await?;
                 to_json(crate::snapshot::reveal_graph(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts, &key, below).await?)
             }
             Request::BranchPresetPreview { repo, limit, pin, view } => {
                 let h = self.handle(repo)?;
-                let opts = self.build_options(&h, limit, pin, None, Some(view))?;
+                let opts = self.build_options(&h, limit, pin, None, Some(view)).await?;
                 to_json(crate::snapshot::preview_graph(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts).await?)
             }
             Request::GraphHiddenOwner { repo, limit, pin, active, view, sha } => {
                 let h = self.handle(repo)?;
-                let opts = self.build_options(&h, limit, pin, active, Some(view))?;
+                let opts = self.build_options(&h, limit, pin, active, Some(view)).await?;
                 to_json(crate::snapshot::hidden_owner(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts, &sha).await?)
             }
             // --- end branch presets ---
@@ -3418,7 +3417,7 @@ impl Api {
     /// How the graph reads (`graph`, `graphReveal`, `branchPresetPreview`, `graphHiddenOwner`)
     /// lay `h` out: the window, the pin, the active worktree and the forks, and the view with
     /// `now` filled in. `rescan` is left off.
-    fn build_options(&self, h: &RepoHandle, limit: Option<u32>, pin: Option<PinSetting>, active: Option<String>, view: Option<gitvolt_graph::ViewSpec>) -> Result<BuildOptions, GbError> {
+    pub(crate) async fn build_options(&self, h: &RepoHandle, limit: Option<u32>, pin: Option<PinSetting>, active: Option<String>, view: Option<gitvolt_graph::ViewSpec>) -> Result<BuildOptions, GbError> {
         // Checked against the build's own `git worktree list` (`build_graph_with_text`), so a
         // switch's relayout runs one git process, not two.
         let active = match active {
@@ -3437,7 +3436,12 @@ impl Api {
             Some(hub) => hub.cached_forks(&self.store, &self.forge_remotes_of(h)),
             None => Default::default(),
         };
-        let view = view.map(|v| gitvolt_graph::ViewSpec { now: self.now(), ..v });
+        let mut view = view.map(|v| gitvolt_graph::ViewSpec { now: self.now(), ..v });
+        // The git process runs only for a view with a "commits by me" rule, and not when the
+        // caller sent `me` itself.
+        if let Some(v) = view.as_mut().filter(|v| v.me.is_empty() && v.rules.iter().any(|r| matches!(&r.matcher, gitvolt_graph::Matcher::CommitsBy { author: gitvolt_graph::Author::Me }))) {
+            v.me = self.me_emails(h).await;
+        }
         Ok(BuildOptions {
             limit: limit.map(|l| l as usize).unwrap_or(crate::snapshot::DEFAULT_COMMIT_LIMIT),
             pinned_ref,
