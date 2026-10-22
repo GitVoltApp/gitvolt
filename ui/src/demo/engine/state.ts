@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   prune: true,
   commitLimit: 2000,
   dateFormat: 'ymd12h',
+  relativeDates: false,
   gravatar: true,
   debugLogging: false,
   syncButton: 'fetchAll',

@@ -35,6 +35,7 @@
     "gravatar": true,
     "prune": true,
     "pushFollowTags": true,
+    "relativeDates": false,
     "syncButton": "fetchAll",
     "theme": "default-dark",
     "updateArchMethod": null,

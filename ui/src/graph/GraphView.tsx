@@ -8,11 +8,10 @@ import type { GraphPayload } from '../api/gen/GraphPayload';
 import type { RefLabel } from '../api/gen/RefLabel';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { copyText } from '../api/transport';
-import type { DateFormat } from '../api/gen/DateFormat';
-import { useAppState } from '../app/state';
-import { formatDate } from '../format/date';
+import { DateText } from '../format/DateText';
 import { Avatar } from '../avatars/Avatar';
 import { avatars } from '../avatars/avatarStore';
+import { useAppState } from '../app/state';
 import { useRepoContext } from '../app/repoContext';
 import { loadOlder, olderViewport } from '../app/runtime';
 import { LoadOlderRow } from './LoadOlderRow';
@@ -139,7 +138,6 @@ function AuthorAvatar({ name, email }: { name: string; email: string }) {
 interface GraphRowProps {
   row: RowPayload;
   /** The Date column's preset (Settings > General). */
-  dateFormat: DateFormat;
   /** The repo's key (stable): a WIP row's draft summary is stored under it. */
   repoId: string;
   index: number;
@@ -198,7 +196,7 @@ const EDITOR_MIN_W = 200;
  * the view (as rows enter or leave the screen), not every row; a hover re-renders only the rows whose membership
  * chip appears or goes, and a branch focus (J22) only the rows whose `dimmed` changes.
  */
-const GraphRow = memo(function GraphRow({ row, dateFormat, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor }: GraphRowProps) {
+const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor }: GraphRowProps) {
   const isWip = row.kind === 'wip';
   // A column at its minimum collapses its cells too (spec §8.4): icon-only chips, the avatar only.
   const authorAvatar = isCollapsed('author', cols.author);
@@ -260,7 +258,7 @@ const GraphRow = memo(function GraphRow({ row, dateFormat, repoId, index, start,
           {authorAvatar ? <AuthorAvatar name={row.authorName} email={row.authorEmail} /> : row.authorName}
         </span>
       )}
-      {cols.date > 0 && !isWip && <span role="gridcell" data-col="date" className={`col-date${dim}`} style={{ width: cols.date }}>{formatDate(row.committerTime, dateFormat)}</span>}
+      {cols.date > 0 && !isWip && <span role="gridcell" data-col="date" className={`col-date${dim}`} style={{ width: cols.date }}><DateText at={row.committerTime} imperativeTip /></span>}
       {cols.sha > 0 && (
         <span role="gridcell" data-col="sha" className={`col-sha${dim}`} style={{ width: cols.sha }}>
           {!isWip && (
@@ -325,7 +323,6 @@ export interface GraphViewProps {
 }
 
 export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null, revealTip = null }: GraphViewProps) {
-  const dateFormat = useAppState((s) => s.settings.dateFormat);
   const commitLimit = useAppState((s) => s.settings.commitLimit);
   const ownRef = useRef<HTMLDivElement>(null);
   const scrollRef = gridRef ?? ownRef;
@@ -709,7 +706,6 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
                 <GraphRow
                   key={row.id}
                   row={row}
-                  dateFormat={dateFormat}
                   repoId={repoId}
                   index={item.index}
                   start={item.start}

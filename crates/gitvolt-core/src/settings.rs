@@ -81,6 +81,8 @@ pub struct AppSettings {
     /// Commits loaded per graph (`snapshot::DEFAULT_COMMIT_LIMIT` by default).
     pub commit_limit: u32,
     pub date_format: DateFormat,
+    /// Show dates as "5 minutes ago"; the exact format shows on hover.
+    pub relative_dates: bool,
     pub gravatar: bool,
     /// Writes `debug`-level lines to the log file (spec §16.2).
     pub debug_logging: bool,
@@ -154,6 +156,7 @@ impl Default for AppSettings {
             prune: true,
             commit_limit: 2000,
             date_format: DateFormat::Ymd12h,
+            relative_dates: false,
             gravatar: true,
             debug_logging: false,
             sync_button: SyncButtonMode::FetchAll,
@@ -1322,6 +1325,18 @@ mod tests {
         s.graph_color_overrides.insert("nord".into(), vec![Some("#123456".into()), None]);
         let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.graph_color_overrides["nord"], vec![Some("#123456".to_string()), None]);
+    }
+
+    #[test]
+    fn relative_dates_default_off_and_round_trip() {
+        let mut v = serde_json::to_value(AppSettings::default()).unwrap();
+        v.as_object_mut().unwrap().remove("relativeDates");
+        let s: AppSettings = serde_json::from_value(v).unwrap();
+        assert!(!s.relative_dates);
+
+        let s = AppSettings { relative_dates: true, ..AppSettings::default() };
+        let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert!(back.relative_dates);
     }
 
     #[test]

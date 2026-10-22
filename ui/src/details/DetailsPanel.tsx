@@ -5,8 +5,7 @@ import type { DiffSpec } from '../api/gen/DiffSpec';
 import { copyText } from '../api/transport';
 import { FileList } from '../files/FileList';
 import { useReviewRowBadge } from '../forge/review/ReviewBadge';
-import { useAppState } from '../app/state';
-import { formatDate } from '../format/date';
+import { DateText } from '../format/DateText';
 import { shortSha } from '../format/sha';
 import { perf } from '../perf';
 import { useFocusZone } from '../repo/focus';
@@ -65,11 +64,10 @@ function HashButton({ hash, testId, tip, onClick }: { hash: string; testId: stri
  * committer gets their own row, which carries the committed date; and co-authors.
  */
 function CommitHeader({ d }: { d: CommitDetailsPayload }) {
-  const dateFormat = useAppState((s) => s.settings.dateFormat);
   const toast = useToast((s) => s.show);
   const selectById = useRepoView((s) => s.selectCommitById);
   const committerDiffers = d.committer.name !== d.author.name || d.committer.email !== d.author.email;
-  const commitDate = <span data-testid="commit-date">{formatDate(d.committer.time, dateFormat)}</span>;
+  const commitDate = <DateText at={d.committer.time} testId="commit-date" />;
   return (
     <header className="commit-header">
       <div className="commit-ids panel-bar">
@@ -89,7 +87,7 @@ function CommitHeader({ d }: { d: CommitDetailsPayload }) {
         <Person name={d.author.name} email={d.author.email} size={LARGEST_AVATAR_PX} />
         <span className="person-dates">
           {!committerDiffers && commitDate}
-          {d.author.time !== d.committer.time && <span data-testid="author-date" className="dim">authored {formatDate(d.author.time, dateFormat)}</span>}
+          {d.author.time !== d.committer.time && <DateText at={d.author.time} prefix="authored" testId="author-date" className="dim" />}
         </span>
       </div>
       {committerDiffers && (

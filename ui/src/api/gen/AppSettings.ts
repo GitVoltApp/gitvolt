@@ -19,7 +19,11 @@ fetchIntervalSecs: number, prune: boolean,
 /**
  * Commits loaded per graph (`snapshot::DEFAULT_COMMIT_LIMIT` by default).
  */
-commitLimit: number, dateFormat: DateFormat, gravatar: boolean, 
+commitLimit: number, dateFormat: DateFormat, 
+/**
+ * Show dates as "5 minutes ago"; the exact format shows on hover.
+ */
+relativeDates: boolean, gravatar: boolean, 
 /**
  * Writes `debug`-level lines to the log file (spec §16.2).
  */
