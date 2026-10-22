@@ -5,9 +5,11 @@ import type { PinSetting } from '../../api/gen/PinSetting';
 import { useRuntime } from '../../app/runtime';
 import { flushSaves } from '../../app/state';
 import { notifyForgeAccountsChanged } from '../../forge/accountsBus';
+import { refreshPresetViews } from '../../presets/store';
 import { Select } from '../../ui/Select';
 import { EditorPicker } from '../EditorPicker';
 import { repoField, useSettingValue } from '../bindings';
+import { TextField } from '../frame/fields';
 import { registerSettings, registerSettingsPage, settingDef, type SettingsCtx } from '../registry';
 
 const short = (ref: string) => ref.replace(/^refs\/(remotes|heads)\//, '');
@@ -37,6 +39,30 @@ function TargetRemoteControl({ ctx }: { ctx: SettingsCtx }) {
   return <Select<string> id="input-forgeTargetRemote" aria-labelledby="label-forgeTargetRemote" value={remote ?? ''} onChange={(v) => set(v || null)} options={options} />;
 }
 
+/** The trunk the graph detected: its pinned branches by name (`origin/main` and `main` are one). */
+export function detectedTrunk(pinnedRefs: readonly string[]): string[] {
+  return [...new Set(pinnedRefs.map((r) => r.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\/[^/]+\//, '')))];
+}
+const samePatterns = (a: string[] | undefined, b: string[] | undefined) => (a ?? []).join(',') === (b ?? []).join(',');
+
+/** Extra trunk branches for presets, as comma-separated globs; the detected trunk is named beside them. */
+function TrunkPatternsControl({ ctx }: { ctx: SettingsCtx }) {
+  const [patterns, set] = useSettingValue<string[] | undefined>(settingDef('trunkPatterns')!, ctx);
+  const graph = useRuntime((s) => (ctx.tabId ? s.tabs[ctx.tabId]?.graph : undefined));
+  // With the pin off nothing is pinned; a preset's payload still names the trunk it used.
+  const trunk = graph ? (graph.pinnedRefs.length ? detectedTrunk(graph.pinnedRefs) : graph.view?.trunk ?? []) : [];
+  const commit = (v: string) => {
+    const next = v.split(',').map((x) => x.trim()).filter(Boolean);
+    if (!samePatterns(next, patterns)) set(next.length ? next : undefined);
+  };
+  return (
+    <span className="trunk-patterns">
+      <TextField id="trunkPatterns" value={(patterns ?? []).join(', ')} placeholder="release/*, hotfix/*" onCommit={commit} />
+      <span className="setting-note">{trunk.length ? `Detected: ${trunk.join(', ')}` : 'Detected: the pinned trunk, or the default branch with the pin off'}</span>
+    </span>
+  );
+}
+
 const UPDATE_CHOICES: Array<[BranchUpdate | '', string]> = [['', "The forge's default"], ['rebase', 'Rebase'], ['rebaseSkipCi', 'Rebase without pipeline'], ['merge', 'Merge']];
 function BranchUpdateControl({ ctx }: { ctx: SettingsCtx }) {
   const [how, set] = useSettingValue<BranchUpdate | undefined>(settingDef('branchUpdate')!, ctx);
@@ -58,6 +84,13 @@ const offs = [
       description: "The branch kept at the graph's left. The pin button in the graph's header sets it too.",
       Control: PinControl,
       binding: repoField('pin', null, (_pin, ctx) => { if (ctx.tabId) void useRuntime.getState().refresh(ctx.tabId); }, (a, b) => pinKey(a) === pinKey(b)),
+    },
+    {
+      id: 'trunkPatterns', label: 'Trunk branches', page: 'repository', group: 'Graph',
+      keywords: 'trunk branch presets release patterns glob never hidden collapsed main',
+      description: 'Branch presets never hide or collapse these, beside the detected trunk. Comma-separated globs, like release/*.',
+      Control: TrunkPatternsControl,
+      binding: repoField('trunkPatterns', undefined, (_v, ctx) => refreshPresetViews(ctx.repoPath ?? undefined), samePatterns),
     },
     {
       id: 'forgeTargetRemote', label: 'Merge requests target', page: 'repository', group: 'Merge requests', labelFor: 'group',

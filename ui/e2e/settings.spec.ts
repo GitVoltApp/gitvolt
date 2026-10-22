@@ -203,6 +203,31 @@ test.describe('settings', () => {
       await command.press('Tab');
       await expect(command).not.toBeFocused();
     });
+    await test.step('branch presets: a new preset, a rule and its live count; Copy as JSON then Paste preset adds "(2)"', async () => {
+      await closeSettings(page);
+      await openSettings(page);
+      await nav(page, 'Branch presets').click();
+      await dialog(page).getByRole('button', { name: '+ New preset' }).click();
+      const name = dialog(page).getByRole('textbox', { name: 'Name' });
+      await expect(name).toBeFocused();
+      await name.fill('Payments');
+      await name.press('Enter');
+      const all = dialog(page).getByRole('list', { name: 'All repositories' });
+      await expect(all.getByRole('button', { name: 'Payments', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await dialog(page).getByRole('button', { name: '+ Add rule' }).click();
+      const patterns = dialog(page).getByRole('textbox', { name: 'Rule 1 patterns' });
+      await patterns.fill('feature/*');
+      await patterns.press('Enter');
+      await expect(dialog(page).getByRole('listitem', { name: 'Rule 1' })).toContainText(/\d+ branch(es)?✕$/);
+      await expect(dialog(page).getByText(/^In .+ now: \d+ shown · \d+ collapsed · \d+ hidden · \d+ merged branches folded$/)).toBeVisible();
+      await dialog(page).getByRole('button', { name: 'Copy as JSON' }).click();
+      await dialog(page).getByRole('button', { name: 'Paste preset' }).click();
+      await expect(all.getByRole('button', { name: 'Payments (2)', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      // Alt+↑ on its grip moves it up, past the dialog's claim on every key.
+      await all.getByRole('button', { name: 'Reorder Payments (2)' }).focus();
+      await page.keyboard.press('Alt+ArrowUp');
+      await expect(all.locator('.bp-name')).toHaveText(['Payments (2)', 'Payments']);
+    });
     await test.step('the commit limit reloads the graph window', async () => {
       await closeSettings(page);
       await openSettings(page);

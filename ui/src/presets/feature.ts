@@ -5,6 +5,8 @@ import { useAppState } from '../app/state';
 import { leaveFileView, sidebarHidden } from '../repo/centerView';
 import { openPresetMenu } from './PresetButton';
 import { cyclePreset } from './store';
+// Settings › Branch presets, and the ▾ menu's "Edit presets…" that opens it.
+import './settings/page';
 
 /** A repo tab whose repository is open. */
 const openTab = () => {

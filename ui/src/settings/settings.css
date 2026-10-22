@@ -86,3 +86,6 @@
 .settings-body .settings-section { margin-top: 16px; }
 .git-identity { display: flex; flex-direction: column; align-items: flex-end; text-align: right; min-width: 0; }
 .git-identity .setting-desc { margin: 0; }
+.trunk-patterns { display: flex; flex-direction: column; align-items: stretch; gap: 4px; flex: 1; min-width: 0; }
+.trunk-patterns input { width: 100%; box-sizing: border-box; }
+.setting-note { font-size: 11px; color: var(--text-secondary); text-align: right; }

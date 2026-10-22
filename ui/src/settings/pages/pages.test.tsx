@@ -48,12 +48,12 @@ describe('settings pages', () => {
   it.each([
     ['advanceAfterStage', 'general'], ['updateCheck', 'general'], ['updatePrereleases', 'general'],
     ['theme', 'appearance'], ['graphColors', 'appearance'], ['themeColours', 'appearance'], ['density', 'appearance'], ['editorFontSize', 'appearance'],
-    ['commitLimit', 'graph'], ['relativeDates', 'graph'], ['dateFormat', 'graph'], ['gravatar', 'graph'], ['forgeAvatars', 'graph'],
+    ['commitLimit', 'graph'], ['relativeDates', 'graph'], ['dateFormat', 'graph'], ['gravatar', 'graph'], ['forgeAvatars', 'graph'], ['collapseHoverOpen', 'graph'], ['collapsePlacement', 'graph'],
     ['stickyScroll', 'diffs'], ['fetchInterval', 'fetch'], ['prune', 'fetch'], ['pushFollowTags', 'fetch'],
     ['shortcuts', 'keyboard'], ['debugLogging', 'advanced'], ['openLogs', 'advanced'], ['resetAll', 'advanced'],
     ['extraGitconfig', 'git-identity'], ['editor', 'editor-folders'], ['reposFolder', 'editor-folders'],
     ['forgeAccounts', 'accounts'], ['hostOverrides', 'hosts'],
-    ['repoEditor', 'repository'], ['repoPin', 'repository'], ['forgeTargetRemote', 'repository'], ['branchUpdate', 'repository'],
+    ['repoEditor', 'repository'], ['repoPin', 'repository'], ['trunkPatterns', 'repository'], ['forgeTargetRemote', 'repository'], ['branchUpdate', 'repository'],
   ])('%s is registered once, on %s', (id, page) => {
     expect(allSettings().filter((d) => d.id === id)).toHaveLength(1);
     expect(settingDef(id)?.page).toBe(page);
@@ -70,7 +70,7 @@ describe('settings pages', () => {
     expect(groupTitles(dialog)).toEqual(['Theme','Graph lanes · drag to reorder, click to change', 'Colours', 'Sizes']);
     expect(within(dialog).getByLabelText('Editor font size')).toHaveValue(13);
     openPage('Graph');
-    expect(groupTitles(dialog)).toEqual(['History', 'Dates', 'Avatars']);
+    expect(groupTitles(dialog)).toEqual(['History', 'Dates', 'Avatars', 'Hidden commits']);
     expect(allSettings().filter((d) => d.page === 'graph' && d.group === 'Dates').map((d) => d.id)).toEqual(['relativeDates', 'dateFormat']);
     openPage('Fetch and push');
     expect(groupTitles(dialog)).toEqual(['Fetch', 'Push']);

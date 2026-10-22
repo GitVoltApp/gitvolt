@@ -43,6 +43,21 @@ function reload(repoId: number, switched: boolean, drop?: string): void {
   for (const t of tabs) void useRuntime.getState().refresh(t, { graphOnly: true });
 }
 
+/** Runs `edit` (Settings changing presets) and reloads the graph of every tab whose view it changed. */
+export function editingViews(edit: () => void): void {
+  const tabs = Object.keys(useRuntime.getState().tabs);
+  const before = new Map(tabs.map((t) => [t, JSON.stringify(viewSpecFor(t))]));
+  edit();
+  for (const t of tabs) if (JSON.stringify(viewSpecFor(t)) !== before.get(t)) void useRuntime.getState().refresh(t, { graphOnly: true });
+}
+
+/** Reloads the graph of every tab under a preset (on `repoPath` only, if given): a setting its view carries changed. */
+export function refreshPresetViews(repoPath?: string): void {
+  for (const [t, rt] of Object.entries(useRuntime.getState().tabs)) {
+    if (rt.repo && (!repoPath || rt.repo.path === repoPath) && viewSpecFor(t)) void useRuntime.getState().refresh(t, { graphOnly: true });
+  }
+}
+
 /** Makes `id` the repository's current preset (saved per repository) and reloads its graph. */
 export function setPreset(tabId: string, id: string): void {
   const r = resolve(tabId);
