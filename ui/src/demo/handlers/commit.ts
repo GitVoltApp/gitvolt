@@ -143,7 +143,7 @@ export async function upstreamOf(demo: DemoRepo, branch: string): Promise<string
   return remote === '.' ? (merge.startsWith('refs/') ? merge : `refs/heads/${merge}`) : null;
 }
 
-export const commitHandlers: Pick<HandlerTable, 'commit' | 'editHeadMessage' | 'headOnUpstream' | 'commitIdentity'> = {
+export const commitHandlers: Pick<HandlerTable, 'commit' | 'editHeadMessage' | 'headOnUpstream' | 'commitIdentity' | 'gitIdentity'> = {
   commit: async ({ repo, worktree, summary, description, amend, stageAll, expect }, ctx) => runWrite(ctx, repo, worktree, expect, commit(summary, description, amend, stageAll)),
   editHeadMessage: async ({ repo, worktree, message, expect }, ctx) => runWrite(ctx, repo, worktree, expect, editHeadMessage(message)),
   headOnUpstream: async ({ repo, worktree }, ctx) => {
@@ -161,4 +161,6 @@ export const commitHandlers: Pick<HandlerTable, 'commit' | 'editHeadMessage' | '
     await worktreeOf(readRepoOf(ctx, repo), worktree);
     return { name: DEMO_IDENTITY.name, email: DEMO_IDENTITY.email };
   },
+  // Settings › Git identity: the same visitor, unsigned, repository or not.
+  gitIdentity: async () => ({ identity: { name: DEMO_IDENTITY.name, email: DEMO_IDENTITY.email }, signing: null }),
 };

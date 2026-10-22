@@ -1,0 +1,31 @@
+.colour-swatch { all: unset; box-sizing: border-box; flex: none; border: 1px solid var(--section-border); border-radius: 4px; cursor: pointer; overflow: hidden; background: repeating-conic-gradient(color-mix(in srgb, var(--text-secondary) 27%, transparent) 0% 25%, transparent 0% 50%) 0 0 / 8px 8px; }
+.colour-swatch:hover { border-color: var(--text-secondary); }
+.colour-swatch:focus-visible, .colour-swatch[aria-expanded="true"] { border-color: var(--blue); }
+.colour-swatch-fill { display: block; width: 100%; height: 100%; }
+
+.colour-picker { position: fixed; z-index: 1000; box-sizing: border-box; width: 236px; display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow: auto; color: var(--text-normal); background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 6px; box-shadow: 0 8px 24px var(--shadow-popup); }
+/* Both tabs keep one height (a row taller with opacity; the square takes what's left), so switching tabs never shifts the popover. */
+.colour-body { display: flex; flex-direction: column; gap: 8px; height: 150px; }
+.colour-body.alpha { height: 170px; }
+.colour-square, .colour-strip { position: relative; flex: none; border-radius: 4px; touch-action: none; user-select: none; }
+.colour-square:focus-visible, .colour-strip:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
+/* What sRGB can't show is left clear on the canvas: this flat fill marks it, so the gamut's edge shows. */
+.colour-square { flex: 1; min-height: 0; cursor: crosshair; background: var(--app-bg0); }
+.colour-square canvas { display: block; width: 100%; height: 100%; border-radius: 4px; }
+.colour-strip { height: 12px; cursor: pointer; background: var(--colour-strip), repeating-conic-gradient(color-mix(in srgb, var(--text-secondary) 27%, transparent) 0% 25%, transparent 0% 50%) 0 0 / 8px 8px; }
+.colour-thumb { position: absolute; box-sizing: border-box; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid var(--text-selected); border-radius: 50%; box-shadow: 0 0 0 1px var(--shadow-popup); pointer-events: none; }
+.colour-strip .colour-thumb { top: 50%; }
+.colour-compare { display: flex; gap: 6px; }
+.colour-compare > * { all: unset; box-sizing: border-box; flex: 1; display: flex; align-items: center; gap: 6px; padding: 3px 6px; font-size: 12px; border: 1px solid var(--section-border); border-radius: 4px; }
+.colour-old { cursor: pointer; }
+.colour-old:hover, .colour-old:focus-visible { border-color: var(--blue); }
+.colour-chip { width: 18px; height: 18px; border-radius: 3px; border: 1px solid var(--section-border); background-clip: padding-box; }
+.colour-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--section-border); }
+.colour-tab { all: unset; padding: 3px 10px; font-size: 12px; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; }
+.colour-tab[aria-selected="true"] { color: var(--text-selected); border-bottom-color: var(--blue); }
+.colour-tab:focus-visible { outline: 1px solid var(--blue); }
+.colour-range { display: grid; grid-template-columns: 70px 1fr 48px; align-items: center; gap: 6px; font-size: 12px; }
+.colour-range input[type="range"] { min-width: 0; accent-color: var(--blue); }
+.colour-num, .colour-hex { box-sizing: border-box; min-width: 0; font: inherit; font-size: 12px; padding: 3px 6px; color: var(--text-selected); background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 4px; }
+.colour-num:focus, .colour-hex:focus { outline: none; border-color: var(--blue); }
+.colour-hex[aria-invalid="true"] { border-color: var(--red); }

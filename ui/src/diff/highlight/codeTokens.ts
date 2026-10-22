@@ -1,4 +1,4 @@
-import { currentEditorTheme } from '../../theme/editorThemes';
+import { currentTokenTheme } from '../../theme/editorThemes';
 import { bundledLanguages } from '../shikiLanguages';
 import { highlightClient } from './client';
 import type { CodeTokens } from './protocol';
@@ -12,7 +12,7 @@ export function codeTokens(code: string, lang: string): { result: Promise<CodeTo
   let job: { cancel(): void } | null = null;
   const result = highlightClient().then((c) => {
     if (cancelled) return new Promise<never>(() => {});
-    const j = c.code(code, id, currentEditorTheme());
+    const j = c.code(code, id, currentTokenTheme());
     job = j;
     return j.result;
   });

@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { THEME_STORAGE_KEY, writeThemeMirror } from './apply';
+import { customThemeDef } from './custom';
 import { THEMES } from './themes';
 
 // index.html's inline `theme-first-paint` script (review I1): it must paint the mirrored theme's
@@ -37,7 +38,7 @@ describe("index.html's first-paint theme script", () => {
   });
 
   it('applies a stored light theme to the root synchronously', () => {
-    writeThemeMirror('light', undefined);
+    writeThemeMirror(THEMES.light);
     run();
     expect(root.dataset.theme).toBe('light');
     expect(root.style.colorScheme).toBe('light');
@@ -45,10 +46,19 @@ describe("index.html's first-paint theme script", () => {
   });
 
   it('applies a dark one the same way', () => {
-    writeThemeMirror('solarized-dark', ['#123456']);
+    writeThemeMirror(THEMES['solarized-dark']);
     run();
     expect(root.style.colorScheme).toBe('dark');
     expect(root.style.getPropertyValue('--app-bg0')).toBe('#002b36');
+  });
+
+  it("paints a mirrored custom theme's own background and its base's kind", () => {
+    const custom = { id: 'custom-0a1b2c3d', name: 'Light (Custom)', base: 'light', colors: { 'app-bg0': '#fafaf0' }, graph: [] };
+    writeThemeMirror(customThemeDef(custom), custom);
+    run();
+    expect(root.dataset.theme).toBe('custom-0a1b2c3d');
+    expect(root.style.colorScheme).toBe('light');
+    expect(root.style.getPropertyValue('--app-bg0')).toBe('#fafaf0');
   });
 
   it('leaves the root alone with no mirror, a corrupt one, or a bad background, and never throws', () => {
@@ -64,7 +74,7 @@ describe("index.html's first-paint theme script", () => {
   });
 
   it('declares no globals', () => {
-    writeThemeMirror('nord', undefined);
+    writeThemeMirror(THEMES.nord);
     run();
     expect('m' in window).toBe(false);
     expect('r' in window).toBe(false);

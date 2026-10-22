@@ -6,11 +6,11 @@ import { currentGround, useScopeTints } from './useTints';
 
 const alpha = (c: string | null | undefined) => Number(c?.match(/([\d.]+)\)$/)?.[1]);
 
-beforeEach(() => act(() => useTheme.getState().set('default-dark', {})));
+beforeEach(() => act(() => useTheme.getState().set(THEMES['default-dark'])));
 
 describe('useTints', () => {
   it('currentGround reads the applied theme', () => {
-    act(() => useTheme.getState().set('light', {}));
+    act(() => useTheme.getState().set(THEMES.light));
     const g = currentGround();
     expect(g.kind).toBe('light');
     expect(g.bg).toBe(THEMES.light.colors['panel-bg0']);
@@ -20,7 +20,7 @@ describe('useTints', () => {
     const scopes = [{ tint: 'green' }];
     const { result } = renderHook(() => useScopeTints(scopes));
     expect(alpha(result.current[0])).toBe(0.1);
-    act(() => useTheme.getState().set('light', {}));
+    act(() => useTheme.getState().set(THEMES.light));
     expect(alpha(result.current[0])).toBe(0.14);
   });
 

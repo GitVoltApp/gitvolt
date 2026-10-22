@@ -20,6 +20,7 @@ const WHAT: Record<NotInDemoMethod, string> = {
   submoduleSync: 'syncing submodules',
   clone: 'cloning',
   pickFolder: 'folders on your disk',
+  saveExport: 'saving files to your disk',
   testWrite: 'test writes',
   removeIndexLock: 'index locks',
   lfsFetch: 'Git LFS downloads',

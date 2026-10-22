@@ -9,8 +9,7 @@ import { clampEditorFont, EDITOR_SCROLLBAR, UNICODE_HIGHLIGHT } from '../diff/op
 import { loadMonacoHost } from '../diff/monaco/load';
 import { overflowLayer } from '../diff/monaco/overflow';
 import { monaco } from '../diff/monaco/setup';
-import { ensureLanguage } from '../diff/monaco/shiki';
-import { currentEditorTheme } from '../theme/editorThemes';
+import { appEditorTheme, ensureLanguage } from '../diff/monaco/shiki';
 import { useTheme } from '../theme/store';
 import { createCheckBox } from './checkBox';
 import { createHoverTracker, regionMarks, resolveMarkColors } from './lineMarks';
@@ -176,7 +175,7 @@ export function createMergeEditors(host: { current: HTMLElement; incoming: HTMLE
     monaco.editor.create(el, {
       ...mergeEditorOptions(readOnly, useEditorSettings.getState().settings.stickyScroll, useAppState.getState().settings.editorFontSize),
       model: m,
-      theme: currentEditorTheme(),
+      theme: appEditorTheme(monaco),
       overflowWidgetsDomNode: overflowLayer(),
     });
 

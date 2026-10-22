@@ -4,7 +4,8 @@ import { openPathInTab, useRuntime } from '../app/runtime';
 import { listTreeFiles, openFileView } from '../app/seams1b';
 import { useAppState } from '../app/state';
 import { activateTab, tabLabel } from '../app/tabs';
-import { SETTINGS, useSettingsUi } from '../settings/schema';
+import { allSettings, scopeLabel, settingsPage } from '../settings/registry';
+import { useSettingsUi } from '../settings/schema';
 import { checkoutLocal, checkoutRemote } from '../branches/checkout';
 import { openFileHistory } from '../history/open';
 import { useToast } from '../ui/toastStore';
@@ -45,8 +46,17 @@ export async function fileEntries(tabId: string): Promise<PaletteEntry[]> {
   return paths.map((p): PaletteEntry => ({ id: `file:${p}`, group: 'file', label: p, detail: 'Shift+Enter: file history', run: () => void openFileView(tabId, head, p), alt: () => void openFileHistory(tabId, { path: p, rev: head }, false) }));
 }
 
+/** Every registered setting, with where it lives (`GitVolt › Fetch and push › Fetch`); a
+ * repository's only while one is shown. */
 export function settingEntries(): PaletteEntry[] {
-  return SETTINGS.map((s): PaletteEntry => ({ id: `setting:${s.id}`, group: 'setting', label: s.label, detail: s.section, run: () => useSettingsUi.getState().show(s.id) }));
+  const { profile } = useAppState.getState();
+  const repo = profile.activeTab ? useRuntime.getState().tabs[profile.activeTab]?.repo : null;
+  return allSettings().flatMap((s): PaletteEntry[] => {
+    const page = settingsPage(s.page);
+    if (!page || (page.scope === 'repo' && !repo)) return [];
+    const detail = `${scopeLabel(page.scope, profile.name, repo?.name ?? null)} › ${page.label} › ${s.group}`;
+    return [{ id: `setting:${s.id}`, group: 'setting', label: s.label, detail, run: () => useSettingsUi.getState().show(s.id) }];
+  });
 }
 
 export function tabEntries(): PaletteEntry[] {

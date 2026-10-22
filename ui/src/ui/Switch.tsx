@@ -9,6 +9,8 @@ export interface SwitchProps {
   /** One line under the label (its accessible description). */
   description?: ReactNode;
   disabled?: boolean;
+  /** The button's id (a Settings row's `<label for>`). */
+  id?: string;
 }
 
 /**
@@ -16,7 +18,7 @@ export interface SwitchProps {
  * does a click on it or on its label. Lay several out in a `.switch-group` (side by side, one
  * column when narrow).
  */
-export function Switch({ checked, onChange, label, description, disabled = false }: SwitchProps) {
+export function Switch({ checked, onChange, label, description, disabled = false, id }: SwitchProps) {
   const uid = useId();
   const keys = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (e.key !== ' ' && e.key !== 'Enter') return;
@@ -29,6 +31,7 @@ export function Switch({ checked, onChange, label, description, disabled = false
     // A click on the text clicks the button (a label activates its control).
     <label className="switch-row" data-disabled={disabled || undefined}>
       <button
+        id={id}
         type="button"
         role="switch"
         className="switch"

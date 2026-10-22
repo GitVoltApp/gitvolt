@@ -2,8 +2,7 @@ import { ArrowDown, ArrowUp, History, LoaderCircle, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type { TabSlotProps } from '../app/slots';
 import { useRepoView, useRepoViewStore } from '../app/seams1b';
-import { useAppState } from '../app/state';
-import { formatDate } from '../format/date';
+import { DateText } from '../format/DateText';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { useKeys, type KeyHandler } from '../ui/keyRouter';
 import { closeFind, rerunFind, revealOlder, searchOlder, setFindQuery, stepFind, useFind } from './findStore';
@@ -22,7 +21,6 @@ const plain = (e: KeyboardEvent) => !e.ctrlKey && !e.altKey && !e.metaKey && !e.
  * Enter / ↓ go to the next match, Shift+Enter / ↑ to the previous one.
  */
 export function FindBox({ tab }: TabSlotProps) {
-  const dateFormat = useAppState((s) => s.settings.dateFormat);
   const tabId = tab.id;
   const s = useFind((st) => st.byTab[tabId]);
   const store = useRepoViewStore();
@@ -104,7 +102,7 @@ export function FindBox({ tab }: TabSlotProps) {
                   <button type="button" className="find-older-row" onClick={() => void revealOlder(tabId, h.id)}>
                     <span className="find-sha">{h.id.slice(0, 6)}</span>
                     <span className="find-older-summary">{h.summary}</span>
-                    <span className="find-dim">{h.author} · {formatDate(h.time, dateFormat)}</span>
+                    <span className="find-dim">{h.author} · <DateText at={h.time} /></span>
                   </button>
                 </li>
               ))}

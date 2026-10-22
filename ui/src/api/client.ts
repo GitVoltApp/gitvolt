@@ -47,6 +47,7 @@ import type { PullOutcome } from './gen/PullOutcome';
 import type { RebaseAction } from './gen/RebaseAction';
 import type { PickOutcome } from './gen/PickOutcome';
 import type { CommitIdentity } from './gen/CommitIdentity';
+import type { GitIdentityInfo } from './gen/GitIdentityInfo';
 import type { UndoOutcome } from './gen/UndoOutcome';
 import type { CommitOutcome } from './gen/CommitOutcome';
 import type { Expect } from './gen/Expect';
@@ -271,6 +272,7 @@ export const api = {
   updateRestart: () => call<null>({ method: 'updateRestart' }),
   updateRemoveLegacyBundle: () => call<null>({ method: 'updateRemoveLegacyBundle' }),
   pickFolder: (start: string | null) => call<string | null>({ method: 'pickFolder', params: { start } }),
+  saveExport: (suggestedName: string, contents: string) => call<string | null>({ method: 'saveExport', params: { suggestedName, contents } }),
   scanRepos: (root: string, refresh: boolean) => call<ScannedRepo[]>({ method: 'scanRepos', params: { root, refresh } }),
   /** The repos in every folder, scanned in parallel, merged and de-duplicated ("Your repos"). */
   scanFolders: (roots: string[], refresh: boolean) => call<ScannedRepo[]>({ method: 'scanFolders', params: { roots, refresh } }),
@@ -436,6 +438,7 @@ export const api = {
   /** The same for a cherry-pick or revert in progress (ux round 1). */
   pickControl: (repo: number, worktree: string, action: RebaseAction, message?: string) => call<WriteResult<PickOutcome>>({ method: 'pickControl', params: { repo, worktree, action, message } }),
   /** Who a commit in `worktree` is made as (git's resolution); `null`: git has no identity. */
+  gitIdentity: (repo: number | null, worktree: string | null) => call<GitIdentityInfo>({ method: 'gitIdentity', params: { repo, worktree } }),
   commitIdentity: (repo: number, worktree: string) => call<CommitIdentity | null>({ method: 'commitIdentity', params: { repo, worktree } }),
   mergeAbort: (repo: number, worktree: string) => call<WriteResult<IntegrateOutcome>>({ method: 'mergeAbort', params: { repo, worktree } }),
   /** A paused merge or rebase ended outside GitVolt: close its journal entry. */

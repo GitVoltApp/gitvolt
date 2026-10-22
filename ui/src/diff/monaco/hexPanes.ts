@@ -1,13 +1,13 @@
 import type * as MonacoNs from 'monaco-editor/editor/editor.api';
 import type { HexSide } from '../../api/gen/HexSide';
 import { useAppState } from '../../app/state';
-import { currentEditorTheme } from '../../theme/editorThemes';
 import { byteRange, byteRuns, changedRows, charText, dumpBytes, hexRowChars, hexText, mergeBlocks, NARROW_ROW_BYTES, offsetLabel, ROW_BYTES, rowsOf, runsIn, selectedBytes, stepChange, type ByteRun, type PaneKind } from '../hexModel';
 import { sliderOf } from '../mdRuler';
 import { bindRulerPointer } from '../rulerPointer';
 import { clampEditorFont, EDITOR_SCROLLBAR } from '../options';
 import { overflowLayer } from './overflow';
 import { monaco } from './setup';
+import { appEditorTheme } from './shiki';
 
 /** What the hex view shows (UX round 2, lane K): File View, one side's bytes; Diff View, both
  * sides' (one for an added or deleted file), byte i against byte i. */
@@ -62,7 +62,7 @@ function paneOptions(kind: PaneKind, contextmenu: boolean): MonacoNs.editor.ISta
     automaticLayout: false,
     contextmenu,
     fontSize: clampEditorFont(useAppState.getState().settings.editorFontSize),
-    theme: currentEditorTheme(),
+    theme: appEditorTheme(monaco),
     fixedOverflowWidgets: true,
     overflowWidgetsDomNode: overflowLayer(),
     // The hex pane's gutter is the offset (`lineNumbers` set per show); the text pane has none.

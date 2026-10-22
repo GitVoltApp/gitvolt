@@ -2,7 +2,7 @@ import type { DynamicImportThemeRegistration, ThemeRegistration } from 'shiki';
 import { editorColors, withEditorColors } from '../diff/monaco/theme';
 import { darcula } from './darcula';
 import { useTheme } from './store';
-import { type SHIKI_BUNDLED_THEMES, THEME_IDS, THEMES } from './themes';
+import { type SHIKI_BUNDLED_THEMES, THEME_IDS, THEMES, type ThemeDef } from './themes';
 
 /** The Shiki themes the app themes use, each imported by name: Shiki's registry (shiki/themes)
  * would bundle every theme it ships, aurora-x (GPL-3.0) among them (docs/licensing.md). */
@@ -33,13 +33,72 @@ export function editorThemeRegistrations(): Promise<ThemeRegistration>[] {
   });
 }
 
-export const currentEditorTheme = (): string => THEMES[useTheme.getState().id].editorTheme;
+/** The Shiki theme name the tokens are coloured with: `def.editorTheme` (a custom theme uses its
+ * base's: the highlight worker only knows the built-in names). */
+export const currentTokenTheme = (): string => useTheme.getState().def.editorTheme;
 
-/** Calls `setTheme` now and whenever the app theme's editor theme changes. */
+/** 32-bit FNV-1a, in base 36. */
+function fnv(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+}
+
+/** `def`'s Monaco theme name: a built-in's editor theme; for a custom theme, its base's with a
+ * hash of its overlay, so a colour edit is a new name (shiki.ts `defineEditorTheme` defines it). */
+export const editorThemeName = (def: ThemeDef): string => (def.base ? `${def.editorTheme}~${fnv(JSON.stringify(editorColors(def)))}` : def.editorTheme);
+
+export const currentEditorTheme = (): string => editorThemeName(useTheme.getState().def);
+
+/** The longest Monaco lags a custom theme's colour edits (a picker being dragged). */
+export const EDITOR_THEME_THROTTLE_MS = 150;
+
+const family = (name: string) => name.split('~')[0];
+
+/** Calls `setTheme` now and whenever the app theme's editor theme changes: at once for another
+ * theme, and at most every `EDITOR_THEME_THROTTLE_MS` while one theme's colours change (the last
+ * change always lands; one timeout, none while idle). */
 export function bindEditorTheme(setTheme: (name: string) => void): () => void {
   let last = '';
-  const apply = () => {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const push = () => {
     const name = currentEditorTheme();
+    if (name === last) return false;
+    last = name;
+    setTheme(name);
+    return true;
+  };
+  const coolDown = () => {
+    timer = setTimeout(() => {
+      timer = null;
+      if (push()) coolDown();
+    }, EDITOR_THEME_THROTTLE_MS);
+  };
+  const changed = () => {
+    const name = currentEditorTheme();
+    if (name === last) return;
+    if (family(name) !== family(last)) {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      push();
+    } else if (timer === null) {
+      push();
+      coolDown();
+    }
+  };
+  push();
+  const off = useTheme.subscribe(changed);
+  return () => {
+    off();
+    if (timer !== null) clearTimeout(timer);
+  };
+}
+
+/** Calls `setTheme` now and whenever the token theme (`currentTokenTheme`) changes. */
+export function bindTokenTheme(setTheme: (name: string) => void): () => void {
+  let last = '';
+  const apply = () => {
+    const name = currentTokenTheme();
     if (name === last) return;
     last = name;
     setTheme(name);

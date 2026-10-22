@@ -268,7 +268,7 @@ GitVolt checks GitHub for a new release at startup and once a day. When there is
 A build from source only links to the release page.
 
 - **Check now:** Help › **Check for updates**.
-- **Settings › Updates:** turn the automatic check off, or include pre-releases.
+- **Settings › General › Updates:** turn the automatic check off, or include pre-releases.
 - **Privacy and security:** [PRIVACY.md](PRIVACY.md) says what the check sends, and
   [SECURITY.md](SECURITY.md) how a download is verified.
 

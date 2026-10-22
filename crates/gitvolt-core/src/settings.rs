@@ -81,6 +81,8 @@ pub struct AppSettings {
     /// Commits loaded per graph (`snapshot::DEFAULT_COMMIT_LIMIT` by default).
     pub commit_limit: u32,
     pub date_format: DateFormat,
+    /// Show dates as "5 minutes ago"; the exact format shows on hover.
+    pub relative_dates: bool,
     pub gravatar: bool,
     /// Writes `debug`-level lines to the log file (spec §16.2).
     pub debug_logging: bool,
@@ -105,12 +107,30 @@ pub struct AppSettings {
     /// the theme's own colour. The UI validates the entries; an invalid one shows the theme's.
     #[ts(type = "Record<string, (string | null)[]>")]
     pub graph_color_overrides: BTreeMap<String, Vec<Option<String>>>,
+    /// The themes the user made; the UI moves `graph_color_overrides` into these once.
+    pub custom_themes: Vec<CustomTheme>,
     /// The main window's last normal geometry (K46). Owned by the app shell, not the UI: it's
     /// left out of the TypeScript bindings, and `save_settings` keeps the store's own value
     /// whatever the UI sends back. Absent in files written before it existed.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(skip)]
     pub window: Option<WindowGeometry>,
+}
+
+/// A theme the user made (Settings › Appearance): a built-in base plus the colours they set.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct CustomTheme {
+    /// `custom-<8 hex>`; `AppSettings.theme` names it when it's the current theme.
+    pub id: String,
+    pub name: String,
+    /// The built-in theme it was made from (its kind, editor theme and unset colours).
+    pub base: String,
+    /// Colour token → CSS colour, only the tokens the user set. The UI validates them.
+    pub colors: BTreeMap<String, String>,
+    /// The ten lane colours (`#rrggbb`); empty: the base theme's.
+    pub graph: Vec<String>,
 }
 
 /// Where the main window was, in logical (DPI-independent) pixels: its last normal (not
@@ -154,6 +174,7 @@ impl Default for AppSettings {
             prune: true,
             commit_limit: 2000,
             date_format: DateFormat::Ymd12h,
+            relative_dates: false,
             gravatar: true,
             debug_logging: false,
             sync_button: SyncButtonMode::FetchAll,
@@ -163,6 +184,7 @@ impl Default for AppSettings {
             update_prereleases: false,
             update_arch_method: None,
             graph_color_overrides: BTreeMap::new(),
+            custom_themes: Vec::new(),
             window: None,
         }
     }
@@ -1359,6 +1381,36 @@ mod tests {
         s.graph_color_overrides.insert("nord".into(), vec![Some("#123456".into()), None]);
         let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.graph_color_overrides["nord"], vec![Some("#123456".to_string()), None]);
+    }
+
+    #[test]
+    fn relative_dates_default_off_and_round_trip() {
+        let mut v = serde_json::to_value(AppSettings::default()).unwrap();
+        v.as_object_mut().unwrap().remove("relativeDates");
+        let s: AppSettings = serde_json::from_value(v).unwrap();
+        assert!(!s.relative_dates);
+
+        let s = AppSettings { relative_dates: true, ..AppSettings::default() };
+        let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert!(back.relative_dates);
+    }
+
+    #[test]
+    fn custom_themes_default_empty_and_round_trip() {
+        let mut v = serde_json::to_value(AppSettings::default()).unwrap();
+        v.as_object_mut().unwrap().remove("customThemes");
+        let s: AppSettings = serde_json::from_value(v).unwrap();
+        assert!(s.custom_themes.is_empty());
+
+        let theme = r##"{"id":"custom-0a1b2c3d","name":"Nord (Custom)","base":"nord","colors":{"app-bg0":"#2e3440"},"graph":[]}"##;
+        let theme: serde_json::Value = serde_json::from_str(theme).unwrap();
+        let mut v = serde_json::to_value(AppSettings::default()).unwrap();
+        v["customThemes"] = serde_json::Value::Array(vec![theme.clone()]);
+        let s: AppSettings = serde_json::from_value(v).unwrap();
+        let t = &s.custom_themes[0];
+        assert_eq!((t.id.as_str(), t.name.as_str(), t.base.as_str()), ("custom-0a1b2c3d", "Nord (Custom)", "nord"));
+        assert_eq!(t.colors["app-bg0"], "#2e3440");
+        assert_eq!(serde_json::to_value(&s).unwrap()["customThemes"][0], theme);
     }
 
     #[test]

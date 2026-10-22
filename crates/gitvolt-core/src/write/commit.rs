@@ -301,7 +301,12 @@ pub struct CommitIdentity {
 /// includes, then the auto-detected name and email). A read: nothing is written. `None`: git has
 /// no identity it would commit with.
 pub(crate) async fn identity(cli: &GitCli, root: &Path) -> Result<Option<CommitIdentity>, GbError> {
-    match cli.run(GitInvocation::new(root, ["var", "GIT_AUTHOR_IDENT"])).await {
+    identity_in(cli, GitInvocation::new(root, ["var", "GIT_AUTHOR_IDENT"])).await
+}
+
+/// `identity` for a prepared `var GIT_AUTHOR_IDENT` (Settings reads it outside any repository).
+pub(crate) async fn identity_in(cli: &GitCli, inv: GitInvocation) -> Result<Option<CommitIdentity>, GbError> {
+    match cli.run(inv).await {
         Ok(out) => Ok(parse_ident(&String::from_utf8_lossy(&out.stdout))),
         Err(e) if e.stderr.as_deref().is_some_and(|s| ["identity unknown", "auto-detect", "empty ident", "no email was given", "no name was given"].iter().any(|m| s.contains(m))) => Ok(None),
         Err(e) => Err(e),

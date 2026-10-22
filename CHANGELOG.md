@@ -15,9 +15,15 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   MR/PR list" are in the command palette too.
 - **Load older commits.** A row at the bottom of the graph loads the next batch of history and
   keeps your place. The extra history unloads a few minutes after you're back near the top.
+- **Relative dates.** Settings › Graph › "Show relative dates" ("5 minutes ago"); hovering a date
+  shows the other form.
 
 ### Changed
 
+- **Settings is redesigned.** A larger window with a search box over every setting and pages in
+  three groups: GitVolt, the profile and the open repository. A setting changed from its default
+  shows a ↺ to restore it. Git identity shows who commits are made as in the open
+  repository.
 - **File lists open as a tree by default.** The working-copy sections, commit details, compare and
   merge request changes show folders first until you switch to Path; a mode you already picked is
   kept.

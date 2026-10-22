@@ -1,0 +1,4 @@
+/* ui/sortable/useSortable.ts: items move by transform only; no layout shift, nothing runs idle. */
+[data-sortable-state="shifting"] { transition: transform var(--motion-fast); }
+[data-sortable-state="dragging"] { position: relative; z-index: 1; cursor: grabbing; transition: none; user-select: none; }
+[data-sortable-handle] { cursor: grab; touch-action: none; }

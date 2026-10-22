@@ -10,7 +10,24 @@ const show = vi.fn();
 
 const { useRuntime } = await import('../app/runtime');
 const { useToast } = await import('../ui/toastStore');
-const { refEntries, fileEntries } = await import('./sources');
+const { refEntries, fileEntries, settingEntries } = await import('./sources');
+await import('../settings/pages');
+const { useSettingsUi } = await import('../settings/schema');
+
+describe('settingEntries', () => {
+  it('names where each setting lives, and opens Settings on it', () => {
+    useRuntime.setState({ tabs: {} });
+    const entries = settingEntries();
+    const prune = entries.find((e) => e.id === 'setting:prune')!;
+    expect(prune).toMatchObject({ group: 'setting', label: 'Prune deleted remote branches on fetch', detail: 'GitVolt › Fetch and push › Fetch' });
+    // No repository shown: its settings aren't offered.
+    expect(entries.some((e) => e.id === 'setting:repoEditor')).toBe(false);
+    const showSpy = vi.spyOn(useSettingsUi.getState(), 'show');
+    prune.run();
+    expect(showSpy).toHaveBeenCalledWith('prune');
+    expect(useSettingsUi.getState()).toMatchObject({ open: true, page: 'fetch', focus: 'prune' });
+  });
+});
 
 describe('refEntries', () => {
   it('toasts when the ref is outside the loaded history', () => {

@@ -229,7 +229,7 @@
 @media (prefers-reduced-motion: reduce) { .toast-top { animation: none; } }
 /* "Load older commits" (U5): the row after the last commit; a plain row-height strip, nothing animated. */
 .load-older-row { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px; box-sizing: border-box; color: var(--text-secondary); white-space: nowrap; }
-.load-older-btn { all: unset; cursor: pointer; padding: 1px 8px; border-radius: 4px; color: var(--text-primary); }
+.load-older-btn { all: unset; cursor: pointer; padding: 1px 8px; border-radius: 4px; color: var(--text-selected); }
 .load-older-btn:hover:not(:disabled) { background: var(--hover-row); }
 .load-older-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .load-older-btn:disabled { cursor: default; color: var(--text-disabled); }

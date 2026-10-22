@@ -216,7 +216,7 @@ That is a trust boundary.
     browse, `git log`, `git diff`, `git show`, `git blame` and the like. git reads the repository's own `.git/config` for each of them, so a command it
     names can run: `core.fsmonitor` runs on `git status`, as it does in a terminal and in every
     git client.
-  - A background fetch, unless it's Off (Settings › Fetch › **Background fetch interval: Off**).
+  - A background fetch, unless it's Off (Settings › Fetch and push › **Background fetch interval: Off**).
     When the tab opens, GitVolt runs `git fetch --all` at once if the last fetch is older than the
     interval (always, the first time), then once per interval. `git fetch` runs the
     `reference-transaction` hook when it updates refs, and then git's auto maintenance

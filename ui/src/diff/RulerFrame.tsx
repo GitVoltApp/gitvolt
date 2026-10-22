@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useTheme } from '../theme/store';
-import { THEMES } from '../theme/themes';
 import { markRects, RULER_WIDTH, rulerColors, sliderOf, type RulerMark } from './mdRuler';
 import { bindRulerPointer } from './rulerPointer';
 
@@ -62,7 +61,7 @@ export function RulerFrame({ pane, active = true, split = false, marks, watchCon
       cv.height = Math.round(visible * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, RULER_WIDTH, visible);
-      const colors = rulerColors(THEMES[useTheme.getState().id]);
+      const colors = rulerColors(useTheme.getState().def);
       const rects = markRects(list, content, visible, split);
       for (const kind of ['changed', 'removed', 'added'] as const) {
         ctx.fillStyle = colors[kind];

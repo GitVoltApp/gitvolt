@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  act(() => useTheme.getState().set('default-dark', {}));
+  act(() => useTheme.getState().set(THEMES['default-dark']));
 });
 
 /** The pane's scrollTop, for a mark's viewport position. */
@@ -267,7 +267,7 @@ describe('the rendered Markdown diff overview ruler', () => {
     const { container } = render(<Harness marks={MARKS} />);
     await waitFor(() => expect(ruler(container)).toHaveAttribute('data-marks', '3'));
     fills = [];
-    act(() => useTheme.getState().set('light', {}));
+    act(() => useTheme.getState().set(THEMES.light));
     const c = rulerColors(THEMES.light);
     await waitFor(() => expect(fills).toContainEqual({ style: c.added, rect: [0, 200, 30, 20] }));
   });
