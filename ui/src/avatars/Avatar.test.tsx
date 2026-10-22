@@ -52,16 +52,16 @@ describe('Avatar', () => {
 
 describe('Avatar and the theme', () => {
   it("follows the theme's lane palette, the same lane for the same person", () => {
-    act(() => useTheme.getState().set('default-dark', {}));
+    act(() => useTheme.getState().set(THEMES['default-dark']));
     render(<Avatar name="Grace Hopper" email="grace@example.com" request={false} />);
     const el = screen.getByTestId('avatar');
     const lane = GRAPH_COLORS.indexOf(rgbToHex(el.style.background));
     expect(lane).toBeGreaterThanOrEqual(0);
     expect(rgbToHex(el.style.color)).toBe('#ffffff');
-    act(() => useTheme.getState().set('nord', {}));
+    act(() => useTheme.getState().set(THEMES.nord));
     expect(rgbToHex(el.style.background)).toBe(THEMES.nord.graph[lane]);
     expect(rgbToHex(el.style.color)).toBe(resolveColors(THEMES.nord).laneText[lane]);
-    act(() => useTheme.getState().set('default-dark', {}));
+    act(() => useTheme.getState().set(THEMES['default-dark']));
   });
 });
 

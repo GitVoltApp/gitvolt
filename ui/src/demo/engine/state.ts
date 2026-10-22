@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   updatePrereleases: false,
   updateArchMethod: null,
   graphColorOverrides: {},
+  customThemes: [],
 };
 
 export function defaultProfile(): Profile {

@@ -20,32 +20,37 @@ const dialog = (page: Page) => page.getByRole('dialog', { name: 'Settings' });
 
 // Each `test.step` below was a test of its own, paying for a page load; they run in an order
 // where each starts from what it needs (a step that needs a plain URL loads it).
-test('themes: Default Dark by default; a lane override; ?theme=; the palette, saved and mirrored; the hamburger opens the picker', async ({ page }) => {
+test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=; the palette, saved and mirrored; the hamburger opens the picker', async ({ page }) => {
   await test.step('Default Dark by default', async () => {
     await page.goto(openUrl(fixtures.basic));
     await expect(grid(page)).toBeVisible();
     expect(await theme(page)).toBe('default-dark');
     await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(28, 30, 35)');
   });
-  await test.step("a lane override recolours that lane's chips and canvas in the current theme only", async () => {
+  await test.step('a lane edit on Nord makes "Nord (Custom)", recolours that lane\'s chips and canvas, and survives a reload', async () => {
     const chip = page.locator('.ref-labels').first();
     const laneColor = () => chip.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--lane-color'));
-    const original = await laneColor();
-    const lane = THEMES['default-dark'].graph.indexOf(original);
-    expect(lane).toBeGreaterThanOrEqual(0);
-    const before = await canvasHash(page);
     await page.keyboard.press('Control+,');
     await dialog(page).getByRole('button', { name: 'Appearance' }).click();
+    await dialog(page).getByRole('button', { name: 'Theme' }).click();
+    await page.getByRole('menuitem', { name: 'Nord', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
+    await expect.poll(async () => THEMES.nord.graph.includes(await laneColor())).toBe(true);
+    const lane = THEMES.nord.graph.indexOf(await laneColor());
+    const before = await canvasHash(page);
     const box = dialog(page).getByLabel(`Lane ${lane + 1} color`);
     await box.fill('123456');
     await box.press('Enter');
+    await expect(dialog(page).getByRole('button', { name: 'Theme' })).toContainText('Nord (Custom)');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', /^custom-[0-9a-f]{8}$/);
     await expect.poll(laneColor).toBe('#123456');
     await expect.poll(() => canvasHash(page)).not.toBe(before);
-    // Another theme keeps its own lanes.
-    await dialog(page).getByRole('button', { name: 'Theme' }).click();
-    await page.getByRole('menuitem', { name: 'Dracula' }).click();
-    await expect.poll(laneColor).toBe(THEMES.dracula.graph[lane]);
-    await expect(box).toHaveValue(THEMES.dracula.graph[lane]);
+    // Saved, and mirrored with the custom theme itself for the first paint.
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('gitvolt.theme.v1') ?? 'null')?.custom?.name)).toBe('Nord (Custom)');
+    await page.reload();
+    await expect(grid(page)).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', /^custom-[0-9a-f]{8}$/);
+    await expect.poll(laneColor).toBe('#123456');
   });
   await test.step('?theme= applies a theme to the page and the canvas', async () => {
     const dark = await canvasHash(page);
@@ -79,7 +84,7 @@ test('themes: Default Dark by default; a lane override; ?theme=; the palette, sa
     await expect(dialog(page)).toBeVisible();
     await expect(dialog(page).getByRole('region', { name: 'Appearance' })).toBeVisible();
     await dialog(page).getByRole('button', { name: 'Theme' }).click();
-    await page.getByRole('menuitem', { name: 'Nord' }).click();
+    await page.getByRole('menuitem', { name: 'Nord', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
     await expect(dialog(page)).toHaveCSS('background-color', rgb(THEMES.nord.colors['panel-bg1']));
   });

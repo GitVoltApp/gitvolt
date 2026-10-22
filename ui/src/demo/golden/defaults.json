@@ -26,6 +26,7 @@
   "settings": {
     "activeProfile": "default",
     "commitLimit": 2000,
+    "customThemes": [],
     "dateFormat": "ymd12h",
     "debugLogging": false,
     "editorFontSize": 13,
