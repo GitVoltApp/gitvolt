@@ -10,6 +10,7 @@ import { leaveFileView, useCenterViewSidebar } from '../repo/centerView';
 import { mrSection, refreshMrList, withMrSection } from '../forge/mrSection';
 import { forgeOf, patchForge, useTabForgeField } from '../forge/mrStore';
 // --- end 4B T11 ---
+import { PresetButton } from '../presets/PresetButton';
 import { ClearableInput } from '../ui/ClearableInput';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { onResetDoubleClick } from '../ui/resetHandle';
@@ -177,6 +178,7 @@ export function Sidebar() {
             if (e.key === 'ArrowDown') { focusFirstBody(); e.preventDefault(); }
           }}
         />
+        <PresetButton tabId={tabId} />
       </div>
       <div ref={stackRef} className="sb-stack">
         {panels.map((panel, i) => {

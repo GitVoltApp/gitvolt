@@ -18,6 +18,7 @@ const EXEMPT: Record<string, string> = {
   'ui/pointerRest.ts': 'any key marks the pointer resting, for hover tooltips',
   'ui/Toast.tsx': 'toast dismissal',
   'ui/Select.tsx': 'dropdown arrows / Esc',
+  'presets/PresetButton.tsx': 'the ▾ caret’s arrows open its menu, as a dropdown’s',
   'ui/RefPicker.tsx': 'picker arrows / Enter / Esc',
   'forge/create/SearchPicker.tsx': 'picker arrows / Enter / Backspace',
   'ui/Switch.tsx': 'a switch toggles on Space / Enter, as a native control',

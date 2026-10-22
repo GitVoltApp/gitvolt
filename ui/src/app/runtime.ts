@@ -14,6 +14,7 @@ import { dropTabView, feedTabView } from './tabStores';
 import { withActiveSidebar } from '../worktrees/active';
 import { noteViewport, unloadDue, type OlderState } from '../graph/olderWindow';
 import { basename, setTabRepo, tabForPath, touchRecent } from './tabs';
+import { viewSpecFor } from '../presets/store';
 
 /** One tab's loaded repo (not persisted: the profile holds only the tab's path). */
 export interface TabRuntime {
@@ -83,6 +84,8 @@ async function load(tabId: string, rescan: boolean, side: boolean): Promise<void
   const { settings, profile } = useAppState.getState();
   const pin = profile.repos[repo.path]?.pin ?? undefined;
   const worktree = rt.worktree;
+  // The branch preset's view; none under All, so its request (and graph) is as before presets.
+  const view = viewSpecFor(tabId);
   // Still the same tab on the same repo and worktree (not closed, or re-pointed, meanwhile).
   const current = () => {
     const now = useRuntime.getState().tabs[tabId];
@@ -92,7 +95,7 @@ async function load(tabId: string, rescan: boolean, side: boolean): Promise<void
     const [graph, sidebar, info] = await Promise.all([
       // `rescan` only when asked: a watched repo's status cache is kept fresh (W2-B). `active`:
       // the tab's worktree is laid out as the open one (spec #2 §11.2).
-      api.graph(repo.id, rt.limit ?? settings.commitLimit, { ...(rescan ? { pin, rescan } : { pin }), ...(worktree ? { active: worktree } : {}) }),
+      api.graph(repo.id, rt.limit ?? settings.commitLimit, { ...(rescan ? { pin, rescan } : { pin }), ...(worktree ? { active: worktree } : {}), ...(view ? { view } : {}) }),
       // A worktree/index-only change can't alter refs, stashes or config: keep what's shown.
       side ? sideRead('sidebar', api.sidebar(repo.id)) : Promise.resolve(undefined),
       side ? sideRead('repo info', api.repoInfo(repo.id)) : Promise.resolve(undefined),

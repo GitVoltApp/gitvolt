@@ -528,6 +528,7 @@ export function ContextMenu() {
             }}
           >
             <Icon size={14} className="ctx-icon" aria-hidden />
+            {r.kind === 'action' && r.swatch && <span className="ctx-swatch" style={{ background: r.swatch }} aria-hidden />}
             <span className="ctx-label">{r.label}</span>
             {r.kind === 'action' && r.shortcut && <span className="ctx-shortcut">{displayChord(r.shortcut)}</span>}
             {r.kind === 'submenu' && <ChevronRight size={12} className="ctx-chevron" aria-hidden />}

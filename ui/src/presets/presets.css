@@ -1,0 +1,12 @@
+/* The branch preset button beside the sidebar filter: a fixed size, so a preset switch (the dot's
+   colour) never moves anything. */
+.preset-button { display: inline-flex; flex: none; height: 24px; box-sizing: border-box; border: 1px solid var(--section-border); border-radius: 4px; background: var(--app-bg0); overflow: hidden; }
+.preset-main, .preset-caret { all: unset; display: inline-flex; align-items: center; justify-content: center; height: 100%; box-sizing: border-box; color: var(--text-secondary); cursor: pointer; transition: background-color var(--motion-fast), color var(--motion-fast); }
+.preset-main { position: relative; width: 26px; }
+.preset-caret { width: 16px; border-left: 1px solid var(--section-border); }
+.preset-main:hover, .preset-caret:hover, .preset-caret[aria-expanded="true"] { background: var(--hover-row); color: var(--text-selected); }
+.preset-main:focus-visible, .preset-caret:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+/* Nothing else to step to: it looks off, and ▾ still opens. */
+.preset-main[aria-disabled="true"] { cursor: default; opacity: 0.6; }
+.preset-main[aria-disabled="true"]:hover { background: none; color: var(--text-secondary); }
+.preset-dot { position: absolute; right: 4px; bottom: 4px; width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 0 1px var(--app-bg0); }
