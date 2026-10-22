@@ -35,7 +35,7 @@ export function defaultProfile(): Profile {
   return {
     version: 1, id: 'default', name: 'Default', color: '#4d88ff', tabs: [], activeTab: null, tabGroups: [], savedGroups: [], closedTabs: [], recent: [],
     reposFolder: null, reposFolders: null, editor: null, extraGitconfig: null, hostOverrides: {}, sidebarWidth: 240, sidebarNarrow: false, sidebarPanels: {},
-    rightPanelWidth: null, flyoutWidth: null, repos: {},
+    rightPanelWidth: null, flyoutWidth: null, repos: {}, fileColours: {},
   };
 }
 

@@ -386,7 +386,7 @@ arrives as `updateChanged` events.
 | What | Where |
 |---|---|
 | App settings (fetch interval, prune, commit limit, date format, Gravatar, window geometry, …) | `$XDG_CONFIG_HOME/gitvolt/settings.json` |
-| Profiles (tabs, recent repos, repos folder, editor, extra gitconfig, host overrides, per-repo settings) | `$XDG_CONFIG_HOME/gitvolt/profiles/<id>/profile.json` |
+| Profiles (tabs, recent repos, repos folder, editor, extra gitconfig, host overrides, per-repo settings, file colours (by common git dir)) | `$XDG_CONFIG_HOME/gitvolt/profiles/<id>/profile.json` |
 | Undo journal | `$XDG_DATA_HOME/gitvolt/journal/` |
 | Forge cache | `$XDG_DATA_HOME/gitvolt/forge-cache/` |
 | Forge tokens (only without a Secret Service) | `$XDG_DATA_HOME/gitvolt/forge-tokens` |

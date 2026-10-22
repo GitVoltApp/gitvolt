@@ -350,6 +350,19 @@ pub struct RepoSettings {
     pub fork_trunk_notice_dismissed: bool,
 }
 
+/// One file-colours scope (spec 2026-10-22): ordered glob patterns that share a tint.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct FileScope {
+    pub id: String,
+    pub name: String,
+    /// A preset name or `#rrggbb`.
+    pub tint: String,
+    pub patterns: Vec<String>,
+    pub start_collapsed: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export)]
@@ -388,6 +401,8 @@ pub struct Profile {
     // --- end 4B T6 ---
     /// Keyed by canonical repo path.
     pub repos: BTreeMap<String, RepoSettings>,
+    /// File colours (spec 2026-10-22): each repository's scopes, in order, keyed by its canonical common git dir.
+    pub file_colours: BTreeMap<String, Vec<FileScope>>,
     // --- 4A T5 ---
     /// Forge accounts (spec #4 §3.2): host, kind, user, where the token is (never the token).
     /// Owned by the store (`set_forge_accounts`): left out of the TypeScript bindings, and
@@ -423,6 +438,7 @@ impl Default for Profile {
             flyout_width: None,
             // --- end 4B T6 ---
             repos: BTreeMap::new(),
+            file_colours: BTreeMap::new(),
             forge_accounts: Vec::new(),
         }
     }
@@ -955,6 +971,27 @@ mod tests {
     }
 
     #[test]
+    fn file_colours_round_trip_through_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::open(dir.path());
+        let mut p = store.active_profile();
+        let scope = FileScope { id: "s1".into(), name: "Tests".into(), tint: "green".into(), patterns: vec!["**/tests/**".into(), "!**/tests/fixtures/**".into()], start_collapsed: true };
+        p.file_colours.insert("/r/.git".into(), vec![scope.clone()]);
+        store.save_profile(p).unwrap();
+        store.flush_now().unwrap();
+        let again = SettingsStore::open(dir.path()).state();
+        assert_eq!(again.profile.file_colours["/r/.git"], vec![scope]);
+    }
+
+    #[test]
+    fn a_profile_saved_before_file_colours_loads_with_none() {
+        let mut v = serde_json::to_value(Profile::default()).unwrap();
+        v.as_object_mut().unwrap().remove("fileColours");
+        let p: Profile = serde_json::from_value(v).unwrap();
+        assert!(p.file_colours.is_empty());
+    }
+
+    #[test]
     fn tab_groups_and_saved_groups_round_trip_through_the_file() {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::open(dir.path());
@@ -1460,6 +1497,8 @@ mod tests {
 
     #[test]
     fn ts_shapes_are_camel_case() {
+        assert!(serde_json::to_value(FileScope { start_collapsed: true, ..Default::default() }).unwrap().get("startCollapsed").is_some());
+        assert_eq!(serde_json::to_value(Profile::default()).unwrap()["fileColours"], serde_json::json!({}));
         let v = serde_json::to_value(PinSetting::Ref { name: "refs/remotes/origin/main".into() }).unwrap();
         assert_eq!(v, serde_json::json!({"kind": "ref", "name": "refs/remotes/origin/main"}));
         assert_eq!(serde_json::to_value(PinSetting::Off).unwrap(), serde_json::json!({"kind": "off"}));
