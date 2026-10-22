@@ -48,6 +48,14 @@ describe('ColourPicker', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
+  it('the hex field shows its colour, with black or white text, whichever reads', () => {
+    setup('#1c1e23');
+    const field = screen.getByLabelText('Hex');
+    expect(field).toHaveStyle({ background: '#1c1e23', color: '#ffffff' });
+    type('Hex', '#f0f0f0');
+    expect(field).toHaveStyle({ background: '#f0f0f0', color: '#000000' });
+  });
+
   it('a click outside keeps the new colour', () => {
     const f = setup();
     type('Hex', '#ff0000');

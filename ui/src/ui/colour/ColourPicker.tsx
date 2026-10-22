@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import { escOwners } from '../../app/modalKeys';
 import { wheelAccumulator } from '../../image/zoom';
+import { contrastRatio } from '../../theme/contrast';
 import { registerKeys } from '../keyRouter';
 import { swallowGestureClick } from '../swallowClick';
 import { placeBelow } from '../HoverTooltip';
@@ -19,6 +20,9 @@ export interface ColourPickerProps {
 }
 
 const FALLBACK: Rgba = { r: 0, g: 0, b: 0, a: 1 };
+/** Black or white, whichever reads better on `bg`: the hex field shows the colour it names, and
+ * while a theme colour previews, the field's own background may be the very colour being edited. */
+const textOn = (bg: string) => (contrastRatio('#000000', bg) >= contrastRatio('#ffffff', bg) ? '#000000' : '#ffffff');
 const sameRgb = (x: Rgba, y: Rgba) => x.r === y.r && x.g === y.g && x.b === y.b;
 const clamp = (n: number, max: number) => Math.max(0, Math.min(max, n));
 /** The chroma at the square's right edge and the Chroma slider's top (40 hundredths): sRGB's most
@@ -324,6 +328,7 @@ export function ColourPicker({ value, alpha = false, label, anchor, onPreview, o
         spellCheck={false}
         aria-label="Hex"
         aria-invalid={invalid}
+        style={{ background: opaque, color: textOn(opaque) }}
         value={hex}
         onChange={(e) => typeHex(e.target.value)}
       />
