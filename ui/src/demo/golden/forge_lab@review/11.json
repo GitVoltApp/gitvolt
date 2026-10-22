@@ -23,6 +23,9 @@
         "author": {
           "avatarUrl": null,
           "email": "lars@example.com",
+          "emails": [
+            "lars@example.com"
+          ],
           "id": 103,
           "name": "Lars Tidemann",
           "username": "lars",

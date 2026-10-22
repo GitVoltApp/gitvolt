@@ -13,7 +13,7 @@ const P = 'group/project';
 describe('gitlab::json', () => {
   it('normalizes a user preferring the public email', () => {
     expect(j.user({ id: 7, username: 'ada', name: '', avatar_url: 'https://g/a.png', web_url: 'https://g/ada', public_email: '', email: 'ada@corp.example' })).toEqual({
-      id: 7, username: 'ada', name: 'ada', avatarUrl: 'https://g/a.png', webUrl: 'https://g/ada', email: 'ada@corp.example',
+      id: 7, username: 'ada', name: 'ada', avatarUrl: 'https://g/a.png', webUrl: 'https://g/ada', email: 'ada@corp.example', emails: ['ada@corp.example'],
     });
     expect(j.user({ id: 7 })).toBeNull();
   });

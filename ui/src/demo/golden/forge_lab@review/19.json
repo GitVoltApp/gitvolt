@@ -32,6 +32,9 @@
         "author": {
           "avatarUrl": null,
           "email": "you@example.com",
+          "emails": [
+            "you@example.com"
+          ],
           "id": 100,
           "name": "You",
           "username": "you",

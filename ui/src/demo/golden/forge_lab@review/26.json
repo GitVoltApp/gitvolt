@@ -17,6 +17,9 @@
     "author": {
       "avatarUrl": null,
       "email": "grace@example.com",
+      "emails": [
+        "grace@example.com"
+      ],
       "id": 102,
       "name": "Grace Hopper",
       "username": "grace",
@@ -26,6 +29,9 @@
       "enabledBy": {
         "avatarUrl": null,
         "email": "you@example.com",
+        "emails": [
+          "you@example.com"
+        ],
         "id": 100,
         "name": "You",
         "username": "you",
