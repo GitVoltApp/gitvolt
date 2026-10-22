@@ -37,7 +37,8 @@ export const test = base.extend<{ resetHarness: void; isolatedContext: boolean; 
   // bundle (and Monaco's) again: most of what a short test cost. Kept between tests: only the
   // HTTP cache (and V8's code cache in it). Each test still starts with no cookies and an empty
   // localStorage (the init script below clears it on the tab's first load, so a reload inside a
-  // test keeps what the test saved), and its pages are closed after it. A test that needs a
+  // test keeps what the test saved), and its pages are closed after it. The file lists start in
+  // Path mode, which most specs were written against; a Tree step switches to Tree itself. A test that needs a
   // context of its own (one that installs a clock, which is the context's) asks for one with
   // `test.use({ isolatedContext: true })`. GITVOLT_E2E_FRESH_CONTEXT=1 gives every test its own.
   isolatedContext: [false, { option: true }],
@@ -45,6 +46,15 @@ export const test = base.extend<{ resetHarness: void; isolatedContext: boolean; 
     if (isolatedContext || process.env.GITVOLT_E2E_FRESH_CONTEXT) {
       const fresh = await browser.newContext(_combinedContextOptions);
       await reportCspViolations(fresh);
+      await fresh.addInitScript(() => {
+        try {
+          if (window !== window.top || location.protocol === 'about:' || sessionStorage.getItem('__gbE2eTab')) return;
+          sessionStorage.setItem('__gbE2eTab', '1');
+          localStorage.setItem('gitvolt.fileList.v1', JSON.stringify({ mode: 'path', sort: 'path', advanceAfterStage: true }));
+        } catch {
+          // An opaque origin has no storage.
+        }
+      });
       await use(fresh);
       await fresh.close();
       return;
@@ -59,6 +69,7 @@ export const test = base.extend<{ resetHarness: void; isolatedContext: boolean; 
           if (window !== window.top || location.protocol === 'about:' || sessionStorage.getItem('__gbE2eTab')) return;
           sessionStorage.setItem('__gbE2eTab', '1');
           localStorage.clear();
+          localStorage.setItem('gitvolt.fileList.v1', JSON.stringify({ mode: 'path', sort: 'path', advanceAfterStage: true }));
         } catch {
           // An opaque origin has no storage.
         }
