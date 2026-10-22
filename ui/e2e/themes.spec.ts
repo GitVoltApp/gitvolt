@@ -115,7 +115,7 @@ async function openDiff(page: Page) {
   await expect(diffRegion(page).locator('.editor.modified .line-insert').first()).toBeVisible({ timeout: 15_000 });
 }
 // One page, one editor: the font size step uses the diff the theme step opened.
-test('the open editor: a theme switch repaints it without re-creating it (R6); Settings > Editor resizes it live, clamped to 8-32', async ({ page }) => {
+test('the open editor: a theme switch repaints it without re-creating it (R6); Settings > Appearance resizes it live, clamped to 8-32', async ({ page }) => {
   await test.step("switching theme repaints the open editor in the new theme's background, without re-creating it (R6)", async () => {
     await page.goto(openUrl(fixtures.details));
     await openDiff(page);
@@ -136,11 +136,11 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
     await expect(keyword).toHaveCSS('color', 'rgb(88, 110, 117)'); // solarized-light
     await expect(host).toHaveAttribute('data-keep', '1');
   });
-  await test.step('the editor font size row (Settings > Editor) resizes the open diff live, clamped to 8-32', async () => {
+  await test.step('the editor font size row (Settings > Appearance) resizes the open diff live, clamped to 8-32', async () => {
     const size = () => diffRegion(page).locator('.view-line').first().evaluate((e) => getComputedStyle(e).fontSize);
     await expect.poll(size).toBe('13px');
     await page.keyboard.press('Control+,');
-    await dialog(page).getByRole('button', { name: 'Editor' }).click();
+    await dialog(page).getByRole('button', { name: 'Appearance', exact: true }).click();
     const box = dialog(page).getByLabel('Editor font size');
     await box.fill('18');
     await box.press('Enter');

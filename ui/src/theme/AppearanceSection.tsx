@@ -45,17 +45,26 @@ function LaneField({ index, value, onCommit }: { index: number; value: string; o
 /** Settings → Appearance: the theme (the app's own dropdown, never a native `<select>`, K92), the
  * built-ins then the custom themes, and the current theme's lane colours. A lane edit on a
  * built-in makes "<theme> (Custom)" (edit.ts). Both save to AppSettings; `bind.ts` applies them. */
-export function AppearanceSection() {
+/** The theme dropdown: the built-ins, then the custom themes. Also the theme's control in the
+ * settings search results. */
+export function ThemeSelect() {
   const theme = useAppState((s) => s.settings.theme);
   const customs = useAppState((s) => s.settings.customThemes);
   const setSettings = useAppState((s) => s.setSettings);
   const def = themeDef(theme, customs ?? []);
   const choices = [...BUILT_IN_CHOICES, ...(customs ?? []).map((t) => [t.id, t.name] as const)];
+  return <Select<string> id="input-theme" aria-labelledby="label-theme" value={def.id} onChange={(v) => setSettings({ theme: v })} options={choices} />;
+}
+
+export function AppearanceSection() {
+  const theme = useAppState((s) => s.settings.theme);
+  const customs = useAppState((s) => s.settings.customThemes);
+  const def = themeDef(theme, customs ?? []);
 
   return (
     <>
       <Row id="theme" group>
-        <Select<string> id="input-theme" aria-labelledby="label-theme" value={def.id} onChange={(v) => setSettings({ theme: v })} options={choices} />
+        <ThemeSelect />
       </Row>
       <Row id="graphColors" group>
         <div className="lane-colors" role="group" aria-labelledby="label-graphColors">

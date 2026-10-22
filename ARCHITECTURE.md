@@ -405,6 +405,18 @@ The XDG defaults are `~/.config`, `~/.local/share` and `~/.cache`. Settings and 
 written debounced and flushed once more on exit. To run a second instance without touching your
 own, point `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` and `XDG_DATA_HOME` at throwaway directories.
 
+**The Settings screen** (`ui/src/settings/`) is built from a registry (`registry.ts`). A page
+module calls `registerSettingsPage` (id, scope, order, icon, summary, an optional `Body`) and
+`registerSettings` (each setting's label, page, group, one-line description, hidden keywords, its
+`Control`, and a `binding` to where its value lives: `appSetting`, `profileField`, `repoField` or
+`storeBinding` in `bindings.ts`). The scopes are `app` (GitVolt), `profile` and `repo` (the shown
+tab's repository), the nav's three groups. The overlay, its nav, the search, the changed dot and ↺
+on a setting, Reset all (app scope only) and the palette's `#` settings all come from the registry,
+so a feature adds a page, or a setting to an existing page, from its own module; Settings' own
+pages are in `settings/pages/`. `useSettingsUi.show(id)` opens Settings on one setting,
+`useSettingsPaste` takes Ctrl+V on a page, and `registerSettingsFloat` lets the overlay give way to
+a floating panel that leaves the app usable behind it.
+
 **Logs** rotate daily; 7 files and 50 MB at most are kept. The level is `info`; Settings › Advanced ›
 Debug logging switches to `debug` live, and `RUST_LOG` applies until it does. A release build writes
 to the console only when `RUST_LOG` is set. Help → Debug… opens the Debug modal: the last 1000 git

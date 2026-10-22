@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../api/client', () => ({ api: { saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null) } }));
 
 await import('./feature');
+await import('../settings/pages');
 const { availableActions, hamburgerRows, runAction } = await import('../app/actions');
 const { DEFAULT_SETTINGS, useAppState } = await import('../app/state');
 const { useSettingsUi } = await import('../settings/schema');
@@ -11,7 +12,7 @@ const { THEME_IDS, THEMES } = await import('./themes');
 describe('theme actions (R4)', () => {
   beforeEach(() => {
     useAppState.setState({ settings: DEFAULT_SETTINGS });
-    useSettingsUi.setState({ open: false, focus: null, section: 'General' });
+    useSettingsUi.setState({ open: false, focus: null, page: 'general' });
   });
 
   it('one palette action per theme, "Theme: <Name>", which saves that theme', () => {
@@ -41,6 +42,6 @@ describe('theme actions (R4)', () => {
     const ids = view?.kind === 'submenu' ? view.rows.map((r) => (r.kind === 'action' ? r.id : '-')) : [];
     expect(ids).toEqual(['view.theme']);
     expect(runAction('view.theme')).toBe(true);
-    expect(useSettingsUi.getState()).toMatchObject({ open: true, section: 'Appearance', focus: 'theme' });
+    expect(useSettingsUi.getState()).toMatchObject({ open: true, page: 'appearance', focus: 'theme' });
   });
 });
