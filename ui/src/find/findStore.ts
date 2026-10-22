@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { api } from '../api/client';
 import type { HistoryHit } from '../api/gen/HistoryHit';
 import { selectCommit } from '../app/graphNav';
-import { useRuntime } from '../app/runtime';
+import { beginOlder, useRuntime } from '../app/runtime';
 import { tabStore, tabView } from '../app/tabStores';
 
 /**
@@ -174,6 +174,7 @@ async function run(tabId: string, q: string, seq: number, select: boolean): Prom
 
 /** Loads a commit window of `limit` (the tab's override, spec §8.7); false if superseded. */
 async function deepen(tabId: string, limit: number, live: () => boolean = () => true): Promise<boolean> {
+  beginOlder(tabId);
   useRuntime.getState().patch(tabId, { limit });
   await useRuntime.getState().refresh(tabId);
   return live();

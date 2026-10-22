@@ -182,5 +182,17 @@ test.describe('find', () => {
     await expect(older.getByRole('button')).toHaveCount(1);
     await older.getByRole('button', { name: /Commit 05/ }).click();
     await expect(row(page, 'Commit 05')).toHaveAttribute('aria-selected', 'true');
+
+    await test.step('Load older commits at the bottom adds the next 20, and the view stays where it was', async () => {
+      await page.reload();
+      await expect(row(page, 'Commit 59')).toBeVisible();
+      const rows = async () => Number(await grid(page).getAttribute('aria-rowcount'));
+      const before = await rows();
+      await grid(page).evaluate((g) => { g.scrollTop = g.scrollHeight; });
+      await page.getByRole('button', { name: /Load older commits/ }).click();
+      await expect.poll(rows).toBeGreaterThan(before);
+      expect(await rows()).toBe(before + 20);
+      await expect(page.getByText(`${before + 20} commits loaded`)).toBeVisible();
+    });
   });
 });

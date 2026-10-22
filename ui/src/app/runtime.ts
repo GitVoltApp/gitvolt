@@ -12,6 +12,7 @@ import { dropForge } from '../forge/mrStore';
 import { closeFlyout } from '../ui/flyout/flyout';
 import { dropTabView, feedTabView } from './tabStores';
 import { withActiveSidebar } from '../worktrees/active';
+import { noteViewport, unloadDue, type OlderState } from '../graph/olderWindow';
 import { basename, setTabRepo, tabForPath, touchRecent } from './tabs';
 
 /** One tab's loaded repo (not persisted: the profile holds only the tab's path). */
@@ -143,6 +144,7 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
     set((s) => ({ tabs: { ...s.tabs, [tabId]: { ...(s.tabs[tabId] ?? EMPTY), ...patch } } }));
   },
   drop(tabId) {
+    dropOlder(tabId);
     dropTabView(tabId);
     // Spec #3: a closed tab's center view (File History, the rebase editor) goes with it.
     closeCenterView(tabId);
@@ -236,4 +238,70 @@ export async function openPathInTab(path: string, tabId?: string): Promise<void>
     id = r.tabId;
   }
   if (!useRuntime.getState().tabs[id]?.repo) await useRuntime.getState().open(id, path);
+}
+
+// --- Loaded older commits (Load older commits, Find's deepen) ---
+
+interface Older { state: OlderState; first: number; last: number; selected: number; reveal: number | null; timer: ReturnType<typeof setTimeout> | null }
+const older = new Map<string, Older>();
+const loadingOlder = new Set<string>();
+
+function dropOlder(tabId: string): void {
+  const o = older.get(tabId);
+  if (o?.timer) clearTimeout(o.timer);
+  older.delete(tabId);
+  loadingOlder.delete(tabId);
+}
+
+/** Checks the policy and arms one timeout for when it could become due: never an interval, and
+ * nothing at all while it can't (the next scroll or selection asks again). */
+function armOlder(tabId: string): void {
+  const o = older.get(tabId);
+  if (!o) return;
+  if (o.timer) clearTimeout(o.timer);
+  o.timer = null;
+  const wait = unloadDue(o.state, { firstRow: o.first, lastRow: o.last, selectedRow: o.selected, revealRow: o.reveal, now: Date.now() });
+  if (wait === null) return;
+  if (wait === 0) { void unloadOlder(tabId); return; }
+  o.timer = setTimeout(() => { o.timer = null; armOlder(tabId); }, wait);
+}
+
+/** Starts watching a window raised past its base (once: the first raise's rows are the base). */
+export function beginOlder(tabId: string): void {
+  if (older.has(tabId)) return;
+  const rows = useRuntime.getState().tabs[tabId]?.graph?.rows.length ?? 0;
+  // The viewport is unknown until the next scroll report: count it as in the older part.
+  older.set(tabId, { state: { baseRows: rows, lastInOlderAt: Date.now() }, first: rows, last: rows, selected: -1, reveal: null, timer: null });
+}
+
+/** The graph's viewport (or its selection or open reveal panel) changed: the policy's inputs. */
+export function olderViewport(tabId: string, firstRow: number, lastRow: number, selectedRow: number, revealRow: number | null = null): void {
+  const o = older.get(tabId);
+  if (!o) return;
+  o.state = noteViewport(o.state, firstRow, lastRow, Date.now());
+  o.first = firstRow; o.last = lastRow; o.selected = selectedRow; o.reveal = revealRow;
+  armOlder(tabId);
+}
+
+/** One more commit-limit step below the loaded ones. */
+export async function loadOlder(tabId: string): Promise<void> {
+  const rt = useRuntime.getState().tabs[tabId];
+  if (!rt?.repo || loadingOlder.has(tabId)) return;
+  loadingOlder.add(tabId);
+  try {
+    const step = useAppState.getState().settings.commitLimit;
+    beginOlder(tabId);
+    useRuntime.getState().patch(tabId, { limit: (rt.limit ?? step) + step });
+    await useRuntime.getState().refresh(tabId, { graphOnly: true });
+  } finally {
+    loadingOlder.delete(tabId);
+  }
+}
+
+/** Back to the commit limit setting. */
+export async function unloadOlder(tabId: string): Promise<void> {
+  dropOlder(tabId);
+  if (useRuntime.getState().tabs[tabId]?.limit == null) return;
+  useRuntime.getState().patch(tabId, { limit: null });
+  await useRuntime.getState().refresh(tabId, { graphOnly: true });
 }

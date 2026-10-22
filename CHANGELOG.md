@@ -13,6 +13,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   the list and the badges. The icon turns while it runs. A refresh while one is running joins it,
   and none is sent while the forge's rate limit is spent. "Refresh the MR/PR" and "Refresh the
   MR/PR list" are in the command palette too.
+- **Load older commits.** A row at the bottom of the graph loads the next batch of history and
+  keeps your place. The extra history unloads a few minutes after you're back near the top.
 
 ### Changed
 
