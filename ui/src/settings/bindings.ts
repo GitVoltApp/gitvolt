@@ -1,12 +1,12 @@
-import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import type { AppSettings } from '../api/gen/AppSettings';
 import type { Profile } from '../api/gen/Profile';
 import type { RepoSettings } from '../api/gen/RepoSettings';
 import { EMPTY_REPO_SETTINGS, useAppState } from '../app/state';
-import { allSettings, settingsPage, useSettingsRegistry, type SettingDef, type SettingsCtx } from './registry';
+import { allSettings, settingsPage, type SettingDef, type SettingsCtx } from './registry';
 
 /** A setting's value where it's stored (app settings, the profile, a localStorage store) and its
- * default: what the modified dot, ↺ and Reset all read and write. */
+ * default: what the ↺ and Reset all read and write. */
 export interface SettingBinding<T = unknown> { get(): T; set(v: T): void; defaultValue: T; subscribe(cb: () => void): () => void; equals?(a: T, b: T): boolean }
 
 // An absent optional field (`branchUpdate`) is its null default.
@@ -28,22 +28,6 @@ export function useSettingValue<T>(def: SettingDef, ctx: SettingsCtx): [T, (v: T
   const b = useMemo(() => def.binding?.(ctx) ?? null, [def, ctx]) as SettingBinding<T> | null;
   if (!b) throw new Error(`setting ${def.id} has no value here`);
   return [useSyncExternalStore(b.subscribe, b.get), b.set];
-}
-
-/** Whether any setting on the page differs from its default (the nav's dot). */
-export function usePageModified(pageId: string, ctx: SettingsCtx): boolean {
-  const version = useSettingsRegistry();
-  const bindings = useMemo(
-    () => allSettings().flatMap((d) => (d.page === pageId && d.binding ? [d.binding(ctx)] : [])).filter((b): b is SettingBinding => b !== null),
-    // `version`: the registry changed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pageId, ctx, version],
-  );
-  const subscribe = useCallback((cb: () => void) => {
-    const offs = bindings.map((b) => b.subscribe(cb));
-    return () => offs.forEach((off) => off());
-  }, [bindings]);
-  return useSyncExternalStore(subscribe, () => bindings.some(isModified));
 }
 
 export function resetSetting(def: SettingDef, ctx: SettingsCtx): void {

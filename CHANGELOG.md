@@ -44,7 +44,7 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 - **Settings is redesigned.** A larger window with a search box over every setting and pages in
   three groups: GitVolt, the profile and the open repository. A setting changed from its default
-  shows a dot and a ↺ to restore it. Git identity shows who commits are made as in the open
+  shows a ↺ to restore it. Git identity shows who commits are made as in the open
   repository.
 - **File lists open as a tree by default.** The working-copy sections, commit details, compare and
   merge request changes show folders first until you switch to Path; a mode you already picked is

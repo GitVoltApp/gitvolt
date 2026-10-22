@@ -1,5 +1,4 @@
 import type { RefObject } from 'react';
-import { usePageModified } from '../bindings';
 import { scopeLabel, type SettingsCtx, type SettingsPageDef, type SettingsScope } from '../registry';
 import { useSettingsUi } from '../schema';
 
@@ -33,7 +32,7 @@ export function SettingsNav({ pages, current, roving, counts, ctx, profile, onFo
               {scopeLabel(scope, profile.name, ctx.repoName)}
             </div>
             {list.map((p) => (
-              <NavItem key={p.id} page={p} ctx={ctx} current={p.id === current} tabbable={p.id === roving} count={counts ? counts.get(p.id) ?? 0 : null} onFocus={() => onFocusItem(p.id)} />
+              <NavItem key={p.id} page={p} current={p.id === current} tabbable={p.id === roving} count={counts ? counts.get(p.id) ?? 0 : null} onFocus={() => onFocusItem(p.id)} />
             ))}
           </div>
         );
@@ -42,8 +41,7 @@ export function SettingsNav({ pages, current, roving, counts, ctx, profile, onFo
   );
 }
 
-function NavItem({ page, ctx, current, tabbable, count, onFocus }: { page: SettingsPageDef; ctx: SettingsCtx; current: boolean; tabbable: boolean; count: number | null; onFocus(): void }) {
-  const modified = usePageModified(page.id, ctx);
+function NavItem({ page, current, tabbable, count, onFocus }: { page: SettingsPageDef; current: boolean; tabbable: boolean; count: number | null; onFocus(): void }) {
   const Icon = page.icon;
   return (
     <button
@@ -58,7 +56,7 @@ function NavItem({ page, ctx, current, tabbable, count, onFocus }: { page: Setti
     >
       <Icon size={14} aria-hidden />
       <span className="settings-nav-label">{page.label}</span>
-      {count ? <span className="settings-nav-count">{count}</span> : count === null && modified && <span className="settings-nav-dot" aria-hidden />}
+      {count ? <span className="settings-nav-count">{count}</span> : null}
     </button>
   );
 }

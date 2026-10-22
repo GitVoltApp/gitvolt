@@ -139,10 +139,8 @@ test.describe('settings', () => {
       await page.keyboard.press('Escape');
       await expect(armed).toBeHidden();
       await expect(dialog(page)).toBeVisible();
-      await expect(nav(page, 'Graph').locator('.settings-nav-dot')).toBeVisible();
       await dialog(page).getByRole('button', { name: 'Reset all settings…' }).click();
       await confirmArmed(armed);
-      await expect(nav(page, 'Graph').locator('.settings-nav-dot')).toHaveCount(0);
       await nav(page, 'Graph').click();
       await expect(dialog(page).getByLabel('Date format')).toHaveText('2026-09-26 @ 3:14 PM');
     });
@@ -177,16 +175,15 @@ test.describe('settings', () => {
       await expect(dialog(page).getByLabel('Search settings')).toHaveValue('');
       await expect(dialog(page).getByRole('region', { name: 'Fetch and push' })).toBeVisible();
     });
-    await test.step('a changed setting shows its dot and ↺; ↺ restores it; the nav marks its page', async () => {
+    await test.step('a changed setting shows its ↺; ↺ restores it', async () => {
       const row = dialog(page).locator('[data-setting-id="prune"]');
-      await expect(row.locator('.setting-dot')).toHaveCount(0);
+      const reset = row.getByRole('button', { name: 'Restore the default' });
+      await expect(reset).toBeHidden();
       await dialog(page).getByLabel('Prune deleted remote branches on fetch').click();
-      await expect(row.locator('.setting-dot')).toBeVisible();
-      await expect(nav(page, 'Fetch and push').locator('.settings-nav-dot')).toBeVisible();
-      await row.getByRole('button', { name: 'Restore the default' }).click();
+      await expect(reset).toBeVisible();
+      await reset.click();
       await expect(dialog(page).getByLabel('Prune deleted remote branches on fetch')).toBeChecked();
-      await expect(row.locator('.setting-dot')).toHaveCount(0);
-      await expect(nav(page, 'Fetch and push').locator('.settings-nav-dot')).toHaveCount(0);
+      await expect(reset).toBeHidden();
     });
     await test.step('a Custom editor command the guard refuses shows its error inline; a valid one is kept', async () => {
       await closeSettings(page);

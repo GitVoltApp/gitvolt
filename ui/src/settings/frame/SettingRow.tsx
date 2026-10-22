@@ -36,8 +36,8 @@ interface RowProps {
 /**
  * A setting's row: its label, the one-line description under it (always shown, no hover help), and
  * its control on the right (`children`, else the def's `Control`, else "Open page"). A value that
- * differs from its default gets a dot before the label and a ↺ that restores the default; the ↺
- * keeps its space when hidden, so nothing moves as it comes and goes.
+ * differs from its default shows a ↺ that restores the default, its only mark (a dot read as
+ * unread); the ↺ keeps its space when hidden, so nothing moves as it comes and goes.
  */
 export function SettingRow(props: RowProps) {
   useSettingsRegistry();
@@ -62,7 +62,7 @@ function DefRow({ def, ctx, children, highlights }: RowProps & { def: SettingDef
     <div ref={rowRef} className="setting-row" data-setting-id={id} id={`setting-${id}`} data-modified={modified || undefined}>
       <div className="setting-text">
         <div className="setting-head">
-          {modified && <><span className="setting-dot" aria-hidden /><span className="visually-hidden">Changed</span></>}
+          {modified && <span className="visually-hidden">Changed</span>}
           {label}
           <HoverTooltip content="Restore the default">
             <button type="button" className="icon-button setting-reset" aria-label="Restore the default" style={{ visibility: modified ? 'visible' : 'hidden' }} onClick={restore}>

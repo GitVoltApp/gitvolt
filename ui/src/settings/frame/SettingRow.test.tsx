@@ -35,19 +35,18 @@ describe('SettingRow', () => {
     expect(screen.getByText('Fetch with --prune.')).toBeVisible();
   });
 
-  it('an unmodified row keeps its ↺ in place, hidden; a modified one shows the dot and ↺, which restores the default', () => {
+  it('an unmodified row keeps its ↺ in place, hidden; a modified one shows the ↺, which restores the default', () => {
     const { container } = render(<SettingRow id="t-prune" ctx={ctx} />);
     const reset = container.querySelector<HTMLButtonElement>('.setting-reset')!;
     expect(reset).toBeInTheDocument();
     expect(reset).not.toBeVisible();
-    expect(container.querySelector('.setting-dot')).toBeNull();
     fireEvent.click(screen.getByLabelText('Prune deleted remote branches'));
     expect(useAppState.getState().settings.prune).toBe(false);
-    expect(container.querySelector('.setting-dot')).not.toBeNull();
+    expect(reset).toBeVisible();
     expect(screen.getByText('Changed')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Restore the default' }));
     expect(useAppState.getState().settings.prune).toBe(true);
-    expect(container.querySelector('.setting-dot')).toBeNull();
+    expect(screen.queryByText('Changed')).toBeNull();
     expect(reset).not.toBeVisible();
     expect(screen.getByLabelText('Prune deleted remote branches')).toHaveFocus();
   });
