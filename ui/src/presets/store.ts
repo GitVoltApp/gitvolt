@@ -72,12 +72,13 @@ export const showBranch = (tabId: string, name: string): void => pick(tabId, [na
 /** Shows several branches in one pick update (the ghost popover's "Show all"): one save, one reload. */
 export const showBranches = (tabId: string, names: string[]): void => pick(tabId, names, true);
 
-/** Unfolds `key` ("branch:<name>" or "fold:<sha>") in this tab until it switches presets. */
-export function expand(tabId: string, key: string): void {
+/** Unfolds `key` ("branch:<name>" or "fold:<sha>") in this tab until it switches presets.
+ * Settles once the tab's graph has reloaded with it. */
+export function expand(tabId: string, key: string): Promise<void> {
   const cur = usePresetSession.getState().expanded[tabId] ?? [];
-  if (cur.includes(key)) return;
+  if (cur.includes(key)) return Promise.resolve();
   usePresetSession.setState((s) => ({ expanded: { ...s.expanded, [tabId]: [...cur, key] } }));
-  void useRuntime.getState().refresh(tabId, { graphOnly: true });
+  return useRuntime.getState().refresh(tabId, { graphOnly: true });
 }
 
 export function useCurrentPreset(tabId: string): { current: PresetEntry; list: PresetEntry[]; next: PresetEntry | null } {

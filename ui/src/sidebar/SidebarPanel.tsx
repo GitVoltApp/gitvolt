@@ -4,7 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Clock, Folder, FolderOpen, GitBranch, GitMerge, House, ListTree, Tag, TreePine } from 'lucide-react';
 import { stashLabel } from './stashLabel';
 import { memo, useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { selectCommit } from '../app/graphNav';
+import { goToCommit } from '../app/graphNav';
 import { useAppState } from '../app/state';
 import { useRuntime } from '../app/runtime';
 import { RemoteFetchWarning } from './RemoteFetchWarning';
@@ -114,7 +114,9 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
       return;
     }
     // --- end 4B T11 ---
-    if (!item.target || !selectCommit(tabId, item.target, { focus })) useToast.getState().show('Not in the loaded history');
+    const missing = () => useToast.getState().show('Not in the loaded history');
+    if (!item.target) missing();
+    else goToCommit(tabId, item.target, { focus }, missing);
   };
   const flip = (key: string) => updateRepo(path, (r) => ({ ...r, collapsed: toggle(r.collapsed, key) }));
   const activate = (row: FlatRow, focus = false) => (row.type === 'item' ? jump(row.item, focus) : flip(row.key));

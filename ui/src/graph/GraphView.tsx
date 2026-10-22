@@ -29,6 +29,7 @@ import { allocateColumns, autoGraphWidth, handleShown, isCollapsed, lanesWidth, 
 import { graphLayout, LINE_W, nodeAt, nodeCentre, nodeRadius } from './draw';
 import { ghostAt } from './ghosts';
 import { useGhostPopover } from '../presets/GhostPopover';
+import { RevealPanel, revealRowId, useRevealPanel, useRevealPayload, type RenderRevealRow } from './reveal/RevealPanel';
 import { GraphCanvas, type GraphCanvasHandle } from './GraphCanvas';
 import { HeaderCell } from './HeaderCell';
 import { PinButton } from './PinButton';
@@ -67,7 +68,7 @@ const renderMessage = (m: CommitMessage) => (
  * themselves), and keyboard users read the selected commit's full message in the details panel
  * (§9.2).
  */
-function MessageCell({ row, repoId, width, messages, dim }: { row: RowPayload; repoId: string; width: number; messages?: CommitMessageCache; dim: string }) {
+function MessageCell({ row, repoId, width, messages, dim, badges }: { row: RowPayload; repoId: string; width: number; messages?: CommitMessageCache; dim: string; badges?: readonly string[] }) {
   const isWip = row.kind === 'wip';
   const { triggerProps, tooltip } = useHoverTooltip({
     delayMs: MESSAGE_TOOLTIP_DELAY_MS,
@@ -81,7 +82,7 @@ function MessageCell({ row, repoId, width, messages, dim }: { row: RowPayload; r
   });
   return (
     <span role="gridcell" data-col="message" className={`col-msg${dim}`} style={{ width }} {...triggerProps}>
-      {isWip ? <WipSummary row={row} repoId={repoId} /> : <><span className="msg-summary">{row.kind === "stash" ? stashLabel(row.summary).text : row.summary}</span>{row.kind === "stash" && stashLabel(row.summary).branch && <span className="dim msg-body">{stashLabel(row.summary).branch}</span>}{row.fold && <span className="fold-count" aria-label={`${row.fold.count} folded commits of ${row.fold.branch}`}>+{row.fold.count}</span>}{row.bodyFirstLine && <span className="dim msg-body">{row.bodyFirstLine}</span>}</>}
+      {isWip ? <WipSummary row={row} repoId={repoId} /> : <><span className="msg-summary">{row.kind === "stash" ? stashLabel(row.summary).text : row.summary}</span>{row.kind === "stash" && stashLabel(row.summary).branch && <span className="dim msg-body">{stashLabel(row.summary).branch}</span>}{row.fold && <span className="fold-count" aria-label={`${row.fold.count} folded commits of ${row.fold.branch}`}>+{row.fold.count}</span>}{badges?.map((b) => <span key={b} className="fold-count">{b}</span>)}{row.bodyFirstLine && <span className="dim msg-body">{row.bodyFirstLine}</span>}</>}
       {tooltip}
     </span>
   );
@@ -89,6 +90,8 @@ function MessageCell({ row, repoId, width, messages, dim }: { row: RowPayload; r
 
 const NO_LABELS: RefLabel[] = [];
 const NO_ROWS: Set<number> = new Set();
+const noHover = () => {};
+const noBranchHover = () => {};
 /** Below this Graph column width the header pin button shows only its icon (the trunk name needs room beside the GRAPH title). */
 const PIN_FULL_MIN = 130;
 /** The `column` menu's toggle (stable: the store's action). */
@@ -187,6 +190,10 @@ interface GraphRowProps {
   context?: boolean;
   /** This row's inline editor (rowEditor.ts), shown in its Branch/Tag cell over the chips. */
   editor?: RowEditor;
+  /** Small dim badges after the message (a reveal panel's `main`, `parent`). */
+  badges?: readonly string[];
+  /** The row element's id; a reveal panel's rows take their own, apart from the graph's. */
+  domId?: string;
 }
 
 /** An inline editor's narrowest: room for a branch name even in a narrow Branch/Tag column (it
@@ -199,7 +206,7 @@ const EDITOR_MIN_W = 200;
  * the view (as rows enter or leave the screen), not every row; a hover re-renders only the rows whose membership
  * chip appears or goes, and a branch focus (J22) only the rows whose `dimmed` changes.
  */
-const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor }: GraphRowProps) {
+const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor, badges, domId }: GraphRowProps) {
   const isWip = row.kind === 'wip';
   // A collapsed branch's ⋮ row: no commit behind it, so no menu, double-click or copy.
   const collapsed = row.kind === 'collapsed';
@@ -213,7 +220,7 @@ const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, 
   const line = labels.length > 0 ? connectorLine(start, rowH, labels[0].isHead ? LINE_W : 1, dpr) : null;
   return (
     <div
-      id={graphRowId(row.id)}
+      id={domId ?? graphRowId(row.id)}
       role="row"
       aria-rowindex={index + 1}
       aria-selected={selected}
@@ -259,7 +266,7 @@ const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, 
       )}
       <span role="gridcell" data-col="graph" style={{ width: cols.graph }} />
       {collapsed ? <CollapsedCells row={row} cols={cols} dim={dim} /> : <>
-      <MessageCell row={row} repoId={repoId} width={isWip ? cols.message + cols.author + cols.date : cols.message} messages={messages} dim={dim} />
+      <MessageCell row={row} repoId={repoId} width={isWip ? cols.message + cols.author + cols.date : cols.message} messages={messages} dim={dim} badges={badges} />
       {cols.author > 0 && !isWip && (
         <span role="gridcell" data-col="author" className={`col-author${authorAvatar ? ' col-author-avatar' : ''}${dim}`} style={{ width: cols.author }}>
           {authorAvatar ? <AuthorAvatar name={row.authorName} email={row.authorEmail} /> : row.authorName}
@@ -328,9 +335,13 @@ export interface GraphViewProps {
   rebasing?: string | null;
   /** An inline editor open on one row (rowEditor.ts): GraphView only places it. */
   rowEditor?: RowEditor | null;
+  /** The selected commit when it's one a branch preset hides (shown in a reveal panel), and how a
+   * reveal panel's row is selected. Keep `onSelectRevealed` stable. */
+  revealedId?: string | null;
+  onSelectRevealed?: (row: RowPayload) => void;
 }
 
-export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null, revealTip = null }: GraphViewProps) {
+export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null, revealTip = null, revealedId = null, onSelectRevealed }: GraphViewProps) {
   const commitLimit = useAppState((s) => s.settings.commitLimit);
   const ownRef = useRef<HTMLDivElement>(null);
   const scrollRef = gridRef ?? ownRef;
@@ -418,15 +429,17 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   // against the drawn nodes. The tooltip updates only when the node under the pointer changes.
   const nodeTip = useRef<string | null>(null);
   const onGridPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    // Only over the graph itself: a chip (or any other cell's content) drawn over a node has its
-    // own tooltip, and wins.
-    const cell = e.target instanceof Element ? e.target.closest('[data-col]') : null;
-    if (cell && cell.getAttribute('data-col') !== 'graph') { hideNodeTip(); ghostPop.hover(null); return; }
     const el = e.currentTarget;
     const box = el.getBoundingClientRect();
     const geo = { rows: graph.rows, scrollTop: el.scrollTop, width: cols.graph, metrics, clipped, scrollX, dpr };
     // Canvas coordinates: the canvas sits `labels` px into the scrolled content.
     const x = e.clientX - box.left + el.scrollLeft - cols.labels;
+    // A ⋮ or folded merge row's reveal panel (graph/reveal); over the panel, nothing of the graph's.
+    reveal.move(e, geo, x, e.clientY - box.top);
+    // Only over the graph itself: a chip (or any other cell's content) drawn over a node has its
+    // own tooltip, and wins.
+    const cell = e.target instanceof Element ? e.target.closest('[data-col], .reveal-panel') : null;
+    if (cell && cell.getAttribute('data-col') !== 'graph') { hideNodeTip(); ghostPop.hover(null); return; }
     // Ghost lines: a hidden branch's stubs list those branches in a popover.
     const gi = ghostAt(geo, x, e.clientY - box.top);
     if (gi === null) ghostPop.hover(null);
@@ -488,6 +501,12 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   // The tab's repo: its GitHub project is the backend's last place to look for an author's picture.
   const { repoId: tabRepo, tabId } = useRepoContext();
   const ghostPop = useGhostPopover(tabId);
+  const reveal = useRevealPanel(tabId, graph.rows, scrollRef, metrics.rowH);
+  const revealPayload = useRevealPayload(tabId, reveal.open);
+  // An open fold's panel: its merge row curves into the panel's branch lane.
+  const foldLane = reveal.open?.key.startsWith('fold:') && revealPayload ? revealPayload.entryLane : null;
+  const foldRow = reveal.open?.rowIndex ?? -1;
+  const foldOpen = useMemo(() => (foldLane === null ? undefined : { row: foldRow, lane: foldLane }), [foldRow, foldLane]);
   // Ask for the avatars of the rows on screen plus AVATAR_OVERSCAN, latest set wins: a fast
   // scroll drops the queued requests of rows it went past. Re-asked on each arrival too, so an
   // image evicted while on screen comes back. Clamped: elastic overscroll (WebKit) gives a
@@ -534,9 +553,9 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   // arms one timeout when it could become due.
   const reportOlder = (top: number) => {
     if (!tabId) return;
-    olderViewport(tabId, Math.floor(top / metrics.rowH), Math.ceil((top + viewportH) / metrics.rowH) - 1, selected);
+    olderViewport(tabId, Math.floor(top / metrics.rowH), Math.ceil((top + viewportH) / metrics.rowH) - 1, selected, reveal.open?.rowIndex ?? null);
   };
-  useEffect(() => { reportOlder(scrollRef.current?.scrollTop ?? 0); }, [selected, graph.rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { reportOlder(scrollRef.current?.scrollTop ?? 0); }, [selected, graph.rows.length, reveal.open?.rowIndex]); // eslint-disable-line react-hooks/exhaustive-deps
   const olderBtn = useRef<HTMLButtonElement>(null);
   const [loadingOlderRow, setLoadingOlderRow] = useState(false);
   const loadMore = () => {
@@ -659,6 +678,11 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
       ghostPop.openFor(graph.rows[selected], ghostAnchor(geo, selected, el.getBoundingClientRect(), el.scrollLeft));
       return;
     }
+    // Enter on a ⋮ or folded merge row: its reveal panel, pinned, with the keyboard inside.
+    if (reveal.keyDown(e, selected)) {
+      e.preventDefault();
+      return;
+    }
     const moves: Record<string, number> = { ArrowDown: selected + 1, ArrowUp: selected - 1, PageDown: selected + page, PageUp: selected - page, Home: 0, End: graph.rows.length - 1 };
     if (e.key === 'ArrowDown' && graph.truncated && selected === graph.rows.length - 1 && olderBtn.current) {
       e.preventDefault();
@@ -690,6 +714,38 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
     copyText(id).then(() => toast('Copied'), () => toast('Copy failed'));
   }, [toast]);
 
+  // The reveal panel's rows: the graph's own row component, its columns and callbacks.
+  const revealSelect = useRef(onSelectRevealed);
+  revealSelect.current = onSelectRevealed;
+  const selectRevealed = useCallback((row: RowPayload) => revealSelect.current?.(row), []);
+  const pinReveal = reveal.pin;
+  const panelMenu = useCallback((e: MenuEventLike, row: RowPayload) => { pinReveal(); rowMenu(e, row); }, [pinReveal, rowMenu]);
+  const panelRow = useCallback<RenderRevealRow>((row, index, start, isSelected, onPanelSelect, badges) => (
+    <GraphRow
+      key={row.id}
+      row={row}
+      repoId={repoId}
+      index={index}
+      start={start}
+      rowH={metrics.rowH}
+      dpr={dpr}
+      selected={isSelected}
+      cols={cols}
+      labels={NO_LABELS}
+      membership={null}
+      messages={messages}
+      onSelect={onPanelSelect}
+      onHover={noHover}
+      onCopySha={copySha}
+      dimmed={false}
+      onBranchHover={noBranchHover}
+      onContextMenu={onContextMenu && panelMenu}
+      context={row.id === contextRow}
+      badges={badges}
+      domId={revealRowId(row.id)}
+    />
+  ), [repoId, metrics.rowH, dpr, cols, messages, copySha, onContextMenu, panelMenu, contextRow]);
+
   return (
     <div className="graph-panel">
       {/* Outside the scroll container (so it stays put vertically), and translated by the
@@ -711,7 +767,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
         </div>
       </div>
       <div className="graph-body">
-        <div {...gridProps} ref={scrollRef} className="graph-scroll" role="grid" aria-label="Commit graph" aria-rowcount={graph.rows.length} tabIndex={0} onKeyDown={onKeyDown} onPointerMove={onGridPointerMove} onPointerLeave={hideNodeTip} onScroll={(e) => {
+        <div {...gridProps} ref={scrollRef} className="graph-scroll" role="grid" aria-label="Commit graph" aria-rowcount={graph.rows.length} tabIndex={0} onKeyDown={onKeyDown} onPointerMove={onGridPointerMove} onPointerLeave={() => { hideNodeTip(); reveal.leave(); }} onPointerDown={reveal.down} onScroll={(e) => {
           // The canvas's band first: redrawn here, imperatively, if the scroll left it (band.ts).
           canvas.current?.sync();
           hideNodeTip();
@@ -763,8 +819,11 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
                 (band.ts). Clipped to the content, so its band reaching past the last row doesn't
                 lengthen the scroll; the scroller clips it to the viewport, scrollbars excluded. */}
             <div className="graph-canvas-clip">
-              <GraphCanvas ref={canvas} scroller={scrollRef} rows={graph.rows} width={cols.graph} height={viewportH} left={cols.labels} metrics={metrics} labeledRows={canvasLabeledRows} avatar={avatarBitmap} avatarVersion={avatarVersion} clipped={clipped} scrollX={scrollX} id={canvasId} selected={selected} alsoSelected={alsoSelected} headRow={headRow} />
+              <GraphCanvas ref={canvas} scroller={scrollRef} rows={graph.rows} width={cols.graph} height={viewportH} left={cols.labels} metrics={metrics} labeledRows={canvasLabeledRows} avatar={avatarBitmap} avatarVersion={avatarVersion} clipped={clipped} scrollX={scrollX} id={canvasId} selected={selected} alsoSelected={alsoSelected} headRow={headRow} foldOpen={foldOpen} />
             </div>
+            {reveal.open && revealPayload && (
+              <RevealPanel tabId={tabId} open={reveal.open} payload={revealPayload} scrollRef={scrollRef} viewportW={viewportW} viewportH={viewportH} metrics={metrics} cols={cols} clipped={clipped} scrollX={scrollX} avatar={avatarBitmap} avatarVersion={avatarVersion} selectedId={revealedId} onSelect={selectRevealed} onMenu={onContextMenu && panelMenu} renderRow={panelRow} focusRequest={reveal.focusRequest} takeFocus={reveal.takeFocus} />
+            )}
           </div>
         </div>
         {ghostPop.element}

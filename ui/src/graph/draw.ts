@@ -5,7 +5,7 @@ import { STASH_ICON_BOX, STASH_ICON_STROKE, traceStashIcon } from '../icons/stas
 import { laneX, pathLength, segmentPath, tracePath, type Metrics, type PathOp } from './geometry';
 import { connectorLine, dashLength, dashOffset, ringDash, snapScroll } from './pixels';
 import { FOLD_DOT, foldStub, GHOST_ALPHA, ghostPaths, STUB_ALPHA, withAlpha } from './ghosts';
-import { decodeSegment, HALF_TOP, type Seg } from './segments';
+import { decodeSegment, HALF_BOTTOM, HALF_TOP, type Seg } from './segments';
 
 export interface DrawOptions {
   rows: RowPayload[];
@@ -45,6 +45,9 @@ export interface DrawOptions {
   /** The checked-out branch's row (HEAD's label): its label connector is a graph line, the
    * lines' width in the full lane colour, not the quiet 1 px at 25% (J21). */
   headRow?: number;
+  /** A fold's reveal panel is open under merge row `row`: instead of its stub, the merge draws its
+   * curve down into `lane`, the panel's branch lane, which runs on up out of the panel's top edge. */
+  foldOpen?: { row: number; lane: number };
 }
 
 /** Alpha of the per-row lane-color band (ruling R10). */
@@ -311,7 +314,13 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
       const top = i * m.rowH - o.scrollTop;
       const x = laneX(row.lane, m);
       const y = top + m.rowH / 2;
-      if (row.fold) {
+      if (row.fold && o.foldOpen?.row === i) {
+        const lane = o.foldOpen.lane;
+        ctx.strokeStyle = color(lane);
+        ctx.beginPath();
+        tracePath(ctx, segmentPath({ from: row.lane, to: lane, half: HALF_BOTTOM, color: lane, dashed: false, dotted: false }, top, m));
+        ctx.stroke();
+      } else if (row.fold) {
         const s = foldStub(x, y, m);
         fade(ctx, color((row.lane + 1) % 10), STUB_ALPHA, s.x0, s.y0, s.x1, s.y1);
         ctx.beginPath();

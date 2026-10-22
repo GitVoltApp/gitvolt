@@ -316,6 +316,21 @@ describe('drawGraph', () => {
     expect(calls.slice(g)).toContain(`lineTo(${s.x1},${s.y1})`);
   });
 
+  it('the open fold draws its merge curve into the panel\'s lane', () => {
+    const { ctx, calls } = recorder();
+    const m = { rowH: 26, laneW: 16, padX: 8 };
+    const merge = { ...row(0, 'merge', []), fold: { key: 'fold:x', branch: 'feature/trade-ui', count: 6 } };
+    drawGraph(ctx, { rows: [merge], first: 0, last: 1, scrollTop: 0, width: 100, height: 26, metrics: m, colors: ['#102030', '#0669f7', '#22aa44'], nodeFill: '#000', labeledRows: new Set(), dpr: 1, foldOpen: { row: 0, lane: 2 } });
+    // From the node across to lane 2 and down out of the row's bottom edge, in lane 2's colour,
+    // where the panel's branch lane runs on; no stub.
+    const x2 = laneX(2, m);
+    const end = calls.indexOf(`lineTo(${x2},26)`);
+    expect(end).toBeGreaterThan(-1);
+    expect(calls.slice(0, end)).toContain('moveTo(16,13)');
+    expect(calls.slice(0, end).findLast((c) => c.startsWith('strokeStyle='))).toBe('strokeStyle=#22aa44');
+    expect(calls.filter((c) => c.startsWith('createLinearGradient('))).toEqual([]);
+  });
+
   it('ghost lines: one fading curve per hidden branch, before the nodes, none on a packed row', () => {
     const { ctx, calls } = recorder();
     const m = { rowH: 26, laneW: 16, padX: 8 };

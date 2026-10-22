@@ -18,6 +18,7 @@ import { Avatar } from '../avatars/Avatar';
 import { LARGEST_AVATAR_PX } from '../avatars/avatarStore';
 import { HoverTooltip, useHoverTooltip } from '../ui/HoverTooltip';
 import { useRepoContext } from '../app/repoContext';
+import { goToCommit } from '../app/graphNav';
 import { HeadMessageEditor } from './HeadMessageEditor';
 import { CommitBox } from '../commit/CommitBox';
 import { CoAuthors, personLabel } from './CoAuthors';
@@ -66,6 +67,7 @@ function HashButton({ hash, testId, tip, onClick }: { hash: string; testId: stri
 function CommitHeader({ d }: { d: CommitDetailsPayload }) {
   const toast = useToast((s) => s.show);
   const selectById = useRepoView((s) => s.selectCommitById);
+  const { tabId } = useRepoContext();
   const committerDiffers = d.committer.name !== d.author.name || d.committer.email !== d.author.email;
   const commitDate = <DateText at={d.committer.time} testId="commit-date" />;
   return (
@@ -79,7 +81,7 @@ function CommitHeader({ d }: { d: CommitDetailsPayload }) {
         <span className="parents">
           {d.parents.length > 0 && <><span className="id-label">{d.parents.length > 1 ? 'parents:' : 'parent:'}</span>{' '}</>}
           {d.parents.map((p) => (
-            <HashButton key={p} hash={p} testId="parent-sha" tip="Go to parent commit" onClick={() => { if (!selectById(p)) toast('Not in the loaded history'); }} />
+            <HashButton key={p} hash={p} testId="parent-sha" tip="Go to parent commit" onClick={() => { if (!selectById(p)) goToCommit(tabId, p, {}, () => toast('Not in the loaded history')); }} />
           ))}
         </span>
       </div>
