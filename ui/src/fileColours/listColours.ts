@@ -6,14 +6,11 @@ import { useScopeTints } from './useTints';
 export interface ListColours {
   fileTint(path: string): string | null;
   folderTint(folder: string): string | null;
-  /** Only the outermost covered folder of a start-collapsed scope starts closed. */
-  startsCollapsed(folder: string): boolean;
+  /** Only the outermost covered folder row of a start-collapsed scope starts closed. `parentRow`:
+   * the nearest folder above it that is a row of its own (a merged chain `admin/dist/assets` is one
+   * row, so `admin/dist` isn't), null at the top. */
+  startsCollapsed(folder: string, parentRow: string | null): boolean;
 }
-
-const parentOf = (folder: string): string | null => {
-  const i = folder.lastIndexOf('/');
-  return i < 0 ? null : folder.slice(0, i);
-};
 
 /** The list's colours from scopes and their fills (one per scope, null when unusable). */
 export function listColoursOf(scopes: readonly FileScope[], tints: readonly (string | null)[]): ListColours {
@@ -22,11 +19,10 @@ export function listColoursOf(scopes: readonly FileScope[], tints: readonly (str
   return {
     fileTint: (path) => fill(m.scopeOf(path)),
     folderTint: (folder) => fill(m.folderScopeOf(folder)),
-    startsCollapsed: (folder) => {
+    startsCollapsed: (folder, parentRow) => {
       const i = m.folderScopeOf(folder);
       if (i < 0 || !scopes[i].startCollapsed) return false;
-      const parent = parentOf(folder);
-      return parent === null || m.folderScopeOf(parent) !== i;
+      return parentRow === null || m.folderScopeOf(parentRow) !== i;
     },
   };
 }

@@ -25,8 +25,16 @@ describe('listColoursOf', () => {
 
   it('only the outermost covered folder of a start-collapsed scope starts collapsed', () => {
     const c = listColoursOf([scope('gen', ['game/src/generated/**'], true), scope('docs', ['docs/**'])], ['#111111', '#222222']);
-    expect(c.startsCollapsed('game/src/generated')).toBe(true);
-    expect(c.startsCollapsed('game/src/generated/proto')).toBe(false);
-    expect(c.startsCollapsed('docs')).toBe(false);
+    expect(c.startsCollapsed('game/src/generated', 'game')).toBe(true);
+    expect(c.startsCollapsed('game/src/generated/proto', 'game/src/generated')).toBe(false);
+    expect(c.startsCollapsed('docs', null)).toBe(false);
+  });
+
+  it('a merged folder chain is outermost when the row above it is outside the scope', () => {
+    const c = listColoursOf([scope('gen', ['admin/dist'], true)], ['#111111']);
+    // `admin/dist/assets` is one row when dist's only child is assets: admin/dist is no row of its own.
+    expect(c.startsCollapsed('admin/dist/assets', null)).toBe(true);
+    expect(c.startsCollapsed('admin/dist/assets', 'admin')).toBe(true);
+    expect(c.startsCollapsed('admin/dist/assets/img', 'admin/dist/assets')).toBe(false);
   });
 });
