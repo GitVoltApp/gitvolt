@@ -40,3 +40,8 @@
 .mr-state[data-state="merged"], .mr-state[data-state="merging"] { background: color-mix(in srgb, var(--purple) 15%, transparent); color: var(--purple); }
 .mr-state[data-state="closed"] { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); }
 .mr-state .mr-state-icon { color: inherit; }
+
+/* A refresh button while it runs: the icon turns in place (a transform alone, and only then). */
+.is-refreshing svg { animation: forge-refresh-spin 1s linear infinite; }
+@keyframes forge-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .is-refreshing svg { animation: none; opacity: 0.5; } }

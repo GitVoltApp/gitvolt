@@ -6,6 +6,7 @@ const api = vi.hoisted(() => ({
   forgeAccounts: vi.fn(),
   forgeBranchMrs: vi.fn(),
   forgeMrList: vi.fn(),
+  forgeRefresh: vi.fn(),
   forgeMrDetail: vi.fn(),
   forgeMrDiscussions: vi.fn(),
   forgeCachedMrs: vi.fn(),
@@ -16,7 +17,7 @@ vi.mock('../api/client', () => ({ api, errorMessage: (e: unknown) => (e && typeo
 const flyout = vi.hoisted(() => ({ openFlyout: vi.fn(), shownFlyout: vi.fn((): { kind: string; props: unknown } | null => null) }));
 vi.mock('../ui/flyout/flyout', () => flyout);
 
-const { ACTIVATE_GAP_MS, fastPollWanted, loadMrDetail, openMrView, POLL_COST, pollForge, ratePacing, refreshMr } = await import('./poll');
+const { ACTIVATE_GAP_MS, fastPollWanted, loadMrDetail, openMrView, POLL_COST, pollForge, ratePacing, refreshListNow, refreshMr, refreshMrNow } = await import('./poll');
 const { staleText } = await import('./ForgeStale');
 const { dropForge, EMPTY_FORGE, forgeScratch, forgeOf, noteForgeWritten, patchForge, useForge } = await import('./mrStore');
 const { backoffMs } = await import('./poller');
@@ -44,6 +45,7 @@ beforeEach(() => {
   api.forgeMrDetail.mockResolvedValue(fresh(detailOf(mrOf(12))));
   api.forgeMrDiscussions.mockResolvedValue(fresh([]));
   api.forgeCachedMrs.mockResolvedValue(null);
+  api.forgeRefresh.mockResolvedValue(null);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -408,3 +410,66 @@ describe('fastPollWanted (spec #4 §3.4: a visible running pipeline)', () => {
   });
 });
 // --- end 4B final fix ---
+
+describe('the refresh buttons', () => {
+  it("an MR/PR's refresh makes the core forget its kept answers first, then reads the detail and discussion", async () => {
+    const order: string[] = [];
+    api.forgeRefresh.mockImplementation(async () => { order.push('refresh'); return null; });
+    api.forgeMrDetail.mockImplementation(async () => { order.push('detail'); return fresh(detailOf(mrOf(12))); });
+    const p = refreshMrNow('t', 12);
+    expect(forgeOf('t').refreshing).toEqual([12]);
+    await p;
+    expect(order).toEqual(['refresh', 'detail']);
+    expect(api.forgeMrDiscussions).toHaveBeenCalledWith(4, 12);
+    expect(api.forgeMrList).not.toHaveBeenCalled();
+    expect(forgeOf('t').refreshing).toEqual([]);
+    expect(forgeOf('t').details[12]?.value.mr.number).toBe(12);
+  });
+
+  it('a second refresh of the same MR/PR meanwhile joins the first: one forget, one read', async () => {
+    let release = () => {};
+    api.forgeRefresh.mockImplementation(() => new Promise((r) => { release = () => r(null); }));
+    const a = refreshMrNow('t', 12);
+    const b = refreshMrNow('t', 12);
+    expect(b).toBe(a);
+    release();
+    await a;
+    expect(api.forgeRefresh).toHaveBeenCalledTimes(1);
+    expect(api.forgeMrDetail).toHaveBeenCalledTimes(1);
+    api.forgeRefresh.mockResolvedValue(null);
+    await refreshMrNow('t', 12);
+    expect(api.forgeRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("the list's refresh is a full poll over forgotten answers, and joins one under way", async () => {
+    const a = refreshListNow('t');
+    expect(refreshListNow('t')).toBe(a);
+    expect(forgeOf('t').refreshing).toEqual(['list']);
+    await a;
+    expect(api.forgeRefresh).toHaveBeenCalledTimes(1);
+    expect(api.forgeBranchMrs).toHaveBeenCalledTimes(1);
+    expect(api.forgeMrList).toHaveBeenCalledTimes(1);
+    expect(forgeOf('t').list?.mrs.map((m) => m.number)).toEqual([12, 5]);
+    expect(forgeOf('t').refreshing).toEqual([]);
+  });
+
+  it('a failure shows in the existing places and stops the spinner', async () => {
+    api.forgeMrDetail.mockRejectedValue({ message: 'Network is down' });
+    await refreshMrNow('t', 12);
+    expect(forgeOf('t').detailErrors[12]).toBe('Network is down');
+    expect(forgeOf('t').refreshing).toEqual([]);
+    api.forgeRefresh.mockRejectedValue({ message: 'No forge here' });
+    await refreshListNow('t');
+    expect(staleText(forgeOf('t'))).toContain("Couldn't refresh: No forge here");
+    expect(forgeOf('t').refreshing).toEqual([]);
+  });
+
+  it("asks nothing while the account's rate limit is spent", async () => {
+    patchForge('t', { limitedUntil: Date.now() + 60_000 });
+    await refreshMrNow('t', 12);
+    await refreshListNow('t');
+    expect(api.forgeRefresh).not.toHaveBeenCalled();
+    expect(api.forgeMrDetail).not.toHaveBeenCalled();
+    expect(api.forgeMrList).not.toHaveBeenCalled();
+  });
+});

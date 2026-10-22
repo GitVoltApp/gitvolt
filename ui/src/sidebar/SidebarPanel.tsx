@@ -34,6 +34,7 @@ const NOTABLE_PIPELINE = new Set(['failed', 'running', 'pending']);
 import { openMrView } from '../forge/poll';
 import { MrFilterButton } from '../forge/MrFilterButton';
 import { ForgeStaleIcon } from '../forge/ForgeStale';
+import { RefreshButton } from '../forge/RefreshButton';
 import { RemoteLookupWarning, RemoteMainChip } from './RemoteForgeMarks';
 import { useForge, useTabForgeField } from '../forge/mrStore';
 // --- end 4B T11 ---
@@ -198,6 +199,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
         {/* --- end 2C T9 --- */}
         {/* --- 4B T11: the MR/PR section's warning and filter --- */}
         {section.kind === 'mrs' && <ForgeStaleIcon tabId={tabId} />}
+        {section.kind === 'mrs' && <RefreshButton tabId={tabId} label={`Refresh ${section.label.toLowerCase()}`} className="icon-button sb-head-action" />}
         {section.kind === 'mrs' && <MrFilterButton tabId={tabId} path={path} />}
         {/* --- end 4B T11 --- */}
         {section.nests && !collapsed && (

@@ -128,6 +128,9 @@ impl ForgeProvider for FakeProvider {
     fn rate_limit(&self) -> RateLimitState {
         RateLimitState { limited_until: *self.limited_until.lock().unwrap(), ..Default::default() }
     }
+    fn expire_fresh(&self) {
+        self.call("expire_fresh");
+    }
     fn check_token(&self) -> ForgeFuture<'_, TokenCheck> {
         self.call("check_token");
         Box::pin(async move {

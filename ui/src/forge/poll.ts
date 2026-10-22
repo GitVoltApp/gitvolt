@@ -300,6 +300,53 @@ export async function refreshReview(tabId: string): Promise<void> {
   settleReview(tabId);
 }
 
+/** Refreshes under way, `<tab>:list` or `<tab>:<number>`: another click, key or caller joins one. */
+const refreshes = new Map<string, Promise<void>>();
+
+/** One refresh of `scope` for `tabId`, shown in `refreshing` (the button spins) while it runs. A
+ * second call meanwhile joins it. Nothing is asked while the account's rate limit is spent (the
+ * stale note says until when): the budget isn't ours to spend on a click. */
+function refreshNow(tabId: string, scope: 'list' | number, work: () => Promise<void>): Promise<void> {
+  const key = `${tabId}:${scope}`;
+  const busy = refreshes.get(key);
+  if (busy) return busy;
+  const repo = repoOf(tabId);
+  const limited = forgeOf(tabId).limitedUntil;
+  if (repo === undefined || (limited !== null && limited > Date.now())) return Promise.resolve();
+  patchForge(tabId, (f) => ({ refreshing: [...f.refreshing, scope] }));
+  const p = (async () => {
+    try {
+      // The provider forgets what it kept a moment ago (a 304 still costs little), so the reads below ask the forge.
+      await api.forgeRefresh(repo);
+      await work();
+    } catch (e) {
+      if (scope === 'list') patchForge(tabId, { error: errorMessage(e) });
+      else failed(tabId, scope, e);
+    } finally {
+      refreshes.delete(key);
+      if (repoOf(tabId) !== undefined) patchForge(tabId, (f) => ({ refreshing: f.refreshing.filter((s) => s !== scope) }));
+    }
+  })();
+  refreshes.set(key, p);
+  return p;
+}
+
+/** The refresh button of the MR/PR view: its detail (pipeline, approvals, merge status), discussion
+ * and, in a review, drafts and diff refs, asked of the forge now. A failure is the view's note
+ * (`detailErrors`). */
+export function refreshMrNow(tabId: string, number: number): Promise<void> {
+  return refreshNow(tabId, number, async () => {
+    await refreshMr(tabId, number);
+    if (forgeOf(tabId).review?.number === number) await refreshReview(tabId);
+  });
+}
+
+/** The refresh button of the sidebar's MR/PR section: a full poll now (the badges, the list, the
+ * open MR/PR, a review) over answers the forge is asked for again. It follows a poll under way. */
+export function refreshListNow(tabId: string): Promise<void> {
+  return refreshNow(tabId, 'list', async () => { await pollForge(tabId, 'write'); });
+}
+
 /** A hover card's detail: unless one younger than `maxAgeMs` is loaded; one request at a time. */
 export function loadMrDetail(tabId: string, number: number, maxAgeMs = DETAIL_MAX_AGE_MS): Promise<void> {
   const key = `${tabId}:${number}`;

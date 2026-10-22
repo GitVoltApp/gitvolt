@@ -17,6 +17,18 @@ describe('the MR/PR view keys: Ctrl+Shift+A approve, Ctrl+Shift+M merge, Ctrl+Sh
     off();
   });
 
+  it('Refresh the MR/PR is in the palette with no key, and runs what the open view lends', () => {
+    activeTabWith();
+    expect(getAction('mr.refresh')!.shortcuts).toBeUndefined();
+    expect(getAction('mr.refresh')!.when!()).toBe(false);
+    const refresh = vi.fn();
+    const off = lend('mr.refresh', 't', refresh);
+    expect(getAction('mr.refresh')!.when!()).toBe(true);
+    runAction('mr.refresh');
+    expect(refresh).toHaveBeenCalledOnce();
+    off();
+  });
+
   it('not while typing a comment', () => {
     document.body.innerHTML = '<textarea id="t"></textarea>';
     expect(getAction('mr.merge')!.yieldsTo!(document.getElementById('t'))).toBe(true);

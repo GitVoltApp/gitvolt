@@ -959,6 +959,9 @@ pub enum Request {
         #[ts(type = "number")]
         number: u64,
     },
+    /// A refresh: the target's provider forgets what it kept a moment ago, so the reads that
+    /// follow ask the forge (`ForgeHub::expire_fresh`). Sends nothing itself.
+    ForgeRefresh { repo: u32 },
     /// Its discussion, oldest first: `Fresh<ForgeDiscussion[]>`.
     ForgeMrDiscussions {
         repo: u32,
@@ -1209,7 +1212,7 @@ impl Request {
             Request::ForgeRepoProjects { .. } | Request::ForgeProjectSettings { .. } | Request::ForgeForks { .. } => false,
             // --- end 4A T6 ---
             // --- 4B T1: forge calls and a read, never a repository write ---
-            Request::ForgeMrList { .. } | Request::ForgeBranchMrs { .. } | Request::ForgeCachedMrs { .. } | Request::ForgeMrDetail { .. } | Request::ForgeMrDiscussions { .. }
+            Request::ForgeMrList { .. } | Request::ForgeBranchMrs { .. } | Request::ForgeCachedMrs { .. } | Request::ForgeMrDetail { .. } | Request::ForgeMrDiscussions { .. } | Request::ForgeRefresh { .. }
             | Request::ForgeProjectByPath { .. } | Request::ForgeReply { .. } | Request::ForgeApprove { .. } | Request::ForgeRequestChanges { .. }
             | Request::ForgeMerge { .. } | Request::ForgeEditMr { .. } | Request::ForgeSetDraft { .. } | Request::MergeBase { .. } => false,
             // --- end 4B T1 ---
@@ -2774,6 +2777,11 @@ impl Api {
             Request::ForgeMrDetail { repo, number } => {
                 let list = self.forge_remotes_of(&*self.handle(repo)?);
                 to_json(self.forge_hub()?.mr_detail(&self.store, &list, number).await?)
+            }
+            Request::ForgeRefresh { repo } => {
+                let list = self.forge_remotes_of(&*self.handle(repo)?);
+                self.forge_hub()?.expire_fresh(&self.store, &list).await?;
+                to_json(())
             }
             Request::ForgeMrDiscussions { repo, number } => {
                 let list = self.forge_remotes_of(&*self.handle(repo)?);
@@ -5333,7 +5341,7 @@ mod tests {
     /// Samples that fail by design here: the harness-less `Api` has no log folder, URL opener,
     /// openers or askpass, and the profile samples name no existing profile. Each refusal comes
     /// before any repository access.
-    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "authUseSsh", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart", "updateRemoveLegacyBundle"];
+    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "authUseSsh", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeRefresh", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart", "updateRemoveLegacyBundle"];
 
     #[tokio::test(flavor = "multi_thread")]
     async fn no_read_request_writes_to_the_repository() {

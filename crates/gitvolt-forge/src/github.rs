@@ -765,6 +765,10 @@ impl ForgeProvider for GitHubProvider {
         self.http.rate_limit()
     }
 
+    fn expire_fresh(&self) {
+        self.http.expire_fresh();
+    }
+
     fn current_user(&self) -> ForgeFuture<'_, ForgeUser> {
         Box::pin(async move {
             let r = self.http.get("/user").await?;

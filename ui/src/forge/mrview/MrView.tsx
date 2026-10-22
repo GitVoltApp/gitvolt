@@ -22,7 +22,8 @@ import { EmojiText } from '../emoji';
 import { mrName, mrRef } from '../labels';
 import { MrStateIcon } from '../MrIcons';
 import { knownMr, patchForge, useTabForgeField, type MrViewArgs } from '../mrStore';
-import { refreshMr } from '../poll';
+import { refreshMr, refreshMrNow } from '../poll';
+import { RefreshButton } from '../RefreshButton';
 import { MrHeader, openInBrowser } from './MrHeader';
 import { CheckoutButton } from './CheckoutButton';
 import { MergeBox } from './MergeBox';
@@ -121,6 +122,7 @@ export function MrView({ tabId, props, close }: FlyoutProps<MrViewArgs>) {
   const label = `${mrName(kind)} ${ref}`;
   // Ctrl+Shift+O (`keyActions.ts`), as the header's button.
   useLend('mr.openInBrowser', tabId, mr ? () => openInBrowser(mr.webUrl) : null);
+  useLend('mr.refresh', tabId, () => { void refreshMrNow(tabId, number); });
   const error = detailErrors[number];
   // --- 5A final review: the description's text and context keep their identity across renders ---
   const description = useMemo(() => (detail ? signedAttachments(detail.description, detail.bodyHtml ?? null) : ''), [detail]);
@@ -143,11 +145,12 @@ export function MrView({ tabId, props, close }: FlyoutProps<MrViewArgs>) {
       onClose={close}
       wrapTitle
       title={<>{mr && <MrStateIcon state={mr.state} size={14} />}<span>{ref} <EmojiText text={mr?.title ?? ''} /></span></>}
-      headerActions={mr && (
+      headerActions={mr && (<>
+        <RefreshButton tabId={tabId} number={number} label={`Refresh ${ref}`} className="icon-button" />
         <HoverTooltip content="Open in browser">
           <button type="button" className="icon-button" aria-label="Open in browser" onClick={() => openInBrowser(mr.webUrl)}><ExternalLink size={14} aria-hidden /></button>
         </HoverTooltip>
-      )}
+      </>)}
     >
       <span ref={probe} hidden />
       <ForgeStaleNote tabId={tabId} />

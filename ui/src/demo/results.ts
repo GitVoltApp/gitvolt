@@ -213,6 +213,7 @@ export interface DemoResults {
   forgeMrList: MrList;
   forgeBranchMrs: BranchMrs;
   forgeCachedMrs: CachedMrs | null;
+  forgeRefresh: null;
   forgeMrDetail: Fresh<ForgeMrDetail>;
   forgeMrDiscussions: Fresh<ForgeDiscussion[]>;
   forgeProjectByPath: ForgeProject;

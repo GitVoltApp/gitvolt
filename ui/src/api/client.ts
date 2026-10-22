@@ -548,6 +548,7 @@ export const api = {
   forgeBranchMrs: (repo: number, refs: string[]) => call<BranchMrs>({ method: 'forgeBranchMrs', params: { repo, refs } }),
   /** The list and badges the last session left, without a request (null: none kept). */
   forgeCachedMrs: (repo: number, refs: string[], filter: MrFilter) => call<CachedMrs | null>({ method: 'forgeCachedMrs', params: { repo, refs, filter } }),
+  forgeRefresh: (repo: number) => call<null>({ method: 'forgeRefresh', params: { repo } }),
   forgeMrDetail: (repo: number, number: number) => call<Fresh<ForgeMrDetail>>({ method: 'forgeMrDetail', params: { repo, number } }),
   forgeMrDiscussions: (repo: number, number: number) => call<Fresh<ForgeDiscussion[]>>({ method: 'forgeMrDiscussions', params: { repo, number } }),
   forgeProjectByPath: (repo: number, path: string) => call<ForgeProject>({ method: 'forgeProjectByPath', params: { repo, path } }),

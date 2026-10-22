@@ -155,6 +155,7 @@ export const COVERAGE = {
   forgeMrList: 'real',
   forgeBranchMrs: 'real',
   forgeCachedMrs: 'real',
+  forgeRefresh: 'real',
   forgeMrDetail: 'real',
   forgeMrDiscussions: 'real',
   forgeProjectByPath: 'real',
