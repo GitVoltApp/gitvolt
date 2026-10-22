@@ -33,6 +33,7 @@ const EXEMPT: Record<string, string> = {
   'ui/sortable/useSortable.ts': 'drag cancel (Esc), Alt+arrows reorder the focused item',
   'ui/colour/ColourPicker.tsx': 'dialog keys (Enter keeps / Esc cancels)',
   'graph/LoadOlderRow.tsx': 'row focus arrows / Enter, as a button',
+  'fileColours/settings/AddStrip.tsx': 'Esc cancels the strip',
   'irebase/rowDrag.ts': 'drag cancel (Esc)',
   'irebase/chipDrag.ts': 'drag cancel (Esc)',
   'diff/monaco/reviewGutter.ts': 'drag cancel (Esc)',
