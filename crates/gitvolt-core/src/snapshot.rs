@@ -797,7 +797,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "until lane R's reveal layout lands (gitvolt_graph::reveal is a stub)"]
     async fn reveal_answers_through_the_api() {
         use crate::api::Request;
         let (_r, api, repo) = presets_api().await;
