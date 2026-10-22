@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "graphReveal",
+    "params": {
+      "below": false,
+      "key": "branch:feature/login",
+      "limit": null,
+      "repo": "$repo",
+      "view": {
+        "expanded": [],
+        "foldMerged": false,
+        "ghostLines": true,
+        "otherwise": "collapse",
+        "picks": {
+          "hidden": [],
+          "shown": []
+        },
+        "placement": "keepDateOrder",
+        "rules": [
+          {
+            "action": "show",
+            "matcher": {
+              "kind": "trunk"
+            }
+          },
+          {
+            "action": "show",
+            "matcher": {
+              "kind": "checkedOut"
+            }
+          }
+        ],
+        "trunkPatterns": []
+      }
+    }
+  },
+  "response": null
+}

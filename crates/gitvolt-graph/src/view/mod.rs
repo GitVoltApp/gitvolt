@@ -1,6 +1,8 @@
 //! The view transform: which commits a preset shows, collapses, folds and hides, before the
 //! lane layout; the settings page's live summary; and where a hidden commit went.
 
+#[cfg(test)]
+mod perf_tests;
 mod plan;
 mod reveal;
 mod rows;

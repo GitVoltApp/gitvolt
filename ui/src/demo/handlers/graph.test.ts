@@ -66,4 +66,18 @@ describe.skipIf(!existsSync(WASM_GZ))('the graph handler (needs `just demo-wasm`
     expect(login.lane).toBe(panel.entryLane);
     expect(panel.tags.every((tag) => panel.rows[tag.row].lane === merge.lane)).toBe(true);
   });
+
+  test('find searches hidden commits too under a view', async () => {
+    const { loadGraphWasm } = await import('../engine/graph');
+    const graph = await loadGraphWasm(gunzipSync(readFileSync(WASM_GZ)));
+    const runtime = createRuntime({ manifest: goldenManifest(), data: goldenData(), graph });
+    const t = createDemoTransport(Promise.resolve(runtime), HANDLERS);
+    const { id } = (await t.call({ method: 'openRepo', params: { path: '/demo/basic' } })) as RepoSummary;
+    const plain = (await t.call({ method: 'graph', params: { repo: id, limit: null } })) as GraphPayload;
+    const loginForm = plain.rows.find((r) => r.summary === 'Login form')!.id;
+    const fold: ViewSpec = { rules: [], otherwise: 'show', picks: { shown: [], hidden: [] }, foldMerged: true, ghostLines: false, trunkPatterns: [], expanded: [], placement: 'keepDateOrder' };
+    const folded = (await t.call({ method: 'graph', params: { repo: id, limit: null, view: fold } })) as GraphPayload;
+    expect(folded.rows.some((r) => r.id === loginForm)).toBe(false);
+    expect(await t.call({ method: 'findText', params: { repo: id, query: 'login form' } })).toEqual([loginForm]);
+  });
 });

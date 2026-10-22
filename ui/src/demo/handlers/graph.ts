@@ -3,7 +3,7 @@ import type { PinSetting } from '../../api/gen/PinSetting';
 import type { ViewSpec } from '../../api/gen/ViewSpec';
 import type { DemoContext } from '../context';
 import { DEMO_IDENTITY } from '../engine/write/objects';
-import type { GraphOptions } from '../engine/repo';
+import { DEFAULT_COMMIT_LIMIT, type GraphOptions } from '../engine/repo';
 import type { HandlerTable } from '../transport';
 import { buildSidebar } from '../engine/sidebar';
 import { cachedForks, forgeOf, forgeRemotes } from '../forge/hub';
@@ -22,9 +22,11 @@ async function graphOptions(ctx: DemoContext, repo: number, o: { limit: number |
 export const graphHandlers = {
   // `rescan` needs nothing: the demo reads each worktree's status every time.
   graph: async ({ repo, limit, pin, active, view }, ctx) => {
-    const g = await ctx.repos.get(repo).graph(await graphOptions(ctx, repo, { limit, pin, active, view }));
-    // Find searches the commits this graph shows, as the core's FindSnapshot (plan 1b's find.ts).
-    setFindWindow(ctx, repo, g.rows.filter((r) => r.kind !== 'wip' && r.kind !== 'collapsed').map((r) => r.id));
+    const demo = ctx.repos.get(repo);
+    const g = await demo.graph(await graphOptions(ctx, repo, { limit, pin, active, view }));
+    // Find searches the commits this graph walked, as the core's FindSnapshot (plan 1b's find.ts):
+    // under a view, the ones it hides, collapses or folds too.
+    setFindWindow(ctx, repo, view ? await demo.walkOrder(limit ?? DEFAULT_COMMIT_LIMIT) : g.rows.filter((r) => r.kind !== 'wip').map((r) => r.id));
     return g;
   },
   // --- branch presets ---

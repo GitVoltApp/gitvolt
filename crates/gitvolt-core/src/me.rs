@@ -107,5 +107,20 @@ mod tests {
         r.git(&["config", "user.email", "someone.else@example.com"]);
         assert_eq!(me_of(&api, &h, Author::Me).await, ["someone.else@example.com"]);
         assert!(me_of(&api, &h, Author::Person { who: "x".into() }).await.is_empty(), "no git process without a `me` rule");
+
+        // End to end: a Mine view on the presets fixture (`user.email = you@example.com`).
+        use crate::api::Request;
+        use gitvolt_graph::{BranchState, Matcher, PresetAction, Rule, ViewPayload, ViewSpec};
+        let r = TestRepo::new();
+        crate::testing::fixtures::presets(&r);
+        let repo = api.open_repo(&r.path().display().to_string()).await.unwrap().id;
+        let show = |matcher| Rule { action: PresetAction::Show, matcher };
+        let view = ViewSpec { rules: vec![show(Matcher::Trunk), show(Matcher::CheckedOut), show(Matcher::CommitsBy { author: Author::Me })], otherwise: PresetAction::Hide, ..Default::default() };
+        let json = api.dispatch(Request::Graph { repo, limit: None, pin: None, rescan: None, active: None, view: Some(view) }).await.unwrap();
+        let view: ViewPayload = serde_json::from_value(json["view"].clone()).unwrap();
+        let state = |name: &str| view.branches.iter().find(|b| b.name == name).unwrap_or_else(|| panic!("no {name} in {:?}", view.branches)).state;
+        assert_eq!(state("mine/dock-panel"), BranchState::Shown);
+        assert_eq!(state("mine/fuel-gauge"), BranchState::Shown);
+        assert_eq!(state("feature/payments"), BranchState::Hidden);
     }
 }

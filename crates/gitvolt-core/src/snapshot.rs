@@ -496,6 +496,7 @@ mod tests {
     use crate::payload::{ForkDetection, ForkPayload, RefLabel, RowPayload};
     use crate::remotes::HostKind;
     use crate::testing::{fixtures, isolated_git_env, TestRepo};
+    use gitvolt_graph::{Author, BranchState, Matcher, PresetAction, Rule};
     use std::sync::Arc;
 
     fn cli() -> GitCli {
@@ -687,6 +688,135 @@ mod tests {
         assert_eq!(r.git(&["config", "user.email"]), "you@example.com");
         let summaries: Vec<&str> = g.rows.iter().map(|x| x.summary.as_str()).collect();
         assert!(summaries.contains(&"Merge branch 'feature/trade-ui'") && summaries.contains(&"Changelog for 1.2"));
+    }
+
+    // --- branch presets on the `presets` fixture: views shaped like the built-ins ---
+
+    fn rule(action: PresetAction, matcher: Matcher) -> Rule {
+        Rule { action, matcher }
+    }
+
+    /// Mine: the trunk, checked-out branches and my branches shown, everything else hidden.
+    fn mine_view() -> ViewSpec {
+        let rules = vec![rule(PresetAction::Show, Matcher::Trunk), rule(PresetAction::Show, Matcher::CheckedOut), rule(PresetAction::Show, Matcher::CommitsBy { author: Author::Me })];
+        ViewSpec { rules, otherwise: PresetAction::Hide, ghost_lines: true, me: vec!["you@example.com".into()], ..Default::default() }
+    }
+
+    /// All, collapsed: the trunk and checked-out branches shown, everything else collapsed.
+    fn all_collapsed_view() -> ViewSpec {
+        ViewSpec { rules: vec![rule(PresetAction::Show, Matcher::Trunk), rule(PresetAction::Show, Matcher::CheckedOut)], otherwise: PresetAction::Collapse, ghost_lines: true, ..Default::default() }
+    }
+
+    /// Everything shown, merged branches folded into their merges.
+    fn fold_view() -> ViewSpec {
+        ViewSpec { otherwise: PresetAction::Show, fold_merged: true, ..Default::default() }
+    }
+
+    async fn presets_graph(view: ViewSpec) -> (TestRepo, GraphPayload) {
+        let r = TestRepo::new();
+        fixtures::presets(&r);
+        let g = build(&r, BuildOptions { view: Some(view), ..Default::default() }).await;
+        (r, g)
+    }
+
+    fn state_of(g: &GraphPayload, name: &str) -> BranchState {
+        let view = g.view.as_ref().expect("a view payload");
+        view.branches.iter().find(|b| b.name == name).unwrap_or_else(|| panic!("no branch {name} in {:?}", view.branches)).state
+    }
+
+    fn row<'a>(g: &'a GraphPayload, summary: &str) -> &'a RowPayload {
+        g.rows.iter().find(|r| r.summary == summary).unwrap_or_else(|| panic!("no row {summary:?}\n{}", g.ascii()))
+    }
+
+    #[tokio::test]
+    async fn mine_shows_trunk_checked_out_and_my_branches() {
+        let (_r, g) = presets_graph(mine_view()).await;
+        for name in ["feature/payments", "spike/warp-gates", "release/1.2", "dependabot/npm/lodash-4.17.21"] {
+            assert_eq!(state_of(&g, name), BranchState::Hidden, "{name}\n{}", g.ascii());
+        }
+        for name in ["main", "mine/dock-panel", "mine/fuel-gauge"] {
+            assert_eq!(state_of(&g, name), BranchState::Shown, "{name}");
+        }
+        assert!(!g.rows.iter().any(|r| r.summary.starts_with("Payments:") || r.summary.starts_with("Warp gates:")), "{}", g.ascii());
+        let ghosts: Vec<&str> = row(&g, "Changelog for 1.2").ghosts.iter().map(|x| x.branch.as_str()).collect();
+        assert!(ghosts.contains(&"spike/warp-gates"), "{ghosts:?}");
+        assert_eq!(g.view.as_ref().unwrap().trunk, ["main"]);
+    }
+
+    #[tokio::test]
+    async fn all_collapsed_makes_payments_three_rows() {
+        let (_r, g) = presets_graph(all_collapsed_view()).await;
+        assert_eq!(state_of(&g, "feature/payments"), BranchState::Collapsed);
+        let collapsed: Vec<&RowPayload> = g.rows.iter().filter(|r| r.kind == NodeKind::Collapsed).collect();
+        assert_eq!(collapsed.len(), 1, "only payments has three commits to hide\n{}", g.ascii());
+        let c = collapsed[0].collapsed.as_ref().unwrap();
+        assert_eq!((c.key.as_str(), c.branch.as_str(), c.count, c.authors), ("branch:feature/payments", "feature/payments", 6, 2));
+        let payments: Vec<&str> = g.rows.iter().map(|r| r.summary.as_str()).filter(|s| s.starts_with("Payments:")).collect();
+        assert_eq!(payments, ["Payments: receipts", "Payments: ledger model"], "the newest and the oldest stay");
+    }
+
+    #[tokio::test]
+    async fn fold_folds_trade_ui_into_its_merge() {
+        let (_r, g) = presets_graph(fold_view()).await;
+        let fold = row(&g, "Merge branch 'feature/trade-ui'").fold.as_ref().expect("a fold mark");
+        assert_eq!((fold.branch.as_str(), fold.count), ("feature/trade-ui", 3));
+        assert!(fold.key.starts_with("fold:"));
+        assert!(!g.rows.iter().any(|r| r.summary.starts_with("Trade UI:")), "{}", g.ascii());
+    }
+
+    #[tokio::test]
+    async fn feature_docs_folds_under_everything_else_show() {
+        let (_r, g) = presets_graph(fold_view()).await;
+        assert_eq!(state_of(&g, "feature/docs"), BranchState::Folded);
+        let fold = row(&g, "Merge branch 'feature/docs'").fold.as_ref().expect("a fold mark");
+        assert_eq!((fold.branch.as_str(), fold.count), ("feature/docs", 2));
+        assert!(!g.rows.iter().any(|r| r.summary.starts_with("Docs:")), "{}", g.ascii());
+    }
+
+    /// The presets fixture opened in an `Api`: its id.
+    async fn presets_api() -> (TestRepo, crate::api::Api, u32) {
+        let r = TestRepo::new();
+        fixtures::presets(&r);
+        let api = crate::api::Api::new(cli(), None);
+        let id = api.open_repo(&r.path().display().to_string()).await.unwrap().id;
+        (r, api, id)
+    }
+
+    #[tokio::test]
+    async fn preview_answers_through_the_api() {
+        use crate::api::Request;
+        let (_r, api, repo) = presets_api().await;
+        let json = api.dispatch(Request::BranchPresetPreview { repo, limit: None, pin: None, view: all_collapsed_view() }).await.unwrap();
+        let p: gitvolt_graph::PresetPreview = serde_json::from_value(json).unwrap();
+        // 8 units: main (the trunk), mine/dock-panel (checked out), and 6 for Everything else.
+        assert_eq!(p.rules, [1, 1, 6]);
+        assert_eq!((p.shown, p.collapsed, p.hidden, p.folded), (2, 6, 0, 0));
+        let json = api.dispatch(Request::BranchPresetPreview { repo, limit: None, pin: None, view: fold_view() }).await.unwrap();
+        let p: gitvolt_graph::PresetPreview = serde_json::from_value(json).unwrap();
+        assert_eq!(p.folded, 2, "trade-ui's and docs' merges");
+    }
+
+    #[tokio::test]
+    #[ignore = "until lane R's reveal layout lands (gitvolt_graph::reveal is a stub)"]
+    async fn reveal_answers_through_the_api() {
+        use crate::api::Request;
+        let (_r, api, repo) = presets_api().await;
+        let reveal = |key: &str| Request::GraphReveal { repo, limit: None, pin: None, active: None, view: all_collapsed_view(), key: key.into(), below: false };
+        let json = api.dispatch(reveal("branch:feature/payments")).await.unwrap();
+        let p: gitvolt_graph::RevealPayload = serde_json::from_value(json).expect("a panel for payments' run");
+        assert_eq!((p.key.as_str(), p.count, p.rows.len()), ("branch:feature/payments", 6, 6));
+        assert!(api.dispatch(reveal("branch:no-such-branch")).await.unwrap().is_null());
+    }
+
+    /// The All preset sends no view: the payload has no view, and the presets fixture's rows are
+    /// the plain graph's.
+    #[tokio::test]
+    async fn no_view_leaves_the_presets_fixture_plain() {
+        let r = TestRepo::new();
+        fixtures::presets(&r);
+        let g = build(&r, BuildOptions::default()).await;
+        assert!(g.view.is_none());
+        assert!(g.rows.iter().all(|r| r.collapsed.is_none() && r.fold.is_none() && r.ghosts.is_empty()));
     }
 
     #[tokio::test]
