@@ -27,7 +27,6 @@
     "monaco-editor": "0.57.0",
     "pdfjs-dist": "6.4.299",
     "react": "^19.3.0",
-    "react-colorful": "5.6.1",
     "react-dom": "^19.3.0",
     "rehype-raw": "7.0.0",
     "rehype-sanitize": "6.0.0",

@@ -33,36 +33,73 @@ export const isCssColour = (v: unknown): v is string => typeof v === 'string' &&
 
 const byte = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
 
-function hueOf(r: number, g: number, b: number, max: number, d: number): number {
-  if (d === 0) return 0;
-  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return (h * 60 + 360) % 360;
+/** OKLCH as the picker edits it: lightness 0-100 (%), chroma 0 to about 0.4, hue 0-360 (degrees). */
+export interface Oklch { l: number; c: number; h: number }
+
+const toLinear = (n: number) => { const v = n / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const toByte = (v: number) => { const x = Math.max(0, Math.min(1, v)); return byte(255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055)); };
+
+/** sRGB to OKLab (Björn Ottosson's matrices), `L` 0-1. */
+export function toOklab({ r, g, b }: Rgba): { L: number; a: number; b: number } {
+  const [R, G, B] = [toLinear(r), toLinear(g), toLinear(b)];
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+  return {
+    L: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  };
 }
 
-/** Unrounded (h 0-360, s/v 0-100) so a round trip is exact; round for display. */
-export function toHsv(c: Rgba): { h: number; s: number; v: number } {
-  const [r, g, b] = [c.r / 255, c.g / 255, c.b / 255];
-  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
-  return { h: hueOf(r, g, b, max, d), s: max === 0 ? 0 : (d / max) * 100, v: max * 100 };
+/** OKLab to linear sRGB, unclamped: a channel outside 0-1 is outside the sRGB gamut. */
+export function oklabToLinear(L: number, a: number, b: number): [number, number, number] {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
 }
 
-export function fromHsv(h: number, s: number, v: number, a: number): Rgba {
-  const [S, V] = [s / 100, v / 100];
-  const f = (n: number) => { const k = (n + h / 60) % 6; return V - V * S * Math.max(0, Math.min(k, 4 - k, 1)); };
-  return { r: byte(f(5) * 255), g: byte(f(3) * 255), b: byte(f(1) * 255), a };
+const RAD = Math.PI / 180;
+const linearOf = (l: number, c: number, h: number) => oklabToLinear(l / 100, c * Math.cos(h * RAD), c * Math.sin(h * RAD));
+// The matrices round-trip to within ~1e-7, so white and the primaries count as in gamut.
+const inGamut = (rgb: readonly number[]) => rgb.every((v) => v >= -1e-6 && v <= 1 + 1e-6);
+
+/** Unrounded, so a round trip is exact; round for display. A grey (chroma below rounding noise)
+ * reads chroma 0, hue 0. */
+export function toOklch(c: Rgba): Oklch {
+  const { L, a, b } = toOklab(c);
+  const C = Math.hypot(a, b);
+  return C < 1e-4 ? { l: L * 100, c: 0, h: 0 } : { l: L * 100, c: C, h: (Math.atan2(b, a) / RAD + 360) % 360 };
 }
 
-/** Unrounded (h 0-360, s/l 0-100), as `toHsv`. */
-export function toHsl(c: Rgba): { h: number; s: number; l: number } {
-  const [r, g, b] = [c.r / 255, c.g / 255, c.b / 255];
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-  const l = (max + min) / 2;
-  return { h: hueOf(r, g, b, max, d), s: d === 0 ? 0 : (d / (1 - Math.abs(2 * l - 1))) * 100, l: l * 100 };
+/** The most chroma, up to `limit`, sRGB holds at lightness `l` (0-100) and hue `h`. At a fixed
+ * lightness and hue the colours in gamut run from chroma 0 to one edge, so a binary search finds it. */
+export function maxChroma(l: number, h: number, limit: number): number {
+  if (inGamut(linearOf(l, limit, h))) return limit;
+  let [lo, hi] = [0, limit];
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (inGamut(linearOf(l, mid, h))) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
-export function fromHsl(h: number, s: number, l: number, a: number): Rgba {
-  const [S, L] = [s / 100, l / 100];
-  const k = S * Math.min(L, 1 - L);
-  const f = (n: number) => { const m = (n + h / 30) % 12; return L - k * Math.max(-1, Math.min(m - 3, 9 - m, 1)); };
-  return { r: byte(f(0) * 255), g: byte(f(8) * 255), b: byte(f(4) * 255), a };
+/** An OKLCH as sRGB bytes. Outside the gamut it gives up chroma at the same lightness and hue
+ * until it fits: clipping channels instead would shift its hue. */
+export function fromOklch({ l, c, h }: Oklch, a: number): Rgba {
+  const L = Math.max(0, Math.min(100, l));
+  const [r, g, b] = linearOf(L, maxChroma(L, h, Math.max(0, c)), h).map(toByte) as [number, number, number];
+  return { r, g, b, a };
+}
+
+/** An OKLCH's sRGB bytes, or `null` outside the gamut: the picker's square, pixel by pixel. */
+export function oklchPixel(l: number, c: number, h: number): [number, number, number] | null {
+  const rgb = linearOf(l, c, h);
+  return inGamut(rgb) ? (rgb.map(toByte) as [number, number, number]) : null;
 }

@@ -89,6 +89,23 @@ describe('the colours list', () => {
     expect(current()?.colors).toEqual({ blue: '#336699' });
   });
 
+  it('the picker offers opacity only on a colour its built-in theme makes translucent', () => {
+    const opacity = (row: string) => {
+      fireEvent.click(screen.getByRole('button', { name: `${row} colour` }));
+      const has = within(screen.getByRole('dialog', { name: `${row} colour` })).queryByRole('slider', { name: 'Opacity' }) !== null;
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+      return has;
+    };
+    expect(THEMES.nord.colors['diff-inserted-line']).toMatch(/^rgba/);
+    const { unmount } = render(<ThemeColourList />);
+    expect([opacity('Accent'), opacity('Added lines')]).toEqual([false, true]);
+    unmount();
+    // A custom theme follows its base, whatever it set: an opaque added-lines colour keeps its opacity.
+    act(() => useAppState.setState({ settings: { ...DEFAULT_SETTINGS, theme: 'custom-00000001', customThemes: [{ id: 'custom-00000001', name: 'Mine', base: 'nord', colors: { 'diff-inserted-line': '#112233' }, graph: [] }] } }));
+    render(<ThemeColourList />);
+    expect([opacity('Accent'), opacity('Added lines')]).toEqual([false, true]);
+  });
+
   it('All colours lists every token', () => {
     render(<ThemeColourList />);
     const toggle = screen.getByRole('button', { name: /All colours/ });

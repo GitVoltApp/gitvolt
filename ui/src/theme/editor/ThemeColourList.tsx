@@ -6,7 +6,7 @@ import { isWindowBlur, refocusWhenWindowReturns } from '../../ui/windowBlur';
 import { CORE_COLOURS, TOKEN_GROUPS, TOKEN_LABELS, type ColourGroup } from '../custom';
 import { setThemeColour } from '../edit';
 import { useTheme } from '../store';
-import type { ColorToken } from '../themes';
+import { isThemeId, THEMES, type ColorToken, type ThemeDef } from '../themes';
 import { useEditedTheme } from './actions';
 import './editor.css';
 
@@ -27,11 +27,18 @@ export function asHex(value: string): string {
   return c.a === 1 ? hex : hex + Math.round(c.a * 255).toString(16).padStart(2, '0');
 }
 
+/** Whether `token`'s picker offers opacity: only where it means something, a colour its built-in
+ * theme makes translucent (a row tint, a shadow, a secondary text); with no built-in, its own value. */
+function translucent(def: ThemeDef, token: ColorToken): boolean {
+  const base = def.base ?? (isThemeId(def.id) ? def.id : undefined);
+  return (parseColour(base ? THEMES[base].colors[token] : def.colors[token])?.a ?? 1) < 1;
+}
+
 const preview =(token: ColorToken, v: string | null) => useTheme.getState().preview(v === null ? null : { colors: { [token]: v } });
 
 /** One colour: its swatch (the picker, previewing on the app as it moves), its name, and a text
  * field that applies on Enter or blur (a value that isn't a colour is marked, and snaps back on blur). */
-function ColourRow({ token, label, note, value }: { token: ColorToken; label: string; note?: string; value: string }) {
+function ColourRow({ token, label, note, value, alpha }: { token: ColorToken; label: string; note?: string; value: string; alpha: boolean }) {
   const shown = asHex(value);
   const [draft, setDraft] = useState(shown);
   useEffect(() => setDraft(shown), [shown]);
@@ -49,7 +56,7 @@ function ColourRow({ token, label, note, value }: { token: ColorToken; label: st
       <ColourSwatch
         value={value}
         label={`${label} colour`}
-        alpha
+        alpha={alpha}
         onPreview={(v) => preview(token, v)}
         onCommit={(v) => {
           preview(token, null);
@@ -107,7 +114,7 @@ export function ThemeColourList({ filter, compact = false, children }: { filter?
             const rows = core.filter((c) => c.group === g);
             return rows.length > 0 && (
               <Group key={g} title={g}>
-                {rows.map((c) => <ColourRow key={c.token} token={c.token} label={c.label} note={c.note} value={def.colors[c.token]} />)}
+                {rows.map((c) => <ColourRow key={c.token} token={c.token} label={c.label} note={c.note} value={def.colors[c.token]} alpha={translucent(def, c.token)} />)}
               </Group>
             );
           })}
@@ -123,7 +130,7 @@ export function ThemeColourList({ filter, compact = false, children }: { filter?
         <div className="theme-colour-groups theme-all">
           {all.map(({ group, tokens }) => (
             <Group key={group} title={group}>
-              {tokens.map((t) => <ColourRow key={t} token={t} label={TOKEN_LABELS[t]} note={t} value={def.colors[t]} />)}
+              {tokens.map((t) => <ColourRow key={t} token={t} label={TOKEN_LABELS[t]} note={t} value={def.colors[t]} alpha={translucent(def, t)} />)}
             </Group>
           ))}
         </div>
