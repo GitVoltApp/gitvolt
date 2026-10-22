@@ -72,8 +72,6 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   that row, the sidebar or the toolbar, without reopening the repository, or open one in its own
   tab. Each keeps its own undo history and commit message draft. Create one from any commit or
   branch.
-- **File colours.** Per-repository path scopes tint changed files and can fold generated folders
-  in tree view; edit them in Settings, or start from a file's right-click menu.
 - **Context menus.** Related actions share one row as buttons: Reset with Soft, Mixed and Hard,
   Copy SHA with Short and Full. A destructive row arms in place: it turns red and says what a
   second click does, so you confirm without moving the mouse, with any option (such as also
@@ -177,6 +175,8 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   **Hex** shows any file's bytes.
 - **File View:** read a file rendered or as source, and edit or create a working-tree file.
   **Open in** your editor, file manager or default app, old versions included.
+- **File colours:** per-repository path scopes tint changed files and can fold generated folders
+  in tree view; edit them in Settings, or start from a file's right-click menu.
 
 #### History, merges and undo
 
