@@ -175,6 +175,25 @@ describe('ContextMenu', () => {
     expect(a).not.toHaveBeenCalled();
   });
 
+  it('a header row shows its label and detail, and the arrow keys skip it', () => {
+    const menu = open([{ kind: 'header', id: 'h', label: 'Docs', detail: 'docs/**', swatch: '#3a7' }, action('a'), action('b')]);
+    expect(screen.getByText('Docs')).toBeInTheDocument();
+    expect(screen.getByText('docs/**')).toBeInTheDocument();
+    expect(menu.querySelector('[data-active="true"]')).toHaveAttribute('data-row-id', 'a');
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(menu.querySelector('[data-active="true"]')).toHaveAttribute('data-row-id', 'b');
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(menu.querySelector('[data-active="true"]')).toHaveAttribute('data-row-id', 'a');
+  });
+
+  it('clicking a header row runs nothing and keeps the menu open', () => {
+    const run = vi.fn();
+    const menu = open([{ kind: 'header', id: 'h', label: 'Docs' }, action('a', run)]);
+    fireEvent.click(screen.getByText('Docs'));
+    expect(run).not.toHaveBeenCalled();
+    expect(menu).toBeVisible();
+  });
+
   it('ArrowUp wraps; Tab closes', () => {
     const menu = open([action('a'), action('b'), action('c')]);
     fireEvent.keyDown(menu, { key: 'ArrowUp' });

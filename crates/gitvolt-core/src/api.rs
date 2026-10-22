@@ -183,7 +183,7 @@ pub enum Request {
     /// Replaces the app settings (written debounced); returns `null`.
     SaveSettings { settings: AppSettings },
     /// Replaces one existing profile (written debounced); returns `null`.
-    SaveProfile { profile: Profile },
+    SaveProfile { profile: Box<Profile> },
     /// A new, empty profile: `ProfileMeta`.
     CreateProfile { name: String, color: String },
     /// Makes `id` the active profile: the new `StatePayload`.
@@ -2643,7 +2643,7 @@ impl Api {
                 to_json(())
             }
             Request::SaveProfile { profile } => {
-                self.store.save_profile(profile)?;
+                self.store.save_profile(*profile)?;
                 self.apply_profile_git_config();
                 to_json(())
             }

@@ -10,9 +10,9 @@ export const GROUP_ORDER: Record<MenuKind, readonly string[]> = {
   tag: ['sync', 'manage', 'copy', 'forge', 'view'],
   // 3A: 'restore' (from a commit) after the WIP groups, 'history' (File history, Blame) last.
   // A submodule's row: Open in a tab, Update this submodule ('submodule').
-  file: ['stage', 'conflict', 'submodule', 'restore', 'copy', 'forge', 'open', 'view', 'history'],
+  file: ['stage', 'conflict', 'submodule', 'restore', 'colour', 'copy', 'forge', 'open', 'view', 'history'],
   // A folder in Conflicted: Mark its files resolved (2D's 'conflict').
-  folder: ['conflict', 'copy', 'open'],
+  folder: ['conflict', 'colour', 'copy', 'open'],
   monaco: ['copy', 'forge', 'open'],
   tab: ['edit', 'group', 'close', 'restore', 'repo'],
   // The tab bar's empty space: Reopen closed tab and Saved groups, then Open repository / Clone.

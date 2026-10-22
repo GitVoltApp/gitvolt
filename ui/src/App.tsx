@@ -6,13 +6,14 @@ import { installOpenRequests, openPendingRequests } from './app/instance';
 import { type ActivityEntry, useOps } from './app/ops';
 import { openPathInTab } from './app/runtime';
 import { useGitCheck } from './errors/gitCheck';
+import { commonDirOfTab, setScopes, type FileScope } from './fileColours/store';
 import { flushSaves, useAppState } from './app/state';
 import './graph/graph.css';
 
 declare global {
   /** A test hook (harmless in production): e2e flushes the debounced saves before a reload, and
    * reads the activity log (K30: background fetches show nowhere else). */
-  interface Window { __gb?: { flush: () => Promise<void>; setSettings: (patch: object) => void; activity: () => ActivityEntry[] } }
+  interface Window { __gb?: { flush: () => Promise<void>; setSettings: (patch: object) => void; activity: () => ActivityEntry[]; setFileScopes: (scopes: FileScope[]) => void } }
 }
 
 let booted: Promise<void> | null = null;
@@ -30,7 +31,7 @@ function boot(): Promise<void> {
     installOpenRequests();
     // Test hook for the e2e harness (the dev server, or the `--mode e2e` build the suite serves);
     // compiled out of the release bundle.
-    if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') window.__gb = { flush: flushSaves, setSettings: (patch) => useAppState.getState().setSettings(patch), activity: () => useOps.getState().activity };
+    if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') window.__gb = { flush: flushSaves, setSettings: (patch) => useAppState.getState().setSettings(patch), activity: () => useOps.getState().activity, setFileScopes: (scopes) => { const dir = commonDirOfTab(useAppState.getState().profile.activeTab); if (dir) setScopes(dir, scopes); } };
     window.addEventListener('pagehide', () => { void flushSaves(); });
     // The backend outlives a webview reload: forget what the previous page watched, before this
     // one watches its active tab (spec §4.4: only the active tab is watched).
