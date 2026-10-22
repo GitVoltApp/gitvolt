@@ -508,24 +508,24 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   const foldLane = reveal.open?.key.startsWith('fold:') && revealPayload ? revealPayload.entryLane : null;
   const foldRow = reveal.open?.rowIndex ?? -1;
   const foldOpen = useMemo(() => (foldLane === null ? undefined : { row: foldRow, lane: foldLane }), [foldRow, foldLane]);
-  // Ask for the avatars of the rows on screen plus AVATAR_OVERSCAN, latest set wins: a fast
-  // scroll drops the queued requests of rows it went past. Re-asked on each arrival too, so an
-  // image evicted while on screen comes back. Clamped: elastic overscroll (WebKit) gives a
-  // negative scrollTop, and past the end.
+  // Ask for the avatars of the rows on screen plus AVATAR_OVERSCAN, and of an open reveal panel's
+  // rows, latest set wins: a fast scroll drops the queued requests of rows it went past. Re-asked
+  // on each arrival too, so an image evicted while on screen comes back. Clamped: elastic
+  // overscroll (WebKit) gives a negative scrollTop, and past the end.
   const firstVisible = Math.max(0, Math.floor(scrollTop / metrics.rowH) - AVATAR_OVERSCAN);
   const lastVisible = Math.min(graph.rows.length, Math.ceil((scrollTop + viewportH) / metrics.rowH) + AVATAR_OVERSCAN);
   useEffect(() => {
     const emails: string[] = [];
     const names = new Map<string, string>();
-    for (let i = firstVisible; i < lastVisible; i++) {
-      const r = graph.rows[i];
-      if (r?.kind === 'commit') {
-        emails.push(r.authorEmail);
-        if (!names.has(r.authorEmail)) names.set(r.authorEmail, r.authorName);
-      }
-    }
+    const want = (r: RowPayload | undefined) => {
+      if (r?.kind !== 'commit') return;
+      emails.push(r.authorEmail);
+      if (!names.has(r.authorEmail)) names.set(r.authorEmail, r.authorName);
+    };
+    for (let i = firstVisible; i < lastVisible; i++) want(graph.rows[i]);
+    for (const r of revealPayload?.rows ?? []) want(r);
     avatars.requestVisible(emails, tabRepo, names);
-  }, [graph.rows, firstVisible, lastVisible, avatarVersion, tabRepo]);
+  }, [graph.rows, firstVisible, lastVisible, avatarVersion, tabRepo, revealPayload]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;

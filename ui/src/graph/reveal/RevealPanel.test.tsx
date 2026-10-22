@@ -4,6 +4,7 @@ import type { GraphPayload } from '../../api/gen/GraphPayload';
 import type { RevealPayload } from '../../api/gen/RevealPayload';
 import type { RowPayload } from '../../api/gen/RowPayload';
 import { RepoContext } from '../../app/repoContext';
+import { avatars } from '../../avatars/avatarStore';
 import { useAppState } from '../../app/state';
 import { usePresetSession } from '../../presets/store';
 import { DEFAULT_DENSITY, useDensity } from '../../theme/density';
@@ -86,6 +87,18 @@ describe('the reveal panel', () => {
     expect([...panelRow.querySelectorAll<HTMLElement>('[data-col]')].map((c) => c.style.width)).toEqual([...graphCells].map((c) => c.style.width));
     // Above: its bottom edge on the ⋮ row's top.
     expect(parseFloat(panel.style.top) + parseFloat(panel.style.height)).toBe(COLLAPSED_AT * m.rowH);
+  });
+
+  it("asks for the avatars of the panel's authors with the graph's", () => {
+    const spy = vi.spyOn(avatars, 'requestVisible');
+    seedReveal(TAB, false, payload({ rows: [row(sha(0x200), 1, { authorName: 'Grace Hopper', authorEmail: 'grace@example.com' })] }));
+    render(view());
+    expect(spy.mock.lastCall![0]).not.toContain('grace@example.com');
+    act(() => openReveal(TAB, KEY, COLLAPSED_AT, false, true));
+    expect(spy.mock.lastCall![0]).toContain('grace@example.com');
+    expect(spy.mock.lastCall![0]).toContain('ada@example.com');
+    expect(spy.mock.lastCall![2]?.get('grace@example.com')).toBe('Grace Hopper');
+    spy.mockRestore();
   });
 
   it('the title sits away from the row', () => {
