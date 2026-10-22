@@ -115,6 +115,8 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 - **Pinned trunk.** The graph keeps your main branch and the remote branch it tracks at the left,
   sharing a lane until they diverge. In a fork, it pins the original project's trunk
   (`upstream/main`) with your main. You can pick another branch or turn it off.
+- **Branch presets.** Switch the graph between views that hide, collapse or fold branches; reveal
+  collapsed commits in place; load older commits.
 - **Go to the clipboard.** Ctrl+V outside a text field goes to what's on the clipboard: a commit
   hash, an MR/PR (`!12`, `#12` or its link), a forge's commit or file page, a file path with its
   line number, or a branch or tag.
@@ -227,7 +229,7 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 | Command palette and keyboard shortcuts | ✅ | ✅ Every one listed in Help › Keyboard shortcuts (Ctrl+/) |
 | Themes | ✅ | ✅ Many built in, with per-lane graph colours |
 | Profiles | ✅ Multiple on paid plans | ✅ |
-| Hide and solo branches | ✅ | ❌ Not there yet |
+| Hide and solo branches | ✅ | ✅ Presets that hide, collapse or fold branches by rule; Alt+click hides or shows one |
 | Submodules | ✅ | ✅ State in the file list; update, sync and open in a tab |
 | Git LFS | ✅ | ✅ Real files in diffs and history, download, pull, track by extension |
 | Git Flow | ✅ | ❌ Not planned unless there's demand |
@@ -243,7 +245,6 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 ### What GitVolt doesn't do
 
 - **Planned:** Forgejo.
-- **Not there yet:** hiding or soloing branches.
 - **Not planned unless there's demand:** Git Flow.
 - **Not planned:** Intel Macs, an integrated terminal, AI features, issue tracker integrations,
   cloud workspaces and team features, and Bitbucket, Azure DevOps or GitHub Enterprise Server
