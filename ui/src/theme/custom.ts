@@ -1,4 +1,5 @@
 import type { CustomTheme } from '../api/gen/CustomTheme';
+import { formatColour, isCssColour, parseColour } from '../ui/colour/colour';
 import { COLOR_TOKENS, CORE_TOKENS, DEFAULT_THEME_ID, derive, DERIVED_TOKENS, isThemeId, THEMES, type ColorToken, type ThemeDef } from './themes';
 
 /**
@@ -14,32 +15,15 @@ export function newCustomThemeId(): string {
   return `custom-${[...b].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
 }
 
-// A local copy of the colour grammar (Review Focus 1); G switches to ui/colour's `isCssColour` once both are in.
-const RGB = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*(\d*\.?\d+)\s*)?\)$/i;
-function parseTokenColour(v: string): [number, number, number, number] | null {
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(v);
-  if (hex) {
-    const h = hex[1].length === 3 ? hex[1].replace(/./g, '$&$&') : hex[1];
-    const n = (i: number) => parseInt(h.slice(i, i + 2), 16);
-    return [n(0), n(2), n(4), h.length === 8 ? n(6) / 255 : 1];
-  }
-  const m = RGB.exec(v);
-  if (!m || (m[4] === undefined) !== v.toLowerCase().startsWith('rgb(')) return null;
-  const [r, g, b] = [+m[1], +m[2], +m[3]];
-  const a = m[4] === undefined ? 1 : +m[4];
-  return r <= 255 && g <= 255 && b <= 255 && a <= 1 ? [r, g, b, a] : null;
-}
-
-/** `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(r, g, b)` or `rgba(r, g, b, a)` in range; nothing else. */
-export const isTokenColour = (v: unknown): v is string => typeof v === 'string' && parseTokenColour(v) !== null;
+/** `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(r, g, b)` or `rgba(r, g, b, a)` in range; nothing else
+ * (Review Focus 1: only these may reach a custom property). */
+export const isTokenColour = (v: unknown): v is string => isCssColour(v) && v === v.trim();
 
 /** A valid colour as opaque `#rrggbb` (its alpha dropped): what `derive`'s maths and the first-paint
  * script read; `null` for anything else. */
 export function opaqueHex(v: string): string | null {
-  const p = parseTokenColour(v);
-  if (!p) return null;
-  const [r, g, b] = p;
-  return `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+  const c = isTokenColour(v) ? parseColour(v) : null;
+  return c && formatColour({ ...c, a: 1 });
 }
 
 type Core = Parameters<typeof derive>[0];

@@ -2,13 +2,14 @@ import { useId, type ReactNode } from 'react';
 import { allSettings, pageSummary, useSettingsRegistry, type SettingsCtx, type SettingsPageDef } from '../registry';
 import { SettingRow } from './SettingRow';
 
-/** A titled card of setting rows. */
-export function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
+/** A titled card of setting rows. `bare`: the content draws its own frame (the theme cards).
+ * `hint`: a few words after the title ("drag to reorder, click to change"). */
+export function SettingsGroup({ title, hint, bare = false, children }: { title: string; hint?: string; bare?: boolean; children: ReactNode }) {
   const id = useId();
   return (
     <div className="settings-group" role="group" aria-labelledby={id}>
-      <h3 id={id}>{title}</h3>
-      <div className="settings-card">{children}</div>
+      <h3 id={id}>{title}{hint && <span className="settings-group-hint"> · {hint}</span>}</h3>
+      {bare ? children : <div className="settings-card">{children}</div>}
     </div>
   );
 }
@@ -16,13 +17,14 @@ export function SettingsGroup({ title, children }: { title: string; children: Re
 /**
  * A page's settings as rows, in titled groups: groups in the order their first setting registered,
  * rows in registration order. `render` lets a page's own `Body` change one group's content (add a
- * row after the settings, or show its own section in their place).
+ * row after the settings, or show its own section in their place); `skip` leaves out the groups
+ * it draws itself.
  */
-export function PageGroups({ pageId, ctx, render }: { pageId: string; ctx: SettingsCtx; render?: (group: string, rows: ReactNode) => ReactNode }) {
+export function PageGroups({ pageId, ctx, render, skip }: { pageId: string; ctx: SettingsCtx; render?: (group: string, rows: ReactNode) => ReactNode; skip?: ReadonlySet<string> }) {
   useSettingsRegistry();
   const groups = new Map<string, string[]>();
   for (const d of allSettings()) {
-    if (d.page !== pageId) continue;
+    if (d.page !== pageId || skip?.has(d.group)) continue;
     groups.set(d.group, [...(groups.get(d.group) ?? []), d.id]);
   }
   return (

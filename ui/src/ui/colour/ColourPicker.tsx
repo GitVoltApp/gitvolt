@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RgbaColorPicker, RgbColorPicker } from 'react-colorful';
+import { escOwners } from '../../app/modalKeys';
 import { registerKeys } from '../keyRouter';
 import { placeBelow } from '../HoverTooltip';
 import { formatColour, fromHsl, parseColour, toHsl, type Rgba } from './colour';
@@ -70,11 +71,17 @@ export function ColourPicker({ value, alpha = false, label, anchor, onPreview, o
   }, [anchor]);
 
   // Enter commits and Esc cancels, from anywhere in the popover; the menu layer keeps a Settings
-  // modal underneath from taking them.
-  useEffect(() => registerKeys('menu', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); live.current.onCommit(formatColour(live.current.cur)); return 'handled'; }
-    if (e.key === 'Escape') { e.preventDefault(); live.current.onCancel(); return 'handled'; }
-  }), []);
+  // modal underneath from taking them. The modal is offered the key in the same layer: as an Esc
+  // owner, the picker keeps it from closing Settings too.
+  useEffect(() => {
+    const ownEsc = () => true;
+    escOwners.add(ownEsc);
+    const off = registerKeys('menu', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); live.current.onCommit(formatColour(live.current.cur)); return 'handled'; }
+      if (e.key === 'Escape') { e.preventDefault(); live.current.onCancel(); return 'handled'; }
+    });
+    return () => { escOwners.delete(ownEsc); off(); };
+  }, []);
 
   useEffect(() => {
     const down = (e: PointerEvent) => {

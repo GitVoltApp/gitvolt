@@ -31,8 +31,6 @@ interface RowProps {
   ctx: SettingsCtx;
   children?: ReactNode;
   highlights?: { label: Highlight[]; description: Highlight[] };
-  /** Overrides the def's `labelFor` (the compat `Row`'s `group`). */
-  labelFor?: 'input' | 'group';
 }
 
 /**
@@ -47,13 +45,13 @@ export function SettingRow(props: RowProps) {
   return def ? <DefRow def={def} {...props} /> : null;
 }
 
-function DefRow({ def, ctx, children, highlights, labelFor }: RowProps & { def: SettingDef }) {
+function DefRow({ def, ctx, children, highlights }: RowProps & { def: SettingDef }) {
   const modified = useModified(def, ctx);
   const rowRef = useRef<HTMLDivElement>(null);
   const { id, Control } = def;
   const text = <Marked text={def.label} ranges={highlights?.label} />;
   // Without a control of its own, the label names nothing: "Open page" is described by it.
-  const label = (labelFor ?? def.labelFor ?? 'input') === 'group' || (children === undefined && !Control)
+  const label = (def.labelFor ?? 'input') === 'group' || (children === undefined && !Control)
     ? <span className="setting-label" id={`label-${id}`}>{text}</span>
     : <label className="setting-label" id={`label-${id}`} htmlFor={`input-${id}`}>{text}</label>;
   const restore = () => {

@@ -47,7 +47,7 @@ afterEach(() => act(() => { useSettingsUi.getState().close(); useSettingsUi.setS
 describe('settings pages', () => {
   it.each([
     ['advanceAfterStage', 'general'], ['updateCheck', 'general'], ['updatePrereleases', 'general'],
-    ['theme', 'appearance'], ['graphColors', 'appearance'], ['density', 'appearance'], ['editorFontSize', 'appearance'],
+    ['theme', 'appearance'], ['graphColors', 'appearance'], ['themeColours', 'appearance'], ['density', 'appearance'], ['editorFontSize', 'appearance'],
     ['commitLimit', 'graph'], ['relativeDates', 'graph'], ['dateFormat', 'graph'], ['gravatar', 'graph'], ['forgeAvatars', 'graph'],
     ['stickyScroll', 'diffs'], ['fetchInterval', 'fetch'], ['prune', 'fetch'], ['pushFollowTags', 'fetch'],
     ['shortcuts', 'keyboard'], ['debugLogging', 'advanced'], ['openLogs', 'advanced'], ['resetAll', 'advanced'],
@@ -63,9 +63,12 @@ describe('settings pages', () => {
     for (const d of allSettings()) expect(d.label && d.group && d.keywords && d.description, d.id).toBeTruthy();
   });
 
-  it('General, Graph, Fetch and push, and Advanced show their groups in order', () => {
+  it('General, Appearance, Graph, Fetch and push, and Advanced show their groups in order', () => {
     const dialog = show();
     expect(groupTitles(dialog)).toEqual(['Staging', 'Updates']);
+    openPage('Appearance');
+    expect(groupTitles(dialog)).toEqual(['Theme','Graph lanes · drag to reorder, click to change', 'Colours', 'Sizes']);
+    expect(within(dialog).getByLabelText('Editor font size')).toHaveValue(13);
     openPage('Graph');
     expect(groupTitles(dialog)).toEqual(['History', 'Dates', 'Avatars']);
     expect(allSettings().filter((d) => d.page === 'graph' && d.group === 'Dates').map((d) => d.id)).toEqual(['relativeDates', 'dateFormat']);
