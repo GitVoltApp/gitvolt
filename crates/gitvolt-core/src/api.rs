@@ -264,6 +264,10 @@ pub enum Request {
     /// The system folder picker, starting in `start`: the picked folder, or `null` (cancelled,
     /// or no picker on this desktop: the UI falls back to a typed path).
     PickFolder { start: Option<String> },
+    /// Settings export: asks the folder picker (starting at the profile's repos folder), then
+    /// writes `contents` to `<dir>/<suggestedName>` without overwriting. The written path, or
+    /// `null` when nothing was picked. Not a repository write.
+    SaveExport { suggested_name: String, contents: String },
     /// The repositories in `root` (absolute), two levels deep, newest first: `ScannedRepo[]`.
     /// Cached per root; `refresh` rescans.
     ScanRepos { root: String, refresh: bool },
@@ -656,6 +660,9 @@ pub enum Request {
     /// Who a commit here is made as (read; ux round 1): `CommitIdentity`, or `null` when git
     /// has none (it would refuse the commit).
     CommitIdentity { repo: u32, worktree: String },
+    /// Settings › Git identity (read): `GitIdentityInfo`. Without a repository and worktree, the
+    /// global and profile config only.
+    GitIdentity { repo: Option<u32>, worktree: Option<String> },
     // --- 2D T10: integrate ---
     /// What a merge or rebase of `target` would do (read; spec #2 §13.1): relation, predicted
     /// conflicts, stacked branches.
@@ -1375,6 +1382,8 @@ impl Request {
             | Request::LastPush { .. }
             | Request::AppInfo
             | Request::PickFolder { .. }
+            | Request::SaveExport { .. }
+            | Request::GitIdentity { .. }
             | Request::ScanRepos { .. }
             | Request::ScanFolders { .. }
             | Request::SuggestReposFolder
@@ -2998,6 +3007,28 @@ impl Api {
                 let picked = blocking(move || Ok(picker(start.as_deref()))).await?;
                 to_json(picked.map(|p| p.display().to_string()))
             }
+            Request::SaveExport { suggested_name, contents } => {
+                crate::export::check(&suggested_name, &contents)?;
+                let Some(picker) = self.folder_picker.clone() else { return to_json(Option::<String>::None) };
+                let state = self.store.state();
+                let start = state.profile.repos_folders.as_ref().and_then(|f| f.first()).or(state.profile.repos_folder.as_ref()).map(PathBuf::from).filter(|p| p.is_absolute());
+                let written = blocking(move || match picker(start.as_deref()) {
+                    Some(dir) => crate::export::write(&dir, &suggested_name, &contents).map(Some),
+                    None => Ok(None),
+                })
+                .await?;
+                to_json(written.map(|p| p.display().to_string()))
+            }
+            Request::GitIdentity { repo, worktree } => {
+                let root = match (repo, worktree) {
+                    (Some(repo), Some(worktree)) => {
+                        let h = self.handle(repo)?;
+                        Some(self.worktree_dir(&h, &worktree).await?)
+                    }
+                    _ => None,
+                };
+                to_json(crate::identity::git_identity(&self.cli, root.as_deref()).await?)
+            }
             Request::ScanRepos { root, refresh } => to_json(self.scan_root(root, refresh).await?),
             Request::ScanFolders { roots, refresh } => {
                 let mut seen = std::collections::HashSet::new();
@@ -3962,6 +3993,29 @@ mod tests {
         assert_eq!(hotfix["pinnedRefs"], serde_json::json!(["refs/heads/hotfix"]), "no upstream: alone");
         let absent = api.dispatch(req(serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}}))).await.unwrap();
         assert_eq!(absent["pinnedRefs"], auto["pinnedRefs"], "no pin is the default trunk");
+    }
+
+    #[tokio::test]
+    async fn save_export_writes_into_the_picked_folder_and_never_overwrites() {
+        async fn call(api: &Api, name: &str, contents: &str) -> Result<serde_json::Value, GbError> {
+            api.dispatch(req(serde_json::json!({"method": "saveExport", "params": {"suggestedName": name, "contents": contents}}))).await
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let pick = dir.path().to_path_buf();
+        let api = api().with_folder_picker(Arc::new(move |_: Option<&Path>| Some(pick.clone())));
+        let first = call(&api, "theme.json", "{\"a\":1}").await.unwrap();
+        assert_eq!(first, dir.path().join("theme.json").display().to_string());
+        assert_eq!(std::fs::read_to_string(dir.path().join("theme.json")).unwrap(), "{\"a\":1}");
+        let second = call(&api, "theme.json", "{\"a\":2}").await.unwrap();
+        assert_eq!(second, dir.path().join("theme (2).json").display().to_string());
+        assert_eq!(std::fs::read_to_string(dir.path().join("theme.json")).unwrap(), "{\"a\":1}", "the first file is untouched");
+        for bad in ["../x.json", "a/b.json", "a\\b.json", ""] {
+            assert!(call(&api, bad, "{}").await.is_err(), "{bad}");
+        }
+        assert!(call(&api, "big.json", &"x".repeat(1024 * 1024 + 1)).await.is_err());
+        let nothing = api.with_folder_picker(Arc::new(|_: Option<&Path>| None));
+        assert!(call(&nothing, "none.json", "{}").await.unwrap().is_null());
+        assert!(!dir.path().join("none.json").exists());
     }
 
     #[tokio::test]
@@ -5129,6 +5183,10 @@ mod tests {
             json!({"method": "updateRestart"}),
             json!({"method": "updateRemoveLegacyBundle"}),
             json!({"method": "pickFolder", "params": {"start": null}}),
+            // No picker in a test `Api`: nothing is picked, nothing written.
+            json!({"method": "saveExport", "params": {"suggestedName": "t.json", "contents": "{}"}}),
+            json!({"method": "gitIdentity", "params": {"repo": id, "worktree": wt}}),
+            json!({"method": "gitIdentity", "params": {"repo": null, "worktree": null}}),
             json!({"method": "scanRepos", "params": {"root": root, "refresh": true}}),
             json!({"method": "scanFolders", "params": {"roots": [root], "refresh": true}}),
             json!({"method": "suggestReposFolder"}),
