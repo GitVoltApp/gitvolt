@@ -119,6 +119,8 @@ export interface MenuEnv {
   /** `../shop-x`, as messages name a worktree. */
   worktreeShown(path: string): string;
   // --- end 2C T9 ---
+  /** The repository's canonical common git dir (File colours' key); null until its info loads. */
+  commonDir?: string | null;
   /** Whether commit `a` is an ancestor of (or is) `b`, from the loaded rows (graph/ancestry.ts):
    * the menus hide what can't apply (a fast-forward of a branch that isn't behind). `null`, or
    * omitted: unknown, and the row shows, checked after the click. */
@@ -301,6 +303,7 @@ export function fileMenuEnv(store: RepoViewStore): MenuEnv {
     inProgress: s.graph.worktrees.find((w) => w.path === active)?.inProgress ?? null,
     worktreeShown: (path) => worktreeDisplay(main, path),
     // --- end 2C T9 ---
+    commonDir: rt?.info?.commonDir ?? null,
     isAncestor: (a, b) => isAncestorIn(s.graph.rows, s.indexById, a, b),
     // --- 3D T3 ---
     stackOf: (branch) => stackFor(stacksOf(s.graph, stackBase(s.graph, sidebar?.remotes ?? [])), branch, next.branch),
