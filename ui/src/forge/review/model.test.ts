@@ -21,7 +21,7 @@ const session = (over: Partial<ReviewSession> = {}): ReviewSession => ({
   drafts: [], pendingReview: null, canDraft: true, closed: false, error: null, loaded: true, ...over,
 });
 const draft = (id: string, position: DiffPosition | null): ReviewDraft => ({ id, body: id, position, replyTo: null });
-const thread = (id: string, position: DiffPosition): ForgeDiscussion => ({ id, resolvable: true, resolved: false, notes: [{ id, author: { id: 1, username: 'grace', name: 'Grace', avatarUrl: null, webUrl: '', email: null }, body: id, createdAt: 0, system: false, position }] });
+const thread = (id: string, position: DiffPosition): ForgeDiscussion => ({ id, resolvable: true, resolved: false, notes: [{ id, author: { id: 1, username: 'grace', name: 'Grace', avatarUrl: null, webUrl: '', email: null, emails: [] }, body: id, createdAt: 0, system: false, position }] });
 
 describe('commentable lines', () => {
   it('indexes removed lines by their old number, added by their new, and unchanged lines on both sides', () => {

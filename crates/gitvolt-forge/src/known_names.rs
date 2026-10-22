@@ -89,7 +89,7 @@ mod tests {
     use super::*;
 
     fn user(id: u64, username: &str, name: &str, avatar: Option<&str>) -> ForgeUser {
-        ForgeUser { id, username: username.into(), name: name.into(), avatar_url: avatar.map(str::to_string), web_url: String::new(), email: None }
+        ForgeUser { id, username: username.into(), name: name.into(), avatar_url: avatar.map(str::to_string), web_url: String::new(), email: None, emails: vec![] }
     }
 
     #[test]

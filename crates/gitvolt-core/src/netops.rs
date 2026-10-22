@@ -1227,7 +1227,7 @@ mod tests {
             let h = repos[&id].clone();
             let few = gix::open::Options::default().object_store_slots(gix::odb::store::init::Slots::Given(8));
             let repo = gix::ThreadSafeRepository::open_opts(&h.workdir, few).unwrap();
-            let short = crate::api::RepoHandle { repo, workdir: h.workdir.clone(), name: h.name.clone(), common_dir: h.common_dir.clone(), wip: h.wip.clone(), snapshot: Default::default(), walk: Default::default() };
+            let short = crate::api::RepoHandle { repo, workdir: h.workdir.clone(), name: h.name.clone(), common_dir: h.common_dir.clone(), wip: h.wip.clone(), snapshot: Default::default(), walk: Default::default(), me_email: Default::default() };
             repos.insert(id, Arc::new(short));
         }
         let other = r.clone_origin("elsewhere");

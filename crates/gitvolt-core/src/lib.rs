@@ -23,6 +23,7 @@ pub mod hex;
 pub mod history;
 pub mod hunks;
 pub mod identity;
+pub mod me;
 pub mod in_progress;
 pub mod legacy;
 pub mod links;

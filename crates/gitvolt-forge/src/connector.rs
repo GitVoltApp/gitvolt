@@ -159,7 +159,7 @@ mod tests {
         let now_secs = crate::time::unix_now();
         let hub = ForgeHub::new(forge, Arc::new(OneToken), Arc::new(move || now_secs * 1000));
         let store = SettingsStore::in_memory();
-        let user = ForgeUser { id: 1, username: "ada".into(), name: "Ada".into(), avatar_url: None, web_url: String::new(), email: None };
+        let user = ForgeUser { id: 1, username: "ada".into(), name: "Ada".into(), avatar_url: None, web_url: String::new(), email: None, emails: vec![] };
         store.set_forge_accounts("default", vec![ForgeAccount { host: HOST.into(), kind: ForgeKind::GitLab, user, storage: TokenStorage::Keyring, version: None, version_checked_at: now_secs, added_at: now_secs }]).unwrap();
         let remotes = [gitvolt_core::payload::RemotePayload { name: "origin".into(), host: Some(HOST.into()), path: Some("group/project".into()), host_kind: gitvolt_core::remotes::HostKind::GitLab, main: false }];
         assert!(hub.avatar(&store, &remotes, "ada@example.com").await.is_none());

@@ -113,7 +113,14 @@ pub mod json {
 
     pub fn user(v: &Value) -> Option<ForgeUser> {
         let username = v["username"].as_str()?.to_string();
+        let mut emails: Vec<String> = Vec::new();
+        for k in ["email", "public_email", "commit_email"] {
+            if let Some(e) = text(&v[k]).filter(|e| !emails.contains(e)) {
+                emails.push(e);
+            }
+        }
         Some(ForgeUser {
+            emails,
             id: v["id"].as_u64()?,
             name: text(&v["name"]).unwrap_or_else(|| username.clone()),
             avatar_url: text(&v["avatar_url"]),
@@ -1915,9 +1922,17 @@ mod tests {
     use gitvolt_core::forge::*;
 
     #[test]
+    fn the_user_carries_its_emails() {
+        let u = json::user(&json!({"id": 7, "username": "ada", "email": "ada@example.com", "public_email": "pub@example.com", "commit_email": "ada@example.com"})).unwrap();
+        assert_eq!(u.emails, ["ada@example.com", "pub@example.com"]);
+        let u = json::user(&json!({"id": 7, "username": "ada", "public_email": "", "commit_email": null})).unwrap();
+        assert!(u.emails.is_empty());
+    }
+
+    #[test]
     fn normalizes_a_user_preferring_the_public_email() {
         let u = json::user(&json!({"id": 7, "username": "ada", "name": "", "avatar_url": "https://g/a.png", "web_url": "https://g/ada", "public_email": "", "email": "ada@corp.example"})).unwrap();
-        assert_eq!(u, ForgeUser { id: 7, username: "ada".into(), name: "ada".into(), avatar_url: Some("https://g/a.png".into()), web_url: "https://g/ada".into(), email: Some("ada@corp.example".into()) });
+        assert_eq!(u, ForgeUser { id: 7, username: "ada".into(), name: "ada".into(), avatar_url: Some("https://g/a.png".into()), web_url: "https://g/ada".into(), email: Some("ada@corp.example".into()), emails: vec!["ada@corp.example".into()] });
         assert!(json::user(&json!({"id": 7})).is_none());
     }
 

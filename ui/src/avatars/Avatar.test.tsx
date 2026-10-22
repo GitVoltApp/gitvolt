@@ -72,7 +72,7 @@ describe('ForgeAvatar (the MR/PR view, the hover card)', () => {
     const urls = createAvatarStore(byUrl, { keyOf: (u) => u.trim() });
     const emails = createAvatarStore(byEmail);
     const url = 'https://avatars.githubusercontent.com/u/583231?v=4&X=Y';
-    const octocat: ForgeUser = { id: 1, username: 'octocat', name: 'The Octocat', avatarUrl: url, webUrl: '', email: 'Octo@Example.com' };
+    const octocat: ForgeUser = { id: 1, username: 'octocat', name: 'The Octocat', avatarUrl: url, webUrl: '', email: 'Octo@Example.com', emails: [] };
     const wrap = (u: ForgeUser) => (
       <AvatarStoreContext value={emails}><ForgeAvatarStoreContext value={urls}><ForgeAvatar user={u} size={20} /></ForgeAvatarStoreContext></AvatarStoreContext>
     );
@@ -89,7 +89,7 @@ describe('ForgeAvatar (the MR/PR view, the hover card)', () => {
 
   it('asks for nothing without a URL or an email', async () => {
     const fetch = vi.fn(async () => null);
-    render(<ForgeAvatarStoreContext value={createAvatarStore(fetch)}><ForgeAvatar user={{ id: 1, username: 'g', name: 'Grace Hopper', avatarUrl: null, webUrl: '', email: null }} size={20} /></ForgeAvatarStoreContext>);
+    render(<ForgeAvatarStoreContext value={createAvatarStore(fetch)}><ForgeAvatar user={{ id: 1, username: 'g', name: 'Grace Hopper', avatarUrl: null, webUrl: '', email: null, emails: [] }} size={20} /></ForgeAvatarStoreContext>);
     await act(async () => {});
     expect(fetch).not.toHaveBeenCalled();
     expect(avatar).not.toHaveBeenCalledWith('');
@@ -98,7 +98,7 @@ describe('ForgeAvatar (the MR/PR view, the hover card)', () => {
   it("an avatar URL whose image fails to load shows the initials, not an <img> (no broken-image icon)", async () => {
     // The fake forge's truncated PNG: it arrives, but the browser can't decode it.
     const urls = createAvatarStore(vi.fn(async () => ({ mime: 'image/png', base64: btoa('\x89PNG\r\n\x1a\nfake') })), { keyOf: (u) => u.trim() });
-    const ada: ForgeUser = { id: 7, username: 'ada', name: 'Ada Lovelace', avatarUrl: 'https://gitlab.example.com/uploads/ada.png', webUrl: '', email: null };
+    const ada: ForgeUser = { id: 7, username: 'ada', name: 'Ada Lovelace', avatarUrl: 'https://gitlab.example.com/uploads/ada.png', webUrl: '', email: null, emails: [] };
     render(<ForgeAvatarStoreContext value={urls}><ForgeAvatar user={ada} size={18} /></ForgeAvatarStoreContext>);
     const el = screen.getByTestId('avatar');
     expect(el).toHaveTextContent('AL');

@@ -201,7 +201,12 @@ pub mod json {
 
     pub fn user(v: &Value) -> Option<ForgeUser> {
         let login = v["login"].as_str()?.to_string();
-        Some(ForgeUser { id: v["id"].as_u64()?, name: text(&v["name"]).unwrap_or_else(|| login.clone()), avatar_url: text(&v["avatar_url"]), web_url: v["html_url"].as_str().unwrap_or_default().to_string(), email: text(&v["email"]), username: login })
+        let id = v["id"].as_u64()?;
+        // The no-reply addresses GitHub puts on web-made commits, in both of its spellings.
+        let mut emails: Vec<String> = text(&v["email"]).into_iter().collect();
+        emails.push(format!("{id}+{login}@users.noreply.github.com"));
+        emails.push(format!("{login}@users.noreply.github.com"));
+        Some(ForgeUser { id, name: text(&v["name"]).unwrap_or_else(|| login.clone()), avatar_url: text(&v["avatar_url"]), web_url: v["html_url"].as_str().unwrap_or_default().to_string(), email: text(&v["email"]), emails, username: login })
     }
 
     pub fn project(host: &str, v: &Value) -> Option<ForgeProject> {
@@ -2053,6 +2058,14 @@ mod tests {
     use gitvolt_core::forge::*;
 
     #[test]
+    fn the_user_carries_its_emails() {
+        let u = json::user(&json!({"id": 42, "login": "octo", "email": "octo@example.com"})).unwrap();
+        assert_eq!(u.emails, ["octo@example.com", "42+octo@users.noreply.github.com", "octo@users.noreply.github.com"]);
+        let u = json::user(&json!({"id": 42, "login": "octo", "email": null})).unwrap();
+        assert_eq!(u.emails, ["42+octo@users.noreply.github.com", "octo@users.noreply.github.com"]);
+    }
+
+    #[test]
     fn normalizes_a_user_and_a_repo_with_its_parent() {
         let u = json::user(&json!({"id": 583231, "login": "octocat", "name": null, "avatar_url": "https://a/u/583231", "html_url": "https://github.com/octocat", "email": null})).unwrap();
         assert_eq!((u.name.as_str(), u.email), ("octocat", None));
@@ -2258,7 +2271,7 @@ mod tests {
     fn contents_decode_across_githubs_line_breaks_labels_get_a_hash_and_people_match_loosely() {
         assert_eq!(json::decode_content(&json!({"content": "SGVs\nbG8=\n", "encoding": "base64"})), b"Hello");
         assert_eq!(json::label(&json!({"name": "bug", "color": "d73a4a", "description": null})).unwrap().color.as_deref(), Some("#d73a4a"));
-        let u = ForgeUser { id: 2, username: "hubot".into(), name: "Hubot".into(), avatar_url: None, web_url: String::new(), email: None };
+        let u = ForgeUser { id: 2, username: "hubot".into(), name: "Hubot".into(), avatar_url: None, web_url: String::new(), email: None, emails: vec![] };
         assert!(json::matches(&u, "HUB") && json::matches(&u, " ") && !json::matches(&u, "octo"));
     }
     #[test]

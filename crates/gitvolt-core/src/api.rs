@@ -1417,6 +1417,10 @@ pub(crate) struct RepoHandle {
     /// The last graph walk, reused while nothing it walked from moved (spec #2 §11.2): every
     /// tab on the repository shares it, whichever worktree it has active.
     pub(crate) walk: Arc<Mutex<Option<crate::snapshot::WalkCache>>>,
+    /// The repository's `user.email` (`None`: unset) and the config it was read under
+    /// (`Api::me_emails`).
+    #[allow(dead_code)] // read by `Api::me_emails`, which the graph reads call from E3
+    pub(crate) me_email: Mutex<Option<(crate::me::ConfigStamp, Option<String>)>>,
 }
 
 /// The object store's index slots, one per pack index or multi-pack index: gix fixes their
@@ -3423,6 +3427,7 @@ impl Api {
             wip: old.wip.clone(),
             snapshot: Mutex::new(old.snapshot.lock().expect("snapshot poisoned").clone()),
             walk: old.walk.clone(),
+            me_email: Mutex::default(),
         });
         let mut repos = self.repos.lock().expect("repos poisoned");
         if let Some(slot) = repos.get_mut(&id) {
@@ -3472,6 +3477,7 @@ impl Api {
             wip: Arc::new(crate::snapshot::WipCache::watched_only()),
             snapshot: Mutex::new(None),
             walk: Arc::default(),
+            me_email: Mutex::default(),
         });
         repos.insert(id, h.clone());
         self.writes_for(&common_dir).add_id(id);
@@ -5066,6 +5072,7 @@ mod tests {
             json!({"method": "forgeBranchMrs", "params": {"repo": id, "refs": ["refs/remotes/origin/main"]}}),
             json!({"method": "forgeCachedMrs", "params": {"repo": id, "refs": ["refs/remotes/origin/main"], "filter": "all"}}),
             json!({"method": "forgeMrDetail", "params": {"repo": id, "number": 1}}),
+            json!({"method": "forgeRefresh", "params": {"repo": id}}),
             json!({"method": "forgeMrDiscussions", "params": {"repo": id, "number": 1}}),
             json!({"method": "forgeProjectByPath", "params": {"repo": id, "path": "group/project"}}),
             json!({"method": "forgeReply", "params": {"repo": id, "number": 1, "discussion": null, "body": "x"}}),

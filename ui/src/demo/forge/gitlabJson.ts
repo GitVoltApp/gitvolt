@@ -124,7 +124,7 @@ export function user(v: unknown): ForgeUser | null {
   const username = str(at(v, 'username'));
   const id = u64(at(v, 'id'));
   if (username === null || id === null) return null;
-  return { id, username, name: text(at(v, 'name')) ?? username, avatarUrl: text(at(v, 'avatar_url')), webUrl: str(at(v, 'web_url')) ?? '', email: text(at(v, 'public_email')) ?? text(at(v, 'email')) };
+  return { id, username, name: text(at(v, 'name')) ?? username, avatarUrl: text(at(v, 'avatar_url')), webUrl: str(at(v, 'web_url')) ?? '', email: text(at(v, 'public_email')) ?? text(at(v, 'email')), emails: [] };
 }
 
 export function project(host: string, v: Json): ForgeProject | null {

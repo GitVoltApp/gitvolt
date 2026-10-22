@@ -7,7 +7,7 @@ import type { ForgeUser } from '../api/gen/ForgeUser';
 /** Tests only: forge data as the backend sends it. */
 export const user = (name: string, email: string | null = null): ForgeUser => {
   const login = name.toLowerCase().split(' ')[0];
-  return { id: login.length, username: login, name, avatarUrl: null, webUrl: `https://gitlab.example.com/${login}`, email };
+  return { id: login.length, username: login, name, avatarUrl: null, webUrl: `https://gitlab.example.com/${login}`, email, emails: [] };
 };
 
 export function mrOf(number: number, over: Partial<ForgeMr> = {}): ForgeMr {
