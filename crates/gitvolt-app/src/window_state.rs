@@ -2,10 +2,17 @@
 //!
 //! The geometry lives in `AppSettings::window` (logical pixels, see `WindowGeometry`). At
 //! startup [`placement`] checks it against the monitors present now and the window is built
-//! with that position and size, so it maps there directly (winit-gtk4 applies a builder position
-//! at realize, before the window is first shown: no jump). It is maximized right after, if it was.
+//! with that position and size (winit-gtk4 applies a builder position at realize, before the
+//! window is first shown). It is maximized right after, if it was.
 //! Afterwards every move or resize saves it again, debounced, and the close saves it once more.
 //! A maximized or minimized window keeps the last normal rect, plus `maximized`.
+//!
+//! A window manager may still put the new window elsewhere: GTK 4 rewrites the size hints as it
+//! maps the window, without the user-position flag winit set at realize, so mutter (GNOME, here
+//! through XWayland) can treat it as unplaced and place it itself, on the monitor it picks,
+//! fitted to that monitor. So once the window is on screen and the window manager has settled
+//! it, [`settle`] compares where it is with where it was asked to go and, if it's elsewhere, puts
+//! it back ([`fixes`]): moved first, then resized, so the size isn't fitted to the wrong monitor.
 //!
 //! The vendored CEF runtime supports all of it through winit-gtk4 on X11 (`outer_position`,
 //! `set_position`, `inner_size`, `is_maximized`/`is_minimized`, the monitors with their work
@@ -14,12 +21,23 @@
 //! maximized state come back.
 
 use gitvolt_core::settings::{MonitorIdentity, SettingsStore, WindowGeometry, SAVE_DEBOUNCE};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use tauri::{Monitor, Runtime, WebviewWindow, WindowEvent};
+use std::time::{Duration, Instant};
+use tauri::{LogicalPosition, LogicalSize, Monitor, Runtime, WebviewWindow, WindowEvent};
 
 /// Less of the window than this on screen (of its area, over all work areas) and it's re-centred.
 pub const MIN_VISIBLE: f64 = 0.5;
+
+/// Quiet time after the new window's last move, resize or focus before it's checked: the window
+/// manager has placed it by then.
+const SETTLE: Duration = Duration::from_millis(150);
+
+/// A check later than this after the window was built could undo the user's own move: skipped.
+const SETTLE_DEADLINE: Duration = Duration::from_secs(3);
+
+/// Logical pixels a shown window may be off by (rounding) and still be where it was asked.
+const SLACK: f64 = 2.0;
 
 /// A rect in logical pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -139,15 +157,7 @@ pub fn placement(saved: &WindowGeometry, screens: &[Screen], primary: Option<usi
     let target = match &saved.monitor {
         Some(id) => find_screen(id, screens).map(|s| (s, s.bounds.x - id.x, s.bounds.y - id.y)),
         // No monitor saved: whichever holds most of the window.
-        None => {
-            let rect = Rect::new(x, y, size.0, size.1);
-            screens
-                .iter()
-                .map(|s| (s, rect.intersection_area(&s.work_area)))
-                .filter(|(_, a)| *a > 0.0)
-                .max_by(|a, b| a.1.total_cmp(&b.1))
-                .map(|(s, _)| (s, 0.0, 0.0))
-        }
+        None => screen_holding(&Rect::new(x, y, size.0, size.1), screens).map(|s| (s, 0.0, 0.0)),
     };
     let Some((screen, dx, dy)) = target else {
         return with_maximized(centred_on(primary, size));
@@ -169,6 +179,16 @@ pub fn placement(saved: &WindowGeometry, screens: &[Screen], primary: Option<usi
         return with_maximized(centred_on(primary, size));
     }
     Some(Placement { position: Some((x, y)), size, maximized })
+}
+
+/// The screen whose work area holds most of `rect`; none if it's off all of them.
+pub fn screen_holding<'a>(rect: &Rect, screens: &'a [Screen]) -> Option<&'a Screen> {
+    screens
+        .iter()
+        .map(|s| (s, rect.intersection_area(&s.work_area)))
+        .filter(|(_, a)| *a > 0.0)
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(s, _)| s)
 }
 
 /// What the window reports now, in logical pixels.
@@ -213,6 +233,49 @@ pub fn next_saved(prev: Option<&WindowGeometry>, now: Observed, default_size: (f
         _ => {}
     }
     Some(g)
+}
+
+/// A step of putting the new window back where it was asked to go.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Fix {
+    Unmaximize,
+    Move(f64, f64),
+    Resize(f64, f64),
+    Maximize,
+}
+
+/// What to do, in order, once the window manager has shown the window built at `place` (meant
+/// for the `target` monitor) and it reports `now`. Nothing if it's where it was asked, or if it
+/// was built without a position (the window manager's choice stands). Otherwise it's
+/// unmaximized (a window manager may maximize a window too big for the monitor it picked),
+/// moved, and only then resized, so its size is checked against the right monitor; then
+/// maximized again if it was. A maximized window only has to be on the right monitor.
+pub fn fixes(place: &Placement, target: Option<&MonitorIdentity>, now: &Observed) -> Vec<Fix> {
+    let Some((x, y)) = place.position else {
+        return Vec::new();
+    };
+    let on_target = match (target, &now.monitor) {
+        (Some(t), Some(m)) => same_monitor(t, m),
+        // Can't tell: the rect decides.
+        _ => true,
+    };
+    let near = |a: f64, b: f64| (a - b).abs() <= SLACK;
+    let in_place = now.position.is_some_and(|(nx, ny)| near(nx, x) && near(ny, y)) && near(now.size.0, place.size.0) && near(now.size.1, place.size.1);
+    if on_target && (place.maximized || in_place) {
+        return Vec::new();
+    }
+    let mut fixes = vec![Fix::Unmaximize, Fix::Move(x, y), Fix::Resize(place.size.0, place.size.1)];
+    if place.maximized {
+        fixes.push(Fix::Maximize);
+    }
+    fixes
+}
+
+/// `x,y wxh on <monitor>`, for the placement log line.
+fn describe(position: Option<(f64, f64)>, size: (f64, f64), monitor: Option<&MonitorIdentity>) -> String {
+    let at = position.map_or_else(|| "anywhere".to_owned(), |(x, y)| format!("{x},{y}"));
+    let on = monitor.and_then(|m| m.name.as_deref()).unwrap_or("an unknown monitor");
+    format!("{at} {}x{} on {on}", size.0, size.1)
 }
 
 /// Whether this process's windows can place themselves: X11, not Wayland. `GDK_BACKEND` is a
@@ -261,23 +324,23 @@ struct Tracker {
     default_size: (f64, f64),
 }
 
-impl Tracker {
-    fn observe<R: Runtime>(&self, w: &WebviewWindow<R>) -> tauri::Result<Observed> {
-        let scale = w.scale_factor()?;
-        let scale = if scale > 0.0 { scale } else { 1.0 };
-        let position = if self.can_position { w.outer_position().ok().map(|p| (f64::from(p.x) / scale, f64::from(p.y) / scale)) } else { None };
-        let size = w.inner_size()?;
-        Ok(Observed {
-            position,
-            size: (f64::from(size.width) / scale, f64::from(size.height) / scale),
-            maximized: w.is_maximized()?,
-            minimized: w.is_minimized()?,
-            monitor: w.current_monitor().ok().flatten().map(|m| screen_of(&m).identity()),
-        })
-    }
+fn observe<R: Runtime>(w: &WebviewWindow<R>, can_position: bool) -> tauri::Result<Observed> {
+    let scale = w.scale_factor()?;
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    let position = if can_position { w.outer_position().ok().map(|p| (f64::from(p.x) / scale, f64::from(p.y) / scale)) } else { None };
+    let size = w.inner_size()?;
+    Ok(Observed {
+        position,
+        size: (f64::from(size.width) / scale, f64::from(size.height) / scale),
+        maximized: w.is_maximized()?,
+        minimized: w.is_minimized()?,
+        monitor: w.current_monitor().ok().flatten().map(|m| screen_of(&m).identity()),
+    })
+}
 
+impl Tracker {
     fn save<R: Runtime>(&self, w: &WebviewWindow<R>) {
-        match self.observe(w) {
+        match observe(w, self.can_position) {
             Ok(now) => {
                 if let Some(g) = next_saved(self.store.window().as_ref(), now, self.default_size) {
                     self.store.save_window(g);
@@ -313,6 +376,65 @@ pub fn track<R: Runtime>(window: &WebviewWindow<R>, store: Arc<SettingsStore>, c
         }
         _ => {}
     });
+}
+
+/// Once the window manager has shown the window built at `place` (its first moves, resizes and
+/// focus have gone quiet for `SETTLE`), puts it back where it was asked to go if it's elsewhere
+/// ([`fixes`]). Only for a window built with a position, and only once.
+pub fn settle<R: Runtime>(window: &WebviewWindow<R>, place: Placement, screens: &[Screen]) {
+    let Some((x, y)) = place.position else {
+        return;
+    };
+    let target = screen_holding(&Rect::new(x, y, place.size.0, place.size.1), screens).map(Screen::identity);
+    let built = Instant::now();
+    let generation = Arc::new(AtomicU64::new(0));
+    let done = Arc::new(AtomicBool::new(false));
+    let w = window.clone();
+    window.on_window_event(move |event| {
+        if done.load(Ordering::SeqCst) || !matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::Focused(true)) {
+            return;
+        }
+        let g = generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let (generation, done, w, place, target) = (generation.clone(), done.clone(), w.clone(), place.clone(), target.clone());
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(SETTLE).await;
+            if generation.load(Ordering::SeqCst) != g || done.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            if built.elapsed() > SETTLE_DEADLINE {
+                tracing::debug!("window placement: shown too late to check, left where it is");
+                return;
+            }
+            // The getters block on the event loop: off the async workers.
+            let _ = tauri::async_runtime::spawn_blocking(move || put_back(&w, &place, target.as_ref())).await;
+        });
+    });
+}
+
+fn put_back<R: Runtime>(w: &WebviewWindow<R>, place: &Placement, target: Option<&MonitorIdentity>) {
+    let now = match observe(w, true) {
+        Ok(now) => now,
+        Err(e) => return tracing::debug!("window placement: geometry unavailable once shown: {e}"),
+    };
+    let fixes = fixes(place, target, &now);
+    tracing::debug!(
+        "window placement: asked {} (maximized: {}), shown at {}; {}",
+        describe(place.position, place.size, target),
+        place.maximized,
+        describe(now.position, now.size, now.monitor.as_ref()),
+        if fixes.is_empty() { "left as is".to_owned() } else { format!("putting it back: {fixes:?}") },
+    );
+    for fix in fixes {
+        let done = match fix {
+            Fix::Unmaximize => w.unmaximize(),
+            Fix::Move(x, y) => w.set_position(LogicalPosition::new(x, y)),
+            Fix::Resize(width, height) => w.set_size(LogicalSize::new(width, height)),
+            Fix::Maximize => w.maximize(),
+        };
+        if let Err(e) = done {
+            tracing::warn!("couldn't put the window back where it was ({fix:?}): {e}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -489,5 +611,83 @@ mod tests {
         assert!(can_self_position(None, None));
         assert!(can_self_position(Some(""), Some("")));
         assert!(!can_self_position(None, Some("wayland-0")));
+    }
+
+    /// Wider than the external monitor, right of it.
+    fn wide() -> Screen {
+        screen("DP-2", 4480.0, 0.0, 3440.0, 1440.0)
+    }
+
+    fn asked(x: f64, y: f64, w: f64, h: f64) -> Placement {
+        Placement { position: Some((x, y)), size: (w, h), maximized: false }
+    }
+
+    #[test]
+    fn the_screen_holding_a_rect_is_the_one_with_most_of_it() {
+        let screens = [laptop(), external(), wide()];
+        let on = |x, w| screen_holding(&Rect::new(x, 100.0, w, 800.0), &screens).and_then(|s| s.name.clone());
+        assert_eq!(on(4620.0, 3182.0), Some("DP-2".into()));
+        // Straddling: the larger share wins.
+        assert_eq!(on(1700.0, 1000.0), Some("DP-1".into()));
+        assert_eq!(on(-5000.0, 1000.0), None);
+    }
+
+    #[test]
+    fn a_window_shown_where_it_was_asked_is_left_alone() {
+        let place = asked(4620.0, 66.0, 3182.0, 1296.0);
+        let now = observed(4620.0, 66.0, 3182.0, 1296.0, &wide());
+        assert_eq!(fixes(&place, Some(&wide().identity()), &now), vec![]);
+        // Off by a pixel of rounding is still there.
+        let now = observed(4621.0, 65.0, 3181.0, 1296.0, &wide());
+        assert_eq!(fixes(&place, Some(&wide().identity()), &now), vec![]);
+    }
+
+    #[test]
+    fn a_window_shown_on_another_monitor_is_moved_back_then_resized() {
+        // The window manager placed it on the monitor it chose, fitted to it.
+        let place = asked(4620.0, 66.0, 3182.0, 1296.0);
+        let now = observed(1920.0, 32.0, 2560.0, 1296.0, &external());
+        assert_eq!(fixes(&place, Some(&wide().identity()), &now), vec![Fix::Unmaximize, Fix::Move(4620.0, 66.0), Fix::Resize(3182.0, 1296.0)]);
+    }
+
+    #[test]
+    fn a_window_shown_on_its_monitor_but_moved_or_shrunk_is_put_back() {
+        let place = asked(4620.0, 66.0, 3182.0, 1296.0);
+        let want = vec![Fix::Unmaximize, Fix::Move(4620.0, 66.0), Fix::Resize(3182.0, 1296.0)];
+        let target = wide().identity();
+        assert_eq!(fixes(&place, Some(&target), &observed(4800.0, 66.0, 3182.0, 1296.0, &wide())), want);
+        assert_eq!(fixes(&place, Some(&target), &observed(4620.0, 66.0, 2560.0, 1296.0, &wide())), want);
+        // No position reported: it can't be shown to be in place.
+        let now = Observed { position: None, ..observed(0.0, 0.0, 3182.0, 1296.0, &wide()) };
+        assert_eq!(fixes(&place, Some(&target), &now), want);
+    }
+
+    #[test]
+    fn a_maximized_window_only_has_to_be_on_its_monitor() {
+        let place = Placement { maximized: true, ..asked(4620.0, 66.0, 3182.0, 1296.0) };
+        let target = wide().identity();
+        let now = Observed { maximized: true, ..observed(4480.0, 32.0, 3440.0, 1408.0, &wide()) };
+        assert_eq!(fixes(&place, Some(&target), &now), vec![]);
+        // Maximized on the wrong one: back to the normal rect on the right one, then maximized there.
+        let now = Observed { maximized: true, ..observed(1920.0, 32.0, 2560.0, 1408.0, &external()) };
+        assert_eq!(
+            fixes(&place, Some(&target), &now),
+            vec![Fix::Unmaximize, Fix::Move(4620.0, 66.0), Fix::Resize(3182.0, 1296.0), Fix::Maximize]
+        );
+    }
+
+    #[test]
+    fn a_window_built_without_a_position_is_where_the_window_manager_put_it() {
+        let place = Placement { position: None, size: (1200.0, 700.0), maximized: false };
+        assert_eq!(fixes(&place, None, &observed(10.0, 40.0, 900.0, 700.0, &laptop())), vec![]);
+    }
+
+    #[test]
+    fn without_a_known_monitor_the_rect_decides() {
+        let place = asked(2100.0, 100.0, 1600.0, 900.0);
+        let now = Observed { monitor: None, ..observed(2100.0, 100.0, 1600.0, 900.0, &external()) };
+        assert_eq!(fixes(&place, Some(&external().identity()), &now), vec![]);
+        let now = observed(160.0, 166.0, 1600.0, 900.0, &laptop());
+        assert_eq!(fixes(&place, None, &now).len(), 3);
     }
 }

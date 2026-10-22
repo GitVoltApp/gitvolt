@@ -471,6 +471,8 @@ pub fn run() {
             // K46: the window opens where it was last (window_state.rs). The builder's position
             // and size are applied before the window is first mapped, so it never shows at the
             // default place first; maximizing waits until it's on screen, on the right monitor.
+            // A window manager that places it elsewhere anyway (mutter) is corrected once it's
+            // shown (`settle`).
             let can_position = window_state::can_self_position_now();
             let saved = window_store.window();
             let available = app.available_monitors().unwrap_or_default();
@@ -493,6 +495,9 @@ pub fn run() {
                 && let Err(e) = window.maximize()
             {
                 tracing::warn!("couldn't maximize the restored window: {e}");
+            }
+            if let Some(p) = place {
+                window_state::settle(&window, p, &screens);
             }
             window_state::track(&window, window_store.clone(), can_position, (cfg.width, cfg.height));
             // R19: answer later launches now that there's a window to focus. One that came while
