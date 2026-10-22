@@ -58,17 +58,19 @@ export function cyclePreset(tabId: string): void {
   if (next) setPreset(tabId, next.preset.id);
 }
 
-function pick(tabId: string, name: string, show: boolean): void {
+function pick(tabId: string, names: string[], show: boolean): void {
   const r = resolve(tabId);
-  if (!r) return;
+  if (!r || names.length === 0) return;
   const app = useAppState.getState();
-  app.updateProfile((p) => pickBranch(app.settings, p, r.repo.path, name, show));
-  reload(r.repo.id, resolve(tabId)?.current.preset.id !== r.current.preset.id, show ? undefined : `branch:${name}`);
+  app.updateProfile((p) => names.reduce((acc, name) => pickBranch(app.settings, acc, r.repo.path, name, show), p));
+  reload(r.repo.id, resolve(tabId)?.current.preset.id !== r.current.preset.id, show ? undefined : `branch:${names[0]}`);
 }
 
 /** Hides one branch by hand; on a built-in preset, in the repository's Custom. */
-export const hideBranch = (tabId: string, name: string): void => pick(tabId, name, false);
-export const showBranch = (tabId: string, name: string): void => pick(tabId, name, true);
+export const hideBranch = (tabId: string, name: string): void => pick(tabId, [name], false);
+export const showBranch = (tabId: string, name: string): void => pick(tabId, [name], true);
+/** Shows several branches in one pick update (the ghost popover's "Show all"): one save, one reload. */
+export const showBranches = (tabId: string, names: string[]): void => pick(tabId, names, true);
 
 /** Unfolds `key` ("branch:<name>" or "fold:<sha>") in this tab until it switches presets. */
 export function expand(tabId: string, key: string): void {

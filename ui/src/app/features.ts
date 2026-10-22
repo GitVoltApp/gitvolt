@@ -121,3 +121,4 @@ import '../submodules/feature';
 import '../fileColours/feature';
 // Branch presets: Next branch preset and Choose branch preset….
 import '../presets/feature';
+import '../presets/branchMenus';

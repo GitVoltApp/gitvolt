@@ -27,6 +27,8 @@ import './columnMenu';
 import type { ColumnTarget } from './columnMenu';
 import { allocateColumns, autoGraphWidth, handleShown, isCollapsed, lanesWidth, useColumnPrefs, type ColumnWidths, type HideableColumn } from './columns';
 import { graphLayout, LINE_W, nodeAt, nodeCentre, nodeRadius } from './draw';
+import { ghostAt } from './ghosts';
+import { useGhostPopover } from '../presets/GhostPopover';
 import { GraphCanvas, type GraphCanvasHandle } from './GraphCanvas';
 import { HeaderCell } from './HeaderCell';
 import { PinButton } from './PinButton';
@@ -419,12 +421,16 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
     // Only over the graph itself: a chip (or any other cell's content) drawn over a node has its
     // own tooltip, and wins.
     const cell = e.target instanceof Element ? e.target.closest('[data-col]') : null;
-    if (cell && cell.getAttribute('data-col') !== 'graph') { hideNodeTip(); return; }
+    if (cell && cell.getAttribute('data-col') !== 'graph') { hideNodeTip(); ghostPop.hover(null); return; }
     const el = e.currentTarget;
     const box = el.getBoundingClientRect();
     const geo = { rows: graph.rows, scrollTop: el.scrollTop, width: cols.graph, metrics, clipped, scrollX, dpr };
     // Canvas coordinates: the canvas sits `labels` px into the scrolled content.
     const x = e.clientX - box.left + el.scrollLeft - cols.labels;
+    // Ghost lines: a hidden branch's stubs list those branches in a popover.
+    const gi = ghostAt(geo, x, e.clientY - box.top);
+    if (gi === null) ghostPop.hover(null);
+    else ghostPop.hover(graph.rows[gi], ghostAnchor(geo, gi, box, el.scrollLeft));
     const i = nodeAt(geo, x, e.clientY - box.top);
     const row = i === null ? null : graph.rows[i];
     if (!row || i === null) { if (nodeTip.current !== null) { nodeTip.current = null; hideTooltip(); } return; }
@@ -434,6 +440,11 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
     const r = nodeRadius(metrics);
     const left = box.left - el.scrollLeft + cols.labels + c.x - r;
     showTooltip(new DOMRect(left, box.top + c.y - r, 2 * r, 2 * r), `${row.authorName} <${row.authorEmail}>`);
+  };
+  const ghostAnchor = (geo: Parameters<typeof nodeCentre>[0], i: number, box: DOMRect, scrollLeft: number) => {
+    const c = nodeCentre(geo, graph.rows[i], i);
+    const r = nodeRadius(metrics);
+    return new DOMRect(box.left - scrollLeft + cols.labels + c.x - r, box.top + c.y - r, 2 * r, 2 * r);
   };
   const hideNodeTip = () => { if (nodeTip.current !== null) { nodeTip.current = null; hideTooltip(); } };
   useEffect(() => hideNodeTip, []);
@@ -476,6 +487,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   const avatarVersion = useSyncExternalStore(avatars.subscribe, avatars.version);
   // The tab's repo: its GitHub project is the backend's last place to look for an author's picture.
   const { repoId: tabRepo, tabId } = useRepoContext();
+  const ghostPop = useGhostPopover(tabId);
   // Ask for the avatars of the rows on screen plus AVATAR_OVERSCAN, latest set wins: a fast
   // scroll drops the queued requests of rows it went past. Re-asked on each arrival too, so an
   // image evicted while on screen comes back. Clamped: elastic overscroll (WebKit) gives a
@@ -639,6 +651,14 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
       return;
     }
     const page = Math.max(1, Math.floor(viewportH / metrics.rowH) - 1);
+    // Enter on a row with ghost lines lists its hidden branches (the hover's popover, from the keyboard).
+    if (e.key === 'Enter' && e.target === e.currentTarget && !e.ctrlKey && !e.altKey && !e.metaKey && graph.rows[selected]?.ghosts?.length) {
+      const el = e.currentTarget as HTMLElement;
+      const geo = { rows: graph.rows, scrollTop: el.scrollTop, width: cols.graph, metrics, clipped, scrollX, dpr };
+      e.preventDefault();
+      ghostPop.openFor(graph.rows[selected], ghostAnchor(geo, selected, el.getBoundingClientRect(), el.scrollLeft));
+      return;
+    }
     const moves: Record<string, number> = { ArrowDown: selected + 1, ArrowUp: selected - 1, PageDown: selected + page, PageUp: selected - page, Home: 0, End: graph.rows.length - 1 };
     if (e.key === 'ArrowDown' && graph.truncated && selected === graph.rows.length - 1 && olderBtn.current) {
       e.preventDefault();
@@ -747,6 +767,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
             </div>
           </div>
         </div>
+        {ghostPop.element}
         {laneScrollMax > 0 && <HScroll left={cols.labels - scrollLeft} top={viewportH - HSCROLL_H} width={layout.area} contentW={lanesW} scrollX={scrollX} onScroll={setLaneScroll} controls={canvasId} />}
       </div>
     </div>

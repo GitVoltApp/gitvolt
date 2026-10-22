@@ -10,3 +10,18 @@
 .preset-main[aria-disabled="true"] { cursor: default; opacity: 0.6; }
 .preset-main[aria-disabled="true"]:hover { background: none; color: var(--text-secondary); }
 .preset-dot { position: absolute; right: 4px; bottom: 4px; width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 0 1px var(--app-bg0); }
+
+/* The ghost lines' popover: the context menu's surface, over the graph. */
+.ghost-pop { position: fixed; z-index: 900; box-sizing: border-box; width: 340px; max-width: calc(100vw - 16px); padding: 4px 0; background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 6px; box-shadow: 0 6px 20px var(--shadow-popup); color: var(--text-normal); font-size: 13px; }
+.ghost-pop-title { padding: 4px 10px 6px; color: var(--text-secondary); font-size: 12px; }
+.ghost-pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
+.ghost-pop-row:hover { background: var(--hover-row); }
+.ghost-pop-chip { flex: none; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; padding: 1px 6px; border: 1px solid var(--lane-color); border-radius: 4px; color: var(--lane-color); font-size: 12px; }
+.ghost-pop-what { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ghost-pop-summary, .ghost-pop-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ghost-pop-meta { color: var(--text-secondary); font-size: 11px; }
+.ghost-pop-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; padding: 6px 10px 2px; border-top: 1px solid var(--section-border); }
+.ghost-pop-by { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12px; }
+.ghost-pop-btn { flex: none; padding: 2px 8px; border: 1px solid var(--section-border); border-radius: 4px; background: none; color: var(--text-normal); font: inherit; font-size: 12px; cursor: pointer; }
+.ghost-pop-btn:hover { background: var(--hover-row); color: var(--text-selected); }
+.ghost-pop-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
