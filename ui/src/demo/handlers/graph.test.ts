@@ -30,19 +30,32 @@ describe.skipIf(!existsSync(WASM_GZ))('the graph handler (needs `just demo-wasm`
     await expect(t.call({ method: 'graph', params: { repo: id, limit: null, active: '/elsewhere' } })).rejects.toMatchObject({ kind: 'InvalidInput', message: '/elsewhere is not a worktree of this repository' });
   });
 
-  test('graphReveal and graphHiddenOwner answer null and branchPresetPreview zeros until the engine lands', async () => {
+  test('a view applies through the WebAssembly pipeline; its preview counts every branch; graphReveal answers null until the reveal layout lands', async () => {
     const { loadGraphWasm } = await import('../engine/graph');
     const graph = await loadGraphWasm(gunzipSync(readFileSync(WASM_GZ)));
     const runtime = createRuntime({ manifest: goldenManifest(), data: goldenData(), graph });
     const t = createDemoTransport(Promise.resolve(runtime), HANDLERS);
     const { id } = (await t.call({ method: 'openRepo', params: { path: '/demo/basic' } })) as RepoSummary;
-    const view: ViewSpec = { rules: [], otherwise: 'show', picks: { shown: [], hidden: [] }, foldMerged: true, ghostLines: true, trunkPatterns: [], expanded: [], placement: 'keepDateOrder' };
+    const view: ViewSpec = { rules: [], otherwise: 'show', picks: { shown: [], hidden: [] }, foldMerged: false, ghostLines: true, trunkPatterns: [], expanded: [], placement: 'keepDateOrder' };
     const plain = (await t.call({ method: 'graph', params: { repo: id, limit: null } })) as GraphPayload;
     const viewed = (await t.call({ method: 'graph', params: { repo: id, limit: null, view } })) as GraphPayload;
     expect(viewed.rows).toEqual(plain.rows);
+    expect(plain.view).toBeUndefined();
+    const branches = viewed.view!.branches;
+    expect(branches.length).toBeGreaterThan(0);
+    expect(branches.every((b) => b.state === 'shown')).toBe(true);
     const tip = plain.rows.find((r) => r.kind === 'commit')!.id;
     expect(await t.call({ method: 'graphReveal', params: { repo: id, limit: null, view, key: 'branch:feature/login', below: false } })).toBeNull();
     expect(await t.call({ method: 'graphHiddenOwner', params: { repo: id, limit: null, view, sha: tip } })).toBeNull();
-    expect(await t.call({ method: 'branchPresetPreview', params: { repo: id, limit: null, view } })).toEqual({ rules: [], shown: 0, collapsed: 0, hidden: 0, folded: 0 });
+    expect(await t.call({ method: 'branchPresetPreview', params: { repo: id, limit: null, view } })).toEqual({ rules: [branches.length], shown: branches.length, collapsed: 0, hidden: 0, folded: 0 });
+    // Folding feature/login into its merge on main: two rows fewer, the merge marked, and a
+    // folded commit names the merge that holds it.
+    const fold: ViewSpec = { ...view, foldMerged: true };
+    const folded = (await t.call({ method: 'graph', params: { repo: id, limit: null, view: fold } })) as GraphPayload;
+    expect(folded.rows).toHaveLength(plain.rows.length - 2);
+    const merge = folded.rows.find((r) => r.fold)!;
+    expect(merge.fold).toEqual({ key: `fold:${merge.id}`, branch: 'feature/login', count: 2 });
+    const gone = plain.rows.find((r) => r.summary === 'Login form')!;
+    expect(await t.call({ method: 'graphHiddenOwner', params: { repo: id, limit: null, view: fold, sha: gone.id } })).toBe(`fold:${merge.id}`);
   });
 });

@@ -40,8 +40,6 @@ pub(crate) fn default_pair(refs: &RefsIn, fork: Option<&Fork>, fork_parents: &Ha
 
 /// The trunk branches' full names for presets: the pinned pair, whether the pin is `auto` or an
 /// explicit ref; with the pin off, the pair `auto` would pin (presets still need a trunk).
-// `assemble` calls it once the view transform (lane B) applies presets.
-#[allow(dead_code)]
 pub(crate) fn trunk_names(input: &GraphInput, fork: Option<&Fork>) -> Vec<String> {
     match (&input.pinned_ref, input.no_pin) {
         (Some(name), false) => pin_pair(&input.refs, name),

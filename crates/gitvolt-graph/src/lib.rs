@@ -15,13 +15,9 @@ mod message_refs;
 mod oid;
 mod payload;
 mod pins;
-// The rule engine's and the view transform's crate-internal parts are stubs that lanes A and B
-// fill in and call from `assemble`: drop these `allow`s then.
-#[allow(dead_code, unused_imports)]
 mod presets;
 #[cfg(test)]
 mod testkit;
-#[allow(dead_code)]
 mod view;
 mod walk;
 

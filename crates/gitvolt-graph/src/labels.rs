@@ -10,7 +10,8 @@ use std::path::Path;
 pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn], here: &str, index: &HashMap<Oid, usize>, row_of_commit: &[u32]) -> Vec<RefLabel> {
     let checked_out_elsewhere: HashMap<&str, String> = worktrees.iter().filter(|w| w.canonical != here).filter_map(|w| w.branch.as_deref().map(|b| (b, w.path.clone()))).collect();
     let checked_out: HashMap<&str, String> = worktrees.iter().filter_map(|w| w.branch.as_deref().map(|b| (b, w.path.clone()))).collect();
-    let row_of = |id: &Oid| index.get(id).map(|&i| row_of_commit[i]);
+    // A commit a preset hides, folds or collapses has no row, and no chips.
+    let row_of = |id: &Oid| index.get(id).map(|&i| row_of_commit[i]).filter(|&r| r != crate::assemble::NO_ROW);
     let host_name = |remote: &str| refs.remote_host_names.get(remote).cloned();
     let host = |remote: &str| refs.remote_hosts.get(remote).copied().unwrap_or(HostKind::Generic);
 

@@ -361,4 +361,38 @@ mod tests {
         assert_eq!(dotted(2), [(0, Half::Full)], "lane 1's own line is solid");
         assert_eq!(dotted(3), [(0, Half::Top)]);
     }
+
+    fn node(parents: &[u32], kind: NodeKind) -> LayoutNode {
+        LayoutNode { parents: parents.iter().map(|&p| Parent::Row(p)).collect(), kind, pinned: None, time: 0 }
+    }
+
+    /// The rows' dotted segments: (row, lane, half).
+    fn dotted_segments(lay: &Layout) -> Vec<(usize, u16, Half)> {
+        lay.rows.iter().enumerate().flat_map(|(r, row)| row.segments.iter().filter(|s| s.dotted).map(move |s| (r, s.from_lane, s.half))).collect()
+    }
+
+    #[test]
+    fn a_collapsed_row_draws_a_dotted_lane_down_to_its_oldest_commit() {
+        // main2 (pinned) on lane 0; tip → ⋮ → (a main commit between) → oldest → main2.
+        let mut nodes = vec![node(&[1], NodeKind::Commit), node(&[3], NodeKind::Collapsed), node(&[4], NodeKind::Commit), node(&[4], NodeKind::Commit), node(&[], NodeKind::Commit)];
+        for n in [2, 4] {
+            nodes[n].pinned = Some(0);
+        }
+        let lay = layout(&nodes, &[u32::MAX]);
+        crate::check_continuity(&lay, &nodes).unwrap();
+        let l = lay.rows[1].lane;
+        assert_eq!((lay.rows[0].lane, l, lay.rows[3].lane), (1, 1, 1));
+        assert_eq!(dotted_segments(&lay), [(1, l, Half::Bottom), (2, l, Half::Full), (3, l, Half::Top)], "the ⋮ lane only, from the ⋮ row to the oldest");
+    }
+
+    #[test]
+    fn a_collapsed_row_with_extra_parents_draws_solid_merge_lines() {
+        // ⋮'s parents: its oldest (row 2), then a trunk commit (row 3) a middle commit merged.
+        let mut nodes = vec![node(&[1], NodeKind::Commit), node(&[2, 3], NodeKind::Collapsed), node(&[3], NodeKind::Commit), node(&[], NodeKind::Commit)];
+        nodes[3].pinned = Some(0);
+        let lay = layout(&nodes, &[u32::MAX]);
+        crate::check_continuity(&lay, &nodes).unwrap();
+        let bottoms: Vec<(u16, bool)> = lay.rows[1].segments.iter().filter(|s| s.half == Half::Bottom).map(|s| (s.to_lane, s.dotted)).collect();
+        assert_eq!(bottoms, [(1, true), (2, false)], "only the first parent's line is dotted");
+    }
 }
