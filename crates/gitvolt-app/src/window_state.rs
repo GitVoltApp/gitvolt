@@ -13,6 +13,9 @@
 //! fitted to that monitor. So once the window is on screen and the window manager has settled
 //! it, [`settle`] compares where it is with where it was asked to go and, if it's elsewhere, puts
 //! it back ([`fixes`]): moved first, then resized, so the size isn't fitted to the wrong monitor.
+//! Until then the window is see-through ([`veil`]: built hidden, given an X11 opacity of 0, then
+//! shown), so where the window manager put it first is never seen; it's made visible once it's
+//! settled, or after [`VEIL_FALLBACK`] at the latest.
 //!
 //! The vendored CEF runtime supports all of it through winit-gtk4 on X11 (`outer_position`,
 //! `set_position`, `inner_size`, `is_maximized`/`is_minimized`, the monitors with their work
@@ -35,6 +38,10 @@ const SETTLE: Duration = Duration::from_millis(150);
 
 /// A check later than this after the window was built could undo the user's own move: skipped.
 const SETTLE_DEADLINE: Duration = Duration::from_secs(3);
+
+/// The longest a new window stays see-through ([`Veil`]) after it's built: visible by then,
+/// settled or not.
+const VEIL_FALLBACK: Duration = Duration::from_millis(800);
 
 /// Logical pixels a shown window may be off by (rounding) and still be where it was asked.
 const SLACK: f64 = 2.0;
@@ -378,44 +385,261 @@ pub fn track<R: Runtime>(window: &WebviewWindow<R>, store: Arc<SettingsStore>, c
     });
 }
 
-/// Once the window manager has shown the window built at `place` (its first moves, resizes and
-/// focus have gone quiet for `SETTLE`), puts it back where it was asked to go if it's elsewhere
-/// ([`fixes`]). Only for a window built with a position, and only once.
-pub fn settle<R: Runtime>(window: &WebviewWindow<R>, place: Placement, screens: &[Screen]) {
-    let Some((x, y)) = place.position else {
-        return;
+/// Whether to build the window see-through and only make it visible once it's where it was asked
+/// ([`Veil`]): when it's built with a position, which a window manager may ignore. Without one
+/// there's nothing to put back, so nothing to hide. X11 only, where the position is applied.
+pub fn veiled(place: Option<&Placement>) -> bool {
+    cfg!(target_os = "linux") && place.is_some_and(|p| p.position.is_some())
+}
+
+/// Why the see-through window was made visible.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reveal {
+    /// The window manager put it where it was asked.
+    InPlace,
+    /// It was put back, and its moves have gone quiet since.
+    PutBack,
+    /// It wasn't settled within [`VEIL_FALLBACK`] (or was shown too late to check at all).
+    Fallback,
+    /// Its geometry couldn't be read once shown, so it couldn't be checked.
+    Failed,
+}
+
+impl std::fmt::Display for Reveal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Reveal::InPlace => "settled where it was asked",
+            Reveal::PutBack => "settled after it was put back",
+            Reveal::Fallback => "fallback: not settled in time",
+            Reveal::Failed => "its geometry was unavailable",
+        })
+    }
+}
+
+/// What to do once the window has been quiet for `SETTLE`: check it (and put it back), or, if it
+/// was already checked or is too late to check, make it visible.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Next {
+    Check,
+    Reveal(Reveal),
+}
+
+/// The step after a quiet `SETTLE`, `elapsed` since the window was built.
+pub fn next_step(checked: bool, elapsed: Duration) -> Next {
+    if checked {
+        Next::Reveal(Reveal::PutBack)
+    } else if elapsed > SETTLE_DEADLINE {
+        Next::Reveal(Reveal::Fallback)
+    } else {
+        Next::Check
+    }
+}
+
+/// After the check: visible now if there was nothing to put back; otherwise once the moves it
+/// asked for have gone quiet (`None`).
+pub fn reveal_after(fixes: &[Fix]) -> Option<Reveal> {
+    fixes.is_empty().then_some(Reveal::InPlace)
+}
+
+/// Keeps the new window see-through until it's lifted, once: when it's settled where it was
+/// asked, or [`VEIL_FALLBACK`] after it was built, whichever comes first.
+pub struct Veil {
+    lift: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
+}
+
+impl Veil {
+    pub fn new(lift: impl FnOnce() + Send + 'static) -> Self {
+        Self { lift: std::sync::Mutex::new(Some(Box::new(lift))) }
+    }
+
+    /// Makes the window visible, the first time only; whether this call did.
+    pub fn lift(&self, why: Reveal) -> bool {
+        let Some(lift) = self.lift.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+            return false;
+        };
+        tracing::debug!("window placement: shown ({why})");
+        lift();
+        true
+    }
+
+    pub fn lifted(&self) -> bool {
+        self.lift.lock().unwrap_or_else(|e| e.into_inner()).is_none()
+    }
+}
+
+/// Shows `window`, built hidden (`veiled`), see-through: its `_NET_WM_WINDOW_OPACITY` at 0,
+/// which mutter's compositor applies to the whole window, frame and browser included. It's set
+/// before the window is mapped, so the window manager's own placement is never seen. Lifting the
+/// veil makes it opaque and focuses it, as the runtime does for a window built visible. If it
+/// can't be made see-through it's just shown (`None`). On the main thread (`setup`).
+#[cfg(target_os = "linux")]
+pub fn veil<R: Runtime>(window: &WebviewWindow<R>) -> Option<Arc<Veil>> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use tauri::Manager as _;
+    let xid = match window.window_handle().map(|h| h.as_raw()) {
+        Ok(RawWindowHandle::Xlib(h)) => Some(h.window),
+        Ok(RawWindowHandle::Xcb(h)) => Some(h.window.get().into()),
+        _ => None,
     };
-    let target = screen_holding(&Rect::new(x, y, place.size.0, place.size.1), screens).map(Screen::identity);
-    let built = Instant::now();
-    let generation = Arc::new(AtomicU64::new(0));
-    let done = Arc::new(AtomicBool::new(false));
+    let hidden = xid.filter(|&xid| x11_opacity(xid, Some(0)));
+    if let Err(e) = window.show() {
+        tracing::warn!("couldn't show the window: {e}");
+    }
+    let Some(xid) = hidden else {
+        tracing::debug!("window placement: couldn't make the window see-through, shown as is");
+        return None;
+    };
     let w = window.clone();
-    window.on_window_event(move |event| {
-        if done.load(Ordering::SeqCst) || !matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::Focused(true)) {
-            return;
+    Some(Arc::new(Veil::new(move || {
+        if let Err(e) = w.run_on_main_thread(move || _ = x11_opacity(xid, None)) {
+            tracing::warn!("couldn't make the window opaque: {e}");
         }
-        let g = generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let (generation, done, w, place, target) = (generation.clone(), done.clone(), w.clone(), place.clone(), target.clone());
+        if let Err(e) = w.set_focus() {
+            tracing::debug!("couldn't focus the window once shown: {e}");
+        }
+    })))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn veil<R: Runtime>(window: &WebviewWindow<R>) -> Option<Arc<Veil>> {
+    if let Err(e) = window.show() {
+        tracing::warn!("couldn't show the window: {e}");
+    }
+    None
+}
+
+/// Sets the X11 window's `_NET_WM_WINDOW_OPACITY` (0 to `u32::MAX`), or removes it (`None`:
+/// opaque), on GDK's own display, so it's ordered before GDK's later map; whether the X server
+/// took it. Main thread only.
+#[cfg(target_os = "linux")]
+fn x11_opacity(xid: std::os::raw::c_ulong, opacity: Option<u32>) -> bool {
+    use gdk4_x11::gdk::prelude::*;
+    use x11_dl::xlib;
+    static XLIB: std::sync::LazyLock<Option<xlib::Xlib>> = std::sync::LazyLock::new(|| xlib::Xlib::open().ok());
+    let Some(x) = XLIB.as_ref() else {
+        return false;
+    };
+    let Some(display) = gdk4_x11::gdk::Display::default().and_then(|d| d.downcast::<gdk4_x11::X11Display>().ok()) else {
+        return false;
+    };
+    let atom = gdk4_x11::x11_get_xatom_by_name_for_display(&display, "_NET_WM_WINDOW_OPACITY");
+    // SAFETY: Xlib calls on GDK's live display, on the GTK main thread, with X errors trapped
+    // (a window already gone is only a `BadWindow`).
+    unsafe {
+        let xdisplay = display.xdisplay().cast::<xlib::Display>();
+        display.error_trap_push();
+        match opacity {
+            Some(value) => {
+                let data = std::os::raw::c_ulong::from(value);
+                (x.XChangeProperty)(xdisplay, xid, atom, xlib::XA_CARDINAL, 32, xlib::PropModeReplace, (&raw const data).cast(), 1);
+            }
+            None => {
+                (x.XDeleteProperty)(xdisplay, xid, atom);
+            }
+        }
+        (x.XFlush)(xdisplay);
+        display.error_trap_pop() == 0
+    }
+}
+
+/// The window built at `place`, settling: checked once the window manager has shown it, put
+/// back if need be, and made visible once that's done (its `veil`).
+struct Settler<R: Runtime> {
+    window: WebviewWindow<R>,
+    place: Placement,
+    target: Option<MonitorIdentity>,
+    built: Instant,
+    /// Bumped by every move, resize and focus; a step runs only after the latest.
+    generation: AtomicU64,
+    checked: AtomicBool,
+    veil: Option<Arc<Veil>>,
+}
+
+impl<R: Runtime> Settler<R> {
+    fn finished(&self) -> bool {
+        self.checked.load(Ordering::SeqCst) && self.veil.as_ref().is_none_or(|v| v.lifted())
+    }
+
+    fn reveal(&self, why: Reveal) {
+        if let Some(veil) = &self.veil {
+            veil.lift(why);
+        }
+    }
+
+    /// The window moved, was resized or focused: the next step once it's quiet for `SETTLE`.
+    fn stirred(self: &Arc<Self>) {
+        let g = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let s = self.clone();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(SETTLE).await;
-            if generation.load(Ordering::SeqCst) != g || done.swap(true, Ordering::SeqCst) {
+            if s.generation.load(Ordering::SeqCst) != g {
                 return;
             }
-            if built.elapsed() > SETTLE_DEADLINE {
-                tracing::debug!("window placement: shown too late to check, left where it is");
-                return;
+            match next_step(s.checked.swap(true, Ordering::SeqCst), s.built.elapsed()) {
+                // The getters block on the event loop: off the async workers.
+                Next::Check => _ = tauri::async_runtime::spawn_blocking(move || s.check()).await,
+                Next::Reveal(Reveal::Fallback) => {
+                    tracing::debug!("window placement: shown too late to check, left where it is");
+                    s.reveal(Reveal::Fallback);
+                }
+                Next::Reveal(why) => s.reveal(why),
             }
-            // The getters block on the event loop: off the async workers.
-            let _ = tauri::async_runtime::spawn_blocking(move || put_back(&w, &place, target.as_ref())).await;
         });
+    }
+
+    fn check(self: &Arc<Self>) {
+        match put_back(&self.window, &self.place, self.target.as_ref()) {
+            Ok(fixes) => match reveal_after(&fixes) {
+                Some(why) => self.reveal(why),
+                // Visible once its moves have gone quiet, even if they send no event.
+                None if self.veil.is_some() => self.stirred(),
+                None => {}
+            },
+            Err(e) => {
+                tracing::debug!("window placement: geometry unavailable once shown: {e}");
+                self.reveal(Reveal::Failed);
+            }
+        }
+    }
+}
+
+/// Once the window manager has shown the window built at `place` (its first moves, resizes and
+/// focus have gone quiet for `SETTLE`), puts it back where it was asked to go if it's elsewhere
+/// ([`fixes`]). Only for a window built with a position, and only once. A `veil` (`veiled`) is
+/// lifted once that's settled, or after [`VEIL_FALLBACK`] whatever happened.
+pub fn settle<R: Runtime>(window: &WebviewWindow<R>, place: Placement, screens: &[Screen], veil: Option<Arc<Veil>>) {
+    let Some((x, y)) = place.position else {
+        if let Some(veil) = veil {
+            veil.lift(Reveal::InPlace);
+        }
+        return;
+    };
+    if let Some(veil) = veil.clone() {
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(VEIL_FALLBACK).await;
+            veil.lift(Reveal::Fallback);
+        });
+    }
+    let target = screen_holding(&Rect::new(x, y, place.size.0, place.size.1), screens).map(Screen::identity);
+    let settler = Arc::new(Settler {
+        window: window.clone(),
+        place,
+        target,
+        built: Instant::now(),
+        generation: AtomicU64::new(0),
+        checked: AtomicBool::new(false),
+        veil,
+    });
+    window.on_window_event(move |event| {
+        if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::Focused(true)) && !settler.finished() {
+            settler.stirred();
+        }
     });
 }
 
-fn put_back<R: Runtime>(w: &WebviewWindow<R>, place: &Placement, target: Option<&MonitorIdentity>) {
-    let now = match observe(w, true) {
-        Ok(now) => now,
-        Err(e) => return tracing::debug!("window placement: geometry unavailable once shown: {e}"),
-    };
+/// Puts the window back where it was asked to go, if it isn't; the steps taken.
+fn put_back<R: Runtime>(w: &WebviewWindow<R>, place: &Placement, target: Option<&MonitorIdentity>) -> tauri::Result<Vec<Fix>> {
+    let now = observe(w, true)?;
     let fixes = fixes(place, target, &now);
     tracing::debug!(
         "window placement: asked {} (maximized: {}), shown at {}; {}",
@@ -424,7 +648,7 @@ fn put_back<R: Runtime>(w: &WebviewWindow<R>, place: &Placement, target: Option<
         describe(now.position, now.size, now.monitor.as_ref()),
         if fixes.is_empty() { "left as is".to_owned() } else { format!("putting it back: {fixes:?}") },
     );
-    for fix in fixes {
+    for &fix in &fixes {
         let done = match fix {
             Fix::Unmaximize => w.unmaximize(),
             Fix::Move(x, y) => w.set_position(LogicalPosition::new(x, y)),
@@ -435,6 +659,7 @@ fn put_back<R: Runtime>(w: &WebviewWindow<R>, place: &Placement, target: Option<
             tracing::warn!("couldn't put the window back where it was ({fix:?}): {e}");
         }
     }
+    Ok(fixes)
 }
 
 #[cfg(test)]
@@ -689,5 +914,42 @@ mod tests {
         assert_eq!(fixes(&place, Some(&external().identity()), &now), vec![]);
         let now = observed(160.0, 166.0, 1600.0, 900.0, &laptop());
         assert_eq!(fixes(&place, None, &now).len(), 3);
+    }
+
+    #[test]
+    fn only_a_window_built_with_a_position_is_hidden_until_placed() {
+        assert_eq!(veiled(Some(&asked(4620.0, 66.0, 3182.0, 1296.0))), cfg!(target_os = "linux"));
+        // Wayland, or no saved position: the window manager's place stands, nothing to hide.
+        assert!(!veiled(Some(&Placement { position: None, size: (1200.0, 700.0), maximized: false })));
+        // First launch: nothing saved.
+        assert!(!veiled(None));
+    }
+
+    #[test]
+    fn a_quiet_window_is_checked_then_shown() {
+        assert_eq!(next_step(false, Duration::from_millis(300)), Next::Check);
+        // Already checked and put back: its moves have gone quiet.
+        assert_eq!(next_step(true, Duration::from_millis(600)), Next::Reveal(Reveal::PutBack));
+        // Shown too late to check: left where it is, and shown.
+        assert_eq!(next_step(false, SETTLE_DEADLINE + Duration::from_millis(1)), Next::Reveal(Reveal::Fallback));
+    }
+
+    #[test]
+    fn a_window_in_place_is_shown_at_once_one_put_back_once_quiet() {
+        assert_eq!(reveal_after(&[]), Some(Reveal::InPlace));
+        assert_eq!(reveal_after(&[Fix::Unmaximize, Fix::Move(4620.0, 66.0), Fix::Resize(3182.0, 1296.0)]), None);
+    }
+
+    #[test]
+    fn the_veil_lifts_once_whichever_reason_comes_first() {
+        let lifts = Arc::new(AtomicU64::new(0));
+        let counted = lifts.clone();
+        let veil = Veil::new(move || _ = counted.fetch_add(1, Ordering::SeqCst));
+        assert!(!veil.lifted());
+        assert!(veil.lift(Reveal::PutBack));
+        assert!(veil.lifted());
+        // The fallback timer, firing after it settled, does nothing.
+        assert!(!veil.lift(Reveal::Fallback));
+        assert_eq!(lifts.load(Ordering::SeqCst), 1);
     }
 }

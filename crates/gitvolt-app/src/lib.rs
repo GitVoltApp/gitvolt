@@ -490,14 +490,21 @@ pub fn run() {
                     builder = builder.position(x, y);
                 }
             }
+            // Until it's settled the window is see-through, so the window manager's own placement
+            // never shows (`veil`).
+            let veiled = window_state::veiled(place.as_ref());
+            if veiled {
+                builder = builder.visible(false);
+            }
             let window = builder.build()?;
+            let veil = if veiled { window_state::veil(&window) } else { None };
             if place.as_ref().is_some_and(|p| p.maximized)
                 && let Err(e) = window.maximize()
             {
                 tracing::warn!("couldn't maximize the restored window: {e}");
             }
             if let Some(p) = place {
-                window_state::settle(&window, p, &screens);
+                window_state::settle(&window, p, &screens, veil);
             }
             window_state::track(&window, window_store.clone(), can_position, (cfg.width, cfg.height));
             // R19: answer later launches now that there's a window to focus. One that came while
