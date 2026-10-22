@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({
   saveSettings: vi.fn(async () => null),
   saveProfile: vi.fn(async () => null),
   pickFolder: vi.fn(async () => null),
+  gitIdentity: vi.fn(async () => ({ identity: null, signing: null })),
   listOpeners: vi.fn(async () => [
     { id: 'vscode', name: 'Visual Studio Code', kind: 'editor' },
     { id: 'files', name: 'Files', kind: 'fileManager' },

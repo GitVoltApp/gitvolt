@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api/client', () => ({
-  api: { saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []), listOpeners: vi.fn(async () => []), openLogsFolder: vi.fn(async () => null) },
+  api: { gitIdentity: vi.fn(async () => ({ identity: null, signing: null })), saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []), listOpeners: vi.fn(async () => []), openLogsFolder: vi.fn(async () => null) },
   errorMessage: String,
 }));
 
@@ -48,7 +48,7 @@ describe('settings pages', () => {
   it.each([
     ['advanceAfterStage', 'general'], ['updateCheck', 'general'], ['updatePrereleases', 'general'],
     ['theme', 'appearance'], ['graphColors', 'appearance'], ['density', 'appearance'], ['editorFontSize', 'appearance'],
-    ['commitLimit', 'graph'], ['dateFormat', 'graph'], ['gravatar', 'graph'], ['forgeAvatars', 'graph'],
+    ['commitLimit', 'graph'], ['relativeDates', 'graph'], ['dateFormat', 'graph'], ['gravatar', 'graph'], ['forgeAvatars', 'graph'],
     ['stickyScroll', 'diffs'], ['fetchInterval', 'fetch'], ['prune', 'fetch'], ['pushFollowTags', 'fetch'],
     ['shortcuts', 'keyboard'], ['debugLogging', 'advanced'], ['openLogs', 'advanced'], ['resetAll', 'advanced'],
     ['extraGitconfig', 'git-identity'], ['editor', 'editor-folders'], ['reposFolder', 'editor-folders'],
@@ -68,6 +68,7 @@ describe('settings pages', () => {
     expect(groupTitles(dialog)).toEqual(['Staging', 'Updates']);
     openPage('Graph');
     expect(groupTitles(dialog)).toEqual(['History', 'Dates', 'Avatars']);
+    expect(allSettings().filter((d) => d.page === 'graph' && d.group === 'Dates').map((d) => d.id)).toEqual(['relativeDates', 'dateFormat']);
     openPage('Fetch and push');
     expect(groupTitles(dialog)).toEqual(['Fetch', 'Push']);
     openPage('Advanced');

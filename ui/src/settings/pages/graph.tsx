@@ -34,9 +34,15 @@ const offs = [
       Control: CommitLimitControl, binding: appSetting('commitLimit', 2000, refreshActiveTab),
     },
     {
+      id: 'relativeDates', label: 'Show relative dates', page: 'graph', group: 'Dates',
+      keywords: 'relative ago yesterday humanize',
+      description: '"5 minutes ago", "yesterday", "3 weeks ago". The exact format below shows on hover.',
+      Control: switchControl('relativeDates'), binding: appSetting('relativeDates', false),
+    },
+    {
       id: 'dateFormat', label: 'Date format', page: 'graph', group: 'Dates', labelFor: 'group',
       keywords: 'time 24h 12h graph column',
-      description: 'In the graph, the details panel, compare and find.',
+      description: 'The exact date: in the graph, details, compare and find, or on hover under relative dates.',
       Control: selectControl('dateFormat', DATE_CHOICES), binding: appSetting('dateFormat', 'ymd12h'),
     },
     {

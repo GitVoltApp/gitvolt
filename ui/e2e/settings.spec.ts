@@ -114,6 +114,18 @@ test.describe('settings', () => {
       await expect(dateCell).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
       await pick(page, 'Date format', '26/09/2026 15:14');
       await expect(dateCell).toHaveText(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+      await dialog(page).getByRole('switch', { name: 'Show relative dates' }).click();
+      await closeSettings(page);
+      await expect(dateCell).toHaveText(/ago|yesterday|just now/);
+      await dateCell.hover();
+      await expect(page.getByRole('tooltip')).toContainText(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/);
+      await openSettings(page);
+      await nav(page, 'Graph').click();
+      await dialog(page).getByRole('switch', { name: 'Show relative dates' }).click();
+      await closeSettings(page);
+      await expect(dateCell).toHaveText(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+      await openSettings(page);
+      await nav(page, 'Graph').click();
     });
     await test.step('Reset all (Advanced) arms in place first; Esc disarms it and leaves Settings open', async () => {
       await closeSettings(page);
