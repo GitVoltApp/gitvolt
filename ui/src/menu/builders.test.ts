@@ -41,7 +41,7 @@ describe('the file menu (spec §7; plan 1C Task 15, file kind)', () => {
   it('rows in group order; every row, variant and submenu row has an icon and a tooltip', () => {
     const rows = file(target(), envOf());
     expect(labels(rows)).toEqual(['Copy path', '---', 'Forge link', '---', 'Open in', '---', 'View']);
-    const all = (rs: MenuRow[]): Array<Exclude<MenuRow, { kind: 'separator' }>> => rs.flatMap((r) => (r.kind === 'separator' ? [] : r.kind === 'submenu' ? [r, ...all(r.rows)] : [r]));
+    const all = (rs: MenuRow[]): Array<Exclude<MenuRow, { kind: 'separator' | 'header' }>> => rs.flatMap((r) => (r.kind === 'separator' || r.kind === 'header' ? [] : r.kind === 'submenu' ? [r, ...all(r.rows)] : [r]));
     for (const r of all(rows)) {
       expect(r.icon, r.id).toBeTruthy();
       expect(r.tooltip.length, r.id).toBeGreaterThan(3);
@@ -210,7 +210,7 @@ describe('the commit menu (spec §7 target table; plan 1C Task 15, commit kind)'
     const t = commitTarget({ mrRefs: ['acme/shop!1187', '#3'], branch: branch('feature/x', 'refs/heads/feature/x', { remote: 'origin', branch: 'feature/x' }) });
     const rows = commit(t, envOf());
     expect(labels(rows)).toEqual(['Open acme/shop!1187', '---', 'Copy branch name', 'Copy SHA', 'Copy message', 'Forge link', '---', 'Compare with HEAD']);
-    const all = (rs: MenuRow[]): Array<Exclude<MenuRow, { kind: 'separator' }>> => rs.flatMap((r) => (r.kind === 'separator' ? [] : r.kind === 'submenu' ? [r, ...all(r.rows)] : [r]));
+    const all = (rs: MenuRow[]): Array<Exclude<MenuRow, { kind: 'separator' | 'header' }>> => rs.flatMap((r) => (r.kind === 'separator' || r.kind === 'header' ? [] : r.kind === 'submenu' ? [r, ...all(r.rows)] : [r]));
     for (const r of all(rows)) {
       expect(r.icon, r.id).toBeTruthy();
       expect(r.tooltip.length, r.id).toBeGreaterThan(3);
@@ -363,7 +363,7 @@ describe('the Monaco menu (1B GROUP_ORDER.monaco: copy, forge, open)', () => {
 
 describe('the sidebar menus (plan 1C Task 15b)', () => {
   const side = (t: SidebarTarget, env: MenuEnv) => buildMenu<SidebarTarget, MenuEnv>('sidebar', t, env);
-  const everyRow = (rows: MenuRow[]): Array<Exclude<MenuRow, { kind: 'separator' }>> => rows.flatMap((r) => (r.kind === 'separator' ? [] : r.kind === 'submenu' ? [r, ...everyRow(r.rows)] : [r]));
+  const everyRow = (rows: MenuRow[]): Array<Exclude<MenuRow, { kind: 'separator' | 'header' }>> => rows.flatMap((r) => (r.kind === 'separator' || r.kind === 'header' ? [] : r.kind === 'submenu' ? [r, ...everyRow(r.rows)] : [r]));
   const remoteUrl = 'ssh://gitlab.example.com/acme/shop.git';
   const targets: SidebarTarget[] = [
     { what: 'ref', sha },

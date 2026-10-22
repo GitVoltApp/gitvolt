@@ -8,4 +8,6 @@ export type MenuRow =
   /** `initial`: the id of the row the submenu opens on (e.g. the last used opener); else its
    * first enabled row. */
   | { kind: 'submenu'; id: string; label: string; icon: LucideIcon; tooltip: string; rows: MenuRow[]; initial?: string }
+  /** Names what the menu is about (a scope, a folder) without being an action: not focusable, no tooltip. */
+  | { kind: 'header'; id: string; label: string; detail?: string; swatch?: string }
   | { kind: 'separator' };
