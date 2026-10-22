@@ -1,4 +1,5 @@
 import { Palette } from 'lucide-react';
+import './settings/page';
 import { useAppState } from '../app/state';
 import type { FileTarget, FolderTarget, MenuEnv } from '../menu/menuEnv';
 import { registerMenu } from '../menu/registry';

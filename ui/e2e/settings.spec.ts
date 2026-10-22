@@ -217,6 +217,22 @@ test.describe('settings', () => {
     });
   });
 
+  test('file colours: the file list menu opens the page with the pattern, and the new scope tints the file', async ({ page }) => {
+    await open(page, freshFixture('details'));
+    await test.step("file colours: colour a file's type from its menu", async () => {
+      await page.getByRole('row').filter({ hasText: 'Rename guide and update assets' }).click();
+      const row = page.locator('[role="treeitem"][data-path="logo.png"], [role="option"][data-path="logo.png"]');
+      await row.click({ button: 'right', position: { x: 40, y: 10 } });
+      await page.getByRole('menuitem', { name: 'Colour *.png files…' }).click();
+      await expect(dialog(page)).toBeVisible();
+      await expect(dialog(page).getByRole('heading', { name: 'File colours' })).toBeVisible();
+      await expect(dialog(page).getByRole('textbox', { name: 'Pattern', exact: true })).toHaveValue('*.png');
+      await dialog(page).getByRole('button', { name: 'New scope', exact: true }).click();
+      await closeSettings(page);
+      await expect(row).toHaveAttribute('data-tinted', 'true');
+    });
+  });
+
   test('a host override switches a generic remote to GitLab, in the graph and the sidebar', async ({ page }) => {
     const repo = freshFixture('basic');
     git(repo, 'remote', 'set-url', 'origin', 'git@code.example.com:acme/shop.git');
