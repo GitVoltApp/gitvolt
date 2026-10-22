@@ -125,6 +125,26 @@ test.describe('file list and diff takeover', () => {
       await fileRow(page, 'dir with space/ünï.txt').hover();
       await expect(tip).toHaveText('dir with space/ünï.txt');
     });
+    // Run first among the tree steps: no folder has been opened or closed by hand yet, so the scope's default shows.
+    await test.step('file colours: a scope tints its rows and folders, a start-collapsed folder starts closed, and the diff header shows the colour', async () => {
+      await page.evaluate(() => window.__gb!.setFileScopes([{ id: 's1', name: 'Docs', tint: 'blue', patterns: ['docs/**'], startCollapsed: true }]));
+      const docs = page.locator('.file-row[data-kind="folder"][data-path="docs"]');
+      await expect(docs).toHaveAttribute('data-tinted', 'true');
+      await expect(docs).toHaveAttribute('aria-expanded', 'false');
+      await docs.click();
+      await expect(docs).toHaveAttribute('aria-expanded', 'true');
+      await expect(fileRow(page, 'docs/manual.txt')).toHaveAttribute('data-tinted', 'true');
+      await expect(fileRow(page, 'src/app.php')).not.toHaveAttribute('data-tinted');
+      await fileRow(page, 'docs/manual.txt').click();
+      await expect(page.locator('.diff-header[data-scope="s1"]')).toBeVisible();
+      await page.getByRole('region', { name: 'Diff' }).getByRole('button', { name: 'Close diff' }).click();
+      // Another commit and back: the folder opened by hand stays open.
+      await selectRow(page, 'Add feature file');
+      await selectRow(page, 'Rename guide and update assets');
+      await expect(docs).toHaveAttribute('aria-expanded', 'true');
+      await page.evaluate(() => window.__gb!.setFileScopes([]));
+      await expect(docs).not.toHaveAttribute('data-tinted');
+    });
     await test.step('J9: a double-click or a drag in the file panel selects no text; tooltips still show', async () => {
       await listMode(page, 'Tree').click();
       const selection = () => page.evaluate(() => window.getSelection()?.toString() ?? '');

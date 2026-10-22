@@ -39,3 +39,11 @@ describe('files.css motion (J19)', () => {
     expect(rule('.file-row\\[aria-selected="true"\\]')).not.toMatch(/transition/);
   });
 });
+
+describe('files.css (file colours)', () => {
+  it("a tinted row's hover and selection draw over its tint", () => {
+    expect(rule('.file-row[data-tinted]')).toMatch(/background-color:\s*var\(--row-tint\)/);
+    expect(rule('.file-row[data-tinted]:hover')).toMatch(/linear-gradient\(var\(--hover-row\), var\(--hover-row\)\) var\(--row-tint, transparent\)/);
+    expect(rule('.file-row[data-tinted][aria-selected="true"]')).toMatch(/linear-gradient\(var\(--selected-row\), var\(--selected-row\)\) var\(--row-tint, transparent\)/);
+  });
+});

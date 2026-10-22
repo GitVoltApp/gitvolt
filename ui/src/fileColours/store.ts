@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
+import { useContext, useMemo } from 'react';
 import type { FileScope } from '../api/gen/FileScope';
 import type { Profile } from '../api/gen/Profile';
 import { useRuntime } from '../app/runtime';
 import { useAppState } from '../app/state';
 import { tabIdOf } from '../app/tabStores';
-import { useRepoViewStore } from '../repo/store';
+import { RepoViewContext } from '../repo/store';
 
 export type { FileScope } from '../api/gen/FileScope';
 
@@ -36,8 +36,8 @@ export function useTabCommonDir(tabId: string | null): string | null {
 
 /** The scopes of the repository behind the tab this RepoView store belongs to. */
 export function useRepoScopes(): { commonDir: string | null; scopes: readonly FileScope[] } {
-  const store = useRepoViewStore();
-  const commonDir = useTabCommonDir(tabIdOf(store));
+  const store = useContext(RepoViewContext); // tolerant: a header drawn outside a RepoView has no scopes
+  const commonDir = useTabCommonDir(store ? tabIdOf(store) : null);
   const scopes = useAppState((s) => scopesOf(s.profile, commonDir));
   return useMemo(() => ({ commonDir, scopes }), [commonDir, scopes]);
 }

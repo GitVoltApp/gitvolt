@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDownWideNarrow, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FolderOpen } from 'lucide-react';
-import { Fragment, memo, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { errorMessage } from '../api/client';
 import type { DiffSpec } from '../api/gen/DiffSpec';
 import type { FileChange } from '../api/gen/FileChange';
@@ -19,7 +19,8 @@ import { useConflictSides } from '../conflicts/useOperation';
 import { useFileListPrefs } from './fileListPrefs';
 import { REVEAL_WAIT_MS, takeReveal, useFileReveal } from './reveal';
 import { allFolderPaths, buildRows, countByStatus, matchesFilter, NONE_COLLAPSED, rowIndent, stepFile, TREE, type FileListMode, type FileRow, type StatusCounts } from './fileTree';
-import { NEVER_COLLAPSED, useFolderCollapse } from './folderMemory';
+import { useListColours } from '../fileColours/listColours';
+import { useFolderCollapse } from './folderMemory';
 import { FilesFilter } from './FilesFilter';
 import { useWipFilter, wipFilterOf } from '../details/wipFilter';
 import { PathTooltip } from './RenamePaths';
@@ -111,7 +112,7 @@ export function StatusCountsView({ counts, testId, size }: { counts: StatusCount
 
 /** `onPress`/`onMenu` are the list's two stable handlers (they get the row and its index back), so a
  * row's props are all primitives or the rows' own memoized objects and `memo` can skip it. */
-interface RowProps { id: string; index: number; row: FileRow; mode: FileListMode; active: boolean; /** Its context menu is open (the outline; a right-click never selects). */ context: boolean; top: number; height: number; filterQuery: string; onPress: (e: MouseEvent, row: FileRow, index: number) => void; onMenu: (e: MouseEvent, row: FileRow) => void; renderActions?: (row: FileRow) => ReactNode }
+interface RowProps { /** The scope fill of the row (file colours), or null. */ tint: string | null; id: string; index: number; row: FileRow; mode: FileListMode; active: boolean; /** Its context menu is open (the outline; a right-click never selects). */ context: boolean; top: number; height: number; filterQuery: string; onPress: (e: MouseEvent, row: FileRow, index: number) => void; onMenu: (e: MouseEvent, row: FileRow) => void; renderActions?: (row: FileRow) => ReactNode }
 
 /** The role of a row: tree mode is a `tree` of `treeitem`s (`aria-level`, folders `aria-expanded`),
  * path mode a flat `listbox` of `option`s (review M8). */
@@ -129,8 +130,8 @@ function ConflictTip({ kind, worktree }: { kind: ConflictKind; worktree: string 
 /** A folder row, or a file row with its full path in an instant hover tooltip, left of the list (a rename: old,
  * ↓, new; feedback H22). A renamed file shows its new name (tree) or new path (path view); the
  * old one is in the tooltip and the diff header. */
-const Row = memo(function Row({ id, index, row, mode, active, context, top, height, filterQuery, onPress, onMenu, renderActions }: RowProps) {
-  const style = { top, height, paddingLeft: rowIndent(row.depth), gap: TREE.gap };
+const Row = memo(function Row({ tint, id, index, row, mode, active, context, top, height, filterQuery, onPress, onMenu, renderActions }: RowProps) {
+  const style = { top, height, paddingLeft: rowIndent(row.depth), gap: TREE.gap, ...(tint ? { '--row-tint': tint } : null) } as CSSProperties;
   const file = row.kind === 'file' ? row : null;
   const role = rowRole(mode);
   const level = mode === 'tree' ? row.depth + 1 : undefined;
@@ -152,7 +153,7 @@ const Row = memo(function Row({ id, index, row, mode, active, context, top, heig
   };
   if (row.kind === 'folder') {
     return (
-      <div id={id} role={role} aria-selected={active} aria-level={level} aria-expanded={row.expanded} data-context={context || undefined} data-kind="folder" data-path={row.path} className="file-row" style={style} onMouseDown={onMouseDown} onContextMenu={(e) => { tip.hide(); onMenu(e, row); }} {...folderTip}>
+      <div id={id} role={role} aria-selected={active} aria-level={level} aria-expanded={row.expanded} data-context={context || undefined} data-kind="folder" data-tinted={tint ? true : undefined} data-path={row.path} className="file-row" style={style} onMouseDown={onMouseDown} onContextMenu={(e) => { tip.hide(); onMenu(e, row); }} {...folderTip}>
         <span className="file-chevron" style={{ width: TREE.chevron }}>{row.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
         <span className="file-name">{highlightMatch(row.name, filterQuery)}</span>
         {row.counts && <StatusCountsView counts={row.counts} testId="folder-counts" size={10} />}
@@ -171,6 +172,7 @@ const Row = memo(function Row({ id, index, row, mode, active, context, top, heig
       aria-selected={active}
       aria-level={level}
       data-kind="file"
+      data-tinted={tint ? true : undefined}
       data-context={context || undefined}
       data-path={row.target.path}
       className={c ? 'file-row' : 'file-row unchanged'}
@@ -273,7 +275,8 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     return { commit: unchanged.commit, paths: unchanged.paths.filter((p) => matchesFilter(p, filterQuery)) };
   }, [unchanged, filterQuery]);
   const folders = useMemo(() => (mode === 'tree' ? allFolderPaths(filteredFiles, filteredUnchanged) : []), [mode, filteredFiles, filteredUnchanged]);
-  const [collapsed, setCollapsed] = useFolderCollapse(repoPath, folders, NEVER_COLLAPSED);
+  const colours = useListColours();
+  const [collapsed, setCollapsed] = useFolderCollapse(repoPath, folders, colours.startsCollapsed);
   const rowsFor = useCallback((c: ReadonlySet<string>) => buildRows({ files: filteredFiles, spec, unchanged: filteredUnchanged, mode, sort, collapsed: c }), [filteredFiles, spec, filteredUnchanged, mode, sort]);
   const rows = useMemo(() => rowsFor(collapsed), [rowsFor, collapsed]);
   // The rows with every directory expanded: ↑/↓ walk the files in this order (UX round 2), so a
@@ -670,6 +673,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
             return (
               <Row
                 key={row.id}
+                tint={row.kind === 'file' ? colours.fileTint(row.target.path) : colours.folderTint(row.path)}
                 id={rowId(item.index)}
                 index={item.index}
                 row={row}

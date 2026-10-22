@@ -15,6 +15,8 @@ import { rowIndent } from './fileTree';
 import { useFileListPrefs } from './fileListPrefs';
 import { revealInFileList, useFileReveal } from './reveal';
 import { useTabViews } from '../app/tabStores';
+import { useRuntime } from '../app/runtime';
+import { EMPTY_PROFILE, useAppState } from '../app/state';
 
 const change = (path: string, status = 'M', additions: number | null = 2): FileChange => ({
   path, oldPath: status === 'R' ? 'docs/guide.txt' : null, status, additions, deletions: additions === null ? null : 1,
@@ -788,5 +790,46 @@ describe('FileList folder memory', () => {
     lists('/r');
     expect(folder('list0', 'src')).toHaveAttribute('aria-expanded', 'false');
     expect(folder('list0', 'docs')).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+describe('FileList start-collapsed scopes (file colours)', () => {
+  const scopes = [{ id: 's1', name: 'Docs', tint: 'blue', patterns: ['docs/**'], startCollapsed: true }];
+  const docs = () => rowEls().find((r) => r.dataset.path === 'docs')!;
+  const show = (id: string) => {
+    const store = createRepoViewStore(1, '/r', graph, fakeServices());
+    useTabViews.setState({ views: { t: { repo: 1, services: store.getState().services, store } } });
+    return render(<RepoViewContext value={store}><FileList list={list} spec={{ ...spec, id }} label="Changed files" /></RepoViewContext>);
+  };
+
+  beforeEach(() => {
+    useFolderMemory.setState({ byRepo: {} });
+    useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
+    useRuntime.setState({ tabs: { t: { info: { commonDir: '/r/.git' } } } as never });
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, fileColours: { '/r/.git': scopes } } });
+  });
+  afterEach(() => {
+    cleanup();
+    useTabViews.setState({ views: {} });
+    useRuntime.setState({ tabs: {} });
+    useAppState.setState({ profile: EMPTY_PROFILE });
+  });
+
+  it("a start-collapsed scope's folder shows as one row with its count, and a click opens it", () => {
+    show('c'.repeat(40));
+    expect(docs()).toHaveAttribute('aria-expanded', 'false');
+    expect(within(docs()).getByTestId('folder-counts')).toBeInTheDocument();
+    expect(rowEls().some((r) => r.dataset.path === 'docs/manual.txt')).toBe(false);
+    fireEvent.mouseDown(docs());
+    expect(docs()).toHaveAttribute('aria-expanded', 'true');
+    expect(rowEls().some((r) => r.dataset.path === 'docs/manual.txt')).toBe(true);
+  });
+
+  it("a folder opened by hand stays open in the next commit's list", () => {
+    const first = show('c'.repeat(40));
+    fireEvent.mouseDown(docs());
+    first.unmount();
+    show('d'.repeat(40));
+    expect(docs()).toHaveAttribute('aria-expanded', 'true');
   });
 });
