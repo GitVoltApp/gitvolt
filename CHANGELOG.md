@@ -61,6 +61,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Fixed
 
+- **Ctrl+click on a link in a diff or file opens it in your browser.** It opened a bare Chromium
+  window of GitVolt's own instead.
 - **The window should reopen on the monitor you left it on, at the size you closed it at.** With
   several monitors, GNOME could open it on another one, the one it picked, and shrink a window
   wider than that monitor to fit. Once the window is shown, GitVolt now checks where it landed
