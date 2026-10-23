@@ -19,11 +19,6 @@
 //! an unbindable socket, a holder that never answers) the app runs unguarded rather than not at
 //! all.
 //!
-//! GitBolt (the app's name before 0.7.0) had the same guard under its own names
-//! (`legacy::INSTANCE_NAME`, keyed by its own config folder). While it runs, its folders can't
-//! move to GitVolt's, so [`claim_from_env`] first hands the launch to a running GitBolt; one that
-//! holds its lock but doesn't answer stops the launch ([`Claim::Refused`]).
-//!
 //! The socket is distinct from the askpass one (`gitvolt-askpass-<pid>-<rand>.sock`), and the
 //! check runs after `askpass::run_client_from_env` in `main`, so git running GitVolt as its
 //! askpass never reaches it.
@@ -42,18 +37,13 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 
-/// Set (to anything but `0` or empty) to run without the guard, and without the check for a
-/// running GitBolt (that start moves no folders: `migrate::run` is for guarded starts). An unguarded instance isn't
-/// seen by a guarded start's folder move: a retry may set its folder aside while it runs.
+/// Set (to anything but `0` or empty) to run without the guard.
 pub const ENV_MULTI: &str = "GITVOLT_MULTI_INSTANCE";
 /// How long a later launch keeps trying while the lock is held but nothing answers yet: the
 /// holder is between taking the lock and binding (microseconds), or is exiting (it removes its
 /// socket first, then the lock goes with the process).
 const CONNECT_PATIENCE: Duration = Duration::from_secs(3);
 const RETRY: Duration = Duration::from_millis(25);
-/// How long a launch waits for a GitBolt that holds its lock and doesn't answer: it may be
-/// quitting (Chromium's shutdown after Restart, or after it started the installer).
-const LEGACY_PATIENCE: Duration = Duration::from_secs(10);
 /// How long a forwarding launch waits for the first instance's acknowledgement. The request is
 /// already queued in the socket by then, so a slow (still starting) first instance gets it anyway.
 const ACK_WAIT: Duration = Duration::from_secs(2);
@@ -78,8 +68,6 @@ pub enum Claim {
     Forwarded,
     /// Run without the guard: the escape hatch (`None`), or why the guard couldn't be set up.
     Unguarded(Option<String>),
-    /// GitBolt holds its folders but doesn't answer: don't start. Why.
-    Refused(String),
 }
 
 /// The lock (held while this lives) and the bound socket of the first instance.
@@ -100,11 +88,6 @@ const NAME: &str = "gitvolt-instance";
 /// Windows, whose paths are case-insensitive, ASCII case doesn't change the key either, and the
 /// `.sock` is a pipe name ([`ipc::endpoint`]).
 pub fn instance_paths(runtime_dir: &Path, config_dir: &Path) -> (PathBuf, PathBuf) {
-    instance_paths_named(NAME, runtime_dir, config_dir)
-}
-
-/// [`instance_paths`] under another name (GitBolt's: `legacy::INSTANCE_NAME`).
-fn instance_paths_named(name: &str, runtime_dir: &Path, config_dir: &Path) -> (PathBuf, PathBuf) {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for comp in config_dir.components() {
         for b in comp.as_os_str().as_encoded_bytes().iter().chain(b"/") {
@@ -113,57 +96,14 @@ fn instance_paths_named(name: &str, runtime_dir: &Path, config_dir: &Path) -> (P
             hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         }
     }
-    let stem = format!("{name}-{hash:016x}");
+    let stem = format!("{NAME}-{hash:016x}");
     (runtime_dir.join(format!("{stem}.lock")), ipc::endpoint(runtime_dir, &format!("{stem}.sock")))
 }
 
-/// [`claim`] for this process: first a running GitBolt takes the launch ([`forward_to_legacy`];
-/// skipped when [`ENV_MULTI`] is set, since that start moves no folders either); then the guard is
-/// off when [`ENV_MULTI`] is set; otherwise it's keyed by
+/// [`claim`] for this process: off when [`ENV_MULTI`] is set, otherwise keyed by
 /// [`paths::config_dir`](crate::paths::config_dir) in [`paths::runtime_dir`](crate::paths::runtime_dir).
-/// A refusal is also written to [`refused_file`], since a dock or menu launch has no stderr.
 pub fn claim_from_env(launch: Option<&str>) -> Claim {
-    let multi = std::env::var_os(ENV_MULTI);
-    let off = multi.as_deref().is_some_and(|v| !v.is_empty() && v != "0");
-    if let Some(claim) = legacy_gate(&crate::legacy::runtime_dir(), &crate::legacy::config_dir(), launch, LEGACY_PATIENCE, &refused_file(), off) {
-        return claim;
-    }
-    guard(multi.as_deref(), crate::paths::runtime_dir, &crate::paths::config_dir(), launch)
-}
-
-/// Why the last start was refused, overwritten each time and removed by the next start that isn't.
-/// In the temp dir, not GitVolt's folders: creating one of those would stop `migrate` moving
-/// GitBolt's.
-pub fn refused_file() -> PathBuf {
-    std::env::temp_dir().join(format!("gitvolt-refused-start-{}.txt", crate::platform::fs::user_tag()))
-}
-
-/// What GitBolt's guard says about this start: `Some` when it ends here. `off`: no check.
-fn legacy_gate(runtime_dir: &Path, legacy_config_dir: &Path, launch: Option<&str>, patience: Duration, refused: &Path, off: bool) -> Option<Claim> {
-    if off {
-        return None;
-    }
-    match forward_to_legacy(runtime_dir, legacy_config_dir, launch, patience) {
-        found @ (Legacy::NotRunning | Legacy::Forwarded) => {
-            if refused.exists() {
-                let _ = std::fs::remove_file(refused);
-            }
-            (found == Legacy::Forwarded).then_some(Claim::Forwarded)
-        }
-        Legacy::Unreachable(why) => {
-            if let Err(e) = write_private(refused, &why) {
-                tracing::warn!("couldn't write {}: {e}", refused.display());
-            }
-            Some(Claim::Refused(why))
-        }
-    }
-}
-
-/// `text` in a new private file at `path`: an old one (or a link planted there) is removed first.
-fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
-    let _ = std::fs::remove_file(path);
-    let mut f = crate::platform::fs::private_file(std::fs::OpenOptions::new().write(true).create_new(true)).open(path)?;
-    writeln!(f, "{text}")
+    guard(std::env::var_os(ENV_MULTI).as_deref(), crate::paths::runtime_dir, &crate::paths::config_dir(), launch)
 }
 
 /// The escape hatch, then [`claim`] in the runtime dir `runtime_dir()` names.
@@ -186,12 +126,7 @@ pub fn claim(runtime_dir: &Path, config_dir: &Path, launch: Option<&str>) -> Cla
 
 /// [`claim`], waiting at most `patience` for a lock holder to answer.
 fn claim_within(runtime_dir: &Path, config_dir: &Path, launch: Option<&str>, patience: Duration) -> Claim {
-    claim_named(NAME, runtime_dir, config_dir, launch, patience)
-}
-
-/// [`claim_within`] under another name (a test plays GitBolt with it).
-fn claim_named(name: &str, runtime_dir: &Path, config_dir: &Path, launch: Option<&str>, patience: Duration) -> Claim {
-    let (lock_path, socket) = instance_paths_named(name, runtime_dir, config_dir);
+    let (lock_path, socket) = instance_paths(runtime_dir, config_dir);
     let lock = match open_lock(&lock_path) {
         Ok(f) => f,
         Err(e) => return Claim::Unguarded(Some(format!("can't open {}: {e}", lock_path.display()))),
@@ -218,54 +153,6 @@ fn claim_named(name: &str, runtime_dir: &Path, config_dir: &Path, launch: Option
 /// A launch path made absolute against this process's working directory; none for a flag (`-…`).
 fn absolute_launch(launch: Option<&str>) -> Option<String> {
     launch.filter(|p| !p.is_empty() && !p.starts_with('-')).map(|p| std::path::absolute(p).map(|a| a.to_string_lossy().into_owned()).unwrap_or_else(|_| p.to_string()))
-}
-
-/// What GitBolt's own guard says about it.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Legacy {
-    NotRunning,
-    /// It runs and has this launch's path.
-    Forwarded,
-    /// It holds its lock but doesn't answer. Why, for the user.
-    Unreachable(String),
-}
-
-/// GitBolt running on `legacy_config_dir` (its lock in `runtime_dir` held): `launch` goes to it,
-/// as to a running GitVolt. Its lock file is only opened, never created, so a machine that never
-/// ran GitBolt gets nothing new; a free lock is taken for a moment and let go.
-pub fn forward_to_legacy(runtime_dir: &Path, legacy_config_dir: &Path, launch: Option<&str>, patience: Duration) -> Legacy {
-    let (lock_path, socket) = instance_paths_named(crate::legacy::INSTANCE_NAME, runtime_dir, legacy_config_dir);
-    let Ok(lock) = std::fs::OpenOptions::new().read(true).write(true).open(&lock_path) else { return Legacy::NotRunning };
-    let path = absolute_launch(launch);
-    let deadline = Instant::now() + patience;
-    loop {
-        match lock.try_lock() {
-            Ok(()) => return Legacy::NotRunning,
-            Err(std::fs::TryLockError::WouldBlock) => {}
-            Err(std::fs::TryLockError::Error(_)) => return Legacy::NotRunning,
-        }
-        if let Ok(stream) = ipc::connect(&socket) {
-            forward(stream, &OpenRequest { path: path.clone() });
-            return Legacy::Forwarded;
-        }
-        if Instant::now() >= deadline {
-            return Legacy::Unreachable(format!("GitBolt is running (it holds {}) but doesn't answer: quit it, then start GitVolt again", lock_path.display()));
-        }
-        std::thread::sleep(RETRY);
-    }
-}
-
-/// GitBolt is running on `legacy_config_dir`: its lock in `runtime_dir` exists and is held. Only
-/// looked at: the lock file is opened, never created, and a free one is let go at once.
-pub fn legacy_running_at(runtime_dir: &Path, legacy_config_dir: &Path) -> bool {
-    let (lock_path, _) = instance_paths_named(crate::legacy::INSTANCE_NAME, runtime_dir, legacy_config_dir);
-    let Ok(lock) = std::fs::OpenOptions::new().read(true).write(true).open(lock_path) else { return false };
-    matches!(lock.try_lock(), Err(std::fs::TryLockError::WouldBlock))
-}
-
-/// [`legacy_running_at`] for GitBolt's own folders.
-pub fn legacy_running() -> bool {
-    legacy_running_at(&crate::legacy::runtime_dir(), &crate::legacy::config_dir())
 }
 
 fn open_lock(path: &Path) -> std::io::Result<File> {
@@ -587,94 +474,5 @@ mod tests {
         let mut got = collect(&first);
         assert!(matches!(claim_async(rt.path(), &cfg, Some("--foo")).await, Claim::Forwarded));
         assert_eq!(recv(&mut got).await, None, "only focuses");
-    }
-
-    #[test]
-    fn gitbolt_running_is_its_lock_being_held() {
-        let (rt, old) = (tempfile::tempdir().unwrap(), std::path::PathBuf::from("/fake/gitbolt-config"));
-        assert!(!legacy_running_at(rt.path(), &old), "no lock file");
-        let (lock_path, _) = instance_paths_named(crate::legacy::INSTANCE_NAME, rt.path(), &old);
-        let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&lock_path).unwrap();
-        assert!(!legacy_running_at(rt.path(), &old), "a free lock");
-        file.lock().unwrap();
-        assert!(legacy_running_at(rt.path(), &old));
-        drop(file);
-        assert!(!legacy_running_at(rt.path(), &old), "it quit");
-    }
-
-    async fn legacy_async(rt: &Path, old: &Path, launch: Option<&str>) -> Legacy {
-        let (rt, old, launch) = (rt.to_path_buf(), old.to_path_buf(), launch.map(str::to_string));
-        tokio::task::spawn_blocking(move || forward_to_legacy(&rt, &old, launch.as_deref(), Duration::from_millis(500))).await.unwrap()
-    }
-
-    /// GitBolt (the old name) running on its config folder takes a GitVolt launch, so its
-    /// folders never move under it; once it quits, nothing does.
-    #[tokio::test]
-    async fn a_running_gitbolt_takes_the_launch() {
-        let rt = tempfile::tempdir().unwrap();
-        let old = rt.path().join("config/gitbolt");
-        let (lock, _) = instance_paths_named(crate::legacy::INSTANCE_NAME, rt.path(), &old);
-        assert_eq!(legacy_async(rt.path(), &old, None).await, Legacy::NotRunning);
-        assert!(!lock.exists(), "a machine that never ran GitBolt gets no lock file");
-        let (rt2, old2) = (rt.path().to_path_buf(), old.clone());
-        let gitbolt = primary(tokio::task::spawn_blocking(move || claim_named(crate::legacy::INSTANCE_NAME, &rt2, &old2, None, CONNECT_PATIENCE)).await.unwrap());
-        let mut got = collect(&gitbolt);
-        assert_eq!(legacy_async(rt.path(), &old, Some(&abs("/some/repo"))).await, Legacy::Forwarded);
-        assert_eq!(recv(&mut got).await.as_deref(), Some(abs("/some/repo").as_str()));
-        drop(gitbolt);
-        assert_eq!(legacy_async(rt.path(), &old, None).await, Legacy::NotRunning, "it quit");
-    }
-
-    /// Unix only (a lock held with no socket bound): a GitBolt that holds its lock and never
-    /// answers stops the launch rather than have its folders moved.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn a_gitbolt_that_doesnt_answer_stops_the_launch() {
-        let rt = tempfile::tempdir().unwrap();
-        let old = rt.path().join("config/gitbolt");
-        let (lock_path, _) = instance_paths_named(crate::legacy::INSTANCE_NAME, rt.path(), &old);
-        let held = open_lock(&lock_path).unwrap();
-        held.try_lock().unwrap();
-        let got = legacy_async(rt.path(), &old, None).await;
-        assert!(matches!(&got, Legacy::Unreachable(why) if why.contains("GitBolt is running")), "{got:?}");
-    }
-
-    #[test]
-    fn gitvolts_and_gitbolts_guards_have_their_own_names() {
-        let rt = Path::new("/run/user/1");
-        let cfg = Path::new("/home/u/.config/x");
-        let (lock, _) = instance_paths(rt, cfg);
-        let (old, _) = instance_paths_named(crate::legacy::INSTANCE_NAME, rt, cfg);
-        assert!(lock.file_name().unwrap().to_string_lossy().starts_with("gitvolt-instance-"));
-        assert!(old.file_name().unwrap().to_string_lossy().starts_with("gitbolt-instance-"));
-    }
-
-    /// A refused start writes its reason outside GitVolt's folders (a folder made there would stop
-    /// `migrate` moving GitBolt's), a later start that isn't refused removes it, and ENV_MULTI
-    /// skips the check.
-    #[cfg(unix)]
-    #[test]
-    fn a_refused_start_leaves_gitvolts_folders_alone_and_the_next_one_clears_it() {
-        let t = tempfile::tempdir().unwrap();
-        let (rt, old) = (t.path().join("rt"), t.path().join("config/gitbolt"));
-        let (cache, refused) = (t.path().join("cache"), t.path().join("tmp-refused.txt"));
-        std::fs::create_dir_all(rt.clone()).unwrap();
-        let (lock_path, _) = instance_paths_named(crate::legacy::INSTANCE_NAME, &rt, &old);
-        let held = open_lock(&lock_path).unwrap();
-        held.try_lock().unwrap();
-        let gate = |off| legacy_gate(&rt, &old, None, Duration::from_millis(100), &refused, off);
-        assert!(gate(true).is_none(), "ENV_MULTI: no check");
-        assert!(!refused.exists());
-        assert!(matches!(gate(false), Some(Claim::Refused(_))));
-        assert!(std::fs::read_to_string(&refused).unwrap().contains("GitBolt is running"));
-        assert_eq!(crate::platform::fs::mode(&std::fs::metadata(&refused).unwrap()) & 0o777, 0o600);
-        assert!(!cache.exists(), "GitVolt's folders aren't made by a refusal");
-        drop(held);
-        assert!(gate(false).is_none());
-        assert!(!refused.exists(), "a start that isn't refused clears it");
-        // the cache move happens on that start
-        std::fs::create_dir_all(cache.join("gitbolt")).unwrap();
-        let m = crate::migrate::Move { from: cache.join("gitbolt"), to: cache.join("gitvolt"), transient: vec![] };
-        assert_eq!(crate::migrate::move_dir(&m, &|a, b| std::fs::rename(a, b)), crate::migrate::Outcome::Moved);
     }
 }

@@ -25,7 +25,6 @@ fn helper() {
     match claim(Path::new(rt), Path::new(cfg), Some("/from/child")) {
         Claim::Forwarded => std::process::exit(0),
         Claim::Unguarded(_) => std::process::exit(11),
-        Claim::Refused(_) => std::process::exit(12),
         Claim::Primary(p) if mode == "hold" => {
             println!("{PRIMARY_MARK}");
             std::thread::sleep(Duration::from_secs(60));

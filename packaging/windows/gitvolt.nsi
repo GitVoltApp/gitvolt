@@ -10,8 +10,6 @@
 
 !define APP "GitVolt"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP}"
-; GitBolt, the app's name before 0.7.0: its per-user install is removed.
-!define LEGACY_UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\GitBolt"
 
 Unicode true
 ManifestDPIAware true
@@ -57,49 +55,6 @@ VIAddVersionKey "LegalCopyright" "${COPYRIGHT}"
 !insertmacro MUI_LANGUAGE "English"
 
 Section "Install"
-  ; GitBolt's install goes: its own uninstaller, silently and without /KEEPREG, removes its files,
-  ; Start menu shortcut, Settings > Apps entry and "Open in GitBolt" verbs. In place (_?=), so it
-  ; can't delete itself: that and the then-empty folder go here. Settings and data stay: GitVolt
-  ; moves them on its first start. A running GitBolt locks its files (and holds its data folder),
-  ; so it must be closed first; a failed uninstaller leaves the old install as it was.
-  ReadRegStr $1 HKCU "${LEGACY_UNINSTALL_KEY}" "InstallLocation"
-  StrCmp $1 "" 0 +3
-    DetailPrint "No GitBolt install to replace."
-    Goto legacy_done
-  IfFileExists "$1\uninstall.exe" +3 0
-    DetailPrint "GitBolt's uninstaller isn't in $1: its install is left as it was."
-    Goto legacy_done
-  StrCpy $3 0
-  legacy_probe:
-  IfFileExists "$1\GitBolt.exe" 0 legacy_run
-  ClearErrors
-  FileOpen $2 "$1\GitBolt.exe" a
-  IfErrors legacy_busy
-  FileClose $2
-  Goto legacy_run
-  legacy_busy:
-    ; An in-app update starts this installer, then quits the app: give it 10 s to exit first.
-    IntOp $3 $3 + 1
-    IntCmp $3 20 legacy_ask 0 legacy_ask
-    Sleep 500
-    Goto legacy_probe
-  legacy_ask:
-    IfSilent legacy_abort
-    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "GitBolt is running. Close it, then click Retry." IDRETRY legacy_probe
-  legacy_abort:
-    DetailPrint "GitBolt is running: close it and install again."
-    SetErrorLevel 2
-    Abort
-  legacy_run:
-  ExecWait '"$1\uninstall.exe" /S _?=$1' $2
-  IntCmp $2 0 0 legacy_failed legacy_failed
-    Delete "$1\uninstall.exe"
-    RMDir "$1"
-    Goto legacy_done
-  legacy_failed:
-    DetailPrint "GitBolt's uninstaller exited with $2: its install is left as it was."
-  legacy_done:
-
   ; An update: the earlier version's uninstaller removes its own files first (in place, and
   ; waiting for it), so no file the new version dropped stays behind. A running GitVolt locks its
   ; files, so it must be closed first.

@@ -37,8 +37,6 @@ printf 'deb\n' > "$pkg/usr/share/GitVolt/install-kind"
 newest=$(sed -n 's/.*<release version="\([^"]*\)".*/\1/p' "$metainfo" | head -1)
 cat > "$pkg/DEBIAN/control" <<EOT
 Package: gitvolt
-Conflicts: git-bolt (<< 0.7.0)
-Replaces: git-bolt (<< 0.7.0)
 Version: ${newest/-/\~}+202610051325.ab4dbf9e
 Architecture: amd64
 Maintainer: check-deb self-test <test@example.invalid>
@@ -78,12 +76,6 @@ cp "$pkg/DEBIAN/control" "$work/control"
 for f in Homepage Section License; do
   sed -i "/^$f:/d" "$pkg/DEBIAN/control"
   rejects "no $f field" "no $f field"
-  cp "$work/control" "$pkg/DEBIAN/control"
-done
-# Replacing GitBolt's package (git-bolt, before 0.7.0), under GitVolt's own name.
-for f in Conflicts Replaces; do
-  sed -i "/^$f:/d" "$pkg/DEBIAN/control"
-  rejects "$f doesn't name git-bolt (<< 0.7.0)" "no $f of git-bolt"
   cp "$work/control" "$pkg/DEBIAN/control"
 done
 sed -i 's/^Package: .*/Package: git-volt/' "$pkg/DEBIAN/control"

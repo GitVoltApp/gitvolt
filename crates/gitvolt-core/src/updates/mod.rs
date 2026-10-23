@@ -14,13 +14,12 @@
 
 pub mod install;
 pub mod release;
-pub mod trash;
 pub mod version;
 
 use crate::error::{GbError, GbErrorKind};
 use crate::events::{AppEvent, EventBus};
 use crate::forge::ForgeFuture;
-use install::{app_bundle, bundle_replaceable, install_command, leftover_legacy_bundle, manual_command, relaunch_command, InstallCommand, InstallKind};
+use install::{app_bundle, bundle_replaceable, install_command, manual_command, relaunch_command, InstallCommand, InstallKind};
 use release::{asset_name, check_sum, updates_since, sha256_file, GhRelease, SumCheck, SUMS_ASSET};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -494,20 +493,6 @@ impl Updates {
         self.set(&mut inner, UpdateState::Idle);
     }
 
-    /// The GitBolt.app left beside this GitVolt.app (macOS, `install::leftover_legacy_bundle`).
-    pub fn legacy_bundle(&self) -> Option<PathBuf> {
-        let exe = self.cfg.exe.as_deref().filter(|_| self.cfg.kind == InstallKind::Dmg)?;
-        leftover_legacy_bundle(exe)
-    }
-
-    /// Moves the leftover GitBolt.app to the Trash, once it is checked again and GitBolt isn't
-    /// running.
-    pub async fn remove_legacy_bundle(&self) -> Result<(), GbError> {
-        let found = self.legacy_bundle().ok_or_else(|| not_ready("There's no GitBolt.app beside GitVolt to remove"))?;
-        let running = crate::instance::legacy_running();
-        tokio::task::spawn_blocking(move || trash_legacy_bundle(&found, running, trash::trash)).await.map_err(|e| GbError::other(e.to_string()))?
-    }
-
     /// Starts the installed version once this one has quit, and quits.
     pub fn restart(&self) -> Result<(), GbError> {
         if !matches!(self.lock().state, UpdateState::Installed { .. }) {
@@ -518,21 +503,6 @@ impl Updates {
         self.cfg.runner.quit();
         Ok(())
     }
-}
-
-/// Moves `bundle` (a `leftover_legacy_bundle`) to the Trash, unless GitBolt `running` still uses
-/// it. Errors name the bundle's path and nothing more.
-fn trash_legacy_bundle(bundle: &Path, running: bool, trash: impl FnOnce(&Path) -> Result<(), String>) -> Result<(), GbError> {
-    if running {
-        return Err(not_ready("GitBolt is still running: quit it, then remove GitBolt.app"));
-    }
-    let failed = |why: &str| GbError::new(GbErrorKind::Io, format!("Couldn't move {} to the Trash: {why}", bundle.display()));
-    trash(bundle).map_err(|e| failed(&e))?;
-    if bundle.exists() {
-        return Err(failed("it is still there"));
-    }
-    tracing::info!(target: "gitvolt_core::updates", "moved {} to the Trash", bundle.display());
-    Ok(())
 }
 
 /// The downloads folder, emptied of older downloads (one update is kept at a time).

@@ -323,11 +323,10 @@ impl Api {
             let _ = progress.await;
             let server = crate::write::remote_output::capture(self, op.id, &mut out);
             out?;
-            // One Compare at a time: the MR heads fetched before it go (GitBolt's too, under its
-            // old name), so none piles up.
+            // One Compare at a time: the MR heads fetched before it go, so none piles up.
             if let (Some(r), Some(m)) = (&remote, mr_head) {
                 let keep = m.local_ref(r);
-                for name in before.keys().filter(|n| (n.starts_with(crate::forge::COMPARE_REFS) || n.starts_with(crate::legacy::COMPARE_REFS)) && **n != keep) {
+                for name in before.keys().filter(|n| n.starts_with(crate::forge::COMPARE_REFS) && **n != keep) {
                     self.cli.run(GitInvocation::new(&h.workdir, NO_EXT.into_iter().chain(["update-ref", "-d", "--end-of-options", name.as_str()]))).await?;
                 }
             }
@@ -532,23 +531,6 @@ mod tests {
         assert_eq!(e.kind, GbErrorKind::InvalidInput);
     }
     // --- end MR round 2 ---
-
-    #[tokio::test]
-    async fn a_compare_removes_gitbolts_heads_too() {
-        use crate::forge::{ForgeKind, MrHead};
-        let r = TestRepo::new();
-        fixtures::basic(&r);
-        let api = api();
-        let id = open(&api, &r).await;
-        push_from_elsewhere(&r, "mr-work");
-        let other = r.root().join("other-mr-work");
-        r.git_in(&other, &["push", "-q", "origin", "HEAD:refs/merge-requests/7/head"]);
-        // A head GitBolt's Compare left (its name before 0.7.0).
-        r.git(&["update-ref", "refs/gitbolt/compare/origin/mr/3", "HEAD"]);
-        api.fetch_remote(id, false, Some("origin".into()), Some(MrHead { kind: ForgeKind::GitLab, number: 7 })).await.unwrap();
-        assert_eq!(r.git(&["for-each-ref", "--format=%(refname)", "refs/gitbolt"]), "");
-        assert_eq!(r.git(&["for-each-ref", "--format=%(refname)", "refs/gitvolt"]), "refs/gitvolt/compare/origin/mr/7");
-    }
 
     #[tokio::test]
     async fn fetch_reports_changes_and_emits_refs_updated_only_when_something_moved() {

@@ -250,10 +250,9 @@ Paths are the XDG defaults. `$XDG_CONFIG_HOME`, `$XDG_CACHE_HOME` and `$XDG_DATA
 | `$XDG_RUNTIME_DIR/gitvolt-*` | The askpass and single-instance sockets. Removed when GitVolt exits. |
 | Inside your repositories | Undo snapshots are stored as unreferenced commits in the repository's object store. `git gc` removes them in time. |
 
-GitVolt was called GitBolt before 0.7.0: its first start moves GitBolt's folders (the same paths
-with `gitbolt` and `dev.gitbolt.desktop`) to these, and each forge token from the keyring's
-`gitbolt` items to `gitvolt` ones the first time it's used. If anything was left behind, the
-commands below with those names remove it.
+GitVolt was called GitBolt before 0.7.0. GitVolt doesn't read what GitBolt left: its folders (the
+same paths with `gitbolt` and `dev.gitbolt.desktop`) and its keyring items (`gitbolt`) stay until
+you remove them, with the commands below under those names.
 
 ### Deleting it all
 

@@ -97,9 +97,6 @@ size=$(python3 "$helper" size "$work/pkg")
   echo "arch = x86_64"
   printf 'license = %s\n' "${licenses[@]}"
   printf 'depend = %s\n' "${depends[@]}"
-  # GitBolt's package (the app's name before 0.7.0): pacman removes it for this one.
-  echo "conflict = gitbolt<0.7.0"
-  echo "replaces = gitbolt<0.7.0"
 } > "$work/pkg/.PKGINFO"
 chmod 644 "$work/pkg/.PKGINFO"
 python3 "$helper" mtree "$work/pkg" "$epoch" "$work/pkg/.MTREE"

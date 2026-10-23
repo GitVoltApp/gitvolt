@@ -63,6 +63,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **Chromium 154,** with its security fixes. After a crash, GitVolt no longer reopens hidden
   windows from the last run that kept it running once you closed it.
 
+### Removed
+
+- **Upgrading from GitBolt (0.6 and earlier) is no longer handled.** GitVolt's packages don't
+  replace a GitBolt install, and GitBolt's settings, accounts and undo history aren't moved over:
+  install GitVolt fresh.
+
 ### Fixed
 
 - **Tooltips and hover cards close when the pointer leaves the window,** or the window loses

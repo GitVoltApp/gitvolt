@@ -193,9 +193,6 @@ pub struct AppInfoPayload {
     pub install_kind: crate::updates::install::InstallKind,
     /// The user's home folder, so paths under it can read `~/…`.
     pub home: Option<String>,
-    /// macOS: the GitBolt.app left beside this GitVolt.app that it offers to remove
-    /// (`updates::install::leftover_legacy_bundle`); set by `Api`, never by `app_info_payload`.
-    pub legacy_bundle: Option<String>,
 }
 
 /// Commits reachable from the ref `theirs` but not from `ours_oid`, counted in process.
@@ -717,7 +714,6 @@ pub fn app_info_payload(git_version: (u32, u32, u32), app_version: &str, install
         git_version: format!("{a}.{b}.{c}"),
         install_kind,
         home: home.map(|h| h.display().to_string()),
-        legacy_bundle: None,
     }
 }
 

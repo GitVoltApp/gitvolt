@@ -1,6 +1,4 @@
-// Before any module reads localStorage: GitBolt's keys take GitVolt's names (app/legacyStorage.ts).
-import './app/adoptLegacyStorage';
-// Then: where actions start (the confirm model), seen before the key router or React acts.
+// First: where actions start (the confirm model), seen before the key router or React acts.
 import './ui/arm/origin';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

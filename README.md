@@ -14,10 +14,9 @@ remote sidebar, the commit details on the right, and workflows driven from conte
 the keyboard. GitVolt is an independent project, not affiliated with or endorsed
 by GitKraken / Axosoft.
 
-**Formerly GitBolt.** Renamed in 0.7.0. GitBolt 0.6.1 updates to GitVolt by itself and keeps its
-settings, accounts and undo history.
-**On GitBolt 0.6.0 or earlier?** It can't update across the rename: download the latest from
-[GitVoltApp/gitvolt releases](https://github.com/GitVoltApp/gitvolt/releases).
+**Formerly GitBolt.** Renamed in 0.7.0. **On GitBolt?** Install GitVolt fresh from
+[GitVoltApp/gitvolt releases](https://github.com/GitVoltApp/gitvolt/releases): GitBolt's settings
+aren't moved over.
 
 It's built with a Rust core (using [gitoxide](https://github.com/GitoxideLabs/gitoxide) for most reads
 and the `git` CLI for writes, so your hooks, config and credentials behave exactly as they do in a

@@ -21,11 +21,7 @@ for f in Homepage Section License; do
   echo "$f: $v"
 done
 [ "$(dpkg-deb -f "$deb" Description | wc -l)" -gt 1 ] || fail "the Description has no long description"
-# GitVolt's package, which replaces GitBolt's (git-bolt, before 0.7.0): apt removes that one.
 [ "$(dpkg-deb -f "$deb" Package)" = gitvolt ] || fail "the package isn't named gitvolt: $(dpkg-deb -f "$deb" Package)"
-for f in Conflicts Replaces; do
-  grep -qF 'git-bolt (<< 0.7.0)' <<<"$(dpkg-deb -f "$deb" "$f")" || fail "$f doesn't name git-bolt (<< 0.7.0)"
-done
 contents=$(dpkg-deb -c "$deb")
 line=$(grep '/chrome-sandbox$' <<<"$contents") || fail "no chrome-sandbox in the payload"
 [[ $line == -rwsr-xr-x\ root/root* || $line == -rwsr-xr-x\ 0/0* ]] || fail "chrome-sandbox is not root:root 4755: $line"

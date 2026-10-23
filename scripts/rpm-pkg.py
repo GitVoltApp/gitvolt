@@ -85,10 +85,6 @@ DEB_TO_RPM = {"git": "git-core", "libgtk-4-1": "libgtk-4.so.1()(64bit)"}
 LESS, GREATER, EQUAL, RPMLIB = 1 << 1, 1 << 2, 1 << 3, 1 << 24
 OPS = {"<": LESS, "<=": LESS | EQUAL, "=": EQUAL, ">=": GREATER | EQUAL, ">": GREATER}
 
-# GitBolt's package (the app's name before 0.7.0): dnf and zypper replace it with this one. Bounded,
-# so another project's gitbolt package is never touched.
-OBSOLETES = [("gitbolt", LESS, "0.7.0")]
-
 # Header data types
 INT16, INT32, STRING, BIN, STRING_ARRAY, I18NSTRING = 3, 4, 6, 7, 8, 9
 
@@ -419,9 +415,6 @@ def build(control, root, outdir, epoch, license_):
             (1000, STRING, NAME),
             (1001, STRING, version),
             (1002, STRING, RELEASE),
-            (1090, STRING_ARRAY, [o[0] for o in OBSOLETES]),
-            (1114, INT32, [o[1] for o in OBSOLETES]),
-            (1115, STRING_ARRAY, [o[2] for o in OBSOLETES]),
             (1004, I18NSTRING, summary),
             (1005, I18NSTRING, desc),
             (1006, INT32, [epoch]),

@@ -23,13 +23,9 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-appender = "0.2.5"
 regex = "1.13"
-# macOS only: reads the Info.plist (XML or binary) of an app bundle left over from before the
-# rename (`updates::install::leftover_legacy_bundle`).
-plist = "1.10"
-# macOS only: the Trash (`updates::trash`).
-objc2-foundation = "0.3"
 # macOS only: the folder picker and the "Other…" app chooser (`openers::macos`). All but
 # UniformTypeIdentifiers are already in the tree through the CEF runtime, same versions.
+objc2-foundation = "0.3"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false }
 block2 = "0.6"

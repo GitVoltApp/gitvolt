@@ -14,10 +14,6 @@ pub const APP_DIR: &str = "GitVolt";
 #[cfg(not(target_os = "macos"))]
 pub const APP_DIR: &str = "gitvolt";
 
-/// The app's identifier (tauri.conf.json's `identifier`; a gitvolt-app test keeps them equal).
-/// It names Chromium's profile folder in the user's cache folder: `<cache>/<it>/cef`.
-pub const IDENTIFIER: &str = "com.gitvolt.desktop";
-
 pub fn home_dir() -> Option<PathBuf> {
     dirs::home_dir().filter(|p| p.is_absolute())
 }

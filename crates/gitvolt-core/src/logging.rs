@@ -103,8 +103,7 @@ struct RollingFile {
 }
 
 fn is_log(name: &str) -> bool {
-    // GitBolt's files (its name before 0.7.0), moved here with the cache, age out with these.
-    [FILE_PREFIX, crate::legacy::LOG_PREFIX].iter().any(|p| name.starts_with(&format!("{p}."))) && name.ends_with(".log")
+    name.starts_with(&format!("{FILE_PREFIX}.")) && name.ends_with(".log")
 }
 
 impl RollingFile {
@@ -308,20 +307,6 @@ mod tests {
         assert!(!text.contains("dependency-debug"), "dependencies stay at warn");
         assert!(text.contains("dependency-warn"));
         assert!(!text.contains("\u{1b}["), "no ANSI colors in files");
-    }
-
-    #[test]
-    fn gitbolts_log_files_age_out_with_these() {
-        let dir = tempfile::tempdir().unwrap();
-        for d in 1..=9 {
-            std::fs::write(dir.path().join(format!("gitbolt.2020-01-0{d}.log")), "old\n").unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(15)); // distinct creation times
-        }
-        let (_sub, logging) = build(dir.path(), false, false).unwrap();
-        drop(logging);
-        let logs: Vec<String> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).filter(|n| n.ends_with(".log")).collect();
-        assert_eq!(logs.len(), KEEP_FILES, "{logs:?}");
-        assert!(!logs.contains(&"gitbolt.2020-01-01.log".to_string()), "oldest pruned first: {logs:?}");
     }
 
     #[test]

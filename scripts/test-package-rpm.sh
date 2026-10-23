@@ -80,8 +80,6 @@ print("summary", h[1004]); print("description", h[1005].replace("\n", "|")); pri
 print("buildtime", h[1006][0])
 for n, f, v in zip(h[1049], h[1048], h[1050]):
     print("require", n, f, v)
-for n, f, v in zip(h.get(1090, []), h.get(1114, []), h.get(1115, [])):
-    print("obsolete", n, f, v)
 for path, mode, link, flags, user in zip(files, h[1030], h[1036], h[1037], h[1039]):
     print("file", oct(mode), user, flags, path, link)
 EOP
@@ -93,7 +91,7 @@ for kv in 'name gitvolt' 'version 0.1.0~alpha.1+202610051325.ab4dbf9e' 'release 
           'url https://gitvolt.example.invalid' 'license MIT AND Apache-2.0 AND BSD-3-Clause AND ISC AND LicenseRef-SCOWL' \
           "buildtime $stamp" 'require git-core 12 2.40' 'require libgtk-4.so.1()(64bit) 0 ' \
           'require libc.so.6()(64bit) 0 ' 'require rpmlib(TildeInVersions) 16777226 4.10.0-1' \
-          'require rpmlib(PayloadIsZstd) 16777226 5.4.18-1' 'obsolete gitbolt 2 0.7.0' \
+          'require rpmlib(PayloadIsZstd) 16777226 5.4.18-1' \
           'file 0o104755 root 0 /usr/share/GitVolt/chrome-sandbox ' \
           'file 0o120777 root 0 /usr/bin/gitvolt ../share/GitVolt/gitvolt' \
           'file 0o40755 root 0 /usr/share/GitVolt ' 'file 0o40755 root 0 /usr/share/GitVolt/locales ' \
@@ -133,7 +131,6 @@ if [ "${GITVOLT_TEST_DOCKER:-}" = 1 ]; then
     set -euo pipefail
     rpm -Kv /t.rpm
     rpm -qp --qf "%{NAME} %{VERSION} %{RELEASE} %{ARCH}\n" /t.rpm | grep -qx "gitvolt 0.1.0~alpha.1+202610051325.ab4dbf9e 1 x86_64"
-    rpm -qp --obsoletes /t.rpm | grep -qx "gitbolt < 0.7.0"
     rpm -qplv /t.rpm
     rpm -qpL /t.rpm | grep -qx /usr/share/doc/gitvolt/LICENSE
     rpm -i --nodeps /t.rpm

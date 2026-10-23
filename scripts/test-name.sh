@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The old name, GitBolt (before 0.7.0; another project's name too), stays in the files listed in
-# scripts/name-allowlist.txt: the rename's notes and the code that takes over what GitBolt left.
+# scripts/name-allowlist.txt: the rename's notes, the tests that refuse its names, and the ids
+# kept (the MSI's UpgradeCode, the metainfo's <replaces>).
 # Any other tracked file that has it fails, with its lines.
 set -euo pipefail
 cd "$(dirname "$0")/.."

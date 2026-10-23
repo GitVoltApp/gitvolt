@@ -67,9 +67,8 @@ automatically.
 
 Installed GitVolts find their update by these names (`crates/gitvolt-core/src/updates/release.rs`),
 in the releases of `GitVoltApp/gitvolt` only. GitBolt 0.6.1, the app under its old name, also takes
-these names, from `GitVoltApp/gitvolt` (or `GitBoltApp/gitbolt` while that one doesn't exist), so
-it updates to GitVolt; GitBolt 0.6.0 and earlier can't, and need a GitVolt package installed by
-hand. So keep the names exactly as they are, and keep `SHA256SUMS` in every release: an update
+these names, from `GitVoltApp/gitvolt` (or `GitBoltApp/gitbolt` while that one doesn't exist), and
+installs GitVolt. So keep the names exactly as they are, and keep `SHA256SUMS` in every release: an update
 whose package `SHA256SUMS` doesn't list is never installed. The website's downloads
 (`scripts/site-release.py`) find the packages by these names too.
 
@@ -122,21 +121,11 @@ and the GitBolt asset names, so they can't follow (the README says so). GitVolt 
   `GitVoltApp/gitvolt` were missing) would check it and its updates would be captured, and
   GitHub's redirect for old links would end. The old Pages address
   redirects through the `GitBoltApp/gitboltapp.github.io` repository for the same reason.
-- **Installs still on 0.6.0 or earlier at the transfer** must reinstall by hand from the GitVolt
-  release.
-- **GitVolt's packages replace an installed GitBolt**, since the update only installs the package:
-  - `.deb`: `Conflicts` and `Replaces` `git-bolt (<< 0.7.0)` (`apt install -y` then removes it);
-  - `.rpm`: `Obsoletes: gitbolt < 0.7.0` (dnf, zypper and `rpm -U` then replace it);
-  - Arch: `conflicts=('gitbolt<0.7.0')` and `replaces=('gitbolt<0.7.0')`. 0.6.1's in-app update
-    answers pacman's conflict question itself (`--ask=4`); a `pacman -U` by hand asks first;
-  - none of them `Provides` `gitbolt`;
-  - the metainfo `<replaces>` `dev.gitbolt.desktop`, and every package is named `gitvolt` (`fix-deb.sh`
-    renames Tauri's `git-volt`);
-  - Windows: the installers remove GitBolt's install (NSIS) or keep the MSI's UpgradeCode;
-  - macOS: every `GitVolt_*.dmg` contains `GitVolt.app`.
-    0.6.1 installs it beside `GitBolt.app` and removes that on Restart; GitVolt offers to remove a
-    `GitBolt.app` left beside it (a notice once, and Settings › General › Updates), moving it to the Trash only
-    when it is GitBolt's and GitBolt isn't running.
+- **Since 1.0.0, GitVolt doesn't take over a GitBolt install.** Its packages don't replace
+  GitBolt's, and its first start doesn't move GitBolt's folders or keyring items (0.7.x did): a
+  GitBolt user installs GitVolt fresh. What stays: the metainfo `<replaces>` `dev.gitbolt.desktop`,
+  the MSI's UpgradeCode, every package named `gitvolt` (`fix-deb.sh` renames Tauri's `git-volt`),
+  and every `GitVolt_*.dmg` containing `GitVolt.app`.
 
 ## Versions
 
@@ -252,9 +241,8 @@ Both add a Start menu shortcut and "Open in GitVolt" on folders in File Explorer
 user's settings and data (`%APPDATA%\gitvolt`, `%LOCALAPPDATA%\gitvolt`,
 `%LOCALAPPDATA%\com.gitvolt.desktop`) on uninstall.
 
-Both replace GitBolt (the app's name before 0.7.0): the MSI by its unchanged UpgradeCode, the NSIS
-installer by running GitBolt's per-user uninstaller. A GitBolt MSI install isn't removed by the NSIS
-installer, nor the other way round. The NSIS installer asks to close a running GitBolt first.
+The MSI keeps GitBolt's UpgradeCode (the app's name before 0.7.0): never change it. The NSIS
+installer leaves a GitBolt install alone.
 
 The installed folder is CEF's sandboxed layout: `GitVolt.exe` is CEF's `bootstrap.exe` (with
 GitVolt's icon, version information and `packaging/windows/GitVolt.exe.manifest`), which loads

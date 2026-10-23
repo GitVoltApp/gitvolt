@@ -100,7 +100,6 @@ mod tests {
         let k = AccountKey { profile: "default".into(), host: "gitlab.example.com".into() };
         assert_eq!(k.keyring_account(), "default/gitlab.example.com");
         assert_eq!(KEYRING_SERVICE, "gitvolt");
-        assert_eq!(crate::legacy::KEYRING_SERVICE, "gitbolt");
     }
 
     #[test]

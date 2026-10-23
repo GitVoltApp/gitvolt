@@ -23,8 +23,7 @@ depends=('alsa-lib' 'at-spi2-core' 'cairo' 'dbus' 'expat' 'gcc-libs' 'gdk-pixbuf
          'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'mesa' 'nspr' 'nss' 'pango'
          'systemd-libs' 'wayland')
 provides=('gitvolt')
-conflicts=('gitvolt' 'gitbolt<0.7.0')
-replaces=('gitbolt<0.7.0')
+conflicts=('gitvolt')
 options=('!strip' '!debug')
 source=("GitVolt_${_debver}_amd64.deb::${url}/releases/download/v${pkgver}/GitVolt_${_debver}_amd64.deb")
 sha256sums=('SKIP_REPLACE_WITH_THE_RELEASE_SHA256')

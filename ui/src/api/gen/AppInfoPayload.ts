@@ -17,9 +17,4 @@ installKind: InstallKind,
 /**
  * The user's home folder, so paths under it can read `~/…`.
  */
-home: string | null, 
-/**
- * macOS: the GitBolt.app left beside this GitVolt.app that it offers to remove
- * (`updates::install::leftover_legacy_bundle`); set by `Api`, never by `app_info_payload`.
- */
-legacyBundle: string | null, };
+home: string | null, };

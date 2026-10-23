@@ -515,28 +515,3 @@ async fn a_package_under_the_old_name_isnt_offered() {
     let UpdateState::Available { release } = s.updates.check(false, 1).await.unwrap() else { panic!() };
     assert_eq!(release.asset, None, "GitVolt takes only its own names");
 }
-
-#[test]
-fn the_leftover_gitbolt_bundle_goes_to_the_trash_only_when_nothing_runs_it() {
-    let s = setup_at(InstallKind::Dmg, "0.7.0", FakeSource::with(vec![], ""), |d| {
-        std::fs::create_dir_all(d.join("GitBolt.app/Contents")).unwrap();
-        std::fs::write(d.join("GitBolt.app/Contents/Info.plist"), r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>dev.gitbolt.desktop</string></dict></plist>"#).unwrap();
-        d.join("GitVolt.app/Contents/MacOS/GitVolt")
-    });
-    let old = s.dir.path().join("GitBolt.app");
-    assert_eq!(s.updates.legacy_bundle(), Some(old.clone()));
-    // GitBolt runs: nothing is trashed.
-    let e = trash_legacy_bundle(&old, true, |_| panic!("trashed")).unwrap_err();
-    assert!(e.message.contains("still running"), "{}", e.message);
-    // The Trash says yes but the bundle is still there, or says no: an error naming the path, nothing more.
-    let e = trash_legacy_bundle(&old, false, |_| Ok(())).unwrap_err();
-    assert_eq!(e.message, format!("Couldn't move {} to the Trash: it is still there", old.display()));
-    let e = trash_legacy_bundle(&old, false, |_| Err("no permission".into())).unwrap_err();
-    assert_eq!(e.message, format!("Couldn't move {} to the Trash: no permission", old.display()));
-    // Gone afterwards: done.
-    trash_legacy_bundle(&old, false, |p| std::fs::remove_dir_all(p).map_err(|e| e.to_string())).unwrap();
-    assert_eq!(s.updates.legacy_bundle(), None);
-    // Only a dmg install offers it.
-    let other = setup_at(InstallKind::Deb, "0.7.0", FakeSource::with(vec![], ""), |d| d.join("GitVolt.app/Contents/MacOS/GitVolt"));
-    assert_eq!(other.updates.legacy_bundle(), None);
-}

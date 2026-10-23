@@ -15,7 +15,6 @@ const APP_INFO: AppInfoPayload = {
   gitVersion: 'in-browser (isomorphic-git)',
   installKind: 'none',
   home: null,
-  legacyBundle: null,
 };
 
 /** The remotes, origin first then by name (details::remotes). */

@@ -6,7 +6,6 @@ use gitvolt_core::events::TAURI_EVENT;
 use gitvolt_core::git::GitCli;
 use gitvolt_core::instance::{self, Claim};
 use gitvolt_core::log::CommandLog;
-use gitvolt_core::migrate;
 use gitvolt_core::openers::chooser::system_chooser;
 use gitvolt_core::openers::default_app::system_default_app;
 use gitvolt_core::openers::folder_picker::system_folder_picker;
@@ -65,12 +64,6 @@ fn update_config(child_env: ChildEnvHook, quit: QuitSlot) -> gitvolt_core::updat
     use gitvolt_core::updates::install::detect_install_kind;
     let exe = std::env::current_exe().ok();
     let kind = detect_install_kind(exe.as_deref().and_then(resources_dir).as_deref());
-    // macOS: 0.6.1's updater leaves GitBolt.app beside GitVolt.app when its user quit instead of
-    // restarting; the UI offers to remove it (`AppInfo.legacyBundle`).
-    let dmg = kind == gitvolt_core::updates::install::InstallKind::Dmg;
-    if let Some(old) = exe.as_deref().filter(|_| dmg).and_then(gitvolt_core::updates::install::leftover_legacy_bundle) {
-        tracing::info!("GitBolt.app is still beside GitVolt.app: {}", old.display());
-    }
     gitvolt_core::updates::UpdateConfig {
         source: Arc::new(gitvolt_forge::updates::GitHubReleases::github()),
         runner: Arc::new(gitvolt_core::updates::SystemRunner {
@@ -178,8 +171,7 @@ type ParentWindow = Arc<OnceLock<Box<dyn Fn() -> String + Send + Sync>>>;
 /// The process's early exits, in order (the CEF `--type=` helpers have already been sent away by
 /// `main`'s attribute): git or ssh running this binary as askpass (`askpass`, `Some(exit code)`)
 /// never reaches the single-instance check; then `claim` (R19): a later launch on the same
-/// config dir has forwarded its path and exits 0, or a GitBolt that doesn't answer refuses it
-/// (exit 1). `Ok`: run, as the guarded first instance
+/// config dir has forwarded its path and exits 0. `Ok`: run, as the guarded first instance
 /// (`Primary`), or unguarded (`GITVOLT_MULTI_INSTANCE`, or the guard couldn't be set up: the
 /// reason, logged once logging is up).
 fn startup(askpass: impl FnOnce() -> Option<i32>, claim: impl FnOnce() -> Claim) -> Result<Claim, i32> {
@@ -188,10 +180,6 @@ fn startup(askpass: impl FnOnce() -> Option<i32>, claim: impl FnOnce() -> Claim)
     }
     match claim() {
         Claim::Forwarded => Err(0),
-        Claim::Refused(why) => {
-            eprintln!("gitvolt: {why}");
-            Err(1)
-        }
         run => Ok(run),
     }
 }
@@ -317,19 +305,6 @@ fn dev_cdp_port(value: Option<&std::ffi::OsStr>) -> Option<u16> {
     value?.to_str()?.trim().parse().ok().filter(|port| *port >= 1024)
 }
 
-fn log_move(m: &migrate::Move, outcome: &migrate::Outcome) {
-    match outcome {
-        migrate::Outcome::Nothing | migrate::Outcome::AlreadyThere => {}
-        migrate::Outcome::Moved | migrate::Outcome::Copied { left: false } => tracing::info!("moved GitBolt's {} to {}", m.from.display(), m.to.display()),
-        migrate::Outcome::Copied { left: true } => tracing::warn!("copied GitBolt's {} to {}; the original, or part of it, is still there", m.from.display(), m.to.display()),
-        migrate::Outcome::Failed(why) => tracing::warn!("GitBolt's {} stays where it is: {why}", m.from.display()),
-        migrate::Outcome::Retried { aside, outcome } => {
-            tracing::info!("GitVolt's {} from a start that couldn't move GitBolt's is kept at {}", m.to.display(), aside.display());
-            log_move(m, outcome);
-        }
-    }
-}
-
 /// The `gitvolt` binary's `main`; on Windows also the DLL entry points CEF's bootstrap calls
 /// (`RunWinMain` below).
 #[tauri_runtime_cef::cef_entry_point]
@@ -343,17 +318,8 @@ pub fn run() {
     let (instance, unguarded) = match startup(gitvolt_core::askpass::run_client_from_env, || instance::claim_from_env(launch.as_deref())) {
         Ok(Claim::Primary(p)) => (Some(Arc::new(p)), None),
         Ok(Claim::Unguarded(why)) => (None, why),
-        Ok(Claim::Forwarded | Claim::Refused(_)) => unreachable!("startup exits on Forwarded and Refused"),
+        Ok(Claim::Forwarded) => unreachable!("startup exits on Forwarded"),
         Err(code) => std::process::exit(code),
-    };
-    // GitBolt's folders (its name before 0.7.0) become GitVolt's on the first start: after the
-    // single-instance guard (no other GitVolt runs, and a running GitBolt took this launch), and
-    // before anything opens them (core's `migrate`). Never without the guard: a second GitVolt
-    // could be copying the same folder. Logged once logging is up.
-    let moves = migrate::moves(&migrate::Bases::system());
-    let moved = match &instance {
-        Some(_) => migrate::run(&moves),
-        None => moves.into_iter().filter(|m| m.from.exists() && !m.to.exists()).map(|m| (m, migrate::Outcome::Failed("no single-instance guard".into()))).collect(),
     };
     let exit_instance = instance.clone();
     // First, before any thread and before GTK: the window's desktop identity (dock icon) and
@@ -375,9 +341,6 @@ pub fn run() {
     let log_guard = std::sync::Mutex::new(log_guard);
     if let Some(why) = unguarded {
         tracing::warn!("running without the single-instance guard: {why}");
-    }
-    for (m, outcome) in &moved {
-        log_move(m, outcome);
     }
     // Every child (git, the editors, the file manager, xdg-open) gets the session's own
     // IBUS_ENABLE_SYNC_MODE / GDK_BACKEND, not the app's (desktop.rs).
@@ -657,17 +620,6 @@ mod tests {
         assert!(matches!(first, Ok(Claim::Primary(_))));
         drop(first);
         let _ = std::fs::remove_dir_all(&rt);
-    }
-
-    #[test]
-    fn a_refused_claim_exits_1() {
-        assert_eq!(startup(|| None, || Claim::Refused("GitBolt is running".into())).unwrap_err(), 1);
-    }
-
-    #[test]
-    fn the_identifier_is_tauri_confs() {
-        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        assert_eq!(conf["identifier"], gitvolt_core::paths::IDENTIFIER, "Chromium's profile folder is named by it (migrate.rs)");
     }
 
     /// The embedded Chromium makes no requests to Google services of its own: what an idle run

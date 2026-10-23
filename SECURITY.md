@@ -51,9 +51,6 @@ current code; each point names where to look.
   Service D-Bus API (GNOME Keyring, KWallet, KeePassXC…) via the `keyring` crate
   (`crates/gitvolt-forge/src/tokens.rs`). Each is an item in the default collection with the
   attributes `service` = `gitvolt` and `username` = `<profile id>/<host>`.
-- GitVolt was called GitBolt before 0.7.0. A token only in GitBolt's item (`service` =
-  `gitbolt`) is copied to GitVolt's the first time it's used, read back, and only then is
-  GitBolt's item deleted. On macOS the Keychain may ask once per token to let GitVolt read it.
 - When no Secret Service is available, or it refuses the token, the token goes to a fallback
   file, `~/.local/share/gitvolt/forge-tokens`: mode 0600 in a 0700 directory you own, written
   through a temporary file and a rename, never through a symbolic link. Settings › Accounts marks

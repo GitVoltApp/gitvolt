@@ -287,7 +287,6 @@ export const api = {
   updateCancel: () => call<UpdateState>({ method: 'updateCancel' }),
   updateInstall: () => call<InstallOutcome>({ method: 'updateInstall' }),
   updateRestart: () => call<null>({ method: 'updateRestart' }),
-  updateRemoveLegacyBundle: () => call<null>({ method: 'updateRemoveLegacyBundle' }),
   pickFolder: (start: string | null) => call<string | null>({ method: 'pickFolder', params: { start } }),
   saveExport: (suggestedName: string, contents: string) => call<string | null>({ method: 'saveExport', params: { suggestedName, contents } }),
   scanRepos: (root: string, refresh: boolean) => call<ScannedRepo[]>({ method: 'scanRepos', params: { root, refresh } }),

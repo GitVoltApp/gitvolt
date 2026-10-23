@@ -1,13 +1,12 @@
 import { Settings } from 'lucide-react';
 import { DEFAULT_FILE_LIST_PREFS, useFileListPrefs } from '../../files/fileListPrefs';
-import { LegacyBundleRow } from '../../updates/LegacyBundle';
 import { appSetting, storeBinding } from '../bindings';
 import { switchControl } from '../frame/controls';
 import { PageGroups } from '../frame/SettingsPage';
 import { registerSettings, registerSettingsPage, type SettingsCtx } from '../registry';
 
 function GeneralBody({ ctx }: { ctx: SettingsCtx }) {
-  return <PageGroups pageId="general" ctx={ctx} render={(group, rows) => (group === 'Updates' ? <>{rows}<LegacyBundleRow /></> : rows)} />;
+  return <PageGroups pageId="general" ctx={ctx} />;
 }
 
 const offs = [

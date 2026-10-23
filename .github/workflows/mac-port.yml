@@ -573,31 +573,6 @@ jobs:
           screencapture -x out/shots/03-after-update.png || echo "screencapture failed"
           pgrep -f '/Applications/GitVolt.app/Contents/MacOS/GitVolt' >/dev/null || { echo "::error::It didn't start again"; exit 1; }
 
-      # A 0.6.1 user who quit instead of pressing Restart leaves GitBolt.app beside GitVolt.app, and
-      # GitBolt's folders: GitVolt's first start moves the folders (crates/gitvolt-core/src/migrate.rs)
-      # and notices the old bundle, which the UI then offers to remove (`AppInfo.legacyBundle`,
-      # crates/gitvolt-core/src/updates/install.rs). The removal itself asks Finder: not run here.
-      - name: From GitBolt's names
-        id: rename
-        if: always() && steps.update.outcome == 'success'
-        run: |
-          pkill -f '/Applications/GitVolt.app/Contents/MacOS/GitVolt' || true
-          sleep 3
-          support="$HOME/Library/Application Support"
-          caches="$HOME/Library/Caches"
-          ditto /Applications/GitVolt.app /Applications/GitBolt.app
-          plutil -replace CFBundleIdentifier -string dev.gitbolt.desktop /Applications/GitBolt.app/Contents/Info.plist
-          if [ -d "$support/GitVolt" ]; then mv "$support/GitVolt" "$support/GitBolt"; fi
-          if [ -d "$caches/GitVolt" ]; then mv "$caches/GitVolt" "$caches/GitBolt"; fi
-          if [ -d "$caches/com.gitvolt.desktop" ]; then mv "$caches/com.gitvolt.desktop" "$caches/dev.gitbolt.desktop"; fi
-          open -a /Applications/GitVolt.app
-          sleep 20
-          ls -d /Applications/Git* "$support"/Git* "$caches"/Git* "$caches"/*.desktop 2>/dev/null || true
-          pgrep -f '/Applications/GitVolt.app/Contents/MacOS/GitVolt' >/dev/null || { echo "::error::It didn't start"; exit 1; }
-          { [ -d "$caches/GitVolt/logs" ] && [ ! -e "$caches/GitBolt" ] && [ ! -e "$support/GitBolt" ] && [ ! -e "$caches/dev.gitbolt.desktop" ]; } || { echo "::error::GitBolt's folders didn't move"; exit 1; }
-          grep -rq 'GitBolt.app is still beside GitVolt.app' "$caches/GitVolt/logs" || { echo "::error::It didn't notice GitBolt.app"; exit 1; }
-          [ -d /Applications/GitBolt.app ] || { echo "::error::GitBolt.app went away by itself"; exit 1; }
-
       - name: Stop the app
         if: always()
         run: |
@@ -615,10 +590,9 @@ jobs:
           LAUNCH: ${{ steps.launch.outcome }}
           SANDBOX: ${{ steps.sandbox.outcome }}
           UPDATE: ${{ steps.update.outcome }}
-          RENAME: ${{ steps.rename.outcome }}
         run: |
           {
-            echo "### Package: build $BUILD, dmg $DMG, launch $LAUNCH, sandbox $SANDBOX, update $UPDATE, rename $RENAME"
+            echo "### Package: build $BUILD, dmg $DMG, launch $LAUNCH, sandbox $SANDBOX, update $UPDATE"
             echo '```'
             grep -E 'package-macos|^error|panicked' "$RUNNER_TEMP/package.log" 2>/dev/null | tail -20 || true
             grep -E -A3 '^## (codesign --verify|spctl)' out/dmg.txt 2>/dev/null || true

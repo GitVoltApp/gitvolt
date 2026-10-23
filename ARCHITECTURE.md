@@ -437,13 +437,6 @@ arrives as `updateChanged` events.
 | Avatars, forge avatars, "open old version" copies, the downloaded update | `$XDG_CACHE_HOME/gitvolt/{avatars,forge-avatars,open,updates}/` |
 | Chromium profile | `$XDG_CACHE_HOME/com.gitvolt.desktop/cef/` |
 
-GitVolt was called GitBolt before 0.7.0. Its first start moves GitBolt's folders (`gitbolt`, and
-Chromium's `dev.gitbolt.desktop`) to these, by a rename, or by a copy checked file by file before
-the original goes (`crates/gitvolt-core/src/migrate.rs`). A folder GitVolt already has is left
-alone, and nothing moves while GitBolt runs: a running GitBolt (its own lock, `gitbolt-instance-*`) takes the launch, and one that holds the lock but doesn't answer for 10 s refuses it (exit 1; the reason is also in `gitvolt-refused-start-<user>.txt` in the temp dir, outside every folder that moves). `GITVOLT_MULTI_INSTANCE` skips that check: such a start moves nothing. When a move fails, GitVolt's new folder is marked
-(`.gitbolt-not-moved`), and the next start sets it aside (`<folder>.not-moved-<time>`, kept) and
-tries again, for a week (the marker's age); after that GitBolt's folder stays as it is.
-
 The XDG defaults are `~/.config`, `~/.local/share` and `~/.cache`. Settings and profiles are
 written debounced and flushed once more on exit. To run a second instance without touching your
 own, point `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` and `XDG_DATA_HOME` at throwaway directories.

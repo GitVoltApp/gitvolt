@@ -1,7 +1,6 @@
 //! Where forge tokens live (spec #4 §2 "Token storage"):
 //! - the system Secret Service (libsecret's D-Bus API, through `keyring`), service `gitvolt`,
-//!   account `<profile-id>/<host>` (core spec §14.3); GitBolt's entries (service `gitbolt`, its
-//!   name before 0.7.0) move to `gitvolt` when first read;
+//!   account `<profile-id>/<host>` (core spec §14.3);
 //! - when there's none, `~/.local/share/gitvolt/forge-tokens`: file 0600, directory 0700, always
 //!   written through a 0600 temp file and a rename. Settings › Accounts warns about these.
 //!
@@ -209,55 +208,17 @@ impl TokenStore for FileTokenStore {
 /// The app's store: the keyring when it takes the token, else the file (and Settings warns).
 pub struct SystemTokenStore {
     keyring: Option<Box<dyn SecretBackend>>,
-    /// GitBolt's entries (`legacy::KEYRING_SERVICE`): a token only there moves to `keyring` when
-    /// it's first read.
-    legacy: Option<Box<dyn SecretBackend>>,
     file: FileTokenStore,
 }
 
 impl SystemTokenStore {
     pub fn new(keyring: Option<Box<dyn SecretBackend>>, file: FileTokenStore) -> Self {
-        Self { keyring, legacy: None, file }
+        Self { keyring, file }
     }
 
-    /// With GitBolt's keyring entries to adopt.
-    pub fn with_legacy(mut self, legacy: Box<dyn SecretBackend>) -> Self {
-        self.legacy = Some(legacy);
-        self
-    }
-
-    /// The Secret Service (GitVolt's entries, then GitBolt's), with `file_path`
-    /// (`<data dir>/forge-tokens`) as the fallback.
+    /// The Secret Service, with `file_path` (`<data dir>/forge-tokens`) as the fallback.
     pub fn system(file_path: PathBuf) -> Self {
         Self::new(Some(Box::new(KeyringBackend::new(KEYRING_SERVICE))), FileTokenStore::new(file_path))
-            .with_legacy(Box::new(KeyringBackend::new(gitvolt_core::legacy::KEYRING_SERVICE)))
-    }
-
-    /// GitBolt's entry for `account`, when GitVolt's keyring has none: written to GitVolt's, read
-    /// back, and only then deleted. A copy that doesn't take leaves GitBolt's entry (the token
-    /// works from it, and the next read tries again). Messages name the host, never the token.
-    /// A GitBolt entry that can't be read (the user refused the keychain prompt) is an error,
-    /// not "no token".
-    fn adopt_legacy(&self, keyring: &dyn SecretBackend, account: &str, host: &str) -> Result<Option<String>, GbError> {
-        let Some(legacy) = self.legacy.as_ref() else { return Ok(None) };
-        let token = match legacy.get(account) {
-            Ok(Some(t)) => t,
-            Ok(None) => return Ok(None),
-            Err(e) => {
-                tracing::warn!("forge token for {host}: GitBolt's keyring entry couldn't be read: {}", e.reason());
-                return Err(GbError::other(format!("Couldn't read the token for {host} from the system keyring: {}", e.reason())));
-            }
-        };
-        match keyring.set(account, &token).and_then(|()| keyring.get(account)) {
-            Ok(Some(back)) if back == token => {
-                if let Err(e) = legacy.delete(account) {
-                    tracing::warn!("forge token for {host} moved from GitBolt's keyring entry, which wasn't removed: {}", e.reason());
-                }
-            }
-            Ok(_) => tracing::warn!("forge token for {host} stays in GitBolt's keyring entry: the copy didn't read back"),
-            Err(e) => tracing::warn!("forge token for {host} stays in GitBolt's keyring entry: {}", e.reason()),
-        }
-        Ok(Some(token))
     }
 }
 
@@ -286,19 +247,13 @@ impl TokenStore for SystemTokenStore {
                 Some(t) => Ok(Some(t)),
                 None => {
                     let Some(k) = &self.keyring else { return Ok(None) };
-                    let account = key.keyring_account();
-                    match k.get(&account).ok().flatten() {
-                        Some(t) => Ok(Some(Secret::new(t))),
-                        None => Ok(self.adopt_legacy(k.as_ref(), &account, &key.host)?.map(Secret::new)),
-                    }
+                    Ok(k.get(&key.keyring_account()).ok().flatten().map(Secret::new))
                 }
             },
             TokenStorage::Keyring => {
                 let k = self.keyring.as_ref().ok_or_else(|| GbError::other(format!("Couldn't read the token for {} from the system keyring: this build has none", key.host)))?;
-                let account = key.keyring_account();
-                match k.get(&account) {
-                    Ok(Some(t)) => Ok(Some(Secret::new(t))),
-                    Ok(None) => Ok(self.adopt_legacy(k.as_ref(), &account, &key.host)?.map(Secret::new)),
+                match k.get(&key.keyring_account()) {
+                    Ok(t) => Ok(t.map(Secret::new)),
                     Err(e) => Err(GbError::other(format!("Couldn't read the token for {} from the system keyring: {}", key.host, e.reason()))),
                 }
             }
@@ -315,10 +270,6 @@ impl TokenStore for SystemTokenStore {
                 Err(BackendError::Other(r)) => refused = Some(r),
             }
         }
-        // GitBolt's entry, if it was never moved: best effort, the account is going anyway.
-        if let Some(Err(e)) = self.legacy.as_ref().map(|l| l.delete(&key.keyring_account())) {
-            tracing::warn!("forge token for {} not deleted from GitBolt's keyring entry: {}", key.host, e.reason());
-        }
         self.file.delete(key)?;
         match refused {
             Some(r) => Err(GbError::other(format!("Couldn't delete the token for {} from the system keyring: {r}", key.host))),
@@ -331,12 +282,7 @@ impl TokenStore for SystemTokenStore {
         let Some(token) = self.file.get(key, TokenStorage::File)? else {
             // Already moved, but the record still says File (the app stopped between the file
             // delete and the profile flush): the record heals.
-            let account = key.keyring_account();
-            let moved = match k.get(&account).ok().flatten() {
-                Some(_) => true,
-                // Moved by 0.6.x, which stopped before the profile flush: GitBolt's entry is adopted.
-                None => self.adopt_legacy(k.as_ref(), &account, &key.host)?.is_some(),
-            };
+            let moved = k.get(&key.keyring_account()).ok().flatten().is_some();
             return Ok(moved.then_some(TokenStorage::Keyring));
         };
         k.set(&key.keyring_account(), token.expose()).map_err(|e| GbError::other(format!("Couldn't move the token for {} to the system keyring: {}", key.host, e.reason())))?;
@@ -530,86 +476,6 @@ mod tests {
         let fileonly = FileTokenStore::new(tmp.path().join("other"));
         fileonly.put(&k, &Secret::new("x")).unwrap();
         assert_eq!(fileonly.migrate_to_keyring(&k).unwrap(), None, "a file-only store has nowhere to move it");
-    }
-
-    fn up() -> LateKeyring {
-        let k = LateKeyring::default();
-        k.up.store(true, std::sync::atomic::Ordering::SeqCst);
-        k
-    }
-
-    #[test]
-    fn a_token_only_gitbolt_has_moves_to_gitvolts_entry_when_read() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (new, old) = (up(), up());
-        old.map.lock().unwrap().insert("default/gitlab.example.com".into(), TOKEN.into());
-        let store = SystemTokenStore::new(Some(Box::new(new.clone())), FileTokenStore::new(tmp.path().join("t"))).with_legacy(Box::new(old.clone()));
-        let k = key("gitlab.example.com");
-        assert_eq!(store.get(&k, TokenStorage::Keyring).unwrap().unwrap().expose(), TOKEN);
-        assert_eq!(new.map.lock().unwrap().get("default/gitlab.example.com").map(String::as_str), Some(TOKEN), "copied to GitVolt's entry");
-        assert!(old.map.lock().unwrap().is_empty(), "GitBolt's entry goes once the copy reads back");
-        assert_eq!(store.get(&k, TokenStorage::Keyring).unwrap().unwrap().expose(), TOKEN, "then it's GitVolt's own");
-        assert!(store.get(&key("github.example.com"), TokenStorage::Keyring).unwrap().is_none(), "in neither: none");
-    }
-
-    #[test]
-    fn a_copy_that_doesnt_read_back_keeps_gitbolts_entry() {
-        let tmp = tempfile::tempdir().unwrap();
-        let old = up();
-        old.map.lock().unwrap().insert("default/h".into(), TOKEN.into());
-        // `Refusing` takes a write but never has the entry afterwards.
-        let store = SystemTokenStore::new(Some(Box::new(Refusing(false))), FileTokenStore::new(tmp.path().join("t"))).with_legacy(Box::new(old.clone()));
-        assert_eq!(store.get(&key("h"), TokenStorage::Keyring).unwrap().unwrap().expose(), TOKEN, "the token still works");
-        assert_eq!(old.map.lock().unwrap().get("default/h").map(String::as_str), Some(TOKEN), "GitBolt's entry stays");
-    }
-
-    #[test]
-    fn an_existing_gitvolt_entry_is_never_overwritten() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (new, old) = (up(), up());
-        new.map.lock().unwrap().insert("default/h".into(), "new-token".into());
-        old.map.lock().unwrap().insert("default/h".into(), TOKEN.into());
-        let store = SystemTokenStore::new(Some(Box::new(new.clone())), FileTokenStore::new(tmp.path().join("t"))).with_legacy(Box::new(old.clone()));
-        assert_eq!(store.get(&key("h"), TokenStorage::Keyring).unwrap().unwrap().expose(), "new-token");
-        assert_eq!(new.map.lock().unwrap().get("default/h").map(String::as_str), Some("new-token"));
-        assert_eq!(old.map.lock().unwrap().len(), 1, "GitBolt's entry is left alone");
-    }
-
-    #[test]
-    fn removing_an_account_removes_gitbolts_entry_too() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (new, old) = (up(), up());
-        old.map.lock().unwrap().insert("default/h".into(), TOKEN.into());
-        let store = SystemTokenStore::new(Some(Box::new(new)), FileTokenStore::new(tmp.path().join("t"))).with_legacy(Box::new(old.clone()));
-        store.delete(&key("h")).unwrap();
-        assert!(old.map.lock().unwrap().is_empty());
-    }
-
-    #[test]
-    fn a_file_record_whose_token_is_only_in_gitbolts_entry_is_found_and_adopted() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (new, old) = (up(), up());
-        old.map.lock().unwrap().insert("default/h".into(), TOKEN.into());
-        let store = SystemTokenStore::new(Some(Box::new(new.clone())), FileTokenStore::new(tmp.path().join("t"))).with_legacy(Box::new(old.clone()));
-        assert_eq!(store.get(&key("h"), TokenStorage::File).unwrap().unwrap().expose(), TOKEN);
-        assert!(old.map.lock().unwrap().is_empty());
-        assert_eq!(new.map.lock().unwrap().get("default/h").map(String::as_str), Some(TOKEN));
-        // The migrate path's "already moved" branch adopts too.
-        let (new2, old2) = (up(), up());
-        old2.map.lock().unwrap().insert("default/h".into(), TOKEN.into());
-        let s2 = SystemTokenStore::new(Some(Box::new(new2.clone())), FileTokenStore::new(tmp.path().join("t2"))).with_legacy(Box::new(old2.clone()));
-        assert_eq!(s2.migrate_to_keyring(&key("h")).unwrap(), Some(TokenStorage::Keyring));
-        assert!(old2.map.lock().unwrap().is_empty());
-        assert!(new2.map.lock().unwrap().contains_key("default/h"));
-    }
-
-    #[test]
-    fn an_unreadable_gitbolt_entry_is_a_keyring_error_not_a_missing_token() {
-        let tmp = tempfile::tempdir().unwrap();
-        let old = LateKeyring::default(); // down: its reads fail, as a refused keychain prompt does
-        let store = SystemTokenStore::new(Some(Box::new(up())), FileTokenStore::new(tmp.path().join("t"))).with_legacy(Box::new(old));
-        let e = store.get(&key("h"), TokenStorage::Keyring).unwrap_err();
-        assert_eq!(e.message, "Couldn't read the token for h from the system keyring: no Secret Service on the session bus");
     }
 
     #[test]

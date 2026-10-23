@@ -1249,8 +1249,6 @@ pub enum Request {
     UpdateInstall,
     /// Starts the installed version and quits this one.
     UpdateRestart,
-    /// Moves the GitBolt.app left beside GitVolt.app to the Trash (`AppInfo.legacyBundle`).
-    UpdateRemoveLegacyBundle,
 }
 
 impl Request {
@@ -1283,7 +1281,7 @@ impl Request {
             Request::ForgeStack { .. } | Request::ForgeSyncStack { .. } | Request::ForgeRetarget { .. } => false,
             // --- end 4D T3 ---
             // Updates: GitHub and the cache folder, never a repository.
-            Request::UpdateStatus | Request::UpdateCheck | Request::UpdateDownload | Request::UpdateCancel | Request::UpdateInstall | Request::UpdateRestart | Request::UpdateRemoveLegacyBundle => false,
+            Request::UpdateStatus | Request::UpdateCheck | Request::UpdateDownload | Request::UpdateCancel | Request::UpdateInstall | Request::UpdateRestart => false,
             // Remote-tracking refs and objects.
             // --- 4A T7 ---
             Request::AddRemote { .. } | Request::RemoveRemote { .. } | Request::SwitchRemoteToSsh { .. } | Request::SwitchRemoteBack { .. } => true,
@@ -3028,11 +3026,7 @@ impl Api {
                 let h = self.handle(repo)?;
                 to_json(blocking(move || crate::shelldata::last_push(&h.repo, &remote_ref)).await?)
             }
-            Request::AppInfo => {
-                let mut info = crate::shelldata::app_info_payload(self.git_version().await?, &self.app_version, self.install_kind, self.home.as_deref());
-                info.legacy_bundle = self.updates.as_ref().and_then(|u| u.legacy_bundle()).map(|p| p.display().to_string());
-                to_json(info)
-            }
+            Request::AppInfo => to_json(crate::shelldata::app_info_payload(self.git_version().await?, &self.app_version, self.install_kind, self.home.as_deref())),
             Request::UpdateStatus => to_json(self.updates.as_ref().map_or(crate::updates::UpdateState::Idle, |u| u.state())),
             Request::UpdateCheck => {
                 let include_pre = self.store.state().settings.update_prereleases;
@@ -3042,7 +3036,6 @@ impl Api {
             Request::UpdateCancel => to_json(self.updates.as_ref().map_or(crate::updates::UpdateState::Idle, |u| u.cancel_download())),
             Request::UpdateInstall => to_json(self.updates()?.install().await?),
             Request::UpdateRestart => to_json(self.updates()?.restart()?),
-            Request::UpdateRemoveLegacyBundle => to_json(self.updates()?.remove_legacy_bundle().await?),
             Request::PickFolder { start } => {
                 let Some(picker) = self.folder_picker.clone() else { return to_json(Option::<String>::None) };
                 let start = start.map(PathBuf::from).filter(|p| p.is_absolute());
@@ -5297,7 +5290,6 @@ mod tests {
             json!({"method": "updateCancel"}),
             json!({"method": "updateInstall"}),
             json!({"method": "updateRestart"}),
-            json!({"method": "updateRemoveLegacyBundle"}),
             json!({"method": "pickFolder", "params": {"start": null}}),
             // No picker in a test `Api`: nothing is picked, nothing written.
             json!({"method": "saveExport", "params": {"suggestedName": "t.json", "contents": "{}"}}),
@@ -5515,7 +5507,7 @@ mod tests {
     /// Samples that fail by design here: the harness-less `Api` has no log folder, URL opener,
     /// openers or askpass, and the profile samples name no existing profile. Each refusal comes
     /// before any repository access.
-    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "authUseSsh", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeRefresh", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart", "updateRemoveLegacyBundle"];
+    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "authUseSsh", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeRefresh", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart"];
 
     #[tokio::test(flavor = "multi_thread")]
     async fn no_read_request_writes_to_the_repository() {

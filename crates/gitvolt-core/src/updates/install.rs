@@ -222,25 +222,6 @@ pub fn app_bundle(exe: &Path) -> Option<PathBuf> {
 /// GitVolt's bundle; the `.dmg` holds it at its top level.
 pub const BUNDLE_NAME: &str = "GitVolt.app";
 
-/// The `GitBolt.app` left beside the running `GitVolt.app` (a 0.6.1 user quit instead of pressing
-/// Restart, which would have removed it), when it's safe to offer to remove it: a real folder (no
-/// symlink) of exactly that name, whose `Info.plist` names GitBolt's identifier, in a folder this
-/// user can write to. Anything else is left alone.
-pub fn leftover_legacy_bundle(exe: &Path) -> Option<PathBuf> {
-    let bundle = app_bundle(exe).filter(|b| b.file_name().is_some_and(|n| n == BUNDLE_NAME))?;
-    let old = bundle.with_file_name(crate::legacy::BUNDLE_NAME);
-    let real = |p: &Path, dir: bool| std::fs::symlink_metadata(p).is_ok_and(|m| if dir { m.is_dir() } else { m.is_file() });
-    let plist = old.join("Contents/Info.plist");
-    let named = real(&old, true) && real(&old.join("Contents"), true) && real(&plist, false) && std::fs::read(&plist).is_ok_and(|b| bundle_identifier(&b).as_deref() == Some(crate::legacy::IDENTIFIER));
-    (named && bundle_replaceable(&old)).then_some(old)
-}
-
-/// `CFBundleIdentifier` of an `Info.plist`, XML or binary.
-fn bundle_identifier(plist: &[u8]) -> Option<String> {
-    let value = plist::Value::from_reader(std::io::Cursor::new(plist)).ok()?;
-    value.as_dictionary()?.get("CFBundleIdentifier")?.as_string().map(str::to_string)
-}
-
 /// Whether the update can replace `bundle`: the bundle and its folder are writable by this user.
 /// No (`/Applications` without admin rights, a translocated or mounted copy): the manual steps.
 #[cfg(unix)]
@@ -281,81 +262,6 @@ pub fn relaunch_command(exe: &Path, pid: u32) -> InstallCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// `<dir>/<name>/Contents/Info.plist` holding `id`, and `<dir>/GitVolt.app/Contents/MacOS/GitVolt`.
-    fn bundles(dir: &Path, legacy: &str, id: &str) -> PathBuf {
-        let old = dir.join(legacy);
-        std::fs::create_dir_all(old.join("Contents")).unwrap();
-        std::fs::write(old.join("Contents/Info.plist"), format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>{id}</string></dict></plist>")).unwrap();
-        let exe = dir.join("GitVolt.app/Contents/MacOS/GitVolt");
-        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
-        exe
-    }
-
-    #[test]
-    fn a_gitbolt_app_beside_gitvolt_app_is_offered_for_removal_only_when_it_is_gitbolts() {
-        let dir = tempfile::tempdir().unwrap();
-        let exe = bundles(dir.path(), "GitBolt.app", "dev.gitbolt.desktop");
-        assert_eq!(leftover_legacy_bundle(&exe), Some(dir.path().join("GitBolt.app")));
-        // A binary plist holds the identifier as plain bytes too.
-        let mut dict = plist::Dictionary::new();
-        dict.insert("CFBundleIdentifier".into(), "dev.gitbolt.desktop".into());
-        plist::Value::Dictionary(dict.clone()).to_file_binary(dir.path().join("GitBolt.app/Contents/Info.plist")).unwrap();
-        assert!(leftover_legacy_bundle(&exe).is_some());
-        // Only the identifier's own key counts, and exactly.
-        dict.insert("CFBundleIdentifier".into(), "dev.gitbolt.desktop.helper".into());
-        dict.insert("CFBundleName".into(), "dev.gitbolt.desktop".into());
-        plist::Value::Dictionary(dict).to_file_xml(dir.path().join("GitBolt.app/Contents/Info.plist")).unwrap();
-        assert_eq!(leftover_legacy_bundle(&exe), None);
-        // Another app's bundle of that name.
-        std::fs::write(dir.path().join("GitBolt.app/Contents/Info.plist"), "<string>com.example.other</string>").unwrap();
-        assert_eq!(leftover_legacy_bundle(&exe), None);
-        // Not running from GitVolt.app (a copy the user renamed, or a build elsewhere).
-        let other = dir.path().join("My GitVolt.app/Contents/MacOS/GitVolt");
-        std::fs::create_dir_all(other.parent().unwrap()).unwrap();
-        assert_eq!(leftover_legacy_bundle(&other), None);
-        assert_eq!(leftover_legacy_bundle(Path::new("/usr/share/GitVolt/gitvolt")), None);
-    }
-
-    #[test]
-    fn a_renamed_or_missing_or_odd_gitbolt_bundle_is_left_alone() {
-        let dir = tempfile::tempdir().unwrap();
-        let exe = bundles(dir.path(), "My GitBolt.app", "dev.gitbolt.desktop");
-        assert_eq!(leftover_legacy_bundle(&exe), None, "a name the user chose");
-        std::fs::remove_dir_all(dir.path().join("My GitBolt.app")).unwrap();
-        assert_eq!(leftover_legacy_bundle(&exe), None, "nothing beside it");
-        // A file, a symlink to a real GitBolt bundle, and a bundle with a symlinked plist.
-        std::fs::write(dir.path().join("GitBolt.app"), "x").unwrap();
-        assert_eq!(leftover_legacy_bundle(&exe), None);
-        std::fs::remove_file(dir.path().join("GitBolt.app")).unwrap();
-        #[cfg(unix)]
-        {
-            let elsewhere = tempfile::tempdir().unwrap();
-            bundles(elsewhere.path(), "GitBolt.app", "dev.gitbolt.desktop");
-            std::os::unix::fs::symlink(elsewhere.path().join("GitBolt.app"), dir.path().join("GitBolt.app")).unwrap();
-            assert_eq!(leftover_legacy_bundle(&exe), None, "a symlinked bundle");
-            std::fs::remove_file(dir.path().join("GitBolt.app")).unwrap();
-            std::fs::create_dir_all(dir.path().join("GitBolt.app/Contents")).unwrap();
-            std::os::unix::fs::symlink(elsewhere.path().join("GitBolt.app/Contents/Info.plist"), dir.path().join("GitBolt.app/Contents/Info.plist")).unwrap();
-            assert_eq!(leftover_legacy_bundle(&exe), None, "a symlinked plist");
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_read_only_folder_cannot_have_its_gitbolt_bundle_removed() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let exe = bundles(dir.path(), "GitBolt.app", "dev.gitbolt.desktop");
-        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
-        let writable = nix::unistd::access(dir.path(), nix::unistd::AccessFlags::W_OK).is_ok();
-        let got = leftover_legacy_bundle(&exe);
-        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
-        // As root the folder stays writable: nothing to prove then.
-        if !writable {
-            assert_eq!(got, None);
-        }
-    }
 
     #[test]
     fn reads_the_kind_from_the_file_beside_the_binary() {

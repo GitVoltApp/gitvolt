@@ -75,7 +75,6 @@ eq install-kind "$(tar -xOf "$work/p.tar" usr/share/GitVolt/install-kind)" arch
 info=$(tar -xOf "$work/p.tar" .PKGINFO)
 for kv in 'pkgname = gitvolt' 'pkgver = 0.1.0.202610051325.ab4dbf9e-1' 'pkgdesc = A fast desktop Git client' \
           'arch = x86_64' "builddate = $(date -u -d '2026-10-05 13:25' +%s)" \
-          'conflict = gitbolt<0.7.0' 'replaces = gitbolt<0.7.0' \
           'depend = gcc-libs' 'depend = git' 'depend = glibc' 'depend = gtk4'; do
   grep -qxF "$kv" <<<"$info" || fail ".PKGINFO lacks '$kv': $info"
 done

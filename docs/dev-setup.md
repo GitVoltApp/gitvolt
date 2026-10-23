@@ -409,8 +409,7 @@ Debian field, but GNOME Software reads it), and `tauri.conf.json` sets `Homepage
   package by it, and GNOME Software finds the package to remove that way, since no distribution
   catalog lists GitVolt.
 - Its `<replaces>` names GitBolt's id, `dev.gitbolt.desktop` (the app's name before 0.7.0), so software
-  centres carry the listing over. The packages themselves replace GitBolt's (`git-bolt` in the `.deb`,
-  `gitbolt` in the RPM and Arch package): apt, dnf, zypper and pacman remove it when GitVolt's is installed.
+  centres carry the listing over.
 - The desktop entry keeps its name, `GitVolt.desktop` (`linux/GitVolt.desktop.hbs`), so existing
   installs' dock pins and menu entries carry over; the metainfo's `<launchable>` names it.
 - The icons are installed under the app id too (`com.gitvolt.desktop.png` at 32 to 512 px, and
