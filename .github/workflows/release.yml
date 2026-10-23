@@ -268,10 +268,13 @@ jobs:
       # about.toml's allow-list), cargo tauri build (the UI build and its notices first),
       # fix-deb.sh, check-deb.sh (Depends, the setuid chrome-sandbox, icons, desktop entry and
       # the license notices), package-arch.sh and package-rpm.sh, with the plain version for a
-      # release.
+      # release. Nothing from an earlier build's caches (GITVOLT_REBUILD), and the compression the
+      # packages have always shipped with (scripts/package-compression.sh), not a local build's.
       - name: Build the packages
         env:
           GITVOLT_RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          GITVOLT_REBUILD: '1'
+          GITVOLT_PACKAGE_COMPRESSION: release
         run: CARGO_BUILD_JOBS=$(nproc) just package
 
       - name: Save the CEF archive
@@ -567,6 +570,7 @@ jobs:
       - name: Build the disk image
         env:
           GITVOLT_RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          GITVOLT_REBUILD: '1' # the UI build afresh (ui/scripts/build-if-changed.mjs)
         run: CARGO_BUILD_JOBS=$(sysctl -n hw.ncpu) just package-macos
 
       - name: Save the CEF archive

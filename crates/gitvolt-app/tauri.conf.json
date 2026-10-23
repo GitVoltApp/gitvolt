@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": { "script": "npm run dev", "cwd": "../../ui" },
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": { "script": "npm run build", "cwd": "../../ui" },
+    "beforeBuildCommand": { "script": "node scripts/build-if-changed.mjs", "cwd": "../../ui" },
     "frontendDist": "../../ui/dist"
   },
   "app": {

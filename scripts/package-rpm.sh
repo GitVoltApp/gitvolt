@@ -15,7 +15,8 @@
 #              generate, and the same on Fedora and openSUSE), plus git-core >= 2.40 from the
 #              .deb's Depends (rpm-pkg.py depends: an unknown Debian name fails the build)
 #   License  = MIT and the licenses of what the package bundles (arch-pkg.py licenses), as SPDX
-# File times are the version's +YYYYMMDDHHMM build stamp, or $SOURCE_DATE_EPOCH; zstd -19.
+# File times are the version's +YYYYMMDDHHMM build stamp, or $SOURCE_DATE_EPOCH; zstd -19 (-3 for a
+# local build: scripts/package-compression.sh).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 helper="$here/rpm-pkg.py"
@@ -23,6 +24,7 @@ deb=$(realpath "${1:?usage: package-rpm.sh <package.deb> [out-dir]}")
 out=${2:-target/release/bundle/rpm}
 fail() { echo "package-rpm: $*" >&2; exit 1; }
 [ -f "$deb" ] || fail "no such file: $deb"
+level=$("$here/package-compression.sh" zstd)
 mkdir -p "$out"
 out=$(realpath "$out")
 
@@ -85,7 +87,7 @@ for m in "$work"/pkg/usr/share/metainfo/*.metainfo.xml; do
 done
 
 rm -f "$out"/GitVolt-*.x86_64.rpm
-rpm=$(python3 "$helper" build "$work/control/control" "$work/pkg" "$out" "$epoch" "$license")
+rpm=$(python3 "$helper" build "$work/control/control" "$work/pkg" "$out" "$epoch" "$license" "$level")
 # Read back: digests, header against payload, and the payload against the .deb's.
 python3 "$helper" verify "$work/data.tar" "$rpm" "${edited[@]}" >/dev/null || { rm -f "$rpm"; fail "the package doesn't match the .deb"; }
 echo "package-rpm: $rpm ($(du -h "$rpm" | cut -f1)); version $(python3 "$helper" version "$debver")-1; license: $license"

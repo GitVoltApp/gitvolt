@@ -44,4 +44,21 @@ for v in '0.1.0-alpha.1:0.1.0~alpha.1' '0.1.0-rc.2+202610051325.ab4dbf9e:0.1.0~r
   "$here/fix-deb.sh" "$work/v.deb" >/dev/null
   eq "version ${v%%:*}" "$(dpkg-deb -f "$work/v.deb" Version)" "${v#*:}"
 done
+# GITVOLT_SHLIBDEPS_CACHE: the second run of the same ELF files reuses the first's answer; a file
+# that links something else doesn't, and GITVOLT_REBUILD=1 never reads the cache.
+sed -i "s/^Version: .*/Version: 0.1.0/" "$pkg/DEBIAN/control"
+cache_run() {
+  dpkg-deb --root-owner-group -Zgzip -b "$pkg" "$work/c.deb" >/dev/null
+  (cd "$work" && GITVOLT_SHLIBDEPS_CACHE=cache "$here/fix-deb.sh" c.deb) # relative, as `just package` passes it
+}
+out=$(cache_run)
+grep -q 'result from' <<<"$out" && fail "a first run hit the cache: $out"
+out=$(cache_run)
+grep -q 'result from' <<<"$out" || fail "the second run missed the cache: $out"
+eq cached-depends "$(dpkg-deb -f "$work/c.deb" Depends)" "$deps"
+out=$(GITVOLT_REBUILD=1 cache_run)
+grep -q 'result from' <<<"$out" && fail "GITVOLT_REBUILD=1 read the cache: $out"
+cp "$(command -v ls)" "$pkg/usr/share/GitVolt/gitvolt" # other libraries and symbols
+out=$(cache_run)
+grep -q 'result from' <<<"$out" && fail "a changed ELF file hit the cache: $out"
 echo "test-fix-deb: OK ($deps)"

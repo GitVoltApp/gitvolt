@@ -171,6 +171,13 @@ Local `just package` builds stay stamped (`<version>+<UTC time>.<commit>`), so e
 over the last. `GITVOLT_RELEASE_VERSION=<version> just package` builds the plain version the way
 the workflow does; it must equal `tauri.conf.json`'s version.
 
+Local builds also reuse what hasn't changed since the last one (the license notices, the UI build,
+`dpkg-shlibdeps`) and compress fast (zstd 3); see [dev-setup.md](dev-setup.md#packaging-just-package).
+The workflow sets `GITVOLT_REBUILD=1`, which regenerates all of it, and
+`GITVOLT_PACKAGE_COMPRESSION=release` (`GITVOLT_RELEASE_VERSION` alone implies it too): the
+`.deb` in gzip 6, the Arch package and the RPM in zstd -19, as they have always shipped. To build
+locally exactly as the workflow does, set all three.
+
 ## What the workflow does
 
 After Plan (see [Which run builds](#which-run-builds)), the Linux, Windows and macOS builds run
@@ -183,10 +190,12 @@ side by side, then the release job:
      `binutils`, `cmake`, `ninja-build`, and `appstream` and `desktop-file-utils` for
      `check-deb.sh`), stable
      Rust, Node 22, `just`, `tauri-cli` 3.0.0-alpha.5 and cargo-about 0.9.2;
-   - runs `just package` with `GITVOLT_RELEASE_VERSION` set. That generates the third-party
-     license notices (`scripts/licenses.sh`, failing on a license outside `about.toml`'s
-     allow-list; see [licensing.md](licensing.md)), builds, and runs `fix-deb.sh`, `check-deb.sh`
-     (which also checks the notices are in the `.deb`), `package-arch.sh` and `package-rpm.sh`;
+   - runs `just package` with `GITVOLT_RELEASE_VERSION`, `GITVOLT_REBUILD=1` and
+     `GITVOLT_PACKAGE_COMPRESSION=release` set (no local caches, the release compression). That
+     generates the third-party license notices (`scripts/licenses.sh`, failing on a license
+     outside `about.toml`'s allow-list; see [licensing.md](licensing.md)), builds, and runs
+     `fix-deb.sh`, `check-deb.sh` (which also checks the notices are in the `.deb`), then
+     `package-arch.sh` and `package-rpm.sh` side by side;
    - runs `just check-arch-pkg` (Docker), which installs the Arch package in `archlinux:latest`
      and checks it, its notices included, then `just check-rpm-pkg`, which does the same for the
      RPM in `fedora:latest` with dnf;

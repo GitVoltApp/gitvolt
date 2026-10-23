@@ -12,6 +12,7 @@ test-scripts:
     scripts/test-package-meta.sh
     scripts/test-package-arch.sh
     scripts/test-package-rpm.sh
+    scripts/test-package-compression.sh
     scripts/test-licenses.sh
     scripts/test-version-order.sh
     scripts/test-release.sh
@@ -234,19 +235,36 @@ dev repo="": check-tauri-cli
 build-app: check-tauri-cli
     cd crates/gitvolt-app && env -u CARGO_INCREMENTAL CARGO_BUILD_JOBS=4 cargo tauri build --no-bundle
 
-# The .deb (AppImage is deferred) with the GTK 4 dependency fix (spec §18): the .deb's control
-# member is rewritten by scripts/fix-deb.sh and checked by scripts/check-deb.sh. Then the Arch
-# package and the RPM are made from it (`just package-arch`, `just package-rpm`), so one build
-# gives all three.
+# The .deb, then the Arch package and the RPM made from it (`just package-arch`, `just
+# package-rpm`, run side by side), so one build gives all three.
+package: package-deb
+    #!/usr/bin/env bash
+    set -euo pipefail
+    deb=(target/release/bundle/deb/GitVolt_*_amd64.deb)
+    scripts/package-arch.sh "${deb[@]}" target/release/bundle/arch & arch=$!
+    scripts/package-rpm.sh "${deb[@]}" target/release/bundle/rpm & rpm=$!
+    status=0
+    wait "$arch" || status=1
+    wait "$rpm" || status=1
+    exit "$status"
+
+# The .deb alone (AppImage is deferred), with the GTK 4 dependency fix (spec §18): the .deb's
+# control member is rewritten by scripts/fix-deb.sh and checked by scripts/check-deb.sh.
+# A local build skips what hasn't changed since the last one (the license notices, the UI build,
+# dpkg-shlibdeps) and compresses fast; GITVOLT_REBUILD=1 redoes everything, and a release build
+# compresses as it ships (scripts/package-compression.sh). docs/dev-setup.md, "Packaging".
 # `env -u CARGO_INCREMENTAL` (here and in build-app): a CARGO_INCREMENTAL=0 from the caller would
 # override the release profile's `incremental = true` (Cargo.toml), and sccache refuses a 1.
-package: check-tauri-cli
-    # Old packages first: the globs below must match only the .deb this build makes.
-    rm -f target/release/bundle/deb/GitVolt_*_amd64.deb
-    # The license notices, fresh for every package (docs/licensing.md): the Rust, CEF and Chromium
-    # ones into target/licenses here; the UI's come from the UI build `cargo tauri build` runs.
-    # Either fails the build on a license outside the allow-list in about.toml.
-    scripts/licenses.sh
+package-deb: check-tauri-cli
+    # Old packages first: the globs below must match only the .deb this build makes. And the
+    # bundler's staging folders (~400 MB each), one per stamped version.
+    rm -rf target/release/bundle/deb/GitVolt_*_amd64.deb target/release/bundle/deb/GitVolt_*_amd64/
+    # The license notices (docs/licensing.md): the Rust, CEF and Chromium ones into
+    # target/licenses here, unless Cargo.lock, the manifests, about.toml and CEF are as they were
+    # for the last ones; the UI's come from the UI build `cargo tauri build` runs, unless the UI,
+    # its lockfile and the allow-list are unchanged (ui/scripts/build-if-changed.mjs). Either
+    # fails the build on a license outside the allow-list in about.toml.
+    scripts/licenses.sh --if-changed
     # The AppStream metainfo (its releases from CHANGELOG.md) and the DEP-5 copyright file, into
     # target/package-meta for tauri.conf.json's files map (docs/dev-setup.md, "Software centres").
     mkdir -p target/package-meta
@@ -261,11 +279,10 @@ package: check-tauri-cli
     # dropped and the bundler still copies (scripts/cef-bundler-dist.sh).
     cd crates/gitvolt-app && v="$(../../scripts/package-version.sh tauri.conf.json)" && \
       cef="$(../../scripts/cef-bundler-dist.sh ../../target/cef-bundler)" && \
-      env -u CARGO_INCREMENTAL CEF_PATH="$cef" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" GITVOLT_BUILD_VERSION="$v" cargo tauri build --bundles deb --config "{\"version\":\"$v\"}"
-    scripts/fix-deb.sh target/release/bundle/deb/GitVolt_*_amd64.deb
+      comp="$(../../scripts/package-compression.sh deb)" && \
+      env -u CARGO_INCREMENTAL CEF_PATH="$cef" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" GITVOLT_BUILD_VERSION="$v" cargo tauri build --bundles deb --config "{\"version\":\"$v\",\"bundle\":{\"linux\":{\"deb\":{\"compression\":$comp}}}}"
+    GITVOLT_SHLIBDEPS_CACHE=target/package-cache/shlibdeps scripts/fix-deb.sh target/release/bundle/deb/GitVolt_*_amd64.deb
     scripts/check-deb.sh target/release/bundle/deb/GitVolt_*_amd64.deb
-    scripts/package-arch.sh target/release/bundle/deb/GitVolt_*_amd64.deb target/release/bundle/arch
-    scripts/package-rpm.sh target/release/bundle/deb/GitVolt_*_amd64.deb target/release/bundle/rpm
 
 # The third-party license notices the packages ship (docs/licensing.md): the Rust crates, CEF and
 # Chromium into target/licenses (scripts/licenses.sh, needs cargo-about), then the UI build, which

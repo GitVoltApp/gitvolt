@@ -19,6 +19,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 license=MIT # the metainfo's project_license says the same (check-deb.sh compares them)
 deb=$(realpath "${1:?usage: fix-deb.sh <package.deb>}")
+cache=${GITVOLT_SHLIBDEPS_CACHE:+$(realpath -m "$GITVOLT_SHLIBDEPS_CACHE")}
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 cd "$work"
 ar x "$deb"
@@ -33,9 +34,35 @@ mapfile -t elfs < <(find payload -type f -exec sh -c 'head -c 4 "$1" | grep -q E
 [ ${#elfs[@]} -gt 0 ] || { echo "fix-deb: no ELF files in $deb" >&2; exit 1; }
 mapfile -t libdirs < <(printf '%s\n' "${elfs[@]}" | xargs -n1 dirname | sort -u)
 printf 'Source: gitvolt\n\nPackage: gitvolt\nArchitecture: any\n' > debian/control
-if ! shlib=$(dpkg-shlibdeps -O --ignore-missing-info "${libdirs[@]/#/-l}" "${elfs[@]/#/-e}" 2>shlibdeps.log | sed -n 's/^shlibs:Depends=//p'); then
+# GITVOLT_SHLIBDEPS_CACHE=<dir> (`just package`): dpkg-shlibdeps takes ~20 s, mostly libcef.so's
+# and the binary's symbols, so its answer is kept under a key of everything it reads: each ELF
+# file's objdump output as dpkg-shlibdeps reads it (less addresses and sizes, which change with
+# any code change but not what it concludes), its copy relocations, the paths, dpkg-dev's version
+# and the system's installed packages and library cache. GITVOLT_REBUILD=1 skips the cache.
+cached=
+if [ -n "$cache" ] && [ "${GITVOLT_REBUILD:-}" != 1 ]; then
+  key=$({
+    dpkg-query -W -f '${Version}\n' dpkg-dev
+    sha256sum /var/lib/dpkg/status /etc/ld.so.cache 2>&1
+    printf '%s\n' "${libdirs[@]}"
+    for e in "${elfs[@]}"; do
+      echo "== $e"
+      objdump -w -f -p -T "$e"
+      objdump -w -R "$e" | grep -E ' R_[A-Z0-9_]*_COPY ' || true
+    done
+  } | sed -E 's/\b(0x)?[0-9a-f]{8,}\b/#/g' | sha256sum | cut -d' ' -f1)
+  cached=$cache/$key
+fi
+if [ -n "$cached" ] && [ -f "$cached" ]; then
+  shlib=$(cat "$cached") && touch "$cached"
+  echo "fix-deb: dpkg-shlibdeps result from $cached"
+elif ! shlib=$(dpkg-shlibdeps -O --ignore-missing-info "${libdirs[@]/#/-l}" "${elfs[@]/#/-e}" 2>shlibdeps.log | sed -n 's/^shlibs:Depends=//p'); then
   cat shlibdeps.log >&2
   exit 1
+elif [ -n "$cached" ]; then
+  mkdir -p "$cache"
+  find "$cache" -type f -mtime +30 -delete # one small file per key: keep a month's
+  printf '%s' "$shlib" > "$cached.tmp" && mv "$cached.tmp" "$cached"
 fi
 orig=$(sed -n 's/^Depends: //p' control/control)
 new=$(printf '%s\n%s\n' "$shlib" "$orig" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | grep -v '^$' | grep -Ev '^libgtk-3-0([ (]|$)' | awk '

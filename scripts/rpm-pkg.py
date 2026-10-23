@@ -14,9 +14,10 @@ Subcommands (each prints to stdout; errors go to stderr with exit status 2):
   elfreqs <dir>                 the shared libraries and symbol versions the ELF files under <dir>
                                 need and the payload doesn't bring, as rpm's elfdeps names them:
                                 libnss3.so()(64bit), libc.so.6(GLIBC_2.34)(64bit)
-  build <control> <dir> <out-dir> <epoch> <license>
+  build <control> <dir> <out-dir> <epoch> <license> [zstd-level]
                                 writes <out-dir>/GitVolt-<filever>-1.x86_64.rpm (printed) from the
-                                .deb's control file and the payload under <dir>
+                                .deb's control file and the payload under <dir>, compressed with
+                                zstd at zstd-level (default 19)
   verify <data.tar> <pkg.rpm> [edited...]
                                 reads the package back: its digests, the header's file list
                                 against the cpio payload, and the payload against the .deb's data
@@ -373,7 +374,7 @@ def sha256_file(path):
     return archpkg.digests(path)[1]
 
 
-def build(control, root, outdir, epoch, license_):
+def build(control, root, outdir, epoch, license_, level="19"):
     fields = control_fields(control)
     debver = fields["Version"]
     version = rpm_version(debver)
@@ -403,7 +404,7 @@ def build(control, root, outdir, epoch, license_):
         if raw_size >= 1 << 32:
             raise Fail("the payload is 4 GB or more")
         payload = cpio + ".zst"
-        subprocess.run(["zstd", "-19", "-T0", "-q", "--rm", cpio, "-o", payload], check=True)
+        subprocess.run(["zstd", f"-{int(level)}", "-T0", "-q", "--rm", cpio, "-o", payload], check=True)
         payload_sha = sha256_file(payload)
 
         dirs = sorted({"/" + os.path.dirname(e["path"]) + "/" for e in files})
@@ -451,7 +452,7 @@ def build(control, root, outdir, epoch, license_):
             (1118, STRING_ARRAY, dirs),
             (1124, STRING, "cpio"),
             (1125, STRING, "zstd"),
-            (1126, STRING, "19"),
+            (1126, STRING, str(int(level))),  # the payload flags: its zstd level
             (5011, INT32, [8]),  # file digests: SHA-256
             (5062, STRING, "utf-8"),
             (5092, STRING_ARRAY, [payload_sha]),

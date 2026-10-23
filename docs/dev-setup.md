@@ -370,6 +370,31 @@ Why the throwaway instance and `GIT_CONFIG_GLOBAL=/dev/null` rather than just a 
 - Before building, it generates the third-party license notices (`scripts/licenses.sh`, needs
   cargo-about), and fails on a dependency whose license isn't on the allow-list. See
   [licensing.md](licensing.md).
+- **`just package-deb`** builds and checks the `.deb` alone; `just package` is that, then the
+  Arch package and the RPM side by side.
+- **Repeat builds skip what hasn't changed** since the last one, each keyed on a hash of its
+  inputs:
+  - the license notices (about 50 s; `target/licenses.key`);
+  - the UI build (about 20 s; `ui/scripts/build-if-changed.mjs`, `target/ui-build/dist.key`);
+  - `fix-deb.sh`'s `dpkg-shlibdeps` (about 20 s; `target/package-cache/shlibdeps/`, keyed on the
+    ELF files' linkage, the paths and the installed packages).
+
+  `scripts/cef-bundler-dist.sh` also keeps its directory when it's already right, so `cef-dll-sys`
+  and what links CEF don't rebuild.
+- **Local packages are compressed fast:** zstd 3 for the `.deb`, the Arch package and the RPM
+  (seconds each, about 20% larger). Installing a zstd `.deb` needs dpkg 1.21.18 or later
+  (Debian 12, Ubuntu 22.04). A release build (`GITVOLT_RELEASE_VERSION` set) compresses as the
+  release ships: gzip 6 for the `.deb`, zstd -19 for the other two (about 75 s each).
+  `GITVOLT_PACKAGE_COMPRESSION=release` or `fast` picks one either way
+  (`scripts/package-compression.sh`).
+- **Forced full rebuild:** `GITVOLT_REBUILD=1 just package` ignores those caches and
+  regenerates the notices, the UI and the `dpkg-shlibdeps` result (`just licenses` always
+  regenerates the notices too). `GITVOLT_REBUILD=1 GITVOLT_PACKAGE_COMPRESSION=release` builds
+  the way the release workflow does, version stamp aside.
+- After a Rust change, a warm `just package-deb` takes 35-40 s on the dev machine and
+  `just package` about 50 s (5.5 min before these caches): mostly the Rust build and link, then
+  Tauri's copying and compressing (6 s), `check-deb.sh` (2 s), and the Arch package and the RPM
+  (8 s).
 - `scripts/test-fix-deb.sh` and `scripts/test-check-deb.sh` (part of `just test`) check
   `fix-deb.sh` and `check-deb.sh` on synthetic packages. The first needs `dpkg-dev`, the second
   `appstream` and `desktop-file-utils`; without them, they skip and exit 0.

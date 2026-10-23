@@ -295,6 +295,7 @@ Then:
 cd ui && npm ci && cd ..
 just dev          # run in development mode
 just package      # build the .deb, and from it the Arch package and the .rpm
+just package-deb  # the .deb alone
 just package-windows  # on Windows: the installer and the MSI (see docs/dev-setup.md)
 just package-macos    # on a Mac: the .dmg
 just test         # Rust and UI unit tests

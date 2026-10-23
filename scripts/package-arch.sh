@@ -11,7 +11,8 @@
 #              MIT and the licenses of what the package bundles (arch-pkg.py licenses)
 #   .MTREE   = gzip'd mtree of .PKGINFO and the payload, as makepkg's bsdtar writes it
 # Archive order: .PKGINFO, .MTREE, then the payload; GNU tar, every entry root:root with one fixed
-# mtime (the version's +YYYYMMDDHHMM build stamp, or $SOURCE_DATE_EPOCH), zstd -19.
+# mtime (the version's +YYYYMMDDHHMM build stamp, or $SOURCE_DATE_EPOCH), zstd -19 (-3 for a local
+# build: scripts/package-compression.sh).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 helper="$here/arch-pkg.py"
@@ -19,6 +20,7 @@ deb=$(realpath "${1:?usage: package-arch.sh <package.deb> [out-dir]}")
 out=${2:-target/release/bundle/arch}
 fail() { echo "package-arch: $*" >&2; exit 1; }
 [ -f "$deb" ] || fail "no such file: $deb"
+level=$("$here/package-compression.sh" zstd)
 mkdir -p "$out"
 out=$(realpath "$out")
 
@@ -119,5 +121,5 @@ line=$(tar -tvf "$work/pkg.tar" | grep '/chrome-sandbox$') || fail "no chrome-sa
 [[ $line == -rwsr-xr-x\ root/root* ]] || fail "chrome-sandbox is not root:root 4755: $line"
 
 rm -f "$out"/GitVolt-*-x86_64.pkg.tar.zst
-zstd -19 -T0 -q --rm "$work/pkg.tar" -o "$out/$name"
+zstd "-$level" -T0 -q --rm "$work/pkg.tar" -o "$out/$name"
 echo "package-arch: $out/$name ($(du -h "$out/$name" | cut -f1)); pkgver $pkgver; depends: ${depends[*]}"

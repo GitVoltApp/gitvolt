@@ -25,6 +25,19 @@ if [ -e "$dist/libEGL.so" ] && [ -e "$dist/libGLESv2.so" ]; then
   exit 0
 fi
 stage=$out/$ver/cef_linux_x86_64
+# Kept when it's already this distribution's: cef-dll-sys rebuilds (and with it everything that
+# links CEF) when a file under CEF_PATH is newer than its last build.
+staged() {
+  [ -d "$stage" ] && [ "$(ls "$out")" = "$ver" ] || return 1
+  [ "$(LC_ALL=C ls "$stage")" = "$( (ls "$dist"; echo libEGL.so; echo libGLESv2.so) | LC_ALL=C sort -u)" ] || return 1
+  local f
+  for f in "$dist"/*; do [ "$(readlink "$stage/${f##*/}")" = "$f" ] || return 1; done
+  for f in libEGL.so libGLESv2.so; do [ -e "$dist/$f" ] || [ -f "$stage/$f" ] || return 1; done
+}
+if staged; then
+  echo "$out"
+  exit 0
+fi
 rm -rf "$out"
 mkdir -p "$stage"
 ln -s "$dist"/* "$stage"/
