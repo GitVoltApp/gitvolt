@@ -61,6 +61,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Fixed
 
+- **Tooltips and hover cards close when the pointer leaves the window,** or the window loses
+  focus; they could stay up after a quick move off the window's edge.
 - **Ctrl+click on a link in a diff or file opens it in your browser.** It opened a bare Chromium
   window of GitVolt's own instead.
 - **The window should reopen on the monitor you left it on, at the size you closed it at.** With

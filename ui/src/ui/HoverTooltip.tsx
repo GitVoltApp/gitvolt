@@ -1,4 +1,5 @@
 import { cloneElement, useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactElement, type ReactNode } from 'react';
+import { onPointerLeftWindow } from './windowLeave';
 import { createPortal } from 'react-dom';
 import { registerKeys } from './keyRouter';
 import { pointerResting } from './pointerRest';
@@ -228,10 +229,12 @@ export function useHoverTooltip({ content, delayMs = 0, interactive: interactive
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', hide);
     document.addEventListener('mousedown', onPress, true);
+    const offLeave = onPointerLeftWindow(hide);
     disarm.current = () => {
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', hide);
       document.removeEventListener('mousedown', onPress, true);
+      offLeave();
     };
   };
 

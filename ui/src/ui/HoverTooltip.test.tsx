@@ -58,6 +58,19 @@ describe('HoverTooltip', () => {
     window.removeEventListener('keydown', seen);
   });
 
+  it('the pointer leaving the window, or the window losing focus, hides the tooltip without the trigger\'s own leave', () => {
+    render(<div><HoverTooltip content="tip"><span>target</span></HoverTooltip></div>);
+    fireEvent.mouseEnter(screen.getByText('target'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    act(() => { screen.getByText('target').dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: null })); });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.mouseLeave(screen.getByText('target'));
+    fireEvent.mouseEnter(screen.getByText('target'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
   it('a press on the trigger hides the tooltip (as a native one), so a click then Esc is one Esc for the app', () => {
     render(<div><HoverTooltip content="tip"><span>target</span></HoverTooltip><span>elsewhere</span></div>);
     fireEvent.mouseEnter(screen.getByText('target'));

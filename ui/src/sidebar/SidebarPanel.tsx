@@ -1,4 +1,5 @@
 import { PendingMark } from '../pending/PendingMark';
+import { onPointerLeftWindow } from '../ui/windowLeave';
 import { usePendingAny } from '../pending/store';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Clock, Folder, FolderOpen, GitBranch, GitMerge, House, ListTree, Tag, TreePine } from 'lucide-react';
@@ -92,6 +93,9 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
   // An MR/PR section's selection is the open view's MR/PR (null in the other sections).
   const openMr = useForge((s) => (section.kind === 'mrs' ? s.byTab[tabId]?.openMr ?? null : null));
   const [hover, setHover] = useState<{ item: SideItem; top: number; left: number } | null>(null);
+  // A pointer that leaves the window from a row may never send that row its leave.
+  const hovering = hover !== null;
+  useEffect(() => (hovering ? onPointerLeftWindow(() => setHover(null)) : undefined), [hovering]);
   const [body, setBody] = useState<HTMLDivElement | null>(null);
   const id = panel.section.id;
   const setPanelRef = useCallback((el: HTMLElement | null) => onPanelEl(id, el), [onPanelEl, id]);

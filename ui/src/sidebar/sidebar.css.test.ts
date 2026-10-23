@@ -31,3 +31,8 @@ it('K62: row and strip icons use the dimmer --sidebar-icon, brightening on hover
   expect(css).toMatch(/\.sb-row:hover > svg:not\(\[data-host-kind\], \.mr-state-icon\)[^{]*\{[^}]*var\(--text-normal\)/);
   expect(css).toMatch(/\.sn-item svg\s*\{[^}]*var\(--sidebar-icon\)/);
 });
+
+it("the hover card wraps a long unbroken word (a path in a commit message) inside its width", () => {
+  expect(css).toMatch(/\.hc-summary\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  expect(css).toMatch(/\.hc-meta\s*\{[^}]*overflow-wrap:\s*anywhere/);
+});

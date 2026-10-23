@@ -51,8 +51,8 @@
 /* A tooltip: over the status bar (810), as `.hover-tooltip`. */
 .hover-card { position: fixed; z-index: 1000; width: 300px; padding: 10px 12px; background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 6px; box-shadow: 0 6px 20px var(--shadow-popup); pointer-events: none; }
 .hc-name { color: var(--text-selected); font-weight: 600; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; }
-.hc-summary { margin-bottom: 4px; }
-.hc-meta { font-size: 11px; color: var(--text-secondary); }
+.hc-summary { margin-bottom: 4px; overflow-wrap: anywhere; }
+.hc-meta { font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .sb-panel.is-collapsed { flex-shrink: 0; }
 .sb-dim { color: var(--text-secondary); font-size: 11px; }
 

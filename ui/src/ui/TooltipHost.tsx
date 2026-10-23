@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
+import { onPointerLeftWindow } from './windowLeave';
 import { createPortal } from 'react-dom';
 import { isDismissKey, measureNatural, placeBelow, placeBeside } from './HoverTooltip';
 import { useKeys } from './keyRouter';
@@ -27,12 +28,12 @@ export function TooltipHost() {
     window.addEventListener('pointerdown', hide, true);
     window.addEventListener('scroll', hide, true);
     window.addEventListener('resize', hide);
-    window.addEventListener('blur', hide);
+    const offLeave = onPointerLeftWindow(hide);
     return () => {
       window.removeEventListener('pointerdown', hide, true);
       window.removeEventListener('scroll', hide, true);
       window.removeEventListener('resize', hide);
-      window.removeEventListener('blur', hide);
+      offLeave();
     };
   }, [tip]);
   // Esc dismisses it, as a HoverTooltip's does (the key router's `tooltip` layer). Inside a menu
