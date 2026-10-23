@@ -9,6 +9,8 @@ import { releaseDetachedEditors } from '../diff/editorRelease';
 import { displayedOrder } from '../files/fileListPrefs';
 import { GraphView } from '../graph/GraphView';
 import { rebasingChip } from '../integrate/rebasing';
+import { branchDropMenu } from '../integrate/dropMenu';
+import type { DroppedLabel } from '../graph/branchDrag';
 import type { RowDim } from '../graph/rowDim';
 import { graphRowMenu, labelMenu, monacoMenu, warmCommitMenu, wipMenu } from '../menu/menuEnv';
 import { graphLabelDoubleClick, graphRowDoubleClick } from '../graph/rowActions';
@@ -128,6 +130,10 @@ function ConnectedGraph() {
   const onRowDoubleClick = useCallback((row: RowPayload) => { graphRowDoubleClick(store, row); }, [store]);
   const onWipContextMenu = useCallback((e: MenuEventLike, row: RowPayload) => { openContextMenu(e, wipMenu(store, row)); }, [store]);
   // --- end 2C T9 ---
+  // A branch chip dropped on another: the menu of what to do to the one it landed on, at the release.
+  const onLabelDrop = useCallback((from: DroppedLabel, onto: DroppedLabel, x: number, y: number) => {
+    openContextMenu({ preventDefault() {}, stopPropagation() {}, clientX: x, clientY: y, timeStamp: performance.now() }, branchDropMenu(store, from, onto));
+  }, [store]);
   // An inline editor on a row (Create branch here's name input, UX round 1).
   const rowEditor = useRowEditor(store);
   return (
@@ -146,6 +152,7 @@ function ConnectedGraph() {
       onLabelDoubleClick={onLabelDoubleClick}
       onRowDoubleClick={onRowDoubleClick}
       onWipContextMenu={onWipContextMenu}
+      onLabelDrop={onLabelDrop}
       rowDim={rowDim}
       rebasing={rebasing}
       revealTip={revealHead}

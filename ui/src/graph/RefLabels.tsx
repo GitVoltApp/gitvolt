@@ -12,6 +12,7 @@ import { CHIP_SPACING, chipFont, chipWidth, fitCount, rebasingWidth } from './ch
 import { UpstreamWarning } from '../branches/UpstreamWarning';
 import { TagTip } from '../tags/TagTip';
 import { DETACHED, detachedWorktreeOf } from './worktreeLabel';
+import { useBranchDragClass } from './branchDrag';
 // --- 4B T10 ---
 import { useRepoContext } from '../app/repoContext';
 import { MrBadge, useChipMr } from '../forge/MrBadge';
@@ -134,8 +135,9 @@ function ChipContent({ label, full = false, compact = false }: { label: RefLabel
  * collapses once the pointer leaves the copy. The copy is never smaller than the chip it covers,
  * so expanding can't move the pointer "out" and back in (no flicker at the edge).
  */
-function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranchHover, onContextMenu, onDoubleClick, stack, tip, ariaLabel }: { /** Omitted: the lane colour inherited from `.ref-labels`. */ color?: string; className?: string; content: (full: boolean) => ReactNode; stack?: () => ReactNode; refs?: readonly string[]; onBranchHover?: BranchHover; onContextMenu?: (e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (e: MouseEvent<HTMLElement>) => void; /** The chip's own instant tooltip (the rebasing, the icon-only detached HEAD and the worktree chips). */ tip?: ReactNode; ariaLabel?: string }) {
+function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranchHover, onContextMenu, onDoubleClick, stack, tip, ariaLabel, dragRef }: { /** Omitted: the lane colour inherited from `.ref-labels`. */ color?: string; className?: string; content: (full: boolean) => ReactNode; stack?: () => ReactNode; refs?: readonly string[]; onBranchHover?: BranchHover; onContextMenu?: (e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (e: MouseEvent<HTMLElement>) => void; /** The chip's own instant tooltip (the rebasing, the icon-only detached HEAD and the worktree chips). */ tip?: ReactNode; ariaLabel?: string; /** A local branch's chip: its ref, as a branch drag's source or target (branchDrag.ts). */ dragRef?: string | null }) {
   const [expanded, setExpanded] = useState(false);
+  const dragClass = useBranchDragClass(dragRef);
   const { triggerProps, tooltip } = useHoverTooltip({ content: tip ?? null, disabled: tip === undefined });
   // J22: entering a branch chip starts its branch's focus, leaving ends it. A chip unmounted
   // under the pointer (scrolled out of the virtual window) never gets its mouseleave: end it then.
@@ -157,8 +159,9 @@ function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranc
   return (
     <span
       {...triggerProps}
-      className={className}
+      className={`${className}${dragClass}`}
       aria-label={ariaLabel}
+      data-drag-branch={dragRef ?? undefined}
       style={color === undefined ? undefined : { ['--lane-color' as string]: color }}
       onMouseEnter={enter}
       onMouseLeave={leave}
@@ -185,9 +188,11 @@ function StackRow({ label, sha, first, onBranchHover, onContextMenu, onDoubleCli
   // path; not the first row, which lies over that chip and its own tooltip (`first`).
   const wt = detachedWorktreeOf(label);
   const { triggerProps, tooltip } = useHoverTooltip({ content: label.tag ? <TagTip annotation={label.annotation} sha={sha} /> : wt ? worktreeTip(wt, sha) : null, disabled: !(label.tag || wt) || first });
+  const dragClass = useBranchDragClass(label.local);
   return (
     <span
-      className="ref-stack-row"
+      className={`ref-stack-row${dragClass}`}
+      data-drag-branch={label.local ?? undefined}
       onMouseOver={triggerProps.onMouseOver}
       onMouseMove={triggerProps.onMouseMove}
       onMouseEnter={(e) => {
@@ -341,6 +346,7 @@ export function RefLabels({ labels, color, membership = null, onBranchHover, com
           color={c}
           className={`ref-label${l.isHead ? ' ref-label-head' : ''}${detachedWorktreeOf(l) ? ' ref-worktree' : ''}${iconOnly(l) ? ' compact' : ''}${i > 0 || rebasing ? ' ref-label-next' : ''}`}
           refs={chipRefs(l)}
+          dragRef={l.local}
           onBranchHover={onBranchHover}
           onContextMenu={onContextMenu && ((e) => onContextMenu(l, e))}
           onDoubleClick={onDoubleClick && ((e) => { e.stopPropagation(); onDoubleClick(l, e); })}

@@ -7,6 +7,16 @@ const labelMenu = async (page: Page, name: string, item: string) => {
   // Exact: 3C's "Interactive rebase X onto Y" sits right under "Rebase X onto Y".
   await page.getByRole('menuitem', { name: item, exact: true }).click();
 };
+/** Drags branch `from`'s chip onto branch `onto`'s with a real pointer. */
+const dragChip = async (page: Page, from: string, onto: string) => {
+  const grid = page.getByRole('grid', { name: 'Commit graph' });
+  const box = async (name: string) => (await grid.getByText(name, { exact: true }).first().boundingBox())!;
+  const [a, b] = [await box(from), await box(onto)];
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
+  await page.mouse.up();
+};
 
 test.describe('integrate (spec #2 §13.1, §13.4)', () => {
   test('rebasing a stack moves the ticked stacked branches', async ({ page }) => {
@@ -61,5 +71,21 @@ test.describe('integrate (spec #2 §13.1, §13.4)', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('menuitem', { name: 'Merge feature/x into main' })).toBeVisible();
     expect(git(repo, 'status', '--porcelain')).toBe('');
+    await page.keyboard.press('Escape');
+    // The same app boot: clean adds clean.txt off Base.
+    await test.step('a branch dropped on the checked-out branch merges into it', async () => {
+      await dragChip(page, 'clean', 'main');
+      await page.getByRole('menuitem', { name: 'Merge clean into main', exact: true }).click();
+      await expect.poll(() => isAncestor(repo, 'clean', 'main')).toBe(true);
+      expect(git(repo, 'symbolic-ref', '--short', 'HEAD')).toBe('main');
+      // The merge commit's row is in: the next drag measures the chips where they now are.
+      await expect(page.locator(`[id="graph-row-${git(repo, 'rev-parse', 'main')}"]`)).toBeVisible();
+    });
+    await test.step('a branch dropped on one not checked out checks it out first, then fast-forwards it', async () => {
+      await dragChip(page, 'main', 'clean');
+      await page.getByRole('menuitem', { name: 'Fast-forward clean to main', exact: true }).click();
+      await expect.poll(() => git(repo, 'symbolic-ref', '--short', 'HEAD')).toBe('clean');
+      await expect.poll(() => git(repo, 'rev-parse', 'clean')).toBe(git(repo, 'rev-parse', 'main'));
+    });
   });
 });

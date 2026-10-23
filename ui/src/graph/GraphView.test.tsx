@@ -13,6 +13,7 @@ import { copyText } from '../api/transport';
 import { useToast } from '../ui/toastStore';
 import { openContextMenu, useMenu, type MenuEventLike } from '../menu/menuStore';
 import type { MenuRow } from '../menu/types';
+import { useBranchDrag } from './branchDrag';
 
 vi.mock('../api/transport', () => ({ copyText: vi.fn(async () => {}), inTauri: () => false }));
 
@@ -764,5 +765,106 @@ describe('GraphView: the Graph column\'s max width and the overflow strip (F2)',
     rerender(<GraphView graph={{ ...wideGraph, maxLanes: 30 }} repoId="/repo" />);
     expect(cellW('graph')).toBe(400);
     expect(useColumnPrefs.getState().prefs.graph).toBe(400);
+  });
+});
+
+describe('GraphView branch drag', () => {
+  const twoBranches: GraphPayload = {
+    ...graph,
+    labels: [graph.labels[0], { row: 1, name: 'feature/x', local: 'refs/heads/feature/x', remotes: [], tag: false, isHead: false, worktree: null, checkedOut: null }],
+  };
+  const [rowA, rowB] = [twoBranches.rows[0].id, twoBranches.rows[1].id];
+  const chip = (name: string) => document.querySelector<HTMLElement>(`.ref-label[data-drag-branch="refs/heads/${name}"]`)!;
+  const pointAt = (el: Element | null) => { document.elementFromPoint = () => el; };
+  const pointer = (type: string, x: number, y: number) => act(() => { window.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y })); });
+  const dragOnto = (from: string, onto: string) => {
+    fireEvent.pointerDown(chip(from), { button: 0, clientX: 10, clientY: 40 });
+    fireEvent.mouseDown(chip(from), { button: 0 });
+    pointAt(chip(onto));
+    pointer('pointermove', 10, 10);
+  };
+  afterEach(() => {
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    useBranchDrag.setState({ drag: null });
+    act(() => useMenu.getState().close());
+  });
+
+  it("a chip's press, double-click and right-click work as before", () => {
+    const [onSelect, onLabelDoubleClick, onLabelContextMenu, onLabelDrop] = [vi.fn(), vi.fn(), vi.fn(), vi.fn()];
+    render(<GraphView graph={twoBranches} repoId="/r" selected={0} onSelect={onSelect} onLabelDoubleClick={onLabelDoubleClick} onLabelContextMenu={onLabelContextMenu} onLabelDrop={onLabelDrop} />);
+    // A press with 2 px of travel, as a real click: pointerdown, mousedown, a move, pointerup, click.
+    fireEvent.pointerDown(chip('feature/x'), { button: 0, clientX: 10, clientY: 40 });
+    fireEvent.mouseDown(chip('feature/x'), { button: 0 });
+    pointAt(chip('main'));
+    pointer('pointermove', 12, 40);
+    pointer('pointerup', 12, 40);
+    fireEvent.click(chip('feature/x'));
+    expect(onSelect).toHaveBeenCalledWith(1, { ctrl: false, shift: false });
+    expect(useBranchDrag.getState().drag).toBeNull();
+    fireEvent.doubleClick(chip('feature/x'));
+    expect(onLabelDoubleClick).toHaveBeenCalledOnce();
+    fireEvent.contextMenu(chip('feature/x'));
+    expect(onLabelContextMenu).toHaveBeenCalledOnce();
+    expect(onLabelDrop).not.toHaveBeenCalled();
+  });
+
+  it('a drag from one chip to another reports both labels and rows at the release point, and its click selects nothing', () => {
+    const [onSelect, onLabelDrop] = [vi.fn(), vi.fn()];
+    render(<GraphView graph={twoBranches} repoId="/r" selected={0} onSelect={onSelect} onLabelDrop={onLabelDrop} />);
+    dragOnto('feature/x', 'main');
+    expect(chip('feature/x')).toHaveClass('is-drag-source');
+    expect(chip('main')).toHaveClass('is-drop-target');
+    pointer('pointerup', 10, 10);
+    expect(onLabelDrop).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ row: expect.objectContaining({ id: rowB }), label: expect.objectContaining({ local: 'refs/heads/feature/x' }) }),
+      expect.objectContaining({ row: expect.objectContaining({ id: rowA }), label: expect.objectContaining({ local: 'refs/heads/main' }) }),
+      10, 10);
+    onSelect.mockClear();
+    fireEvent.click(chip('main'));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('while dragging, the ghost names the branch at the pointer; after the release it is gone', () => {
+    render(<GraphView graph={twoBranches} repoId="/r" selected={0} onLabelDrop={vi.fn()} />);
+    expect(document.querySelector('.branch-drag-ghost')).toBeNull();
+    dragOnto('feature/x', 'main');
+    const ghost = document.querySelector<HTMLElement>('.branch-drag-ghost')!;
+    expect(ghost).toHaveTextContent('feature/x');
+    expect(ghost.style.left).not.toBe('');
+    pointer('pointerup', 10, 10);
+    expect(document.querySelector('.branch-drag-ghost')).toBeNull();
+  });
+
+  it("the drop menu's row gets the context outline while its menu is open", () => {
+    const onLabelDrop = vi.fn((_from: unknown, _onto: unknown, x: number, y: number) => useMenu.getState().show([{ kind: 'separator' }], x, y));
+    render(<GraphView graph={twoBranches} repoId="/r" selected={1} onLabelDrop={onLabelDrop} />);
+    dragOnto('feature/x', 'main');
+    pointer('pointerup', 10, 10);
+    expect(screen.getAllByRole('row')[0]).toHaveClass('is-context');
+    act(() => useMenu.getState().close());
+    expect(document.querySelector('.is-context')).toBeNull();
+  });
+
+  it('the drag ends with the graph (unmounted, or its tab hidden): no drop into it after', () => {
+    const onLabelDrop = vi.fn();
+    const view = (mode: 'visible' | 'hidden') => <Activity mode={mode}><GraphView graph={twoBranches} repoId="/r" selected={0} onLabelDrop={onLabelDrop} /></Activity>;
+    const { rerender, unmount } = render(view('visible'));
+    dragOnto('feature/x', 'main');
+    const target = chip('main');
+    rerender(view('hidden'));
+    expect(useBranchDrag.getState().drag).toBeNull();
+    pointAt(target);
+    pointer('pointerup', 10, 10);
+    rerender(view('visible'));
+    dragOnto('feature/x', 'main');
+    unmount();
+    expect(useBranchDrag.getState().drag).toBeNull();
+    expect(onLabelDrop).not.toHaveBeenCalled();
+  });
+
+  it('without onLabelDrop a chip drag starts nothing', () => {
+    render(<GraphView graph={twoBranches} repoId="/r" selected={0} />);
+    dragOnto('feature/x', 'main');
+    expect(useBranchDrag.getState().drag).toBeNull();
   });
 });

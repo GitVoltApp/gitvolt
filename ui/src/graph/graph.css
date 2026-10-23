@@ -158,6 +158,13 @@
 .ref-stack-row { display: flex; gap: 3px; align-items: center; box-sizing: border-box; padding: 0 5px; height: var(--graph-chip-h); white-space: nowrap; background: color-mix(in srgb, var(--lane-color) 25%, var(--panel-bg0)); }
 .ref-stack-row:first-child { background: color-mix(in srgb, var(--lane-color) 45%, var(--panel-bg0)); }
 .ref-stack-row:not(:first-child):hover { background: color-mix(in srgb, var(--lane-color) 35%, var(--panel-bg0)); }
+/* A branch chip dragged onto another (branchDrag.ts): its own chips fade, the chip under the
+   pointer gets an outline in its lane colour (inset, so the lit HEAD chip shows it too), and a
+   ghost of it follows the pointer. The ghost has no animation (CONTRIBUTING). */
+.ref-label.is-drag-source, .ref-stack-row.is-drag-source { opacity: 0.5; }
+/* The target is hovered, so its expanded copy covers it: the copy carries the outline too. */
+.ref-label.is-drop-target, .ref-label.is-drop-target > .ref-label-full, .ref-stack-row.is-drop-target { --chip-mix: 45%; color: var(--text-selected); box-shadow: inset 0 0 0 2px var(--lane-color), 0 0 0 1px var(--text-selected); }
+.branch-drag-ghost { position: fixed; z-index: 1000; pointer-events: none; --chip-mix: 45%; background: color-mix(in srgb, var(--lane-color) 45%, var(--panel-bg0)); color: var(--text-selected); white-space: nowrap; box-shadow: 0 1px 4px var(--shadow-popup); }
 /* The dimmed branch-membership chip (F7): half opacity, over
    the same chip look (always the lit one: it only shows on a hovered or selected row). It takes
    the pointer like any chip (J6): hovered, it's at full strength, i.e. the hovered chip look, and

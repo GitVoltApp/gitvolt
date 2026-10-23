@@ -4,6 +4,7 @@ import type { RefLabel } from '../api/gen/RefLabel';
 import type { RemoteRefLabel } from '../api/gen/RemoteRefLabel';
 import { chipRefs } from './membership';
 import { RefLabels } from './RefLabels';
+import { useBranchDrag } from './branchDrag';
 import { useTheme } from '../theme/store';
 import { THEMES } from '../theme/themes';
 
@@ -420,5 +421,41 @@ describe("a worktree's detached-HEAD chip", () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('/src/wt-hidden-in-the-stack (HEAD detached at ccccccc)');
     fireEvent.click(row);
     expect(onRowClick).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('branch drag', () => {
+  const local = (name: string, extra: Partial<RefLabel> = {}): RefLabel => ({ row: 0, name, local: `refs/heads/${name}`, tag: false, isHead: false, worktree: null, checkedOut: null, remotes: [], ...extra });
+  const tag: RefLabel = { row: 0, name: 'v1', local: null, tag: true, isHead: false, worktree: null, checkedOut: null, remotes: [] };
+  const detached: RefLabel = { row: 0, name: 'HEAD', local: null, tag: false, isHead: true, worktree: null, checkedOut: null, remotes: [] };
+  const worktree: RefLabel = { row: 0, name: 'wt', local: null, tag: false, isHead: false, worktree: '/src/wt', checkedOut: '/src/wt', remotes: [] };
+  const dragRefs = (c: HTMLElement) => [...c.querySelectorAll('[data-drag-branch]')].map((el) => `${el.className.split(' ')[0]} ${el.getAttribute('data-drag-branch')}`);
+
+  it('local branch chips and their stack rows carry their ref; tags, remote-only, detached-HEAD, worktree, rebasing and membership chips do not', () => {
+    const labels = [local('main', { isHead: true, remotes: [remote('origin', 'main')] }), tag, remoteOnly('topic', 'origin'), worktree, local('elsewhere', { worktree: '/src/b', checkedOut: '/src/b' })];
+    const { container } = render(<RefLabels labels={labels} color={0} width={2000} rebasing="feature/r" membership={{ name: 'x', color: 1, ref: 'refs/heads/x' }} />);
+    expect(dragRefs(container)).toEqual(['ref-label refs/heads/main', 'ref-label refs/heads/elsewhere']);
+    const { container: alone } = render(<RefLabels labels={[detached]} color={0} />);
+    expect(dragRefs(alone)).toEqual([]);
+    const { container: stacked } = render(<RefLabels labels={[local('a'), tag, local('b')]} color={0} />);
+    fireEvent.mouseEnter(stacked.querySelector('.ref-labels > .ref-label')!);
+    expect(dragRefs(stacked)).toEqual(['ref-label refs/heads/a', 'ref-stack-row refs/heads/a', 'ref-stack-row refs/heads/b']);
+  });
+
+  it("the dragged branch's chips and the one under the pointer follow the drag store", () => {
+    const { container } = render(<><RefLabels labels={[local('a')]} color={0} /><RefLabels labels={[local('b'), local('c')]} color={0} /></>);
+    const chip = (name: string) => container.querySelector<HTMLElement>(`.ref-label[data-drag-branch="refs/heads/${name}"]`)!;
+    act(() => useBranchDrag.setState({ drag: { from: 'refs/heads/a', over: 'refs/heads/b', x: 0, y: 0 } }));
+    expect(chip('a').classList).toContain('is-drag-source');
+    expect(chip('b').classList).toContain('is-drop-target');
+    fireEvent.mouseEnter(chip('b'));
+    const row = (name: string) => container.querySelector(`.ref-stack-row[data-drag-branch="refs/heads/${name}"]`)!;
+    expect(row('b').classList).toContain('is-drop-target');
+    expect(row('c').classList).not.toContain('is-drop-target');
+    act(() => useBranchDrag.setState({ drag: { from: 'refs/heads/a', over: 'refs/heads/c', x: 0, y: 0 } }));
+    expect(chip('b').classList).not.toContain('is-drop-target');
+    expect(row('c').classList).toContain('is-drop-target');
+    act(() => useBranchDrag.setState({ drag: null }));
+    expect(container.querySelectorAll('.is-drop-target, .is-drag-source')).toHaveLength(0);
   });
 });
