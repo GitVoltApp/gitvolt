@@ -465,6 +465,16 @@ describe('FileList', () => {
     expect(counts).toHaveTextContent(/^1$/);
   });
 
+  it("a folder row shows its files' line totals on hover, like a file row", () => {
+    useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
+    setup();
+    const opt = (path: string) => rowEls().find((r) => r.dataset.path === path)!;
+    const stats = opt('docs').querySelector('.file-stats');
+    const file = opt('docs/manual.txt').querySelector('.file-stats');
+    expect(stats).not.toBeNull();
+    expect(stats!.textContent).toBe(file!.textContent);
+  });
+
   it('the toolbar: one smart Expand/Collapse button on the left, Path/Tree in the centre, View all files on the right (F18)', () => {
     useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
     setup();

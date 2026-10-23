@@ -157,6 +157,7 @@ const Row = memo(function Row({ tint, id, index, row, mode, active, context, top
         <span className="file-chevron" style={{ width: TREE.chevron }}>{row.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
         <span className="file-name">{highlightMatch(row.name, filterQuery)}</span>
         {row.counts && <StatusCountsView counts={row.counts} testId="folder-counts" size={10} />}
+        {row.lines && <span className="file-stats"><span className="added">+{row.lines.added}</span> <span className="deleted">−{row.lines.deleted}</span></span>}
         {renderActions?.(row)}
         {tip.tooltip}
       </div>

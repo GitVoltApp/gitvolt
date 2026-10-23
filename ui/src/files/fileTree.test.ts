@@ -37,6 +37,23 @@ describe('file tree', () => {
     expect(countByStatus([change('a', 'U'), change('b', 'X'), change('c', 'M')])).toEqual({ modified: 1, added: 0, deleted: 0, renamed: 0, conflicted: 2 });
   });
 
+  it("every folder carries its subtree's line totals, binaries and unchanged files left out", () => {
+    const files = [
+      { ...change('gen/a.js'), additions: 120, deletions: 30 },
+      { ...change('gen/deep/b.js', 'A'), additions: 5, deletions: 0 },
+      { ...change('gen/logo.png'), additions: null, deletions: null },
+      { ...change('art/only.png'), additions: null, deletions: null },
+      change('top.txt'),
+    ];
+    const unchanged = { commit: spec.id, paths: ['gen/zz.js'] };
+    const rows = buildRows({ files, spec, unchanged, mode: 'tree', sort: 'path', collapsed: new Set(['gen']) });
+    const folder = (p: string) => rows.find((r) => r.kind === 'folder' && r.path === p);
+    expect(folder('gen')).toMatchObject({ kind: 'folder', lines: { added: 125, deleted: 30 } });
+    expect(folder('art')).toMatchObject({ kind: 'folder', lines: null });
+    const open = buildRows({ files, spec, unchanged, mode: 'tree', sort: 'path', collapsed: NONE_COLLAPSED });
+    expect(open.find((r) => r.kind === 'folder' && r.path === 'gen/deep')).toMatchObject({ lines: { added: 5, deleted: 0 } });
+  });
+
   it('a collapsed folder carries its subtree\'s change counts; an expanded one none (F20)', () => {
     const files = [change('src/a.php'), change('src/lib/b.php', 'A'), change('src/lib/c.php', 'D'), change('src/n.php', 'R', 'src/o.php'), change('top.txt')];
     const unchanged = { commit: spec.id, paths: ['src/zz.php'] };

@@ -33,7 +33,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   files in every file list and the open file's header, JetBrains style. A scope's folders can start
   collapsed in tree view. A file's right-click menu offers "Colour `*.ext` files…" and "Colour
   folder…"; Settings › File colours orders, edits and shares the scopes, with starters for tests,
-  generated files and docs.
+  generated files and docs. Hovering a folder in tree view shows the line totals of the changed
+  files under it, so a collapsed generated folder still says how much it adds.
 - **Theme editing.** Change any colour of a theme, or its graph lane colours (drag to reorder),
   with GitVolt's own colour picker in OKLCH, so changing lightness never shifts the hue (hex too,
   and opacity on translucent colours; the mouse wheel steps a slider by 1). A built-in theme becomes
