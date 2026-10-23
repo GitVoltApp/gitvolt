@@ -139,6 +139,10 @@ pub trait ForgeProvider: Send + Sync {
     fn kind(&self) -> ForgeKind;
     fn host(&self) -> &str;
     fn rate_limit(&self) -> RateLimitState;
+    /// Nothing the provider kept a moment ago answers the next reads: each asks the forge again
+    /// (conditionally, where it can: a 304 costs little). A refresh button's first step; a rate
+    /// limit still refuses the asks.
+    fn expire_fresh(&self) {}
 
     // Identity (4A).
     /// The token's user, and whether the token may write (spec #4 §3.2).

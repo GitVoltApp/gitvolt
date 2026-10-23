@@ -27,6 +27,10 @@
 .sb-automerge { flex: none; display: inline-flex; color: var(--text-secondary); opacity: 0.8; }
 .sb-count { font-weight: 700; color: var(--count-blue); }
 .sb-item.is-head { background: var(--checked-out-row); color: var(--text-selected); font-weight: 600; }
+/* A branch the open preset hides stays listed: dimmed and struck through, with its state as a trailing word (a folded one: the word only). Same row height. */
+.sb-item.is-hidden .sb-label { color: var(--text-secondary); text-decoration: line-through; }
+.sb-item.is-hidden > svg { opacity: 0.5; }
+.sb-state { flex: none; margin-left: auto; padding-left: 6px; font-size: 11px; color: var(--text-secondary); }
 .sb-row > svg:not([data-host-kind]) { flex: none; }
 /* Every row icon is dimmed except an MR/PR's state icon, which keeps its state colour (mr.css). */
 .sb-row > svg:not([data-host-kind], .mr-state-icon) { color: var(--sidebar-icon); }

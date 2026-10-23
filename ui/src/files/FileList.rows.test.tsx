@@ -1,10 +1,17 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileChange } from '../api/gen/FileChange';
 import type { GraphPayload } from '../api/gen/GraphPayload';
 import { createRepoViewStore, RepoViewContext } from '../repo/store';
 import { fakeServices } from '../repo/testServices';
 import { DEFAULT_DENSITY, useDensity } from '../theme/density';
+import { Loader } from '../data/loader';
+import { Lru } from '../data/lru';
+import { useRuntime } from '../app/runtime';
+import { EMPTY_PROFILE, useAppState } from '../app/state';
+import { useTabViews } from '../app/tabStores';
+import { THEMES } from '../theme/themes';
+import { useTheme } from '../theme/store';
 import { FileList } from './FileList';
 import { useFileListPrefs } from './fileListPrefs';
 
@@ -107,5 +114,55 @@ describe('FileList rows', () => {
     // A submodule with nothing more to say (a staged one, a commit's): "submodule", not a line count.
     expect(row('vendor/plain').querySelector('.file-submodule')?.textContent).toBe('submodule');
     expect(row('vendor/plain').querySelector('.file-stats')).toBeNull();
+  });
+});
+
+describe('FileList row tints (file colours)', () => {
+  const scopes = [{ id: 's1', name: 'Docs', tint: 'blue', patterns: ['docs/**'], startCollapsed: false }];
+  const renamed: FileChange = { ...change('docs/manual.txt'), oldPath: 'old/guide.txt', status: 'R' };
+  const files = [renamed, change('docs/gone.txt', 'D'), change('src/app.php')];
+
+  function tinted(mode: 'path' | 'tree', allFiles = false) {
+    useFileListPrefs.getState().set({ mode, sort: 'path', allFiles });
+    const store = createRepoViewStore(1, '/r', graph, fakeServices({ treeFiles: new Loader(async () => ['docs/gone.txt', 'docs/manual.txt', 'docs/readme.txt', 'src/app.php'], new Lru(2)) }));
+    useTabViews.setState({ views: { t: { repo: 1, services: store.getState().services, store } } });
+    useRuntime.setState({ tabs: { t: { info: { commonDir: '/r/.git' } } } as never });
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, fileColours: { '/r/.git': scopes } } });
+    act(() => useTheme.getState().set(THEMES['default-dark']));
+    render(<RepoViewContext value={store}><FileList list={{ files, added: 3, deleted: 3 }} spec={spec} label="Changed files" allFilesCommit={allFiles ? spec.id : undefined} /></RepoViewContext>);
+  }
+  const rowAt = (p: string) => [...document.querySelectorAll<HTMLElement>('[data-path]')].find((r) => r.dataset.path === p)!;
+
+  beforeEach(() => useDensity.setState({ density: DEFAULT_DENSITY }));
+  afterEach(() => {
+    cleanup();
+    useTabViews.setState({ views: {} });
+    useRuntime.setState({ tabs: {} });
+    useAppState.setState({ profile: EMPTY_PROFILE });
+  });
+
+  it('a renamed file is coloured by its new path', () => {
+    tinted('path');
+    expect(rowAt('docs/manual.txt')).toHaveAttribute('data-tinted');
+    expect(rowAt('docs/manual.txt').style.getPropertyValue('--row-tint')).toMatch(/^rgba?\(/);
+  });
+
+  it('deleted and unchanged rows are coloured too', async () => {
+    tinted('path', true);
+    expect(rowAt('docs/gone.txt')).toHaveAttribute('data-tinted');
+    await waitFor(() => expect(rowAt('docs/readme.txt')).toHaveAttribute('data-tinted'));
+  });
+
+  it('rows outside every scope have no tint', () => {
+    tinted('path');
+    const row = rowAt('src/app.php');
+    expect(row).not.toHaveAttribute('data-tinted');
+    expect(row.style.getPropertyValue('--row-tint')).toBe('');
+  });
+
+  it('a covered folder row is tinted', () => {
+    tinted('tree');
+    expect(rowAt('docs')).toHaveAttribute('data-tinted');
+    expect(rowAt('src')).not.toHaveAttribute('data-tinted');
   });
 });

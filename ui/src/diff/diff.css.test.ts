@@ -14,6 +14,15 @@ describe('diff.css bars (K32-K34)', () => {
   });
 });
 
+describe('diff.css file colours', () => {
+  it("a scope's stripe is 3px down the header's left edge, in the scope's own colour", () => {
+    const r = rule('.diff-header[data-scope]::before');
+    expect(r).toMatch(/width:\s*3px/);
+    expect(r).toMatch(/left:\s*0/);
+    expect(r).toMatch(/background:\s*var\(--scope-stripe\)/);
+  });
+});
+
 describe('diff.css motion (J19)', () => {
   it('the diff-toolbar segmented buttons (File/Diff View, Hunk/Inline/Split) fade colour fast and pressed background at the base token', () => {
     expect(rule('.diff-toolbar .segmented > button')).toMatch(/transition:\s*color var\(--motion-fast\), background-color var\(--motion-base\)/);

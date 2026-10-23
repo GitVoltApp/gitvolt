@@ -367,7 +367,7 @@ describe('the Create flyout (spec #4 §4 "4C")', () => {
   it('× on a chip removes it from the draft', async () => {
     writeMrDraft('/r/shop', 'feature/login', {
       sourceRemote: 'origin', targetRemote: 'origin', targetBranch: 'main', title: 'T', description: '', prefilled: '', template: null,
-      reviewers: [{ id: 5, username: 'grace', name: 'Grace Hopper', avatarUrl: null, webUrl: '', email: null }], assignees: [], labels: ['bug'], draft: false, squash: true, deleteSourceBranch: true,
+      reviewers: [{ id: 5, username: 'grace', name: 'Grace Hopper', avatarUrl: null, webUrl: '', email: null, emails: [] }], assignees: [], labels: ['bug'], draft: false, squash: true, deleteSourceBranch: true,
     });
     await show();
     fireEvent.click(screen.getByRole('button', { name: 'Remove Grace Hopper' }));

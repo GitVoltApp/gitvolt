@@ -18,7 +18,7 @@ const rows: RowPayload[] = [
 
 describe('GraphCanvas theme changes', () => {
   beforeEach(() => {
-    act(() => useTheme.getState().set('default-dark', {}));
+    act(() => useTheme.getState().set(THEMES['default-dark']));
     vi.mocked(drawGraph).mockClear();
   });
 
@@ -31,7 +31,7 @@ describe('GraphCanvas theme changes', () => {
     expect(first.colors).toEqual(THEMES['default-dark'].graph);
     // The initials avatars' text, as the <Avatar> component's.
     expect(first.laneText).toEqual(resolveColors(THEMES['default-dark']).laneText);
-    act(() => useTheme.getState().set('light', {}));
+    act(() => useTheme.getState().set(THEMES.light));
     const o = vi.mocked(drawGraph).mock.lastCall![1];
     expect(o.nodeFill).toBe(THEMES.light.colors['node-fill']);
     expect(o.nodeText).toBe(THEMES.light.colors['node-text']);
@@ -40,10 +40,10 @@ describe('GraphCanvas theme changes', () => {
     expect(o.laneText).toEqual(resolveColors(THEMES.light).laneText);
   });
 
-  it('redraws when only a lane override changes', () => {
+  it('redraws when only a lane colour changes', () => {
     render(<GraphCanvas rows={rows} width={100} height={50} left={0} metrics={METRICS} labeledRows={new Set()} />);
     const calls = vi.mocked(drawGraph).mock.calls.length;
-    act(() => useTheme.getState().set('default-dark', { 'default-dark': ['#123456'] }));
+    act(() => useTheme.getState().set({ ...THEMES['default-dark'], graph: ['#123456', ...THEMES['default-dark'].graph.slice(1)] }));
     expect(vi.mocked(drawGraph).mock.calls.length).toBeGreaterThan(calls);
     expect(vi.mocked(drawGraph).mock.lastCall![1].colors[0]).toBe('#123456');
   });

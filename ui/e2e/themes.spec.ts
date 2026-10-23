@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { THEME_IDS, THEMES } from '../src/theme/themes';
+import { armedOverlay, confirmArmed } from './armed';
 import { fixtures, openUrl } from './fixtures';
 import { expect, test } from './test';
 
@@ -20,32 +21,91 @@ const dialog = (page: Page) => page.getByRole('dialog', { name: 'Settings' });
 
 // Each `test.step` below was a test of its own, paying for a page load; they run in an order
 // where each starts from what it needs (a step that needs a plain URL loads it).
-test('themes: Default Dark by default; a lane override; ?theme=; the palette, saved and mirrored; the hamburger opens the picker', async ({ page }) => {
+test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=; the palette, saved and mirrored; the hamburger opens the picker', async ({ page }) => {
   await test.step('Default Dark by default', async () => {
     await page.goto(openUrl(fixtures.basic));
     await expect(grid(page)).toBeVisible();
     expect(await theme(page)).toBe('default-dark');
     await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(28, 30, 35)');
   });
-  await test.step("a lane override recolours that lane's chips and canvas in the current theme only", async () => {
-    const chip = page.locator('.ref-labels').first();
-    const laneColor = () => chip.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--lane-color'));
-    const original = await laneColor();
-    const lane = THEMES['default-dark'].graph.indexOf(original);
-    expect(lane).toBeGreaterThanOrEqual(0);
-    const before = await canvasHash(page);
+  await test.step('Appearance: editing a colour makes "Nord (Custom)"; it survives a reload; Delete returns to Nord', async () => {
+    const appBg = () => page.locator('html').evaluate((el) => el.style.getPropertyValue('--app-bg0'));
     await page.keyboard.press('Control+,');
     await dialog(page).getByRole('button', { name: 'Appearance' }).click();
-    const box = dialog(page).getByLabel(`Lane ${lane + 1} color`);
-    await box.fill('123456');
-    await box.press('Enter');
+    await dialog(page).getByRole('radio', { name: 'Nord', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
+    await expect(dialog(page).getByText('Change any colour below to make your own copy.')).toBeVisible();
+    const field = dialog(page).getByRole('textbox', { name: 'Window background', exact: true });
+    await field.fill('#202020');
+    await field.press('Enter');
+    await expect(dialog(page).getByRole('radio', { name: 'Nord (Custom)' })).toHaveAttribute('aria-checked', 'true');
+    await expect(dialog(page).getByLabel('Theme name')).toHaveValue('Nord (Custom)');
+    await expect.poll(appBg).toBe('#202020');
+    await page.reload();
+    await expect(grid(page)).toBeVisible();
+    await expect.poll(appBg).toBe('#202020');
+    await page.keyboard.press('Control+,');
+    await dialog(page).getByRole('button', { name: 'Appearance' }).click();
+    await expect(dialog(page).getByRole('radio', { name: 'Nord (Custom)' })).toHaveAttribute('aria-checked', 'true');
+    await dialog(page).getByRole('button', { name: 'Delete', exact: true }).click();
+    await confirmArmed(armedOverlay(page, 'Click again to delete Nord (Custom)'));
+    await expect(dialog(page).getByRole('radio', { name: 'Nord', exact: true })).toHaveAttribute('aria-checked', 'true');
+    await expect(dialog(page).getByRole('radio', { name: 'Nord (Custom)' })).toHaveCount(0);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
+    await expect.poll(appBg).toBe(THEMES.nord.colors['app-bg0']);
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toBeHidden();
+  });
+  await test.step('a lane edit on Nord makes "Nord (Custom)", recolours that lane\'s chips and canvas, and survives a reload', async () => {
+    const chip = page.locator('.ref-labels').first();
+    const laneColor = () => chip.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--lane-color'));
+    await page.keyboard.press('Control+,');
+    await dialog(page).getByRole('button', { name: 'Appearance' }).click();
+    await dialog(page).getByRole('radio', { name: 'Nord', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
+    await expect.poll(async () => THEMES.nord.graph.includes(await laneColor())).toBe(true);
+    const lane = THEMES.nord.graph.indexOf(await laneColor());
+    const before = await canvasHash(page);
+    await dialog(page).getByRole('button', { name: `Lane ${lane + 1} colour` }).click();
+    const hex = page.getByRole('dialog', { name: `Lane ${lane + 1} colour` }).getByLabel('Hex');
+    await hex.fill('#123456');
+    await hex.press('Enter');
+    await expect(dialog(page).getByRole('radio', { name: 'Nord (Custom)' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', /^custom-[0-9a-f]{8}$/);
     await expect.poll(laneColor).toBe('#123456');
     await expect.poll(() => canvasHash(page)).not.toBe(before);
-    // Another theme keeps its own lanes.
-    await dialog(page).getByRole('button', { name: 'Theme' }).click();
-    await page.getByRole('menuitem', { name: 'Dracula' }).click();
-    await expect.poll(laneColor).toBe(THEMES.dracula.graph[lane]);
-    await expect(box).toHaveValue(THEMES.dracula.graph[lane]);
+    // Saved, and mirrored with the custom theme itself for the first paint.
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('gitvolt.theme.v1') ?? 'null')?.custom?.name)).toBe('Nord (Custom)');
+    await page.reload();
+    await expect(grid(page)).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', /^custom-[0-9a-f]{8}$/);
+    await expect.poll(laneColor).toBe('#123456');
+  });
+  await test.step('Edit mode: the floating editor leaves the app usable; Done returns to Settings', async () => {
+    const panelBg = () => page.locator('html').evaluate((el) => el.style.getPropertyValue('--panel-bg0'));
+    const floating = page.getByRole('dialog', { name: 'Nord (Custom)' });
+    await page.keyboard.press('Control+,');
+    await dialog(page).getByRole('button', { name: 'Appearance' }).click();
+    await dialog(page).getByRole('button', { name: 'Edit mode' }).click();
+    await expect(dialog(page)).toBeHidden();
+    await expect(floating).toBeVisible();
+    await expect(floating.getByRole('searchbox', { name: 'Find a colour' })).toBeFocused();
+    await expect(page.locator('.modal-backdrop')).toHaveCount(0);
+    const row = grid(page).locator('.graph-row').nth(2);
+    await expect(row).not.toHaveAttribute('aria-selected', 'true');
+    await row.click();
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await expect(floating).toBeVisible();
+    const field = floating.getByRole('textbox', { name: 'Panels', exact: true });
+    await field.fill('#2a2f3a');
+    await field.press('Enter');
+    await expect.poll(panelBg).toBe('#2a2f3a');
+    await floating.getByRole('button', { name: 'Done' }).click();
+    await expect(floating).toBeHidden();
+    await expect(dialog(page).getByRole('region', { name: 'Appearance' })).toBeVisible();
+    await expect(dialog(page).getByRole('button', { name: 'Edit mode' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toBeHidden();
   });
   await test.step('?theme= applies a theme to the page and the canvas', async () => {
     const dark = await canvasHash(page);
@@ -71,15 +131,15 @@ test('themes: Default Dark by default; a lane override; ?theme=; the palette, sa
     await expect(grid(page)).toBeVisible();
     expect(await theme(page)).toBe('solarized-light');
   });
-  await test.step('the hamburger shows one "Theme…" row; it opens Settings on the theme picker, which switches the theme', async () => {
+  await test.step('the hamburger shows one "Theme…" row; it opens Settings on the theme cards, which switch the theme', async () => {
     await page.getByRole('button', { name: 'Menu' }).click();
     await page.getByRole('menuitem', { name: 'View' }).click();
     await expect(page.getByRole('menuitem', { name: /^Theme: / })).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Theme…' }).click();
     await expect(dialog(page)).toBeVisible();
     await expect(dialog(page).getByRole('region', { name: 'Appearance' })).toBeVisible();
-    await dialog(page).getByRole('button', { name: 'Theme' }).click();
-    await page.getByRole('menuitem', { name: 'Nord' }).click();
+    await expect(dialog(page).getByRole('radio', { name: 'Solarized Light' })).toBeFocused();
+    await dialog(page).getByRole('radio', { name: 'Nord', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
     await expect(dialog(page)).toHaveCSS('background-color', rgb(THEMES.nord.colors['panel-bg1']));
   });
@@ -106,11 +166,11 @@ async function selectCommit(page: Page) {
 }
 async function openDiff(page: Page) {
   await selectCommit(page);
-  await page.getByRole('option').and(page.locator('[data-path="src/app.php"]')).click();
+  await page.locator('[role="option"][data-path="src/app.php"], [role="treeitem"][data-path="src/app.php"]').click();
   await expect(diffRegion(page).locator('.editor.modified .line-insert').first()).toBeVisible({ timeout: 15_000 });
 }
 // One page, one editor: the font size step uses the diff the theme step opened.
-test('the open editor: a theme switch repaints it without re-creating it (R6); Settings > Editor resizes it live, clamped to 8-32', async ({ page }) => {
+test('the open editor: a theme switch repaints it without re-creating it (R6); Settings > Appearance resizes it live, clamped to 8-32', async ({ page }) => {
   await test.step("switching theme repaints the open editor in the new theme's background, without re-creating it (R6)", async () => {
     await page.goto(openUrl(fixtures.details));
     await openDiff(page);
@@ -131,11 +191,11 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
     await expect(keyword).toHaveCSS('color', 'rgb(88, 110, 117)'); // solarized-light
     await expect(host).toHaveAttribute('data-keep', '1');
   });
-  await test.step('the editor font size row (Settings > Editor) resizes the open diff live, clamped to 8-32', async () => {
+  await test.step('the editor font size row (Settings > Appearance) resizes the open diff live, clamped to 8-32', async () => {
     const size = () => diffRegion(page).locator('.view-line').first().evaluate((e) => getComputedStyle(e).fontSize);
     await expect.poll(size).toBe('13px');
     await page.keyboard.press('Control+,');
-    await dialog(page).getByRole('button', { name: 'Editor' }).click();
+    await dialog(page).getByRole('button', { name: 'Appearance', exact: true }).click();
     const box = dialog(page).getByLabel('Editor font size');
     await box.fill('18');
     await box.press('Enter');

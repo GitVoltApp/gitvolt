@@ -50,8 +50,8 @@ for f in LICENSE THIRD-PARTY-NOTICES-rust.txt THIRD-PARTY-NOTICES-ui.txt CEF-LIC
 done
 ls -lL /usr/share/licenses/gitvolt/
 step "spell-check dictionary in /usr/share/GitVolt/dictionaries"
-[ -s /usr/share/GitVolt/dictionaries/en-US-10-1.bdic ] || fail "no /usr/share/GitVolt/dictionaries/en-US-10-1.bdic (or it is empty)"
-[ "$(head -c 4 /usr/share/GitVolt/dictionaries/en-US-10-1.bdic)" = BDic ] || fail "en-US-10-1.bdic is not a .bdic"
+[ -s /usr/share/GitVolt/dictionaries/en-US-10-2.bdic ] || fail "no /usr/share/GitVolt/dictionaries/en-US-10-2.bdic (or it is empty)"
+[ "$(head -c 4 /usr/share/GitVolt/dictionaries/en-US-10-2.bdic)" = BDic ] || fail "en-US-10-2.bdic is not a .bdic"
 ls -l /usr/share/GitVolt/dictionaries/
 step "AppStream metainfo, desktop entry and icons"
 pacman -S --noconfirm --noprogressbar --needed appstream desktop-file-utils >/dev/null 2>&1 || fail "installing appstream"

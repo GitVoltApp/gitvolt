@@ -15,12 +15,19 @@ import { normalizeGroups } from './tabGroups';
  */
 export const DEFAULT_SETTINGS: AppSettings = {
   version: 1, activeProfile: 'default', theme: 'default-dark', editorFontSize: 13,
-  fetchIntervalSecs: 60, prune: true, commitLimit: 2000, dateFormat: 'ymd12h', gravatar: true, debugLogging: false, syncButton: 'fetchAll', pushFollowTags: true, forgeAvatars: true, updateCheck: true, updatePrereleases: false, updateArchMethod: null, graphColorOverrides: {},
+  fetchIntervalSecs: 60, prune: true, commitLimit: 2000, dateFormat: 'ymd12h', relativeDates: false, gravatar: true, debugLogging: false, syncButton: 'fetchAll', pushFollowTags: true, forgeAvatars: true, updateCheck: true, updatePrereleases: false, updateArchMethod: null, graphColorOverrides: {},
+  customThemes: [],
+  // --- branch presets ---
+  branchPresets: [],
+  builtinPresets: [{ id: 'all', inCycle: true }, { id: 'all-collapsed', inCycle: true }, { id: 'mine', inCycle: true }],
+  collapseHoverOpen: true,
+  collapsePlacement: 'keepDateOrder',
+  // --- end branch presets ---
 };
 /** Mirrors `Profile::default()` (Rust). */
 export const EMPTY_PROFILE: Profile = {
   version: 1, id: '', name: '', color: '#4d88ff', tabs: [], activeTab: null, tabGroups: [], savedGroups: [], closedTabs: [], recent: [], reposFolder: null, reposFolders: null,
-  editor: null, extraGitconfig: null, hostOverrides: {}, sidebarWidth: 240, sidebarNarrow: false, sidebarPanels: {}, rightPanelWidth: null, flyoutWidth: null, repos: {},
+  editor: null, extraGitconfig: null, hostOverrides: {}, sidebarWidth: 240, sidebarNarrow: false, sidebarPanels: {}, rightPanelWidth: null, flyoutWidth: null, repos: {}, fileColours: {},
 };
 export const EMPTY_REPO_SETTINGS: RepoSettings = { pin: null, columns: null, hiddenColumns: [], sidebarSort: {}, collapsed: [], editor: null, mrFilter: null, forgeTargetRemote: null, forkTrunkNoticeDismissed: false };
 

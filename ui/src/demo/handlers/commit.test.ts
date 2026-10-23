@@ -165,5 +165,6 @@ describe('commit', () => {
     await commit(ctx, t.dir, 'local only', { stageAll: true });
     expect(await commitHandlers.headOnUpstream({ repo: 1, worktree: t.dir }, ctx)).toBeNull();
     expect(await commitHandlers.commitIdentity({ repo: 1, worktree: t.dir }, ctx)).toEqual({ name: 'You', email: 'you@example.com' });
+    expect(await commitHandlers.gitIdentity({ repo: null, worktree: null }, ctx)).toEqual({ identity: { name: 'You', email: 'you@example.com' }, signing: null });
   });
 });

@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) fn user(name: &str) -> ForgeUser {
     let login = name.to_lowercase();
-    ForgeUser { id: 1, username: login.clone(), name: name.into(), avatar_url: None, web_url: format!("https://gitlab.example.com/{login}"), email: Some(format!("{login}@example.com")) }
+    ForgeUser { id: 1, username: login.clone(), name: name.into(), avatar_url: None, web_url: format!("https://gitlab.example.com/{login}"), email: Some(format!("{login}@example.com")), emails: vec![] }
 }
 
 pub(crate) fn project(host: &str, path: &str, fork_of: Option<&str>, updated_at: i64) -> ForgeProject {
@@ -127,6 +127,9 @@ impl ForgeProvider for FakeProvider {
     }
     fn rate_limit(&self) -> RateLimitState {
         RateLimitState { limited_until: *self.limited_until.lock().unwrap(), ..Default::default() }
+    }
+    fn expire_fresh(&self) {
+        self.call("expire_fresh");
     }
     fn check_token(&self) -> ForgeFuture<'_, TokenCheck> {
         self.call("check_token");

@@ -1,7 +1,8 @@
 //! The graph's payload types, serialized to the UI (TypeScript from ts-rs, `just gen-types`, into
 //! ui/src/api/gen/ like the core's), and the per-worktree data it carries.
 
-use crate::layout::{NodeKind, Segment};
+use crate::layout::{GraphRow, NodeKind, Segment};
+use crate::walk::CommitMeta;
 use crate::{render_ascii, AsciiRow};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -41,6 +42,11 @@ pub struct GraphPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub fork: Option<ForkPayload>,
+    /// Under a branch preset: every branch's state and the trunk. Absent without one, so All's
+    /// payload is the plain graph's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub view: Option<ViewPayload>,
 }
 
 /// A fork's remotes as the graph sees them: the default pin is the original project's trunk,
@@ -99,7 +105,7 @@ pub struct GraphWorktree {
     pub in_progress: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct RowPayload {
@@ -125,9 +131,20 @@ pub struct RowPayload {
     /// host decides what each means. Empty on WIP rows.
     pub mr_refs: Vec<String>,
     pub wip: Option<WipPayload>,
+    /// A `collapsed` row (the ⋮ row): its branch and what it holds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub collapsed: Option<CollapsedRow>,
+    /// A merge on the trunk that holds a folded branch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub fold: Option<FoldMark>,
+    /// Hidden branches forking from this commit (ghost lines), newest tip first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ghosts: Vec<GhostBranch>,
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct WipPayload {
@@ -226,6 +243,56 @@ impl GraphPayload {
     }
 }
 
+impl RowPayload {
+    /// A commit's row, laid out as `g` with its packed `segments`: no WIP, fold mark or ghosts.
+    pub(crate) fn commit(c: &CommitMeta, kind: NodeKind, g: &GraphRow, segments: Vec<u32>) -> Self {
+        RowPayload {
+            id: c.id.to_string(),
+            kind,
+            lane: g.lane,
+            color: g.color,
+            segments,
+            summary: c.summary.clone(),
+            body_first_line: c.body.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string(),
+            author_name: c.author_name.clone(),
+            author_email: c.author_email.clone(),
+            author_time: c.author_time,
+            committer_time: c.committer_time,
+            parents: c.parents.iter().map(|p| p.to_string()).collect(),
+            // Parsed by the walk from the full message: no second object lookup.
+            mr_refs: c.mr_refs.clone(),
+            wip: None,
+            collapsed: None,
+            fold: None,
+            ghosts: vec![],
+        }
+    }
+
+    /// The ⋮ row of a collapsed run: its id `collapsed:<branch>@<newest sha>` (its key's), no
+    /// summary, author or parents, times 0.
+    pub fn collapsed(row: CollapsedRow, lane: u16, color: u8, segments: Vec<u32>) -> Self {
+        RowPayload {
+            id: format!("collapsed:{}", row.key.strip_prefix("branch:").unwrap_or(&row.key)),
+            kind: NodeKind::Collapsed,
+            lane,
+            color,
+            segments,
+            summary: String::new(),
+            body_first_line: String::new(),
+            author_name: String::new(),
+            author_email: String::new(),
+            author_time: 0,
+            committer_time: 0,
+            parents: vec![],
+            mr_refs: vec![],
+            wip: None,
+            collapsed: Some(row),
+            fold: None,
+            ghosts: vec![],
+        }
+    }
+}
+
 // `Deserialize` and `Ord`: the profile's host-type overrides are a map keyed by host (§14.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
@@ -306,5 +373,201 @@ pub struct WipCounts {
 impl WipCounts {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
+    }
+}
+
+// Branch presets (the view transform, `crate::view`).
+
+/// Why a branch got its state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum DecidedBy {
+    Trunk,
+    /// Checked out in a worktree: shown although a rule or a pick hides it.
+    CheckedOut,
+    /// Hidden or shown by hand.
+    Picked,
+    /// "Expand in graph", or a navigation to one of its commits, this session.
+    Expanded,
+    /// The preset's rule at `index`.
+    Rule { index: u16 },
+    /// Everything else.
+    Otherwise,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum BranchState {
+    Shown,
+    Hidden,
+    Collapsed,
+    /// Merged into the trunk, its commits folded into the merge.
+    Folded,
+}
+
+/// One branch unit under a preset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BranchView {
+    /// The unit's name: the short branch name (`feature/x`), whichever remotes carry it.
+    pub name: String,
+    /// Its full ref names.
+    pub refs: Vec<String>,
+    pub state: BranchState,
+    pub by: DecidedBy,
+}
+
+/// `GraphPayload::view`: every branch unit's state, sorted by name, and the trunk.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ViewPayload {
+    pub branches: Vec<BranchView>,
+    /// The trunk units' names.
+    pub trunk: Vec<String>,
+}
+
+/// The ⋮ row of a collapsed branch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CollapsedRow {
+    /// "branch:<name>@<newest sha>": its reveal panel's key (a branch can have several runs, one
+    /// per line of history). Its branch's `expanded` key, for all of them, is "branch:<name>".
+    pub key: String,
+    pub branch: String,
+    /// The commits folded into the row.
+    pub count: u32,
+    /// Distinct authors among them.
+    pub authors: u32,
+}
+
+/// A trunk merge's folded branch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct FoldMark {
+    /// "fold:<merge sha>".
+    pub key: String,
+    /// The merged branch: its ref's name, else the one the merge message gives, else "merged branch".
+    pub branch: String,
+    pub count: u32,
+}
+
+/// A hidden branch forking from a shown commit (a ghost line).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GhostBranch {
+    pub branch: String,
+    /// Its lane colour index.
+    pub color: u8,
+    /// Its newest tip in the window.
+    pub tip: String,
+    pub summary: String,
+    pub author_name: String,
+    #[ts(type = "number")]
+    pub author_time: i64,
+}
+
+/// A small dim badge after a reveal row's message (`main`, `parent`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RevealTag {
+    pub row: u32,
+    pub text: String,
+}
+
+/// The reveal panel's rows (`graphReveal`), laid out on the graph's lanes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RevealPayload {
+    pub key: String,
+    pub branch: String,
+    pub count: u32,
+    pub rows: Vec<RowPayload>,
+    pub tags: Vec<RevealTag>,
+    /// The lane the panel's branch line meets the graph in.
+    pub entry_lane: u16,
+    pub max_lanes: u16,
+}
+
+/// The settings page's live summary of a preset over the open repository's window.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PresetPreview {
+    /// The branches each rule decides, then Everything else's last.
+    pub rules: Vec<u32>,
+    pub shown: u32,
+    pub collapsed: u32,
+    pub hidden: u32,
+    /// Merges holding a folded branch.
+    pub folded: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row() -> RowPayload {
+        RowPayload {
+            id: "a".repeat(40),
+            kind: NodeKind::Commit,
+            lane: 0,
+            color: 0,
+            segments: vec![],
+            summary: "Initial commit".into(),
+            body_first_line: String::new(),
+            author_name: "Mara Quill".into(),
+            author_email: "mara@example.com".into(),
+            author_time: 100,
+            committer_time: 100,
+            parents: vec![],
+            mr_refs: vec![],
+            wip: None,
+            collapsed: None,
+            fold: None,
+            ghosts: vec![],
+        }
+    }
+
+    #[test]
+    fn a_row_without_view_extras_serializes_as_before() {
+        let json = serde_json::to_value(row()).unwrap();
+        let keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
+        for extra in ["collapsed", "fold", "ghosts"] {
+            assert!(!keys.contains(&extra), "{extra} in {keys:?}");
+        }
+        assert_eq!(serde_json::from_value::<RowPayload>(json).unwrap(), row(), "and reads back");
+        let g = GraphPayload {
+            rows: vec![row()],
+            labels: vec![],
+            max_lanes: 1,
+            pinned_refs: vec![],
+            head: HeadPayload::default(),
+            truncated: false,
+            open_worktree: None,
+            worktrees: vec![],
+            in_progress: Default::default(),
+            fork: None,
+            view: None,
+        };
+        assert!(serde_json::to_value(&g).unwrap().get("view").is_none());
+    }
+
+    #[test]
+    fn a_collapsed_row_carries_its_extras() {
+        let r = RowPayload { kind: NodeKind::Collapsed, collapsed: Some(CollapsedRow { key: "branch:feature/x".into(), branch: "feature/x".into(), count: 4, authors: 2 }), ..row() };
+        let json = serde_json::to_value(&r).unwrap();
+        assert_eq!(json["kind"], "collapsed");
+        assert_eq!(json["collapsed"], serde_json::json!({"key": "branch:feature/x", "branch": "feature/x", "count": 4, "authors": 2}));
+        assert_eq!(serde_json::to_value(DecidedBy::Rule { index: 2 }).unwrap(), serde_json::json!({"kind": "rule", "index": 2}));
+        assert_eq!(serde_json::to_value(BranchState::Folded).unwrap(), "folded");
     }
 }

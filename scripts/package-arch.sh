@@ -58,8 +58,8 @@ for f in LICENSE THIRD-PARTY-NOTICES-rust.txt THIRD-PARTY-NOTICES-ui.txt CEF-LIC
   [ -s "$work/pkg/usr/share/doc/gitvolt/$f" ] || fail "the .deb has no usr/share/doc/gitvolt/$f (or it's empty)"
 done
 # The spell-check dictionary the app copies into Chromium's profile (PRIVACY.md).
-[ -s "$work/pkg/usr/share/GitVolt/dictionaries/en-US-10-1.bdic" ] ||
-  fail "the .deb has no usr/share/GitVolt/dictionaries/en-US-10-1.bdic (or it's empty)"
+[ -s "$work/pkg/usr/share/GitVolt/dictionaries/en-US-10-2.bdic" ] ||
+  fail "the .deb has no usr/share/GitVolt/dictionaries/en-US-10-2.bdic (or it's empty)"
 # How the package was installed (the update check picks the Arch package by it): `arch`, where
 # the .deb says `deb` (an edited file for arch-pkg.py verify, below).
 [ "$(cat "$work/pkg/usr/share/GitVolt/install-kind" 2>/dev/null)" = deb ] || fail "the .deb has no usr/share/GitVolt/install-kind saying deb"

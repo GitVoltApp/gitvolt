@@ -8,6 +8,7 @@
 .ctx-row[aria-disabled="true"] { color: var(--text-disabled); }
 .ctx-icon { flex: none; opacity: 0.85; }
 .ctx-label { flex: 1; }
+.ctx-swatch { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 .ctx-shortcut { color: var(--text-secondary); font-size: 11px; margin-left: 16px; }
 .ctx-chevron { flex: none; color: var(--text-secondary); }
 /* K25: a real button group, no gap between siblings (a gap is dead space the pointer crosses,
@@ -18,6 +19,9 @@
 .ctx-variant + .ctx-variant { border-left: 1px solid var(--section-border); }
 .ctx-variant:hover, .ctx-variant[data-active="true"] { background: var(--blue); color: var(--text-on-accent); }
 .ctx-variant[aria-disabled="true"] { opacity: 0.35; background: transparent; cursor: default; }
+.ctx-header { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px 0 10px; white-space: nowrap; color: var(--text-secondary); cursor: default; }
+.ctx-header-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--section-border); }
+.ctx-header-detail { margin-left: auto; font-family: var(--font-mono, monospace); font-size: 11px; }
 .ctx-sep { height: 1px; margin: 4px 0; background: var(--section-border); }
 /* An armed row (spec §ui confirms, board A): its label swaps to what a second pick does, over the
    row's own space; tinted red or green with a border (the round-1 button language). */

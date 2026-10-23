@@ -72,7 +72,52 @@ pub enum Request {
         #[serde(default)]
         #[ts(optional)]
         active: Option<String>,
+        /// A branch preset to apply (`gitvolt_graph::ViewSpec`); absent (All): the plain graph.
+        #[serde(default)]
+        #[ts(optional)]
+        view: Option<gitvolt_graph::ViewSpec>,
     },
+    // --- branch presets ---
+    /// The reveal panel's rows for a collapsed run or a folded merge (`key`, as `expanded` spells
+    /// it) under `view`, opening `below` its row or above it: `RevealPayload | null`. Laid out
+    /// as `graph` with the same `limit`, `pin` and `active` did, on its cached walk.
+    GraphReveal {
+        repo: u32,
+        limit: Option<u32>,
+        #[serde(default)]
+        #[ts(optional)]
+        pin: Option<PinSetting>,
+        #[serde(default)]
+        #[ts(optional)]
+        active: Option<String>,
+        view: gitvolt_graph::ViewSpec,
+        key: String,
+        below: bool,
+    },
+    /// The settings page's live summary of `view` over the repository's window: `PresetPreview`.
+    BranchPresetPreview {
+        repo: u32,
+        limit: Option<u32>,
+        #[serde(default)]
+        #[ts(optional)]
+        pin: Option<PinSetting>,
+        view: gitvolt_graph::ViewSpec,
+    },
+    /// The `expanded` key that would make `sha`, a loaded commit `view` doesn't show as a row, a
+    /// row: `string | null`.
+    GraphHiddenOwner {
+        repo: u32,
+        limit: Option<u32>,
+        #[serde(default)]
+        #[ts(optional)]
+        pin: Option<PinSetting>,
+        #[serde(default)]
+        #[ts(optional)]
+        active: Option<String>,
+        view: gitvolt_graph::ViewSpec,
+        sha: String,
+    },
+    // --- end branch presets ---
     CommandLog,
     /// The request log (the Debug → Requests tab), oldest first.
     RequestLog,
@@ -183,7 +228,7 @@ pub enum Request {
     /// Replaces the app settings (written debounced); returns `null`.
     SaveSettings { settings: AppSettings },
     /// Replaces one existing profile (written debounced); returns `null`.
-    SaveProfile { profile: Profile },
+    SaveProfile { profile: Box<Profile> },
     /// A new, empty profile: `ProfileMeta`.
     CreateProfile { name: String, color: String },
     /// Makes `id` the active profile: the new `StatePayload`.
@@ -264,6 +309,10 @@ pub enum Request {
     /// The system folder picker, starting in `start`: the picked folder, or `null` (cancelled,
     /// or no picker on this desktop: the UI falls back to a typed path).
     PickFolder { start: Option<String> },
+    /// Settings export: asks the folder picker (starting at the profile's repos folder), then
+    /// writes `contents` to `<dir>/<suggestedName>` without overwriting. The written path, or
+    /// `null` when nothing was picked. Not a repository write.
+    SaveExport { suggested_name: String, contents: String },
     /// The repositories in `root` (absolute), two levels deep, newest first: `ScannedRepo[]`.
     /// Cached per root; `refresh` rescans.
     ScanRepos { root: String, refresh: bool },
@@ -656,6 +705,9 @@ pub enum Request {
     /// Who a commit here is made as (read; ux round 1): `CommitIdentity`, or `null` when git
     /// has none (it would refuse the commit).
     CommitIdentity { repo: u32, worktree: String },
+    /// Settings › Git identity (read): `GitIdentityInfo`. Without a repository and worktree, the
+    /// global and profile config only.
+    GitIdentity { repo: Option<u32>, worktree: Option<String> },
     // --- 2D T10: integrate ---
     /// What a merge or rebase of `target` would do (read; spec #2 §13.1): relation, predicted
     /// conflicts, stacked branches.
@@ -959,6 +1011,9 @@ pub enum Request {
         #[ts(type = "number")]
         number: u64,
     },
+    /// A refresh: the target's provider forgets what it kept a moment ago, so the reads that
+    /// follow ask the forge (`ForgeHub::expire_fresh`). Sends nothing itself.
+    ForgeRefresh { repo: u32 },
     /// Its discussion, oldest first: `Fresh<ForgeDiscussion[]>`.
     ForgeMrDiscussions {
         repo: u32,
@@ -1209,7 +1264,7 @@ impl Request {
             Request::ForgeRepoProjects { .. } | Request::ForgeProjectSettings { .. } | Request::ForgeForks { .. } => false,
             // --- end 4A T6 ---
             // --- 4B T1: forge calls and a read, never a repository write ---
-            Request::ForgeMrList { .. } | Request::ForgeBranchMrs { .. } | Request::ForgeCachedMrs { .. } | Request::ForgeMrDetail { .. } | Request::ForgeMrDiscussions { .. }
+            Request::ForgeMrList { .. } | Request::ForgeBranchMrs { .. } | Request::ForgeCachedMrs { .. } | Request::ForgeMrDetail { .. } | Request::ForgeMrDiscussions { .. } | Request::ForgeRefresh { .. }
             | Request::ForgeProjectByPath { .. } | Request::ForgeReply { .. } | Request::ForgeApprove { .. } | Request::ForgeRequestChanges { .. }
             | Request::ForgeMerge { .. } | Request::ForgeEditMr { .. } | Request::ForgeSetDraft { .. } | Request::MergeBase { .. } => false,
             // --- end 4B T1 ---
@@ -1336,6 +1391,9 @@ impl Request {
             | Request::Diagnostics { .. }
             | Request::OpenLogsFolder
             | Request::Graph { .. }
+            | Request::GraphReveal { .. }
+            | Request::BranchPresetPreview { .. }
+            | Request::GraphHiddenOwner { .. }
             | Request::CommandLog
             | Request::RequestLog
             | Request::LaunchRepo
@@ -1372,6 +1430,8 @@ impl Request {
             | Request::LastPush { .. }
             | Request::AppInfo
             | Request::PickFolder { .. }
+            | Request::SaveExport { .. }
+            | Request::GitIdentity { .. }
             | Request::ScanRepos { .. }
             | Request::ScanFolders { .. }
             | Request::SuggestReposFolder
@@ -1405,6 +1465,9 @@ pub(crate) struct RepoHandle {
     /// The last graph walk, reused while nothing it walked from moved (spec #2 §11.2): every
     /// tab on the repository shares it, whichever worktree it has active.
     pub(crate) walk: Arc<Mutex<Option<crate::snapshot::WalkCache>>>,
+    /// The repository's `user.email` (`None`: unset) and the config it was read under
+    /// (`Api::me_emails`).
+    pub(crate) me_email: Mutex<Option<(crate::me::ConfigStamp, Option<String>)>>,
 }
 
 /// The object store's index slots, one per pack index or multi-pack index: gix fixes their
@@ -2334,38 +2397,12 @@ impl Api {
                 to_json(())
             }
             Request::OpenRepo { path } => to_json(self.open_repo(&path).await?),
-            Request::Graph { repo, limit, pin, rescan, active } => {
+            Request::Graph { repo, limit, pin, rescan, active, view } => {
                 let h = self.handle(repo)?;
-                // Checked against the build's own `git worktree list` (`build_graph_with_text`),
-                // so a switch's relayout runs one git process, not two.
-                let active = match active {
-                    Some(a) => Some(crate::platform::fs::canonicalize(Path::new(&a)).map_err(|_| GbError::new(GbErrorKind::InvalidInput, format!("{a} is not a worktree of this repository")))?),
-                    None => None,
-                };
+                let mut opts = self.build_options(&h, limit, pin, active, view).await?;
                 // The watcher keeps the worktree shown responsive (the others throttled).
-                h.wip.set_active(active.as_deref().unwrap_or(&h.workdir));
-                let (pinned_ref, no_pin) = match pin {
-                    Some(PinSetting::Off) => (None, true),
-                    Some(PinSetting::Ref { name }) => (Some(name), false),
-                    Some(PinSetting::Auto) | None => (None, false),
-                };
-                // The default trunk follows the root of the remotes' forks, and the payload says
-                // whether this is a fork whatever the pin: cached data only, the build never waits
-                // on a forge (`forgeRepoProjects` refreshes it).
-                let forks = match &self.forge {
-                    Some(hub) => hub.cached_forks(&self.store, &self.forge_remotes_of(&h)),
-                    None => Default::default(),
-                };
-                let opts = BuildOptions {
-                    limit: limit.map(|l| l as usize).unwrap_or(crate::snapshot::DEFAULT_COMMIT_LIMIT),
-                    pinned_ref,
-                    no_pin,
-                    wip_cache: Some(h.wip.clone()),
-                    rescan: rescan.unwrap_or(false) || !self.status_is_watched(repo),
-                    active,
-                    walk_cache: Some(h.walk.clone()),
-                    forks,
-                };
+                h.wip.set_active(opts.active.as_deref().unwrap_or(&h.workdir));
+                opts.rescan = rescan.unwrap_or(false) || !self.status_is_watched(repo);
                 let (payload, texts) = build_graph_with_text(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts).await?;
                 {
                     // Find searches this window now; the path index carries over (find.rs).
@@ -2375,6 +2412,23 @@ impl Api {
                 }
                 to_json(payload)
             }
+            // --- branch presets ---
+            Request::GraphReveal { repo, limit, pin, active, view, key, below } => {
+                let h = self.handle(repo)?;
+                let opts = self.build_options(&h, limit, pin, active, Some(view)).await?;
+                to_json(crate::snapshot::reveal_graph(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts, &key, below).await?)
+            }
+            Request::BranchPresetPreview { repo, limit, pin, view } => {
+                let h = self.handle(repo)?;
+                let opts = self.build_options(&h, limit, pin, None, Some(view)).await?;
+                to_json(crate::snapshot::preview_graph(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts).await?)
+            }
+            Request::GraphHiddenOwner { repo, limit, pin, active, view, sha } => {
+                let h = self.handle(repo)?;
+                let opts = self.build_options(&h, limit, pin, active, Some(view)).await?;
+                to_json(crate::snapshot::hidden_owner(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts, &sha).await?)
+            }
+            // --- end branch presets ---
             Request::FindText { repo, query } => to_json(self.find_text(repo, &query)?),
             Request::FindPaths { repo, query } => to_json(self.find_paths(repo, &query).await?),
             Request::LocateCommit { repo, sha } => to_json(self.locate_commit(repo, &sha).await?),
@@ -2640,7 +2694,7 @@ impl Api {
                 to_json(())
             }
             Request::SaveProfile { profile } => {
-                self.store.save_profile(profile)?;
+                self.store.save_profile(*profile)?;
                 self.apply_profile_git_config();
                 to_json(())
             }
@@ -2774,6 +2828,11 @@ impl Api {
             Request::ForgeMrDetail { repo, number } => {
                 let list = self.forge_remotes_of(&*self.handle(repo)?);
                 to_json(self.forge_hub()?.mr_detail(&self.store, &list, number).await?)
+            }
+            Request::ForgeRefresh { repo } => {
+                let list = self.forge_remotes_of(&*self.handle(repo)?);
+                self.forge_hub()?.expire_fresh(&self.store, &list).await?;
+                to_json(())
             }
             Request::ForgeMrDiscussions { repo, number } => {
                 let list = self.forge_remotes_of(&*self.handle(repo)?);
@@ -2989,6 +3048,28 @@ impl Api {
                 let start = start.map(PathBuf::from).filter(|p| p.is_absolute());
                 let picked = blocking(move || Ok(picker(start.as_deref()))).await?;
                 to_json(picked.map(|p| p.display().to_string()))
+            }
+            Request::SaveExport { suggested_name, contents } => {
+                crate::export::check(&suggested_name, &contents)?;
+                let Some(picker) = self.folder_picker.clone() else { return to_json(Option::<String>::None) };
+                let state = self.store.state();
+                let start = state.profile.repos_folders.as_ref().and_then(|f| f.first()).or(state.profile.repos_folder.as_ref()).map(PathBuf::from).filter(|p| p.is_absolute());
+                let written = blocking(move || match picker(start.as_deref()) {
+                    Some(dir) => crate::export::write(&dir, &suggested_name, &contents).map(Some),
+                    None => Ok(None),
+                })
+                .await?;
+                to_json(written.map(|p| p.display().to_string()))
+            }
+            Request::GitIdentity { repo, worktree } => {
+                let root = match (repo, worktree) {
+                    (Some(repo), Some(worktree)) => {
+                        let h = self.handle(repo)?;
+                        Some(self.worktree_dir(&h, &worktree).await?)
+                    }
+                    _ => None,
+                };
+                to_json(crate::identity::git_identity(&self.cli, root.as_deref()).await?)
             }
             Request::ScanRepos { root, refresh } => to_json(self.scan_root(root, refresh).await?),
             Request::ScanFolders { roots, refresh } => {
@@ -3333,6 +3414,47 @@ impl Api {
         list
     }
 
+    /// How the graph reads (`graph`, `graphReveal`, `branchPresetPreview`, `graphHiddenOwner`)
+    /// lay `h` out: the window, the pin, the active worktree and the forks, and the view with
+    /// `now` filled in. `rescan` is left off.
+    pub(crate) async fn build_options(&self, h: &RepoHandle, limit: Option<u32>, pin: Option<PinSetting>, active: Option<String>, view: Option<gitvolt_graph::ViewSpec>) -> Result<BuildOptions, GbError> {
+        // Checked against the build's own `git worktree list` (`build_graph_with_text`), so a
+        // switch's relayout runs one git process, not two.
+        let active = match active {
+            Some(a) => Some(crate::platform::fs::canonicalize(Path::new(&a)).map_err(|_| GbError::new(GbErrorKind::InvalidInput, format!("{a} is not a worktree of this repository")))?),
+            None => None,
+        };
+        let (pinned_ref, no_pin) = match pin {
+            Some(PinSetting::Off) => (None, true),
+            Some(PinSetting::Ref { name }) => (Some(name), false),
+            Some(PinSetting::Auto) | None => (None, false),
+        };
+        // The default trunk follows the root of the remotes' forks, and the payload says whether
+        // this is a fork whatever the pin: cached data only, the build never waits on a forge
+        // (`forgeRepoProjects` refreshes it).
+        let forks = match &self.forge {
+            Some(hub) => hub.cached_forks(&self.store, &self.forge_remotes_of(h)),
+            None => Default::default(),
+        };
+        let mut view = view.map(|v| gitvolt_graph::ViewSpec { now: self.now(), ..v });
+        // The git process runs only for a view with a "commits by me" rule, and not when the
+        // caller sent `me` itself.
+        if let Some(v) = view.as_mut().filter(|v| v.me.is_empty() && v.rules.iter().any(|r| matches!(&r.matcher, gitvolt_graph::Matcher::CommitsBy { author: gitvolt_graph::Author::Me }))) {
+            v.me = self.me_emails(h).await;
+        }
+        Ok(BuildOptions {
+            limit: limit.map(|l| l as usize).unwrap_or(crate::snapshot::DEFAULT_COMMIT_LIMIT),
+            pinned_ref,
+            no_pin,
+            wip_cache: Some(h.wip.clone()),
+            rescan: false,
+            active,
+            walk_cache: Some(h.walk.clone()),
+            forks,
+            view,
+        })
+    }
+
     /// Repository `id`'s handle; a fresh one when its object store is running out of index
     /// slots (`odb_nearly_full`), so the packs written since it opened stay visible.
     pub(crate) fn handle(&self, id: u32) -> Result<Arc<RepoHandle>, GbError> {
@@ -3384,6 +3506,7 @@ impl Api {
             wip: old.wip.clone(),
             snapshot: Mutex::new(old.snapshot.lock().expect("snapshot poisoned").clone()),
             walk: old.walk.clone(),
+            me_email: Mutex::default(),
         });
         let mut repos = self.repos.lock().expect("repos poisoned");
         if let Some(slot) = repos.get_mut(&id) {
@@ -3433,6 +3556,7 @@ impl Api {
             wip: Arc::new(crate::snapshot::WipCache::watched_only()),
             snapshot: Mutex::new(None),
             walk: Arc::default(),
+            me_email: Mutex::default(),
         });
         repos.insert(id, h.clone());
         self.writes_for(&common_dir).add_id(id);
@@ -3954,6 +4078,53 @@ mod tests {
         assert_eq!(hotfix["pinnedRefs"], serde_json::json!(["refs/heads/hotfix"]), "no upstream: alone");
         let absent = api.dispatch(req(serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}}))).await.unwrap();
         assert_eq!(absent["pinnedRefs"], auto["pinnedRefs"], "no pin is the default trunk");
+    }
+
+    // --- branch presets ---
+    #[tokio::test]
+    async fn graph_with_a_view_still_answers() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let api = api();
+        let id = open(&api, &r).await;
+        let view = serde_json::json!({"rules": [], "otherwise": "show", "foldMerged": false, "ghostLines": false});
+        let plain = api.dispatch(req(serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}}))).await.unwrap();
+        assert!(plain.get("view").is_none(), "All's payload has no view");
+        let viewed = api.dispatch(req(serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null, "view": view}}))).await.unwrap();
+        assert_eq!(viewed["rows"], plain["rows"]);
+        let login = r.git(&["rev-parse", "feature/login"]);
+        let owner = api.dispatch(req(serde_json::json!({"method": "graphHiddenOwner", "params": {"repo": id, "limit": null, "view": view, "sha": login}}))).await.unwrap();
+        assert!(owner.is_null(), "a row has no hidden owner: {owner}");
+        let stale = api.dispatch(req(serde_json::json!({"method": "graphReveal", "params": {"repo": id, "limit": null, "view": view, "key": "branch:no-such-branch", "below": true}}))).await.unwrap();
+        assert!(stale.is_null(), "a stale key reveals nothing: {stale}");
+        let preview = api.dispatch(req(serde_json::json!({"method": "branchPresetPreview", "params": {"repo": id, "limit": null, "view": view}}))).await.unwrap();
+        assert!(preview["shown"].is_number(), "{preview}");
+        let bad = api.dispatch(req(serde_json::json!({"method": "graphReveal", "params": {"repo": id, "limit": null, "active": "/nonexistent", "view": view, "key": "branch:x", "below": false}}))).await;
+        assert!(bad.is_err(), "active is checked as for graph");
+    }
+    // --- end branch presets ---
+
+    #[tokio::test]
+    async fn save_export_writes_into_the_picked_folder_and_never_overwrites() {
+        async fn call(api: &Api, name: &str, contents: &str) -> Result<serde_json::Value, GbError> {
+            api.dispatch(req(serde_json::json!({"method": "saveExport", "params": {"suggestedName": name, "contents": contents}}))).await
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let pick = dir.path().to_path_buf();
+        let api = api().with_folder_picker(Arc::new(move |_: Option<&Path>| Some(pick.clone())));
+        let first = call(&api, "theme.json", "{\"a\":1}").await.unwrap();
+        assert_eq!(first, dir.path().join("theme.json").display().to_string());
+        assert_eq!(std::fs::read_to_string(dir.path().join("theme.json")).unwrap(), "{\"a\":1}");
+        let second = call(&api, "theme.json", "{\"a\":2}").await.unwrap();
+        assert_eq!(second, dir.path().join("theme (2).json").display().to_string());
+        assert_eq!(std::fs::read_to_string(dir.path().join("theme.json")).unwrap(), "{\"a\":1}", "the first file is untouched");
+        for bad in ["../x.json", "a/b.json", "a\\b.json", ""] {
+            assert!(call(&api, bad, "{}").await.is_err(), "{bad}");
+        }
+        assert!(call(&api, "big.json", &"x".repeat(1024 * 1024 + 1)).await.is_err());
+        let nothing = api.with_folder_picker(Arc::new(|_: Option<&Path>| None));
+        assert!(call(&nothing, "none.json", "{}").await.unwrap().is_null());
+        assert!(!dir.path().join("none.json").exists());
     }
 
     #[tokio::test]
@@ -5004,6 +5175,7 @@ mod tests {
             json!({"method": "forgeBranchMrs", "params": {"repo": id, "refs": ["refs/remotes/origin/main"]}}),
             json!({"method": "forgeCachedMrs", "params": {"repo": id, "refs": ["refs/remotes/origin/main"], "filter": "all"}}),
             json!({"method": "forgeMrDetail", "params": {"repo": id, "number": 1}}),
+            json!({"method": "forgeRefresh", "params": {"repo": id}}),
             json!({"method": "forgeMrDiscussions", "params": {"repo": id, "number": 1}}),
             json!({"method": "forgeProjectByPath", "params": {"repo": id, "path": "group/project"}}),
             json!({"method": "forgeReply", "params": {"repo": id, "number": 1, "discussion": null, "body": "x"}}),
@@ -5070,6 +5242,12 @@ mod tests {
             json!({"method": "diagnostics", "params": {"ui": {"userAgent": "t", "settings": {}}}}),
             json!({"method": "openLogsFolder"}),
             json!({"method": "graph", "params": {"repo": id, "limit": null}}),
+            // --- branch presets ---
+            json!({"method": "graph", "params": {"repo": id, "limit": null, "view": {"rules": [], "otherwise": "collapse", "foldMerged": true, "ghostLines": true}}}),
+            json!({"method": "graphReveal", "params": {"repo": id, "limit": null, "view": {"rules": [], "otherwise": "collapse", "foldMerged": true, "ghostLines": true}, "key": "branch:feature/login", "below": false}}),
+            json!({"method": "branchPresetPreview", "params": {"repo": id, "limit": null, "view": {"rules": [{"action": "hide", "matcher": {"kind": "commitsBy", "author": {"kind": "me"}}}], "otherwise": "show", "foldMerged": false, "ghostLines": false}}}),
+            json!({"method": "graphHiddenOwner", "params": {"repo": id, "limit": null, "view": {"rules": [], "otherwise": "hide", "foldMerged": false, "ghostLines": true}, "sha": login}}),
+            // --- end branch presets ---
             json!({"method": "commandLog"}),
             json!({"method": "requestLog"}),
             json!({"method": "launchRepo"}),
@@ -5121,6 +5299,10 @@ mod tests {
             json!({"method": "updateRestart"}),
             json!({"method": "updateRemoveLegacyBundle"}),
             json!({"method": "pickFolder", "params": {"start": null}}),
+            // No picker in a test `Api`: nothing is picked, nothing written.
+            json!({"method": "saveExport", "params": {"suggestedName": "t.json", "contents": "{}"}}),
+            json!({"method": "gitIdentity", "params": {"repo": id, "worktree": wt}}),
+            json!({"method": "gitIdentity", "params": {"repo": null, "worktree": null}}),
             json!({"method": "scanRepos", "params": {"root": root, "refresh": true}}),
             json!({"method": "scanFolders", "params": {"roots": [root], "refresh": true}}),
             json!({"method": "suggestReposFolder"}),
@@ -5333,7 +5515,7 @@ mod tests {
     /// Samples that fail by design here: the harness-less `Api` has no log folder, URL opener,
     /// openers or askpass, and the profile samples name no existing profile. Each refusal comes
     /// before any repository access.
-    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "authUseSsh", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart", "updateRemoveLegacyBundle"];
+    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "authUseSsh", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeRefresh", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart", "updateRemoveLegacyBundle"];
 
     #[tokio::test(flavor = "multi_thread")]
     async fn no_read_request_writes_to_the_repository() {

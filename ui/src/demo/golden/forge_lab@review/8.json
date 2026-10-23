@@ -23,6 +23,9 @@
         "author": {
           "avatarUrl": null,
           "email": "ada@example.com",
+          "emails": [
+            "ada@example.com"
+          ],
           "id": 101,
           "name": "Ada Lovelace",
           "username": "ada",
@@ -53,6 +56,9 @@
               "user": {
                 "avatarUrl": null,
                 "email": "you@example.com",
+                "emails": [
+                  "you@example.com"
+                ],
                 "id": 100,
                 "name": "You",
                 "username": "you",
@@ -75,6 +81,9 @@
         {
           "avatarUrl": null,
           "email": "you@example.com",
+          "emails": [
+            "you@example.com"
+          ],
           "id": 100,
           "name": "You",
           "username": "you",
@@ -83,6 +92,9 @@
         {
           "avatarUrl": null,
           "email": "grace@example.com",
+          "emails": [
+            "grace@example.com"
+          ],
           "id": 102,
           "name": "Grace Hopper",
           "username": "grace",

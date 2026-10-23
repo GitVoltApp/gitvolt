@@ -218,7 +218,10 @@ with the switch to make, and the UI runs `git remote set-url`, then the same req
 **Snapshot.** The `graph` request builds a `GraphPayload` (`snapshot.rs`): the refs, a commit walk
 from every tip (newest first, with clock-skew inversions fixed so children always come before
 parents; `walk.rs`), the stashes, WIP rows from `git status`, and the lane layout.
-It loads up to the commit limit (2000 by default, a setting).
+It loads up to the commit limit (2000 by default, a setting). A truncated graph ends in a **Load
+older commits** row that raises the limit by one more step; after three minutes back near the top
+(and with neither the selection nor an open reveal panel in the older part) the UI lets the extra
+commits go (`ui/src/graph/olderWindow.ts`).
 
 **Walk cache.** Each open repository keeps its last walk, keyed by the tips, the limit and the
 stash set. Commits are immutable, so when those match, a rebuild (switching the active worktree, a
@@ -250,6 +253,36 @@ request:
 The graph payload reports the fork (`ForkPayload`: the remotes, how it was told, both trunks, the
 original's host kind), whatever the pin. The commit panel uses it to note a commit on the fork's
 trunk branches (a pull or merge request usually starts from a branch of its own).
+
+**Branch presets.** The UI owns the presets (built-ins, the user's, a repository's Custom, the
+picks) and sends the current one with each graph read as a `ViewSpec`; All sends none, and the
+payload is then the plain graph's. The view transform runs in `gitvolt-graph`, inside `assemble`,
+on the walked window and before the lane layout, so lanes close up around what it removes:
+- **Rules** (`presets/`): every branch unit (a short name with its local and remote refs) gets
+  facts in one pass over the window (trunk, checked out, own authors, tip age, merged into the
+  trunk, a per-commit bitset of the units reaching it) and a decision: the trunk shows, then
+  `expanded`, picks, the first matching rule, Everything else; a checked-out branch is never
+  hidden. The core fills in who "me" is (`me.rs`: the repository's `user.email` and the profile's
+  forge accounts' emails), only when a rule asks.
+- **Visibility** (`view/plan.rs`): a commit stays a row when a shown branch, the trunk, a detached
+  HEAD or no branch at all reaches it; a stash goes with its base commit. Commits only one
+  collapsed branch reaches become runs, one per line of history (a line starts at each of the
+  branch's tips and where its lines fork or merge, so a diverged local and remote collapse apart
+  and no tip is ever inside a run): a run's newest and oldest stay rows, a ⋮ row stands for the
+  middle (at least 3 commits) and a dotted lane joins them. A run's key (its reveal panel's) is
+  `branch:<name>@<newest sha>`; `branch:<name>` expands all of them. Shared commits never collapse. With
+  folding on, a branch merged into the trunk's first-parent line folds into its merge, which
+  carries a mark. The rest are hidden; where a branch hidden by a rule forks, its row carries
+  ghost lines.
+- **Rows** (`view/rows.rs`): the reduced rows go through the same lane layout, and the payload
+  says each unit's state (`GraphPayload.view`).
+
+Everything is within the loaded window: a branch partly outside it collapses with what's loaded.
+The reveal panel's rows (`graphReveal`) are laid out on request, by the same layout with its lanes
+pinned to the ones the graph gave the ⋮ row or merge, so the panel lines up with the graph.
+`branchPresetPreview` counts a preset's decisions for the settings page, and `graphHiddenOwner`
+names what to expand so navigating to a hidden commit can land on it. All three run on the cached
+walk. A guard test keeps a 20 000-commit, 1 000-branch view linear (`view/perf_tests.rs`).
 
 **Drawing.** The rows are DOM elements in a list virtualized with `@tanstack/react-virtual`; the
 lines and nodes are drawn on one `<canvas>` beside them (`ui/src/graph/GraphCanvas.tsx`,
@@ -386,7 +419,7 @@ arrives as `updateChanged` events.
 | What | Where |
 |---|---|
 | App settings (fetch interval, prune, commit limit, date format, Gravatar, window geometry, …) | `$XDG_CONFIG_HOME/gitvolt/settings.json` |
-| Profiles (tabs, recent repos, repos folder, editor, extra gitconfig, host overrides, per-repo settings) | `$XDG_CONFIG_HOME/gitvolt/profiles/<id>/profile.json` |
+| Profiles (tabs, recent repos, repos folder, editor, extra gitconfig, host overrides, per-repo settings, file colours (by common git dir)) | `$XDG_CONFIG_HOME/gitvolt/profiles/<id>/profile.json` |
 | Undo journal | `$XDG_DATA_HOME/gitvolt/journal/` |
 | Forge cache | `$XDG_DATA_HOME/gitvolt/forge-cache/` |
 | Forge tokens (only without a Secret Service) | `$XDG_DATA_HOME/gitvolt/forge-tokens` |
@@ -404,6 +437,18 @@ tries again, for a week (the marker's age); after that GitBolt's folder stays as
 The XDG defaults are `~/.config`, `~/.local/share` and `~/.cache`. Settings and profiles are
 written debounced and flushed once more on exit. To run a second instance without touching your
 own, point `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` and `XDG_DATA_HOME` at throwaway directories.
+
+**The Settings screen** (`ui/src/settings/`) is built from a registry (`registry.ts`). A page
+module calls `registerSettingsPage` (id, scope, order, icon, summary, an optional `Body`) and
+`registerSettings` (each setting's label, page, group, one-line description, hidden keywords, its
+`Control`, and a `binding` to where its value lives: `appSetting`, `profileField`, `repoField` or
+`storeBinding` in `bindings.ts`). The scopes are `app` (GitVolt), `profile` and `repo` (the shown
+tab's repository), the nav's three groups. The overlay, its nav, the search, the changed dot and ↺
+on a setting, Reset all (app scope only) and the palette's `#` settings all come from the registry,
+so a feature adds a page, or a setting to an existing page, from its own module; Settings' own
+pages are in `settings/pages/`. `useSettingsUi.show(id)` opens Settings on one setting,
+`useSettingsPaste` takes Ctrl+V on a page, and `registerSettingsFloat` lets the overlay give way to
+a floating panel that leaves the app usable behind it.
 
 **Logs** rotate daily; 7 files and 50 MB at most are kept. The level is `info`; Settings › Advanced ›
 Debug logging switches to `debug` live, and `RUST_LOG` applies until it does. A release build writes

@@ -12,10 +12,11 @@ import { openTop, revealTop, stepTarget, type ChangeBox } from '../changeNav';
 import { overflowLayer } from './overflow';
 import { ReviewGutter, type ReviewGutterSpec } from './reviewGutter';
 import { ReviewZones, type ReviewZoneSpec } from './reviewZones';
-import { monaco } from './setup';
+import { monaco, openLinksInBrowser } from './setup';
 import { useAppState } from '../../app/state';
-import { bindEditorTheme, currentEditorTheme } from '../../theme/editorThemes';
-import { ensureLanguage, ensureTheme } from './shiki';
+import { bindEditorTheme } from '../../theme/editorThemes';
+import { useTheme } from '../../theme/store';
+import { appEditorTheme, defineEditorTheme, ensureLanguage, ensureTheme } from './shiki';
 
 /** A line to open a diff at (a diff note's `file:line`): on the new side (`modified`) or the old;
  * with `end`, the lines `line` to `end` (a multi-line note's `file:start-end`). */
@@ -356,7 +357,8 @@ class Host implements MonacoHost {
     if (this.review) el.appendChild(this.review.layer);
     this.ro.observe(el);
     if (!this.diff) {
-      this.diff = monaco.editor.createDiffEditor(this.diffEl, { ...diffEditorOptions(this.prefs, this.menu === null, sticky(), fontSize()), theme: currentEditorTheme(), overflowWidgetsDomNode: overflowLayer() });
+      this.diff = monaco.editor.createDiffEditor(this.diffEl, { ...diffEditorOptions(this.prefs, this.menu === null, sticky(), fontSize()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
+      openLinksInBrowser();
       // A plain DOM signal that a diff (or a prefs recompute) is done, for e2e waits.
       this.diff.onDidUpdateDiff(() => {
         this.diffEl.dataset.diffComputed = String(++this.computedCount);
@@ -769,7 +771,8 @@ class Host implements MonacoHost {
     el.appendChild(this.fileEl);
     this.ro.observe(el);
     if (!this.file) {
-      this.file = monaco.editor.create(this.fileEl, { ...fileViewOptions(this.fileWrap, this.menu === null, sticky(), fontSize()), theme: currentEditorTheme(), overflowWidgetsDomNode: overflowLayer() });
+      this.file = monaco.editor.create(this.fileEl, { ...fileViewOptions(this.fileWrap, this.menu === null, sticky(), fontSize()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
+      openLinksInBrowser();
       this.wireMenu(this.file, 'file');
     }
     this.layout();
@@ -1034,7 +1037,8 @@ let themeBound = false;
 function bindEditorThemeOnce(): void {
   if (themeBound) return;
   themeBound = true;
-  bindEditorTheme((name) => monaco.editor.setTheme(name));
+  // Defined as it comes: each colour edit of a custom theme is a new name (shiki.ts).
+  bindEditorTheme(() => monaco.editor.setTheme(defineEditorTheme(monaco, useTheme.getState().def)));
 }
 
 /** The app's one host. The editor theme is defined before it's handed out, so the first editor

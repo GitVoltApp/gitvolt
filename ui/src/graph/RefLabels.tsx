@@ -15,6 +15,7 @@ import { DETACHED, detachedWorktreeOf } from './worktreeLabel';
 import { useBranchDragClass } from './branchDrag';
 // --- 4B T10 ---
 import { useRepoContext } from '../app/repoContext';
+import { altClickBranch } from '../presets/altClick';
 import { MrBadge, useChipMr } from '../forge/MrBadge';
 import { mrForLabel, useForge } from '../forge/mrStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -135,7 +136,7 @@ function ChipContent({ label, full = false, compact = false }: { label: RefLabel
  * collapses once the pointer leaves the copy. The copy is never smaller than the chip it covers,
  * so expanding can't move the pointer "out" and back in (no flicker at the edge).
  */
-function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranchHover, onContextMenu, onDoubleClick, stack, tip, ariaLabel, dragRef }: { /** Omitted: the lane colour inherited from `.ref-labels`. */ color?: string; className?: string; content: (full: boolean) => ReactNode; stack?: () => ReactNode; refs?: readonly string[]; onBranchHover?: BranchHover; onContextMenu?: (e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (e: MouseEvent<HTMLElement>) => void; /** The chip's own instant tooltip (the rebasing, the icon-only detached HEAD and the worktree chips). */ tip?: ReactNode; ariaLabel?: string; /** A local branch's chip: its ref, as a branch drag's source or target (branchDrag.ts). */ dragRef?: string | null }) {
+function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranchHover, onContextMenu, onDoubleClick, onClick, stack, tip, ariaLabel, dragRef }: { onClick?: (e: MouseEvent<HTMLElement>) => void; /** Omitted: the lane colour inherited from `.ref-labels`. */ color?: string; className?: string; content: (full: boolean) => ReactNode; stack?: () => ReactNode; refs?: readonly string[]; onBranchHover?: BranchHover; onContextMenu?: (e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (e: MouseEvent<HTMLElement>) => void; /** The chip's own instant tooltip (the rebasing, the icon-only detached HEAD and the worktree chips). */ tip?: ReactNode; ariaLabel?: string; /** A local branch's chip: its ref, as a branch drag's source or target (branchDrag.ts). */ dragRef?: string | null }) {
   const [expanded, setExpanded] = useState(false);
   const dragClass = useBranchDragClass(dragRef);
   const { triggerProps, tooltip } = useHoverTooltip({ content: tip ?? null, disabled: tip === undefined });
@@ -167,6 +168,7 @@ function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranc
       onMouseLeave={leave}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
+      onClick={onClick}
     >
       {content(false)}
       {expanded && (stack ? stack() : (
@@ -182,6 +184,7 @@ function Chip({ color, className = 'ref-label', content, refs = NO_REFS, onBranc
 /** One row of the label stack (K77): a full chip for one ref. Hovering it starts that ref's
  * branch focus (J22), ended on leaving or unmounting; right-clicking opens that label's menu. */
 function StackRow({ label, sha, first, onBranchHover, onContextMenu, onDoubleClick }: { label: RefLabel; sha: string | null; first: boolean; onBranchHover?: BranchHover; onContextMenu?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void; onDoubleClick?: (label: RefLabel, e: MouseEvent<HTMLElement>) => void }) {
+  const { tabId } = useRepoContext();
   const focusing = useRef<BranchHover | null>(null);
   useEffect(() => () => focusing.current?.(null), []);
   // A tag's row has the tag's tooltip, as its chip does (UX round 3, M.2), and a worktree's its
@@ -209,6 +212,7 @@ function StackRow({ label, sha, first, onBranchHover, onContextMenu, onDoubleCli
       }}
       onContextMenu={onContextMenu && ((e) => { e.stopPropagation(); onContextMenu(label, e); })}
       onDoubleClick={onDoubleClick && ((e) => { e.stopPropagation(); onDoubleClick(label, e); })}
+      onClick={(e) => { altClickBranch(tabId, label, e); }}
     >
       <ChipContent label={label} full />
       {tooltip}
@@ -350,6 +354,7 @@ export function RefLabels({ labels, color, membership = null, onBranchHover, com
           onBranchHover={onBranchHover}
           onContextMenu={onContextMenu && ((e) => onContextMenu(l, e))}
           onDoubleClick={onDoubleClick && ((e) => { e.stopPropagation(); onDoubleClick(l, e); })}
+          onClick={(e) => { altClickBranch(tabId, l, e); }}
           stack={i === 0 ? stack : undefined}
           content={(full) => <ChipContent label={l} full={full} compact={iconOnly(l)} />}
           tip={l.tag ? <TagTip annotation={l.annotation} sha={sha} /> : detachedWorktreeOf(l) ? worktreeTip(detachedWorktreeOf(l)!, sha) : !compact && iconOnly(l) ? `HEAD (detached at ${sha ? sha.slice(0, 7) : 'this commit'})` : undefined}

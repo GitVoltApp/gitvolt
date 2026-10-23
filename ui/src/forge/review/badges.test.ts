@@ -3,7 +3,7 @@ import { badgeLabel, fileBadge, nextStop, placementLine } from './badges';
 import type { PlacedItem } from './model';
 
 const at = (line: number, startLine: number | null = null, side: 'old' | 'new' = 'new') => ({ path: 'docs/a.md', side, line, startLine, outdated: false });
-const note = (system: boolean) => ({ id: 'n', author: { id: 1, username: 'grace', name: 'Grace', avatarUrl: null, webUrl: '', email: null }, body: 'Hm', createdAt: 0, system, position: null });
+const note = (system: boolean) => ({ id: 'n', author: { id: 1, username: 'grace', name: 'Grace', avatarUrl: null, webUrl: '', email: null, emails: [] }, body: 'Hm', createdAt: 0, system, position: null });
 const thread = (id: string, line: number, resolved = false, system = false): PlacedItem => ({ kind: 'thread', thread: { id, notes: [note(system)], resolvable: true, resolved }, at: at(line) });
 const draft = (id: string, line: number): PlacedItem => ({ kind: 'draft', draft: { id, body: id, position: null, replyTo: null }, at: at(line) });
 

@@ -133,6 +133,25 @@ test.describe('merge requests (spec #4 §7, 4B)', () => {
       expect(writes.some((r) => r.method === 'POST' && r.path.endsWith('/cancel_merge_when_pipeline_succeeds'))).toBe(true);
     });
 
+    await test.step("the refresh buttons ask the forge now: the view's for its MR, the sidebar's for the list", async () => {
+      const sidebar = page.getByRole('complementary', { name: 'Sidebar', exact: true }).getByRole('region', { name: 'Merge requests', exact: true });
+      const rename = async (title: string) => {
+        const seed = await forgeSeed(request);
+        Object.assign((seed.gitlab as unknown as { mergeRequests: Array<Record<string, unknown>> }).mergeRequests.find((x) => x.iid === 12)!, { title });
+        await setForgeSeed(request, seed);
+      };
+      // The next poll is a minute off: only the click can show it.
+      await rename('Dev work, renamed');
+      await expect(view).not.toContainText('Dev work, renamed');
+      await view.getByRole('button', { name: 'Refresh !12' }).click();
+      await expect(view).toContainText('Dev work, renamed');
+      await expect(sidebar.getByRole('treeitem', { name: '!12 Dev work' })).toBeVisible();
+      await rename('Dev work');
+      await sidebar.getByRole('button', { name: 'Refresh merge requests' }).click();
+      await expect(sidebar.getByRole('treeitem', { name: '!12 Dev work', exact: true })).toBeVisible();
+      await expect(view).not.toContainText('Dev work, renamed');
+    });
+
     // --- MR round 2 ---
     const mrs = (seed: Awaited<ReturnType<typeof forgeSeed>>) => (seed.gitlab as unknown as { mergeRequests: Array<Record<string, unknown>> }).mergeRequests;
     const reopen = async () => {

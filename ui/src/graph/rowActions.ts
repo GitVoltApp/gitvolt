@@ -25,6 +25,8 @@ export function graphLabelDoubleClick(store: RepoViewStore, row: RowPayload, lab
 }
 
 export function graphRowDoubleClick(store: RepoViewStore, row: RowPayload): boolean {
+  // A collapsed branch's ⋮ row is no commit: nothing of a commit's applies to it.
+  if (row.kind === 'collapsed') return false;
   for (const h of handlers) if (h.row?.(store, row)) return true;
   return false;
 }

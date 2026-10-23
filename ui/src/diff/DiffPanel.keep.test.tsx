@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCommitMessageCache } from '../api/commitMessages';
+import { useFileListPrefs } from '../files/fileListPrefs';
 import type { BlobPayload } from '../api/gen/BlobPayload';
 import type { CommitDetailsPayload } from '../api/gen/CommitDetailsPayload';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
@@ -72,6 +73,8 @@ const openRow = async (path: string) => {
 const W = { timeout: 3000 };
 
 describe('a closed diff is kept, hidden (J16)', () => {
+  beforeEach(() => useFileListPrefs.setState({ mode: 'path' }));
+
   afterEach(() => vi.clearAllMocks());
 
   // The heaviest here: three selection moves, each awaiting the details and a frame. Isolated it

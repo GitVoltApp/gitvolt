@@ -1,0 +1,13 @@
+/* The reveal panel (RevealPanel.tsx), in the graph's scrolled content at its left edge, over the
+   rows. No border, padding or inset on its box: its rows, columns and canvas sit exactly where the
+   graph's do. The frame and the shadow are both drawn outside the box (box-shadow). */
+.reveal-panel { position: absolute; left: 0; right: 0; z-index: 5; display: flex; flex-direction: column; background: var(--panel-bg0); box-shadow: 0 0 0 1px var(--section-border), 0 8px 24px var(--shadow-popup); cursor: default; }
+.reveal-list { position: relative; flex: none; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; outline: none; }
+.reveal-list:focus-visible { box-shadow: inset 0 0 0 1px var(--blue); }
+/* The title row: kept in view while the graph scrolls sideways. */
+.reveal-title { position: sticky; left: 0; flex: none; display: flex; align-items: center; gap: 6px; box-sizing: border-box; padding: 0 var(--graph-cell-pad-x); background: var(--panel-bg1); white-space: nowrap; overflow: hidden; }
+.reveal-branch { font-weight: 600; color: var(--text-selected); overflow: hidden; text-overflow: ellipsis; }
+.reveal-what { color: var(--text-secondary); }
+.reveal-expand { all: unset; margin-left: auto; padding: 0 4px; border-radius: 3px; color: var(--blue); cursor: pointer; }
+.reveal-expand:hover { text-decoration: underline; }
+.reveal-expand:focus-visible { outline: 1px solid var(--blue); }

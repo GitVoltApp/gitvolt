@@ -8,9 +8,8 @@ import { useEditorSettings } from '../diff/editorSettings';
 import { clampEditorFont, EDITOR_SCROLLBAR, UNICODE_HIGHLIGHT } from '../diff/options';
 import { loadMonacoHost } from '../diff/monaco/load';
 import { overflowLayer } from '../diff/monaco/overflow';
-import { monaco } from '../diff/monaco/setup';
-import { ensureLanguage } from '../diff/monaco/shiki';
-import { currentEditorTheme } from '../theme/editorThemes';
+import { monaco, openLinksInBrowser } from '../diff/monaco/setup';
+import { appEditorTheme, ensureLanguage } from '../diff/monaco/shiki';
 import { useTheme } from '../theme/store';
 import { createCheckBox } from './checkBox';
 import { createHoverTracker, regionMarks, resolveMarkColors } from './lineMarks';
@@ -172,13 +171,16 @@ export function createMergeEditors(host: { current: HTMLElement; incoming: HTMLE
     models.push(m);
     return m;
   };
-  const make = (el: HTMLElement, m: Model, readOnly: boolean): Editor =>
-    monaco.editor.create(el, {
+  const make = (el: HTMLElement, m: Model, readOnly: boolean): Editor => {
+    const ed = monaco.editor.create(el, {
       ...mergeEditorOptions(readOnly, useEditorSettings.getState().settings.stickyScroll, useAppState.getState().settings.editorFontSize),
       model: m,
-      theme: currentEditorTheme(),
+      theme: appEditorTheme(monaco),
       overflowWidgetsDomNode: overflowLayer(),
     });
+    openLinksInBrowser();
+    return ed;
+  };
 
   const paneEd: Record<Side, Editor> = {
     current: make(host.current, model(panes.current.text), true),

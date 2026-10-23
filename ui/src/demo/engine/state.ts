@@ -2,6 +2,7 @@
 // install's (the core's AppSettings::default and first profile; state.test.ts checks them against
 // golden/defaults.json), with what the demo changes, and the manifest's repos open as tabs.
 import type { AppSettings } from '../../api/gen/AppSettings';
+import type { FileScope } from '../../api/gen/FileScope';
 import type { Profile } from '../../api/gen/Profile';
 import type { ProfileMeta } from '../../api/gen/ProfileMeta';
 import type { TabGroup } from '../../api/gen/TabGroup';
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   prune: true,
   commitLimit: 2000,
   dateFormat: 'ymd12h',
+  relativeDates: false,
   gravatar: true,
   debugLogging: false,
   syncButton: 'fetchAll',
@@ -27,13 +29,19 @@ export const DEFAULT_SETTINGS: AppSettings = {
   updatePrereleases: false,
   updateArchMethod: null,
   graphColorOverrides: {},
+  customThemes: [],
+  // --- branch presets ---
+  builtinPresets: [{ id: 'all', inCycle: true }, { id: 'all-collapsed', inCycle: true }, { id: 'mine', inCycle: true }],
+  collapseHoverOpen: true,
+  collapsePlacement: 'keepDateOrder',
+  // --- end branch presets ---
 };
 
 export function defaultProfile(): Profile {
   return {
     version: 1, id: 'default', name: 'Default', color: '#4d88ff', tabs: [], activeTab: null, tabGroups: [], savedGroups: [], closedTabs: [], recent: [],
     reposFolder: null, reposFolders: null, editor: null, extraGitconfig: null, hostOverrides: {}, sidebarWidth: 240, sidebarNarrow: false, sidebarPanels: {},
-    rightPanelWidth: null, flyoutWidth: null, repos: {},
+    rightPanelWidth: null, flyoutWidth: null, repos: {}, fileColours: {},
   };
 }
 
@@ -55,6 +63,15 @@ export interface DemoState {
 
 const tabId = (name: string) => `demo-${name}`;
 
+/** Orbital's file colours, so the demo shows them on its opening commit (its common dir is its repo's .git). */
+const ORBITAL_FILE_COLOURS: Profile['fileColours'] = {
+  [`${demoRoot('orbital', 'repo')}/.git`]: [
+    { id: 'demo-render', name: 'Rendering', tint: 'violet', patterns: ['crates/orbital-render/**', '*.wgsl'], startCollapsed: false },
+    { id: 'demo-docs', name: 'Docs', tint: 'blue', patterns: ['docs/**', '*.md'], startCollapsed: false },
+    { id: 'demo-generated', name: 'Generated', tint: 'gray', patterns: ['assets/**'], startCollapsed: true },
+  ] satisfies FileScope[],
+};
+
 /** `width`: the demo frame's, at load. */
 export function initialState(manifest: Manifest, width: number): DemoState {
   const open = manifest.repos.filter((r) => r.open !== null);
@@ -70,6 +87,6 @@ export function initialState(manifest: Manifest, width: number): DemoState {
     .map((g, i) => ({ id: `demo-group-${i + 1}`, name: g.name, color: g.color, collapsed: g.collapsed, tabs: ordered.filter((r) => r.group === g.name).map((r) => tabId(r.name)) }))
     .filter((g) => g.tabs.length > 0);
   const base = defaultProfile();
-  const profile: Profile = { ...base, tabs, activeTab: active ? tabId(active.name) : null, tabGroups, reposFolders: ['/demo'], ...(width < COMPACT_BELOW ? COMPACT_WIDTHS : {}) };
+  const profile: Profile = { ...base, tabs, activeTab: active ? tabId(active.name) : null, tabGroups, reposFolders: ['/demo'], fileColours: ORBITAL_FILE_COLOURS, ...(width < COMPACT_BELOW ? COMPACT_WIDTHS : {}) };
   return { settings: { ...DEFAULT_SETTINGS, ...DEMO_SETTINGS }, profile, profiles: [{ id: base.id, name: base.name, color: base.color }], watched: new Set() };
 }

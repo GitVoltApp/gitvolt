@@ -24,6 +24,7 @@ import type { CommandLogEntry } from '../api/gen/CommandLogEntry';
 import type { BlamePayload } from '../api/gen/BlamePayload';
 import type { CommitDetailsPayload } from '../api/gen/CommitDetailsPayload';
 import type { CommitIdentity } from '../api/gen/CommitIdentity';
+import type { GitIdentityInfo } from '../api/gen/GitIdentityInfo';
 import type { DeleteOutcome } from '../api/gen/DeleteOutcome';
 import type { IntegrateOutcome } from '../api/gen/IntegrateOutcome';
 import type { CommitOutcome } from '../api/gen/CommitOutcome';
@@ -192,6 +193,7 @@ export interface DemoResults {
   editHeadMessage: WriteResult<CommitOutcome>;
   headOnUpstream: string | null;
   commitIdentity: CommitIdentity | null;
+  gitIdentity: GitIdentityInfo;
   queueState: QueueStatePayload;
   queueRemove: boolean;
   queueResume: null;
@@ -213,6 +215,7 @@ export interface DemoResults {
   forgeMrList: MrList;
   forgeBranchMrs: BranchMrs;
   forgeCachedMrs: CachedMrs | null;
+  forgeRefresh: null;
   forgeMrDetail: Fresh<ForgeMrDetail>;
   forgeMrDiscussions: Fresh<ForgeDiscussion[]>;
   forgeProjectByPath: ForgeProject;

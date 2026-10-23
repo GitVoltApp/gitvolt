@@ -5,6 +5,9 @@ import { getConfig, getConfigAll, listRemotes, readObject } from 'isomorphic-git
 import type { GraphPayload } from '../../api/gen/GraphPayload';
 import type { InProgress } from '../../api/gen/InProgress';
 import type { PinSetting } from '../../api/gen/PinSetting';
+import type { PresetPreview } from '../../api/gen/PresetPreview';
+import type { RevealPayload } from '../../api/gen/RevealPayload';
+import type { ViewSpec } from '../../api/gen/ViewSpec';
 import type { TagAnnotation } from '../../api/gen/TagAnnotation';
 import type { CommitIn } from '../gen/CommitIn';
 import type { GraphRequest } from '../gen/GraphRequest';
@@ -32,6 +35,10 @@ import { compareBytes, readRefFiles, type RefFile } from './refs';
 import { hostKind, mismatchedUpstream, parseRemoteUrl, remoteFor, remoteId } from './remotes';
 
 export const DEFAULT_COMMIT_LIMIT = 2000;
+
+/** How a graph read lays the repository out: the window, the pin, the active worktree, the
+ * forge's cached facts on the remotes' projects, and the branch preset's view (none under All). */
+export interface GraphOptions { limit: number | null; pin?: PinSetting; active?: string; forks?: ForkFacts; view?: ViewSpec }
 const COMPARE_REFS = 'refs/gitvolt/compare/';
 const NULL_OID = '0'.repeat(40);
 const OID = /^[0-9a-f]{40}$/;
@@ -388,11 +395,28 @@ export class DemoRepo {
     return out;
   }
 
-  /** The `graph` request (api.rs's Graph arm). */
-  /** `forks`: the forge's cached facts on the remotes' projects (`ForgeHub::cached_forks`); none without a forge. */
-  async graph(o: { limit: number | null; pin?: PinSetting; active?: string; forks?: ForkFacts }): Promise<GraphPayload> {
+  /** The `graph` request (api.rs's Graph arm). `o.forks`: the forge's cached facts on the
+   * remotes' projects (`ForgeHub::cached_forks`); none without a forge. */
+  async graph(o: GraphOptions): Promise<GraphPayload> {
     return this.layout.build(await this.graphRequest(o));
   }
+
+  // --- branch presets ---
+  /** The `graphReveal` request: the reveal panel for `key` under `o.view`. */
+  async reveal(o: GraphOptions, key: string, below: boolean): Promise<RevealPayload | null> {
+    return this.layout.reveal(await this.graphRequest(o), key, below);
+  }
+
+  /** The `branchPresetPreview` request: `o.view`'s live summary. */
+  async preview(o: GraphOptions): Promise<PresetPreview> {
+    return this.layout.preview(await this.graphRequest(o));
+  }
+
+  /** The `graphHiddenOwner` request: the `expanded` key that would make `sha` a row under `o.view`. */
+  async hiddenOwner(o: GraphOptions, sha: string): Promise<string | null> {
+    return this.layout.hiddenOwner(await this.graphRequest(o), sha);
+  }
+  // --- end branch presets ---
 
   /** The order the graph's walk collects commits in (before its topological fix-up): what find's
    * `locateCommit` sizes a window by (the core's `walk_by_date` over `graph_tips`). */
@@ -401,7 +425,7 @@ export class DemoRepo {
   }
 
   /** This repository's input to the graph pipeline. */
-  private async graphRequest(o: { limit: number | null; pin?: PinSetting; active?: string; forks?: ForkFacts }): Promise<GraphRequest> {
+  private async graphRequest(o: GraphOptions): Promise<GraphRequest> {
     const files = this.refFiles();
     const refs = this.refMap(files);
     const worktrees = await this.worktrees(refs);
@@ -430,6 +454,7 @@ export class DemoRepo {
       pinnedRef: o.pin?.kind === 'ref' ? o.pin.name : null,
       noPin: o.pin?.kind === 'off',
       forks: o.forks ?? { parents: {}, roots: [], covered: [] },
+      ...(o.view ? { view: o.view } : {}),
       limit: o.limit ?? DEFAULT_COMMIT_LIMIT,
     };
   }

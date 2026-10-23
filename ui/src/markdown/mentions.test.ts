@@ -3,7 +3,7 @@ import type { ForgeUser } from '../api/gen/ForgeUser';
 import { insertToken } from './emojiComplete';
 import { findMention, mergePeople, participantsOf, rankPeople } from './mentions';
 
-const u = (id: number, username: string, name = username): ForgeUser => ({ id, username, name, avatarUrl: null, webUrl: '', email: null });
+const u = (id: number, username: string, name = username): ForgeUser => ({ id, username, name, avatarUrl: null, webUrl: '', email: null, emails: [] });
 const ada = u(1, 'ada', 'Ada Lovelace'), bob = u(2, 'bob', 'Robert B'), abe = u(3, 'abe', 'Abe');
 const f = (s: string) => findMention(s, s.length);
 

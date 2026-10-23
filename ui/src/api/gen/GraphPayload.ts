@@ -5,6 +5,7 @@ import type { HeadPayload } from "./HeadPayload";
 import type { InProgress } from "./InProgress";
 import type { RefLabel } from "./RefLabel";
 import type { RowPayload } from "./RowPayload";
+import type { ViewPayload } from "./ViewPayload";
 
 export type GraphPayload = { rows: Array<RowPayload>, labels: Array<RefLabel>, maxLanes: number, 
 /**
@@ -34,4 +35,9 @@ inProgress?: { [key in string]: InProgress },
  * The repository is a fork (`snapshot::fork_of`): which remote is your fork, which the
  * original project, and how that was told. Absent otherwise.
  */
-fork?: ForkPayload, };
+fork?: ForkPayload, 
+/**
+ * Under a branch preset: every branch's state and the trunk. Absent without one, so All's
+ * payload is the plain graph's.
+ */
+view?: ViewPayload, };

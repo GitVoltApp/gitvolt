@@ -1,0 +1,144 @@
+{
+  "request": {
+    "method": "graphReveal",
+    "params": {
+      "below": true,
+      "key": "fold:9ca365ee5aa057c07a3d39385eb10310b7be9cdc",
+      "limit": null,
+      "repo": "$repo",
+      "view": {
+        "expanded": [],
+        "foldMerged": true,
+        "ghostLines": true,
+        "otherwise": "collapse",
+        "picks": {
+          "hidden": [],
+          "shown": []
+        },
+        "placement": "keepDateOrder",
+        "rules": [
+          {
+            "action": "show",
+            "matcher": {
+              "kind": "trunk"
+            }
+          },
+          {
+            "action": "show",
+            "matcher": {
+              "kind": "checkedOut"
+            }
+          }
+        ],
+        "trunkPatterns": []
+      }
+    }
+  },
+  "response": {
+    "branch": "feature/login",
+    "count": 2,
+    "entryLane": 3,
+    "key": "fold:9ca365ee5aa057c07a3d39385eb10310b7be9cdc",
+    "maxLanes": 4,
+    "rows": [
+      {
+        "authorEmail": "ada@example.com",
+        "authorName": "Ada Lovelace",
+        "authorTime": 1767226920,
+        "bodyFirstLine": "",
+        "color": 0,
+        "committerTime": 1767226920,
+        "id": "4f624c760503f39b11585ee6ce2f2fe87c15fbf7",
+        "kind": "commit",
+        "lane": 0,
+        "mrRefs": [],
+        "parents": [
+          "1f37672f5fcbd421cfa487b8cdad9ef7d2e2e437"
+        ],
+        "segments": [
+          0,
+          14683139,
+          1048576
+        ],
+        "summary": "Fix typo",
+        "wip": null
+      },
+      {
+        "authorEmail": "lars@example.com",
+        "authorName": "Lars Tidemann",
+        "authorTime": 1767226620,
+        "bodyFirstLine": "",
+        "color": 3,
+        "committerTime": 1767226620,
+        "id": "e4c6d940a4965218a12ccdb06eb44eac2ad6a747",
+        "kind": "commit",
+        "lane": 3,
+        "mrRefs": [],
+        "parents": [
+          "b3bfaf81740de975f3f4869b34bfc2c4b28e5a4c"
+        ],
+        "segments": [
+          2097152,
+          12585987,
+          13634563
+        ],
+        "summary": "Login validation",
+        "wip": null
+      },
+      {
+        "authorEmail": "lars@example.com",
+        "authorName": "Lars Tidemann",
+        "authorTime": 1767226440,
+        "bodyFirstLine": "",
+        "color": 3,
+        "committerTime": 1767226440,
+        "id": "b3bfaf81740de975f3f4869b34bfc2c4b28e5a4c",
+        "kind": "commit",
+        "lane": 3,
+        "mrRefs": [],
+        "parents": [
+          "1f37672f5fcbd421cfa487b8cdad9ef7d2e2e437"
+        ],
+        "segments": [
+          2097152,
+          12585987,
+          13634563
+        ],
+        "summary": "Login form",
+        "wip": null
+      },
+      {
+        "authorEmail": "grace@example.com",
+        "authorName": "Grace Hopper",
+        "authorTime": 1767225900,
+        "bodyFirstLine": "",
+        "color": 0,
+        "committerTime": 1767225900,
+        "id": "1f37672f5fcbd421cfa487b8cdad9ef7d2e2e437",
+        "kind": "commit",
+        "lane": 0,
+        "mrRefs": [],
+        "parents": [
+          "370cb169b524d4c233bc244f82fcf9a3ba1caecb"
+        ],
+        "segments": [
+          0,
+          12582915,
+          1048576
+        ],
+        "summary": "Add readme",
+        "wip": null
+      }
+    ],
+    "tags": [
+      {
+        "row": 0,
+        "text": "main"
+      },
+      {
+        "row": 3,
+        "text": "main"
+      }
+    ]
+  }
+}

@@ -135,7 +135,7 @@ and the GitBolt asset names, so they can't follow (the README says so). GitVolt 
   - Windows: the installers remove GitBolt's install (NSIS) or keep the MSI's UpgradeCode;
   - macOS: every `GitVolt_*.dmg` contains `GitVolt.app`.
     0.6.1 installs it beside `GitBolt.app` and removes that on Restart; GitVolt offers to remove a
-    `GitBolt.app` left beside it (a notice once, and Settings › Updates), moving it to the Trash only
+    `GitBolt.app` left beside it (a notice once, and Settings › General › Updates), moving it to the Trash only
     when it is GitBolt's and GitBolt isn't running.
 
 ## Versions
@@ -193,7 +193,7 @@ side by side, then the release job:
    - installs the toolchain: the system packages (`libgtk-4-dev`, `patchelf`, `dpkg-dev`, `zstd`,
      `binutils`, `cmake`, `ninja-build`, and `appstream` and `desktop-file-utils` for
      `check-deb.sh`), stable
-     Rust, Node 22, `just`, `tauri-cli` 3.0.0-alpha.4 and cargo-about 0.9.2;
+     Rust, Node 22, `just`, `tauri-cli` 3.0.0-alpha.5 and cargo-about 0.9.2;
    - runs `just package` with `GITVOLT_RELEASE_VERSION` set. That generates the third-party
      license notices (`scripts/licenses.sh`, failing on a license outside `about.toml`'s
      allow-list; see [licensing.md](licensing.md)), builds, and runs `fix-deb.sh`, `check-deb.sh`

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SidebarPayload } from '../api/gen/SidebarPayload';
+import type { ViewPayload } from '../api/gen/ViewPayload';
 import { buildPanels, folderKey, sectionKey, sectionsOf, type Panel } from './model';
 
 const branch = (name: string, tipTime: number, extra: object = {}) => ({ name, fullName: `refs/heads/${name}`, target: name.padEnd(40, '0'), upstream: null, ahead: 0, behind: 0, gone: false, tipTime, summary: `tip of ${name}`, author: 'Ada', isHead: false, worktree: null, checkedOut: null, pushTarget: null, pushBehind: null, rewritten: null, ...extra });
@@ -60,5 +61,30 @@ describe('sidebar model', () => {
     expect(view([panel])).toEqual(['[Remote 4]', '  upstream/', '    fresh', '  origin/', '    a', '    b/deep', '    old']);
     const collapsed = buildPanels(sectionsOf(p), opts({ sort: { remote: 'recent' }, collapsed: new Set([folderKey('remote', 'upstream')]) }))[1];
     expect(view([collapsed])).toEqual(['[Remote 4]', '  upstream/', '  origin/', '    a', '    b/deep', '    old']);
+  });
+
+  describe('under a preset', () => {
+    const states = (v?: ViewPayload) => sectionsOf(payload, v).flatMap((sec) => sec.items.map((it) => [it.name, it.presetState]));
+    const view: ViewPayload = { trunk: ['main'], branches: [
+      { name: 'feature/login', refs: ['refs/heads/feature/login'], state: 'hidden', by: { kind: 'otherwise' } },
+      { name: 'main', refs: ['refs/heads/main', 'refs/remotes/origin/main'], state: 'folded', by: { kind: 'trunk' } },
+    ] };
+
+    it('hidden branches stay listed, struck through', () => {
+      const rows = buildPanels(sectionsOf(payload, view), opts())[0].rows;
+      expect(rows.some((r) => r.type === 'item' && r.item.name === 'feature/login' && r.item.presetState === 'hidden')).toBe(true);
+      expect(buildPanels(sectionsOf(payload, view), opts())[0].matched).toBe(3);
+    });
+
+    it('folded branches say so', () => {
+      expect(states(view)).toContainEqual(['main', 'folded']);
+      // A remote branch shares its unit's state.
+      expect(sectionsOf(payload, view)[1].items[0].presetState).toBe('folded');
+    });
+
+    it('nothing changes without a view', () => {
+      expect(states().every(([, st]) => st === undefined)).toBe(true);
+      expect(sectionsOf(payload)).toEqual(sectionsOf(payload, null));
+    });
   });
 });

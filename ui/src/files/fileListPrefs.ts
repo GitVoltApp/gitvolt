@@ -7,7 +7,7 @@ import { displayTargets, type FileListMode, type FileSort } from './fileTree';
 /** `advanceAfterStage`: after a whole-file stage, unstage or discard of the open file, the diff
  * moves to the next file in the section it left. */
 export interface StoredFileListPrefs { mode: FileListMode; sort: FileSort; advanceAfterStage: boolean }
-export const DEFAULT_FILE_LIST_PREFS: StoredFileListPrefs = { mode: 'path', sort: 'path', advanceAfterStage: true };
+export const DEFAULT_FILE_LIST_PREFS: StoredFileListPrefs = { mode: 'tree', sort: 'path', advanceAfterStage: true };
 
 /** The one localStorage key for the file list's prefs. Bump the version if the shape changes. */
 export const FILE_LIST_PREFS_STORAGE_KEY = 'gitvolt.fileList.v1';

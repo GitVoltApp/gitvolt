@@ -23,4 +23,13 @@ export const noGraph: GraphFactory = () => ({
   walkOrder: () => {
     throw new Error('this test has no WebAssembly graph');
   },
+  reveal: () => {
+    throw new Error('this test has no WebAssembly graph');
+  },
+  preview: () => {
+    throw new Error('this test has no WebAssembly graph');
+  },
+  hiddenOwner: () => {
+    throw new Error('this test has no WebAssembly graph');
+  },
 });

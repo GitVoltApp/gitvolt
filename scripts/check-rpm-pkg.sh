@@ -57,8 +57,8 @@ done
 rpm -qL gitvolt
 ls -lL /usr/share/licenses/gitvolt/
 step "spell-check dictionary and install kind"
-[ -s /usr/share/GitVolt/dictionaries/en-US-10-1.bdic ] || fail "no /usr/share/GitVolt/dictionaries/en-US-10-1.bdic (or it is empty)"
-[ "$(head -c 4 /usr/share/GitVolt/dictionaries/en-US-10-1.bdic)" = BDic ] || fail "en-US-10-1.bdic is not a .bdic"
+[ -s /usr/share/GitVolt/dictionaries/en-US-10-2.bdic ] || fail "no /usr/share/GitVolt/dictionaries/en-US-10-2.bdic (or it is empty)"
+[ "$(head -c 4 /usr/share/GitVolt/dictionaries/en-US-10-2.bdic)" = BDic ] || fail "en-US-10-2.bdic is not a .bdic"
 [ "$(cat /usr/share/GitVolt/install-kind)" = rpm ] || fail "install-kind is not rpm"
 step "AppStream metainfo, desktop entry and icons"
 dnf install -y -q appstream desktop-file-utils >/dev/null 2>&1 || fail "installing appstream"

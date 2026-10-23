@@ -78,7 +78,7 @@ describe('prefill rules (spec #4 §2 "Create MR/PR", rulings 4–6, 10)', () => 
   });
 
   it('the request carries ids, the trimmed title, and squash only while the project leaves it open', () => {
-    const d: MrDraft = { ...freshDraft(CTX, route), title: ' Add login ', reviewers: [{ id: 8, username: 'grace', name: 'Grace', avatarUrl: null, webUrl: '', email: null }], labels: ['bug'] };
+    const d: MrDraft = { ...freshDraft(CTX, route), title: ' Add login ', reviewers: [{ id: 8, username: 'grace', name: 'Grace', avatarUrl: null, webUrl: '', email: null, emails: [] }], labels: ['bug'] };
     expect(createRequest(d, CTX, 'feature/login')).toEqual({
       source: { project: 'group/project', branch: 'feature/login' }, targetBranch: 'main', title: 'Add login', description: 'Why it matters.\n\n## Default',
       draft: false, reviewers: [8], assignees: [], labels: ['bug'], squash: true, deleteSourceBranch: true,

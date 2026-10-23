@@ -16,6 +16,9 @@ import { DEFAULT_DIFF_PREFS, DIFF_PREFS_STORAGE_KEY, useDiffPrefs } from './diff
 import { BINARY_MODE_TIP, DiffToolbar } from './DiffToolbar';
 import { useWorkingCopy } from './workingCopy';
 import '../app/coreActions';
+import { useRuntime } from '../app/runtime';
+import { EMPTY_PROFILE, useAppState } from '../app/state';
+import { useTabViews } from '../app/tabStores';
 import { installShortcuts } from '../app/shortcuts';
 import { activeTabWith } from '../app/testShell';
 
@@ -963,5 +966,34 @@ describe('DiffPanel', () => {
     const region = screen.getByRole('region', { name: 'Diff' });
     expect(fireEvent.keyDown(region, { key: 'ArrowLeft' })).toBe(false);
     expect(store.getState().focus).toBe('files');
+  });
+});
+
+describe('DiffHeader scope stripe (file colours)', () => {
+  const scopes = [{ id: 's1', name: 'Docs', tint: 'green', patterns: ['docs/**'], startCollapsed: false }];
+  const header = (path: string) => {
+    const store = createRepoViewStore(1, '/r', graph, fakeServices());
+    useTabViews.setState({ views: { t: { repo: 1, services: store.getState().services, store } } });
+    useRuntime.setState({ tabs: { t: { info: { commonDir: '/r/.git' } } } as never });
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, fileColours: { '/r/.git': scopes } } });
+    render(<RepoViewContext value={store}><DiffHeader target={targetFor(change(path), spec)} encoding="" onClose={() => {}} /></RepoViewContext>);
+    return document.querySelector<HTMLElement>('.diff-header')!;
+  };
+  afterEach(() => {
+    useTabViews.setState({ views: {} });
+    useRuntime.setState({ tabs: {} });
+    useAppState.setState({ profile: EMPTY_PROFILE });
+  });
+
+  it("the header carries its file's scope colour", () => {
+    const h = header('docs/manual.txt');
+    expect(h).toHaveAttribute('data-scope', 's1');
+    expect(h.style.getPropertyValue('--scope-stripe')).toBe('#3fb950');
+  });
+
+  it('a file in no scope has no stripe', () => {
+    const h = header('src/app.php');
+    expect(h).not.toHaveAttribute('data-scope');
+    expect(h.style.getPropertyValue('--scope-stripe')).toBe('');
   });
 });

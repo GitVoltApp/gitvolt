@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "resources": {
-      "dictionaries/en-US-10-1.bdic": "dictionaries/en-US-10-1.bdic",
+      "dictionaries/en-US-10-2.bdic": "dictionaries/en-US-10-2.bdic",
       "packaging/install-kind-dmg": "install-kind",
       "../../LICENSE": "licenses/LICENSE",
       "../../target/licenses/THIRD-PARTY-NOTICES-rust.txt": "licenses/THIRD-PARTY-NOTICES-rust.txt",

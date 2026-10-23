@@ -113,6 +113,8 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 - **Pinned trunk.** The graph keeps your main branch and the remote branch it tracks at the left,
   sharing a lane until they diverge. In a fork, it pins the original project's trunk
   (`upstream/main`) with your main. You can pick another branch or turn it off.
+- **Branch presets.** Switch the graph between views that hide, collapse or fold branches; reveal
+  collapsed commits in place; load older commits.
 - **Go to the clipboard.** Ctrl+V outside a text field goes to what's on the clipboard: a commit
   hash, an MR/PR (`!12`, `#12` or its link), a forge's commit or file page, a file path with its
   line number, or a branch or tag.
@@ -173,6 +175,8 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   **Hex** shows any file's bytes.
 - **File View:** read a file rendered or as source, and edit or create a working-tree file.
   **Open in** your editor, file manager or default app, old versions included.
+- **File colours:** per-repository path scopes tint changed files and can fold generated folders
+  in tree view; edit them in Settings, or start from a file's right-click menu.
 
 #### History, merges and undo
 
@@ -225,7 +229,7 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 | Command palette and keyboard shortcuts | ✅ | ✅ Every one listed in Help › Keyboard shortcuts (Ctrl+/) |
 | Themes | ✅ | ✅ Many built in, with per-lane graph colours |
 | Profiles | ✅ Multiple on paid plans | ✅ |
-| Hide and solo branches | ✅ | ❌ Not there yet |
+| Hide and solo branches | ✅ | ✅ Presets that hide, collapse or fold branches by rule; Alt+click hides or shows one |
 | Submodules | ✅ | ✅ State in the file list; update, sync and open in a tab |
 | Git LFS | ✅ | ✅ Real files in diffs and history, download, pull, track by extension |
 | Git Flow | ✅ | ❌ Not planned unless there's demand |
@@ -241,7 +245,6 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 ### What GitVolt doesn't do
 
 - **Planned:** Forgejo.
-- **Not there yet:** hiding or soloing branches.
 - **Not planned unless there's demand:** Git Flow.
 - **Not planned:** Intel Macs, an integrated terminal, AI features, issue tracker integrations,
   cloud workspaces and team features, and Bitbucket, Azure DevOps or GitHub Enterprise Server
@@ -268,7 +271,7 @@ GitVolt checks GitHub for a new release at startup and once a day. When there is
 A build from source only links to the release page.
 
 - **Check now:** Help › **Check for updates**.
-- **Settings › Updates:** turn the automatic check off, or include pre-releases.
+- **Settings › General › Updates:** turn the automatic check off, or include pre-releases.
 - **Privacy and security:** [PRIVACY.md](PRIVACY.md) says what the check sends, and
   [SECURITY.md](SECURITY.md) how a download is verified.
 
@@ -278,7 +281,7 @@ Requirements: a stable Rust toolchain (1.95 or newer, as Tauri 3 requires), Node
 and the Tauri CLI at the version the build expects:
 
 ```sh
-cargo install tauri-cli --version =3.0.0-alpha.4 --locked
+cargo install tauri-cli --version =3.0.0-alpha.5 --locked
 ```
 
 Then:

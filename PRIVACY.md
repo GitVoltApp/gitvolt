@@ -24,7 +24,7 @@ core.
 - It never prompts. A fetch that needs credentials is skipped.
 - Sends: what `git fetch` sends to each of the repository's remotes, including any credentials
   that your git configuration, credential helper or ssh agent supplies.
-- Turn off: Settings › Fetch › **Background fetch interval: Off**. "Prune deleted remote branches
+- Turn off: Settings › Fetch and push › **Background fetch interval: Off**. "Prune deleted remote branches
   on fetch" chooses between `--prune` and `--no-prune`.
 
 **Fetch, pull, push, clone and the rest.**
@@ -71,7 +71,7 @@ makes no forge requests (apart from images you choose to load, below).
 
 ### Update check (GitHub Releases)
 
-Setting: Settings › Updates › **Check for updates automatically** (on by default).
+Setting: Settings › General › **Check for updates automatically** (on by default).
 
 - **When:** 10 seconds after startup, then once a day while GitVolt runs, and whenever you click
   Help › **Check for updates** (or the button in About), even with the setting off.
@@ -95,7 +95,7 @@ a last step, the repository's own forge project again. If none of these finds on
 the author's initials. Results are cached on disk under the SHA-256 hash of the email: an avatar
 that was found for 7 days, a "no avatar" for 1 day.
 
-**From your forge accounts.** Setting: Settings › General › **Load avatars from your forge
+**From your forge accounts.** Setting: Settings › Graph › Avatars › **From your forge
 accounts** (on by default).
 
 - **Which forge:** a commit author's email or name goes only to the forge that hosts the
@@ -118,7 +118,7 @@ accounts** (on by default).
   on. No email is sent for them.
 - **Turn off:** uncheck the setting. GitVolt then makes no avatar request to your forges.
 
-**From Gravatar.** Setting: Settings › General › **Load avatars from Gravatar** (on by default).
+**From Gravatar.** Setting: Settings › Graph › Avatars › **From Gravatar** (on by default).
 
 - GitVolt requests `https://gravatar.com/avatar/<SHA-256 of the trimmed, lowercased
   email>?s=80&d=404`. The email itself is never sent, and GitHub noreply addresses are never
@@ -200,7 +200,7 @@ Translate model (`www.gstatic.com`). GitVolt now turns all of that off
     detection, autofill, Translate, alternate error pages, search suggestions, and the Privacy
     Sandbox APIs (`vendor/tauri-runtime-cef/src/cef_impl/preferences.rs`).
 - **Spell check works offline.** GitVolt ships Chromium's English (US) dictionary
-  (`/usr/share/GitVolt/dictionaries/en-US-10-1.bdic`) and copies it into Chromium's profile at
+  (`/usr/share/GitVolt/dictionaries/en-US-10-2.bdic`) and copies it into Chromium's profile at
   startup, so Chromium never downloads one. Only English (US) is checked
   (`spellcheck.dictionaries`). Chromium's "enhanced" spell check, which sends the text to
   Google's spelling service, is off (`spellcheck.use_spelling_service`) and removed from the

@@ -58,6 +58,7 @@ pub fn render_ascii(rows: &[AsciiRow<'_>], max_lanes: u16) -> String {
             NodeKind::Merge => 'M',
             NodeKind::Stash => 'S',
             NodeKind::Wip => 'W',
+            NodeKind::Collapsed => '⋮',
         };
 
         // A gap between adjacent cells, or a still-blank cell, is dashed if it lies inside

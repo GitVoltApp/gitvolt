@@ -2,6 +2,7 @@
 //! core, isomorphic-git in the website demo, which sends it as JSON).
 
 use crate::payload::{HostKind, InProgress, TagAnnotation, WipCounts};
+use crate::view::ViewSpec;
 use crate::Oid;
 use serde::Deserialize;
 use ts_rs::TS;
@@ -141,6 +142,10 @@ pub struct GraphInput {
     /// The pin setting `off`: nothing pinned, `pinned_ref` ignored.
     pub no_pin: bool,
     pub forks: ForkFacts,
+    /// A branch preset to apply (`crate::view`); `None` (All): the plain graph.
+    #[serde(default)]
+    #[ts(optional)]
+    pub view: Option<ViewSpec>,
 }
 
 /// `build`'s input: the graph input and how many commits to walk.

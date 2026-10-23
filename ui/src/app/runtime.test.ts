@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GraphPayload } from '../api/gen/GraphPayload';
 
 const graphCalls: Array<{ rescan?: boolean }> = [];
@@ -23,7 +23,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../api/client', () => ({ api, errorMessage: (e: unknown) => String(e) }));
 
-const { useRuntime, migrateLinked } = await import('./runtime');
+const { useRuntime, migrateLinked, loadOlder, olderViewport, beginOlder } = await import('./runtime');
 const { tabStore } = await import('./tabStores');
 const { useAppState, EMPTY_PROFILE, EMPTY_REPO_SETTINGS } = await import('./state');
 const { readWipDraft, writeWipDraft } = await import('../commit/draft');
@@ -81,6 +81,17 @@ describe('runtime', () => {
     await first;
     expect(api.sidebar).toHaveBeenCalledTimes(1);
     expect(api.repoInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('the runtime sends no view under All', async () => {
+    gate = false;
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, repos: {} } });
+    await useRuntime.getState().refresh('t');
+    expect(Object.keys(graphCalls.at(-1)!)).not.toContain('view');
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, repos: { '/r': { ...EMPTY_REPO_SETTINGS, branchPreset: 'mine' } } } });
+    await useRuntime.getState().refresh('t');
+    expect(graphCalls.at(-1)).toMatchObject({ view: { otherwise: 'hide' } });
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, repos: {} } });
   });
 
   it('a failed sidebar or repo-info read keeps the graph (and the previous sidebar)', async () => {
@@ -240,6 +251,46 @@ describe('runtime', () => {
       const p = { ...EMPTY_PROFILE, repos: { '/r': own, '/r-x': old } };
       expect(migrateLinked(p, ['/r-x'], '/r').repos['/r']).toBe(own);
       expect(migrateLinked(p, ['/r'], '/r')).toBe(p);
+    });
+  });
+  describe('loaded older commits', () => {
+    const limits = () => api.graph.mock.calls.map((c) => c[1]);
+    beforeEach(() => {
+      vi.useFakeTimers();
+      gate = false;
+      nextGraph = payload(Array.from({ length: 100 }, (_, i) => `c${i}`));
+      useAppState.setState({ settings: { ...useAppState.getState().settings, commitLimit: 100 } });
+      useRuntime.setState({ tabs: { t: { ...ready(), graph: nextGraph } } });
+      api.graph.mockClear();
+    });
+    afterEach(() => { useRuntime.getState().drop('t'); vi.useRealTimers(); });
+
+    it('the timer unloads back to the limit and is cleared with the tab', async () => {
+      await loadOlder('t');
+      expect(limits()).toEqual([200]);
+      expect(useRuntime.getState().tabs.t.limit).toBe(200);
+      olderViewport('t', 90, 130, 95); // reading the older part
+      olderViewport('t', 0, 20, 3); // back near the top: the clock runs
+      await vi.advanceTimersByTimeAsync(179_000);
+      expect(useRuntime.getState().tabs.t.limit).toBe(200);
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(limits()).toEqual([200, 100]);
+      expect(useRuntime.getState().tabs.t.limit).toBeNull();
+      // A tab closed with the timer pending leaves nothing behind.
+      await loadOlder('t');
+      olderViewport('t', 0, 20, 3);
+      expect(vi.getTimerCount()).toBe(1);
+      useRuntime.getState().drop('t');
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('a raise Find made is covered too, and no timer runs while the viewport is in the older part', async () => {
+      beginOlder('t');
+      useRuntime.getState().patch('t', { limit: 500 });
+      olderViewport('t', 90, 130, 95);
+      expect(vi.getTimerCount()).toBe(0);
+      olderViewport('t', 0, 20, 3);
+      expect(vi.getTimerCount()).toBe(1);
     });
   });
 });

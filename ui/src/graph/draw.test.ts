@@ -1,21 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { BAND_ALPHA, CONNECTOR_ALPHA, drawGraph, graphLayout, nodeAt, nodeRadius, PACKED_ALPHA, SELECTED_BAND_ALPHA, SHADE_ALPHA, SHADE_W, stashHalf, zoneWidth } from './draw';
+import { BAND_ALPHA, CONNECTOR_ALPHA, DOT_PATTERN, drawGraph, graphLayout, nodeAt, nodeRadius, PACKED_ALPHA, SELECTED_BAND_ALPHA, SHADE_ALPHA, SHADE_W, stashHalf, zoneWidth } from './draw';
 import { laneX } from './geometry';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { avatarLane } from '../avatars/color';
+import { foldStub, ghostPaths } from './ghosts';
 
 function recorder() {
   const calls: string[] = [];
+  // Every setLineDash pattern, as given (the calls list only says `object`).
+  const dashes: number[][] = [];
   // Numeric args are kept exact (not rounded): the device-pixel snap produces values like
   // 11.5 or 17/1.5 that a naive Math.round would collapse into indistinguishable integers,
   // hiding the exact behavior the connector's crisp-pixel math depends on.
   // createLinearGradient hands back a gradient whose colour stops are recorded too.
   const gradient = { addColorStop: (...a: unknown[]) => { calls.push(`addColorStop(${a.join(',')})`); } };
   const ctx = new Proxy({} as Record<string, unknown>, {
-    get: (_t, k: string) => (k in _t ? _t[k] : (...a: unknown[]) => { calls.push(`${k}(${a.map((x) => (typeof x === 'number' ? x : typeof x)).join(',')})`); return k === 'createLinearGradient' ? gradient : undefined; }),
+    get: (_t, k: string) => (k in _t ? _t[k] : (...a: unknown[]) => { if (k === 'setLineDash') dashes.push(a[0] as number[]); calls.push(`${k}(${a.map((x) => (typeof x === 'number' ? x : typeof x)).join(',')})`); return k === 'createLinearGradient' ? gradient : undefined; }),
     set: (t, k: string, v) => { t[k] = v; calls.push(`${k}=${String(v)}`); return true; },
   });
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, dashes };
 }
 
 const row = (lane: number, kind: RowPayload['kind'], segments: number[]): RowPayload => ({
@@ -260,6 +263,98 @@ describe('drawGraph', () => {
     // The ring: butt caps too, and a whole number of dash+gap pairs.
     const ringCap = calls.lastIndexOf('lineCap=butt');
     expect(ringCap).toBeGreaterThan(i);
+  });
+
+  it('a collapsed row draws no node and a dotted lane', () => {
+    const { ctx, calls, dashes } = recorder();
+    // tip → ⋮ → (a commit in lane 1 beside the dotted lane) → oldest. The layout marks the ⋮ row's
+    // line down dotted; its line in from the tip comes solid and is dotted too.
+    const bottom = 1 << 20, full = 2 << 20, dotted = 1 << 27;
+    const rows = [row(0, 'commit', [bottom]), row(0, 'collapsed', [0, bottom | dotted]), row(1, 'commit', [full | dotted]), row(0, 'commit', [dotted])];
+    const m = { rowH: 26, laneW: 16, padX: 8 };
+    drawGraph(ctx, { rows, first: 0, last: 4, scrollTop: 0, width: 100, height: 104, metrics: m, colors: ['#a', '#b'], nodeFill: '#000', labeledRows: new Set(), dpr: 1 });
+    // Nodes at rows 0, 2 and 3; none at the ⋮ row's centre (16, 39).
+    expect(calls.filter((c) => c.startsWith('arc('))).toHaveLength(3);
+    expect(calls.some((c) => c.startsWith('arc(16,39,'))).toBe(false);
+    // One dotted run, round dots, from the ⋮ row's top edge to the oldest commit's centre, phased
+    // by its content y (26 % 4).
+    expect(DOT_PATTERN).toEqual([0, 4]);
+    expect(dashes).toContainEqual(DOT_PATTERN);
+    const at = calls.indexOf('moveTo(16,26)');
+    expect(calls.slice(at - 2, at + 2)).toEqual(['lineDashOffset=2', 'beginPath()', 'moveTo(16,26)', 'lineTo(16,91)']);
+    expect(calls.slice(0, at).findLast((c) => c.startsWith('lineCap='))).toBe('lineCap=round');
+    // The tip's own line down to the ⋮ row stays solid.
+    const solid = calls.indexOf('moveTo(16,13)');
+    expect(solid).toBeGreaterThan(-1);
+    expect(solid).toBeLessThan(at);
+    expect(calls.slice(0, solid).filter((c) => c.startsWith('setLineDash('))).toHaveLength(0);
+  });
+
+  it('a folded merge has a dot in its ring and a fading stub', () => {
+    const { ctx, calls } = recorder();
+    const m = { rowH: 26, laneW: 16, padX: 8 };
+    const merge = { ...row(0, 'merge', []), fold: { key: 'fold:x', branch: 'feature/trade-ui', count: 6 } };
+    drawGraph(ctx, { rows: [merge, row(0, 'merge', [])], first: 0, last: 2, scrollTop: 0, width: 100, height: 52, metrics: m, colors: ['#102030', '#0669f7'], nodeFill: '#000', labeledRows: new Set(), dpr: 1 });
+    const r = nodeRadius(m);
+    const ring = calls.indexOf(`arc(16,13,${r},0,${Math.PI * 2})`);
+    const dot = calls.indexOf(`arc(16,13,${r * 0.4},0,${Math.PI * 2})`);
+    expect(ring).toBeGreaterThan(-1);
+    expect(dot).toBeGreaterThan(ring);
+    expect(calls.slice(ring, dot).findLast((c) => c.startsWith('fillStyle='))).toBe('fillStyle=#000');
+    expect(calls.slice(dot).find((c) => c.startsWith('fillStyle='))).toBe('fillStyle=#102030');
+    // The plain merge below keeps its dot.
+    expect(calls).toContain(`arc(16,39,${26 * 0.18},0,${Math.PI * 2})`);
+    // The stub: before the nodes, towards the lower right, in the next lane's colour, 0.5 → 0.
+    const s = foldStub(16, 13, m);
+    expect(Math.hypot(s.x1 - s.x0, s.y1 - s.y0)).toBeCloseTo(0.6 * 26);
+    expect(s.x1).toBeGreaterThan(s.x0);
+    expect(s.y1).toBeGreaterThan(s.y0);
+    const g = calls.indexOf(`createLinearGradient(${s.x0},${s.y0},${s.x1},${s.y1})`);
+    expect(g).toBeGreaterThan(-1);
+    expect(g).toBeLessThan(ring);
+    expect(calls.slice(g + 1, g + 3)).toEqual(['addColorStop(0,rgba(6,105,247,0.5))', 'addColorStop(1,rgba(6,105,247,0))']);
+    expect(calls.slice(g)).toContain(`lineTo(${s.x1},${s.y1})`);
+  });
+
+  it('the open fold draws its merge curve into the panel\'s lane', () => {
+    const { ctx, calls } = recorder();
+    const m = { rowH: 26, laneW: 16, padX: 8 };
+    const merge = { ...row(0, 'merge', []), fold: { key: 'fold:x', branch: 'feature/trade-ui', count: 6 } };
+    drawGraph(ctx, { rows: [merge], first: 0, last: 1, scrollTop: 0, width: 100, height: 26, metrics: m, colors: ['#102030', '#0669f7', '#22aa44'], nodeFill: '#000', labeledRows: new Set(), dpr: 1, foldOpen: { row: 0, lane: 2 } });
+    // From the node across to lane 2 and down out of the row's bottom edge, in lane 2's colour,
+    // where the panel's branch lane runs on; no stub.
+    const x2 = laneX(2, m);
+    const end = calls.indexOf(`lineTo(${x2},26)`);
+    expect(end).toBeGreaterThan(-1);
+    expect(calls.slice(0, end)).toContain('moveTo(16,13)');
+    expect(calls.slice(0, end).findLast((c) => c.startsWith('strokeStyle='))).toBe('strokeStyle=#22aa44');
+    expect(calls.filter((c) => c.startsWith('createLinearGradient('))).toEqual([]);
+  });
+
+  it('ghost lines: one fading curve per hidden branch, before the nodes, none on a packed row', () => {
+    const { ctx, calls } = recorder();
+    const m = { rowH: 26, laneW: 16, padX: 8 };
+    const ghost = (color: number) => ({ branch: `b${color}`, color, tip: 'c'.repeat(40), summary: '', authorName: '', authorTime: 0 });
+    const forked: RowPayload = { ...row(0, 'commit', []), ghosts: [ghost(1), ghost(2)] };
+    const colors = ['#000000', '#ff0000', '#00ff00'];
+    drawGraph(ctx, { rows: [forked], first: 0, last: 1, scrollTop: 0, width: 100, height: 26, metrics: m, colors, nodeFill: '#000', labeledRows: new Set(), dpr: 1 });
+    const node = calls.findIndex((c) => c.startsWith('arc('));
+    const grads = calls.map((c, i) => [c, i] as const).filter(([c]) => c.startsWith('createLinearGradient('));
+    expect(grads).toHaveLength(2);
+    for (const [k, [, i]] of grads.entries()) {
+      expect(i).toBeLessThan(node);
+      const c = k === 0 ? '255,0,0' : '0,255,0';
+      expect(calls.slice(i + 1, i + 3)).toEqual([`addColorStop(0,rgba(${c},0.7))`, `addColorStop(1,rgba(${c},0))`]);
+    }
+    for (const p of ghostPaths(forked, 0, m)) {
+      const q = p[1];
+      if (q.op !== 'Q') throw new Error('a curve');
+      expect(calls).toContain(`quadraticCurveTo(${q.cx},${q.cy},${q.x},${q.y})`);
+    }
+    // Its lane packed into the collapse zone: no ghosts.
+    const packed = recorder();
+    drawGraph(packed.ctx, { rows: [{ ...forked, lane: 5 }], first: 0, last: 1, scrollTop: 0, width: 60, height: 26, metrics: m, colors, nodeFill: '#000', labeledRows: new Set(), dpr: 1, clipped: true });
+    expect(packed.calls.some((c) => c.startsWith('quadraticCurveTo('))).toBe(false);
   });
 
   it('draws a loaded avatar bitmap clipped to the node instead of initials', () => {

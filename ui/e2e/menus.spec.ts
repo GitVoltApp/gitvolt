@@ -102,7 +102,7 @@ test.describe('the commit and label context menus (spec §7 target table)', () =
         'Checkout', 'Create worktree from', 'Create branch here',
         'Cherry-pick onto main', 'Revert this commit', 'Create tag here', 'Interactive rebase after this commit', 'Drop commit',
         'Rename feature/login', 'Delete',
-        'Copy branch name', 'Copy SHA', 'Copy message', 'Compare with HEAD',
+        'Copy branch name', 'Copy SHA', 'Copy message', 'Compare with HEAD', 'Hide branch',
       ];
       await expect(rowLabels(menu)).resolves.toEqual(expected);
       await page.keyboard.press('Escape');

@@ -42,7 +42,7 @@ export function RemoveLegacyBundle({ onDone, onError }: { onDone?: () => void; o
   return <button type="button" disabled={busy} data-arm-origin="" onClick={() => void run()}>Remove GitBolt.app</button>;
 }
 
-/** Settings › Updates: shown only while a GitBolt.app sits beside this app. */
+/** Settings › General › Updates: shown only while a GitBolt.app sits beside this app. */
 export function LegacyBundleRow() {
   const path = useAppInfo((s) => s.info?.legacyBundle);
   const tilde = useTilde();

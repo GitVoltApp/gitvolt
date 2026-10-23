@@ -5,8 +5,9 @@
 use crate::input::{GraphInput, GraphRequest, HeadIn, RefsIn, WorktreeIn};
 use crate::labels::{build_labels, worktree_name};
 use crate::layout::{layout, LayoutNode, NodeKind, Parent};
-use crate::payload::{GraphPayload, GraphWorktree, HeadPayload, InProgress, RowPayload, WipPayload};
-use crate::pins::{default_pair, fork_of, fork_payload, pin_pair, pinned_chains};
+use crate::payload::{GraphPayload, GraphWorktree, HeadPayload, InProgress, PresetPreview, RevealPayload, RowPayload, WipPayload};
+use crate::pins::{fork_of, fork_payload, pinned_chains, trunk_names};
+use crate::view::{plan_window, Decided, ViewRows, ViewSpec};
 use crate::walk::{walk, walk_by_date, CommitMeta, WalkOptions, WalkResult};
 use crate::Oid;
 use std::collections::{HashMap, HashSet};
@@ -34,11 +35,27 @@ pub fn graph_tips(refs: &RefsIn, worktrees: &[WorktreeIn]) -> Vec<Oid> {
 enum Entry {
     Commit(usize),
     Wip(usize),
+    /// A collapsed run's ⋮ row (`ViewPlan::runs`).
+    Collapsed(usize),
 }
+
+/// `row_of_commit` for a loaded commit that isn't a row (a preset hides, folds or collapses it).
+pub(crate) const NO_ROW: u32 = u32::MAX;
 
 /// The graph of `input`'s repository over `walked` (the walk from `graph_tips`). `Err` only when
 /// the `testing` feature's continuity check finds a broken line.
 pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload, String> {
+    Ok(assemble_view(input, walked)?.0)
+}
+
+/// `assemble`, and the rows `input.view` left, which a reveal panel lines up with.
+pub(crate) fn assemble_view(input: &GraphInput, walked: &WalkResult) -> Result<(GraphPayload, Option<ViewRows>), String> {
+    assemble_with(input, walked, |spec, index| crate::view::decide_window(input, spec, &walked.commits, index))
+}
+
+/// `assemble_view`, with `decide` standing for the rule engine when `input.view` is set (tests
+/// decide by hand).
+pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: impl FnOnce(&ViewSpec, &HashMap<Oid, usize>) -> Decided) -> Result<(GraphPayload, Option<ViewRows>), String> {
     let refs = &input.refs;
     let worktrees = &input.worktrees;
     let wip = &input.wip;
@@ -52,13 +69,15 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
         None => refs.head.clone(),
     };
     let index: HashMap<Oid, usize> = commits.iter().enumerate().map(|(i, c)| (c.id, i)).collect();
+    // A preset: which commits are rows, before the one layout pass (`crate::view`).
+    let view: Option<ViewRows> = input.view.as_ref().map(|spec| {
+        let d = decide(spec, &index);
+        let plan = plan_window(input, spec, commits, &index, &d);
+        ViewRows::new(spec, d, plan, commits, &index)
+    });
 
     let fork = fork_of(refs, &input.forks);
-    let names = match (&input.pinned_ref, input.no_pin) {
-        (_, true) => vec![],
-        (Some(name), false) => pin_pair(refs, name),
-        (None, false) => default_pair(refs, fork.as_ref(), &input.forks.parents),
-    };
+    let names = if input.no_pin { vec![] } else { trunk_names(input, fork.as_ref()) };
     let pair: Vec<(String, Oid)> = names
         .into_iter()
         .filter_map(|n| {
@@ -111,13 +130,32 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
     let mut entries = Vec::with_capacity(commits.len() + wip.len());
     entries.extend(current_wip.map(Entry::Wip));
     entries.extend(unborn_wip.into_iter().map(Entry::Wip));
-    let mut row_of_commit = vec![0u32; commits.len()];
-    for (ci, slot) in row_of_commit.iter_mut().enumerate() {
+    let mut row_of_commit = vec![NO_ROW; commits.len()];
+    let mut collapsed_row = vec![NO_ROW; view.as_ref().map_or(0, |v| v.plan.runs.len())];
+    let place = |ci: usize, entries: &mut Vec<Entry>, row_of_commit: &mut [u32]| {
         for &k in wip_by_head.get(&ci).map(Vec::as_slice).unwrap_or(&[]) {
             entries.push(Entry::Wip(k));
         }
-        *slot = entries.len() as u32;
+        row_of_commit[ci] = entries.len() as u32;
         entries.push(Entry::Commit(ci));
+    };
+    for ci in 0..commits.len() {
+        let Some(v) = &view else {
+            place(ci, &mut entries, &mut row_of_commit);
+            continue;
+        };
+        if !v.in_place(ci) {
+            continue;
+        }
+        place(ci, &mut entries, &mut row_of_commit);
+        // A run's ⋮ row right under its newest commit, and its oldest under that when pulled together.
+        if let Some((r, pulled)) = v.run_at_newest(ci) {
+            collapsed_row[r] = entries.len() as u32;
+            entries.push(Entry::Collapsed(r));
+            if let Some(oldest) = pulled {
+                place(oldest, &mut entries, &mut row_of_commit);
+            }
+        }
     }
 
     // The topmost WIP on a pinned lane's tip rides that lane: nothing else is pinned above the
@@ -136,20 +174,25 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
         })
         .collect();
     // Lane 0 for the whole window; a diverged pair's lane 1 through its chain's last row.
-    let reserved: Vec<u32> = reserve_trunk.then_some(u32::MAX).into_iter().chain(pinned.iter().filter(|&(_, &lane)| lane == 1).map(|(&ci, _)| row_of_commit[ci]).max()).collect();
+    let reserved: Vec<u32> = reserve_trunk.then_some(u32::MAX).into_iter().chain(pinned.iter().filter(|&(_, &lane)| lane == 1).map(|(&ci, _)| row_of_commit[ci]).filter(|&r| r != NO_ROW).max()).collect();
     let nodes: Vec<LayoutNode> = entries
         .iter()
         .map(|e| match e {
             Entry::Commit(ci) => {
                 let c = &commits[*ci];
                 LayoutNode {
-                    parents: c.parents.iter().map(|p| index.get(p).map(|&pi| Parent::Row(row_of_commit[pi])).unwrap_or(Parent::Outside(*p))).collect(),
+                    parents: match &view {
+                        None => c.parents.iter().map(|p| index.get(p).map(|&pi| Parent::Row(row_of_commit[pi])).unwrap_or(Parent::Outside(*p))).collect(),
+                        Some(v) => v.parents(*ci, commits, &index, &row_of_commit, &collapsed_row),
+                    },
                     kind: if stash_ids.contains(&c.id) { NodeKind::Stash } else if c.parents.len() > 1 { NodeKind::Merge } else { NodeKind::Commit },
                     pinned: pinned.get(ci).copied(),
                     time: c.committer_time,
                 }
             }
-            Entry::Wip(k) => LayoutNode { parents: head_of(*k).map(|h| Parent::Row(row_of_commit[h])).into_iter().collect(), kind: NodeKind::Wip, pinned: pinned_wip.get(k).copied(), time: i64::MAX },
+            // A WIP docks on its HEAD's row (a preset never hides a worktree's HEAD).
+            Entry::Wip(k) => LayoutNode { parents: head_of(*k).map(|h| row_of_commit[h]).filter(|&r| r != NO_ROW).map(Parent::Row).into_iter().collect(), kind: NodeKind::Wip, pinned: pinned_wip.get(k).copied(), time: i64::MAX },
+            Entry::Collapsed(r) => view.as_ref().expect("a ⋮ row comes from a view").collapsed_node(*r, commits, &index, &row_of_commit, &collapsed_row),
         })
         .collect();
     let lay = layout(&nodes, &reserved);
@@ -167,25 +210,13 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
             let segments = g.segments.iter().map(|s| s.pack()).collect();
             match e {
                 Entry::Commit(ci) => {
-                    let c = &commits[*ci];
                     RowPayload {
-                        id: c.id.to_string(),
-                        kind: n.kind,
-                        lane: g.lane,
-                        color: g.color,
-                        segments,
-                        summary: c.summary.clone(),
-                        body_first_line: c.body.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string(),
-                        author_name: c.author_name.clone(),
-                        author_email: c.author_email.clone(),
-                        author_time: c.author_time,
-                        committer_time: c.committer_time,
-                        parents: c.parents.iter().map(Oid::to_string).collect(),
-                        // Parsed by the walk from the full message: no second object lookup.
-                        mr_refs: c.mr_refs.clone(),
-                        wip: None,
+                        fold: view.as_ref().and_then(|v| v.fold_mark(*ci, commits)),
+                        ghosts: view.as_ref().map(|v| v.ghosts(*ci, g.lane, commits, &index)).unwrap_or_default(),
+                        ..RowPayload::commit(&commits[*ci], n.kind, g, segments)
                     }
                 }
+                Entry::Collapsed(r) => RowPayload::collapsed(view.as_ref().expect("a ⋮ row comes from a view").collapsed_row(*r, commits), g.lane, g.color, segments),
                 Entry::Wip(k) => {
                     let (wt_idx, counts) = wip[*k];
                     let wt = &worktrees[wt_idx];
@@ -213,6 +244,9 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
                             renamed: counts.renamed,
                             conflicted: counts.conflicted,
                         }),
+                        collapsed: None,
+                        fold: None,
+                        ghosts: vec![],
                     }
                 }
             }
@@ -234,7 +268,7 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
             GraphWorktree { path: w.path.clone(), branch: w.branch.clone(), head: w.head.map(|h| h.to_string()), is_main: w.is_main, locked: w.locked, in_progress }
         })
         .collect();
-    Ok(GraphPayload {
+    let payload = GraphPayload {
         fork: fork.as_ref().map(|f| fork_payload(refs, f)),
         rows,
         labels: build_labels(refs, &head, worktrees, here, &index, &row_of_commit),
@@ -245,20 +279,41 @@ pub fn assemble(input: &GraphInput, walked: &WalkResult) -> Result<GraphPayload,
         open_worktree: worktrees.iter().find(|w| !w.bare && !w.prunable && w.canonical == here).map(|w| w.path.clone()),
         worktrees: worktrees_out,
         in_progress,
-    })
+        view: view.as_ref().map(ViewRows::payload),
+    };
+    Ok((payload, view))
+}
+
+/// The walk `build` lays out: `limit` commits from `graph_tips` over commits in memory.
+fn walk_request(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>) -> WalkResult {
+    let input = &request.input;
+    let tips = graph_tips(&input.refs, &input.worktrees);
+    let opts = WalkOptions { limit: request.limit, first_parent_only: input.refs.stashes.iter().map(|s| s.id).collect() };
+    match walk(&tips, &opts, |id| Ok::<_, std::convert::Infallible>(commits.get(&id).cloned())) {
+        Ok(w) => w,
+        Err(never) => match never {},
+    }
 }
 
 /// The whole pipeline over commits already in memory (the website demo's): walk `limit` commits
 /// from `graph_tips`, then `assemble`.
 pub fn build(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>) -> Result<GraphPayload, String> {
-    let input = &request.input;
-    let tips = graph_tips(&input.refs, &input.worktrees);
-    let opts = WalkOptions { limit: request.limit, first_parent_only: input.refs.stashes.iter().map(|s| s.id).collect() };
-    let walked = match walk(&tips, &opts, |id| Ok::<_, std::convert::Infallible>(commits.get(&id).cloned())) {
-        Ok(w) => w,
-        Err(never) => match never {},
-    };
-    assemble(input, &walked)
+    assemble(&request.input, &walk_request(request, commits))
+}
+
+/// `crate::reveal` over commits in memory (the website demo's), on `build`'s walk.
+pub fn build_reveal(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>, key: &str, below: bool) -> Option<RevealPayload> {
+    crate::view::reveal(&request.input, &walk_request(request, commits), key, below)
+}
+
+/// `crate::preview` over commits in memory (the website demo's), on `build`'s walk.
+pub fn build_preview(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>) -> PresetPreview {
+    crate::view::preview(&request.input, &walk_request(request, commits))
+}
+
+/// `crate::hidden_owner` over commits in memory (the website demo's), on `build`'s walk.
+pub fn build_hidden_owner(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>, sha: &str) -> Option<String> {
+    crate::view::hidden_owner(&request.input, &walk_request(request, commits), sha)
 }
 
 /// The order `build`'s walk collects commits in (newest committer date first, before the
@@ -497,6 +552,17 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(graph_tips(&refs, &[worktree("/demo/.extra/x/wt", 5, "wt", false)]), [id(4), id(3), id(5), id(6), id(7)]);
+    }
+
+    #[test]
+    fn a_view_showing_everything_keeps_the_rows() {
+        let (mut req, commits) = history();
+        let plain = build(&req, &commits).unwrap();
+        req.input.view = Some(crate::ViewSpec::default());
+        let viewed = build(&req, &commits).unwrap();
+        assert_eq!(viewed.rows, plain.rows);
+        assert_eq!(build_reveal(&req, &commits, "branch:no-such-branch", false), None, "a stale key reveals nothing");
+        assert_eq!(build_hidden_owner(&req, &commits, &id(4).to_string()), None, "a row has no hidden owner");
     }
 
     #[test]

@@ -57,10 +57,10 @@ axum = { version = "0.8.9", features = ["ws"] }
 tokio-tungstenite = "0.30"
 # Tauri 3 alpha + the official CEF (Chromium) runtime (Task 14). Pinned exactly: this is an
 # alpha series. See vendor/tauri-runtime-cef/GITVOLT-PATCH.md for the vendored runtime patch.
-tauri = { version = "=3.0.0-alpha.4", features = [] }
-tauri-build = { version = "=3.0.0-alpha.3", features = [] }
-tauri-runtime-cef = "=3.0.0-alpha.5"
-tauri-plugin-clipboard-manager = "=3.0.0-alpha.2"
+tauri = { version = "=3.0.0-alpha.5", features = [] }
+tauri-build = { version = "=3.0.0-alpha.4", features = [] }
+tauri-runtime-cef = "=3.0.0-alpha.6"
+tauri-plugin-clipboard-manager = "=3.0.0-alpha.3"
 # Avatars and URL opening (plan 1B Task 5).
 sha2 = "0.11.0"
 # The harness's generated showcase media (PNG, PDF and ICO streams). Already in the tree through
@@ -72,13 +72,18 @@ dirs = "7.0.0"
 glib = "0.22"
 # Pre-release: the only line compatible with tauri 3 alpha. Only its free function
 # `open_url` is used; the plugin isn't registered and there's no JS package (plan 1C does the same).
-tauri-plugin-opener = "=3.0.0-alpha.2"
+tauri-plugin-opener = "=3.0.0-alpha.3"
 # "Other…" (feedback H32): the xdg-desktop-portal Open With chooser over D-Bus. Already in the
 # tree through tauri-plugin-opener; same version and features.
 zbus = "5.19"
 # The main window's X11 id, the folder-picker portal's parent (plan 1C, spec §13). Already in the
 # tree through tauri; same version.
 raw-window-handle = "0.6.2"
+# The main window's X11 opacity, to keep it see-through until it's placed (window_state.rs, `veil`),
+# set on GDK's own display with its error traps. Both already in the tree through
+# tauri-runtime-cef; same versions and features.
+gdk4-x11 = { version = "0.11.5", features = ["xlib"] }
+x11-dl = "2.21"
 # The active-tab file watcher (plan 1C Task 6): inotify on Linux.
 notify = "8.2.0"
 # Tests only: a constructor that isolates each test process from the host's git config before

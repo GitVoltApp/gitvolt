@@ -1,0 +1,79 @@
+/* The theme editor (theme/editor/): Settings › Appearance's theme cards, editing strip, lane
+   colours, colour rows and live preview. The rows and lanes are reused by the floating editor. */
+.settings-group-hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* Cards: the radio group's cards and the paste card, one grid. */
+.theme-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: 98px; gap: 10px; }
+.theme-cards-group { display: contents; }
+.theme-card { display: flex; flex-direction: column; min-width: 0; padding: 0; border-radius: 8px; border: 1px solid var(--section-border); background: var(--panel-bg0); color: var(--text-selected); font: inherit; text-align: left; overflow: hidden; cursor: pointer; }
+.theme-card:hover { border-color: var(--text-secondary); }
+.theme-card[aria-checked="true"] { outline: 2px solid var(--blue); outline-offset: 1px; }
+.theme-card:focus-visible { outline: 2px solid var(--focus-outline); outline-offset: 1px; }
+.theme-card-preview { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; height: 66px; box-sizing: border-box; padding: 8px; }
+.theme-card-side { border-radius: 3px; }
+.theme-card-lines { display: flex; flex-direction: column; gap: 5px; padding-top: 2px; }
+.theme-card-bar { height: 6px; border-radius: 3px; }
+.theme-card-text { opacity: 0.35; }
+.theme-card-lanes { display: flex; gap: 3px; margin-top: 2px; }
+.theme-card-lanes i { width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 2px solid; }
+.theme-card-name { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 9px; font-size: 12px; border-top: 1px solid var(--section-border); }
+.theme-card-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theme-card-mark { flex: none; color: var(--text-secondary); }
+.theme-card-paste { align-items: center; justify-content: center; gap: 4px; border-style: dashed; background: transparent; color: var(--text-secondary); text-align: center; }
+.theme-card-paste:hover { color: var(--text-selected); }
+.theme-card-paste small { font-size: 11px; color: var(--text-disabled); }
+
+/* The strip under the cards: its sentence (wrapping onto a second line when narrow) beside its
+   buttons. The built-in's hint takes the same height, so nothing moves when one replaces the other. */
+.theme-strip { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; min-height: 66px; box-sizing: border-box; margin-top: 10px; padding: 6px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent); background: color-mix(in srgb, var(--blue) 8%, transparent); font-size: 12px; }
+.theme-strip-hint { border-color: transparent; background: transparent; color: var(--text-secondary); }
+.theme-strip-text { min-width: 0; line-height: 26px; }
+.theme-strip-text b { color: var(--text-selected); }
+.theme-strip input.theme-name { width: 170px; height: 24px; box-sizing: border-box; margin: 0 2px; vertical-align: middle; font: inherit; line-height: 20px; padding: 0 8px; color: var(--text-selected); background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 4px; outline: none; }
+.theme-strip input.theme-name:focus { border-color: var(--blue); }
+.theme-strip-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.theme-strip-actions button { font: inherit; padding: 4px 12px; border-radius: 4px; border: 1px solid var(--section-border); background: var(--panel-bg1); color: var(--text-selected); cursor: pointer; white-space: nowrap; }
+.theme-strip-actions button:hover { background: var(--hover-row); }
+.theme-strip-actions button.primary { border-color: var(--button-primary); background: var(--button-primary); color: var(--text-on-accent); }
+.theme-strip-actions button.danger { color: var(--status-deleted); }
+
+/* Lanes: ten in one row, each a swatch with its hex under it. */
+.theme-lanes { position: relative; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
+.theme-lane { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 6px 2px; border-radius: 6px; border: 1px solid var(--section-border); background: var(--panel-bg0); cursor: grab; touch-action: none; }
+.theme-lane[data-sortable-state="dragging"] { background: var(--panel-bg1); box-shadow: 0 6px 16px var(--shadow-popup); cursor: grabbing; }
+.theme-lane-swatch { display: flex; }
+.theme-lane-hex { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.theme-lanes.compact { display: flex; flex-wrap: nowrap; gap: 4px; }
+.theme-lanes.compact .theme-lane { padding: 3px; border-color: transparent; background: transparent; }
+.theme-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Colours: the rows beside the live preview, which goes under them in a narrow window. */
+.theme-colours-page { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .theme-colours-page { grid-template-columns: minmax(0, 1fr); } }
+.theme-colour-list { container-type: inline-size; }
+.theme-colour-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+@container (max-width: 600px) { .theme-colour-groups { grid-template-columns: minmax(0, 1fr); } }
+.theme-colour-list.compact .theme-colour-groups { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.theme-colour-group h4 { margin: 0 0 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+.theme-colour { display: grid; grid-template-columns: 22px minmax(0, 1fr) 110px; align-items: center; gap: 9px; min-height: 30px; }
+.theme-colour-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-normal); }
+.theme-colour-label small { color: var(--text-secondary); }
+.theme-colour input.theme-colour-value { min-width: 0; box-sizing: border-box; width: 100%; font-family: var(--font-mono); font-size: 12px; padding: 3px 6px; color: var(--text-selected); background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 4px; outline: none; }
+.theme-colour input.theme-colour-value:focus { border-color: var(--blue); }
+.theme-colour input.theme-colour-value[aria-invalid="true"] { border-color: var(--status-deleted); }
+.theme-all-toggle { display: flex; align-items: center; gap: 4px; margin: 10px 0 0; padding: 2px 0; border: 0; background: none; font: inherit; font-size: 12px; color: var(--link); cursor: pointer; }
+.theme-all-toggle svg { transition: transform 0.15s; }
+.theme-all-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.theme-all-toggle small { margin-left: 6px; font-size: 11px; color: var(--text-secondary); }
+.theme-all { margin-top: 8px; }
+.theme-colour-none { margin: 4px 0; font-size: 12px; color: var(--text-secondary); }
+
+/* The live preview: a slice of graph, file list and diff in the applied theme's tokens. */
+.theme-preview { padding: 8px; border-radius: 8px; border: 1px solid var(--section-border); background: var(--app-bg0); font-size: 11px; color: var(--text-normal); user-select: none; }
+.theme-preview-title { margin-bottom: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+/* The graph's own rows and canvas (LivePreview.tsx), edge to edge as in the graph panel, at the
+   app's text size; its own stacking context, as .graph-body is, so the chips stay above the canvas. */
+.theme-preview-graph { position: relative; margin: 0 -8px; overflow: hidden; isolation: isolate; font-size: 13px; pointer-events: none; }
+.theme-preview-file { display: flex; align-items: center; gap: 6px; margin-top: 6px; padding: 4px 6px; border-radius: 4px 4px 0 0; background: var(--panel-bg0); color: var(--text-normal); }
+.theme-preview-diff { padding: 0 6px 6px; border-radius: 0 0 4px 4px; background: var(--panel-bg0); }
+.theme-preview-line { padding: 1px 4px; font-family: var(--font-mono); font-size: 10px; white-space: pre; overflow: hidden; color: var(--text-selected); }

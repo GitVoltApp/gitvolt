@@ -51,7 +51,8 @@ export function inTriangle(p: Pt, t: readonly [Pt, Pt, Pt]): boolean {
 }
 
 const idOf = (r: MenuRow | undefined) => (r && r.kind !== 'separator' ? r.id : null);
-const enabled = (r: MenuRow | undefined) => !!r && r.kind !== 'separator' && !(r.kind === 'action' && r.disabledReason);
+type Interactive = Exclude<MenuRow, { kind: 'separator' | 'header' }>;
+const enabled = (r: MenuRow | undefined) => !!r && r.kind !== 'separator' && r.kind !== 'header' && !(r.kind === 'action' && r.disabledReason);
 const firstEnabled = (rows: MenuRow[]) => Math.max(0, rows.findIndex(enabled));
 const startIndex = (rows: MenuRow[], initial?: string) => {
   const i = initial ? rows.findIndex((r) => idOf(r) === initial) : -1;
@@ -65,7 +66,7 @@ function step(rows: MenuRow[], from: number, dir: 1 | -1): number {
   return from;
 }
 const variantsOf = (r: MenuRow | undefined): Variant[] => (r?.kind === 'action' ? r.variants ?? [] : []);
-const tipOf = (r: Exclude<MenuRow, { kind: 'separator' }>) => (r.kind === 'action' && r.disabledReason) || r.tooltip;
+const tipOf = (r: Interactive) => (r.kind === 'action' && r.disabledReason) || r.tooltip;
 const viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
 /** A first guess at a submenu's box; corrected from its measured size before paint. */
 const subPlace = (anchor: Anchor, rows: MenuRow[]) => placeSubmenu(anchor, { w: SUB_W, h: rows.length * ROW_H + PAD }, viewport());
@@ -309,7 +310,7 @@ export function ContextMenu() {
   const subOpenAt = (depth: number, index: number) => levels[depth + 1]?.parent === index;
   // A row's tooltip sits beside the menu, on the side away from its parent level (a submenu
   // flipped to the left gets its tooltips on the left), never over the rows or the parent.
-  const tipRow = (el: Element, r: Exclude<MenuRow, { kind: 'separator' }>) => {
+  const tipRow = (el: Element, r: Interactive) => {
     // An armed row's label covers the menu's side: no tooltip while one is armed.
     if (useArm.getState().armed?.mode === 'inline') return;
     const depth = Number(el.closest<HTMLElement>('.ctx-level')?.dataset.depth ?? 0);
@@ -334,7 +335,7 @@ export function ContextMenu() {
     });
   };
 
-  const onRowEnterNow = (depth: number, i: number, r: Exclude<MenuRow, { kind: 'separator' }>, el: HTMLElement) => {
+  const onRowEnterNow = (depth: number, i: number, r: Interactive, el: HTMLElement) => {
     setLevels((ls) => ls.map((l, k) => (k === depth ? { ...l, active: i, variant: -1 } : l)));
     if (r.kind === 'submenu') {
       if (subOpenAt(depth, i)) {
@@ -350,7 +351,7 @@ export function ContextMenu() {
     if (levels.length > depth + 1) setLevels((ls) => ls.slice(0, depth + 1));
   };
 
-  const onRowEnter = (depth: number, i: number, r: Exclude<MenuRow, { kind: 'separator' }>, e: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
+  const onRowEnter = (depth: number, i: number, r: Interactive, e: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
     const el = e.currentTarget;
     const g = grace.current;
     // Crossing this level's rows on the way into the submenu: nothing changes yet.
@@ -403,14 +404,14 @@ export function ContextMenu() {
       set({ active, variant: -1 });
       const r = lv.rows[active];
       const el = rowEl(depth, active);
-      if (el && r && r.kind !== 'separator') tipRow(el, r);
+      if (el && r && r.kind !== 'separator' && r.kind !== 'header') tipRow(el, r);
     };
     const toVariant = (v: number) => {
       if (armed) disarm();
       set({ variant: v });
       const vs = variantsOf(row);
       const el = rowEl(depth, lv.active);
-      if (v < 0) { if (el && row && row.kind !== 'separator') tipRow(el, row); return; }
+      if (v < 0) { if (el && row && row.kind !== 'separator' && row.kind !== 'header') tipRow(el, row); return; }
       const button = el?.querySelectorAll('.ctx-variant')[v];
       if (button) tipVariant(button, vs[v]);
     };
@@ -475,12 +476,21 @@ export function ContextMenu() {
       className="ctx-level"
       data-depth={depth}
       role={depth ? 'menu' : undefined}
-      aria-label={depth && parent && parent.kind !== 'separator' ? parent.label : undefined}
+      aria-label={depth && parent && parent.kind !== 'separator' && parent.kind !== 'header' ? parent.label : undefined}
       style={depth ? { left: lv.left, top: lv.top } : undefined}
       onPointerEnter={() => onLevelEnter(depth)}
     >
       {lv.rows.map((r, i) => {
         if (r.kind === 'separator') return <div key={`sep${i}`} className="ctx-sep" role="separator" />;
+        if (r.kind === 'header') {
+          return (
+            <div key={r.id} className="ctx-header" role="presentation" data-row-id={r.id}>
+              {r.swatch && <span className="ctx-header-swatch" style={{ background: r.swatch }} aria-hidden />}
+              <span className="ctx-label">{r.label}</span>
+              {r.detail && <span className="ctx-header-detail">{r.detail}</span>}
+            </div>
+          );
+        }
         const Icon = r.icon;
         const active = i === lv.active;
         const disabled = r.kind === 'action' && !!r.disabledReason;
@@ -518,6 +528,7 @@ export function ContextMenu() {
             }}
           >
             <Icon size={14} className="ctx-icon" aria-hidden />
+            {r.kind === 'action' && r.swatch && <span className="ctx-swatch" style={{ background: r.swatch }} aria-hidden />}
             <span className="ctx-label">{r.label}</span>
             {r.kind === 'action' && r.shortcut && <span className="ctx-shortcut">{displayChord(r.shortcut)}</span>}
             {r.kind === 'submenu' && <ChevronRight size={12} className="ctx-chevron" aria-hidden />}
@@ -605,7 +616,7 @@ export function ContextMenu() {
       ref={rootRef}
       role="menu"
       aria-label={label ?? 'Context menu'}
-      aria-activedescendant={activeRow && activeRow.kind !== 'separator' ? `${rowId(deepest, shown[deepest].active)}${onOption && armed?.req.option ? '-option' : ''}` : undefined}
+      aria-activedescendant={activeRow && activeRow.kind !== 'separator' && activeRow.kind !== 'header' ? `${rowId(deepest, shown[deepest].active)}${onOption && armed?.req.option ? '-option' : ''}` : undefined}
       tabIndex={-1}
       className="ctx-menu"
       data-testid="context-menu"

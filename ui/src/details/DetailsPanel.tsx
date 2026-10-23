@@ -5,8 +5,7 @@ import type { DiffSpec } from '../api/gen/DiffSpec';
 import { copyText } from '../api/transport';
 import { FileList } from '../files/FileList';
 import { useReviewRowBadge } from '../forge/review/ReviewBadge';
-import { useAppState } from '../app/state';
-import { formatDate } from '../format/date';
+import { DateText } from '../format/DateText';
 import { shortSha } from '../format/sha';
 import { perf } from '../perf';
 import { useFocusZone } from '../repo/focus';
@@ -19,6 +18,7 @@ import { Avatar } from '../avatars/Avatar';
 import { LARGEST_AVATAR_PX } from '../avatars/avatarStore';
 import { HoverTooltip, useHoverTooltip } from '../ui/HoverTooltip';
 import { useRepoContext } from '../app/repoContext';
+import { goToCommit } from '../app/graphNav';
 import { HeadMessageEditor } from './HeadMessageEditor';
 import { CommitBox } from '../commit/CommitBox';
 import { CoAuthors, personLabel } from './CoAuthors';
@@ -65,11 +65,11 @@ function HashButton({ hash, testId, tip, onClick }: { hash: string; testId: stri
  * committer gets their own row, which carries the committed date; and co-authors.
  */
 function CommitHeader({ d }: { d: CommitDetailsPayload }) {
-  const dateFormat = useAppState((s) => s.settings.dateFormat);
   const toast = useToast((s) => s.show);
   const selectById = useRepoView((s) => s.selectCommitById);
+  const { tabId } = useRepoContext();
   const committerDiffers = d.committer.name !== d.author.name || d.committer.email !== d.author.email;
-  const commitDate = <span data-testid="commit-date">{formatDate(d.committer.time, dateFormat)}</span>;
+  const commitDate = <DateText at={d.committer.time} testId="commit-date" />;
   return (
     <header className="commit-header">
       <div className="commit-ids panel-bar">
@@ -81,7 +81,7 @@ function CommitHeader({ d }: { d: CommitDetailsPayload }) {
         <span className="parents">
           {d.parents.length > 0 && <><span className="id-label">{d.parents.length > 1 ? 'parents:' : 'parent:'}</span>{' '}</>}
           {d.parents.map((p) => (
-            <HashButton key={p} hash={p} testId="parent-sha" tip="Go to parent commit" onClick={() => { if (!selectById(p)) toast('Not in the loaded history'); }} />
+            <HashButton key={p} hash={p} testId="parent-sha" tip="Go to parent commit" onClick={() => { if (!selectById(p)) goToCommit(tabId, p, {}, () => toast('Not in the loaded history')); }} />
           ))}
         </span>
       </div>
@@ -89,7 +89,7 @@ function CommitHeader({ d }: { d: CommitDetailsPayload }) {
         <Person name={d.author.name} email={d.author.email} size={LARGEST_AVATAR_PX} />
         <span className="person-dates">
           {!committerDiffers && commitDate}
-          {d.author.time !== d.committer.time && <span data-testid="author-date" className="dim">authored {formatDate(d.author.time, dateFormat)}</span>}
+          {d.author.time !== d.committer.time && <DateText at={d.author.time} prefix="authored" testId="author-date" className="dim" />}
         </span>
       </div>
       {committerDiffers && (

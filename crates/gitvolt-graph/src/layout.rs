@@ -1,8 +1,8 @@
 use crate::Oid;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum NodeKind {
@@ -10,6 +10,8 @@ pub enum NodeKind {
     Merge,
     Stash,
     Wip,
+    /// A collapsed branch's ⋮ row: no node of its own, its first parent's lane dotted.
+    Collapsed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -44,6 +46,8 @@ pub struct Segment {
     pub half: Half,
     pub color: u8,
     pub dashed: bool,
+    /// A collapsed run's lane, from its ⋮ row down to its oldest commit.
+    pub dotted: bool,
 }
 
 const MAX_PACKED_LANE: u16 = 1023;
@@ -53,7 +57,7 @@ impl Segment {
     pub fn pack(self) -> u32 {
         let from = u32::from(self.from_lane.min(MAX_PACKED_LANE));
         let to = u32::from(self.to_lane.min(MAX_PACKED_LANE));
-        from | (to << 10) | ((self.half as u32) << 20) | (u32::from(self.color & 0xf) << 22) | (u32::from(self.dashed) << 26)
+        from | (to << 10) | ((self.half as u32) << 20) | (u32::from(self.color & 0xf) << 22) | (u32::from(self.dashed) << 26) | (u32::from(self.dotted) << 27)
     }
 
     pub fn unpack(v: u32) -> Self {
@@ -68,6 +72,7 @@ impl Segment {
             half,
             color: ((v >> 22) & 0xf) as u8,
             dashed: (v >> 26) & 1 == 1,
+            dotted: (v >> 27) & 1 == 1,
         }
     }
 }
@@ -102,6 +107,8 @@ struct Lane {
     /// The committer time of the newest commit on the chain that set the home, or `NO_TIME`.
     newest: i64,
     dashed: bool,
+    /// A collapsed run's lane: set by a ⋮ row for its first parent (its oldest commit).
+    dotted: bool,
     /// `wait` lands in this lane.
     home: bool,
     /// A merge has `wait` as a parent, so its home never moves again: merge lines run straight
@@ -112,8 +119,8 @@ struct Lane {
 }
 
 impl Lane {
-    fn new(wait: Wait, dashed: bool) -> Self {
-        Lane { wait, newest: NO_TIME, dashed, home: false, locked: false, by_stash: false }
+    fn new(wait: Wait, dashed: bool, dotted: bool) -> Self {
+        Lane { wait, newest: NO_TIME, dashed, dotted, home: false, locked: false, by_stash: false }
     }
 }
 
@@ -163,6 +170,17 @@ impl LayoutState {
         }
     }
 
+    /// A line already running down into the rows to come, as a graph row's line runs on into a
+    /// reveal panel under it: lane `lane` waits for row `r` as its home, locked so no later child
+    /// moves it. Before the first `push`, one line per row.
+    pub(crate) fn enter(&mut self, lane: u16, r: u32) {
+        let lane = usize::from(lane);
+        if self.lanes.len() <= lane {
+            self.lanes.resize(lane + 1, None);
+        }
+        self.lanes[lane] = Some(Lane { home: true, locked: true, ..Lane::new(Wait::Row(r), false, false) });
+    }
+
     /// Lays out row `r`, which must come after every row pushed so far.
     pub fn push(&mut self, r: u32, node: &LayoutNode) -> GraphRow {
         // The lanes still kept for their pinned chains: nothing else opens in them.
@@ -205,10 +223,10 @@ impl LayoutState {
         for (i, slot) in lanes.iter_mut().enumerate() {
             let Some(l) = *slot else { continue };
             if l.wait == me {
-                segments.push(Segment { from_lane: i as u16, to_lane: lane as u16, half: Half::Top, color: color_of(i), dashed: l.dashed });
+                segments.push(Segment { from_lane: i as u16, to_lane: lane as u16, half: Half::Top, color: color_of(i), dashed: l.dashed, dotted: l.dotted });
                 *slot = None;
             } else {
-                segments.push(Segment { from_lane: i as u16, to_lane: i as u16, half: Half::Full, color: color_of(i), dashed: l.dashed });
+                segments.push(Segment { from_lane: i as u16, to_lane: i as u16, half: Half::Full, color: color_of(i), dashed: l.dashed, dotted: l.dotted });
             }
         }
 
@@ -216,6 +234,8 @@ impl LayoutState {
         let merge = node.kind == NodeKind::Merge;
         let stash = node.kind == NodeKind::Stash;
         for (k, parent) in node.parents.iter().enumerate() {
+            // A ⋮ row's line down to its run's oldest commit.
+            let dotted = node.kind == NodeKind::Collapsed && k == 0;
             let wait = match *parent {
                 Parent::Row(p) => Wait::Row(p),
                 Parent::Outside(id) => Wait::Outside(id),
@@ -261,9 +281,9 @@ impl LayoutState {
                 lanes.resize(target + 1, None);
             }
             if lanes[target].is_none() {
-                lanes[target] = Some(Lane::new(wait, dashed));
+                lanes[target] = Some(Lane::new(wait, dashed, dotted));
             }
-            segments.push(Segment { from_lane: lane as u16, to_lane: target as u16, half: Half::Bottom, color: color_of(target), dashed });
+            segments.push(Segment { from_lane: lane as u16, to_lane: target as u16, half: Half::Bottom, color: color_of(target), dashed, dotted });
 
             match held {
                 None => {
@@ -325,4 +345,65 @@ pub fn layout(nodes: &[LayoutNode], reserved: &[u32]) -> Layout {
     let mut state = LayoutState::new(reserved);
     let rows = nodes.iter().enumerate().map(|(r, n)| state.push(r as u32, n)).collect();
     Layout { rows, max_lanes: state.max_lanes() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_dotted_segment_round_trips_through_pack() {
+        let s = Segment { from_lane: 3, to_lane: 3, half: Half::Full, color: 3, dashed: false, dotted: true };
+        assert_eq!(Segment::unpack(s.pack()), s);
+        assert_eq!(s.pack() >> 27 & 1, 1);
+        let plain = Segment { dotted: false, ..s };
+        assert_eq!(plain.pack() >> 27 & 1, 0, "a plain segment packs as before");
+    }
+
+    #[test]
+    fn only_a_collapsed_rows_first_parent_lane_is_dotted() {
+        let node = |parents: &[u32], kind| LayoutNode { parents: parents.iter().map(|&p| Parent::Row(p)).collect(), kind, pinned: None, time: 0 };
+        // tip → ⋮ → oldest, and another branch onto the oldest beside the dotted lane.
+        let nodes = [node(&[1], NodeKind::Commit), node(&[3], NodeKind::Collapsed), node(&[3], NodeKind::Commit), node(&[], NodeKind::Commit)];
+        let lay = layout(&nodes, &[]);
+        let dotted = |r: usize| -> Vec<(u16, Half)> { lay.rows[r].segments.iter().filter(|s| s.dotted).map(|s| (s.from_lane, s.half)).collect() };
+        assert_eq!(dotted(0), []);
+        assert_eq!(dotted(1), [(0, Half::Bottom)]);
+        assert_eq!(dotted(2), [(0, Half::Full)], "lane 1's own line is solid");
+        assert_eq!(dotted(3), [(0, Half::Top)]);
+    }
+
+    fn node(parents: &[u32], kind: NodeKind) -> LayoutNode {
+        LayoutNode { parents: parents.iter().map(|&p| Parent::Row(p)).collect(), kind, pinned: None, time: 0 }
+    }
+
+    /// The rows' dotted segments: (row, lane, half).
+    fn dotted_segments(lay: &Layout) -> Vec<(usize, u16, Half)> {
+        lay.rows.iter().enumerate().flat_map(|(r, row)| row.segments.iter().filter(|s| s.dotted).map(move |s| (r, s.from_lane, s.half))).collect()
+    }
+
+    #[test]
+    fn a_collapsed_row_draws_a_dotted_lane_down_to_its_oldest_commit() {
+        // main2 (pinned) on lane 0; tip → ⋮ → (a main commit between) → oldest → main2.
+        let mut nodes = vec![node(&[1], NodeKind::Commit), node(&[3], NodeKind::Collapsed), node(&[4], NodeKind::Commit), node(&[4], NodeKind::Commit), node(&[], NodeKind::Commit)];
+        for n in [2, 4] {
+            nodes[n].pinned = Some(0);
+        }
+        let lay = layout(&nodes, &[u32::MAX]);
+        crate::check_continuity(&lay, &nodes).unwrap();
+        let l = lay.rows[1].lane;
+        assert_eq!((lay.rows[0].lane, l, lay.rows[3].lane), (1, 1, 1));
+        assert_eq!(dotted_segments(&lay), [(1, l, Half::Bottom), (2, l, Half::Full), (3, l, Half::Top)], "the ⋮ lane only, from the ⋮ row to the oldest");
+    }
+
+    #[test]
+    fn a_collapsed_row_with_extra_parents_draws_solid_merge_lines() {
+        // ⋮'s parents: its oldest (row 2), then a trunk commit (row 3) a middle commit merged.
+        let mut nodes = vec![node(&[1], NodeKind::Commit), node(&[2, 3], NodeKind::Collapsed), node(&[3], NodeKind::Commit), node(&[], NodeKind::Commit)];
+        nodes[3].pinned = Some(0);
+        let lay = layout(&nodes, &[u32::MAX]);
+        crate::check_continuity(&lay, &nodes).unwrap();
+        let bottoms: Vec<(u16, bool)> = lay.rows[1].segments.iter().filter(|s| s.half == Half::Bottom).map(|s| (s.to_lane, s.dotted)).collect();
+        assert_eq!(bottoms, [(1, true), (2, false)], "only the first parent's line is dotted");
+    }
 }

@@ -282,16 +282,16 @@ describe('RefLabels', () => {
 });
 
 describe('RefLabels and the theme', () => {
-  it("colours the chip, its connector and the dimmed membership chip in the theme's lanes, overrides included", () => {
-    act(() => useTheme.getState().set('default-dark', {}));
+  it("colours the chip, its connector and the dimmed membership chip in the theme's lanes, a custom theme's included", () => {
+    act(() => useTheme.getState().set(THEMES['default-dark']));
     const { container } = render(<RefLabels labels={[remoteOnly('topic', 'origin')]} color={2} membership={{ name: 'x', color: 3, ref: 'refs/heads/x' }} />);
     const lane = () => (container.querySelector('.ref-labels') as HTMLElement).style.getPropertyValue('--lane-color');
     const dim = () => (container.querySelector('.ref-label-dim') as HTMLElement).style.getPropertyValue('--lane-color');
     expect(lane()).toBe(THEMES['default-dark'].graph[2]);
-    act(() => useTheme.getState().set('dracula', { dracula: [null, null, '#123456'] }));
+    act(() => useTheme.getState().set({ ...THEMES.dracula, graph: THEMES.dracula.graph.map((c, i) => (i === 2 ? '#123456' : c)) }));
     expect(lane()).toBe('#123456');
     expect(dim()).toBe(THEMES.dracula.graph[3]);
-    act(() => useTheme.getState().set('default-dark', {}));
+    act(() => useTheme.getState().set(THEMES['default-dark']));
   });
 });
 

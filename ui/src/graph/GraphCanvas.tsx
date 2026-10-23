@@ -47,6 +47,8 @@ interface Props {
   alsoSelected?: ReadonlySet<number>;
   /** The checked-out branch's row, whose connector is a graph line (J21); -1 or omitted: none. */
   headRow?: number;
+  /** A fold's reveal panel is open (draw.ts `foldOpen`). Keep it stable. */
+  foldOpen?: { row: number; lane: number };
   ref?: Ref<GraphCanvasHandle>;
 }
 
@@ -66,7 +68,7 @@ interface Live {
  * and is redrawn imperatively (`sync()`, from GraphView's scroll handler) only when the viewport
  * nears the band's edge: no React render moves it. Props redraw it in a layout effect.
  */
-export const GraphCanvas = memo(function GraphCanvas({ rows, scroller, width, height, left, metrics, labeledRows, avatar, avatarVersion, clipped = false, scrollX = 0, id, selected = -1, alsoSelected, headRow = -1, ref }: Props) {
+export const GraphCanvas = memo(function GraphCanvas({ rows, scroller, width, height, left, metrics, labeledRows, avatar, avatarVersion, clipped = false, scrollX = 0, id, selected = -1, alsoSelected, headRow = -1, foldOpen, ref }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dpr = useDevicePixelRatio();
   // The theme's canvas colours: a new object on every theme or lane-override change, so the draw
@@ -100,11 +102,11 @@ export const GraphCanvas = memo(function GraphCanvas({ rows, scroller, width, he
       const last = Math.min(rows.length, Math.ceil((band.top + band.height) / metrics.rowH) + 1);
       const t0 = PROBE ? performance.now() : 0;
       // `scrollTop` is the content y at the canvas's top edge: the band's.
-      drawGraph(ctx, { rows, first, last, scrollTop: band.top, width, height: band.height, metrics, colors: colors.graph, nodeFill: colors.nodeFill, avatarBackdrop: colors.avatarBackdrop, laneText: colors.laneText, nodeText: colors.nodeText, stripColor: colors.collapseStrip, labeledRows, dpr, avatar, clipped, scrollX, selected, alsoSelected, headRow });
+      drawGraph(ctx, { rows, first, last, scrollTop: band.top, width, height: band.height, metrics, colors: colors.graph, nodeFill: colors.nodeFill, avatarBackdrop: colors.avatarBackdrop, laneText: colors.laneText, nodeText: colors.nodeText, stripColor: colors.collapseStrip, labeledRows, dpr, avatar, clipped, scrollX, selected, alsoSelected, headRow, foldOpen });
       if (PROBE) window.__gbGraphDraws?.push(performance.now() - t0);
     };
     syncBand(l, scroller, true);
-  }, [rows, width, height, metrics, labeledRows, dpr, avatar, avatarVersion, clipped, scrollX, selected, alsoSelected, headRow, colors, scroller]);
+  }, [rows, width, height, metrics, labeledRows, dpr, avatar, avatarVersion, clipped, scrollX, selected, alsoSelected, headRow, foldOpen, colors, scroller]);
 
   // `data-strip`: no lane fits, the column is a strip of nodes (F11); for tests and e2e.
   const strip = graphLayout(width, metrics, clipped || scrollX > 0).strip;

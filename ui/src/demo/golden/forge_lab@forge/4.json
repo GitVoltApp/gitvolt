@@ -16,6 +16,9 @@
         "author": {
           "avatarUrl": null,
           "email": "lars@example.com",
+          "emails": [
+            "lars@example.com"
+          ],
           "id": 103,
           "name": "Lars Tidemann",
           "username": "lars",
@@ -48,6 +51,9 @@
         "author": {
           "avatarUrl": null,
           "email": "ada@example.com",
+          "emails": [
+            "ada@example.com"
+          ],
           "id": 101,
           "name": "Ada Lovelace",
           "username": "ada",
@@ -84,6 +90,9 @@
         "author": {
           "avatarUrl": null,
           "email": "ada@example.com",
+          "emails": [
+            "ada@example.com"
+          ],
           "id": 101,
           "name": "Ada Lovelace",
           "username": "ada",
@@ -120,6 +129,9 @@
         "author": {
           "avatarUrl": null,
           "email": "grace@example.com",
+          "emails": [
+            "grace@example.com"
+          ],
           "id": 102,
           "name": "Grace Hopper",
           "username": "grace",
@@ -155,6 +167,9 @@
         "author": {
           "avatarUrl": null,
           "email": "ada@example.com",
+          "emails": [
+            "ada@example.com"
+          ],
           "id": 101,
           "name": "Ada Lovelace",
           "username": "ada",

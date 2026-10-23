@@ -33,8 +33,9 @@ const RESERVED = [
 ];
 
 /** Key hints the app's actions may share: they're bound to a focused field or view of their own
- * (the commit message, the rebase editor, the MR/PR forms), which the action yields to. */
-const SHARED_WITH_HINTS = new Set(['Ctrl+Enter', 'Ctrl+Z', 'Ctrl+Shift+Z', 'F7', 'Shift+F7', 'Shift+Up', 'Shift+Down']);
+ * (the commit message, the rebase editor, the MR/PR forms, a Settings page's paste), which the action
+ * yields to. */
+const SHARED_WITH_HINTS = new Set(['Ctrl+V', 'Ctrl+Enter', 'Ctrl+Z', 'Ctrl+Shift+Z', 'F7', 'Shift+F7', 'Shift+Up', 'Shift+Down']);
 
 const label = (a: Action) => a.label;
 const bound = () => all.flatMap((a) => (a.keysBy ? [] : (a.shortcuts ?? []).map((k) => ({ k, a }))));

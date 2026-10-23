@@ -1,13 +1,13 @@
 GitVolt: the English (US) spell-check dictionary
 ================================================
 
-GitVolt ships Chromium's en-US Hunspell dictionary, en-US-10-1.bdic, so the spell checker of its
+GitVolt ships Chromium's en-US Hunspell dictionary, en-US-10-2.bdic, so the spell checker of its
 embedded Chromium works without downloading it.
 
-  File:    en-US-10-1.bdic (451,968 bytes,
-           SHA-256 a075b01d9b015c616511a9e87da77da3d9881621db32f584e4606ddabf1c1100)
+  File:    en-US-10-2.bdic (451,982 bytes,
+           SHA-256 b0d80e6b6c5491879365e176ecbd98074602a663429bcfcfb0a5a8375c051f13)
   Source:  https://chromium.googlesource.com/chromium/deps/hunspell_dictionaries
-           at commit cccf64a8acc951afe3f47fee023908e55699bc58 (the commit Chromium 152.0.7977.83's
+           at commit cee14e319bb7603a1157bb4d1e216be64ee82b77 (the commit Chromium 154.0.8037.98's
            DEPS pins), the same file Chromium downloads for en-US.
   Made of: en_US.dic and en_US.aff, the en_US Hunspell dictionary derived from SCOWL
            (version 2020.12.07, by Kevin Atkinson; its README follows, with the copyright and

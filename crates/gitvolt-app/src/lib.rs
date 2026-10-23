@@ -216,9 +216,9 @@ fn opened_folders(urls: &[tauri::Url]) -> Vec<PathBuf> {
     urls.iter().filter(|u| u.scheme() == "file").filter_map(|u| u.to_file_path().ok()).filter(|p| p.is_dir()).map(|p| p.components().collect()).collect()
 }
 
-/// The spell-check dictionary: Chromium's own en-US one, under the name Chromium 152 looks for
+/// The spell-check dictionary: Chromium's own en-US one, under the name Chromium 154 looks for
 /// (docs/licensing.md has its source and license).
-const DICTIONARY: &str = "en-US-10-1.bdic";
+const DICTIONARY: &str = "en-US-10-2.bdic";
 
 /// Where the packages put the app's own files: beside the binary, or on macOS the bundle's
 /// `Contents/Resources` (tauri.macos.conf.json).
@@ -396,7 +396,7 @@ pub fn run() {
     let parent: ParentWindow = Arc::default();
     let quit: QuitSlot = Arc::default();
     let quit_slot = quit.clone();
-    let mut built = build_api(cli, launch, child_env, quit).with_runtime_info("tauri 3.0.0-alpha.4 · tauri-runtime-cef 3.0.0-alpha.5 (GitVolt patch: CEF #3002)");
+    let mut built = build_api(cli, launch, child_env, quit).with_runtime_info("tauri 3.0.0-alpha.5 · tauri-runtime-cef 3.0.0-alpha.6 (GitVolt patch: CEF #3002)");
     if let Some(h) = log_handle {
         built = built.with_log_handle(h);
     }
@@ -471,6 +471,8 @@ pub fn run() {
             // K46: the window opens where it was last (window_state.rs). The builder's position
             // and size are applied before the window is first mapped, so it never shows at the
             // default place first; maximizing waits until it's on screen, on the right monitor.
+            // A window manager that places it elsewhere anyway (mutter) is corrected once it's
+            // shown (`settle`).
             let can_position = window_state::can_self_position_now();
             let saved = window_store.window();
             let available = app.available_monitors().unwrap_or_default();
@@ -488,11 +490,21 @@ pub fn run() {
                     builder = builder.position(x, y);
                 }
             }
+            // Until it's settled the window is see-through, so the window manager's own placement
+            // never shows (`veil`).
+            let veiled = window_state::veiled(place.as_ref());
+            if veiled {
+                builder = builder.visible(false);
+            }
             let window = builder.build()?;
+            let veil = if veiled { window_state::veil(&window) } else { None };
             if place.as_ref().is_some_and(|p| p.maximized)
                 && let Err(e) = window.maximize()
             {
                 tracing::warn!("couldn't maximize the restored window: {e}");
+            }
+            if let Some(p) = place {
+                window_state::settle(&window, p, &screens, veil);
             }
             window_state::track(&window, window_store.clone(), can_position, (cfg.width, cfg.height));
             // R19: answer later launches now that there's a window to focus. One that came while
@@ -705,11 +717,11 @@ mod tests {
         }
     }
 
-    /// The file Chromium 152 asks for (`spellcheck_common.cc`: en-US is version 10-1), in its
+    /// The file Chromium 154 asks for (`spellcheck_common.cc`: en-US is version 10-2), in its
     /// `.bdic` format.
     #[test]
     fn the_bundled_dictionary_is_chromiums_en_us_bdic() {
-        assert_eq!(DICTIONARY, "en-US-10-1.bdic");
+        assert_eq!(DICTIONARY, "en-US-10-2.bdic");
         let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("dictionaries").join(DICTIONARY)).unwrap();
         assert_eq!(&bytes[..4], b"BDic");
     }

@@ -290,5 +290,82 @@
    "repo": "$repo",
    "remoteRef": "refs/remotes/origin/main"
   }
+ },
+ {
+  "method": "graph",
+  "params": {
+   "repo": "$repo",
+   "limit": null,
+   "view": {
+    "rules": [
+     {
+      "action": "show",
+      "matcher": {
+       "kind": "trunk"
+      }
+     },
+     {
+      "action": "show",
+      "matcher": {
+       "kind": "checkedOut"
+      }
+     },
+     {
+      "action": "show",
+      "matcher": {
+       "kind": "commitsBy",
+       "author": {
+        "kind": "me"
+       }
+      }
+     }
+    ],
+    "otherwise": "hide",
+    "picks": {
+     "shown": [],
+     "hidden": []
+    },
+    "foldMerged": false,
+    "ghostLines": true,
+    "trunkPatterns": [],
+    "expanded": [],
+    "placement": "keepDateOrder"
+   }
+  }
+ },
+ {
+  "method": "graphReveal",
+  "params": {
+   "repo": "$repo",
+   "limit": null,
+   "view": {
+    "rules": [
+     {
+      "action": "show",
+      "matcher": {
+       "kind": "trunk"
+      }
+     },
+     {
+      "action": "show",
+      "matcher": {
+       "kind": "checkedOut"
+      }
+     }
+    ],
+    "otherwise": "collapse",
+    "picks": {
+     "shown": [],
+     "hidden": []
+    },
+    "foldMerged": true,
+    "ghostLines": true,
+    "trunkPatterns": [],
+    "expanded": [],
+    "placement": "keepDateOrder"
+   },
+   "key": "fold:9ca365ee5aa057c07a3d39385eb10310b7be9cdc",
+   "below": true
+  }
  }
 ]

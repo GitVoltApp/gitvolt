@@ -81,6 +81,8 @@ pub struct AppSettings {
     /// Commits loaded per graph (`snapshot::DEFAULT_COMMIT_LIMIT` by default).
     pub commit_limit: u32,
     pub date_format: DateFormat,
+    /// Show dates as "5 minutes ago"; the exact format shows on hover.
+    pub relative_dates: bool,
     pub gravatar: bool,
     /// Writes `debug`-level lines to the log file (spec §16.2).
     pub debug_logging: bool,
@@ -105,12 +107,46 @@ pub struct AppSettings {
     /// the theme's own colour. The UI validates the entries; an invalid one shows the theme's.
     #[ts(type = "Record<string, (string | null)[]>")]
     pub graph_color_overrides: BTreeMap<String, Vec<Option<String>>>,
+    /// The themes the user made; the UI moves `graph_color_overrides` into these once.
+    pub custom_themes: Vec<CustomTheme>,
     /// The main window's last normal geometry (K46). Owned by the app shell, not the UI: it's
     /// left out of the TypeScript bindings, and `save_settings` keeps the store's own value
     /// whatever the UI sends back. Absent in files written before it existed.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(skip)]
     pub window: Option<WindowGeometry>,
+    // --- branch presets ---
+    /// The presets available in all repositories, in list (and cycle) order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branch_presets: Vec<gitvolt_graph::BranchPreset>,
+    /// The built-in presets' order and cycle ticks.
+    pub builtin_presets: Vec<gitvolt_graph::PresetSlot>,
+    /// Graph › "Open collapsed commits on hover".
+    pub collapse_hover_open: bool,
+    /// Graph › "Collapsed branches".
+    pub collapse_placement: gitvolt_graph::CollapsePlacement,
+    // --- end branch presets ---
+}
+
+/// All, All collapsed and Mine, each in the cycle.
+fn default_builtin_presets() -> Vec<gitvolt_graph::PresetSlot> {
+    ["all", "all-collapsed", "mine"].into_iter().map(|id| gitvolt_graph::PresetSlot { id: id.into(), in_cycle: true }).collect()
+}
+
+/// A theme the user made (Settings › Appearance): a built-in base plus the colours they set.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct CustomTheme {
+    /// `custom-<8 hex>`; `AppSettings.theme` names it when it's the current theme.
+    pub id: String,
+    pub name: String,
+    /// The built-in theme it was made from (its kind, editor theme and unset colours).
+    pub base: String,
+    /// Colour token → CSS colour, only the tokens the user set. The UI validates them.
+    pub colors: BTreeMap<String, String>,
+    /// The ten lane colours (`#rrggbb`); empty: the base theme's.
+    pub graph: Vec<String>,
 }
 
 /// Where the main window was, in logical (DPI-independent) pixels: its last normal (not
@@ -154,6 +190,7 @@ impl Default for AppSettings {
             prune: true,
             commit_limit: 2000,
             date_format: DateFormat::Ymd12h,
+            relative_dates: false,
             gravatar: true,
             debug_logging: false,
             sync_button: SyncButtonMode::FetchAll,
@@ -163,7 +200,14 @@ impl Default for AppSettings {
             update_prereleases: false,
             update_arch_method: None,
             graph_color_overrides: BTreeMap::new(),
+            custom_themes: Vec::new(),
             window: None,
+            // --- branch presets ---
+            branch_presets: Vec::new(),
+            builtin_presets: default_builtin_presets(),
+            collapse_hover_open: true,
+            collapse_placement: gitvolt_graph::CollapsePlacement::KeepDateOrder,
+            // --- end branch presets ---
         }
     }
 }
@@ -326,6 +370,38 @@ pub struct RepoSettings {
     pub branch_update: Option<crate::forge::BranchUpdate>,
     /// The commit panel's "committing to main in your fork" notice was dismissed for this repo.
     pub fork_trunk_notice_dismissed: bool,
+    // --- branch presets ---
+    /// The current branch preset's id; `None`: `"all"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub branch_preset: Option<String>,
+    /// This repository's own presets, in list (and cycle) order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branch_presets: Vec<gitvolt_graph::BranchPreset>,
+    /// The repository's Custom preset (id `"custom"`), made by the first hide on a built-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub custom_preset: Option<gitvolt_graph::BranchPreset>,
+    /// Branches hidden or shown by hand, by preset id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub branch_picks: BTreeMap<String, gitvolt_graph::BranchPicks>,
+    /// Extra trunk branches (globs), beside the pinned trunk.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trunk_patterns: Vec<String>,
+    // --- end branch presets ---
+}
+
+/// One file-colours scope (spec 2026-10-22): ordered glob patterns that share a tint.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct FileScope {
+    pub id: String,
+    pub name: String,
+    /// A preset name or `#rrggbb`.
+    pub tint: String,
+    pub patterns: Vec<String>,
+    pub start_collapsed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -366,6 +442,8 @@ pub struct Profile {
     // --- end 4B T6 ---
     /// Keyed by canonical repo path.
     pub repos: BTreeMap<String, RepoSettings>,
+    /// File colours (spec 2026-10-22): each repository's scopes, in order, keyed by its canonical common git dir.
+    pub file_colours: BTreeMap<String, Vec<FileScope>>,
     // --- 4A T5 ---
     /// Forge accounts (spec #4 §3.2): host, kind, user, where the token is (never the token).
     /// Owned by the store (`set_forge_accounts`): left out of the TypeScript bindings, and
@@ -401,6 +479,7 @@ impl Default for Profile {
             flyout_width: None,
             // --- end 4B T6 ---
             repos: BTreeMap::new(),
+            file_colours: BTreeMap::new(),
             forge_accounts: Vec::new(),
         }
     }
@@ -933,6 +1012,27 @@ mod tests {
     }
 
     #[test]
+    fn file_colours_round_trip_through_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::open(dir.path());
+        let mut p = store.active_profile();
+        let scope = FileScope { id: "s1".into(), name: "Tests".into(), tint: "green".into(), patterns: vec!["**/tests/**".into(), "!**/tests/fixtures/**".into()], start_collapsed: true };
+        p.file_colours.insert("/r/.git".into(), vec![scope.clone()]);
+        store.save_profile(p).unwrap();
+        store.flush_now().unwrap();
+        let again = SettingsStore::open(dir.path()).state();
+        assert_eq!(again.profile.file_colours["/r/.git"], vec![scope]);
+    }
+
+    #[test]
+    fn a_profile_saved_before_file_colours_loads_with_none() {
+        let mut v = serde_json::to_value(Profile::default()).unwrap();
+        v.as_object_mut().unwrap().remove("fileColours");
+        let p: Profile = serde_json::from_value(v).unwrap();
+        assert!(p.file_colours.is_empty());
+    }
+
+    #[test]
     fn tab_groups_and_saved_groups_round_trip_through_the_file() {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::open(dir.path());
@@ -1325,6 +1425,36 @@ mod tests {
     }
 
     #[test]
+    fn relative_dates_default_off_and_round_trip() {
+        let mut v = serde_json::to_value(AppSettings::default()).unwrap();
+        v.as_object_mut().unwrap().remove("relativeDates");
+        let s: AppSettings = serde_json::from_value(v).unwrap();
+        assert!(!s.relative_dates);
+
+        let s = AppSettings { relative_dates: true, ..AppSettings::default() };
+        let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert!(back.relative_dates);
+    }
+
+    #[test]
+    fn custom_themes_default_empty_and_round_trip() {
+        let mut v = serde_json::to_value(AppSettings::default()).unwrap();
+        v.as_object_mut().unwrap().remove("customThemes");
+        let s: AppSettings = serde_json::from_value(v).unwrap();
+        assert!(s.custom_themes.is_empty());
+
+        let theme = r##"{"id":"custom-0a1b2c3d","name":"Nord (Custom)","base":"nord","colors":{"app-bg0":"#2e3440"},"graph":[]}"##;
+        let theme: serde_json::Value = serde_json::from_str(theme).unwrap();
+        let mut v = serde_json::to_value(AppSettings::default()).unwrap();
+        v["customThemes"] = serde_json::Value::Array(vec![theme.clone()]);
+        let s: AppSettings = serde_json::from_value(v).unwrap();
+        let t = &s.custom_themes[0];
+        assert_eq!((t.id.as_str(), t.name.as_str(), t.base.as_str()), ("custom-0a1b2c3d", "Nord (Custom)", "nord"));
+        assert_eq!(t.colors["app-bg0"], "#2e3440");
+        assert_eq!(serde_json::to_value(&s).unwrap()["customThemes"][0], theme);
+    }
+
+    #[test]
     fn closed_tabs_are_capped_keeping_the_newest() {
         let store = SettingsStore::in_memory();
         let mut p = store.active_profile();
@@ -1408,6 +1538,8 @@ mod tests {
 
     #[test]
     fn ts_shapes_are_camel_case() {
+        assert!(serde_json::to_value(FileScope { start_collapsed: true, ..Default::default() }).unwrap().get("startCollapsed").is_some());
+        assert_eq!(serde_json::to_value(Profile::default()).unwrap()["fileColours"], serde_json::json!({}));
         let v = serde_json::to_value(PinSetting::Ref { name: "refs/remotes/origin/main".into() }).unwrap();
         assert_eq!(v, serde_json::json!({"kind": "ref", "name": "refs/remotes/origin/main"}));
         assert_eq!(serde_json::to_value(PinSetting::Off).unwrap(), serde_json::json!({"kind": "off"}));
@@ -1428,4 +1560,50 @@ mod tests {
         assert_eq!(s.sync_button, SyncButtonMode::FetchAll);
         assert_eq!(serde_json::to_value(SyncButtonMode::PullFfOrMerge).unwrap(), "pullFfOrMerge");
     }
+
+    // --- branch presets ---
+    #[test]
+    fn presets_settings_default_and_round_trip() {
+        use gitvolt_graph::{Author, BranchPicks, BranchPreset, CollapsePlacement, Matcher, PresetAction, PresetScope, Rule};
+        let s = AppSettings::default();
+        assert_eq!(s.builtin_presets.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["all", "all-collapsed", "mine"]);
+        assert!(s.builtin_presets.iter().all(|p| p.in_cycle));
+        assert!(s.collapse_hover_open);
+        assert_eq!(s.collapse_placement, CollapsePlacement::KeepDateOrder);
+        let old: AppSettings = serde_json::from_value(serde_json::json!({"version": SETTINGS_VERSION})).unwrap();
+        assert_eq!((old.builtin_presets, old.collapse_hover_open), (s.builtin_presets.clone(), true), "a file from before presets gets the defaults");
+        assert!(serde_json::to_value(&s).unwrap().get("branchPresets").is_none(), "no presets: not written");
+
+        let preset = |id: &str| BranchPreset {
+            id: id.into(),
+            name: "Mine, others folded".into(),
+            color: "green".into(),
+            scope: PresetScope::Repo,
+            rules: vec![Rule { action: PresetAction::Show, matcher: Matcher::CommitsBy { author: Author::Me } }, Rule { action: PresetAction::Collapse, matcher: Matcher::NameMatches { patterns: "feature/*".into() } }],
+            otherwise: PresetAction::Hide,
+            fold_merged: true,
+            ghost_lines: false,
+            in_cycle: true,
+        };
+        let repo = RepoSettings {
+            branch_preset: Some("custom".into()),
+            branch_presets: vec![preset("p1")],
+            custom_preset: Some(preset("custom")),
+            branch_picks: [("custom".to_string(), BranchPicks { shown: vec!["spike/x".into()], hidden: vec!["bot/y".into()] })].into(),
+            trunk_patterns: vec!["release/*".into()],
+            ..Default::default()
+        };
+        let mut p = Profile::new("default", "Default", "#4d88ff");
+        p.repos.insert("/r".into(), repo);
+        let json = serde_json::to_value(&p).unwrap();
+        assert_eq!(json["repos"]["/r"]["branchPicks"]["custom"]["hidden"], serde_json::json!(["bot/y"]));
+        assert_eq!(json["repos"]["/r"]["customPreset"]["rules"][0]["matcher"], serde_json::json!({"kind": "commitsBy", "author": {"kind": "me"}}));
+        assert_eq!(serde_json::from_value::<Profile>(json).unwrap(), p);
+
+        let plain = serde_json::to_value(RepoSettings::default()).unwrap();
+        for key in ["branchPreset", "branchPresets", "customPreset", "branchPicks", "trunkPatterns"] {
+            assert!(plain.get(key).is_none(), "{key} written for a repository without presets");
+        }
+    }
+    // --- end branch presets ---
 }

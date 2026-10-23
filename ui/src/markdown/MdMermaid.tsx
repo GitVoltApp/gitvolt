@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../theme/store';
-import { THEMES } from '../theme/themes';
 import { renderMermaid } from './mermaid';
 import { useNearViewport } from './nearViewport';
 import type { MdMermaidProps } from './types';
@@ -11,7 +10,7 @@ const reason = (e: unknown) => (e instanceof Error ? e.message : String(e)).spli
  * nothing in it can run or load (ruling 11). Until then the source shows; on an error it stays,
  * with the error under it. */
 export function MdMermaid({ source }: MdMermaidProps) {
-  const dark = useTheme((s) => THEMES[s.id].kind === 'dark');
+  const dark = useTheme((s) => s.def.kind === 'dark');
   const box = useRef<HTMLDivElement>(null);
   const near = useNearViewport(box);
   const [state, setState] = useState<{ svg: string } | { error: string } | null>(null);

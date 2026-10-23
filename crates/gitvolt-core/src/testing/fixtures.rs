@@ -46,6 +46,119 @@ pub fn basic(r: &TestRepo) {
     r.write("file_1.txt", "main change\n");
 }
 
+/// Branch presets' repository: a trunk with a deleted and a kept merged branch, a long pushed
+/// branch by two authors, a bot's remote-only branch, a teammate's local spike, a release
+/// branch, and two of "your" branches (the repository's `user.email` is `you@example.com`), one
+/// checked out in the linked worktree `wt-dock`. `git log --graph --all --date-order`:
+///
+/// ```text
+/// *   On main: Experiment                       (refs/stash)
+/// |\
+/// | * index on main: Changelog for 1.2
+/// |/
+/// | * Fuel gauge on the HUD                     [Robin Example] (mine/fuel-gauge)
+/// |/
+/// | * Dock panel keyboard focus                 [Robin Example] (mine/dock-panel, in wt-dock)
+/// | * Dock panel layout                         [Robin Example]
+/// |/
+/// | * Bump lodash from 4.17.20 to 4.17.21       [dependabot] (origin/dependabot/npm/lodash-4.17.21)
+/// |/
+/// | * Payments: receipts                        [Noor Amari] (feature/payments, origin/feature/payments)
+/// | * Payments: retry failed charges            [Teodor Brandt]
+/// | * … 4 more: fraud checks, invoice export (Noor), refunds, currency rounding
+/// | * Payments: card form                       [Noor Amari]
+/// | * Payments: ledger model                    [Teodor Brandt]
+/// |/
+/// | * Warp gates: jump cost                     [Rafe Lund] (spike/warp-gates)
+/// | * Warp gates: prototype                     [Rafe Lund]
+/// |/
+/// | * Release 1.2                               [Kasimir Olsen] (release/1.2, origin/release/1.2)
+/// |/
+/// * Changelog for 1.2                           [Wen Chen] (main, origin/main, origin/HEAD)
+/// *   Merge branch 'feature/docs'
+/// |\
+/// | * Docs: trading guide                       [Wen Chen] (feature/docs, origin/feature/docs)
+/// | * Docs: glossary                            [Wen Chen]
+/// |/
+/// *   Merge branch 'feature/trade-ui'           (the branch deleted, here and on origin)
+/// |\
+/// | * Trade UI: confirm dialog                  [Ilse Vos]
+/// | * Trade UI: price chart                     [Ilse Vos]
+/// | * Trade UI: order book                      [Ilse Vos]
+/// |/
+/// * Station prices refresh on dock              [Kasimir Olsen]
+/// * Initial commit                              [Wen Chen]
+/// ```
+///
+/// 25 commits and the stash; `main` is checked out in the main worktree, and both are clean.
+pub fn presets(r: &TestRepo) {
+    cached!(r, presets);
+    r.git(&["config", "user.email", "you@example.com"]);
+    r.git(&["config", "user.name", "Robin Example"]);
+    let wen = ("Wen Chen", "wen@example.com");
+    r.commit_as("Initial commit", wen.0, wen.1);
+    r.add_origin();
+    r.push("main");
+    r.git(&["remote", "set-head", "origin", "main"]);
+    r.commit_as("Station prices refresh on dock", "Kasimir Olsen", "kasimir@example.com");
+
+    r.switch_new("feature/trade-ui");
+    for msg in ["Trade UI: order book", "Trade UI: price chart", "Trade UI: confirm dialog"] {
+        r.commit_as(msg, "Ilse Vos", "ilse@example.com");
+    }
+    r.push("feature/trade-ui");
+    r.switch("main");
+    r.merge("feature/trade-ui", "Merge branch 'feature/trade-ui'");
+    r.git(&["branch", "-q", "-D", "feature/trade-ui"]);
+    r.git(&["push", "-q", "origin", "--delete", "feature/trade-ui"]);
+
+    r.switch_new("feature/docs");
+    r.commit_as("Docs: glossary", wen.0, wen.1);
+    r.commit_as("Docs: trading guide", wen.0, wen.1);
+    r.push("feature/docs");
+    r.switch("main");
+    r.merge("feature/docs", "Merge branch 'feature/docs'");
+    r.commit_as("Changelog for 1.2", wen.0, wen.1);
+    r.push("main");
+
+    r.switch_new("release/1.2");
+    r.commit_as("Release 1.2", "Kasimir Olsen", "kasimir@example.com");
+    r.push("release/1.2");
+    r.switch("main");
+
+    r.switch_new("spike/warp-gates");
+    r.commit_as("Warp gates: prototype", "Rafe Lund", "rafe@example.com");
+    r.commit_as("Warp gates: jump cost", "Rafe Lund", "rafe@example.com");
+    r.switch("main");
+
+    r.switch_new("feature/payments");
+    let payments = ["ledger model", "card form", "currency rounding", "refunds", "invoice export", "fraud checks", "retry failed charges", "receipts"];
+    for (i, what) in payments.iter().enumerate() {
+        let (name, email) = if i % 3 == 1 { ("Noor Amari", "noor@example.com") } else { ("Teodor Brandt", "teodor@example.com") };
+        r.commit_as(&format!("Payments: {what}"), name, email);
+    }
+    r.push("feature/payments");
+    r.switch("main");
+
+    r.switch_new("dependabot/npm/lodash-4.17.21");
+    r.commit_as("Bump lodash from 4.17.20 to 4.17.21", "dependabot", "bot@example.com");
+    r.push("dependabot/npm/lodash-4.17.21");
+    r.switch("main");
+    r.git(&["branch", "-q", "-D", "dependabot/npm/lodash-4.17.21"]);
+
+    let robin = ("Robin Example", "you@example.com");
+    r.switch_new("mine/dock-panel");
+    r.commit_as("Dock panel layout", robin.0, robin.1);
+    r.commit_as("Dock panel keyboard focus", robin.0, robin.1);
+    r.switch("main");
+    r.add_worktree("dock", "mine/dock-panel");
+
+    r.switch_new("mine/fuel-gauge");
+    r.commit_as("Fuel gauge on the HUD", robin.0, robin.1);
+    r.switch("main");
+    r.stash("Experiment");
+}
+
 /// Number of parallel branches in `wide`.
 pub const WIDE_BRANCHES: usize = 30;
 

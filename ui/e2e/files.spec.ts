@@ -15,6 +15,8 @@ const listMode = (page: Page, mode: 'Path' | 'Tree') => page.getByRole('toolbar'
 
 test.describe('file list and diff takeover', () => {
   test.beforeEach(async ({ page }) => {
+    // These specs are about the list view; Tree is the default.
+    await page.addInitScript(() => localStorage.setItem('gitvolt.fileList.v1', JSON.stringify({ mode: 'path', sort: 'path', advanceAfterStage: true })));
     await page.goto(openUrl(fixtures.details));
     await expect(page.getByRole('grid', { name: 'Commit graph' })).toBeVisible();
   });
@@ -122,6 +124,26 @@ test.describe('file list and diff takeover', () => {
       expect(arrowBox!.y).toBeLessThan(newBox!.y);
       await fileRow(page, 'dir with space/ünï.txt').hover();
       await expect(tip).toHaveText('dir with space/ünï.txt');
+    });
+    // Run first among the tree steps: no folder has been opened or closed by hand yet, so the scope's default shows.
+    await test.step('file colours: a scope tints its rows and folders, a start-collapsed folder starts closed, and the diff header shows the colour', async () => {
+      await page.evaluate(() => window.__gb!.setFileScopes([{ id: 's1', name: 'Docs', tint: 'blue', patterns: ['docs/**'], startCollapsed: true }]));
+      const docs = page.locator('.file-row[data-kind="folder"][data-path="docs"]');
+      await expect(docs).toHaveAttribute('data-tinted', 'true');
+      await expect(docs).toHaveAttribute('aria-expanded', 'false');
+      await docs.click();
+      await expect(docs).toHaveAttribute('aria-expanded', 'true');
+      await expect(fileRow(page, 'docs/manual.txt')).toHaveAttribute('data-tinted', 'true');
+      await expect(fileRow(page, 'src/app.php')).not.toHaveAttribute('data-tinted');
+      await fileRow(page, 'docs/manual.txt').click();
+      await expect(page.locator('.diff-header[data-scope="s1"]')).toBeVisible();
+      await page.getByRole('region', { name: 'Diff' }).getByRole('button', { name: 'Close diff' }).click();
+      // Another commit and back: the folder opened by hand stays open.
+      await selectRow(page, 'Add feature file');
+      await selectRow(page, 'Rename guide and update assets');
+      await expect(docs).toHaveAttribute('aria-expanded', 'true');
+      await page.evaluate(() => window.__gb!.setFileScopes([]));
+      await expect(docs).not.toHaveAttribute('data-tinted');
     });
     await test.step('J9: a double-click or a drag in the file panel selects no text; tooltips still show', async () => {
       await listMode(page, 'Tree').click();
@@ -541,7 +563,7 @@ test.describe('file list and diff takeover', () => {
       expect(opened).toBeGreaterThanOrEqual(0);
       expect(opened).toBeLessThan(2000);
       // 3A (spec #3 §3.8, §4.2): Restore from this commit first, File history and Blame, then Create file… (UX round 3 O.1).
-      await expect(menu.locator('[data-depth="0"] > [role="menuitem"] .ctx-label')).toHaveText(['Restore from this commit', 'Copy path', 'Forge link', 'Open in', 'View', 'File history', 'Blame', 'Create file…']);
+      await expect(menu.locator('[data-depth="0"] > [role="menuitem"] .ctx-label')).toHaveText(['Restore from this commit', 'Colour *.php files…', 'Colour folder src/…', 'Copy path', 'Forge link', 'Open in', 'View', 'File history', 'Blame', 'Create file…']);
       await expect(page.getByRole('region', { name: 'Diff' })).toHaveCount(0);
       // Every row's tooltip shows at once.
       await menu.getByRole('menuitem', { name: /^Copy path/ }).hover();

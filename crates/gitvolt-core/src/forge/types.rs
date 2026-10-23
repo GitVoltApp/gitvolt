@@ -59,6 +59,10 @@ pub struct ForgeUser {
     /// The public email, or the account's own for its own user, when the forge says.
     #[serde(default)]
     pub email: Option<String>,
+    /// Every address the forge ties to the account (public, commit and no-reply emails).
+    /// Empty until the user is next fetched; matching is case-insensitive, the reader's job.
+    #[serde(default)]
+    pub emails: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1033,7 +1037,7 @@ mod tests {
     // --- 5A T1 ---
     #[test]
     fn body_html_is_sent_only_when_the_forge_gave_one() {
-        let author = ForgeUser { id: 1, username: "ada".into(), name: "Ada".into(), avatar_url: None, web_url: "https://x/ada".into(), email: None };
+        let author = ForgeUser { id: 1, username: "ada".into(), name: "Ada".into(), avatar_url: None, web_url: "https://x/ada".into(), email: None, emails: vec![] };
         let mut n = ForgeNote { id: "1".into(), author, body: "b".into(), created_at: 0, system: false, position: None, body_html: None, reactions: vec![], web_url: None };
         assert!(serde_json::to_value(&n).unwrap().get("bodyHtml").is_none());
         n.body_html = Some("<p>b</p>".into());

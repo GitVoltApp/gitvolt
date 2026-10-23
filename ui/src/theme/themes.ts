@@ -11,7 +11,7 @@ export const DEFAULT_THEME_ID: ThemeId = 'default-dark';
 export const isThemeId = (v: unknown): v is ThemeId => typeof v === 'string' && (THEME_IDS as readonly string[]).includes(v);
 
 /** The tokens each theme states outright. */
-const CORE_TOKENS = [
+export const CORE_TOKENS = [
   // Surfaces: the graph and editor area, the sidebar, popups and dialogs, the status bar, and
   // the three bar greys (K32-K34, K65).
   'app-bg0', 'panel-bg0', 'panel-bg1', 'toolbar-bg0', 'action-bar-bg', 'tab-bar-bg', 'file-bar-bg',
@@ -28,7 +28,7 @@ const CORE_TOKENS = [
 ] as const;
 
 /** The tokens `derive` computes from the core ones; a theme may still override any of them. */
-const DERIVED_TOKENS = [
+export const DERIVED_TOKENS = [
   'hover-row', 'selected-row', 'section-border', 'focus-outline',
   // graph/rowDim.ts's two levels; K62 sidebar icons.
   'text-row-dimmed', 'text-row-dimmed-branch', 'sidebar-icon', 'avatar-backdrop',
@@ -77,7 +77,10 @@ type CoreColors = Record<(typeof CORE_TOKENS)[number], string>;
 type DerivedColors = Record<(typeof DERIVED_TOKENS)[number], string>;
 
 export interface ThemeDef {
-  id: ThemeId;
+  /** A built-in `ThemeId`, or a custom theme's `custom-<8 hex>` (custom.ts). */
+  id: string;
+  /** A custom theme's built-in base; unset on a built-in. */
+  base?: ThemeId;
   label: string;
   kind: 'dark' | 'light';
   /** Shiki theme loaded into the highlighter and handed to Monaco by name (spec §12.1). */
@@ -186,7 +189,7 @@ const GROUP_COLORS = {
 
 /** The derived tokens, from the core ones: tints of the text colour and the accent blue, the
  * status colours from the palette, and black shadows (lighter on a light theme). */
-function derive(c: CoreColors, kind: 'dark' | 'light'): DerivedColors {
+export function derive(c: CoreColors, kind: 'dark' | 'light'): DerivedColors {
   const fg = c['text-selected'];
   const light = kind === 'light';
   return {

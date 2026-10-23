@@ -10,6 +10,7 @@ import { leaveFileView, useCenterViewSidebar } from '../repo/centerView';
 import { mrSection, refreshMrList, withMrSection } from '../forge/mrSection';
 import { forgeOf, patchForge, useTabForgeField } from '../forge/mrStore';
 // --- end 4B T11 ---
+import { PresetButton } from '../presets/PresetButton';
 import { ClearableInput } from '../ui/ClearableInput';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { onResetDoubleClick } from '../ui/resetHandle';
@@ -46,6 +47,7 @@ const MAX_W = 480;
 export function Sidebar() {
   const { tabId, repoId, path } = useRepoContext();
   const payload = useRuntime((s) => s.tabs[tabId]?.sidebar);
+  const view = useRuntime((s) => s.tabs[tabId]?.graph?.view);
   const rs = useAppState((s) => s.profile.repos[path]) ?? EMPTY_REPO_SETTINGS;
   const width = useAppState((s) => s.profile.sidebarWidth);
   const manualNarrow = useAppState((s) => s.profile.sidebarNarrow);
@@ -78,7 +80,7 @@ export function Sidebar() {
   }, [tabId, savedFilter]);
   // --- end 4B T11 ---
 
-  const base = useMemo(() => (payload ? sectionsOf(payload) : null), [payload]);
+  const base = useMemo(() => (payload ? sectionsOf(payload, view) : null), [payload, view]);
   const sections = useMemo(() => (base ? withMrSection(base, mrs) : []), [base, mrs]); // 4B T11: a poll rebuilds only the MR/PR section
   const collapsed = useMemo(() => new Set(rs.collapsed), [rs.collapsed]);
   const panels = useMemo(() => buildPanels(sections, { filter, sort: rs.sidebarSort, collapsed }), [sections, filter, rs.sidebarSort, collapsed]);
@@ -177,6 +179,7 @@ export function Sidebar() {
             if (e.key === 'ArrowDown') { focusFirstBody(); e.preventDefault(); }
           }}
         />
+        <PresetButton tabId={tabId} />
       </div>
       <div ref={stackRef} className="sb-stack">
         {panels.map((panel, i) => {

@@ -4,7 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Clock, Folder, FolderOpen, GitBranch, GitMerge, House, ListTree, Tag, TreePine } from 'lucide-react';
 import { stashLabel } from './stashLabel';
 import { memo, useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { selectCommit } from '../app/graphNav';
+import { goToCommit } from '../app/graphNav';
 import { useAppState } from '../app/state';
 import { useRuntime } from '../app/runtime';
 import { RemoteFetchWarning } from './RemoteFetchWarning';
@@ -34,8 +34,10 @@ const NOTABLE_PIPELINE = new Set(['failed', 'running', 'pending']);
 import { openMrView } from '../forge/poll';
 import { MrFilterButton } from '../forge/MrFilterButton';
 import { ForgeStaleIcon } from '../forge/ForgeStale';
+import { RefreshButton } from '../forge/RefreshButton';
 import { RemoteLookupWarning, RemoteMainChip } from './RemoteForgeMarks';
 import { useForge, useTabForgeField } from '../forge/mrStore';
+import { altClickBranch } from '../presets/altClick';
 // --- end 4B T11 ---
 
 const toggle = (list: string[], key: string) => (list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
@@ -112,7 +114,9 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
       return;
     }
     // --- end 4B T11 ---
-    if (!item.target || !selectCommit(tabId, item.target, { focus })) useToast.getState().show('Not in the loaded history');
+    const missing = () => useToast.getState().show('Not in the loaded history');
+    if (!item.target) missing();
+    else goToCommit(tabId, item.target, { focus }, missing);
   };
   const flip = (key: string) => updateRepo(path, (r) => ({ ...r, collapsed: toggle(r.collapsed, key) }));
   const activate = (row: FlatRow, focus = false) => (row.type === 'item' ? jump(row.item, focus) : flip(row.key));
@@ -198,6 +202,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
         {/* --- end 2C T9 --- */}
         {/* --- 4B T11: the MR/PR section's warning and filter --- */}
         {section.kind === 'mrs' && <ForgeStaleIcon tabId={tabId} />}
+        {section.kind === 'mrs' && <RefreshButton tabId={tabId} label={`Refresh ${section.label.toLowerCase()}`} className="icon-button sb-head-action" />}
         {section.kind === 'mrs' && <MrFilterButton tabId={tabId} path={path} />}
         {/* --- end 4B T11 --- */}
         {section.nests && !collapsed && (
@@ -249,9 +254,12 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
                   aria-selected={section.kind === 'mrs' ? it.kind === 'mr' && it.mr.number === openMr : undefined}
                   data-context={row.key === contextKey || undefined}
                   data-kind={it.kind}
-                  className={`sb-row sb-item${head ? ' is-head' : ''}`}
+                  className={`sb-row sb-item${head ? ' is-head' : ''}${it.presetState === 'hidden' ? ' is-hidden' : ''}`}
                   style={style}
-                  onClick={(e) => { setCursor(vi.index); if (it.kind === 'mr') (e.currentTarget.closest('.sb-list') as HTMLElement | null)?.focus({ preventScroll: true }); jump(it); }}
+                  onClick={(e) => {
+                    // Alt+click hides or shows a branch (presets/altClick.ts); it doesn't select.
+                    if ((it.kind === 'local' || it.kind === 'remote') && altClickBranch(tabId, it.kind === 'local' ? { local: it.branch.fullName, remotes: [] } : { local: null, remotes: [{ fullName: it.branch.fullName, remote: it.remote }] }, e)) return;
+                    setCursor(vi.index); if (it.kind === 'mr') (e.currentTarget.closest('.sb-list') as HTMLElement | null)?.focus({ preventScroll: true }); jump(it); }}
                   onDoubleClick={() => { sidebarDoubleClick({ tabId, store }, it); }}
                   onPointerEnter={(e) => onItemEnter(it, e.currentTarget)}
                   onPointerLeave={() => setHover(null)}
@@ -261,6 +269,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
                   {/* UX round 3, M.1: an upstream with another branch name, before the name. */}
                   {it.kind === 'local' && it.branch.upstreamMismatch && <UpstreamWarning branch={it.name} upstream={it.branch.upstreamMismatch} size={13} />}
                   <span className="sb-label" title={it.kind === 'stash' ? `stash@{${it.stash.index}}` : undefined}>{it.kind === 'stash' ? <StashText label={row.label} /> : row.label}</span>
+                  {(it.presetState === 'hidden' || it.presetState === 'folded') && <span className="sb-state">{it.presetState}</span>}
                   {it.kind === 'local' && (it.branch.ahead > 0 || it.branch.behind > 0) && <span className="sb-ab" aria-label={`${it.branch.ahead} ahead, ${it.branch.behind} behind`}><span>{it.branch.ahead}<ArrowUp size={12} strokeWidth={2.5} aria-hidden /></span><span>{it.branch.behind}<ArrowDown size={12} strokeWidth={2.5} aria-hidden /></span></span>}
                   {/* --- 4B T10: the branch's MR/PR badge (spec #4 §5) --- */}
                   {it.kind === 'local' && <LocalBranchBadge tabId={tabId} upstream={it.branch.upstream} />}

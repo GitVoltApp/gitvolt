@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_MR_DRAFTS, MR_DRAFT_MAX_AGE_MS, MR_DRAFT_STORAGE_KEY, discardMrDraft, flushMrDrafts, mrDraftKey, readMrDraft, reloadMrDrafts, writeMrDraft, type MrDraft } from './draft';
 
-const grace = { id: 8, username: 'grace', name: 'Grace Hopper', avatarUrl: null, webUrl: 'https://g/grace', email: null };
+const grace = { id: 8, username: 'grace', name: 'Grace Hopper', avatarUrl: null, webUrl: 'https://g/grace', email: null, emails: [] };
 const d: MrDraft = {
   sourceRemote: 'origin', targetRemote: 'origin', targetBranch: 'main', title: 'Add login', description: 'Why.', prefilled: 'Why.', template: null,
   reviewers: [grace], assignees: [], labels: ['bug'], draft: false, squash: true, deleteSourceBranch: false,
@@ -91,7 +91,7 @@ describe('Create MR/PR drafts (spec #4 §2: resumable per repo + source branch)'
   });
 
   it('never persists email addresses', () => {
-    writeMrDraft('/r', 'f', { ...d, reviewers: [{ ...grace, email: 'g@example.com' }] });
+    writeMrDraft('/r', 'f', { ...d, reviewers: [{ ...grace, email: 'g@example.com', emails: [] }] });
     flushMrDrafts();
     expect(localStorage.getItem(MR_DRAFT_STORAGE_KEY)).not.toContain('g@example.com');
   });

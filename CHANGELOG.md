@@ -5,6 +5,68 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **A refresh button for merge requests and pull requests.** The MR/PR view's header and the
+  sidebar's MR/PR section each have one that asks the forge now, without waiting for the next
+  poll: the view's refreshes that MR/PR (details, discussion, pipeline, approvals), the sidebar's
+  the list and the badges. The icon turns while it runs. A refresh while one is running joins it,
+  and none is sent while the forge's rate limit is spent. "Refresh the MR/PR" and "Refresh the
+  MR/PR list" are in the command palette too.
+- **Branch presets.** A button right of the sidebar's branch filter switches the graph between
+  views: All (today's graph), All, collapsed, Mine, and presets you make from rules (show, hide or
+  collapse branches by trunk, checked out, author, name, remote or local, age, merged). A click
+  steps to the next preset, ▾ lists them all; Settings › Branch presets edits, reorders, copies
+  and pastes them.
+  - A collapsed branch keeps its newest and oldest commits around a dotted "⋮ N more commits" row.
+    Hovering or clicking it opens the hidden commits over the graph, lined up with its lanes,
+    without moving any rows; "Expand in graph" unfolds the branch until you collapse it again from
+    its menu (Collapse branch; Fold merged branch on a merge), or switch presets. A branch whose
+    local and remote have diverged collapses each line on its own, so both tips stay rows.
+  - A preset can fold branches merged into the trunk into their merge commit (+N), and draws short
+    fading lines where hidden branches fork, listing them with Show.
+  - Hide branch and Show branch in a branch's menus, or Alt+click its chip or sidebar row, make the
+    repository's Custom preset. Hidden branches stay in the sidebar, struck through.
+- **Load older commits.** A row at the bottom of the graph loads the next batch of history and
+  keeps your place. The extra history unloads a few minutes after you're back near the top.
+- **File colours.** Per repository, scopes of path patterns (`**/tests/**`, `*.snap`) tint their
+  files in every file list and the open file's header, JetBrains style. A scope's folders can start
+  collapsed in tree view. A file's right-click menu offers "Colour `*.ext` files…" and "Colour
+  folder…"; Settings › File colours orders, edits and shares the scopes, with starters for tests,
+  generated files and docs. Hovering a folder in tree view shows the line totals of the changed
+  files under it, so a collapsed generated folder still says how much it adds.
+- **Theme editing.** Change any colour of a theme, or its graph lane colours (drag to reorder),
+  with GitVolt's own colour picker in OKLCH, so changing lightness never shifts the hue (hex too,
+  and opacity on translucent colours; the mouse wheel steps a slider by 1). A built-in theme becomes
+  "<theme> (Custom)" and stays untouched. Themes copy as JSON, export to a file and paste back in.
+  "Edit mode", on any theme, shrinks Settings to a floating editor so you see the whole app change
+  as you edit; the live preview beside the colours is the graph's own drawing. Lane colours you
+  changed before become a custom copy of their theme.
+- **Relative dates.** Settings › Graph › "Show relative dates" ("5 minutes ago"); hovering a date
+  shows the other form.
+
+### Changed
+
+- **Settings is redesigned.** A larger window with a search box over every setting and pages in
+  three groups: GitVolt, the profile and the open repository. A setting changed from its default
+  shows a ↺ to restore it. Git identity shows who commits are made as in the open
+  repository.
+- **File lists open as a tree by default.** The working-copy sections, commit details, compare and
+  merge request changes show folders first until you switch to Path; a mode you already picked is
+  kept.
+- **Chromium 154,** with its security fixes. After a crash, GitVolt no longer reopens hidden
+  windows from the last run that kept it running once you closed it.
+
+### Fixed
+
+- **Ctrl+click on a link in a diff or file opens it in your browser.** It opened a bare Chromium
+  window of GitVolt's own instead.
+- **The window should reopen on the monitor you left it on, at its full size.** With several
+  monitors, GNOME could open it on another one, the one it picked, and shrink a window wider than
+  that monitor to fit. Once the window is shown, GitVolt now checks where it landed and, if it's
+  elsewhere, moves it back and then restores its size. The window stays invisible until it's in
+  place, so it no longer flashes on the other monitor first.
+
 ## [0.7.8] - 2026-10-20
 
 ### Changed

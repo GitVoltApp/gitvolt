@@ -1202,6 +1202,19 @@ test.describe('resizable columns', () => {
       expect(line).toBeGreaterThan(0);
       expect(node).toBe(255);
     });
+    await test.step('Load older commits: under a 20-commit window, the row past the last loads 20 more and the scroll stays', async () => {
+      await page.evaluate(() => { window.__gb!.setSettings({ commitLimit: 20 }); return window.__gb!.flush(); });
+      await page.reload();
+      await expect(grid).toHaveAttribute('aria-rowcount', '20');
+      const more = grid.getByRole('button', { name: /Load older commits/ });
+      await grid.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+      await expect(more).toBeVisible();
+      const top = await grid.evaluate((el) => el.scrollTop);
+      await more.click();
+      await expect(grid).toHaveAttribute('aria-rowcount', '40');
+      await expect(grid.getByRole('row').filter({ hasText: 'Commit 39' })).toBeInViewport();
+      expect(await grid.evaluate((el) => el.scrollTop)).toBe(top);
+    });
   });
 });
 
@@ -1578,4 +1591,164 @@ test('K104: two branches on one commit both show at the default width; +1 once B
   // The badge is a chip in the lane colour, not transparent.
   expect(await row.locator('.ref-more').evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
   await expectConnectorMeetsCanvas(page, row);
+});
+
+test.describe('branch presets', () => {
+  // One boot on the `presets` fixture; each step starts from where the last left the graph.
+  test('the button cycles; All, collapsed: the ⋮ row, its reveal panel and Expand in graph; a fold; alt+click hides and shows; ghost lines', async ({ page }) => {
+    await page.goto(openUrl(freshFixture('presets')));
+    const grid = page.getByRole('grid', { name: 'Commit graph' });
+    await expect(grid.getByText('Payments: fraud checks')).toBeVisible();
+    const button = page.locator('.preset-button');
+    const main = button.locator('.preset-main');
+    const panel = page.locator('.reveal-panel');
+    const dotted = grid.getByRole('row', { name: /^6 more commits on feature\/payments/ });
+    // A row the panel never covers (it opens below the ⋮ row here).
+    const away = grid.locator('[id^="graph-row-"]').filter({ hasText: 'Payments: receipts' });
+    const menu = page.getByTestId('context-menu');
+    const choose = async (name: string) => {
+      await button.getByRole('button', { name: 'All branch presets' }).click();
+      await menu.getByRole('menuitem', { name, exact: true }).click();
+    };
+
+    await test.step('a click on the button moves to the next preset: All → All, collapsed → Mine; its tooltip names the next', async () => {
+      await main.hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Branches: All · click for All, collapsed · ▾ all presets');
+      await main.click();
+      await expect(button).toHaveAttribute('data-preset', 'all-collapsed');
+      await expect(main).toHaveAccessibleName('Branches: All, collapsed. Switch to Mine');
+      await expect(dotted).toBeVisible();
+      await main.click();
+      await expect(button).toHaveAttribute('data-preset', 'mine');
+      await expect(main).toHaveAccessibleName('Branches: Mine. Switch to All');
+      await expect(grid.getByText('Payments: receipts')).toHaveCount(0);
+      await main.click();
+      await expect(button).toHaveAttribute('data-preset', 'all');
+      await main.click();
+      await expect(button).toHaveAttribute('data-preset', 'all-collapsed');
+    });
+
+    let row = { y: 0, h: 0 };
+    let dotX = 0;
+    await test.step('All, collapsed: feature/payments is three rows, the middle one its ⋮ row', async () => {
+      await expect(grid.getByRole('row').filter({ hasText: /Payments: |on feature\/payments/ })).toHaveCount(3);
+      await expect(dotted).toContainText('⋮ 6 more commits on feature/payments');
+      const box = (await dotted.boundingBox())!;
+      row = { y: box.y, h: box.height };
+      // The dotted lane: on the ⋮ row, the canvas column whose ink comes and goes the most down
+      // the row (a solid line through it is inked all the way).
+      dotX = await grid.getByTestId('graph-canvas').evaluate((c: HTMLCanvasElement, [y0, h]) => {
+        const r = c.getBoundingClientRect();
+        const dpr = c.width / r.width;
+        const rows = Math.round(h * dpr);
+        const img = c.getContext('2d')!.getImageData(0, Math.round((y0 - r.top) * dpr), c.width, rows).data;
+        const flips = Array.from({ length: c.width }, (_, x) => {
+          let n = 0;
+          for (let y = 1; y < rows; y++) if ((img[(y * c.width + x) * 4 + 3] > 128) !== (img[((y - 1) * c.width + x) * 4 + 3] > 128)) n++;
+          return n;
+        });
+        const most = Math.max(...flips);
+        const xs = flips.flatMap((n, x) => (n >= most / 2 ? [x] : []));
+        return r.left + (xs[0] + xs.at(-1)! + 1) / 2 / dpr;
+      }, [row.y, row.h]);
+    });
+
+    await test.step('hover: the rest of the ⋮ row opens its panel after about 400 ms, the dotted lane at once, its nodes on that lane', async () => {
+      await away.hover();
+      const t0 = Date.now();
+      await dotted.locator('.collapsed-msg').hover();
+      await expect(panel).toBeVisible();
+      expect(Date.now() - t0).toBeGreaterThanOrEqual(380);
+      await expect(panel.getByRole('grid')).toHaveAccessibleName('feature/payments: 6 hidden commits');
+      await away.hover();
+      await expect(panel).toBeHidden();
+      const t1 = Date.now();
+      await page.mouse.move(dotX, row.y + row.h / 2);
+      await expect(panel).toBeVisible();
+      expect(Date.now() - t1).toBeLessThan(380);
+      // The panel's first row's node: the longest inked run on its centre line.
+      const first = (await panel.getByRole('row').first().boundingBox())!;
+      const nodeX = await panel.getByTestId('graph-canvas').evaluate((c: HTMLCanvasElement, y) => {
+        const r = c.getBoundingClientRect();
+        const dpr = c.width / r.width;
+        const img = c.getContext('2d')!.getImageData(0, Math.round((y - r.top) * dpr), c.width, 1).data;
+        let best = [0, 0];
+        for (let x = 0, start = -1; x <= c.width; x++) {
+          const inked = x < c.width && img[x * 4 + 3] > 128;
+          if (inked && start < 0) start = x;
+          if (!inked && start >= 0) {
+            if (x - start > best[1] - best[0]) best = [start, x];
+            start = -1;
+          }
+        }
+        return r.left + (best[0] + best[1]) / 2 / dpr;
+      }, first.y + first.height / 2);
+      expect(Math.abs(nodeX - dotX)).toBeLessThanOrEqual(1);
+      await away.hover();
+      await expect(panel).toBeHidden();
+    });
+
+    await test.step('a click pins the panel; Esc closes it', async () => {
+      await dotted.locator('.collapsed-msg').click();
+      await expect(panel).toBeVisible();
+      await away.hover();
+      await page.waitForTimeout(450);
+      await expect(panel).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(panel).toBeHidden();
+    });
+
+    await test.step('right-click in the panel opens the commit menu; Expand in graph adds the rows', async () => {
+      await dotted.locator('.collapsed-msg').click();
+      await panel.getByRole('row').filter({ hasText: 'Payments: fraud checks' }).click({ button: 'right' });
+      await expect(menu).toContainText('Copy SHA');
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      const before = Number(await grid.getAttribute('aria-rowcount'));
+      await panel.getByRole('button', { name: 'Expand in graph' }).click();
+      await expect(grid).toHaveAttribute('aria-rowcount', String(before + 5));
+      await expect(dotted).toHaveCount(0);
+      await expect(grid.getByRole('row').filter({ hasText: 'Payments: ' })).toHaveCount(8);
+    });
+
+    await test.step('a preset that folds merged branches: the trade-ui merge carries +3, and its panel opens below', async () => {
+      await page.evaluate(() => window.__gb!.setSettings({
+        branchPresets: [{ id: 'e2e-fold', name: 'Folded', color: 'purple', scope: 'all', rules: [], otherwise: 'show', foldMerged: true, ghostLines: false, inCycle: true }],
+      }));
+      await choose('Folded');
+      await expect(button).toHaveAttribute('data-preset', 'e2e-fold');
+      const merge = grid.getByRole('row').filter({ hasText: "Merge branch 'feature/trade-ui'" });
+      await expect(merge.locator('.fold-count')).toHaveText('+3');
+      await expect(grid.getByText('Trade UI: order book')).toHaveCount(0);
+      await merge.locator('.msg-summary').click();
+      await expect(panel).toHaveAttribute('data-below', 'true');
+      await expect(panel.getByRole('row').filter({ hasText: 'Trade UI: order book' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(panel).toBeHidden();
+    });
+
+    await test.step('alt+click on a chip hides its branch in Custom, struck through in the sidebar; alt+click there shows it', async () => {
+      await choose('All');
+      await grid.locator('.ref-label').filter({ hasText: 'spike/warp-gates' }).click({ modifiers: ['Alt'] });
+      await expect(button).toHaveAttribute('data-preset', 'custom');
+      await expect(grid.getByText('Warp gates: jump cost')).toHaveCount(0);
+      const side = page.getByRole('complementary', { name: 'Sidebar', exact: true }).getByRole('region', { name: 'Local', exact: true }).locator('.sb-item').filter({ hasText: 'warp-gates' });
+      await expect(side).toHaveClass(/is-hidden/);
+      await expect(side.locator('.sb-label')).toHaveCSS('text-decoration-line', 'line-through');
+      await side.click({ modifiers: ['Alt'] });
+      await expect(side).not.toHaveClass(/is-hidden/);
+      await expect(grid.getByText('Warp gates: jump cost')).toBeVisible();
+    });
+
+    await test.step('Mine: the ghost lines on "Changelog for 1.2" list spike/warp-gates with Show', async () => {
+      await choose('Mine');
+      await expect(grid.getByText('Warp gates: jump cost')).toHaveCount(0);
+      await grid.getByRole('row').filter({ has: page.locator('.msg-summary', { hasText: /^Changelog for 1\.2$/ }) }).locator('.msg-summary').click();
+      await page.keyboard.press('Enter');
+      const pop = page.getByRole('dialog', { name: /hidden branches start here/ });
+      await expect(pop.getByRole('button', { name: 'Show spike/warp-gates' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(pop).toBeHidden();
+    });
+  });
 });
