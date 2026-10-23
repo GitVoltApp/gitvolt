@@ -20,8 +20,10 @@ export const TREE = { base: 8, chevron: 14, icon: 14, gap: 6 } as const;
 export const rowIndent = (depth: number) => TREE.base + depth * (TREE.chevron + TREE.gap);
 
 export type FileRow =
-  /** `counts`: the subtree's changes, for a collapsed folder only (feedback F20). */
-  | { kind: 'folder'; id: string; depth: number; name: string; path: string; expanded: boolean; counts: StatusCounts | null }
+  /** `counts`: the subtree's changes, for a collapsed folder only (feedback F20). `lines`: the
+   * subtree's line totals, shown on hover like a file's; null when no changed file below has any
+   * (only binaries, or nothing changed). */
+  | { kind: 'folder'; id: string; depth: number; name: string; path: string; expanded: boolean; counts: StatusCounts | null; lines: LineTotals | null }
   | { kind: 'file'; id: string; depth: number; name: string; dir: string; change: FileChange | null; target: DiffTarget };
 
 export interface TreeNode<T> { name: string; path: string; children: TreeNode<T>[]; item: T | null }
@@ -106,11 +108,41 @@ export function buildRows(i: RowsInput): FileRow[] {
     all.sort((a, b) => (i.sort === 'status' ? rank(a) - rank(b) : 0) || cmp(a.path, b.path));
     return all.map((it) => ({ kind: 'file', id: it.target.key, depth: 0, name: basename(it.path), dir: dirname(it.path), change: it.change, target: it.target }));
   }
-  return flattenTree(buildTree(all), i.collapsed).map(({ node, depth }): FileRow => {
+  const tree = buildTree(all);
+  const lines = folderLines(tree);
+  return flattenTree(tree, i.collapsed).map(({ node, depth }): FileRow => {
     if (node.item) return { kind: 'file', id: node.item.target.key, depth, name: node.name, dir: '', change: node.item.change, target: node.item.target };
     const expanded = !i.collapsed.has(node.path);
-    return { kind: 'folder', id: `dir:${node.path}`, depth, name: node.name, path: node.path, expanded, counts: expanded ? null : countByStatus(subtreeChanges(node)) };
+    return { kind: 'folder', id: `dir:${node.path}`, depth, name: node.name, path: node.path, expanded, counts: expanded ? null : countByStatus(subtreeChanges(node)), lines: lines.get(node) ?? null };
   });
+}
+
+/** Lines added and deleted, summed over files. */
+export interface LineTotals { added: number; deleted: number }
+
+/** The line totals of `changes`, binaries left out; null when none has lines. */
+export function lineTotals(changes: readonly FileChange[]): LineTotals | null {
+  let t: LineTotals | null = null;
+  for (const c of changes) {
+    if (c.additions === null) continue;
+    t ??= { added: 0, deleted: 0 };
+    t.added += c.additions;
+    t.deleted += c.deletions ?? 0;
+  }
+  return t;
+}
+
+/** Every folder's line totals, in one pass up the tree (each file counted once, however deep). */
+function folderLines(nodes: TreeNode<Item>[], out = new Map<TreeNode<Item>, LineTotals | null>()): Map<TreeNode<Item>, LineTotals | null> {
+  const total = (n: TreeNode<Item>): LineTotals | null => {
+    if (n.item) return n.item.change ? lineTotals([n.item.change]) : null;
+    const subs = n.children.map(total).filter((t): t is LineTotals => t !== null);
+    const t = subs.length === 0 ? null : { added: subs.reduce((a, x) => a + x.added, 0), deleted: subs.reduce((a, x) => a + x.deleted, 0) };
+    out.set(n, t);
+    return t;
+  };
+  for (const n of nodes) total(n);
+  return out;
 }
 
 /** The changed files under a folder (unchanged "View all files" entries don't count). */

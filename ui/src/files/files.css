@@ -24,8 +24,12 @@
 .parent-picker { align-self: flex-start; margin: 6px 12px 0; }
 .file-list-scroll { position: relative; flex: 1; min-height: 120px; overflow: auto; outline: none; }
 .file-row { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; white-space: nowrap; cursor: pointer; box-sizing: border-box; padding-right: 8px; }
+/* A file colours scope's fill; hover and selection draw over it. */
+.file-row[data-tinted] { background-color: var(--row-tint); }
 .file-row:hover { background: var(--hover-row); }
 .file-row[aria-selected="true"] { background: var(--selected-row); color: var(--text-selected); }
+.file-row[data-tinted]:hover { background: linear-gradient(var(--hover-row), var(--hover-row)) var(--row-tint, transparent); }
+.file-row[data-tinted][aria-selected="true"] { background: linear-gradient(var(--selected-row), var(--selected-row)) var(--row-tint, transparent); }
 /* The row a context menu is open for (UX round 2: a right-click never selects). */
 .file-row[data-context="true"] { outline: 1px solid var(--blue); outline-offset: -1px; }
 .file-row.unchanged .file-name { color: var(--text-secondary); }

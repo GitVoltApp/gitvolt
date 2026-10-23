@@ -2,7 +2,10 @@
 // registry (language.ts) and the Monaco loader, which stay out of the startup chunk (spec §10.3).
 import { X } from 'lucide-react';
 import { BUSY_DELAY_MS, useLateFlag } from '../util/lateFlag';
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { matcherFor } from '../fileColours/match';
+import { useRepoScopes } from '../fileColours/store';
+import { tintHex } from '../fileColours/tint';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { useRepoContext } from '../app/repoContext';
 import { WipStagingUndo } from '../stage/UndoButtons';
@@ -149,9 +152,13 @@ function DiffPath({ target }: { target: DiffTarget }) {
 
 /** The path, its change kind and encoding, and ×. "Open in…" is on the toolbar below (J1). */
 export function DiffHeader({ target, encoding, note, onClose, busy = false, dirty = false, onSave }: { target: DiffTarget; encoding: string; note?: ReactNode; onClose: () => void; busy?: boolean; dirty?: boolean; onSave?: () => void }) {
+  const { scopes } = useRepoScopes();
+  const scope = scopes.length ? scopes[matcherFor(scopes).scopeOf(target.path)] : undefined;
+  const stripe = scope ? tintHex(scope.tint) : null;
   return (
     // `.panel-bar` (tokens.css): the details header's bar box, so their dividers line up (K5).
-    <header className="diff-header panel-bar">
+    // A file colours scope's own colour shows as a stripe on the left edge (a fill would vanish on the bar).
+    <header className="diff-header panel-bar" data-scope={stripe ? scope!.id : undefined} style={stripe ? ({ '--scope-stripe': stripe } as CSSProperties) : undefined}>
       {/* F21: the change-kind icon, before the path. Empty for an unchanged File View file
           (fileViewTarget's status is ''), which has nothing to show an icon for: a same-width
           spacer (FileList.tsx's pattern) keeps the path from shifting as files are stepped

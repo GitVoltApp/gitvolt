@@ -15,6 +15,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   MR/PR list" are in the command palette too.
 - **Load older commits.** A row at the bottom of the graph loads the next batch of history and
   keeps your place. The extra history unloads a few minutes after you're back near the top.
+- **File colours.** Per repository, scopes of path patterns (`**/tests/**`, `*.snap`) tint their
+  files in every file list and the open file's header, JetBrains style. A scope's folders can start
+  collapsed in tree view. A file's right-click menu offers "Colour `*.ext` files…" and "Colour
+  folder…"; Settings › File colours orders, edits and shares the scopes, with starters for tests,
+  generated files and docs. Hovering a folder in tree view shows the line totals of the changed
+  files under it, so a collapsed generated folder still says how much it adds.
 - **Relative dates.** Settings › Graph › "Show relative dates" ("5 minutes ago"); hovering a date
   shows the other form.
 

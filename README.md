@@ -173,6 +173,8 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   **Hex** shows any file's bytes.
 - **File View:** read a file rendered or as source, and edit or create a working-tree file.
   **Open in** your editor, file manager or default app, old versions included.
+- **File colours:** per-repository path scopes tint changed files and can fold generated folders
+  in tree view; edit them in Settings, or start from a file's right-click menu.
 
 #### History, merges and undo
 

@@ -35,6 +35,7 @@ const EXEMPT: Record<string, string> = {
   'theme/editor/ThemeCards.tsx': 'radio group arrows / Space / Enter, as native radios',
   'theme/editor/LaneColours.tsx': "Alt+arrows reorder a lane (useSortable's keys, past the Settings dialog's claim)",
   'graph/LoadOlderRow.tsx': 'row focus arrows / Enter, as a button',
+  'fileColours/settings/AddStrip.tsx': 'Esc cancels the strip',
   'irebase/rowDrag.ts': 'drag cancel (Esc)',
   'irebase/chipDrag.ts': 'drag cancel (Esc)',
   'diff/monaco/reviewGutter.ts': 'drag cancel (Esc)',
