@@ -200,7 +200,7 @@ Translate model (`www.gstatic.com`). GitVolt now turns all of that off
     detection, autofill, Translate, alternate error pages, search suggestions, and the Privacy
     Sandbox APIs (`vendor/tauri-runtime-cef/src/cef_impl/preferences.rs`).
 - **Spell check works offline.** GitVolt ships Chromium's English (US) dictionary
-  (`/usr/share/GitVolt/dictionaries/en-US-10-1.bdic`) and copies it into Chromium's profile at
+  (`/usr/share/GitVolt/dictionaries/en-US-10-2.bdic`) and copies it into Chromium's profile at
   startup, so Chromium never downloads one. Only English (US) is checked
   (`spellcheck.dictionaries`). Chromium's "enhanced" spell check, which sends the text to
   Google's spelling service, is off (`spellcheck.use_spelling_service`) and removed from the

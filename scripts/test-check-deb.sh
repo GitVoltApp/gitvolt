@@ -32,7 +32,7 @@ python3 "$here/package-meta.py" copyright "$root/LICENSE" "$pkg/usr/share/doc/gi
 notices="LICENSE THIRD-PARTY-NOTICES-rust.txt THIRD-PARTY-NOTICES-ui.txt CEF-LICENSE.txt CHROMIUM-CREDITS.html.gz DICTIONARY-en-US-LICENSE.txt"
 for f in $notices; do printf 'notice %s\n' "$f" > "$pkg/usr/share/doc/gitvolt/$f"; done
 mkdir -p "$pkg/usr/share/GitVolt/dictionaries"
-printf 'BDic' > "$pkg/usr/share/GitVolt/dictionaries/en-US-10-1.bdic"
+printf 'BDic' > "$pkg/usr/share/GitVolt/dictionaries/en-US-10-2.bdic"
 printf 'deb\n' > "$pkg/usr/share/GitVolt/install-kind"
 newest=$(sed -n 's/.*<release version="\([^"]*\)".*/\1/p' "$metainfo" | head -1)
 cat > "$pkg/DEBIAN/control" <<EOT
@@ -67,11 +67,11 @@ for f in $notices copyright; do
   mv "$work/saved" "$pkg/usr/share/doc/gitvolt/$f"
 done
 # The spell-check dictionary, beside the binary.
-dict="$pkg/usr/share/GitVolt/dictionaries/en-US-10-1.bdic"
+dict="$pkg/usr/share/GitVolt/dictionaries/en-US-10-2.bdic"
 mv "$dict" "$work/saved"
-rejects "en-US-10-1.bdic" "no dictionary"
+rejects "en-US-10-2.bdic" "no dictionary"
 : > "$dict"
-rejects "en-US-10-1.bdic is empty" "an empty dictionary"
+rejects "en-US-10-2.bdic is empty" "an empty dictionary"
 mv "$work/saved" "$dict"
 # The control fields software centres show for a local .deb.
 cp "$pkg/DEBIAN/control" "$work/control"

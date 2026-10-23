@@ -106,17 +106,17 @@ Chromium downloads its spell-check dictionaries from Google, and GitVolt's Chrom
 the network (PRIVACY.md). So the packages ship the English (US) one, and the app copies it into
 Chromium's profile at startup (`Cef::bundled_dictionary`, vendor/tauri-runtime-cef/GITVOLT-PATCH.md).
 
-- **The file:** `crates/gitvolt-app/dictionaries/en-US-10-1.bdic`, committed (452 KB), installed
-  as `/usr/share/GitVolt/dictionaries/en-US-10-1.bdic`. It is the exact file Chromium downloads
-  for en-US: `en-US-10-1.bdic` from `chromium/deps/hunspell_dictionaries` at
-  `cccf64a8acc951afe3f47fee023908e55699bc58`, the commit Chromium 152.0.7977.83's `DEPS` pins
-  (SHA-256 `a075b01d9b015c616511a9e87da77da3d9881621db32f584e4606ddabf1c1100`). Committed rather
+- **The file:** `crates/gitvolt-app/dictionaries/en-US-10-2.bdic`, committed (452 KB), installed
+  as `/usr/share/GitVolt/dictionaries/en-US-10-2.bdic`. It is the exact file Chromium downloads
+  for en-US: `en-US-10-2.bdic` from `chromium/deps/hunspell_dictionaries` at
+  `cee14e319bb7603a1157bb4d1e216be64ee82b77`, the commit Chromium 154.0.8037.98's `DEPS` pins
+  (SHA-256 `b0d80e6b6c5491879365e176ecbd98074602a663429bcfcfb0a5a8375c051f13`). Committed rather
   than fetched at build time, so a package build needs no network and can't get another file.
 - **Its license:** the `en_US` Hunspell dictionary derived from SCOWL (version 2020.12.07, Kevin
   Atkinson): SCOWL's permissive terms ("Permission to use, copy, modify, distribute and sell
   these word lists … provided that the above copyright notice appears in all copies"), with the
   affix file under Geoff Kuenning's BSD-style Ispell license and public-domain word lists. Chromium
-  adds the 561 words of its `en_US.dic_delta` (Chromium's license, already in `CEF-LICENSE.txt`
+  adds the 562 words of its `en_US.dic_delta` (Chromium's license, already in `CEF-LICENSE.txt`
   and the Chromium credits). `crates/gitvolt-app/dictionaries/en-US-LICENSE.txt` records the
   source and has the dictionary's README verbatim, with every notice; it ships as
   `DICTIONARY-en-US-LICENSE.txt` and in the app's license list. No copyleft term applies, so
@@ -217,7 +217,7 @@ their source.
   or changed licenses: drop a copyleft grammar (add it to `dropped` and rerun the script),
   research an unrecorded one upstream, and replace or drop one whose project states no license.
 - **CEF upgrade:** the notices follow the `cef` crate's version. Check the dictionary's version
-  in that Chromium's `components/spellcheck/common/spellcheck_common.cc` (`{"en-US", "-10-1"}`);
-  if it changed, replace the `.bdic` (and the name in `crates/gitvolt-app/src/lib.rs`,
-  `tauri.conf.json` and the package checks) with the one its `DEPS` pins, and update its
-  license file.
+  in that Chromium's `components/spellcheck/common/spellcheck_common.cc` (`{"en-US", "-10-2"}`
+  in Chromium 154); if it changed, replace the `.bdic` (and the name in
+  `crates/gitvolt-app/src/lib.rs`, `tauri.conf.json` and the package checks) with the one its
+  `DEPS` pins, and update its license file.

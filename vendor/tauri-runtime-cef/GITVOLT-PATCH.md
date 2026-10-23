@@ -1,19 +1,47 @@
-# GitVolt patch: tauri-runtime-cef 3.0.0-alpha.5
+# GitVolt patch: tauri-runtime-cef 3.0.0-alpha.6
 
-Vendored from the upstream crate `tauri-runtime-cef` 3.0.0-alpha.5 (published crate contents from
+Vendored from the upstream crate `tauri-runtime-cef` 3.0.0-alpha.6 (published crate contents from
 crates.io, minus its `Cargo.lock`; upstream source is `crates/tauri-runtime-cef` in
-`tauri-apps/tauri` at git commit `a8703ee487c659efbebb27c799752d523a6d09a1`, see
+`tauri-apps/tauri` at git commit `1991873f5e2baa68773f21465f61baa93077498f`, see
 `.cargo_vcs_info.json`). License unchanged: `Apache-2.0 OR MIT`.
 
 Pulled in via `[patch.crates-io]` in the workspace root `Cargo.toml`, pinned to the same
-`=3.0.0-alpha.5` version as the crates.io release so the patch is a drop-in replacement.
+`=3.0.0-alpha.6` version as the crates.io release so the patch is a drop-in replacement.
 
-**Re-vendoring** (alpha.4 to alpha.5 on 2026-10-06): diff this directory against the published
-crate it was vendored from (`diff -ruN -x Cargo.lock -x GITVOLT-PATCH.md <old crate>
-vendor/tauri-runtime-cef`), copy the new published crate in, and apply that diff (`patch -p2`).
-Upstream alpha.5 changed only `src/window_builder.rs` (the `macos-private-api` feature is gone)
-and the manifest. Every patch below applied cleanly and none is fixed upstream; CEF stays at
-`=152.3.0` (CEF 152.0.6, Chromium 152.0.7977.83).
+**Re-vendoring:** diff this directory against the published crate it was vendored from
+(`diff -ruN -x Cargo.lock -x GITVOLT-PATCH.md <old crate> vendor/tauri-runtime-cef`), copy the new
+published crate in, and apply that diff (`patch -p1` from the new crate's root; patch picks the
+old-crate side of each path).
+
+- **alpha.4 to alpha.5** (2026-10-06): upstream changed only `src/window_builder.rs` (the
+  `macos-private-api` feature is gone) and the manifest. Every patch applied cleanly.
+- **alpha.5 to alpha.6** (2026-10-23), with tauri 3.0.0-alpha.5 and CEF `=154.5.0` (CEF
+  154.0.34, Chromium 154.0.8037.98; from `=152.3.0`, CEF 152.0.6, Chromium 152.0.7977.83).
+  Upstream's changes in the files we patch:
+  - `src/platform/linux/window.rs`: `CefX11Host` gains a `mapped` field and `set_visible` (the
+    host is unmapped while it only hosts offscreen webviews). Two of our three hunks (the
+    `_take_focus` field and its initializer) sat next to it and were re-applied by hand; the
+    focus redirect only targets *viewable* browser windows, so an unmapped host is skipped as
+    before.
+  - `src/runtime.rs`: windowless (offscreen) rendering and `Cef::on_window_event`; the CEF API
+    version passed to child processes (`--tauri-cef-api-version`, only when
+    `Cef::cef_api_version` is called, which GitVolt doesn't); an unsupported API version is
+    reported instead of crashing. Our hunks applied with offsets (fuzz on three, checked: the
+    `bundled_dictionaries` field, its `Debug` entry and the destructuring now sit next to the
+    new `window_event_handler`).
+  - `src/cef_impl/client/mod.rs` (render and cursor handlers for offscreen views) and
+    `src/lib.rs` (`mod offscreen`): our hunks applied with offsets.
+  - Not in our files but worth knowing: `src/cef_impl/preferences.rs` now sets the profile
+    preference `session.restore_on_startup` to 5 (New Tab page), so a run after a crash no longer
+    reopens the last session's tabs in hidden Chrome windows that kept the process alive;
+    `Cef::profile_preference_value` can override it, and GitVolt doesn't.
+  - CEF 154 itself: one context menu name we drop is gone and four new ones are dropped too
+    (see the context menu section); Chromium 154 asks for `en-US-10-2.bdic` (it was 10-1), so
+    `gitvolt-app` ships that file now (docs/licensing.md); the runtime's copy code is unchanged.
+
+  None of the patches below is fixed upstream: alpha.6 still runs the external message pump on
+  Linux (#3002), and the command, context menu, keyboard, focus, sandbox, resolver and
+  dictionary code is unchanged upstream.
 
 ## Workaround: CEF issue #3002 (Linux idle busy loop)
 
@@ -93,7 +121,7 @@ CEF-owned popup is a real Chrome window and keeps Chrome's reserved-key protecti
 `cfg!(debug_assertions)`, so a release build never logs keystrokes whatever the environment
 says.
 
-## Exact files changed vs. the unpatched 3.0.0-alpha.5 crate
+## Exact files changed vs. the unpatched 3.0.0-alpha.6 crate
 
 - `src/external_message_pump/linux.rs`: added two functions —
   `next_default_context_source_id()` (returns the GLib source id the default context will hand
@@ -184,6 +212,14 @@ threads race (a name then resolves to -1); the app only ever looks names up on C
 so this only bites the tests, which do it from the harness's threads. `context_menu.rs`'s
 `NAME_LOOKUP` mutex (test-only) serializes them — `command.rs`'s own name-resolution test
 (`every_gitvolt_name_resolves_to_a_command_id_in_this_cef_build`) holds the same lock.
+
+CEF 154 (alpha.6): Chromium dropped "Fill with a plus address"
+(`IDC_CONTENT_CONTEXT_AUTOFILL_FALLBACK_PLUS_ADDRESS`), so the list no longer names it (the
+`cef` crate's constants are per build, so a dropped name fails to compile rather than resolving
+to -1). It gained entries the list now drops too: the image-description submenu itself
+(`IDC_CONTENT_CONTEXT_ACCESSIBILITY_LABELS`), click to call
+(`…_SHARING_CLICK_TO_CALL_MULTIPLE_DEVICES`), and two ways to open a link outside the app
+(`…_OPENLINK_ISOLATED`, an isolated Chrome window; `…_OPENLINKWITH`, another app).
 
 ## Keyboard focus under a window manager (WM_TAKE_FOCUS)
 
@@ -284,7 +320,7 @@ the method still exists with this signature).
 
 ## Spell-check dictionaries the application ships
 
-**Problem:** Chromium downloads its Hunspell dictionary (`en-US-10-1.bdic`) from
+**Problem:** Chromium downloads its Hunspell dictionary (`en-US-10-2.bdic` in Chromium 154) from
 `redirector.gvt1.com` into `Dictionaries/` in the user data directory. GitVolt's Chromium
 resolves no host name but `localhost`, so that download fails and text fields had no spell
 check.
@@ -310,7 +346,7 @@ dictionaries` (a missing, the same or a different dictionary; a missing bundled 
 - macOS (below): `build.rs` passes the CEF distribution's path to the crate's own tests, and
   `context_menu.rs`'s `load_cef_for_tests` loads the framework from it (tests only).
 
-No other files differ from the published 3.0.0-alpha.5 crate (its `Cargo.lock` is not vendored).
+No other files differ from the published 3.0.0-alpha.6 crate (its `Cargo.lock` is not vendored).
 
 ## A resolver-blocking `--host-resolver-rules` isn't warned about
 

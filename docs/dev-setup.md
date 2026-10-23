@@ -81,8 +81,8 @@ land in the repo.
 - `libgtk-4-dev` and `patchelf` (`sudo apt install libgtk-4-dev patchelf`) — the CEF runtime uses
   GTK 4, not WebKitGTK.
 - The v3-alpha `cargo tauri` CLI, pinned to match the vendored runtime:
-  `cargo install tauri-cli --version =3.0.0-alpha.4 --locked` (`justfile`'s `dev`/`build-app`
-  recipes check for exactly `tauri-cli 3.0.0-alpha.4` and tell you the command if it's missing
+  `cargo install tauri-cli --version =3.0.0-alpha.5 --locked` (`justfile`'s `dev`/`build-app`
+  recipes check for exactly `tauri-cli 3.0.0-alpha.5` and tell you the command if it's missing
   or the wrong version).
 - The first build downloads the CEF distribution (~320 MB compressed) into `~/.cache/tauri-cef`;
   after that, rebuilds are incremental.
@@ -547,7 +547,7 @@ Windows and Node.
   to start (SECURITY.md). The sandbox needs the app as a DLL under CEF's bootstrap, named alike:
   ```bat
   cargo rustc -p gitvolt-app --lib --crate-type cdylib --features tauri/custom-protocol
-  copy %CEF_PATH%\152.0.6\cef_windows_x86_64\bootstrapc.exe target\debug\gitvolt_app.exe
+  copy %CEF_PATH%\154.0.34\cef_windows_x86_64\bootstrapc.exe target\debug\gitvolt_app.exe
   target\debug\gitvolt_app.exe
   ```
   (`bootstrapc.exe` keeps a console; `bootstrap.exe` is the windowed host.)
@@ -573,7 +573,7 @@ Windows and Node.
 The app builds and runs on macOS (Apple Silicon checked, macOS 12 or later), but only as
 `GitVolt.app`: CEF loads its framework and starts its helper processes from inside the bundle, so
 a bare `target/debug/GitVolt` can't start. Needs Xcode's command line tools, CMake, Ninja, Node
-and the pinned Tauri CLI (`cargo install tauri-cli --version =3.0.0-alpha.4 --locked`).
+and the pinned Tauri CLI (`cargo install tauri-cli --version =3.0.0-alpha.5 --locked`).
 
 - **The bundle:** `cd crates/gitvolt-app && cargo tauri build --debug --bundles app` (or without
   `--debug`) makes `target/<profile>/bundle/macos/GitVolt.app`, with the UI embedded. The Tauri
@@ -585,7 +585,7 @@ and the pinned Tauri CLI (`cargo install tauri-cli --version =3.0.0-alpha.4 --lo
     `(Alerts)` siblings: one small helper executable, which the bundler compiles against the
     app's own `cef` crate (`target/tauri-cef-helper`) and copies into each, with its
     `Info.plist`;
-  - `Contents/Resources/dictionaries/en-US-10-1.bdic`, the spell-check dictionary;
+  - `Contents/Resources/dictionaries/en-US-10-2.bdic`, the spell-check dictionary;
   - an ad-hoc signature (`signingIdentity: "-"`), inside out, with the hardened runtime and the
     entitlements CEF needs (JIT, unsigned executable memory, no library validation);
   - `Info.plist` with the folder document type (`packaging/macos/Info.plist`, merged in).

@@ -56,6 +56,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **File lists open as a tree by default.** The working-copy sections, commit details, compare and
   merge request changes show folders first until you switch to Path; a mode you already picked is
   kept.
+- **Chromium 154,** with its security fixes. After a crash, GitVolt no longer reopens hidden
+  windows from the last run that kept it running once you closed it.
 
 ### Fixed
 
