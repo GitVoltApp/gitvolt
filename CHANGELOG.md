@@ -7,6 +7,10 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Added
 
+- **Drag a branch onto another to merge or rebase it.** In the graph, drop a local branch's chip
+  on another local branch's chip: a menu at the pointer merges it in (or fast-forwards), rebases
+  onto it, or opens the interactive rebase. A branch that isn't checked out is checked out first.
+  Thanks to @Steven-Cleys (#5).
 - **A refresh button for merge requests and pull requests.** The MR/PR view's header and the
   sidebar's MR/PR section each have one that asks the forge now, without waiting for the next
   poll: the view's refreshes that MR/PR (details, discussion, pipeline, approvals), the sidebar's
