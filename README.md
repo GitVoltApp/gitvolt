@@ -281,7 +281,7 @@ Requirements: a stable Rust toolchain (1.95 or newer, as Tauri 3 requires), Node
 and the Tauri CLI at the version the build expects:
 
 ```sh
-cargo install tauri-cli --version =3.0.0-alpha.4 --locked
+cargo install tauri-cli --version =3.0.0-alpha.5 --locked
 ```
 
 Then:

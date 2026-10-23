@@ -4,7 +4,7 @@
   "bundle": {
     "targets": ["app"],
     "resources": {
-      "dictionaries/en-US-10-1.bdic": "dictionaries/en-US-10-1.bdic"
+      "dictionaries/en-US-10-2.bdic": "dictionaries/en-US-10-2.bdic"
     },
     "macOS": {
       "minimumSystemVersion": "12.0",

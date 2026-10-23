@@ -193,7 +193,7 @@ side by side, then the release job:
    - installs the toolchain: the system packages (`libgtk-4-dev`, `patchelf`, `dpkg-dev`, `zstd`,
      `binutils`, `cmake`, `ninja-build`, and `appstream` and `desktop-file-utils` for
      `check-deb.sh`), stable
-     Rust, Node 22, `just`, `tauri-cli` 3.0.0-alpha.4 and cargo-about 0.9.2;
+     Rust, Node 22, `just`, `tauri-cli` 3.0.0-alpha.5 and cargo-about 0.9.2;
    - runs `just package` with `GITVOLT_RELEASE_VERSION` set. That generates the third-party
      license notices (`scripts/licenses.sh`, failing on a license outside `about.toml`'s
      allow-list; see [licensing.md](licensing.md)), builds, and runs `fix-deb.sh`, `check-deb.sh`

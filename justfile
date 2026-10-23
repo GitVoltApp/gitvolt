@@ -208,9 +208,9 @@ readme-screenshot:
 
 # The CEF app needs the v3-alpha `cargo tauri` CLI, pinned to match the vendored/patched
 # tauri-runtime-cef and the other Tauri crates (root Cargo.toml, vendor/tauri-runtime-cef/
-# GITVOLT-PATCH.md). Install with: cargo install tauri-cli --version =3.0.0-alpha.4 --locked
+# GITVOLT-PATCH.md). Install with: cargo install tauri-cli --version =3.0.0-alpha.5 --locked
 check-tauri-cli:
-    cargo tauri --version | grep -qxF 'tauri-cli 3.0.0-alpha.4' || { echo "wrong cargo-tauri version; install: cargo install tauri-cli --version =3.0.0-alpha.4 --locked"; exit 1; }
+    cargo tauri --version | grep -qxF 'tauri-cli 3.0.0-alpha.5' || { echo "wrong cargo-tauri version; install: cargo install tauri-cli --version =3.0.0-alpha.5 --locked"; exit 1; }
 
 # The installed copy of Chromium's setuid sandbox helper (one-time `sudo install`, see
 # docs/dev-setup.md). When it exists, the run recipes point Chromium at it through
@@ -257,8 +257,11 @@ package: check-tauri-cli
     # GITVOLT_RELEASE_VERSION=<version> (the release workflow) builds the plain version instead,
     # which must equal tauri.conf.json's (scripts/package-version.sh). CARGO_BUILD_JOBS defaults to 4.
     # GITVOLT_BUILD_VERSION bakes the same version into the binary (the status bar, the update check).
+    # CEF_PATH: the CEF distribution the bundler copies from, with the two libraries CEF 154
+    # dropped and the bundler still copies (scripts/cef-bundler-dist.sh).
     cd crates/gitvolt-app && v="$(../../scripts/package-version.sh tauri.conf.json)" && \
-      env -u CARGO_INCREMENTAL CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" GITVOLT_BUILD_VERSION="$v" cargo tauri build --bundles deb --config "{\"version\":\"$v\"}"
+      cef="$(../../scripts/cef-bundler-dist.sh ../../target/cef-bundler)" && \
+      env -u CARGO_INCREMENTAL CEF_PATH="$cef" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" GITVOLT_BUILD_VERSION="$v" cargo tauri build --bundles deb --config "{\"version\":\"$v\"}"
     scripts/fix-deb.sh target/release/bundle/deb/GitVolt_*_amd64.deb
     scripts/check-deb.sh target/release/bundle/deb/GitVolt_*_amd64.deb
     scripts/package-arch.sh target/release/bundle/deb/GitVolt_*_amd64.deb target/release/bundle/arch

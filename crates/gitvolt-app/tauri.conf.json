@@ -64,7 +64,7 @@
         "/usr/share/doc/gitvolt/CEF-LICENSE.txt": "../../target/licenses/CEF-LICENSE.txt",
         "/usr/share/doc/gitvolt/CHROMIUM-CREDITS.html.gz": "../../target/licenses/CHROMIUM-CREDITS.html.gz",
         "/usr/share/doc/gitvolt/DICTIONARY-en-US-LICENSE.txt": "dictionaries/en-US-LICENSE.txt",
-        "/usr/share/GitVolt/dictionaries/en-US-10-1.bdic": "dictionaries/en-US-10-1.bdic",
+        "/usr/share/GitVolt/dictionaries/en-US-10-2.bdic": "dictionaries/en-US-10-2.bdic",
         "/usr/share/GitVolt/install-kind": "packaging/install-kind-deb"
       } }
     }

@@ -42,6 +42,8 @@ pub(crate) struct CefX11Host {
   /// CSS provider currently backing this window's background color, kept so it can be removed
   /// from the display instead of accumulating one provider per `set_background_color` call.
   background_color_provider: RefCell<Option<gtk::CssProvider>>,
+  /// Whether the host is mapped; created mapped, unmapped while it only hosts offscreen webviews.
+  mapped: Cell<bool>,
   /// GitVolt patch: answers the window manager's `WM_TAKE_FOCUS` by focusing a browser.
   _take_focus: Option<super::focus::TakeFocusRedirect>,
 }
@@ -107,6 +109,7 @@ impl CefX11Host {
       colormap,
       geometry,
       background_color_provider: RefCell::new(None),
+      mapped: Cell::new(true),
       _take_focus: take_focus,
     })
   }
@@ -119,6 +122,19 @@ impl CefX11Host {
   /// window, since the providers below are registered display-wide.
   fn background_color_class(&self) -> String {
     format!("tauri-cef-window-background-{}", self.xid)
+  }
+
+  pub(crate) fn set_visible(&self, visible: bool) {
+    if self.mapped.replace(visible) == visible {
+      return;
+    }
+    super::utils::with_cef_display((), |xlib, display| unsafe {
+      if visible {
+        (xlib.XMapWindow)(display, self.xid);
+      } else {
+        (xlib.XUnmapWindow)(display, self.xid);
+      }
+    });
   }
 
   pub(crate) fn size(&self) -> PhysicalSize<u32> {

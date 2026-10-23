@@ -34,7 +34,7 @@ line=$(grep '/chrome-sandbox$' <<<"$contents") || fail "no chrome-sandbox in the
 # Plus the spell-check dictionary beside the binary, which the app copies into Chromium's profile
 # (PRIVACY.md: spell check works offline).
 for f in doc/gitvolt/{copyright,LICENSE,THIRD-PARTY-NOTICES-rust.txt,THIRD-PARTY-NOTICES-ui.txt,CEF-LICENSE.txt,CHROMIUM-CREDITS.html.gz,DICTIONARY-en-US-LICENSE.txt} \
-  GitVolt/dictionaries/en-US-10-1.bdic; do
+  GitVolt/dictionaries/en-US-10-2.bdic; do
   size=$(awk -v p="usr/share/$f" '$1 ~ /^-/ && ($NF == p || $NF == "./" p) { print $3 }' <<<"$contents")
   [ -n "$size" ] || fail "no /usr/share/$f"
   [ "$size" -gt 0 ] || fail "/usr/share/$f is empty"

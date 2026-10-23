@@ -64,7 +64,7 @@ check_app() {
   for f in LICENSE THIRD-PARTY-NOTICES-rust.txt THIRD-PARTY-NOTICES-ui.txt CEF-LICENSE.txt CHROMIUM-CREDITS.html.gz DICTIONARY-en-US-LICENSE.txt; do
     [ -s "$res/licenses/$f" ] || fail "$app: licenses/$f is missing or empty"
   done
-  [ -s "$res/dictionaries/en-US-10-1.bdic" ] || fail "$app: no spell-check dictionary"
+  [ -s "$res/dictionaries/en-US-10-2.bdic" ] || fail "$app: no spell-check dictionary"
   plutil -extract CFBundleDocumentTypes.0.LSItemContentTypes.0 raw "$app/Contents/Info.plist" | grep -qx public.folder ||
     fail "$app: Info.plist doesn't declare the folder document type"
   [ "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")" = "$v" ] || fail "$app: not version $v"

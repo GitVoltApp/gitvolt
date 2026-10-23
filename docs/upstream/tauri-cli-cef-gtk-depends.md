@@ -1,6 +1,7 @@
 # Upstream report draft: tauri-cli declares GTK 3 for CEF apps on Linux
 
-Not filed; filing is the user's call.
+Not filed; filing is the user's call. Still the case in `tauri-cli` 3.0.0-alpha.5 (the same
+`linux_dependencies()`, unchanged), so `scripts/fix-deb.sh` stays.
 
 ---
 

@@ -56,7 +56,7 @@ cp = c.Copyright(open(sys.argv[1], encoding="utf-8"), strict=True)
 assert cp.header.upstream_name == "GitVolt"
 assert cp.find_files_paragraph("usr/share/GitVolt/gitvolt").license.synopsis == "MIT"
 assert cp.find_files_paragraph("usr/share/GitVolt/libcef.so").license.synopsis == "BSD-3-Clause"
-assert cp.find_files_paragraph("usr/share/GitVolt/dictionaries/en-US-10-1.bdic").license.synopsis == "SCOWL"
+assert cp.find_files_paragraph("usr/share/GitVolt/dictionaries/en-US-10-2.bdic").license.synopsis == "SCOWL"
 assert {p.license.synopsis for p in cp.all_license_paragraphs()} == {"MIT", "BSD-3-Clause", "SCOWL"}
 EOF
 else

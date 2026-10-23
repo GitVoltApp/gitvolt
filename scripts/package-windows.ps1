@@ -218,7 +218,7 @@ Get-ChildItem $cefDir -File | Where-Object {
   $_.Extension -in '.dll', '.pak', '.dat', '.bin' -or $_.Name -eq 'vk_swiftshader_icd.json'
 } | Copy-Item -Destination $stage
 Copy-Item -Recurse (Join-Path $cefDir 'locales') $stage
-Copy-Item (Join-Path $root 'crates\gitvolt-app\dictionaries\en-US-10-1.bdic') (Join-Path $stage 'dictionaries')
+Copy-Item (Join-Path $root 'crates\gitvolt-app\dictionaries\en-US-10-2.bdic') (Join-Path $stage 'dictionaries')
 $licenses = Join-Path $target 'licenses'
 foreach ($f in 'LICENSE', 'THIRD-PARTY-NOTICES-rust.txt', 'CEF-LICENSE.txt', 'CHROMIUM-CREDITS.html.gz', 'DICTIONARY-en-US-LICENSE.txt') {
   Copy-Item (Join-Path $licenses $f) (Join-Path $stage 'licenses')
