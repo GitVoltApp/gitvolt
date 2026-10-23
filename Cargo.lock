@@ -2038,6 +2038,7 @@ dependencies = [
 name = "gitvolt-app"
 version = "0.7.8"
 dependencies = [
+ "gdk4-x11",
  "gitvolt-core",
  "gitvolt-forge",
  "glib",
@@ -2050,6 +2051,7 @@ dependencies = [
  "tauri-runtime-cef",
  "tokio",
  "tracing",
+ "x11-dl",
 ]
 
 [[package]]

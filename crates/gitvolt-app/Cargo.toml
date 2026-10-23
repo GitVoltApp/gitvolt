@@ -24,8 +24,10 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
+gdk4-x11.workspace = true
 glib.workspace = true
 raw-window-handle.workspace = true
+x11-dl.workspace = true
 
 # The folder dialog's owner window (`portal_parent`).
 [target.'cfg(windows)'.dependencies]

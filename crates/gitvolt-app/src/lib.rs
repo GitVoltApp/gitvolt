@@ -471,6 +471,9 @@ pub fn run() {
             // K46: the window opens where it was last (window_state.rs). The builder's position
             // and size are applied before the window is first mapped, so it never shows at the
             // default place first; maximizing waits until it's on screen, on the right monitor.
+            // A window manager that places it elsewhere anyway (mutter) is corrected once it's
+            // shown (`settle`), which is also when a window built smaller, so mutter doesn't
+            // maximize it (`build_size`), gets its size.
             let can_position = window_state::can_self_position_now();
             let saved = window_store.window();
             let available = app.available_monitors().unwrap_or_default();
@@ -483,16 +486,27 @@ pub fn run() {
                 builder = builder.on_web_resource_request(move |_, response| csp::add_policy(&policy, response));
             }
             if let Some(p) = &place {
-                builder = builder.inner_size(p.size.0, p.size.1);
+                let (width, height) = window_state::build_size(p, &screens);
+                builder = builder.inner_size(width, height);
                 if let Some((x, y)) = p.position {
                     builder = builder.position(x, y);
                 }
             }
+            // Until it's settled the window is see-through, so the window manager's own placement
+            // never shows (`veil`).
+            let veiled = window_state::veiled(place.as_ref());
+            if veiled {
+                builder = builder.visible(false);
+            }
             let window = builder.build()?;
+            let veil = if veiled { window_state::veil(&window) } else { None };
             if place.as_ref().is_some_and(|p| p.maximized)
                 && let Err(e) = window.maximize()
             {
                 tracing::warn!("couldn't maximize the restored window: {e}");
+            }
+            if let Some(p) = place {
+                window_state::settle(&window, p, &screens, veil);
             }
             window_state::track(&window, window_store.clone(), can_position, (cfg.width, cfg.height));
             // R19: answer later launches now that there's a window to focus. One that came while
