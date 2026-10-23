@@ -6,8 +6,21 @@
 import * as monaco from 'monaco-editor/editor/editor.api';
 import 'monaco-editor/features/register.all';
 import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
+import { api, errorMessage } from '../../api/client';
+import { useToast } from '../../ui/toastStore';
 
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+
+// Ctrl+click on a link in an editor: Monaco's own opener calls `window.open`, which CEF turns into
+// a Chromium window of the app's. Web and mail links go to the default browser instead, as every
+// other link in the app does (the core checks the URL).
+monaco.editor.registerLinkOpener({
+  open(uri) {
+    if (!['http', 'https', 'mailto'].includes(uri.scheme)) return false;
+    api.openUrl(uri.toString(true)).catch((e: unknown) => useToast.getState().show(errorMessage(e), { error: true }));
+    return true;
+  },
+});
 
 export { monaco };
 export type Monaco = typeof monaco;
