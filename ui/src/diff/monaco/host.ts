@@ -12,7 +12,7 @@ import { openTop, revealTop, stepTarget, type ChangeBox } from '../changeNav';
 import { overflowLayer } from './overflow';
 import { ReviewGutter, type ReviewGutterSpec } from './reviewGutter';
 import { ReviewZones, type ReviewZoneSpec } from './reviewZones';
-import { monaco } from './setup';
+import { monaco, openLinksInBrowser } from './setup';
 import { useAppState } from '../../app/state';
 import { bindEditorTheme } from '../../theme/editorThemes';
 import { useTheme } from '../../theme/store';
@@ -358,6 +358,7 @@ class Host implements MonacoHost {
     this.ro.observe(el);
     if (!this.diff) {
       this.diff = monaco.editor.createDiffEditor(this.diffEl, { ...diffEditorOptions(this.prefs, this.menu === null, sticky(), fontSize()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
+      openLinksInBrowser();
       // A plain DOM signal that a diff (or a prefs recompute) is done, for e2e waits.
       this.diff.onDidUpdateDiff(() => {
         this.diffEl.dataset.diffComputed = String(++this.computedCount);
@@ -771,6 +772,7 @@ class Host implements MonacoHost {
     this.ro.observe(el);
     if (!this.file) {
       this.file = monaco.editor.create(this.fileEl, { ...fileViewOptions(this.fileWrap, this.menu === null, sticky(), fontSize()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
+      openLinksInBrowser();
       this.wireMenu(this.file, 'file');
     }
     this.layout();

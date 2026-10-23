@@ -227,7 +227,7 @@ vi.mock('./setup', () => {
     Object.assign(state, { defined: new Set(['vs', 'vs-dark', 'hc-black']), applied: 'vs', themeAtCreate: [], diffAutoUpdate: true, lineChanges: null, diffs: [], files: [] });
     monaco.editor = editor();
   };
-  return { monaco, state, reset };
+  return { monaco, state, reset, openLinksInBrowser: () => {} };
 });
 
 // A grammar load the test can hold open (`gate.wait`), to reorder prefs changes around it.
