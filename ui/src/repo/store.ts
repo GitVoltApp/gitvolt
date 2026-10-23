@@ -26,6 +26,9 @@ export type Selection =
   | { kind: 'wip'; index: number; worktree: string; name: string | null }
   | { kind: 'compare'; from: string; to: string }
   | { kind: 'compareWorktree'; from: string; worktree: string }
+  /** A collapsed branch's ⋮ row (branch presets): it takes the keyboard cursor, but it's no
+   * commit, so nothing loads and the panel shows nothing. `id` is the row's (`collapsed:<branch>@<newest sha>`). */
+  | { kind: 'collapsed'; index: number; id: string }
   /** Three or more rows (K27): their ids, top row (newest) first, and the id of the row a Shift
    * range starts from (spec #3 §4.3). No diff, no file lists. */
   | { kind: 'multi'; ids: readonly string[]; anchor: string };
@@ -159,6 +162,13 @@ export interface RepoViewState {
    */
   selectRow(index: number, mods?: SelectMods): void;
   selectCommitById(id: string): boolean;
+  /**
+   * Selects a commit a branch preset hides (a reveal panel's row): a single selection with
+   * `index: -1`, as it has no graph row. It's kept across `setGraph` while a preset is on (the
+   * commit may still be in the window), and takes its row's index once it has one ("Expand in
+   * graph"). A commit that is a row is selected as one.
+   */
+  selectRevealed(id: string): void;
   /** The selection as it is now, by row id (UX R2.2). */
   snapshotSelection(): SelectionSnapshot;
   /** Selects `snap`'s rows again, those still in the graph; none left, nothing is selected. With
@@ -253,6 +263,7 @@ export function selectedIndex(s: RepoViewState): number {
   switch (s.selection.kind) {
     case 'commit':
     case 'wip':
+    case 'collapsed':
       return s.selection.index;
     case 'compare':
     case 'compareWorktree':
@@ -301,13 +312,14 @@ export function openWipIndex(s: Pick<RepoViewState, 'graph' | 'repoPath'>): numb
 
 /** The selected rows, in pick order: a single selection's one row, or the picks (K27). */
 function pickedRows(s: RepoViewState): readonly number[] {
-  if (s.selection.kind === 'commit' || s.selection.kind === 'wip') return [s.selection.index];
+  if (s.selection.kind === 'commit' || s.selection.kind === 'wip') return s.selection.index >= 0 ? [s.selection.index] : [];
   return s.picks.rows;
 }
 
-/** Where a Shift range starts (K27): a single selection's row, else the picks' anchor. */
+/** Where a Shift range starts (K27): a single selection's row (a ⋮ row's too), else the picks'
+ * anchor. */
 function anchorOf(s: RepoViewState): number | null {
-  if (s.selection.kind === 'commit' || s.selection.kind === 'wip') return s.selection.index;
+  if (s.selection.kind === 'commit' || s.selection.kind === 'wip' || s.selection.kind === 'collapsed') return s.selection.index >= 0 ? s.selection.index : null;
   return s.picks.anchor ?? s.picks.cursor;
 }
 
@@ -361,7 +373,7 @@ const settledFor = (l: Loadable<{ id: string }>, id: string) => l.status === 'er
  * of it has settled, else the one shown so far. */
 function panelFor(s: RepoViewState): Pick<RepoViewState, 'panel' | 'panelPending'> {
   const { selection, parent, details, message, sections } = s;
-  if (selection.kind === 'none') return { panel: null, panelPending: false };
+  if (selection.kind === 'none' || selection.kind === 'collapsed') return { panel: null, panelPending: false };
   const want = sectionSpecs(selection, parent).map((x) => filesKey(x.spec));
   const complete = sections.length === want.length
     && sections.every((x, i) => filesKey(x.spec) === want[i] && settled(x.list))
@@ -452,19 +464,10 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
     function selectCommit(index: number, extra: Partial<RepoViewState> = {}) {
       const rows = (extra.graph ?? get().graph).rows;
       const row = rows[index];
-      const mySeq = ++seq;
-      perf.start('details');
-      const selection: Selection = { kind: 'commit', index, id: row.id };
-      set({ selection, picks: NO_PICKS, parent: 0, diff: null, details: IDLE, message: IDLE, ...extra });
-      loadCommit(row.id, mySeq);
-      loadSections(sectionSpecs(selection, 0), mySeq);
-      // The signature check starts with the details, not after them (the badge asks for the same
-      // load); an unsigned commit answers without running anything.
-      services.signature.get(row.id).catch(() => {});
-      askPeople(row.id, true);
+      showCommit(index, row.id, extra);
       // The neighbours' details, file lists and messages: Up/Down then swaps the panel at once.
       // Two away for the details, signatures and avatars (cheap); one for the rest.
-      const commitsAt = (offsets: number[]) => offsets.map((d) => index + d).filter((i) => i >= 0 && i < rows.length && rows[i].kind !== 'wip').map((i) => rows[i].id);
+      const commitsAt = (offsets: number[]) => offsets.map((d) => index + d).filter((i) => i >= 0 && i < rows.length && rows[i].kind !== 'wip' && rows[i].kind !== 'collapsed').map((i) => rows[i].id);
       const near = commitsAt([-1, 1]);
       const near2 = commitsAt([-1, 1, -2, 2]);
       services.details.prefetch(near2);
@@ -472,6 +475,20 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       for (const id of near2) askPeople(id, false);
       services.files.prefetch(near.map((id) => filesKey({ kind: 'commit', id, parent: 0 })));
       for (const id of near) if (!services.messages.peek(id)) services.messages.get(id).catch(() => {});
+    }
+
+    /** Selects commit `id` at row `index` (-1: a commit a preset hides) and loads its panel. */
+    function showCommit(index: number, id: string, extra: Partial<RepoViewState> = {}) {
+      const mySeq = ++seq;
+      perf.start('details');
+      const selection: Selection = { kind: 'commit', index, id };
+      set({ selection, picks: NO_PICKS, parent: 0, diff: null, details: IDLE, message: IDLE, ...extra });
+      loadCommit(id, mySeq);
+      loadSections(sectionSpecs(selection, 0), mySeq);
+      // The signature check starts with the details, not after them (the badge asks for the same
+      // load); an unsigned commit answers without running anything.
+      services.signature.get(id).catch(() => {});
+      askPeople(id, true);
     }
 
     /** Asks for the avatars of commit `id`'s people once its details are in (a prefetched
@@ -505,6 +522,9 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         const wip: Selection = { kind: 'wip', index, worktree: w.worktreePath, name: w.worktreeName };
         set({ selection: wip, picks: NO_PICKS, diff: null, details: IDLE, message: IDLE });
         loadSections(sectionSpecs(wip, 0), mySeq);
+      } else if (row.kind === 'collapsed') {
+        ++seq;
+        set({ selection: { kind: 'collapsed', index, id: row.id }, picks: NO_PICKS, parent: 0, diff: null, details: IDLE, message: IDLE, sections: [] });
       } else {
         selectCommit(index);
       }
@@ -560,8 +580,12 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
      * that working tree; two WIP rows can't be compared, so the cursor's is selected alone.
      * Three or more are a multi-selection, with nothing to load.
      */
-    function pick(rows: readonly number[], anchor: number | null, cursor: number) {
+    function pick(picked: readonly number[], anchor: number | null, cursor: number) {
       const g = get().graph.rows;
+      // A ⋮ row is never picked (it's no commit); a range across it, or ending on it with the
+      // cursor there, picks the commits around it.
+      const rows = picked.filter((i) => g[i]?.kind !== 'collapsed');
+      if (rows.length === 0) return selectOne(cursor);
       if (rows.length === 1) return selectOne(rows[0]);
       const picks: Picks = { rows, anchor, cursor };
       if (rows.length === 2) {
@@ -640,9 +664,11 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         const indexById = indexGraph(next);
         const remap = (i: number | null) => (i === null ? null : indexById.get(prev.graph.rows[i]?.id ?? '') ?? null);
         let selection: Selection = prev.selection;
-        if (selection.kind === 'commit') {
+        if (selection.kind === 'commit' || selection.kind === 'collapsed') {
           const i = indexById.get(selection.id);
-          selection = i === undefined ? { kind: 'none' } : { ...selection, index: i };
+          // A hidden commit picked in a reveal panel stays selected while a preset is on.
+          const revealed = selection.kind === 'commit' && selection.index < 0 && next.view != null;
+          selection = i !== undefined ? { ...selection, index: i } : revealed ? selection : { kind: 'none' };
         } else if (selection.kind === 'wip') {
           const worktree = selection.worktree;
           const i = next.rows.findIndex((r) => r.wip?.worktreePath === worktree);
@@ -689,6 +715,8 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       selectRow(index, mods = {}) {
         const s = get();
         if (!s.graph.rows[index]) return;
+        // A ⋮ row alone takes a click or Ctrl+click (it can't join a selection of commits).
+        if (s.graph.rows[index].kind === 'collapsed' && !mods.shift) return selectOne(index);
         const current = pickedRows(s);
         if (mods.shift) {
           const anchor = anchorOf(s);
@@ -717,6 +745,15 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         if (i === undefined) return false;
         get().selectRow(i);
         return true;
+      },
+
+      selectRevealed(id) {
+        const s = get();
+        const i = s.indexById.get(id);
+        if (i !== undefined) return state.selectRow(i);
+        const sel = s.selection;
+        if (sel.kind === 'commit' && sel.id === id) return;
+        showCommit(-1, id);
       },
 
       snapshotSelection() {
@@ -849,6 +886,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       closeDiff: guarded(state.closeDiff),
       closeDiffTo: guarded(state.closeDiffTo),
       selectRow: guarded(state.selectRow),
+      selectRevealed: guarded(state.selectRevealed),
     };
   });
 }

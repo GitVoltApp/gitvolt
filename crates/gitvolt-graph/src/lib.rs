@@ -15,10 +15,14 @@ mod message_refs;
 mod oid;
 mod payload;
 mod pins;
+mod presets;
+#[cfg(test)]
+mod testkit;
+mod view;
 mod walk;
 
 pub use ascii::{render_ascii, AsciiRow};
-pub use assemble::{assemble, build, graph_tips, walk_order};
+pub use assemble::{assemble, build, build_hidden_owner, build_preview, build_reveal, graph_tips, walk_order};
 #[cfg(any(test, feature = "testing"))]
 pub use check::check_continuity;
 pub use input::{CommitIn, ForkFacts, GraphInput, GraphRequest, HeadIn, RefIn, RefKind, RefsIn, StashIn, WorktreeIn};
@@ -26,5 +30,10 @@ pub use layout::{layout, GraphRow, Half, Layout, LayoutNode, LayoutState, NodeKi
 pub use message::split_message;
 pub use message_refs::{parse_message_refs, MAX_MESSAGE_REFS};
 pub use oid::Oid;
-pub use payload::{ForkDetection, ForkPayload, GraphPayload, GraphWorktree, HeadPayload, HostKind, InProgress, RefLabel, RemoteRefLabel, RowPayload, TagAnnotation, WipCounts, WipPayload};
+pub use payload::{
+    BranchState, BranchView, CollapsedRow, DecidedBy, FoldMark, ForkDetection, ForkPayload, GhostBranch, GraphPayload, GraphWorktree, HeadPayload, HostKind, InProgress, PresetPreview, RefLabel,
+    RemoteRefLabel, RevealPayload, RevealTag, RowPayload, TagAnnotation, ViewPayload, WipCounts, WipPayload,
+};
+pub use presets::{Author, BranchPicks, BranchPreset, CollapsePlacement, Matcher, PresetAction, PresetScope, PresetSlot, Rule};
+pub use view::{hidden_owner, preview, reveal, ViewSpec};
 pub use walk::{walk, walk_by_date, CommitMeta, WalkOptions, WalkResult};

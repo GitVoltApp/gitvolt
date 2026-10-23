@@ -766,3 +766,65 @@ describe('GraphView: the Graph column\'s max width and the overflow strip (F2)',
     expect(useColumnPrefs.getState().prefs.graph).toBe(400);
   });
 });
+
+describe('GraphView: branch presets\' rows', () => {
+  const base = graph.rows[0];
+  const dots = (branch: string, count: number, authors: number) => ({ ...base, id: `collapsed:${branch}`, kind: 'collapsed' as const, summary: '', bodyFirstLine: '', authorName: '', parents: [], authorTime: 0, committerTime: 0, collapsed: { key: `branch:${branch}`, branch, count, authors } });
+  const presetGraph: GraphPayload = {
+    ...graph,
+    rows: [graph.rows[0], dots('feature/payments', 58, 3), graph.rows[1], dots('spike/warp-gates', 4, 1)],
+  };
+
+  it("the ⋮ row's text and author count", () => {
+    render(<GraphView graph={presetGraph} repoId="/repo" />);
+    const row = screen.getByRole('row', { name: '58 more commits on feature/payments, 3 authors. Press Enter to show them.' });
+    // Dimmed, not bold (no summary of its own), and the number of authors; no date or SHA.
+    const msg = within(row).getByText('⋮ 58 more commits on feature/payments');
+    expect(msg).toHaveClass('dim');
+    expect(msg).not.toHaveClass('msg-summary');
+    expect(row.querySelector('[data-col="author"]')).toHaveTextContent(/^3 authors$/);
+    expect(row.querySelector('[data-col="date"]')).toBeEmptyDOMElement();
+    expect(row.querySelector('[data-col="sha"]')).toBeEmptyDOMElement();
+    const one = screen.getByRole('row', { name: '4 more commits on spike/warp-gates, 1 author. Press Enter to show them.' });
+    expect(one.querySelector('[data-col="author"]')).toHaveTextContent(/^1 author$/);
+    // A commit row has no such name.
+    expect(screen.getAllByRole('row')[0]).not.toHaveAttribute('aria-label');
+  });
+
+  it('a ⋮ row is never a commit for menus, copy or details', () => {
+    const onContextMenu = vi.fn();
+    const onRowDoubleClick = vi.fn();
+    const onSelect = vi.fn();
+    render(<GraphView graph={presetGraph} repoId="/repo" selected={1} onSelect={onSelect} onContextMenu={onContextMenu} onRowDoubleClick={onRowDoubleClick} />);
+    const row = screen.getAllByRole('row')[1];
+    fireEvent.contextMenu(row);
+    fireEvent.doubleClick(row);
+    fireEvent.keyDown(screen.getByRole('grid', { name: 'Commit graph' }), { key: 'F10', shiftKey: true });
+    expect(onContextMenu).not.toHaveBeenCalled();
+    expect(onRowDoubleClick).not.toHaveBeenCalled();
+    // No SHA to copy.
+    expect(within(row).queryByTestId('sha')).toBeNull();
+    // It still takes the keyboard cursor (the store loads nothing for it: store.selection.test).
+    fireEvent.mouseDown(row, { button: 0 });
+    expect(onSelect).toHaveBeenCalledWith(1, { ctrl: false, shift: false });
+  });
+
+  it('a folded merge says "⋮ N folded commits" and a fork commit "⋮ N hidden", after the summary', () => {
+    const merge = { ...graph.rows[0], kind: 'merge' as const, summary: "Merge 'feature/trade-ui' into main", bodyFirstLine: 'Trade panel', fold: { key: `fold:${'a'.repeat(40)}`, branch: 'feature/trade-ui', count: 6, tailLane: 1 } };
+    const ghost = (branch: string) => ({ branch, color: 2, tip: 'c'.repeat(40), summary: 'Gate graph prototype', authorName: 'Rafe L.', authorTime: 0 });
+    const fork = { ...graph.rows[1], ghosts: [ghost('spike/a'), ghost('spike/b')], stubLane: 2 };
+    render(<GraphView graph={{ ...graph, rows: [merge, fork] }} repoId="/repo" />);
+    const folded = screen.getByText("Merge 'feature/trade-ui' into main").nextElementSibling!;
+    expect(folded).toHaveClass('dim', 'msg-mark');
+    expect(folded).toHaveTextContent(/^⋮ 6 folded commits$/);
+    expect(folded).toHaveAccessibleName('6 folded commits of feature/trade-ui');
+    expect(folded.nextElementSibling).toHaveTextContent('Trade panel');
+    const hidden = screen.getByText(fork.summary).nextElementSibling!;
+    expect(hidden).toHaveClass('dim', 'msg-mark');
+    expect(hidden).toHaveTextContent(/^⋮ 2 hidden$/);
+    expect(hidden).toHaveAccessibleName('2 hidden branches start here');
+    // The old "+N" badge is gone; plain rows carry no mark.
+    expect(document.querySelectorAll('.fold-count')).toHaveLength(0);
+    expect(document.querySelectorAll('.msg-mark')).toHaveLength(2);
+  });
+});

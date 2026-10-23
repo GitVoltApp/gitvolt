@@ -13,6 +13,22 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   the list and the badges. The icon turns while it runs. A refresh while one is running joins it,
   and none is sent while the forge's rate limit is spent. "Refresh the MR/PR" and "Refresh the
   MR/PR list" are in the command palette too.
+- **Branch presets.** A button right of the sidebar's branch filter switches the graph between
+  views: All (today's graph), All, collapsed, Mine, and presets you make from rules (show, hide or
+  collapse branches by trunk, checked out, author, name, remote or local, age, merged). A click
+  steps to the next preset, ▾ lists them all; Settings › Branch presets edits, reorders, copies
+  and pastes them.
+  - A collapsed branch keeps its newest and oldest commits around a dotted "⋮ N more commits" row.
+    Hovering or clicking it opens the hidden commits over the graph, lined up with its lanes,
+    without moving any rows; "Expand in graph" unfolds the branch until you collapse it again from
+    its menu (Collapse branch; Fold merged branch on a merge), or switch presets. A branch whose
+    local and remote have diverged collapses each line on its own, so both tips stay rows.
+  - A preset can fold branches merged into the trunk into their merge commit, which keeps its merge
+    line, ending in dots in the row below, and says "⋮ N folded commits". Where hidden branches
+    fork, one dotted stub in a lane of its own curves into the commit ("⋮ N hidden"); hovering it
+    lists them with Show. Both take lanes like real lines, so nothing overlaps them.
+  - Hide branch and Show branch in a branch's menus, or Alt+click its chip or sidebar row, make the
+    repository's Custom preset. Hidden branches stay in the sidebar, struck through.
 - **Load older commits.** A row at the bottom of the graph loads the next batch of history and
   keeps your place. The extra history unloads a few minutes after you're back near the top.
 - **File colours.** Per repository, scopes of path patterns (`**/tests/**`, `*.snap`) tint their

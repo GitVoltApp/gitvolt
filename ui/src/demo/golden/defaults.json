@@ -5,6 +5,7 @@
     "color": "#4d88ff",
     "editor": null,
     "extraGitconfig": null,
+    "fileColours": {},
     "flyoutWidth": null,
     "forgeAccounts": [],
     "hostOverrides": {},
@@ -25,6 +26,22 @@
   },
   "settings": {
     "activeProfile": "default",
+    "builtinPresets": [
+      {
+        "id": "all",
+        "inCycle": true
+      },
+      {
+        "id": "all-collapsed",
+        "inCycle": true
+      },
+      {
+        "id": "mine",
+        "inCycle": true
+      }
+    ],
+    "collapseHoverOpen": true,
+    "collapsePlacement": "keepDateOrder",
     "commitLimit": 2000,
     "customThemes": [],
     "dateFormat": "ymd12h",

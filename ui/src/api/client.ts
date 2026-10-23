@@ -26,6 +26,9 @@ import type { UiDiagnostics } from './gen/UiDiagnostics';
 import type { FetchOutcome } from './gen/FetchOutcome';
 import type { LastPushPayload } from './gen/LastPushPayload';
 import type { PinSetting } from './gen/PinSetting';
+import type { PresetPreview } from './gen/PresetPreview';
+import type { RevealPayload } from './gen/RevealPayload';
+import type { ViewSpec } from './gen/ViewSpec';
 import type { Profile } from './gen/Profile';
 import type { ProfileMeta } from './gen/ProfileMeta';
 import type { RepoInfoPayload } from './gen/RepoInfoPayload';
@@ -198,10 +201,24 @@ export interface OpenInRequest { worktree: string; path: string; line: number | 
 
 export const api = {
   openRepo: (path: string) => t().call({ method: 'openRepo', params: { path } }) as Promise<RepoSummary>,
-  /** `extra`: the pinned trunk (spec §8.2), `rescan` to re-read the WIP status, and the tab's
-   * `active` worktree (spec #2 §11.2), laid out as the open one. */
-  graph: (repo: number, limit: number | null = null, extra: { pin?: PinSetting; rescan?: boolean; active?: string } = {}) =>
+  /** `extra`: the pinned trunk (spec §8.2), `rescan` to re-read the WIP status, the tab's
+   * `active` worktree (spec #2 §11.2), laid out as the open one, and the branch preset's `view`
+   * (none under All). */
+  graph: (repo: number, limit: number | null = null, extra: { pin?: PinSetting; rescan?: boolean; active?: string; view?: ViewSpec } = {}) =>
     call<GraphPayload>({ method: 'graph', params: { repo, limit, ...extra } }),
+  // --- branch presets ---
+  /** The reveal panel's rows for `key` (`branch:<name>` or `fold:<merge sha>`), laid out as the
+   * `graph` with the same window, pin and worktree; `null` for a stale key. */
+  graphReveal: (repo: number, limit: number | null, extra: { pin?: PinSetting; active?: string }, view: ViewSpec, key: string, below: boolean) =>
+    call<RevealPayload | null>({ method: 'graphReveal', params: { repo, limit, ...extra, view, key, below } }),
+  /** A preset's live summary over the repository's window (the settings page). */
+  branchPresetPreview: (repo: number, limit: number | null, pin: PinSetting | undefined, view: ViewSpec) =>
+    call<PresetPreview>({ method: 'branchPresetPreview', params: { repo, limit, pin, view } }),
+  /** The `expanded` key that would make `sha` (loaded, but not a row under `view`) a row; `null`
+   * when it is a row or isn't loaded. */
+  graphHiddenOwner: (repo: number, limit: number | null, extra: { pin?: PinSetting; active?: string }, view: ViewSpec, sha: string) =>
+    call<string | null>({ method: 'graphHiddenOwner', params: { repo, limit, ...extra, view, sha } }),
+  // --- end branch presets ---
   commandLog: () => t().call({ method: 'commandLog' }) as Promise<CommandLogEntry[]>,
   /** Every core API request (the Debug modal's Requests tab), oldest first; its own reads aren't in it. */
   requestLog: () => t().call({ method: 'requestLog' }) as Promise<RequestLogEntry[]>,

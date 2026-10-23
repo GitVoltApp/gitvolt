@@ -10,7 +10,7 @@ const gitlab: ForgeProject = {
 const github: ForgeProject = { ...gitlab, kind: 'github', id: 501, host: 'github.com', path: 'octo-org/widget', owner: 'octo-org', webUrl: 'https://github.com/octo-org/widget' };
 const d: MrDraft = {
   sourceRemote: 'origin', targetRemote: 'origin', targetBranch: 'main', title: 'Add login', description: 'Why?\n\n- a', prefilled: '', template: null,
-  reviewers: [], assignees: [{ id: 2, username: 'hubot', name: 'Hubot', avatarUrl: null, webUrl: '', email: null }], labels: ['bug', 'ui'], draft: true, squash: null, deleteSourceBranch: null,
+  reviewers: [], assignees: [{ id: 2, username: 'hubot', name: 'Hubot', avatarUrl: null, webUrl: '', email: null, emails: [] }], labels: ['bug', 'ui'], draft: true, squash: null, deleteSourceBranch: null,
 };
 
 describe('"Continue editing on…" (spec #4 §4 "4C", ruling 14)', () => {

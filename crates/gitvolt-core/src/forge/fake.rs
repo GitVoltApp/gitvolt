@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) fn user(name: &str) -> ForgeUser {
     let login = name.to_lowercase();
-    ForgeUser { id: 1, username: login.clone(), name: name.into(), avatar_url: None, web_url: format!("https://gitlab.example.com/{login}"), email: Some(format!("{login}@example.com")) }
+    ForgeUser { id: 1, username: login.clone(), name: name.into(), avatar_url: None, web_url: format!("https://gitlab.example.com/{login}"), email: Some(format!("{login}@example.com")), emails: vec![] }
 }
 
 pub(crate) fn project(host: &str, path: &str, fork_of: Option<&str>, updated_at: i64) -> ForgeProject {

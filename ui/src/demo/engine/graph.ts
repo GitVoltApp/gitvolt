@@ -23,6 +23,9 @@ export async function loadGraphWasm(bytes?: Uint8Array): Promise<GraphFactory> {
       addCommits: (commits) => engine.addCommits(JSON.stringify(commits)),
       build: (request) => JSON.parse(engine.build(JSON.stringify(request))),
       walkOrder: (request) => JSON.parse(engine.walkOrder(JSON.stringify(request))) as string[],
+      reveal: (request, key, below) => JSON.parse(engine.reveal(JSON.stringify(request), key, below)),
+      preview: (request) => JSON.parse(engine.preview(JSON.stringify(request))),
+      hiddenOwner: (request, sha) => JSON.parse(engine.hiddenOwner(JSON.stringify(request), sha)) as string | null,
     };
   };
 }

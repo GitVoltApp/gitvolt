@@ -115,6 +115,22 @@ pub struct AppSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(skip)]
     pub window: Option<WindowGeometry>,
+    // --- branch presets ---
+    /// The presets available in all repositories, in list (and cycle) order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branch_presets: Vec<gitvolt_graph::BranchPreset>,
+    /// The built-in presets' order and cycle ticks.
+    pub builtin_presets: Vec<gitvolt_graph::PresetSlot>,
+    /// Graph › "Open collapsed commits on hover".
+    pub collapse_hover_open: bool,
+    /// Graph › "Collapsed branches".
+    pub collapse_placement: gitvolt_graph::CollapsePlacement,
+    // --- end branch presets ---
+}
+
+/// All, All collapsed and Mine, each in the cycle.
+fn default_builtin_presets() -> Vec<gitvolt_graph::PresetSlot> {
+    ["all", "all-collapsed", "mine"].into_iter().map(|id| gitvolt_graph::PresetSlot { id: id.into(), in_cycle: true }).collect()
 }
 
 /// A theme the user made (Settings › Appearance): a built-in base plus the colours they set.
@@ -186,6 +202,12 @@ impl Default for AppSettings {
             graph_color_overrides: BTreeMap::new(),
             custom_themes: Vec::new(),
             window: None,
+            // --- branch presets ---
+            branch_presets: Vec::new(),
+            builtin_presets: default_builtin_presets(),
+            collapse_hover_open: true,
+            collapse_placement: gitvolt_graph::CollapsePlacement::KeepDateOrder,
+            // --- end branch presets ---
         }
     }
 }
@@ -348,6 +370,25 @@ pub struct RepoSettings {
     pub branch_update: Option<crate::forge::BranchUpdate>,
     /// The commit panel's "committing to main in your fork" notice was dismissed for this repo.
     pub fork_trunk_notice_dismissed: bool,
+    // --- branch presets ---
+    /// The current branch preset's id; `None`: `"all"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub branch_preset: Option<String>,
+    /// This repository's own presets, in list (and cycle) order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branch_presets: Vec<gitvolt_graph::BranchPreset>,
+    /// The repository's Custom preset (id `"custom"`), made by the first hide on a built-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub custom_preset: Option<gitvolt_graph::BranchPreset>,
+    /// Branches hidden or shown by hand, by preset id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub branch_picks: BTreeMap<String, gitvolt_graph::BranchPicks>,
+    /// Extra trunk branches (globs), beside the pinned trunk.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trunk_patterns: Vec<String>,
+    // --- end branch presets ---
 }
 
 /// One file-colours scope (spec 2026-10-22): ordered glob patterns that share a tint.
@@ -1519,4 +1560,50 @@ mod tests {
         assert_eq!(s.sync_button, SyncButtonMode::FetchAll);
         assert_eq!(serde_json::to_value(SyncButtonMode::PullFfOrMerge).unwrap(), "pullFfOrMerge");
     }
+
+    // --- branch presets ---
+    #[test]
+    fn presets_settings_default_and_round_trip() {
+        use gitvolt_graph::{Author, BranchPicks, BranchPreset, CollapsePlacement, Matcher, PresetAction, PresetScope, Rule};
+        let s = AppSettings::default();
+        assert_eq!(s.builtin_presets.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["all", "all-collapsed", "mine"]);
+        assert!(s.builtin_presets.iter().all(|p| p.in_cycle));
+        assert!(s.collapse_hover_open);
+        assert_eq!(s.collapse_placement, CollapsePlacement::KeepDateOrder);
+        let old: AppSettings = serde_json::from_value(serde_json::json!({"version": SETTINGS_VERSION})).unwrap();
+        assert_eq!((old.builtin_presets, old.collapse_hover_open), (s.builtin_presets.clone(), true), "a file from before presets gets the defaults");
+        assert!(serde_json::to_value(&s).unwrap().get("branchPresets").is_none(), "no presets: not written");
+
+        let preset = |id: &str| BranchPreset {
+            id: id.into(),
+            name: "Mine, others folded".into(),
+            color: "green".into(),
+            scope: PresetScope::Repo,
+            rules: vec![Rule { action: PresetAction::Show, matcher: Matcher::CommitsBy { author: Author::Me } }, Rule { action: PresetAction::Collapse, matcher: Matcher::NameMatches { patterns: "feature/*".into() } }],
+            otherwise: PresetAction::Hide,
+            fold_merged: true,
+            ghost_lines: false,
+            in_cycle: true,
+        };
+        let repo = RepoSettings {
+            branch_preset: Some("custom".into()),
+            branch_presets: vec![preset("p1")],
+            custom_preset: Some(preset("custom")),
+            branch_picks: [("custom".to_string(), BranchPicks { shown: vec!["spike/x".into()], hidden: vec!["bot/y".into()] })].into(),
+            trunk_patterns: vec!["release/*".into()],
+            ..Default::default()
+        };
+        let mut p = Profile::new("default", "Default", "#4d88ff");
+        p.repos.insert("/r".into(), repo);
+        let json = serde_json::to_value(&p).unwrap();
+        assert_eq!(json["repos"]["/r"]["branchPicks"]["custom"]["hidden"], serde_json::json!(["bot/y"]));
+        assert_eq!(json["repos"]["/r"]["customPreset"]["rules"][0]["matcher"], serde_json::json!({"kind": "commitsBy", "author": {"kind": "me"}}));
+        assert_eq!(serde_json::from_value::<Profile>(json).unwrap(), p);
+
+        let plain = serde_json::to_value(RepoSettings::default()).unwrap();
+        for key in ["branchPreset", "branchPresets", "customPreset", "branchPicks", "trunkPatterns"] {
+            assert!(plain.get(key).is_none(), "{key} written for a repository without presets");
+        }
+    }
+    // --- end branch presets ---
 }

@@ -72,6 +72,7 @@ async fn harness_main() {
                 "irebase" => fixtures::irebase(&repo),
                 "rebase_lab" => fixtures::rebase_lab(&repo),
                 "file_history" => fixtures::file_history(&repo),
+                "presets" => fixtures::presets(&repo),
                 "forge_lab" => gitvolt_harness::forge_lab::build(&repo),
                 // The showcase repositories (previews, submodules, lfs).
                 other if ["orbital", "previews", "submodules", "lfs"].contains(&other) && gitvolt_harness::showcase::build(other, &repo) => {}

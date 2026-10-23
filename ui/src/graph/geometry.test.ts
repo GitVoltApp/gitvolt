@@ -8,11 +8,15 @@ const pack = (from: number, to: number, half: number, color: number, dashed: boo
 
 describe('decodeSegment', () => {
   it('matches the Rust packing', () => {
-    expect(decodeSegment(pack(1023, 7, HALF_FULL, 9, true))).toEqual({ from: 1023, to: 7, half: HALF_FULL, color: 9, dashed: true });
-    expect(decodeSegment(0)).toEqual({ from: 0, to: 0, half: HALF_TOP, color: 0, dashed: false });
+    expect(decodeSegment(pack(1023, 7, HALF_FULL, 9, true))).toEqual({ from: 1023, to: 7, half: HALF_FULL, color: 9, dashed: true, dotted: false });
+    expect(decodeSegment(0)).toEqual({ from: 0, to: 0, half: HALF_TOP, color: 0, dashed: false, dotted: false });
   });
   it('golden: Rust cross-language contract', () => {
-    expect(decodeSegment(0x04d00801)).toEqual({ from: 1, to: 2, half: HALF_BOTTOM, color: 3, dashed: true });
+    expect(decodeSegment(0x04d00801)).toEqual({ from: 1, to: 2, half: HALF_BOTTOM, color: 3, dashed: true, dotted: false });
+  });
+  it('decodes the dotted bit', () => {
+    // Rust: Segment { from_lane: 3, to_lane: 3, half: Full, color: 3, dashed: false, dotted: true }.pack()
+    expect(decodeSegment(0x08e00c03)).toEqual({ from: 3, to: 3, half: HALF_FULL, color: 3, dashed: false, dotted: true });
   });
 });
 

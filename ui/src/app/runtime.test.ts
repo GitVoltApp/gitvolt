@@ -83,6 +83,17 @@ describe('runtime', () => {
     expect(api.repoInfo).toHaveBeenCalledTimes(1);
   });
 
+  it('the runtime sends no view under All', async () => {
+    gate = false;
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, repos: {} } });
+    await useRuntime.getState().refresh('t');
+    expect(Object.keys(graphCalls.at(-1)!)).not.toContain('view');
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, repos: { '/r': { ...EMPTY_REPO_SETTINGS, branchPreset: 'mine' } } } });
+    await useRuntime.getState().refresh('t');
+    expect(graphCalls.at(-1)).toMatchObject({ view: { otherwise: 'hide' } });
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, repos: {} } });
+  });
+
   it('a failed sidebar or repo-info read keeps the graph (and the previous sidebar)', async () => {
     gate = false;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

@@ -451,3 +451,48 @@ describe('selectedCommits and inCommitSelection (spec #3 §4.3)', () => {
     expect(inCommitSelection(st(), A)).toBe(false);
   });
 });
+
+describe("selection: a collapsed branch's ⋮ row (branch presets)", () => {
+  // Rows: 0 A, 1 the ⋮ row, 2 B, 3 C.
+  const dots: RowPayload = { ...row('collapsed:feature/payments', 'collapsed'), summary: '', collapsed: { key: 'branch:feature/payments', branch: 'feature/payments', count: 58, authors: 3 } };
+  const g: GraphPayload = { ...graph, rows: [row(A), dots, row(B), row(C)] };
+
+  it('a ⋮ row is never a commit for menus, copy or details: it takes the cursor and loads nothing', async () => {
+    const { st, click, calls } = setup(g);
+    click(1);
+    await flush();
+    expect(st().selection).toEqual({ kind: 'collapsed', index: 1, id: 'collapsed:feature/payments' });
+    expect(selectedIndex(st())).toBe(1);
+    expect(calls).toEqual([]);
+    expect(st().panel).toBeNull();
+    expect(selectedCommits(st())).toEqual([]);
+    // A commit beside it never prefetches the ⋮ row as a neighbour.
+    click(0);
+    await flush();
+    expect(calls.some((c) => c.includes('collapsed:'))).toBe(false);
+  });
+
+  it('is never picked: a Ctrl+click takes it alone, a Shift range across it picks the commits around it', () => {
+    const { st, click, s } = setup(g);
+    click(0);
+    click(1, { ctrl: true });
+    expect(st().selection.kind).toBe('collapsed');
+    click(0);
+    click(2, { shift: true });
+    expect(st().selection).toEqual({ kind: 'compare', from: A, to: B });
+    expect(picks(s).rows).toEqual([0, 2]);
+    // A Shift move onto it alone: the commit stays selected.
+    click(0);
+    click(1, { shift: true });
+    expect(st().selection).toEqual({ kind: 'commit', index: 0, id: A });
+  });
+
+  it('follows its row across a refresh, and goes with it', () => {
+    const { st, click, s } = setup(g);
+    click(1);
+    s.getState().setGraph({ ...g, rows: [row(D), ...g.rows] });
+    expect(st().selection).toEqual({ kind: 'collapsed', index: 2, id: 'collapsed:feature/payments' });
+    s.getState().setGraph({ ...g, rows: [row(D), row(A), row(B)] });
+    expect(st().selection).toEqual({ kind: 'none' });
+  });
+});

@@ -92,7 +92,7 @@ test.describe('sidebar', () => {
         'Fast-forward main to hotfix', 'Rebase main onto hotfix',
         'Checkout', 'Create worktree from', 'Create branch here',
         'Cherry-pick onto main', 'Create tag here', 'Rename hotfix', 'Delete',
-        'Copy branch name', 'Copy SHA', 'Copy message', 'Compare with HEAD', 'Show in graph',
+        'Copy branch name', 'Copy SHA', 'Copy message', 'Compare with HEAD', 'Hide branch', 'Show in graph',
       ]);
       await expect(action(page, 'Delete')).toBeDisabled();
       await action(page, 'Copy SHA').hover();

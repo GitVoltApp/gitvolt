@@ -24,6 +24,9 @@
         "author": {
           "avatarUrl": null,
           "email": "grace@example.com",
+          "emails": [
+            "grace@example.com"
+          ],
           "id": 102,
           "name": "Grace Hopper",
           "username": "grace",

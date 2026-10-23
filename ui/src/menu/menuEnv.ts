@@ -1,4 +1,5 @@
 import { api, errorMessage } from '../api/client';
+import { goToCommit } from '../app/graphNav';
 import type { CommitMessage } from '../api/gen/CommitMessage';
 import type { DiffSpec } from '../api/gen/DiffSpec';
 import type { ForgeKind } from '../api/gen/ForgeKind';
@@ -333,7 +334,8 @@ export function fileMenuEnv(store: RepoViewStore): MenuEnv {
     openers: openersSnapshot(),
     headBranch: next.branch,
     headSha: next.sha,
-    inGraph: (sha) => s.indexById.has(sha),
+    // Under a branch preset a loaded commit may be hidden: "Show in graph" expands what hides it.
+    inGraph: (sha) => s.indexById.has(sha) || s.graph.view != null,
     act: {
       copy: (text) => { copyText(text).then(() => toast('Copied'), () => toast('Copy failed')); },
       openUrl: (url) => { api.openUrl(url).catch((e: unknown) => toast(errorMessage(e))); },
@@ -346,6 +348,7 @@ export function fileMenuEnv(store: RepoViewStore): MenuEnv {
       showInGraph: (sha) => {
         const g = store.getState();
         if (g.selectCommitById(sha)) g.setFocus('graph');
+        else if (tabId) goToCommit(tabId, sha, { focus: true }, () => toast('Not in the loaded history'));
         else toast('Not in the loaded history');
       },
       // No dedicated "open a folder" request: `openIn` with the file manager and any one valid

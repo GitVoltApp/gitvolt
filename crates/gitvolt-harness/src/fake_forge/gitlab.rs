@@ -4,7 +4,7 @@ use super::{FakeProject, FakeRequest, ForgeState, FakeUser, Reply, GITLAB_HOST};
 use serde_json::{json, Value};
 
 pub fn user_json(u: &FakeUser, base: &str) -> Value {
-    json!({ "id": u.id, "username": u.username, "name": u.name, "avatar_url": u.avatar_url, "web_url": format!("{base}/gitlab/{}", u.username), "public_email": u.email, "email": u.email })
+    json!({ "id": u.id, "username": u.username, "name": u.name, "avatar_url": u.avatar_url, "web_url": format!("{base}/gitlab/{}", u.username), "public_email": u.email, "email": u.email, "commit_email": u.email })
 }
 
 pub fn find<'a>(projects: &'a [FakeProject], id: &str) -> Option<&'a FakeProject> {

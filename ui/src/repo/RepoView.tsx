@@ -93,6 +93,9 @@ function ConnectedGraph() {
   const alsoSelected = useMemo(() => new Set(pickedRows), [pickedRows]);
   const selectRow = useRepoView((s) => s.selectRow);
   const store = useRepoViewStore();
+  // A commit a branch preset hides, selected in a reveal panel (no graph row).
+  const revealedId = useRepoView((s) => (s.selection.kind === 'commit' && s.selection.index < 0 ? s.selection.id : null));
+  const onSelectRevealed = useCallback((row: RowPayload) => store.getState().selectRevealed(row.id), [store]);
   const revealHead = useRepoView((s) => s.revealHead);
   // --- 2D T18: the chip of a branch being rebased in the active worktree (refetched with the graph) ---
   const worktree = useRepoView(openWorktree);
@@ -150,6 +153,8 @@ function ConnectedGraph() {
       rebasing={rebasing}
       revealTip={revealHead}
       rowEditor={rowEditor}
+      revealedId={revealedId}
+      onSelectRevealed={onSelectRevealed}
     />
   );
 }

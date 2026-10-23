@@ -6,7 +6,7 @@ import type { ForgeUser } from '../../api/gen/ForgeUser';
 vi.mock('../../api/client', () => ({ api: {}, errorMessage: (e: unknown) => String((e as { message: string }).message) }));
 const { PeopleCard } = await import('./PeopleCard');
 
-const user = (id: number, name: string): ForgeUser => ({ id, username: name.toLowerCase(), name, avatarUrl: null, webUrl: '', email: null });
+const user = (id: number, name: string): ForgeUser => ({ id, username: name.toLowerCase(), name, avatarUrl: null, webUrl: '', email: null, emails: [] });
 const ada = user(1, 'Ada Lovelace');
 const grace = user(2, 'Grace Hopper');
 

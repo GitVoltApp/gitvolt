@@ -119,3 +119,6 @@ import '../lfs/feature';
 import '../submodules/feature';
 // File colours: the file list's menu names a file's scope and offers to colour its type or folder.
 import '../fileColours/feature';
+// Branch presets: Next branch preset and Choose branch preset….
+import '../presets/feature';
+import '../presets/branchMenus';

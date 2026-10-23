@@ -4,7 +4,8 @@ import { initials } from '../format/initials';
 import { STASH_ICON_BOX, STASH_ICON_STROKE, traceStashIcon } from '../icons/stash';
 import { laneX, pathLength, segmentPath, tracePath, type Metrics, type PathOp } from './geometry';
 import { connectorLine, dashLength, dashOffset, ringDash, snapScroll } from './pixels';
-import { decodeSegment } from './segments';
+import { isMarkEnd } from './stubs';
+import { decodeSegment, HALF_BOTTOM, HALF_TOP, type Seg } from './segments';
 
 export interface DrawOptions {
   rows: RowPayload[];
@@ -44,6 +45,10 @@ export interface DrawOptions {
   /** The checked-out branch's row (HEAD's label): its label connector is a graph line, the
    * lines' width in the full lane colour, not the quiet 1 px at 25% (J21). */
   headRow?: number;
+  /** A fold's reveal panel is open under merge row `row`, its branch lane `lane` running on up out
+   * of the panel's top edge: the merge's tail curves into that lane already; a merge without one
+   * (the window's last row) draws the same curve. */
+  foldOpen?: { row: number; lane: number };
 }
 
 /** Alpha of the per-row lane-color band (ruling R10). */
@@ -62,6 +67,19 @@ export const LINE_W = 2;
 export const WIP_DASH = 3;
 /** The WIP node's dotted ring: its dash and gap, CSS px, before fitting the circumference (K50). */
 export const WIP_RING_DASH = 2;
+/** A collapsed branch's dotted lane: round dots a line wide, one every two line widths. */
+export const DOT_PATTERN = [0, 2 * LINE_W];
+/** How far short of the row's centre line a fold tail's dotted end stops, and a hidden-branch
+ * stub's dotted start begins (stubs.ts): a line along the centre, such as a stub's curve just
+ * under a tail's end, passes clear of the dots. */
+export const MARK_GAP = 2 * LINE_W;
+
+/** A segment's stroke: a WIP's dashed line, a collapsed branch's dotted one (also the ⋮ row's
+ * line in from its tip above, which the layout draws solid), or solid. */
+function strokeOf(seg: Seg, row: RowPayload): 'dashed' | 'dotted' | 'solid' {
+  if (seg.dashed) return 'dashed';
+  return seg.dotted || (row.kind === 'collapsed' && seg.half === HALF_TOP && seg.to === row.lane) ? 'dotted' : 'solid';
+}
 
 /**
  * The collapse zone (spec §8.3, F11; ruling R11). While the lanes need more width than the
@@ -238,15 +256,21 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
     }
     // Dashed (WIP) lines (K50): butt caps, a dash and gap of whole device pixels, phased by the
     // absolute content y (pixels.ts dashOffset), so the dashes run on unbroken from row to row.
-    // A lane's straight dashed pieces in consecutive rows are joined into one path (a run), so
-    // no dash is drawn as two abutting halves, whose antialiased seam would show.
+    // Dotted (collapsed) lines likewise: round dots (DOT_PATTERN), phased the same way. A lane's
+    // straight dashed or dotted pieces in consecutive rows are joined into one path (a run), so
+    // no dash or dot is drawn as two abutting halves, whose antialiased seam would show.
     const dash = dashLength(WIP_DASH, o.dpr);
-    const runs: { x: number; y0: number; y1: number; color: string }[] = [];
-    const dashed = (color: string, path: PathOp[], offset: number) => {
+    const runs: { x: number; y0: number; y1: number; color: string; style: 'dashed' | 'dotted' }[] = [];
+    const patterned = (style: 'dashed' | 'dotted', color: string, path: PathOp[], y: number) => {
       ctx.strokeStyle = color;
-      ctx.lineCap = 'butt';
-      ctx.setLineDash([dash, dash]);
-      ctx.lineDashOffset = offset;
+      if (style === 'dashed') {
+        ctx.lineCap = 'butt';
+        ctx.setLineDash([dash, dash]);
+        ctx.lineDashOffset = dashOffset(y, dash);
+      } else {
+        ctx.setLineDash(DOT_PATTERN);
+        ctx.lineDashOffset = dashOffset(y, LINE_W);
+      }
       ctx.beginPath();
       tracePath(ctx, path);
       ctx.stroke();
@@ -260,19 +284,27 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
       for (const packed of row.segments) {
         const seg = decodeSegment(packed);
         const path = segmentPath(seg, top, m);
-        if (seg.dashed) {
+        // A fold tail's dotted end stops short of the centre line, and a stub's dotted start
+        // begins below it.
+        if (isMarkEnd(seg, row)) {
+          const yc = top + m.rowH / 2;
+          if (seg.half === HALF_TOP) path[1] = { op: 'L', x: path[1].x, y: yc - MARK_GAP };
+          else path[0] = { op: 'M', x: path[0].x, y: yc + MARK_GAP };
+        }
+        const style = strokeOf(seg, row);
+        if (style !== 'solid') {
           const [a, b] = path;
           if (path.length === 2 && b.op !== 'Q' && a.x === b.x) {
             const c = color(seg.color);
-            const run = runs.find((r) => r.x === a.x && r.color === c && Math.abs(r.y1 - a.y) < 1e-6);
+            const run = runs.find((r) => r.x === a.x && r.color === c && r.style === style && Math.abs(r.y1 - a.y) < 1e-6);
             if (run) run.y1 = b.y;
-            else runs.push({ x: a.x, y0: a.y, y1: b.y, color: c });
+            else runs.push({ x: a.x, y0: a.y, y1: b.y, color: c, style });
           } else {
             // A curve, phased on its vertical part: its start (a top half, from the row above), or
-            // its end (a bottom half, into the row below), where its lane's dashes continue.
+            // its end (a bottom half, into the row below), where its lane's pattern continues.
             const startsVertical = b.op !== 'Q' && a.x === b.x;
             const end = path[path.length - 1];
-            dashed(color(seg.color), path, dashOffset(startsVertical ? a.y + scroll : end.y + scroll - pathLength(path), dash));
+            patterned(style, color(seg.color), path, startsVertical ? a.y + scroll : end.y + scroll - pathLength(path));
           }
           continue;
         }
@@ -282,7 +314,18 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
         ctx.stroke();
       }
     }
-    for (const r of runs) dashed(r.color, [{ op: 'M', x: r.x, y: r.y0 }, { op: 'L', x: r.x, y: r.y1 }], dashOffset(r.y0 + scroll, dash));
+    for (const r of runs) patterned(r.style, r.color, [{ op: 'M', x: r.x, y: r.y0 }, { op: 'L', x: r.x, y: r.y1 }], r.y0 + scroll);
+
+    // An open fold's panel whose branch lane isn't its tail's (a merge on the window's last row has
+    // none): the merge's curve into it, as a tail's.
+    const open = o.foldOpen && o.foldOpen.row >= o.first && o.foldOpen.row < o.last ? o.foldOpen : undefined;
+    const merge = open && o.rows[open.row];
+    if (open && merge?.fold && merge.fold.tailLane !== open.lane && nodeXOf(merge) !== null) {
+      ctx.strokeStyle = color(open.lane);
+      ctx.beginPath();
+      tracePath(ctx, segmentPath({ from: merge.lane, to: open.lane, half: HALF_BOTTOM, color: open.lane, dashed: false, dotted: false }, open.row * m.rowH - o.scrollTop, m));
+      ctx.stroke();
+    }
     if (clipping) ctx.restore();
   }
 
@@ -326,6 +369,8 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
 function drawNode(ctx: CanvasRenderingContext2D, o: DrawOptions, row: RowPayload, x: number, y: number, c: string, packed: boolean): void {
   const m = o.metrics;
   const kind = packed && row.kind === 'merge' ? 'commit' : row.kind;
+  // A ⋮ row has no node: its lane runs through it, dotted.
+  if (kind === 'collapsed') return;
   ctx.beginPath();
   if (kind === 'merge') {
     ctx.arc(x, y, m.rowH * 0.18, 0, Math.PI * 2);

@@ -6,7 +6,7 @@ import { armClock, press } from '../ui/arm/armTesting';
 
 const TOKEN = 'glpat-FAKE-test-token';
 const ada = (storage: 'keyring' | 'file', status: ForgeAccountView['status'] = { kind: 'ok' }): ForgeAccountView => ({
-  account: { host: 'gitlab.example.com', kind: 'gitlab', user: { id: 7, username: 'ada', name: 'Ada Lovelace', avatarUrl: null, webUrl: 'https://gitlab.example.com/ada', email: 'ada@example.com' }, storage, version: '18.9.1-ee', versionCheckedAt: 0, addedAt: 0 },
+  account: { host: 'gitlab.example.com', kind: 'gitlab', user: { id: 7, username: 'ada', name: 'Ada Lovelace', avatarUrl: null, webUrl: 'https://gitlab.example.com/ada', email: 'ada@example.com', emails: [] }, storage, version: '18.9.1-ee', versionCheckedAt: 0, addedAt: 0 },
   status,
 });
 

@@ -44,6 +44,11 @@
 /* The gap between the summary and the dimmed body is a margin, not a text space, so it's the
    same width in every font and never collapses or gets selected with the text. */
 .msg-body { margin-left: 10px; }
+/* Branch presets' marks after a summary, "⋮ N folded commits" and "⋮ N hidden", in the ⋮ row's
+   dim style (.dim); after the summary in the one ellipsed line, so they're cut off first. */
+.msg-mark { margin-left: 10px; }
+/* A reveal panel row's tag after its summary ("main", "parent"): a small quiet badge. */
+.fold-count { display: inline-block; margin-left: 6px; padding: 0 5px; border: 1px solid var(--section-border); border-radius: 3px; font-size: 10px; line-height: 14px; vertical-align: 1px; color: var(--text-secondary); }
 .wip-tag { color: var(--text-secondary); font-style: italic; }
 .wip-counts { color: var(--text-secondary); }
 /* K47/K48: the WIP row's message cell is a flex line: the draft box (italic placeholder, like the
@@ -85,15 +90,15 @@
    it too; everything else inherits the cell's. Colour only, never a background, the rows' `top`
    or the canvas; the durations are the motion tokens (theme/tokens.css), 0 under
    prefers-reduced-motion. */
-.graph-row > :is([data-col="message"], [data-col="author"], [data-col="date"], [data-col="sha"]), .graph-row > [data-col] :is(.dim, .sha, .wip-tag, .wip-counts) { transition: color var(--motion-row-color) ease-in; }
+.graph-row > :is([data-col="message"], [data-col="author"], [data-col="date"], [data-col="sha"]), .graph-row > [data-col] :is(.dim, .sha, .wip-tag, .wip-counts, .fold-count) { transition: color var(--motion-row-color) ease-in; }
 /* The row-dim mechanism (rowDim.ts: J22's branch-hover focus, plan 1C's Ctrl+F): a dimmed row's
    text cells take a dimmed colour, the selected row's white included (this comes after it, at
    the same specificity for the SHA). Dimming eases out over --motion-row-dim (0.5 s ease-out,
    no delay: the 500 ms hover timer is the delay); restoring takes the base rule's --motion-row-color. The colour itself depends
    on the level (rowDimKindClass): branch-hover (J22) is lighter than a filter/search dim. */
-.graph-row > [data-col].row-dim, .graph-row > [data-col].row-dim :is(.dim, .sha, .wip-tag, .wip-counts) { transition: color var(--motion-row-dim) ease-out; }
-.graph-row > [data-col].row-dim-branch, .graph-row > [data-col].row-dim-branch :is(.dim, .sha, .wip-tag, .wip-counts) { color: var(--text-row-dimmed-branch); }
-.graph-row > [data-col].row-dim-filter, .graph-row > [data-col].row-dim-filter :is(.dim, .sha, .wip-tag, .wip-counts) { color: var(--text-row-dimmed); }
+.graph-row > [data-col].row-dim, .graph-row > [data-col].row-dim :is(.dim, .sha, .wip-tag, .wip-counts, .fold-count) { transition: color var(--motion-row-dim) ease-out; }
+.graph-row > [data-col].row-dim-branch, .graph-row > [data-col].row-dim-branch :is(.dim, .sha, .wip-tag, .wip-counts, .fold-count) { color: var(--text-row-dimmed-branch); }
+.graph-row > [data-col].row-dim-filter, .graph-row > [data-col].row-dim-filter :is(.dim, .sha, .wip-tag, .wip-counts, .fold-count) { color: var(--text-row-dimmed); }
 /* In the scrolled content (GraphView): the canvas's band may reach past the last row, and is
    clipped there instead of lengthening the scroll. Its `top` is the band's (GraphCanvas). */
 .graph-canvas-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }

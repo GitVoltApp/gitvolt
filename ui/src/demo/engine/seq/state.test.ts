@@ -115,7 +115,7 @@ describe('the sequencer state', () => {
 
   it("reads a conflict at a fold as git's: HEAD is the commit being amended, and its message shows", async () => {
     const seen: GraphRequest[] = [];
-    const g = await makeTestRepo('graphs', () => ({ addCommits: (c) => c.length, build: (r) => (seen.push(r), {} as GraphPayload), walkOrder: () => [] }));
+    const g = await makeTestRepo('graphs', () => ({ addCommits: (c) => c.length, build: (r) => (seen.push(r), {} as GraphPayload), walkOrder: () => [], reveal: () => null, preview: () => ({ rules: [], shown: 0, collapsed: 0, hidden: 0, folded: 0 }), hiddenOwner: () => null }));
     await g.write('a.txt', 'a\n');
     const head = await g.commit('A first\r\n\r\nA body');
     const fold = state({ head, stop: { reason: 'conflict', at: C, message: 'A first\n\nB second\n', conflicts: ['c.txt'] }, done: [{ op: 'pick', oid: D, parent: null }, { op: 'fold', oid: C, fixup: false, message: 'A first\n\nB second\n' }] });

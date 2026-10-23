@@ -33,6 +33,22 @@ test('the demo boots into basic: its graph and sidebar, narrow panels in a small
     expect((await details.boundingBox())?.width).toBeLessThanOrEqual(301);
   });
 
+  await test.step('a branch preset: Mine hides feature/login (merged, so its commits stay), then back to All', async () => {
+    const presets = page.locator('.preset-button');
+    const choose = async (name: string) => {
+      await presets.getByRole('button', { name: 'All branch presets' }).click();
+      await page.getByRole('menu').getByRole('menuitem', { name, exact: true }).click();
+    };
+    const login = page.getByRole('complementary', { name: 'Sidebar', exact: true }).getByRole('region', { name: 'Local', exact: true }).locator('.sb-item').filter({ hasText: 'login' });
+    await choose('Mine');
+    await expect(presets).toHaveAttribute('data-preset', 'mine');
+    await expect(login).toHaveClass(/is-hidden/);
+    await expect(grid.getByText('Login validation')).toBeVisible();
+    await choose('All');
+    await expect(presets).toHaveAttribute('data-preset', 'all');
+    await expect(login).not.toHaveClass(/is-hidden/);
+  });
+
   await test.step('zoom: Ctrl+= scales the page, and a click, a context menu and a column drag still follow the pointer', async () => {
     // 150% of a 1,500 px window lays out as the 1,000 px frame does.
     await page.setViewportSize({ width: 1500, height: 1000 });

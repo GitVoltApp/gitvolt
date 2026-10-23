@@ -27,6 +27,8 @@ export interface FieldInputProps {
 export function FieldInput({ value, label, className, placeholder, autoFocus, onCommit, onCancel }: FieldInputProps) {
   const [draft, setDraft] = useState(value);
   const el = useRef<HTMLInputElement>(null);
+  // A value changed elsewhere (a reorder moved another item's value here) replaces the draft.
+  useEffect(() => setDraft(value), [value]);
   const live = useRef({ commit: () => {}, cancel: () => {} });
   live.current = { commit: () => onCommit(draft), cancel: () => { setDraft(value); onCancel?.(); } };
   useEffect(() => {

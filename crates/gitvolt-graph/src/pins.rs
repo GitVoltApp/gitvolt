@@ -1,7 +1,7 @@
 //! The pinned trunk (spec §8.2): which refs lead lanes 0 and 1, by default or by the pin setting,
 //! and whether the repository is a fork (moved from the core's snapshot.rs).
 
-use crate::input::{ForkFacts, RefKind, RefsIn};
+use crate::input::{ForkFacts, GraphInput, RefKind, RefsIn};
 use crate::payload::{ForkDetection, ForkPayload, HostKind};
 use crate::walk::CommitMeta;
 use crate::Oid;
@@ -36,6 +36,15 @@ pub(crate) fn default_pair(refs: &RefsIn, fork: Option<&Fork>, fork_parents: &Ha
         None => ["main", "master", "dev", "develop"].into_iter().map(|b| format!("refs/heads/{b}")).find(|n| refs.refs.iter().any(|r| &r.full_name == n)),
     };
     chosen.map(|c| pin_pair(refs, &c)).unwrap_or_default()
+}
+
+/// The trunk branches' full names for presets: the pinned pair, whether the pin is `auto` or an
+/// explicit ref; with the pin off, the pair `auto` would pin (presets still need a trunk).
+pub(crate) fn trunk_names(input: &GraphInput, fork: Option<&Fork>) -> Vec<String> {
+    match (&input.pinned_ref, input.no_pin) {
+        (Some(name), false) => pin_pair(&input.refs, name),
+        _ => default_pair(&input.refs, fork, &input.forks.parents),
+    }
 }
 
 /// A fork's remotes (`fork_of`).

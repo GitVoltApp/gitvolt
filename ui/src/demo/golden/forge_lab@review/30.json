@@ -13,6 +13,9 @@
     "author": {
       "avatarUrl": null,
       "email": "ada@example.com",
+      "emails": [
+        "ada@example.com"
+      ],
       "id": 101,
       "name": "Ada Lovelace",
       "username": "ada",

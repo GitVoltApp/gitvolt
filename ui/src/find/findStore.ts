@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from '../api/client';
 import type { HistoryHit } from '../api/gen/HistoryHit';
 import { selectCommit } from '../app/graphNav';
+import { revealCommit } from '../presets/reveal';
 import { beginOlder, useRuntime } from '../app/runtime';
 import { tabStore, tabView } from '../app/tabStores';
 
@@ -165,7 +166,7 @@ async function run(tabId: string, q: string, seq: number, select: boolean): Prom
       const index = matches.indexOf(sha);
       patch(tabId, { matches, rowIndexes, index });
       tabStore(tabId)?.getState().setFilterKeep(new Set(matches));
-      if (index >= 0) selectCommit(tabId, sha);
+      if (index >= 0 && !selectCommit(tabId, sha)) void revealCommit(tabId, sha);
     }
   } catch (e) {
     if (live()) patch(tabId, { pathPending: false, message: `Search failed: ${e instanceof Error ? e.message : String(e)}` });
@@ -195,7 +196,8 @@ export function stepFind(tabId: string, delta: 1 | -1): void {
   if (!store) return;
   const row = s.rowIndexes[index];
   if (store.graph.rows[row]?.id === s.matches[index]) store.selectRow(row);
-  else selectCommit(tabId, s.matches[index]);
+  // Not a row: the branch preset hides it, so what hides it is expanded (presets/reveal.ts).
+  else if (!selectCommit(tabId, s.matches[index])) void revealCommit(tabId, s.matches[index]);
 }
 
 /** Spec §8.7 "Search older history": commits outside the window. */
@@ -217,8 +219,13 @@ export async function loadCommit(tabId: string, sha: string, limit: number | nul
   const has = () => tabStore(tabId)?.getState().indexById.has(sha) ?? false;
   const repo = tabView(tabId)?.repo;
   if (has() || repo === undefined) return has();
+  // Loaded, but the branch preset hides it: what hides it is expanded (presets/reveal.ts).
+  if (await revealCommit(tabId, sha)) return true;
   const deep = limit ?? (await api.locateCommit(repo, sha).catch(() => null).then((loc) => (loc?.found ? loc.limit : null)));
-  if (deep) await deepen(tabId, deep);
+  if (deep) {
+    await deepen(tabId, deep);
+    if (!has()) await revealCommit(tabId, sha);
+  }
   return has();
 }
 

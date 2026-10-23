@@ -2,7 +2,7 @@
 //! the graph build, JSON in and out (`ui/src/demo/engine/graph.ts` wraps it). The functions under
 //! `GraphEngine` are plain Rust, so they're tested natively.
 
-use gitvolt_graph::{build, walk_order, CommitIn, CommitMeta, GraphRequest, Oid};
+use gitvolt_graph::{build, build_hidden_owner, build_preview, build_reveal, walk_order, CommitIn, CommitMeta, GraphRequest, Oid};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
@@ -49,6 +49,27 @@ pub fn walk_order_json(store: &Store, json: &str) -> Result<String, String> {
     serde_json::to_string(&walk_order(&request, &store.commits)).map_err(|e| e.to_string())
 }
 
+fn graph_request(json: &str) -> Result<GraphRequest, String> {
+    serde_json::from_str(json).map_err(|e| format!("bad graph request: {e}"))
+}
+
+/// The reveal panel (JSON: a `RevealPayload` or `null`) for `key` under the view of `json` (a
+/// `GraphRequest`) over the store's commits.
+pub fn reveal_json(store: &Store, json: &str, key: &str, below: bool) -> Result<String, String> {
+    serde_json::to_string(&build_reveal(&graph_request(json)?, &store.commits, key, below)).map_err(|e| e.to_string())
+}
+
+/// The preset's live summary (JSON: a `PresetPreview`) under the view of `json` (a `GraphRequest`).
+pub fn preview_json(store: &Store, json: &str) -> Result<String, String> {
+    serde_json::to_string(&build_preview(&graph_request(json)?, &store.commits)).map_err(|e| e.to_string())
+}
+
+/// The `expanded` key (JSON: a string or `null`) that would make `sha` a row under the view of
+/// `json` (a `GraphRequest`).
+pub fn hidden_owner_json(store: &Store, json: &str, sha: &str) -> Result<String, String> {
+    serde_json::to_string(&build_hidden_owner(&graph_request(json)?, &store.commits, sha)).map_err(|e| e.to_string())
+}
+
 #[wasm_bindgen]
 #[derive(Default)]
 pub struct GraphEngine {
@@ -74,6 +95,19 @@ impl GraphEngine {
     #[wasm_bindgen(js_name = walkOrder)]
     pub fn walk_order(&self, request_json: &str) -> Result<String, JsError> {
         walk_order_json(&self.store, request_json).map_err(|e| JsError::new(&e))
+    }
+
+    pub fn reveal(&self, request_json: &str, key: &str, below: bool) -> Result<String, JsError> {
+        reveal_json(&self.store, request_json, key, below).map_err(|e| JsError::new(&e))
+    }
+
+    pub fn preview(&self, request_json: &str) -> Result<String, JsError> {
+        preview_json(&self.store, request_json).map_err(|e| JsError::new(&e))
+    }
+
+    #[wasm_bindgen(js_name = hiddenOwner)]
+    pub fn hidden_owner(&self, request_json: &str, sha: &str) -> Result<String, JsError> {
+        hidden_owner_json(&self.store, request_json, sha).map_err(|e| JsError::new(&e))
     }
 
     #[wasm_bindgen(getter)]
@@ -137,5 +171,17 @@ mod tests {
         let mut store = Store::default();
         add_commits_json(&mut store, &commits()).unwrap();
         assert_eq!(walk_order_json(&store, &request(10)).unwrap(), format!(r#"["{B}","{A}"]"#));
+    }
+
+    #[test]
+    fn the_view_reads_answer_json() {
+        let mut store = Store::default();
+        add_commits_json(&mut store, &commits()).unwrap();
+        let req = request(10).replacen('{', r#"{"view":{"rules":[],"otherwise":"show","foldMerged":false,"ghostLines":true},"#, 1);
+        assert_eq!(reveal_json(&store, &req, "branch:no-such-branch", false).unwrap(), "null");
+        assert_eq!(hidden_owner_json(&store, &req, B).unwrap(), "null", "a row has no hidden owner");
+        let preview: serde_json::Value = serde_json::from_str(&preview_json(&store, &req).unwrap()).unwrap();
+        assert!(preview["shown"].is_number(), "{preview}");
+        assert!(preview_json(&store, r#"{"limit":"ten"}"#).unwrap_err().starts_with("bad graph request"));
     }
 }

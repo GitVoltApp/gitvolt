@@ -8,6 +8,7 @@
 .ctx-row[aria-disabled="true"] { color: var(--text-disabled); }
 .ctx-icon { flex: none; opacity: 0.85; }
 .ctx-label { flex: 1; }
+.ctx-swatch { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 .ctx-shortcut { color: var(--text-secondary); font-size: 11px; margin-left: 16px; }
 .ctx-chevron { flex: none; color: var(--text-secondary); }
 /* K25: a real button group, no gap between siblings (a gap is dead space the pointer crosses,

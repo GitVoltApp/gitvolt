@@ -1,14 +1,17 @@
 import { GitBranch } from 'lucide-react';
+import type { CollapsePlacement } from '../../api/gen/CollapsePlacement';
 import type { DateFormat } from '../../api/gen/DateFormat';
 import { useRuntime } from '../../app/runtime';
 import { flushSaves, useAppState } from '../../app/state';
 import { resetAvatars } from '../../avatars/avatarStore';
+import { refreshPresetViews } from '../../presets/store';
 import { appSetting, useSettingValue } from '../bindings';
 import { selectControl, switchControl } from '../frame/controls';
 import { NumberField } from '../frame/fields';
 import { registerSettings, registerSettingsPage, settingDef, type SettingsCtx } from '../registry';
 
 const COMMIT_LIMIT_MAX = 50_000;
+const PLACEMENTS: Array<[CollapsePlacement, string]> = [['keepDateOrder', 'Keep date order'], ['pullTogether', 'Pull together']];
 const DATE_CHOICES: Array<[DateFormat, string]> = [['ymd12h', '2026-09-26 @ 3:14 PM'], ['ymd24h', '2026-09-26 15:14'], ['dmy24h', '26/09/2026 15:14'], ['mdy12h', '09/26/2026 3:14 PM']];
 
 /** The shown tab reloads its graph with the new limit. */
@@ -56,6 +59,18 @@ const offs = [
       keywords: 'avatar gitlab github forge privacy images',
       description: "Asks the forge hosting the repository, when you have an account there, so colleagues without Gravatar get their avatar. Sends authors' emails (or names) to that forge.",
       Control: switchControl('forgeAvatars'), binding: appSetting('forgeAvatars', true, askAvatarsAgain),
+    },
+    {
+      id: 'collapseHoverOpen', label: 'Open collapsed commits on hover', page: 'graph', group: 'Hidden commits',
+      keywords: 'branch presets collapsed folded reveal panel hover hidden commits',
+      description: 'Hovering a "⋮ N more commits" row or a folded merge opens them over the graph: the dotted lane at once, the rest of the row after a moment. Off: click the row.',
+      Control: switchControl('collapseHoverOpen'), binding: appSetting('collapseHoverOpen', true),
+    },
+    {
+      id: 'collapsePlacement', label: 'Collapsed branches', page: 'graph', group: 'Hidden commits', labelFor: 'group',
+      keywords: 'branch presets collapse placement date order pull together oldest commit',
+      description: "Keep date order leaves a collapsed branch's oldest commit at its date, a dotted lane running down to it; Pull together moves it up under the ⋮ row.",
+      Control: selectControl('collapsePlacement', PLACEMENTS), binding: appSetting('collapsePlacement', 'keepDateOrder', () => refreshPresetViews()),
     },
   ]),
 ];

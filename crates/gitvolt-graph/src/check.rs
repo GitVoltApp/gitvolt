@@ -7,6 +7,12 @@
 use crate::layout::{GraphRow, Half, Layout, LayoutNode, Parent, Segment};
 use std::collections::{HashMap, HashSet};
 
+/// A half off its row's node (lane `l`): a hidden-branch stub's dotted start (a Bottom) or a fold
+/// tail's dotted end (a Top), straight down its own lane.
+fn off_node(s: &Segment, l: u16) -> bool {
+    s.dotted && s.from_lane == s.to_lane && s.from_lane != l && s.half != Half::Full
+}
+
 /// Checks that `layout`'s segments form unbroken lines from top to bottom.
 ///
 /// Returns `Err` naming the row, lane and rule that failed on the first violation found.
@@ -27,10 +33,12 @@ pub fn check_continuity(layout: &Layout, nodes: &[LayoutNode]) -> Result<(), Str
                 }
             }
             match s.half {
-                Half::Top if s.to_lane != l => {
+                // Off the node: only a fold tail's dotted end.
+                Half::Top if s.to_lane != l && !off_node(s, l) => {
                     return Err(format!("row {r} lane {}: Top segment must land on the node's own lane {l}", s.to_lane));
                 }
-                Half::Bottom if s.from_lane != l => {
+                // Off the node: only a stub's dotted start.
+                Half::Bottom if s.from_lane != l && !off_node(s, l) => {
                     return Err(format!("row {r} lane {}: Bottom segment must originate at the node's own lane {l}", s.from_lane));
                 }
                 Half::Full if s.from_lane != s.to_lane => {
@@ -43,12 +51,20 @@ pub fn check_continuity(layout: &Layout, nodes: &[LayoutNode]) -> Result<(), Str
             }
         }
 
-        let has_bottom = row.segments.iter().any(|s| s.half == Half::Bottom);
+        let has_bottom = row.segments.iter().any(|s| s.half == Half::Bottom && !off_node(s, l));
         if nodes[r].parents.is_empty() && has_bottom {
             return Err(format!("row {r} lane {l}: node has no parents but emits a Bottom segment"));
         }
         if !nodes[r].parents.is_empty() && !has_bottom {
             return Err(format!("row {r} lane {l}: node has parents but emits no Bottom segment"));
+        }
+        let stubs = row.segments.iter().filter(|s| s.half == Half::Bottom && off_node(s, l)).count();
+        let wants = nodes.get(r + 1).is_some_and(|n| n.stub);
+        if stubs != usize::from(wants) {
+            return Err(format!("row {r}: {stubs} stubs start here, for a next row with{} one", if wants { "" } else { "out" }));
+        }
+        if r == 0 && nodes[r].stub {
+            return Err("row 0: a stub has no row above to start in".to_string());
         }
     }
 
@@ -135,9 +151,14 @@ pub fn check_continuity(layout: &Layout, nodes: &[LayoutNode]) -> Result<(), Str
     // One top-down sweep (linear in the segment count, so it stays cheap on a real repo's long
     // lanes): `open[lane]` holds the edges currently travelling down that lane, as
     // (origin row, parent). Several edges can share a lane when they wait on the same parent.
+    //
+    // A fold tail's edge (`Parent::Tail(n)`) instead ends off the node in row `n`, its own lane's
+    // dotted end; a stub is an edge from the row above into its commit, so it's followed as one to
+    // that row.
     let mut open: HashMap<u16, Vec<(usize, Parent)>> = HashMap::new();
     for (q, row) in layout.rows.iter().enumerate() {
-        let tops: HashSet<u16> = row.segments.iter().filter(|s| s.half == Half::Top).map(|s| s.from_lane).collect();
+        let tops: HashSet<u16> = row.segments.iter().filter(|s| s.half == Half::Top && !off_node(s, row.lane)).map(|s| s.from_lane).collect();
+        let ends: HashSet<u16> = row.segments.iter().filter(|s| s.half == Half::Top && off_node(s, row.lane)).map(|s| s.from_lane).collect();
         let fulls: HashSet<u16> = row.segments.iter().filter(|s| s.half == Half::Full).map(|s| s.from_lane).collect();
         let mut arrived = Vec::new();
         for (&lane, edges) in &open {
@@ -147,6 +168,14 @@ pub fn check_continuity(layout: &Layout, nodes: &[LayoutNode]) -> Result<(), Str
                         Parent::Row(p) if p as usize == q => {}
                         Parent::Row(p) => return Err(format!("row {r}: the edge to parent row {p} on lane {lane} enters the node at row {q} instead")),
                         Parent::Outside(_) => return Err(format!("row {r}: the edge to an outside parent on lane {lane} enters the node at row {q}")),
+                        Parent::Tail(_) => return Err(format!("row {r}: the fold tail on lane {lane} enters the node at row {q}")),
+                    }
+                }
+                arrived.push(lane);
+            } else if ends.contains(&lane) {
+                for &(r, parent) in edges {
+                    if parent != Parent::Tail(q as u32) {
+                        return Err(format!("row {r}: the edge on lane {lane} ends off the node at row {q}, where no fold tail of it ends"));
                     }
                 }
                 arrived.push(lane);
@@ -155,22 +184,30 @@ pub fn check_continuity(layout: &Layout, nodes: &[LayoutNode]) -> Result<(), Str
                 return Err(format!("row {r}: the edge on lane {lane} stops at row {q} without reaching its parent"));
             }
         }
+        if let Some(lane) = ends.iter().find(|l| !open.contains_key(l)) {
+            return Err(format!("row {q}: a dotted end on lane {lane} that no fold tail reaches"));
+        }
         for lane in arrived {
             open.remove(&lane);
         }
 
-        let bottoms: Vec<&Segment> = row.segments.iter().filter(|s| s.half == Half::Bottom).collect();
+        let bottoms: Vec<&Segment> = row.segments.iter().filter(|s| s.half == Half::Bottom && !off_node(s, row.lane)).collect();
         if bottoms.len() != nodes[q].parents.len() {
             return Err(format!("row {q}: {} Bottom segments but {} parents", bottoms.len(), nodes[q].parents.len()));
         }
         for (&parent, seg) in nodes[q].parents.iter().zip(bottoms) {
             open.entry(seg.to_lane).or_default().push((q, parent));
         }
+        for s in row.segments.iter().filter(|s| s.half == Half::Bottom && off_node(s, row.lane)) {
+            open.entry(s.to_lane).or_default().push((q, Parent::Row(q as u32 + 1)));
+        }
     }
     for (lane, edges) in &open {
         for &(r, parent) in edges {
-            if let Parent::Row(p) = parent {
-                return Err(format!("row {r}: the edge to parent row {p} on lane {lane} runs off the bottom of the window"));
+            match parent {
+                Parent::Row(p) => return Err(format!("row {r}: the edge to parent row {p} on lane {lane} runs off the bottom of the window")),
+                Parent::Tail(n) => return Err(format!("row {r}: the fold tail on lane {lane} runs off the bottom of the window before row {n}")),
+                Parent::Outside(_) => {}
             }
         }
     }

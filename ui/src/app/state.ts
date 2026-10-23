@@ -17,6 +17,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   version: 1, activeProfile: 'default', theme: 'default-dark', editorFontSize: 13,
   fetchIntervalSecs: 60, prune: true, commitLimit: 2000, dateFormat: 'ymd12h', relativeDates: false, gravatar: true, debugLogging: false, syncButton: 'fetchAll', pushFollowTags: true, forgeAvatars: true, updateCheck: true, updatePrereleases: false, updateArchMethod: null, graphColorOverrides: {},
   customThemes: [],
+  // --- branch presets ---
+  branchPresets: [],
+  builtinPresets: [{ id: 'all', inCycle: true }, { id: 'all-collapsed', inCycle: true }, { id: 'mine', inCycle: true }],
+  collapseHoverOpen: true,
+  collapsePlacement: 'keepDateOrder',
+  // --- end branch presets ---
 };
 /** Mirrors `Profile::default()` (Rust). */
 export const EMPTY_PROFILE: Profile = {

@@ -22,7 +22,7 @@ describe('the operation in progress', () => {
 
   it("sends each worktree's state into the graph, and keeps a clean mid-merge worktree's WIP row", async () => {
     const seen: GraphRequest[] = [];
-    const t = await makeTestRepo('graphs', () => ({ addCommits: (c) => c.length, build: (r) => (seen.push(r), {} as GraphPayload), walkOrder: () => [] }));
+    const t = await makeTestRepo('graphs', () => ({ addCommits: (c) => c.length, build: (r) => (seen.push(r), {} as GraphPayload), walkOrder: () => [], reveal: () => null, preview: () => ({ rules: [], shown: 0, collapsed: 0, hidden: 0, folded: 0 }), hiddenOwner: () => null }));
     await t.write('c.txt', 'base\n');
     const head = await t.commit('Base');
     t.memfs.writeFileSync(`${t.repo.gitdir}/MERGE_HEAD`, `${head}\n`);

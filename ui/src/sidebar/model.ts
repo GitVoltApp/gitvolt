@@ -2,6 +2,7 @@
 import type { ForgeKind } from '../api/gen/ForgeKind';
 import type { ForgeMr } from '../api/gen/ForgeMr';
 // --- end 4B T11 ---
+import type { BranchState } from '../api/gen/BranchState';
 import type { HostKind } from '../api/gen/HostKind';
 import type { LocalBranch } from '../api/gen/LocalBranch';
 import type { RemoteBranch } from '../api/gen/RemoteBranch';
@@ -9,9 +10,10 @@ import type { SidebarPayload } from '../api/gen/SidebarPayload';
 import type { SortMode } from '../api/gen/SortMode';
 import type { StashItem } from '../api/gen/StashItem';
 import type { TagItem } from '../api/gen/TagItem';
+import type { ViewPayload } from '../api/gen/ViewPayload';
 import type { WorktreeItem } from '../api/gen/WorktreeItem';
 
-interface Base { key: string; name: string; target: string | null; time: number }
+interface Base { key: string; name: string; target: string | null; time: number; /** A branch's state under the open preset; absent without a view. */ presetState?: BranchState }
 export type SideItem =
   | (Base & { kind: 'local'; branch: LocalBranch })
   | (Base & { kind: 'remote'; remote: string; branch: RemoteBranch })
@@ -27,15 +29,18 @@ export interface Section { id: SectionKind; kind: SectionKind; label: string; ho
 
 /** The sidebar's panels, in fixed display order (spec §6.4): Local, Remote (one top-level folder
  * per remote), Worktrees, Stashes, Tags. */
-export function sectionsOf(p: SidebarPayload): Section[] {
+export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null): Section[] {
+  // Branch units are keyed by short name, so a local and its remotes share a state.
+  const states = view ? new Map(view.branches.map((b) => [b.name, b.state])) : null;
+  const st = (name: string): { presetState?: BranchState } => { const s = states?.get(name); return s ? { presetState: s } : {}; };
   const hosts: Record<string, HostKind> = {};
   const hostNames: Record<string, string | null> = {};
   for (const g of p.remotes) { hosts[g.name] = g.hostKind; hostNames[g.name] = g.host; }
   return [
-    { id: 'local', kind: 'local', label: 'Local', nests: true, items: p.locals.map((b): SideItem => ({ key: b.fullName, kind: 'local', name: b.name, target: b.target, time: b.tipTime, branch: b })) },
+    { id: 'local', kind: 'local', label: 'Local', nests: true, items: p.locals.map((b): SideItem => ({ key: b.fullName, kind: 'local', name: b.name, target: b.target, time: b.tipTime, branch: b, ...st(b.name) })) },
     {
       id: 'remote', kind: 'remote', label: 'Remote', nests: true, hosts, hostNames,
-      items: p.remotes.flatMap((g) => g.branches.map((b): SideItem => ({ key: b.fullName, kind: 'remote', name: b.name, target: b.target, time: b.tipTime, remote: g.name, branch: b }))),
+      items: p.remotes.flatMap((g) => g.branches.map((b): SideItem => ({ key: b.fullName, kind: 'remote', name: b.name, target: b.target, time: b.tipTime, remote: g.name, branch: b, ...st(b.name) }))),
     },
     { id: 'worktrees', kind: 'worktrees', label: 'Worktrees', nests: false, items: p.worktrees.map((w): SideItem => ({ key: `wt:${w.path}`, kind: 'worktree', name: w.name, target: w.head, time: 0, worktree: w })) },
     { id: 'stashes', kind: 'stashes', label: 'Stashes', nests: false, items: p.stashes.map((s): SideItem => ({ key: `stash:${s.index}`, kind: 'stash', name: s.message, target: s.id, time: s.time, stash: s })) },

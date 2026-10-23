@@ -1,21 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { BAND_ALPHA, CONNECTOR_ALPHA, drawGraph, graphLayout, nodeAt, nodeRadius, PACKED_ALPHA, SELECTED_BAND_ALPHA, SHADE_ALPHA, SHADE_W, stashHalf, zoneWidth } from './draw';
+import { BAND_ALPHA, CONNECTOR_ALPHA, DOT_PATTERN, drawGraph, graphLayout, MARK_GAP, nodeAt, nodeRadius, PACKED_ALPHA, SELECTED_BAND_ALPHA, SHADE_ALPHA, SHADE_W, stashHalf, zoneWidth } from './draw';
 import { laneX } from './geometry';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { avatarLane } from '../avatars/color';
+import { HALF_BOTTOM, HALF_TOP } from './segments';
 
 function recorder() {
   const calls: string[] = [];
+  // Every setLineDash pattern, as given (the calls list only says `object`).
+  const dashes: number[][] = [];
   // Numeric args are kept exact (not rounded): the device-pixel snap produces values like
   // 11.5 or 17/1.5 that a naive Math.round would collapse into indistinguishable integers,
   // hiding the exact behavior the connector's crisp-pixel math depends on.
   // createLinearGradient hands back a gradient whose colour stops are recorded too.
   const gradient = { addColorStop: (...a: unknown[]) => { calls.push(`addColorStop(${a.join(',')})`); } };
   const ctx = new Proxy({} as Record<string, unknown>, {
-    get: (_t, k: string) => (k in _t ? _t[k] : (...a: unknown[]) => { calls.push(`${k}(${a.map((x) => (typeof x === 'number' ? x : typeof x)).join(',')})`); return k === 'createLinearGradient' ? gradient : undefined; }),
+    get: (_t, k: string) => (k in _t ? _t[k] : (...a: unknown[]) => { if (k === 'setLineDash') dashes.push(a[0] as number[]); calls.push(`${k}(${a.map((x) => (typeof x === 'number' ? x : typeof x)).join(',')})`); return k === 'createLinearGradient' ? gradient : undefined; }),
     set: (t, k: string, v) => { t[k] = v; calls.push(`${k}=${String(v)}`); return true; },
   });
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, dashes };
 }
 
 const row = (lane: number, kind: RowPayload['kind'], segments: number[]): RowPayload => ({
@@ -260,6 +263,100 @@ describe('drawGraph', () => {
     // The ring: butt caps too, and a whole number of dash+gap pairs.
     const ringCap = calls.lastIndexOf('lineCap=butt');
     expect(ringCap).toBeGreaterThan(i);
+  });
+
+  it('a collapsed row draws no node and a dotted lane', () => {
+    const { ctx, calls, dashes } = recorder();
+    // tip → ⋮ → (a commit in lane 1 beside the dotted lane) → oldest. The layout marks the ⋮ row's
+    // line down dotted; its line in from the tip comes solid and is dotted too.
+    const bottom = 1 << 20, full = 2 << 20, dotted = 1 << 27;
+    const rows = [row(0, 'commit', [bottom]), row(0, 'collapsed', [0, bottom | dotted]), row(1, 'commit', [full | dotted]), row(0, 'commit', [dotted])];
+    const m = { rowH: 26, laneW: 16, padX: 8 };
+    drawGraph(ctx, { rows, first: 0, last: 4, scrollTop: 0, width: 100, height: 104, metrics: m, colors: ['#a', '#b'], nodeFill: '#000', labeledRows: new Set(), dpr: 1 });
+    // Nodes at rows 0, 2 and 3; none at the ⋮ row's centre (16, 39).
+    expect(calls.filter((c) => c.startsWith('arc('))).toHaveLength(3);
+    expect(calls.some((c) => c.startsWith('arc(16,39,'))).toBe(false);
+    // One dotted run, round dots, from the ⋮ row's top edge to the oldest commit's centre, phased
+    // by its content y (26 % 4).
+    expect(DOT_PATTERN).toEqual([0, 4]);
+    expect(dashes).toContainEqual(DOT_PATTERN);
+    const at = calls.indexOf('moveTo(16,26)');
+    expect(calls.slice(at - 2, at + 2)).toEqual(['lineDashOffset=2', 'beginPath()', 'moveTo(16,26)', 'lineTo(16,91)']);
+    expect(calls.slice(0, at).findLast((c) => c.startsWith('lineCap='))).toBe('lineCap=round');
+    // The tip's own line down to the ⋮ row stays solid.
+    const solid = calls.indexOf('moveTo(16,13)');
+    expect(solid).toBeGreaterThan(-1);
+    expect(solid).toBeLessThan(at);
+    expect(calls.slice(0, solid).filter((c) => c.startsWith('setLineDash('))).toHaveLength(0);
+  });
+
+  // Branch presets' marks: lines the layout placed, drawn with the ordinary segments (stubs.ts).
+  const seg = (from: number, to: number, half: number, color: number, dotted = false) => from | (to << 10) | (half << 20) | (color << 22) | (Number(dotted) << 27);
+  const mm = { rowH: 26, laneW: 16, padX: 8 };
+  const marks = (rows: RowPayload[], foldOpen?: { row: number; lane: number }) => {
+    const r = recorder();
+    drawGraph(r.ctx, { rows, first: 0, last: rows.length, scrollTop: 0, width: 100, height: 26 * rows.length, metrics: mm, colors: ['#102030', '#0669f7', '#22aa44'], nodeFill: '#000', labeledRows: new Set(), dpr: 1, foldOpen });
+    return r;
+  };
+  /** A folded merge (lane 0) with its tail into lane 1, and the commit under it, where it ends. */
+  const folded = (): RowPayload[] => [
+    { ...row(0, 'merge', [seg(0, 0, HALF_BOTTOM, 0), seg(0, 1, HALF_BOTTOM, 1)]), fold: { key: 'fold:x', branch: 'feature/trade-ui', count: 6, tailLane: 1 } },
+    row(0, 'commit', [seg(0, 0, HALF_TOP, 0), seg(1, 1, HALF_TOP, 1, true), seg(0, 0, HALF_BOTTOM, 0)]),
+  ];
+
+  it('a folded merge is a merge node; its tail is the merge curve, then dots that stop short of the centre line', () => {
+    const { calls, dashes } = marks(folded());
+    const r = nodeRadius(mm);
+    expect(calls).toContain(`arc(16,13,${26 * 0.18},0,${Math.PI * 2})`);
+    expect(calls.filter((c) => c.startsWith('arc(16,13,'))).toHaveLength(1);
+    expect(calls).not.toContain(`arc(16,13,${r * 0.4},0,${Math.PI * 2})`);
+    // The curve: solid, in lane 1's colour, along the centre line and down out of the row.
+    const x1 = laneX(1, mm);
+    const down = calls.indexOf(`lineTo(${x1},26)`);
+    expect(down).toBeGreaterThan(-1);
+    expect(calls.slice(0, down).findLast((c) => c.startsWith('strokeStyle='))).toBe('strokeStyle=#0669f7');
+    expect(calls.slice(0, down).filter((c) => c.startsWith('setLineDash('))).toHaveLength(0);
+    // The end: the ⋮ row's dots from the row's top, MARK_GAP short of its centre (39).
+    expect(MARK_GAP).toBe(4);
+    const end = calls.indexOf(`moveTo(${x1},26)`);
+    expect(calls.slice(end, end + 2)).toEqual([`moveTo(${x1},26)`, `lineTo(${x1},${39 - MARK_GAP})`]);
+    expect(dashes).toContainEqual(DOT_PATTERN);
+    expect(calls.slice(0, end).findLast((c) => c.startsWith('strokeStyle='))).toBe('strokeStyle=#0669f7');
+    // Static: no gradient, nothing faded.
+    expect(calls.filter((c) => c.startsWith('createLinearGradient('))).toEqual([]);
+  });
+
+  it('a hidden-branch stub starts in dots below the row above\'s centre line, then curves into its commit', () => {
+    const { calls } = marks([
+      row(0, 'commit', [seg(0, 0, HALF_BOTTOM, 0), seg(2, 2, HALF_BOTTOM, 2, true)]),
+      { ...row(0, 'commit', [seg(0, 0, HALF_TOP, 0), seg(2, 0, HALF_TOP, 2)]), ghosts: [{ branch: 'spike/a', color: 2, tip: 'c'.repeat(40), summary: '', authorName: '', authorTime: 0 }], stubLane: 2 },
+    ]);
+    const x2 = laneX(2, mm);
+    const start = calls.indexOf(`moveTo(${x2},${13 + MARK_GAP})`);
+    expect(calls.slice(start, start + 2)).toEqual([`moveTo(${x2},${13 + MARK_GAP})`, `lineTo(${x2},26)`]);
+    expect(calls.slice(0, start).findLast((c) => c.startsWith('setLineDash('))).toBe('setLineDash(object)');
+    // The fork curve: solid, in the stub lane's colour, along row 1's centre line into the node.
+    const curve = calls.indexOf(`moveTo(${x2},26)`);
+    expect(curve).toBeGreaterThan(-1);
+    expect(calls.slice(curve, curve + 4).at(-1)).toBe('lineTo(16,39)');
+    expect(calls.slice(0, curve).findLast((c) => c.startsWith('strokeStyle='))).toBe('strokeStyle=#22aa44');
+    expect(calls.filter((c) => c.startsWith('createLinearGradient('))).toEqual([]);
+  });
+
+  it('an open fold\'s panel continues its tail; a fold without one draws the curve into the panel\'s lane', () => {
+    const x1 = laneX(1, mm);
+    // Into the tail's own lane: no second curve over it.
+    expect(marks(folded(), { row: 0, lane: 1 }).calls.filter((c) => c === `lineTo(${x1},26)`)).toHaveLength(1);
+    // The window's last row: no tail, so the curve is drawn for the panel, in its lane's colour.
+    const last: RowPayload[] = [{ ...row(0, 'merge', [seg(0, 0, HALF_BOTTOM, 0)]), fold: { key: 'fold:x', branch: 'feature/trade-ui', count: 6 } }];
+    const { calls } = marks(last, { row: 0, lane: 2 });
+    const x2 = laneX(2, mm);
+    const end = calls.indexOf(`lineTo(${x2},26)`);
+    expect(end).toBeGreaterThan(-1);
+    expect(calls.slice(0, end)).toContain('moveTo(16,13)');
+    expect(calls.slice(0, end).findLast((c) => c.startsWith('strokeStyle='))).toBe('strokeStyle=#22aa44');
+    // Closed: nothing but its own line.
+    expect(marks(last).calls.some((c) => c === `lineTo(${x2},26)`)).toBe(false);
   });
 
   it('draws a loaded avatar bitmap clipped to the node instead of initials', () => {

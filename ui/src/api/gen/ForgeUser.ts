@@ -8,4 +8,9 @@ name: string, avatarUrl: string | null, webUrl: string,
 /**
  * The public email, or the account's own for its own user, when the forge says.
  */
-email: string | null, };
+email: string | null, 
+/**
+ * Every address the forge ties to the account (public, commit and no-reply emails).
+ * Empty until the user is next fetched; matching is case-insensitive, the reader's job.
+ */
+emails: Array<string>, };

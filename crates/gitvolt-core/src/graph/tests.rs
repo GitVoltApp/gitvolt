@@ -46,6 +46,7 @@ fn build_pair(spec: &[(&str, &[&str])], pinned: &[&str], second: &[&str]) -> Vec
                 None
             },
             time: (spec.len() - row) as i64,
+            stub: false,
         })
         .collect()
 }
@@ -282,22 +283,22 @@ fn bottom_out_colour_matches_target_lane() {
 
 #[test]
 fn pack_roundtrip() {
-    let s = Segment { from_lane: 1023, to_lane: 7, half: Half::Full, color: 9, dashed: true };
+    let s = Segment { from_lane: 1023, to_lane: 7, half: Half::Full, color: 9, dashed: true, dotted: false };
     assert_eq!(Segment::unpack(s.pack()), s);
-    let t = Segment { from_lane: 0, to_lane: 0, half: Half::Top, color: 0, dashed: false };
+    let t = Segment { from_lane: 0, to_lane: 0, half: Half::Top, color: 0, dashed: false, dotted: false };
     assert_eq!(t.pack(), 0);
 }
 
 #[test]
 fn pack_golden_values() {
-    let s = Segment { from_lane: 1, to_lane: 2, half: Half::Bottom, color: 3, dashed: true };
+    let s = Segment { from_lane: 1, to_lane: 2, half: Half::Bottom, color: 3, dashed: true, dotted: false };
     assert_eq!(s.pack(), 1 | 2 << 10 | 1 << 20 | 3 << 22 | 1 << 26);
     assert_eq!(s.pack(), 0x04d00801, "Task 11's TS decoder test reuses this literal");
 
-    let clamped = Segment { from_lane: 2000, to_lane: 0, half: Half::Top, color: 0, dashed: false };
+    let clamped = Segment { from_lane: 2000, to_lane: 0, half: Half::Top, color: 0, dashed: false, dotted: false };
     assert_eq!(Segment::unpack(clamped.pack()).from_lane, 1023, "from_lane is clamped to the 10-bit field's max");
 
-    let masked = Segment { from_lane: 0, to_lane: 0, half: Half::Top, color: 0x1f, dashed: false };
+    let masked = Segment { from_lane: 0, to_lane: 0, half: Half::Top, color: 0x1f, dashed: false, dotted: false };
     assert_eq!(Segment::unpack(masked.pack()).color, 0xf, "color is masked to its 4-bit field");
 }
 
@@ -319,11 +320,11 @@ fn snapshot_criss_cross_octopus_stash_and_wip() {
 }
 
 fn seg(from: u16, to: u16, half: Half) -> Segment {
-    Segment { from_lane: from, to_lane: to, half, color: 0, dashed: false }
+    Segment { from_lane: from, to_lane: to, half, color: 0, dashed: false, dotted: false }
 }
 
 fn node(parents: Vec<Parent>) -> LayoutNode {
-    LayoutNode { parents, kind: NodeKind::Commit, pinned: None, time: 0 }
+    LayoutNode { parents, kind: NodeKind::Commit, pinned: None, time: 0, stub: false }
 }
 
 #[test]
@@ -333,9 +334,9 @@ fn check_rejects_an_edge_that_lands_on_the_wrong_node() {
     let nodes = vec![node(vec![Parent::Row(2)]), node(vec![Parent::Outside(ObjectId::NULL)]), node(vec![])];
     let lay = Layout {
         rows: vec![
-            GraphRow { lane: 0, color: 0, segments: vec![seg(0, 0, Half::Bottom)] },
-            GraphRow { lane: 0, color: 0, segments: vec![seg(0, 0, Half::Top), seg(0, 0, Half::Bottom)] },
-            GraphRow { lane: 1, color: 1, segments: vec![seg(0, 0, Half::Full)] },
+            GraphRow { lane: 0, color: 0, segments: vec![seg(0, 0, Half::Bottom)], stub: None, tail: None },
+            GraphRow { lane: 0, color: 0, segments: vec![seg(0, 0, Half::Top), seg(0, 0, Half::Bottom)], stub: None, tail: None },
+            GraphRow { lane: 1, color: 1, segments: vec![seg(0, 0, Half::Full)], stub: None, tail: None },
         ],
         max_lanes: 2,
     };
@@ -349,8 +350,8 @@ fn check_rejects_an_outside_edge_that_enters_a_node() {
     let nodes = vec![node(vec![Parent::Outside(x)]), node(vec![Parent::Outside(x)])];
     let lay = Layout {
         rows: vec![
-            GraphRow { lane: 0, color: 0, segments: vec![seg(0, 0, Half::Bottom)] },
-            GraphRow { lane: 0, color: 0, segments: vec![seg(0, 0, Half::Top), seg(0, 0, Half::Bottom)] },
+            GraphRow { lane: 0, color: 0, segments: vec![seg(0, 0, Half::Bottom)], stub: None, tail: None },
+            GraphRow { lane: 0, color: 0, segments: vec![seg(0, 0, Half::Top), seg(0, 0, Half::Bottom)], stub: None, tail: None },
         ],
         max_lanes: 1,
     };
@@ -453,7 +454,7 @@ fn random_dag(seed: u64) -> Vec<LayoutNode> {
         if let Some(k) = lane {
             tip_wip_pinned[k] = true;
         }
-        nodes.push(LayoutNode { parents: vec![Parent::Row(row_of[i])], kind: NodeKind::Wip, pinned: lane.map(|k| k as u16), time: i64::MAX });
+        nodes.push(LayoutNode { parents: vec![Parent::Row(row_of[i])], kind: NodeKind::Wip, pinned: lane.map(|k| k as u16), time: i64::MAX, stub: false });
     };
     if let Some(c) = current {
         wip_on(c, &mut nodes);
@@ -467,7 +468,7 @@ fn random_dag(seed: u64) -> Vec<LayoutNode> {
             o => o,
         }).collect();
         let kind = if stash[i] { NodeKind::Stash } else if ps.len() > 1 { NodeKind::Merge } else { NodeKind::Commit };
-        nodes.push(LayoutNode { parents: ps, kind, pinned: pinned[i], time: (n - i) as i64 });
+        nodes.push(LayoutNode { parents: ps, kind, pinned: pinned[i], time: (n - i) as i64, stub: false });
     }
     nodes
 }
@@ -706,7 +707,7 @@ fn chunked(nodes: &[LayoutNode], size: usize) -> Vec<GraphRow> {
         let end = (start + size).min(nodes.len());
         state.resolve_outside(|id| beyond_row(id).filter(|&r| (r as usize) < end));
         for (r, n) in nodes.iter().enumerate().take(end).skip(start) {
-            rows.push(state.push(r as u32, &windowed(n, end)));
+            rows.push(state.push(r as u32, &windowed(n, end), None));
         }
     }
     rows
@@ -846,7 +847,7 @@ fn wave_history(seed: u64, waves: usize) -> Vec<LayoutNode> {
         .map(|&i| {
             let parents: Vec<Parent> = commits[i].1.iter().map(|&p| Parent::Row(row_of[p])).collect();
             let kind = if parents.len() > 1 { NodeKind::Merge } else { NodeKind::Commit };
-            LayoutNode { parents, kind, pinned: None, time: commits[i].0 }
+            LayoutNode { parents, kind, pinned: None, time: commits[i].0, stub: false }
         })
         .collect()
 }
