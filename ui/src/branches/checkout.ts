@@ -66,8 +66,9 @@ function headMoveOf(tabId: string, target: CheckoutTarget, expect: Expect): Head
 
 /** One checkout (§9.3); the backend resolves the case when it runs. Diverged asks Reset/Cancel.
  * A repository in the way ("<path> is a repository in the way of the checkout: move it first") is
- * a plain refusal: the error toast shows it, with no Retry and nothing to force. */
-export async function checkout(ctx: WriteCtx, target: CheckoutTarget, expect: Expect, onDiverged?: 'reset', origin: Origin | null = currentOrigin()): Promise<void> {
+ * a plain refusal: the error toast shows it, with no Retry and nothing to force. Resolves to
+ * whether HEAD landed: false when the write failed, was refused or the user said no. */
+export async function checkout(ctx: WriteCtx, target: CheckoutTarget, expect: Expect, onDiverged?: 'reset', origin: Origin | null = currentOrigin()): Promise<boolean> {
   // `origin`: where it started; the question comes after the backend's answer (spec §ui confirms).
   // The ref the user acted on shows the spinner while the write runs (a remote one for a new local).
   const ref = target.kind === 'branch' ? `refs/heads/${target.name}` : target.kind === 'remote' ? `refs/remotes/${target.remote}/${target.branch}` : null;
@@ -86,7 +87,7 @@ export async function checkout(ctx: WriteCtx, target: CheckoutTarget, expect: Ex
   } finally {
     if (ref) endPending(ctx.tabId, ref, 'checkout');
   }
-  if (out?.status !== 'diverged') return;
+  if (out?.status !== 'diverged') return out?.status === 'done';
   const ok = await confirmAction({
     title: 'Branches have diverged',
     body: `${out.local} and ${out.remote} have diverged (${out.ahead} ahead, ${out.behind} behind).`,
@@ -99,8 +100,9 @@ export async function checkout(ctx: WriteCtx, target: CheckoutTarget, expect: Ex
   // The Reset resend pins both refs to the oids the dialog showed; the core refuses without them.
   if (ok) {
     const refs = { [`refs/heads/${out.local}`]: out.localOid, [`refs/remotes/${out.remote}`]: out.remoteOid };
-    await checkout(ctx, target, { head: expect.head, refs }, 'reset', origin);
+    return checkout(ctx, target, { head: expect.head, refs }, 'reset', origin);
   }
+  return false;
 }
 
 const ctxOf = (tabId: string): WriteCtx | null => {

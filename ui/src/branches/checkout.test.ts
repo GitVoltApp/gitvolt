@@ -41,6 +41,19 @@ describe('checkout (spec #2 §9.3)', () => {
     await run;
     expect(pendingOf()).toBeNull();
   });
+  it('resolves to whether HEAD landed: true when done (also after a Reset), false when refused or cancelled', async () => {
+    useRuntime.getState().patch('t', { graph: null as never });
+    vi.spyOn(api, 'checkout').mockResolvedValueOnce(done({ status: 'done', branch: 'feature/x' }) as never);
+    expect(await checkout(ctx, { kind: 'branch', name: 'feature/x' }, expectNone)).toBe(true);
+    vi.spyOn(api, 'checkout').mockRejectedValueOnce({ kind: 'InvalidInput', message: 'no', commandId: null, stderr: null, detail: null });
+    expect(await checkout(ctx, { kind: 'branch', name: 'feature/x' }, expectNone)).toBe(false);
+    vi.spyOn(api, 'checkout').mockResolvedValueOnce(done(diverged) as never);
+    const ask = vi.spyOn(confirm, 'confirmAction').mockResolvedValue(false);
+    expect(await checkout(ctx, target, expectNone)).toBe(false);
+    vi.spyOn(api, 'checkout').mockResolvedValueOnce(done(diverged) as never).mockResolvedValueOnce(done({ status: 'done', branch: 'feature/x' }) as never);
+    ask.mockResolvedValue(true);
+    expect(await checkout(ctx, target, expectNone)).toBe(true);
+  });
   it('Cancel leaves it', async () => {
     vi.spyOn(api, 'checkout').mockResolvedValueOnce(done(diverged) as never);
     vi.spyOn(confirm, 'confirmAction').mockResolvedValue(false);

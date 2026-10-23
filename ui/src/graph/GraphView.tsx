@@ -40,6 +40,8 @@ import { anchoredScrollTop, revealScrollTop } from './anchor';
 import { useGraphMetrics } from './metrics';
 import { connectorLine, useDevicePixelRatio } from './pixels';
 import { RefLabels } from './RefLabels';
+import { cancelBranchDrag, dragBranchOf, labelOf, startBranchDrag, type DroppedLabel } from './branchDrag';
+import { BranchDragGhost } from './BranchDragGhost';
 import type { RowEditor } from './rowEditor';
 import { WipSummary } from './WipSummary';
 import { CollapsedCells, collapsedTexts } from './CollapsedRow';
@@ -353,9 +355,12 @@ export interface GraphViewProps {
    * reveal panel's row is selected. Keep `onSelectRevealed` stable. */
   revealedId?: string | null;
   onSelectRevealed?: (row: RowPayload) => void;
+  /** A local branch chip dragged onto another's (branchDrag.ts), released at (x, y). Omitted: a
+   * chip drag starts nothing. */
+  onLabelDrop?: (from: DroppedLabel, onto: DroppedLabel, x: number, y: number) => void;
 }
 
-export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null, revealTip = null, revealedId = null, onSelectRevealed }: GraphViewProps) {
+export function GraphView({ graph, repoId, messages, selected: controlled, alsoSelected = NO_SELECTED, onSelect, onUnhandledKey, gridRef, gridProps, rowDim = null, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, rowEditor = null, revealTip = null, revealedId = null, onSelectRevealed, onLabelDrop }: GraphViewProps) {
   const commitLimit = useAppState((s) => s.settings.commitLimit);
   const ownRef = useRef<HTMLDivElement>(null);
   const scrollRef = gridRef ?? ownRef;
@@ -380,11 +385,24 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   // The row a context menu is open for (its outline), and the menu handlers that mark it. Stable:
   // they reach the latest props through a ref, so the memoized rows keep the same callbacks.
   const [contextRow, openContextFor] = useContextTarget<string>();
-  const menus = useRef({ onContextMenu, onLabelContextMenu, onWipContextMenu });
-  menus.current = { onContextMenu, onLabelContextMenu, onWipContextMenu };
+  const menus = useRef({ onContextMenu, onLabelContextMenu, onWipContextMenu, onLabelDrop, graph });
+  menus.current = { onContextMenu, onLabelContextMenu, onWipContextMenu, onLabelDrop, graph };
   const rowMenu = useCallback((e: MenuEventLike, row: RowPayload) => openContextFor(row.id, () => menus.current.onContextMenu?.(e, row)), [openContextFor]);
   const labelMenu = useCallback((e: MouseEvent<HTMLElement>, row: RowPayload, label: RefLabel) => openContextFor(row.id, () => menus.current.onLabelContextMenu?.(e, row, label)), [openContextFor]);
   const wipMenu = useCallback((e: MenuEventLike, row: RowPayload) => openContextFor(row.id, () => menus.current.onWipContextMenu?.(e, row)), [openContextFor]);
+  const labelDrop = useCallback((fromRef: string, ontoRef: string, x: number, y: number) => {
+    const { graph: g, onLabelDrop: drop } = menus.current;
+    const [from, onto] = [labelOf(g, fromRef), labelOf(g, ontoRef)];
+    if (from && onto) openContextFor(onto.row.id, () => drop?.(from, onto, x, y));
+  }, [openContextFor]);
+  // A drag under way ends with the graph (unmounted, or its tab hidden by <Activity>): its drop
+  // would open this tab's menu over another.
+  useEffect(() => cancelBranchDrag, []);
+  // Not prevented or stopped: the press still selects its row (the drag starts past a threshold).
+  const onGridPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    const ref = onLabelDrop && e.target instanceof Element ? dragBranchOf(e.target) : null;
+    if (ref) startBranchDrag(e, ref, e.currentTarget, labelDrop);
+  };
   // Display density (H1): row geometry for the rows, the virtualizer and the canvas. The cell
   // paddings and chip height are CSS variables on :root (theme/density.ts, read by graph.css).
   const metrics = useGraphMetrics();
@@ -781,7 +799,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
         </div>
       </div>
       <div className="graph-body">
-        <div {...gridProps} ref={scrollRef} className="graph-scroll" role="grid" aria-label="Commit graph" aria-rowcount={graph.rows.length} tabIndex={0} onKeyDown={onKeyDown} onPointerMove={onGridPointerMove} onPointerLeave={() => { hideNodeTip(); reveal.leave(); }} onPointerDown={reveal.down} onScroll={(e) => {
+        <div {...gridProps} ref={scrollRef} className="graph-scroll" role="grid" aria-label="Commit graph" aria-rowcount={graph.rows.length} tabIndex={0} onKeyDown={onKeyDown} onPointerMove={onGridPointerMove} onPointerLeave={() => { hideNodeTip(); reveal.leave(); }} onPointerDown={(e) => { reveal.down(e); onGridPointerDown(e); }} onScroll={(e) => {
           // The canvas's band first: redrawn here, imperatively, if the scroll left it (band.ts).
           canvas.current?.sync();
           hideNodeTip();
@@ -841,6 +859,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
           </div>
         </div>
         {ghostPop.element}
+        <BranchDragGhost graph={graph} />
         {laneScrollMax > 0 && <HScroll left={cols.labels - scrollLeft} top={viewportH - HSCROLL_H} width={layout.area} contentW={lanesW} scrollX={scrollX} onScroll={setLaneScroll} controls={canvasId} />}
       </div>
     </div>

@@ -39,6 +39,7 @@ const EXEMPT: Record<string, string> = {
   'fileColours/settings/AddStrip.tsx': 'Esc cancels the strip',
   'irebase/rowDrag.ts': 'drag cancel (Esc)',
   'irebase/chipDrag.ts': 'drag cancel (Esc)',
+  'graph/branchDrag.ts': 'drag cancel (Esc)',
   'diff/monaco/reviewGutter.ts': 'drag cancel (Esc)',
   'irebase/ChipColumn.tsx': 'chip focus keys inside the rebase editor',
   'auth/AuthModal.tsx': 'dialog keys (Esc / Enter / Tab)',
