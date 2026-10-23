@@ -60,7 +60,7 @@ fn window() -> (GraphInput, Vec<CommitMeta>) {
 
 #[test]
 fn a_large_window_with_many_branches_stays_linear() {
-    let (mut input, commits) = window();
+    let (input, commits) = window();
     let total = commits.len();
     assert!(total >= 20_000, "{total}");
     let store: std::collections::HashMap<Oid, CommitMeta> = commits.into_iter().map(|c| (c.id, c)).collect();
@@ -68,18 +68,27 @@ fn a_large_window_with_many_branches_stays_linear() {
     let walked = walk(&tips, &WalkOptions { limit: total, ..Default::default() }, |id| Ok::<_, ()>(store.get(&id).cloned())).unwrap();
     assert_eq!(walked.commits.len(), total);
 
-    let started = Instant::now();
     let plain = assemble(&input, &walked).unwrap();
-    let plain_time = started.elapsed();
 
     let rules = vec![Rule { action: PresetAction::Show, matcher: Matcher::Trunk }, Rule { action: PresetAction::Hide, matcher: Matcher::NameMatches { patterns: "hide/*".into() } }];
-    input.view = Some(ViewSpec { rules, otherwise: PresetAction::Collapse, fold_merged: true, ghost_lines: true, ..Default::default() });
-    let started = Instant::now();
-    let g = assemble(&input, &walked).unwrap();
-    let view_time = started.elapsed();
-    let started = Instant::now();
-    let p = preview(&input, &walked);
-    let preview_time = started.elapsed();
+    let spec = ViewSpec { rules, otherwise: PresetAction::Collapse, fold_merged: true, ghost_lines: true, ..Default::default() };
+    let mut viewed = input.clone();
+    viewed.view = Some(spec);
+    let g = assemble(&viewed, &walked).unwrap();
+    let p = preview(&viewed, &walked);
+    // Load-proof: the view's cost against the plain layout's, interleaved, best of 3. Wall time on
+    // this power-capped machine swings several times over; the ratio holds.
+    let time = |f: &dyn Fn()| {
+        let started = Instant::now();
+        f();
+        started.elapsed()
+    };
+    let (mut plain_time, mut view_time, mut preview_time) = (Duration::MAX, Duration::MAX, Duration::MAX);
+    for _ in 0..3 {
+        plain_time = plain_time.min(time(&|| drop(assemble(&input, &walked).unwrap())));
+        view_time = view_time.min(time(&|| drop(assemble(&viewed, &walked).unwrap())));
+        preview_time = preview_time.min(time(&|| drop(preview(&viewed, &walked))));
+    }
     eprintln!("{total} commits, {UNITS} branches: plain {plain_time:?}, view {view_time:?}, preview {preview_time:?}");
 
     // The view did its work: folds, runs and ghosts, on far fewer rows.
@@ -88,6 +97,7 @@ fn a_large_window_with_many_branches_stays_linear() {
     assert!(g.rows.iter().any(|r| !r.ghosts.is_empty()));
     assert!(g.rows.len() < plain.rows.len() / 2, "{} of {}", g.rows.len(), plain.rows.len());
 
-    assert!(view_time < Duration::from_secs(2), "assemble with a view took {view_time:?}");
-    assert!(preview_time < Duration::from_secs(1), "preview took {preview_time:?}");
+    // Measured about 1.5× (view) and 1× (preview) the plain layout; quadratic work would be far over.
+    assert!(view_time < plain_time * 4, "assemble with a view took {view_time:?}, plain {plain_time:?}");
+    assert!(preview_time < plain_time * 3, "preview took {preview_time:?}, plain {plain_time:?}");
 }

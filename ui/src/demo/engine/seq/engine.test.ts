@@ -518,24 +518,36 @@ describe('the step runner', () => {
     expect(readInProgress(t.memfs, t.repo.gitdir)).toMatchObject({ kind: 'rebase' });
   });
 
-  it('a 60-commit rebase runs in under two seconds', async () => {
-    const t = await makeTestRepo();
-    await t.write('base.txt', 'base\n');
-    await t.commit('Base');
-    await t.branch('topic');
-    await t.checkout('topic');
-    const rows: string[] = [];
-    for (let i = 0; i < 60; i++) {
-      await t.write(`topic/${String(i).padStart(2, '0')}.txt`, `${i}\n`);
-      rows.push(await t.commit(`Topic ${i}`));
+  // Load-proof (src/test-perf.ts): the cost of 60 commits against 15, in CPU time, best of 2
+  // interleaved; a linear rebase stays near 4×, a quadratic one goes to 16×.
+  it('a rebase grows linearly with its commits (15 vs 60)', async () => {
+    const rebase = async (n: number) => {
+      const t = await makeTestRepo();
+      await t.write('base.txt', 'base\n');
+      await t.commit('Base');
+      await t.branch('topic');
+      await t.checkout('topic');
+      const rows: string[] = [];
+      for (let i = 0; i < n; i++) {
+        await t.write(`topic/${String(i).padStart(2, '0')}.txt`, `${i}\n`);
+        rows.push(await t.commit(`Topic ${i}`));
+      }
+      await t.checkout('main');
+      await t.write('upstream.txt', 'upstream\n');
+      await t.commit('Upstream');
+      await t.checkout('topic');
+      const t0 = process.cpuUsage();
+      const end = await linear(t, 'main', rows, { headName: 'refs/heads/topic' });
+      const d = process.cpuUsage(t0);
+      expect(end.status).toBe('done');
+      return (d.user + d.system) / 1000;
+    };
+    await rebase(15); // warm-up
+    let [small, large] = [Infinity, Infinity];
+    for (let r = 0; r < 2; r++) {
+      small = Math.min(small, await rebase(15));
+      large = Math.min(large, await rebase(60));
     }
-    await t.checkout('main');
-    await t.write('upstream.txt', 'upstream\n');
-    await t.commit('Upstream');
-    await t.checkout('topic');
-    const started = performance.now();
-    const end = await linear(t, 'main', rows, { headName: 'refs/heads/topic' });
-    expect(end.status).toBe('done');
-    expect(performance.now() - started).toBeLessThan(2000);
-  });
+    expect(large / small, `15 commits: ${small.toFixed(0)} ms, 60: ${large.toFixed(0)} ms`).toBeLessThan(8);
+  }, 60_000);
 });
