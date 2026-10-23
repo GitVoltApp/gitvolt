@@ -77,7 +77,7 @@ const SPEC = "{ id: 'worktrees', needs: [], run }, { id: 'review', needs: ['push
 
 test('expected placeholders come from the scenes whose methods are pending, or that do not exist yet', () => {
   const e = expectedPlaceholders(SPEC, COVERAGE);
-  expect([...e].sort()).toEqual(['hero', 'markdown', 'menus', 'previews', 'rebase', 'review', 'stack', 'undo']);
+  expect([...e].sort()).toEqual(['filecolours', 'hero', 'markdown', 'menus', 'presets', 'previews', 'rebase', 'review', 'stack', 'undo']);
   expect(expectedPlaceholders(SPEC, "export const PENDING = [] as const")).not.toContain('review');
 });
 

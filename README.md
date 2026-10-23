@@ -25,7 +25,7 @@ terminal), a React UI, and [Tauri](https://tauri.app/) with the Chromium (CEF) r
 
 ![GitVolt: the commit graph with repository tabs in three tab groups, branches with their GitHub pull requests, a second worktree, and a selected commit's files as a tree](docs/images/screenshot.webp)
 
-> **Status:** early (0.x). Usable day to day on Linux and Windows, and new on macOS; expect rough edges.
+> **Status:** used day to day on Linux and Windows; newer on macOS.
 
 ## Platforms
 
@@ -72,6 +72,10 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   that row, the sidebar or the toolbar, without reopening the repository, or open one in its own
   tab. Each keeps its own undo history and commit message draft. Create one from any commit or
   branch.
+- **Branch visibility.** Hide or collapse branches by name, author, age or remote, fold merged
+  ones into their merge commit, and switch between these views from the graph. In a busy
+  repository the graph keeps the branches you're working on whole and shrinks the rest to a
+  dotted "⋮ N more commits" row, still showing where each one forks.
 - **Context menus.** Related actions share one row as buttons: Reset with Soft, Mixed and Hard,
   Copy SHA with Short and Full. A destructive row arms in place: it turns red and says what a
   second click does, so you confirm without moving the mouse, with any option (such as also
@@ -94,6 +98,9 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 - **File previews.** HTML pages render in a sandbox, CSV and TSV files show as tables with their
   rows diffed, and PDFs as pages, old and new side by side. Audio and video get a player for each
   version, and a font shows its name, sample text and glyphs. A hex view is there for any file.
+- **File colours.** Tint files by path pattern in every file list: tests green, generated files
+  gray, docs blue, or whatever groups your repository has. A big changeset then shows at a glance
+  what's code, tests or docs, and generated folders can start collapsed, out of the way.
 - **Undo history.** Each worktree keeps a journal of its last 50 operations, and it
   survives restarts: commits and amends, checkouts, branch and tag changes, merges, rebases,
   cherry-picks, reverts, resets, stashes, discards and pulls. Staging has its own undo too.
@@ -113,8 +120,7 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 - **Pinned trunk.** The graph keeps your main branch and the remote branch it tracks at the left,
   sharing a lane until they diverge. In a fork, it pins the original project's trunk
   (`upstream/main`) with your main. You can pick another branch or turn it off.
-- **Branch presets.** Switch the graph between views that hide, collapse or fold branches; reveal
-  collapsed commits in place; load older commits.
+- **Load older commits** from a row at the bottom of the graph, keeping your place.
 - **Go to the clipboard.** Ctrl+V outside a text field goes to what's on the clipboard: a commit
   hash, an MR/PR (`!12`, `#12` or its link), a forge's commit or file page, a file path with its
   line number, or a branch or tag.
@@ -175,11 +181,10 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   **Hex** shows any file's bytes.
 - **File View:** read a file rendered or as source, and edit or create a working-tree file.
   **Open in** your editor, file manager or default app, old versions included.
-- **File colours:** per-repository path scopes tint changed files and can fold generated folders
-  in tree view; edit them in Settings, or start from a file's right-click menu.
 
 #### History, merges and undo
 
+- **Drag and drop:** drag a branch onto another to merge, rebase or interactively rebase it.
 - **Undo menu:** undo an older action out of order when nothing later depends on it.
 - **Merge tool:** three-way, with an editable result and a conflict minimap.
 - **Compare.** Pick any two commits to see what changed between them, and swap which one is the
@@ -211,6 +216,7 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 | Undo / redo | 🟡 Last action only | ✅ Last 50 operations, across restarts |
 | Branches, tags, stashes, cherry-pick, revert, reset | ✅ | ✅ |
 | Merge and rebase | ✅ | ✅ |
+| Drag a branch onto another to merge or rebase | ✅ | ✅ |
 | Interactive rebase | 🟡 Pick, reword, squash, drop | ✅ Also fixup, edit, conflict prediction and branch moves |
 | Merge conflict tool with an editable result | ✅ | ✅ |
 | Push, pull, fetch, remotes, adding a fork as a remote | ✅ | ✅ |

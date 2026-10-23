@@ -66,11 +66,28 @@ const tabId = (name: string) => `demo-${name}`;
 /** Orbital's file colours, so the demo shows them on its opening commit (its common dir is its repo's .git). */
 const ORBITAL_FILE_COLOURS: Profile['fileColours'] = {
   [`${demoRoot('orbital', 'repo')}/.git`]: [
-    { id: 'demo-render', name: 'Rendering', tint: 'violet', patterns: ['crates/orbital-render/**', '*.wgsl'], startCollapsed: false },
+    { id: 'demo-generated', name: 'Generated', tint: 'gray', patterns: ['assets/data/**'], startCollapsed: true },
+    { id: 'demo-art', name: 'Art and audio', tint: 'orange', patterns: ['assets/**', '!assets/data/**', 'press/**'], startCollapsed: false },
+    { id: 'demo-shaders', name: 'Shaders', tint: 'violet', patterns: ['**/shaders/**', '*.wgsl'], startCollapsed: false },
     { id: 'demo-docs', name: 'Docs', tint: 'blue', patterns: ['docs/**', '*.md'], startCollapsed: false },
-    { id: 'demo-generated', name: 'Generated', tint: 'gray', patterns: ['assets/**'], startCollapsed: true },
+    { id: 'demo-build', name: 'Build and CI', tint: 'rose', patterns: ['*.toml', '.gitlab-ci.yml'], startCollapsed: false },
   ] satisfies FileScope[],
 };
+
+/** A preset of the demo's own, after the built-ins (the site's Branch visibility shot): the trunk
+ * and the checked-out branch whole, art and docs branches hidden, every other branch collapsed, and merged
+ * branches folded into their merge commit. */
+export const DEMO_PRESETS: AppSettings['branchPresets'] = [
+  {
+    id: 'demo-focus', name: 'Focus', color: 'purple', scope: 'all',
+    rules: [
+      { action: 'show', matcher: { kind: 'trunk' } },
+      { action: 'show', matcher: { kind: 'checkedOut' } },
+      { action: 'hide', matcher: { kind: 'nameMatches', patterns: 'art/*, docs/*' } },
+    ],
+    otherwise: 'collapse', foldMerged: true, ghostLines: true, inCycle: true,
+  },
+];
 
 /** `width`: the demo frame's, at load. */
 export function initialState(manifest: Manifest, width: number): DemoState {
@@ -88,5 +105,5 @@ export function initialState(manifest: Manifest, width: number): DemoState {
     .filter((g) => g.tabs.length > 0);
   const base = defaultProfile();
   const profile: Profile = { ...base, tabs, activeTab: active ? tabId(active.name) : null, tabGroups, reposFolders: ['/demo'], fileColours: ORBITAL_FILE_COLOURS, ...(width < COMPACT_BELOW ? COMPACT_WIDTHS : {}) };
-  return { settings: { ...DEFAULT_SETTINGS, ...DEMO_SETTINGS }, profile, profiles: [{ id: base.id, name: base.name, color: base.color }], watched: new Set() };
+  return { settings: { ...DEFAULT_SETTINGS, ...DEMO_SETTINGS, branchPresets: DEMO_PRESETS }, profile, profiles: [{ id: base.id, name: base.name, color: base.color }], watched: new Set() };
 }

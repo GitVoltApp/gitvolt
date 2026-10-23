@@ -23,8 +23,13 @@ interface Scene {
   run?(page: Page): Promise<void>;
   /** A collage instead of one view (COLLAGE): its tiles, left to right and top to bottom. */
   tiles?: Tile[];
+  /** Views side by side instead of one, each under its caption (PANES). */
+  panes?: Pane[];
   /** The scene leaves the pointer where it is (hovering what it shows) instead of moving it off. */
   pointer?: true;
+  /** The app this much larger than 1:1 in the shot: taken at device scale 2 × zoom, its clip
+   * 1/zoom of the shot's width. */
+  zoom?: number;
 }
 interface Box { x: number; y: number; width: number }
 /** A collage tile: the diff panel at `width` CSS px, its header (the file path and the Diff View
@@ -38,6 +43,17 @@ interface Tile {
   settle?(page: Page, part: Locator, bottom: number): Promise<void>;
 }
 
+/** A view beside the others: the demo after `run`, its part `clip` returns, under `caption`. The
+ * part is `width` CSS px wide, taken at the device scale that makes it its column's width at 2x. */
+interface Pane {
+  caption: string;
+  width: number;
+  run(page: Page): Promise<void>;
+  clip(page: Page): Promise<Box & { height: number }>;
+  /** `run` leaves the pointer where it is (hovering what it shows). */
+  pointer?: true;
+}
+
 /** The app at a comfortable size, 16:10. */
 const FEATURE = { width: 1200, height: 750 };
 
@@ -47,6 +63,26 @@ async function box(l: Locator): Promise<{ x: number; y: number; width: number; h
   const b = await l.boundingBox();
   if (!b) throw new Error(`${l} isn't on screen`);
   return b;
+}
+/** The graph's Graph and Commit message columns `width` px in all, the Branch / Tag column hidden
+ * from the header's menu: the message column fills the rest, so the window narrows or widens until
+ * it ends there. */
+async function graphColumns(page: Page, width: number): Promise<void> {
+  const col = async (c: string) => box(page.locator(`.graph-header [data-col="${c}"]`).first());
+  const right = async (c: string) => { const b = await col(c); return b.x + b.width; };
+  await page.locator('.graph-header [data-col="graph"]').first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Hide Branch / Tag' }).click();
+  await expect(page.locator('.graph-header [data-col="labels"]')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  const left = (await col('graph')).x;
+  for (let i = 0; i < 8; i++) {
+    const d = (await right('message')) - left - width;
+    if (Math.abs(d) < 0.5) break;
+    const v = page.viewportSize()!;
+    await page.setViewportSize({ width: Math.round(v.width - d), height: v.height });
+    await page.waitForTimeout(200);
+  }
+  expect(Math.abs((await right('message')) - left - width), 'the message column ends at the width').toBeLessThan(1);
 }
 /** Headless Chromium draws no mouse pointer: a plain arrow, its tip at (x, y), for the shot only. */
 async function drawPointer(page: Page, x: number, y: number): Promise<void> {
@@ -82,6 +118,35 @@ async function commitFile(page: Page, subject: string, path: string): Promise<vo
 const fileRow = (page: Page, section: 'staged' | 'unstaged', path: string) =>
   page.locator(`.wip-section[data-section="${section}"] .file-row[data-path${path.endsWith('/') ? '^' : ''}="${path}"]`).first();
 
+/** Picks a preset from the preset button's menu. */
+async function pickPreset(page: Page, name: string): Promise<void> {
+  await page.getByRole('button', { name: 'All branch presets' }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+  await expect(page.locator('.preset-main')).toHaveAccessibleName(new RegExp(`^Branches: ${name}`));
+}
+/** Scrolls the graph so the row with `subject` is its top row. */
+async function scrollToRow(page: Page, subject: string): Promise<void> {
+  const row = grid(page).getByRole('row').filter({ hasText: subject }).first();
+  const sc = await grid(page).evaluateHandle((g) => { let e: HTMLElement | null = g as HTMLElement; while (e && e.scrollHeight <= e.clientHeight + 5) e = e.parentElement; return e!; });
+  const top = await sc.evaluate((e) => (e as HTMLElement).getBoundingClientRect().top);
+  const at = (await box(row)).y;
+  await sc.evaluate((e, dy) => { (e as HTMLElement).scrollTop += dy; }, at - top);
+  await page.waitForTimeout(200);
+}
+
+/** The File colours shot's panes: the details panel at its width in a 1,200 px window, and rows. */
+const FILES_PANE = 300;
+const FILES_ROWS = 21;
+/** The details panel's file list, its first `rows` rows. */
+async function fileRows(page: Page, rows: number): Promise<Box & { height: number }> {
+  const first = await box(page.locator('.details-panel .file-row').first());
+  const panel = await box(page.locator('.details-panel').first());
+  return { x: Math.round(panel.x), y: Math.round(first.y), width: Math.round(panel.width), height: Math.round(rows * first.height) };
+}
+
+/** The Branch visibility shot's zoom: the graph's marks large enough to read on the page. */
+const PRESETS_ZOOM = 1.125;
+
 const SCENES: Scene[] = [
   // What a visitor sees before the demo is up (and on a phone): Orbital as the demo opens it, at
   // the hero frame's size.
@@ -100,6 +165,96 @@ const SCENES: Scene[] = [
       const right = Math.max(...await Promise.all((await page.locator('.wip-summary').all()).map(async (w) => { const b = await box(w); return b.x + b.width; })));
       return { x: 0, y: 0, width: Math.ceil(right) + 12 };
     },
+  },
+  // Orbital's graph under the demo's Focus preset, zoomed in on its Graph and Commit message
+  // columns: feature/trade-routes collapsed to its ⋮ row, the pointer on that row's band and its six
+  // hidden commits open above it on the branch's lane; below it, main's commit where hidden
+  // art/hd-sprites forks (its dotted stub, "⋮ 1 hidden"), and two merged branches folded into
+  // their merge commits, each curve ending in dots ("⋮ 2 folded commits").
+  {
+    id: 'presets',
+    needs: [],
+    viewport: { width: 1200, height: 1000 },
+    zoom: PRESETS_ZOOM,
+    run: async (page) => {
+      await pickPreset(page, 'Focus');
+      // No Branch / Tag column, and the message column wide enough for a merge's whole subject and
+      // its "⋮ N folded commits".
+      await graphColumns(page, 650);
+      await scrollToRow(page, "Merge branch 'fix/music-cap'");
+      // The pointer on the row's band right of its dotted lane, clear of the line: the panel opens
+      // after the hover's pause.
+      const row = await box(grid(page).getByRole('row', { name: /^6 more commits on feature\/trade-routes/ }));
+      const graph = await box(page.locator('.graph-header [data-col="graph"]').first());
+      const at = { x: graph.x + graph.width - 30, y: row.y + row.height * 0.55 };
+      await page.mouse.move(at.x, at.y);
+      await expect(page.locator('.reveal-panel').getByRole('grid')).toHaveAccessibleName('feature/trade-routes: 6 hidden commits');
+      await drawPointer(page, at.x, at.y);
+      await expect(page.locator('.reveal-panel')).toHaveAttribute('data-below', 'false');
+    },
+    // From the panel's title to a row under the second fold (its curve's dots whole), from the
+    // graph's left edge, every mark's text whole.
+    clip: async (page) => {
+      const [title, left] = [await box(page.locator('.reveal-title')), await box(page.locator('.graph-header [data-col="graph"]').first())];
+      const width = SHOTS.presets.width / PRESETS_ZOOM;
+      const row = (subject: string) => grid(page).getByRole('row').filter({ hasText: subject }).first();
+      for (const subject of ['Post the August devlog', "Merge branch 'feature/autopilot-stub'", "Merge branch 'chore/cut-12'"]) {
+        const mark = row(subject).locator('.msg-mark');
+        await expect(mark, `${subject}'s mark`).toHaveCount(1);
+        expect(await mark.evaluate((m) => m.scrollWidth <= m.clientWidth + 1 && m.getBoundingClientRect().right <= m.closest('[data-col="message"]')!.getBoundingClientRect().right), `${subject}'s mark is whole`).toBe(true);
+        const b = await box(mark);
+        expect(b.x + b.width, `${subject}'s mark is in the shot`).toBeLessThan(left.x + width - 4);
+      }
+      const last = await box(row("Merge branch 'chore/cut-12'"));
+      expect(Math.abs(last.y + 2 * last.height - title.y - SHOTS.presets.height / PRESETS_ZOOM), 'the shot ends a row under the second fold').toBeLessThan(1);
+      return { x: Math.round(left.x), y: Math.round(title.y), width };
+    },
+    pointer: true,
+  },
+  // Two merges of main into experiment/multiplayer, their changed files tinted by Orbital's demo
+  // scopes (art and audio, shaders, docs, build files, generated data), in the default theme. Left,
+  // the older one in tree view: the code's folders folded by hand so the groups show together, and
+  // the generated data folder collapsed as its scope starts it, hovered for its line totals. Right,
+  // the newer one in path view. Each the file list's rows alone.
+  {
+    id: 'filecolours',
+    needs: [],
+    viewport: { width: 1200, height: 1100 },
+    panes: [
+      {
+        caption: '<b>Tree</b> · generated data collapsed',
+        width: FILES_PANE,
+        pointer: true,
+        run: async (page) => {
+          const merge = grid(page).locator('[role="row"][id^="graph-row-ba65669"]');
+          await selectRow(page, merge);
+          const folder = (path: string) => page.locator(`.file-row[data-kind="folder"][data-path="${path}"]`).first();
+          await expect(folder('assets/data')).toHaveAttribute('aria-expanded', 'false');
+          for (const path of ['crates/orbital-core/src', 'crates/orbital-game/src', 'crates/orbital-render/src', 'assets/sprites', 'docs/devlog']) await folder(path).click();
+          // Another commit and back: the folders stay folded (per repository), and no row is the cursor's.
+          await selectRow(page, grid(page).locator('[role="row"][id^="graph-row-9fcba93"]'));
+          await selectRow(page, merge);
+          await expect(folder('crates/orbital-core/src')).toHaveAttribute('aria-expanded', 'false');
+          // The pointer on the collapsed folder, clear of its name: its line totals show.
+          const f = await box(folder('assets/data'));
+          const at = { x: f.x + f.width * 0.62, y: f.y + f.height * 0.55 };
+          await page.mouse.move(at.x, at.y);
+          await expect(folder('assets/data').locator('.file-stats')).toBeVisible();
+          await drawPointer(page, at.x, at.y);
+        },
+        clip: (page) => fileRows(page, FILES_ROWS),
+      },
+      {
+        caption: '<b>Path</b> · every file in its colour',
+        width: FILES_PANE,
+        run: async (page) => {
+          await selectRow(page, grid(page).locator('[role="row"][id^="graph-row-9fcba93"]'));
+          await page.locator('.details-panel .file-toolbar').getByRole('button', { name: 'Path', exact: true }).click();
+          await expect(page.locator('.file-row[data-kind="folder"]')).toHaveCount(0);
+        },
+        clip: (page) => fileRows(page, FILES_ROWS),
+      },
+    ],
   },
   // A branch chip's menu, its Delete row armed in place (Remote clicked once: it can't be undone), with the graph around it.
   {
@@ -453,7 +608,8 @@ async function capture(page: Page, scene: Scene, viewport: { width: number; heig
   await page.waitForTimeout(500);
   const part = scene.clip ? await scene.clip(page) : { x: 0, y: 0, width: viewport.width };
   const clip = { ...part, height: Math.round((part.width * SHOTS[scene.id].height) / SHOTS[scene.id].width) };
-  expect(clip.x >= 0 && clip.y >= 0 && clip.x + clip.width <= viewport.width && clip.y + clip.height <= viewport.height, `${scene.id}'s part ${JSON.stringify(clip)} fits the viewport`).toBe(true);
+  const size = page.viewportSize() ?? viewport;
+  expect(clip.x >= 0 && clip.y >= 0 && clip.x + clip.width <= size.width && clip.y + clip.height <= size.height, `${scene.id}'s part ${JSON.stringify(clip)} fits the viewport`).toBe(true);
   await page.screenshot({ path: join(out ?? '', `${scene.id}@${SHOTS[scene.id].width * 2}.png`), clip, animations: 'disabled', caret: 'hide' });
 }
 
@@ -471,14 +627,19 @@ async function openDemo(page: Page, viewport: { width: number; height: number })
   await expect(page).toHaveTitle(/orbital/);
 }
 
+/** A context like the project's, at device scale `scale`. */
+function newContext(browser: Browser, scale: number) {
+  const use = test.info().project.use;
+  return browser.newContext({ userAgent: use.userAgent, baseURL: use.baseURL, timezoneId: use.timezoneId, locale: use.locale, colorScheme: use.colorScheme, deviceScaleFactor: scale });
+}
+
 /** A tile, as two PNGs: the diff panel's header, through the Diff View row, and the tile's part
  * of the panel under it. The window is sized so the panel is the tile's width and ends at the
  * tile's bottom. */
 async function shootTile(browser: Browser, tile: Tile): Promise<[Buffer, Buffer]> {
   const scale = (2 * COLLAGE.tile.width) / tile.width;
   const size = { width: tile.width, height: (2 * COLLAGE.tile.height) / scale };
-  const use = test.info().project.use;
-  const context = await browser.newContext({ userAgent: use.userAgent, baseURL: use.baseURL, timezoneId: use.timezoneId, locale: use.locale, colorScheme: use.colorScheme, deviceScaleFactor: scale });
+  const context = await newContext(browser, scale);
   try {
     const page = await context.newPage();
     let viewport = { ...FEATURE };
@@ -533,14 +694,60 @@ async function collage(page: Page, browser: Browser, scene: Scene): Promise<void
   await page.screenshot({ path: join(out ?? '', `${scene.id}@${width * 2}.png`), animations: 'disabled' });
 }
 
+/** Panes side by side, `gap` px apart, each under its caption, on the page's colour. */
+const PANES = { gap: 10, caption: 30 };
+
+async function sideBySide(page: Page, browser: Browser, scene: Scene): Promise<void> {
+  const panes = scene.panes ?? [];
+  const { width, height } = SHOTS[scene.id];
+  const column = (width - PANES.gap * (panes.length - 1)) / panes.length;
+  const shots: Array<{ caption: string; png: Buffer; height: number }> = [];
+  for (const pane of panes) {
+    const scale = (2 * column) / pane.width;
+    const context = await newContext(browser, scale);
+    try {
+      const p = await context.newPage();
+      const viewport = scene.viewport ?? FEATURE;
+      await openDemo(p, viewport);
+      await pane.run(p);
+      if (!pane.pointer) await p.mouse.move(1, viewport.height - 1);
+      await p.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await p.waitForTimeout(500);
+      const clip = await pane.clip(p);
+      expect(Math.abs(clip.width - pane.width), `${scene.id}'s pane is ${pane.width} px wide`).toBeLessThan(1);
+      shots.push({ caption: pane.caption, png: await p.screenshot({ clip, animations: 'disabled', caret: 'hide' }), height: (clip.height * column) / pane.width });
+    } finally {
+      await context.close();
+    }
+  }
+  expect(Math.round(PANES.caption + Math.max(...shots.map((s) => s.height))), `${scene.id}'s tallest pane and its caption are its height`).toBe(height);
+  await page.setViewportSize({ width, height });
+  await page.setContent(`<!doctype html><style>
+    html, body { margin: 0; background: ${COLLAGE_BG}; font: 500 13px/1 system-ui, sans-serif; color: #c9d4f2; }
+    body { display: flex; gap: ${PANES.gap}px; align-items: flex-start; }
+    .cap { height: ${PANES.caption}px; display: flex; align-items: center; gap: 6px; padding: 0 2px; letter-spacing: .02em; white-space: nowrap; }
+    .cap b { font-weight: 600; color: #fff; }
+    .pane img { display: block; width: ${column}px; border-radius: 6px; }
+  </style>${shots.map((s) => `<div class="pane"><div class="cap">${s.caption}</div><img src="data:image/png;base64,${s.png.toString('base64')}" alt=""></div>`).join('')}`);
+  await page.locator('img').evaluateAll((imgs) => Promise.all((imgs as HTMLImageElement[]).map((i) => i.decode())));
+  await page.screenshot({ path: join(out ?? '', `${scene.id}@${width * 2}.png`), animations: 'disabled' });
+}
+
 for (const scene of SCENES) {
   test(scene.id, async ({ page, browser }) => {
     const missing = scene.needs.filter((m) => pending.has(m));
     test.skip(missing.length > 0, `needs ${missing.join(', ')}, still PENDING in ui/src/demo/coverage.ts`);
     if (scene.tiles) return collage(page, browser, scene);
+    if (scene.panes) return sideBySide(page, browser, scene);
     const viewport = scene.viewport ?? FEATURE;
-    await openDemo(page, viewport);
-    await scene.run?.(page);
-    await capture(page, scene, viewport);
+    const context = scene.zoom ? await newContext(browser, 2 * scene.zoom) : null;
+    try {
+      const p = context ? await context.newPage() : page;
+      await openDemo(p, viewport);
+      await scene.run?.(p);
+      await capture(p, scene, viewport);
+    } finally {
+      await context?.close();
+    }
   });
 }

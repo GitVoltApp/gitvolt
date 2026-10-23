@@ -13,16 +13,18 @@ export interface Highlight { lead: string; kicker: string; lane: Lane; shot: Sho
 
 const REPO = 'https://github.com/GitVoltApp/gitvolt';
 
-/** The page's highlights, in README.md's order: code review, then the two things used all day
- * (worktrees, context menus), the diffs, then history and forges. The README's "Free and MIT
+/** The page's highlights, in README.md's order: code review, then the things used all day
+ * (worktrees, branch visibility, context menus), the diffs and file colours, then history and forges. The README's "Free and MIT
  * licensed" is in the hero. */
 export const HIGHLIGHTS: Highlight[] = [
   { lead: 'Code review on GitHub and GitLab', kicker: 'Code review', lane: 'violet', shot: 'review' },
   { lead: 'Worktrees', kicker: 'Worktrees', lane: 'teal', shot: 'worktrees' },
+  { lead: 'Branch visibility', kicker: 'Graph', lane: 'blue', shot: 'presets' },
   { lead: 'Context menus', kicker: 'Menus', lane: 'orange', shot: 'menus' },
   { lead: 'Rendered Markdown diffs', kicker: 'Diffs', lane: 'pink', shot: 'markdown' },
   { lead: 'Image diffs', kicker: 'Diffs', lane: 'gold', shot: 'image' },
   { lead: 'File previews', kicker: 'Previews', lane: 'cyan', shot: 'previews' },
+  { lead: 'File colours', kicker: 'Files', lane: 'orange', shot: 'filecolours' },
   { lead: 'Undo history', kicker: 'Safety', lane: 'violet', shot: 'undo' },
   { lead: 'Interactive rebase', kicker: 'History', lane: 'pink', shot: 'rebase' },
   { lead: 'Stacked MRs/PRs', kicker: 'Forges', lane: 'gold', shot: 'stack' },
@@ -122,7 +124,7 @@ const MARKS: Array<[mark: string, cls: string, word: string]> = [['✅', 'm-yes'
 /** The comparison table's subheadings: each group's rows, by the README's exact row label. The table is long; this is only the website's grouping. */
 export const COMPARE_GROUPS: Array<{ title: string; lane?: Lane; rows: string[] }> = [
   { title: 'Graph and workspace', lane: 'cyan', rows: ['Commit graph with lanes, branch/tag chips and avatars', 'Main branch pinned to the left', 'Tabs, multiple repos, worktrees', 'Hide and solo branches', 'Command palette and keyboard shortcuts', 'Themes', 'Profiles'] },
-  { title: 'Changes and history', lane: 'violet', rows: ['Staging files, hunks and lines', 'Undo / redo', 'Branches, tags, stashes, cherry-pick, revert, reset', 'Merge and rebase', 'Interactive rebase', 'Merge conflict tool with an editable result', 'Push, pull, fetch, remotes, adding a fork as a remote', 'File history and blame', 'Commit signing', 'Signature verification', 'Submodules', 'Git LFS', 'Git Flow'] },
+  { title: 'Changes and history', lane: 'violet', rows: ['Staging files, hunks and lines', 'Undo / redo', 'Branches, tags, stashes, cherry-pick, revert, reset', 'Merge and rebase', 'Drag a branch onto another to merge or rebase', 'Interactive rebase', 'Merge conflict tool with an editable result', 'Push, pull, fetch, remotes, adding a fork as a remote', 'File history and blame', 'Commit signing', 'Signature verification', 'Submodules', 'Git LFS', 'Git Flow'] },
   { title: 'Diffs and files', lane: 'pink', rows: ['Diffs: inline, split, hunk, word-level', 'Image diffs', 'File previews', 'Rendered Markdown', 'Mermaid diagrams in Markdown'] },
   { title: 'Reviews and forges', lane: 'orange', rows: ['Pull/merge requests: list, view, create, comment, approve, merge', 'Inline code review comments', 'Stacked pull/merge requests', 'Forges', 'Issue trackers (Jira, Trello, …)'] },
   { title: 'Beyond Git', lane: 'teal', rows: ['Integrated terminal', 'AI commit messages and summaries', 'Cloud workspaces and team features'] },

@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { esc, type Marker } from './page.ts';
 
-export type ShotId = 'hero' | 'review' | 'worktrees' | 'menus' | 'markdown' | 'image' | 'previews' | 'undo' | 'rebase' | 'stack';
+export type ShotId = 'hero' | 'review' | 'worktrees' | 'presets' | 'menus' | 'markdown' | 'image' | 'previews' | 'filecolours' | 'undo' | 'rebase' | 'stack';
 /** Alt text, and the 1x file's size in CSS pixels (the 2x file is twice that). A feature shot is
  * the column's 720 px wide, its height that of the part of the window it shows. */
 export interface Shot { alt: string; width: number; height: number }
@@ -17,10 +17,12 @@ export const SHOTS: Record<ShotId, Shot> = {
   hero: { alt: 'GitVolt with Orbital, a made-up repository: its commit graph, branches and tabs', width: 1240, height: 775 },
   review: { alt: 'Code review: a pending comment with a suggested change, and a new range being dragged from the gutter', width: 720, height: 400 },
   worktrees: { alt: "Orbital's release worktree switched to, its WIP row above the main worktree's in the graph", ...FEATURE },
+  presets: { alt: "The graph zoomed in under a preset: a collapsed branch's six hidden commits open over the graph above its dotted row, lined up on its lane; below, a dotted stub where a hidden branch forks (1 hidden), and two merged branches folded into their merge commits, each curve ending in dots (2 folded commits)", width: 720, height: 410 },
   menus: { alt: "A branch's menu: reset modes and merge and rebase rows naming both branches, and the Delete row armed in red, labelled with what a second click does", width: 720, height: 588 },
   markdown: { alt: 'A controls page rendered side by side: table rows removed and added, new sections, changed words highlighted', ...DIFF },
   image: { alt: 'Swipe view between the old and the redrawn title screen art', ...DIFF },
   previews: { alt: "File previews: a CSV diff with its changed cells marked, a PDF's pages side by side, a font's samples, and a video's two versions", width: 720, height: 400 },
+  filecolours: { alt: "Two merges' changed files side by side, tinted by group: art and audio orange, shaders violet, docs blue, the build file rose, generated data gray. Left, in tree view, the generated data folder collapsed and hovered for its line totals; right, in path view", width: 720, height: 676 },
   undo: { alt: 'The undo menu listing the last few operations', width: 720, height: 400 },
   rebase: { alt: 'Interactive rebase of a two-branch stack: a commit squashed, a fixup moved under its commit, a typo reworded, and a predicted conflict', width: 720, height: 400 },
   stack: { alt: "A stack of three merge requests: the Stack table in the top one's description, each branch's MR on the graph", width: 720, height: 417 },

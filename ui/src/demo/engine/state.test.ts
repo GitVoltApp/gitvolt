@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { GOLDEN } from '../testing';
 import type { Manifest } from './repos';
-import { COMPACT_WIDTHS, DEFAULT_SETTINGS, DEMO_SETTINGS, defaultProfile, initialState } from './state';
+import { COMPACT_WIDTHS, DEFAULT_SETTINGS, DEMO_PRESETS, DEMO_SETTINGS, defaultProfile, initialState } from './state';
 
 const golden = JSON.parse(readFileSync(`${GOLDEN}/defaults.json`, 'utf8')) as { settings: Record<string, unknown>; profile: Record<string, unknown> };
 
@@ -36,7 +36,7 @@ test('opens a tab per open repo, grouped ones side by side, the active one activ
   expect(s.profile.activeTab).toBe('demo-orbital');
   expect(s.profile.tabGroups).toEqual([{ id: 'demo-group-1', name: 'Playground', color: 'blue', collapsed: true, tabs: ['demo-basic', 'demo-long_history'] }]);
   expect(s.profile.reposFolders).toEqual(['/demo']);
-  expect(s.settings).toEqual({ ...DEFAULT_SETTINGS, ...DEMO_SETTINGS });
+  expect(s.settings).toEqual({ ...DEFAULT_SETTINGS, ...DEMO_SETTINGS, branchPresets: DEMO_PRESETS });
   expect([s.settings.fetchIntervalSecs, s.settings.gravatar, s.settings.forgeAvatars, s.settings.updateCheck]).toEqual([0, false, false, false]);
   expect(s.profiles).toEqual([{ id: 'default', name: 'Default', color: '#4d88ff' }]);
   expect([s.profile.sidebarWidth, s.profile.rightPanelWidth]).toEqual([240, null]);
@@ -45,7 +45,11 @@ test('opens a tab per open repo, grouped ones side by side, the active one activ
 test("the demo starts with Orbital's file colours", () => {
   const { fileColours } = initialState(manifest, 1600).profile;
   expect(Object.keys(fileColours)).toEqual(['/demo/orbital/.git']);
-  expect(fileColours['/demo/orbital/.git'].map((s) => [s.name, s.tint, s.startCollapsed])).toEqual([['Rendering', 'violet', false], ['Docs', 'blue', false], ['Generated', 'gray', true]]);
+  expect(fileColours['/demo/orbital/.git'].map((s) => [s.name, s.tint, s.startCollapsed])).toEqual([['Generated', 'gray', true], ['Art and audio', 'orange', false], ['Shaders', 'violet', false], ['Docs', 'blue', false], ['Build and CI', 'rose', false]]);
+});
+
+test("the demo has a preset of its own, after the built-ins", () => {
+  expect(initialState(manifest, 1600).settings.branchPresets?.map((p) => [p.name, p.otherwise, p.foldMerged])).toEqual([['Focus', 'collapse', true]]);
 });
 
 test('a frame under 1,280 px starts with a narrower sidebar and details panel', () => {
