@@ -96,6 +96,11 @@ function Get-Rcedit {
 function Get-Wix {
   $dir = Join-Path $tools 'wix-5.0.2'
   $exe = Join-Path $dir 'wix.exe'
+  # A tool dir restored from a CI cache can be incomplete: wix.exe there, its .store's
+  # project.assets.json gone, so it can't start. Such a copy is reinstalled.
+  if ((Test-Path $exe) -and -not (Test-Path (Join-Path $dir '.store\wix\5.0.2\project.assets.json'))) {
+    Remove-Item -Recurse -Force $dir
+  }
   if (-not (Test-Path $exe)) {
     if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Fail "the .NET SDK isn't installed (WiX needs it)" }
     # No telemetry, no first-run certificate, and NuGet's caches in $tools too.
