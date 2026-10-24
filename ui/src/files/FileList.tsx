@@ -233,7 +233,7 @@ interface Cursor { id: string; diffKey: string | null }
  * first or last file (opening it), when up/down crosses over from the other list. */
 export interface FileListHandle { hasFiles(): boolean; enter(edge: 'first' | 'last'): void }
 
-export function FileList({ list, spec, label, allFilesCommit: commitOf = null, allFilesWorktree = null, sharedMode = false, onLeave, renderActions, toolEnd, canCreate = true, ref }: { /** UX round 3 O.1: Create file… on the list's empty space (false: the WIP's Staged and Conflicted lists). */ canCreate?: boolean; renderActions?: (row: FileRow) => ReactNode; /** `sharedMode`: shown at the right end of the tool line (WIP: the section's +/− totals). */ toolEnd?: ReactNode; list: FileListPayload; spec: DiffSpec; label: string; allFilesCommit?: string | null; /** UX G.2: the WIP row's View all files, of this worktree's tracked files. */ allFilesWorktree?: string | null; sharedMode?: boolean; onLeave?: (dir: 1 | -1) => boolean; ref?: Ref<FileListHandle> }) {
+export function FileList({ list, spec, label, allFilesCommit: commitOf = null, allFilesWorktree = null, sharedMode = false, onLeave, renderActions, toolEnd, canCreate = true, listMenu, ref }: { /** UX round 3 O.1: Create file… on the list's empty space (false: the WIP's Staged and Conflicted lists). */ canCreate?: boolean; /** Rows the list's empty space offers before Create file… (a WIP section's). */ listMenu?: () => MenuRow[]; renderActions?: (row: FileRow) => ReactNode; /** `sharedMode`: shown at the right end of the tool line (WIP: the section's +/− totals). */ toolEnd?: ReactNode; list: FileListPayload; spec: DiffSpec; label: string; allFilesCommit?: string | null; /** UX G.2: the WIP row's View all files, of this worktree's tracked files. */ allFilesWorktree?: string | null; sharedMode?: boolean; onLeave?: (dir: 1 | -1) => boolean; ref?: Ref<FileListHandle> }) {
   const store = useRepoViewStore();
   const repoPath = useRepoView((s) => s.repoPath);
   const openFile = useRepoView((s) => s.openFile);
@@ -440,7 +440,8 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     const child = list.files.find((f) => f.path.startsWith(inside))?.path ?? unchanged?.paths.find((p) => p.startsWith(inside)) ?? `${inside}${row.name}`;
     // Mark resolved takes the conflicted files the folder shows (the filter's, when one is on).
     const conflicted = filteredFiles.filter((f) => f.status === 'U' && f.path.startsWith(inside)).map((f) => f.path);
-    return folderMenu(store, spec, row.path, child, conflicted);
+    // Stage / Discard take the files its hover buttons do (`filesUnder`): the list's, under it.
+    return folderMenu(store, spec, row.path, child, conflicted, list.files.filter((f) => f.path.startsWith(inside)));
   };
   // UX round 3 O.1 (follow-up): Create file… ends every row's menu too, so a list its rows fill
   // (no empty space to right-click) still offers it; its input opens at the top of this list.
@@ -487,7 +488,14 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
   // A right-click on the list's empty space (a row's own menu stops the event first): Create
   // file…, whose name input opens at the top of this list.
   const listKey = `${filesKey(spec)}|${label}`;
-  const onEmptyMenu = (e: MouseEvent) => { if (canCreate) openContextMenu(e, () => [createFileRow(store, listKey)]); };
+  // A WIP section's own rows (`listMenu`: Stage all, Discard all…) come first.
+  const onEmptyMenu = (e: MouseEvent) => {
+    if (!canCreate && !listMenu) return;
+    openContextMenu(e, () => {
+      const own = listMenu?.() ?? [];
+      return [...own, ...(own.length && canCreate ? [{ kind: 'separator' } as const] : []), ...(canCreate ? [createFileRow(store, listKey)] : [])];
+    });
+  };
   const creating = useCreateFileInput((s) => s.open !== null && s.open.listKey === listKey && s.open.tabId === tabIdOf(store));
   const prefill = useCreateFileInput((s) => s.open?.prefill);
   const createWhere = creating ? createFileCtx(store) : null;

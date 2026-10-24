@@ -5,9 +5,9 @@ import type { FileRow } from '../files/fileTree';
 import { useRef } from 'react';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { useDisarmOnChange } from '../ui/arm/useDisarmOnChange';
-import { confirmAction } from '../ui/ConfirmDialog';
 import type { WriteCtx } from '../write/client';
-import { discardPaths, pathsOf, stagePaths, unstageFiles } from './actions';
+import { pathsOf, stagePaths, unstageFiles } from './actions';
+import { discardableOf, discardFiles } from './discardFiles';
 import { COMMIT_QUEUED, useCommitting } from './store';
 import './stage.css';
 
@@ -54,15 +54,9 @@ export function RowActions({ ctx, which, files, name }: { ctx: WriteCtx; which: 
   useDisarmOnChange(ref, `${ctx.worktree}\0${files.map((f) => f.path).join('\0')}`);
   if (files.length === 0) return null;
   // A submodule's own changes are discarded inside it (T4): its row offers no Discard.
-  const discardable = files.filter((f) => !f.submodule);
+  const discardable = discardableOf(files);
   // Discard arms in place, over the row's other actions (spec §ui confirms, board C).
-  const discard = async () => {
-    const n = discardable.length;
-    const arm = n === 1 ? `Click again to discard ${name}` : `Click again to discard ${n} files in ${name}`;
-    if (await confirmAction({ title: `Discard ${name}?`, body: 'Its changes are removed. You can undo this.', confirmLabel: 'Discard', arm, danger: true })) {
-      await discardPaths(ctx, pathsOf(discardable));
-    }
-  };
+  const discard = () => discardFiles(ctx, discardable, name);
   return (
     <span ref={ref} className="row-actions" data-arm-cover="" data-arm-grow="left">
       {which === 'unstaged' && discardable.length > 0 && <ActionIcon label={`Discard ${name}`} tip={committing ? COMMIT_QUEUED : 'Discard changes'} icon={Trash2} danger disabled={committing} onClick={() => void discard()} />}

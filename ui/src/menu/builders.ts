@@ -2,7 +2,9 @@ import { joinPath } from '../app/osPath';
 import { Minus, Plus, Trash2 } from 'lucide-react';
 import type { FileChange } from '../api/gen/FileChange';
 import { activeStore, activeTab } from '../app/actions';
-import { discardPaths, pathsOf, stagePaths, unstageFiles } from '../stage/actions';
+import { pathsOf, stagePaths, unstageFiles } from '../stage/actions';
+import { discardableOf, discardFiles } from '../stage/discardFiles';
+import { discardAllRow } from '../stage/menuRows';
 import { COMMIT_QUEUED, stagingKey, useStaging } from '../stage/store';
 import { refTokenFromLabel } from '../details/messageLinks';
 import { branchUrl, commitUrl, fileUrl, repoUrl, type ProjectRemote } from '../forge/urls';
@@ -10,7 +12,7 @@ import { defaultOpener, isSubmodule, openerRowId, openInSubmenuRows } from '../o
 import { shortSha } from '../format/sha';
 import { removeRemote } from '../remotes/remove';
 import { ICONS } from './icons';
-import type { CommitTarget, FileTarget, FolderTarget, MenuEnv, MonacoTarget, SidebarTarget, TagTarget } from './menuEnv';
+import type { CommitTarget, FileTarget, FolderTarget, MenuEnv, MonacoTarget, SidebarTarget, TagTarget, WipTarget } from './menuEnv';
 import { registerMenu, tmpl } from './registry';
 import type { MenuRow, Variant } from './types';
 
@@ -53,9 +55,38 @@ registerMenu<FileTarget, MenuEnv>({
     return [
       row({ id: 'file.stageFile', label: 'Stage', icon: Plus, tooltip: 'Stage this file’s changes', run: () => void stagePaths(ctx, pathsOf([{ path: t.path, oldPath: wip.oldPath }])), disabledReason: queued }),
       // A submodule's changes are discarded inside it.
-      ...(wip.submodule ? [] : [row({ id: 'file.discard', label: 'Discard changes', icon: Trash2, tooltip: 'Discard this file’s unstaged changes (you can undo this)', run: () => void discardPaths(ctx, pathsOf([{ path: t.path, oldPath: wip.oldPath }])), disabledReason: queued })]),
+      ...(wip.submodule ? [] : [row({ id: 'file.discard', label: 'Discard changes…', icon: Trash2, tooltip: 'Discard this file’s unstaged changes (you can undo this)', run: () => void discardFiles(ctx, [{ path: t.path, oldPath: wip.oldPath } as FileChange], t.path.split('/').pop() ?? t.path), disabledReason: queued })]),
     ];
   },
+});
+
+/** A WIP folder (tree mode): its hover buttons' Stage / Discard (Unstaged) or Unstage (Staged),
+ * on the changed files the list shows under it. Discard arms in place, as the button does, and
+ * takes its untracked files too. Conflicted files are Mark resolved's (2D). */
+registerMenu<FolderTarget, MenuEnv>({
+  id: 'folder.stage', kind: 'folder', group: 'stage', order: 0,
+  rows: (t) => {
+    const files = (t.wip?.files ?? []).filter((f) => f.status !== 'U');
+    const tab = activeTab();
+    const repo = activeStore()?.getState().repo;
+    if (!t.wip || files.length === 0 || !tab || repo === undefined) return [];
+    const ctx = { tabId: tab.id, repoId: repo, worktree: t.wip.worktree };
+    const queued = useStaging.getState().committing[stagingKey(repo, t.wip.worktree)] ? COMMIT_QUEUED : undefined;
+    const name = `${t.path}/`;
+    if (t.wip.staged) return [row({ id: 'folder.unstage', label: `Unstage ${name}`, icon: Minus, tooltip: `Move the staged changes of the files in ${name} back to Unstaged`, run: () => void unstageFiles(ctx, files), disabledReason: queued })];
+    const discardable = discardableOf(files);
+    return [
+      row({ id: 'folder.stageFiles', label: `Stage ${name}`, icon: Plus, tooltip: `Stage the changes of the files in ${name}`, run: () => void stagePaths(ctx, pathsOf(files)), disabledReason: queued }),
+      ...(discardable.length === 0 ? [] : [row({ id: 'folder.discard', label: `Discard changes in ${name}…`, icon: Trash2, tooltip: `Discard the unstaged changes in ${name} and delete its untracked files (you can undo this)`, run: () => void discardFiles(ctx, discardable, t.path), disabledReason: queued })]),
+    ];
+  },
+});
+
+/** The WIP row's Discard all, next to Stash changes: the WIP header's, armed in place. */
+registerMenu<WipTarget, MenuEnv>({
+  id: 'wip.discardAll', kind: 'wip', group: 'stash', order: 1,
+  when: (_t, env) => !!env.write,
+  rows: (t, env) => (env.write ? [discardAllRow({ ...env.write, worktree: t.worktree }, t.discard ?? { count: 0, inProgress: false })] : []),
 });
 // --- end 2B T9 ---
 

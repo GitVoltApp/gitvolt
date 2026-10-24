@@ -17,6 +17,10 @@ import { SplitResizer } from './SplitResizer';
 import { splitConflicted } from './conflicted';
 import { setWipFilter, useWipFilter, wipFilterOf } from './wipFilter';
 import { useRepoContext } from '../app/repoContext';
+import { useRepoView } from '../repo/store';
+import { openContextMenu } from '../menu/menuStore';
+import type { MenuRow } from '../menu/types';
+import { discardScopeOf, sectionRows, type DiscardAllScope } from '../stage/menuRows';
 // --- 2D T15 ---
 import { markResolved } from '../conflicts/resolve';
 // --- end 2D T15 ---
@@ -63,8 +67,10 @@ function HeadActions({ ctx, which, files, guardConflicts }: { ctx: WriteCtx; whi
 
 /** One section: a header that collapses it (title and count, then its change summary and the
  * +/− totals on the same line), and its file list, with Path/Tree left to the shared toggle. */
-function WipSection({ section, which, collapsed, onToggle, sizeRef, basis, listRef, onLeave, guardConflicts = false }: {
+function WipSection({ section, which, collapsed, onToggle, sizeRef, basis, listRef, onLeave, guardConflicts = false, discardScope }: {
   section: FileSection;
+  /** What a Discard all from this section's menu confirms (the WIP header's). */
+  discardScope: () => DiscardAllScope;
   /** Stage all stays off the conflicted paths (Unstaged, while Conflicted is showing). */
   guardConflicts?: boolean;
   which: Which;
@@ -94,6 +100,11 @@ function WipSection({ section, which, collapsed, onToggle, sizeRef, basis, listR
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ctx?.tabId, ctx?.repoId, ctx?.worktree, ready, which],
   );
+  // The header's (and the list's empty space's) right-click: its buttons' rows, then Discard all.
+  // Through a ref, so a refresh of the open menu reads the lists as they are then.
+  const menuRef = useRef<() => MenuRow[]>(() => []);
+  menuRef.current = () => (ctx && ready && which !== 'conflicted' ? sectionRows(ctx, which, ready.files, { guardConflicts, all: discardScope() }) : []);
+  const menuRows = useCallback(() => menuRef.current(), []);
   let body: ReactNode = null;
   // UX G.2: View all files on the Unstaged list: the worktree's tracked files around its changes
   // (untracked files are among them already), each opening its working-tree file in File View.
@@ -109,7 +120,7 @@ function WipSection({ section, which, collapsed, onToggle, sizeRef, basis, listR
       {ready.deleted > 0 && <span className="deleted">−{ready.deleted}</span>}
     </span>
   ) : null;
-  if (ready) body = <FileList ref={listRef} list={ready} spec={section.spec} label={label} allFilesWorktree={allFilesWorktree} sharedMode onLeave={onLeave} renderActions={renderActions} toolEnd={totals} canCreate={which === 'unstaged'} />;
+  if (ready) body = <FileList ref={listRef} list={ready} spec={section.spec} label={label} allFilesWorktree={allFilesWorktree} sharedMode onLeave={onLeave} renderActions={renderActions} toolEnd={totals} canCreate={which === 'unstaged'} listMenu={which === 'conflicted' ? undefined : menuRows} />;
   else if (list.status === 'error' && !collapsed) body = <div role="alert" className="file-section-status">{list.message}</div>;
   return (
     <section
@@ -120,7 +131,7 @@ function WipSection({ section, which, collapsed, onToggle, sizeRef, basis, listR
       style={basis !== undefined ? { flexBasis: `${basis * 100}%` } : undefined}
     >
       {/* The whole bar toggles; the button inside is its keyboard (and screen reader) face. */}
-      <div className="wip-section-head" onClick={onToggle}>
+      <div className="wip-section-head" onClick={onToggle} onContextMenu={(e) => { if (which !== 'conflicted') openContextMenu(e, menuRows); }}>
         <h3 className="file-section-title">
           <button type="button" aria-expanded={!collapsed}>
             {collapsed ? <ChevronRight size={12} aria-hidden /> : <ChevronDown size={12} aria-hidden />}
@@ -189,6 +200,15 @@ export function WipSections({ sections }: { sections: FileSection[] }) {
   const { tabId } = useRepoContext();
   const filter = useWipFilter((s) => wipFilterOf(s.byTab, tabId));
   const both = !prefs.collapsed.unstaged && !prefs.collapsed.staged;
+  // Discard all, as the WIP header's: the files of both lists (conflicted ones too), off mid-merge.
+  const midOp = useRepoView((s) => {
+    const sel = s.panel?.selection;
+    return sel?.kind === 'wip' && !!s.graph.worktrees.find((w) => w.path === sel.worktree)?.inProgress;
+  });
+  const discardScope = (): DiscardAllScope => {
+    const lists = sections.flatMap((sec) => (sec.list.status === 'ready' ? [sec.list.data] : []));
+    return { ...(discardScopeOf(lists) ?? { count: 0 }), inProgress: midOp };
+  };
   return (
     <div className="wip-sections">
       <div className="wip-view-bar">
@@ -213,10 +233,10 @@ export function WipSections({ sections }: { sections: FileSection[] }) {
           />
         </div>
       )}
-      {conflicted && <WipSection key={`${filesKey(conflicted.spec)}|conflicted`} section={conflicted} which="conflicted" collapsed={prefs.collapsed.conflicted} onToggle={() => toggle('conflicted')} listRef={lists.conflicted} onLeave={leave('conflicted')} />}
+      {conflicted && <WipSection key={`${filesKey(conflicted.spec)}|conflicted`} section={conflicted} which="conflicted" collapsed={prefs.collapsed.conflicted} onToggle={() => toggle('conflicted')} listRef={lists.conflicted} onLeave={leave('conflicted')} discardScope={discardScope} />}
       {/* The split is of this box, the height left once Conflicted has taken its share. */}
       <div ref={ref} className="wip-split">
-      <WipSection key={filesKey(unstaged.spec)} section={unstaged} which="unstaged" guardConflicts={conflicted !== null} collapsed={prefs.collapsed.unstaged} onToggle={() => toggle('unstaged')} listRef={lists.unstaged} onLeave={leave('unstaged')} sizeRef={topRef} basis={both ? shown : undefined} />
+      <WipSection key={filesKey(unstaged.spec)} section={unstaged} which="unstaged" guardConflicts={conflicted !== null} collapsed={prefs.collapsed.unstaged} onToggle={() => toggle('unstaged')} listRef={lists.unstaged} onLeave={leave('unstaged')} discardScope={discardScope} sizeRef={topRef} basis={both ? shown : undefined} />
       {both && (
         <SplitResizer
           ratio={shown}
@@ -230,7 +250,7 @@ export function WipSections({ sections }: { sections: FileSection[] }) {
           defaultRatio={WIP_PANEL.defaultRatio}
         />
       )}
-      <WipSection key={filesKey(staged.spec)} section={staged} which="staged" collapsed={prefs.collapsed.staged} onToggle={() => toggle('staged')} listRef={lists.staged} onLeave={leave('staged')} />
+      <WipSection key={filesKey(staged.spec)} section={staged} which="staged" collapsed={prefs.collapsed.staged} onToggle={() => toggle('staged')} listRef={lists.staged} onLeave={leave('staged')} discardScope={discardScope} />
       </div>
     </div>
   );

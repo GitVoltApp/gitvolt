@@ -31,6 +31,9 @@ import { centerViewEditorFile, centerViewOf, centerViewOnTop } from '../repo/cen
 import type { RepoServices } from '../repo/services';
 import type { SideItem } from '../sidebar/model';
 import { wipKey } from '../repo/wipLists';
+import type { FileChange } from '../api/gen/FileChange';
+import { wipFileCount } from '../format/wip';
+import { discardScopeOf, type DiscardAllScope } from '../stage/menuRows';
 import { inCommitSelection, openWorktree, selectedCommits, type CommitRef, type DiffTarget, type RepoViewState, type RepoViewStore } from '../repo/store';
 import { useToast } from '../ui/toastStore';
 import { stackBase, stackFor, stacksOf, type Stack } from '../stacks/detect';
@@ -154,8 +157,9 @@ export interface FolderTarget {
    * the path it's given). */
   openIn: OpenInTarget;
   /** A WIP list's folder: its worktree and the conflicted files under it (as the list shows
-   * them), for Mark resolved. `null` for every other list. */
-  wip: { worktree: string; conflicted: string[] } | null;
+   * them), for Mark resolved; its list (`staged`) and the changed files it shows under it, for
+   * Stage / Unstage / Discard (its hover buttons'). `null` for every other list. */
+  wip: { worktree: string; conflicted: string[]; staged?: boolean; files?: FileChange[] } | null;
 }
 
 /** A commit's branch, as the graph knows it (spec §7 "Copy branch name", "Forge link"). */
@@ -179,7 +183,7 @@ export interface CommitTarget {
 
 // --- 2C T9: the wip menu kind ---
 /** A WIP row (`wip` kind, spec #2 §14). */
-export interface WipTarget { worktree: string; name: string | null; active: boolean }
+export interface WipTarget { worktree: string; name: string | null; active: boolean; /** What its Discard all confirms. */ discard?: DiscardAllScope }
 // --- end 2C T9 ---
 
 /** A tag label chip (`tag` kind). */
@@ -510,15 +514,15 @@ export function fileMenu(store: RepoViewStore, spec: DiffSpec, t: DiffTarget, ch
 
 /** The folder menu's target: `inside`, a path in the folder, is what Open in ▸ Files opens;
  * `conflicted`, the conflicted files the list shows under it. */
-export function folderTargetOf(s: RepoViewState, spec: DiffSpec, path: string, inside: string, conflicted: string[] = []): FolderTarget {
+export function folderTargetOf(s: RepoViewState, spec: DiffSpec, path: string, inside: string, conflicted: string[] = [], files: FileChange[] = []): FolderTarget {
   const root = rootOfSpec(s, spec);
-  return { path, root, openIn: { worktree: root, path: inside, line: null, source: null, fallback: null }, wip: spec.kind === 'wip' ? { worktree: spec.worktree, conflicted } : null };
+  return { path, root, openIn: { worktree: root, path: inside, line: null, source: null, fallback: null }, wip: spec.kind === 'wip' ? { worktree: spec.worktree, conflicted, staged: spec.staged, files } : null };
 }
 
-/** A right-click on a folder row (tree mode). */
-export function folderMenu(store: RepoViewStore, spec: DiffSpec, path: string, inside: string, conflicted: string[] = []): () => MenuRow[] {
+/** A right-click on a folder row (tree mode). `files`: the changed files the list shows under it. */
+export function folderMenu(store: RepoViewStore, spec: DiffSpec, path: string, inside: string, conflicted: string[] = [], files: FileChange[] = []): () => MenuRow[] {
   afterOpening(store);
-  return () => buildMenu<FolderTarget, MenuEnv>('folder', folderTargetOf(store.getState(), spec, path, inside, conflicted), fileMenuEnv(store));
+  return () => buildMenu<FolderTarget, MenuEnv>('folder', folderTargetOf(store.getState(), spec, path, inside, conflicted, files), fileMenuEnv(store));
 }
 
 /** The row's primary branch: its first branch chip (HEAD's sorts first), as a right-click on that
@@ -560,7 +564,12 @@ export function wipMenu(store: RepoViewStore, row: RowPayload): () => MenuRow[] 
   const wt = row.wip?.worktreePath ?? '';
   return () => {
     const env = fileMenuEnv(store);
-    return buildMenu<WipTarget, MenuEnv>('wip', { worktree: wt, name: row.wip?.worktreeName ?? null, active: wt === env.activeWorktree }, env);
+    const s = store.getState();
+    // Discard all confirms the lists the WIP panel would show, once loaded; else the row's count.
+    const lists = [s.services.wip.peek(wipKey(wt, false)), s.services.wip.peek(wipKey(wt, true))];
+    const scope = lists[0] && lists[1] ? discardScopeOf([lists[0], lists[1]]) : null;
+    const discard = { count: scope?.count ?? (row.wip ? wipFileCount(row.wip) : 0), confirmed: scope?.confirmed, inProgress: !!s.graph.worktrees.find((w) => w.path === wt)?.inProgress };
+    return buildMenu<WipTarget, MenuEnv>('wip', { worktree: wt, name: row.wip?.worktreeName ?? null, active: wt === env.activeWorktree, discard }, env);
   };
 }
 // --- end 2C T9 ---

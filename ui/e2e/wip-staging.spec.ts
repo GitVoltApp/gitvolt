@@ -112,8 +112,24 @@ test.describe('Conflicted, discards and the file menu (spec #2 §7.1, §7.2)', (
 
   // One repo and page for both (each was a test of its own, paying for a page load): the row's
   // Discard first, then Discard all of what is left.
-  test('a row’s Discard arms in place and Discard unstaged keeps the staged half; Discard all arms in place, Esc disarms, a second click discards', async ({ page }) => {
+  test('a folder’s menu stages and discards; a row’s Discard arms in place and Discard unstaged keeps the staged half; Discard all arms in place, Esc disarms, the menu’s discards', async ({ page }) => {
     const repo = await openWip(page);
+    await test.step('a folder’s menu stages and unstages it; its Discard arms in place, then discards', async () => {
+      await page.getByRole('button', { name: 'Tree', exact: true }).click();
+      const folder = (which: 'unstaged' | 'staged') => section(page, which).locator('.file-row[data-kind="folder"][data-path="src"]');
+      await folder('unstaged').click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Stage src/', exact: true }).click();
+      await expect(folder('staged')).toBeVisible();
+      expect(git(repo, 'diff', '--cached', '--name-only')).toContain('src/app.txt');
+      await folder('staged').click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Unstage src/', exact: true }).click();
+      await expect(folder('unstaged')).toBeVisible();
+      await folder('unstaged').click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Discard changes in src/…', exact: true }).click();
+      await confirmArmed(page.getByRole('menuitem', { name: 'Click again to discard src', exact: true }));
+      await expect(folder('unstaged')).toHaveCount(0);
+      expect(git(repo, 'status', '--porcelain')).not.toContain('src/app.txt');
+    });
     await test.step('a row’s Discard arms in place; Discard unstaged keeps the staged half', async () => {
       await fileRow(page, 'unstaged', 'space name.txt').hover();
       await page.getByRole('button', { name: 'Discard space name.txt' }).click();
@@ -131,8 +147,10 @@ test.describe('Conflicted, discards and the file menu (spec #2 §7.1, §7.2)', (
       await page.keyboard.press('Escape');
       await expect(armed).toBeHidden();
       expect(git(repo, 'status', '--porcelain')).not.toBe('');
-      await page.getByTestId('wip-header').getByRole('button', { name: 'Discard all' }).click();
-      await confirmArmed(armed);
+      // The same from a section header's menu: the row arms in place, its second click discards.
+      await section(page, 'staged').locator('.wip-section-head').click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Discard all changes…', exact: true }).click();
+      await confirmArmed(page.getByRole('menuitem', { name: 'Click again to discard 1 file', exact: true }));
       await expect.poll(() => git(repo, 'status', '--porcelain')).toBe('');
     });
   });

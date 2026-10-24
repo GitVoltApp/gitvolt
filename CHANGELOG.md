@@ -7,6 +7,10 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Added
 
+- **Stage, unstage and discard from a right-click in the WIP lists.** A folder's menu stages,
+  unstages or discards its files, as its hover buttons do; a section's header and the list's empty
+  space offer Stage all, Unstage all, Discard unstaged and Discard all changes; the graph's WIP row
+  has Discard all changes too. A folder's Discard and Discard all arm in place; all can be undone.
 - **Drag a branch onto another to merge or rebase it.** In the graph, drop a local branch's chip
   on another local branch's chip: a menu at the pointer merges it in (or fast-forwards), rebases
   onto it, or opens the interactive rebase. A branch that isn't checked out is checked out first.
