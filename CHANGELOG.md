@@ -9,6 +9,9 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 - **A merged MR/PR's commits no longer linger in the graph** after its branch is deleted: the
   commits GitVolt fetched to compare it are dropped when you leave Compare.
+- **The WIP panel no longer overlaps itself in a short window.** The file lists shrink to a row
+  each instead of drawing over the commit box, and the commit box compacts; mid-conflict the
+  Conflicted list keeps its row.
 
 ## [1.0.0] - 2026-10-23
 

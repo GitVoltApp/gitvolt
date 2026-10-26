@@ -1,4 +1,6 @@
 .details-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* A size container: a short panel compacts the commit box (commit.css). */
+.details-panel { container: details / size; }
 /* Feedback F13: the top section (header + message) takes the split's share (inline
    flex-basis); the header is fixed and only the message scrolls. */
 .commit-details { display: flex; flex-direction: column; flex-grow: 0; flex-shrink: 0; min-height: 72px; overflow: hidden; box-sizing: border-box; padding: 0 12px 0; }

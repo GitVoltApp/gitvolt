@@ -13,6 +13,15 @@
 .commit-summary { padding: 8px 8px 4px; font-size: 1.2em; line-height: 1.3; color: var(--text-selected); }
 /* At least 4 lines; grows with its text to 8, then scrolls. */
 .commit-description { padding: 2px 8px 8px; resize: none; field-sizing: content; line-height: 1.4; min-height: calc(4lh + 10px); max-height: calc(8lh + 10px); overflow-y: auto; }
+/* A short panel (the details container) gives the file lists room: the description starts smaller
+   and stops growing sooner, and the operation's title keeps to one line. */
+@container details (max-height: 640px) {
+  .commit-description { min-height: calc(2lh + 10px); max-height: calc(4lh + 10px); }
+  .commit-op-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@container details (max-height: 480px) {
+  .commit-description { min-height: calc(1lh + 10px); max-height: calc(2lh + 10px); }
+}
 .commit-counter { flex: none; font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .commit-counter.warn { color: var(--orange); }
 

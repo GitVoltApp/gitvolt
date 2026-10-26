@@ -113,6 +113,16 @@ test('the demo boots into basic: its graph and sidebar, narrow panels in a small
     await editor.getByRole('button', { name: 'Start Rebase' }).click();
     const status = page.getByRole('region', { name: 'Rebase in progress' });
     await expect(status).toBeVisible();
+    // At the window's minimum height the file lists drew over each other and the commit box: what
+    // a click at each one's centre lands on is the thing itself.
+    await page.setViewportSize({ width: 1000, height: 500 });
+    const hitsItself = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+    };
+    await expect.poll(() => page.locator('.wip-section.conflicted .file-row').evaluate(hitsItself)).toBe(true);
+    await expect.poll(() => status.locator('.commit-op-title').evaluate(hitsItself)).toBe(true);
+    await page.setViewportSize({ width: 1000, height: 760 });
     const abort = page.getByTestId('commit-box').getByRole('button', { name: 'Abort rebase' });
     await abort.click();
     await confirmArmed(armedOverlay(page, 'Click again to abort the rebase'));
