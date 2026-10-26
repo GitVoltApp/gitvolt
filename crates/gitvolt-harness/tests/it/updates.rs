@@ -13,22 +13,22 @@ async fn call(api: &Api, method: &str) -> Result<Value, GbError> {
     Box::pin(api.dispatch(req)).await
 }
 
-const DEB: &str = "GitVolt_0.99.0_amd64.deb";
+const DEB: &str = "GitVolt_90.0.0_amd64.deb";
 
 fn seed(h: &Harness, bad_sums: bool) {
     let mut s = h.forge.current_seed();
     let asset = |name: &str, size| FakeAsset { name: name.into(), size };
     s.github.releases = vec![
-        FakeRelease { tag_name: "v1.0.0-rc.1".into(), name: "GitVolt 1.0.0-rc.1".into(), prerelease: true, assets: vec![asset("GitVolt_1.0.0-rc.1_amd64.deb", 10), asset("SHA256SUMS", 0)], ..Default::default() },
+        FakeRelease { tag_name: "v91.0.0-rc.1".into(), name: "GitVolt 91.0.0-rc.1".into(), prerelease: true, assets: vec![asset("GitVolt_91.0.0-rc.1_amd64.deb", 10), asset("SHA256SUMS", 0)], ..Default::default() },
         FakeRelease {
-            tag_name: "v0.99.0".into(),
-            name: "GitVolt 0.99.0".into(),
+            tag_name: "v90.0.0".into(),
+            name: "GitVolt 90.0.0".into(),
             body: "## Added\n- Updates".into(),
-            assets: vec![asset(DEB, 300_000), asset("GitVolt-0.99.0-1-x86_64.pkg.tar.zst", 1000), asset("SHA256SUMS", 0)],
+            assets: vec![asset(DEB, 300_000), asset("GitVolt-90.0.0-1-x86_64.pkg.tar.zst", 1000), asset("SHA256SUMS", 0)],
             bad_sums: if bad_sums { vec![DEB.into()] } else { Vec::new() },
             ..Default::default()
         },
-        FakeRelease { tag_name: "v5.0.0".into(), draft: true, ..Default::default() },
+        FakeRelease { tag_name: "v95.0.0".into(), draft: true, ..Default::default() },
     ];
     h.forge.seed(s);
 }
@@ -54,7 +54,7 @@ async fn checks_downloads_verifies_and_records_the_install() {
     seed(&h, false);
     let state = call(&h.api, "updateCheck").await.unwrap();
     assert_eq!(state["state"], "available");
-    assert_eq!(state["release"]["version"], "0.99.0", "not the draft, nor the pre-release: {state}");
+    assert_eq!(state["release"]["version"], "90.0.0", "not the draft, nor the pre-release: {state}");
     assert_eq!(state["release"]["asset"], json!({"name": DEB, "size": 300_000}));
     assert_eq!(state["release"]["notes"][0]["notes"], "## Added\n- Updates");
     assert_eq!(call(&h.api, "updateDownload").await.unwrap()["state"], "downloading");
@@ -63,9 +63,9 @@ async fn checks_downloads_verifies_and_records_the_install() {
     let paths: Vec<String> = h.forge.requests().iter().map(|r| format!("{} {}", r.forge, r.path)).collect();
     assert!(paths.contains(&"github /repos/GitVoltApp/gitvolt/releases".to_string()), "{paths:?}");
     assert!(!paths.iter().any(|p| p.contains("GitBoltApp")), "GitVolt never asks the old repository: {paths:?}");
-    assert!(paths.contains(&format!("github-releases /GitVoltApp/gitvolt/releases/download/v0.99.0/{DEB}")), "{paths:?}");
-    assert!(paths.contains(&format!("github-objects /v0.99.0/{DEB}")), "{paths:?}");
-    assert!(paths.contains(&"github-objects /v0.99.0/SHA256SUMS".to_string()), "{paths:?}");
+    assert!(paths.contains(&format!("github-releases /GitVoltApp/gitvolt/releases/download/v90.0.0/{DEB}")), "{paths:?}");
+    assert!(paths.contains(&format!("github-objects /v90.0.0/{DEB}")), "{paths:?}");
+    assert!(paths.contains(&"github-objects /v90.0.0/SHA256SUMS".to_string()), "{paths:?}");
     assert!(h.forge.requests().iter().all(|r| !r.authorized && r.user_agent.as_deref().is_some_and(|u| u.starts_with("GitVolt/"))));
 
     // The harness never installs: the dialog gets the command to run by hand.
@@ -86,7 +86,7 @@ async fn checks_downloads_verifies_and_records_the_install() {
     s.update_prereleases = true;
     h.store.save_settings(s);
     h.api.reset_updates();
-    assert_eq!(call(&h.api, "updateCheck").await.unwrap()["release"]["version"], "1.0.0-rc.1");
+    assert_eq!(call(&h.api, "updateCheck").await.unwrap()["release"]["version"], "91.0.0-rc.1");
 }
 
 #[tokio::test(flavor = "multi_thread")]
