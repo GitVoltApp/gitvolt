@@ -180,6 +180,13 @@ describe('fetch', () => {
     expect(await t.rev('refs/remotes/origin/gone')).toBe(base);
     expect(ctx.events.find((e) => e.type === 'opFinished')).toMatchObject({ command: `git fetch --prune --no-prune-tags --progress --end-of-options origin +refs/merge-requests/4/head:${COMPARE_REFS}origin/mr/4` });
     await expect(remoteHandlers.fetch({ repo: id, background: false, remote: 'origin', mrHead: { kind: 'gitlab', number: 77 } }, ctx)).rejects.toMatchObject({ kind: 'Other', message: "couldn't find remote ref refs/merge-requests/77/head" });
+    // Its Compare ends: the head goes, and the graph refreshes; with none left, no event.
+    ctx.events.length = 0;
+    expect(await remoteHandlers.dropCompareRefs({ repo: id }, ctx)).toBeNull();
+    await expect(t.rev(`${COMPARE_REFS}origin/mr/4`)).rejects.toBeTruthy();
+    expect(ctx.events).toEqual([{ type: 'refsUpdated', repo: id }]);
+    await remoteHandlers.dropCompareRefs({ repo: id }, ctx);
+    expect(ctx.events).toHaveLength(1);
   });
 
   it('a Cancel during the transfer cancels it', async () => {

@@ -1,5 +1,6 @@
+import { dirname, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
-import { addForgeAccount, E2E_GITLAB_TOKEN, forgeRequests, forgeSeed, freshFixture, git, openUrl, setForgeSeed } from './fixtures';
+import { addForgeAccount, E2E_GITLAB_TOKEN, forgeRequests, forgeSeed, freshFixture, git, openUrl, originGit, setForgeSeed } from './fixtures';
 import { armedOverlay, confirmArmed, expect, test } from './test';
 
 /** The pointer at an element's centre: a hovered chip floats its copy over the resting one, so a
@@ -476,6 +477,31 @@ test.describe('merge requests (spec #4 §7, 4B)', () => {
       await expect(sidebar.getByRole('region', { name: 'Local', exact: true }).locator('.sb-item.is-head')).toHaveAttribute('aria-label', 'dev');
       await mrRow.click({ button: 'right' });
       await expect(action('Checked out')).toHaveAttribute('aria-disabled', 'true');
+      await page.keyboard.press('Escape');
+    });
+
+    await test.step("Compare of an MR whose branch is gone fetches its head into a ref of its own; leaving Compare drops it, and its commits leave the graph", async () => {
+      // !12's head now exists only as the forge's MR ref, as after its branch was deleted.
+      const base = git(repo, 'rev-parse', 'origin/main');
+      const head = originGit(repo, 'commit-tree', `${base}^{tree}`, '-p', base, '-m', 'Work on a deleted branch');
+      originGit(repo, 'update-ref', 'refs/merge-requests/12/head', head);
+      const seed = await forgeSeed(request);
+      Object.assign((seed.gitlab as unknown as { mergeRequests: Array<Record<string, unknown>> }).mergeRequests.find((x) => x.iid === 12)!, { headSha: head, baseSha: base });
+      await setForgeSeed(request, seed);
+      // The fake GitLab's git side: SSH to the fixture's own origin (the forge stays the URL's host).
+      git(repo, 'config', 'url.ssh://git@gitlab.example.com/.insteadOf', 'https://gitlab.example.com/');
+      git(repo, 'config', 'core.sshCommand', `sh -c 'exec git upload-pack "$0"' '${join(dirname(repo), 'origin.git')}'`);
+      await view.getByRole('button', { name: 'Refresh !12' }).click();
+      await view.getByRole('region', { name: 'Branches' }).getByRole('button', { name: 'Compare' }).click();
+      await expect(page.getByTestId('compare-header')).toContainText(head.slice(0, 6));
+      const work = graph.getByRole('row').filter({ hasText: 'Work on a deleted branch' });
+      await expect(work).toHaveCount(1);
+      expect(git(repo, 'for-each-ref', '--format=%(refname)', 'refs/gitvolt')).toBe('refs/gitvolt/compare/origin/mr/12');
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('compare-header')).toBeHidden();
+      await expect(work).toHaveCount(0);
+      expect(git(repo, 'for-each-ref', 'refs/gitvolt')).toBe('');
     });
   });
 });

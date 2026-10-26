@@ -58,7 +58,7 @@ fallback: BlobSource | null, } } | { "method": "loadState" } | { "method": "save
  * `refs/pull/<n>/head`), into `refs/gitvolt/compare/<remote>/mr/<n>` or `…/pr/<n>`, so its
  * commits are in the graph (the MR view's Compare), and stay through a pruning fetch.
  */
-mrHead?: MrHead, } } | { "method": "addRemote", "params": { repo: number, worktree: string, name: string, url: string, } } | { "method": "removeRemote", "params": { repo: number, worktree: string, name: string, } } | { "method": "switchRemoteToSsh", "params": { repo: number, worktree: string, remote: string, url: string, } } | { "method": "switchRemoteBack", "params": { repo: number, worktree: string, remote: string, } } | { "method": "submodules", "params": { repo: number, worktree: string, } } | { "method": "submoduleUpdate", "params": { repo: number, worktree: string, path?: string, 
+mrHead?: MrHead, } } | { "method": "dropCompareRefs", "params": { repo: number, } } | { "method": "addRemote", "params": { repo: number, worktree: string, name: string, url: string, } } | { "method": "removeRemote", "params": { repo: number, worktree: string, name: string, } } | { "method": "switchRemoteToSsh", "params": { repo: number, worktree: string, remote: string, url: string, } } | { "method": "switchRemoteBack", "params": { repo: number, worktree: string, remote: string, } } | { "method": "submodules", "params": { repo: number, worktree: string, } } | { "method": "submoduleUpdate", "params": { repo: number, worktree: string, path?: string, 
 /**
  * Leave commits on no branch behind: a failure with `SubmoduleOrphans` asked.
  */

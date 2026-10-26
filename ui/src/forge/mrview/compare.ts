@@ -14,6 +14,7 @@ import { forgeOf } from '../mrStore';
 import { refreshReview } from '../poll';
 import { startReview } from '../review/session';
 import { preloadReviewMode } from '../../diff/review/ReviewMode';
+import { holdCompareRef, releaseCompareRef } from './compareRef';
 
 /** How long Compare waits for the graph to show a just-fetched head. */
 export const GRAPH_WAIT_MS = 5000;
@@ -63,6 +64,8 @@ async function reach(tabId: string, repo: number, store: RepoViewStore, sha: str
   if ((await loadInGraph(tabId, repo, store, [sha])) === 'ok') return true;
   if (!remote) return false;
   await (mrHead ? runFetch(tabId, false, remote, mrHead) : runFetch(tabId, false, remote));
+  // Its ref holds the head in the graph while the Compare lasts, no longer.
+  if (mrHead) holdCompareRef(tabId, repo, mrHead.number, sha);
   await useRuntime.getState().refresh(tabId);
   return (await loadInGraph(tabId, repo, store, [sha])) === 'ok';
 }
@@ -74,7 +77,7 @@ async function reach(tabId: string, repo: number, store: RepoViewStore, sha: str
  * the target's remote tip) and the head, so the diff matches the forge's Changes. A head or base
  * that's in the repository but older than the loaded window loads a deeper one, with no network;
  * only a head that isn't in the repository is fetched: its ref alone (`refs/merge-requests/<n>/head`,
- * `refs/pull/<n>/head`), from the target's remote, into a ref a pruning fetch keeps.
+ * `refs/pull/<n>/head`), from the target's remote, into a ref a pruning fetch keeps and the Compare's end deletes (`compareRef.ts`).
  *
  * A merged one fetches no ref of its own: it compares the commit it landed as (`mergedSha`) with
  * that commit's first parent, or its head when the forge names none (fast-forwarded); a commit
@@ -98,9 +101,11 @@ export async function compareMr(tabId: string, kind: ForgeKind, mr: ForgeMr, det
   const remote = f.remote;
   if (repo !== undefined && store && landed) return compareLanded(tabId, repo, store, landed, remote, noun, say);
   if (repo === undefined || !store || !head) return say(`The ${noun}'s head isn't known yet`);
+  // A head fetched for this Compare that shows no compare after all: its ref goes now.
+  const failed = (m: string): false => { releaseCompareRef(tabId, head); return say(m); };
   if (!(await reach(tabId, repo, store, head, remote, merged ? undefined : { kind, number: mr.number }))) {
     if (!remote) return say(`The ${noun}'s commits aren't in this repository`);
-    return say(merged ? `The merged ${noun}'s commits aren't on ${remote}` : `The ${noun}'s commits couldn't be fetched from ${remote}`);
+    return failed(merged ? `The merged ${noun}'s commits aren't on ${remote}` : `The ${noun}'s commits couldn't be fetched from ${remote}`);
   }
   const rt = useRuntime.getState().tabs[tabId];
   const tip = remote ? rt?.sidebar?.remotes.find((g) => g.name === remote)?.branches.find((b) => b.name === mr.targetBranch)?.target : undefined;
@@ -109,8 +114,8 @@ export async function compareMr(tabId: string, kind: ForgeKind, mr: ForgeMr, det
   for (const from of [refs?.baseSha, detail?.baseSha, tip]) {
     if (from && !base) base = await api.mergeBase(repo, from, head).catch(() => null);
   }
-  if (!base) return say(`The ${noun}'s base isn't in this repository: fetch first`);
-  if ((await loadInGraph(tabId, repo, store, [base, head])) === 'missing' || !store.getState().compareCommits(base, head)) return say(`The ${noun}'s base isn't in the graph's history`);
+  if (!base) return failed(`The ${noun}'s base isn't in this repository: fetch first`);
+  if ((await loadInGraph(tabId, repo, store, [base, head])) === 'missing' || !store.getState().compareCommits(base, head)) return failed(`The ${noun}'s base isn't in the graph's history`);
   // Spec 2026-10-08 §1: the MR's Compare is where its review happens.
   void startReview(tabId, kind, mr.number, { from: base, to: head });
   // Its cards' code, so the first file opened in it doesn't wait for it.

@@ -9,6 +9,7 @@ import type { SidebarPayload } from '../api/gen/SidebarPayload';
 import { useAppState } from './state';
 import { closeCenterView } from '../repo/centerView';
 import { dropForge } from '../forge/mrStore';
+import { releaseCompareRef } from '../forge/mrview/compareRef';
 import { closeFlyout } from '../ui/flyout/flyout';
 import { dropTabView, feedTabView } from './tabStores';
 import { withActiveSidebar } from '../worktrees/active';
@@ -147,6 +148,7 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
     set((s) => ({ tabs: { ...s.tabs, [tabId]: { ...(s.tabs[tabId] ?? EMPTY), ...patch } } }));
   },
   drop(tabId) {
+    releaseCompareRef(tabId); // the MR/PR head its Compare fetched
     dropOlder(tabId);
     dropTabView(tabId);
     // Spec #3: a closed tab's center view (File History, the rebase editor) goes with it.

@@ -18,6 +18,8 @@ const poll = vi.hoisted(() => ({ refreshReview: vi.fn(async (_tabId: string) => 
 vi.mock('../poll', () => poll);
 const reviewMode = vi.hoisted(() => ({ preloadReviewMode: vi.fn(async () => ({})) }));
 vi.mock('../../diff/review/ReviewMode', () => reviewMode);
+const compareRef = vi.hoisted(() => ({ holdCompareRef: vi.fn(), releaseCompareRef: vi.fn() }));
+vi.mock('./compareRef', () => compareRef);
 
 const { compareMr } = await import('./compare');
 const { patchForge, useForge } = await import('../mrStore');
@@ -68,6 +70,18 @@ describe("the branch card's Compare", () => {
     expect(await compareMr('t', 'gitlab', mr, detailOf(mr))).toBe(true);
     expect(fetching.runFetch).toHaveBeenCalledWith('t', false, 'origin', { kind: 'gitlab', number: 12 });
     expect(compareCommits).toHaveBeenCalledWith(BASE, head);
+    // Its ref is held while the compare lasts (`compareRef.test.ts`).
+    expect(compareRef.holdCompareRef).toHaveBeenCalledExactlyOnceWith('t', 4, 12, head);
+    expect(compareRef.releaseCompareRef).not.toHaveBeenCalled();
+  });
+
+  it('a head fetched for a Compare that then fails: its ref goes at once', async () => {
+    graph.store.setState({ indexById: new Map([[BASE, 5]]) });
+    (useRuntime.getState().refresh as ReturnType<typeof vi.fn>).mockImplementation(async () => { graph.store.setState({ indexById: new Map([[head, 0], [BASE, 6]]) }); });
+    api.mergeBase.mockResolvedValue(null);
+    expect(await compareMr('t', 'gitlab', mr, detailOf(mr))).toBe(false);
+    expect(compareRef.holdCompareRef).toHaveBeenCalledExactlyOnceWith('t', 4, 12, head);
+    expect(compareRef.releaseCompareRef).toHaveBeenCalledExactlyOnceWith('t', head);
   });
 
   it('a head in the repository but older than the loaded window loads a deeper one, with no fetch', async () => {
@@ -125,6 +139,8 @@ describe("the branch card's Compare", () => {
       expect(fetching.runFetch).toHaveBeenCalledTimes(1);
       expect(fetching.runFetch).toHaveBeenCalledWith('t', false, 'origin');
       expect(compareCommits).toHaveBeenCalledWith(BEFORE, LANDED);
+      // No ref of its own: its commits are on the target branch.
+      expect(compareRef.holdCompareRef).not.toHaveBeenCalled();
     });
 
     it("one the remote doesn't have either: says so, and nothing else is fetched or compared", async () => {

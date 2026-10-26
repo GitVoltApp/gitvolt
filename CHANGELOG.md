@@ -5,6 +5,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **A merged MR/PR's commits no longer linger in the graph** after its branch is deleted: the
+  commits GitVolt fetched to compare it are dropped when you leave Compare.
+
 ## [1.0.0] - 2026-10-23
 
 ### Added

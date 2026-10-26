@@ -266,6 +266,9 @@ pub enum Request {
         #[ts(optional)]
         mr_head: Option<crate::forge::MrHead>,
     },
+    /// Deletes the MR/PR heads Compare fetched (`refs/gitvolt/compare/*`) once that Compare ends,
+    /// so their commits leave the graph: `null`. Not an op, not journaled; `refsUpdated` when one went.
+    DropCompareRefs { repo: u32 },
     // --- 4A T7 ---
     /// `git remote add <name> <url>` (spec #4 §4 4A): `WriteResult<null>`. Not journaled.
     AddRemote { repo: u32, worktree: String, name: String, url: String },
@@ -1288,7 +1291,7 @@ impl Request {
             // --- end 4A T7 ---
             Request::SubmoduleUpdate { .. } | Request::SubmoduleSync { .. } => true,
             Request::Submodules { .. } => false,
-            Request::Fetch { .. } | Request::Clone { .. } | Request::RemoveIndexLock { .. } => true,
+            Request::Fetch { .. } | Request::DropCompareRefs { .. } | Request::Clone { .. } | Request::RemoveIndexLock { .. } => true,
             Request::WriteWorktreeFile { .. } | Request::CreateWorktreeFile { .. } | Request::ApplySuggestion { .. } => true,
             // 2B T1.
             Request::Stage { .. } | Request::Unstage { .. } | Request::StageAll { .. } | Request::UnstageAll { .. } => true,
@@ -2728,6 +2731,7 @@ impl Api {
                 to_json(())
             }
             Request::Fetch { repo, background, remote, mr_head } => to_json(self.fetch_remote(repo, background, remote, mr_head).await?),
+            Request::DropCompareRefs { repo } => to_json(self.drop_compare_refs(repo).await?),
             // --- 4A T7 ---
             Request::AddRemote { repo, worktree, name, url } => {
                 let done = crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::remotes::AddRemote { name, url }).await?;
@@ -3536,23 +3540,34 @@ impl Api {
         let name = workdir.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| workdir.display().to_string());
         // Lock order: `repos`, then `write_locks` (nothing takes them the other way round).
         self.recover_journals(&workdir, &common_dir);
-        let mut repos = self.repos.lock().expect("repos poisoned");
-        if let Some((id, h)) = open(&repos) {
-            return Ok(summary(id, &h));
+        let (id, h) = {
+            let mut repos = self.repos.lock().expect("repos poisoned");
+            if let Some((id, h)) = open(&repos) {
+                return Ok(summary(id, &h));
+            }
+            let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+            let h = Arc::new(RepoHandle {
+                repo,
+                workdir,
+                name,
+                common_dir: common_dir.clone(),
+                wip: Arc::new(crate::snapshot::WipCache::watched_only()),
+                snapshot: Mutex::new(None),
+                walk: Arc::default(),
+                me_email: Mutex::default(),
+            });
+            repos.insert(id, h.clone());
+            self.writes_for(&common_dir).add_id(id);
+            (id, h)
+        };
+        // No Compare is open yet: the MR/PR heads an earlier session's Compare left (a crash, a
+        // quit while comparing) go before the first snapshot, quietly. A failure leaves them for
+        // the next open; the graph only draws a few more commits meanwhile.
+        if self.check_write(&common_dir).is_ok()
+            && let Err(e) = self.clear_compare_refs(&h.repo, &h.workdir).await
+        {
+            tracing::warn!("stale compare refs left: {}", e.message);
         }
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let h = Arc::new(RepoHandle {
-            repo,
-            workdir,
-            name,
-            common_dir: common_dir.clone(),
-            wip: Arc::new(crate::snapshot::WipCache::watched_only()),
-            snapshot: Mutex::new(None),
-            walk: Arc::default(),
-            me_email: Mutex::default(),
-        });
-        repos.insert(id, h.clone());
-        self.writes_for(&common_dir).add_id(id);
         Ok(summary(id, &h))
     }
 
@@ -5345,7 +5360,7 @@ mod tests {
     }
 
     /// The methods that write (`is_write`), which the never-write test leaves out.
-    const WRITE_METHODS: &[&str] = &["fetch", "clone", "testWrite", "undo", "redo", "undoEntry","applyKeptStash", "removeIndexLock", "stage", "unstage", "stageAll", "unstageAll", "stagingUndo", "stagingRedo", "writeWorktreeFile", "createWorktreeFile", "applySuggestion", "commit", "editHeadMessage", "settlePaused", "worktreeAdd", "worktreeRemove", "deleteBranch", "stagePatch", "createBranch", "renameBranch", "setUpstream", "push",
+    const WRITE_METHODS: &[&str] = &["fetch", "dropCompareRefs", "clone", "testWrite", "undo", "redo", "undoEntry","applyKeptStash", "removeIndexLock", "stage", "unstage", "stageAll", "unstageAll", "stagingUndo", "stagingRedo", "writeWorktreeFile", "createWorktreeFile", "applySuggestion", "commit", "editHeadMessage", "settlePaused", "worktreeAdd", "worktreeRemove", "deleteBranch", "stagePatch", "createBranch", "renameBranch", "setUpstream", "push",
         // 4A T7
         "addRemote", "removeRemote", "switchRemoteToSsh", "switchRemoteBack",
         "submoduleUpdate", "submoduleSync",
@@ -5398,6 +5413,7 @@ mod tests {
         let wt = crate::platform::fs::canonicalize(r.path()).unwrap().display().to_string();
         vec![
             json!({"method": "fetch", "params": {"repo": id, "background": false}}),
+            json!({"method": "dropCompareRefs", "params": {"repo": id}}),
             // --- 4A T7 ---
             json!({"method": "addRemote", "params": {"repo": id, "worktree": wt, "name": "x", "url": "/nonexistent/x.git"}}),
             json!({"method": "removeRemote", "params": {"repo": id, "worktree": wt, "name": "nonexistent-remote"}}),

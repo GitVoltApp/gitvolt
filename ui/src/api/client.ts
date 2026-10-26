@@ -297,6 +297,8 @@ export const api = {
   suggestReposFolder: () => call<string | null>({ method: 'suggestReposFolder' }),
   /** `git fetch --all` (spec §15), or one `remote` (a remote just added, spec #4). `background`: GitVolt's own timer, which never prompts. */
   fetch: (repo: number, background: boolean, remote?: string, mrHead?: MrHead) => call<FetchOutcome>({ method: 'fetch', params: remote === undefined ? { repo, background } : mrHead ? { repo, background, remote, mrHead } : { repo, background, remote } }),
+  /** Deletes the MR/PR heads Compare fetched (`refs/gitvolt/compare/*`): their Compare ended. */
+  dropCompareRefs: (repo: number) => call<null>({ method: 'dropCompareRefs', params: { repo } }),
   // --- 4A T12 ---
   /** Every remote with its forge project, and the remote MRs/PRs target (spec #4 §3.3). */
   forgeRepoProjects: (repo: number, refresh = false) => call<RepoProjects>({ method: 'forgeRepoProjects', params: { repo, refresh } }),

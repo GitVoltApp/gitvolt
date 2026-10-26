@@ -259,6 +259,42 @@ impl Api {
         self.fetch_remote(id, background, None, None).await
     }
 
+    /// Deletes every compare ref (`forge::COMPARE_REFS`; the UI's `dropCompareRefs`): the Compare
+    /// that fetched its MR/PR's head ended, and without the ref the graph no longer draws a merged
+    /// MR's commits once its branch is gone. Housekeeping, as fetch's own deletes: no op, no
+    /// journal entry, no toast; `refsUpdated` when one went.
+    pub(crate) async fn drop_compare_refs(&self, id: u32) -> Result<(), GbError> {
+        let h = self.handle(id)?;
+        if self.clear_compare_refs(&h.repo, &h.workdir).await? {
+            self.bus.emit(AppEvent::RefsUpdated { repo: id });
+        }
+        Ok(())
+    }
+
+    /// `drop_compare_refs` without the event (a repository just opened has no graph yet): whether
+    /// there was one.
+    pub(crate) async fn clear_compare_refs(&self, repo: &gix::ThreadSafeRepository, workdir: &Path) -> Result<bool, GbError> {
+        let repo = repo.clone();
+        let names = tokio::task::spawn_blocking(move || -> Result<Vec<String>, GbError> {
+            let repo = repo.to_thread_local();
+            let platform = repo.references().map_err(gix_err)?;
+            let refs = platform.prefixed(crate::forge::COMPARE_REFS.as_bytes()).map_err(gix_err)?;
+            Ok(refs.flatten().map(|r| r.name().as_bstr().to_string()).collect())
+        })
+        .await
+        .map_err(|e| GbError::other(format!("ref read failed: {e}")))??;
+        self.delete_refs(workdir, &names).await?;
+        Ok(!names.is_empty())
+    }
+
+    /// `git update-ref -d` of each of `names`.
+    async fn delete_refs(&self, workdir: &Path, names: &[String]) -> Result<(), GbError> {
+        for name in names {
+            self.cli.run(GitInvocation::new(workdir, ["update-ref", "-d", "--end-of-options", name.as_str()])).await?;
+        }
+        Ok(())
+    }
+
     /// `fetch`, of `remote` only when given (a remote just added, spec #4 §4 4A), else `--all`.
     pub(crate) async fn fetch_remote(&self, id: u32, background: bool, remote: Option<String>, mr_head: Option<crate::forge::MrHead>) -> Result<FetchOutcome, GbError> {
         let h = self.handle(id)?;
@@ -326,9 +362,8 @@ impl Api {
             // One Compare at a time: the MR heads fetched before it go, so none piles up.
             if let (Some(r), Some(m)) = (&remote, mr_head) {
                 let keep = m.local_ref(r);
-                for name in before.keys().filter(|n| n.starts_with(crate::forge::COMPARE_REFS) && **n != keep) {
-                    self.cli.run(GitInvocation::new(&h.workdir, NO_EXT.into_iter().chain(["update-ref", "-d", "--end-of-options", name.as_str()]))).await?;
-                }
+                let older: Vec<String> = before.keys().filter(|n| n.starts_with(crate::forge::COMPARE_REFS) && **n != keep).cloned().collect();
+                self.delete_refs(&h.workdir, &older).await?;
             }
             Ok::<(bool, _), GbError>((ref_state_async(h.repo.clone()).await? != before, server))
         }
@@ -529,6 +564,33 @@ mod tests {
         assert_eq!(r.git(&["for-each-ref", "--format=%(refname)", "refs/gitvolt"]), "refs/gitvolt/compare/origin/pr/8");
         let e = api.fetch_remote(id, false, None, Some(gitlab)).await.unwrap_err();
         assert_eq!(e.kind, GbErrorKind::InvalidInput);
+        // Its Compare ends (`dropCompareRefs`): the head goes, quietly (no op), and the graph
+        // refreshes without it; with none left, no event.
+        let mut rx = api.subscribe();
+        api.dispatch(Request::DropCompareRefs { repo: id }).await.unwrap();
+        assert!(r.git(&["for-each-ref", "refs/gitvolt"]).is_empty());
+        let events = drain(&mut rx);
+        assert_eq!(events, [AppEvent::RefsUpdated { repo: id }]);
+        assert!(crate::refs::read_refs(&gix::open(r.path()).unwrap()).unwrap().compare_heads.is_empty());
+        api.dispatch(Request::DropCompareRefs { repo: id }).await.unwrap();
+        assert!(drain(&mut rx).is_empty());
+    }
+
+    #[tokio::test]
+    async fn opening_a_repository_drops_the_compare_refs_an_earlier_session_left() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let head = r.git(&["rev-parse", "HEAD"]);
+        r.git(&["update-ref", "refs/gitvolt/compare/origin/mr/3", &head]);
+        r.git(&["update-ref", "refs/gitvolt/compare/origin/pr/4", &head]);
+        r.git(&["update-ref", "refs/gitvolt/other", &head]);
+        let api = api();
+        open(&api, &r).await;
+        assert_eq!(r.git(&["for-each-ref", "--format=%(refname)", "refs/gitvolt"]), "refs/gitvolt/other", "only Compare's own refs go");
+        // No other ref of GitVolt's own is a graph tip.
+        let refs = crate::refs::read_refs(&gix::open(r.path()).unwrap()).unwrap();
+        assert!(refs.compare_heads.is_empty());
+        assert!(refs.refs.iter().all(|x| !x.full_name.starts_with("refs/gitvolt/")));
     }
     // --- end MR round 2 ---
 

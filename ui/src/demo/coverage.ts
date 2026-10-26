@@ -51,6 +51,7 @@ export const COVERAGE = {
   authUseSsh: 'notInDemo',
   cancelOp: 'real',
   fetch: 'real',
+  dropCompareRefs: 'real',
   addRemote: 'real',
   removeRemote: 'real',
   switchRemoteToSsh: 'notInDemo',

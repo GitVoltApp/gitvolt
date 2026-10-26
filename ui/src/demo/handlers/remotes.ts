@@ -60,15 +60,7 @@ async function fetchRepo(ctx: DemoContext, repo: number, background: boolean, re
         }
       }
       // One Compare at a time: the MR heads fetched before it go.
-      if (extra) {
-        const refs = demo.refMap();
-        for (const [name] of refs) {
-          if (!name.startsWith(COMPARE_REFS) || name === extra.dst) continue;
-          // A delete writes no reflog.
-          await updateRef(viewOf(demo), demo.gitdir, name, demo.resolveRef(refs, name), null, '', nowSeconds(ctx));
-          changed = true;
-        }
-      }
+      if (extra && (await dropCompareRefs(ctx, repo, extra.dst))) changed = true;
       // git goes on past a remote it can't fetch; the first one's message, each named with its reason.
       if (failed.length > 0) throw { ...failed[0].error, detail: { kind: 'fetchFailed', remotes: failed.map((f) => ({ name: f.name, reason: reasonOf(f.error) })) } } satisfies GbError;
       if (changed) ctx.emit({ type: 'refsUpdated', repo });
@@ -92,6 +84,21 @@ async function fetchRepo(ctx: DemoContext, repo: number, background: boolean, re
   return runInBackground(ctx, repo, op, run);
 }
 
+/** The core's netops.rs compare-ref deletes (fetch's, `dropCompareRefs`): every MR head Compare
+ *  fetched but `keep`. True when one went. */
+async function dropCompareRefs(ctx: DemoContext, repo: number, keep?: string): Promise<boolean> {
+  const demo = ctx.repos.get(repo);
+  const refs = demo.refMap();
+  let dropped = false;
+  for (const [name] of refs) {
+    if (!name.startsWith(COMPARE_REFS) || name === keep) continue;
+    // A delete writes no reflog.
+    await updateRef(viewOf(demo), demo.gitdir, name, demo.resolveRef(refs, name), null, '', nowSeconds(ctx));
+    dropped = true;
+  }
+  return dropped;
+}
+
 /** A background fetch isn't a queue item: it runs only while the queue is idle (else it's skipped,
  *  no op started), and an item enqueued meanwhile cancels it. */
 async function runInBackground(ctx: DemoContext, repo: number, op: OpHandle, run: () => Promise<FetchOutcome>): Promise<FetchOutcome> {
@@ -108,8 +115,13 @@ async function runInBackground(ctx: DemoContext, repo: number, op: OpHandle, run
   }
 }
 
-export const remoteHandlers: Pick<HandlerTable, 'fetch' | 'pull' | 'push' | 'pushTags' | 'addRemote' | 'removeRemote'> = {
+export const remoteHandlers: Pick<HandlerTable, 'fetch' | 'dropCompareRefs' | 'pull' | 'push' | 'pushTags' | 'addRemote' | 'removeRemote'> = {
   fetch: ({ repo, background, remote, mrHead }, ctx) => fetchRepo(ctx, repo, background, remote, mrHead),
+  // Housekeeping, as the core's: no op, no journal.
+  dropCompareRefs: async ({ repo }, ctx) => {
+    if (await dropCompareRefs(ctx, repo)) ctx.emit({ type: 'refsUpdated', repo });
+    return null;
+  },
   // The core's sync.rs `push`: the click's target resolved (refused when there is none), then the write.
   push: async ({ repo, worktree, branch, target, setUpstream, lease, expect }, ctx) => {
     const shown = target ?? (await pushTarget(ctx.repos.get(repo), branch)) ?? fail('InvalidInput', `${branch} has no upstream; set one from Push ▾`);
