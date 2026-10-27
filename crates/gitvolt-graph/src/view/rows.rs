@@ -194,7 +194,7 @@ mod tests {
     use crate::layout::{Half, NodeKind, Segment};
     use crate::payload::{BranchState, DecidedBy, GraphPayload};
     use crate::presets::{BranchPicks, CollapsePlacement, Matcher, PresetAction, Rule};
-    use crate::testkit::{commit, id, local, remote, request, worktree};
+    use crate::testkit::{commit, id, local, remote, request, tag, worktree};
     use crate::view::ViewSpec;
     use crate::{build, build_hidden_owner, build_preview, CommitMeta, GraphRequest, Oid, PresetPreview, StashIn};
     use std::collections::HashMap;
@@ -283,6 +283,72 @@ mod tests {
         let g = build(&with(req, view(vec![rule(PresetAction::Collapse, "x")])), &commits).unwrap();
         assert_eq!(summaries(&g), ["// WIP", "x15", "⋮", "c3", "x10", "c2", "Initial commit"]);
         assert_eq!(g.view.unwrap().branches.iter().find(|b| b.name == "x").unwrap().state, BranchState::Collapsed);
+    }
+
+    fn picked(hidden: &[&str]) -> ViewSpec {
+        ViewSpec { picks: BranchPicks { shown: vec![], hidden: hidden.iter().map(|s| s.to_string()).collect() }, ..view(vec![]) }
+    }
+
+    fn wips(g: &GraphPayload) -> Vec<&str> {
+        g.rows.iter().filter_map(|r| Some(r.wip.as_ref()?.worktree_path.as_str())).collect()
+    }
+
+    #[test]
+    fn a_branch_checked_out_elsewhere_hides_by_hand_with_its_wip() {
+        let (mut req, commits) = history();
+        req.input.worktrees.push(worktree("/demo/wt-x", 15, "x", false));
+        req.input.wip = vec![(0, Default::default()), (1, Default::default())];
+        let g = build(&with(req.clone(), picked(&["x"])), &commits).unwrap();
+        assert_eq!(summaries(&g), ["// WIP", "c3", "c2", "Initial commit"], "x's commits and its worktree's WIP go");
+        assert_eq!(wips(&g), ["/demo/x"]);
+        assert_eq!(g.max_lanes, 1, "no lane left behind");
+        assert!(g.labels.iter().all(|l| l.name != "x"));
+        assert_eq!(g.worktrees.iter().map(|w| w.path.as_str()).collect::<Vec<_>>(), ["/demo/x", "/demo/wt-x"], "the worktree is still listed");
+        assert_eq!(g.view.unwrap().branches.iter().find(|b| b.name == "x").map(|b| (b.state, b.by)), Some((BranchState::Hidden, DecidedBy::Picked)));
+        // Shown again, both come back; a rule doesn't hide it.
+        for spec in [picked(&[]), view(vec![rule(PresetAction::Hide, "x")])] {
+            let g = build(&with(req.clone(), spec), &commits).unwrap();
+            assert_eq!(wips(&g), ["/demo/x", "/demo/wt-x"]);
+            assert_eq!(summaries(&g)[..3], ["// WIP", "// WIP", "x15"]);
+        }
+        // The tab showing x's worktree keeps its branch, whatever the pick.
+        req.input.active = Some("/demo/wt-x".into());
+        let g = build(&with(req, picked(&["x"])), &commits).unwrap();
+        assert_eq!(wips(&g), ["/demo/wt-x", "/demo/x"]);
+        assert_eq!(summaries(&g)[..2], ["// WIP", "x15"]);
+        assert_eq!(g.view.unwrap().branches.iter().find(|b| b.name == "x").map(|b| (b.state, b.by)), Some((BranchState::Shown, DecidedBy::CheckedOut)));
+
+        // One whose HEAD stays a row (main's tip) loses its WIP row too.
+        let (mut req, commits) = history();
+        req.input.refs.refs.push(local("y", 3));
+        req.input.worktrees.push(worktree("/demo/wt-y", 3, "y", false));
+        req.input.wip = vec![(1, Default::default())];
+        assert_eq!(wips(&build(&with(req.clone(), picked(&[])), &commits).unwrap()), ["/demo/wt-y"]);
+        let g = build(&with(req, picked(&["y"])), &commits).unwrap();
+        assert!(wips(&g).is_empty() && g.rows.iter().any(|r| r.summary == "c3"));
+    }
+
+    #[test]
+    fn a_hidden_branch_has_no_chip_on_a_commit_that_stays() {
+        // deploy/1 (local and remote) and deploy/2 (remote only) on main's commits, beside a tag
+        // and a branch whose upstream is origin/deploy/1.
+        let (mut req, commits) = history();
+        let keep = crate::RefIn { upstream: Some("refs/remotes/origin/deploy/1".into()), ..local("keep", 2) };
+        req.input.refs.refs.extend([local("deploy/1", 2), remote("origin", "deploy/1", 2), remote("origin", "deploy/2", 3), tag("v1", 2), keep]);
+        let names = |g: &GraphPayload| g.labels.iter().map(|l| (l.name.clone(), l.remotes.len())).collect::<Vec<_>>();
+        let named = |list: &[(&str, usize)]| list.iter().map(|&(n, r)| (n.to_string(), r)).collect::<Vec<_>>();
+        let plain = build(&req, &commits).unwrap();
+        assert_eq!(names(&plain), named(&[("x", 0), ("main", 0), ("deploy/2", 1), ("deploy/1", 1), ("keep", 1), ("v1", 0)]));
+        // By a rule or by hand.
+        for spec in [view(vec![rule(PresetAction::Hide, "deploy/*")]), picked(&["deploy/1", "deploy/2"])] {
+            let req = with(req.clone(), spec);
+            let g = build(&req, &commits).unwrap();
+            assert_eq!(names(&g), named(&[("x", 0), ("main", 0), ("keep", 0), ("v1", 0)]), "no chip, local or remote; the rest unchanged");
+            assert_eq!(g.rows, plain.rows, "the same rows, and no stubs: none of their commits is hidden");
+            assert_eq!(build_hidden_owner(&req, &commits, &id(2).to_string()), None, "its tip is a row to go to");
+        }
+        // The trunk can't be hidden: its chip stays.
+        assert!(build(&with(req, picked(&["main"])), &commits).unwrap().labels.iter().any(|l| l.name == "main"));
     }
 
     #[test]
@@ -544,8 +610,9 @@ mod tests {
     }
 
     /// Random histories (branches forked anywhere, merged into main and into each other, stashes,
-    /// worktrees, window cuts) under random presets: every graph's lines stay continuous (`build`
-    /// runs the continuity check in tests) and no WIP loses its commit.
+    /// worktrees, window cuts) under random presets, also with the linked worktree's branch hidden
+    /// by hand: every graph's lines stay continuous (`build` runs the continuity check in tests)
+    /// and no WIP loses its commit.
     #[test]
     fn random_histories_lay_out_under_any_preset() {
         let mut seed = 0x2545_f491_4f6c_dd1du64;
@@ -615,18 +682,27 @@ mod tests {
                     placement: [CollapsePlacement::KeepDateOrder, CollapsePlacement::PullTogether][rnd(2)],
                     ..view(rules)
                 };
-                let g = build(&with(req.clone(), spec.clone()), &store).unwrap_or_else(|e| panic!("{e}\n{spec:?}"));
-                let ids: Vec<&str> = g.rows.iter().map(|r| r.id.as_str()).collect();
-                for w in g.rows.iter().filter(|r| r.kind == NodeKind::Wip) {
-                    assert!(ids.contains(&w.parents[0].as_str()), "a WIP docks on a row: {spec:?}");
+                // Also with the linked worktree's branch hidden by hand: its WIP goes with it.
+                let linked = req.input.worktrees.get(1).and_then(|w| w.branch.as_deref()?.strip_prefix("refs/heads/"));
+                let hiding = linked.map(|b| ViewSpec { picks: BranchPicks { shown: vec![], hidden: vec![b.into()] }, ..spec.clone() });
+                for (spec, hides) in hiding.iter().map(|s| (s, true)).chain([(&spec, false)]) {
+                    let g = build(&with(req.clone(), spec.clone()), &store).unwrap_or_else(|e| panic!("{e}\n{spec:?}"));
+                    let ids: Vec<&str> = g.rows.iter().map(|r| r.id.as_str()).collect();
+                    for w in g.rows.iter().filter(|r| r.kind == NodeKind::Wip) {
+                        assert!(ids.contains(&w.parents[0].as_str()), "a WIP docks on a row: {spec:?}");
+                        assert!(!hides || w.id != "wip:/demo/wt", "a hidden branch's worktree has no WIP row: {spec:?}");
+                    }
+                    if hides {
+                        continue;
+                    }
+                    runs += g.rows.iter().filter(|r| r.collapsed.is_some()).count();
+                    let mut branches = std::collections::HashSet::new();
+                    split += g.rows.iter().filter_map(|r| r.collapsed.as_ref()).filter(|c| !branches.insert(&c.branch)).count();
+                    folds += g.rows.iter().filter(|r| r.fold.is_some()).count();
+                    ghosts += g.rows.iter().map(|r| r.ghosts.len()).sum::<usize>();
+                    tails += g.rows.iter().filter(|r| r.fold.as_ref().is_some_and(|f| f.tail_lane.is_some())).count();
+                    stubs += g.rows.iter().filter(|r| r.stub_lane.is_some()).count();
                 }
-                runs += g.rows.iter().filter(|r| r.collapsed.is_some()).count();
-                let mut branches = std::collections::HashSet::new();
-                split += g.rows.iter().filter_map(|r| r.collapsed.as_ref()).filter(|c| !branches.insert(&c.branch)).count();
-                folds += g.rows.iter().filter(|r| r.fold.is_some()).count();
-                ghosts += g.rows.iter().map(|r| r.ghosts.len()).sum::<usize>();
-                tails += g.rows.iter().filter(|r| r.fold.as_ref().is_some_and(|f| f.tail_lane.is_some())).count();
-                stubs += g.rows.iter().filter(|r| r.stub_lane.is_some()).count();
             }
         }
         assert!(runs > 20 && folds > 20 && ghosts > 20 && split > 5 && tails > 20 && stubs > 20, "the cases cover runs ({runs}), branches with several ({split}), folds ({folds}), their tails ({tails}), hidden branches ({ghosts}) and stubs ({stubs})");

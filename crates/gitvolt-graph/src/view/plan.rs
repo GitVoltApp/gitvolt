@@ -62,7 +62,8 @@ pub(crate) struct Window<'a> {
     pub trunk_fp: &'a [bool],
     /// Detached worktree HEADs (walk indexes): always rows.
     pub detached_heads: &'a [usize],
-    /// Every worktree's HEAD (walk indexes): a WIP row docks there, so a run never hides one.
+    /// Every worktree's HEAD but those on a hidden branch (walk indexes): a WIP row docks there, so
+    /// a run never hides one.
     pub worktree_heads: &'a [usize],
     /// Per unit: checked out in a worktree (its Show unfolds it, as an explicit one does).
     pub checked_out: &'a [bool],

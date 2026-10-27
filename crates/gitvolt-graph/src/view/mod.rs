@@ -32,12 +32,20 @@ pub(crate) struct Decided {
     pub decisions: Vec<Decision>,
 }
 
+impl Decided {
+    /// The full names of the hidden units' refs: they have no chip, and a worktree on one has no
+    /// WIP row.
+    pub(crate) fn hidden_refs(&self) -> HashSet<&str> {
+        self.units.iter().zip(&self.decisions).filter(|(_, d)| d.action == PresetAction::Hide).flat_map(|(u, _)| u.refs.iter().map(String::as_str)).collect()
+    }
+}
+
 /// Runs the rule engine on `spec` over the window.
 pub(crate) fn decide_window(input: &GraphInput, spec: &ViewSpec, commits: &[CommitMeta], index: &HashMap<Oid, usize>) -> Decided {
     let units = branch_units(&input.refs);
     let fork = fork_of(&input.refs, &input.forks);
     let trunk = trunk_flags(&units, &trunk_names(input, fork.as_ref()), &spec.trunk_patterns);
-    let facts = unit_facts(&units, &trunk, commits, index, &input.worktrees, &spec.me, spec.now);
+    let facts = unit_facts(&units, &trunk, commits, index, &input.worktrees, input.open_head().branch.as_deref(), &spec.me);
     let decisions = decide(spec, &units, &facts);
     Decided { units, trunk, facts, decisions }
 }
@@ -58,7 +66,9 @@ pub(crate) fn plan_window(input: &GraphInput, spec: &ViewSpec, commits: &[Commit
     let at = |id: &Option<Oid>| id.as_ref().and_then(|h| index.get(h)).copied();
     let head = &input.refs.head;
     let detached: Vec<usize> = input.worktrees.iter().filter(|w| w.branch.is_none()).filter_map(|w| at(&w.head)).chain(head.detached.then(|| at(&head.target)).flatten()).collect();
-    let heads: Vec<usize> = input.worktrees.iter().filter_map(|w| at(&w.head)).collect();
+    // A worktree on a hidden branch has no WIP row (`assemble`).
+    let hidden = d.hidden_refs();
+    let heads: Vec<usize> = input.worktrees.iter().filter(|w| !w.branch.as_deref().is_some_and(|b| hidden.contains(b))).filter_map(|w| at(&w.head)).collect();
     let branches: HashSet<&str> = input.worktrees.iter().filter_map(|w| w.branch.as_deref()).collect();
     let checked_out: Vec<bool> = d.units.iter().map(|u| u.refs.iter().any(|r| branches.contains(r.as_str()))).collect();
     let mut stash = vec![false; n];

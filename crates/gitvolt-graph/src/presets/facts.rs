@@ -10,7 +10,10 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct UnitFacts {
     pub trunk: bool,
+    /// Checked out in any worktree.
     pub checked_out: bool,
+    /// Checked out in the worktree the tab shows (its HEAD's branch).
+    pub open: bool,
     pub local: bool,
     /// The newest committer time among its tips in the window; `None` when none is loaded.
     pub tip_time: Option<i64>,
@@ -56,8 +59,9 @@ impl ReachSets {
 /// trunk unit's tip or a parent of a trunk-reachable commit, and then no unit "reaches" it; any
 /// other commit is reached by the units whose tip it is and every unit reaching one of its
 /// children. Tips and parents outside the window count for nothing. `me`: who "me" is (emails or
-/// names, any case). How old a tip is is `decide`'s to judge, against the spec's `now`.
-pub(crate) fn unit_facts(units: &[BranchUnit], trunk: &[bool], commits: &[CommitMeta], index: &HashMap<Oid, usize>, worktrees: &[WorktreeIn], me: &[String], _now: i64) -> Facts {
+/// names, any case); `open`: the full name of the branch the tab's worktree has checked out. How
+/// old a tip is is `decide`'s to judge, against the spec's `now`.
+pub(crate) fn unit_facts(units: &[BranchUnit], trunk: &[bool], commits: &[CommitMeta], index: &HashMap<Oid, usize>, worktrees: &[WorktreeIn], open: Option<&str>, me: &[String]) -> Facts {
     let words = units.len().div_ceil(64);
     let mut trunk_reach = vec![false; commits.len()];
     let mut bits: Vec<Vec<u64>> = vec![Vec::new(); commits.len()];
@@ -114,6 +118,7 @@ pub(crate) fn unit_facts(units: &[BranchUnit], trunk: &[bool], commits: &[Commit
             UnitFacts {
                 trunk,
                 checked_out: worktrees.iter().any(|w| w.branch.as_deref().and_then(|b| b.strip_prefix("refs/heads/")) == Some(u.name.as_str())),
+                open: open.and_then(|b| b.strip_prefix("refs/heads/")) == Some(u.name.as_str()),
                 local: u.has_local,
                 tip_time: loaded().map(|c| commits[c].committer_time).max(),
                 merged: loaded().any(|c| reach.trunk_reachable(c)),
@@ -133,13 +138,14 @@ pub(crate) mod tests {
     use crate::testkit::{commit, local, worktree};
 
     /// The units of `refs` and their facts over `commits` (newest first, children before
-    /// parents), with `pinned` the trunk's refs.
+    /// parents), with `pinned` the trunk's refs, the tab showing the main worktree.
     pub(crate) fn facts_for(refs: Vec<RefIn>, worktrees: &[WorktreeIn], commits: &[CommitMeta], pinned: &[&str], me: &[&str]) -> (Vec<BranchUnit>, Facts) {
         let units = branch_units(&crate::input::RefsIn { refs, ..Default::default() });
         let trunk = trunk_flags(&units, &pinned.iter().map(|p| p.to_string()).collect::<Vec<_>>(), &[]);
         let index = commits.iter().enumerate().map(|(i, c)| (c.id, i)).collect();
         let me: Vec<String> = me.iter().map(|m| m.to_string()).collect();
-        let facts = unit_facts(&units, &trunk, commits, &index, worktrees, &me, 0);
+        let open = worktrees.iter().find(|w| w.is_main).and_then(|w| w.branch.as_deref());
+        let facts = unit_facts(&units, &trunk, commits, &index, worktrees, open, &me);
         (units, facts)
     }
 
@@ -222,5 +228,6 @@ pub(crate) mod tests {
         let (units, facts) = facts_for(vec![local("main", 1), local("x", 3), local("y", 2)], &worktrees, &commits, &["refs/heads/main"], &[]);
         assert!(of(&units, &facts, "x").checked_out && of(&units, &facts, "main").checked_out);
         assert!(!of(&units, &facts, "y").checked_out);
+        assert!(of(&units, &facts, "main").open && !of(&units, &facts, "x").open, "open: the tab's worktree's");
     }
 }

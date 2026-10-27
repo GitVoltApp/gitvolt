@@ -74,6 +74,14 @@ describe('hiding one branch', () => {
     expect(picks()).toEqual({});
   });
 
+  it("a branch checked out in another worktree hides by hand, though the preset's rules keep it", () => {
+    const v = view();
+    setView({ ...v, branches: [...v.branches, { name: 'wt/dock', refs: ['refs/heads/wt/dock'], state: 'shown', by: { kind: 'checkedOut' } }] });
+    expect(menu(local('wt/dock')).map((r) => [r.label, r.disabledReason])).toEqual([['Hide branch', undefined]]);
+    altClickBranch('t', local('wt/dock'), click());
+    expect(picks().custom?.hidden).toEqual(['wt/dock']);
+  });
+
   it('the menus offer Hide or Show by state', () => {
     expect(menu(local('feature/a')).map((r) => [r.label, r.disabledReason])).toEqual([['Hide branch', undefined]]);
     setView(view(['feature/a']));

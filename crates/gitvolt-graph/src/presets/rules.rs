@@ -5,9 +5,10 @@ use crate::presets::{name_matches, Author, BranchUnit, Decision, Facts, Matcher,
 use crate::view::{branch_key, ViewSpec};
 
 /// One decision per unit. The trunk shows; then an expansion this session shows; then a pick
-/// shows or hides; then the first matching rule decides; then Everything else. A checked-out unit
-/// that would be hidden shows instead (it may still collapse). `rule` is the first rule that
-/// matches whatever decided, for the settings page's counts.
+/// shows or hides; then the first matching rule decides; then Everything else. A unit checked out
+/// in any worktree that a rule or Everything else would hide shows instead (it may still
+/// collapse); one hidden by hand hides, unless it's the tab's own worktree's. `rule` is the first
+/// rule that matches whatever decided, for the settings page's counts.
 pub(crate) fn decide(spec: &ViewSpec, units: &[BranchUnit], facts: &Facts) -> Vec<Decision> {
     units
         .iter()
@@ -27,7 +28,8 @@ pub(crate) fn decide(spec: &ViewSpec, units: &[BranchUnit], facts: &Facts) -> Ve
             } else {
                 (spec.otherwise, DecidedBy::Otherwise)
             };
-            let (action, by) = if action == PresetAction::Hide && f.checked_out { (PresetAction::Show, DecidedBy::CheckedOut) } else { (action, by) };
+            let kept = f.open || (f.checked_out && by != DecidedBy::Picked);
+            let (action, by) = if action == PresetAction::Hide && kept { (PresetAction::Show, DecidedBy::CheckedOut) } else { (action, by) };
             Decision { action, by, rule }
         })
         .collect()
@@ -123,12 +125,25 @@ mod tests {
     }
 
     #[test]
-    fn a_checked_out_branch_hidden_by_rule_or_pick_shows_anyway() {
+    fn a_checked_out_branch_hidden_by_a_rule_shows_anyway() {
         let (units, facts) = window();
         let s = spec(vec![rule(Hide, named("z"))], Show);
         assert_eq!(of(&s, &units, &facts, "z"), Decision { action: Show, by: DecidedBy::CheckedOut, rule: Some(0) });
-        let s = ViewSpec { picks: BranchPicks { shown: vec![], hidden: vec!["z".into()] }, ..spec(vec![], Show) };
-        assert_eq!(of(&s, &units, &facts, "z"), Decision { action: Show, by: DecidedBy::CheckedOut, rule: None });
+        assert_eq!(of(&spec(vec![], Hide), &units, &facts, "z"), Decision { action: Show, by: DecidedBy::CheckedOut, rule: None }, "or by Everything else");
+    }
+
+    #[test]
+    fn a_branch_hidden_by_hand_hides_unless_the_tab_has_it_checked_out() {
+        // z is checked out in another worktree than the tab's.
+        let (units, facts) = window();
+        let s = ViewSpec { picks: BranchPicks { shown: vec![], hidden: vec!["z".into()] }, ..spec(vec![rule(Show, Matcher::CheckedOut)], Show) };
+        assert_eq!(of(&s, &units, &facts, "z"), Decision { action: Hide, by: DecidedBy::Picked, rule: Some(0) });
+        // The tab shows x's worktree: its branch stays.
+        let commits = [commit(3, &[1], 300, "ada@example.com", "X"), commit(1, &[], 100, "bo@example.com", "Initial commit")];
+        let worktrees = [worktree("/demo/x", 3, "x", true), worktree("/demo/x-main", 1, "main", false)];
+        let (units, facts) = facts_for(vec![local("main", 1), local("x", 3)], &worktrees, &commits, &["refs/heads/main"], &[]);
+        let s = ViewSpec { picks: BranchPicks { shown: vec![], hidden: vec!["x".into()] }, ..spec(vec![], Show) };
+        assert_eq!(of(&s, &units, &facts, "x"), Decision { action: Show, by: DecidedBy::CheckedOut, rule: None });
     }
 
     #[test]

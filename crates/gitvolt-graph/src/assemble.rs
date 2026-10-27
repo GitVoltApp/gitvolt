@@ -2,7 +2,7 @@
 //! lane layout and the labels. Moved from the core's snapshot.rs, which now reads the repository
 //! and calls `assemble`.
 
-use crate::input::{GraphInput, GraphRequest, HeadIn, RefsIn, WorktreeIn};
+use crate::input::{GraphInput, GraphRequest, RefsIn, WorktreeIn};
 use crate::labels::{build_labels, worktree_name};
 use crate::layout::{layout, LayoutNode, NodeKind, Parent};
 use crate::payload::{GraphPayload, GraphWorktree, HeadPayload, InProgress, PresetPreview, RevealPayload, RowPayload, WipPayload};
@@ -63,11 +63,7 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
     let stash_ids: HashSet<Oid> = refs.stashes.iter().map(|s| s.id).collect();
 
     // The active worktree's HEAD replaces the handle's.
-    let active = input.active.as_deref();
-    let head = match active.and_then(|a| worktrees.iter().find(|w| w.canonical == a)) {
-        Some(w) => HeadIn { branch: w.branch.clone(), target: w.head, detached: w.branch.is_none() && w.head.is_some(), unborn: w.head.is_none() },
-        None => refs.head.clone(),
-    };
+    let head = input.open_head();
     let index: HashMap<Oid, usize> = commits.iter().enumerate().map(|(i, c)| (c.id, i)).collect();
     // A preset: which commits are rows, before the one layout pass (`crate::view`).
     let view: Option<ViewRows> = input.view.as_ref().map(|spec| {
@@ -75,6 +71,7 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
         let plan = plan_window(input, spec, commits, &index, &d);
         ViewRows::new(spec, d, plan, commits, &index)
     });
+    let hidden: HashSet<&str> = view.as_ref().map(|v| v.d.hidden_refs()).unwrap_or_default();
 
     let fork = fork_of(refs, &input.forks);
     let names = if input.no_pin { vec![] } else { trunk_names(input, fork.as_ref()) };
@@ -97,8 +94,9 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
 
     // WIP placement (spec §8.6): the open worktree's WIP is "now", row 0, whatever the dates of
     // the commits below it; every other worktree's WIP docks directly above its HEAD commit,
-    // several on one commit stacked by worktree name.
-    let here: &str = active.unwrap_or(&input.workdir);
+    // several on one commit stacked by worktree name. A worktree on a branch the preset hides has
+    // none: it goes with the branch (the sidebar still lists the worktree).
+    let here = input.here();
     let mut current_wip = None;
     let mut wip_by_head: HashMap<usize, Vec<usize>> = HashMap::new();
     // An unborn worktree (no HEAD yet) has changes but no commit to dock above: its WIP row has
@@ -106,6 +104,9 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
     let mut unborn_wip: Vec<usize> = vec![];
     for (k, (wt, _)) in wip.iter().enumerate() {
         let w = &worktrees[*wt];
+        if w.branch.as_deref().is_some_and(|b| hidden.contains(b)) {
+            continue;
+        }
         if w.head.is_none() {
             if current_wip.is_none() && w.canonical == here {
                 current_wip = Some(k);
@@ -192,7 +193,7 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
                     stub: row_of_commit[*ci] > 0 && view.as_ref().is_some_and(|v| v.has_ghosts(*ci)),
                 }
             }
-            // A WIP docks on its HEAD's row (a preset never hides a worktree's HEAD).
+            // A WIP docks on its HEAD's row (a preset never hides the HEAD of a worktree with a WIP row).
             Entry::Wip(k) => LayoutNode { parents: head_of(*k).map(|h| row_of_commit[h]).filter(|&r| r != NO_ROW).map(Parent::Row).into_iter().collect(), kind: NodeKind::Wip, pinned: pinned_wip.get(k).copied(), time: i64::MAX, stub: false },
             Entry::Collapsed(r) => view.as_ref().expect("a ⋮ row comes from a view").collapsed_node(*r, commits, &index, &row_of_commit, &collapsed_row),
         })
@@ -275,7 +276,7 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
     let payload = GraphPayload {
         fork: fork.as_ref().map(|f| fork_payload(refs, f)),
         rows,
-        labels: build_labels(refs, &head, worktrees, here, &index, &row_of_commit),
+        labels: build_labels(refs, &head, worktrees, here, &index, &row_of_commit, &hidden),
         max_lanes: lay.max_lanes,
         pinned_refs,
         head: HeadPayload { branch: head.branch.clone(), target: head.target.map(|t| t.to_string()), detached: head.detached, unborn: head.unborn },

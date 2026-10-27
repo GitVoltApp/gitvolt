@@ -1,13 +1,14 @@
 //! The ref labels (chips) on the graph's rows (§8.5), moved from the core's snapshot.rs.
 
-use crate::input::{HeadIn, RefKind, RefsIn, WorktreeIn};
+use crate::input::{HeadIn, RefIn, RefKind, RefsIn, WorktreeIn};
 use crate::payload::{HostKind, RefLabel, RemoteRefLabel};
 use crate::Oid;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-/// `here`: the canonical open (active) worktree; `head`: its HEAD.
-pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn], here: &str, index: &HashMap<Oid, usize>, row_of_commit: &[u32]) -> Vec<RefLabel> {
+/// `here`: the canonical open (active) worktree; `head`: its HEAD; `hidden`: the full names of the
+/// refs a preset hides, which have no chip even on a commit that is a row.
+pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn], here: &str, index: &HashMap<Oid, usize>, row_of_commit: &[u32], hidden: &HashSet<&str>) -> Vec<RefLabel> {
     let checked_out_elsewhere: HashMap<&str, String> = worktrees.iter().filter(|w| w.canonical != here).filter_map(|w| w.branch.as_deref().map(|b| (b, w.path.clone()))).collect();
     let checked_out: HashMap<&str, String> = worktrees.iter().filter_map(|w| w.branch.as_deref().map(|b| (b, w.path.clone()))).collect();
     // A commit a preset hides, folds or collapses has no row, and no chips.
@@ -17,10 +18,11 @@ pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn
 
     let mut labels = Vec::new();
     let mut merged: HashSet<&str> = HashSet::new();
-    for local in refs.refs.iter().filter(|r| r.kind == RefKind::Local) {
+    let shown = |r: &&RefIn| !hidden.contains(r.full_name.as_str());
+    for local in refs.refs.iter().filter(|r| r.kind == RefKind::Local).filter(shown) {
         let Some(row) = row_of(&local.target) else { continue };
         let mut remotes = Vec::new();
-        for rr in &refs.refs {
+        for rr in refs.refs.iter().filter(shown) {
             let RefKind::Remote { remote } = &rr.kind else { continue };
             let branch_part = &rr.short_name[remote.len() + 1..];
             let is_counterpart = branch_part == local.short_name || local.upstream.as_deref() == Some(rr.full_name.as_str());
@@ -45,7 +47,7 @@ pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn
     // Remote-only refs: one label per (commit, branch name), so the same branch on several
     // remotes at the same commit is ONE chip with one icon per remote (§8.5).
     let mut remote_only: HashMap<(Oid, &str), usize> = HashMap::new();
-    for rr in &refs.refs {
+    for rr in refs.refs.iter().filter(shown) {
         let RefKind::Remote { remote } = &rr.kind else { continue };
         if merged.contains(rr.full_name.as_str()) {
             continue;

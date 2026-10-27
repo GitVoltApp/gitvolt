@@ -23,6 +23,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **The WIP panel no longer overlaps itself in a short window.** The file lists shrink to a row
   each instead of drawing over the commit box, and the commit box compacts; mid-conflict the
   Conflicted list keeps its row.
+- **A hidden branch no longer leaves its label in the graph.** A branch you hide, or a preset
+  hides, loses its label even where its commits stay because another branch shares them (a deploy
+  marker on the trunk, say); tags and other branches' labels there stay. The sidebar still lists it
+  as hidden, with Show. (#6)
+- **A branch checked out in another worktree can be hidden.** Hide branch and Alt+click now hide
+  it, and that worktree's WIP row leaves the graph with it; the sidebar still lists the worktree.
+  A preset's rules still keep checked-out branches shown, and the tab's own checked-out branch
+  always shows. (#8)
 
 ## [1.0.0] - 2026-10-23
 

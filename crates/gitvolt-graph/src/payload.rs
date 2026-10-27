@@ -391,7 +391,8 @@ impl WipCounts {
 #[ts(export)]
 pub enum DecidedBy {
     Trunk,
-    /// Checked out in a worktree: shown although a rule or a pick hides it.
+    /// Checked out in a worktree: shown although a rule or Everything else hides it (or a pick,
+    /// in the tab's own worktree).
     CheckedOut,
     /// Hidden or shown by hand.
     Picked,

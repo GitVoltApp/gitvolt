@@ -17,15 +17,17 @@ export function unitNameOf(b: BranchLike): string | null {
 
 export const branchViewOf = (view: ViewPayload | undefined | null, name: string): BranchView | undefined => view?.branches.find((b) => b.name === name);
 
-/** Why Hide is off for `name` (the menus' disabled reason, alt+click's no-op), or null. */
+/** Why Hide is off for `name` (the menus' disabled reason, alt+click's no-op), or null. A branch
+ * checked out in another worktree hides by hand (with that worktree's WIP row), though no rule
+ * hides it; the tab's own (`headBranch`) doesn't. */
 export function cannotHide(view: ViewPayload | undefined | null, name: string, headBranch: string | null): string | null {
   if (view?.trunk.includes(name)) return 'The trunk is always shown';
-  if (headBranch === name || branchViewOf(view, name)?.by.kind === 'checkedOut') return 'Checked out: always shown';
+  if (headBranch === name) return 'Checked out: always shown';
   return null;
 }
 
 /** Hides `name` when it's shown, collapsed or folded; shows it when hidden. The trunk and the
- * checked-out branch stay as they are. */
+ * tab's checked-out branch stay as they are. */
 export function toggleBranch(tabId: string, name: string): void {
   const g = useRuntime.getState().tabs[tabId]?.graph;
   if (branchViewOf(g?.view, name)?.state === 'hidden') showBranch(tabId, name);

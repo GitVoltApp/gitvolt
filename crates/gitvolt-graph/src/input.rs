@@ -148,6 +148,21 @@ pub struct GraphInput {
     pub view: Option<ViewSpec>,
 }
 
+impl GraphInput {
+    /// The canonical worktree laid out as the open one: `active`, else `workdir`.
+    pub(crate) fn here(&self) -> &str {
+        self.active.as_deref().unwrap_or(&self.workdir)
+    }
+
+    /// The open worktree's HEAD: the active worktree's, else the handle's own.
+    pub(crate) fn open_head(&self) -> HeadIn {
+        match self.active.as_deref().and_then(|a| self.worktrees.iter().find(|w| w.canonical == a)) {
+            Some(w) => HeadIn { branch: w.branch.clone(), target: w.head, detached: w.branch.is_none() && w.head.is_some(), unborn: w.head.is_none() },
+            None => self.refs.head.clone(),
+        }
+    }
+}
+
 /// `build`'s input: the graph input and how many commits to walk.
 #[derive(Debug, Clone, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

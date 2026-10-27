@@ -261,8 +261,9 @@ on the walked window and before the lane layout, so lanes close up around what i
 - **Rules** (`presets/`): every branch unit (a short name with its local and remote refs) gets
   facts in one pass over the window (trunk, checked out, own authors, tip age, merged into the
   trunk, a per-commit bitset of the units reaching it) and a decision: the trunk shows, then
-  `expanded`, picks, the first matching rule, Everything else; a checked-out branch is never
-  hidden. The core fills in who "me" is (`me.rs`: the repository's `user.email` and the profile's
+  `expanded`, picks, the first matching rule, Everything else; a rule or Everything else never
+  hides a checked-out branch, and nothing hides the tab's own worktree's (a pick hides one checked
+  out elsewhere, and that worktree's WIP row with it). The core fills in who "me" is (`me.rs`: the repository's `user.email` and the profile's
   forge accounts' emails), only when a rule asks.
 - **Visibility** (`view/plan.rs`): a commit stays a row when a shown branch, the trunk, a detached
   HEAD or no branch at all reaches it; a stash goes with its base commit. Commits only one
@@ -272,7 +273,8 @@ on the walked window and before the lane layout, so lanes close up around what i
   middle (at least 3 commits) and a dotted lane joins them. A run's key (its reveal panel's) is
   `branch:<name>@<newest sha>`; `branch:<name>` expands all of them. Shared commits never collapse. With
   folding on, a branch merged into the trunk's first-parent line folds into its merge. The rest
-  are hidden; a row that branches hidden by a rule fork from lists them.
+  are hidden; a row that branches hidden by a rule fork from lists them. A hidden branch has no
+  chip, even on a commit that stays a row.
 - **Marks** (`layout.rs`): a folded merge's tail and a hidden-branch stub are lines the lane
   allocator places like real ones, so other lines route around them and the graph is no wider
   than with the branch shown. The tail is the merge's second-parent edge (`Parent::Tail`), ending

@@ -77,23 +77,6 @@
         "worktree": null
       },
       {
-        "checkedOut": null,
-        "isHead": false,
-        "local": "refs/heads/feature/login",
-        "name": "feature/login",
-        "remotes": [
-          {
-            "fullName": "refs/remotes/origin/feature/login",
-            "host": null,
-            "hostKind": "generic",
-            "remote": "origin"
-          }
-        ],
-        "row": 6,
-        "tag": false,
-        "worktree": null
-      },
-      {
         "annotation": {
           "message": "v1.0",
           "tagger": "Ada Lovelace",
