@@ -3,7 +3,7 @@ import type { AppSettings } from '../api/gen/AppSettings';
 import type { BranchPreset } from '../api/gen/BranchPreset';
 import type { Profile } from '../api/gen/Profile';
 import type { RepoSettings } from '../api/gen/RepoSettings';
-import { currentPreset, folderPickHides, nextInCycle, pickBranch, pickFolder, presetList, viewSpecOf } from './model';
+import { currentPreset, folderPickHides, nextInCycle, pickBranch, pickFolder, pickTag, pickTagFolder, presetList, tagPicksOf, viewSpecOf } from './model';
 
 const preset = (id: string, over: Partial<BranchPreset> = {}): BranchPreset => ({
   id, name: id, color: 'blue', scope: 'all', rules: [{ action: 'hide', matcher: { kind: 'nameMatches', patterns: 'bot/*' } }],
@@ -135,5 +135,34 @@ describe('picking a folder', () => {
     const picks = { shown: ['a/b/'], hidden: ['a/', 'a/b/c/'] };
     expect(['a/', 'a/x/', 'a/b/', 'a/b/y/', 'a/b/c/', 'a/b/c/d/', 'z/'].map((f) => folderPickHides(picks, f))).toEqual([true, true, false, false, true, true, false]);
     expect(folderPickHides(undefined, 'a/')).toBe(false);
+  });
+});
+
+describe('picking a tag or a tag folder', () => {
+  const g1 = settings({ branchPresets: [preset('g1')] });
+  const start = (picks: Parameters<typeof tagPicksOf>[0]) => profile(repo({ branchPreset: 'g1', branchPicks: { g1: picks! } }));
+
+  it('tags have their own lists, so a tag and a branch can share a name', () => {
+    let p = pickTag(g1, start({ shown: [], hidden: ['v1'] }), '/r', 'v1', false);
+    expect(p.repos['/r'].branchPicks?.g1).toEqual({ shown: [], hidden: ['v1'], hiddenTags: ['v1'] });
+    p = pickBranch(g1, p, '/r', 'v1', true);
+    expect(p.repos['/r'].branchPicks?.g1).toEqual({ shown: ['v1'], hidden: [], hiddenTags: ['v1'] });
+    // Shown again, a list it empties is left out.
+    p = pickTag(g1, p, '/r', 'v1', true);
+    expect(p.repos['/r'].branchPicks?.g1).toEqual({ shown: ['v1'], hidden: [], shownTags: ['v1'] });
+    // On a built-in, in Custom, as for a branch.
+    expect(pickTag(settings(), profile(), '/r', 'v1', false).repos['/r']).toMatchObject({ branchPreset: 'custom', branchPicks: { custom: { shown: [], hidden: [], hiddenTags: ['v1'] } } });
+  });
+
+  it('a tag folder is picked as a branch folder is: present and future tags, exceptions inside', () => {
+    let p = pickTagFolder(g1, start({ shown: ['archive/'], hidden: [], hiddenTags: ['archive/a', 'v1'] }), '/r', 'archive/', false);
+    expect(p.repos['/r'].branchPicks?.g1).toEqual({ shown: ['archive/'], hidden: [], hiddenTags: ['v1', 'archive/'] });
+    p = pickTag(g1, p, '/r', 'archive/keep', true);
+    expect(tagPicksOf(p.repos['/r'].branchPicks?.g1)).toEqual({ shown: ['archive/keep'], hidden: ['v1', 'archive/'] });
+    expect(folderPickHides(tagPicksOf(p.repos['/r'].branchPicks?.g1), 'archive/eu/')).toBe(true);
+    // Hiding the exception again only drops it; showing the folder keeps it.
+    expect(tagPicksOf(pickTag(g1, p, '/r', 'archive/keep', false).repos['/r'].branchPicks?.g1)).toEqual({ shown: [], hidden: ['v1', 'archive/'] });
+    p = pickTagFolder(g1, p, '/r', 'archive/', true);
+    expect(p.repos['/r'].branchPicks?.g1).toEqual({ shown: ['archive/'], hidden: [], shownTags: ['archive/keep'], hiddenTags: ['v1'] });
   });
 });

@@ -1,7 +1,7 @@
 //! Deciding each unit from a preset's rules, its picks and the session's expansions.
 
 use crate::payload::DecidedBy;
-use crate::presets::{name_matches, Author, BranchPicks, BranchUnit, Decision, Facts, Matcher, PresetAction, UnitFacts};
+use crate::presets::{name_matches, Author, BranchUnit, Decision, Facts, Matcher, PresetAction, UnitFacts};
 use crate::view::{branch_key, ViewSpec};
 
 /// One decision per unit. The trunk shows; then an expansion this session shows; then a pick of
@@ -24,7 +24,7 @@ pub(crate) fn decide(spec: &ViewSpec, units: &[BranchUnit], facts: &Facts) -> Ve
                 (PresetAction::Show, DecidedBy::Picked)
             } else if spec.picks.hidden.contains(&unit.name) {
                 (PresetAction::Hide, DecidedBy::Picked)
-            } else if let Some(action) = folder_pick(&spec.picks, &unit.name) {
+            } else if let Some(action) = folder_pick(&spec.picks.shown, &spec.picks.hidden, &unit.name) {
                 (action, DecidedBy::Picked)
             } else if let Some(index) = rule {
                 (spec.rules[index as usize].action, DecidedBy::Rule { index })
@@ -38,15 +38,28 @@ pub(crate) fn decide(spec: &ViewSpec, units: &[BranchUnit], facts: &Facts) -> Ve
         .collect()
 }
 
+/// Whether hand picks hide tag `name`, as they would a branch: an expansion this session
+/// (`"tag:<name>"`) shows it; then its own pick decides; then its nearest folder's (`archive/`).
+/// No rule decides a tag, and nothing keeps one: on the trunk or a checked-out commit, only its
+/// chip goes.
+pub(crate) fn tag_hidden(spec: &ViewSpec, name: &str) -> bool {
+    let picks = &spec.picks;
+    if spec.expanded.iter().any(|k| k.strip_prefix("tag:") == Some(name)) || picks.shown_tags.iter().any(|t| t == name) {
+        false
+    } else {
+        picks.hidden_tags.iter().any(|t| t == name) || folder_pick(&picks.shown_tags, &picks.hidden_tags, name) == Some(PresetAction::Hide)
+    }
+}
+
 /// The pick of `name`'s nearest folder that has one: a folder pick names a prefix with its
-/// trailing slash, which no branch name has, and covers the branches created under it later.
-fn folder_pick(picks: &BranchPicks, name: &str) -> Option<PresetAction> {
+/// trailing slash, which no branch or tag name has, and covers the ones created under it later.
+fn folder_pick(shown: &[String], hidden: &[String], name: &str) -> Option<PresetAction> {
     name.rmatch_indices('/').find_map(|(i, _)| {
         let folder = &name[..=i];
-        if picks.shown.iter().any(|p| p == folder) {
+        if shown.iter().any(|p| p == folder) {
             Some(PresetAction::Show)
         } else {
-            picks.hidden.iter().any(|p| p == folder).then_some(PresetAction::Hide)
+            hidden.iter().any(|p| p == folder).then_some(PresetAction::Hide)
         }
     })
 }
@@ -70,6 +83,7 @@ fn matches(matcher: &Matcher, unit: &BranchUnit, f: &UnitFacts, now: i64) -> boo
 mod tests {
     use super::*;
     use crate::presets::facts::tests::facts_for;
+    use crate::presets::BranchPicks;
     use crate::presets::Rule;
     use crate::testkit::{commit, local, remote, worktree};
     use crate::walk::CommitMeta;
@@ -152,13 +166,13 @@ mod tests {
     fn a_branch_hidden_by_hand_hides_unless_the_tab_has_it_checked_out() {
         // z is checked out in another worktree than the tab's.
         let (units, facts) = window();
-        let s = ViewSpec { picks: BranchPicks { shown: vec![], hidden: vec!["z".into()] }, ..spec(vec![rule(Show, Matcher::CheckedOut)], Show) };
+        let s = ViewSpec { picks: BranchPicks { hidden: vec!["z".into()], ..Default::default() }, ..spec(vec![rule(Show, Matcher::CheckedOut)], Show) };
         assert_eq!(of(&s, &units, &facts, "z"), Decision { action: Hide, by: DecidedBy::Picked, rule: Some(0) });
         // The tab shows x's worktree: its branch stays.
         let commits = [commit(3, &[1], 300, "ada@example.com", "X"), commit(1, &[], 100, "bo@example.com", "Initial commit")];
         let worktrees = [worktree("/demo/x", 3, "x", true), worktree("/demo/x-main", 1, "main", false)];
         let (units, facts) = facts_for(vec![local("main", 1), local("x", 3)], &worktrees, &commits, &["refs/heads/main"], &[]);
-        let s = ViewSpec { picks: BranchPicks { shown: vec![], hidden: vec!["x".into()] }, ..spec(vec![], Show) };
+        let s = ViewSpec { picks: BranchPicks { hidden: vec!["x".into()], ..Default::default() }, ..spec(vec![], Show) };
         assert_eq!(of(&s, &units, &facts, "x"), Decision { action: Show, by: DecidedBy::CheckedOut, rule: None });
     }
 
@@ -173,7 +187,7 @@ mod tests {
     #[test]
     fn picks_apply_before_rules() {
         let (units, facts) = window();
-        let s = ViewSpec { picks: BranchPicks { shown: vec!["x".into()], hidden: vec!["y".into()] }, ..spec(vec![rule(Hide, named("x")), rule(Show, named("y"))], Collapse) };
+        let s = ViewSpec { picks: BranchPicks { shown: vec!["x".into()], hidden: vec!["y".into()], ..Default::default() }, ..spec(vec![rule(Hide, named("x")), rule(Show, named("y"))], Collapse) };
         assert_eq!(of(&s, &units, &facts, "x"), Decision { action: Show, by: DecidedBy::Picked, rule: Some(0) });
         assert_eq!(of(&s, &units, &facts, "y"), Decision { action: Hide, by: DecidedBy::Picked, rule: Some(1) });
         // An expansion this session beats a pick.
@@ -184,14 +198,14 @@ mod tests {
     #[test]
     fn unknown_picked_names_are_ignored() {
         let (units, facts) = window();
-        let s = ViewSpec { picks: BranchPicks { shown: vec!["gone".into(), "origin/y".into()], hidden: vec!["also-gone".into()] }, expanded: vec!["branch:gone".into()], ..spec(vec![], Collapse) };
+        let s = ViewSpec { picks: BranchPicks { shown: vec!["gone".into(), "origin/y".into()], hidden: vec!["also-gone".into()], ..Default::default() }, expanded: vec!["branch:gone".into()], ..spec(vec![], Collapse) };
         let d = decided(&s, &units, &facts);
         assert_eq!(d.len(), units.len());
         assert_eq!(d[1..].iter().map(|(_, a, by, _)| (*a, *by)).collect::<Vec<_>>(), [(Collapse, DecidedBy::Otherwise); 3], "picks name units, not refs");
     }
 
     fn picks(shown: &[&str], hidden: &[&str]) -> BranchPicks {
-        BranchPicks { shown: shown.iter().map(|s| s.to_string()).collect(), hidden: hidden.iter().map(|s| s.to_string()).collect() }
+        BranchPicks { shown: shown.iter().map(|s| s.to_string()).collect(), hidden: hidden.iter().map(|s| s.to_string()).collect(), ..Default::default() }
     }
 
     #[test]
@@ -244,6 +258,35 @@ mod tests {
                 ("release/main".into(), Show, DecidedBy::Trunk),
             ]
         );
+    }
+
+    fn tag_picks(shown: &[&str], hidden: &[&str]) -> ViewSpec {
+        let names = |l: &[&str]| l.iter().map(|s| s.to_string()).collect();
+        ViewSpec { picks: BranchPicks { shown_tags: names(shown), hidden_tags: names(hidden), ..Default::default() }, ..Default::default() }
+    }
+
+    #[test]
+    fn tags_hide_by_hand_as_branches_do_folders_included() {
+        // archive/ hidden, with archive/keep shown by hand and archive/eu/ shown again, but
+        // archive/eu/c hidden by hand.
+        let s = tag_picks(&["archive/keep", "archive/eu/"], &["archive/", "archive/eu/c", "v1"]);
+        let hidden: Vec<&str> = ["archive/a", "archive/created-later", "archive/keep", "archive/eu/b", "archive/eu/deep/d", "archive/eu/c", "archivex", "old/archive/x", "v1", "v2"].into_iter().filter(|t| tag_hidden(&s, t)).collect();
+        assert_eq!(hidden, ["archive/a", "archive/created-later", "archive/eu/c", "v1"]);
+        // An expansion this session (going to a commit only a hidden tag keeps) shows it; a
+        // branch's doesn't.
+        assert!(!tag_hidden(&ViewSpec { expanded: vec!["tag:archive/a".into()], ..s.clone() }, "archive/a"));
+        assert!(tag_hidden(&ViewSpec { expanded: vec!["branch:v1".into()], ..s }, "v1"));
+    }
+
+    #[test]
+    fn tag_and_branch_picks_keep_apart_though_names_meet() {
+        let (units, facts) = window();
+        // A tag x and a tag folder: the branch x and the rest decide as without them.
+        let s = ViewSpec { picks: BranchPicks { hidden_tags: vec!["x".into(), "y/".into()], ..Default::default() }, ..spec(vec![], Show) };
+        assert!(decide(&s, &units, &facts).iter().all(|d| d.action == Show));
+        // A branch x hidden by hand hides no tag x.
+        let s = ViewSpec { picks: picks(&[], &["x"]), ..Default::default() };
+        assert!(!tag_hidden(&s, "x") && of(&s, &units, &facts, "x").action == Hide);
     }
 
     #[test]

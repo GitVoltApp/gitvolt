@@ -38,7 +38,7 @@ import { ForgeStaleIcon } from '../forge/ForgeStale';
 import { RefreshButton } from '../forge/RefreshButton';
 import { RemoteLookupWarning, RemoteMainChip } from './RemoteForgeMarks';
 import { useForge, useTabForgeField } from '../forge/mrStore';
-import { altClickBranch, altClickFolder, cannotHide, toggleBranch, toggleFolder } from '../presets/altClick';
+import { altClickBranch, altClickFolder, altClickTag, cannotHide, toggleBranch, toggleFolder, toggleTag } from '../presets/altClick';
 // --- end 4B T11 ---
 
 const toggle = (list: string[], key: string) => (list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
@@ -60,7 +60,7 @@ export function ItemIcon({ item, tabId }: { item: SideItem; tabId: string }) {
 }
 
 /**
- * A branch row's or branch folder's leading icon (design D): an eye-off while the open preset hides
+ * A branch, tag or folder row's leading icon (design D): an eye-off while the open preset hides
  * it; on hover, a button in the same box that hides or shows it as Alt+click does (an eye-off on a
  * shown row, an eye on a hidden one). `toggle` null: it can't be hidden, the icon stays itself.
  */
@@ -125,6 +125,8 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
   useEffect(() => (hovering ? onPointerLeftWindow(() => setHover(null)) : undefined), [hovering]);
   const [body, setBody] = useState<HTMLDivElement | null>(null);
   const id = panel.section.id;
+  // The Tags panel's folders pick tags.
+  const tags = section.kind === 'tags';
   const setPanelRef = useCallback((el: HTMLElement | null) => onPanelEl(id, el), [onPanelEl, id]);
   const setBodyRef = useCallback((el: HTMLDivElement | null) => { setBody(el); onBodyEl(id, el); }, [onBodyEl, id]);
   const bodyH = Math.max(0, height - HEADER_H);
@@ -169,18 +171,19 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
   const menuOf = (row: FlatRow | undefined) => {
     if (!row) return null;
     if (row.type === 'item') return sidebarItemMenu(store, row.item, tabId);
-    if (row.branchFolder) return sidebarFolderMenu(store, row.branchFolder, !!row.hidden);
+    if (row.branchFolder) return sidebarFolderMenu(store, row.branchFolder, !!row.hidden, tags);
     return row.remote && section.kind === 'remote' ? sidebarRemoteMenu(store, row.remote) : null;
   };
-  /** What the row's eye (and H) does: hide or show its branch or branch folder; null when it can't
-   * be hidden (the trunk, the tab's checked-out branch) or isn't a branch. */
+  /** What the row's eye (and H) does: hide or show its branch, tag or folder; null when it can't
+   * be hidden (the trunk, the tab's checked-out branch) or is none of those. */
   const hideToggleOf = (row: FlatRow | undefined): (() => void) | null => {
     if (!row) return null;
     if (row.type === 'folder') {
       const folder = row.branchFolder;
-      return folder ? () => toggleFolder(tabId, folder, !!row.hidden) : null;
+      return folder ? () => toggleFolder(tabId, folder, !!row.hidden, tags) : null;
     }
     const it = row.item;
+    if (it.kind === 'tag') return () => toggleTag(tabId, it.name);
     if (it.kind !== 'local' && it.kind !== 'remote') return null;
     if (it.presetState !== 'hidden' && cannotHide(view, it.name, headBranch, pinnedRefs)) return null;
     return () => toggleBranch(tabId, it.name);
@@ -287,8 +290,8 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
                   <div
                     key={row.key} role="treeitem" aria-level={row.depth} aria-expanded={!row.collapsed} data-active={active} data-context={row.key === contextKey || undefined}
                     className={`sb-row sb-folder${row.hidden ? ' is-hidden' : ''}`} aria-description={row.hidden ? 'hidden' : undefined} style={style}
-                    // Alt+click hides or shows every branch under a branch folder (presets/altClick.ts).
-                    onClick={(e) => { if (row.branchFolder && altClickFolder(tabId, row.branchFolder, !!row.hidden, e)) return; setCursor(vi.index); activate(row); }}
+                    // Alt+click hides or shows every branch or tag under a folder (presets/altClick.ts).
+                    onClick={(e) => { if (row.branchFolder && altClickFolder(tabId, row.branchFolder, !!row.hidden, e, tags)) return; setCursor(vi.index); activate(row); }}
                     onContextMenu={(e) => onRowMenu(e, row)}
                   >
                     {row.remote
@@ -317,15 +320,16 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
                   className={`sb-row sb-item${head ? ' is-head' : ''}${it.presetState === 'hidden' ? ' is-hidden' : ''}`}
                   style={style}
                   onClick={(e) => {
-                    // Alt+click hides or shows a branch (presets/altClick.ts); it doesn't select.
+                    // Alt+click hides or shows a branch or tag (presets/altClick.ts); it doesn't select.
                     if ((it.kind === 'local' || it.kind === 'remote') && altClickBranch(tabId, it.kind === 'local' ? { local: it.branch.fullName, remotes: [] } : { local: null, remotes: [{ fullName: it.branch.fullName, remote: it.remote }] }, e)) return;
+                    if (it.kind === 'tag' && altClickTag(tabId, it.name, e)) return;
                     setCursor(vi.index); if (it.kind === 'mr') (e.currentTarget.closest('.sb-list') as HTMLElement | null)?.focus({ preventScroll: true }); jump(it); }}
                   onDoubleClick={() => { sidebarDoubleClick({ tabId, store }, it); }}
                   onPointerEnter={(e) => onItemEnter(it, e.currentTarget)}
                   onPointerLeave={() => setHover(null)}
                   onContextMenu={(e) => { setHover(null); onRowMenu(e, row); }}
                 >
-                  {it.kind === 'local' || it.kind === 'remote'
+                  {it.kind === 'local' || it.kind === 'remote' || it.kind === 'tag'
                     ? <HideSlot icon={<ItemIcon item={it} tabId={tabId} />} hidden={it.presetState === 'hidden'} name={row.item.kind === 'remote' ? `${row.item.remote}/${it.name}` : it.name} toggle={hideToggleOf(row)} />
                     : <ItemIcon item={it} tabId={tabId} />}
                   {/* UX round 3, M.1: an upstream with another branch name, before the name. */}

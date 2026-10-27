@@ -1590,7 +1590,7 @@ mod tests {
             branch_preset: Some("custom".into()),
             branch_presets: vec![preset("p1")],
             custom_preset: Some(preset("custom")),
-            branch_picks: [("custom".to_string(), BranchPicks { shown: vec!["spike/x".into()], hidden: vec!["bot/y".into()] })].into(),
+            branch_picks: [("custom".to_string(), BranchPicks { shown: vec!["spike/x".into()], hidden: vec!["bot/y".into()], ..Default::default() })].into(),
             trunk_patterns: vec!["release/*".into()],
             ..Default::default()
         };

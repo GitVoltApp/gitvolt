@@ -140,10 +140,10 @@ test.describe('the commit and label context menus (spec §7 target table)', () =
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('context-menu')).toBeHidden();
     });
-    await test.step('a tag label chip: Push (v1.0 is local only), Delete, Copy tag name; no forge on a generic remote', async () => {
+    await test.step('a tag label chip: Push (v1.0 is local only), Delete, Copy tag name, Hide tag; no forge on a generic remote', async () => {
       const menu = await labelMenu(page, 'Add readme');
       // Spec #3 §3.9: a tag's menu gains Push <t> to <remote> and Delete.
-      await expect(rowLabels(menu)).resolves.toEqual(['Push v1.0 to origin', 'Delete', 'Copy tag name']);
+      await expect(rowLabels(menu)).resolves.toEqual(['Push v1.0 to origin', 'Delete', 'Copy tag name', 'Hide tag']);
       await action(menu, 'Copy tag name').click();
       await copied(page, 'v1.0');
     });

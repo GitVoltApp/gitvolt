@@ -49,7 +49,8 @@ pub fn basic(r: &TestRepo) {
 /// Branch presets' repository: a trunk with a deleted and a kept merged branch, a long pushed
 /// branch by two authors, a bot's remote-only branch, a teammate's local spike, a release
 /// branch, and two of "your" branches (the repository's `user.email` is `you@example.com`), one
-/// checked out in the linked worktree `wt-dock`. `git log --graph --all --date-order`:
+/// checked out in the linked worktree `wt-dock`; two tags under `archive/` on the merged branches.
+/// `git log --graph --all --date-order`:
 ///
 /// ```text
 /// *   On main: Experiment                       (refs/stash)
@@ -78,11 +79,11 @@ pub fn basic(r: &TestRepo) {
 /// *   Merge branch 'feature/docs'
 /// |\
 /// | * Docs: trading guide                       [Wen Chen] (feature/docs, origin/feature/docs)
-/// | * Docs: glossary                            [Wen Chen]
+/// | * Docs: glossary                            [Wen Chen] (tag archive/docs-draft)
 /// |/
 /// *   Merge branch 'feature/trade-ui'           (the branch deleted, here and on origin)
 /// |\
-/// | * Trade UI: confirm dialog                  [Ilse Vos]
+/// | * Trade UI: confirm dialog                  [Ilse Vos] (tag archive/trade-ui)
 /// | * Trade UI: price chart                     [Ilse Vos]
 /// | * Trade UI: order book                      [Ilse Vos]
 /// |/
@@ -107,13 +108,16 @@ pub fn presets(r: &TestRepo) {
         r.commit_as(msg, "Ilse Vos", "ilse@example.com");
     }
     r.push("feature/trade-ui");
+    let trade_ui = r.git(&["rev-parse", "HEAD"]);
+    r.tag("archive/trade-ui", &trade_ui);
     r.switch("main");
     r.merge("feature/trade-ui", "Merge branch 'feature/trade-ui'");
     r.git(&["branch", "-q", "-D", "feature/trade-ui"]);
     r.git(&["push", "-q", "origin", "--delete", "feature/trade-ui"]);
 
     r.switch_new("feature/docs");
-    r.commit_as("Docs: glossary", wen.0, wen.1);
+    let glossary = r.commit_as("Docs: glossary", wen.0, wen.1);
+    r.tag("archive/docs-draft", &glossary);
     r.commit_as("Docs: trading guide", wen.0, wen.1);
     r.push("feature/docs");
     r.switch("main");

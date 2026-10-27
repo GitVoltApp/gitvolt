@@ -207,8 +207,9 @@ export type SidebarTarget =
   | { what: 'ref'; sha: string | null }
   | { what: 'remote'; name: string; url: string | null }
   /** A Local or remote branch folder: `folder` is its branches' common prefix (`deployed-commit/`),
-   * `hidden` whether the folder looks hidden (presets/altClick.ts). */
-  | { what: 'folder'; folder: string; hidden: boolean }
+   * `hidden` whether the folder looks hidden (presets/altClick.ts); `tags`: a Tags folder instead
+   * (`archive/`). */
+  | { what: 'folder'; folder: string; hidden: boolean; tags?: boolean }
   | { what: 'worktree'; path: string; branch: string | null; head: string | null }
   | { what: 'stash'; sha: string; message: string };
 
@@ -705,10 +706,10 @@ export function sidebarRemoteMenu(store: RepoViewStore, remote: string): () => M
   };
 }
 
-/** A right-click on a branch folder row in the Local or Remote panel. */
-export function sidebarFolderMenu(store: RepoViewStore, folder: string, hidden: boolean): () => MenuRow[] {
+/** A right-click on a branch folder row in the Local or Remote panel, or a tag folder's (`tags`). */
+export function sidebarFolderMenu(store: RepoViewStore, folder: string, hidden: boolean, tags = false): () => MenuRow[] {
   afterOpening(store);
-  return () => buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'folder', folder, hidden }, fileMenuEnv(store));
+  return () => buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'folder', folder, hidden, ...(tags && { tags }) }, fileMenuEnv(store));
 }
 
 // An open menu rebuilds when the openers or the remotes arrive (its Open in ▸ and Forge rows).

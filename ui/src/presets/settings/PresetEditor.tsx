@@ -1,3 +1,4 @@
+import { Tag } from 'lucide-react';
 import { useRef } from 'react';
 import type { BranchPicks } from '../../api/gen/BranchPicks';
 import type { BranchPreset } from '../../api/gen/BranchPreset';
@@ -102,11 +103,11 @@ export function PresetEditor({ entry, repoName, picks, preview, focusName, onEdi
 
       {!readOnly && repoName !== null && (
         <section className="bp-section" aria-labelledby="bp-picks-title">
-          <h4 className="bp-h" id="bp-picks-title">Picked by hand <span className="bp-hint">alt+click a branch chip or a sidebar folder; these come before the rules</span></h4>
-          {picks && (picks.hidden.length || picks.shown.length) ? (
+          <h4 className="bp-h" id="bp-picks-title">Picked by hand <span className="bp-hint">alt+click a branch or tag chip, or a sidebar folder; these come before the rules</span></h4>
+          {picks && (picks.hidden.length || picks.shown.length || picks.hiddenTags?.length || picks.shownTags?.length) ? (
             <div className="bp-picks">
-              {picks.hidden.length > 0 && <Chips label="Always hidden:" names={picks.hidden} onForget={(n) => onForget(n, 'hidden')} />}
-              {picks.shown.length > 0 && <Chips label="Always shown:" names={picks.shown} onForget={(n) => onForget(n, 'shown')} />}
+              {(picks.hidden.length > 0 || !!picks.hiddenTags?.length) && <Chips label="Always hidden:" names={picks.hidden} tags={picks.hiddenTags} onForget={(n, tag) => onForget(n, tag ? 'hiddenTags' : 'hidden')} />}
+              {(picks.shown.length > 0 || !!picks.shownTags?.length) && <Chips label="Always shown:" names={picks.shown} tags={picks.shownTags} onForget={(n, tag) => onForget(n, tag ? 'shownTags' : 'shown')} />}
             </div>
           ) : <p className="bp-note">None in {repoName}.</p>}
         </section>
@@ -138,12 +139,16 @@ export function PresetEditor({ entry, repoName, picks, preview, focusName, onEdi
   );
 }
 
-function Chips({ label, names, onForget }: { label: string; names: string[]; onForget(name: string): void }) {
+/** Branch picks, then tag picks, each tag's chip led by a tag icon (a tag can share a branch's name). */
+function Chips({ label, names, tags = [], onForget }: { label: string; names: string[]; tags?: string[]; onForget(name: string, tag: boolean): void }) {
   return (
     <span className="bp-chips">
       <span className="bp-note">{label}</span>
       {names.map((n) => (
-        <span key={n} className="bp-chip">{n}<button type="button" className="bp-chip-x" aria-label={`Forget ${n}`} onClick={() => onForget(n)}>✕</button></span>
+        <span key={n} className="bp-chip">{n}<button type="button" className="bp-chip-x" aria-label={`Forget ${n}`} onClick={() => onForget(n, false)}>✕</button></span>
+      ))}
+      {tags.map((n) => (
+        <span key={`tag:${n}`} className="bp-chip" data-tag=""><Tag size={11} className="bp-chip-tag" aria-label="tag" />{n}<button type="button" className="bp-chip-x" aria-label={`Forget tag ${n}`} onClick={() => onForget(n, true)}>✕</button></span>
       ))}
     </span>
   );

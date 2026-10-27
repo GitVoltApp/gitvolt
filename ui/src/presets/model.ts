@@ -62,11 +62,36 @@ const without = (list: string[], name: string) => list.filter((n) => n !== name)
 /** Hide or show one branch; on a read-only preset, switches to Custom (made from it if none).
  * Hiding one that a folder pick hides (an exception shown inside it) only drops the exception. */
 export function pickBranch(settings: AppSettings, profile: Profile, repoPath: string, name: string, show: boolean): Profile {
-  return editPicks(settings, profile, repoPath, (old) => {
-    if (show) return { shown: [...without(old.shown, name), name], hidden: without(old.hidden, name) };
-    const rest = { shown: without(old.shown, name), hidden: without(old.hidden, name) };
-    return folderPickHides(rest, name.slice(0, name.lastIndexOf('/') + 1)) ? rest : { ...rest, hidden: [...rest.hidden, name] };
-  });
+  return editPicks(settings, profile, repoPath, pickOne(name, show));
+}
+
+/** `pickBranch`'s edit of a shown and a hidden list. */
+const pickOne = (name: string, show: boolean) => (old: BranchPicks): BranchPicks => {
+  if (show) return { ...old, shown: [...without(old.shown, name), name], hidden: without(old.hidden, name) };
+  const rest = { ...old, shown: without(old.shown, name), hidden: without(old.hidden, name) };
+  return folderPickHides(rest, name.slice(0, name.lastIndexOf('/') + 1)) ? rest : { ...rest, hidden: [...rest.hidden, name] };
+};
+
+/** The tag picks as a pair of lists shaped like the branch ones, which the same edits and
+ * `folderPickHides` read. A tag has lists of its own: it can share a branch's name. */
+export const tagPicksOf = (picks: BranchPicks | undefined | null): BranchPicks => ({ shown: picks?.shownTags ?? [], hidden: picks?.hiddenTags ?? [] });
+
+/** Runs a branch-picks edit on the tag lists instead, leaving out a list it empties. */
+const onTags = (edit: (old: BranchPicks) => BranchPicks) => (old: BranchPicks): BranchPicks => {
+  const { shownTags: _shown, hiddenTags: _hidden, ...branches } = old;
+  const t = edit(tagPicksOf(old));
+  return { ...branches, ...(t.shown.length ? { shownTags: t.shown } : {}), ...(t.hidden.length ? { hiddenTags: t.hidden } : {}) };
+};
+
+/** Hide or show one tag, as `pickBranch` does a branch. */
+export function pickTag(settings: AppSettings, profile: Profile, repoPath: string, name: string, show: boolean): Profile {
+  return editPicks(settings, profile, repoPath, onTags(pickOne(name, show)));
+}
+
+/** Hide or show every tag under `folder` (`archive/`), also those created later, as `pickFolder`
+ * does branches. */
+export function pickTagFolder(settings: AppSettings, profile: Profile, repoPath: string, folder: string, show: boolean): Profile {
+  return editPicks(settings, profile, repoPath, onTags(folderEdit(folder, show)));
 }
 
 /** Whether the folder picks hide `folder` (a unit-name prefix with its slash, `deployed-commit/`):
@@ -90,17 +115,20 @@ export function folderPickHides(picks: BranchPicks | undefined, folder: string):
  * it, or no pick hid it (the preset's rules do).
  */
 export function pickFolder(settings: AppSettings, profile: Profile, repoPath: string, folder: string, show: boolean): Profile {
-  const outside = (n: string) => !n.startsWith(folder);
-  return editPicks(settings, profile, repoPath, (old) => {
-    if (!show) {
-      const rest = { shown: old.shown.filter(outside), hidden: old.hidden.filter(outside) };
-      return folderPickHides(rest, folder) ? rest : { ...rest, hidden: [...rest.hidden, folder] };
-    }
-    const hidden = old.hidden.filter(outside);
-    const pin = hidden.length === old.hidden.length || folderPickHides({ shown: old.shown, hidden }, folder);
-    return pin ? { shown: [...old.shown.filter(outside), folder], hidden } : { shown: old.shown, hidden };
-  });
+  return editPicks(settings, profile, repoPath, folderEdit(folder, show));
 }
+
+/** `pickFolder`'s edit of a shown and a hidden list. */
+const folderEdit = (folder: string, show: boolean) => (old: BranchPicks): BranchPicks => {
+  const outside = (n: string) => !n.startsWith(folder);
+  if (!show) {
+    const rest = { ...old, shown: old.shown.filter(outside), hidden: old.hidden.filter(outside) };
+    return folderPickHides(rest, folder) ? rest : { ...rest, hidden: [...rest.hidden, folder] };
+  }
+  const hidden = old.hidden.filter(outside);
+  const pin = hidden.length === old.hidden.length || folderPickHides({ shown: old.shown, hidden }, folder);
+  return pin ? { ...old, shown: [...old.shown.filter(outside), folder], hidden } : { ...old, hidden };
+};
 
 /** Changes the current preset's picks; on a read-only preset, switches to Custom (made from it if none). */
 function editPicks(settings: AppSettings, profile: Profile, repoPath: string, edit: (old: BranchPicks) => BranchPicks): Profile {

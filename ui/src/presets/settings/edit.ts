@@ -150,11 +150,11 @@ export function deletePreset(doc: PresetsDoc, id: string): PresetsDoc {
   return { settings, repo };
 }
 
-/** ✕ on a picked-by-hand chip: the branch goes back to the rules. */
+/** ✕ on a picked-by-hand chip: the branch goes back to the rules (a tag, to its folder's pick, else shown). */
 export function forgetPick(doc: PresetsDoc, id: string, name: string, which: keyof BranchPicks): PresetsDoc {
   const old = doc.repo?.branchPicks?.[id];
   if (!doc.repo || !old) return doc;
-  return { ...doc, repo: { ...doc.repo, branchPicks: { ...doc.repo.branchPicks, [id]: { ...old, [which]: old[which].filter((n) => n !== name) } } } };
+  return { ...doc, repo: { ...doc.repo, branchPicks: { ...doc.repo.branchPicks, [id]: { ...old, [which]: (old[which] ?? []).filter((n) => n !== name) } } } };
 }
 
 /** A pasted preset, added at the end of all repositories' list; null (nothing changed) for other text. */

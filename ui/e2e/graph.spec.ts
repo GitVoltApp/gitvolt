@@ -1595,7 +1595,7 @@ test('K104: two branches on one commit both show at the default width; +1 once B
 
 test.describe('branch presets', () => {
   // One boot on the `presets` fixture; each step starts from where the last left the graph.
-  test('the button cycles; All, collapsed: the ⋮ row, its reveal panel and Expand in graph; a fold; alt+click hides and shows; hidden-branch stubs', async ({ page }) => {
+  test("the button cycles; All, collapsed: the ⋮ row, its reveal panel and Expand in graph; a fold; alt+click hides and shows; a tag folder's eye; hidden-branch stubs", async ({ page }) => {
     await page.goto(openUrl(freshFixture('presets')));
     const grid = page.getByRole('grid', { name: 'Commit graph' });
     await expect(grid.getByText('Payments: fraud checks')).toBeVisible();
@@ -1752,6 +1752,20 @@ test.describe('branch presets', () => {
       await side.click({ modifiers: ['Alt'] });
       await expect(side).not.toHaveClass(/is-hidden/);
       await expect(grid.getByText('Warp gates: jump cost')).toBeVisible();
+    });
+
+    await test.step("a tag folder's eye in the sidebar hides its tags' labels, its commits staying for main; again, shows them", async () => {
+      const chips = grid.locator('.ref-label').filter({ hasText: /^archive\// });
+      await expect(chips).toHaveCount(2);
+      const folder = page.getByRole('complementary', { name: 'Sidebar', exact: true }).getByRole('region', { name: 'Tags', exact: true }).locator('.sb-folder').filter({ hasText: 'archive' });
+      await folder.hover();
+      await folder.getByRole('button', { name: 'Hide archive/ from the graph' }).click();
+      await expect(chips).toHaveCount(0);
+      await expect(folder).toHaveClass(/is-hidden/);
+      await expect(grid.getByText('Trade UI: confirm dialog')).toBeVisible();
+      await folder.getByRole('button', { name: 'Show archive/ in the graph' }).click();
+      await expect(chips).toHaveCount(2);
+      await expect(folder).not.toHaveClass(/is-hidden/);
     });
 
     await test.step('Mine: the stub into "Changelog for 1.2" lists spike/warp-gates with Show, on hover and on Enter', async () => {

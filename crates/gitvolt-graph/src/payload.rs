@@ -436,6 +436,10 @@ pub struct ViewPayload {
     pub branches: Vec<BranchView>,
     /// The trunk units' names.
     pub trunk: Vec<String>,
+    /// The tags hand picks hide (short names, sorted): no chip, nor the commits only they keep.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<String>>")]
+    pub hidden_tags: Vec<String>,
 }
 
 /// The ⋮ row of a collapsed branch.

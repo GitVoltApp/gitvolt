@@ -17,9 +17,18 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   later; the repository keeps the folder with its other hidden branches. A branch you show inside
   it stays shown, and Show folder brings the whole folder back. A folder looks hidden when it is,
   or when every branch under it is (#7).
-- **Fork marks for branches you hid by hand.** A preset's new option "Also for branches hidden by
+### - **Fork marks for branches you hid by hand.** A preset's new option "Also for branches hidden by
+
   hand", under "Mark where hidden branches fork", marks where those branches and folders fork too,
   with the same hover list and Show. It's off by default, so nothing changes until you turn it on.
+
+### - **Hide tags, and whole tag folders, as you hide branches.** Alt+click a tag chip or a tag in the
+
+  sidebar, use the eye on its row, press H, or choose Hide tag in its menu; a tag folder such as
+  `archive/` hides with Alt+click, its eye or Hide folder, also for tags created there later. A
+  hidden tag's label leaves the graph, and so do the commits only it keeps, such as an archived
+  branch's; a commit a shown branch or tag still reaches stays. Going to a hidden tag shows it
+  again for the session. The preset settings list hidden tags with a tag icon.
 
 ### Changed
 

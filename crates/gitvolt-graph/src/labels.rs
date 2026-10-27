@@ -7,7 +7,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// `here`: the canonical open (active) worktree; `head`: its HEAD; `hidden`: the full names of the
-/// refs a preset hides, which have no chip even on a commit that is a row.
+/// refs a preset hides (branches, and tags hidden by hand), which have no chip even on a commit
+/// that is a row.
 pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn], here: &str, index: &HashMap<Oid, usize>, row_of_commit: &[u32], hidden: &HashSet<&str>) -> Vec<RefLabel> {
     let checked_out_elsewhere: HashMap<&str, String> = worktrees.iter().filter(|w| w.canonical != here).filter_map(|w| w.branch.as_deref().map(|b| (b, w.path.clone()))).collect();
     let checked_out: HashMap<&str, String> = worktrees.iter().filter_map(|w| w.branch.as_deref().map(|b| (b, w.path.clone()))).collect();
@@ -66,7 +67,7 @@ pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn
             }
         }
     }
-    for t in refs.refs.iter().filter(|r| r.kind == RefKind::Tag) {
+    for t in refs.refs.iter().filter(|r| r.kind == RefKind::Tag).filter(shown) {
         if let Some(row) = row_of(&t.target) {
             labels.push(RefLabel { row, name: t.short_name.clone(), local: None, remotes: vec![], tag: true, is_head: false, worktree: None, checked_out: None, upstream_mismatch: None, annotation: t.annotation.clone() });
         }

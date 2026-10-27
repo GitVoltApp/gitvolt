@@ -118,9 +118,38 @@ describe('Sidebar panels', () => {
       expect(row('main').querySelector('.co-check')).toBeTruthy();
       expect(within(row('dev')).queryByRole('button')).toBeNull();
       expect(within(row('hotfix')).getByRole('button')).toBeTruthy();
-      // Nor do tags, stashes or worktrees.
-      expect(within(panel('Tags')).queryAllByRole('button', { name: /from the graph/ })).toEqual([]);
+      // Nor do stashes or worktrees; a tag does.
+      expect(within(panel('Tags')).getAllByRole('button', { name: /from the graph/ })).toHaveLength(1);
       expect(within(panel('Worktrees')).queryAllByRole('button', { name: /from the graph/ })).toEqual([]);
+    });
+
+    it('a hidden tag, and a tag folder whose tags all are, look like hidden branches; the eye and H hide or show them', () => {
+      hiding([]);
+      const s = useRuntime.getState().tabs.t.sidebar!;
+      const g = useRuntime.getState().tabs.t.graph!;
+      const tag = (name: string) => ({ name, fullName: `refs/tags/${name}`, target: 't'.repeat(40), time: 0 });
+      useRuntime.getState().patch('t', { sidebar: { ...s, tags: [tag('archive/a'), tag('archive/b'), tag('v1')] }, graph: { ...g, view: { ...g.view!, hiddenTags: ['archive/a', 'archive/b'] } } });
+      renderIt();
+      const tags = panel('Tags');
+      const tagRow = (name: string) => within(tags).getByRole('treeitem', { name });
+      const folder = tags.querySelector<HTMLElement>('.sb-folder')!;
+      for (const el of [folder, tagRow('archive/a')]) {
+        expect(el).toHaveClass('is-hidden');
+        expect(el).toHaveAccessibleDescription('hidden');
+        expect(el.querySelector('.sb-eye-rest svg')).toHaveClass('lucide-eye-off', 'sb-hidden-icon');
+      }
+      expect(tagRow('v1')).not.toHaveClass('is-hidden');
+      const eye = within(tagRow('v1')).getByRole('button', { name: 'Hide v1 from the graph' });
+      expect(eye.querySelector('.sb-eye-rest svg')).toHaveClass('lucide-tag');
+      act(() => fireEvent.click(eye));
+      expect(picks()).toEqual({ shown: [], hidden: [], hiddenTags: ['v1'] });
+      act(() => fireEvent.click(within(folder).getByRole('button', { name: 'Show archive/ in the graph' })));
+      expect(picks()).toEqual({ shown: [], hidden: [], shownTags: ['archive/'], hiddenTags: ['v1'] });
+      // H on archive/a (hidden in the payload): shows it.
+      const tree = within(tags).getByRole('tree');
+      fireEvent.keyDown(tree, { key: 'ArrowDown' });
+      act(() => { fireEvent.keyDown(tree, { key: 'h' }); });
+      expect(picks()?.shownTags).toEqual(['archive/', 'archive/a']);
     });
 
     it('under All (no view) the pinned trunk has no eye, local or remote, and H on it does nothing', () => {
@@ -346,7 +375,7 @@ describe('Sidebar item menus (plan 1C Task 15b)', () => {
     expect(items()[other]).not.toHaveAttribute('data-context');
   });
 
-  it('a branch folder offers Hide folder; a tag folder has no menu', () => {
+  it('a branch folder and a tag folder offer Hide folder', () => {
     const s = useRuntime.getState().tabs.t.sidebar!;
     useRuntime.getState().patch('t', { repo: { id: 4, path: '/r', name: 'r', worktree: '/r' } as never, sidebar: { ...s, locals: [branch('feature/login')], tags: [{ ...s.tags[0], name: 'rel/v1', fullName: 'refs/tags/rel/v1' }] } });
     // The tab's store, so the menu can write.
@@ -357,9 +386,9 @@ describe('Sidebar item menus (plan 1C Task 15b)', () => {
     fireEvent.contextMenu(within(panel('Local')).getByRole('treeitem', { name: 'feature' }));
     expect(rowsOpen()).toEqual(['Hide folder']);
     act(() => useMenu.getState().close());
-    const ev = fireEvent.contextMenu(within(panel('Tags')).getByRole('treeitem', { name: 'rel' }));
-    expect(ev).toBe(false); // the native menu is still suppressed
-    expect(rowsOpen()).toBeNull();
+    fireEvent.contextMenu(within(panel('Tags')).getByRole('treeitem', { name: 'rel' }));
+    expect(rowsOpen()).toEqual(['Hide folder']);
+    act(() => useMenu.getState().close());
     useTabViews.setState({ views: {} });
   });
 

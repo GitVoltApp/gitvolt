@@ -2,7 +2,7 @@ import type { BranchView } from '../api/gen/BranchView';
 import type { ViewPayload } from '../api/gen/ViewPayload';
 import { useRuntime } from '../app/runtime';
 import { registerKeyHints } from '../shortcuts/hints';
-import { hideBranch, hideFolder, showBranch, showFolder } from './store';
+import { hideBranch, hideFolder, hideTag, hideTagFolder, showBranch, showFolder, showTag, showTagFolder } from './store';
 
 /** What a branch chip or sidebar row is, for hiding: its refs (the menus' `BranchRef`). */
 export interface BranchLike { local: string | null; remotes: ReadonlyArray<{ fullName: string; remote: string }> }
@@ -50,21 +50,45 @@ export function altClickBranch(tabId: string | null, b: BranchLike, e: { altKey:
   return true;
 }
 
-/** Alt+click on a sidebar branch folder (`folder` is its unit-name prefix, `deployed-commit/`):
- * shows it when it looks hidden (`hidden`: its folder pick, or every branch under it, hides),
- * hides it otherwise. True when it was ours (the click is then spent). */
-export function altClickFolder(tabId: string | null, folder: string, hidden: boolean, e: { altKey: boolean; preventDefault(): void; stopPropagation(): void }): boolean {
+/** Alt+click on a sidebar branch folder (`folder` is its unit-name prefix, `deployed-commit/`), or
+ * a tag folder (`tags`): shows it when it looks hidden (`hidden`: its folder pick, or every branch
+ * or tag under it, hides), hides it otherwise. True when it was ours (the click is then spent). */
+export function altClickFolder(tabId: string | null, folder: string, hidden: boolean, e: { altKey: boolean; preventDefault(): void; stopPropagation(): void }, tags = false): boolean {
   if (!e.altKey || !tabId) return false;
   e.preventDefault();
   e.stopPropagation();
-  toggleFolder(tabId, folder, hidden);
+  toggleFolder(tabId, folder, hidden, tags);
   return true;
 }
 
-/** Shows `folder` when it looks hidden, hides it otherwise (Alt+click, the sidebar's eye, H). */
-export const toggleFolder = (tabId: string, folder: string, hidden: boolean): void => (hidden ? showFolder : hideFolder)(tabId, folder);
+/** Shows `folder` when it looks hidden, hides it otherwise (Alt+click, the sidebar's eye, H);
+ * `tags`: a Tags folder (`archive/`), whose tags it picks. */
+export const toggleFolder = (tabId: string, folder: string, hidden: boolean, tags = false): void =>
+  (tags ? (hidden ? showTagFolder : hideTagFolder) : hidden ? showFolder : hideFolder)(tabId, folder);
+
+/** Whether the open preset hides tag `name` (by hand: no rule decides a tag). */
+export const tagHidden = (view: ViewPayload | undefined | null, name: string): boolean => !!view?.hiddenTags?.includes(name);
+
+/** Hides tag `name` when shown, shows it when hidden. Nothing keeps a tag: on the trunk or the
+ * checked-out commit, only its chip goes. */
+export function toggleTag(tabId: string, name: string): void {
+  (tagHidden(useRuntime.getState().tabs[tabId]?.graph?.view, name) ? showTag : hideTag)(tabId, name);
+}
+
+/** Alt+click on a tag chip or sidebar tag row: true when it was one (the click is then spent). */
+export function altClickTag(tabId: string | null, name: string, e: { altKey: boolean; preventDefault(): void; stopPropagation(): void }): boolean {
+  if (!e.altKey || !tabId) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  toggleTag(tabId, name);
+  return true;
+}
+
+/** Alt+click on a graph chip: its tag, or its branch. */
+export const altClickChip = (tabId: string | null, l: BranchLike & { tag: boolean; name: string }, e: { altKey: boolean; preventDefault(): void; stopPropagation(): void }): boolean =>
+  (l.tag ? altClickTag(tabId, l.name, e) : altClickBranch(tabId, l, e));
 
 // Shown in the Keyboard Shortcuts panel (Ctrl+/); metadata only.
 registerKeyHints([
-  { id: 'key.altclick.branch', section: 'Navigation', label: 'Hide or show a branch or folder', keys: ['Alt+Click'], context: 'branch chip, sidebar branch or branch folder', source: 'presets/altClick.ts' },
+  { id: 'key.altclick.branch', section: 'Navigation', label: 'Hide or show a branch, tag or folder', keys: ['Alt+Click'], context: 'branch or tag chip, sidebar branch, tag or folder', source: 'presets/altClick.ts' },
 ]);

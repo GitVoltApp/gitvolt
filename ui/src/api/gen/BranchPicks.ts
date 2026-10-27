@@ -5,4 +5,9 @@
  * slash (`deployed-commit/`) is a folder: it picks every branch under it, also those created later,
  * unless a pick nearer the branch (its own, or a deeper folder's) says otherwise.
  */
-export type BranchPicks = { shown: Array<string>, hidden: Array<string>, };
+export type BranchPicks = { shown: Array<string>, hidden: Array<string>, 
+/**
+ * Tags shown or hidden by hand (short names, `archive/` folders), picked as branches are. Lists
+ * of their own: a tag and a branch can share a name. No rule decides a tag.
+ */
+shownTags?: Array<string>, hiddenTags?: Array<string>, };

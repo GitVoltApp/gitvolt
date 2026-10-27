@@ -8,4 +8,8 @@ export type ViewPayload = { branches: Array<BranchView>,
 /**
  * The trunk units' names.
  */
-trunk: Array<string>, };
+trunk: Array<string>, 
+/**
+ * The tags hand picks hide (short names, sorted): no chip, nor the commits only they keep.
+ */
+hiddenTags?: Array<string>, };

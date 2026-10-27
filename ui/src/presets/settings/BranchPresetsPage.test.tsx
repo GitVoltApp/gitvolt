@@ -214,6 +214,22 @@ describe('the branch preset editor', () => {
     expect(repo().branchPicks?.g1).toEqual({ shown: ['feature/payments'], hidden: [] });
   });
 
+  it('tag picks list after the branch picks, each with a tag icon, and forget apart from a branch of the same name', () => {
+    setRepo({ branchPicks: { g1: { shown: [], hidden: ['v1'], hiddenTags: ['v1', 'archive/'], shownTags: ['archive/keep'] } } });
+    page();
+    select('Quiet');
+    const hidden = screen.getByText('Always hidden:').parentElement!;
+    expect([...hidden.querySelectorAll('.bp-chip')].map((c) => [c.textContent, !!c.querySelector('[aria-label="tag"]')])).toEqual([['v1✕', false], ['v1✕', true], ['archive/✕', true]]);
+    expect(within(screen.getByText('Always shown:').parentElement!).getByLabelText('tag')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Forget tag v1' }));
+    expect(repo().branchPicks?.g1).toEqual({ shown: [], hidden: ['v1'], hiddenTags: ['archive/'], shownTags: ['archive/keep'] });
+    fireEvent.click(screen.getByRole('button', { name: 'Forget tag archive/keep' }));
+    expect(repo().branchPicks?.g1?.shownTags).toEqual([]);
+    // Tags alone still list.
+    setRepo({ branchPicks: { g1: { shown: [], hidden: [], hiddenTags: ['v2'] } } });
+    expect(screen.getByRole('button', { name: 'Forget tag v2' })).toBeTruthy();
+  });
+
   it('delete arms in place and deletes on the second click', async () => {
     const clock = armClock();
     const rects = vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(function (this: HTMLElement) {

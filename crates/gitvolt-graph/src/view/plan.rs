@@ -72,11 +72,14 @@ pub(crate) struct Window<'a> {
     pub checked_out: &'a [bool],
     /// Per commit: a stash, which goes wherever its base commit goes.
     pub stash: &'a [bool],
+    /// Per commit: only hidden tags keep it, of the refs that aren't branches (`kept_by_hidden_tags_only`).
+    pub tag_hidden: &'a [bool],
 }
 
 /// Decides every commit's state (Ruling 2, 5, 6):
-/// - Shown units (and the trunk), detached HEADs and commits no branch reaches keep their commits
-///   visible, down through every parent but a trunk merge's folded ones.
+/// - Shown units (and the trunk), detached HEADs and commits no branch reaches (but those only
+///   hidden tags keep) keep their commits visible, down through every parent but a trunk merge's
+///   folded ones.
 /// - With `fold_merged`, a merge on a trunk branch's first-parent line folds the commits only its
 ///   other parents reach (the oldest such merge holds a commit two of them reach), unless a shown
 ///   or collapsed branch needs them; a unit whose tips are all folded is `Folded`.
@@ -105,9 +108,9 @@ pub(crate) fn plan(w: &Window, spec: &ViewSpec) -> ViewPlan {
         is_detached[c] = true;
     }
 
-    // `shown`: a shown branch (or the trunk, a detached HEAD, no branch at all) keeps it;
-    // `kept`: a collapsed branch needs it (so no merge folds it); `branch`: some branch reaches
-    // it; `fold`: the oldest trunk merge folding it.
+    // `shown`: a shown branch (or the trunk, a detached HEAD, no branch at all, unless only hidden
+    // tags reach it) keeps it; `kept`: a collapsed branch needs it (so no merge folds it);
+    // `branch`: some branch reaches it; `fold`: the oldest trunk merge folding it.
     let mut shown = vec![false; n];
     let mut kept = vec![false; n];
     let mut branch = vec![false; n];
@@ -129,7 +132,7 @@ pub(crate) fn plan(w: &Window, spec: &ViewSpec) -> ViewPlan {
                 kept[c] = true;
             }
         }
-        if !branch[c] && !w.stash[c] {
+        if !branch[c] && !w.stash[c] && !w.tag_hidden[c] {
             shown[c] = true;
         }
         if w.stash[c] {
@@ -430,6 +433,7 @@ pub(crate) mod tests {
         pub heads: Vec<usize>,
         pub checked_out: Vec<bool>,
         pub stash: Vec<bool>,
+        pub tag_hidden: Vec<bool>,
     }
 
     pub(crate) fn unit(name: &str, tips: &[u8]) -> BranchUnit {
@@ -478,7 +482,7 @@ pub(crate) mod tests {
                 }
             }
             let units_len = units.len();
-            Hand { reach: reach(&per_commit_refs, &trunk_reach), index, units, decisions, trunk_fp, detached: vec![], heads: vec![], checked_out: vec![false; units_len], stash: vec![false; n], commits }
+            Hand { reach: reach(&per_commit_refs, &trunk_reach), index, units, decisions, trunk_fp, detached: vec![], heads: vec![], checked_out: vec![false; units_len], stash: vec![false; n], tag_hidden: vec![false; n], commits }
         }
 
         pub(crate) fn window(&self) -> Window<'_> {
@@ -493,6 +497,7 @@ pub(crate) mod tests {
                 worktree_heads: &self.heads,
                 checked_out: &self.checked_out,
                 stash: &self.stash,
+                tag_hidden: &self.tag_hidden,
             }
         }
 

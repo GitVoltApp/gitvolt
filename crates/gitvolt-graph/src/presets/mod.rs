@@ -13,5 +13,5 @@ pub(crate) use facts::{unit_facts, Facts, ReachSets, UnitFacts};
 pub(crate) use glob::glob_match;
 pub(crate) use glob::name_matches;
 pub use model::{Author, BranchPicks, BranchPreset, CollapsePlacement, Matcher, PresetAction, PresetScope, PresetSlot, Rule};
-pub(crate) use rules::decide;
+pub(crate) use rules::{decide, tag_hidden};
 pub(crate) use units::{branch_units, trunk_flags, BranchUnit, Decision};

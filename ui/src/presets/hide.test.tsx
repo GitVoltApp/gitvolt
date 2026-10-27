@@ -16,12 +16,12 @@ const { useRuntime } = await import('../app/runtime');
 const { useAppState, EMPTY_PROFILE, DEFAULT_SETTINGS } =await import('../app/state');
 const { buildMenu } = await import('../menu/registry');
 const { keyHints } = await import('../shortcuts/hints');
-const { altClickBranch, altClickFolder, unitNameOf } = await import('./altClick');
+const { altClickBranch, altClickChip, altClickFolder, altClickTag, toggleTag, unitNameOf } = await import('./altClick');
 const { usePresetSession } = await import('./store');
 await import('./branchMenus');
 const { GhostPopover } = await import('./GhostPopover');
 const { useTheme } = await import('../theme/store');
-import type { CommitTarget, MenuEnv, SidebarTarget } from '../menu/menuEnv';
+import type { CommitTarget, MenuEnv, SidebarTarget, TagTarget } from '../menu/menuEnv';
 
 const view = (hidden: string[] = [], over: Partial<ViewPayload> = {}): ViewPayload => ({
   branches: [
@@ -129,7 +129,7 @@ describe('hiding one branch', () => {
   });
 
   it('the hint is listed in the shortcuts panel', () => {
-    expect(keyHints().find((h) => h.id === 'key.altclick.branch')).toMatchObject({ label: 'Hide or show a branch or folder', context: 'branch chip, sidebar branch or branch folder' });
+    expect(keyHints().find((h) => h.id === 'key.altclick.branch')).toMatchObject({ label: 'Hide or show a branch, tag or folder', context: 'branch or tag chip, sidebar branch, tag or folder' });
   });
 });
 
@@ -166,6 +166,57 @@ describe('hiding a folder', () => {
     expect(picks().custom?.hidden).toEqual([]);
     // No row in a remote's menu.
     expect(buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'remote', name: 'origin', url: null }, env).some((r) => r.kind === 'action' && r.id.startsWith('presets.'))).toBe(false);
+  });
+});
+
+describe('hiding a tag or a tag folder', () => {
+  const chip = (name: string, tag = true) => ({ name, tag, local: tag ? null : `refs/heads/${name}`, remotes: [] });
+  const tagMenu = (name: string) => buildMenu<TagTarget, MenuEnv>('tag', { name, fullName: `refs/tags/${name}`, sha: 'a'.repeat(40) }, env)
+    .filter((r): r is Extract<MenuRow, { kind: 'action' }> => r.kind === 'action' && r.id.startsWith('presets.'));
+  const folderMenu = (folder: string, hidden: boolean) => buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'folder', folder, hidden, tags: true }, env)
+    .filter((r): r is Extract<MenuRow, { kind: 'action' }> => r.kind === 'action' && r.id.startsWith('presets.'));
+
+  it("alt+click on a tag chip hides the tag in Custom, not a branch of the same name; on a hidden one, shows it", () => {
+    const e = click();
+    expect(altClickChip('t', chip('v1'), e)).toBe(true);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(picks().custom).toEqual({ shown: [], hidden: [], hiddenTags: ['v1'] });
+    altClickChip('t', chip('v1', false), click());
+    expect(picks().custom).toEqual({ shown: [], hidden: ['v1'], hiddenTags: ['v1'] });
+    expect(altClickChip('t', chip('v2'), click(false))).toBe(false);
+    setView(view([], { hiddenTags: ['v1'] }));
+    expect(altClickTag('t', 'v1', click())).toBe(true);
+    expect(picks().custom).toEqual({ shown: [], hidden: ['v1'], shownTags: ['v1'] });
+  });
+
+  it("nothing keeps a tag: the trunk's or the checked-out commit's hides too (only its chip goes)", () => {
+    toggleTag('t', 'release-main');
+    expect(picks().custom?.hiddenTags).toEqual(['release-main']);
+  });
+
+  it('the menus offer Hide tag or Show tag by state', () => {
+    expect(tagMenu('v1').map((r) => r.label)).toEqual(['Hide tag']);
+    tagMenu('v1')[0].run();
+    expect(picks().custom?.hiddenTags).toEqual(['v1']);
+    setView(view([], { hiddenTags: ['v1'] }));
+    expect(tagMenu('v1').map((r) => r.label)).toEqual(['Show tag']);
+    tagMenu('v1')[0].run();
+    expect(picks().custom?.shownTags).toEqual(['v1']);
+  });
+
+  it("a tag folder hides and shows by alt+click and its menu, and hiding drops its tags' expansions", () => {
+    // Already in Custom: switching presets would drop every expansion.
+    altClickBranch('t', local('feature/a'), click());
+    usePresetSession.setState({ expanded: { t: ['tag:archive/old', 'tag:v1', 'branch:archive/x'] } });
+    expect(altClickFolder('t', 'archive/', false, click(), true)).toBe(true);
+    expect(picks().custom).toEqual({ shown: [], hidden: ['feature/a'], hiddenTags: ['archive/'] });
+    expect(usePresetSession.getState().expanded.t).toEqual(['tag:v1', 'branch:archive/x']);
+    expect(folderMenu('archive/', true).map((r) => [r.label, r.tooltip])).toEqual([['Show folder', 'Show the tags under archive/ in the graph again']]);
+    folderMenu('archive/', true)[0].run();
+    expect(picks().custom).toEqual({ shown: [], hidden: ['feature/a'] });
+    expect(folderMenu('archive/', false).map((r) => [r.label, r.tooltip])).toEqual([['Hide folder', 'Hide every tag under archive/ from the graph, also those created later']]);
+    folderMenu('archive/', false)[0].run();
+    expect(picks().custom?.hiddenTags).toEqual(['archive/']);
   });
 });
 

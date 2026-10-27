@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
+import type { AppSettings } from '../api/gen/AppSettings';
+import type { Profile } from '../api/gen/Profile';
 import type { ViewSpec } from '../api/gen/ViewSpec';
 import { tabsForRepo, useRuntime } from '../app/runtime';
 import { useAppState } from '../app/state';
 import { ALL_ID } from './builtins';
-import { currentPreset, nextInCycle, pickBranch, pickFolder, presetList, viewSpecOf, type PresetEntry } from './model';
+import { currentPreset, nextInCycle, pickBranch, pickFolder, pickTag, pickTagFolder, presetList, viewSpecOf, type PresetEntry } from './model';
 
 /** Session state, in memory only: what "Expand in graph" (or going to a hidden commit) unfolded,
  * per tab, until the tab switches presets. */
@@ -98,6 +100,23 @@ export const showFolder = (tabId: string, folder: string): void => pickFolderOf(
 /** Shows several branches in one pick update (the ghost popover's "Show all"): one save, one reload. */
 export const showBranches = (tabId: string, names: string[]): void => pick(tabId, names, true);
 
+/** Changes the tag picks with `edit`, as `pick` does the branch ones; `drop`: the expansions it ends. */
+function pickTags(tabId: string, edit: (settings: AppSettings, p: Profile, repoPath: string) => Profile, drop?: (key: string) => boolean): void {
+  const r = resolve(tabId);
+  if (!r) return;
+  const app = useAppState.getState();
+  app.updateProfile((p) => edit(app.settings, p, r.repo.path));
+  reload(r.repo.id, resolve(tabId)?.current.preset.id !== r.current.preset.id, drop);
+}
+
+/** Hides one tag by hand (its chip, and the commits only it keeps); on a built-in preset, in the
+ * repository's Custom. */
+export const hideTag = (tabId: string, name: string): void => pickTags(tabId, (s, p, path) => pickTag(s, p, path, name, false), (k) => k === `tag:${name}`);
+export const showTag = (tabId: string, name: string): void => pickTags(tabId, (s, p, path) => pickTag(s, p, path, name, true));
+/** Hides every tag under `folder` (`archive/`), also those created later. */
+export const hideTagFolder = (tabId: string, folder: string): void => pickTags(tabId, (s, p, path) => pickTagFolder(s, p, path, folder, false), (k) => k.startsWith(`tag:${folder}`));
+export const showTagFolder = (tabId: string, folder: string): void => pickTags(tabId, (s, p, path) => pickTagFolder(s, p, path, folder, true));
+
 /** The `expanded` key that unfolds what `key` names: a collapsed run's own key
  * ("branch:<name>@<newest sha>", one per line of history) unfolds its whole branch. */
 export const expandKeyOf = (key: string): string => (key.startsWith('branch:') ? key.replace(/@[0-9a-f]{40}$/, '') : key);
@@ -105,8 +124,9 @@ export const expandKeyOf = (key: string): string => (key.startsWith('branch:') ?
 /** Whether `key` (any of a branch's run keys, or its own) is unfolded in this tab. */
 export const isExpanded = (tabId: string, key: string): boolean => (usePresetSession.getState().expanded[tabId] ?? []).includes(expandKeyOf(key));
 
-/** Unfolds `key` ("branch:<name>", a run's key, or "fold:<sha>") in this tab until it switches
- * presets or `collapse` folds it again. Settles once the tab's graph has reloaded with it. */
+/** Unfolds `key` ("branch:<name>", a run's key, "fold:<sha>" or a hidden tag's "tag:<name>") in
+ * this tab until it switches presets or `collapse` folds it again. Settles once the tab's graph
+ * has reloaded with it. */
 export function expand(tabId: string, key: string): Promise<void> {
   const k = expandKeyOf(key);
   const cur = usePresetSession.getState().expanded[tabId] ?? [];

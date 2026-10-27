@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { BranchPicks } from '../api/gen/BranchPicks';
 import type { SidebarPayload } from '../api/gen/SidebarPayload';
 import type { ViewPayload } from '../api/gen/ViewPayload';
 import { buildPanels, folderKey, sectionKey, sectionsOf, type Panel } from './model';
@@ -82,7 +83,7 @@ describe('sidebar model', () => {
       expect(sectionsOf(payload, view)[1].items[0].presetState).toBe('folded');
     });
 
-    const folders = (p: SidebarPayload, v?: ViewPayload, picks?: { shown: string[]; hidden: string[] }) => buildPanels(sectionsOf(p, v, picks), opts()).flatMap((panel) => panel.rows)
+    const folders = (p: SidebarPayload, v?: ViewPayload, picks?: BranchPicks) => buildPanels(sectionsOf(p, v, picks), opts()).flatMap((panel) => panel.rows)
       .flatMap((r) => (r.type === 'folder' ? [[r.key, r.branchFolder, r.hidden]] : []));
     const states2 = (hidden: string[]): ViewPayload => ({ trunk: ['main'], branches: ['feature/login', 'feature/pay/v2', 'bot/x'].map((name) => ({ name, refs: [], state: hidden.includes(name) ? 'hidden' : 'shown', by: { kind: 'otherwise' } })) });
     const withBot: SidebarPayload = { ...payload, remotes: [{ ...payload.remotes[0], branches: [...payload.remotes[0].branches, { name: 'bot/x', fullName: 'refs/remotes/origin/bot/x', target: 'b'.repeat(40), tipTime: 1, summary: '', author: '' }] }], tags: [{ ...payload.tags[0], name: 'rel/v1' }] };
@@ -92,7 +93,7 @@ describe('sidebar model', () => {
         ['local:feature', 'feature/', false], ['local:feature/pay', 'feature/pay/', false],
         // A remote's own folder isn't a branch folder; its folders are, without the remote's name.
         ['remote:origin', undefined, undefined], ['remote:origin/bot', 'bot/', false],
-        ['tags:rel', undefined, undefined],
+        ['tags:rel', 'rel/', false],
       ]);
       expect(folders(withBot, states2(['feature/login', 'feature/pay/v2', 'bot/x'])).filter((f) => f[2]).map((f) => f[0])).toEqual(['local:feature', 'local:feature/pay', 'remote:origin/bot']);
       // Without a view nothing looks hidden; the folders can still be hidden.
@@ -104,6 +105,17 @@ describe('sidebar model', () => {
       expect(hidden({ shown: ['feature/pay/v2'], hidden: ['feature/pay/'] })).toEqual(['local:feature/pay']);
       expect(hidden({ shown: [], hidden: ['feature/', 'bot/'] })).toEqual(['local:feature', 'local:feature/pay', 'remote:origin/bot']);
       expect(hidden({ shown: ['feature/pay/'], hidden: ['feature/'] })).toEqual(['local:feature']);
+    });
+
+    it('a tag is shown or hidden, and a tag folder looks hidden by its tag picks or when every tag under it is', () => {
+      const tags: SidebarPayload = { ...payload, tags: ['rel/v1', 'rel/v2', 'old/x', 'v1'].map((name) => ({ ...payload.tags[0], name, fullName: `refs/tags/${name}` })) };
+      const v = (hiddenTags: string[]): ViewPayload => ({ ...states2([]), hiddenTags });
+      const tagFolders = (vp: ViewPayload, picks?: BranchPicks) => folders(tags, vp, picks).filter((f) => String(f[0]).startsWith('tags:'));
+      expect(sectionsOf(tags, v(['rel/v1']))[4].items.map((it) => [it.name, it.presetState])).toEqual([['rel/v1', 'hidden'], ['rel/v2', 'shown'], ['old/x', 'shown'], ['v1', 'shown']]);
+      expect(tagFolders(v(['rel/v1']))).toEqual([['tags:old', 'old/', false], ['tags:rel', 'rel/', false]]);
+      expect(tagFolders(v(['rel/v1', 'rel/v2']))).toEqual([['tags:old', 'old/', false], ['tags:rel', 'rel/', true]]);
+      // A tag folder pick; a branch folder pick of the same name is a branch's.
+      expect(tagFolders(v([]), { shown: [], hidden: ['rel/'], hiddenTags: ['old/'] })).toEqual([['tags:old', 'old/', true], ['tags:rel', 'rel/', false]]);
     });
 
     it('nothing changes without a view', () => {

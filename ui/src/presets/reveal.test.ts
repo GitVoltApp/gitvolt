@@ -9,9 +9,9 @@ const row = (id: string): RowPayload => ({
   id, kind: 'commit', lane: 0, color: 0, segments: [], summary: id.slice(-2), bodyFirstLine: '', authorName: 'Ada', authorEmail: 'ada@example.com', authorTime: 0, committerTime: 0, parents: [], mrRefs: [], wip: null,
 });
 // Loaded but not rows under the preset: a collapsed run's middle commit, a folded commit, a hidden
-// branch's commit, each with what hides it (a run's key names its newest commit). Expanding that
-// key (a run's: its branch's) makes it a row.
-const HIDDEN: Record<string, string> = { [sha(0xa1)]: `branch:feature/payments@${sha(0xa0)}`, [sha(0xb1)]: `fold:${sha(0xb0)}`, [sha(0xc1)]: 'branch:spike/warp-gates' };
+// branch's commit, one only a hidden tag keeps, each with what hides it (a run's key names its
+// newest commit). Expanding that key (a run's: its branch's) makes it a row.
+const HIDDEN: Record<string, string> = { [sha(0xa1)]: `branch:feature/payments@${sha(0xa0)}`, [sha(0xb1)]: `fold:${sha(0xb0)}`, [sha(0xc1)]: 'branch:spike/warp-gates', [sha(0xe1)]: 'tag:archive/old' };
 const OUTSIDE = sha(0xdd);
 
 const impl = {
@@ -68,6 +68,10 @@ describe('going to a commit the preset hides', () => {
     expect(impl.graphHiddenOwner.mock.calls.map((c) => c[4])).toEqual([sha(0xa1), sha(0xb1), sha(0xc1)]);
     expect(impl.graph.mock.calls.at(-1)![2].view?.expanded).toContain('branch:spike/warp-gates');
     expect(missing).not.toHaveBeenCalled();
+    // A hidden tag's (a sidebar tag row's): the tag shows for the session.
+    goToCommit('a', sha(0xe1), {}, missing);
+    await vi.waitFor(() => expect(selected()).toBe(sha(0xe1)));
+    expect(usePresetSession.getState().expanded.a?.at(-1)).toBe('tag:archive/old');
   });
 
   it('a commit outside the window falls through to the caller', async () => {

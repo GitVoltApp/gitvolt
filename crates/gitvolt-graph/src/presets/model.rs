@@ -97,6 +97,14 @@ pub enum Author {
 pub struct BranchPicks {
     pub shown: Vec<String>,
     pub hidden: Vec<String>,
+    /// Tags shown or hidden by hand (short names, `archive/` folders), picked as branches are. Lists
+    /// of their own: a tag and a branch can share a name. No rule decides a tag.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<String>>")]
+    pub shown_tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional, as = "Option<Vec<String>>")]
+    pub hidden_tags: Vec<String>,
 }
 
 /// Where a collapsed branch's oldest commit goes (Settings › Graph › "Collapsed branches").

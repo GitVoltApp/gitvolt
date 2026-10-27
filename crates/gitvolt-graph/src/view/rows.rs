@@ -147,7 +147,7 @@ impl ViewRows {
             .collect()
     }
 
-    /// Every unit's state, sorted by name, and the trunk's names.
+    /// Every unit's state, sorted by name, the trunk's names and the hidden tags'.
     pub(crate) fn payload(&self) -> ViewPayload {
         let mut branches: Vec<BranchView> = self
             .d
@@ -159,7 +159,9 @@ impl ViewRows {
         branches.sort_by(|a, b| a.name.cmp(&b.name));
         let mut trunk: Vec<String> = self.d.units.iter().zip(&self.d.trunk).filter(|(_, t)| **t).map(|(u, _)| u.name.clone()).collect();
         trunk.sort();
-        ViewPayload { branches, trunk }
+        let mut hidden_tags: Vec<String> = self.d.hidden_tags.iter().map(|t| t.name.clone()).collect();
+        hidden_tags.sort();
+        ViewPayload { branches, trunk, hidden_tags }
     }
 }
 
@@ -287,7 +289,7 @@ mod tests {
     }
 
     fn picked(hidden: &[&str]) -> ViewSpec {
-        ViewSpec { picks: BranchPicks { shown: vec![], hidden: hidden.iter().map(|s| s.to_string()).collect() }, ..view(vec![]) }
+        ViewSpec { picks: BranchPicks { hidden: hidden.iter().map(|s| s.to_string()).collect(), ..Default::default() }, ..view(vec![]) }
     }
 
     fn wips(g: &GraphPayload) -> Vec<&str> {
@@ -350,6 +352,91 @@ mod tests {
         }
         // The trunk can't be hidden: its chip stays.
         assert!(build(&with(req, picked(&["main"])), &commits).unwrap().labels.iter().any(|l| l.name == "main"));
+    }
+
+    fn tags_picked(shown: &[&str], hidden: &[&str]) -> ViewSpec {
+        let names = |l: &[&str]| l.iter().map(|s| s.to_string()).collect();
+        ViewSpec { picks: BranchPicks { shown_tags: names(shown), hidden_tags: names(hidden), ..Default::default() }, ..view(vec![]) }
+    }
+
+    /// `history`, and an archived branch from main's 2 that only tags keep: 20 (at 600), tagged
+    /// `kept/20`, and 21 (700), tagged `archive/old`. Also `archive/on-x` on x's 14, `v1` on main's
+    /// tip, beside a branch `v1`.
+    fn archived() -> (GraphRequest, HashMap<Oid, CommitMeta>) {
+        let (mut req, mut commits) = history();
+        for cm in [c(20, &[2], 600, "old20"), c(21, &[20], 700, "old21")] {
+            commits.insert(cm.id, cm);
+        }
+        req.input.refs.refs.extend([tag("archive/old", 21), tag("kept/20", 20), tag("archive/on-x", 14), tag("v1", 3), local("v1", 3)]);
+        (req, commits)
+    }
+
+    fn tag_chips(g: &GraphPayload) -> Vec<&str> {
+        g.labels.iter().filter(|l| l.tag).map(|l| l.name.as_str()).collect()
+    }
+
+    #[test]
+    fn a_hidden_tag_drops_its_chip_and_the_commits_only_it_keeps() {
+        let (req, commits) = archived();
+        let plain = build(&with(req.clone(), view(vec![])), &commits).unwrap();
+        assert_eq!(summaries(&plain), ["x15", "x14", "x13", "c3", "x12", "x11", "x10", "old21", "old20", "c2", "Initial commit"]);
+        assert_eq!(tag_chips(&plain), ["archive/on-x", "v1", "archive/old", "kept/20"]);
+
+        // The folder: its tags' chips go, and old21, which only archive/old keeps; old20 stays for
+        // kept/20, and x14 for x.
+        let req_archive = with(req.clone(), tags_picked(&[], &["archive/"]));
+        let g = build(&req_archive, &commits).unwrap();
+        assert_eq!(summaries(&g), ["x15", "x14", "x13", "c3", "x12", "x11", "x10", "old20", "c2", "Initial commit"]);
+        assert_eq!(tag_chips(&g), ["v1", "kept/20"]);
+        assert_eq!(g.view.as_ref().unwrap().hidden_tags, ["archive/old", "archive/on-x"]);
+        assert!(g.rows.iter().all(|r| r.ghosts.is_empty()), "no stubs: tags are hidden by hand");
+        // Both tags hidden: the archived branch goes whole, with no line left behind.
+        let g = build(&with(req.clone(), tags_picked(&[], &["archive/", "kept/20"])), &commits).unwrap();
+        assert_eq!(summaries(&g), ["x15", "x14", "x13", "c3", "x12", "x11", "x10", "c2", "Initial commit"]);
+        assert_eq!(g.max_lanes, 2);
+        // A tag shown by hand inside the hidden folder stays, and so does what it keeps.
+        let g = build(&with(req.clone(), tags_picked(&["archive/old"], &["archive/", "kept/20"])), &commits).unwrap();
+        assert_eq!(tag_chips(&g), ["v1", "archive/old"]);
+        assert!(summaries(&g).contains(&"old21") && summaries(&g).contains(&"old20"));
+
+        // On the trunk's tip: only its chip goes, and the branch v1 keeps its own.
+        let g = build(&with(req, tags_picked(&[], &["v1"])), &commits).unwrap();
+        assert_eq!(summaries(&g), summaries(&plain));
+        assert_eq!(tag_chips(&g), ["archive/on-x", "archive/old", "kept/20"]);
+        assert!(g.labels.iter().any(|l| l.name == "v1" && l.local.is_some()));
+    }
+
+    #[test]
+    fn a_hidden_branch_keeps_its_tagged_commits_hidden_and_a_detached_head_keeps_a_hidden_tags() {
+        // As before tags could hide: a shown tag doesn't bring back a hidden branch's commits.
+        let (req, commits) = archived();
+        let g = build(&with(req.clone(), picked(&["x"])), &commits).unwrap();
+        assert!(!summaries(&g).contains(&"x14") && !tag_chips(&g).contains(&"archive/on-x"));
+        // HEAD detached at old21: the commit stays a row, without archive/old's chip.
+        let (mut req, commits) = archived();
+        req.input.refs.head = crate::input::HeadIn { branch: None, target: Some(id(21)), detached: true, unborn: false };
+        req.input.worktrees[0].branch = None;
+        req.input.worktrees[0].head = Some(id(21));
+        let g = build(&with(req, tags_picked(&[], &["archive/", "kept/20"])), &commits).unwrap();
+        assert!(summaries(&g).contains(&"old21") && summaries(&g).contains(&"old20"));
+        assert!(g.labels.iter().all(|l| l.name != "archive/old"));
+    }
+
+    #[test]
+    fn hidden_owner_names_the_hidden_tag_and_its_expansion_shows_it() {
+        let (req, commits) = archived();
+        let spec = tags_picked(&[], &["archive/", "kept/20"]);
+        let req = with(req, spec.clone());
+        // Both hidden tags reach 20: archive/old's commit is the newer.
+        assert_eq!(build_hidden_owner(&req, &commits, &id(21).to_string()).as_deref(), Some("tag:archive/old"));
+        assert_eq!(build_hidden_owner(&req, &commits, &id(20).to_string()).as_deref(), Some("tag:archive/old"));
+        assert_eq!(build_hidden_owner(&req, &commits, &id(14).to_string()), None, "a row: only its chip went");
+        let expanded = with(req.clone(), ViewSpec { expanded: vec!["tag:archive/old".into()], ..spec });
+        let g = build(&expanded, &commits).unwrap();
+        assert!(summaries(&g).contains(&"old21") && summaries(&g).contains(&"old20"));
+        assert_eq!(tag_chips(&g), ["v1", "archive/old"]);
+        assert_eq!(g.view.unwrap().hidden_tags, ["archive/on-x", "kept/20"]);
+        assert_eq!(build_hidden_owner(&expanded, &commits, &id(21).to_string()), None);
     }
 
     #[test]
@@ -458,7 +545,7 @@ mod tests {
     #[test]
     fn the_view_payload_lists_every_branch_state() {
         let (req, commits) = merged_and_more();
-        let spec = ViewSpec { fold_merged: true, picks: BranchPicks { shown: vec![], hidden: vec!["z".into()] }, ..view(vec![rule(PresetAction::Collapse, "y")]) };
+        let spec = ViewSpec { fold_merged: true, picks: BranchPicks { hidden: vec!["z".into()], ..Default::default() }, ..view(vec![rule(PresetAction::Collapse, "y")]) };
         let g = build(&with(req, spec), &commits).unwrap();
         let v = g.view.unwrap();
         let states: Vec<(&str, BranchState, DecidedBy)> = v.branches.iter().map(|b| (b.name.as_str(), b.state, b.by)).collect();
@@ -626,7 +713,7 @@ mod tests {
     #[test]
     fn no_ghosts_for_branches_hidden_by_hand() {
         let (req, commits) = two_off_main();
-        let spec = ViewSpec { picks: BranchPicks { shown: vec![], hidden: vec!["x".into()] }, ..view(vec![rule(PresetAction::Hide, "w")]) };
+        let spec = ViewSpec { picks: BranchPicks { hidden: vec!["x".into()], ..Default::default() }, ..view(vec![rule(PresetAction::Hide, "w")]) };
         let g = build(&with(req, spec), &commits).unwrap();
         assert_eq!(ghosts_on_c2(&g), [("w", 1)]);
     }
@@ -637,7 +724,7 @@ mod tests {
         let (mut req, mut commits) = two_off_main();
         commits.insert(id(30), c(30, &[2], 1500, "v30"));
         req.input.refs.refs.push(local("d/v", 30));
-        let picks = BranchPicks { shown: vec![], hidden: vec!["x".into(), "d/".into()] };
+        let picks = BranchPicks { hidden: vec!["x".into(), "d/".into()], ..Default::default() };
         let spec = ViewSpec { picks, ..view(vec![rule(PresetAction::Hide, "w")]) };
         let on = build(&with(req.clone(), ViewSpec { ghost_picks: true, ..spec.clone() }), &commits).unwrap();
         assert_eq!(summaries(&on), ["c3", "c2", "Initial commit"]);
@@ -732,7 +819,7 @@ mod tests {
                 // stubs, too, half the time.
                 let linked = req.input.worktrees.get(1).and_then(|w| w.branch.as_deref()?.strip_prefix("refs/heads/"));
                 let hidden = linked.into_iter().chain([names[1 + rnd(names.len() - 1)]]).map(String::from).collect();
-                let hiding = ViewSpec { picks: BranchPicks { shown: vec![], hidden }, ghost_picks: rnd(2) == 0, ..spec.clone() };
+                let hiding = ViewSpec { picks: BranchPicks { hidden, ..Default::default() }, ghost_picks: rnd(2) == 0, ..spec.clone() };
                 for (spec, hides) in [(&hiding, true), (&spec, false)] {
                     let g = build(&with(req.clone(), spec.clone()), &store).unwrap_or_else(|e| panic!("{e}\n{spec:?}"));
                     let ids: Vec<&str> = g.rows.iter().map(|r| r.id.as_str()).collect();

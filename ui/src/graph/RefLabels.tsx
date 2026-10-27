@@ -15,7 +15,7 @@ import { DETACHED, detachedWorktreeOf } from './worktreeLabel';
 import { useBranchDragClass } from './branchDrag';
 // --- 4B T10 ---
 import { useRepoContext } from '../app/repoContext';
-import { altClickBranch } from '../presets/altClick';
+import { altClickChip } from '../presets/altClick';
 import { MrBadge, useChipMr } from '../forge/MrBadge';
 import { mrForLabel, useForge } from '../forge/mrStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -212,7 +212,7 @@ function StackRow({ label, sha, first, onBranchHover, onContextMenu, onDoubleCli
       }}
       onContextMenu={onContextMenu && ((e) => { e.stopPropagation(); onContextMenu(label, e); })}
       onDoubleClick={onDoubleClick && ((e) => { e.stopPropagation(); onDoubleClick(label, e); })}
-      onClick={(e) => { altClickBranch(tabId, label, e); }}
+      onClick={(e) => { altClickChip(tabId, label, e); }}
     >
       <ChipContent label={label} full />
       {tooltip}
@@ -354,7 +354,7 @@ export function RefLabels({ labels, color, membership = null, onBranchHover, com
           onBranchHover={onBranchHover}
           onContextMenu={onContextMenu && ((e) => onContextMenu(l, e))}
           onDoubleClick={onDoubleClick && ((e) => { e.stopPropagation(); onDoubleClick(l, e); })}
-          onClick={(e) => { altClickBranch(tabId, l, e); }}
+          onClick={(e) => { altClickChip(tabId, l, e); }}
           stack={i === 0 ? stack : undefined}
           content={(full) => <ChipContent label={l} full={full} compact={iconOnly(l)} />}
           tip={l.tag ? <TagTip annotation={l.annotation} sha={sha} /> : detachedWorktreeOf(l) ? worktreeTip(detachedWorktreeOf(l)!, sha) : !compact && iconOnly(l) ? `HEAD (detached at ${sha ? sha.slice(0, 7) : 'this commit'})` : undefined}

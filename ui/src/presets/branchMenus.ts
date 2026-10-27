@@ -1,15 +1,16 @@
 import { ChevronsDownUp, Eye, EyeOff, FoldVertical } from 'lucide-react';
 import { useRuntime } from '../app/runtime';
-import type { CommitTarget, MenuEnv, SidebarTarget } from '../menu/menuEnv';
+import type { CommitTarget, MenuEnv, SidebarTarget, TagTarget } from '../menu/menuEnv';
 import { registerMenu } from '../menu/registry';
-import { branchViewOf, cannotHide, unitNameOf } from './altClick';
-import { collapse, hideBranch, hideFolder, isExpanded, showBranch, showFolder } from './store';
+import { branchViewOf, cannotHide, tagHidden, toggleFolder, unitNameOf } from './altClick';
+import { collapse, hideBranch, hideTag, isExpanded, showBranch, showTag } from './store';
 
 /** Hide branch / Show branch in a branch label's menu: the graph chip's, and the sidebar branch
  * row's (the same `commit` menu with its `branch` set). Hidden branches stay listed in the
  * sidebar, which is where Show is usually found. Collapse branch, on a branch expanded this
  * session; Fold merged branch, in a merge's menu when its fold is expanded. Hide folder / Show
- * folder in a sidebar branch folder's menu. */
+ * folder in a sidebar branch or tag folder's menu. Hide tag / Show tag in a tag's menu (its chip's
+ * and its sidebar row's). */
 export const offBranchPresetMenus = [
   registerMenu<CommitTarget, MenuEnv>({
     id: 'presets.hideBranch', kind: 'commit', group: 'view', order: 10,
@@ -32,9 +33,21 @@ export const offBranchPresetMenus = [
     rows: (t, env) => {
       if (t.what !== 'folder') return [];
       const tabId = env.write!.tabId;
+      const [what, all] = t.tags ? ['tag', 'tags'] : ['branch', 'branches'];
       return t.hidden
-        ? [{ kind: 'action', id: 'presets.showFolder', label: 'Show folder', icon: Eye, tooltip: `Show the branches under ${t.folder} in the graph again`, run: () => showFolder(tabId, t.folder) }]
-        : [{ kind: 'action', id: 'presets.hideFolder', label: 'Hide folder', icon: EyeOff, tooltip: `Hide every branch under ${t.folder} from the graph, also those created later`, run: () => hideFolder(tabId, t.folder) }];
+        ? [{ kind: 'action', id: 'presets.showFolder', label: 'Show folder', icon: Eye, tooltip: `Show the ${all} under ${t.folder} in the graph again`, run: () => toggleFolder(tabId, t.folder, true, t.tags) }]
+        : [{ kind: 'action', id: 'presets.hideFolder', label: 'Hide folder', icon: EyeOff, tooltip: `Hide every ${what} under ${t.folder} from the graph, also those created later`, run: () => toggleFolder(tabId, t.folder, false, t.tags) }];
+    },
+  }),
+  // A tag's chip and sidebar row: no rule decides a tag, so only a hand pick hides it.
+  registerMenu<TagTarget, MenuEnv>({
+    id: 'presets.hideTag', kind: 'tag', group: 'view', order: 10,
+    when: (_t, env) => !!env.write,
+    rows: (t, env) => {
+      const tabId = env.write!.tabId;
+      return tagHidden(useRuntime.getState().tabs[tabId]?.graph?.view, t.name)
+        ? [{ kind: 'action', id: 'presets.showTag', label: 'Show tag', icon: Eye, tooltip: `Show ${t.name} in the graph again`, run: () => showTag(tabId, t.name) }]
+        : [{ kind: 'action', id: 'presets.hideTag', label: 'Hide tag', icon: EyeOff, tooltip: `Hide ${t.name}'s label from the graph, and the commits only it keeps`, run: () => hideTag(tabId, t.name) }];
     },
   }),
   // Undoing "Expand in graph" (or going to a commit the preset hid): the preset decides again.
