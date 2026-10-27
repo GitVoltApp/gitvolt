@@ -5,7 +5,7 @@
 
 use crate::layout::{LayoutNode, NodeKind, Parent, LANE_COLORS};
 use crate::payload::{BranchView, CollapsedRow, DecidedBy, FoldMark, GhostBranch, ViewPayload};
-use crate::presets::{CollapsePlacement, PresetAction};
+use crate::presets::PresetAction;
 use crate::view::{newest_tip, run_key, CommitState, Decided, ViewPlan, ViewSpec};
 use crate::walk::CommitMeta;
 use crate::Oid;
@@ -28,10 +28,7 @@ pub(crate) struct ViewRows {
 impl ViewRows {
     pub(crate) fn new(spec: &ViewSpec, d: Decided, plan: ViewPlan, commits: &[CommitMeta], index: &HashMap<Oid, usize>) -> ViewRows {
         let run_at = plan.runs.iter().enumerate().map(|(i, r)| (r.newest, i)).collect();
-        let pulled = match spec.placement {
-            CollapsePlacement::PullTogether => plan.runs.iter().map(|r| r.oldest).collect(),
-            CollapsePlacement::KeepDateOrder => HashSet::new(),
-        };
+        let pulled = plan.runs.iter().filter(|r| r.pulled).map(|r| r.oldest).collect();
         let fold_at = plan.folds.iter().enumerate().map(|(i, f)| (f.merge, i)).collect();
         let ghosts = if spec.ghost_lines { ghost_units(&d, &plan, commits, index) } else { HashMap::new() };
         ViewRows { d, plan, run_at, pulled, fold_at, ghosts }
@@ -533,6 +530,35 @@ mod tests {
         assert_eq!(g.rows.len(), 21);
     }
 
+    /// main: 1 ← 2 ← 3; x's 10 and 11 from 2, origin/x at 12 merging them, then local x on to 15
+    /// and 16, which merges 13 ← 14 (built on 11); y at 16 too.
+    fn lines_sharing_a_commit() -> (GraphRequest, HashMap<Oid, CommitMeta>) {
+        let mut cs = vec![c(1, &[], 100, "Initial commit"), c(2, &[1], 200, "c2"), c(3, &[2], 300, "c3")];
+        cs.extend([c(10, &[2], 1000, "x10"), c(11, &[2], 1100, "x11"), c(12, &[10, 11], 1200, "x12"), c(13, &[11], 1300, "x13"), c(14, &[13], 1400, "x14")]);
+        cs.extend([c(15, &[12], 1500, "x15"), c(16, &[15, 14], 1600, "x16")]);
+        request([local("main", 3), local("x", 16), remote("origin", "x", 12), local("y", 16)], [worktree("/demo/x", 3, "main", true)], cs, 100)
+    }
+
+    #[test]
+    fn a_pulled_together_oldest_stays_at_its_date_when_a_row_below_reaches_it() {
+        // With y hidden, x has 16 and everything under it to itself: 15, 14 and 13 collapse into a
+        // ⋮ row down to 11, which origin/x's 12 merged. Pulled up under the ⋮ row, 11 would sit
+        // above 12, whose line to it would run on down past the last row instead: 11 stays at its
+        // date, as with Keep date order.
+        let (req, commits) = lines_sharing_a_commit();
+        let collapse = rule(PresetAction::Collapse, "x");
+        for hide in [picked(&["y"]), view(vec![rule(PresetAction::Hide, "y")])] {
+            let spec = ViewSpec { rules: hide.rules.iter().cloned().chain([collapse.clone()]).collect(), ..hide };
+            for placement in [CollapsePlacement::PullTogether, CollapsePlacement::KeepDateOrder] {
+                let g = build(&with(req.clone(), ViewSpec { placement, ..spec.clone() }), &commits).unwrap_or_else(|e| panic!("{placement:?}: {e}"));
+                assert_eq!(summaries(&g), ["x16", "⋮", "x12", "x11", "x10", "c3", "c2", "Initial commit"], "{placement:?}");
+                assert_eq!(g.rows[1].collapsed.as_ref().map(|r| r.count), Some(3));
+            }
+        }
+        // Shown, y keeps every commit a row.
+        assert_eq!(build(&with(req, view(vec![collapse])), &commits).unwrap().rows.len(), 10);
+    }
+
     /// main: 1 ← 2 ← 3 (at 900); x (10..=12) and w (20..=21) from 2, newer than 3.
     fn two_off_main() -> (GraphRequest, HashMap<Oid, CommitMeta>) {
         let mut cs = vec![c(1, &[], 100, "Initial commit"), c(2, &[1], 200, "c2"), c(3, &[2], 900, "c3")];
@@ -610,9 +636,9 @@ mod tests {
     }
 
     /// Random histories (branches forked anywhere, merged into main and into each other, stashes,
-    /// worktrees, window cuts) under random presets, also with the linked worktree's branch hidden
-    /// by hand: every graph's lines stay continuous (`build` runs the continuity check in tests)
-    /// and no WIP loses its commit.
+    /// worktrees, window cuts) under random presets, also with the linked worktree's branch and
+    /// another hidden by hand: every graph's lines stay continuous (`build` runs the continuity
+    /// check in tests) and no WIP loses its commit.
     #[test]
     fn random_histories_lay_out_under_any_preset() {
         let mut seed = 0x2545_f491_4f6c_dd1du64;
@@ -624,7 +650,7 @@ mod tests {
         };
         let names = ["main", "a", "b", "c", "d", "e"];
         let (mut runs, mut folds, mut ghosts, mut split, mut tails, mut stubs) = (0, 0, 0, 0, 0, 0);
-        for _ in 0..120 {
+        for _ in 0..400 {
             let mut commits = vec![c(1, &[], 100, "Initial commit")];
             let mut tips: Vec<Option<u8>> = vec![Some(1), None, None, None, None, None];
             let mut remotes: Vec<Option<u8>> = vec![None; names.len()];
@@ -682,10 +708,12 @@ mod tests {
                     placement: [CollapsePlacement::KeepDateOrder, CollapsePlacement::PullTogether][rnd(2)],
                     ..view(rules)
                 };
-                // Also with the linked worktree's branch hidden by hand: its WIP goes with it.
+                // Also with the linked worktree's branch hidden by hand (its WIP goes with it), and
+                // another branch: what it shares with a collapsed one is then that one's alone.
                 let linked = req.input.worktrees.get(1).and_then(|w| w.branch.as_deref()?.strip_prefix("refs/heads/"));
-                let hiding = linked.map(|b| ViewSpec { picks: BranchPicks { shown: vec![], hidden: vec![b.into()] }, ..spec.clone() });
-                for (spec, hides) in hiding.iter().map(|s| (s, true)).chain([(&spec, false)]) {
+                let hidden = linked.into_iter().chain([names[1 + rnd(names.len() - 1)]]).map(String::from).collect();
+                let hiding = ViewSpec { picks: BranchPicks { shown: vec![], hidden }, ..spec.clone() };
+                for (spec, hides) in [(&hiding, true), (&spec, false)] {
                     let g = build(&with(req.clone(), spec.clone()), &store).unwrap_or_else(|e| panic!("{e}\n{spec:?}"));
                     let ids: Vec<&str> = g.rows.iter().map(|r| r.id.as_str()).collect();
                     for w in g.rows.iter().filter(|r| r.kind == NodeKind::Wip) {

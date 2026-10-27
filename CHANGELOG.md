@@ -31,6 +31,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   it, and that worktree's WIP row leaves the graph with it; the sidebar still lists the worktree.
   A preset's rules still keep checked-out branches shown, and the tab's own checked-out branch
   always shows. (#8)
+- **A collapsed branch's line no longer runs off the bottom of the graph.** With Pull together,
+  hiding a branch that shares commits with a collapsed one could put a collapsed run's oldest
+  commit above a commit of the same branch that has it as parent, whose line then ran on past the
+  last row. That oldest commit now stays at its date. A run that a commit of the branch's other
+  line (its remote one, say) has a parent in now shows in full, whatever the placement.
 
 ## [1.0.0] - 2026-10-23
 
