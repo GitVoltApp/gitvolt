@@ -84,6 +84,10 @@ pub struct RefsIn {
     /// The MR/PR heads Compare fetched: graph tips, with no label.
     #[ts(type = "Array<string>")]
     pub compare_heads: Vec<Oid>,
+    /// Each remote's tags as its last fetch's `git ls-remote --tags` listed them: tag name → the
+    /// commit it peels to. A remote not in it is unknown (never fetched, or its listing failed).
+    #[ts(type = "Record<string, Record<string, string>>")]
+    pub remote_tags: HashMap<String, HashMap<String, Oid>>,
 }
 
 /// One worktree as `git worktree list` has it.

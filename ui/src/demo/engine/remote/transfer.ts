@@ -62,7 +62,7 @@ export function transferTime(ctx: DemoContext, op: OpHandle): Promise<void> {
  *  answers, and a Cancel before the refs are written leaves them all as they were. `reflog`: the
  *  command line git's reflog names (`fetch …`, without `git`). A ref rejected as a non-fast-forward
  *  throws `NonFastForward` once the others are written; `movedBefore(e)` lists those. */
-export async function fetchInto(ctx: DemoContext, demo: DemoRepo, remote: string, o: { prune: boolean; extra?: { src: string; dst: string }; op?: OpHandle; reflog?: string }): Promise<{ changed: boolean; updates: RefUpdate[] }> {
+export async function fetchInto(ctx: DemoContext, demo: DemoRepo, remote: string, o: { prune: boolean; extra?: { src: string; dst: string }; op?: OpHandle; reflog?: string }): Promise<{ changed: boolean; updates: RefUpdate[]; tagsChanged: boolean }> {
   const url = (await demo.config(`remote.${remote}.url`)) ?? fail('NotFound', `No remote ${remote}`);
   const fs = demo.fs;
   const gitdir = await resolveRemote(ctx, fs, url, 'fetching from');
@@ -136,7 +136,18 @@ export async function fetchInto(ctx: DemoContext, demo: DemoRepo, remote: string
     movedBy.set(e, updates);
     throw e;
   }
-  return { changed: updates.length > 0, updates };
+  // The core lists the remote's tags after each fetch of it (`git ls-remote --tags`), not of an
+  // MR head (remote_tags.rs).
+  const tagsChanged = !o.extra && demo.setRemoteTags(remote, await listTags(fs, gitdir, theirs));
+  return { changed: updates.length > 0, updates, tagsChanged };
+}
+
+/** What `git ls-remote --tags` lists of the remote's refs `theirs`: each tag and the commit it
+ *  peels to. */
+async function listTags(fs: DemoRepo['fs'], gitdir: string, theirs: Map<string, string>): Promise<Map<string, string>> {
+  const tags = new Map<string, string>();
+  for (const [name, oid] of theirs) if (name.startsWith('refs/tags/')) tags.set(name.slice('refs/tags/'.length), await peelIn(fs, gitdir, oid));
+  return tags;
 }
 
 /** What a pushed ref's rejection says, as git's line after `To <url>` (the caller words it as the core). */

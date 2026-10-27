@@ -175,6 +175,14 @@ export function pushTagsIntent(o: { remote: string; tag: string | null }): Write
             }
           }
           if (clash) fail('NonFastForward', o.tag !== null ? `${o.remote} already has a different tag ${o.tag}` : `${o.remote} already has different tags with some of these names`);
+          // The remote now has each one at its commit here (remote_tags.rs).
+          const pushed: [string, string | null][] = [];
+          for (const n of names) {
+            const oid = demo.resolveRef(refs, n);
+            const t = oid === null ? null : await demo.refTarget(oid);
+            if (t) pushed.push([n.slice('refs/tags/'.length), t.commit]);
+          }
+          demo.noteRemoteTags(o.remote, pushed);
           return moved;
         });
       } finally {
@@ -214,6 +222,7 @@ export async function deleteRemoteTag(ctx: DemoContext, demo: DemoRepo, remote: 
     ctx.emit({ type: 'opRemote', op: o.op.id, lines: classify(['warning: deleting a non-existent ref']) });
     fail('NotFound', `${remote} has no tag ${tag}`);
   }
+  demo.noteRemoteTags(remote, [[tag, null]]);
 }
 
 /** The core's `PullIntent`: `branch` from its upstream (`remote`'s `merge` branch), fetched first.
@@ -244,7 +253,9 @@ export function pullIntent(o: { branch: string; remote: string; merge: string; m
       // The core's argv: `fetch <remote> --prune --no-prune-tags --progress`; git's reflog names it.
       let changed = false;
       try {
-        changed = (await fetchInto(ctx, demo, o.remote, { prune: ctx.state.settings.prune, op, reflog: `fetch ${o.remote} ${prune} --no-prune-tags --progress` })).changed;
+        const got = await fetchInto(ctx, demo, o.remote, { prune: ctx.state.settings.prune, op, reflog: `fetch ${o.remote} ${prune} --no-prune-tags --progress` });
+        // Its tag list too (remote_tags.rs).
+        changed = got.changed || got.tagsChanged;
       } catch (e) {
         // Even a failed fetch may have moved some.
         if (movedBefore(e).length > 0) ctx.emit({ type: 'refsUpdated', repo });

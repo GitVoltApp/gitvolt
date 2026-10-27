@@ -30,6 +30,15 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   branch's; a commit a shown branch or tag still reaches stays. Going to a hidden tag shows it
   again for the session. The preset settings list hidden tags with a tag icon.
 
+### - **Tags say where they are.** After each fetch, GitVolt also lists each fetched remote's tags
+
+  (`git ls-remote --tags`), so a tag's chip in the graph shows the source icons a branch's does:
+  each remote that has the tag at the same commit, the laptop when no remote has it, and in
+  orange a remote whose tag of that name points at another commit. A tag's menu offers Push only
+  to a remote that doesn't already have it, and Delete's Remote and Both only for a remote that
+  has it. Pushing or deleting a tag in GitVolt updates its chip at once. Before the first fetch a
+  tag shows no source icon.
+
 ### Changed
 
 - **A right-click menu too tall to fit below the pointer shifts up just enough** instead of

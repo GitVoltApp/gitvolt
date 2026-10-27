@@ -338,7 +338,7 @@ pub fn walk_order(request: &GraphRequest, commits: &HashMap<Oid, CommitMeta>) ->
 mod tests {
     use super::*;
     use crate::input::{GraphInput, GraphRequest, HeadIn, RefIn, RefKind, RefsIn, StashIn, WorktreeIn};
-    use crate::payload::WipCounts;
+    use crate::payload::{HostKind, WipCounts};
     use crate::NodeKind;
 
     fn id(n: u8) -> Oid {
@@ -579,5 +579,32 @@ mod tests {
         let commits: HashMap<Oid, CommitMeta> = cs.into_iter().map(|c| (c.id, c)).collect();
         assert_eq!(walk_order(&req, &commits), [id(2), id(1), id(3)]);
         assert_eq!(summaries(&build(&req, &commits).unwrap()), ["C1", "C2", "M"]);
+    }
+
+    /// A tag chip's remotes: none until a remote's tags are known; then each known (and still
+    /// configured) remote, by name, with the tag at the same commit, another, or missing.
+    #[test]
+    fn a_tag_chip_says_where_its_tag_is_once_a_remotes_tags_are_known() {
+        use crate::payload::{TagRemoteLabel, TagRemoteState};
+        let (mut req, commits) = history();
+        let tag = |name: &str, n: u8| RefIn { full_name: format!("refs/tags/{name}"), short_name: name.into(), kind: RefKind::Tag, ..local(name, n) };
+        req.input.refs.refs.extend([tag("v1", 2), tag("v2", 4)]);
+        let chips = |g: &GraphPayload, name: &str| g.labels.iter().find(|l| l.tag && l.name == name).unwrap().tag_remotes.clone();
+        let g = build(&req, &commits).unwrap();
+        assert_eq!(chips(&g, "v1"), None, "no remote's tags known: unknown");
+        assert!(g.labels.iter().all(|l| l.tag_remotes.is_none()), "never on a branch chip");
+
+        let refs = &mut req.input.refs;
+        refs.remote_hosts = HashMap::from([("origin".to_string(), HostKind::GitLab), ("fork".to_string(), HostKind::Generic)]);
+        refs.remote_host_names = HashMap::from([("origin".to_string(), "gitlab.example.com".to_string())]);
+        refs.remote_tags = HashMap::from([
+            ("origin".to_string(), HashMap::from([("v1".to_string(), id(2)), ("v2".to_string(), id(3))])),
+            ("fork".to_string(), HashMap::new()),
+            ("gone".to_string(), HashMap::from([("v1".to_string(), id(2))])),
+        ]);
+        let g = build(&req, &commits).unwrap();
+        let on = |remote: &str, state, commit: Option<String>| TagRemoteLabel { remote: remote.into(), host: (remote == "origin").then(|| "gitlab.example.com".into()), host_kind: if remote == "origin" { HostKind::GitLab } else { HostKind::Generic }, state, commit };
+        assert_eq!(chips(&g, "v1"), Some(vec![on("fork", TagRemoteState::Missing, None), on("origin", TagRemoteState::Same, None)]), "a remote no longer configured is left out");
+        assert_eq!(chips(&g, "v2"), Some(vec![on("fork", TagRemoteState::Missing, None), on("origin", TagRemoteState::Other, Some(id(3).to_string()))]));
     }
 }

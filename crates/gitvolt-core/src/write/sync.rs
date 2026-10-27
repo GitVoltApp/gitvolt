@@ -339,8 +339,10 @@ impl WriteIntent for PullIntent {
         let mut res = net.api.cli.run(inv).await;
         let _ = progress.await;
         *self.server.lock().unwrap_or_else(|e| e.into_inner()) = remote_output::capture(net.api, net.op.id, &mut res);
+        // The remote's tags, as every fetch lists them (remote_tags.rs).
+        let tags_changed = res.is_ok() && net.api.refresh_remote_tags(net.h, net.op.repo.unwrap_or_default(), std::slice::from_ref(&self.remote), &net.op.cancel).await;
         // Even a failed fetch may have moved some.
-        if crate::netops::ref_state_async(net.h.repo.clone()).await.is_ok_and(|after| after != before) {
+        if tags_changed || crate::netops::ref_state_async(net.h.repo.clone()).await.is_ok_and(|after| after != before) {
             for id in net.api.repo_writes(net.h).ids() {
                 net.api.bus.emit(crate::events::AppEvent::RefsUpdated { repo: id });
             }

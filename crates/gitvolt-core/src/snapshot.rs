@@ -39,13 +39,15 @@ pub struct BuildOptions {
     pub forks: ForkFacts,
     /// The branch preset to apply (`GraphInput::view`); `None` (All): the plain graph.
     pub view: Option<ViewSpec>,
+    /// Each remote's tags as the last fetch listed them (`remote_tags.rs`): the tag chips' sources.
+    pub remote_tags: crate::remote_tags::Known,
 }
 
 pub use gitvolt_graph::ForkFacts;
 
 impl Default for BuildOptions {
     fn default() -> Self {
-        Self { limit: DEFAULT_COMMIT_LIMIT, pinned_ref: None, no_pin: false, wip_cache: None, rescan: false, active: None, walk_cache: None, forks: ForkFacts::default(), view: None }
+        Self { limit: DEFAULT_COMMIT_LIMIT, pinned_ref: None, no_pin: false, wip_cache: None, rescan: false, active: None, walk_cache: None, forks: ForkFacts::default(), view: None, remote_tags: Default::default() }
     }
 }
 
@@ -377,7 +379,14 @@ fn refs_input(r: RepoRefs) -> RefsIn {
         push_remotes: r.push_remotes,
         remote_ids: r.remote_ids,
         compare_heads: r.compare_heads.into_iter().map(to_oid).collect(),
+        remote_tags: HashMap::new(),
     }
+}
+
+/// The known remote tags as the graph takes them (an unparsable commit is left out).
+fn remote_tags_input(known: &crate::remote_tags::Known) -> HashMap<String, HashMap<String, Oid>> {
+    let oid = |hex: &String| ObjectId::from_hex(hex.as_bytes()).ok().map(to_oid);
+    known.iter().map(|(remote, tags)| (remote.clone(), tags.iter().filter_map(|(t, c)| Some((t.clone(), oid(c)?))).collect())).collect()
 }
 
 fn worktrees_input(worktrees: &[Worktree]) -> Vec<WorktreeIn> {
@@ -441,7 +450,8 @@ fn assemble(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, Wip
 
 /// The graph pipeline's input for this repository, and the walk (through the walk cache).
 fn graph_input(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, WipCounts)>, workdir: &Path, opts: &BuildOptions) -> Result<(GraphInput, Arc<WalkResult>), GbError> {
-    let refs = refs_input(read_refs(repo)?);
+    let mut refs = refs_input(read_refs(repo)?);
+    refs.remote_tags = remote_tags_input(&opts.remote_tags);
     let worktrees_in = worktrees_input(worktrees);
     // The tips come from the handle's own HEAD, whichever worktree is active: the active one's
     // HEAD is among the worktrees' anyway, and the same tips keep the walk cache valid across

@@ -2,6 +2,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { RefLabel } from '../api/gen/RefLabel';
 import type { RemoteRefLabel } from '../api/gen/RemoteRefLabel';
+import type { TagRemoteLabel } from '../api/gen/TagRemoteLabel';
+import type { TagRemoteState } from '../api/gen/TagRemoteState';
+import { chipWidth } from './chipFit';
 import { chipRefs } from './membership';
 import { RefLabels } from './RefLabels';
 import { useBranchDrag } from './branchDrag';
@@ -457,5 +460,56 @@ describe('branch drag', () => {
     expect(row('c').classList).toContain('is-drop-target');
     act(() => useBranchDrag.setState({ drag: null }));
     expect(container.querySelectorAll('.is-drop-target, .is-drag-source')).toHaveLength(0);
+  });
+});
+
+describe("a tag chip's sources (the remotes' known tags)", () => {
+  const on = (remote: string, state: TagRemoteState, commit?: string): TagRemoteLabel => ({ remote, host: null, hostKind: 'generic', state, ...(commit ? { commit } : {}) });
+  const tag = (tagRemotes?: TagRemoteLabel[]): RefLabel => ({ row: 0, name: 'v1', local: null, tag: true, isHead: false, worktree: null, checkedOut: null, remotes: [], ...(tagRemotes && { tagRemotes }) });
+  const icons = (c: HTMLElement) => [...c.querySelectorAll('.ref-labels > .ref-label > .ref-icon')];
+  /** The icon's own tooltip (the chip's tag tooltip opens with it). */
+  const tipOf = (icon: Element) => {
+    fireEvent.mouseEnter(icon);
+    const texts = screen.getAllByRole('tooltip').map((t) => t.textContent).filter((t) => !t?.startsWith('Lightweight tag'));
+    fireEvent.mouseLeave(icon);
+    return texts.join(' | ');
+  };
+
+  it('unknown (no remote listed yet): the tag icon alone, no source icon', () => {
+    const { container } = render(<RefLabels labels={[tag()]} color={0} />);
+    expect(screen.getByLabelText('tag')).toBeInTheDocument();
+    expect(icons(container)).toHaveLength(0);
+  });
+
+  it('on a remote at this commit: its icon, `origin → v1 (Remote)`; one lacking it shows nothing', () => {
+    const { container } = render(<RefLabels labels={[tag([on('fork', 'missing'), on('origin', 'same')])]} color={0} />);
+    expect(icons(container).map((i) => i.querySelector('[aria-label]')!.getAttribute('aria-label'))).toEqual(['remote origin']);
+    expect(tipOf(icons(container)[0])).toBe('origin → v1 (Remote)');
+    expect(screen.queryByLabelText('local only')).toBeNull();
+  });
+
+  it('on no known remote: the laptop, `v1 (Local only)`', () => {
+    const { container } = render(<RefLabels labels={[tag([on('origin', 'missing')])]} color={0} />);
+    expect(icons(container)).toHaveLength(1);
+    expect(screen.getByLabelText('local only')).toBeInTheDocument();
+    expect(tipOf(icons(container)[0])).toBe('v1 (Local only)');
+  });
+
+  it("at another commit there: that remote's icon in orange, its tooltip naming the commit, and the laptop", () => {
+    const { container } = render(<RefLabels labels={[tag([on('origin', 'other', 'b'.repeat(40))])]} color={0} />);
+    const [laptop, other] = icons(container);
+    expect(laptop.querySelector('[aria-label="local only"]')).not.toBeNull();
+    expect(other).toHaveClass('ref-icon-other');
+    expect(other.querySelector('[aria-label="remote origin"]')).not.toBeNull();
+    expect(tipOf(other)).toBe("origin's v1 points at another commit (bbbbbb)");
+  });
+
+  it('the hover stack rows show them too, and the chip is measured with them', () => {
+    const many = [tag([on('origin', 'same')]), { ...tag([on('origin', 'missing')]), name: 'v2' }];
+    const { container } = render(<RefLabels labels={many} color={0} />);
+    fireEvent.mouseEnter(container.querySelector('.ref-labels > .ref-label')!);
+    const rows = [...container.querySelectorAll('.ref-stack > .ref-stack-row')];
+    expect(rows.map((r) => [...r.querySelectorAll('.ref-icon [aria-label]')].map((i) => i.getAttribute('aria-label')))).toEqual([['remote origin'], ['local only']]);
+    expect(chipWidth(tag([on('origin', 'same'), on('fork', 'other')]), '12px sans-serif')).toBeGreaterThan(chipWidth(tag(), '12px sans-serif'));
   });
 });

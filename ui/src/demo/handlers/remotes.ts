@@ -45,13 +45,17 @@ async function fetchRepo(ctx: DemoContext, repo: number, background: boolean, re
   const run = async (): Promise<FetchOutcome> => {
     ctx.emit({ type: 'opStarted', op: op.id, kind: 'fetch', repo, label: demo.name, interactive: !background });
     let changed = false;
+    // A remote's tag list that changed changes the tag chips too.
+    let tagsChanged = false;
     try {
       const failed: { name: string; error: GbError }[] = [];
       for (const n of targets) {
         // git's progress line for each of several remotes.
         if (targets.length > 1) ctx.emit({ type: 'opProgress', op: op.id, phase: `Fetching ${n}`, percent: null });
         try {
-          changed = (await fetchInto(ctx, demo, n, { prune, ...(extra ? { extra } : {}), op, reflog: reflogOf(n) })).changed || changed;
+          const got = await fetchInto(ctx, demo, n, { prune, ...(extra ? { extra } : {}), op, reflog: reflogOf(n) });
+          changed = got.changed || changed;
+          tagsChanged = got.tagsChanged || tagsChanged;
         } catch (e) {
           if (movedBefore(e).length > 0) changed = true;
           const err = asGbError(e);
@@ -63,13 +67,13 @@ async function fetchRepo(ctx: DemoContext, repo: number, background: boolean, re
       if (extra && (await dropCompareRefs(ctx, repo, extra.dst))) changed = true;
       // git goes on past a remote it can't fetch; the first one's message, each named with its reason.
       if (failed.length > 0) throw { ...failed[0].error, detail: { kind: 'fetchFailed', remotes: failed.map((f) => ({ name: f.name, reason: reasonOf(f.error) })) } } satisfies GbError;
-      if (changed) ctx.emit({ type: 'refsUpdated', repo });
+      if (changed || tagsChanged) ctx.emit({ type: 'refsUpdated', repo });
       ctx.emit({ type: 'opFinished', op: op.id, kind: 'fetch', repo, outcome: 'ok', message: null, command });
       return { status: 'done', changed, server: { lines: 0, warning: null }, op: op.id };
     } catch (e) {
       const err = asGbError(e);
       // The demo has no watcher to tell the remotes fetched before the failure moved.
-      if (changed) ctx.emit({ type: 'refsUpdated', repo });
+      if (changed || tagsChanged) ctx.emit({ type: 'refsUpdated', repo });
       // A background fetch a user op cancelled: the next interval retries; nothing to show.
       if (err.kind === 'Cancelled' && background) {
         ctx.emit({ type: 'opFinished', op: op.id, kind: 'fetch', repo, outcome: 'skipped', message: null, command });

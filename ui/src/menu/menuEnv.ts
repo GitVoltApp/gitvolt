@@ -9,6 +9,7 @@ import type { OpenerPayload } from '../api/gen/OpenerPayload';
 import type { RefLabel } from '../api/gen/RefLabel';
 import type { RemoteRefLabel } from '../api/gen/RemoteRefLabel';
 import type { SidebarPayload } from '../api/gen/SidebarPayload';
+import type { TagRemoteLabel } from '../api/gen/TagRemoteLabel';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { copyText } from '../api/transport';
 import { flushSaves, useAppState } from '../app/state';
@@ -187,7 +188,13 @@ export interface WipTarget { worktree: string; name: string | null; active: bool
 // --- end 2C T9 ---
 
 /** A tag label chip (`tag` kind). */
-export interface TagTarget { name: string; fullName: string; sha: string }
+export interface TagTarget {
+  name: string;
+  fullName: string;
+  sha: string;
+  /** Its standing on each remote whose tags are known (`RefLabel.tagRemotes`); absent: none is. */
+  remotes?: readonly TagRemoteLabel[];
+}
 
 /** The Monaco context menu's target (`monaco` kind): the diff or file editor's selection, at the
  * commit (or working tree, `sha: null`) the open file shows. */
@@ -581,7 +588,7 @@ export function wipMenu(store: RepoViewStore, row: RowPayload): () => MenuRow[] 
 /** A right-click on a tag label chip. */
 export function tagMenu(store: RepoViewStore, sha: string, label: RefLabel): () => MenuRow[] {
   afterOpening(store);
-  return () => buildMenu<TagTarget, MenuEnv>('tag', { name: label.name, fullName: `refs/tags/${label.name}`, sha }, fileMenuEnv(store));
+  return () => buildMenu<TagTarget, MenuEnv>('tag', { name: label.name, fullName: `refs/tags/${label.name}`, sha, remotes: label.tagRemotes }, fileMenuEnv(store));
 }
 
 /** A right-click on a graph label chip (`GraphView`/`RefLabels`): dispatches to the commit or tag
@@ -682,8 +689,11 @@ export function sidebarItemMenu(store: RepoViewStore, item: SideItem, tab: strin
         const mrRefs = sha ? s.graph.rows[s.indexById.get(sha) ?? -1]?.mrRefs ?? [] : [];
         return joinGroups(sha ? buildMenu<CommitTarget, MenuEnv>('commit', { sha, mrRefs, isWip: false, isStash: false, branch }, env) : [], view({ what: 'ref', sha }));
       }
-      case 'tag':
-        return joinGroups(sha ? buildMenu<TagTarget, MenuEnv>('tag', { name: item.tag.name, fullName: item.tag.fullName, sha }, env) : [], view({ what: 'ref', sha }));
+      case 'tag': {
+        // Its remotes as its graph chip has them (none outside the loaded window: unknown).
+        const remotes = s.graph.labels.find((l) => l.tag && l.name === item.tag.name)?.tagRemotes;
+        return joinGroups(sha ? buildMenu<TagTarget, MenuEnv>('tag', { name: item.tag.name, fullName: item.tag.fullName, sha, remotes }, env) : [], view({ what: 'ref', sha }));
+      }
       case 'stash':
         return view({ what: 'stash', sha: item.stash.id, message: item.stash.message });
       case 'worktree':

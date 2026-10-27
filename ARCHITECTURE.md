@@ -325,6 +325,14 @@ window is minimized and caught up on focus. The fetch is `git fetch --all` with 
 only remote-tracking refs and objects. Like a plain `git fetch`, it then lets git run its auto
 maintenance. A successful background fetch shows only in the activity log.
 
+**Remote tags** (`remote_tags.rs`). git keeps no remote-tracking refs for tags, so every fetch
+(background, Fetch, Pull's own) then runs `git ls-remote --tags <remote>` for each remote it
+fetched, under a non-interactive op of its own (it never prompts), and stores each remote's tag →
+peeled commit per repository: in memory and in `<data>/remote-tags/`. A failed listing keeps the
+last one and is only logged. A tag push or delete updates a known remote's list without a request.
+The graph takes it as `RefsIn::remote_tags`, and each tag chip gets `RefLabel::tag_remotes` (same,
+other or missing per known remote; absent while none is known).
+
 ## Diffs
 
 **Text** diffs use Monaco's diff editor (`ui/src/diff/monaco/host.ts`): inline or side by side,
@@ -433,6 +441,7 @@ arrives as `updateChanged` events.
 | App settings (fetch interval, prune, commit limit, date format, Gravatar, window geometry, …) | `$XDG_CONFIG_HOME/gitvolt/settings.json` |
 | Profiles (tabs, recent repos, repos folder, editor, extra gitconfig, host overrides, per-repo settings, file colours (by common git dir)) | `$XDG_CONFIG_HOME/gitvolt/profiles/<id>/profile.json` |
 | Undo journal | `$XDG_DATA_HOME/gitvolt/journal/` |
+| Remotes' tags (the last fetch's listing, per repository) | `$XDG_DATA_HOME/gitvolt/remote-tags/` |
 | Forge cache | `$XDG_DATA_HOME/gitvolt/forge-cache/` |
 | Forge tokens (only without a Secret Service) | `$XDG_DATA_HOME/gitvolt/forge-tokens` |
 | Log files | `$XDG_CACHE_HOME/gitvolt/logs/gitvolt.YYYY-MM-DD.log` |

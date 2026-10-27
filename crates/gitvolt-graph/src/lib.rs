@@ -32,7 +32,7 @@ pub use message_refs::{parse_message_refs, MAX_MESSAGE_REFS};
 pub use oid::Oid;
 pub use payload::{
     BranchState, BranchView, CollapsedRow, DecidedBy, FoldMark, ForkDetection, ForkPayload, GhostBranch, GraphPayload, GraphWorktree, HeadPayload, HostKind, InProgress, PresetPreview, RefLabel,
-    RemoteRefLabel, RevealPayload, RevealTag, RowPayload, TagAnnotation, ViewPayload, WipCounts, WipPayload,
+    RemoteRefLabel, RevealPayload, RevealTag, RowPayload, TagAnnotation, TagRemoteLabel, TagRemoteState, ViewPayload, WipCounts, WipPayload,
 };
 pub use presets::{Author, BranchPicks, BranchPreset, CollapsePlacement, Matcher, PresetAction, PresetScope, PresetSlot, Rule};
 pub use view::{hidden_owner, preview, reveal, ViewSpec};

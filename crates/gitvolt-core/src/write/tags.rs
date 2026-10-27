@@ -140,6 +140,7 @@ impl WriteIntent for DeleteTag {
                 Ok(out) if out.stderr.to_ascii_lowercase().contains("deleting a non-existent ref") => return Err(missing()),
                 Ok(_) => {}
             }
+            cx.api.note_remote_tags(&cx.h.common_dir, r, vec![(self.name.clone(), None)]);
             cx.touch(ChangeKind::Refs);
             if self.local {
                 cx.barrier_below(&format!("delete tag {} from {r}", self.name), OpKind::Push)?;
@@ -230,6 +231,9 @@ impl WriteIntent for PushTags {
             }
             e
         })?;
+        // The remote now has each pushed tag at its commit here (a different one would have been refused).
+        let pushed = crate::remote_tags::local_tags(cx.root, self.tag.as_deref()).into_iter().map(|(t, c)| (t, Some(c))).collect();
+        cx.api.note_remote_tags(&cx.h.common_dir, &self.remote, pushed);
         let server = remote_output::summarize(&remote_output::parse(&out.stderr));
         Ok(TagPushOutcome { op: cx.op.id, remote: self.remote.clone(), tag: self.tag.clone(), up_to_date: out.stderr.contains("Everything up-to-date"), server })
     }

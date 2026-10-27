@@ -20,6 +20,9 @@ core.
   `git fetch --all --prune --no-prune-tags --no-write-fetch-head`. It fetches once when the tab
   opens, if the last fetch is older than the interval, and then on every interval: every minute
   by default.
+- After it, GitVolt runs `git ls-remote --tags <remote>` for each remote it fetched, to show which
+  tags each remote has (git keeps no copy of a remote's tags). This contacts the same remotes in
+  the same way, one more round trip each.
 - It skips ticks while the window is minimized. Hidden tabs never fetch.
 - It never prompts. A fetch that needs credentials is skipped.
 - Sends: what `git fetch` sends to each of the repository's remotes, including any credentials
@@ -35,7 +38,10 @@ core.
   submodule from the URL its `.gitmodules` names), and in a repository that uses Git LFS, LFS:
   Pull, LFS: Fetch and a file's Download (`git lfs`, which asks the remote's LFS server for the
   files, with the same credentials).
-- Sends: what the git command sends. A push uploads your commits.
+- Sends: what the git command sends. A push uploads your commits. A Fetch or Pull is followed by
+  `git ls-remote --tags` to each remote it fetched, as for the background fetch; it never asks
+  for credentials, so without a credential helper or ssh agent the tags' remote state stays
+  unknown.
 - Turn off: don't start them.
 - Reads never fetch from a remote. They run with `GIT_NO_LAZY_FETCH=1`, so a partial clone
   doesn't download missing objects while GitVolt reads it.
@@ -242,6 +248,7 @@ Paths are the XDG defaults. `$XDG_CONFIG_HOME`, `$XDG_CACHE_HOME` and `$XDG_DATA
 | `~/.local/share/gitvolt/forge-tokens` | Forge tokens, only when no keyring was available. |
 | `~/.local/share/gitvolt/forge-cache/` | The last MR/PR lists and project data per account, so a restart shows them at once. Removing an account deletes its host's folder. |
 | `~/.local/share/gitvolt/journal/`, `rewrites/`, `tmp/` | The undo journal per worktree, the notes Push uses after a rewrite, and temporary index files. |
+| `~/.local/share/gitvolt/remote-tags/` | Per repository, the tag names and commit ids each remote listed at the last fetch, so the graph's tag chips show where each tag is after a restart. |
 | `~/.cache/gitvolt/logs/` | Log files: daily, the newest 7 kept, at most 50 MB in all, redacted. They contain repository paths, git commands and error messages. |
 | `~/.cache/gitvolt/avatars/`, `forge-avatars/` | Avatar and Markdown image caches, named by SHA-256 hashes. |
 | `~/.cache/gitvolt/updates/` | The downloaded update package, while it waits to be installed (0700). Each download replaces the last. |

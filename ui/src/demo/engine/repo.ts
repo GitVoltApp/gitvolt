@@ -76,6 +76,9 @@ export class DemoRepo {
   private readonly layout: GraphLayout;
   private readonly linkedGitdirs = new Map<string, string>();
   private readonly reachable = new Map<string, Set<string>>();
+  /** Each remote's tags as its last fetch listed them (the core's remote_tags.rs): tag → the
+   * commit it peels to. A remote not here is unknown; the demo starts with none known. */
+  private readonly remoteTags = new Map<string, Map<string, string>>();
 
   private constructor(fs: MemFs, name: string, layout: GraphLayout) {
     this.fs = fs;
@@ -83,6 +86,28 @@ export class DemoRepo {
     this.layout = layout;
     this.path = demoRoot(name, 'repo');
     this.gitdir = `${this.path}/.git`;
+  }
+
+  /** A fetch listed `remote`'s tags: whether that changed what was known. */
+  setRemoteTags(remote: string, tags: Map<string, string>): boolean {
+    const was = this.remoteTags.get(remote);
+    this.remoteTags.set(remote, tags);
+    return !was || was.size !== tags.size || [...tags].some(([t, c]) => was.get(t) !== c);
+  }
+
+  /** A tag push or delete succeeded: on `remote`, each tag now peels to its commit (null: gone).
+   * Only a remote whose tags are known (one tag doesn't tell the rest). Whether that changed it. */
+  noteRemoteTags(remote: string, tags: [string, string | null][]): boolean {
+    const known = this.remoteTags.get(remote);
+    if (!known) return false;
+    let changed = false;
+    for (const [t, c] of tags) {
+      if ((known.get(t) ?? null) === c) continue;
+      if (c === null) known.delete(t);
+      else known.set(t, c);
+      changed = true;
+    }
+    return changed;
   }
 
   /** The main worktree (`path`'s other name, as isomorphic-git's `dir`). */
@@ -341,7 +366,8 @@ export class DemoRepo {
   async graphRefs(files: RefFile[], refs: Map<string, RefFile>): Promise<RefsIn> {
     const remotes = await this.remotes();
     const names = remotes.map((r) => r.name);
-    const out: RefsIn = { head: this.head(refs), refs: [], remoteHeads: {}, remoteHosts: {}, remoteHostNames: {}, stashes: this.stashes(), pushRemotes: {}, remoteIds: {}, compareHeads: [] };
+    const out: RefsIn = { head: this.head(refs), refs: [], remoteHeads: {}, remoteHosts: {}, remoteHostNames: {}, stashes: this.stashes(), pushRemotes: {}, remoteIds: {}, compareHeads: [], remoteTags: {} };
+    for (const [r, tags] of this.remoteTags) out.remoteTags[r] = Object.fromEntries(tags);
     for (const r of remotes) {
       const host = r.url === null ? null : (parseRemoteUrl(r.url)?.host ?? null);
       out.remoteHosts[r.name] = host === null ? 'generic' : hostKind(host);

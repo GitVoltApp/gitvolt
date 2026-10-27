@@ -141,6 +141,8 @@
    chip), and scales with the density's chip height. */
 .ref-head-check { flex: none; width: round(calc(var(--graph-chip-h) * 0.76), 1px); height: round(calc(var(--graph-chip-h) * 0.76), 1px); }
 .ref-icon { display: inline-flex; flex: none; }
+/* A tag the remote has at another commit (RefLabels.tsx TagSources): the app's warning colour. */
+.ref-icon-other { color: var(--orange); }
 /* A remote icon's tooltip (H12, RefLabels.tsx RemoteTip): the remote's name stands out in the
    tooltip's normal colour, the branch is dimmed. */
 .ref-tip-branch { color: var(--text-secondary); }

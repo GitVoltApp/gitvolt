@@ -1,7 +1,7 @@
 //! The ref labels (chips) on the graph's rows (§8.5), moved from the core's snapshot.rs.
 
 use crate::input::{HeadIn, RefIn, RefKind, RefsIn, WorktreeIn};
-use crate::payload::{HostKind, RefLabel, RemoteRefLabel};
+use crate::payload::{HostKind, RefLabel, RemoteRefLabel, TagRemoteLabel, TagRemoteState};
 use crate::Oid;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -43,6 +43,7 @@ pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn
             checked_out: checked_out.get(local.full_name.as_str()).cloned(),
             upstream_mismatch: local.upstream_mismatch.clone(),
             annotation: None,
+            tag_remotes: None,
         });
     }
     // Remote-only refs: one label per (commit, branch name), so the same branch on several
@@ -63,13 +64,13 @@ pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn
             Some(&i) => labels[i].remotes.push(remote_label),
             None => {
                 remote_only.insert((rr.target, branch), labels.len());
-                labels.push(RefLabel { row, name: branch.to_string(), local: None, remotes: vec![remote_label], tag: false, is_head: false, worktree: None, checked_out: None, upstream_mismatch: None, annotation: None });
+                labels.push(RefLabel { row, name: branch.to_string(), local: None, remotes: vec![remote_label], tag: false, is_head: false, worktree: None, checked_out: None, upstream_mismatch: None, annotation: None, tag_remotes: None });
             }
         }
     }
     for t in refs.refs.iter().filter(|r| r.kind == RefKind::Tag).filter(shown) {
         if let Some(row) = row_of(&t.target) {
-            labels.push(RefLabel { row, name: t.short_name.clone(), local: None, remotes: vec![], tag: true, is_head: false, worktree: None, checked_out: None, upstream_mismatch: None, annotation: t.annotation.clone() });
+            labels.push(RefLabel { row, name: t.short_name.clone(), local: None, remotes: vec![], tag: true, is_head: false, worktree: None, checked_out: None, upstream_mismatch: None, annotation: t.annotation.clone(), tag_remotes: tag_remotes(refs, t) });
         }
     }
     // A worktree whose HEAD is detached has no branch chip to carry its icon: it gets a chip of
@@ -84,14 +85,14 @@ pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn
             let is_here = w.canonical == here;
             head_labelled |= is_here;
             let path = Some(w.path.clone());
-            labels.push(RefLabel { row, name: worktree_name(&w.path), local: None, remotes: vec![], tag: false, is_head: is_here, worktree: if is_here { None } else { path.clone() }, checked_out: path, upstream_mismatch: None, annotation: None });
+            labels.push(RefLabel { row, name: worktree_name(&w.path), local: None, remotes: vec![], tag: false, is_head: is_here, worktree: if is_here { None } else { path.clone() }, checked_out: path, upstream_mismatch: None, annotation: None, tag_remotes: None });
         }
     }
     if head.detached
         && !head_labelled
         && let Some(row) = head.target.as_ref().and_then(row_of)
     {
-        labels.push(RefLabel { row, name: "HEAD".into(), local: None, remotes: vec![], tag: false, is_head: true, worktree: None, checked_out: None, upstream_mismatch: None, annotation: None });
+        labels.push(RefLabel { row, name: "HEAD".into(), local: None, remotes: vec![], tag: false, is_head: true, worktree: None, checked_out: None, upstream_mismatch: None, annotation: None, tag_remotes: None });
     }
     // HEAD's branch, then locals: a published one (its remote at the same commit, `main` with
     // `origin/main`) before a local-only one, and one checked out in another worktree (a scratch
@@ -106,6 +107,27 @@ pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn
     };
     labels.sort_by_key(|l| (l.row, priority(l)));
     labels
+}
+
+/// Tag `t` on each remote whose tags are known (and that is still configured), in name order;
+/// `None` while no remote's are.
+fn tag_remotes(refs: &RefsIn, t: &RefIn) -> Option<Vec<TagRemoteLabel>> {
+    let mut known: Vec<(&String, &HashMap<String, Oid>)> = refs.remote_tags.iter().filter(|(r, _)| refs.remote_hosts.contains_key(*r)).collect();
+    if known.is_empty() {
+        return None;
+    }
+    known.sort_by_key(|(r, _)| *r);
+    let on = |remote: &String, tags: &HashMap<String, Oid>| {
+        let theirs = tags.get(&t.short_name);
+        let state = match theirs {
+            Some(c) if *c == t.target => TagRemoteState::Same,
+            Some(_) => TagRemoteState::Other,
+            None => TagRemoteState::Missing,
+        };
+        let commit = theirs.filter(|_| state == TagRemoteState::Other).map(|c| c.to_string());
+        TagRemoteLabel { remote: remote.clone(), host: refs.remote_host_names.get(remote).cloned(), host_kind: refs.remote_hosts.get(remote).copied().unwrap_or(HostKind::Generic), state, commit }
+    };
+    Some(known.into_iter().map(|(r, tags)| on(r, tags)).collect())
 }
 
 /// A worktree's name in the graph: its folder's (the sidebar's and the WIP row's).

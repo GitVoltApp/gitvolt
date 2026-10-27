@@ -11,6 +11,8 @@ import { useHoverTooltip } from '../ui/HoverTooltip';
 import { CHIP_SPACING, chipFont, chipWidth, fitCount, rebasingWidth } from './chipFit';
 import { UpstreamWarning } from '../branches/UpstreamWarning';
 import { TagTip } from '../tags/TagTip';
+import { tagSources } from '../tags/sources';
+import { shortSha } from '../format/sha';
 import { DETACHED, detachedWorktreeOf } from './worktreeLabel';
 import { useBranchDragClass } from './branchDrag';
 // --- 4B T10 ---
@@ -35,6 +37,23 @@ function RemoteTip({ remote }: { remote: RemoteRefLabel }) {
   return <><span className="ref-tip-remote">{remote.remote}</span> → <span className="ref-tip-branch">{branch}</span> (Remote)</>;
 }
 
+/** A tag chip's source icons (tags/sources.ts), as a branch's: the laptop when no known remote
+ * has the tag at this commit, each remote that has it there, and in orange one whose tag of that
+ * name points at another commit. None while no remote's tags are known. */
+function TagSources({ label, tabId }: { label: RefLabel; tabId: string }) {
+  const sources = tagSources(label.tagRemotes);
+  if (!sources) return null;
+  return (
+    <>
+      {sources.local && <SourceIcon tip={`${label.name} (Local only)`}><Laptop size={SOURCE_OUTLINE} aria-label="local only" /></SourceIcon>}
+      {sources.remotes.map((r) => r.state === 'same'
+        ? <SourceIcon key={r.remote} tip={<><span className="ref-tip-remote">{r.remote}</span> → <span className="ref-tip-branch">{label.name}</span> (Remote)</>}><RemoteIcon kind={r.hostKind} host={r.host} remote={r.remote} size={12} tabId={tabId} /></SourceIcon>
+        // Its mark, never the owner's picture: the orange has to show.
+        : <SourceIcon key={r.remote} other tip={`${r.remote}'s ${label.name} points at another commit${r.commit ? ` (${shortSha(r.commit)})` : ''}`}><RemoteIcon kind={r.hostKind} host={r.host} remote={r.remote} size={12} /></SourceIcon>)}
+    </>
+  );
+}
+
 /**
  * A source icon (local, a remote, another worktree), with its own instant tooltip naming that
  * one ref by its short name (`main (Local)`, `origin → main (Remote)`; never `refs/heads/…`).
@@ -44,10 +63,10 @@ function RemoteTip({ remote }: { remote: RemoteRefLabel }) {
  * icon gets its tooltip at once from that icon. The wrapper is the same in both, so the copy lays
  * out exactly like the chip.
  */
-function SourceIcon({ tip, children }: { tip: ReactNode; children: ReactNode }) {
+function SourceIcon({ tip, other = false, children }: { tip: ReactNode; /** A tag the remote has at another commit: orange. */ other?: boolean; children: ReactNode }) {
   const { triggerProps, tooltip } = useHoverTooltip({ content: tip });
   return (
-    <span className="ref-icon" {...triggerProps}>
+    <span className={other ? 'ref-icon ref-icon-other' : 'ref-icon'} {...triggerProps}>
       {children}
       {tooltip}
     </span>
@@ -118,6 +137,7 @@ function ChipContent({ label, full = false, compact = false }: { label: RefLabel
       {/* A non-HEAD chip has no check box: the spinner stands in for its first source icon, at its size, so the chip's width holds (chipFit). */}
       {label.local && <SourceIcon tip={`${label.local.replace(/^refs\/heads\//, '')} (Local)`}>{spinHere === 'local' ? <PendingMark action={pending!} size={SOURCE_OUTLINE} /> : <Laptop size={SOURCE_OUTLINE} aria-label="local" />}</SourceIcon>}
       {label.remotes.map((r, i) => <Fragment key={r.fullName}><SourceIcon tip={<RemoteTip remote={r} />}>{spinHere === i ? <PendingMark action={pending!} size={12} /> : <RemoteIcon kind={r.hostKind} host={r.host} remote={r.remote} size={12} tabId={tabId} />}</SourceIcon></Fragment>)}
+      {label.tag && <TagSources label={label} tabId={tabId} />}
       {/* A worktree's detached-HEAD chip: the chip's own tooltip names its path. */}
       {wt ? <span className="ref-icon"><TreePine size={SOURCE_OUTLINE} aria-label="worktree" /></span>
         : label.worktree && <SourceIcon tip={`Checked out in ${label.worktree}`}><TreePine size={SOURCE_OUTLINE} aria-label="checked out in another worktree" /></SourceIcon>}

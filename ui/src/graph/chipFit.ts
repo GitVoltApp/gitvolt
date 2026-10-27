@@ -1,4 +1,5 @@
 import type { RefLabel } from '../api/gen/RefLabel';
+import { tagSources } from '../tags/sources';
 import { DETACHED, detachedWorktreeOf } from './worktreeLabel';
 
 /** The chip's fixed horizontal parts (graph.css `.ref-label`): 5 px padding each side, 3 px
@@ -53,8 +54,11 @@ export function chipWidth(label: RefLabel, font: string, iconOnly = false, mrBad
   // A worktree's detached-HEAD chip always has the worktree icon, and the active one's "(detached)".
   const wt = detachedWorktreeOf(label) !== null;
   const tree = label.worktree || wt ? 1 : 0;
-  const icons = warn + (label.isHead ? 1 : 0) + (label.tag ? 1 : 0) + (label.local ? 1 : 0) + label.remotes.length + tree + (mrBadge ? 1 : 0);
-  const iconW = warn * WARN + (label.isHead ? HEAD_CHECK : 0) + (label.tag ? 12 : 0) + (label.local ? ICON : 0) + label.remotes.length * ICON + tree * ICON + (mrBadge ? ICON : 0);
+  // A tag's source icons (tags/sources.ts): the laptop and the remotes that have it.
+  const tagged = tagSources(label.tagRemotes);
+  const sources = (label.local || tagged?.local ? 1 : 0) + label.remotes.length + (tagged?.remotes.length ?? 0);
+  const icons = warn + (label.isHead ? 1 : 0) + (label.tag ? 1 : 0) + sources + tree + (mrBadge ? 1 : 0);
+  const iconW = warn * WARN + (label.isHead ? HEAD_CHECK : 0) + (label.tag ? 12 : 0) + sources * ICON + tree * ICON + (mrBadge ? ICON : 0);
   if (iconOnly) return CHIP_PAD + iconW + Math.max(0, icons - 1) * CHIP_GAP;
   const detached = wt && label.isHead ? CHIP_GAP + textWidth(DETACHED, font) : 0;
   return CHIP_PAD + textWidth(label.name, font) + detached + iconW + icons * CHIP_GAP;

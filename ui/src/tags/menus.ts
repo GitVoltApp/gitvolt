@@ -6,9 +6,24 @@ import type { MenuRow, Variant } from '../menu/types';
 import { createTagAt } from './create';
 import { deleteTag } from './delete';
 import { pushTags } from './push';
+import { tagOn } from './sources';
 
-/** The remote a tag's Delete ▸ Remote targets (Deviation 9): origin, else the first. */
-const deleteRemote = (names: readonly string[]) => (names.includes('origin') ? 'origin' : names[0] ?? null);
+/** The remote a tag's Delete ▸ Remote targets (Deviation 9): origin, else the first, of the
+ * remotes known to have the tag or not known either way. */
+const deleteRemote = (t: TagTarget, names: readonly string[]) => {
+  const may = names.filter((r) => tagOn(t.remotes, r) !== 'missing');
+  return may.includes('origin') ? 'origin' : may[0] ?? null;
+};
+
+/** The remotes a Push of the tag is offered for: all but those known to have it at this commit. */
+const pushRemotes = (t: TagTarget, names: readonly string[]) => names.filter((r) => tagOn(t.remotes, r) !== 'same');
+
+/** A Push row's tooltip: a remote whose tag of that name is another commit refuses it (no force). */
+function pushTip(t: TagTarget, r: string): string {
+  if (tagOn(t.remotes, r) !== 'other') return `Send the tag ${t.name} to ${r}`;
+  const at = t.remotes?.find((x) => x.remote === r)?.commit;
+  return `${r} has another ${t.name}${at ? ` (at ${shortSha(at)})` : ''}: it refuses the push`;
+}
 
 export const offTagMenus = [
   registerMenu<CommitTarget, MenuEnv>({
@@ -27,14 +42,14 @@ export const offTagMenus = [
   }),
   registerMenu<TagTarget, MenuEnv>({
     id: 'tag.push', kind: 'tag', group: 'sync', order: 0,
-    when: (_, env) => !!env.write && (env.remoteNames?.length ?? 0) > 0,
+    when: (t, env) => !!env.write && pushRemotes(t, env.remoteNames ?? []).length > 0,
     rows: (t, env) => {
-      const names = env.remoteNames ?? [];
+      const names = pushRemotes(t, env.remoteNames ?? []);
       const push = (r: string) => () => { void pushTags(env.write!, r, t.name); };
-      if (names.length === 1) return [{ kind: 'action', id: 'tag.push', label: `Push ${t.name} to ${names[0]}`, icon: Upload, tooltip: `Send the tag ${t.name} to ${names[0]}`, run: push(names[0]) }];
+      if (names.length === 1) return [{ kind: 'action', id: 'tag.push', label: `Push ${t.name} to ${names[0]}`, icon: Upload, tooltip: pushTip(t, names[0]), run: push(names[0]) }];
       return [{
         kind: 'submenu', id: 'tag.push', label: `Push ${t.name} to`, icon: Upload, tooltip: `Send the tag ${t.name} to a remote`,
-        rows: names.map((r): MenuRow => ({ kind: 'action', id: `tag.push.${r}`, label: r, icon: Upload, tooltip: `Send the tag ${t.name} to ${r}`, run: push(r) })),
+        rows: names.map((r): MenuRow => ({ kind: 'action', id: `tag.push.${r}`, label: r, icon: Upload, tooltip: pushTip(t, r), run: push(r) })),
       }];
     },
   }),
@@ -42,7 +57,7 @@ export const offTagMenus = [
     id: 'tag.delete', kind: 'tag', group: 'manage', order: 0,
     when: (_, env) => !!env.write,
     rows: (t, env) => {
-      const remote = deleteRemote(env.remoteNames ?? []);
+      const remote = deleteRemote(t, env.remoteNames ?? []);
       const go = (local: boolean, r: string | null) => () => { void deleteTag(env.write!, { tag: t.name, local, remote: r }); };
       const variants: Variant[] = [
         { id: 'local', label: 'Local', tooltip: `Delete the tag ${t.name} here (you can undo this)`, run: go(true, null) },

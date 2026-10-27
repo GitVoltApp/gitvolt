@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { freshFixture, git, harnessHttp, openUrl } from './fixtures';
+import { graphChip } from './chip';
 import { expect, test, type Page } from './test';
 
 /** The harness answers 401 on any `/test/auth/…` path, so git asks for credentials. The port is
@@ -62,6 +63,9 @@ test.describe('fetch', () => {
   test('a user fetch brings in new remote branches; Fetch all, from the palette, fetches too', async ({ page }) => {
     const repo = freshFixture('basic');
     pushFromElsewhere(repo, 'Pushed from elsewhere');
+    // The fixture's v1.0 is only here; this one is on origin too.
+    git(repo, 'tag', 'e2e-pushed', 'HEAD~1');
+    git(repo, 'push', '-q', 'origin', 'e2e-pushed');
     await page.goto(openUrl(repo));
     await expect(graph(page)).toBeVisible();
     await expect(page.getByText('Pushed from elsewhere')).toHaveCount(0);
@@ -70,6 +74,12 @@ test.describe('fetch', () => {
     await expect(page.getByRole('row').filter({ hasText: 'Pushed from elsewhere' }).getByText('from-e2e')).toBeVisible();
     await expect(fetchButton(page)).toBeEnabled();
     await expect(statusBar(page)).not.toContainText('Fetching…');
+
+    await test.step("after the fetch, a tag's chip says where it is: the remote's icon, or the laptop", async () => {
+      await expect(graphChip(page, 'e2e-pushed').locator('.ref-icon [aria-label="remote origin"]')).toBeVisible();
+      await expect(graphChip(page, 'e2e-pushed').locator('[aria-label="local only"]')).toHaveCount(0);
+      await expect(graphChip(page, 'v1.0').locator('.ref-icon [aria-label="local only"]')).toBeVisible();
+    });
 
     pushFromElsewhere(repo, 'Pushed for Fetch all', 'for-fetch-all');
     await page.keyboard.press('Control+p');

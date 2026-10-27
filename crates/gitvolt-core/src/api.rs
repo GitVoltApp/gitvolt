@@ -1568,6 +1568,8 @@ pub struct Api {
     /// Each repository's write lock and action queue, by canonical common dir: shared by every
     /// handle (worktree tab) of it (spec #2 §3.5, §3.6).
     pub(crate) write_locks: Mutex<HashMap<PathBuf, Arc<crate::write::queue::RepoWrites>>>,
+    /// Each repository's remotes' tags, as the last fetch listed them (`remote_tags.rs`).
+    pub(crate) remote_tags: crate::remote_tags::RemoteTags,
     /// GitVolt's data dir (spec #2 §5.1): the journal and temp index files. A private temp dir
     /// unless `with_data_dir` (only the app passes `paths::data_dir()`).
     pub(crate) data_dir: PathBuf,
@@ -1775,6 +1777,7 @@ impl Api {
             open_requests: Mutex::new(Vec::new()),
             write_guard: None,
             write_locks: Mutex::new(HashMap::new()),
+            remote_tags: Default::default(),
             data_dir,
             data_tmp,
             clock: crate::journal::system_clock(),
@@ -3449,6 +3452,7 @@ impl Api {
             walk_cache: Some(h.walk.clone()),
             forks,
             view,
+            remote_tags: self.known_remote_tags(h),
         })
     }
 

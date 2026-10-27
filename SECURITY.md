@@ -217,7 +217,9 @@ That is a trust boundary.
     When the tab opens, GitVolt runs `git fetch --all` at once if the last fetch is older than the
     interval (always, the first time), then once per interval. `git fetch` runs the
     `reference-transaction` hook when it updates refs, and then git's auto maintenance
-    (`git maintenance run --auto`), which can run `pre-auto-gc`.
+    (`git maintenance run --auto`), which can run `pre-auto-gc`. After it, `git ls-remote --tags`
+    asks each fetched remote for its tags, through the same transport, URL rewrites and
+    credential helpers as the fetch; it runs no hook, and it never prompts.
   - Diffs run with `--no-ext-diff --no-textconv`, so external diff and textconv drivers don't
     run.
 - **Ownership.** git's `safe.directory` check applies unchanged: a repository owned by another

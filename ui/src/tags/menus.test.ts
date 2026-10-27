@@ -3,6 +3,8 @@ import { api } from '../api/client';
 import type { CommitTarget, MenuEnv, SidebarTarget, TagTarget } from '../menu/menuEnv';
 import { buildMenu } from '../menu/registry';
 import type { MenuRow } from '../menu/types';
+import type { TagRemoteLabel } from '../api/gen/TagRemoteLabel';
+import type { TagRemoteState } from '../api/gen/TagRemoteState';
 import './menus';
 
 const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
@@ -39,6 +41,33 @@ describe('tag rows (spec #3 §3.9, §4.3)', () => {
     expect(push?.kind).toBe('submenu');
     expect(push?.kind === 'submenu' && push.rows.map((r) => (r.kind === 'action' ? r.label : ''))).toEqual(['fork', 'origin']);
     expect((find(rows, 'tag.delete') as Action).variants?.find((v) => v.id === 'remote')?.tooltip).toBe("Delete v1 from origin (a push: can't be undone)");
+  });
+  describe("by the remotes' known tags", () => {
+    const on = (remote: string, state: TagRemoteState, commit?: string): TagRemoteLabel => ({ remote, host: null, hostKind: 'generic', state, ...(commit ? { commit } : {}) });
+    const known = (...remotes: TagRemoteLabel[]): TagTarget => ({ ...tag, remotes });
+    const pushRows = (rows: MenuRow[]) => {
+      const push = find(rows, 'tag.push');
+      return push?.kind === 'submenu' ? push.rows.map((r) => (r.kind === 'action' ? r.label : '')) : push?.kind === 'action' ? [push.label] : [];
+    };
+    it('no Push to a remote that has the tag at this commit; none at all when every remote has it', () => {
+      expect(pushRows(buildMenu('tag', known(on('origin', 'same'), on('fork', 'missing')), env(['fork', 'origin'])))).toEqual(['Push v1 to fork']);
+      expect(find(buildMenu('tag', known(on('origin', 'same')), env(['origin'])), 'tag.push')).toBeUndefined();
+      // A remote whose tags aren't known keeps its row.
+      expect(pushRows(buildMenu('tag', known(on('origin', 'same')), env(['fork', 'origin'])))).toEqual(['Push v1 to fork']);
+    });
+    it('a remote with another v1 keeps its Push, and its tooltip says the push is refused', () => {
+      const rows = buildMenu('tag', known(on('origin', 'other', 'b'.repeat(40))), env(['origin']));
+      const push = find(rows, 'tag.push') as Action;
+      expect(push.label).toBe('Push v1 to origin');
+      expect(push.tooltip).toBe('origin has another v1 (at bbbbbb): it refuses the push');
+    });
+    it("Delete's Remote and Both target a remote known to have it, or not known; never one known to lack it", () => {
+      const del = (t: TagTarget, names: string[]) => find(buildMenu('tag', t, env(names)), 'tag.delete') as Action;
+      expect(del(known(on('origin', 'missing')), ['origin']).variants?.map((v) => v.id)).toEqual(['local']);
+      expect(del(known(on('origin', 'missing'), on('fork', 'same')), ['fork', 'origin']).variants?.find((v) => v.id === 'remote')?.tooltip).toBe("Delete v1 from fork (a push: can't be undone)");
+      expect(del(known(on('origin', 'other')), ['origin']).variants?.map((v) => v.id)).toEqual(['local', 'remote', 'both']);
+      expect(del(known(on('fork', 'missing')), ['fork', 'origin']).variants?.find((v) => v.id === 'both')?.tooltip).toBe('Delete v1 from origin, then here');
+    });
   });
   it("a remote's menu: Push all tags to origin", async () => {
     const push = vi.spyOn(api, 'pushTags').mockResolvedValue(ok);

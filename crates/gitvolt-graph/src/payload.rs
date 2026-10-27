@@ -195,6 +195,39 @@ pub struct RefLabel {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub annotation: Option<TagAnnotation>,
+    /// A tag's standing on each remote whose tags are known, in remote order; absent while none
+    /// is (no fetch yet, or every listing failed): the chip then shows no source icon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tag_remotes: Option<Vec<TagRemoteLabel>>,
+}
+
+/// One known remote's tag of a tag chip's name (`RefLabel::tag_remotes`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TagRemoteLabel {
+    pub remote: String,
+    /// The remote's host name, so the UI can apply the profile's host-type override.
+    pub host: Option<String>,
+    pub host_kind: HostKind,
+    pub state: TagRemoteState,
+    /// `Other`: the commit the remote's tag peels to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub commit: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum TagRemoteState {
+    /// The remote's tag peels to the same commit.
+    Same,
+    /// It peels to another commit: a push of this one is refused.
+    Other,
+    /// The remote has no tag of this name.
+    Missing,
 }
 
 /// An annotated tag's message and tagger, for the tag chip's and the sidebar row's tooltip (UX

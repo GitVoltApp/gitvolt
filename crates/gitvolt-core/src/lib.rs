@@ -39,6 +39,7 @@ pub mod random;
 pub mod redact;
 pub mod reflog;
 pub mod refs;
+pub mod remote_tags;
 pub mod remotes;
 pub mod scan;
 pub mod settings;

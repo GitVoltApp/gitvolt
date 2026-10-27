@@ -47,6 +47,31 @@ describe('fetch', () => {
     expect(again).toMatchObject({ status: 'done', changed: false });
   });
 
+  // The core's remote_tags.rs: each fetch lists the remote's tags (`git ls-remote --tags`), and a
+  // tag push or delete updates what it listed.
+  it("lists the origin's tags after a fetch, peeled; a tag push and delete update the list", async () => {
+    const { t, origin, ctx, id, wt } = await setup();
+    const tagsOf = async () => {
+      const demo = ctx.repos.get(id);
+      return (await demo.graphRefs(demo.refFiles(), demo.refMap())).remoteTags;
+    };
+    const base = await t.rev('main');
+    await git.annotatedTag({ fs: t.memfs, dir: t.dir, ref: 'v1', object: base, message: 'v1', tagger: { name: 'Noor Achterberg', email: 'noor.achterberg@example.com', timestamp: 1_767_225_600, timezoneOffset: 0 } });
+    await git.writeRef({ fs: t.memfs, gitdir: origin, ref: 'refs/tags/v1', value: await t.rev('refs/tags/v1') });
+    expect(await tagsOf()).toEqual({});
+    await remoteHandlers.fetch({ repo: id, background: true }, ctx);
+    expect(await tagsOf()).toEqual({ origin: { v1: base } });
+    // Nothing moved and the list is the same: no refsUpdated.
+    ctx.events.length = 0;
+    expect(await remoteHandlers.fetch({ repo: id, background: true }, ctx)).toMatchObject({ changed: false });
+    expect(ctx.events.some((e) => e.type === 'refsUpdated')).toBe(false);
+    await git.tag({ fs: t.memfs, dir: t.dir, ref: 'v2', object: base });
+    await remoteHandlers.pushTags({ repo: id, worktree: wt, remote: 'origin', tag: 'v2' }, ctx);
+    expect(await tagsOf()).toEqual({ origin: { v1: base, v2: base } });
+    await HANDLERS.deleteTag({ repo: id, worktree: wt, name: 'v1', local: false, remote: 'origin' }, ctx);
+    expect(await tagsOf()).toEqual({ origin: { v2: base } });
+  });
+
   it('prunes a branch the origin deleted, and follows a tag into the fetched history', async () => {
     const { t, origin, ctx, id } = await setup();
     await git.writeRef({ fs: t.memfs, dir: t.dir, ref: 'refs/remotes/origin/gone', value: await t.rev('main') });

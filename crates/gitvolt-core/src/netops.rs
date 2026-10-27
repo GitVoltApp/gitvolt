@@ -244,6 +244,11 @@ pub(crate) fn note_op_remotes(op: &OpEntry, root: &Path, names: Option<&[String]
     op.set_remotes(crate::remotes::op_remotes(&repo, &names, direction));
 }
 
+/// The remotes a fetch of `remote` (else every remote) fetched.
+fn fetched(workdir: &Path, remote: Option<&String>) -> Vec<String> {
+    remote.map_or_else(|| crate::remote_tags::fetch_all_remotes(workdir), |r| vec![r.clone()])
+}
+
 impl Api {
     /// `git fetch --all` for repo `id` (spec §15), with git's own upkeep after it, as a plain `git fetch` (`git maintenance run --auto` repacks only when
     /// git decides to; without it every fetch left one more pack behind; the user's call, 2026-10-05, over K28's
@@ -368,9 +373,22 @@ impl Api {
             Ok::<(bool, _), GbError>((ref_state_async(h.repo.clone()).await? != before, server))
         }
         .await;
+        let tags_changed = match &res {
+            // A Compare's MR head isn't a fetch of the remote.
+            _ if mr_head.is_some() || op.auth_denied() => false,
+            Ok(_) => self.refresh_remote_tags(&h, id, &fetched(&h.workdir, remote.as_ref()), &op.cancel).await,
+            // `fetch --all` goes on past a remote it can't fetch: the others' tags are still listed.
+            Err(e) if e.kind != GbErrorKind::Cancelled && remote.is_none() => {
+                let failed = e.stderr.as_deref().map(failed_remotes).unwrap_or_default();
+                let fetched: Vec<String> = fetched(&h.workdir, None).into_iter().filter(|r| !failed.iter().any(|f| &f.name == r)).collect();
+                !failed.is_empty() && self.refresh_remote_tags(&h, id, &fetched, &op.cancel).await
+            }
+            Err(_) => false,
+        };
         let (outcome, result) = match res {
             Ok((changed, server)) => {
-                if changed {
+                // A tag list that changed changes the tag chips too.
+                if changed || tags_changed {
                     self.bus.emit(AppEvent::RefsUpdated { repo: id });
                 }
                 (OpOutcome::Ok, Ok(FetchOutcome::Done { changed, server, op: op.id }))
@@ -382,6 +400,9 @@ impl Api {
             Err(e) if e.kind == GbErrorKind::Cancelled || prompt_dismissed(&e, &op) => (OpOutcome::Cancelled, Err(user_cancelled(e, &op))),
             Err(_) if op.auth_denied() => (OpOutcome::Skipped, Ok(FetchOutcome::Skipped { reason: SkipReason::AuthRequired })),
             Err(e) => {
+                if tags_changed {
+                    self.bus.emit(AppEvent::RefsUpdated { repo: id });
+                }
                 let remotes = e.stderr.as_deref().map(failed_remotes).unwrap_or_default();
                 (OpOutcome::Failed, Err(if remotes.is_empty() { e } else { e.with_detail(crate::error::ErrorDetail::FetchFailed { remotes }) }))
             }
