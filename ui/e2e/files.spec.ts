@@ -550,13 +550,15 @@ test.describe('file list and diff takeover', () => {
       await row.click({ button: 'right', position: { x: 40, y: 10 } });
       const menu = page.getByTestId('context-menu');
       await expect(menu).toBeVisible();
-      // At the pointer: its top-left there, or flipped up (spec §7) so its bottom-left is, when it
-      // wouldn't fit below. 3A's rows make it too tall to fit under this row at 720 px.
+      // At the pointer: its top-left there, or, when it wouldn't fit below, shifted up just enough
+      // (its bottom 4 px off the window's), so its first rows stay by the pointer. 3A's rows make
+      // it too tall to fit under this row at 720 px.
       const m = (await menu.boundingBox())!;
       const vh = page.viewportSize()!.height;
       expect(Math.abs(m.x - (box.x + 40))).toBeLessThan(2);
       const fitsBelow = box.y + 10 + m.height + 4 <= vh;
-      expect(Math.abs((fitsBelow ? m.y : m.y + m.height) - (box.y + 10))).toBeLessThan(2);
+      expect(Math.abs(fitsBelow ? m.y - (box.y + 10) : m.y + m.height - (vh - 4))).toBeLessThan(2);
+      expect(m.y).toBeLessThanOrEqual(box.y + 10);
       // The latency budgets (cold tripwire, warm median) live in menu-perf.spec.ts, so a loaded
       // machine can't fail this functional test. Here: the opening was timed, and wasn't absurd.
       const opened = await page.evaluate(() => window.__gbMenuLatency!);

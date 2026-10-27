@@ -7,8 +7,10 @@ describe('menu placement', () => {
   it('opens at the pointer when it fits', () => {
     expect(placeMenu(100, 100, { w: 200, h: 300 }, vp)).toEqual({ left: 100, top: 100 });
   });
-  it('flips left and up at the screen edges', () => {
-    expect(placeMenu(900, 700, { w: 200, h: 300 }, vp)).toEqual({ left: 700, top: 400 });
+  it('flips left at the right edge; too low, it shifts up just enough, its first rows by the pointer', () => {
+    expect(placeMenu(900, 700, { w: 200, h: 300 }, vp)).toEqual({ left: 700, top: 496 });
+    // Mid-screen, a tall menu: the pointer lands a few rows down, not at the menu's bottom.
+    expect(placeMenu(100, 400, { w: 200, h: 460 }, vp)).toEqual({ left: 100, top: 336 });
   });
   it('never leaves the viewport even when flipping would', () => {
     expect(placeMenu(50, 50, { w: 1200, h: 900 }, vp)).toEqual({ left: 4, top: 4 });

@@ -20,6 +20,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Changed
 
+- **A right-click menu too tall to fit below the pointer shifts up just enough** instead of
+  opening upward, so its first rows stay by the pointer.
 - **Hidden branches look quieter in the sidebar, and hide or show in one click.** A hidden branch
   or folder fades, with an eye-off in place of its icon, instead of being struck through with a
   "hidden" word at the end of the row; its MR/PR badge stays, faded. Hovering a branch or branch
