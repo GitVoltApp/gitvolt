@@ -117,8 +117,12 @@ export function PresetEditor({ entry, repoName, picks, preview, focusName, onEdi
         <div className="bp-options">
           <Switch label="Fold branches merged into the trunk" description="into their merge commit; hover it to see them" checked={p.foldMerged} disabled={readOnly}
             onChange={(foldMerged) => onEdit((x) => ({ ...x, foldMerged }))} />
-          <Switch label="Mark where hidden branches fork" description="not for branches picked by hand" checked={p.ghostLines} disabled={readOnly}
+          <Switch label="Mark where hidden branches fork" description="those the rules hide; hover the mark to see them" checked={p.ghostLines} disabled={readOnly}
             onChange={(ghostLines) => onEdit((x) => ({ ...x, ghostLines }))} />
+          <div className="bp-sub-option">
+            <Switch label="Also for branches hidden by hand" checked={p.ghostPicks} disabled={readOnly || !p.ghostLines}
+              onChange={(ghostPicks) => onEdit((x) => ({ ...x, ghostPicks }))} />
+          </div>
         </div>
       </section>
 

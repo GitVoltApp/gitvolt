@@ -6,6 +6,10 @@ import type { Rule } from "./Rule";
 
 export type ViewSpec = { rules: Array<Rule>, otherwise: PresetAction, picks: BranchPicks, foldMerged: boolean, ghostLines: boolean, 
 /**
+ * With `ghost_lines`, also stubs for branches hidden by hand.
+ */
+ghostPicks: boolean, 
+/**
  * The repository's extra trunk branches (globs), beside the pinned pair.
  */
 trunkPatterns: Array<string>, 

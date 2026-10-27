@@ -21,6 +21,9 @@ pub struct BranchPreset {
     pub fold_merged: bool,
     /// A stub where branches its rules hide fork (named for the ghost lines it once drew).
     pub ghost_lines: bool,
+    /// With `ghost_lines`, also for branches hidden by hand (picks). Off in older files.
+    #[serde(default)]
+    pub ghost_picks: bool,
     /// The preset button's click steps through it.
     pub in_cycle: bool,
 }

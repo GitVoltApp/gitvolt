@@ -17,7 +17,7 @@ const { PresetButton, presetTooltip } = await import('./PresetButton');
 const { nextInCycle, presetList } = await import('./model');
 import type { MenuRow } from '../menu/types';
 
-const release: BranchPreset = { id: 'g1', name: 'Release work', color: 'orange', scope: 'all', rules: [], otherwise: 'collapse', foldMerged: true, ghostLines: true, inCycle: true };
+const release: BranchPreset = { id: 'g1', name: 'Release work', color: 'orange', scope: 'all', rules: [], otherwise: 'collapse', foldMerged: true, ghostLines: true, ghostPicks: false, inCycle: true };
 const current = () => useAppState.getState().profile.repos['/r']?.branchPreset ?? 'all';
 const actions = () => (useMenu.getState().rows ?? []).filter((r): r is Extract<MenuRow, { kind: 'action' }> => r.kind === 'action');
 

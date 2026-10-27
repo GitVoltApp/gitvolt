@@ -52,7 +52,7 @@ export function viewSpecOf(entry: PresetEntry, repo: RepoSettings | undefined, e
   const p = entry.preset;
   if (p.id === ALL_ID) return null;
   return {
-    rules: p.rules, otherwise: p.otherwise, picks: repo?.branchPicks?.[p.id] ?? NO_PICKS, foldMerged: p.foldMerged, ghostLines: p.ghostLines,
+    rules: p.rules, otherwise: p.otherwise, picks: repo?.branchPicks?.[p.id] ?? NO_PICKS, foldMerged: p.foldMerged, ghostLines: p.ghostLines, ghostPicks: p.ghostPicks,
     trunkPatterns: repo?.trunkPatterns ?? [], expanded: [...expanded], placement,
   };
 }

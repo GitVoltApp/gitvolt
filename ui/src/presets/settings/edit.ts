@@ -119,7 +119,7 @@ export function newPreset(doc: PresetsDoc, newId: string): PresetsDoc {
   const used = new Set((doc.settings.branchPresets ?? []).map((p) => p.color));
   const preset: BranchPreset = {
     id: newId, name: uniqueName('New preset', names(doc)), color: GROUP_COLORS.find((c) => c !== 'gray' && !used.has(c)) ?? 'blue', scope: 'all',
-    rules: [], otherwise: 'show', foldMerged: false, ghostLines: true, inCycle: true,
+    rules: [], otherwise: 'show', foldMerged: false, ghostLines: true, ghostPicks: false, inCycle: true,
   };
   return { ...doc, settings: { ...doc.settings, branchPresets: [...(doc.settings.branchPresets ?? []), preset] } };
 }
@@ -169,7 +169,7 @@ export function importInto(doc: PresetsDoc, text: string, newId: string): { doc:
 /** What the live counts ask about: the preset as edited, even All (whose graph request sends no view). */
 export function previewSpec(p: BranchPreset, repo: RepoSettings | null, placement: CollapsePlacement): ViewSpec {
   return {
-    rules: p.rules, otherwise: p.otherwise, picks: repo?.branchPicks?.[p.id] ?? { shown: [], hidden: [] }, foldMerged: p.foldMerged, ghostLines: p.ghostLines,
+    rules: p.rules, otherwise: p.otherwise, picks: repo?.branchPicks?.[p.id] ?? { shown: [], hidden: [] }, foldMerged: p.foldMerged, ghostLines: p.ghostLines, ghostPicks: p.ghostPicks,
     trunkPatterns: repo?.trunkPatterns ?? [], expanded: [], placement,
   };
 }

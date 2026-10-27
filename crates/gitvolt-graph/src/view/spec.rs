@@ -16,6 +16,9 @@ pub struct ViewSpec {
     pub picks: BranchPicks,
     pub fold_merged: bool,
     pub ghost_lines: bool,
+    /// With `ghost_lines`, also stubs for branches hidden by hand.
+    #[serde(default)]
+    pub ghost_picks: bool,
     /// The repository's extra trunk branches (globs), beside the pinned pair.
     #[serde(default)]
     pub trunk_patterns: Vec<String>,
@@ -64,7 +67,7 @@ mod tests {
                        "foldMerged":true,"ghostLines":true}"#;
         let v: ViewSpec = serde_json::from_str(json).unwrap();
         assert_eq!(v.rules, [Rule { action: PresetAction::Hide, matcher: Matcher::NameMatches { patterns: "bot/*".into() } }]);
-        assert_eq!((v.otherwise, v.fold_merged, v.ghost_lines), (PresetAction::Show, true, true));
+        assert_eq!((v.otherwise, v.fold_merged, v.ghost_lines, v.ghost_picks), (PresetAction::Show, true, true, false));
         assert_eq!(v.picks, BranchPicks::default());
         assert!(v.expanded.is_empty() && v.me.is_empty() && v.trunk_patterns.is_empty());
         assert_eq!((v.placement, v.now), (CollapsePlacement::KeepDateOrder, 0));

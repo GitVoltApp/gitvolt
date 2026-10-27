@@ -85,7 +85,7 @@ export const DEMO_PRESETS: AppSettings['branchPresets'] = [
       { action: 'show', matcher: { kind: 'checkedOut' } },
       { action: 'hide', matcher: { kind: 'nameMatches', patterns: 'art/*, docs/*' } },
     ],
-    otherwise: 'collapse', foldMerged: true, ghostLines: true, inCycle: true,
+    otherwise: 'collapse', foldMerged: true, ghostLines: true, ghostPicks: false, inCycle: true,
   },
 ];
 

@@ -4,7 +4,7 @@ import type { BranchPreset } from '../api/gen/BranchPreset';
 import { importPreset, parsePresetJson, presetToJson } from './json';
 
 const folded: BranchPreset = {
-  id: 'p1', name: 'Mine, others folded', color: 'purple', scope: 'repo', inCycle: false, foldMerged: true, ghostLines: false, otherwise: 'collapse',
+  id: 'p1', name: 'Mine, others folded', color: 'purple', scope: 'repo', inCycle: false, foldMerged: true, ghostLines: false, ghostPicks: false, otherwise: 'collapse',
   rules: [
     { action: 'show', matcher: { kind: 'commitsBy', author: { kind: 'me' } } },
     { action: 'hide', matcher: { kind: 'nameMatches', patterns: 'dependabot/*' } },
@@ -15,9 +15,16 @@ const folded: BranchPreset = {
 describe('preset JSON', () => {
   it('copy as JSON is self-describing and leaves picks out', () => {
     const json = JSON.parse(presetToJson(folded));
-    expect(json).toEqual({ gitvolt: 'branch-preset', version: 1, name: 'Mine, others folded', color: 'purple', rules: folded.rules, otherwise: 'collapse', foldMerged: true, ghostLines: false });
+    expect(json).toEqual({ gitvolt: 'branch-preset', version: 1, name: 'Mine, others folded', color: 'purple', rules: folded.rules, otherwise: 'collapse', foldMerged: true, ghostLines: false, ghostPicks: false });
     expect(Object.keys(json)).not.toContain('id');
-    expect(parsePresetJson(presetToJson(folded))).toEqual({ name: folded.name, color: 'purple', rules: folded.rules, otherwise: 'collapse', foldMerged: true, ghostLines: false });
+    expect(parsePresetJson(presetToJson(folded))).toEqual({ name: folded.name, color: 'purple', rules: folded.rules, otherwise: 'collapse', foldMerged: true, ghostLines: false, ghostPicks: false });
+  });
+
+  it('marks for branches hidden by hand travel with the preset; one copied before the option has them off', () => {
+    expect(parsePresetJson(presetToJson({ ...folded, ghostLines: true, ghostPicks: true }))).toMatchObject({ ghostLines: true, ghostPicks: true });
+    const { ghostPicks: _, ...older } = JSON.parse(presetToJson(folded));
+    expect(parsePresetJson(JSON.stringify({ ...older, ghostLines: true }))).toMatchObject({ ghostLines: true, ghostPicks: false });
+    expect(parsePresetJson(JSON.stringify({ ...older, ghostPicks: 'yes' }))).toBeNull();
   });
 
   it('import rejects other JSON and renames clashes', () => {

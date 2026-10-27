@@ -7,7 +7,7 @@ import { currentPreset, folderPickHides, nextInCycle, pickBranch, pickFolder, pr
 
 const preset = (id: string, over: Partial<BranchPreset> = {}): BranchPreset => ({
   id, name: id, color: 'blue', scope: 'all', rules: [{ action: 'hide', matcher: { kind: 'nameMatches', patterns: 'bot/*' } }],
-  otherwise: 'show', foldMerged: false, ghostLines: true, inCycle: true, ...over,
+  otherwise: 'show', foldMerged: false, ghostLines: true, ghostPicks: false, inCycle: true, ...over,
 });
 const settings = (over: Partial<AppSettings> = {}): AppSettings => ({
   builtinPresets: [{ id: 'all', inCycle: true }, { id: 'all-collapsed', inCycle: true }, { id: 'mine', inCycle: true }],
@@ -57,7 +57,7 @@ describe('the preset list', () => {
     const view = viewSpecOf(list[3], r, ['branch:z'], 'pullTogether');
     expect(view).toEqual({
       rules: [{ action: 'hide', matcher: { kind: 'nameMatches', patterns: 'bot/*' } }], otherwise: 'show', picks: { shown: ['x'], hidden: ['y'] },
-      foldMerged: false, ghostLines: true, trunkPatterns: ['release/*'], expanded: ['branch:z'], placement: 'pullTogether',
+      foldMerged: false, ghostLines: true, ghostPicks: false, trunkPatterns: ['release/*'], expanded: ['branch:z'], placement: 'pullTogether',
     });
     expect(view).not.toHaveProperty('me');
     expect(viewSpecOf(list[2], undefined, [], 'keepDateOrder')).toMatchObject({ otherwise: 'hide', picks: { shown: [], hidden: [] }, trunkPatterns: [] });

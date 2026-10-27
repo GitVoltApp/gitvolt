@@ -6,7 +6,7 @@ import { presetToJson } from '../json';
 import { deletePreset, duplicatePreset, entriesOf, forgetPick, importInto, moveInGroup, newPreset, previewSpec, setInCycle, setScope, updatePreset, type PresetsDoc } from './edit';
 
 const preset = (id: string, over: Partial<BranchPreset> = {}): BranchPreset => ({
-  id, name: id, color: 'blue', scope: 'all', rules: [], otherwise: 'show', foldMerged: false, ghostLines: true, inCycle: true, ...over,
+  id, name: id, color: 'blue', scope: 'all', rules: [], otherwise: 'show', foldMerged: false, ghostLines: true, ghostPicks: false, inCycle: true, ...over,
 });
 const doc = (s: Partial<AppSettings> = {}, r: Partial<RepoSettings> | null = {}): PresetsDoc => ({
   settings: { builtinPresets: [{ id: 'all', inCycle: true }, { id: 'all-collapsed', inCycle: true }, { id: 'mine', inCycle: true }], branchPresets: [], ...s } as AppSettings,
@@ -100,7 +100,7 @@ describe('editing branch presets', () => {
   it('the live counts ask about the preset as edited, with its picks and the trunk patterns', () => {
     const p = preset('g1', { otherwise: 'hide' });
     expect(previewSpec(p, doc({}, { branchPicks: { g1: { shown: ['a'], hidden: [] } }, trunkPatterns: ['release/*'] }).repo, 'pullTogether')).toEqual({
-      rules: [], otherwise: 'hide', picks: { shown: ['a'], hidden: [] }, foldMerged: false, ghostLines: true, trunkPatterns: ['release/*'], expanded: [], placement: 'pullTogether',
+      rules: [], otherwise: 'hide', picks: { shown: ['a'], hidden: [] }, foldMerged: false, ghostLines: true, ghostPicks: false, trunkPatterns: ['release/*'], expanded: [], placement: 'pullTogether',
     });
   });
 });

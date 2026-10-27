@@ -28,6 +28,10 @@ foldMerged: boolean,
  */
 ghostLines: boolean, 
 /**
+ * With `ghost_lines`, also for branches hidden by hand (picks). Off in older files.
+ */
+ghostPicks: boolean, 
+/**
  * The preset button's click steps through it.
  */
 inCycle: boolean, };

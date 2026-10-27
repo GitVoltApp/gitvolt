@@ -77,6 +77,8 @@ input.bp-code { flex: 1 1 100px; width: auto; max-width: 240px; }
 .bp-chip-x:hover { color: var(--text-selected); }
 
 .bp-options { display: flex; flex-direction: column; gap: 6px; }
+/* Under the switch it depends on, lined up with that one's label (switch + gap). */
+.bp-sub-option { margin-left: 40px; }
 .bp-summary { margin: 0; padding: 8px 10px; font-size: 12px; color: var(--text-secondary); background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 6px; font-variant-numeric: tabular-nums; }
 .bp-summary b { color: var(--text-selected); }
 .bp-sum-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; }

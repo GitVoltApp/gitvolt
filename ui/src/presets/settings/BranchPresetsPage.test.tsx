@@ -44,7 +44,7 @@ await import('../../settings/pages/repository');
 const PATH = '/r/orbital';
 const ctx = { repoPath: PATH, repoName: 'orbital', tabId: 't1' };
 const preset = (id: string, over: Partial<BranchPreset> = {}): BranchPreset => ({
-  id, name: id, color: 'blue', scope: 'all', rules: [{ action: 'hide', matcher: { kind: 'nameMatches', patterns: 'bot/*' } }], otherwise: 'show', foldMerged: false, ghostLines: true, inCycle: true, ...over,
+  id, name: id, color: 'blue', scope: 'all', rules: [{ action: 'hide', matcher: { kind: 'nameMatches', patterns: 'bot/*' } }], otherwise: 'show', foldMerged: false, ghostLines: true, ghostPicks: false, inCycle: true, ...over,
 });
 const settings = () => useAppState.getState().settings;
 const repo = () => useAppState.getState().profile.repos[PATH];
@@ -166,6 +166,29 @@ describe('the branch preset editor', () => {
     expect(settings().branchPresets?.at(-1)).toMatchObject({ id: 'r1', scope: 'all', color: 'purple' });
     fireEvent.click(screen.getByRole('button', { name: 'orbital only' }));
     expect(repo().branchPresets?.map((p) => [p.id, p.scope])).toEqual([['r1', 'repo']]);
+  });
+
+  it('marks for branches hidden by hand: off, greyed while marks are off, saved with the preset', () => {
+    setRepo({ branchPreset: 'r1' });
+    page();
+    const marks = screen.getByRole('switch', { name: 'Mark where hidden branches fork' });
+    const byHand = () => screen.getByRole('switch', { name: 'Also for branches hidden by hand' }) as HTMLButtonElement;
+    expect([byHand().getAttribute('aria-checked'), byHand().disabled]).toEqual(['false', false]);
+    expect(viewSpecFor('t1')?.ghostPicks).toBe(false);
+    fireEvent.click(byHand());
+    expect(repo().branchPresets?.[0].ghostPicks).toBe(true);
+    expect(viewSpecFor('t1')?.ghostPicks).toBe(true);
+    fireEvent.click(marks);
+    expect(repo().branchPresets?.[0]).toMatchObject({ ghostLines: false, ghostPicks: true });
+    expect([byHand().getAttribute('aria-checked'), byHand().disabled]).toEqual(['true', true]);
+    fireEvent.click(byHand());
+    expect(repo().branchPresets?.[0].ghostPicks).toBe(true);
+    fireEvent.click(marks);
+    fireEvent.click(byHand());
+    expect(repo().branchPresets?.[0]).toMatchObject({ ghostLines: true, ghostPicks: false });
+    // A built-in's is off and greyed.
+    select('Mine');
+    expect([byHand().getAttribute('aria-checked'), byHand().disabled]).toEqual(['false', true]);
   });
 
   it('rule counts come from the preview of the edited preset', async () => {

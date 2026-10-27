@@ -6,7 +6,7 @@ export const ALL_ID = 'all';
 export const CUSTOM_ID = 'custom';
 
 const builtin = (p: Pick<BranchPreset, 'id' | 'name' | 'color' | 'rules' | 'otherwise' | 'ghostLines'>): BranchPreset =>
-  ({ scope: 'all', foldMerged: false, inCycle: true, ...p });
+  ({ scope: 'all', foldMerged: false, ghostPicks: false, inCycle: true, ...p });
 
 /** Always there and read-only (Duplicate to change one). Their rules are the ones the graph
  * crate's `the_built_in_presets_decide_as_specified` decides with. */

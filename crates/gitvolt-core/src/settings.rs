@@ -1583,6 +1583,7 @@ mod tests {
             otherwise: PresetAction::Hide,
             fold_merged: true,
             ghost_lines: false,
+            ghost_picks: true,
             in_cycle: true,
         };
         let repo = RepoSettings {
@@ -1599,6 +1600,9 @@ mod tests {
         assert_eq!(json["repos"]["/r"]["branchPicks"]["custom"]["hidden"], serde_json::json!(["bot/y"]));
         assert_eq!(json["repos"]["/r"]["customPreset"]["rules"][0]["matcher"], serde_json::json!({"kind": "commitsBy", "author": {"kind": "me"}}));
         assert_eq!(serde_json::from_value::<Profile>(json).unwrap(), p);
+        let mut old = serde_json::to_value(preset("p2")).unwrap();
+        old.as_object_mut().unwrap().remove("ghostPicks");
+        assert!(!serde_json::from_value::<BranchPreset>(old).unwrap().ghost_picks, "a preset from before the option: off");
 
         let plain = serde_json::to_value(RepoSettings::default()).unwrap();
         for key in ["branchPreset", "branchPresets", "customPreset", "branchPicks", "trunkPatterns"] {

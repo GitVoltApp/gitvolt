@@ -21,7 +21,7 @@ pub(crate) struct ViewRows {
     pulled: HashSet<usize>,
     /// A merge → its fold.
     fold_at: HashMap<usize, usize>,
-    /// The units a preset's rules hide that fork from a row (its stub's), newest tip first.
+    /// The hidden units that fork from a row (its stub's), newest tip first.
     ghosts: HashMap<usize, Vec<usize>>,
 }
 
@@ -30,7 +30,7 @@ impl ViewRows {
         let run_at = plan.runs.iter().enumerate().map(|(i, r)| (r.newest, i)).collect();
         let pulled = plan.runs.iter().filter(|r| r.pulled).map(|r| r.oldest).collect();
         let fold_at = plan.folds.iter().enumerate().map(|(i, f)| (f.merge, i)).collect();
-        let ghosts = if spec.ghost_lines { ghost_units(&d, &plan, commits, index) } else { HashMap::new() };
+        let ghosts = if spec.ghost_lines { ghost_units(&d, &plan, spec.ghost_picks, commits, index) } else { HashMap::new() };
         ViewRows { d, plan, run_at, pulled, fold_at, ghosts }
     }
 
@@ -163,10 +163,14 @@ impl ViewRows {
     }
 }
 
-/// Per row, the units a preset's rules hide (never a pick) that fork from it: those reaching a
-/// hidden child of it. Newest tip first.
-fn ghost_units(d: &Decided, plan: &ViewPlan, commits: &[CommitMeta], index: &HashMap<Oid, usize>) -> HashMap<usize, Vec<usize>> {
-    let ghostly: Vec<bool> = d.decisions.iter().map(|x| x.action == PresetAction::Hide && matches!(x.by, DecidedBy::Rule { .. } | DecidedBy::Otherwise)).collect();
+/// Per row, the units a preset's rules hide (a pick too with `picks`) that fork from it: those
+/// reaching a hidden child of it. Newest tip first.
+fn ghost_units(d: &Decided, plan: &ViewPlan, picks: bool, commits: &[CommitMeta], index: &HashMap<Oid, usize>) -> HashMap<usize, Vec<usize>> {
+    let ghostly: Vec<bool> = d
+        .decisions
+        .iter()
+        .map(|x| x.action == PresetAction::Hide && (matches!(x.by, DecidedBy::Rule { .. } | DecidedBy::Otherwise) || (picks && x.by == DecidedBy::Picked)))
+        .collect();
     let mut out: HashMap<usize, Vec<usize>> = HashMap::new();
     for (h, _) in plan.state.iter().enumerate().filter(|(_, s)| **s == CommitState::Hidden) {
         for p in &commits[h].parents {
@@ -628,6 +632,21 @@ mod tests {
     }
 
     #[test]
+    fn ghosts_for_branches_hidden_by_hand_with_the_option() {
+        // x by name, the d/ folder (and so d/v, made in it) by hand; w by a rule.
+        let (mut req, mut commits) = two_off_main();
+        commits.insert(id(30), c(30, &[2], 1500, "v30"));
+        req.input.refs.refs.push(local("d/v", 30));
+        let picks = BranchPicks { shown: vec![], hidden: vec!["x".into(), "d/".into()] };
+        let spec = ViewSpec { picks, ..view(vec![rule(PresetAction::Hide, "w")]) };
+        let on = build(&with(req.clone(), ViewSpec { ghost_picks: true, ..spec.clone() }), &commits).unwrap();
+        assert_eq!(summaries(&on), ["c3", "c2", "Initial commit"]);
+        assert_eq!(ghosts_on_c2(&on), [("w", 1), ("d/v", 1), ("x", 1)], "newest tip first, in the stub's colour");
+        let off = build(&with(req, spec), &commits).unwrap();
+        assert_eq!(ghosts_on_c2(&off), [("w", 1)]);
+    }
+
+    #[test]
     fn no_ghosts_when_the_option_is_off() {
         let (req, commits) = two_off_main();
         let spec = ViewSpec { ghost_lines: false, ..view(vec![rule(PresetAction::Hide, "x, w")]) };
@@ -709,10 +728,11 @@ mod tests {
                     ..view(rules)
                 };
                 // Also with the linked worktree's branch hidden by hand (its WIP goes with it), and
-                // another branch: what it shares with a collapsed one is then that one's alone.
+                // another branch: what it shares with a collapsed one is then that one's alone. Their
+                // stubs, too, half the time.
                 let linked = req.input.worktrees.get(1).and_then(|w| w.branch.as_deref()?.strip_prefix("refs/heads/"));
                 let hidden = linked.into_iter().chain([names[1 + rnd(names.len() - 1)]]).map(String::from).collect();
-                let hiding = ViewSpec { picks: BranchPicks { shown: vec![], hidden }, ..spec.clone() };
+                let hiding = ViewSpec { picks: BranchPicks { shown: vec![], hidden }, ghost_picks: rnd(2) == 0, ..spec.clone() };
                 for (spec, hides) in [(&hiding, true), (&spec, false)] {
                     let g = build(&with(req.clone(), spec.clone()), &store).unwrap_or_else(|e| panic!("{e}\n{spec:?}"));
                     let ids: Vec<&str> = g.rows.iter().map(|r| r.id.as_str()).collect();

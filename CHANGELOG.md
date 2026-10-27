@@ -17,6 +17,9 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   later; the repository keeps the folder with its other hidden branches. A branch you show inside
   it stays shown, and Show folder brings the whole folder back. A folder looks hidden when it is,
   or when every branch under it is (#7).
+- **Fork marks for branches you hid by hand.** A preset's new option "Also for branches hidden by
+  hand", under "Mark where hidden branches fork", marks where those branches and folders fork too,
+  with the same hover list and Show. It's off by default, so nothing changes until you turn it on.
 
 ### Changed
 

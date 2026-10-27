@@ -13,8 +13,8 @@ export type SharedPreset = Omit<BranchPreset, 'id' | 'scope' | 'inCycle'>;
 
 /** Copy as JSON: what makes the preset, without where it lives or its picks (those are one repository's). */
 export function presetToJson(p: BranchPreset): string {
-  const { name, color, rules, otherwise, foldMerged, ghostLines } = p;
-  return toShareJson('branch-preset', VERSION, { name, color, rules, otherwise, foldMerged, ghostLines });
+  const { name, color, rules, otherwise, foldMerged, ghostLines, ghostPicks } = p;
+  return toShareJson('branch-preset', VERSION, { name, color, rules, otherwise, foldMerged, ghostLines, ghostPicks });
 }
 
 const ACTIONS: readonly PresetAction[] = ['show', 'hide', 'collapse'];
@@ -43,16 +43,16 @@ function matcher(v: unknown): Matcher | null {
 export function parsePresetJson(text: string): SharedPreset | null {
   const env = parseShareJson(text, 'branch-preset', VERSION);
   if (!env.ok) return null;
-  const { name, color, rules, otherwise, foldMerged = false, ghostLines = false } = env.body;
+  const { name, color, rules, otherwise, foldMerged = false, ghostLines = false, ghostPicks = false } = env.body;
   if (typeof name !== 'string' || !name.trim() || !GROUP_COLORS.includes(color as never)) return null;
-  if (!Array.isArray(rules) || !isAction(otherwise) || typeof foldMerged !== 'boolean' || typeof ghostLines !== 'boolean') return null;
+  if (!Array.isArray(rules) || !isAction(otherwise) || typeof foldMerged !== 'boolean' || typeof ghostLines !== 'boolean' || typeof ghostPicks !== 'boolean') return null;
   const parsed: Rule[] = [];
   for (const r of rules) {
     const m = isObj(r) && isAction(r.action) ? matcher(r.matcher) : null;
     if (!m) return null;
     parsed.push({ action: (r as Rule).action, matcher: m });
   }
-  return { name: name.trim(), color: color as string, rules: parsed, otherwise, foldMerged, ghostLines };
+  return { name: name.trim(), color: color as string, rules: parsed, otherwise, foldMerged, ghostLines, ghostPicks };
 }
 
 /** Adds an imported preset at the end of the all-repositories list, in the cycle, renamed
