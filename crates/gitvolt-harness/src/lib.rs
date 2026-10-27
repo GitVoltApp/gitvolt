@@ -618,6 +618,15 @@ mod tests {
     use super::*;
     use gitvolt_core::testing::{TestRepo, FIXTURE_MARKER};
 
+    // As the integration tests: no host git config, and no outer repository (`GIT_DIR`).
+    ctor::declarative::ctor! {
+        #[ctor(unsafe)]
+        fn isolate_unit_tests() {
+            // SAFETY: before `main`, so on the only thread.
+            unsafe { gitvolt_core::testing::isolate_this_process() }
+        }
+    }
+
     #[test]
     fn the_guard_allows_only_marked_repositories_under_the_root() {
         let root = tempfile::tempdir().unwrap();

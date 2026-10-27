@@ -50,6 +50,24 @@ pub unsafe fn isolate_this_process() {
         // SAFETY: the caller's guarantee.
         unsafe { std::env::set_var(k, v) };
     }
+    // SAFETY: the caller's guarantee.
+    unsafe { forget_the_outer_repo() };
+}
+
+/// Where git finds a repository, when something git runs runs us: `git bisect run`, `rebase
+/// --exec` or a hook puts these in the environment, and every fixture's `git init`/`commit` would
+/// then write to that repository (a bisect over the e2e suite set `core.bare` in this one's).
+const REPO_ENV: [&str; 7] = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX"];
+
+/// Drops `REPO_ENV` from this process's environment, so no git it spawns inherits them.
+///
+/// # Safety
+/// No other thread may be reading or writing the environment.
+pub unsafe fn forget_the_outer_repo() {
+    for k in REPO_ENV {
+        // SAFETY: the caller's guarantee.
+        unsafe { std::env::remove_var(k) };
+    }
 }
 
 #[cfg(test)]

@@ -8,6 +8,8 @@ fn main() {
     if let Some(code) = gitvolt_core::askpass::run_client_from_env() {
         std::process::exit(code);
     }
+    // SAFETY: before the runtime starts, so on the only thread.
+    unsafe { gitvolt_core::testing::forget_the_outer_repo() };
     harness_main();
 }
 
