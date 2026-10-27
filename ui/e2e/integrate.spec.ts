@@ -1,9 +1,10 @@
+import { graphChip } from './chip';
 import { freshFixture, git, openUrl } from './fixtures';
 import { expect, test, type Page, confirmArmed } from './test';
 
 const isAncestor = (repo: string, a: string, b: string) => { try { git(repo, 'merge-base', '--is-ancestor', a, b); return true; } catch { return false; } };
 const labelMenu = async (page: Page, name: string, item: string) => {
-  await page.getByRole('grid', { name: 'Commit graph' }).getByText(name, { exact: true }).first().click({ button: 'right' });
+  await graphChip(page, name).click({ button: 'right' });
   // Exact: 3C's "Interactive rebase X onto Y" sits right under "Rebase X onto Y".
   await page.getByRole('menuitem', { name: item, exact: true }).click();
 };
@@ -45,7 +46,7 @@ test.describe('integrate (spec #2 §13.1, §13.4)', () => {
     // Scrolled down while the rebase runs, the tip far above: when it finishes, the rebased tip
     // is brought into view (a user's own write reveals HEAD).
     const grid = page.getByRole('grid', { name: 'Commit graph' });
-    await grid.getByText('main', { exact: true }).first().click({ button: 'right' });
+    await graphChip(page, 'main').click({ button: 'right' });
     const item = page.getByRole('menuitem', { name: 'Rebase topic onto main', exact: true });
     await grid.evaluate((g) => { g.scrollTop = g.scrollHeight; });
     await expect.poll(() => grid.evaluate((g) => g.scrollTop)).toBeGreaterThan(300);

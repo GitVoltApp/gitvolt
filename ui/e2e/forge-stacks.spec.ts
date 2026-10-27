@@ -1,5 +1,6 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { graphChip } from './chip';
 import { addForgeAccount, E2E_GITLAB_TOKEN, forgeSeed, freshFixture, git, openUrl, setForgeSeed } from './fixtures';
 import { confirmArmed, expect, test } from './test';
 
@@ -9,7 +10,7 @@ const mrs = async (request: APIRequestContext) => (await forgeSeed(request)).git
 const chipMenu = async (page: Page, name: string, item: string) => {
   // The forge target has resolved once the Merge requests section is there: the row is in the menu from then on.
   await expect(page.getByRole('region', { name: 'Merge requests' })).toBeVisible();
-  await page.getByRole('grid', { name: 'Commit graph' }).getByText(name, { exact: true }).first().click({ button: 'right' });
+  await graphChip(page, name).click({ button: 'right' });
   await page.getByRole('menuitem', { name: item, exact: true }).click();
 };
 

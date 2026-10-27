@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { graphChip } from './chip';
 import { freshFixture, git, openUrl } from './fixtures';
 import { armedOverlay, confirmArmed, expect, test, type Locator, type Page } from './test';
 import { fileRow, section } from './wip';
@@ -8,7 +9,7 @@ import { fileRow, section } from './wip';
 async function openEditor(page: Page): Promise<string> {
   const repo = freshFixture('irebase');
   await page.goto(openUrl(repo));
-  await page.getByRole('grid', { name: 'Commit graph' }).getByText('main', { exact: true }).first().click({ button: 'right' });
+  await graphChip(page, 'main').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Interactive rebase feature/c onto main' }).click();
   await expect(page.getByTestId('irebase')).toBeVisible();
   return repo;
@@ -224,7 +225,7 @@ test.describe('interactive rebase (spec #3 §7)', () => {
       await page.getByTestId('irebase').getByRole('button', { name: 'Cancel' }).first().click();
       await confirmArmed(armedOverlay(page, 'Click again to discard your rebase plan'));
       await expect(page.getByTestId('irebase')).toBeHidden();
-      await page.getByRole('grid', { name: 'Commit graph' }).getByText('main', { exact: true }).first().click({ button: 'right' });
+      await graphChip(page, 'main').click({ button: 'right' });
       await page.getByRole('menuitem', { name: 'Interactive rebase feature/c onto main' }).click();
       await expect(page.getByTestId('irebase')).toBeVisible();
       const a3 = row(page, 'A3 Add tests');

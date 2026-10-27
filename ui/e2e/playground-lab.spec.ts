@@ -1,3 +1,4 @@
+import { graphChip } from './chip';
 import { freshFixture, openUrl } from './fixtures';
 import { expect, test, type Page } from './test';
 
@@ -24,7 +25,7 @@ test.describe('rebase-lab (playground)', () => {
       await row(page, 'Main edits line two').click();
       await expect(page.getByTestId('multi-count')).toHaveCount(0);
       await page.mouse.move(5, 5);
-      await grid(page).getByText('main', { exact: true }).first().click({ button: 'right' });
+      await graphChip(page, 'main').click({ button: 'right' });
       await page.getByRole('menuitem', { name: 'Interactive rebase lab onto main' }).click();
       const editor = page.getByTestId('irebase');
       await expect(editor).toBeVisible();
