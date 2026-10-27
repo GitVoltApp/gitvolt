@@ -589,7 +589,7 @@ export function labelMenu(store: RepoViewStore, row: RowPayload, label: RefLabel
 }
 
 /** A worktree's detached-HEAD chip: the sidebar worktree row's menu (Switch to, Open in a new tab,
- * Copy path and SHA, Remove…). */
+ * Copy path and SHA, Remove worktree). */
 function worktreeMenu(store: RepoViewStore, path: string, head: string): () => MenuRow[] {
   afterOpening(store);
   return () => buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'worktree', path, branch: null, head }, fileMenuEnv(store));

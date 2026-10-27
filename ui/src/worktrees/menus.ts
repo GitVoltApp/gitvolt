@@ -3,10 +3,10 @@ import { useAppState } from '../app/state';
 import { tabWorktree } from '../app/tabs';
 import { registerMenu, type MenuContribution } from '../menu/registry';
 import type { CommitTarget, MenuEnv, SidebarTarget, WipTarget } from '../menu/menuEnv';
-import type { MenuRow } from '../menu/types';
+import type { MenuRow, Variant } from '../menu/types';
 import { openWorktreeTab, setActiveWorktree } from './active';
 import { openCreateWorktree } from './CreateWorktreeDialog';
-import { removeWorktree } from './remove';
+import { removeWorktree, removeWorktreeAndBranch } from './remove';
 
 const row = (r: Omit<Extract<MenuRow, { kind: 'action' }>, 'kind'>): MenuRow => ({ kind: 'action', ...r });
 
@@ -34,7 +34,8 @@ const sidebarRows: MenuContribution<SidebarTarget, MenuEnv> = {
   rows: (t, env) => (t.what === 'worktree' ? [...switchRows('sidebar.worktree.switch', 'Switch to', t.path, env), ...openTabRows('sidebar.worktree.openTab', t.path, env)] : []),
 };
 
-/** A WIP row (§14): Switch to this worktree and Open in a new tab, neither on the active one's. */
+/** A WIP row (§14): Switch to this worktree and Open in a new tab, neither on the active one's;
+ * Remove is below. */
 const wipRows: MenuContribution<WipTarget, MenuEnv> = {
   id: 'wip.worktree', kind: 'wip', group: 'worktree', order: 0,
   rows: (t, env) => [...(t.active ? [] : switchRows('wip.switch', 'Switch to this worktree', t.worktree, env)), ...openTabRows('wip.openTab', t.worktree, env)],
@@ -43,17 +44,60 @@ const wipRows: MenuContribution<WipTarget, MenuEnv> = {
 export const offWorktreeMenus: Array<() => void> = [registerMenu(sidebarRows), registerMenu(wipRows)];
 
 // --- 2C T14 ---
-/** Remove (sidebar worktree row): never on the main worktree; greyed for a locked one, with the
- * reason (unlocking it makes it removable). */
-const removeRows: MenuContribution<SidebarTarget, MenuEnv> = {
+/** Its local branch, with the tip a delete expects (from the sidebar): none when detached. */
+const branchOf = (name: string | null, env: MenuEnv) => {
+  const l = name ? env.sidebar?.locals.find((b) => b.name === name.replace(/^refs\/heads\//, '')) : undefined;
+  return l ? { name: l.name, oid: l.target } : null;
+};
+const lockedWhy = 'Locked: unlock it first';
+
+/** `Remove worktree | Worktree | With branch |` (#9): the branch variant also deletes its local
+ * branch (none for a detached worktree). Never on the main worktree; greyed for a locked one,
+ * with the reason (unlocking it makes it removable). */
+function removeRows(id: string, path: string, branchName: string | null, env: MenuEnv): MenuRow[] {
+  const w = env.sidebar?.worktrees.find((x) => x.path === path);
+  if (!env.write || w?.isMain || path === env.mainWorktree) return [];
+  const ctx = env.write;
+  const shown = env.worktreeShown(path);
+  const name = w?.branch ?? branchName;
+  const branch = branchOf(name, env);
+  const off = w?.locked ? { disabledReason: lockedWhy } : {};
+  const tooltip = `Delete ${shown}'s directory (its branch stays)`;
+  const alone = () => { void removeWorktree(ctx, path, name); };
+  const variants: Variant[] | undefined = branch ? [
+    { id: 'worktree', label: 'Worktree', tooltip, run: alone, ...off },
+    { id: 'branch', label: 'With branch', tooltip: `Remove ${shown} and delete its branch ${branch.name} (you can undo deleting the branch)`, run: () => { void removeWorktreeAndBranch(ctx, path, branch); }, ...off },
+  ] : undefined;
+  return [row({ id, label: 'Remove worktree', icon: FolderX, tooltip, run: alone, variants, defaultVariant: branch ? 'worktree' : undefined, ...off })];
+}
+
+const sidebarRemoveRows: MenuContribution<SidebarTarget, MenuEnv> = {
   id: 'sidebar.worktree.remove', kind: 'sidebar', group: 'worktree', order: 10,
-  when: (t, env) => t.what === 'worktree' && !!env.write,
+  when: (t) => t.what === 'worktree',
+  rows: (t, env) => (t.what === 'worktree' ? removeRows('sidebar.worktree.remove', t.path, t.branch, env) : []),
+};
+
+/** The WIP row's Remove: any linked worktree's, the active one's included. */
+const wipRemoveRows: MenuContribution<WipTarget, MenuEnv> = {
+  id: 'wip.worktree.remove', kind: 'wip', group: 'worktree', order: 10,
+  rows: (t, env) => removeRows('wip.remove', t.worktree, null, env),
+};
+
+/** A branch label whose local branch a linked worktree has checked out (#9): its Delete is greyed,
+ * so this row, right after it, removes that worktree and deletes the branch. */
+const branchRemoveRows: MenuContribution<CommitTarget, MenuEnv> = {
+  id: 'branch.removeWorktree', kind: 'commit', group: 'manage', order: 1,
+  when: (t, env) => !!t.branch?.local && !!env.write,
   rows: (t, env) => {
-    if (t.what !== 'worktree') return [];
-    const w = env.sidebar?.worktrees.find((x) => x.path === t.path);
-    if (w?.isMain) return [];
-    const why = w?.locked ? 'Locked: unlock it first' : undefined;
-    return [row({ id: 'sidebar.worktree.remove', label: 'Remove…', icon: FolderX, tooltip: `Delete ${env.worktreeShown(t.path)}'s directory (its branch stays)`, run: () => { void removeWorktree(env.write!, t.path, t.branch); }, disabledReason: why })];
+    const local = env.sidebar?.locals.find((b) => b.fullName === t.branch!.local);
+    const w = local?.checkedOut ? env.sidebar?.worktrees.find((x) => x.path === local.checkedOut) : undefined;
+    if (!local || !w || w.isMain || w.path === env.mainWorktree) return [];
+    const ctx = env.write!;
+    const shown = env.worktreeShown(w.path);
+    return [row({
+      id: 'branch.removeWorktree', label: 'Delete with its worktree', icon: FolderX, tooltip: `Remove ${shown}, then delete ${local.name} (you can undo deleting the branch)`,
+      run: () => { void removeWorktreeAndBranch(ctx, w.path, { name: local.name, oid: local.target }); }, disabledReason: w.locked ? `${shown} is locked: unlock it first` : undefined,
+    })];
   },
 };
 
@@ -82,5 +126,5 @@ const createRows: MenuContribution<CommitTarget, MenuEnv> = {
   },
 };
 
-offWorktreeMenus.push(registerMenu(removeRows), registerMenu(createRows));
+offWorktreeMenus.push(registerMenu(sidebarRemoveRows), registerMenu(wipRemoveRows), registerMenu(branchRemoveRows), registerMenu(createRows));
 // --- end 2C T14 ---

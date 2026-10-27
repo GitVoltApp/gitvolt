@@ -5,6 +5,7 @@ import { listWorktrees } from '../engine/read/worktrees';
 import { addWorktree, fakeCtx, makeTestRepo } from '../engine/read/testkit';
 import { branchConfig } from '../engine/write/config';
 import { readRef } from '../engine/write/refs';
+import { branchHandlers } from './branches';
 import { suggestWorktreePath, worktreeHandlers as h } from './worktrees';
 
 async function repo() {
@@ -77,6 +78,15 @@ describe('worktrees', () => {
     expect([done.outcome, t.memfs.existsSync('/demo/basic-feature-x'), t.memfs.existsSync(`${t.repo.gitdir}/worktrees/basic-feature-x`)]).toEqual([{ status: 'removed' }, false, false]);
     await expect(h.worktreeRemove({ repo: 1, worktree: t.dir, path: t.dir, force: true }, ctx)).rejects.toMatchObject({ kind: 'InvalidInput', message: "The main worktree can't be removed" });
     await expect(h.worktreeRemove({ repo: 1, worktree: t.dir, path: '/demo/nope', force: true }, ctx)).rejects.toMatchObject({ kind: 'NotFound', message: "That isn't a worktree of this repository" });
+  });
+  it('the branch a worktree had checked out can be deleted once it is removed (#9: With branch)', async () => {
+    const { t, base, ctx } = await repo();
+    await h.worktreeAdd({ repo: 1, worktree: t.dir, path: '/demo/basic-feature-x', branch: { kind: 'existing', name: 'feature/x' } }, ctx);
+    const del = () => branchHandlers.deleteBranch({ repo: 1, worktree: t.dir, branch: 'feature/x', local: true, remote: null, force: false, expect: { head: null, refs: { 'refs/heads/feature/x': base } } }, ctx);
+    await expect(del()).rejects.toMatchObject({ message: expect.stringContaining('checked out in') });
+    await h.worktreeRemove({ repo: 1, worktree: t.dir, path: '/demo/basic-feature-x', force: false }, ctx);
+    await del();
+    expect(readRef(t.repo.demo!, 'refs/heads/feature/x')).toBeNull();
   });
   it('numbers the .git/worktrees id when the name is taken', async () => {
     const { t, ctx } = await repo();

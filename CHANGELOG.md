@@ -5,6 +5,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **Remove a worktree together with its branch.** Remove worktree, on a worktree's row in the
+  sidebar and now on its WIP row in the graph too, has a With branch choice that also deletes the
+  worktree's local branch, after one confirmation naming both. A branch checked out in another
+  worktree offers Delete with its worktree beside its Delete. The branch delete can be undone;
+  removing the worktree can't (#9).
+
 ### Fixed
 
 - **A merged MR/PR's commits no longer linger in the graph** after its branch is deleted: the

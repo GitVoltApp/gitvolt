@@ -134,6 +134,9 @@ test.describe('the commit and label context menus (spec §7 target table)', () =
       const branchRow = action(await labelMenu(page, 'Hotfix: null check'), 'Copy branch name');
       await expect(variant(branchRow, 'Copy the local branch name')).toBeVisible();
       await expect(branchRow.getByRole('button', { name: /^Copy "/ })).toHaveCount(0);
+      // The menu opens shifted up to fit, with the pointer on Create worktree from: off it, so
+      // Esc closes the menu rather than the submenu the hover opened.
+      await branchRow.hover();
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('context-menu')).toBeHidden();
     });

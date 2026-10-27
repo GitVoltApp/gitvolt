@@ -119,7 +119,7 @@ test.describe('worktree create and remove (spec #2 §11.1)', () => {
     const wt = join(repo, '..', 'wt-hotfix');
     await page.goto(openUrl(repo));
     await page.getByRole('treeitem', { name: 'wt-hotfix' }).click({ button: 'right' });
-    await page.getByRole('menuitem', { name: 'Remove…' }).click();
+    await page.getByRole('menuitem', { name: 'Remove worktree' }).locator('[data-variant-id="worktree"]').click();
     // The row arms in place (board A); once the menu is gone, the dirty question is a popover there.
     await confirmArmed(page.getByRole('menuitem', { name: 'Click again to remove ../wt-hotfix: its directory is deleted' }));
     await expect(page.getByRole('alertdialog')).toContainText("has changes that aren't committed");
@@ -128,20 +128,31 @@ test.describe('worktree create and remove (spec #2 §11.1)', () => {
     expect(git(repo, 'branch', '--list', 'hotfix')).toContain('hotfix');
   });
 
-  test('removing the active worktree of another tab moves it to the main worktree', async ({ page }) => {
+  test('removing the active worktree of another tab, with its branch, from its WIP row moves that tab to the main worktree', async ({ page }) => {
     const repo = freshFixture('basic');
     await page.goto(openUrl(repo));
-    await page.getByRole('treeitem', { name: 'wt-hotfix' }).click({ button: 'right' });
-    await page.getByRole('menuitem', { name: 'Open in a new tab' }).click();
-    await expect(repoButton(page)).toContainText('wt-hotfix');
-    await page.getByRole('tab').first().click();
-    await page.getByRole('treeitem', { name: 'wt-hotfix' }).click({ button: 'right' });
-    await page.getByRole('menuitem', { name: 'Remove…' }).click();
-    await confirmArmed(page.getByRole('menuitem', { name: /^Click again to remove/ }));
-    await confirmArmed(page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }));
-    await page.getByRole('tab').last().click();
-    await expect(repoButton(page)).not.toContainText('wt-hotfix');
-    await expect(page.getByRole('alert')).toHaveCount(0);
+    await test.step('another tab is on wt-hotfix', async () => {
+      await page.getByRole('treeitem', { name: 'wt-hotfix' }).click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Open in a new tab' }).click();
+      await expect(repoButton(page)).toContainText('wt-hotfix');
+      await page.getByRole('tab').first().click();
+    });
+    await test.step('With branch (#9) asks once for both, then about its changes, then that hotfix is unmerged', async () => {
+      // The second WIP row is wt-hotfix's (dirty, fixtures.rs); hotfix has a commit main lacks.
+      await grid(page).getByRole('row').filter({ hasText: '// WIP' }).nth(1).locator('[data-col="message"]').click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Remove worktree' }).locator('[data-variant-id="branch"]').click();
+      await confirmArmed(page.getByRole('menuitem', { name: 'Click again to remove ../wt-hotfix and delete hotfix' }));
+      await confirmArmed(page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }));
+      await expect(page.getByRole('alertdialog')).toContainText('hotfix has 1 commit');
+      await confirmArmed(page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }));
+      await expect.poll(() => git(repo, 'branch', '--list', 'hotfix')).toBe('');
+      expect(existsSync(join(repo, '..', 'wt-hotfix'))).toBe(false);
+    });
+    await test.step('the other tab is on the main worktree', async () => {
+      await page.getByRole('tab').last().click();
+      await expect(repoButton(page)).not.toContainText('wt-hotfix');
+      await expect(page.getByRole('alert')).toHaveCount(0);
+    });
   });
 });
 // --- end 2C T14 ---
