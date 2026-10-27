@@ -1,4 +1,5 @@
 import type { FoldMark } from '../api/gen/FoldMark';
+import type { GhostBranch } from '../api/gen/GhostBranch';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { graphLayout, laneNodeX, MARK_GAP, nodeRadius, type NodeGeometry } from './draw';
 import { laneX, type Metrics } from './geometry';
@@ -23,9 +24,12 @@ export function foldText(f: FoldMark): { text: string; label: string } {
   return { text: `⋮ ${commits}`, label: `${commits} of ${f.branch}` };
 }
 
-/** After the summary of a commit hidden branches fork from. */
-export function hiddenText(count: number): { text: string; label: string } {
-  return { text: `⋮ ${count} hidden`, label: count === 1 ? '1 hidden branch starts here' : `${count} hidden branches start here` };
+/** After the summary of a commit hidden branches or tags fork from. */
+export function hiddenText(ghosts: GhostBranch[]): { text: string; label: string } {
+  const count = ghosts.length;
+  const tags = ghosts.filter((g) => g.tag).length;
+  const what = tags === 0 ? (count === 1 ? 'branch' : 'branches') : tags === count ? (count === 1 ? 'tag' : 'tags') : 'branches and tags';
+  return { text: `⋮ ${count} hidden`, label: `${count} hidden ${what} ${count === 1 ? 'starts' : 'start'} here` };
 }
 
 type HitGeometry = NodeGeometry & { rows: RowPayload[]; scrollTop: number };

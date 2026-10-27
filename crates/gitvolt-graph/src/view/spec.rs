@@ -16,7 +16,7 @@ pub struct ViewSpec {
     pub picks: BranchPicks,
     pub fold_merged: bool,
     pub ghost_lines: bool,
-    /// With `ghost_lines`, also stubs for branches hidden by hand.
+    /// With `ghost_lines`, also stubs for branches and tags hidden by hand.
     #[serde(default)]
     pub ghost_picks: bool,
     /// The repository's extra trunk branches (globs), beside the pinned pair.

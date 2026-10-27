@@ -21,8 +21,16 @@ pub(crate) struct ViewRows {
     pulled: HashSet<usize>,
     /// A merge → its fold.
     fold_at: HashMap<usize, usize>,
-    /// The hidden units that fork from a row (its stub's), newest tip first.
-    ghosts: HashMap<usize, Vec<usize>>,
+    /// The hidden units and tags that fork from a row (its stub's), newest tip first.
+    ghosts: HashMap<usize, Vec<Ghost>>,
+}
+
+/// What forks from a row: a hidden unit, or a hidden tag (`Decided::hidden_tags`) keeping commits
+/// no branch does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Ghost {
+    Unit(usize),
+    Tag(usize),
 }
 
 impl ViewRows {
@@ -126,17 +134,22 @@ impl ViewRows {
         Some(FoldMark { key: format!("fold:{}", commits[ci].id), branch: f.branch.clone(), count: f.commits.len() as u32, tail_lane: tail })
     }
 
-    /// The hidden branches forking from a row, all in the colour of its stub's lane (`stub`), or of
-    /// the lane right of the row's without one (row 0).
+    /// The hidden branches and tags forking from a row, all in the colour of its stub's lane
+    /// (`stub`), or of the lane right of the row's without one (row 0).
     pub(crate) fn ghosts(&self, ci: usize, lane: u16, stub: Option<u16>, commits: &[CommitMeta], index: &HashMap<Oid, usize>) -> Vec<GhostBranch> {
-        let Some(units) = self.ghosts.get(&ci) else { return vec![] };
+        let Some(ghosts) = self.ghosts.get(&ci) else { return vec![] };
         let color = (usize::from(stub.unwrap_or(lane + 1)) % usize::from(LANE_COLORS)) as u8;
-        units
+        ghosts
             .iter()
-            .map(|&u| {
-                let tip = newest_tip(&self.d.units[u], commits, index).map(|t| &commits[t]);
+            .map(|&g| {
+                let (name, tip) = match g {
+                    Ghost::Unit(u) => (&self.d.units[u].name, newest_tip(&self.d.units[u], commits, index)),
+                    Ghost::Tag(t) => (&self.d.hidden_tags[t].name, index.get(&self.d.hidden_tags[t].target).copied()),
+                };
+                let tip = tip.map(|t| &commits[t]);
                 GhostBranch {
-                    branch: self.d.units[u].name.clone(),
+                    branch: name.clone(),
+                    tag: matches!(g, Ghost::Tag(_)),
                     color,
                     tip: tip.map(|t| t.id.to_string()).unwrap_or_default(),
                     summary: tip.map(|t| t.summary.clone()).unwrap_or_default(),
@@ -166,28 +179,54 @@ impl ViewRows {
 }
 
 /// Per row, the units a preset's rules hide (a pick too with `picks`) that fork from it: those
-/// reaching a hidden child of it. Newest tip first.
-fn ghost_units(d: &Decided, plan: &ViewPlan, picks: bool, commits: &[CommitMeta], index: &HashMap<Oid, usize>) -> HashMap<usize, Vec<usize>> {
+/// reaching a hidden child of it. With `picks`, also the hidden tags (all hand picks) reaching a
+/// hidden child that no branch reaches: what only hidden tags keep. Newest tip first.
+fn ghost_units(d: &Decided, plan: &ViewPlan, picks: bool, commits: &[CommitMeta], index: &HashMap<Oid, usize>) -> HashMap<usize, Vec<Ghost>> {
     let ghostly: Vec<bool> = d
         .decisions
         .iter()
         .map(|x| x.action == PresetAction::Hide && (matches!(x.by, DecidedBy::Rule { .. } | DecidedBy::Otherwise) || (picks && x.by == DecidedBy::Picked)))
         .collect();
-    let mut out: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut out: HashMap<usize, Vec<Ghost>> = HashMap::new();
+    let mut add = |p: usize, g: Ghost| {
+        let ghosts = out.entry(p).or_default();
+        if !ghosts.contains(&g) {
+            ghosts.push(g);
+        }
+    };
     for (h, _) in plan.state.iter().enumerate().filter(|(_, s)| **s == CommitState::Hidden) {
         for p in &commits[h].parents {
             let Some(&p) = index.get(p).filter(|&&p| plan.state[p] == CommitState::Visible) else { continue };
             for u in d.facts.reach.units_reaching(h).filter(|&u| ghostly[u]) {
-                let units = out.entry(p).or_default();
-                if !units.contains(&u) {
-                    units.push(u);
+                add(p, Ghost::Unit(u));
+            }
+        }
+    }
+    if picks {
+        // Down from each hidden tag through what no branch reaches, to the rows it forks from.
+        let tag_only = |c: usize| plan.state[c] == CommitState::Hidden && d.facts.reach.units_reaching(c).next().is_none();
+        for (t, tag) in d.hidden_tags.iter().enumerate() {
+            let Some(&start) = index.get(&tag.target).filter(|&&c| tag_only(c)) else { continue };
+            let mut seen = HashSet::from([start]);
+            let mut todo = vec![start];
+            while let Some(h) = todo.pop() {
+                for p in commits[h].parents.iter().filter_map(|p| index.get(p).copied()) {
+                    if plan.state[p] == CommitState::Visible {
+                        add(p, Ghost::Tag(t));
+                    } else if tag_only(p) && seen.insert(p) {
+                        todo.push(p);
+                    }
                 }
             }
         }
     }
-    let tip_time: Vec<Option<i64>> = d.units.iter().map(|u| newest_tip(u, commits, index).map(|t| commits[t].committer_time)).collect();
-    for units in out.values_mut() {
-        units.sort_by_key(|&u| (std::cmp::Reverse(tip_time[u]), u));
+    let unit_time: Vec<Option<i64>> = d.units.iter().map(|u| newest_tip(u, commits, index).map(|t| commits[t].committer_time)).collect();
+    let tip_time = |g: Ghost| match g {
+        Ghost::Unit(u) => unit_time[u],
+        Ghost::Tag(t) => index.get(&d.hidden_tags[t].target).map(|&c| commits[c].committer_time),
+    };
+    for ghosts in out.values_mut() {
+        ghosts.sort_by_key(|&g| (std::cmp::Reverse(tip_time(g)), g));
     }
     out
 }
@@ -731,6 +770,44 @@ mod tests {
         assert_eq!(ghosts_on_c2(&on), [("w", 1), ("d/v", 1), ("x", 1)], "newest tip first, in the stub's colour");
         let off = build(&with(req, spec), &commits).unwrap();
         assert_eq!(ghosts_on_c2(&off), [("w", 1)]);
+    }
+
+    fn ghosts_on<'a>(g: &'a GraphPayload, summary: &str) -> Vec<(&'a str, bool, u8)> {
+        let row = g.rows.iter().find(|r| r.summary == summary).unwrap();
+        row.ghosts.iter().map(|gh| (gh.branch.as_str(), gh.tag, gh.color)).collect()
+    }
+
+    #[test]
+    fn ghosts_for_tags_hidden_by_hand_with_the_option() {
+        // The archive/ folder and kept/20 hidden: old21 and old20 go, forking from c2.
+        let (req, commits) = archived();
+        let spec = ViewSpec { ghost_picks: true, ..tags_picked(&[], &["archive/", "kept/20"]) };
+        let g = build(&with(req.clone(), spec.clone()), &commits).unwrap();
+        assert_eq!(summaries(&g), ["x15", "x14", "x13", "c3", "x12", "x11", "x10", "c2", "Initial commit"]);
+        assert_eq!(ghosts_on(&g, "c2"), [("archive/old", true, 2), ("kept/20", true, 2)], "newest first, beside x's line; archive/on-x is x's");
+        let ghost = &g.rows.iter().find(|r| r.summary == "c2").unwrap().ghosts[0];
+        assert_eq!((ghost.tip.clone(), ghost.summary.as_str(), ghost.author_name.as_str(), ghost.author_time), (id(21).to_string(), "old21", "ada", 700));
+        assert!(g.rows.iter().filter(|r| r.summary != "c2").all(|r| r.ghosts.is_empty()));
+        assert!(g.rows.iter().find(|r| r.summary == "c2").unwrap().stub_lane.is_some());
+        // Only the folder: old20 stays for kept/20, and archive/old forks from it.
+        let g = build(&with(req.clone(), ViewSpec { ghost_picks: true, ..tags_picked(&[], &["archive/"]) }), &commits).unwrap();
+        assert_eq!(ghosts_on(&g, "old20").iter().map(|&(n, t, _)| (n, t)).collect::<Vec<_>>(), [("archive/old", true)]);
+        assert_eq!(g.rows.iter().map(|r| r.ghosts.len()).sum::<usize>(), 1);
+        // Off: no marks.
+        let g = build(&with(req, ViewSpec { ghost_picks: false, ..spec }), &commits).unwrap();
+        assert!(g.rows.iter().all(|r| r.ghosts.is_empty() && r.stub_lane.is_none()));
+    }
+
+    #[test]
+    fn hidden_branches_and_tags_on_one_commit_share_one_stub() {
+        let (req, commits) = archived();
+        let picks = BranchPicks { hidden: vec!["x".into()], hidden_tags: vec!["archive/".into(), "kept/20".into()], ..Default::default() };
+        let g = build(&with(req, ViewSpec { picks, ghost_picks: true, ..view(vec![]) }), &commits).unwrap();
+        assert_eq!(summaries(&g), ["c3", "c2", "Initial commit"]);
+        assert_eq!(ghosts_on(&g, "c2"), [("x", false, 1), ("archive/old", true, 1), ("kept/20", true, 1)], "newest tip first, in the stub's colour");
+        assert_eq!(g.rows[1].stub_lane, Some(1));
+        let starts = segments(&g, 0).iter().filter(|s| s.half == Half::Bottom && s.dotted).count();
+        assert_eq!((starts, g.max_lanes), (1, 2), "one stub, one lane");
     }
 
     #[test]

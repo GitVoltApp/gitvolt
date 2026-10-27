@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Tag } from 'lucide-react';
 import type { GhostBranch } from '../api/gen/GhostBranch';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { relativeTime } from '../format/relative';
+import { hiddenText } from '../graph/stubs';
 import { registerKeyHints } from '../shortcuts/hints';
 import { useTheme } from '../theme/store';
-import { showBranch, showBranches, useCurrentPreset } from './store';
+import { showBranch, showBranches, showTag, useCurrentPreset } from './store';
 import './presets.css';
 
 /** How long the pointer may be between the stub and the popover before it closes. */
@@ -43,8 +45,8 @@ export function useGhostPopover(tabId: string | null): {
   return { hover, openFor, element };
 }
 
-/** "N hidden branches start here": per branch its chip (in its lane colour), its tip's summary,
- * author and age, and Show; then which preset hides them and Show all. */
+/** "N hidden branches start here": per branch (or tag hidden by hand) its chip (in its lane
+ * colour), its tip's summary, author and age, and Show; then which preset hides them and Show all. */
 export function GhostPopover({ tabId, row, at, focus, onEnter, onLeave, onClose }: {
   tabId: string; row: RowPayload; at: DOMRect; focus: boolean; onEnter?: () => void; onLeave?: () => void; onClose: () => void;
 }) {
@@ -76,27 +78,30 @@ export function GhostPopover({ tabId, row, at, focus, onEnter, onLeave, onClose 
   useEffect(() => { if (ghosts.length === 0) onClose(); }, [ghosts.length, onClose]);
   if (ghosts.length === 0) return null;
 
-  const show = (g: GhostBranch) => { showBranch(tabId, g.branch); onClose(); };
-  const showAll = () => { showBranches(tabId, ghosts.map((g) => g.branch)); onClose(); };
+  const show = (g: GhostBranch) => { (g.tag ? showTag : showBranch)(tabId, g.branch); onClose(); };
+  const showAll = () => { showBranches(tabId, ghosts.filter((g) => !g.tag).map((g) => g.branch), ghosts.filter((g) => g.tag).map((g) => g.branch)); onClose(); };
+  const title = hiddenText(ghosts).label;
   return createPortal(
     <div
       ref={ref}
       className="ghost-pop"
       role="dialog"
-      aria-label={`${ghosts.length} hidden ${ghosts.length === 1 ? 'branch starts' : 'branches start'} here`}
+      aria-label={title}
       style={{ top: pos?.top ?? at.top, left: pos?.left ?? at.right + 8, visibility: pos ? 'visible' : 'hidden' }}
       onPointerEnter={onEnter}
       onPointerLeave={onLeave}
     >
-      <div className="ghost-pop-title">{ghosts.length} hidden {ghosts.length === 1 ? 'branch starts' : 'branches start'} here</div>
+      <div className="ghost-pop-title">{title}</div>
       {ghosts.map((g) => (
-        <div key={g.branch} className="ghost-pop-row">
-          <span className="ghost-pop-chip" style={{ ['--lane-color' as string]: lanes[g.color % lanes.length] }} title={g.branch}>{g.branch}</span>
+        <div key={`${g.tag ? 'tag' : 'branch'}:${g.branch}`} className="ghost-pop-row">
+          <span className="ghost-pop-chip" style={{ ['--lane-color' as string]: lanes[g.color % lanes.length] }} title={g.branch}>
+            {g.tag && <Tag size={11} aria-label="tag" />}{g.branch}
+          </span>
           <span className="ghost-pop-what">
             <span className="ghost-pop-summary" title={g.summary}>{g.summary}</span>
             <span className="ghost-pop-meta">{g.authorName} · {relativeTime(g.authorTime)}</span>
           </span>
-          <button type="button" className="ghost-pop-btn" aria-label={`Show ${g.branch}`} onClick={() => show(g)}>Show</button>
+          <button type="button" className="ghost-pop-btn" aria-label={`Show ${g.tag ? 'tag ' : ''}${g.branch}`} onClick={() => show(g)}>Show</button>
         </div>
       ))}
       <div className="ghost-pop-foot">

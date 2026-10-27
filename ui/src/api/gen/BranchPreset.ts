@@ -28,7 +28,7 @@ foldMerged: boolean,
  */
 ghostLines: boolean, 
 /**
- * With `ghost_lines`, also for branches hidden by hand (picks). Off in older files.
+ * With `ghost_lines`, also for branches and tags hidden by hand (picks). Off in older files.
  */
 ghostPicks: boolean, 
 /**

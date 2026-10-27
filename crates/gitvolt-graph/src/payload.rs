@@ -507,15 +507,21 @@ pub struct FoldMark {
     pub tail_lane: Option<u16>,
 }
 
-/// A hidden branch forking from a shown commit, where the row's stub is.
+/// A hidden branch, or a tag hidden by hand (`tag`), forking from a shown commit, where the row's
+/// stub is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct GhostBranch {
+    /// The branch's name, or the tag's.
     pub branch: String,
+    /// A tag: the commits only hidden tags keep fork here.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(optional, as = "Option<bool>")]
+    pub tag: bool,
     /// Its lane colour index: the stub's lane's, the same for every hidden branch of the row.
     pub color: u8,
-    /// Its newest tip in the window.
+    /// Its newest tip in the window (a tag's commit).
     pub tip: String,
     pub summary: String,
     pub author_name: String,

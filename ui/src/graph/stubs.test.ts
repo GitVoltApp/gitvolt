@@ -25,11 +25,15 @@ describe('the marks', () => {
     expect(isMarkEnd(seg(2, 0, HALF_TOP), r)).toBe(false);
   });
 
-  it('say how many commits folded and branches hidden', () => {
+  it('say how many commits folded and branches or tags hidden', () => {
     expect(foldText({ key: 'fold:m', branch: 'feature/trade-ui', count: 3 })).toEqual({ text: '⋮ 3 folded commits', label: '3 folded commits of feature/trade-ui' });
     expect(foldText({ key: 'fold:m', branch: 'fix/dock', count: 1 }).text).toBe('⋮ 1 folded commit');
-    expect(hiddenText(10)).toEqual({ text: '⋮ 10 hidden', label: '10 hidden branches start here' });
-    expect(hiddenText(1).label).toBe('1 hidden branch starts here');
+    expect(hiddenText(Array.from({ length: 10 }, (_, i) => ghost(i)))).toEqual({ text: '⋮ 10 hidden', label: '10 hidden branches start here' });
+    expect(hiddenText([ghost(2)]).label).toBe('1 hidden branch starts here');
+    const tag = { ...ghost(2), branch: 'archive/old', tag: true };
+    expect(hiddenText([tag]).label).toBe('1 hidden tag starts here');
+    expect(hiddenText([tag, tag]).label).toBe('2 hidden tags start here');
+    expect(hiddenText([ghost(2), tag])).toEqual({ text: '⋮ 2 hidden', label: '2 hidden branches and tags start here' });
   });
 });
 

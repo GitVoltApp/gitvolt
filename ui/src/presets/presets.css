@@ -17,6 +17,7 @@
 .ghost-pop-row { display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
 .ghost-pop-row:hover { background: var(--hover-row); }
 .ghost-pop-chip { flex: none; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; padding: 1px 6px; border: 1px solid var(--lane-color); border-radius: 4px; color: var(--lane-color); font-size: 12px; }
+.ghost-pop-chip svg { margin-right: 3px; vertical-align: -1px; }
 .ghost-pop-what { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ghost-pop-summary, .ghost-pop-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ghost-pop-meta { color: var(--text-secondary); font-size: 11px; }

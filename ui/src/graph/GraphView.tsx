@@ -94,7 +94,7 @@ function MessageCell({ row, repoId, width, messages, dim, badges }: { row: RowPa
  * style: after the summary, so they're cut off before it is. */
 function MarkTexts({ row }: { row: RowPayload }) {
   const fold = row.fold && foldText(row.fold);
-  const hidden = row.ghosts?.length ? hiddenText(row.ghosts.length) : null;
+  const hidden = row.ghosts?.length ? hiddenText(row.ghosts) : null;
   return (
     <>
       {fold && <span className="dim msg-mark" aria-label={fold.label}>{fold.text}</span>}

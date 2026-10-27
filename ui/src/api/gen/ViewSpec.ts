@@ -6,7 +6,7 @@ import type { Rule } from "./Rule";
 
 export type ViewSpec = { rules: Array<Rule>, otherwise: PresetAction, picks: BranchPicks, foldMerged: boolean, ghostLines: boolean, 
 /**
- * With `ghost_lines`, also stubs for branches hidden by hand.
+ * With `ghost_lines`, also stubs for branches and tags hidden by hand.
  */
 ghostPicks: boolean, 
 /**

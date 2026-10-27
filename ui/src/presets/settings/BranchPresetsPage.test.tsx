@@ -168,11 +168,11 @@ describe('the branch preset editor', () => {
     expect(repo().branchPresets?.map((p) => [p.id, p.scope])).toEqual([['r1', 'repo']]);
   });
 
-  it('marks for branches hidden by hand: off, greyed while marks are off, saved with the preset', () => {
+  it('marks for branches and tags hidden by hand: off, greyed while marks are off, saved with the preset', () => {
     setRepo({ branchPreset: 'r1' });
     page();
     const marks = screen.getByRole('switch', { name: 'Mark where hidden branches fork' });
-    const byHand = () => screen.getByRole('switch', { name: 'Also for branches hidden by hand' }) as HTMLButtonElement;
+    const byHand = () => screen.getByRole('switch', { name: 'Also for branches and tags hidden by hand' }) as HTMLButtonElement;
     expect([byHand().getAttribute('aria-checked'), byHand().disabled]).toEqual(['false', false]);
     expect(viewSpecFor('t1')?.ghostPicks).toBe(false);
     fireEvent.click(byHand());

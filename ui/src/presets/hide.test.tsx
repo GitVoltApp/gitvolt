@@ -249,4 +249,26 @@ describe("the hidden-branch stub's popover", () => {
     act(() => fireEvent.click(screen.getByRole('button', { name: 'Show all' })));
     expect(picks().custom?.shown).toEqual(['spike/x', 'spike/y']);
   });
+
+  it('lists a tag hidden by hand with a tag icon; Show and Show all show it as a tag', () => {
+    const mixed = { ...row, ghosts: [
+      row.ghosts![0],
+      { branch: 'archive/old', tag: true, color: 2, tip: 't3', summary: 'Old spike', authorName: 'Cy', authorTime: 3 },
+    ] } as RowPayload;
+    const openMixed = () => render(<GhostPopover tabId="t" row={mixed} at={new DOMRect(10, 10, 8, 8)} focus={false} onClose={vi.fn()} />);
+    const { unmount } = openMixed();
+    expect(screen.getByRole('dialog', { name: '2 hidden branches and tags start here' })).toBeTruthy();
+    expect(screen.getByText('archive/old').querySelector('[aria-label="tag"]')).toBeTruthy();
+    expect(screen.getByText('spike/x').querySelector('[aria-label="tag"]')).toBeNull();
+    expect(screen.getByText('Old spike')).toBeTruthy();
+    expect(screen.getByText(/Cy/)).toBeTruthy();
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Show tag archive/old' })));
+    expect(picks().custom?.shownTags).toEqual(['archive/old']);
+    expect(picks().custom?.shown).toEqual([]);
+    unmount();
+    openMixed();
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Show all' })));
+    expect(picks().custom?.shown).toEqual(['spike/x']);
+    expect(picks().custom?.shownTags).toEqual(['archive/old']);
+  });
 });

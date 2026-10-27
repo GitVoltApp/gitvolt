@@ -75,11 +75,14 @@ export function cyclePreset(tabId: string): void {
   if (next) setPreset(tabId, next.preset.id);
 }
 
-function pick(tabId: string, names: string[], show: boolean): void {
+function pick(tabId: string, names: string[], show: boolean, tags: string[] = []): void {
   const r = resolve(tabId);
-  if (!r || names.length === 0) return;
+  if (!r || names.length + tags.length === 0) return;
   const app = useAppState.getState();
-  app.updateProfile((p) => names.reduce((acc, name) => pickBranch(app.settings, acc, r.repo.path, name, show), p));
+  app.updateProfile((p) => {
+    const branches = names.reduce((acc, name) => pickBranch(app.settings, acc, r.repo.path, name, show), p);
+    return tags.reduce((acc, name) => pickTag(app.settings, acc, r.repo.path, name, show), branches);
+  });
   reload(r.repo.id, resolve(tabId)?.current.preset.id !== r.current.preset.id, show ? undefined : (k) => k === `branch:${names[0]}`);
 }
 
@@ -97,8 +100,9 @@ export const showBranch = (tabId: string, name: string): void => pick(tabId, [na
 /** Hides every branch under `folder` (`deployed-commit/`), also those created later. */
 export const hideFolder = (tabId: string, folder: string): void => pickFolderOf(tabId, folder, false);
 export const showFolder = (tabId: string, folder: string): void => pickFolderOf(tabId, folder, true);
-/** Shows several branches in one pick update (the ghost popover's "Show all"): one save, one reload. */
-export const showBranches = (tabId: string, names: string[]): void => pick(tabId, names, true);
+/** Shows several branches, and tags, in one pick update (the ghost popover's "Show all"): one
+ * save, one reload. */
+export const showBranches = (tabId: string, names: string[], tags: string[] = []): void => pick(tabId, names, true, tags);
 
 /** Changes the tag picks with `edit`, as `pick` does the branch ones; `drop`: the expansions it ends. */
 function pickTags(tabId: string, edit: (settings: AppSettings, p: Profile, repoPath: string) => Profile, drop?: (key: string) => boolean): void {
