@@ -35,6 +35,7 @@ registerKeyHints([
   h('sb.ends', 'Sidebar', 'First / last row', ['Home', 'End'], 'sidebar/SidebarPanel.tsx', '(when the sidebar has focus)'),
   h('sb.open', 'Sidebar', 'Activate the row', ['Enter', 'Space'], 'sidebar/SidebarPanel.tsx', '(when the sidebar has focus)'),
   h('sb.expand', 'Sidebar', 'Expand / collapse a group', ['Right', 'Left'], 'sidebar/SidebarPanel.tsx', '(when the sidebar has focus)'),
+  h('sb.hide', 'Sidebar', 'Hide or show the branch or folder in the graph', ['H'], 'sidebar/SidebarPanel.tsx', '(when the sidebar has focus)'),
   h('sb.filter', 'Sidebar', 'Clear the filter / move into the list', ['Esc', 'Down'], 'sidebar/Sidebar.tsx', '(when in the sidebar filter)'),
   h('sb.resize', 'Sidebar', 'Reset the width', ['Enter'], 'sidebar/Sidebar.tsx', '(when the resize handle has focus)'),
   // Find (find/FindBox.tsx)

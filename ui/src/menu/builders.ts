@@ -373,7 +373,7 @@ registerMenu<SidebarTarget, MenuEnv>({
           copySha('sidebar.copySha', t.sha, env),
           row({ id: 'sidebar.copyStash', label: 'Copy message', icon: ICONS.message, tooltip: "Copy the stash's message", run: () => env.act.copy(t.message) }),
         ];
-      case 'ref':
+      case 'ref': case 'folder':
         return [];
     }
   },

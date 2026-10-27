@@ -157,6 +157,18 @@ test.describe('sidebar', () => {
       await page.keyboard.press('Escape');
       await expect(menu(page)).toBeHidden();
     });
+    await test.step("a branch row's icon is an eye on hover: one click hides the branch from the graph, another shows it", async () => {
+      const row = item(page, 'Local', 'hotfix');
+      const commit = page.getByRole('row').filter({ hasText: 'Hotfix: null check' });
+      await row.hover();
+      await row.getByRole('button', { name: 'Hide hotfix from the graph' }).click();
+      await expect(commit).toHaveCount(0);
+      await expect(row).toHaveClass(/is-hidden/);
+      await expect(row.locator('.sb-label')).toHaveCSS('text-decoration-line', 'none');
+      await row.getByRole('button', { name: 'Show hotfix in the graph' }).click();
+      await expect(row).not.toHaveClass(/is-hidden/);
+      await expect(commit).toBeVisible();
+    });
     // K56: the sidebar never grows its own scrollbar; only the panel bodies scroll. The harness has
     // no webview zoom, so CSS zoom on the root stands in (it gives the same fractional layout).
     await test.step('the sidebar does not overflow at zoom 100%, 120% and 125%, 900, 600 and 400 px tall', async () => {

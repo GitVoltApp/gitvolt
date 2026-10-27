@@ -82,6 +82,30 @@ describe('sidebar model', () => {
       expect(sectionsOf(payload, view)[1].items[0].presetState).toBe('folded');
     });
 
+    const folders = (p: SidebarPayload, v?: ViewPayload, picks?: { shown: string[]; hidden: string[] }) => buildPanels(sectionsOf(p, v, picks), opts()).flatMap((panel) => panel.rows)
+      .flatMap((r) => (r.type === 'folder' ? [[r.key, r.branchFolder, r.hidden]] : []));
+    const states2 = (hidden: string[]): ViewPayload => ({ trunk: ['main'], branches: ['feature/login', 'feature/pay/v2', 'bot/x'].map((name) => ({ name, refs: [], state: hidden.includes(name) ? 'hidden' : 'shown', by: { kind: 'otherwise' } })) });
+    const withBot: SidebarPayload = { ...payload, remotes: [{ ...payload.remotes[0], branches: [...payload.remotes[0].branches, { name: 'bot/x', fullName: 'refs/remotes/origin/bot/x', target: 'b'.repeat(40), tipTime: 1, summary: '', author: '' }] }], tags: [{ ...payload.tags[0], name: 'rel/v1' }] };
+
+    it('a branch folder carries its prefix, and looks hidden when every branch under it is', () => {
+      expect(folders(withBot, states2(['feature/login']))).toEqual([
+        ['local:feature', 'feature/', false], ['local:feature/pay', 'feature/pay/', false],
+        // A remote's own folder isn't a branch folder; its folders are, without the remote's name.
+        ['remote:origin', undefined, undefined], ['remote:origin/bot', 'bot/', false],
+        ['tags:rel', undefined, undefined],
+      ]);
+      expect(folders(withBot, states2(['feature/login', 'feature/pay/v2', 'bot/x'])).filter((f) => f[2]).map((f) => f[0])).toEqual(['local:feature', 'local:feature/pay', 'remote:origin/bot']);
+      // Without a view nothing looks hidden; the folders can still be hidden.
+      expect(folders(withBot).filter((f) => f[1]).every((f) => f[2] === false)).toBe(true);
+    });
+
+    it('a folder looks hidden when its folder pick, or one above it, hides it', () => {
+      const hidden = (picks: { shown: string[]; hidden: string[] }) => folders(withBot, states2([]), picks).filter((f) => f[2]).map((f) => f[0]);
+      expect(hidden({ shown: ['feature/pay/v2'], hidden: ['feature/pay/'] })).toEqual(['local:feature/pay']);
+      expect(hidden({ shown: [], hidden: ['feature/', 'bot/'] })).toEqual(['local:feature', 'local:feature/pay', 'remote:origin/bot']);
+      expect(hidden({ shown: ['feature/pay/'], hidden: ['feature/'] })).toEqual(['local:feature']);
+    });
+
     it('nothing changes without a view', () => {
       expect(states().every(([, st]) => st === undefined)).toBe(true);
       expect(sectionsOf(payload)).toEqual(sectionsOf(payload, null));

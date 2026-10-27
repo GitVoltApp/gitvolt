@@ -59,8 +59,51 @@ export function viewSpecOf(entry: PresetEntry, repo: RepoSettings | undefined, e
 
 const without = (list: string[], name: string) => list.filter((n) => n !== name);
 
-/** Hide or show one branch; on a read-only preset, switches to Custom (made from it if none). */
+/** Hide or show one branch; on a read-only preset, switches to Custom (made from it if none).
+ * Hiding one that a folder pick hides (an exception shown inside it) only drops the exception. */
 export function pickBranch(settings: AppSettings, profile: Profile, repoPath: string, name: string, show: boolean): Profile {
+  return editPicks(settings, profile, repoPath, (old) => {
+    if (show) return { shown: [...without(old.shown, name), name], hidden: without(old.hidden, name) };
+    const rest = { shown: without(old.shown, name), hidden: without(old.hidden, name) };
+    return folderPickHides(rest, name.slice(0, name.lastIndexOf('/') + 1)) ? rest : { ...rest, hidden: [...rest.hidden, name] };
+  });
+}
+
+/** Whether the folder picks hide `folder` (a unit-name prefix with its slash, `deployed-commit/`):
+ * as in the core, the nearest folder with a pick, from `folder` itself up, decides. */
+export function folderPickHides(picks: BranchPicks | undefined, folder: string): boolean {
+  if (!picks) return false;
+  for (let i = folder.length - 1; i >= 0; i = folder.lastIndexOf('/', i - 1)) {
+    const f = folder.slice(0, i + 1);
+    if (picks.shown.includes(f)) return false;
+    if (picks.hidden.includes(f)) return true;
+  }
+  return false;
+}
+
+/**
+ * Hide or show every branch under `folder` (`deployed-commit/`), also those created later; on a
+ * read-only preset, switches to Custom. Hiding replaces every pick under it, its own included,
+ * with the folder in `hidden` (none when a folder above already hides it); a branch shown by hand
+ * inside it afterwards is an exception the core lets win. Showing drops the hidden picks under it,
+ * and adds the folder to `shown` only when that can't bring it back: a folder above still hides
+ * it, or no pick hid it (the preset's rules do).
+ */
+export function pickFolder(settings: AppSettings, profile: Profile, repoPath: string, folder: string, show: boolean): Profile {
+  const outside = (n: string) => !n.startsWith(folder);
+  return editPicks(settings, profile, repoPath, (old) => {
+    if (!show) {
+      const rest = { shown: old.shown.filter(outside), hidden: old.hidden.filter(outside) };
+      return folderPickHides(rest, folder) ? rest : { ...rest, hidden: [...rest.hidden, folder] };
+    }
+    const hidden = old.hidden.filter(outside);
+    const pin = hidden.length === old.hidden.length || folderPickHides({ shown: old.shown, hidden }, folder);
+    return pin ? { shown: [...old.shown.filter(outside), folder], hidden } : { shown: old.shown, hidden };
+  });
+}
+
+/** Changes the current preset's picks; on a read-only preset, switches to Custom (made from it if none). */
+function editPicks(settings: AppSettings, profile: Profile, repoPath: string, edit: (old: BranchPicks) => BranchPicks): Profile {
   let repo = profile.repos[repoPath] ?? NO_REPO;
   const cur = currentPreset(presetList(settings, repo), repo);
   let id = cur.preset.id;
@@ -73,10 +116,6 @@ export function pickBranch(settings: AppSettings, profile: Profile, repoPath: st
     }
     repo = { ...repo, branchPreset: CUSTOM_ID };
   }
-  const old = repo.branchPicks?.[id] ?? NO_PICKS;
-  const picks: BranchPicks = show
-    ? { shown: [...without(old.shown, name), name], hidden: without(old.hidden, name) }
-    : { shown: without(old.shown, name), hidden: [...without(old.hidden, name), name] };
-  repo = { ...repo, branchPicks: { ...repo.branchPicks, [id]: picks } };
+  repo = { ...repo, branchPicks: { ...repo.branchPicks, [id]: edit(repo.branchPicks?.[id] ?? NO_PICKS) } };
   return { ...profile, repos: { ...profile.repos, [repoPath]: repo } };
 }

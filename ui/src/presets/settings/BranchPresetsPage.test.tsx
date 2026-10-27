@@ -180,12 +180,14 @@ describe('the branch preset editor', () => {
     expect([repoId, limit, view.otherwise, view.rules]).toEqual([7, 2000, 'hide', [{ action: 'hide', matcher: { kind: 'nameMatches', patterns: 'bot/*' } }]]);
   });
 
-  it('picked-by-hand chips forget a branch with ✕', () => {
-    setRepo({ branchPicks: { g1: { shown: ['feature/payments'], hidden: ['spike/warp-gates'] } } });
+  it('picked-by-hand chips forget a branch or a folder with ✕', () => {
+    setRepo({ branchPicks: { g1: { shown: ['feature/payments'], hidden: ['spike/warp-gates', 'deployed-commit/'] } } });
     page();
     select('Quiet');
     expect(screen.getByText('Always hidden:')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Forget spike/warp-gates' }));
+    expect(repo().branchPicks?.g1).toEqual({ shown: ['feature/payments'], hidden: ['deployed-commit/'] });
+    fireEvent.click(screen.getByRole('button', { name: 'Forget deployed-commit/' }));
     expect(repo().branchPicks?.g1).toEqual({ shown: ['feature/payments'], hidden: [] });
   });
 

@@ -27,9 +27,19 @@
 .sb-automerge { flex: none; display: inline-flex; color: var(--text-secondary); opacity: 0.8; }
 .sb-count { font-weight: 700; color: var(--count-blue); }
 .sb-item.is-head { background: var(--checked-out-row); color: var(--text-selected); font-weight: 600; }
-/* A branch the open preset hides stays listed: dimmed and struck through, with its state as a trailing word (a folded one: the word only). Same row height. */
-.sb-item.is-hidden .sb-label { color: var(--text-secondary); text-decoration: line-through; }
-.sb-item.is-hidden > svg { opacity: 0.5; }
+/* A branch (or branch folder) the open preset hides stays listed, faded, its leading icon an
+   eye-off; its MR/PR badge stays, faded too. Nothing at the right end, which is the badge's and
+   ahead/behind's; a folded branch keeps its trailing word. */
+.sb-row.is-hidden .sb-label, .sb-row.is-hidden .sb-ab, .sb-row.is-hidden .sb-hidden-icon { color: var(--text-disabled); }
+.sb-row.is-hidden .mr-badge { opacity: 0.5; }
+/* The leading icon's slot, as a button on hover: the same 13px box, a halo that takes no room. */
+.sb-eye { all: unset; flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 3px; color: var(--sidebar-icon); cursor: pointer; transition: background-color var(--motion-fast), color var(--motion-fast); }
+.sb-eye > span { grid-area: 1 / 1; display: inline-flex; }
+.sb-eye-hover { visibility: hidden; }
+.sb-row:hover .sb-eye-rest { visibility: hidden; }
+.sb-row:hover .sb-eye-hover { visibility: visible; }
+.sb-row[data-active="true"] .sb-eye { color: var(--text-normal); }
+.sb-row:hover .sb-eye { color: var(--text-selected); background: var(--control-hover-bg); box-shadow: 0 0 0 2px var(--control-hover-bg); }
 .sb-state { flex: none; margin-left: auto; padding-left: 6px; font-size: 11px; color: var(--text-secondary); }
 .sb-row > svg:not([data-host-kind]) { flex: none; }
 /* Every row icon is dimmed except an MR/PR's state icon, which keeps its state colour (mr.css). */

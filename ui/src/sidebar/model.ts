@@ -2,6 +2,7 @@
 import type { ForgeKind } from '../api/gen/ForgeKind';
 import type { ForgeMr } from '../api/gen/ForgeMr';
 // --- end 4B T11 ---
+import type { BranchPicks } from '../api/gen/BranchPicks';
 import type { BranchState } from '../api/gen/BranchState';
 import type { HostKind } from '../api/gen/HostKind';
 import type { LocalBranch } from '../api/gen/LocalBranch';
@@ -12,6 +13,7 @@ import type { StashItem } from '../api/gen/StashItem';
 import type { TagItem } from '../api/gen/TagItem';
 import type { ViewPayload } from '../api/gen/ViewPayload';
 import type { WorktreeItem } from '../api/gen/WorktreeItem';
+import { folderPickHides } from '../presets/model';
 
 interface Base { key: string; name: string; target: string | null; time: number; /** A branch's state under the open preset; absent without a view. */ presetState?: BranchState }
 export type SideItem =
@@ -25,21 +27,26 @@ export type SideItem =
   // --- end 4B T11 ---
 
 export type SectionKind = 'local' | 'remote' | 'mrs' | 'worktrees' | 'stashes' | 'tags';
-export interface Section { id: SectionKind; kind: SectionKind; label: string; hosts?: Record<string, HostKind>; hostNames?: Record<string, string | null>; items: SideItem[]; nests: boolean; /** The empty body's text (default "Nothing here"). */ empty?: string }
+export interface Section {
+  id: SectionKind; kind: SectionKind; label: string; hosts?: Record<string, HostKind>; hostNames?: Record<string, string | null>; items: SideItem[]; nests: boolean; /** The empty body's text (default "Nothing here"). */ empty?: string;
+  /** A branch panel's picks under the open preset (its folder picks); absent without a view. */
+  picks?: BranchPicks;
+}
 
 /** The sidebar's panels, in fixed display order (spec §6.4): Local, Remote (one top-level folder
- * per remote), Worktrees, Stashes, Tags. */
-export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null): Section[] {
+ * per remote), Worktrees, Stashes, Tags. `picks`: the open preset's, for its hidden folders. */
+export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null, picks?: BranchPicks | null): Section[] {
   // Branch units are keyed by short name, so a local and its remotes share a state.
   const states = view ? new Map(view.branches.map((b) => [b.name, b.state])) : null;
   const st = (name: string): { presetState?: BranchState } => { const s = states?.get(name); return s ? { presetState: s } : {}; };
   const hosts: Record<string, HostKind> = {};
   const hostNames: Record<string, string | null> = {};
   for (const g of p.remotes) { hosts[g.name] = g.hostKind; hostNames[g.name] = g.host; }
+  const branchPicks = view ? { picks: picks ?? { shown: [], hidden: [] } } : {};
   return [
-    { id: 'local', kind: 'local', label: 'Local', nests: true, items: p.locals.map((b): SideItem => ({ key: b.fullName, kind: 'local', name: b.name, target: b.target, time: b.tipTime, branch: b, ...st(b.name) })) },
+    { id: 'local', kind: 'local', label: 'Local', nests: true, ...branchPicks, items: p.locals.map((b): SideItem => ({ key: b.fullName, kind: 'local', name: b.name, target: b.target, time: b.tipTime, branch: b, ...st(b.name) })) },
     {
-      id: 'remote', kind: 'remote', label: 'Remote', nests: true, hosts, hostNames,
+      id: 'remote', kind: 'remote', label: 'Remote', nests: true, hosts, hostNames, ...branchPicks,
       items: p.remotes.flatMap((g) => g.branches.map((b): SideItem => ({ key: b.fullName, kind: 'remote', name: b.name, target: b.target, time: b.tipTime, remote: g.name, branch: b, ...st(b.name) }))),
     },
     { id: 'worktrees', kind: 'worktrees', label: 'Worktrees', nests: false, items: p.worktrees.map((w): SideItem => ({ key: `wt:${w.path}`, kind: 'worktree', name: w.name, target: w.head, time: 0, worktree: w })) },
@@ -49,7 +56,13 @@ export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null): Sectio
 }
 
 export type FlatRow =
-  | { type: 'folder'; key: string; name: string; depth: number; collapsed: boolean; section: Section; hostKind?: HostKind; host?: string | null; remote?: string }
+  | {
+    type: 'folder'; key: string; name: string; depth: number; collapsed: boolean; section: Section; hostKind?: HostKind; host?: string | null; remote?: string;
+    /** A branch folder's prefix (`deployed-commit/`, a remote's name left out), what hiding it picks. */
+    branchFolder?: string;
+    /** It looks hidden under the open preset: its folder pick hides it, or every branch under it is hidden. */
+    hidden?: boolean;
+  }
   | { type: 'item'; key: string; item: SideItem; depth: number; label: string; section: Section };
 
 /** One stacked panel: its header numbers and its (virtualized) body rows. `matched` is what the
@@ -66,6 +79,25 @@ const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensiti
 /** What the filter matches against, and what flat (recent) lists show: remote branches carry
  * their remote's name. */
 const fullName = (it: SideItem) => (it.kind === 'remote' ? `${it.remote}/${it.name}` : it.name);
+
+/** A branch panel's folders (by tree path, a remote's name first): how many branches are under
+ * each, at any depth, and how many of them the preset hides. Unfiltered. */
+function hiddenCounts(s: Section): Map<string, { all: number; hidden: number }> {
+  const out = new Map<string, { all: number; hidden: number }>();
+  for (const it of s.items) {
+    if (it.kind !== 'local' && it.kind !== 'remote') continue;
+    const dirs = it.name.split('/').slice(0, -1);
+    let path = '';
+    for (const part of it.kind === 'remote' ? [it.remote, ...dirs] : dirs) {
+      path = path ? `${path}/${part}` : part;
+      const c = out.get(path) ?? { all: 0, hidden: 0 };
+      c.all += 1;
+      if (it.presetState === 'hidden') c.hidden += 1;
+      out.set(path, c);
+    }
+  }
+  return out;
+}
 
 /**
  * Builds the sidebar's panels (spec §6.4). A case-insensitive substring filter applies to every
@@ -110,6 +142,7 @@ export function buildPanels(sections: Section[], o: RowOptions): Panel[] {
       for (const it of [...matched].sort((a, b) => b.time - a.time || byName(a.name, b.name))) out.push(item(it, 1, fullName(it)));
       return panel;
     }
+    const counts = s.picks ? hiddenCounts(s) : null;
     const root: Node = { folders: new Map(), items: [] };
     for (const it of matched) {
       let n = root;
@@ -137,7 +170,14 @@ export function buildPanels(sections: Section[], o: RowOptions): Panel[] {
         const key = folderKey(s.id, path);
         const fc = !q && o.collapsed.has(key);
         const isRemote = s.kind === 'remote' && depth === 1;
-        out.push({ type: 'folder', key, name: e.folder, depth, collapsed: fc, section: s, ...(isRemote ? { remote: e.folder, hostKind: s.hosts?.[e.folder], host: s.hostNames?.[e.folder] } : {}) });
+        const branchFolder = s.kind === 'local' ? `${path}/` : s.kind === 'remote' && !isRemote ? `${path.slice(path.indexOf('/') + 1)}/` : undefined;
+        const c = counts?.get(path);
+        const hidden = branchFolder && s.picks ? folderPickHides(s.picks, branchFolder) || (!!c && c.hidden === c.all) : false;
+        out.push({
+          type: 'folder', key, name: e.folder, depth, collapsed: fc, section: s,
+          ...(isRemote ? { remote: e.folder, hostKind: s.hosts?.[e.folder], host: s.hostNames?.[e.folder] } : {}),
+          ...(branchFolder ? { branchFolder, hidden } : {}),
+        });
         if (!fc) walk(e.child, depth + 1, path);
       }
     };

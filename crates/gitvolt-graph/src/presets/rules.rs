@@ -1,11 +1,12 @@
 //! Deciding each unit from a preset's rules, its picks and the session's expansions.
 
 use crate::payload::DecidedBy;
-use crate::presets::{name_matches, Author, BranchUnit, Decision, Facts, Matcher, PresetAction, UnitFacts};
+use crate::presets::{name_matches, Author, BranchPicks, BranchUnit, Decision, Facts, Matcher, PresetAction, UnitFacts};
 use crate::view::{branch_key, ViewSpec};
 
-/// One decision per unit. The trunk shows; then an expansion this session shows; then a pick
-/// shows or hides; then the first matching rule decides; then Everything else. A unit checked out
+/// One decision per unit. The trunk shows; then an expansion this session shows; then a pick of
+/// the branch shows or hides; then the pick of its nearest folder (`deployed-commit/`); then the
+/// first matching rule decides; then Everything else. A unit checked out
 /// in any worktree that a rule or Everything else would hide shows instead (it may still
 /// collapse); one hidden by hand hides, unless it's the tab's own worktree's. `rule` is the first
 /// rule that matches whatever decided, for the settings page's counts.
@@ -23,6 +24,8 @@ pub(crate) fn decide(spec: &ViewSpec, units: &[BranchUnit], facts: &Facts) -> Ve
                 (PresetAction::Show, DecidedBy::Picked)
             } else if spec.picks.hidden.contains(&unit.name) {
                 (PresetAction::Hide, DecidedBy::Picked)
+            } else if let Some(action) = folder_pick(&spec.picks, &unit.name) {
+                (action, DecidedBy::Picked)
             } else if let Some(index) = rule {
                 (spec.rules[index as usize].action, DecidedBy::Rule { index })
             } else {
@@ -33,6 +36,19 @@ pub(crate) fn decide(spec: &ViewSpec, units: &[BranchUnit], facts: &Facts) -> Ve
             Decision { action, by, rule }
         })
         .collect()
+}
+
+/// The pick of `name`'s nearest folder that has one: a folder pick names a prefix with its
+/// trailing slash, which no branch name has, and covers the branches created under it later.
+fn folder_pick(picks: &BranchPicks, name: &str) -> Option<PresetAction> {
+    name.rmatch_indices('/').find_map(|(i, _)| {
+        let folder = &name[..=i];
+        if picks.shown.iter().any(|p| p == folder) {
+            Some(PresetAction::Show)
+        } else {
+            picks.hidden.iter().any(|p| p == folder).then_some(PresetAction::Hide)
+        }
+    })
 }
 
 fn matches(matcher: &Matcher, unit: &BranchUnit, f: &UnitFacts, now: i64) -> bool {
@@ -54,7 +70,7 @@ fn matches(matcher: &Matcher, unit: &BranchUnit, f: &UnitFacts, now: i64) -> boo
 mod tests {
     use super::*;
     use crate::presets::facts::tests::facts_for;
-    use crate::presets::{BranchPicks, Rule};
+    use crate::presets::Rule;
     use crate::testkit::{commit, local, remote, worktree};
     use crate::walk::CommitMeta;
     use PresetAction::{Collapse, Hide, Show};
@@ -120,7 +136,7 @@ mod tests {
             let s = spec(vec![rule(action, Matcher::Trunk)], action);
             assert_eq!(of(&s, &units, &facts, "main"), Decision { action: Show, by: DecidedBy::Trunk, rule: Some(0) });
         }
-        let s = ViewSpec { picks: BranchPicks { shown: vec![], hidden: vec!["main".into()] }, ..spec(vec![], Collapse) };
+        let s = ViewSpec { picks: picks(&[], &["main"]), ..spec(vec![], Collapse) };
         assert_eq!(of(&s, &units, &facts, "main").by, DecidedBy::Trunk, "nor hidden by a pick");
     }
 
@@ -172,6 +188,62 @@ mod tests {
         let d = decided(&s, &units, &facts);
         assert_eq!(d.len(), units.len());
         assert_eq!(d[1..].iter().map(|(_, a, by, _)| (*a, *by)).collect::<Vec<_>>(), [(Collapse, DecidedBy::Otherwise); 3], "picks name units, not refs");
+    }
+
+    fn picks(shown: &[&str], hidden: &[&str]) -> BranchPicks {
+        BranchPicks { shown: shown.iter().map(|s| s.to_string()).collect(), hidden: hidden.iter().map(|s| s.to_string()).collect() }
+    }
+
+    #[test]
+    fn a_folder_hidden_by_hand_hides_every_branch_under_it_now_and_later() {
+        let commits = [commit(3, &[1], 300, "ada@example.com", "X"), commit(2, &[1], 200, "ada@example.com", "Y"), commit(1, &[], 100, "bo@example.com", "Initial commit")];
+        let refs = || vec![local("main", 1), local("deployed-commit/a", 3), remote("origin", "deployed-commit/eu/b", 2), local("deployed-commitx", 3), local("other/deployed-commit/c", 2)];
+        let worktrees = [worktree("/demo/x", 1, "main", true)];
+        let (units, facts) = facts_for(refs(), &worktrees, &commits, &["refs/heads/main"], &[]);
+        let s = ViewSpec { picks: picks(&[], &["deployed-commit/"]), ..spec(vec![rule(Show, named("*"))], Show) };
+        let hidden = |units: &[BranchUnit], facts: &Facts| decided(&s, units, facts).into_iter().filter(|d| d.1 == Hide).map(|d| (d.0, d.2)).collect::<Vec<_>>();
+        // Nested folders too, and remote-only branches; not a name that only starts the same.
+        assert_eq!(hidden(&units, &facts), [("deployed-commit/a".into(), DecidedBy::Picked), ("deployed-commit/eu/b".into(), DecidedBy::Picked)]);
+        // A branch created under it later hides with no pick of its own.
+        let mut more = refs();
+        more.push(local("deployed-commit/new", 3));
+        let (units, facts) = facts_for(more, &worktrees, &commits, &["refs/heads/main"], &[]);
+        assert_eq!(hidden(&units, &facts).last(), Some(&("deployed-commit/new".into(), DecidedBy::Picked)));
+    }
+
+    #[test]
+    fn a_pick_nearer_the_branch_beats_its_folders() {
+        let commits = [commit(2, &[1], 200, "ada@example.com", "X"), commit(1, &[], 100, "bo@example.com", "Initial commit")];
+        let refs = vec![local("main", 1), local("d/a", 2), local("d/keep", 2), local("d/eu/b", 2), local("d/eu/c", 2)];
+        let (units, facts) = facts_for(refs, &[], &commits, &["refs/heads/main"], &[]);
+        // d/ hidden, with d/keep shown by hand and d/eu/ shown again, but d/eu/c hidden by hand.
+        let s = ViewSpec { picks: picks(&["d/keep", "d/eu/"], &["d/", "d/eu/c"]), ..spec(vec![rule(Hide, named("d/eu/*"))], Collapse) };
+        let d: Vec<(String, PresetAction)> = decided(&s, &units, &facts).into_iter().map(|d| (d.0, d.1)).collect();
+        assert_eq!(d, [("d/a".into(), Hide), ("d/eu/b".into(), Show), ("d/eu/c".into(), Hide), ("d/keep".into(), Show), ("main".into(), Show)]);
+        assert!(decide(&s, &units, &facts)[..4].iter().all(|d| d.by == DecidedBy::Picked), "a shown folder beats the rule hiding d/eu/*");
+        // An expansion this session still beats a folder pick.
+        let s = ViewSpec { expanded: vec!["branch:d/a".into()], ..s };
+        assert_eq!(of(&s, &units, &facts, "d/a").by, DecidedBy::Expanded);
+    }
+
+    #[test]
+    fn a_hidden_folder_keeps_the_trunk_and_the_tabs_checked_out_branch() {
+        // The trunk is release/main; the tab has release/1.2 checked out, another worktree release/1.3.
+        let commits = [commit(3, &[1], 300, "ada@example.com", "X"), commit(2, &[1], 200, "ada@example.com", "Y"), commit(1, &[], 100, "bo@example.com", "Initial commit")];
+        let worktrees = [worktree("/demo/x", 2, "release/1.2", true), worktree("/demo/x-13", 3, "release/1.3", false)];
+        let refs = vec![local("release/main", 1), local("release/1.2", 2), local("release/1.3", 3)];
+        let (units, facts) = facts_for(refs, &worktrees, &commits, &["refs/heads/release/main"], &[]);
+        let s = ViewSpec { picks: picks(&[], &["release/"]), ..spec(vec![], Show) };
+        let d: Vec<(String, PresetAction, DecidedBy)> = decided(&s, &units, &facts).into_iter().map(|d| (d.0, d.1, d.2)).collect();
+        assert_eq!(
+            d,
+            [
+                ("release/1.2".into(), Show, DecidedBy::CheckedOut),
+                // As when hidden by hand on its own.
+                ("release/1.3".into(), Hide, DecidedBy::Picked),
+                ("release/main".into(), Show, DecidedBy::Trunk),
+            ]
+        );
     }
 
     #[test]

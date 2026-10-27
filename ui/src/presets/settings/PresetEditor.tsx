@@ -102,7 +102,7 @@ export function PresetEditor({ entry, repoName, picks, preview, focusName, onEdi
 
       {!readOnly && repoName !== null && (
         <section className="bp-section" aria-labelledby="bp-picks-title">
-          <h4 className="bp-h" id="bp-picks-title">Picked by hand <span className="bp-hint">alt+click a branch chip; these come before the rules</span></h4>
+          <h4 className="bp-h" id="bp-picks-title">Picked by hand <span className="bp-hint">alt+click a branch chip or a sidebar folder; these come before the rules</span></h4>
           {picks && (picks.hidden.length || picks.shown.length) ? (
             <div className="bp-picks">
               {picks.hidden.length > 0 && <Chips label="Always hidden:" names={picks.hidden} onForget={(n) => onForget(n, 'hidden')} />}

@@ -12,6 +12,19 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   worktree's local branch, after one confirmation naming both. A branch checked out in another
   worktree offers Delete with its worktree beside its Delete. The branch delete can be undone;
   removing the worktree can't (#9).
+- **Hide a whole folder of branches.** Alt+click a branch folder in the sidebar, or choose Hide
+  folder in its right-click menu, to hide every branch under it, also the ones created there
+  later; the repository keeps the folder with its other hidden branches. A branch you show inside
+  it stays shown, and Show folder brings the whole folder back. A folder looks hidden when it is,
+  or when every branch under it is (#7).
+
+### Changed
+
+- **Hidden branches look quieter in the sidebar, and hide or show in one click.** A hidden branch
+  or folder fades, with an eye-off in place of its icon, instead of being struck through with a
+  "hidden" word at the end of the row; its MR/PR badge stays, faded. Hovering a branch or branch
+  folder turns its icon into a button that hides or shows it, as Alt+click does, and H does the
+  same for the focused row. The trunk and the checked-out branch have no such button.
 
 ### Fixed
 

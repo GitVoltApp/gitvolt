@@ -3,10 +3,11 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LocalBranch } from '../api/gen/LocalBranch';
 
-vi.mock('../api/client', () => ({ api: { lastPush: vi.fn(async () => null) }, errorMessage: String, onEvent: () => () => {} }));
+vi.mock('../api/client', () => ({ api: { lastPush: vi.fn(async () => null), graph: vi.fn(async () => ({})), saveProfile: vi.fn(async () => null) }, errorMessage: String, onEvent: () => () => {} }));
 vi.mock('../app/graphNav', () => ({ selectCommit: vi.fn(() => true) }));
 
 const { Sidebar } = await import('./Sidebar');
+await import('../presets/branchMenus');
 const { useMenu } = await import('../menu/menuStore');
 const { EMPTY_GRAPH } = await import('../app/testShell');
 const { createRepoViewStore, RepoViewContext } = await import('../repo/store');
@@ -65,6 +66,99 @@ describe('Sidebar panels', () => {
     expect(screen.getAllByRole('tooltip').some((t) => t.textContent === tip)).toBe(true);
     expect(within(panel('Local')).getAllByRole('img', { name: tip })).toHaveLength(1);
     expect(within(panel('Tags')).getAllByLabelText('annotated tag')).toHaveLength(1);
+  });
+
+  describe('hidden rows and the eye (design D)', () => {
+    const hiding = (hidden: string[], locals = [branch('main', true), branch('feature/login'), branch('feature/pay'), branch('hotfix')]) => {
+      const s = useRuntime.getState().tabs.t.sidebar!;
+      useRuntime.getState().patch('t', {
+        repo: { id: 4, path: '/r', name: 'r', worktree: '/r' } as never,
+        sidebar: { ...s, locals },
+        graph: { ...EMPTY_GRAPH, head: { ...EMPTY_GRAPH.head, branch: 'refs/heads/main' }, view: { trunk: ['dev'], branches: locals.map((b) => ({ name: b.name, refs: [b.fullName], state: hidden.includes(b.name) ? 'hidden' as const : 'shown' as const, by: { kind: 'otherwise' as const } })) } },
+      });
+    };
+    const row = (name: string) => within(panel('Local')).getByRole('treeitem', { name });
+    const picks = () => profile().repos['/r']?.branchPicks?.custom;
+
+    it('a hidden branch, and a folder whose branches all are, fade with an eye-off for their icon and no trailing word', () => {
+      hiding(['feature/login', 'feature/pay']);
+      renderIt();
+      const folder = panel('Local').querySelector<HTMLElement>('.sb-folder')!;
+      for (const el of [folder, row('feature/login')]) {
+        expect(el).toHaveClass('is-hidden');
+        expect(el).toHaveAccessibleDescription('hidden');
+        expect(el.querySelector('.sb-eye-rest svg')).toHaveClass('lucide-eye-off', 'sb-hidden-icon');
+        expect(el.querySelector('.sb-state')).toBeNull();
+      }
+      expect(within(folder).getByRole('button', { name: 'Show feature/ in the graph' })).toBeTruthy();
+      expect(within(row('feature/login')).getByRole('button', { name: 'Show feature/login in the graph' }).querySelector('.sb-eye-hover svg')).toHaveClass('lucide-eye');
+      expect(row('hotfix')).not.toHaveClass('is-hidden');
+      expect(row('hotfix')).not.toHaveAccessibleDescription('hidden');
+      expect(within(row('hotfix')).getByRole('button', { name: 'Hide hotfix from the graph' }).querySelector('.sb-eye-rest svg')).toHaveClass('lucide-git-branch');
+    });
+
+    it("the eye hides or shows as Alt+click does, without selecting the row", () => {
+      hiding(['feature/login']);
+      renderIt();
+      const activeBefore = within(panel('Local')).getAllByRole('treeitem').findIndex((r) => r.dataset.active === 'true');
+      act(() => fireEvent.click(within(row('hotfix')).getByRole('button', { name: 'Hide hotfix from the graph' })));
+      expect(picks()).toEqual({ shown: [], hidden: ['hotfix'] });
+      act(() => fireEvent.click(within(row('feature/login')).getByRole('button', { name: 'Show feature/login in the graph' })));
+      expect(picks()).toEqual({ shown: ['feature/login'], hidden: ['hotfix'] });
+      act(() => fireEvent.click(within(panel('Local')).getByRole('button', { name: 'Hide feature/ from the graph' })));
+      expect(picks()).toEqual({ shown: [], hidden: ['hotfix', 'feature/'] });
+      expect(within(panel('Local')).getAllByRole('treeitem').findIndex((r) => r.dataset.active === 'true')).toBe(activeBefore);
+      expect(within(panel('Local')).getByRole('treeitem', { name: /^feature/, expanded: true })).toBeTruthy();
+    });
+
+    it('the checked-out branch and the trunk have no eye; their icon stays', () => {
+      hiding([], [branch('main', true), branch('dev'), branch('hotfix')]);
+      renderIt();
+      expect(within(row('main')).queryByRole('button')).toBeNull();
+      expect(row('main').querySelector('.co-check')).toBeTruthy();
+      expect(within(row('dev')).queryByRole('button')).toBeNull();
+      expect(within(row('hotfix')).getByRole('button')).toBeTruthy();
+      // Nor do tags, stashes or worktrees.
+      expect(within(panel('Tags')).queryAllByRole('button', { name: /from the graph/ })).toEqual([]);
+      expect(within(panel('Worktrees')).queryAllByRole('button', { name: /from the graph/ })).toEqual([]);
+    });
+
+    it('under All (no view) the pinned trunk has no eye, local or remote, and H on it does nothing', () => {
+      const s = useRuntime.getState().tabs.t.sidebar!;
+      useRuntime.getState().patch('t', {
+        repo: { id: 4, path: '/r', name: 'r', worktree: '/r' } as never,
+        sidebar: { ...s, locals: [branch('dev'), branch('hotfix')] },
+        graph: { ...EMPTY_GRAPH, pinnedRefs: ['refs/heads/dev', 'refs/remotes/origin/dev'] },
+      });
+      const remote = s.remotes[0];
+      useRuntime.getState().patch('t', { sidebar: { ...useRuntime.getState().tabs.t.sidebar!, remotes: [{ ...remote, branches: [{ ...remote.branches[0], name: 'dev', fullName: 'refs/remotes/origin/dev' }] }] } });
+      renderIt();
+      expect(within(row('dev')).queryByRole('button')).toBeNull();
+      expect(within(within(panel('Remote')).getByRole('treeitem', { name: 'dev' })).queryByRole('button')).toBeNull();
+      expect(within(row('hotfix')).getByRole('button', { name: 'Hide hotfix from the graph' })).toBeTruthy();
+      const tree = within(panel('Local')).getByRole('tree');
+      act(() => { fireEvent.keyDown(tree, { key: 'h' }); });
+      expect(profile().repos['/r']).toBeUndefined();
+    });
+
+    it('H on the focused row hides or shows its branch or folder', () => {
+      hiding([]);
+      renderIt();
+      const tree = within(panel('Local')).getByRole('tree');
+      const items = within(panel('Local')).getAllByRole('treeitem');
+      // feature/, login, pay, hotfix, main: down to hotfix.
+      expect(items.map((r) => r.getAttribute('aria-label') ?? r.textContent)).toEqual(['feature', 'feature/login', 'feature/pay', 'hotfix', 'main']);
+      for (let i = 0; i < 3; i++) fireEvent.keyDown(tree, { key: 'ArrowDown' });
+      act(() => { fireEvent.keyDown(tree, { key: 'h' }); });
+      expect(picks()).toEqual({ shown: [], hidden: ['hotfix'] });
+      fireEvent.keyDown(tree, { key: 'Home' });
+      act(() => { fireEvent.keyDown(tree, { key: 'H' }); });
+      expect(picks()).toEqual({ shown: [], hidden: ['hotfix', 'feature/'] });
+      // With a modifier it isn't ours; on the checked-out branch it does nothing.
+      fireEvent.keyDown(tree, { key: 'End' });
+      act(() => { fireEvent.keyDown(tree, { key: 'h' }); fireEvent.keyDown(tree, { key: 'h', ctrlKey: true }); });
+      expect(picks()).toEqual({ shown: [], hidden: ['hotfix', 'feature/'] });
+    });
   });
 
   it('ahead/behind shows each count with a 12px arrow icon, labelled for screen readers (K67)', () => {
@@ -252,12 +346,21 @@ describe('Sidebar item menus (plan 1C Task 15b)', () => {
     expect(items()[other]).not.toHaveAttribute('data-context');
   });
 
-  it('a plain folder row has no menu', () => {
-    useRuntime.getState().patch('t', { sidebar: { ...useRuntime.getState().tabs.t.sidebar!, locals: [branch('feature/login')] } });
-    renderIt();
-    const ev = fireEvent.contextMenu(within(panel('Local')).getByRole('treeitem', { name: 'feature' }));
+  it('a branch folder offers Hide folder; a tag folder has no menu', () => {
+    const s = useRuntime.getState().tabs.t.sidebar!;
+    useRuntime.getState().patch('t', { repo: { id: 4, path: '/r', name: 'r', worktree: '/r' } as never, sidebar: { ...s, locals: [branch('feature/login')], tags: [{ ...s.tags[0], name: 'rel/v1', fullName: 'refs/tags/rel/v1' }] } });
+    // The tab's store, so the menu can write.
+    const services = fakeServices();
+    const store = createRepoViewStore(4, '/r', EMPTY_GRAPH, services);
+    useTabViews.setState({ views: { t: { repo: 4, services, store } } });
+    render(<RepoViewContext value={store}><RepoContext value={ctx}><Sidebar /></RepoContext></RepoViewContext>);
+    fireEvent.contextMenu(within(panel('Local')).getByRole('treeitem', { name: 'feature' }));
+    expect(rowsOpen()).toEqual(['Hide folder']);
+    act(() => useMenu.getState().close());
+    const ev = fireEvent.contextMenu(within(panel('Tags')).getByRole('treeitem', { name: 'rel' }));
     expect(ev).toBe(false); // the native menu is still suppressed
     expect(rowsOpen()).toBeNull();
+    useTabViews.setState({ views: {} });
   });
 
   it('the ContextMenu key and Shift+F10 open the active row\'s menu', () => {

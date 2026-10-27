@@ -38,7 +38,7 @@ describe('the badge on Local rows (spec #4 §5)', () => {
     render(wrap(<Sidebar />));
     const row = screen.getByRole('treeitem', { name: 'dev' });
     const badge = within(row).getByRole('button', { name: 'Merge request !12: open' });
-    expect(within(screen.getByRole('treeitem', { name: 'topic' })).queryByRole('button')).toBeNull();
+    expect(within(screen.getByRole('treeitem', { name: 'topic' })).queryByRole('button', { name: /^Merge request/ })).toBeNull();
     fireEvent.click(badge);
     expect(poll.openMrView).toHaveBeenCalledWith('t', 12);
     expect(nav.selectCommit).not.toHaveBeenCalled();

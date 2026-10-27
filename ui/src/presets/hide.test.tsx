@@ -13,15 +13,15 @@ const api = vi.hoisted(() => ({
 vi.mock('../api/client', () => ({ api, errorMessage: (e: unknown) => String(e) }));
 
 const { useRuntime } = await import('../app/runtime');
-const { useAppState, EMPTY_PROFILE, DEFAULT_SETTINGS } = await import('../app/state');
+const { useAppState, EMPTY_PROFILE, DEFAULT_SETTINGS } =await import('../app/state');
 const { buildMenu } = await import('../menu/registry');
 const { keyHints } = await import('../shortcuts/hints');
-const { altClickBranch, unitNameOf } = await import('./altClick');
+const { altClickBranch, altClickFolder, unitNameOf } = await import('./altClick');
 const { usePresetSession } = await import('./store');
 await import('./branchMenus');
 const { GhostPopover } = await import('./GhostPopover');
 const { useTheme } = await import('../theme/store');
-import type { CommitTarget, MenuEnv } from '../menu/menuEnv';
+import type { CommitTarget, MenuEnv, SidebarTarget } from '../menu/menuEnv';
 
 const view = (hidden: string[] = [], over: Partial<ViewPayload> = {}): ViewPayload => ({
   branches: [
@@ -74,6 +74,19 @@ describe('hiding one branch', () => {
     expect(picks()).toEqual({});
   });
 
+  it('under All (no view) the pinned trunk is not hidden either, and the preset stays All', () => {
+    setView(undefined);
+    useRuntime.setState((s) => ({ tabs: { t: { ...s.tabs.t, graph: { ...s.tabs.t.graph!, pinnedRefs: ['refs/heads/dev', 'refs/remotes/origin/dev'] } } } }));
+    altClickBranch('t', local('dev'), click());
+    altClickBranch('t', remote('dev'), click());
+    expect(useAppState.getState().profile.repos['/r']).toBeUndefined();
+    expect(menu(local('dev')).map((r) => [r.label, r.disabledReason])).toEqual([['Hide branch', 'The trunk is always shown']]);
+    // Only the unit itself: not a name it ends.
+    expect(menu(local('feature/dev'))[0].disabledReason).toBeUndefined();
+    altClickBranch('t', local('feature/a'), click());
+    expect(picks().custom?.hidden).toEqual(['feature/a']);
+  });
+
   it("a branch checked out in another worktree hides by hand, though the preset's rules keep it", () => {
     const v = view();
     setView({ ...v, branches: [...v.branches, { name: 'wt/dock', refs: ['refs/heads/wt/dock'], state: 'shown', by: { kind: 'checkedOut' } }] });
@@ -116,7 +129,43 @@ describe('hiding one branch', () => {
   });
 
   it('the hint is listed in the shortcuts panel', () => {
-    expect(keyHints().find((h) => h.id === 'key.altclick.branch')).toMatchObject({ label: 'Hide or show a branch', context: 'branch chip or sidebar branch' });
+    expect(keyHints().find((h) => h.id === 'key.altclick.branch')).toMatchObject({ label: 'Hide or show a branch or folder', context: 'branch chip, sidebar branch or branch folder' });
+  });
+});
+
+describe('hiding a folder', () => {
+  const folderMenu = (folder: string, hidden: boolean) => buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'folder', folder, hidden }, env)
+    .filter((r): r is Extract<MenuRow, { kind: 'action' }> => r.kind === 'action' && r.id.startsWith('presets.'));
+
+  it('alt+click on a shown folder hides it; on a hidden one, shows it again', () => {
+    altClickBranch('t', local('feature/a'), click());
+    expect(picks().custom).toEqual({ shown: [], hidden: ['feature/a'] });
+    const e = click();
+    expect(altClickFolder('t', 'feature/', false, e)).toBe(true);
+    expect(e.stopPropagation).toHaveBeenCalled();
+    expect(picks().custom).toEqual({ shown: [], hidden: ['feature/'] });
+    expect(altClickFolder('t', 'feature/', true, click())).toBe(true);
+    expect(picks().custom).toEqual({ shown: [], hidden: [] });
+    expect(altClickFolder('t', 'feature/', true, click(false))).toBe(false);
+  });
+
+  it('hiding drops the expansions under it', () => {
+    // Already in Custom: switching presets would drop every expansion.
+    altClickBranch('t', local('feature/b'), click());
+    usePresetSession.setState({ expanded: { t: ['branch:feature/a', 'branch:main', 'fold:abc'] } });
+    altClickFolder('t', 'feature/', false, click());
+    expect(usePresetSession.getState().expanded.t).toEqual(['branch:main', 'fold:abc']);
+  });
+
+  it('its menu offers Hide folder or Show folder by state', () => {
+    expect(folderMenu('feature/', false).map((r) => r.label)).toEqual(['Hide folder']);
+    folderMenu('feature/', false)[0].run();
+    expect(picks().custom?.hidden).toEqual(['feature/']);
+    expect(folderMenu('feature/', true).map((r) => r.label)).toEqual(['Show folder']);
+    folderMenu('feature/', true)[0].run();
+    expect(picks().custom?.hidden).toEqual([]);
+    // No row in a remote's menu.
+    expect(buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'remote', name: 'origin', url: null }, env).some((r) => r.kind === 'action' && r.id.startsWith('presets.'))).toBe(false);
   });
 });
 

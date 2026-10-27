@@ -4,7 +4,7 @@ import type { ViewSpec } from '../api/gen/ViewSpec';
 import { tabsForRepo, useRuntime } from '../app/runtime';
 import { useAppState } from '../app/state';
 import { ALL_ID } from './builtins';
-import { currentPreset, nextInCycle, pickBranch, presetList, viewSpecOf, type PresetEntry } from './model';
+import { currentPreset, nextInCycle, pickBranch, pickFolder, presetList, viewSpecOf, type PresetEntry } from './model';
 
 /** Session state, in memory only: what "Expand in graph" (or going to a hidden commit) unfolded,
  * per tab, until the tab switches presets. */
@@ -29,14 +29,14 @@ export function viewSpecFor(tabId: string): ViewSpec | null {
 }
 
 /** The preset is the repository's, so every tab on it reloads; a tab whose preset changed loses
- * its expansions. `drop`: a key no tab may keep expanded (a branch just hidden by hand). */
-function reload(repoId: number, switched: boolean, drop?: string): void {
+ * its expansions. `drop`: the keys no tab may keep expanded (branches just hidden by hand). */
+function reload(repoId: number, switched: boolean, drop?: (key: string) => boolean): void {
   const tabs = tabsForRepo(repoId);
   usePresetSession.setState((s) => {
     const expanded = { ...s.expanded };
     for (const t of tabs) {
       if (switched) delete expanded[t];
-      else if (drop && expanded[t]?.includes(drop)) expanded[t] = expanded[t].filter((k) => k !== drop);
+      else if (drop && expanded[t]?.some(drop)) expanded[t] = expanded[t].filter((k) => !drop(k));
     }
     return { expanded };
   });
@@ -78,12 +78,23 @@ function pick(tabId: string, names: string[], show: boolean): void {
   if (!r || names.length === 0) return;
   const app = useAppState.getState();
   app.updateProfile((p) => names.reduce((acc, name) => pickBranch(app.settings, acc, r.repo.path, name, show), p));
-  reload(r.repo.id, resolve(tabId)?.current.preset.id !== r.current.preset.id, show ? undefined : `branch:${names[0]}`);
+  reload(r.repo.id, resolve(tabId)?.current.preset.id !== r.current.preset.id, show ? undefined : (k) => k === `branch:${names[0]}`);
+}
+
+function pickFolderOf(tabId: string, folder: string, show: boolean): void {
+  const r = resolve(tabId);
+  if (!r) return;
+  const app = useAppState.getState();
+  app.updateProfile((p) => pickFolder(app.settings, p, r.repo.path, folder, show));
+  reload(r.repo.id, resolve(tabId)?.current.preset.id !== r.current.preset.id, show ? undefined : (k) => k.startsWith(`branch:${folder}`));
 }
 
 /** Hides one branch by hand; on a built-in preset, in the repository's Custom. */
 export const hideBranch = (tabId: string, name: string): void => pick(tabId, [name], false);
 export const showBranch = (tabId: string, name: string): void => pick(tabId, [name], true);
+/** Hides every branch under `folder` (`deployed-commit/`), also those created later. */
+export const hideFolder = (tabId: string, folder: string): void => pickFolderOf(tabId, folder, false);
+export const showFolder = (tabId: string, folder: string): void => pickFolderOf(tabId, folder, true);
 /** Shows several branches in one pick update (the ghost popover's "Show all"): one save, one reload. */
 export const showBranches = (tabId: string, names: string[]): void => pick(tabId, names, true);
 

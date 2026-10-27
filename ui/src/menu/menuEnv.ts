@@ -206,6 +206,9 @@ export interface MonacoTarget {
 export type SidebarTarget =
   | { what: 'ref'; sha: string | null }
   | { what: 'remote'; name: string; url: string | null }
+  /** A Local or remote branch folder: `folder` is its branches' common prefix (`deployed-commit/`),
+   * `hidden` whether the folder looks hidden (presets/altClick.ts). */
+  | { what: 'folder'; folder: string; hidden: boolean }
   | { what: 'worktree'; path: string; branch: string | null; head: string | null }
   | { what: 'stash'; sha: string; message: string };
 
@@ -700,6 +703,12 @@ export function sidebarRemoteMenu(store: RepoViewStore, remote: string): () => M
     const url = Object.values(useRuntime.getState().tabs).find((t) => t.repo?.id === store.getState().repo)?.info?.remotes.find((r) => r.name === remote)?.url ?? null;
     return buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'remote', name: remote, url }, fileMenuEnv(store));
   };
+}
+
+/** A right-click on a branch folder row in the Local or Remote panel. */
+export function sidebarFolderMenu(store: RepoViewStore, folder: string, hidden: boolean): () => MenuRow[] {
+  afterOpening(store);
+  return () => buildMenu<SidebarTarget, MenuEnv>('sidebar', { what: 'folder', folder, hidden }, fileMenuEnv(store));
 }
 
 // An open menu rebuilds when the openers or the remotes arrive (its Open in ▸ and Forge rows).

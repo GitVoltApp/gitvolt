@@ -2,7 +2,7 @@ import { PendingMark } from '../pending/PendingMark';
 import { onPointerLeftWindow } from '../ui/windowLeave';
 import { usePendingAny } from '../pending/store';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Clock, Folder, FolderOpen, GitBranch, GitMerge, House, ListTree, Tag, TreePine } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Clock, Eye, EyeOff, Folder, FolderOpen, GitBranch, GitMerge, House, ListTree, Tag, TreePine } from 'lucide-react';
 import { stashLabel } from './stashLabel';
 import { memo, useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { goToCommit } from '../app/graphNav';
@@ -11,7 +11,7 @@ import { useRuntime } from '../app/runtime';
 import { RemoteFetchWarning } from './RemoteFetchWarning';
 import { RemoteIcon } from '../icons/brands';
 import { StashIcon } from '../icons/stash';
-import { sidebarItemMenu, sidebarRemoteMenu } from '../menu/menuEnv';
+import { sidebarFolderMenu, sidebarItemMenu, sidebarRemoteMenu } from '../menu/menuEnv';
 import { openContextMenu, type MenuEventLike } from '../menu/menuStore';
 import { useContextTarget } from '../menu/contextTarget';
 import { useRepoViewStore } from '../repo/store';
@@ -38,7 +38,7 @@ import { ForgeStaleIcon } from '../forge/ForgeStale';
 import { RefreshButton } from '../forge/RefreshButton';
 import { RemoteLookupWarning, RemoteMainChip } from './RemoteForgeMarks';
 import { useForge, useTabForgeField } from '../forge/mrStore';
-import { altClickBranch } from '../presets/altClick';
+import { altClickBranch, altClickFolder, cannotHide, toggleBranch, toggleFolder } from '../presets/altClick';
 // --- end 4B T11 ---
 
 const toggle = (list: string[], key: string) => (list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
@@ -57,6 +57,30 @@ export function ItemIcon({ item, tabId }: { item: SideItem; tabId: string }) {
   if (item.kind === 'stash') return <StashIcon size={13} />;
   // UX round 3, M.2: an annotated tag's icon is filled, a lightweight one's outlined.
   return item.tag.annotation ? <Tag size={13} fill="currentColor" aria-label="annotated tag" /> : <Tag size={13} />;
+}
+
+/**
+ * A branch row's or branch folder's leading icon (design D): an eye-off while the open preset hides
+ * it; on hover, a button in the same box that hides or shows it as Alt+click does (an eye-off on a
+ * shown row, an eye on a hidden one). `toggle` null: it can't be hidden, the icon stays itself.
+ */
+function HideSlot({ icon, hidden, name, toggle }: { icon: ReactNode; hidden: boolean; name: string; toggle: (() => void) | null }) {
+  const rest = hidden ? <EyeOff size={13} className="sb-hidden-icon" aria-hidden /> : icon;
+  if (!toggle) return rest;
+  return (
+    <HoverTooltip content={hidden ? 'Show in the graph' : 'Hide from the graph'}>
+      <button
+        type="button" tabIndex={-1} className="sb-eye" aria-label={hidden ? `Show ${name} in the graph` : `Hide ${name} from the graph`}
+        // The list keeps the keyboard; the row neither selects nor jumps, nor checks out on a double click.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => { e.stopPropagation(); toggle(); }}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        <span className="sb-eye-rest">{rest}</span>
+        <span className="sb-eye-hover">{hidden ? <Eye size={13} aria-hidden /> : <EyeOff size={13} aria-hidden />}</span>
+      </button>
+    </HoverTooltip>
+  );
 }
 
 /**
@@ -89,6 +113,9 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
   const mainChosen = useTabForgeField(tabId, 'targetChosen');
   const mainKind = useTabForgeField(tabId, 'kind');
   const lookupErrors = useTabForgeField(tabId, 'remoteErrors');
+  const view = useRuntime((s) => s.tabs[tabId]?.graph?.view);
+  const pinnedRefs = useRuntime((s) => s.tabs[tabId]?.graph?.pinnedRefs);
+  const headBranch = useRuntime((s) => s.tabs[tabId]?.graph?.head.branch?.replace(/^refs\/heads\//, '') ?? null);
   const [cursor, setCursor] = useState(0);
   // An MR/PR section's selection is the open view's MR/PR (null in the other sections).
   const openMr = useForge((s) => (section.kind === 'mrs' ? s.byTab[tabId]?.openMr ?? null : null));
@@ -137,11 +164,26 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
     const r = rows[c];
     if (section.kind === 'mrs' && r?.type === 'item' && r.item.kind === 'mr' && c !== cursor) openMrView(tabId, r.item.mr.number, 'replace');
   };
-  /** The row's context menu (spec §7): a branch, tag, stash, worktree or MR/PR item, or a remote's folder. */
+  /** The row's context menu (spec §7): a branch, tag, stash, worktree or MR/PR item, a remote's
+   * folder, or a branch folder. */
   const menuOf = (row: FlatRow | undefined) => {
     if (!row) return null;
     if (row.type === 'item') return sidebarItemMenu(store, row.item, tabId);
+    if (row.branchFolder) return sidebarFolderMenu(store, row.branchFolder, !!row.hidden);
     return row.remote && section.kind === 'remote' ? sidebarRemoteMenu(store, row.remote) : null;
+  };
+  /** What the row's eye (and H) does: hide or show its branch or branch folder; null when it can't
+   * be hidden (the trunk, the tab's checked-out branch) or isn't a branch. */
+  const hideToggleOf = (row: FlatRow | undefined): (() => void) | null => {
+    if (!row) return null;
+    if (row.type === 'folder') {
+      const folder = row.branchFolder;
+      return folder ? () => toggleFolder(tabId, folder, !!row.hidden) : null;
+    }
+    const it = row.item;
+    if (it.kind !== 'local' && it.kind !== 'remote') return null;
+    if (it.presetState !== 'hidden' && cannotHide(view, it.name, headBranch, pinnedRefs)) return null;
+    return () => toggleBranch(tabId, it.name);
   };
   // A right-click never moves the active row (UX round 2): the row it was on gets the temporary
   // `data-context` outline while its menu is open instead.
@@ -175,6 +217,11 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
         case 'Enter': case ' ': if (row) activate(row, true); return true;
         case 'ArrowLeft': return row ? setOpen(row, false) : false;
         case 'ArrowRight': return row ? setOpen(row, true) : false;
+        case 'h': case 'H': {
+          if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return false;
+          hideToggleOf(row)?.();
+          return true;
+        }
         default: return false;
       }
     })();
@@ -237,8 +284,16 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
               const style = { transform: `translateY(${vi.start}px)`, height: ROW_H, ...indent };
               if (row.type === 'folder') {
                 return (
-                  <div key={row.key} role="treeitem" aria-level={row.depth} aria-expanded={!row.collapsed} data-active={active} data-context={row.key === contextKey || undefined} className="sb-row sb-folder" style={style} onClick={() => { setCursor(vi.index); activate(row); }} onContextMenu={(e) => onRowMenu(e, row)}>
-                    {row.remote ? <RemoteIcon kind={row.hostKind ?? 'generic'} host={row.host} remote={row.remote} size={13} tabId={tabId} /> : row.collapsed ? <Folder size={13} /> : <FolderOpen size={13} />}
+                  <div
+                    key={row.key} role="treeitem" aria-level={row.depth} aria-expanded={!row.collapsed} data-active={active} data-context={row.key === contextKey || undefined}
+                    className={`sb-row sb-folder${row.hidden ? ' is-hidden' : ''}`} aria-description={row.hidden ? 'hidden' : undefined} style={style}
+                    // Alt+click hides or shows every branch under a branch folder (presets/altClick.ts).
+                    onClick={(e) => { if (row.branchFolder && altClickFolder(tabId, row.branchFolder, !!row.hidden, e)) return; setCursor(vi.index); activate(row); }}
+                    onContextMenu={(e) => onRowMenu(e, row)}
+                  >
+                    {row.remote
+                      ? <RemoteIcon kind={row.hostKind ?? 'generic'} host={row.host} remote={row.remote} size={13} tabId={tabId} />
+                      : <HideSlot icon={row.collapsed ? <Folder size={13} /> : <FolderOpen size={13} />} hidden={!!row.hidden} name={`${row.branchFolder ?? row.name}`} toggle={hideToggleOf(row)} />}
                     <span className="sb-label">{row.name}</span>
                     {row.remote && fetchErrors?.[row.remote] && <RemoteFetchWarning remote={row.remote} {...fetchErrors[row.remote]!} />}
                     {row.remote && section.kind === 'remote' && row.remote === mainRemote && <RemoteMainChip remote={row.remote} kind={mainKind} chosen={mainChosen} />}
@@ -254,6 +309,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
                   role="treeitem"
                   aria-level={row.depth}
                   aria-label={it.kind === 'stash' ? `stash@{${it.stash.index}}: ${it.name}` : it.name}
+                  aria-description={it.presetState === 'hidden' ? 'hidden' : undefined}
                   data-active={active}
                   aria-selected={section.kind === 'mrs' ? it.kind === 'mr' && it.mr.number === openMr : undefined}
                   data-context={row.key === contextKey || undefined}
@@ -269,11 +325,13 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
                   onPointerLeave={() => setHover(null)}
                   onContextMenu={(e) => { setHover(null); onRowMenu(e, row); }}
                 >
-                  <ItemIcon item={it} tabId={tabId} />
+                  {it.kind === 'local' || it.kind === 'remote'
+                    ? <HideSlot icon={<ItemIcon item={it} tabId={tabId} />} hidden={it.presetState === 'hidden'} name={row.item.kind === 'remote' ? `${row.item.remote}/${it.name}` : it.name} toggle={hideToggleOf(row)} />
+                    : <ItemIcon item={it} tabId={tabId} />}
                   {/* UX round 3, M.1: an upstream with another branch name, before the name. */}
                   {it.kind === 'local' && it.branch.upstreamMismatch && <UpstreamWarning branch={it.name} upstream={it.branch.upstreamMismatch} size={13} />}
                   <span className="sb-label" title={it.kind === 'stash' ? `stash@{${it.stash.index}}` : undefined}>{it.kind === 'stash' ? <StashText label={row.label} /> : row.label}</span>
-                  {(it.presetState === 'hidden' || it.presetState === 'folded') && <span className="sb-state">{it.presetState}</span>}
+                  {it.presetState === 'folded' && <span className="sb-state">folded</span>}
                   {it.kind === 'local' && (it.branch.ahead > 0 || it.branch.behind > 0) && <span className="sb-ab" aria-label={`${it.branch.ahead} ahead, ${it.branch.behind} behind`}><span>{it.branch.ahead}<ArrowUp size={12} strokeWidth={2.5} aria-hidden /></span><span>{it.branch.behind}<ArrowDown size={12} strokeWidth={2.5} aria-hidden /></span></span>}
                   {/* --- 4B T10: the branch's MR/PR badge (spec #4 §5) --- */}
                   {it.kind === 'local' && <LocalBranchBadge tabId={tabId} upstream={it.branch.upstream} />}

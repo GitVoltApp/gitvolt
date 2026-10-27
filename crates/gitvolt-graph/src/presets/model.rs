@@ -85,7 +85,9 @@ pub enum Author {
     Person { who: String },
 }
 
-/// Branches hidden or shown by hand (unit names), applied before the rules.
+/// Branches hidden or shown by hand (unit names), applied before the rules. A name with a trailing
+/// slash (`deployed-commit/`) is a folder: it picks every branch under it, also those created later,
+/// unless a pick nearer the branch (its own, or a deeper folder's) says otherwise.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

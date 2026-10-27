@@ -1740,14 +1740,15 @@ test.describe('branch presets', () => {
       await expect(panel).toBeHidden();
     });
 
-    await test.step('alt+click on a chip hides its branch in Custom, struck through in the sidebar; alt+click there shows it', async () => {
+    await test.step('alt+click on a chip hides its branch in Custom, faded in the sidebar; alt+click there shows it', async () => {
       await choose('All');
       await grid.locator('.ref-label').filter({ hasText: 'spike/warp-gates' }).click({ modifiers: ['Alt'] });
       await expect(button).toHaveAttribute('data-preset', 'custom');
       await expect(grid.getByText('Warp gates: jump cost')).toHaveCount(0);
       const side = page.getByRole('complementary', { name: 'Sidebar', exact: true }).getByRole('region', { name: 'Local', exact: true }).locator('.sb-item').filter({ hasText: 'warp-gates' });
       await expect(side).toHaveClass(/is-hidden/);
-      await expect(side.locator('.sb-label')).toHaveCSS('text-decoration-line', 'line-through');
+      await expect(side).toHaveAttribute('aria-description', 'hidden');
+      await expect(side.locator('.sb-hidden-icon')).toBeVisible();
       await side.click({ modifiers: ['Alt'] });
       await expect(side).not.toHaveClass(/is-hidden/);
       await expect(grid.getByText('Warp gates: jump cost')).toBeVisible();

@@ -3,7 +3,7 @@ import type { AppSettings } from '../api/gen/AppSettings';
 import type { BranchPreset } from '../api/gen/BranchPreset';
 import type { Profile } from '../api/gen/Profile';
 import type { RepoSettings } from '../api/gen/RepoSettings';
-import { currentPreset, nextInCycle, pickBranch, presetList, viewSpecOf } from './model';
+import { currentPreset, folderPickHides, nextInCycle, pickBranch, pickFolder, presetList, viewSpecOf } from './model';
 
 const preset = (id: string, over: Partial<BranchPreset> = {}): BranchPreset => ({
   id, name: id, color: 'blue', scope: 'all', rules: [{ action: 'hide', matcher: { kind: 'nameMatches', patterns: 'bot/*' } }],
@@ -94,5 +94,46 @@ describe('picking one branch', () => {
   it('showing a hidden branch moves it from hidden to shown', () => {
     const p = pickBranch(settings({ branchPresets: [preset('g1')] }), profile(repo({ branchPreset: 'g1', branchPicks: { g1: { shown: [], hidden: ['x', 'y'] } } })), '/r', 'x', true);
     expect(p.repos['/r'].branchPicks?.g1).toEqual({ shown: ['x'], hidden: ['y'] });
+  });
+});
+
+describe('picking a folder', () => {
+  const g1 = settings({ branchPresets: [preset('g1')] });
+  const picksAfter = (before: { shown: string[]; hidden: string[] }, folder: string, show: boolean) =>
+    pickFolder(g1, profile(repo({ branchPreset: 'g1', branchPicks: { g1: before } })), '/r', folder, show).repos['/r'].branchPicks?.g1;
+
+  it('hiding stores the folder, and replaces the picks under it', () => {
+    expect(picksAfter({ shown: ['dc/keep', 'x'], hidden: ['dc/a', 'dc/eu/b', 'dc/eu/', 'dcx'] }, 'dc/', false)).toEqual({ shown: ['x'], hidden: ['dcx', 'dc/'] });
+    // On a built-in, in Custom, as for a branch.
+    expect(pickFolder(settings(), profile(), '/r', 'dc/', false).repos['/r']).toMatchObject({ branchPreset: 'custom', branchPicks: { custom: { shown: [], hidden: ['dc/'] } } });
+  });
+
+  it('hiding a folder a folder above hides only drops its picks', () => {
+    expect(picksAfter({ shown: ['dc/eu/'], hidden: ['dc/'] }, 'dc/eu/', false)).toEqual({ shown: [], hidden: ['dc/'] });
+  });
+
+  it('showing drops the hidden picks under it, keeping the branches shown by hand', () => {
+    expect(picksAfter({ shown: ['dc/keep', 'x'], hidden: ['dc/', 'dc/a', 'y'] }, 'dc/', true)).toEqual({ shown: ['dc/keep', 'x'], hidden: ['y'] });
+  });
+
+  it('showing stores the folder as shown when no pick of its own hid it', () => {
+    // A folder above hides it.
+    expect(picksAfter({ shown: ['dc/eu/x'], hidden: ['dc/', 'dc/eu/a'] }, 'dc/eu/', true)).toEqual({ shown: ['dc/eu/'], hidden: ['dc/'] });
+    // The preset's rules hide every branch under it.
+    expect(picksAfter({ shown: [], hidden: ['y'] }, 'bot/', true)).toEqual({ shown: ['bot/'], hidden: ['y'] });
+  });
+
+  it('a branch shown inside a hidden folder is an exception; hiding it again drops the exception', () => {
+    let p = pickFolder(g1, profile(repo({ branchPreset: 'g1' })), '/r', 'dc/', false);
+    p = pickBranch(g1, p, '/r', 'dc/a', true);
+    expect(p.repos['/r'].branchPicks?.g1).toEqual({ shown: ['dc/a'], hidden: ['dc/'] });
+    p = pickBranch(g1, p, '/r', 'dc/a', false);
+    expect(p.repos['/r'].branchPicks?.g1).toEqual({ shown: [], hidden: ['dc/'] });
+  });
+
+  it("the nearest folder pick decides whether the picks hide a folder", () => {
+    const picks = { shown: ['a/b/'], hidden: ['a/', 'a/b/c/'] };
+    expect(['a/', 'a/x/', 'a/b/', 'a/b/y/', 'a/b/c/', 'a/b/c/d/', 'z/'].map((f) => folderPickHides(picks, f))).toEqual([true, true, false, false, true, true, false]);
+    expect(folderPickHides(undefined, 'a/')).toBe(false);
   });
 });

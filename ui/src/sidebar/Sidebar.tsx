@@ -11,6 +11,7 @@ import { mrSection, refreshMrList, withMrSection } from '../forge/mrSection';
 import { forgeOf, patchForge, useTabForgeField } from '../forge/mrStore';
 // --- end 4B T11 ---
 import { PresetButton } from '../presets/PresetButton';
+import { useCurrentPreset } from '../presets/store';
 import { ClearableInput } from '../ui/ClearableInput';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { onResetDoubleClick } from '../ui/resetHandle';
@@ -80,7 +81,9 @@ export function Sidebar() {
   }, [tabId, savedFilter]);
   // --- end 4B T11 ---
 
-  const base = useMemo(() => (payload ? sectionsOf(payload, view) : null), [payload, view]);
+  const presetId = useCurrentPreset(tabId).current.preset.id;
+  const picks = rs.branchPicks?.[presetId];
+  const base = useMemo(() => (payload ? sectionsOf(payload, view, picks) : null), [payload, view, picks]);
   const sections = useMemo(() => (base ? withMrSection(base, mrs) : []), [base, mrs]); // 4B T11: a poll rebuilds only the MR/PR section
   const collapsed = useMemo(() => new Set(rs.collapsed), [rs.collapsed]);
   const panels = useMemo(() => buildPanels(sections, { filter, sort: rs.sidebarSort, collapsed }), [sections, filter, rs.sidebarSort, collapsed]);
