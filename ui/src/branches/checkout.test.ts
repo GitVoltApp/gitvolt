@@ -71,6 +71,20 @@ describe('checkout (spec #2 §9.3)', () => {
     t.actions[0].run();
     expect(sw).toHaveBeenCalledWith('t', '/r-x');
   });
+  it("a remote branch whose local one another worktree has checked out: the tab switches there and the checkout (its fast-forward) runs there", async () => {
+    useRuntime.getState().patch('t', { graph: { worktrees: [{ path: '/r', branch: 'refs/heads/dev', head: 'h1', isMain: true, locked: false, inProgress: null }] } as never });
+    const sw = vi.spyOn(active, 'setActiveWorktree').mockImplementation(() => {});
+    const call = vi.spyOn(api, 'checkout').mockResolvedValue(done({ status: 'done', branch: 'dev' }) as never);
+    const dev = { kind: 'remote' as const, remote: 'origin', branch: 'dev' };
+    const refs = { 'refs/remotes/origin/dev': 'r2' };
+    await checkout({ ...ctx, worktree: '/r-x' }, dev, { head: 'hx', refs });
+    expect(sw).toHaveBeenCalledWith('t', '/r');
+    expect(call).toHaveBeenCalledWith(1, '/r', dev, { head: 'h1', refs }, expect.anything(), undefined);
+    // Already there: no switch.
+    sw.mockClear();
+    await checkout(ctx, dev, { head: 'h1', refs });
+    expect(sw).not.toHaveBeenCalled();
+  });
   it('double-clicking a branch checked out in another worktree switches to that worktree, with no checkout', () => {
     useRuntime.getState().patch('t', { repo: { id: 1, path: '/r' }, worktree: '/r' } as never);
     const sw = vi.spyOn(active, 'setActiveWorktree').mockImplementation(() => {});

@@ -78,7 +78,7 @@ export async function deleteBranch(ctx: WriteCtx, plan: DeletePlan, force = fals
   if (plan.remote && !force) {
     const name = `${plan.remote.remote}/${plan.remote.branch}`;
     const body = both
-      ? `Deleting ${name} can't be undone${plan.unpushed ? `, and ${plan.branch} has ${commitsWord(plan.unpushed)} that aren't on it` : ''}. You can undo deleting the local branch.`
+      ? `Deleting ${name} can't be undone${plan.unpushed ? `, and ${plan.branch} has ${commitsWord(plan.unpushed)} that ${plan.unpushed === 1 ? "isn't" : "aren't"} on it` : ''}. You can undo deleting the local branch.`
       : `It goes from ${plan.remote.remote}: this can't be undone.`;
     const arm = both
       ? `Click again to delete ${plan.branch} and ${name}${plan.unpushed ? ` (${commitsWord(plan.unpushed)} not on ${name})` : ''}`
@@ -98,7 +98,7 @@ export async function deleteBranch(ctx: WriteCtx, plan: DeletePlan, force = fals
   // Armed first, then the hold goes: the row stays armed in its open menu.
   const asked = confirmAction({
     title: `Delete ${out.branch}?`,
-    body: `${out.branch} has ${commitsWord(out.commits)} that aren't in ${out.into}. You can undo this.`,
+    body: `${out.branch} has ${commitsWord(out.commits)} that ${out.commits === 1 ? "isn't" : "aren't"} in ${out.into}. You can undo this.`,
     confirmLabel: 'Delete', danger: true,
     arm: `Click again to delete ${out.branch}: ${commitsWord(out.commits)} not in ${out.into}`,
   }, origin);

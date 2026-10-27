@@ -34,6 +34,18 @@ function offerWorktree(ctx: WriteCtx, err: GbError): boolean {
   return true;
 }
 
+/** A remote branch whose local branch another worktree has checked out: that worktree becomes the
+ * tab's, and the checkout runs there (a fast-forward when the branch is behind, Diverged's question
+ * when it has diverged) instead of being refused. The HEAD it expects is that worktree's. */
+function intoItsWorktree(ctx: WriteCtx, target: CheckoutTarget, expect: Expect): { ctx: WriteCtx; expect: Expect } {
+  if (target.kind !== 'remote') return { ctx, expect };
+  const name = `refs/heads/${target.local ?? target.branch}`;
+  const w = useRuntime.getState().tabs[ctx.tabId]?.graph?.worktrees.find((x) => x.branch === name);
+  if (!w || w.path === ctx.worktree) return { ctx, expect };
+  setActiveWorktree(ctx.tabId, w.path);
+  return { ctx: { ...ctx, worktree: w.path }, expect: { ...expect, head: w.head } };
+}
+
 /** How long a checkout's spinner waits for the refreshed graph before it goes anyway. */
 const HANDOFF_MAX_MS = 3000;
 
@@ -68,7 +80,8 @@ function headMoveOf(tabId: string, target: CheckoutTarget, expect: Expect): Head
  * A repository in the way ("<path> is a repository in the way of the checkout: move it first") is
  * a plain refusal: the error toast shows it, with no Retry and nothing to force. Resolves to
  * whether HEAD landed: false when the write failed, was refused or the user said no. */
-export async function checkout(ctx: WriteCtx, target: CheckoutTarget, expect: Expect, onDiverged?: 'reset', origin: Origin | null = currentOrigin()): Promise<boolean> {
+export async function checkout(at: WriteCtx, target: CheckoutTarget, expected: Expect, onDiverged?: 'reset', origin: Origin | null = currentOrigin()): Promise<boolean> {
+  const { ctx, expect } = intoItsWorktree(at, target, expected);
   // `origin`: where it started; the question comes after the backend's answer (spec §ui confirms).
   // The ref the user acted on shows the spinner while the write runs (a remote one for a new local).
   const ref = target.kind === 'branch' ? `refs/heads/${target.name}` : target.kind === 'remote' ? `refs/remotes/${target.remote}/${target.branch}` : null;

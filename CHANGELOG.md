@@ -15,6 +15,9 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Fixed
 
+- **Double-clicking a remote branch whose local branch is checked out in another worktree** now
+  switches to that worktree and fast-forwards the branch there (asking first if it has diverged),
+  instead of refusing.
 - **A merged MR/PR's commits no longer linger in the graph** after its branch is deleted: the
   commits GitVolt fetched to compare it are dropped when you leave Compare.
 - **The WIP panel no longer overlaps itself in a short window.** The file lists shrink to a row
