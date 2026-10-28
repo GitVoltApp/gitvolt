@@ -192,6 +192,15 @@ says.
   - `Cargo.toml`: a Linux/BSD dependency on `gdk4-x11` 0.11 with its `xlib` feature (the `xevent`
     signal and GDK's X error traps). The build already had it, with that feature, through
     `tauri-winit-gtk4`; `Cargo.lock` only gains the edge.
+- The pointer leaving under GPU compositing (below):
+  - `src/platform/linux/pointer.rs` (new): `watch_pointer_leave()`, `PointerLeaveWatch`, the pure
+    `host_crossing()` / `point_in_view()` and their unit tests.
+  - `src/platform/linux/window.rs`: `CefX11Host::new` syncs the runtime's X connection, installs
+    the watch in a new `pointer_leave` field, and `take_pointer_left()` reads it.
+  - `src/platform/linux/webview.rs`: `AppWebview::send_mouse_leave()`.
+  - `src/window.rs`: `apply_pending_pointer_leaves()`; `src/runtime.rs`: `about_to_wait` calls it
+    after `apply_pending_host_layouts()`.
+  - `src/platform/linux/mod.rs`: `mod pointer;`.
 
 ## Context menu entries that make no sense in an app window
 
@@ -288,6 +297,46 @@ on its own D-Bus session and XDG dirs), with real compositor input through mutte
     sends the window manager's `WM_TAKE_FOCUS`, and checks that the X focus ends up on the
     browser.
   - Without the redirect, the focus stays on GDK's focus window.
+
+## The pointer leaving the window under GPU compositing (Linux, X11)
+
+**Problem:** on a GNOME desktop with a real GPU, a hover tooltip and the hovered row stayed up
+after the pointer left GitVolt (onto another window, or past its edge), until it came back.
+
+- With GPU compositing, the GPU process renders into a child window of the browser's X window
+  (`NativeViewGLSurfaceEGLX11GLES2::InitializeNativeWindow`, `ui/gl/gl_surface_egl_x11_gles2.cc`;
+  ANGLE's GLX backend does the same). It covers the page, so the pointer over the page is in it.
+- Leaving the app from there, the browser's window gets `LeaveNotify` with detail `NotifyVirtual`
+  (Xwayland moves the pointer to the root, an ancestor, when it goes onto a Wayland window).
+- Chromium 154 takes `NotifyVirtual` for "crossing an intermediate window": `CreateMouseEvent`
+  in `ui/events/x/x11_event_translation.cc` sets `kPropertyMouseCrossedIntermediateWindow` on
+  the `kMouseExited`, and `MakeWebMouseEventFromUiEvent` in `ui/events/blink/web_input_event.cc`
+  then sends Blink a `kMouseMove` at the leave point instead of a `kMouseLeave`. The page gets no
+  `mouseleave`. A leave point still inside the window (under an overlapping window) even hovers
+  the row there.
+- Without the child window (software compositing, as in a container without a GPU), the same
+  leave is `NotifyAncestor`, a real `kMouseExited`, and the hover clears.
+
+**Fix:** the X11 host selects its own `EnterNotify`/`LeaveNotify` on GDK's X connection and reads
+them in GDK's `xevent` signal, as the focus redirect does. A leave of the host itself (not
+`NotifyInferior`, which is moving into a browser; not `NotifyGrab`, a window manager's or a
+drag's grab, which Chromium also ignores) records the leave point, and an enter clears it. After
+GDK's dispatch, `about_to_wait` sends each windowed browser of that window a mouse leave
+(`CefBrowserHost::SendMouseMoveEvent` with `mouseLeave`: CEF's `TranslateUiMoveEvent` makes a
+`kMouseExited` without the property, and `RenderWidgetHostViewAura` forwards it to Blink as
+`kMouseLeave`). The browser's window itself is Chromium's, so the host is the place to watch.
+
+**Evidence:** headless mutter with Xwayland in a container, Mesa llvmpipe, a build with Chromium
+switches allowed and `--ignore-gpu-blocklist`: the GPU child window appears under Chromium's
+(host, browser, GPU child: the user's tree). Before the fix, leaving fast onto a Wayland window or
+the desktop left `:hover` and the tooltip up with no page event, and a slow leave under the
+Wayland window hovered another row; Chromium's window got `NotifyNormal, NotifyVirtual`. With
+the fix, all four (slow, fast; onto a window, onto the desktop) give the page `mouseout`
+(relatedTarget null) and `mouseleave`, and `:hover` empties; moves, clicks and drags inside the
+window give none, and coming back hovers again.
+
+**Tests:** `cargo test -p tauri-runtime-cef --lib pointer` (which crossings are a leave, an enter
+cancelling it, the point in view coordinates).
 
 ## Chromium's component updater (K31)
 

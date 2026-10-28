@@ -9,7 +9,7 @@ use std::{
   rc::Rc,
 };
 use tauri_runtime::ProgressBarState;
-use tauri_runtime::dpi::PhysicalSize;
+use tauri_runtime::dpi::{PhysicalPosition, PhysicalSize};
 use tauri_utils::config::Color;
 use winit::platform::gtk4::WindowExtGtk4;
 
@@ -46,6 +46,8 @@ pub(crate) struct CefX11Host {
   mapped: Cell<bool>,
   /// GitVolt patch: answers the window manager's `WM_TAKE_FOCUS` by focusing a browser.
   _take_focus: Option<super::focus::TakeFocusRedirect>,
+  /// GitVolt patch: notices the pointer leaving, which Chromium misses under GPU compositing.
+  pointer_leave: Option<super::pointer::PointerLeaveWatch>,
 }
 
 /// Geometry of the X11 host, shared with the GTK `layout` handler that keeps it up to date.
@@ -77,6 +79,11 @@ impl CefX11Host {
     let (xid, colormap) = create_cef_container(parent_xid, initial_size)?;
     let take_focus =
       super::focus::redirect_take_focus(&WidgetExt::display(&gtk_window), parent_xid, xid);
+    // GDK's connection selects on the host next: make sure the server has created it.
+    super::utils::with_x11((), |xlib, display| unsafe {
+      (xlib.XSync)(display, 0);
+    });
+    let pointer_leave = super::pointer::watch_pointer_leave(&WidgetExt::display(&gtk_window), xid);
 
     let geometry = Rc::new(HostGeometry {
       size: Cell::new(initial_size),
@@ -111,6 +118,7 @@ impl CefX11Host {
       background_color_provider: RefCell::new(None),
       mapped: Cell::new(true),
       _take_focus: take_focus,
+      pointer_leave,
     })
   }
 
@@ -144,6 +152,15 @@ impl CefX11Host {
   /// Whether the host was resized by GTK since the last time the CEF children were laid out.
   pub(crate) fn take_needs_relayout(&self) -> bool {
     self.geometry.needs_relayout.replace(false)
+  }
+
+  /// Where the pointer left the host since the last call, in the host's pixels; `None` if it
+  /// didn't, or came back in.
+  pub(crate) fn take_pointer_left(&self) -> Option<PhysicalPosition<i32>> {
+    self
+      .pointer_leave
+      .as_ref()
+      .and_then(super::pointer::PointerLeaveWatch::take_left_at)
   }
 
   fn take_background_color_provider(&self) -> Option<gtk::CssProvider> {

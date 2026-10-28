@@ -54,6 +54,21 @@ impl AppWebview {
     })
   }
 
+  /// GitVolt patch: tells the browser the pointer left the window, at `point` in the X11 host's
+  /// pixels (see `pointer.rs` for why Chromium doesn't notice on its own).
+  pub(crate) fn send_mouse_leave(&self, point: PhysicalPosition<i32>, scale: f64) {
+    if self.offscreen.is_some() || self.host.window_handle() == 0 {
+      return;
+    }
+    let origin = self
+      .bounds()
+      .map(|bounds| bounds.position.to_physical::<i32>(scale))
+      .unwrap_or_default();
+    let (x, y) = super::pointer::point_in_view(point, origin, scale);
+    let event = cef::MouseEvent { x, y, modifiers: 0 };
+    self.host.send_mouse_move_event(Some(&event), 1);
+  }
+
   fn xid(&self) -> xlib::Window {
     let xid = self.host.window_handle();
     assert_ne!(xid, 0, "failed to get XID");

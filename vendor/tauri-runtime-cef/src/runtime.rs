@@ -2353,7 +2353,10 @@ impl<T: UserEvent> ApplicationHandler for WinitCefApp<T> {
       target_os = "netbsd",
       target_os = "openbsd"
     ))]
-    self.apply_pending_host_layouts();
+    {
+      self.apply_pending_host_layouts();
+      self.apply_pending_pointer_leaves();
+    }
     self.run_callback(RunEvent::MainEventsCleared);
   }
 

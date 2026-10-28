@@ -895,6 +895,26 @@ impl<T: UserEvent> WinitCefApp<T> {
     }
   }
 
+  /// GitVolt patch: sends a mouse leave to the browsers of every window the pointer left since
+  /// the last pass, which Chromium misses under GPU compositing (`platform/linux/pointer.rs`).
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+  ))]
+  pub(crate) fn apply_pending_pointer_leaves(&mut self) {
+    for appwindow in self.state.windows.values() {
+      if let Some(point) = appwindow.cef_host.take_pointer_left() {
+        let scale = appwindow.window.scale_factor();
+        for child in &appwindow.children {
+          child.send_mouse_leave(point, scale);
+        }
+      }
+    }
+  }
+
   pub(crate) fn handle_window_message(
     &mut self,
     event_loop: &dyn ActiveEventLoop,

@@ -68,6 +68,9 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   commit above a commit of the same branch that has it as parent, whose line then ran on past the
   last row. That oldest commit now stays at its date. A run that a commit of the branch's other
   line (its remote one, say) has a parent in now shows in full, whatever the placement.
+- **Tooltips and hover highlights clear when the pointer leaves GitVolt** (Linux, with GPU
+  compositing). Moving the pointer onto another window, or past GitVolt's edge, could leave a
+  commit message's tooltip and the row's highlight up until the pointer came back.
 
 ## [1.0.0] - 2026-10-23
 

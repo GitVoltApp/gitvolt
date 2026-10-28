@@ -5,6 +5,7 @@
 mod event_loop;
 mod focus;
 mod monitor;
+mod pointer;
 mod taskbar;
 mod utils;
 mod webview;
