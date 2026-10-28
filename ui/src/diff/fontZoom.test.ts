@@ -27,6 +27,9 @@ describe('the rendered Markdown font size', () => {
   it('follows editorFontSize, clamped, as the panes\' --md-font-size', () => {
     expect(editorFontVar(15)).toEqual({ '--md-font-size': '15px' });
     expect(editorFontVar(99)).toEqual({ '--md-font-size': '32px' });
+    // The panes' code takes the editor's font family (its default stack when empty) and ligatures.
+    expect(editorFontVar(13, { family: '', ligatures: false })).toEqual({ '--md-font-size': '13px', '--md-code-font': "'JetBrains Mono', 'Noto Sans Mono', 'Ubuntu Sans Mono', 'Liberation Mono', monospace", '--md-code-ligatures': 'none' });
+    expect(editorFontVar(13, { family: 'Iosevka', ligatures: true })).toMatchObject({ '--md-code-font': 'Iosevka, monospace', '--md-code-ligatures': 'normal' });
     useAppState.getState().setSettings({ editorFontSize: 17 });
     const { result } = renderHook(() => useEditorFontPx());
     expect(result.current).toBe(17);

@@ -134,9 +134,10 @@ untrusted text (`ui/src/markdown/`).
   - `media-src 'self' blob:`: a video in rendered Markdown plays from a `blob:` URL of the bytes
     the core fetched, and audio and video in the diff and File View from a `blob:` URL of the
     file's bytes;
-  - no `font-src` (so `default-src 'self'`): a font file in the diff and File View is previewed
-    from its bytes (a `FontFace` built from a buffer, never fetched from a URL), which pass
-    through Chromium's font sanitizer (OTS) like any web font;
+  - no `font-src` (so `default-src 'self'`): the editors' bundled font (JetBrains Mono) loads from
+    the bundle's own files (the build never inlines a font as a `data:` URL); a font file in the
+    diff and File View is previewed from its bytes (a `FontFace` built from a buffer, never
+    fetched from a URL), which pass through Chromium's font sanitizer (OTS) like any web font;
   - `connect-src 'self' ipc: http://ipc.localhost`: the app's own IPC only;
   - `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`, `form-action 'none'`.
 

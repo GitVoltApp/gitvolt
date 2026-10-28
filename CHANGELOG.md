@@ -5,6 +5,28 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **Editor font and display settings.** Settings › Diffs and editors has an Editor group: font
+  size (moved from Appearance; Ctrl+= / Ctrl+- / Ctrl+0 over an editor still change it, and the
+  field follows), font family with a live preview, font ligatures, line height, tab width, show
+  whitespace (none, at boundaries, everywhere), the minimap, and sticky scroll. They apply at once
+  to every diff, file view, the working copy and the merge editor, and the rendered Markdown's
+  code takes the same font. Tab width only changes how tabs look, never a file's text.
+- **JetBrains Mono bundled as the default editor font** on every platform, with its bold and
+  italic, for Latin, Vietnamese, Cyrillic and Greek; other scripts fall back to Noto Sans Mono,
+  Ubuntu Sans Mono or Liberation Mono. It loads from the app, never the network.
+
+### Changed
+
+- Appearance shows Density first.
+
+### Fixed
+
+- **Vietnamese and other stacked accents drawn on the wrong letter in code views on Linux**
+  ("tối thiểu" looked like "tôí thiêủ"): Monaco's default font fell back to DejaVu Sans Mono,
+  which offsets them onto the next letter. The text itself was always right.
+
 ## [1.1.0] - 2026-10-27
 
 ### Added

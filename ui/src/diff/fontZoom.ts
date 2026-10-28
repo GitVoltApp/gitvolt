@@ -1,10 +1,10 @@
-import type { CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { useAppState } from '../app/state';
 import { registerKeyHints } from '../shortcuts/hints';
 import { registerKeys } from '../ui/keyRouter';
 import { useToast } from '../ui/toastStore';
 import { inFontZoomPanel, zoomDirection } from '../ui/zoom';
-import { clampEditorFont, EDITOR_FONT_SIZE } from './options';
+import { clampEditorFont, EDITOR_FONT_SIZE, editorFontFamily } from './options';
 
 /**
  * The text size of a file's or a diff's body: Monaco's `editorFontSize` setting, which the
@@ -19,8 +19,20 @@ export function nextEditorFont(px: number, dir: 1 | -1 | 0): number {
   return dir === 0 ? EDITOR_FONT_SIZE : clampEditorFont(clampEditorFont(px) + dir);
 }
 
-/** The pane style that sizes its rendered Markdown like the editor. */
-export const editorFontVar = (px: number) => ({ '--md-font-size': `${clampEditorFont(px)}px` }) as CSSProperties;
+/** The editor's font family setting and ligatures, which the rendered panes' code takes too. */
+export interface CodeFont { family: string; ligatures: boolean }
+
+/** The pane style that sizes its rendered Markdown like the editor and, given `code`, sets its
+ * code in the editor's font (`--md-code-font`, `--md-code-ligatures`: markdown.css). */
+export const editorFontVar = (px: number, code?: CodeFont) =>
+  ({ '--md-font-size': `${clampEditorFont(px)}px`, ...(code && { '--md-code-font': editorFontFamily(code.family), '--md-code-ligatures': code.ligatures ? 'normal' : 'none' }) }) as CSSProperties;
+
+/** The editor's code font settings (`editorFontVar`'s `code`). */
+export function useEditorCodeFont(): CodeFont {
+  const family = useAppState((s) => s.settings.editorFontFamily);
+  const ligatures = useAppState((s) => s.settings.editorFontLigatures);
+  return useMemo(() => ({ family, ligatures }), [family, ligatures]);
+}
 
 /** The editor font size, clamped: the rendered panes' text size (`MdFontPx`, their `--md-font-size`). */
 export function useEditorFontPx(): number {

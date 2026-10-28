@@ -6,7 +6,9 @@ import './theme/tokens.css';
 import { App } from './App';
 import { bindDebugLogging, installFrontendErrorLogging } from './debug/frontendLog';
 import { bindThemeToSettings } from './theme/bind';
+import { installEditorSettingsMigration } from './diff/editorSettings';
 import { installFontZoom } from './diff/fontZoom';
+import { registerEditorFont } from './theme/editorFont';
 import { installZoom } from './ui/zoom';
 import { applyPageZoom } from './demo/pageZoom';
 
@@ -21,5 +23,8 @@ installZoom(import.meta.env.MODE === 'demo' ? applyPageZoom : undefined);
 // Over a file's or a diff's body, the zoom keys and Ctrl+wheel size its text instead.
 installFontZoom();
 bindThemeToSettings();
+installEditorSettingsMigration();
+// The editors' bundled font (JetBrains Mono), for Monaco and the rendered Markdown's code alike.
+registerEditorFont();
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

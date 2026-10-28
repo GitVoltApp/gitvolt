@@ -4,6 +4,7 @@ import type { BranchPreset } from "./BranchPreset";
 import type { CollapsePlacement } from "./CollapsePlacement";
 import type { CustomTheme } from "./CustomTheme";
 import type { DateFormat } from "./DateFormat";
+import type { EditorWhitespace } from "./EditorWhitespace";
 import type { PresetSlot } from "./PresetSlot";
 import type { SyncButtonMode } from "./SyncButtonMode";
 
@@ -13,9 +14,26 @@ export type AppSettings = { version: number, activeProfile: string,
  */
 theme: string, 
 /**
- * Plan 1D applies it.
+ * The editors' text size in px (Settings › Diffs and editors; the UI clamps it to 8-32).
  */
 editorFontSize: number, 
+/**
+ * A CSS font-family list for the editors; empty: the bundled JetBrains Mono and its fallbacks.
+ */
+editorFontFamily: string, editorFontLigatures: boolean, 
+/**
+ * px; 0: automatic (Monaco's, from the font size).
+ */
+editorLineHeight: number, 
+/**
+ * How wide a tab character shows, in columns (the UI clamps it to 1-16). Display only: it
+ * never changes what a file holds.
+ */
+editorTabSize: number, editorWhitespace: EditorWhitespace, editorMinimap: boolean, 
+/**
+ * Off by default (H7): with no language service, the pinned line can be a lone `{`.
+ */
+editorStickyScroll: boolean, 
 /**
  * Background fetch period in seconds; 0 turns background fetch off.
  */

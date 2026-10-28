@@ -10,6 +10,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@fontsource/jetbrains-mono": "5.3.0",
     "@shikijs/monaco": "4.5.0",
     "@tanstack/react-virtual": "^3.14.13",
     "@tauri-apps/api": "3.0.0-alpha.3",

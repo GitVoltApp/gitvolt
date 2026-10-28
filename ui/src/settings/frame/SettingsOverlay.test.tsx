@@ -29,7 +29,6 @@ const { useSettingsUi } = await import('../schema');
 const { allSettings, settingsPages } = await import('../registry');
 const { useAppState } = await import('../../app/state');
 const { useDensity } = await import('../../theme/density');
-const { useEditorSettings } = await import('../../diff/editorSettings');
 const { resetOpenersForTests } = await import('../../openIn/openers');
 const { useRuntime } = await import('../../app/runtime');
 const { ConfirmDialog } = await import('../../ui/ConfirmDialog');
@@ -59,7 +58,6 @@ beforeEach(() => {
   resetOpenersForTests();
   localStorage.clear();
   useDensity.getState().reload();
-  useEditorSettings.setState({ settings: { stickyScroll: false } });
   useAppState.setState({ settings: DEFAULT_SETTINGS, profile: { ...EMPTY_PROFILE, name: 'Work', color: '#de9b43', tabs: [tab], activeTab: 't1' } });
   useRuntime.setState({
     tabs: { t1: { status: 'ready', error: null, repo: { id: 7, name: 'orbital', path: '/r/orbital' } as never, graph: null, sidebar: null, lastFetchAt: 0, fetchSkipped: null, limit: null, worktree: null,
@@ -217,11 +215,11 @@ describe('SettingsOverlay', () => {
 
     it('sticky scroll toggles the editor setting, with its description shown', () => {
       show('stickyScroll');
-      const sw = screen.getByLabelText('Sticky scroll in the diff viewer');
+      const sw = screen.getByLabelText('Sticky scroll');
       expect(sw).not.toBeChecked();
       fireEvent.click(sw);
-      expect(useEditorSettings.getState().settings.stickyScroll).toBe(true);
-      expect(JSON.parse(localStorage.getItem('gitvolt.editorSettings.v1')!)).toEqual({ stickyScroll: true });
+      expect(useAppState.getState().settings.editorStickyScroll).toBe(true);
+      expect(localStorage.getItem('gitvolt.editorSettings.v1')).toBeNull();
       expect(screen.getByText(/Pins the enclosing scope's first line/)).toBeVisible();
     });
 

@@ -9,15 +9,16 @@ import { ThemeCards } from './ThemeCards';
 import { ThemeColourList } from './ThemeColourList';
 import './editor.css';
 
-/** The groups this body draws itself; any other group on the page (Sizes) is rows as usual. */
+/** The groups this body draws itself; any other group on the page (Density) is rows as usual. */
 const OWN = new Set(['Theme', 'Graph lanes', 'Colours']);
 
-/** Settings › Appearance: the theme cards and the editing strip, the lane colours, the colours
- * beside a live preview, then the size settings. Ctrl+V on the page pastes a theme. */
+/** Settings › Appearance: the density first, then the theme cards and the editing strip, the lane
+ * colours, and the colours beside a live preview. Ctrl+V on the page pastes a theme. */
 export function AppearanceBody({ ctx }: { ctx: SettingsCtx }) {
   useSettingsPaste(pasteTheme);
   return (
     <>
+      <PageGroups pageId="appearance" ctx={ctx} skip={OWN} />
       <SettingsGroup title="Theme" bare>
         <div data-setting-id="theme" id="setting-theme">
           <ThemeCards />
@@ -33,7 +34,6 @@ export function AppearanceBody({ ctx }: { ctx: SettingsCtx }) {
           <LivePreview />
         </div>
       </SettingsGroup>
-      <PageGroups pageId="appearance" ctx={ctx} skip={OWN} />
     </>
   );
 }

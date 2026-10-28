@@ -17,7 +17,7 @@ import { loadedHost } from './TextDiff';
 // --- 5B T6: relative links and images in File View's Markdown (registered with the renderer) ---
 import '../markdown/fileLinks';
 import { MdFontPx } from '../markdown/fontPx';
-import { editorFontVar, useEditorFontPx } from './fontZoom';
+import { editorFontVar, useEditorCodeFont, useEditorFontPx } from './fontZoom';
 import { clearMarkdownOverride, markdownViewOf, pickViewFor, showSourceFor, useMarkdownOverride, useMarkdownView } from './markdownOverride';
 import { CsvTable } from '../table/CsvTable';
 import type { Delimiter } from '../table/csv';
@@ -98,6 +98,7 @@ export function FileBody({ identity, path, text, language, onShown, editable = f
   const rendered = wantsRendered && !tooLarge;
   // A table too large for the main thread, or too tall for a grid, shows Source with a note.
   const fontPx = useEditorFontPx();
+  const codeFont = useEditorCodeFont();
   const fileTable = useMemo(() => (table !== null && picked === 'rendered' ? fileTableOf(shownText, table, fontPx) : null), [table, picked, shownText, fontPx]);
   usePublishTableStatus(identity, fileTable ? fileTable.note : undefined);
   const away = rendered || !!fileTable?.table;
@@ -154,7 +155,7 @@ export function FileBody({ identity, path, text, language, onShown, editable = f
         </div>
       )}
       {markdown && !html && (
-        <div ref={pane} className="md-rendered" hidden={!rendered} data-testid="markdown-file" tabIndex={-1} data-font-zoom="" style={editorFontVar(fontPx)}>
+        <div ref={pane} className="md-rendered" hidden={!rendered} data-testid="markdown-file" tabIndex={-1} data-font-zoom="" style={editorFontVar(fontPx, codeFont)}>
           {rendered && context && (waiting
             ? <div className="diff-message" aria-busy="true">Rendering…</div>
             : (

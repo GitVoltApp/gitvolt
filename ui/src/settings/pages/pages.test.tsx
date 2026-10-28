@@ -47,8 +47,9 @@ afterEach(() => act(() => { useSettingsUi.getState().close(); useSettingsUi.setS
 describe('settings pages', () => {
   it.each([
     ['advanceAfterStage', 'general'], ['updateCheck', 'general'], ['updatePrereleases', 'general'],
-    ['theme', 'appearance'], ['graphColors', 'appearance'], ['themeColours', 'appearance'], ['density', 'appearance'], ['editorFontSize', 'appearance'],
+    ['theme', 'appearance'], ['graphColors', 'appearance'], ['themeColours', 'appearance'], ['density', 'appearance'],
     ['commitLimit', 'graph'], ['relativeDates', 'graph'], ['dateFormat', 'graph'], ['gravatar', 'graph'], ['forgeAvatars', 'graph'], ['collapseHoverOpen', 'graph'], ['collapsePlacement', 'graph'],
+    ['editorFontSize', 'diffs'], ['editorFontFamily', 'diffs'], ['editorFontLigatures', 'diffs'], ['editorLineHeight', 'diffs'], ['editorTabSize', 'diffs'], ['editorWhitespace', 'diffs'], ['editorMinimap', 'diffs'],
     ['stickyScroll', 'diffs'], ['fetchInterval', 'fetch'], ['prune', 'fetch'], ['pushFollowTags', 'fetch'],
     ['shortcuts', 'keyboard'], ['debugLogging', 'advanced'], ['openLogs', 'advanced'], ['resetAll', 'advanced'],
     ['extraGitconfig', 'git-identity'], ['editor', 'editor-folders'], ['reposFolder', 'editor-folders'],
@@ -67,8 +68,9 @@ describe('settings pages', () => {
     const dialog = show();
     expect(groupTitles(dialog)).toEqual(['Staging', 'Updates']);
     openPage('Appearance');
-    expect(groupTitles(dialog)).toEqual(['Theme','Graph lanes · drag to reorder, click to change', 'Colours', 'Sizes']);
-    expect(within(dialog).getByLabelText('Editor font size')).toHaveValue(13);
+    // Density first; the editor font is on Diffs and editors now.
+    expect(groupTitles(dialog)).toEqual(['Density', 'Theme', 'Graph lanes · drag to reorder, click to change', 'Colours']);
+    expect(within(dialog).queryByLabelText(/font size/i)).toBeNull();
     openPage('Graph');
     expect(groupTitles(dialog)).toEqual(['History', 'Dates', 'Avatars', 'Hidden commits']);
     expect(allSettings().filter((d) => d.page === 'graph' && d.group === 'Dates').map((d) => d.id)).toEqual(['relativeDates', 'dateFormat']);
@@ -117,6 +119,76 @@ describe('settings pages', () => {
     fireEvent.click(pin);
     fireEvent.click(screen.getByRole('menuitem', { name: 'feature/docking' }));
     expect(useAppState.getState().profile.repos[PATH].pin).toEqual({ kind: 'ref', name: 'refs/heads/feature/docking' });
+  });
+
+  describe('Diffs and editors', () => {
+    it('one Editor group: the font, its size and ligatures, line height, tab width, whitespace, minimap and sticky scroll', () => {
+      const dialog = show('editorFontSize');
+      expect(groupTitles(dialog)).toEqual(['Editor']);
+      expect([...dialog.querySelectorAll('.settings-page .setting-row')].map((r) => r.getAttribute('data-setting-id')))
+        .toEqual(['editorFontSize', 'editorFontFamily', 'editorFontLigatures', 'editorLineHeight', 'editorTabSize', 'editorWhitespace', 'editorMinimap', 'stickyScroll']);
+      expect(within(dialog).getByText(/Ctrl\+= and Ctrl\+- change it, Ctrl\+0 resets it/)).toBeVisible();
+      expect(within(dialog).getByLabelText('Font size')).toHaveValue(13);
+      expect(within(dialog).getByLabelText('Tab width')).toHaveValue(4);
+      expect(within(dialog).getByLabelText('Line height')).toHaveValue(null); // empty: automatic
+      expect(within(dialog).getByLabelText('Minimap')).toBeChecked();
+      expect(within(dialog).getByLabelText('Font ligatures')).not.toBeChecked();
+      expect(within(dialog).getByRole('button', { name: 'Show whitespace' })).toHaveTextContent('None');
+    });
+
+    it('each control writes its app setting, clamped', () => {
+      const dialog = show('editorFontSize');
+      const commit = (label: string, value: string) => {
+        const box = within(dialog).getByLabelText(label);
+        fireEvent.change(box, { target: { value } });
+        fireEvent.submit(box.closest('form')!);
+      };
+      commit('Tab width', '40');
+      commit('Line height', '3');
+      commit('Font family', "  'Fira Code'  ");
+      fireEvent.click(within(dialog).getByLabelText('Font ligatures'));
+      fireEvent.click(within(dialog).getByLabelText('Minimap'));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Show whitespace' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'At boundaries' }));
+      expect(useAppState.getState().settings).toMatchObject({ editorTabSize: 16, editorLineHeight: 8, editorFontFamily: "'Fira Code'", editorFontLigatures: true, editorMinimap: false, editorWhitespace: 'boundary' });
+      // An empty line height is automatic again.
+      commit('Line height', '');
+      expect(useAppState.getState().settings.editorLineHeight).toBe(0);
+    });
+
+    it("the font family's preview follows what's typed, before it applies, with monospace after a list that names no generic family", () => {
+      const dialog = show('editorFontFamily');
+      const preview = within(dialog).getByTestId('font-preview');
+      expect(preview).toHaveTextContent('const tối = "thiểu"; // 0O1lI {}');
+      expect(preview.style.fontFamily).toContain('JetBrains Mono');
+      expect(preview.style.fontVariantLigatures).toBe('none');
+      fireEvent.change(within(dialog).getByLabelText('Font family'), { target: { value: 'Iosevka' } });
+      expect(preview.style.fontFamily).toBe('Iosevka, monospace');
+      expect(useAppState.getState().settings.editorFontFamily).toBe('');
+      act(() => useAppState.getState().setSettings({ editorFontLigatures: true }));
+      expect(preview.style.fontVariantLigatures).toBe('normal');
+    });
+
+    it('the zoom keys over an editor update the font size field live', async () => {
+      const { installFontZoom } = await import('../../diff/fontZoom');
+      const { installZoom } = await import('../../ui/zoom');
+      const offs = [installZoom(() => {}), installFontZoom()];
+      try {
+        const dialog = show('editorFontSize');
+        const pane = document.createElement('div');
+        pane.setAttribute('data-font-zoom', '');
+        pane.tabIndex = -1;
+        document.body.append(pane);
+        act(() => { pane.dispatchEvent(new KeyboardEvent('keydown', { key: '=', ctrlKey: true, bubbles: true, cancelable: true })); });
+        expect(useAppState.getState().settings.editorFontSize).toBe(14);
+        expect(within(dialog).getByLabelText('Font size')).toHaveValue(14);
+        act(() => { pane.dispatchEvent(new KeyboardEvent('keydown', { key: '0', ctrlKey: true, bubbles: true, cancelable: true })); });
+        expect(within(dialog).getByLabelText('Font size')).toHaveValue(13);
+        pane.remove();
+      } finally {
+        for (const off of offs) off();
+      }
+    });
   });
 
   it('Keyboard lists the shortcuts', () => {

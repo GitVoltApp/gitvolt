@@ -3,8 +3,10 @@
 //! version. An unreadable or newer-version file is set aside (renamed), never overwritten.
 //!
 //! View preferences that must apply before the first paint (zoom, density, diff mode and its
-//! toggles, sticky scroll, the last opener, file-list prefs, the details split) stay in the UI's
-//! localStorage behind 1B's seams (ruling R4), so `AppSettings` has no fields for them.
+//! toggles, the last opener, file-list prefs, the details split) stay in the UI's localStorage
+//! behind 1B's seams (ruling R4), so `AppSettings` has no fields for them. The editors' display
+//! settings (font, tab width, whitespace, minimap, sticky scroll) are here: no editor shows before
+//! the settings load. The UI moved sticky scroll here from its localStorage once.
 //!
 //! Deviation (spec §14.1/§14.4): host-type overrides are per profile, keyed by host.
 
@@ -65,6 +67,19 @@ pub enum SyncButtonMode {
     PullRebase,
 }
 
+/// Settings › Diffs and editors › "Show whitespace": Monaco's `renderWhitespace`, without its
+/// `selection` (whitespace marked only where selected). None by default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum EditorWhitespace {
+    #[default]
+    None,
+    /// All but single spaces between words.
+    Boundary,
+    All,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export)]
@@ -73,8 +88,20 @@ pub struct AppSettings {
     pub active_profile: String,
     /// Theme id; plan 1D owns the list.
     pub theme: String,
-    /// Plan 1D applies it.
+    /// The editors' text size in px (Settings › Diffs and editors; the UI clamps it to 8-32).
     pub editor_font_size: u16,
+    /// A CSS font-family list for the editors; empty: the bundled JetBrains Mono and its fallbacks.
+    pub editor_font_family: String,
+    pub editor_font_ligatures: bool,
+    /// px; 0: automatic (Monaco's, from the font size).
+    pub editor_line_height: u16,
+    /// How wide a tab character shows, in columns (the UI clamps it to 1-16). Display only: it
+    /// never changes what a file holds.
+    pub editor_tab_size: u16,
+    pub editor_whitespace: EditorWhitespace,
+    pub editor_minimap: bool,
+    /// Off by default (H7): with no language service, the pinned line can be a lone `{`.
+    pub editor_sticky_scroll: bool,
     /// Background fetch period in seconds; 0 turns background fetch off.
     pub fetch_interval_secs: u32,
     pub prune: bool,
@@ -186,6 +213,13 @@ impl Default for AppSettings {
             active_profile: DEFAULT_PROFILE_ID.into(),
             theme: "default-dark".into(),
             editor_font_size: 13,
+            editor_font_family: String::new(),
+            editor_font_ligatures: false,
+            editor_line_height: 0,
+            editor_tab_size: 4,
+            editor_whitespace: EditorWhitespace::None,
+            editor_minimap: true,
+            editor_sticky_scroll: false,
             fetch_interval_secs: 60,
             prune: true,
             commit_limit: 2000,
@@ -1422,6 +1456,38 @@ mod tests {
         s.graph_color_overrides.insert("nord".into(), vec![Some("#123456".into()), None]);
         let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.graph_color_overrides["nord"], vec![Some("#123456".to_string()), None]);
+    }
+
+    /// A settings file from before the editor display settings loads with their defaults; set,
+    /// they round-trip under their camelCase names.
+    #[test]
+    fn editor_settings_default_for_older_files_and_round_trip() {
+        let old = r#"{"version":2,"activeProfile":"default","theme":"default-dark","editorFontSize":15}"#;
+        let s: AppSettings = serde_json::from_str(old).unwrap();
+        assert_eq!(s.editor_font_size, 15);
+        assert_eq!(s.editor_font_family, "");
+        assert!(!s.editor_font_ligatures);
+        assert_eq!(s.editor_line_height, 0);
+        assert_eq!(s.editor_tab_size, 4);
+        assert_eq!(s.editor_whitespace, EditorWhitespace::None);
+        assert!(s.editor_minimap);
+        assert!(!s.editor_sticky_scroll);
+        assert_eq!(AppSettings { editor_font_size: 13, ..s }, AppSettings::default());
+
+        let s = AppSettings {
+            editor_font_family: "'Fira Code', monospace".into(),
+            editor_font_ligatures: true,
+            editor_line_height: 20,
+            editor_tab_size: 8,
+            editor_whitespace: EditorWhitespace::Boundary,
+            editor_minimap: false,
+            editor_sticky_scroll: true,
+            ..AppSettings::default()
+        };
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["editorWhitespace"], "boundary");
+        assert_eq!(v["editorTabSize"], 8);
+        assert_eq!(serde_json::from_value::<AppSettings>(v).unwrap(), s);
     }
 
     #[test]

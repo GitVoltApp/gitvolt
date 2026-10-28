@@ -169,8 +169,8 @@ async function openDiff(page: Page) {
   await page.locator('[role="option"][data-path="src/app.php"], [role="treeitem"][data-path="src/app.php"]').click();
   await expect(diffRegion(page).locator('.editor.modified .line-insert').first()).toBeVisible({ timeout: 15_000 });
 }
-// One page, one editor: the font size step uses the diff the theme step opened.
-test('the open editor: a theme switch repaints it without re-creating it (R6); Settings > Appearance resizes it live, clamped to 8-32', async ({ page }) => {
+// One page, one editor: the font steps use the diff the theme step opened.
+test('the open editor: a theme switch repaints it without re-creating it (R6); Settings > Diffs and editors resizes it live, clamped to 8-32, and sets its font and tab width', async ({ page }) => {
   await test.step("switching theme repaints the open editor in the new theme's background, without re-creating it (R6)", async () => {
     await page.goto(openUrl(fixtures.details));
     await openDiff(page);
@@ -191,12 +191,12 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
     await expect(keyword).toHaveCSS('color', 'rgb(88, 110, 117)'); // solarized-light
     await expect(host).toHaveAttribute('data-keep', '1');
   });
-  await test.step('the editor font size row (Settings > Appearance) resizes the open diff live, clamped to 8-32', async () => {
+  await test.step('the font size row (Settings > Diffs and editors) resizes the open diff live, clamped to 8-32', async () => {
     const size = () => diffRegion(page).locator('.view-line').first().evaluate((e) => getComputedStyle(e).fontSize);
     await expect.poll(size).toBe('13px');
     await page.keyboard.press('Control+,');
-    await dialog(page).getByRole('button', { name: 'Appearance', exact: true }).click();
-    const box = dialog(page).getByLabel('Editor font size');
+    await dialog(page).getByRole('button', { name: 'Diffs and editors', exact: true }).click();
+    const box = dialog(page).getByLabel('Font size', { exact: true });
     await box.fill('18');
     await box.press('Enter');
     await expect.poll(size).toBe('18px');
@@ -204,6 +204,26 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
     await box.press('Enter');
     await expect(box).toHaveValue('32');
     await expect.poll(size).toBe('32px');
+  });
+  await test.step('the bundled JetBrains Mono draws the diff by default; a font family and a tab width set in Settings reach the open diff live', async () => {
+    const probe = () => page.evaluate(() => window.__gbEditor?.() ?? null);
+    const lineFont = () => diffRegion(page).locator('.view-line').first().evaluate((e) => getComputedStyle(e).fontFamily);
+    await expect.poll(async () => (await probe())?.fontFamily).toContain('JetBrains Mono');
+    await expect.poll(() => page.evaluate(() => document.fonts.check('14px "JetBrains Mono"'))).toBe(true);
+    expect((await probe())?.tabSize).toBe(4);
+    const family = dialog(page).getByLabel('Font family', { exact: true });
+    await family.fill("'Liberation Mono'");
+    // The preview follows the box as it's typed; the editors once it applies.
+    await expect(dialog(page).getByTestId('font-preview')).toHaveCSS('font-family', /^"Liberation Mono", monospace$/);
+    await family.press('Enter');
+    const tab = dialog(page).getByLabel('Tab width', { exact: true });
+    await tab.fill('8');
+    await tab.press('Enter');
+    await expect.poll(probe).toMatchObject({ fontFamily: "'Liberation Mono', monospace", tabSize: 8 });
+    await expect.poll(lineFont).toContain('Liberation Mono');
+    // Its ↺ brings the bundled font back.
+    await dialog(page).locator('[data-setting-id="editorFontFamily"]').getByRole('button', { name: 'Restore the default' }).click();
+    await expect.poll(async () => (await probe())?.fontFamily).toMatch(/^'JetBrains Mono', /);
   });
 });
 

@@ -12,7 +12,7 @@ changes.
 | --- | --- |
 | `LICENSE` | GitVolt's own license |
 | `THIRD-PARTY-NOTICES-rust.txt` | Every crate `gitvolt-app` links, grouped by license |
-| `THIRD-PARTY-NOTICES-ui.txt` | Every npm package in the UI bundle, grouped by license; Shiki's grammars and themes with their own licenses; notices packages ship (Monaco's `ThirdPartyNotices.txt`); the licenses a package keeps beside files bundled from a subfolder (pdf.js's `wasm/LICENSE_OPENJPEG`, `LICENSE_JBIG2`) |
+| `THIRD-PARTY-NOTICES-ui.txt` | Every npm package in the UI bundle, grouped by license (the editor font, JetBrains Mono, under OFL-1.1, among them); Shiki's grammars and themes with their own licenses; notices packages ship (Monaco's `ThirdPartyNotices.txt`); the licenses a package keeps beside files bundled from a subfolder (pdf.js's `wasm/LICENSE_OPENJPEG`, `LICENSE_JBIG2`) |
 | `CEF-LICENSE.txt` | CEF's license, from the CEF distribution the build used |
 | `CHROMIUM-CREDITS.html.gz` | Chromium's credits for everything it bundles, from the same distribution (about 20 MB of HTML, gzipped to about 2 MB) |
 | `DICTIONARY-en-US-LICENSE.txt` | The spell-check dictionary's source and license (below) |
@@ -77,6 +77,15 @@ workflow sets it.
    `ui/dist/licenses/THIRD-PARTY-NOTICES-ui.txt` through the Vite plugin in `ui/build/licenses.ts`.
    The plugin works from the modules actually in the main and worker bundles, so
    devDependencies and tree-shaken packages never appear and nothing bundled is missed.
+   - **The editor font.** JetBrains Mono, from `@fontsource/jetbrains-mono` (OFL-1.1), is the
+     editors' default font. `ui/src/theme/editorFont.ts` imports its `.woff2` files (regular,
+     bold, italic and bold italic, in the latin, latin-ext, vietnamese, cyrillic and greek
+     subsets) and its `unicode.json`, so they're modules of the bundle like any package's code:
+     the plugin holds the package to the allow-list and prints its copyright line and the OFL
+     text, which the license asks to ship with the font. The files are the app's own assets,
+     loaded from the bundle (the Content Security Policy's `font-src` is `'self'`, through
+     `default-src`); `vite.config.ts` never inlines a font as a `data:` URL, which that policy
+     would refuse.
    Shiki's grammars and themes come from many upstream projects; the plugin lists each one in the
    bundle with the license and source the `tm-grammars` and `tm-themes` projects record (or, where
    they record none, the one found upstream: see below), and appends the sections of their
@@ -135,7 +144,8 @@ Chromium's profile at startup (`Cef::bundled_dictionary`, vendor/tauri-runtime-c
 `accepted` in `about.toml` is the list of licenses GitVolt ships code under: MIT, Apache-2.0,
 BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Zlib, MPL-2.0, EPL-2.0, Unicode, OFL-1.1, CC0-1.0, BSL-1.0,
 Unlicense and CDLA-Permissive-2.0. The UI plugin reads the same list. The website's shipped fonts (OFL-1.1) are checked against
-`about.toml` by `site/build/fonts.ts`, not by `just licenses`. A crate or package under any other
+`about.toml` by `site/build/fonts.ts`, not by `just licenses`; the app's editor font goes through
+the UI plugin with the other npm packages (above). A crate or package under any other
 license, or with no recognizable license, fails the build with its name, so a
 copyleft dependency (GPL, LGPL, AGPL) is never added unnoticed. Review it, then either drop the
 dependency or record the decision:

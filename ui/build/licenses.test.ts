@@ -54,6 +54,9 @@ describe('copyrightLines', () => {
   it('keeps real copyright lines, not the license wording or placeholders', () => {
     expect(copyrightLines('MIT License\n\nCopyright (c) Meta Platforms, Inc. and affiliates.\n\nThe above copyright notice and this permission notice\nTHE COPYRIGHT HOLDERS\n   Copyright [yyyy] [name of copyright owner]\n(c) 2019 Someone\n'))
       .toEqual(['Copyright (c) Meta Platforms, Inc. and affiliates.', '(c) 2019 Someone']);
+    // The OFL's wording (a font's license, @fontsource/jetbrains-mono) wraps onto lines that start with it.
+    expect(copyrightLines('Copyright 2020 The JetBrains Mono Project Authors\n\nbundled, redistributed and/or sold with any software provided that any reserved names are not used by derivative works, and any\ncopyright statement(s).\nCopyright Holder(s) and the Author(s) or with their explicit written\nCOPYRIGHT HOLDER BE LIABLE\n'))
+      .toEqual(['Copyright 2020 The JetBrains Mono Project Authors']);
   });
 });
 

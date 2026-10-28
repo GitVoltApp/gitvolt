@@ -1,7 +1,6 @@
 import type * as MonacoNs from 'monaco-editor/editor/editor.api';
 import { DEFAULT_DIFF_PREFS, type EditorDiffPrefs } from '../diffPrefs';
-import { useEditorSettings } from '../editorSettings';
-import { clampEditorFont, diffEditorOptions, EDITOR_SCROLLBAR, fileViewOptions } from '../options';
+import { diffEditorOptions, EDITOR_SCROLLBAR, editorDisplayOptions, editorFontFamily, editorSettingsChanged, fileViewOptions } from '../options';
 import { enableDeletedLineCopy } from './deletedCopy';
 import { keepOriginalWrap } from './originalWrap';
 import { HexPanes, type HexView } from './hexPanes';
@@ -12,7 +11,7 @@ import { openTop, revealTop, stepTarget, type ChangeBox } from '../changeNav';
 import { overflowLayer } from './overflow';
 import { ReviewGutter, type ReviewGutterSpec } from './reviewGutter';
 import { ReviewZones, type ReviewZoneSpec } from './reviewZones';
-import { monaco, openLinksInBrowser } from './setup';
+import { followEditorSettings, loadEditorFont, monaco, openLinksInBrowser } from './setup';
 import { useAppState } from '../../app/state';
 import { bindEditorTheme } from '../../theme/editorThemes';
 import { useTheme } from '../../theme/store';
@@ -190,6 +189,8 @@ const ANCHOR_HOLD_MS = 2000;
 const ANCHOR_RECOMPUTE_MAX_MS = 15_000;
 /** How long a save's kept cursor and scroll wait for the reload's show. */
 const KEPT_VIEW_MS = 5000;
+/** At most this long waiting for the editor font before the first editor is made. */
+const FONT_BACKSTOP_MS = 1000;
 /** Monaco's `ScrollType.Immediate`: no smooth scrolling. */
 const SCROLL_IMMEDIATE = 1;
 /** A held place: a line at the viewport centre (a prefs change), the first change (an open), or
@@ -197,6 +198,13 @@ const SCROLL_IMMEDIATE = 1;
 type Hold = ScrollAnchor | 'first' | Required<DiffLine>;
 
 type LineChange = MonacoNs.editor.ILineChange;
+
+/** What the diff's editor is drawn with, as Monaco resolved it (e2e: `window.__gbEditor`). */
+export interface EditorProbe { fontFamily: string; fontSize: number; lineHeight: number; fontLigatures: string; renderWhitespace: string; minimap: boolean; tabSize: number | null }
+declare global {
+  interface Window { __gbEditor?: () => EditorProbe | null }
+}
+
 /** Each change's extent in the diff's scroll space, from whichever sides have its lines. Both
  * editors share that space: in Inline and Hunk the original editor is the old-line-number strip,
  * its deleted lines level with the modified side's zone for them (see `scrollAnchor.ts`). */
@@ -229,8 +237,8 @@ function withBackstop(p: Promise<void>, ms: number): Promise<void> {
   return Promise.race([p, new Promise<void>((r) => { timer = setTimeout(r, ms); })]).finally(() => clearTimeout(timer));
 }
 
-const sticky = () => useEditorSettings.getState().settings.stickyScroll;
-const fontSize = () => useAppState.getState().settings.editorFontSize;
+/** The editor settings now (Settings › Diffs and editors). */
+const editorSettings = () => useAppState.getState().settings;
 
 const sameDiff = (a: DiffContent, b: DiffContent) => a.path === b.path && a.original === b.original && a.modified === b.modified;
 const sameFile = (a: FileContent, b: FileContent) => a.path === b.path && a.text === b.text;
@@ -331,19 +339,13 @@ class Host implements MonacoHost {
   constructor() {
     this.diffEl.className = 'monaco-host';
     this.fileEl.className = 'monaco-host';
-    // The sticky-scroll setting (H7; plan 1C's settings screen changes it) applies in place.
-    useEditorSettings.subscribe((s, prev) => {
-      if (s.settings.stickyScroll === prev.settings.stickyScroll) return;
-      const stickyScroll = { enabled: s.settings.stickyScroll };
-      this.diff?.updateOptions({ stickyScroll });
-      this.file?.updateOptions({ stickyScroll });
-    });
-    // The editor font size (Settings > Editor) applies in place too.
+    followEditorSettings();
+    // The editor settings (Settings › Diffs and editors, the font zoom keys) apply in place.
     useAppState.subscribe((s, prev) => {
-      if (s.settings.editorFontSize === prev.settings.editorFontSize) return;
-      const fontSize = clampEditorFont(s.settings.editorFontSize);
-      this.diff?.updateOptions({ fontSize });
-      this.file?.updateOptions({ fontSize });
+      if (!editorSettingsChanged(s.settings, prev.settings)) return;
+      const display = editorDisplayOptions(s.settings);
+      this.diff?.updateOptions(display);
+      this.file?.updateOptions(display);
     });
   }
 
@@ -357,7 +359,7 @@ class Host implements MonacoHost {
     if (this.review) el.appendChild(this.review.layer);
     this.ro.observe(el);
     if (!this.diff) {
-      this.diff = monaco.editor.createDiffEditor(this.diffEl, { ...diffEditorOptions(this.prefs, this.menu === null, sticky(), fontSize()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
+      this.diff = monaco.editor.createDiffEditor(this.diffEl, { ...diffEditorOptions(this.prefs, this.menu === null, editorSettings()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
       openLinksInBrowser();
       // A plain DOM signal that a diff (or a prefs recompute) is done, for e2e waits.
       this.diff.onDidUpdateDiff(() => {
@@ -603,7 +605,7 @@ class Host implements MonacoHost {
   private applyDiffPrefs(prefs: EditorDiffPrefs): void {
     const modeChanged = prefs.mode !== this.prefs.mode;
     this.prefs = prefs;
-    this.diff?.updateOptions(diffEditorOptions(prefs, this.menu === null, sticky(), fontSize()));
+    this.diff?.updateOptions(diffEditorOptions(prefs, this.menu === null, editorSettings()));
     if (modeChanged && this.diffModels.length) {
       this.layHunkZones();
       this.review?.shown(this.diffPath, prefs.mode);
@@ -771,7 +773,7 @@ class Host implements MonacoHost {
     el.appendChild(this.fileEl);
     this.ro.observe(el);
     if (!this.file) {
-      this.file = monaco.editor.create(this.fileEl, { ...fileViewOptions(this.fileWrap, this.menu === null, sticky(), fontSize()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
+      this.file = monaco.editor.create(this.fileEl, { ...fileViewOptions(this.fileWrap, this.menu === null, editorSettings()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
       openLinksInBrowser();
       this.wireMenu(this.file, 'file');
     }
@@ -814,7 +816,7 @@ class Host implements MonacoHost {
     this.filePath = req.path;
     this.fileIdentity = req.identity;
     this.setFileEditable(false);
-    ed.updateOptions({ ...fileViewOptions(this.fileWrap, this.menu === null, sticky(), fontSize()), ...this.margin?.options() });
+    ed.updateOptions({ ...fileViewOptions(this.fileWrap, this.menu === null, editorSettings()), ...this.margin?.options() });
     // The same content we already show (a save's reload): keep the model, so Monaco's undo stack survives.
     const same = this.fileModel && this.filePathShown === req.path && ed.getValue() === req.text && ed.getModel() === this.fileModel;
     const model = same ? this.fileModel! : monaco.editor.createModel(req.text, lang);
@@ -890,6 +892,16 @@ class Host implements MonacoHost {
   onFileEdit(cb: (() => void) | null): void {
     this.fileEditSub?.dispose();
     this.fileEditSub = cb && this.file ? this.file.onDidChangeModelContent((e) => { if (!e.isFlush) cb(); }) : null;
+  }
+
+  probe(): EditorProbe | null {
+    const ed = this.diff?.getModifiedEditor();
+    if (!ed) return null;
+    const O = monaco.editor.EditorOption;
+    return {
+      fontFamily: ed.getOption(O.fontFamily), fontSize: ed.getOption(O.fontSize), lineHeight: ed.getOption(O.lineHeight), fontLigatures: ed.getOption(O.fontLigatures),
+      renderWhitespace: ed.getOption(O.renderWhitespace), minimap: ed.getOption(O.minimap).enabled, tabSize: ed.getModel()?.getOptions().tabSize ?? null,
+    };
   }
 
   keepViewOnNextShow(): void {
@@ -1042,10 +1054,15 @@ function bindEditorThemeOnce(): void {
 }
 
 /** The app's one host. The editor theme is defined before it's handed out, so the first editor
- * is created in it (see `ensureTheme`). Reached only through `loadMonacoHost`. */
+ * is created in it (see `ensureTheme`), and the editor font is loaded, so the first editor measures
+ * its own characters, not a fallback's (`loadEditorFont`; a font that doesn't load within
+ * `FONT_BACKSTOP_MS` holds nothing up, and is measured again once it does). Reached only through
+ * `loadMonacoHost`. */
 export async function createHost(): Promise<MonacoHost> {
-  await ensureTheme(monaco);
+  await Promise.all([ensureTheme(monaco), withBackstop(loadEditorFont(editorFontFamily(editorSettings().editorFontFamily)), FONT_BACKSTOP_MS)]);
   // Monaco's setTheme is global: the shared editors all follow the app theme, no re-creation.
   bindEditorThemeOnce();
-  return (host ??= new Host());
+  host ??= new Host();
+  if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') window.__gbEditor = () => host?.probe() ?? null;
+  return host;
 }
