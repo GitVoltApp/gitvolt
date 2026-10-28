@@ -96,9 +96,11 @@ function Get-Rcedit {
 function Get-Wix {
   $dir = Join-Path $tools 'wix-5.0.2'
   $exe = Join-Path $dir 'wix.exe'
-  # A tool dir restored from a CI cache can be incomplete: wix.exe there, its .store's
-  # project.assets.json gone, so it can't start. Such a copy is reinstalled.
-  if ((Test-Path $exe) -and -not (Test-Path (Join-Path $dir '.store\wix\5.0.2\project.assets.json'))) {
+  # A tool dir restored from a CI cache can be incomplete (rust-cache prunes target\): wix.exe
+  # or its .store's project.assets.json gone. Either way it's removed and reinstalled whole, since
+  # `dotnet tool install` fails on a partial .store left in its tool path.
+  $assets = Join-Path $dir '.store\wix\5.0.2\project.assets.json'
+  if ((Test-Path $dir) -and -not ((Test-Path $exe) -and (Test-Path $assets))) {
     Remove-Item -Recurse -Force $dir
   }
   if (-not (Test-Path $exe)) {
