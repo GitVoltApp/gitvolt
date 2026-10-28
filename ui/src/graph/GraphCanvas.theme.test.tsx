@@ -2,6 +2,7 @@ import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { resolveColors } from '../theme/apply';
+import { useUiFont } from '../theme/fontSettings';
 import { useTheme } from '../theme/store';
 import { THEMES } from '../theme/themes';
 import { drawGraph } from './draw';
@@ -46,5 +47,15 @@ describe('GraphCanvas theme changes', () => {
     act(() => useTheme.getState().set({ ...THEMES['default-dark'], graph: ['#123456', ...THEMES['default-dark'].graph.slice(1)] }));
     expect(vi.mocked(drawGraph).mock.calls.length).toBeGreaterThan(calls);
     expect(vi.mocked(drawGraph).mock.lastCall![1].colors[0]).toBe('#123456');
+  });
+
+  it('redraws the initials in the UI font when it changes (Settings › Appearance › Fonts)', () => {
+    render(<GraphCanvas rows={rows} width={100} height={50} left={0} metrics={METRICS} labeledRows={new Set()} />);
+    expect(vi.mocked(drawGraph).mock.lastCall![1].fontFamily).toBe('');
+    const calls = vi.mocked(drawGraph).mock.calls.length;
+    act(() => useUiFont.setState({ family: 'Inter, sans-serif' }));
+    expect(vi.mocked(drawGraph).mock.calls.length).toBeGreaterThan(calls);
+    expect(vi.mocked(drawGraph).mock.lastCall![1].fontFamily).toBe('Inter, sans-serif');
+    act(() => useUiFont.setState({ family: '' }));
   });
 });

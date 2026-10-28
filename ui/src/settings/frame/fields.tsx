@@ -6,13 +6,14 @@ import { isWindowBlur, refocusWhenWindowReturns } from '../../ui/windowBlur';
 
 /** A number box that applies on Enter or blur (not per keystroke, which would reload the graph
  * for every digit), and snaps back to the applied value when what's typed isn't valid. `blank`:
- * the value an empty box stands for (shown empty, with the placeholder), such as 0 for automatic. */
-export function NumberField({ id, value, min, max, step, blank, placeholder, onCommit }: { id: string; value: number; min: number; max: number; step: number; blank?: number; placeholder?: string; onCommit(n: number): void }) {
+ * the value an empty box stands for (shown empty, with the placeholder), such as 0 for automatic.
+ * `decimals`: the places it keeps (whole numbers without it). */
+export function NumberField({ id, value, min, max, step, blank, placeholder, decimals, onCommit }: { id: string; value: number; min: number; max: number; step: number; blank?: number; placeholder?: string; decimals?: number; onCommit(n: number): void }) {
   const shown = (v: number) => (v === blank ? '' : String(v));
   const [draft, setDraft] = useState(shown(value));
   useEffect(() => setDraft(shown(value)), [value]); // eslint-disable-line react-hooks/exhaustive-deps
   const commit = () => {
-    const n = Math.round(Number(draft));
+    const n = decimals ? Number(Number(draft).toFixed(decimals)) : Math.round(Number(draft));
     const empty = draft.trim() === '';
     if (empty && blank !== undefined) {
       setDraft('');

@@ -48,6 +48,7 @@ describe('settings pages', () => {
   it.each([
     ['advanceAfterStage', 'general'], ['updateCheck', 'general'], ['updatePrereleases', 'general'],
     ['theme', 'appearance'], ['graphColors', 'appearance'], ['themeColours', 'appearance'], ['density', 'appearance'],
+    ['uiFontFamily', 'appearance'], ['readingFontFamily', 'appearance'], ['readingFontSize', 'appearance'], ['readingLineHeight', 'appearance'], ['readingLineWidth', 'appearance'],
     ['commitLimit', 'graph'], ['relativeDates', 'graph'], ['dateFormat', 'graph'], ['gravatar', 'graph'], ['forgeAvatars', 'graph'], ['collapseHoverOpen', 'graph'], ['collapsePlacement', 'graph'],
     ['editorFontSize', 'diffs'], ['editorFontFamily', 'diffs'], ['editorFontLigatures', 'diffs'], ['editorLineHeight', 'diffs'], ['editorTabSize', 'diffs'], ['editorWhitespace', 'diffs'], ['editorMinimap', 'diffs'],
     ['stickyScroll', 'diffs'], ['fetchInterval', 'fetch'], ['prune', 'fetch'], ['pushFollowTags', 'fetch'],
@@ -68,9 +69,9 @@ describe('settings pages', () => {
     const dialog = show();
     expect(groupTitles(dialog)).toEqual(['Staging', 'Updates']);
     openPage('Appearance');
-    // Density first; the editor font is on Diffs and editors now.
-    expect(groupTitles(dialog)).toEqual(['Density', 'Theme', 'Graph lanes · drag to reorder, click to change', 'Colours']);
-    expect(within(dialog).queryByLabelText(/font size/i)).toBeNull();
+    // Density and the UI and reading fonts first; the editor font is on Diffs and editors.
+    expect(groupTitles(dialog)).toEqual(['Density', 'Fonts', 'Theme', 'Graph lanes · drag to reorder, click to change', 'Colours']);
+    expect(within(dialog).queryByLabelText(/^font size/i)).toBeNull();
     openPage('Graph');
     expect(groupTitles(dialog)).toEqual(['History', 'Dates', 'Avatars', 'Hidden commits']);
     expect(allSettings().filter((d) => d.page === 'graph' && d.group === 'Dates').map((d) => d.id)).toEqual(['relativeDates', 'dateFormat']);
@@ -119,6 +120,84 @@ describe('settings pages', () => {
     fireEvent.click(pin);
     fireEvent.click(screen.getByRole('menuitem', { name: 'feature/docking' }));
     expect(useAppState.getState().profile.repos[PATH].pin).toEqual({ kind: 'ref', name: 'refs/heads/feature/docking' });
+  });
+
+  describe('Appearance › Fonts', () => {
+    const commit = (dialog: HTMLElement, label: string, value: string) => {
+      const box = within(dialog).getByLabelText(label);
+      fireEvent.change(box, { target: { value } });
+      fireEvent.submit(box.closest('form')!);
+    };
+
+    it("the UI font, then the reading font, its size, line height and line width, at today's values", () => {
+      const dialog = show('uiFontFamily');
+      const rows = [...dialog.querySelectorAll('.settings-page .settings-group')].find((g) => g.querySelector('h3')?.textContent === 'Fonts')!;
+      expect([...rows.querySelectorAll('.setting-row')].map((r) => r.getAttribute('data-setting-id')))
+        .toEqual(['uiFontFamily', 'readingFontFamily', 'readingFontSize', 'readingLineHeight', 'readingLineWidth']);
+      expect(within(dialog).getByLabelText('UI font')).toHaveValue('');
+      expect(within(dialog).getByLabelText('Reading font')).toHaveValue('');
+      expect(within(dialog).getByLabelText('Reading text size')).toHaveValue(13);
+      expect(within(dialog).getByLabelText('Reading line height')).toHaveValue(1.55);
+      expect(within(dialog).getByLabelText('Reading line width')).toHaveValue(null); // empty: none
+      expect(within(dialog).getByText(/Over it, Ctrl\+= and Ctrl\+- change it, Ctrl\+0 resets it/)).toBeVisible();
+    });
+
+    it('each control writes its app setting, clamped; an empty line width is none again', () => {
+      const dialog = show('readingFontSize');
+      commit(dialog, 'Reading text size', '50');
+      commit(dialog, 'Reading line height', '1.83');
+      commit(dialog, 'Reading line width', '72');
+      commit(dialog, 'Reading font', "  'Noto Serif', serif ");
+      commit(dialog, 'UI font', 'Inter');
+      expect(useAppState.getState().settings).toMatchObject({ readingFontSize: 32, readingLineHeight: 1.83, readingLineWidth: 72, readingFontFamily: "'Noto Serif', serif", uiFontFamily: 'Inter' });
+      commit(dialog, 'Reading line height', '9');
+      commit(dialog, 'Reading line width', '5');
+      expect(useAppState.getState().settings).toMatchObject({ readingLineHeight: 2.4, readingLineWidth: 20 });
+      commit(dialog, 'Reading line width', '');
+      expect(useAppState.getState().settings.readingLineWidth).toBe(0);
+    });
+
+    it("the families' previews show Vietnamese and Latin in what's typed, before it applies; the reading one at its size and line height", () => {
+      const dialog = show('readingFontFamily');
+      const ui = within(dialog).getByTestId('uiFontFamily-preview');
+      const reading = within(dialog).getByTestId('readingFontFamily-preview');
+      expect(reading).toHaveTextContent('Đảo chiều tối thiểu — The quick brown fox');
+      expect(ui.style.fontFamily).toContain('system-ui');
+      expect(reading.style.fontFamily).toBe('var(--font-ui)');
+      expect(reading.style.fontSize).toBe('13px');
+      expect(reading.style.lineHeight).toBe('1.55');
+      fireEvent.change(within(dialog).getByLabelText('Reading font'), { target: { value: 'Literata' } });
+      expect(reading.style.fontFamily).toMatch(/^Literata, sans-serif/);
+      fireEvent.change(within(dialog).getByLabelText('UI font'), { target: { value: 'Inter, serif' } });
+      expect(ui.style.fontFamily).toMatch(/^Inter, serif/);
+      expect(useAppState.getState().settings).toMatchObject({ readingFontFamily: '', uiFontFamily: '' });
+      act(() => useAppState.getState().setSettings({ readingFontSize: 18, readingLineHeight: 2 }));
+      expect(reading.style.fontSize).toBe('18px');
+      expect(reading.style.lineHeight).toBe('2');
+    });
+
+    it('the zoom keys over rendered Markdown update the reading size field live, and leave the editor size alone', async () => {
+      const { installFontZoom } = await import('../../diff/fontZoom');
+      const { installZoom } = await import('../../ui/zoom');
+      const offs = [installZoom(() => {}), installFontZoom()];
+      try {
+        const dialog = show('readingFontSize');
+        const pane = document.createElement('div');
+        pane.setAttribute('data-font-zoom', 'reading');
+        pane.tabIndex = -1;
+        document.body.append(pane);
+        const zoomKey = (key: string) => act(() => { pane.dispatchEvent(new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, cancelable: true })); });
+        zoomKey('=');
+        zoomKey('=');
+        expect(within(dialog).getByLabelText('Reading text size')).toHaveValue(15);
+        expect(useAppState.getState().settings.editorFontSize).toBe(13);
+        zoomKey('0');
+        expect(within(dialog).getByLabelText('Reading text size')).toHaveValue(13);
+        pane.remove();
+      } finally {
+        offs.forEach((off) => off());
+      }
+    });
   });
 
   describe('Diffs and editors', () => {

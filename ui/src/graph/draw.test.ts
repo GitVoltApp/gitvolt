@@ -109,6 +109,12 @@ describe('drawGraph', () => {
     const t2 = plain.calls.findIndex((c) => c.startsWith('fillText('));
     expect(plain.calls.slice(0, t2).findLast((x) => x.startsWith('fillStyle='))).toBe('fillStyle=#fff');
     expect(plain.calls).toContain(`addColorStop(1,rgba(0,0,0,${SHADE_ALPHA}))`);
+    // The initials are in the system UI font, or the one set in Settings (`fontFamily`).
+    expect(plain.calls).toContain('font=600 7px system-ui, sans-serif');
+    expect(calls).toContain('font=600 7px system-ui, sans-serif');
+    const set = recorder();
+    drawGraph(set.ctx, { rows, first: 0, last: 2, scrollTop: 0, width: 100, height: 44, metrics: { rowH: 22, laneW: 16, padX: 8 }, colors: ['#a', '#b'], nodeFill: '#000', fontFamily: 'Inter, sans-serif', labeledRows: new Set(), dpr: 1, clipped: true });
+    expect(set.calls).toContain('font=600 7px Inter, sans-serif');
   });
 
   it('keeps the rail flush with the canvas edge and a whole number of device pixels wide at DPR 1.5', () => {

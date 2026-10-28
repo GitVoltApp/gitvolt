@@ -35,6 +35,29 @@ editorTabSize: number, editorWhitespace: EditorWhitespace, editorMinimap: boolea
  */
 editorStickyScroll: boolean, 
 /**
+ * Rendered Markdown's prose (Settings › Appearance › Fonts): a CSS font-family list; empty:
+ * the UI font.
+ */
+readingFontFamily: string, 
+/**
+ * Its size in px in the Markdown view and the rendered diff (the UI clamps it to 8-32); MR/PR
+ * descriptions and comments are 1 px smaller.
+ */
+readingFontSize: number, 
+/**
+ * A multiple of the reading size (the UI clamps it to 1.2-2.4).
+ */
+readingLineHeight: number, 
+/**
+ * The Markdown view's and the rendered diff's longest line, in `ch`; 0: none (their own
+ * 880 px column).
+ */
+readingLineWidth: number, 
+/**
+ * The app's own text: a CSS font-family list; empty: the platform's UI font.
+ */
+uiFontFamily: string, 
+/**
  * Background fetch period in seconds; 0 turns background fetch off.
  */
 fetchIntervalSecs: number, prune: boolean, 

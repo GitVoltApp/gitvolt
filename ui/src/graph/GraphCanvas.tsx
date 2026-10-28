@@ -1,5 +1,6 @@
 import { memo, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject } from 'react';
 import type { RowPayload } from '../api/gen/RowPayload';
+import { useUiFont } from '../theme/fontSettings';
 import { useTheme } from '../theme/store';
 import { bandAt, bandCovers, bandOverscan, type Band } from './band';
 import { drawGraph, graphLayout } from './draw';
@@ -74,6 +75,8 @@ export const GraphCanvas = memo(function GraphCanvas({ rows, scroller, width, he
   // The theme's canvas colours: a new object on every theme or lane-override change, so the draw
   // effect reruns on a switch (it used to read --app-bg0 once and cache it).
   const colors = useTheme((s) => s.colors);
+  // The UI font (Settings › Appearance › Fonts): the nodes' initials redraw in it.
+  const fontFamily = useUiFont((s) => s.family);
   const live = useRef<Live>({ band: null, height: 0, rowH: metrics.rowH, dpr, paint: null });
   const bandH = height + 2 * bandOverscan(height, metrics.rowH, dpr);
 
@@ -102,11 +105,11 @@ export const GraphCanvas = memo(function GraphCanvas({ rows, scroller, width, he
       const last = Math.min(rows.length, Math.ceil((band.top + band.height) / metrics.rowH) + 1);
       const t0 = PROBE ? performance.now() : 0;
       // `scrollTop` is the content y at the canvas's top edge: the band's.
-      drawGraph(ctx, { rows, first, last, scrollTop: band.top, width, height: band.height, metrics, colors: colors.graph, nodeFill: colors.nodeFill, avatarBackdrop: colors.avatarBackdrop, laneText: colors.laneText, nodeText: colors.nodeText, stripColor: colors.collapseStrip, labeledRows, dpr, avatar, clipped, scrollX, selected, alsoSelected, headRow, foldOpen });
+      drawGraph(ctx, { rows, first, last, scrollTop: band.top, width, height: band.height, metrics, colors: colors.graph, nodeFill: colors.nodeFill, avatarBackdrop: colors.avatarBackdrop, laneText: colors.laneText, nodeText: colors.nodeText, fontFamily, stripColor: colors.collapseStrip, labeledRows, dpr, avatar, clipped, scrollX, selected, alsoSelected, headRow, foldOpen });
       if (PROBE) window.__gbGraphDraws?.push(performance.now() - t0);
     };
     syncBand(l, scroller, true);
-  }, [rows, width, height, metrics, labeledRows, dpr, avatar, avatarVersion, clipped, scrollX, selected, alsoSelected, headRow, foldOpen, colors, scroller]);
+  }, [rows, width, height, metrics, labeledRows, dpr, avatar, avatarVersion, clipped, scrollX, selected, alsoSelected, headRow, foldOpen, colors, fontFamily, scroller]);
 
   // `data-strip`: no lane fits, the column is a strip of nodes (F11); for tests and e2e.
   const strip = graphLayout(width, metrics, clipped || scrollX > 0).strip;

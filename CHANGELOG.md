@@ -16,6 +16,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **JetBrains Mono bundled as the default editor font** on every platform, with its bold and
   italic, for Latin, Vietnamese, Cyrillic and Greek; other scripts fall back to Noto Sans Mono,
   Ubuntu Sans Mono or Liberation Mono. It loads from the app, never the network.
+- **Reading and UI font settings.** Settings › Appearance › Fonts: a reading font, text size,
+  line height and line width for rendered Markdown (the Markdown view, the rendered diff, MR/PR
+  descriptions and comments), and a UI font for the rest of the app, each family with a live
+  preview. Code in Markdown keeps the editor font, at the reading size. Over rendered Markdown,
+  Ctrl+= / Ctrl+- / Ctrl+0 and Ctrl+wheel now change the reading size; over an editor, the code
+  size, as before. The defaults look as before.
 
 ### Changed
 

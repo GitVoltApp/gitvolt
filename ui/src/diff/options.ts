@@ -29,7 +29,7 @@ export const editorSettingsChanged = (a: EditorSettings, b: EditorSettings): boo
  * what it lacks (CJK and other scripts) well. Never Monaco's Linux default, which falls back to
  * DejaVu Sans Mono: it draws Vietnamese stacked marks over the next letter. */
 export const DEFAULT_EDITOR_FONT_FAMILY = "'JetBrains Mono', 'Noto Sans Mono', 'Ubuntu Sans Mono', 'Liberation Mono', monospace";
-const GENERIC_FAMILY = /^(monospace|ui-monospace|serif|sans-serif|ui-serif|ui-sans-serif|ui-rounded|system-ui|cursive|fantasy|math|emoji|fangsong)$/i;
+export const GENERIC_FAMILY = /^(monospace|ui-monospace|serif|sans-serif|ui-serif|ui-sans-serif|ui-rounded|system-ui|cursive|fantasy|math|emoji|fangsong)$/i;
 /** The font-family list the editors use: the default for an empty setting, else the user's list,
  * with `monospace` after it when it names no generic family, so a font that isn't installed never
  * falls back to the browser's proportional default. */

@@ -102,6 +102,19 @@ pub struct AppSettings {
     pub editor_minimap: bool,
     /// Off by default (H7): with no language service, the pinned line can be a lone `{`.
     pub editor_sticky_scroll: bool,
+    /// Rendered Markdown's prose (Settings › Appearance › Fonts): a CSS font-family list; empty:
+    /// the UI font.
+    pub reading_font_family: String,
+    /// Its size in px in the Markdown view and the rendered diff (the UI clamps it to 8-32); MR/PR
+    /// descriptions and comments are 1 px smaller.
+    pub reading_font_size: u16,
+    /// A multiple of the reading size (the UI clamps it to 1.2-2.4).
+    pub reading_line_height: f64,
+    /// The Markdown view's and the rendered diff's longest line, in `ch`; 0: none (their own
+    /// 880 px column).
+    pub reading_line_width: u16,
+    /// The app's own text: a CSS font-family list; empty: the platform's UI font.
+    pub ui_font_family: String,
     /// Background fetch period in seconds; 0 turns background fetch off.
     pub fetch_interval_secs: u32,
     pub prune: bool,
@@ -220,6 +233,11 @@ impl Default for AppSettings {
             editor_whitespace: EditorWhitespace::None,
             editor_minimap: true,
             editor_sticky_scroll: false,
+            reading_font_family: String::new(),
+            reading_font_size: 13,
+            reading_line_height: 1.55,
+            reading_line_width: 0,
+            ui_font_family: String::new(),
             fetch_interval_secs: 60,
             prune: true,
             commit_limit: 2000,
@@ -1487,6 +1505,35 @@ mod tests {
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["editorWhitespace"], "boundary");
         assert_eq!(v["editorTabSize"], 8);
+        assert_eq!(serde_json::from_value::<AppSettings>(v).unwrap(), s);
+    }
+
+    /// A settings file from before the font settings loads with today's look (prose in the UI
+    /// font at 13 px and 1.55, no line cap, the platform's UI font); set, they round-trip.
+    #[test]
+    fn font_settings_default_for_older_files_and_round_trip() {
+        let old = r#"{"version":2,"activeProfile":"default","theme":"default-dark","editorFontSize":15}"#;
+        let s: AppSettings = serde_json::from_str(old).unwrap();
+        assert_eq!(s.reading_font_family, "");
+        assert_eq!(s.reading_font_size, 13);
+        assert_eq!(s.reading_line_height, 1.55);
+        assert_eq!(s.reading_line_width, 0);
+        assert_eq!(s.ui_font_family, "");
+        assert_eq!(AppSettings { editor_font_size: 13, ..s }, AppSettings::default());
+
+        let s = AppSettings {
+            reading_font_family: "'Noto Serif', serif".into(),
+            reading_font_size: 16,
+            reading_line_height: 1.8,
+            reading_line_width: 72,
+            ui_font_family: "Inter".into(),
+            ..AppSettings::default()
+        };
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["readingFontSize"], 16);
+        assert_eq!(v["readingLineHeight"], 1.8);
+        assert_eq!(v["readingLineWidth"], 72);
+        assert_eq!(v["uiFontFamily"], "Inter");
         assert_eq!(serde_json::from_value::<AppSettings>(v).unwrap(), s);
     }
 

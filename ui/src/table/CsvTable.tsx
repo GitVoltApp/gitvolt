@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useUiFont } from '../theme/fontSettings';
 import { canvasMeasure, charMeasure, measureColumns } from './columns';
 import { useForgetTables, type Table } from './csv';
 import type { TableDiff } from './rowDiff';
@@ -9,14 +10,17 @@ const digits = (n: number) => Math.max(2, String(n).length);
 /** File View's table of a CSV or TSV file (`table`, parsed from `text`): the first row its header. */
 export function CsvTable({ text, table, fontPx }: { text: string; table: Table; fontPx: number }) {
   useForgetTables(text);
-  const columns = useMemo(() => measureColumns(table.header, table.rows, canvasMeasure() ?? charMeasure), [table]);
+  // Measured in the UI font: again when it changes (Settings › Appearance › Fonts).
+  const uiFont = useUiFont((s) => s.family);
+  const columns = useMemo(() => measureColumns(table.header, table.rows, canvasMeasure() ?? charMeasure), [table, uiFont]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo<GridRow[]>(() => table.rows.map((cells, i) => ({ cells, nums: [i + 1] })), [table]);
   return <TableGrid header={table.header} rows={rows} columns={columns} fontPx={fontPx} gutter={[digits(rows.length)]} label="Table" />;
 }
 
 /** Diff View's table diff: rows lined up, the old and new row numbers in the gutter. */
 export function CsvTableDiff({ diff, fontPx }: { diff: TableDiff; fontPx: number }) {
-  const columns = useMemo(() => measureColumns(diff.header, diff.rows.map((r) => r.cells), canvasMeasure() ?? charMeasure), [diff]);
+  const uiFont = useUiFont((s) => s.family);
+  const columns = useMemo(() => measureColumns(diff.header, diff.rows.map((r) => r.cells), canvasMeasure() ?? charMeasure), [diff, uiFont]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo<GridRow[]>(() => diff.rows.map((r) => ({
     cells: r.cells,
     nums: [r.old, r.new],

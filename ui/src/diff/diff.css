@@ -106,11 +106,13 @@
 /* Spec #5 §3.3: File View's text body (the editor's box fills it), hidden under the rendered view. */
 .file-source { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .file-source[hidden], .md-rendered[hidden] { display: none; }
-/* The rendered Markdown: read-only, scrolling on its own, at a reading width (about 880 px). */
+/* The rendered Markdown: read-only, scrolling on its own, in a centred reading column: 880 px, or
+   the reading line width setting in the text's own `ch` (--md-measure: theme/fontSettings.ts).
+   Images, tables and code blocks keep within it (markdown.css). */
 .md-rendered { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 16px 24px; background: var(--app-bg0); outline: none; }
-.md-rendered > * { max-width: 880px; margin-inline: auto; }
-/* 5C: the split Markdown diff holds two reading columns. */
-.md-rendered > .md-diff-split { max-width: 1784px; }
+.md-rendered > * { max-width: var(--md-measure, 880px); margin-inline: auto; }
+/* 5C: the split Markdown diff holds two reading columns and the gap between them. */
+.md-rendered > .md-diff-split { max-width: var(--md-measure-split, 1784px); }
 /* The rendered Markdown diff's box: the pane, with its overview ruler over the right edge
    (MdDiffRuler.tsx), as wide as Monaco's diff overview, its slider the scrollbar thumb's colours.
    While the ruler shows it replaces the pane's own scrollbar, as Monaco's does, and the text

@@ -12,7 +12,7 @@ import { MdDiffFrame } from './MdDiffRuler';
 import { holdFirstChange, holdLine } from './mdOpen';
 import { useNarrowPane } from './narrowPane';
 import { MdFontPx } from '../markdown/fontPx';
-import { editorFontVar, useEditorCodeFont, useEditorFontPx } from './fontZoom';
+import { readingFontVar, useEditorCodeFont, useEditorFontPx, useReadingFontPx } from './fontZoom';
 import { clearMarkdownOverride, markdownViewOf, showSourceFor, useMarkdownOverride, useMarkdownView } from './markdownOverride';
 import type { DiffLine, HunkZoneRequest } from './monaco/host';
 import { useParseBudget } from './parseBudget';
@@ -142,6 +142,7 @@ export function DiffTextBody({ identity, path, oldPath, original, modified, lang
   // The diff mode applies (5C): Split shows it side by side, unless the pane is too narrow.
   const splitPicked = useDiffPrefs((s) => s.prefs.mode === 'split');
   const fontPx = useEditorFontPx();
+  const readingPx = useReadingFontPx();
   const codeFont = useEditorCodeFont();
   const narrow = useNarrowPane(pane, rendered && !html && splitPicked);
   const oldSide = markdown?.old ?? null;
@@ -174,12 +175,12 @@ export function DiffTextBody({ identity, path, oldPath, original, modified, lang
       )}
       {isMd && !html && (
         <MdDiffFrame pane={pane} active={rendered} split={splitPicked && !narrow} after={rendered && <RenderedReviewNote tabId={tabId} path={path} />}>
-          <div ref={paneRef} className="md-rendered md-diff-pane" hidden={!rendered} data-testid="markdown-diff" tabIndex={-1} data-font-zoom="" style={editorFontVar(fontPx, codeFont)}>
+          <div ref={paneRef} className="md-rendered md-diff-pane" hidden={!rendered} data-testid="markdown-diff" tabIndex={-1} data-font-zoom="reading" style={readingFontVar(readingPx, codeFont)}>
             {rendered && ctx && (waiting
               ? <div className="diff-message" aria-busy="true">Rendering…</div>
               : (
                 <Suspense fallback={<div className="diff-message" aria-busy="true">Loading…</div>}>
-                  <MdFontPx value={fontPx}>
+                  <MdFontPx value={readingPx}>
                     <RenderedReview tabId={tabId} path={path} pane={paneEl} modified={shownNew}>
                       <MarkdownDiff old={original} new={shownNew} flavor={flavor} context={ctx.new} oldContext={ctx.old} split={splitPicked && !narrow} onTooLarge={onTooLarge} />
                     </RenderedReview>

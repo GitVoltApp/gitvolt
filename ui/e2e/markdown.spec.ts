@@ -354,8 +354,9 @@ test.describe('the rendered Markdown diff (5C)', () => {
       await expect(md.locator('.md-split-row')).toHaveCount(0);
     });
 
-    await test.step('Ctrl+wheel over the rendered pane sizes its text (the editor font size), not the app; Ctrl+0 resets it', async () => {
-      const size = () => md.locator('.md').first().evaluate((e) => getComputedStyle(e).fontSize);
+    await test.step('Ctrl+wheel over the rendered pane sizes its reading text, not the code or the app; a reading line width caps its column; Ctrl+0 resets', async () => {
+      const prose = md.locator('.md').first();
+      const size = () => prose.evaluate((e) => getComputedStyle(e).fontSize);
       await expect.poll(size).toBe('13px');
       const box = (await md.boundingBox())!;
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -364,12 +365,49 @@ test.describe('the rendered Markdown diff (5C)', () => {
       await page.mouse.wheel(0, -100);
       await page.keyboard.up('Control');
       await expect.poll(size).toBe('15px');
-      await expect(page.getByText('Text size 15 px')).toBeVisible();
+      await expect(page.getByText('Reading text 15 px')).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('data-zoom', '100');
+      // In Settings: the reading size changed, the code size didn't; then a 40-character line.
+      const settings = page.getByRole('dialog', { name: 'Settings' });
+      const nav = (name: string) => settings.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: new RegExp(`^${name}\\s*\\d*$`) });
+      await page.keyboard.press('Control+,');
+      await nav('Diffs and editors').click();
+      await expect(settings.getByLabel('Font size', { exact: true })).toHaveValue('13');
+      await nav('Appearance').click();
+      await expect(settings.getByLabel('Reading text size')).toHaveValue('15');
+      const width = settings.getByLabel('Reading line width');
+      await width.fill('40');
+      await width.press('Enter');
+      await page.keyboard.press('Escape');
+      await expect(settings).toHaveCount(0);
+      // The column is 40 of its own `0`s wide, centred in the pane as the 880 px one was.
+      const column = () => prose.evaluate((e) => {
+        const probe = document.createElement('span');
+        probe.textContent = '0'.repeat(40);
+        probe.style.whiteSpace = 'pre';
+        e.append(probe);
+        const ch40 = probe.getBoundingClientRect().width;
+        probe.remove();
+        const pane = e.parentElement!, cs = getComputedStyle(pane);
+        const r = e.getBoundingClientRect(), left = pane.getBoundingClientRect().left + parseFloat(cs.paddingLeft);
+        const right = left + pane.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        return { width: r.width, off: Math.abs(ch40 - r.width), centred: Math.abs((r.left - left) - (right - r.right)) };
+      });
+      await expect.poll(async () => (await column()).off).toBeLessThan(1);
+      const capped = await column();
+      expect(capped.centred).toBeLessThan(2);
       await md.focus();
       await page.keyboard.press('Control+0');
       await expect.poll(size).toBe('13px');
+      await expect(page.getByText('Reading text 13 px')).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('data-zoom', '100');
+      // No cap again, for the steps and specs after this one.
+      await page.keyboard.press('Control+,');
+      await nav('Appearance').click();
+      await width.fill('');
+      await width.press('Enter');
+      await page.keyboard.press('Escape');
+      await expect.poll(async () => (await column()).width).toBeGreaterThan(capped.width + 100);
     });
 
     await test.step('a file whose first change is far down opens with it centred; its front matter is a table', async () => {

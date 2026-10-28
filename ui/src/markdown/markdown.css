@@ -1,9 +1,12 @@
 /* Rendered Markdown (spec #5 §3.1): GitHub-like typography on the theme's tokens. Full width in the
-   MR/PR flyout; 5B caps File View's reading width. File View's and the diff's panes size it like
-   their editor (--md-font-size, the editorFontSize setting: diff/fontZoom.ts); elsewhere 12px.
-   Code, notes and the like scale with it (em). Their code is in the editor's font too
-   (--md-code-font, --md-code-ligatures); elsewhere the app's monospace. */
-.md { font-size: var(--md-font-size, 12px); line-height: 1.55; color: var(--text-normal); overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
+   MR/PR flyout; File View and the diff cap its line (diff.css, --md-measure). Its prose is in the
+   reading font (Settings › Appearance › Fonts: --reading-font, else the UI font) at the reading
+   line height. File View's and the diff's panes size it at the reading size (--md-font-size, the
+   readingFontSize setting: diff/fontZoom.ts); elsewhere (MR/PR descriptions and comments,
+   previews, release notes) 1 px smaller, 12 px by default. Code, notes and the like scale with it
+   (em): code stays 0.92 of the prose. Their code is in the editor's font too (--md-code-font,
+   --md-code-ligatures); elsewhere the app's monospace. */
+.md { font-family: var(--reading-font, var(--font-ui)); font-size: var(--md-font-size, max(8px, calc(var(--reading-size, 13px) - 1px))); line-height: var(--reading-line-height, 1.55); color: var(--text-normal); overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
 /* Wide blocks scroll inside themselves: a long code line never widens the panel around it. */
 .md pre, .md .md-code, .md .md-mermaid, .md details { max-width: 100%; min-width: 0; }
 .md > :first-child, .md > .md-chunk:first-child > :first-child { margin-top: 0; }
