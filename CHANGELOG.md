@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-27
+
 ### Added
 
 - **Remove a worktree together with its branch.** Remove worktree, on a worktree's row in the
