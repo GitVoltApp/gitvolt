@@ -57,7 +57,7 @@ const offs = [
     {
       id: 'forgeAvatars', label: 'From your forge accounts', page: 'graph', group: 'Avatars',
       keywords: 'avatar gitlab github forge privacy images',
-      description: "Asks the forge hosting the repository, when you have an account there, so colleagues without Gravatar get their avatar. Sends authors' emails (or names) to that forge.",
+      description: "Asks the forge hosting the repository, when you have an account there, so colleagues without Gravatar get their avatar. Sends authors' emails (or names) to that forge. With From Gravatar on, a GitHub noreply address also gets GitHub's public avatar by its user id alone, without an account.",
       Control: switchControl('forgeAvatars'), binding: appSetting('forgeAvatars', true, askAvatarsAgain),
     },
     {

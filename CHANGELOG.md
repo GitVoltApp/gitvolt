@@ -14,6 +14,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **A commit's description starts at its top** when you select another commit; it kept the
   previous one's scroll position. A refresh of the same commit (after a fetch) keeps your
   place (#13).
+- **Avatars for GitHub's private commit emails.** An author whose commits use
+  `<id>+<login>@users.noreply.github.com` ("Keep my email addresses private") now gets their
+  GitHub avatar even without a GitHub account in GitVolt: the core asks
+  `avatars.githubusercontent.com` by the numeric user id alone, with no token, when both avatar
+  settings are on. Noreply addresses also reach the repository's own forge project again; they
+  still skip Gravatar. (#12)
 
 ## [1.2.0] - 2026-10-29
 

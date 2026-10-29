@@ -4,6 +4,10 @@
 //!
 //! Privacy (plan 1B amendment 6): a request carries only the SHA-256 key in its URL and the
 //! generic `USER_AGENT`; never the email itself.
+//!
+//! The same cache, in `<dir>/github/`, serves GitHub's public picture for the user id of a
+//! `<id>+<login>@users.noreply.github.com` email (`AvatarProvider::github_noreply_avatar`): the
+//! URL carries only the id, and no token or cookie is ever sent.
 
 use base64::Engine as _;
 use gitvolt_core::avatar::{AvatarFuture, AvatarPayload, AvatarProvider};
@@ -20,6 +24,8 @@ use tokio::sync::Semaphore;
 pub const FOUND_TTL_SECS: i64 = 7 * 24 * 3600;
 pub const MISSING_TTL_SECS: i64 = 24 * 3600;
 pub const DEFAULT_BASE_URL: &str = "https://gravatar.com/avatar";
+/// GitHub's avatar host: `/u/<id>` is a user's picture, public and without an account.
+pub const GITHUB_AVATARS_URL: &str = "https://avatars.githubusercontent.com";
 /// Generic on purpose (amendment 6): identifies the app and version, nothing about the user.
 pub const USER_AGENT: &str = concat!("GitVolt/", env!("CARGO_PKG_VERSION"));
 const MAX_AVATAR_BYTES: u64 = 1024 * 1024;
@@ -190,7 +196,22 @@ impl GravatarCache {
     pub fn get_blocking(&self, email: &str) -> Result<Option<AvatarPayload>, String> {
         match self.cached_blocking(email) {
             Some(known) => Ok(known),
-            None => self.fetch(&email_key(email)),
+            None => {
+                let key = email_key(email);
+                let url = format!("{}/{key}?s=80&d=404", self.base_url.trim_end_matches('/'));
+                self.fetch(&key, &url)
+            }
+        }
+    }
+
+    /// `get_blocking` for a cache whose base is GitHub's avatar host: the picture of the user id
+    /// in a `<id>+<login>@users.noreply.github.com` email, cached under the email's key. Any
+    /// other email is `Ok(None)`, without a request.
+    pub fn github_blocking(&self, email: &str) -> Result<Option<AvatarPayload>, String> {
+        let Some(id) = gitvolt_core::avatar::github_noreply_id(email) else { return Ok(None) };
+        match self.cached_blocking(email) {
+            Some(known) => Ok(known),
+            None => self.fetch(&email_key(email), &format!("{}/u/{id}?s=80&v=4", self.base_url.trim_end_matches('/'))),
         }
     }
 
@@ -212,12 +233,11 @@ impl GravatarCache {
         }
     }
 
-    fn fetch(&self, key: &str) -> Result<Option<AvatarPayload>, String> {
-        let url = format!("{}/{key}?s=80&d=404", self.base_url.trim_end_matches('/'));
+    fn fetch(&self, key: &str, url: &str) -> Result<Option<AvatarPayload>, String> {
         if self.backoff_until.lock().expect("backoff poisoned").is_some_and(|until| Instant::now() < until) {
             return Err("avatar network backoff: a recent request failed".into());
         }
-        let mut resp = self.agent.get(&url).call().map_err(|e| {
+        let mut resp = self.agent.get(url).call().map_err(|e| {
             *self.backoff_until.lock().expect("backoff poisoned") = Some(Instant::now() + self.backoff);
             format!("avatar request failed: {e}")
         })?;
@@ -244,15 +264,46 @@ impl GravatarCache {
 /// rather than error toasts.
 pub struct Gravatar {
     cache: Arc<GravatarCache>,
+    /// GitHub's avatar host, for noreply user ids; its own index and network backoff.
+    github: Arc<GravatarCache>,
     enabled: AtomicBool,
     permits: Semaphore,
 }
 
 impl Gravatar {
     pub fn new(dir: PathBuf, base_url: impl Into<String>) -> Self {
-        Self { cache: Arc::new(GravatarCache::new(dir, base_url)), enabled: AtomicBool::new(true), permits: Semaphore::new(PARALLEL_REQUESTS) }
+        let github = Arc::new(GravatarCache::new(dir.join("github"), GITHUB_AVATARS_URL));
+        Self { cache: Arc::new(GravatarCache::new(dir, base_url)), github, enabled: AtomicBool::new(true), permits: Semaphore::new(PARALLEL_REQUESTS) }
     }
 
+    /// Another GitHub avatar host (tests).
+    pub fn with_github_base(mut self, base_url: impl Into<String>) -> Self {
+        self.github = Arc::new(GravatarCache::new(self.github.dir.clone(), base_url));
+        self
+    }
+
+    /// Off: `None` at once. A cached answer never waits for a permit: those are for requests, and
+    /// a cached answer (the details panel's committer) mustn't queue behind the graph's rows
+    /// waiting on the network. Network failures are `None` too (the UI shows initials).
+    async fn lookup(&self, cache: &Arc<GravatarCache>, email: &str, fetch: fn(&GravatarCache, &str) -> Result<Option<AvatarPayload>, String>) -> Result<Option<AvatarPayload>, GbError> {
+        if !self.enabled.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
+        let (known, mail) = (cache.clone(), email.to_string());
+        if let Ok(Some(known)) = tokio::task::spawn_blocking(move || known.cached_blocking(&mail)).await {
+            return Ok(known);
+        }
+        let _permit = self.permits.acquire().await.map_err(|e| GbError::other(e.to_string()))?;
+        let (cache, email) = (cache.clone(), email.to_string());
+        match tokio::task::spawn_blocking(move || fetch(&cache, &email)).await {
+            Ok(Ok(found)) => Ok(found),
+            Ok(Err(e)) => {
+                tracing::warn!("{e}");
+                Ok(None)
+            }
+            Err(e) => Err(GbError::other(format!("avatar task failed: {e}"))),
+        }
+    }
 }
 
 impl AvatarProvider for Gravatar {
@@ -262,28 +313,15 @@ impl AvatarProvider for Gravatar {
     }
 
     fn avatar<'a>(&'a self, email: &'a str) -> AvatarFuture<'a> {
+        Box::pin(self.lookup(&self.cache, email, GravatarCache::get_blocking))
+    }
+
+    fn github_noreply_avatar<'a>(&'a self, email: &'a str) -> AvatarFuture<'a> {
         Box::pin(async move {
-            if !self.enabled.load(Ordering::Relaxed) {
+            if gitvolt_core::avatar::github_noreply_id(email).is_none() {
                 return Ok(None);
             }
-            // What the disk cache already knows never waits for a permit: those are for requests,
-            // and a cached answer (the details panel's committer) mustn't queue behind the graph's
-            // rows waiting on the network.
-            let (cache, mail) = (self.cache.clone(), email.to_string());
-            if let Ok(Some(known)) = tokio::task::spawn_blocking(move || cache.cached_blocking(&mail)).await {
-                return Ok(known);
-            }
-            let _permit = self.permits.acquire().await.map_err(|e| GbError::other(e.to_string()))?;
-            let cache = self.cache.clone();
-            let email = email.to_string();
-            match tokio::task::spawn_blocking(move || cache.get_blocking(&email)).await {
-                Ok(Ok(found)) => Ok(found),
-                Ok(Err(e)) => {
-                    tracing::warn!("{e}");
-                    Ok(None)
-                }
-                Err(e) => Err(GbError::other(format!("avatar task failed: {e}"))),
-            }
+            self.lookup(&self.github, email, GravatarCache::github_blocking).await
         })
     }
 }
@@ -347,12 +385,27 @@ mod tests {
         };
         let reply = if line.contains(&email_key("found@example.com")) {
             ok("image/png", b"\x89PNGfake")
-        } else if line.contains(&email_key("html@example.com")) {
+        } else if line.contains(&email_key("html@example.com")) || line.starts_with("GET /u/7?") {
             ok("text/html; charset=utf-8", b"<html>captive portal</html>")
+        } else if line.starts_with("GET /u/583231?") {
+            ok("image/png", b"\x89PNGgithub")
+        } else if line.starts_with("GET /u/8?") {
+            ok("image/png", &vec![0u8; MAX_AVATAR_BYTES as usize + 1])
         } else {
             b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec()
         };
-        stream.write_all(&reply).unwrap();
+        // The client may hang up on an oversize body.
+        let _ = stream.write_all(&reply);
+    }
+
+    /// `serve`'s GitHub avatar host: `/u/583231` a PNG, `/u/7` an HTML page, `/u/8` a picture
+    /// over the size limit, any other id 404.
+    fn github_base(base: &str) -> String {
+        base.trim_end_matches("/avatar").to_string()
+    }
+
+    fn header<'h>(head: &'h str, name: &str) -> Option<&'h str> {
+        head.lines().find_map(|l| l.split_once(':').filter(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, v)| v.trim()))
     }
 
     /// A base URL on a port nothing listens on: bind an ephemeral port, then release it.
@@ -582,5 +635,56 @@ mod tests {
         assert_eq!(quick("none@example.com").await.expect("not queued").unwrap(), None);
         assert_eq!(hits.load(Ordering::SeqCst), 2, "both from disk");
         assert!(quick("new@example.com").await.is_err(), "a new email does wait for a slot");
+    }
+
+    /// Issue #12: an `<id>+<login>` noreply email gets GitHub's public picture by the id alone,
+    /// with no token and no cookie, cached on disk under the email's key.
+    #[tokio::test]
+    async fn a_noreply_id_gets_githubs_picture_anonymously_by_the_id_alone() {
+        let (base, hits, heads) = serve();
+        let dir = tempfile::tempdir().unwrap();
+        let g = Gravatar::new(dir.path().to_path_buf(), &base).with_github_base(github_base(&base));
+        let found = g.github_noreply_avatar("583231+Octocat@Users.NoReply.GitHub.com").await.unwrap().unwrap();
+        assert_eq!(found.mime, "image/png");
+        assert_eq!(base64::engine::general_purpose::STANDARD.decode(&found.base64).unwrap(), b"\x89PNGgithub");
+        {
+            let heads = heads.lock().unwrap();
+            assert_eq!(heads.len(), 1);
+            let head = &heads[0];
+            assert_eq!(head.lines().next().unwrap(), "GET /u/583231?s=80&v=4 HTTP/1.1");
+            assert_eq!(header(head, "authorization"), None, "{head}");
+            assert_eq!(header(head, "cookie"), None, "{head}");
+            assert!(!head.to_ascii_lowercase().contains("octocat") && !head.contains("noreply"), "only the id: {head}");
+        }
+        assert!(dir.path().join("github").join(format!("{}.png", email_key("583231+octocat@users.noreply.github.com"))).exists());
+        assert_eq!(g.github_noreply_avatar("583231+octocat@users.noreply.github.com").await.unwrap(), Some(found), "from disk");
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+
+        assert_eq!(g.github_noreply_avatar("4242+nobody@users.noreply.github.com").await.unwrap(), None, "404");
+        assert_eq!(g.github_noreply_avatar("4242+nobody@users.noreply.github.com").await.unwrap(), None);
+        assert_eq!(hits.load(Ordering::SeqCst), 2, "the miss is remembered");
+        for not_an_id in ["octocat@users.noreply.github.com", "583231+octo+cat@users.noreply.github.com", "found@example.com", "noreply@github.com"] {
+            assert_eq!(g.github_noreply_avatar(not_an_id).await.unwrap(), None, "{not_an_id}");
+        }
+        assert_eq!(hits.load(Ordering::SeqCst), 2, "no id: no request (never by login)");
+        assert!(g.avatar("found@example.com").await.unwrap().is_some(), "Gravatar's lookup is its own");
+
+        g.set_enabled(false);
+        assert_eq!(g.github_noreply_avatar("31337+someone@users.noreply.github.com").await.unwrap(), None);
+        assert_eq!(hits.load(Ordering::SeqCst), 3, "avatars off: no request");
+    }
+
+    #[tokio::test]
+    async fn githubs_non_image_or_oversize_answers_are_refused_and_not_cached() {
+        let (base, hits, _) = serve();
+        let dir = tempfile::tempdir().unwrap();
+        let g = Gravatar::new(dir.path().to_path_buf(), &base).with_github_base(github_base(&base));
+        for email in ["7+portal@users.noreply.github.com", "8+huge@users.noreply.github.com"] {
+            assert_eq!(g.github_noreply_avatar(email).await.unwrap(), None, "{email}");
+            assert_eq!(g.github_noreply_avatar(email).await.unwrap(), None, "{email}");
+        }
+        assert_eq!(hits.load(Ordering::SeqCst), 4, "asked again: the failures weren't remembered");
+        let cached = std::fs::read_dir(dir.path().join("github")).map(|d| d.count()).unwrap_or(0);
+        assert_eq!(cached, 0, "nothing cached");
     }
 }

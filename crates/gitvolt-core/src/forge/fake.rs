@@ -168,6 +168,16 @@ impl ForgeProvider for FakeProvider {
         self.call(format!("avatar {email}"));
         Box::pin(async move { Ok(self.avatars.get(email).cloned()) })
     }
+    /// From `avatars` keyed `in:<email>`.
+    fn avatar_for_email_in<'a>(&'a self, project: &'a ForgeProject, email: &'a str) -> ForgeFuture<'a, Option<AvatarPayload>> {
+        self.call(format!("author_in {} {email}", project.path));
+        Box::pin(async move { Ok(self.avatars.get(&format!("in:{email}")).cloned()) })
+    }
+    /// From `avatars` keyed `name:<name>`.
+    fn avatar_for_name<'a>(&'a self, email: &'a str, name: &'a str) -> ForgeFuture<'a, Option<AvatarPayload>> {
+        self.call(format!("author_name {email} {name}"));
+        Box::pin(async move { Ok(self.avatars.get(&format!("name:{name}")).cloned()) })
+    }
     /// Serves its own host's `/uploads/` and Gravatar's, from `avatars` keyed by the URL.
     fn avatar_at<'a>(&'a self, url: &'a str) -> Option<ForgeFuture<'a, Option<AvatarPayload>>> {
         let url = crate::forge::avatar_fetch_url(url, &[&format!("https://{}/uploads", self.host)])?;

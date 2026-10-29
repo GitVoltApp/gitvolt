@@ -591,7 +591,9 @@ impl ForgeHub {
     /// account. Failures are quiet: the UI keeps the initials.
     pub async fn author_avatar(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], email: &str, name: Option<&str>) -> Option<AvatarPayload> {
         let email = email.trim();
-        if email.is_empty() || crate::avatar::is_github_noreply(email) {
+        // GitHub's web-flow committer is everyone's. Its users.noreply addresses go on: the
+        // provider knows what its forge can do with them (a GitLab project's name step).
+        if email.is_empty() || email.eq_ignore_ascii_case(crate::avatar::GITHUB_WEB_FLOW) {
             return None;
         }
         let name = name.map(str::trim).filter(|n| !n.is_empty());

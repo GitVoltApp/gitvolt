@@ -31,9 +31,7 @@ pub const AUTHOR_LOOKUP_FLOOR: u32 = 500;
 
 /// The user id in a `<id>+<login>@users.noreply.github.com` email.
 pub fn noreply_id(email: &str) -> Option<u64> {
-    let lower = email.trim().to_ascii_lowercase();
-    let local = lower.strip_suffix("@users.noreply.github.com")?;
-    local.split_once('+')?.0.parse().ok()
+    gitvolt_core::avatar::github_noreply_id(email)
 }
 
 /// The login in an older `<login>@users.noreply.github.com` email (no id): a GitHub login, 1–39
