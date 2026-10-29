@@ -33,13 +33,15 @@ async fn api(state: tauri::State<'_, Arc<Api>>, req: Request) -> Result<serde_js
 }
 
 /// The title bar's requests the Tauri window API has no call for (chrome.rs): the window
-/// manager's window menu (`menu`) and lowering the window (`lower`). Whether the window manager
-/// was asked; the UI shows its own menu when it wasn't.
+/// manager's window menu at the pointer (`menu`) or, for Alt+Space on Windows, at the window's
+/// corner (`keyboard-menu`), and lowering the window (`lower`). Whether the window manager was
+/// asked; the UI shows its own menu when it wasn't.
 #[tauri::command]
 async fn window_manager(window: tauri::WebviewWindow<tauri::DynRuntime>, request: String) -> Result<bool, String> {
     use tauri_runtime_cef::{WebviewCefExt, WindowManagerRequest};
     let request = match request.as_str() {
         "menu" => WindowManagerRequest::ShowMenu,
+        "keyboard-menu" => WindowManagerRequest::ShowMenuFromKeyboard,
         "lower" => WindowManagerRequest::Lower,
         other => return Err(format!("unknown window manager request {other:?}")),
     };

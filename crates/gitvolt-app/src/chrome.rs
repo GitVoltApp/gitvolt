@@ -1,12 +1,15 @@
-//! GitVolt's own title bar, on Linux and macOS. On Linux the window is built without the window
-//! manager's decorations, and the UI draws a title bar (`ui/src/chrome/`) whose drags, resize
-//! edges, window menu and buttons ask the window manager through the CEF runtime
-//! (vendor/tauri-runtime-cef/GITVOLT-PATCH.md, "A window that draws its own title bar"). On macOS
-//! the window keeps its frame, with an overlay title bar (transparent, the title hidden, the page
-//! under it), and Apple's traffic lights sit at the start of the UI's title bar, inset to its
-//! middle ([`TRAFFIC_LIGHTS`]). Settings › Appearance › "Use the system title bar" keeps the
-//! system's; it's read when the window is built, so a change applies after a restart. Windows
-//! keeps the system's frame for now.
+//! GitVolt's own title bar, on Linux, Windows and macOS. On Linux and Windows the window is built
+//! without the window manager's decorations, and the UI draws a title bar (`ui/src/chrome/`)
+//! whose drags, resize edges, window menu and buttons ask the window manager through the CEF
+//! runtime (vendor/tauri-runtime-cef/GITVOLT-PATCH.md, "A window that draws its own title bar").
+//! On macOS the window keeps its frame, with an overlay title bar (transparent, the title hidden,
+//! the page under it), and Apple's traffic lights sit at the start of the UI's title bar, inset to
+//! its middle ([`TRAFFIC_LIGHTS`]). Settings › Appearance › "Use the system title bar" keeps the
+//! system's; it's read when the window is built, so a change applies after a restart.
+//!
+//! On Windows the undecorated window keeps the system's resize border, shadow and edge at its
+//! left, right and bottom (the runtime's `platform/windows/chrome.rs`), so only the top edge is
+//! the page's.
 //!
 //! On Linux, only in a Wayland session (GitVolt itself runs under Xwayland there): the compositor moves
 //! and resizes the window with a grab of its own. In an X11 session the window manager needs
@@ -58,13 +61,13 @@ pub fn custom_frame(system_title_bar: bool, wayland_display: Option<&str>) -> bo
     custom_frame_on(PLATFORM, system_title_bar, wayland_display)
 }
 
-/// Whether GitVolt draws its own title bar on `platform`: on macOS, and on Linux in a Wayland
-/// session (`wayland_display`, the session's `WAYLAND_DISPLAY`), unless the user asked for the
-/// system's.
+/// Whether GitVolt draws its own title bar on `platform`: on Windows and macOS, and on Linux in a
+/// Wayland session (`wayland_display`, the session's `WAYLAND_DISPLAY`), unless the user asked
+/// for the system's.
 pub fn custom_frame_on(platform: &str, system_title_bar: bool, wayland_display: Option<&str>) -> bool {
     !system_title_bar
         && match platform {
-            "macos" => true,
+            "macos" | "windows" => true,
             "linux" => wayland_display.is_some_and(|d| !d.is_empty()),
             _ => false,
         }
@@ -125,16 +128,22 @@ pub type SettingReader<'a> = &'a dyn Fn(&str) -> Option<String>;
 
 /// The title bar for this frame, from GNOME's settings (`gnome`, by key; `None` off GNOME) or
 /// the defaults: the window buttons on the right, a double click toggling maximise, a middle
-/// click lowering the window and a right click showing the window menu.
+/// click lowering the window (nothing on Windows, as there) and a right click showing the window
+/// menu.
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn chrome(custom: bool, gnome: Option<SettingReader<'_>>) -> WindowChrome {
+    chrome_on(PLATFORM, custom, gnome)
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn chrome_on(platform: &'static str, custom: bool, gnome: Option<SettingReader<'_>>) -> WindowChrome {
     let read = |key: &str, default: &str| gnome.and_then(|get| get(key)).unwrap_or_else(|| default.to_owned());
     WindowChrome {
         frame: if custom { "custom" } else { "system" },
-        platform: PLATFORM,
+        platform,
         layout: read("button-layout", DEFAULT_LAYOUT),
         double_click: read("action-double-click-titlebar", "toggle-maximize"),
-        middle_click: read("action-middle-click-titlebar", "lower"),
+        middle_click: read("action-middle-click-titlebar", if platform == "windows" { "none" } else { "lower" }),
         right_click: read("action-right-click-titlebar", "menu"),
     }
 }
@@ -209,15 +218,24 @@ mod tests {
         // An X11 session: the window manager couldn't take the pointer from Chromium.
         assert!(!custom_frame_on("linux", false, None));
         assert!(!custom_frame_on("linux", false, Some("")));
-        assert_eq!(custom_frame(false, Some("wayland-0")), cfg!(any(target_os = "linux", target_os = "macos")));
+        assert!(custom_frame(false, Some("wayland-0")));
     }
 
-    /// macOS always has its own, over the system's frame, unless asked not to; Windows not yet.
+    /// Windows and macOS always have their own unless asked not to: no session to depend on.
     #[test]
-    fn macos_draws_its_own_title_bar_unless_asked_not_to() {
-        assert!(custom_frame_on("macos", false, None));
-        assert!(!custom_frame_on("macos", true, None));
-        assert!(!custom_frame_on("windows", false, None));
+    fn windows_and_macos_draw_their_own_title_bar_unless_asked_not_to() {
+        for platform in ["windows", "macos"] {
+            assert!(custom_frame_on(platform, false, None), "{platform}");
+            assert!(!custom_frame_on(platform, true, None), "{platform}");
+        }
+    }
+
+    /// Windows' title bar: its buttons on the right, and a middle click does nothing there.
+    #[test]
+    fn the_windows_title_bar_has_its_own_defaults() {
+        let c = chrome_on("windows", true, None);
+        assert_eq!((c.platform, c.layout.as_str()), ("windows", DEFAULT_LAYOUT));
+        assert_eq!((c.double_click.as_str(), c.middle_click.as_str(), c.right_click.as_str()), ("toggle-maximize", "none", "menu"));
     }
 
     /// System Settings' choice, the older switch when it's the only one set, and Zoom otherwise.
@@ -256,7 +274,7 @@ mod tests {
     /// key, with the default for one it can't read.
     #[test]
     fn the_title_bar_follows_gnome_or_the_defaults() {
-        let plain = chrome(true, None);
+        let plain = chrome_on("linux", true, None);
         assert_eq!((plain.frame, plain.layout.as_str()), ("custom", DEFAULT_LAYOUT));
         assert_eq!((plain.double_click.as_str(), plain.middle_click.as_str(), plain.right_click.as_str()), ("toggle-maximize", "lower", "menu"));
         let gnome = |key: &str| match key {
@@ -264,7 +282,7 @@ mod tests {
             "action-middle-click-titlebar" => Some("none".to_owned()),
             _ => None,
         };
-        let c = chrome(false, Some(&gnome));
+        let c = chrome_on("linux", false, Some(&gnome));
         assert_eq!((c.frame, c.layout.as_str(), c.middle_click.as_str(), c.double_click.as_str()), ("system", "appmenu:close", "none", "toggle-maximize"));
     }
 

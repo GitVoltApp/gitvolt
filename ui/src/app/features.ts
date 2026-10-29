@@ -122,3 +122,5 @@ import '../fileColours/feature';
 // Branch presets: Next branch preset and Choose branch preset….
 import '../presets/feature';
 import '../presets/branchMenus';
+// GitVolt's own title bar: Alt+Space opens the window menu (Windows).
+import '../chrome/feature';

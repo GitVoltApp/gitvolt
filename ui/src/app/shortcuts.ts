@@ -12,7 +12,7 @@ const FUNCTION_KEY = /^F([1-9]|1[0-2])$/;
 
 /**
  * "Ctrl+Shift+T" for a Ctrl chord, "F8" / "Shift+F7" for a function key, "Alt+1" for Alt and a
- * digit (the focus keys); '' for anything else (another key without Ctrl, a Super/Meta chord, a
+ * digit (the focus keys), "Alt+Space" (the window menu on Windows); '' for anything else (another key without Ctrl, a Super/Meta chord, a
  * lone modifier, IME composition). On macOS a Cmd chord is "Cmd+Shift+T" (the primary modifier
  * there, `Mod` in declarations: `ui/platformKeys.ts`), a Ctrl one stays "Ctrl+Tab", and one with
  * both is ''. Alt with an arrow isn't named: Alt+←/→ are Go back / forward (`nav/input.ts`).
@@ -29,6 +29,8 @@ export function comboOf(e: Pick<KeyboardEvent, 'ctrlKey' | 'shiftKey' | 'altKey'
   const digit = /^Digit\d$/.test(e.code) ? e.code.slice(5) : null;
   if (!mod) {
     if (FUNCTION_KEY.test(e.key)) return [e.altKey && 'Alt', e.shiftKey && 'Shift', e.key].filter(Boolean).join('+');
+    // By the character too: a key event without a scan code (synthesized input) has no `code`.
+    if (e.altKey && !e.shiftKey && (e.code === 'Space' || e.key === ' ')) return 'Alt+Space';
     return e.altKey && digit ? ['Alt', e.shiftKey && 'Shift', digit].filter(Boolean).join('+') : '';
   }
   const letter = letterOf(e);

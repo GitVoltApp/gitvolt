@@ -437,6 +437,9 @@ pub(crate) enum WindowMessage {
 pub enum WindowManagerRequest {
   /// Its window menu (what a right-click on a title bar shows), at the pointer.
   ShowMenu,
+  /// Its window menu as Alt+Space shows it, at the window's top left corner, for the keyboard
+  /// (Windows; the window manager takes Alt+Space itself on Linux).
+  ShowMenuFromKeyboard,
   /// The window below the others.
   Lower,
 }
@@ -561,14 +564,9 @@ pub(crate) struct AppWindowAttrs {
   pub(crate) transient_for: Option<gtk::Window>,
 }
 
-/// GitVolt patch: only X11 has these requests so far (`platform/linux/chrome.rs`).
-#[cfg(not(any(
-  target_os = "linux",
-  target_os = "dragonfly",
-  target_os = "freebsd",
-  target_os = "netbsd",
-  target_os = "openbsd"
-)))]
+/// GitVolt patch: only X11 and Windows have these requests so far (`platform/linux/chrome.rs`,
+/// `platform/windows/chrome.rs`).
+#[cfg(target_os = "macos")]
 impl AppWindow {
   pub(crate) fn window_manager_request(&self, _request: WindowManagerRequest) -> bool {
     false
@@ -806,6 +804,11 @@ impl<T: UserEvent> WinitCefApp<T> {
       appwindow.set_skip_taskbar(appwindow.attrs.skip_taskbar);
       appwindow.apply_transient_for();
     }
+
+    // GitVolt patch: an undecorated window keeps Windows' resize border
+    // (`platform/windows/chrome.rs`).
+    #[cfg(windows)]
+    appwindow.sync_custom_frame();
 
     #[cfg(windows)]
     appwindow.draw_background_surface();
@@ -1142,7 +1145,14 @@ impl<T: UserEvent> WinitCefApp<T> {
         window.set_decorations(value);
         #[cfg(target_os = "macos")]
         appwindow.apply_movability();
+        // GitVolt patch: an undecorated window keeps Windows' resize border.
+        #[cfg(windows)]
+        appwindow.sync_custom_frame();
       }
+      // GitVolt patch: on Windows, the client area's size whatever the frame.
+      #[cfg(windows)]
+      WindowMessage::SetSize(size) => appwindow.request_surface_size(size),
+      #[cfg(not(windows))]
       WindowMessage::SetSize(size) => _ = window.request_surface_size(size),
       WindowMessage::SetPosition(position) => window.set_outer_position(position),
       WindowMessage::SetFullscreen(value) => {

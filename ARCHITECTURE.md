@@ -75,8 +75,17 @@ Settings says (`AppleActionOnDoubleClick`, read again whenever the window comes 
 runtime starts a title bar drag from a press of its own at the pointer and keeps the overlay
 window immovable otherwise, and it sends a resize when a full screen transition ends, so the page
 sees full screen end (`GITVOLT-PATCH.md`). `ui/scripts/mac-titlebar.mjs` checks it all with real
-input on the `mac-port.yml` runner. Windows keeps the system frame for now; the component
-already knows its button set.
+input on the `mac-port.yml` runner.
+
+On Windows the window is built undecorated as on Linux, with Windows' flat minimise, maximise and
+close at the bar's end. The runtime gives the undecorated window back Windows' resize border at
+its left, right and bottom (`WM_NCCALCSIZE`, `WM_NCHITTEST`), outside the visible window with the
+system's shadow and edge, so Windows resizes it natively; the page's resize handle is the top edge
+only. Drags and resizes go through winit's `drag_window` and `drag_resize_window`, which run
+Windows' own move and size loops (Aero Snap included), and `window_manager` shows the system menu
+at the pointer, or at the window's corner for Alt+Space (a shortcut of the page's, since the keys
+go to the browser). Snap layouts (the flyout over □) aren't there: the browser's window gets the
+hit test, not the top-level one (`GITVOLT-PATCH.md`).
 
 **`gitvolt-harness`** serves the same `Api` over a WebSocket so the UI can run in a plain browser
 with no Tauri, and adds a fake GitHub/GitLab/Forgejo, fixture repositories and test-only routes. It's what

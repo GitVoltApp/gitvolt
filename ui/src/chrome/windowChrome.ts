@@ -48,6 +48,9 @@ export const useWindowChrome = create<ChromeState>(() => ({
 /** The page draws the title bar (and ☰ moves up into it). */
 export const useCustomTitleBar = () => useWindowChrome((s) => s.info?.frame === 'custom');
 
+/** gitvolt-app's `window_manager` requests. */
+export type WindowManagerRequest = 'menu' | 'keyboard-menu' | 'lower';
+
 /** What the title bar asks of the window. */
 export interface WindowOps {
   startDragging(): Promise<void>;
@@ -55,8 +58,9 @@ export interface WindowOps {
   toggleMaximize(): Promise<void>;
   minimize(): Promise<void>;
   close(): Promise<void>;
-  /** The window manager's window menu, or the window lowered; whether it was asked. */
-  windowManager(request: 'menu' | 'lower'): Promise<boolean>;
+  /** The window manager's window menu at the pointer, or at the window's corner for the keyboard
+   * (Alt+Space, Windows), or the window lowered; whether it was asked. */
+  windowManager(request: WindowManagerRequest): Promise<boolean>;
   isMaximized(): Promise<boolean>;
   isFullscreen(): Promise<boolean>;
   /** Calls `cb` after every resize, and with a new [`WindowChromeInfo`] when the desktop's

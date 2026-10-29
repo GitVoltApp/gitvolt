@@ -174,6 +174,56 @@ describe('on macOS', () => {
   });
 });
 
+describe('on Windows', () => {
+  const windows = (more: Partial<WindowChromeInfo> = {}): WindowChromeInfo => ({ ...linux(':minimize,maximize,close'), platform: 'windows', middleClick: 'none', ...more });
+  const glyph = (name: string) => screen.getByRole('button', { name }).querySelector('svg')!.innerHTML;
+
+  it("☰, the window's title, then flat minimize, maximize and close; maximize turns into restore", () => {
+    show(windows());
+    expect(bar()).toHaveClass('platform-windows');
+    expect(within(bar()).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Menu', 'Minimize', 'Maximize', 'Close']);
+    expect(title()).toHaveTextContent('GitVolt — orbital');
+    // Windows' own glyphs: a full-box square, then two squares to restore.
+    expect(glyph('Maximize')).toBe('<rect x="0.5" y="0.5" width="9" height="9"></rect>');
+    act(() => useWindowChrome.setState({ maximized: true }));
+    expect(glyph('Restore')).toBe('<rect x="0.5" y="2.5" width="7" height="7"></rect><path d="M2.5 2.5v-2h7v7h-2"></path>');
+    expect(glyph('Close')).toBe('<path d="M0 0l10 10M10 0L0 10"></path>');
+  });
+
+  it('the buttons ask the window', () => {
+    show(windows());
+    for (const name of ['Minimize', 'Maximize', 'Restore', 'Close']) fireEvent.click(screen.getByRole('button', { name }));
+    return waitFor(() => expect(calls()).toEqual(['minimize', 'toggleMaximize', 'toggleMaximize', 'close']));
+  });
+
+  it("only the top edge and corners are the page's: the system's border resizes from the rest", () => {
+    show(windows());
+    expect([...document.querySelectorAll<HTMLElement>('.window-edge')].map((e) => e.dataset.direction)).toEqual(['North', 'NorthEast', 'NorthWest']);
+    fireEvent.mouseDown(document.querySelector('.window-edge-n')!, { button: 0 });
+    expect(calls()).toEqual(['startResizeDragging:North']);
+  });
+
+  it('a double click maximizes, a right click asks for the window menu, a middle click does nothing', () => {
+    show(windows());
+    fireEvent.doubleClick(title());
+    fireEvent(title(), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    fireEvent.contextMenu(title(), { clientX: 200, clientY: 12 });
+    expect(calls()).toEqual(['toggleMaximize', 'windowManager:menu']);
+  });
+
+  it('Alt+Space opens the window menu for the keyboard, under GitVolt\'s title bar only', async () => {
+    const { WINDOW_MENU } = await import('./feature');
+    expect(WINDOW_MENU.shortcuts).toEqual(['Alt+Space']);
+    expect(WINDOW_MENU.when!()).toBe(false);
+    act(() => useWindowChrome.setState({ info: { ...linux('appmenu:close'), platform: 'macos' } }));
+    expect(WINDOW_MENU.when!()).toBe(false);
+    act(() => useWindowChrome.setState({ info: windows() }));
+    expect(WINDOW_MENU.when!()).toBe(true);
+    await WINDOW_MENU.run();
+    expect(calls()).toEqual(['windowManager:keyboard-menu']);
+  });
+});
+
 describe('the tab bar under the title bar', () => {
   beforeEach(() => act(() => useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 'a', kind: 'repo', path: '/a', alias: null }], activeTab: 'a' } })));
   afterEach(() => act(() => useAppState.setState({ profile: EMPTY_PROFILE })));

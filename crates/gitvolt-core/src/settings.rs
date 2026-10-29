@@ -147,7 +147,8 @@ pub struct AppSettings {
     pub update_prereleases: bool,
     /// "Use the system title bar" (Settings › Appearance): the window manager's decorations
     /// instead of GitVolt's own title bar. Read when the window is built, so a change applies
-    /// after a restart. Only Linux has GitVolt's own title bar so far.
+    /// after a restart. GitVolt has its own title bar on Linux (in a Wayland session), Windows
+    /// and macOS.
     pub system_title_bar: bool,
     /// How an Arch install updates, once the update dialog asked; `None` until then.
     pub update_arch_method: Option<crate::updates::install::ArchMethod>,

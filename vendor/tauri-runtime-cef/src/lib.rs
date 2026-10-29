@@ -45,6 +45,8 @@ pub use frame::{FrameEvent, FrameEventHandler, FrameEventKind};
 pub use frame_navigation::{FrameNavigationState, NativeDocumentToken};
 mod window;
 mod window_builder;
+/// GitVolt patch: the geometry of a Windows window with its own title bar (`platform/windows/chrome.rs`).
+mod window_frame;
 mod window_handle;
 
 pub use cef::sys::CEF_API_VERSION_LAST;

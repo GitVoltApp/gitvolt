@@ -15,11 +15,12 @@
 .wm-btn:hover { background: var(--control-hover-bg); color: var(--text-selected); }
 .wm-btn:focus-visible { color: var(--text-selected); box-shadow: 0 0 0 2px var(--focus-outline); }
 .wm-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
-/* Windows' (a later lane turns the frame on there): flat, the full bar's height, close in red. */
+/* Windows': flat, 46 px wide and the full bar's height, thin glyphs, close in Windows' own red. */
 .platform-windows .title-bar-buttons { gap: 0; padding: 0; align-items: stretch; }
 .platform-windows .wm-btn { width: 46px; height: auto; border-radius: 0; background: transparent; }
 .platform-windows .wm-btn:hover { background: var(--control-hover-bg); }
-.platform-windows .wm-close:hover { background: var(--red); color: var(--text-on-accent); }
+.platform-windows .wm-btn svg { stroke-width: 1; stroke-linecap: butt; }
+.platform-windows .wm-close:hover { /* theme-ok: Windows' close red, in every theme */ background: #c42b1c; /* theme-ok */ color: #fff; }
 
 /* The resize handles along the window's edges: over everything, so a dialog doesn't stop a
    resize, and thin enough not to get in the way. */
