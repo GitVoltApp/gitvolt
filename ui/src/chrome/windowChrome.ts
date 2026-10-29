@@ -35,11 +35,14 @@ interface ChromeState {
   info: WindowChromeInfo | null;
   /** The window is maximized: the maximize button restores, and there are no resize edges. */
   maximized: boolean;
+  /** The window is full screen: macOS hides its traffic lights, and the title bar their slot. */
+  fullscreen: boolean;
 }
 
 export const useWindowChrome = create<ChromeState>(() => ({
   info: typeof window === 'undefined' ? null : window.__GITVOLT_WINDOW__ ?? null,
   maximized: false,
+  fullscreen: false,
 }));
 
 /** The page draws the title bar (and ☰ moves up into it). */
@@ -55,6 +58,7 @@ export interface WindowOps {
   /** The window manager's window menu, or the window lowered; whether it was asked. */
   windowManager(request: 'menu' | 'lower'): Promise<boolean>;
   isMaximized(): Promise<boolean>;
+  isFullscreen(): Promise<boolean>;
   /** Calls `cb` after every resize, and with a new [`WindowChromeInfo`] when the desktop's
    * settings change; returns the unsubscribe. */
   watch(onResized: () => void, onChrome: (info: WindowChromeInfo) => void): () => void;
@@ -76,6 +80,7 @@ const tauriOps: WindowOps = {
   },
   windowManager: async (request) => (await import('@tauri-apps/api/core')).invoke<boolean>('window_manager', { request }),
   isMaximized: async () => (await win()).isMaximized(),
+  isFullscreen: async () => (await win()).isFullscreen(),
   watch(onResized, onChrome) {
     const offs: (() => void)[] = [];
     let dead = false;
@@ -100,6 +105,7 @@ const recordingOps: WindowOps = {
   close: async () => { record('close'); },
   windowManager: async (request) => { record(`windowManager:${request}`); return false; },
   isMaximized: async () => useWindowChrome.getState().maximized,
+  isFullscreen: async () => useWindowChrome.getState().fullscreen,
   watch: () => () => {},
 };
 
@@ -109,10 +115,16 @@ function record(call: string): void {
 
 export const windowOps: WindowOps = inTauri() ? tauriOps : recordingOps;
 
-/** Follows the window's maximized state and the desktop's title bar settings while a custom
- * title bar is up; returns the unsubscribe. Nothing runs between events. */
+/** Follows the window's maximized and full screen states and the desktop's title bar settings
+ * while a custom title bar is up; returns the unsubscribe. Nothing runs between events (the
+ * runtime sends a resize when a macOS full screen transition ends). */
 export function followWindow(ops: WindowOps = windowOps): () => void {
-  const sync = () => { void ops.isMaximized().then((maximized) => { if (maximized !== useWindowChrome.getState().maximized) useWindowChrome.setState({ maximized }); }).catch(() => {}); };
+  const sync = () => {
+    void Promise.all([ops.isMaximized(), ops.isFullscreen()]).then(([maximized, fullscreen]) => {
+      const now = useWindowChrome.getState();
+      if (maximized !== now.maximized || fullscreen !== now.fullscreen) useWindowChrome.setState({ maximized, fullscreen });
+    }).catch(() => {});
+  };
   sync();
   return ops.watch(sync, (info) => useWindowChrome.setState({ info }));
 }

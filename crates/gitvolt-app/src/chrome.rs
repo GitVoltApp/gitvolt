@@ -1,12 +1,14 @@
-//! GitVolt's own title bar, on Linux: the window is built without the window manager's
-//! decorations, and the UI draws a title bar (`ui/src/chrome/`) whose drags, resize edges,
-//! window menu and buttons ask the window manager through the CEF runtime
-//! (vendor/tauri-runtime-cef/GITVOLT-PATCH.md, "A window that draws its own title bar").
-//! Settings › Appearance › "Use the system title bar" keeps the decorations; it's read when the
-//! window is built, so a change applies after a restart. macOS and Windows keep the system's
-//! frame for now.
+//! GitVolt's own title bar, on Linux and macOS. On Linux the window is built without the window
+//! manager's decorations, and the UI draws a title bar (`ui/src/chrome/`) whose drags, resize
+//! edges, window menu and buttons ask the window manager through the CEF runtime
+//! (vendor/tauri-runtime-cef/GITVOLT-PATCH.md, "A window that draws its own title bar"). On macOS
+//! the window keeps its frame, with an overlay title bar (transparent, the title hidden, the page
+//! under it), and Apple's traffic lights sit at the start of the UI's title bar, inset to its
+//! middle ([`TRAFFIC_LIGHTS`]). Settings › Appearance › "Use the system title bar" keeps the
+//! system's; it's read when the window is built, so a change applies after a restart. Windows
+//! keeps the system's frame for now.
 //!
-//! Only in a Wayland session (GitVolt itself runs under Xwayland there): the compositor moves
+//! On Linux, only in a Wayland session (GitVolt itself runs under Xwayland there): the compositor moves
 //! and resizes the window with a grab of its own. In an X11 session the window manager needs
 //! the X pointer grab, which Chromium's own connection holds while the button is down, and
 //! only Chromium could release it; a move or resize would never start, so the window keeps the
@@ -14,7 +16,8 @@
 //!
 //! The UI learns which frame it has, and the window buttons and title bar clicks to follow, from
 //! `window.__GITVOLT_WINDOW__`, set by an initialization script before its first render (no
-//! title bar popping in), and from [`CHROME_EVENT`] when GNOME's settings change.
+//! title bar popping in), and from [`CHROME_EVENT`] when GNOME's settings, or macOS's double
+//! click, change.
 
 use serde::Serialize;
 
@@ -25,7 +28,8 @@ pub const CHROME_EVENT: &str = "gb:window-chrome";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowChrome {
-    /// `custom`: no decorations, the UI draws the title bar; `system`: the window manager's.
+    /// `custom`: the UI draws the title bar (no decorations on Linux, an overlay title bar on
+    /// macOS); `system`: the window manager's.
     pub frame: &'static str,
     /// `linux`, `macos` or `windows`: which button set the title bar draws.
     pub platform: &'static str,
@@ -49,20 +53,71 @@ const PLATFORM: &str = if cfg!(target_os = "macos") {
     "linux"
 };
 
-/// Whether GitVolt draws its own title bar: on Linux in a Wayland session (`wayland_display`,
-/// the session's `WAYLAND_DISPLAY`), unless the user asked for the system's.
+/// Whether GitVolt draws its own title bar here: see [`custom_frame_on`].
 pub fn custom_frame(system_title_bar: bool, wayland_display: Option<&str>) -> bool {
-    cfg!(target_os = "linux") && !system_title_bar && wayland_display.is_some_and(|d| !d.is_empty())
+    custom_frame_on(PLATFORM, system_title_bar, wayland_display)
+}
+
+/// Whether GitVolt draws its own title bar on `platform`: on macOS, and on Linux in a Wayland
+/// session (`wayland_display`, the session's `WAYLAND_DISPLAY`), unless the user asked for the
+/// system's.
+pub fn custom_frame_on(platform: &str, system_title_bar: bool, wayland_display: Option<&str>) -> bool {
+    !system_title_bar
+        && match platform {
+            "macos" => true,
+            "linux" => wayland_display.is_some_and(|d| !d.is_empty()),
+            _ => false,
+        }
+}
+
+/// Where macOS's traffic lights go, in logical px from the window's top-left corner (Tauri's
+/// `trafficLightPosition`: the close button's left edge, and the height AppKit's title bar view
+/// is stretched to under the buttons, which keep their distance from its bottom): vertically
+/// centred in the 30 px title bar. `ui/src/chrome/chrome.css`'s `.title-bar-lights` keeps their
+/// width free.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub const TRAFFIC_LIGHTS: (f64, f64) = (12.0, 13.0);
+
+/// What a double click on a macOS title bar does, from System Settings › Desktop & Dock ›
+/// "Double-click a window's title bar to": `AppleActionOnDoubleClick` (`Maximize` is Zoom,
+/// `Fill`, `Minimize`, `None`), or older systems' `AppleMiniaturizeOnDoubleClick`; Zoom when
+/// neither is set. Fill zooms too: either way the window grows to the screen's free space.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn mac_double_click(action: Option<&str>, miniaturize: Option<bool>) -> &'static str {
+    match action {
+        Some("Minimize") => "minimize",
+        Some("None") => "none",
+        Some(_) => "toggle-maximize",
+        None if miniaturize == Some(true) => "minimize",
+        None => "toggle-maximize",
+    }
+}
+
+/// The title bar on macOS: Apple's traffic lights at its start (no layout of its own), a double
+/// click doing what System Settings says, and nothing on a middle or right click, as on the
+/// system's own title bars.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn macos_chrome(custom: bool, double_click: &str) -> WindowChrome {
+    WindowChrome {
+        frame: if custom { "custom" } else { "system" },
+        platform: "macos",
+        layout: String::new(),
+        double_click: double_click.to_owned(),
+        middle_click: "none".to_owned(),
+        right_click: "none".to_owned(),
+    }
 }
 
 /// Whether `XDG_CURRENT_DESKTOP` (a `:`-separated list) names GNOME, whose window manager
 /// settings the title bar follows. Elsewhere `org.gnome.desktop.wm.preferences` may be
 /// installed but isn't what the window manager reads.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn is_gnome(current_desktop: Option<&str>) -> bool {
     current_desktop.is_some_and(|d| d.split(':').any(|name| name.trim().eq_ignore_ascii_case("gnome")))
 }
 
 /// The keys of `org.gnome.desktop.wm.preferences` the title bar follows.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub const GNOME_KEYS: [&str; 4] = ["button-layout", "action-double-click-titlebar", "action-middle-click-titlebar", "action-right-click-titlebar"];
 
 /// Reads one of [`GNOME_KEYS`] (`None`: unset or unreadable).
@@ -71,6 +126,7 @@ pub type SettingReader<'a> = &'a dyn Fn(&str) -> Option<String>;
 /// The title bar for this frame, from GNOME's settings (`gnome`, by key; `None` off GNOME) or
 /// the defaults: the window buttons on the right, a double click toggling maximise, a middle
 /// click lowering the window and a right click showing the window menu.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn chrome(custom: bool, gnome: Option<SettingReader<'_>>) -> WindowChrome {
     let read = |key: &str, default: &str| gnome.and_then(|get| get(key)).unwrap_or_else(|| default.to_owned());
     WindowChrome {
@@ -88,6 +144,23 @@ pub fn init_script(chrome: &WindowChrome) -> String {
     // JSON is a JavaScript expression; `<` is escaped so no value can close a script element.
     let json = serde_json::to_string(chrome).unwrap_or_else(|_| "null".into()).replace('<', "\\u003c");
     format!("window.__GITVOLT_WINDOW__ = {json};")
+}
+
+/// macOS's title bar settings.
+#[cfg(target_os = "macos")]
+pub mod macos {
+    use objc2_foundation::{NSUserDefaults, ns_string};
+
+    /// What a title bar double click does ([`super::mac_double_click`]), as System Settings has
+    /// it now: a read of the user defaults, cheap enough to repeat whenever the window comes to
+    /// the front, so a change there applies without a restart.
+    pub fn double_click() -> &'static str {
+        let defaults = NSUserDefaults::standardUserDefaults();
+        let action = defaults.stringForKey(ns_string!("AppleActionOnDoubleClick")).map(|s| s.to_string());
+        let legacy = ns_string!("AppleMiniaturizeOnDoubleClick");
+        let miniaturize = defaults.objectForKey(legacy).map(|_| defaults.boolForKey(legacy));
+        super::mac_double_click(action.as_deref(), miniaturize)
+    }
 }
 
 /// GNOME's window manager settings, watched for changes. On the GTK main thread.
@@ -130,12 +203,42 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_a_linux_wayland_session_draws_its_own_title_bar_unless_asked_not_to() {
-        assert_eq!(custom_frame(false, Some("wayland-0")), cfg!(target_os = "linux"));
-        assert!(!custom_frame(true, Some("wayland-0")));
+    fn on_linux_only_a_wayland_session_draws_its_own_title_bar_unless_asked_not_to() {
+        assert!(custom_frame_on("linux", false, Some("wayland-0")));
+        assert!(!custom_frame_on("linux", true, Some("wayland-0")));
         // An X11 session: the window manager couldn't take the pointer from Chromium.
-        assert!(!custom_frame(false, None));
-        assert!(!custom_frame(false, Some("")));
+        assert!(!custom_frame_on("linux", false, None));
+        assert!(!custom_frame_on("linux", false, Some("")));
+        assert_eq!(custom_frame(false, Some("wayland-0")), cfg!(any(target_os = "linux", target_os = "macos")));
+    }
+
+    /// macOS always has its own, over the system's frame, unless asked not to; Windows not yet.
+    #[test]
+    fn macos_draws_its_own_title_bar_unless_asked_not_to() {
+        assert!(custom_frame_on("macos", false, None));
+        assert!(!custom_frame_on("macos", true, None));
+        assert!(!custom_frame_on("windows", false, None));
+    }
+
+    /// System Settings' choice, the older switch when it's the only one set, and Zoom otherwise.
+    #[test]
+    fn a_mac_double_click_follows_system_settings() {
+        assert_eq!(mac_double_click(Some("Maximize"), None), "toggle-maximize");
+        assert_eq!(mac_double_click(Some("Fill"), None), "toggle-maximize");
+        assert_eq!(mac_double_click(Some("Minimize"), Some(false)), "minimize");
+        assert_eq!(mac_double_click(Some("None"), Some(true)), "none");
+        assert_eq!(mac_double_click(None, Some(true)), "minimize");
+        assert_eq!(mac_double_click(None, Some(false)), "toggle-maximize");
+        assert_eq!(mac_double_click(None, None), "toggle-maximize");
+    }
+
+    /// The traffic lights instead of a button layout, and no middle or right click action.
+    #[test]
+    fn the_mac_title_bar_has_no_buttons_of_its_own() {
+        let c = macos_chrome(true, "minimize");
+        assert_eq!((c.frame, c.platform, c.layout.as_str()), ("custom", "macos", ""));
+        assert_eq!((c.double_click.as_str(), c.middle_click.as_str(), c.right_click.as_str()), ("minimize", "none", "none"));
+        assert_eq!(macos_chrome(false, "toggle-maximize").frame, "system");
     }
 
     #[test]

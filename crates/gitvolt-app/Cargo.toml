@@ -31,6 +31,10 @@ glib.workspace = true
 raw-window-handle.workspace = true
 x11-dl.workspace = true
 
+# The title bar's double click, from the user defaults (chrome.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation.workspace = true
+
 # The folder dialog's owner window (`portal_parent`).
 [target.'cfg(windows)'.dependencies]
 raw-window-handle.workspace = true

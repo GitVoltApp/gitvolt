@@ -1,5 +1,6 @@
 # macOS (Apple Silicon): the core, forge and harness tests, a check of the whole workspace, the debug
-# app driven over CDP, and the release .dmg installed, launched and updated in place.
+# app driven over CDP (its title bar with real input), and the release .dmg installed, launched
+# and updated in place.
 # On demand only: run it from the Actions tab (workflow_dispatch), or label a pull request
 # `macos` (each time the label is added). Actions are pinned by commit, as in release.yml.
 name: macOS
@@ -315,6 +316,19 @@ jobs:
           } > out/sandbox.txt 2>&1 || true
           cat out/sandbox.txt
 
+      # GitVolt's own title bar, with real mouse and key events (ui/scripts/mac-titlebar.mjs) on
+      # the app the drive step left running. Last: it ends by closing the window.
+      - name: Title bar
+        id: titlebar
+        if: always() && steps.bundle.outcome == 'success'
+        env:
+          APP: ${{ steps.bundle.outputs.app }}
+        run: |
+          swiftc -O -o "$RUNNER_TEMP/mac-window" ui/scripts/mac-window.swift
+          # The drive step's, so a second launch finds the running app.
+          export GITVOLT_DEV_DIRS="$RUNNER_TEMP/gb/dirs" GITVOLT_DEV_CDP_PORT=9333 RUST_LOG=info
+          node ui/scripts/mac-titlebar.mjs 9333 out/titlebar "$RUNNER_TEMP/mac-window" "$(cat out/app.pid)" "$PWD/$APP/Contents/MacOS/GitVolt" | tee out/titlebar.txt
+
       - name: Stop the app
         if: always()
         run: |
@@ -328,12 +342,14 @@ jobs:
         env:
           BUILD: ${{ steps.build.outcome }}
           DRIVE: ${{ steps.drive.outcome }}
+          TITLEBAR: ${{ steps.titlebar.outcome }}
           RUNTIME_TESTS: ${{ steps.runtime-tests.outcome }}
         run: |
           {
-            echo "### App: runtime tests $RUNTIME_TESTS, build $BUILD, drive $DRIVE"
+            echo "### App: runtime tests $RUNTIME_TESTS, build $BUILD, drive $DRIVE, title bar $TITLEBAR"
             echo '```'
             cat out/smoke.txt 2>/dev/null || true
+            cat out/titlebar.txt 2>/dev/null || true
             grep -E 'Summary|FAIL|SIGSEGV' "$RUNNER_TEMP/runtime-tests.log" 2>/dev/null | head -20 || true
             grep -E '^error|panicked|FATAL|ERROR' "$RUNNER_TEMP/build.log" out/app.log 2>/dev/null | head -40 || true
             echo '```'

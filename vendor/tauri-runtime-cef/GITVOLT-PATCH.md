@@ -213,6 +213,17 @@ says.
     `tauri_resize_direction_to_winit` is compiled only there).
   - `src/webview.rs`: `CefWebviewDispatcher::window_manager_request()`; `src/tauri_ext.rs`:
     `WebviewCefExt::window_manager_request()`; `src/lib.rs`: exports `WindowManagerRequest`.
+- A window that draws its own title bar, on macOS (below):
+  - `src/platform/macos/window.rs`: `AppWindow::begin_window_drag()`, the
+    `MOVABLE_UNTIL_NEXT_PRESS` thread-local, `before_send_event()`, `press_at_pointer()`, the
+    pure `left_button_held()` / `is_press()` and their unit tests.
+  - `src/platform/macos/application.rs`: `sendEvent:` calls `before_send_event` first.
+  - `src/platform/macos/fullscreen.rs`: `transition_ended` calls `on_transition_end` every time.
+  - `src/window.rs`: `StartDragging` goes to `begin_window_drag` on macOS;
+    `ApplyPendingFullscreen` is handled before the window is borrowed, by the new
+    `fullscreen_transition_ended()`. `src/runtime.rs`: `emit_window_event` is `pub(crate)`.
+  - `Cargo.toml`: the `NSGraphicsContext` feature of `objc2-app-kit` and `NSProcessInfo` of
+    `objc2-foundation` (no new crate).
 
 ## A window that draws its own title bar (Linux, X11)
 
@@ -258,6 +269,46 @@ drag regions, so the press (and its grab) is the runtime's, as GTK's title bars 
 
 **Tests:** `cargo test -p tauri-runtime-cef --lib chrome` (the direction for each edge, the
 messages' data, the button check).
+
+## A window that draws its own title bar (macOS)
+
+On macOS GitVolt keeps the window's frame with Tauri's overlay title bar
+(`titleBarStyle: Overlay`, `hiddenTitle`, `trafficLightPosition`), which the runtime already
+had: `FullSizeContentView`, a transparent title bar, the traffic lights inset and put back after
+each relayout. The page draws its bar under them (`crates/gitvolt-app/src/chrome.rs`). What the
+runtime lacked:
+
+- **`start_dragging` moved nothing reliably.** winit's `drag_window` hands
+  `performWindowDragWithEvent:` `NSApp.currentEvent`, whatever AppKit is dispatching when the
+  request arrives over IPC, not the press (CEF's view had that). And `apply_movability` makes an
+  overlay title bar's window immovable, so that a press in the title bar area is the page's.
+  **Fix:** `begin_window_drag` (only while the left button is still down, as on Linux) makes a
+  left-button press at the pointer (`mouseLocationOutsideOfEventStream`, as tao does), makes the
+  window movable, and starts the drag with it. When AppKit returns with the button still down
+  (the window server carries on with the drag), the window is made immovable again at the next
+  press, from the application's `sendEvent:` before AppKit dispatches it
+  (`before_send_event`); when the drag had already ended, at once.
+- **Leaving full screen wasn't observable.** Tauri has no full screen event, and winit only
+  clears its full screen state in `windowDidExitFullScreen:`, after the transition's last resize:
+  a page that asks `is_fullscreen` on each resize never saw full screen end. **Fix:** the
+  transition observer (`fullscreen.rs`) reports every transition's end, not only one with a
+  request pending, and `fullscreen_transition_ended` then emits `WindowEvent::Resized` with the
+  window's size, after applying any pending request as before.
+
+**Evidence** (`mac-port.yml`, job `app`, `ui/scripts/mac-titlebar.mjs`: the debug app on
+GitHub's `macos-15` runner, real input posted as `CGEvent`s, the window read from the window
+server and Accessibility): the traffic lights' circles are centred 15 px down the 30 px bar,
+from 13 to 65 px across its 78 px slot; a drag of the bar's empty space moves the window by
+exactly the pointer's travel, the grab point staying under the pointer (from a window against the
+screen's left edge, the edge holds the window back for the first ~65 px, as macOS does), and the
+page sees no button held afterwards; a click on ☰ in the title bar area reaches the page; a
+double click zooms the window to the screen's visible frame and a second one restores it (once
+each: AppKit doesn't zoom it as well); the yellow light minimizes, the green one enters full
+screen (the page then has no slot, ☰ in the corner), and the window comes back out of it with
+the slot; the red one closes the window and the app exits.
+
+**Tests:** `cargo test -p tauri-runtime-cef --lib platform::macos` (the button mask, which
+events are presses), on macOS.
 
 ## Context menu entries that make no sense in an app window
 
