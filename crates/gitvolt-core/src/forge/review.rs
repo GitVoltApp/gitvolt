@@ -50,6 +50,9 @@ pub fn check_comment(c: &NewReviewComment) -> Result<(), GbError> {
     Ok(())
 }
 
+/// Forgejo refuses a change request without a message, line comments or not.
+pub const FORGEJO_CHANGES_MESSAGE: &str = "Forgejo needs a message to request changes: say what to change";
+
 /// The one rule for a review's message, the composer's (`review`) and the pending review's
 /// (`submit_review`): with no drafts going in, Comment needs one, and so does Request changes,
 /// except on GitLab. There request changes is just the approval withdrawn, and an empty one is the
@@ -57,9 +60,6 @@ pub fn check_comment(c: &NewReviewComment) -> Result<(), GbError> {
 /// wants a message to request changes even with drafts going in (`review event … requires a body`).
 /// Approve never needs one. `kind` is `None` before the target is known: only the refusals that
 /// don't depend on it are made then, so they come before the forge is asked anything.
-/// Forgejo refuses a change request without a message, line comments or not.
-pub const FORGEJO_CHANGES_MESSAGE: &str = "Forgejo needs a message to request changes: say what to change";
-
 pub(crate) fn check_review_message(review: &ReviewSubmit, drafts: u32, kind: Option<ForgeKind>) -> Result<(), GbError> {
     let empty = review.body.trim().is_empty();
     if empty && review.event == ReviewEvent::RequestChanges && kind == Some(ForgeKind::Forgejo) {

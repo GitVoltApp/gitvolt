@@ -917,7 +917,6 @@ impl ForgejoProvider {
         Ok(())
     }
 
-    /// Where review thread `root` is, from the last discussions read (or read now).
     /// `opts` with its branch deletion decided: as asked, else the repository's default
     /// (`default_delete_branch_after_merge`), which Forgejo's merge API doesn't apply by itself.
     async fn deleting_as_set(&self, project: &ForgeProject, opts: &MergeOptions) -> Result<MergeOptions, GbError> {
@@ -954,6 +953,7 @@ impl ForgejoProvider {
     }
     // --- end review comments ---
 
+    /// Where review thread `root` is, from the last discussions read (or read now).
     async fn thread(&self, project: &ForgeProject, number: u64, root: u64) -> Result<ThreadAt, GbError> {
         let key = (project.path.clone(), number);
         let known = |s: &Self| s.threads.lock().expect("threads poisoned").get(&key).and_then(|m| m.get(&root)).cloned();
