@@ -191,6 +191,26 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
     await expect(keyword).toHaveCSS('color', 'rgb(88, 110, 117)'); // solarized-light
     await expect(host).toHaveAttribute('data-keep', '1');
   });
+  await test.step("a custom theme on GitHub Dark takes the open editor: its own background, its base's tokens (#14)", async () => {
+    const host = diffRegion(page).locator('.monaco-host').first();
+    const keyword = diffRegion(page).locator('.editor.modified .view-line span span').filter({ hasText: /^function$/ }).first();
+    const keywordColour = () => keyword.evaluate((e) => getComputedStyle(e).color);
+    await page.keyboard.press('Control+,');
+    await dialog(page).getByRole('button', { name: 'Theme', exact: true }).click();
+    await dialog(page).getByRole('radio', { name: 'GitHub Dark', exact: true }).click();
+    await expect.poll(() => editorBg(page)).toBe(rgb(THEMES['github-dark'].colors['app-bg0']));
+    await expect.poll(keywordColour).not.toBe('rgb(88, 110, 117)');
+    const githubKeyword = await keywordColour();
+    const field = dialog(page).getByRole('textbox', { name: 'Window background', exact: true });
+    await field.fill('#0b0f14');
+    await field.press('Enter');
+    await expect(dialog(page).getByRole('radio', { name: 'GitHub Dark (Custom)' })).toHaveAttribute('aria-checked', 'true');
+    await expect.poll(() => editorBg(page)).toBe(rgb('#0b0f14'));
+    expect(await keywordColour()).toBe(githubKeyword);
+    await expect(host).toHaveAttribute('data-keep', '1');
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toBeHidden();
+  });
   await test.step('the font size row (Settings > Diffs and editors) resizes the open diff live, clamped to 8-32', async () => {
     const size = () => diffRegion(page).locator('.view-line').first().evaluate((e) => getComputedStyle(e).fontSize);
     await expect.poll(size).toBe('13px');

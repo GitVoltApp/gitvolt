@@ -44,16 +44,20 @@ function fnv(s: string): string {
   return (h >>> 0).toString(36);
 }
 
+/** Between a custom theme's base editor theme and its hash: Monaco takes only `[a-z0-9-]` in a
+ * theme name (#14), and no built-in editor theme name has a `--`. */
+const SEP = '--';
+
 /** `def`'s Monaco theme name: a built-in's editor theme; for a custom theme, its base's with a
  * hash of its overlay, so a colour edit is a new name (shiki.ts `defineEditorTheme` defines it). */
-export const editorThemeName = (def: ThemeDef): string => (def.base ? `${def.editorTheme}~${fnv(JSON.stringify(editorColors(def)))}` : def.editorTheme);
+export const editorThemeName = (def: ThemeDef): string => (def.base ? `${def.editorTheme}${SEP}${fnv(JSON.stringify(editorColors(def)))}` : def.editorTheme);
 
 export const currentEditorTheme = (): string => editorThemeName(useTheme.getState().def);
 
 /** The longest Monaco lags a custom theme's colour edits (a picker being dragged). */
 export const EDITOR_THEME_THROTTLE_MS = 150;
 
-const family = (name: string) => name.split('~')[0];
+const family = (name: string) => name.split(SEP)[0];
 
 /** Calls `setTheme` now and whenever the app theme's editor theme changes: at once for another
  * theme, and at most every `EDITOR_THEME_THROTTLE_MS` while one theme's colours change (the last

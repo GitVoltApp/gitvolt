@@ -66,6 +66,9 @@ ureq = "3.4.2"
 dirs = "7.0.0"
 # The GLib program name (WM_CLASS) for the app window; already in the tree through gtk4.
 glib = "0.22"
+# GNOME's window button layout for the title bar (gitvolt-app chrome.rs), from GSettings.
+# Already in the tree through gtk4; same version.
+gio = "0.22"
 # Pre-release: the only line compatible with tauri 3 alpha. Only its free function
 # `open_url` is used; the plugin isn't registered and there's no JS package (plan 1C does the same).
 tauri-plugin-opener = "=3.0.0-alpha.3"

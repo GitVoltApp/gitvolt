@@ -66,6 +66,7 @@
     "readingLineWidth": 0,
     "relativeDates": false,
     "syncButton": "fetchAll",
+    "systemTitleBar": false,
     "theme": "default-dark",
     "uiFontFamily": "",
     "updateArchMethod": null,

@@ -7,10 +7,11 @@ import {
 } from '../../theme/fontSettings';
 import { displayChord } from '../../ui/platformKeys';
 import { appSetting, storeBinding } from '../bindings';
+import { switchControl } from '../frame/controls';
 import { NumberField } from '../frame/fields';
 import type { FontRole } from '../frame/FontPicker';
 import { FontSetting, ReadingFontPreview, UiFontPreview } from '../frame/FontSetting';
-import { registerSettings, registerSettingsPage } from '../registry';
+import { registerSettings, registerSettingsPage, type SettingDef } from '../registry';
 
 const DENSITY_LABELS: Record<Density, string> = { compact: 'Compact', standard: 'Standard', comfortable: 'Comfortable' };
 
@@ -59,6 +60,14 @@ function ReadingWidthControl() {
   return <NumberField id="readingLineWidth" value={clampReadingWidth(ch)} min={READING_WIDTH_MIN} max={READING_WIDTH_MAX} step={1} blank={0} blankStart={READING_WIDTH_START} placeholder="None" onCommit={(v) => save({ readingLineWidth: v })} />;
 }
 
+/** "Use the system title bar": only where GitVolt draws its own (Linux, the app's window). */
+export const SYSTEM_TITLE_BAR: SettingDef = {
+  id: 'systemTitleBar', label: 'Use the system title bar', page: 'appearance', group: 'Window',
+  keywords: 'title bar titlebar window frame decorations buttons minimize maximize close native gnome desktop',
+  description: 'The desktop\'s own title bar and window frame instead of GitVolt\'s, with ☰ back in the tab bar. Takes effect when GitVolt restarts. An X11 session always has the desktop\'s.',
+  Control: switchControl('systemTitleBar'), binding: appSetting('systemTitleBar', false),
+};
+
 const offs = [
   registerSettingsPage({ id: 'appearance', label: 'Appearance', scope: 'app', order: 20, icon: Type, summary: 'Density and fonts. The theme and colours are under Theme, the editor font under Diffs and editors, the zoom in the status bar.' }),
   registerSettings([
@@ -99,6 +108,7 @@ const offs = [
       description: `The longest line in the Markdown view and the rendered diff, in characters, 20 to 240. Empty: none (their usual 880 px column); + from there starts at ${READING_WIDTH_START}.`,
       Control: ReadingWidthControl, binding: appSetting('readingLineWidth', F.readingLineWidth),
     },
+    ...(typeof window !== 'undefined' && window.__GITVOLT_WINDOW__?.platform === 'linux' ? [SYSTEM_TITLE_BAR] : []),
   ]),
 ];
 import.meta.hot?.dispose(() => offs.forEach((off) => off()));

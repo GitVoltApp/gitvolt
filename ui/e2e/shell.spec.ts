@@ -29,7 +29,7 @@ async function emit(page: Page, event: object) {
 
 test.describe('shell', () => {
   // One repo and page for these (each was a test of its own, paying for a page load).
-  test('a refs-updated event refreshes in place, a file change updates the WIP row live, and the open tabs come back after a reload', async ({ page }) => {
+  test('a refs-updated event refreshes in place, a file change updates the WIP row live, the open tabs come back after a reload, and the title bar', async ({ page }) => {
     const repo = freshFixture('basic');
     await page.goto(openUrl(repo));
     await test.step('a refs-updated event refreshes in place, keeping the selected commit selected', async () => {
@@ -56,10 +56,53 @@ test.describe('shell', () => {
     await test.step('restores open tabs after a reload', async () => {
       await expect(graph(page)).toBeVisible();
       await page.evaluate(() => window.__gb!.flush());
+      // The reloaded page is the app's window on Linux, for the title bar step below: what the
+      // app's initialization script hands over (gitvolt-app chrome.rs). There's no window here,
+      // so its calls are recorded (`window.__gbWindowCalls`).
+      await page.addInitScript(() => {
+        window.__GITVOLT_WINDOW__ = { frame: 'custom', platform: 'linux', layout: 'appmenu:minimize,maximize,close', doubleClick: 'toggle-maximize', middleClick: 'lower', rightClick: 'menu' };
+      });
       await page.goto('/');
       await expect(graph(page)).toBeVisible();
       await expect(page.getByText("Merge branch 'feature/login'")).toBeVisible();
       await expect(page.locator('.tab-page')).toHaveCount(1);
+    });
+    await test.step("GitVolt's own title bar: ☰ moves up into it, its buttons and clicks ask the window", async () => {
+      const bar = page.locator('.title-bar');
+      const calls = () => page.evaluate(() => window.__gbWindowCalls?.splice(0) ?? []);
+      await expect(bar.getByRole('button', { name: 'Menu' })).toBeVisible();
+      await expect(page.locator('.tab-bar').getByRole('button', { name: 'Menu' })).toHaveCount(0);
+      await expect(bar.locator('.title-bar-title')).toHaveText(/^GitVolt — /);
+      // 30 px, right above the tab bar.
+      const [title, tabs] = await Promise.all([bar.boundingBox(), page.locator('.tab-bar').boundingBox()]);
+      expect([title!.y, title!.height, tabs!.y]).toEqual([0, 30, 30]);
+      // ☰ opens the app menu from up here.
+      await bar.getByRole('button', { name: 'Menu' }).click();
+      await expect(page.getByRole('menu', { name: 'Menu' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await bar.getByRole('button', { name: 'Minimize' }).click();
+      await bar.getByRole('button', { name: 'Maximize' }).click();
+      await expect(page.locator('.window-edges')).toHaveCount(0);
+      await bar.getByRole('button', { name: 'Restore' }).click();
+      await expect(page.locator('.window-edge')).toHaveCount(8);
+      await page.locator('.window-edge-se').dispatchEvent('mousedown', { button: 0 });
+      expect(await calls()).toEqual(['minimize', 'toggleMaximize', 'toggleMaximize', 'startResizeDragging:SouthEast']);
+      // Its title drags the window once the pointer moves; a double click maximizes; a middle
+      // click lowers; a right click asks for the window manager's menu and, with none here,
+      // shows GitVolt's.
+      const box = (await bar.locator('.title-bar-title').boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + 15);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 + 40, box.y + 20);
+      await page.mouse.up();
+      await bar.locator('.title-bar-title').dblclick();
+      await bar.locator('.title-bar-title').click({ button: 'middle' });
+      await bar.locator('.title-bar-title').click({ button: 'right' });
+      await expect(page.getByRole('menuitem', { name: 'Close' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      expect(await calls()).toEqual(['startDragging', 'toggleMaximize', 'windowManager:lower', 'windowManager:menu']);
+      await bar.getByRole('button', { name: 'Close' }).click();
+      expect(await calls()).toEqual(['close']);
     });
   });
 

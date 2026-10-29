@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { editorColors } from '../diff/monaco/theme';
 import exceptions from '../../build/license-exceptions.json';
 import { customThemeDef } from './custom';
-import { bindEditorTheme, bindTokenTheme, currentEditorTheme, currentTokenTheme, EDITOR_THEME_THROTTLE_MS, editorThemeRegistrations, SHIKI_THEMES } from './editorThemes';
+import { bindEditorTheme, bindTokenTheme, currentEditorTheme, currentTokenTheme, EDITOR_THEME_THROTTLE_MS, editorThemeName, editorThemeRegistrations, SHIKI_THEMES } from './editorThemes';
 import { useTheme } from './store';
 import { SHIKI_BUNDLED_THEMES, THEME_IDS, THEMES } from './themes';
 
@@ -63,14 +63,29 @@ describe('custom themes in the editor', () => {
     act(() => useTheme.getState().set(mine({})));
     expect(currentTokenTheme()).toBe('nord');
     const first = currentEditorTheme();
-    expect(first).toMatch(/^nord~[0-9a-z]+$/);
+    expect(first).toMatch(/^nord--[0-9a-z]+$/);
     act(() => useTheme.getState().set(mine({ 'forge-github': '#000000' })));
     expect(currentEditorTheme()).toBe(first);
     act(() => useTheme.getState().set(mine({ 'app-bg0': '#202020' })));
     expect(currentEditorTheme()).not.toBe(first);
-    expect(currentEditorTheme()).toMatch(/^nord~/);
+    expect(currentEditorTheme()).toMatch(/^nord--/);
     act(() => useTheme.getState().set(THEMES.light));
     expect([currentTokenTheme(), currentEditorTheme()]).toEqual(['light-plus', 'light-plus']);
+  });
+
+  it("names every built-in's and custom theme's Monaco theme as Monaco's defineTheme allows (#14)", () => {
+    // standaloneThemeService.js `defineTheme`: anything else is 'Illegal theme name!'.
+    const monacoName = /^[a-z0-9-]+$/i;
+    const builtIns = THEME_IDS.map((id) => THEMES[id].editorTheme);
+    for (const id of THEME_IDS) {
+      expect(editorThemeName(THEMES[id])).toMatch(monacoName);
+      expect(THEMES[id].editorTheme).not.toContain('--');
+      const custom = editorThemeName(customThemeDef({ id: 'custom-0a1b2c3d', name: 'Mine', base: id, colors: { 'app-bg0': '#202020' }, graph: [] }));
+      expect(custom).toMatch(monacoName);
+      // Its base's family, and never a built-in's name.
+      expect(custom.startsWith(`${THEMES[id].editorTheme}--`)).toBe(true);
+      expect(builtIns).not.toContain(custom);
+    }
   });
 
   it("the token theme doesn't move for an edit that keeps the base", () => {

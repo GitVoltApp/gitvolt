@@ -177,6 +177,25 @@ describe('DetailsPanel', () => {
     for (const state of seen) expect([second, first]).toContainEqual(state);
   });
 
+  it("another commit's message starts at its top; the same commit refreshed keeps the reader's place (#13)", async () => {
+    const store = createRepoViewStore(1, '/r', graph, loadedServices());
+    renderPanel(store);
+    await act(async () => store.getState().selectRow(1));
+    const message = screen.getByTestId('commit-message');
+    expect(message).toHaveTextContent('Second');
+    message.scrollTop = 120;
+    // A fetch brings a new commit in above it: the same commit, re-rendered at another row.
+    const C = 'c'.repeat(40);
+    await act(async () => store.getState().setGraph({ ...graph, rows: [wipRow, commit(C, 'Third'), ...graph.rows.slice(1)] }));
+    expect(store.getState().panel?.selection).toMatchObject({ kind: 'commit', id: A });
+    expect(screen.getByTestId('commit-message')).toBe(message);
+    expect(message.scrollTop).toBe(120);
+    await act(async () => store.getState().selectRow(3));
+    expect(screen.getByTestId('commit-message')).toBe(message);
+    expect(message).toHaveTextContent('First');
+    expect(message.scrollTop).toBe(0);
+  });
+
   it('the WIP row shows its header and its Unstaged and Staged lists, re-read on every selection (deviation 9)', async () => {
     let reads = 0;
     api.fileList.mockImplementation(async (_repo: number, spec: DiffSpec) => {

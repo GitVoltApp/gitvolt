@@ -1,7 +1,7 @@
 # Privacy
 
 GitVolt has no accounts, servers or cloud service of its own. It talks only to your git remotes,
-to the GitHub, GitLab and Forgejo accounts you add, to Gravatar, and to GitHub for its own updates. This page lists every network request
+to the GitHub, GitLab and Forgejo accounts you add, to Gravatar and GitHub's avatar host, and to GitHub for its own updates. This page lists every network request
 the app makes, what each one sends, and how to turn it off. It also lists what GitVolt keeps on
 your computer and how to delete it.
 
@@ -106,9 +106,9 @@ Setting: Settings › General › **Check for updates automatically** (on by def
 
 ### Avatars
 
-Avatars are looked up in this order: the forge that hosts the repository, then Gravatar, then, as
-a last step, the repository's own forge project again. If none of these finds one, GitVolt shows
-the author's initials. Results are cached on disk under the SHA-256 hash of the email: an avatar
+Avatars are looked up in this order: the forge that hosts the repository, then Gravatar, then the
+repository's own forge project again, then, for a GitHub noreply address with a user id, GitHub's
+public avatar host. If none of these finds one, GitVolt shows the author's initials. Results are cached on disk under the SHA-256 hash of the email: an avatar
 that was found for 7 days, a "no avatar" for 1 day.
 
 **From your forge accounts.** Setting: Settings › Graph › Avatars › **From your forge
@@ -147,6 +147,21 @@ accounts** (on by default).
 - After a network error, GitVolt makes no Gravatar request for 3 minutes.
 - **Turn off:** uncheck the setting. GitVolt then makes no request to Gravatar, including for
   Gravatar links a forge returns.
+
+**GitHub noreply addresses, without an account.** Settings: both **From your forge accounts**
+and **From Gravatar** (on by default).
+
+- **When:** a commit author's email is `<id>+<login>@users.noreply.github.com` (GitHub's "Keep
+  my email addresses private") and no step above found an avatar, even if you have no GitHub
+  account in GitVolt.
+- **What is sent:** GitVolt requests `https://avatars.githubusercontent.com/u/<id>?s=80&v=4`.
+  Only the numeric user id goes out, in the URL path; never the email or the login, and never a
+  token or cookie, even when you have a GitHub account. GitHub sees your IP address.
+- The older `<login>@users.noreply.github.com` form has no id, so it gets no request here; only
+  a GitHub account on the repository's forge looks it up (above).
+- The answer is cached like a Gravatar one. After a network error, GitVolt makes no request to
+  this host for 3 minutes.
+- **Turn off:** uncheck either setting.
 
 ### Images and videos in rendered Markdown
 

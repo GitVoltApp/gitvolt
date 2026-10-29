@@ -168,7 +168,8 @@ pub enum Request {
     /// `repo`: the tab asking. Only the accounts on its remotes' hosts are asked (first by email,
     /// `ForgeHub::avatar`); without `repo`, no forge is. Its forge target, if any, is asked last who
     /// the email's commits belong to (GitHub), then who has the commit author's `name`
-    /// (`ForgeHub::author_avatar`).
+    /// (`ForgeHub::author_avatar`). A GitHub noreply address skips Gravatar; one with a user id
+    /// gets, last, GitHub's public picture for that id (`AvatarProvider::github_noreply_avatar`).
     Avatar {
         email: String,
         #[serde(default)]
@@ -2602,12 +2603,11 @@ impl Api {
                     return to_json(Some(found));
                 }
                 // --- end 4A T6 ---
-                if crate::avatar::is_github_noreply(&email) {
-                    return to_json(Option::<AvatarPayload>::None);
-                }
+                // No Gravatar can exist for a GitHub noreply address; the steps after still run.
+                let noreply = crate::avatar::is_github_noreply(&email);
                 let gravatar = match &self.avatars {
-                    Some(p) => p.avatar(&email).await,
-                    None => Ok(None),
+                    Some(p) if !noreply => p.avatar(&email).await,
+                    _ => Ok(None),
                 };
                 if let Ok(Some(found)) = gravatar {
                     return to_json(Some(found));
@@ -2621,6 +2621,15 @@ impl Api {
                     return to_json(Some(found));
                 }
                 // --- end GitHub commit-author avatars ---
+                // Account-less, for an `<id>+<login>` noreply address: GitHub's picture by the id
+                // alone. Both settings must be on: it asks a forge, and it loads an avatar.
+                if forge_avatars
+                    && crate::avatar::github_noreply_id(&email).is_some()
+                    && let Some(p) = &self.avatars
+                    && let Ok(Some(found)) = p.github_noreply_avatar(&email).await
+                {
+                    return to_json(Some(found));
+                }
                 to_json(gravatar?)
             }
             Request::ForgeAvatarImage { url } => {
@@ -4602,24 +4611,75 @@ mod tests {
     }
 
     /// GitHub's web-flow committer and the users.noreply forms never reach Gravatar (no request
-    /// can find them there): they answer "no avatar" at once.
+    /// can find them there), but the steps after it still run (issue #12): the repo's forge
+    /// project, then, for an `<id>+<login>` address, GitHub's picture by the id alone.
     #[tokio::test]
     async fn github_noreply_emails_never_ask_gravatar() {
-        struct Counting(std::sync::atomic::AtomicUsize);
+        use crate::forge::fake::{project, FakeConnector, FakeProvider, MemTokens};
+        use crate::forge::{ForgeKind, TokenStorage};
+        use std::sync::atomic::Ordering::SeqCst;
+        const TOKEN: &str = "ghp_FAKE_test_token";
+        const HOST: &str = "github.com";
+        const ID_FORM: &str = "583231+octocat@users.noreply.github.com";
+        const LOGIN_FORM: &str = "oldstyle@users.noreply.github.com";
+        let png = |b: &str| crate::avatar::AvatarPayload { mime: "image/png".into(), base64: b.into() };
+        #[derive(Default)]
+        struct Counting {
+            gravatar: std::sync::atomic::AtomicUsize,
+            github: Mutex<Vec<String>>,
+        }
         impl crate::avatar::AvatarProvider for Counting {
             fn avatar<'a>(&'a self, _: &'a str) -> crate::avatar::AvatarFuture<'a> {
-                self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                self.gravatar.fetch_add(1, SeqCst);
                 Box::pin(async { Ok(None) })
             }
+            fn github_noreply_avatar<'a>(&'a self, email: &'a str) -> crate::avatar::AvatarFuture<'a> {
+                self.github.lock().unwrap().push(email.to_string());
+                Box::pin(async { Ok(Some(crate::avatar::AvatarPayload { mime: "image/png".into(), base64: "R0lU".into() })) })
+            }
         }
-        let counting = Arc::new(Counting(Default::default()));
-        let api = api().with_avatars(counting.clone());
-        for email in ["noreply@github.com", " NoReply@GitHub.com", "583231+octocat@users.noreply.github.com", "octocat@users.noreply.github.com"] {
-            assert!(api.dispatch(req(serde_json::json!({"method": "avatar", "params": {"email": email}}))).await.unwrap().is_null(), "{email}");
+        async fn ask(api: &Api, params: serde_json::Value) -> Result<serde_json::Value, GbError> {
+            api.dispatch(req(serde_json::json!({"method": "avatar", "params": params}))).await
         }
-        assert_eq!(counting.0.load(std::sync::atomic::Ordering::SeqCst), 0, "no Gravatar lookup");
-        api.dispatch(req(serde_json::json!({"method": "avatar", "params": {"email": "noreply@example.com"}}))).await.unwrap();
-        assert_eq!(counting.0.load(std::sync::atomic::Ordering::SeqCst), 1, "only GitHub's addresses");
+
+        // No forge account: Gravatar is skipped, and only the id form gets GitHub's picture.
+        let counting = Arc::new(Counting::default());
+        let alone = api().with_avatars(counting.clone());
+        for email in ["noreply@github.com", " NoReply@GitHub.com", LOGIN_FORM] {
+            assert!(ask(&alone, serde_json::json!({"email": email})).await.unwrap().is_null(), "{email}");
+        }
+        assert_eq!(ask(&alone, serde_json::json!({"email": ID_FORM})).await.unwrap()["base64"], "R0lU");
+        assert_eq!(counting.gravatar.load(SeqCst), 0, "no Gravatar lookup");
+        assert_eq!(*counting.github.lock().unwrap(), [ID_FORM], "never by login");
+        ask(&alone, serde_json::json!({"email": "noreply@example.com"})).await.unwrap();
+        assert_eq!(counting.gravatar.load(SeqCst), 1, "only GitHub's addresses");
+        alone.dispatch(req(serde_json::json!({"method": "saveSettings", "params": {"settings": {"forgeAvatars": false}}}))).await.unwrap();
+        assert!(ask(&alone, serde_json::json!({"email": ID_FORM})).await.unwrap().is_null());
+        assert_eq!(counting.github.lock().unwrap().len(), 1, "forge avatars off: GitHub isn't asked");
+
+        // The repo's forge project: noreply addresses reach the commit-author steps, before the
+        // account-less fallback.
+        let mut p = FakeProvider::new(ForgeKind::GitHub, HOST);
+        p.projects.lock().unwrap().insert("octo-org/widget".into(), project(HOST, "octo-org/widget", None, 1));
+        p.avatars.insert(format!("in:{LOGIN_FORM}"), png("QVVUSA=="));
+        let conn = Arc::new(FakeConnector::default());
+        let fake = conn.add(TOKEN, p);
+        let counting = Arc::new(Counting::default());
+        let api = api().with_avatars(counting.clone()).with_forge(conn, MemTokens::new(TokenStorage::Keyring));
+        api.dispatch(req(serde_json::json!({"method": "addForgeAccount", "params": {"host": HOST, "kind": "github", "token": TOKEN}}))).await.unwrap();
+        let r = TestRepo::new();
+        r.commit("a");
+        r.git(&["remote", "add", "origin", &format!("https://{HOST}/octo-org/widget.git")]);
+        let id = open(&api, &r).await as u32;
+        let authors = || fake.calls().into_iter().filter(|c| c.starts_with("author") || c.starts_with("avatar ")).collect::<Vec<_>>();
+        assert_eq!(ask(&api, serde_json::json!({"email": LOGIN_FORM, "repo": id})).await.unwrap()["base64"], "QVVUSA==");
+        assert_eq!(authors(), [format!("avatar {LOGIN_FORM}"), format!("author_in octo-org/widget {LOGIN_FORM}")]);
+        assert_eq!(ask(&api, serde_json::json!({"email": ID_FORM, "repo": id, "name": "Octo Cat"})).await.unwrap()["base64"], "R0lU");
+        assert_eq!(authors()[2..], [format!("avatar {ID_FORM}"), format!("author_in octo-org/widget {ID_FORM}"), format!("author_name {ID_FORM} Octo Cat")]);
+        assert_eq!(*counting.github.lock().unwrap(), [ID_FORM], "last");
+        assert!(ask(&api, serde_json::json!({"email": "noreply@github.com", "repo": id, "name": "GitHub"})).await.unwrap().is_null());
+        assert_eq!(authors().len(), 6, "the web-flow committer: only the first step");
+        assert_eq!(counting.gravatar.load(SeqCst), 0);
     }
 
     #[tokio::test]

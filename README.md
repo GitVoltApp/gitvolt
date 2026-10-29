@@ -47,8 +47,8 @@ Download the package for your system from the
   or `GitVolt_<version>_x64.msi` (installs for all users). They aren't code-signed yet, so
   Windows SmartScreen warns the first time: **More info** › **Run anyway**.
 - **macOS (Apple Silicon):** open `GitVolt_<version>_aarch64.dmg` and drag GitVolt to
-  Applications. The app is ad-hoc signed, not signed with an Apple Developer ID or notarized, so
-  the first launch is blocked ("Apple could not verify…"). Either run
+  Applications. The app is signed with GitVolt's own certificate, not an Apple Developer ID, and
+  isn't notarized, so the first launch is blocked ("Apple could not verify…"). Either run
   `xattr -dr com.apple.quarantine /Applications/GitVolt.app` once, or try to open it, then
   go to System Settings › Privacy & Security and click **Open Anyway**.
 

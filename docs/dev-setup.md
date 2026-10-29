@@ -611,7 +611,9 @@ and the pinned Tauri CLI (`cargo install tauri-cli --version =3.0.0-alpha.5 --lo
     `Info.plist`;
   - `Contents/Resources/dictionaries/en-US-10-2.bdic`, the spell-check dictionary;
   - an ad-hoc signature (`signingIdentity: "-"`), inside out, with the hardened runtime and the
-    entitlements CEF needs (JIT, unsigned executable memory, no library validation);
+    entitlements CEF needs (JIT, unsigned executable memory, no library validation); `just
+    package-macos` signs with an identity instead when `GITVOLT_MACOS_SIGNING_IDENTITY` names one
+    (docs/releasing.md, "macOS signing");
   - `Info.plist` with the folder document type (`packaging/macos/Info.plist`, merged in).
 - **The package:** `just package-macos` builds the release bundle and
   `target/release/bundle/dmg/GitVolt_<version>_aarch64.dmg`, then checks both
@@ -621,7 +623,7 @@ and the pinned Tauri CLI (`cargo install tauri-cli --version =3.0.0-alpha.5 --lo
   dropped on the Dock icon, `open -a <bundle> <folder>`), which arrive as Tauri's
   `RunEvent::Opened` and open in a tab like a later launch's path. A launch argument still works
   when the binary is started directly.
-- **The sandbox:** the helpers enter Chromium's Seatbelt sandbox, ad-hoc signed as they are; a
+- **The sandbox:** the helpers enter Chromium's Seatbelt sandbox, ad-hoc or self-signed; a
   release build asks for it outright (`SandboxPolicy::Required`, SECURITY.md).
 - **A throwaway instance driven over CDP** (debug builds only), as on Windows:
   `GITVOLT_DEV_DIRS=<absolute dir> GITVOLT_DEV_CDP_PORT=9333 GitVolt.app/Contents/MacOS/GitVolt

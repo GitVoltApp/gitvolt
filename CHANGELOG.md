@@ -5,6 +5,17 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **GitVolt draws its own title bar on Linux** (in a Wayland session), 30 px above the tab bar: ☰ (moved up from the
+  tab bar) at its start, the window's title in the middle, and the window buttons where GNOME's
+  `button-layout` puts them (stock GNOME: close only; a left-side layout puts them before ☰).
+  It behaves like the desktop's: dragging its empty space, or the tab strip's, moves the window
+  (edge tiling and snapping included), and a double, middle or right click does what GNOME's
+  title bar settings say (maximise, lower, the window menu). The window's edges and corners
+  resize it. **Settings › Appearance › Use the system title bar** brings back the desktop's
+  title bar and frame, from the next start.
+
 ### Fixed
 
 - **A review that only commented shows.** The Reviews card said "No reviews yet" (and the hover
@@ -20,6 +31,24 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   name doesn't say is asked which forge it runs, without a token (`/api/v1/version`, then
   `/api/v4/version`), once you leave the Host field or click Create token or Add account, so a
   self-hosted Forgejo such as `git.example.dev` picks Forgejo by itself.
+- **Custom themes in the editor:** switching to a custom theme left the editor in the old
+  theme's colours, and after a restart the editor failed to load with "Illegal theme name!".
+  Should the editor ever refuse a custom theme's colours again, it falls back to the base
+  theme's instead of failing to load (#14).
+- **A commit's description starts at its top** when you select another commit; it kept the
+  previous one's scroll position. A refresh of the same commit (after a fetch) keeps your
+  place (#13).
+- **Avatars for GitHub's private commit emails.** An author whose commits use
+  `<id>+<login>@users.noreply.github.com` ("Keep my email addresses private") now gets their
+  GitHub avatar even without a GitHub account in GitVolt: the core asks
+  `avatars.githubusercontent.com` by the numeric user id alone, with no token, when both avatar
+  settings are on. Noreply addresses also reach the repository's own forge project again; they
+  still skip Gravatar. (#12)
+- **macOS remembers folder permissions across updates.** The app is now signed with a stable
+  self-signed certificate instead of an ad-hoc signature, which changed with every build. After
+  one more round of prompts with this update, folder access (Downloads and the like, in Privacy &
+  Security) carries over to later updates. The Keychain still asks again after an update: it
+  keys its "Always Allow" to the build itself for apps without an Apple Developer ID (#11).
 
 ## [1.2.0] - 2026-10-29
 

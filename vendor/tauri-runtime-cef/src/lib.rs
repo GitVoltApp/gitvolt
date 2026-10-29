@@ -55,5 +55,5 @@ pub use tauri_ext::*;
 /// Marks the application entry point so non-browser CEF processes (renderer, GPU, ...) are handled.
 pub use tauri_macros::cef_entry_point;
 pub use webview::*;
-pub use window::{CefWindowDispatcher, NativeWindowToken};
+pub use window::{CefWindowDispatcher, NativeWindowToken, WindowManagerRequest};
 pub use window_builder::WindowBuilderWrapper;

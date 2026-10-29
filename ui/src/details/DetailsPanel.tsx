@@ -139,6 +139,12 @@ function CommitDetails({ panel, ratio, ref }: { panel: PanelContent; ratio: numb
   useEffect(() => {
     if (readyId) perf.done('details');
   }, [readyId]);
+  // Another commit's message reads from its top (#13); the same commit refreshed (a fetch, a
+  // re-render) keeps where the reader was. Before paint, so the old position never shows.
+  const messageRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (messageRef.current) messageRef.current.scrollTop = 0;
+  }, [selectedId]);
   // The header stays put; only the message scrolls (feedback F13). The section's height is the
   // split's share of the panel (its live drag writes flexBasis to this node directly: see
   // SplitResizer).
@@ -146,7 +152,7 @@ function CommitDetails({ panel, ratio, ref }: { panel: PanelContent; ratio: numb
     <div ref={ref} className="commit-details" style={{ flexBasis: `${ratio * 100}%` }}>
       {details.status === 'ready' && <CommitHeader d={details.data} />}
       {details.status === 'error' && <div role="alert" className="details-error">{details.message}</div>}
-      <div className="commit-message message-box" data-testid="commit-message">
+      <div ref={messageRef} className="commit-message message-box" data-testid="commit-message">
         {editing && message.status === 'ready' && (canEdit || older) ? (
           <HeadMessageEditor ctx={{ tabId, repoId, worktree }} head={editing} older={older ?? undefined} message={message.data} onDone={() => setEditing(null)} />
         ) : message.status === 'ready' ? (

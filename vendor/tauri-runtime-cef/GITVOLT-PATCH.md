@@ -201,6 +201,63 @@ says.
   - `src/window.rs`: `apply_pending_pointer_leaves()`; `src/runtime.rs`: `about_to_wait` calls it
     after `apply_pending_host_layouts()`.
   - `src/platform/linux/mod.rs`: `mod pointer;`.
+- A window that draws its own title bar (below):
+  - `src/platform/linux/chrome.rs` (new): `begin_move_resize()`, `show_window_menu()`, `lower()`,
+    the pure `moveresize_direction()` / `moveresize_data()` / `window_menu_data()` /
+    `button_held()` and their unit tests.
+  - `src/platform/linux/window.rs`: `AppWindow::begin_move_resize()` and
+    `AppWindow::window_manager_request()`; `src/platform/linux/mod.rs`: `mod chrome;`.
+  - `src/window.rs`: the public `WindowManagerRequest`, `WindowMessage::WindowManager`, its
+    handler, a no-op `window_manager_request` off X11, and `StartDragging` /
+    `StartResizeDragging` going to `begin_move_resize` on Linux/BSD (winit's calls elsewhere;
+    `tauri_resize_direction_to_winit` is compiled only there).
+  - `src/webview.rs`: `CefWebviewDispatcher::window_manager_request()`; `src/tauri_ext.rs`:
+    `WebviewCefExt::window_manager_request()`; `src/lib.rs`: exports `WindowManagerRequest`.
+
+## A window that draws its own title bar (Linux, X11)
+
+GitVolt draws its own title bar on Linux (`crates/gitvolt-app/src/chrome.rs`), with the window
+built undecorated (`decorations(false)`: GDK sets `_MOTIF_WM_HINTS` decorations to 0, functions
+all). What the runtime lacked for that:
+
+- **`start_dragging` and `start_resize_dragging` did nothing.** winit-gtk4's `drag_window` and
+  `drag_resize_window` call GDK's `begin_move` / `begin_resize` with the last button press GTK
+  saw, and GTK never sees one: presses go to the CEF browsers, foreign X children of the
+  `CefX11Host`. Both failed with "requires a pointer button press". **Fix:** on X11 the runtime
+  asks the window manager itself, as GDK does (`wmspec_moveresize`): `XQueryPointer` for the
+  root position and the button state, `XUngrabPointer` on CEF's display, then an EWMH
+  `_NET_WM_MOVERESIZE` client message to the root window (root x, y, the direction: 0-7 for the
+  edges clockwise from the top left, 8 for a move; button 1; source 1). Only while button 1 is
+  still down: the request comes over IPC after the press, and a click released before it would
+  otherwise leave a window manager other than mutter moving the window with no button held.
+- **No window menu, and no lowering.** Tauri's runtime API has neither. **Fix:**
+  `WindowManagerRequest::{ShowMenu, Lower}`, through `WebviewCefExt::window_manager_request`:
+  `_GTK_SHOW_WINDOW_MENU` (device 2, root x, y, as GDK sends it), only when the window manager
+  lists it in `_NET_SUPPORTED`, and `XLowerWindow`. Each answers whether it was asked, so the
+  app can show a menu of its own where there's none.
+- Maximise, minimise and `is_maximized` already worked through winit-gtk4 (GTK's
+  `notify::maximized` keeps the state when the window manager maximizes it).
+
+**Evidence** (headless GNOME Shell 50 with Xwayland in a container, real compositor input through
+`org.gnome.Mutter.RemoteDesktop`, the app's debug build): a title bar drag moves the window by the
+pointer's travel; dragging to the top edge maximizes (mutter's preview shows during the drag) and
+to the left edge tiles to the left half (on a 2400 px monitor: GitVolt's 900 px minimum width
+can't tile on a 1600 px one); a resize from the bottom-right corner, the left edge and the top
+edge changes the window by exactly the pointer's travel, with the matching cursors; a right
+click shows mutter's window menu at the pointer; a middle click (with GNOME's middle-click
+action set to `lower`) puts it under another window in `_NET_CLIENT_LIST_STACKING`. After a
+move the page gets its `mouseup` back (Xwayland releases the held buttons when the pointer
+re-enters), so no button stays stuck.
+
+**Not on a plain X server.** The pointer grab of the press belongs to Chromium's X connection;
+`cef_get_xdisplay` is another connection, so its ungrab releases nothing, the window manager's
+own grab fails, and nothing moves (openbox on Xvfb). Under Xwayland the compositor's grab
+doesn't depend on the X server's, so it works. GitVolt keeps the system frame in an X11
+session. Making it work there would take an input-only X window of the runtime's own over the
+drag regions, so the press (and its grab) is the runtime's, as GTK's title bars have it.
+
+**Tests:** `cargo test -p tauri-runtime-cef --lib chrome` (the direction for each edge, the
+messages' data, the button check).
 
 ## Context menu entries that make no sense in an app window
 

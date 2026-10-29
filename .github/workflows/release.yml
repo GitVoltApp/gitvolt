@@ -1,7 +1,7 @@
 # Release: `just release <version>` commits the version bump and tags it v<version>; pushing them
 # together (git push origin main v<version>, or GitVolt's Push with "Push tags with branches")
 # runs one build, on main: it builds the .deb, the Arch package and the RPM on Linux, the two Windows
-# installers (NSIS and MSI, unsigned for now) and the macOS .dmg (Apple Silicon, ad-hoc signed),
+# installers (NSIS and MSI, unsigned for now) and the macOS .dmg (Apple Silicon, signed with GitVolt's self-signed certificate),
 # checks them, and uploads them with SHA256SUMS to a draft GitHub release for review. Building on main matters for speed: only
 # main's runs save caches (a tag's run can restore main's but not another tag's), so each release
 # warms the next one, while GitHub keeps the caches (7 days unused).
@@ -560,18 +560,30 @@ jobs:
         working-directory: ui
         run: npm ci
 
-      # `just package-macos`: the notices, the release GitVolt.app (ad-hoc signed, with the
-      # install-kind marker and the notices in Contents/Resources) and the .dmg, then their checks:
-      # the signature, inside the mounted image too, and the Applications link.
-      #
-      # Signing and notarization (none yet): a Developer ID identity would replace tauri.macos.conf.json's
-      # ad-hoc "-" (APPLE_SIGNING_IDENTITY and a keychain from secrets), then `xcrun notarytool`
-      # and `stapler` on the .dmg. See docs/releasing.md.
+      # GitVolt's self-signed code-signing certificate, from the repository's secrets, into a
+      # throwaway keychain; it sets GITVOLT_MACOS_SIGNING_IDENTITY for the build. A run on
+      # GitVoltApp/gitvolt must have it; a fork's builds ad-hoc. See docs/releasing.md, "macOS
+      # signing".
+      - name: Signing keychain
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          GITVOLT_MACOS_SIGNING_REQUIRED: ${{ github.repository == 'GitVoltApp/gitvolt' }}
+        run: scripts/macos-keychain.sh import
+
+      # `just package-macos`: the notices, the release GitVolt.app (signed with that identity,
+      # inside out, with the install-kind marker and the notices in Contents/Resources) and the
+      # .dmg, then their checks: the signature and its designated requirement, inside the mounted
+      # image too, and the Applications link. Not notarized (no Apple Developer ID).
       - name: Build the disk image
         env:
           GITVOLT_RELEASE_VERSION: ${{ steps.version.outputs.version }}
           GITVOLT_REBUILD: '1' # the UI build afresh (ui/scripts/build-if-changed.mjs)
         run: CARGO_BUILD_JOBS=$(sysctl -n hw.ncpu) just package-macos
+
+      - name: Delete the signing keychain
+        if: always()
+        run: scripts/macos-keychain.sh delete
 
       - name: Save the CEF archive
         if: steps.cef.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'

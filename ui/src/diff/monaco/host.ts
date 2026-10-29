@@ -14,8 +14,7 @@ import { ReviewZones, type ReviewZoneSpec } from './reviewZones';
 import { followEditorSettings, loadEditorFont, monaco, openLinksInBrowser } from './setup';
 import { useAppState } from '../../app/state';
 import { bindEditorTheme } from '../../theme/editorThemes';
-import { useTheme } from '../../theme/store';
-import { appEditorTheme, defineEditorTheme, ensureLanguage, ensureTheme } from './shiki';
+import { appEditorTheme, ensureLanguage, ensureTheme, setAppEditorTheme } from './shiki';
 
 /** A line to open a diff at (a diff note's `file:line`): on the new side (`modified`) or the old;
  * with `end`, the lines `line` to `end` (a multi-line note's `file:start-end`). */
@@ -1050,7 +1049,7 @@ function bindEditorThemeOnce(): void {
   if (themeBound) return;
   themeBound = true;
   // Defined as it comes: each colour edit of a custom theme is a new name (shiki.ts).
-  bindEditorTheme(() => monaco.editor.setTheme(defineEditorTheme(monaco, useTheme.getState().def)));
+  bindEditorTheme(() => setAppEditorTheme(monaco));
 }
 
 /** The app's one host. The editor theme is defined before it's handed out, so the first editor

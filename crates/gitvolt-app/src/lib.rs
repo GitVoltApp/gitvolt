@@ -21,6 +21,7 @@ use tauri::{Emitter, Manager, WebviewWindowBuilder};
 use tauri_runtime_cef::Cef;
 use tokio::sync::broadcast::error::RecvError;
 
+mod chrome;
 mod csp;
 mod desktop;
 mod menu;
@@ -29,6 +30,20 @@ mod window_state;
 #[tauri::command]
 async fn api(state: tauri::State<'_, Arc<Api>>, req: Request) -> Result<serde_json::Value, GbError> {
     state.dispatch(req).await
+}
+
+/// The title bar's requests the Tauri window API has no call for (chrome.rs): the window
+/// manager's window menu (`menu`) and lowering the window (`lower`). Whether the window manager
+/// was asked; the UI shows its own menu when it wasn't.
+#[tauri::command]
+async fn window_manager(window: tauri::WebviewWindow<tauri::DynRuntime>, request: String) -> Result<bool, String> {
+    use tauri_runtime_cef::{WebviewCefExt, WindowManagerRequest};
+    let request = match request.as_str() {
+        "menu" => WindowManagerRequest::ShowMenu,
+        "lower" => WindowManagerRequest::Lower,
+        other => return Err(format!("unknown window manager request {other:?}")),
+    };
+    window.window_manager_request(request).map_err(|e| e.to_string())
 }
 
 // A release build of the app never contains the test-only API. `gitvolt-core`'s `testing`
@@ -397,7 +412,7 @@ pub fn run() {
         .runtime(cef_runtime())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(backend)
-        .invoke_handler(tauri::generate_handler![api])
+        .invoke_handler(tauri::generate_handler![api, window_manager])
         // The CEF runtime's window isn't created from `tauri.conf.json`'s `app.windows` the way
         // wry's is; `tauri.conf.json` sets `create: false` on the main window, and it's built
         // here from that same config (matches the CEF spike's `src-tauri/src/main.rs`).
@@ -443,7 +458,18 @@ pub fn run() {
             let primary = app.primary_monitor().ok().flatten();
             let (screens, primary) = window_state::screens(&available, primary.as_ref());
             let place = saved.as_ref().and_then(|g| window_state::placement(g, &screens, primary, can_position));
-            let mut builder = WebviewWindowBuilder::from_config(app.handle(), &cfg)?;
+            // GitVolt's own title bar (chrome.rs), unless the user asked for the system's; the
+            // page knows which before its first render.
+            let custom = chrome::custom_frame(window_store.state().settings.system_title_bar, std::env::var("WAYLAND_DISPLAY").ok().as_deref());
+            #[cfg(target_os = "linux")]
+            let gnome = chrome::gnome::settings();
+            #[cfg(target_os = "linux")]
+            let read = gnome.clone().map(|s| move |key: &str| chrome::gnome::read(&s, key));
+            #[cfg(target_os = "linux")]
+            let current = chrome::chrome(custom, read.as_ref().map(|r| r as chrome::SettingReader<'_>));
+            #[cfg(not(target_os = "linux"))]
+            let current = chrome::chrome(custom, None);
+            let mut builder = WebviewWindowBuilder::from_config(app.handle(), &cfg)?.decorations(!custom).initialization_script(chrome::init_script(&current));
             // Workers get the page's Content Security Policy too (csp.rs).
             if let Some(policy) = csp::policy(app.config()) {
                 builder = builder.on_web_resource_request(move |_, response| csp::add_policy(&policy, response));
@@ -472,6 +498,19 @@ pub fn run() {
                 window_state::settle(&window, p, &screens, veil);
             }
             window_state::track(&window, window_store.clone(), can_position, (cfg.width, cfg.height));
+            // GNOME's button layout and title bar clicks, followed as they change. The settings
+            // object lives as long as the app.
+            #[cfg(target_os = "linux")]
+            if let Some(settings) = gnome {
+                let target = window.clone();
+                chrome::gnome::watch(&settings, move |s| {
+                    let read = |key: &str| chrome::gnome::read(s, key);
+                    if let Err(e) = target.emit(chrome::CHROME_EVENT, chrome::chrome(custom, Some(&read))) {
+                        tracing::warn!("emit {} failed: {e}", chrome::CHROME_EVENT);
+                    }
+                });
+                std::mem::forget(settings);
+            }
             // R19: answer later launches now that there's a window to focus. One that came while
             // this instance was starting has been waiting in the socket, and is answered now
             // (and queued until the page takes it).

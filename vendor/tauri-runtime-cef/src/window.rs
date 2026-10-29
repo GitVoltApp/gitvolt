@@ -114,6 +114,14 @@ pub(crate) fn winit_theme_to_tauri_theme(theme: winit::window::Theme) -> Theme {
   }
 }
 
+// GitVolt patch: X11 resizes go through `platform/linux/chrome.rs`.
+#[cfg(not(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+)))]
 fn tauri_resize_direction_to_winit(
   direction: tauri_runtime::ResizeDirection,
 ) -> winit::window::ResizeDirection {
@@ -417,6 +425,19 @@ pub(crate) enum WindowMessage {
   SetBackgroundColor(Option<Color>),
   StartDragging,
   StartResizeDragging(tauri_runtime::ResizeDirection),
+  /// GitVolt patch: answers whether the window manager was asked.
+  WindowManager(WindowManagerRequest, Sender<Result<bool>>),
+}
+
+/// GitVolt patch: what a window that draws its own title bar asks the window manager for, on
+/// top of `start_dragging`, `start_resize_dragging`, `minimize` and the maximize calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum WindowManagerRequest {
+  /// Its window menu (what a right-click on a title bar shows), at the pointer.
+  ShowMenu,
+  /// The window below the others.
+  Lower,
 }
 
 #[cfg(windows)]
@@ -537,6 +558,20 @@ pub(crate) struct AppWindowAttrs {
     target_os = "openbsd"
   ))]
   pub(crate) transient_for: Option<gtk::Window>,
+}
+
+/// GitVolt patch: only X11 has these requests so far (`platform/linux/chrome.rs`).
+#[cfg(not(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+)))]
+impl AppWindow {
+  pub(crate) fn window_manager_request(&self, _request: WindowManagerRequest) -> bool {
+    false
+  }
 }
 
 impl AppWindow {
@@ -1220,9 +1255,46 @@ impl<T: UserEvent> WinitCefApp<T> {
         #[cfg(windows)]
         appwindow.set_overlay_icon(_icon);
       }
+      // GitVolt patch: on X11 the window manager is asked directly (`platform/linux/chrome.rs`):
+      // winit-gtk4 needs a button press GTK saw, and the presses go to the CEF browsers.
+      #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+      ))]
+      WindowMessage::StartDragging => _ = appwindow.begin_move_resize(None),
+      #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+      ))]
+      WindowMessage::StartResizeDragging(direction) => {
+        _ = appwindow.begin_move_resize(Some(direction));
+      }
+      #[cfg(not(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+      )))]
       WindowMessage::StartDragging => _ = window.drag_window(),
+      #[cfg(not(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+      )))]
       WindowMessage::StartResizeDragging(direction) => {
         let _ = window.drag_resize_window(tauri_resize_direction_to_winit(direction));
+      }
+      WindowMessage::WindowManager(request, tx) => {
+        _ = tx.send(Ok(appwindow.window_manager_request(request)));
       }
       WindowMessage::SetSizeConstraints(constraints) => {
         // TODO: upstream individual width/height size constraints to winit.

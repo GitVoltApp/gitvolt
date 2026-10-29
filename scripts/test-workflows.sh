@@ -2,7 +2,8 @@
 # Self-test for .github/workflows/: every action pinned by commit with its version as a comment,
 # every workflow starting from no permissions (each job asks for what it needs, never write-all),
 # every checkout without persisted credentials, no pull_request_target, no secret but the
-# workflow's own token (nor all of them, through secrets[...] or toJSON(secrets)) and no forced
+# workflow's own token and, in the jobs that build the .dmg, the macOS signing certificate's two
+# (nor all of them, through secrets[...] or toJSON(secrets)) and no forced
 # refspec (+HEAD:, +refs/); the site's deploy only from main and its downloads never force-pushed;
 # then actionlint (with shellcheck on the run: scripts) over the site's workflows, when it's
 # installed.
@@ -21,7 +22,9 @@ for f in "$wf"/*.yml; do
   unpersisted=$(grep -cE '^[[:space:]]*persist-credentials: false$' "$f" || true)
   [ "$checkouts" = "$unpersisted" ] || fail "$name: $checkouts checkouts, $unpersisted with persist-credentials: false"
   if grep -q 'pull_request_target' "$f"; then fail "$name: pull_request_target runs fork code with a write token"; fi
-  others=$(grep -oE 'secrets\.[A-Za-z0-9_]+' "$f" | grep -vx 'secrets.GITHUB_TOKEN' || true)
+  allowed='secrets\.GITHUB_TOKEN'
+  case $name in release.yml|mac-port.yml) allowed+='|secrets\.MACOS_CERTIFICATE_(P12|PASSWORD)' ;; esac
+  others=$(grep -oE 'secrets\.[A-Za-z0-9_]+' "$f" | grep -vxE "$allowed" || true)
   [ -z "$others" ] || fail "$name: secrets other than GITHUB_TOKEN: $others"
   if grep -qiE 'secrets[[:space:]]*\[|tojson\([[:space:]]*secrets' "$f"; then fail "$name: reads secrets by index or all at once"; fi
   if grep -qE '[[:space:]]["'"'"']?\+(HEAD|refs/)' "$f"; then fail "$name: pushes a forced refspec (+HEAD: or +refs/)"; fi
