@@ -128,6 +128,14 @@ describe("the MR/PR view's reviewers and assignees", () => {
     expect(screen.getByRole('button', { name: 'Remove Ada Lovelace' })).toBeEnabled();
   });
 
+  it('on Forgejo, a reviewer who only commented is still asked: their request can be withdrawn', () => {
+    const fj = mrOf(12, { review: { decision: 'none', approvals: 0, approvalsRequired: null, reviews: [{ user: ada, state: 'commented', submittedAt: 1, requested: true }, { user: hubot, state: 'commented', submittedAt: 1 }] } });
+    patchForge('t', { kind: 'forgejo', details: { 12: { value: detailOf(fj, { reviewers: [ada, hubot] }), at: 1 } } });
+    show('forgejo', fj);
+    expect(screen.getByRole('button', { name: 'Remove Ada Lovelace' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Remove Hubot' })).toBeNull();
+  });
+
   // --- MR round 2 ---
   it('a project that allows one reviewer: + is a swap, and the pick replaces the reviewer in one write', async () => {
     api.forgePeopleLimits.mockResolvedValue({ maxReviewers: 1, maxAssignees: 1 });

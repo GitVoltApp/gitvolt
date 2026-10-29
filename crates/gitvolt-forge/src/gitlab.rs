@@ -339,7 +339,7 @@ pub mod json {
     /// The approvals (`/approvals`, any tier) and the review decision.
     pub fn review(v: &Value, approvals: Option<&Value>) -> ReviewSummary {
         let reviews: Vec<ForgeReview> = approvals
-            .map(|a| a["approved_by"].as_array().into_iter().flatten().filter_map(|x| user(&x["user"])).map(|u| ForgeReview { user: u, state: ReviewState::Approved, submitted_at: None }).collect())
+            .map(|a| a["approved_by"].as_array().into_iter().flatten().filter_map(|x| user(&x["user"])).map(|u| ForgeReview { user: u, state: ReviewState::Approved, submitted_at: None, requested: false }).collect())
             .unwrap_or_default();
         let required = approvals.and_then(|a| a["approvals_required"].as_u64()).filter(|n| *n > 0).map(|n| n as u32);
         let count = reviews.len() as u32;

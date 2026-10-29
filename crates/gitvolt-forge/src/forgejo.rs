@@ -220,7 +220,7 @@ pub mod json {
                 decision: if requested.is_empty() { ReviewDecision::None } else { ReviewDecision::ReviewRequired },
                 approvals: 0,
                 approvals_required: None,
-                reviews: requested.into_iter().map(|u| ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None }).collect(),
+                reviews: requested.into_iter().map(|u| ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None, requested: false }).collect(),
             },
             // `mergeable` is false for a draft too, and while Forgejo checks: only an open,
             // ready one's says something about conflicts.
@@ -250,16 +250,23 @@ pub mod json {
         Some(ForgePipeline { status, web_url: Some(web_url.to_string()) })
     }
 
-    /// Each user's latest decisive review (a comment doesn't undo an approval; a dismissal does);
-    /// a review request is pending until a review after it, a comment included. A re-request is a
-    /// `REQUEST_REVIEW` entry in the reviews, so `requested_reviewers` adds only the users with no
-    /// standing review: Forgejo keeps a reviewer there after a comment, and has after an approval.
+    /// Each user's latest decisive review (a comment doesn't undo an approval; a dismissal does,
+    /// back to their comment if they left one); a review request is pending until a review after
+    /// it, a comment included. A re-request is a `REQUEST_REVIEW` entry in the reviews, so
+    /// `requested_reviewers` adds only the users with no standing review. Forgejo keeps a reviewer
+    /// there after a comment (only an approval or a change request answers the request), so that
+    /// request can still be withdrawn; it has kept one after an approval too.
     pub fn review(reviews: &[Value], requested: &Value) -> ReviewSummary {
         let mut latest: Vec<ForgeReview> = Vec::new();
+        // Each user's latest comment, for a dismissal to fall back to.
+        let mut comments: Vec<(u64, Option<i64>)> = Vec::new();
         for r in reviews {
             let Some(u) = user(&r["user"]) else { continue };
             if r["dismissed"].as_bool() == Some(true) {
                 latest.retain(|x| x.user.id != u.id);
+                if let Some(&(_, at)) = comments.iter().find(|c| c.0 == u.id) {
+                    latest.push(ForgeReview { user: u, state: ReviewState::Commented, submitted_at: at, requested: false });
+                }
                 continue;
             }
             let at = r["submitted_at"].as_str().and_then(parse_rfc3339);
@@ -267,7 +274,11 @@ pub mod json {
                 Some("APPROVED") => Some(ReviewState::Approved),
                 Some("REQUEST_CHANGES") => Some(ReviewState::ChangesRequested),
                 Some("REQUEST_REVIEW") => Some(ReviewState::Pending),
-                Some("COMMENT") => None,
+                Some("COMMENT") => {
+                    comments.retain(|c| c.0 != u.id);
+                    comments.push((u.id, at));
+                    None
+                }
                 _ => continue,
             };
             match (latest.iter_mut().find(|x| x.user.id == u.id), state) {
@@ -275,8 +286,8 @@ pub mod json {
                     x.state = s;
                     x.submitted_at = at;
                 }
-                (None, Some(s)) => latest.push(ForgeReview { user: u, state: s, submitted_at: at }),
-                (None, None) => latest.push(ForgeReview { user: u, state: ReviewState::Commented, submitted_at: at }),
+                (None, Some(s)) => latest.push(ForgeReview { user: u, state: s, submitted_at: at, requested: false }),
+                (None, None) => latest.push(ForgeReview { user: u, state: ReviewState::Commented, submitted_at: at, requested: false }),
                 (Some(x), None) if x.state == ReviewState::Pending => {
                     x.state = ReviewState::Commented;
                     x.submitted_at = at;
@@ -285,8 +296,9 @@ pub mod json {
             }
         }
         for u in users(requested) {
-            if !latest.iter().any(|x| x.user.id == u.id) {
-                latest.push(ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None });
+            match latest.iter_mut().find(|x| x.user.id == u.id) {
+                Some(x) => x.requested = x.state == ReviewState::Commented,
+                None => latest.push(ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None, requested: false }),
             }
         }
         let approvals = latest.iter().filter(|x| x.state == ReviewState::Approved).count() as u32;
@@ -1876,6 +1888,15 @@ mod tests {
         assert_eq!(states(json::review(&[r(3, "joan", "COMMENT")], &json!([user(3, "joan")]))), (ReviewDecision::None, vec![ReviewState::Commented]));
         assert_eq!(states(json::review(&[r(3, "joan", "COMMENT"), r(3, "joan", "REQUEST_REVIEW")], &json!([user(3, "joan")]))), (ReviewDecision::ReviewRequired, vec![ReviewState::Pending]));
         assert_eq!(states(json::review(&[r(3, "joan", "APPROVED"), r(3, "joan", "REQUEST_REVIEW"), r(3, "joan", "COMMENT")], &json!([user(3, "joan")]))), (ReviewDecision::None, vec![ReviewState::Commented]));
+        // A commenter still listed can have the request withdrawn; an approver can't.
+        let s = json::review(&[r(3, "joan", "COMMENT"), r(2, "grace", "APPROVED")], &json!([user(3, "joan"), user(2, "grace")]));
+        assert_eq!(s.reviews.iter().map(|x| (x.user.username.as_str(), x.requested)).collect::<Vec<_>>(), [("joan", true), ("grace", false)]);
+        // A dismissed approval falls back to the comment before it, not to nothing.
+        let mut dropped = r(3, "joan", "APPROVED");
+        dropped["dismissed"] = true.into();
+        let s = json::review(&[r(3, "joan", "COMMENT"), r(3, "joan", "APPROVED"), dropped.clone()], &Value::Null);
+        assert_eq!((s.decision, s.reviews[0].state, s.reviews[0].submitted_at.is_some()), (ReviewDecision::None, ReviewState::Commented, true));
+        assert_eq!(states(json::review(&[r(3, "joan", "APPROVED"), dropped], &json!([user(3, "joan")]))), (ReviewDecision::ReviewRequired, vec![ReviewState::Pending]));
         // Approved, earlier ones dismissed, and still listed as requested: approved.
         let mut gone = r(3, "joan", "REQUEST_CHANGES");
         gone["dismissed"] = true.into();
