@@ -85,9 +85,9 @@ describe('markdown.css (spec #5 §3.1)', () => {
     expect(rule('.md-code-line')).toMatch(/margin:\s*0 -10px;\s*padding:\s*0 10px/);
   });
 
-  it("sizes File View's and the diff's rendered text like their editor; 12px elsewhere; code scales with it", () => {
-    expect(rule('.md')).toMatch(/font-size:\s*var\(--md-font-size, 12px\)/);
-    expect(rule('.md pre')).toMatch(/font:\s*0\.92em\/1\.45 var\(--font-mono\)/);
+  it("sizes File View's and the diff's rendered text at the reading size; 1px less elsewhere; code scales with it", () => {
+    expect(rule('.md')).toMatch(/font-size:\s*var\(--md-font-size, max\(8px, calc\(var\(--reading-size, 13px\) - 1px\)\)\)/);
+    expect(rule('.md pre')).toMatch(/font:\s*0\.92em\/1\.45 var\(--md-code-font, var\(--font-mono\)\)/);
   });
 
   it("marks a changed code line's changed words with the word colours, over the line's tint", () => {
