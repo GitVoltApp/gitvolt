@@ -32,6 +32,8 @@ const EXEMPT: Record<string, string> = {
   'ui/flyout/FlyoutHost.tsx': 'resize handle arrows',
   'tabs/useTabDrag.ts': 'drag cancel (Esc)',
   'ui/sortable/useSortable.ts': 'drag cancel (Esc), Alt+arrows reorder the focused item',
+  'settings/frame/FontPicker.tsx': 'picker arrows / Page Up / Page Down / Enter / Esc, type to filter',
+  'settings/frame/fields.tsx': 'a number field steps on ↑/↓ (Shift: by ten), as a native spinner',
   'ui/colour/ColourPicker.tsx': 'dialog keys (Enter keeps / Esc cancels); its square and strips step on the arrows, as native sliders',
   'theme/editor/ThemeCards.tsx': 'radio group arrows / Space / Enter, as native radios',
   'theme/editor/LaneColours.tsx': "Alt+arrows reorder a lane (useSortable's keys, past the Settings dialog's claim)",
