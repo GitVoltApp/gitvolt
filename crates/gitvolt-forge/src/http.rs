@@ -99,7 +99,7 @@ pub struct HttpResponse {
     pub poll_interval_secs: Option<u32>,
     /// The `Link: <…>; rel="next"` URL, only on the account's own API origin.
     pub next_page: Option<String>,
-    /// The `Link: <…>; rel="last"` URL, as `next_page` (not kept across restarts).
+    /// The `Link: <…>; rel="last"` URL, as `next_page`.
     pub last_page: Option<String>,
     /// GitHub classic tokens' `X-OAuth-Scopes`.
     pub oauth_scopes: Option<String>,
@@ -444,7 +444,7 @@ impl HttpClient {
             .filter(|k| wanted(k))
             .filter_map(|k| {
                 let c = etags.map.get(k)?;
-                Some(gitvolt_core::forge::StoredResponse { key: k.clone(), etag: c.etag.clone(), body: String::from_utf8(c.body.to_vec()).ok()?, next_page: c.next_page.clone(), poll_interval_secs: c.poll_interval_secs })
+                Some(gitvolt_core::forge::StoredResponse { key: k.clone(), etag: c.etag.clone(), body: String::from_utf8(c.body.to_vec()).ok()?, next_page: c.next_page.clone(), last_page: c.last_page.clone(), poll_interval_secs: c.poll_interval_secs })
             })
             .collect()
     }
@@ -458,7 +458,7 @@ impl HttpClient {
             if !under(url, &self.inner.cfg.api_base) || e.body.len() > MAX_CACHED_BODY || etags.map.contains_key(&e.key) {
                 continue;
             }
-            let c = Cached { etag: e.etag, body: Arc::new(e.body.into_bytes()), poll_interval_secs: e.poll_interval_secs, next_page: e.next_page.filter(|n| under(n, &self.inner.cfg.api_base)), last_page: None, oauth_scopes: None, validated_ms: Default::default(), generation: std::sync::atomic::AtomicU64::new(u64::MAX) };
+            let c = Cached { etag: e.etag, body: Arc::new(e.body.into_bytes()), poll_interval_secs: e.poll_interval_secs, next_page: e.next_page.filter(|n| under(n, &self.inner.cfg.api_base)), last_page: e.last_page.filter(|n| under(n, &self.inner.cfg.api_base)), oauth_scopes: None, validated_ms: Default::default(), generation: std::sync::atomic::AtomicU64::new(u64::MAX) };
             etags.put(e.key, c);
         }
     }
@@ -835,7 +835,7 @@ impl HttpClient {
                 }
             }
             self.validated(&c);
-            return Ok(HttpResponse { status: 200, body: c.body.clone(), not_modified: true, poll_interval_secs: poll_interval_secs.or(c.poll_interval_secs), next_page: c.next_page.clone(), last_page: c.last_page.clone(), oauth_scopes: oauth_scopes.or_else(|| c.oauth_scopes.clone()), etag: true });
+            return Ok(HttpResponse { status: 200, body: c.body.clone(), not_modified: true, poll_interval_secs: poll_interval_secs.or(c.poll_interval_secs), next_page: c.next_page.clone(), last_page: last_page.or_else(|| c.last_page.clone()), oauth_scopes: oauth_scopes.or_else(|| c.oauth_scopes.clone()), etag: true });
         }
         if !(200..300).contains(&raw.status) {
             return Err(status_error(host, raw.status, &raw.body));
@@ -1108,6 +1108,35 @@ mod tests {
         assert!(again.not_modified);
         assert_eq!(&*again.body, br#"{"a":1}"#);
         assert_eq!(s.hits(), 2);
+    }
+
+    /// A list's `Link` pages outlive a restart: kept in the stored answer, they come back with
+    /// its 304 (which carries no `Link`), and a 304 that does carry one wins.
+    #[tokio::test]
+    async fn link_pages_are_kept_across_a_restart() {
+        let base = Arc::new(std::sync::Mutex::new(String::new()));
+        let b = base.clone();
+        let s = TestServer::start(move |n, _| {
+            let api = format!("{}/api/v4", b.lock().unwrap());
+            match n {
+                0 => Canned::json(200, "[1]").header("ETag", "\"v1\"").header("Link", &format!("<{api}/t?page=2>; rel=\"next\", <{api}/t?page=3>; rel=\"last\"")),
+                1 => Canned { status: 304, headers: vec![("ETag".into(), "\"v1\"".into())], body: Vec::new() },
+                _ => Canned { status: 304, headers: vec![("ETag".into(), "\"v1\"".into()), ("Link".into(), format!("<{api}/t?page=4>; rel=\"last\""))], body: Vec::new() },
+            }
+        });
+        *base.lock().unwrap() = s.base.clone();
+        let api = format!("{}/api/v4", s.base);
+        let first = client(&s.base);
+        assert_eq!(first.get("/t").await.unwrap().last_page, Some(format!("{api}/t?page=3")));
+        let kept = first.export(|_| true);
+        assert_eq!(kept[0].last_page, Some(format!("{api}/t?page=3")));
+
+        let after = client(&s.base);
+        after.import(kept);
+        let again = after.get("/t").await.unwrap();
+        assert!(again.not_modified);
+        assert_eq!((again.next_page, again.last_page), (Some(format!("{api}/t?page=2")), Some(format!("{api}/t?page=3"))));
+        assert_eq!(after.get("/t").await.unwrap().last_page, Some(format!("{api}/t?page=4")), "the 304's own Link");
     }
 
     #[tokio::test]

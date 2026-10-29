@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn a_file_too_big_drops_its_stored_responses_first() {
         let mut c = ProjectCache { lists: BTreeMap::from([("all".to_string(), StoredList { mrs: vec![], fetched_at: 1 })]), ..Default::default() };
-        c.responses = (0..3).map(|i| StoredResponse { key: format!("k{i}"), etag: "e".into(), body: "x".repeat(MAX_FILE_BYTES / 2), next_page: None, poll_interval_secs: None }).collect();
+        c.responses = (0..3).map(|i| StoredResponse { key: format!("k{i}"), etag: "e".into(), body: "x".repeat(MAX_FILE_BYTES / 2), next_page: None, last_page: None, poll_interval_secs: None }).collect();
         shrink(&mut c);
         assert!(serde_json::to_vec(&c).unwrap().len() <= MAX_FILE_BYTES);
         assert_eq!((c.responses.len(), c.lists.len()), (1, 1));

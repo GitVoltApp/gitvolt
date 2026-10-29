@@ -197,6 +197,9 @@ pub struct StoredResponse {
     pub etag: String,
     pub body: String,
     pub next_page: Option<String>,
+    /// `Link: rel="last"` (a cache from an older GitVolt has none).
+    #[serde(default)]
+    pub last_page: Option<String>,
     pub poll_interval_secs: Option<u32>,
 }
 
