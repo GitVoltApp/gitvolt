@@ -101,7 +101,8 @@ updatePrereleases: boolean,
 /**
  * "Use the system title bar" (Settings › Appearance): the window manager's decorations
  * instead of GitVolt's own title bar. Read when the window is built, so a change applies
- * after a restart. Only Linux has GitVolt's own title bar so far.
+ * after a restart. GitVolt has its own title bar on Linux (in a Wayland session), Windows
+ * and macOS.
  */
 systemTitleBar: boolean, 
 /**

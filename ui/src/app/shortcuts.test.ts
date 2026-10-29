@@ -37,6 +37,12 @@ describe('comboOf', () => {
     expect(comboOf(ev({ key: '&', code: 'Digit1', altKey: true }))).toBe('Alt+1'); // AZERTY
     expect(comboOf(ev({ key: '¡', code: 'Digit1', altKey: true, shiftKey: true }))).toBe('Alt+Shift+1');
   });
+  it('names Alt+Space (the window menu on Windows), but not Space alone', () => {
+    expect(comboOf(ev({ key: ' ', code: 'Space', altKey: true }))).toBe('Alt+Space');
+    expect(comboOf(ev({ key: ' ', code: '', altKey: true }))).toBe('Alt+Space');
+    expect(comboOf(ev({ key: ' ', code: 'Space' }))).toBe('');
+    expect(comboOf(ev({ key: ' ', code: 'Space', altKey: true, shiftKey: true }))).toBe('');
+  });
   it('ignores other keys without Ctrl: letters, arrows (Alt+← is Go back, nav/input.ts), Enter', () => {
     expect(comboOf(ev({ key: 'ArrowLeft', code: 'ArrowLeft', altKey: true }))).toBe('');
     expect(comboOf(ev({ key: 'a', code: 'KeyA', altKey: true }))).toBe('');

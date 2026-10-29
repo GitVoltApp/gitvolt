@@ -2108,6 +2108,7 @@ dependencies = [
  "gitvolt-core",
  "gitvolt-forge",
  "glib",
+ "objc2-foundation",
  "raw-window-handle",
  "serde",
  "serde_json",

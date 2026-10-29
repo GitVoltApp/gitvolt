@@ -7,14 +7,22 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Added
 
-- **GitVolt draws its own title bar on Linux** (in a Wayland session), 30 px above the tab bar: ☰ (moved up from the
-  tab bar) at its start, the window's title in the middle, and the window buttons where GNOME's
-  `button-layout` puts them (stock GNOME: close only; a left-side layout puts them before ☰).
-  It behaves like the desktop's: dragging its empty space, or the tab strip's, moves the window
-  (edge tiling and snapping included), and a double, middle or right click does what GNOME's
-  title bar settings say (maximise, lower, the window menu). The window's edges and corners
-  resize it. **Settings › Appearance › Use the system title bar** brings back the desktop's
-  title bar and frame, from the next start.
+- **GitVolt draws its own title bar on Linux, Windows and macOS**, 30 px above the tab bar: ☰ (moved up from the
+  tab bar) at its start, the window's title in the middle. On Linux (in a Wayland session) the
+  window buttons sit where GNOME's `button-layout` puts them (stock GNOME: close only; a
+  left-side layout puts them before ☰), and the bar behaves like the desktop's: dragging its
+  empty space, or the tab strip's, moves the window (edge tiling and snapping included), a
+  double, middle or right click does what GNOME's title bar settings say (maximise, lower, the
+  window menu), and the window's edges and corners resize it. On Windows the bar ends with flat
+  minimise, maximise and close buttons (close turns red under the pointer), dragging its empty
+  space or the tab strip's moves the window (Aero Snap included), a double click maximises, and
+  a right click or Alt+Space opens the window menu; the window keeps Windows' own border and
+  shadow, which resize it, and its top edge resizes it too. On macOS, Apple's traffic lights
+  sit at the bar's start, centred in it, and there are no buttons on the right; dragging the
+  bar's or the tab strip's empty space moves the window, and a double click does what System
+  Settings › Desktop & Dock says (zoom, minimise or nothing). In full screen the traffic lights
+  hide, and ☰ moves to the corner. **Settings › Appearance › Use the system title bar** brings
+  back the system's title bar, from the next start.
 
 ### Fixed
 

@@ -5,7 +5,10 @@
 use std::num::NonZeroU32;
 
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use tauri_runtime::{Icon, ProgressBarState, ProgressBarStatus};
+use tauri_runtime::{
+  Icon, ProgressBarState, ProgressBarStatus,
+  dpi::{PhysicalSize, Size},
+};
 use tauri_utils::config::Color;
 use windows::Win32::{
   Foundation::{HWND, RECT},
@@ -21,11 +24,43 @@ use windows::Win32::{
   },
 };
 
-use crate::{window::AppWindow, window_handle::SoftbufferWindowHandle};
+use crate::{
+  window::{AppWindow, WindowManagerRequest},
+  window_handle::SoftbufferWindowHandle,
+};
 
-use super::icon::icon_to_hicon;
+use super::{chrome, icon::icon_to_hicon};
 
 impl AppWindow {
+  /// GitVolt patch: an undecorated window keeps Windows' resize border and shadow, for a page
+  /// that draws its own title bar (`chrome.rs`); a decorated one has the system's frame.
+  pub(crate) fn sync_custom_frame(&self) {
+    chrome::set_custom_frame(self.hwnd(), !self.window.is_decorated());
+  }
+
+  /// GitVolt patch: `set_size`, for the client area. winit sizes an undecorated window as if it
+  /// had no frame, so the resize border is added on top.
+  pub(crate) fn request_surface_size(&self, size: Size) {
+    let (dx, dy) = chrome::extra(self.hwnd());
+    let size = if (dx, dy) == (0, 0) {
+      size
+    } else {
+      let physical = size.to_physical::<u32>(self.window.scale_factor());
+      PhysicalSize::new(physical.width + dx as u32, physical.height + dy as u32).into()
+    };
+    let _ = self.window.request_surface_size(size);
+  }
+
+  /// GitVolt patch: whether Windows was asked (`chrome.rs`). A menu shows after this returns.
+  pub(crate) fn window_manager_request(&self, request: WindowManagerRequest) -> bool {
+    let hwnd = self.hwnd();
+    match request {
+      WindowManagerRequest::ShowMenu => chrome::show_window_menu(hwnd),
+      WindowManagerRequest::ShowMenuFromKeyboard => chrome::show_keyboard_window_menu(hwnd),
+      WindowManagerRequest::Lower => chrome::lower(hwnd),
+    }
+  }
+
   pub(crate) fn cef_host_handle(&self) -> cef::sys::cef_window_handle_t {
     cef::sys::HWND(self.hwnd().0 as *mut _)
   }

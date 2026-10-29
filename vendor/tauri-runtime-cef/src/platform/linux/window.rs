@@ -290,10 +290,12 @@ impl AppWindow {
     chrome::begin_move_resize(self.xid(), edge)
   }
 
-  /// GitVolt patch: whether the window manager was asked (`chrome.rs`).
+  /// GitVolt patch: whether the window manager was asked (`chrome.rs`). It takes Alt+Space
+  /// itself, so the keyboard's menu is never asked for here.
   pub(crate) fn window_manager_request(&self, request: WindowManagerRequest) -> bool {
     match request {
       WindowManagerRequest::ShowMenu => chrome::show_window_menu(self.xid()),
+      WindowManagerRequest::ShowMenuFromKeyboard => false,
       WindowManagerRequest::Lower => chrome::lower(self.xid()),
     }
   }

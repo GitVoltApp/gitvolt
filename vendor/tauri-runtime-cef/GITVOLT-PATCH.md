@@ -213,6 +213,33 @@ says.
     `tauri_resize_direction_to_winit` is compiled only there).
   - `src/webview.rs`: `CefWebviewDispatcher::window_manager_request()`; `src/tauri_ext.rs`:
     `WebviewCefExt::window_manager_request()`; `src/lib.rs`: exports `WindowManagerRequest`.
+- A window that draws its own title bar, on macOS (below):
+  - `src/platform/macos/window.rs`: `AppWindow::begin_window_drag()`, the
+    `MOVABLE_UNTIL_NEXT_PRESS` thread-local, `before_send_event()`, `press_at_pointer()`, the
+    pure `left_button_held()` / `is_press()` and their unit tests.
+  - `src/platform/macos/application.rs`: `sendEvent:` calls `before_send_event` first.
+  - `src/platform/macos/fullscreen.rs`: `transition_ended` calls `on_transition_end` every time.
+  - `src/window.rs`: `StartDragging` goes to `begin_window_drag` on macOS;
+    `ApplyPendingFullscreen` is handled before the window is borrowed, by the new
+    `fullscreen_transition_ended()`. `src/runtime.rs`: `emit_window_event` is `pub(crate)`.
+  - `Cargo.toml`: the `NSGraphicsContext` feature of `objc2-app-kit` and `NSProcessInfo` of
+    `objc2-foundation` (no new crate).
+- A window that draws its own title bar, on Windows (below):
+  - `src/window_frame.rs` (new, every platform): the pure `frame_applies()` / `client_area()` /
+    `frame_extra()` / `hit_test()` / `window_menu_states()` / `pack_point()` / `unpack_point()`
+    and their unit tests; `src/lib.rs`: `mod window_frame;`.
+  - `src/platform/windows/chrome.rs` (new): the window subclass (`WM_NCCALCSIZE`,
+    `WM_NCHITTEST`, `WM_GETMINMAXINFO`, `WM_DPICHANGED`, the window menu's registered message),
+    `set_custom_frame()`, `extra()`, `show_window_menu()`, `show_keyboard_window_menu()`,
+    `lower()`; `src/platform/windows/mod.rs`: `mod chrome;`.
+  - `src/platform/windows/window.rs`: `AppWindow::sync_custom_frame()`,
+    `AppWindow::request_surface_size()` and `AppWindow::window_manager_request()`.
+  - `src/window.rs`: `WindowManagerRequest::ShowMenuFromKeyboard`; the no-op
+    `window_manager_request` is macOS's only; `create_window` and `SetDecorations` call
+    `sync_custom_frame()`, and `SetSize` goes to `request_surface_size()` on Windows.
+    `src/platform/linux/window.rs`: `ShowMenuFromKeyboard` answers false. `src/webview.rs`: the
+    doc of `window_manager_request`.
+  - `Cargo.toml`: the `Win32_UI_HiDpi` feature of `windows` (no new crate).
 
 ## A window that draws its own title bar (Linux, X11)
 
@@ -258,6 +285,123 @@ drag regions, so the press (and its grab) is the runtime's, as GTK's title bars 
 
 **Tests:** `cargo test -p tauri-runtime-cef --lib chrome` (the direction for each edge, the
 messages' data, the button check).
+
+## A window that draws its own title bar (macOS)
+
+On macOS GitVolt keeps the window's frame with Tauri's overlay title bar
+(`titleBarStyle: Overlay`, `hiddenTitle`, `trafficLightPosition`), which the runtime already
+had: `FullSizeContentView`, a transparent title bar, the traffic lights inset and put back after
+each relayout. The page draws its bar under them (`crates/gitvolt-app/src/chrome.rs`). What the
+runtime lacked:
+
+- **`start_dragging` moved nothing reliably.** winit's `drag_window` hands
+  `performWindowDragWithEvent:` `NSApp.currentEvent`, whatever AppKit is dispatching when the
+  request arrives over IPC, not the press (CEF's view had that). And `apply_movability` makes an
+  overlay title bar's window immovable, so that a press in the title bar area is the page's.
+  **Fix:** `begin_window_drag` (only while the left button is still down, as on Linux) makes a
+  left-button press at the pointer (`mouseLocationOutsideOfEventStream`, as tao does), makes the
+  window movable, and starts the drag with it. When AppKit returns with the button still down
+  (the window server carries on with the drag), the window is made immovable again at the next
+  press, from the application's `sendEvent:` before AppKit dispatches it
+  (`before_send_event`); when the drag had already ended, at once.
+- **Leaving full screen wasn't observable.** Tauri has no full screen event, and winit only
+  clears its full screen state in `windowDidExitFullScreen:`, after the transition's last resize:
+  a page that asks `is_fullscreen` on each resize never saw full screen end. **Fix:** the
+  transition observer (`fullscreen.rs`) reports every transition's end, not only one with a
+  request pending, and `fullscreen_transition_ended` then emits `WindowEvent::Resized` with the
+  window's size, after applying any pending request as before.
+
+**Evidence** (`mac-port.yml`, job `app`, `ui/scripts/mac-titlebar.mjs`: the debug app on
+GitHub's `macos-15` runner, real input posted as `CGEvent`s, the window read from the window
+server and Accessibility): the traffic lights' circles are centred 15 px down the 30 px bar,
+from 13 to 65 px across its 78 px slot; a drag of the bar's empty space moves the window by
+exactly the pointer's travel, the grab point staying under the pointer (from a window against the
+screen's left edge, the edge holds the window back for the first ~65 px, as macOS does), and the
+page sees no button held afterwards; a click on ☰ in the title bar area reaches the page; a
+double click zooms the window to the screen's visible frame and a second one restores it (once
+each: AppKit doesn't zoom it as well); the yellow light minimizes, the green one enters full
+screen (the page then has no slot, ☰ in the corner), and the window comes back out of it with
+the slot; the red one closes the window and the app exits.
+
+**Tests:** `cargo test -p tauri-runtime-cef --lib platform::macos` (the button mask, which
+events are presses), on macOS.
+
+## A window that draws its own title bar (Windows)
+
+On Windows GitVolt builds the window undecorated, as on Linux, and the page draws the title bar
+(`crates/gitvolt-app/src/chrome.rs`). winit keeps an undecorated window's styles (caption, sizing
+frame, system menu: Aero Snap and the minimize and maximize animations need them) and makes its
+client area the whole window in `WM_NCCALCSIZE`. That leaves no resize border, no shadow and no
+edge, and the browsers cover the whole window, so a `WM_NCHITTEST` of the window's own never
+sees the pointer. What the runtime lacked:
+
+- **The system's frame.** **Fix:** a window subclass, installed on every undecorated window
+  (`platform/windows/chrome.rs`, `sync_custom_frame` after creation and on `set_decorations`),
+  before winit's window procedure. While the window has a sizing frame (`WS_THICKFRAME`: not when
+  it isn't resizable, or in full screen) and is neither maximized nor minimized:
+  - `WM_NCCALCSIZE`: the client area is the window less the resize border at the left, right and
+    bottom (`SM_CXSIZEFRAME` + `SM_CXPADDEDBORDER` at the window's DPI). The border stays outside
+    the visible window, where Windows draws the shadow and the 1 px edge; the top has none, so
+    the page's title bar reaches the window's top. A maximized window is left to winit, whose
+    client area is then the monitor's work area (the taskbar stays visible).
+  - `WM_NCHITTEST`: that border's edges and corners (a top corner from the sides' upper end), so
+    Windows resizes the window itself, with its cursors and snapping. The top edge is the page's
+    (`ResizeEdges`, `start_resize_dragging`).
+  - Sizes: winit sizes an undecorated window as if it had no border (`adjust_rect` drops the
+    frame), so the border is added back: to the window when the subclass comes (or to a maximized
+    window's restored size), to the minimum and maximum track sizes (`WM_GETMINMAXINFO`), after
+    winit's resize at a DPI change (`WM_DPICHANGED`), and to `set_size`
+    (`AppWindow::request_surface_size`). The client area is then the size asked for, and a size
+    saved from `inner_size` comes back the same.
+- **Moving the window** needed nothing: winit's `drag_window` and `drag_resize_window` release
+  the capture and post `WM_NCLBUTTONDOWN` with `HTCAPTION` or the edge, so Windows' own move and
+  size loops run (Aero Snap, and shake, included). The CEF browsers' windows are on the same
+  thread (the external message pump), so the capture is released.
+- **No window menu.** **Fix:** `WindowManagerRequest::ShowMenu` posts a registered message
+  (`GitVolt.ShowWindowMenu`, with the pointer's position) that the subclass answers with the
+  system menu: `GetSystemMenu`, its items enabled as for a captioned window (Restore only when
+  maximized; Move, Size and Maximize only when not), `TrackPopupMenu` at the pointer, and the
+  chosen command posted as `WM_SYSCOMMAND`. Posted, so the menu runs from the window's message
+  dispatch like a right click on a real title bar, and the request answers at once.
+  `ShowMenuFromKeyboard` (Alt+Space, which the page gets: Chromium's window has no menu) posts
+  `WM_SYSCOMMAND` `SC_KEYMENU` with a space, Windows' own keyboard path, so the menu opens at the
+  window's corner with its first item selected. `Lower` is `SetWindowPos(HWND_BOTTOM)`.
+
+**Not done: snap layouts** (Windows 11's flyout when the pointer rests on the maximize button).
+Windows shows it for a window whose `WM_NCHITTEST` answers `HTMAXBUTTON`, but the page's □ is
+inside a CEF browser window, which gets the hit test; the top-level window never does there. It
+would take subclassing Chromium's child windows (they come and go) to answer `HTTRANSPARENT` over
+the button's rectangle, which the page would report, then handling the non-client button messages
+in the window and telling the page when to draw □ hovered or pressed, since the page no longer
+gets the pointer there. Win+Z opens the flyout for the window meanwhile.
+
+**Evidence:** the release build on GitHub's `windows-2025` runner (Windows Server 2025, 100%,
+1920×1080), with real input from `SendInput` and `keybd_event` and the window read back with
+`GetWindowRect`, `GetClientRect` and DWM. These held:
+- **The frame:** a border of 8 px at the left, right and bottom, none at the top, and DWM's
+  visible frame 1 px outside the client area.
+- **Moving:** a title bar drag moved the window by the pointer's travel, less the page's 4 px
+  threshold and the request's latency (−190, +95 for −200, +100).
+- **Maximise:** a double click maximized it with the client area exactly the work area (the
+  taskbar visible), and a second one restored the same rectangle.
+- **Resizing:** the right border showed `IDC_SIZEWE` and resized by exactly +120 px; the left
+  border and the top-left corner (from the side) resized exactly; the page's top edge showed
+  `IDC_SIZENS` and resized by exactly −70 px.
+- **The buttons:** close hovered is `#c42b1c`; maximize, restore and minimize work; the close
+  button quits.
+- **The window menu:** a right click shows it at the pointer, with Restore greyed, and its
+  Maximize and Restore work; Alt+Space opens it at the window's corner, with its accelerators
+  underlined.
+- **Aero Snap:** a drag to the screen's top maximizes, and one to its left snaps to the left half,
+  with Snap Assist.
+- **Restarts:** after one, the client and window rectangles are identical (no drift); with
+  "Use the system title bar" on, the 31 px system caption is back.
+
+The bottom border wasn't exercised there: the default placement put it under the taskbar. It is
+the same code as the sides (`hit_test`'s unit tests cover it).
+
+**Tests:** `cargo test -p tauri-runtime-cef --lib window_frame` (the client area, the hit test
+of each edge and corner, the menu's states, the point in an `LPARAM`), on every platform.
 
 ## Context menu entries that make no sense in an app window
 

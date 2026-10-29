@@ -13,6 +13,14 @@ const { DEFAULT_SETTINGS, useAppState } = await import('../../app/state');
 const { settingDef } = await import('../registry');
 const { useSettingsUi } = await import('../schema');
 const { SettingsOverlay } = await import('../frame/SettingsOverlay');
+const { systemTitleBarSetting } = await import('./appearance');
+
+it('says what it brings back on each platform: X11 only matters on Linux', () => {
+  expect(settingDef('systemTitleBar')!.description).toMatch(/desktop's own title bar.*X11/);
+  const windows = systemTitleBarSetting('windows');
+  expect(windows.description).toMatch(/^The system's own title bar and window frame/);
+  expect(windows.description).not.toMatch(/X11/);
+});
 
 it('"Use the system title bar" is on Appearance › Window where GitVolt draws its own, off by default, and says it needs a restart', () => {
   expect(settingDef('systemTitleBar')).toMatchObject({ page: 'appearance', group: 'Window' });

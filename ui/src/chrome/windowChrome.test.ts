@@ -10,10 +10,11 @@ const fakeOps = () => ({
   close: vi.fn(async () => {}),
   windowManager: vi.fn(async () => true),
   isMaximized: vi.fn(async () => true),
+  isFullscreen: vi.fn(async () => false),
   watch: vi.fn((_resized: () => void, _chrome: (i: WindowChromeInfo) => void) => () => {}),
 }) satisfies WindowOps;
 
-afterEach(() => { useWindowChrome.setState({ info: null, maximized: false }); window.__gbWindowCalls = undefined; });
+afterEach(() => { useWindowChrome.setState({ info: null, maximized: false, fullscreen: false }); window.__gbWindowCalls = undefined; });
 
 describe("a title bar click's action (GNOME's action-*-click-titlebar)", () => {
   it.each([
@@ -48,6 +49,21 @@ describe('following the window', () => {
     const info: WindowChromeInfo = { frame: 'custom', platform: 'linux', layout: 'close:', doubleClick: 'minimize', middleClick: 'none', rightClick: 'menu' };
     chrome(info);
     expect(useWindowChrome.getState().info).toEqual(info);
+    off();
+  });
+
+  it('follows full screen the same way: in after a resize, and out after the one that ends it', async () => {
+    const ops = fakeOps();
+    ops.isMaximized.mockResolvedValue(false);
+    const off = followWindow(ops);
+    const [resized] = ops.watch.mock.calls[0];
+    ops.isFullscreen.mockResolvedValue(true);
+    resized();
+    await vi.waitFor(() => expect(useWindowChrome.getState().fullscreen).toBe(true));
+    ops.isFullscreen.mockResolvedValue(false);
+    resized();
+    await vi.waitFor(() => expect(useWindowChrome.getState().fullscreen).toBe(false));
+    expect(useWindowChrome.getState().maximized).toBe(false);
     off();
   });
 });

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+mod chrome;
 mod event_loop;
 mod icon;
 mod monitor;

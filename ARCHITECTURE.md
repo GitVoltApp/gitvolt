@@ -65,8 +65,27 @@ requests, so the window manager moves the window (edge tiling and snapping inclu
 `window_manager` shows its window menu (`_GTK_SHOW_WINDOW_MENU`) or lowers the window
 (`GITVOLT-PATCH.md`). Without a window (the harness's browser, the website demo) there's no title
 bar and ☰ stays in the tab bar. An X11 session keeps the system frame: there the window manager
-needs the X pointer grab, which Chromium's connection holds while the button is down. macOS and
-Windows keep the system frame for now; the component already knows their button sets.
+needs the X pointer grab, which Chromium's connection holds while the button is down.
+
+On macOS the window keeps its frame with Tauri's overlay title bar style (transparent, the title
+hidden, the page under it), and the same bar has Apple's traffic lights in a slot at its start,
+inset to its middle (`trafficLightPosition`, `chrome.rs`'s `TRAFFIC_LIGHTS`), with no buttons of
+its own; full screen hides the lights, and the slot goes. A double click does what System
+Settings says (`AppleActionOnDoubleClick`, read again whenever the window comes to the front). The
+runtime starts a title bar drag from a press of its own at the pointer and keeps the overlay
+window immovable otherwise, and it sends a resize when a full screen transition ends, so the page
+sees full screen end (`GITVOLT-PATCH.md`). `ui/scripts/mac-titlebar.mjs` checks it all with real
+input on the `mac-port.yml` runner.
+
+On Windows the window is built undecorated as on Linux, with Windows' flat minimise, maximise and
+close at the bar's end. The runtime gives the undecorated window back Windows' resize border at
+its left, right and bottom (`WM_NCCALCSIZE`, `WM_NCHITTEST`), outside the visible window with the
+system's shadow and edge, so Windows resizes it natively; the page's resize handle is the top edge
+only. Drags and resizes go through winit's `drag_window` and `drag_resize_window`, which run
+Windows' own move and size loops (Aero Snap included), and `window_manager` shows the system menu
+at the pointer, or at the window's corner for Alt+Space (a shortcut of the page's, since the keys
+go to the browser). Snap layouts (the flyout over □) aren't there: the browser's window gets the
+hit test, not the top-level one (`GITVOLT-PATCH.md`).
 
 **`gitvolt-harness`** serves the same `Api` over a WebSocket so the UI can run in a plain browser
 with no Tauri, and adds a fake GitHub/GitLab/Forgejo, fixture repositories and test-only routes. It's what

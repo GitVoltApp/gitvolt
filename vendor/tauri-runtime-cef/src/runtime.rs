@@ -2074,7 +2074,7 @@ impl<T: UserEvent> WinitCefApp<T> {
     }
   }
 
-  fn emit_window_event(&mut self, window_id: WindowId, event: WindowEvent) {
+  pub(crate) fn emit_window_event(&mut self, window_id: WindowId, event: WindowEvent) {
     let Some(appwindow) = self.state.windows.get(&window_id) else {
       return;
     };

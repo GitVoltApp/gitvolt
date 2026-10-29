@@ -11,7 +11,8 @@ use objc2::{
   sel,
 };
 use objc2_app_kit::{
-  NSBackingStoreType, NSColor, NSView, NSWindow, NSWindowButton, NSWindowCollectionBehavior,
+  NSBackingStoreType, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSView, NSWindow,
+  NSWindowButton, NSWindowCollectionBehavior,
   NSWindowDidBecomeKeyNotification, NSWindowDidChangeBackingPropertiesNotification,
   NSWindowDidChangeScreenNotification, NSWindowDidDeminiaturizeNotification,
   NSWindowDidEndLiveResizeNotification, NSWindowDidExitFullScreenNotification,
@@ -19,6 +20,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{
   MainThreadMarker, NSNotification, NSNotificationCenter, NSObjectNSDelayedPerforming, NSPoint,
+  NSProcessInfo,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use tauri_runtime::dpi::Position;
@@ -195,6 +197,89 @@ impl AppWindow {
     nswindow.setOpaque(color.map(|color| color.3 == u8::MAX).unwrap_or(true));
     nswindow.setBackgroundColor(Some(&nscolor));
   }
+
+  /// GitVolt patch: has AppKit move the window with the pointer while the left button is held,
+  /// for a page that draws its own title bar (`start_dragging`). False if the button is up
+  /// already: the request comes over IPC after the press.
+  ///
+  /// winit's `drag_window` hands `performWindowDragWithEvent:` whatever event AppKit is
+  /// dispatching when the request arrives, which is not the press (the page saw that, through
+  /// CEF, a while ago); and an overlay title bar's window is immovable (`apply_movability`, so
+  /// that a press there is the page's). So the drag starts from a left-button press made at the
+  /// pointer, as tao's does, with the window movable for it. A drag still running when AppKit
+  /// returns is the window server's, and the window is made immovable again at the next press
+  /// ([`before_send_event`]).
+  pub(crate) fn begin_window_drag(&self) -> bool {
+    let nsview = self.nsview();
+    let Some(nswindow) = nsview.window() else {
+      return false;
+    };
+    if !left_button_held(NSEvent::pressedMouseButtons()) {
+      return false;
+    }
+    let Some(press) = press_at_pointer(&nswindow) else {
+      return false;
+    };
+    let movable = nswindow.isMovable();
+    nswindow.setMovable(true);
+    nswindow.performWindowDragWithEvent(&press);
+    if !movable {
+      if left_button_held(NSEvent::pressedMouseButtons()) {
+        MOVABLE_UNTIL_NEXT_PRESS.with_borrow_mut(|window| *window = Some(nswindow));
+      } else {
+        nswindow.setMovable(false);
+      }
+    }
+    true
+  }
+}
+
+thread_local! {
+  /// GitVolt patch: a window made movable for a drag that outlasted
+  /// `performWindowDragWithEvent:`, to make immovable again before the next press reaches it.
+  static MOVABLE_UNTIL_NEXT_PRESS: std::cell::RefCell<Option<Retained<NSWindow>>> =
+    const { std::cell::RefCell::new(None) };
+}
+
+/// GitVolt patch: whether the left button is down in `NSEvent.pressedMouseButtons`' mask.
+pub(crate) fn left_button_held(pressed: usize) -> bool {
+  pressed & 1 != 0
+}
+
+/// GitVolt patch: whether an event of this type is a mouse button press.
+pub(crate) fn is_press(kind: NSEventType) -> bool {
+  matches!(
+    kind,
+    NSEventType::LeftMouseDown | NSEventType::RightMouseDown | NSEventType::OtherMouseDown
+  )
+}
+
+/// GitVolt patch: called by the application's `sendEvent:` before AppKit dispatches `event`. A
+/// press makes the window a drag left movable ([`AppWindow::begin_window_drag`]) immovable
+/// again, before the window can take the press as the start of a drag of its own.
+pub(crate) fn before_send_event(event: &NSEvent) {
+  if !is_press(event.r#type()) {
+    return;
+  }
+  if let Some(nswindow) = MOVABLE_UNTIL_NEXT_PRESS.with_borrow_mut(Option::take) {
+    nswindow.setMovable(false);
+  }
+}
+
+/// GitVolt patch: a left-button press at the pointer in `nswindow`, for
+/// `performWindowDragWithEvent:`.
+fn press_at_pointer(nswindow: &NSWindow) -> Option<Retained<NSEvent>> {
+  NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+    NSEventType::LeftMouseDown,
+    nswindow.mouseLocationOutsideOfEventStream(),
+    NSEventModifierFlags::empty(),
+    NSProcessInfo::processInfo().systemUptime(),
+    nswindow.windowNumber(),
+    None,
+    0,
+    1,
+    1.0,
+  )
 }
 
 fn inset_traffic_lights(nswindow: &NSWindow, x: f64, y: f64) {
@@ -346,4 +431,38 @@ fn traffic_light_observer(nswindow: &NSWindow) -> Option<Retained<TrafficLightOb
 
 fn set_traffic_light_observer(nswindow: &NSWindow, observer: &TrafficLightObserver) {
   utils::set_associated_object(nswindow, traffic_light_observer_key(), observer);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// `pressedMouseButtons` has a bit per button, the left one first.
+  #[test]
+  fn only_a_held_left_button_starts_a_drag() {
+    assert!(left_button_held(0b1));
+    assert!(left_button_held(0b101));
+    assert!(!left_button_held(0));
+    assert!(!left_button_held(0b10));
+  }
+
+  /// Any button's press makes the window immovable again; a release or a move doesn't.
+  #[test]
+  fn presses_are_the_down_events() {
+    for kind in [
+      NSEventType::LeftMouseDown,
+      NSEventType::RightMouseDown,
+      NSEventType::OtherMouseDown,
+    ] {
+      assert!(is_press(kind), "{kind:?}");
+    }
+    for kind in [
+      NSEventType::LeftMouseUp,
+      NSEventType::LeftMouseDragged,
+      NSEventType::MouseMoved,
+      NSEventType::KeyDown,
+    ] {
+      assert!(!is_press(kind), "{kind:?}");
+    }
+  }
 }

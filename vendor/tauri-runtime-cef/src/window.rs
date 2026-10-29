@@ -399,7 +399,8 @@ pub(crate) enum WindowMessage {
   SetFullscreen(bool),
   SetFullscreenOnMonitor(PhysicalPosition<f64>),
   /// Applies the fullscreen request held back during a transition, now that it ended. See
-  /// [`AppWindow::request_fullscreen`].
+  /// [`AppWindow::request_fullscreen`]. GitVolt patch: sent at the end of every transition,
+  /// which then also tells the window's listeners its size ([`WinitCefApp::fullscreen_transition_ended`]).
   #[cfg(target_os = "macos")]
   ApplyPendingFullscreen,
   #[cfg(target_os = "macos")]
@@ -436,6 +437,9 @@ pub(crate) enum WindowMessage {
 pub enum WindowManagerRequest {
   /// Its window menu (what a right-click on a title bar shows), at the pointer.
   ShowMenu,
+  /// Its window menu as Alt+Space shows it, at the window's top left corner, for the keyboard
+  /// (Windows; the window manager takes Alt+Space itself on Linux).
+  ShowMenuFromKeyboard,
   /// The window below the others.
   Lower,
 }
@@ -560,14 +564,9 @@ pub(crate) struct AppWindowAttrs {
   pub(crate) transient_for: Option<gtk::Window>,
 }
 
-/// GitVolt patch: only X11 has these requests so far (`platform/linux/chrome.rs`).
-#[cfg(not(any(
-  target_os = "linux",
-  target_os = "dragonfly",
-  target_os = "freebsd",
-  target_os = "netbsd",
-  target_os = "openbsd"
-)))]
+/// GitVolt patch: only X11 and Windows have these requests so far (`platform/linux/chrome.rs`,
+/// `platform/windows/chrome.rs`).
+#[cfg(target_os = "macos")]
 impl AppWindow {
   pub(crate) fn window_manager_request(&self, _request: WindowManagerRequest) -> bool {
     false
@@ -806,6 +805,11 @@ impl<T: UserEvent> WinitCefApp<T> {
       appwindow.apply_transient_for();
     }
 
+    // GitVolt patch: an undecorated window keeps Windows' resize border
+    // (`platform/windows/chrome.rs`).
+    #[cfg(windows)]
+    appwindow.sync_custom_frame();
+
     #[cfg(windows)]
     appwindow.draw_background_surface();
 
@@ -950,6 +954,23 @@ impl<T: UserEvent> WinitCefApp<T> {
     }
   }
 
+  /// A fullscreen transition of `window_id` ended: the request held back during it is made,
+  /// and (GitVolt patch) the window's listeners get a `Resized`. winit only counts a window out
+  /// of fullscreen once AppKit has finished leaving it, after the last resize of the
+  /// transition, so a page that checks `is_fullscreen` on each resize would never see it end;
+  /// Tauri has no event of its own for it.
+  #[cfg(target_os = "macos")]
+  fn fullscreen_transition_ended(&mut self, window_id: WindowId) {
+    let Some(appwindow) = self.state.windows.get_mut(&window_id) else {
+      return;
+    };
+    if let Some(target) = appwindow.fullscreen_transition.take_pending() {
+      appwindow.request_fullscreen(target);
+    }
+    let size = appwindow.window.surface_size();
+    self.emit_window_event(window_id, WindowEvent::Resized(size));
+  }
+
   pub(crate) fn handle_window_message(
     &mut self,
     event_loop: &dyn ActiveEventLoop,
@@ -964,6 +985,11 @@ impl<T: UserEvent> WinitCefApp<T> {
       }
       WindowMessage::Destroy => {
         self.close_window(window_id, event_loop);
+        return;
+      }
+      #[cfg(target_os = "macos")]
+      WindowMessage::ApplyPendingFullscreen => {
+        self.fullscreen_transition_ended(window_id);
         return;
       }
       _ => {}
@@ -1119,7 +1145,14 @@ impl<T: UserEvent> WinitCefApp<T> {
         window.set_decorations(value);
         #[cfg(target_os = "macos")]
         appwindow.apply_movability();
+        // GitVolt patch: an undecorated window keeps Windows' resize border.
+        #[cfg(windows)]
+        appwindow.sync_custom_frame();
       }
+      // GitVolt patch: on Windows, the client area's size whatever the frame.
+      #[cfg(windows)]
+      WindowMessage::SetSize(size) => appwindow.request_surface_size(size),
+      #[cfg(not(windows))]
       WindowMessage::SetSize(size) => _ = window.request_surface_size(size),
       WindowMessage::SetPosition(position) => window.set_outer_position(position),
       WindowMessage::SetFullscreen(value) => {
@@ -1129,11 +1162,7 @@ impl<T: UserEvent> WinitCefApp<T> {
         appwindow.request_fullscreen(Some(FullscreenTarget::MonitorAt(position)))
       }
       #[cfg(target_os = "macos")]
-      WindowMessage::ApplyPendingFullscreen => {
-        if let Some(target) = appwindow.fullscreen_transition.take_pending() {
-          appwindow.request_fullscreen(target);
-        }
-      }
+      WindowMessage::ApplyPendingFullscreen => unreachable!("handled before borrowing"),
       #[cfg(target_os = "macos")]
       WindowMessage::SetSimpleFullscreen(value) => {
         let changed = window.set_simple_fullscreen(value);
@@ -1275,12 +1304,17 @@ impl<T: UserEvent> WinitCefApp<T> {
       WindowMessage::StartResizeDragging(direction) => {
         _ = appwindow.begin_move_resize(Some(direction));
       }
+      // GitVolt patch: on macOS from a press made at the pointer (`platform/macos/window.rs`):
+      // winit's uses the event AppKit is dispatching, which isn't the page's press.
+      #[cfg(target_os = "macos")]
+      WindowMessage::StartDragging => _ = appwindow.begin_window_drag(),
       #[cfg(not(any(
         target_os = "linux",
         target_os = "dragonfly",
         target_os = "freebsd",
         target_os = "netbsd",
-        target_os = "openbsd"
+        target_os = "openbsd",
+        target_os = "macos"
       )))]
       WindowMessage::StartDragging => _ = window.drag_window(),
       #[cfg(not(any(

@@ -33,13 +33,15 @@ async fn api(state: tauri::State<'_, Arc<Api>>, req: Request) -> Result<serde_js
 }
 
 /// The title bar's requests the Tauri window API has no call for (chrome.rs): the window
-/// manager's window menu (`menu`) and lowering the window (`lower`). Whether the window manager
-/// was asked; the UI shows its own menu when it wasn't.
+/// manager's window menu at the pointer (`menu`) or, for Alt+Space on Windows, at the window's
+/// corner (`keyboard-menu`), and lowering the window (`lower`). Whether the window manager was
+/// asked; the UI shows its own menu when it wasn't.
 #[tauri::command]
 async fn window_manager(window: tauri::WebviewWindow<tauri::DynRuntime>, request: String) -> Result<bool, String> {
     use tauri_runtime_cef::{WebviewCefExt, WindowManagerRequest};
     let request = match request.as_str() {
         "menu" => WindowManagerRequest::ShowMenu,
+        "keyboard-menu" => WindowManagerRequest::ShowMenuFromKeyboard,
         "lower" => WindowManagerRequest::Lower,
         other => return Err(format!("unknown window manager request {other:?}")),
     };
@@ -467,9 +469,19 @@ pub fn run() {
             let read = gnome.clone().map(|s| move |key: &str| chrome::gnome::read(&s, key));
             #[cfg(target_os = "linux")]
             let current = chrome::chrome(custom, read.as_ref().map(|r| r as chrome::SettingReader<'_>));
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "macos")]
+            let current = chrome::macos_chrome(custom, chrome::macos::double_click());
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
             let current = chrome::chrome(custom, None);
-            let mut builder = WebviewWindowBuilder::from_config(app.handle(), &cfg)?.decorations(!custom).initialization_script(chrome::init_script(&current));
+            // macOS keeps its frame and traffic lights: the page goes under a transparent title
+            // bar, and the lights into the page's.
+            let decorations = !custom || cfg!(target_os = "macos");
+            let mut builder = WebviewWindowBuilder::from_config(app.handle(), &cfg)?.decorations(decorations).initialization_script(chrome::init_script(&current));
+            #[cfg(target_os = "macos")]
+            if custom {
+                let (x, y) = chrome::TRAFFIC_LIGHTS;
+                builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true).traffic_light_position(tauri::LogicalPosition::new(x, y));
+            }
             // Workers get the page's Content Security Policy too (csp.rs).
             if let Some(policy) = csp::policy(app.config()) {
                 builder = builder.on_web_resource_request(move |_, response| csp::add_policy(&policy, response));
@@ -510,6 +522,25 @@ pub fn run() {
                     }
                 });
                 std::mem::forget(settings);
+            }
+            // macOS's title bar double click, read again whenever the window comes to the front
+            // (System Settings is another app), and sent on when it changed.
+            #[cfg(target_os = "macos")]
+            if custom {
+                let (target, last) = (window.clone(), std::sync::Mutex::new(current.double_click.clone()));
+                window.on_window_event(move |event| {
+                    if !matches!(event, tauri::WindowEvent::Focused(true)) {
+                        return;
+                    }
+                    let now = chrome::macos::double_click();
+                    let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
+                    if *last != now {
+                        *last = now.to_owned();
+                        if let Err(e) = target.emit(chrome::CHROME_EVENT, chrome::macos_chrome(true, now)) {
+                            tracing::warn!("emit {} failed: {e}", chrome::CHROME_EVENT);
+                        }
+                    }
+                });
             }
             // R19: answer later launches now that there's a window to focus. One that came while
             // this instance was starting has been waiting in the socket, and is answered now

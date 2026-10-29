@@ -18,10 +18,10 @@ const linux = (layout: string, more: Partial<WindowChromeInfo> = {}): WindowChro
 const calls = () => window.__gbWindowCalls ?? [];
 const bar = () => document.querySelector<HTMLElement>('.title-bar')!;
 const title = () => document.querySelector<HTMLElement>('.title-bar-title span')!;
-const show = (info: WindowChromeInfo | null) => { act(() => useWindowChrome.setState({ info, maximized: false })); return render(<TitleBar />); };
+const show = (info: WindowChromeInfo | null) => { act(() => useWindowChrome.setState({ info, maximized: false, fullscreen: false })); return render(<TitleBar />); };
 
 beforeEach(() => { document.title = 'GitVolt — orbital'; window.__gbWindowCalls = []; });
-afterEach(() => { act(() => { useWindowChrome.setState({ info: null, maximized: false }); useMenu.getState().close(); }); });
+afterEach(() => { act(() => { useWindowChrome.setState({ info: null, maximized: false, fullscreen: false }); useMenu.getState().close(); }); });
 
 describe('the title bar', () => {
   it("isn't there without a window to draw it for, or with the system's", () => {
@@ -131,6 +131,96 @@ describe('the resize edges', () => {
     expect(calls()).toEqual(['startResizeDragging:SouthEast']);
     act(() => useWindowChrome.setState({ maximized: true }));
     expect(document.querySelector('.window-edges')).toBeNull();
+  });
+});
+
+describe('on macOS', () => {
+  const mac = (more: Partial<WindowChromeInfo> = {}): WindowChromeInfo => ({ frame: 'custom', platform: 'macos', layout: '', doubleClick: 'toggle-maximize', middleClick: 'none', rightClick: 'none', ...more });
+  const order = () => [...bar().children].map((el) => el.getAttribute('aria-label') ?? el.className);
+
+  it("the traffic lights' slot, then ☰ and the title, and no buttons of its own", () => {
+    show(mac());
+    expect(order()).toEqual(['title-bar-lights', 'Menu', 'title-bar-title']);
+    expect(within(bar()).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Menu']);
+    expect(bar()).toHaveClass('platform-macos');
+    // The window keeps macOS's frame, which resizes it.
+    expect(document.querySelector('.window-edges')).toBeNull();
+  });
+
+  it('full screen hides the traffic lights, and their slot goes; it comes back after', () => {
+    show(mac());
+    act(() => useWindowChrome.setState({ fullscreen: true }));
+    expect(order()).toEqual(['Menu', 'title-bar-title']);
+    act(() => useWindowChrome.setState({ fullscreen: false }));
+    expect(order()).toEqual(['title-bar-lights', 'Menu', 'title-bar-title']);
+  });
+
+  it('drags from its empty space and title, and a double click does what System Settings says', () => {
+    show(mac({ doubleClick: 'minimize' }));
+    fireEvent.mouseDown(document.querySelector('.title-bar-lights')!, { button: 0, clientX: 30, clientY: 15 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 60, clientY: 20 });
+    fireEvent.doubleClick(title());
+    act(() => useWindowChrome.setState({ info: mac({ doubleClick: 'none' }) }));
+    fireEvent.doubleClick(title());
+    expect(calls()).toEqual(['startDragging', 'minimize']);
+  });
+
+  it('a middle or right click does nothing, as on a macOS title bar', () => {
+    show(mac());
+    fireEvent(title(), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    fireEvent.contextMenu(title(), { clientX: 200, clientY: 12 });
+    expect(calls()).toEqual([]);
+    expect(useMenu.getState().rows).toBeFalsy();
+  });
+});
+
+describe('on Windows', () => {
+  const windows = (more: Partial<WindowChromeInfo> = {}): WindowChromeInfo => ({ ...linux(':minimize,maximize,close'), platform: 'windows', middleClick: 'none', ...more });
+  const glyph = (name: string) => screen.getByRole('button', { name }).querySelector('svg')!.innerHTML;
+
+  it("☰, the window's title, then flat minimize, maximize and close; maximize turns into restore", () => {
+    show(windows());
+    expect(bar()).toHaveClass('platform-windows');
+    expect(within(bar()).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Menu', 'Minimize', 'Maximize', 'Close']);
+    expect(title()).toHaveTextContent('GitVolt — orbital');
+    // Windows' own glyphs: a full-box square, then two squares to restore.
+    expect(glyph('Maximize')).toBe('<rect x="0.5" y="0.5" width="9" height="9"></rect>');
+    act(() => useWindowChrome.setState({ maximized: true }));
+    expect(glyph('Restore')).toBe('<rect x="0.5" y="2.5" width="7" height="7"></rect><path d="M2.5 2.5v-2h7v7h-2"></path>');
+    expect(glyph('Close')).toBe('<path d="M0 0l10 10M10 0L0 10"></path>');
+  });
+
+  it('the buttons ask the window', () => {
+    show(windows());
+    for (const name of ['Minimize', 'Maximize', 'Restore', 'Close']) fireEvent.click(screen.getByRole('button', { name }));
+    return waitFor(() => expect(calls()).toEqual(['minimize', 'toggleMaximize', 'toggleMaximize', 'close']));
+  });
+
+  it("only the top edge and corners are the page's: the system's border resizes from the rest", () => {
+    show(windows());
+    expect([...document.querySelectorAll<HTMLElement>('.window-edge')].map((e) => e.dataset.direction)).toEqual(['North', 'NorthEast', 'NorthWest']);
+    fireEvent.mouseDown(document.querySelector('.window-edge-n')!, { button: 0 });
+    expect(calls()).toEqual(['startResizeDragging:North']);
+  });
+
+  it('a double click maximizes, a right click asks for the window menu, a middle click does nothing', () => {
+    show(windows());
+    fireEvent.doubleClick(title());
+    fireEvent(title(), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    fireEvent.contextMenu(title(), { clientX: 200, clientY: 12 });
+    expect(calls()).toEqual(['toggleMaximize', 'windowManager:menu']);
+  });
+
+  it('Alt+Space opens the window menu for the keyboard, under GitVolt\'s title bar only', async () => {
+    const { WINDOW_MENU } = await import('./feature');
+    expect(WINDOW_MENU.shortcuts).toEqual(['Alt+Space']);
+    expect(WINDOW_MENU.when!()).toBe(false);
+    act(() => useWindowChrome.setState({ info: { ...linux('appmenu:close'), platform: 'macos' } }));
+    expect(WINDOW_MENU.when!()).toBe(false);
+    act(() => useWindowChrome.setState({ info: windows() }));
+    expect(WINDOW_MENU.when!()).toBe(true);
+    await WINDOW_MENU.run();
+    expect(calls()).toEqual(['windowManager:keyboard-menu']);
   });
 });
 
