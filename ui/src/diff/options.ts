@@ -109,6 +109,9 @@ export function diffEditorOptions(p: EditorDiffPrefs, contextMenu: boolean, s: E
     unicodeHighlight: { ...UNICODE_HIGHLIGHT },
     renderOverviewRuler: true,
     renderIndicators: true,
+    // The +/- indicators sit in this column, between the line number and the text: Monaco's 10 px
+    // left them touching both. The icon is centred in it (diff.css).
+    lineDecorationsWidth: 18,
     renderMarginRevertIcon: false,
     // Monaco 0.4x+ draws its revert arrow as the gutter menu (renderMarginRevertIcon alone is the old
     // icon): both off, so no unlabeled arrow can discard working-copy lines.

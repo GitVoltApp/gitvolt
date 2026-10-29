@@ -142,3 +142,7 @@
 .ruler-strip > canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .ruler-slider { position: absolute; top: 0; left: 0; width: 100%; background: var(--scroll-thumb-bg); will-change: transform; }
 .ruler-slider:hover, .ruler-slider.ruler-active { background: var(--scroll-thumb-hover-bg); }
+
+/* The diff's +/- indicators, centred in their gutter column (options.ts lineDecorationsWidth), so
+   they don't touch the line number or the text. */
+.monaco-diff-editor .cldr:is(.insert-sign, .delete-sign) { display: flex; justify-content: center; }
