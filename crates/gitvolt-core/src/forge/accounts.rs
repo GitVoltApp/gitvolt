@@ -88,15 +88,15 @@ pub fn token_page_url(kind: ForgeKind, host: &str) -> String {
 }
 
 /// Like [`token_page_url`]; `classic` picks GitHub's classic-token page (no lifetime policy,
-/// unlike orgs that cap fine-grained tokens). GitLab has no such choice. Forgejo's page takes
-/// nothing prefilled: the scopes (`read:user`, `write:repository`, `write:issue`) are picked there.
+/// unlike orgs that cap fine-grained tokens). GitLab has no such choice. Forgejo's new-token form
+/// takes nothing prefilled: the scopes (`read:user`, `write:repository`, `write:issue`) are picked there.
 pub fn token_page_url_for(kind: ForgeKind, host: &str, classic: bool) -> String {
     const DESCRIPTION: &str = "name=GitVolt&description=GitVolt%20desktop%20client";
     match kind {
         ForgeKind::GitLab => format!("https://{host}/-/user_settings/personal_access_tokens?{DESCRIPTION}&scopes=api"),
         ForgeKind::GitHub if classic => "https://github.com/settings/tokens/new?description=GitVolt%20desktop%20client&scopes=repo,read:org".to_string(),
         ForgeKind::GitHub => format!("https://github.com/settings/personal-access-tokens/new?{DESCRIPTION}&pull_requests=write&issues=write&checks=read&statuses=read&metadata=read&profile=read"),
-        ForgeKind::Forgejo => format!("https://{host}/user/settings/applications"),
+        ForgeKind::Forgejo => format!("https://{host}/user/settings/applications/tokens/new"),
     }
 }
 
@@ -125,7 +125,7 @@ mod tests {
         assert_eq!(token_page_url_for(ForgeKind::GitHub, "github.com", true), "https://github.com/settings/tokens/new?description=GitVolt%20desktop%20client&scopes=repo,read:org");
         assert_eq!(token_page_url_for(ForgeKind::GitLab, "gitlab.example.com", true), token_page_url(ForgeKind::GitLab, "gitlab.example.com"));
         assert_eq!(token_page_url(ForgeKind::GitHub, "github.com"), "https://github.com/settings/personal-access-tokens/new?name=GitVolt&description=GitVolt%20desktop%20client&pull_requests=write&issues=write&checks=read&statuses=read&metadata=read&profile=read");
-        assert_eq!(token_page_url(ForgeKind::Forgejo, "code.example.org:3000"), "https://code.example.org:3000/user/settings/applications");
+        assert_eq!(token_page_url(ForgeKind::Forgejo, "code.example.org:3000"), "https://code.example.org:3000/user/settings/applications/tokens/new");
     }
 
     #[test]

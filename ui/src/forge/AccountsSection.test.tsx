@@ -187,6 +187,30 @@ describe('Settings › Accounts', () => {
     await waitFor(() => expect(api.addForgeAccount).toHaveBeenCalledWith('forgejo.example.org', 'forgejo', TOKEN));
   });
 
+  it('a pasted address is detected by its host: a Hosts override says Forgejo, and its token page is Forgejo\'s', async () => {
+    useAppState.setState({ profile: { ...useAppState.getState().profile, hostOverrides: { 'git.example.dev': 'forgejo' } } });
+    show();
+    await openAdd();
+    const form = screen.getByRole('form', { name: 'Add a forge account' });
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'https://git.example.dev/' } });
+    expect(within(form).getByRole('button', { name: 'Forgejo' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(form).getByText('Detected from the host')).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: /^Create token on/ }));
+    await waitFor(() => expect(api.forgeTokenPage).toHaveBeenLastCalledWith('https://git.example.dev/', 'forgejo', undefined));
+  });
+
+  it("a pasted address is detected by its host: a Hosts override says Forgejo, and its token page is Forgejo's", async () => {
+    useAppState.setState({ profile: { ...useAppState.getState().profile, hostOverrides: { 'git.example.dev': 'forgejo' } } });
+    show();
+    await openAdd();
+    const form = screen.getByRole('form', { name: 'Add a forge account' });
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'https://git.example.dev/' } });
+    expect(within(form).getByRole('button', { name: 'Forgejo' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(form).getByText('Detected from the host')).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: /^Create token on/ }));
+    await waitFor(() => expect(api.forgeTokenPage).toHaveBeenLastCalledWith('https://git.example.dev/', 'forgejo', undefined));
+  });
+
   it('with no host, Create token is visibly disabled and says why', async () => {
     useRuntime.setState({ tabs: {} as never });
     show();

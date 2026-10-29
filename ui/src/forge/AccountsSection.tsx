@@ -10,7 +10,7 @@ import { escOwners } from '../app/modalKeys';
 import { ForgeMark } from '../icons/brands';
 import { HostCombobox, type HostSuggestion } from './HostCombobox';
 import { confirmAction } from '../ui/ConfirmDialog';
-import { detectHostKind } from './hostKind';
+import { bareHost, detectHostKind } from './hostKind';
 import { forgeName } from './labels';
 import { effectiveKind } from './urls';
 import './accounts.css';
@@ -46,7 +46,7 @@ type Panel = { mode: 'add' } | { mode: 'replace'; host: string; kind: ForgeKind 
 const TOKEN_HELP: Record<ForgeKind, string> = {
   gitlab: 'Opens your profile\'s token page with the api scope selected. Copy the token, then paste it here.',
   github: 'Opens GitHub\'s fine-grained token page with the permissions GitVolt needs selected. Some organizations cap these tokens\' lifetime (e.g. 90 days); use a classic token for those.',
-  forgejo: 'Opens your Applications settings. Generate a token with the read:user, write:repository and write:issue scopes, then paste it here.',
+  forgejo: 'Opens the new-token form in your Applications settings. Generate a token with the read:user, write:repository and write:issue scopes, then paste it here.',
 };
 /** Untyped, with no suggestion of its kind, the host a forge picked starts with (GitLab: none). */
 const DEFAULT_HOSTS: Partial<Record<ForgeKind, string>> = { github: 'github.com', forgejo: 'codeberg.org' };
@@ -187,11 +187,13 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
     ?? (pickedEarly === null
       ? suggestions[0]?.host ?? ''
       : suggestions.find((x) => kindOf(x.host) === pickedEarly)?.host ?? DEFAULT_HOSTS[pickedEarly] ?? '');
-  const detected = host ? effectiveKind(host, detectHostKind(host), overrides) : 'generic';
+  // A pasted address (`https://git.example.dev/`) is detected by its host, as the core reads it.
+  const bare = bareHost(host);
+  const detected = bare ? effectiveKind(bare, detectHostKind(bare), overrides) : 'generic';
   const picked = pickedEarly;
   const setPicked = setPickedEarly;
   // One account per host: a host that has one already gets its token replaced instead.
-  const takenHost = !replacing && host !== '' && taken.includes(host);
+  const takenHost = !replacing && bare !== '' && taken.includes(bare);
   const kind: ForgeKind = picked ?? (detected === 'generic' ? 'gitlab' : detected);
   const [classic, setClassic] = useState(false);
   const [token, setToken] = useState('');

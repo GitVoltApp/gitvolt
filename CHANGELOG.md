@@ -5,6 +5,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **Forgejo's Create token** opens Forgejo's new-token form (`/user/settings/applications/tokens/new`),
+  and a host pasted as an address (`https://git.example.dev/`) is detected by its host, so a Hosts
+  setting or the host's name picks its forge instead of the GitLab default.
+
 ## [1.2.0] - 2026-10-29
 
 ### Added
