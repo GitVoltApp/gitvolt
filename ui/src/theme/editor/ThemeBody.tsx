@@ -1,6 +1,5 @@
-import { PageGroups, SettingsGroup } from '../../settings/frame/SettingsPage';
+import { SettingsGroup } from '../../settings/frame/SettingsPage';
 import { useSettingsPaste } from '../../settings/paste';
-import type { SettingsCtx } from '../../settings/registry';
 import { pasteTheme } from './actions';
 import { EditingStrip } from './EditingStrip';
 import { LaneColours } from './LaneColours';
@@ -9,12 +8,9 @@ import { ThemeCards } from './ThemeCards';
 import { ThemeColourList } from './ThemeColourList';
 import './editor.css';
 
-/** The groups this body draws itself; any other group on the page (Sizes) is rows as usual. */
-const OWN = new Set(['Theme', 'Graph lanes', 'Colours']);
-
-/** Settings › Appearance: the theme cards and the editing strip, the lane colours, the colours
- * beside a live preview, then the size settings. Ctrl+V on the page pastes a theme. */
-export function AppearanceBody({ ctx }: { ctx: SettingsCtx }) {
+/** Settings › Theme: the theme cards and the editing strip, the lane colours, and the colours
+ * beside a live preview. Ctrl+V on the page pastes a theme. */
+export function ThemeBody() {
   useSettingsPaste(pasteTheme);
   return (
     <>
@@ -33,7 +29,6 @@ export function AppearanceBody({ ctx }: { ctx: SettingsCtx }) {
           <LivePreview />
         </div>
       </SettingsGroup>
-      <PageGroups pageId="appearance" ctx={ctx} skip={OWN} />
     </>
   );
 }

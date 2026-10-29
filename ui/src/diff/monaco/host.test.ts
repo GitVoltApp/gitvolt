@@ -227,7 +227,7 @@ vi.mock('./setup', () => {
     Object.assign(state, { defined: new Set(['vs', 'vs-dark', 'hc-black']), applied: 'vs', themeAtCreate: [], diffAutoUpdate: true, lineChanges: null, diffs: [], files: [] });
     monaco.editor = editor();
   };
-  return { monaco, state, reset, openLinksInBrowser: () => {} };
+  return { monaco, state, reset, openLinksInBrowser: () => {}, followEditorSettings: () => {}, loadEditorFont: async () => {} };
 });
 
 // A grammar load the test can hold open (`gate.wait`), to reorder prefs changes around it.
@@ -725,20 +725,25 @@ describe('MonacoHost', () => {
     expect((third.firstElementChild as HTMLElement).style.visibility).toBe('');
   });
 
-  it('sticky scroll is off in both editors, and its setting applies in place (H7)', async () => {
+  it('sticky scroll is off in both editors, and the editor settings apply in place (H7)', async () => {
     const { host, state } = await fresh();
     host.attachDiff(document.createElement('div'));
     host.attachFile(document.createElement('div'));
     await host.showDiff(diffReq('a.txt'));
     expect(state.diffs[0].updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ stickyScroll: { enabled: false } }));
-    const { useEditorSettings } = await import('../editorSettings');
-    useEditorSettings.getState().set({ stickyScroll: true });
-    expect(state.diffs[0].updateOptions).toHaveBeenLastCalledWith({ stickyScroll: { enabled: true } });
-    expect(state.files[0].updateOptions).toHaveBeenLastCalledWith({ stickyScroll: { enabled: true } });
+    const { useAppState } = await import('../../app/state');
+    const was = useAppState.getState().settings;
+    useAppState.setState({ settings: { ...was, editorStickyScroll: true, editorFontFamily: 'Iosevka', editorWhitespace: 'all', editorMinimap: false } });
+    const live = expect.objectContaining({ stickyScroll: { enabled: true }, fontFamily: '"Iosevka", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace', renderWhitespace: 'all', minimap: { enabled: false } });
+    expect(state.diffs[0].updateOptions).toHaveBeenLastCalledWith(live);
+    expect(state.files[0].updateOptions).toHaveBeenLastCalledWith(live);
+    // Another setting: the editors aren't touched.
+    const calls = state.diffs[0].updateOptions.mock.calls.length;
+    useAppState.setState({ settings: { ...useAppState.getState().settings, relativeDates: true } });
+    expect(state.diffs[0].updateOptions).toHaveBeenCalledTimes(calls);
     await host.showDiff(diffReq('b.txt'));
-    expect(state.diffs[0].updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ stickyScroll: { enabled: true } }));
-    useEditorSettings.getState().set({ stickyScroll: false });
-    localStorage.clear();
+    expect(state.diffs[0].updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ stickyScroll: { enabled: true }, fontFamily: '"Iosevka", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace' }));
+    useAppState.setState({ settings: was });
   });
 
   it('a newer showDiff drops one still computing: never shown, and disposed', async () => {

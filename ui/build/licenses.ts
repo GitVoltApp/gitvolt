@@ -106,7 +106,7 @@ export function packageDirOf(id: string): { dir: string; name: string } | null {
 }
 
 const COPYRIGHT = /^(copyright\b|\(c\)\s|©)/i;
-const NOT_COPYRIGHT = /\[yyyy\]|<year>|\{yyyy\}|\[name of copyright owner\]|^copyright\s+(notice|holders?|owner|license|and\b|law)/i;
+const NOT_COPYRIGHT = /\[yyyy\]|<year>|\{yyyy\}|\[name of copyright owner\]|^copyright\s+(notice|holders?|owner|license|and\b|law|statements?)/i;
 const asCopyright = (line: string) => {
   const s = line.trim().replace(/^[#*/;\- ]+/, '').trim();
   return COPYRIGHT.test(s) && !NOT_COPYRIGHT.test(s) && s.length < 300 ? s : null;

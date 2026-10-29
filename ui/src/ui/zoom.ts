@@ -43,9 +43,17 @@ export function zoomDirection(e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' 
 }
 
 /** Marks a file's or a diff's body: there, the zoom keys and Ctrl+wheel change its text size
- * instead (diff/fontZoom.ts), and the app zoom leaves them alone. */
+ * instead (diff/fontZoom.ts), and the app zoom leaves them alone. Its value says which size:
+ * `reading` (a rendered Markdown pane) or anything else (code). */
 export const FONT_ZOOM_ATTR = 'data-font-zoom';
-export const inFontZoomPanel = (t: EventTarget | null): boolean => t instanceof Element && t.closest(`[${FONT_ZOOM_ATTR}]`) !== null;
+export type ZoomedText = 'code' | 'reading';
+/** Which text size the zoom keys change at `t`: the innermost marked box's, or null (the app zoom). */
+export function fontZoomOf(t: EventTarget | null): ZoomedText | null {
+  const box = t instanceof Element ? t.closest(`[${FONT_ZOOM_ATTR}]`) : null;
+  if (!box) return null;
+  return box.getAttribute(FONT_ZOOM_ATTR) === 'reading' ? 'reading' : 'code';
+}
+export const inFontZoomPanel = (t: EventTarget | null): boolean => fontZoomOf(t) !== null;
 
 const load = (): number => {
   try {

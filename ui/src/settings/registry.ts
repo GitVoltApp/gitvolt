@@ -13,7 +13,7 @@ import type { SettingBinding } from './bindings';
  *
  * A setting may name a page another module registers (or one not registered yet); it shows once
  * that page is there. Within a group, registration order is display order. Page ids in use:
- * general, appearance, graph, branch-presets, diffs, fetch, keyboard, advanced (app);
+ * general, appearance, theme, graph, branch-presets, diffs, fetch, keyboard, advanced (app);
  * git-identity, editor-folders, accounts, hosts (profile); repository, file-colours (repo).
  */
 export type SettingsScope = 'app' | 'profile' | 'repo';

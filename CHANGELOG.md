@@ -16,9 +16,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   Forgejo mark; any other host can be set to Forgejo in Settings › Hosts. Line comments from the
   diff, a line or a range, are kept in GitVolt until you submit the review, then go in with it as
   one review; drafts don't outlive the app. Suggested changes use Forgejo's own ```suggestion
-  blocks. Requesting changes needs a
-  message on Forgejo. Threads resolve and unresolve on a Forgejo with its resolve API (forgejo/forgejo#14873);
-  an older one says it can't.
+  blocks. Requesting changes needs a message on Forgejo. Threads resolve and unresolve on a
+  Forgejo with its resolve API (forgejo/forgejo#14873); an older one says it can't.
 - **A Submodules panel in the sidebar**, as in GitKraken, in a worktree that has submodules: each
   submodule by path, with its state when it isn't at the recorded commit ("new commits", "not
   initialised", greyed, or "conflicted") and a hover card with its URL, the recorded and the
@@ -28,6 +27,40 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   staged for you to commit). The panel's + and the palette's **Submodules: Add…** add one
   (`git submodule add`, with an optional path and branch).
 - **German date format.** Settings › Graph › Date format has `26.09.2026 15:14`.
+- **Editor font and display settings.** Settings › Diffs and editors has an Editor group: font
+  size (moved from Appearance; Ctrl+= / Ctrl+- / Ctrl+0 over an editor still change it, and the
+  field follows), font family (picked from the installed monospace fonts, or all of them, with a
+  preview panel of code in the editor theme's colours), font ligatures, line height, tab width,
+  show whitespace (none, at boundaries, everywhere), the minimap, and sticky scroll. They apply
+  at once to every diff, file view, the working copy and the merge editor, and the rendered Markdown's
+  code takes the same font. Tab width only changes how tabs look, never a file's text.
+- **JetBrains Mono bundled as the default editor font** on every platform, with its bold and
+  italic, for Latin, Vietnamese, Cyrillic and Greek; other scripts fall back to Noto Sans Mono,
+  Ubuntu Sans Mono or Liberation Mono. It loads from the app, never the network.
+- **Reading and UI font settings.** Settings › Appearance › Fonts: a reading font, text size,
+  line height and line width for rendered Markdown (the Markdown view, the rendered diff, MR/PR
+  descriptions and comments), and a UI font for the rest of the app. Code in Markdown keeps the
+  editor font, at the reading size. Over rendered Markdown, Ctrl+= / Ctrl+- / Ctrl+0 and
+  Ctrl+wheel now change the reading size; over an editor, the code size, as before. The defaults
+  look as before. Each font, the editor's too, is picked from a list of the installed fonts drawn
+  in their own font (type to filter, ↑/↓, Enter), and the one under the pointer or the arrows
+  previews in a panel under the picker, at the setting's size and line height, before you pick
+  it. What a font lacks draws in the default's fallbacks; one that's set but not installed says
+  so. Custom font list… takes a CSS font-family list.
+- **−/+ buttons on number settings.** They step at once (held, they repeat), as do ↑/↓ (Shift: by
+  ten) and the wheel over a focused field; scrolling the page never changes a value. Typing still
+  applies on Enter.
+
+### Changed
+
+- **Theme has its own Settings page,** after Appearance: the theme cards, graph lane colours and
+  colours. Appearance has density and fonts.
+
+### Fixed
+
+- **Vietnamese and other stacked accents drawn on the wrong letter in code views on Linux**
+  ("tối thiểu" looked like "tôí thiêủ"): Monaco's default font fell back to DejaVu Sans Mono,
+  which offsets them onto the next letter. The text itself was always right.
 
 ## [1.1.0] - 2026-10-27
 

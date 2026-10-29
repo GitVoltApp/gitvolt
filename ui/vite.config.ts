@@ -61,6 +61,10 @@ const demoPolicy = (): Plugin => ({
   },
 });
 
+// Fonts are never inlined as data: URLs (Vite's default for files under 4 KB, such as the editor
+// font's smaller subsets, theme/editorFont.ts): the Content Security Policy's font-src is 'self'.
+const assetsInlineLimit = (file: string) => (/\.(woff2?|ttf|otf)$/i.test(file) ? false : undefined);
+
 export default defineConfig(({ mode }) => {
   const demo = mode === 'demo';
   return {
@@ -73,7 +77,7 @@ export default defineConfig(({ mode }) => {
     clearScreen: false,
     server: { port, strictPort: true },
     preview: { headers: previewHeaders(mode) },
-    build: demo ? { target: 'es2023', outDir: here('../site/dist/demo'), emptyOutDir: true, rolldownOptions: { input: here('demo.html') } } : { target: 'es2023' },
+    build: demo ? { target: 'es2023', assetsInlineLimit, outDir: here('../site/dist/demo'), emptyOutDir: true, rolldownOptions: { input: here('demo.html') } } : { target: 'es2023', assetsInlineLimit },
     resolve: {
       alias: [
         // micromark's entity decoder: its `browser` build decodes through `document`, which the

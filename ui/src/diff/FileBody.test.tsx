@@ -92,18 +92,18 @@ describe('File View of a Markdown file (spec #5 §3.3)', () => {
     expect(host.detachFile).not.toHaveBeenCalled();
   });
 
-  it("sizes the rendered text like the editor (editorFontSize), and both views take the text-size zoom", async () => {
+  it("sizes the rendered text at the reading size (readingFontSize), and both views take the text-size zoom, each its own", async () => {
     const settings = useAppState.getState().settings;
-    useAppState.setState({ settings: { ...settings, editorFontSize: 16 } });
+    useAppState.setState({ settings: { ...settings, readingFontSize: 16, editorFontSize: 14 } });
     renderPanel(fileViewTarget('docs/guide.md', C, spec), async () => contents(blob('# Guide\n')));
     await screen.findByTestId('md');
     const pane = screen.getByTestId('markdown-file');
     expect(pane.style.getPropertyValue('--md-font-size')).toBe('16px');
     // Its chunks' placeholder heights are sized for it too (MdFontPx).
     expect(screen.getByTestId('md')).toHaveAttribute('data-font-px', '16');
-    expect(pane).toHaveAttribute('data-font-zoom');
-    expect(screen.getByTestId('file-view').closest('[data-font-zoom]')).not.toBeNull();
-    act(() => useAppState.setState({ settings: { ...settings, editorFontSize: 40 } }));
+    expect(pane).toHaveAttribute('data-font-zoom', 'reading');
+    expect(screen.getByTestId('file-view').closest('[data-font-zoom]')).toHaveAttribute('data-font-zoom', '');
+    act(() => useAppState.setState({ settings: { ...settings, readingFontSize: 40 } }));
     expect(pane.style.getPropertyValue('--md-font-size')).toBe('32px');
     act(() => useAppState.setState({ settings }));
   });

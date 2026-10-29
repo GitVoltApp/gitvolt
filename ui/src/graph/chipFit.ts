@@ -1,5 +1,6 @@
 import type { RefLabel } from '../api/gen/RefLabel';
 import { tagSources } from '../tags/sources';
+import { useUiFont } from '../theme/fontSettings';
 import { DETACHED, detachedWorktreeOf } from './worktreeLabel';
 
 /** The chip's fixed horizontal parts (graph.css `.ref-label`): 5 px padding each side, 3 px
@@ -18,9 +19,11 @@ const WARN = 12;
 const widthCache = new Map<string, number>();
 
 /** The chips' font, read once (a `getComputedStyle` per row render would force style recalcs while
- * scrolling) and again after a resize, which a zoom change also fires. */
+ * scrolling) and again after a resize, which a zoom change also fires, and after a UI font change
+ * (Settings › Appearance › Fonts; the rows render again on it: RefLabels). */
 let fontCache: string | null = null;
 if (typeof window !== 'undefined') window.addEventListener('resize', () => { fontCache = null; });
+useUiFont.subscribe(() => { fontCache = null; });
 export function chipFont(): string {
   if (fontCache === null) fontCache = typeof document !== 'undefined' && document.body ? getComputedStyle(document.body).font : '12px sans-serif';
   return fontCache || '12px sans-serif';

@@ -4,6 +4,7 @@ import type { BranchPreset } from "./BranchPreset";
 import type { CollapsePlacement } from "./CollapsePlacement";
 import type { CustomTheme } from "./CustomTheme";
 import type { DateFormat } from "./DateFormat";
+import type { EditorWhitespace } from "./EditorWhitespace";
 import type { PresetSlot } from "./PresetSlot";
 import type { SyncButtonMode } from "./SyncButtonMode";
 
@@ -13,9 +14,51 @@ export type AppSettings = { version: number, activeProfile: string,
  */
 theme: string, 
 /**
- * Plan 1D applies it.
+ * The editors' text size in px (Settings › Diffs and editors; the UI clamps it to 8-32).
  */
 editorFontSize: number, 
+/**
+ * The editors' font: one family's name (the picker's; the UI adds the default's fallbacks
+ * after it) or a CSS font-family list; empty: the bundled JetBrains Mono and its fallbacks.
+ */
+editorFontFamily: string, editorFontLigatures: boolean, 
+/**
+ * px; 0: automatic (Monaco's, from the font size).
+ */
+editorLineHeight: number, 
+/**
+ * How wide a tab character shows, in columns (the UI clamps it to 1-16). Display only: it
+ * never changes what a file holds.
+ */
+editorTabSize: number, editorWhitespace: EditorWhitespace, editorMinimap: boolean, 
+/**
+ * Off by default (H7): with no language service, the pinned line can be a lone `{`.
+ */
+editorStickyScroll: boolean, 
+/**
+ * Rendered Markdown's prose (Settings › Appearance › Fonts): one family's name (the UI adds the
+ * UI font's stack after it) or a CSS font-family list; empty: the UI font.
+ */
+readingFontFamily: string, 
+/**
+ * Its size in px in the Markdown view and the rendered diff (the UI clamps it to 8-32); MR/PR
+ * descriptions and comments are 1 px smaller.
+ */
+readingFontSize: number, 
+/**
+ * A multiple of the reading size (the UI clamps it to 1.2-2.4).
+ */
+readingLineHeight: number, 
+/**
+ * The Markdown view's and the rendered diff's longest line, in `ch`; 0: none (their own
+ * 880 px column).
+ */
+readingLineWidth: number, 
+/**
+ * The app's own text: one family's name (the UI adds the platform UI font's stack after it) or
+ * a CSS font-family list; empty: the platform's UI font.
+ */
+uiFontFamily: string, 
 /**
  * Background fetch period in seconds; 0 turns background fetch off.
  */

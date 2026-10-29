@@ -11,7 +11,7 @@ import type { ThemeDef } from '../themes';
 
 const NO_CUSTOMS: CustomTheme[] = [];
 
-/** The theme Settings › Appearance edits (the saved one, resolved), and its custom theme when it is one. */
+/** The theme Settings › Theme edits (the saved one, resolved), and its custom theme when it is one. */
 export function useEditedTheme(): { def: ThemeDef; custom: CustomTheme | undefined; customs: readonly CustomTheme[] } {
   const theme = useAppState((s) => s.settings.theme);
   const customs = useAppState((s) => s.settings.customThemes) ?? NO_CUSTOMS;

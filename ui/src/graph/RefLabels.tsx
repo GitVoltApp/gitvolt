@@ -5,6 +5,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent
 import type { RefLabel } from '../api/gen/RefLabel';
 import type { RemoteRefLabel } from '../api/gen/RemoteRefLabel';
 import { RemoteIcon } from '../icons/brands';
+import { useUiFont } from '../theme/fontSettings';
 import { useTheme } from '../theme/store';
 import { chipRefs, type BranchMembership } from './membership';
 import { useHoverTooltip } from '../ui/HoverTooltip';
@@ -335,6 +336,8 @@ export function RefLabels({ labels, color, membership = null, onBranchHover, com
 }) {
   // The theme's lanes (overrides applied): a theme switch recolours the chips in place.
   const lanes = useTheme((s) => s.colors.graph);
+  // A UI font change fits the chips again, in its widths (chipFont reads it afresh).
+  useUiFont((s) => s.family);
   // Which chips carry an MR/PR badge (chipFit counts its icon): one shallow selector per row.
   const { tabId } = useRepoContext();
   const badged = useForge(useShallow((s) => { const f = s.byTab[tabId]; return labels.map((l) => !!(f?.kind && mrForLabel(f, l))); }));

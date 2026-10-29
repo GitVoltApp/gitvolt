@@ -1,14 +1,42 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
-import { mergeEditorOptions } from './editors';
+import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SETTINGS, useAppState } from '../app/state';
+import { DEFAULT_EDITOR_SETTINGS } from '../diff/options';
+import { followSettingsLive, mergeEditorOptions } from './editors';
+
+vi.mock('../api/client', () => ({ api: { saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null) }, errorMessage: String }));
 
 describe('mergeEditorOptions', () => {
   it('turns the minimap and overview ruler on, as the diff view does', () => {
     for (const ro of [true, false]) {
-      const o = mergeEditorOptions(ro, false, 13);
+      const o = mergeEditorOptions(ro, DEFAULT_EDITOR_SETTINGS);
       expect(o.minimap.enabled).toBe(true);
       expect(o.renderOverviewRuler).toBe(true);
     }
+  });
+
+  it('takes the editor settings, in all three editors', () => {
+    const s = { ...DEFAULT_EDITOR_SETTINGS, editorFontSize: 99, editorFontFamily: 'Iosevka', editorFontLigatures: true, editorLineHeight: 20, editorWhitespace: 'all' as const, editorMinimap: false, editorStickyScroll: true };
+    for (const ro of [true, false]) {
+      expect(mergeEditorOptions(ro, s)).toMatchObject({ fontSize: 32, fontFamily: '"Iosevka", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace', fontLigatures: true, lineHeight: 32, renderWhitespace: 'all', minimap: { enabled: false }, stickyScroll: { enabled: true } });
+    }
+  });
+});
+
+describe('followSettingsLive: the merge editors take a settings change in place', () => {
+  it('each editor gets the new options; another setting, or after stopping, nothing', () => {
+    useAppState.setState({ settings: { ...DEFAULT_SETTINGS } });
+    const editors = [{ updateOptions: vi.fn() }, { updateOptions: vi.fn() }, { updateOptions: vi.fn() }];
+    const off = followSettingsLive(editors);
+    useAppState.getState().setSettings({ editorFontFamily: "'Fira Code'", editorWhitespace: 'boundary', editorMinimap: false });
+    for (const ed of editors) expect(ed.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ fontFamily: '"Fira Code", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace', renderWhitespace: 'boundary', minimap: { enabled: false } }));
+    useAppState.getState().setSettings({ editorFontSize: 20 });
+    for (const ed of editors) expect(ed.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ fontSize: 20 }));
+    useAppState.getState().setSettings({ relativeDates: true });
+    for (const ed of editors) expect(ed.updateOptions).toHaveBeenCalledTimes(2);
+    off();
+    useAppState.getState().setSettings({ editorFontSize: 14 });
+    for (const ed of editors) expect(ed.updateOptions).toHaveBeenCalledTimes(2);
   });
 });
 

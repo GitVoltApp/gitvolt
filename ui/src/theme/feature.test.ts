@@ -37,11 +37,11 @@ describe('theme actions (R4)', () => {
     expect(availableActions().some((a) => a.id === `view.theme.${mine.id}`)).toBe(false);
   });
 
-  it('the menu shows only "Theme…" under View, which opens Settings on Appearance', () => {
+  it('the menu shows only "Theme…" under View, which opens Settings on Theme', () => {
     const view = hamburgerRows().find((r) => r.kind === 'submenu' && r.label === 'View');
     const ids = view?.kind === 'submenu' ? view.rows.map((r) => (r.kind === 'action' ? r.id : '-')) : [];
     expect(ids).toEqual(['view.theme']);
     expect(runAction('view.theme')).toBe(true);
-    expect(useSettingsUi.getState()).toMatchObject({ open: true, page: 'appearance', focus: 'theme' });
+    expect(useSettingsUi.getState()).toMatchObject({ open: true, page: 'theme', focus: 'theme' });
   });
 });

@@ -85,7 +85,7 @@ export function repoField<K extends keyof RepoSettings>(key: K, defaultValue: Re
   };
 }
 
-/** A value kept in a store of its own (density, editor settings, file list prefs: localStorage). */
+/** A value kept in a store of its own (density, file list prefs: localStorage). */
 export function storeBinding<T>(store: { getState(): unknown; subscribe(cb: () => void): () => void }, get: () => T, set: (v: T) => void, defaultValue: T): () => SettingBinding<T> {
   return () => ({ get, set, defaultValue, subscribe: (cb) => store.subscribe(cb) });
 }

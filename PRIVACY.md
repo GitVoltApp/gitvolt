@@ -263,6 +263,10 @@ Paths are the XDG defaults. `$XDG_CONFIG_HOME`, `$XDG_CACHE_HOME` and `$XDG_DATA
 | `$XDG_RUNTIME_DIR/gitvolt-*` | The askpass and single-instance sockets. Removed when GitVolt exits. |
 | Inside your repositories | Undo snapshots are stored as unreferenced commits in the repository's object store. `git gc` removes them in time. |
 
+The font pickers (Settings › Appearance and Diffs and editors) read the names of the installed
+fonts from the system's font folders. The list stays in memory for the session: it isn't written
+anywhere or sent anywhere. Only the font you pick is saved, in `settings.json`.
+
 GitVolt was called GitBolt before 0.7.0. GitVolt doesn't read what GitBolt left: its folders (the
 same paths with `gitbolt` and `dev.gitbolt.desktop`) and its keyring items (`gitbolt`) stay until
 you remove them, with the commands below under those names.

@@ -167,7 +167,7 @@ describe('sharing', () => {
     expect(useToast.getState().message).toBeNull();
   });
 
-  function showAppearance() {
+  function showThemePage() {
     render(<><SettingsOverlay /><ConfirmDialog /><ContextMenu /></>);
     act(() => useSettingsUi.getState().show('theme'));
     return screen.getByRole('dialog', { name: 'Settings' });
@@ -176,7 +176,7 @@ describe('sharing', () => {
 
   it('Ctrl+V on the page adds a pasted theme under a free name, and selects it', async () => {
     use({ theme: nordCustom.id, customThemes: [nordCustom] });
-    const dialog = showAppearance();
+    const dialog = showThemePage();
     expect(within(dialog).getByRole('radio', { name: 'Nord (Custom)' })).toHaveFocus();
     transport.readClipboardText.mockResolvedValueOnce(JSON.stringify({ gitvolt: 'theme', version: 1, name: 'Nord (Custom)', base: 'nord', colors: { 'app-bg0': '#101010' }, graph: [] }));
     ctrlV(document.activeElement!);
@@ -188,7 +188,7 @@ describe('sharing', () => {
 
   it("Ctrl+V with something that isn't a theme says so and changes nothing", async () => {
     use({ theme: 'nord' });
-    const dialog = showAppearance();
+    const dialog = showThemePage();
     const before = settings();
     transport.readClipboardText.mockResolvedValueOnce('hello');
     ctrlV(within(dialog).getByRole('radio', { name: 'Nord' }));

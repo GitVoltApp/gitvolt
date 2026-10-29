@@ -1,0 +1,43 @@
+/* FontPicker: the button (a .select) shows the choice in its own font; the popover searches the families. */
+.font-picker-button { flex: 0 1 260px; }
+.font-picker-button .select-value { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.font-picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.font-picker-detail { flex: none; color: var(--text-secondary); font-size: 11px; font-family: var(--font-ui); }
+.font-picker-detail.font-picker-list { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.font-picker { position: fixed; z-index: 850; display: flex; flex-direction: column; box-sizing: border-box; background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 6px; box-shadow: 0 6px 20px var(--shadow-popup); color: var(--text-normal); font-size: 13px; user-select: none; }
+.font-picker-head { display: flex; align-items: center; gap: 4px; margin: 6px; }
+.font-picker-head .clearable { flex: 1; display: flex; }
+.font-picker-all { display: flex; align-items: center; gap: 6px; margin: 0 10px 6px; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+.font-picker-list { overflow-y: auto; margin-bottom: 4px; }
+.font-picker-item { position: absolute; left: 0; right: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 10px; cursor: pointer; white-space: nowrap; font-size: 14px; }
+.font-picker-item[aria-selected="true"] { background: var(--selected-row); color: var(--text-selected); }
+.font-picker-item[data-current] .font-picker-name { font-weight: 600; }
+.font-picker-item .font-picker-name { flex: 1; min-width: 0; }
+.font-picker-custom { font-size: 13px; color: var(--link); border-top: 1px solid var(--section-border); }
+
+/* The font settings' rows: the picker (and the custom list's box) on the right, the preview panel
+   under both columns. */
+.setting-row:has(.font-preview) > .setting-control { display: contents; }
+.font-setting { grid-column: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+.font-setting > .font-picker-button { align-self: stretch; flex: none; }
+.font-setting > input { align-self: stretch; }
+.font-preview { grid-column: 1 / -1; box-sizing: border-box; overflow: hidden; border: 1px solid var(--section-border); border-radius: 4px; color: var(--text-selected); background: var(--app-bg0); }
+
+/* Editor: the sample in the editor theme's colours, one line per row, never wrapped. */
+.font-preview-code { margin: 0; padding: 8px 12px; white-space: pre; overflow: hidden; }
+.font-preview-code > div { overflow: hidden; text-overflow: clip; }
+
+/* Reading: a heading, prose and inline code, cut at a fixed height (a font's wrapping can't move the page). */
+.font-preview-prose { padding: 8px 14px; }
+.font-preview-prose h4 { margin: 0 0 0.3em; font-size: 1.3em; font-weight: 600; line-height: 1.25; }
+.font-preview-prose p { margin: 0 0 0.4em; overflow: hidden; }
+.font-preview-prose code { font-family: var(--md-code-font, var(--font-mono)); font-size: 0.92em; padding: 0.1em 0.35em; border-radius: 3px; background: var(--panel-bg1); }
+
+/* UI: a menu row, a button and a sidebar row, in the UI font at the UI's size. */
+.font-preview-ui { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 16px; padding: 8px 12px; font-size: 13px; }
+.font-preview-menu { display: flex; justify-content: space-between; gap: 16px; padding: 4px 8px; border-radius: 4px; background: var(--selected-row); color: var(--text-selected); white-space: nowrap; overflow: hidden; }
+.font-preview-menu kbd { font: inherit; color: var(--text-secondary); }
+.font-preview-button { padding: 4px 12px; border: 1px solid var(--section-border); border-radius: 4px; background: var(--panel-bg1); color: var(--text-selected); white-space: nowrap; }
+.font-preview-side { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 2px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-normal); }
+.font-preview-side .count { margin-left: auto; color: var(--count-blue); font-size: 11px; }

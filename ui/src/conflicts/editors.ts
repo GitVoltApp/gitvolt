@@ -4,11 +4,10 @@ import type * as MonacoNs from 'monaco-editor/editor/editor.api';
 import type { ConflictFilePayload } from '../api/gen/ConflictFilePayload';
 import type { Pane } from '../api/gen/Pane';
 import { useAppState } from '../app/state';
-import { useEditorSettings } from '../diff/editorSettings';
-import { clampEditorFont, EDITOR_SCROLLBAR, UNICODE_HIGHLIGHT } from '../diff/options';
+import { EDITOR_SCROLLBAR, editorDisplayOptions, editorSettingsChanged, UNICODE_HIGHLIGHT, type EditorSettings } from '../diff/options';
 import { loadMonacoHost } from '../diff/monaco/load';
 import { overflowLayer } from '../diff/monaco/overflow';
-import { monaco, openLinksInBrowser } from '../diff/monaco/setup';
+import { followEditorSettings, monaco, openLinksInBrowser } from '../diff/monaco/setup';
 import { appEditorTheme, ensureLanguage } from '../diff/monaco/shiki';
 import { useTheme } from '../theme/store';
 import { createCheckBox } from './checkBox';
@@ -75,28 +74,36 @@ const SCROLL_IMMEDIATE = 1;
 export const LINE_BUTTONS_PX = 22;
 const SIDE_NAME: Record<Side, string> = { current: 'Current', incoming: 'Incoming' };
 
-/** Options for the three editors: the diff host's fixed ones (options.ts), plus, in the panes,
- * the glyph margin (the hunk column) and a wider line-decorations lane (the line buttons). Plain
- * data, so it's unit-testable. */
-export function mergeEditorOptions(readOnly: boolean, stickyScroll: boolean, fontSize: number) {
+/** Options for the three editors: the diff host's fixed ones and the editor settings (options.ts),
+ * plus, in the panes, the glyph margin (the hunk column) and a wider line-decorations lane (the
+ * line buttons). Plain data, so it's unit-testable. */
+export function mergeEditorOptions(readOnly: boolean, s: EditorSettings) {
   return {
     readOnly,
     automaticLayout: false,
     renderValidationDecorations: 'off' as const,
     contextmenu: true,
-    fontSize: clampEditorFont(fontSize),
+    ...editorDisplayOptions(s),
     scrollbar: { ...EDITOR_SCROLLBAR },
     fixedOverflowWidgets: true,
-    minimap: { enabled: true },
     unicodeHighlight: { ...UNICODE_HIGHLIGHT },
     renderOverviewRuler: true,
-    stickyScroll: { enabled: stickyScroll },
     folding: false,
     glyphMargin: readOnly,
     ...(readOnly ? { lineDecorationsWidth: LINE_BUTTONS_PX } : {}),
     scrollBeyondLastLine: false,
     wordWrap: 'off' as const,
   };
+}
+
+/** The editor settings (Settings › Diffs and editors, the font zoom keys) apply to `editors` in
+ * place, until the returned function is called. */
+export function followSettingsLive(editors: readonly { updateOptions(o: ReturnType<typeof editorDisplayOptions>): void }[]): () => void {
+  return useAppState.subscribe((s, prev) => {
+    if (!editorSettingsChanged(s.settings, prev.settings)) return;
+    const display = editorDisplayOptions(s.settings);
+    for (const ed of editors) ed.updateOptions(display);
+  });
 }
 
 /** What the editors' scroll sync uses of a Monaco editor. */
@@ -165,6 +172,8 @@ export function createMergeEditors(host: { current: HTMLElement; incoming: HTMLE
   const show = () => { if (!disposed) for (const el of els) el.style.visibility = ''; };
   void loadMonacoHost().then(show, show);
 
+  // Before the first model: its tab width follows the setting from the start.
+  followEditorSettings();
   const models: Model[] = [];
   const model = (text: string) => {
     const m = monaco.editor.createModel(text, 'plaintext');
@@ -173,7 +182,7 @@ export function createMergeEditors(host: { current: HTMLElement; incoming: HTMLE
   };
   const make = (el: HTMLElement, m: Model, readOnly: boolean): Editor => {
     const ed = monaco.editor.create(el, {
-      ...mergeEditorOptions(readOnly, useEditorSettings.getState().settings.stickyScroll, useAppState.getState().settings.editorFontSize),
+      ...mergeEditorOptions(readOnly, useAppState.getState().settings),
       model: m,
       theme: appEditorTheme(monaco),
       overflowWidgetsDomNode: overflowLayer(),
@@ -202,14 +211,7 @@ export function createMergeEditors(host: { current: HTMLElement; incoming: HTMLE
   // Layout follows each box (as the diff host's ResizeObserver does).
   const ro = new ResizeObserver(() => { for (const ed of editors) ed.layout(); });
   for (const el of els) ro.observe(el);
-  const unsubs = [
-    useAppState.subscribe((s, prev) => {
-      if (s.settings.editorFontSize !== prev.settings.editorFontSize) for (const ed of editors) ed.updateOptions({ fontSize: clampEditorFont(s.settings.editorFontSize) });
-    }),
-    useEditorSettings.subscribe((s, prev) => {
-      if (s.settings.stickyScroll !== prev.settings.stickyScroll) for (const ed of editors) ed.updateOptions({ stickyScroll: { enabled: s.settings.stickyScroll } });
-    }),
-  ];
+  const unsubs = [followSettingsLive(editors)];
 
   // --- The panes' gutter, left to right: the hunk column (the glyph margin: tinted along each
   // region, its checkbox on the region's first line), the line numbers, then each line's take (+)

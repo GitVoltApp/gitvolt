@@ -25,6 +25,9 @@ export interface DrawOptions {
   /** Initials color inside commit nodes when `laneText` is omitted (theme `node-text`); white
    * when that is omitted too. */
   nodeText?: string;
+  /** The initials' font family: the UI font set in Settings (`useUiFont`); `system-ui, sans-serif`
+   * when omitted or empty. */
+  fontFamily?: string;
   /** The collapse zone's shade at its darkest (theme `collapse-strip`), a black at some alpha so
    * the gradient fades it to transparent black; `rgba(0,0,0,SHADE_ALPHA)` when omitted. */
   stripColor?: string;
@@ -441,7 +444,7 @@ function drawNode(ctx: CanvasRenderingContext2D, o: DrawOptions, row: RowPayload
       ctx.restore();
     } else {
       ctx.fillStyle = o.laneText?.[lane] ?? o.nodeText ?? '#fff';
-      ctx.font = `600 ${Math.round(m.rowH * 0.32)}px system-ui, sans-serif`;
+      ctx.font = `600 ${Math.round(m.rowH * 0.32)}px ${o.fontFamily || 'system-ui, sans-serif'}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(initials(row.authorName), x, y + 0.5);

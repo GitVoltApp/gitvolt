@@ -3,7 +3,7 @@ import { formatColour, isCssColour, parseColour } from '../ui/colour/colour';
 import { COLOR_TOKENS, CORE_TOKENS, DEFAULT_THEME_ID, derive, DERIVED_TOKENS, isThemeId, THEMES, type ColorToken, type ThemeDef } from './themes';
 
 /**
- * Custom themes (Settings › Appearance): a built-in base plus the colours the user set, resolved
+ * Custom themes (Settings › Theme): a built-in base plus the colours the user set, resolved
  * into the same `ThemeDef` the built-ins are, so everything that reads a theme works unchanged.
  */
 

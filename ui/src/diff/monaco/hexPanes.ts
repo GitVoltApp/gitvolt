@@ -4,7 +4,7 @@ import { useAppState } from '../../app/state';
 import { byteRange, byteRuns, changedRows, charText, dumpBytes, hexRowChars, hexText, mergeBlocks, NARROW_ROW_BYTES, offsetLabel, ROW_BYTES, rowsOf, runsIn, selectedBytes, stepChange, type ByteRun, type PaneKind } from '../hexModel';
 import { sliderOf } from '../mdRuler';
 import { bindRulerPointer } from '../rulerPointer';
-import { clampEditorFont, EDITOR_SCROLLBAR } from '../options';
+import { EDITOR_SCROLLBAR, editorDisplayOptions, type EditorSettings } from '../options';
 import { overflowLayer } from './overflow';
 import { monaco } from './setup';
 import { appEditorTheme } from './shiki';
@@ -56,12 +56,19 @@ const RULER_MARKS = 400;
 
 const MENU_SIDE = { old: 'original', new: 'modified', file: 'file' } as const;
 
+/** The editor font settings a pane takes (no ligatures: a row's cells stay one character each). */
+function hexFont(s: EditorSettings) {
+  const { fontSize, fontFamily, lineHeight } = editorDisplayOptions(s);
+  return { fontSize, fontFamily, lineHeight, fontLigatures: false };
+}
+const sameFont = (a: EditorSettings, b: EditorSettings) => a.editorFontSize === b.editorFontSize && a.editorFontFamily === b.editorFontFamily && a.editorLineHeight === b.editorLineHeight;
+
 function paneOptions(kind: PaneKind, contextmenu: boolean): MonacoNs.editor.IStandaloneEditorConstructionOptions {
   return {
     readOnly: true,
     automaticLayout: false,
     contextmenu,
-    fontSize: clampEditorFont(useAppState.getState().settings.editorFontSize),
+    ...hexFont(useAppState.getState().settings),
     theme: appEditorTheme(monaco),
     fixedOverflowWidgets: true,
     overflowWidgetsDomNode: overflowLayer(),
@@ -153,9 +160,9 @@ export class HexPanes implements HexView {
     });
     this.ro.observe(el);
     this.unsubFont = useAppState.subscribe((s, prev) => {
-      if (s.settings.editorFontSize === prev.settings.editorFontSize) return;
-      const fontSize = clampEditorFont(s.settings.editorFontSize);
-      for (const ed of this.editors()) ed.updateOptions({ fontSize });
+      if (sameFont(s.settings, prev.settings)) return;
+      const font = hexFont(s.settings);
+      for (const ed of this.editors()) ed.updateOptions(font);
       this.layout();
     });
   }

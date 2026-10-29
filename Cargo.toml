@@ -82,6 +82,9 @@ gdk4-x11 = { version = "0.11.5", features = ["xlib"] }
 x11-dl = "2.21"
 # The active-tab file watcher (plan 1C Task 6): inotify on Linux.
 notify = "8.2.0"
+# The system's font families for the font pickers (gitvolt-core fonts.rs): reads the font files'
+# name tables, and on Linux fontconfig's configuration for the folders, without a C library.
+fontdb = "0.23"
 # Tests only: a constructor that isolates each test process from the host's git config before
 # `main` (gitvolt_core::testing::isolate_this_process). Already in the tree through tauri-utils;
 # same version and features.

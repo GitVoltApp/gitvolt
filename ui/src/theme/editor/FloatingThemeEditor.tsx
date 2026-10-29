@@ -29,10 +29,10 @@ function inWindow(el: HTMLElement, at: Offset, next: Offset): Offset {
 }
 
 /**
- * Settings › Appearance's "Edit mode": the theme editor as a small panel over the live app,
+ * Settings › Theme's "Edit mode": the theme editor as a small panel over the live app,
  * which stays usable behind it (no backdrop, no dimming, no click-outside close, no claim on the
  * keys). Its title bar drags it (or Alt+arrows on it); Find a colour filters the colours. Done, or
- * Esc while focus is inside, brings Settings back on Appearance, focused on the button that opened it.
+ * Esc while focus is inside, brings Settings back on Theme, focused on the button that opened it.
  */
 export function FloatingThemeEditor() {
   const { def } = useEditedTheme();
@@ -74,7 +74,7 @@ export function FloatingThemeEditor() {
     if (back instanceof HTMLElement && back !== document.body && back.isConnected) back.focus({ preventScroll: true });
     else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     flushSync(() => {
-      useSettingsUi.getState().setPage('appearance');
+      useSettingsUi.getState().setPage('theme');
       useSettingsUi.getState().setFloating(null);
     });
     document.querySelector<HTMLElement>('[data-float-opener="theme-editor"]')?.focus({ preventScroll: true });

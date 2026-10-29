@@ -5,16 +5,18 @@ import type { Profile } from '../api/gen/Profile';
 import type { ProfileMeta } from '../api/gen/ProfileMeta';
 import type { RepoSettings } from '../api/gen/RepoSettings';
 import type { StatePayload } from '../api/gen/StatePayload';
+import { DEFAULT_EDITOR_SETTINGS } from '../diff/options';
+import { DEFAULT_FONT_SETTINGS } from '../theme/fontSettings';
 import { debounce } from '../util/debounce';
 import { normalizeGroups } from './tabGroups';
 
 /**
  * Mirrors `AppSettings::default()` (Rust); replaced by the backend's copy on load. View
- * preferences (zoom, density, diff mode, whitespace, word wrap) aren't here: they stay in
+ * preferences (zoom, density, diff mode, ignore whitespace, word wrap) aren't here: they stay in
  * localStorage behind 1B's seams, so they apply before the first paint (ruling R4).
  */
 export const DEFAULT_SETTINGS: AppSettings = {
-  version: 1, activeProfile: 'default', theme: 'default-dark', editorFontSize: 13,
+  version: 1, activeProfile: 'default', theme: 'default-dark', ...DEFAULT_EDITOR_SETTINGS, ...DEFAULT_FONT_SETTINGS,
   fetchIntervalSecs: 60, prune: true, commitLimit: 2000, dateFormat: 'ymd12h', relativeDates: false, gravatar: true, debugLogging: false, syncButton: 'fetchAll', pushFollowTags: true, forgeAvatars: true, updateCheck: true, updatePrereleases: false, updateArchMethod: null, graphColorOverrides: {},
   customThemes: [],
   // --- branch presets ---

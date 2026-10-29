@@ -75,7 +75,7 @@ test.describe('settings', () => {
       await page.getByLabel('Command palette query').fill('#sticky');
       await page.keyboard.press('Enter');
       await expect(dialog(page).getByRole('region', { name: 'Diffs and editors' })).toBeVisible();
-      await expect(dialog(page).getByLabel('Sticky scroll in the diff viewer')).toBeFocused();
+      await expect(dialog(page).getByLabel('Sticky scroll', { exact: true })).toBeFocused();
     });
     await test.step('K92: a dropdown opens on click and with the keyboard, changes its value, and Esc closes only the menu', async () => {
       await closeSettings(page);
@@ -144,16 +144,18 @@ test.describe('settings', () => {
       await nav(page, 'Graph').click();
       await expect(dialog(page).getByLabel('Date format')).toHaveText('2026-09-26 @ 3:14 PM');
     });
-    await test.step('density and sticky scroll persist behind their stores', async () => {
+    await test.step('density persists behind its store; sticky scroll is an app setting', async () => {
       await closeSettings(page);
       await openSettings(page);
       await nav(page, 'Appearance').click();
       await dialog(page).getByRole('radio', { name: 'Compact' }).check();
       await expect.poll(() => page.evaluate((k) => localStorage.getItem(k), DENSITY_STORAGE_KEY)).toBe('compact');
       await nav(page, 'Diffs and editors').click();
-      const sticky = dialog(page).getByLabel('Sticky scroll in the diff viewer');
+      const sticky = dialog(page).getByLabel('Sticky scroll', { exact: true });
       await sticky.check();
-      await expect.poll(() => page.evaluate(() => localStorage.getItem('gitvolt.editorSettings.v1'))).toBe('{"stickyScroll":true}');
+      await expect(sticky).toBeChecked();
+      // Not in localStorage any more: the old key was moved into the app settings and removed.
+      expect(await page.evaluate(() => localStorage.getItem('gitvolt.editorSettings.v1'))).toBeNull();
       // The explanation is always shown, under the label.
       await expect(dialog(page).getByText(/Pins the enclosing scope's first line/)).toBeVisible();
     });
@@ -232,7 +234,7 @@ test.describe('settings', () => {
       const rows = page.getByRole('grid', { name: 'Commit graph' }).getByRole('row');
       const before = await rows.count();
       expect(before).toBeGreaterThan(3);
-      const limit = dialog(page).getByLabel('Commits loaded in the graph');
+      const limit = dialog(page).getByLabel('Commits loaded in the graph', { exact: true });
       await limit.fill('3');
       await limit.press('Enter');
       await expect.poll(() => rows.count()).toBeLessThan(before);

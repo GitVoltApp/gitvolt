@@ -37,6 +37,7 @@ export const COVERAGE = {
   forgeVideo: 'real',
   forgeOpenVideo: 'notInDemo',
   openUrl: 'notInDemo',
+  fontFamilies: 'canned',
   listOpeners: 'canned',
   listOpenersFor: 'canned',
   validateEditorTemplate: 'canned',
