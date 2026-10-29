@@ -20,7 +20,7 @@ describe("the stack predicates' tab inputs", () => {
     useRuntime.getState().patch('e', {
       repo: { id: 1, path: '/r' }, worktree: '/r',
       graph: { rows: [row('d2', ['d1']), row('d1', ['m'])], labels: [], worktrees: [{ path: '/r', isMain: true, inProgress: 'merge' }], head: { branch: 'refs/heads/develop', target: null, detached: false, unborn: false } },
-      sidebar: { locals: [lb('develop', 'd2'), lb('feature/b', 'b1')], remotes: [{ name: 'origin', branches: [{ name: 'release', fullName: 'refs/remotes/origin/release', target: 'd2' }] }], worktrees: [], stashes: [], tags: [] },
+      sidebar: { locals: [lb('develop', 'd2'), lb('feature/b', 'b1')], remotes: [{ name: 'origin', branches: [{ name: 'release', fullName: 'refs/remotes/origin/release', target: 'd2' }] }], worktrees: [], stashes: [], tags: [], submodules: {} },
     } as never);
   });
 

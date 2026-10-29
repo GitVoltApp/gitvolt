@@ -14,6 +14,7 @@
 .forge-mark { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; color: var(--text-on-accent); }
 .forge-mark.is-gitlab { background: var(--forge-gitlab); }
 .forge-mark.is-github { background: var(--forge-github); }
+.forge-mark.is-forgejo { background: var(--forge-forgejo); }
 .account-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .account-line { overflow-wrap: anywhere; }
 .account-name { color: var(--text-selected); font-weight: 600; }

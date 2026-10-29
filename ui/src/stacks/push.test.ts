@@ -15,7 +15,7 @@ const stack: Stack = { branches: ['feature/a', 'feature/b', 'feature/c'], base: 
 const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 const ok = (outcome: unknown) => ({ outcome, journal: { undo: null, redo: null, undoBlocked: null, redoBlocked: null, banners: [], paused: null }, staging: { undo: null, redo: null, off: null }, wip: null });
 const pushed = (branch: string, over: object = {}) => ok({ op: 1, branch, remote: 'origin', dst: branch, upToDate: false, server: { lines: 0, warning: null }, forced: null, ...over });
-const sidebar = (locals: LocalBranch[]) => ({ locals, remotes: [{ name: 'origin', host: null, hostKind: 'generic' as const, branches: [] }], worktrees: [], stashes: [], tags: [] });
+const sidebar = (locals: LocalBranch[]) => ({ locals, remotes: [{ name: 'origin', host: null, hostKind: 'generic' as const, branches: [] }], worktrees: [], stashes: [], tags: [], submodules: {} });
 const setSidebar = (locals: LocalBranch[]) => useRuntime.setState({ tabs: { t: { repo: { id: 1 }, sidebar: sidebar(locals) } } } as never);
 const err = (kind: string, message: string) => ({ kind, message, commandId: 9, stderr: null });
 

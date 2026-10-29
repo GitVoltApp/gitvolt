@@ -61,6 +61,15 @@ describe('Settings › Accounts', () => {
     expect(r.textContent).not.toContain(FILE_WARNING);
   });
 
+  it("a Forgejo account shows its mark, its name and its version without the Gitea it matches", async () => {
+    api.forgeAccounts.mockResolvedValue([{ ...ada('keyring'), account: { ...ada('keyring').account, host: 'forgejo.example.org', kind: 'forgejo', version: '11.0.1+gitea-1.22.0' } }]);
+    show();
+    const r = await screen.findByRole('listitem', { name: 'forgejo.example.org account' });
+    expect(r.textContent).toContain('forgejo.example.org · Forgejo 11.0.1');
+    expect(r.textContent).not.toContain('gitea');
+    expect(within(r).getByRole('img', { name: 'Forgejo' }).closest('.forge-mark')).toHaveClass('is-forgejo');
+  });
+
   it('a file-stored account shows the not-secure warning', async () => {
     api.forgeAccounts.mockResolvedValue([ada('file')]);
     show();
@@ -158,6 +167,24 @@ describe('Settings › Accounts', () => {
     expect(within(form).getByRole('button', { name: /Create token on github.com/ })).toBeDisabled();
     fireEvent.click(within(form).getByRole('button', { name: 'Replace its token' }));
     expect(await screen.findByRole('form', { name: 'Replace the token for github.com' })).toBeInTheDocument();
+  });
+
+  it('picking Forgejo with no Forgejo remote fills codeberg.org; a forgejo host is detected and its token page asked for', async () => {
+    show();
+    await openAdd();
+    const form = screen.getByRole('form', { name: 'Add a forge account' });
+    fireEvent.click(within(form).getByRole('button', { name: 'Forgejo' }));
+    expect(within(form).getByRole('combobox', { name: 'Host' })).toHaveValue('codeberg.org');
+    expect(within(form).getByText(/read:user, write:repository and write:issue/)).toBeTruthy();
+    expect(within(form).queryByRole('group', { name: 'Token type' })).toBeNull();
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'forgejo.example.org' } });
+    expect(within(form).getByRole('button', { name: 'Forgejo' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(form).getByText('Detected from the host')).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: /^Create token on/ }));
+    await waitFor(() => expect(api.forgeTokenPage).toHaveBeenLastCalledWith('forgejo.example.org', 'forgejo', undefined));
+    fireEvent.change(within(form).getByLabelText('Token'), { target: { value: TOKEN } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Add account' }));
+    await waitFor(() => expect(api.addForgeAccount).toHaveBeenCalledWith('forgejo.example.org', 'forgejo', TOKEN));
   });
 
   it('with no host, Create token is visibly disabled and says why', async () => {

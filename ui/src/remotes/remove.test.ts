@@ -18,7 +18,7 @@ const sidebar = (locals: never[]): SidebarPayload => ({
     { name: 'origin', host: null, hostKind: 'generic', branches: [branch('main'), branch('feature'), branch('x')] },
     { name: 'origin/fork', host: null, hostKind: 'generic', branches: [branch('main')] },
   ],
-  worktrees: [], stashes: [], tags: [],
+  worktrees: [], stashes: [], tags: [], submodules: {},
 });
 
 describe('Remove remote', () => {

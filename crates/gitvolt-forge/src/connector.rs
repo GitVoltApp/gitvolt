@@ -3,6 +3,7 @@
 
 use crate::avatar_cache::DiskAvatarCache;
 use crate::endpoints::{default_endpoints, HostEndpoints};
+use crate::forgejo::ForgejoProvider;
 use crate::github::GitHubProvider;
 use crate::gitlab::GitLabProvider;
 use gitvolt_core::error::{GbError, GbErrorKind};
@@ -86,6 +87,13 @@ impl ForgeConnector for Forge {
                     None => p,
                 })
             }
+            ForgeKind::Forgejo => {
+                let p = ForgejoProvider::new(host, &endpoints, token, cache);
+                Arc::new(match &self.changes {
+                    Some(c) => p.with_change_counter(c.clone()),
+                    None => p,
+                })
+            }
         })
     }
 
@@ -115,6 +123,8 @@ mod tests {
         assert_eq!(e.message, "gitlab.com isn't reachable from this build (tests use the fake forge)");
         let app = Forge::new(ForgeConfig { overrides: HashMap::new(), only_overrides: false, avatar_dir: None });
         assert_eq!(app.connect(ForgeKind::GitHub, "github.com", Secret::new("x")).unwrap().kind(), ForgeKind::GitHub);
+        let p = app.connect(ForgeKind::Forgejo, "forgejo.example.org", Secret::new("x")).unwrap();
+        assert_eq!((p.kind(), p.host()), (ForgeKind::Forgejo, "forgejo.example.org"));
     }
 
     // --- 5A T2 ---

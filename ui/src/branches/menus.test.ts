@@ -4,7 +4,7 @@ import { buildMenu } from '../menu/registry';
 import type { CommitTarget, MenuEnv } from '../menu/menuEnv';
 import { anchorNow } from './menus';
 
-const env = { write: { tabId: 't', repoId: 1, worktree: '/r' }, sidebar: { locals: [{ name: 'x', fullName: 'refs/heads/x', target: 'aaa', upstream: null, gone: false, checkedOut: null }], remotes: [], worktrees: [], stashes: [], tags: [] }, activeWorktree: '/r', worktreeShown: (p: string) => p, headBranch: 'main', headSha: 'zzz', labelsAt: () => [], inProgress: null } as unknown as MenuEnv;
+const env = { write: { tabId: 't', repoId: 1, worktree: '/r' }, sidebar: { locals: [{ name: 'x', fullName: 'refs/heads/x', target: 'aaa', upstream: null, gone: false, checkedOut: null }], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} }, activeWorktree: '/r', worktreeShown: (p: string) => p, headBranch: 'main', headSha: 'zzz', labelsAt: () => [], inProgress: null } as unknown as MenuEnv;
 const ids = (t: CommitTarget) => buildMenu('commit', t, env).flatMap((r) => (r.kind === 'action' ? [r.id] : []));
 
 describe('branch rows (spec #2 §14)', () => {

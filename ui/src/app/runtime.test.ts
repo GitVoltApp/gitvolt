@@ -42,7 +42,7 @@ describe('runtime', () => {
       if (gate) await new Promise<void>((r) => { release = r; });
       return nextGraph;
     });
-    api.sidebar.mockImplementation(async () => ({ locals: [], remotes: [], worktrees: [], stashes: [], tags: [] }));
+    api.sidebar.mockImplementation(async () => ({ locals: [], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} }));
     api.repoInfo.mockImplementation(async () => ({ remotes: [], mainWorktree: null, commonDir: '/r/.git' }));
     useRuntime.setState({ tabs: { t: ready() } });
   });
@@ -219,7 +219,7 @@ describe('runtime', () => {
       gate = false;
       api.openRepo.mockReset();
       api.openRepo.mockResolvedValue({ id: 7, path: '/r', name: 'r', worktree: '/r-x' });
-      api.sidebar.mockResolvedValue({ locals: [{ name: 'x', fullName: 'refs/heads/x', isHead: false, worktree: '/r-x', checkedOut: '/r-x' }, { name: 'main', fullName: 'refs/heads/main', isHead: true, worktree: null, checkedOut: '/r' }], remotes: [], worktrees: [{ path: '/r', isCurrent: true }, { path: '/r-x', isCurrent: false }], stashes: [], tags: [] });
+      api.sidebar.mockResolvedValue({ locals: [{ name: 'x', fullName: 'refs/heads/x', isHead: false, worktree: '/r-x', checkedOut: '/r-x' }, { name: 'main', fullName: 'refs/heads/main', isHead: true, worktree: null, checkedOut: '/r' }], remotes: [], worktrees: [{ path: '/r', isCurrent: true }, { path: '/r-x', isCurrent: false }], stashes: [], tags: [], submodules: {} });
       const tabId = seedTab('/r-x');
       await useRuntime.getState().open(tabId, '/r-x');
       const s = useRuntime.getState().tabs[tabId]!.sidebar!;

@@ -41,7 +41,7 @@ const lb = (name: string): LocalBranch => ({
 const tab = (head: string, inProgress: string | null = null) => useRuntime.getState().patch('t', {
   repo: { id: 1, path: '/r' }, worktree: '/r',
   graph: { rows: [], labels: [], worktrees: [{ path: '/r', isMain: true, inProgress }], head: { branch: `refs/heads/${head}`, target: null, detached: false, unborn: false } },
-  sidebar: { locals: [lb('feature/a'), lb('feature/b'), lb('feature/c')], remotes: [], worktrees: [], stashes: [], tags: [] },
+  sidebar: { locals: [lb('feature/a'), lb('feature/b'), lb('feature/c')], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} },
 } as never);
 
 describe('the stack in the hover card and the MR/PR view (spec #4 §4 4D)', () => {

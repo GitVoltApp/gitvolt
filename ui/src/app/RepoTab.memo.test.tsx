@@ -10,7 +10,7 @@ const ids: Record<string, number> = { '/a': 1, '/b': 2, '/c': 3 };
 const api = vi.hoisted(() => ({
   openRepo: vi.fn(),
   graph: vi.fn(),
-  sidebar: vi.fn(async () => ({ locals: [], remotes: [], worktrees: [], stashes: [], tags: [] })),
+  sidebar: vi.fn(async () => ({ locals: [], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} })),
   repoInfo: vi.fn(async () => ({ remotes: [], mainWorktree: null, commonDir: '/x/.git' })),
   watchRepo: vi.fn(async () => null),
   unwatchRepo: vi.fn(async () => null),

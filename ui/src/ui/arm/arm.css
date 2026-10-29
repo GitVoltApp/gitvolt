@@ -17,6 +17,8 @@
 .arm-overlay:hover { background: color-mix(in srgb, var(--arm) 32%, var(--panel-bg0)); }
 /* A full-width button (board D): the label centred across what it covers. */
 .arm-overlay.arm-cover { justify-content: center; }
+/* A small card's cover (data-arm-wrap): its own box, the label wrapping inside it. */
+.arm-overlay.arm-wrap { white-space: normal; line-height: 1.3; text-align: center; }
 .arm-label { overflow: hidden; text-overflow: ellipsis; }
 .arm-icon { display: inline-flex; }
 .arm-icon svg { width: 13px; height: 13px; }

@@ -320,6 +320,11 @@ export const api = {
   submoduleUpdate: (repo: number, worktree: string, path?: string, confirm = false) => call<WriteResult<SubmoduleOutcome>>({ method: 'submoduleUpdate', params: { repo, worktree, ...(path !== undefined && { path }), ...(confirm && { confirm }) } }),
   /** `git submodule sync --recursive` (not journaled). */
   submoduleSync: (repo: number, worktree: string) => call<WriteResult<SubmoduleOutcome>>({ method: 'submoduleSync', params: { repo, worktree } }),
+  /** `git submodule add [-b <branch>] -- <url> [<path>]` (network; not journaled): stages `.gitmodules` and the gitlink. */
+  submoduleAdd: (repo: number, worktree: string, url: string, path?: string, branch?: string) =>
+    call<WriteResult<SubmoduleOutcome>>({ method: 'submoduleAdd', params: { repo, worktree, url, ...(path && { path }), ...(branch && { branch }) } }),
+  /** `git rm -- <path>` of a submodule (not journaled): its checkout, gitlink and `.gitmodules` entry, staged. */
+  submoduleRemove: (repo: number, worktree: string, path: string) => call<WriteResult<SubmoduleOutcome>>({ method: 'submoduleRemove', params: { repo, worktree, path } }),
   // --- end 4A T12 ---
   /** The action queue (spec #2 §3.6). */
   queueState: (repo: number) => call<QueueStatePayload>({ method: 'queueState', params: { repo } }),

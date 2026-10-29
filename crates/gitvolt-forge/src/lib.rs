@@ -1,5 +1,5 @@
 //! Forge integrations. #1: Gravatar avatars with a disk cache. #4: the forge providers (GitLab,
-//! GitHub) over personal access tokens, implementing `gitvolt_core::forge`'s contract.
+//! GitHub, Forgejo) over personal access tokens, implementing `gitvolt_core::forge`'s contract.
 
 pub mod gravatar;
 
@@ -28,6 +28,7 @@ pub mod gitlab;
 // --- 4A T9 ---
 pub mod github;
 // --- end 4A T9 ---
+pub mod forgejo;
 // --- 4A T10 ---
 pub mod connector;
 // --- end 4A T10 ---

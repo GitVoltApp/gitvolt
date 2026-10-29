@@ -9,6 +9,7 @@ import type { OpenerPayload } from '../api/gen/OpenerPayload';
 import type { RefLabel } from '../api/gen/RefLabel';
 import type { RemoteRefLabel } from '../api/gen/RemoteRefLabel';
 import type { SidebarPayload } from '../api/gen/SidebarPayload';
+import type { SubmoduleItem } from '../api/gen/SubmoduleItem';
 import type { TagRemoteLabel } from '../api/gen/TagRemoteLabel';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { copyText } from '../api/transport';
@@ -218,7 +219,9 @@ export type SidebarTarget =
    * (`archive/`). */
   | { what: 'folder'; folder: string; hidden: boolean; tags?: boolean }
   | { what: 'worktree'; path: string; branch: string | null; head: string | null }
-  | { what: 'stash'; sha: string; message: string };
+  | { what: 'stash'; sha: string; message: string }
+  /** A row of the Submodules panel, in the tab's active worktree. */
+  | { what: 'submodule'; submodule: SubmoduleItem };
 
 /** A sidebar MR/PR row (`mr` kind): the MR/PR, its forge's kind (the wording) and the tab it's in. */
 export interface MrTarget { tabId: string; mr: ForgeMr; forge: ForgeKind }
@@ -698,6 +701,8 @@ export function sidebarItemMenu(store: RepoViewStore, item: SideItem, tab: strin
         return view({ what: 'stash', sha: item.stash.id, message: item.stash.message });
       case 'worktree':
         return view({ what: 'worktree', path: item.worktree.path, branch: item.worktree.branch, head: item.worktree.head });
+      case 'submodule':
+        return view({ what: 'submodule', submodule: item.submodule });
       // An MR/PR row: its own `mr` kind (forge/mrMenu.ts).
       case 'mr': {
         const tabId = tab ?? tabIdOf(store);

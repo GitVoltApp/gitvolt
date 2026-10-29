@@ -2,7 +2,14 @@
 import type { LocalBranch } from "./LocalBranch";
 import type { RemoteGroup } from "./RemoteGroup";
 import type { StashItem } from "./StashItem";
+import type { SubmoduleItem } from "./SubmoduleItem";
 import type { TagItem } from "./TagItem";
 import type { WorktreeItem } from "./WorktreeItem";
 
-export type SidebarPayload = { locals: Array<LocalBranch>, remotes: Array<RemoteGroup>, worktrees: Array<WorktreeItem>, stashes: Array<StashItem>, tags: Array<TagItem>, };
+export type SidebarPayload = { locals: Array<LocalBranch>, remotes: Array<RemoteGroup>, worktrees: Array<WorktreeItem>, stashes: Array<StashItem>, tags: Array<TagItem>, 
+/**
+ * Each worktree's submodules, by path (`submodules::sidebar_items`), keyed by its canonical
+ * path as `repoInfo`'s `submodules` is: the Submodules section shows the tab's active one's.
+ * A worktree that has none isn't listed.
+ */
+submodules: { [key in string]: Array<SubmoduleItem> }, };

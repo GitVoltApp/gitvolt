@@ -91,7 +91,7 @@ export function FileBody({ identity, path, text, language, onShown, editable = f
   // The editor as Rendered was picked: its cursor and scroll, and the working copy's buffer.
   const kept = useRef<{ identity: string; view: ViewState; buffer: string | null } | null>(null);
   const shownText = kept.current?.identity === identity && kept.current.buffer !== null ? kept.current.buffer : text;
-  const flavor = forgeOf(tabId).kind === 'gitlab' ? 'gitlab' : 'github';
+  const flavor = forgeOf(tabId).kind ?? 'github';
   // §3.1: over 5 MB, or a parse over 2 s, File View shows Source with "Too large to render".
   const wantsRendered = markdown !== null && picked === 'rendered';
   const tooLarge = useTooLargeToRender(navKey, shownText);

@@ -13,6 +13,8 @@ use ts_rs::TS;
 pub enum ForgeKind {
     GitLab,
     GitHub,
+    /// Forgejo, and Gitea, whose API it shares.
+    Forgejo,
 }
 
 impl ForgeKind {
@@ -21,6 +23,7 @@ impl ForgeKind {
         match k {
             HostKind::GitLab => Some(Self::GitLab),
             HostKind::GitHub => Some(Self::GitHub),
+            HostKind::Forgejo => Some(Self::Forgejo),
             HostKind::Generic => None,
         }
     }
@@ -29,6 +32,7 @@ impl ForgeKind {
         match self {
             Self::GitLab => "GitLab",
             Self::GitHub => "GitHub",
+            Self::Forgejo => "Forgejo",
         }
     }
 }
@@ -876,22 +880,22 @@ pub struct MrHead {
 pub const COMPARE_REFS: &str = "refs/gitvolt/compare/";
 
 impl MrHead {
-    /// The refspec: the forge's ref (`refs/merge-requests/<n>/head`, `refs/pull/<n>/head`) into
-    /// `local_ref`.
+    /// The refspec: the forge's ref (`refs/merge-requests/<n>/head`, GitHub's and Forgejo's
+    /// `refs/pull/<n>/head`) into `local_ref`.
     pub fn refspec(&self, remote: &str) -> String {
         let n = self.number;
         let src = match self.kind {
             ForgeKind::GitLab => format!("refs/merge-requests/{n}/head"),
-            ForgeKind::GitHub => format!("refs/pull/{n}/head"),
+            ForgeKind::GitHub | ForgeKind::Forgejo => format!("refs/pull/{n}/head"),
         };
         format!("+{src}:{}", self.local_ref(remote))
     }
 
-    /// `refs/gitvolt/compare/<remote>/mr/<n>` (GitLab) or `…/pr/<n>` (GitHub).
+    /// `refs/gitvolt/compare/<remote>/mr/<n>` (GitLab) or `…/pr/<n>` (GitHub, Forgejo).
     pub fn local_ref(&self, remote: &str) -> String {
         let word = match self.kind {
             ForgeKind::GitLab => "mr",
-            ForgeKind::GitHub => "pr",
+            ForgeKind::GitHub | ForgeKind::Forgejo => "pr",
         };
         format!("{COMPARE_REFS}{remote}/{word}/{}", self.number)
     }

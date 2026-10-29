@@ -30,7 +30,8 @@ const MIN_W = 160;
 const MAX_W = 480;
 
 /**
- * The left sidebar (spec §6.4): stacked panels (Local, Remote, Worktrees, Stashes, Tags), each
+ * The left sidebar (spec §6.4): stacked panels (Local, Remote, Worktrees, Stashes, Tags, and
+ * Submodules when the active worktree has any), each
  * with its own header and virtualized body, sharing the column's height; dividers between
  * expanded panels resize them. One filter box filters every panel; a (<) button beside it
  * switches to the narrow icon strip. Panel collapse is per repo (`RepoSettings.collapsed`), sort
@@ -49,6 +50,7 @@ export function Sidebar() {
   const { tabId, repoId, path } = useRepoContext();
   const payload = useRuntime((s) => s.tabs[tabId]?.sidebar);
   const view = useRuntime((s) => s.tabs[tabId]?.graph?.view);
+  const worktree = useRuntime((s) => s.tabs[tabId]?.worktree ?? s.tabs[tabId]?.repo?.worktree ?? null);
   const rs = useAppState((s) => s.profile.repos[path]) ?? EMPTY_REPO_SETTINGS;
   const width = useAppState((s) => s.profile.sidebarWidth);
   const manualNarrow = useAppState((s) => s.profile.sidebarNarrow);
@@ -83,7 +85,7 @@ export function Sidebar() {
 
   const presetId = useCurrentPreset(tabId).current.preset.id;
   const picks = rs.branchPicks?.[presetId];
-  const base = useMemo(() => (payload ? sectionsOf(payload, view, picks) : null), [payload, view, picks]);
+  const base = useMemo(() => (payload ? sectionsOf(payload, view, picks, worktree) : null), [payload, view, picks, worktree]);
   const sections = useMemo(() => (base ? withMrSection(base, mrs) : []), [base, mrs]); // 4B T11: a poll rebuilds only the MR/PR section
   const collapsed = useMemo(() => new Set(rs.collapsed), [rs.collapsed]);
   const panels = useMemo(() => buildPanels(sections, { filter, sort: rs.sidebarSort, collapsed }), [sections, filter, rs.sidebarSort, collapsed]);

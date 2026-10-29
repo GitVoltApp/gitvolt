@@ -13,8 +13,10 @@ const DATA_IMAGE = /^data:image\/(png|gif|jpeg|webp);base64,[a-z0-9+/=\s]+$/i;
 
 const parse = (url: string): URL | null => { try { return new URL(url); } catch { return null; } };
 
-/** `u` is on the forge's own hosts: the account host, the project's web host, GitHub's image hosts. */
+/** `u` is on the forge's own hosts: the account host, the project's web host, GitHub's image hosts.
+ * Never on Forgejo: the core doesn't fetch its images, so they load on a click like any host's. */
 export function forgeImageHost(kind: ForgeKind | null, project: Pick<ForgeProject, 'host' | 'webUrl'>, u: URL): boolean {
+  if (kind === 'forgejo') return false;
   const web = parse(project.webUrl);
   if (u.host === project.host.toLowerCase() || (web !== null && u.host === web.host)) return true;
   return kind === 'github' && GITHUB_IMAGE_HOSTS.has(u.host);
@@ -51,6 +53,9 @@ export function resolveImage(ctx: MarkdownContext, src: string): ImageSource {
   // A GitLab upload, by the project's id: `<root>/-/project/<id>/uploads/…` (GitLab 17+ serves
   // only that one to a browser; the core reads either through the API).
   if (project && f.kind === 'gitlab' && /^\/?uploads\//.test(s)) return { kind: 'forge', url: `${gitlabRoot(project)}/-/project/${project.id}/${s.replace(/^\//, '')}` };
+  // A Forgejo attachment, as its editor writes it (`/attachments/<uuid>`): on its host, on a click.
+  const web = project && f.kind === 'forgejo' && /^\/attachments\/[\w-]+$/.test(s) ? parse(project.webUrl) : null;
+  if (web?.protocol === 'https:') return { kind: 'remote', url: `${web.origin}${s}`, host: web.host };
   return { kind: 'none' };
 }
 

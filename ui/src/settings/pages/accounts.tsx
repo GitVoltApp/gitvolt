@@ -12,8 +12,8 @@ const offs = [
   registerSettings([
     {
       id: 'forgeAccounts', label: 'Forge accounts', page: 'accounts', group: 'Accounts', labelFor: 'group',
-      keywords: 'gitlab github token personal access token pat account login keyring merge request pull request forks',
-      description: 'GitLab and GitHub accounts for merge requests, pull requests, forks and avatars.',
+      keywords: 'gitlab github forgejo gitea codeberg token personal access token pat account login keyring merge request pull request forks',
+      description: 'GitLab, GitHub and Forgejo accounts for merge requests, pull requests, forks and avatars.',
       Control: ManageAccounts,
     },
   ]),

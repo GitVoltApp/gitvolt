@@ -261,8 +261,8 @@ const REVIEW_WORDS: Record<string, { kind: EventKind; text: string }> = {
   commented: { kind: 'review', text: 'reviewed' },
 };
 
-/** The timeline's entries by time; a thread sits at its first note's time. GitHub's reviews are
- * events too (GitHub has no system notes). */
+/** The timeline's entries by time; a thread sits at its first note's time. GitHub's and Forgejo's
+ * reviews are events too (neither has system notes). */
 export function entriesOf(discussions: ForgeDiscussion[], reviews: ForgeReview[]): Entry[] {
   const out: Entry[] = [];
   for (const d of discussions) {
@@ -290,7 +290,7 @@ type Tab = 'activity' | 'comments' | 'diff';
  * of forge events and comment-thread cards. */
 export function Thread({ tabId, kind, mr, discussions, reviews = [] }: { tabId: string; kind: ForgeKind; mr: ForgeMr; discussions: ForgeDiscussion[] | null; reviews?: ForgeReview[] }) {
   const [tab, setTab] = useState<Tab>('activity');
-  const entries = useMemo(() => entriesOf(discussions ?? [], kind === 'github' ? reviews : []), [discussions, reviews, kind]);
+  const entries = useMemo(() => entriesOf(discussions ?? [], kind === 'gitlab' ? [] : reviews), [discussions, reviews, kind]);
   const loading = discussions === null;
   const threads = entries.filter((e): e is Extract<Entry, { t: 'thread' }> => e.t === 'thread');
   const diffs = threads.filter((e) => e.d.notes.some((n) => n.position));

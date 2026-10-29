@@ -26,7 +26,7 @@ const group = (name: string, branch?: [string, string]): Group => ({ name, branc
 function tab(sidebar: { locals?: Array<{ name: string; upstream: string | null; isHead?: boolean; target?: string; checkedOut?: string }>; remotes?: Group[] }, refreshTo?: { remotes: Group[] }) {
   const info = { remotes: [{ name: 'origin', url: 'https://gitlab.example.com/group/project.git', host: 'gitlab.example.com', path: 'group/project', hostKind: 'gitlab' }] };
   useRuntime.setState({
-    tabs: { t: { repo: { id: 4 }, info, sidebar: { locals: sidebar.locals ?? [], remotes: sidebar.remotes ?? [], worktrees: [], stashes: [], tags: [] } } as never },
+    tabs: { t: { repo: { id: 4 }, info, sidebar: { locals: sidebar.locals ?? [], remotes: sidebar.remotes ?? [], worktrees: [], stashes: [], tags: [], submodules: {} } } as never },
     refresh: vi.fn(async () => {
       if (!refreshTo) return;
       const cur = useRuntime.getState().tabs.t as never as { sidebar: object; info: typeof info };

@@ -44,6 +44,7 @@
   /* Forge marks (Settings › Accounts): the forges' own brand colours, the same in every theme. */
   --forge-gitlab: #e2432a;
   --forge-github: #6e5494;
+  --forge-forgejo: #de6a29;
   --yellow: #ecb91c;
   --link: #40c5ec;
   /* The MR/PR view: merged and mentions. */

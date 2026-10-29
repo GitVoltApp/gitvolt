@@ -14,6 +14,7 @@ test('parseRemoteUrl (remotes::parse_remote_url)', () => {
 
 test('hostKind and remoteId', () => {
   expect([hostKind('github.com'), hostKind('api.github.com'), hostKind('gitlab.example.com'), hostKind('gitlab.com'), hostKind('example.com')]).toEqual(['github', 'github', 'gitlab', 'gitlab', 'generic']);
+  expect([hostKind('codeberg.org'), hostKind('forgejo.example.org:3000'), hostKind('gitea.example.com'), hostKind('gitlab.gitea.example.com')]).toEqual(['forgejo', 'forgejo', 'forgejo', 'gitlab']);
   expect(remoteId('https://gitlab.example.com/Acme/Shop.git')).toBe('gitlab.example.com/acme/shop');
   expect(remoteId('/demo/.origins/basic.git/')).toBe('/demo/.origins/basic');
 });

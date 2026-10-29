@@ -3,11 +3,11 @@ import { useMemo, useState } from 'react';
 import type { HostKind } from '../../api/gen/HostKind';
 import { useRuntime } from '../../app/runtime';
 import { useAppState } from '../../app/state';
+import { HOST_KIND_NAMES } from '../../forge/hostKind';
 import { Select } from '../../ui/Select';
 import { registerSettings, registerSettingsPage, type SettingsCtx } from '../registry';
 
-const HOST_KINDS: Array<[HostKind, string]> = [['gitlab', 'GitLab'], ['github', 'GitHub'], ['generic', 'Generic (no forge links)']];
-const KIND_NAMES: Record<HostKind, string> = { gitlab: 'GitLab', github: 'GitHub', generic: 'Generic' };
+const HOST_KINDS: Array<[HostKind, string]> = [['gitlab', 'GitLab'], ['github', 'GitHub'], ['forgejo', 'Forgejo'], ['generic', 'Generic (no forge links)']];
 const NONE: never[] = [];
 
 /** The open repository's remote hosts and the hosts with an override, each with its forge type. */
@@ -40,7 +40,7 @@ function HostRows({ ctx }: { ctx: SettingsCtx }) {
               <tr key={h}>
                 <td className="host-name">{h}</td>
                 <td>
-                  <Select<HostKind | ''> aria-label={`Forge type for ${h}`} value={overrides[h] ?? ''} onChange={(k) => set(h, k)} options={[['', `Detected (${KIND_NAMES[kind]})`], ...HOST_KINDS]} />
+                  <Select<HostKind | ''> aria-label={`Forge type for ${h}`} value={overrides[h] ?? ''} onChange={(k) => set(h, k)} options={[['', `Detected (${HOST_KIND_NAMES[kind]})`], ...HOST_KINDS]} />
                 </td>
               </tr>
             ))}
@@ -61,8 +61,8 @@ const offs = [
   registerSettings([
     {
       id: 'hostOverrides', label: 'Forge type per host', page: 'hosts', group: 'Hosts', labelFor: 'group',
-      keywords: 'gitlab github self-hosted icon links',
-      description: 'For the remote icons and web links of a self-hosted GitLab or GitHub.',
+      keywords: 'gitlab github forgejo gitea codeberg self-hosted icon links',
+      description: 'For the remote icons and web links of a self-hosted GitLab, GitHub or Forgejo.',
       Control: HostRows,
     },
   ]),

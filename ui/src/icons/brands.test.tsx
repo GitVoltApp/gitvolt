@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForgeAvatarStoreContext, createAvatarStore } from '../avatars/avatarStore';
 import { patchForge, useForge } from '../forge/mrStore';
-import { RemoteIcon } from './brands';
+import { ForgeMark, RemoteIcon } from './brands';
 
 const ALICE = 'https://gitlab.example.com/uploads/-/system/user/avatar/7/alice.png';
 
@@ -43,5 +43,15 @@ describe("RemoteIcon: a user's fork shows its owner's picture", () => {
     }
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith('https://gitlab.example.com/uploads/missing.png');
+  });
+});
+
+describe("Forgejo's mark", () => {
+  it('is the remote icon for a Forgejo host, and ForgeMark draws it by kind', () => {
+    const { unmount } = render(<RemoteIcon kind="forgejo" host="forgejo.example.org" remote="origin" size={12} />);
+    expect(screen.getByLabelText('remote origin').getAttribute('data-host-kind')).toBe('forgejo');
+    unmount();
+    render(<><ForgeMark kind="forgejo" /><ForgeMark kind="gitlab" /><ForgeMark kind="github" size={16} /></>);
+    expect(['Forgejo', 'GitLab', 'GitHub'].map((n) => screen.getByRole('img', { name: n }).getAttribute('data-host-kind'))).toEqual(['forgejo', 'gitlab', 'github']);
   });
 });

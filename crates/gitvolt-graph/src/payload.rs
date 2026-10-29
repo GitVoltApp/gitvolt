@@ -340,6 +340,7 @@ impl RowPayload {
 pub enum HostKind {
     GitLab,
     GitHub,
+    Forgejo,
     Generic,
 }
 

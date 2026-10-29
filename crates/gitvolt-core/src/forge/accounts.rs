@@ -73,7 +73,8 @@ pub fn normalize_host(input: &str) -> Result<String, GbError> {
     Ok(host)
 }
 
-/// GitHub accounts are github.com's (GitHub Enterprise Server is out of scope, spec #4 §9).
+/// GitHub accounts are github.com's (GitHub Enterprise Server is out of scope, spec #4 §9); GitLab
+/// and Forgejo accounts are on any host.
 pub fn check_kind_host(kind: ForgeKind, host: &str) -> Result<(), GbError> {
     if kind == ForgeKind::GitHub && host != "github.com" {
         return Err(GbError::new(GbErrorKind::InvalidInput, "GitHub accounts are for github.com (GitHub Enterprise Server isn't supported)"));
@@ -87,13 +88,15 @@ pub fn token_page_url(kind: ForgeKind, host: &str) -> String {
 }
 
 /// Like [`token_page_url`]; `classic` picks GitHub's classic-token page (no lifetime policy,
-/// unlike orgs that cap fine-grained tokens). GitLab has no such choice.
+/// unlike orgs that cap fine-grained tokens). GitLab has no such choice. Forgejo's page takes
+/// nothing prefilled: the scopes (`read:user`, `write:repository`, `write:issue`) are picked there.
 pub fn token_page_url_for(kind: ForgeKind, host: &str, classic: bool) -> String {
     const DESCRIPTION: &str = "name=GitVolt&description=GitVolt%20desktop%20client";
     match kind {
         ForgeKind::GitLab => format!("https://{host}/-/user_settings/personal_access_tokens?{DESCRIPTION}&scopes=api"),
         ForgeKind::GitHub if classic => "https://github.com/settings/tokens/new?description=GitVolt%20desktop%20client&scopes=repo,read:org".to_string(),
         ForgeKind::GitHub => format!("https://github.com/settings/personal-access-tokens/new?{DESCRIPTION}&pull_requests=write&issues=write&checks=read&statuses=read&metadata=read&profile=read"),
+        ForgeKind::Forgejo => format!("https://{host}/user/settings/applications"),
     }
 }
 
@@ -112,6 +115,7 @@ mod tests {
         }
         assert!(check_kind_host(ForgeKind::GitHub, "github.com").is_ok());
         assert!(check_kind_host(ForgeKind::GitLab, "gitlab.example.com").is_ok());
+        assert!(check_kind_host(ForgeKind::Forgejo, "code.example.org").is_ok(), "Forgejo on any host");
         assert_eq!(check_kind_host(ForgeKind::GitHub, "github.example.com").unwrap_err().message, "GitHub accounts are for github.com (GitHub Enterprise Server isn't supported)");
     }
 
@@ -121,6 +125,7 @@ mod tests {
         assert_eq!(token_page_url_for(ForgeKind::GitHub, "github.com", true), "https://github.com/settings/tokens/new?description=GitVolt%20desktop%20client&scopes=repo,read:org");
         assert_eq!(token_page_url_for(ForgeKind::GitLab, "gitlab.example.com", true), token_page_url(ForgeKind::GitLab, "gitlab.example.com"));
         assert_eq!(token_page_url(ForgeKind::GitHub, "github.com"), "https://github.com/settings/personal-access-tokens/new?name=GitVolt&description=GitVolt%20desktop%20client&pull_requests=write&issues=write&checks=read&statuses=read&metadata=read&profile=read");
+        assert_eq!(token_page_url(ForgeKind::Forgejo, "code.example.org:3000"), "https://code.example.org:3000/user/settings/applications");
     }
 
     #[test]

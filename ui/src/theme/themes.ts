@@ -53,7 +53,7 @@ export const DERIVED_TOKENS = [
   // stronger than the editor's; Monaco keeps the diff-* ones.
   'md-diff-ins-text', 'md-diff-del-text', 'md-diff-ins-block', 'md-diff-del-block',
   // Settings › Accounts' forge marks: the forges' own brand colours, the same in every theme.
-  'forge-gitlab', 'forge-github',
+  'forge-gitlab', 'forge-github', 'forge-forgejo',
   // The MR/PR view's merged state and mentions (forge/mrview): purple.
   'purple',
   // A switch's track, on and off (ui/Switch.tsx); its knob is --text-on-accent.
@@ -229,6 +229,7 @@ export function derive(c: CoreColors, kind: 'dark' | 'light'): DerivedColors {
     ...diffColors(c, light),
     'forge-gitlab': '#e2432a',
     'forge-github': '#6e5494',
+    'forge-forgejo': '#de6a29',
     purple: light ? '#8250df' : '#a371f7',
     'switch-on': c.blue,
     'switch-off': alpha(fg, light ? 0.24 : 0.16),
@@ -274,7 +275,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       'diff-diagonal-fill': 'rgba(204, 204, 204, 0.2)',
       'md-diff-ins-text': 'rgba(92, 184, 92, 0.3)', 'md-diff-del-text': 'rgba(217, 65, 61, 0.3)',
       'md-diff-ins-block': 'rgba(92, 184, 92, 0.16)', 'md-diff-del-block': 'rgba(217, 65, 61, 0.16)',
-      'forge-gitlab': '#e2432a', 'forge-github': '#6e5494', purple: '#a371f7',
+      'forge-gitlab': '#e2432a', 'forge-github': '#6e5494', 'forge-forgejo': '#de6a29', purple: '#a371f7',
       'switch-on': '#4d88ff', 'switch-off': 'rgba(255, 255, 255, 0.16)',
       ...GROUP_COLORS.dark,
       'button-primary': '#4172d6', 'button-warn': '#de9b43', 'button-warn-ink': '#1c1e23',

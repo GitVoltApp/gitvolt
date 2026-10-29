@@ -7,7 +7,7 @@ import { deleteBranch, deleteRow } from './delete';
 const local = (name: string, over: object = {}) => ({ name, fullName: `refs/heads/${name}`, target: 'aaa', upstream: `refs/remotes/origin/${name}`, gone: false, checkedOut: null, ...over });
 const env = (locals: object[], remotes: Array<{ name: string; target: string }> = [{ name: 'feature/x', target: 'bbb' }]) => ({
   activeWorktree: '/r', write: { tabId: 't', repoId: 1, worktree: '/r' },
-  sidebar: { locals, remotes: [{ name: 'origin', branches: remotes.map((b) => ({ ...b, fullName: `refs/remotes/origin/${b.name}` })) }], worktrees: [], stashes: [], tags: [] },
+  sidebar: { locals, remotes: [{ name: 'origin', branches: remotes.map((b) => ({ ...b, fullName: `refs/remotes/origin/${b.name}` })) }], worktrees: [], stashes: [], tags: [], submodules: {} },
   worktreeShown: (p: string) => p.replace('/r-', '../r-'),
 }) as unknown as MenuEnv;
 const target = (name: string, isLocal = true) => ({ sha: 'aaa', mrRefs: [], isWip: false, isStash: false, branch: { name, local: isLocal ? `refs/heads/${name}` : null, remotes: [] } });

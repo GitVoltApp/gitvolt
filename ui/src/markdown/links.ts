@@ -48,10 +48,11 @@ export function webRoot(p: { path: string; webUrl: string }): string {
   const tail = `/${p.path}`;
   return p.webUrl.toLowerCase().endsWith(tail.toLowerCase()) ? p.webUrl.slice(0, -tail.length) : new URL(p.webUrl).origin;
 }
-export const mrUrl = (kind: ForgeKind, web: string, n: number) => (kind === 'gitlab' ? `${web}/-/merge_requests/${n}` : `${web}/pull/${n}`);
+const MR_PATH: Record<ForgeKind, string> = { gitlab: '-/merge_requests', github: 'pull', forgejo: 'pulls' };
+export const mrUrl = (kind: ForgeKind, web: string, n: number) => `${web}/${MR_PATH[kind]}/${n}`;
 export const issueUrl = (kind: ForgeKind, web: string, n: number) => `${web}${dash(kind)}/issues/${n}`;
 export const commitUrl = (kind: ForgeKind, web: string, sha: string) => `${web}${dash(kind)}/commit/${sha}`;
-export const blobUrl = (kind: ForgeKind, web: string, branch: string, path: string) => `${web}${dash(kind)}/blob/${encodeURIComponent(branch)}/${path.replace(/^(\.\/)+/, '').replace(/^\/+/, '')}`;
+export const blobUrl = (kind: ForgeKind, web: string, branch: string, path: string) => `${web}${kind === 'forgejo' ? '/src/branch' : `${dash(kind)}/blob`}/${encodeURIComponent(branch)}/${path.replace(/^(\.\/)+/, '').replace(/^\/+/, '')}`;
 
 export function targetOfReference(env: LinkEnv, node: MdReferenceNode): LinkTarget {
   const { kind, project: p } = env;
@@ -73,8 +74,9 @@ export function targetOfReference(env: LinkEnv, node: MdReferenceNode): LinkTarg
       const here = node.project === null || same(node.project, p.path);
       const web = here ? p.webUrl : `${webRoot(p)}/${node.project}`;
       if (node.refKind === 'mr') return here ? { kind: 'mr', number: node.number, webUrl: mrUrl(kind, web, node.number) } : { kind: 'external', url: mrUrl(kind, web, node.number) };
-      // `#n`: GitHub numbers PRs and issues together (the view tries the PR, else the browser); GitLab's are issues.
-      if (kind === 'github' && here) return { kind: 'mr', number: node.number, webUrl: issueUrl(kind, web, node.number) };
+      // `#n`: GitHub and Forgejo number PRs and issues together (the view tries the PR, else the
+      // browser); GitLab's are issues.
+      if (kind !== 'gitlab' && here) return { kind: 'mr', number: node.number, webUrl: issueUrl(kind, web, node.number) };
       return { kind: 'external', url: issueUrl(kind, web, node.number) };
     }
   }
@@ -85,13 +87,21 @@ export function targetOfReference(env: LinkEnv, node: MdReferenceNode): LinkTarg
  * caller's). */
 export type ForgePage = { kind: 'mr'; number: number } | { kind: 'commit'; sha: string } | { kind: 'blob'; refPath: string };
 
+const PAGES: Record<ForgeKind, { mr: RegExp; commit: RegExp; blob: RegExp }> = {
+  gitlab: { mr: /^-\/merge_requests\/(\d+)(?:\/|$)/, commit: /^-\/commit\/([0-9a-f]{7,40})(?:\/|$)/i, blob: /^-\/blob\/([^/]+\/.+)$/ },
+  github: { mr: /^pull\/(\d+)(?:\/|$)/, commit: /^commit\/([0-9a-f]{7,40})(?:\/|$)/i, blob: /^blob\/([^/]+\/.+)$/ },
+  // Forgejo's file pages name the ref's type: `src/branch/main/…`, `src/commit/<sha>/…`, `src/tag/v1/…`.
+  forgejo: { mr: /^pulls\/(\d+)(?:\/|$)/, commit: /^commit\/([0-9a-f]{7,40})(?:\/|$)/i, blob: /^src\/(?:branch|commit|tag)\/([^/]+\/.+)$/ },
+};
+
 /** The page `rest` is: the path below a project's web URL, with no query or anchor. */
 export function forgePageOf(kind: ForgeKind, rest: string): ForgePage | null {
-  const mr = (kind === 'gitlab' ? /^-\/merge_requests\/(\d+)(?:\/|$)/ : /^pull\/(\d+)(?:\/|$)/).exec(rest);
+  const pages = PAGES[kind];
+  const mr = pages.mr.exec(rest);
   if (mr) return { kind: 'mr', number: Number(mr[1]) };
-  const c = (kind === 'gitlab' ? /^-\/commit\/([0-9a-f]{7,40})(?:\/|$)/i : /^commit\/([0-9a-f]{7,40})(?:\/|$)/i).exec(rest);
+  const c = pages.commit.exec(rest);
   if (c) return { kind: 'commit', sha: c[1].toLowerCase() };
-  const b = (kind === 'gitlab' ? /^-\/blob\/([^/]+\/.+)$/ : /^blob\/([^/]+\/.+)$/).exec(rest);
+  const b = pages.blob.exec(rest);
   if (b) return { kind: 'blob', refPath: b[1] };
   return null;
 }

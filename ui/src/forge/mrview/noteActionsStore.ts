@@ -15,7 +15,7 @@ import { forgeWrite } from './writes';
  * Resolve (shown at once too).
  */
 
-/** GitHub's eight reactions, in its order, and their emoji. */
+/** GitHub's eight reactions, in its order, and their emoji (Forgejo takes the same names). */
 export const GITHUB_REACTIONS: ReadonlyArray<readonly [string, string]> = [['+1', '👍'], ['-1', '👎'], ['laugh', '😄'], ['hooray', '🎉'], ['confused', '😕'], ['heart', '❤️'], ['rocket', '🚀'], ['eyes', '👀']];
 /** GitLab's picker starts with these (any emoji name goes; the rest are a search away). */
 export const GITLAB_COMMON: ReadonlyArray<readonly [string, string]> = [['thumbsup', '👍'], ['thumbsdown', '👎'], ['smile', '😄'], ['tada', '🎉'], ['confused', '😕'], ['heart', '❤️'], ['rocket', '🚀'], ['eyes', '👀']];
@@ -23,17 +23,20 @@ export const GITLAB_COMMON: ReadonlyArray<readonly [string, string]> = [['thumbs
 /** The emoji for a reaction's name, when it's one of the forge's common ones (else the caller
  * looks the shortcode up). */
 export function knownGlyph(kind: ForgeKind, name: string): string | null {
-  return (kind === 'github' ? GITHUB_REACTIONS : GITLAB_COMMON).find(([n]) => n === name)?.[1] ?? null;
+  return (kind === 'gitlab' ? GITLAB_COMMON : GITHUB_REACTIONS).find(([n]) => n === name)?.[1] ?? null;
 }
 
-/** A comment's web address: GitHub's own `html_url`, GitLab's MR address + `#note_<id>`. */
+/** A comment's web address: GitHub's and Forgejo's own `html_url`, GitLab's MR address + `#note_<id>`. */
 export function notePermalink(kind: ForgeKind, mr: Pick<ForgeMr, 'webUrl'>, n: Pick<ForgeNote, 'id' | 'webUrl'>): string | null {
-  if (kind === 'github') return n.webUrl ?? null;
+  if (kind !== 'gitlab') return n.webUrl ?? null;
   return mr.webUrl && /^\d+$/.test(n.id) ? `${mr.webUrl}#note_${n.id}` : null;
 }
 
-/** GitHub's review summaries (`review-…`) take no reactions and can't be changed here. */
-export const changeableThread = (kind: ForgeKind, d: Pick<ForgeDiscussion, 'id'>) => !(kind === 'github' && d.id.startsWith('review-'));
+/** GitHub's and Forgejo's review summaries (`review-…`) take no reactions and can't be changed here. */
+export const changeableThread = (kind: ForgeKind, d: Pick<ForgeDiscussion, 'id'>) => !(kind !== 'gitlab' && d.id.startsWith('review-'));
+
+/** Forgejo deletes conversation comments (`issue-…`) only, not a review's code comments. */
+export const deletableNote = (kind: ForgeKind, d: Pick<ForgeDiscussion, 'id'>) => kind !== 'forgejo' || d.id.startsWith('issue-');
 
 /** `list` with the user's `name` reaction added (`on`) or taken away. */
 export function toggled(list: ForgeReaction[], name: string, on: boolean, who: string | null): ForgeReaction[] {
@@ -129,9 +132,9 @@ export async function resolveThread(tabId: string, number: number, discussion: s
 }
 
 /** Quote reply: the comment as a Markdown quote in the reply box its answer goes to (the thread's;
- * GitHub's conversation: the new comment's), after what's there. */
+ * GitHub's and Forgejo's conversation: the new comment's), after what's there. */
 export function quoteReply(tabId: string, kind: ForgeKind, number: number, d: Pick<ForgeDiscussion, 'id'>, body: string): string {
-  const target = kind === 'github' && !d.id.startsWith('thread-') ? null : d.id;
+  const target = kind !== 'gitlab' && !d.id.startsWith('thread-') ? null : d.id;
   const key = draftKey(tabId, number, target);
   const quote = body.trimEnd().split('\n').map((l) => (l ? `> ${l}` : '>')).join('\n');
   const now = useReplyDrafts.getState().text[key] ?? '';

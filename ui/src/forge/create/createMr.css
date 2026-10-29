@@ -4,6 +4,7 @@
 .create-mr-mark { display: inline-flex; flex: none; }
 .create-mr-mark[data-kind="gitlab"] { color: var(--forge-gitlab); }
 .create-mr-mark[data-kind="github"] { color: var(--text-selected); }
+.create-mr-mark[data-kind="forgejo"] { color: var(--forge-forgejo); }
 .create-mr-heading { flex: none; }
 .create-mr-project { min-width: 0; margin-left: 2px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 400; color: var(--text-secondary); }
 .create-mr-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }

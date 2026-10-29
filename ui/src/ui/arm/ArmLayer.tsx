@@ -24,15 +24,18 @@ const same = (a: Box | null, b: Box) => !!a && a.left === b.left && a.top === b.
  * - a label longer than that grows the overlay over the adjacent content, toward the side of its
  *   container (the nearest panel or scroll box, `armBounds`) with room for it: `data-arm-grow` on
  *   the control or an ancestor says which side first. It never crosses the container's edge.
- *   `needed`: the label's natural width (0 until measured).
+ *   `needed`: the label's natural width (0 until measured);
+ * - a cover marked `data-arm-wrap` (a small card) keeps exactly its box: a longer label wraps
+ *   inside it instead of growing out.
  */
-function geometry(el: HTMLElement, needed: number): { box: Box; grow: 'left' | 'right'; maxWidth: number; cover: boolean } {
+function geometry(el: HTMLElement, needed: number): { box: Box; grow: 'left' | 'right'; maxWidth: number; cover: boolean; wrap: boolean } {
   const coverEl = el.closest<HTMLElement>('[data-arm-cover]');
   const base = (coverEl ?? el).getBoundingClientRect();
+  const wrap = !!coverEl?.hasAttribute('data-arm-wrap');
   const growAttr = el.closest('[data-arm-grow]')?.getAttribute('data-arm-grow');
   const preferred = growAttr === 'left' || growAttr === 'right' ? growAttr : null;
-  const { grow, maxWidth } = armPlacement(base, armBounds(coverEl ?? el), needed, preferred);
-  return { box: boxOf(base), grow, maxWidth, cover: !!coverEl };
+  const { grow, maxWidth } = wrap ? { grow: 'right' as const, maxWidth: base.width } : armPlacement(base, armBounds(coverEl ?? el), needed, preferred);
+  return { box: boxOf(base), grow, maxWidth, cover: !!coverEl, wrap };
 }
 
 /** The armed control's icon, when it's an icon button: the pill keeps it (board B). */
@@ -63,7 +66,7 @@ function Overlay({ a }: { a: Armed & { origin: NonNullable<Armed['origin']> } })
         return;
       }
       const g = geometry(el, needed.current);
-      setGeo((old) => (same(old.box, g.box) && old.grow === g.grow && old.maxWidth === g.maxWidth ? old : g));
+      setGeo((old) => (same(old.box, g.box) && old.grow === g.grow && old.maxWidth === g.maxWidth && old.wrap === g.wrap ? old : g));
       frame = raf(tick);
     };
     frame = raf(tick);
@@ -84,7 +87,7 @@ function Overlay({ a }: { a: Armed & { origin: NonNullable<Armed['origin']> } })
       dim?.classList.remove('arm-dimmed');
     };
   }, [el, a.req.tone]);
-  const { box, grow, maxWidth, cover } = geo;
+  const { box, grow, maxWidth, cover, wrap } = geo;
   const icon = iconOf(el);
   const side = grow === 'right' ? { left: box.left } : { right: window.innerWidth - box.right };
   return (
@@ -96,8 +99,8 @@ function Overlay({ a }: { a: Armed & { origin: NonNullable<Armed['origin']> } })
         tabIndex={-1}
         aria-hidden
         {...{ [OVERLAY_ATTR]: '' }}
-        className={`arm-overlay tone-${a.req.tone}${cover ? ' arm-cover' : ''}`}
-        style={{ ...side, top: box.top, height: box.height, minWidth: box.width, maxWidth }}
+        className={`arm-overlay tone-${a.req.tone}${cover ? ' arm-cover' : ''}${wrap ? ' arm-wrap' : ''}`}
+        style={{ ...side, top: box.top, height: box.height, minWidth: box.width, maxWidth, ...(wrap && { width: box.width }) }}
         // The control keeps the focus (Enter on it is the second click too).
         onMouseDown={(e) => e.preventDefault()}
         // Only a fresh single click after the settle confirms (`confirmable`): not a double

@@ -1,6 +1,7 @@
 //! Submodules, for repositories that use them: which worktrees use them (the UI offers its
-//! submodule actions only there) and `git submodule status`, for the "Open in a tab" picker. The
-//! writes (update, sync) are `write::submodules`.
+//! submodule actions only there), `git submodule status`, for the "Open in a tab" picker, and the
+//! sidebar's Submodules section (`sidebar_items`). The writes (update, sync, add, remove) are
+//! `write::submodules`.
 
 use crate::api::Api;
 use crate::error::{gix_err, GbError};
@@ -33,6 +34,84 @@ pub struct SubmoduleInfo {
     /// The commit checked out, or the one recorded when it isn't initialised.
     pub commit: String,
     pub status: SubmoduleStatus,
+}
+
+/// A submodule in the sidebar's Submodules section: a gitlink of the worktree's index, what
+/// `.gitmodules` says of it, and what's checked out there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SubmoduleItem {
+    /// Relative to the worktree.
+    pub path: String,
+    /// Its name in `.gitmodules` (`submodule.<name>`); the path when it has no entry there.
+    pub name: String,
+    /// `.gitmodules`' URL, credentials removed; `None` without an entry.
+    pub url: Option<String>,
+    /// The commit the index records (our side while it's conflicted).
+    pub recorded: String,
+    /// The commit checked out in it; `None` when it isn't initialised.
+    pub head: Option<String>,
+    /// The branch checked out in it, when it's on one.
+    pub branch: Option<String>,
+    pub status: SubmoduleStatus,
+}
+
+/// The repository checked out at `path` in `root`: `gix::open` of that folder alone (never a
+/// discovery up to the superproject), and never through a symlink.
+pub(crate) fn open_checkout(root: &Path, path: &str) -> Option<gix::Repository> {
+    let dir = crate::blob::safe_join(root, path).ok()?;
+    if !std::fs::symlink_metadata(&dir).ok()?.is_dir() {
+        return None;
+    }
+    gix::open(&dir).ok()
+}
+
+/// The sidebar's submodules of the worktree `repo` is opened on (`root`), by path. In process,
+/// no git spawned: the index's gitlinks, `.gitmodules`, and each checkout's HEAD. Empty when it
+/// uses none. Reads the index: call it off the runtime.
+pub fn sidebar_items(repo: &gix::Repository, root: &Path) -> Vec<SubmoduleItem> {
+    let Ok(index) = repo.index_or_empty() else { return Vec::new() };
+    // Path → recorded commit and whether it's conflicted; a conflict's side 2 ("ours") is recorded.
+    let mut links: std::collections::BTreeMap<String, (String, bool)> = std::collections::BTreeMap::new();
+    for e in index.entries().iter().filter(|e| e.mode == gix::index::entry::Mode::COMMIT) {
+        let stage = e.stage_raw();
+        let slot = links.entry(e.path(&index).to_string()).or_insert_with(|| (e.id.to_string(), false));
+        if stage != 0 {
+            slot.1 = true;
+            if stage == 2 {
+                slot.0 = e.id.to_string();
+            }
+        }
+    }
+    if links.is_empty() {
+        return Vec::new();
+    }
+    let declared: Vec<(String, String, Option<String>)> = repo
+        .submodules()
+        .ok()
+        .flatten()
+        .map(|subs| subs.filter_map(|s| Some((s.path().ok()?.to_string(), s.name().to_string(), s.url().ok().map(|u| crate::redact::redact(&u.to_bstring().to_string()))))).collect())
+        .unwrap_or_default();
+    links
+        .into_iter()
+        .map(|(path, (recorded, conflicted))| {
+            let entry = declared.iter().find(|(p, _, _)| *p == path);
+            let checkout = open_checkout(root, &path);
+            let head = checkout.as_ref().and_then(|r| r.head_id().ok()).map(|id| id.to_string());
+            let branch = checkout.as_ref().and_then(|r| r.head_name().ok().flatten()).map(|n| n.shorten().to_string());
+            let status = if conflicted {
+                SubmoduleStatus::Conflicted
+            } else {
+                match &head {
+                    None => SubmoduleStatus::Uninitialized,
+                    Some(h) if *h == recorded => SubmoduleStatus::Current,
+                    Some(_) => SubmoduleStatus::NewCommits,
+                }
+            };
+            SubmoduleItem { name: entry.map_or_else(|| path.clone(), |(_, n, _)| n.clone()), url: entry.and_then(|(_, _, u)| u.clone()), path, recorded, head, branch, status }
+        })
+        .collect()
 }
 
 /// The gitlinks in `root`'s index: each path, with the commit it records.
@@ -147,6 +226,48 @@ mod tests {
         assert_eq!(std::fs::read(r.path().join(".git/index")).unwrap(), index, "a read");
         let info = api.dispatch(crate::api::Request::RepoInfo { repo: id }).await.unwrap();
         assert_eq!(info["submodules"], json!({ wt(r.path()): {"unmapped": []} }));
+    }
+
+    #[test]
+    fn the_sidebar_lists_each_submodule_with_its_url_checkout_and_state() {
+        let plain = TestRepo::new();
+        plain.commit("one");
+        assert_eq!(sidebar_items(&gix::open(plain.path()).unwrap(), plain.path()), vec![]);
+
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let parser = r.path().join("vendor/parser");
+        let recorded = r.git(&["rev-parse", "HEAD:vendor/parser"]);
+        r.git_in(&parser, &["checkout", "-q", "HEAD~1"]);
+        let older = r.git_in(&parser, &["rev-parse", "HEAD"]);
+        let theme = r.git(&["rev-parse", "HEAD:vendor/theme"]);
+        let url = |name: &str| Some(r.root().join(name).display().to_string());
+        let list = sidebar_items(&gix::open(r.path()).unwrap(), r.path());
+        assert_eq!(list, vec![
+            SubmoduleItem { path: "vendor/parser".into(), name: "vendor/parser".into(), url: url("parser-src"), recorded: recorded.clone(), head: Some(older), branch: None, status: SubmoduleStatus::NewCommits },
+            SubmoduleItem { path: "vendor/theme".into(), name: "vendor/theme".into(), url: url("theme-src"), recorded: theme, head: None, branch: None, status: SubmoduleStatus::Uninitialized },
+        ]);
+
+        // Back on its branch at the recorded commit: current, and the branch is named.
+        r.git_in(&parser, &["checkout", "-q", "main"]);
+        let parser_item = sidebar_items(&gix::open(r.path()).unwrap(), r.path()).remove(0);
+        assert_eq!((parser_item.head.as_deref(), parser_item.branch.as_deref(), parser_item.status), (Some(recorded.as_str()), Some("main"), SubmoduleStatus::Current));
+    }
+
+    #[tokio::test]
+    async fn the_sidebar_payload_carries_the_submodules() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        r.git(&["branch", "plain"]);
+        let linked = r.add_worktree("plain", "plain");
+        let repo = gix::ThreadSafeRepository::open(r.path()).unwrap();
+        let s = crate::shelldata::sidebar(&repo, r.path()).await.unwrap();
+        // Keyed by canonical worktree path; the linked worktree, its submodules not checked out,
+        // lists them too, uninitialised.
+        let key = |p: &std::path::Path| crate::platform::fs::canonicalize(p).unwrap().display().to_string();
+        assert_eq!(s.submodules.keys().cloned().collect::<Vec<_>>(), { let mut k = vec![key(r.path()), key(&linked)]; k.sort(); k });
+        assert_eq!(s.submodules[&key(r.path())].iter().map(|s| s.path.as_str()).collect::<Vec<_>>(), ["vendor/parser", "vendor/theme"]);
+        assert!(s.submodules[&key(&linked)].iter().all(|s| s.status == SubmoduleStatus::Uninitialized));
     }
 
     #[test]

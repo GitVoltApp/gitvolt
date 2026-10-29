@@ -26,6 +26,10 @@ describe('the references plugin (spec #5 §3.1)', () => {
       ref('issue', '#12', { number: 12 }),
       ref('issue', 'octo-org/widget#4', { project: 'octo-org/widget', number: 4 }),
     ]);
+    expect(refs('Fixes #12 and acme/widget#4, not !45 or a/b/c#1', 'forgejo')).toEqual([
+      ref('issue', '#12', { number: 12 }),
+      ref('issue', 'acme/widget#4', { project: 'acme/widget', number: 4 }),
+    ]);
   });
 
   it('takes a SHA as a whole word of 7 to 40 hex digits with a letter and a digit, or 40 digits', () => {

@@ -1,4 +1,4 @@
-import { GitPullRequest, Cloud, Laptop, Tag, TreePine } from 'lucide-react';
+import { Boxes, GitPullRequest, Cloud, Laptop, Tag, TreePine } from 'lucide-react';
 import { StashIcon } from '../icons/stash';
 import type { Section } from './model';
 
@@ -9,6 +9,7 @@ export function SectionIcon({ section, size = 13 }: { section: Pick<Section, 'ki
     case 'remote': return <Cloud size={size} />;
     case 'worktrees': return <TreePine size={size} />; // K74: a (pine) tree
     case 'stashes': return <StashIcon size={size} />;
+    case 'submodules': return <Boxes size={size} />;
     // --- 4B T11 ---
     case 'mrs':
       return <GitPullRequest size={size} />;

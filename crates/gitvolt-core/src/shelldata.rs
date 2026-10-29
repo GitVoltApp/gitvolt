@@ -159,6 +159,10 @@ pub struct SidebarPayload {
     pub worktrees: Vec<WorktreeItem>,
     pub stashes: Vec<StashItem>,
     pub tags: Vec<TagItem>,
+    /// Each worktree's submodules, by path (`submodules::sidebar_items`), keyed by its canonical
+    /// path as `repoInfo`'s `submodules` is: the Submodules section shows the tab's active one's.
+    /// A worktree that has none isn't listed.
+    pub submodules: std::collections::BTreeMap<String, Vec<crate::submodules::SubmoduleItem>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -546,12 +550,25 @@ fn canonical(p: &Path) -> std::path::PathBuf {
     crate::platform::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
-/// The sidebar's branches, remotes, worktrees, stashes and tags (spec §6.4), for the repository at
+/// The sidebar's branches, remotes, worktrees, stashes, tags and submodules (spec §6.4), for the repository at
 /// `workdir`/`repo`. `repo` must be a handle already opened on `workdir`; this never opens one.
 pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path) -> Result<SidebarPayload, GbError> {
     let shared = repo.clone();
     let rows = tokio::task::spawn_blocking(move || ref_rows(&shared.to_thread_local())).await.map_err(|e| GbError::other(format!("sidebar read failed: {e}")))??;
     let worktrees = list_worktrees(workdir).await?;
+    // Each checked-out worktree's own index, `.gitmodules` and submodule checkouts.
+    let roots: Vec<std::path::PathBuf> = worktrees.iter().filter(|w| !w.bare && !w.prunable).map(|w| canonical(&w.path)).collect();
+    let submodules = tokio::task::spawn_blocking(move || {
+        roots
+            .into_iter()
+            .filter_map(|root| {
+                let items = crate::submodules::sidebar_items(&gix::open(&root).ok()?, &root);
+                (!items.is_empty()).then(|| (root.display().to_string(), items))
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| GbError::other(format!("sidebar read failed: {e}")))?;
     let local = repo.to_thread_local();
     let remote_names: Vec<String> = local.remote_names().into_iter().map(|n| n.to_str_lossy().into_owned()).collect();
     let host_of = |remote: &str| remote_url(&local, remote, Direction::Fetch).and_then(|u| parse_remote_url(&u)).map(|u| u.host);
@@ -564,7 +581,7 @@ pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path) -> Result
         .filter_map(|w| w.branch.clone().map(|b| (b, w.path.display().to_string())))
         .collect();
     let checked_out: std::collections::HashMap<String, String> = worktrees.iter().filter_map(|w| w.branch.clone().map(|b| (b, w.path.display().to_string()))).collect();
-    let mut s = SidebarPayload { locals: vec![], remotes: vec![], worktrees: vec![], stashes: vec![], tags: vec![] };
+    let mut s = SidebarPayload { locals: vec![], remotes: vec![], worktrees: vec![], stashes: vec![], tags: vec![], submodules };
     let mut defaults: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for row in rows {
         if let Some(sym) = row.symref {

@@ -2,7 +2,7 @@ import type { Literal } from 'mdast';
 import type { ReactNode } from 'react';
 
 // --- the shared contract with plan 5B (verbatim) ---
-export type MdFlavor = 'github' | 'gitlab';
+export type MdFlavor = 'github' | 'gitlab' | 'forgejo';
 
 export type MarkdownContext =
   | { kind: 'forge'; tabId: string }                       // MR/PR view: project and host come from forgeOf(tabId)

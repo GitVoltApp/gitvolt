@@ -296,6 +296,16 @@ describe('the commit menu (spec §7 target table; plan 1C Task 15, commit kind)'
     expect(labels(rows)).not.toContain('Open !3');
     find(rows, 'Open #12').run();
   });
+
+  it("Forgejo: # opens a pull request on Forgejo's /pulls page, named Forgejo", () => {
+    const forgejo = { host: 'forgejo.example.org', path: 'acme/widget', hostKind: 'forgejo' as const };
+    const env = envOf({ forge: () => forgejo });
+    const rows = commit(commitTarget({ mrRefs: ['#12', '!3'] }), env);
+    expect(labels(rows)).not.toContain('Open !3');
+    expect(find(rows, 'Open #12').tooltip).toBe('Open pull request #12 on Forgejo');
+    find(rows, 'Open #12').run();
+    expect(env.act.openUrl).toHaveBeenLastCalledWith('https://forgejo.example.org/acme/widget/pulls/12');
+  });
 });
 
 const tagTarget = (over: Partial<TagTarget> = {}): TagTarget => ({ name: 'v1.0', fullName: 'refs/tags/v1.0', sha, ...over });

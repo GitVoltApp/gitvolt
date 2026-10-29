@@ -251,6 +251,22 @@ describe("the MR/PR view's actions (spec #4 §4 \"4B\")", () => {
     expect(useToast.getState().message).toBe('Sent your review of !12 with 2 comments');
   });
 
+  it("Forgejo: Request changes asks for a message even with comments pending; Comment doesn't", () => {
+    review.session = { ...pendingOf(['5']), kind: 'forgejo' };
+    show(mr, detail, 'forgejo');
+    fireEvent.click(screen.getByRole('button', { name: 'Review…' }));
+    const form = screen.getByRole('form', { name: 'Review' });
+    const box = within(form).getByRole('textbox', { name: 'Message' });
+    expect(box).toHaveAttribute('placeholder', 'A summary (optional)');
+    fireEvent.click(within(form).getByRole('radio', { name: 'Request changes' }));
+    expect(box).toHaveAttribute('placeholder', 'What should change?');
+    expect(form).toHaveTextContent('Forgejo needs a message to request changes');
+    const send = within(form).getByRole('button', { name: 'Request changes' });
+    expect(send).toBeDisabled();
+    fireEvent.change(box, { target: { value: 'Rename it' } });
+    expect(send).toBeEnabled();
+  });
+
   it('when the forge takes the comments but refuses the approval, it stays open and says what went through', async () => {
     review.session = pendingOf(['5']);
     review.submitReview.mockResolvedValueOnce({ ok: true, value: { published: 1, eventError: 'gitlab.example.com refused: 403 Forbidden', bodyPosted: false, eventSent: false, fallback: false } });

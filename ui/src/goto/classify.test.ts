@@ -4,6 +4,7 @@ import { classify } from './classify';
 const SHA = '3f2a9c1d4e5b6a7980c1d2e3f4a5b6c7d8e9f001';
 const GL = { host: 'gitlab.example.test', project: 'harbor/tools/dock', forge: 'gitlab' } as const;
 const GH = { host: 'github.com', project: 'octo-org/dock', forge: 'github' } as const;
+const FJ = { host: 'forgejo.example.org', project: 'harbor/dock', forge: 'forgejo' } as const;
 
 describe('classify', () => {
   it('reads commit hashes of 7 to 40 hex characters, trimmed', () => {
@@ -55,6 +56,15 @@ describe('classify', () => {
       .toMatchObject({ kind: 'forgeFile', refPath: ['feature', 'x', 'README.md'], lines: { start: 12, end: 20 } });
     expect(classify('https://github.com/octo-org/dock/blob/main/a.txt?plain=1#L3')).toMatchObject({ lines: { start: 3, end: 3 } });
     expect(classify('https://github.com/octo-org/dock/blob/main/a.txt')).toMatchObject({ lines: null });
+  });
+
+  it("reads Forgejo's pages: by its host's name, or by its own page shapes on any host", () => {
+    expect(classify('https://forgejo.example.org/harbor/dock/pulls/7/files')).toMatchObject({ kind: 'mr', number: 7, at: FJ });
+    expect(classify(`https://forgejo.example.org/harbor/dock/pulls/7/commits/${SHA}`)).toMatchObject({ kind: 'forgeCommit', sha: SHA, at: FJ });
+    expect(classify(`https://forgejo.example.org/harbor/dock/commit/${SHA}`)).toMatchObject({ kind: 'forgeCommit', sha: SHA, at: FJ });
+    expect(classify('https://code.example.org/harbor/dock/src/branch/feature/x/README.md#L20-L12'))
+      .toMatchObject({ kind: 'forgeFile', refPath: ['feature', 'x', 'README.md'], lines: { start: 12, end: 20 }, at: { host: 'code.example.org', project: 'harbor/dock', forge: 'forgejo' } });
+    expect(classify('https://code.example.org/harbor/dock/pulls/3')).toMatchObject({ kind: 'mr', number: 3, at: { forge: 'forgejo' } });
   });
 
   it('ignores other URLs', () => {

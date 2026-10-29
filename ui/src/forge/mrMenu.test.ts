@@ -31,7 +31,7 @@ type Local = { name: string; upstream: string | null; isHead?: boolean; checkedO
 function tab(kind: ForgeKind, locals: Local[] = [], me: string | null = null) {
   const host = kind === 'gitlab' ? 'gitlab.example.com' : 'github.com';
   const info = { remotes: [{ name: 'origin', url: `https://${host}/group/project.git`, host, path: 'group/project', hostKind: kind }] };
-  useRuntime.setState({ tabs: { t: { repo: { id: 4 }, info, sidebar: { locals: locals.map((l) => ({ checkedOut: null, ...l })), remotes: [], worktrees: [], stashes: [], tags: [] } } as never } });
+  useRuntime.setState({ tabs: { t: { repo: { id: 4 }, info, sidebar: { locals: locals.map((l) => ({ checkedOut: null, ...l })), remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} } } as never } });
   useForge.setState({ byTab: {} });
   patchForge('t', { kind, remote: 'origin', project: projectOf('group/project', kind), me });
 }

@@ -34,6 +34,13 @@ describe('the image host policy (spec #5 §4.2)', () => {
     }
   });
 
+  it('Forgejo: its own host waits for a click like any other; an attachment path is on its host', () => {
+    patchForge('t', { kind: 'forgejo', project: projectOf('acme/widget', 'forgejo') });
+    expect(resolveImage(forge, 'https://forgejo.example.org/attachments/0123abcd-0000-4000-8000-00000000abcd')).toEqual({ kind: 'remote', url: 'https://forgejo.example.org/attachments/0123abcd-0000-4000-8000-00000000abcd', host: 'forgejo.example.org' });
+    expect(resolveImage(forge, '/attachments/0123abcd-0000-4000-8000-00000000abcd')).toEqual({ kind: 'remote', url: 'https://forgejo.example.org/attachments/0123abcd-0000-4000-8000-00000000abcd', host: 'forgejo.example.org' });
+    expect(resolveImage(forge, '/uploads/0123abcd0123abcd/shot.png')).toEqual({ kind: 'none' });
+  });
+
   it('never plain http, userinfo, or a script or SVG data URL; raster data URLs as they are', () => {
     patchForge('t', { kind: 'gitlab', project: projectOf() });
     for (const s of ['http://example.org/a.png', 'https://user:pw@example.org/a.png', 'javascript:alert(1)', 'java\tscript:alert(1)', 'data:image/svg+xml;base64,PHN2Zz4=', '', 'docs/a.png']) expect(resolveImage(forge, s)).toEqual({ kind: 'none' });

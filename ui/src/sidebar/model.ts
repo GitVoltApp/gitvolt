@@ -10,6 +10,7 @@ import type { RemoteBranch } from '../api/gen/RemoteBranch';
 import type { SidebarPayload } from '../api/gen/SidebarPayload';
 import type { SortMode } from '../api/gen/SortMode';
 import type { StashItem } from '../api/gen/StashItem';
+import type { SubmoduleItem } from '../api/gen/SubmoduleItem';
 import type { TagItem } from '../api/gen/TagItem';
 import type { ViewPayload } from '../api/gen/ViewPayload';
 import type { WorktreeItem } from '../api/gen/WorktreeItem';
@@ -22,11 +23,12 @@ export type SideItem =
   | (Base & { kind: 'worktree'; worktree: WorktreeItem })
   | (Base & { kind: 'stash'; stash: StashItem })
   | (Base & { kind: 'tag'; tag: TagItem })
+  | (Base & { kind: 'submodule'; submodule: SubmoduleItem })
   // --- 4B T11 ---
   | (Base & { kind: 'mr'; mr: ForgeMr; forge: ForgeKind });
   // --- end 4B T11 ---
 
-export type SectionKind = 'local' | 'remote' | 'mrs' | 'worktrees' | 'stashes' | 'tags';
+export type SectionKind = 'local' | 'remote' | 'mrs' | 'worktrees' | 'stashes' | 'tags' | 'submodules';
 export interface Section {
   id: SectionKind; kind: SectionKind; label: string; hosts?: Record<string, HostKind>; hostNames?: Record<string, string | null>; items: SideItem[]; nests: boolean; /** The empty body's text (default "Nothing here"). */ empty?: string;
   /** A branch panel's picks under the open preset (its folder picks), the Tags panel's tag picks
@@ -35,8 +37,10 @@ export interface Section {
 }
 
 /** The sidebar's panels, in fixed display order (spec §6.4): Local, Remote (one top-level folder
- * per remote), Worktrees, Stashes, Tags. `picks`: the open preset's, for its hidden folders. */
-export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null, picks?: BranchPicks | null): Section[] {
+ * per remote), Worktrees, Stashes, Tags, and Submodules in a worktree that has any (by path, flat,
+ * as GitKraken lists them). `picks`: the open preset's, for its hidden folders; `worktree`: the
+ * tab's active worktree, whose submodules show. */
+export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null, picks?: BranchPicks | null, worktree?: string | null): Section[] {
   // Branch units are keyed by short name, so a local and its remotes share a state.
   const states = view ? new Map(view.branches.map((b) => [b.name, b.state])) : null;
   const st = (name: string): { presetState?: BranchState } => { const s = states?.get(name); return s ? { presetState: s } : {}; };
@@ -48,6 +52,11 @@ export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null, picks?:
   const hiddenTags = new Set(view?.hiddenTags ?? []);
   const tagState = (name: string): { presetState?: BranchState } => (view ? { presetState: hiddenTags.has(name) ? 'hidden' : 'shown' } : {});
   const tagPicks = view ? { picks: tagPicksOf(picks) } : {};
+  const subs = (worktree ? p.submodules[worktree] : undefined) ?? [];
+  const submodules: Section[] = subs.length === 0 ? [] : [{
+    id: 'submodules', kind: 'submodules', label: 'Submodules', nests: false,
+    items: subs.map((m): SideItem => ({ key: `submodule:${m.path}`, kind: 'submodule', name: m.path, target: null, time: 0, submodule: m })),
+  }];
   return [
     { id: 'local', kind: 'local', label: 'Local', nests: true, ...branchPicks, items: p.locals.map((b): SideItem => ({ key: b.fullName, kind: 'local', name: b.name, target: b.target, time: b.tipTime, branch: b, ...st(b.name) })) },
     {
@@ -57,6 +66,7 @@ export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null, picks?:
     { id: 'worktrees', kind: 'worktrees', label: 'Worktrees', nests: false, items: p.worktrees.map((w): SideItem => ({ key: `wt:${w.path}`, kind: 'worktree', name: w.name, target: w.head, time: 0, worktree: w })) },
     { id: 'stashes', kind: 'stashes', label: 'Stashes', nests: false, items: p.stashes.map((s): SideItem => ({ key: `stash:${s.index}`, kind: 'stash', name: s.message, target: s.id, time: s.time, stash: s })) },
     { id: 'tags', kind: 'tags', label: 'Tags', nests: true, ...tagPicks, items: p.tags.map((t): SideItem => ({ key: t.fullName, kind: 'tag', name: t.name, target: t.target, time: t.time, tag: t, ...tagState(t.name) })) },
+    ...submodules,
   ];
 }
 

@@ -44,8 +44,8 @@ export function MrPeople({ tabId, kind, mr, detail, editLabels, layout = 'cards'
         const u = list.find((x) => String(x.id) === key);
         if (u) void changeMrPeople(tabId, kind, mr.number, role, { remove: u });
       },
-      // GitHub keeps a submitted review: only a pending request can be withdrawn.
-      canRemove: role === 'reviewers' && kind === 'github'
+      // GitHub (and Forgejo) keeps a submitted review: only a pending request can be withdrawn.
+      canRemove: role === 'reviewers' && kind !== 'gitlab'
         ? (key) => !detail.mr.review.reviews.some((r) => String(r.user.id) === key && r.state !== 'pending')
         : undefined,
       max,

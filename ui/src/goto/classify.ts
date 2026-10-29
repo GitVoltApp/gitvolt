@@ -1,4 +1,5 @@
 import type { ForgeKind } from '../api/gen/ForgeKind';
+import { detectHostKind } from '../forge/hostKind';
 import { forgePageOf } from '../markdown/links';
 
 /**
@@ -86,17 +87,21 @@ function classifyUrl(s: string): GotoTarget {
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return NONE;
   const segs = u.pathname.split('/').filter(Boolean);
-  // A GitLab page's project ends where `/-/` starts (projects nest in groups); a GitHub one is `owner/repo`.
+  // A GitLab page's project ends where `/-/` starts (projects nest in groups); a GitHub or Forgejo
+  // one is `owner/repo`. Forgejo's by its host's name, or by its own page shapes (`pulls/12`,
+  // `src/branch/…`).
   const dash = segs.indexOf('-');
-  const forge: ForgeKind = dash > 0 ? 'gitlab' : 'github';
   const cut = dash > 0 ? dash : 2;
+  const forgejo = detectHostKind(u.host) === 'forgejo' || /^(?:pulls|src)$/.test(segs[2] ?? '');
+  const forge: ForgeKind = dash > 0 ? 'gitlab' : forgejo ? 'forgejo' : 'github';
   if (segs.length <= cut) return NONE;
   const at: ForgeProjectRef = { host: u.host.toLowerCase(), project: segs.slice(0, cut).map(decode).join('/'), forge };
   const rest = segs.slice(cut).join('/');
-  // An MR's own commit: GitLab's `…/merge_requests/12/diffs?commit_id=<sha>`, GitHub's `…/pull/12/commits/<sha>`.
+  // An MR's own commit: GitLab's `…/merge_requests/12/diffs?commit_id=<sha>`, GitHub's
+  // `…/pull/12/commits/<sha>`, Forgejo's `…/pulls/12/commits/<sha>`.
   const inMr = forge === 'gitlab'
     ? (/^-\/merge_requests\/\d+(?:\/|$)/.test(rest) ? u.searchParams.get('commit_id') : null)
-    : /^pull\/\d+\/commits\/([0-9a-f]{7,40})(?:\/|$)/i.exec(rest)?.[1] ?? null;
+    : (forge === 'forgejo' ? /^pulls\/\d+\/commits\/([0-9a-f]{7,40})(?:\/|$)/i : /^pull\/\d+\/commits\/([0-9a-f]{7,40})(?:\/|$)/i).exec(rest)?.[1] ?? null;
   if (inMr && /^[0-9a-f]{7,40}$/i.test(inMr)) return { kind: 'forgeCommit', sha: inMr.toLowerCase(), url: s, at };
   const page = forgePageOf(forge, rest);
   switch (page?.kind) {

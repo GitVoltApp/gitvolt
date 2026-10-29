@@ -9,7 +9,7 @@ const res = (outcome: unknown) => ({ outcome, journal: { undo: null, redo: null,
 
 describe('Create worktree (spec #2 §11.1)', () => {
   it('suggests the dash-joined folder, creates, and opens a new tab by default', async () => {
-    useRuntime.getState().patch('t', { repo: { id: 1, path: '/r/shop', name: 'shop', worktree: '/r/shop' }, worktree: '/r/shop', sidebar: { locals: [], remotes: [], worktrees: [], stashes: [], tags: [] } as never });
+    useRuntime.getState().patch('t', { repo: { id: 1, path: '/r/shop', name: 'shop', worktree: '/r/shop' }, worktree: '/r/shop', sidebar: { locals: [], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} } as never });
     vi.spyOn(api, 'suggestWorktreePath').mockResolvedValue('/r/shop-feature-x');
     const add = vi.spyOn(api, 'worktreeAdd').mockResolvedValue(res({ path: '/r/shop-feature-x' }) as never);
     const tab = vi.spyOn(active, 'openWorktreeTab').mockResolvedValue();

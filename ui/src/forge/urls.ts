@@ -36,8 +36,12 @@ function baseUrl(r: ProjectRemote, project?: string | null): string {
   return `https://${r.host}/${project ?? r.path}`;
 }
 
+/** A full commit SHA (SHA-1 or SHA-256), not a branch name. */
+const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+
 /** A file's blob URL, with an optional line anchor (spec §14.4). GitLab and GitHub differ in both
- * the path shape and the anchor: GitLab's range anchor has one `L`, GitHub's has two. */
+ * the path shape and the anchor: GitLab's range anchor has one `L`, GitHub's has two. Forgejo
+ * anchors like GitHub, but its path names the ref's type (`ref` is a branch or a full SHA). */
 export function fileUrl(r: ProjectRemote, ref: string, file: string, lines?: { a: number; b: number }): string | null {
   if (r.hostKind === 'generic') return null;
   const encRef = encodeSegments(ref);
@@ -47,7 +51,9 @@ export function fileUrl(r: ProjectRemote, ref: string, file: string, lines?: { a
     if (!lines) return url;
     return `${url}#L${lines.a}${lines.a === lines.b ? '' : `-${lines.b}`}`;
   }
-  const url = `${baseUrl(r)}/blob/${encRef}/${encFile}`;
+  const url = r.hostKind === 'forgejo'
+    ? `${baseUrl(r)}/src/${FULL_SHA.test(ref) ? 'commit' : 'branch'}/${encRef}/${encFile}`
+    : `${baseUrl(r)}/blob/${encRef}/${encFile}`;
   if (!lines) return url;
   return `${url}#L${lines.a}${lines.a === lines.b ? '' : `-L${lines.b}`}`;
 }
@@ -60,6 +66,7 @@ export function repoUrl(r: ProjectRemote): string | null {
 export function branchUrl(r: ProjectRemote, branch: string): string | null {
   if (r.hostKind === 'generic') return null;
   const enc = encodeSegments(branch);
+  if (r.hostKind === 'forgejo') return `${baseUrl(r)}/src/branch/${enc}`;
   return r.hostKind === 'gitlab' ? `${baseUrl(r)}/-/tree/${enc}` : `${baseUrl(r)}/tree/${enc}`;
 }
 
@@ -68,11 +75,12 @@ export function commitUrl(r: ProjectRemote, sha: string): string | null {
   return r.hostKind === 'gitlab' ? `${baseUrl(r)}/-/commit/${sha}` : `${baseUrl(r)}/commit/${sha}`;
 }
 
-/** GitLab merge requests; GitHub pull requests (GitHub redirects `/pull/n` to the issue when `n`
- * is one). No API call: plain URL templates (spec §14.4). `project` (a `group/sub/project` or
- * `owner/repo` override) replaces `r.path` when it's non-null. */
+/** GitLab merge requests; GitHub and Forgejo pull requests (GitHub redirects `/pull/n` to the
+ * issue when `n` is one). No API call: plain URL templates (spec §14.4). `project` (a
+ * `group/sub/project` or `owner/repo` override) replaces `r.path` when it's non-null. */
 export function mergeRequestUrl(r: ProjectRemote, project: string | null, n: number): string | null {
   if (r.hostKind === 'generic') return null;
+  if (r.hostKind === 'forgejo') return `${baseUrl(r, project)}/pulls/${n}`;
   return r.hostKind === 'gitlab' ? `${baseUrl(r, project)}/-/merge_requests/${n}` : `${baseUrl(r, project)}/pull/${n}`;
 }
 

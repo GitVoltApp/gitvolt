@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 't', kind: 'repo', path: '/r', alias: null }], activeTab: 't' } });
   useRuntime.setState({ tabs: {} });
-  useRuntime.getState().patch('t', { status: 'ready', sidebar: { locals: [branch('dev', 'refs/remotes/origin/dev'), branch('topic', null)], remotes: [], worktrees: [], stashes: [], tags: [] } });
+  useRuntime.getState().patch('t', { status: 'ready', sidebar: { locals: [branch('dev', 'refs/remotes/origin/dev'), branch('topic', null)], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} } });
   useForge.setState({ byTab: {} });
   patchForge('t', { kind: 'gitlab', byRef: { 'refs/remotes/origin/dev': mrOf(12, { title: 'Dev work' }) } });
 });

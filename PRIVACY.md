@@ -1,7 +1,7 @@
 # Privacy
 
 GitVolt has no accounts, servers or cloud service of its own. It talks only to your git remotes,
-to the GitHub and GitLab accounts you add, to Gravatar, and to GitHub for its own updates. This page lists every network request
+to the GitHub, GitLab and Forgejo accounts you add, to Gravatar, and to GitHub for its own updates. This page lists every network request
 the app makes, what each one sends, and how to turn it off. It also lists what GitVolt keeps on
 your computer and how to delete it.
 
@@ -35,7 +35,8 @@ core.
 - When: only when you start one: Fetch, Pull, Push (including tags, deleting a remote branch and
   stack pushes), Clone, adding a remote, checking out an MR/PR from a fork, a stack retarget,
   Submodules: Update (`git submodule update --init --recursive`, which clones or fetches each
-  submodule from the URL its `.gitmodules` names), and in a repository that uses Git LFS, LFS:
+  submodule from the URL its `.gitmodules` names), adding a submodule (`git submodule add`, which
+  clones the URL you enter), and in a repository that uses Git LFS, LFS:
   Pull, LFS: Fetch and a file's Download (`git lfs`, which asks the remote's LFS server for the
   files, with the same credentials).
 - Sends: what the git command sends. A push uploads your commits. A Fetch or Pull is followed by
@@ -48,7 +49,7 @@ core.
 - Signature checks run your own `gpg` or `ssh-keygen` through git, with your configuration.
   GitVolt doesn't ask them to fetch keys, but a gpg set up to retrieve keys automatically will.
 
-### Forge APIs (GitHub and GitLab)
+### Forge APIs (GitHub, GitLab and Forgejo)
 
 GitVolt only calls a forge API for an account you add in Settings › Accounts. Without one, it
 makes no forge requests (apart from images you choose to load, below).
@@ -56,6 +57,7 @@ makes no forge requests (apart from images you choose to load, below).
 - **Where:**
   - GitHub: `https://api.github.com`.
   - GitLab: `https://<your host>/api/v4`.
+  - Forgejo: `https://<your host>/api/v1`.
 - **Sends:**
   - your token, in the `Authorization` header and only to that account's host;
   - the project paths of your repositories' remotes on that host, and branch names, to find
@@ -116,9 +118,12 @@ accounts** (on by default).
   `GET /repos/<owner>/<repo>/commits?author=<email>&per_page=1`. That sends the email to GitHub
   with your token. GitVolt then fetches the picture from the avatar host without the token. It
   skips this lookup when the rate-limit budget runs low.
+- **Forgejo:** its API can't look an email up, so no email is sent. A commit author whose email
+  is the public email of a user GitVolt has already seen gets that user's picture, fetched from
+  the Forgejo host without the token.
 - **By name:** if nothing else found an avatar, GitVolt may look the author's name up on the
   repository's forge account. On GitLab that is a user search (`GET /users?search=<name>`). On
-  GitHub it uses only people GitVolt has already seen, so no request is made.
+  GitHub and Forgejo it uses only people GitVolt has already seen, so no request is made.
 - **Pictures the forge links:** project owners and MR/PR participants. These are fetched from
   that forge's own hosts, or from Gravatar when the forge links there and the Gravatar setting is
   on. No email is sent for them.
@@ -146,6 +151,7 @@ video) follows the same rules, up to 100 MB, and is never cached on disk.
   - GitLab: images on your GitLab host, fetched with your token. Uploads are read through its
     API, or, on a GitLab older than 17.4 (which has no uploads API), from the upload's own
     address on the same host.
+  - Forgejo: none. Images on a Forgejo host load on a click, like any other host's.
   - GitHub: images on `github.com`, `user-images.githubusercontent.com`,
     `private-user-images.githubusercontent.com`, `raw.githubusercontent.com` and
     `avatars.githubusercontent.com`. These are fetched without the token, which only ever goes to

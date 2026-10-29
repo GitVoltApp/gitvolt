@@ -70,12 +70,12 @@ export function ReplyBox({ tabId, number, discussion, toggle, onDone }: { tabId:
   );
 }
 
-/** A discussion's own reply (GitLab: any; GitHub: review threads, the conversation has none). It
- * opens by itself when a draft waits in it. */
+/** A discussion's own reply (GitLab: any; GitHub, Forgejo: review threads, the conversation has
+ * none). It opens by itself when a draft waits in it. */
 export function ThreadReply({ tabId, kind, number, d }: { tabId: string; kind: ForgeKind; number: number; d: ForgeDiscussion }) {
   const hasDraft = useReplyDrafts((s) => (s.text[draftKey(tabId, number, d.id)] ?? '') !== '');
   const [open, setOpen] = useState(false);
-  if (kind === 'github' && !d.id.startsWith('thread-')) return null;
+  if (kind !== 'gitlab' && !d.id.startsWith('thread-')) return null;
   if (!open && !hasDraft) return <div className="mr-thread-foot"><button type="button" className="mr-button" onClick={() => setOpen(true)}><CornerDownLeft size={12} aria-hidden /> Reply</button></div>;
   // Where the thread's Resolve is offered (a resolvable thread), so is Reply and resolve.
   const toggle = d.resolvable ? (d.resolved ? 'unresolve' : 'resolve') : undefined;

@@ -12,7 +12,7 @@ import { registerSettings, registerSettingsPage, settingDef, type SettingsCtx } 
 
 const COMMIT_LIMIT_MAX = 50_000;
 const PLACEMENTS: Array<[CollapsePlacement, string]> = [['keepDateOrder', 'Keep date order'], ['pullTogether', 'Pull together']];
-const DATE_CHOICES: Array<[DateFormat, string]> = [['ymd12h', '2026-09-26 @ 3:14 PM'], ['ymd24h', '2026-09-26 15:14'], ['dmy24h', '26/09/2026 15:14'], ['mdy12h', '09/26/2026 3:14 PM']];
+const DATE_CHOICES: Array<[DateFormat, string]> = [['ymd12h', '2026-09-26 @ 3:14 PM'], ['ymd24h', '2026-09-26 15:14'], ['dmy24h', '26/09/2026 15:14'], ['dmydot24h', '26.09.2026 15:14'], ['mdy12h', '09/26/2026 3:14 PM']];
 
 /** The shown tab reloads its graph with the new limit. */
 function refreshActiveTab() {

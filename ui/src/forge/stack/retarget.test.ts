@@ -30,7 +30,7 @@ const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 const merged = mr(1, 'feature/a', 'main', 'merged');
 const a: AfterMerge = { merged, next: mr(2, 'feature/b', 'feature/a'), target: 'main', retarget: true, branches: ['feature/b', 'feature/c'], dropFrom: ['a1'] };
 const report = (failed: unknown = null, warnings: string[] = []) => ({ steps: [], failed, rest: [], remote: 'origin', warnings });
-const setRemoteMain = (has: boolean) => useRuntime.getState().patch('t', { repo: { id: 1 }, sidebar: { locals: [], remotes: [{ name: 'origin', host: null, hostKind: 'gitlab', branches: has ? [{ fullName: 'refs/remotes/origin/main' }] : [] }], worktrees: [], stashes: [], tags: [] } } as never);
+const setRemoteMain = (has: boolean) => useRuntime.getState().patch('t', { repo: { id: 1 }, sidebar: { locals: [], remotes: [{ name: 'origin', host: null, hostKind: 'gitlab', branches: has ? [{ fullName: 'refs/remotes/origin/main' }] : [] }], worktrees: [], stashes: [], tags: [], submodules: {} } } as never);
 
 describe('the after-merge labels and refusals (Rulings 8, 10)', () => {
   it('says what one click does', () => {
@@ -272,7 +272,7 @@ describe('afterMergeRow (the Integrate group, after Rebase stack)', () => {
     tipOf: (b) => `${b}-tip`,
   });
   const env = (head: string) => ({
-    sidebar: { locals: [lb('feature/a'), lb('feature/b'), lb('feature/c')], remotes: [], worktrees: [], stashes: [], tags: [] },
+    sidebar: { locals: [lb('feature/a'), lb('feature/b'), lb('feature/c')], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} },
     inProgress: null, headBranch: head, worktreeShown: (p: string) => p,
   }) as never;
   const chip = (name: string) => ({ branch: { local: `refs/heads/${name}` } }) as never;

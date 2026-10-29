@@ -108,8 +108,8 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   conflict before you start, and lets you move, add or delete branches on the rewritten commits
   in the same step.
 - **Stacked MRs/PRs.** Create a whole stack of merge or pull requests at once, push and rebase the
-  stack, and have the next one retargeted after a merge, on GitHub and GitLab (self-managed
-  included).
+  stack, and have the next one retargeted after a merge, on GitHub, GitLab and Forgejo
+  (self-managed and self-hosted included).
 - **Free and MIT licensed, private repos included.** No account and no telemetry.
 
 ### Everything else
@@ -135,7 +135,8 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   pointer, with **Download** for one that isn't local yet. Pull, fetch, and track or stop
   tracking a file type from a file's menu.
 - **Submodules.** The changes say whether a submodule has new commits, modified content or isn't
-  initialised, and its diff names each commit. Update, sync URLs or open one in a tab.
+  initialised, and its diff names each commit. A Submodules panel in the sidebar lists them:
+  open one in a tab, update or initialise it, add or remove one; sync URLs from the palette.
 - **Profiles.** Each has its own tabs, forge accounts and an optional extra git config file.
 - **Themes,** many built in, dark and light, with per-lane graph colours, density presets and
   app zoom.
@@ -155,6 +156,11 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 
 #### MRs/PRs
 
+- **GitHub, GitLab and Forgejo.** GitHub.com, GitLab (gitlab.com or self-managed) and Forgejo
+  (Codeberg or your own instance, Gitea too), each over a personal access token. A host whose
+  name doesn't say which forge it runs gets one in Settings › Hosts. On Forgejo, review drafts
+  stay in GitVolt until you submit them, and resolving a thread needs a Forgejo with its resolve
+  API (forgejo/forgejo#14873).
 - **MR/PR view.** Docked beside the graph: reply, resolve, react, edit, approve, request changes,
   change reviewers, assignees and labels, and check out (adding the fork's remote first).
 - **Pipelines and timeline.** Pipeline status, and the activity timeline in rendered Markdown
@@ -226,16 +232,16 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 | Rendered Markdown | 🟡 Files only | ✅ Files, diffs and MR/PR threads |
 | Mermaid diagrams in Markdown | ❌ | ✅ |
 | Pull/merge requests: list, view, create, comment, approve, merge | ✅ | ✅ Also auto-merge, and updating a branch that's behind |
-| Inline code review comments | ✅ GitHub | ✅ GitHub and GitLab: lines and ranges, a pending review, suggested changes you can apply |
-| Stacked pull/merge requests | 🟡 GitHub.com only | ✅ GitHub and GitLab |
-| Forges | GitHub, GitLab, Bitbucket, Azure DevOps; self-hosted on paid plans | GitHub.com and GitLab, including self-managed |
+| Inline code review comments | ✅ GitHub | ✅ GitHub and GitLab: lines and ranges, a pending review, suggested changes you can apply; Forgejo: lines and ranges, a pending review kept in GitVolt, suggested changes |
+| Stacked pull/merge requests | 🟡 GitHub.com only | ✅ GitHub, GitLab and Forgejo |
+| Forges | GitHub, GitLab, Bitbucket, Azure DevOps; self-hosted on paid plans | GitHub.com, GitLab including self-managed, and Forgejo (Codeberg or self-hosted) |
 | Commit signing | ✅ | ✅ Through your git config |
 | Signature verification | ✅ | ✅ |
 | Command palette and keyboard shortcuts | ✅ | ✅ Every one listed in Help › Keyboard shortcuts (Ctrl+/) |
 | Themes | ✅ | ✅ Many built in, with per-lane graph colours |
 | Profiles | ✅ Multiple on paid plans | ✅ |
 | Hide and solo branches | ✅ | ✅ Presets that hide, collapse or fold branches by rule; Alt+click hides or shows one |
-| Submodules | ✅ | ✅ State in the file list; update, sync and open in a tab |
+| Submodules | ✅ | ✅ Sidebar panel; state in the file list; add, remove, update, sync and open in a tab |
 | Git LFS | ✅ | ✅ Real files in diffs and history, download, pull, track by extension |
 | Git Flow | ✅ | ❌ Not planned unless there's demand |
 | Integrated terminal | ✅ | ❌ Not planned |
@@ -249,7 +255,6 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 
 ### What GitVolt doesn't do
 
-- **Planned:** Forgejo.
 - **Not planned unless there's demand:** Git Flow.
 - **Not planned:** Intel Macs, an integrated terminal, AI features, issue tracker integrations,
   cloud workspaces and team features, and Bitbucket, Azure DevOps or GitHub Enterprise Server

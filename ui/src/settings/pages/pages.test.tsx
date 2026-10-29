@@ -125,4 +125,16 @@ describe('settings pages', () => {
     expect(row).toBeTruthy();
     expect(within(row).getByText(',')).toBeInTheDocument();
   });
+
+  it('Hosts sets a host to Forgejo, as to GitLab or GitHub', () => {
+    const dialog = show();
+    openPage('Hosts');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Forge type for the added host' }));
+    expect(useMenu.getState().rows?.map((r) => (r.kind === 'action' ? r.label : null))).toEqual(['GitLab', 'GitHub', 'Forgejo', 'Generic (no forge links)']);
+    const forgejo = useMenu.getState().rows?.find((r) => r.kind === 'action' && r.label === 'Forgejo');
+    act(() => { if (forgejo?.kind === 'action') forgejo.run(); useMenu.getState().close(); });
+    fireEvent.change(within(dialog).getByLabelText('Add a host'), { target: { value: 'code.example.org' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(useAppState.getState().profile.hostOverrides).toEqual({ 'code.example.org': 'forgejo' });
+  });
 });

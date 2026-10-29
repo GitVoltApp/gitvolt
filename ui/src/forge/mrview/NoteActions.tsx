@@ -19,7 +19,7 @@ import { currentOrigin } from '../../ui/arm/origin';
 import { useToast } from '../../ui/toastStore';
 import { useEmoji } from '../emoji';
 import { openInBrowser } from './MrHeader';
-import { deleteNote, GITHUB_REACTIONS, GITLAB_COMMON, knownGlyph, quoteReply, resolveThread, saveNote, toggleReaction } from './noteActionsStore';
+import { deletableNote, deleteNote, GITHUB_REACTIONS, GITLAB_COMMON, knownGlyph, quoteReply, resolveThread, saveNote, toggleReaction } from './noteActionsStore';
 
 const copyLink = (url: string) => { copyText(url).then(() => useToast.getState().show('Copied the link'), () => useToast.getState().show("Couldn't copy the link", { error: true })); };
 
@@ -64,8 +64,8 @@ export function ReactionPills({ tabId, kind, number, d, n }: { tabId: string; ki
   );
 }
 
-/** The reaction picker: the forge's set (GitHub's eight; GitLab's common ones and a search of
- * every emoji name). Esc or a press outside closes it. */
+/** The reaction picker: the forge's set (GitHub's eight, Forgejo's the same; GitLab's common ones
+ * and a search of every emoji name). Esc or a press outside closes it. */
 function ReactionPicker({ kind, mineOf, pick, close }: { kind: ForgeKind; mineOf: (name: string) => boolean; pick: (name: string) => void; close: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
@@ -92,7 +92,7 @@ function ReactionPicker({ kind, mineOf, pick, close }: { kind: ForgeKind; mineOf
     });
     return () => { escOwners.delete(own); off(); };
   }, [close]);
-  const set = kind === 'github' ? GITHUB_REACTIONS : GITLAB_COMMON;
+  const set = kind === 'gitlab' ? GITLAB_COMMON : GITHUB_REACTIONS;
   const q = query.trim().replace(/^:|:$/g, '').toLowerCase();
   const hits = kind === 'gitlab' && q && list ? rankEmoji(list, q, 24) : [];
   const one = (name: string, glyph: string) => (
@@ -122,6 +122,8 @@ export function NoteActions({ tabId, kind, number, d, n, link, mine, reactable, 
   const rows = (): MenuRow[] => [
     ...(mine && reactable ? [
       { kind: 'action' as const, id: 'note.edit', label: 'Edit', icon: Pencil, tooltip: 'Edit your comment', run: onEdit },
+    ] : []),
+    ...(mine && reactable && deletableNote(kind, d) ? [
       {
         kind: 'action' as const, id: 'note.delete', label: 'Delete', icon: Trash2, tooltip: 'Delete your comment, for everyone',
         run: () => {

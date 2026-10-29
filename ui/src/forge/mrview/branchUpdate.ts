@@ -8,12 +8,12 @@ import { useRuntime } from '../../app/runtime';
 
 /**
  * The merge panel's update button's main way: the one last chosen in this repository (when the
- * forge offers it), else on GitHub a rebase when the repository allows rebase merges (its merge
- * methods), else a merge; on GitLab, Rebase.
+ * forge offers it), else on GitHub and Forgejo a rebase when the repository allows rebase merges
+ * (its merge methods), else a merge; on GitLab, Rebase.
  */
 export function defaultUpdate(kind: ForgeKind, kinds: readonly BranchUpdate[], saved: BranchUpdate | null | undefined, methods: readonly MergeMethod[]): BranchUpdate | null {
   if (saved && kinds.includes(saved)) return saved;
-  const want: BranchUpdate = kind === 'github' && !methods.includes('rebase') ? 'merge' : 'rebase';
+  const want: BranchUpdate = kind !== 'gitlab' && !methods.includes('rebase') ? 'merge' : 'rebase';
   return kinds.includes(want) ? want : kinds[0] ?? null;
 }
 

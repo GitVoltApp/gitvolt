@@ -7,12 +7,16 @@ export const MAX_URL_LENGTH = 8000;
 const segments = (s: string) => s.split('/').map(encodeURIComponent).join('/');
 const query = (pairs: Array<[string, string]>) => pairs.filter(([, v]) => v !== '').map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 const DRAFT_MARK = /^\s*(draft:|\[draft\]|\(draft\))/i;
+/** Forgejo's default work-in-progress prefixes: its draft. */
+const WIP_MARK = /^\s*(wip:|\[wip\])/i;
 
 /**
  * The forge's own new-MR/PR page, prefilled where its URL takes it (spec #4 §4 "4C"): GitLab the
  * branches, title (a draft as its `Draft: ` prefix) and description, opened on the source project
- * for a fork; GitHub the compare range, title, body, labels and assignees. Reviewers and GitHub's
- * draft don't travel. Past `MAX_URL_LENGTH` the description is left out (`withoutDescription`).
+ * for a fork; GitHub the compare range, title, body, labels and assignees; Forgejo the compare
+ * range, title (a draft as its `WIP: ` prefix) and body. Reviewers, GitHub's draft and Forgejo's
+ * labels and assignees don't travel. Past `MAX_URL_LENGTH` the description is left out
+ * (`withoutDescription`).
  */
 export function newMrUrl(target: ForgeProject, source: { project: string; branch: string }, d: MrDraft): { url: string; withoutDescription: boolean; withoutMore?: boolean } {
   const fork = source.project !== target.path;
@@ -30,6 +34,10 @@ export function newMrUrl(target: ForgeProject, source: { project: string; branch
     }
     const owner = source.project.split('/')[0];
     const head = fork ? `${encodeURIComponent(owner)}:${segments(source.branch)}` : segments(source.branch);
+    if (target.kind === 'forgejo') {
+      const title = d.draft && !WIP_MARK.test(titleText) && titleText ? `WIP: ${titleText.trim()}` : titleText.trim();
+      return `${target.webUrl}/compare/${segments(d.targetBranch)}...${head}?${query([['expand', '1'], ['title', title], ['body', description]])}`;
+    }
     return `${target.webUrl}/compare/${segments(d.targetBranch)}...${head}?${query([
       ['expand', '1'], ['title', titleText.trim()], ['body', description], ['labels', labels.join(',')], ['assignees', d.assignees.map((u) => u.username).join(',')],
     ])}`;

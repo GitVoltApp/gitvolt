@@ -4,9 +4,15 @@
 //!   the submodules, so it runs as a network command (askpass, cancellable, no timeout, progress
 //!   as a fetch's), outside the write lock like a push.
 //! - Sync URLs: `git submodule sync --recursive`, which copies `.gitmodules`' URLs into the config.
+//! - Add (the sidebar's Submodules +): `git submodule add [-b <branch>] -- <url> [<path>]`, a
+//!   clone, so a network command as Update is.
+//! - Remove (a submodule's sidebar menu): `git rm -- <path>`, which removes its checkout, its
+//!   gitlink and its `.gitmodules` entry, and stages both. Git refuses a checkout with changes of
+//!   its own; its repository stays in `.git/modules`, commits included.
 //!
-//! Neither is journaled (spec #2 §5.3 "Not journaled"): they move no ref of the superproject and
-//! don't touch its index, and what they change inside a submodule is that submodule's own.
+//! None is journaled (spec #2 §5.3 "Not journaled"): they move no ref of the superproject, and
+//! what they change inside a submodule is that submodule's own. Add and Remove only stage
+//! (`.gitmodules` and the gitlink), which the changes list shows and Unstage takes back.
 
 use crate::error::{ErrorDetail, GbError, GbErrorKind};
 use crate::events::{ChangeKind, OpKind};
@@ -32,14 +38,9 @@ pub(crate) struct UpdateSubmodules {
     pub confirm: bool,
 }
 
-/// A repository checked out at `path` in `root`: `gix::open` of that folder alone (never a
-/// discovery up to the superproject), and never through a symlink.
+/// The commit checked out in the submodule at `path` in `root` (`submodules::open_checkout`).
 fn checkout_head(root: &Path, path: &str) -> Option<String> {
-    let dir = crate::blob::safe_join(root, path).ok()?;
-    if !std::fs::symlink_metadata(&dir).ok()?.is_dir() {
-        return None;
-    }
-    gix::open(&dir).ok()?.head_id().ok().map(|id| id.to_string())
+    crate::submodules::open_checkout(root, path)?.head_id().ok().map(|id| id.to_string())
 }
 
 /// The submodules `only` names (or all) that an update would move, checked out at another commit
@@ -170,6 +171,110 @@ impl WriteIntent for SyncSubmodules {
         cx.run_git(inv).await?;
         cx.touch(ChangeKind::Config);
         Ok(SubmoduleOutcome { command: crate::netops::display_command(&args) })
+    }
+}
+
+pub(crate) struct AddSubmodule {
+    pub url: String,
+    /// Where in the worktree; git's default (the URL's last part) when `None`.
+    pub path: Option<String>,
+    /// The branch to check out and track (`-b`); the remote's HEAD when `None`.
+    pub branch: Option<String>,
+}
+
+impl AddSubmodule {
+    /// `progress`: git's progress lines too (what runs; the command shown leaves it out).
+    fn args(&self, progress: bool) -> Vec<&str> {
+        let mut args = vec!["submodule", "add"];
+        if progress {
+            args.push("--progress");
+        }
+        if let Some(b) = &self.branch {
+            args.extend(["-b", b.as_str()]);
+        }
+        args.extend(["--", self.url.as_str()]);
+        if let Some(p) = &self.path {
+            args.push(p.as_str());
+        }
+        args
+    }
+}
+
+impl WriteIntent for AddSubmodule {
+    type Outcome = SubmoduleOutcome;
+    fn kind(&self) -> OpKind {
+        OpKind::Submodule
+    }
+    fn label(&self) -> String {
+        match &self.path {
+            Some(p) => format!("add submodule {p}"),
+            None => "add submodule".into(),
+        }
+    }
+    fn undo(&self) -> Option<UndoKind> {
+        None
+    }
+    async fn plan(&self, _pre: &Pre<'_>) -> Result<Plan, GbError> {
+        if self.url.trim().is_empty() {
+            return Err(GbError::new(GbErrorKind::InvalidInput, "Enter the submodule's URL"));
+        }
+        if let Some(p) = &self.path {
+            crate::blob::check_relative(p)?;
+        }
+        if let Some(b) = &self.branch
+            && (b.is_empty() || b.starts_with('-'))
+        {
+            return Err(GbError::new(GbErrorKind::InvalidInput, format!("{b:?} isn't a branch name")));
+        }
+        Ok(Plan::default())
+    }
+    async fn run(&self, cx: &mut WriteCx<'_>) -> Result<SubmoduleOutcome, GbError> {
+        let command = crate::netops::display_command(&self.args(false));
+        let (tx, progress) = crate::netops::forward_progress_to(cx.api.bus.clone(), cx.op.id, Some(cx.output()));
+        let inv = cx.net_git(self.args(true)).stream_stderr(tx);
+        let res = cx.network(inv).await;
+        let _ = progress.await;
+        // The clone, `.gitmodules` and the gitlink staged, and the submodule's URL in the config.
+        cx.touch(ChangeKind::Worktree);
+        cx.touch(ChangeKind::Index);
+        cx.touch(ChangeKind::Config);
+        res?;
+        Ok(SubmoduleOutcome { command })
+    }
+}
+
+pub(crate) struct RemoveSubmodule {
+    pub path: String,
+}
+
+impl WriteIntent for RemoveSubmodule {
+    type Outcome = SubmoduleOutcome;
+    fn kind(&self) -> OpKind {
+        OpKind::Submodule
+    }
+    fn label(&self) -> String {
+        format!("remove submodule {}", self.path)
+    }
+    fn undo(&self) -> Option<UndoKind> {
+        None
+    }
+    async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
+        crate::blob::check_relative(&self.path)?;
+        let root = pre.root.to_path_buf();
+        let links = crate::api::blocking(move || crate::submodules::gitlinks(&root)).await?;
+        if !links.iter().any(|(p, _)| *p == self.path) {
+            return Err(GbError::new(GbErrorKind::InvalidInput, format!("{} isn't a submodule", self.path)));
+        }
+        Ok(Plan::default())
+    }
+    async fn run(&self, cx: &mut WriteCx<'_>) -> Result<SubmoduleOutcome, GbError> {
+        let args = ["rm", "-q", "--", self.path.as_str()];
+        let inv = cx.git(args);
+        let res = cx.run_git(inv).await;
+        cx.touch(ChangeKind::Worktree);
+        cx.touch(ChangeKind::Index);
+        res?;
+        Ok(SubmoduleOutcome { command: crate::netops::display_command(&["rm", "--", self.path.as_str()]) })
     }
 }
 
@@ -377,5 +482,69 @@ mod tests {
         assert_eq!(done["outcome"]["command"], "git submodule sync --recursive");
         assert_eq!(r.git(&["config", "submodule.vendor/parser.url"]), moved.display().to_string());
         assert_eq!(r.git_in(&r.path().join("vendor/parser"), &["config", "remote.origin.url"]), moved.display().to_string());
+    }
+
+    /// A local source as the submodule's URL; `protocol.file.allow` lets the test API clone it.
+    #[tokio::test]
+    async fn add_clones_the_submodule_and_stages_it() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let source = r.root().join("lib-src");
+        r.git_in(r.root(), &["init", "-q", "-b", "main", "lib-src"]);
+        std::fs::write(source.join("lib.txt"), "lib\n").unwrap();
+        r.git_in(&source, &["add", "-A"]);
+        r.git_in(&source, &["commit", "-q", "-m", "Start the lib"]);
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        let url = source.display().to_string();
+        let done = call(&api, "submoduleAdd", json!({"repo": id, "worktree": wt(r.path()), "url": url, "path": "vendor/lib", "branch": "main"})).await.unwrap();
+        assert_eq!(done["outcome"]["command"], format!("git submodule add -b main -- {url} vendor/lib"));
+        assert_eq!(done["journal"]["undo"], serde_json::Value::Null, "not journaled");
+        assert_eq!(head_in(&r, "vendor/lib"), Some(r.git_in(&source, &["rev-parse", "HEAD"])));
+        assert_eq!(r.git(&["status", "--porcelain", "--", ".gitmodules", "vendor/lib"]), "M  .gitmodules\nA  vendor/lib", "both staged");
+        assert_eq!(r.git(&["config", "-f", ".gitmodules", "submodule.vendor/lib.branch"]), "main");
+
+        for (params, why) in [
+            (json!({"url": " "}), "no URL"),
+            (json!({"url": url, "path": "../outside"}), "a path out of the worktree"),
+            (json!({"url": url, "branch": "-x"}), "an option for a branch"),
+        ] {
+            let mut p = params.clone();
+            p["repo"] = json!(id);
+            p["worktree"] = json!(wt(r.path()));
+            let err = call(&api, "submoduleAdd", p).await.unwrap_err();
+            assert_eq!(err.kind, GbErrorKind::InvalidInput, "{why}: {err:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn remove_takes_out_the_checkout_gitlink_and_gitmodules_entry() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        let done = call(&api, "submoduleRemove", json!({"repo": id, "worktree": wt(r.path()), "path": "vendor/parser"})).await.unwrap();
+        assert_eq!(done["outcome"]["command"], "git rm -- vendor/parser");
+        assert!(!r.path().join("vendor/parser").exists(), "the checkout is gone");
+        assert_eq!(r.git(&["status", "--porcelain"]), "M  .gitmodules\nD  vendor/parser");
+        assert!(r.path().join(".git/modules/vendor/parser").is_dir(), "its repository stays, commits and all");
+        let err = call(&api, "submoduleRemove", json!({"repo": id, "worktree": wt(r.path()), "path": "README.md"})).await.unwrap_err();
+        assert_eq!(err.kind, GbErrorKind::InvalidInput, "{err:?}");
+    }
+
+    /// A checkout with changes of its own: git refuses, and nothing is removed.
+    #[tokio::test]
+    async fn remove_refuses_a_submodule_with_changes_inside() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        std::fs::write(r.path().join("vendor/parser/part_0.txt"), "edited\n").unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        call(&api, "submoduleRemove", json!({"repo": id, "worktree": wt(r.path()), "path": "vendor/parser"})).await.unwrap_err();
+        assert_eq!(std::fs::read_to_string(r.path().join("vendor/parser/part_0.txt")).unwrap(), "edited\n");
+        assert_eq!(r.git(&["status", "--porcelain", "--", ".gitmodules"]), "");
     }
 }

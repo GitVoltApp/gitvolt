@@ -47,7 +47,7 @@ current code; each point names where to look.
 
 ### Forge tokens
 
-- GitHub and GitLab personal access tokens are kept in the system keyring, through the Secret
+- GitHub, GitLab and Forgejo personal access tokens are kept in the system keyring, through the Secret
   Service D-Bus API (GNOME Keyring, KWallet, KeePassXC…) via the `keyring` crate
   (`crates/gitvolt-forge/src/tokens.rs`). Each is an item in the default collection with the
   attributes `service` = `gitvolt` and `username` = `<profile id>/<host>`.
@@ -207,7 +207,8 @@ That is a trust boundary.
 - **Submodules: Update runs hooks inside the submodules.** `git submodule update` checks out each
   submodule, which runs that submodule's own `post-checkout` hook and reads its own config, and it
   clones from the URLs in `.gitmodules`, which the repository chooses. Update only repositories
-  whose submodules you trust, as in a terminal.
+  whose submodules you trust, as in a terminal. Initialise in the Submodules panel (and its
+  double-click on a submodule not checked out yet) is the same Update, of that one submodule.
 - **Opening a repository runs no commit hooks, but it does run git in it.** What runs:
   - Read commands: `git worktree list` and `git status` as soon as the tab opens, then, as you
     browse, `git log`, `git diff`, `git show`, `git blame` and the like. git reads the repository's own `.git/config` for each of them, so a command it

@@ -40,6 +40,8 @@ export function hostKind(host: string): HostKind {
   const h = asciiLower(host);
   if (h === 'github.com' || h.endsWith('.github.com')) return 'github';
   if (h === 'gitlab.com' || h.split('.').some((label) => label.includes('gitlab'))) return 'gitlab';
+  const name = h.split(':')[0];
+  if (name === 'codeberg.org' || name.split('.').some((label) => label.includes('forgejo') || label.includes('gitea'))) return 'forgejo';
   return 'generic';
 }
 

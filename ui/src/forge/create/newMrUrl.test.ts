@@ -33,6 +33,14 @@ describe('"Continue editing on…" (spec #4 §4 "4C", ruling 14)', () => {
     expect(newMrUrl(github, { project: 'octocat/widget', branch: 'feature' }, d).url).toContain('/compare/main...octocat:feature?');
   });
 
+  it("Forgejo's compare page takes the title (draft as its WIP prefix) and body; a fork heads with its owner", () => {
+    const forgejo: ForgeProject = { ...gitlab, kind: 'forgejo', id: 77, host: 'forgejo.example.org', path: 'acme/widget', owner: 'acme', webUrl: 'https://forgejo.example.org/acme/widget' };
+    expect(newMrUrl(forgejo, { project: 'acme/widget', branch: 'feature/widget' }, { ...d, title: 'Add the widget', description: 'It spins.' }).url)
+      .toBe('https://forgejo.example.org/acme/widget/compare/main...feature/widget?expand=1&title=WIP%3A%20Add%20the%20widget&body=It%20spins.');
+    expect(newMrUrl(forgejo, { project: 'acme/widget', branch: 'f' }, { ...d, title: '[WIP] Add it', draft: true }).url).toContain('title=%5BWIP%5D%20Add%20it&');
+    expect(newMrUrl(forgejo, { project: 'alice/widget', branch: 'feature' }, { ...d, draft: false }).url).toContain('/compare/main...alice:feature?expand=1&title=Add%20login&');
+  });
+
   it('past the URL limit the description is left out, and says so', () => {
     const long = newMrUrl(github, { project: 'octo-org/widget', branch: 'f' }, { ...d, description: 'x'.repeat(MAX_URL_LENGTH) });
     expect(long.withoutDescription).toBe(true);

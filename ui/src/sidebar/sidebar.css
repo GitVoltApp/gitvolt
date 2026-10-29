@@ -41,6 +41,9 @@
 .sb-row[data-active="true"] .sb-eye { color: var(--text-normal); }
 .sb-row:hover .sb-eye { color: var(--text-selected); background: var(--control-hover-bg); box-shadow: 0 0 0 2px var(--control-hover-bg); }
 .sb-state { flex: none; margin-left: auto; padding-left: 6px; font-size: 11px; color: var(--text-secondary); }
+/* A submodule that isn't initialised: nothing checked out, as GitKraken greys it. */
+.sb-item[data-sub="uninitialized"] > svg, .sb-item[data-sub="uninitialized"] .sb-label { opacity: 0.55; }
+.sb-item[data-sub="conflicted"] .sb-state { color: var(--red); }
 .sb-row > svg:not([data-host-kind]) { flex: none; }
 /* Every row icon is dimmed except an MR/PR's state icon, which keeps its state colour (mr.css). */
 .sb-row > svg:not([data-host-kind], .mr-state-icon) { color: var(--sidebar-icon); }

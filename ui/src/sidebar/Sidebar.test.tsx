@@ -34,7 +34,7 @@ describe('Sidebar panels', () => {
       sidebar: {
         locals: [branch('main', true), branch('feature/login'), branch('hotfix')],
         remotes: [{ name: 'origin', host: null, hostKind: 'generic', branches: [{ name: 'main', fullName: 'refs/remotes/origin/main', target: 'm'.repeat(40), tipTime: 0, summary: '', author: '' }] }],
-        worktrees: [{ path: '/r', name: 'r', branch: 'main', head: 'h'.repeat(40), isMain: true, isCurrent: true, locked: false }, { path: '/w', name: 'w', branch: null, head: 'i'.repeat(40), isMain: false, isCurrent: false, locked: false }], stashes: [], tags: [{ name: 'v1', fullName: 'refs/tags/v1', target: 't'.repeat(40), time: 0 }],
+        worktrees: [{ path: '/r', name: 'r', branch: 'main', head: 'h'.repeat(40), isMain: true, isCurrent: true, locked: false }, { path: '/w', name: 'w', branch: null, head: 'i'.repeat(40), isMain: false, isCurrent: false, locked: false }], stashes: [], tags: [{ name: 'v1', fullName: 'refs/tags/v1', target: 't'.repeat(40), time: 0 }], submodules: {},
       },
     });
   });
@@ -339,7 +339,7 @@ describe('Sidebar item menus (plan 1C Task 15b)', () => {
         locals: [branch('main', true), branch('hotfix')],
         remotes: [{ name: 'origin', host: null, hostKind: 'generic', branches: [{ name: 'main', fullName: 'refs/remotes/origin/main', target: 'm'.repeat(40), tipTime: 0, summary: '', author: '' }] }],
         worktrees: [{ path: '/w', name: 'w', branch: null, head: 'i'.repeat(40), isMain: false, isCurrent: false, locked: false }],
-        stashes: [{ index: 0, id: 's'.repeat(40), message: 'WIP on main', time: 0 }], tags: [{ name: 'v1', fullName: 'refs/tags/v1', target: 't'.repeat(40), time: 0 }],
+        stashes: [{ index: 0, id: 's'.repeat(40), message: 'WIP on main', time: 0 }], tags: [{ name: 'v1', fullName: 'refs/tags/v1', target: 't'.repeat(40), time: 0 }], submodules: {},
       },
     });
     useMenu.getState().close();

@@ -136,7 +136,7 @@ describe('resolveGoto: MRs and forge pages', () => {
     expect(await go('#12')).toEqual({ kind: 'none' });
     expect(await go('harbor/tools/dock!3')).toMatchObject({ kind: 'mr', number: 3 });
     expect(await go('harbor/other!12')).toEqual({ kind: 'toast', message: "!12 belongs to harbor/other, which isn't open here", url: 'https://gitlab.example.test/harbor/other/-/merge_requests/12' });
-    expect(await go('!12', env({}, [{ ...lighthouse, active: true }]))).toMatchObject({ kind: 'toast', message: 'lighthouse has no GitLab or GitHub project for !12' });
+    expect(await go('!12', env({}, [{ ...lighthouse, active: true }]))).toMatchObject({ kind: 'toast', message: 'lighthouse has no GitLab, GitHub or Forgejo project for !12' });
   });
 
   it('selects the commit of a forge commit page in its tab; with no account, by its remote', async () => {
