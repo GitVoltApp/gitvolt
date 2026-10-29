@@ -1,0 +1,19 @@
+#!/bin/sh
+# The codesign scripts/package-macos.sh puts ahead on the Tauri bundler's PATH. The bundler names
+# every CEF helper app <id>.helper; this gives each its own identifier, as CEF's and Chromium's
+# own apps do (<id>.helper, .helper.alerts, .helper.gpu, .helper.plugin, .helper.renderer): it
+# sets the helper's Info.plist just before the bundler signs it (the path is the last argument),
+# so the signature names it. Then, as for everything else, the real codesign.
+for path; do :; done
+case ${path:-} in
+  *" Helper ("*").app")
+    kind=${path##*" Helper ("}
+    kind=.$(printf %s "${kind%).app}" | tr '[:upper:]' '[:lower:]')
+    plist=$path/Contents/Info.plist
+    id=$(/usr/bin/plutil -extract CFBundleIdentifier raw "$plist") || exit 1
+    case $id in
+      *.helper) /usr/bin/plutil -replace CFBundleIdentifier -string "$id$kind" "$plist" || exit 1 ;;
+    esac
+    ;;
+esac
+exec /usr/bin/codesign "$@"

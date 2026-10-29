@@ -433,11 +433,23 @@ jobs:
         working-directory: ui
         run: npm ci
 
+      # As in release.yml: the self-signed certificate from the secrets (none on a fork's pull
+      # request: ad-hoc then).
+      - name: Signing keychain
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: scripts/macos-keychain.sh import
+
       # The release package, as release.yml builds it: the notices, the release GitVolt.app and
       # the .dmg, and their checks (scripts/package-macos.sh).
       - name: Build the .dmg
         id: build
         run: CARGO_BUILD_JOBS=$(sysctl -n hw.ncpu) just package-macos 2>&1 | tee "$RUNNER_TEMP/package.log"
+
+      - name: Delete the signing keychain
+        if: always()
+        run: scripts/macos-keychain.sh delete
 
       - name: Save the CEF archive
         if: steps.cef.outputs.cache-hit != 'true'
@@ -471,7 +483,10 @@ jobs:
             echo '## codesign -dv'
             codesign -dv --verbose=2 "$mnt/GitVolt.app" 2>&1
             echo
-            echo '## spctl --assess (ad-hoc signed, not notarized: expect "rejected")'
+            echo '## codesign -d -r- (the designated requirement)'
+            codesign -d -r- "$mnt/GitVolt.app" 2>&1
+            echo
+            echo '## spctl --assess (not notarized: expect "rejected")'
             spctl --assess --type execute --verbose=4 "$mnt/GitVolt.app" 2>&1 || echo "(exit $?)"
             spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg" 2>&1 || echo "(exit $?)"
             echo

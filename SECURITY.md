@@ -33,9 +33,10 @@ current code; each point names where to look.
   it, runs unsandboxed and logs a warning.
 - On macOS, the helper apps in `GitVolt.app/Contents/Frameworks` enter Chromium's Seatbelt
   sandbox through the framework's `libcef_sandbox.dylib` before they load the framework itself.
-  This works with the bundle ad-hoc signed (no Apple identity). GitVolt only runs from its
-  bundle there, which always ships the library: a helper without it fails to start rather than
-  run unsandboxed.
+  This works without an Apple identity: the release is signed with GitVolt's self-signed
+  certificate, a local build ad-hoc (docs/releasing.md, "macOS signing"). GitVolt only runs from
+  its bundle there, which always ships the library: a helper without it fails to start rather
+  than run unsandboxed.
 - The `.deb`, `.rpm` and Arch packages ship Chromium's `chrome-sandbox` helper owned by root with
   the setuid bit (mode 4755). The packaging checks fail the build otherwise (`scripts/check-deb.sh`,
   `scripts/package-arch.sh`, `scripts/package-rpm.sh`). Where AppArmor restricts unprivileged user
@@ -268,10 +269,11 @@ GitVolt can download and install its own updates from GitHub Releases
   timeouts) as the forge API. The download goes to `~/.cache/gitvolt/updates/` (0700;
   `%LOCALAPPDATA%\gitvolt\updates` on Windows, `~/Library/Caches/GitVolt/updates` on macOS).
 - **What `SHA256SUMS` proves.** It catches a corrupted or swapped download, but it comes from the
-  same release, so it only proves the file is the one published there. **The packages aren't
-  code-signed yet.** For a stronger check, GitHub's build provenance attestations tie each
-  package to the release workflow that built it; verify one by hand with the GitHub CLI, giving
-  `--repo` the repository the release came from. That is `GitVoltApp/gitvolt`:
+  same release, so it only proves the file is the one published there. **The Linux and Windows
+  packages aren't code-signed yet**, and the macOS app's certificate is self-signed (below). For
+  a stronger check, GitHub's build provenance attestations tie each package to the release
+  workflow that built it; verify one by hand with the GitHub CLI, giving `--repo` the repository
+  the release came from. That is `GitVoltApp/gitvolt`:
 
   ```sh
   gh attestation verify GitVolt_0.7.0_amd64.deb --repo GitVoltApp/gitvolt
@@ -280,6 +282,18 @@ GitVolt can download and install its own updates from GitHub Releases
   A package built before the move was signed as `GitBoltApp/gitbolt`: verify it with
   `--repo GitBoltApp/gitbolt`.
 
+- **macOS code signing.** `GitVolt.app` (and its `.dmg`) is signed with GitVolt's own
+  self-signed certificate (SHA-1 `A5:88:1F:4C:AA:33:ED:87:6E:1F:79:49:0E:6A:B8:E3:ED:68:C3:9B`),
+  not an Apple Developer ID, and isn't notarized, so Gatekeeper still blocks a downloaded copy's
+  first launch (README.md). Nothing trusts the certificate, so the signature doesn't prove who
+  built the app; what it gives is a designated requirement that stays the same in every release
+  (`identifier "com.gitvolt.desktop" and certificate root = H"a5881f4c…"`), so Privacy &
+  Security's folder permissions carry over to updates. Check it with
+  `codesign -d -r- /Applications/GitVolt.app`. The Keychain still asks after an update: its
+  items' partition list names apps without a Team ID by their cdhash (docs/releasing.md, "macOS
+  signing"). The key lives in the repository's Actions secrets and the maintainer's password
+  manager, and reaches a build only in a throwaway keychain on the macOS runner. The updater
+  doesn't check the signature; the checksums above are its check.
 - **The install.** GitVolt runs `pkexec apt install -y /<path>/<package>.deb`,
   `pkexec dnf install -y /<path>/<package>.rpm` (on openSUSE `pkexec zypper --non-interactive
   install --allow-unsigned-rpm`, else `pkexec rpm -U`) or `pkexec pacman -U --noconfirm

@@ -313,8 +313,8 @@ package-windows:
     powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1
 
 # On macOS: target/release/bundle/dmg/GitVolt_<version>_aarch64.dmg (x64 on an Intel Mac), the
-# release GitVolt.app, ad-hoc signed, beside a link to /Applications; then its checks
-# (scripts/package-macos.sh). Versions as in `just package`.
+# release GitVolt.app (signed with GITVOLT_MACOS_SIGNING_IDENTITY, else ad-hoc), beside a link
+# to /Applications; then its checks (scripts/package-macos.sh). Versions as in `just package`.
 package-macos: check-tauri-cli
     scripts/package-macos.sh
 

@@ -206,7 +206,8 @@ side by side, then the release job:
    [Windows installers](#windows-installers)), and keeps both installers and their checksums as
    a workflow artifact.
 3. **macOS** (`macos-15`, Apple Silicon, read-only): stable Rust, Node 22, `just`, CMake and
-   Ninja, `tauri-cli` and cargo-about; runs `just package-macos` with `GITVOLT_RELEASE_VERSION`
+   Ninja, `tauri-cli` and cargo-about; imports the signing certificate into a throwaway keychain
+   (see [macOS signing](#macos-signing)), runs `just package-macos` with `GITVOLT_RELEASE_VERSION`
    set (see [macOS disk image](#macos-disk-image)), and keeps the `.dmg` and its checksum as a
    workflow artifact. Its caches (cargo, the two cargo tools, the CEF archive) are saved from main
    only, as the others are.
@@ -289,20 +290,110 @@ step's comment marks the place).
 and the helper apps in `Contents/Frameworks`; docs/dev-setup.md), with the spell-check
 dictionary, the `install-kind` marker and the license notices in `Contents/Resources`, and an
 `Info.plist` that declares folders as a document type (Open With). The script then checks the
-signature (`codesign --verify --deep --strict`), the marker, the notices and the document type,
-in the bundle and again in the mounted image.
+signature (see below), the marker, the notices and the document type, in the bundle and again in
+the mounted image.
 
-**Signing.** The app is **ad-hoc signed** (`signingIdentity: "-"` in `tauri.macos.conf.json`),
-inside out by the bundler, with the hardened runtime and CEF's entitlements; the `.dmg` itself
-isn't signed. Gatekeeper rejects it (`spctl --assess` says "rejected"), so a downloaded copy
-needs `xattr -dr com.apple.quarantine /Applications/GitVolt.app` or **Open Anyway** once
-(README.md). An update downloaded by GitVolt itself carries no quarantine flag, so it needs
-neither. The hook for real signing: a Developer ID Application identity in place of `"-"`
-(the Tauri CLI reads `APPLE_SIGNING_IDENTITY` and a certificate from `APPLE_CERTIFICATE` /
-`APPLE_CERTIFICATE_PASSWORD`), then notarization (`xcrun notarytool submit --wait` and
-`xcrun stapler staple` on the `.dmg`; the CLI does both given `APPLE_ID`, `APPLE_PASSWORD` and
-`APPLE_TEAM_ID`). Set them in the macOS job's "Build the disk image" step from secrets (its
-comment marks the place). That needs an Apple Developer Program membership.
+### macOS signing
+
+The release's app is signed with **GitVolt's own self-signed code-signing certificate**, so that
+macOS recognises each new version as the same app:
+
+| | |
+|---|---|
+| Subject | CN "GitVolt Self-Signed Code Signing", O GitVolt |
+| Key | RSA 3072; extended key usage code signing (critical) |
+| Valid until | 2046 |
+| SHA-1 | `A5:88:1F:4C:AA:33:ED:87:6E:1F:79:49:0E:6A:B8:E3:ED:68:C3:9B` |
+
+macOS remembers an app's Privacy & Security permissions (folder access such as Downloads) by the
+app's *designated requirement*. For an ad-hoc signature, as up to 1.2.0, that is the build's hash
+(`cdhash H"…"`), new with every build, so each update asked again (#11). Signed with the
+certificate it is the same in every release:
+
+```
+identifier "com.gitvolt.desktop" and certificate root = H"a5881f4caa33ed876e1f79490e6ab8e3ed68c39b"
+```
+
+(codesign's default for a certificate outside Apple's: the identifier and the hash of the chain's
+root, which for a self-signed certificate is the certificate itself.) The first signed release
+still asks once, since 1.2.0's requirement was its cdhash; the ones after it don't.
+
+**The Keychain still asks after an update.** A login-keychain item (where GitVolt keeps forge
+tokens, through the `keyring` crate) has two checks: its access list, which names apps by the
+designated requirement, so it now matches every release; and its *partition list*, which names
+the app that created it by its Team ID, for code signed with an Apple Developer ID, and otherwise
+by its cdhash (`partition_id: cdhash:…`). A new build has a new cdhash, so it fails the partition
+check and macOS asks again; **Always Allow** adds that build's cdhash only. Checked on a
+`macos-15` runner (October 2026, a one-off job): an item made by a tool signed with this
+certificate is read without a prompt by a rebuild of it in a keychain without partitions, and
+refused (`errSecAuthFailed` with interaction off) in the login keychain. Only a Team ID (Apple
+Developer Program) gives a partition that survives updates.
+
+**It isn't notarization.** The certificate isn't Apple's: no Developer ID, no Team ID, and the
+`.dmg` isn't notarized. Gatekeeper still rejects a downloaded copy (`spctl --assess` says
+"rejected"), so it needs `xattr -dr com.apple.quarantine /Applications/GitVolt.app` or **Open
+Anyway** once (README.md). An update downloaded by GitVolt itself carries no quarantine flag, so
+it needs neither. Nothing trusts the certificate, and nothing needs to: codesign signs with an
+untrusted identity by its hash (`security find-identity` lists it as `CSSMERR_TP_NOT_TRUSTED`,
+"0 valid identities"), `codesign --verify --deep --strict` checks the signature against its own
+designated requirement, which names the certificate's hash rather than a trusted anchor, and so
+does Privacy & Security. So the certificate is never added to a trust store, not even on the
+runner.
+
+**How the release signs.** The certificate and its key are two repository secrets:
+`MACOS_CERTIFICATE_P12` (the `.p12`, base64, with the friendly name "GitVolt Self-Signed Code
+Signing" and the legacy encryption `security import` reads) and `MACOS_CERTIFICATE_PASSWORD`. The
+macOS job's "Signing keychain" step (`scripts/macos-keychain.sh import`) puts them in a throwaway
+keychain on the runner, unlocked and searched for the build, tries a signature, and sets
+`GITVOLT_MACOS_SIGNING_IDENTITY` to the certificate's SHA-1; the job deletes the keychain after
+the build, whatever happens. A run on `GitVoltApp/gitvolt` without the secrets fails there; a
+fork's run builds ad-hoc. `mac-port.yml`'s package job does the same, minus the requirement.
+
+`just package-macos` signs with `GITVOLT_MACOS_SIGNING_IDENTITY` when it's set (an identity in
+the keychain search list, by SHA-1 or name), and ad-hoc otherwise (`signingIdentity: "-"` in
+`tauri.macos.conf.json`; a local build, a fork). The Tauri bundler signs inside out: the helper
+apps, the framework's libraries and the framework, the main binary, then the bundle, each with the
+hardened runtime and CEF's entitlements (JIT, unsigned executable memory, and no library
+validation, without which the hardened runtime would refuse CEF's framework under any identity but
+Apple's); with an identity, the `.dmg` too. Each helper app gets its own identifier
+(`com.gitvolt.desktop.helper`, `.helper.gpu`, `.helper.renderer`, `.helper.plugin`,
+`.helper.alerts`), through `scripts/macos-codesign/codesign` ahead on the bundler's `PATH`. The
+script then checks, in the bundle and in the mounted `.dmg`: `codesign --verify --deep --strict`,
+the hardened runtime, the library-validation entitlement, the identifiers and, with an identity,
+that the app's and every helper's designated requirement is their identifier and the
+certificate's hash (never a cdhash). It prints the signature (`Authority=GitVolt Self-Signed Code
+Signing`, `TeamIdentifier=not set`) and the requirement.
+
+**Where it's kept.** The `.p12` and its password are in the repository's secrets, which GitHub
+never shows again, and in the maintainer's password manager, the only copy to restore them from.
+Neither belongs in the repository, a log or an issue.
+
+**Rotating it** (only if the key leaks or the certificate nears 2046): every user gets **one more
+round of folder-permission prompts** after the first update signed with the new certificate, as
+with the move from ad-hoc. To make a new one:
+
+```sh
+openssl req -x509 -newkey rsa:3072 -sha256 -days 7300 -noenc -keyout key.pem -out cert.pem \
+  -subj "/CN=GitVolt Self-Signed Code Signing/O=GitVolt" \
+  -addext "basicConstraints=critical,CA:FALSE" -addext "keyUsage=critical,digitalSignature" \
+  -addext "extendedKeyUsage=critical,codeSigning"
+openssl pkcs12 -export -legacy -inkey key.pem -in cert.pem \
+  -name "GitVolt Self-Signed Code Signing" -out gitvolt-codesign.p12
+base64 < gitvolt-codesign.p12 | gh secret set MACOS_CERTIFICATE_P12 -R GitVoltApp/gitvolt
+gh secret set MACOS_CERTIFICATE_PASSWORD -R GitVoltApp/gitvolt   # prompts for it
+```
+
+Keep the `.p12` and its password in the password manager, delete `key.pem`, and update the SHA-1
+and the requirement above and in SECURITY.md (`openssl x509 -in cert.pem -noout -fingerprint
+-sha1`).
+`mac-port.yml` (run it on a branch) shows the new `Authority` and requirement before a release.
+
+**A Developer ID instead**, should the project ever join the Apple Developer Program: put that
+certificate in the same two secrets, and add notarization (`xcrun notarytool submit --wait` and
+`xcrun stapler staple` on the `.dmg`; the Tauri CLI does both given `APPLE_ID`,
+`APPLE_PASSWORD` and `APPLE_TEAM_ID`). Its requirement is Apple's form (`anchor apple generic`
+and the Team ID), so users would see one more round of prompts then too; after it, the Team ID
+would also let the Keychain's **Always Allow** carry over.
 
 **Versions.** `CFBundleShortVersionString` and `CFBundleVersion` are the package version as is
 (`0.4.0-rc.1`, or a local build's stamp): macOS shows it in Finder and nothing compares it, since

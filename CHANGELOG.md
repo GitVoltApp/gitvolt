@@ -20,6 +20,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   `avatars.githubusercontent.com` by the numeric user id alone, with no token, when both avatar
   settings are on. Noreply addresses also reach the repository's own forge project again; they
   still skip Gravatar. (#12)
+- **macOS remembers folder permissions across updates.** The app is now signed with a stable
+  self-signed certificate instead of an ad-hoc signature, which changed with every build. After
+  one more round of prompts with this update, folder access (Downloads and the like, in Privacy &
+  Security) carries over to later updates. The Keychain still asks again after an update: it
+  keys its "Always Allow" to the build itself for apps without an Apple Developer ID (#11).
 
 ## [1.2.0] - 2026-10-29
 
