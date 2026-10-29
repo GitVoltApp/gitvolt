@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-29
+
 ### Added
 
 - **Forgejo.** Forgejo is the third forge, beside GitHub and GitLab: add an account for Codeberg
