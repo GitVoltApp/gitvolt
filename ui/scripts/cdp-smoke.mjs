@@ -107,7 +107,8 @@ await step(page, 'commit', async () => {
 });
 
 await step(page, 'diff', async () => {
-  await page.getByRole('option').and(page.locator('[data-path]')).first().click();
+  // A file's row, in the Path view (an option) or the Tree view (a treeitem), the default.
+  await page.locator('.file-row[data-kind="file"]').first().click();
   await page.getByRole('region', { name: 'Diff' }).getByTestId('diff-path').waitFor({ timeout: 30_000 });
   // Monaco paints its lines a moment after the panel shows.
   await page.locator('.diff-body').first().waitFor({ timeout: 30_000 });
