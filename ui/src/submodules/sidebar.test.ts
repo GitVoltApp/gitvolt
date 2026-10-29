@@ -11,6 +11,7 @@ import type { RepoViewStore } from '../repo/store';
 import { sidebarDoubleClick } from '../sidebar/itemActions';
 import { buildPanels, sectionsOf } from '../sidebar/model';
 import * as confirmDialog from '../ui/ConfirmDialog';
+import { COMMIT_QUEUED, useStaging } from '../stage/store';
 import { useToast } from '../ui/toastStore';
 import { defaultSubmodulePath, submodulePathError } from './AddSubmoduleDialog';
 import { addSubmodule, removeSubmodule } from './commands';
@@ -25,6 +26,10 @@ const payload = (submodules: SidebarPayload['submodules']): SidebarPayload => ({
 const write = { tabId: 't', repoId: 1, worktree: '/r' };
 const env = (over: Partial<MenuEnv> = {}) => ({ write, inProgress: null, ...over }) as MenuEnv;
 const labels = (rows: ReturnType<typeof sidebarSubmoduleRows>) => rows.map((r) => (r.kind === 'action' ? [r.label, r.disabledReason ?? null] : r.kind));
+
+const item = (m: SubmoduleItem) => ({ key: `submodule:${m.path}`, kind: 'submodule' as const, name: m.path, target: null, time: 0, submodule: m });
+/** A tab's view whose worktree `/r` has `inProgress` (a merge, a rebase) or none. */
+const storeIn = (inProgress: string | null) => ({ getState: () => ({ graph: { worktrees: [{ path: '/r', inProgress }] } }) }) as unknown as RepoViewStore;
 
 function repoTab(uses = true) {
   useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 't', kind: 'repo', path: '/r', alias: null }], activeTab: 't' } });
@@ -61,16 +66,29 @@ describe('the Submodules panel', () => {
 
   it('a double-click opens a submodule as a tab, and initialises one not checked out', async () => {
     repoTab();
-    const store = {} as RepoViewStore;
+    const store = storeIn(null);
     vi.spyOn(api, 'peekRepo').mockResolvedValue({ remotes: [], branch: 'main' });
     const open = vi.spyOn(runtime, 'openPathInTab').mockResolvedValue();
     const update = vi.spyOn(api, 'submoduleUpdate').mockResolvedValue(res({ command: 'git submodule update --init --recursive -- vendor/theme' }) as never);
-    const item = (m: SubmoduleItem) => ({ key: `submodule:${m.path}`, kind: 'submodule' as const, name: m.path, target: null, time: 0, submodule: m });
     expect(sidebarDoubleClick({ tabId: 't', store }, item(sub('vendor/parser', { head: B, status: 'newCommits' })))).toBe(true);
     await vi.waitFor(() => expect(open).toHaveBeenCalledWith('/r/vendor/parser'));
     sidebarDoubleClick({ tabId: 't', store }, item(sub('vendor/theme', { head: null, status: 'uninitialized' })));
     await vi.waitFor(() => expect(update).toHaveBeenCalledWith(1, '/r', 'vendor/theme', false));
     expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("a double-click's initialise waits as the menu's Initialise does, and says why", async () => {
+    repoTab();
+    const update = vi.spyOn(api, 'submoduleUpdate').mockResolvedValue(res({ command: 'git submodule update --init --recursive -- vendor/theme' }) as never);
+    const theme = item(sub('vendor/theme', { head: null, status: 'uninitialized' }));
+    sidebarDoubleClick({ tabId: 't', store: storeIn('merge') }, theme);
+    expect(useToast.getState().message).toBe('Finish or abort the merge first');
+    useStaging.getState().setCommitting(1, '/r', true);
+    sidebarDoubleClick({ tabId: 't', store: storeIn(null) }, theme);
+    expect(useToast.getState().message).toBe(COMMIT_QUEUED);
+    expect(update).not.toHaveBeenCalled();
+    useStaging.getState().setCommitting(1, '/r', false);
+    expect(labels(sidebarSubmoduleRows({ what: 'submodule', submodule: theme.submodule }, env({ inProgress: 'rebase' })))[0]).toEqual(['Initialise', 'Finish or abort the rebase first']);
   });
 
   it('Remove arms in place, in red, then removes; a declined one sends nothing', async () => {

@@ -9,7 +9,7 @@ import { COMMIT_QUEUED, stagingKey, useStaging } from '../stage/store';
 import { useToast } from '../ui/toastStore';
 import type { WriteCtx } from '../write/client';
 import { writeCtx } from '../write/ctx';
-import { registerSidebarDoubleClick, registerSidebarHeaderAction } from '../sidebar/itemActions';
+import { registerSidebarDoubleClick, registerSidebarHeaderAction, type SidebarCtx } from '../sidebar/itemActions';
 import { offAddSubmoduleDialog, openAddSubmodule } from './AddSubmoduleDialog';
 import { openSubmodule, pickSubmodule, removeSubmodule, syncSubmodules, updateSubmodules } from './commands';
 import { supportOf, unmappedReason } from './support';
@@ -73,16 +73,17 @@ function blockedReason(env: Pick<MenuEnv, 'write' | 'inProgress'>): string | und
 }
 
 /** A double-click on a Submodules row (and Enter): open it as a tab, or initialise one that has
- * nothing checked out yet, as GitKraken does. */
-function activateSubmodule(tabId: string, m: SubmoduleItem): void {
+ * nothing checked out yet, as GitKraken does. The initialise waits as the menu's Initialise row
+ * does, and says why. */
+function activateSubmodule({ tabId, store }: SidebarCtx, m: SubmoduleItem): void {
   const c = writeCtx(tabId);
   if (!c) return;
   if (m.status !== 'uninitialized') {
     void openSubmodule(c.worktree, m.path);
     return;
   }
-  const s = supportOf(c.tabId, c.worktree);
-  const why = s && unmappedReason(s);
+  const inProgress = store.getState().graph.worktrees.find((w) => w.path === c.worktree)?.inProgress ?? null;
+  const why = blockedReason({ write: c, inProgress });
   if (why) useToast.getState().show(why, { tone: 'warning' });
   else void updateSubmodules(c, m.path);
 }
@@ -107,7 +108,7 @@ export function sidebarSubmoduleRows(t: SidebarTarget, env: MenuEnv): MenuRow[] 
 const offs = [
   offAddSubmoduleDialog,
   registerSidebarHeaderAction('submodules', { id: 'submodule.add', icon: Plus, label: 'Add submodule', run: ({ tabId }) => openAddSubmodule(tabId) }),
-  registerSidebarDoubleClick('submodule', ({ tabId }, item) => { if (item.kind === 'submodule') activateSubmodule(tabId, item.submodule); }),
+  registerSidebarDoubleClick('submodule', (ctx, item) => { if (item.kind === 'submodule') activateSubmodule(ctx, item.submodule); }),
   registerMenu<SidebarTarget, MenuEnv>({ id: 'sidebar.submodule', kind: 'sidebar', group: 'submodule', order: 0, when: (t) => t.what === 'submodule', rows: sidebarSubmoduleRows }),
   registerMenu<SidebarTarget, MenuEnv>({
     id: 'sidebar.submodule.reveal', kind: 'sidebar', group: 'open', order: 0,
