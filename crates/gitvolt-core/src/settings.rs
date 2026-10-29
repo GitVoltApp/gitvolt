@@ -145,6 +145,10 @@ pub struct AppSettings {
     pub update_check: bool,
     /// "Include pre-releases" in the update check (a pre-release build always sees them).
     pub update_prereleases: bool,
+    /// "Use the system title bar" (Settings › Appearance): the window manager's decorations
+    /// instead of GitVolt's own title bar. Read when the window is built, so a change applies
+    /// after a restart. Only Linux has GitVolt's own title bar so far.
+    pub system_title_bar: bool,
     /// How an Arch install updates, once the update dialog asked; `None` until then.
     pub update_arch_method: Option<crate::updates::install::ArchMethod>,
     /// Per-theme lane colour overrides (plan 1D): theme id → lane index → `#rrggbb`, or null for
@@ -254,6 +258,7 @@ impl Default for AppSettings {
             forge_avatars: true,
             update_check: true,
             update_prereleases: false,
+            system_title_bar: false,
             update_arch_method: None,
             graph_color_overrides: BTreeMap::new(),
             custom_themes: Vec::new(),

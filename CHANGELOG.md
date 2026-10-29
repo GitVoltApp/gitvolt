@@ -5,6 +5,17 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **GitVolt draws its own title bar on Linux** (in a Wayland session), 30 px above the tab bar: ☰ (moved up from the
+  tab bar) at its start, the window's title in the middle, and the window buttons where GNOME's
+  `button-layout` puts them (stock GNOME: close only; a left-side layout puts them before ☰).
+  It behaves like the desktop's: dragging its empty space, or the tab strip's, moves the window
+  (edge tiling and snapping included), and a double, middle or right click does what GNOME's
+  title bar settings say (maximise, lower, the window menu). The window's edges and corners
+  resize it. **Settings › Appearance › Use the system title bar** brings back the desktop's
+  title bar and frame, from the next start.
+
 ### Fixed
 
 - **Custom themes in the editor:** switching to a custom theme left the editor in the old

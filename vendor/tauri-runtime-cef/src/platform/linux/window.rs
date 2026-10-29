@@ -13,9 +13,9 @@ use tauri_runtime::dpi::{PhysicalPosition, PhysicalSize};
 use tauri_utils::config::Color;
 use winit::platform::gtk4::WindowExtGtk4;
 
-use crate::window::AppWindow;
+use crate::window::{AppWindow, WindowManagerRequest};
 
-use super::{taskbar, utils::set_wm_state};
+use super::{chrome, taskbar, utils::set_wm_state};
 
 /// 24-bit X11 parent for CEF browser children.
 ///
@@ -282,6 +282,20 @@ impl AppWindow {
 
   pub(crate) fn set_progress_bar(&self, state: ProgressBarState) {
     taskbar::set_progress_bar(state);
+  }
+
+  /// GitVolt patch: has the window manager move the window (`edge` is `None`) or resize it from
+  /// `edge`, following the pointer while button 1 is held (`chrome.rs`).
+  pub(crate) fn begin_move_resize(&self, edge: Option<tauri_runtime::ResizeDirection>) -> bool {
+    chrome::begin_move_resize(self.xid(), edge)
+  }
+
+  /// GitVolt patch: whether the window manager was asked (`chrome.rs`).
+  pub(crate) fn window_manager_request(&self, request: WindowManagerRequest) -> bool {
+    match request {
+      WindowManagerRequest::ShowMenu => chrome::show_window_menu(self.xid()),
+      WindowManagerRequest::Lower => chrome::lower(self.xid()),
+    }
   }
 }
 

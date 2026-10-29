@@ -3,8 +3,8 @@ import { hamburgerRows } from '../app/actions';
 import { openMenuAt } from '../menu/menuStore';
 import { HoverTooltip } from '../ui/HoverTooltip';
 
-/** Spec §6.1: the app menu (File / Edit / View / Repository / Help) sits at the left of the tab
- * bar, instead of in a custom title bar. */
+/** Spec §6.1: the app menu (File / Edit / View / Repository / Help), at the start of GitVolt's
+ * own title bar, or of the tab bar under the system's. */
 export function HamburgerMenu() {
   return (
     <HoverTooltip content="Menu">

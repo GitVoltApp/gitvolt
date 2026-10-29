@@ -1,4 +1,5 @@
 import { Activity, useEffect } from 'react';
+import { TitleBar } from '../chrome/TitleBar';
 import { GitTooOldScreen } from '../errors/GitTooOldScreen';
 import { useGitCheck } from '../errors/gitCheck';
 import { ContextMenu } from '../menu/ContextMenu';
@@ -30,9 +31,10 @@ function useDropClosedTabs() {
 }
 
 /**
- * The app shell (spec §6): the header slot (the tab bar), every tab of the active profile inside
- * `<Activity>` (only the active one visible; the hidden ones do no work, spec §4.4), the status
- * bar and overlay slots, and the app's one toast, context menu and tooltip (spec §7).
+ * The app shell (spec §6): GitVolt's own title bar (Linux), the header slot (the tab bar), every
+ * tab of the active profile inside `<Activity>` (only the active one visible; the hidden ones do
+ * no work, spec §4.4), the status bar and overlay slots, and the app's one toast, context menu
+ * and tooltip (spec §7).
  */
 export function AppShell({ error = null }: { error?: string | null }) {
   useGlobalShortcuts();
@@ -61,6 +63,9 @@ export function AppShell({ error = null }: { error?: string | null }) {
   }, [loaded, tabs.length]);
   return (
     <div className="app-shell">
+      {/* GitVolt's own title bar, when the window has no system one: there whatever the state,
+          so the window can always be moved and closed. */}
+      <TitleBar />
       {gitProblem ? (
         <GitTooOldScreen error={gitProblem} />
       ) : error ? (

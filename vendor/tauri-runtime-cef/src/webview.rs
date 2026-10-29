@@ -1663,6 +1663,18 @@ impl<T: UserEvent> CefWebviewDispatcher<T> {
     })?;
     rx.recv().map_err(|_| Error::FailedToReceiveMessage)?
   }
+
+  /// GitVolt patch: asks the window manager for `request` about this webview's window, for a
+  /// window that draws its own title bar. Whether it was asked: only on X11, and the window menu
+  /// only where the window manager supports `_GTK_SHOW_WINDOW_MENU`.
+  pub fn window_manager_request(&self, request: crate::WindowManagerRequest) -> Result<bool> {
+    let (tx, rx) = mpsc::channel();
+    self.context.send_message(Message::Window {
+      window_id: *self.window_id.lock().unwrap(),
+      message: crate::window::WindowMessage::WindowManager(request, tx),
+    })?;
+    rx.recv().map_err(|_| Error::FailedToReceiveMessage)?
+  }
 }
 
 pub(crate) fn create_webview_detached<T: UserEvent>(

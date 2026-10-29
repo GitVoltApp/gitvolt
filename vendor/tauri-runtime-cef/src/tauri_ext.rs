@@ -205,6 +205,11 @@ pub trait WebviewCefExt {
   /// See [`crate::Webview`] for the native state it exposes, which is sampled
   /// immediately before the closure runs and is not refreshed afterwards.
   fn with_cef_webview<F: FnOnce(&crate::Webview) + Send + 'static>(&self, f: F) -> Result<()>;
+
+  /// GitVolt patch: asks the window manager for `request` about the webview's window, for an
+  /// app that draws its own title bar; whether it was asked (see
+  /// [`CefWebviewDispatcher::window_manager_request`]).
+  fn window_manager_request(&self, request: crate::WindowManagerRequest) -> Result<bool>;
 }
 
 impl<R: Runtime> WebviewCefExt for Webview<R>
@@ -229,6 +234,15 @@ where
       .as_cef_webview_dispatcher()
       .ok_or_else(not_cef)?
       .on_dev_tools_protocol(f)
+      .map_err(Into::into)
+  }
+
+  fn window_manager_request(&self, request: crate::WindowManagerRequest) -> Result<bool> {
+    self
+      .dispatcher()
+      .as_cef_webview_dispatcher()
+      .ok_or_else(not_cef)?
+      .window_manager_request(request)
       .map_err(Into::into)
   }
 
@@ -261,6 +275,10 @@ where
 
   fn with_cef_webview<F: FnOnce(&crate::Webview) + Send + 'static>(&self, f: F) -> Result<()> {
     self.as_ref().with_cef_webview(f)
+  }
+
+  fn window_manager_request(&self, request: crate::WindowManagerRequest) -> Result<bool> {
+    self.as_ref().window_manager_request(request)
   }
 }
 

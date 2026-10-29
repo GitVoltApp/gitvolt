@@ -2104,10 +2104,12 @@ name = "gitvolt-app"
 version = "1.2.0"
 dependencies = [
  "gdk4-x11",
+ "gio",
  "gitvolt-core",
  "gitvolt-forge",
  "glib",
  "raw-window-handle",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",

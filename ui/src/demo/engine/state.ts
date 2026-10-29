@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   forgeAvatars: true,
   updateCheck: true,
   updatePrereleases: false,
+  systemTitleBar: false,
   updateArchMethod: null,
   graphColorOverrides: {},
   customThemes: [],

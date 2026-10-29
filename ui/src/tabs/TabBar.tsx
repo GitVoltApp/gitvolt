@@ -27,6 +27,8 @@ import { tabDragRange, tabDropAt, unitLocator, useTabDrag, type DragBox, type Dr
 import { isWindowBlur, refocusWhenWindowReturns } from '../ui/windowBlur';
 import './tabs.css';
 import { displayChord } from '../ui/platformKeys';
+import { beginWindowDrag } from '../chrome/dragRegion';
+import { useCustomTitleBar } from '../chrome/windowChrome';
 
 function RenameInput({ tab }: { tab: TabState }) {
   const stop = useTabUi((s) => s.stopRename);
@@ -161,8 +163,10 @@ function groupPlan(p: Profile, id: string, update: (fn: (p: Profile) => Profile)
 
 /** Spec §6.2: hamburger, the Open Repository folder icon, tabs (drag, rename, middle-click,
  * right-click menu) and their groups (chips), the profile switcher. The app shell's `header`
- * slot. */
+ * slot. Under GitVolt's own title bar, ☰ is up there instead, and the strip's empty space moves
+ * the window too. */
 export function TabBar() {
+  const customTitleBar = useCustomTitleBar();
   const profile = useAppState((s) => s.profile);
   const { tabs, activeTab: active, tabGroups } = profile;
   const closedCount = profile.closedTabs.length;
@@ -217,7 +221,7 @@ export function TabBar() {
 
   return (
     <div className="tab-bar">
-      <HamburgerMenu />
+      {!customTitleBar && <HamburgerMenu />}
       <HoverTooltip content={`Open repository (${displayChord('Mod+O')})`}>
         <button type="button" className="tab-bar-btn" aria-label="Open repository" onClick={() => runAction('file.openRepo')}>
           <FolderPlus size={16} aria-hidden />
@@ -229,6 +233,8 @@ export function TabBar() {
         onContextMenu={(e) => openContextMenu(e, () => buildMenu<null, TabBarEnv>('tabbar', null, { lastClosed, savedGroups: useAppState.getState().profile.savedGroups }))}
         // Empty space only, as a browser's tab strip: a new tab on the Open repository screen.
         onDoubleClick={(e) => { if (e.target === e.currentTarget) runAction('file.openRepo'); }}
+        // Empty space only, under GitVolt's own title bar: dragging it moves the window.
+        onMouseDown={customTitleBar ? (e) => { if (e.target === e.currentTarget) beginWindowDrag(e); } : undefined}
       >
         {items.map((item) => {
           const key = itemKey(item);

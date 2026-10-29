@@ -45,11 +45,28 @@ never the other way round.
 `run` is the binary's `main` and, on Windows, the DLL entry point CEF's sandbox bootstrap calls). It
 builds the `Api` with the real
 implementations (system openers, the folder-picker portal, Gravatar, the forge connector and the
-keyring token store), starts the CEF runtime with a required sandbox, registers a single Tauri
-command, forwards the event bus to the webview, and handles startup and shutdown (askpass mode,
-the single-instance guard, letting a running write finish before exit). `desktop.rs` sets the
-window's desktop identity and the environment children get back; `window_state.rs` restores the
-window's size and position.
+keyring token store), starts the CEF runtime with a required sandbox, registers its Tauri
+commands (`api`, and `window_manager` for the title bar), forwards the event bus to the webview,
+and handles startup and shutdown (askpass mode, the single-instance guard, letting a running write
+finish before exit). `desktop.rs` sets the window's desktop identity and the environment children
+get back; `window_state.rs` restores the window's size and position.
+
+**Window chrome.** On Linux, in a Wayland session, the window is built without the system's
+decorations, and the UI draws its own 30 px title bar above the tab bar (`ui/src/chrome/`): ☰, the
+window's title, and the window buttons as GNOME's `button-layout` has them, with resize handles
+along the window's edges. `chrome.rs` decides the frame (Settings › Appearance › "Use the system
+title bar" keeps the system's, from the next start), reads GNOME's
+`org.gnome.desktop.wm.preferences` (the button layout and what a double, middle and right click on a
+title bar do; the defaults off GNOME) and hands it to the page in an initialization script, so the
+first render already has its title bar, then sends `gb:window-chrome` when GNOME's settings change.
+A drag of the title bar's or the tab strip's empty space, a resize edge, maximise and minimise go
+through Tauri's window API; the runtime makes the moves and resizes EWMH `_NET_WM_MOVERESIZE`
+requests, so the window manager moves the window (edge tiling and snapping included), and
+`window_manager` shows its window menu (`_GTK_SHOW_WINDOW_MENU`) or lowers the window
+(`GITVOLT-PATCH.md`). Without a window (the harness's browser, the website demo) there's no title
+bar and ☰ stays in the tab bar. An X11 session keeps the system frame: there the window manager
+needs the X pointer grab, which Chromium's connection holds while the button is down. macOS and
+Windows keep the system frame for now; the component already knows their button sets.
 
 **`gitvolt-harness`** serves the same `Api` over a WebSocket so the UI can run in a plain browser
 with no Tauri, and adds a fake GitHub/GitLab/Forgejo, fixture repositories and test-only routes. It's what

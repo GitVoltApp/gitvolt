@@ -17,7 +17,7 @@ import { normalizeGroups } from './tabGroups';
  */
 export const DEFAULT_SETTINGS: AppSettings = {
   version: 1, activeProfile: 'default', theme: 'default-dark', ...DEFAULT_EDITOR_SETTINGS, ...DEFAULT_FONT_SETTINGS,
-  fetchIntervalSecs: 60, prune: true, commitLimit: 2000, dateFormat: 'ymd12h', relativeDates: false, gravatar: true, debugLogging: false, syncButton: 'fetchAll', pushFollowTags: true, forgeAvatars: true, updateCheck: true, updatePrereleases: false, updateArchMethod: null, graphColorOverrides: {},
+  fetchIntervalSecs: 60, prune: true, commitLimit: 2000, dateFormat: 'ymd12h', relativeDates: false, gravatar: true, debugLogging: false, syncButton: 'fetchAll', pushFollowTags: true, forgeAvatars: true, updateCheck: true, updatePrereleases: false, systemTitleBar: false, updateArchMethod: null, graphColorOverrides: {},
   customThemes: [],
   // --- branch presets ---
   branchPresets: [],
