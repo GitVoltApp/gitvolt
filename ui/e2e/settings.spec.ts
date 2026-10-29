@@ -99,6 +99,8 @@ test.describe('settings', () => {
       await expect(date).toBeFocused();
       await page.keyboard.press('Enter');
       await expect(page.getByRole('menu')).toBeVisible();
+      // Past the German 26.09.2026 to the US format, the last.
+      await page.keyboard.press('ArrowDown');
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Enter');
       await expect(date).toHaveText('09/26/2026 3:14 PM');
