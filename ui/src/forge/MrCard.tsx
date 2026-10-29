@@ -38,5 +38,5 @@ export function MrCard({ kind, mr, detail, error = null, hint, extra }: { kind: 
 /** A review state worth a line: anything but nobody having reviewed and nothing required. */
 function hasReviewNews(d: ForgeMrDetail): boolean {
   const r = d.mr.review;
-  return r.decision !== 'none' || r.approvals > 0 || (r.approvalsRequired ?? 0) > 0;
+  return r.decision !== 'none' || r.approvals > 0 || (r.approvalsRequired ?? 0) > 0 || r.reviews.some((x) => x.state === 'commented');
 }

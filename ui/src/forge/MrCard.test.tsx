@@ -58,6 +58,13 @@ describe('MrCard (spec #4 §4 "4B": the hover card)', () => {
     expect(card).not.toHaveTextContent('Loading…');
   });
 
+  it('a review that only commented is a line too: who reviewed', () => {
+    const pr = mrOf(9, { title: 'Spin faster', conflicts: false });
+    const d = detailOf(pr, { mr: { ...pr, conflicts: false, review: { decision: 'none', approvals: 0, approvalsRequired: null, reviews: [{ user: user('Joan Clarke'), state: 'commented', submittedAt: 1 }] } } });
+    render(<MrCard kind="forgejo" mr={pr} detail={d} />);
+    expect(screen.getByLabelText('Pull request #9 details')).toHaveTextContent('Reviewed by Joan Clarke');
+  });
+
   it("says why the detail couldn't load", () => {
     render(<MrCard kind="gitlab" mr={mr} detail={null} error="gitlab.example.com rate limit reached: try again in 2 min" />);
     expect(screen.getByLabelText('Merge request !12 details')).toHaveTextContent("Couldn't load: gitlab.example.com rate limit reached: try again in 2 min");
