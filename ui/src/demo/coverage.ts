@@ -158,6 +158,7 @@ export const COVERAGE = {
   addForgeAccount: 'notInDemo',
   removeForgeAccount: 'notInDemo',
   forgeTokenPage: 'notInDemo',
+  detectForge: 'notInDemo',
   forgeRepoProjects: 'real',
   forgeProjectSettings: 'real',
   forgeForks: 'real',

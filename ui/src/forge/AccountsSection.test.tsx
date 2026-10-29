@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
   addForgeAccount: vi.fn(async (): Promise<unknown> => ({})),
   removeForgeAccount: vi.fn(async () => null),
   forgeTokenPage: vi.fn(async (host: string) => `https://${host}/new-token`),
+  detectForge: vi.fn(async (_host: string) => 'generic' as const as string),
   openUrl: vi.fn(async () => null),
   avatar: vi.fn(async () => null),
 }));
@@ -209,6 +210,24 @@ describe('Settings › Accounts', () => {
     expect(within(form).getByText('Detected from the host')).toBeTruthy();
     fireEvent.click(within(form).getByRole('button', { name: /^Create token on/ }));
     await waitFor(() => expect(api.forgeTokenPage).toHaveBeenLastCalledWith('https://git.example.dev/', 'forgejo', undefined));
+  });
+
+  it('a host its name doesn\'t place is asked which forge it runs, once, and its answer is the forge', async () => {
+    api.detectForge.mockImplementation(async (host: string) => (host === 'git.example.dev' ? 'forgejo' : 'generic'));
+    show();
+    await openAdd();
+    const form = screen.getByRole('form', { name: 'Add a forge account' });
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'https://git.example.dev/' } });
+    expect(within(form).getByText('Asking git.example.dev which forge it runs…')).toBeTruthy();
+    await waitFor(() => expect(within(form).getByRole('button', { name: 'Forgejo' }).getAttribute('aria-pressed')).toBe('true'));
+    expect(within(form).getByText('Detected from the host')).toBeTruthy();
+    expect(api.detectForge).toHaveBeenCalledExactlyOnceWith('git.example.dev');
+    fireEvent.click(within(form).getByRole('button', { name: /^Create token on/ }));
+    await waitFor(() => expect(api.forgeTokenPage).toHaveBeenLastCalledWith('https://git.example.dev/', 'forgejo', undefined));
+    // A host its name places, or a Hosts setting, isn't asked.
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'gitlab.example.com' } });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(api.detectForge).toHaveBeenCalledTimes(1);
   });
 
   it('with no host, Create token is visibly disabled and says why', async () => {

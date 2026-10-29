@@ -1006,6 +1006,9 @@ pub enum Request {
     RemoveForgeAccount { host: String },
     /// The forge's prefilled "new token" page for `host`: a URL for `openUrl`.
     ForgeTokenPage { host: String, kind: crate::forge::ForgeKind, #[serde(default)] classic: bool },
+    /// The forge `host` runs (`HostKind`): by its name, else asked without a token
+    /// (`ForgeConnector::detect_host`); `generic` when neither says.
+    DetectForge { host: String },
     // --- end 4A T5 ---
     // --- 4A T6 ---
     /// Every remote with its forge project, and the remote MRs/PRs target (spec #4 §3.3):
@@ -1282,7 +1285,7 @@ impl Request {
     pub fn is_write(&self) -> bool {
         match self {
             // --- 4A T5: settings and the token store, never the repository ---
-            Request::ForgeAccounts | Request::AddForgeAccount { .. } | Request::RemoveForgeAccount { .. } | Request::ForgeTokenPage { .. } => false,
+            Request::ForgeAccounts | Request::AddForgeAccount { .. } | Request::RemoveForgeAccount { .. } | Request::ForgeTokenPage { .. } | Request::DetectForge { .. } => false,
             // --- end 4A T5 ---
             // --- 4A T6 ---
             Request::ForgeRepoProjects { .. } | Request::ForgeProjectSettings { .. } | Request::ForgeForks { .. } => false,
@@ -2827,6 +2830,21 @@ impl Api {
             Request::RemoveForgeAccount { host } => {
                 self.forge_hub()?.remove_account(&self.store, &host).await?;
                 to_json(())
+            }
+            Request::DetectForge { host } => {
+                use crate::{forge::ForgeKind, remotes::HostKind};
+                let host = crate::forge::accounts::normalize_host(&host)?;
+                let by_name = crate::remotes::host_kind(&host);
+                if by_name != HostKind::Generic {
+                    return to_json(by_name);
+                }
+                let asked = self.forge_hub()?.connector().detect_host(&host).await?;
+                to_json(match asked {
+                    Some(ForgeKind::Forgejo) => HostKind::Forgejo,
+                    Some(ForgeKind::GitLab) => HostKind::GitLab,
+                    Some(ForgeKind::GitHub) => HostKind::GitHub,
+                    None => HostKind::Generic,
+                })
             }
             Request::ForgeTokenPage { host, kind, classic } => {
                 let host = crate::forge::accounts::normalize_host(&host)?;
@@ -5314,6 +5332,7 @@ mod tests {
             json!({"method": "addForgeAccount", "params": {"host": "gitlab.example.com", "kind": "gitlab", "token": "glpat-FAKE-never-sent"}}),
             json!({"method": "removeForgeAccount", "params": {"host": "gitlab.example.com"}}),
             json!({"method": "forgeTokenPage", "params": {"host": "gitlab.example.com", "kind": "gitlab"}}),
+            json!({"method": "detectForge", "params": {"host": "https://codeberg.org/"}}),
             // --- end 4A T5 ---
             // --- 4A T6 ---
             json!({"method": "forgeRepoProjects", "params": {"repo": id, "refresh": false}}),
@@ -5674,6 +5693,11 @@ mod tests {
         assert_eq!(list[0]["status"]["kind"], "ok");
         let page = api.dispatch(serde_json::from_value(serde_json::json!({"method": "forgeTokenPage", "params": {"host": "https://gitlab.example.com/", "kind": "gitlab"}})).unwrap()).await.unwrap();
         assert!(page.as_str().unwrap().starts_with("https://gitlab.example.com/-/user_settings/personal_access_tokens?"));
+        // A host's forge: by its name, else as the connector asked it (the fake asks no host).
+        let kind = |host: &str| serde_json::from_value::<Request>(serde_json::json!({"method": "detectForge", "params": {"host": host}})).unwrap();
+        assert_eq!(api.dispatch(kind("https://Codeberg.org/")).await.unwrap(), "forgejo");
+        assert_eq!(api.dispatch(kind("git.example.dev")).await.unwrap(), "generic");
+        assert_eq!(api.dispatch(kind("not a host")).await.unwrap_err().kind, GbErrorKind::InvalidInput);
         api.dispatch(serde_json::from_value(serde_json::json!({"method": "removeForgeAccount", "params": {"host": "gitlab.example.com"}})).unwrap()).await.unwrap();
         assert!(tokens.map.lock().unwrap().is_empty());
         let none = api.dispatch(serde_json::from_value(serde_json::json!({"method": "forgeAccounts"})).unwrap()).await.unwrap();

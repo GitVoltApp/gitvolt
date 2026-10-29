@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage } from '../api/client';
 import type { ForgeAccountView } from '../api/gen/ForgeAccountView';
 import type { ForgeKind } from '../api/gen/ForgeKind';
+import type { HostKind } from '../api/gen/HostKind';
 import { useRuntime } from '../app/runtime';
 import { useAppState } from '../app/state';
 import { resetAvatars } from '../avatars/avatarStore';
@@ -50,6 +51,8 @@ const TOKEN_HELP: Record<ForgeKind, string> = {
 };
 /** Untyped, with no suggestion of its kind, the host a forge picked starts with (GitLab: none). */
 const DEFAULT_HOSTS: Partial<Record<ForgeKind, string>> = { github: 'github.com', forgejo: 'codeberg.org' };
+/** How long the host field rests before a host its name doesn't place is asked. */
+const ASK_AFTER_MS = 400;
 const CLASSIC_HELP = 'Opens GitHub\'s classic token page with the repo and read:org scopes selected. Classic tokens don\'t expire unless you set a date.';
 /** GitHub's answer when an organization caps fine-grained token lifetimes. */
 const FINE_GRAINED_REFUSED = 'forbids access via a fine-grained';
@@ -189,7 +192,20 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
       : suggestions.find((x) => kindOf(x.host) === pickedEarly)?.host ?? DEFAULT_HOSTS[pickedEarly] ?? '');
   // A pasted address (`https://git.example.dev/`) is detected by its host, as the core reads it.
   const bare = bareHost(host);
-  const detected = bare ? effectiveKind(bare, detectHostKind(bare), overrides) : 'generic';
+  const byName = bare ? effectiveKind(bare, detectHostKind(bare), overrides) : 'generic';
+  // A host its name doesn't place (`git.example.dev`) is asked which forge it runs, no token:
+  // once typing settles, once per host.
+  const [asked, setAsked] = useState<Record<string, HostKind>>({});
+  const askable = byName === 'generic' && /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?$/.test(bare);
+  useEffect(() => {
+    if (!askable || asked[bare] !== undefined) return;
+    const t = setTimeout(() => {
+      api.detectForge(bare).then((k) => setAsked((a) => ({ ...a, [bare]: k })), () => setAsked((a) => ({ ...a, [bare]: 'generic' })));
+    }, ASK_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [askable, asked, bare]);
+  const asking = askable && asked[bare] === undefined;
+  const detected = byName !== 'generic' ? byName : asked[bare] ?? 'generic';
   const picked = pickedEarly;
   const setPicked = setPickedEarly;
   // One account per host: a host that has one already gets its token replaced instead.
@@ -260,7 +276,7 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
           <div className="seg" role="group" aria-label="Forge type">
             {KINDS.map(([k, name]) => <button key={k} type="button" aria-pressed={kind === k} className={kind === k ? 'is-on' : undefined} onClick={() => setPicked(k)}>{name}</button>)}
           </div>
-          <span className="dim">{picked === null && host ? 'Detected from the host' : ''}</span>
+          <span className="dim">{picked === null && host ? (asking ? `Asking ${bare} which forge it runs…` : 'Detected from the host') : ''}</span>
         </div>
       </div>
       {kind === 'github' && (

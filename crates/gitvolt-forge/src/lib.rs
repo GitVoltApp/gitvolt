@@ -31,4 +31,5 @@ pub mod github;
 pub mod forgejo;
 // --- 4A T10 ---
 pub mod connector;
+pub mod detect;
 // --- end 4A T10 ---

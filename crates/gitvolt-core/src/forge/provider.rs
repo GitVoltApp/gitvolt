@@ -423,6 +423,11 @@ pub trait ForgeConnector: Send + Sync {
         unsupported("Loading a video")
     }
     // --- end 5A T1 ---
+    /// Which forge `host` runs, asked without a token (a host whose name doesn't say). `None`:
+    /// neither Forgejo nor GitLab answered as one, or this build asks no host.
+    fn detect_host<'a>(&'a self, _host: &'a str) -> ForgeFuture<'a, Option<ForgeKind>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 /// Where tokens are kept (spec #4 §2). Every method blocks (Secret Service over D-Bus, file I/O):

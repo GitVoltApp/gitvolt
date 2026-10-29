@@ -114,6 +114,7 @@ import type { TagPushOutcome } from './gen/TagPushOutcome';
 // --- 4A T11 ---
 import type { ForgeAccountView } from './gen/ForgeAccountView';
 import type { ForgeKind } from './gen/ForgeKind';
+import type { HostKind } from './gen/HostKind';
 // --- end 4A T11 ---
 // --- 4A T12 ---
 import type { ForgeProject } from './gen/ForgeProject';
@@ -555,6 +556,8 @@ export const api = {
   removeForgeAccount: (host: string) => call<null>({ method: 'removeForgeAccount', params: { host } }),
   /** The forge's prefilled "new token" page: open it with `openUrl`. */
   forgeTokenPage: (host: string, kind: ForgeKind, classic?: boolean) => call<string>({ method: 'forgeTokenPage', params: { host, kind, classic: classic ?? false } }),
+  /** The forge `host` runs: by its name, else asked without a token; `generic` when neither says. */
+  detectForge: (host: string) => call<HostKind>({ method: 'detectForge', params: { host } }),
   // --- end 4A T11 ---
   // --- end 3C T10 ---
   // --- 3C T13 ---
