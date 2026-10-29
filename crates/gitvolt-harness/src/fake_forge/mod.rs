@@ -1,10 +1,11 @@
-//! A fake GitLab and GitHub for tests (spec #4 §7): the REST subset GitVolt's providers use,
+//! A fake GitLab, GitHub and Forgejo for tests (spec #4 §7): the REST subset GitVolt's providers use,
 //! answered from a seed, with ETags (a 304 on a match), each forge's rate-limit headers, one-shot
 //! scripted answers (429s, 500s, poll intervals), and a log of requests that records whether a
 //! valid token came, never the token. It runs on its own ephemeral port, so harnesses in several
 //! worktrees never collide. 4B–4D add their routes as match arms in `gitlab::route` and
 //! `github::route`, and their seed fields with `#[serde(default)]`.
 
+pub mod forgejo;
 pub mod github;
 // --- 4C T2 ---
 pub mod create;
@@ -193,6 +194,8 @@ pub struct GitHubSeed {
 pub struct ForgeSeed {
     pub gitlab: GitLabSeed,
     pub github: GitHubSeed,
+    /// `forgejo.rs`.
+    pub forgejo: forgejo::ForgejoSeed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -453,6 +456,7 @@ pub fn default_seed(base: &str) -> ForgeSeed {
             releases: Vec::new(),
             download_chunk_delay_ms: 0,
           },
+        forgejo: forgejo::default_seed(base),
     }
 }
 
@@ -497,6 +501,12 @@ impl FakeForge {
     }
     pub fn github_web(&self) -> String {
         format!("{}/github-web", self.base)
+    }
+    pub fn forgejo_web(&self) -> String {
+        format!("{}/forgejo", self.base)
+    }
+    pub fn forgejo_api(&self) -> String {
+        format!("{}/forgejo/api/v1", self.base)
     }
     pub fn github_avatars(&self) -> String {
         format!("{}/github-avatars", self.base)
@@ -632,6 +642,8 @@ async fn handle(State(s): State<Shared>, method: Method, uri: Uri, headers: Head
     let query = uri.query().unwrap_or("").to_string();
     let (forge, rest) = if let Some(r) = path.strip_prefix("/gitlab") {
         ("gitlab", r)
+    } else if let Some(r) = path.strip_prefix("/forgejo") {
+        ("forgejo", r)
     } else if let Some(r) = path.strip_prefix("/github-avatars") {
         ("github-avatars", r)
     } else if let Some(r) = path.strip_prefix("/github-releases") {
@@ -653,7 +665,11 @@ async fn handle(State(s): State<Shared>, method: Method, uri: Uri, headers: Head
     }
     let bearer = header("authorization").and_then(|a| a.strip_prefix("Bearer ").map(str::to_string));
     let mut st = s.state.lock().expect("fake forge poisoned");
-    let tokens = if forge == "gitlab" { &st.seed.gitlab.tokens } else { &st.seed.github.tokens };
+    let tokens = match forge {
+        "gitlab" => &st.seed.gitlab.tokens,
+        "forgejo" => &st.seed.forgejo.tokens,
+        _ => &st.seed.github.tokens,
+    };
     let token = bearer.as_deref().and_then(|b| tokens.iter().find(|t| t.token == b)).cloned();
     st.requests.push(RecordedRequest { forge: forge.into(), method: method.to_string(), path: rest.to_string(), query: redact_query(&query), authorized: token.is_some(), if_none_match: header("if-none-match"), user_agent: header("user-agent"), status: 0 });
     let logged = st.requests.len() - 1;
@@ -681,6 +697,7 @@ async fn handle(State(s): State<Shared>, method: Method, uri: Uri, headers: Head
     let reply = match forge {
         "gitlab" => gitlab::route(&mut st, &req),
         "github" => github::route(&mut st, &req),
+        "forgejo" => forgejo::route(&mut st, &req),
         // --- 5A T3 ---
         "github-images" => github_pulls::image(&st, &req),
         "github-releases" => releases::download(&req),

@@ -212,6 +212,7 @@ fn fake_connector(forge: &fake_forge::FakeForge) -> Forge {
     let overrides = std::collections::HashMap::from([
         (fake_forge::GITLAB_HOST.to_string(), HostEndpoints { api: forge.gitlab_api(), web: forge.gitlab_web(), avatars: None }),
         (fake_forge::GITHUB_HOST.to_string(), HostEndpoints { api: forge.github_api(), web: forge.github_web(), avatars: Some(forge.github_avatars()) }),
+        (fake_forge::forgejo::FORGEJO_HOST.to_string(), HostEndpoints { api: forge.forgejo_api(), web: forge.forgejo_web(), avatars: None }),
     ]);
     Forge::new(ForgeConfig { overrides, only_overrides: true, avatar_dir: None })
         // --- 5A T3: GitHub's Markdown image hosts are the fake's (no test reaches a real one) ---

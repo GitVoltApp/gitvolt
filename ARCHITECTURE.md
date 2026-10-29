@@ -52,7 +52,7 @@ window's desktop identity and the environment children get back; `window_state.r
 window's size and position.
 
 **`gitvolt-harness`** serves the same `Api` over a WebSocket so the UI can run in a plain browser
-with no Tauri, and adds a fake GitHub/GitLab, fixture repositories and test-only routes. It's what
+with no Tauri, and adds a fake GitHub/GitLab/Forgejo, fixture repositories and test-only routes. It's what
 the Playwright suite drives; see [Testing](#testing).
 
 **`gitvolt-graph`** is the graph's pure pipeline: the walk's order, the pinned trunk, the WIP rows,
@@ -506,10 +506,12 @@ that isn't a marked fixture. Test-only routes: `POST /test/reset`, `/test/emit`,
 forge's `/test/forge/{seed,script,requests,account}`. `gitvolt-harness fixture <name> <dir>` builds
 a fixture repository (the showcase ones, for previews, submodules and LFS: [docs/playground.md](docs/playground.md)).
 
-**The fake forge** (`crates/gitvolt-harness/src/fake_forge/`) answers the subset of the GitHub and
-GitLab REST APIs that the providers use, from a seed: ETags with 304s, each forge's rate-limit
-headers, scripted one-shot answers (429s, 500s, poll intervals), and a request log that records
-whether a valid token came but never the token. It runs on its own ephemeral port. The harness's
+**The fake forge** (`crates/gitvolt-harness/src/fake_forge/`) answers the subset of the GitHub,
+GitLab and Forgejo REST APIs that the providers use, from a seed: ETags with 304s, each forge's
+rate-limit headers, scripted one-shot answers (429s, 500s, poll intervals), and a request log that
+records whether a valid token came but never the token. The Forgejo one (`forgejo.example.com`)
+keeps the rules GitVolt works around: a message for a pending review and for Request changes, one
+timeline entry per review POST, a branch deleted after a merge only when asked. It runs on its own ephemeral port. The harness's
 connector points the real providers at it and can reach no other host, and its tokens go in a file
 in the temp dir, never the system keyring.
 
