@@ -23,7 +23,7 @@ function offset(): { x: number; y: number } {
   return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 0, y: 0 };
 }
 
-/** The app behind (a button), Settings on Appearance, then Edit mode. happy-dom has no
+/** The app behind (a button), Settings on Theme, then Edit mode. happy-dom has no
  * layout: the panel's box is its CSS place (320 × 560 at the lower right of 1024 × 768), moved by its offset. */
 function openFloating(behindClick = vi.fn()) {
   render(<><button type="button" onClick={behindClick}>Behind</button><SettingsOverlay /></>);
@@ -107,7 +107,7 @@ describe('the floating theme editor', () => {
     expect(screen.getByRole('dialog', { name: 'Nord (Custom)' })).toBeInTheDocument();
   });
 
-  it('Esc inside clears the find box first, then returns to Settings on Appearance, focused on Edit mode', () => {
+  it('Esc inside clears the find box first, then returns to Settings on Theme, focused on Edit mode', () => {
     openFloating();
     const find = screen.getByLabelText('Find a colour');
     fireEvent.change(find, { target: { value: 'pan' } });
@@ -117,7 +117,7 @@ describe('the floating theme editor', () => {
     fireEvent.keyDown(find, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Nord (Custom)' })).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
-    expect(useSettingsUi.getState().page).toBe('appearance');
+    expect(useSettingsUi.getState().page).toBe('theme');
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit mode' }));
     // Settings, closed, gives the focus back to the app behind, as it would have before.
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });

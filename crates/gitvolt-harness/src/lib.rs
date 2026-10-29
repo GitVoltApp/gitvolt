@@ -84,6 +84,23 @@ pub const CHOOSER_PROGRAM: &str = "open-with-chooser";
 /// What `/launches` names "Open in default app" by, in place of a program.
 pub const DEFAULT_APP_PROGRAM: &str = "default-app";
 
+/// The harness's installed fonts: a fixed list, so tests don't depend on the machine's. Common
+/// Linux families, so the pickers' names draw in their own font on most machines.
+pub fn fake_font_families() -> Vec<gitvolt_core::fonts::FontFamily> {
+    let family = |name: &str, monospace: bool| gitvolt_core::fonts::FontFamily { name: name.into(), monospace };
+    vec![
+        family("DejaVu Sans", false),
+        family("DejaVu Sans Mono", true),
+        family("DejaVu Serif", false),
+        family("Liberation Mono", true),
+        family("Liberation Sans", false),
+        family("Liberation Serif", false),
+        family("Noto Sans", false),
+        family("Noto Sans Mono", true),
+        family("Noto Serif", false),
+    ]
+}
+
 /// A fixed opener list (one of each style; the programs don't exist) plus "Open in default app"
 /// and "Other…", whose launches `launches` records.
 pub fn with_fake_openers(api: Api, launches: Arc<Launches>) -> Api {
@@ -302,7 +319,7 @@ impl Harness {
             .with_store(store.clone())
             .with_write_guard(fixture_guard(opts.fixture_root.clone().unwrap_or_else(std::env::temp_dir)));
         let api = if opts.golden { api.with_clock(Arc::new(|| crate::golden::GOLDEN_NOW_MS)) } else { api };
-        let api = Arc::new(with_fake_openers(api, launches.clone()));
+        let api = Arc::new(with_fake_openers(api.with_font_source(Arc::new(fake_font_families)), launches.clone()));
         // Askpass (spec §5.4), in the private temp dir: git runs `askpass_exe` (the harness binary
         // itself unless a test names one), which asks this server over its socket.
         let exe = opts.askpass_exe.unwrap_or_else(harness_exe);

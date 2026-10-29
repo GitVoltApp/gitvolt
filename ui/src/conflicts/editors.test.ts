@@ -18,7 +18,7 @@ describe('mergeEditorOptions', () => {
   it('takes the editor settings, in all three editors', () => {
     const s = { ...DEFAULT_EDITOR_SETTINGS, editorFontSize: 99, editorFontFamily: 'Iosevka', editorFontLigatures: true, editorLineHeight: 20, editorWhitespace: 'all' as const, editorMinimap: false, editorStickyScroll: true };
     for (const ro of [true, false]) {
-      expect(mergeEditorOptions(ro, s)).toMatchObject({ fontSize: 32, fontFamily: 'Iosevka, monospace', fontLigatures: true, lineHeight: 32, renderWhitespace: 'all', minimap: { enabled: false }, stickyScroll: { enabled: true } });
+      expect(mergeEditorOptions(ro, s)).toMatchObject({ fontSize: 32, fontFamily: '"Iosevka", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace', fontLigatures: true, lineHeight: 32, renderWhitespace: 'all', minimap: { enabled: false }, stickyScroll: { enabled: true } });
     }
   });
 });
@@ -29,7 +29,7 @@ describe('followSettingsLive: the merge editors take a settings change in place'
     const editors = [{ updateOptions: vi.fn() }, { updateOptions: vi.fn() }, { updateOptions: vi.fn() }];
     const off = followSettingsLive(editors);
     useAppState.getState().setSettings({ editorFontFamily: "'Fira Code'", editorWhitespace: 'boundary', editorMinimap: false });
-    for (const ed of editors) expect(ed.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ fontFamily: "'Fira Code', monospace", renderWhitespace: 'boundary', minimap: { enabled: false } }));
+    for (const ed of editors) expect(ed.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ fontFamily: '"Fira Code", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace', renderWhitespace: 'boundary', minimap: { enabled: false } }));
     useAppState.getState().setSettings({ editorFontSize: 20 });
     for (const ed of editors) expect(ed.updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ fontSize: 20 }));
     useAppState.getState().setSettings({ relativeDates: true });

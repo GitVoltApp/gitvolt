@@ -82,10 +82,13 @@ describe('the editor settings', () => {
     expect(fileViewOptions(false, true, s)).toMatchObject(want);
   });
 
-  it('a family list without a generic family gets monospace after it; empty is the default stack', () => {
+  it("one family gets the default's fallbacks after it; a list without a generic family monospace; empty is the default stack", () => {
     expect(editorFontFamily('')).toBe(DEFAULT_EDITOR_FONT_FAMILY);
     expect(editorFontFamily('   ')).toBe(DEFAULT_EDITOR_FONT_FAMILY);
-    expect(editorFontFamily('Iosevka')).toBe('Iosevka, monospace');
+    expect(editorFontFamily('Iosevka')).toBe('"Iosevka", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace');
+    // The picker's family (old settings' bare names too), quoted or not; not twice in the stack.
+    expect(editorFontFamily("'Noto Sans Mono'")).toBe('"Noto Sans Mono", "JetBrains Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace');
+    expect(editorFontFamily('"Cascadia Code, Italic"')).toBe('"Cascadia Code, Italic", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace');
     expect(editorFontFamily("'Fira Code', 'Noto Sans Mono',")).toBe("'Fira Code', 'Noto Sans Mono', monospace");
     expect(editorFontFamily("'Fira Code', monospace")).toBe("'Fira Code', monospace");
     expect(editorFontFamily('Menlo, ui-monospace')).toBe('Menlo, ui-monospace');

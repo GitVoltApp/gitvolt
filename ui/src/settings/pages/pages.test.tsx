@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api/client', () => ({
-  api: { gitIdentity: vi.fn(async () => ({ identity: null, signing: null })), saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []), listOpeners: vi.fn(async () => []), openLogsFolder: vi.fn(async () => null) },
+  api: { gitIdentity: vi.fn(async () => ({ identity: null, signing: null })), saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []), listOpeners: vi.fn(async () => []), fontFamilies: vi.fn(async () => [{ name: 'Orbit Mono', monospace: true }, { name: 'Zeta Sans', monospace: false }]), openLogsFolder: vi.fn(async () => null) },
   errorMessage: String,
 }));
 
@@ -47,7 +47,7 @@ afterEach(() => act(() => { useSettingsUi.getState().close(); useSettingsUi.setS
 describe('settings pages', () => {
   it.each([
     ['advanceAfterStage', 'general'], ['updateCheck', 'general'], ['updatePrereleases', 'general'],
-    ['theme', 'appearance'], ['graphColors', 'appearance'], ['themeColours', 'appearance'], ['density', 'appearance'],
+    ['theme', 'theme'], ['graphColors', 'theme'], ['themeColours', 'theme'], ['density', 'appearance'],
     ['uiFontFamily', 'appearance'], ['readingFontFamily', 'appearance'], ['readingFontSize', 'appearance'], ['readingLineHeight', 'appearance'], ['readingLineWidth', 'appearance'],
     ['commitLimit', 'graph'], ['relativeDates', 'graph'], ['dateFormat', 'graph'], ['gravatar', 'graph'], ['forgeAvatars', 'graph'], ['collapseHoverOpen', 'graph'], ['collapsePlacement', 'graph'],
     ['editorFontSize', 'diffs'], ['editorFontFamily', 'diffs'], ['editorFontLigatures', 'diffs'], ['editorLineHeight', 'diffs'], ['editorTabSize', 'diffs'], ['editorWhitespace', 'diffs'], ['editorMinimap', 'diffs'],
@@ -65,13 +65,15 @@ describe('settings pages', () => {
     for (const d of allSettings()) expect(d.label && d.group && d.keywords && d.description, d.id).toBeTruthy();
   });
 
-  it('General, Appearance, Graph, Fetch and push, and Advanced show their groups in order', () => {
+  it('General, Appearance, Theme, Graph, Fetch and push, and Advanced show their groups in order', () => {
     const dialog = show();
     expect(groupTitles(dialog)).toEqual(['Staging', 'Updates']);
     openPage('Appearance');
-    // Density and the UI and reading fonts first; the editor font is on Diffs and editors.
-    expect(groupTitles(dialog)).toEqual(['Density', 'Fonts', 'Theme', 'Graph lanes · drag to reorder, click to change', 'Colours']);
+    // Density and the UI and reading fonts; the editor font is on Diffs and editors, the theme on Theme.
+    expect(groupTitles(dialog)).toEqual(['Density', 'Fonts']);
     expect(within(dialog).queryByLabelText(/^font size/i)).toBeNull();
+    openPage('Theme');
+    expect(groupTitles(dialog)).toEqual(['Theme', 'Graph lanes · drag to reorder, click to change', 'Colours']);
     openPage('Graph');
     expect(groupTitles(dialog)).toEqual(['History', 'Dates', 'Avatars', 'Hidden commits']);
     expect(allSettings().filter((d) => d.page === 'graph' && d.group === 'Dates').map((d) => d.id)).toEqual(['relativeDates', 'dateFormat']);
@@ -134,8 +136,8 @@ describe('settings pages', () => {
       const rows = [...dialog.querySelectorAll('.settings-page .settings-group')].find((g) => g.querySelector('h3')?.textContent === 'Fonts')!;
       expect([...rows.querySelectorAll('.setting-row')].map((r) => r.getAttribute('data-setting-id')))
         .toEqual(['uiFontFamily', 'readingFontFamily', 'readingFontSize', 'readingLineHeight', 'readingLineWidth']);
-      expect(within(dialog).getByLabelText('UI font')).toHaveValue('');
-      expect(within(dialog).getByLabelText('Reading font')).toHaveValue('');
+      expect(within(dialog).getByLabelText('UI font')).toHaveTextContent('Default(system UI font)');
+      expect(within(dialog).getByLabelText('Reading font')).toHaveTextContent('Default(the UI font)');
       expect(within(dialog).getByLabelText('Reading text size')).toHaveValue(13);
       expect(within(dialog).getByLabelText('Reading line height')).toHaveValue(1.55);
       expect(within(dialog).getByLabelText('Reading line width')).toHaveValue(null); // empty: none
@@ -147,9 +149,7 @@ describe('settings pages', () => {
       commit(dialog, 'Reading text size', '50');
       commit(dialog, 'Reading line height', '1.83');
       commit(dialog, 'Reading line width', '72');
-      commit(dialog, 'Reading font', "  'Noto Serif', serif ");
-      commit(dialog, 'UI font', 'Inter');
-      expect(useAppState.getState().settings).toMatchObject({ readingFontSize: 32, readingLineHeight: 1.83, readingLineWidth: 72, readingFontFamily: "'Noto Serif', serif", uiFontFamily: 'Inter' });
+      expect(useAppState.getState().settings).toMatchObject({ readingFontSize: 32, readingLineHeight: 1.83, readingLineWidth: 72 });
       commit(dialog, 'Reading line height', '9');
       commit(dialog, 'Reading line width', '5');
       expect(useAppState.getState().settings).toMatchObject({ readingLineHeight: 2.4, readingLineWidth: 20 });
@@ -157,20 +157,26 @@ describe('settings pages', () => {
       expect(useAppState.getState().settings.readingLineWidth).toBe(0);
     });
 
-    it("the families' previews show Vietnamese and Latin in what's typed, before it applies; the reading one at its size and line height", () => {
+    it("the panels preview each font: the UI's chrome, and the reading font at its size and line height, with English and one mixed-script line", () => {
       const dialog = show('readingFontFamily');
       const ui = within(dialog).getByTestId('uiFontFamily-preview');
       const reading = within(dialog).getByTestId('readingFontFamily-preview');
-      expect(reading).toHaveTextContent('Đảo chiều tối thiểu — The quick brown fox');
+      expect(reading).toHaveTextContent('The quick brown fox jumps over the lazy dog.');
+      expect(reading).toHaveTextContent('Café, naïve, Straße, Tiếng Việt, Ελληνικά, Кириллица, 日本語');
+      expect(reading.querySelector('h4')).toHaveTextContent('Release notes');
+      expect(reading.querySelector('code')).toHaveTextContent('scale(values, 1.5)');
+      expect(ui).toHaveTextContent('Copy commit message');
+      expect(within(ui).getByText('Commit')).toBeInTheDocument();
       expect(ui.style.fontFamily).toContain('system-ui');
       expect(reading.style.fontFamily).toBe('var(--font-ui)');
       expect(reading.style.fontSize).toBe('13px');
       expect(reading.style.lineHeight).toBe('1.55');
-      fireEvent.change(within(dialog).getByLabelText('Reading font'), { target: { value: 'Literata' } });
-      expect(reading.style.fontFamily).toMatch(/^Literata, sans-serif/);
-      fireEvent.change(within(dialog).getByLabelText('UI font'), { target: { value: 'Inter, serif' } });
+      const height = reading.style.height;
+      act(() => useAppState.getState().setSettings({ readingFontFamily: 'Literata', uiFontFamily: 'Inter, serif' }));
+      expect(reading.style.fontFamily).toMatch(/^"?Literata"?, system-ui/);
       expect(ui.style.fontFamily).toMatch(/^Inter, serif/);
-      expect(useAppState.getState().settings).toMatchObject({ readingFontFamily: '', uiFontFamily: '' });
+      // A family change never changes the panel's height: nothing under it moves.
+      expect(reading.style.height).toBe(height);
       act(() => useAppState.getState().setSettings({ readingFontSize: 18, readingLineHeight: 2 }));
       expect(reading.style.fontSize).toBe('18px');
       expect(reading.style.lineHeight).toBe('2');
@@ -224,28 +230,35 @@ describe('settings pages', () => {
       };
       commit('Tab width', '40');
       commit('Line height', '3');
-      commit('Font family', "  'Fira Code'  ");
       fireEvent.click(within(dialog).getByLabelText('Font ligatures'));
       fireEvent.click(within(dialog).getByLabelText('Minimap'));
       fireEvent.click(within(dialog).getByRole('button', { name: 'Show whitespace' }));
       fireEvent.click(screen.getByRole('menuitem', { name: 'At boundaries' }));
-      expect(useAppState.getState().settings).toMatchObject({ editorTabSize: 16, editorLineHeight: 8, editorFontFamily: "'Fira Code'", editorFontLigatures: true, editorMinimap: false, editorWhitespace: 'boundary' });
+      expect(useAppState.getState().settings).toMatchObject({ editorTabSize: 16, editorLineHeight: 8, editorFontLigatures: true, editorMinimap: false, editorWhitespace: 'boundary' });
       // An empty line height is automatic again.
       commit('Line height', '');
       expect(useAppState.getState().settings.editorLineHeight).toBe(0);
     });
 
-    it("the font family's preview follows what's typed, before it applies, with monospace after a list that names no generic family", () => {
+    it("the editor panel previews the code sample at the editor's size, line height and ligatures", () => {
       const dialog = show('editorFontFamily');
-      const preview = within(dialog).getByTestId('font-preview');
-      expect(preview).toHaveTextContent('const tối = "thiểu"; // 0O1lI {}');
+      const preview = within(dialog).getByTestId('editorFontFamily-preview');
+      expect(preview).toHaveTextContent('function scale(values: number[], factor = 1.5): number[] {');
+      expect(preview).toHaveTextContent('"The quick brown fox 0O 1lI"; // -> label');
+      expect(preview).toHaveTextContent('values.length >= 10 && factor !== 0');
+      expect(preview).toHaveTextContent('(v) => (v === 42');
+      expect(preview).toHaveTextContent('// Café, naïve, Straße, Tiếng Việt, Ελληνικά, Кириллица, 日本語');
+      expect(preview.querySelectorAll(':scope > div')).toHaveLength(6);
       expect(preview.style.fontFamily).toContain('JetBrains Mono');
-      expect(preview.style.fontVariantLigatures).toBe('none');
-      fireEvent.change(within(dialog).getByLabelText('Font family'), { target: { value: 'Iosevka' } });
-      expect(preview.style.fontFamily).toBe('Iosevka, monospace');
-      expect(useAppState.getState().settings.editorFontFamily).toBe('');
-      act(() => useAppState.getState().setSettings({ editorFontLigatures: true }));
-      expect(preview.style.fontVariantLigatures).toBe('normal');
+      expect(preview.style.fontSize).toBe('13px');
+      expect(preview.style.lineHeight).toBe('18px'); // automatic: Monaco's 1.35 of 13 px
+      expect(preview.style.height).toBe(`${6 * 18 + 16}px`);
+      expect(preview.style.fontFeatureSettings).toBe('"liga" off, "calt" off');
+      act(() => useAppState.getState().setSettings({ editorFontLigatures: true, editorFontSize: 16, editorLineHeight: 24, editorFontFamily: 'Iosevka' }));
+      expect(preview.style.fontFeatureSettings).toBe('"liga" on, "calt" on');
+      expect(preview.style.fontSize).toBe('16px');
+      expect(preview.style.lineHeight).toBe('24px');
+      expect(preview.style.fontFamily).toMatch(/^"?Iosevka"?, "JetBrains Mono"/);
     });
 
     it('the zoom keys over an editor update the font size field live', async () => {

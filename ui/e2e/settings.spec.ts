@@ -234,7 +234,7 @@ test.describe('settings', () => {
       const rows = page.getByRole('grid', { name: 'Commit graph' }).getByRole('row');
       const before = await rows.count();
       expect(before).toBeGreaterThan(3);
-      const limit = dialog(page).getByLabel('Commits loaded in the graph');
+      const limit = dialog(page).getByLabel('Commits loaded in the graph', { exact: true });
       await limit.fill('3');
       await limit.press('Enter');
       await expect.poll(() => rows.count()).toBeLessThan(before);

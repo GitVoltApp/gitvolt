@@ -16,6 +16,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const css = (path: string) => readFileSync(join(here, path), 'utf8');
 const rule = (text: string, selector: string) => text.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 const EMOJI = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"';
+/** A family the picker set, then the UI font's stack. */
+const picked = (name: string) => `"${name}", system-ui, "Segoe UI", "Ubuntu", "Cantarell", sans-serif, ${EMOJI}`;
 const root = document.documentElement;
 const v = (name: string) => root.style.getPropertyValue(name);
 
@@ -28,14 +30,18 @@ describe('the font settings', () => {
     });
   });
 
-  it('with no generic family, a list gets sans-serif after it, then the emoji fonts; empty is none', () => {
-    expect(proseFontFamily('Inter')).toBe(`Inter, sans-serif, ${EMOJI}`);
+  it("one family gets the UI font's stack after it; a list without a generic family sans-serif, then the emoji fonts; empty is none", () => {
+    expect(proseFontFamily('Inter')).toBe(picked('Inter'));
+    expect(proseFontFamily("'Literata'")).toBe(picked('Literata'));
+    // Not twice: the UI stack's own Cantarell goes.
+    expect(proseFontFamily('Cantarell')).toBe(`"Cantarell", system-ui, "Segoe UI", "Ubuntu", sans-serif, ${EMOJI}`);
+    expect(proseFontFamily('Inter, Arial')).toBe(`Inter, Arial, sans-serif, ${EMOJI}`);
     expect(proseFontFamily(" 'Noto Serif', serif, ")).toBe(`'Noto Serif', serif, ${EMOJI}`);
     expect(proseFontFamily('Charter, ui-serif')).toBe(`Charter, ui-serif, ${EMOJI}`);
     expect(proseFontFamily('  ')).toBe('');
     // The reading font falls back to the UI font, whichever that is.
     expect(readingFontFamily('')).toBe('var(--font-ui)');
-    expect(readingFontFamily('Literata')).toBe(`Literata, sans-serif, ${EMOJI}`);
+    expect(readingFontFamily('Literata')).toBe(picked('Literata'));
   });
 
   it('clamp the line height to 1.2-2.4 and the line width to 20-240 ch, 0 being none', () => {
@@ -52,8 +58,8 @@ describe('the font settings', () => {
 
   it('set the variables markdown.css and diff.css read, and the split diff two columns and their gap', () => {
     expect(fontVars({ readingFontFamily: 'Literata', readingFontSize: 40, readingLineHeight: 1.8, readingLineWidth: 72, uiFontFamily: 'Inter' })).toEqual({
-      '--font-ui': `Inter, sans-serif, ${EMOJI}`,
-      '--reading-font': `Literata, sans-serif, ${EMOJI}`,
+      '--font-ui': picked('Inter'),
+      '--reading-font': picked('Literata'),
       '--reading-size': '32px',
       '--reading-line-height': '1.8',
       '--md-measure': '72ch',
@@ -83,11 +89,11 @@ describe('applyFonts', () => {
 
   it('writes the variables on the root, removes the unset ones, and tells useUiFont of a UI font change', () => {
     applyFonts(root, { ...DEFAULT_FONT_SETTINGS, uiFontFamily: 'Inter', readingFontFamily: 'Literata', readingLineWidth: 60 });
-    expect(v('--font-ui')).toBe(`Inter, sans-serif, ${EMOJI}`);
-    expect(v('--reading-font')).toBe(`Literata, sans-serif, ${EMOJI}`);
+    expect(v('--font-ui')).toBe(picked('Inter'));
+    expect(v('--reading-font')).toBe(picked('Literata'));
     expect(v('--md-measure')).toBe('60ch');
     expect(root.dataset.uiFont).toBe('');
-    expect(useUiFont.getState().family).toBe(`Inter, sans-serif, ${EMOJI}`);
+    expect(useUiFont.getState().family).toBe(picked('Inter'));
     applyFonts(root, DEFAULT_FONT_SETTINGS);
     expect(v('--font-ui')).toBe('');
     expect(v('--reading-font')).toBe('');
@@ -114,13 +120,13 @@ describe('bindFontsToSettings', () => {
   it('shows the mirrored UI font until the settings load, then follows them and mirrors the UI font', () => {
     localStorage.setItem(UI_FONT_STORAGE_KEY, 'Inter');
     unbind = bindFontsToSettings(root);
-    expect(v('--font-ui')).toBe(`Inter, sans-serif, ${EMOJI}`);
+    expect(v('--font-ui')).toBe(picked('Inter'));
     settle({ uiFontFamily: '', readingFontSize: 15 });
     expect(v('--font-ui')).toBe('');
     expect(v('--reading-size')).toBe('15px');
     expect(localStorage.getItem(UI_FONT_STORAGE_KEY)).toBeNull();
     settle({ uiFontFamily: 'Cantarell', readingLineHeight: 2 });
-    expect(v('--font-ui')).toBe(`Cantarell, sans-serif, ${EMOJI}`);
+    expect(v('--font-ui')).toBe(`"Cantarell", system-ui, "Segoe UI", "Ubuntu", sans-serif, ${EMOJI}`);
     expect(v('--reading-line-height')).toBe('2');
     expect(localStorage.getItem(UI_FONT_STORAGE_KEY)).toBe('Cantarell');
   });

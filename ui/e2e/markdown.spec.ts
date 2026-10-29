@@ -374,8 +374,8 @@ test.describe('the rendered Markdown diff (5C)', () => {
       await nav('Diffs and editors').click();
       await expect(settings.getByLabel('Font size', { exact: true })).toHaveValue('13');
       await nav('Appearance').click();
-      await expect(settings.getByLabel('Reading text size')).toHaveValue('15');
-      const width = settings.getByLabel('Reading line width');
+      await expect(settings.getByLabel('Reading text size', { exact: true })).toHaveValue('15');
+      const width = settings.getByLabel('Reading line width', { exact: true });
       await width.fill('40');
       await width.press('Enter');
       await page.keyboard.press('Escape');

@@ -28,10 +28,10 @@ test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=
     expect(await theme(page)).toBe('default-dark');
     await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(28, 30, 35)');
   });
-  await test.step('Appearance: editing a colour makes "Nord (Custom)"; it survives a reload; Delete returns to Nord', async () => {
+  await test.step('Theme: editing a colour makes "Nord (Custom)"; it survives a reload; Delete returns to Nord', async () => {
     const appBg = () => page.locator('html').evaluate((el) => el.style.getPropertyValue('--app-bg0'));
     await page.keyboard.press('Control+,');
-    await dialog(page).getByRole('button', { name: 'Appearance' }).click();
+    await dialog(page).getByRole('button', { name: 'Theme', exact: true }).click();
     await dialog(page).getByRole('radio', { name: 'Nord', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
     await expect(dialog(page).getByText('Change any colour below to make your own copy.')).toBeVisible();
@@ -45,7 +45,7 @@ test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=
     await expect(grid(page)).toBeVisible();
     await expect.poll(appBg).toBe('#202020');
     await page.keyboard.press('Control+,');
-    await dialog(page).getByRole('button', { name: 'Appearance' }).click();
+    await dialog(page).getByRole('button', { name: 'Theme', exact: true }).click();
     await expect(dialog(page).getByRole('radio', { name: 'Nord (Custom)' })).toHaveAttribute('aria-checked', 'true');
     await dialog(page).getByRole('button', { name: 'Delete', exact: true }).click();
     await confirmArmed(armedOverlay(page, 'Click again to delete Nord (Custom)'));
@@ -60,7 +60,7 @@ test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=
     const chip = page.locator('.ref-labels').first();
     const laneColor = () => chip.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--lane-color'));
     await page.keyboard.press('Control+,');
-    await dialog(page).getByRole('button', { name: 'Appearance' }).click();
+    await dialog(page).getByRole('button', { name: 'Theme', exact: true }).click();
     await dialog(page).getByRole('radio', { name: 'Nord', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
     await expect.poll(async () => THEMES.nord.graph.includes(await laneColor())).toBe(true);
@@ -85,7 +85,7 @@ test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=
     const panelBg = () => page.locator('html').evaluate((el) => el.style.getPropertyValue('--panel-bg0'));
     const floating = page.getByRole('dialog', { name: 'Nord (Custom)' });
     await page.keyboard.press('Control+,');
-    await dialog(page).getByRole('button', { name: 'Appearance' }).click();
+    await dialog(page).getByRole('button', { name: 'Theme', exact: true }).click();
     await dialog(page).getByRole('button', { name: 'Edit mode' }).click();
     await expect(dialog(page)).toBeHidden();
     await expect(floating).toBeVisible();
@@ -102,7 +102,7 @@ test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=
     await expect.poll(panelBg).toBe('#2a2f3a');
     await floating.getByRole('button', { name: 'Done' }).click();
     await expect(floating).toBeHidden();
-    await expect(dialog(page).getByRole('region', { name: 'Appearance' })).toBeVisible();
+    await expect(dialog(page).getByRole('region', { name: 'Theme' })).toBeVisible();
     await expect(dialog(page).getByRole('button', { name: 'Edit mode' })).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(dialog(page)).toBeHidden();
@@ -137,7 +137,7 @@ test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=
     await expect(page.getByRole('menuitem', { name: /^Theme: / })).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Theme…' }).click();
     await expect(dialog(page)).toBeVisible();
-    await expect(dialog(page).getByRole('region', { name: 'Appearance' })).toBeVisible();
+    await expect(dialog(page).getByRole('region', { name: 'Theme' })).toBeVisible();
     await expect(dialog(page).getByRole('radio', { name: 'Solarized Light' })).toBeFocused();
     await dialog(page).getByRole('radio', { name: 'Nord', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
@@ -205,21 +205,28 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
     await expect(box).toHaveValue('32');
     await expect.poll(size).toBe('32px');
   });
-  await test.step('the bundled JetBrains Mono draws the diff by default; a font family and a tab width set in Settings reach the open diff live', async () => {
+  await test.step('the bundled JetBrains Mono draws the diff by default; a family picked in Settings and a tab width stepped with + reach the open diff live', async () => {
     const probe = () => page.evaluate(() => window.__gbEditor?.() ?? null);
     const lineFont = () => diffRegion(page).locator('.view-line').first().evaluate((e) => getComputedStyle(e).fontFamily);
     await expect.poll(async () => (await probe())?.fontFamily).toContain('JetBrains Mono');
     await expect.poll(() => page.evaluate(() => document.fonts.check('14px "JetBrains Mono"'))).toBe(true);
     expect((await probe())?.tabSize).toBe(4);
-    const family = dialog(page).getByLabel('Font family', { exact: true });
-    await family.fill("'Liberation Mono'");
-    // The preview follows the box as it's typed; the editors once it applies.
-    await expect(dialog(page).getByTestId('font-preview')).toHaveCSS('font-family', /^"Liberation Mono", monospace$/);
-    await family.press('Enter');
+    // The picker lists the harness's monospace fonts; typing filters, the arrows preview, Enter picks.
+    const picker = dialog(page).getByLabel('Font family', { exact: true });
+    await picker.click();
+    const fonts = page.getByRole('listbox', { name: 'Fonts' });
+    await expect(fonts.getByRole('option', { name: 'Noto Sans Mono' })).toBeVisible();
+    await expect(fonts.getByRole('option', { name: 'Noto Sans', exact: true })).toHaveCount(0);
+    await page.keyboard.type('liber');
+    await expect(fonts.getByRole('option')).toHaveText(['Liberation Mono', 'Custom font list…']);
+    await expect(dialog(page).getByTestId('editorFontFamily-preview')).toHaveCSS('font-family', /^"Liberation Mono", "JetBrains Mono"/);
+    await page.keyboard.press('Enter');
+    await expect(fonts).toBeHidden();
+    await expect(picker).toHaveText('Liberation Mono');
     const tab = dialog(page).getByLabel('Tab width', { exact: true });
-    await tab.fill('8');
-    await tab.press('Enter');
-    await expect.poll(probe).toMatchObject({ fontFamily: "'Liberation Mono', monospace", tabSize: 8 });
+    for (let i = 0; i < 4; i++) await dialog(page).getByRole('button', { name: 'Increase tab width' }).click();
+    await expect(tab).toHaveValue('8');
+    await expect.poll(probe).toMatchObject({ fontFamily: '"Liberation Mono", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", monospace', tabSize: 8 });
     await expect.poll(lineFont).toContain('Liberation Mono');
     // Its ↺ brings the bundled font back.
     await dialog(page).locator('[data-setting-id="editorFontFamily"]').getByRole('button', { name: 'Restore the default' }).click();

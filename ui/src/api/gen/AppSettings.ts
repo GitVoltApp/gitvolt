@@ -18,7 +18,8 @@ theme: string,
  */
 editorFontSize: number, 
 /**
- * A CSS font-family list for the editors; empty: the bundled JetBrains Mono and its fallbacks.
+ * The editors' font: one family's name (the picker's; the UI adds the default's fallbacks
+ * after it) or a CSS font-family list; empty: the bundled JetBrains Mono and its fallbacks.
  */
 editorFontFamily: string, editorFontLigatures: boolean, 
 /**
@@ -35,8 +36,8 @@ editorTabSize: number, editorWhitespace: EditorWhitespace, editorMinimap: boolea
  */
 editorStickyScroll: boolean, 
 /**
- * Rendered Markdown's prose (Settings › Appearance › Fonts): a CSS font-family list; empty:
- * the UI font.
+ * Rendered Markdown's prose (Settings › Appearance › Fonts): one family's name (the UI adds the
+ * UI font's stack after it) or a CSS font-family list; empty: the UI font.
  */
 readingFontFamily: string, 
 /**
@@ -54,7 +55,8 @@ readingLineHeight: number,
  */
 readingLineWidth: number, 
 /**
- * The app's own text: a CSS font-family list; empty: the platform's UI font.
+ * The app's own text: one family's name (the UI adds the platform UI font's stack after it) or
+ * a CSS font-family list; empty: the platform's UI font.
  */
 uiFontFamily: string, 
 /**

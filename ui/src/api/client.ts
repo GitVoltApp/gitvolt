@@ -6,6 +6,7 @@ import type { CommitMessage } from './gen/CommitMessage';
 import type { DiffContentsPayload } from './gen/DiffContentsPayload';
 import type { DiffSpec } from './gen/DiffSpec';
 import type { FileListPayload } from './gen/FileListPayload';
+import type { FontFamily } from './gen/FontFamily';
 import type { GraphPayload } from './gen/GraphPayload';
 import type { HexDumpPayload } from './gen/HexDumpPayload';
 import type { HistoryHit } from './gen/HistoryHit';
@@ -258,6 +259,8 @@ export const api = {
   /** That video saved to the app's cache and opened with the system's default app. */
   forgeOpenVideo: (repo: number, url: string, userAllowed: boolean) => t().call({ method: 'forgeOpenVideo', params: { repo, url, userAllowed } }) as Promise<null>,
   openUrl: (url: string) => t().call({ method: 'openUrl', params: { url } }) as Promise<null>,
+  /** The installed font families, sorted (listed once per session; `refresh` lists them again). */
+  fontFamilies: (refresh = false) => t().call({ method: 'fontFamilies', params: { refresh } }) as Promise<FontFamily[]>,
   /** The external editors and the file manager found on this machine (spec §14.5). */
   /** `repo`: the list as that repository sees it (its Custom editor, if its setting is one). */
   listOpeners: (repo?: number) => t().call(repo === undefined ? { method: 'listOpeners' } : { method: 'listOpenersFor', params: { repo } }) as Promise<OpenerPayload[]>,

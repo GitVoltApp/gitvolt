@@ -1,16 +1,15 @@
-import { Palette } from 'lucide-react';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { Type } from 'lucide-react';
 import { useAppState } from '../../app/state';
 import { DEFAULT_DENSITY, DENSITIES, useDensity, type Density } from '../../theme/density';
-import { AppearanceBody } from '../../theme/editor/AppearanceBody';
-import { ThemeSelect } from '../../theme/editor/ThemeSelect';
 import {
-  clampReadingFont, clampReadingLineHeight, clampReadingWidth, DEFAULT_FONT_SETTINGS as F, DEFAULT_UI_FONT, proseFontFamily, READING_FONT_MAX, READING_FONT_MIN,
-  READING_LINE_HEIGHT_MAX, READING_LINE_HEIGHT_MIN, READING_WIDTH_MAX, READING_WIDTH_MIN, readingFontFamily,
+  clampReadingFont, clampReadingLineHeight, clampReadingWidth, DEFAULT_FONT_SETTINGS as F, DEFAULT_UI_FONT, READING_FONT_MAX, READING_FONT_MIN, READING_LINE_HEIGHT_MAX,
+  READING_LINE_HEIGHT_MIN, READING_WIDTH_MAX, READING_WIDTH_MIN,
 } from '../../theme/fontSettings';
 import { displayChord } from '../../ui/platformKeys';
 import { appSetting, storeBinding } from '../bindings';
-import { NumberField, TextField } from '../frame/fields';
+import { NumberField } from '../frame/fields';
+import type { FontRole } from '../frame/FontPicker';
+import { FontSetting, ReadingFontPreview, UiFontPreview } from '../frame/FontSetting';
 import { registerSettings, registerSettingsPage } from '../registry';
 
 const DENSITY_LABELS: Record<Density, string> = { compact: 'Compact', standard: 'Standard', comfortable: 'Comfortable' };
@@ -26,35 +25,20 @@ function DensityControl() {
   );
 }
 
-/** The font families' preview: Vietnamese stacked marks (drawn over the wrong letter by some
- * fonts) beside plain Latin. */
-export const PROSE_PREVIEW = 'Đảo chiều tối thiểu — The quick brown fox';
-
 const save = (patch: Partial<typeof F>) => useAppState.getState().setSettings(patch);
 
-/** A family's box, and under it a line in what it types, as it types. */
-function FamilyField({ id, value, placeholder, preview }: { id: 'uiFontFamily' | 'readingFontFamily'; value: string; placeholder: string; preview(draft: string): CSSProperties }) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  return (
-    <div className="setting-font-family">
-      <TextField id={id} value={value} placeholder={placeholder} onDraft={setDraft} onCommit={(v) => save(id === 'uiFontFamily' ? { uiFontFamily: v } : { readingFontFamily: v })} />
-      <div className="setting-font-preview" data-testid={`${id}-preview`} aria-hidden style={preview(draft)}>{PROSE_PREVIEW}</div>
-    </div>
-  );
-}
+/** The UI font's picker: a family gets the platform UI font's stack after it. */
+export const UI_FONT_ROLE: FontRole = { id: 'uiFontFamily', defaultName: 'system UI font', defaultStack: DEFAULT_UI_FONT, fallback: DEFAULT_UI_FONT };
+/** The reading font's: its default is the UI font, whichever is set. */
+export const READING_FONT_ROLE: FontRole = { id: 'readingFontFamily', defaultName: 'the UI font', defaultStack: 'var(--font-ui)', fallback: DEFAULT_UI_FONT };
 
 function UiFontControl() {
-  const value = useAppState((s) => s.settings.uiFontFamily);
-  return <FamilyField id="uiFontFamily" value={value} placeholder="System UI font" preview={(d) => ({ fontFamily: proseFontFamily(d) || DEFAULT_UI_FONT })} />;
+  return <FontSetting role={UI_FONT_ROLE} placeholder={'"Inter", sans-serif'} preview={(v) => <UiFontPreview family={v} />} />;
 }
 
 /** The reading font's preview is at the reading size and line height. */
 function ReadingFontControl() {
-  const value = useAppState((s) => s.settings.readingFontFamily);
-  const size = useAppState((s) => s.settings.readingFontSize);
-  const lineHeight = useAppState((s) => s.settings.readingLineHeight);
-  return <FamilyField id="readingFontFamily" value={value} placeholder="UI font" preview={(d) => ({ fontFamily: readingFontFamily(d), fontSize: clampReadingFont(size), lineHeight: clampReadingLineHeight(lineHeight) })} />;
+  return <FontSetting role={READING_FONT_ROLE} placeholder={'"Literata", Georgia, serif'} preview={(v) => <ReadingFontPreview family={v} />} />;
 }
 
 function ReadingSizeControl() {
@@ -67,31 +51,17 @@ function ReadingLineHeightControl() {
   return <NumberField id="readingLineHeight" value={clampReadingLineHeight(n)} min={READING_LINE_HEIGHT_MIN} max={READING_LINE_HEIGHT_MAX} step={0.05} decimals={2} onCommit={(v) => save({ readingLineHeight: v })} />;
 }
 
+/** + from None starts at 80 characters, a common measure for prose. */
+export const READING_WIDTH_START = 80;
+
 function ReadingWidthControl() {
   const ch = useAppState((s) => s.settings.readingLineWidth);
-  return <NumberField id="readingLineWidth" value={clampReadingWidth(ch)} min={READING_WIDTH_MIN} max={READING_WIDTH_MAX} step={1} blank={0} placeholder="None" onCommit={(v) => save({ readingLineWidth: v })} />;
+  return <NumberField id="readingLineWidth" value={clampReadingWidth(ch)} min={READING_WIDTH_MIN} max={READING_WIDTH_MAX} step={1} blank={0} blankStart={READING_WIDTH_START} placeholder="None" onCommit={(v) => save({ readingLineWidth: v })} />;
 }
 
 const offs = [
-  registerSettingsPage({ id: 'appearance', label: 'Appearance', scope: 'app', order: 20, icon: Palette, summary: 'Density, fonts, theme and colours. The zoom is in the status bar; the editor font is under Diffs and editors.', Body: AppearanceBody }),
+  registerSettingsPage({ id: 'appearance', label: 'Appearance', scope: 'app', order: 20, icon: Type, summary: 'Density and fonts. The theme and colours are under Theme, the editor font under Diffs and editors, the zoom in the status bar.' }),
   registerSettings([
-    {
-      id: 'theme', label: 'Theme', page: 'appearance', group: 'Theme', labelFor: 'group',
-      keywords: 'colour color scheme dark light default monokai darcula dracula one dark solarized github nord',
-      description: 'The colours of the app and the commit graph.',
-      // The page shows the theme cards (AppearanceBody); this is the theme's control in search results.
-      Control: ThemeSelect, binding: appSetting('theme', 'default-dark'),
-    },
-    {
-      id: 'graphColors', label: 'Graph lanes', page: 'appearance', group: 'Graph lanes',
-      keywords: 'colour color branch lane graph palette override reorder',
-      description: "The commit graph's ten lane colours. Changing one on a built-in theme makes a custom copy of it.",
-    },
-    {
-      id: 'themeColours', label: 'Colours', page: 'appearance', group: 'Colours',
-      keywords: 'colour color token background text accent diff custom',
-      description: "The theme's colours, each with a picker. Changing one on a built-in theme makes a custom copy of it.",
-    },
     {
       id: 'density', label: 'Density', page: 'appearance', group: 'Density', labelFor: 'group',
       keywords: 'compact standard comfortable row height spacing padding',
@@ -101,14 +71,14 @@ const offs = [
     },
     {
       id: 'uiFontFamily', label: 'UI font', page: 'appearance', group: 'Fonts',
-      keywords: 'font family face typeface interface chrome menus lists graph dialogs css',
-      description: 'A CSS font-family list for the menus, lists, graph, settings and dialogs, such as "Inter", sans-serif. Empty: the system\'s UI font. Its size follows the zoom and the density.',
+      keywords: 'font family face typeface interface chrome menus lists graph dialogs installed picker custom list css',
+      description: 'The menus, lists, graph, settings and dialogs. Default: the system\'s UI font, which also draws what a chosen font lacks. "Custom font list…" takes a CSS font-family list. Its size follows the zoom and the density.',
       Control: UiFontControl, binding: appSetting('uiFontFamily', F.uiFontFamily),
     },
     {
       id: 'readingFontFamily', label: 'Reading font', page: 'appearance', group: 'Fonts',
-      keywords: 'font family face typeface markdown prose rendered readme description comment serif css',
-      description: 'A CSS font-family list for rendered Markdown: the Markdown view, the rendered diff, MR/PR descriptions and comments. Empty: the UI font. Code in it keeps the editor font.',
+      keywords: 'font family face typeface markdown prose rendered readme description comment serif installed picker custom list css',
+      description: 'Rendered Markdown: the Markdown view, the rendered diff, MR/PR descriptions and comments. Default: the UI font. Code in it keeps the editor font.',
       Control: ReadingFontControl, binding: appSetting('readingFontFamily', F.readingFontFamily),
     },
     {
@@ -126,7 +96,7 @@ const offs = [
     {
       id: 'readingLineWidth', label: 'Reading line width', page: 'appearance', group: 'Fonts',
       keywords: 'markdown prose measure column max width characters ch',
-      description: 'The longest line in the Markdown view and the rendered diff, in characters, 20 to 240. Empty: none (their usual 880 px column).',
+      description: `The longest line in the Markdown view and the rendered diff, in characters, 20 to 240. Empty: none (their usual 880 px column); + from there starts at ${READING_WIDTH_START}.`,
       Control: ReadingWidthControl, binding: appSetting('readingLineWidth', F.readingLineWidth),
     },
   ]),

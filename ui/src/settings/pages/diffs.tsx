@@ -1,42 +1,35 @@
 import { FileDiff } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { useAppState } from '../../app/state';
 import {
-  clampEditorFont, clampLineHeight, clampTabSize, DEFAULT_EDITOR_SETTINGS, EDITOR_FONT_MAX, EDITOR_FONT_MIN, EDITOR_LINE_HEIGHT_MAX, EDITOR_TAB_MAX, EDITOR_TAB_MIN, editorFontFamily,
+  autoLineHeight, clampEditorFont, clampLineHeight, clampTabSize, DEFAULT_EDITOR_FONT_FAMILY, DEFAULT_EDITOR_SETTINGS, EDITOR_FONT_MAX, EDITOR_FONT_MIN, EDITOR_LINE_HEIGHT_MAX,
+  EDITOR_LINE_HEIGHT_MIN, EDITOR_TAB_MAX, EDITOR_TAB_MIN,
 } from '../../diff/options';
+import { EDITOR_FONT_NAME } from '../../theme/editorFont';
 import { displayChord } from '../../ui/platformKeys';
 import { appSetting } from '../bindings';
 import { selectControl, switchControl } from '../frame/controls';
-import { NumberField, TextField } from '../frame/fields';
+import { NumberField } from '../frame/fields';
+import type { FontRole } from '../frame/FontPicker';
+import { EditorFontPreview, FontSetting } from '../frame/FontSetting';
 import { registerSettings, registerSettingsPage } from '../registry';
-
-/** The font family's preview: Vietnamese stacked marks (drawn over the wrong letter by some
- * fallback fonts), the look-alike characters, and code's brackets. */
-export const FONT_PREVIEW = 'const tối = "thiểu"; // 0O1lI {}';
 
 function FontSizeControl() {
   const size = useAppState((s) => s.settings.editorFontSize);
   return <NumberField id="editorFontSize" value={clampEditorFont(size)} min={EDITOR_FONT_MIN} max={EDITOR_FONT_MAX} step={1} onCommit={(n) => useAppState.getState().setSettings({ editorFontSize: n })} />;
 }
 
-/** The family's box, and under it a line of code in what it types, as it types. */
+/** The editor font's picker (monospace families first), its fallbacks the default's. */
+export const EDITOR_FONT_ROLE: FontRole = { id: 'editorFontFamily', defaultName: EDITOR_FONT_NAME, defaultStack: DEFAULT_EDITOR_FONT_FAMILY, fallback: DEFAULT_EDITOR_FONT_FAMILY, monospace: true };
+
 function FontFamilyControl() {
-  const value = useAppState((s) => s.settings.editorFontFamily);
-  const ligatures = useAppState((s) => s.settings.editorFontLigatures);
-  const size = useAppState((s) => s.settings.editorFontSize);
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  return (
-    <div className="setting-font-family">
-      <TextField id="editorFontFamily" value={value} placeholder="JetBrains Mono" onDraft={setDraft} onCommit={(v) => useAppState.getState().setSettings({ editorFontFamily: v })} />
-      <div className="setting-font-preview" data-testid="font-preview" aria-hidden style={{ fontFamily: editorFontFamily(draft), fontSize: clampEditorFont(size), fontVariantLigatures: ligatures ? 'normal' : 'none' }}>{FONT_PREVIEW}</div>
-    </div>
-  );
+  return <FontSetting role={EDITOR_FONT_ROLE} placeholder={'"Fira Code", monospace'} preview={(v) => <EditorFontPreview family={v} />} />;
 }
 
 function LineHeightControl() {
   const px = useAppState((s) => s.settings.editorLineHeight);
-  return <NumberField id="editorLineHeight" value={clampLineHeight(px)} min={0} max={EDITOR_LINE_HEIGHT_MAX} step={1} blank={0} placeholder="Auto" onCommit={(n) => useAppState.getState().setSettings({ editorLineHeight: clampLineHeight(n) })} />;
+  const size = useAppState((s) => s.settings.editorFontSize);
+  // + from Auto starts at Auto's own height for the font size: the first step changes nothing on screen.
+  return <NumberField id="editorLineHeight" value={clampLineHeight(px)} min={EDITOR_LINE_HEIGHT_MIN} max={EDITOR_LINE_HEIGHT_MAX} step={1} blank={0} blankStart={autoLineHeight(clampEditorFont(size))} placeholder="Auto" onCommit={(n) => useAppState.getState().setSettings({ editorLineHeight: clampLineHeight(n) })} />;
 }
 
 function TabSizeControl() {
@@ -56,8 +49,8 @@ const offs = [
     },
     {
       id: 'editorFontFamily', label: 'Font family', page: 'diffs', group: 'Editor',
-      keywords: 'monaco editor font face typeface monospace jetbrains mono css',
-      description: 'A CSS font-family list, such as "Fira Code", monospace. Empty: JetBrains Mono, which comes with GitVolt.',
+      keywords: 'monaco editor font face typeface monospace jetbrains mono css installed picker custom list',
+      description: 'Default: JetBrains Mono, which comes with GitVolt. What a chosen font lacks draws in it or another monospace font. "Custom font list…" takes a CSS font-family list. The reading and UI fonts are under Appearance.',
       Control: FontFamilyControl, binding: appSetting('editorFontFamily', D.editorFontFamily),
     },
     {
@@ -69,7 +62,7 @@ const offs = [
     {
       id: 'editorLineHeight', label: 'Line height', page: 'diffs', group: 'Editor',
       keywords: 'monaco editor line spacing height px',
-      description: 'In px, at least the font size. Empty: automatic, from the font size.',
+      description: 'In px, at least the font size. Empty: automatic, from the font size; + from there starts at the automatic height.',
       Control: LineHeightControl, binding: appSetting('editorLineHeight', D.editorLineHeight),
     },
     {

@@ -57,6 +57,7 @@ import type { RebasePlanPayload } from '../api/gen/RebasePlanPayload';
 import type { RemotePayload } from '../api/gen/RemotePayload';
 import type { RepoInfoPayload } from '../api/gen/RepoInfoPayload';
 import type { RepoPeek } from '../api/gen/RepoPeek';
+import type { FontFamily } from '../api/gen/FontFamily';
 import type { OpenerPayload } from '../api/gen/OpenerPayload';
 import type { RepoSummary } from '../api/gen/RepoSummary';
 import type { RequestLogEntry } from '../api/gen/RequestLogEntry';
@@ -137,6 +138,7 @@ export interface DemoResults {
   updateStatus: UpdateState;
   updateCheck: UpdateState;
   updateCancel: UpdateState;
+  fontFamilies: FontFamily[];
   listOpeners: OpenerPayload[];
   listOpenersFor: OpenerPayload[];
   scanRepos: ScannedRepo[];

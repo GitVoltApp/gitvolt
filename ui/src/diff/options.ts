@@ -1,6 +1,8 @@
 import type { AppSettings } from '../api/gen/AppSettings';
 import type { EditorWhitespace } from '../api/gen/EditorWhitespace';
 import type { EditorDiffPrefs } from './diffPrefs';
+import { GENERIC_FAMILY, singleFamily, withFallbacks } from '../theme/fontStack';
+import { isMac } from '../ui/platformKeys';
 
 /** Hunk mode's collapsed unchanged regions (spec §10.2). */
 export const HUNK_REGIONS = { enabled: true, contextLineCount: 3, minimumLineCount: 3, revealLineCount: 20 } as const;
@@ -29,13 +31,16 @@ export const editorSettingsChanged = (a: EditorSettings, b: EditorSettings): boo
  * what it lacks (CJK and other scripts) well. Never Monaco's Linux default, which falls back to
  * DejaVu Sans Mono: it draws Vietnamese stacked marks over the next letter. */
 export const DEFAULT_EDITOR_FONT_FAMILY = "'JetBrains Mono', 'Noto Sans Mono', 'Ubuntu Sans Mono', 'Liberation Mono', monospace";
-export const GENERIC_FAMILY = /^(monospace|ui-monospace|serif|sans-serif|ui-serif|ui-sans-serif|ui-rounded|system-ui|cursive|fantasy|math|emoji|fangsong)$/i;
-/** The font-family list the editors use: the default for an empty setting, else the user's list,
- * with `monospace` after it when it names no generic family, so a font that isn't installed never
- * falls back to the browser's proportional default. */
+export { GENERIC_FAMILY };
+/** The font-family list the editors use: the default for an empty setting; one family (the
+ * picker's) followed by the default's fallbacks, so what it lacks still draws well; else the
+ * user's own list, with `monospace` after it when it names no generic family, so a font that isn't
+ * installed never falls back to the browser's proportional default. */
 export function editorFontFamily(list: string): string {
   const s = list.trim().replace(/[\s,]+$/, '');
   if (!s) return DEFAULT_EDITOR_FONT_FAMILY;
+  const one = singleFamily(s);
+  if (one !== null) return withFallbacks(one, DEFAULT_EDITOR_FONT_FAMILY);
   return s.split(',').some((f) => GENERIC_FAMILY.test(f.trim())) ? s : `${s}, monospace`;
 }
 
@@ -48,6 +53,9 @@ export const clampTabSize = (n: number): number => (Number.isFinite(n) ? Math.mi
  * Monaco would read it as a multiple of the font size. */
 export const EDITOR_LINE_HEIGHT_MIN = 8;
 export const EDITOR_LINE_HEIGHT_MAX = 64;
+/** Monaco's automatic line height for `fontSize` (its GOLDEN_LINE_HEIGHT_RATIO: 1.5 on macOS, else
+ * 1.35): the line height setting's + starts there from Auto, and the editor preview uses it. */
+export const autoLineHeight = (fontSize: number, mac = isMac()): number => Math.round(fontSize * (mac ? 1.5 : 1.35));
 export const clampLineHeight = (px: number): number => (!Number.isFinite(px) || px <= 0 ? 0 : Math.min(EDITOR_LINE_HEIGHT_MAX, Math.max(EDITOR_LINE_HEIGHT_MIN, Math.round(px))));
 
 /** "Show whitespace" as Monaco's `renderWhitespace` (the same names; anything else is none). */

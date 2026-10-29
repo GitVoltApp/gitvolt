@@ -196,6 +196,13 @@ pub enum Request {
     ForgeOpenVideo { repo: u32, url: String, user_allowed: bool },
     /// Opens an `http(s)` link in the default browser (spec §14.4); returns `null`.
     OpenUrl { url: String },
+    /// The installed font families, for the font pickers: `FontFamily[]`, sorted. Read once per
+    /// session on first request (off the UI's path); `refresh` reads the font folders again, so
+    /// a font installed meanwhile appears.
+    FontFamilies {
+        #[serde(default)]
+        refresh: bool,
+    },
     /// The detected external editors and the file manager, for "Open in…" (spec §14.5, H9).
     ListOpeners,
     /// `ListOpeners` for one repository: the `custom` entry is listed only when that
@@ -1413,6 +1420,7 @@ impl Request {
             | Request::Avatar { .. }
             | Request::ForgeAvatarImage { .. }
             | Request::OpenUrl { .. }
+            | Request::FontFamilies { .. }
             | Request::ListOpeners
             | Request::ListOpenersFor { .. }
             | Request::ValidateEditorTemplate { .. }
@@ -1538,6 +1546,11 @@ pub struct Api {
     pub(crate) opener_refresh: Duration,
     /// Old versions' read-only copies (spec §14.5).
     pub(crate) open_cache: Option<PathBuf>,
+    /// Lists the installed font families (`fonts::system_families`; the harness's is fixed).
+    pub(crate) font_source: Arc<dyn Fn() -> Vec<crate::fonts::FontFamily> + Send + Sync>,
+    /// `fontFamilies`' list for the session, until a `refresh`. The lock is held while listing,
+    /// so requests that arrive meanwhile wait for the one listing instead of starting their own.
+    pub(crate) font_families: tokio::sync::Mutex<Option<Arc<Vec<crate::fonts::FontFamily>>>>,
     /// Backend → frontend events (spec §4.3), forwarded by the app and the harness.
     pub(crate) bus: EventBus,
     /// Settings and profiles (spec §14.3); in memory unless `with_store` gives it a directory.
@@ -1763,6 +1776,8 @@ impl Api {
             default_app: None,
             opener_refresh: OPENER_REFRESH,
             open_cache: None,
+            font_source: Arc::new(crate::fonts::system_families),
+            font_families: tokio::sync::Mutex::new(None),
             bus: EventBus::new(),
             store: SettingsStore::in_memory(),
             ops: Arc::new(OpRegistry::default()),
@@ -2254,6 +2269,25 @@ impl Api {
         self
     }
 
+    /// Where `fontFamilies` gets its list (the harness: a fixed one, so tests don't depend on the
+    /// machine's fonts).
+    pub fn with_font_source(mut self, source: Arc<dyn Fn() -> Vec<crate::fonts::FontFamily> + Send + Sync>) -> Self {
+        self.font_source = source;
+        self
+    }
+
+    /// The font families, listed on the blocking pool on first use (or `refresh`), then cached.
+    async fn font_families(&self, refresh: bool) -> Result<Arc<Vec<crate::fonts::FontFamily>>, GbError> {
+        let mut cached = self.font_families.lock().await;
+        if let Some(list) = cached.as_ref().filter(|_| !refresh) {
+            return Ok(list.clone());
+        }
+        let source = self.font_source.clone();
+        let list = Arc::new(tokio::task::spawn_blocking(move || source()).await.map_err(|e| GbError::other(format!("couldn't list the fonts: {e}")))?);
+        *cached = Some(list.clone());
+        Ok(list)
+    }
+
     pub fn with_openers(mut self, detect: Arc<dyn Fn() -> Vec<Opener> + Send + Sync>, launcher: Launcher) -> Self {
         self.openers = Some(Arc::new(OpenerSource { detect, launcher, found: Mutex::new(None), refreshing: std::sync::atomic::AtomicBool::new(false) }));
         self
@@ -2603,6 +2637,7 @@ impl Api {
                 opener(&path.to_string_lossy())?;
                 to_json(())
             }
+            Request::FontFamilies { refresh } => to_json(&*self.font_families(refresh).await?),
             Request::ListOpeners => self.list_openers(None).await,
             Request::ListOpenersFor { repo } => {
                 let workdir = self.handle(repo)?.workdir.display().to_string();
@@ -4604,6 +4639,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn font_families_are_listed_once_until_a_refresh() {
+        let calls = Arc::new(AtomicU32::new(0));
+        let counted = calls.clone();
+        let api = api().with_font_source(Arc::new(move || {
+            let n = counted.fetch_add(1, Ordering::SeqCst);
+            vec![crate::fonts::FontFamily { name: format!("Orbit Mono {n}"), monospace: true }]
+        }));
+        let first = api.dispatch(req(serde_json::json!({"method": "fontFamilies", "params": {}}))).await.unwrap();
+        assert_eq!(first, serde_json::json!([{"name": "Orbit Mono 0", "monospace": true}]));
+        assert_eq!(api.dispatch(req(serde_json::json!({"method": "fontFamilies", "params": {"refresh": false}}))).await.unwrap(), first);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let again = api.dispatch(req(serde_json::json!({"method": "fontFamilies", "params": {"refresh": true}}))).await.unwrap();
+        assert_eq!(again, serde_json::json!([{"name": "Orbit Mono 1", "monospace": true}]));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert!(!req(serde_json::json!({"method": "fontFamilies", "params": {}})).is_write());
+    }
+
+    #[tokio::test]
     async fn open_in_launches_the_opener_on_the_worktree_file() {
         let r = TestRepo::new();
         fixtures::details(&r);
@@ -5250,6 +5303,7 @@ mod tests {
             json!({"method": "logFrontend", "params": {"level": "info", "message": "x", "stack": null}}),
             json!({"method": "setDebugLogging", "params": {"debug": false}}),
             json!({"method": "logsDir"}),
+            json!({"method": "fontFamilies", "params": {"refresh": false}}),
             json!({"method": "stagingState", "params": {"repo": id, "worktree": wt}}),
             json!({"method": "diagnostics", "params": {"ui": {"userAgent": "t", "settings": {}}}}),
             json!({"method": "openLogsFolder"}),

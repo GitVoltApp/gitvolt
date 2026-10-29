@@ -90,7 +90,8 @@ pub struct AppSettings {
     pub theme: String,
     /// The editors' text size in px (Settings › Diffs and editors; the UI clamps it to 8-32).
     pub editor_font_size: u16,
-    /// A CSS font-family list for the editors; empty: the bundled JetBrains Mono and its fallbacks.
+    /// The editors' font: one family's name (the picker's; the UI adds the default's fallbacks
+    /// after it) or a CSS font-family list; empty: the bundled JetBrains Mono and its fallbacks.
     pub editor_font_family: String,
     pub editor_font_ligatures: bool,
     /// px; 0: automatic (Monaco's, from the font size).
@@ -102,8 +103,8 @@ pub struct AppSettings {
     pub editor_minimap: bool,
     /// Off by default (H7): with no language service, the pinned line can be a lone `{`.
     pub editor_sticky_scroll: bool,
-    /// Rendered Markdown's prose (Settings › Appearance › Fonts): a CSS font-family list; empty:
-    /// the UI font.
+    /// Rendered Markdown's prose (Settings › Appearance › Fonts): one family's name (the UI adds the
+    /// UI font's stack after it) or a CSS font-family list; empty: the UI font.
     pub reading_font_family: String,
     /// Its size in px in the Markdown view and the rendered diff (the UI clamps it to 8-32); MR/PR
     /// descriptions and comments are 1 px smaller.
@@ -113,7 +114,8 @@ pub struct AppSettings {
     /// The Markdown view's and the rendered diff's longest line, in `ch`; 0: none (their own
     /// 880 px column).
     pub reading_line_width: u16,
-    /// The app's own text: a CSS font-family list; empty: the platform's UI font.
+    /// The app's own text: one family's name (the UI adds the platform UI font's stack after it) or
+    /// a CSS font-family list; empty: the platform's UI font.
     pub ui_font_family: String,
     /// Background fetch period in seconds; 0 turns background fetch off.
     pub fetch_interval_secs: u32,
@@ -173,7 +175,7 @@ fn default_builtin_presets() -> Vec<gitvolt_graph::PresetSlot> {
     ["all", "all-collapsed", "mine"].into_iter().map(|id| gitvolt_graph::PresetSlot { id: id.into(), in_cycle: true }).collect()
 }
 
-/// A theme the user made (Settings › Appearance): a built-in base plus the colours they set.
+/// A theme the user made (Settings › Theme): a built-in base plus the colours they set.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export)]

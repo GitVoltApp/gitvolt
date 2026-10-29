@@ -22,6 +22,8 @@ describe('canned handlers', () => {
     expect(await cannedHandlers.updateStatus(undefined as never, ctx)).toEqual({ state: 'upToDate' });
     expect(await cannedHandlers.updateCheck(undefined as never, ctx)).toEqual({ state: 'upToDate' });
     expect((await cannedHandlers.listOpeners(undefined as never, ctx)).map((o) => o.kind)).toEqual(['editor', 'fileManager']);
+    // The browser can't list the visitor's fonts: the pickers offer the default and the bundled one.
+    expect(await cannedHandlers.fontFamilies({ refresh: false }, ctx)).toEqual([]);
     const text = await cannedHandlers.diagnostics({ ui: { userAgent: 'Mozilla/5.0 Chrome/152.0.7977.83 Safari/537.36', settings: { theme: 'dark', forgeToken: 'glpat-FAKE-00000000000000000000' } } }, ctx);
     expect(text).toContain('Chromium: 152.0.7977.83');
     expect(text).toContain('"theme": "dark"');

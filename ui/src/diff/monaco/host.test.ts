@@ -734,7 +734,7 @@ describe('MonacoHost', () => {
     const { useAppState } = await import('../../app/state');
     const was = useAppState.getState().settings;
     useAppState.setState({ settings: { ...was, editorStickyScroll: true, editorFontFamily: 'Iosevka', editorWhitespace: 'all', editorMinimap: false } });
-    const live = expect.objectContaining({ stickyScroll: { enabled: true }, fontFamily: 'Iosevka, monospace', renderWhitespace: 'all', minimap: { enabled: false } });
+    const live = expect.objectContaining({ stickyScroll: { enabled: true }, fontFamily: '"Iosevka", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace', renderWhitespace: 'all', minimap: { enabled: false } });
     expect(state.diffs[0].updateOptions).toHaveBeenLastCalledWith(live);
     expect(state.files[0].updateOptions).toHaveBeenLastCalledWith(live);
     // Another setting: the editors aren't touched.
@@ -742,7 +742,7 @@ describe('MonacoHost', () => {
     useAppState.setState({ settings: { ...useAppState.getState().settings, relativeDates: true } });
     expect(state.diffs[0].updateOptions).toHaveBeenCalledTimes(calls);
     await host.showDiff(diffReq('b.txt'));
-    expect(state.diffs[0].updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ stickyScroll: { enabled: true }, fontFamily: 'Iosevka, monospace' }));
+    expect(state.diffs[0].updateOptions).toHaveBeenLastCalledWith(expect.objectContaining({ stickyScroll: { enabled: true }, fontFamily: '"Iosevka", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace' }));
     useAppState.setState({ settings: was });
   });
 

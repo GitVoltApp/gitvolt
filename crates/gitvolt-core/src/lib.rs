@@ -12,6 +12,7 @@ pub mod error;
 pub mod events;
 pub mod export;
 pub mod find;
+pub mod fonts;
 pub mod forge;
 pub mod git;
 pub mod logging;

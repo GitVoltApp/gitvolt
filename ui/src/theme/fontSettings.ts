@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AppSettings } from '../api/gen/AppSettings';
-import { EDITOR_FONT_MAX, EDITOR_FONT_MIN, GENERIC_FAMILY } from '../diff/options';
+import { EDITOR_FONT_MAX, EDITOR_FONT_MIN } from '../diff/options';
+import { GENERIC_FAMILY, singleFamily, withFallbacks } from './fontStack';
 
 /**
  * Settings › Appearance › Fonts: the reading font (rendered Markdown's prose, wherever it shows)
@@ -42,12 +43,15 @@ const EMOJI_FAMILIES = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji
 /** tokens.css's `--font-ui`, for what shows it while a set one applies (the setting's preview). */
 export const DEFAULT_UI_FONT = `system-ui, "Segoe UI", Ubuntu, Cantarell, sans-serif, ${EMOJI_FAMILIES}`;
 
-/** A user's font-family list as CSS, with `sans-serif` after it when it names no generic family
- * (a font that isn't installed never falls back to the browser's serif default), then the emoji
- * fonts; '' when it's empty. */
+/** A user's font-family setting as CSS: one family (the picker's) followed by the default UI
+ * font's stack, emoji fonts included, so what it lacks still draws well; else the user's own
+ * list, with `sans-serif` after it when it names no generic family (a font that isn't installed
+ * never falls back to the browser's serif default), then the emoji fonts; '' when it's empty. */
 export function proseFontFamily(list: string): string {
   const s = list.trim().replace(/[\s,]+$/, '');
   if (!s) return '';
+  const one = singleFamily(s);
+  if (one !== null) return withFallbacks(one, DEFAULT_UI_FONT);
   return `${s.split(',').some((f) => GENERIC_FAMILY.test(f.trim())) ? s : `${s}, sans-serif`}, ${EMOJI_FAMILIES}`;
 }
 

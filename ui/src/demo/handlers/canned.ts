@@ -115,7 +115,7 @@ export function checkEditorTemplate(template: string): void {
 
 export const cannedHandlers: Pick<
   HandlerTable,
-  'commandLog' | 'requestLog' | 'diagnostics' | 'updateStatus' | 'updateCheck' | 'updateCancel' | 'listOpeners' | 'listOpenersFor' | 'scanRepos' | 'scanFolders' | 'suggestReposFolder' | 'validateEditorTemplate'
+  'commandLog' | 'requestLog' | 'diagnostics' | 'updateStatus' | 'updateCheck' | 'updateCancel' | 'fontFamilies' | 'listOpeners' | 'listOpenersFor' | 'scanRepos' | 'scanFolders' | 'suggestReposFolder' | 'validateEditorTemplate'
 > = {
   commandLog: async () => commandEntries(),
   requestLog: async () => requestEntries(),
@@ -129,6 +129,8 @@ export const cannedHandlers: Pick<
   updateStatus: async () => ({ state: 'upToDate' }),
   updateCheck: async () => ({ state: 'upToDate' }),
   updateCancel: async () => ({ state: 'upToDate' }),
+  // The browser can't list the visitor's fonts: the pickers offer the default and the bundled font.
+  fontFamilies: async () => [],
   listOpeners: async () => OPENERS,
   listOpenersFor: async () => OPENERS,
   suggestReposFolder: async () => DEMO_ROOT,

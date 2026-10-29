@@ -28,6 +28,7 @@ encoding_rs.workspace = true
 base64.workspace = true
 dirs.workspace = true
 notify.workspace = true
+fontdb.workspace = true
 
 [dev-dependencies]
 # The layout's continuity check runs in the core's unit tests too.

@@ -34,7 +34,7 @@ describe('the rendered Markdown font size', () => {
     expect(readingFontVar(99)).toEqual({ '--md-font-size': '32px' });
     // The panes' code takes the editor's font family (its default stack when empty) and ligatures.
     expect(readingFontVar(13, { family: '', ligatures: false })).toEqual({ '--md-font-size': '13px', '--md-code-font': "'JetBrains Mono', 'Noto Sans Mono', 'Ubuntu Sans Mono', 'Liberation Mono', monospace", '--md-code-ligatures': 'none' });
-    expect(readingFontVar(13, { family: 'Iosevka', ligatures: true })).toMatchObject({ '--md-code-font': 'Iosevka, monospace', '--md-code-ligatures': 'normal' });
+    expect(readingFontVar(13, { family: 'Iosevka', ligatures: true })).toMatchObject({ '--md-code-font': '"Iosevka", "JetBrains Mono", "Noto Sans Mono", "Ubuntu Sans Mono", "Liberation Mono", monospace', '--md-code-ligatures': 'normal' });
     // By default it's the size the panes had (the editor's 13), whatever the editor's size now.
     const { result, rerender } = renderHook(() => useReadingFontPx());
     expect(result.current).toBe(13);

@@ -5,6 +5,7 @@
  */
 import './general';
 import './appearance';
+import './theme';
 import './graph';
 import './diffs';
 import './fetch';
