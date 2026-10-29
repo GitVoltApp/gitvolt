@@ -59,6 +59,8 @@ pub struct FakePull {
     pub base_sha: String,
     pub merge_base: String,
     pub labels: Vec<String>,
+    /// The open review requests, made before any review: listed as `REQUEST_REVIEW` reviews, and
+    /// in `requested_reviewers` with everyone whose latest review approves or requests changes.
     pub requested_reviewers: Vec<String>,
     pub assignees: Vec<String>,
     pub mergeable: bool,
@@ -210,6 +212,18 @@ pub fn repo_json(p: &FakeProject, base: &str) -> Value {
     v
 }
 
+/// Forgejo's `requested_reviewers`: everyone with an open request, or whose latest approval or
+/// change request stands (it lists approvers too).
+fn listed_reviewers(p: &FakePull) -> Vec<String> {
+    let mut who = p.requested_reviewers.clone();
+    for x in p.reviews.iter().filter(|x| x.state == "APPROVED" || x.state == "REQUEST_CHANGES") {
+        if !who.contains(&x.author) {
+            who.push(x.author.clone());
+        }
+    }
+    who
+}
+
 fn pull_json(st: &ForgejoSeed, p: &FakePull, base: &str) -> Value {
     let label = |n: &String| st.labels.iter().find(|l| &l.name == n).map(|l| json!({ "id": label_id(st, n), "name": l.name, "color": l.color }));
     json!({
@@ -217,7 +231,7 @@ fn pull_json(st: &ForgejoSeed, p: &FakePull, base: &str) -> Value {
         "merged_at": p.merged.then_some(&p.updated_at), "user": login_json(st, &p.author, base),
         "labels": p.labels.iter().filter_map(label).collect::<Vec<_>>(),
         "assignees": p.assignees.iter().map(|a| login_json(st, a, base)).collect::<Vec<_>>(),
-        "requested_reviewers": p.requested_reviewers.iter().map(|a| login_json(st, a, base)).collect::<Vec<_>>(),
+        "requested_reviewers": listed_reviewers(p).iter().map(|a| login_json(st, a, base)).collect::<Vec<_>>(),
         "head": { "ref": p.head_ref, "sha": p.head_sha, "repo": { "full_name": p.repo } },
         "base": { "ref": p.base_ref, "sha": p.base_sha, "repo": { "full_name": p.repo } },
         "merge_base": p.merge_base, "mergeable": p.mergeable && !p.merged && p.state == "open",
@@ -385,8 +399,11 @@ fn repo_route(st: &mut ForgejoSeed, r: &FakeRequest, me: &str, repo: &FakeProjec
         }
         ("GET", ["pulls", n, "reviews"]) => {
             let Some(i) = pull_at(st, n) else { return not_found() };
-            // Another user's pending review isn't listed.
-            let items = st.pulls[i].reviews.iter().filter(|x| x.state != "PENDING" || x.author == me).map(|x| review_json(st, x, base)).collect();
+            // The open requests first (they came first), as Forgejo's own review rows; another
+            // user's pending review isn't listed.
+            let p = &st.pulls[i];
+            let asked = p.requested_reviewers.iter().enumerate().map(|(k, a)| FakeReview { id: 90_000 + k as u64, author: a.clone(), state: "REQUEST_REVIEW".into(), submitted_at: p.updated_at.clone(), ..Default::default() });
+            let items = asked.chain(p.reviews.iter().filter(|x| x.state != "PENDING" || x.author == me).cloned()).map(|x| review_json(st, &x, base)).collect();
             paged(items, r, &format!("{url}/pulls/{n}/reviews"))
         }
         ("POST", ["pulls", n, "reviews"]) => create_review(st, r, me, n, &repo.path),
