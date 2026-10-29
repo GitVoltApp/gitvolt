@@ -53,13 +53,18 @@ pub fn detect(base: &str) -> Option<ForgeKind> {
         let body = resp.body_mut().with_config().limit(MAX_BODY).read_to_vec().unwrap_or_default();
         Some((status, String::from_utf8_lossy(&body).into_owned()))
     };
-    if ask("/api/v1/version").is_some_and(|(s, b)| forgejo_answer(s, &b)) {
+    probe(ask)
+}
+
+/// Forgejo's question, then GitLab's; `ask` gives a path's status and body, `None` when nothing
+/// answered. A host that didn't answer the first (no such name, refused, timed out) isn't asked
+/// the second: an unreachable host costs one timeout, not two.
+fn probe(ask: impl Fn(&str) -> Option<(u16, String)>) -> Option<ForgeKind> {
+    let (status, body) = ask("/api/v1/version")?;
+    if forgejo_answer(status, &body) {
         return Some(ForgeKind::Forgejo);
     }
-    if ask("/api/v4/version").is_some_and(|(s, b)| gitlab_answer(s, &b)) {
-        return Some(ForgeKind::GitLab);
-    }
-    None
+    ask("/api/v4/version").is_some_and(|(s, b)| gitlab_answer(s, &b)).then_some(ForgeKind::GitLab)
 }
 
 #[cfg(test)]
@@ -105,5 +110,25 @@ mod tests {
         let neither = TestServer::start(|_, _| Canned::json(404, "Not found."));
         let b = neither.base.clone();
         assert_eq!(tokio::task::spawn_blocking(move || detect(&b)).await.unwrap(), None);
+    }
+
+    #[test]
+    fn a_host_that_doesnt_answer_isnt_asked_again() {
+        let asked = std::cell::RefCell::new(Vec::new());
+        let unreachable = |path: &str| -> Option<(u16, String)> {
+            asked.borrow_mut().push(path.to_string());
+            None
+        };
+        assert_eq!(probe(unreachable), None);
+        assert_eq!(*asked.borrow(), ["/api/v1/version"], "no second timeout");
+        // An answer that isn't Forgejo's goes on to GitLab's question.
+        asked.borrow_mut().clear();
+        let gitlab = |path: &str| -> Option<(u16, String)> {
+            asked.borrow_mut().push(path.to_string());
+            Some(if path == "/api/v4/version" { (401, r#"{"message":"401 Unauthorized"}"#.into()) } else { (404, "Not found.".into()) })
+        };
+        assert_eq!(probe(gitlab), Some(ForgeKind::GitLab));
+        assert_eq!(*asked.borrow(), ["/api/v1/version", "/api/v4/version"]);
+        assert_eq!(detect(&crate::test_server::closed_base()), None, "refused");
     }
 }
