@@ -179,7 +179,8 @@ own repository. The sidebar's Submodules panel comes with the `sidebar` read: ea
 gitlinks, `.gitmodules` entries and checkouts, read in process (`submodules::sidebar_items`), and
 the panel shows the tab's active worktree's. Update (`git submodule update --init --recursive`),
 Sync URLs, Add (`git submodule add`) and Remove (`git rm`) are writes like any other
-(`write/submodules.rs`); Update and Add run as network commands, as a push, and Update asks first
+(`write/submodules.rs`); Update and Add run as network commands (Update outside the write lock,
+as a push; Add under it, since git stages the submodule after its clone), and Update asks first
 when it would leave a submodule's commits on no branch behind. None is journaled.
 
 ### Undo and redo

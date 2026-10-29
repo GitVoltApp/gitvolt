@@ -517,8 +517,20 @@ impl WriteCx<'_> {
     #[allow(dead_code)] // first callers: 2C T4 (remote delete), 2D's push
     pub(crate) async fn network(&mut self, inv: GitInvocation) -> Result<GitOutput, GbError> {
         self.unlock();
-        let mut res = self.run_git(inv).await;
+        let res = self.run_git(inv).await;
         self.relock().await;
+        self.transferred(res)
+    }
+
+    /// `network`, keeping the write lock and the watcher hold: a transfer whose command writes
+    /// the index too (`git submodule add` stages after its clone), which a stage or discard
+    /// meanwhile would meet on `index.lock`, leaving it half done.
+    pub(crate) async fn network_locked(&mut self, inv: GitInvocation) -> Result<GitOutput, GbError> {
+        let res = self.run_git(inv).await;
+        self.transferred(res)
+    }
+
+    fn transferred(&self, mut res: Result<GitOutput, GbError>) -> Result<GitOutput, GbError> {
         // --- 2C T4: network server output ---
         // The transfer's `remote:` lines: `opRemote` for Activity, and first in a failure's Details.
         remote_output::capture(self.api, self.op.id, &mut res);

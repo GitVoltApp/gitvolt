@@ -300,7 +300,7 @@ pub enum Request {
     /// `git submodule sync --recursive`: `WriteResult<SubmoduleOutcome>`. Not journaled.
     SubmoduleSync { repo: u32, worktree: String },
     /// `git submodule add [-b <branch>] -- <url> [<path>]` (the sidebar's Submodules +):
-    /// `WriteResult<SubmoduleOutcome>`. A network command, as a push; not journaled.
+    /// `WriteResult<SubmoduleOutcome>`. A network command, under the write lock; not journaled.
     SubmoduleAdd {
         repo: u32,
         worktree: String,
