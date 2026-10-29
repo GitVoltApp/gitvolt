@@ -62,6 +62,15 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   ("tối thiểu" looked like "tôí thiêủ"): Monaco's default font fell back to DejaVu Sans Mono,
   which offsets them onto the next letter. The text itself was always right.
 
+### Security
+
+- **Dependencies:** updated gix (0.88 to 0.90), DOMPurify (3.4.16 to 3.4.17) and rustls (0.23.45
+  to 0.23.46) for their security advisories. None affected GitVolt: gix's lets an untrusted
+  repository's `.git/config` turn off its `.git` path checks, but GitVolt never checks files out
+  with gix (git does that); DOMPurify's need options Mermaid doesn't use; rustls's need ECH, a
+  custom session store, certificate compression or a post-quantum key exchange, which the forge
+  connection doesn't use.
+
 ## [1.1.0] - 2026-10-27
 
 ### Added

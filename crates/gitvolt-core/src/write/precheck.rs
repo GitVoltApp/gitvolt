@@ -559,7 +559,7 @@ async fn check_landing(cli: &GitCli, root: &Path, from: ObjectId, to: ObjectId, 
     let root_buf = root.to_path_buf();
     let (scan, swept) = crate::api::blocking(move || {
         let repo = gix::open(&root_buf).map_err(gix_err)?;
-        let from = if from_merge_base { repo.merge_base(from, to).map(|id| id.detach()).unwrap_or(from) } else { from };
+        let from = if from_merge_base { repo.merge_base(from, to).ok().flatten().map(|id| id.detach()).unwrap_or(from) } else { from };
         let diff = tree_diff(&repo, from, to)?;
         let index = repo.index_or_empty().map_err(gix_err)?;
         let scan = scan_move(&root_buf, &index, &diff);

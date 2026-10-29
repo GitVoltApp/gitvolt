@@ -1668,7 +1668,7 @@ fn merge_base(repo: &gix::Repository, a: &str, b: &str) -> Result<Option<String>
         gix::ObjectId::from_hex(s.as_bytes()).map_err(|_| GbError::new(GbErrorKind::InvalidInput, format!("{s} isn't a commit id")))
     };
     let (a, b) = (oid(a)?, oid(b)?);
-    Ok(repo.merge_base(a, b).ok().map(|m| m.detach().to_string()))
+    Ok(repo.merge_base(a, b).ok().flatten().map(|m| m.detach().to_string()))
 }
 // --- end 4B T1 ---
 

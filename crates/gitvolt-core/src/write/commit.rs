@@ -282,7 +282,7 @@ pub(crate) async fn head_on_upstream(root: &Path) -> Result<Option<String>, GbEr
         let head = repo.head_id().map_err(gix_err)?.detach();
         let Some(up) = crate::write::refs::read_ref(&repo, &upstream)? else { return Ok(None) };
         let up = gix::ObjectId::from_hex(up.as_bytes()).map_err(gix_err)?;
-        let on = head == up || repo.merge_base(head, up).ok().map(|b| b.detach()) == Some(head);
+        let on = head == up || repo.merge_base(head, up).ok().flatten().map(|b| b.detach()) == Some(head);
         Ok(on.then(|| crate::error::short_ref(&upstream).to_string()))
     })
     .await

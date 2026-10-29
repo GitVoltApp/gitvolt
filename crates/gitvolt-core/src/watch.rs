@@ -145,7 +145,9 @@ fn tracked_dirs(root: &Path) -> Option<BTreeSet<PathBuf>> {
     let index = repo.index_or_empty().ok()?;
     let mut dirs = BTreeSet::from([root.to_path_buf()]);
     for entry in index.entries() {
-        add_parents(&mut dirs, root, gix::path::from_bstr(entry.path(&index)).into_owned());
+        // A path that isn't one on this system (ill-formed UTF-8 on Windows) has no folder to watch.
+        let Ok(path) = gix::path::from_bstr(entry.path(&index)) else { continue };
+        add_parents(&mut dirs, root, path.into_owned());
     }
     Some(dirs)
 }

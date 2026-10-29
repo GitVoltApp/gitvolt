@@ -984,7 +984,7 @@ fn reverts_one_of(message: &str, oids: &[String]) -> bool {
 
 /// `a` is `b` or one of its ancestors (gix: no git process, nothing in the command log).
 pub(crate) fn is_ancestor(repo: &gix::Repository, a: gix::ObjectId, b: gix::ObjectId) -> bool {
-    a == b || repo.merge_base(a, b).is_ok_and(|m| m.detach() == a)
+    a == b || repo.merge_base(a, b).ok().flatten().is_some_and(|m| m.detach() == a)
 }
 // --- end 2D T2 ---
 

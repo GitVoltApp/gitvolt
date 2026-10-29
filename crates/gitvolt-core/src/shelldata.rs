@@ -380,9 +380,10 @@ impl<'r> Ancestry<'r> {
     /// commits reachable from both are left (plus a few more, git's slop against clock skew).
     fn ahead_behind(&mut self, ours: gix::ObjectId, theirs: gix::ObjectId) -> (u32, u32) {
         // Commits never change, so neither does a pair's count: every refresh but the first
-        // reads it from here. Not in a shallow clone, whose history a deepening fetch extends.
+        // reads it from here. Not in a shallow clone, whose history a deepening fetch extends
+        // (nor when the shallow file's configured path can't be read: no cache either way).
         let cache = AHEAD_BEHIND.get_or_init(Default::default);
-        let shallow = self.repo.is_shallow();
+        let shallow = self.repo.is_shallow().unwrap_or(true);
         if !shallow && let Some(hit) = cache.lock().ok().and_then(|c| c.get(&(ours, theirs)).copied()) {
             return hit;
         }

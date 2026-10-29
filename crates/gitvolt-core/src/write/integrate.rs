@@ -429,7 +429,7 @@ pub struct IntegratePreviewPayload {
 /// memory only: the preview never writes to the repository. Unrelated histories (no merge base)
 /// predict nothing: the dialog still opens, with every commit counted (review M4).
 pub(crate) fn predicted_conflicts(repo: &gix::Repository, ours: ObjectId, theirs: ObjectId) -> Result<Vec<String>, GbError> {
-    if repo.merge_base(ours, theirs).is_err() {
+    if !matches!(repo.merge_base(ours, theirs), Ok(Some(_))) {
         return Ok(Vec::new());
     }
     let repo = repo.clone().with_object_memory();
@@ -451,7 +451,7 @@ pub(crate) fn predicted_conflicts(repo: &gix::Repository, ours: ObjectId, theirs
 /// cancelled pull's) stay unreferenced until gc prunes them. `None` when there's no merge base
 /// or the merge can't be computed.
 pub(crate) fn merge_result(repo: &gix::Repository, ours: ObjectId, theirs: ObjectId) -> Option<ObjectId> {
-    repo.merge_base(ours, theirs).ok()?;
+    repo.merge_base(ours, theirs).ok()??;
     let options = repo.tree_merge_options().ok()?;
     let mut out = repo.merge_commits(ours, theirs, Default::default(), options.into()).ok()?;
     out.tree_merge.tree.write().ok().map(|id| id.detach())

@@ -156,8 +156,8 @@ fn gpg_program(repo: &gix::Repository, include: Option<&Path>) -> std::path::Pat
         last_gpg_program(&file)
     });
     let value = from_include.or_else(|| last_gpg_program(repo.config_snapshot().plumbing())).filter(|v| !v.is_empty());
-    let Some(value) = value else { return "gpg".into() };
-    let path = gix::path::from_bstring(value);
+    // A value that isn't a path here (ill-formed UTF-8 on Windows) falls back to the default too.
+    let Some(path) = value.and_then(|v| gix::path::from_bstring(v).ok()) else { return "gpg".into() };
     match (path.strip_prefix("~"), std::env::var_os("HOME")) {
         (Ok(rest), Some(home)) => Path::new(&home).join(rest),
         _ => path,
