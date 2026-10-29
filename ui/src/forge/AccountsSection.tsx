@@ -51,8 +51,8 @@ const TOKEN_HELP: Record<ForgeKind, string> = {
 };
 /** Untyped, with no suggestion of its kind, the host a forge picked starts with (GitLab: none). */
 const DEFAULT_HOSTS: Partial<Record<ForgeKind, string>> = { github: 'github.com', forgejo: 'codeberg.org' };
-/** How long the host field rests before a host its name doesn't place is asked. */
-const ASK_AFTER_MS = 400;
+/** A host worth asking which forge it runs: a name with a dot, and maybe a port. */
+const ASKABLE = /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?$/;
 const CLASSIC_HELP = 'Opens GitHub\'s classic token page with the repo and read:org scopes selected. Classic tokens don\'t expire unless you set a date.';
 /** GitHub's answer when an organization caps fine-grained token lifetimes. */
 const FINE_GRAINED_REFUSED = 'forbids access via a fine-grained';
@@ -126,7 +126,7 @@ export function AccountsSection() {
           ))}
         </ul>
       )}
-      {panel && <AddAccount key={panel.mode === 'replace' ? panel.host : 'add'} panel={panel} taken={accounts?.map((a) => a.account.host) ?? []} onAdded={async () => { await changed(); close(); }} onCancel={close} onReplace={(host, kind) => setPanel({ mode: 'replace', host, kind })} />}
+      {panel && <AddAccount key={panel.mode === 'replace' ? panel.host : 'add'} panel={panel} taken={accounts?.map((a) => a.account) ?? []} onAdded={async () => { await changed(); close(); }} onCancel={close} onReplace={(host, kind) => setPanel({ mode: 'replace', host, kind })} />}
       {!panel && accounts && accounts.length > 0 && addButtonEl(false)}
     </div>
   );
@@ -164,7 +164,7 @@ function AccountRow({ v, onReplace, onRemove }: { v: ForgeAccountView; onReplace
 }
 
 /** Host (the open repo's forge hosts first), forge, Create token, the token; Cancel / Add account. */
-function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Panel; taken: string[]; onAdded(): Promise<void>; onCancel(): void; onReplace(host: string, kind: ForgeKind): void }) {
+function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Panel; taken: Array<{ host: string; kind: ForgeKind }>; onAdded(): Promise<void>; onCancel(): void; onReplace(host: string, kind: ForgeKind): void }) {
   const replacing = panel.mode === 'replace';
   const activeTab = useAppState((s) => s.profile.activeTab);
   const overrides = useAppState((s) => s.profile.hostOverrides);
@@ -175,7 +175,7 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
     const seen = new Set<string>();
     const out: HostSuggestion[] = [];
     for (const r of remotes ?? []) {
-      if (!r.host || seen.has(r.host) || taken.includes(r.host) || effectiveKind(r.host, r.hostKind, overrides) === 'generic') continue;
+      if (!r.host || seen.has(r.host) || taken.some((t) => t.host === r.host) || effectiveKind(r.host, r.hostKind, overrides) === 'generic') continue;
       seen.add(r.host);
       out.push({ host: r.host, source: repoName ? `${r.name} · ${repoName}` : r.name });
     }
@@ -193,24 +193,51 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
   // A pasted address (`https://git.example.dev/`) is detected by its host, as the core reads it.
   const bare = bareHost(host);
   const byName = bare ? effectiveKind(bare, detectHostKind(bare), overrides) : 'generic';
-  // A host its name doesn't place (`git.example.dev`) is asked which forge it runs, no token:
-  // once typing settles, once per host.
-  const [asked, setAsked] = useState<Record<string, HostKind>>({});
-  const askable = byName === 'generic' && /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?$/.test(bare);
-  useEffect(() => {
-    if (!askable || asked[bare] !== undefined) return;
-    const t = setTimeout(() => {
-      api.detectForge(bare).then((k) => setAsked((a) => ({ ...a, [bare]: k })), () => setAsked((a) => ({ ...a, [bare]: 'generic' })));
-    }, ASK_AFTER_MS);
-    return () => clearTimeout(t);
-  }, [askable, asked, bare]);
-  const asking = askable && asked[bare] === undefined;
-  const detected = byName !== 'generic' ? byName : asked[bare] ?? 'generic';
   const picked = pickedEarly;
   const setPicked = setPickedEarly;
   // One account per host: a host that has one already gets its token replaced instead.
-  const takenHost = !replacing && bare !== '' && taken.includes(bare);
+  const takenBy = replacing || bare === '' ? undefined : taken.find((t) => t.host === bare);
+  const takenHost = takenBy !== undefined;
+  // A host its name doesn't place (`git.example.dev`) is asked which forge it runs, no token, once
+  // it's settled: when the field is left, or when Create token or Add is clicked. Never while
+  // typing, so a half-typed host (`git.ex`) is never asked. A forge picked, a replaced account's
+  // or a taken host's is known already.
+  const [asked, setAsked] = useState<{ host: string; kind: HostKind } | null>(null);
+  const [askingHost, setAskingHost] = useState<string | null>(null);
+  const inFlight = useRef<{ host: string; answer: Promise<HostKind> } | null>(null);
+  const needsAsk = !replacing && picked === null && !takenHost && byName === 'generic' && ASKABLE.test(bare) && asked?.host !== bare;
+  const ask = (): Promise<HostKind> | null => {
+    if (!needsAsk) return null;
+    if (inFlight.current?.host === bare) return inFlight.current.answer;
+    const h = bare;
+    const answer = api.detectForge(h).catch((): HostKind => 'generic');
+    inFlight.current = { host: h, answer };
+    setAskingHost(h);
+    void answer.then((k) => {
+      // Another host was asked since: this answer is stale.
+      if (inFlight.current?.answer !== answer) return;
+      inFlight.current = null;
+      setAskingHost(null);
+      setAsked({ host: h, kind: k });
+    });
+    return answer;
+  };
+  const asking = needsAsk && askingHost === bare;
+  const detected = byName !== 'generic' ? byName : asked?.host === bare ? asked.kind : 'generic';
   const kind: ForgeKind = picked ?? (detected === 'generic' ? 'gitlab' : detected);
+  // What an action that waited for the answer goes on with: the host and forge as they are then.
+  const latest = useRef({ bare, picked });
+  latest.current = { bare, picked };
+  /** The forge Create token and Add use, once the host is asked if it must be; `null`: the host
+   * changed while it was asked, so the click was for another host. */
+  const settledKind = async (): Promise<ForgeKind | null> => {
+    const answer = ask();
+    if (!answer) return kind;
+    const k = await answer;
+    if (latest.current.bare !== bare) return null;
+    return latest.current.picked ?? (k === 'generic' ? 'gitlab' : k);
+  };
+  const [opening, setOpening] = useState(false);
   const [classic, setClassic] = useState(false);
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
@@ -234,10 +261,15 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
     return () => { escOwners.delete(own); };
   }, [onCancel]);
   const openTokenPage = async () => {
+    if (opening) return;
+    setOpening(true);
     try {
-      await api.openUrl(await api.forgeTokenPage(host, kind, kind === 'github' ? classic : undefined));
+      const k = await settledKind();
+      if (k) await api.openUrl(await api.forgeTokenPage(host, k, k === 'github' ? classic : undefined));
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setOpening(false);
     }
   };
   const submit = async () => {
@@ -245,7 +277,9 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
     setBusy(true);
     setError(null);
     try {
-      await api.addForgeAccount(host, kind, token);
+      const k = await settledKind();
+      if (!k) return;
+      await api.addForgeAccount(host, k, token);
       setToken('');
       await onAdded();
     } catch (e) {
@@ -262,11 +296,11 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
         <label htmlFor="account-host">Host</label>
         {replacing
           ? <input id="account-host" aria-label="Host" readOnly value={host} />
-          : <div><HostCombobox inputRef={hostRef} value={host} suggestions={suggestions} onChange={(h) => { setTyped(h); setPicked(null); }} onOpenChange={(o) => { listOpen.current = o; }} closeRef={closeList} /></div>}
-        {takenHost && (
+          : <div><HostCombobox inputRef={hostRef} value={host} suggestions={suggestions} onChange={(h) => { setTyped(h); setPicked(null); }} onBlur={() => void ask()} onOpenChange={(o) => { listOpen.current = o; }} closeRef={closeList} /></div>}
+        {takenBy && (
           <p className="field-help account-taken" role="status">
-            {host} already has an account.{' '}
-            <button type="button" className="link-btn" onClick={() => onReplace(host, kind)}>Replace its token</button>
+            {bare} already has an account.{' '}
+            <button type="button" className="link-btn" onClick={() => onReplace(takenBy.host, takenBy.kind)}>Replace its token</button>
           </p>
         )}
       </div>
@@ -293,7 +327,7 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
         <label htmlFor="account-token">Token</label>
         <div className="field-row">
           <input ref={tokenRef} id="account-token" aria-label="Token" type="password" autoComplete="off" spellCheck={false} placeholder="Paste the personal access token" value={token} onChange={(e) => setToken(e.target.value)} />
-          <button type="button" disabled={!host || takenHost} title={!host ? 'Enter the host first' : undefined} onClick={() => void openTokenPage()}>Create token on {host || 'the host'} ↗</button>
+          <button type="button" disabled={!host || takenHost} aria-busy={opening && asking} title={!host ? 'Enter the host first' : undefined} onClick={() => void openTokenPage()}>Create token on {host || 'the host'} ↗</button>
         </div>
         <p className="dim field-help">{kind === 'github' && classic ? CLASSIC_HELP : TOKEN_HELP[kind]}</p>
       </div>
@@ -305,7 +339,7 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
           )}
         </p>
         <button type="button" className="ghost" onClick={() => { setToken(''); onCancel(); }}>Cancel</button>
-        <button type="submit" className="primary account-submit" aria-busy={busy} disabled={!host || takenHost || !token.trim() || busy}>{busy ? 'Checking…' : replacing ? 'Replace token' : 'Add account'}</button>
+        <button type="submit" className="primary account-submit" aria-busy={busy} disabled={!host || takenHost || !token.trim() || busy}>{busy ? (asking ? 'Asking…' : 'Checking…') : replacing ? 'Replace token' : 'Add account'}</button>
       </div>
     </form>
   );

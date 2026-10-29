@@ -200,34 +200,98 @@ describe('Settings › Accounts', () => {
     await waitFor(() => expect(api.forgeTokenPage).toHaveBeenLastCalledWith('https://git.example.dev/', 'forgejo', undefined));
   });
 
-  it("a pasted address is detected by its host: a Hosts override says Forgejo, and its token page is Forgejo's", async () => {
-    useAppState.setState({ profile: { ...useAppState.getState().profile, hostOverrides: { 'git.example.dev': 'forgejo' } } });
-    show();
-    await openAdd();
-    const form = screen.getByRole('form', { name: 'Add a forge account' });
-    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'https://git.example.dev/' } });
-    expect(within(form).getByRole('button', { name: 'Forgejo' }).getAttribute('aria-pressed')).toBe('true');
-    expect(within(form).getByText('Detected from the host')).toBeTruthy();
-    fireEvent.click(within(form).getByRole('button', { name: /^Create token on/ }));
-    await waitFor(() => expect(api.forgeTokenPage).toHaveBeenLastCalledWith('https://git.example.dev/', 'forgejo', undefined));
-  });
-
-  it('a host its name doesn\'t place is asked which forge it runs, once, and its answer is the forge', async () => {
+  it("a host its name doesn't place is asked which forge it runs once it's settled (the field left), never a half-typed one", async () => {
     api.detectForge.mockImplementation(async (host: string) => (host === 'git.example.dev' ? 'forgejo' : 'generic'));
     show();
     await openAdd();
     const form = screen.getByRole('form', { name: 'Add a forge account' });
-    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'https://git.example.dev/' } });
+    const field = within(form).getByRole('combobox', { name: 'Host' });
+    for (const typed of ['git.ex', 'git.example', 'https://git.example.dev/']) fireEvent.change(field, { target: { value: typed } });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(api.detectForge).not.toHaveBeenCalled();
+    fireEvent.blur(field);
     expect(within(form).getByText('Asking git.example.dev which forge it runs…')).toBeTruthy();
     await waitFor(() => expect(within(form).getByRole('button', { name: 'Forgejo' }).getAttribute('aria-pressed')).toBe('true'));
     expect(within(form).getByText('Detected from the host')).toBeTruthy();
-    expect(api.detectForge).toHaveBeenCalledExactlyOnceWith('git.example.dev');
     fireEvent.click(within(form).getByRole('button', { name: /^Create token on/ }));
     await waitFor(() => expect(api.forgeTokenPage).toHaveBeenLastCalledWith('https://git.example.dev/', 'forgejo', undefined));
-    // A host its name places, or a Hosts setting, isn't asked.
-    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'gitlab.example.com' } });
-    await new Promise((r) => setTimeout(r, 500));
+    expect(api.detectForge).toHaveBeenCalledExactlyOnceWith('git.example.dev');
+    // A host its name places isn't asked.
+    fireEvent.change(field, { target: { value: 'gitlab.example.com' } });
+    fireEvent.blur(field);
     expect(api.detectForge).toHaveBeenCalledTimes(1);
+  });
+
+  it('Create token clicked before the answer waits for it, then opens that forge\'s page', async () => {
+    let answer!: (k: string) => void;
+    api.detectForge.mockReturnValueOnce(new Promise<string>((r) => { answer = r; }));
+    show();
+    await openAdd();
+    const form = screen.getByRole('form', { name: 'Add a forge account' });
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'git.example.dev' } });
+    const create = within(form).getByRole('button', { name: /^Create token on/ });
+    fireEvent.click(create);
+    fireEvent.click(create);
+    await waitFor(() => expect(create).toHaveAttribute('aria-busy', 'true'));
+    expect(within(form).getByText('Asking git.example.dev which forge it runs…')).toBeTruthy();
+    expect(api.forgeTokenPage).not.toHaveBeenCalled();
+    answer('forgejo');
+    await waitFor(() => expect(api.forgeTokenPage).toHaveBeenCalledExactlyOnceWith('git.example.dev', 'forgejo', undefined));
+    expect(api.detectForge).toHaveBeenCalledExactlyOnceWith('git.example.dev');
+  });
+
+  it('Add clicked while the host is asked reads Asking… and sends the forge it answers', async () => {
+    let answer!: (k: string) => void;
+    api.detectForge.mockReturnValueOnce(new Promise<string>((r) => { answer = r; }));
+    show();
+    await openAdd();
+    const form = screen.getByRole('form', { name: 'Add a forge account' });
+    const field = within(form).getByRole('combobox', { name: 'Host' });
+    fireEvent.change(field, { target: { value: 'git.example.dev' } });
+    fireEvent.blur(field);
+    fireEvent.change(within(form).getByLabelText('Token'), { target: { value: TOKEN } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Add account' }));
+    expect(await within(form).findByRole('button', { name: 'Asking…' })).toBeDisabled();
+    expect(api.addForgeAccount).not.toHaveBeenCalled();
+    answer('forgejo');
+    await waitFor(() => expect(api.addForgeAccount).toHaveBeenCalledWith('git.example.dev', 'forgejo', TOKEN));
+  });
+
+  it("a stale answer is ignored, and a forge picked or a taken host isn't asked", async () => {
+    const answers: Record<string, (k: string) => void> = {};
+    api.detectForge.mockImplementation((host: string) => new Promise<string>((r) => { answers[host] = r; }));
+    api.forgeAccounts.mockResolvedValue([{ ...ada('keyring'), account: { ...ada('keyring').account, host: 'code.example.org', kind: 'forgejo' } }]);
+    show();
+    await openAdd();
+    const form = screen.getByRole('form', { name: 'Add a forge account' });
+    const field = within(form).getByRole('combobox', { name: 'Host' });
+    fireEvent.change(field, { target: { value: 'git.example.dev' } });
+    fireEvent.blur(field);
+    fireEvent.change(field, { target: { value: 'git.example.net' } });
+    fireEvent.blur(field);
+    answers['git.example.dev']('forgejo');
+    answers['git.example.net']('gitlab');
+    await waitFor(() => expect(within(form).queryByText(/^Asking/)).toBeNull());
+    expect(within(form).getByRole('button', { name: 'GitLab' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.change(field, { target: { value: 'git.example.dev' } });
+    expect(within(form).getByRole('button', { name: 'GitLab' }).getAttribute('aria-pressed')).toBe('true');
+    // Picked by hand, or taken by an account: the forge is known.
+    fireEvent.change(field, { target: { value: 'git.example.com' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'GitHub' }));
+    fireEvent.blur(field);
+    fireEvent.change(field, { target: { value: 'https://code.example.org/' } });
+    fireEvent.blur(field);
+    expect(api.detectForge).toHaveBeenCalledTimes(2);
+    // Replacing the taken host's token keeps its host and its forge.
+    expect(within(form).getByRole('status')).toHaveTextContent('code.example.org already has an account.');
+    fireEvent.click(within(form).getByRole('button', { name: 'Replace its token' }));
+    const replace = await screen.findByRole('form', { name: 'Replace the token for code.example.org' });
+    expect(within(replace).getByLabelText('Host')).toHaveValue('code.example.org');
+    expect(within(replace).getByRole('button', { name: 'Forgejo' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.change(within(replace).getByLabelText('Token'), { target: { value: TOKEN } });
+    fireEvent.click(within(replace).getByRole('button', { name: 'Replace token' }));
+    await waitFor(() => expect(api.addForgeAccount).toHaveBeenCalledWith('code.example.org', 'forgejo', TOKEN));
+    expect(api.detectForge).toHaveBeenCalledTimes(2);
   });
 
   it('with no host, Create token is visibly disabled and says why', async () => {

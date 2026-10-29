@@ -77,12 +77,13 @@ makes no forge requests (apart from images you choose to load, below).
   - Setting the background fetch interval to Off stops the timed polls. Polls when a tab opens or
     the window gets the focus still happen.
 
-**Which forge a host runs.** When you type a host in Settings › Accounts › Add account that its
+**Which forge a host runs.** When you enter a host in Settings › Accounts › Add account that its
 name doesn't place (not github.com, gitlab.com, codeberg.org or a name with gitlab, forgejo or
-gitea in it) and no Hosts setting covers, GitVolt asks that host once which forge it runs:
-`GET https://<host>/api/v1/version` (Forgejo, Gitea), then, if that's not it,
-`GET https://<host>/api/v4/version` (GitLab). No token, no cookie, and no redirect is followed;
-only the host you typed is asked, and only while the form is open.
+gitea in it), that no Hosts setting covers, and whose forge you haven't picked, GitVolt asks that
+host once which forge it runs: `GET https://<host>/api/v1/version` (Forgejo, Gitea), then, if it
+answered but not as one, `GET https://<host>/api/v4/version` (GitLab). It asks when you leave the
+Host field or click Create token or Add account, never while you type, so a half-typed name isn't
+asked. No token, no cookie, and no redirect is followed; only the host you entered is asked.
 
 ### Update check (GitHub Releases)
 
