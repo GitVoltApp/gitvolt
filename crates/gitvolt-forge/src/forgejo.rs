@@ -554,18 +554,6 @@ pub mod json {
         ReviewDraft { id: format!("local-{}", d.id), body: d.body.clone(), position: Some(position), reply_to: None }
     }
 
-    /// A pending review's code comment as an anchor to keep (a removed line by its old number).
-    pub fn anchor_of(c: &Value) -> Option<ReviewAnchor> {
-        let at = thread_at(c)?;
-        let on = |n: u64| if at.old_line > 0 {
-            ReviewLine { kind: LineKind::Removed, old_line: n as u32, new_line: 0 }
-        } else {
-            ReviewLine { kind: LineKind::Added, old_line: 0, new_line: n as u32 }
-        };
-        let first = if at.old_line > 0 { at.old_line } else { at.new_line };
-        Some(ReviewAnchor { path: at.path.clone(), old_path: at.path, start: (at.extra > 0).then(|| on(first)), end: on(first + at.extra) })
-    }
-
     /// A review POST with its message (`review_body`) and code comments, on `commit`.
     pub fn review_with(review: &ReviewSubmit, commit: Option<&str>, comments: Vec<Value>) -> Value {
         let mut b = review_body(review);
@@ -604,8 +592,18 @@ pub mod json {
     /// The auto-merge the issue timeline says is scheduled now: its last schedule, unless a
     /// cancel came after it.
     pub fn auto_merge(timeline: &[Value]) -> Option<AutoMerge> {
-        let last = timeline.iter().rev().find(|e| matches!(e["type"].as_str(), Some("pull_scheduled_merge" | "pull_cancel_scheduled_merge")))?;
-        (last["type"] == "pull_scheduled_merge").then(|| AutoMerge { enabled_by: user(&last["user"]), method: None })
+        merge_schedule(timeline).flatten()
+    }
+
+    /// The newest schedule or cancel among `events`: `Some(None)` cancelled, `None` neither there.
+    pub fn merge_schedule(events: &[Value]) -> Option<Option<AutoMerge>> {
+        let last = events.iter().rev().find(|e| matches!(e["type"].as_str(), Some("pull_scheduled_merge" | "pull_cancel_scheduled_merge")))?;
+        Some((last["type"] == "pull_scheduled_merge").then(|| AutoMerge { enabled_by: user(&last["user"]), method: None }))
+    }
+
+    /// A page URL's `page` number.
+    pub fn page_number(url: &str) -> Option<u64> {
+        url.split(['?', '&']).find_map(|kv| kv.strip_prefix("page=")).and_then(|n| n.parse().ok())
     }
 
     /// The ids of label `names` among the repository's `labels`.
@@ -718,8 +716,17 @@ impl ForgejoProvider {
             return None;
         }
         let repo = GitHubProvider::repo_url(&project.path).ok()?;
-        let events = self.http.get_pages(&format!("{repo}/issues/{}/timeline?limit={PER_PAGE}", mr.number), TIMELINE_PAGES).await.ok()?;
-        json::auto_merge(&events)
+        let page = |p: u64| format!("{repo}/issues/{}/timeline?limit={PER_PAGE}&page={p}", mr.number);
+        let first = self.http.get(&page(1)).await.ok()?;
+        let last = first.last_page.as_deref().and_then(json::page_number).unwrap_or(1);
+        // The newest schedule or cancel decides: from the last page back, `TIMELINE_PAGES` at most.
+        for p in (2..=last).rev().take(TIMELINE_PAGES) {
+            let events: Vec<Value> = self.http.get(&page(p)).await.ok()?.json(&self.host).ok()?;
+            if let Some(state) = json::merge_schedule(&events) {
+                return state;
+            }
+        }
+        json::merge_schedule(&first.json::<Vec<Value>>(&self.host).ok()?).flatten()
     }
 
     /// A commit's statuses as one pipeline; a token that can't read them has none.
@@ -1337,57 +1344,91 @@ impl ForgeProvider for ForgejoProvider {
         })
     }
 
-    /// A draft kept here just goes. Forgejo's API deletes no single code comment (it answers and
-    /// keeps it): a pending review made on the web is deleted, its other comments kept here.
+    /// A draft kept here just goes. One of a pending review made on the web is deleted on the
+    /// forge (`DELETE …/reviews/{id}/comments/{comment}`), the review and its other comments kept;
+    /// a Forgejo without that API (404 or 405) is said, nothing changed.
     fn delete_draft<'a>(&'a self, project: &'a ForgeProject, number: u64, id: &'a str) -> ForgeFuture<'a, ()> {
         Box::pin(async move {
-            let key = (project.path.clone(), number);
             if let Some(n) = id.strip_prefix("local-").and_then(|n| n.parse::<u64>().ok()) {
-                if let Some(l) = self.drafts.lock().expect("drafts poisoned").get_mut(&key) {
+                if let Some(l) = self.drafts.lock().expect("drafts poisoned").get_mut(&(project.path.clone(), number)) {
                     l.retain(|d| d.id != n);
                 }
                 return Ok(());
             }
             let repo = GitHubProvider::repo_url(&project.path)?;
-            let Some((review, commit)) = self.pending_review(&repo, number).await? else { return Ok(()) };
-            let comments = self.review_comments(&repo, number, review).await?;
-            let is = |c: &Value| c["id"].as_u64().map(|i| i.to_string()).as_deref() == Some(id);
-            if !comments.iter().any(is) {
-                return Ok(());
-            }
-            self.http.delete(&format!("{repo}/pulls/{number}/reviews/{review}")).await?;
-            let head = commit.unwrap_or_default();
-            let kept: Vec<(ReviewAnchor, String)> = comments.iter().filter(|c| !is(c)).filter_map(|c| Some((json::anchor_of(c)?, c["body"].as_str().unwrap_or_default().to_string()))).collect();
-            let mut drafts = self.drafts.lock().expect("drafts poisoned");
-            let list = drafts.entry(key).or_default();
-            for (anchor, body) in kept {
-                list.push(LocalDraft { id: self.next_draft.fetch_add(1, std::sync::atomic::Ordering::Relaxed), anchor, body, head: head.clone() });
-            }
+            let Some((review, _)) = self.pending_review(&repo, number).await? else { return Ok(()) };
+            self.http.delete(&format!("{repo}/pulls/{number}/reviews/{review}/comments/{}", encode_component(id))).await.map_err(|e| {
+                if e.kind == GbErrorKind::NotFound || e.message.contains("HTTP 405") {
+                    GbError::new(GbErrorKind::NotFound, format!("{} didn't delete the comment: it's gone, or this Forgejo can't delete one comment of a pending review. Discard the review, or delete the comment on the web", self.host))
+                } else {
+                    e
+                }
+            })?;
             Ok(())
         })
     }
 
-    /// One review POST with the event, the message and every draft kept here (Forgejo files a
-    /// pending review made on the web under it too); without any, that pending review is
-    /// submitted, or else the composer's review goes. Refused, the drafts stay.
+    /// The review with the event, the message and the drafts written against the PR's head, as
+    /// one POST (Forgejo files a pending review made on the web under it too); without such
+    /// drafts, that pending review is submitted, or else the composer's review goes. Drafts
+    /// written against an older head follow, one comment review per head on its commit: Forgejo
+    /// places a review's comments on its one `commit_id`, and their lines are that commit's.
+    /// Whatever wasn't sent stays.
     fn submit_review<'a>(&'a self, project: &'a ForgeProject, number: u64, review: &'a ReviewSubmit) -> ForgeFuture<'a, SubmitOutcome> {
         Box::pin(async move {
             let repo = GitHubProvider::repo_url(&project.path)?;
             let posted = !review.body.trim().is_empty();
             let key = (project.path.clone(), number);
             let local = self.drafts.lock().expect("drafts poisoned").remove(&key).unwrap_or_default();
-            if let Some(last) = local.last() {
-                let comments = local.iter().map(|d| json::line_comment(&d.anchor, &d.body)).collect();
-                let sent = self.http.send_json(Method::Post, &format!("{repo}/pulls/{number}/reviews"), &json::review_with(review, Some(&last.head), comments)).await;
-                if let Err(e) = sent {
-                    let mut drafts = self.drafts.lock().expect("drafts poisoned");
-                    drafts.entry(key).or_default().splice(0..0, local);
-                    return Err(e);
+            let keep = |left: Vec<LocalDraft>| {
+                if !left.is_empty() {
+                    self.drafts.lock().expect("drafts poisoned").entry(key.clone()).or_default().splice(0..0, left);
                 }
-            } else if let Some((id, _)) = self.pending_review(&repo, number).await? {
-                self.http.send_json(Method::Post, &format!("{repo}/pulls/{number}/reviews/{id}"), &json::review_body(review)).await?;
+            };
+            let head = if local.is_empty() {
+                None
             } else {
-                self.review(project, number, review).await?;
+                match self.pull_json(project, number).await {
+                    Ok(v) => crate::github::json::text(&v["head"]["sha"]),
+                    Err(e) => {
+                        keep(local);
+                        return Err(e);
+                    }
+                }
+            };
+            let (current, older): (Vec<LocalDraft>, Vec<LocalDraft>) = local.into_iter().partition(|d| head.as_deref() == Some(d.head.as_str()));
+            let comments = |ds: &[LocalDraft]| ds.iter().map(|d| json::line_comment(&d.anchor, &d.body)).collect::<Vec<_>>();
+            let sent = if !current.is_empty() {
+                self.http.send_json(Method::Post, &format!("{repo}/pulls/{number}/reviews"), &json::review_with(review, head.as_deref(), comments(&current))).await.map(|_| ())
+            } else {
+                match self.pending_review(&repo, number).await {
+                    Ok(Some((id, _))) => self.http.send_json(Method::Post, &format!("{repo}/pulls/{number}/reviews/{id}"), &json::review_body(review)).await.map(|_| ()),
+                    // Only drafts on older heads, and nothing to say: they're the review.
+                    Ok(None) if review.event == ReviewEvent::Comment && !posted && !older.is_empty() => Ok(()),
+                    Ok(None) => self.review(project, number, review).await.map(|_| ()),
+                    Err(e) => Err(e),
+                }
+            };
+            if let Err(e) = sent {
+                keep(current.into_iter().chain(older).collect());
+                return Err(e);
+            }
+            let mut heads: Vec<String> = Vec::new();
+            for d in &older {
+                if !heads.contains(&d.head) {
+                    heads.push(d.head.clone());
+                }
+            }
+            let mut left = older;
+            for h in heads {
+                let (these, rest): (Vec<LocalDraft>, Vec<LocalDraft>) = left.into_iter().partition(|d| d.head == h);
+                let note = ReviewSubmit { event: ReviewEvent::Comment, body: String::new() };
+                if let Err(e) = self.http.send_json(Method::Post, &format!("{repo}/pulls/{number}/reviews"), &json::review_with(&note, Some(&h), comments(&these))).await {
+                    let n = these.len() + rest.len();
+                    keep(these.into_iter().chain(rest).collect());
+                    return Err(GbError::new(e.kind, format!("Your review went in, but {n} comment{} written against an older commit didn't, and stay pending: {}", if n == 1 { "" } else { "s" }, e.message)));
+                }
+                left = rest;
             }
             Ok(SubmitOutcome { body_posted: posted, event_sent: true, ..SubmitOutcome::default() })
         })
@@ -1673,8 +1714,14 @@ mod tests {
             ("post", p) if p.ends_with("/reactions") => j(json!({"content": "rocket", "user": user(1, "ada")})),
             ("patch", p) if p == format!("{r}/issues/comments/31") => j(json!({"id": 31, "user": user(1, "ada"), "body": "Edited", "created_at": T0})),
             ("post", p) if p == format!("{r}/issues/3/comments") => j(json!({"id": 32, "user": user(1, "ada"), "body": "Hi", "created_at": T2})),
-            ("get", p) if p == format!("{r}/issues/3/timeline?limit=50") => j(json!([{"type": "comment", "user": user(1, "ada")}, {"type": "pull_scheduled_merge", "user": user(2, "grace")}])),
-            ("get", p) if p.ends_with("/timeline?limit=50") => j(json!([])),
+            // #3's timeline has three pages: an old schedule and its cancel first, the newest
+            // schedule on the last.
+            ("get", p) if p == format!("{r}/issues/3/timeline?limit=50&page=1") => j(json!([{"type": "pull_scheduled_merge", "user": user(1, "ada")}, {"type": "pull_cancel_scheduled_merge", "user": user(1, "ada")}]))
+                .header("Link", &format!("<{base}{r}/issues/3/timeline?limit=50&page=2>; rel=\"next\", <{base}{r}/issues/3/timeline?limit=50&page=3>; rel=\"last\"")),
+            ("get", p) if p == format!("{r}/issues/3/timeline?limit=50&page=2") => j(json!([{"type": "comment", "user": user(1, "ada")}])),
+            ("get", p) if p == format!("{r}/issues/3/timeline?limit=50&page=3") => j(json!([{"type": "comment", "user": user(1, "ada")}, {"type": "pull_scheduled_merge", "user": user(2, "grace")}])),
+            ("get", p) if p.ends_with("/timeline?limit=50&page=1") => j(json!([])),
+            ("delete", p) if p == format!("{r}/pulls/3/reviews/13/comments/99") => Canned::json(405, r#"{"message": "Method Not Allowed"}"#),
             ("get", p) if p == format!("{r}/issues/3/subscriptions/check") => j(json!({"subscribed": true})),
             ("get", p) if p == format!("{r}/labels?limit=50") => j(json!([{"id": 7, "name": "bug", "color": "ee0701"}, {"id": 8, "name": "docs", "color": "#0075CA", "description": "Words"}])),
             ("get", "/users/search?uid=2") => j(json!({"ok": true, "data": [user(2, "grace")]})),
@@ -2120,19 +2167,55 @@ mod tests {
         ]);
     }
 
-    /// Forgejo's API deletes no single code comment: a web pending review's draft is deleted with
-    /// its review, the other comments kept here.
+    /// A draft of a pending review made on the web is deleted on the forge, alone: the review
+    /// and its other comments stay there, their ids too (nothing is kept here instead).
     #[tokio::test]
-    async fn deleting_a_web_drafts_comment_keeps_the_others_here() {
+    async fn deleting_a_web_draft_deletes_that_comment_alone() {
         let (s, p, project) = served();
         p.delete_draft(&project, 3, "41").await.unwrap();
-        assert_eq!(writes(&s).into_iter().map(|(l, _)| l).collect::<Vec<_>>(), ["delete /repos/ada/widget/pulls/3/reviews/13"]);
-        let local = p.drafts.lock().unwrap().get(&("ada/widget".to_string(), 3)).cloned().unwrap();
-        assert_eq!(local.iter().map(|d| (d.body.as_str(), d.anchor.path.as_str(), d.anchor.end.kind, d.anchor.end.old_line, d.head.as_str())).collect::<Vec<_>>(), [("c42", "README.md", LineKind::Removed, 3, "abc100")]);
-        // A draft that isn't there: nothing changes.
+        assert_eq!(writes(&s).into_iter().map(|(l, _)| l).collect::<Vec<_>>(), ["delete /repos/ada/widget/pulls/3/reviews/13/comments/41"]);
+        assert!(p.drafts.lock().unwrap().is_empty(), "nothing moved here");
+        // A Forgejo without that API: said, and nothing else is done.
+        let e = p.delete_draft(&project, 3, "99").await.unwrap_err();
+        assert!(e.message.contains("can't delete one comment of a pending review"), "{}", e.message);
+        assert_eq!(writes(&s).len(), 2);
+    }
+
+    /// Drafts written against an older head go in on their own commit, after the review: Forgejo
+    /// places a review's comments on its one `commit_id`.
+    #[tokio::test]
+    async fn drafts_on_an_older_head_go_in_on_their_commit_after_the_review() {
+        let (s, p, project) = served_with(false);
+        let mut old = new_comment("Before the push");
+        old.refs.head_sha = "old000".into();
+        p.add_draft(&project, 3, &old).await.unwrap();
+        p.add_draft(&project, 3, &new_comment("On the head")).await.unwrap();
+        p.submit_review(&project, 3, &ReviewSubmit { event: ReviewEvent::Approve, body: String::new() }).await.unwrap();
+        let sent: Vec<(String, Value, Value)> = writes(&s).into_iter().map(|(l, b)| { let v = body(&b); (l, v["event"].clone(), v["commit_id"].clone()) }).collect();
+        assert_eq!(sent, [
+            ("post /repos/ada/widget/pulls/3/reviews".to_string(), json!("APPROVED"), json!("abc123")),
+            ("post /repos/ada/widget/pulls/3/reviews".to_string(), json!("COMMENT"), json!("old000")),
+        ]);
+        assert!(p.review_drafts(&project, 3).await.unwrap().drafts.is_empty());
+
+        // Only older drafts and nothing to say: they're the review, one per head.
+        let (s, p, project) = served_with(false);
+        p.add_draft(&project, 3, &old).await.unwrap();
+        p.submit_review(&project, 3, &ReviewSubmit { event: ReviewEvent::Comment, body: String::new() }).await.unwrap();
+        assert_eq!(writes(&s).into_iter().map(|(_, b)| body(&b)["commit_id"].clone()).collect::<Vec<_>>(), [json!("old000")]);
+    }
+
+    /// The newest schedule or cancel decides, read from the timeline's last page back.
+    #[tokio::test]
+    async fn auto_merge_is_read_from_the_newest_timeline_events() {
         let (s, p, project) = served();
-        p.delete_draft(&project, 3, "99").await.unwrap();
-        assert!(writes(&s).is_empty());
+        let d = p.mr_detail(&project, 3).await.unwrap().value;
+        assert_eq!(d.mr.auto_merge.as_ref().and_then(|a| a.enabled_by.as_ref()).map(|u| u.username.as_str()), Some("grace"));
+        let pages: Vec<String> = lines(&s).into_iter().filter(|l| l.contains("/timeline")).collect();
+        assert_eq!(pages, ["get /repos/ada/widget/issues/3/timeline?limit=50&page=1", "get /repos/ada/widget/issues/3/timeline?limit=50&page=3"], "the middle page isn't needed");
+        assert_eq!(json::page_number("https://h/api/v1/x?limit=50&page=12"), Some(12));
+        assert_eq!(json::merge_schedule(&[json!({"type": "comment"})]), None);
+        assert_eq!(json::merge_schedule(&[json!({"type": "pull_scheduled_merge", "user": user(1, "ada")}), json!({"type": "pull_cancel_scheduled_merge"})]), Some(None));
     }
 
     /// A published code comment would publish the pending review with it: Comment now and a thread
@@ -2197,9 +2280,6 @@ mod tests {
         let d = json::draft(&c).unwrap();
         let p = d.position.unwrap();
         assert_eq!((p.start_line, p.line, p.start_old_line, p.old_line), (Some(4), Some(7), None, None));
-        let a = json::anchor_of(&c).unwrap();
-        assert_eq!((a.start.map(|s| s.new_line), a.end.new_line), (Some(4), 7));
-        assert_eq!(json::line_comment(&a, "b")["extra_lines_count"], 3, "a web draft kept here keeps its range");
         let local = json::local_draft(&LocalDraft { id: 1, anchor: anchor(Some(add(3, 4)), add(3, 7)), body: "x".into(), head: "abc123".into() }).position.unwrap();
         assert_eq!((local.start_line, local.line), (Some(4), Some(7)));
     }
