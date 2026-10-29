@@ -456,18 +456,49 @@ pub mod json {
         Some(DiffRefs { start_sha: base.clone(), base_sha: base, head_sha: text(&pr["head"]["sha"])? })
     }
 
-    /// A `diff --git a/x b/y` header's two paths (quotes and their escapes aside): split where
-    /// both halves name the same file, else at ` b/`.
+    /// A path as git prints it in a diff: quoted when it holds a `"`, a `\`, a control or a
+    /// non-ASCII byte (`"caf\303\251.txt"`: C escapes, each UTF-8 byte in octal), else bare.
+    /// With how many bytes of `p` it took (all of a bare one).
+    fn git_path(p: &str) -> Option<(String, usize)> {
+        use gix::bstr::ByteSlice;
+        let (path, n) = gix::quote::ansi_c::undo(p.as_bytes().as_bstr()).ok()?;
+        Some((path.to_str_lossy().into_owned(), n))
+    }
+
+    /// A `diff --git a/x b/y` header's two paths. Git quotes each half on its own (`git_path`);
+    /// an unquoted pair, whose paths may hold spaces, is split where both halves name the same
+    /// file, else at ` b/`.
     fn header_paths(rest: &str) -> (String, String) {
-        let unquote = |p: &str| p.trim_matches('"').replace("\\\"", "\"").replace("\\\\", "\\");
+        let side = |p: String, prefix: &str| p.strip_prefix(prefix).map_or_else(|| p.clone(), str::to_string);
+        let quoted = || -> Option<(String, String)> {
+            let (a, b) = if rest.starts_with('"') {
+                let (a, n) = git_path(rest)?;
+                (a, git_path(rest[n..].strip_prefix(' ')?)?.0)
+            } else {
+                // A bare old path holds no `"`, so the quoted new one starts at the first ` "b/`.
+                let (a, _) = rest.split_once(" \"b/")?;
+                (a.to_string(), git_path(&rest[a.len() + 1..])?.0)
+            };
+            Some((side(a, "a/"), side(b, "b/")))
+        };
+        // A bare path holds no `"`.
+        if rest.contains('"')
+            && let Some(paths) = quoted()
+        {
+            return paths;
+        }
         let n = rest.len().saturating_sub(1) / 2;
-        if rest.len() % 2 == 1 && rest.is_char_boundary(n) && rest.as_bytes()[n] == b' ' && rest[..n].strip_prefix("a/") == rest[n + 1..].strip_prefix("b/") {
-            let p = unquote(&rest[2..n]);
-            return (p.clone(), p);
+        if rest.len() % 2 == 1
+            && rest.is_char_boundary(n)
+            && rest.as_bytes()[n] == b' '
+            && let (Some(a), Some(b)) = (rest[..n].strip_prefix("a/"), rest[n + 1..].strip_prefix("b/"))
+            && a == b
+        {
+            return (a.to_string(), a.to_string());
         }
         match rest.split_once(" b/") {
-            Some((a, b)) => (unquote(a.trim_start_matches("a/")), unquote(b)),
-            None => (unquote(rest), unquote(rest)),
+            Some((a, b)) => (side(a.to_string(), "a/"), b.to_string()),
+            None => (rest.to_string(), rest.to_string()),
         }
     }
 
@@ -490,10 +521,10 @@ pub mod json {
             if f.in_hunks || bare.starts_with("@@") {
                 f.in_hunks = true;
                 f.hunks.push_str(line);
-            } else if let Some(p) = bare.strip_prefix("rename from ") {
-                f.old_path = p.to_string();
-            } else if let Some(p) = bare.strip_prefix("rename to ") {
-                f.path = p.to_string();
+            } else if let Some((p, _)) = bare.strip_prefix("rename from ").and_then(git_path) {
+                f.old_path = p;
+            } else if let Some((p, _)) = bare.strip_prefix("rename to ").and_then(git_path) {
+                f.path = p;
             }
         }
         out.extend(cur.map(done));
@@ -2086,6 +2117,24 @@ mod tests {
         assert_eq!(files[0].lines.iter().map(|l| (l.kind, l.old_line, l.new_line)).collect::<Vec<_>>(), [(LineKind::Context, 1, 1), (LineKind::Removed, 2, 2), (LineKind::Added, 3, 2)]);
         assert!(files.iter().all(|f| !f.too_large));
         assert_eq!(json::review_files(""), []);
+    }
+
+    /// Git quotes a path with a non-ASCII byte (octal escapes of its UTF-8) or a `"`, each half
+    /// of a header on its own; spaces stay bare.
+    #[test]
+    fn the_pr_diff_reads_quoted_and_spaced_paths() {
+        let paths = |diff: &str| json::review_files(diff).into_iter().map(|f| (f.path, f.old_path)).collect::<Vec<_>>();
+        let one = |p: &str| vec![(p.to_string(), p.to_string())];
+        assert_eq!(paths("diff --git a/src/lib.rs b/src/lib.rs\n"), one("src/lib.rs"));
+        assert_eq!(paths("diff --git a/my file.txt b/my file.txt\n"), one("my file.txt"));
+        assert_eq!(paths("diff --git a/a b/c.txt b/a b/c.txt\n"), one("a b/c.txt"), "a ` b/` inside the path");
+        assert_eq!(paths("diff --git \"a/caf\\303\\251.txt\" \"b/caf\\303\\251.txt\"\n"), one("café.txt"));
+        assert_eq!(paths("diff --git \"a/say \\\"hi\\\"\\tnow.txt\" \"b/say \\\"hi\\\"\\tnow.txt\"\n"), one("say \"hi\"\tnow.txt"));
+        // Renames: the header's halves, then `rename from` / `rename to`, quoted alike.
+        let rename = "diff --git a/old name.txt \"b/na\\303\\257ve.txt\"\nsimilarity index 90%\nrename from old name.txt\nrename to \"na\\303\\257ve.txt\"\n";
+        assert_eq!(paths(rename), [("naïve.txt".to_string(), "old name.txt".to_string())]);
+        assert_eq!(paths("diff --git \"a/na\\303\\257ve.txt\" b/plain.txt\n"), [("plain.txt".to_string(), "naïve.txt".to_string())]);
+        assert_eq!(paths("diff --git a/x.txt b/y.txt\n"), [("y.txt".to_string(), "x.txt".to_string())]);
     }
 
     #[test]
