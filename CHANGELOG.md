@@ -5,6 +5,16 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **Custom themes in the editor:** switching to a custom theme left the editor in the old
+  theme's colours, and after a restart the editor failed to load with "Illegal theme name!".
+  Should the editor ever refuse a custom theme's colours again, it falls back to the base
+  theme's instead of failing to load (#14).
+- **A commit's description starts at its top** when you select another commit; it kept the
+  previous one's scroll position. A refresh of the same commit (after a fetch) keeps your
+  place (#13).
+
 ## [1.2.0] - 2026-10-29
 
 ### Added
