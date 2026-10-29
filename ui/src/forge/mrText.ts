@@ -29,7 +29,8 @@ export function reviewText(r: ReviewSummary): string {
       const pending = names(r, 'pending');
       const reviewed = names(r, 'commented');
       if (pending) return reviewed ? `Reviewed by ${reviewed}; review requested from ${pending}` : `Review requested from ${pending}`;
-      return reviewed ? `Reviewed by ${reviewed}` : 'Review required';
+      // A comment doesn't meet the rule: the merge still waits for a review.
+      return reviewed ? `Reviewed by ${reviewed}; review required` : 'Review required';
     }
     default: {
       if (r.approvals > 0) return `Approved by ${names(r, 'approved')}`;

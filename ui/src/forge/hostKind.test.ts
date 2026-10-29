@@ -29,12 +29,3 @@ describe('bareHost (the core normalize_host)', () => {
     expect(bareHost('')).toBe('');
   });
 });
-
-describe('bareHost (the core normalize_host)', () => {
-  it('reads a pasted address as its host: no scheme, path or query, lowercase', () => {
-    expect(bareHost('https://Git.Example.dev/')).toBe('git.example.dev');
-    expect(bareHost(' git.example.dev:3000/user/settings ')).toBe('git.example.dev:3000');
-    expect(bareHost('git.example.dev?x=1')).toBe('git.example.dev');
-    expect(bareHost('')).toBe('');
-  });
-});

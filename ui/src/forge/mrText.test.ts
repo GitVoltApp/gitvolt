@@ -33,6 +33,7 @@ describe('the words of an MR/PR (the only forge-specific ones are in labels.ts)'
     // A review that only commented decides nothing, but it was given.
     expect(r('none', [{ user: ada, state: 'commented' }])).toBe('Reviewed by Ada Lovelace');
     expect(r('reviewRequired', [{ user: ada, state: 'commented' }, { user: hubot, state: 'pending' }])).toBe('Reviewed by Ada Lovelace; review requested from Hubot');
+    expect(r('reviewRequired', [{ user: ada, state: 'commented' }])).toBe('Reviewed by Ada Lovelace; review required');
     expect(r('approved', [{ user: ada, state: 'commented' }, { user: hubot, state: 'approved' }])).toBe('Approved by Hubot');
   });
 
