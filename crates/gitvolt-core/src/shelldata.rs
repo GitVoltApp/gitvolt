@@ -550,25 +550,19 @@ fn canonical(p: &Path) -> std::path::PathBuf {
     crate::platform::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
-/// The sidebar's branches, remotes, worktrees, stashes, tags and submodules (spec §6.4), for the repository at
-/// `workdir`/`repo`. `repo` must be a handle already opened on `workdir`; this never opens one.
+/// The sidebar's branches, remotes, worktrees, stashes, tags and submodules (spec §6.4), for the
+/// repository at `workdir`/`repo`. `repo` must be a handle already opened on `workdir`; this
+/// opens no other one in a repository without submodules. With them, it opens each submodule's
+/// checkout, and a linked worktree that has a `.gitmodules` (`submodules::sidebar_by_worktree`).
 pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path) -> Result<SidebarPayload, GbError> {
     let shared = repo.clone();
     let rows = tokio::task::spawn_blocking(move || ref_rows(&shared.to_thread_local())).await.map_err(|e| GbError::other(format!("sidebar read failed: {e}")))??;
     let worktrees = list_worktrees(workdir).await?;
-    // Each checked-out worktree's own index, `.gitmodules` and submodule checkouts.
     let roots: Vec<std::path::PathBuf> = worktrees.iter().filter(|w| !w.bare && !w.prunable).map(|w| canonical(&w.path)).collect();
-    let submodules = tokio::task::spawn_blocking(move || {
-        roots
-            .into_iter()
-            .filter_map(|root| {
-                let items = crate::submodules::sidebar_items(&gix::open(&root).ok()?, &root);
-                (!items.is_empty()).then(|| (root.display().to_string(), items))
-            })
-            .collect()
-    })
-    .await
-    .map_err(|e| GbError::other(format!("sidebar read failed: {e}")))?;
+    let (shared, here) = (repo.clone(), canonical(workdir));
+    let submodules = tokio::task::spawn_blocking(move || crate::submodules::sidebar_by_worktree(&shared.to_thread_local(), &here, roots))
+        .await
+        .map_err(|e| GbError::other(format!("sidebar read failed: {e}")))?;
     let local = repo.to_thread_local();
     let remote_names: Vec<String> = local.remote_names().into_iter().map(|n| n.to_str_lossy().into_owned()).collect();
     let host_of = |remote: &str| remote_url(&local, remote, Direction::Fetch).and_then(|u| parse_remote_url(&u)).map(|u| u.host);

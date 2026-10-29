@@ -57,6 +57,20 @@ pub struct SubmoduleItem {
     pub status: SubmoduleStatus,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// The repositories `open` opened on this thread.
+    static OPENED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// `gix::open` of `dir` (counted in tests: the sidebar's read opens nothing in a repository
+/// without submodules).
+fn open(dir: &Path) -> Option<gix::Repository> {
+    #[cfg(test)]
+    OPENED.with(|n| n.set(n.get() + 1));
+    gix::open(dir).ok()
+}
+
 /// The repository checked out at `path` in `root`: `gix::open` of that folder alone (never a
 /// discovery up to the superproject), and never through a symlink.
 pub(crate) fn open_checkout(root: &Path, path: &str) -> Option<gix::Repository> {
@@ -64,7 +78,29 @@ pub(crate) fn open_checkout(root: &Path, path: &str) -> Option<gix::Repository> 
     if !std::fs::symlink_metadata(&dir).ok()?.is_dir() {
         return None;
     }
-    gix::open(&dir).ok()
+    open(&dir)
+}
+
+/// The `sidebar` read's submodules of each checked-out worktree in `roots` (canonical paths),
+/// keyed by path; a worktree without any isn't listed. `repo` is the handle already open on
+/// `here`, one of `roots`. Cheap without submodules: `here`'s gitlinks come from `repo`'s index
+/// (gix keeps it, read again only once it changes), and a linked worktree is opened only when it
+/// has a `.gitmodules` (so its gitlinks without one, an embedded repository staged by hand,
+/// aren't listed). Each submodule's checkout is opened for its HEAD. Call it off the runtime.
+pub fn sidebar_by_worktree(repo: &gix::Repository, here: &Path, roots: Vec<std::path::PathBuf>) -> std::collections::BTreeMap<String, Vec<SubmoduleItem>> {
+    roots
+        .into_iter()
+        .filter_map(|root| {
+            let items = if root == here {
+                sidebar_items(repo, &root)
+            } else if std::fs::symlink_metadata(root.join(".gitmodules")).is_ok() {
+                sidebar_items(&open(&root)?, &root)
+            } else {
+                return None;
+            };
+            (!items.is_empty()).then(|| (root.display().to_string(), items))
+        })
+        .collect()
 }
 
 /// The sidebar's submodules of the worktree `repo` is opened on (`root`), by path. In process,
@@ -268,6 +304,34 @@ mod tests {
         assert_eq!(s.submodules.keys().cloned().collect::<Vec<_>>(), { let mut k = vec![key(r.path()), key(&linked)]; k.sort(); k });
         assert_eq!(s.submodules[&key(r.path())].iter().map(|s| s.path.as_str()).collect::<Vec<_>>(), ["vendor/parser", "vendor/theme"]);
         assert!(s.submodules[&key(&linked)].iter().all(|s| s.status == SubmoduleStatus::Uninitialized));
+    }
+
+    /// Without submodules, the sidebar's read opens no repository: the open handle's index says
+    /// so for its worktree, and a linked one without a `.gitmodules` isn't opened.
+    #[test]
+    fn the_sidebar_opens_nothing_without_submodules() {
+        let opened = || OPENED.with(|n| n.get());
+        let key = |p: &std::path::Path| crate::platform::fs::canonicalize(p).unwrap();
+        let plain = TestRepo::new();
+        plain.commit("one");
+        plain.git(&["branch", "other"]);
+        let linked = plain.add_worktree("other", "other");
+        let repo = gix::open(plain.path()).unwrap();
+        let before = opened();
+        assert!(sidebar_by_worktree(&repo, &key(plain.path()), vec![key(plain.path()), key(&linked)]).is_empty());
+        assert_eq!(opened(), before, "nothing opened");
+
+        // With submodules: the open handle for its own worktree, then the linked one and each
+        // checkout of both (the linked one's, not initialised, are empty folders).
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        r.git(&["branch", "plain"]);
+        let linked = r.add_worktree("plain", "plain");
+        let repo = gix::open(r.path()).unwrap();
+        let before = opened();
+        let s = sidebar_by_worktree(&repo, &key(r.path()), vec![key(r.path()), key(&linked)]);
+        assert_eq!(s.len(), 2);
+        assert_eq!(opened() - before, 1 + 2 + 2);
     }
 
     #[test]
