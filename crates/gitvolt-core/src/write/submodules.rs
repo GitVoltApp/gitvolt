@@ -674,14 +674,33 @@ mod tests {
         assert!(r.path().join("vendor/parser/part_0.txt").exists(), "the other submodules stay");
     }
 
+    /// `repoChanged`'s kinds for each write `f` makes.
+    async fn announced(api: &crate::api::Api, f: impl std::future::Future<Output = ()>) -> Vec<crate::events::ChangeKind> {
+        let mut rx = api.subscribe();
+        f.await;
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .flat_map(|e| match e {
+                AppEvent::RepoChanged { kinds, .. } => kinds,
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
     #[tokio::test]
     async fn remove_takes_out_the_checkout_gitlink_and_gitmodules_entry() {
+        use crate::events::ChangeKind;
         let r = TestRepo::new();
         fixtures::submodules(&r);
         let data = tempfile::tempdir().unwrap();
         let api = api(data.path());
         let id = open(&api, &r).await;
-        let done = call(&api, "submoduleRemove", json!({"repo": id, "worktree": wt(r.path()), "path": "vendor/parser"})).await.unwrap();
+        call(&api, "sidebar", json!({"repo": id})).await.unwrap();
+        // A write that leaves the submodules as the sidebar listed them doesn't say `submodules`.
+        let kinds = announced(&api, async { call(&api, "submoduleSync", json!({"repo": id, "worktree": wt(r.path())})).await.map(drop).unwrap() }).await;
+        assert!(kinds.contains(&ChangeKind::Config) && !kinds.contains(&ChangeKind::Submodules), "{kinds:?}");
+        let mut done = serde_json::Value::Null;
+        let kinds = announced(&api, async { done = call(&api, "submoduleRemove", json!({"repo": id, "worktree": wt(r.path()), "path": "vendor/parser"})).await.unwrap() }).await;
+        assert!(kinds.contains(&ChangeKind::Submodules), "the sidebar's Submodules panel reloads: {kinds:?}");
         assert_eq!(done["outcome"]["command"], "git rm -- vendor/parser");
         assert!(!r.path().join("vendor/parser").exists(), "the checkout is gone");
         assert_eq!(r.git(&["status", "--porcelain"]), "M  .gitmodules\nD  vendor/parser");

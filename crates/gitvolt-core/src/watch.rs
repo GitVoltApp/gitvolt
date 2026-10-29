@@ -423,6 +423,8 @@ pub struct WatchSpec {
     pub workdir: PathBuf,
     pub common_dir: PathBuf,
     pub worktrees: Vec<WatchedWorktree>,
+    /// What the sidebar last listed of the worktrees' submodules (`ChangeKind::Submodules`).
+    pub submodules: Arc<crate::submodules::Seen>,
 }
 
 #[derive(Default)]
@@ -765,7 +767,11 @@ impl Loop {
         // Which of its files or index changed is unknown, so it reports both kinds.
         let all: BTreeSet<PathBuf> = self.roots().collect();
         let changed = self.refresh_status(&all, true, &HashMap::new(), true).await;
-        self.emit(BTreeSet::from([ChangeKind::Worktree, ChangeKind::Index]), changed);
+        let mut kinds = BTreeSet::from([ChangeKind::Worktree, ChangeKind::Index]);
+        if self.submodules_changed(&all).await {
+            kinds.insert(ChangeKind::Submodules);
+        }
+        self.emit(kinds, changed);
         self.update_trust();
         self.quiet_until = Instant::now() + DEBOUNCE;
         let _ = ready.send(true);
@@ -979,7 +985,26 @@ impl Loop {
             kinds.extend([ChangeKind::Head, ChangeKind::Worktree]);
             changed.extend(topology);
         }
+        if self.submodules_changed(&status).await {
+            kinds.insert(ChangeKind::Submodules);
+        }
         self.emit(kinds, changed);
+    }
+
+    /// The submodules of a worktree in `roots` (whose status was just read) changed since the
+    /// sidebar listed them (`submodules::Seen::check`; a stat each without submodules).
+    async fn submodules_changed(&self, roots: &BTreeSet<PathBuf>) -> bool {
+        if roots.is_empty() {
+            return false;
+        }
+        let (repo, workdir, seen) = (self.spec.handle.clone(), self.spec.workdir.clone(), self.spec.submodules.clone());
+        let roots: Vec<PathBuf> = roots.iter().cloned().collect();
+        tokio::task::spawn_blocking(move || {
+            let here = crate::platform::fs::canonicalize(&workdir).unwrap_or(workdir);
+            seen.check(&repo.to_thread_local(), &here, &roots)
+        })
+        .await
+        .unwrap_or(false)
     }
 
     /// Re-lists the worktrees (one was added or removed) and re-plans the watches. Returns the
@@ -1201,10 +1226,10 @@ impl Api {
     /// What to watch for `h`: its common dir and usable worktrees, canonical.
     async fn watch_spec(&self, id: u32, h: &RepoHandle) -> Result<WatchSpec, GbError> {
         let list = list_worktrees(&h.workdir).await?;
-        let (repo, workdir) = (h.repo.clone(), h.workdir.clone());
+        let (repo, workdir, submodules) = (h.repo.clone(), h.workdir.clone(), self.submodules.clone());
         tokio::task::spawn_blocking(move || {
             let common_dir = crate::platform::fs::canonicalize(repo.to_thread_local().common_dir())?;
-            Ok(WatchSpec { repo: id, handle: repo, workdir, common_dir, worktrees: watched_worktrees(&list) })
+            Ok(WatchSpec { repo: id, handle: repo, workdir, common_dir, worktrees: watched_worktrees(&list), submodules })
         })
         .await
         .map_err(|e| GbError::other(format!("watcher setup failed: {e}")))?
@@ -1385,6 +1410,23 @@ mod tests {
 
     fn canonical(p: &Path) -> String {
         crate::platform::fs::canonicalize(p).unwrap().display().to_string()
+    }
+
+    /// An index change says `submodules` only when it changed what the sidebar listed (a
+    /// gitlink unstaged in a terminal), not for an ordinary file staged.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_index_change_says_submodules_only_for_a_gitlink() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let (api, id, mut rx) = watched(&r).await;
+        call(&api, serde_json::json!({"method": "sidebar", "params": {"repo": id}})).await;
+        r.write("notes.txt", "n\n");
+        r.git(&["add", "notes.txt"]);
+        let (kinds, _) = next_change(&mut rx, Duration::from_secs(10)).await.expect("the stage reported");
+        assert!(kinds.contains(&ChangeKind::Index) && !kinds.contains(&ChangeKind::Submodules), "{kinds:?}");
+        r.git(&["rm", "-q", "--cached", "vendor/parser"]);
+        let (kinds, _) = next_change(&mut rx, Duration::from_secs(10)).await.expect("the unstage reported");
+        assert!(kinds.contains(&ChangeKind::Submodules), "{kinds:?}");
     }
 
     #[tokio::test(flavor = "multi_thread")]

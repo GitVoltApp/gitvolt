@@ -177,7 +177,10 @@ a gitlink in its index, reported per worktree by `repoInfo`). A WIP submodule ro
 `git status`'s state of it, and its diff sides name each commit's subject from the submodule's
 own repository. The sidebar's Submodules panel comes with the `sidebar` read: each worktree's
 gitlinks, `.gitmodules` entries and checkouts, read in process (`submodules::sidebar_by_worktree`,
-which opens no other repository where there are none), and the panel shows the tab's active worktree's. Update (`git submodule update --init --recursive`),
+which opens no other repository where there are none), and the panel shows the tab's active
+worktree's. The core remembers what it listed (`submodules::Seen`): a write or a watched change
+that alters it adds `submodules` to `repoChanged`, which reloads the sidebar, so an ordinary
+index change still reloads the graph alone. Update (`git submodule update --init --recursive`),
 Sync URLs, Add (`git submodule add`) and Remove (`git rm`) are writes like any other
 (`write/submodules.rs`); Update and Add run as network commands (Update outside the write lock,
 as a push; Add under it, since git stages the submodule after its clone), and Update asks first

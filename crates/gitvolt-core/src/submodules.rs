@@ -7,11 +7,14 @@ use crate::api::Api;
 use crate::error::{gix_err, GbError};
 use crate::git::GitInvocation;
 use serde::Serialize;
-use std::path::Path;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use ts_rs::TS;
 
 /// One line of `git submodule status`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub enum SubmoduleStatus {
@@ -38,7 +41,7 @@ pub struct SubmoduleInfo {
 
 /// A submodule in the sidebar's Submodules section: a gitlink of the worktree's index, what
 /// `.gitmodules` says of it, and what's checked out there.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct SubmoduleItem {
@@ -86,21 +89,71 @@ pub(crate) fn open_checkout(root: &Path, path: &str) -> Option<gix::Repository> 
 /// `here`, one of `roots`. Cheap without submodules: `here`'s gitlinks come from `repo`'s index
 /// (gix keeps it, read again only once it changes), and a linked worktree is opened only when it
 /// has a `.gitmodules` (so its gitlinks without one, an embedded repository staged by hand,
-/// aren't listed). Each submodule's checkout is opened for its HEAD. Call it off the runtime.
-pub fn sidebar_by_worktree(repo: &gix::Repository, here: &Path, roots: Vec<std::path::PathBuf>) -> std::collections::BTreeMap<String, Vec<SubmoduleItem>> {
-    roots
-        .into_iter()
-        .filter_map(|root| {
-            let items = if root == here {
-                sidebar_items(repo, &root)
-            } else if std::fs::symlink_metadata(root.join(".gitmodules")).is_ok() {
-                sidebar_items(&open(&root)?, &root)
-            } else {
-                return None;
-            };
-            (!items.is_empty()).then(|| (root.display().to_string(), items))
-        })
-        .collect()
+/// aren't listed). Each submodule's checkout is opened for its HEAD. `seen` records what was
+/// listed. Call it off the runtime.
+pub fn sidebar_by_worktree(repo: &gix::Repository, here: &Path, roots: Vec<PathBuf>, seen: &Seen) -> BTreeMap<String, Vec<SubmoduleItem>> {
+    let mut out = BTreeMap::new();
+    for root in roots {
+        let items = worktree_items(repo, here, &root);
+        seen.note(&root, &items);
+        if !items.is_empty() {
+            out.insert(root.display().to_string(), items);
+        }
+    }
+    out
+}
+
+/// One worktree's submodules, as `sidebar_by_worktree` reads them.
+fn worktree_items(repo: &gix::Repository, here: &Path, root: &Path) -> Vec<SubmoduleItem> {
+    if root == here {
+        sidebar_items(repo, root)
+    } else if has_gitmodules(root) {
+        open(root).map(|r| sidebar_items(&r, root)).unwrap_or_default()
+    } else {
+        Vec::new()
+    }
+}
+
+fn has_gitmodules(root: &Path) -> bool {
+    std::fs::symlink_metadata(root.join(".gitmodules")).is_ok()
+}
+
+/// What the sidebar last listed of each worktree's submodules (a digest per canonical root, none
+/// when it listed none), so `repoChanged` says `submodules` only when that changed: a gitlink in
+/// the index, `.gitmodules`, or a submodule's checked-out commit.
+#[derive(Debug, Default)]
+pub struct Seen(Mutex<HashMap<PathBuf, u64>>);
+
+impl Seen {
+    /// Records `items` as `root`'s listing; `true` when it differs from the one before.
+    fn note(&self, root: &Path, items: &[SubmoduleItem]) -> bool {
+        let digest = (!items.is_empty()).then(|| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            items.hash(&mut h);
+            h.finish()
+        });
+        let mut seen = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let before = match digest {
+            Some(d) => seen.insert(root.to_path_buf(), d),
+            None => seen.remove(root),
+        };
+        before != digest
+    }
+
+    /// Whether the submodules of any of `roots` (`repo` open on `here`, as for
+    /// `sidebar_by_worktree`) changed since they were last listed or checked; records them as
+    /// they are now. A worktree without a `.gitmodules` that had none isn't read at all, so an
+    /// ordinary repository's index and file changes cost a stat each. Call it off the runtime.
+    pub fn check(&self, repo: &gix::Repository, here: &Path, roots: &[PathBuf]) -> bool {
+        let mut changed = false;
+        for root in roots {
+            let listed = self.0.lock().unwrap_or_else(|e| e.into_inner()).contains_key(root);
+            if listed || has_gitmodules(root) {
+                changed |= self.note(root, &worktree_items(repo, here, root));
+            }
+        }
+        changed
+    }
 }
 
 /// The sidebar's submodules of the worktree `repo` is opened on (`root`), by path. In process,
@@ -297,7 +350,7 @@ mod tests {
         r.git(&["branch", "plain"]);
         let linked = r.add_worktree("plain", "plain");
         let repo = gix::ThreadSafeRepository::open(r.path()).unwrap();
-        let s = crate::shelldata::sidebar(&repo, r.path()).await.unwrap();
+        let s = crate::shelldata::sidebar(&repo, r.path(), &Default::default()).await.unwrap();
         // Keyed by canonical worktree path; the linked worktree, its submodules not checked out,
         // lists them too, uninitialised.
         let key = |p: &std::path::Path| crate::platform::fs::canonicalize(p).unwrap().display().to_string();
@@ -318,7 +371,7 @@ mod tests {
         let linked = plain.add_worktree("other", "other");
         let repo = gix::open(plain.path()).unwrap();
         let before = opened();
-        assert!(sidebar_by_worktree(&repo, &key(plain.path()), vec![key(plain.path()), key(&linked)]).is_empty());
+        assert!(sidebar_by_worktree(&repo, &key(plain.path()), vec![key(plain.path()), key(&linked)], &Seen::default()).is_empty());
         assert_eq!(opened(), before, "nothing opened");
 
         // With submodules: the open handle for its own worktree, then the linked one and each
@@ -329,9 +382,48 @@ mod tests {
         let linked = r.add_worktree("plain", "plain");
         let repo = gix::open(r.path()).unwrap();
         let before = opened();
-        let s = sidebar_by_worktree(&repo, &key(r.path()), vec![key(r.path()), key(&linked)]);
+        let s = sidebar_by_worktree(&repo, &key(r.path()), vec![key(r.path()), key(&linked)], &Seen::default());
         assert_eq!(s.len(), 2);
         assert_eq!(opened() - before, 1 + 2 + 2);
+    }
+
+    /// `Seen` reports a change of what the sidebar listed (a gitlink, `.gitmodules`, a
+    /// checkout's HEAD) once, and nothing else; without submodules, it reads nothing.
+    #[test]
+    fn seen_reports_a_change_of_what_the_sidebar_listed() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let root = crate::platform::fs::canonicalize(r.path()).unwrap();
+        let seen = Seen::default();
+        // A fresh handle each time, so its index is read as it is now.
+        let check = || seen.check(&gix::open(&root).unwrap(), &root, std::slice::from_ref(&root));
+        sidebar_by_worktree(&gix::open(&root).unwrap(), &root, vec![root.clone()], &seen);
+        assert!(!check(), "as listed");
+        r.write("notes.txt", "n\n");
+        r.git(&["add", "notes.txt"]);
+        assert!(!check(), "an ordinary file staged");
+        r.git(&["rm", "-q", "--cached", "vendor/parser"]);
+        assert!(check(), "a gitlink unstaged");
+        assert!(!check(), "reported once");
+        r.git(&["reset", "-q", "--", "vendor/parser"]);
+        assert!(check(), "and staged again");
+        // (The parser's URL is its config's, which `--init` wrote; the theme isn't initialised.)
+        r.git(&["config", "-f", ".gitmodules", "submodule.vendor/theme.url", "../elsewhere"]);
+        assert!(check(), ".gitmodules' URL");
+        r.git_in(&r.path().join("vendor/parser"), &["checkout", "-q", "HEAD~1"]);
+        assert!(check(), "a checkout's HEAD");
+        assert!(!check());
+
+        let plain = TestRepo::new();
+        plain.commit("one");
+        let root = crate::platform::fs::canonicalize(plain.path()).unwrap();
+        let repo = gix::open(&root).unwrap();
+        sidebar_by_worktree(&repo, &root, vec![root.clone()], &seen);
+        plain.write("notes.txt", "n\n");
+        plain.git(&["add", "notes.txt"]);
+        let before = OPENED.with(|n| n.get());
+        assert!(!seen.check(&repo, &root, std::slice::from_ref(&root)));
+        assert_eq!(OPENED.with(|n| n.get()), before);
     }
 
     #[test]

@@ -71,18 +71,21 @@ describe('AppShell: tabs inside <Activity> (spec §4.4, Review Focus 1)', () => 
     await waitFor(() => expect(wip().isWatched()).toBe(false));
   });
 
-  it('an index change reloads the sidebar only in a repository with submodules (its Submodules panel lists the index)', async () => {
+  it('an index change reloads the graph alone, even with submodules; the core\'s `submodules` reloads the sidebar', async () => {
     render(<AppShell />);
     expect(await screen.findByText('commit r1c1')).toBeInTheDocument();
     await waitFor(() => expect(api.sidebar).toHaveBeenCalled());
     const reads = () => api.sidebar.mock.calls.filter((c) => (c as unknown[])[0] === 1).length;
     const before = reads();
-    emit({ type: 'repoChanged', repo: 1, kinds: ['index'], worktrees: ['/a'], versions: {} });
-    await waitFor(() => expect(graphCalls(1).length).toBeGreaterThan(1));
-    expect(reads()).toBe(before);
     act(() => useRuntime.getState().patch('a', { info: { remotes: [], mainWorktree: null, commonDir: '/a/.git', submodules: { '/a': { unmapped: [] } } } }));
-    emit({ type: 'repoChanged', repo: 1, kinds: ['index'], worktrees: ['/a'], versions: {} });
+    let graphs = graphCalls(1).length;
+    emit({ type: 'repoChanged', repo: 1, kinds: ['worktree', 'index'], worktrees: ['/a'], versions: {} });
+    await waitFor(() => expect(graphCalls(1).length).toBeGreaterThan(graphs));
+    expect(reads()).toBe(before);
+    graphs = graphCalls(1).length;
+    emit({ type: 'repoChanged', repo: 1, kinds: ['index', 'submodules'], worktrees: ['/a'], versions: {} });
     await waitFor(() => expect(reads()).toBe(before + 1));
+    expect(graphCalls(1).length).toBeGreaterThan(graphs);
   });
 
   it('only the active tab loads, watches and listens; switching moves all three', async () => {

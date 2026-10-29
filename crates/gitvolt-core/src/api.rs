@@ -1586,6 +1586,8 @@ pub struct Api {
     pub(crate) write_locks: Mutex<HashMap<PathBuf, Arc<crate::write::queue::RepoWrites>>>,
     /// Each repository's remotes' tags, as the last fetch listed them (`remote_tags.rs`).
     pub(crate) remote_tags: crate::remote_tags::RemoteTags,
+    /// Each worktree's submodules as the sidebar last listed them (`repoChanged`'s `submodules`).
+    pub(crate) submodules: Arc<crate::submodules::Seen>,
     /// GitVolt's data dir (spec #2 §5.1): the journal and temp index files. A private temp dir
     /// unless `with_data_dir` (only the app passes `paths::data_dir()`).
     pub(crate) data_dir: PathBuf,
@@ -1794,6 +1796,7 @@ impl Api {
             write_guard: None,
             write_locks: Mutex::new(HashMap::new()),
             remote_tags: Default::default(),
+            submodules: Default::default(),
             data_dir,
             data_tmp,
             clock: crate::journal::system_clock(),
@@ -3043,7 +3046,7 @@ impl Api {
             }
             Request::Sidebar { repo } => {
                 let h = self.handle(repo)?;
-                let mut s = crate::shelldata::sidebar(&h.repo, &h.workdir).await?;
+                let mut s = crate::shelldata::sidebar(&h.repo, &h.workdir, &self.submodules).await?;
                 crate::write::rewrites::annotate(&self.data_dir, &h.common_dir, &h.repo.to_thread_local(), &mut s.locals);
                 to_json(s)
             }

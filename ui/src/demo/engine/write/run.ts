@@ -245,7 +245,7 @@ export class WriteCx {
 export const NO_EXPECT: Expect = { head: null, refs: {} };
 
 /** `ChangeKind`'s declaration order (the core's `BTreeSet<ChangeKind>`). */
-export const KIND_ORDER: ChangeKind[] = ['worktree', 'index', 'refs', 'head', 'stash', 'config', 'state'];
+export const KIND_ORDER: ChangeKind[] = ['worktree', 'index', 'refs', 'head', 'stash', 'config', 'state', 'submodules'];
 
 /** §3.2 step 2. */
 function preflight(wt: WriteWt, expect: Expect, extra: string[], allowedInProgress: boolean): Before {
