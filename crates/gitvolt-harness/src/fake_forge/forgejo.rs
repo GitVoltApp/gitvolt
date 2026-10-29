@@ -529,8 +529,8 @@ fn create_review(st: &mut ForgejoSeed, r: &FakeRequest, me: &str, n: &str, repo:
     let who = login_json(st, me, r.base);
     let p = &mut st.pulls[i];
     p.timeline.push(json!({ "type": "review", "body": body, "review_id": x.id, "user": who }));
-    // A submitted review answers the user's review request.
-    if x.state != "PENDING" {
+    // An approval or a change request answers the user's review request; a comment doesn't.
+    if x.state == "APPROVED" || x.state == "REQUEST_CHANGES" {
         p.requested_reviewers.retain(|u| u != me);
     }
     Reply::json(review_json(st, &x, r.base))
@@ -558,8 +558,8 @@ fn submit_review(st: &mut ForgejoSeed, r: &FakeRequest, me: &str, n: &str, id: &
     let who = login_json(st, me, r.base);
     let p = &mut st.pulls[i];
     p.timeline.push(json!({ "type": "review", "body": body, "review_id": x.id, "user": who }));
-    // A submitted review answers the user's review request.
-    if x.state != "PENDING" {
+    // An approval or a change request answers the user's review request; a comment doesn't.
+    if x.state == "APPROVED" || x.state == "REQUEST_CHANGES" {
         p.requested_reviewers.retain(|u| u != me);
     }
     Reply::json(review_json(st, &x, r.base))

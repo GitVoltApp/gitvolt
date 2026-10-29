@@ -93,6 +93,11 @@ async fn a_review_with_drafts_is_one_timeline_entry() {
     assert_eq!(review_entries(&f, DEV_PR), 1);
     let mine = pull(&f, DEV_PR).reviews.into_iter().find(|r| r.author == "ada").unwrap();
     assert_eq!((mine.state.as_str(), mine.comments.len(), mine.commit_id.as_str()), ("COMMENT", 2, head.as_str()));
+    // Forgejo still lists ada as requested; GitVolt shows the review.
+    assert_eq!(pull(&f, DEV_PR).requested_reviewers, ["ada"]);
+    let review = p.mr_detail(&g, DEV_PR).await.unwrap().value.mr.review;
+    let ada = review.reviews.iter().find(|r| r.user.username == "ada").unwrap();
+    assert_eq!((review.decision, ada.state), (ReviewDecision::None, ReviewState::Commented));
 }
 
 /// Forgejo's own rules hold: Request changes needs a message, comments or not; nobody approves

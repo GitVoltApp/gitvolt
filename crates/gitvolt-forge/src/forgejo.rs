@@ -251,7 +251,9 @@ pub mod json {
     }
 
     /// Each user's latest decisive review (a comment doesn't undo an approval; a dismissal does);
-    /// requested reviewers (and a re-request after a review) are pending.
+    /// a review request is pending until a review after it, a comment included. A re-request is a
+    /// `REQUEST_REVIEW` entry in the reviews, so `requested_reviewers` adds only the users with no
+    /// standing review: Forgejo keeps a reviewer there after a comment, and has after an approval.
     pub fn review(reviews: &[Value], requested: &Value) -> ReviewSummary {
         let mut latest: Vec<ForgeReview> = Vec::new();
         for r in reviews {
@@ -275,13 +277,16 @@ pub mod json {
                 }
                 (None, Some(s)) => latest.push(ForgeReview { user: u, state: s, submitted_at: at }),
                 (None, None) => latest.push(ForgeReview { user: u, state: ReviewState::Commented, submitted_at: at }),
+                (Some(x), None) if x.state == ReviewState::Pending => {
+                    x.state = ReviewState::Commented;
+                    x.submitted_at = at;
+                }
                 (Some(_), None) => {}
             }
         }
         for u in users(requested) {
-            match latest.iter_mut().find(|x| x.user.id == u.id) {
-                Some(x) => x.state = ReviewState::Pending,
-                None => latest.push(ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None }),
+            if !latest.iter().any(|x| x.user.id == u.id) {
+                latest.push(ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None });
             }
         }
         let approvals = latest.iter().filter(|x| x.state == ReviewState::Approved).count() as u32;
@@ -1865,6 +1870,16 @@ mod tests {
         assert_eq!(json::review(&[r(2, "grace", "APPROVED"), dismissed], &Value::Null).decision, ReviewDecision::None);
         assert_eq!(json::review(&[r(2, "grace", "APPROVED"), r(2, "grace", "REQUEST_REVIEW")], &Value::Null).decision, ReviewDecision::ReviewRequired, "asked again");
         assert_eq!(json::review(&[r(2, "grace", "REQUEST_CHANGES"), r(1, "ada", "PENDING")], &json!([])).decision, ReviewDecision::ChangesRequested);
+        // Still in `requested_reviewers` after only commenting: reviewed, until asked again.
+        let states = |s: ReviewSummary| (s.decision, s.reviews.iter().map(|x| x.state).collect::<Vec<_>>());
+        assert_eq!(states(json::review(&[r(3, "joan", "REQUEST_REVIEW"), r(3, "joan", "COMMENT")], &json!([user(3, "joan")]))), (ReviewDecision::None, vec![ReviewState::Commented]));
+        assert_eq!(states(json::review(&[r(3, "joan", "COMMENT")], &json!([user(3, "joan")]))), (ReviewDecision::None, vec![ReviewState::Commented]));
+        assert_eq!(states(json::review(&[r(3, "joan", "COMMENT"), r(3, "joan", "REQUEST_REVIEW")], &json!([user(3, "joan")]))), (ReviewDecision::ReviewRequired, vec![ReviewState::Pending]));
+        assert_eq!(states(json::review(&[r(3, "joan", "APPROVED"), r(3, "joan", "REQUEST_REVIEW"), r(3, "joan", "COMMENT")], &json!([user(3, "joan")]))), (ReviewDecision::None, vec![ReviewState::Commented]));
+        // Approved, earlier ones dismissed, and still listed as requested: approved.
+        let mut gone = r(3, "joan", "REQUEST_CHANGES");
+        gone["dismissed"] = true.into();
+        assert_eq!(states(json::review(&[gone, r(9, "bot", "PENDING"), r(3, "joan", "APPROVED")], &json!([user(3, "joan")]))), (ReviewDecision::Approved, vec![ReviewState::Approved]));
     }
 
     #[test]
