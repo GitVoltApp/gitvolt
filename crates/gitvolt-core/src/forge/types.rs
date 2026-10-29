@@ -282,6 +282,11 @@ pub struct ForgeReview {
     pub state: ReviewState,
     #[ts(type = "number | null")]
     pub submitted_at: Option<i64>,
+    /// Still asked on the forge after reviewing (Forgejo keeps a reviewer who commented), so the
+    /// request can be withdrawn. A pending review always can.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub requested: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

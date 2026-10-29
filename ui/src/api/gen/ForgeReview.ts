@@ -2,4 +2,9 @@
 import type { ForgeUser } from "./ForgeUser";
 import type { ReviewState } from "./ReviewState";
 
-export type ForgeReview = { user: ForgeUser, state: ReviewState, submittedAt: number | null, };
+export type ForgeReview = { user: ForgeUser, state: ReviewState, submittedAt: number | null, 
+/**
+ * Still asked on the forge after reviewing (Forgejo keeps a reviewer who commented), so the
+ * request can be withdrawn. A pending review always can.
+ */
+requested?: boolean, };

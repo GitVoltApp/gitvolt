@@ -316,7 +316,7 @@ pub mod json {
                 decision: if requested.is_empty() { ReviewDecision::None } else { ReviewDecision::ReviewRequired },
                 approvals: 0,
                 approvals_required: None,
-                reviews: requested.into_iter().map(|u| ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None }).collect(),
+                reviews: requested.into_iter().map(|u| ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None, requested: false }).collect(),
             },
             conflicts: v["mergeable"].as_bool().map(|m| !m),
             labels: labels_of(&v["labels"]).0,
@@ -421,15 +421,15 @@ pub mod json {
                     x.state = s;
                     x.submitted_at = at;
                 }
-                (None, Some(s)) => latest.push(ForgeReview { user: u, state: s, submitted_at: at }),
-                (None, None) => latest.push(ForgeReview { user: u, state: ReviewState::Commented, submitted_at: at }),
+                (None, Some(s)) => latest.push(ForgeReview { user: u, state: s, submitted_at: at, requested: false }),
+                (None, None) => latest.push(ForgeReview { user: u, state: ReviewState::Commented, submitted_at: at, requested: false }),
                 (Some(_), None) => {}
             }
         }
         for u in users(requested) {
             match latest.iter_mut().find(|x| x.user.id == u.id) {
                 Some(x) => x.state = ReviewState::Pending,
-                None => latest.push(ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None }),
+                None => latest.push(ForgeReview { user: u, state: ReviewState::Pending, submitted_at: None, requested: false }),
             }
         }
         let approvals = latest.iter().filter(|x| x.state == ReviewState::Approved).count() as u32;

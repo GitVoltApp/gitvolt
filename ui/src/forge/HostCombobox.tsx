@@ -7,6 +7,8 @@ interface Props {
   value: string;
   suggestions: HostSuggestion[];
   onChange(host: string): void;
+  /** The field was left (not the window): the host typed is settled. */
+  onBlur?(): void;
   inputRef?: Ref<HTMLInputElement>;
   /** Reports whether the suggestion list is open, so the panel's Esc closes the list first. */
   onOpenChange?(open: boolean): void;
@@ -19,7 +21,7 @@ interface Props {
  * Typing any host is fine. Arrows move, Enter picks, Esc closes the list. The list floats
  * (absolute), so opening it shifts nothing.
  */
-export function HostCombobox({ value, suggestions, onChange, inputRef, onOpenChange, closeRef }: Props) {
+export function HostCombobox({ value, suggestions, onChange, onBlur, inputRef, onOpenChange, closeRef }: Props) {
   const [open, setOpen] = useState(false);
   if (closeRef) closeRef.current = () => setOpen(false);
   const [cursor, setCursor] = useState(0);
@@ -57,7 +59,7 @@ export function HostCombobox({ value, suggestions, onChange, inputRef, onOpenCha
         onFocus={() => setOpen(true)}
         // Under GNOME a press anywhere bounces the window's focus (ui/windowBlur.ts): that blur
         // would close the list before the press reaches its option.
-        onBlur={(e) => { if (isWindowBlur()) refocusWhenWindowReturns(e.currentTarget); else setOpen(false); }}
+        onBlur={(e) => { if (isWindowBlur()) refocusWhenWindowReturns(e.currentTarget); else { setOpen(false); onBlur?.(); } }}
         onChange={(e) => { onChange(e.target.value); setOpen(true); setCursor(0); }}
         onKeyDown={onKey}
       />

@@ -28,6 +28,21 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Fixed
 
+- **A review that only commented shows.** The Reviews card said "No reviews yet" (and the hover
+  card nothing) while the only reviews were comments; it now says "Reviewed by …", beside a
+  pending review request too. On Forgejo, whose request list names approvers too, a reviewer
+  who approved or commented showed as still requested: GitVolt now reads who is asked from the
+  PR's reviews. A comment shows while its request stays open (it can still be withdrawn, and the
+  PR still needs a review); an approval or a change request answers it; a dismissed approval
+  falls back to the comment before it. The Review requested filter leaves out a PR you've
+  answered, reading the reviews of each PR that lists you.
+- **Forgejo's Create token** opens Forgejo's new-token form (`/user/settings/applications/tokens/new`),
+  and a host pasted as an address (`https://git.example.dev/`) is detected by its host, so a Hosts
+  setting or the host's name picks its forge instead of the GitLab default.
+- **A Forgejo (or GitLab) on any host name is recognised** when you add an account: a host whose
+  name doesn't say is asked which forge it runs, without a token (`/api/v1/version`, then
+  `/api/v4/version`), once you leave the Host field or click Create token or Add account, so a
+  self-hosted Forgejo such as `git.example.dev` picks Forgejo by itself.
 - **Custom themes in the editor:** switching to a custom theme left the editor in the old
   theme's colours, and after a restart the editor failed to load with "Illegal theme name!".
   Should the editor ever refuse a custom theme's colours again, it falls back to the base

@@ -105,6 +105,19 @@ impl ForgeConnector for Forge {
     fn public_video<'a>(&'a self, url: &'a str) -> ForgeFuture<'a, ForgeImage> {
         Box::pin(crate::images::fetch_public_video(url, self.cfg.only_overrides))
     }
+
+    /// `detect::detect` at the host's web address (the harness: its fake's, and no other host).
+    fn detect_host<'a>(&'a self, host: &'a str) -> ForgeFuture<'a, Option<ForgeKind>> {
+        let base = match self.cfg.overrides.get(host) {
+            Some(e) => Some(e.web.trim_end_matches('/').to_string()),
+            None if self.cfg.only_overrides => None,
+            None => Some(format!("https://{host}")),
+        };
+        Box::pin(async move {
+            let Some(base) = base else { return Ok(None) };
+            tokio::task::spawn_blocking(move || crate::detect::detect(&base)).await.map_err(|e| GbError::other(format!("asking {host} which forge it runs failed: {e}")))
+        })
+    }
     // --- end 5A T2 ---
 }
 

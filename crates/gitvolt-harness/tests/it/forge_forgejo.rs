@@ -93,6 +93,13 @@ async fn a_review_with_drafts_is_one_timeline_entry() {
     assert_eq!(review_entries(&f, DEV_PR), 1);
     let mine = pull(&f, DEV_PR).reviews.into_iter().find(|r| r.author == "ada").unwrap();
     assert_eq!((mine.state.as_str(), mine.comments.len(), mine.commit_id.as_str()), ("COMMENT", 2, head.as_str()));
+    // Forgejo still lists ada as requested; GitVolt shows the review.
+    assert_eq!(pull(&f, DEV_PR).requested_reviewers, ["ada"]);
+    let review = p.mr_detail(&g, DEV_PR).await.unwrap().value.mr.review;
+    let ada = review.reviews.iter().find(|r| r.user.username == "ada").unwrap();
+    assert_eq!((review.decision, ada.state, ada.requested), (ReviewDecision::ReviewRequired, ReviewState::Commented, true));
+    let queue = p.open_mrs_light(&g, MrFilter::ReviewRequested).await.unwrap().value;
+    assert_eq!(queue.iter().map(|m| m.number).collect::<Vec<_>>(), [DEV_PR], "a comment answers nothing");
 }
 
 /// Forgejo's own rules hold: Request changes needs a message, comments or not; nobody approves
@@ -109,6 +116,10 @@ async fn forgejo_refuses_what_it_refuses() {
     assert_eq!(p.review_drafts(&g, DEV_PR).await.unwrap().drafts.len(), 1, "a refused review keeps its drafts");
     p.submit_review(&g, DEV_PR, &ReviewSubmit { event: ReviewEvent::RequestChanges, body: "Explain the lines".into() }).await.unwrap();
     assert_eq!(pull(&f, DEV_PR).reviews.iter().filter(|r| r.author == "ada").map(|r| r.state.as_str()).collect::<Vec<_>>(), ["REQUEST_CHANGES"]);
+    // Forgejo still lists ada with the PR; its reviews say the request was answered.
+    assert!(p.open_mrs_light(&g, MrFilter::ReviewRequested).await.unwrap().value.is_empty());
+    let read = f.requests().iter().filter(|r| r.method == "GET" && r.path == format!("/api/v1/repos/team/gadget/pulls/{DEV_PR}/reviews")).count();
+    assert!(read > 0, "listed, so its reviews decide");
     assert!(p.approve(&g, 5).await.unwrap_err().message.contains("approve your own pull"));
 }
 

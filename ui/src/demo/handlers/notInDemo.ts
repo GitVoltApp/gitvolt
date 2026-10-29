@@ -33,6 +33,7 @@ const WHAT: Record<NotInDemoMethod, string> = {
   addForgeAccount: 'forge accounts',
   removeForgeAccount: 'forge accounts',
   forgeTokenPage: 'forge accounts',
+  detectForge: 'forge accounts',
   updateDownload: 'updates',
   updateInstall: 'updates',
   updateRestart: 'updates',

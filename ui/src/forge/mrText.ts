@@ -27,9 +27,17 @@ export function reviewText(r: ReviewSummary): string {
     case 'reviewRequired': {
       if (count) return count;
       const pending = names(r, 'pending');
-      return pending ? `Review requested from ${pending}` : 'Review required';
+      const reviewed = names(r, 'commented');
+      if (pending) return reviewed ? `Reviewed by ${reviewed}; review requested from ${pending}` : `Review requested from ${pending}`;
+      // A comment doesn't meet the rule: the merge still waits for a review.
+      return reviewed ? `Reviewed by ${reviewed}; review required` : 'Review required';
     }
-    default: return r.approvals > 0 ? `Approved by ${names(r, 'approved')}` : 'No reviews yet';
+    default: {
+      if (r.approvals > 0) return `Approved by ${names(r, 'approved')}`;
+      // A review that only commented decides nothing, but it was given.
+      const reviewed = names(r, 'commented');
+      return reviewed ? `Reviewed by ${reviewed}` : 'No reviews yet';
+    }
   }
 }
 
