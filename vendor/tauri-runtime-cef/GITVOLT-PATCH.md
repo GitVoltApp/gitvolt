@@ -321,7 +321,13 @@ page sees no button held afterwards; a click on ☰ in the title bar area reache
 double click zooms the window to the screen's visible frame and a second one restores it (once
 each: AppKit doesn't zoom it as well); the yellow light minimizes, the green one enters full
 screen (the page then has no slot, ☰ in the corner), and the window comes back out of it with
-the slot; the red one closes the window and the app exits.
+the slot; the red one closes the window and the app exits. Since then, the same on `macos-14`
+(1920×1080) and in light and dark appearance; System Settings' double click changed while the app
+runs (Minimize minimizes, None does nothing), read again when the window comes back to the front;
+Ctrl+Cmd+F (Window › Enter Full Screen, shown by macOS as Globe+F) entering and leaving full
+screen; and all of it but the page's side on the release app installed from the self-signed
+`.dmg` (`mac-port.yml`, job `package`). The runner's virtual display offers no HiDPI mode, so
+Retina wasn't checked.
 
 **Tests:** `cargo test -p tauri-runtime-cef --lib platform::macos` (the button mask, which
 events are presses), on macOS.
@@ -397,8 +403,19 @@ gets the pointer there. Win+Z opens the flyout for the window meanwhile.
 - **Restarts:** after one, the client and window rectangles are identical (no drift); with
   "Use the system title bar" on, the 31 px system caption is back.
 
-The bottom border wasn't exercised there: the default placement put it under the taskbar. It is
-the same code as the sides (`hit_test`'s unit tests cover it).
+Then `windows-titlebar.yml` (`ui/scripts/win-titlebar.ps1`) on `windows-2025` and `windows-2022`
+(Server 2022: Windows 10's shell), with the window moved clear of the taskbar first:
+- **The bottom border and the bottom-right corner:** `IDC_SIZENS` and `IDC_SIZENWSE`, and they
+  resize by exactly +80 px and −100, −60 px, on both.
+- **Windows 10's look:** the same 8 px border and DWM frame. Its 1 px edge is drawn at the left,
+  right and bottom (it changes with activation) but not at the top, where the page's bar meets the
+  desktop with no line; Windows 11 draws its edge over the top row too. Maximised, the client area
+  is the work area on both (1040 px high above Server 2022's 40 px taskbar).
+- **150%:** switched live (`DisplayConfigSetDeviceInfo`, as Settings does): the window follows to
+  144 dpi with an 11 px border, and started at 150% the bar, the right and bottom borders, the
+  page's top edge, maximise to the work area, restore and a restart's size all hold.
+- **Shake** couldn't be checked: with `DisallowShaking` 0 and Explorer restarted, shaking even
+  Notepad's own title bar (`SendInput`, three speeds) minimized nothing on either runner.
 
 **Tests:** `cargo test -p tauri-runtime-cef --lib window_frame` (the client area, the hit test
 of each edge and corner, the menu's states, the point in an `LPARAM`), on every platform.

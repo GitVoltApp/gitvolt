@@ -23,6 +23,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   Settings › Desktop & Dock says (zoom, minimise or nothing). In full screen the traffic lights
   hide, and ☰ moves to the corner. **Settings › Appearance › Use the system title bar** brings
   back the system's title bar, from the next start.
+- **macOS: Window › Enter Full Screen (Ctrl+Cmd+F).** The menu bar had no full screen item, so
+  Ctrl+Cmd+F did nothing; it now enters full screen and, as Exit Full Screen, leaves it.
 
 ### Fixed
 

@@ -88,6 +88,10 @@ describe('the shortcuts on macOS', () => {
     expect(at({ key: '1', code: 'Digit1', ctrlKey: true })).toBe('view.focusSidebar');
   });
 
+  it("Ctrl+Cmd+F is no app chord: it goes on to the Window menu's Enter Full Screen", () => {
+    expect(shortcuts.comboOf(keydown({ key: 'f', code: 'KeyF', metaKey: true, ctrlKey: true }))).toBe('');
+  });
+
   it('Cmd+A / C / V / X / Z / Shift+Z in a text field stay native editing: nothing prevents them', async () => {
     const { installZoom } = await import('../ui/zoom');
     const { installFontZoom } = await import('../diff/fontZoom');

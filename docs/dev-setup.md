@@ -591,6 +591,13 @@ Windows and Node.
   --locked --features cli`) and the .NET SDK (WiX is a .NET tool); NSIS, WiX and rcedit are
   downloaded into `target\windows-tools` on first use. docs/releasing.md has the details, the
   versions and the signing hook.
+- **The title bar on GitHub's runners:** `.github/workflows/windows-titlebar.yml` (on demand: the
+  Actions tab, `gh workflow run windows-titlebar.yml --ref <branch>`, or the `windows` label on a
+  pull request) builds the release app as release.yml does, then `ui/scripts/win-titlebar.ps1`
+  drives its title bar with real input on Windows Server 2025 and 2022 (Windows 11's and 10's
+  shells): the frame and its edges, moves, resizes from every border, the buttons, the window
+  menu, Aero Snap, shake, restarts, the system title bar setting, and 150% scaling when the
+  session can switch to it. `reuse-run` drives an earlier run's build.
 
 ## macOS
 
@@ -638,4 +645,5 @@ and the pinned Tauri CLI (`cargo install tauri-cli --version =3.0.0-alpha.5 --lo
   (`macos-app`). Job `package` builds the release `.dmg` with `just package-macos`, copies its
   app to `/Applications`, launches it with `open -a` on a folder and opens a second one, checks
   the tabs (in the profile, since a release build refuses CDP) and the sandbox, then runs the
-  updater's install over the running app from the same `.dmg` (`macos-package`, with the `.dmg`).
+  updater's install over the running app from the same `.dmg`, and the title bar checks on the
+  installed app (`macos-package`, with the `.dmg`).

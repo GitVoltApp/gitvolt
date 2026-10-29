@@ -8,6 +8,8 @@
 //   mac-window lights <pid>               JSON: Accessibility trust, and the front window's buttons
 //   mac-window fullscreen <pid> <0|1>     sets the front window's AXFullScreen
 //   mac-window size <pid> <w> <h>         sets the front window's AXSize
+//   mac-window menu <pid> <title>         JSON: the menu bar's menu <title>, its items' titles, keys
+//                                         and modifiers (Accessibility's AXMenuItemCmd* values)
 //   mac-window move <x> <y>
 //   mac-window drag <x1> <y1> <x2> <y2>   press, move a little, wait, then on to x2,y2 and release
 //   mac-window click <x> <y> [<count>]    a click, or a double click with <count> 2
@@ -54,6 +56,15 @@ func axFrame(_ element: AXUIElement) -> [String: Double]? {
   return rect(CGRect(origin: p, size: s))
 }
 
+func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+  var value: CFTypeRef?
+  return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
+}
+
+func children(_ element: AXUIElement) -> [AXUIElement] {
+  (attribute(element, kAXChildrenAttribute) as? [AXUIElement]) ?? []
+}
+
 let args = CommandLine.arguments.dropFirst().map { $0 }
 let num = { (i: Int) -> Double in Double(args[i])! }
 
@@ -93,6 +104,16 @@ case "size":
   var size = CGSize(width: num(2), height: num(3))
   let set = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, AXValueCreate(.cgSize, &size)!)
   emit(["ok": set == .success])
+case "menu":
+  let app = AXUIElementCreateApplication(pid_t(Int32(args[1])!))
+  guard let bar = attribute(app, kAXMenuBarAttribute) else { emit(["trusted": AXIsProcessTrusted(), "found": false]); exit(0) }
+  let titles = children(bar as! AXUIElement).map { (attribute($0, kAXTitleAttribute) as? String) ?? "" }
+  guard let item = children(bar as! AXUIElement).first(where: { (attribute($0, kAXTitleAttribute) as? String) == args[2] }),
+    let menu = children(item).first else { emit(["bar": titles, "found": false]); exit(0) }
+  emit(["bar": titles, "found": true, "items": children(menu).map { i -> [String: Any] in
+    ["title": (attribute(i, kAXTitleAttribute) as? String) ?? "", "enabled": (attribute(i, kAXEnabledAttribute) as? Bool) ?? false,
+     "key": (attribute(i, kAXMenuItemCmdCharAttribute) as? String) ?? "", "modifiers": (attribute(i, kAXMenuItemCmdModifiersAttribute) as? Int) ?? -1]
+  }])
 case "move":
   post(.mouseMoved, CGPoint(x: num(1), y: num(2)))
 case "drag":
@@ -143,6 +164,6 @@ case "key":
     pause(0.05)
   }
 default:
-  FileHandle.standardError.write("usage: mac-window windows|screen|lights|fullscreen|move|drag|click|key …\n".data(using: .utf8)!)
+  FileHandle.standardError.write("usage: mac-window windows|screen|lights|fullscreen|size|menu|move|drag|click|key …\n".data(using: .utf8)!)
   exit(2)
 }

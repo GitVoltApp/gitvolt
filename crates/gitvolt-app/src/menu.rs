@@ -39,6 +39,7 @@ pub enum Native {
     SelectAll,
     Minimize,
     Zoom,
+    FullScreen,
 }
 
 /// A menu of the bar. `id`: Tauri's id for the Window or Help menu, which AppKit then manages
@@ -89,7 +90,12 @@ pub const MENU_BAR: &[Menu] = &[
             Item::Native(Native::SelectAll),
         ],
     },
-    Menu { id: Some(tauri::menu::WINDOW_SUBMENU_ID), title: "Window", items: &[Item::Native(Native::Minimize), Item::Native(Native::Zoom)] },
+    // No View menu, so Enter Full Screen is the Window menu's, as Apple puts it in an app without one.
+    Menu {
+        id: Some(tauri::menu::WINDOW_SUBMENU_ID),
+        title: "Window",
+        items: &[Item::Native(Native::Minimize), Item::Native(Native::Zoom), Item::Separator, Item::Native(Native::FullScreen)],
+    },
     Menu { id: Some(tauri::menu::HELP_SUBMENU_ID), title: "Help", items: &[action("help.shortcuts", "Keyboard Shortcuts", Some("Cmd+/"))] },
 ];
 
@@ -160,6 +166,9 @@ mod native {
             Native::Minimize => PredefinedMenuItem::minimize(app, None),
             // AppKit's Zoom (`performZoom:`): Tauri's "maximize" item.
             Native::Zoom => PredefinedMenuItem::maximize(app, Some("Zoom")),
+            // AppKit's `toggleFullScreen:` with Ctrl+Cmd+F; the window retitles it Exit Full Screen
+            // while it's in full screen.
+            Native::FullScreen => PredefinedMenuItem::fullscreen(app, Some("Enter Full Screen")),
         }
     }
 }
@@ -210,8 +219,14 @@ mod tests {
         use Native::*;
         let natives: Vec<_> = MENU_BAR[1].items.iter().filter_map(|i| if let Item::Native(n) = i { Some(*n) } else { None }).collect();
         assert_eq!(natives, [Undo, Redo, Cut, Copy, Paste, SelectAll]);
-        assert_eq!(MENU_BAR[2].items, [Item::Native(Minimize), Item::Native(Zoom)]);
         assert_eq!(MENU_BAR[3].items, [action("help.shortcuts", "Keyboard Shortcuts", Some("Cmd+/"))]);
+    }
+
+    /// Enter Full Screen (Ctrl+Cmd+F) too: without the item, the key does nothing.
+    #[test]
+    fn the_window_menu_minimizes_zooms_and_enters_full_screen() {
+        use Native::*;
+        assert_eq!(MENU_BAR[2].items, [Item::Native(Minimize), Item::Native(Zoom), Item::Separator, Item::Native(FullScreen)]);
     }
 
     #[test]

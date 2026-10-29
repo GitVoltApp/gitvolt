@@ -85,7 +85,8 @@ only. Drags and resizes go through winit's `drag_window` and `drag_resize_window
 Windows' own move and size loops (Aero Snap included), and `window_manager` shows the system menu
 at the pointer, or at the window's corner for Alt+Space (a shortcut of the page's, since the keys
 go to the browser). Snap layouts (the flyout over □) aren't there: the browser's window gets the
-hit test, not the top-level one (`GITVOLT-PATCH.md`).
+hit test, not the top-level one (`GITVOLT-PATCH.md`). `ui/scripts/win-titlebar.ps1` checks it with
+real input on the `windows-titlebar.yml` runners (Windows 11's and Windows 10's shells).
 
 **`gitvolt-harness`** serves the same `Api` over a WebSocket so the UI can run in a plain browser
 with no Tauri, and adds a fake GitHub/GitLab/Forgejo, fixture repositories and test-only routes. It's what

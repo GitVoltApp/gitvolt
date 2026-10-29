@@ -1,6 +1,6 @@
 # macOS (Apple Silicon): the core, forge and harness tests, a check of the whole workspace, the debug
-# app driven over CDP (its title bar with real input), and the release .dmg installed, launched
-# and updated in place.
+# app driven over CDP (its title bar with real input), and the release .dmg installed, launched,
+# updated in place and its title bar checked.
 # On demand only: run it from the Actions tab (workflow_dispatch), or label a pull request
 # `macos` (each time the label is added). Actions are pinned by commit, as in release.yml.
 name: macOS
@@ -604,6 +604,17 @@ jobs:
           screencapture -x out/shots/03-after-update.png || echo "screencapture failed"
           pgrep -f '/Applications/GitVolt.app/Contents/MacOS/GitVolt' >/dev/null || { echo "::error::It didn't start again"; exit 1; }
 
+      # The title bar checks (ui/scripts/mac-titlebar.mjs) on the installed app Update in place
+      # restarted: a release build refuses CDP, so only what the window server and Accessibility
+      # show. Last: it ends by closing the window.
+      - name: Title bar
+        id: titlebar
+        if: always() && steps.update.outcome == 'success'
+        run: |
+          swiftc -O -o "$RUNNER_TEMP/mac-window" ui/scripts/mac-window.swift
+          exe=/Applications/GitVolt.app/Contents/MacOS/GitVolt
+          node ui/scripts/mac-titlebar.mjs none out/titlebar "$RUNNER_TEMP/mac-window" "$(pgrep -f "$exe" | head -1)" "$exe" | tee out/titlebar.txt
+
       - name: Stop the app
         if: always()
         run: |
@@ -621,13 +632,15 @@ jobs:
           LAUNCH: ${{ steps.launch.outcome }}
           SANDBOX: ${{ steps.sandbox.outcome }}
           UPDATE: ${{ steps.update.outcome }}
+          TITLEBAR: ${{ steps.titlebar.outcome }}
         run: |
           {
-            echo "### Package: build $BUILD, dmg $DMG, launch $LAUNCH, sandbox $SANDBOX, update $UPDATE"
+            echo "### Package: build $BUILD, dmg $DMG, launch $LAUNCH, sandbox $SANDBOX, update $UPDATE, title bar $TITLEBAR"
             echo '```'
             grep -E 'package-macos|^error|panicked' "$RUNNER_TEMP/package.log" 2>/dev/null | tail -20 || true
             grep -E -A3 '^## (codesign --verify|spctl)' out/dmg.txt 2>/dev/null || true
             cat out/launch.txt out/sandbox.txt 2>/dev/null | head -60 || true
+            cat out/titlebar.txt 2>/dev/null || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
