@@ -50,14 +50,22 @@ pub fn check_comment(c: &NewReviewComment) -> Result<(), GbError> {
     Ok(())
 }
 
+/// Forgejo refuses a change request without a message, line comments or not.
+pub const FORGEJO_CHANGES_MESSAGE: &str = "Forgejo needs a message to request changes: say what to change";
+
 /// The one rule for a review's message, the composer's (`review`) and the pending review's
 /// (`submit_review`): with no drafts going in, Comment needs one, and so does Request changes,
 /// except on GitLab. There request changes is just the approval withdrawn, and an empty one is the
-/// retry of a part-way submit whose summary already went in (`SubmitOutcome::body_posted`).
+/// retry of a part-way submit whose summary already went in (`SubmitOutcome::body_posted`). Forgejo
+/// wants a message to request changes even with drafts going in (`review event … requires a body`).
 /// Approve never needs one. `kind` is `None` before the target is known: only the refusals that
 /// don't depend on it are made then, so they come before the forge is asked anything.
 pub(crate) fn check_review_message(review: &ReviewSubmit, drafts: u32, kind: Option<ForgeKind>) -> Result<(), GbError> {
-    if drafts > 0 || !review.body.trim().is_empty() {
+    let empty = review.body.trim().is_empty();
+    if empty && review.event == ReviewEvent::RequestChanges && kind == Some(ForgeKind::Forgejo) {
+        return Err(refuse(FORGEJO_CHANGES_MESSAGE));
+    }
+    if drafts > 0 || !empty {
         return Ok(());
     }
     match (review.event, kind) {
@@ -217,6 +225,9 @@ mod tests {
         assert_eq!(said(RequestChanges, "", 0, Some(ForgeKind::GitHub)).as_deref(), Some("Say what to change first"));
         assert_eq!(said(RequestChanges, "", 0, Some(ForgeKind::GitLab)), None, "GitLab's retry of a part-way one");
         assert_eq!(said(Comment, "", 2, Some(ForgeKind::GitHub)), None, "the drafts are the review");
+        assert_eq!(said(Comment, "", 2, Some(ForgeKind::Forgejo)), None);
+        assert_eq!(said(RequestChanges, "", 2, Some(ForgeKind::Forgejo)).as_deref(), Some(FORGEJO_CHANGES_MESSAGE), "Forgejo wants one even with drafts");
+        assert_eq!(said(RequestChanges, "", 0, Some(ForgeKind::Forgejo)).as_deref(), Some(FORGEJO_CHANGES_MESSAGE));
         assert_eq!(said(Approve, "", 0, Some(ForgeKind::GitHub)), None);
         assert_eq!(said(RequestChanges, "Fix it", 0, Some(ForgeKind::GitHub)), None);
     }

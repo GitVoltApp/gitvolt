@@ -4,9 +4,16 @@
 //!   the submodules, so it runs as a network command (askpass, cancellable, no timeout, progress
 //!   as a fetch's), outside the write lock like a push.
 //! - Sync URLs: `git submodule sync --recursive`, which copies `.gitmodules`' URLs into the config.
+//! - Add (the sidebar's Submodules +): `git submodule add [-b <branch>] -- <url> [<path>]`, a
+//!   clone, so a network command as Update is, but under the write lock: after the clone, git
+//!   stages the gitlink and `.gitmodules`. A failed add leaves nothing of itself behind.
+//! - Remove (a submodule's sidebar menu): `git rm -- <path>`, which removes its checkout, its
+//!   gitlink and its `.gitmodules` entry, and stages both. Git refuses a checkout with changes of
+//!   its own; its repository stays in `.git/modules`, commits included.
 //!
-//! Neither is journaled (spec #2 §5.3 "Not journaled"): they move no ref of the superproject and
-//! don't touch its index, and what they change inside a submodule is that submodule's own.
+//! None is journaled (spec #2 §5.3 "Not journaled"): they move no ref of the superproject, and
+//! what they change inside a submodule is that submodule's own. Add and Remove only stage
+//! (`.gitmodules` and the gitlink), which the changes list shows and Unstage takes back.
 
 use crate::error::{ErrorDetail, GbError, GbErrorKind};
 use crate::events::{ChangeKind, OpKind};
@@ -14,7 +21,7 @@ use crate::git::GitInvocation;
 use crate::journal::UndoKind;
 use crate::write::{Plan, Pre, Staging, WriteCx, WriteIntent};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -32,14 +39,9 @@ pub(crate) struct UpdateSubmodules {
     pub confirm: bool,
 }
 
-/// A repository checked out at `path` in `root`: `gix::open` of that folder alone (never a
-/// discovery up to the superproject), and never through a symlink.
+/// The commit checked out in the submodule at `path` in `root` (`submodules::open_checkout`).
 fn checkout_head(root: &Path, path: &str) -> Option<String> {
-    let dir = crate::blob::safe_join(root, path).ok()?;
-    if !std::fs::symlink_metadata(&dir).ok()?.is_dir() {
-        return None;
-    }
-    gix::open(&dir).ok()?.head_id().ok().map(|id| id.to_string())
+    crate::submodules::open_checkout(root, path)?.head_id().ok().map(|id| id.to_string())
 }
 
 /// The submodules `only` names (or all) that an update would move, checked out at another commit
@@ -170,6 +172,196 @@ impl WriteIntent for SyncSubmodules {
         cx.run_git(inv).await?;
         cx.touch(ChangeKind::Config);
         Ok(SubmoduleOutcome { command: crate::netops::display_command(&args) })
+    }
+}
+
+pub(crate) struct AddSubmodule {
+    pub url: String,
+    /// Where in the worktree; git's default (the URL's last part) when `None`.
+    pub path: Option<String>,
+    /// The branch to check out and track (`-b`); the remote's HEAD when `None`.
+    pub branch: Option<String>,
+}
+
+impl AddSubmodule {
+    /// `progress`: git's progress lines too (what runs; the command shown leaves it out).
+    fn args(&self, progress: bool) -> Vec<&str> {
+        let mut args = vec!["submodule", "add"];
+        if progress {
+            args.push("--progress");
+        }
+        if let Some(b) = &self.branch {
+            args.extend(["-b", b.as_str()]);
+        }
+        args.extend(["--", self.url.as_str()]);
+        if let Some(p) = &self.path {
+            args.push(p.as_str());
+        }
+        args
+    }
+}
+
+impl WriteIntent for AddSubmodule {
+    type Outcome = SubmoduleOutcome;
+    fn kind(&self) -> OpKind {
+        OpKind::Submodule
+    }
+    fn label(&self) -> String {
+        match &self.path {
+            Some(p) => format!("add submodule {p}"),
+            None => "add submodule".into(),
+        }
+    }
+    fn undo(&self) -> Option<UndoKind> {
+        None
+    }
+    async fn plan(&self, _pre: &Pre<'_>) -> Result<Plan, GbError> {
+        if self.url.trim().is_empty() {
+            return Err(GbError::new(GbErrorKind::InvalidInput, "Enter the submodule's URL"));
+        }
+        if let Some(p) = &self.path {
+            crate::blob::check_relative(p)?;
+        }
+        if let Some(b) = &self.branch
+            && (b.is_empty() || b.starts_with('-'))
+        {
+            return Err(GbError::new(GbErrorKind::InvalidInput, format!("{b:?} isn't a branch name")));
+        }
+        Ok(Plan::default())
+    }
+    async fn run(&self, cx: &mut WriteCx<'_>) -> Result<SubmoduleOutcome, GbError> {
+        let command = crate::netops::display_command(&self.args(false));
+        let before = match &self.path {
+            Some(p) => Some(AddLeftovers::before(cx, p).await?),
+            None => None,
+        };
+        let (tx, progress) = crate::netops::forward_progress_to(cx.api.bus.clone(), cx.op.id, Some(cx.output()));
+        let inv = cx.net_git(self.args(true)).stream_stderr(tx);
+        // Not `network`: a stage or discard during the clone would hold `index.lock` when git
+        // stages the submodule, and the add would stop with its clone and config left behind.
+        let res = cx.network_locked(inv).await;
+        let _ = progress.await;
+        if res.is_err()
+            && let Some(before) = before
+        {
+            before.remove(cx).await;
+        }
+        // The clone, `.gitmodules` and the gitlink staged, and the submodule's URL in the config.
+        cx.touch(ChangeKind::Worktree);
+        cx.touch(ChangeKind::Index);
+        cx.touch(ChangeKind::Config);
+        res?;
+        Ok(SubmoduleOutcome { command })
+    }
+}
+
+/// What a `git submodule add` of `path` may leave behind when it stops after its clone (Cancel,
+/// a hook, an `index.lock` held outside GitVolt): the checkout, its repository in
+/// `.git/modules`, its `submodule.<path>` config and `.gitmodules`. Each as it was before the
+/// add (git names a submodule after its path).
+struct AddLeftovers {
+    path: String,
+    checkout: bool,
+    module_dir: PathBuf,
+    module: bool,
+    config: bool,
+    gitmodules: Option<Vec<u8>>,
+}
+
+/// `submodule.<path>.url` is in the repository's config.
+async fn has_config(cx: &WriteCx<'_>, path: &str) -> Result<bool, GbError> {
+    let key = format!("submodule.{path}.url");
+    let out = cx.api.cli.run(GitInvocation::new(cx.root, ["config", "--local", "--get", key.as_str()]).ok_exit(1)).await?;
+    Ok(!out.stdout.is_empty())
+}
+
+impl AddLeftovers {
+    async fn before(cx: &WriteCx<'_>, path: &str) -> Result<Self, GbError> {
+        let root = cx.root;
+        let git_path = format!("modules/{path}");
+        let out = cx.api.cli.run(GitInvocation::new(root, ["rev-parse", "--git-path", git_path.as_str()])).await?;
+        let module_dir = root.join(String::from_utf8_lossy(&out.stdout).trim());
+        let config = has_config(cx, path).await?;
+        Ok(Self {
+            path: path.to_string(),
+            checkout: std::fs::symlink_metadata(crate::blob::safe_join(root, path)?).is_ok(),
+            module: std::fs::symlink_metadata(&module_dir).is_ok(),
+            module_dir,
+            config,
+            gitmodules: std::fs::read(root.join(".gitmodules")).ok(),
+        })
+    }
+
+    /// After a failed add: unless git got as far as staging the gitlink, what it made is removed
+    /// (only what wasn't there before). Best effort: a failure here is logged, the add's stands.
+    async fn remove(self, cx: &mut WriteCx<'_>) {
+        let root = cx.root.to_path_buf();
+        let links = crate::api::blocking(move || crate::submodules::gitlinks(&root)).await;
+        if links.as_ref().is_ok_and(|l| l.iter().any(|(p, _)| *p == self.path)) {
+            return;
+        }
+        let mut errors = Vec::new();
+        if !self.checkout
+            && let Ok(dir) = crate::blob::safe_join(cx.root, &self.path)
+            && dir.exists()
+        {
+            errors.extend(std::fs::remove_dir_all(&dir).err().map(|e| e.to_string()));
+        }
+        if !self.module && self.module_dir.exists() {
+            errors.extend(std::fs::remove_dir_all(&self.module_dir).err().map(|e| e.to_string()));
+        }
+        if !self.config && has_config(cx, &self.path).await.unwrap_or(false) {
+            // Not `cx.git`: a cancelled add's token would stop this too.
+            let section = format!("submodule.{}", self.path);
+            let inv = GitInvocation::write(&cx.token, cx.root, ["config", "--local", "--remove-section", section.as_str()]);
+            errors.extend(cx.run_git(inv).await.err().map(|e| e.message));
+        }
+        let gitmodules = cx.root.join(".gitmodules");
+        if std::fs::read(&gitmodules).ok() != self.gitmodules {
+            let res = match &self.gitmodules {
+                Some(bytes) => std::fs::write(&gitmodules, bytes),
+                None => std::fs::remove_file(&gitmodules),
+            };
+            errors.extend(res.err().map(|e| e.to_string()));
+        }
+        if !errors.is_empty() {
+            tracing::warn!(target: "gitvolt_core::write", "a failed submodule add left some of itself behind: {errors:?}");
+        }
+    }
+}
+
+pub(crate) struct RemoveSubmodule {
+    pub path: String,
+}
+
+impl WriteIntent for RemoveSubmodule {
+    type Outcome = SubmoduleOutcome;
+    fn kind(&self) -> OpKind {
+        OpKind::Submodule
+    }
+    fn label(&self) -> String {
+        format!("remove submodule {}", self.path)
+    }
+    fn undo(&self) -> Option<UndoKind> {
+        None
+    }
+    async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
+        crate::blob::check_relative(&self.path)?;
+        let root = pre.root.to_path_buf();
+        let links = crate::api::blocking(move || crate::submodules::gitlinks(&root)).await?;
+        if !links.iter().any(|(p, _)| *p == self.path) {
+            return Err(GbError::new(GbErrorKind::InvalidInput, format!("{} isn't a submodule", self.path)));
+        }
+        Ok(Plan::default())
+    }
+    async fn run(&self, cx: &mut WriteCx<'_>) -> Result<SubmoduleOutcome, GbError> {
+        let args = ["rm", "-q", "--", self.path.as_str()];
+        let inv = cx.git(args);
+        let res = cx.run_git(inv).await;
+        cx.touch(ChangeKind::Worktree);
+        cx.touch(ChangeKind::Index);
+        res?;
+        Ok(SubmoduleOutcome { command: crate::netops::display_command(&["rm", "--", self.path.as_str()]) })
     }
 }
 
@@ -377,5 +569,157 @@ mod tests {
         assert_eq!(done["outcome"]["command"], "git submodule sync --recursive");
         assert_eq!(r.git(&["config", "submodule.vendor/parser.url"]), moved.display().to_string());
         assert_eq!(r.git_in(&r.path().join("vendor/parser"), &["config", "remote.origin.url"]), moved.display().to_string());
+    }
+
+    /// A local source as the submodule's URL; `protocol.file.allow` lets the test API clone it.
+    #[tokio::test]
+    async fn add_clones_the_submodule_and_stages_it() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let source = lib_source(&r);
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        let url = source.display().to_string();
+        let done = call(&api, "submoduleAdd", json!({"repo": id, "worktree": wt(r.path()), "url": url, "path": "vendor/lib", "branch": "main"})).await.unwrap();
+        assert_eq!(done["outcome"]["command"], format!("git submodule add -b main -- {url} vendor/lib"));
+        assert_eq!(done["journal"]["undo"], serde_json::Value::Null, "not journaled");
+        assert_eq!(head_in(&r, "vendor/lib"), Some(r.git_in(&source, &["rev-parse", "HEAD"])));
+        assert_eq!(r.git(&["status", "--porcelain", "--", ".gitmodules", "vendor/lib"]), "M  .gitmodules\nA  vendor/lib", "both staged");
+        assert_eq!(r.git(&["config", "-f", ".gitmodules", "submodule.vendor/lib.branch"]), "main");
+
+        for (params, why) in [
+            (json!({"url": " "}), "no URL"),
+            (json!({"url": url, "path": "../outside"}), "a path out of the worktree"),
+            (json!({"url": url, "branch": "-x"}), "an option for a branch"),
+        ] {
+            let mut p = params.clone();
+            p["repo"] = json!(id);
+            p["worktree"] = json!(wt(r.path()));
+            let err = call(&api, "submoduleAdd", p).await.unwrap_err();
+            assert_eq!(err.kind, GbErrorKind::InvalidInput, "{why}: {err:?}");
+        }
+    }
+
+    /// A source repository for Add, at `lib-src` beside the fixture's.
+    fn lib_source(r: &TestRepo) -> std::path::PathBuf {
+        let source = r.root().join("lib-src");
+        r.git_in(r.root(), &["init", "-q", "-b", "main", "lib-src"]);
+        std::fs::write(source.join("lib.txt"), "lib\n").unwrap();
+        r.git_in(&source, &["add", "-A"]);
+        r.git_in(&source, &["commit", "-q", "-m", "Start the lib"]);
+        source
+    }
+
+    /// A `post-checkout` hook (run in the new clone) with `body`, through `core.hooksPath`.
+    fn checkout_hook(r: &TestRepo, data: &std::path::Path, body: &str) -> crate::api::Api {
+        let hooks = r.root().join("hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        let hook = hooks.join("post-checkout");
+        std::fs::write(&hook, format!("#!/bin/sh\n{body}\n")).unwrap();
+        crate::platform::fs::set_mode(&hook, 0o755).unwrap();
+        api_with(data, &[("core.hooksPath", hooks.to_str().unwrap())])
+    }
+
+    /// Unlike Update, Add holds the write lock through its clone: git stages the submodule after
+    /// it, which a stage or discard meanwhile would meet on `index.lock`.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn add_holds_the_write_lock_through_its_clone() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let url = lib_source(&r).display().to_string();
+        let (started, go) = (r.root().join("clone-done"), r.root().join("go"));
+        let (s, g) = (crate::platform::fs::to_git_path(&started), crate::platform::fs::to_git_path(&go));
+        let data = tempfile::tempdir().unwrap();
+        let api = std::sync::Arc::new(checkout_hook(&r, data.path(), &format!("touch '{s}'\nwhile [ ! -e '{g}' ]; do sleep 0.05; done")));
+        let id = open(&api, &r).await;
+        let w = api.repo_writes(&api.handle(id).unwrap());
+        let (a2, wtp) = (api.clone(), wt(r.path()));
+        let add = tokio::spawn(async move { call(&a2, "submoduleAdd", json!({"repo": id, "worktree": wtp, "url": url, "path": "vendor/lib"})).await });
+        tokio::time::timeout(std::time::Duration::from_secs(20), async {
+            while !started.exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the add reached its clone's checkout");
+        assert!(w.lock.try_lock().is_err(), "the add holds the write lock while it clones");
+        std::fs::write(&go, "").unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(20), add).await.expect("finished").unwrap().unwrap();
+        assert!(w.lock.try_lock().is_ok(), "released at the end");
+        assert_eq!(r.git(&["status", "--porcelain", "--", ".gitmodules", "vendor/lib"]), "M  .gitmodules\nA  vendor/lib");
+    }
+
+    /// An add that stops after its clone (here `index.lock`, held outside GitVolt, when git
+    /// stages it) leaves nothing behind: no checkout, no repository in `.git/modules`, no config.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_add_leaves_nothing_behind() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let url = lib_source(&r).display().to_string();
+        let lock = r.path().join(".git/index.lock");
+        let data = tempfile::tempdir().unwrap();
+        let api = checkout_hook(&r, data.path(), &format!("touch '{}'", crate::platform::fs::to_git_path(&lock)));
+        let id = open(&api, &r).await;
+        let gitmodules = std::fs::read(r.path().join(".gitmodules")).unwrap();
+        call(&api, "submoduleAdd", json!({"repo": id, "worktree": wt(r.path()), "url": url, "path": "vendor/lib"})).await.unwrap_err();
+        std::fs::remove_file(&lock).unwrap();
+        assert!(!r.path().join("vendor/lib").exists(), "no checkout");
+        assert!(!r.path().join(".git/modules/vendor/lib").exists(), "no repository");
+        assert_eq!(r.try_git(&["config", "--local", "--get-regexp", "^submodule\\.vendor/lib\\."]).ok(), None, "no config");
+        assert_eq!(std::fs::read(r.path().join(".gitmodules")).unwrap(), gitmodules);
+        assert_eq!(r.git(&["status", "--porcelain"]), "", "nothing to show");
+        assert!(r.path().join("vendor/parser/part_0.txt").exists(), "the other submodules stay");
+    }
+
+    /// `repoChanged`'s kinds for each write `f` makes.
+    async fn announced(api: &crate::api::Api, f: impl std::future::Future<Output = ()>) -> Vec<crate::events::ChangeKind> {
+        let mut rx = api.subscribe();
+        f.await;
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .flat_map(|e| match e {
+                AppEvent::RepoChanged { kinds, .. } => kinds,
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn remove_takes_out_the_checkout_gitlink_and_gitmodules_entry() {
+        use crate::events::ChangeKind;
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        call(&api, "sidebar", json!({"repo": id})).await.unwrap();
+        // A write that leaves the submodules as the sidebar listed them doesn't say `submodules`.
+        let kinds = announced(&api, async { call(&api, "submoduleSync", json!({"repo": id, "worktree": wt(r.path())})).await.map(drop).unwrap() }).await;
+        assert!(kinds.contains(&ChangeKind::Config) && !kinds.contains(&ChangeKind::Submodules), "{kinds:?}");
+        let mut done = serde_json::Value::Null;
+        let kinds = announced(&api, async { done = call(&api, "submoduleRemove", json!({"repo": id, "worktree": wt(r.path()), "path": "vendor/parser"})).await.unwrap() }).await;
+        assert!(kinds.contains(&ChangeKind::Submodules), "the sidebar's Submodules panel reloads: {kinds:?}");
+        assert_eq!(done["outcome"]["command"], "git rm -- vendor/parser");
+        assert!(!r.path().join("vendor/parser").exists(), "the checkout is gone");
+        assert_eq!(r.git(&["status", "--porcelain"]), "M  .gitmodules\nD  vendor/parser");
+        assert!(r.path().join(".git/modules/vendor/parser").is_dir(), "its repository stays, commits and all");
+        let err = call(&api, "submoduleRemove", json!({"repo": id, "worktree": wt(r.path()), "path": "README.md"})).await.unwrap_err();
+        assert_eq!(err.kind, GbErrorKind::InvalidInput, "{err:?}");
+    }
+
+    /// A checkout with changes of its own: git refuses, and nothing is removed.
+    #[tokio::test]
+    async fn remove_refuses_a_submodule_with_changes_inside() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        std::fs::write(r.path().join("vendor/parser/part_0.txt"), "edited\n").unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        call(&api, "submoduleRemove", json!({"repo": id, "worktree": wt(r.path()), "path": "vendor/parser"})).await.unwrap_err();
+        assert_eq!(std::fs::read_to_string(r.path().join("vendor/parser/part_0.txt")).unwrap(), "edited\n");
+        assert_eq!(r.git(&["status", "--porcelain", "--", ".gitmodules"]), "");
     }
 }

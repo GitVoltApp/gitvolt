@@ -6,8 +6,8 @@ import type { MdFlavor, MdReferenceNode } from '../types';
  * segments backtracked quadratically on long runs of `.` or `-a`. The lookbehinds below also
  * exclude `.` and `-`, so a match never starts inside a longer segment. */
 const SEG = '[A-Za-z0-9_.][A-Za-z0-9_.-]{0,99}';
-/** GitHub: `owner/repo`; GitLab: `group/sub/project`. */
-const PROJECT: Record<MdFlavor, string> = { github: `${SEG}/${SEG}`, gitlab: `${SEG}(?:/${SEG}){1,20}` };
+/** GitHub and Forgejo: `owner/repo`; GitLab: `group/sub/project`. */
+const PROJECT: Record<MdFlavor, string> = { github: `${SEG}/${SEG}`, gitlab: `${SEG}(?:/${SEG}){1,20}`, forgejo: `${SEG}/${SEG}` };
 
 const node = (refKind: MdReferenceNode['refKind'], value: string, over: Partial<MdReferenceNode>): MdReferenceNode => ({ type: 'reference', refKind, project: null, number: null, sha: null, user: null, value, ...over });
 

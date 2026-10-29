@@ -393,7 +393,7 @@ pub async fn record(root: &Path, name: &str, requests: &[Value], events: bool) -
     if let Some(f) = &forge {
         let mut gitlab = f.gitlab.clone();
         gitlab.tokens.push(crate::fake_forge::FakeToken { token: crate::fake_forge::DEMO_TOKEN.into(), user: crate::forge_seed::me(), scopes: vec!["api".into()], fine_grained: false });
-        harness.forge.try_seed(crate::fake_forge::ForgeSeed { gitlab, github: Default::default() })?;
+        harness.forge.try_seed(crate::fake_forge::ForgeSeed { gitlab, github: Default::default(), forgejo: Default::default() })?;
         harness.add_forge_account_for_test(&f.host, gitvolt_core::forge::ForgeKind::GitLab, crate::fake_forge::DEMO_TOKEN).await.map_err(|e| e.message)?;
     }
     // The fake's own address in answers, and the forge's that the demo's answers name instead.

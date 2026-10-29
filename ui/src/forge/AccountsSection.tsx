@@ -7,15 +7,16 @@ import { useAppState } from '../app/state';
 import { resetAvatars } from '../avatars/avatarStore';
 import { notifyForgeAccountsChanged } from './accountsBus';
 import { escOwners } from '../app/modalKeys';
-import { GitHubMark, GitLabMark } from '../icons/brands';
+import { ForgeMark } from '../icons/brands';
 import { HostCombobox, type HostSuggestion } from './HostCombobox';
 import { confirmAction } from '../ui/ConfirmDialog';
 import { detectHostKind } from './hostKind';
+import { forgeName } from './labels';
 import { effectiveKind } from './urls';
 import './accounts.css';
 
 export const FILE_WARNING = 'Stored in a file, not the system keyring: install or start a Secret Service (GNOME Keyring, KWallet), then restart GitVolt to secure it.';
-const KINDS: Array<[ForgeKind, string]> = [['gitlab', 'GitLab'], ['github', 'GitHub']];
+const KINDS: Array<[ForgeKind, string]> = [['gitlab', 'GitLab'], ['github', 'GitHub'], ['forgejo', 'Forgejo']];
 
 /** What an account's last requests said, in plain words; `null` when all is well. */
 export function statusText(v: ForgeAccountView): string | null {
@@ -45,7 +46,10 @@ type Panel = { mode: 'add' } | { mode: 'replace'; host: string; kind: ForgeKind 
 const TOKEN_HELP: Record<ForgeKind, string> = {
   gitlab: 'Opens your profile\'s token page with the api scope selected. Copy the token, then paste it here.',
   github: 'Opens GitHub\'s fine-grained token page with the permissions GitVolt needs selected. Some organizations cap these tokens\' lifetime (e.g. 90 days); use a classic token for those.',
+  forgejo: 'Opens your Applications settings. Generate a token with the read:user, write:repository and write:issue scopes, then paste it here.',
 };
+/** Untyped, with no suggestion of its kind, the host a forge picked starts with (GitLab: none). */
+const DEFAULT_HOSTS: Partial<Record<ForgeKind, string>> = { github: 'github.com', forgejo: 'codeberg.org' };
 const CLASSIC_HELP = 'Opens GitHub\'s classic token page with the repo and read:org scopes selected. Classic tokens don\'t expire unless you set a date.';
 /** GitHub's answer when an organization caps fine-grained token lifetimes. */
 const FINE_GRAINED_REFUSED = 'forbids access via a fine-grained';
@@ -102,7 +106,7 @@ export function AccountsSection() {
   return (
     <div className="accounts-box" id="setting-forgeAccounts" data-setting-id="forgeAccounts">
       <p className="dim accounts-help">
-        Connect GitLab or GitHub to see merge requests, pull requests and forks. One account per host.
+        Connect GitLab, GitHub or Forgejo to see merge requests, pull requests and forks. One account per host.
         {accounts?.length === 0 && ' Tokens are kept in the system keyring.'}
       </p>
       {error && <p role="alert" className="setting-error">{error}</p>}
@@ -130,17 +134,18 @@ function AccountRow({ v, onReplace, onRemove }: { v: ForgeAccountView; onReplace
   const note = statusText(v);
   const chip = statusChip(v);
   const file = a.storage === 'file';
-  const gitlab = a.kind === 'gitlab';
+  // Forgejo's version carries the Gitea it's compatible with (`11.0.1+gitea-1.22.0`).
+  const version = a.version?.replace(/\+gitea-.*$/, '');
   return (
     <li className="account" aria-label={`${a.host} account`}>
-      <span className={`forge-mark ${gitlab ? 'is-gitlab' : 'is-github'}`}>{gitlab ? <GitLabMark size={18} /> : <GitHubMark size={18} />}</span>
+      <span className={`forge-mark is-${a.kind}`}><ForgeMark kind={a.kind} size={18} /></span>
       <div className="account-main">
         <div className="account-line">
           <span className="account-name">{a.user.name}</span>{' '}
           <span className="dim">@{a.user.username}</span>
         </div>
         <div className="account-meta dim">
-          <span>{a.host} · {gitlab ? 'GitLab' : 'GitHub'}{a.version ? ` ${a.version}` : ''}</span>
+          <span>{a.host} · {forgeName(a.kind)}{version ? ` ${version}` : ''}</span>
           <span className={`chip is-${chip.tone}`}>● {chip.label}</span>
           <span className={`chip${file ? ' is-warn' : ''}`}>{file ? 'File — not secure' : 'System keyring'}</span>
         </div>
@@ -175,19 +180,19 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
   }, [remotes, overrides, taken, repoName]);
   const [typed, setTyped] = useState<string | null>(replacing ? panel.host : null);
   const [pickedEarly, setPickedEarly] = useState<ForgeKind | null>(replacing ? panel.kind : null);
-  // Untyped, the host follows the forge picked: its first suggestion, and for GitHub otherwise
-  // github.com (GitHub Enterprise Server is out of scope).
+  // Untyped, the host follows the forge picked: its first suggestion, and otherwise github.com for
+  // GitHub (GitHub Enterprise Server is out of scope) or codeberg.org for Forgejo.
   const kindOf = (h: string) => effectiveKind(h, detectHostKind(h), overrides);
   const host = typed
     ?? (pickedEarly === null
       ? suggestions[0]?.host ?? ''
-      : suggestions.find((x) => kindOf(x.host) === pickedEarly)?.host ?? (pickedEarly === 'github' ? 'github.com' : ''));
+      : suggestions.find((x) => kindOf(x.host) === pickedEarly)?.host ?? DEFAULT_HOSTS[pickedEarly] ?? '');
   const detected = host ? effectiveKind(host, detectHostKind(host), overrides) : 'generic';
   const picked = pickedEarly;
   const setPicked = setPickedEarly;
   // One account per host: a host that has one already gets its token replaced instead.
   const takenHost = !replacing && host !== '' && taken.includes(host);
-  const kind: ForgeKind = picked ?? (detected === 'github' ? 'github' : 'gitlab');
+  const kind: ForgeKind = picked ?? (detected === 'generic' ? 'gitlab' : detected);
   const [classic, setClassic] = useState(false);
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);

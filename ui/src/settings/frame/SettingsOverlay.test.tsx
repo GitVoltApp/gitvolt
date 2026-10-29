@@ -365,7 +365,7 @@ describe('SettingsOverlay', () => {
       expect(btn).toHaveTextContent('2026-09-26 @ 3:14 PM');
       fireEvent.click(btn);
       expect(btn).toHaveAttribute('aria-expanded', 'true');
-      expect(screen.getAllByRole('menuitem')).toHaveLength(4);
+      expect(screen.getAllByRole('menuitem')).toHaveLength(5);
       fireEvent.click(screen.getByRole('menuitem', { name: '26/09/2026 15:14' }));
       expect(useAppState.getState().settings.dateFormat).toBe('dmy24h');
       expect(screen.queryByRole('menu')).toBeNull();

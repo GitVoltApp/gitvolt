@@ -15,12 +15,12 @@ React UI that draws it, and Tauri 3 on its Chromium (CEF) runtime holding the tw
 │  gitvolt-app   Tauri 3 shell: window, CEF runtime, wiring                  │
 │  gitvolt-core  Api::dispatch(Request) · event bus · reads · write pipeline │
 │                watcher · graph layout · settings · journal · askpass       │
-│  gitvolt-forge GitHub / GitLab providers · HTTP client · token store       │
+│  gitvolt-forge GitHub / GitLab / Forgejo providers · HTTP · token store    │
 │                                                                            │
 └──────┬───────────────────────┬─────────────────────────┬───────────────────┘
        │ gix (in-process)      │ git CLI (child process) │ HTTPS
        ▼                       ▼                         ▼
-   .git objects/refs     hooks, config, credentials   GitHub / GitLab APIs
+   .git objects/refs     hooks, config, credentials   GitHub / GitLab / Forgejo
 ```
 
 ## Crates and the UI
@@ -37,7 +37,7 @@ contract (`forge/`: the normalized types the UI sees, the `ForgeProvider` trait,
 accounts, the cache). Core never speaks HTTP; it defines traits that the other crates implement.
 
 **`gitvolt-forge`** implements that contract for real forges: `github.rs` (GitHub REST, and GraphQL where REST lacks it),
-`gitlab.rs` (GitLab REST v4), one HTTP client per account (`http.rs`), the token store
+`gitlab.rs` (GitLab REST v4), `forgejo.rs` (Forgejo's API v1, Gitea's), one HTTP client per account (`http.rs`), the token store
 (`tokens.rs`), avatar and Markdown-image fetching, and Gravatar (`gravatar.rs`). It depends on core,
 never the other way round.
 
@@ -52,7 +52,7 @@ window's desktop identity and the environment children get back; `window_state.r
 window's size and position.
 
 **`gitvolt-harness`** serves the same `Api` over a WebSocket so the UI can run in a plain browser
-with no Tauri, and adds a fake GitHub/GitLab, fixture repositories and test-only routes. It's what
+with no Tauri, and adds a fake GitHub/GitLab/Forgejo, fixture repositories and test-only routes. It's what
 the Playwright suite drives; see [Testing](#testing).
 
 **`gitvolt-graph`** is the graph's pure pipeline: the walk's order, the pinned trunk, the WIP rows,
@@ -175,9 +175,16 @@ agents are used as usual.
 **Submodules** are offered only in a worktree that uses them (`submodules.rs`: a `.gitmodules` or
 a gitlink in its index, reported per worktree by `repoInfo`). A WIP submodule row carries
 `git status`'s state of it, and its diff sides name each commit's subject from the submodule's
-own repository. Update (`git submodule update --init --recursive`) and Sync URLs are writes like
-any other (`write/submodules.rs`); Update runs as a network command, as a push, and asks first
-when it would leave a submodule's commits on no branch behind. Neither is journaled.
+own repository. The sidebar's Submodules panel comes with the `sidebar` read: each worktree's
+gitlinks, `.gitmodules` entries and checkouts, read in process (`submodules::sidebar_by_worktree`,
+which opens no other repository where there are none), and the panel shows the tab's active
+worktree's. The core remembers what it listed (`submodules::Seen`): a write or a watched change
+that alters it adds `submodules` to `repoChanged`, which reloads the sidebar, so an ordinary
+index change still reloads the graph alone. Update (`git submodule update --init --recursive`),
+Sync URLs, Add (`git submodule add`) and Remove (`git rm`) are writes like any other
+(`write/submodules.rs`); Update and Add run as network commands (Update outside the write lock,
+as a push; Add under it, since git stages the submodule after its clone), and Update asks first
+when it would leave a submodule's commits on no branch behind. None is journaled.
 
 ### Undo and redo
 
@@ -394,7 +401,7 @@ with an Open in browser action. A diff shows the old and new pages side by side.
 
 ## Forge layer
 
-GitHub and GitLab are the two providers (`gitvolt-forge`), both over personal access tokens. Core
+GitHub, GitLab and Forgejo are the providers (`gitvolt-forge`), all over personal access tokens. Core
 holds the `ForgeHub` (`forge/hub.rs`): the active profile's accounts, a provider per account built
 on first use, and each account's last known status. It maps each remote to its forge project and
 answers the MR/PR badges, the sidebar list, the MR/PR view, the Create MR/PR flow, stacked
@@ -503,10 +510,12 @@ that isn't a marked fixture. Test-only routes: `POST /test/reset`, `/test/emit`,
 forge's `/test/forge/{seed,script,requests,account}`. `gitvolt-harness fixture <name> <dir>` builds
 a fixture repository (the showcase ones, for previews, submodules and LFS: [docs/playground.md](docs/playground.md)).
 
-**The fake forge** (`crates/gitvolt-harness/src/fake_forge/`) answers the subset of the GitHub and
-GitLab REST APIs that the providers use, from a seed: ETags with 304s, each forge's rate-limit
-headers, scripted one-shot answers (429s, 500s, poll intervals), and a request log that records
-whether a valid token came but never the token. It runs on its own ephemeral port. The harness's
+**The fake forge** (`crates/gitvolt-harness/src/fake_forge/`) answers the subset of the GitHub,
+GitLab and Forgejo REST APIs that the providers use, from a seed: ETags with 304s, each forge's
+rate-limit headers, scripted one-shot answers (429s, 500s, poll intervals), and a request log that
+records whether a valid token came but never the token. The Forgejo one (`forgejo.example.com`)
+keeps the rules GitVolt works around: a message for a pending review and for Request changes, one
+timeline entry per review POST, a branch deleted after a merge only when asked. It runs on its own ephemeral port. The harness's
 connector points the real providers at it and can reach no other host, and its tokens go in a file
 in the temp dir, never the system keyring.
 

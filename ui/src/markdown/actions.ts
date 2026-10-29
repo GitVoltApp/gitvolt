@@ -24,10 +24,10 @@ export function openExternal(url: string): void {
   api.openUrl(url).catch((e: unknown) => useToast.getState().show(errorMessage(e), { error: true }));
 }
 
-/** GitHub's `#n` is a PR or an issue: the view when the PR exists, else the browser. */
+/** GitHub's and Forgejo's `#n` is a PR or an issue: the view when the PR exists, else the browser. */
 async function openMr(tabId: string, target: Extract<LinkTarget, { kind: 'mr' }>): Promise<void> {
   const f = forgeOf(tabId);
-  if (f.kind !== 'github' || knownMr(f, target.number) || f.details[target.number]) {
+  if (f.kind === 'gitlab' || knownMr(f, target.number) || f.details[target.number]) {
     openMrView(tabId, target.number);
     return;
   }

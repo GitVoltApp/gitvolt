@@ -28,6 +28,11 @@ import { clearDraft, draftKey, setDraft, useReplyDrafts } from './drafts';
  * newer servers' GraphQL sets the reviewer's (`mergeRequestRequestChanges`). */
 const GITLAB_CHANGES_NOTE = 'Posts your comment and withdraws your approval; a GitLab with review states also marks your review Changes requested';
 
+/** Forgejo refuses Request changes without a message, pending comments or not (its API's "review
+ * event … requires a body"): the composer asks for one there. */
+export const messageRequired = (kind: ForgeKind, event: ReviewEvent): boolean => kind === 'forgejo' && event === 'requestChanges';
+const FORGEJO_CHANGES_NOTE = 'Forgejo needs a message to request changes';
+
 const REVIEW_MODES: Array<{ event: ReviewEvent; label: string; placeholder: string }> = [
   { event: 'comment', label: 'Comment', placeholder: 'Leave a comment' },
   { event: 'approve', label: 'Approve', placeholder: 'A comment with your approval (optional)' },
@@ -86,7 +91,8 @@ export function ReviewComposer({ tabId, kind, number, onDone, keep = false, onSe
   const withPending = pending > 0 || (mine?.pendingReview ?? null) !== null;
   const ref = mrRef(kind, number);
   const mode = REVIEW_MODES.find((m) => m.event === event)!;
-  const ready = !busy && (event === 'approve' || text.trim() !== '' || pending > 0);
+  const required = messageRequired(kind, event);
+  const ready = !busy && (event === 'approve' || text.trim() !== '' || (pending > 0 && !required));
   const failure = event === 'comment' ? `Couldn't comment on ${ref}` : event === 'approve' ? `Couldn't approve ${ref}` : `Couldn't request changes on ${ref}`;
   const done = (message: string) => { clearDraft(key); useToast.getState().show(message); onDone(); };
   const cancel = () => { clearDraft(key); onDone(); };
@@ -111,7 +117,7 @@ export function ReviewComposer({ tabId, kind, number, onDone, keep = false, onSe
     setBusy(false);
     if (out) done(reviewSaid(event, ref, out.value.fallback, null));
   };
-  const placeholder = pending > 0 && event !== 'approve' ? 'A summary (optional)' : mode.placeholder;
+  const placeholder = pending > 0 && event !== 'approve' && !required ? 'A summary (optional)' : mode.placeholder;
   return (
     <form className="mr-reply mr-review" aria-label="Review" aria-busy={busy || undefined} onSubmit={(e) => { e.preventDefault(); if (ready) void send(); }}>
       <div className="mr-review-modes" role="radiogroup" aria-label="Review as">
@@ -139,6 +145,7 @@ export function ReviewComposer({ tabId, kind, number, onDone, keep = false, onSe
         <div className="mr-review-notes">
           {withPending && <p className="mr-form-note">{pending === 0 ? `Sends your pending review on ${forgeName(kind)}` : `Sends your ${pending === 1 ? 'pending comment' : `${pending} pending comments`} with it`}</p>}
           {kind === 'gitlab' && event === 'requestChanges' && <p className="mr-form-note">{GITLAB_CHANGES_NOTE}</p>}
+          {required && pending > 0 && <p className="mr-form-note">{FORGEJO_CHANGES_NOTE}</p>}
           {partial && <p role="alert" className="mr-form-note">{partial}</p>}
         </div>
       </div>

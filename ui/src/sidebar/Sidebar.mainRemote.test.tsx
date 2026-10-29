@@ -20,7 +20,7 @@ const wrap = (node: ReactNode) => <RepoViewContext value={createRepoViewStore(4,
 beforeEach(() => {
   useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 't', kind: 'repo', path: '/r', alias: null }], activeTab: 't' } });
   useRuntime.setState({ tabs: {} });
-  useRuntime.getState().patch('t', { status: 'ready', sidebar: { locals: [], remotes: [group('alice'), group('origin')], worktrees: [], stashes: [], tags: [] } });
+  useRuntime.getState().patch('t', { status: 'ready', sidebar: { locals: [], remotes: [group('alice'), group('origin')], worktrees: [], stashes: [], tags: [], submodules: {} } });
   useForge.setState({ byTab: {} });
 });
 

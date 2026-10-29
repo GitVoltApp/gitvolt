@@ -285,7 +285,7 @@ describe('monacoMenu with a center view on top', () => {
 describe('upstreamOf with the sidebar (configured upstreams)', () => {
   const g = graphOf(labels);
   const local = (name: string, upstream: string | null, gone = false) => ({ name, fullName: `refs/heads/${name}`, target: 't', upstream, ahead: 0, behind: 0, gone, tipTime: 0, summary: '', author: '', isHead: false, worktree: null, checkedOut: null, pushTarget: null, pushBehind: null, rewritten: null });
-  const sidebarOf = (locals: ReturnType<typeof local>[]) => ({ locals, remotes: [{ name: 'origin', host: null, hostKind: 'gitlab' as const, branches: [] }, { name: 'up/stream', host: null, hostKind: 'generic' as const, branches: [] }], worktrees: [], stashes: [], tags: [] });
+  const sidebarOf = (locals: ReturnType<typeof local>[]) => ({ locals, remotes: [{ name: 'origin', host: null, hostKind: 'gitlab' as const, branches: [] }, { name: 'up/stream', host: null, hostKind: 'generic' as const, branches: [] }], worktrees: [], stashes: [], tags: [], submodules: {} });
 
   it('splits a remote ref by the sidebar remote names (a name may hold "/")', () => {
     expect(splitRemoteRef('refs/remotes/up/stream/feat/x', ['origin', 'up/stream'])).toEqual({ remote: 'up/stream', branch: 'feat/x' });
@@ -328,7 +328,7 @@ describe('upstreamOf with the sidebar (configured upstreams)', () => {
 describe('the sidebar item menus', () => {
   const g = graphOf(labels);
   const store = () => createRepoViewStore(7, '/repo', g, fakeServices({ remotesSnapshot: () => [{ name: 'origin', host: 'gitlab.example.com', path: 'acme/shop', hostKind: 'gitlab' as const }] }));
-  const side = (over: object = {}) => ({ locals: [], remotes: [{ name: 'origin', hostKind: 'gitlab' as const, branches: [] }], worktrees: [], stashes: [], tags: [], ...over });
+  const side = (over: object = {}) => ({ locals: [], remotes: [{ name: 'origin', hostKind: 'gitlab' as const, branches: [] }], worktrees: [], stashes: [], tags: [], submodules: {}, ...over });
   const info = { remotes: [{ name: 'origin', url: 'ssh://gitlab.example.com/acme/shop.git', host: 'gitlab.example.com', path: 'acme/shop', hostKind: 'gitlab' as const }], mainWorktree: null, commonDir: '/repo/.git' };
   const item = (kind: string, extra: object): SideItem => ({ key: 'k', kind, name: 'x', target: 'c1', time: 0, ...extra }) as SideItem;
   const labelsOf = (rows: MenuRow[]) => rows.map((r) => (r.kind === 'separator' ? '---' : r.label));

@@ -194,7 +194,7 @@ describe('themes', () => {
         'diff-diagonal-fill': 'rgba(204, 204, 204, 0.2)',
         'md-diff-ins-text': 'rgba(92, 184, 92, 0.3)', 'md-diff-del-text': 'rgba(217, 65, 61, 0.3)',
         'md-diff-ins-block': 'rgba(92, 184, 92, 0.16)', 'md-diff-del-block': 'rgba(217, 65, 61, 0.16)',
-        'forge-gitlab': '#e2432a', 'forge-github': '#6e5494', purple: '#a371f7',
+        'forge-gitlab': '#e2432a', 'forge-github': '#6e5494', 'forge-forgejo': '#de6a29', purple: '#a371f7',
         'switch-on': '#4d88ff', 'switch-off': 'rgba(255, 255, 255, 0.16)',
         'tg-ink': '#14161a', 'tg-blue': '#5b9cff', 'tg-purple': '#b48cff', 'tg-cyan': '#3fc8d8', 'tg-orange': '#ff9e4a',
         'tg-yellow': '#f2c94c', 'tg-pink': '#ff7ab8', 'tg-green': '#5fd17f', 'tg-gray': '#a6aab1', 'tg-red': '#ff6b6b',

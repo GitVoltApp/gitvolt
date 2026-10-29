@@ -60,6 +60,8 @@ export const COVERAGE = {
   submodules: 'real',
   submoduleUpdate: 'notInDemo',
   submoduleSync: 'notInDemo',
+  submoduleAdd: 'notInDemo',
+  submoduleRemove: 'notInDemo',
   clone: 'notInDemo',
   repoInfo: 'real',
   sidebar: 'real',

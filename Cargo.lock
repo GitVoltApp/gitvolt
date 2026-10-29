@@ -2131,6 +2131,7 @@ version = "1.1.0"
 dependencies = [
  "base64 0.23.1",
  "gitvolt-core",
+ "gix",
  "httpdate",
  "keyring",
  "nix",

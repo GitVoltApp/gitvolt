@@ -25,7 +25,7 @@ const { clearLocalBehind } = await import('./branchUpdate');
 
 const mr = mrOf(12, { title: 'Dev work' });
 const settings = (over: Partial<ForgeProjectSettings> = {}): ForgeProjectSettings => ({ mergeMethods: ['merge'], squash: 'defaultOn', deleteSourceBranch: true, ...over });
-const show = (kind: 'gitlab' | 'github', d = detailOf(mr)) => render(<MergeBox tabId="t" kind={kind} mr={d.mr} detail={d} />);
+const show = (kind: 'gitlab' | 'github' | 'forgejo', d = detailOf(mr)) => render(<MergeBox tabId="t" kind={kind} mr={d.mr} detail={d} />);
 const running = (over: Partial<ForgeMr> = {}) => ({ ...mr, pipeline: { status: 'running' as const, webUrl: null }, ...over });
 /** The merge options have loaded (their switches take clicks). */
 const loaded = () => waitFor(() => expect(screen.queryByText(/merge options/)).toBeNull());
@@ -101,6 +101,19 @@ describe('merging from the MR/PR view (spec #4 §2: forge options, disabled with
     expect(screen.getByRole('tooltip')).toHaveTextContent('Squashes the commits into one, then merges');
     fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
     await waitFor(() => expect(api.forgeMerge).toHaveBeenCalledWith(4, 12, { method: 'squash', squash: null, deleteSourceBranch: null, expectedSha: mr.headSha }));
+  });
+
+  it("Forgejo: as GitHub's, with Forgejo's names for its merge styles", async () => {
+    api.forgeProjectSettings.mockResolvedValue(settings({ mergeMethods: ['merge', 'rebase', 'semiLinear', 'squash', 'fastForward'], squash: 'defaultOff', deleteSourceBranch: true }));
+    show('forgejo');
+    fireEvent.click(await screen.findByRole('button', { name: 'Merge method' }));
+    expect(useMenu.getState().rows?.map((r) => (r.kind === 'action' ? r.label : null))).toEqual(['Create merge commit', 'Rebase then fast-forward', 'Rebase then create merge commit', 'Squash', 'Fast-forward only']);
+    const semi = useMenu.getState().rows?.find((r) => r.kind === 'action' && r.label === 'Rebase then create merge commit');
+    act(() => { if (semi?.kind === 'action') semi.run(); });
+    expect(screen.getByText('Forgejo deletes the branch after merging (repository setting)')).toBeTruthy();
+    expect(screen.queryByRole('switch', { name: 'Squash commits' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
+    await waitFor(() => expect(api.forgeMerge).toHaveBeenCalledWith(4, 12, { method: 'semiLinear', squash: null, deleteSourceBranch: null, expectedSha: mr.headSha }));
   });
 
 

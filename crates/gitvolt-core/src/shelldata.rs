@@ -18,6 +18,7 @@ use gix::remote::Direction;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -159,6 +160,10 @@ pub struct SidebarPayload {
     pub worktrees: Vec<WorktreeItem>,
     pub stashes: Vec<StashItem>,
     pub tags: Vec<TagItem>,
+    /// Each worktree's submodules, by path (`submodules::sidebar_items`), keyed by its canonical
+    /// path as `repoInfo`'s `submodules` is: the Submodules section shows the tab's active one's.
+    /// A worktree that has none isn't listed.
+    pub submodules: std::collections::BTreeMap<String, Vec<crate::submodules::SubmoduleItem>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -546,12 +551,20 @@ fn canonical(p: &Path) -> std::path::PathBuf {
     crate::platform::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
-/// The sidebar's branches, remotes, worktrees, stashes and tags (spec §6.4), for the repository at
-/// `workdir`/`repo`. `repo` must be a handle already opened on `workdir`; this never opens one.
-pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path) -> Result<SidebarPayload, GbError> {
+/// The sidebar's branches, remotes, worktrees, stashes, tags and submodules (spec §6.4), for the
+/// repository at `workdir`/`repo`. `repo` must be a handle already opened on `workdir`; this
+/// opens no other one in a repository without submodules. With them, it opens each submodule's
+/// checkout, and a linked worktree that has a `.gitmodules` (`submodules::sidebar_by_worktree`,
+/// which records in `seen` what it listed).
+pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path, seen: &Arc<crate::submodules::Seen>) -> Result<SidebarPayload, GbError> {
     let shared = repo.clone();
     let rows = tokio::task::spawn_blocking(move || ref_rows(&shared.to_thread_local())).await.map_err(|e| GbError::other(format!("sidebar read failed: {e}")))??;
     let worktrees = list_worktrees(workdir).await?;
+    let roots: Vec<std::path::PathBuf> = worktrees.iter().filter(|w| !w.bare && !w.prunable).map(|w| canonical(&w.path)).collect();
+    let (shared, here, seen) = (repo.clone(), canonical(workdir), seen.clone());
+    let submodules = tokio::task::spawn_blocking(move || crate::submodules::sidebar_by_worktree(&shared.to_thread_local(), &here, roots, &seen))
+        .await
+        .map_err(|e| GbError::other(format!("sidebar read failed: {e}")))?;
     let local = repo.to_thread_local();
     let remote_names: Vec<String> = local.remote_names().into_iter().map(|n| n.to_str_lossy().into_owned()).collect();
     let host_of = |remote: &str| remote_url(&local, remote, Direction::Fetch).and_then(|u| parse_remote_url(&u)).map(|u| u.host);
@@ -564,7 +577,7 @@ pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path) -> Result
         .filter_map(|w| w.branch.clone().map(|b| (b, w.path.display().to_string())))
         .collect();
     let checked_out: std::collections::HashMap<String, String> = worktrees.iter().filter_map(|w| w.branch.clone().map(|b| (b, w.path.display().to_string()))).collect();
-    let mut s = SidebarPayload { locals: vec![], remotes: vec![], worktrees: vec![], stashes: vec![], tags: vec![] };
+    let mut s = SidebarPayload { locals: vec![], remotes: vec![], worktrees: vec![], stashes: vec![], tags: vec![], submodules };
     let mut defaults: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for row in rows {
         if let Some(sym) = row.symref {
@@ -865,7 +878,7 @@ mod tests {
             time("worktree list (git)", &mut || { rt.block_on(crate::worktree::list_worktrees_cli(&cli, &path)).unwrap(); });
             time("worktree list (gix)", &mut || { rt.block_on(crate::worktree::list_worktrees(&path)).unwrap(); });
             let (repo, workdir) = open(&r);
-            time("sidebar (in process)", &mut || { rt.block_on(sidebar(&repo, &workdir)).unwrap(); });
+            time("sidebar (in process)", &mut || { rt.block_on(sidebar(&repo, &workdir, &Default::default())).unwrap(); });
         });
     }
 
@@ -888,7 +901,7 @@ mod tests {
         r.git(&["fetch", "-q", "origin"]);
         let want = |b: &str| r.git(&["rev-list", "--count", &format!("{b}..origin/{b}")]).parse::<u32>().unwrap();
         let (repo, workdir) = open(&r);
-        let s = sidebar(&repo, &workdir).await.unwrap();
+        let s = sidebar(&repo, &workdir, &Default::default()).await.unwrap();
         let dev = s.locals.iter().find(|b| b.name == "dev").unwrap();
         assert_eq!((dev.push_target.as_deref(), dev.push_behind, dev.behind), (Some("origin/dev"), Some(want("dev")), want("dev")));
         assert!(want("dev") > 0);
@@ -896,7 +909,7 @@ mod tests {
         r.git(&["config", "branch.main.merge", "refs/heads/dev"]);
         r.git(&["config", "branch.main.pushRemote", "origin"]);
         let (repo, workdir) = open(&r);
-        let s = sidebar(&repo, &workdir).await.unwrap();
+        let s = sidebar(&repo, &workdir, &Default::default()).await.unwrap();
         let main = s.locals.iter().find(|b| b.name == "main").unwrap();
         assert_eq!((main.push_target.as_deref(), main.push_behind), (Some("origin/main"), Some(want("main"))));
         assert!(want("main") > 0);
@@ -909,7 +922,7 @@ mod tests {
         fixtures::basic(&r);
         r.git(&["remote", "set-head", "origin", "-d"]);
         let (repo, workdir) = open(&r);
-        let s = sidebar(&repo, &workdir).await.unwrap();
+        let s = sidebar(&repo, &workdir, &Default::default()).await.unwrap();
         assert_eq!(s.remotes[0].default_branch, None);
         assert_eq!(serde_json::to_value(&s.remotes[0]).unwrap().get("defaultBranch"), None, "absent, not null");
     }
@@ -920,7 +933,7 @@ mod tests {
         fixtures::basic(&r);
         r.commit("local only");
         let (repo, workdir) = open(&r);
-        let s = sidebar(&repo, &workdir).await.unwrap();
+        let s = sidebar(&repo, &workdir, &Default::default()).await.unwrap();
         let names: Vec<&str> = s.locals.iter().map(|b| b.name.as_str()).collect();
         assert_eq!(names, vec!["feature/login", "hotfix", "main"]);
         let main = s.locals.iter().find(|b| b.name == "main").unwrap();
@@ -952,7 +965,7 @@ mod tests {
         assert!(s.locals.iter().all(|b| b.upstream_mismatch.is_none()));
         r.git(&["tag", "light", "main"]);
         r.git(&["branch", "--set-upstream-to=origin/feature/login", "hotfix"]);
-        let s = sidebar(&repo, &workdir).await.unwrap();
+        let s = sidebar(&repo, &workdir, &Default::default()).await.unwrap();
         assert_eq!(s.tags.iter().find(|t| t.name == "light").unwrap().annotation, None);
         assert_eq!(s.locals.iter().find(|b| b.name == "hotfix").unwrap().upstream_mismatch.as_deref(), Some("origin/feature/login"));
     }

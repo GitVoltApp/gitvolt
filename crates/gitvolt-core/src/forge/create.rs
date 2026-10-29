@@ -17,7 +17,18 @@ pub const GITLAB_TEMPLATE_DIR: &str = ".gitlab/merge_request_templates";
 pub const GITHUB_DIR: &str = ".github";
 pub const GITHUB_TEMPLATE_FILE: &str = "pull_request_template.md";
 pub const GITHUB_TEMPLATE_DIR: &str = "pull_request_template";
-/// GitLab's `Default.md`, and the name GitHub's single template takes.
+/// Forgejo's (Gitea's) single template: the first of these the branch has, in Forgejo's order.
+pub const FORGEJO_TEMPLATES: [&str; 8] = [
+    "PULL_REQUEST_TEMPLATE.md",
+    "pull_request_template.md",
+    ".forgejo/PULL_REQUEST_TEMPLATE.md",
+    ".forgejo/pull_request_template.md",
+    ".gitea/PULL_REQUEST_TEMPLATE.md",
+    ".gitea/pull_request_template.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/pull_request_template.md",
+];
+/// GitLab's `Default.md`, and the name GitHub's and Forgejo's single template takes.
 pub const DEFAULT_TEMPLATE: &str = "Default";
 pub const MAX_TEMPLATES: usize = 20;
 pub const MAX_TEMPLATE_BYTES: usize = 64 * 1024;
@@ -70,13 +81,22 @@ pub fn is_template_path(kind: ForgeKind, path: &str) -> bool {
     match kind {
         ForgeKind::GitLab => dir == GITLAB_TEMPLATE_DIR,
         ForgeKind::GitHub => (dir == GITHUB_DIR && file.eq_ignore_ascii_case(GITHUB_TEMPLATE_FILE)) || dir.eq_ignore_ascii_case(&format!("{GITHUB_DIR}/{GITHUB_TEMPLATE_DIR}")),
+        ForgeKind::Forgejo => FORGEJO_TEMPLATES.contains(&path),
     }
 }
 
-/// What the template picker shows: the file name without `.md`; GitHub's single file is `Default`.
+/// Of Forgejo's template candidates found, the one it uses (`FORGEJO_TEMPLATES`' order), alone.
+pub fn forgejo_template(mut found: Vec<MrTemplate>) -> Vec<MrTemplate> {
+    found.sort_by_key(|t| FORGEJO_TEMPLATES.iter().position(|p| *p == t.path).unwrap_or(usize::MAX));
+    found.truncate(1);
+    found
+}
+
+/// What the template picker shows: the file name without `.md`; GitHub's and Forgejo's single
+/// file is `Default`.
 pub fn template_name(path: &str) -> String {
     let (dir, file) = path.rsplit_once('/').unwrap_or(("", path));
-    if dir == GITHUB_DIR && file.eq_ignore_ascii_case(GITHUB_TEMPLATE_FILE) {
+    if (dir == GITHUB_DIR && file.eq_ignore_ascii_case(GITHUB_TEMPLATE_FILE)) || FORGEJO_TEMPLATES.contains(&path) {
         return DEFAULT_TEMPLATE.to_string();
     }
     strip_md(file).unwrap_or(file).to_string()
@@ -146,21 +166,24 @@ pub async fn first_commit(cli: &GitCli, root: &Path, branch: &str, bases: &[Stri
 /// target branch, never the working directory).
 pub async fn local_templates(cli: &GitCli, root: &Path, kind: ForgeKind, revs: &[String]) -> Result<Vec<MrTemplate>, GbError> {
     let Some(rev) = first_existing(cli, root, revs).await? else { return Ok(Vec::new()) };
-    // Only regular files count: a symlink or submodule named `Foo.md` is skipped.
+    // Only regular files count: a symlink or submodule named `Foo.md` is skipped. Forgejo's are
+    // single files, listed by name.
     let mut dirs = vec![match kind {
-        ForgeKind::GitLab => format!("{GITLAB_TEMPLATE_DIR}/"),
-        ForgeKind::GitHub => format!("{GITHUB_DIR}/"),
+        ForgeKind::GitLab => vec![format!("{GITLAB_TEMPLATE_DIR}/")],
+        ForgeKind::GitHub => vec![format!("{GITHUB_DIR}/")],
+        ForgeKind::Forgejo => FORGEJO_TEMPLATES.iter().map(|p| p.to_string()).collect(),
     }];
     let mut paths: Vec<String> = Vec::new();
-    while let Some(dir) = dirs.pop() {
-        let out = cli.run(GitInvocation::new(root, ["ls-tree", "-z", rev.as_str(), "--", dir.as_str()]).stdout_limit(MAX_READ_BYTES)).await?;
+    while let Some(listed) = dirs.pop() {
+        let dir = listed.first().cloned().unwrap_or_default();
+        let out = cli.run(GitInvocation::new(root, ["ls-tree", "-z", rev.as_str(), "--"].into_iter().chain(listed.iter().map(String::as_str))).stdout_limit(MAX_READ_BYTES)).await?;
         // A capped listing's last record may be cut short: only whole (NUL-ended) records count.
         let whole = &out.stdout[..out.stdout.iter().rposition(|b| *b == 0).unwrap_or(0)];
         for rec in whole.split(|b| *b == 0).filter_map(|r| std::str::from_utf8(r).ok()) {
             let Some((meta, path)) = rec.split_once('\t') else { continue };
             let mode = meta.split(' ').next().unwrap_or("");
             if mode == "040000" && kind == ForgeKind::GitHub && dir == format!("{GITHUB_DIR}/") && path.eq_ignore_ascii_case(&format!("{GITHUB_DIR}/{GITHUB_TEMPLATE_DIR}")) {
-                dirs.push(format!("{path}/"));
+                dirs.push(vec![format!("{path}/")]);
             } else if (mode == "100644" || mode == "100755") && is_template_path(kind, path) && paths.len() < MAX_TEMPLATES {
                 paths.push(path.to_string());
             }
@@ -172,7 +195,7 @@ pub async fn local_templates(cli: &GitCli, root: &Path, kind: ForgeKind, revs: &
         let Ok(blob) = cli.run(GitInvocation::new(root, ["cat-file", "blob", spec.as_str()]).stdout_limit(MAX_TEMPLATE_BYTES as u64)).await else { continue };
         list.push(MrTemplate { name: template_name(&path), body: clip_template(&blob.stdout), path });
     }
-    Ok(sort_templates(list))
+    Ok(if kind == ForgeKind::Forgejo { forgejo_template(list) } else { sort_templates(list) })
 }
 
 #[cfg(test)]
@@ -204,6 +227,12 @@ mod tests {
         assert!(!is_template_path(ForgeKind::GitHub, ".github/PULL_REQUEST_TEMPLATE/a/b.md"));
         assert!(!is_template_path(ForgeKind::GitHub, ".github/workflows/ci.yml"));
         assert!(!is_template_path(ForgeKind::GitHub, "docs/pull_request_template.md"));
+        for p in [".forgejo/pull_request_template.md", ".gitea/PULL_REQUEST_TEMPLATE.md", ".github/pull_request_template.md", "PULL_REQUEST_TEMPLATE.md"] {
+            assert!(is_template_path(ForgeKind::Forgejo, p), "{p}");
+        }
+        assert!(!is_template_path(ForgeKind::Forgejo, ".github/PULL_REQUEST_TEMPLATE/feature.md"), "a single template");
+        assert!(!is_template_path(ForgeKind::Forgejo, ".forgejo/Pull_Request_Template.md"), "Forgejo's two spellings only");
+        assert!(!is_template_path(ForgeKind::Forgejo, "docs/pull_request_template.md"));
     }
 
     #[test]
@@ -212,6 +241,8 @@ mod tests {
         assert_eq!(template_name(".github/pull_request_template/feature.md"), "feature");
         assert_eq!(template_name(".gitlab/merge_request_templates/Bug Fix.MD"), "Bug Fix");
         assert_eq!(template_name(".gitlab/merge_request_templates/é.md"), "é");
+        assert_eq!(template_name(".forgejo/pull_request_template.md"), "Default");
+        assert_eq!(template_name("PULL_REQUEST_TEMPLATE.md"), "Default");
     }
 
     #[test]
@@ -289,6 +320,23 @@ mod tests {
         assert_eq!(list[0].path, ".gitlab/merge_request_templates/Default.md");
         assert!(local_templates(&cli(), r.path(), ForgeKind::GitHub, &revs).await.unwrap().is_empty());
         assert!(local_templates(&cli(), r.path(), ForgeKind::GitLab, &["refs/heads/nope".to_string()]).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn forgejo_uses_the_first_of_its_template_candidates() {
+        let r = TestRepo::new();
+        r.write(".github/pull_request_template.md", "github\n");
+        r.write(".forgejo/pull_request_template.md", "forgejo\n");
+        r.write(".github/workflows/ci.yml", "x\n");
+        r.git(&["add", "-A"]);
+        r.git(&["commit", "-q", "-m", "templates"]);
+        let list = local_templates(&cli(), r.path(), ForgeKind::Forgejo, &["HEAD".to_string()]).await.unwrap();
+        assert_eq!(list.iter().map(|t| (t.name.as_str(), t.path.as_str(), t.body.as_str())).collect::<Vec<_>>(), [("Default", ".forgejo/pull_request_template.md", "forgejo\n")]);
+        r.write("PULL_REQUEST_TEMPLATE.md", "root\n");
+        r.git(&["add", "-A"]);
+        r.git(&["commit", "-q", "-m", "root"]);
+        assert_eq!(local_templates(&cli(), r.path(), ForgeKind::Forgejo, &["HEAD".to_string()]).await.unwrap()[0].path, "PULL_REQUEST_TEMPLATE.md", "the repository's root first");
+        assert!(forgejo_template(vec![]).is_empty());
     }
 
     #[test]

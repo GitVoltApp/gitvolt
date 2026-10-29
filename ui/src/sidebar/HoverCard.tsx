@@ -6,6 +6,7 @@ import { shortSha } from '../format/sha';
 import { getLastPush } from './lastPushCache';
 import type { SideItem } from './model';
 import { TagTip } from '../tags/TagTip';
+import { submoduleCardState } from '../submodules/labels';
 // --- 4B T10 ---
 import { useRepoContext } from '../app/repoContext';
 import { useTilde } from '../app/appInfo';
@@ -76,6 +77,19 @@ export function HoverCard({ item, repoId, top, left }: { item: SideItem; repoId:
         <div className="hc-meta">{w.branch ? `Branch: ${w.branch}` : `Detached${w.head ? ` at ${shortSha(w.head)}` : ''}`}</div>
         {w.head && w.branch && <div className="hc-meta">HEAD {shortSha(w.head)}</div>}
         <div className="hc-meta">{[w.isMain ? 'Main checkout' : 'Linked worktree', w.isCurrent ? 'current' : ''].filter(Boolean).join(' · ')}</div>
+      </CardShell>
+    );
+  }
+  if (item.kind === 'submodule') {
+    const m = item.submodule;
+    return (
+      <CardShell label={`${item.name} details`} top={top} left={left}>
+        <div className="hc-name">{m.path}</div>
+        {m.url && <div className="hc-summary" style={{ wordBreak: 'break-all' }}>{m.url}</div>}
+        {m.name !== m.path && <div className="hc-meta">Name: {m.name}</div>}
+        <div className="hc-meta">Recorded: {shortSha(m.recorded)}</div>
+        {m.head !== null && <div className="hc-meta">Checked out: {m.branch ? `${m.branch} at ` : ''}{shortSha(m.head)}</div>}
+        <div className="hc-meta">{submoduleCardState(m.status)}</div>
       </CardShell>
     );
   }

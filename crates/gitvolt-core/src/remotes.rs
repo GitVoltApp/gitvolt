@@ -120,12 +120,17 @@ pub fn op_remotes(repo: &gix::Repository, names: &[String], direction: Direction
         .collect()
 }
 
+/// The forge a host runs, by its name; a profile's host overrides (spec §14.4) cover the rest.
+/// Forgejo's: Codeberg, and a label naming Forgejo or Gitea (whose API Forgejo keeps).
 pub fn host_kind(host: &str) -> HostKind {
     let host = host.to_ascii_lowercase();
+    let name = host.split(':').next().unwrap_or_default();
     if host == "github.com" || host.ends_with(".github.com") {
         HostKind::GitHub
     } else if host == "gitlab.com" || host.split('.').any(|label| label.contains("gitlab")) {
         HostKind::GitLab
+    } else if name == "codeberg.org" || name.split('.').any(|label| label.contains("forgejo") || label.contains("gitea")) {
+        HostKind::Forgejo
     } else {
         HostKind::Generic
     }
@@ -218,6 +223,13 @@ mod tests {
         assert_eq!(host_kind("gitlab.com"), HostKind::GitLab);
         assert_eq!(host_kind("gitlab.example.com"), HostKind::GitLab);
         assert_eq!(host_kind("code.example.com"), HostKind::Generic);
+        assert_eq!(host_kind("codeberg.org"), HostKind::Forgejo);
+        assert_eq!(host_kind("Codeberg.org:443"), HostKind::Forgejo);
+        assert_eq!(host_kind("forgejo.example.com"), HostKind::Forgejo);
+        assert_eq!(host_kind("git.myforgejo.example"), HostKind::Forgejo);
+        assert_eq!(host_kind("gitea.example.com:3000"), HostKind::Forgejo);
+        assert_eq!(host_kind("gitlab.gitea.example.com"), HostKind::GitLab, "GitLab's rule first, as before");
+        assert_eq!(host_kind("codeberg.example.com"), HostKind::Generic);
     }
 
     /// Deferred Rust minor #13: a raw `remote.<name>.url` read skips `url.*.insteadOf`, so a

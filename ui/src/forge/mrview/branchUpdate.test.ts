@@ -10,6 +10,8 @@ describe("the update button's main way", () => {
     expect(defaultUpdate('github', github, null, ['merge', 'squash', 'rebase'])).toBe('rebase');
     expect(defaultUpdate('github', github, null, ['merge', 'squash'])).toBe('merge');
     expect(defaultUpdate('github', github, undefined, []), "the repository's settings not loaded yet").toBe('merge');
+    expect(defaultUpdate('forgejo', github, null, ['merge', 'rebase'])).toBe('rebase');
+    expect(defaultUpdate('forgejo', github, null, ['merge', 'semiLinear'])).toBe('merge');
   });
 
   it('GitLab: Rebase', () => {

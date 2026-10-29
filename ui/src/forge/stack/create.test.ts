@@ -25,7 +25,7 @@ const lb = (name: string, over: Partial<LocalBranch> = {}): LocalBranch => ({
 });
 const stack: Stack = { branches: ['feature/a', 'feature/b', 'feature/c'], base: 'refs/remotes/origin/main', leftBehind: [] };
 const chip = (name: string) => ({ branch: { local: `refs/heads/${name}` } }) as never;
-const sidebar = (locals: LocalBranch[]) => ({ locals, remotes: [], worktrees: [], stashes: [], tags: [] }) as never;
+const sidebar = (locals: LocalBranch[]) => ({ locals, remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} }) as never;
 
 describe('memberPlans and the submit label (Rulings 6, 7)', () => {
   it('creates where there is none (or only a closed one), retargets a wrong target, keeps a right one, refuses a merged one', () => {

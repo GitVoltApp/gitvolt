@@ -66,7 +66,9 @@ export function MrHeader({ tabId, kind, mr, detail, actions, review, editLabels,
             {mr.pipeline?.webUrl ? <button type="button" className="mr-link" onClick={() => openInBrowser(mr.pipeline!.webUrl!)}>{pipelineWord(mr.pipeline)}</button> : <span>{pipelineWord(mr.pipeline)}</span>}
           </div>
         </div>
-        <div className="mr-fact" data-fact="reviews">
+        {/* Approve arms over the whole card, its label wrapping inside: wider than the icon
+            button, it would otherwise cross into the next card. */}
+        <div className="mr-fact" data-fact="reviews" data-arm-cover="" data-arm-wrap="">
           <div className="mr-fact-head">
             <div className="mr-fact-k">{kind === 'gitlab' ? 'Approvals' : 'Reviews'}</div>
             {review}

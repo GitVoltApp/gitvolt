@@ -50,6 +50,8 @@ pub enum DateFormat {
     Ymd24h,
     /// `26/09/2026 15:14`
     Dmy24h,
+    /// `26.09.2026 15:14`, as German writes it
+    DmyDot24h,
     /// `09/26/2026 3:14 PM`
     Mdy12h,
 }
@@ -1659,6 +1661,7 @@ mod tests {
         assert_eq!(v, serde_json::json!({"kind": "ref", "name": "refs/remotes/origin/main"}));
         assert_eq!(serde_json::to_value(PinSetting::Off).unwrap(), serde_json::json!({"kind": "off"}));
         assert_eq!(serde_json::to_value(DateFormat::Ymd24h).unwrap(), "ymd24h");
+        assert_eq!(serde_json::to_value(DateFormat::DmyDot24h).unwrap(), "dmydot24h");
         // The editor setting is a 1B opener id (from `listOpeners`) or a custom template (R5).
         assert_eq!(serde_json::to_value(EditorChoice::Opener { id: "jetbrains-phpstorm".into() }).unwrap(), serde_json::json!({"kind": "opener", "id": "jetbrains-phpstorm"}));
         assert_eq!(

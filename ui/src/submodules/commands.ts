@@ -6,6 +6,8 @@ import { joinPath } from '../app/osPath';
 import { openPathInTab } from '../app/runtime';
 import { usePalette } from '../palette/Palette';
 import type { PaletteEntry } from '../palette/search';
+import { currentOrigin } from '../ui/arm/origin';
+import { confirmAction } from '../ui/ConfirmDialog';
 import { useToast } from '../ui/toastStore';
 import { runWrite, type WriteCtx } from '../write/client';
 import { SUBMODULE_STATUS_TEXT } from './labels';
@@ -25,6 +27,28 @@ export async function updateSubmodules(ctx: WriteCtx, path?: string): Promise<vo
 /** `git submodule sync --recursive`: `.gitmodules`' URLs into the config. */
 export async function syncSubmodules(ctx: WriteCtx): Promise<void> {
   await runWrite(ctx, () => api.submoduleSync(ctx.repoId, ctx.worktree), { onSuccess: ran('Submodule URLs synced') });
+}
+
+/** `git submodule add`: clones `url` (a network command, as Update) and stages it. */
+export async function addSubmodule(ctx: WriteCtx, url: string, path?: string, branch?: string): Promise<void> {
+  await runWrite(ctx, () => api.submoduleAdd(ctx.repoId, ctx.worktree, url, path, branch), { onSuccess: ran(`Added the submodule ${path ?? url}: commit to record it`) });
+}
+
+/** Remove submodule (its sidebar menu): asked first, in place (danger); `git rm` takes out its
+ * checkout, gitlink and `.gitmodules` entry and stages that. Its repository stays in
+ * `.git/modules`; git refuses a checkout with changes of its own. */
+export async function removeSubmodule(ctx: WriteCtx, path: string): Promise<void> {
+  const origin = currentOrigin();
+  const ok = await confirmAction({
+    title: `Remove the submodule ${path}?`,
+    body: `Its checkout, its entry in .gitmodules and the commit recorded here are removed and the removal is staged; commit to record it. Its repository stays in .git/modules. Not undoable from here: unstaging and Submodules: Update bring it back.`,
+    caption: 'Removes the checkout and stages the removal (git rm)',
+    arm: `Click again to remove ${path}`,
+    confirmLabel: 'Remove submodule',
+    danger: true,
+  }, origin);
+  if (!ok) return;
+  await runWrite(ctx, () => api.submoduleRemove(ctx.repoId, ctx.worktree, path), { origin, onSuccess: ran(`Removed ${path}: commit to record it`) });
 }
 
 const notInitialised = (path: string) => toast(`${path} isn't initialised: Submodules: Update checks it out`);

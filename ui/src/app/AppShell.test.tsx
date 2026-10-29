@@ -13,7 +13,7 @@ const listeners = vi.hoisted(() => new Set<(ev: AppEvent) => void>());
 const api = vi.hoisted(() => ({
   openRepo: vi.fn(),
   graph: vi.fn(),
-  sidebar: vi.fn(async () => ({ locals: [], remotes: [], worktrees: [], stashes: [], tags: [] })),
+  sidebar: vi.fn(async () => ({ locals: [], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} })),
   repoInfo: vi.fn(async () => ({ remotes: [], mainWorktree: null, commonDir: '/x/.git' })),
   watchRepo: vi.fn(async () => null),
   unwatchRepo: vi.fn(async () => null),
@@ -69,6 +69,23 @@ describe('AppShell: tabs inside <Activity> (spec §4.4, Review Focus 1)', () => 
     expect(changed).toHaveBeenCalledTimes(1);
     activate('b');
     await waitFor(() => expect(wip().isWatched()).toBe(false));
+  });
+
+  it('an index change reloads the graph alone, even with submodules; the core\'s `submodules` reloads the sidebar', async () => {
+    render(<AppShell />);
+    expect(await screen.findByText('commit r1c1')).toBeInTheDocument();
+    await waitFor(() => expect(api.sidebar).toHaveBeenCalled());
+    const reads = () => api.sidebar.mock.calls.filter((c) => (c as unknown[])[0] === 1).length;
+    const before = reads();
+    act(() => useRuntime.getState().patch('a', { info: { remotes: [], mainWorktree: null, commonDir: '/a/.git', submodules: { '/a': { unmapped: [] } } } }));
+    let graphs = graphCalls(1).length;
+    emit({ type: 'repoChanged', repo: 1, kinds: ['worktree', 'index'], worktrees: ['/a'], versions: {} });
+    await waitFor(() => expect(graphCalls(1).length).toBeGreaterThan(graphs));
+    expect(reads()).toBe(before);
+    graphs = graphCalls(1).length;
+    emit({ type: 'repoChanged', repo: 1, kinds: ['index', 'submodules'], worktrees: ['/a'], versions: {} });
+    await waitFor(() => expect(reads()).toBe(before + 1));
+    expect(graphCalls(1).length).toBeGreaterThan(graphs);
   });
 
   it('only the active tab loads, watches and listens; switching moves all three', async () => {

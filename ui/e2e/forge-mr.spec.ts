@@ -1,6 +1,6 @@
 import { dirname, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
-import { addForgeAccount, E2E_GITLAB_TOKEN, forgeRequests, forgeSeed, freshFixture, git, openUrl, originGit, setForgeSeed } from './fixtures';
+import { addForgeAccount, E2E_FORGEJO_TOKEN, E2E_GITLAB_TOKEN, forgeRequests, forgeSeed, freshFixture, git, openUrl, originGit, setForgeSeed } from './fixtures';
 import { armedOverlay, confirmArmed, expect, test } from './test';
 
 /** The pointer at an element's centre: a hovered chip floats its copy over the resting one, so a
@@ -13,6 +13,38 @@ async function pointAt(page: Page, el: Locator, click = false) {
 }
 
 test.describe('merge requests (spec #4 §7, 4B)', () => {
+  test('Forgejo: the PR list, its view and threads, an approval and a merge that deletes the branch', async ({ page, request }) => {
+    // The sync fixture's local `dev` tracks origin/dev: the fake Forgejo's #12 is from `dev`.
+    const repo = freshFixture('sync');
+    git(repo, 'remote', 'set-url', 'origin', 'https://forgejo.example.com/team/gadget.git');
+    await addForgeAccount(request, 'forgejo.example.com', 'forgejo', E2E_FORGEJO_TOKEN);
+    await page.goto(openUrl(repo));
+    const list = page.getByRole('complementary', { name: 'Sidebar', exact: true }).getByRole('region', { name: 'Pull requests', exact: true });
+    await expect(list.getByRole('treeitem')).toHaveCount(2);
+    await list.getByRole('treeitem', { name: '#12 Dev work' }).click();
+    const view = page.getByRole('dialog', { name: 'Pull request #12' });
+    await expect(view).toContainText('Adds the dev work.');
+    await expect(view.getByRole('button', { name: 'README.md:2' })).toBeVisible();
+    await expect(view).toContainText('Say what the second line is for.');
+
+    // Approve arms in place, then goes in as one APPROVED review.
+    await view.locator('.mr-fact[data-fact="reviews"]').getByRole('button', { name: 'Approve', exact: true }).click();
+    await confirmArmed(armedOverlay(page, 'Click again to approve'));
+    await expect(view.getByRole('button', { name: 'Approved', exact: true })).toBeVisible();
+    const reviews = (await forgeRequests(request)).filter((r) => r.forge === 'forgejo' && r.method === 'POST' && r.path === '/api/v1/repos/team/gadget/pulls/12/reviews');
+    expect(reviews).toHaveLength(1);
+
+    // The repository deletes the branch after merging: the merge asks Forgejo to.
+    await view.getByRole('button', { name: 'Merge', exact: true }).click();
+    await confirmArmed(armedOverlay(page, 'Click again to merge #12 into main'));
+    const merged = async () => {
+      const seed = await forgeSeed(request) as unknown as { forgejo: { pulls: Array<{ number: number; merged: boolean; branchDeleted: boolean }> } };
+      const pr = seed.forgejo.pulls.find((p) => p.number === 12)!;
+      return [pr.merged, pr.branchDeleted];
+    };
+    await expect.poll(merged).toEqual([true, true]);
+  });
+
   test('a badge, its hover card, and the MR view with a comment and an approval', async ({ page, request, browserName }) => {
     // The sync fixture's local `dev` tracks origin/dev: the fake GitLab's !12 is from `dev`.
     const repo = freshFixture('sync');

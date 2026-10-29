@@ -13,6 +13,7 @@ mod forge_accounts;
 mod forge_author_names;
 mod forge_comment_actions;
 mod forge_cache;
+mod forge_forgejo;
 mod forge_forks_paging;
 mod forge_github;
 mod forge_github_create;

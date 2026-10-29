@@ -85,9 +85,10 @@ export const RepoTab = memo(function RepoTab({ tab }: { tab: TabState }) {
       if (ev.type !== 'repoChanged' && ev.type !== 'refsUpdated') return;
       if (ev.repo !== repoId) return;
       if (ev.type === 'refsUpdated') void refresh(tab.id, Object.values(useOps.getState().ops).some((o) => o.repo === repoId && o.step) ? { graphOnly: true } : undefined);
-      // Only refs, HEAD, stashes and config show in the sidebar and repo info; a worktree/index
-      // change reloads the graph alone (1C review M5).
-      else void refresh(tab.id, ev.kinds.some((k) => k === 'refs' || k === 'head' || k === 'stash' || k === 'config') ? {} : { graphOnly: true });
+      // Only refs, HEAD, stashes, config and submodules show in the sidebar and repo info; a
+      // worktree/index change reloads the graph alone (1C review M5). The core says `submodules`
+      // only when what the Submodules panel lists changed (a gitlink, `.gitmodules`, a checkout).
+      else void refresh(tab.id, ev.kinds.some((k) => k === 'refs' || k === 'head' || k === 'stash' || k === 'config' || k === 'submodules') ? {} : { graphOnly: true });
     });
   }, [repoId, tab.id, refresh]);
 

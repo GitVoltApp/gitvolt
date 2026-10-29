@@ -26,6 +26,9 @@ import { useProjectSettings } from './projectSettings';
 import { forgeWrite, putMr } from './writes';
 
 export const METHOD_LABELS: Record<MergeMethod, string> = { merge: 'Merge commit', squash: 'Squash and merge', rebase: 'Rebase and merge', semiLinear: 'Merge commit with semi-linear history', fastForward: 'Fast-forward merge' };
+/** Forgejo's own names for its merge styles (`semiLinear` is its rebase-merge). */
+const FORGEJO_METHOD_LABELS: Record<MergeMethod, string> = { merge: 'Create merge commit', squash: 'Squash', rebase: 'Rebase then fast-forward', semiLinear: 'Rebase then create merge commit', fastForward: 'Fast-forward only' };
+export const methodLabel = (kind: ForgeKind, m: MergeMethod): string => (kind === 'forgejo' ? FORGEJO_METHOD_LABELS : METHOD_LABELS)[m];
 /** The primary button's tooltip: how it merges (the method is no line of its own). */
 const METHOD_TIPS: Record<MergeMethod, string> = { merge: 'Merges with a merge commit', squash: 'Squashes the commits into one, then merges', rebase: 'Rebases the commits onto the target, then merges', semiLinear: 'Merges with a merge commit, keeping the history semi-linear', fastForward: 'Merges by fast-forwarding' };
 
@@ -38,6 +41,10 @@ export const UPDATE_LABELS: Record<ForgeKind, Partial<Record<BranchUpdate, { lab
   github: {
     merge: { label: (t) => `Merge ${t} in`, busy: 'Merging…', tip: 'GitHub merges the base branch into this branch' },
     rebase: { label: (t) => `Rebase onto ${t}`, busy: 'Rebasing…', tip: 'GitHub rebases this branch onto the base branch' },
+  },
+  forgejo: {
+    merge: { label: (t) => `Merge ${t} in`, busy: 'Merging…', tip: 'Forgejo merges the target branch into this branch' },
+    rebase: { label: (t) => `Rebase onto ${t}`, busy: 'Rebasing…', tip: 'Forgejo rebases this branch onto the target branch' },
   },
 };
 
@@ -63,8 +70,8 @@ type Mode = 'merge' | 'auto' | 'cancel' | 'none';
  * button sets it to merge once they pass; once set, who set it and Cancel auto-merge. GitLab merges
  * with the project's method; squash follows the project (hidden for Never, locked on for Always)
  * and the MR's own choice; delete-source-branch defaults to the MR's, else the project's. GitHub's
- * method is one of the repository's (the button's dropdown); its branch deletion is the
- * repository's setting. The commit messages are the forge's own (its templates). Each click
+ * and Forgejo's method is one of the repository's (the button's dropdown); their branch deletion
+ * is the repository's setting. The commit messages are the forge's own (its templates). Each click
  * arms in place; a merge sends the head sha the view loaded, so a moved
  * head is refused (Review Focus 3). No optimistic UI: the store changes only with the answer.
  */
@@ -101,8 +108,8 @@ export function MergeBox({ tabId, kind, mr: listed, detail }: { tabId: string; k
   const savedUpdate = useAppState((s) => (repoPath ? s.profile.repos[repoPath]?.branchUpdate : undefined));
   const offered = offer ? offer.kinds.filter((k) => UPDATE_LABELS[kind][k]) : [];
   const main = defaultUpdate(kind, offered, savedUpdate, settings?.mergeMethods ?? []);
-  // The main way is settled: GitHub's default waits for the repository's merge settings.
-  const settled = kind !== 'github' || settings !== null || (!!savedUpdate && offered.includes(savedUpdate));
+  // The main way is settled: GitHub's and Forgejo's default waits for the repository's merge settings.
+  const settled = kind === 'gitlab' || settings !== null || (!!savedUpdate && offered.includes(savedUpdate));
   // Updating: ours, or one the forge says it's doing (started elsewhere, or still going when ours stopped waiting).
   const updating = updateBusy ?? (offer?.inProgress ? main : null);
   const behindNow = offer !== null && branchBehind(localBehind === 'pending' ? null : localBehind, offer);
@@ -195,9 +202,9 @@ export function MergeBox({ tabId, kind, mr: listed, detail }: { tabId: string; k
   const label = busy === 'merge' ? 'Merging…' : busy === 'auto' ? 'Setting…' : busy === 'cancel' ? 'Cancelling…' : mode === 'auto' ? 'Set to auto-merge' : mode === 'cancel' ? 'Cancel auto-merge' : 'Merge';
   const tip = mode === 'cancel' || mode === 'none' ? null : chosen ? `${METHOD_TIPS[chosen]}${mode === 'auto' ? ' once all checks pass' : ''}` : null;
   const disabled = !ready;
-  const pick = !auto && kind === 'github' && methods.length > 1 && chosen !== null;
+  const pick = !auto && kind !== 'gitlab' && methods.length > 1 && chosen !== null;
   const methodRows = (): MenuRow[] => methods.map((m) => ({
-    kind: 'action', id: `merge.method.${m}`, label: METHOD_LABELS[m], icon: m === chosen ? Check : Blank, tooltip: METHOD_TIPS[m],
+    kind: 'action', id: `merge.method.${m}`, label: methodLabel(kind, m), icon: m === chosen ? Check : Blank, tooltip: METHOD_TIPS[m],
     run: () => setMethod(m),
   }));
   const others = offered.filter((k) => k !== main);
@@ -239,7 +246,7 @@ export function MergeBox({ tabId, kind, mr: listed, detail }: { tabId: string; k
           {/* One line: why (how far behind), what's running, or why it failed; the same height for each. */}
           <span className={`mr-merge-update-note${updateError && !updating ? ' bad' : ''}`} role="status">
             {updating ? (
-              <><LoaderCircle size={12} className="spin" aria-hidden /> {kind === 'gitlab' ? `GitLab is rebasing the source branch onto ${mr.targetBranch}` : (updating === 'rebase' ? `GitHub is rebasing the branch onto ${mr.targetBranch}` : `GitHub is merging ${mr.targetBranch} into the branch`)}</>
+              <><LoaderCircle size={12} className="spin" aria-hidden /> {kind === 'gitlab' ? `GitLab is rebasing the source branch onto ${mr.targetBranch}` : (updating === 'rebase' ? `${forgeName(kind)} is rebasing the branch onto ${mr.targetBranch}` : `${forgeName(kind)} is merging ${mr.targetBranch} into the branch`)}</>
             ) : (updateError ?? behindText(kind, offer.behind, mr.targetBranch))}
           </span>
           {main && (
@@ -284,16 +291,16 @@ export function MergeBox({ tabId, kind, mr: listed, detail }: { tabId: string; k
               </div>
             </div>
           )}
-          {kind === 'github' && settings?.deleteSourceBranch && <span className="mr-dim">GitHub deletes the branch after merging (repository setting)</span>}
+          {kind !== 'gitlab' && settings?.deleteSourceBranch && <span className="mr-dim">{forgeName(kind)} deletes the branch after merging (repository setting)</span>}
         </div>
       )}
     </section>
   );
 }
 
-/** "The source branch is 3 commits behind main" (GitLab's count), or GitHub's out-of-date line. */
+/** "The source branch is 3 commits behind main" (GitLab's count), or GitHub's (and Forgejo's) out-of-date line. */
 function behindText(kind: ForgeKind, behind: number | null, target: string): string {
-  if (kind === 'github') return `This branch is out of date with ${target}`;
+  if (kind !== 'gitlab') return `This branch is out of date with ${target}`;
   if (behind === null) return `The source branch is behind ${target}`;
   return `The source branch is ${behind} ${behind === 1 ? 'commit' : 'commits'} behind ${target}`;
 }

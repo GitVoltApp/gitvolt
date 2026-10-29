@@ -7,6 +7,26 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Added
 
+- **Forgejo.** Forgejo is the third forge, beside GitHub and GitLab: add an account for Codeberg
+  or your own instance (Gitea works too) in Settings › Accounts, with a token that has the
+  `read:user`, `write:repository` and `write:issue` scopes. Its pull requests get badges, the
+  sidebar list, the PR view (checks from commit statuses, reviews, replies, reactions, edits,
+  merge with Forgejo's merge styles, auto-merge, updating the branch), Create PR with templates,
+  and stacks. A remote on codeberg.org or on a host named after Forgejo or Gitea shows the
+  Forgejo mark; any other host can be set to Forgejo in Settings › Hosts. Line comments from the
+  diff, a line or a range, are kept in GitVolt until you submit the review, then go in with it as
+  one review; drafts don't outlive the app. Suggested changes use Forgejo's own ```suggestion
+  blocks. Requesting changes needs a message on Forgejo. Threads resolve and unresolve on a
+  Forgejo with its resolve API (forgejo/forgejo#14873); an older one says it can't.
+- **A Submodules panel in the sidebar**, as in GitKraken, in a worktree that has submodules: each
+  submodule by path, with its state when it isn't at the recorded commit ("new commits", "not
+  initialised", greyed, or "conflicted") and a hover card with its URL, the recorded and the
+  checked-out commit. A double-click (or Enter) opens it in a tab, or initialises one that isn't
+  checked out yet. Its menu has Open in a tab, Update (Initialise), Copy path, URL and commit id,
+  Open in file manager and Remove submodule (`git rm`, after one confirmation; the removal is
+  staged for you to commit). The panel's + and the palette's **Submodules: Add…** add one
+  (`git submodule add`, with an optional path and branch).
+- **German date format.** Settings › Graph › Date format has `26.09.2026 15:14`.
 - **Editor font and display settings.** Settings › Diffs and editors has an Editor group: font
   size (moved from Appearance; Ctrl+= / Ctrl+- / Ctrl+0 over an editor still change it, and the
   field follows), font family (picked from the installed monospace fonts, or all of them, with a

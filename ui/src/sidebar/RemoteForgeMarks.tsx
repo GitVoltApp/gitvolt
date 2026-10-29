@@ -4,7 +4,7 @@ import '../branches/upstreamWarning.css';
 
 /** The dim "main" chip on the remote whose forge project the repo's MRs/PRs target. */
 export function RemoteMainChip({ remote, kind, chosen }: { remote: string; kind: string | null; chosen: boolean }) {
-  const noun = kind === 'github' ? 'pull requests' : 'merge requests';
+  const noun = kind === 'github' || kind === 'forgejo' ? 'pull requests' : 'merge requests';
   const tip = chosen ? `The main remote: its forge project is used for ${noun}` : 'Picked automatically: right-click a remote to choose';
   return (
     <HoverTooltip content={tip}>

@@ -25,7 +25,7 @@ const lb = (name: string): LocalBranch => ({
 const tab = (head: string, locals = ['feature/a', 'feature/b']) => useRuntime.getState().patch('t', {
   repo: { id: 1, path: '/r' }, worktree: '/r',
   graph: { rows: [], labels: [], worktrees: [], head: { branch: `refs/heads/${head}`, target: null, detached: false, unborn: false } },
-  sidebar: { locals: locals.map(lb), remotes: [], worktrees: [], stashes: [], tags: [] },
+  sidebar: { locals: locals.map(lb), remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} },
 } as never);
 
 describe('the after-merge prompt (Ruling 11)', () => {

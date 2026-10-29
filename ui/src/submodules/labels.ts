@@ -19,3 +19,13 @@ export const SUBMODULE_STATUS_TEXT: Record<SubmoduleStatus, string> = {
   uninitialized: 'not initialised',
   conflicted: 'conflicted',
 };
+
+/** The sidebar card's last line: what the state means, and what a double-click does. */
+export function submoduleCardState(s: SubmoduleStatus): string {
+  switch (s) {
+    case 'current': return 'At the recorded commit · double-click to open';
+    case 'newCommits': return 'Checked out at another commit than the one recorded · double-click to open';
+    case 'uninitialized': return 'Nothing checked out · double-click to initialise';
+    case 'conflicted': return 'Conflicted in the index · double-click to open';
+  }
+}

@@ -25,7 +25,7 @@ export function detailOf(mr: ForgeMr, over: Partial<ForgeMrDetail> = {}): ForgeM
 }
 
 export function projectOf(path = 'group/project', kind: ForgeKind = 'gitlab'): ForgeProject {
-  const host = kind === 'gitlab' ? 'gitlab.example.com' : 'github.com';
+  const host = kind === 'gitlab' ? 'gitlab.example.com' : kind === 'forgejo' ? 'forgejo.example.org' : 'github.com';
   const [owner, name] = [path.split('/').slice(0, -1).join('/'), path.split('/').pop() ?? path];
   return { kind, id: 42, host, path, name, owner, webUrl: `https://${host}/${path}`, defaultBranch: 'main', cloneHttps: `https://${host}/${path}.git`, cloneSsh: `git@${host}:${path}.git`, forkOf: null, updatedAt: 1, archived: false, ownerAvatarUrl: null };
 }

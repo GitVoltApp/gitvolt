@@ -117,7 +117,7 @@ impl ForgeHub {
             // A 403: the token is good, its scope isn't.
             // An organization's own policy (e.g. a fine-grained token lifetime cap) says why: keep its words.
             GbErrorKind::AuthFailed if is_forbidden(&e) && e.message.contains("forbids access via a fine-grained") => e,
-            GbErrorKind::AuthFailed if is_forbidden(&e) => GbError::new(GbErrorKind::AuthFailed, format!("{host} accepted the token but it can't read your user: give it the api scope (GitLab) or read access (GitHub)")),
+            GbErrorKind::AuthFailed if is_forbidden(&e) => GbError::new(GbErrorKind::AuthFailed, format!("{host} accepted the token but it can't read your user: give it the api scope (GitLab), read access (GitHub) or read:user (Forgejo)")),
             GbErrorKind::AuthFailed => GbError::new(GbErrorKind::AuthFailed, format!("{host} rejected this token: check that you copied all of it")),
             _ => e,
         })?;
@@ -125,7 +125,7 @@ impl ForgeHub {
             return Err(GbError::new(GbErrorKind::InvalidInput, format!("This token can't make changes: create one with the {missing} scope")));
         }
         let version = match kind {
-            ForgeKind::GitLab => provider.version().await.ok().flatten(),
+            ForgeKind::GitLab | ForgeKind::Forgejo => provider.version().await.ok().flatten(),
             ForgeKind::GitHub => None,
         };
         let profile = store.active_profile();
@@ -256,9 +256,9 @@ impl ForgeHub {
         }
     }
 
-    /// GitLab's version, once it's a day old (best effort: a failure keeps the old one).
+    /// GitLab's or Forgejo's version, once it's a day old (best effort: a failure keeps the old one).
     async fn refresh_version(&self, store: &Arc<SettingsStore>, profile: &str, account: ForgeAccount, provider: &Arc<dyn ForgeProvider>) -> ForgeAccount {
-        if account.kind != ForgeKind::GitLab || self.now() - account.version_checked_at <= VERSION_MAX_AGE_SECS {
+        if account.kind == ForgeKind::GitHub || self.now() - account.version_checked_at <= VERSION_MAX_AGE_SECS {
             return account;
         }
         let Ok(version) = provider.version().await else { return account };
@@ -1322,7 +1322,7 @@ mod tests {
         let p = Arc::new(Hooked { inner: FakeProvider::new(ForgeKind::GitLab, HOST), on_version: Box::new(|| {}), check });
         let hub = ForgeHub::new(Arc::new(One(p)), MemTokens::new(TokenStorage::Keyring), Arc::new(|| NOW_MS));
         let e = hub.add_account(&SettingsStore::in_memory(), HOST, ForgeKind::GitLab, Secret::new(TOKEN)).await.unwrap_err();
-        assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::AuthFailed, "gitlab.example.com accepted the token but it can't read your user: give it the api scope (GitLab) or read access (GitHub)"));
+        assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::AuthFailed, "gitlab.example.com accepted the token but it can't read your user: give it the api scope (GitLab), read access (GitHub) or read:user (Forgejo)"));
     }
 
     #[tokio::test]

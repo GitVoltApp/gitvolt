@@ -139,7 +139,7 @@ export async function setForgeSeed(request: APIRequestContext, seed: ForgeSeed):
 
 // --- 4B T16 ---
 /** The app's own addForgeAccount, through the harness (4A's spec covers the Settings form). */
-export async function addForgeAccount(request: APIRequestContext, host: string, kind: 'gitlab' | 'github', token: string): Promise<void> {
+export async function addForgeAccount(request: APIRequestContext, host: string, kind: 'gitlab' | 'github' | 'forgejo', token: string): Promise<void> {
   const res = await request.post(`${harnessHttp}/test/forge/account`, { data: { host, kind, token } });
   const body = (await res.json()) as { ok?: unknown; err?: { message: string } };
   if (!res.ok() || body.err) throw new Error(`forge account refused: ${body.err?.message ?? res.status()}`);
@@ -153,6 +153,8 @@ export async function forgeRequests(request: APIRequestContext): Promise<Array<{
 // --- 4C T10 ---
 /** The fake forge's GitHub token for octocat (`GITHUB_TOKEN` in the harness's default seed). */
 export const E2E_GITHUB_TOKEN = 'ghp_FAKE-e2e-octocat';
+/** The fake Forgejo's token for ada (`FORGEJO_TOKEN` in the harness's default seed). */
+export const E2E_FORGEJO_TOKEN = 'forgejo-FAKE-e2e-ada';
 /** One scripted answer of the fake forge (`times` requests to `path`, after the forge prefix). */
 export async function forgeScript(request: APIRequestContext, s: { forge: 'gitlab' | 'github'; method: string; path: string; status: number; body?: unknown; times: number }): Promise<void> {
   const res = await request.post(`${harnessHttp}/test/forge/script`, { data: { headers: [], body: null, ...s } });

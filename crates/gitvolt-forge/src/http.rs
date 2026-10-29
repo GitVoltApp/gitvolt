@@ -99,6 +99,8 @@ pub struct HttpResponse {
     pub poll_interval_secs: Option<u32>,
     /// The `Link: <…>; rel="next"` URL, only on the account's own API origin.
     pub next_page: Option<String>,
+    /// The `Link: <…>; rel="last"` URL, as `next_page`.
+    pub last_page: Option<String>,
     /// GitHub classic tokens' `X-OAuth-Scopes`.
     pub oauth_scopes: Option<String>,
     /// The answer came with an ETag (its next GET is conditional).
@@ -157,10 +159,16 @@ pub fn rate_limited_error(host: &str, until: i64, now: i64) -> GbError {
 }
 
 pub fn parse_next_link(link: &str) -> Option<String> {
+    parse_link(link, "next")
+}
+
+/// The URL of a `Link` header's `rel` entry (`next`, `last`).
+pub fn parse_link(link: &str, rel: &str) -> Option<String> {
+    let want = format!("rel=\"{rel}\"");
     link.split(',').find_map(|part| {
         let (url, params) = part.split_once(';')?;
-        let next = params.split(';').any(|p| p.trim().replace(' ', "") == "rel=\"next\"");
-        next.then(|| url.trim().trim_start_matches('<').trim_end_matches('>').to_string())
+        let found = params.split(';').any(|p| p.trim().replace(' ', "") == want);
+        found.then(|| url.trim().trim_start_matches('<').trim_end_matches('>').to_string())
     })
 }
 
@@ -240,6 +248,7 @@ struct Cached {
     body: Arc<Vec<u8>>,
     poll_interval_secs: Option<u32>,
     next_page: Option<String>,
+    last_page: Option<String>,
     oauth_scopes: Option<String>,
     /// When the forge last answered it (a 200 or a 304), in ms since the client's `epoch`, and
     /// the write generation then: fresh while both are recent (`FRESH_SECS`, no write since).
@@ -435,7 +444,7 @@ impl HttpClient {
             .filter(|k| wanted(k))
             .filter_map(|k| {
                 let c = etags.map.get(k)?;
-                Some(gitvolt_core::forge::StoredResponse { key: k.clone(), etag: c.etag.clone(), body: String::from_utf8(c.body.to_vec()).ok()?, next_page: c.next_page.clone(), poll_interval_secs: c.poll_interval_secs })
+                Some(gitvolt_core::forge::StoredResponse { key: k.clone(), etag: c.etag.clone(), body: String::from_utf8(c.body.to_vec()).ok()?, next_page: c.next_page.clone(), last_page: c.last_page.clone(), poll_interval_secs: c.poll_interval_secs })
             })
             .collect()
     }
@@ -449,7 +458,7 @@ impl HttpClient {
             if !under(url, &self.inner.cfg.api_base) || e.body.len() > MAX_CACHED_BODY || etags.map.contains_key(&e.key) {
                 continue;
             }
-            let c = Cached { etag: e.etag, body: Arc::new(e.body.into_bytes()), poll_interval_secs: e.poll_interval_secs, next_page: e.next_page.filter(|n| under(n, &self.inner.cfg.api_base)), oauth_scopes: None, validated_ms: Default::default(), generation: std::sync::atomic::AtomicU64::new(u64::MAX) };
+            let c = Cached { etag: e.etag, body: Arc::new(e.body.into_bytes()), poll_interval_secs: e.poll_interval_secs, next_page: e.next_page.filter(|n| under(n, &self.inner.cfg.api_base)), last_page: e.last_page.filter(|n| under(n, &self.inner.cfg.api_base)), oauth_scopes: None, validated_ms: Default::default(), generation: std::sync::atomic::AtomicU64::new(u64::MAX) };
             etags.put(e.key, c);
         }
     }
@@ -690,7 +699,7 @@ impl HttpClient {
         let snapshot = if method == Method::Get { self.inner.etags.lock().expect("etags poisoned").map.get(&key).cloned() } else { None };
         if let Some(c) = snapshot.as_ref().filter(|c| self.is_fresh(c)) {
             self.inner.fresh_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return Ok(HttpResponse { status: 200, body: c.body.clone(), not_modified: true, poll_interval_secs: c.poll_interval_secs, next_page: c.next_page.clone(), oauth_scopes: c.oauth_scopes.clone(), etag: true });
+            return Ok(HttpResponse { status: 200, body: c.body.clone(), not_modified: true, poll_interval_secs: c.poll_interval_secs, next_page: c.next_page.clone(), last_page: c.last_page.clone(), oauth_scopes: c.oauth_scopes.clone(), etag: true });
         }
         if method != Method::Get {
             self.expire_fresh();
@@ -813,7 +822,8 @@ impl HttpClient {
         let link = get("link").map(|l| self.inner.link_rewrite.as_ref().map(|f| f(&l)).unwrap_or(l));
         #[cfg(not(test))]
         let link = get("link");
-        let next_page = link.and_then(|l| parse_next_link(&l)).filter(|n| under(n, &self.inner.cfg.api_base));
+        let next_page = link.as_deref().and_then(parse_next_link).filter(|n| under(n, &self.inner.cfg.api_base));
+        let last_page = link.as_deref().and_then(|l| parse_link(l, "last")).filter(|n| under(n, &self.inner.cfg.api_base));
         let oauth_scopes = get("x-oauth-scopes");
         if raw.status == 304 && method == Method::Get {
             let c = snapshot.ok_or_else(|| GbError::other(format!("{host} answered 304 for a request GitVolt has no copy of")))?;
@@ -825,7 +835,7 @@ impl HttpClient {
                 }
             }
             self.validated(&c);
-            return Ok(HttpResponse { status: 200, body: c.body.clone(), not_modified: true, poll_interval_secs: poll_interval_secs.or(c.poll_interval_secs), next_page: c.next_page.clone(), oauth_scopes: oauth_scopes.or_else(|| c.oauth_scopes.clone()), etag: true });
+            return Ok(HttpResponse { status: 200, body: c.body.clone(), not_modified: true, poll_interval_secs: poll_interval_secs.or(c.poll_interval_secs), next_page: c.next_page.clone(), last_page: last_page.or_else(|| c.last_page.clone()), oauth_scopes: oauth_scopes.or_else(|| c.oauth_scopes.clone()), etag: true });
         }
         if !(200..300).contains(&raw.status) {
             return Err(status_error(host, raw.status, &raw.body));
@@ -837,12 +847,12 @@ impl HttpClient {
             && body.len() <= MAX_CACHED_BODY
             && let Some(etag) = etag
         {
-            let c = Cached { etag, body: body.clone(), poll_interval_secs, next_page: next_page.clone(), oauth_scopes: oauth_scopes.clone(), validated_ms: Default::default(), generation: Default::default() };
+            let c = Cached { etag, body: body.clone(), poll_interval_secs, next_page: next_page.clone(), last_page: last_page.clone(), oauth_scopes: oauth_scopes.clone(), validated_ms: Default::default(), generation: Default::default() };
             self.validated(&c);
             self.inner.etags.lock().expect("etags poisoned").put(key, c);
         }
         tracing::debug!(target: "gitvolt_forge::http", host, method = method.as_str(), status = raw.status, "forge request");
-        Ok(HttpResponse { status: raw.status, body, not_modified: false, poll_interval_secs, next_page, oauth_scopes, etag: has_etag })
+        Ok(HttpResponse { status: raw.status, body, not_modified: false, poll_interval_secs, next_page, last_page, oauth_scopes, etag: has_etag })
     }
 }
 
@@ -1098,6 +1108,35 @@ mod tests {
         assert!(again.not_modified);
         assert_eq!(&*again.body, br#"{"a":1}"#);
         assert_eq!(s.hits(), 2);
+    }
+
+    /// A list's `Link` pages outlive a restart: kept in the stored answer, they come back with
+    /// its 304 (which carries no `Link`), and a 304 that does carry one wins.
+    #[tokio::test]
+    async fn link_pages_are_kept_across_a_restart() {
+        let base = Arc::new(std::sync::Mutex::new(String::new()));
+        let b = base.clone();
+        let s = TestServer::start(move |n, _| {
+            let api = format!("{}/api/v4", b.lock().unwrap());
+            match n {
+                0 => Canned::json(200, "[1]").header("ETag", "\"v1\"").header("Link", &format!("<{api}/t?page=2>; rel=\"next\", <{api}/t?page=3>; rel=\"last\"")),
+                1 => Canned { status: 304, headers: vec![("ETag".into(), "\"v1\"".into())], body: Vec::new() },
+                _ => Canned { status: 304, headers: vec![("ETag".into(), "\"v1\"".into()), ("Link".into(), format!("<{api}/t?page=4>; rel=\"last\""))], body: Vec::new() },
+            }
+        });
+        *base.lock().unwrap() = s.base.clone();
+        let api = format!("{}/api/v4", s.base);
+        let first = client(&s.base);
+        assert_eq!(first.get("/t").await.unwrap().last_page, Some(format!("{api}/t?page=3")));
+        let kept = first.export(|_| true);
+        assert_eq!(kept[0].last_page, Some(format!("{api}/t?page=3")));
+
+        let after = client(&s.base);
+        after.import(kept);
+        let again = after.get("/t").await.unwrap();
+        assert!(again.not_modified);
+        assert_eq!((again.next_page, again.last_page), (Some(format!("{api}/t?page=2")), Some(format!("{api}/t?page=3"))));
+        assert_eq!(after.get("/t").await.unwrap().last_page, Some(format!("{api}/t?page=4")), "the 304's own Link");
     }
 
     #[tokio::test]
@@ -1380,7 +1419,7 @@ mod tests {
 
     #[test]
     fn the_etag_cache_is_lru_and_byte_bounded() {
-        let mk = |n: usize| Cached { etag: "e".into(), body: Arc::new(vec![0; n]), poll_interval_secs: None, next_page: None, oauth_scopes: None, validated_ms: Default::default(), generation: Default::default() };
+        let mk = |n: usize| Cached { etag: "e".into(), body: Arc::new(vec![0; n]), poll_interval_secs: None, next_page: None, last_page: None, oauth_scopes: None, validated_ms: Default::default(), generation: Default::default() };
         let mut c = EtagCache::default();
         c.put("a".into(), mk(1));
         c.put("b".into(), mk(1));
@@ -1397,6 +1436,7 @@ mod tests {
     #[test]
     fn pure_helpers() {
         assert_eq!(parse_next_link(r#"<https://h/api?page=2>; rel="next", <https://h/api?page=9>; rel="last""#).as_deref(), Some("https://h/api?page=2"));
+        assert_eq!(parse_link(r#"<https://h/api?page=2>; rel="next", <https://h/api?page=9>; rel="last""#, "last").as_deref(), Some("https://h/api?page=9"));
         assert_eq!(parse_next_link(r#"<https://h/api?page=1>; rel="prev""#), None);
         assert_eq!(encode_component("group/sub project@x"), "group%2Fsub%20project%40x");
         assert_eq!(encode_component("a-b_c.d~e"), "a-b_c.d~e");

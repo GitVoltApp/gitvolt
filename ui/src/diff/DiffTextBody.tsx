@@ -72,7 +72,7 @@ export function DiffTextBody({ identity, path, oldPath, original, modified, lang
   const shownNew = kept.current?.identity === identity ? kept.current.buffer : modified;
   const { tooLarge, key: renderKey } = useDiffTooLarge(identity, isMd ? original : '', isMd ? shownNew : '');
   const rendered = isMd && picked === 'rendered' && !tooLarge;
-  const flavor = forgeOf(tabId).kind === 'gitlab' ? 'gitlab' : 'github';
+  const flavor = forgeOf(tabId).kind ?? 'github';
   const onTooLarge = useCallback(() => markSlow(renderKey), [renderKey]);
   const waiting = useParseBudget(
     renderKey,

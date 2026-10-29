@@ -27,6 +27,9 @@ pub enum ChangeKind {
     Config,
     /// A merge, rebase, cherry-pick or revert started or ended (spec #2 §3.5).
     State,
+    /// A worktree's submodules as the sidebar lists them: a gitlink in its index, its
+    /// `.gitmodules`, or a submodule's checked-out commit (`submodules::Seen`).
+    Submodules,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

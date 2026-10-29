@@ -55,7 +55,7 @@ describe('withActiveSidebar', () => {
     const s = {
       locals: [{ name: 'main', fullName: 'refs/heads/main', isHead: true, worktree: null, checkedOut: '/r' }, { name: 'x', fullName: 'refs/heads/x', isHead: false, worktree: '/r-x', checkedOut: '/r-x' }],
       worktrees: [{ path: '/r', isCurrent: true }, { path: '/r-x', isCurrent: false }],
-      remotes: [], stashes: [], tags: [],
+      remotes: [], stashes: [], tags: [], submodules: {},
     } as unknown as SidebarPayload;
     const out = withActiveSidebar(s, '/r-x');
     expect(out.locals.map((b) => [b.isHead, b.worktree])).toEqual([[false, '/r'], [true, null]]);

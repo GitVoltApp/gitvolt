@@ -40,12 +40,13 @@ export const MdSuggestionApply = createContext<((p: SuggestionApplyProps) => Rea
 export const suggestedLines = (code: string): string[] => (code === '' ? [] : code.split('\n').map((l) => l.replace(/\r$/, '')));
 
 /** The lines a suggestion fence (`lang`) replaces, relative to the comment's last line: GitLab's
- * `suggestion:-N+M` from N above to M below; a plain `suggestion` on GitHub the commented lines,
- * on GitLab the last one alone (its offsets default to 0). */
+ * `suggestion:-N+M` from N above to M below; a plain `suggestion` on GitHub and Forgejo the
+ * commented lines (Forgejo's `ExtractSuggestions` reads GitHub's fence), on GitLab the last one alone (its offsets
+ * default to 0). */
 export function suggestionOffset(lang: string, base: Pick<SuggestionBase, 'flavor' | 'span'>): { above: number; below: number } {
   const m = /^suggestion:-(\d+)\+(\d+)$/.exec(lang);
   if (m) return { above: Number(m[1]), below: Number(m[2]) };
-  return { above: base.flavor === 'github' ? base.span : 0, below: 0 };
+  return { above: base.flavor === 'gitlab' ? 0 : base.span, below: 0 };
 }
 
 /** What a suggestion in fence `lang` replaces, as `base` knows it; null: unknown. */

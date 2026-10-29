@@ -11,6 +11,7 @@ const payload: SidebarPayload = {
   worktrees: [{ path: '/r', name: 'r', branch: 'main', head: 'h'.repeat(40), isMain: true, isCurrent: true, locked: false }],
   stashes: [{ index: 0, id: 's'.repeat(40), message: 'On main: wip', time: 5 }],
   tags: [{ name: 'v1.0', fullName: 'refs/tags/v1.0', target: 't'.repeat(40), time: 1 }],
+  submodules: {},
 };
 const view = (panels: Panel[]) => panels.flatMap((p) => [`[${p.section.label} ${p.matched}${p.collapsed ? ' collapsed' : ''}]`, ...p.rows.map((r) => `${'  '.repeat(r.depth)}${r.type === 'folder' ? `${r.name}/` : r.label}`)]);
 const opts = (o: Partial<Parameters<typeof buildPanels>[1]> = {}) => ({ filter: '', sort: {}, collapsed: new Set<string>(), ...o });

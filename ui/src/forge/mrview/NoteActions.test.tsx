@@ -172,6 +172,24 @@ describe('a comment header: reactions, edit and delete', () => {
     expect(api.openUrl).toHaveBeenCalledWith('https://github.com/octo-org/widget/pull/3#issuecomment-41');
   });
 
+  it("Forgejo: GitHub's eight reactions; its review code comments can be edited, not deleted; its review summary is as GitHub's", () => {
+    const { unmount } = show('forgejo', thread('thread-61', [note('61', ada)]));
+    fireEvent.click(screen.getByRole('button', { name: 'Add reaction' }));
+    expect(within(screen.getByRole('dialog', { name: 'Add reaction' })).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([':+1:', ':-1:', ':laugh:', ':hooray:', ':confused:', ':heart:', ':rocket:', ':eyes:']);
+    expect(screen.queryByRole('searchbox', { name: 'Search emoji' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add reaction' }));
+    expect(within(menu()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Edit', 'Quote reply']);
+    act(() => useMenu.getState().close());
+    unmount();
+    const conv = show('forgejo', thread('issue-41', [note('41', ada)]));
+    expect(within(menu()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Edit', 'Delete', 'Quote reply']);
+    act(() => useMenu.getState().close());
+    conv.unmount();
+    show('forgejo', thread('review-31', [note('review-31', ada)]));
+    expect(screen.queryByRole('button', { name: 'Add reaction' })).toBeNull();
+    expect(within(menu()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Quote reply']);
+  });
+
   it("a GitHub review's summary takes no reactions and can't be edited", () => {
     patchForge('t', { me: 'grace' });
     show('github', thread('review-31', [note('review-31')]));
@@ -238,6 +256,7 @@ describe('permalinks, date tooltips and reaction lists', () => {
     expect(notePermalink('gitlab', { webUrl: 'https://gitlab.example.com/g/p/-/merge_requests/12' }, { id: '101', webUrl: undefined })).toBe('https://gitlab.example.com/g/p/-/merge_requests/12#note_101');
     expect(notePermalink('github', { webUrl: 'https://github.com/o/r/pull/3' }, { id: '52', webUrl: 'https://github.com/o/r/pull/3#discussion_r52' })).toBe('https://github.com/o/r/pull/3#discussion_r52');
     expect(notePermalink('github', { webUrl: 'https://github.com/o/r/pull/3' }, { id: '52', webUrl: undefined })).toBeNull();
+    expect(notePermalink('forgejo', { webUrl: 'https://forgejo.example.org/o/r/pulls/3' }, { id: '52', webUrl: 'https://forgejo.example.org/o/r/pulls/3#issuecomment-52' })).toBe('https://forgejo.example.org/o/r/pulls/3#issuecomment-52');
   });
 
   it('the tooltip is the full date in the chosen format with the time zone', () => {

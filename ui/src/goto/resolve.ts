@@ -201,7 +201,7 @@ async function resolveMr(target: Extract<GotoTarget, { kind: 'mr' }>, tabs: Goto
   const active = activeOf(tabs);
   const forge = active?.forge;
   if (!active) return NONE;
-  if (!forge) return toast(`${active.name} has no GitLab or GitHub project for ${target.sigil}${target.number}`);
+  if (!forge) return toast(`${active.name} has no GitLab, GitHub or Forgejo project for ${target.sigil}${target.number}`);
   if ((forge.kind === 'gitlab') !== (target.sigil === '!')) return NONE;
   const root = forge.webUrl.slice(0, forge.webUrl.length - forge.path.length).replace(/\/+$/, '');
   const project = target.project ?? forge.path;

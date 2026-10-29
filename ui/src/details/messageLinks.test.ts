@@ -41,6 +41,15 @@ describe('message links', () => {
     expect(links('#5 !6', null)).toEqual([]);
   });
 
+  it('links Forgejo references as pull requests, as on GitHub', () => {
+    const forgejo: ProjectRemote = { host: 'forgejo.example.org', path: 'owner/repo', hostKind: 'forgejo' };
+    expect(links('Closes #5 and other/repo#6, not !3', forgejo)).toEqual([
+      ['#5', 'https://forgejo.example.org/owner/repo/pulls/5'],
+      ['other/repo#6', 'https://forgejo.example.org/other/repo/pulls/6'],
+    ]);
+    expect(mergeRequestButtons(tokenizeMessage('Fixes #5', forgejo))).toEqual([{ label: 'Open #5', url: 'https://forgejo.example.org/owner/repo/pulls/5' }]);
+  });
+
   it('ignores references glued to words', () => {
     expect(links('C#123 abc!4 v1.2#3 x-#9', gitlab)).toEqual([]);
   });

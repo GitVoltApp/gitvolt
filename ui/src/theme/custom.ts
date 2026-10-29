@@ -97,7 +97,7 @@ export const TOKEN_LABELS: Record<ColorToken, string> = {
   'diff-inserted-text': 'Added text', 'diff-removed-text': 'Removed text', 'diff-inserted-line': 'Added lines', 'diff-removed-line': 'Removed lines',
   'diff-diagonal-fill': 'Past the end of a side',
   'md-diff-ins-text': 'Markdown: added words', 'md-diff-del-text': 'Markdown: removed words', 'md-diff-ins-block': 'Markdown: added blocks', 'md-diff-del-block': 'Markdown: removed blocks',
-  'forge-gitlab': 'GitLab mark', 'forge-github': 'GitHub mark', purple: 'Merged',
+  'forge-gitlab': 'GitLab mark', 'forge-github': 'GitHub mark', 'forge-forgejo': 'Forgejo mark', purple: 'Merged',
   'switch-on': 'Switch on', 'switch-off': 'Switch off',
   'tg-ink': 'Tab group text', 'tg-blue': 'Tab group: blue', 'tg-purple': 'Tab group: purple', 'tg-cyan': 'Tab group: cyan', 'tg-orange': 'Tab group: orange',
   'tg-yellow': 'Tab group: yellow', 'tg-pink': 'Tab group: pink', 'tg-green': 'Tab group: green', 'tg-gray': 'Tab group: grey', 'tg-red': 'Tab group: red',
@@ -114,6 +114,6 @@ export const TOKEN_GROUPS: ReadonlyArray<{ group: TokenGroup; tokens: readonly C
   { group: 'Diff', tokens: ['diff-inserted-text', 'diff-removed-text', 'diff-inserted-line', 'diff-removed-line', 'diff-diagonal-fill', 'md-diff-ins-text', 'md-diff-del-text', 'md-diff-ins-block', 'md-diff-del-block', 'conflict-ours', 'conflict-theirs', 'conflict-base', 'conflict-ours-tick', 'conflict-theirs-tick'] },
   { group: 'Status', tokens: ['green', 'red', 'orange', 'yellow', 'stats-added', 'stats-deleted', 'stats-added-bright', 'stats-deleted-bright', 'status-added', 'status-modified', 'status-deleted', 'status-renamed', 'status-conflicted'] },
   { group: 'Graph and canvas', tokens: ['node-fill', 'node-text', 'collapse-strip', 'avatar-backdrop', 'text-row-dimmed', 'text-row-dimmed-branch', 'checked-out-row', 'checked-out'] },
-  { group: 'Forge and tabs', tokens: ['forge-gitlab', 'forge-github', 'purple', 'review-pending', 'review-pending-bg', 'tg-ink', 'tg-blue', 'tg-purple', 'tg-cyan', 'tg-orange', 'tg-yellow', 'tg-pink', 'tg-green', 'tg-gray', 'tg-red'] },
+  { group: 'Forge and tabs', tokens: ['forge-gitlab', 'forge-github', 'forge-forgejo', 'purple', 'review-pending', 'review-pending-bg', 'tg-ink', 'tg-blue', 'tg-purple', 'tg-cyan', 'tg-orange', 'tg-yellow', 'tg-pink', 'tg-green', 'tg-gray', 'tg-red'] },
   { group: 'Other', tokens: ['image-frame-border', 'switch-on', 'switch-off', 'button-primary', 'button-warn', 'button-warn-ink'] },
 ];

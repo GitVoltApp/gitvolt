@@ -6,12 +6,13 @@ vi.mock('./fileContext', async (orig) => {
   fc.resolveRepoPath = vi.fn(m.resolveRepoPath);
   return { resolveRepoPath: (...a: Parameters<typeof m.resolveRepoPath>) => fc.resolveRepoPath(...a) };
 });
-import { targetOfHref, targetOfReference, type LinkEnv } from './links';
+import { blobUrl, forgePageOf, targetOfHref, targetOfReference, type LinkEnv } from './links';
 import type { MarkdownContext, MdReferenceNode } from './types';
 
 const SHA = 'abc1234def5678abc1234def5678abc1234def56';
 const gl: LinkEnv = { kind: 'gitlab', project: { path: 'group/project', webUrl: 'https://gitlab.example.com/group/project', defaultBranch: 'main' }, fullSha: (p) => (SHA.startsWith(p) ? SHA : null) };
 const gh: LinkEnv = { kind: 'github', project: { path: 'octo-org/widget', webUrl: 'https://github.com/octo-org/widget', defaultBranch: 'main' }, fullSha: () => null };
+const fj: LinkEnv = { kind: 'forgejo', project: { path: 'acme/widget', webUrl: 'https://forgejo.example.org/acme/widget', defaultBranch: 'main' }, fullSha: () => null };
 const none: LinkEnv = { kind: null, project: null, fullSha: () => null };
 const forge: MarkdownContext = { kind: 'forge', tabId: 't' };
 const file: MarkdownContext = { kind: 'file', tabId: 't', commit: 'c0ffee1', path: 'docs/README.md' };
@@ -28,6 +29,16 @@ describe('where a reference goes (spec #5 §4.1)', () => {
   it('GitHub: #n in this repository tries the PR view; another repository’s opens in the browser', () => {
     expect(targetOfReference(gh, ref('issue', '#4', { number: 4 }))).toEqual({ kind: 'mr', number: 4, webUrl: 'https://github.com/octo-org/widget/issues/4' });
     expect(targetOfReference(gh, ref('issue', 'someone/else#9', { project: 'someone/else', number: 9 }))).toEqual({ kind: 'external', url: 'https://github.com/someone/else/issues/9' });
+  });
+
+  it('Forgejo: #n in this repository tries the PR view, as on GitHub; its PR pages are /pulls/n', () => {
+    expect(targetOfReference(fj, ref('issue', '#4', { number: 4 }))).toEqual({ kind: 'mr', number: 4, webUrl: 'https://forgejo.example.org/acme/widget/issues/4' });
+    expect(targetOfReference(fj, ref('issue', 'someone/else#9', { project: 'someone/else', number: 9 }))).toEqual({ kind: 'external', url: 'https://forgejo.example.org/someone/else/issues/9' });
+    expect(targetOfHref(fj, forge, 'https://forgejo.example.org/acme/widget/pulls/6/files')).toEqual({ kind: 'mr', number: 6, webUrl: 'https://forgejo.example.org/acme/widget/pulls/6/files' });
+    expect(targetOfHref(fj, forge, 'https://forgejo.example.org/acme/widget/pull/6')).toEqual({ kind: 'external', url: 'https://forgejo.example.org/acme/widget/pull/6' });
+    expect(forgePageOf('forgejo', 'src/branch/feat/x/docs/a.md')).toEqual({ kind: 'blob', refPath: 'feat/x/docs/a.md' });
+    expect(forgePageOf('forgejo', `commit/${SHA}`)).toEqual({ kind: 'commit', sha: SHA });
+    expect(blobUrl('forgejo', 'https://forgejo.example.org/acme/widget', 'main', './docs/a.md')).toBe('https://forgejo.example.org/acme/widget/src/branch/main/docs/a.md');
   });
 
   it('a SHA in the graph selects it; one that isn’t opens the forge; with no forge, nothing', () => {

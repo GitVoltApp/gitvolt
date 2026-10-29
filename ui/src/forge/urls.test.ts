@@ -3,6 +3,7 @@ import { branchUrl, commitUrl, effectiveKind, fileUrl, issueUrl, mergeRequestUrl
 
 const gitlab: ProjectRemote = { host: 'gitlab.example.com', path: 'group/project', hostKind: 'gitlab' };
 const github: ProjectRemote = { host: 'github.example.com', path: 'owner/repo', hostKind: 'github' };
+const forgejo: ProjectRemote = { host: 'forgejo.example.org', path: 'owner/repo', hostKind: 'forgejo' };
 const generic: ProjectRemote = { host: 'code.example.com', path: 'a/b', hostKind: 'generic' };
 
 describe('projectRemote', () => {
@@ -55,6 +56,13 @@ describe('fileUrl', () => {
     );
   });
 
+  it("builds Forgejo's src URL, by branch or by commit, with GitHub-style anchors", () => {
+    const sha = 'a'.repeat(40);
+    expect(fileUrl(forgejo, 'feat/x#1', 'src/lib.rs')).toBe('https://forgejo.example.org/owner/repo/src/branch/feat/x%231/src/lib.rs');
+    expect(fileUrl(forgejo, sha, 'src/lib.rs', { a: 3, b: 8 })).toBe(`https://forgejo.example.org/owner/repo/src/commit/${sha}/src/lib.rs#L3-L8`);
+    expect(fileUrl(forgejo, 'main', 'src/lib.rs', { a: 3, b: 3 })).toBe('https://forgejo.example.org/owner/repo/src/branch/main/src/lib.rs#L3');
+  });
+
   it('returns null for generic hosts', () => {
     expect(fileUrl(generic, 'main', 'src/lib.rs')).toBeNull();
   });
@@ -74,6 +82,7 @@ describe('branchUrl', () => {
   it('builds GitLab and GitHub tree URLs', () => {
     expect(branchUrl(gitlab, 'main')).toBe('https://gitlab.example.com/group/project/-/tree/main');
     expect(branchUrl(github, 'main')).toBe('https://github.example.com/owner/repo/tree/main');
+    expect(branchUrl(forgejo, 'feat/x#1')).toBe('https://forgejo.example.org/owner/repo/src/branch/feat/x%231');
   });
 
   it('returns null for generic hosts', () => {
@@ -90,6 +99,7 @@ describe('commitUrl', () => {
   it('builds GitLab and GitHub commit URLs', () => {
     expect(commitUrl(gitlab, 'abc123')).toBe('https://gitlab.example.com/group/project/-/commit/abc123');
     expect(commitUrl(github, 'abc123')).toBe('https://github.example.com/owner/repo/commit/abc123');
+    expect(commitUrl(forgejo, 'abc123')).toBe('https://forgejo.example.org/owner/repo/commit/abc123');
   });
 
   it('returns null for generic hosts', () => {
@@ -101,6 +111,8 @@ describe('mergeRequestUrl', () => {
   it('builds GitLab MR and GitHub PR URLs', () => {
     expect(mergeRequestUrl(gitlab, null, 42)).toBe('https://gitlab.example.com/group/project/-/merge_requests/42');
     expect(mergeRequestUrl(github, null, 42)).toBe('https://github.example.com/owner/repo/pull/42');
+    expect(mergeRequestUrl(forgejo, null, 42)).toBe('https://forgejo.example.org/owner/repo/pulls/42');
+    expect(mergeRequestUrl(forgejo, 'other/repo', 6)).toBe('https://forgejo.example.org/other/repo/pulls/6');
   });
 
   it('returns null for generic hosts', () => {
@@ -119,6 +131,7 @@ describe('issueUrl', () => {
   it('builds GitLab and GitHub issue URLs', () => {
     expect(issueUrl(gitlab, null, 12)).toBe('https://gitlab.example.com/group/project/-/issues/12');
     expect(issueUrl(github, null, 12)).toBe('https://github.example.com/owner/repo/issues/12');
+    expect(issueUrl(forgejo, null, 12)).toBe('https://forgejo.example.org/owner/repo/issues/12');
   });
 
   it('returns null for generic hosts', () => {

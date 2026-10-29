@@ -36,7 +36,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 't', kind: 'repo', path: '/r', alias: null }], activeTab: 't' } });
   useRuntime.setState({ tabs: {} });
-  useRuntime.getState().patch('t', { status: 'ready', repo: { id: 4 } as never, sidebar: { locals: [], remotes: [], worktrees: [], stashes: [], tags: [] } });
+  useRuntime.getState().patch('t', { status: 'ready', repo: { id: 4 } as never, sidebar: { locals: [], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} } });
   useForge.setState({ byTab: {} });
 });
 

@@ -56,6 +56,15 @@ describe('arm in place (spec §ui confirms)', () => {
     expect(screen.getByTestId('arm-live')).toHaveTextContent('');
   });
 
+  it('a cover marked data-arm-wrap keeps its own box: the label wraps inside it, never growing out', () => {
+    const box = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 10, 120, 40));
+    render(<><div data-arm-cover="" data-arm-wrap=""><Discard onRun={() => {}} /></div><ArmLayer /><ConfirmDialog /></>);
+    press(screen.getByRole('button', { name: 'Discard all' }));
+    expect(overlay()).toHaveClass('arm-cover', 'arm-wrap');
+    expect([overlay()!.style.width, overlay()!.style.maxWidth, overlay()!.style.height]).toEqual(['120px', '120px', '40px']);
+    box.mockRestore();
+  });
+
   it('a press anywhere else disarms, and so does Esc', async () => {
     const run = vi.fn();
     render(<><Discard onRun={run} /><p>elsewhere</p><ArmLayer /></>);

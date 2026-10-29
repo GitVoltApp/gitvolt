@@ -306,11 +306,27 @@ pub enum Request {
     },
     /// `git submodule sync --recursive`: `WriteResult<SubmoduleOutcome>`. Not journaled.
     SubmoduleSync { repo: u32, worktree: String },
+    /// `git submodule add [-b <branch>] -- <url> [<path>]` (the sidebar's Submodules +):
+    /// `WriteResult<SubmoduleOutcome>`. A network command, under the write lock; not journaled.
+    SubmoduleAdd {
+        repo: u32,
+        worktree: String,
+        url: String,
+        #[serde(default)]
+        #[ts(optional)]
+        path: Option<String>,
+        #[serde(default)]
+        #[ts(optional)]
+        branch: Option<String>,
+    },
+    /// `git rm -- <path>` of the submodule at `path`: its checkout, gitlink and `.gitmodules`
+    /// entry, staged. `WriteResult<SubmoduleOutcome>`. Not journaled.
+    SubmoduleRemove { repo: u32, worktree: String, path: String },
     /// Clones `url` into the absolute `dest` (spec §13) and opens it: `RepoSummary`.
     Clone { url: String, dest: String },
     /// Every remote with its redacted URL, and the main worktree of a linked one: `RepoInfoPayload`.
     RepoInfo { repo: u32 },
-    /// Branches, remotes, worktrees, stashes and tags (spec §6.4): `SidebarPayload`.
+    /// Branches, remotes, worktrees, stashes, tags and submodules (spec §6.4): `SidebarPayload`.
     Sidebar { repo: u32 },
     /// When a remote-tracking ref was last pushed (or else last fetched): `LastPushPayload | null`.
     LastPush { repo: u32, remote_ref: String },
@@ -1296,7 +1312,7 @@ impl Request {
             // --- 4A T7 ---
             Request::AddRemote { .. } | Request::RemoveRemote { .. } | Request::SwitchRemoteToSsh { .. } | Request::SwitchRemoteBack { .. } => true,
             // --- end 4A T7 ---
-            Request::SubmoduleUpdate { .. } | Request::SubmoduleSync { .. } => true,
+            Request::SubmoduleUpdate { .. } | Request::SubmoduleSync { .. } | Request::SubmoduleAdd { .. } | Request::SubmoduleRemove { .. } => true,
             Request::Submodules { .. } => false,
             Request::Fetch { .. } | Request::DropCompareRefs { .. } | Request::Clone { .. } | Request::RemoveIndexLock { .. } => true,
             Request::WriteWorktreeFile { .. } | Request::CreateWorktreeFile { .. } | Request::ApplySuggestion { .. } => true,
@@ -1583,6 +1599,8 @@ pub struct Api {
     pub(crate) write_locks: Mutex<HashMap<PathBuf, Arc<crate::write::queue::RepoWrites>>>,
     /// Each repository's remotes' tags, as the last fetch listed them (`remote_tags.rs`).
     pub(crate) remote_tags: crate::remote_tags::RemoteTags,
+    /// Each worktree's submodules as the sidebar last listed them (`repoChanged`'s `submodules`).
+    pub(crate) submodules: Arc<crate::submodules::Seen>,
     /// GitVolt's data dir (spec #2 §5.1): the journal and temp index files. A private temp dir
     /// unless `with_data_dir` (only the app passes `paths::data_dir()`).
     pub(crate) data_dir: PathBuf,
@@ -1793,6 +1811,7 @@ impl Api {
             write_guard: None,
             write_locks: Mutex::new(HashMap::new()),
             remote_tags: Default::default(),
+            submodules: Default::default(),
             data_dir,
             data_tmp,
             clock: crate::journal::system_clock(),
@@ -2800,6 +2819,8 @@ impl Api {
             Request::Submodules { repo, worktree } => to_json(self.submodules(repo, &worktree).await?),
             Request::SubmoduleUpdate { repo, worktree, path, confirm } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::submodules::UpdateSubmodules { path, confirm: confirm.unwrap_or(false) }).await?),
             Request::SubmoduleSync { repo, worktree } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::submodules::SyncSubmodules).await?),
+            Request::SubmoduleAdd { repo, worktree, url, path, branch } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::submodules::AddSubmodule { url, path, branch }).await?),
+            Request::SubmoduleRemove { repo, worktree, path } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::submodules::RemoveSubmodule { path }).await?),
             // --- 4A T5 ---
             Request::ForgeAccounts => to_json(self.forge.as_ref().map(|f| f.accounts(&self.store)).unwrap_or_default()),
             Request::AddForgeAccount { host, kind, token } => to_json(self.forge_hub()?.add_account(&self.store, &host, kind, token).await?),
@@ -3060,7 +3081,7 @@ impl Api {
             }
             Request::Sidebar { repo } => {
                 let h = self.handle(repo)?;
-                let mut s = crate::shelldata::sidebar(&h.repo, &h.workdir).await?;
+                let mut s = crate::shelldata::sidebar(&h.repo, &h.workdir, &self.submodules).await?;
                 crate::write::rewrites::annotate(&self.data_dir, &h.common_dir, &h.repo.to_thread_local(), &mut s.locals);
                 to_json(s)
             }
@@ -5421,7 +5442,7 @@ mod tests {
     const WRITE_METHODS: &[&str] = &["fetch", "dropCompareRefs", "clone", "testWrite", "undo", "redo", "undoEntry","applyKeptStash", "removeIndexLock", "stage", "unstage", "stageAll", "unstageAll", "stagingUndo", "stagingRedo", "writeWorktreeFile", "createWorktreeFile", "applySuggestion", "commit", "editHeadMessage", "settlePaused", "worktreeAdd", "worktreeRemove", "deleteBranch", "stagePatch", "createBranch", "renameBranch", "setUpstream", "push",
         // 4A T7
         "addRemote", "removeRemote", "switchRemoteToSsh", "switchRemoteBack",
-        "submoduleUpdate", "submoduleSync",
+        "submoduleUpdate", "submoduleSync", "submoduleAdd", "submoduleRemove",
         // --- 2C T5: checkout ---
         "checkout",
         // --- end 2C T5 ---
@@ -5480,6 +5501,8 @@ mod tests {
             // --- end 4A T7 ---
             json!({"method": "submoduleUpdate", "params": {"repo": id, "worktree": wt, "path": "nope"}}),
             json!({"method": "submoduleSync", "params": {"repo": id, "worktree": wt}}),
+            json!({"method": "submoduleAdd", "params": {"repo": id, "worktree": wt, "url": "", "path": "vendor/x"}}),
+            json!({"method": "submoduleRemove", "params": {"repo": id, "worktree": wt, "path": "nope"}}),
             json!({"method": "clone", "params": {"url": "https://example.com/x.git", "dest": "/nonexistent/x"}}),
             json!({"method": "testWrite", "params": {"repo": id, "worktree": wt, "intent": {"op": "barrier", "label": "x"}}}),
             // Undo / redo (2A T10).

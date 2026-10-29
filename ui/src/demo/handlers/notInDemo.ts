@@ -18,6 +18,8 @@ const WHAT: Record<NotInDemoMethod, string> = {
   switchRemoteBack: 'SSH remotes',
   submoduleUpdate: 'updating submodules',
   submoduleSync: 'syncing submodules',
+  submoduleAdd: 'adding submodules',
+  submoduleRemove: 'removing submodules',
   clone: 'cloning',
   pickFolder: 'folders on your disk',
   saveExport: 'saving files to your disk',

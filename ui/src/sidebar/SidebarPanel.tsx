@@ -2,7 +2,7 @@ import { PendingMark } from '../pending/PendingMark';
 import { onPointerLeftWindow } from '../ui/windowLeave';
 import { usePendingAny } from '../pending/store';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Clock, Eye, EyeOff, Folder, FolderOpen, GitBranch, GitMerge, House, ListTree, Tag, TreePine } from 'lucide-react';
+import { ArrowDown, ArrowUp, Boxes, Check, ChevronDown, ChevronRight, Clock, Eye, EyeOff, Folder, FolderOpen, GitBranch, GitMerge, House, ListTree, Tag, TreePine } from 'lucide-react';
 import { stashLabel } from './stashLabel';
 import { memo, useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { goToCommit } from '../app/graphNav';
@@ -23,6 +23,7 @@ import { sectionKey, type FlatRow, type Panel, type SideItem } from './model';
 import { useHeaderActions, sidebarDoubleClick, type HeaderAction } from './itemActions';
 import { SectionIcon } from './SectionIcon';
 import { UpstreamWarning } from '../branches/UpstreamWarning';
+import { SUBMODULE_STATUS_TEXT } from '../submodules/labels';
 // --- 4B T10 ---
 import { LocalBranchBadge } from '../forge/MrBadge';
 // --- end 4B T10 ---
@@ -55,6 +56,7 @@ export function ItemIcon({ item, tabId }: { item: SideItem; tabId: string }) {
     return <Icon size={13} data-wt={item.worktree.isMain ? 'main' : 'linked'} aria-label={item.worktree.isCurrent ? 'current worktree' : undefined} aria-hidden={item.worktree.isCurrent ? undefined : true} />;
   }
   if (item.kind === 'stash') return <StashIcon size={13} />;
+  if (item.kind === 'submodule') return <Boxes size={13} />;
   // UX round 3, M.2: an annotated tag's icon is filled, a lightweight one's outlined.
   return item.tag.annotation ? <Tag size={13} fill="currentColor" aria-label="annotated tag" /> : <Tag size={13} />;
 }
@@ -147,6 +149,12 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
       return;
     }
     // --- end 4B T11 ---
+    // A submodule has no commit of this repository to go to: a click only selects it, Enter opens
+    // it as its double-click does.
+    if (item.kind === 'submodule') {
+      if (focus) sidebarDoubleClick({ tabId, store }, item);
+      return;
+    }
     const missing = () => useToast.getState().show('Not in the loaded history');
     if (!item.target) missing();
     else goToCommit(tabId, item.target, { focus }, missing);
@@ -317,6 +325,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
                   aria-selected={section.kind === 'mrs' ? it.kind === 'mr' && it.mr.number === openMr : undefined}
                   data-context={row.key === contextKey || undefined}
                   data-kind={it.kind}
+                  data-sub={it.kind === 'submodule' ? it.submodule.status : undefined}
                   className={`sb-row sb-item${head ? ' is-head' : ''}${it.presetState === 'hidden' ? ' is-hidden' : ''}`}
                   style={style}
                   onClick={(e) => {
@@ -336,6 +345,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
                   {it.kind === 'local' && it.branch.upstreamMismatch && <UpstreamWarning branch={it.name} upstream={it.branch.upstreamMismatch} size={13} />}
                   <span className="sb-label" title={it.kind === 'stash' ? `stash@{${it.stash.index}}` : undefined}>{it.kind === 'stash' ? <StashText label={row.label} /> : row.label}</span>
                   {it.presetState === 'folded' && <span className="sb-state">folded</span>}
+                  {it.kind === 'submodule' && it.submodule.status !== 'current' && <span className="sb-state">{SUBMODULE_STATUS_TEXT[it.submodule.status]}</span>}
                   {it.kind === 'local' && (it.branch.ahead > 0 || it.branch.behind > 0) && <span className="sb-ab" aria-label={`${it.branch.ahead} ahead, ${it.branch.behind} behind`}><span>{it.branch.ahead}<ArrowUp size={12} strokeWidth={2.5} aria-hidden /></span><span>{it.branch.behind}<ArrowDown size={12} strokeWidth={2.5} aria-hidden /></span></span>}
                   {/* --- 4B T10: the branch's MR/PR badge (spec #4 §5) --- */}
                   {it.kind === 'local' && <LocalBranchBadge tabId={tabId} upstream={it.branch.upstream} />}

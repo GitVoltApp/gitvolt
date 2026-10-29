@@ -103,12 +103,13 @@ function buildRefToken(label: string, sigil: '!' | '#', remote: ProjectRemote): 
     const url = remote.hostKind === 'gitlab' ? mergeRequestUrl(remote, project, n) : null;
     return url ? { kind: 'link', text: label, url, ref: { type: 'mr', project, number: n, label } } : null;
   }
-  // `#`: GitLab issues, GitHub pull requests (both get an "Open" button; spec §9.2).
+  // `#`: GitLab issues, GitHub and Forgejo pull requests (both get an "Open" button; spec §9.2).
+  // Forgejo numbers issues and PRs together and sends `/pulls/n` on to the issue when `n` is one.
   if (remote.hostKind === 'gitlab') {
     const url = issueUrl(remote, project, n);
     return url ? { kind: 'link', text: label, url, ref: { type: 'issue', project, number: n, label } } : null;
   }
-  if (remote.hostKind === 'github') {
+  if (remote.hostKind === 'github' || remote.hostKind === 'forgejo') {
     const url = mergeRequestUrl(remote, project, n);
     return url ? { kind: 'link', text: label, url, ref: { type: 'mr', project, number: n, label } } : null;
   }
@@ -125,7 +126,7 @@ export function refTokenFromLabel(label: string, remote: ProjectRemote): Message
 }
 
 /** Splits a message into text and links (spec §9.2): URLs always link; `!`/`#` references link
- * per host kind (GitLab: `!` MRs, `#` issues; GitHub: `#` PRs, `!` ignored; generic or no remote:
+ * per host kind (GitLab: `!` MRs, `#` issues; GitHub, Forgejo: `#` PRs, `!` ignored; generic or no remote:
  * URLs only). Concatenating every token's text gives back the input exactly. */
 export function tokenizeMessage(text: string, remote: ProjectRemote | null): MessageToken[] {
   const out: MessageToken[] = [];

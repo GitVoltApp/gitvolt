@@ -230,6 +230,17 @@ export async function nestedGitdir(repo: ReadRepo, root: string, rel: string): P
   return gitdir;
 }
 
+/** The branch checked out at `rel` (a submodule), or null when it's detached or isn't initialised. */
+export async function nestedBranch(repo: ReadRepo, root: string, rel: string): Promise<string | null> {
+  const gitdir = await nestedGitdir(repo, root, rel);
+  if (!gitdir) return null;
+  try {
+    return (await git.currentBranch({ fs: igNoCache(repo).fs, gitdir, fullname: false })) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The commit checked out at `rel` (a submodule), or null when it isn't initialised. */
 export async function nestedHead(repo: ReadRepo, root: string, rel: string): Promise<string | null> {
   const gitdir = await nestedGitdir(repo, root, rel);

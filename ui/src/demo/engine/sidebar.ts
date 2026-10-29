@@ -1,4 +1,4 @@
-// The sidebar's branches, remotes, worktrees, stashes and tags (spec §6.4), as
+// The sidebar's branches, remotes, worktrees, stashes, tags and submodules (spec §6.4), as
 // shelldata::sidebar reads them.
 import type { LocalBranch } from '../../api/gen/LocalBranch';
 import type { SidebarPayload } from '../../api/gen/SidebarPayload';
@@ -6,6 +6,8 @@ import type { TagItem } from '../../api/gen/TagItem';
 import { annotationOf, subject } from './objects';
 import { basename } from './paths';
 import { viewOf } from './read/seam';
+import { listWorktrees } from './read/worktrees';
+import { submoduleItems } from './read/submoduleItems';
 import { rewrittenOf } from './seq/rewrites';
 import type { RefFile } from './refs';
 import { hostKind, mismatchedUpstream, parseRemoteUrl, remoteFor, trackingRef } from './remotes';
@@ -60,7 +62,7 @@ export async function buildSidebar(repo: DemoRepo): Promise<SidebarPayload> {
     if (w.canonical !== here) elsewhere.set(w.branch, w.path);
     checkedOut.set(w.branch, w.path);
   }
-  const s: SidebarPayload = { locals: [], remotes: [], worktrees: [], stashes: [], tags: [] };
+  const s: SidebarPayload = { locals: [], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} };
   const defaults = new Map<string, string>();
   for (const f of files) {
     if (f.symref !== null) {
@@ -141,5 +143,10 @@ export async function buildSidebar(repo: DemoRepo): Promise<SidebarPayload> {
     locked: w.locked,
   }));
   s.stashes = repo.stashes().map((x) => ({ index: x.index, id: x.id, message: x.message, time: x.time }));
+  // Each worktree's, keyed by its path (core keys by canonical path; the demo's are already).
+  for (const w of await listWorktrees(view)) {
+    const items = await submoduleItems(view, w.path, w.gitdir);
+    if (items.length) s.submodules[w.path] = items;
+  }
   return s;
 }

@@ -10,6 +10,7 @@ export function formatDate(unixSeconds: number, fmt: DateFormat = 'ymd12h'): str
   switch (fmt) {
     case 'ymd24h': return `${y}-${mo}-${day} ${pad(h)}:${mi}`;
     case 'dmy24h': return `${day}/${mo}/${y} ${pad(h)}:${mi}`;
+    case 'dmydot24h': return `${day}.${mo}.${y} ${pad(h)}:${mi}`;
     case 'mdy12h': return `${mo}/${day}/${y} ${h12}`;
     default: return `${y}-${mo}-${day} @ ${h12}`;
   }

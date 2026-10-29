@@ -517,8 +517,20 @@ impl WriteCx<'_> {
     #[allow(dead_code)] // first callers: 2C T4 (remote delete), 2D's push
     pub(crate) async fn network(&mut self, inv: GitInvocation) -> Result<GitOutput, GbError> {
         self.unlock();
-        let mut res = self.run_git(inv).await;
+        let res = self.run_git(inv).await;
         self.relock().await;
+        self.transferred(res)
+    }
+
+    /// `network`, keeping the write lock and the watcher hold: a transfer whose command writes
+    /// the index too (`git submodule add` stages after its clone), which a stage or discard
+    /// meanwhile would meet on `index.lock`, leaving it half done.
+    pub(crate) async fn network_locked(&mut self, inv: GitInvocation) -> Result<GitOutput, GbError> {
+        let res = self.run_git(inv).await;
+        self.transferred(res)
+    }
+
+    fn transferred(&self, mut res: Result<GitOutput, GbError>) -> Result<GitOutput, GbError> {
         // --- 2C T4: network server output ---
         // The transfer's `remote:` lines: `opRemote` for Activity, and first in a failure's Details.
         remote_output::capture(self.api, self.op.id, &mut res);
@@ -1309,12 +1321,27 @@ async fn steps<I: WriteIntent>(api: &Api, h: &Arc<RepoHandle>, root: &Path, expe
     Ran { result, moves, head_before: before.head.clone(), head_after, kinds, journal_changed, lock: cx.lock.take(), holds: std::mem::take(&mut cx.holds) }
 }
 
+/// The sidebar's submodules of `root` changed with this write (a gitlink staged, removed or
+/// checked out, `.gitmodules`, a submodule updated): `repoChanged` says `submodules`.
+async fn submodules_changed(api: &Api, h: &RepoHandle, root: &Path) -> bool {
+    let (repo, workdir, seen, root) = (h.repo.clone(), h.workdir.clone(), api.submodules.clone(), root.to_path_buf());
+    crate::api::blocking(move || {
+        let here = crate::platform::fs::canonicalize(&workdir)?;
+        Ok(seen.check(&repo.to_thread_local(), &here, &[root]))
+    })
+    .await
+    .unwrap_or(false)
+}
+
 /// §3.2 step 10: `repoChanged` with what the write touched (and the lists' version), and
 /// `refsUpdated` when a ref moved, to every tab of the repository. Always sent, whatever the
 /// outcome: it's the refresh after every write.
-fn announce<O>(api: &Api, writes: &RepoWrites, root: &Path, ran: &Ran<O>, version: Option<&str>) {
+fn announce<O>(api: &Api, writes: &RepoWrites, root: &Path, ran: &Ran<O>, version: Option<&str>, submodules: bool) {
     let mut kinds = ran.kinds.clone();
     kinds.extend([ChangeKind::Worktree, ChangeKind::Index]);
+    if submodules {
+        kinds.insert(ChangeKind::Submodules);
+    }
     if !ran.moves.is_empty() {
         kinds.insert(ChangeKind::Refs);
     }
@@ -1389,6 +1416,7 @@ async fn run_write_inner<I: WriteIntent>(api: &Api, repo: u32, worktree: &str, e
     // 10. The fresh lists, after the write's last git command; the watcher absorbs them (and
     //     the refs as the write left them), so its own pass finds nothing new.
     let lists = crate::watch::read_and_keep_lists(&h.repo, &api.cli, &h.wip, &root).await.ok();
+    let submodules = submodules_changed(api, &h, &root).await;
     for hold in &ran.holds {
         if let Some(l) = &lists {
             hold.absorb(root.clone(), l.digest);
@@ -1406,7 +1434,7 @@ async fn run_write_inner<I: WriteIntent>(api: &Api, repo: u32, worktree: &str, e
         slot.finish(ran.result.as_ref().err(), &carried);
     }
     let wip = lists.map(|l| WipListsPayload { worktree: root.display().to_string(), version: l.version.clone(), staged: (*l.staged).clone(), unstaged: (*l.unstaged).clone() });
-    announce(api, &writes, &root, &ran, wip.as_ref().map(|w| w.version.as_str()));
+    announce(api, &writes, &root, &ran, wip.as_ref().map(|w| w.version.as_str()), submodules);
     // A write that ran is never reported as failed because the journal couldn't be read after it
     // (the user might retry a commit): the state falls back to an empty one.
     let journal = match api.journal_state(&root) {

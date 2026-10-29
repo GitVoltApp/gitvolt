@@ -22,7 +22,7 @@ import type { MenuRow, Variant } from './types';
 
 type Action = Extract<MenuRow, { kind: 'action' }>;
 const row = (r: Omit<Action, 'kind'>): MenuRow => ({ kind: 'action', ...r });
-const forgeName = (f: ProjectRemote) => (f.hostKind === 'gitlab' ? 'GitLab' : 'GitHub');
+const forgeName = (f: ProjectRemote) => (f.hostKind === 'gitlab' ? 'GitLab' : f.hostKind === 'forgejo' ? 'Forgejo' : 'GitHub');
 
 /** `Copy path | Rel | Abs |`, for a file or a folder. */
 function copyPath(id: string, path: string, root: string, env: MenuEnv): MenuRow {
@@ -373,6 +373,12 @@ registerMenu<SidebarTarget, MenuEnv>({
           copySha('sidebar.copySha', t.sha, env),
           row({ id: 'sidebar.copyStash', label: 'Copy message', icon: ICONS.message, tooltip: "Copy the stash's message", run: () => env.act.copy(t.message) }),
         ];
+      case 'submodule':
+        return [
+          row({ id: 'sidebar.copyPath', label: 'Copy path', icon: ICONS.copy, tooltip: `Copy "${t.submodule.path}"`, run: () => env.act.copy(t.submodule.path) }),
+          ...(t.submodule.url ? [row({ id: 'sidebar.copyUrl', label: 'Copy URL', icon: ICONS.browser, tooltip: `Copy the submodule's URL (${t.submodule.url})`, run: () => env.act.copy(t.submodule.url!) })] : []),
+          copySha('sidebar.copySha', t.submodule.recorded, env),
+        ];
       case 'ref': case 'folder':
         return [];
     }
@@ -400,7 +406,7 @@ registerMenu<SidebarTarget, MenuEnv>({
     const f = t.what === 'remote' ? env.forge(t.name) : null;
     if (t.what !== 'remote' || !f || !env.mainRemote) return [];
     const m = env.mainRemote;
-    const noun = f.hostKind === 'github' ? 'pull requests' : 'merge requests';
+    const noun = f.hostKind === 'gitlab' ? 'merge requests' : 'pull requests';
     const on = m.chosen === t.name;
     return [row({
       id: 'sidebar.mainRemote', label: 'Use as the main remote', icon: on ? ICONS.check : ICONS.mainRemote,

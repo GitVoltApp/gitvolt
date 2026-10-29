@@ -6,7 +6,7 @@ import type { ForgeLabel } from '../../api/gen/ForgeLabel';
 import type { ForgeUser } from '../../api/gen/ForgeUser';
 import { copyText } from '../../api/transport';
 import { useRuntime } from '../../app/runtime';
-import { GitHubMark, GitLabMark } from '../../icons/brands';
+import { ForgeMark } from '../../icons/brands';
 import { MarkdownField } from '../../markdown/MarkdownField';
 import { openMenuAt } from '../../menu/menuStore';
 import type { MenuRow } from '../../menu/types';
@@ -309,7 +309,7 @@ export function CreateMrFlyout({ tabId, props: { branch }, close: closeFrame }: 
   const createLabel = draft.draft ? `Create draft ${noun}` : `Create ${noun}`;
   const heading = (
     <>
-      <span className="create-mr-mark" data-kind={kind}>{kind === 'gitlab' ? <GitLabMark size={16} /> : <GitHubMark size={16} />}</span>
+      <span className="create-mr-mark" data-kind={kind}><ForgeMark kind={kind} size={16} /></span>
       <span className="create-mr-heading">New {noun}</span>
       <span className="create-mr-project">{ctx.project.path}</span>
     </>
