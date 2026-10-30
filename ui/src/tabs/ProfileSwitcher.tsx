@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import { Pencil, Plus, Trash2, type LucideIcon, type LucideProps } from 'lucide-react';
 import { useAppState } from '../app/state';
 import { openMenuAt } from '../menu/menuStore';
+import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { confirmAction } from '../ui/ConfirmDialog';
 import { HoverTooltip } from '../ui/HoverTooltip';
@@ -73,7 +74,7 @@ export function ProfileSwitcher() {
   return (
     <>
       <HoverTooltip content="Switch profile">
-        <button type="button" className="profile-switcher" aria-label={`Profile: ${name}`} onClick={(e) => openMenuAt(e.currentTarget, rows(), `profile.${useAppState.getState().profile.id}`, rows, 'Switch profile')}>
+        <button type="button" className="profile-switcher" aria-label={`Profile: ${name}`} {...pressOpener((el) => openMenuAt(el, rows(), `profile.${useAppState.getState().profile.id}`, rows, 'Switch profile'))}>
           <span className="profile-dot" style={{ background: color }} aria-hidden />
           {name}
         </button>

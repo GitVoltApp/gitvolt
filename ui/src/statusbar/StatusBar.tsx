@@ -8,6 +8,7 @@ import { useAppState } from '../app/state';
 import { rebaseStatus } from '../integrate/rebasing';
 import { runAction } from '../app/actions';
 import { openMenuAt } from '../menu/menuStore';
+import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { QueueChip } from '../queue/QueueChip';
 import { HoverTooltip } from '../ui/HoverTooltip';
@@ -99,7 +100,7 @@ export function StatusBar() {
   return (
     <footer className="status-bar">
       <HoverTooltip content={`Zoom (${displayChord('Mod+=')} / ${displayChord('Mod+-')})`}>
-        <button type="button" className="sb-item sb-button" aria-label={`Zoom ${zoom}%`} aria-haspopup="menu" onClick={(e) => openMenuAt(e.currentTarget, zoomRows(zoom), `zoom.${zoom}`, undefined, 'Zoom')}>
+        <button type="button" className="sb-item sb-button" aria-label={`Zoom ${zoom}%`} aria-haspopup="menu" {...pressOpener((el) => openMenuAt(el, zoomRows(zoom), `zoom.${zoom}`, undefined, 'Zoom'))}>
           {zoom}%
         </button>
       </HoverTooltip>

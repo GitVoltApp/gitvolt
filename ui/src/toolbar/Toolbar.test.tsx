@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Search } from 'lucide-react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GraphPayload } from '../api/gen/GraphPayload';
 import type { LocalBranch } from '../api/gen/LocalBranch';
 import type { RowPayload } from '../api/gen/RowPayload';
@@ -20,6 +20,8 @@ const { EMPTY_PROFILE, useAppState } = await import('../app/state');
 const { useOps } = await import('../app/ops');
 const useQueueModule = await import('../queue/store');
 const { useMenu } = await import('../menu/menuStore');
+const { LONG_PRESS_MS } = await import('../menu/pressDrag');
+const { mouseDown, mouseUp } = await import('../menu/pressTesting');
 const { useToast } = await import('../ui/toastStore');
 const { useTabViews } = await import('../app/tabStores');
 const { createRepoViewStore } = await import('../repo/store');
@@ -275,5 +277,130 @@ describe('Toolbar (spec §6.3)', () => {
     expect(caret.getAttribute('aria-expanded')).toBe('false');
     offA();
     offB();
+  });
+  describe('split buttons (the ▾ attached; a hold opens its menu)', () => {
+    const run = vi.fn();
+    const pick = vi.fn();
+    let offs: Array<() => void> = [];
+    beforeEach(() => {
+      run.mockClear();
+      pick.mockClear();
+      offs = [
+        registerActions([{ id: 't.undo', label: 'Undo', group: 'Repository', icon: Search, tooltip: 'Undo', run }, { id: 't.plain', label: 'Plain', group: 'Repository', icon: Search, tooltip: 'Plain', run }]),
+        registerToolbarButton({ action: 't.undo', order: 97, menuRows: () => [{ kind: 'action' as const, id: 'u', label: 'Undo the commit', icon: Search, tooltip: 'one', run: pick }] }),
+        registerToolbarButton({ action: 't.plain', order: 98 }),
+      ];
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      act(() => useMenu.getState().close());
+      for (const off of offs) off();
+    });
+    const renderWithMenu = async () => {
+      const { ContextMenu } = await import('../menu/ContextMenu');
+      render(<RepoContext value={ctx}><Toolbar /><ContextMenu /></RepoContext>);
+      return { main: screen.getByRole('button', { name: 'Undo' }), caret: screen.getByRole('button', { name: 'Undo options' }) };
+    };
+
+    it('pairs the button and its ▾ as two buttons in one split, each with its own name; a plain button is no split', async () => {
+      const { main, caret } = await renderWithMenu();
+      expect(main.parentElement).toHaveClass('tb-split');
+      expect(caret.parentElement).toBe(main.parentElement);
+      expect(main).toHaveClass('tb-btn', 'tb-split-main');
+      expect(caret).toHaveClass('tb-btn', 'tb-caret');
+      expect(main.nextElementSibling).toBe(caret);
+      const plain = screen.getByRole('button', { name: 'Plain' });
+      expect(plain).not.toHaveClass('tb-split-main');
+      expect(plain.parentElement).toHaveClass('tb-group');
+    });
+
+    it('a press shorter than the hold is a click: the action runs and no menu opens', async () => {
+      vi.useFakeTimers();
+      const { main } = await renderWithMenu();
+      mouseDown(main);
+      act(() => { vi.advanceTimersByTime(LONG_PRESS_MS - 1); });
+      mouseUp(main, 10, 10, main);
+      act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+      expect(useMenu.getState().rows).toBeNull();
+      expect(run).toHaveBeenCalledOnce();
+    });
+
+    it('a hold opens the ▾ menu, anchored on the ▾; its release on the button runs nothing and the menu stays', async () => {
+      vi.useFakeTimers();
+      const { main, caret } = await renderWithMenu();
+      mouseDown(main);
+      act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+      expect(useMenu.getState().rows).not.toBeNull();
+      expect(useMenu.getState().anchor).toBe(caret);
+      expect(caret).toHaveAttribute('aria-expanded', 'true');
+      mouseUp(main, 11, 10, main);
+      expect(run).not.toHaveBeenCalled();
+      expect(useMenu.getState().rows).not.toBeNull();
+    });
+
+    it('after a hold, dragging onto a row and releasing picks it, and the button does not run', async () => {
+      vi.useFakeTimers();
+      const { main } = await renderWithMenu();
+      mouseDown(main);
+      act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+      mouseUp(screen.getByText('Undo the commit'), 40, 70, document.body);
+      expect(pick).toHaveBeenCalledOnce();
+      expect(run).not.toHaveBeenCalled();
+      expect(useMenu.getState().rows).toBeNull();
+    });
+
+    it('leaving the button before the hold cancels it: no menu, and nothing is left running', async () => {
+      vi.useFakeTimers();
+      const { main } = await renderWithMenu();
+      mouseDown(main);
+      fireEvent.pointerLeave(main);
+      expect(vi.getTimerCount()).toBe(0);
+      act(() => { vi.advanceTimersByTime(LONG_PRESS_MS * 2); });
+      expect(useMenu.getState().rows).toBeNull();
+      // A release clears its timer too.
+      mouseDown(main);
+      mouseUp(main, 10, 10, main);
+      expect(vi.getTimerCount()).toBeLessThanOrEqual(1); // only the click swallow's own end tick
+      act(() => { vi.advanceTimersByTime(LONG_PRESS_MS * 2); });
+      expect(useMenu.getState().rows).toBeNull();
+    });
+
+    it('the ▾ opens on the press; dragging onto a row and releasing picks it', async () => {
+      const { caret } = await renderWithMenu();
+      mouseDown(caret);
+      expect(useMenu.getState().rows).not.toBeNull();
+      mouseUp(screen.getByText('Undo the commit'), 40, 70, document.body);
+      expect(pick).toHaveBeenCalledOnce();
+      expect(run).not.toHaveBeenCalled();
+    });
+
+    it('a picker button: a hold opens its picker, and a release on a row sets it without running the button', async () => {
+      vi.useFakeTimers();
+      let mode = 'a';
+      offs.push(
+        registerActions([{ id: 't.pick', label: 'Sync', group: 'Repository', icon: Search, tooltip: 'Sync', run }]),
+        registerToolbarButton({ action: 't.pick', order: 99, picker: { title: 'Pick one', options: [{ value: 'a', label: 'Mode A' }, { value: 'b', label: 'Mode B' }], useValue: () => mode, set: (v) => { mode = v; } } }),
+      );
+      await renderWithMenu();
+      const main = screen.getByRole('button', { name: 'Sync' });
+      mouseDown(main);
+      act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+      expect(screen.getByRole('button', { name: 'Sync options' })).toHaveAttribute('aria-expanded', 'true');
+      mouseUp(screen.getByText('Mode B'), 40, 80, document.body);
+      expect(mode).toBe('b');
+      expect(run).not.toHaveBeenCalled();
+      expect(screen.queryByText('Pick one')).toBeNull();
+    });
+
+    it('the ▾ toggles: pressed again, its menu closes and stays closed', async () => {
+      const { caret } = await renderWithMenu();
+      mouseDown(caret);
+      mouseUp(caret, 10, 10, caret);
+      expect(useMenu.getState().rows).not.toBeNull();
+      mouseDown(caret);
+      mouseUp(caret, 10, 10, caret);
+      expect(useMenu.getState().rows).toBeNull();
+      expect(caret).toHaveAttribute('aria-expanded', 'false');
+    });
   });
 });

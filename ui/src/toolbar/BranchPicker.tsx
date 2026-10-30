@@ -1,5 +1,6 @@
 import { ArrowDownAZ, Check, ChevronDown, Clock, GitBranch } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { pressOpener } from '../menu/pressDrag';
 import { checkoutLocal } from '../branches/checkout';
 import { useRepoContext } from '../app/repoContext';
 import { useRuntime } from '../app/runtime';
@@ -71,7 +72,7 @@ export function BranchPicker() {
           aria-label={`Branch: ${label}`}
           aria-haspopup="listbox"
           aria-expanded={!!anchor}
-          onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
+          {...pressOpener((el) => setAnchor(anchor ? null : el.getBoundingClientRect()))}
         >
           <span className="tb-caption">branch</span>
           <span className="tb-value"><GitBranch size={12} aria-hidden /> {label} <ChevronDown size={12} aria-hidden /></span>

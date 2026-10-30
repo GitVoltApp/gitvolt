@@ -1,5 +1,6 @@
 import { ArrowLeftRight, Pencil, Plus, X } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { pressOpener, usePressDrag } from '../../menu/pressDrag';
 import type { ForgeUser } from '../../api/gen/ForgeUser';
 import { ForgeAvatar } from '../../avatars/Avatar';
 import { HoverTooltip, isDismissKey } from '../../ui/HoverTooltip';
@@ -119,6 +120,8 @@ function AddButton({ row, disabled, compact = false }: { row: PeopleRow; disable
   const [at, setAt] = useState<DOMRect | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const pop = useRef<HTMLDivElement>(null);
+  // Opened by a press on its button: dragging onto a match and releasing picks it.
+  usePressDrag(pop, at !== null);
   const close = (refocus: boolean) => {
     setAt(null);
     if (refocus) btn.current?.focus({ preventScroll: true });
@@ -167,7 +170,7 @@ function AddButton({ row, disabled, compact = false }: { row: PeopleRow; disable
   const full = !swap && edit.max != null && count >= edit.max;
   const name = swap ? `Replace ${row.noun}` : `Add ${row.noun}`;
   const tip = (swap || full) && edit.maxTip ? edit.maxTip : name;
-  const toggle = (e: MouseEvent<HTMLButtonElement>) => { if (!full) setAt(at ? null : e.currentTarget.getBoundingClientRect()); };
+  const toggle = pressOpener((el: HTMLButtonElement) => { if (!full) setAt(at ? null : el.getBoundingClientRect()); });
   const plain = (
     <button
       ref={btn}
@@ -178,7 +181,7 @@ function AddButton({ row, disabled, compact = false }: { row: PeopleRow; disable
       aria-expanded={at !== null}
       aria-disabled={full || undefined}
       disabled={disabled}
-      onClick={toggle}
+      {...toggle}
     >
       {swap ? <ArrowLeftRight size={12} aria-hidden /> : <Plus size={12} aria-hidden />} {swap ? 'Replace' : 'Add'}
     </button>
@@ -197,7 +200,7 @@ function AddButton({ row, disabled, compact = false }: { row: PeopleRow; disable
             aria-expanded={at !== null}
             aria-disabled={full || undefined}
             disabled={disabled}
-            onClick={toggle}
+            {...toggle}
           >
             {swap ? <ArrowLeftRight size={13} aria-hidden /> : <Plus size={13} aria-hidden />}
           </button>

@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import type { MrFilter } from '../api/gen/MrFilter';
 import { useAppState } from '../app/state';
 import { openMenuAt } from '../menu/menuStore';
+import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { mrSectionLabel } from './labels';
@@ -40,9 +41,10 @@ export function MrFilterButton({ tabId, path }: { tabId: string; path: string })
         className={`icon-button sb-head-action${filter === 'all' ? '' : ' is-on'}`}
         aria-label={label}
         aria-haspopup="menu"
+        {...pressOpener((el) => openMenuAt(el, rows(), `mrFilter.${filter}`, rows, label))}
         onClick={(e) => {
           e.stopPropagation();
-          if (btn.current) openMenuAt(btn.current, rows(), `mrFilter.${filter}`, rows, label);
+          openMenuAt(e.currentTarget, rows(), `mrFilter.${filter}`, rows, label);
         }}
       >
         <ListFilter size={13} aria-hidden />

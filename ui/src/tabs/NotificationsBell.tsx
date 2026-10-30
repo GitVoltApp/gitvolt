@@ -3,6 +3,7 @@ import { copyText } from '../api/transport';
 import { openActivityLog } from '../app/activityLog';
 import { useOps } from '../app/ops';
 import { openMenuAt } from '../menu/menuStore';
+import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { useToast } from '../ui/toastStore';
@@ -36,7 +37,7 @@ export function NotificationsBell() {
         className="tab-bar-btn bell-btn"
         aria-label={`Notifications${unread ? ` (${unread} new)` : ''}`}
         aria-haspopup="menu"
-        onClick={(e) => { openMenuAt(e.currentTarget, bellRows(), undefined, bellRows, 'Notifications'); useOps.getState().markRead(); }}
+        {...pressOpener((el) => { if (openMenuAt(el, bellRows(), undefined, bellRows, 'Notifications')) useOps.getState().markRead(); })}
       >
         <Bell size={16} aria-hidden />{unread > 0 && <span className="bell-badge">{unread}</span>}
       </button>

@@ -10,12 +10,23 @@
 .tb-group { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
 .tb-start { justify-self: start; max-width: 100%; overflow: hidden; }
 .tb-end { justify-self: end; }
-.tb-split { display: flex; align-items: center; }
+/* Separate actions sit 12px apart; a split button's halves touch. At the minimum window (900px) the
+   centre group is 427px and each side column 224px: the end group (180px) still fits. */
+.tb-center, .tb-end { gap: 12px; }
 .tb-btn { all: unset; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 44px; height: 38px; align-self: center; padding: 0 6px; box-sizing: border-box; border-radius: 4px; color: var(--text-normal); font-size: 11px; cursor: pointer; transition: background-color var(--motion-fast); }
 .tb-btn:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--hover-row); color: var(--text-selected); }
 .tb-btn:focus-visible { outline: 1px solid var(--blue); }
 .tb-btn:disabled, .tb-btn[aria-disabled="true"] { opacity: 0.6; cursor: default; }
-.tb-caret { min-width: 16px; padding: 0 2px; }
+/* A split button (the mockup toolbar-split.html): the ▾ attached to its button, the pair one rounded
+   outline (the halves' inner corners square). Hovered, the pair lights: the hovered half fully, the
+   other faintly. Each half stays its own button, with its own focus ring (inset: no overlap). */
+.tb-split { display: flex; align-items: center; border-radius: 4px; }
+.tb-split > .tb-split-main, .tb-split > .tb-picker { border-radius: 4px 0 0 4px; }
+.tb-split-main { padding-right: 4px; }
+.tb-caret { min-width: 14px; width: 14px; padding: 0; }
+.tb-split > .tb-caret { border-radius: 0 4px 4px 0; }
+.tb-split > .tb-btn:focus-visible { outline-offset: -1px; }
+.tb-split:hover > :is(.tb-btn, .tb-picker):not(:hover):not(:disabled):not([aria-disabled="true"]):not([aria-pressed="true"]) { background: color-mix(in srgb, var(--hover-row) 50%, transparent); }
 .tb-btn[aria-pressed="true"], .tb-btn[aria-pressed="true"]:hover:not(:disabled) { background: var(--selected-row); color: var(--text-selected); cursor: default; }
 /* The jump to the WIP: tinted the WIP row's modified orange, so the changes stand out. */
 .tb-btn.tb-wip { color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orange) 40%, transparent); }

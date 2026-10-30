@@ -5,6 +5,7 @@ import type { ForgeMr } from '../../api/gen/ForgeMr';
 import { useLend } from '../../app/lent';
 import { useRepoContext } from '../../app/repoContext';
 import { openMenuAt } from '../../menu/menuStore';
+import { pressOpener } from '../../menu/pressDrag';
 import type { MenuRow } from '../../menu/types';
 import { HoverTooltip } from '../../ui/HoverTooltip';
 import { forgeName, mrRef } from '../labels';
@@ -103,7 +104,7 @@ export function ReviewChip() {
             <span className="tb-value"><MessageSquare size={12} aria-hidden /><span className="tb-review-text">{view.value}</span>{view.problem && <TriangleAlert className="tb-review-warn" size={12} aria-hidden />}</span>
           </button>
         </HoverTooltip>
-        <button type="button" className="tb-btn tb-caret" aria-label="Review options" aria-haspopup="menu" onClick={(e) => openMenuAt(e.currentTarget, rows(), undefined, rows, 'Review options')}>
+        <button type="button" className="tb-btn tb-caret" aria-label="Review options" aria-haspopup="menu" {...pressOpener((el) => openMenuAt(el, rows(), undefined, rows, 'Review options'))}>
           <ChevronDown size={12} aria-hidden />
         </button>
       </div>

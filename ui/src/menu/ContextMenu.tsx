@@ -6,6 +6,7 @@ import { registerKeys } from '../ui/keyRouter';
 import { hideTooltip, showTooltip } from '../ui/tooltipStore';
 import { pressedAnchor, runMenuRowHook, useMenu } from './menuStore';
 import { placeMenu, placeSubmenu } from './position';
+import { beginPressDrag } from './pressDrag';
 import type { MenuRow, Variant } from './types';
 import './menu.css';
 import { displayChord } from '../ui/platformKeys';
@@ -113,6 +114,8 @@ export function remap(old: Level[], rows: MenuRow[]): Level[] {
  *   hides or unmounts.
  * - A scroll doesn't close it (K1), and the wheel outside it is swallowed while it's open, as
  *   under a native menu: nothing behind it moves.
+ * - Press-drag-release (`pressDrag.ts`): opened by a mouse press still held (a right press, an
+ *   opener's press, a split button's hold), the release on a row picks it as a click would.
  * - Records `window.__gbMenuLatency` (spec §17.3).
  */
 export function ContextMenu() {
@@ -186,6 +189,10 @@ export function ContextMenu() {
     });
   }, [levels]);
 
+  // Opened by a press still held (its opener's, a right press's): its release on a row picks it.
+  const open = rows !== null;
+  useLayoutEffect(() => (open ? beginPressDrag(() => rootRef.current) : undefined), [open, seq]);
+
   // An armed row's label grows past the menu's edge: its tooltip would sit under it.
   useEffect(() => { if (armed) hideTooltip(); }, [armed]);
 
@@ -196,7 +203,6 @@ export function ContextMenu() {
   // The latest key handler, for the window listener below.
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
 
-  const open = rows !== null;
   useEffect(() => {
     if (!open) return;
     const inside = (t: EventTarget | null) => t instanceof Node && !!rootRef.current?.contains(t);

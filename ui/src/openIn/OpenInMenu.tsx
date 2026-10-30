@@ -2,6 +2,7 @@ import { ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { OpenerPayload } from '../api/gen/OpenerPayload';
 import { openMenuAt, refreshMenuOn, useMenu } from '../menu/menuStore';
+import { pressOpener } from '../menu/pressDrag';
 import { openWorktree, useRepoView, type DiffTarget } from '../repo/store';
 import { isSubmodule, openerIcon, openerRowId, openInSubmenuRows } from './openerRows';
 import { defaultOpener, listWorktree, openerLabel, openersSnapshot, openVersion, refreshOpeners, subscribeOpeners, useOpenIn, useOpeners, worktreeOf } from './openers';
@@ -72,7 +73,7 @@ export function OpenInButton({ target, line = null, worktree: given }: { target:
         aria-label="More ways to open"
         aria-haspopup="menu"
         aria-expanded={expanded}
-        onClick={show}
+        {...pressOpener(show)}
         onKeyDown={(e) => {
           if (e.key !== 'ArrowDown' || expanded) return;
           e.preventDefault();

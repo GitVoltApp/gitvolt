@@ -1,6 +1,7 @@
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { openMenuAt, useMenu } from '../menu/menuStore';
+import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { registerKeys } from './keyRouter';
 import './select.css';
@@ -61,7 +62,7 @@ export function Select<T extends string | number>({ id, value, options, onChange
       aria-expanded={open}
       aria-label={rest['aria-label']}
       aria-labelledby={rest['aria-labelledby']}
-      onClick={show}
+      {...pressOpener(show)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
     >

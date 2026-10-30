@@ -2,6 +2,7 @@ import { Check, ChevronDown, GitFork, Settings2, type LucideIcon } from 'lucide-
 import { useEffect, useRef, useState } from 'react';
 import { GROUP_COLORS } from '../app/tabGroups';
 import { openMenuAt, useMenu } from '../menu/menuStore';
+import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { registerKeys } from '../ui/keyRouter';
@@ -101,7 +102,7 @@ export function PresetButton({ tabId }: { tabId: string }) {
           className="preset-caret"
           aria-label="All branch presets"
           aria-haspopup="menu"
-          onClick={show}
+          {...pressOpener(show)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         >

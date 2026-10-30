@@ -5,6 +5,7 @@ import { useLend } from '../../app/lent';
 import { api } from '../../api/client';
 import { copyText } from '../../api/transport';
 import { openMenuAt } from '../../menu/menuStore';
+import { pressOpener } from '../../menu/pressDrag';
 import type { MenuRow } from '../../menu/types';
 import type { ForgeKind } from '../../api/gen/ForgeKind';
 import type { ForgeMr } from '../../api/gen/ForgeMr';
@@ -259,7 +260,7 @@ export function StatusActions({ actions: a, children }: { actions: MrActionsStat
     <span className="mr-actions" role="group" aria-label="Actions">
       {children}
       {a.live && <button type="button" className="mr-button" aria-expanded={a.mode === 'edit'} disabled={a.busy !== null} onClick={() => a.setMode(a.mode === 'edit' ? 'none' : 'edit')}><Pencil size={13} aria-hidden /> Edit</button>}
-      <button ref={more} type="button" className="mr-button icon" aria-label="More actions" aria-haspopup="menu" disabled={a.busy !== null} onClick={() => { if (more.current) openMenuAt(more.current, a.rows(), undefined, a.rows, 'More actions'); }}><EllipsisVertical size={14} aria-hidden /></button>
+      <button ref={more} type="button" className="mr-button icon" aria-label="More actions" aria-haspopup="menu" disabled={a.busy !== null} {...pressOpener((el) => openMenuAt(el, a.rows(), undefined, a.rows, 'More actions'))}><EllipsisVertical size={14} aria-hidden /></button>
     </span>
   );
 }

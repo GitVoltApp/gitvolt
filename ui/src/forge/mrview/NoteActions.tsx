@@ -9,6 +9,7 @@ import { rankEmoji, loadEmojiList, type EmojiEntry } from '../../markdown/emojiC
 import { MarkdownField } from '../../markdown/MarkdownField';
 import { ICONS } from '../../menu/icons';
 import { openContextMenu, openMenuAt, useMenu } from '../../menu/menuStore';
+import { pressOpener } from '../../menu/pressDrag';
 import type { MenuRow } from '../../menu/types';
 import { confirmAction } from '../../ui/ConfirmDialog';
 import { HoverTooltip } from '../../ui/HoverTooltip';
@@ -145,7 +146,7 @@ export function NoteActions({ tabId, kind, number, d, n, link, mine, reactable, 
           {picking && <ReactionPicker kind={kind} mineOf={(name) => (n.reactions ?? []).some((r) => r.name === name && r.mine)} pick={(name) => void toggleReaction(tabId, number, d.id, n.id, name)} close={closePicker} />}
         </span>
       )}
-      <button ref={more} type="button" className="icon-button mr-note-btn" aria-label="Comment actions" aria-haspopup="menu" onClick={() => { if (more.current) openMenuAt(more.current, rows(), undefined, rows, 'Comment actions'); }}><EllipsisVertical size={14} aria-hidden /></button>
+      <button ref={more} type="button" className="icon-button mr-note-btn" aria-label="Comment actions" aria-haspopup="menu" {...pressOpener((el) => openMenuAt(el, rows(), undefined, rows, 'Comment actions'))}><EllipsisVertical size={14} aria-hidden /></button>
     </span>
   );
 }

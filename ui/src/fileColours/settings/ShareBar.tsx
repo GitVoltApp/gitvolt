@@ -2,6 +2,7 @@ import { Check } from 'lucide-react';
 import { useAppState } from '../../app/state';
 import { copyText, readClipboardText } from '../../api/transport';
 import { openMenuAt } from '../../menu/menuStore';
+import { pressOpener } from '../../menu/pressDrag';
 import type { MenuRow } from '../../menu/types';
 import { useToast } from '../../ui/toastStore';
 import { appendScopes, parseScopesJson, scopesToJson } from '../json';
@@ -37,7 +38,7 @@ export function ShareBar({ commonDir, scopes, onChange }: { commonDir: string; s
       <button type="button" className="fc-btn" disabled={scopes.length === 0} onClick={copy}>Copy as JSON</button>
       <button type="button" className="fc-btn" onClick={paste}>Paste scopes</button>
       <button type="button" className="fc-btn" aria-haspopup="menu" disabled={others.length === 0}
-        title={others.length === 0 ? 'No other repository has scopes' : undefined} onClick={(e) => from(e.currentTarget)}>
+        title={others.length === 0 ? 'No other repository has scopes' : undefined} {...pressOpener(from)}>
         Copy from another repository…
       </button>
     </div>

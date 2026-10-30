@@ -10,6 +10,7 @@ import { confirmAction } from '../ui/ConfirmDialog';
 import { OVERLAY_ATTR } from '../ui/arm/origin';
 import { escapeDisarms } from '../ui/arm/store';
 import { registerKeys } from '../ui/keyRouter';
+import { usePressDrag } from '../menu/pressDrag';
 import { chipEl, colorLabel, useGroupUi } from './groupUi';
 
 const update = (fn: (p: Profile) => Profile) => useAppState.getState().updateProfile(fn);
@@ -32,6 +33,8 @@ export function GroupMenu({ group }: { group: TabGroup }) {
   const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(group.name);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  // Opened by a right press on the chip: dragging onto a row and releasing picks it.
+  usePressDrag(ref);
 
   useLayoutEffect(() => {
     const r = chipEl(id)?.getBoundingClientRect();

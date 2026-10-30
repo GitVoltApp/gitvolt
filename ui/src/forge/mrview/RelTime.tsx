@@ -3,6 +3,7 @@ import type { DateFormat } from '../../api/gen/DateFormat';
 import { useAppState } from '../../app/state';
 import { formatDate } from '../../format/date';
 import { relativeTime } from '../../format/relative';
+import { pressOpener } from '../../menu/pressDrag';
 import { HoverTooltip } from '../../ui/HoverTooltip';
 
 /** The local time zone's short name at `d` ("EDT", "GMT+2"). */
@@ -28,7 +29,7 @@ export function RelTime({ at, prefix, className = 'mr-when', onContextMenu, onOp
   if (onOpenMenu) {
     return (
       <HoverTooltip content={() => fullDate(at, fmt)}>
-        <button type="button" className={`${className} mr-when-btn`} aria-haspopup="menu" onContextMenu={onContextMenu} onClick={(e) => onOpenMenu(e.currentTarget)}>{text}</button>
+        <button type="button" className={`${className} mr-when-btn`} aria-haspopup="menu" onContextMenu={onContextMenu} {...pressOpener(onOpenMenu)}>{text}</button>
       </HoverTooltip>
     );
   }

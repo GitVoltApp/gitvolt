@@ -9,6 +9,7 @@ import { useRuntime } from '../../app/runtime';
 import { ForgeMark } from '../../icons/brands';
 import { MarkdownField } from '../../markdown/MarkdownField';
 import { openMenuAt } from '../../menu/menuStore';
+import { pressOpener } from '../../menu/pressDrag';
 import type { MenuRow } from '../../menu/types';
 import { stackBase, stackFor, stacksOf } from '../../stacks/detect';
 import { registerKeyHints } from '../../shortcuts/hints';
@@ -330,7 +331,7 @@ export function CreateMrFlyout({ tabId, props: { branch }, close: closeFrame }: 
         <span className="create-mr-spacer" />
         <span className="create-mr-split">
           <button type="button" className="create-mr-primary" disabled={!!blocked || busy} onClick={() => { void submit(); }}>{busy ? 'Creating…' : createLabel}</button>
-          <button type="button" className="create-mr-caret" aria-label="More create options" aria-haspopup="menu" disabled={!!blocked || busy} onClick={(e) => createMenu(e.currentTarget)}><ChevronDown size={13} aria-hidden /></button>
+          <button type="button" className="create-mr-caret" aria-label="More create options" aria-haspopup="menu" disabled={!!blocked || busy} {...pressOpener(createMenu)}><ChevronDown size={13} aria-hidden /></button>
         </span>
       </div>
     </div>

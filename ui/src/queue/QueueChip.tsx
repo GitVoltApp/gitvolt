@@ -5,6 +5,7 @@ import type { QueueStatePayload } from '../api/gen/QueueStatePayload';
 import { useRuntime } from '../app/runtime';
 import { useAppState } from '../app/state';
 import { openMenuAt } from '../menu/menuStore';
+import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { chipText, IDLE, isIdle, loadQueue, useQueue } from './store';
@@ -46,7 +47,7 @@ export function QueueChip() {
   const text = chipText(q);
   return (
     <HoverTooltip content="The action queue: what runs now and what's next">
-      <button type="button" className={`sb-item sb-button sb-queue${q.stopped ? ' stopped' : ''}`} aria-label={text} aria-haspopup="menu" onClick={(e) => openMenuAt(e.currentTarget, latest(), undefined, latest, 'Action queue')}>
+      <button type="button" className={`sb-item sb-button sb-queue${q.stopped ? ' stopped' : ''}`} aria-label={text} aria-haspopup="menu" {...pressOpener((el) => openMenuAt(el, latest(), undefined, latest, 'Action queue'))}>
         {text}
       </button>
     </HoverTooltip>

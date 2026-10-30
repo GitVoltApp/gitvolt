@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import { usePressDrag } from '../menu/pressDrag';
 import { pointInRect, swallowGestureClick } from '../ui/swallowClick';
 import type { ToolbarPicker } from './registry';
 
@@ -9,6 +10,8 @@ export function DefaultPicker({ picker, anchor, onClose }: { picker: ToolbarPick
   const value = picker.useValue();
   const [active, setActive] = useState(Math.max(0, picker.options.findIndex((o) => o.value === value)));
   const ref = useRef<HTMLDivElement>(null);
+  // Opened by a press (the caret's, or a hold on its button): a release on a row picks it.
+  usePressDrag(ref);
   const r = anchor.getBoundingClientRect();
   // Focus the menu; on close, hand focus back to the caret that opened it. (Its keys stay its own:
   // useModalKeys would claim Enter too.)

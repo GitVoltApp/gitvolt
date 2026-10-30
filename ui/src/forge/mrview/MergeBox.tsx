@@ -12,6 +12,7 @@ import type { MergeMethod } from '../../api/gen/MergeMethod';
 import type { MergeOptions } from '../../api/gen/MergeOptions';
 import { ForgeAvatar } from '../../avatars/Avatar';
 import { openMenuAt } from '../../menu/menuStore';
+import { pressOpener } from '../../menu/pressDrag';
 import type { MenuRow } from '../../menu/types';
 import { confirmAction } from '../../ui/ConfirmDialog';
 import { HoverTooltip } from '../../ui/HoverTooltip';
@@ -234,7 +235,7 @@ export function MergeBox({ tabId, kind, mr: listed, detail }: { tabId: string; k
               aria-label="Merge method"
               aria-haspopup="menu"
               disabled={busy !== null}
-              onClick={() => { if (chevron.current) openMenuAt(chevron.current, methodRows(), `merge.method.${chosen}`, methodRows, 'Merge method'); }}
+              {...pressOpener((el) => openMenuAt(el, methodRows(), `merge.method.${chosen}`, methodRows, 'Merge method'))}
             >
               <ChevronDown size={14} aria-hidden />
             </button>
@@ -269,7 +270,7 @@ export function MergeBox({ tabId, kind, mr: listed, detail }: { tabId: string; k
                   aria-label="Other ways to update the branch"
                   aria-haspopup="menu"
                   disabled={updating !== null || busy !== null}
-                  onClick={() => { if (updateChevron.current) openMenuAt(updateChevron.current, updateRows(), undefined, updateRows, 'Update the branch'); }}
+                  {...pressOpener((el) => openMenuAt(el, updateRows(), undefined, updateRows, 'Update the branch'))}
                 >
                   <ChevronDown size={14} aria-hidden />
                 </button>

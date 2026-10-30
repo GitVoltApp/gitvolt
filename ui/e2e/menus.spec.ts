@@ -234,5 +234,25 @@ test.describe('forge rows (a GitLab remote, fixtures.details) and the Monaco con
       await expect(picker).toBeHidden();
       await expect(branch).toHaveAttribute('aria-expanded', 'false');
     });
+    await test.step('holding Fetch opens its ▾ picker; dragging onto a row and releasing picks it, and Fetch does not run', async () => {
+      const bar = page.getByRole('toolbar', { name: 'Repository toolbar' });
+      const fetch = bar.getByRole('button', { name: 'Fetch', exact: true });
+      const menu = page.getByRole('menu').filter({ has: page.getByRole('menuitemradio') });
+      const f = (await fetch.boundingBox())!;
+      await page.mouse.move(f.x + f.width / 2, f.y + f.height / 2);
+      await page.mouse.down();
+      await expect(menu).toBeVisible();
+      const row = menu.getByRole('menuitemradio', { name: 'Pull (rebase)' });
+      const r = (await row.boundingBox())!;
+      await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2, { steps: 5 });
+      await page.mouse.up();
+      await expect(menu).toBeHidden();
+      await expect(bar.getByRole('button', { name: 'Pull', exact: true })).toBeVisible();
+      await expect(bar.locator('.tb-busy-icon')).toHaveCount(0);
+      // Back to Fetch All, with a plain click on the ▾ and a row.
+      await bar.getByRole('button', { name: 'Pull options' }).click();
+      await menu.getByRole('menuitemradio', { name: 'Fetch All' }).click();
+      await expect(fetch).toBeVisible();
+    });
   });
 });

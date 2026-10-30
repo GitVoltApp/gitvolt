@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { HoverTooltip } from './HoverTooltip';
 import { useKeys } from './keyRouter';
 import { pointInRect, swallowGestureClick } from './swallowClick';
+import { usePressDrag } from '../menu/pressDrag';
 import './picker.css';
 import { ClearableInput } from './ClearableInput';
 
@@ -35,7 +36,8 @@ export function closePickers(): void {
 /**
  * A small searchable list anchored under a button: the toolbar's branch picker, the graph
  * header's pin picker (Task 16). Typing filters by case-insensitive substring; ↑/↓ move, Enter
- * picks, Esc closes; a press outside closes it.
+ * picks, Esc closes; a press outside closes it. Opened by a press, a release on an item picks it
+ * (`pressDrag.ts`).
  *
  * While open it owns the keyboard, as a menu does: it's in the key router's `menu` layer (ruling
  * R6), so no key reaches the app behind it. Esc closes the picker and nothing else, never the open
@@ -49,6 +51,8 @@ export function RefPicker({ anchor, items, placeholder, onPick, onClose, ignore,
   const ref = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const uid = useId();
+  // Opened by a press on its button: dragging onto an item and releasing picks it.
+  usePressDrag(ref);
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return needle ? items.filter((i) => i.label.toLowerCase().includes(needle)) : items;

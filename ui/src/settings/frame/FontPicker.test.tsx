@@ -20,6 +20,7 @@ const { SettingsOverlay } = await import('./SettingsOverlay');
 const { useFontFamilies } = await import('../../theme/fontList');
 const { fontChoice, fontItems, placeList } = await import('./FontPicker');
 const { EDITOR_FONT_ROLE } = await import('../pages/diffs');
+const { mouseDown, mouseUp } = await import('../../menu/pressTesting');
 
 async function show(focus: string) {
   render(<SettingsOverlay />);
@@ -164,6 +165,29 @@ describe('the font picker', () => {
     fireEvent.click(button());
     fireEvent.pointerDown(screen.getByRole('dialog', { name: 'Settings' }));
     expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('press, drag onto a font (it previews on the way), release: it is picked; released on the button it stays open', async () => {
+    await show('editorFontFamily');
+    mouseDown(button());
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(search()).toHaveFocus();
+    mouseUp(button(), 11, 10, button());
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    const orbit = screen.getByRole('option', { name: 'Orbit Mono' });
+    fireEvent.pointerEnter(orbit);
+    expect(preview().style.fontFamily).toMatch(/^"Orbit Mono"/);
+    // A new press on the button closes it (the toggle); the next opens it again.
+    mouseDown(button());
+    mouseUp(button(), 10, 10, button());
+    expect(screen.queryByRole('listbox')).toBeNull();
+    await new Promise((r) => setTimeout(r, 0));
+    mouseDown(button());
+    const row = screen.getByRole('option', { name: 'Orbit Mono' });
+    fireEvent.pointerEnter(row);
+    mouseUp(row, 60, 120, document.body);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(editorFont()).toMatch(/Orbit Mono/);
   });
 
   it('Default stores nothing; a set font that is not installed shows so, and the fallbacks apply', async () => {

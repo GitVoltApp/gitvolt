@@ -5,6 +5,22 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **Press, drag, release to pick from any menu.** Press a menu's button (the profile picker, ☰,
+  a toolbar ▾, a dropdown in Settings, the branch presets ▾, the branch picker, a font list),
+  or right-press for a context menu, drag onto an item and release: it's picked, as on a native
+  menu. A plain click still opens the menu and leaves it open; a release on a disabled item, a
+  separator or outside the menu picks nothing.
+- **Hold Undo, Fetch or Push to open its ▾ menu.** Holding a toolbar button that has a ▾ for
+  0.4 s opens the same menu; drag onto an item and release to pick it, and the button itself
+  doesn't run. A shorter press is a click.
+
+### Changed
+
+- **The toolbar's ▾ is attached to its button.** Each ▾ forms one split button with its button,
+  lit as a pair under the pointer, and separate actions sit further apart (12 px, was 4).
+
 ## [1.3.0] - 2026-10-30
 
 ### Added

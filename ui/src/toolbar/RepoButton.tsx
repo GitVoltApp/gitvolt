@@ -3,6 +3,7 @@ import { basename } from '../app/osPath';
 import { useRepoContext } from '../app/repoContext';
 import { useRuntime } from '../app/runtime';
 import { openMenuAt } from '../menu/menuStore';
+import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { openWorktreeTab, setActiveWorktree } from '../worktrees/active';
@@ -42,7 +43,7 @@ export function RepoButton() {
   });
   return (
     <HoverTooltip content="Worktrees of this repository">
-      <button type="button" className="tb-field tb-picker" data-testid="tb-repo" aria-haspopup="menu" aria-label={`Repository: ${name}${sub ? ` (${sub})` : ''}`} onClick={(e) => openMenuAt(e.currentTarget, rows(tabId), undefined, () => rows(tabId), 'Worktrees')}>
+      <button type="button" className="tb-field tb-picker" data-testid="tb-repo" aria-haspopup="menu" aria-label={`Repository: ${name}${sub ? ` (${sub})` : ''}`} {...pressOpener((el) => openMenuAt(el, rows(tabId), undefined, () => rows(tabId), 'Worktrees'))}>
         <span className="tb-caption">repository</span>
         <span className="tb-value">{name}{sub && <span className="tb-sub"> · {sub}</span>}</span>
       </button>

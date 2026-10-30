@@ -10,6 +10,7 @@ import { ClearableInput } from '../../ui/ClearableInput';
 import { HoverTooltip } from '../../ui/HoverTooltip';
 import { registerKeys } from '../../ui/keyRouter';
 import { swallowGestureClick } from '../../ui/swallowClick';
+import { pressOpener, usePressDrag } from '../../menu/pressDrag';
 import '../../ui/picker.css';
 import './fontPicker.css';
 
@@ -182,7 +183,7 @@ export function FontPicker({ role, value, avoid, onPick, onPreview, onCustom }: 
         className="select font-picker-button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => (open ? close(true) : setOpen(true))}
+        {...pressOpener(() => (open ? close(true) : setOpen(true)))}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
       >
@@ -222,6 +223,9 @@ function FontList({ role, value, list, seed, anchor, avoid, onPreview, onPick, o
   const [cursor, setCursor] = useState(() => Math.max(0, items.findIndex((i) => isCurrent(i, value, list))));
   const at = Math.min(cursor, items.length - 1);
   const box = useRef<HTMLDivElement>(null);
+  // Opened by a press on the button: dragging onto a font (previewing each on the way) and
+  // releasing picks it.
+  usePressDrag(box);
   const scroller = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const live = useRef({ items, at, onPick, onClose });

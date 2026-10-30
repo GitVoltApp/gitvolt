@@ -1,5 +1,6 @@
 import { GitBranch, Pin, PinOff, RotateCcw } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { pressOpener } from '../menu/pressDrag';
 import type { ForkPayload } from '../api/gen/ForkPayload';
 import type { PinSetting } from '../api/gen/PinSetting';
 import type { SidebarPayload } from '../api/gen/SidebarPayload';
@@ -99,7 +100,7 @@ export function PinButton({ compact }: { compact: boolean }) {
           aria-label={`Pinned trunk: ${label}`}
           aria-haspopup="listbox"
           aria-expanded={!!anchor}
-          onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
+          {...pressOpener((el) => setAnchor(anchor ? null : el.getBoundingClientRect()))}
         >
           <Pin size={12} aria-hidden />
           {!compact && <span className="pin-name">{label}</span>}

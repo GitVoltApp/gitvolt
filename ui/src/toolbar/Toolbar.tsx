@@ -1,8 +1,9 @@
 import { ChevronDown, LoaderCircle } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { actionsVersion, getAction, invoke, runAction, subscribeActions, type Action } from '../app/actions';
 import { useRepoContext, type RepoCtx } from '../app/repoContext';
 import { openMenuAt, pressClosedMenu } from '../menu/menuStore';
+import { pressOpener, useLongPress } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { BranchPicker } from './BranchPicker';
@@ -34,6 +35,11 @@ function ToolbarButtonView({ b, ctx }: { b: ToolbarButton; ctx: RepoCtx }) {
   const useView = b.useView ?? noView;
   const view = useView(ctx);
   const [pickerAt, setPickerAt] = useState<Element | null>(null);
+  // A split button: holding its main part opens the ▾'s menu, anchored on the ▾.
+  const caret = useRef<HTMLButtonElement>(null);
+  const openFromHold = useRef<() => void>(() => {});
+  const split = !!(b.menu?.length || b.picker || b.menuRows);
+  const hold = useLongPress<HTMLButtonElement>(split ? () => openFromHold.current() : null);
   const a = getAction(b.action);
   if (!a) return null;
   const label = view?.label ?? b.label ?? a.label;
@@ -43,7 +49,7 @@ function ToolbarButtonView({ b, ctx }: { b: ToolbarButton; ctx: RepoCtx }) {
   const off = view ? view.disabled : !usable(a);
   const button = (
     <HoverTooltip content={tip}>
-      <button type="button" className={['tb-btn', b.className, view?.hidden && 'tb-hidden'].filter(Boolean).join(' ')} aria-label={label} aria-hidden={view?.hidden || undefined} tabIndex={view?.hidden ? -1 : undefined} aria-pressed={view?.pressed} aria-busy={busy || undefined} disabled={busy} aria-disabled={off || undefined} onClick={() => { if (!off) runAction(a.id); }}>
+      <button type="button" className={['tb-btn', split && 'tb-split-main', b.className, view?.hidden && 'tb-hidden'].filter(Boolean).join(' ')} aria-label={label} aria-hidden={view?.hidden || undefined} tabIndex={view?.hidden ? -1 : undefined} aria-pressed={view?.pressed} aria-busy={busy || undefined} disabled={busy} aria-disabled={off || undefined} onClick={() => { if (!off) runAction(a.id); }} {...hold}>
         <Icon size={16} className={busy ? 'spin tb-busy-icon' : undefined} aria-hidden />
         {busy && <span className="tb-busy-dot" aria-hidden />}
         <span>{label}</span>
@@ -51,7 +57,7 @@ function ToolbarButtonView({ b, ctx }: { b: ToolbarButton; ctx: RepoCtx }) {
       </button>
     </HoverTooltip>
   );
-  if (!b.menu?.length && !b.picker && !b.menuRows) return button;
+  if (!split) return button;
   const openCaret = async (el: HTMLElement) => {
     if (b.picker) return setPickerAt(el);
     if (pressClosedMenu(el)) return; // this press toggled the open menu closed: don't reopen after the await
@@ -59,11 +65,12 @@ function ToolbarButtonView({ b, ctx }: { b: ToolbarButton; ctx: RepoCtx }) {
     const build = () => (b.menuRows ? b.menuRows(ctx) : menuRows(b.menu ?? []));
     openMenuAt(el, build(), undefined, build, `${label} options`);
   };
+  openFromHold.current = () => { if (caret.current) void openCaret(caret.current); };
   return (
     <div className="tb-split">
       {button}
       <HoverTooltip content={`${label} options`}>
-        <button type="button" className="tb-btn tb-caret" aria-label={`${label} options`} aria-haspopup="menu" aria-expanded={b.picker ? pickerAt !== null : undefined} onClick={(e) => { void openCaret(e.currentTarget); }}>
+        <button ref={caret} type="button" className="tb-btn tb-caret" aria-label={`${label} options`} aria-haspopup="menu" aria-expanded={b.picker ? pickerAt !== null : undefined} {...pressOpener((el) => { void openCaret(el); })}>
           <ChevronDown size={12} aria-hidden />
         </button>
       </HoverTooltip>

@@ -1,5 +1,5 @@
 import { forgeSeed, freshFixture, harnessHttp, setForgeSeed } from './fixtures';
-import { expect, test } from './test';
+import { expect, test, type Locator } from './test';
 
 const openBoth = (a: string, b: string) => `/?repo=${encodeURIComponent(a)}&repo=${encodeURIComponent(b)}`;
 
@@ -99,6 +99,17 @@ test.describe('tabs', () => {
       await page.getByRole('button', { name: /Profile: Work/ }).click();
       await page.getByRole('menuitem', { name: 'Default' }).click();
       await expect(page.getByRole('tab')).toHaveCount(1);
+    });
+    await test.step('press the profile picker, drag onto another profile, release: it switches', async () => {
+      const at = async (l: Locator) => { const r = (await l.boundingBox())!; return [r.x + r.width / 2, r.y + r.height / 2] as const; };
+      await page.mouse.move(...await at(page.getByRole('button', { name: /Profile: Default/ })));
+      await page.mouse.down();
+      const work = page.getByRole('menuitem', { name: 'Work' });
+      await expect(work).toBeVisible();
+      await page.mouse.move(...await at(work), { steps: 5 });
+      await page.mouse.up();
+      await expect(page.getByRole('button', { name: /Profile: Work/ })).toBeVisible();
+      await expect(page.getByTestId('context-menu')).toBeHidden();
     });
   });
 
