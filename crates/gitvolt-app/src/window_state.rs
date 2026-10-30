@@ -489,6 +489,7 @@ pub struct Veil {
 }
 
 impl Veil {
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub fn new(lift: impl FnOnce() + Send + 'static) -> Self {
         Self { lift: std::sync::Mutex::new(Some(Box::new(lift))) }
     }

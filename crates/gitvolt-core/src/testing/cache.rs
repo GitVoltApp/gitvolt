@@ -38,10 +38,12 @@ pub(super) fn restore(r: &TestRepo, name: &str, build: fn(&TestRepo)) -> bool {
     let mut lines = state.lines();
     let (Some(built_root), Some(clock), Some(counter)) = (lines.next(), lines.next(), lines.next()) else { panic!("bad fixture cache state in {}", entry.display()) };
     let to = std::path::absolute(&r.root).expect("absolute fixture root");
+    // A linked worktree's links get git's real path: macOS's temp dir `/var/…` is `/private/var/…`.
+    let links = rewrites(Path::new(built_root), &crate::platform::fs::canonicalize(&to).expect("canonical fixture root"));
     let rewrites = rewrites(Path::new(built_root), &to);
     std::fs::remove_dir_all(&r.path).expect("remove the fresh repo");
     let mut work_trees = Vec::new();
-    copy_tree(&entry.join("root"), &r.root, &rewrites, &mut work_trees).expect("copy the cached fixture");
+    copy_tree(&entry.join("root"), &r.root, &rewrites, &links, &mut work_trees).expect("copy the cached fixture");
     // The copy's files have new inodes and ctimes, which git would see as stat-dirty: refresh
     // each index once, as a fresh build's would be. Exit 1 only says some file really differs.
     for wt in &work_trees {
@@ -150,9 +152,11 @@ fn rewrites(from: &Path, to: &Path) -> Vec<(Vec<u8>, Vec<u8>)> {
 }
 
 /// Copies `from` into `to` (merging into an existing folder), with `rewrites` applied to every
-/// small file. Collects the work trees (folders with a `.git`).
-fn copy_tree(from: &Path, to: &Path, rewrites: &[(Vec<u8>, Vec<u8>)], work_trees: &mut Vec<PathBuf>) -> std::io::Result<()> {
+/// small file, `links` instead to a linked worktree's `.git` file and its `worktrees/*/gitdir`.
+/// Collects the work trees (folders with a `.git`).
+fn copy_tree(from: &Path, to: &Path, rewrites: &[(Vec<u8>, Vec<u8>)], links: &[(Vec<u8>, Vec<u8>)], work_trees: &mut Vec<PathBuf>) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
+    let in_worktrees = from.parent().and_then(Path::file_name).is_some_and(|n| n == "worktrees");
     for e in std::fs::read_dir(from)? {
         let e = e?;
         let (src, dst) = (e.path(), to.join(e.file_name()));
@@ -161,12 +165,13 @@ fn copy_tree(from: &Path, to: &Path, rewrites: &[(Vec<u8>, Vec<u8>)], work_trees
             work_trees.push(to.to_path_buf());
         }
         if meta.is_dir() {
-            copy_tree(&src, &dst, rewrites, work_trees)?;
+            copy_tree(&src, &dst, rewrites, links, work_trees)?;
         } else if meta.len() > REWRITE_MAX {
             std::fs::copy(&src, &dst)?;
         } else {
+            let link = e.file_name() == ".git" || (in_worktrees && e.file_name() == "gitdir");
             let bytes = std::fs::read(&src)?;
-            match rewrite(&bytes, rewrites) {
+            match rewrite(&bytes, if link { links } else { rewrites }) {
                 Some(new) => {
                     std::fs::write(&dst, new)?;
                     std::fs::set_permissions(&dst, meta.permissions())?;

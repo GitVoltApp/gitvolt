@@ -8,6 +8,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 helper="$here/arch-pkg.py"
 fail() { echo "test-package-arch: FAIL: $*" >&2; exit 1; }
 eq() { [ "$2" = "$3" ] || fail "$1: expected '$3', got '$2'"; }
+# The test versions' stamp, 2026-10-05 13:25 UTC, as Unix time: a literal, as BSD date has no -d.
+built=1791206700
 
 eq pkgver "$(python3 "$helper" pkgver '0.1.0+202610051325.ab4dbf9e')" '0.1.0.202610051325.ab4dbf9e'
 eq pkgver-plain "$(python3 "$helper" pkgver '0.2.0')" '0.2.0'
@@ -17,7 +19,7 @@ eq pkgver-pre "$(python3 "$helper" pkgver '0.1.0~alpha.1')" '0.1.0alpha.1'
 eq pkgver-pre-stamp "$(python3 "$helper" pkgver '0.1.0~rc.2+202610051325.ab4dbf9e')" '0.1.0rc.2.202610051325.ab4dbf9e'
 python3 "$helper" pkgver '1:0.1.0' 2>/dev/null && fail "an epoch ':' was accepted"
 python3 "$helper" pkgver '0.1.0-1' 2>/dev/null && fail "a '-' was accepted"
-eq stamp "$(python3 "$helper" stamp '0.1.0+202610051325.ab4dbf9e')" "$(date -u -d '2026-10-05 13:25' +%s)"
+eq stamp "$(python3 "$helper" stamp '0.1.0+202610051325.ab4dbf9e')" "$built"
 
 deps=$(python3 "$helper" depends 'libasound2t64 (>= 1.0.17), libatk-bridge2.0-0t64 (>= 2.5.3), libatk1.0-0t64, libatspi2.0-0t64, libc6 (>= 2.39), libgcc-s1 (>= 12), libgtk-4-1 (>= 4.13.8), libnss3 (>= 2:3.30), libglib2.0-0t64 (>= 2.66.0), libxext6, git (>= 1:2.40)' | tr '\n' ' ')
 eq depends "$deps" 'alsa-lib at-spi2-core gcc-libs git glib2 glibc gtk4 libxext nss '
@@ -74,7 +76,7 @@ tar -tvf "$work/p.tar" | grep -Eq '^-rw-r--r-- root/root +4 .* usr/share/GitVolt
 eq install-kind "$(tar -xOf "$work/p.tar" usr/share/GitVolt/install-kind)" arch
 info=$(tar -xOf "$work/p.tar" .PKGINFO)
 for kv in 'pkgname = gitvolt' 'pkgver = 0.1.0.202610051325.ab4dbf9e-1' 'pkgdesc = A fast desktop Git client' \
-          'arch = x86_64' "builddate = $(date -u -d '2026-10-05 13:25' +%s)" \
+          'arch = x86_64' "builddate = $built" \
           'depend = gcc-libs' 'depend = git' 'depend = glibc' 'depend = gtk4'; do
   grep -qxF "$kv" <<<"$info" || fail ".PKGINFO lacks '$kv': $info"
 done
@@ -86,7 +88,7 @@ mtree=$(tar -xOf "$work/p.tar" .MTREE | gzip -dc)
 eq mtree-head "$(head -2 <<<"$mtree" | tr '\n' '|')" '#mtree|/set type=file uid=0 gid=0 mode=644|'
 grep -Eq '^\./\.PKGINFO time=[0-9]+\.0 size=[0-9]+ md5digest=[0-9a-f]{32} sha256digest=[0-9a-f]{64}$' <<<"$mtree" || fail ".MTREE lacks .PKGINFO: $mtree"
 grep -Eq '^\./usr/share/GitVolt/chrome-sandbox time=[0-9]+\.0 mode=4755 size=10 ' <<<"$mtree" || fail ".MTREE chrome-sandbox line: $mtree"
-grep -qxF "./usr/bin/gitvolt time=$(date -u -d '2026-10-05 13:25' +%s).0 mode=777 type=link link=../share/GitVolt/gitvolt" <<<"$mtree" || fail ".MTREE symlink line: $mtree"
+grep -qxF "./usr/bin/gitvolt time=$built.0 mode=777 type=link link=../share/GitVolt/gitvolt" <<<"$mtree" || fail ".MTREE symlink line: $mtree"
 grep -Eq '^\./usr/share/applications/Git\\040Volt\.desktop ' <<<"$mtree" || fail ".MTREE escaping: $mtree"
 grep -Eq '^\./usr time=[0-9]+\.0 mode=755 type=dir$' <<<"$mtree" || fail ".MTREE dir line: $mtree"
 # The license notices: the .deb's files, and Arch's /usr/share/licenses/gitvolt pointing at them.
