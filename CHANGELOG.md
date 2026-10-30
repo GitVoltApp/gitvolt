@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-30
+
 ### Added
 
 - **GitVolt draws its own title bar on Linux, Windows and macOS**, 30 px above the tab bar: ☰ (moved up from the
