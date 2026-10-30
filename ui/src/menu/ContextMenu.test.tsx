@@ -7,7 +7,7 @@ import { disarm, holdOrigin, useArm } from '../ui/arm/store';
 import { confirmAction, confirmWith } from '../ui/ConfirmDialog';
 import { TooltipHost } from '../ui/TooltipHost';
 import { useTooltip } from '../ui/tooltipStore';
-import { BLUR_SETTLE_MS, ContextMenu, inTriangle, remap, SUBMENU_GRACE_MS } from './ContextMenu';
+import { aimsAt, BLUR_SETTLE_MS, ContextMenu, inTriangle, remap, SUBMENU_GRACE_MS } from './ContextMenu';
 import { openContextMenu, openMenuAt, setMenuRowRunner, useMenu } from './menuStore';
 import type { MenuRow } from './types';
 
@@ -242,43 +242,64 @@ describe('ContextMenu', () => {
       expect(screen.queryByRole('tooltip')).toBeNull();
     });
 
-    describe('the safe triangle', () => {
-      // The submenu opened to the right, at x 300..500, y 0..100; its row "More" is left at
-      // (100, 13): the triangle is (96, 13), (300, -4), (300, 104).
+    describe('menu-aim', () => {
+      // The submenu opened to the right, at x 300..500, y 0..100; the pointer rests on its row
+      // "More" at (100, 13). A move counts toward it when it heads into the triangle from where
+      // it was to (300, -4)..(300, 104).
       const rect = (l: number, t: number, r: number, b: number) => ({ left: l, top: t, right: r, bottom: b, width: r - l, height: b - t, x: l, y: t, toJSON() {} });
       let restore: () => void = () => {};
-      const setupOpen = () => {
+      const mockSub = (box: ReturnType<typeof rect>) => {
         const orig = HTMLElement.prototype.getBoundingClientRect;
         HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
-          return this.matches('.ctx-level[data-depth="1"]') ? rect(300, 0, 500, 100) : rect(0, 0, 0, 0);
+          return this.matches('.ctx-level[data-depth="1"]') ? box : rect(0, 0, 0, 0);
         };
         restore = () => { HTMLElement.prototype.getBoundingClientRect = orig; };
+      };
+      let over: HTMLElement | null = null;
+      /** As a browser does: the last row's pointerleave, this one's pointerenter, then the move
+       * that got there. */
+      const moveOnto = (name: string, x: number, y: number) => {
+        const row = screen.getByRole('menuitem', { name });
+        if (over && over !== row && over.isConnected) fireEvent.pointerLeave(over, { clientX: x, clientY: y });
+        over = row;
+        fireEvent.pointerEnter(row, { clientX: x, clientY: y });
+        fireEvent.pointerMove(row, { clientX: x, clientY: y });
+      };
+      const setupOpen = () => {
+        mockSub(rect(300, 0, 500, 100));
         vi.useFakeTimers();
         const menu = open([more, action('b'), action('c')]);
-        hoverMore();
+        over = null;
+        moveOnto('More', 100, 13);
         expect(sub()).toBeVisible();
-        fireEvent.pointerLeave(screen.getByRole('menuitem', { name: 'More' }), { clientX: 100, clientY: 13 });
         return menu;
       };
       const activeTop = (menu: HTMLElement) => menu.querySelector('[data-depth="0"] > [data-active="true"]')?.getAttribute('data-row-id');
       afterEach(() => restore());
 
-      it('inTriangle', () => {
+      it('inTriangle and aimsAt', () => {
         const t = [{ x: 96, y: 13 }, { x: 300, y: -4 }, { x: 300, y: 104 }] as const;
         expect(inTriangle({ x: 150, y: 30 }, t)).toBe(true);
         expect(inTriangle({ x: 299, y: 100 }, t)).toBe(true);
         expect(inTriangle({ x: 100, y: 40 }, t)).toBe(false);
         expect(inTriangle({ x: 150, y: 90 }, t)).toBe(false);
+        const box = { left: 300, right: 500, top: 0, bottom: 100 };
+        expect(aimsAt({ x: 100, y: 13 }, { x: 150, y: 30 }, box)).toBe(true);
+        expect(aimsAt({ x: 100, y: 13 }, { x: 101, y: 30 }, box)).toBe(false); // mostly down
+        expect(aimsAt({ x: 100, y: 13 }, { x: 80, y: 20 }, box)).toBe(false); // away
+        expect(aimsAt({ x: 100, y: 13 }, { x: 100, y: 13 }, box)).toBeNull(); // no move
+        // A submenu flipped to the left: its near edge is its right one.
+        expect(aimsAt({ x: 400, y: 13 }, { x: 350, y: 30 }, { left: 100, right: 300, top: 0, bottom: 100 })).toBe(true);
       });
 
-      it('a diagonal across siblings into the submenu keeps it open, however slow, as long as it keeps moving', () => {
+      it('a diagonal across siblings into the submenu keeps it open, however slow, as long as it keeps heading there', () => {
         const menu = setupOpen();
-        fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'B' }), { clientX: 150, clientY: 30 });
+        moveOnto('B', 150, 30);
         for (let x = 160; x < 300; x += 20) {
           tick(SUBMENU_GRACE_MS - 50);
           fireEvent.pointerMove(document.body, { clientX: x, clientY: 30 + (x - 150) / 4 });
         }
-        fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'C' }), { clientX: 290, clientY: 60 });
+        moveOnto('C', 290, 60);
         expect(sub()).toBeVisible();
         // The parent row stays the active one while crossing.
         expect(activeTop(menu)).toBe('more');
@@ -289,29 +310,78 @@ describe('ContextMenu', () => {
         expect(activeTop(menu)).toBe('more');
       });
 
-      it(`resting on a sibling inside the triangle hands over after ${SUBMENU_GRACE_MS} ms`, () => {
+      it(`stopping on a sibling while heading there hands over after ${SUBMENU_GRACE_MS} ms; a still pointer doesn't extend it`, () => {
         const menu = setupOpen();
-        fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'B' }), { clientX: 150, clientY: 30 });
-        tick(SUBMENU_GRACE_MS - 1);
+        moveOnto('B', 150, 30);
+        tick(SUBMENU_GRACE_MS - 100);
+        // A move event without a move (as after a layout change) is no progress toward the submenu.
+        fireEvent.pointerMove(document.body, { clientX: 150, clientY: 30 });
+        tick(99);
         expect(sub()).toBeVisible();
         tick(1);
         expect(sub()).toBeNull();
         expect(activeTop(menu)).toBe('b');
       });
 
-      it('leaving the triangle hands over at once', () => {
+      it('turning away from the submenu hands over at once', () => {
         const menu = setupOpen();
-        fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'B' }), { clientX: 150, clientY: 30 });
-        fireEvent.pointerMove(document.body, { clientX: 150, clientY: 90 });
+        moveOnto('B', 150, 30);
+        expect(activeTop(menu)).toBe('more');
+        fireEvent.pointerMove(document.body, { clientX: 140, clientY: 40 });
         expect(sub()).toBeNull();
         expect(activeTop(menu)).toBe('b');
       });
 
-      it('a move straight down (outside the triangle) hands over at once', () => {
+      it('a move away from the submenu takes the row at once', () => {
         const menu = setupOpen();
-        fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'B' }), { clientX: 100, clientY: 40 });
+        moveOnto('B', 80, 30);
         expect(sub()).toBeNull();
         expect(activeTop(menu)).toBe('b');
+      });
+
+      it('a move straight down in small steps takes each row at once, with no timer', () => {
+        const menu = setupOpen();
+        for (let y = 15; y < 26; y += 2) fireEvent.pointerMove(document.body, { clientX: 100, clientY: y });
+        moveOnto('B', 100, 27);
+        expect(sub()).toBeNull();
+        expect(activeTop(menu)).toBe('b');
+        for (let y = 29; y < 52; y += 2) fireEvent.pointerMove(document.body, { clientX: 101, clientY: y });
+        moveOnto('C', 101, 53);
+        expect(activeTop(menu)).toBe('c');
+      });
+
+      it('☰: all submenu rows, a narrow menu, tall submenus: moving down near the left edge switches at once', () => {
+        // The app menu's shape: File, Edit, View, each a submenu; the menu 160 px wide, a submenu
+        // 400 px tall beside it. Nearly the whole menu lies in the triangle toward File's submenu.
+        mockSub(rect(160, 0, 380, 400));
+        vi.useFakeTimers();
+        const subRow = (id: string, label: string): MenuRow => ({ kind: 'submenu', id, label, icon: Copy, tooltip: label, rows: [action(`${id}-a`), action(`${id}-b`)] });
+        const menu = open([subRow('file', 'File'), subRow('edit', 'Edit'), subRow('view', 'View')]);
+        over = null;
+        const subOf = (name: string) => screen.queryByRole('menu', { name });
+        moveOnto('File', 14, 13);
+        expect(subOf('File')).toBeVisible();
+        // Down to Edit, with a pixel of drift toward the submenu.
+        for (let y = 15; y < 26; y += 2) fireEvent.pointerMove(document.body, { clientX: 14 + (y > 24 ? 1 : 0), clientY: y });
+        moveOnto('Edit', 15, 27);
+        expect(activeTop(menu)).toBe('edit');
+        expect(subOf('Edit')).toBeVisible();
+        expect(subOf('File')).toBeNull();
+        // Back up to File from Edit's middle.
+        for (let y = 38; y > 26; y -= 2) fireEvent.pointerMove(document.body, { clientX: 80, clientY: y });
+        moveOnto('File', 80, 25);
+        expect(activeTop(menu)).toBe('file');
+        expect(subOf('File')).toBeVisible();
+        // A diagonal from File into its submenu still crosses Edit and View without switching.
+        fireEvent.pointerMove(document.body, { clientX: 90, clientY: 22 });
+        moveOnto('Edit', 110, 30);
+        fireEvent.pointerMove(document.body, { clientX: 130, clientY: 40 });
+        moveOnto('View', 150, 53);
+        expect(activeTop(menu)).toBe('file');
+        expect(subOf('File')).toBeVisible();
+        fireEvent.pointerEnter(subOf('File')!);
+        tick(1000);
+        expect(subOf('File')).toBeVisible();
       });
     });
 

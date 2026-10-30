@@ -254,5 +254,46 @@ test.describe('forge rows (a GitLab remote, fixtures.details) and the Monaco con
       await menu.getByRole('menuitemradio', { name: 'Fetch All' }).click();
       await expect(fetch).toBeVisible();
     });
+    await test.step('☰: moving straight down from Repository onto Help near their left edge takes Help and its submenu at once, by hover and by press-drag', async () => {
+      // All submenu rows in a narrow menu, Repository's submenu tall beside it: before menu-aim,
+      // a move down from it stayed in its safe triangle, and Help took over only after a rest.
+      const menu = page.getByTestId('context-menu');
+      const top = (label: string) => action(menu, label);
+      /** The state right after the moves, with no wait: a rest timer can't have run out. */
+      const now = () => page.evaluate(() => {
+        const active = document.querySelector('[data-testid="context-menu"] [data-depth="0"] > [data-active="true"] .ctx-label')?.textContent;
+        const subs = [...document.querySelectorAll('[data-testid="context-menu"] [data-depth="1"]')].map((el) => el.getAttribute('aria-label'));
+        return { active, subs };
+      });
+      const burger = page.getByRole('button', { name: 'Menu' });
+      const b = (await burger.boundingBox())!;
+      const downToHelp = async () => {
+        const f = (await top('Repository').boundingBox())!;
+        const e = (await top('Help').boundingBox())!;
+        // In the row's left padding, before its icon.
+        const x = f.x + 4;
+        await page.mouse.move(x, f.y + f.height / 2, { steps: 4 });
+        await expect.poll(now).toEqual({ active: 'Repository', subs: ['Repository'] });
+        await page.mouse.move(x, e.y + 3, { steps: 8 });
+        expect(await now()).toEqual({ active: 'Help', subs: ['Help'] });
+      };
+      await burger.click();
+      await expect(menu).toBeVisible();
+      await downToHelp();
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+
+      // The same with the button held from the press that opened it; the release on Help keeps it.
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await page.mouse.down();
+      await expect(menu).toBeVisible();
+      await downToHelp();
+      await page.mouse.up();
+      await expect(menu.getByRole('menu', { name: 'Help' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+    });
   });
 });

@@ -26,13 +26,18 @@ const ROW_H = 26;
 const PAD = 8;
 const SUB_W = 220;
 /** Submenus open at once, on the same pointerenter/pointermove that reaches their row: no
- * hover-intent timer (K29). The safe triangle below is for switching away from an open submenu,
+ * hover-intent timer (K29). The menu-aim below is for switching away from an open submenu,
  * never for the first open. */
-/** Hover intent, the safe triangle: leaving a submenu's row, the pointer may cross the rows of
- * the parent level (a diagonal move into the submenu) while it stays inside the triangle from
- * where it left to the submenu's near edge. Resting that long inside it (no move) hands over to
- * the row under the pointer; leaving the triangle does so at once. */
+/** Hover intent, menu-aim: with a submenu open, the pointer may cross the rows of its parent
+ * level on a diagonal into it. A sibling row it reaches takes over only once the pointer stops
+ * heading for the submenu: at once for a move down, up or away, or after this long without a
+ * move toward it (resting). A move counts as toward it when its direction, from where the pointer
+ * was a few events ago, points into the submenu's near edge (`aimsAt`), not merely when the
+ * pointer is somewhere in the triangle: a narrow menu with a tall submenu (☰) is nearly all
+ * triangle, and a move straight down it waited for the rest timer. */
 export const SUBMENU_GRACE_MS = 300;
+/** How many recent pointer positions the aim looks back over (the oldest is the move's start). */
+const AIM_TRAIL = 3;
 /** A window blur closes the menu only once the window has stayed unfocused this long (K24).
  * Under GNOME (mutter on Xwayland) every button press in the window refocuses it: the window
  * manager's `WM_TAKE_FOCUS`, which the CEF runtime answers by moving the X focus back to the
@@ -49,6 +54,15 @@ export function inTriangle(p: Pt, t: readonly [Pt, Pt, Pt]): boolean {
   const d2 = cross(t[1], t[2], p);
   const d3 = cross(t[2], t[0], p);
   return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+
+/** Whether the move `from` → `to` heads into a submenu's box `sub` (beside the parent level):
+ * `to` lies in the triangle from `from` to the submenu's near edge (4 px past its corners). Null
+ * when the pointer didn't move. */
+export function aimsAt(from: Pt, to: Pt, sub: { left: number; right: number; top: number; bottom: number }): boolean | null {
+  if (from.x === to.x && from.y === to.y) return null;
+  const edge = sub.left >= from.x ? sub.left : sub.right;
+  return inTriangle(to, [from, { x: edge, y: sub.top - 4 }, { x: edge, y: sub.bottom + 4 }]);
 }
 
 const idOf = (r: MenuRow | undefined) => (r && r.kind !== 'separator' ? r.id : null);
@@ -99,7 +113,7 @@ export function remap(old: Level[], rows: MenuRow[]): Level[] {
  * Spec §7: the one menu element, always in the page, filled and positioned on open (at the
  * pointer, flipped at the screen edges).
  * - Submenus open on →, Enter, a click, or a hover — all at once, synchronously, positioned
- *   before paint (K29). The safe triangle (SUBMENU_GRACE_MS) only delays switching away from an
+ *   before paint (K29). The menu-aim (SUBMENU_GRACE_MS) only delays switching away from an
  *   already-open submenu, never the first open.
  * - Every row and variant shows its tooltip at once (`disabledReason` wins). A submenu row's
  *   own tooltip goes away while its submenu is open (it would cover it).
@@ -137,21 +151,31 @@ export function ContextMenu() {
   useEffect(() => setOnOption(false), [armedId]);
   const placedSeq = useRef(-1);
   const returnTo = useRef<HTMLElement | null>(null);
-  // The safe triangle while the pointer heads for the open submenu below level `depth`, and
-  // what to do once it's over (`pending`: the row the pointer crossed onto meanwhile).
-  const grace = useRef<{ depth: number; tri: [Pt, Pt, Pt]; timer?: ReturnType<typeof setTimeout>; pending: (() => void) | null } | null>(null);
+  // The pointer heading for the open submenu below level `depth` across that level's rows, and
+  // the row it crossed onto meanwhile (`pending`), which takes over once it stops.
+  const grace = useRef<{ depth: number; timer?: ReturnType<typeof setTimeout>; pending: () => void } | null>(null);
+  // The last few pointer positions, the newest last (`AIM_TRAIL`).
+  const trail = useRef<Pt[]>([]);
   const endGrace = (apply: boolean) => {
     const g = grace.current;
     if (!g) return;
     clearTimeout(g.timer);
     grace.current = null;
-    if (apply) g.pending?.();
+    if (apply) g.pending();
   };
   const armGrace = () => {
     const g = grace.current;
     if (!g) return;
     clearTimeout(g.timer);
     g.timer = setTimeout(() => endGrace(true), SUBMENU_GRACE_MS);
+  };
+  /** Whether the pointer, now at `p`, is moving toward the open submenu below level `depth`
+   * (null: it hasn't moved). Refs only: the window's move listener calls it too. */
+  const aiming = (depth: number, p: Pt): boolean | null => {
+    const from = trail.current[0];
+    const sub = rootRef.current?.querySelector<HTMLElement>(`[data-depth="${depth + 1}"]`)?.getBoundingClientRect();
+    if (!from || !sub?.width) return false;
+    return aimsAt(from, p, sub);
   };
 
   useLayoutEffect(() => {
@@ -229,13 +253,20 @@ export function ContextMenu() {
       e.preventDefault();
       e.stopPropagation();
     };
-    // The safe triangle: moving inside it keeps the submenu (and restarts the rest timer);
-    // leaving it hands over to the row the pointer is on.
+    // Menu-aim: each move still toward the submenu restarts the rest timer; any other move hands
+    // over to the row the pointer is on at once. A pointer that didn't move changes nothing.
+    trail.current = [];
     const onMove = (e: PointerEvent) => {
+      const p = { x: e.clientX, y: e.clientY };
+      const last = trail.current.at(-1);
+      if (last && last.x === p.x && last.y === p.y) return;
       const g = grace.current;
-      if (!g) return;
-      if (inTriangle({ x: e.clientX, y: e.clientY }, g.tri)) armGrace();
-      else endGrace(true);
+      if (g) {
+        const a = aiming(g.depth, p);
+        if (a) armGrace();
+        else if (a === false) endGrace(true);
+      }
+      trail.current = [...trail.current.slice(1 - AIM_TRAIL), p];
     };
     // Every key goes to the menu while it's open, wherever focus is: nothing behind it acts. It's
     // the key router's first layer (`ui/keyRouter.ts`), ahead of tooltips, editor overlays and
@@ -359,29 +390,21 @@ export function ContextMenu() {
 
   const onRowEnter = (depth: number, i: number, r: Interactive, e: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
     const el = e.currentTarget;
-    const g = grace.current;
-    // Crossing this level's rows on the way into the submenu: nothing changes yet.
-    if (g && g.depth === depth && inTriangle({ x: e.clientX, y: e.clientY }, g.tri)) {
-      g.pending = () => onRowEnterNow(depth, i, r, el);
+    const now = () => onRowEnterNow(depth, i, r, el);
+    // A sibling of the open submenu's row, crossed on the way into the submenu: nothing changes
+    // yet. Any other move takes the whole row at once, wherever on it the pointer came in.
+    if (levels.length > depth + 1 && !subOpenAt(depth, i) && aiming(depth, { x: e.clientX, y: e.clientY })) {
+      const g = grace.current;
+      if (g?.depth === depth) g.pending = now;
+      else {
+        endGrace(false);
+        grace.current = { depth, pending: now };
+      }
       armGrace();
       return;
     }
     endGrace(false);
-    onRowEnterNow(depth, i, r, el);
-  };
-
-  /** The pointer leaves the row of an open submenu: the safe triangle, from where it left to
-   * the submenu's near edge. */
-  const onRowLeave = (depth: number, e: { clientX: number; clientY: number }) => {
-    const sub = rootRef.current?.querySelector<HTMLElement>(`[data-depth="${depth + 1}"]`);
-    const r = sub?.getBoundingClientRect();
-    if (!r || !r.width) return;
-    const toRight = r.left >= e.clientX;
-    const edge = toRight ? r.left : r.right;
-    // The apex a little behind the exit point, so a move straight across the edge counts.
-    const apex = { x: e.clientX + (toRight ? -4 : 4), y: e.clientY };
-    grace.current = { depth, tri: [apex, { x: edge, y: r.top - 4 }, { x: edge, y: r.bottom + 4 }], pending: null };
-    armGrace();
+    now();
   };
 
   /** The pointer reached submenu level `depth`: it stays open, its row active again. */
@@ -522,10 +545,7 @@ export function ContextMenu() {
             aria-description={tipOf(r)}
             className="ctx-row"
             onPointerEnter={(e) => onRowEnter(depth, i, r, e)}
-            onPointerLeave={(e) => {
-              if (r.kind === 'submenu' && expanded) onRowLeave(depth, e);
-              else hideTooltip();
-            }}
+            onPointerLeave={() => { if (!(r.kind === 'submenu' && expanded)) hideTooltip(); }}
             onClick={(e) => {
               // A press on another row while one is armed only disarms it.
               if (consumeDisarmClick(e.target)) return;

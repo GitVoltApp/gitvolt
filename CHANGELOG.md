@@ -5,6 +5,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **Menu rows take the pointer as soon as it's on them.** Moving down a menu whose rows open
+  submenus (☰ above all, and a context menu's Checkout, Create worktree from, Open in) no longer
+  keeps the previous row and its submenu until the pointer nears the next row's label or rests
+  there. Only a move heading into the open submenu holds it, as before, so a diagonal into it can
+  still cross the rows below.
+
 ## [1.4.0] - 2026-10-30
 
 ### Added
