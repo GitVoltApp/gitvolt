@@ -1,11 +1,10 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useAppState } from '../../app/state';
 import { autoLineHeight, clampEditorFont, clampLineHeight, editorFontFamily } from '../../diff/options';
 import type { CodeTokens } from '../../diff/highlight/protocol';
 import { clampReadingFont, clampReadingLineHeight, DEFAULT_UI_FONT, proseFontFamily, readingFontFamily } from '../../theme/fontSettings';
 import { useFontFamilies } from '../../theme/fontList';
 import { useTheme } from '../../theme/store';
-import { displayChord } from '../../ui/platformKeys';
 import { fontChoice, FontPicker, type FontRole } from './FontPicker';
 import { TextField } from './fields';
 
@@ -25,8 +24,10 @@ export const CODE_SAMPLE = [
 
 /**
  * A font setting's control: the picker, the box for a hand-written CSS list when that's what's set
- * (or "Custom font list…" asked for it), and the preview panel under the row. The panel shows the
- * family under the picker's pointer or arrows, else what's typed in the box, else the setting.
+ * (or "Custom font list…" asked for it), and the preview panel under the label, captioned. The panel
+ * shows the family under the picker's pointer or arrows, else what's typed in the box, else the
+ * setting; the open list keeps clear of it, so what's under the pointer shows. Only a picture: one
+ * image to assistive tech, nothing to focus, press or select.
  */
 export function FontSetting({ role, placeholder, preview }: { role: FontRole; placeholder: string; preview(value: string): ReactNode }) {
   const value = useAppState((s) => s.settings[role.id as 'editorFontFamily' | 'readingFontFamily' | 'uiFontFamily']);
@@ -34,6 +35,7 @@ export function FontSetting({ role, placeholder, preview }: { role: FontRole; pl
   const [hover, setHover] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [asked, setAsked] = useState(false);
+  const panel = useRef<HTMLDivElement>(null);
   const custom = asked || fontChoice(value, list).kind === 'custom';
   const save = (v: string) => {
     setDraft(null);
@@ -45,10 +47,13 @@ export function FontSetting({ role, placeholder, preview }: { role: FontRole; pl
   return (
     <>
       <div className="font-setting">
-        <FontPicker role={role} value={value} onPick={(v) => { setAsked(false); save(v); }} onPreview={setHover} onCustom={() => setAsked(true)} />
+        <FontPicker role={role} value={value} avoid={panel} onPick={(v) => { setAsked(false); save(v); }} onPreview={setHover} onCustom={() => setAsked(true)} />
         {custom && <TextField id={`${role.id}-custom`} label="Custom font list" value={value} placeholder={placeholder} onDraft={setDraft} onCommit={save} />}
       </div>
-      {preview(hover ?? draft ?? value)}
+      <div ref={panel} className="font-preview-box" role="img" aria-label={`Preview of the ${role.noun} font`}>
+        <div className="font-preview-caption" aria-hidden>Preview</div>
+        {preview(hover ?? draft ?? value)}
+      </div>
     </>
   );
 }
@@ -120,14 +125,15 @@ export function ReadingFontPreview({ family }: { family: string }) {
   );
 }
 
-/** The app's chrome in the UI font: a menu row, a button and two sidebar rows. */
+/** Plain lines in the UI font at the sizes the app draws: a heading, body text, a small secondary
+ * line, and the mixed-script line. Words only, nothing shaped like a control. */
 export function UiFontPreview({ family }: { family: string }) {
   return (
     <div className="font-preview font-preview-ui" data-testid="uiFontFamily-preview" aria-hidden style={{ fontFamily: proseFontFamily(family) || DEFAULT_UI_FONT, lineHeight: 1.4, height: 100 }}>
-      <div className="font-preview-menu"><span>Copy commit message</span><kbd>{displayChord('Mod+C')}</kbd></div>
-      <span className="font-preview-button">Commit</span>
-      <div className="font-preview-side">main<span className="count">12</span></div>
-      <div className="font-preview-side">{MIXED_SCRIPTS}</div>
+      <div className="font-preview-title">Sphinx of black quartz, judge my vow</div>
+      <div>The quick brown fox jumps over the lazy dog. 0123456789</div>
+      <div className="font-preview-small">How vexingly quick daft zebras jump</div>
+      <div>{MIXED_SCRIPTS}</div>
     </div>
   );
 }

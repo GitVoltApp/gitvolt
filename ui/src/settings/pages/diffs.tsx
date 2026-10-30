@@ -19,7 +19,7 @@ function FontSizeControl() {
 }
 
 /** The editor font's picker (monospace families first), its fallbacks the default's. */
-export const EDITOR_FONT_ROLE: FontRole = { id: 'editorFontFamily', defaultName: EDITOR_FONT_NAME, defaultStack: DEFAULT_EDITOR_FONT_FAMILY, fallback: DEFAULT_EDITOR_FONT_FAMILY, monospace: true };
+export const EDITOR_FONT_ROLE: FontRole = { id: 'editorFontFamily', noun: 'editor', defaultName: EDITOR_FONT_NAME, defaultStack: DEFAULT_EDITOR_FONT_FAMILY, fallback: DEFAULT_EDITOR_FONT_FAMILY, monospace: true };
 
 function FontFamilyControl() {
   return <FontSetting role={EDITOR_FONT_ROLE} placeholder={'"Fira Code", monospace'} preview={(v) => <EditorFontPreview family={v} />} />;

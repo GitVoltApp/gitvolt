@@ -18,7 +18,7 @@ const { DEFAULT_SETTINGS, EMPTY_PROFILE, useAppState } = await import('../../app
 const { useSettingsUi } = await import('../schema');
 const { SettingsOverlay } = await import('./SettingsOverlay');
 const { useFontFamilies } = await import('../../theme/fontList');
-const { fontChoice, fontItems } = await import('./FontPicker');
+const { fontChoice, fontItems, placeList } = await import('./FontPicker');
 const { EDITOR_FONT_ROLE } = await import('../pages/diffs');
 
 async function show(focus: string) {
@@ -63,6 +63,23 @@ describe('the stored value', () => {
     expect(labels('Zeta Serif', false)).toContain('Zeta Serif=Zeta Serif');
     expect(labels('Ghost Mono', false)).toContain('Ghost Mono not installed=Ghost Mono');
     expect(labels('', true, 'SERIF')).toEqual(['Zeta Serif=Zeta Serif', 'Custom font list…=']);
+  });
+});
+
+describe('the list placement', () => {
+  const box = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
+  const button = box(600, 100, 900, 128);
+  it('opens under the button at its width, beside a preview in the left column', () => {
+    expect(placeList(button, 60, 312, box(20, 140, 580, 400), box(0, 0, 1000, 900))).toEqual({ left: 600, top: 132, width: 300, view: 312, below: true });
+  });
+
+  it('opens above with no room below, unless that covers the preview; then it shortens below', () => {
+    const low = box(600, 700, 900, 728);
+    expect(placeList(low, 60, 312, box(20, 740, 580, 900), box(0, 0, 1000, 900))).toMatchObject({ top: 324, view: 312, below: false });
+    // The preview spans the row above the button (a narrow dialog): the list stays under it, shorter.
+    expect(placeList(low, 60, 312, box(20, 400, 900, 690), box(0, 0, 1000, 900))).toMatchObject({ top: 732, view: 100, below: true });
+    // Never fewer than one row.
+    expect(placeList(box(600, 850, 900, 878), 60, 312, box(20, 400, 900, 840), box(0, 0, 1000, 900)).view).toBe(26);
   });
 });
 
@@ -207,6 +224,25 @@ describe('the font picker', () => {
     key('PageDown');
     key('PageDown');
     expect(selected()).toBe('Family 018');
+  });
+
+  it('each preview is a captioned picture: no focusable or interactive parts, none shaped like a control', async () => {
+    const dialog = await show('uiFontFamily');
+    for (const name of ['UI', 'reading']) {
+      const box = within(dialog).getByRole('img', { name: `Preview of the ${name} font` });
+      expect(box.querySelector('.font-preview-caption')).toHaveTextContent('Preview');
+      expect(box.querySelectorAll('button, a, input, kbd, [tabindex], [role]')).toHaveLength(0);
+      expect(box.querySelector('.font-preview')).toHaveAttribute('aria-hidden', 'true');
+    }
+    const ui = within(dialog).getByTestId('uiFontFamily-preview');
+    expect(ui).not.toHaveTextContent(/menu|button|commit|Ctrl|⌘/i);
+    act(() => useSettingsUi.getState().setPage('diffs'));
+    const editor = within(screen.getByRole('dialog', { name: 'Settings' })).getByRole('img', { name: 'Preview of the editor font' });
+    expect(editor.querySelectorAll('button, a, input, [tabindex], [role]')).toHaveLength(0);
+    // Hovering a family previews it in the panel the list keeps clear of.
+    fireEvent.click(button());
+    fireEvent.pointerEnter(screen.getByRole('option', { name: 'Orbit Mono' }));
+    expect(preview().style.fontFamily).toMatch(/^"Orbit Mono"/);
   });
 
   it('"List the fonts again" asks the core to read the fonts again', async () => {

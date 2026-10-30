@@ -240,6 +240,10 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
     await page.keyboard.type('liber');
     await expect(fonts.getByRole('option')).toHaveText(['Liberation Mono', 'Custom font list…']);
     await expect(dialog(page).getByTestId('editorFontFamily-preview')).toHaveCSS('font-family', /^"Liberation Mono", "JetBrains Mono"/);
+    // The open list sits beside the preview, never over it: what's under the arrows shows.
+    const list = (await page.locator('.font-picker').boundingBox())!;
+    const panel = (await dialog(page).getByRole('img', { name: 'Preview of the editor font' }).boundingBox())!;
+    expect(list.x >= panel.x + panel.width || list.y >= panel.y + panel.height || list.y + list.height <= panel.y).toBe(true);
     await page.keyboard.press('Enter');
     await expect(fonts).toBeHidden();
     await expect(picker).toHaveText('Liberation Mono');

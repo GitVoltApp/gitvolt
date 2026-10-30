@@ -25,7 +25,7 @@
 .settings-nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-nav-count { flex: none; font-size: 11px; color: var(--count-blue); }
 
-.settings-body { min-width: 0; min-height: 0; overflow: auto; padding: 18px 28px 28px; }
+.settings-body { container: settings-body / inline-size; min-width: 0; min-height: 0; overflow: auto; padding: 18px 28px 28px; }
 .settings-page-head { margin-right: 32px; }
 .settings-page-head h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--text-selected); }
 .settings-summary { margin: 4px 0 0; color: var(--text-secondary); }

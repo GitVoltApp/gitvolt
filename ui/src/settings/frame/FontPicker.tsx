@@ -1,5 +1,5 @@
 import { ChevronDown, RotateCw } from 'lucide-react';
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { FontFamily } from '../../api/gen/FontFamily';
 import { escOwners } from '../../app/modalKeys';
@@ -7,7 +7,7 @@ import { EDITOR_FONT_NAME } from '../../theme/editorFont';
 import { loadFontFamilies, refreshFontFamilies, useFontFamilies } from '../../theme/fontList';
 import { singleFamily, storedFamily, withFallbacks } from '../../theme/fontStack';
 import { ClearableInput } from '../../ui/ClearableInput';
-import { HoverTooltip, placeCard } from '../../ui/HoverTooltip';
+import { HoverTooltip } from '../../ui/HoverTooltip';
 import { registerKeys } from '../../ui/keyRouter';
 import { swallowGestureClick } from '../../ui/swallowClick';
 import '../../ui/picker.css';
@@ -39,6 +39,8 @@ export function fontChoice(value: string, list: readonly FontFamily[] | null): F
 export interface FontRole {
   /** The setting (its row's `input-<id>` is the picker's button). */
   id: string;
+  /** Which font, in "Preview of the … font". */
+  noun: string;
   /** What the default is, in grey after "Default". */
   defaultName: string;
   /** The default's CSS stack, which draws "Default". */
@@ -55,6 +57,10 @@ const ROW = 26;
 /** The list's height: rows past it scroll, and only the rows in view (and a few around) render. */
 const LIST_MAX = 312;
 const OVERSCAN = 6;
+/** The fewest rows a list squeezed for room shows before the page scrolls to make more. */
+const MIN_ROWS = 5;
+const EDGE = 8;
+const GAP = 4;
 const CUSTOM_KEY = 'custom';
 
 /** The list's entries for `query`: Default, the bundled font, a set font that isn't installed, the
@@ -83,15 +89,55 @@ const isCurrent = (item: Item, value: string, list: readonly FontFamily[] | null
   return one !== null && one.toLowerCase() === (singleFamily(item.value) ?? '').toLowerCase();
 };
 
+interface Box { left: number; top: number; right: number; bottom: number }
+/** Where the list goes: its box, and how tall its scrolled rows are (`view`). */
+export interface ListPlace { left: number; top: number; width: number; view: number; below: boolean }
+
+/**
+ * The list's place by the button `anchor`: at its width, under it, else above it, wherever all of
+ * it fits without covering `avoid` (the preview: what's under the pointer must show). With room for
+ * neither, it takes the larger side that keeps clear and scrolls fewer rows. `chrome` is the list's
+ * height besides its rows (the search box, the toggle), `rows` its rows' full height; it stays
+ * within `bounds` (the dialog).
+ */
+export function placeList(anchor: Box, chrome: number, rows: number, avoid: Box | null, bounds: Box): ListPlace {
+  const width = anchor.right - anchor.left;
+  const left = Math.max(bounds.left + EDGE, Math.min(anchor.left, bounds.right - EDGE - width));
+  const clear = (top: number, height: number) => !avoid
+    || left >= avoid.right || left + width <= avoid.left || top >= avoid.bottom || top + height <= avoid.top;
+  const height = chrome + rows;
+  const roomBelow = bounds.bottom - EDGE - anchor.bottom - GAP;
+  const roomAbove = anchor.top - GAP - EDGE - bounds.top;
+  const below = (h: number): ListPlace => ({ left, top: anchor.bottom + GAP, width, view: h - chrome, below: true });
+  const above = (h: number): ListPlace => ({ left, top: anchor.top - GAP - h, width, view: h - chrome, below: false });
+  if (height <= roomBelow && clear(anchor.bottom + GAP, height)) return below(height);
+  if (height <= roomAbove && clear(anchor.top - GAP - height, height)) return above(height);
+  const okBelow = clear(anchor.bottom + GAP, roomBelow);
+  const okAbove = clear(anchor.top - GAP - roomAbove, roomAbove);
+  const fit = (room: number) => Math.max(chrome + ROW, Math.min(height, room));
+  if (okAbove && (!okBelow || roomAbove > roomBelow)) return above(fit(roomAbove));
+  return below(fit(roomBelow));
+}
+
+/** The nearest ancestor of `el` that scrolls vertically. */
+function scrollParent(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    if (p.scrollHeight > p.clientHeight && /auto|scroll/.test(getComputedStyle(p).overflowY)) return p;
+  }
+  return null;
+}
+
 /**
  * A font setting's dropdown: the button shows the choice, its name drawn in that font; it opens a
  * search box over the families, each drawn in its own font (virtualised: a system can have
  * hundreds). Typing filters, ↑/↓ (Page Up/Down by ten) move, Enter picks, Esc or a press outside
  * closes, and so does a second click on the button. The family under the pointer or the arrows
- * previews (`onPreview`) until it closes; picking stores it (`onPick`). "Custom font list…" asks
- * for the hand-written list instead (`onCustom`).
+ * previews (`onPreview`) until it closes; picking stores it (`onPick`), and the list never covers
+ * `avoid` (the preview panel). "Custom font list…" asks for the hand-written list instead (`onCustom`).
  */
-export function FontPicker({ role, value, onPick, onPreview, onCustom }: { role: FontRole; value: string; onPick(v: string): void; onPreview(v: string | null): void; onCustom(): void }) {
+export function FontPicker({ role, value, avoid, onPick, onPreview, onCustom }: {
+  role: FontRole; value: string; avoid?: RefObject<HTMLElement | null>; onPick(v: string): void; onPreview(v: string | null): void; onCustom(): void;
+}) {
   const list = useFontFamilies((s) => s.list);
   const btn = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -150,6 +196,7 @@ export function FontPicker({ role, value, onPick, onPreview, onCustom }: { role:
           list={list}
           seed={seed}
           anchor={btn.current}
+          avoid={avoid}
           onPreview={onPreview}
           onPick={(item) => {
             close(!item.custom);
@@ -163,8 +210,8 @@ export function FontPicker({ role, value, onPick, onPreview, onCustom }: { role:
   );
 }
 
-function FontList({ role, value, list, seed, anchor, onPreview, onPick, onClose }: {
-  role: FontRole; value: string; list: readonly FontFamily[] | null; seed: string; anchor: HTMLElement;
+function FontList({ role, value, list, seed, anchor, avoid, onPreview, onPick, onClose }: {
+  role: FontRole; value: string; list: readonly FontFamily[] | null; seed: string; anchor: HTMLElement; avoid?: RefObject<HTMLElement | null>;
   onPreview(v: string | null): void; onPick(item: Item): void; onClose(refocus: boolean): void;
 }) {
   const uid = useId();
@@ -184,13 +231,38 @@ function FontList({ role, value, list, seed, anchor, onPreview, onPick, onClose 
   const previewed = items[at];
   useEffect(() => { onPreview(previewed && !previewed.custom ? previewed.value : null); }, [previewed?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Placed by the button, clear of the preview (before the first paint). Squeezed below the button for
+  // room, it first scrolls the page up to make some, as far as the preview stays in view.
+  const [place, setPlace] = useState<ListPlace | null>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const chrome = el.offsetHeight - (scroller.current?.offsetHeight ?? 0);
+    const rows = Math.min(LIST_MAX, items.length * ROW);
+    const dlg = anchor.closest('[role="dialog"]')?.getBoundingClientRect();
+    const host = dlg?.height ? dlg : null;
+    const bounds = { left: Math.max(0, host?.left ?? 0), top: Math.max(0, host?.top ?? 0), right: Math.min(window.innerWidth, host?.right ?? Infinity), bottom: Math.min(window.innerHeight, host?.bottom ?? Infinity) };
+    const where = () => placeList(anchor.getBoundingClientRect(), chrome, rows, avoid?.current?.getBoundingClientRect() ?? null, bounds);
+    let p = where();
+    const want = Math.min(rows, MIN_ROWS * ROW);
+    const page = p.below && p.view < want ? scrollParent(anchor) : null;
+    if (page) {
+      const a = anchor.getBoundingClientRect();
+      const lack = a.bottom + GAP + chrome + want + EDGE - bounds.bottom;
+      const keep = Math.min(a.top, avoid?.current?.getBoundingClientRect().top ?? Infinity);
+      page.scrollTop += Math.max(0, Math.min(lack, keep - page.getBoundingClientRect().top));
+      p = where();
+    }
+    setPlace(p);
+  }, [anchor, avoid, items.length]);
+  const view = Math.min(place?.view ?? LIST_MAX, items.length * ROW);
+
   // Keeps the cursor's row in view: centred at the opening, at the nearest edge after.
   const placed = useRef(false);
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (!el) return;
+    if (!el || !place) return;
     const top = at * ROW;
-    const view = Math.min(LIST_MAX, items.length * ROW);
     let next = el.scrollTop;
     if (!placed.current) next = top - (view - ROW) / 2;
     else if (top < el.scrollTop) next = top;
@@ -201,16 +273,7 @@ function FontList({ role, value, list, seed, anchor, onPreview, onPick, onClose 
       el.scrollTop = next;
       setScrollTop(next);
     }
-  }, [at, items.length]);
-
-  // Placed under the button (above when there's no room), at least as wide.
-  const [pos, setPos] = useState<{ left: number; top: number; width: number }>(() => ({ left: 0, top: 0, width: 0 }));
-  useLayoutEffect(() => {
-    const r = anchor.getBoundingClientRect();
-    const width = Math.max(r.width, 320);
-    const p = placeCard({ left: r.left, top: r.top, bottom: r.bottom }, { width, height: box.current?.offsetHeight ?? 0 }, 4);
-    setPos({ left: p.left, top: p.top, width });
-  }, [anchor, items.length]);
+  }, [at, items.length, view, place]);
 
   // Esc closes it, not the Settings dialog under it (an Esc owner, as the colour picker is); the
   // arrows, Page Up/Down and Enter are taken in the menu layer, before the dialog's claim.
@@ -243,7 +306,6 @@ function FontList({ role, value, list, seed, anchor, onPreview, onPick, onClose 
     return () => document.removeEventListener('pointerdown', down, true);
   }, [anchor]);
 
-  const view = Math.min(LIST_MAX, items.length * ROW);
   const first = Math.max(0, Math.floor(scrollTop / ROW) - OVERSCAN);
   const last = Math.min(items.length - 1, Math.ceil((scrollTop + view) / ROW) + OVERSCAN);
   const rows: number[] = [];
@@ -255,7 +317,7 @@ function FontList({ role, value, list, seed, anchor, onPreview, onPick, onClose 
     <div
       ref={box}
       className="font-picker"
-      style={{ left: pos.left, top: pos.top, width: pos.width }}
+      style={place ? { left: place.left, top: place.top, width: place.width } : { left: 0, top: 0, width: anchor.offsetWidth }}
       onBlur={(e) => {
         const to = e.relatedTarget;
         if (to instanceof Node && (box.current?.contains(to) || anchor.contains(to))) return;

@@ -16,13 +16,23 @@
 .font-picker-item .font-picker-name { flex: 1; min-width: 0; }
 .font-picker-custom { font-size: 13px; color: var(--link); border-top: 1px solid var(--section-border); }
 
-/* The font settings' rows: the picker (and the custom list's box) on the right, the preview panel
-   under both columns. */
-.setting-row:has(.font-preview) > .setting-control { display: contents; }
-.font-setting { grid-column: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+/* The font settings' rows: the label and description, the captioned preview under them, and the
+   picker (with the custom list's box) on the right, so its list opens beside the preview, never over
+   it. Too narrow for both side by side, the preview spans the row and the picker goes under it (its
+   list opens downward, still clear). */
+.setting-row:has(.font-preview-box) { grid-template-columns: minmax(0, 1fr) minmax(0, 320px); row-gap: 8px; }
+.setting-row:has(.font-preview-box) > .setting-control { display: contents; }
+.font-setting { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
 .font-setting > .font-picker-button { align-self: stretch; flex: none; }
-.font-setting > input { align-self: stretch; }
-.font-preview { grid-column: 1 / -1; box-sizing: border-box; overflow: hidden; border: 1px solid var(--section-border); border-radius: 4px; color: var(--text-selected); background: var(--app-bg0); }
+.font-setting .inline-form > input { align-self: stretch; }
+.font-preview-box { grid-column: 1; grid-row: 2; min-width: 0; cursor: default; user-select: none; }
+@container settings-body (max-width: 719px) {
+  .setting-row:has(.font-preview-box) > .setting-text { grid-column: 1 / -1; }
+  .font-preview-box { grid-column: 1 / -1; }
+  .font-setting { grid-row: 3; }
+}
+.font-preview-caption { margin-bottom: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.font-preview { box-sizing: border-box; overflow: hidden; border: 1px solid var(--section-border); border-radius: 4px; color: var(--text-selected); background: var(--app-bg0); }
 
 /* Editor: the sample in the editor theme's colours, one line per row, never wrapped. */
 .font-preview-code { margin: 0; padding: 8px 12px; white-space: pre; overflow: hidden; }
@@ -32,12 +42,12 @@
 .font-preview-prose { padding: 8px 14px; }
 .font-preview-prose h4 { margin: 0 0 0.3em; font-size: 1.3em; font-weight: 600; line-height: 1.25; }
 .font-preview-prose p { margin: 0 0 0.4em; overflow: hidden; }
+/* The mixed-script line stays one line: in a narrow column it would wrap past the cut. */
+.font-preview-prose p:last-child { white-space: nowrap; }
 .font-preview-prose code { font-family: var(--md-code-font, var(--font-mono)); font-size: 0.92em; padding: 0.1em 0.35em; border-radius: 3px; background: var(--panel-bg1); }
 
-/* UI: a menu row, a button and a sidebar row, in the UI font at the UI's size. */
-.font-preview-ui { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 16px; padding: 8px 12px; font-size: 13px; }
-.font-preview-menu { display: flex; justify-content: space-between; gap: 16px; padding: 4px 8px; border-radius: 4px; background: var(--selected-row); color: var(--text-selected); white-space: nowrap; overflow: hidden; }
-.font-preview-menu kbd { font: inherit; color: var(--text-secondary); }
-.font-preview-button { padding: 4px 12px; border: 1px solid var(--section-border); border-radius: 4px; background: var(--panel-bg1); color: var(--text-selected); white-space: nowrap; }
-.font-preview-side { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 2px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-normal); }
-.font-preview-side .count { margin-left: auto; color: var(--count-blue); font-size: 11px; }
+/* UI: plain lines at the UI's sizes (a heading, body text, a small secondary line), one row each. */
+.font-preview-ui { display: flex; flex-direction: column; gap: 3px; padding: 8px 12px; font-size: 13px; color: var(--text-normal); }
+.font-preview-ui > div { white-space: nowrap; overflow: hidden; }
+.font-preview-ui > .font-preview-title { font-size: 15px; font-weight: 600; color: var(--text-selected); }
+.font-preview-ui > .font-preview-small { font-size: 11px; color: var(--text-secondary); }

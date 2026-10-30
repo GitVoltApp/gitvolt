@@ -29,9 +29,9 @@ function DensityControl() {
 const save = (patch: Partial<typeof F>) => useAppState.getState().setSettings(patch);
 
 /** The UI font's picker: a family gets the platform UI font's stack after it. */
-export const UI_FONT_ROLE: FontRole = { id: 'uiFontFamily', defaultName: 'system UI font', defaultStack: DEFAULT_UI_FONT, fallback: DEFAULT_UI_FONT };
+export const UI_FONT_ROLE: FontRole = { id: 'uiFontFamily', noun: 'UI', defaultName: 'system UI font', defaultStack: DEFAULT_UI_FONT, fallback: DEFAULT_UI_FONT };
 /** The reading font's: its default is the UI font, whichever is set. */
-export const READING_FONT_ROLE: FontRole = { id: 'readingFontFamily', defaultName: 'the UI font', defaultStack: 'var(--font-ui)', fallback: DEFAULT_UI_FONT };
+export const READING_FONT_ROLE: FontRole = { id: 'readingFontFamily', noun: 'reading', defaultName: 'the UI font', defaultStack: 'var(--font-ui)', fallback: DEFAULT_UI_FONT };
 
 function UiFontControl() {
   return <FontSetting role={UI_FONT_ROLE} placeholder={'"Inter", sans-serif'} preview={(v) => <UiFontPreview family={v} />} />;

@@ -157,7 +157,7 @@ describe('settings pages', () => {
       expect(useAppState.getState().settings.readingLineWidth).toBe(0);
     });
 
-    it("the panels preview each font: the UI's chrome, and the reading font at its size and line height, with English and one mixed-script line", () => {
+    it("the panels preview each font: plain lines in the UI font, and the reading font at its size and line height, with English and one mixed-script line", () => {
       const dialog = show('readingFontFamily');
       const ui = within(dialog).getByTestId('uiFontFamily-preview');
       const reading = within(dialog).getByTestId('readingFontFamily-preview');
@@ -165,8 +165,8 @@ describe('settings pages', () => {
       expect(reading).toHaveTextContent('Café, naïve, Straße, Tiếng Việt, Ελληνικά, Кириллица, 日本語');
       expect(reading.querySelector('h4')).toHaveTextContent('Release notes');
       expect(reading.querySelector('code')).toHaveTextContent('scale(values, 1.5)');
-      expect(ui).toHaveTextContent('Copy commit message');
-      expect(within(ui).getByText('Commit')).toBeInTheDocument();
+      expect(ui).toHaveTextContent('The quick brown fox jumps over the lazy dog.');
+      expect(ui).toHaveTextContent('Café, naïve, Straße, Tiếng Việt, Ελληνικά, Кириллица, 日本語');
       expect(ui.style.fontFamily).toContain('system-ui');
       expect(reading.style.fontFamily).toBe('var(--font-ui)');
       expect(reading.style.fontSize).toBe('13px');
