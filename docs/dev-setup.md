@@ -646,4 +646,5 @@ and the pinned Tauri CLI (`cargo install tauri-cli --version =3.0.0-alpha.5 --lo
   app to `/Applications`, launches it with `open -a` on a folder and opens a second one, checks
   the tabs (in the profile, since a release build refuses CDP) and the sandbox, then runs the
   updater's install over the running app from the same `.dmg`, and the title bar checks on the
-  installed app (`macos-package`, with the `.dmg`).
+  installed app (`macos-package`, with the `.dmg`). `-f only=test` (or `check`, `app`,
+  `package`) runs one job alone.

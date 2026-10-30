@@ -201,6 +201,10 @@ async fn stop_reason(cx: &WriteCx<'_>, e: &GbError) -> String {
 ///
 /// Never at a stop git made itself (`stopped-sha`: a conflict; `amend`: an Edit stop), nor at a
 /// `break` or a failed `exec` (their `done` line replays nothing).
+///
+/// git 2.56 and later never reschedule a failed commit: they stop as at a conflict
+/// (`stopped-sha`, the commit's message in `rebase-merge/message`), and their own `--continue`
+/// commits what's staged. Only the cancelled case is left to recognise there.
 struct FailedPick {
     merge: std::path::PathBuf,
     oid: String,
@@ -1196,27 +1200,53 @@ mod tests {
 
     /// §13.4 and the T6 review: the watcher can't see a pick (`msgnum` sits in `rebase-merge/`),
     /// so the tap carries each one. With picks slower than a tick, every step arrives, and so
-    /// does a graph reload per pick.
+    /// does a graph reload per pick. Each pick's commit waits (its `prepare-commit-msg` hook)
+    /// until its step's reload has arrived, so a tick never lands mid-pick, however loaded the
+    /// machine.
     #[tokio::test(flavor = "multi_thread")]
     async fn each_pick_reaches_the_ui_as_a_step_and_a_graph_reload() {
         let r = TestRepo::new();
         fixtures::stack(&r);
-        r.hook("post-commit", "#!/bin/sh\nsleep 0.3\n");
+        let gate = tempfile::tempdir().unwrap();
+        let g = crate::platform::fs::to_git_path(gate.path());
+        // The nth commit waits for `go-n`: 10 s at most, so a missing reload fails, not hangs.
+        r.hook("prepare-commit-msg", &format!("#!/bin/sh\ng='{g}'\nn=$(( $(cat \"$g/n\" 2>/dev/null || echo 0) + 1 ))\necho $n > \"$g/n\"\ni=0\nwhile [ ! -e \"$g/go-$n\" ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done\n"));
         let (api, _data) = api();
         let id = open(&api, r.path()).await;
         let mut rx = api.subscribe();
-        let res = rebase(&api, id, r.path(), "main", Some(false)).await.unwrap();
-        assert_eq!(res["outcome"], serde_json::json!({"status": "done", "commits": 3, "fastForward": false}));
         // The write's own refresh (`repoChanged`, then `refsUpdated`) comes after the run.
-        let (mut steps, mut reloads, mut announced) = (Vec::new(), 0, false);
-        while let Ok(ev) = rx.try_recv() {
-            match ev {
-                AppEvent::OpProgress { step: Some(s), .. } => steps.push((s.n, s.m)),
-                AppEvent::RefsUpdated { .. } if !announced => reloads += 1,
-                AppEvent::RepoChanged { .. } => announced = true,
-                _ => {}
+        let (mut steps, mut reloads, mut announced, mut step) = (Vec::new(), 0, false, None);
+        let mut seen = |ev: AppEvent| match ev {
+            AppEvent::OpProgress { step: Some(s), .. } => {
+                steps.push((s.n, s.m));
+                step = Some(s.n);
             }
+            AppEvent::RefsUpdated { .. } if !announced => {
+                reloads += 1;
+                if let Some(n) = step.take() {
+                    std::fs::write(gate.path().join(format!("go-{n}")), "").unwrap();
+                }
+            }
+            AppEvent::RepoChanged { .. } => announced = true,
+            _ => {}
+        };
+        let run = rebase(&api, id, r.path(), "main", Some(false));
+        tokio::pin!(run);
+        let res = tokio::time::timeout(Duration::from_secs(60), async {
+            loop {
+                tokio::select! {
+                    res = &mut run => break res,
+                    Ok(ev) = rx.recv() => seen(ev),
+                }
+            }
+        })
+        .await
+        .expect("the rebase ends")
+        .unwrap();
+        while let Ok(ev) = rx.try_recv() {
+            seen(ev);
         }
+        assert_eq!(res["outcome"], serde_json::json!({"status": "done", "commits": 3, "fastForward": false}));
         assert_eq!(steps, vec![(1, 3), (2, 3), (3, 3)]);
         assert!(reloads >= 3, "a graph reload per pick, before the end's: {reloads}");
     }
@@ -1720,6 +1750,13 @@ mod signing_tests {
         r.git(&["log", "--format=%s", "-4", "feature/c"])
     }
 
+    /// git 2.56+ doesn't reschedule a pick whose commit failed: it stops as at a conflict
+    /// (`stopped-sha`, the message kept), so there's no failed pick for GitVolt to retry, and
+    /// git's own Continue commits what's staged.
+    async fn stops_as_at_a_conflict(api: &crate::api::Api) -> bool {
+        api.git_version().await.unwrap() >= (2, 56, 0)
+    }
+
     const MOVED: &str = "Work on feature/c\nWork on feature/b\nWork on feature/a\nMain moves";
 
     /// The playground's case: a signer that fails stops the rebase at its first commit. The stop
@@ -1831,6 +1868,14 @@ mod signing_tests {
         r.git(&["add", "mine.txt"]);
         r.git(&["config", "commit.gpgsign", "false"]);
         let out = &cont(&api, id, r.path()).await.unwrap()["outcome"];
+        if stops_as_at_a_conflict(&api).await {
+            // git's own stop: its Continue commits them with the pick's result, as at a conflict.
+            assert_eq!(out["status"], "done", "{out}");
+            assert_eq!(subjects(&r), MOVED);
+            assert!(r.git(&["show", "--name-only", "--format=", "feature/c~2"]).lines().any(|l| l == "mine.txt"));
+            assert_eq!(std::fs::read_to_string(r.path().join("mine.txt")).unwrap(), "mine\n");
+            return;
+        }
         assert_eq!(out["status"], "stopped", "{out}");
         assert!(out["warning"].as_str().is_some_and(|w| w.contains("staged changes")), "{out}");
         assert!(rebasing(&r));
@@ -1862,7 +1907,14 @@ mod signing_tests {
         let todo = || std::fs::read_to_string(r.path().join(".git/rebase-merge/git-rebase-todo")).unwrap();
         let out = &cont_with(&api, id, r.path(), "Work on feature/a, typed\n\nWith a body.").await["outcome"];
         assert_eq!(out["status"], "stopped", "{out}");
-        assert!(todo().starts_with("pick "), "still a pick: {}", todo());
+        if stops_as_at_a_conflict(&api).await {
+            // git's own stop, its pick in `done`: nothing was put back.
+            let done = state(&r, "done");
+            assert!(!format!("{}{done}", todo()).lines().any(|l| l.starts_with("edit ")), "no stray edit: {}{done}", todo());
+            assert!(last_command(&done).is_some_and(|l| l.starts_with("pick ")), "{done}");
+        } else {
+            assert!(todo().starts_with("pick "), "still a pick: {}", todo());
+        }
         r.git(&["config", "commit.gpgsign", "false"]);
         let out = &cont_with(&api, id, r.path(), "Work on feature/a, typed\n\nWith a body.").await["outcome"];
         assert_eq!(out["status"], "done", "{out}");
@@ -1934,7 +1986,9 @@ mod signing_tests {
         let (todo, done) = (state(&r, "git-rebase-todo"), state(&r, "done"));
         let out = &cont(&api, id, r.path()).await.unwrap()["outcome"];
         assert_eq!(out["status"], "stopped", "{out}");
-        assert!(out["warning"].as_str().is_some_and(|w| w.contains("staged changes")), "{out}");
+        // git 2.56+: its Continue commits the staged result itself, still with the rebase's `-S`.
+        let gits = if stops_as_at_a_conflict(&api).await { "gpg failed to sign" } else { "staged changes" };
+        assert!(out["warning"].as_str().is_some_and(|w| w.contains(gits)), "{out}");
         assert_eq!((state(&r, "git-rebase-todo"), state(&r, "done")), (todo, done));
         assert_eq!(r.git(&["diff", "--cached", "--name-only"]), staged);
     }
@@ -2012,9 +2066,16 @@ mod signing_tests {
         r.write(&staged, "mine too\n");
         r.git(&["config", "commit.gpgsign", "false"]);
         let (todo, done) = (state(&r, "git-rebase-todo"), state(&r, "done"));
-        let e = cont(&api, id, r.path()).await.unwrap_err();
-        assert_eq!(e.kind, GbErrorKind::InvalidInput);
-        assert!(e.message.starts_with("The failed commit's changes couldn't be unstaged") && e.message.ends_with("Stage or discard your own changes to those files first"), "{}", e.message);
+        if stops_as_at_a_conflict(&api).await {
+            // git's own stop: nothing to unstage, and git's Continue refuses the unstaged change.
+            let out = &cont(&api, id, r.path()).await.unwrap()["outcome"];
+            assert_eq!(out["status"], "stopped", "{out}");
+            assert!(out["warning"].as_str().is_some_and(|w| w.contains("unstaged changes")), "{out}");
+        } else {
+            let e = cont(&api, id, r.path()).await.unwrap_err();
+            assert_eq!(e.kind, GbErrorKind::InvalidInput);
+            assert!(e.message.starts_with("The failed commit's changes couldn't be unstaged") && e.message.ends_with("Stage or discard your own changes to those files first"), "{}", e.message);
+        }
         assert_eq!((state(&r, "git-rebase-todo"), state(&r, "done")), (todo, done));
         assert!(r.path().join(".git/rebase-merge/author-script").exists());
         assert_eq!(r.git(&["diff", "--cached", "--name-only"]), staged);
@@ -2070,6 +2131,17 @@ mod signing_tests {
         signer.set(&r, &signs_then(1, FAILS));
         let out = &cont_with(&api, id, r.path(), "Typed").await["outcome"];
         assert_eq!(out["status"], "stopped", "{out}");
+        if stops_as_at_a_conflict(&api).await {
+            // No re-pick to amend: git's Continue commits with the typed message (the one
+            // signature), and the next pick's commit fails.
+            assert!(out["warning"].as_str().is_some_and(|w| w.starts_with("The rebase stopped: gpg failed to sign the data")), "{out}");
+            assert_eq!(r.git(&["log", "-1", "--format=%s"]), "Typed");
+            signer.set(&r, SIGNS);
+            let out = &cont(&api, id, r.path()).await.unwrap()["outcome"];
+            assert_eq!(out["status"], "done", "{out}");
+            assert_eq!(subjects(&r), "Work on feature/c\nWork on feature/b\nTyped\nMain moves");
+            return;
+        }
         assert!(out["warning"].as_str().is_some_and(|w| w.starts_with("The typed message wasn't applied: gpg failed to sign the data")), "{out}");
         assert_eq!(r.git(&["log", "-1", "--format=%s"]), "Work on feature/a", "picked, its own message");
         assert!(last_command(&state(&r, "done")).is_some_and(|l| l.starts_with("pick ")), "{}", state(&r, "done"));

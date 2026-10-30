@@ -3,10 +3,17 @@
 # updated in place and its title bar checked.
 # On demand only: run it from the Actions tab (workflow_dispatch), or label a pull request
 # `macos` (each time the label is added). Actions are pinned by commit, as in release.yml.
+# A dispatch can run one job alone (`only`).
 name: macOS
 
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        description: Run only this job
+        type: choice
+        default: all
+        options: [all, test, check, app, package]
   pull_request:
     types: [labeled]
 
@@ -27,7 +34,7 @@ defaults:
 jobs:
   test:
     name: Core, forge and harness tests
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'macos'
+    if: (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all", "test"]'), inputs.only)) || github.event.label.name == 'macos'
     runs-on: macos-15
     timeout-minutes: 60
     permissions:
@@ -54,6 +61,7 @@ jobs:
         run: |
           sw_vers
           git --version
+          gpg --version | head -1 || true
           echo "TMPDIR=$TMPDIR SHELL=$SHELL"
 
       - name: Tests
@@ -90,7 +98,7 @@ jobs:
 
   check:
     name: Workspace check (the app included)
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'macos'
+    if: (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all", "check"]'), inputs.only)) || github.event.label.name == 'macos'
     runs-on: macos-15
     timeout-minutes: 60
     permissions:
@@ -147,7 +155,7 @@ jobs:
 
   app:
     name: The app bundle, launched and driven over CDP
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'macos'
+    if: (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all", "app"]'), inputs.only)) || github.event.label.name == 'macos'
     runs-on: macos-15
     timeout-minutes: 90
     permissions:
@@ -368,7 +376,7 @@ jobs:
 
   package:
     name: The release .dmg, installed, launched and updated
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'macos'
+    if: (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all", "package"]'), inputs.only)) || github.event.label.name == 'macos'
     runs-on: macos-15
     timeout-minutes: 120
     permissions:
