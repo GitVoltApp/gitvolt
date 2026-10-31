@@ -25,10 +25,14 @@ export const COLUMN_MIN = { labels: 80, graph: 48, author: 60, date: 90, message
  * (H15); and its maximum (the full 40-character hash). */
 export const SHA_W = COLUMN_MIN.sha;
 export const SHA_MAX = Math.ceil(40 * SHA_CH + SHA_PAD);
+/** The widest Message, Author and Date can be dragged. Their handles aren't limited by the window
+ * (Branch/Tag and Graph have columnMax): a table wider than the window scrolls horizontally. */
+export const COLUMN_MAX = { message: 4000, author: 800, date: 800 } as const;
 
 /** The user's preferred widths. `graph: null` means "fit the lanes" (autoGraphWidth). */
 export interface ColumnPrefs { labels: number; graph: number | null; author: number; date: number; sha: number;
-  /** The Message width the user dragged it to; `null` = it fills the table (until dragged once). */
+  /** The Message width the user dragged it to; `null` = it fills the table (until dragged once).
+   * A number is a hand-set width, honoured at any window width (allocateColumns). */
   message: number | null }
 export const DEFAULT_COLUMN_PREFS: ColumnPrefs = { labels: 200, graph: null, author: 160, date: 170, sha: SHA_W, message: null };
 
@@ -75,11 +79,14 @@ export const handleShown = (col: ResizableColumn, hidden: ReadonlySet<HideableCo
  * `available` px wide. Pure, whole pixels in and out.
  * 1. Branch/Tag, Graph and SHA always get their width (clamped to their minimums; SHA also to
  *    SHA_MAX).
- * 2. Message takes whatever is left over, as long as that's at least its minimum; so widening
- *    the window only ever grows Message, and narrowing shrinks it first.
- * 3. Once Message is at its minimum, Author and Date shrink toward their minimums, each in
- *    proportion to its room above its minimum (so both reach their minimums together).
- * 4. Below the sum of the minimums, `total` exceeds `available` and the table scrolls.
+ * 2. A hand-set Message (`prefs.message` a number) gets exactly that width, and Author and Date
+ *    their preferences: nothing is squeezed. A wider window leaves empty space past the last
+ *    column; a narrower one makes `total` exceed `available`, and the table scrolls.
+ * 3. Otherwise Message fills: it takes whatever is left over, as long as that's at least its
+ *    minimum; so widening the window only ever grows Message, and narrowing shrinks it first.
+ * 4. Once a filling Message is at its minimum, Author and Date shrink toward their minimums, each
+ *    in proportion to its room above its minimum (so both reach their minimums together).
+ * 5. Below the sum of the minimums, `total` exceeds `available` and the table scrolls.
  * `hidden` columns (spec §8.4) get width 0, give their space to Message and have no room to give
  * when squeezing.
  */
@@ -91,14 +98,13 @@ export function allocateColumns(prefs: { labels: number; graph: number; author: 
   const hideD = hidden.has('date');
   let author = hideA ? 0 : Math.max(COLUMN_MIN.author, prefs.author);
   let date = hideD ? 0 : Math.max(COLUMN_MIN.date, prefs.date);
-  const leftover = available - (labels + graph + author + date + sha);
   if (prefs.message != null) {
-    // The user's Message width (S.1): kept while it fits, leaving empty space past the last column
-    // when the window is wider. Narrower: Message gives up width first (down to its minimum), then
-    // Author and Date below. The stored preference is untouched, so widening restores it.
-    const want = Math.max(COLUMN_MIN.message, prefs.message);
-    if (leftover >= want) return { labels, graph, message: want, author, date, sha, total: labels + graph + want + author + date + sha };
+    // The user's Message width (S.1): never shrunk to fit, and it squeezes no other column. Only
+    // the empty space past the last column comes and goes with the window; then the table scrolls.
+    const message = Math.max(COLUMN_MIN.message, prefs.message);
+    return { labels, graph, message, author, date, sha, total: labels + graph + message + author + date + sha };
   }
+  const leftover = available - (labels + graph + author + date + sha);
   if (leftover >= COLUMN_MIN.message) {
     return { labels, graph, message: leftover, author, date, sha, total: available };
   }
@@ -117,55 +123,48 @@ export function allocateColumns(prefs: { labels: number; graph: number; author: 
   return { labels, graph, message, author, date, sha, total: labels + graph + message + author + date + sha };
 }
 
-type PrefsPatch = Partial<Record<PrefColumn | 'message', number>>;
+type PrefsPatch = Partial<Record<PrefColumn, number>> & { message?: number | null };
 
 /**
  * The range a handle's column can be resized to from the rendered widths `w` (for aria-valuemin
  * and aria-valuemax): Branch/Tag and Graph up to columnMax (never below their current width, and
- * Graph never past `graphMax`, F2); Message and Author up to what their right-hand neighbour can
- * give before it hits its minimum.
+ * Graph never past `graphMax`, F2); SHA up to SHA_MAX; Message, Author and Date up to COLUMN_MAX
+ * however narrow the window (the table scrolls), never limited by what a neighbour can give.
  */
 export function handleRange(col: ResizableColumn, w: ColumnWidths, available: number, graphMax = Infinity): { min: number; max: number } {
   if (col === 'labels') return { min: COLUMN_MIN.labels, max: Math.max(columnMax('labels', available), w.labels) };
   if (col === 'graph') return { min: COLUMN_MIN.graph, max: Math.min(Math.max(columnMax('graph', available), w.graph), Math.max(COLUMN_MIN.graph, graphMax)) };
-  // W.1: Message, Author, Date and SHA grow into the free space past the table's end, then take
-  // from Message down to its minimum (never from a neighbour); they shrink to their own minimum.
-  const free = Math.max(0, available - w.total);
-  if (col === 'message') return { min: COLUMN_MIN.message, max: Math.max(w.message, w.message + free) };
-  const room = free + Math.max(0, w.message - COLUMN_MIN.message);
-  return { min: COLUMN_MIN[col], max: Math.min(col === 'sha' ? SHA_MAX : Infinity, Math.max(w[col], w[col] + room)) };
+  return { min: COLUMN_MIN[col], max: Math.max(w[col], col === 'sha' ? SHA_MAX : COLUMN_MAX[col]) };
 }
 
 /**
  * One resize gesture step (pure): the preference patch that moves `col`'s right-edge handle `dx`
  * px from where it was at gesture start (`start`, the rendered widths then). Positive `dx` is
- * rightward. The boundary under the pointer is the one that moves, 1:1, and the dragged column is
- * the one resized (F3), trading width with the column on its right until either hits a wall:
- * - Branch/Tag and Graph: with the flexing Message (the smart fit: once Message is at its minimum
- *   Author and Date give way), between their minimum and handleRange's max. A column already
- *   wider than columnMax (the window narrowed after it was widened) is never pulled back by a
- *   widening gesture.
- * - Message (its right edge is Author's left edge): with Author. Author's preference changes.
- * - Author (its right edge is Date's left edge): with Date.
- * - Date: with SHA, between SHA's minimum and SHA_MAX. SHA is last: no handle, no fallback.
- * Message and Author patches set Author and Date to what will be rendered, so no preference is
- * left above its rendered width (nothing jumps when the window widens again).
+ * rightward. Each edge resizes only the column on its left (W.1), between its minimum and
+ * handleRange's max; past the window's width the table scrolls. `fill`: Message was filling (no
+ * hand-set width) when the gesture started.
+ * - Branch/Tag and Graph: a filling Message flexes against them (the smart fit: once Message is at
+ *   its minimum Author and Date give way); a hand-set one keeps its width. A column already wider
+ *   than columnMax (the window narrowed after it was widened) is never pulled back by a widening
+ *   gesture.
+ * - Message: becomes hand-set at the dragged width.
+ * - Author, Date and SHA: a hand-set Message keeps its width, so the edge follows the pointer 1:1.
+ *   A filling Message gives up its room above its minimum first (it keeps filling, so the growth
+ *   comes out of it, as before); past that it is pinned at its minimum and the table grows. A
+ *   narrowing gesture pins Message at its width, leaving empty space past the last column.
+ * Author and Date are written at what is rendered, so a squeezed preference doesn't jump back
+ * when the fit is recomputed (nor when the window widens again).
  */
-export function resizeColumn(col: ResizableColumn, start: ColumnWidths, dx: number, available: number, graphMax = Infinity): PrefsPatch {
+export function resizeColumn(col: ResizableColumn, start: ColumnWidths, dx: number, available: number, graphMax = Infinity, fill = false): PrefsPatch {
   dx = Math.round(dx);
   const { min, max } = handleRange(col, start, available, graphMax);
   const width = Math.min(max, Math.max(min, start[col] + dx));
   if (col === 'labels' || col === 'graph') return { [col]: width };
-  // W.1: only the dragged column changes. Author and Date are written at their rendered widths so a
-  // squeezed preference doesn't jump back when the fit is recomputed.
   const keep = { author: start.author, date: start.date };
-  if (col === 'message') return { message: width, ...keep };
-  // Message is pinned at its rendered width too (the store drops that while it already has a stored
-  // width), so the dragged edge follows the pointer instead of Message flexing against it.
-  const pin = { message: start.message };
-  if (col === 'author') return { ...pin, author: width, date: keep.date };
-  if (col === 'date') return { ...pin, author: keep.author, date: width };
-  return { ...pin, ...keep, sha: width };
+  if (col === 'message') return { ...keep, message: width };
+  const grow = width - start[col];
+  const message = !fill || grow < 0 ? start.message : grow <= start.message - COLUMN_MIN.message ? null : COLUMN_MIN.message;
+  return { ...keep, message, [col]: width };
 }
 
 /**
@@ -191,7 +190,8 @@ export const hiddenColumnsPersistence: HiddenColumnsPersistence = { load: () => 
 const loadHidden = (repoId: string): ReadonlySet<HideableColumn> =>
   new Set((hiddenColumnsPersistence.load(repoId) ?? []).filter((c): c is HideableColumn => (HIDEABLE_COLUMNS as readonly string[]).includes(c)));
 
-interface Gesture { col: ResizableColumn; start: ColumnWidths; available: number; graphMax: number; changed: boolean }
+/** `prefs`: the preferences at gesture start, which every step's patch applies to. */
+interface Gesture { col: ResizableColumn; start: ColumnWidths; prefs: ColumnPrefs; available: number; graphMax: number; changed: boolean }
 
 interface ColumnPrefsState {
   repoId: string | null;
@@ -234,16 +234,16 @@ export const useColumnPrefs = create<ColumnPrefsState>((set, get) => ({
     set({ repoId, prefs: { ...DEFAULT_COLUMN_PREFS, ...columnPrefsPersistence.load(repoId) }, hidden: loadHidden(repoId) });
   },
   beginResize: (col, start, available, graphMax = Infinity) => {
-    gesture = { col, start, available, graphMax, changed: false };
+    gesture = { col, start, prefs: get().prefs, available, graphMax, changed: false };
   },
   resizeBy: (dx) => {
     const g = gesture;
     if (!g) return;
-    const patch = resizeColumn(g.col, g.start, dx, g.available, g.graphMax);
-    const moved = (Object.keys(patch) as PrefColumn[]).some((k) => patch[k] !== g.start[k]);
-    if (!moved && !g.changed) return;
+    const patch = resizeColumn(g.col, g.start, dx, g.available, g.graphMax, g.prefs.message === null);
+    // Every other width in the patch is the one rendered at gesture start: only the dragged one moves.
+    if (patch[g.col] === g.start[g.col] && !g.changed) return;
     g.changed = true;
-    set((s) => ({ prefs: { ...s.prefs, ...patch, ...(s.prefs.message !== null && g.col !== 'message' ? { message: s.prefs.message } : {}) } }));
+    set({ prefs: { ...g.prefs, ...patch } });
   },
   endResize: () => {
     const g = gesture;
@@ -257,7 +257,7 @@ export const useColumnPrefs = create<ColumnPrefsState>((set, get) => ({
     if (g?.changed && repoId !== null) columnPrefsPersistence.save(repoId, prefs);
   },
   resetWidth: (col) => {
-    // Message is the flexing column: its handle trades with Author, so its default is Author's.
+    // Message's default is no hand-set width: it fills the table again.
     const patch: Partial<ColumnPrefs> = col === 'message' ? { message: null } : { [col]: DEFAULT_COLUMN_PREFS[col] };
     set((s) => ({ prefs: { ...s.prefs, ...patch } }));
     const { repoId, prefs } = get();

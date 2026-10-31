@@ -902,6 +902,34 @@ test.describe('resizable columns', () => {
     }
     // No horizontal scrolling while everything fits.
     expect(await grid.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+
+    await test.step('Message dragged wider than the grid: honoured, the grid scrolls sideways with the header in step; a double-click fits it again', async () => {
+      const handle = page.getByRole('separator', { name: 'Resize Commit message column' });
+      const before = await columnWidths(page);
+      const box = (await handle.boundingBox())!;
+      const y = box.y + box.height / 2, x0 = box.x + box.width / 2;
+      await page.mouse.move(x0, y);
+      await page.mouse.down();
+      await page.mouse.move(x0 + 300, y, { steps: 10 });
+      await page.mouse.up();
+      await expect.poll(async () => (await columnWidths(page)).message.cell).toBeCloseTo(before.message.cell + 300, 0);
+      const wide = await columnWidths(page);
+      // Nothing else was squeezed to make room.
+      for (const c of COLS) if (c !== 'message') expect(wide[c].cell, c).toBeCloseTo(before[c].cell, 0);
+      expect(await grid.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(300);
+      await grid.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
+      await expect.poll(async () => { const w = await columnWidths(page); return Math.round(w.message.headerX - w.message.cellX); }).toBe(0);
+      const scrolled = await columnWidths(page);
+      for (const c of COLS) expect(scrolled[c].headerX, `${c} x after scroll`).toBeCloseTo(scrolled[c].cellX, 0);
+      // The widened Message is in view, its right edge (the handle) inside the grid.
+      const gridBox = (await grid.boundingBox())!;
+      expect(scrolled.message.cellX + scrolled.message.cell).toBeLessThan(gridBox.x + gridBox.width);
+      await expectConnectorMeetsCanvas(page);
+      await handle.dblclick();
+      await expect.poll(async () => (await columnWidths(page)).message.cell).toBeCloseTo(COLUMN_MIN.message, 0);
+      await expect.poll(() => grid.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+      await expect.poll(async () => { const w = await columnWidths(page); return Math.round(w.labels.headerX - w.labels.cellX); }).toBe(0);
+    });
   });
 
   test('below the sum of minimums the table scrolls horizontally, header in sync, connector intact', async ({ page }) => {
@@ -947,9 +975,9 @@ test.describe('resizable columns', () => {
       await page.mouse.down();
       for (let d = Math.sign(dx); Math.abs(d) <= Math.abs(dx); d += Math.sign(dx) * 3) {
         await page.mouse.move(x0 + d, y);
-        // Once the table is full, Author/Date/SHA grow out of Message, so their own right edge stays
-        // put; the width is what tracks the pointer there.
-        if (!['date', 'sha'].includes(col)) await expect.poll(async () => right((await w())[col]), { message: `${col} right edge, d=${d}` }).toBeCloseTo(right(before[col]) + d, 0);
+        // Message is hand-set by then: once the table is full, Date grows it past the grid (which
+        // scrolls) rather than taking from Message, so its right edge still tracks the pointer.
+        await expect.poll(async () => right((await w())[col]), { message: `${col} right edge, d=${d}` }).toBeCloseTo(right(before[col]) + d, 0);
         await expect.poll(async () => (await w())[col].cell, { message: `${col} width, d=${d}` }).toBeCloseTo(before[col].cell + d, 0);
       }
       await page.mouse.up();
@@ -990,7 +1018,7 @@ test.describe('resizable columns', () => {
     await expect(row).toHaveAttribute('aria-selected', 'true');
     // The details panel appears only once the selection's details loaded (F12), and the columns
     // refit to the narrower grid a render later: resizing before that sizes Message for the wider
-    // grid, which then no longer fits and fills the grid (the preference is kept, by design).
+    // grid, which then no longer fits (the hand-set width is kept, and the grid scrolls).
     await expect(page.getByRole('complementary', { name: 'Commit details' })).toBeVisible();
     const gridWidth = await page.getByRole('grid', { name: 'Commit graph' }).evaluate((el) => el.clientWidth);
     await expect.poll(async () => Math.round(Object.values(await columnWidths(page)).reduce((sum, c) => sum + c.header, 0))).toBe(gridWidth);
@@ -1051,8 +1079,9 @@ test.describe('resizable columns', () => {
     w = await columnWidths(page);
     expect(w.sha.cell).toBeCloseTo(SHA_MAX, 0);
     expect(await shown()).toBeCloseTo(40, 1);
-    // Message flexed: the table still ends where it did.
-    expect(w.sha.headerX + w.sha.header).toBeCloseTo(start.sha.headerX + start.sha.header, 0);
+    // Message, hand-set by then, kept its width: the table grew past the grid, which scrolls.
+    expect(w.message.cell).toBeCloseTo(start.message.cell - 24 - 32, 0);
+    expect(w.sha.headerX + w.sha.header).toBeCloseTo(start.sha.headerX + start.sha.header - 32 + SHA_MAX - COLUMN_MIN.sha, 0);
   });
 
   // Which column an edge resizes and its walls (W.1: Author's edge takes from Message only; squeezed

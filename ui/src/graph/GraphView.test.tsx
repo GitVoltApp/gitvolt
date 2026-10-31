@@ -5,7 +5,7 @@ import { GraphView } from './GraphView';
 import { formatDate } from '../format/date';
 import { METRICS } from './metrics';
 import { DEFAULT_DENSITY, DENSITIES, DENSITY_METRICS, useDensity } from '../theme/density';
-import { COLUMN_MIN, columnPrefsPersistence, SHA_MAX, SHA_W, useColumnPrefs } from './columns';
+import { COLUMN_MAX, COLUMN_MIN, columnPrefsPersistence, SHA_MAX, SHA_W, useColumnPrefs } from './columns';
 import { createCommitMessageCache } from '../api/commitMessages';
 import type { CommitMessage } from '../api/gen/CommitMessage';
 import type { GraphPayload } from '../api/gen/GraphPayload';
@@ -556,7 +556,7 @@ describe('GraphView columns: aria, persistence, canvas clip', () => {
   beforeEach(() => useColumnPrefs.getState().reset());
   afterEach(() => vi.restoreAllMocks());
 
-  it('gives each separator an aria-valuemin/max: Branch/Tag up to the width left by the others\' minimums; Message and Author up to what their right neighbour can give', () => {
+  it('gives each separator an aria-valuemin/max: Branch/Tag up to the width left by the others\' minimums; Message, Author and Date up to their own max, whatever the neighbours have', () => {
     render(<GraphView graph={graph} repoId="/repo" />);
     const minSum = COLUMN_MIN.labels + COLUMN_MIN.graph + COLUMN_MIN.message + COLUMN_MIN.author + COLUMN_MIN.date + COLUMN_MIN.sha;
     const sep = (name: RegExp) => screen.getByRole('separator', { name });
@@ -564,15 +564,14 @@ describe('GraphView columns: aria, persistence, canvas clip', () => {
     const message = cellW('message');
     expect(sep(/Commit message/)).toHaveAttribute('aria-valuenow', String(message));
     expect(sep(/Commit message/)).toHaveAttribute('aria-valuemin', String(COLUMN_MIN.message));
-    // W.1: Message grows into free space only (none here); Author, Date and SHA also take from Message.
-    expect(sep(/Commit message/)).toHaveAttribute('aria-valuemax', String(message));
-    const room = message - COLUMN_MIN.message;
+    // Past the window's width the table scrolls: no neighbour limits a handle.
+    expect(sep(/Commit message/)).toHaveAttribute('aria-valuemax', String(COLUMN_MAX.message));
     expect(sep(/Author/)).toHaveAttribute('aria-valuemin', String(COLUMN_MIN.author));
-    expect(sep(/Author/)).toHaveAttribute('aria-valuemax', String(160 + room));
+    expect(sep(/Author/)).toHaveAttribute('aria-valuemax', String(COLUMN_MAX.author));
     expect(sep(/Date/)).toHaveAttribute('aria-valuemin', String(COLUMN_MIN.date));
-    expect(sep(/Date/)).toHaveAttribute('aria-valuemax', String(170 + room));
+    expect(sep(/Date/)).toHaveAttribute('aria-valuemax', String(COLUMN_MAX.date));
     expect(sep(/SHA/)).toHaveAttribute('aria-valuemin', String(COLUMN_MIN.sha));
-    expect(sep(/SHA/)).toHaveAttribute('aria-valuemax', String(Math.min(SHA_MAX, SHA_W + room)));
+    expect(sep(/SHA/)).toHaveAttribute('aria-valuemax', String(SHA_MAX));
   });
 
   it('the SHA cell holds the whole hash (the column shows as many whole characters as fit)', () => {
@@ -693,6 +692,21 @@ describe('GraphView columns while Author/Date are squeezed (clientWidth 778)', (
     fireEvent.keyDown(sep, { key: 'ArrowLeft' });
     expect([cellW('message'), cellW('author'), cellW('date')]).toEqual([160, 140, 154]);
     dragBy(sep, -20, () => expect(cellW('message')).toBe(160));
+  });
+
+  it('Commit message: ArrowRight and a drag grow it past the window; the rows and header widen with it (the grid scrolls), Author and Date untouched', () => {
+    render(<GraphView graph={graph} repoId="/repo" />);
+    const sep = screen.getByRole('separator', { name: /Commit message/ });
+    expect(sep).toHaveAttribute('aria-valuemax', String(COLUMN_MAX.message));
+    fireEvent.keyDown(sep, { key: 'ArrowRight' });
+    dragBy(sep, 200, () => {});
+    expect([cellW('message'), cellW('author'), cellW('date')]).toEqual([368, 140, 154]);
+    const content = screen.getByRole('grid', { name: 'Commit graph' }).firstElementChild as HTMLElement;
+    expect(content.style.width).toBe(`${778 + 208}px`);
+    expect(document.querySelector<HTMLElement>('.graph-header-inner')!.style.width).toBe(`${778 + 208}px`);
+    fireEvent.doubleClick(sep);
+    expect([cellW('message'), cellW('author'), cellW('date')]).toEqual([160, 140, 154]);
+    expect(content.style.width).toBe('778px');
   });
 
   it('Author: its right edge resizes Author alone; Date keeps its width, Message is pinned', () => {

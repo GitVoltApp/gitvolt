@@ -5,6 +5,15 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Changed
+
+- **Graph columns grow as wide as you drag them, even in a narrow window.** A column's handle is
+  no longer limited by what the columns to its right can give: past the window's width the graph
+  scrolls sideways, header with it. A Commit message width you set by hand is kept as the window
+  narrows, and widening one column no longer shrinks Author, Date or a hand-set Message. A
+  Message you never resized still fills the table as before. Double-click its handle (or press
+  Enter on it) to make it fill again.
+
 ### Fixed
 
 - **Menu rows take the pointer as soon as it's on them.** Moving down a menu whose rows open

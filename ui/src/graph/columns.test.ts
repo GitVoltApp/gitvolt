@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { allocateColumns, autoGraphWidth, columnMax, handleRange, handleShown, hiddenColumnsPersistence, isCollapsed, lanesWidth, SHA_MAX, columnPrefsPersistence, COLUMN_MIN, DEFAULT_COLUMN_PREFS, SHA_W, useColumnPrefs, type ColumnWidths, type ResizableColumn } from './columns';
+import { allocateColumns, autoGraphWidth, COLUMN_MAX, columnMax, handleRange, handleShown, hiddenColumnsPersistence, isCollapsed, lanesWidth, SHA_MAX, columnPrefsPersistence, COLUMN_MIN, DEFAULT_COLUMN_PREFS, SHA_W, useColumnPrefs, type ColumnWidths, type ResizableColumn } from './columns';
 
 // labels 200, graph 64, author 160, date 170, sha SHA_W: everything but Message sums to 594 + SHA_W.
 const prefs = { labels: 200, graph: 64, author: 160, date: 170 };
@@ -167,7 +167,7 @@ describe('each edge resizes only the column on its left (W.1)', () => {
     expect(rendered(1400).message).toBe(before.message);
   });
 
-  it('Message\'s edge leaves Author alone and the window shrinking shrinks Message first (prefs kept)', () => {
+  it('Message\'s edge leaves Author alone, and a narrower window then scrolls instead of shrinking Message', () => {
     useColumnPrefs.getState().setWidth('graph', GRAPH);
     const start = rendered(1400);
     drag('message', -100, 1400, () => {});
@@ -175,8 +175,9 @@ describe('each edge resizes only the column on its left (W.1)', () => {
     expect([w.message, w.author, w.date]).toEqual([start.message - 100, start.author, start.date]);
     expect(w.total).toBe(start.total - 100);
     const narrow = rendered(700);
-    expect(narrow.message).toBe(COLUMN_MIN.message);
-    expect(useColumnPrefs.getState().prefs.message).toBe(start.message - 100);
+    expect([narrow.message, narrow.author, narrow.date]).toEqual([w.message, w.author, w.date]);
+    expect(narrow.total).toBe(w.total);
+    expect(narrow.total).toBeGreaterThan(700);
   });
 
   describe('while the smart fit squeezes Author and Date (778 px)', () => {
@@ -196,6 +197,80 @@ describe('each edge resizes only the column on its left (W.1)', () => {
       const wide = rendered(1400);
       expect([wide.author, wide.date]).toEqual([after.author, after.date]);
     });
+  });
+});
+
+describe('a hand-set width wider than the window: the table scrolls, nothing is squeezed', () => {
+  beforeEach(() => useColumnPrefs.getState().reset());
+  // Default prefs and a 64 px graph at 778 px: Message filling at its 160 minimum, Author 140
+  // (pref 160) and Date 154 (pref 170) squeezed.
+  const AVAIL = 778;
+
+  it('Message\'s handle range is its own max, not what its neighbours can give', () => {
+    const w = rendered(AVAIL);
+    expect(w.total).toBe(AVAIL);
+    expect(handleRange('message', w, AVAIL)).toEqual({ min: COLUMN_MIN.message, max: COLUMN_MAX.message });
+    expect(handleRange('author', w, AVAIL).max).toBe(COLUMN_MAX.author);
+    expect(handleRange('date', w, AVAIL).max).toBe(COLUMN_MAX.date);
+    expect(handleRange('sha', w, AVAIL).max).toBe(SHA_MAX);
+  });
+
+  it('dragging Message wider grows the table past the window, 1:1, and keeps Author and Date where they were', () => {
+    drag('message', 300, AVAIL, (d, w) => {
+      expect(w.message, `d=${d}`).toBe(COLUMN_MIN.message + d);
+      expect([w.author, w.date]).toEqual([140, 154]);
+      expect(w.total).toBe(AVAIL + d);
+    });
+    expect(useColumnPrefs.getState().prefs.message).toBe(COLUMN_MIN.message + 300);
+    // Narrower still: scrolls further, squeezes nothing. Wider: empty space past the last column.
+    expect(rendered(500)).toMatchObject({ message: 460, author: 140, date: 154, total: AVAIL + 300 });
+    expect(rendered(2000)).toMatchObject({ message: 460, author: 140, date: 154, total: AVAIL + 300 });
+    // The keyboard follows the same range.
+    press('message', 8, AVAIL);
+    expect(rendered(AVAIL).message).toBe(468);
+  });
+
+  it('the handle stops at its max', () => {
+    press('message', 99_999, AVAIL);
+    expect(rendered(AVAIL).message).toBe(COLUMN_MAX.message);
+    press('author', 99_999, AVAIL);
+    expect(rendered(AVAIL).author).toBe(COLUMN_MAX.author);
+  });
+
+  it('with a hand-set Message, widening Author, Date, SHA, Branch/Tag or Graph never shrinks it', () => {
+    press('message', 40, AVAIL);
+    const before = rendered(AVAIL);
+    for (const col of ['author', 'date', 'sha', 'labels', 'graph'] as const) {
+      const w0 = rendered(AVAIL);
+      press(col, 16, AVAIL);
+      const w = rendered(AVAIL);
+      expect(w[col], col).toBe(w0[col] + 16);
+      expect(w.message, `${col}: Message`).toBe(before.message);
+      expect(w.total, `${col}: total`).toBe(w0.total + 16);
+    }
+  });
+
+  it('with a filling Message, Author grows out of Message\'s room first (Message keeps filling), then the table grows', () => {
+    const start = rendered(1400);
+    const room = start.message - COLUMN_MIN.message;
+    press('author', 30, 1400);
+    expect(useColumnPrefs.getState().prefs.message).toBeNull();
+    expect(rendered(1400)).toMatchObject({ author: start.author + 30, message: start.message - 30, total: 1400 });
+    // Message still fills: a wider window grows it.
+    expect(rendered(1600).message).toBe(start.message - 30 + 200);
+    useColumnPrefs.getState().reset();
+    drag('author', room + 50, 1400, () => {});
+    expect(useColumnPrefs.getState().prefs.message).toBe(COLUMN_MIN.message);
+    expect(rendered(1400)).toMatchObject({ author: start.author + room + 50, message: COLUMN_MIN.message, total: 1450 });
+  });
+
+  it('a double-click (resetWidth) puts a hand-set Message back to filling the window', () => {
+    press('message', 300, AVAIL);
+    expect(rendered(AVAIL).total).toBe(AVAIL + 300);
+    useColumnPrefs.getState().resetWidth('message');
+    expect(useColumnPrefs.getState().prefs.message).toBeNull();
+    expect(rendered(AVAIL)).toMatchObject({ message: COLUMN_MIN.message, total: AVAIL });
+    expect(rendered(1400).total).toBe(1400);
   });
 });
 
