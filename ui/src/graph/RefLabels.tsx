@@ -281,7 +281,7 @@ function More({ count, stack, head }: { count: number; stack: () => ReactNode; h
   const [open, setOpen] = useState(false);
   return (
     <span className={head ? 'ref-more ref-more-head' : 'ref-more'} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      +{count}
+      <span className="ref-more-count">+{count}</span>
       {open && stack()}
     </span>
   );

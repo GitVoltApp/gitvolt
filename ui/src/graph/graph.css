@@ -191,7 +191,9 @@
 /* The filler's line, on the connector's rows (the slot is centred in the row-high .ref-labels). */
 .ref-dim-fill::before { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--conn-top) - (var(--graph-row-h) - var(--graph-chip-h)) / 2); height: var(--conn-h); background: color-mix(in srgb, var(--lane-color) 25%, transparent); }
 .ref-dim-slot > .ref-label-dim { flex: none; margin-left: 4px; }
-.ref-more { margin-left: 4px; font-size: 11px; padding: 0 4px; border-radius: 3px; --chip-mix: 25%; background: color-mix(in srgb, var(--lane-color) var(--chip-mix), transparent); color: var(--text-normal); flex: none; cursor: pointer; }
+/* Only the count is small: the stack it floats is its DOM child and keeps the chips' size. */
+.ref-more-count { font-size: 11px; }
+.ref-more { margin-left: 4px; padding: 0 4px; border-radius: 3px; --chip-mix: 25%; background: color-mix(in srgb, var(--lane-color) var(--chip-mix), transparent); color: var(--text-normal); flex: none; cursor: pointer; }
 /* K104: the badge is a chip in the lane colour, as lit as the checked-out chip when the row's first
    chip is the active branch, otherwise dimmed like the other chips. */
 .graph-row:hover .ref-more, .graph-row[aria-selected="true"] .ref-more { --chip-mix: 45%; color: var(--text-selected); }

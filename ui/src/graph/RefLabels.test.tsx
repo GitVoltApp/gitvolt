@@ -163,7 +163,7 @@ describe('RefLabels', () => {
     it('hovering the chip or the +N badge stacks one full row per label; nothing renders before; leaving closes it', () => {
       const { container } = render(<RefLabels labels={three} color={0} />);
       expect(container.querySelector('.ref-stack')).toBeNull();
-      for (const el of [container.querySelector('.ref-labels > .ref-label')!, screen.getByText('+2')]) {
+      for (const el of [container.querySelector('.ref-labels > .ref-label')!, screen.getByText('+2').closest('.ref-more')!]) {
         fireEvent.mouseEnter(el);
         expect(rows(container).map((r) => r.querySelector('.ref-name-full')!.textContent)).toEqual(['main', 'foo', LONG]);
         expect(el.contains(container.querySelector('.ref-stack'))).toBe(true);
@@ -186,7 +186,7 @@ describe('RefLabels', () => {
     it("a row's hover starts that ref's branch focus, leaving or unmounting ends it", () => {
       const calls: (readonly string[] | null)[] = [];
       const { container, unmount } = render(<RefLabels labels={three} color={0} onBranchHover={(r) => calls.push(r)} />);
-      fireEvent.mouseEnter(screen.getByText('+2'));
+      fireEvent.mouseEnter(screen.getByText('+2').closest('.ref-more')!);
       fireEvent.mouseEnter(rows(container)[2]);
       expect(calls.at(-1)).toEqual(chipRefs(three[2]));
       fireEvent.mouseLeave(rows(container)[2], { relatedTarget: container.querySelector('.ref-stack') });

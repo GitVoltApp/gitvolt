@@ -156,6 +156,11 @@ describe('graph.css pointer cursors (F5)', () => {
     expect(rule('.ref-more')).toMatch(/cursor:\s*pointer/);
   });
 
+  it("the +N badge's count is small, but the label stack it floats (its DOM child) keeps the chips' size", () => {
+    expect(rule('.ref-more-count')).toMatch(/font-size:\s*11px/);
+    expect(rule('.ref-more')).not.toMatch(/font-size/);
+  });
+
   it('SHA buttons use pointer and resizers keep col-resize', () => {
     expect(rule('.sha')).toMatch(/cursor:\s*pointer/);
     expect(rule('.col-resizer')).toMatch(/cursor:\s*col-resize/);
