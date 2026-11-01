@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-use cef::ImplBrowserHost;
+use cef::{ImplBrowser, ImplBrowserHost};
 use std::os::raw::c_ulong;
 use tauri_runtime::dpi::{PhysicalPosition, PhysicalSize, Rect};
 use tauri_utils::config::Color;
@@ -57,7 +57,11 @@ impl AppWebview {
   /// GitVolt patch: tells the browser the pointer left the window, at `point` in the X11 host's
   /// pixels (see `pointer.rs` for why Chromium doesn't notice on its own).
   pub(crate) fn send_mouse_leave(&self, point: PhysicalPosition<i32>, scale: f64) {
-    if self.offscreen.is_some() || self.host.window_handle() == 0 {
+    // Not to a browser past `on_before_close` (`is_valid`), nor one without its window.
+    if self.offscreen.is_some()
+      || self.browser.is_valid() == 0
+      || self.host.window_handle() == 0
+    {
       return;
     }
     let origin = self

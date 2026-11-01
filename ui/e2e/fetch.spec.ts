@@ -87,6 +87,13 @@ test.describe('fetch', () => {
     await expect(page.getByRole('option').first()).toContainText('Fetch all');
     await page.keyboard.press('Enter');
     await expect(page.getByText('Pushed for Fetch all')).toBeVisible({ timeout: 10_000 });
+
+    await test.step('a remote added in a terminal shows in the sidebar once fetched, with no restart', async () => {
+      git(repo, 'remote', 'add', 'mirror', join(dirname(repo), 'origin.git'));
+      git(repo, 'fetch', '-q', 'mirror');
+      const remotes = page.getByRole('tree', { name: 'Remote items' });
+      await expect(remotes.getByRole('treeitem', { name: /mirror/ }).first()).toBeVisible({ timeout: 10_000 });
+    });
   });
 
   // UX round 4, T.1: only the failing remote's sidebar row warns, until a fetch of it works.

@@ -1292,7 +1292,7 @@ mod tests {
             let h = repos[&id].clone();
             let few = gix::open::Options::default().object_store_slots(gix::odb::store::init::Slots::Given(8));
             let repo = gix::ThreadSafeRepository::open_opts(&h.workdir, few).unwrap();
-            let short = crate::api::RepoHandle { repo, workdir: h.workdir.clone(), name: h.name.clone(), common_dir: h.common_dir.clone(), wip: h.wip.clone(), snapshot: Default::default(), walk: Default::default(), me_email: Default::default() };
+            let short = crate::api::RepoHandle { repo, workdir: h.workdir.clone(), name: h.name.clone(), common_dir: h.common_dir.clone(), wip: h.wip.clone(), snapshot: Default::default(), walk: Default::default(), me_email: Default::default(), config: h.config };
             repos.insert(id, Arc::new(short));
         }
         let other = r.clone_origin("elsewhere");
@@ -1304,5 +1304,34 @@ mod tests {
             assert!(row_ids(&graph_rows(&api, id).await).contains(tip.as_str()), "fetch {i}'s tip is in the graph");
         }
         assert!(!crate::api::odb_nearly_full(&api.handle(id).unwrap().repo));
+    }
+
+    /// A remote added, renamed or removed in a terminal while the repository is open shows at
+    /// the next read, as one added in GitVolt does: the handle's config was read when it opened,
+    /// and a remote it doesn't know had its branches left out of the sidebar.
+    #[tokio::test]
+    async fn remotes_changed_outside_gitvolt_show_at_the_next_read() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let api = api();
+        let id = open(&api, &r).await;
+        let names = |v: &serde_json::Value| v["remotes"].as_array().unwrap().iter().map(|g| g["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        let read = || async {
+            let sidebar = api.dispatch(Request::Sidebar { repo: id }).await.unwrap();
+            let info = api.dispatch(Request::RepoInfo { repo: id }).await.unwrap();
+            (names(&sidebar), names(&info))
+        };
+        assert_eq!(read().await, (vec!["origin".to_string()], vec!["origin".to_string()]));
+
+        let origin = r.root().join("origin.git");
+        r.git(&["remote", "add", "upstream", origin.to_str().unwrap()]);
+        r.git(&["fetch", "-q", "upstream"]);
+        assert_eq!(read().await, (vec!["origin".to_string(), "upstream".to_string()], vec!["origin".to_string(), "upstream".to_string()]));
+
+        r.git(&["remote", "rename", "upstream", "mirror"]);
+        assert_eq!(read().await, (vec!["mirror".to_string(), "origin".to_string()], vec!["origin".to_string(), "mirror".to_string()]));
+
+        r.git(&["remote", "remove", "mirror"]);
+        assert_eq!(read().await, (vec!["origin".to_string()], vec!["origin".to_string()]));
     }
 }

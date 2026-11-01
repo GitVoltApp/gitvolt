@@ -1,17 +1,16 @@
 //! Who "me" is for a repository: its `user.email` and the emails of the active profile's forge
 //! accounts. Branch presets' "has commits by me" matches against these.
 
-use crate::api::{Api, RepoHandle};
+use crate::api::{config_stamp, Api, FileStamp, RepoHandle};
 use crate::git::GitInvocation;
 use std::path::PathBuf;
-use std::time::SystemTime;
 
 /// What `user.email` was read under: the repository's config file and the profile's extra
 /// gitconfig. The cache is dropped when either changed (the watcher's config change shows up
 /// as a new stamp), so a read costs a `stat`, and a git process only after a change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConfigStamp {
-    config: Option<(SystemTime, u64)>,
+    config: Option<FileStamp>,
     include: Option<PathBuf>,
 }
 
@@ -19,10 +18,7 @@ impl Api {
     /// The repository's `user.email` (through `GitCli`, so the profile's extra gitconfig applies)
     /// and every email of the active profile's forge accounts, lower-cased and de-duplicated.
     pub(crate) async fn me_emails(&self, h: &RepoHandle) -> Vec<String> {
-        let stamp = ConfigStamp {
-            config: std::fs::metadata(h.common_dir.join("config")).ok().and_then(|m| Some((m.modified().ok()?, m.len()))),
-            include: self.cli.include_path(),
-        };
+        let stamp = ConfigStamp { config: config_stamp(&h.common_dir), include: self.cli.include_path() };
         let cached = h.me_email.lock().expect("me_email poisoned").clone().filter(|(s, _)| *s == stamp);
         let repo_email = match cached {
             Some((_, email)) => email,

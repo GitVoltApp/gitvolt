@@ -163,6 +163,28 @@ impl CefX11Host {
       .and_then(super::pointer::PointerLeaveWatch::take_left_at)
   }
 
+  /// GitVolt patch: whether a browser's X window is still in the host. Chromium destroys it (and
+  /// the GPU process's child window in it) on a task of its own after the browser's
+  /// `on_before_close`, so the host must outlive it: destroying the host destroys them with it,
+  /// under a GPU process still presenting into them and a Chrome window still being torn down.
+  pub(crate) fn has_browser_windows(&self) -> bool {
+    super::utils::with_x11(false, |xlib, display| unsafe {
+      let (mut root, mut parent, mut children, mut count) = (0, 0, std::ptr::null_mut(), 0);
+      let status = (xlib.XQueryTree)(
+        display,
+        self.xid,
+        &mut root,
+        &mut parent,
+        &mut children,
+        &mut count,
+      );
+      if !children.is_null() {
+        (xlib.XFree)(children.cast());
+      }
+      status != 0 && count > 0
+    })
+  }
+
   fn take_background_color_provider(&self) -> Option<gtk::CssProvider> {
     self.background_color_provider.borrow_mut().take()
   }

@@ -574,6 +574,28 @@ impl AppWindow {
 }
 
 impl AppWindow {
+  /// GitVolt patch: whether a browser's native window is still in this (closed) window, which
+  /// must outlive it (`WinitCefApp::release_window`). Only Linux's X11 host is known to keep one
+  /// past `on_before_close`; macOS and Windows destroy theirs before it (`do_close`).
+  pub(crate) fn has_browser_windows(&self) -> bool {
+    #[cfg(any(
+      target_os = "linux",
+      target_os = "dragonfly",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd"
+    ))]
+    return self.cef_host.has_browser_windows();
+    #[cfg(not(any(
+      target_os = "linux",
+      target_os = "dragonfly",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd"
+    )))]
+    false
+  }
+
   pub(crate) fn center(&self) {
     let monitor = self.window.current_monitor();
     let monitor = monitor.or_else(|| self.window.primary_monitor());
@@ -945,7 +967,11 @@ impl<T: UserEvent> WinitCefApp<T> {
   ))]
   pub(crate) fn apply_pending_pointer_leaves(&mut self) {
     for appwindow in self.state.windows.values() {
-      if let Some(point) = appwindow.cef_host.take_pointer_left() {
+      // Taken either way. Exiting, every browser is closing (`close_all_browsers`), and a closed
+      // window is out of `windows` before its browsers close: no leave goes to either.
+      if let Some(point) = appwindow.cef_host.take_pointer_left()
+        && !self.state.exiting
+      {
         let scale = appwindow.window.scale_factor();
         for child in &appwindow.children {
           child.send_mouse_leave(point, scale);

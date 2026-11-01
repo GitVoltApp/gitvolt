@@ -201,6 +201,16 @@ says.
   - `src/window.rs`: `apply_pending_pointer_leaves()`; `src/runtime.rs`: `about_to_wait` calls it
     after `apply_pending_host_layouts()`.
   - `src/platform/linux/mod.rs`: `mod pointer;`.
+  - Closing (below): `apply_pending_pointer_leaves()` drops a leave while exiting, and
+    `send_mouse_leave()` skips a browser past `on_before_close` (`is_valid`).
+- A closed window outliving its browsers' native windows (below):
+  - `src/runtime.rs`: `AppState::released_windows`, `RELEASED_WINDOW_DEADLINE`,
+    `release_window()` and `reap_released_windows()`; `close_window` and `BrowserClosed` release
+    a window instead of dropping it; `exit_if_done` waits for the released windows;
+    `about_to_wait` reaps them.
+  - `src/window.rs`: `AppWindow::has_browser_windows()` (false off Linux/BSD).
+  - `src/platform/linux/window.rs`: `CefX11Host::has_browser_windows()`.
+  - `src/platform/linux/pointer.rs`: GDK's selection on the host adds `SubstructureNotifyMask`.
 - A window that draws its own title bar (below):
   - `src/platform/linux/chrome.rs` (new): `begin_move_resize()`, `show_window_menu()`, `lower()`,
     the pure `moveresize_direction()` / `moveresize_data()` / `window_menu_data()` /
@@ -555,6 +565,56 @@ window give none, and coming back hovers again.
 
 **Tests:** `cargo test -p tauri-runtime-cef --lib pointer` (which crossings are a leave, an enter
 cancelling it, the point in view coordinates).
+
+## A closed window outliving its browsers' native windows (Linux, X11)
+
+**Problem:** GitVolt 1.4.0 crashed on quitting (closing its only window), now and then: a
+segfault, or `Check failed: observers_.empty()` right after `GPU process exited unexpectedly:
+exit_code=8704`, itself after the GPU process's `eglSwapBuffers: Failed to retrieve the size of
+the parent window`.
+
+- `on_before_close` is not the end of a browser. At that point its X window (and the GPU
+  process's child window in it) is still in the X11 host. Chromium destroys it on a task of its
+  own, tens of milliseconds later, as it tears down the Chrome window around the browser.
+- The runtime dropped the closed window at `on_before_close`, and with it the host, which took
+  those windows with it: the GPU process lost the window it was presenting into and restarted.
+- With the last window, the event loop then exited and `cef::shutdown` ran some 6 ms later, over
+  that half-done teardown, and crashed in Chrome's profile teardown.
+
+**Evidence:**
+- The user's core dump: the binary keeps its symbol table, so its frames map as is. The crash is
+  in `cef_shutdown`, called from `CefRuntime::run` after `run_app` returns. libcef's frames
+  (unsymbolized; read by the strings their code references) run through `MainRunner::Shutdown`,
+  `ChromeBrowserMainParts::PostMainMessageLoopRun`, `BrowserProcessImpl::StartTearDown` and
+  `ProfileManager`'s destruction (whose frame also holds the `observers_.empty()` CHECK), to a
+  null `this` read (`mov 0x18(%rdi)`). The pointer-leave patch is not on the stack.
+- The reproduction: headless GNOME Shell with Xwayland in a container, the host GPU's render node
+  (GPU compositing as on the desktop), the 1.4.0 release, a close by real compositor input
+  (`org.gnome.Mutter.RemoteDesktop`). Capped to one CPU, 8 closes in 38 segfaulted, and one
+  logged the GPU process's error and exit 8704 exactly as the user's did.
+- With the runtime logging the host's children: at `on_before_close` the browser window was
+  always still there, and the host was destroyed with it inside.
+
+**Fix:** a closed window whose browsers have all closed is "released": hidden, and kept until no
+browser window is left in it (`CefX11Host::has_browser_windows`, an `XQueryTree`), at most
+`RELEASED_WINDOW_DEADLINE` (2 s). GDK's selection on the host adds `SubstructureNotifyMask`, so
+Chromium destroying its window wakes the loop, and `about_to_wait` drops the window then. The
+application exits only once no released window is left. On macOS and Windows the browser's view or
+window is destroyed before `on_before_close` (`do_close`), so a released window goes at once, as
+before.
+
+Draining CEF's message loop for 0.5 s before `cef::shutdown`, as cefclient's external pump does,
+also stopped the crash (40 closes in 40), but it left the host to be destroyed under Chromium;
+waiting for the browser windows is the order Chromium expects, and was enough without it.
+
+**Result** (same container, one CPU): 60 title bar closes in 60, with the browser window gone
+before the host in every one (0 to 77 ms after `on_before_close`), no GPU process error; then
+48 closes alternating the title bar's ✕, ✕ with the pointer leaving at once, Alt+F4 and the
+window menu's Close, and 30 more ✕, all clean. The pointer-leave check (above) still clears
+the hover in all four of its cases.
+
+**Also:** a pointer leave is never sent while exiting (every browser is closing), nor to a browser
+past `on_before_close`.
 
 ## Chromium's component updater (K31)
 

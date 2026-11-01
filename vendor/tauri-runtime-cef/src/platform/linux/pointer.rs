@@ -104,13 +104,16 @@ pub(super) fn watch_pointer_leave(
 
   // Each X client has its own event mask on a window, so selecting on GDK's connection leaves
   // the runtime's (the host's creator) as it was, and the events come through GDK's `xevent`.
+  // `SubstructureNotifyMask` too, so Chromium destroying a browser's window wakes the event
+  // loop: a closing window waits for that (`CefX11Host::has_browser_windows`). GDK ignores
+  // those events, the host being no window of its own.
   // SAFETY: Xlib calls on GDK's own display, on the GTK main thread, inside a GDK error trap.
   unsafe {
     display.error_trap_push();
     (xlib.XSelectInput)(
       display.xdisplay(),
       host,
-      xlib::EnterWindowMask | xlib::LeaveWindowMask,
+      xlib::EnterWindowMask | xlib::LeaveWindowMask | xlib::SubstructureNotifyMask,
     );
     (xlib.XFlush)(display.xdisplay());
     display.error_trap_pop_ignored();

@@ -21,6 +21,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   keeps the previous row and its submenu until the pointer nears the next row's label or rests
   there. Only a move heading into the open submenu holds it, as before, so a diagonal into it can
   still cross the rows below.
+- **Closing GitVolt no longer crashes it on Linux.** Quitting (the title bar's ✕, Alt+F4, the
+  window menu) could end in a segfault, or a Chromium check failure after the GPU process
+  restarted, as GitVolt shut down. The window now waits for Chromium to take its own windows
+  out of it before it goes, and GitVolt quits after that.
+- **A remote added, renamed or removed in a terminal shows up without a restart.** GitVolt kept
+  the repository's config from when it opened it, so the sidebar left out a new remote's
+  branches, even after a fetch, and the lists of remotes didn't have it. A change to
+  `.git/config` is now picked up at the next refresh, which the change itself triggers.
 
 ## [1.4.0] - 2026-10-30
 

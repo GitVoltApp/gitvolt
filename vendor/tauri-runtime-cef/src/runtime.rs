@@ -15,7 +15,7 @@ use std::{
     atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering},
     mpsc::{self, Receiver, Sender},
   },
-  time::Duration,
+  time::{Duration, Instant},
 };
 
 use cef::*;
@@ -36,7 +36,8 @@ use winit::{
   data_transfer::{DataTransferId, TypeHint},
   event::{StartCause, WindowEvent as WinitWindowEvent},
   event_loop::{
-    ActiveEventLoop, DndAction, EventLoop, EventLoopBuilder, EventLoopProxy as WinitEventLoopProxy,
+    ActiveEventLoop, ControlFlow, DndAction, EventLoop, EventLoopBuilder,
+    EventLoopProxy as WinitEventLoopProxy,
   },
   window::WindowId as WinitWindowId,
 };
@@ -1745,12 +1746,20 @@ fn is_cef_helper_process() -> bool {
     .unwrap_or_default()
 }
 
+/// GitVolt patch: how long a closed window waits for its browsers' native windows to go
+/// ([`WinitCefApp::release_window`]); they normally go within a few event loop turns.
+const RELEASED_WINDOW_DEADLINE: Duration = Duration::from_secs(2);
+
 pub(crate) struct AppState<T: UserEvent> {
   pub(crate) windows: HashMap<WindowId, AppWindow>,
   /// Windows that are already closed as far as the application is concerned,
   /// kept alive only so their native handle outlives the CEF browsers they
   /// host. See [`WinitCefApp::close_window`].
   pub(crate) closing_windows: Vec<AppWindow>,
+  /// GitVolt patch: closed windows whose browsers have all closed, kept until the browsers'
+  /// native windows are gone from them too, or the deadline passes. See
+  /// [`WinitCefApp::release_window`].
+  released_windows: Vec<(Instant, AppWindow)>,
   pub(crate) winid_id_to_window_id_map: HashMap<WinitWindowId, WindowId>,
   pub(crate) callback: Box<dyn FnMut(RunEvent<T>)>,
   pub(crate) live_browsers: usize,
@@ -1779,6 +1788,7 @@ impl<T: UserEvent> WinitCefApp<T> {
       state: AppState {
         windows: HashMap::new(),
         closing_windows: Vec::new(),
+        released_windows: Vec::new(),
         winid_id_to_window_id_map: HashMap::new(),
         callback,
         live_browsers: 0,
@@ -1878,16 +1888,20 @@ impl<T: UserEvent> WinitCefApp<T> {
           // The webview belonged to a window that is already closing: its
           // registry entries went with `close_window`, and the native window is
           // only being held open for CEF. This acknowledgement is what releases
-          // it, once it is the last browser the window was hosting.
+          // it (GitVolt patch: `release_window`), once it is the last browser the
+          // window was hosting.
           for appwindow in &mut self.state.closing_windows {
             appwindow
               .children
               .retain(|child| child.webview_id != webview_id);
           }
-          self
-            .state
-            .closing_windows
-            .retain(|appwindow| !appwindow.children.is_empty());
+          for appwindow in std::mem::take(&mut self.state.closing_windows) {
+            if appwindow.children.is_empty() {
+              self.release_window(appwindow, event_loop);
+            } else {
+              self.state.closing_windows.push(appwindow);
+            }
+          }
         }
 
         self.state.live_browsers = self.state.live_browsers.saturating_sub(1);
@@ -2188,8 +2202,9 @@ impl<T: UserEvent> WinitCefApp<T> {
     }
 
     if appwindow.children.is_empty() {
-      // Nothing is left to close, so the native window goes now.
-      drop(appwindow);
+      // Nothing is left to close, so the native window goes as soon as no
+      // browser window is left in it (GitVolt patch: `release_window`).
+      self.release_window(appwindow, event_loop);
     } else {
       // `close_browser` only *starts* the close: CEF still has to tear down the
       // browser's own child window, and it reports that back through
@@ -2207,6 +2222,55 @@ impl<T: UserEvent> WinitCefApp<T> {
     // A window still waiting on its browsers holds `live_browsers` above zero,
     // so this cannot exit the loop out from under a close in flight.
     self.exit_if_done(event_loop);
+  }
+
+  /// GitVolt patch: drops `appwindow`, whose browsers have all closed, once their native windows
+  /// are gone from it as well.
+  ///
+  /// `on_before_close` is not the end of a browser: on Linux, Chromium destroys the browser's X
+  /// window (and the GPU process's child window in it) on a later task, and tears down the Chrome
+  /// window around it then. Dropping the native window at `on_before_close` destroyed those under
+  /// Chromium: the GPU process failed to present ("Failed to retrieve the size of the parent
+  /// window") and restarted, and with the last window the loop exited and `cef::shutdown` ran
+  /// a few milliseconds later, over that half-done teardown. It crashed there, in Chrome's
+  /// profile teardown (a null dereference; `ProfileManager`'s `observers_.empty()` CHECK is in
+  /// the same place). So the window stays, hidden, until no browser window is left in it (tens
+  /// of milliseconds), and the application exits only after that (`exit_if_done`). A deadline
+  /// keeps a browser window that never goes from holding the window, or the exit, forever.
+  fn release_window(&mut self, appwindow: AppWindow, event_loop: &dyn ActiveEventLoop) {
+    appwindow.window.set_visible(false);
+    self
+      .state
+      .released_windows
+      .push((Instant::now() + RELEASED_WINDOW_DEADLINE, appwindow));
+    self.reap_released_windows(event_loop);
+  }
+
+  /// GitVolt patch: drops the released windows that no longer hold a browser window, or whose
+  /// deadline passed; the event loop wakes for the next deadline (Chromium destroying a browser
+  /// window wakes it too, on Linux through the host's `SubstructureNotify`). Whether any went.
+  fn reap_released_windows(&mut self, event_loop: &dyn ActiveEventLoop) -> bool {
+    if self.state.released_windows.is_empty() {
+      return false;
+    }
+    let now = Instant::now();
+    let before = self.state.released_windows.len();
+    self
+      .state
+      .released_windows
+      .retain(|(deadline, appwindow)| {
+        let waiting = appwindow.has_browser_windows();
+        if waiting && now >= *deadline {
+          log::warn!(
+            "a closed window still held a browser window after {RELEASED_WINDOW_DEADLINE:?}; \
+             dropping it"
+          );
+        }
+        waiting && now < *deadline
+      });
+    let next = self.state.released_windows.iter().map(|(deadline, _)| *deadline).min();
+    event_loop.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
+    self.state.released_windows.len() != before
   }
 
   pub(crate) fn request_window_close(
@@ -2303,6 +2367,7 @@ impl<T: UserEvent> WinitCefApp<T> {
       .retain(|(_, family)| !family.is_revoked());
 
     if self.state.live_browsers != 0
+      || !self.state.released_windows.is_empty()
       || !self.state.live_popups.is_empty()
       || !self.state.pending_popups.is_empty()
     {
@@ -2356,6 +2421,9 @@ impl<T: UserEvent> ApplicationHandler for WinitCefApp<T> {
     {
       self.apply_pending_host_layouts();
       self.apply_pending_pointer_leaves();
+    }
+    if self.reap_released_windows(event_loop) {
+      self.exit_if_done(event_loop);
     }
     self.run_callback(RunEvent::MainEventsCleared);
   }

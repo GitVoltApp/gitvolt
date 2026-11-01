@@ -1497,6 +1497,28 @@ pub(crate) struct RepoHandle {
     /// The repository's `user.email` (`None`: unset) and the config it was read under
     /// (`Api::me_emails`).
     pub(crate) me_email: Mutex<Option<(crate::me::ConfigStamp, Option<String>)>>,
+    /// The config file as it was just before `repo` opened: gix keeps the config it read then,
+    /// so `Api::handle` reopens once the file changed.
+    pub(crate) config: Option<FileStamp>,
+}
+
+/// A file's modification time and length, and on Unix its inode: git writes its config through a
+/// lock file renamed over it, so even an edit that keeps the length within the clock's tick shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FileStamp {
+    modified: std::time::SystemTime,
+    len: u64,
+    inode: u64,
+}
+
+/// The stamp of `common_dir`'s config file; `None` when it can't be read.
+pub(crate) fn config_stamp(common_dir: &Path) -> Option<FileStamp> {
+    let meta = std::fs::metadata(common_dir.join("config")).ok()?;
+    #[cfg(unix)]
+    let inode = std::os::unix::fs::MetadataExt::ino(&meta);
+    #[cfg(not(unix))]
+    let inode = 0;
+    Some(FileStamp { modified: meta.modified().ok()?, len: meta.len(), inode })
 }
 
 /// The object store's index slots, one per pack index or multi-pack index: gix fixes their
@@ -3540,20 +3562,25 @@ impl Api {
     }
 
     /// Repository `id`'s handle; a fresh one when its object store is running out of index
-    /// slots (`odb_nearly_full`), so the packs written since it opened stay visible.
+    /// slots (`odb_nearly_full`), so the packs written since it opened stay visible, or when its
+    /// config file changed since it opened, so a remote added, removed or renamed outside GitVolt
+    /// shows in the sidebar and everywhere else remotes are listed.
     pub(crate) fn handle(&self, id: u32) -> Result<Arc<RepoHandle>, GbError> {
         let h = self.lookup(id)?;
-        if !odb_nearly_full(&h.repo) {
+        let full = odb_nearly_full(&h.repo);
+        if !full && config_stamp(&h.common_dir) == h.config {
             return Ok(h);
         }
         match self.reopen(id, &h) {
             Ok(fresh) => {
-                // A walk the full store made may lack commits: walk anew.
-                *fresh.walk.lock().expect("walk poisoned") = None;
+                if full {
+                    // A walk the full store made may lack commits: walk anew.
+                    *fresh.walk.lock().expect("walk poisoned") = None;
+                }
                 Ok(fresh)
             }
             Err(e) => {
-                tracing::warn!("couldn't reopen {} for its new packs: {e}", h.workdir.display());
+                tracing::warn!("couldn't reopen {}: {e}", h.workdir.display());
                 Ok(h)
             }
         }
@@ -3581,6 +3608,8 @@ impl Api {
 
     /// `old`, reopened: it replaces `old` unless the repository was closed meanwhile.
     fn reopen(&self, id: u32, old: &RepoHandle) -> Result<Arc<RepoHandle>, GbError> {
+        // Before the open, so a change made while it reads the config still shows next time.
+        let config = config_stamp(&old.common_dir);
         let repo = gix::ThreadSafeRepository::open_opts(&old.workdir, open_options()).map_err(crate::error::gix_err)?;
         let fresh = Arc::new(RepoHandle {
             repo,
@@ -3591,6 +3620,7 @@ impl Api {
             snapshot: Mutex::new(old.snapshot.lock().expect("snapshot poisoned").clone()),
             walk: old.walk.clone(),
             me_email: Mutex::default(),
+            config,
         });
         let mut repos = self.repos.lock().expect("repos poisoned");
         if let Some(slot) = repos.get_mut(&id) {
@@ -3611,6 +3641,8 @@ impl Api {
             let local = repo.to_thread_local();
             crate::platform::fs::canonicalize(local.common_dir()).unwrap_or_else(|_| local.common_dir().to_path_buf())
         };
+        // As soon as the common dir is known (`RepoHandle::config`).
+        let config = config_stamp(&common_dir);
         // One handle per repository (spec #2 §11.2, 2C Deviation 2): whichever worktree opens,
         // it's the handle of its common dir, and the summary names the worktree opened.
         let summary = |id: u32, h: &RepoHandle| RepoSummary { id, path: h.workdir.display().to_string(), name: h.name.clone(), worktree: opened.display().to_string() };
@@ -3642,6 +3674,7 @@ impl Api {
                 snapshot: Mutex::new(None),
                 walk: Arc::default(),
                 me_email: Mutex::default(),
+                config,
             });
             repos.insert(id, h.clone());
             self.writes_for(&common_dir).add_id(id);
