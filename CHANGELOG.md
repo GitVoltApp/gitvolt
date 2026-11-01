@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-01
+
 ### Changed
 
 - **Graph columns grow as wide as you drag them, even in a narrow window.** A column's handle is
