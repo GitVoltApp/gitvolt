@@ -193,6 +193,9 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   "from" and which the "to".
 - **File history and blame,** with each version's diff, and restore a file from any commit.
 - **Cherry-pick and revert,** each with a no-commit variant; stashes; tags.
+- **Git flow.** Set it up from the palette or the repository's settings; start a feature, release
+  or hotfix from its sidebar panel, and finish it from its menu: the merges, the release's tag and
+  the branch's delete are one step you can undo.
 - **Activity log** of every git command GitVolt ran, with its output, hooks included.
 - **Signed commits** through your git config, and signature verification in the commit details.
 
@@ -240,7 +243,7 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 | Hide and solo branches | ✅ | ✅ Presets that hide, collapse or fold branches by rule; Alt+click hides or shows one |
 | Submodules | ✅ | ✅ State in the file list; add, remove, update, sync and open in a tab |
 | Git LFS | ✅ | ✅ Real files in diffs and history, download, pull, track by extension |
-| Git Flow | ✅ | ❌ Not planned unless there's demand |
+| Git Flow | ✅ | ✅ Set up, start and finish features, releases and hotfixes, in one undoable step; the git flow command line reads the same settings |
 | Integrated terminal | ✅ | ❌ Not planned |
 | AI commit messages and summaries | ✅ | ❌ Not planned |
 | Issue trackers (Jira, Trello, …) | ✅ | ❌ Not planned |

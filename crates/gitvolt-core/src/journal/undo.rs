@@ -318,20 +318,29 @@ impl UndoIntent {
             Direction::Undo => &self.entry.head_before,
             Direction::Redo => &self.entry.head_after,
         };
+        // Git flow: a finish that failed before it left the branch it started on (a hook refused
+        // a merge) switches nowhere. Its branch moved under HEAD: that's a rewind's two-way move.
+        if head.branch.is_some() && head.branch == cx.before.head.branch {
+            return self.rewind(cx, moves).await;
+        }
         let args: Vec<String> = match (&head.branch, &head.oid) {
             (Some(b), _) => vec!["switch".into(), "--no-guess".into(), b.clone()],
             (None, Some(oid)) => vec!["switch".into(), "--detach".into(), oid.clone()],
             (None, None) => return Err(GbError::other("nothing to switch to")),
         };
         // --- 2C T1: the Switch redo order ---
-        // Redo: a branch the checkout created (or fast-forwarded) must be there before the
-        // switch lands on it. Undo: leave it first, then delete or rewind it.
-        if self.dir == Direction::Redo {
-            cx.cas(moves, &self.reflog()).await?;
+        // The branch HEAD is on now moves once the switch has left it (undo: the branch a
+        // checkout created or fast-forwarded; redo: a finished git flow branch, deleted). Every
+        // other ref moves first, so the branch the switch lands on is already where it belongs
+        // (redo: the branch a checkout created; undo: a git flow finish's merge target).
+        let leaving = cx.before.head.branch.as_ref().map(|b| format!("refs/heads/{b}"));
+        let (after, first): (Vec<RefMove>, Vec<RefMove>) = moves.iter().cloned().partition(|m| Some(&m.name) == leaving.as_ref());
+        if !first.is_empty() {
+            cx.cas(&first, &self.reflog()).await?;
         }
         let inv = cx.git(args);
         if let Err(mut e) = cx.run_git(inv).await {
-            // Redo: the switch failed after the refs moved (a refused overlap, a hook): put them
+            // The switch failed after the first refs moved (a refused overlap, a hook): put them
             // back, each a CAS on the value just set, as `rewind` reverses its read-tree. Not
             // when HEAD did land (a post-checkout hook's failure): the branch is checked out.
             let landed = gix::open(cx.root).ok().and_then(|r| crate::write::head_state(&r).ok()).is_some_and(|now| now.branch.is_some() && now.branch == head.branch);
@@ -342,8 +351,8 @@ impl UndoIntent {
                 e = crate::write::checkout::put_back(cx, &to, e).await;
             }
             // --- end 2C T5 ---
-            if self.dir == Direction::Redo && !landed && !cx.repair_stopped() {
-                let back: Vec<RefMove> = moves.iter().map(|m| RefMove { name: m.name.clone(), old: m.new.clone(), new: m.old.clone() }).collect();
+            if !first.is_empty() && !landed && !cx.repair_stopped() {
+                let back: Vec<RefMove> = first.iter().map(|m| RefMove { name: m.name.clone(), old: m.new.clone(), new: m.old.clone() }).collect();
                 if let Err(b) = cx.cas(&back, &self.reflog()).await {
                     tracing::warn!(target: "gitvolt_core::write", "putting back the refs of a failed {}: {b}", self.label());
                 }
@@ -353,8 +362,8 @@ impl UndoIntent {
         for k in [ChangeKind::Head, ChangeKind::Index, ChangeKind::Worktree] {
             cx.touch(k);
         }
-        if self.dir == Direction::Undo {
-            cx.cas(moves, &self.reflog()).await?;
+        if !after.is_empty() {
+            cx.cas(&after, &self.reflog()).await?;
         }
         // --- end 2C T1 ---
         Ok(())

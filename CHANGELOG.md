@@ -5,6 +5,18 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **Git flow.** Set it up with Set up git flow… (the palette, or Settings › Repository): the
+  production and development branches, the feature, release and hotfix prefixes and the version
+  tag prefix, kept in the repository's git config where the `git flow` command line reads them
+  too. A Git Flow panel in the sidebar lists those branches by kind; its + starts one from the
+  right base and checks it out. Finish… on a branch's menu merges it (`--no-ff`) into the
+  development branch, or a release or hotfix into the production branch and then the development
+  one, tags the release, and deletes the branch: one step, one Undo. A merge that would conflict
+  isn't started: the finish stops before it and offers to make that merge, and finishing again
+  afterwards picks up where it stopped.
+
 ## [1.4.1] - 2026-11-01
 
 ### Changed

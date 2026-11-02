@@ -991,6 +991,30 @@ pub enum Request {
         tag: Option<String>,
     },
     // --- end 3B T3 ---
+    // --- Git flow ---
+    /// Set git flow up (`gitflow.*` in the repository's config; the development branch at the
+    /// production one if it's missing): `WriteResult<null>`.
+    GitflowInit { repo: u32, worktree: String, config: crate::write::gitflow::GitflowConfig },
+    /// Finish a feature, release or hotfix branch: `WriteResult<GitflowFinishOutcome>`.
+    /// `tagMessage`: a release's or hotfix's tag is annotated with it (absent: lightweight).
+    GitflowFinish {
+        repo: u32,
+        worktree: String,
+        branch: String,
+        /// A release's or hotfix's tag name (absent: the version tag prefix and the version).
+        #[serde(default)]
+        #[ts(optional)]
+        tag: Option<String>,
+        #[serde(default)]
+        #[ts(optional)]
+        tag_message: Option<String>,
+        /// Keep the branch once it's merged.
+        #[serde(default)]
+        keep: bool,
+        #[serde(default)]
+        expect: crate::write::types::Expect,
+    },
+    // --- end Git flow ---
     // --- 4A T5 ---
     /// The active profile's forge accounts, with what their last requests said (no network):
     /// `ForgeAccountView[]`. Empty when this build has no forges.
@@ -1412,6 +1436,7 @@ impl Request {
             // --- 3B T3 ---
             Request::CreateTag { .. } | Request::DeleteTag { .. } | Request::PushTags { .. } => true,
             // --- end 3B T3 ---
+            Request::GitflowInit { .. } | Request::GitflowFinish { .. } => true,
             Request::OpenRepo { .. }
             | Request::LogFrontend { .. }
             | Request::SetDebugLogging { .. }
@@ -3131,6 +3156,8 @@ impl Api {
             Request::Sidebar { repo } => {
                 let h = self.handle(repo)?;
                 let mut s = crate::shelldata::sidebar(&h.repo, &h.workdir, &self.submodules).await?;
+                // A config git can't read leaves the panel out, as before Init.
+                s.gitflow = crate::write::gitflow::read(&self.cli, &h.workdir).await.ok().flatten();
                 crate::write::rewrites::annotate(&self.data_dir, &h.common_dir, &h.repo.to_thread_local(), &mut s.locals);
                 to_json(s)
             }
@@ -3430,6 +3457,12 @@ impl Api {
             // --- end 2C T6 ---
             // --- 3B T3 ---
             Request::CreateTag { repo, worktree, name, target, message } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::tags::CreateTag { name, target, message }).await?),
+            Request::GitflowInit { repo, worktree, config } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::gitflow::GitflowInit { config }).await?),
+            Request::GitflowFinish { repo, worktree, branch, tag, tag_message, keep, expect } => {
+                let h = self.handle(repo)?;
+                let config = crate::write::gitflow::read(&self.cli, &h.workdir).await?.ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, "Git flow isn't set up in this repository"))?;
+                to_json(crate::write::run_write(self, repo, &worktree, expect, crate::write::gitflow::GitflowFinish::new(branch, config, tag, tag_message, keep)).await?)
+            }
             Request::DeleteTag { repo, worktree, name, local, remote } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::tags::DeleteTag { name, local, remote }).await?),
             Request::PushTags { repo, worktree, remote, tag } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::tags::PushTags { remote, tag }).await?),
             // --- end 3B T3 ---
@@ -5585,6 +5618,7 @@ mod tests {
         "lfsFetch", "lfsPull", "lfsDownload", "lfsTrack", "lfsUntrack",
         // --- 3B T3 ---
         "createTag", "deleteTag", "pushTags",
+        "gitflowInit", "gitflowFinish",
         // --- end 3B T3 ---
         // --- 3C T3 ---
         "interactiveRebase",
@@ -5701,6 +5735,8 @@ mod tests {
             // --- end 3A T3 ---
             // 3B T3: refused (a bad name, no such tag) before writing.
             json!({"method": "createTag", "params": {"repo": id, "worktree": wt, "name": "a..b", "target": "0000000000000000000000000000000000000000"}}),
+            json!({"method": "gitflowInit", "params": {"repo": id, "worktree": wt, "config": {"master": "nonexistent", "develop": "develop", "feature": "feature/", "release": "release/", "hotfix": "hotfix/", "versionTag": ""}}}),
+            json!({"method": "gitflowFinish", "params": {"repo": id, "worktree": wt, "branch": "feature/nonexistent"}}),
             json!({"method": "deleteTag", "params": {"repo": id, "worktree": wt, "name": "nope", "local": true}}),
             json!({"method": "pushTags", "params": {"repo": id, "worktree": wt, "remote": "origin", "tag": "nope"}}),
             // 3C T3: refused (x isn't checked out) before writing.

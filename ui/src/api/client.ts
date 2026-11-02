@@ -7,6 +7,8 @@ import type { DiffContentsPayload } from './gen/DiffContentsPayload';
 import type { DiffSpec } from './gen/DiffSpec';
 import type { FileListPayload } from './gen/FileListPayload';
 import type { FontFamily } from './gen/FontFamily';
+import type { GitflowConfig } from './gen/GitflowConfig';
+import type { GitflowFinishOutcome } from './gen/GitflowFinishOutcome';
 import type { GraphPayload } from './gen/GraphPayload';
 import type { HexDumpPayload } from './gen/HexDumpPayload';
 import type { HistoryHit } from './gen/HistoryHit';
@@ -531,6 +533,14 @@ export const api = {
   /** Create tag here (spec #3 §3.9): `message` null for a lightweight tag. */
   createTag: (repo: number, worktree: string, t: { name: string; target: string; message: string | null }) =>
     call<WriteResult<null>>({ method: 'createTag', params: { repo, worktree, name: t.name, target: t.target, message: t.message ?? undefined } }),
+  // --- Git flow ---
+  /** Set git flow up: its settings, and the development branch when it's missing. */
+  gitflowInit: (repo: number, worktree: string, config: GitflowConfig) => call<WriteResult<null>>({ method: 'gitflowInit', params: { repo, worktree, config } }),
+  /** Finish a feature, release or hotfix: `tag` the release's tag name (null: the prefixes'),
+   * `tagMessage` null for a lightweight tag. */
+  gitflowFinish: (repo: number, worktree: string, f: { branch: string; tag: string | null; tagMessage: string | null; keep: boolean; expect: Expect }) =>
+    call<WriteResult<GitflowFinishOutcome>>({ method: 'gitflowFinish', params: { repo, worktree, branch: f.branch, tag: f.tag ?? undefined, tagMessage: f.tagMessage ?? undefined, keep: f.keep, expect: f.expect } }),
+  // --- end Git flow ---
   /** `Delete | Local | Remote | Both |` on a tag. */
   deleteTag: (repo: number, worktree: string, d: { name: string; local: boolean; remote: string | null }) =>
     call<WriteResult<null>>({ method: 'deleteTag', params: { repo, worktree, name: d.name, local: d.local, remote: d.remote ?? undefined } }),

@@ -27,6 +27,20 @@ describe('sidebar model', () => {
     ]);
   });
 
+  it('git flow set up: its panel comes first, above Local, with its feature, release and hotfix branches by prefix', () => {
+    const flow: SidebarPayload = {
+      ...payload,
+      locals: [...payload.locals, branch('develop', 25), branch('release/1.2.0', 5), branch('hotfix/1.1.1', 4)],
+      gitflow: { master: 'main', develop: 'develop', feature: 'feature/', release: 'release/', hotfix: 'hotfix/', versionTag: 'v' },
+    };
+    const panels = buildPanels(sectionsOf(flow), opts());
+    expect(view(panels).slice(0, view(panels).indexOf('[Local 6]') + 1)).toEqual([
+      '[Git Flow 4]', '  feature/', '    login', '    pay/', '      v2', '  hotfix/', '    1.1.1', '  release/', '    1.2.0', '[Local 6]',
+    ]);
+    expect(panels[0].section.items[0].key).toBe('gitflow:refs/heads/feature/login');
+    expect(sectionsOf(payload).some((s) => s.id === 'gitflow')).toBe(false);
+  });
+
   it('a branch sorts among the folders by name: dev comes before the f/ folder', () => {
     const mixed: SidebarPayload = { ...payload, locals: [branch('f/cart-stack', 1), branch('dev', 2), branch('backup/old', 3)] };
     expect(view(buildPanels(sectionsOf(mixed), opts())).slice(0, 6)).toEqual(['[Local 3]', '  backup/', '    old', '  dev', '  f/', '    cart-stack']);
