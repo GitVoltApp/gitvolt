@@ -48,9 +48,21 @@ Download the package for your system from the
   Windows SmartScreen warns the first time: **More info** › **Run anyway**.
 - **macOS (Apple Silicon):** open `GitVolt_<version>_aarch64.dmg` and drag GitVolt to
   Applications. The app is signed with GitVolt's own certificate, not an Apple Developer ID, and
-  isn't notarized, so the first launch is blocked ("Apple could not verify…"). Either run
-  `xattr -dr com.apple.quarantine /Applications/GitVolt.app` once, or try to open it, then
-  go to System Settings › Privacy & Security and click **Open Anyway**.
+  isn't notarized, so the first launch is blocked ("Apple could not verify…"). Clear the
+  quarantine flag the browser set, once, either on the disk image before you open it:
+
+  ```sh
+  xattr -d com.apple.quarantine ~/Downloads/GitVolt_<version>_aarch64.dmg
+  ```
+
+  or on the app once it's installed (a copy from a quarantined image inherits the flag):
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/GitVolt.app
+  ```
+
+  Or try to open it, then go to System Settings › Privacy & Security and click **Open Anyway**
+  (with a self-signed app, some macOS versions don't offer it).
 
 GitVolt needs Git 2.40 or newer on your `PATH` (on Windows,
 [Git for Windows](https://gitforwindows.org/); on macOS, Xcode's command line tools or Homebrew's
