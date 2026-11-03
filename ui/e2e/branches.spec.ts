@@ -99,7 +99,9 @@ test.describe('branches (spec #2 §9.1, §9.2)', () => {
       await start.getByRole('button', { name: 'Start feature' }).click();
       await expect(flow.getByRole('treeitem', { name: 'feature/search', exact: true })).toBeVisible();
       expect(git(repo, 'branch', '--show-current')).toBe('feature/search');
-      git(repo, 'commit', '--allow-empty', '-q', '-m', 'Search box');
+      // The fixture's change to file_1.txt (carried over by the checkout) is the feature's work:
+      // Finish refuses tracked changes.
+      git(repo, 'commit', '-q', '-am', 'Search box');
       await expect(grid(page).getByText('Search box')).toBeVisible();
       await flow.getByRole('treeitem', { name: 'feature/search', exact: true }).click({ button: 'right' });
       await menu(page).getByRole('menuitem', { name: 'Finish feature search…' }).click();
