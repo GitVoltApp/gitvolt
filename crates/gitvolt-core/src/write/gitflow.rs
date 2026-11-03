@@ -193,8 +193,8 @@ fn holding_tag(repo: &gix::Repository, tip: gix::ObjectId, master: gix::ObjectId
     let mut queue = std::collections::VecDeque::from([(tip, 0u32)]);
     while let Some((id, d)) = queue.pop_front() {
         for &child in children.get(&id).into_iter().flatten() {
-            if !depth.contains_key(&child) {
-                depth.insert(child, d + 1);
+            if let std::collections::hash_map::Entry::Vacant(e) = depth.entry(child) {
+                e.insert(d + 1);
                 queue.push_back((child, d + 1));
             }
         }
