@@ -509,7 +509,7 @@ pub fn run() {
             if let Some(p) = place {
                 window_state::settle(&window, p, &screens, veil);
             }
-            window_state::track(&window, window_store.clone(), can_position, (cfg.width, cfg.height));
+            window_state::track(&window, window_store.clone(), can_position, (cfg.width, cfg.height), screens);
             // GNOME's button layout and title bar clicks, followed as they change. The settings
             // object lives as long as the app.
             #[cfg(target_os = "linux")]

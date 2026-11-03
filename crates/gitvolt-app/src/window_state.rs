@@ -198,6 +198,25 @@ pub fn placement(saved: &WindowGeometry, screens: &[Screen], primary: Option<usi
     Some(Placement { position: Some((x, y)), size, maximized })
 }
 
+/// Where to put the window shown `now` once the monitors changed under it (one unplugged: macOS
+/// leaves its windows at the new layout's edge, barely on screen); `None` if it's fine where it
+/// is. As at startup ([`placement`]): mostly off every work area, it's centred on the primary
+/// monitor at its size, clamped to the work area. A maximized or minimized window is the
+/// system's to place.
+pub fn back_on_screen(now: &Observed, screens: &[Screen], primary: Option<usize>) -> Option<Placement> {
+    if now.maximized || now.minimized {
+        return None;
+    }
+    let (x, y) = now.position?;
+    let rect = Rect::new(x, y, now.size.0, now.size.1);
+    let visible: f64 = screens.iter().map(|s| rect.intersection_area(&s.work_area)).sum();
+    if rect.area() <= 0.0 || visible >= MIN_VISIBLE * rect.area() {
+        return None;
+    }
+    let primary = primary.and_then(|i| screens.get(i)).or(screens.first())?;
+    Some(centred_on(primary, now.size))
+}
+
 /// The screen whose work area holds most of `rect`; none if it's off all of them.
 pub fn screen_holding<'a>(rect: &Rect, screens: &'a [Screen]) -> Option<&'a Screen> {
     screens
@@ -344,6 +363,11 @@ struct Tracker {
     store: Arc<SettingsStore>,
     /// Bumped by every move/resize; a debounced save runs only if it's still the latest.
     generation: AtomicU64,
+    /// Bumped by every event that may follow a change of monitors; likewise.
+    layout_generation: AtomicU64,
+    /// The monitors as last seen: the window is only moved when they change, never because the
+    /// user dragged it mostly off screen.
+    screens: std::sync::Mutex<Vec<Screen>>,
     can_position: bool,
     default_size: (f64, f64),
 }
@@ -373,15 +397,89 @@ impl Tracker {
             Err(e) => tracing::debug!("window geometry unavailable: {e}"),
         }
     }
+
+    /// If the monitors changed since last seen and left the window mostly off screen, puts it
+    /// back ([`back_on_screen`]). Off the event loop: the getters block on it.
+    fn keep_on_screen<R: Runtime>(&self, w: &WebviewWindow<R>) {
+        if !self.can_position {
+            return;
+        }
+        let available = w.available_monitors().unwrap_or_default();
+        if available.is_empty() {
+            return;
+        }
+        let primary = w.primary_monitor().ok().flatten();
+        let (screens, primary) = screens(&available, primary.as_ref());
+        {
+            let mut seen = self.screens.lock().unwrap_or_else(|e| e.into_inner());
+            if *seen == screens {
+                return;
+            }
+            *seen = screens.clone();
+        }
+        if w.is_fullscreen().unwrap_or(false) {
+            return;
+        }
+        let now = match observe(w, true) {
+            Ok(now) => now,
+            Err(e) => return tracing::debug!("window geometry unavailable after a monitor change: {e}"),
+        };
+        let Some(place) = back_on_screen(&now, &screens, primary) else {
+            return;
+        };
+        let primary = primary.and_then(|i| screens.get(i)).map(Screen::identity);
+        tracing::debug!(
+            "window placement: the monitors changed, {} is mostly off screen; moved to {}",
+            describe(now.position, now.size, now.monitor.as_ref()),
+            describe(place.position, place.size, primary.as_ref()),
+        );
+        if let Some((x, y)) = place.position
+            && let Err(e) = w.set_position(LogicalPosition::new(x, y))
+        {
+            tracing::warn!("couldn't move the window back on screen: {e}");
+        }
+        if place.size != now.size
+            && let Err(e) = w.set_size(LogicalSize::new(place.size.0, place.size.1))
+        {
+            tracing::warn!("couldn't fit the window to the screen: {e}");
+        }
+    }
+
+    /// Checks the window against the monitors once things have gone quiet for `SETTLE`.
+    fn layout_maybe_changed<R: Runtime>(self: &Arc<Self>, w: &WebviewWindow<R>) {
+        let generation = self.layout_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let (tracker, w) = (self.clone(), w.clone());
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(SETTLE).await;
+            if tracker.layout_generation.load(Ordering::SeqCst) == generation {
+                let _ = tauri::async_runtime::spawn_blocking(move || tracker.keep_on_screen(&w)).await;
+            }
+        });
+    }
 }
 
 /// Saves the window's geometry on every move and resize (debounced like the settings file,
-/// `SAVE_DEBOUNCE`) and once more when it's asked to close.
-pub fn track<R: Runtime>(window: &WebviewWindow<R>, store: Arc<SettingsStore>, can_position: bool, default_size: (f64, f64)) {
-    let tracker = Arc::new(Tracker { store, generation: AtomicU64::new(0), can_position, default_size });
+/// `SAVE_DEBOUNCE`) and once more when it's asked to close. And keeps it on screen when the
+/// monitors change under it (`screens`: the ones it was placed on): checked after it moves, is
+/// resized, changes scale or comes to the front, and on macOS whenever the displays change.
+pub fn track<R: Runtime>(window: &WebviewWindow<R>, store: Arc<SettingsStore>, can_position: bool, default_size: (f64, f64), screens: Vec<Screen>) {
+    let tracker = Arc::new(Tracker {
+        store,
+        generation: AtomicU64::new(0),
+        layout_generation: AtomicU64::new(0),
+        screens: std::sync::Mutex::new(screens),
+        can_position,
+        default_size,
+    });
+    #[cfg(target_os = "macos")]
+    {
+        let (tracker, w) = (tracker.clone(), window.clone());
+        macos::on_displays_changed(move || tracker.layout_maybe_changed(&w));
+    }
     let w = window.clone();
     window.on_window_event(move |event| match event {
         WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+            tracker.layout_maybe_changed(&w);
             let generation = tracker.generation.fetch_add(1, Ordering::SeqCst) + 1;
             let (tracker, w) = (tracker.clone(), w.clone());
             tauri::async_runtime::spawn(async move {
@@ -392,6 +490,7 @@ pub fn track<R: Runtime>(window: &WebviewWindow<R>, store: Arc<SettingsStore>, c
                 }
             });
         }
+        WindowEvent::Focused(true) => tracker.layout_maybe_changed(&w),
         // On the main thread, inside the runtime's event dispatch, where its getters are
         // answered inline (`RuntimeContext::send_message`). The exit flush then writes it.
         WindowEvent::CloseRequested { .. } => {
@@ -400,6 +499,27 @@ pub fn track<R: Runtime>(window: &WebviewWindow<R>, store: Arc<SettingsStore>, c
         }
         _ => {}
     });
+}
+
+#[cfg(target_os = "macos")]
+mod macos {
+    use objc2_foundation::{NSNotificationCenter, NSOperationQueue, ns_string};
+
+    /// Calls `changed` on the main thread each time a display is connected, disconnected or
+    /// rearranged (AppKit's `NSApplicationDidChangeScreenParametersNotification`), for as long as
+    /// the app runs. A window AppKit moved then may not report a move.
+    pub fn on_displays_changed(changed: impl Fn() + Send + 'static) {
+        let block = block2::RcBlock::new(move |_: std::ptr::NonNull<objc2_foundation::NSNotification>| changed());
+        let center = NSNotificationCenter::defaultCenter();
+        let queue = NSOperationQueue::mainQueue();
+        // SAFETY: a notification AppKit posts on the main thread, observed on the main queue, with
+        // a block that only schedules work elsewhere and is `Send`.
+        let observer = unsafe {
+            center.addObserverForName_object_queue_usingBlock(Some(ns_string!("NSApplicationDidChangeScreenParametersNotification")), None, Some(&queue), &block)
+        };
+        // Observed for the app's lifetime: the center holds the block until it's removed.
+        std::mem::forget(observer);
+    }
 }
 
 /// Whether to build the window see-through and only make it visible once it's where it was asked
@@ -836,6 +956,35 @@ mod tests {
 
     fn observed(x: f64, y: f64, w: f64, h: f64, monitor: &Screen) -> Observed {
         Observed { position: Some((x, y)), size: (w, h), maximized: false, minimized: false, monitor: Some(monitor.identity()) }
+    }
+
+    #[test]
+    fn a_window_left_at_the_edge_by_an_unplugged_monitor_is_centred_on_the_primary_one() {
+        // On the external monitor, unplugged: macOS left its left edge at the laptop's right edge.
+        let now = observed(1915.0, 100.0, 1600.0, 900.0, &laptop());
+        let p = back_on_screen(&now, &[laptop()], Some(0)).unwrap();
+        assert_eq!(p, Placement { position: Some((160.0, 166.0)), size: (1600.0, 900.0), maximized: false });
+        // Larger than what's left: fitted to its work area.
+        let now = observed(1915.0, 100.0, 2400.0, 1300.0, &laptop());
+        assert_eq!(back_on_screen(&now, &[laptop()], Some(0)).unwrap(), Placement { position: Some((0.0, 32.0)), size: (1920.0, 1168.0), maximized: false });
+    }
+
+    #[test]
+    fn a_window_still_mostly_on_screen_stays_after_the_monitors_change() {
+        let now = observed(2100.0, 100.0, 1600.0, 900.0, &external());
+        assert_eq!(back_on_screen(&now, &[laptop(), external()], Some(0)), None);
+        // Half on screen is enough, as at startup.
+        let now = observed(1320.0, 100.0, 1200.0, 800.0, &laptop());
+        assert_eq!(back_on_screen(&now, &[laptop()], Some(0)), None);
+    }
+
+    #[test]
+    fn a_maximized_minimized_or_unplaced_window_is_left_to_the_system() {
+        let off = observed(1915.0, 100.0, 1600.0, 900.0, &laptop());
+        assert_eq!(back_on_screen(&Observed { maximized: true, ..off.clone() }, &[laptop()], Some(0)), None);
+        assert_eq!(back_on_screen(&Observed { minimized: true, ..off.clone() }, &[laptop()], Some(0)), None);
+        assert_eq!(back_on_screen(&Observed { position: None, ..off.clone() }, &[laptop()], Some(0)), None);
+        assert_eq!(back_on_screen(&off, &[], None), None);
     }
 
     #[test]

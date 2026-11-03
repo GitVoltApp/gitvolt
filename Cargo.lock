@@ -2103,6 +2103,7 @@ dependencies = [
 name = "gitvolt-app"
 version = "1.4.1"
 dependencies = [
+ "block2",
  "gdk4-x11",
  "gio",
  "gitvolt-core",
