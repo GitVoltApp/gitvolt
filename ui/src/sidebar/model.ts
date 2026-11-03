@@ -194,7 +194,7 @@ export function buildPanels(sections: Section[], o: RowOptions): Panel[] {
         const key = folderKey(s.id, path);
         const fc = !q && o.collapsed.has(key);
         const isRemote = s.kind === 'remote' && depth === 1;
-        const branchFolder = s.kind === 'local' || s.kind === 'tags' ? `${path}/` : s.kind === 'remote' && !isRemote ? `${path.slice(path.indexOf('/') + 1)}/` : undefined;
+        const branchFolder = s.kind === 'local' || s.kind === 'gitflow' || s.kind === 'tags' ? `${path}/` : s.kind === 'remote' && !isRemote ? `${path.slice(path.indexOf('/') + 1)}/` : undefined;
         const c = counts?.get(path);
         const hidden = branchFolder && s.picks ? folderPickHides(s.picks, branchFolder) || (!!c && c.hidden === c.all) : false;
         out.push({

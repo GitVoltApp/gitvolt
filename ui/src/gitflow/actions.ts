@@ -2,27 +2,17 @@ import { api } from '../api/client';
 import type { GitflowConfig } from '../api/gen/GitflowConfig';
 import type { GitflowFinishOutcome } from '../api/gen/GitflowFinishOutcome';
 import type { GitflowKind } from '../api/gen/GitflowKind';
-import { useRuntime, worktreeOf } from '../app/runtime';
-import { checkoutLocal } from '../branches/checkout';
+import { useRuntime } from '../app/runtime';
+import { checkoutLocal, ctxOf } from '../branches/checkout';
 import { createBranch } from '../branches/create';
 import { startIntegrate } from '../integrate/integrate';
+import { branchOf, headBranchOf } from '../sync/push';
 import { useToast } from '../ui/toastStore';
 import { runWrite, type WriteCtx } from '../write/client';
 import { baseOf, classify, prefixOf } from './model';
 
-/** The tab's write context, when it has a repository open. */
-export function ctxOf(tabId: string): WriteCtx | null {
-  const rt = useRuntime.getState().tabs[tabId];
-  const worktree = worktreeOf(rt);
-  return rt?.repo && worktree ? { tabId, repoId: rt.repo.id, worktree } : null;
-}
-
 /** The tab's git flow settings, once it's set up. */
 export const flowOf = (tabId: string): GitflowConfig | null => useRuntime.getState().tabs[tabId]?.sidebar?.gitflow ?? null;
-
-const tipOf = (tabId: string, branch: string): string | null => useRuntime.getState().tabs[tabId]?.sidebar?.locals.find((b) => b.name === branch)?.target ?? null;
-
-const headBranchOf = (tabId: string): string | null => useRuntime.getState().tabs[tabId]?.graph?.head.branch?.replace(/^refs\/heads\//, '') ?? null;
 
 export async function initGitflow(ctx: WriteCtx, config: GitflowConfig, editing: boolean): Promise<void> {
   await runWrite(ctx, () => api.gitflowInit(ctx.repoId, ctx.worktree, config), {
@@ -33,7 +23,7 @@ export async function initGitflow(ctx: WriteCtx, config: GitflowConfig, editing:
 /** A new feature, release or hotfix: an ordinary create-and-checkout at its base branch's tip. */
 export async function startGitflow(ctx: WriteCtx, config: GitflowConfig, kind: GitflowKind, name: string): Promise<void> {
   const base = baseOf(config, kind);
-  const sha = tipOf(ctx.tabId, base);
+  const sha = branchOf(ctx.tabId, base)?.target;
   if (!sha) return void useToast.getState().show(`There's no branch ${base} to start from`, { error: true });
   await createBranch(ctx, { sha, ref: `refs/heads/${base}` }, `${prefixOf(config, kind)}${name}`, true);
 }
@@ -61,7 +51,7 @@ export async function finishGitflow(ctx: WriteCtx, branch: string, opts: { tag: 
   if (!config || !kind) return;
   const names = [branch, ...(kind === 'feature' ? [config.develop] : [config.master, config.develop])];
   const refs: Record<string, string | null> = {};
-  for (const n of names) { const tip = tipOf(ctx.tabId, n); if (tip) refs[`refs/heads/${n}`] = tip; }
+  for (const n of names) { const tip = branchOf(ctx.tabId, n)?.target; if (tip) refs[`refs/heads/${n}`] = tip; }
   const out = await runWrite(ctx, () => api.gitflowFinish(ctx.repoId, ctx.worktree, { branch, tag: opts.tag, tagMessage: opts.tagMessage, keep: opts.keep, expect: { head: null, refs } }));
   if (!out) return;
   if (out.status === 'done') return void useToast.getState().show(finishedText(branch, out));

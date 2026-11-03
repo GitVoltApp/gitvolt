@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { create } from 'zustand';
+import { api } from '../api/client';
 import type { GitflowConfig } from '../api/gen/GitflowConfig';
 import type { GitflowKind } from '../api/gen/GitflowKind';
 import { useModalKeys } from '../app/modalKeys';
 import { useRuntime } from '../app/runtime';
 import { registerAppSlot } from '../app/slots';
-import { ctxOf, finishGitflow, flowOf, initGitflow, startGitflow } from './actions';
+import { ctxOf } from '../branches/checkout';
+import { finishGitflow, flowOf, initGitflow, startGitflow } from './actions';
 import { tagNameError } from '../tags/tagName';
 import { baseOf, classify, configError, KIND_LABEL, KINDS, prefixOf, startNameError, suggestedTag, targetsOf } from './model';
 import './gitflow.css';
@@ -138,17 +140,28 @@ function FinishForm({ req }: { req: Extract<Req, { kind: 'finish' }> }) {
   const [tag, setTag] = useState(suggested ?? '');
   const [message, setMessage] = useState<string | null>(null);
   const [keep, setKeep] = useState(false);
-  if (!config || !flow) return null;
+  // An earlier finish that stopped before development tagged production already: that tag stays.
+  const [kept, setKept] = useState<string | null>(null);
+  const repoId = useRuntime((s) => s.tabs[req.tabId]?.repo?.id);
   const tagged = suggested !== null;
+  useEffect(() => {
+    if (!tagged || repoId === undefined) return;
+    let live = true;
+    api.gitflowFinishedTag(repoId, req.branch).then((t) => { if (live && t) { setKept(t); setTag(t); } }, () => {});
+    return () => { live = false; };
+  }, [tagged, repoId, req.branch]);
+  if (!config || !flow) return null;
   const shownMessage = message ?? (tag ? `${KIND_LABEL[flow.kind]} ${tag}` : '');
-  const tagError = tagged ? (tag ? tagNameError(tag) : 'Enter a tag name') : null;
+  const keptMessage = (kept && useRuntime.getState().tabs[req.tabId]?.sidebar?.tags.find((t) => t.name === kept)?.annotation?.message) || '';
+  const tagError = tagged && !kept ? (tag ? tagNameError(tag) : 'Enter a tag name') : null;
   const targets = targetsOf(config, flow.kind);
-  const steps = [`merges it into ${targets.join(', then ')}`, ...(tagged ? [`tags ${config.master}${tag && !tagError ? ` ${tag}` : ''}`] : []), ...(keep ? [] : ['deletes it'])];
+  const tagStep = kept ? `keeps ${config.master}'s tag ${kept}` : `tags ${config.master}${tag && !tagError ? ` ${tag}` : ''}`;
+  const steps = [`merges it into ${targets.join(', then ')}`, ...(tagged ? [tagStep] : []), ...(keep ? [] : ['deletes it'])];
   const submit = () => {
     const ctx = ctxOf(req.tabId);
     if (!ctx || tagError) return;
     close();
-    void finishGitflow(ctx, req.branch, { tag: tagged ? tag : null, tagMessage: tagged && shownMessage.trim() ? shownMessage : null, keep });
+    void finishGitflow(ctx, req.branch, { tag: tagged ? tag : null, tagMessage: tagged && !kept && shownMessage.trim() ? shownMessage : null, keep });
   };
   return (
     <Modal title={`Finish ${req.branch}`}>
@@ -158,12 +171,12 @@ function FinishForm({ req }: { req: Extract<Req, { kind: 'finish' }> }) {
           <>
             <label className="modal-field">
               <span>Tag</span>
-              <input aria-label="Tag" value={tag} autoFocus={!tag} spellCheck={false} placeholder="3.0.0" onChange={(e) => setTag(e.target.value.trim())} />
+              <input aria-label="Tag" value={tag} readOnly={!!kept} autoFocus={!tag} spellCheck={false} placeholder="3.0.0" onChange={(e) => setTag(e.target.value.trim())} />
             </label>
             {tagError && tag && <p role="alert" className="modal-error">{tagError}</p>}
             <label className="modal-field">
               <span>Tag message</span>
-              <input aria-label="Tag message" value={shownMessage} autoFocus={!!tag} spellCheck={false} placeholder="None: a lightweight tag" onChange={(e) => setMessage(e.target.value)} />
+              <input aria-label="Tag message" value={kept ? keptMessage : shownMessage} readOnly={!!kept} autoFocus={!!tag} spellCheck={false} placeholder="None: a lightweight tag" onChange={(e) => setMessage(e.target.value)} />
             </label>
           </>
         )}

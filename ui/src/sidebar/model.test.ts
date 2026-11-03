@@ -115,6 +115,14 @@ describe('sidebar model', () => {
       expect(folders(withBot).filter((f) => f[1]).every((f) => f[2] === false)).toBe(true);
     });
 
+    it('the Git Flow panel\'s folders hide and show as Local\'s do', () => {
+      const flow: SidebarPayload = { ...withBot, gitflow: { master: 'main', develop: 'develop', feature: 'feature/', release: 'release/', hotfix: 'hotfix/', versionTag: '' } };
+      const flowFolders = (v: ViewPayload, picks?: BranchPicks) => folders(flow, v, picks).filter((f) => String(f[0]).startsWith('gitflow:'));
+      expect(flowFolders(states2([]))).toEqual([['gitflow:feature', 'feature/', false], ['gitflow:feature/pay', 'feature/pay/', false]]);
+      expect(flowFolders(states2(['feature/login', 'feature/pay/v2']))).toEqual([['gitflow:feature', 'feature/', true], ['gitflow:feature/pay', 'feature/pay/', true]]);
+      expect(flowFolders(states2([]), { shown: [], hidden: ['feature/pay/'] })).toEqual([['gitflow:feature', 'feature/', false], ['gitflow:feature/pay', 'feature/pay/', true]]);
+    });
+
     it('a folder looks hidden when its folder pick, or one above it, hides it', () => {
       const hidden = (picks: { shown: string[]; hidden: string[] }) => folders(withBot, states2([]), picks).filter((f) => f[2]).map((f) => f[0]);
       expect(hidden({ shown: ['feature/pay/v2'], hidden: ['feature/pay/'] })).toEqual(['local:feature/pay']);

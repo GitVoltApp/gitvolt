@@ -118,7 +118,8 @@ export async function checkout(at: WriteCtx, target: CheckoutTarget, expected: E
   return false;
 }
 
-const ctxOf = (tabId: string): WriteCtx | null => {
+/** The tab's write context, when it has a repository open. */
+export const ctxOf = (tabId: string): WriteCtx | null => {
   const rt = useRuntime.getState().tabs[tabId];
   const worktree = worktreeOf(rt);
   return rt?.repo && worktree ? { tabId, repoId: rt.repo.id, worktree } : null;

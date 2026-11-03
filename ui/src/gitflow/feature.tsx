@@ -6,6 +6,7 @@ import { registerMenu } from '../menu/registry';
 import type { CommitTarget, MenuEnv } from '../menu/menuEnv';
 import { registerSettings } from '../settings/registry';
 import { registerSidebarHeaderAction } from '../sidebar/itemActions';
+import { headBranchOf } from '../sync/push';
 import { flowOf } from './actions';
 import { offGitflowDialog, openGitflowDialog } from './GitflowDialog';
 import { classify, defaultConfig, KIND_LABEL } from './model';
@@ -28,7 +29,7 @@ export function openSettings(tabId: string): void {
 /** The checked-out branch, when it's one of git flow's. */
 const headFlowBranch = (tabId: string): string | null => {
   const flow = flowOf(tabId);
-  const head = useRuntime.getState().tabs[tabId]?.graph?.head.branch?.replace(/^refs\/heads\//, '');
+  const head = headBranchOf(tabId);
   return flow && head && classify(flow, head) ? head : null;
 };
 
