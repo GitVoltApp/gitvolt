@@ -582,7 +582,7 @@ pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path, seen: &Ar
         .filter_map(|w| w.branch.clone().map(|b| (b, w.path.display().to_string())))
         .collect();
     let checked_out: std::collections::HashMap<String, String> = worktrees.iter().filter_map(|w| w.branch.clone().map(|b| (b, w.path.display().to_string()))).collect();
-    let mut s = SidebarPayload { locals: vec![], remotes: vec![], worktrees: vec![], stashes: vec![], tags: vec![], submodules, gitflow: None };
+    let mut s = SidebarPayload { locals: vec![], remotes: vec![], worktrees: vec![], stashes: vec![], tags: vec![], submodules, gitflow: crate::write::gitflow::read(&local) };
     let mut defaults: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for row in rows {
         if let Some(sym) = row.symref {

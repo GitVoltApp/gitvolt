@@ -20,6 +20,7 @@ use crate::write::precheck::display_worktree;
 use crate::write::refs::read_ref;
 use crate::write::{is_ancestor, Plan, Pre, Staging, WriteCx, WriteIntent};
 use serde::{Deserialize, Serialize};
+use gix::bstr::ByteSlice;
 use std::path::Path;
 use std::sync::OnceLock;
 use ts_rs::TS;
@@ -130,36 +131,88 @@ fn parse_entries(raw: &[u8]) -> BranchConfig {
     map
 }
 
-/// `gitflow.*` (a read): every scope's (`local` false, as `git flow` reads them), or the
-/// repository's own, which is all Init writes and so all its journal entry records.
-async fn entries(cli: &GitCli, root: &Path, local: bool) -> Result<BranchConfig, GbError> {
-    let mut args = vec!["config"];
-    if local {
-        args.push("--local");
-    }
-    args.extend(["--null", "--get-regexp", r"^gitflow\."]);
-    match cli.run(GitInvocation::new(root, args)).await {
+/// The repository's own `gitflow.*`: all Init writes, and so all its journal entry records.
+async fn entries(cli: &GitCli, root: &Path) -> Result<BranchConfig, GbError> {
+    match cli.run(GitInvocation::new(root, ["config", "--local", "--null", "--get-regexp", r"^gitflow\."])).await {
         Ok(out) => Ok(parse_entries(&out.stdout)),
         Err(e) if quiet_exit(&e) => Ok(BranchConfig::new()),
         Err(e) => Err(e),
     }
 }
 
-/// The repository's git flow settings, or `None` before Init (no production or development
-/// branch set). A prefix that isn't set has `git flow`'s default.
-pub(crate) async fn read(cli: &GitCli, root: &Path) -> Result<Option<GitflowConfig>, GbError> {
-    let e = entries(cli, root, false).await?;
-    let one = |k: &str| e.get(k).and_then(|v| v.last()).cloned();
-    let (Some(master), Some(develop)) = (one("gitflow.branch.master"), one("gitflow.branch.develop")) else { return Ok(None) };
+/// The repository's git flow settings, or `None` until it's set up here: its own config names
+/// the production and development branches (a `git flow init --global` names them for every
+/// repository) and both exist, as `git flow` requires. A prefix that isn't set has `git flow`'s
+/// default. In process, from the config file as it is now: the sidebar reads it on every refresh.
+pub(crate) fn read(repo: &gix::Repository) -> Option<GitflowConfig> {
+    let c = from_config(&crate::shelldata::fresh_config(repo))?;
+    let exists = |b: &str| read_ref(repo, &heads(b)).ok().flatten().is_some();
+    (exists(&c.master) && exists(&c.develop)).then_some(c)
+}
+
+/// `read`'s settings, from the repository's own config file only (`fresh_config` falls back on
+/// the handle's snapshot, which has the global and system files too).
+fn from_config(config: &gix::config::File) -> Option<GitflowConfig> {
+    let one = |k: &str| config.string_filter(k, |m| m.source == gix::config::Source::Local).map(|v| v.to_str_lossy().into_owned());
+    let (master, develop) = (one("gitflow.branch.master")?, one("gitflow.branch.develop")?);
     let or = |k: &str, default: &str| one(k).unwrap_or_else(|| default.to_string());
-    Ok(Some(GitflowConfig {
+    Some(GitflowConfig {
         master,
         develop,
         feature: or("gitflow.prefix.feature", "feature/"),
         release: or("gitflow.prefix.release", "release/"),
         hotfix: or("gitflow.prefix.hotfix", "hotfix/"),
         version_tag: or("gitflow.prefix.versiontag", ""),
-    }))
+    })
+}
+
+/// The tag an earlier finish of a release or hotfix put on production, which a finish again
+/// keeps: one on a commit of `master` that holds `branch`, the nearest. `None`: there's none, or
+/// `branch` isn't a release or hotfix.
+pub(crate) fn finished_tag(repo: &gix::Repository, config: &GitflowConfig, branch: &str) -> Result<Option<String>, GbError> {
+    if !matches!(config.classify(branch), Some((GitflowKind::Release | GitflowKind::Hotfix, _))) {
+        return Ok(None);
+    }
+    let tip = |name: &str| -> Result<Option<gix::ObjectId>, GbError> { read_ref(repo, &heads(name))?.map(|o| gix::ObjectId::from_hex(o.as_bytes()).map_err(gix_err)).transpose() };
+    let (Some(tip), Some(master)) = (tip(branch)?, tip(&config.master)?) else { return Ok(None) };
+    holding_tag(repo, tip, master)
+}
+
+/// The tag nearest `tip` among those on a commit of `master`'s that holds `tip`. Only the commits
+/// of `master` that `tip` doesn't have are walked: those that hold it descend from it in there.
+fn holding_tag(repo: &gix::Repository, tip: gix::ObjectId, master: gix::ObjectId) -> Result<Option<String>, GbError> {
+    let mut children: std::collections::HashMap<gix::ObjectId, Vec<gix::ObjectId>> = std::collections::HashMap::new();
+    for info in repo.rev_walk([master]).with_hidden([tip]).all().map_err(gix_err)? {
+        let info = info.map_err(gix_err)?;
+        for p in info.parent_ids {
+            children.entry(p).or_default().push(info.id);
+        }
+    }
+    // Breadth first from `tip`: how far each commit that holds it is.
+    let mut depth = std::collections::HashMap::new();
+    let mut queue = std::collections::VecDeque::from([(tip, 0u32)]);
+    while let Some((id, d)) = queue.pop_front() {
+        for &child in children.get(&id).into_iter().flatten() {
+            if !depth.contains_key(&child) {
+                depth.insert(child, d + 1);
+                queue.push_back((child, d + 1));
+            }
+        }
+    }
+    if depth.is_empty() {
+        return Ok(None);
+    }
+    let mut best: Option<(u32, String)> = None;
+    for r in repo.references().map_err(gix_err)?.tags().map_err(gix_err)? {
+        let Ok(mut r) = r else { continue };
+        let Ok(id) = r.peel_to_id() else { continue };
+        let Some(&d) = depth.get(&id.detach()) else { continue };
+        let name = r.name().shorten().to_str_lossy().into_owned();
+        if best.as_ref().is_none_or(|(bd, bn)| (d, &name) < (*bd, bn)) {
+            best = Some((d, name));
+        }
+    }
+    Ok(best.map(|(_, name)| name))
 }
 
 pub(crate) struct GitflowInit {
@@ -202,7 +255,7 @@ impl WriteIntent for GitflowInit {
             cx.cas(&[RefMove { name: heads(&c.develop), old: None, new: start }], &format!("branch: Created from {}", c.master)).await?;
             cx.touch(ChangeKind::Refs);
         }
-        let before = entries(&cx.api.cli, cx.root, true).await?;
+        let before = entries(&cx.api.cli, cx.root).await?;
         for (key, value) in c.keys() {
             if before.get(key).is_some_and(|v| v.len() == 1 && v[0] == value) {
                 continue;
@@ -210,7 +263,7 @@ impl WriteIntent for GitflowInit {
             let inv = cx.git(["config", "--local", "--replace-all", key, value]);
             cx.run_git(inv).await?;
         }
-        let after = entries(&cx.api.cli, cx.root, true).await?;
+        let after = entries(&cx.api.cli, cx.root).await?;
         let changes = config::changes(&before, &after);
         if !changes.is_empty() {
             cx.touch(ChangeKind::Config);
@@ -310,10 +363,11 @@ impl WriteIntent for GitflowFinish {
         let tip = pre.before.refs.get(&heads(&self.branch)).cloned().flatten().ok_or_else(|| GbError::new(GbErrorKind::NotFound, format!("No branch {}", self.branch)))?;
         let oid = |o: &str| gix::ObjectId::from_hex(o.as_bytes()).map_err(gix_err);
         let tip_id = oid(&tip)?;
-        // Every merge runs in this worktree: a branch some other one has checked out can't be.
+        // Every merge runs in this worktree: a target some other one has checked out can't be.
+        // Nor can the branch be deleted there; kept, it's only read.
         let targets = self.config.targets(kind);
         let worktrees = crate::worktree::list_worktrees(pre.root).await?;
-        for name in std::iter::once(self.branch.as_str()).chain(targets.iter().copied()) {
+        for name in std::iter::once(self.branch.as_str()).filter(|_| !self.keep).chain(targets.iter().copied()) {
             if let Some(w) = worktrees.iter().find(|w| w.branch.as_deref() == Some(heads(name).as_str()))
                 && crate::platform::fs::canonicalize(&w.path).unwrap_or(w.path.clone()) != pre.root
             {
@@ -343,10 +397,17 @@ impl WriteIntent for GitflowFinish {
             }
             steps.targets.push((target.to_string(), true));
         }
-        // The tag goes on production once the branch is in it; a tag that's there already and
-        // holds the branch is the one an earlier finish made.
+        // The tag goes on production once the branch is in it. When production has it already
+        // (an earlier finish stopped before development), a tag there that holds the branch is
+        // that finish's, kept whatever name this one was given; so is a tag of this name that
+        // holds it.
         let on_master = steps.targets.iter().any(|(t, _)| *t == self.config.master);
-        if let Some(name) = self.tag_name().filter(|_| on_master) {
+        let merges_master = steps.targets.iter().any(|(t, merges)| *t == self.config.master && *merges);
+        let tagged = on_master && !merges_master && {
+            let at = pre.before.refs.get(&heads(&self.config.master)).cloned().flatten().ok_or_else(|| GbError::new(GbErrorKind::NotFound, format!("No branch {}", self.config.master)))?;
+            holding_tag(&repo, tip_id, oid(&at)?)?.is_some()
+        };
+        if let Some(name) = self.tag_name().filter(|_| on_master && !tagged) {
             if let Some(why) = tag_name_error(&name) {
                 return Err(GbError::new(GbErrorKind::InvalidInput, format!("The tag {name}: {why}")));
             }
@@ -384,9 +445,13 @@ impl WriteIntent for GitflowFinish {
                     cx.touch(k);
                 }
                 if let Err(e) = res {
-                    // Predicted clean, but git stopped (a merge driver, a rename it judged
-                    // otherwise): it's undone, and the finish stops as if it had been predicted.
-                    let Some(files) = abort_conflicted(cx).await? else { return Err(e) };
+                    // Predicted clean, but git stopped: it's undone. On conflicts (a merge driver,
+                    // a rename it judged otherwise) the finish stops as if they'd been predicted;
+                    // anything else (a hook's refusal) is the merge's error.
+                    let files = abort_merge(cx).await?;
+                    if files.is_empty() {
+                        return Err(e);
+                    }
                     return Ok(GitflowFinishOutcome::Conflicts { into: target.clone(), files, merged, tag });
                 }
                 merged.push(target.clone());
@@ -430,16 +495,16 @@ async fn switch_to(cx: &mut WriteCx<'_>, on: &mut Option<String>, target: &str) 
     Ok(())
 }
 
-/// A merge that stopped on conflicts: its conflicted paths, once `git merge --abort` has put
-/// the branch back. `None`: it failed some other way (nothing to abort).
-async fn abort_conflicted(cx: &mut WriteCx<'_>) -> Result<Option<Vec<String>>, GbError> {
+/// A merge git stopped: its conflicted paths (none: it stopped for another reason), once `git
+/// merge --abort` has put the branch back. Nothing to abort when it never started.
+async fn abort_merge(cx: &mut WriteCx<'_>) -> Result<Vec<String>, GbError> {
     if !matches!(crate::in_progress::read(cx.root).ok().flatten(), Some(crate::in_progress::InProgress::Merge { .. })) {
-        return Ok(None);
+        return Ok(Vec::new());
     }
     let files = crate::write::precheck::dirty(&cx.api.cli, cx.root).await?.unmerged;
     let inv = cx.git(["merge", "--abort"]);
     cx.run_git(inv).await?;
-    Ok(Some(files))
+    Ok(files)
 }
 
 /// The release's or hotfix's tag on `branch`'s tip: annotated (`git tag -a`, which signs per
@@ -539,17 +604,55 @@ mod tests {
         assert_eq!(e["gitflow.prefix.versiontag"], [""], "an empty value is a value");
     }
 
-    #[tokio::test]
-    async fn read_is_none_before_init_and_fills_in_default_prefixes() {
+    #[test]
+    fn read_is_none_before_init_and_fills_in_default_prefixes() {
         let r = TestRepo::new();
         r.commit("one");
-        let cli = GitCli::new(std::sync::Arc::new(crate::log::CommandLog::new(50))).with_env(crate::testing::isolated_git_env());
-        assert_eq!(read(&cli, r.path()).await.unwrap(), None);
+        r.git(&["branch", "dev"]);
+        assert_eq!(read(&gix::open(r.path()).unwrap()), None);
         r.git(&["config", "gitflow.branch.master", "main"]);
         r.git(&["config", "gitflow.branch.develop", "dev"]);
         r.git(&["config", "gitflow.prefix.feature", "feat/"]);
-        let c = read(&cli, r.path()).await.unwrap().unwrap();
+        let c = read(&gix::open(r.path()).unwrap()).unwrap();
         assert_eq!((c.develop.as_str(), c.feature.as_str(), c.release.as_str(), c.version_tag.as_str()), ("dev", "feat/", "release/", ""));
+    }
+
+    /// `git flow` refuses a repository whose production or development branch is missing.
+    #[test]
+    fn it_isnt_set_up_until_both_branches_exist() {
+        let r = TestRepo::new();
+        r.commit("one");
+        r.git(&["config", "gitflow.branch.master", "main"]);
+        r.git(&["config", "gitflow.branch.develop", "develop"]);
+        assert_eq!(read(&gix::open(r.path()).unwrap()), None);
+        r.git(&["branch", "develop"]);
+        assert_eq!(read(&gix::open(r.path()).unwrap()).map(|c| c.develop), Some("develop".into()));
+    }
+
+    /// `git flow init --global` would otherwise light the panel up in every repository.
+    #[test]
+    fn settings_from_the_global_config_dont_set_it_up() {
+        let file = |text: &str, source: gix::config::Source| gix::config::File::from_bytes_owned(&mut text.as_bytes().to_vec(), gix::config::file::Metadata::from(source), Default::default()).unwrap();
+        let global = "[gitflow \"branch\"]\n\tmaster = main\n\tdevelop = develop\n[gitflow \"prefix\"]\n\tfeature = f/\n";
+        assert_eq!(from_config(&file(global, gix::config::Source::User)), None);
+        let mut both = file(global, gix::config::Source::User);
+        both.append(file("[gitflow \"branch\"]\n\tmaster = prod\n\tdevelop = dev\n", gix::config::Source::Local)).unwrap();
+        let c = from_config(&both).unwrap();
+        assert_eq!((c.master.as_str(), c.develop.as_str(), c.feature.as_str()), ("prod", "dev", "feature/"), "only the repository's own keys count");
+    }
+
+    /// The sidebar reads the settings on every refresh: in process, not a `git config` that
+    /// would fill the Activity log.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_sidebar_reads_the_settings_without_a_git_process() {
+        let env = WriteEnv::new();
+        let r = repo();
+        let id = open(&env.api, &r).await;
+        let before = env.api.cli.log().entries().len();
+        let s = send(&env.api, json!({"method": "sidebar", "params": {"repo": id}})).await.unwrap();
+        assert_eq!(s["gitflow"]["develop"], "develop");
+        let ran: Vec<_> = env.api.cli.log().entries()[before..].iter().map(|e| e.args.join(" ")).collect();
+        assert!(ran.is_empty(), "{ran:?}");
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -680,6 +783,79 @@ mod tests {
         assert_eq!(out["outcome"], json!({"status": "done", "merged": [], "tag": null, "deleted": true}));
         assert_eq!(oid(&r, "main"), main);
         assert!(!exists(&r, "refs/heads/hotfix/1.0.1"));
+    }
+
+    /// The first finish named the tag itself (`3.0.0`, not `vspring`) and stopped before develop:
+    /// the dialog offers that tag again, and the second finish makes no other.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn finishing_again_keeps_the_tag_the_first_finish_made() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.switch_new("release/spring");
+        r.write("version.txt", "3.0.0\n");
+        r.git(&["add", "version.txt"]);
+        r.git(&["commit", "-q", "-m", "bump"]);
+        r.switch("develop");
+        r.write("version.txt", "3.1.0-dev\n");
+        r.git(&["add", "version.txt"]);
+        r.git(&["commit", "-q", "-m", "next"]);
+        let id = open(&env.api, &r).await;
+        let tag_of = |branch: &str| json!({"method": "gitflowFinishedTag", "params": {"repo": id, "branch": branch}});
+        assert_eq!(send(&env.api, tag_of("release/spring")).await.unwrap(), json!(null), "not finished yet");
+        let req = json!({"method": "gitflowFinish", "params": {"repo": id, "worktree": wt(&r), "branch": "release/spring", "tag": "3.0.0", "tagMessage": "Release 3.0.0"}});
+        let out = send(&env.api, req).await.unwrap();
+        assert_eq!((out["outcome"]["status"].as_str(), out["outcome"]["tag"].as_str()), (Some("conflicts"), Some("3.0.0")));
+        // A later tag on main holds the release too; the nearer one is the finish's.
+        r.switch("main");
+        r.commit("later");
+        r.git(&["tag", "3.0.1"]);
+        assert_eq!(send(&env.api, tag_of("release/spring")).await.unwrap(), "3.0.0");
+        assert_eq!(send(&env.api, tag_of("feature/x")).await.unwrap(), json!(null));
+        r.switch("develop");
+        let _ = r.try_git(&["merge", "--no-ff", "release/spring"]);
+        r.write("version.txt", "3.1.0-dev\n");
+        r.git(&["add", "version.txt"]);
+        r.git(&["commit", "-q", "--no-edit"]);
+        // Asked for the prefixes' tag (`vspring`) this time: the one main has stays the only one.
+        let out = send(&env.api, finish(id, &r, "release/spring", Some("Release spring"))).await.unwrap();
+        assert_eq!(out["outcome"], json!({"status": "done", "merged": [], "tag": null, "deleted": true}));
+        assert_eq!(r.git(&["tag", "--list"]), "3.0.0\n3.0.1");
+    }
+
+    /// A pre-merge-commit hook that refuses isn't a conflict: the merge is undone and its error
+    /// (the hook's output) is the finish's.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_hook_that_refuses_the_merge_is_an_error_not_a_conflict() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.switch_new("feature/x");
+        r.commit("f");
+        r.hook("pre-merge-commit", "#!/bin/sh\necho 'merges are frozen' >&2\nexit 1\n");
+        let id = open(&env.api, &r).await;
+        let before = RepoState::capture(&r);
+        let e = send(&env.api, finish(id, &r, "feature/x", None)).await.unwrap_err();
+        assert!(e.stderr.as_deref().unwrap_or_default().contains("merges are frozen"), "{e:?}");
+        assert!(!r.path().join(".git/MERGE_HEAD").exists(), "the merge is aborted");
+        assert_eq!(r.git(&["status", "--porcelain"]), "");
+        assert_eq!(RepoState::capture(&r).refs, before.refs);
+        assert!(exists(&r, "refs/heads/feature/x"));
+    }
+
+    /// Checked out in another worktree, the branch can still be merged; only its delete can't.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_branch_checked_out_elsewhere_is_finished_when_it_is_kept() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.switch_new("feature/x");
+        r.commit("f");
+        r.switch("develop");
+        r.add_worktree("x", "feature/x");
+        let id = open(&env.api, &r).await;
+        let e = send(&env.api, finish(id, &r, "feature/x", None)).await.unwrap_err();
+        assert!(e.message.contains("feature/x"), "{}", e.message);
+        let req = json!({"method": "gitflowFinish", "params": {"repo": id, "worktree": wt(&r), "branch": "feature/x", "keep": true}});
+        let out = send(&env.api, req).await.unwrap();
+        assert_eq!(out["outcome"], json!({"status": "done", "merged": ["develop"], "tag": null, "deleted": false}));
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -540,6 +540,8 @@ export const api = {
    * `tagMessage` null for a lightweight tag. */
   gitflowFinish: (repo: number, worktree: string, f: { branch: string; tag: string | null; tagMessage: string | null; keep: boolean; expect: Expect }) =>
     call<WriteResult<GitflowFinishOutcome>>({ method: 'gitflowFinish', params: { repo, worktree, branch: f.branch, tag: f.tag ?? undefined, tagMessage: f.tagMessage ?? undefined, keep: f.keep, expect: f.expect } }),
+  /** The tag an earlier finish of a release or hotfix put on production, which Finish keeps. */
+  gitflowFinishedTag: (repo: number, branch: string) => call<string | null>({ method: 'gitflowFinishedTag', params: { repo, branch } }),
   // --- end Git flow ---
   /** `Delete | Local | Remote | Both |` on a tag. */
   deleteTag: (repo: number, worktree: string, d: { name: string; local: boolean; remote: string | null }) =>

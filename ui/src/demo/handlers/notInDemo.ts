@@ -32,6 +32,7 @@ const WHAT: Record<NotInDemoMethod, string> = {
   lfsUntrack: 'Git LFS tracking',
   gitflowInit: 'git flow',
   gitflowFinish: 'git flow',
+  gitflowFinishedTag: 'git flow',
   addForgeAccount: 'forge accounts',
   removeForgeAccount: 'forge accounts',
   forgeTokenPage: 'forge accounts',

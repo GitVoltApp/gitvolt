@@ -1014,6 +1014,9 @@ pub enum Request {
         #[serde(default)]
         expect: crate::write::types::Expect,
     },
+    /// The tag an earlier finish of release or hotfix `branch` put on production, which Finish
+    /// keeps (no git process): `string | null`; null when git flow isn't set up.
+    GitflowFinishedTag { repo: u32, branch: String },
     // --- end Git flow ---
     // --- 4A T5 ---
     /// The active profile's forge accounts, with what their last requests said (no network):
@@ -1500,7 +1503,8 @@ impl Request {
             | Request::QueueState { .. }
             | Request::QueueRemove { .. }
             | Request::QueueResume { .. }
-            | Request::QueueClear { .. } => false,
+            | Request::QueueClear { .. }
+            | Request::GitflowFinishedTag { .. } => false,
         }
     }
 }
@@ -3156,8 +3160,6 @@ impl Api {
             Request::Sidebar { repo } => {
                 let h = self.handle(repo)?;
                 let mut s = crate::shelldata::sidebar(&h.repo, &h.workdir, &self.submodules).await?;
-                // A config git can't read leaves the panel out, as before Init.
-                s.gitflow = crate::write::gitflow::read(&self.cli, &h.workdir).await.ok().flatten();
                 crate::write::rewrites::annotate(&self.data_dir, &h.common_dir, &h.repo.to_thread_local(), &mut s.locals);
                 to_json(s)
             }
@@ -3460,8 +3462,12 @@ impl Api {
             Request::GitflowInit { repo, worktree, config } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::gitflow::GitflowInit { config }).await?),
             Request::GitflowFinish { repo, worktree, branch, tag, tag_message, keep, expect } => {
                 let h = self.handle(repo)?;
-                let config = crate::write::gitflow::read(&self.cli, &h.workdir).await?.ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, "Git flow isn't set up in this repository"))?;
+                let config = crate::write::gitflow::read(&h.repo.to_thread_local()).ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, "Git flow isn't set up in this repository"))?;
                 to_json(crate::write::run_write(self, repo, &worktree, expect, crate::write::gitflow::GitflowFinish::new(branch, config, tag, tag_message, keep)).await?)
+            }
+            Request::GitflowFinishedTag { repo, branch } => {
+                let local = self.handle(repo)?.repo.to_thread_local();
+                to_json(crate::write::gitflow::read(&local).map(|c| crate::write::gitflow::finished_tag(&local, &c, &branch)).transpose()?.flatten())
             }
             Request::DeleteTag { repo, worktree, name, local, remote } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::tags::DeleteTag { name, local, remote }).await?),
             Request::PushTags { repo, worktree, remote, tag } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::tags::PushTags { remote, tag }).await?),
@@ -5520,6 +5526,7 @@ mod tests {
             json!({"method": "submodules", "params": {"repo": id, "worktree": wt}}),
             json!({"method": "commitIdentity", "params": {"repo": id, "worktree": wt}}),
             json!({"method": "sidebar", "params": {"repo": id}}),
+            json!({"method": "gitflowFinishedTag", "params": {"repo": id, "branch": "release/1.0"}}),
             json!({"method": "lastPush", "params": {"repo": id, "remoteRef": "refs/remotes/origin/main"}}),
             json!({"method": "appInfo"}),
             // Updates: no source in a test `Api`, so all but status and cancel refuse.

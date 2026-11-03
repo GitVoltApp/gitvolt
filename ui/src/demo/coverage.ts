@@ -156,6 +156,7 @@ export const COVERAGE = {
   pushTags: 'real',
   gitflowInit: 'notInDemo',
   gitflowFinish: 'notInDemo',
+  gitflowFinishedTag: 'notInDemo',
   forgeAccounts: 'real',
   addForgeAccount: 'notInDemo',
   removeForgeAccount: 'notInDemo',
