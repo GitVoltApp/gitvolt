@@ -128,33 +128,28 @@ function WindowButtons({ buttons, maximized, platform }: { buttons: WindowButton
  * GitVolt's own title bar (Linux, Windows and macOS, unless Settings › Appearance says to use the
  * system's): ☰ at its start, after any window buttons the desktop puts on the left; the window's
  * title in the middle; the window buttons at the end, as GNOME's `button-layout` has them
- * (Windows' three, flat, on the right). On macOS, Apple's traffic lights come first (the window
- * draws them over the bar's slot; full screen hides them, and the slot goes too), and nothing is
- * at the end. Its empty space and title move the window, and the window's edges resize it
- * (`ResizeEdges`; on Windows only the top, the system's border doing the rest; macOS keeps its
- * own frame). Nothing when the window has the system's title bar, or no window at all (a browser,
- * the website demo).
+ * (Windows' three, flat, on the right). Its empty space and title move the window, and the
+ * window's edges resize it (`ResizeEdges`; on Windows only the top, the system's border doing the
+ * rest). Nothing on macOS, where the tab bar is the title bar (`useTabsInTitleBar`), nor when the
+ * window has the system's title bar, or no window at all (a browser, the website demo).
  */
 export function TitleBar() {
   const info = useWindowChrome((s) => s.info);
   const maximized = useWindowChrome((s) => s.maximized);
-  const fullscreen = useWindowChrome((s) => s.fullscreen);
   const custom = info?.frame === 'custom';
   const title = useDocumentTitle();
   useEffect(() => (custom ? followWindow() : undefined), [custom]);
-  if (!custom) return null;
+  if (!custom || info.platform === 'macos') return null;
   const { start, end } = buttonSets(info.platform, info.layout);
   return (
     <Fragment>
       <div className={`title-bar platform-${info.platform}`} {...titleBarMouse()}>
-        {/* macOS draws its own traffic lights over the window's corner: their slot. */}
-        {info.platform === 'macos' && !fullscreen && <span className="title-bar-lights" />}
         <WindowButtons buttons={start} maximized={maximized} platform={info.platform} />
         <HamburgerMenu />
         <div className="title-bar-title"><span>{title}</span></div>
         <WindowButtons buttons={end} maximized={maximized} platform={info.platform} />
       </div>
-      {info.platform !== 'macos' && !maximized && <ResizeEdges platform={info.platform} />}
+      {!maximized && <ResizeEdges platform={info.platform} />}
     </Fragment>
   );
 }

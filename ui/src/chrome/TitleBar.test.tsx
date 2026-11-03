@@ -165,39 +165,56 @@ describe('the resize edges', () => {
 
 describe('on macOS', () => {
   const mac = (more: Partial<WindowChromeInfo> = {}): WindowChromeInfo => ({ frame: 'custom', platform: 'macos', layout: '', doubleClick: 'toggle-maximize', middleClick: 'none', rightClick: 'none', ...more });
-  const order = () => [...bar().children].map((el) => el.getAttribute('aria-label') ?? el.className);
+  const tabBar = () => document.querySelector<HTMLElement>('.tab-bar')!;
+  const order = () => [...tabBar().children].slice(0, 3).map((el) => el.getAttribute('aria-label') ?? el.className);
+  const showTabs = (info: WindowChromeInfo) => {
+    act(() => {
+      useWindowChrome.setState({ info, maximized: false, fullscreen: false });
+      useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 'a', kind: 'repo', path: '/a', alias: null }], activeTab: 'a' } });
+    });
+    render(<><TitleBar /><TabBar /></>);
+  };
+  afterEach(() => act(() => useAppState.setState({ profile: EMPTY_PROFILE })));
 
-  it("the traffic lights' slot, then ☰ and the title, and no buttons of its own", () => {
-    show(mac());
-    expect(order()).toEqual(['title-bar-lights', 'Menu', 'title-bar-title']);
-    expect(within(bar()).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Menu']);
-    expect(bar()).toHaveClass('platform-macos');
+  it("has no title bar row: the tab bar is the title bar, the traffic lights' slot, then ☰", () => {
+    showTabs(mac());
+    expect(bar()).toBeNull();
+    expect(tabBar()).toHaveClass('in-title-bar');
+    expect(order()).toEqual(['title-bar-lights', 'Menu', 'Open repository']);
     // The window keeps macOS's frame, which resizes it.
-    expect(document.querySelector('.window-edges')).toBeNull();
+    expect(document.querySelector('.window-edge')).toBeNull();
   });
 
   it('full screen hides the traffic lights, and their slot goes; it comes back after', () => {
-    show(mac());
+    showTabs(mac());
     act(() => useWindowChrome.setState({ fullscreen: true }));
-    expect(order()).toEqual(['Menu', 'title-bar-title']);
+    expect(order()).toEqual(['Menu', 'Open repository', 'Repositories']);
     act(() => useWindowChrome.setState({ fullscreen: false }));
-    expect(order()).toEqual(['title-bar-lights', 'Menu', 'title-bar-title']);
+    expect(order()).toEqual(['title-bar-lights', 'Menu', 'Open repository']);
   });
 
-  it('drags from its empty space and title, and a double click does what System Settings says', () => {
-    show(mac({ doubleClick: 'minimize' }));
+  it("the lights' slot and the strip's empty space drag; a double click does what System Settings says", () => {
+    showTabs(mac({ doubleClick: 'minimize' }));
     fireEvent.mouseDown(document.querySelector('.title-bar-lights')!, { button: 0, clientX: 30, clientY: 15 });
     fireEvent.mouseMove(document, { buttons: 1, clientX: 60, clientY: 20 });
-    fireEvent.doubleClick(title());
+    fireEvent.mouseUp(document);
+    fireEvent.mouseDown(screen.getByRole('tablist'), { button: 0, clientX: 600, clientY: 15 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 640, clientY: 20 });
+    fireEvent.mouseUp(document);
+    fireEvent.doubleClick(screen.getByRole('tablist'));
+    fireEvent.doubleClick(document.querySelector('.title-bar-lights')!);
     act(() => useWindowChrome.setState({ info: mac({ doubleClick: 'none' }) }));
-    fireEvent.doubleClick(title());
-    expect(calls()).toEqual(['startDragging', 'minimize']);
+    fireEvent.doubleClick(screen.getByRole('tablist'));
+    // Not a new tab, as the strip's double click is elsewhere.
+    expect(useAppState.getState().profile.tabs).toHaveLength(1);
+    expect(calls()).toEqual(['startDragging', 'startDragging', 'minimize', 'minimize']);
   });
 
-  it('a middle or right click does nothing, as on a macOS title bar', () => {
-    show(mac());
-    fireEvent(title(), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
-    fireEvent.contextMenu(title(), { clientX: 200, clientY: 12 });
+  it("a middle or right click on the lights' slot does nothing, as on a macOS title bar", () => {
+    showTabs(mac());
+    const lights = document.querySelector('.title-bar-lights')!;
+    fireEvent(lights, new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    fireEvent.contextMenu(lights, { clientX: 30, clientY: 12 });
     expect(calls()).toEqual([]);
     expect(useMenu.getState().rows).toBeFalsy();
   });

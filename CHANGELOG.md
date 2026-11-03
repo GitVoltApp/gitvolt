@@ -5,10 +5,20 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Changed
+
+- **macOS: the tabs are in the title bar.** The traffic lights sit at the start of the tab bar,
+  then ☰ and the tabs, as in a browser, instead of a title bar row above it: 30 px more for the
+  repository. The tab strip's empty space moves the window, and a double click there does what
+  System Settings says (Zoom by default).
+
 ### Fixed
 
 - **Activity log.** A push's, clone's or fetch's entry keeps each progress phase's final line
   (`Writing objects: 100% (110/110), done.`) instead of hundreds of percentage updates.
+- **The window comes back on screen when a monitor goes.** Unplugging the monitor GitVolt was on
+  no longer leaves the window at the remaining screen's edge, too little of it showing to drag
+  back: it's centred on the main screen.
 - **Activity log.** An expected non-zero exit (a missing git-lfs, an unset config key) no
   longer shows in red as a failure.
 - **Profile menu.** The profiles' rows have no tooltip; it was a leftover note, and the label says it all.

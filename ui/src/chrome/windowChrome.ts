@@ -48,6 +48,10 @@ export const useWindowChrome = create<ChromeState>(() => ({
 /** The page draws the title bar (and ☰ moves up into it). */
 export const useCustomTitleBar = () => useWindowChrome((s) => s.info?.frame === 'custom');
 
+/** macOS, under GitVolt's own title bar: there's no title bar row, the tab bar is the title bar
+ * (the traffic lights at its start, then ☰ and the tabs), as in a browser. */
+export const useTabsInTitleBar = () => useWindowChrome((s) => s.info?.frame === 'custom' && s.info.platform === 'macos');
+
 /** gitvolt-app's `window_manager` requests. */
 export type WindowManagerRequest = 'menu' | 'keyboard-menu' | 'lower';
 

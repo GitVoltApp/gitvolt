@@ -68,10 +68,11 @@ bar and ☰ stays in the tab bar. An X11 session keeps the system frame: there t
 needs the X pointer grab, which Chromium's connection holds while the button is down.
 
 On macOS the window keeps its frame with Tauri's overlay title bar style (transparent, the title
-hidden, the page under it), and the same bar has Apple's traffic lights in a slot at its start,
-inset to its middle (`trafficLightPosition`, `chrome.rs`'s `TRAFFIC_LIGHTS`), with no buttons of
-its own; full screen hides the lights, and the slot goes. A double click does what System
-Settings says (`AppleActionOnDoubleClick`, read again whenever the window comes to the front). The
+hidden, the page under it), and there's no title bar row: the tab bar is the title bar, as in a
+browser, with Apple's traffic lights in a slot at its start, inset to its middle
+(`trafficLightPosition`, `chrome.rs`'s `TRAFFIC_LIGHTS`), then ☰, and no window buttons of its
+own; full screen hides the lights, and the slot goes. The slot and the tab strip's empty space
+move the window, and a double click there does what System Settings says (`AppleActionOnDoubleClick`, read again whenever the window comes to the front). The
 runtime starts a title bar drag from a press of its own at the pointer and keeps the overlay
 window immovable otherwise, and it sends a resize when a full screen transition ends, so the page
 sees full screen end (`GITVOLT-PATCH.md`). `ui/scripts/mac-titlebar.mjs` checks it all with real

@@ -69,14 +69,16 @@ async function step(name, body) {
 const browser = port === 'none' ? null : await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
 const page = browser?.contexts().flatMap((c) => c.pages()).find((p) => !p.url().startsWith('devtools:'));
 if (browser && !page) throw new Error('no app page');
-const bar = page?.locator('.title-bar');
+// The tab bar is macOS's title bar: no title bar row above it.
+const bar = page?.locator('.tab-bar');
 /** The traffic lights' slot in the page's bar (`.title-bar-lights`), for a check without the page. */
 const SLOT_WIDTH = 78;
 const rectOf = (locator) => locator.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
 /** A point of the page, in screen coordinates (the page fills the window, at 100% zoom). */
 const onScreen = async (x, y) => { const f = await frame(); return [f.x + x, f.y + y]; };
-/** A point on the title bar's empty space: three quarters of the way across. */
-const barSpace = async () => { const f = await frame(); return [f.x + f.w * 0.75, f.y + 15]; };
+/** A point on the title bar's empty space (the tab strip's, past its one tab): three quarters of
+ * the way across. */
+const barSpace = async () => { const f = await frame(); return [f.x + f.w * 0.75, f.y + 17]; };
 let lights = null;
 
 await step('layout', async (note) => {
@@ -86,19 +88,20 @@ await step('layout', async (note) => {
     note(`no page (a release build); window ${fmt(f)}; Accessibility ${JSON.stringify(lights)}`);
     if (!lights.close) throw new Error('no traffic lights through Accessibility');
     if (lights.zoom.x + lights.zoom.w - f.x > SLOT_WIDTH) throw new Error('the traffic lights overflow their slot');
-    if (!near(lights.close.y + lights.close.h / 2 - f.y, 15, 1)) throw new Error('the traffic lights are not centred in the bar');
+    if (!near(lights.close.y + lights.close.h / 2 - f.y, 17, 1)) throw new Error('the traffic lights are not centred in the bar');
     return;
   }
   const info = await page.evaluate(() => window.__GITVOLT_WINDOW__);
   note(`__GITVOLT_WINDOW__ ${JSON.stringify(info)}`);
   if (info?.frame !== 'custom' || info?.platform !== 'macos') throw new Error('not the custom macOS title bar');
   await bar.waitFor({ timeout: 30_000 });
-  const order = await bar.evaluate((el) => [...el.children].map((c) => c.getAttribute('aria-label') ?? c.className));
+  const order = await bar.evaluate((el) => [...el.children].slice(0, 3).map((c) => c.getAttribute('aria-label') ?? c.className));
   note(`bar children ${JSON.stringify(order)}`);
-  if (JSON.stringify(order) !== JSON.stringify(['title-bar-lights', 'Menu', 'title-bar-title'])) throw new Error(`unexpected bar ${JSON.stringify(order)}`);
-  const [b, slot, menu, tabs] = await Promise.all([rectOf(bar), rectOf(bar.locator('.title-bar-lights')), rectOf(bar.getByRole('button', { name: 'Menu' })), rectOf(page.locator('.tab-bar'))]);
-  note(`bar ${JSON.stringify(b)} slot ${JSON.stringify(slot)} menu ${JSON.stringify(menu)} tab bar y ${tabs.y}`);
-  if (b.y !== 0 || b.h !== 30 || tabs.y !== 30 || slot.x !== 0 || menu.x !== slot.w) throw new Error('the bar is not 30 px at the top, with ☰ after the slot');
+  if (JSON.stringify(order) !== JSON.stringify(['title-bar-lights', 'Menu', 'Open repository'])) throw new Error(`unexpected bar ${JSON.stringify(order)}`);
+  const [b, slot, menu] = await Promise.all([rectOf(bar), rectOf(bar.locator('.title-bar-lights')), rectOf(bar.getByRole('button', { name: 'Menu' }))]);
+  note(`bar ${JSON.stringify(b)} slot ${JSON.stringify(slot)} menu ${JSON.stringify(menu)}`);
+  if (await page.locator('.title-bar').count()) throw new Error('a title bar row above the tab bar');
+  if (b.y !== 0 || b.h !== 34 || slot.x !== 0 || menu.x !== slot.w) throw new Error('the tab bar is not 34 px at the top, with ☰ after the slot');
   if (await page.locator('.window-edges').count()) throw new Error('resize edges on macOS');
   const f = await frame();
   lights = await mac('lights', pid);
@@ -107,11 +110,11 @@ await step('layout', async (note) => {
     for (const name of ['close', 'minimize', 'zoom']) {
       const l = lights[name];
       const centre = l.y + l.h / 2 - f.y;
-      note(`${name}: ${l.x - f.x},${l.y - f.y} ${l.w}x${l.h}, centre ${centre} px down (the bar's is 15)`);
+      note(`${name}: ${l.x - f.x},${l.y - f.y} ${l.w}x${l.h}, centre ${centre} px down (the bar's is 17)`);
     }
     const zoom = lights.zoom;
     if (zoom.x + zoom.w - f.x > slot.w) throw new Error('the traffic lights overflow their slot');
-    if (!near(lights.close.y + lights.close.h / 2 - f.y, 15, 1)) throw new Error('the traffic lights are not centred in the bar');
+    if (!near(lights.close.y + lights.close.h / 2 - f.y, 17, 1)) throw new Error('the traffic lights are not centred in the bar');
   }
 });
 
@@ -250,7 +253,7 @@ async function light(name) {
   const now = await mac('lights', pid);
   const l = now?.[name];
   if (l) return [l.x + l.w / 2, l.y + l.h / 2];
-  return [f.x + 12 + 7 + 20 * ['close', 'minimize', 'zoom'].indexOf(name), f.y + 15];
+  return [f.x + 12 + 7 + 20 * ['close', 'minimize', 'zoom'].indexOf(name), f.y + 17];
 }
 
 await step('yellow-minimizes', async (note) => {

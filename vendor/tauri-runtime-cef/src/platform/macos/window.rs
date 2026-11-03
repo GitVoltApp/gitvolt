@@ -309,6 +309,9 @@ fn inset_traffic_lights(nswindow: &NSWindow, x: f64, y: f64) {
   for (index, button) in [close, miniaturize, zoom].into_iter().enumerate() {
     let mut origin = button.frame().origin;
     origin.x = x + (index as f64 * space_between);
+    // GITVOLT: centred in the title bar, whose height `y` sets, rather than left where AppKit put
+    // them, which changed between releases (macOS 26 puts them ~4 px higher than macOS 15).
+    origin.y = (title_bar_frame_height - button.frame().size.height) / 2.0;
     button.setFrameOrigin(origin);
   }
 }

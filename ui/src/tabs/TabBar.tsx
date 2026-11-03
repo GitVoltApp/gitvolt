@@ -28,7 +28,8 @@ import { isWindowBlur, refocusWhenWindowReturns } from '../ui/windowBlur';
 import './tabs.css';
 import { displayChord } from '../ui/platformKeys';
 import { beginWindowDrag, useDragOrClick } from '../chrome/dragRegion';
-import { useCustomTitleBar } from '../chrome/windowChrome';
+import { runTitleBarAction, useCustomTitleBar, useTabsInTitleBar, useWindowChrome } from '../chrome/windowChrome';
+import { titleBarMouse } from '../chrome/TitleBar';
 
 function RenameInput({ tab }: { tab: TabState }) {
   const stop = useTabUi((s) => s.stopRename);
@@ -164,10 +165,14 @@ function groupPlan(p: Profile, id: string, update: (fn: (p: Profile) => Profile)
 /** Spec §6.2: hamburger, the Open Repository folder icon, tabs (drag, rename, middle-click,
  * right-click menu) and their groups (chips), the profile switcher. The app shell's `header`
  * slot. Under GitVolt's own title bar, ☰ is up there instead, and the strip's empty space moves
- * the window too. */
+ * the window too. On macOS it is the title bar (`useTabsInTitleBar`): the traffic lights' slot
+ * first, then ☰, and a double click on the strip's empty space does what System Settings says
+ * a title bar's does. */
 export function TabBar() {
   const customTitleBar = useCustomTitleBar();
   const buttonDrag = useDragOrClick(customTitleBar);
+  const inTitleBar = useTabsInTitleBar();
+  const fullscreen = useWindowChrome((s) => s.fullscreen);
   const profile = useAppState((s) => s.profile);
   const { tabs, activeTab: active, tabGroups } = profile;
   const closedCount = profile.closedTabs.length;
@@ -221,8 +226,11 @@ export function TabBar() {
   const lifted = (key: string) => (dragged(key) ? ` lifted${drag!.phase === 'drag' ? ' dragging' : ''}` : '');
 
   return (
-    <div className="tab-bar">
-      {!customTitleBar && <HamburgerMenu />}
+    <div className={`tab-bar${inTitleBar ? ' in-title-bar' : ''}`}>
+      {/* macOS draws its own traffic lights over the window's corner: their slot, which moves the
+          window as a title bar does. Full screen hides them, and the slot goes too. */}
+      {inTitleBar && !fullscreen && <span className="title-bar-lights" {...titleBarMouse()} />}
+      {(!customTitleBar || inTitleBar) && <HamburgerMenu />}
       <HoverTooltip content={`Open repository (${displayChord('Mod+O')})`}>
         <button type="button" className="tab-bar-btn" aria-label="Open repository" onMouseDown={buttonDrag.onMouseDown} onClick={(e) => { if (!buttonDrag.guardClick(e)) runAction('file.openRepo'); }}>
           <FolderPlus size={16} aria-hidden />
@@ -232,8 +240,13 @@ export function TabBar() {
         // Empty space only: a tab's own menu stops its event. The menu key and Shift+F10 reach this
         // too, as a native contextmenu event on whatever has focus.
         onContextMenu={(e) => openContextMenu(e, () => buildMenu<null, TabBarEnv>('tabbar', null, { lastClosed, savedGroups: useAppState.getState().profile.savedGroups }))}
-        // Empty space only, as a browser's tab strip: a new tab on the Open repository screen.
-        onDoubleClick={(e) => { if (e.target === e.currentTarget) runAction('file.openRepo'); }}
+        // Empty space only, as a browser's tab strip: a new tab on the Open repository screen; on
+        // macOS, where the strip is the title bar, what System Settings says (Zoom by default).
+        onDoubleClick={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (inTitleBar) void runTitleBarAction(useWindowChrome.getState().info?.doubleClick ?? 'toggle-maximize');
+          else runAction('file.openRepo');
+        }}
         // Empty space only, under GitVolt's own title bar: dragging it moves the window.
         onMouseDown={customTitleBar ? (e) => { if (e.target === e.currentTarget) beginWindowDrag(e); } : undefined}
       >

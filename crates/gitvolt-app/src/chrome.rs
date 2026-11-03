@@ -3,8 +3,8 @@
 //! whose drags, resize edges, window menu and buttons ask the window manager through the CEF
 //! runtime (vendor/tauri-runtime-cef/GITVOLT-PATCH.md, "A window that draws its own title bar").
 //! On macOS the window keeps its frame, with an overlay title bar (transparent, the title hidden,
-//! the page under it), and Apple's traffic lights sit at the start of the UI's title bar, inset to
-//! its middle ([`TRAFFIC_LIGHTS`]). Settings › Appearance › "Use the system title bar" keeps the
+//! the page under it), and the UI's tab bar is the title bar: Apple's traffic lights sit at its
+//! start, inset to its middle ([`TRAFFIC_LIGHTS`]). Settings › Appearance › "Use the system title bar" keeps the
 //! system's; it's read when the window is built, so a change applies after a restart.
 //!
 //! On Windows the undecorated window keeps the system's resize border, shadow and edge at its
@@ -74,12 +74,12 @@ pub fn custom_frame_on(platform: &str, system_title_bar: bool, wayland_display: 
 }
 
 /// Where macOS's traffic lights go, in logical px from the window's top-left corner (Tauri's
-/// `trafficLightPosition`: the close button's left edge, and the height AppKit's title bar view
-/// is stretched to under the buttons, which keep their distance from its bottom): vertically
-/// centred in the 30 px title bar. `ui/src/chrome/chrome.css`'s `.title-bar-lights` keeps their
-/// width free.
+/// `trafficLightPosition`: the close button's left edge, and the height of AppKit's title bar view
+/// less a button's 14 px; the runtime centres the buttons in it, GITVOLT-PATCH.md): a 34 px title
+/// bar, the tab bar's height, which is the title bar on macOS, so they're centred in it.
+/// `ui/src/chrome/chrome.css`'s `.title-bar-lights` keeps their width free.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub const TRAFFIC_LIGHTS: (f64, f64) = (12.0, 13.0);
+pub const TRAFFIC_LIGHTS: (f64, f64) = (12.0, 20.0);
 
 /// What a double click on a macOS title bar does, from System Settings › Desktop & Dock ›
 /// "Double-click a window's title bar to": `AppleActionOnDoubleClick` (`Maximize` is Zoom,

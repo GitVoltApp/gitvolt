@@ -226,7 +226,8 @@ says.
 - A window that draws its own title bar, on macOS (below):
   - `src/platform/macos/window.rs`: `AppWindow::begin_window_drag()`, the
     `MOVABLE_UNTIL_NEXT_PRESS` thread-local, `before_send_event()`, `press_at_pointer()`, the
-    pure `left_button_held()` / `is_press()` and their unit tests.
+    pure `left_button_held()` / `is_press()` and their unit tests; `inset_traffic_lights()`
+    centres the buttons vertically in the title bar.
   - `src/platform/macos/application.rs`: `sendEvent:` calls `before_send_event` first.
   - `src/platform/macos/fullscreen.rs`: `transition_ended` calls `on_transition_end` every time.
   - `src/window.rs`: `StartDragging` goes to `begin_window_drag` on macOS;
@@ -320,6 +321,12 @@ runtime lacked:
   transition observer (`fullscreen.rs`) reports every transition's end, not only one with a
   request pending, and `fullscreen_transition_ended` then emits `WindowEvent::Resized` with the
   window's size, after applying any pending request as before.
+- **The traffic lights' height depended on the macOS release.** `inset_traffic_lights` sets the
+  title bar's height (`trafficLightPosition`'s `y` plus a button's height) but left the buttons
+  where AppKit had them in it, and that changed: centred in the 30 px bar on macOS 15, they sat
+  about 4 px above the middle of the 34 px tab bar (macOS's title bar since) on macOS 26.
+  **Fix:** the buttons are centred vertically in the title bar, so `y` alone decides where they
+  are, on every release.
 
 **Evidence** (`mac-port.yml`, job `app`, `ui/scripts/mac-titlebar.mjs`: the debug app on
 GitHub's `macos-15` runner, real input posted as `CGEvent`s, the window read from the window
