@@ -49,7 +49,7 @@ pub(crate) async fn branch_config(cli: &GitCli, root: &Path, name: &str) -> Resu
 
 /// git exited non-zero and said nothing: `config`'s "no such key" (exit 1 or 5). A run that was
 /// cancelled, timed out or never finished has no stderr at all (`None`), and is an error.
-fn quiet_exit(e: &GbError) -> bool {
+pub(crate) fn quiet_exit(e: &GbError) -> bool {
     e.stderr.as_deref().is_some_and(|s| s.trim().is_empty())
 }
 

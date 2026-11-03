@@ -193,6 +193,8 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
   "from" and which the "to".
 - **File history and blame,** with each version's diff, and restore a file from any commit.
 - **Cherry-pick and revert,** each with a no-commit variant; stashes; tags.
+- **Git flow.** Start and finish features, releases and hotfixes from a sidebar panel; a finish
+  (merges, tag, delete) is one Undo.
 - **Activity log** of every git command GitVolt ran, with its output, hooks included.
 - **Signed commits** through your git config, and signature verification in the commit details.
 
@@ -240,7 +242,7 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 | Hide and solo branches | ✅ | ✅ Presets that hide, collapse or fold branches by rule; Alt+click hides or shows one |
 | Submodules | ✅ | ✅ State in the file list; add, remove, update, sync and open in a tab |
 | Git LFS | ✅ | ✅ Real files in diffs and history, download, pull, track by extension |
-| Git Flow | ✅ | ❌ Not planned unless there's demand |
+| Git Flow | ✅ | ✅ Start and finish features, releases and hotfixes; undoable |
 | Integrated terminal | ✅ | ❌ Not planned |
 | AI commit messages and summaries | ✅ | ❌ Not planned |
 | Issue trackers (Jira, Trello, …) | ✅ | ❌ Not planned |
@@ -252,7 +254,6 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 
 ### What GitVolt doesn't do
 
-- **Not planned unless there's demand:** Git Flow.
 - **Not planned:** Intel Macs, an integrated terminal, AI features, issue tracker integrations,
   cloud workspaces and team features, and Bitbucket, Azure DevOps or GitHub Enterprise Server
   support. Use the tools you already have for those.

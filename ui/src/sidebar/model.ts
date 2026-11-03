@@ -15,6 +15,7 @@ import type { TagItem } from '../api/gen/TagItem';
 import type { ViewPayload } from '../api/gen/ViewPayload';
 import type { WorktreeItem } from '../api/gen/WorktreeItem';
 import { folderPickHides, tagPicksOf } from '../presets/model';
+import { classify } from '../gitflow/model';
 
 interface Base { key: string; name: string; target: string | null; time: number; /** A branch's state under the open preset (a tag's: shown or hidden); absent without a view. */ presetState?: BranchState }
 export type SideItem =
@@ -28,7 +29,7 @@ export type SideItem =
   | (Base & { kind: 'mr'; mr: ForgeMr; forge: ForgeKind });
   // --- end 4B T11 ---
 
-export type SectionKind = 'local' | 'remote' | 'mrs' | 'worktrees' | 'stashes' | 'tags' | 'submodules';
+export type SectionKind = 'local' | 'gitflow' | 'remote' | 'mrs' | 'worktrees' | 'stashes' | 'tags' | 'submodules';
 export interface Section {
   id: SectionKind; kind: SectionKind; label: string; hosts?: Record<string, HostKind>; hostNames?: Record<string, string | null>; items: SideItem[]; nests: boolean; /** The empty body's text (default "Nothing here"). */ empty?: string;
   /** A branch panel's picks under the open preset (its folder picks), the Tags panel's tag picks
@@ -36,7 +37,8 @@ export interface Section {
   picks?: BranchPicks;
 }
 
-/** The sidebar's panels, in fixed display order (spec §6.4): Local, Remote (one top-level folder
+/** The sidebar's panels, in fixed display order (spec §6.4): Git Flow once it's set up (its
+ * feature, release and hotfix branches, a folder per prefix), Local, Remote (one top-level folder
  * per remote), Worktrees, Stashes, Tags, and Submodules in a worktree that has any (by path, flat,
  * as GitKraken lists them). `picks`: the open preset's, for its hidden folders; `worktree`: the
  * tab's active worktree, whose submodules show. */
@@ -57,7 +59,14 @@ export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null, picks?:
     id: 'submodules', kind: 'submodules', label: 'Submodules', nests: false,
     items: subs.map((m): SideItem => ({ key: `submodule:${m.path}`, kind: 'submodule', name: m.path, target: null, time: 0, submodule: m })),
   }];
+  const flow = p.gitflow;
+  const gitflow: Section[] = flow ? [{
+    id: 'gitflow', kind: 'gitflow', label: 'Git Flow', nests: true, ...branchPicks, empty: 'No feature, release or hotfix branches',
+    // Keyed apart from the Local panel's rows of the same branches.
+    items: p.locals.filter((b) => classify(flow, b.name)).map((b): SideItem => ({ key: `gitflow:${b.fullName}`, kind: 'local', name: b.name, target: b.target, time: b.tipTime, branch: b, ...st(b.name) })),
+  }] : [];
   return [
+    ...gitflow,
     { id: 'local', kind: 'local', label: 'Local', nests: true, ...branchPicks, items: p.locals.map((b): SideItem => ({ key: b.fullName, kind: 'local', name: b.name, target: b.target, time: b.tipTime, branch: b, ...st(b.name) })) },
     {
       id: 'remote', kind: 'remote', label: 'Remote', nests: true, hosts, hostNames, ...branchPicks,
@@ -185,7 +194,7 @@ export function buildPanels(sections: Section[], o: RowOptions): Panel[] {
         const key = folderKey(s.id, path);
         const fc = !q && o.collapsed.has(key);
         const isRemote = s.kind === 'remote' && depth === 1;
-        const branchFolder = s.kind === 'local' || s.kind === 'tags' ? `${path}/` : s.kind === 'remote' && !isRemote ? `${path.slice(path.indexOf('/') + 1)}/` : undefined;
+        const branchFolder = s.kind === 'local' || s.kind === 'gitflow' || s.kind === 'tags' ? `${path}/` : s.kind === 'remote' && !isRemote ? `${path.slice(path.indexOf('/') + 1)}/` : undefined;
         const c = counts?.get(path);
         const hidden = branchFolder && s.picks ? folderPickHides(s.picks, branchFolder) || (!!c && c.hidden === c.all) : false;
         out.push({

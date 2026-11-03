@@ -164,6 +164,10 @@ pub struct SidebarPayload {
     /// path as `repoInfo`'s `submodules` is: the Submodules section shows the tab's active one's.
     /// A worktree that has none isn't listed.
     pub submodules: std::collections::BTreeMap<String, Vec<crate::submodules::SubmoduleItem>>,
+    /// The repository's git flow settings, once it's set up: the Git Flow panel shows then.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub gitflow: Option<crate::write::gitflow::GitflowConfig>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -578,7 +582,7 @@ pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path, seen: &Ar
         .filter_map(|w| w.branch.clone().map(|b| (b, w.path.display().to_string())))
         .collect();
     let checked_out: std::collections::HashMap<String, String> = worktrees.iter().filter_map(|w| w.branch.clone().map(|b| (b, w.path.display().to_string()))).collect();
-    let mut s = SidebarPayload { locals: vec![], remotes: vec![], worktrees: vec![], stashes: vec![], tags: vec![], submodules };
+    let mut s = SidebarPayload { locals: vec![], remotes: vec![], worktrees: vec![], stashes: vec![], tags: vec![], submodules, gitflow: crate::write::gitflow::read(&local) };
     let mut defaults: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for row in rows {
         if let Some(sym) = row.symref {

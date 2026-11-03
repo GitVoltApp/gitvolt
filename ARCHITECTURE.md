@@ -223,6 +223,25 @@ Sync URLs, Add (`git submodule add`) and Remove (`git rm`) are writes like any o
 as a push; Add under it, since git stages the submodule after its clone), and Update asks first
 when it would leave a submodule's commits on no branch behind. None is journaled.
 
+**Git flow** (`write/gitflow.rs`) keeps its settings where the `git flow` command line does
+(`gitflow.branch.*`, `gitflow.prefix.*` in the repository's config), so either tool sees the
+other's branches. The `sidebar` read carries them, read in process from the repository's own
+config file (a global `git flow init --global` doesn't count), once they name both branches and
+both exist; the UI's Git Flow panel then lists the local branches under the three prefixes. Init writes them, and creates the
+development branch at the production one if it's missing (MoveRefs, the config recorded with
+it). Start is an ordinary create-and-checkout from the base branch. Finish is one write that
+runs `git merge --no-ff` into each target in turn (a feature into development; a release or
+hotfix into production, then development), tags production for a release or hotfix, deletes
+the branch, and ends on development wherever it started, as `git flow` does. Its plan predicts
+each merge in memory (`integrate::predicted_conflicts`) and skips a target that already has the
+branch; tracked changes, or an untracked file one of its checkouts would overwrite, refuse it
+before anything runs. A merge that would conflict isn't started: the finish stops before it,
+having done what came first, and the UI offers that merge as an ordinary one. Finishing again
+afterwards does only what's left, and keeps the tag an earlier finish put on production
+(`gitflowFinishedTag`, which the dialog shows). It's journaled as a Switch, whose undo moves
+every ref except the checked-out one before it switches, and the checked-out one after; one
+that started on development rewinds that branch instead.
+
 ### Undo and redo
 
 The journal (`journal/`) records GitVolt's own operations, one file per worktree in the data dir

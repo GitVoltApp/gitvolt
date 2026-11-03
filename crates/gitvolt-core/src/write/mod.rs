@@ -11,6 +11,7 @@ pub(crate) mod branch;
 pub(crate) mod conflict;
 // --- end 2D T12 ---
 pub(crate) mod files;
+pub(crate) mod gitflow;
 // --- 2C T1: modules ---
 pub(crate) mod config;
 pub(crate) mod names;

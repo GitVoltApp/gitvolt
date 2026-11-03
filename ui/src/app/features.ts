@@ -52,6 +52,7 @@ import '../stacks/feature';
 // --- 3B T7 ---
 import '../tags/feature';
 // --- end 3B T7 ---
+import '../gitflow/feature';
 // --- 3A T4 ---
 import '../history/feature';
 // --- end 3A T4 ---

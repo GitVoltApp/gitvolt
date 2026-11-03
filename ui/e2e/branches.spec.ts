@@ -8,7 +8,7 @@ const menu = (page: Page) => page.getByRole('menu');
 test.describe('branches (spec #2 §9.1, §9.2)', () => {
   // One repo and page for these (each was a test of its own, paying for a page load), in an order
   // where each starts from what it needs: nothing is left half-done, and the rename comes last.
-  test('the inline name input: Esc or leaving cancels, an invalid name is refused, Enter creates and undo removes it; Set upstream; rename keeps the reflog', async ({ page }) => {
+  test('the inline name input: Esc or leaving cancels, an invalid name is refused, Enter creates and undo removes it; Set upstream; rename keeps the reflog; git flow set up, started and finished', async ({ page }) => {
     const repo = freshFixture('basic');
     await page.goto(openUrl(repo));
     await test.step('Esc, or leaving it empty, cancels the inline input', async () => {
@@ -81,6 +81,35 @@ test.describe('branches (spec #2 §9.1, §9.2)', () => {
       await page.getByRole('button', { name: 'Rename' }).click();
       await expect(chip(page, 'feature/signin')).toBeVisible();
       expect(git(repo, 'reflog', 'show', '--format=%H', 'feature/signin').endsWith(log)).toBe(true);
+    });
+    await test.step('git flow: set up from the palette, a feature started from its panel and finished from its row', async () => {
+      await page.keyboard.press('Control+p');
+      await page.keyboard.type('>set up git flow');
+      await page.keyboard.press('Enter');
+      const setup = page.getByRole('dialog', { name: 'Set up git flow' });
+      await expect(setup.getByRole('textbox', { name: 'Production branch' })).toHaveValue('main');
+      await expect(setup).toContainText("develop doesn't exist yet: it's created at main.");
+      await setup.getByRole('button', { name: 'Set up git flow' }).click();
+      const flow = page.getByRole('complementary', { name: 'Sidebar' }).getByRole('region', { name: 'Git Flow', exact: true });
+      await expect(flow.getByRole('treeitem', { name: 'feature/signin', exact: true })).toBeVisible();
+      expect(git(repo, 'config', 'gitflow.branch.develop')).toBe('develop');
+      await flow.getByRole('button', { name: 'Start a feature, release or hotfix' }).click();
+      const start = page.getByRole('dialog', { name: 'Start a feature' });
+      await start.getByRole('textbox', { name: 'Feature name' }).fill('search');
+      await start.getByRole('button', { name: 'Start feature' }).click();
+      await expect(flow.getByRole('treeitem', { name: 'feature/search', exact: true })).toBeVisible();
+      expect(git(repo, 'branch', '--show-current')).toBe('feature/search');
+      // The fixture's change to file_1.txt (carried over by the checkout) is the feature's work:
+      // Finish refuses tracked changes.
+      git(repo, 'commit', '-q', '-am', 'Search box');
+      await expect(grid(page).getByText('Search box')).toBeVisible();
+      await flow.getByRole('treeitem', { name: 'feature/search', exact: true }).click({ button: 'right' });
+      await menu(page).getByRole('menuitem', { name: 'Finish feature search…' }).click();
+      await page.getByRole('dialog', { name: 'Finish feature/search' }).getByRole('button', { name: 'Finish feature' }).click();
+      await expect(page.getByText('Finished feature/search: merged into develop and deleted')).toBeVisible();
+      expect(git(repo, 'branch', '--show-current')).toBe('develop');
+      expect(git(repo, 'log', '-1', '--format=%s', 'develop')).toBe("Merge branch 'feature/search' into develop");
+      await expect(flow.getByRole('treeitem', { name: 'feature/search', exact: true })).toHaveCount(0);
     });
   });
 
