@@ -231,14 +231,16 @@ both exist; the UI's Git Flow panel then lists the local branches under the thre
 development branch at the production one if it's missing (MoveRefs, the config recorded with
 it). Start is an ordinary create-and-checkout from the base branch. Finish is one write that
 runs `git merge --no-ff` into each target in turn (a feature into development; a release or
-hotfix into production, then development), tags production for a release or hotfix, and
-deletes the branch. Its plan predicts each merge in memory (`integrate::predicted_conflicts`)
-and skips a target that already has the branch. A merge that would conflict isn't started:
-the finish stops before it, having done what came first, and the UI offers that merge as an
-ordinary one. Finishing again afterwards does only what's left, and keeps the tag an earlier
-finish put on production (`gitflowFinishedTag`, which the dialog shows). It's journaled as a Switch,
-whose undo moves every ref except the checked-out one before it switches, and the checked-out
-one after; one that ends on the branch it started from rewinds that branch instead.
+hotfix into production, then development), tags production for a release or hotfix, deletes
+the branch, and ends on development wherever it started, as `git flow` does. Its plan predicts
+each merge in memory (`integrate::predicted_conflicts`) and skips a target that already has the
+branch; tracked changes, or an untracked file one of its checkouts would overwrite, refuse it
+before anything runs. A merge that would conflict isn't started: the finish stops before it,
+having done what came first, and the UI offers that merge as an ordinary one. Finishing again
+afterwards does only what's left, and keeps the tag an earlier finish put on production
+(`gitflowFinishedTag`, which the dialog shows). It's journaled as a Switch, whose undo moves
+every ref except the checked-out one before it switches, and the checked-out one after; one
+that started on development rewinds that branch instead.
 
 ### Undo and redo
 

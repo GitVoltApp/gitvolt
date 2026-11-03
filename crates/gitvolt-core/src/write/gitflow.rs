@@ -5,7 +5,8 @@
 //! - Start is an ordinary create-and-checkout (`CreateBranch`) from the base branch: the UI's.
 //! - Finish: `merge --no-ff` into each target in turn (a feature into development; a release or
 //!   hotfix into production, then development), a tag on production for a release or hotfix,
-//!   then the branch's delete. One write, one Undo (Switch: it ends on the development branch).
+//!   then the branch's delete. It ends on the development branch wherever it started, as `git
+//!   flow` does. One write, one Undo (Switch: back to where HEAD was).
 //!   A merge that would conflict isn't started: the finish stops before it, having done what
 //!   came first, and says which merge is left. Once the user has made that merge, Finish again
 //!   skips every target the branch is already in.
@@ -336,8 +337,8 @@ impl WriteIntent for GitflowFinish {
     fn label(&self) -> String {
         format!("finish {}", self.branch)
     }
-    /// It ends on the development branch: Undo switches back to where it started (or rewinds
-    /// that branch, when it started there), then puts every ref back.
+    /// A finish that completes ends on the development branch: Undo switches back to where it
+    /// started (or rewinds that branch, when it started there), then puts every ref back.
     fn undo(&self) -> Option<UndoKind> {
         Some(UndoKind::Switch)
     }
@@ -428,6 +429,22 @@ impl WriteIntent for GitflowFinish {
                 steps.tag = Some(name);
             }
         }
+        // An untracked file one of its checkouts would write over: git would refuse part-way,
+        // so it's refused here, before anything runs. What it checks out: each target it merges
+        // into, then the merge (which brings the branch's files), and development, where it ends.
+        let merges: Vec<&str> = steps.targets.iter().filter(|(_, m)| *m).map(|(t, _)| t.as_str()).collect();
+        let mut commits = if merges.is_empty() { Vec::new() } else { vec![tip_id] };
+        let ends = steps.stop.is_none().then_some(self.config.develop.as_str());
+        for name in merges.into_iter().chain(ends) {
+            commits.extend(pre.before.refs.get(&heads(name)).cloned().flatten().map(|o| oid(&o)).transpose()?);
+        }
+        let blocked = in_the_way(&repo, &commits, &dirty.untracked)?;
+        if !blocked.is_empty() {
+            let shown = blocked.iter().take(3).map(String::as_str).collect::<Vec<_>>().join(", ");
+            let more = if blocked.len() > 3 { format!(" and {} more", blocked.len() - 3) } else { String::new() };
+            let it = if blocked.len() == 1 { "it" } else { "them" };
+            return Err(GbError::new(GbErrorKind::DirtyWorktree, format!("Move or delete {shown}{more} before finishing {}: it would overwrite {it}", self.branch)));
+        }
         let _ = self.steps.set(steps);
         Ok(Plan::default())
     }
@@ -466,10 +483,11 @@ impl WriteIntent for GitflowFinish {
         if let Some((into, files)) = &steps.stop {
             return Ok(GitflowFinishOutcome::Conflicts { into: into.clone(), files: files.clone(), merged, tag });
         }
+        // Done: it ends on the development branch, as `git flow` does, even when no merge took
+        // it there (a release finished from production that development already had). Off the
+        // branch before its delete; in this write, so its Undo puts HEAD back too.
+        switch_to(cx, &mut on, &self.config.develop).await?;
         if steps.delete {
-            if on.as_deref() == Some(self.branch.as_str()) {
-                switch_to(cx, &mut on, &self.config.develop).await?;
-            }
             let old = cx.before.refs.get(&heads(&self.branch)).cloned().flatten();
             let changes = crate::write::branch_delete::delete_local_branch(cx, &self.branch, old).await?;
             cx.record_config(changes)?;
@@ -493,6 +511,25 @@ async fn switch_to(cx: &mut WriteCx<'_>, on: &mut Option<String>, target: &str) 
     crate::write::checkout::failed_move(cx, res, &to).await?;
     *on = Some(target.to_string());
     Ok(())
+}
+
+/// The untracked files among `untracked` that checking out one of `commits` would write over:
+/// it has the file, or a file where one of its directories is.
+fn in_the_way(repo: &gix::Repository, commits: &[gix::ObjectId], untracked: &std::collections::BTreeSet<String>) -> Result<Vec<String>, GbError> {
+    if untracked.is_empty() {
+        return Ok(Vec::new());
+    }
+    let trees = commits.iter().map(|c| repo.find_commit(*c).map_err(gix_err)?.tree().map_err(gix_err)).collect::<Result<Vec<_>, _>>()?;
+    Ok(untracked
+        .iter()
+        .filter(|path| {
+            let dirs: Vec<&str> = path.match_indices('/').map(|(i, _)| &path[..i]).collect();
+            trees.iter().any(|tree| {
+                tree.lookup_entry_by_path(path.as_str()).ok().flatten().is_some() || dirs.iter().any(|d| tree.lookup_entry_by_path(*d).ok().flatten().is_some_and(|e| !e.mode().is_tree()))
+            })
+        })
+        .cloned()
+        .collect())
 }
 
 /// A merge git stopped: its conflicted paths (none: it stopped for another reason), once `git
@@ -752,6 +789,101 @@ mod tests {
         assert!(exists(&r, "refs/tags/v1.2.0"));
         assert_eq!(r.git(&["branch", "--show-current"]), "develop");
         assert_eq!(r.git(&["status", "--porcelain"]), "");
+    }
+
+    /// No merge takes it to develop (develop has the release already): it switches there anyway,
+    /// as `git flow` does, and Undo goes back to main.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_release_develop_already_has_finished_from_main_ends_on_develop_and_round_trips() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.switch_new("release/1.2.0");
+        r.commit("bump");
+        r.switch("develop");
+        r.git(&["merge", "-q", "--no-ff", "--no-edit", "release/1.2.0"]);
+        r.switch("main");
+        let id = open(&env.api, &r).await;
+        let before = RepoState::capture(&r);
+        let (dev, rel) = (oid(&r, "develop"), oid(&r, "release/1.2.0"));
+        let out = send(&env.api, finish(id, &r, "release/1.2.0", Some("Release 1.2.0"))).await.unwrap();
+        assert_eq!(out["outcome"], json!({"status": "done", "merged": ["main"], "tag": "v1.2.0", "deleted": true}));
+        assert_eq!(r.git(&["branch", "--show-current"]), "develop");
+        assert_eq!((oid(&r, "develop"), oid(&r, "main^2")), (dev, rel));
+        assert_eq!(r.git(&["status", "--porcelain"]), "");
+        let after = RepoState::capture(&r);
+        undo_top(&env.api, id, &r).await;
+        assert_eq!(RepoState::capture(&r).refs, before.refs);
+        assert_eq!(r.git(&["branch", "--show-current"]), "main");
+        assert_eq!(r.git(&["status", "--porcelain"]), "");
+        redo_top(&env.api, id, &r).await;
+        assert_eq!(RepoState::capture(&r).refs, after.refs);
+        assert_eq!(r.git(&["branch", "--show-current"]), "develop");
+        assert_eq!(r.git(&["status", "--porcelain"]), "");
+    }
+
+    /// Nothing to merge, only a delete: it still ends on develop, and Undo goes back to the
+    /// branch it started on.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_merged_feature_finished_from_another_branch_ends_on_develop_and_round_trips() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.switch_new("feature/x");
+        r.commit("f");
+        r.switch("develop");
+        r.git(&["merge", "-q", "--no-ff", "--no-edit", "feature/x"]);
+        r.git(&["switch", "-q", "-c", "other", "main"]);
+        r.commit("o");
+        let id = open(&env.api, &r).await;
+        let before = RepoState::capture(&r);
+        let out = send(&env.api, finish(id, &r, "feature/x", None)).await.unwrap();
+        assert_eq!(out["outcome"], json!({"status": "done", "merged": [], "tag": null, "deleted": true}));
+        assert_eq!(r.git(&["branch", "--show-current"]), "develop");
+        assert!(!exists(&r, "refs/heads/feature/x"));
+        assert_eq!(r.git(&["status", "--porcelain"]), "");
+        let after = RepoState::capture(&r);
+        undo_top(&env.api, id, &r).await;
+        assert_eq!(RepoState::capture(&r).refs, before.refs);
+        assert_eq!(r.git(&["branch", "--show-current"]), "other");
+        assert_eq!(r.git(&["status", "--porcelain"]), "");
+        redo_top(&env.api, id, &r).await;
+        assert_eq!(RepoState::capture(&r).refs, after.refs);
+        assert_eq!(r.git(&["branch", "--show-current"]), "develop");
+        assert_eq!(r.git(&["status", "--porcelain"]), "");
+    }
+
+    /// An untracked file develop, or a merge, would overwrite: git would refuse it part-way, so
+    /// the finish refuses it before anything runs.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_untracked_file_a_checkout_would_overwrite_refuses_the_finish() {
+        let env = WriteEnv::new();
+        let r = repo();
+        r.switch_new("feature/x");
+        r.commit("f");
+        r.switch("develop");
+        r.git(&["merge", "-q", "--no-ff", "--no-edit", "feature/x"]);
+        r.git(&["switch", "-q", "-c", "other", "main"]);
+        // develop's "dev" commit added file_1.txt.
+        r.write("file_1.txt", "mine\n");
+        let id = open(&env.api, &r).await;
+        let before = RepoState::capture(&r);
+        let e = send(&env.api, finish(id, &r, "feature/x", None)).await.unwrap_err();
+        assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::DirtyWorktree, "Move or delete file_1.txt before finishing feature/x: it would overwrite it"));
+        assert_eq!(RepoState::capture(&r).refs, before.refs);
+        assert_eq!(r.git(&["branch", "--show-current"]), "other");
+        assert_eq!(std::fs::read_to_string(r.path().join("file_1.txt")).unwrap(), "mine\n");
+        let s = send(&env.api, json!({"method": "journalState", "params": {"repo": id, "worktree": wt(&r)}})).await.unwrap();
+        assert!(s["undo"].is_null(), "nothing to undo");
+        // The branch's own file, which its merge into develop writes.
+        std::fs::remove_file(r.path().join("file_1.txt")).unwrap();
+        r.git(&["switch", "-q", "-c", "feature/y", "develop"]);
+        r.write("y/new.txt", "feature\n");
+        r.git(&["add", "y/new.txt"]);
+        r.git(&["commit", "-q", "-m", "y"]);
+        r.switch("other");
+        r.write("y/new.txt", "mine\n");
+        let e = send(&env.api, finish(id, &r, "feature/y", None)).await.unwrap_err();
+        assert_eq!(e.message, "Move or delete y/new.txt before finishing feature/y: it would overwrite it");
+        assert_eq!(r.git(&["branch", "--show-current"]), "other");
     }
 
     #[tokio::test(flavor = "multi_thread")]
