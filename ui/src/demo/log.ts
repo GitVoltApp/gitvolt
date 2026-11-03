@@ -99,7 +99,7 @@ export function requestEntries(): RequestLogEntry[] {
 
 /** A git command a demo write stands for (plan 3's writes add theirs), for the Commands tab. */
 export function recordCommand(args: string[], cwd: string, durationMs: number): void {
-  commands.push({ id: nextCommand++, args: args.map((a) => redact(a)), cwd, startedMs: Date.now(), durationMs, exitCode: 0, stderr: '' });
+  commands.push({ id: nextCommand++, args: args.map((a) => redact(a)), cwd, startedMs: Date.now(), durationMs, exitCode: 0, ok: true, stderr: '' });
   if (commands.length > MAX) commands.shift();
 }
 

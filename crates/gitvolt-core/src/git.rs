@@ -384,6 +384,7 @@ impl GitCli {
                     started_ms,
                     duration_ms: started.elapsed().as_millis() as u64,
                     exit_code: None,
+                    ok: false,
                     stderr: truncate_utf8(&redacted_err, STDERR_LOG_LIMIT).to_string(),
                 });
                 return Err(GbError { kind: GbErrorKind::Io, message: redacted_err.clone(), command_id: Some(id), stderr: Some(redacted_err), detail: None });
@@ -497,6 +498,7 @@ impl GitCli {
             started_ms,
             duration_ms: started.elapsed().as_millis() as u64,
             exit_code,
+            ok: result.is_ok(),
             stderr: truncate_utf8(&redact(&stderr_text), STDERR_LOG_LIMIT).to_string(),
         });
         result
@@ -1312,5 +1314,20 @@ mod tests {
         assert!(cli().run(GitInvocation::new(dir.path(), args)).await.is_err(), "exit 1 is a failure by default");
         let out = cli().run(GitInvocation::new(dir.path(), args).ok_exit(1)).await.unwrap();
         assert!(String::from_utf8_lossy(&out.stdout).contains("+x"));
+    }
+
+    #[tokio::test]
+    async fn the_log_marks_an_expected_exit_as_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("x"), "x\n").unwrap();
+        let cli = cli();
+        let args = ["diff", "--no-index", "--", "/dev/null", "x"];
+        cli.run(GitInvocation::new(dir.path(), args).ok_exit(1)).await.unwrap();
+        let _ = cli.run(GitInvocation::new(dir.path(), args)).await;
+        let _ = cli.run(GitInvocation::new(dir.path(), ["no-such-subcommand"])).await;
+        let log = cli.log().entries();
+        assert_eq!((log[0].exit_code, log[0].ok), (Some(1), true));
+        assert_eq!((log[1].exit_code, log[1].ok), (Some(1), false));
+        assert!(!log[2].ok);
     }
 }

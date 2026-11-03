@@ -163,7 +163,7 @@ pub fn parse_version(out: &str) -> Option<String> {
 
 /// git-lfs's version, or `None` when it isn't installed (git says `lfs` isn't a git command).
 pub async fn installed(cli: &GitCli, cwd: &Path) -> Option<String> {
-    let out = cli.run(GitInvocation::new(cwd, ["lfs", "version"])).await.ok()?;
+    let out = cli.run(GitInvocation::new(cwd, ["lfs", "version"]).ok_exit(1)).await.ok()?;
     parse_version(&String::from_utf8_lossy(&out.stdout))
 }
 

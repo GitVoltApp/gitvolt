@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const copyText = vi.hoisted(() => vi.fn(async (_t: string) => {}));
 const api = vi.hoisted(() => ({
-  commandLog: vi.fn(async () => [{ id: 5, args: ['fetch', '--all'], cwd: '/r', startedMs: 1, durationMs: 9, exitCode: 128, stderr: 'fatal: nope' }]),
+  commandLog: vi.fn(async () => [{ id: 5, args: ['fetch', '--all'], cwd: '/r', startedMs: 1, durationMs: 9, exitCode: 128, ok: false, stderr: 'fatal: nope' }]),
   logsDir: vi.fn(async (): Promise<string | null> => null),
   diagnostics: vi.fn(async () => 'GitVolt 0.1.0'),
   openLogsFolder: vi.fn(async () => null),

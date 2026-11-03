@@ -5,6 +5,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **Activity log.** An expected non-zero exit (a missing git-lfs, an unset config key) no
+  longer shows in red as a failure.
+
 ### Added
 
 - **Git flow.** Set it up with Set up git flow… (the palette, or Settings › Repository): the

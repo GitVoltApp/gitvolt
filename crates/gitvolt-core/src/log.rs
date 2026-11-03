@@ -22,6 +22,8 @@ pub struct CommandLogEntry {
     #[ts(type = "number")]
     pub duration_ms: u64,
     pub exit_code: Option<i32>,
+    /// The command counted as success: exit 0 or one of its `ok_exit` codes.
+    pub ok: bool,
     pub stderr: String,
 }
 
@@ -261,7 +263,7 @@ mod tests {
     use super::*;
 
     fn entry(id: u64) -> CommandLogEntry {
-        CommandLogEntry { id, args: vec![], cwd: String::new(), started_ms: 0, duration_ms: 0, exit_code: Some(0), stderr: String::new() }
+        CommandLogEntry { id, args: vec![], cwd: String::new(), started_ms: 0, duration_ms: 0, exit_code: Some(0), ok: true, stderr: String::new() }
     }
 
     #[test]

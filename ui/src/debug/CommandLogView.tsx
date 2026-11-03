@@ -9,7 +9,7 @@ import { ClearableInput } from '../ui/ClearableInput';
 export const COMMAND_POLL_MS = 1000;
 
 /** No exit code means git was killed (cancel, timeout) or never started: a failure too. */
-export const commandFailed = (e: CommandLogEntry) => e.exitCode !== 0;
+export const commandFailed = (e: CommandLogEntry) => !e.ok;
 
 /** git's global options before the subcommand; the ones taking a separate value. */
 const GLOBAL_WITH_VALUE = new Set(['-c', '-C', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);

@@ -15,7 +15,7 @@ describe('demo logs', () => {
 
   it('keeps the commands the writes stand for', () => {
     recordCommand(['commit', '-m', 'x'], '/demo/x', 3);
-    expect(commandEntries().at(-1)).toMatchObject({ args: ['commit', '-m', 'x'], cwd: '/demo/x', exitCode: 0, stderr: '' });
+    expect(commandEntries().at(-1)).toMatchObject({ args: ['commit', '-m', 'x'], cwd: '/demo/x', exitCode: 0, ok: true, stderr: '' });
   });
 
   it('summarises params as the core does: identifying keys only, values cut, redacted', () => {
