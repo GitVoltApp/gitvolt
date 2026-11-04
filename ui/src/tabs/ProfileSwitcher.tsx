@@ -40,7 +40,7 @@ function rows(): MenuRow[] {
       id: `profile.${p.id}`,
       label: p.name,
       icon: profileDotIcon(p.color, p.id === profile.id),
-      tooltip: p.id === profile.id ? 'The current profile' : `Switch to ${p.name}: its tabs replace these (amendment 5)`,
+      tooltip: '',
       run: () => { void switchProfile(p.id); },
     })),
     { kind: 'separator' },

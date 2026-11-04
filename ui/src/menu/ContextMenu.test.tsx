@@ -67,6 +67,14 @@ describe('ContextMenu', () => {
     expect(screen.getByRole('menu')).toBeVisible();
   });
 
+  it('a row with an empty tooltip shows none, and hides the one from the row before it', () => {
+    open([action('first'), action('plain', () => {}, { tooltip: '' })]);
+    fireEvent.pointerEnter(screen.getByText('FIRST'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('tip first');
+    fireEvent.pointerEnter(screen.getByText('PLAIN'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
   it('hovering or focusing the row body highlights the variant the row runs; hovering a variant itself does not', () => {
     const menu = open([
       { kind: 'action', id: 'del', label: 'Delete', icon: Copy, tooltip: 'row tip', run: () => {}, defaultVariant: 'remote', variants: [

@@ -353,7 +353,10 @@ export function ContextMenu() {
     const depth = Number(el.closest<HTMLElement>('.ctx-level')?.dataset.depth ?? 0);
     const lv = levels[depth];
     const leftward = !!lv?.anchor && lv.left < lv.anchor.left;
-    showTooltip(el, tipOf(r), 0, leftward ? 'left' : 'right');
+    // An empty tooltip: the label says it all.
+    const tip = tipOf(r);
+    if (tip) showTooltip(el, tip, 0, leftward ? 'left' : 'right');
+    else hideTooltip();
   };
   const tipVariant = (el: Element, v: Variant) => { if (useArm.getState().armed?.mode !== 'inline') showTooltip(el, v.disabledReason || v.tooltip); };
 
@@ -542,7 +545,7 @@ export function ContextMenu() {
             // by what a second click does.
             aria-label={armedHere ? armed!.req.arm : r.kind === 'submenu' ? r.label : undefined}
             data-armed={armedHere ? armed!.req.tone : undefined}
-            aria-description={tipOf(r)}
+            aria-description={tipOf(r) || undefined}
             className="ctx-row"
             onPointerEnter={(e) => onRowEnter(depth, i, r, e)}
             onPointerLeave={() => { if (!(r.kind === 'submenu' && expanded)) hideTooltip(); }}

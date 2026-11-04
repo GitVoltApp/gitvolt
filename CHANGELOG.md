@@ -9,6 +9,7 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 - **Activity log.** An expected non-zero exit (a missing git-lfs, an unset config key) no
   longer shows in red as a failure.
+- **Profile menu.** The profiles' rows have no tooltip; it was a leftover note, and the label says it all.
 
 ### Added
 
