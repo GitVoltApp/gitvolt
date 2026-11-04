@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   updateCheck: true,
   updatePrereleases: false,
   systemTitleBar: false,
+  compactTitleBar: false,
   updateArchMethod: null,
   graphColorOverrides: {},
   customThemes: [],

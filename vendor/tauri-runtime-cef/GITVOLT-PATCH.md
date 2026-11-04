@@ -324,7 +324,8 @@ runtime lacked:
 - **The traffic lights' height depended on the macOS release.** `inset_traffic_lights` sets the
   title bar's height (`trafficLightPosition`'s `y` plus a button's height) but left the buttons
   where AppKit had them in it, and that changed: centred in the 30 px bar on macOS 15, they sat
-  about 4 px above the middle of the 34 px tab bar (macOS's title bar since) on macOS 26.
+  about 4 px above the middle of the bar on macOS 26 (seen with the 34 px tab bar of compact
+  mode).
   **Fix:** the buttons are centred vertically in the title bar, so `y` alone decides where they
   are, on every release.
 

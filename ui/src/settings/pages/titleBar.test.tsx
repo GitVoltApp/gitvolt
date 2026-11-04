@@ -34,3 +34,27 @@ it('"Use the system title bar" is on Appearance › Window where GitVolt draws i
   fireEvent.click(toggle);
   expect(useAppState.getState().settings.systemTitleBar).toBe(true);
 });
+
+it('"Use compact mode" sits right after "Use the system title bar", off by default, and is greyed out while that one is on', () => {
+  expect(settingDef('compactTitleBar')).toMatchObject({ page: 'appearance', group: 'Window', label: 'Use compact mode' });
+  expect(settingDef('compactTitleBar')!.description).toMatch(/restarts/);
+  expect(settingDef('compactTitleBar')!.description).toMatch(/X11/);
+  expect(DEFAULT_SETTINGS.compactTitleBar).toBe(false);
+  act(() => useAppState.setState({ settings: { ...DEFAULT_SETTINGS } }));
+  render(<SettingsOverlay />);
+  act(() => useSettingsUi.getState().show('compactTitleBar'));
+  const compact = screen.getByRole('switch', { name: 'Use compact mode' });
+  expect(compact).not.toBeChecked();
+  fireEvent.click(compact);
+  expect(useAppState.getState().settings.compactTitleBar).toBe(true);
+  expect(compact).toBeChecked();
+  // The system title bar has no row of GitVolt's to fold: compact mode shows off and can't change.
+  act(() => useAppState.getState().setSettings({ systemTitleBar: true }));
+  expect(compact).not.toBeChecked();
+  expect(compact).toBeDisabled();
+  fireEvent.click(compact);
+  expect(useAppState.getState().settings.compactTitleBar).toBe(true);
+  // Turned off again, the stored choice comes back.
+  act(() => useAppState.getState().setSettings({ systemTitleBar: false }));
+  expect(compact).toBeChecked();
+});

@@ -463,23 +463,26 @@ pub fn run() {
             // GitVolt's own title bar (chrome.rs), unless the user asked for the system's; the
             // page knows which before its first render.
             let custom = chrome::custom_frame(window_store.state().settings.system_title_bar, std::env::var("WAYLAND_DISPLAY").ok().as_deref());
+            // Compact mode (no title bar row) needs that title bar; read now too, so the whole
+            // window, the traffic lights included, changes at the same restart.
+            let compact = custom && window_store.state().settings.compact_title_bar;
             #[cfg(target_os = "linux")]
             let gnome = chrome::gnome::settings();
             #[cfg(target_os = "linux")]
             let read = gnome.clone().map(|s| move |key: &str| chrome::gnome::read(&s, key));
             #[cfg(target_os = "linux")]
-            let current = chrome::chrome(custom, read.as_ref().map(|r| r as chrome::SettingReader<'_>));
+            let current = chrome::chrome(custom, read.as_ref().map(|r| r as chrome::SettingReader<'_>)).with_compact(compact);
             #[cfg(target_os = "macos")]
-            let current = chrome::macos_chrome(custom, chrome::macos::double_click());
+            let current = chrome::macos_chrome(custom, chrome::macos::double_click()).with_compact(compact);
             #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-            let current = chrome::chrome(custom, None);
+            let current = chrome::chrome(custom, None).with_compact(compact);
             // macOS keeps its frame and traffic lights: the page goes under a transparent title
             // bar, and the lights into the page's.
             let decorations = !custom || cfg!(target_os = "macos");
             let mut builder = WebviewWindowBuilder::from_config(app.handle(), &cfg)?.decorations(decorations).initialization_script(chrome::init_script(&current));
             #[cfg(target_os = "macos")]
             if custom {
-                let (x, y) = chrome::TRAFFIC_LIGHTS;
+                let (x, y) = chrome::traffic_lights(compact);
                 builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true).traffic_light_position(tauri::LogicalPosition::new(x, y));
             }
             // Workers get the page's Content Security Policy too (csp.rs).
@@ -517,7 +520,7 @@ pub fn run() {
                 let target = window.clone();
                 chrome::gnome::watch(&settings, move |s| {
                     let read = |key: &str| chrome::gnome::read(s, key);
-                    if let Err(e) = target.emit(chrome::CHROME_EVENT, chrome::chrome(custom, Some(&read))) {
+                    if let Err(e) = target.emit(chrome::CHROME_EVENT, chrome::chrome(custom, Some(&read)).with_compact(compact)) {
                         tracing::warn!("emit {} failed: {e}", chrome::CHROME_EVENT);
                     }
                 });
@@ -536,7 +539,7 @@ pub fn run() {
                     let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
                     if *last != now {
                         *last = now.to_owned();
-                        if let Err(e) = target.emit(chrome::CHROME_EVENT, chrome::macos_chrome(true, now)) {
+                        if let Err(e) = target.emit(chrome::CHROME_EVENT, chrome::macos_chrome(true, now).with_compact(compact)) {
                             tracing::warn!("emit {} failed: {e}", chrome::CHROME_EVENT);
                         }
                     }

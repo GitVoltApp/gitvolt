@@ -106,6 +106,13 @@ updatePrereleases: boolean,
  */
 systemTitleBar: boolean, 
 /**
+ * "Use compact mode" (Settings › Appearance): no title bar row, the tab bar is the title bar
+ * (the window buttons, or macOS's traffic lights, in it), the same on every platform.
+ * Only under GitVolt's own title bar (not with `system_title_bar`, nor in an X11 session).
+ * Read when the window is built, so a change applies after a restart.
+ */
+compactTitleBar: boolean, 
+/**
  * How an Arch install updates, once the update dialog asked; `None` until then.
  */
 updateArchMethod: ArchMethod | null, 

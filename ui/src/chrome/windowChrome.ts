@@ -16,6 +16,9 @@ export interface WindowChromeInfo {
   doubleClick: string;
   middleClick: string;
   rightClick: string;
+  /** Compact mode (Settings › Appearance): no title bar row, the tab bar is the title bar. Only
+   * with a `custom` frame; absent (off) where the page was handed an older object (e2e). */
+  compact?: boolean;
 }
 
 declare global {
@@ -48,9 +51,10 @@ export const useWindowChrome = create<ChromeState>(() => ({
 /** The page draws the title bar (and ☰ moves up into it). */
 export const useCustomTitleBar = () => useWindowChrome((s) => s.info?.frame === 'custom');
 
-/** macOS, under GitVolt's own title bar: there's no title bar row, the tab bar is the title bar
- * (the traffic lights at its start, then ☰ and the tabs), as in a browser. */
-export const useTabsInTitleBar = () => useWindowChrome((s) => s.info?.frame === 'custom' && s.info.platform === 'macos');
+/** Compact mode, the same on every platform: no title bar row, the tab bar is the title bar
+ * (macOS's traffic lights or the window buttons in it, ☰, the tabs, an empty space that always
+ * moves the window), as in a browser. */
+export const useCompactTitleBar = () => useWindowChrome((s) => s.info?.frame === 'custom' && !!s.info.compact);
 
 /** gitvolt-app's `window_manager` requests. */
 export type WindowManagerRequest = 'menu' | 'keyboard-menu' | 'lower';

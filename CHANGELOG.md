@@ -5,17 +5,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
-### Changed
-
-- **macOS: the tabs are in the title bar.** The traffic lights sit at the start of the tab bar,
-  then ☰ and the tabs, as in a browser, instead of a title bar row above it: 30 px more for the
-  repository. The tab strip's empty space moves the window, and a double click there does what
-  System Settings says (Zoom by default).
-
 ### Fixed
 
 - **Activity log.** A push's, clone's or fetch's entry keeps each progress phase's final line
   (`Writing objects: 100% (110/110), done.`) instead of hundreds of percentage updates.
+- **macOS: the traffic lights are centred in the title bar** on macOS 26 too, where they sat a
+  few pixels high.
 - **The window comes back on screen when a monitor goes.** Unplugging the monitor GitVolt was on
   no longer leaves the window at the remaining screen's edge, too little of it showing to drag
   back: it's centred on the main screen.
@@ -43,6 +38,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   Settings buttons.
 - **A profile can have no name.** Leave the name empty in New profile… or Edit profile… and the
   profile switcher shows just its color; menus call it Unnamed profile.
+- **Compact mode.** Settings › Appearance › Use compact mode puts the tabs in the title bar, as in
+  a browser, on every platform: no title bar row, 30 px more for the repository. The traffic
+  lights (macOS) or the window buttons sit in the tab bar, and an empty space before the bell
+  always moves the window, however many tabs are open (the tabs scroll first). To leave the tabs
+  more room, the row's buttons are a little narrower and the profile shows as its colour dot. Not
+  with Use the system title bar, nor in an X11 session; it takes effect when GitVolt restarts.
 
 ## [1.4.1] - 2026-11-01
 

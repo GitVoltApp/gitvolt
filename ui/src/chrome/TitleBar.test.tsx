@@ -165,56 +165,39 @@ describe('the resize edges', () => {
 
 describe('on macOS', () => {
   const mac = (more: Partial<WindowChromeInfo> = {}): WindowChromeInfo => ({ frame: 'custom', platform: 'macos', layout: '', doubleClick: 'toggle-maximize', middleClick: 'none', rightClick: 'none', ...more });
-  const tabBar = () => document.querySelector<HTMLElement>('.tab-bar')!;
-  const order = () => [...tabBar().children].slice(0, 3).map((el) => el.getAttribute('aria-label') ?? el.className);
-  const showTabs = (info: WindowChromeInfo) => {
-    act(() => {
-      useWindowChrome.setState({ info, maximized: false, fullscreen: false });
-      useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 'a', kind: 'repo', path: '/a', alias: null }], activeTab: 'a' } });
-    });
-    render(<><TitleBar /><TabBar /></>);
-  };
-  afterEach(() => act(() => useAppState.setState({ profile: EMPTY_PROFILE })));
+  const order = () => [...bar().children].map((el) => el.getAttribute('aria-label') ?? el.className);
 
-  it("has no title bar row: the tab bar is the title bar, the traffic lights' slot, then ☰", () => {
-    showTabs(mac());
-    expect(bar()).toBeNull();
-    expect(tabBar()).toHaveClass('in-title-bar');
-    expect(order()).toEqual(['title-bar-lights', 'Menu', 'Open repository']);
+  it("the traffic lights' slot, then ☰ and the title, and no buttons of its own", () => {
+    show(mac());
+    expect(order()).toEqual(['title-bar-lights', 'Menu', 'title-bar-title']);
+    expect(within(bar()).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Menu']);
+    expect(bar()).toHaveClass('platform-macos');
     // The window keeps macOS's frame, which resizes it.
-    expect(document.querySelector('.window-edge')).toBeNull();
+    expect(document.querySelector('.window-edges')).toBeNull();
   });
 
   it('full screen hides the traffic lights, and their slot goes; it comes back after', () => {
-    showTabs(mac());
+    show(mac());
     act(() => useWindowChrome.setState({ fullscreen: true }));
-    expect(order()).toEqual(['Menu', 'Open repository', 'Repositories']);
+    expect(order()).toEqual(['Menu', 'title-bar-title']);
     act(() => useWindowChrome.setState({ fullscreen: false }));
-    expect(order()).toEqual(['title-bar-lights', 'Menu', 'Open repository']);
+    expect(order()).toEqual(['title-bar-lights', 'Menu', 'title-bar-title']);
   });
 
-  it("the lights' slot and the strip's empty space drag; a double click does what System Settings says", () => {
-    showTabs(mac({ doubleClick: 'minimize' }));
+  it('drags from its empty space and title, and a double click does what System Settings says', () => {
+    show(mac({ doubleClick: 'minimize' }));
     fireEvent.mouseDown(document.querySelector('.title-bar-lights')!, { button: 0, clientX: 30, clientY: 15 });
     fireEvent.mouseMove(document, { buttons: 1, clientX: 60, clientY: 20 });
-    fireEvent.mouseUp(document);
-    fireEvent.mouseDown(screen.getByRole('tablist'), { button: 0, clientX: 600, clientY: 15 });
-    fireEvent.mouseMove(document, { buttons: 1, clientX: 640, clientY: 20 });
-    fireEvent.mouseUp(document);
-    fireEvent.doubleClick(screen.getByRole('tablist'));
-    fireEvent.doubleClick(document.querySelector('.title-bar-lights')!);
+    fireEvent.doubleClick(title());
     act(() => useWindowChrome.setState({ info: mac({ doubleClick: 'none' }) }));
-    fireEvent.doubleClick(screen.getByRole('tablist'));
-    // Not a new tab, as the strip's double click is elsewhere.
-    expect(useAppState.getState().profile.tabs).toHaveLength(1);
-    expect(calls()).toEqual(['startDragging', 'startDragging', 'minimize', 'minimize']);
+    fireEvent.doubleClick(title());
+    expect(calls()).toEqual(['startDragging', 'minimize']);
   });
 
-  it("a middle or right click on the lights' slot does nothing, as on a macOS title bar", () => {
-    showTabs(mac());
-    const lights = document.querySelector('.title-bar-lights')!;
-    fireEvent(lights, new MouseEvent('auxclick', { bubbles: true, button: 1 }));
-    fireEvent.contextMenu(lights, { clientX: 30, clientY: 12 });
+  it('a middle or right click does nothing, as on a macOS title bar', () => {
+    show(mac());
+    fireEvent(title(), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    fireEvent.contextMenu(title(), { clientX: 200, clientY: 12 });
     expect(calls()).toEqual([]);
     expect(useMenu.getState().rows).toBeFalsy();
   });
@@ -348,5 +331,93 @@ describe('the tab bar under the title bar', () => {
     for (const name of ['Open repository', 'Settings']) pressMove(btn(name));
     expect(calls()).toEqual([]);
     expect(runAction).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('compact mode: the tab bar is the title bar, the same on every platform', () => {
+  const tabBar = () => document.querySelector<HTMLElement>('.tab-bar')!;
+  const parts = () => [...tabBar().children].map((el) => el.getAttribute('aria-label') ?? el.className.split(' ')[0]);
+  const showCompact = (info: WindowChromeInfo, tabs = 1) => {
+    act(() => {
+      useWindowChrome.setState({ info: { ...info, compact: true }, maximized: false, fullscreen: false });
+      useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', name: 'Default', tabs: Array.from({ length: tabs }, (_, i) => ({ id: `t${i}`, kind: 'repo' as const, path: `/r${i}`, alias: null })), activeTab: 't0' } });
+    });
+    render(<><TitleBar /><TabBar /></>);
+  };
+  const mac = (): WindowChromeInfo => ({ frame: 'custom', platform: 'macos', layout: '', doubleClick: 'toggle-maximize', middleClick: 'none', rightClick: 'none' });
+  const windows = (): WindowChromeInfo => ({ ...linux(':minimize,maximize,close'), platform: 'windows', middleClick: 'none' });
+  afterEach(() => act(() => useAppState.setState({ profile: EMPTY_PROFILE })));
+
+  it('on Windows: no title bar row; ☰, the tabs, the drag space, then the window buttons in the tab bar', () => {
+    showCompact(windows());
+    expect(bar()).toBeNull();
+    expect(tabBar()).toHaveClass('compact', 'platform-windows');
+    expect(parts()).toEqual(['tab-bar-drag', 'Menu', 'Open repository', 'Repositories', 'tab-bar-drag', 'Notifications', 'Settings', 'Profile: Default', 'title-bar-buttons']);
+    expect(within(tabBar()).getAllByRole('button').slice(-3).map((b) => b.getAttribute('aria-label'))).toEqual(['Minimize', 'Maximize', 'Close']);
+    // The page's top edge still resizes the window.
+    expect(document.querySelector('.window-edge-n')).not.toBeNull();
+  });
+
+  it('on Linux: the window buttons on the side GNOME puts them', () => {
+    showCompact(linux('close:minimize'));
+    expect(parts()[0]).toBe('title-bar-buttons');
+    expect(parts().slice(1, 4)).toEqual(['tab-bar-drag', 'Menu', 'Open repository']);
+    expect(within(tabBar()).getAllByRole('button')[0]).toHaveAccessibleName('Close');
+    // Maximized, the space stays: the close button is the screen's corner, not the space.
+    act(() => useWindowChrome.setState({ maximized: true }));
+    expect(screen.getByTestId('tab-bar-drag-lead')).toBeInTheDocument();
+  });
+
+  it('the space before ☰ moves the window, and goes when maximized with nothing on the left', () => {
+    showCompact(windows());
+    fireEvent.mouseDown(screen.getByTestId('tab-bar-drag-lead'), { button: 0, clientX: 10, clientY: 15 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 50, clientY: 20 });
+    fireEvent.mouseUp(document);
+    expect(calls()).toEqual(['startDragging']);
+    act(() => useWindowChrome.setState({ maximized: true }));
+    expect(screen.queryByTestId('tab-bar-drag-lead')).toBeNull();
+  });
+
+  it("on macOS: the traffic lights' slot first, and nothing at the end; full screen drops the slot", () => {
+    showCompact(mac());
+    expect(bar()).toBeNull();
+    expect(parts().slice(0, 4)).toEqual(['title-bar-lights', 'tab-bar-drag', 'Menu', 'Open repository']);
+    expect(parts().at(-1)).toBe('Profile: Default');
+    expect(document.querySelector('.window-edge')).toBeNull();
+    act(() => useWindowChrome.setState({ fullscreen: true }));
+    expect(parts()[0]).toBe('Menu');
+  });
+
+  it("the drag space and the strip's empty space move the window, and a double click does what a title bar's does", () => {
+    showCompact(windows());
+    fireEvent.mouseDown(screen.getByTestId('tab-bar-drag'), { button: 0, clientX: 900, clientY: 15 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 940, clientY: 20 });
+    fireEvent.mouseUp(document);
+    fireEvent.mouseDown(screen.getByRole('tablist'), { button: 0, clientX: 600, clientY: 15 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 640, clientY: 20 });
+    fireEvent.mouseUp(document);
+    fireEvent.doubleClick(screen.getByRole('tablist'));
+    fireEvent.doubleClick(screen.getByTestId('tab-bar-drag'));
+    // Not a new tab, as the strip's double click is without compact mode.
+    expect(useAppState.getState().profile.tabs).toHaveLength(1);
+    expect(calls()).toEqual(['startDragging', 'startDragging', 'toggleMaximize', 'toggleMaximize']);
+  });
+
+  it('keeps the drag space with a full strip: the tabs scroll, nothing on the right goes', () => {
+    showCompact(windows(), 30);
+    expect(screen.getByTestId('tab-bar-drag')).toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(30);
+    for (const name of ['Notifications', 'Settings', 'Profile: Default', 'Close']) expect(within(tabBar()).getByRole('button', { name })).toBeInTheDocument();
+  });
+
+  it('is off under the system title bar: the plain tab bar, ☰ in it', () => {
+    act(() => {
+      useWindowChrome.setState({ info: { ...windows(), frame: 'system', compact: false }, maximized: false, fullscreen: false });
+      useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 'a', kind: 'repo', path: '/a', alias: null }], activeTab: 'a' } });
+    });
+    render(<><TitleBar /><TabBar /></>);
+    expect(tabBar()).not.toHaveClass('compact');
+    expect(screen.queryByTestId('tab-bar-drag')).toBeNull();
+    expect(within(tabBar()).getByRole('button', { name: 'Menu' })).toBeInTheDocument();
   });
 });

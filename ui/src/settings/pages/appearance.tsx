@@ -6,7 +6,9 @@ import {
   READING_LINE_HEIGHT_MIN, READING_WIDTH_MAX, READING_WIDTH_MIN,
 } from '../../theme/fontSettings';
 import { displayChord } from '../../ui/platformKeys';
-import { appSetting, storeBinding } from '../bindings';
+import { appSetting, storeBinding, useSettingValue } from '../bindings';
+import { Switch } from '../../ui/Switch';
+import { settingDef, type SettingsCtx } from '../registry';
 import { switchControl } from '../frame/controls';
 import { NumberField } from '../frame/fields';
 import type { FontRole } from '../frame/FontPicker';
@@ -69,6 +71,31 @@ const SYSTEM_TITLE_BAR_DESCRIPTIONS: Record<'linux' | 'windows' | 'macos', strin
   macos: 'macOS\'s standard title bar instead of GitVolt\'s, with ☰ back in the tab bar. Takes effect when GitVolt restarts.',
 };
 
+const COMPACT_DESCRIPTIONS: Record<'linux' | 'windows' | 'macos', string> = {
+  linux: 'No title bar row: the tabs move up into the title bar, with ☰ and the window buttons, and an empty space before the bell that always moves the window. Not with the system title bar, and not in an X11 session, which always has the desktop\'s. Takes effect when GitVolt restarts.',
+  windows: 'No title bar row: the tabs move up into the title bar, with ☰ and the window buttons, and an empty space before the bell that always moves the window. Not with the system title bar. Takes effect when GitVolt restarts.',
+  macos: 'No title bar row: the tabs move up into the title bar, after the traffic lights and ☰, with an empty space before the bell that always moves the window. Not with the system title bar. Takes effect when GitVolt restarts.',
+};
+
+/** "Use compact mode"'s switch: off and greyed out while the system title bar is on, which has
+ * no row of GitVolt's to fold into the tabs (the stored choice comes back with GitVolt's). */
+function CompactSwitch({ ctx }: { ctx: SettingsCtx }) {
+  const def = settingDef('compactTitleBar')!;
+  const [on, set] = useSettingValue<boolean>(def, ctx);
+  const system = useAppState((s) => s.settings.systemTitleBar);
+  return <Switch id="input-compactTitleBar" checked={on && !system} onChange={set} disabled={system} label={def.label} />;
+}
+
+/** "Use compact mode": next to "Use the system title bar", on every platform with a window. */
+export function compactTitleBarSetting(platform: 'linux' | 'windows' | 'macos'): SettingDef {
+  return {
+    id: 'compactTitleBar', label: 'Use compact mode', page: 'appearance', group: 'Window',
+    keywords: 'compact title bar titlebar tabs space height row browser window frame',
+    description: COMPACT_DESCRIPTIONS[platform],
+    Control: CompactSwitch, binding: appSetting('compactTitleBar', false),
+  };
+}
+
 /** "Use the system title bar": only where GitVolt draws its own (the app's window, on Linux,
  * Windows and macOS). */
 export function systemTitleBarSetting(platform: 'linux' | 'windows' | 'macos'): SettingDef {
@@ -120,7 +147,7 @@ const offs = [
       description: `The longest line in the Markdown view and the rendered diff, in characters, 20 to 240. Empty: none (their usual 880 px column); + from there starts at ${READING_WIDTH_START}.`,
       Control: ReadingWidthControl, binding: appSetting('readingLineWidth', F.readingLineWidth),
     },
-    ...(WINDOW_PLATFORM ? [systemTitleBarSetting(WINDOW_PLATFORM)] : []),
+    ...(WINDOW_PLATFORM ? [systemTitleBarSetting(WINDOW_PLATFORM), compactTitleBarSetting(WINDOW_PLATFORM)] : []),
   ]),
 ];
 import.meta.hot?.dispose(() => offs.forEach((off) => off()));
