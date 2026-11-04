@@ -42,7 +42,7 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   a browser, on every platform: no title bar row, 30 px more for the repository. The traffic
   lights (macOS) or the window buttons sit in the tab bar, and an empty space before the bell
   always moves the window, however many tabs are open (the tabs scroll first). To leave the tabs
-  more room, the row's buttons are a little narrower and the profile shows as its colour dot. Not
+  more room, the row's buttons and the tabs' minimum width are a little narrower. Not
   with Use the system title bar, nor in an X11 session; it takes effect when GitVolt restarts.
 
 ## [1.4.1] - 2026-11-01
