@@ -382,10 +382,9 @@ impl GitVolt {
                 let (host, kind) = (self.accounts_host(), self.accounts_kind());
                 let classic = self.settings_ui.accounts.form.as_ref().is_some_and(|f| f.classic) && kind == ForgeKind::GitHub;
                 self.forge_ask::<String>(Request::ForgeTokenPage { host, kind, classic }, cx, |v, answer, cx| {
-                    let ok = answer.and_then(|url| {
+                    let ok = answer.map(|url| {
                         let job_api = v.api.clone();
                         v.rt.spawn(async move { job_api.dispatch(Request::OpenUrl { url }).await });
-                        Ok(())
                     });
                     if let Some(form) = v.settings_ui.accounts.form.as_mut() {
                         form.opening = false;

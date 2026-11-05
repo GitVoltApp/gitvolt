@@ -78,6 +78,7 @@ impl GitVolt {
     }
 
     /// `changeMrPeople`: shown at once in the detail, then sent; a refusal puts it back and a toast says why. No confirm: it's undone the same way.
+    #[allow(clippy::too_many_arguments)]
     pub fn mr_change_people(&mut self, tab: u32, kind: ForgeKind, number: u64, role: Role, add: Option<ForgeUser>, remove: Option<ForgeUser>, replace: Vec<ForgeUser>, cx: &mut Context<Self>) {
         let Some(t) = self.tabs.iter_mut().find(|t| t.id == tab) else { return };
         let Some(d) = t.forge.details.get_mut(&number) else { return };

@@ -47,6 +47,8 @@ pub struct LinkEnv {
     pub kind: Option<ForgeKind>,
     pub project: Option<Project>,
     pub full_sha: Option<FullSha>,
+    /// The repository and remote `@user`'s card is looked up on.
+    pub users: Option<(u32, String)>,
 }
 
 impl LinkEnv {
@@ -464,7 +466,7 @@ mod tests {
     }
 
     fn forge() -> LinkEnv {
-        LinkEnv { kind: Some(ForgeKind::Github), project: Some(Project { path: "o/r".into(), web_url: "https://github.example/o/r".into(), host: "github.example".into(), default_branch: Some("main".into()), id: None }), full_sha: None }
+        LinkEnv { users: None, kind: Some(ForgeKind::Github), project: Some(Project { path: "o/r".into(), web_url: "https://github.example/o/r".into(), host: "github.example".into(), default_branch: Some("main".into()), id: None }), full_sha: None }
     }
 
     #[test]

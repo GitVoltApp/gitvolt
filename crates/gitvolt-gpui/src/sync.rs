@@ -648,6 +648,7 @@ impl GitVolt {
             let shown = if o["upToDate"].as_bool() == Some(true) { format!("{dst} is up to date") } else { done.clone() };
             let problem = format!("{done}; the server reported a problem");
             this.show_server_result(&shown, &problem, &o["server"], o["op"].as_u64().unwrap_or(0), Vec::new(), cx);
+            this.forge_branch_pushed(repo, cx);
         })
         .handle(move |this, err, cx| {
             if err.kind != GbErrorKind::NonFastForward {

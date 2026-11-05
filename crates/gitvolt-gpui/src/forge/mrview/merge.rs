@@ -16,7 +16,6 @@ use gitvolt_core::forge::ForgeKind;
 use gpui::prelude::*;
 use gpui::*;
 use serde_json::json;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MergeMode {
@@ -244,6 +243,7 @@ impl GitVolt {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn merge_run(&mut self, tab: u32, kind: ForgeKind, mr: &ForgeMr, detail: Option<&ForgeMrDetail>, mode: MergeMode, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         let number = mr.number;
         let r = mr_ref(kind, number);
@@ -593,8 +593,6 @@ pub fn merge_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, listed: &ForgeMr
     let _ = (kind_of, r);
     Some(section.into_any_element())
 }
-
-pub type SettingsMap = HashMap<String, ForgeProjectSettings>;
 
 #[cfg(test)]
 mod tests {

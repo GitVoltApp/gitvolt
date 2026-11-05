@@ -318,6 +318,11 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
             "pdfscroll" => {
                 v.update(cx, |g, cx| g.pdf_scroll_to(rest.parse().unwrap_or(0.), cx));
             }
+            // What a paste would go to, without touching the clipboard.
+            "goto" => {
+                let text = line.split_once(' ').map_or("", |p| p.1).to_string();
+                v.update(cx, |v, cx| v.go_to_text(&text, cx));
+            }
             "mdscroll" => {
                 v.update(cx, |g, cx| {
                     if let Some(view) = g.shown_md() {

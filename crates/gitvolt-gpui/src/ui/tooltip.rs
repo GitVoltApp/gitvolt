@@ -113,6 +113,16 @@ pub fn show_at(text: impl Into<SharedString>, bounds: Bounds<Pixels>, placement:
     cx.refresh_windows();
 }
 
+/// `show_at` for a card: `key` tells one from another, and `build` makes it each frame.
+pub fn show_card_at(key: impl Into<SharedString>, build: Build, bounds: Bounds<Pixels>, placement: Placement, cx: &mut App) {
+    let tips = &mut Ui::get_mut(cx).tips;
+    tips.pending = None;
+    tips.generation += 1;
+    tips.imperative = true;
+    tips.shown = Some(Shown { spec: Spec { content: Content::Card { key: key.into(), build }, placement, delay_ms: 0 }, bounds, pointer: bounds.origin });
+    cx.refresh_windows();
+}
+
 /// `show_at` after `delay_ms`, unless something else happens first; a canvas-drawn target's.
 pub fn show_at_after(spec: Spec, bounds: Bounds<Pixels>, pointer: Point<Pixels>, cx: &mut App) {
     let tips = &mut Ui::get_mut(cx).tips;

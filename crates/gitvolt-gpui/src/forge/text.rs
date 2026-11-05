@@ -32,16 +32,6 @@ pub fn mr_long_noun(k: ForgeKind) -> &'static str {
     if k == ForgeKind::GitLab { "merge request" } else { "pull request" }
 }
 
-pub fn state_word(s: MrState) -> &'static str {
-    match s {
-        MrState::Open => "open",
-        MrState::Draft => "draft",
-        MrState::Merged => "merged",
-        MrState::Merging => "merging",
-        MrState::Closed => "closed",
-    }
-}
-
 pub fn state_label(s: MrState) -> &'static str {
     match s {
         MrState::Open => "Open",
@@ -62,11 +52,6 @@ fn pipeline_word_of(s: PipelineStatus) -> &'static str {
         PipelineStatus::Skipped => "skipped",
         PipelineStatus::Manual => "waiting for a manual job",
     }
-}
-
-/// "Merge request !12: open": a badge's name.
-pub fn badge_label(k: ForgeKind, n: u64, s: MrState) -> String {
-    format!("{} {}: {}", mr_name(k), mr_ref(k, n), state_word(s))
 }
 
 pub fn pipeline_text(k: ForgeKind, p: Option<&ForgePipeline>) -> String {
@@ -115,14 +100,6 @@ pub fn review_text(r: &ReviewSummary) -> String {
             let reviewed = names(r, ReviewState::Commented);
             if reviewed.is_empty() { "No reviews yet".to_string() } else { format!("Reviewed by {reviewed}") }
         }
-    }
-}
-
-pub fn conflict_text(c: Option<bool>) -> &'static str {
-    match c {
-        None => "Checking for conflicts…",
-        Some(true) => "Has conflicts",
-        Some(false) => "No conflicts",
     }
 }
 

@@ -90,6 +90,9 @@ pub enum Refreshing {
     Mr(u64),
 }
 
+/// A file, and where in it: `note_line`.
+pub type NoteAt = (String, Option<(bool, u32, Option<u32>)>);
+
 pub struct TabForge {
     /// The kind of the account behind the repo's target project; `None`: no MR/PR UI for this repo.
     pub kind: Option<ForgeKind>,
@@ -134,6 +137,8 @@ pub struct TabForge {
     /// The refs a review's diff was last read for.
     pub review_refs: Option<String>,
     /// A head Compare fetched into a ref of its own: the MR/PR, the head, and whether its compare has shown.
+    /// The compare last looked at, for `forge_watch_compare`.
+    pub compare_seen: Option<(String, Option<String>)>,
     pub compare_ref: Option<(u64, String, bool)>,
     /// The project's merge settings by remote; a failure is asked again after the next poll.
     pub settings: HashMap<String, gitvolt_core::forge::types::ForgeProjectSettings>,
@@ -147,7 +152,7 @@ pub struct TabForge {
     pub people_queue: std::collections::VecDeque<super::mrview::actions::PeopleWrite>,
     pub people_busy: bool,
     /// A note's `file:line` asked to open once the compare's files are read.
-    pub note_after_compare: Option<(String, Option<(bool, u32, Option<u32>)>)>,
+    pub note_after_compare: Option<NoteAt>,
     pub review_ui: super::review::zones::ReviewUi,
     pub lent_merge: Option<u64>,
     pub lent_update: Option<u64>,
@@ -155,7 +160,7 @@ pub struct TabForge {
 
 impl Default for TabForge {
     fn default() -> Self {
-        Self { kind: None, remote: None, project: None, mapped: Vec::new(), target: None, target_chosen: false, remote_errors: HashMap::new(), owner_avatars: HashMap::new(), me: None, by_ref: BTreeMap::new(), history: BTreeMap::new(), upstreams: BTreeMap::new(), filter: MrFilter::All, filter_read: false, list: None, details: HashMap::new(), detail_errors: HashMap::new(), discussions: HashMap::new(), fresh_at: HashMap::new(), loading: Vec::new(), write_epoch: 0, activated_at: None, recheck: false, open_mr: None, updated_at: None, error: None, limited_until: None, cached_at: None, failures: 0, refreshing: Vec::new(), review: None, review_refs: None, compare_ref: None, settings: HashMap::new(), settings_asked: HashMap::new(), settings_error: None, behind: HashMap::new(), limits: None, limits_asked: false, people_queue: Default::default(), people_busy: false, note_after_compare: None, review_ui: Default::default(), lent_merge: None, lent_update: None }
+        Self { compare_seen: None, kind: None, remote: None, project: None, mapped: Vec::new(), target: None, target_chosen: false, remote_errors: HashMap::new(), owner_avatars: HashMap::new(), me: None, by_ref: BTreeMap::new(), history: BTreeMap::new(), upstreams: BTreeMap::new(), filter: MrFilter::All, filter_read: false, list: None, details: HashMap::new(), detail_errors: HashMap::new(), discussions: HashMap::new(), fresh_at: HashMap::new(), loading: Vec::new(), write_epoch: 0, activated_at: None, recheck: false, open_mr: None, updated_at: None, error: None, limited_until: None, cached_at: None, failures: 0, refreshing: Vec::new(), review: None, review_refs: None, compare_ref: None, settings: HashMap::new(), settings_asked: HashMap::new(), settings_error: None, behind: HashMap::new(), limits: None, limits_asked: false, people_queue: Default::default(), people_busy: false, note_after_compare: None, review_ui: Default::default(), lent_merge: None, lent_update: None }
     }
 }
 
@@ -187,9 +192,6 @@ impl TabForge {
         None
     }
 
-    pub fn mr_for_upstream(&self, upstream: Option<&str>) -> Option<&ForgeMr> {
-        self.by_ref.get(upstream?)
-    }
 
     /// An MR/PR by number from what's loaded: its detail, the list, a badge.
     pub fn known_mr(&self, n: u64) -> Option<&ForgeMr> {

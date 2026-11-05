@@ -1726,7 +1726,6 @@ impl Render for GitVolt {
         let settings = crate::settings::frame::settings_overlay(self, window, cx);
         let font_picker = crate::settings::fonts::font_picker_overlay(self, window, cx);
         let overlays = crate::ui::overlays(window, cx);
-        let submit_popover = submit_popover;
         let app = div()
             .relative()
             .size_full()
@@ -1858,7 +1857,7 @@ pub mod tests {
     /// Neither a commit nor WIP: selecting one would read on the runtime, whose wake-up from
     /// another thread GPUI's deterministic test scheduler refuses.
     fn row(i: usize) -> RowView {
-        RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), time: 0, sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: Vec::new(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
+        RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), time: 0, sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: Vec::new(), stash_branch: None, mr_refs: Vec::new(), body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
     }
 
     pub fn with_rows(cx: &mut TestAppContext, count: usize) -> (WindowHandle<GitVolt>, VisualTestContext, tokio::runtime::Runtime) {

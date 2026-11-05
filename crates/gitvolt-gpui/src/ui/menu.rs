@@ -1309,7 +1309,7 @@ pub fn variant_point(text: &str, label: &str, cx: &App) -> Option<Point<Pixels>>
         let mut right = lv.left + lv.w - BORDER - 8.;
         for v in a.variants.iter().rev() {
             let w = variant_w(v, cx);
-            if v.label.as_ref().is_some_and(|l| l.as_ref() == label) {
+            if v.label.as_ref().is_some_and(|l| l.as_ref() == label) || v.id.as_ref() == label {
                 return Some(point(px(right - w / 2.), px(lv.row_top(i, None) + lv.rows[i].height() / 2.)));
             }
             right -= w;

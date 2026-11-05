@@ -35,7 +35,7 @@ pub enum MdPick {
 pub struct MdPane {
     pub view: Entity<MdView>,
     pub state: Rc<std::cell::RefCell<super::view::MdState>>,
-    pub key: (String, ViewKind, bool),
+    pub key: (String, ViewKind, bool, Option<gitvolt_core::forge::ForgeKind>),
     pub split: bool,
     _events: Subscription,
 }
@@ -98,6 +98,7 @@ impl GitVolt {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let (id, worktree) = (tab.id, tab.worktree.clone());
         let by_sha: Rc<Vec<String>> = Rc::new(tab.graph.as_ref().map_or(Vec::new(), |g| g.by_sha.keys().map(|k| k.to_string()).collect()));
+        let forge = tab.forge.kind.map(|k| (crate::forge::mrview::link_env(tab), k));
         let Some(diff) = tab.diff.as_mut() else { return };
         diff.markdown = if pick_source { MdPick::Source } else { MdPick::Rendered };
         if !is_markdown(&diff.file) || diff.markdown != MdPick::Rendered {
@@ -116,7 +117,7 @@ impl GitVolt {
         let ctx = MdContext::File { repo, commit: new_commit.clone().or(old_commit.clone()).unwrap_or_else(|| "worktree".into()), path: path.clone() };
         let old_ctx = MdContext::File { repo, commit: old_commit.or(new_commit).unwrap_or_else(|| "worktree".into()), path: old_path };
         let split = wants_split(diff);
-        let key = (path.clone(), diff.view, split);
+        let key = (path.clone(), diff.view, split, forge.as_ref().map(|f| f.1));
         let content = if file_view {
             let shown = if new.is_empty() && !old.is_empty() { old } else { new };
             Content::Text(shown)
@@ -124,6 +125,7 @@ impl GitVolt {
             Content::Diff { old, new, split }
         };
         let env = LinkEnv {
+            users: None,
             kind: None,
             project: None,
             full_sha: Some(Rc::new(move |prefix: &str| {
@@ -131,7 +133,12 @@ impl GitVolt {
                 by_sha.iter().find(|s| s.starts_with(&p)).cloned()
             })),
         };
-        let opts = MdOptions { ctx, old_ctx: Some(old_ctx), env, flavor: Flavor::Github, frontmatter: true, params, pane: true, base: None, worktree, reading_font: reading, max_bytes: DEFAULT_MAX_BYTES, measure_ch: measure, ruled: !file_view, split, inset: None };
+        // On a forge, a file's references and flavour are its; loaded commits as ever.
+        let (env, flavor) = match forge {
+            Some((forge_env, kind)) => (LinkEnv { full_sha: env.full_sha.clone(), ..forge_env }, crate::forge::mrview::flavor_of(kind)),
+            None => (env, Flavor::Github),
+        };
+        let opts = MdOptions { ctx, old_ctx: Some(old_ctx), env, flavor, frontmatter: true, params, pane: true, base: None, worktree, reading_font: reading, max_bytes: DEFAULT_MAX_BYTES, measure_ch: measure, ruled: !file_view, split, inset: None };
         let same_place = diff.md.as_ref().is_some_and(|m| m.key == key);
         let keep = same_place;
         if !same_place {
@@ -177,14 +184,7 @@ impl GitVolt {
                 }
             }
             MdEvent::ShowCommit { sha } => self.go_to_commit(sha.clone().into(), cx),
-            // The forge views aren't here yet: the page, then.
-            MdEvent::OpenMr { web_url, .. } => {
-                let url = web_url.clone();
-                let api = self.api.clone();
-                self.rt.spawn(async move {
-                    let _ = api.dispatch(gitvolt_core::api::Request::OpenUrl { url }).await;
-                });
-            }
+            MdEvent::OpenMr { number, web_url } => self.forge_open_or_browse(*number, web_url.clone(), cx),
             MdEvent::TooLarge => cx.notify(),
             MdEvent::Zoom(dir) => {
                 let dir = *dir;

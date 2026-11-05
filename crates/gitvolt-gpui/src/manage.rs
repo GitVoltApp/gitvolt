@@ -215,6 +215,7 @@ impl GitVolt {
         };
         let keep = [watch(&url, None, cx), watch(&name, Some(edited.clone()), cx)];
         let focus = url.read(cx).focus.clone();
+        let forks_ui = self.forks_open(cx);
         let stops = [cx.focus_handle().tab_stop(true), cx.focus_handle().tab_stop(true)];
         let mut m = modal::Modal::new(ID, move |window, cx| {
             let u = url.read(cx).text().trim().to_string();
@@ -241,6 +242,7 @@ impl GitVolt {
                         .child(controls::tabbable(controls::button("form-cancel", "Cancel", ButtonKind::Plain, true).on_click(move |_, window, cx| modal::close(ID, window, cx)), &stops[0], move |window, cx| modal::close(ID, window, cx)))
                         .child(controls::tabbable(controls::button("form-ok", "Add remote", ButtonKind::Primary, error.is_none()).when(error.is_none(), |d| d.on_click(move |_, window, cx| send1(window, cx))), &stops[1], move |window, cx| send2(window, cx))),
                 )
+                .when_some(forks_ui.as_ref(), |d, f| d.child(crate::forge::accounts_forks::section(f, ID, window, cx)))
                 .into_any_element()
         })
         .width(520.)

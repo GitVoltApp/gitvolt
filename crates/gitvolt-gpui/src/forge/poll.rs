@@ -206,7 +206,7 @@ fn fetch_interval_ms(v: &GitVolt) -> u64 {
     v.settings["fetchIntervalSecs"].as_u64().unwrap_or(60).saturating_mul(1000)
 }
 
-fn tab_forge<'a>(v: &'a mut GitVolt, tab: u32) -> Option<&'a mut store::TabForge> {
+fn tab_forge(v: &mut GitVolt, tab: u32) -> Option<&mut store::TabForge> {
     v.tabs.iter_mut().find(|t| t.id == tab).map(|t| &mut t.forge)
 }
 
@@ -230,6 +230,7 @@ impl GitVolt {
         if let Some(t) = self.tabs.get(self.active) {
             super::card::set_chip_forge(t, &self.profile["hostOverrides"]);
         }
+        self.forge_watch_compare(cx);
         let tab = self.tabs.get(self.active).filter(|t| !t.is_open_tab() && t.graph.is_some()).map(|t| t.id);
         let fetch_ms = fetch_interval_ms(self);
         if self.forge_poller.as_ref().map(|p| (p.tab, p.fetch_ms)) == tab.map(|t| (t, fetch_ms)) {
@@ -244,6 +245,22 @@ impl GitVolt {
             self.forge_poller = Some(Poller { tab, fetch_ms, state: PollerState::new(), epoch: 0, timer: None, pushes: Vec::new() });
             self.forge_run(Reason::Activate, cx);
         }
+    }
+
+    /// The compare moved on: a review on it ends, and the ref kept for it goes. Nothing's held unless one's going.
+    fn forge_watch_compare(&mut self, cx: &mut Context<Self>) {
+        let Some(t) = self.tabs.get_mut(self.active) else { return };
+        if t.forge.review.is_none() && t.forge.compare_ref.is_none() {
+            return;
+        }
+        let tab = t.id;
+        let now = t.compare.as_ref().map(|c| (c.from.clone(), c.to.sha().map(str::to_string)));
+        if t.forge.compare_seen == now {
+            return;
+        }
+        t.forge.compare_seen = now;
+        self.mr_compare_watch(tab, cx);
+        self.review_settle(tab, cx);
     }
 
     /// The section's filter, kept per repository.
@@ -275,6 +292,10 @@ impl GitVolt {
         cx.spawn(async move |this, cx| {
             let outcome = poll_once(weak, tab, reason, cx).await;
             this.update(cx, |v, cx| {
+                // A fast poll follows a pipeline only; a review's own state goes with the full ones.
+                if reason != Reason::Fast {
+                    v.review_refresh(tab, cx);
+                }
                 let Some(p) = v.forge_poller.as_mut().filter(|p| p.tab == tab && p.epoch == epoch) else { return };
                 let next = p.state.finished(outcome);
                 match next {
@@ -348,9 +369,12 @@ impl GitVolt {
 
     /// An account was added or removed: every tab's next poll asks the forges again, and the shown one polls at once.
     pub fn forge_accounts_changed(&mut self, cx: &mut Context<Self>) {
+        super::search::clear_cache();
         for t in &mut self.tabs {
             t.forge.activated_at = None;
             t.forge.recheck = true;
+            t.forge.limits = None;
+            t.forge.limits_asked = false;
         }
         if let Some(tab) = self.forge_poller.as_ref().map(|p| p.tab) {
             self.forge_after_write(tab, cx);

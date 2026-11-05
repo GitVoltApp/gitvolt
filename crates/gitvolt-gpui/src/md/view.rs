@@ -2576,8 +2576,15 @@ impl MdView {
             link_tooltip(&st.opts.env, st.link_env_side(old), d.targets.get(l as usize)?)
         });
         let broken = hit.slot.and_then(|s| st.doc.as_ref()?.slots.get(s as usize)).and_then(|s| if let SlotState::Broken { why } = &s.state { Some(why.clone()) } else { None });
+        let mention = link.and_then(|l| match st.doc.as_ref()?.built.links.get(l as usize)? {
+            LinkSrc::Ref { node, .. } => node.user.clone().zip(st.opts.env.users.clone()),
+            _ => None,
+        });
+        let core = (st.api.clone(), st.rt.clone());
         drop(st);
-        if link_changed {
+        if link_changed && let Some((user, env)) = mention {
+            crate::forge::card::show_user_card(env, user, Bounds::new(e.position, size(px(1.), px(14.))), core.0, core.1, cx);
+        } else if link_changed {
             match tip {
                 Some(text) => tooltip::show_at(text, Bounds::new(e.position, size(px(1.), px(14.))), tooltip::Placement::Below, cx),
                 None => tooltip::hide(cx),

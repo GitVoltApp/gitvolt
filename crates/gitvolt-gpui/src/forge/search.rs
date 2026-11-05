@@ -124,7 +124,6 @@ pub struct SearchPop {
     taken: Rc<RefCell<Vec<String>>>,
     on_pick: OnPick,
     id: SharedString,
-    label: SharedString,
 }
 
 impl SearchPop {
@@ -242,7 +241,7 @@ pub fn open(id: SharedString, label: SharedString, anchor: Bounds<Pixels>, compa
     let input = cx.new(|cx| TextInput::new(cx).placeholder(label.clone()).claim_arrows().enter_submits());
     let focus = input.read(cx).focus.clone();
     let closing = id.clone();
-    let pop = cx.new(|_| SearchPop { input: input.clone(), source, api, rt, options: None, error: None, cursor: 0, seq: 0, taken: Rc::new(RefCell::new(taken)), on_pick, id: id.clone(), label: label.clone() });
+    let pop = cx.new(|_| SearchPop { input: input.clone(), source, api, rt, options: None, error: None, cursor: 0, seq: 0, taken: Rc::new(RefCell::new(taken)), on_pick, id: id.clone() });
     let weak = pop.downgrade();
     cx.subscribe(&input, move |_, e: &InputEvent, cx| {
         let Some(pop) = weak.upgrade() else { return };

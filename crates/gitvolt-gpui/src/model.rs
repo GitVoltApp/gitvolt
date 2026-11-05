@@ -429,6 +429,8 @@ pub struct RowView {
     pub parents: Vec<String>,
     /// A stash's branch, dimmed after its text.
     pub stash_branch: Option<SharedString>,
+    /// References in its message (`!12`, `group/project#3`): the menu's `Open !12`.
+    pub mr_refs: Vec<String>,
     /// The first line of its body, dimmed after the summary.
     pub body: SharedString,
     pub wip: Option<WipCounts>,
@@ -555,6 +557,7 @@ fn row_view(r: &RowPayload, chips: Vec<Chip>) -> RowView {
         email: r.author_email.clone(),
         parents: r.parents.clone(),
         stash_branch: stash_branch.map(Into::into),
+        mr_refs: r.mr_refs.clone(),
         body: r.body_first_line.clone().into(),
         collapsed: r.collapsed.as_ref().map(|c| Collapsed { key: c.key.clone(), branch: c.branch.clone(), count: c.count, authors: c.authors }),
         fold: r.fold.as_ref().map(|f| Fold { key: f.key.clone(), branch: f.branch.clone(), count: f.count }),
@@ -684,7 +687,7 @@ mod tests {
 
     #[test]
     fn a_branch_reaches_its_ancestors_only() {
-        let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), time: 0, sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() };
+        let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), time: 0, sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, mr_refs: Vec::new(), body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() };
         let rows = vec![row("d", &["b"]), row("c", &["b"]), row("b", &["a"]), row("a", &[])];
         let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
         let g = GraphView { rows, max_lanes: 2, head_row: None, head_branch: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default(), membership: Vec::new(), pinned_refs: Vec::new(), view: None, fork: None };
@@ -699,7 +702,7 @@ mod membership_tests {
     use super::*;
 
     fn row(id: &str, parents: &[&str], chips: Vec<Chip>) -> RowView {
-        RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 1, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), time: 0, sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips, worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
+        RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 1, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), time: 0, sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips, worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, mr_refs: Vec::new(), body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
     }
 
     fn local(name: &str, head: bool) -> Chip {

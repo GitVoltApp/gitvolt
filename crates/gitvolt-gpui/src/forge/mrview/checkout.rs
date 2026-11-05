@@ -173,14 +173,17 @@ impl GitVolt {
     fn mr_resolve_branch(&mut self, tab: u32, mr: ForgeMr, cx: &mut Context<Self>, then: impl FnOnce(&mut GitVolt, MrBranch, &mut Context<GitVolt>) + 'static) {
         let Some(t) = self.tabs.iter().find(|t| t.id == tab) else { return };
         if unreadable_source(&mr) {
-            return;
+            return self.mr_end_checking(tab, mr.number);
         }
         match source_remote(t, &mr) {
             Some(remote) => self.mr_branch_on_remote(tab, remote, mr, cx, then),
             None => {
                 let path = mr.source_project.clone();
                 self.forge_ask::<ForgeProject>(Request::ForgeProjectByPath { repo: core_repo(tab), path: path.clone() }, cx, move |v, answer, cx| match answer {
-                    Err(e) => crate::ui::toast::show_error(format!("Couldn't find {path}: {e}"), cx),
+                    Err(e) => {
+                        crate::ui::toast::show_error(format!("Couldn't find {path}: {e}"), cx);
+                        v.mr_end_checking(tab, mr.number);
+                    }
                     Ok(fork) => v.add_fork_remote(tab, fork, cx, move |v, remote, cx| v.mr_branch_on_remote(tab, remote, mr, cx, then)),
                 });
             }
@@ -206,7 +209,10 @@ impl GitVolt {
                     let Some(t) = v.tabs.iter().find(|t| t.id == tab) else { return };
                     match (branch_from_sidebar(t, &fetched, &mr), then) {
                         (Some(b), Some(then)) => then(v, b, cx),
-                        _ => crate::ui::toast::show(format!("{fetched}/{} isn't on the remote any more", mr.source_branch), cx),
+                        _ => {
+                            crate::ui::toast::show(format!("{fetched}/{} isn't on the remote any more", mr.source_branch), cx);
+                            v.mr_end_checking(tab, mr.number);
+                        }
                     }
                 });
             }),
@@ -214,10 +220,34 @@ impl GitVolt {
         );
     }
 
+    pub fn mr_end_checking(&mut self, tab: u32, number: u64) {
+        if let Some(ui) = self.mr_ui(tab, number)
+            && ui.busy == Some(super::actions::Busy::CheckingOut)
+        {
+            ui.busy = None;
+        }
+    }
+
     /// Check out the MR's source branch; the branch's tip is then selected in the graph.
     pub fn mr_checkout(&mut self, tab: u32, mr: ForgeMr, cx: &mut Context<Self>) {
         let source = mr.source_branch.clone();
+        let number = mr.number;
         self.mr_resolve_branch(tab, mr, cx, move |v, b, cx| {
+            let name = match &b {
+                MrBranch::Local { name } | MrBranch::Remote { name, .. } => name.clone(),
+            };
+            // The write refreshes the tab: the branch is HEAD now, so its tip is selected. A failure leaves the selection alone.
+            if let Some(t) = v.tabs.iter_mut().find(|t| t.id == tab) {
+                t.after_reload.push(Box::new(move |v, cx| {
+                    v.mr_end_checking(tab, number);
+                    let tip = v.tabs.iter().find(|t| t.id == tab).and_then(|t| locals(t).iter().find(|l| l["name"].as_str() == Some(name.as_str()) && l["isHead"].as_bool() == Some(true)).and_then(|l| l["target"].as_str()).map(str::to_string));
+                    if let Some(tip) = tip
+                        && v.in_graph(&tip)
+                    {
+                        v.go_to_sha(&tip, cx);
+                    }
+                }));
+            }
             match b {
                 MrBranch::Local { name } => v.checkout_local(&name, cx),
                 MrBranch::Remote { remote, name, tip } => v.checkout_remote_as(&remote, &source, &tip, (name != source).then_some(name.as_str()), cx),

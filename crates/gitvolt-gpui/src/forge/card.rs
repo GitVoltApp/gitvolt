@@ -193,3 +193,55 @@ pub fn mr_badge(tab: u32, kind: ForgeKind, mr: &ForgeMr, size: f32, card: bool, 
         anchored.into_any_element()
     }
 }
+
+/// `@user`'s card (`userCard`): looked up once a session, per repository and remote. A failure isn't kept, so the next hover asks again.
+type Looked = Option<Option<ForgeUser>>;
+thread_local! {
+    static USERS: std::cell::RefCell<std::collections::HashMap<String, Looked>> = std::cell::RefCell::default();
+}
+const MAX_USERS: usize = 500;
+
+pub fn show_user_card(env: (u32, String), user: String, bounds: Bounds<Pixels>, api: std::sync::Arc<gitvolt_core::api::Api>, rt: tokio::runtime::Handle, cx: &mut App) {
+    let (repo, remote) = env;
+    let key = format!("{repo}\0{remote}\0{}", user.to_lowercase());
+    let known = USERS.with_borrow(|u| u.contains_key(&key));
+    if !known {
+        USERS.with_borrow_mut(|u| {
+            if u.len() >= MAX_USERS {
+                u.clear();
+            }
+            u.insert(key.clone(), None);
+        });
+        let (k, name) = (key.clone(), user.clone());
+        cx.spawn(async move |cx| {
+            let answer = super::ask::<Vec<ForgeUser>>(api, rt, gitvolt_core::api::Request::ForgeSearchUsers { repo, remote, query: name.clone() }).await;
+            USERS.with_borrow_mut(|u| match answer {
+                Ok(list) => {
+                    let found = list.into_iter().find(|f| f.username.eq_ignore_ascii_case(&name));
+                    u.insert(k, Some(found));
+                }
+                Err(_) => {
+                    u.remove(&k);
+                }
+            });
+            cx.update(|cx| cx.refresh_windows());
+        })
+        .detach();
+    }
+    let (k, shown) = (key.clone(), user);
+    let build: crate::ui::tooltip::Build = std::rc::Rc::new(move |_, _| {
+        let found = USERS.with_borrow(|u| u.get(&k).cloned().flatten().flatten());
+        let card = div().p(px(8.)).rounded(px(6.)).bg(theme::panel_bg1()).border_1().border_color(theme::section_border()).text_size(px(12.));
+        match found {
+            Some(u) => card
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(forge_avatar(&u, 24.))
+                .child(div().flex().gap(px(4.)).child(div().font_weight(FontWeight::BOLD).text_color(theme::text_selected()).child(u.name.clone())).child(div().text_color(theme::text_normal()).child(format!("@{}", u.username))))
+                .into_any_element(),
+            None => card.text_color(theme::text_selected()).child(format!("@{shown}")).into_any_element(),
+        }
+    });
+    crate::ui::tooltip::show_card_at(format!("user:{key}"), build, bounds, crate::ui::tooltip::Placement::Below, cx);
+}

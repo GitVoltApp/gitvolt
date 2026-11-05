@@ -2434,7 +2434,7 @@ mod ui_tests {
     }
 
     fn wip_row() -> RowView {
-        RowView { id: "wip".into(), kind: NodeKind::Wip, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), time: 0, sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: Some("/w".into()), email: String::new(), parents: vec!["abc".into()], stash_branch: None, body: SharedString::default(), wip: Some(Default::default()), collapsed: None, fold: None, ghosts: Vec::new() }
+        RowView { id: "wip".into(), kind: NodeKind::Wip, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), time: 0, sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: Some("/w".into()), email: String::new(), parents: vec!["abc".into()], stash_branch: None, mr_refs: Vec::new(), body: SharedString::default(), wip: Some(Default::default()), collapsed: None, fold: None, ghosts: Vec::new() }
     }
 
     /// A window with the WIP row selected and its lists in.

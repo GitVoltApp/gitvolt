@@ -23,6 +23,22 @@ fn file_section(file: &FileChange) -> Option<crate::wip::Which> {
     }
 }
 
+/// `commitsOf`: the commit a file's version is in, and the commit whose branch its forge link goes by. A deleted file's
+/// version is in the parent; a working tree's isn't committed, and its branch is its HEAD's.
+fn file_commits(file: &FileChange, tab: Option<&crate::app::Tab>) -> (Option<String>, Option<String>) {
+    let g = tab.and_then(|t| t.graph.as_ref());
+    match &file.origin {
+        Origin::Commit { id } => {
+            let parent = || g.and_then(|g| g.rows.iter().find(|r| r.id.as_ref() == id.as_str())).and_then(|r| r.parents.first().cloned());
+            (if file.status == 'D' { parent() } else { Some(id.clone()) }, Some(id.clone()))
+        }
+        Origin::Wip { worktree, .. } => {
+            let row = g.and_then(|g| g.rows.iter().find(|r| r.worktree.as_deref() == Some(worktree.as_str())));
+            (None, row.and_then(|r| r.parents.first().cloned()))
+        }
+    }
+}
+
 fn short(sha: &str) -> String {
     sha.chars().take(SHORT_SHA).collect()
 }
@@ -252,6 +268,14 @@ impl GitVolt {
             }));
         }
 
+        copy.extend(self.commit_forge_row(&sha, branch, this));
+        let forge = {
+            let chips: Vec<Chip> = branch.map_or_else(|| row.chips.clone(), |b| vec![b.clone()]);
+            let mut rows = if stash { Vec::new() } else { self.commit_mr_rows(&chips, this) };
+            rows.extend(self.commit_ref_rows(&row.mr_refs, this));
+            rows
+        };
+
         let mut view = Vec::new();
         let (weak, from) = (this.clone(), sha.clone());
         if let (Some(b), Some(h)) = (branch, head_sha.filter(|h| *h != sha)) {
@@ -266,7 +290,7 @@ impl GitVolt {
             }));
         }
         view.extend(self.preset_branch_rows(&sha, branch, this));
-        grouped(vec![sync, integrate, branch_rows, commit_rows, stash_rows, manage, copy, view])
+        grouped(vec![sync, integrate, branch_rows, commit_rows, stash_rows, forge, manage, copy, view])
     }
 
     fn wip_rows(&self, this: &WeakEntity<GitVolt>, row: &RowView) -> Vec<MenuRow> {
@@ -370,6 +394,7 @@ impl GitVolt {
             push,
             vec![MenuRow::action("tag.delete", "Delete", "trash-2", format!("Delete the tag {name} here"), move |w, cx| plain(w, cx)).variants(variants, Some("local"))],
             vec![MenuRow::action("tag.copyName", "Copy tag name", "copy", format!("Copy \"{name}\""), copier(this, name.to_string()))],
+            self.tag_forge_rows(name, this),
             vec![self.preset_tag_row(name, this)],
             if in_sidebar { show_in_graph(sha, loaded, this) } else { Vec::new() },
         ])
@@ -489,6 +514,7 @@ impl GitVolt {
                     weak.update(cx, |v, cx| v.copy_remote_url(r, cx)).ok();
                 })
             }],
+            self.remote_forge_rows(name, this),
             vec![{
                 let (weak, r) = (this.clone(), name.to_string());
                 MenuRow::action("sidebar.removeRemote", "Remove remote…", "trash-2", format!("Remove {name} from this repository"), move |window, cx| {
@@ -636,7 +662,9 @@ impl GitVolt {
         ];
         let lfs = self.lfs_rows(file, this);
         let submodule = self.file_submodule_rows(file, this);
-        grouped(vec![stage, restore, submodule, colour, copy, vec![open], view, history, lfs, vec![create_file_row(file_section(file), None, this)]])
+        let (sha, at) = file_commits(file, self.tabs.get(self.active));
+        let forge = self.file_forge_rows(&path, sha.as_deref(), at.as_deref(), this);
+        grouped(vec![stage, restore, submodule, colour, copy, forge, vec![open], view, history, lfs, vec![create_file_row(file_section(file), None, this)]])
     }
 
     /// A folder of the file list.
@@ -671,6 +699,8 @@ impl GitVolt {
         let location = if lines.1 != lines.0 { format!("{path}:{}-{}", lines.0, lines.1) } else { format!("{path}:{}", lines.0) };
         let abs = format!("{}/{location}", tab.worktree.trim_end_matches('/'));
         let has = selection.is_some();
+        let (sha, at) = file_commits(file, Some(tab));
+        let forge = self.monaco_forge_rows(&path, sha.as_deref(), at.as_deref(), lines, this);
         let copy = MenuRow::action("monaco.copySelection", "Copy", "copy", "Copy the selected text", copier(this, selection.unwrap_or_default())).disabled_if((!has).then_some("No text selected"));
         grouped(vec![
             vec![
@@ -680,6 +710,7 @@ impl GitVolt {
                     None,
                 ),
             ],
+            forge,
             vec![self.open_in_rows(file, this, "monaco.openIn", &format!("Open the file in another application at line {}", lines.0))],
         ])
     }

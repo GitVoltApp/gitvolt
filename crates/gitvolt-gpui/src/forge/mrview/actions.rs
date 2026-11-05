@@ -28,7 +28,6 @@ const FORGEJO_CHANGES_NOTE: &str = "Forgejo needs a message to request changes";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Busy {
     Approve,
-    Draft,
     CheckingOut,
 }
 
@@ -715,7 +714,7 @@ fn edit_rows(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, detail
     for l in labels {
         let color = colors.get(l).cloned().flatten().or_else(|| mr.label_colors.get(l).cloned());
         let name = l.clone();
-        let rm = rm_button(format!("mr-edit-rm-label-{l}"), &format!("Remove {l}"), move |v, cx| {
+        let rm = rm_button(format!("mr-edit-rm-label-{l}"), &format!("Remove {l}"), move |v, _| {
             if let Some(e) = v.mr_ui(tab, number).and_then(|u| u.edit.as_mut()) {
                 e.labels.retain(|x| *x != name);
             }

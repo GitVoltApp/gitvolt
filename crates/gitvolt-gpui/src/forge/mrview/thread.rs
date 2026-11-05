@@ -102,9 +102,14 @@ pub fn quoted(now: &str, body: &str) -> String {
     if now.is_empty() { format!("{quote}\n\n") } else { format!("{}\n\n{quote}\n\n", now.trim_end()) }
 }
 
+type FoldFn = Box<dyn Fn(&mut GitVolt, bool, &mut Context<GitVolt>)>;
+
 /// Where a note opens the diff: its new line, else its old one; a range's lines, from its first, when that has a number on the same side.
 pub fn note_line(pos: &DiffPosition) -> Option<(bool, u32, Option<u32>)> {
-    let (new_side, start, end) = if let Some(l) = pos.line { (true, pos.start_line, l) } else if let Some(l) = pos.old_line { (false, pos.start_old_line, l) } else { return None };
+    let (new_side, start, end) = match (pos.line, pos.old_line) {
+        (Some(l), _) => (true, pos.start_line, l),
+        (None, l) => (false, pos.start_old_line, l?),
+    };
     Some(match start.filter(|s| *s < end) {
         Some(s) => (new_side, s, Some(end)),
         None => (new_side, end, None),
@@ -121,6 +126,7 @@ pub fn note_where(pos: &DiffPosition) -> String {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Entry {
     System(ForgeNote),
     Thread(ForgeDiscussion),
@@ -306,6 +312,7 @@ impl GitVolt {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn mr_delete_note(&mut self, tab: u32, number: u64, discussion: String, id: String, origin: Origin, window: &mut Window, cx: &mut Context<Self>) {
         let weak = cx.weak_entity();
         let mut req = ArmRequest::danger("Click again to delete the comment", "Delete this comment?", "Delete");
@@ -366,6 +373,7 @@ impl GitVolt {
     }
 
     /// Quote reply: into the reply box its answer goes to (the thread's; GitHub's and Forgejo's conversation: the new comment's).
+    #[allow(clippy::too_many_arguments)]
     fn mr_quote(&mut self, tab: u32, kind: ForgeKind, number: u64, d: &ForgeDiscussion, body: &str, window: &mut Window, cx: &mut Context<Self>) {
         let target = if kind != ForgeKind::GitLab && !d.id.starts_with("thread-") { None } else { Some(d.id.clone()) };
         let key = target.clone().map_or(FieldKey::Comment, FieldKey::Reply);
@@ -716,6 +724,7 @@ pub fn description(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, 
     div().id("mr-description").flex().flex_col().gap(px(4.)).flex_none().min_w_0().text_size(px(12.)).when(!merge_above, |d| d.pt(px(8.)).border_t_1().border_color(theme::section_border())).child(body).into_any_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn discussion_card(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, d: &ForgeDiscussion, roll_resolved: bool, show_where: bool, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     let number = mr.number;
     let notes: Vec<&ForgeNote> = d.notes.iter().filter(|n| !n.system).collect();
@@ -737,7 +746,7 @@ fn discussion_card(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, 
         cx.notify();
     };
     let fold_a = set_fold.clone();
-    let roll_btn = |unroll: bool, fold: Box<dyn Fn(&mut GitVolt, bool, &mut Context<GitVolt>)>, cx: &mut Context<GitVolt>| {
+    let roll_btn = |unroll: bool, fold: FoldFn, cx: &mut Context<GitVolt>| {
         let id = format!("mr-roll:{}:{unroll}", d.id);
         crate::ui::anchor(format!("mr-roll:{}", d.id), div().id(ElementId::Name(id.into())).flex().flex_none().size(px(22.)).items_center().justify_center().ml(px(if unroll { -4. } else { 0. })).rounded(px(4.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).child(icon(if unroll { "chevron-right" } else { "chevron-down" }, 14., theme::text_secondary())).on_click(cx.listener(move |v, _, _, cx| {
             cx.stop_propagation();
@@ -829,7 +838,7 @@ fn discussion_card(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn replies_row(this: &GitVolt, replies: &[&ForgeNote], open: bool, fold: Box<dyn Fn(&mut GitVolt, bool, &mut Context<GitVolt>)>, id: &str, side_pad: f32, cx: &mut Context<GitVolt>) -> AnyElement {
+fn replies_row(this: &GitVolt, replies: &[&ForgeNote], open: bool, fold: FoldFn, id: &str, side_pad: f32, cx: &mut Context<GitVolt>) -> AnyElement {
     let n = replies.len();
     let mut people: Vec<&gitvolt_core::forge::types::ForgeUser> = Vec::new();
     for r in replies {

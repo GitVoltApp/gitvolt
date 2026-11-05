@@ -18,7 +18,7 @@ use crate::theme;
 use crate::ui::arm::{self, ArmRequest, Origin};
 use crate::ui::menu::{self, MenuRow};
 use crate::ui::tooltip::{Placement, tip};
-use gitvolt_core::forge::types::{DiffSide, ForgeDiscussion, LineKind, ReviewAnchor, ReviewDraft};
+use gitvolt_core::forge::types::{DiffSide, ForgeDiscussion, ReviewAnchor, ReviewDraft};
 use gitvolt_core::forge::ForgeKind;
 use gpui::prelude::*;
 use gpui::*;
@@ -174,6 +174,7 @@ pub struct ReviewUi {
 }
 
 impl GitVolt {
+    #[allow(clippy::too_many_arguments)]
     fn review_field(&mut self, tab: u32, key: &str, label: &'static str, placeholder: &'static str, grow: bool, submit: impl Fn(&mut GitVolt, &mut Context<GitVolt>) + 'static, cx: &mut Context<Self>) -> Option<Entity<MarkdownField>> {
         let t = self.tabs.iter().find(|t| t.id == tab)?;
         if let Some(f) = t.forge.review_ui.fields.get(key) {
@@ -960,15 +961,6 @@ pub fn drag_marks(diff: &DiffState) -> Vec<AnyElement> {
         }
     }
     out
-}
-
-/// What a comment's kind says, for a test of the words.
-pub fn kind_word(k: LineKind) -> &'static str {
-    match k {
-        LineKind::Added => "added",
-        LineKind::Removed => "removed",
-        LineKind::Context => "context",
-    }
 }
 
 #[cfg(test)]

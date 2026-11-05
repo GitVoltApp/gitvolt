@@ -1,5 +1,5 @@
 //! Paste anywhere to go to it (`ui/src/goto`): Ctrl+V outside a text field reads the clipboard and goes
-//! to the commit, file, folder or branch it names. Forge URLs and MR/PR numbers wait for the forge layer.
+//! to the commit, file, folder, branch, forge page or MR/PR number it names. Forge targets are in `forge::goto`.
 
 use crate::app::GitVolt;
 use gitvolt_core::api::Request;
@@ -12,8 +12,7 @@ pub enum Target {
     /// `loose`: one relative name with no folder, which could as well be any word.
     Path { path: String, absolute: bool, line: Option<u32>, loose: bool, ref_name: Option<String> },
     Ref(String),
-    /// What needs a forge: left alone until there's one.
-    Forge,
+    Forge(crate::forge::goto::ForgeTarget),
     None,
 }
 
@@ -69,8 +68,11 @@ pub fn classify(text: &str) -> Target {
         return Target::None;
     }
     let Some(s) = text.lines().map(str::trim).find(|l| !l.is_empty()) else { return Target::None };
+    if let Some(p) = s.strip_prefix("file://") {
+        return path_of(p).unwrap_or(Target::None);
+    }
     if s.contains("://") {
-        return Target::Forge;
+        return crate::forge::goto::classify_url(s).map_or(Target::None, Target::Forge);
     }
     if let Some(scheme) = s.split_once(':').map(|p| p.0)
         && scheme.len() > 1
@@ -89,11 +91,8 @@ pub fn classify(text: &str) -> Target {
         return Target::Commit { sha: word.to_lowercase(), ref_name: ref_name(s), loose: digits || letters };
     }
     // `!12`, `#12`, `group/project!12` are MRs.
-    if let Some(at) = s.rfind(['!', '#'])
-        && s[at + 1..].bytes().all(|b| b.is_ascii_digit())
-        && at + 1 < s.len()
-    {
-        return Target::Forge;
+    if let Some(t) = crate::forge::goto::classify_short(s) {
+        return Target::Forge(t);
     }
     if let Some(t) = path_of(s) {
         return t;
@@ -104,9 +103,13 @@ pub fn classify(text: &str) -> Target {
 impl GitVolt {
     pub fn go_to_clipboard(&mut self, cx: &mut Context<Self>) {
         let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) else { return };
-        match classify(&text) {
+        self.go_to_text(&text, cx);
+    }
+
+    pub fn go_to_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        match classify(text) {
             Target::None => {}
-            Target::Forge => self.show_toast("Links to a forge wait for this build's forge views", cx),
+            Target::Forge(t) => self.go_to_forge(t, cx),
             Target::Ref(name) => {
                 if let Some(tip) = self.ref_tip(&name) {
                     self.go_to_sha(&tip, cx);
@@ -227,9 +230,9 @@ mod tests {
         assert_eq!(classify("src/main.rs:12"), Target::Path { path: "src/main.rs".into(), absolute: false, line: Some(12), loose: false, ref_name: None });
         assert_eq!(classify("feature/x"), Target::Path { path: "feature/x".into(), absolute: false, line: None, loose: false, ref_name: Some("feature/x".into()) });
         assert!(matches!(classify("README"), Target::Path { loose: true, .. }));
-        assert_eq!(classify("https://example.com/a/b"), Target::Forge);
-        assert_eq!(classify("!12"), Target::Forge);
-        assert_eq!(classify("group/project#3"), Target::Forge);
+        assert_eq!(classify("https://example.com/a/b"), Target::None);
+        assert!(matches!(classify("!12"), Target::Forge(_)));
+        assert!(matches!(classify("group/project#3"), Target::Forge(_)));
         assert_eq!(classify("mailto:a@example.com"), Target::None);
         assert_eq!(classify("   \n  "), Target::None);
         assert_eq!(classify("a sentence with words"), Target::None);

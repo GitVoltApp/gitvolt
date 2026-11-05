@@ -19,7 +19,7 @@ use crate::md::links::{LinkEnv, Project};
 use crate::md::view::{Content, MdEvent, MdOptions, MdView};
 use crate::theme;
 use crate::ui::tooltip::tip;
-use gitvolt_core::forge::types::{ForgeMrDetail, ForgeProjectSettings, ForgeMr};
+use gitvolt_core::forge::types::{ForgeMrDetail, ForgeMr};
 use gitvolt_core::forge::ForgeKind;
 use gpui::prelude::*;
 use gpui::*;
@@ -114,7 +114,8 @@ pub fn link_env(tab: &Tab) -> LinkEnv {
     };
     let project = tab.forge.project.as_ref().map(|p| Project { path: p.path.clone(), web_url: p.web_url.trim_end_matches('/').to_string(), host: p.host.clone(), default_branch: p.default_branch.clone(), id: Some(p.id) });
     let graph = tab.graph.clone();
-    LinkEnv { kind: Some(md_kind), project, full_sha: Some(std::rc::Rc::new(move |prefix: &str| graph.as_ref()?.by_sha.keys().find(|s| s.starts_with(prefix)).map(|s| s.to_string()))) }
+    let users = tab.forge.remote.clone().map(|r| (crate::app::core_repo(tab.id), r));
+    LinkEnv { users, kind: Some(md_kind), project, full_sha: Some(std::rc::Rc::new(move |prefix: &str| graph.as_ref()?.by_sha.keys().find(|s| s.starts_with(prefix)).map(|s| s.to_string()))) }
 }
 
 pub fn flavor_of(kind: ForgeKind) -> crate::md::ast::Flavor {
@@ -503,9 +504,6 @@ impl GitVolt {
         self.forge_close_mr(tab, cx);
     }
 }
-
-/// The settings the merge box needs, for a test of its status.
-pub type Settings = ForgeProjectSettings;
 
 #[cfg(test)]
 mod tests {

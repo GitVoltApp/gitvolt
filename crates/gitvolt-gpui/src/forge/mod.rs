@@ -3,7 +3,9 @@
 //! What a forge sends is a stranger's text: a body goes through `crate::md`, and nothing here runs or loads anything else.
 
 pub mod accounts;
+pub mod accounts_forks;
 pub mod card;
+pub mod goto;
 pub mod menu;
 pub mod mrview;
 pub mod poll;
@@ -13,6 +15,7 @@ pub mod section;
 pub mod stack;
 pub mod store;
 pub mod text;
+pub mod urls;
 
 use crate::app::{GitVolt, core_repo as app_repo};
 use gitvolt_core::api::{Api, Request};
