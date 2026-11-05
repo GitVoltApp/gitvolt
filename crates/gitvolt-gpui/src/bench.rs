@@ -300,6 +300,8 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
             "dump" => {
                 cx.update(|_, cx| println!("{}", v.read(cx).dump(cx))).ok();
             }
+            // The next directory picker answers this, and no dialog opens.
+            "pickfolder" => v.update(cx, |g, _| g.script_folder = Some(rest.clone())),
             "quit" => {
                 cx.update(|_, cx| cx.quit()).ok();
                 return;
@@ -360,6 +362,9 @@ impl GitVolt {
             "armed": crate::ui::arm::is_armed(cx),
             "menu": crate::ui::menu::shown(cx),
             "selected": tab.and_then(|t| t.selected),
+            "tabs": self.tabs.iter().map(|t| t.name.to_string()).collect::<Vec<_>>(),
+            "openScreen": tab.and_then(|t| t.open_screen.as_ref()).map(|s| serde_json::json!({ "error": s.error, "cloneError": s.clone_error, "busy": s.busy, "url": s.url.read(cx).text(), "dest": s.dest.read(cx).text(), "repos": s.repos.as_ref().map(|r| r.iter().map(|x| x.name.clone()).collect::<Vec<_>>()) })),
+            "recent": self.profile["recent"].as_array().map(|l| l.iter().map(|r| r["name"].clone()).collect::<Vec<_>>()),
             "picks": tab.map(|t| t.picks.rows.clone()),
             "compare": tab.and_then(|t| t.compare.as_ref()).map(|c| format!("{c:?}")),
             "busy": tab.and_then(|t| t.busy_reason()),
@@ -391,7 +396,7 @@ pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
         v.frame_hook = Some(Box::new(move |tab, window| {
             let mut s = hooked.borrow_mut();
             s.frames += 1;
-            if s.first_rows_ms == 0 && tab.graph.is_some() {
+            if s.first_rows_ms == 0 && (tab.graph.is_some() || tab.is_open_tab()) {
                 s.first_rows_ms = now_ms();
             }
             if s.scrolling {

@@ -809,7 +809,7 @@ mod tests {
 
     #[test]
     fn a_write_says_itself_and_a_long_autostash_says_so() {
-        let op = |kind, label: &str| crate::ops::OpInfo { op: 1, kind, repo: None, label: label.into(), percent: None, interactive: true, shown: false, started: Instant::now(), stash: None, step: None };
+        let op = |kind, label: &str| crate::ops::OpInfo { op: 1, kind, repo: None, label: label.into(), phase: None, percent: None, interactive: true, shown: false, started: Instant::now(), stash: None, step: None };
         assert_eq!(write_text(&op(OpKind::Commit, "x")), "Committing…");
         assert_eq!(write_text(&op(OpKind::Push, "push main")), "Push main…");
         let mut slow = op(OpKind::Checkout, "checkout x");

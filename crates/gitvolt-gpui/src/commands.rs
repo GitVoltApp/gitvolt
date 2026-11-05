@@ -166,8 +166,10 @@ fn has_wip(v: &GitVolt, _: &App) -> bool {
 pub fn all() -> Vec<Command> {
     use Group::*;
     let mut out = vec![
-        Command::new("file.openRepo", "Open repository…", File, "folder-plus", "Open the Open Repository screen in a new tab", &["Mod+O"]).run(|v, _, cx| v.pick_repository(cx)),
-        Command::new("file.clone", "Clone repository…", File, "copy-plus", "Clone a repository into a new tab", &[]),
+        Command::new("file.openRepo", "Open repository…", File, "folder-plus", "Open the Open Repository screen in a new tab", &["Mod+O"]).run(|v, _, cx| {
+            v.open_blank_tab(cx);
+        }),
+        Command::new("file.clone", "Clone repository…", File, "copy-plus", "Clone a repository into a new tab", &[]).run(|v, _, cx| v.open_clone_tab(cx)),
         Command::new("file.closeFile", "Close file", File, "file-x", "Close the open file and go back to the graph", &["Mod+W"]).when(file_open).hidden().run(|v, _, cx| v.close_file_or_history(cx)),
         Command::new("file.closeTab", "Close tab", File, "x", "Close the current tab", &["Mod+W"]).when(has_tab).run(|v, _, cx| v.close_tab(v.active, cx)),
         Command::new("file.reopenTab", "Reopen closed tab", File, "rotate-ccw", "Reopen the most recently closed tab", &["Mod+Shift+T"]).when(|v, _| !v.closed_tabs.is_empty()).run(|v, _, cx| v.reopen_tab(cx)),

@@ -191,6 +191,45 @@ impl GitVolt {
         }
     }
 
+    /// The graph's own keys: Home, End, → and Enter on the first changed file, the menu key and Shift+F10 on the row.
+    pub fn graph_key(&mut self, k: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(tab) = self.tabs.get(self.active) else { return false };
+        if tab.keys != KeyArea::Graph || tab.diff.is_some() || tab.history.is_some() || tab.rebase_shown().is_some() {
+            return false;
+        }
+        let Some(g) = tab.graph.clone() else { return false };
+        let m = k.modifiers;
+        if m.control || m.alt || m.platform {
+            return false;
+        }
+        match k.key.as_str() {
+            "home" if !g.rows.is_empty() => self.select(0, cx),
+            "end" if !g.rows.is_empty() => self.select(g.rows.len() - 1, cx),
+            "right" | "enter" if !m.shift => {
+                let first = tab.files.as_ref().and_then(|f| f.rows.iter().find_map(|r| if let crate::details::ListRow::File { index, .. } = r { Some(*index) } else { None }));
+                let Some(first) = first else { return k.key == "right" };
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.keys = KeyArea::Files;
+                }
+                self.open_file(first, cx);
+            }
+            "menu" | "f10" if k.key == "menu" || m.shift => {
+                let Some(ix) = tab.selected else { return false };
+                let Some(row) = g.rows.get(ix) else { return false };
+                if matches!(row.kind, NodeKind::Wip | NodeKind::Collapsed) {
+                    return false;
+                }
+                let top = tab.list.0.borrow().base_handle.bounds().origin.y + tab.list.0.borrow().base_handle.offset().y;
+                let weak = cx.weak_entity();
+                let rows = self.row_menu(ix, &weak);
+                let x = tab.list.0.borrow().base_handle.bounds().origin.x;
+                crate::ui::menu::open_context_for(format!("row:{ix}"), rows, point(x, top + px((ix + 1) as f32 * crate::model::ROW_H)), window, cx);
+            }
+            _ => return false,
+        }
+        true
+    }
+
     /// The commit under the pointer shows its branch's dimmed chip. Nothing re-renders crossing rows without one.
     pub fn hover_row(&mut self, ix: usize, entered: bool, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
@@ -559,7 +598,7 @@ pub fn compare_header(tab: &Tab, c: &Compare, cx: &mut Context<GitVolt>) -> AnyE
                 .border_b_1()
                 .border_color(theme::section_border())
                 .child(div().flex().flex_1().min_w_0().items_center().whitespace_nowrap().overflow_hidden().gap(px(4.)).child(div().flex_none().child("Comparing")).child(code(short(&c.from))).child(div().flex_none().child(icon("arrow-right", 12., theme::text_normal()))).child(to_text))
-                .when(swap, |d| d.child(tip("Swap from and to", div().id("compare-swap").flex().flex_none().size(px(22.)).items_center().justify_center().rounded(px(3.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(cx.listener(|this, _, _, cx| this.swap_compare(cx))).child(icon("arrow-left-right", 14., theme::text_secondary())))))
+                .when(swap, |d| d.child(tip("Swap from and to", crate::ui::anchor("compare-swap", div().id("compare-swap").flex().flex_none().size(px(22.)).items_center().justify_center().rounded(px(3.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(cx.listener(|this, _, _, cx| this.swap_compare(cx))).child(icon("arrow-left-right", 14., theme::text_secondary()))))))
                 .child(tip("Exit compare (Esc)", div().id("compare-close").flex().flex_none().size(px(22.)).items_center().justify_center().rounded(px(3.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(cx.listener(|this, _, _, cx| {
                     this.exit_compare(cx);
                 })).child(icon("x", 14., theme::text_secondary())))),

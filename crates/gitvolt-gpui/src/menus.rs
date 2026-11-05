@@ -475,7 +475,7 @@ impl GitVolt {
 
     /// The tab bar's empty space.
     pub fn tabbar_rows(&self, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
-        let (a, b) = (this.clone(), this.clone());
+        let (a, b, c) = (this.clone(), this.clone(), this.clone());
         grouped(vec![
             vec![
                 MenuRow::action("tabbar.reopen", "Reopen closed tab", "rotate-ccw", "Reopen the most recently closed tab", move |_, cx| {
@@ -486,10 +486,15 @@ impl GitVolt {
             ],
             vec![
                 MenuRow::action("tabbar.openRepo", "Open repository…", "folder-plus", "Open the Open Repository screen in a new tab", move |_, cx| {
-                    b.update(cx, |v, cx| v.pick_repository(cx)).ok();
+                    b.update(cx, |v, cx| {
+                        v.open_blank_tab(cx);
+                    })
+                    .ok();
                 })
                 .shortcut("Ctrl+O"),
-                MenuRow::pending("tabbar.clone", "Clone repository…", "copy-plus"),
+                MenuRow::action("tabbar.clone", "Clone repository…", "copy-plus", "Clone a repository into a new tab", move |_, cx| {
+                    c.update(cx, |v, cx| v.open_clone_tab(cx)).ok();
+                }),
             ],
         ])
     }

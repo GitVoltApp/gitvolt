@@ -24,6 +24,8 @@ pub struct OpInfo {
     pub repo: Option<u32>,
     pub label: String,
     pub percent: Option<u8>,
+    /// What git says it's doing: a clone's progress names it.
+    pub phase: Option<String>,
     pub interactive: bool,
     pub shown: bool,
     pub started: Instant,
@@ -82,11 +84,12 @@ impl Ops {
     pub fn apply(&mut self, e: &AppEvent) {
         match e {
             AppEvent::OpStarted { op, kind, repo, label, interactive } => {
-                self.ops.insert(*op, OpInfo { op: *op, kind: *kind, repo: *repo, label: label.clone(), percent: None, interactive: *interactive, shown: false, started: Instant::now(), stash: None, step: None });
+                self.ops.insert(*op, OpInfo { op: *op, kind: *kind, repo: *repo, label: label.clone(), phase: None, percent: None, interactive: *interactive, shown: false, started: Instant::now(), stash: None, step: None });
             }
-            AppEvent::OpProgress { op, percent, step, .. } => {
+            AppEvent::OpProgress { op, percent, step, phase, .. } => {
                 if let Some(o) = self.ops.get_mut(op) {
                     o.percent = *percent;
+                    o.phase = Some(phase.clone());
                     if step.is_some() {
                         o.step.clone_from(step);
                     }

@@ -219,6 +219,19 @@ impl GitVolt {
                     alt: None,
                 }
             })
+            .chain(self.profile["recent"].as_array().map_or(&[][..], Vec::as_slice).iter().filter(|r| !self.tabs.iter().any(|t| Some(t.worktree.as_str()) == r["path"].as_str())).map(|r| {
+                let (weak, path) = (this.clone(), r["path"].as_str().unwrap_or_default().to_string());
+                Entry {
+                    group: PaletteGroup::Tab,
+                    label: r["name"].as_str().unwrap_or_default().to_string().into(),
+                    detail: Some(path.clone().into()),
+                    run: Rc::new(move |_, cx| {
+                        let path = path.clone();
+                        weak.update(cx, |v, cx| v.open(path, cx)).ok();
+                    }),
+                    alt: None,
+                }
+            }))
             .collect()
     }
 

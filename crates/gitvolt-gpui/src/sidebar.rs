@@ -1147,7 +1147,7 @@ fn hover_card(item: &SideItem, push: &PushCache, this: &WeakEntity<GitVolt>, cx:
     card.into_any_element()
 }
 
-fn tilde(path: &str) -> String {
+pub fn tilde(path: &str) -> String {
     match std::env::var("HOME") {
         Ok(home) if !home.is_empty() && path.starts_with(&home) => format!("~{}", &path[home.len()..]),
         _ => path.to_string(),

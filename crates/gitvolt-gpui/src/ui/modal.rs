@@ -23,6 +23,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("escape", CloseModal, Some("Modal")),
         KeyBinding::new("tab", FocusNext, Some("Modal")),
         KeyBinding::new("shift-tab", FocusPrev, Some("Modal")),
+        KeyBinding::new("tab", FocusNext, Some("OpenScreen")),
+        KeyBinding::new("shift-tab", FocusPrev, Some("OpenScreen")),
     ]);
 }
 

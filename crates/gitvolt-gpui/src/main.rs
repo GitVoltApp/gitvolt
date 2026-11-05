@@ -23,6 +23,7 @@ mod manage;
 mod menus;
 mod merge;
 mod model;
+mod open;
 mod open_in;
 mod ops;
 mod palette;
@@ -103,7 +104,7 @@ fn main() {
         std::process::exit(code);
     }
     bench::mark("main");
-    let path = std::env::args().nth(1).or_else(|| std::env::var("GITVOLT_OPEN").ok());
+    let path = std::env::args().nth(1).or_else(|| std::env::var("GITVOLT_OPEN").ok()).filter(|p| !p.is_empty());
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("a tokio runtime");
     let handle = runtime.handle().clone();
     // The login shell's environment, captured once: git started meanwhile waits for it, bounded.
@@ -155,8 +156,11 @@ fn main() {
                 v.load_layout();
                 v.load_drafts();
                 v.listen(cx);
-                if let Some(path) = path.clone() {
-                    v.open(path, cx);
+                match path.clone() {
+                    Some(path) => v.open(path, cx),
+                    None => {
+                        v.open_blank_tab(cx);
+                    }
                 }
             });
             let closing = view.clone();

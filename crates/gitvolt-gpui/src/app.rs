@@ -83,6 +83,8 @@ pub struct Tab {
     pub zoom_input: Entity<TextInput>,
     pub list: UniformListScrollHandle,
     /// A compare in the details panel: from and to, as its bar names them.
+    /// An Open tab's screen: it has no repository, and `id` isn't one.
+    pub open_screen: Option<Box<crate::open::OpenScreen>>,
     pub compare: Option<crate::selection::Compare>,
     /// A compare's or multi-selection's rows; `selected` is then the keyboard's row among them.
     pub picks: crate::selection::Picks,
@@ -171,6 +173,7 @@ impl Tab {
             file_filter,
             zoom_input,
             list: UniformListScrollHandle::new(),
+            open_screen: None,
             compare: None,
             picks: Default::default(),
             find: crate::find::FindState::new(id, cx),
@@ -220,6 +223,16 @@ pub struct GitVolt {
     pub side_weights: HashMap<SectionKind, f32>,
     pub side_drag: SideDrag,
     pub last_pushes: PushCache,
+    /// The profile and the settings, as the core says them; `Null` until they're read.
+    pub profile: serde_json::Value,
+    pub settings: serde_json::Value,
+    /// What opened before the profile was read.
+    pub pending_recent: Vec<(String, String)>,
+    pub open_tabs_made: u32,
+    /// A script's answer to the next directory picker.
+    pub script_folder: Option<String>,
+    pub repo_order: crate::open::RepoOrder,
+    pub repo_grouped: bool,
     pub details_w: f32,
     /// The commit's share of the details panel, and its divider being dragged.
     pub details_split: f32,
@@ -282,7 +295,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -312,6 +325,7 @@ impl GitVolt {
         })
         .detach();
         self.start_fetch_schedule(cx);
+        self.load_state(cx);
         let info = rt.spawn({
             let api = api.clone();
             async move { api.dispatch(Request::AppInfo).await }
@@ -346,35 +360,59 @@ impl GitVolt {
         cx.notify();
     }
 
+    /// Opens a path; an active Open tab takes it (a fresh start opens the folder in its only tab).
     pub fn open(&mut self, path: String, cx: &mut Context<Self>) {
+        let here = self.tabs.get(self.active).filter(|t| t.is_open_tab()).map(|t| t.id);
+        self.open_in(path, here, cx);
+    }
+
+    /// `in_tab`: the Open tab the repository takes the place of.
+    pub fn open_in(&mut self, path: String, in_tab: Option<u32>, cx: &mut Context<Self>) {
+        let asked = path.clone();
         let api = self.api.clone();
         let opened = self.rt.spawn(async move {
             let v = api.dispatch(Request::OpenRepo { path }).await?;
             let id = v["id"].as_u64().unwrap_or(0) as u32;
             api.dispatch(Request::WatchRepo { repo: id }).await?;
-            Ok::<_, gitvolt_core::error::GbError>((id, v["name"].as_str().unwrap_or_default().to_string(), v["worktree"].as_str().unwrap_or_default().to_string()))
+            Ok::<_, gitvolt_core::error::GbError>((id, v["name"].as_str().unwrap_or_default().to_string(), v["worktree"].as_str().unwrap_or_default().to_string(), v["path"].as_str().unwrap_or_default().to_string()))
         });
         cx.spawn(async move |this, cx| {
             let result = opened.await;
             this.update(cx, |this, cx| match result {
-                Ok(Ok((id, name, worktree))) => {
+                Ok(Ok((id, name, worktree, repo_path))) => {
                     crate::bench::mark("repo_open");
+                    this.note_recent(&repo_path, &name);
+                    let spot = in_tab.and_then(|t| this.tabs.iter().position(|x| x.id == t));
                     if let Some(i) = this.tabs.iter().position(|t| t.id == id) {
                         this.active = i;
+                        if let Some(s) = spot {
+                            this.tabs.remove(s);
+                            this.active = this.tabs.iter().position(|t| t.id == id).unwrap_or(0);
+                        }
                     } else {
                         let mut tab = Tab::new(id, name.into(), cx);
-                        tab.worktree = worktree;
+                        tab.worktree = worktree.clone();
                         this.restore_columns(&mut tab);
-                        this.tabs.push(tab);
+                        let at = match spot {
+                            Some(s) => {
+                                this.tabs[s] = tab;
+                                s
+                            }
+                            None => {
+                                let at = if this.tabs.is_empty() { 0 } else { (this.active + 1).min(this.tabs.len()) };
+                                this.tabs.insert(at, tab);
+                                at
+                            }
+                        };
+                        this.active = at;
                         this.list_openers(id, cx);
-                        this.load_journal(id, this.tabs.last().map_or(String::new(), |t| t.worktree.clone()), cx);
-                        this.active = this.tabs.len() - 1;
+                        this.load_journal(id, worktree, cx);
                         this.reload(id, cx);
                     }
                     cx.notify();
                 }
-                Ok(Err(e)) => eprintln!("Couldn't open the repository: {}", e.message),
-                Err(e) => eprintln!("Couldn't open the repository: {e}"),
+                Ok(Err(e)) => this.open_failed(in_tab, &asked, e.message, cx),
+                Err(e) => this.open_failed(in_tab, &asked, e.to_string(), cx),
             })
             .ok();
         })
@@ -408,6 +446,21 @@ impl GitVolt {
                     Ok(Ok((graph, sections, raw))) => {
                         tab.sidebar = Rc::new(raw);
                         // The selection follows its commit across a reload.
+                        // What's on screen stays where it was: the selected commit if it shows, else the top row.
+                        if let Some(old) = tab.graph.as_ref() {
+                            let handle = tab.list.0.borrow().base_handle.clone();
+                            let (top, view) = (-handle.offset().y.as_f32(), handle.bounds().size.height.as_f32());
+                            let on_screen = tab.selected.filter(|i| (*i as f32 + 1.) * ROW_H > top && (*i as f32) * ROW_H < top + view);
+                            let anchor = on_screen.or(Some((top / ROW_H).floor() as usize));
+                            if let Some(a) = anchor
+                                && let Some(id) = old.rows.get(a).map(|r| r.id.clone())
+                                && let Some(now) = graph.0.by_sha.get(id.as_ref())
+                                && *now != a
+                            {
+                                let to = (top + (*now as f32 - a as f32) * ROW_H).max(0.);
+                                handle.set_offset(point(handle.offset().x, px(-to)));
+                            }
+                        }
                         let selected = tab.selected.and_then(|i| tab.graph.as_ref()?.rows.get(i)).map(|r| r.id.to_string());
                         tab.selected = selected.and_then(|id| graph.0.by_sha.get(&id).copied());
                         let before: Vec<SharedString> = if tab.picks.rows.is_empty() { Vec::new() } else { tab.graph.as_ref().map_or(Vec::new(), |g| g.rows.iter().map(|r| r.id.clone()).collect()) };
@@ -560,6 +613,11 @@ impl GitVolt {
     fn page(&mut self, down: bool, window: &Window, cx: &mut Context<Self>) {
         let height = window.viewport_size().height.as_f32();
         let sign = if down { 1. } else { -1. };
+        // In the graph, a page of rows from the keyboard's row.
+        if self.tabs.get(self.active).is_some_and(|t| t.keys == KeyArea::Graph && t.diff.is_none() && t.history.is_none()) {
+            let rows = (((height - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H - crate::table::HEADER_H) / ROW_H).floor() - 1.).max(1.);
+            return self.move_selection((sign * rows) as i64, cx);
+        }
         if self.tabs.get(self.active).is_some_and(|t| t.keys == KeyArea::Files && t.files.is_some()) {
             // What's over the list: the window's bars, the commit, the list's own header.
             self.page_files(down, ((height - 400.) / 26.).max(1.) as usize, cx);
@@ -611,10 +669,16 @@ impl GitVolt {
             return;
         }
         let tab = self.tabs.remove(ix);
-        self.closed_tabs.push(tab.worktree.clone());
-        let api = self.api.clone();
-        self.rt.spawn(async move { api.dispatch(Request::UnwatchRepo { repo: tab.id }).await });
+        if !tab.is_open_tab() {
+            self.closed_tabs.push(tab.worktree.clone());
+            let api = self.api.clone();
+            self.rt.spawn(async move { api.dispatch(Request::UnwatchRepo { repo: tab.id }).await });
+        }
         self.active = self.active.min(self.tabs.len().saturating_sub(1));
+        // With no tab open, the Open Repository screen.
+        if self.tabs.is_empty() {
+            self.open_blank_tab(cx);
+        }
         cx.notify();
     }
 
@@ -683,19 +747,6 @@ impl GitVolt {
             window,
             cx,
         );
-    }
-
-    pub fn pick_repository(&mut self, cx: &mut Context<Self>) {
-        let picked = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: None });
-        cx.spawn(async move |this, cx| {
-            if let Ok(Ok(Some(paths))) = picked.await
-                && let Some(path) = paths.first()
-            {
-                let path = path.to_string_lossy().into_owned();
-                this.update(cx, |this, cx| this.open(path, cx)).ok();
-            }
-        })
-        .detach();
     }
 
     fn diff_open(&self) -> bool {
@@ -803,6 +854,7 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .relative()
                 .when(outlined, |d| d.child(crate::ui::outline()))
                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
                     this.active = i;
                     this.tab_drag = Some(i);
                     cx.notify();
@@ -834,7 +886,13 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 )),
         ));
     }
-    let tabs = tabs.on_mouse_down(MouseButton::Right, cx.listener(|this, e: &MouseDownEvent, window, cx| {
+    let tabs = tabs.on_mouse_down(MouseButton::Left, cx.listener(|this, e: &MouseDownEvent, _, cx| {
+        // Empty space only, as a browser's tab strip: a new tab on the Open repository screen.
+        if e.click_count == 2 {
+            this.open_blank_tab(cx);
+        }
+    }))
+    .on_mouse_down(MouseButton::Right, cx.listener(|this, e: &MouseDownEvent, window, cx| {
         let weak = cx.weak_entity();
         let rows = this.tabbar_rows(&weak);
         menu::open_context(rows, e.position, window, cx);
@@ -847,7 +905,9 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         .bg(theme::tab_bar_bg())
         .border_b_1()
         .border_color(theme::section_border())
-        .child(tip(format!("Open repository ({})", crate::commands::display_chord("Mod+O")), bar_button("open", "folder-plus").on_click(cx.listener(|this, _, _, cx| this.pick_repository(cx)))))
+        .child(tip(format!("Open repository ({})", crate::commands::display_chord("Mod+O")), bar_button("open", "folder-plus").on_click(cx.listener(|this, _, _, cx| {
+            this.open_blank_tab(cx);
+        }))))
         .child(tabs)
         .child(crate::feedback::bell(this, cx))
         .child(tip(format!("Settings ({})", crate::commands::display_chord("Mod+,")), bar_button("settings", "settings")))
@@ -1238,7 +1298,8 @@ impl Render for GitVolt {
         let folded = open_file && !tab.is_some_and(|t| t.sidebar_open);
         let folded = folded || self.sidebar_narrow;
         // The rebase editor takes the sidebar's place too.
-        let no_sidebar = tab.is_some_and(|t| t.rebase_shown().is_some());
+        let open_id = tab.filter(|t| t.is_open_tab()).map(|t| t.id);
+        let no_sidebar = tab.is_some_and(|t| t.rebase_shown().is_some()) || open_id.is_some();
         let left = if no_sidebar { 0. } else if folded { NARROW_W } else { self.sidebar_w };
         let center = viewport.width.as_f32() - left - if details.is_some() { self.details_w + 1. } else { 0. };
         let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
@@ -1265,7 +1326,9 @@ impl Render for GitVolt {
         let menu = tab.and_then(|t| open_in_menu(t, cx));
         let rebase_ghost = tab.and_then(crate::irebase::view::chip_ghost);
         let rebase = tab.and_then(|t| crate::irebase::view::rebase_panel(t, center, window, cx));
-        let main = if let Some(panel) = rebase { panel } else { match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), t.wip_ctx().and_then(|c| self.ops.staging(c.repo, &c.worktree)), window, cx) }) {
+        let open_page = open_id.map(|id| crate::open::open_screen(self, id, window, cx));
+        let tab = self.tabs.get(self.active);
+        let main = if let Some(page) = open_page { page } else if let Some(panel) = rebase { panel } else { match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), t.wip_ctx().and_then(|c| self.ops.staging(c.repo, &c.worktree)), window, cx) }) {
             Some(panel) => panel,
             None => graph_table(self, center, window, cx),
         } };
@@ -1307,7 +1370,7 @@ impl Render for GitVolt {
                 if crate::ui::input::is_typing(window) {
                     return;
                 }
-                if (k.key == "enter" && this.activate_open_in(cx)) || this.sidebar_key(k, cx) || this.file_list_key(k, cx) {
+                if (k.key == "enter" && this.activate_open_in(cx)) || this.sidebar_key(k, cx) || this.file_list_key(k, cx) || this.graph_key(k, window, cx) {
                     cx.stop_propagation();
                 }
             }))
@@ -1364,7 +1427,7 @@ impl Render for GitVolt {
             }))
             .child(title_bar(self, window, cx))
             .child(tab_bar(self, cx))
-            .child(toolbar(self, cx))
+            .when(open_id.is_none(), |d| d.child(toolbar(self, cx)))
             .children(banners)
             .child(div().flex().flex_1().min_h_0().when_some(strip, |d, s| d.child(s)).when(!folded && !no_sidebar, |d| d.child(sidebar(self, body_h, window, cx))).child(main).children(details))
             .child(status_bar(self, cx))
@@ -1473,6 +1536,7 @@ pub mod tests {
         let (window, mut cx, _runtime) = with_rows(cx, 1);
         cx.run_until_parked();
         cx.simulate_keystrokes("ctrl-w");
-        assert_eq!(window.read_with(&cx, |v, _| v.tabs.len()).unwrap(), 0);
+        let shown = window.read_with(&cx, |v, _| v.tabs.iter().map(Tab::is_open_tab).collect::<Vec<_>>()).unwrap();
+        assert_eq!(shown, [true], "with no tab open, the Open Repository screen");
     }
 }
