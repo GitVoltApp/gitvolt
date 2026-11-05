@@ -189,9 +189,15 @@ fn main() {
     // The single instance, by this build's own config folder: a later launch hands its path over and goes. A script or a
     // measurement is a process of its own.
     let scripted = ["GITVOLT_BENCH", "GITVOLT_SHOW", "GITVOLT_SCRIPT"].iter().any(|k| std::env::var_os(k).is_some());
-    let (instance, mut forwarded) = if scripted { (None, None) } else { claim_instance(path.as_deref()) };
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("a tokio runtime");
     let handle = runtime.handle().clone();
+    // Serving later launches registers its socket with the runtime, so it has to be running by then.
+    let (instance, mut forwarded) = if scripted {
+        (None, None)
+    } else {
+        let _entered = runtime.enter();
+        claim_instance(path.as_deref())
+    };
     // The login shell's environment, captured once: git started meanwhile waits for it, bounded.
     let shell_env = ShellEnv::from_login_shell();
     let cli = GitCli::new(Arc::new(CommandLog::new(1000))).with_shell_env(shell_env.clone());

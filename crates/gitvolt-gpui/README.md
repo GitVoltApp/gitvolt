@@ -102,6 +102,12 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   `merge` and `rebase` say what those tools hold, `settings` and `profile` what those hold, `zoom` the zoom. `GITVOLT_FAKE_UPDATE=<state>` shows the update pill in that state, asking no host. Their anchors: `merge-hunk:<side>:<n>`, `merge-line:<side>`, `merge-take-all-<side>`, `merge-save`,
   `merge-next`, `irow:<oid>`, `iaction:<oid>`, `ichip:<oid>:<branch>`, `ichip-add:<oid>`, `rebase-start`, `rebase-cancel`, `op-abort-at`, `op-continue-at`.
 
+- **Real input:** `tools/realinput.sh <repo> <script>` starts a nested, invisible KWin with its own Xwayland and runs the build in it
+  unscripted, so it starts as a user's does (`NATIVE=1`: on Wayland, the desktop's default). In the script, `tools/realinput.py` sends
+  a device's events through the compositor (`move`, `click`, `dclick`, `down`, `up`, `wheel`, `key Ctrl+p`, `type`, `wait`) and `tools/xshot.sh out.png`
+  takes the picture. It refuses to run without the nested socket, so it can't reach the desktop. `GITVOLT_SCRIPT` skips the single instance and more:
+  a flow that only ever ran scripted hasn't shown that the app starts.
+
 ## Tests
 
 - **Every run of a test binary or of the app goes under a memory cap and a timeout**, so a runaway fails on its own and can't take the machine down (one has, holding 20 GB):
