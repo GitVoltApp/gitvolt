@@ -24,6 +24,7 @@ mod irebase;
 mod layout;
 mod lfs;
 mod manage;
+mod md;
 mod menus;
 mod metrics;
 mod merge;

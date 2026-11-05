@@ -104,6 +104,8 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 
 ## Tests
 
+- **Every run of a test binary or of the app goes under a memory cap and a timeout**, so a runaway fails on its own and can't take the machine down (one has, holding 20 GB):
+  `( ulimit -v 10000000; timeout 300 cargo test -j 8 -p gitvolt-gpui --target-dir target/bench )`. If the cap kills cargo or rustc while building, build first with `cargo test --no-run` without it, then run under it. The same around a scripted run of the app (`tools/run.sh`), raised only if a GPU driver's address space needs more. A repository's file is untrusted: a loop that walks it or grows a buffer has a bound, pinned by a test.
 - `cargo test -j 8 -p gitvolt-gpui`, and `CEF_PATH=$HOME/.cache/tauri-cef cargo clippy -j 8 -p
   gitvolt-gpui -p gitvolt-core --all-targets -- -D warnings` before each commit.
 - In a test module: `use std::prelude::v1::test;` (`gpui::*` brings its own `test`). GPUI's test

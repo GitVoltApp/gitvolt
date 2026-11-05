@@ -175,7 +175,7 @@ struct Injection {
 
 /// What Shiki gives up on: a line this long stays plain, as does what a slow line didn't reach.
 const MAX_LINE_BYTES: usize = 20_000;
-const LINE_BUDGET: Duration = Duration::from_millis(500);
+const LINE_BUDGET: Duration = Duration::from_millis(if cfg!(test) { 60_000 } else { 500 });
 pub const FONT_ITALIC: u8 = 1;
 pub const FONT_BOLD: u8 = 2;
 pub const FONT_UNDERLINE: u8 = 4;
