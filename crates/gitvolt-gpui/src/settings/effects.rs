@@ -156,6 +156,7 @@ impl GitVolt {
 
     /// What depends on the settings, compared with what's applied: nothing runs for an unrelated setting.
     pub fn sync_effects(&mut self, cx: &mut Context<Self>) {
+        self.apply_reading_settings(cx);
         let s = &self.settings;
         let ui = crate::settings::fonts::ui_family(s["uiFontFamily"].as_str().unwrap_or_default(), &self.base_font);
         if ui != self.font {
@@ -200,6 +201,9 @@ impl GitVolt {
     /// Ctrl+=, Ctrl+- and Ctrl+0: over an open file its text size, else the app's zoom.
     pub fn zoom_key(&mut self, dir: i32, cx: &mut Context<Self>) {
         let over_file = self.tabs.get(self.active).is_some_and(|t| t.diff.is_some() && t.keys == crate::app::KeyArea::Diff);
+        if over_file && self.shown_md().is_some() {
+            return self.reading_zoom(dir, cx);
+        }
         if over_file {
             let now = self.settings["editorFontSize"].as_f64().unwrap_or(13.);
             let next = if dir == 0 { 13. } else { (now + dir as f64).clamp(8., 32.) };

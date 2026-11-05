@@ -55,6 +55,8 @@ pub struct DiffData {
     pub eol_only: bool,
     /// The widest line, in characters: how far text can scroll sideways.
     pub widest: usize,
+    /// A Markdown file's two texts, for its rendered views.
+    pub raw: Option<(Arc<str>, Arc<str>)>,
 }
 
 impl DiffData {
@@ -64,7 +66,7 @@ impl DiffData {
         let (mut a, mut b) = (Side::new(old), Side::new(new));
         mark_words(&ops, &old_raw, &new_raw, &mut a, &mut b);
         let widest = a.lines.iter().chain(&b.lines).map(|l| l.text.len()).max().unwrap_or(0);
-        Self { old: a, new: b, ops, has_old: old.is_some(), encoding, eol_only, widest }
+        Self { old: a, new: b, ops, has_old: old.is_some(), encoding, eol_only, widest, raw: None }
     }
 }
 
@@ -235,6 +237,13 @@ pub struct DiffState {
     pub caret: Option<TextPos>,
     /// Bring the caret into view at the next layout.
     pub reveal_caret: bool,
+    /// A Markdown file: its view switch and what shows it.
+    pub markdown: crate::md::files::MdPick,
+    pub md: Option<crate::md::files::MdPane>,
+    /// A heading to go to, once the rendered view has it.
+    pub md_anchor: Option<String>,
+    /// How wide the body last was.
+    pub md_width: Option<f32>,
 }
 
 /// Which bar `toolbar` draws.
@@ -292,6 +301,10 @@ impl DiffState {
             edit: None,
             caret: None,
             reveal_caret: false,
+            markdown: crate::md::files::MdPick::Rendered,
+            md: None,
+            md_anchor: None,
+            md_width: None,
         }
     }
 
@@ -313,7 +326,7 @@ impl DiffState {
 
     /// What's the web UI's global prefs.
     pub fn take_prefs(&mut self, from: &DiffState) {
-        (self.mode, self.ignore_whitespace, self.wrap, self.background) = (from.mode, from.ignore_whitespace, from.wrap, from.background);
+        (self.mode, self.ignore_whitespace, self.wrap, self.background, self.markdown) = (from.mode, from.ignore_whitespace, from.wrap, from.background, from.markdown);
         self.match_picks = from.match_picks.clone();
     }
 
@@ -702,6 +715,7 @@ impl GitVolt {
             let (Ok(old), Ok(new)) = (old, new) else { return Err(GbError::other("This file's sides can't be read")) };
             let v = api.dispatch(Request::DiffContents { repo: crate::app::core_repo(repo), path: file.path.to_string(), old, new, force, old_path: file.old_path.clone() }).await?;
             let path = file.path.to_string();
+            let old_md = file.old_path.as_deref().is_some_and(crate::md::files::is_markdown_path);
             let editable = super::edit::is_editable(&file, &new_side, &v).then(|| (v["new"]["text"].as_str().unwrap_or_default().to_string(), v["old"]["text"].as_str().map(str::to_string), v["new"]["hash"].as_str().unwrap_or_default().to_string(), new_side["worktree"].as_str().unwrap_or_default().to_string()));
             // A WIP diff's hunks, so its header rows are laid out with it.
             let wip_hunks = match &file.origin {
@@ -717,7 +731,7 @@ impl GitVolt {
             };
             tokio::task::spawn_blocking(move || match hex {
                 Some(hex) => (Read::Binary(Binary::Hex(Arc::new(HexData::of(&hex)))), wip_hunks, editable),
-                None => (contents(&path, &v, ignore, history_file, &svg), wip_hunks, editable),
+                None => (contents(&path, old_md, &v, ignore, history_file, &svg), wip_hunks, editable),
             })
             .await
             .map_err(|e| GbError::other(e.to_string()))
@@ -754,6 +768,7 @@ impl GitVolt {
                         diff.stop_colours = Arc::default();
                         let stop = diff.stop_colours.clone();
                         this.color(repo, generation, data, texts, stop, cx);
+                        this.sync_markdown(cx);
                     }
                     Ok(Ok(Read::Binary(Binary::Hex(data)))) => diff.set_hex(data),
                     Ok(Ok(Read::Binary(Binary::Image { old, new, svg }))) => {
@@ -895,6 +910,13 @@ impl GitVolt {
         if self.tabs.get(self.active).and_then(Tab::merge_shown).is_some() {
             return self.merge_step(forward, cx);
         }
+        if let Some(view) = self.shown_md() {
+            view.update(cx, |v, cx| {
+                v.state.borrow_mut().step_change(forward);
+                cx.notify();
+            });
+            return;
+        }
         self.with_diff(cx, |d| {
             if let Some(hex) = &d.hex {
                 if let Some(row) = super::hex::step(hex, d.cursor, forward) {
@@ -911,10 +933,25 @@ impl GitVolt {
     }
 
     pub fn scroll_diff(&mut self, rows: f32, cx: &mut Context<Self>) {
+        if let Some(view) = self.shown_md() {
+            // Chromium's arrow step, and a page less a little.
+            let by = if rows.abs() <= 1. { rows * 40. } else { rows.signum() * (view.read(cx).state.borrow().view_height() - 40.).max(40.) };
+            view.update(cx, |v, cx| {
+                v.state.borrow_mut().scroll_by(by);
+                cx.notify();
+            });
+            return;
+        }
         self.with_diff(cx, |d| d.scroll_by(rows * crate::metrics::line_h()));
     }
 
     pub fn copy_selection(&mut self, cx: &mut Context<Self>) {
+        if let Some(view) = self.shown_md() {
+            if let Some(text) = view.read(cx).state.borrow().selected_text() {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+            }
+            return;
+        }
         let text = self.merge_selected_text().or_else(|| self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).and_then(DiffState::selected_text));
         if let Some(text) = text {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
@@ -922,6 +959,13 @@ impl GitVolt {
     }
 
     pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        if let Some(view) = self.shown_md() {
+            view.update(cx, |v, cx| {
+                v.state.borrow_mut().select_all();
+                cx.notify();
+            });
+            return;
+        }
         self.with_diff(cx, |d| {
             let last = d.rows.len().saturating_sub(1);
             d.selection = Some(Selection { anchor: TextPos { row: 0, byte: 0 }, head: TextPos { row: last, byte: usize::MAX }, old_side: false });
@@ -962,7 +1006,7 @@ fn wants_hex(v: &Value, history_file: bool) -> bool {
     any && v["tooLarge"].as_bool() != Some(true) && (v["image"].as_bool() != Some(true) || history_file)
 }
 
-fn contents(path: &str, v: &Value, ignore_whitespace: bool, history_file: bool, svg: &SvgRenderer) -> Read {
+fn contents(path: &str, old_path_markdown: bool, v: &Value, ignore_whitespace: bool, history_file: bool, svg: &SvgRenderer) -> Read {
     if v["tooLarge"].as_bool() == Some(true) {
         return Read::Notice(Notice::TooLarge);
     }
@@ -976,7 +1020,11 @@ fn contents(path: &str, v: &Value, ignore_whitespace: bool, history_file: bool, 
     }
     let (old, new) = (blob_text(&v["old"]), blob_text(&v["new"]));
     let encoding = v["new"]["encoding"].as_str().or(v["old"]["encoding"].as_str()).unwrap_or_default().to_string();
-    let data = Arc::new(DiffData::build(old.as_deref(), new.as_deref(), ignore_whitespace, encoding.into(), v["eolOnly"].as_bool() == Some(true)));
+    let mut built = DiffData::build(old.as_deref(), new.as_deref(), ignore_whitespace, encoding.into(), v["eolOnly"].as_bool() == Some(true));
+    if crate::md::files::is_markdown_path(path) || old_path_markdown {
+        built.raw = Some((old.as_deref().unwrap_or("").into(), new.as_deref().unwrap_or("").into()));
+    }
+    let data = Arc::new(built);
     let texts = Texts { path: path.to_string(), old, new };
     // An SVG is an image with its text behind the Source toggle; File History's File shows it as text.
     if path.to_lowercase().ends_with(".svg") && !history_file {
@@ -1817,13 +1865,20 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                         });
                         this.read_contents(false, cx);
                     }
+                    this.sync_markdown(cx);
                 }))
             })
             .into_any_element()
     };
+    let rendered_now = diff.shows_rendered(cx);
     let mode_button = |id: &'static str, label: &'static str, mode: Mode, cx: &mut Context<GitVolt>| {
         let enabled = in_diff && diff.hex.is_none();
-        segment(id, label, diff.mode == mode, enabled)
+        // A rendered diff is Split or one column: a Hunk pick shows it as Inline, and Hunk says why it's off.
+        if rendered_now && mode == Mode::Hunk {
+            return tip(crate::md::files::RENDERED_HUNK_TIP, segment(id, label, false, false)).into_any_element();
+        }
+        let on = if rendered_now && diff.mode == Mode::Hunk { mode == Mode::Inline } else { diff.mode == mode };
+        segment(id, label, on, enabled)
             .when(enabled, |d| {
                 d.on_click(cx.listener(move |this, _, _, cx| {
                     this.with_diff(cx, |d| {
@@ -1831,6 +1886,7 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                         d.hscroll = 0.;
                         d.relayout();
                     });
+                    this.sync_markdown(cx);
                 }))
             })
             .into_any_element()
@@ -1839,7 +1895,9 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
         let color = if pressed { theme::text_selected() } else { theme::text_secondary() };
         div().id(id).flex().flex_none().size(px(22.)).items_center().justify_center().rounded(px(3.)).when(pressed, |d| d.bg(theme::selected_row())).when(enabled, |d| d.hover(|d| d.bg(theme::hover_row()))).when(!enabled, |d| d.opacity(0.4)).child(icon(name, 14., color))
     };
-    let can_step = in_diff && !diff.changes.is_empty();
+    let rendered = diff.shows_rendered(cx);
+    let md_changes = diff.md.as_ref().is_some_and(|m| !m.view.read(cx).state.borrow().change_marks().is_empty());
+    let can_step = in_diff && if rendered { md_changes } else { !diff.changes.is_empty() };
     let (panel, has_history) = match &kind {
         ToolbarKind::Panel { has_history, .. } => (true, *has_history),
         ToolbarKind::History(_) => (false, false),
@@ -1874,6 +1932,7 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                 .justify_end()
                 .items_center()
                 .gap(px(10.))
+                .when(crate::md::files::is_markdown(&diff.file), |d| d.child(crate::md::files::view_toggle(diff, cx)))
                 .children(staging)
                 .when(panel, |d| {
                     d.child(segmented(vec![
@@ -1896,15 +1955,17 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                     div()
                         .flex()
                         .gap(px(2.))
-                        .when(diff_tools, |d| d.child(icon_button("ignore-ws", "pilcrow", diff.ignore_whitespace, in_diff && !hex).when(in_diff && !hex, |d| d.on_click(cx.listener(|this, _, _, cx| this.toggle_whitespace(cx))))))
-                        .child(tip("Word wrap", icon_button("wrap", "text-wrap", diff.wrap, !hex).when(!hex, |d| {
+                        .when(diff_tools && rendered, |d| d.child(tip(crate::md::files::RENDERED_WHITESPACE_TIP, icon_button("ignore-ws", "pilcrow", diff.ignore_whitespace, false))))
+                        .when(diff_tools && !rendered, |d| d.child(icon_button("ignore-ws", "pilcrow", diff.ignore_whitespace, in_diff && !hex).when(in_diff && !hex, |d| d.on_click(cx.listener(|this, _, _, cx| this.toggle_whitespace(cx))))))
+                        .when(rendered, |d| d.child(tip(crate::md::files::RENDERED_WRAP_TIP, icon_button("wrap", "text-wrap", diff.wrap, false))))
+                        .when(!rendered, |d| d.child(tip("Word wrap", icon_button("wrap", "text-wrap", diff.wrap, !hex).when(!hex, |d| {
                             d.on_click(cx.listener(|this, _, _, cx| {
                                 this.with_diff(cx, |d| {
                                     d.wrap = !d.wrap;
                                     d.hscroll = 0.;
                                 });
                             }))
-                        }))),
+                        })))),
                     )
                 }),
         )
@@ -1965,6 +2026,13 @@ pub fn diff_body(diff: &DiffState, width: f32, zoom_input: &Entity<crate::ui::in
     }
     if let Some(hex) = &diff.hex {
         return hex_body(diff, hex, cx);
+    }
+    if let Some(body) = crate::md::files::rendered_body(diff, cx) {
+        return body;
+    }
+    let banner = crate::md::files::too_large_banner(diff, cx);
+    if let Some(banner) = banner {
+        return div().flex().flex_col().flex_1().min_w_0().min_h_0().child(banner).child(text_body(diff, width, cx)).into_any_element();
     }
     text_body(diff, width, cx)
 }
@@ -2171,7 +2239,7 @@ mod tests {
     #[test]
     fn what_a_sides_read_says_decides_what_shows() {
         let svg = cx_free_svg_renderer();
-        let notice = |v: Value| match contents("a.rs", &v, false, false, &svg) {
+        let notice = |v: Value| match contents("a.rs", false, &v, false, false, &svg) {
             Read::Notice(n) => Some(n),
             Read::Text(..) | Read::Binary(_) => None,
         };

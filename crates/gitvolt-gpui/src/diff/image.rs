@@ -215,7 +215,8 @@ pub fn decode_side(v: &Value, svg: &SvgRenderer) -> Side {
     } else if let Some(text) = v["text"].as_str() {
         svg.render_single_frame(text.as_bytes(), 1.).ok().map(|image| {
             let s = image.size(0);
-            Decoded { w: s.width.0 as f32, h: s.height.0 as f32, image }
+            // It's rendered larger, to stay smooth: its own size is the file's.
+            Decoded { w: s.width.0 as f32 / SMOOTH_SVG_SCALE_FACTOR, h: s.height.0 as f32 / SMOOTH_SVG_SCALE_FACTOR, image }
         })
     } else {
         None

@@ -625,7 +625,7 @@ impl GitVolt {
     }
 
     /// A parent's id: selects its commit, or says it isn't loaded.
-    fn go_to_commit(&mut self, sha: SharedString, cx: &mut Context<Self>) {
+    pub fn go_to_commit(&mut self, sha: SharedString, cx: &mut Context<Self>) {
         let at = self.tabs.get(self.active).and_then(|t| t.graph.as_ref()?.by_sha.get(sha.as_ref()).copied());
         match at {
             Some(at) => {

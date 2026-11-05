@@ -300,6 +300,17 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
             "dump" => {
                 cx.update(|_, cx| println!("{}", v.read(cx).dump(cx))).ok();
             }
+            // The rendered view's scroll, as the reference's script sets `scrollTop`.
+            "mdscroll" => {
+                v.update(cx, |g, cx| {
+                    if let Some(view) = g.shown_md() {
+                        view.update(cx, |m, cx| {
+                            m.state.borrow_mut().set_scroll(rest.parse().unwrap_or(0.));
+                            cx.notify();
+                        });
+                    }
+                });
+            }
             // The next directory picker answers this, and no dialog opens.
             "pickfolder" => v.update(cx, |g, _| g.script_folder = Some(rest.clone())),
             "quit" => {
@@ -355,7 +366,13 @@ impl GitVolt {
                 "moved": s.moved,
             })
         });
+        let md = self.shown_md().map(|v| {
+            let view = v.read(cx);
+            let st = view.state.borrow();
+            serde_json::json!({ "ready": view.is_ready(), "tooLarge": view.too_large(), "scroll": st.scroll, "total": st.total_height(), "height": st.view_height(), "marks": st.change_marks().len(), "selected": st.selected_text(), "tops": st.top_offsets() })
+        });
         serde_json::json!({
+            "md": md,
             "rebase": rebase,
             "merge": merge,
             "toast": crate::ui::toast::message(cx).map(|m| m.to_string()),

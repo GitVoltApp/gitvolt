@@ -49,6 +49,8 @@ pub struct Ui {
     pub modals: Vec<modal::Modal>,
     /// The colour picker's popover.
     pub colour: Option<Box<colour::PickerState>>,
+    /// The image viewer.
+    pub lightbox: Option<Box<crate::lightbox::State>>,
     pub toast: toast::ToastState,
     /// Where the anchors (`anchor`, `tip`) are this frame and were last frame.
     anchors: HashMap<SharedString, Bounds<Pixels>>,
@@ -219,6 +221,7 @@ pub fn overlays(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
     out.extend(picker::element(window, cx));
     out.extend(colour::element(window, cx));
     out.extend(menu::element(window, cx));
+    out.extend(crate::lightbox::element(window, cx));
     out.extend(tooltip::element(window, cx));
     out.extend(arm::element(window, cx));
     out.push(canvas(|_, _, _| {}, |_, _, window, _| listen(window)).absolute().top_0().left_0().size_0().into_any_element());

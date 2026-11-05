@@ -126,8 +126,8 @@ pub struct Data {
     pub words: Option<String>,
     /// `gbEmpty`: a table row the other side has.
     pub empty: bool,
-    /// `gbChars`, on a chunk's root.
-    pub spread: bool,
+    /// A tight list's item: its paragraph shows without one.
+    pub tight: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -429,6 +429,7 @@ pub fn parse(text: &str, flavor: Flavor, with_frontmatter: bool) -> Parsed {
         b.close();
     }
     let mut root = b.stack.pop().map(|n| n.children).unwrap_or_default();
+    tight_paragraphs(&mut root);
     transform(&mut root, flavor, false);
     heading_ids(&mut root, &mut Slugger::default());
     if let Some(block) = matter {
@@ -437,6 +438,40 @@ pub fn parse(text: &str, flavor: Flavor, with_frontmatter: bool) -> Parsed {
         root = front;
     }
     Parsed { root, links, too_large: false }
+}
+
+fn is_inline(n: &Node) -> bool {
+    matches!(n.kind, Kind::Text(_) | Kind::Emphasis | Kind::Strong | Kind::Delete | Kind::InlineCode(_) | Kind::Break | Kind::Link { .. } | Kind::Image { .. } | Kind::FootnoteReference { .. } | Kind::Reference(_)) || (matches!(n.kind, Kind::Html(_)) && n.pos.is_none())
+}
+
+/// mdast has a paragraph in every list item; a tight list's just doesn't show. The parser leaves it out: a diff needs it.
+fn tight_paragraphs(nodes: &mut [Node]) {
+    for n in nodes {
+        tight_paragraphs(&mut n.children);
+        if !matches!(n.kind, Kind::ListItem { .. }) || !n.children.iter().any(is_inline) {
+            continue;
+        }
+        let mut out = Vec::with_capacity(n.children.len());
+        let mut run = Vec::new();
+        for k in std::mem::take(&mut n.children) {
+            if is_inline(&k) {
+                run.push(k);
+                continue;
+            }
+            if !run.is_empty() {
+                let mut p = Node::with(Kind::Paragraph, std::mem::take(&mut run));
+                p.data_mut().tight = true;
+                out.push(p);
+            }
+            out.push(k);
+        }
+        if !run.is_empty() {
+            let mut p = Node::with(Kind::Paragraph, run);
+            p.data_mut().tight = true;
+            out.push(p);
+        }
+        n.children = out;
+    }
 }
 
 /// Tokens (runs without ASCII whitespace) longer than this aren't autolinked (`autolinkGuard.ts`).

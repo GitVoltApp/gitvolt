@@ -22,6 +22,7 @@ mod inline;
 mod icons;
 mod irebase;
 mod layout;
+mod lightbox;
 mod lfs;
 mod manage;
 mod md;

@@ -9,10 +9,12 @@ pub mod ast;
 pub mod boxes;
 pub mod diff;
 pub mod emoji;
+pub mod files;
 pub mod frontmatter;
 pub mod layout;
 pub mod links;
 pub mod safe;
+pub mod view;
 
 pub const MERMAID_NOTE: &str = "This build shows a Mermaid diagram as its source";
 

@@ -446,6 +446,7 @@ fn node(b: &mut Builder, n: &Node, notes: &mut Notes, x: bool) {
     let data = n.data();
     match &n.kind {
         Kind::Root => walk(b, &n.children, notes, x),
+        Kind::Paragraph if data.is_some_and(|d| d.tight) => walk(b, &n.children, notes, x),
         Kind::Paragraph => {
             b.open("p", Vec::new());
             walk(b, &n.children, notes, x);
@@ -483,6 +484,14 @@ fn node(b: &mut Builder, n: &Node, notes: &mut Notes, x: bool) {
             }
             let task = checked.map(|c| El::special("input", Special::Task(c)));
             match (task, n.children.first()) {
+                (Some(input), Some(Node { kind: Kind::Paragraph, children, data: d, .. })) if d.as_ref().is_some_and(|d| d.tight) => {
+                    b.element(input);
+                    if !children.is_empty() {
+                        b.text(" ");
+                    }
+                    walk(b, children, notes, x);
+                    walk(b, &n.children[1..], notes, x);
+                }
                 (Some(input), Some(Node { kind: Kind::Paragraph, children, .. })) => {
                     // A loose item: its first paragraph holds the box.
                     b.open("p", Vec::new());

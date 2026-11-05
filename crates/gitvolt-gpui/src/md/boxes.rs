@@ -956,6 +956,7 @@ impl Build {
                 }
                 Some(vec![self.code(lang.clone(), value, marks.as_deref(), words.as_deref(), false, ctx)])
             }
+            Special::Frontmatter(_) => Some(self.table(el, ctx, start)),
             Special::DiffBlock { mark, note } => {
                 let mut c = *ctx;
                 if *mark == Mark::Removed {
@@ -1188,6 +1189,35 @@ fn ranges_of(entry: &str) -> Vec<(usize, usize)> {
         (b > a).then_some((a, b))
     }).collect();
     out.sort();
+    out
+}
+
+/// A body as written (`PlainBody`): a block a line, so a long one lays out as it's reached, and `note` under it.
+pub fn plain(text: &str, params: Params, note: Option<&str>) -> Built {
+    let mut out = Built::default();
+    let style = TextStyle { family: Family::Reading, size: params.font_px, weight: 400, italic: false, color: Tok::TextNormal, line: LineH::Num(params.line_height), valign: VAlign::Base, link: None, strike: false, underline: false, code: false, word: None, tint: None };
+    let push = |out: &mut Built, line: &str, style: TextStyle| {
+        let start = out.stream.len();
+        out.stream.push_str(line);
+        let end = out.stream.len();
+        out.stream.push('\n');
+        let items = if end > start { vec![Item::Text { range: start..end, style }] } else { Vec::new() };
+        out.next_id += 1;
+        let ib = InlineBlock { items, align: Align::None, strut: style, nowrap: false, range: start..end };
+        let mut n = BoxNode::new(out.next_id, BoxKind::Inline(ib), start);
+        if end == start {
+            // An empty line still takes its height.
+            n.padding.bottom = (params.font_px * params.line_height * 64.).floor() / 64.;
+        }
+        out.tops.push(n);
+    };
+    for line in text.split('\n') {
+        push(&mut out, line.trim_end_matches('\r'), style);
+    }
+    if let Some(note) = note {
+        let small = TextStyle { size: 11., color: Tok::TextSecondary, ..style };
+        push(&mut out, note, small);
+    }
     out
 }
 

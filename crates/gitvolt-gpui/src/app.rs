@@ -1638,6 +1638,12 @@ impl Render for GitVolt {
                 diff.commit_held = committing;
                 let (w, h) = body_size(diff, width, height);
                 diff.ensure_layout(w, h);
+                // The rendered diff's Split gives way to one column when the pane's narrow.
+                diff.md_width = Some(width);
+                let split_changed = diff.md.as_ref().is_some_and(|m| m.split != crate::md::files::wants_split(diff));
+                if split_changed {
+                    self.sync_markdown(cx);
+                }
             }
         }
         let tab = self.tabs.get(self.active);

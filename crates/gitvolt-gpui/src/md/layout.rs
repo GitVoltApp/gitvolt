@@ -52,12 +52,16 @@ pub trait Shaper {
     fn metrics(&mut self, style: &TextStyle) -> FontM;
     /// An image's size, once it's decoded; what its box shows otherwise.
     fn image(&mut self, slot: u32) -> ImageState;
+    /// A line of code, with its colours' fonts when they have any of their own.
+    fn code_line(&mut self, _block: u32, _line: usize, text: &str, style: &TextStyle) -> Shaped {
+        self.shape(text, style)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImageState {
     /// What it reserves while it loads, fails or waits: the box's room, by what it says.
-    Boxed { text_w: f32 },
+    Boxed { w: f32, h: f32 },
     Shown { w: f32, h: f32 },
 }
 
@@ -204,7 +208,7 @@ fn box_size(item: &Item, shaped: &Shaped, s: &mut dyn Shaper, stream: &str, max_
                     let scale = if w > max_w && max_w > 0. { max_w / w } else { 1. };
                     (w * scale, h * scale)
                 }
-                ImageState::Boxed { text_w } => (text_w.min(max_w), 24_f32.max(0.)),
+                ImageState::Boxed { w, h } => (w.min(max_w), h),
             };
             let m = s.metrics(style);
             // `vertical-align: middle`: its middle on the parent's baseline plus half an x-height.
@@ -625,7 +629,7 @@ fn layout_code(c: &CodeBox, view_w: f32, stream: &str, s: &mut dyn Shaper) -> La
         LineH::Num(k) => lu(c.style.size * k),
         _ => m.ascent + m.descent,
     };
-    let lines: Vec<Shaped> = c.lines.iter().map(|r| s.shape(&stream[r.clone()], &c.style)).collect();
+    let lines: Vec<Shaped> = c.lines.iter().enumerate().map(|(i, r)| s.code_line(c.index, i, &stream[r.clone()], &c.style)).collect();
     let sign_w = if c.signs { (c.style.size * 0.6).round() * 2. } else { 0. };
     let width = lines.iter().map(|l| l.width).fold(0., f32::max) + sign_w;
     LaidCode { lines, line_h, baseline: above, width, overflow: width > view_w + 0.5, view_w }

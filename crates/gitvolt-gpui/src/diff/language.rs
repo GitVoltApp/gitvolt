@@ -32,6 +32,11 @@ fn by_name(name: &str) -> Option<&'static str> {
     LANGS.iter().find(|l| l.id == name || l.aliases.contains(&name)).map(|l| l.id)
 }
 
+/// A fence's language: Shiki's id or alias.
+pub fn by_fence(name: &str) -> Option<&'static str> {
+    by_name(&name.to_ascii_lowercase())
+}
+
 fn interpreter(first_line: &str) -> Option<&str> {
     let rest = first_line.strip_prefix("#!")?.trim_start();
     let mut words = rest.split_ascii_whitespace();
