@@ -6,13 +6,15 @@ vi.mock('../api/client', () => ({
   api: { saveProfile: vi.fn(async () => null), saveSettings: vi.fn(async () => null), appInfo: vi.fn(async () => ({ appVersion: 'x', gitVersion: 'y' })) },
   errorMessage: (e: unknown) => String(e),
 }));
+vi.mock('../app/actions', async (orig) => ({ ...(await orig<typeof import('../app/actions')>()), runAction: vi.fn(() => true) }));
 vi.mock('../api/transport', () => ({ copyText: vi.fn(async () => {}), inTauri: () => false }));
 
 const { TitleBar, fallbackWindowMenu } = await import('./TitleBar');
 const { useWindowChrome } = await import('./windowChrome');
-const { useMenu } = await import('../menu/menuStore');
+const { useMenu, pressedAnchor } = await import('../menu/menuStore');
 const { useAppState, EMPTY_PROFILE } = await import('../app/state');
 const { TabBar } = await import('../tabs/TabBar');
+const { runAction } = await import('../app/actions');
 
 const linux = (layout: string, more: Partial<WindowChromeInfo> = {}): WindowChromeInfo => ({ frame: 'custom', platform: 'linux', layout, doubleClick: 'toggle-maximize', middleClick: 'lower', rightClick: 'menu', ...more });
 const calls = () => window.__gbWindowCalls ?? [];
@@ -276,5 +278,58 @@ describe('the tab bar under the title bar', () => {
     fireEvent.mouseMove(document, { buttons: 1, clientX: 640, clientY: 40 });
     fireEvent.mouseUp(document);
     expect(calls()).toEqual([]);
+  });
+
+  const pressMove = (el: Element) => {
+    fireEvent.mouseDown(el, { button: 0, clientX: 600, clientY: 20 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 640, clientY: 20 });
+    fireEvent.mouseUp(el);
+    fireEvent.click(el, { detail: 1 });
+  };
+  const menuOpen = () => useMenu.getState().rows !== null;
+  const btn = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) });
+
+  it('Open repository, the bell and Settings move the window on a press-and-move, and act on a click', () => {
+    vi.mocked(runAction).mockClear();
+    act(() => useWindowChrome.setState({ info: linux('appmenu:close') }));
+    render(<TabBar />);
+    for (const name of ['Open repository', 'Notifications', 'Settings']) {
+      window.__gbWindowCalls = [];
+      pressMove(btn(name));
+      expect(calls()).toEqual(['startDragging']);
+    }
+    expect(menuOpen()).toBe(false);
+    expect(runAction).not.toHaveBeenCalled();
+    fireEvent.mouseDown(btn('Notifications'), { button: 0, clientX: 600, clientY: 20 });
+    fireEvent.mouseUp(document);
+    fireEvent.click(btn('Notifications'), { detail: 1 });
+    expect(menuOpen()).toBe(true);
+    act(() => useMenu.getState().close());
+    fireEvent.mouseDown(btn('Settings'), { button: 0, clientX: 600, clientY: 20 });
+    fireEvent.mouseUp(document);
+    fireEvent.click(btn('Settings'), { detail: 1 });
+    expect(runAction).toHaveBeenCalledWith('file.settings');
+    // The keyboard's click always runs, even after a move.
+    pressMove(btn('Open repository'));
+    fireEvent.click(btn('Open repository'), { detail: 0 });
+    expect(runAction).toHaveBeenCalledWith('file.openRepo');
+  });
+
+  it('a second click on the bell closes its menu', () => {
+    render(<TabBar />);
+    fireEvent.click(btn('Notifications'));
+    expect(menuOpen()).toBe(true);
+    // The open menu's outside-press dismiss (ContextMenu) calls this on the press, then the click follows.
+    act(() => { pressedAnchor(btn('Notifications')); useMenu.getState().close(); });
+    fireEvent.click(btn('Notifications'));
+    expect(menuOpen()).toBe(false);
+  });
+
+  it('with the system title bar the buttons move nothing', () => {
+    vi.mocked(runAction).mockClear();
+    render(<TabBar />);
+    for (const name of ['Open repository', 'Settings']) pressMove(btn(name));
+    expect(calls()).toEqual([]);
+    expect(runAction).toHaveBeenCalledTimes(2);
   });
 });

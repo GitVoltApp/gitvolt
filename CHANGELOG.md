@@ -29,7 +29,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   afterwards picks up where it stopped.
 - **Window buttons move the window.** On Windows and Linux, dragging from GitVolt's title bar's
   minimize, maximize or close moves the window instead of pressing the button, as a GTK header
-  bar's do; a click still presses it.
+  bar's do; a click still presses it. So do the tab bar's Open repository, notifications and
+  Settings buttons.
 - **A profile can have no name.** Leave the name empty in New profile… or Edit profile… and the
   profile switcher shows just its color; menus call it Unnamed profile.
 

@@ -27,7 +27,7 @@ import { tabDragRange, tabDropAt, unitLocator, useTabDrag, type DragBox, type Dr
 import { isWindowBlur, refocusWhenWindowReturns } from '../ui/windowBlur';
 import './tabs.css';
 import { displayChord } from '../ui/platformKeys';
-import { beginWindowDrag } from '../chrome/dragRegion';
+import { beginWindowDrag, useDragOrClick } from '../chrome/dragRegion';
 import { useCustomTitleBar } from '../chrome/windowChrome';
 
 function RenameInput({ tab }: { tab: TabState }) {
@@ -167,6 +167,7 @@ function groupPlan(p: Profile, id: string, update: (fn: (p: Profile) => Profile)
  * the window too. */
 export function TabBar() {
   const customTitleBar = useCustomTitleBar();
+  const buttonDrag = useDragOrClick(customTitleBar);
   const profile = useAppState((s) => s.profile);
   const { tabs, activeTab: active, tabGroups } = profile;
   const closedCount = profile.closedTabs.length;
@@ -223,7 +224,7 @@ export function TabBar() {
     <div className="tab-bar">
       {!customTitleBar && <HamburgerMenu />}
       <HoverTooltip content={`Open repository (${displayChord('Mod+O')})`}>
-        <button type="button" className="tab-bar-btn" aria-label="Open repository" onClick={() => runAction('file.openRepo')}>
+        <button type="button" className="tab-bar-btn" aria-label="Open repository" onMouseDown={buttonDrag.onMouseDown} onClick={(e) => { if (!buttonDrag.guardClick(e)) runAction('file.openRepo'); }}>
           <FolderPlus size={16} aria-hidden />
         </button>
       </HoverTooltip>
@@ -310,7 +311,7 @@ export function TabBar() {
       {listGroup && !drag && <GroupTabList key={listGroup.id} group={listGroup} focus={list!.focus} />}
       <NotificationsBell />
       <HoverTooltip content={`Settings (${displayChord('Mod+,')})`}>
-        <button type="button" className="tab-bar-btn" aria-label="Settings" onClick={() => runAction('file.settings')}>
+        <button type="button" className="tab-bar-btn" aria-label="Settings" onMouseDown={buttonDrag.onMouseDown} onClick={(e) => { if (!buttonDrag.guardClick(e)) runAction('file.settings'); }}>
           <Settings size={16} aria-hidden />
         </button>
       </HoverTooltip>

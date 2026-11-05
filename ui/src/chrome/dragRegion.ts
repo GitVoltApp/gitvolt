@@ -1,3 +1,4 @@
+import { useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { windowOps, type WindowOps } from './windowChrome';
 
 /** What a press inside a drag region leaves alone: the controls, and anything marked. */
@@ -43,4 +44,25 @@ export function beginWindowDrag(press: Press, ops: WindowOps = windowOps, target
   };
   target.addEventListener('mousemove', move, true);
   target.addEventListener('mouseup', stop, true);
+}
+
+/**
+ * A button that also moves the window: a press that moves [`DRAG_THRESHOLD`] px before the release
+ * moves the window and its click doesn't run (`guardClick`); a press and release in place is a
+ * click. A keyboard click (no `detail`) always runs. Disabled (`enabled` false: the system draws
+ * the title bar), neither does anything. `keepFocus` stops the press from taking the focus.
+ */
+export function useDragOrClick(enabled: boolean, keepFocus = false) {
+  // Cleared on each press: the window manager may keep the release that ends a move.
+  const dragged = useRef(false);
+  return {
+    onMouseDown(e: ReactMouseEvent) {
+      if (!enabled) return;
+      if (keepFocus) e.preventDefault();
+      dragged.current = false;
+      beginWindowDrag(e, windowOps, document, () => { dragged.current = true; });
+    },
+    /** Whether this click is the end of a window move (or not a click to run). */
+    guardClick: (e: ReactMouseEvent): boolean => enabled && dragged.current && e.detail > 0,
+  };
 }
