@@ -16,6 +16,7 @@
     "remotes": [
       {
         "account": "gitlab",
+        "accountId": "gitlab.example.com",
         "error": null,
         "host": "gitlab.example.com",
         "path": "orbital/forge-lab",

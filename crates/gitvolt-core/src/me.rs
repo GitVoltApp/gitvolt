@@ -68,7 +68,7 @@ mod tests {
         let api = api();
         let p = api.store().active_profile().id;
         let user = ForgeUser { id: 1, username: "robin".into(), name: "Robin".into(), avatar_url: None, web_url: String::new(), email: None, emails: vec!["Robin@Example.com".into(), "r@example.com".into()] };
-        api.store().set_forge_accounts(&p, vec![ForgeAccount { id: String::new(), host: "gitlab.example.com".into(), kind: ForgeKind::GitLab, user, storage: TokenStorage::File, version: None, version_checked_at: 0, added_at: 0 }]).unwrap();
+        api.store().set_forge_accounts(&p, vec![ForgeAccount { id: "gitlab.example.com".into(), host: "gitlab.example.com".into(), kind: ForgeKind::GitLab, user, storage: TokenStorage::File, version: None, version_checked_at: 0, added_at: 0 }]).unwrap();
         let h = handle(&api, &r).await;
         assert_eq!(api.me_emails(&h).await, ["robin@example.com", "r@example.com"]);
     }

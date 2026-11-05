@@ -61,7 +61,9 @@ makes no forge requests (apart from images you choose to load, below).
 - **Sends:**
   - your token, in the `Authorization` header and only to that account's host;
   - the project paths of your repositories' remotes on that host, and branch names, to find
-    their MRs/PRs;
+    their MRs/PRs. With several accounts on a host, a repository's requests go with the account
+    Settings › Repository › Forge account picks (the host's first otherwise); "Use SSH instead"
+    on a credential prompt may ask with each of them in turn;
   - what you ask for: MR/PR reads, comments, approvals, edits, new MRs/PRs, merges, retargets,
     and the people or labels you search for.
 - **When:**
@@ -73,7 +75,8 @@ makes no forge requests (apart from images you choose to load, below).
   - Conditional requests (ETags) make an unchanged poll cheap, and GitVolt follows the forges'
     rate-limit and poll-interval headers.
 - **Turn off:**
-  - Remove the account (Settings › Accounts) to stop all requests to that forge.
+  - Remove an account (Settings › Accounts) to stop its requests. A host with several accounts
+    gets requests until its last one is removed.
   - Setting the background fetch interval to Off stops the timed polls. Polls when a tab opens or
     the window gets the focus still happen.
 

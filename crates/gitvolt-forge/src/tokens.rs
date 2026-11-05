@@ -371,7 +371,7 @@ mod tests {
         let path = tmp.path().join("forge-tokens");
         let store = FileTokenStore::new(path.clone());
         let first = key("gitlab.example.com");
-        let second = AccountKey { id: "8".into(), ..first.clone() };
+        let second = AccountKey { id: "gitlab.example.com#8".into(), ..first.clone() };
         store.put(&first, &Secret::new("one")).unwrap();
         store.put(&second, &Secret::new("two")).unwrap();
         assert_eq!(store.get(&first, TokenStorage::File).unwrap().unwrap().expose(), "one");

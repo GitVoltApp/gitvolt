@@ -77,8 +77,8 @@ pub struct RemotePayload {
     #[serde(skip)]
     #[ts(skip)]
     pub main: bool,
-    /// The profile's account for this host, when `RepoSettings::forge_account` names one.
-    /// Server-side only.
+    /// The repository's chosen forge account (`RepoSettings::forge_account`), used when it's on
+    /// this remote's host (`hub::account_for_selected`). Server-side only.
     #[serde(skip)]
     #[ts(skip)]
     pub account: Option<String>,

@@ -34,9 +34,9 @@ mrFilter: MrFilter | null,
  */
 forgeTargetRemote: string | null, 
 /**
- * The forge account (a `ForgeAccount.id`) this repository's forge calls use on its host;
- * `None` uses the first account on the host. Lets private and work repositories use
- * different accounts on the same forge.
+ * The forge account (its `ForgeAccount::id`, which names its host) this repository's remotes
+ * on that host use; `None`, or an account since removed: the host's default (its first).
+ * Lets private and work repositories use different accounts on one forge.
  */
 forgeAccount?: string, 
 /**

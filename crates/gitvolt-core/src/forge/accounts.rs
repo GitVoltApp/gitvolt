@@ -10,10 +10,12 @@ use ts_rs::TS;
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ForgeAccount {
-    /// Stable within its host and profile: the forge's user id for an account added now, and
-    /// `legacy:<host>` for one saved before a host could have more than one (given on load; its
-    /// token keeps the old store key). The token store and the forge cache key their entries by
-    /// it, so it must never change.
+    /// Names the account in its profile, whatever the host (`RepoSettings::forge_account` keeps
+    /// it): the host itself for the account a host had first, `<host>#<user id>` for the others
+    /// (`new_account_id`). The token store and the forge cache name its entries by it
+    /// (`AccountKey::keyring_account`), so it never changes: when a host's first account is
+    /// removed, the others keep theirs. Empty in a profile from 1.5.0 or before (one account per
+    /// host): `assign_account_ids` gives it the host on load.
     #[serde(default)]
     pub id: String,
     pub host: String,
@@ -55,6 +57,53 @@ pub enum AccountStatus {
 pub struct ForgeAccountView {
     pub account: ForgeAccount,
     pub status: AccountStatus,
+}
+
+/// The id a new account on `host` gets: the host itself while the host has no account (its token
+/// then has 1.5.0's keyring name, so a downgrade still finds it), else `<host>#<user id>`.
+pub fn new_account_id(accounts: &[ForgeAccount], host: &str, user_id: u64) -> String {
+    let taken = |id: &str| accounts.iter().any(|a| a.id == id);
+    if !accounts.iter().any(|a| a.host == host) && !taken(host) {
+        return host.to_string();
+    }
+    let id = format!("{host}#{user_id}");
+    if !taken(&id) {
+        return id;
+    }
+    (2..).map(|n| format!("{host}#{user_id}-{n}")).find(|id| !taken(id)).expect("an unused id")
+}
+
+/// Gives every account an id on load (`ForgeAccount::id`); true when one changed. A profile from
+/// 1.5.0 or before has none: each host's account gets the host, its token's name then. After a
+/// downgrade saved the profile without them, a host's first account gets the host again and the
+/// others `<host>#<user id>`, the names their tokens were saved under. Ids stay unique.
+pub fn assign_account_ids(accounts: &mut [ForgeAccount]) -> bool {
+    let mut changed = false;
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for i in 0..accounts.len() {
+        let a = &accounts[i];
+        let valid = a.id == a.host || a.id.strip_prefix(a.host.as_str()).is_some_and(|rest| rest.starts_with('#'));
+        if valid && !seen.contains(&a.id) {
+            seen.insert(a.id.clone());
+            continue;
+        }
+        // The host's own name only while no other account has it, here or further down.
+        let host_free = !seen.contains(&a.host) && !accounts.iter().any(|b| b.id == b.host && b.host == a.host);
+        // A development build named the others by the user id alone (`42`, token `<host>#42`).
+        let bare_user = (!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_digit())).then(|| format!("{}#{}", a.host, a.id)).filter(|id| !seen.contains(id));
+        let id = if let Some(id) = bare_user {
+            id
+        } else if host_free {
+            a.host.clone()
+        } else {
+            let base = format!("{}#{}", a.host, a.user.id);
+            std::iter::once(base.clone()).chain((2..).map(|n| format!("{base}-{n}"))).find(|id| !seen.contains(id) && !accounts.iter().any(|b| &b.id == id)).expect("an unused id")
+        };
+        seen.insert(id.clone());
+        accounts[i].id = id;
+        changed = true;
+    }
+    changed
 }
 
 const HOST_ONLY: &str = "Enter the host only, like gitlab.example.com";
@@ -146,9 +195,51 @@ mod tests {
         });
         let profile: crate::settings::Profile = serde_json::from_value(profile).unwrap();
         let a = profile.forge_accounts.into_iter().next().unwrap();
-        assert_eq!(a.id, "", "an account saved before a host could have several keeps the empty id");
+        assert_eq!(a.id, "", "1.5.0's account has no id until the store gives it one (`assign_account_ids`)");
         assert_eq!((a.version, a.version_checked_at, a.added_at), (None, 0, 0));
         assert_eq!((a.user.avatar_url, a.user.email, a.user.web_url.as_str()), (None, None, ""));
+    }
+
+    fn on(host: &str, id: &str, user: u64) -> ForgeAccount {
+        let user = ForgeUser { id: user, username: format!("user{user}"), name: format!("User {user}"), avatar_url: None, web_url: String::new(), email: None, emails: vec![] };
+        ForgeAccount { id: id.into(), host: host.into(), kind: ForgeKind::GitLab, user, storage: TokenStorage::Keyring, version: None, version_checked_at: 0, added_at: 0 }
+    }
+
+    #[test]
+    fn a_hosts_first_account_is_named_by_the_host_and_the_others_by_their_user() {
+        const H: &str = "gitlab.example.com";
+        assert_eq!(new_account_id(&[], H, 7), H);
+        assert_eq!(new_account_id(&[on("code.example.org", "code.example.org", 7)], H, 7), H, "another host's account doesn't count");
+        assert_eq!(new_account_id(&[on(H, H, 7)], H, 8), "gitlab.example.com#8");
+        // The host's first account was removed: the others keep their names, and a new one too.
+        assert_eq!(new_account_id(&[on(H, "gitlab.example.com#8", 8)], H, 9), "gitlab.example.com#9");
+        assert_eq!(new_account_id(&[on(H, H, 7), on(H, "gitlab.example.com#8", 8)], H, 8), "gitlab.example.com#8-2", "never a taken one");
+    }
+
+    #[test]
+    fn loading_gives_every_account_a_unique_id() {
+        const H: &str = "gitlab.example.com";
+        // 1.5.0: one account per host, no ids.
+        let mut old = vec![on(H, "", 7), on("code.example.org", "", 7)];
+        assert!(assign_account_ids(&mut old));
+        assert_eq!(old.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), [H, "code.example.org"]);
+        assert!(!assign_account_ids(&mut old), "nothing more to do");
+        // 1.5.0 saved two accounts on a host without their ids: never both the host's name.
+        let mut stripped = vec![on(H, "", 7), on(H, "", 8)];
+        assert!(assign_account_ids(&mut stripped));
+        assert_eq!(stripped.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), [H, "gitlab.example.com#8"]);
+        // Another account already has the host's name: the id-less one doesn't take it.
+        let mut later = vec![on(H, "", 8), on(H, H, 7)];
+        assert!(assign_account_ids(&mut later));
+        assert_eq!(later.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["gitlab.example.com#8", H]);
+        // A duplicate id is renamed.
+        let mut twice = vec![on(H, H, 7), on(H, H, 8)];
+        assert!(assign_account_ids(&mut twice));
+        assert_eq!(twice.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), [H, "gitlab.example.com#8"]);
+        // A development build's ids: the user id alone, `legacy:<host>`.
+        let mut dev = vec![on(H, "legacy:gitlab.example.com", 7), on(H, "8", 8)];
+        assert!(assign_account_ids(&mut dev));
+        assert_eq!(dev.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), [H, "gitlab.example.com#8"]);
     }
 
     #[test]

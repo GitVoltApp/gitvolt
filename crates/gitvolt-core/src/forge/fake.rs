@@ -471,8 +471,7 @@ impl ForgeConnector for FakeConnector {
 
 /// Tokens in memory. `put` answers `storage`.
 pub(crate) struct MemTokens {
-    /// Keyed as the real stores key it (`AccountKey::keyring_account`), so a legacy id and its
-    /// old token name meet.
+    /// Keyed as the real stores key it (`AccountKey::keyring_account`).
     pub map: Mutex<HashMap<String, String>>,
     pub storage: TokenStorage,
 }

@@ -3147,8 +3147,9 @@ impl Api {
                   let hub = self.forge_hub()?;
                   // Read the repository before any await: no gix handle crosses one.
                   let (list, prefills) = {
-                      let r = self.handle(repo)?.repo.to_thread_local();
-                      (crate::details::forge_remotes(&r), crate::forge::stack::prefills(&r, &branches, &base_ref))
+                      let h = self.handle(repo)?;
+                      let r = h.repo.to_thread_local();
+                      (self.forge_remotes_of(&h), crate::forge::stack::prefills(&r, &branches, &base_ref))
                   };
                   to_json(hub.stack_view(&self.store, &list, &branches, &base, prefills).await?)
               }
@@ -3562,7 +3563,9 @@ impl Api {
         .await
     }
 
-    /// The repo's remotes for the forge, the chosen main remote (when it still exists) flagged.
+    /// The repo's remotes for the forge, the chosen main remote (when it still exists) flagged,
+    /// each carrying the repository's chosen forge account (used where it's on the remote's host:
+    /// `hub::account_for_selected`).
     pub(crate) fn forge_remotes_of(&self, h: &RepoHandle) -> Vec<crate::payload::RemotePayload> {
         let mut list = crate::details::forge_remotes(&h.repo.to_thread_local());
         let profile = self.store.active_profile();
@@ -3572,12 +3575,9 @@ impl Api {
                 r.main = &r.name == c;
             }
         }
-        if let Some(account) = repo.and_then(|r| r.forge_account.as_deref()).and_then(|id| profile.forge_accounts.iter().find(|a| a.id == id)) {
+        if let Some(account) = repo.and_then(|r| r.forge_account.as_ref()) {
             for r in &mut list {
-                let same_host = r.host.as_deref().is_some_and(|host| account.host == host || (!host.contains(':') && account.host.split_once(':').is_some_and(|(name, _)| name == host)));
-                if same_host {
-                    r.account = Some(account.id.clone());
-                }
+                r.account = Some(account.clone());
             }
         }
         list
@@ -6023,7 +6023,8 @@ mod tests {
         let conn = Arc::new(FakeConnector::default());
         let private = FakeProvider::new(ForgeKind::GitLab, HOST);
         private.projects.lock().unwrap().insert("group/project".into(), project(HOST, "group/project", None, 1));
-        let work = FakeProvider { user: ForgeUser { id: 2, ..crate::forge::fake::user("Grace") }, ..FakeProvider::new(ForgeKind::GitLab, HOST) };
+        // Work's GitLab takes native stacked MRs (19.1); the private account's (18.9) doesn't.
+        let work = FakeProvider { user: ForgeUser { id: 2, ..crate::forge::fake::user("Grace") }, version: Some("19.1.0-ee".into()), ..FakeProvider::new(ForgeKind::GitLab, HOST) };
         work.projects.lock().unwrap().insert("group/project".into(), project(HOST, "group/project", None, 2));
         conn.add(TOKEN1, private);
         conn.add(TOKEN2, work);
@@ -6043,6 +6044,8 @@ mod tests {
         assert_eq!((rp["remotes"][0]["accountId"].as_str(), rp["remotes"][0]["project"]["id"].as_u64()), (Some(work_id.as_str()), Some(2)), "{rp}");
         let list = api.dispatch(req(serde_json::json!({"method": "forgeMrList", "params": {"repo": id, "filter": "all"}}))).await.unwrap();
         assert_eq!(list["project"]["id"].as_u64(), Some(2), "the chosen account's provider answered");
+        let stack = api.dispatch(req(serde_json::json!({"method": "forgeStack", "params": {"repo": id, "branches": [], "base": "main", "baseRef": "refs/heads/main"}}))).await.unwrap();
+        assert_eq!(stack["mode"], "native", "stacked MRs use the chosen account too: {stack}");
     }
 
     // --- end 4A T6 ---

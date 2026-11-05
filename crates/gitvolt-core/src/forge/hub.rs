@@ -76,10 +76,9 @@ impl ForgeHub {
         (self.clock)() / 1000
     }
 
-    /// The key of a host's first (or only) account: the empty id is where a token saved before
-    /// a host could have several is kept.
+    /// The key of the account a host had first (its id is the host: `ForgeAccount::id`).
     pub fn key(profile: &str, host: &str) -> AccountKey {
-        AccountKey { profile: profile.to_string(), host: host.to_string(), id: String::new() }
+        Self::key_with(profile, host, host)
     }
 
     pub fn key_with(profile: &str, host: &str, id: &str) -> AccountKey {
@@ -141,16 +140,19 @@ impl ForgeHub {
         };
         let profile = store.active_profile();
         let now = self.now();
-        // Replacing the account the UI named, else the one this user already has on the host
-        // (its id stays, and with it the token's place in the store).
-        let existing = account
-            .as_deref()
-            .and_then(|id| profile.forge_accounts.iter().find(|a| a.host == host && a.id == id).cloned())
-            .or_else(|| profile.forge_accounts.iter().find(|a| a.host == host && a.user.id == check.user.id).cloned());
-        let id = existing.as_ref().map(|a| a.id.clone()).unwrap_or_else(|| {
-            let base = check.user.id.to_string();
-            if profile.forge_accounts.iter().any(|a| a.host == host && a.id == base) { format!("{base}-{now}") } else { base }
-        });
+        // Replacing the account the UI named (its user's token only), else the one this user
+        // already has on the host: its id stays, and with it the token's name in the store.
+        let existing = match account.as_deref() {
+            Some(id) => {
+                let a = profile.forge_accounts.iter().find(|a| a.host == host && a.id == id).ok_or_else(|| gone_account(&host))?;
+                if a.user.id != check.user.id {
+                    return Err(GbError::new(GbErrorKind::InvalidInput, format!("This token is @{}'s; use Add account to add it", check.user.username)));
+                }
+                Some(a)
+            }
+            None => profile.forge_accounts.iter().find(|a| a.host == host && a.user.id == check.user.id),
+        };
+        let id = existing.map_or_else(|| crate::forge::accounts::new_account_id(&profile.forge_accounts, &host, check.user.id), |a| a.id.clone());
         let key = Self::key_with(&profile.id, &host, &id);
         let lock = self.lock_for(&key);
         let _held = lock.lock().await;
@@ -169,24 +171,22 @@ impl ForgeHub {
         Ok(ForgeAccountView { account, status: AccountStatus::Ok })
     }
 
-    /// Removes one account: `account` names it; without one, the host's first account goes (an
-    /// older client that only knew hosts).
+    /// Removes one account, its token and its cache: `account` names it; without one, the host's
+    /// default (`account_for`). The host's other accounts keep their ids, and with them their
+    /// tokens' names.
     pub async fn remove_account(&self, store: &Arc<SettingsStore>, host: &str, account: Option<String>) -> Result<(), GbError> {
         let host = normalize_host(host)?;
         let profile = store.active_profile();
         let account = match account {
-            Some(id) => profile.forge_accounts.iter().find(|a| a.host == host && a.id == id).cloned(),
-            None => account_for(&profile.forge_accounts, &host).cloned(),
-        };
-        let Some(account) = account else {
-            return Err(no_account(&host));
+            Some(id) => profile.forge_accounts.iter().find(|a| a.host == host && a.id == id).cloned().ok_or_else(|| if profile.forge_accounts.iter().any(|a| a.host == host) { gone_account(&host) } else { no_account(&host) })?,
+            None => account_for(&profile.forge_accounts, &host).cloned().ok_or_else(|| no_account(&host))?,
         };
         let key = Self::key_for(&profile.id, &account);
         let lock = self.lock_for(&key);
         let _held = lock.lock().await;
         let (tokens, k) = (self.tokens.clone(), key.clone());
         crate::api::blocking(move || tokens.delete(&k)).await?;
-        store.update_forge_accounts(&profile.id, |accounts| accounts.retain(|a| !(a.host == host && a.id == account.id)))?;
+        store.update_forge_accounts(&profile.id, |accounts| accounts.retain(|a| a.id != account.id))?;
         self.drop_account(&key);
         Ok(())
     }
@@ -351,15 +351,20 @@ impl ForgeHub {
         self.status.lock().expect("status poisoned").remove(key);
         self.failed.lock().expect("failed poisoned").remove(key);
         // --- 4A T6 ---
-        self.projects.lock().expect("projects poisoned").retain(|k, _| !same_account_key(k, key));
+        self.projects.lock().expect("projects poisoned").retain(|k, _| !crate::forge::cache::of_account(k, key));
         // --- end 4A T6 ---
         self.cache.drop_account(key);
-        self.restored.lock().expect("restored poisoned").retain(|k| !same_account_key(k, key));
+        self.restored.lock().expect("restored poisoned").retain(|k| !crate::forge::cache::of_account(k, key));
     }
 }
 
 pub(crate) fn no_account(host: &str) -> GbError {
     GbError::new(GbErrorKind::NotFound, format!("No account for {host}: add one in Settings › Accounts"))
+}
+
+/// The account named isn't there any more (removed meanwhile), though the host has others.
+fn gone_account(host: &str) -> GbError {
+    GbError::new(GbErrorKind::NotFound, format!("That account on {host} was removed: Settings › Accounts shows the ones left"))
 }
 
 // --- 4A T6: remotes → projects (spec #4 §3.3), forks, settings, avatars ---
@@ -435,43 +440,41 @@ pub fn target_remote(list: &[RemoteProject], preferred: Option<&str>) -> Option<
     mapped.first().map(|r| r.remote.clone())
 }
 
-/// The profile's account for a remote's host (spec #4 §3.3). The host itself first: an https
+/// The accounts' host a remote's host maps to (spec #4 §3.3). The host itself first: an https
 /// remote keeps a non-default port (`h:8443`, `remotes::forge_host`). A host without a port (an
-/// SSH remote, whose port says nothing about the web's) also maps to the only account on that
-/// host, whatever its port. Two such accounts (`h:8443`, `h:9443`) are ambiguous: none. With
-/// `h` and `h:8443`, the port-less `h` is an exact match and wins.
-pub fn account_for<'a>(accounts: &'a [ForgeAccount], host: &str) -> Option<&'a ForgeAccount> {
+/// SSH remote, whose port says nothing about the web's) also maps to the one host of that name
+/// with accounts, whatever its port, however many accounts it has. Two such hosts (`h:8443`,
+/// `h:9443`) are ambiguous: none. With `h` and `h:8443`, the port-less `h` is an exact match and wins.
+pub fn account_host<'a>(accounts: &'a [ForgeAccount], host: &str) -> Option<&'a str> {
     if let Some(a) = accounts.iter().find(|a| a.host == host) {
-        return Some(a);
+        return Some(&a.host);
     }
     if host.contains(':') {
         return None;
     }
-    let mut same_name = accounts.iter().filter(|a| a.host.split_once(':').is_some_and(|(name, _)| name == host));
-    match (same_name.next(), same_name.next()) {
-        (Some(a), None) => Some(a),
-        _ => None,
-    }
+    let mut same_name = accounts.iter().map(|a| a.host.as_str()).filter(|h| h.split_once(':').is_some_and(|(name, _)| name == host));
+    let first = same_name.next()?;
+    same_name.all(|h| h == first).then_some(first)
 }
 
-/// The account a repository chose for `host` (`RepoSettings::forge_account`, `RemotePayload::account`),
-/// else the host's first (`account_for`). A choice for another host is ignored.
+/// The profile's account for a remote's host: the default (the first) of the accounts on the host
+/// it maps to (`account_host`). Automatic, in Settings › Repository › Forge account.
+pub fn account_for<'a>(accounts: &'a [ForgeAccount], host: &str) -> Option<&'a ForgeAccount> {
+    let host = account_host(accounts, host)?;
+    accounts.iter().find(|a| a.host == host)
+}
+
+/// The account a repository chose (`RepoSettings::forge_account`, `RemotePayload::account`) when
+/// it's on the host a remote's `host` maps to, else that host's default (`account_for`): a choice
+/// for another host, or one since removed, is ignored.
 pub fn account_for_selected<'a>(accounts: &'a [ForgeAccount], host: &str, selected: Option<&str>) -> Option<&'a ForgeAccount> {
-    let Some(id) = selected else { return account_for(accounts, host) };
-    let same_host = |a: &&ForgeAccount| a.host == host || (!host.contains(':') && a.host.split_once(':').is_some_and(|(name, _)| name == host));
-    if let Some(a) = accounts.iter().find(|a| a.id == id && same_host(a)) {
-        return Some(a);
-    }
-    account_for(accounts, host)
+    let host = account_host(accounts, host)?;
+    selected.and_then(|id| accounts.iter().find(|a| a.id == id && a.host == host)).or_else(|| accounts.iter().find(|a| a.host == host))
 }
 
-/// The account a provider key belongs to: its id names it, and the host's first has the empty one.
+/// The account a provider key belongs to.
 pub fn account_by_key<'a>(accounts: &'a [ForgeAccount], key: &AccountKey) -> Option<&'a ForgeAccount> {
-    accounts.iter().find(|a| a.host == key.host && a.id == key.id)
-}
-
-fn same_account_key(key: &crate::forge::cache::CacheKey, account: &AccountKey) -> bool {
-    key.0 == account.profile && key.1 == account.host && key.2 == crate::forge::cache::cache_id(&account.id)
+    accounts.iter().find(|a| a.id == key.name())
 }
 
 impl ForgeHub {
@@ -578,8 +581,9 @@ impl ForgeHub {
         let host = crate::remotes::forge_host(url)?;
         let path = crate::remotes::parse_remote_url(url)?.path;
         let profile = store.active_profile();
+        let on = account_host(&profile.forge_accounts, &host)?;
         // The project may be visible to only one of the host's accounts: try each.
-        for account in profile.forge_accounts.iter().filter(|a| a.host == host || (!host.contains(':') && a.host.split_once(':').is_some_and(|(name, _)| name == host))) {
+        for account in profile.forge_accounts.iter().filter(|a| a.host == on) {
             let Ok(Some((_, project))) = self.project_on(store, &host, &path, Some(&account.id), false).await else { continue };
             let ssh = project.clone_ssh.trim();
             if crate::write::remotes::remote_url_error(ssh).is_none() {
@@ -900,27 +904,35 @@ mod tests {
     #[tokio::test]
     async fn re_adding_the_same_user_replaces_its_token_and_provider() {
         let (conn, tokens, hub, store) = setup(TokenStorage::Keyring);
-        conn.add(TOKEN2, FakeProvider::new(ForgeKind::GitLab, HOST));
-        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), None).await.unwrap();
-        let (_, first) = hub.provider_for_host(&store, HOST).await.unwrap().unwrap();
-        assert_eq!(first.current_user().await.unwrap().name, "Ada");
-        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN2), None).await.unwrap();
+        // The same user (id 1, ada) since renamed: the new token's provider says so.
+        conn.add(TOKEN2, FakeProvider { user: crate::forge::ForgeUser { name: "Ada Byron".into(), ..user("Ada") }, ..FakeProvider::new(ForgeKind::GitLab, HOST) });
+        let first = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), None).await.unwrap();
+        let (_, provider) = hub.provider_for_host(&store, HOST).await.unwrap().unwrap();
+        assert_eq!(provider.current_user().await.unwrap().name, "Ada");
+        let again = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN2), None).await.unwrap();
+        assert_eq!(again.account.id, first.account.id, "the same account");
         let accounts = hub.accounts(&store);
         assert_eq!(accounts.len(), 1);
-        assert_eq!(accounts[0].account.user.name, "Ada");
+        assert_eq!(accounts[0].account.user.name, "Ada Byron", "the record is the new token's");
         assert_eq!(tokens.token_for("default", HOST, &accounts[0].account.id).as_deref(), Some(TOKEN2));
+        assert_eq!(tokens.map.lock().unwrap().len(), 1, "the old token is overwritten, not kept beside");
         let (_, now) = hub.provider_for_host(&store, HOST).await.unwrap().unwrap();
-        assert_eq!(now.current_user().await.unwrap().name, "Ada", "the old token's provider is gone");
+        assert_eq!(now.current_user().await.unwrap().name, "Ada Byron", "the old token's provider is gone");
     }
 
     #[tokio::test]
-    async fn an_account_from_before_ids_reads_the_token_at_its_old_store_name() {
-        let (_, tokens, hub, store) = setup(TokenStorage::Keyring);
-        let legacy = ForgeAccount { id: format!("legacy:{HOST}"), ..account("Ada", 1, "18.0.0", NOW_MS / 1000) };
-        store.set_forge_accounts("default", vec![legacy.clone()]).unwrap();
-        tokens.put(&ForgeHub::key("default", HOST), &Secret::new(TOKEN)).unwrap();
-        let (read, provider) = hub.provider_for_host(&store, HOST).await.unwrap().unwrap();
-        assert_eq!((read.id.as_str(), provider.current_user().await.unwrap().name.as_str()), (legacy.id.as_str(), "Ada"));
+    async fn replacing_a_token_refuses_another_users_and_keeps_the_old_one() {
+        let (conn, tokens, hub, store) = setup(TokenStorage::Keyring);
+        conn.add(TOKEN2, FakeProvider { user: crate::forge::ForgeUser { id: 2, ..user("Grace") }, ..FakeProvider::new(ForgeKind::GitLab, HOST) });
+        let ada = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), None).await.unwrap();
+        let e = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN2), Some(ada.account.id.clone())).await.unwrap_err();
+        assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::InvalidInput, "This token is @grace's; use Add account to add it"));
+        assert_eq!(hub.accounts(&store).iter().map(|a| a.account.user.name.as_str()).collect::<Vec<_>>(), ["Ada"]);
+        assert_eq!(tokens.token_for("default", HOST, &ada.account.id).as_deref(), Some(TOKEN));
+        // The same user's token replaces it.
+        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), Some(ada.account.id.clone())).await.unwrap();
+        let e = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), Some("gitlab.example.com#9".into())).await.unwrap_err();
+        assert_eq!(e.message, "That account on gitlab.example.com was removed: Settings › Accounts shows the ones left");
     }
 
     #[tokio::test]
@@ -929,9 +941,13 @@ mod tests {
         conn.add(TOKEN2, FakeProvider { user: crate::forge::ForgeUser { id: 2, ..user("Grace") }, ..FakeProvider::new(ForgeKind::GitLab, HOST) });
         let ada = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), None).await.unwrap();
         let grace = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN2), None).await.unwrap();
-        assert_ne!(ada.account.id, grace.account.id);
+        assert_eq!((ada.account.id.as_str(), grace.account.id.as_str()), (HOST, "gitlab.example.com#2"));
         let accounts = hub.accounts(&store);
         assert_eq!(accounts.iter().map(|a| a.account.user.name.as_str()).collect::<Vec<_>>(), ["Ada", "Grace"]);
+        // The host's first account keeps 1.5.0's keyring name: a downgrade still finds its token.
+        let mut names: Vec<String> = tokens.map.lock().unwrap().keys().cloned().collect();
+        names.sort();
+        assert_eq!(names, ["default/gitlab.example.com", "default/gitlab.example.com#2"]);
         assert_eq!(tokens.token_for("default", HOST, &ada.account.id).as_deref(), Some(TOKEN));
         assert_eq!(tokens.token_for("default", HOST, &grace.account.id).as_deref(), Some(TOKEN2));
         assert_eq!(hub.provider_for_host(&store, HOST).await.unwrap().unwrap().0.user.name, "Ada", "the first is the default");
@@ -940,6 +956,33 @@ mod tests {
         assert_eq!(hub.accounts(&store).len(), 1);
         assert!(tokens.token_for("default", HOST, &grace.account.id).is_none(), "only Grace's token went");
         assert_eq!(tokens.token_for("default", HOST, &ada.account.id).as_deref(), Some(TOKEN));
+        let e = hub.remove_account(&store, HOST, Some(grace.account.id.clone())).await.unwrap_err();
+        assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::NotFound, "That account on gitlab.example.com was removed: Settings › Accounts shows the ones left"));
+    }
+
+    #[tokio::test]
+    async fn removing_a_hosts_first_account_leaves_the_others_their_names_and_caches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (conn, tokens, hub, store) = setup(TokenStorage::Keyring);
+        hub.set_cache_dir(tmp.path().to_path_buf());
+        conn.add(TOKEN2, FakeProvider { user: crate::forge::ForgeUser { id: 2, ..user("Grace") }, ..FakeProvider::new(ForgeKind::GitLab, HOST) });
+        const TOKEN3: &str = "glpat-FAKE-test-token-3";
+        conn.add(TOKEN3, FakeProvider { user: crate::forge::ForgeUser { id: 3, ..user("Linus") }, ..FakeProvider::new(ForgeKind::GitLab, HOST) });
+        let ada = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), None).await.unwrap();
+        let grace = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN2), None).await.unwrap();
+        let grace_key = ForgeHub::key_for("default", &grace.account);
+        let grace_project = crate::forge::cache::cache_key(&grace_key, "group/project");
+        hub.cache.with(&grace_project, |c| c.open_refs.insert("refs/remotes/origin/dev".into()));
+        hub.cache.save(&grace_project);
+        hub.remove_account(&store, HOST, Some(ada.account.id.clone())).await.unwrap();
+        assert!(tokens.token_for("default", HOST, HOST).is_none(), "Ada's token went");
+        assert_eq!(tokens.token_for("default", HOST, &grace.account.id).as_deref(), Some(TOKEN2), "Grace's stays, under its own name");
+        assert!(tmp.path().join("default").join("gitlab.example.com%232").join("group%2Fproject.json").is_file(), "and so does her cache");
+        assert_eq!(hub.provider_for_host(&store, HOST).await.unwrap().unwrap().0.id, grace.account.id, "the default now");
+        // The host still has an account: a new one is named by its user, not the host.
+        let linus = hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN3), None).await.unwrap();
+        assert_eq!(linus.account.id, "gitlab.example.com#3");
+        assert_eq!(hub.provider_for_host(&store, HOST).await.unwrap().unwrap().0.id, grace.account.id, "adding one doesn't change the default");
     }
 
     #[tokio::test]
@@ -1371,7 +1414,7 @@ mod tests {
     }
 
     fn account(name: &str, added_at: i64, version: &str, checked: i64) -> ForgeAccount {
-        ForgeAccount { id: String::new(), host: HOST.into(), kind: ForgeKind::GitLab, user: user(name), storage: TokenStorage::Keyring, version: Some(version.into()), version_checked_at: checked, added_at }
+        ForgeAccount { id: HOST.into(), host: HOST.into(), kind: ForgeKind::GitLab, user: user(name), storage: TokenStorage::Keyring, version: Some(version.into()), version_checked_at: checked, added_at }
     }
 
     #[tokio::test]
@@ -1510,6 +1553,24 @@ mod tests {
         assert_eq!(account_for(&two, PORTED).map(|a| a.host.as_str()), Some(PORTED));
     }
 
+    #[test]
+    fn several_accounts_on_a_ported_host_still_map_its_ssh_remotes_and_a_choice_needs_its_host() {
+        const PORTED: &str = "gitlab.example.com:8443";
+        let on = |host: &str, id: &str, name: &str| ForgeAccount { id: id.into(), host: host.into(), ..account(name, 1, "x", 0) };
+        let accounts = [on(PORTED, PORTED, "Ada"), on(PORTED, "gitlab.example.com:8443#2", "Grace"), on("code.example.org", "code.example.org", "Linus")];
+        // One host with a port, two accounts on it: an SSH remote (no port) maps to that host's default.
+        assert_eq!(account_host(&accounts, HOST), Some(PORTED));
+        assert_eq!(account_for(&accounts, HOST).map(|a| a.user.name.as_str()), Some("Ada"));
+        // A repository's choice applies to its own host only, whether the remote has the port or not.
+        let grace = Some("gitlab.example.com:8443#2");
+        assert_eq!(account_for_selected(&accounts, HOST, grace).map(|a| a.user.name.as_str()), Some("Grace"));
+        assert_eq!(account_for_selected(&accounts, PORTED, grace).map(|a| a.user.name.as_str()), Some("Grace"));
+        assert_eq!(account_for_selected(&accounts, "code.example.org", grace).map(|a| a.user.name.as_str()), Some("Linus"), "another host's choice is ignored");
+        assert_eq!(account_for_selected(&accounts, HOST, Some("gitlab.example.com:8443#9")).map(|a| a.user.name.as_str()), Some("Ada"), "a removed account: the default");
+        assert_eq!(account_for_selected(&accounts, HOST, Some("code.example.org")).map(|a| a.user.name.as_str()), Some("Ada"), "ids name their host: never another host's account");
+        assert!(account_for_selected(&accounts, "github.com", grace).is_none());
+    }
+
     /// A commit author's email goes only to the forge hosting the repo (an account on one of its
     /// remotes' hosts), never to the profile's other accounts.
     /// "Use SSH instead": the forge's own SSH URL (a self-hosted GitLab's SSH on another port),
@@ -1571,7 +1632,7 @@ mod tests {
         // Work's own account on the host, whose token sees no such project.
         let conn = FakeConnector::with(TOKEN2, FakeProvider::new(ForgeKind::GitLab, HOST));
         let fresh = ForgeHub::new(conn, MemTokens::new(TokenStorage::Keyring), Arc::new(|| NOW_MS));
-        fresh.projects.lock().unwrap().insert(("default".into(), HOST.into(), String::new(), "group/project".into()), project(HOST, "group/project", None, 1));
+        fresh.projects.lock().unwrap().insert(("default".into(), HOST.into(), "group/project".into()), project(HOST, "group/project", None, 1));
         fresh.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN2), None).await.unwrap();
         let rp = fresh.repo_projects(&store, &remotes, false).await;
         assert_eq!(rp.remotes[0].error.as_deref(), Some("Not found on gitlab.example.com"), "Default's cached project isn't Work's");

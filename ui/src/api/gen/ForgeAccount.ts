@@ -5,10 +5,12 @@ import type { TokenStorage } from "./TokenStorage";
 
 export type ForgeAccount = { 
 /**
- * Stable within its host and profile: the forge's user id for an account added now, and
- * `legacy:<host>` for one saved before a host could have more than one (given on load; its
- * token keeps the old store key). The token store and the forge cache key their entries by
- * it, so it must never change.
+ * Names the account in its profile, whatever the host (`RepoSettings::forge_account` keeps
+ * it): the host itself for the account a host had first, `<host>#<user id>` for the others
+ * (`new_account_id`). The token store and the forge cache name its entries by it
+ * (`AccountKey::keyring_account`), so it never changes: when a host's first account is
+ * removed, the others keep theirs. Empty in a profile from 1.5.0 or before (one account per
+ * host): `assign_account_ids` gives it the host on load.
  */
 id: string, host: string, kind: ForgeKind, 
 /**
