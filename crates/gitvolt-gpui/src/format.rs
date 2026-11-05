@@ -50,6 +50,16 @@ pub fn compact_relative_time(unix_seconds: i64, now: f64) -> String {
     "now".into()
 }
 
+/// "512 B", "106.7 KB", "4.2 MB"; "—" with no size.
+pub fn format_bytes(n: Option<u64>) -> String {
+    match n {
+        None => "—".into(),
+        Some(n) if n < 1024 => format!("{n} B"),
+        Some(n) if n < 1024 * 1024 => format!("{:.1} KB", n as f64 / 1024.),
+        Some(n) => format!("{:.1} MB", n as f64 / (1024. * 1024.)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -119,13 +119,15 @@ pub struct GitVolt {
     pub font: SharedString,
     pub git_version: SharedString,
     pub dragging_scrollbar: bool,
+    /// Images no longer shown: the frame after they go, the window drops them from its atlas.
+    pub retired_images: Rc<std::cell::RefCell<Vec<Arc<RenderImage>>>>,
     /// Measuring (`GITVOLT_BENCH`, bench.rs): called once per frame.
     pub frame_hook: Option<FrameHook>,
 }
 
 impl GitVolt {
     pub fn new(api: Arc<Api>, rt: tokio::runtime::Handle, font: SharedString, cx: &mut Context<Self>) -> Self {
-        Self { api, rt, tabs: Vec::new(), active: 0, focus: cx.focus_handle(), font, git_version: SharedString::default(), dragging_scrollbar: false, frame_hook: None }
+        Self { api, rt, tabs: Vec::new(), active: 0, focus: cx.focus_handle(), font, git_version: SharedString::default(), dragging_scrollbar: false, retired_images: Rc::default(), frame_hook: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -785,6 +787,9 @@ impl Render for GitVolt {
         if let (Some(hook), Some(tab)) = (self.frame_hook.as_mut(), self.tabs.get_mut(self.active)) {
             hook(tab, window);
         }
+        for image in self.retired_images.borrow_mut().drain(..) {
+            window.drop_image(image).ok();
+        }
         let viewport = window.viewport_size();
         let details = self.tabs.get(self.active).and_then(|t| details_panel(t, cx));
         let tab = self.tabs.get(self.active);
@@ -834,8 +839,15 @@ impl Render for GitVolt {
             .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.select_all(cx)))
             .on_action(cx.listener(|this, _: &PageDown, window, cx| this.scroll_diff((window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
             .on_action(cx.listener(|this, _: &PageUp, window, cx| this.scroll_diff(-(window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
+            .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
+                if this.zoom_field_key(&e.keystroke, cx) {
+                    cx.stop_propagation();
+                }
+            }))
             .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
-                if this.tabs.get(this.active).is_some_and(|t| t.history.is_some()) {
+                if this.zoom_editing() {
+                    this.end_zoom_edit(false, cx);
+                } else if this.tabs.get(this.active).is_some_and(|t| t.history.is_some()) {
                     this.close_history(cx);
                 } else if this.diff_open() {
                     this.close_file(cx);

@@ -3,6 +3,7 @@
 //! (ms since the epoch), for the time from exec to the first frame with graph rows.
 
 use crate::app::GitVolt;
+use crate::diff::image::Mode as ImageMode;
 use crate::diff::model::Mode;
 use crate::diff::view::{Notice, ViewKind};
 use gpui::*;
@@ -54,7 +55,7 @@ struct State {
     frames: u64,
 }
 
-/// `GITVOLT_SHOW=<row>,<file>[,hunk|split|file|wrap|history|blame]...`: selects a graph row and opens a file of its list,
+/// `GITVOLT_SHOW=<row>,<file>[,hunk|split|file|wrap|history|blame|swipe|onion|difference|fit|zoom4]...`: selects a graph row and opens a file of its list,
 /// with no input device: for screenshots and `GITVOLT_BENCH=diff`. Returns when the file has its
 /// text and when it has its colours, in ms from opening it.
 async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (u128, u128) {
@@ -93,7 +94,20 @@ async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (
     while !v.read_with(cx, |g, _| g.tabs[0].history.is_some() || g.tabs[0].diff.as_ref().is_none_or(|d| d.coloured || d.data.is_none())) {
         wait(cx).await;
     }
-    (text, opened.elapsed().as_millis())
+    let shown = (text, opened.elapsed().as_millis());
+    v.update(cx, |g, cx| {
+        for part in parts.iter().skip(2) {
+            g.with_image(cx, |img, file| match *part {
+                "swipe" => img.set_mode(ImageMode::Swipe),
+                "onion" => img.set_mode(ImageMode::Onion),
+                "difference" => img.set_mode(ImageMode::Difference),
+                "fit" => img.apply_fit(file),
+                "zoom4" => img.apply_step(15, None, false, file),
+                _ => {}
+            });
+        }
+    });
+    shown
 }
 
 async fn reopen(v: &Entity<GitVolt>, file: usize, cx: &mut AsyncWindowContext) -> (u128, u128) {

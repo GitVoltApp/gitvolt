@@ -3,6 +3,7 @@
 //! screen; GPUI keeps what it shaped from frame to frame.
 
 use super::hex::{HexData, HexView, choose_per, hex_body};
+use super::image::{Background, IMAGE_TOOLBAR_H, ImageView, Side as ImageSide, decode_side, image_body};
 use super::language::highlight_language;
 use super::model::*;
 use super::textmate::{FONT_BOLD, FONT_ITALIC, FONT_UNDERLINE, Span, Tokenizer};
@@ -95,13 +96,14 @@ pub enum Notice {
     Loading,
     Failed(SharedString),
     TooLarge,
-    Image,
     /// File History: the row's commit deleted the file.
     Deleted,
 }
 
 pub enum Binary {
     Hex(Arc<HexData>),
+    /// A raster image, or an SVG with its text's diff for its Source toggle.
+    Image { old: ImageSide, new: ImageSide, svg: Option<(Arc<DiffData>, Texts)> },
 }
 
 /// A position in the text: a row, and a byte of what it shows on `new` (or the old side).
@@ -209,6 +211,11 @@ pub struct DiffState {
     pub history_file: bool,
     /// A binary's hex view.
     pub hex: Option<HexView>,
+    /// An image's diff.
+    pub image: Option<ImageView>,
+    /// The picks that hold from image to image, and "Match sizes" per file for the session.
+    pub background: Background,
+    pub match_picks: Rc<std::cell::RefCell<HashMap<String, bool>>>,
     /// Coming back from File History: the same file, where it was.
     restored: bool,
 }
@@ -252,6 +259,9 @@ impl DiffState {
             generation: 0,
             history_file: false,
             hex: None,
+            image: None,
+            background: Background::Checker,
+            match_picks: Rc::default(),
             restored: false,
         }
     }
@@ -269,7 +279,8 @@ impl DiffState {
 
     /// What's the web UI's global prefs.
     pub fn take_prefs(&mut self, from: &DiffState) {
-        (self.mode, self.ignore_whitespace, self.wrap) = (from.mode, from.ignore_whitespace, from.wrap);
+        (self.mode, self.ignore_whitespace, self.wrap, self.background) = (from.mode, from.ignore_whitespace, from.wrap, from.background);
+        self.match_picks = from.match_picks.clone();
     }
 
     /// The next read is the same file again: it stays where it is.
@@ -279,10 +290,18 @@ impl DiffState {
 
     /// A binary is shown, not lines: it has no blame.
     pub fn shows_binary(&self) -> bool {
-        self.hex.is_some() || matches!(self.notice, Some(Notice::Image))
+        self.hex.is_some() || self.image.as_ref().is_some_and(|i| !i.svg)
+    }
+
+    /// Lays out anew at the next frame: what's under the toolbar changed.
+    pub fn layout_again(&mut self) {
+        self.layout = Rc::new(Layout { width: -1., offsets: self.layout.offsets.clone(), ..Layout::default() });
     }
 
     pub fn relayout(&mut self) {
+        if let Some(image) = self.image.as_mut() {
+            image.view_changed();
+        }
         if self.hex.is_some() {
             // `ensure_layout` lays it out anew, for this view's sides.
             self.layout = Rc::new(Layout { width: -1., ..Layout::default() });
@@ -321,6 +340,12 @@ impl DiffState {
     /// Lays the rows out for a body `width` by `height` px, when any of that changed.
     pub fn ensure_layout(&mut self, width: f32, height: f32) {
         let same = self.layout.width == width && self.layout.height == height && self.layout.wrap == self.wrap;
+        if let Some(image) = self.image.as_mut() {
+            image.sync((width, height), self.view == ViewKind::File);
+            if !image.source_on {
+                return;
+            }
+        }
         if same {
             return;
         }
@@ -508,6 +533,7 @@ impl GitVolt {
         let (repo, generation, ignore, history_file) = (tab.id, diff.generation, diff.ignore_whitespace, diff.history_file);
         let file = diff.file.clone();
         let api = self.api.clone();
+        let svg = cx.svg_renderer();
         let read = self.rt.spawn(async move {
             let (old, new) = (serde_json::from_value(file.old.clone()), serde_json::from_value(file.new.clone()));
             let (Ok(old), Ok(new)) = (old, new) else { return Err(GbError::other("This file's sides can't be read")) };
@@ -523,7 +549,7 @@ impl GitVolt {
             };
             tokio::task::spawn_blocking(move || match hex {
                 Some(hex) => Read::Binary(Binary::Hex(Arc::new(HexData::of(&hex)))),
-                None => contents(&path, &v, ignore),
+                None => contents(&path, &v, ignore, history_file, &svg),
             })
             .await
             .map_err(|e| GbError::other(e.to_string()))
@@ -542,7 +568,48 @@ impl GitVolt {
                         this.color(repo, generation, data, texts, stop, cx);
                     }
                     Ok(Ok(Read::Binary(Binary::Hex(data)))) => diff.set_hex(data),
+                    Ok(Ok(Read::Binary(Binary::Image { old, new, svg }))) => {
+                        let picked = diff.match_picks.borrow().get(diff.file.path.as_ref()).copied();
+                        diff.image = Some(ImageView::new(old, new, svg.is_some(), diff.background, picked, this.retired_images.clone()));
+                        diff.notice = None;
+                        if let Some((data, texts)) = svg {
+                            diff.set_data(data.clone());
+                            let stop = diff.stop_colours.clone();
+                            this.color(repo, generation, data, texts, stop, cx);
+                        }
+                    }
                     Ok(Ok(Read::Notice(n))) => diff.notice = Some(n),
+                    Ok(Err(e)) => diff.notice = Some(Notice::Failed(e.message.into())),
+                    Err(e) => diff.notice = Some(Notice::Failed(e.to_string().into())),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// A raster image's dumps, for its Hex toggle.
+    pub fn read_hex(&mut self, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else { return };
+        let Some(diff) = &tab.diff else { return };
+        if cfg!(test) {
+            return;
+        }
+        let (repo, generation) = (tab.id, diff.generation);
+        let file = diff.file.clone();
+        let api = self.api.clone();
+        let read = self.rt.spawn(async move {
+            let (Ok(old), Ok(new)) = (serde_json::from_value(file.old.clone()), serde_json::from_value(file.new.clone())) else { return Err(GbError::other("This file's sides can't be read")) };
+            let v = api.dispatch(Request::HexDump { repo, path: file.path.to_string(), old, new }).await?;
+            tokio::task::spawn_blocking(move || HexData::of(&v)).await.map_err(|e| GbError::other(e.to_string()))
+        });
+        cx.spawn(async move |this, cx| {
+            let result = read.await;
+            this.update(cx, |this, cx| {
+                let Some(diff) = this.tabs.iter_mut().find(|t| t.id == repo).and_then(|t| t.diff.as_mut()).filter(|d| d.generation == generation) else { return };
+                match result {
+                    Ok(Ok(data)) => diff.set_hex(Arc::new(data)),
                     Ok(Err(e)) => diff.notice = Some(Notice::Failed(e.message.into())),
                     Err(e) => diff.notice = Some(Notice::Failed(e.to_string().into())),
                 }
@@ -654,7 +721,7 @@ fn colourable<'a>(path: &str, text: Option<&'a str>) -> Option<(Tokenizer, Vec<&
     Some((Tokenizer::new(highlight_language(path, text)?)?, text.split('\n').collect(), 0))
 }
 
-struct Texts {
+pub struct Texts {
     path: String,
     old: Option<String>,
     new: Option<String>,
@@ -674,17 +741,23 @@ fn wants_hex(v: &Value, history_file: bool) -> bool {
     any && v["tooLarge"].as_bool() != Some(true) && (v["image"].as_bool() != Some(true) || history_file)
 }
 
-fn contents(path: &str, v: &Value, ignore_whitespace: bool) -> Read {
+fn contents(path: &str, v: &Value, ignore_whitespace: bool, history_file: bool, svg: &SvgRenderer) -> Read {
     if v["tooLarge"].as_bool() == Some(true) {
         return Read::Notice(Notice::TooLarge);
     }
-    if v["image"].as_bool() == Some(true) {
-        return Read::Notice(Notice::Image);
+    let binary = |s: &Value| s["binary"].as_bool() == Some(true);
+    if v["image"].as_bool() == Some(true) && (binary(&v["old"]) || binary(&v["new"])) {
+        return Read::Binary(Binary::Image { old: decode_side(&v["old"], svg), new: decode_side(&v["new"], svg), svg: None });
     }
     let (old, new) = (blob_text(&v["old"]), blob_text(&v["new"]));
     let encoding = v["new"]["encoding"].as_str().or(v["old"]["encoding"].as_str()).unwrap_or_default().to_string();
-    let data = DiffData::build(old.as_deref(), new.as_deref(), ignore_whitespace, encoding.into(), v["eolOnly"].as_bool() == Some(true));
-    Read::Text(Arc::new(data), Texts { path: path.to_string(), old, new })
+    let data = Arc::new(DiffData::build(old.as_deref(), new.as_deref(), ignore_whitespace, encoding.into(), v["eolOnly"].as_bool() == Some(true)));
+    let texts = Texts { path: path.to_string(), old, new };
+    // An SVG is an image with its text behind the Source toggle; File History's File shows it as text.
+    if path.to_lowercase().ends_with(".svg") && !history_file {
+        return Read::Binary(Binary::Image { old: decode_side(&v["old"], svg), new: decode_side(&v["new"], svg), svg: Some((data, texts)) });
+    }
+    Read::Text(data, texts)
 }
 
 pub fn mono() -> Font {
@@ -1309,7 +1382,6 @@ fn message(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
                 .child("Load anyway"),
         ),
         Some(Notice::Deleted) => base.child(format!("{} was deleted in this commit", diff.file.path)),
-        Some(Notice::Image) => base.child("Image preview isn't in this build yet"),
         _ => base,
     }
 }
@@ -1323,7 +1395,8 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
     let (glyph, color) = status_icon(diff.file.status);
     let encoding = diff.data.as_ref().map(|d| d.encoding.clone()).unwrap_or_default();
     let file = diff.view == ViewKind::File;
-    let binary = diff.hex.as_ref().map(|h| (h.data.summary(file), h.data.capped_note(file)));
+    let binary = diff.hex.as_ref().filter(|_| diff.image.is_none()).map(|h| (h.data.summary(file), h.data.capped_note(file)));
+    let image_cap = diff.hex.as_ref().filter(|_| diff.image.as_ref().is_some_and(|i| i.source_on)).and_then(|h| h.data.capped_note(file));
     div()
         .flex()
         .flex_none()
@@ -1348,6 +1421,7 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
             }
             d.child(summary).when_some(capped, |d, note| d.child(div().flex_none().text_size(px(12.)).text_color(theme::text_normal()).child(note)))
         })
+        .when_some(image_cap, |d, note| d.child(div().flex_none().text_size(px(12.)).text_color(theme::text_normal()).child(note)))
         .child(
             div()
                 .id("diff-close")
@@ -1410,6 +1484,8 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
     let diff_tools = in_diff || !panel;
     let binary = diff.shows_binary();
     let hex = diff.hex.is_some();
+    // Not for an image, unless it's an SVG's Source, which is a text diff.
+    let text_tools = diff.image.as_ref().is_none_or(|i| i.source_on);
     div()
         .flex()
         .flex_none()
@@ -1436,7 +1512,7 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                         segment("history", "History", false, has_history).when(has_history, |d| d.on_click(cx.listener(|this, _, _, cx| this.open_history(false, cx)))).into_any_element(),
                     ]))
                 })
-                .when(diff_tools, |d| {
+                .when(diff_tools && text_tools, |d| {
                     d.child(
                         div()
                             .flex()
@@ -1446,7 +1522,8 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                     )
                     .child(segmented(vec![mode_button("mode-hunk", "Hunk", Mode::Hunk, cx), mode_button("mode-inline", "Inline", Mode::Inline, cx), mode_button("mode-split", "Split", Mode::Split, cx)]))
                 })
-                .child(
+                .when(text_tools, |d| {
+                    d.child(
                     div()
                         .flex()
                         .gap(px(2.))
@@ -1459,13 +1536,19 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                                 });
                             }))
                         })),
-                ),
+                    )
+                }),
         )
 }
 
 /// The text's body in a panel `width` by `height` px: what `ensure_layout` lays out.
 pub fn body_size(diff: &DiffState, width: f32, height: f32) -> (f32, f32) {
     // `height`: what's under the panel's header.
+    if let Some(image) = diff.image.as_ref().filter(|i| !i.source_on) {
+        let _ = image;
+        return (width, height - TOOLBAR_H - IMAGE_TOOLBAR_H);
+    }
+    let height = height - if diff.image.is_some() { IMAGE_TOOLBAR_H } else { 0. };
     if diff.hex.is_some() {
         return (width - RULER_W, height - TOOLBAR_H);
     }
@@ -1489,9 +1572,23 @@ pub fn diff_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option<An
 
 /// What's under the toolbar, in an editor `width` px wide.
 pub fn diff_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElement {
+    let file = diff.view == ViewKind::File;
+    if let Some(image) = &diff.image {
+        let source = match (image.source_on, image.svg, &diff.hex) {
+            (false, ..) => None,
+            (_, true, _) => Some(text_body(diff, width, cx)),
+            (_, _, Some(hex)) => Some(hex_body(diff, hex, cx)),
+            _ => Some(message(diff, cx).into_any_element()),
+        };
+        return image_body(image, file, source, cx);
+    }
     if let Some(hex) = &diff.hex {
         return hex_body(diff, hex, cx);
     }
+    text_body(diff, width, cx)
+}
+
+fn text_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElement {
     let banner = diff.data.as_ref().is_some_and(|d| d.eol_only);
     let has_text = diff.data.is_some();
     let file_view = diff.view == ViewKind::File;
@@ -1672,14 +1769,30 @@ mod tests {
         assert!(d.changes.is_empty());
     }
 
+    struct NoAssets;
+
+    impl AssetSource for NoAssets {
+        fn load(&self, _: &str) -> Result<Option<std::borrow::Cow<'static, [u8]>>> {
+            Ok(None)
+        }
+
+        fn list(&self, _: &str) -> Result<Vec<SharedString>> {
+            Ok(Vec::new())
+        }
+    }
+
+    fn cx_free_svg_renderer() -> SvgRenderer {
+        SvgRenderer::new(Arc::new(NoAssets))
+    }
+
     #[test]
     fn what_a_sides_read_says_decides_what_shows() {
-        let notice = |v: Value| match contents("a.rs", &v, false) {
+        let svg = cx_free_svg_renderer();
+        let notice = |v: Value| match contents("a.rs", &v, false, false, &svg) {
             Read::Notice(n) => Some(n),
             Read::Text(..) | Read::Binary(_) => None,
         };
         assert_eq!(notice(serde_json::json!({"tooLarge": true})), Some(Notice::TooLarge));
-        assert_eq!(notice(serde_json::json!({"image": true})), Some(Notice::Image));
         assert!(wants_hex(&serde_json::json!({"new": {"binary": true}}), false));
         assert!(!wants_hex(&serde_json::json!({"new": {"binary": true}, "image": true}), false), "an image shows as one");
         assert!(wants_hex(&serde_json::json!({"new": {"binary": true}, "image": true}), true), "but as hex in File History's File");

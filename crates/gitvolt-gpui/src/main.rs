@@ -7,6 +7,7 @@ mod app;
 mod bench;
 mod details;
 mod diff;
+mod field;
 mod format;
 mod graph;
 mod history;

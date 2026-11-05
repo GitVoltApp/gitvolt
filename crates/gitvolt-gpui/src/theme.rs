@@ -44,6 +44,11 @@ pub fn diff_diagonal() -> Hsla { a(0xcccccc33) }
 pub fn ruler_added() -> Hsla { a(0x5cb85c99) }
 pub fn ruler_removed() -> Hsla { a(0xd9413d99) }
 pub fn yellow_banner() -> Hsla { a(0xecb91c2e) }
+pub fn image_frame_border() -> Hsla { a(0xffffff38) }
+/// Chromium's dark range input (the web UI leaves it unstyled).
+pub fn range_fill() -> Hsla { c(0x99c8ff) }
+pub fn range_track() -> Hsla { c(0x3b3b3b) }
+pub fn range_border() -> Hsla { c(0x858585) }
 
 /// Lane colours 0-9 (`--graph-0`..`--graph-9`).
 pub const LANES: [u32; 10] = [0x15a0bf, 0x0669f7, 0x8e00c2, 0xc517b6, 0xd90171, 0xcd0101, 0xf25d2e, 0xf2ca33, 0x7bd938, 0x2ece9d];

@@ -16,8 +16,11 @@ gitvolt-graph.workspace = true
 # automated releases land (zed-industries/zed#66275).
 gpui = { git = "https://github.com/zed-industries/zed", rev = "c84af5b99cbc366d675064e52b23664a015b6e35" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "c84af5b99cbc366d675064e52b23664a015b6e35", features = ["wayland", "x11"] }
+base64.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 flate2 = "1"
+# Already in the lockfile through gpui. The formats the web UI's image diff shows, but for AVIF.
+image = { version = "0.25", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "webp"] }
 # Oniguruma, the engine TextMate grammars are written for; Shiki runs the same one as WASM.
 onig = { version = "6.5", default-features = false }
 similar = "2.7"
