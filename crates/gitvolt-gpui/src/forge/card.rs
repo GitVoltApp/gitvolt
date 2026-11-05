@@ -125,7 +125,7 @@ pub fn mr_card(kind: ForgeKind, mr: &ForgeMr, detail: Option<&ForgeMrDetail>, er
         )
         .child(meta().flex().items_center().gap(px(5.)).min_h(px(16.)).child(forge_avatar(&m.author, 16.)).child(m.author.name.clone()))
         .child(meta().flex().items_center().gap(px(3.)).child(from).child(icon("arrow-right", 11., theme::text_secondary())).child(to))
-        .when_some(m.pipeline.as_ref(), |d, p| d.child(meta().flex().items_center().gap(px(4.)).child(pipeline_icon(p, 12., format!("mr-card-pipe-{}", mr.number))).child(pipeline_text(kind, Some(p)))))
+        .when_some(m.pipeline.as_ref(), |d, p| d.child(meta().flex().items_center().gap(px(4.)).child(pipeline_icon(p, 12.)).child(pipeline_text(kind, Some(p)))))
         .when(detail.is_some_and(has_review_news), |d| d.child(meta().child(review_text(&detail.map_or(mr, |x| &x.mr).review))))
         .when(m.conflicts == Some(true), |d| d.child(div().text_size(px(11.)).text_color(theme::red()).child("Has conflicts")))
         .when(detail.is_none(), |d| d.child(meta().child(wait)))

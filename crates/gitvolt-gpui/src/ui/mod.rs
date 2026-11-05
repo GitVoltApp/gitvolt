@@ -101,6 +101,12 @@ impl Ui {
         self.anchors.iter().chain(self.last_anchors.iter()).find(|(k, _)| k.ends_with(end)).map(|(_, b)| *b)
     }
 
+    /// The anchors under these prefixes, as they stand.
+    pub fn anchors_starting(&self, prefixes: &[&str]) -> Vec<(String, Bounds<Pixels>)> {
+        let current = if self.anchors.is_empty() { &self.last_anchors } else { &self.anchors };
+        current.iter().filter(|(k, _)| prefixes.iter().any(|p| k.starts_with(p))).map(|(k, b)| (k.to_string(), *b)).collect()
+    }
+
     pub fn anchor(&self, key: &str) -> Option<Bounds<Pixels>> {
         self.anchors.get(key).or_else(|| self.last_anchors.get(key)).copied()
     }

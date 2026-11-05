@@ -1115,7 +1115,7 @@ pub fn create_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mu
         }
         _ => body = body.child(div().text_color(theme::text_secondary()).child("Loading…")),
     }
-    let frame = div()
+    let frame = crate::ui::anchor("flyout-frame", div()
         .id("create-flyout")
         .key_context("MrView")
         .occlude()
@@ -1158,7 +1158,7 @@ pub fn create_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mu
                     }
                     v.mr_drag = Some((e.position.x.as_f32(), width, false));
                 })),
-        )
+        ))
         .into_any_element();
     Some(frame)
 }

@@ -426,7 +426,7 @@ pub fn mr_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mut Co
         }
     }
     let bar = this.tabs.get(this.active).and_then(|t| t.mr_views.get(&number)).map(|u| scrollbar(&u.scroll));
-    let frame = div()
+    let frame = crate::ui::anchor("flyout-frame", div()
         .id("mr-flyout")
         .key_context("MrView")
         .occlude()
@@ -469,7 +469,7 @@ pub fn mr_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mut Co
                     }
                     v.mr_drag = Some((e.position.x.as_f32(), width, docked));
                 })),
-        )
+        ))
         .into_any_element();
     Some((frame, docked))
 }

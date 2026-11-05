@@ -729,12 +729,54 @@ fn reaction_picker(tab: u32, kind: ForgeKind, number: u64, d: &ForgeDiscussion, 
             v.mr_toggle_reaction(tab, number, did.clone(), nid.clone(), nm.clone(), cx);
         }))));
     }
+    let search = (kind == ForgeKind::GitLab).then(|| reaction_search(tab, kind, number, d, n, cx));
+    let hits = search.as_ref().map_or(Vec::new(), |(_, h)| h.clone());
+    let search = search.map(|(el, _)| el);
+    let mut found = div().flex().flex_wrap().gap(px(2.)).w(px(8. * 28. + 7. * 2.));
+    for (name, glyph) in hits.iter().take(24) {
+        let mine = n.reactions.iter().any(|r| r.name == *name && r.mine);
+        let (did, nid, nm) = (d.id.clone(), n.id.clone(), name.clone());
+        found = found.child(crate::ui::anchor(format!("mr-pick:{name}"), div().id(ElementId::Name(format!("mr-pick:{name}").into())).flex().size(px(28.)).items_center().justify_center().rounded(px(4.)).cursor_pointer().when(mine, |e| e.bg(theme::selected_row())).hover(|e| e.bg(theme::control_hover_bg())).child(glyph.clone()).on_click(cx.listener(move |v, _, _, cx| {
+            if let Some(ui) = v.mr_ui(tab, number) {
+                ui.reaction_picker = None;
+            }
+            STATE_SEARCH.with_borrow_mut(|s| *s = None);
+            v.mr_toggle_reaction(tab, number, did.clone(), nid.clone(), nm.clone(), cx);
+        }))));
+    }
+    let searching = !hits.is_empty();
     deferred(div().id("mr-reaction-picker").occlude().absolute().right(px(12.)).top(px(32.)).flex().flex_col().gap(px(6.)).p(px(6.)).rounded(px(8.)).border_1().border_color(theme::section_border()).bg(theme::panel_bg()).shadow(crate::ui::shadow(theme::shadow_popup(), 4., 16.)).on_mouse_down_out(cx.listener(move |v, _, _, cx| {
         if let Some(ui) = v.mr_ui(tab, number) {
             ui.reaction_picker = None;
         }
         cx.notify();
-    })).child(grid)).with_priority(2).into_any_element()
+    })).children(search).when(searching, |e| e.child(found)).when(!searching, |e| e.child(grid))).with_priority(2).into_any_element()
+}
+
+/// GitLab takes any emoji: a search of every name. The hits come with the field that makes them.
+fn reaction_search(tab: u32, _kind: ForgeKind, number: u64, _d: &ForgeDiscussion, _n: &ForgeNote, cx: &mut Context<GitVolt>) -> (AnyElement, Vec<(String, String)>) {
+    let existing = STATE_SEARCH.with_borrow(|s| s.clone());
+    let input = existing.unwrap_or_else(|| {
+        let input = cx.new(|cx| crate::ui::input::TextInput::new(cx).placeholder("Search emoji"));
+        cx.subscribe(&input, move |_, _, e: &crate::ui::input::InputEvent, cx| {
+            if matches!(e, crate::ui::input::InputEvent::Changed) {
+                cx.notify();
+            }
+        })
+        .detach();
+        STATE_SEARCH.with_borrow_mut(|s| *s = Some(input.clone()));
+        input
+    });
+    let _ = (tab, number);
+    let q = input.read(cx).text().trim().trim_matches(':').to_lowercase();
+    let hits = if q.is_empty() { Vec::new() } else { crate::md::complete::rank_emoji(&q, 24).into_iter().map(|h| (h.name, h.emoji)).collect() };
+    let el = div().px(px(8.)).py(px(4.)).rounded(px(4.)).border_1().border_color(theme::wip_input_border()).bg(theme::wip_input_bg()).text_size(px(12.)).child(input).into_any_element();
+    (el, hits)
+}
+
+thread_local! {
+    /// The picker's search; one picker's open at a time.
+    static STATE_SEARCH: std::cell::RefCell<Option<Entity<crate::ui::input::TextInput>>> = const { std::cell::RefCell::new(None) };
 }
 
 pub fn description(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, detail: Option<&ForgeMrDetail>, cx: &mut Context<GitVolt>) -> AnyElement {

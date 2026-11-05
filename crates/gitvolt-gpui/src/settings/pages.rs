@@ -589,7 +589,11 @@ fn target_remote(this: &mut GitVolt, def: &'static Def, _: &mut Window, cx: &mut
     let weak = cx.weak_entity();
     let on_change: OnSelect<String> = Rc::new(move |v, _, cx| {
         let value = if v.is_empty() { Value::Null } else { json!(v) };
-        weak.update(cx, |this, cx| set_bound(this, &def.binding, value, cx)).ok();
+        weak.update(cx, |this, cx| {
+            set_bound(this, &def.binding, value, cx);
+            this.forge_accounts_changed(cx);
+        })
+        .ok();
     });
     div().flex().flex_none().w(px(240.)).child(controls::select("setting:forgeTargetRemote", remote, Rc::new(options), None, on_change, cx)).into_any_element()
 }

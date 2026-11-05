@@ -62,7 +62,7 @@ pub fn state_icon_coloured(s: MrState, size: f32, color: Hsla) -> AnyElement {
 }
 
 /// A running pipeline's icon turns: it's something working, not an idle animation.
-pub fn pipeline_icon(p: &ForgePipeline, size: f32, key: impl Into<SharedString>) -> AnyElement {
+pub fn pipeline_icon(p: &ForgePipeline, size: f32) -> AnyElement {
     let (glyph, color) = match p.status {
         PipelineStatus::Pending => ("circle-dashed", theme::yellow()),
         PipelineStatus::Running => ("loader-circle", theme::blue()),
@@ -71,9 +71,7 @@ pub fn pipeline_icon(p: &ForgePipeline, size: f32, key: impl Into<SharedString>)
         PipelineStatus::Canceled | PipelineStatus::Skipped => ("circle-slash", theme::text_secondary()),
         PipelineStatus::Manual => ("hand", theme::text_secondary()),
     };
-    if p.status == PipelineStatus::Running {
-        return turning(glyph, size, color, key.into());
-    }
+    // A pipeline can run for an hour, and a turning icon redraws the window all that while: it stands still.
     icon(glyph, size, color).into_any_element()
 }
 
@@ -130,7 +128,7 @@ pub fn row_trailing(kind: &ItemKind, tab: u32, forge: Option<ForgeKind>, by_ref:
         }
         ItemKind::Mr { mr, forge } => {
             if let Some(p) = mr.pipeline.as_ref().filter(|p| matches!(p.status, PipelineStatus::Failed | PipelineStatus::Running | PipelineStatus::Pending)) {
-                out.push(tip(pipeline_text(*forge, Some(p)), div().flex().flex_none().child(pipeline_icon(p, 12., format!("mr-row-pipe-{}", mr.number)))).into_any_element());
+                out.push(tip(pipeline_text(*forge, Some(p)), div().flex().flex_none().child(pipeline_icon(p, 12.))).into_any_element());
             }
             if mr.auto_merge.is_some() {
                 out.push(tip("Set to auto-merge", div().flex().flex_none().opacity(0.8).child(icon("git-merge", 12., theme::text_secondary()))).into_any_element());

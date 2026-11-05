@@ -7,6 +7,7 @@ pub mod accounts_forks;
 pub mod card;
 pub mod create;
 pub mod goto;
+pub mod keys;
 pub mod menu;
 pub mod mrview;
 pub mod poll;

@@ -338,7 +338,7 @@ pub fn mr_header(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, de
         let pipe_url = mr.pipeline.as_ref().and_then(|p| p.web_url.clone());
         let pipeline = fact("mr-fact-pipeline")
             .child(fact_k(if kind == ForgeKind::GitLab { "Pipeline" } else { "Checks" }))
-            .child(fact_v(pipe_color).children(mr.pipeline.as_ref().map(|p| pipeline_icon(p, 12., format!("mr-fact-pipe-{number}")))).child(match pipe_url {
+            .child(fact_v(pipe_color).children(mr.pipeline.as_ref().map(|p| pipeline_icon(p, 12.))).child(match pipe_url {
                 Some(url) => div().id("mr-pipeline-link").cursor_pointer().text_color(theme::link()).hover(|d| d.underline()).child(word).on_click(cx.listener(move |v, _, _, _| v.forge_open_url(url.clone()))).into_any_element(),
                 None => div().child(word).into_any_element(),
             }));
