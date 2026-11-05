@@ -25,7 +25,7 @@ React UI that draws it, and Tauri 3 on its Chromium (CEF) runtime holding the tw
 
 ## Crates and the UI
 
-The Cargo workspace has six crates under `crates/`; the UI is a separate npm project in `ui/`.
+The Cargo workspace has seven crates under `crates/`; the UI is a separate npm project in `ui/`.
 
 **`gitvolt-core`** owns everything a git client does, with no Tauri dependency. Its entry point is
 `Api` (`src/api.rs`): one `Request` enum of every method the UI can call, and one `dispatch`
@@ -91,6 +91,10 @@ real input on the `windows-titlebar.yml` runners (Windows 11's and Windows 10's 
 **`gitvolt-harness`** serves the same `Api` over a WebSocket so the UI can run in a plain browser
 with no Tauri, and adds a fake GitHub/GitLab/Forgejo, fixture repositories and test-only routes. It's what
 the Playwright suite drives; see [Testing](#testing).
+
+**`gitvolt-gpui`** is the same core drawn natively with GPUI instead of in Chromium: a work in
+progress that reads and doesn't write yet, beside `gitvolt-app`, which stays the product. Where it
+stands and how it measures up is in [docs/decisions/gpui-rewrite.md](docs/decisions/gpui-rewrite.md).
 
 **`gitvolt-graph`** is the graph's pure pipeline: the walk's order, the pinned trunk, the WIP rows,
 the lane layout and the labels, from plain data (`GraphInput`) to `GraphPayload`, with no gix and no

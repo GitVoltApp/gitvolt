@@ -2413,6 +2413,23 @@ impl Api {
 
     /// Every request, with panics turned into `GbError::Other` (spec §16.1); the panic hook
     /// (logging::install_panic_hook) has already logged it with a backtrace.
+    /// The `graph` read, typed: a native UI takes it as it is, with no JSON between.
+    pub async fn graph(&self, repo: u32, limit: Option<u32>, pin: Option<PinSetting>, rescan: Option<bool>, active: Option<String>, view: Option<gitvolt_graph::ViewSpec>) -> Result<gitvolt_graph::GraphPayload, GbError> {
+        let h = self.handle(repo)?;
+        let mut opts = self.build_options(&h, limit, pin, active, view).await?;
+        // The watcher keeps the worktree shown responsive (the others throttled).
+        h.wip.set_active(opts.active.as_deref().unwrap_or(&h.workdir));
+        opts.rescan = rescan.unwrap_or(false) || !self.status_is_watched(repo);
+        let (payload, texts) = build_graph_with_text(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts).await?;
+        {
+            // Find searches this window now; the path index carries over (find.rs).
+            let mut snapshot = h.snapshot.lock().expect("snapshot poisoned");
+            let next = crate::find::FindSnapshot::new(texts, snapshot.as_deref());
+            *snapshot = Some(Arc::new(next));
+        }
+        Ok(payload)
+    }
+
     pub async fn dispatch(&self, req: Request) -> Result<serde_json::Value, GbError> {
         let debug = format!("{req:?}");
         let method = name_in(&debug);
@@ -2509,21 +2526,7 @@ impl Api {
                 to_json(())
             }
             Request::OpenRepo { path } => to_json(self.open_repo(&path).await?),
-            Request::Graph { repo, limit, pin, rescan, active, view } => {
-                let h = self.handle(repo)?;
-                let mut opts = self.build_options(&h, limit, pin, active, view).await?;
-                // The watcher keeps the worktree shown responsive (the others throttled).
-                h.wip.set_active(opts.active.as_deref().unwrap_or(&h.workdir));
-                opts.rescan = rescan.unwrap_or(false) || !self.status_is_watched(repo);
-                let (payload, texts) = build_graph_with_text(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts).await?;
-                {
-                    // Find searches this window now; the path index carries over (find.rs).
-                    let mut snapshot = h.snapshot.lock().expect("snapshot poisoned");
-                    let next = crate::find::FindSnapshot::new(texts, snapshot.as_deref());
-                    *snapshot = Some(Arc::new(next));
-                }
-                to_json(payload)
-            }
+            Request::Graph { repo, limit, pin, rescan, active, view } => to_json(self.graph(repo, limit, pin, rescan, active, view).await?),
             // --- branch presets ---
             Request::GraphReveal { repo, limit, pin, active, view, key, below } => {
                 let h = self.handle(repo)?;

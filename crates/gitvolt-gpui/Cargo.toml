@@ -1,0 +1,24 @@
+[package]
+name = "gitvolt-gpui"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "gitvolt-gpui"
+path = "src/main.rs"
+
+[dependencies]
+gitvolt-core.workspace = true
+gitvolt-graph.workspace = true
+# Zed v1.27.0. crates.io's gpui is a year behind; Zed's advice is to pin a revision until its
+# automated releases land (zed-industries/zed#66275).
+gpui = { git = "https://github.com/zed-industries/zed", rev = "c84af5b99cbc366d675064e52b23664a015b6e35" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "c84af5b99cbc366d675064e52b23664a015b6e35", features = ["wayland", "x11"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tokio.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", rev = "c84af5b99cbc366d675064e52b23664a015b6e35", features = ["test-support"] }
