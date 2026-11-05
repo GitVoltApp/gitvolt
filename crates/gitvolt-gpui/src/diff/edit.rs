@@ -208,21 +208,19 @@ impl GitVolt {
         if let Some(m) = self.tabs.get_mut(self.active).and_then(crate::app::Tab::merge_shown_mut)
             && let Some(o) = m.output.as_mut()
         {
+            let before = o.view.scroll;
             let changed = f(&mut o.edit);
             if changed {
                 m.after_output_edit();
-            } else {
+            } else if let Some(o) = m.output.as_mut() {
                 o.edit.buffer.take_change();
-                let caret = o.caret_line() as f32 * crate::merge::LINE_H;
-                if caret < o.view.scroll {
-                    o.view.scroll = caret;
-                } else if caret + crate::merge::LINE_H > o.view.scroll + o.view.height {
-                    o.view.scroll = caret + crate::merge::LINE_H - o.view.height;
-                }
+                o.show_caret();
+            }
+            // Only a scroll moves the others.
+            if m.output.as_ref().is_some_and(|o| o.view.scroll != before) {
                 m.sync_scroll(2);
             }
             if changed {
-                m.sync_scroll(2);
                 self.merge_colour_after_edit(cx);
             }
             cx.notify();

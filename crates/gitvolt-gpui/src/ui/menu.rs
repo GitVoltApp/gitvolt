@@ -76,6 +76,8 @@ pub struct ActionRow {
     pub swatch: Option<Hsla>,
     /// A choice among its siblings: a radio instead of the icon, green when it's the one.
     pub radio: Option<bool>,
+    /// In its own colour, in bold, with no icon's place: a dropdown's named options.
+    pub tint: Option<Hsla>,
 }
 
 #[derive(Clone)]
@@ -94,7 +96,7 @@ pub const NOT_YET: &str = "Not in this build yet";
 
 impl MenuRow {
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>, icon: &'static str, tooltip: impl Into<SharedString>, run: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        MenuRow::Action(ActionRow { id: id.into(), label: label.into(), icon, tooltip: tooltip.into(), run: Rc::new(run), variants: Vec::new(), default_variant: None, disabled: None, shortcut: None, swatch: None, radio: None })
+        MenuRow::Action(ActionRow { id: id.into(), label: label.into(), icon, tooltip: tooltip.into(), run: Rc::new(run), variants: Vec::new(), default_variant: None, disabled: None, shortcut: None, swatch: None, radio: None, tint: None })
     }
 
     /// In its place, greyed: its action needs what isn't ported yet.
@@ -138,6 +140,13 @@ impl MenuRow {
     pub fn shortcut(mut self, chord: impl Into<SharedString>) -> Self {
         if let MenuRow::Action(a) = &mut self {
             a.shortcut = Some(chord.into());
+        }
+        self
+    }
+
+    pub fn tint(mut self, color: Hsla) -> Self {
+        if let MenuRow::Action(a) = &mut self {
+            a.tint = Some(color);
         }
         self
     }
@@ -368,6 +377,8 @@ pub struct OpenOptions {
     /// Re-run by `refresh`.
     pub build: Option<Builder>,
     pub label: Option<SharedString>,
+    /// As narrow as its longest row.
+    pub narrow: bool,
 }
 
 fn level_size(rows: &[MenuRow], min_w: f32, cx: &App) -> (f32, f32) {
@@ -383,6 +394,10 @@ fn level_size(rows: &[MenuRow], min_w: f32, cx: &App) -> (f32, f32) {
             MenuRow::Submenu { label, .. } => 18. + 22. + ui.measure(label, 13., FontWeight::NORMAL) + 20.,
             MenuRow::Action(a) => {
                 let variants: f32 = a.variants.iter().map(|v| variant_w(v, cx)).sum();
+                if a.tint.is_some() {
+                    w = w.max((18. + ui.measure(&a.label, 13., FontWeight::SEMIBOLD)).ceil() + 2. * BORDER);
+                    continue;
+                }
                 18. + 22.
                     + ui.measure(&a.label, 13., FontWeight::NORMAL)
                     + a.swatch.map_or(0., |_| 16.)
@@ -435,7 +450,7 @@ fn open(rows: Vec<MenuRow>, at: (f32, f32), anchor: Option<SharedString>, o: Ope
     tooltip::hide(cx);
     let viewport = window.viewport_size();
     let (vw, vh) = (viewport.width.as_f32(), viewport.height.as_f32());
-    let (w, h) = level_size(&rows, ROOT_MIN_W, cx);
+    let (w, h) = level_size(&rows, if o.narrow { 0. } else { ROOT_MIN_W }, cx);
     let bounds = anchor.as_ref().and_then(|k| Ui::get(cx).anchor(k)).map(Rect::of);
     let (left, top) = place::place_menu(at.0, at.1, w, h, vw, vh, bounds);
     let active = start_index(&rows, o.initial.as_deref());
@@ -1156,14 +1171,17 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
                 }
                 MenuRow::Action(a) => {
                     let disabled = a.disabled.is_some();
-                    let color = if disabled { theme::text_disabled() } else if a.radio == Some(true) { theme::green() } else if active { theme::text_selected() } else { theme::text_normal() };
+                    let color = if let Some(t) = a.tint.filter(|_| !disabled) { t } else if disabled { theme::text_disabled() } else if a.radio == Some(true) { theme::green() } else if active { theme::text_selected() } else { theme::text_normal() };
                     let armed_here = armed.is_some() && m.armed_row == Some((depth, i));
                     let over_variant = m.over_variant == Some((depth, i));
                     let mut row = row_base(active, disabled)
                         .text_color(color)
-                        .child(match a.radio {
-                            Some(on) => radio_mark(on),
-                            None => icon_slot(a.icon, color),
+                        .when(a.tint.is_some(), |d| d.font_weight(FontWeight::SEMIBOLD))
+                        .when(a.tint.is_none(), |d| {
+                            d.child(match a.radio {
+                                Some(on) => radio_mark(on),
+                                None => icon_slot(a.icon, color),
+                            })
                         })
                         .when_some(a.swatch, |d, s| d.child(div().flex_none().size(px(8.)).rounded_full().bg(s)))
                         .child(div().flex_1().child(a.label.clone()))

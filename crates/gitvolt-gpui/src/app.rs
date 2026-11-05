@@ -64,6 +64,8 @@ pub struct Tab {
     pub diff: Option<DiffState>,
     /// The merge tool, while `diff` is a conflicted file.
     pub merge: Option<crate::merge::MergeTool>,
+    /// The interactive rebase's session: its view stands in the graph's place.
+    pub rebase: Option<crate::irebase::RebaseSession>,
     /// File History in the diff's and the graph's place; `diff` then is the file it shows.
     pub history: Option<FileHistory>,
     pub keys: KeyArea,
@@ -85,6 +87,11 @@ pub struct Tab {
     pub wip: crate::wip::WipUi,
     /// The WIP rows' draft boxes, by worktree.
     pub row_drafts: HashMap<String, Entity<TextInput>>,
+    /// The journal's paused operation, as of the last look: what the operation's status names.
+    pub paused: Option<gitvolt_core::journal::PausedInfo>,
+    /// Each stop selects the WIP row once; a paused entry that ended outside GitVolt settles once.
+    pub stops_shown: HashSet<String>,
+    pub settled: HashSet<u64>,
     /// The sidebar's read, as the core says it: what the writes go by.
     pub sidebar: Rc<serde_json::Value>,
     /// Writes queued or running that move HEAD: `(id, branch, commit)`, folded into what's shown.
@@ -148,6 +155,7 @@ impl Tab {
             files: None,
             diff: None,
             merge: None,
+            rebase: None,
             history: None,
             keys: KeyArea::Graph,
             all_files: false,
@@ -161,6 +169,9 @@ impl Tab {
             find: crate::find::FindState::new(id, cx),
             wip: crate::wip::WipUi::new(id, cx),
             row_drafts: HashMap::new(),
+            paused: None,
+            stops_shown: HashSet::new(),
+            settled: HashSet::new(),
             sidebar: Rc::default(),
             head_moves: Vec::new(),
             in_flight: HashSet::new(),
@@ -394,7 +405,9 @@ impl GitVolt {
                         tab.side.relist(cx);
                         tab.error = None;
                         this.sync_row_drafts(repo, cx);
+                        this.sync_paused(repo);
                         this.check_amend(repo, cx);
+                        this.after_stop(repo, cx);
                     }
                     Ok(Err(e)) => tab.error = Some(e.message.into()),
                     Err(e) => tab.error = Some(e.to_string().into()),
@@ -424,6 +437,59 @@ impl GitVolt {
             .ok();
         })
         .detach();
+    }
+
+    /// The journal's pause, where the operation's status reads it.
+    pub fn sync_paused(&mut self, repo: u32) {
+        let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
+        let worktree = tab.wip_worktree().unwrap_or(tab.worktree.as_str()).to_string();
+        let paused = self.ops.journal(repo, &worktree).and_then(|j| j.paused.clone());
+        if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) {
+            tab.paused = paused;
+        }
+    }
+
+    /// `ConflictBanner`'s watcher, per reload of the tab's worktree: an operation that ended outside GitVolt with its
+    /// journal entry paused settles once; a new stop selects the WIP row, which holds the operation. It waits while
+    /// a merge, rebase or pull of the repo runs: those states are transient.
+    pub fn after_stop(&mut self, repo: u32, cx: &mut Context<Self>) {
+        if self.integrating(repo) {
+            return;
+        }
+        let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
+        let worktree = tab.worktree.clone();
+        let Some(g) = tab.graph.clone() else { return };
+        let progress = g.in_progress.get(&worktree);
+        if progress.is_none() {
+            let Some(entry) = self.ops.journal(repo, &worktree).and_then(|j| j.paused.as_ref()).map(|p| p.entry) else { return };
+            let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
+            if tab.settled.insert(entry) {
+                let ctx = crate::write::WriteCtx { repo, worktree: worktree.clone() };
+                let w = crate::write::Write::new(&ctx, move |_| crate::write::call("settlePaused", serde_json::json!({ "repo": repo, "worktree": worktree }))).on_end(move |this, ok, _| {
+                    if !ok && let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) {
+                        tab.settled.remove(&entry);
+                    }
+                });
+                self.write(w, cx);
+            }
+            return;
+        }
+        let Some(p) = progress else { return };
+        let stop = crate::commit_box::operation_view(p, None, None, &|_| None, &|_| None).stop;
+        let is_active = self.tabs.get(self.active).is_some_and(|t| t.id == repo);
+        let Some(wip_row) = g.rows.iter().position(|r| r.worktree.as_deref() == Some(worktree.as_str())) else { return };
+        let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
+        if !is_active || tab.stops_shown.contains(&stop) {
+            return;
+        }
+        tab.stops_shown.insert(stop);
+        // Already there with a file open (a click beat it): leave the view alone.
+        if tab.selected == Some(wip_row) && tab.diff.is_some() {
+            return;
+        }
+        if tab.selected != Some(wip_row) {
+            self.select(wip_row, cx);
+        }
     }
 
     /// Reads a deeper window; `select` once it holds that commit.
@@ -1130,6 +1196,9 @@ impl Render for GitVolt {
         }
         let viewport = window.viewport_size();
         self.fetch_avatars(cx);
+        if let Some(repo) = self.tabs.get(self.active).map(|t| t.id) {
+            self.sync_paused(repo);
+        }
         let details_w = self.details_w;
         let panel_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
         let details = self.tabs.get(self.active).and_then(|t| details_panel(self, t, details_w, panel_h, window, cx));
@@ -1137,7 +1206,9 @@ impl Render for GitVolt {
         let open_file = tab.is_some_and(|t| t.diff.is_some() || t.history.is_some());
         let folded = open_file && !tab.is_some_and(|t| t.sidebar_open);
         let folded = folded || self.sidebar_narrow;
-        let left = if folded { NARROW_W } else { self.sidebar_w };
+        // The rebase editor takes the sidebar's place too.
+        let no_sidebar = tab.is_some_and(|t| t.rebase_shown().is_some());
+        let left = if no_sidebar { 0. } else if folded { NARROW_W } else { self.sidebar_w };
         let center = viewport.width.as_f32() - left - if details.is_some() { self.details_w } else { 0. };
         let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
         if let Some(m) = self.tabs.get_mut(self.active).and_then(Tab::merge_shown_mut) {
@@ -1159,12 +1230,14 @@ impl Render for GitVolt {
             }
         }
         let tab = self.tabs.get(self.active);
-        let strip = tab.filter(|_| folded).map(|t| narrow_strip(t, cx));
+        let strip = tab.filter(|_| folded && !no_sidebar).map(|t| narrow_strip(t, cx));
         let menu = tab.and_then(|t| open_in_menu(t, cx));
-        let main = match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), t.wip_ctx().and_then(|c| self.ops.staging(c.repo, &c.worktree)), window, cx) }) {
+        let rebase_ghost = tab.and_then(crate::irebase::view::chip_ghost);
+        let rebase = tab.and_then(|t| crate::irebase::view::rebase_panel(t, center, window, cx));
+        let main = if let Some(panel) = rebase { panel } else { match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), t.wip_ctx().and_then(|c| self.ops.staging(c.repo, &c.worktree)), window, cx) }) {
             Some(panel) => panel,
             None => graph_table(self, center, window, cx),
-        };
+        } };
         let banner_list = self.tabs.get(self.active).map_or(Vec::new(), |t| self.banner_list(t, cx));
         let banners = crate::ui::banner::banners(&banner_list);
         let drag_ghost = self.branch_drag.as_ref().filter(|d| d.active).map(|d| {
@@ -1212,6 +1285,7 @@ impl Render for GitVolt {
             }))
             .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| {
                 this.on_merge_drag(e, window, cx);
+                this.on_rebase_drag(e, cx);
                 this.on_side_drag(e, cx);
                 this.on_column_drag(e, cx);
                 this.on_tab_drag(e, cx);
@@ -1219,6 +1293,7 @@ impl Render for GitVolt {
             }))
 .on_mouse_up(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.end_merge_drag();
+                this.end_rebase_drag(cx);
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
                 this.tab_drag = None;
@@ -1235,6 +1310,7 @@ impl Render for GitVolt {
             }))
 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.end_merge_drag();
+                this.end_rebase_drag(cx);
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
                 this.tab_drag = None;
@@ -1245,10 +1321,11 @@ impl Render for GitVolt {
             .child(tab_bar(self, cx))
             .child(toolbar(self, cx))
             .children(banners)
-            .child(div().flex().flex_1().min_h_0().when_some(strip, |d, s| d.child(s)).when(!folded, |d| d.child(sidebar(self, body_h, window, cx))).child(main).children(details))
+            .child(div().flex().flex_1().min_h_0().when_some(strip, |d, s| d.child(s)).when(!folded && !no_sidebar, |d| d.child(sidebar(self, body_h, window, cx))).child(main).children(details))
             .child(status_bar(self, cx))
             .children(menu)
-            .children(drag_ghost);
+            .children(drag_ghost)
+            .children(rebase_ghost);
         // Dialogs and menus float outside the app's key context: no shortcut acts behind them.
         div()
             .relative()

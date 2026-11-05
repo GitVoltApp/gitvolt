@@ -179,7 +179,7 @@ pub fn keycaps(chord: &str) -> Div {
 pub fn split_chord(chord: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut rest = chord;
-    while let Some(i) = rest[..rest.len().saturating_sub(1)].find('+') {
+    while let Some(i) = rest[..rest.char_indices().last().map_or(0, |c| c.0)].find('+') {
         out.push(rest[..i].to_string());
         rest = &rest[i + 1..];
     }

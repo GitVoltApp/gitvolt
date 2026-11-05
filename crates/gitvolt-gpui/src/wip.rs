@@ -431,6 +431,8 @@ pub struct WipUi {
     pub all_files: bool,
     /// When Commit's write started: past 30 s the box says so.
     pub committing_since: Option<std::time::Instant>,
+    /// What Abort counted when it armed: a different count disarms it.
+    pub abort_armed_at: Option<String>,
 }
 
 impl WipUi {
@@ -446,7 +448,7 @@ impl WipUi {
         cx.subscribe(&summary, move |this, _, e: &InputEvent, cx| this.commit_field_event(id, true, e, cx)).detach();
         let description = cx.new(|cx| TextInput::multiline(cx).placeholder("Description").placeholder_color(theme::wip_input_placeholder()).claim_escape().claim_arrows());
         cx.subscribe(&description, move |this, _, e: &InputEvent, cx| this.commit_field_event(id, false, e, cx)).detach();
-        Self { filter_open: false, filter, summary, description, amend: None, stop: None, committing: false, staging: 0, discarding: false, identity: None, all_files: false, committing_since: None }
+        Self { filter_open: false, filter, summary, description, amend: None, stop: None, committing: false, staging: 0, discarding: false, identity: None, all_files: false, committing_since: None, abort_armed_at: None }
     }
 }
 
@@ -930,7 +932,8 @@ impl GitVolt {
     pub fn show_draft(&mut self, repo: u32, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
         let Some(worktree) = tab.wip_worktree() else { return };
-        let d = match (&tab.wip.amend, &tab.wip.stop) {
+        let op_box = tab.box_state().op_box();
+        let d = match (&tab.wip.amend, tab.wip.stop.as_ref().filter(|_| op_box)) {
             (Some((text, _)), _) => text.clone(),
             (None, Some(stop)) => stop.text.clone(),
             (None, None) => self.drafts.get(worktree).cloned().unwrap_or_default(),
@@ -949,7 +952,7 @@ impl GitVolt {
                 let Some(worktree) = tab.wip_worktree().map(str::to_string) else { return };
                 let row = tab.row_drafts.get(&worktree).cloned();
                 let amending = tab.wip.amend.is_some();
-                let stopped = tab.wip.stop.is_some();
+                let stopped = tab.wip.stop.is_some() && tab.box_state().op_box();
                 if amending || stopped {
                     if let Some(tab) = self.wip_tab_mut(repo) {
                         match (tab.wip.amend.as_mut(), tab.wip.stop.as_mut()) {
@@ -1061,10 +1064,12 @@ impl GitVolt {
         if view.reason.is_some() || tab.wip.committing || self.integrating(ctx.repo) {
             return;
         }
-        if let Some(op) = tab.operation().filter(|o| !o.is_merge()) {
+        let state = tab.box_state();
+        if let Some(op) = &state.box_op {
             let message = tab.wip.stop.as_ref().and_then(StopBox::edited_message);
             return self.operation_control(op.kind, "continue", message, ArmOrigin::None, cx);
         }
+        let (edit_staged, at_stop) = (state.edit_staged, state.edit_moved || state.edit_staged);
         let d = Draft { summary: tab.wip.summary.read(cx).text().to_string(), description: tab.wip.description.read(cx).text().to_string() };
         let amend = tab.wip.amend.is_some();
         let head = tab.wip_head(&ctx.worktree);
@@ -1085,6 +1090,11 @@ impl GitVolt {
                     if let Some(tab) = this.wip_tab_mut(repo) {
                         tab.wip.amend = None;
                     }
+                } else if edit_staged {
+                    // A piece committed at the stop: the box empties for the next one.
+                    if let Some(stop) = this.wip_tab_mut(repo).and_then(|t| t.wip.stop.as_mut()) {
+                        stop.text = Draft::default();
+                    }
                 } else {
                     this.drafts.remove(&done_worktree);
                     this.touch_drafts(cx);
@@ -1094,8 +1104,9 @@ impl GitVolt {
                     }
                 }
                 this.show_draft(repo, cx);
-                // The new commit, selected once the graph that holds it arrives.
-                if let Some(tab) = this.wip_tab_mut(repo) {
+                // The new commit, selected once the graph that holds it arrives; at an Edit stop the WIP stays
+                // selected: the next piece and Continue are here.
+                if !at_stop && let Some(tab) = this.wip_tab_mut(repo) {
                     tab.select_after_load = Some(oid);
                 }
                 this.reload(repo, cx);
@@ -1172,7 +1183,8 @@ impl GitVolt {
         self.sync_merge_drafts(repo, cx);
         let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
         let Some(worktree) = tab.wip_worktree() else { return };
-        let moved = tab.wip.amend.as_ref().is_some_and(|(_, head)| tab.wip_head(worktree).as_deref() != Some(head));
+        let owns = tab.box_state().owns;
+        let moved = tab.wip.amend.as_ref().is_some_and(|(_, head)| owns || tab.wip_head(worktree).as_deref() != Some(head));
         if moved {
             if let Some(tab) = self.wip_tab_mut(repo) {
                 tab.wip.amend = None;
@@ -1180,17 +1192,45 @@ impl GitVolt {
             self.show_draft(repo, cx);
         }
         let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
-        // Each stop fills the box with git's message once; edits stay until the next stop.
-        let stop = tab.operation().filter(|o| !o.is_merge());
-        if tab.wip.stop.as_ref().map(|s| s.key.as_str()) != stop.as_ref().map(|o| o.stop.as_str()) {
-            let stop = stop.map(|o| {
+        // Each stop fills the box with git's message once; edits stay until the next stop. The operation over,
+        // the draft shows again.
+        let operation = tab.operation();
+        let stop = operation.clone().filter(|o| !o.is_merge() && o.primary.is_some());
+        let key = stop.as_ref().map(|o| o.stop.clone());
+        let changes = match &key {
+            Some(k) => tab.wip.stop.as_ref().map(|s| &s.key) != Some(k),
+            None => operation.is_none() && tab.wip.stop.is_some(),
+        };
+        if changes {
+            let needs_read = stop.as_ref().and_then(|o| o.stopped_at.clone().filter(|_| o.message.trim().is_empty()));
+            let filled = stop.map(|o| {
                 let text = Draft::of_message(&o.message);
                 StopBox { key: o.stop, original: text.clone(), text }
             });
             if let Some(tab) = self.wip_tab_mut(repo) {
-                tab.wip.stop = stop;
+                tab.wip.stop = filled;
             }
             self.show_draft(repo, cx);
+            // No message of git's: the stopped commit's own.
+            if let Some(id) = needs_read
+                && !cfg!(test)
+            {
+                let api = self.api.clone();
+                let read = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo, id }).await });
+                cx.spawn(async move |this, cx| {
+                    let Ok(Ok(m)) = read.await else { return };
+                    this.update(cx, |this, cx| {
+                        let text = Draft::of_message(&format!("{}\n{}", m["summary"].as_str().unwrap_or_default(), m["body"].as_str().unwrap_or_default()));
+                        if let Some(stop) = this.wip_tab_mut(repo).and_then(|t| t.wip.stop.as_mut()) {
+                            stop.original = text.clone();
+                            stop.text = text;
+                        }
+                        this.show_draft(repo, cx);
+                    })
+                    .ok();
+                })
+                .detach();
+            }
         }
     }
 
@@ -1528,11 +1568,11 @@ impl GitVolt {
 pub fn commit_view_of(tab: &Tab, cx: &App) -> CommitView {
     let (staged, unstaged, conflicted) = tab.files.as_ref().map_or((0, 0, 0), Files::counts);
     let summary = tab.wip.summary.read(cx).text().to_string();
-    let operation = tab.operation();
-    if let Some(op) = operation.as_ref().filter(|o| !o.is_merge()) {
+    let state = tab.box_state();
+    if let Some(op) = &state.box_op {
         return crate::commit_box::continue_button(op, &summary, tab.wip.description.read(cx).text());
     }
-    let in_merge = operation.is_some_and(|o| o.is_merge());
+    let in_merge = state.operation.is_some_and(|o| o.is_merge());
     commit_button(&CommitState { staged, unstaged, conflicted, amend: tab.wip.amend.is_some(), in_merge, summary: &summary, staging: tab.wip.staging > 0 })
 }
 

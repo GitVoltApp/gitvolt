@@ -127,9 +127,7 @@ impl GitVolt {
             let env = crate::refs::IntegrateEnv { head_branch: head_for.clone(), head_sha: head_sha_now.clone(), busy: why };
             let checked_out = local_b.as_ref().is_some_and(|l| l.checked_out.is_some());
             integrate = crate::refs::integrate_rows(&sha, b, checked_out, graph, &env, this, &ctx);
-            if !b.head {
-                integrate.push(MenuRow::pending("irebase.onto", format!("Interactive rebase {head} onto {}", b.name), "list-ordered"));
-            }
+            integrate.extend(self.rebase_onto_rows(&sha, b, None, this));
         }
 
         let mut branch_rows = Vec::new();
@@ -212,10 +210,7 @@ impl GitVolt {
             };
             let plain = tag(false);
             commit_rows.push(MenuRow::action("tag.createHere", "Create tag here", "tag", format!("Create a lightweight tag at {s6}"), move |w, cx| plain(w, cx)).variants(vec![Variant { id: "lightweight".into(), label: Some("Lightweight".into()), icon: None, tooltip: format!("A tag that only names {s6}").into(), run: tag(false), disabled: None }, Variant { id: "annotated".into(), label: Some("Annotated".into()), icon: None, tooltip: "A tag with its own message, author and date".into(), run: tag(true), disabled: None }], None));
-            if !is_head_commit {
-                commit_rows.push(MenuRow::pending("irebase.fromHere", "Interactive rebase after this commit", "list-ordered"));
-                commit_rows.push(MenuRow::pending("irebase.drop", "Drop commit", "trash-2"));
-            }
+            commit_rows.extend(self.rebase_commit_rows(&sha, &row.parents, this));
         }
         let _ = &target;
 

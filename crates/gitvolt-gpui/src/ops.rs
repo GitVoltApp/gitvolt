@@ -205,13 +205,13 @@ pub fn queue_idle(q: Option<&QueueStatePayload>) -> bool {
 
 /// A rebase's counter.
 pub fn rebase_status(o: &OpInfo) -> Option<String> {
-    if o.kind != OpKind::Rebase {
+    if o.kind != OpKind::Rebase && o.kind != OpKind::Pull {
         return None;
     }
     let s = o.step.as_ref()?;
     Some(match &s.branch {
-        Some(b) => format!("Rebasing {b} ({}/{})...", s.n, s.m),
-        None => format!("Rebasing ({}/{})...", s.n, s.m),
+        Some(b) => format!("Rebasing {b} ({}/{})…", s.n, s.m),
+        None => format!("Rebasing ({}/{})…", s.n, s.m),
     })
 }
 

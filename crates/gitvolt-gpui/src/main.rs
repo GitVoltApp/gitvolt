@@ -17,6 +17,7 @@ mod goto;
 mod graph;
 mod history;
 mod icons;
+mod irebase;
 mod layout;
 mod manage;
 mod menus;

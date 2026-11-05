@@ -810,6 +810,7 @@ impl GitVolt {
         if rows.is_empty() && is_ancestor(g, &a_sha, &b_sha) == Some(true) {
             rows.push(MenuRow::action("integrate.merge", format!("Merge {a} into {b}"), "git-merge", format!("git merge {a} on {b}"), |_, _| {}).disabled(busy.clone().unwrap_or_else(|| format!("{b} already contains {a}"))));
         }
+        rows.extend(self.rebase_onto_rows(&a_sha, from, Some((b.clone(), b_sha.clone())), this));
         if here {
             return rows;
         }

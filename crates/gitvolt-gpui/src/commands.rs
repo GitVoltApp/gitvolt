@@ -184,8 +184,20 @@ pub fn all() -> Vec<Command> {
     out.extend([tab_command!("view.tab1", 1), tab_command!("view.tab2", 2), tab_command!("view.tab3", 3), tab_command!("view.tab4", 4), tab_command!("view.tab5", 5), tab_command!("view.tab6", 6), tab_command!("view.tab7", 7), tab_command!("view.tab8", 8)]);
     out.extend([
         Command::new("view.lastTab", "Go to the last tab", View, "arrow-right-to-line", "Switch to the last tab", &["Mod+9"]).when(many_tabs).hidden().run(|v, _, cx| v.go_to_tab(v.tabs.len() - 1, cx)),
-        Command::new("edit.undo", "Undo", Edit, "undo-2", "Undo the last action", &["Mod+Z"]).yields().when(|v, _| v.staging_ctx().is_some() || v.tabs.get(v.active).and_then(|t| v.ops.journal(t.id, &t.worktree)).is_some_and(|s| s.undo.is_some() && s.undo_blocked.is_none())).run(|v, _, cx| v.undo_key(false, cx)),
-        Command::new("edit.redo", "Redo", Edit, "redo-2", "Redo what was undone", &["Mod+Shift+Z"]).yields().when(|v, _| v.staging_ctx().is_some() || v.tabs.get(v.active).and_then(|t| v.ops.journal(t.id, &t.worktree)).is_some_and(|s| s.redo.is_some() && s.redo_blocked.is_none())).run(|v, _, cx| v.undo_key(true, cx)),
+        Command::new("edit.undo", "Undo", Edit, "undo-2", "Undo the last action", &["Mod+Z"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some()) || v.staging_ctx().is_some() || v.tabs.get(v.active).and_then(|t| v.ops.journal(t.id, &t.worktree)).is_some_and(|s| s.undo.is_some() && s.undo_blocked.is_none())).run(|v, _, cx| {
+            if v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some()) {
+                v.rebase_undo(true, cx);
+            } else {
+                v.undo_key(false, cx);
+            }
+        }),
+        Command::new("edit.redo", "Redo", Edit, "redo-2", "Redo what was undone", &["Mod+Shift+Z"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some()) || v.staging_ctx().is_some() || v.tabs.get(v.active).and_then(|t| v.ops.journal(t.id, &t.worktree)).is_some_and(|s| s.redo.is_some() && s.redo_blocked.is_none())).run(|v, _, cx| {
+            if v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some()) {
+                v.rebase_undo(false, cx);
+            } else {
+                v.undo_key(true, cx);
+            }
+        }),
         Command::new("edit.filterSidebar", "Filter sidebar", Edit, "list-filter", "Focus the sidebar filter", &["Mod+Alt+F"]).when(has_tab).run(|v, window, cx| v.focus_sidebar_filter(window, cx)),
         Command::new("edit.find", "Find in graph", Edit, "search", "Find commits by message, SHA or path", &["Mod+F"]).when(has_graph).run(|v, window, cx| v.open_find(window, cx)),
         Command::new("edit.palette", "Command palette", Edit, "command", "Search actions, branches, files, settings and tabs", &["Mod+P"]).run(|v, window, cx| v.open_palette("", window, cx)),
@@ -239,7 +251,7 @@ pub fn all() -> Vec<Command> {
         }),
         Command::new("sync.push", "Push", Repository, "upload", "Push the current branch", &["Mod+Shift+K"]).yields().when(has_tab).run(|v, _, cx| v.push_head(crate::ui::arm::Origin::None, cx)),
         Command::new("gitflow.init", "Set up git flow…", Repository, "workflow", "Choose git flow's branches and prefixes for this repository", &[]),
-        Command::new("repo.interactiveRebase", "Interactive rebase…", Repository, "list-ordered", "Reorder, reword, squash or drop the current branch's commits on its upstream", &[]),
+        Command::new("repo.interactiveRebase", "Interactive rebase…", Repository, "list-ordered", "Reorder, reword, squash or drop the current branch's commits on its upstream", &[]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_head().is_some() || t.rebase_op().is_some())).run(|v, _, cx| v.palette_rebase(cx)),
         Command::new("file.create", "Create file…", Repository, "file-plus", "Create a new, empty file in the working tree (you can undo this)", &[]),
         Command::new("remote.add", "Add remote…", Repository, "plus", "Add a remote by URL, or one of the project's forks", &[]),
         Command::new("submodule.add", "Submodules: Add…", Repository, "boxes", "Clone a repository into this one as a submodule (git submodule add)", &[]),

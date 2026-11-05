@@ -341,14 +341,27 @@ impl GitVolt {
                 "picked": m.picks.values().filter(|p| p.any()).count(),
             })
         });
+        let rebase = tab.and_then(|t| t.rebase.as_ref()).map(|s| {
+            serde_json::json!({
+                "open": s.view_open,
+                "running": s.running,
+                "rows": s.state.rows.iter().map(|r| format!("{} {}{}", r.action.wire(), r.summary, if r.edited.is_some() { " *" } else { "" })).collect::<Vec<_>>(),
+                "selected": s.state.selected.len(),
+                "chips": s.state.chips.iter().map(|c| format!("{}@{}{}", c.branch, &c.at[..c.at.len().min(7)], if c.deleted { " deleted" } else { "" })).collect::<Vec<_>>(),
+                "editing": s.editing.is_some(),
+                "predicted": s.prediction.by_row.len(),
+                "moved": s.moved,
+            })
+        });
         serde_json::json!({
+            "rebase": rebase,
             "merge": merge,
             "toast": crate::ui::toast::message(cx).map(|m| m.to_string()),
             "armed": crate::ui::arm::is_armed(cx),
             "menu": crate::ui::menu::shown(cx),
             "selected": tab.and_then(|t| t.selected),
             "busy": tab.and_then(|t| t.busy_reason()),
-            "operation": tab.and_then(|t| t.operation()).map(|o| o.title),
+            "operation": tab.and_then(|t| t.operation()).map(|o| (o.title, o.hint, o.detail)),
             "commit": tab.and_then(|t| t.commit.as_ref()).map(|c| c.summary.to_string()),
             "open": tab.and_then(|t| t.diff.as_ref()).map(|d| d.file.path.to_string()),
             "wip": sections,

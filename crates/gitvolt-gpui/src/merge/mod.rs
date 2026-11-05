@@ -225,7 +225,7 @@ impl Output {
         self.edit.want_col = None;
     }
 
-    fn show_caret(&mut self) {
+    pub fn show_caret(&mut self) {
         let n = self.caret_line() as f32 * LINE_H;
         if n < self.view.scroll {
             self.view.scroll = n;
