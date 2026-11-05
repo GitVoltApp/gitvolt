@@ -1,6 +1,6 @@
 //! A TextMate tokenizer on Oniguruma: `vscode-textmate`'s algorithm, which is what Shiki runs, on the
 //! same engine and with the same grammars and theme, so a file gets the web UI's colours. Tested
-//! against Shiki's own output (`testdata/shiki-golden.json`). Grammar injections aren't applied yet.
+//! against Shiki's own output (`testdata/shiki-golden.json`).
 
 use super::languages::LANGS;
 use onig::{Regex, RegexOptions, Region, SearchOptions, Syntax};
@@ -15,7 +15,162 @@ pub struct Lang {
     pub id: &'static str,
     pub scope: &'static str,
     pub aliases: &'static [&'static str],
+    /// What its `injectionSelector` applies to, when it's loaded.
+    pub inject_to: &'static [&'static str],
+    /// The grammars Shiki loads with it, itself included: an injection needs its grammar loaded.
+    pub deps: &'static [&'static str],
     pub gz: &'static [u8],
+}
+
+/// A scope selector's matcher (`vscode-textmate`'s `matcher.ts`).
+#[derive(Debug, Clone, PartialEq)]
+enum Matcher {
+    Names(Vec<String>),
+    Not(Option<Box<Matcher>>),
+    And(Vec<Matcher>),
+    Or(Vec<Matcher>),
+}
+
+/// Its tokens: `[LR]:`, a name, or one of `,|-()`; what's none of those is skipped.
+fn selector_tokens(input: &str) -> Vec<String> {
+    let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == ':';
+    let chars: Vec<char> = input.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if (c == 'L' || c == 'R') && chars.get(i + 1) == Some(&':') {
+            out.push(format!("{c}:"));
+            i += 2;
+        } else if is_word(c) {
+            let start = i;
+            while i < chars.len() && (is_word(chars[i]) || chars[i] == '-') {
+                i += 1;
+            }
+            out.push(chars[start..i].iter().collect());
+        } else {
+            if ",|-()".contains(c) {
+                out.push(c.to_string());
+            }
+            i += 1;
+        }
+    }
+    out
+}
+
+fn is_identifier(token: Option<&String>) -> bool {
+    token.is_some_and(|t| t.chars().any(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == ':'))
+}
+
+struct SelectorParser {
+    tokens: Vec<String>,
+    at: usize,
+}
+
+impl SelectorParser {
+    fn token(&self) -> Option<&String> {
+        self.tokens.get(self.at)
+    }
+
+    fn operand(&mut self) -> Option<Matcher> {
+        if self.token().is_some_and(|t| t == "-") {
+            self.at += 1;
+            return Some(Matcher::Not(self.operand().map(Box::new)));
+        }
+        if self.token().is_some_and(|t| t == "(") {
+            self.at += 1;
+            let inner = self.inner();
+            if self.token().is_some_and(|t| t == ")") {
+                self.at += 1;
+            }
+            return Some(inner);
+        }
+        if is_identifier(self.token()) {
+            let mut names = Vec::new();
+            while is_identifier(self.token()) {
+                names.push(self.tokens[self.at].clone());
+                self.at += 1;
+            }
+            return Some(Matcher::Names(names));
+        }
+        None
+    }
+
+    fn conjunction(&mut self) -> Matcher {
+        let mut list = Vec::new();
+        while let Some(m) = self.operand() {
+            list.push(m);
+        }
+        Matcher::And(list)
+    }
+
+    fn inner(&mut self) -> Matcher {
+        let mut list = Vec::new();
+        loop {
+            list.push(self.conjunction());
+            if self.token().is_some_and(|t| t == "|" || t == ",") {
+                while self.token().is_some_and(|t| t == "|" || t == ",") {
+                    self.at += 1;
+                }
+            } else {
+                break;
+            }
+        }
+        Matcher::Or(list)
+    }
+}
+
+/// A selector's alternatives, each with its priority: `L:` -1, `R:` 1, else 0.
+fn parse_selector(selector: &str) -> Vec<(Matcher, i8)> {
+    let mut p = SelectorParser { tokens: selector_tokens(selector), at: 0 };
+    let mut out = Vec::new();
+    while p.token().is_some() {
+        let mut priority = 0;
+        if let Some(t) = p.token().filter(|t| t.len() == 2 && t.ends_with(':')) {
+            priority = match t.as_str() {
+                "R:" => 1,
+                "L:" => -1,
+                _ => 0,
+            };
+            p.at += 1;
+        }
+        out.push((p.conjunction(), priority));
+        if p.token().is_none_or(|t| t != ",") {
+            break;
+        }
+        p.at += 1;
+    }
+    out
+}
+
+impl Matcher {
+    /// `scopes`: outermost first.
+    fn matches(&self, scopes: &[Rc<str>]) -> bool {
+        match self {
+            Matcher::Names(names) => {
+                if scopes.len() < names.len() {
+                    return false;
+                }
+                let mut last = 0;
+                names.iter().all(|n| match scopes[last..].iter().position(|s| scope_matches(s, n)) {
+                    Some(i) => {
+                        last += i + 1;
+                        true
+                    }
+                    None => false,
+                })
+            }
+            Matcher::Not(inner) => inner.as_ref().is_some_and(|m| !m.matches(scopes)),
+            Matcher::And(list) => list.iter().all(|m| m.matches(scopes)),
+            Matcher::Or(list) => list.iter().any(|m| m.matches(scopes)),
+        }
+    }
+}
+
+struct Injection {
+    matcher: Matcher,
+    rule: RuleId,
+    priority: i8,
 }
 
 /// What Shiki gives up on: a line this long stays plain, as does what a slow line didn't reach.
@@ -63,6 +218,8 @@ struct Rule {
     name: Option<String>,
     content_name: Option<String>,
     kind: Kind,
+    /// Some of its patterns name what isn't there. With none left, nothing includes it.
+    missing: bool,
 }
 
 /// A pattern with its `\A` and `\G` variants, compiled when first asked for: most never are.
@@ -251,6 +408,9 @@ struct Engine {
     base: &'static Value,
     roots: HashMap<usize, RuleId>,
     scanners: HashMap<(RuleId, Option<RegexId>), Scanner>,
+    /// What's injected into this grammar, sorted by priority; and which apply under a scope stack.
+    injections: Vec<Injection>,
+    active_injections: HashMap<ScopeId, Rc<Vec<usize>>>,
     scopes: Vec<Scope>,
     scope_ids: HashMap<(Option<ScopeId>, Rc<str>), ScopeId>,
     root_scope: ScopeId,
@@ -301,6 +461,8 @@ impl Engine {
             base,
             roots: HashMap::new(),
             scanners: HashMap::new(),
+            injections: Vec::new(),
+            active_injections: HashMap::new(),
             scopes: Vec::new(),
             scope_ids: HashMap::new(),
             root_scope: 0,
@@ -309,8 +471,94 @@ impl Engine {
         };
         let root = engine.root_of(base);
         engine.root_scope = root;
+        engine.collect_injections(lang);
         engine.rules.shrink_to_fit();
         Some(engine)
+    }
+
+    /// The root grammar's own `injections`, then the loaded grammars that inject into its scope.
+    fn collect_injections(&mut self, lang: &'static Lang) {
+        let base = self.base;
+        let chain = RepoChain(Rc::new(vec![&base["repository"]]));
+        for selector in base["injectionOrder"].as_array().map_or(&[][..], Vec::as_slice).iter().filter_map(Value::as_str) {
+            let rule = self.compile_rule(&base["injections"][selector], base, &chain, false);
+            self.add_injection(selector, rule);
+        }
+        // Shiki's `getInjections`: its scope's prefixes, shortest first, each by what's loaded in order.
+        let parts: Vec<&str> = lang.scope.split('.').collect();
+        for i in 1..=parts.len() {
+            let target = parts[..i].join(".");
+            for dep in lang.deps {
+                let Some(other) = LANGS.iter().find(|l| l.scope == *dep).filter(|l| l.inject_to.contains(&target.as_str())) else { continue };
+                let Some(grammar) = load_grammar(other.scope) else { continue };
+                let Some(selector) = grammar["injectionSelector"].as_str() else { continue };
+                let rule = self.root_of(grammar);
+                self.add_injection(selector, rule);
+            }
+        }
+        self.injections.sort_by_key(|i| i.priority);
+    }
+
+    fn add_injection(&mut self, selector: &str, rule: RuleId) {
+        for (matcher, priority) in parse_selector(selector) {
+            self.injections.push(Injection { matcher, rule, priority });
+        }
+    }
+
+    /// The scope stack's names, outermost first.
+    fn scope_names(&self, mut at: ScopeId) -> Vec<Rc<str>> {
+        let mut out = vec![self.scopes[at].name.clone()];
+        while let Some(p) = self.scopes[at].parent {
+            out.push(self.scopes[p].name.clone());
+            at = p;
+        }
+        out.reverse();
+        out
+    }
+
+    /// `matchInjections`: the earliest match of what applies here, a sooner injection on a tie.
+    /// Whether it's a left one (`L:`), which wins a tie with the grammar's own match.
+    fn match_injections(&mut self, scopes: ScopeId, line: &str, from: usize, first_line: bool, at_anchor: bool) -> Option<(RuleId, Groups, bool)> {
+        let active = match self.active_injections.get(&scopes) {
+            Some(a) => a.clone(),
+            None => {
+                let names = self.scope_names(scopes);
+                let list: Rc<Vec<usize>> = Rc::new(self.injections.iter().enumerate().filter(|(_, i)| i.matcher.matches(&names)).map(|(n, _)| n).collect());
+                self.active_injections.insert(scopes, list.clone());
+                list
+            }
+        };
+        let mut best: Option<(RuleId, Groups, i8)> = None;
+        for n in active.iter() {
+            let (rule, priority) = (self.injections[*n].rule, self.injections[*n].priority);
+            let scanner = self.scanner(rule, None);
+            let Some((matched, found)) = self.scan(&scanner, line, from, first_line, at_anchor) else { continue };
+            let start = found[0].0;
+            if best.as_ref().is_some_and(|b| start >= b.1[0].0) {
+                continue;
+            }
+            best = Some((matched, found, priority));
+            if start == from {
+                break;
+            }
+        }
+        best.map(|(rule, found, priority)| (rule, found, priority == -1))
+    }
+
+    /// `matchRuleOrInjections`: the grammar's next match, unless an injection's is sooner, or as soon
+    /// and a left one.
+    fn next_match(&mut self, top: &Frame, line: &str, pos: usize, first_line: bool, at_anchor: bool) -> Option<(RuleId, Groups)> {
+        let scanner = self.scanner(top.rule, top.end.filter(|_| matches!(self.rules[top.rule].kind, Kind::BeginEnd { .. })));
+        let own = self.scan(&scanner, line, pos, first_line, at_anchor);
+        if self.injections.is_empty() {
+            return own;
+        }
+        let Some((rule, found, left)) = self.match_injections(top.content_scopes, line, pos, first_line, at_anchor) else { return own };
+        match own {
+            None => Some((rule, found)),
+            Some((_, ref o)) if found[0].0 < o[0].0 || (left && found[0].0 == o[0].0) => Some((rule, found)),
+            own => own,
+        }
     }
 
     fn pattern(&mut self, source: &str) -> RegexId {
@@ -329,11 +577,12 @@ impl Engine {
             return *id;
         }
         let id = self.rules.len();
-        self.rules.push(Rule { name: grammar["scopeName"].as_str().map(str::to_string), content_name: None, kind: Kind::Pending });
+        self.rules.push(Rule { name: grammar["scopeName"].as_str().map(str::to_string), content_name: None, kind: Kind::Pending, missing: false });
         self.roots.insert(key, id);
         let chain = RepoChain(Rc::new(vec![&grammar["repository"]]));
-        let patterns = self.compile_patterns(&grammar["patterns"], grammar, &chain);
+        let (patterns, missing) = self.compile_patterns(&grammar["patterns"], grammar, &chain);
         self.rules[id].kind = Kind::Container { patterns };
+        self.rules[id].missing = missing;
         id
     }
 
@@ -349,18 +598,30 @@ impl Engine {
         out
     }
 
-    fn compile_patterns(&mut self, list: &'static Value, grammar: &'static Value, chain: &RepoChain) -> Vec<RuleId> {
+    /// The patterns' rules, and whether some aren't there: `_compilePatterns`, which also leaves out
+    /// a rule that had patterns and has none left.
+    fn compile_patterns(&mut self, list: &'static Value, grammar: &'static Value, chain: &RepoChain) -> (Vec<RuleId>, bool) {
+        self.compile_list(list.as_array().map_or(&[][..], Vec::as_slice), grammar, chain)
+    }
+
+    fn compile_list(&mut self, list: &'static [Value], grammar: &'static Value, chain: &RepoChain) -> (Vec<RuleId>, bool) {
         let mut out = Vec::new();
-        for p in list.as_array().map_or(&[][..], Vec::as_slice) {
+        for p in list {
             let id = match p["include"].as_str() {
                 Some(include) => self.resolve_include(include, grammar, chain),
                 None => Some(self.compile_rule(p, grammar, chain, false)),
             };
-            if let Some(id) = id {
+            let Some(id) = id else { continue };
+            let empty = match &self.rules[id].kind {
+                Kind::Container { patterns } | Kind::BeginEnd { patterns, .. } | Kind::BeginWhile { patterns, .. } => patterns.is_empty(),
+                Kind::Match { .. } | Kind::Pending => false,
+            };
+            if !(empty && self.rules[id].missing) {
                 out.push(id);
             }
         }
-        out
+        let missing = out.len() != list.len();
+        (out, missing)
     }
 
     fn resolve_include(&mut self, include: &str, grammar: &'static Value, chain: &RepoChain) -> Option<RuleId> {
@@ -399,21 +660,25 @@ impl Engine {
         let id = self.rules.len();
         let text = |k: &str| desc[k].as_str().map(str::to_string);
         let (name, content_name) = if as_container { (None, None) } else { (text("name"), text("contentName")) };
-        self.rules.push(Rule { name, content_name, kind: Kind::Pending });
+        self.rules.push(Rule { name, content_name, kind: Kind::Pending, missing: false });
         self.compiled.insert(key, id);
         let chain = match desc.get("repository") {
             Some(repo) => chain.with(repo),
             None => chain.clone(),
         };
+        let mut missing = false;
         let kind = if as_container {
-            Kind::Container { patterns: self.compile_patterns(&desc["patterns"], grammar, &chain) }
+            let (patterns, gone) = self.compile_patterns(&desc["patterns"], grammar, &chain);
+            missing = gone;
+            Kind::Container { patterns }
         } else if let Some(m) = desc["match"].as_str() {
             Kind::Match { re: self.pattern(m), captures: self.captures(&desc["captures"], grammar, &chain) }
         } else if let Some(begin) = desc["begin"].as_str() {
             let begin_id = self.pattern(begin);
             let shared = self.captures(&desc["captures"], grammar, &chain);
             let begin_captures = if desc.get("beginCaptures").is_some() { self.captures(&desc["beginCaptures"], grammar, &chain) } else { self.captures(&desc["captures"], grammar, &chain) };
-            let patterns = self.compile_patterns(&desc["patterns"], grammar, &chain);
+            let (patterns, gone) = self.compile_patterns(&desc["patterns"], grammar, &chain);
+            missing = gone;
             if let Some(until) = desc["while"].as_str() {
                 let while_captures = if desc.get("whileCaptures").is_some() { self.captures(&desc["whileCaptures"], grammar, &chain) } else { shared };
                 Kind::BeginWhile { begin: begin_id, until: until.to_string(), begin_captures, while_captures, patterns }
@@ -421,14 +686,17 @@ impl Engine {
                 let end_captures = if desc.get("endCaptures").is_some() { self.captures(&desc["endCaptures"], grammar, &chain) } else { shared };
                 Kind::BeginEnd { begin: begin_id, end: desc["end"].as_str().unwrap_or("\u{FFFF}").to_string(), begin_captures, end_captures, end_last: desc["applyEndPatternLast"].as_bool() == Some(true) || desc["applyEndPatternLast"].as_i64() == Some(1), patterns }
             }
-        } else if let Some(include) = desc["include"].as_str()
-            && desc.get("patterns").is_none()
-        {
-            Kind::Container { patterns: self.resolve_include(include, grammar, &chain).into_iter().collect() }
+        } else if desc["include"].is_string() && desc.get("patterns").is_none() {
+            let (patterns, gone) = self.compile_list(std::slice::from_ref(desc), grammar, &chain);
+            missing = gone;
+            Kind::Container { patterns }
         } else {
-            Kind::Container { patterns: self.compile_patterns(&desc["patterns"], grammar, &chain) }
+            let (patterns, gone) = self.compile_patterns(&desc["patterns"], grammar, &chain);
+            missing = gone;
+            Kind::Container { patterns }
         };
         self.rules[id].kind = kind;
+        self.rules[id].missing = missing;
         id
     }
 
@@ -647,8 +915,7 @@ impl Engine {
                 return;
             }
             let Some(top) = stack.last().cloned() else { return };
-            let scanner = self.scanner(top.rule, top.end.filter(|_| matches!(self.rules[top.rule].kind, Kind::BeginEnd { .. })));
-            let Some((matched, found)) = self.scan(&scanner, line, pos, first_line, pos as i64 == anchor) else {
+            let Some((matched, found)) = self.next_match(&top, line, pos, first_line, pos as i64 == anchor) else {
                 out.produce(top.content_scopes, len);
                 return;
             };
@@ -1024,6 +1291,45 @@ mod tests {
             }
             println!("{} {} lines: {wrong} of {total} characters differ; cold {cold:?}, warm {:?}, Shiki {:.0} ms", sample["file"], lines.len(), warm.elapsed(), sample["shikiMs"].as_f64().unwrap_or(0.));
         }
+    }
+
+    #[test]
+    fn a_selector_parses_as_vscode_textmates() {
+        assert_eq!(selector_tokens("L:(a.b - c), R:d-e|f"), ["L:", "(", "a.b", "-", "c", ")", ",", "R:", "d-e", "|", "f"]);
+        // What's no token is skipped: `*` splits a name.
+        assert_eq!(selector_tokens("meta.tag.*.*.html"), ["meta.tag.", ".", ".html"]);
+        let names = |s: &[&str]| s.iter().map(|x| Rc::<str>::from(*x)).collect::<Vec<_>>();
+        let one = |s: &str| parse_selector(s).remove(0);
+        let (m, p) = one("L:text.html - comment");
+        assert_eq!(p, -1);
+        assert!(m.matches(&names(&["text.html.basic", "meta.tag"])));
+        assert!(!m.matches(&names(&["text.html.basic", "comment.block"])), "excluded");
+        assert!(!m.matches(&names(&["text.htmlx"])), "not at a dot");
+        let (m, p) = one("R:a b");
+        assert_eq!(p, 1);
+        assert!(m.matches(&names(&["a", "x", "b"])), "in order, with others between");
+        assert!(!m.matches(&names(&["b", "a"])));
+        let (m, _) = one("(a | b) c");
+        assert!(m.matches(&names(&["b", "c"])));
+        assert!(!m.matches(&names(&["c"])));
+        let (m, _) = one("a -(b, c)");
+        assert!(m.matches(&names(&["a"])));
+        assert!(!m.matches(&names(&["a", "c"])));
+        let all = parse_selector("L:a, b, R:c");
+        assert_eq!(all.iter().map(|x| x.1).collect::<Vec<_>>(), [-1, 0, 1]);
+    }
+
+    #[test]
+    fn a_grammars_injections_are_sorted_by_priority() {
+        // Each of these has its own `injections`, or injects by `injectTo` when it's loaded with it.
+        let engine = |id: &str| Engine::new(LANGS.iter().find(|l| l.id == id).unwrap(), dark_plus()).unwrap();
+        for id in ["html", "svelte", "astro", "twig", "angular-html", "ts-tags"] {
+            let e = engine(id);
+            assert!(!e.injections.is_empty(), "{id}");
+            assert!(e.injections.windows(2).all(|w| w[0].priority <= w[1].priority), "{id}");
+        }
+        assert!(engine("rust").injections.is_empty());
+        assert!(engine("markdown").injections.is_empty(), "nothing injects into it unless it's loaded with it");
     }
 
     #[test]
