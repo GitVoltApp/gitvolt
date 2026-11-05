@@ -119,6 +119,10 @@ fn main() {
     let cli = GitCli::new(Arc::new(CommandLog::new(1000))).with_shell_env(shell_env.clone());
     let opener_env = cli.shell_env().cloned();
     let api = Api::new(cli, None).with_app_version(env!("CARGO_PKG_VERSION")).with_data_dir(gitvolt_core::paths::data_base().join(APP_DIR));
+    // The profile and the settings (recent repositories, presets, file colours), in a folder of this build's own, never the CEF app's.
+    let store = gitvolt_core::settings::SettingsStore::open(gitvolt_core::paths::config_base().join(APP_DIR));
+    let exit_store = store.clone();
+    let api = api.with_store(store);
     let api = Arc::new(with_openers(api, opener_env));
     runtime.spawn(shell_env.warm());
     // The per-session askpass socket, before anything can run a network command. Without it the app
@@ -195,6 +199,9 @@ fn main() {
         })
         .detach();
     });
+    if let Err(e) = exit_store.flush_now() {
+        eprintln!("Couldn't save the settings: {}", e.message);
+    }
     // The socket file would otherwise stay behind in the runtime folder.
     if let Some(askpass) = exit_api.askpass() {
         askpass.close();

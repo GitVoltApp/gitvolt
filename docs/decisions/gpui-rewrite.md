@@ -183,8 +183,8 @@ Known, in the area that's there:
 - **Sidebar:** a remote's folder has a plain folder icon; a card doesn't list an MR.
 - **Tabs:** a dragged tab doesn't slide; there are no groups, and Add to new group is disabled. Rename lasts
   the session.
-- **Sizes** are remembered in `layout.json` in this build's cache folder, not in the profile, since there are no
-  profiles here yet.
+- **Sizes** are remembered in `layout.json` in this build's cache folder, not in the profile, since there's no
+  switching profiles here yet. The profile and the settings (recent repositories, presets, pins, file colours) are the core's, in a `gitvolt-gpui` config folder of this build's own. Tabs aren't restored from it: a start opens the given repository, or the Open screen.
 - **Palette:** no Settings yet. An action that isn't ported is listed and says so when
   picked.
 - **Go to:** a pasted forge link or MR number says the forge views aren't here yet.
