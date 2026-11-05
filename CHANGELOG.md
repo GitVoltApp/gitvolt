@@ -5,6 +5,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **Split diffs open with both sides at the first change.** A file opened again, its first
+  change where the editor was last scrolled to, no longer had its old side jump back to the top
+  a few frames on, the two sides then scrolling together out of line.
+
 ## [1.5.0] - 2026-11-05
 
 ### Fixed

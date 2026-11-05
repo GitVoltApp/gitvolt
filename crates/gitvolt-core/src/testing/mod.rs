@@ -518,6 +518,8 @@ mod tests {
         assert!(diff.contains("@@ -117,7 +117,7 @@"), "first change at line 120: {diff}");
         assert!(diff.contains("-line 150\n-line 151\n-line 152\n"), "{diff}");
         assert!(diff.contains("+inserted line"), "{diff}");
+        let ledger = r.git(&["diff", "-U0", "HEAD~1", "HEAD", "--", "ledger.php"]);
+        assert!(ledger.contains("@@ -1654,0 +1655,2 @@"), "two lines inserted after 1654: {ledger}");
         let mixed = r.git(&["diff", "HEAD~1", "HEAD", "--", "mixed.txt"]);
         assert!(mixed.contains("-long 050 "), "long deleted lines: {mixed}");
         assert!(mixed.contains("-    row 120\n") && mixed.contains("+\trow 120\n"), "re-indented block: {mixed}");
