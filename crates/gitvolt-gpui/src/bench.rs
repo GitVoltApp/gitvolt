@@ -54,7 +54,7 @@ struct State {
     frames: u64,
 }
 
-/// `GITVOLT_SHOW=<row>,<file>[,hunk|split|file]`: selects a graph row and opens a file of its list,
+/// `GITVOLT_SHOW=<row>,<file>[,hunk|split|file|wrap]`: selects a graph row and opens a file of its list,
 /// with no input device: for screenshots and `GITVOLT_BENCH=diff`. Returns when the file has its
 /// text and when it has its colours, in ms from opening it.
 async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (u128, u128) {
@@ -75,6 +75,7 @@ async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (
             Some(&"hunk") => d.mode = Mode::Hunk,
             Some(&"split") => d.mode = Mode::Split,
             Some(&"file") => d.view = ViewKind::File,
+            Some(&"wrap") => d.wrap = true,
             _ => {}
         });
     });
@@ -122,9 +123,14 @@ pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
                 }
                 s.last = Some(now);
                 s.y += STEP;
-                let handle = tab.diff.as_ref().map_or(&tab.list, |d| &d.list).0.borrow().base_handle.clone();
-                s.reached_end |= px(s.y) >= handle.max_offset().y;
-                handle.set_offset(point(px(0.), px(-s.y)));
+                if let Some(d) = tab.diff.as_mut() {
+                    s.reached_end |= s.y >= d.layout.max_scroll();
+                    d.scroll = s.y.min(d.layout.max_scroll());
+                } else {
+                    let handle = tab.list.0.borrow().base_handle.clone();
+                    s.reached_end |= px(s.y) >= handle.max_offset().y;
+                    handle.set_offset(point(px(0.), px(-s.y)));
+                }
                 window.request_animation_frame();
             }
         }));

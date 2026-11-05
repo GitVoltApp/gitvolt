@@ -306,13 +306,74 @@ pub fn rows(ops: &[DiffOp], mode: Mode, expanded: &HashSet<u32>) -> Vec<Row> {
     out
 }
 
-/// File View's rows: the new side alone (or the old one, for a deleted file).
-pub fn file_rows(new: &Side, old: &Side) -> Vec<Row> {
-    if new.len() > 0 {
-        (0..new.len()).map(|i| Row { old: None, new: Some(i), kind: RowKind::Same }).collect()
-    } else {
-        (0..old.len()).map(|i| Row { old: Some(i), new: None, kind: RowKind::Same }).collect()
+/// File View's rows: the new side alone (or the old one, for a deleted file), without the lines
+/// inside a folded range. `ends`: `fold_ends` of that side.
+pub fn file_rows(new: &Side, old: &Side, folded: &HashSet<u32>, ends: &[Option<u32>]) -> Vec<Row> {
+    let side_new = new.len() > 0;
+    let count = if side_new { new.len() } else { old.len() };
+    let mut out = Vec::with_capacity(count as usize);
+    let mut i = 0;
+    while i < count {
+        out.push(if side_new { Row { old: None, new: Some(i), kind: RowKind::Same } } else { Row { old: Some(i), new: None, kind: RowKind::Same } });
+        i = match ends.get(i as usize).copied().flatten().filter(|_| folded.contains(&i)) {
+            Some(end) => end + 1,
+            None => i + 1,
+        };
     }
+    out
+}
+
+/// Where each line's fold ends, by indentation (Monaco's without a language service): a line opens
+/// one when the next text is indented deeper, and it runs to the last line deeper than it.
+pub fn fold_ends(side: &Side) -> Vec<Option<u32>> {
+    let mut ends = vec![None; side.lines.len()];
+    let mut below: Vec<(usize, u32)> = Vec::new();
+    for (i, line) in side.lines.iter().enumerate().rev() {
+        let text = line.text.as_ref();
+        let indent = text.bytes().take_while(|b| *b == b' ').count();
+        if indent == text.len() {
+            continue;
+        }
+        let mut end = None;
+        while below.last().is_some_and(|b| b.0 > indent) {
+            let (_, last) = below.pop().expect("checked");
+            end = Some(end.map_or(last, |e: u32| e.max(last)));
+        }
+        ends[i] = end;
+        below.push((indent, end.unwrap_or(i as u32)));
+    }
+    ends
+}
+
+/// Where `text` breaks to fit `columns`, as Monaco's simple wrapping: after a space or closing
+/// punctuation or before an opening one where it can, anywhere else when it must. The bytes each
+/// continuation starts at; `indent` columns of them are taken by its indentation.
+pub fn wrap_points(text: &str, columns: usize, indent: usize) -> Vec<u32> {
+    let mut out = Vec::new();
+    if columns == 0 {
+        return out;
+    }
+    let (mut width, mut line_start, mut opportunity) = (0usize, 0usize, None);
+    let mut room = columns;
+    for (i, c) in text.char_indices() {
+        let w = if u32::from(c) >= 0x1100 { 2 } else { 1 };
+        if "([{".contains(c) && i > line_start {
+            opportunity = Some(i);
+        }
+        if width + w > room && i > line_start {
+            let at = opportunity.filter(|o| *o > line_start).unwrap_or(i);
+            out.push(at as u32);
+            line_start = at;
+            width = text[at..i].chars().map(|c| if u32::from(c) >= 0x1100 { 2 } else { 1 }).sum();
+            opportunity = None;
+            room = columns.saturating_sub(indent).max(1);
+        }
+        width += w;
+        if i >= indent && " \t})]?|/&.,;".contains(c) {
+            opportunity = Some(i + c.len_utf8());
+        }
+    }
+    out
 }
 
 pub fn is_change(kind: RowKind) -> bool {
@@ -454,9 +515,34 @@ mod tests {
     }
 
     #[test]
+    fn a_fold_runs_over_what_is_indented_deeper() {
+        let side = Side::new(Some("a {\n    b {\n        c\n\n        d\n    }\n\n    e\n}\nf"));
+        assert_eq!(fold_ends(&side), [Some(7), Some(4), None, None, None, None, None, None, None, None]);
+        let open = rows_of_file(&side, &HashSet::new());
+        assert_eq!(open.len(), 10);
+        assert_eq!(rows_of_file(&side, &HashSet::from([1])).iter().filter_map(|r| r.new).collect::<Vec<_>>(), [0, 1, 5, 6, 7, 8, 9]);
+        assert_eq!(rows_of_file(&side, &HashSet::from([0])).iter().filter_map(|r| r.new).collect::<Vec<_>>(), [0, 8, 9]);
+    }
+
+    fn rows_of_file(side: &Side, folded: &HashSet<u32>) -> Vec<Row> {
+        file_rows(side, &Side::new(None), folded, &fold_ends(side))
+    }
+
+    #[test]
+    fn wrapping_prefers_a_space_or_punctuation_and_keeps_the_indent() {
+        assert_eq!(wrap_points("short", 10, 0), Vec::<u32>::new());
+        assert_eq!(wrap_points("aaaa bbbb cccc", 10, 0), [10], "after the space that fits");
+        assert_eq!(wrap_points("aaaaaaaaaaaaaaa", 10, 0), [10], "anywhere when it must");
+        assert_eq!(wrap_points("aaaaaaaaaaaaaaaaaaaaaaaaa", 10, 0), [10, 20]);
+        assert_eq!(wrap_points("foo(bar, baz)", 6, 0), [3, 9], "before the opening one, after the comma");
+        assert_eq!(wrap_points("    aaaaaaaaaaaaaaaa", 10, 4), [10, 16], "continuations have the indent's fewer columns");
+        assert_eq!(wrap_points("語語語", 4, 0), [6], "a wide character takes two columns");
+    }
+
+    #[test]
     fn file_view_shows_the_new_side_or_a_deleted_files_old_one() {
         let (a, b) = (Side::new(Some("x\ny")), Side::new(None));
-        assert_eq!(file_rows(&a, &b)[1], Row { old: None, new: Some(1), kind: RowKind::Same });
-        assert_eq!(file_rows(&b, &a)[1], Row { old: Some(1), new: None, kind: RowKind::Same });
+        assert_eq!(file_rows(&a, &b, &HashSet::new(), &[])[1], Row { old: None, new: Some(1), kind: RowKind::Same });
+        assert_eq!(file_rows(&b, &a, &HashSet::new(), &[])[1], Row { old: Some(1), new: None, kind: RowKind::Same });
     }
 }

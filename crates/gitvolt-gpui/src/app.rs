@@ -2,7 +2,7 @@
 //! UI's measured sizes (`ui/src/{chrome,tabs,toolbar,sidebar,graph,statusbar}/*.css`).
 
 use crate::details::{Commit, Files, details_panel};
-use crate::diff::view::{DiffState, diff_panel};
+use crate::diff::view::{DiffState, body_size, diff_panel};
 use crate::graph::{RowGeometry, paint_row};
 use crate::model::*;
 use crate::theme;
@@ -760,8 +760,13 @@ impl Render for GitVolt {
         let left = if folded { 41. } else { SIDEBAR_W };
         let center = viewport.width.as_f32() - left - if details.is_some() { crate::details::DETAILS_W } else { 0. };
         let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
+        if let Some(diff) = self.tabs.get_mut(self.active).and_then(|t| t.diff.as_mut()) {
+            let (w, h) = body_size(diff, center, body_h);
+            diff.ensure_layout(w, h);
+        }
+        let tab = self.tabs.get(self.active);
         let strip = tab.filter(|_| folded).map(|t| sidebar_strip(t, cx));
-        let main = match tab.and_then(|t| diff_panel(t, center, body_h, cx)) {
+        let main = match tab.and_then(|t| diff_panel(t, center, cx)) {
             Some(panel) => panel,
             None => graph_table(self, center, cx),
         };

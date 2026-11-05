@@ -119,5 +119,5 @@ To repeat the GPUI side, with `GITVOLT_T0` the launcher's clock in ms:
 GITVOLT_T0=$(date +%s%3N) GITVOLT_BENCH=1 GITVOLT_OPEN=<repo> target/release/gitvolt-gpui
 ```
 
-`GITVOLT_SHOW=<graph row>,<file>[,hunk|split|file]` opens a file without an input device, for screenshots
+`GITVOLT_SHOW=<graph row>,<file>[,hunk|split|file|wrap]` opens a file without an input device, for screenshots
 and for the diff's run above.

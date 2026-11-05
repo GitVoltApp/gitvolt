@@ -15,8 +15,7 @@ use gpui::*;
 use serde_json::Value;
 use similar::DiffOp;
 use std::cell::Cell;
-use std::collections::HashSet;
-use std::ops::Range;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,6 +24,15 @@ pub const LINE_H: f32 = 18.;
 const FONT_SIZE: f32 = 13.;
 const NUM_W: f32 = 40.;
 const SIGN_W: f32 = 18.;
+/// File View's column between the numbers and the text: the fold chevrons.
+const FOLD_W: f32 = 26.;
+/// JetBrains Mono's advance at `FONT_SIZE`; lines wrap by it.
+const ADVANCE: f32 = FONT_SIZE * 0.6;
+/// Monaco's hidden-lines row.
+const HIDDEN_H: f32 = 24.;
+/// The minimap's scale: a character is 1 px wide, a line 2 px high.
+const MINIMAP_LINE: f32 = 2.;
+const MINIMAP_MAX: f32 = 120.;
 const SCROLLBAR_W: f32 = 10.;
 const RULER_W: f32 = 30.;
 /// A split's left pane has more margin before its text than the right one (Monaco's).
@@ -115,6 +123,44 @@ pub enum Drag {
     None,
     Text,
     Ruler,
+    Horizontal,
+}
+
+/// Where each row lies at a width: rows can be taller than a line when they wrap or are hidden.
+#[derive(Default)]
+pub struct Layout {
+    width: f32,
+    height: f32,
+    wrap: bool,
+    /// Each row's top, and the end of the last one.
+    pub offsets: Vec<f32>,
+    /// The lines that wrap, by side: where their continuations start.
+    breaks_old: HashMap<u32, Vec<u32>>,
+    breaks_new: HashMap<u32, Vec<u32>>,
+}
+
+impl Layout {
+    /// The row at `y` px from the content's top.
+    pub fn row_at(&self, y: f32) -> usize {
+        self.offsets.partition_point(|o| *o <= y).saturating_sub(1).min(self.offsets.len().saturating_sub(2))
+    }
+
+    pub fn content(&self) -> f32 {
+        self.offsets.last().copied().unwrap_or(0.)
+    }
+
+    /// As `scrollBeyondLastLine`: the last line can scroll to the top.
+    pub fn total(&self) -> f32 {
+        self.content() + (self.height - LINE_H).max(0.)
+    }
+
+    pub fn max_scroll(&self) -> f32 {
+        (self.total() - self.height).max(0.)
+    }
+
+    fn breaks(&self, old_side: bool, n: u32) -> &[u32] {
+        if old_side { &self.breaks_old } else { &self.breaks_new }.get(&n).map_or(&[], Vec::as_slice)
+    }
 }
 
 /// The open file of a tab.
@@ -134,7 +180,16 @@ pub struct DiffState {
     pub expanded: HashSet<u32>,
     pub changes: Vec<usize>,
     pub ruler: Rc<Vec<(usize, usize, bool)>>,
-    pub list: UniformListScrollHandle,
+    pub scroll: f32,
+    pub layout: Rc<Layout>,
+    pub wrap: bool,
+    /// File View's folded lines, and where each line's fold ends.
+    pub folded: HashSet<u32>,
+    pub fold_ends: Rc<Vec<Option<u32>>>,
+    /// Scroll to the first change once the rows' layout is known.
+    reveal_first: bool,
+    /// The row under the pointer, and whether it's over the gutter: what hovering shows.
+    pub hover: Option<(usize, bool)>,
     pub hscroll: f32,
     pub selection: Option<Selection>,
     pub cursor: usize,
@@ -161,7 +216,13 @@ impl DiffState {
             expanded: HashSet::new(),
             changes: Vec::new(),
             ruler: Rc::new(Vec::new()),
-            list: UniformListScrollHandle::new(),
+            scroll: 0.,
+            layout: Rc::new(Layout::default()),
+            wrap: false,
+            folded: HashSet::new(),
+            fold_ends: Rc::new(Vec::new()),
+            reveal_first: false,
+            hover: None,
             hscroll: 0.,
             selection: None,
             cursor: 0,
@@ -174,13 +235,89 @@ impl DiffState {
     pub fn relayout(&mut self) {
         let Some(data) = &self.data else { return };
         let rows = match self.view {
-            ViewKind::File => file_rows(&data.new, &data.old),
+            ViewKind::File => {
+                if self.fold_ends.is_empty() {
+                    self.fold_ends = Rc::new(fold_ends(if data.new.len() > 0 { &data.new } else { &data.old }));
+                }
+                file_rows(&data.new, &data.old, &self.folded, &self.fold_ends)
+            }
             ViewKind::Diff => rows(&data.ops, self.mode, &self.expanded),
         };
         self.changes = change_starts(&rows);
         self.ruler = Rc::new(ruler_marks(&rows));
         self.rows = Rc::new(rows);
         self.selection = None;
+        self.layout = Rc::new(Layout { width: -1., ..Layout::default() });
+    }
+
+    fn split(&self) -> bool {
+        self.mode == Mode::Split && self.view == ViewKind::Diff
+    }
+
+    /// The text's left edge in the body, the left pane's in a split.
+    fn gutter(&self) -> f32 {
+        match (self.view, self.split()) {
+            (ViewKind::File, _) => NUM_W + FOLD_W,
+            (_, true) => SPLIT_LEFT_MARGIN + NUM_W + SIGN_W,
+            (_, false) => 2. * NUM_W + SIGN_W,
+        }
+    }
+
+    /// Lays the rows out for a body `width` by `height` px, when any of that changed.
+    pub fn ensure_layout(&mut self, width: f32, height: f32) {
+        let same = self.layout.width == width && self.layout.height == height && self.layout.wrap == self.wrap;
+        if same || self.data.is_none() {
+            return;
+        }
+        let Some(data) = self.data.clone() else { return };
+        let split = self.split();
+        let columns = |text: f32| (text / ADVANCE).floor().max(8.) as usize;
+        let (old_cols, new_cols) = if split { (columns(width / 2. - self.gutter()), columns(width / 2. - NUM_W - SIGN_W)) } else { (columns(width - self.gutter()), columns(width - self.gutter())) };
+        let mut layout = Layout { width, height, wrap: self.wrap, offsets: Vec::with_capacity(self.rows.len() + 1), ..Layout::default() };
+        let mut y = 0.;
+        for r in self.rows.iter() {
+            layout.offsets.push(y);
+            if matches!(r.kind, RowKind::Hidden { .. }) {
+                y += HIDDEN_H;
+                continue;
+            }
+            let mut lines = 1;
+            if self.wrap {
+                let mut wrapped = |n: Option<u32>, side: &Side, cols: usize, map: &mut HashMap<u32, Vec<u32>>| {
+                    let Some(n) = n else { return };
+                    let text = side.lines[n as usize].text.as_ref();
+                    if text.len() <= cols {
+                        return;
+                    }
+                    let points = wrap_points(text, cols, text.bytes().take_while(|b| *b == b' ').count());
+                    if !points.is_empty() {
+                        lines = lines.max(points.len() + 1);
+                        map.insert(n, points);
+                    }
+                };
+                wrapped(r.old, &data.old, old_cols, &mut layout.breaks_old);
+                wrapped(r.new, &data.new, new_cols, &mut layout.breaks_new);
+            }
+            y += lines as f32 * LINE_H;
+        }
+        layout.offsets.push(y);
+        self.layout = Rc::new(layout);
+        if std::mem::take(&mut self.reveal_first)
+            && let Some(first) = self.changes.first()
+        {
+            self.center_on(*first);
+        }
+        self.scroll = self.scroll.clamp(0., self.layout.max_scroll());
+    }
+
+    /// As Monaco's `revealLineInCenter`.
+    pub fn center_on(&mut self, row: usize) {
+        let y = self.layout.offsets.get(row).copied().unwrap_or(0.);
+        self.scroll = (y - self.layout.height / 2. + LINE_H / 2.).clamp(0., self.layout.max_scroll());
+    }
+
+    pub fn scroll_by(&mut self, px: f32) {
+        self.scroll = (self.scroll + px).clamp(0., self.layout.max_scroll());
     }
 
     pub fn set_data(&mut self, data: Arc<DiffData>) {
@@ -188,9 +325,7 @@ impl DiffState {
         self.notice = None;
         self.relayout();
         // As Monaco: a diff opens with its first change in the middle.
-        if let Some(first) = self.changes.first() {
-            self.list.scroll_to_item(*first, ScrollStrategy::Center);
-        }
+        self.reveal_first = true;
     }
 
     /// The first change at or past the top (F7), or the last one before it (Shift+F7).
@@ -369,20 +504,15 @@ impl GitVolt {
 
     pub fn step_change(&mut self, forward: bool, cx: &mut Context<Self>) {
         self.with_diff(cx, |d| {
-            let top = (-d.list.0.borrow().base_handle.offset().y.as_f32() / LINE_H) as usize;
-            if let Some(row) = d.step_change(forward, top) {
-                d.list.scroll_to_item(row, ScrollStrategy::Center);
+            if let Some(row) = d.step_change(forward, d.layout.row_at(d.scroll + d.layout.height / 2.)) {
+                d.center_on(row);
                 d.cursor = row;
             }
         });
     }
 
     pub fn scroll_diff(&mut self, rows: f32, cx: &mut Context<Self>) {
-        self.with_diff(cx, |d| {
-            let handle = d.list.0.borrow().base_handle.clone();
-            let y = (handle.offset().y - px(rows * LINE_H)).clamp(-handle.max_offset().y, px(0.));
-            handle.set_offset(point(handle.offset().x, y));
-        });
+        self.with_diff(cx, |d| d.scroll_by(rows * LINE_H));
     }
 
     pub fn copy_selection(&mut self, cx: &mut Context<Self>) {
@@ -473,10 +603,23 @@ struct Painter {
     selection: Option<Selection>,
     cursor: usize,
     font: Font,
+    layout: Rc<Layout>,
+    /// File View: the chevrons show while the pointer's over the gutter, a folded one always.
+    fold_hover: bool,
+    folded: HashSet<u32>,
+    fold_ends: Rc<Vec<Option<u32>>>,
+    hover: Option<usize>,
 }
 
 fn shape(line: &Line, spans: &[Span], font: &Font, window: &Window) -> ShapedLine {
     window.text_system().shape_line(line.text.clone(), px(FONT_SIZE), &runs(&line.text, spans, font), None)
+}
+
+/// A visual line: bytes `from..to` of a line that wraps.
+fn shape_part(text: &str, from: usize, to: usize, spans: &[Span], font: &Font, window: &Window) -> ShapedLine {
+    let part = &text[from..to];
+    let clipped: Vec<Span> = spans.iter().filter(|s| (s.start as usize) < to && (s.end as usize) > from).map(|s| Span { start: (s.start as usize).saturating_sub(from) as u32, end: ((s.end as usize).min(to) - from) as u32, ..*s }).collect();
+    window.text_system().shape_line(part.to_string().into(), px(FONT_SIZE), &runs(part, &clipped, font), None)
 }
 
 fn paint_number(n: u32, right: Pixels, y: Pixels, color: Hsla, p: &Painter, window: &mut Window, cx: &mut App) {
@@ -490,33 +633,50 @@ fn paint_sign(glyph: &'static str, x: Pixels, y: Pixels, color: Hsla, p: &Painte
     line.paint(point(x + (px(SIGN_W) - line.width) / 2., y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
 }
 
-/// One pane's text: from `x`, clipped to `clip`, with its guides, word marks and selection under it.
+/// One pane's text from `x`, clipped to `clip`: each visual line with its guides, word marks and
+/// selection under it.
 #[allow(clippy::too_many_arguments)]
-fn paint_text(ix: usize, line: &Line, spans: &[Span], old_side: bool, mark: Hsla, x: Pixels, y: Pixels, clip: Bounds<Pixels>, p: &Painter, window: &mut Window, cx: &mut App) {
+fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, mark: Hsla, x: Pixels, y: Pixels, clip: Bounds<Pixels>, p: &Painter, window: &mut Window, cx: &mut App) {
+    let breaks = p.layout.breaks(old_side, n);
+    let text = line.text.as_ref();
+    let indent = text.bytes().take_while(|b| *b == b' ').count() as f32 * ADVANCE;
     window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
-        let start = x - px(p.hscroll);
-        let shaped = shape(line, spans, &p.font, window);
-        let advance = shaped.x_for_index(1).max(px(1.));
-        for level in 1..=line.guides {
-            let gx = start + advance * ((usize::from(level) - 1) * TAB_SIZE) as f32;
-            window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(LINE_H))), theme::c(0x404040)));
-        }
-        for &(a, b) in &line.marks {
-            let (from, to) = (shaped.x_for_index(a as usize), shaped.x_for_index(b as usize));
-            window.paint_quad(fill(Bounds::from_corners(point(start + from, y), point(start + to, y + px(LINE_H))), mark));
-        }
-        if let Some(sel) = p.selection.filter(|s| !p.split || s.old_side == old_side) {
-            let (a, b) = sel.range();
-            if a.row <= ix && ix <= b.row {
-                let from = if ix == a.row { shaped.x_for_index(a.byte.min(line.text.len())) } else { px(0.) };
-                let to = if ix == b.row { shaped.x_for_index(b.byte.min(line.text.len())) } else { shaped.width + advance };
-                if to > from {
-                    window.paint_quad(fill(Bounds::from_corners(point(start + from, y), point(start + to, y + px(LINE_H))), theme::selection_bg()));
+        for part in 0..=breaks.len() {
+            let from = if part == 0 { 0 } else { breaks[part - 1] as usize };
+            let to = breaks.get(part).map_or(text.len(), |b| *b as usize);
+            let y = y + px(part as f32 * LINE_H);
+            let start = x - px(p.hscroll) + if part == 0 { px(0.) } else { px(indent) };
+            let shaped = if breaks.is_empty() { shape(line, spans, &p.font, window) } else { shape_part(text, from, to, spans, &p.font, window) };
+            for level in 1..=line.guides {
+                let gx = x - px(p.hscroll) + px(ADVANCE * ((usize::from(level) - 1) * TAB_SIZE) as f32);
+                window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(LINE_H))), theme::c(0x404040)));
+            }
+            for &(a, b) in &line.marks {
+                let (a, b) = ((a as usize).max(from), (b as usize).min(to));
+                if b > a {
+                    let (l, r) = (shaped.x_for_index(a - from), shaped.x_for_index(b - from));
+                    window.paint_quad(fill(Bounds::from_corners(point(start + l, y), point(start + r, y + px(LINE_H))), mark));
                 }
             }
-        }
-        if !line.text.is_empty() {
-            shaped.paint(point(start, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+            if let Some(sel) = p.selection.filter(|s| !p.split || s.old_side == old_side) {
+                let (a, b) = sel.range();
+                if a.row <= ix && ix <= b.row {
+                    let l = if ix == a.row { a.byte.clamp(from, to) } else { from };
+                    let last = part == breaks.len();
+                    let r = if ix == b.row { b.byte.clamp(from, to) } else { to };
+                    let (lx, mut rx) = (shaped.x_for_index(l - from), shaped.x_for_index(r - from));
+                    // A selected line's end shows, as a sliver past its text.
+                    if ix != b.row && last {
+                        rx += px(ADVANCE);
+                    }
+                    if rx > lx {
+                        window.paint_quad(fill(Bounds::from_corners(point(start + lx, y), point(start + rx, y + px(LINE_H))), theme::selection_bg()));
+                    }
+                }
+            }
+            if to > from {
+                shaped.paint(point(start, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+            }
         }
     });
 }
@@ -528,11 +688,12 @@ fn spans_of(pieces: &[Arc<Vec<Vec<Span>>>], n: u32) -> &[Span] {
 
 fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut Window, cx: &mut App) {
     let y = b.origin.y;
+    let bottom = y + b.size.height;
     let num = theme::c(if ix == p.cursor { 0xC6C6C6 } else { 0x858585 });
     let (old_right, new_right) = (b.origin.x + px(NUM_W - 4.), b.origin.x + px(2. * NUM_W - 4.));
     let sign_x = b.origin.x + px(2. * NUM_W);
     let text_x = sign_x + px(SIGN_W);
-    let clip = Bounds::from_corners(point(text_x, y), point(b.origin.x + b.size.width, y + px(LINE_H)));
+    let clip = Bounds::from_corners(point(text_x, y), point(b.origin.x + b.size.width, bottom));
     let hl = &p.highlight;
     match r.kind {
         RowKind::Removed => {
@@ -540,42 +701,75 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
             if let Some(n) = r.old {
                 paint_number(n, old_right, y, num, p, window, cx);
                 paint_sign("−", sign_x, y, theme::status_deleted(), p, window, cx);
-                paint_text(ix, &p.data.old.lines[n as usize], spans_of(&hl.old, n), true, theme::diff_removed_text(), text_x, y, clip, p, window, cx);
+                paint_text(ix, n, &p.data.old.lines[n as usize], spans_of(&hl.old, n), true, theme::diff_removed_text(), text_x, y, clip, p, window, cx);
             }
         }
         RowKind::Added => {
-            window.paint_quad(fill(Bounds::from_corners(point(b.origin.x + px(NUM_W), y), point(b.origin.x + b.size.width, y + px(LINE_H))), theme::diff_inserted_line()));
+            window.paint_quad(fill(Bounds::from_corners(point(b.origin.x + px(NUM_W), y), point(b.origin.x + b.size.width, bottom)), theme::diff_inserted_line()));
             if let Some(n) = r.new {
                 paint_number(n, new_right, y, num, p, window, cx);
                 paint_sign("+", sign_x, y, theme::status_added(), p, window, cx);
-                paint_text(ix, &p.data.new.lines[n as usize], spans_of(&hl.new, n), false, theme::diff_inserted_text(), text_x, y, clip, p, window, cx);
+                paint_text(ix, n, &p.data.new.lines[n as usize], spans_of(&hl.new, n), false, theme::diff_inserted_text(), text_x, y, clip, p, window, cx);
+            }
+        }
+        _ if p.view == ViewKind::File => {
+            let right = b.origin.x + px(NUM_W - 4.);
+            let at = b.origin.x + px(NUM_W + FOLD_W);
+            let clip = Bounds::from_corners(point(at, y), point(b.origin.x + b.size.width, bottom));
+            let (n, old_side) = match (r.new, r.old) {
+                (Some(n), _) => (n, false),
+                (None, Some(n)) => (n, true),
+                _ => return,
+            };
+            paint_number(n, right, y, num, p, window, cx);
+            let folded = p.folded.contains(&n);
+            if folded || (p.fold_hover && p.fold_ends.get(n as usize).copied().flatten().is_some()) {
+                let chevron = Bounds::new(point(b.origin.x + px(NUM_W + 6.), y + px(2.)), size(px(14.), px(14.)));
+                window.paint_svg(chevron, if folded { "icons/chevron-right.svg" } else { "icons/chevron-down.svg" }.into(), None, TransformationMatrix::unit(), theme::c(0xC5C5C5), cx).ok();
+            }
+            let (line, spans, mark) = if old_side { (&p.data.old.lines[n as usize], spans_of(&hl.old, n), theme::diff_removed_text()) } else { (&p.data.new.lines[n as usize], spans_of(&hl.new, n), theme::diff_inserted_text()) };
+            paint_text(ix, n, line, spans, old_side, mark, at, y, clip, p, window, cx);
+            if folded {
+                let x = at - px(p.hscroll) + px(line.text.chars().count() as f32 * ADVANCE + 6.);
+                window.paint_quad(quad(Bounds::new(point(x, y + px(3.)), size(px(22.), px(12.))), px(2.), theme::control_hover_bg(), px(0.), transparent_black(), BorderStyle::default()));
             }
         }
         _ => {
-            if p.view == ViewKind::Diff
-                && let Some(n) = r.old
-            {
+            if let Some(n) = r.old {
                 paint_number(n, old_right, y, num, p, window, cx);
             }
-            let (right, text_at, clip) = if p.view == ViewKind::File { (b.origin.x + px(NUM_W - 4.), b.origin.x + px(NUM_W + SIGN_W), Bounds::from_corners(point(b.origin.x + px(NUM_W + SIGN_W), y), point(b.origin.x + b.size.width, y + px(LINE_H)))) } else { (new_right, text_x, clip) };
             if let Some(n) = r.new {
-                paint_number(n, right, y, num, p, window, cx);
-                paint_text(ix, &p.data.new.lines[n as usize], spans_of(&hl.new, n), false, theme::diff_inserted_text(), text_at, y, clip, p, window, cx);
-            } else if let Some(n) = r.old {
-                paint_number(n, right, y, num, p, window, cx);
-                paint_text(ix, &p.data.old.lines[n as usize], spans_of(&hl.old, n), true, theme::diff_removed_text(), text_at, y, clip, p, window, cx);
+                paint_number(n, new_right, y, num, p, window, cx);
+                paint_text(ix, n, &p.data.new.lines[n as usize], spans_of(&hl.new, n), false, theme::diff_inserted_text(), text_x, y, clip, p, window, cx);
             }
         }
     }
 }
 
+/// A hunk mode region's row: in the gutter what opens it, at the text how many lines it holds.
+fn paint_hidden(b: Bounds<Pixels>, ix: usize, count: u32, p: &Painter, window: &mut Window, cx: &mut App) {
+    window.paint_quad(fill(b, theme::panel_bg()));
+    let hovered = p.hover == Some(ix);
+    if hovered {
+        window.set_window_cursor_style(CursorStyle::PointingHand);
+    }
+    let color = if hovered { theme::text_selected() } else { theme::text_normal() };
+    let icon_at = Bounds::new(point(b.origin.x + px(2. * NUM_W - 16.), b.origin.y + px(5.)), size(px(14.), px(14.)));
+    window.paint_svg(icon_at, "icons/unfold-vertical.svg".into(), None, TransformationMatrix::unit(), color, cx).ok();
+    let text: SharedString = format!("{count} hidden lines").into();
+    let run = TextRun { len: text.len(), font: window.text_style().font(), color, background_color: None, underline: None, strikethrough: None };
+    let line = window.text_system().shape_line(text, px(12.), &[run], None);
+    line.paint(point(b.origin.x + px(2. * NUM_W + SIGN_W), b.origin.y), b.size.height, TextAlign::Left, None, window, cx).ok();
+}
+
 fn paint_split(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut Window, cx: &mut App) {
     let y = b.origin.y;
+    let height = b.size.height;
     let half = b.size.width / 2.;
     let hl = &p.highlight;
     let change = r.kind == RowKind::Change;
     let pane = |left: Pixels, n: Option<u32>, old_side: bool, window: &mut Window, cx: &mut App| {
-        let area = Bounds::new(point(left, y), size(half, px(LINE_H)));
+        let area = Bounds::new(point(left, y), size(half, height));
         let Some(n) = n else {
             window.paint_quad(fill(area, pattern_slash(theme::diff_diagonal(), 2., 6.)));
             return;
@@ -591,58 +785,39 @@ fn paint_split(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut 
             paint_sign(glyph, left + px(margin + NUM_W), y, color, p, window, cx);
         }
         let text_x = left + px(margin + NUM_W + SIGN_W);
-        let clip = Bounds::from_corners(point(text_x, y), point(left + half, y + px(LINE_H)));
-        paint_text(ix, &side.lines[n as usize], spans, old_side, mark, text_x, y, clip, p, window, cx);
+        let clip = Bounds::from_corners(point(text_x, y), point(left + half, y + height));
+        paint_text(ix, n, &side.lines[n as usize], spans, old_side, mark, text_x, y, clip, p, window, cx);
     };
     pane(b.origin.x, r.old, true, window, cx);
     pane(b.origin.x + half, r.new, false, window, cx);
-    window.paint_quad(fill(Bounds::new(point(b.origin.x + half, y), size(px(1.), px(LINE_H))), theme::section_border()));
+    window.paint_quad(fill(Bounds::new(point(b.origin.x + half, y), size(px(1.), height)), theme::section_border()));
 }
 
-fn hidden_row(ix: usize, count: u32, region: u32, cx: &mut Context<GitVolt>) -> AnyElement {
-    div()
-        .id(ix)
-        .flex()
-        .w_full()
-        .h(px(LINE_H))
-        .items_center()
-        .bg(theme::panel_bg())
-        .text_size(px(12.))
-        .text_color(theme::text_normal())
-        .hover(|d| d.text_color(theme::text_selected()))
-        .on_click(cx.listener(move |this, _, _, cx| {
-            this.with_diff(cx, |d| {
-                d.expanded.insert(region);
-                d.relayout();
-            });
-        }))
-        .child(div().flex().flex_none().w(px(2. * NUM_W + SIGN_W)).pl(px(2. * NUM_W - 16.)).child(icon("unfold-vertical", 14., theme::text_secondary())))
-        .child(format!("{count} hidden lines"))
-        .into_any_element()
-}
-
-/// The text position under the pointer.
+/// The text position under the pointer: its row, the byte of its visual line, and the side.
 fn pos_at(diff: &DiffState, position: Point<Pixels>, window: &Window) -> Option<(TextPos, bool)> {
     let (data, b) = (diff.data.as_ref()?, diff.body.get());
-    let scroll = diff.list.0.borrow().base_handle.offset().y;
-    let row = (((position.y - b.origin.y - scroll) / px(LINE_H)).floor().max(0.) as usize).min(diff.rows.len().saturating_sub(1));
+    let y = (position.y - b.origin.y).as_f32() + diff.scroll;
+    let row = diff.layout.row_at(y.max(0.));
     let r = diff.rows.get(row)?;
-    let split = diff.mode == Mode::Split && diff.view == ViewKind::Diff;
+    let split = diff.split();
     let (old_side, gutter) = if split {
         let half = b.size.width / 2.;
         let left = position.x < b.origin.x + half;
-        (left, if left { px(SPLIT_LEFT_MARGIN + NUM_W + SIGN_W) } else { half + px(NUM_W + SIGN_W) })
-    } else if diff.view == ViewKind::File {
-        (false, px(NUM_W + SIGN_W))
+        (left, if left { px(diff.gutter()) } else { half + px(NUM_W + SIGN_W) })
     } else {
-        (r.new.is_none(), px(2. * NUM_W + SIGN_W))
+        (r.new.is_none(), px(diff.gutter()))
     };
-    let x = position.x - b.origin.x - gutter + px(diff.hscroll);
-    let byte = row_line(data, r, split, old_side).map_or(0, |line| {
-        let spans: &[Span] = &[];
-        shape(line, spans, &mono(), window).closest_index_for_x(x.max(px(0.)))
-    });
-    Some((TextPos { row, byte }, old_side))
+    let x = (position.x - b.origin.x - gutter + px(diff.hscroll)).max(px(0.));
+    let Some(line) = row_line(data, r, split, old_side) else { return Some((TextPos { row, byte: 0 }, old_side)) };
+    let n = if old_side { r.old } else { r.new }.or(r.old).unwrap_or(0);
+    let breaks = diff.layout.breaks(old_side, n);
+    let text = line.text.as_ref();
+    let part = (((y - diff.layout.offsets[row]) / LINE_H).max(0.) as usize).min(breaks.len());
+    let from = if part == 0 { 0 } else { breaks[part - 1] as usize };
+    let to = breaks.get(part).map_or(text.len(), |b| *b as usize);
+    let indent = if part == 0 { 0. } else { text.bytes().take_while(|b| *b == b' ').count() as f32 * ADVANCE };
+    let shaped = shape_part(text, from, to, &[], &mono(), window);
+    Some((TextPos { row, byte: from + shaped.closest_index_for_x((x - px(indent)).max(px(0.))) }, old_side))
 }
 
 fn word_at(text: &str, byte: usize) -> (usize, usize) {
@@ -653,60 +828,135 @@ fn word_at(text: &str, byte: usize) -> (usize, usize) {
     (start, end)
 }
 
-fn text_area(diff: &DiffState, height: f32, width: f32, cx: &mut Context<GitVolt>) -> AnyElement {
+/// The widest line in px, as far as a pane scrolls sideways.
+fn content_width(data: &DiffData) -> f32 {
+    data.widest as f32 * ADVANCE
+}
+
+fn on_mouse_down(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<GitVolt>) {
+    let Some(diff) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
+    let Some(data) = diff.data.clone() else { return };
+    let b = diff.body.get();
+    let y = (e.position.y - b.origin.y).as_f32() + diff.scroll;
+    let x = (e.position.x - b.origin.x).as_f32();
+    let row = diff.layout.row_at(y.max(0.));
+    // The horizontal scrollbar, along the bottom.
+    let (pane, gutter) = (if diff.split() { b.size.width.as_f32() / 2. } else { b.size.width.as_f32() }, diff.gutter());
+    let max_h = (content_width(&data) - (pane - gutter)).max(0.);
+    if max_h > 0. && !diff.wrap && (e.position.y - b.origin.y).as_f32() >= b.size.height.as_f32() - SCROLLBAR_W && x >= gutter {
+        diff.hscroll = ((x - gutter) / (pane - gutter)).clamp(0., 1.) * max_h;
+        diff.drag = Drag::Horizontal;
+        cx.notify();
+        return;
+    }
+    let Some(r) = diff.rows.get(row).copied() else { return };
+    if y >= diff.layout.content() {
+        return;
+    }
+    if let RowKind::Hidden { region, .. } = r.kind {
+        diff.expanded.insert(region);
+        diff.relayout();
+        cx.notify();
+        return;
+    }
+    if diff.view == ViewKind::File && (NUM_W..NUM_W + FOLD_W).contains(&x) {
+        let n = r.new.or(r.old).unwrap_or(0);
+        if diff.fold_ends.get(n as usize).copied().flatten().is_some() {
+            if !diff.folded.remove(&n) {
+                diff.folded.insert(n);
+            }
+            diff.relayout();
+            cx.notify();
+        }
+        return;
+    }
+    let Some((at, old_side)) = pos_at(diff, e.position, window) else { return };
+    let line = row_line(&data, &r, diff.split(), old_side);
+    let selection = match (e.click_count, line) {
+        (2, Some(line)) => {
+            let (a, b) = word_at(&line.text, at.byte);
+            Selection { anchor: TextPos { row: at.row, byte: a }, head: TextPos { row: at.row, byte: b }, old_side }
+        }
+        (n, Some(line)) if n >= 3 => Selection { anchor: TextPos { row: at.row, byte: 0 }, head: TextPos { row: at.row, byte: line.text.len() }, old_side },
+        _ if e.modifiers.shift => diff.selection.map_or(Selection { anchor: at, head: at, old_side }, |s| Selection { head: at, ..s }),
+        _ => Selection { anchor: at, head: at, old_side },
+    };
+    diff.selection = Some(selection);
+    diff.cursor = at.row;
+    diff.drag = Drag::Text;
+    cx.notify();
+}
+
+fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<GitVolt>) {
+    let Some(diff) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
+    let b = diff.body.get();
+    let inside = b.contains(&e.position);
+    let pressed = e.pressed_button == Some(MouseButton::Left);
+    match diff.drag {
+        Drag::Text if pressed => {
+            // Past the top or the bottom, the text comes to the pointer.
+            let above = (b.origin.y - e.position.y).as_f32();
+            let below = (e.position.y - b.origin.y - b.size.height).as_f32();
+            if above > 0. {
+                diff.scroll_by(-above.min(LINE_H * 3.));
+            } else if below > 0. {
+                diff.scroll_by(below.min(LINE_H * 3.));
+            }
+            if let Some((at, _)) = pos_at(diff, e.position, window)
+                && let Some(sel) = diff.selection.as_mut()
+            {
+                sel.head = at;
+                diff.cursor = at.row;
+                cx.notify();
+            }
+        }
+        Drag::Horizontal if pressed => {
+            let Some(data) = diff.data.clone() else { return };
+            let (pane, gutter) = (if diff.split() { b.size.width.as_f32() / 2. } else { b.size.width.as_f32() }, diff.gutter());
+            let x = (e.position.x - b.origin.x).as_f32();
+            diff.hscroll = ((x - gutter) / (pane - gutter)).clamp(0., 1.) * (content_width(&data) - (pane - gutter)).max(0.);
+            cx.notify();
+        }
+        _ => {
+            let x = (e.position.x - b.origin.x).as_f32();
+            let row = diff.layout.row_at((e.position.y - b.origin.y).as_f32() + diff.scroll);
+            let hover = inside.then_some((row, x < diff.gutter()));
+            // Only what hovering changes: a hidden row, and whether the chevrons show.
+            let shows = |h: Option<(usize, bool)>, d: &DiffState| h.map(|(r, g)| (if matches!(d.rows.get(r).map(|x| x.kind), Some(RowKind::Hidden { .. })) { Some(r) } else { None }, g && d.view == ViewKind::File));
+            let changed = shows(hover, diff) != shows(diff.hover, diff);
+            diff.hover = hover;
+            if changed {
+                cx.notify();
+            }
+        }
+    }
+}
+
+fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
     let Some(data) = diff.data.clone() else {
         return message(diff, cx).into_any_element();
     };
-    let split = diff.mode == Mode::Split && diff.view == ViewKind::Diff;
-    let painter = Rc::new(Painter { data: data.clone(), highlight: diff.highlight.clone(), view: diff.view, split, hscroll: diff.hscroll, selection: diff.selection, cursor: diff.cursor, font: mono() });
+    let split = diff.split();
+    let hover_row = diff.hover.and_then(|(r, _)| matches!(diff.rows.get(r).map(|x| x.kind), Some(RowKind::Hidden { .. })).then_some(r));
+    let p = Painter {
+        data: data.clone(),
+        highlight: diff.highlight.clone(),
+        view: diff.view,
+        split,
+        hscroll: if diff.wrap { 0. } else { diff.hscroll },
+        selection: diff.selection,
+        cursor: diff.cursor,
+        font: mono(),
+        layout: diff.layout.clone(),
+        fold_hover: diff.hover.is_some_and(|h| h.1),
+        folded: diff.folded.clone(),
+        fold_ends: diff.fold_ends.clone(),
+        hover: hover_row,
+    };
     let rows = diff.rows.clone();
-    // As `scrollBeyondLastLine`: the last line can scroll to the top.
-    let beyond = ((height / LINE_H) as usize).saturating_sub(1);
-    let count = rows.len() + beyond;
-    let list = uniform_list(
-        "diff-rows",
-        count,
-        cx.processor(move |_, range: Range<usize>, _, cx| {
-            range
-                .map(|ix| {
-                    let Some(r) = rows.get(ix).copied() else {
-                        return div().id(ix).h(px(LINE_H)).into_any_element();
-                    };
-                    if let RowKind::Hidden { count, region } = r.kind {
-                        return hidden_row(ix, count, region, cx);
-                    }
-                    let p = painter.clone();
-                    div()
-                        .id(ix)
-                        .h(px(LINE_H))
-                        .w_full()
-                        .child(
-                            canvas(
-                                |_, _, _| {},
-                                move |b, _, window, cx| {
-                                    if p.split {
-                                        paint_split(b, ix, &r, &p, window, cx);
-                                    } else {
-                                        paint_inline(b, ix, &r, &p, window, cx);
-                                    }
-                                },
-                            )
-                            .size_full(),
-                        )
-                        .into_any_element()
-                })
-                .collect()
-        }),
-    )
-    .track_scroll(&diff.list)
-    .size_full();
-
     let body_cell = diff.body.clone();
-    let gutter = if diff.view == ViewKind::File { NUM_W + SIGN_W } else if split { SPLIT_LEFT_MARGIN + NUM_W + SIGN_W } else { 2. * NUM_W + SIGN_W };
-    // JetBrains Mono's advance at this size, near enough for the horizontal scrollbar.
-    let content = data.widest as f32 * FONT_SIZE * 0.6;
-    let pane = if split { width / 2. } else { width };
-    let max_h = (content - (pane - gutter)).max(0.);
+    let scroll = diff.scroll;
+    let (gutter, wrap) = (diff.gutter(), diff.wrap);
     let hscroll = diff.hscroll;
     let entity = cx.entity().downgrade();
     div()
@@ -715,146 +965,204 @@ fn text_area(diff: &DiffState, height: f32, width: f32, cx: &mut Context<GitVolt
         .flex_1()
         .min_w_0()
         .h_full()
+        .overflow_hidden()
         .cursor(CursorStyle::IBeam)
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(move |this, e: &MouseDownEvent, window, cx| {
-                let Some(diff) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
-                let Some((at, old_side)) = pos_at(diff, e.position, window) else { return };
-                let split = diff.mode == Mode::Split && diff.view == ViewKind::Diff;
-                let line = diff.data.as_ref().and_then(|d| diff.rows.get(at.row).and_then(|r| row_line(d, r, split, old_side)));
-                let selection = match (e.click_count, line) {
-                    (2, Some(line)) => {
-                        let (a, b) = word_at(&line.text, at.byte);
-                        Selection { anchor: TextPos { row: at.row, byte: a }, head: TextPos { row: at.row, byte: b }, old_side }
-                    }
-                    (n, Some(line)) if n >= 3 => Selection { anchor: TextPos { row: at.row, byte: 0 }, head: TextPos { row: at.row, byte: line.text.len() }, old_side },
-                    _ if e.modifiers.shift => diff.selection.map_or(Selection { anchor: at, head: at, old_side }, |s| Selection { head: at, ..s }),
-                    _ => Selection { anchor: at, head: at, old_side },
-                };
-                diff.selection = Some(selection);
-                diff.cursor = at.row;
-                diff.drag = Drag::Text;
-                cx.notify();
-            }),
-        )
-        .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| {
-            let Some(diff) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
-            if diff.drag != Drag::Text || e.pressed_button != Some(MouseButton::Left) {
-                return;
-            }
-            let Some((at, _)) = pos_at(diff, e.position, window) else { return };
-            if let Some(sel) = diff.selection.as_mut() {
-                sel.head = at;
-                diff.cursor = at.row;
-                cx.notify();
-            }
-        }))
+        .on_mouse_down(MouseButton::Left, cx.listener(on_mouse_down))
+        .on_mouse_move(cx.listener(on_mouse_move))
         .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
         .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
-        .child(list)
         .child(
             canvas(
                 move |_, _, _| {},
-                move |bounds, _, window, _| {
+                move |bounds, _, window, cx| {
                     body_cell.set(bounds);
+                    window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                        if !rows.is_empty() {
+                            let first = p.layout.row_at(scroll);
+                            for ix in first..rows.len() {
+                                let (top, end) = (p.layout.offsets[ix], p.layout.offsets[ix + 1]);
+                                if top - scroll >= bounds.size.height.as_f32() {
+                                    break;
+                                }
+                                let b = Bounds::new(point(bounds.origin.x, bounds.origin.y + px(top - scroll)), size(bounds.size.width, px(end - top)));
+                                match rows[ix].kind {
+                                    RowKind::Hidden { count, .. } => paint_hidden(b, ix, count, &p, window, cx),
+                                    _ if p.split => paint_split(b, ix, &rows[ix], &p, window, cx),
+                                    _ => paint_inline(b, ix, &rows[ix], &p, window, cx),
+                                }
+                            }
+                        }
+                    });
+                    let pane = if p.split { bounds.size.width.as_f32() / 2. } else { bounds.size.width.as_f32() };
+                    let content = content_width(&p.data);
+                    let max_h = (content - (pane - gutter)).max(0.);
                     // As Monaco's: only while the pointer is over the text, or it's scrolled.
-                    if max_h > 0. && (hscroll > 0. || bounds.contains(&window.mouse_position())) {
-                        let track = bounds.size.width - px(gutter);
-                        let thumb = (track * (track / px(content))).max(px(24.));
-                        let x = bounds.origin.x + px(gutter) + (track - thumb) * (hscroll / max_h);
-                        window.paint_quad(quad(Bounds::new(point(x, bounds.origin.y + bounds.size.height - px(SCROLLBAR_W)), size(thumb, px(SCROLLBAR_W))), px(0.), theme::scroll_thumb(), px(0.), transparent_black(), BorderStyle::default()));
+                    if !wrap && max_h > 0. && (hscroll > 0. || bounds.contains(&window.mouse_position())) {
+                        let track = pane - gutter;
+                        let thumb = (track * (track / content)).max(24.);
+                        let x = bounds.origin.x + px(gutter + (track - thumb) * (hscroll / max_h));
+                        window.paint_quad(fill(Bounds::new(point(x, bounds.origin.y + bounds.size.height - px(SCROLLBAR_W)), size(px(thumb), px(SCROLLBAR_W))), theme::scroll_thumb()));
                     }
-                    // Sideways wheel, and Shift+wheel, before the list takes it.
                     let entity = entity.clone();
                     window.on_mouse_event(move |e: &ScrollEvent, phase, window, cx| {
                         if phase != DispatchPhase::Capture || !bounds.contains(&e.position) {
                             return;
                         }
+                        cx.stop_propagation();
                         let delta = e.delta.pixel_delta(window.line_height());
-                        let (dx, consume) = if e.modifiers.shift { (delta.y, true) } else { (delta.x, delta.x.abs() > delta.y.abs()) };
-                        if dx == px(0.) {
-                            return;
-                        }
-                        if consume {
-                            cx.stop_propagation();
-                        }
+                        let (dx, dy) = if e.modifiers.shift { (delta.y, px(0.)) } else { (delta.x, delta.y) };
                         entity
                             .update(cx, |this, cx| {
-                                this.with_diff(cx, |d| d.hscroll = (d.hscroll - dx.as_f32()).clamp(0., max_h));
+                                this.with_diff(cx, |d| {
+                                    d.scroll_by(-dy.as_f32());
+                                    if !d.wrap {
+                                        d.hscroll = (d.hscroll - dx.as_f32()).clamp(0., max_h);
+                                    }
+                                });
                             })
                             .ok();
                     });
                 },
             )
-            .absolute()
-            .top_0()
-            .left_0()
             .size_full(),
         )
         .into_any_element()
 }
 
-/// The overview ruler: each change's place in the file, and the viewport.
-fn ruler(diff: &DiffState, height: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
-    let marks = diff.ruler.clone();
-    let handle = diff.list.0.borrow().base_handle.clone();
-    let beyond = ((height / LINE_H) as usize).saturating_sub(1);
-    let total = (diff.rows.len() + beyond).max(1) as f32 * LINE_H;
-    let jump = move |this: &mut GitVolt, y: Pixels, cx: &mut Context<GitVolt>, top: Pixels, h: Pixels| {
+/// Dragging or pressing a strip scrolls by where the pointer is along it.
+fn strip_events(el: Stateful<Div>, cell: Rc<Cell<Bounds<Pixels>>>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
+    let jump = |this: &mut GitVolt, y: Pixels, b: Bounds<Pixels>, cx: &mut Context<GitVolt>| {
         this.with_diff(cx, |d| {
-            let handle = d.list.0.borrow().base_handle.clone();
-            let share = ((y - top) / h).clamp(0., 1.);
-            handle.set_offset(point(handle.offset().x, -handle.max_offset().y * share));
+            let share = ((y - b.origin.y) / b.size.height).clamp(0., 1.);
+            d.scroll = d.layout.max_scroll() * share;
         });
     };
+    let moved = cell.clone();
+    el.on_mouse_down(
+        MouseButton::Left,
+        cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+            this.with_diff_quiet(|d| d.drag = Drag::Ruler);
+            jump(this, e.position.y, cell.get(), cx);
+        }),
+    )
+    .on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, _, cx| {
+        let dragging = this.tabs.get(this.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.drag == Drag::Ruler);
+        if dragging && e.pressed_button == Some(MouseButton::Left) {
+            jump(this, e.position.y, moved.get(), cx);
+        }
+    }))
+    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
+    .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
+}
+
+/// The overview ruler: each change's place in the file, and the viewport.
+fn ruler(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let marks = diff.ruler.clone();
+    let layout = diff.layout.clone();
+    let scroll = diff.scroll;
     let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
-    let (paint_cell, down, moved) = (cell.clone(), cell.clone(), cell);
-    div()
-        .id("diff-ruler")
-        .relative()
-        .flex_none()
-        .w(px(RULER_W))
-        .h_full()
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-                this.with_diff_quiet(|d| d.drag = Drag::Ruler);
-                let b = down.get();
-                jump(this, e.position.y, cx, b.origin.y, b.size.height);
-            }),
+    let paint_cell = cell.clone();
+    strip_events(div().id("diff-ruler").flex_none().w(px(RULER_W)).h_full(), cell, cx).child(
+        canvas(
+            |_, _, _| {},
+            move |b, _, window, _| {
+                paint_cell.set(b);
+                let total = layout.total().max(1.);
+                let scale = b.size.height.as_f32() / total;
+                let half = b.size.width / 2.;
+                let top_of = |row: usize| layout.offsets.get(row).copied().unwrap_or(0.);
+                for &(first, rows, removed) in marks.iter() {
+                    let top = top_of(first) * scale;
+                    let h = ((top_of(first + rows) - top_of(first)) * scale).max(4.);
+                    let x = if removed { b.origin.x } else { b.origin.x + half };
+                    window.paint_quad(fill(Bounds::new(point(x, b.origin.y + px(top)), size(half, px(h))), if removed { theme::ruler_removed() } else { theme::ruler_added() }));
+                }
+                window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(scroll * scale)), size(b.size.width, px(layout.height * scale).min(b.size.height))), theme::scroll_thumb()));
+            },
         )
-        .on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, _, cx| {
-            let dragging = this.tabs.get(this.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.drag == Drag::Ruler);
-            if dragging && e.pressed_button == Some(MouseButton::Left) {
-                let b = moved.get();
-                jump(this, e.position.y, cx, b.origin.y, b.size.height);
-            }
-        }))
-        .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
-        .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
-        .child(
-            canvas(
-                |_, _, _| {},
-                move |b, _, window, _| {
-                    paint_cell.set(b);
-                    let scale = b.size.height / px(total);
-                    let half = b.size.width / 2.;
-                    for &(first, rows, removed) in marks.iter() {
-                        let top = px(first as f32 * LINE_H) * scale;
-                        let h = (px(rows as f32 * LINE_H) * scale).max(px(4.));
-                        let x = if removed { b.origin.x } else { b.origin.x + half };
-                        window.paint_quad(fill(Bounds::new(point(x, b.origin.y + top), size(half, h)), if removed { theme::ruler_removed() } else { theme::ruler_added() }));
+        .size_full(),
+    )
+}
+
+/// File View's strip: the file in small, each character a pixel wide, and the viewport over it.
+fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let (data, hl, rows, layout, scroll) = (diff.data.clone(), diff.highlight.clone(), diff.rows.clone(), diff.layout.clone(), diff.scroll);
+    let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
+    let paint_cell = cell.clone();
+    strip_events(div().id("minimap").flex_none().w(px(width)).h_full(), cell, cx).child(
+        canvas(
+            |_, _, _| {},
+            move |b, _, window, _| {
+                paint_cell.set(b);
+                let Some(data) = &data else { return };
+                let height = b.size.height.as_f32();
+                let shown = (height / MINIMAP_LINE) as usize;
+                let view_rows = (layout.height / LINE_H).ceil() as usize;
+                let top_row = layout.row_at(scroll);
+                let share = if layout.max_scroll() > 0. { scroll / layout.max_scroll() } else { 0. };
+                // A long file's map moves slower than the file, so it stays under the viewport.
+                let first = (share * (rows.len() + view_rows).saturating_sub(shown) as f32) as usize;
+                window.with_content_mask(Some(ContentMask { bounds: b }), |window| {
+                    for (i, r) in rows.iter().skip(first).take(shown).enumerate() {
+                        let (side, pieces, n) = match (r.new, r.old) {
+                            (Some(n), _) => (&data.new, &hl.new, n),
+                            (None, Some(n)) => (&data.old, &hl.old, n),
+                            _ => continue,
+                        };
+                        let text = side.lines[n as usize].text.as_bytes();
+                        let y = b.origin.y + px(i as f32 * MINIMAP_LINE);
+                        let mut paint = |from: usize, to: usize, color: Hsla| {
+                            let to = to.min(width as usize);
+                            let mut at = from;
+                            while at < to {
+                                if text.get(at) == Some(&b' ') {
+                                    at += 1;
+                                    continue;
+                                }
+                                let end = (at..to).find(|k| text.get(*k) == Some(&b' ')).unwrap_or(to);
+                                window.paint_quad(fill(Bounds::new(point(b.origin.x + px(at as f32), y), size(px((end - at) as f32), px(MINIMAP_LINE - 0.5))), color));
+                                at = end;
+                            }
+                        };
+                        let spans = spans_of(pieces, n);
+                        if spans.is_empty() {
+                            paint(0, text.len(), Hsla { a: 0.6, ..theme::c(TEXT) });
+                        } else {
+                            for s in spans {
+                                paint(s.start as usize, (s.end as usize).min(text.len()), Hsla { a: 0.75, ..theme::c(s.color) });
+                            }
+                        }
                     }
-                    let top = -handle.offset().y * scale;
-                    window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + top), size(b.size.width, (px(height) * scale).min(b.size.height))), theme::scroll_thumb()));
-                },
-            )
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_full(),
+                });
+                let top = (top_row as f32 - first as f32) * MINIMAP_LINE;
+                window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(top)), size(b.size.width, px(view_rows as f32 * MINIMAP_LINE))), theme::scroll_thumb()));
+            },
         )
+        .size_full(),
+    )
+}
+
+/// File View's scrollbar: a thumb, with no track.
+fn scrollbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let (layout, scroll) = (diff.layout.clone(), diff.scroll);
+    let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
+    let paint_cell = cell.clone();
+    strip_events(div().id("diff-scrollbar").flex_none().w(px(SCROLLBAR_W)).h_full(), cell, cx).child(
+        canvas(
+            |_, _, _| {},
+            move |b, _, window, _| {
+                paint_cell.set(b);
+                let (height, total) = (b.size.height.as_f32(), layout.total().max(1.));
+                if total <= height {
+                    return;
+                }
+                let thumb = (height * height / total).max(20.);
+                let top = (height - thumb) * (scroll / layout.max_scroll().max(1.));
+                window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(top)), size(b.size.width, px(thumb))), theme::scroll_thumb()));
+            },
+        )
+        .size_full(),
+    )
 }
 
 fn message(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
@@ -986,19 +1294,36 @@ fn toolbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
                         .flex()
                         .gap(px(2.))
                         .child(icon_button("ignore-ws", "pilcrow", diff.ignore_whitespace, in_diff).when(in_diff, |d| d.on_click(cx.listener(|this, _, _, cx| this.toggle_whitespace(cx)))))
-                        // Word wrap isn't in this build yet.
-                        .child(icon_button("wrap", "text-wrap", false, false)),
+                        .child(icon_button("wrap", "text-wrap", diff.wrap, true).on_click(cx.listener(|this, _, _, cx| {
+                            this.with_diff(cx, |d| {
+                                d.wrap = !d.wrap;
+                                d.hscroll = 0.;
+                            });
+                        }))),
                 ),
         )
 }
 
+/// The text's body in a panel `width` by `height` px: what `ensure_layout` lays out.
+pub fn body_size(diff: &DiffState, width: f32, height: f32) -> (f32, f32) {
+    let right = match diff.view {
+        ViewKind::File => minimap_width(width) + SCROLLBAR_W,
+        ViewKind::Diff if diff.split() => RULER_W,
+        ViewKind::Diff => RULER_W + SCROLLBAR_W,
+    };
+    (width - right, height - HEADER_H - TOOLBAR_H - if diff.data.as_ref().is_some_and(|d| d.eol_only) { 26. } else { 0. })
+}
+
+fn minimap_width(width: f32) -> f32 {
+    (width * 0.0975).min(MINIMAP_MAX).floor()
+}
+
 /// The panel for `tab`'s open file, `width` by `height` px.
-pub fn diff_panel(tab: &Tab, width: f32, height: f32, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
+pub fn diff_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     let diff = tab.diff.as_ref()?;
-    let body_h = height - HEADER_H - TOOLBAR_H;
-    let split = diff.mode == Mode::Split && diff.view == ViewKind::Diff;
-    let body_w = width - RULER_W - if split { 0. } else { SCROLLBAR_W };
     let banner = diff.data.as_ref().is_some_and(|d| d.eol_only);
+    let has_text = diff.data.is_some();
+    let file_view = diff.view == ViewKind::File;
     Some(
         div()
             .flex()
@@ -1009,15 +1334,16 @@ pub fn diff_panel(tab: &Tab, width: f32, height: f32, cx: &mut Context<GitVolt>)
             .bg(theme::app_bg())
             .child(header(diff, cx))
             .child(toolbar(diff, cx))
-            .when(banner, |d| d.child(div().flex_none().px(px(12.)).py(px(4.)).bg(theme::yellow_banner()).text_color(theme::text_selected()).child("Only the line endings changed")))
+            .when(banner, |d| d.child(div().flex_none().h(px(26.)).px(px(12.)).py(px(4.)).bg(theme::yellow_banner()).text_color(theme::text_selected()).child("Only the line endings changed")))
             .child(
                 div()
                     .flex()
                     .flex_1()
                     .min_h_0()
-                    .child(text_area(diff, body_h, body_w, cx))
-                    .when(diff.data.is_some() && !split, |d| d.child(div().flex_none().w(px(SCROLLBAR_W)).h_full().border_l_1().border_color(theme::section_border())))
-                    .when(diff.data.is_some(), |d| d.child(ruler(diff, body_h, cx))),
+                    .child(text_area(diff, cx))
+                    .when(has_text && file_view, |d| d.child(minimap(diff, minimap_width(width), cx)).child(scrollbar(diff, cx)))
+                    .when(has_text && !file_view && !diff.split(), |d| d.child(div().flex_none().w(px(SCROLLBAR_W)).h_full().border_l_1().border_color(theme::section_border())))
+                    .when(has_text && !file_view, |d| d.child(ruler(diff, cx))),
             )
             .into_any_element(),
     )
@@ -1100,6 +1426,55 @@ mod tests {
         let data = DiffData::build(None, Some("x\ny"), false, "UTF-8".into(), false);
         assert!(!data.has_old);
         assert_eq!(rows(&data.ops, Mode::Inline, &HashSet::new()).iter().filter(|r| r.kind == RowKind::Added).count(), 2);
+    }
+
+    #[test]
+    fn a_hidden_row_is_taller_and_wrapped_rows_take_their_lines() {
+        let old: String = (0..30).map(|i| format!("l{i}\n")).collect();
+        let new = old.replace("l15\n", "changed\n");
+        let mut d = state(&old, &new);
+        d.mode = Mode::Hunk;
+        d.relayout();
+        d.ensure_layout(600., 200.);
+        let hidden = d.rows.iter().position(|r| matches!(r.kind, RowKind::Hidden { .. })).unwrap();
+        assert_eq!(hidden, 0);
+        assert_eq!((d.layout.offsets[0], d.layout.offsets[1], d.layout.offsets[2]), (0., HIDDEN_H, HIDDEN_H + LINE_H));
+        assert_eq!((d.layout.row_at(0.), d.layout.row_at(HIDDEN_H - 1.), d.layout.row_at(HIDDEN_H)), (0, 0, 1));
+
+        let long = "word ".repeat(100);
+        let mut d = state(&format!("a\n{long}\nb"), &format!("a\n{long}\nb"));
+        d.ensure_layout(600., 200.);
+        assert_eq!(d.layout.content(), 3. * LINE_H);
+        d.wrap = true;
+        d.ensure_layout(600., 200.);
+        let lines = 1 + d.layout.breaks(false, 1).len();
+        assert!(lines > 1);
+        assert_eq!(d.layout.content(), (2 + lines) as f32 * LINE_H);
+        assert_eq!(d.layout.row_at(LINE_H * 2.), 1, "a continuation belongs to its row");
+    }
+
+    #[test]
+    fn a_diff_opens_with_its_first_change_centred_and_scroll_stays_in_range() {
+        let old: String = (0..100).map(|i| format!("l{i}\n")).collect();
+        let new = old.replace("l50\n", "changed\n");
+        let mut d = state(&old, &new);
+        d.ensure_layout(600., 180.);
+        assert_eq!(d.scroll, 50. * LINE_H - 90. + LINE_H / 2., "row 50 in the middle");
+        d.scroll_by(-1e6);
+        assert_eq!(d.scroll, 0.);
+        d.scroll_by(1e6);
+        assert_eq!(d.scroll, d.layout.content() - LINE_H, "the last line can reach the top");
+    }
+
+    #[test]
+    fn folding_a_line_in_file_view_takes_out_what_is_under_it() {
+        let mut d = state("x", "a {\n    b\n    c\n}");
+        d.view = ViewKind::File;
+        d.relayout();
+        assert_eq!(d.rows.len(), 4);
+        d.folded.insert(0);
+        d.relayout();
+        assert_eq!(d.rows.iter().filter_map(|r| r.new).collect::<Vec<_>>(), [0, 3]);
     }
 
     #[test]
