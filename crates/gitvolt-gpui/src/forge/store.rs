@@ -130,11 +130,31 @@ pub struct TabForge {
     pub cached_at: Option<i64>,
     pub failures: u32,
     pub refreshing: Vec<Refreshing>,
+    pub review: Option<super::review::ReviewSession>,
+    /// The refs a review's diff was last read for.
+    pub review_refs: Option<String>,
+    /// A head Compare fetched into a ref of its own: the MR/PR, the head, and whether its compare has shown.
+    pub compare_ref: Option<(u64, String, bool)>,
+    /// The project's merge settings by remote; a failure is asked again after the next poll.
+    pub settings: HashMap<String, gitvolt_core::forge::types::ForgeProjectSettings>,
+    pub settings_asked: HashMap<String, Option<i64>>,
+    pub settings_error: Option<String>,
+    /// Behind its target, as the commits say, by target tip and head: `None`: can't tell.
+    pub behind: HashMap<String, Option<bool>>,
+    /// How many reviewers and assignees the target's MRs may have.
+    pub limits: Option<gitvolt_core::forge::types::PeopleLimits>,
+    pub limits_asked: bool,
+    pub people_queue: std::collections::VecDeque<super::mrview::actions::PeopleWrite>,
+    pub people_busy: bool,
+    /// A note's `file:line` asked to open once the compare's files are read.
+    pub note_after_compare: Option<(String, Option<(bool, u32, Option<u32>)>)>,
+    pub lent_merge: Option<u64>,
+    pub lent_update: Option<u64>,
 }
 
 impl Default for TabForge {
     fn default() -> Self {
-        Self { kind: None, remote: None, project: None, mapped: Vec::new(), target: None, target_chosen: false, remote_errors: HashMap::new(), owner_avatars: HashMap::new(), me: None, by_ref: BTreeMap::new(), history: BTreeMap::new(), upstreams: BTreeMap::new(), filter: MrFilter::All, filter_read: false, list: None, details: HashMap::new(), detail_errors: HashMap::new(), discussions: HashMap::new(), fresh_at: HashMap::new(), loading: Vec::new(), write_epoch: 0, activated_at: None, recheck: false, open_mr: None, updated_at: None, error: None, limited_until: None, cached_at: None, failures: 0, refreshing: Vec::new() }
+        Self { kind: None, remote: None, project: None, mapped: Vec::new(), target: None, target_chosen: false, remote_errors: HashMap::new(), owner_avatars: HashMap::new(), me: None, by_ref: BTreeMap::new(), history: BTreeMap::new(), upstreams: BTreeMap::new(), filter: MrFilter::All, filter_read: false, list: None, details: HashMap::new(), detail_errors: HashMap::new(), discussions: HashMap::new(), fresh_at: HashMap::new(), loading: Vec::new(), write_epoch: 0, activated_at: None, recheck: false, open_mr: None, updated_at: None, error: None, limited_until: None, cached_at: None, failures: 0, refreshing: Vec::new(), review: None, review_refs: None, compare_ref: None, settings: HashMap::new(), settings_asked: HashMap::new(), settings_error: None, behind: HashMap::new(), limits: None, limits_asked: false, people_queue: Default::default(), people_busy: false, note_after_compare: None, lent_merge: None, lent_update: None }
     }
 }
 

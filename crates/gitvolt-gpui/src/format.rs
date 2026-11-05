@@ -51,6 +51,16 @@ pub fn compact_relative_time(unix_seconds: i64, now: f64) -> String {
 }
 
 /// "512 B", "106.7 KB", "4.2 MB"; "—" with no size.
+/// A relative date's tooltip: the precise date and time in the user's format, with the time zone.
+pub fn date_with_zone(unix_seconds: i64, _format: &str) -> String {
+    use chrono::TimeZone;
+    let date = crate::model::format_date(unix_seconds);
+    match chrono::Local.timestamp_opt(unix_seconds, 0).single() {
+        Some(t) => format!("{date} {}", t.format("%Z")),
+        None => date,
+    }
+}
+
 pub fn format_bytes(n: Option<u64>) -> String {
     match n {
         None => "—".into(),

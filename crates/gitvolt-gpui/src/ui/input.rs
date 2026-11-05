@@ -548,6 +548,10 @@ impl TextInput {
         self
     }
 
+    pub fn set_placeholder(&mut self, text: impl Into<SharedString>) {
+        self.placeholder = text.into();
+    }
+
     pub fn set_text_color(&mut self, color: Option<Hsla>) {
         self.text_color = color;
     }

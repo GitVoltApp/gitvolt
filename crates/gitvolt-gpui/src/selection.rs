@@ -43,6 +43,16 @@ pub enum CompareTo {
     Worktree(String),
 }
 
+impl CompareTo {
+    /// The commit it names, unless it's the worktree's files.
+    pub fn sha(&self) -> Option<&str> {
+        match self {
+            CompareTo::Commit(s) => Some(s),
+            CompareTo::Worktree(_) => None,
+        }
+    }
+}
+
 /// A compare in the details panel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Compare {
@@ -378,6 +388,12 @@ impl GitVolt {
                 }
                 let at = reopen.as_ref().and_then(|(path, old)| list.changes.iter().position(|f| f.path.as_ref() == path.as_str() || (old.as_deref() == Some(f.path.as_ref()) && f.old_path.as_deref() == Some(path.as_str()))));
                 tab.files = Some(list);
+                if let Some((path, line)) = tab.forge.note_after_compare.take() {
+                    let repo_tab = tab.id;
+                    this.open_compare_file_at(repo_tab, &path, line, cx);
+                    return cx.notify();
+                }
+                let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
                 if reopen.is_some() {
                     tab.diff = None;
                 }

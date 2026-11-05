@@ -758,6 +758,15 @@ impl GitVolt {
     }
 
     pub fn on_side_drag(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+        if let Some((x, w, docked)) = self.mr_drag {
+            if e.pressed_button != Some(MouseButton::Left) {
+                self.mr_drag = None;
+            } else {
+                let next = (w + e.position.x.as_f32() - x).round().clamp(crate::forge::mrview::FLYOUT_MIN, crate::forge::mrview::FLYOUT_MAX);
+                self.mr_set_width(Some(next), docked, cx);
+            }
+            return;
+        }
         match self.side_drag {
             SideDrag::None => {}
             SideDrag::Details { x, w } => {
@@ -1221,7 +1230,7 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
             let trailing = crate::forge::section::row_trailing(&item.kind, tab_id, marks.main_remote.2, &marks.by_ref, cx);
             let body = outline(base)
                 .pl(px(row_indent(*depth)))
-                .when(selected_mr, |d| d.bg(theme::hover_row()))
+                .when(selected_mr, |d| d.bg(theme::mix(theme::selected_row(), 0.55, transparent_black())).text_color(theme::text_selected()))
                 .when(head, |d| d.bg(theme::checked_out_row()).text_color(theme::text_selected()).font_weight(FontWeight::SEMIBOLD))
                 .when(!head, |d| d.hover(|d| d.bg(theme::hover_row())))
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -1265,7 +1274,7 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                 .when_some(state, |d, s| d.child(div().flex_none().ml_auto().pl(px(6.)).text_size(px(11.)).text_color(theme::text_secondary()).child(s)))
                 .when(item.state.as_deref() == Some("folded"), |d| d.child(div().flex_none().ml_auto().pl(px(6.)).text_size(px(11.)).text_color(theme::text_secondary()).child("folded")));
             let (card_this, card_push) = (this.clone(), push.clone());
-            Anchor::new(body).card(format!("side:{key}"), move |_, cx| hover_card(&hover_item, tab_id, &card_push, &card_this, cx)).placement(Placement::BesideAt(sidebar_right)).into_any_element()
+            Anchor::new(body).key(format!("side:{key}")).card(format!("side:{key}"), move |_, cx| hover_card(&hover_item, tab_id, &card_push, &card_this, cx)).placement(Placement::BesideAt(sidebar_right)).into_any_element()
         }
     }
 }

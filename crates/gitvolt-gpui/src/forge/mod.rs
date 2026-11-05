@@ -7,6 +7,8 @@ pub mod card;
 pub mod menu;
 pub mod mrview;
 pub mod poll;
+pub mod review;
+pub mod search;
 pub mod section;
 pub mod stack;
 pub mod store;
@@ -93,4 +95,24 @@ impl GitVolt {
         })
         .detach();
     }
+}
+
+/// What a script's `dump` says of the tab's forge: never a token, which nothing here holds.
+pub fn dump(t: &crate::app::Tab) -> serde_json::Value {
+    let f = &t.forge;
+    let r = f.review.as_ref();
+    serde_json::json!({
+        "kind": f.kind,
+        "remote": f.remote,
+        "me": f.me,
+        "target": f.target,
+        "list": f.list.as_ref().map(|l| l.mrs.iter().map(|m| m.number).collect::<Vec<_>>()),
+        "badges": f.by_ref.iter().map(|(k, m)| format!("{k}={}", m.number)).collect::<Vec<_>>(),
+        "openMr": f.open_mr,
+        "error": f.error,
+        "failures": f.failures,
+        "state": f.open_mr.and_then(|n| f.known_mr(n)).map(|m| serde_json::to_value(m.state).unwrap_or_default()),
+        "threads": f.open_mr.and_then(|n| f.discussions.get(&n)).map(Vec::len),
+        "review": r.map(|s| serde_json::json!({ "number": s.number, "drafts": s.drafts.len(), "pending": s.pending_review.is_some(), "files": s.files.len(), "refs": s.refs.is_some(), "error": s.error })),
+    })
 }
