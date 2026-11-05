@@ -144,11 +144,11 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
         .into_iter()
         .map(|(id, width, framed, top, anchored, build, focus)| {
             let content = build(window, cx);
-            let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).occlude().flex().flex_col().flex_none().w(px(width)).max_w(window.viewport_size().width - px(32.));
+            let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).occlude().flex().flex_col().flex_none().when(anchored.is_none(), |d| d.w(px(width))).when(anchored.is_some(), |d| d.max_w(px(width))).max_w(window.viewport_size().width - px(32.));
             let body = if framed {
                 body.gap(px(10.))
-                    .px(px(18.))
-                    .py(px(16.))
+                    .when(anchored.is_none(), |d| d.px(px(18.)).py(px(16.)))
+                    .when(anchored.is_some(), |d| d.px(px(14.)).py(px(12.)))
                     .bg(theme::panel_bg1())
                     .border_1()
                     .border_color(theme::section_border())

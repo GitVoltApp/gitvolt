@@ -81,14 +81,35 @@ action started and sends again, an error toasts, the answer updates the journal,
   chip's menu, "after this commit", Drop commit and the palette. An Edit stop in the box: commit in pieces, Continue under it, what Abort keeps. Each stop
   selects the WIP row once, and an operation that ended outside GitVolt settles its paused entry.
 
+- **Selecting graph rows (`src/selection.rs`):** a press selects, Ctrl toggles, Shift and Shift+arrows take a range from the anchor. Two rows are a compare (with the
+  swap, the two sides' rows and View all files on its TO), a commit and a WIP row compare it with that tree, three or more are the multi-selection summary. A right-click
+  inside one has the selection's menu: Squash N commits, Squash N commits interactively…, Cherry-pick N commits, Revert N commits, Interactive rebase from here. Picks
+  follow their commits across a reload; a reload keeps what's on screen where it was. Home, End, the page keys, → and Enter on the first file, the menu key.
+- **The graph's rows:** a body's first line after the summary, the SHA that copies itself, the branch's dimmed chip on a hovered or selected row and the branch focus by its
+  membership (`branchMembership`), the avatar at Author's minimum, another worktree's WIP row taking a double click; a press beside the chips doesn't select.
+- **The commit's panel:** the split between it and its files (dragged, double-click resets, in `layout.json`), ids that copy, the committer's row, the author's own date.
+- **The Open Repository screen (`src/open.rs`):** an Open tab, with no tab open or from Ctrl+O, the folder button, a double click on the tab strip: the default-directory banner,
+  Recent (pinned, removed, filtered, in the profile and the palette), Open directory…, Clone (the destination following the URL, progress, Cancel, its errors), Your repos
+  (directories added and removed, refreshed, A–Z or newest, one list or grouped). What's opened or cloned takes the Open tab's place; one that fails says so on the screen.
+- **Inline creation and pickers:** Create branch here, the toolbar's Branch and Create tag here are `src/inline.rs`'s field over the row's chips, with its hint or error floating
+  below, Ctrl+Enter for create only, an annotated tag's message under it; the dialog only where there's no row. `ui::picker` is `RefPicker`: the toolbar's branch list with its order
+  toggle, Set upstream, the header's pin. The push panel drops from the button. Add remote takes the URL first and the name follows its owner. Create file's inline field sits on top of
+  its list, a folder prefilled, and the new file opens in File View. Create worktree has Browse… and Open in a new tab; Remove worktree has With branch; "checked out elsewhere" its links.
+- **Git LFS (`src/lfs.rs`):** a file row's mark, Track and Stop tracking, LFS: Pull and Fetch, the status bar's "isn't installed", a diff's "not downloaded" with Download and Show pointer.
+- **Git flow (`src/gitflow.rs`):** the Git Flow panel, Set up and its settings, Start with its kinds, Finish with its tag and message, a conflicting merge's toast and its Merge action.
+- **Submodules (`src/submodules.rs`):** Add, Update, Sync URLs, Open in a tab (the palette's list, the panel's double click, a file row), Initialise, Remove, the panel's menu and +.
+- **Stacks (`src/stacks.rs`):** detection as `detect.ts`, Push stack bottom first with its one toast, Rebase stack onto its base with its armed row and what it says stays behind.
+- **Branch presets and Hide (`src/presets.rs`):** the button beside the sidebar's filter with its cycle and menu; what a graph read carries (`view`, and the `pin`); Hide and Show of a branch,
+  tag or folder from the menus, the sidebar's eye and Alt+click, on a built-in in the repository's Custom; the ⋮ rows, fold and hidden marks, the reveal panel with Expand in graph, Collapse branch, Fold merged branch,
+  the hidden list with Show and Show all; the pin's picker.
+- **File colours (`src/filecolours.rs`):** the patterns compiled by hand as `glob.ts` does, the rows' tints by `rowTint`, the menus' Scope line and Colour rows.
+- **The Fork trunk notice** above Commit, with Create branch… and Dismiss.
+
 ## Not there yet
 
-By size of the work: the MR/PR views
-and review comments, Markdown, Mermaid, PDF and media views (a PDF or media file shows as hex), settings, profiles
-and other themes, tab groups, branch presets and Hide, file colours, the Keyboard Shortcuts panel, accessibility
-roles, spell check, zoom, and macOS and Windows checks. Writes left outside those: Clone and the open-repository
-screen, LFS, Gitflow, adding a submodule or opening one in a tab, stacks, and what a selection of several graph rows offers (there's no multi-select in
-the graph yet, so no Squash N commits or Interactive rebase from here). In the diff: moved-code detection and code lens.
+By size of the work: the MR/PR views and review comments, Markdown, Mermaid, PDF and media views (a PDF or media file shows as hex), settings (Branch presets' and File colours' pages among them),
+profiles and other themes, tab groups, the Keyboard Shortcuts panel, accessibility roles, spell check, zoom, and macOS and Windows checks. In the diff: moved-code detection and code lens.
+In the details panel: editing a commit's message (the pencil, `HeadMessageEditor`), and "vs 1st parent" on a merge.
 
 Everything above was run from the tests and from `GITVOLT_SCRIPT`, which sends events through the window as the
 platform would (`README`). **None of it has had a real mouse or keyboard on it**, IME included.
@@ -97,16 +118,20 @@ platform would (`README`). **None of it has had a real mouse or keyboard on it**
 
 Known, in the area that's there:
 
-- **Writes, dialogs:** creating a branch or a tag is a dialog, not a row with a field. The upstream and branch
-  pickers are menus, not the searchable picker. The push panel is a centred dialog, not a popover at the button.
-  Add remote and Create worktree are small dialogs without the forks list, the folder picker or Open in a new tab.
-  Create file is a dialog from the row or the palette, with no inline field in the list, and doesn't open the file.
-  Tab reaches a prompt's checkbox and buttons, but no select.
+- **One tab per repository:** tabs go by the core's repository id, and a worktree of an open repository shares its handle, so a linked worktree is never a second tab. "Open in a new tab" (Create
+  worktree's checkbox, the checked-out-elsewhere toast's link) switches this tab to it, and the sidebar and WIP menus have no Open in a new tab or Go to its tab rows; opening a linked worktree's folder goes to the repository's tab.
+- **Writes, dialogs:** Add remote has no forks list: that's the forge layer's. Tab reaches a prompt's checkbox and buttons, but no select. An annotated tag's message box has no resize. A clone's progress bar is drawn, not Chromium's.
 - **Writes, questions:** a question from a write's own answer, when the menu row that began it has closed, is a
-  popover (asking first, as a preview does, holds the row and arms it, as there). A checkout "checked out elsewhere" toast
-  has no Switch or Open links. Remove worktree has no With branch variant; a linked worktree's tab moves to the main
-  one rather than a twin closing. Undo's menu opens once its entries are read.
-- **WIP and commit box:** no Fork trunk notice. A conflicted row's label sits under the row's hover buttons, as there.
+  popover (asking first, as a preview does, holds the row and arms it, as there). A linked worktree's tab moves to the main
+  one rather than a twin closing. Undo's menu opens once its entries are read. Finish's and Start's radio buttons and Set up's fields are the app's, drawn alike.
+- **Selecting rows:** the compare's sides and the multi list take their tooltips on the summary only, as there, without the web's keyboard path into them. The menu key opens the row's menu at its left under the row.
+- **Open screen:** the window's title says the Open tab rather than the last repository's. Below 900 px wide the three columns don't stack. A group of "grouped" lists scrolls with its column rather than by even shares of the height.
+  Tab reaches the fields, Recent's rows, Open directory and Clone, not the pin and remove buttons or Your repos' rows. The directory picker doesn't start where the web's does: the portal is asked for no start.
+- **Presets:** "Edit presets…" isn't in the menu, since Settings isn't here. The ghost stub's hover zone on the graph isn't there: the "⋮ N hidden" text opens the list on a press, or Enter on the row; so the list needs a press, not a hover. The reveal panel's rows have no right-click, and no
+  Up and Down inside it; a ⋮ row's dotted lane opens it after the same rest as the row, not at once; a fold's panel opens on a press, not a hover. It doesn't curve the merge's row into its lane. H on a sidebar row isn't bound (the eye and Alt+click are). Going to a commit a preset hides (`revealCommit`) says it's not loaded rather than unfolding it.
+- **File colours:** with no Settings page, "Colour …" asks which scope in a picker and adds there at once; there's no edit, reorder, try-a-path or import. A scope's Start collapsed isn't applied. The menu's Scope line is text, with no swatch. The tints are for the default dark theme.
+- **LFS:** the "not downloaded" notice is the diff's; a File History row's sides use the same read, so they show it too.
+- **WIP and commit box:** a conflicted row's label sits under the row's hover buttons, as there.
 - **Merge tool:** the editors are the plain one under Editing below: no find (Ctrl+F does nothing there), no multiple cursors, and their right-click has Copy,
   and Paste in the output, not Monaco's whole menu. The work lives in the open tool: every way of leaving asks first, so there's no store of drafts behind it,
   it goes with the app (the web UI's goes with its window's session), and without work coming back to a file opens at its first conflict rather than where you
@@ -150,25 +175,22 @@ Known, in the area that's there:
   pointer can enter.
 - **Menus:** a row's highlight doesn't fade in (the web UI's 50 ms). The Open in dropdown in the diff's toolbar is still its own menu, without
   press, drag and release; the same list in a file's right-click menu is the shared one. No forge rows; tab groups' rows are absent or disabled. A menu's note row is told its line count.
-- **Chips:** a truncated chip doesn't float its full copy on hover, a selected commit doesn't show the dim
-  chip of the branch it's on, a stack from `+N` is read-only (its right-click is on the `+N`, by submenus), and a
+- **Chips:** a truncated chip doesn't float its full copy on hover, a stack from `+N` is read-only (its right-click is on the `+N`, by submenus), and a
   remote's icon is the cloud, not its forge's mark.
 - **Graph:** rows change colour at once, without the 200 and 500 ms easing. The table clips where the web UI
   scrolls sideways, so a hand-set wide Message runs off the edge, and a graph with too many lanes for its
-  default width shows the collapse zone sooner than it would. The pin in the header says the trunk and doesn't
-  pick another. Column resizers and panel dividers are for the mouse, not the arrow keys.
-- **Sidebar:** no eye on a row, since there are no presets; a remote's folder has a plain folder icon; a card
-  doesn't list an MR.
+  default width shows the collapse zone sooner than it would. No lane scrollbar under a clipped Graph column; a Branch/Tag column at its minimum shows chips as they fit rather than their icons alone. Column resizers and panel dividers are for the mouse, not the arrow keys. The SHA shows six characters however wide its column.
+- **Sidebar:** a remote's folder has a plain folder icon; a card doesn't list an MR.
 - **Tabs:** a dragged tab doesn't slide; there are no groups, and Add to new group is disabled. Rename lasts
   the session.
 - **Sizes** are remembered in `layout.json` in this build's cache folder, not in the profile, since there are no
   profiles here yet.
-- **Palette:** no Settings or recent repositories yet. An action that isn't ported is listed and says so when
+- **Palette:** no Settings yet. An action that isn't ported is listed and says so when
   picked.
 - **Go to:** a pasted forge link or MR number says the forge views aren't here yet.
 - **Find:** a full hash outside the loaded window says so rather than loading until it appears. In a file
   it's this box and not Monaco's widget, without its regex, case or whole-word toggles.
-- **Commit:** no committer row, edit button or copying an id; a parent that isn't loaded says so instead of
+- **Commit:** no edit button; the signature is its icon without the badge's card; a parent that isn't loaded says so instead of
   loading more of the graph.
 
 ## Dependency

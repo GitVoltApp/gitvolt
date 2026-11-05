@@ -45,7 +45,7 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   does, a question from the core arms at `origin` and sends again with `asked`, an error toasts, the answer feeds the
   journal, staging and WIP lists. Test it in a `#[tokio::test]` with `write::testing::Fixture`, a throwaway repo through
   a real `Api`; a GPUI test can't await the runtime, so under `cfg!(test)` writes land in `GitVolt::sent`.
-  `wip.rs`, `commit_box.rs`, `sync.rs`, `refs.rs`, `feedback.rs`, `manage.rs`, `merge/`, `irebase/` and `diff/staging.rs`, `diff/edit.rs` hold them.
+  `wip.rs`, `commit_box.rs`, `sync.rs`, `refs.rs`, `feedback.rs`, `manage.rs`, `gitflow.rs`, `submodules.rs`, `stacks.rs`, `lfs.rs`, `merge/`, `irebase/` and `diff/staging.rs`, `diff/edit.rs` hold them.
 - **A modal's `build` and an overlay run while `GitVolt` is being updated:** reading it there panics. Copy what it
   draws into something shared before `ui::overlays`, as `sync_activity_shown` does.
 - **What floats:** `src/ui/` is the shared UI; `ui::init` once, `ui::begin_frame` first in the root's
@@ -66,6 +66,8 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   - `ui::arm::request(req, Origin::control("anchor"), then, window, cx)` arms a control in place; in a
     menu row's `run`, pass `Origin::current(cx)`, with `arm::hold_row` and `release_row` around a read that comes
     first, so the row can still arm. With no control (`Origin::None`) it asks in a popover. `.icon(name)`: the label keeps an icon button's icon.
+  - `ui::picker::open_below(key, items, placeholder, toggle, on_pick, ..)`: `RefPicker`, a searchable list under a button; `open` at any box. It owns the keyboard while it's open.
+  - `Modal::anchored(bounds)`: a panel dropped from a control, with no shade behind it.
   - `ui::popover::ask_choice`, `ui::modal::open` and `ui::modal::prompt` (a dialog takes the keyboard
     in its own subtree, so no shortcut acts behind it), `ui::toast::show` and `show_with`,
     `ui::banner::banners`, and `ui::controls`: `button`, `select`, `switch`, `check_row`, `keycaps`,
@@ -75,21 +77,22 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   when and run. The hamburger, the chords, the toolbar's tooltips and the palette read it; a row with no
   `run` shows disabled until it's ported. To add a chord, add a row: bare keys stay GPUI bindings.
 - **The palette** can open as a picker: `GitVolt::choose(Choices { .. })`.
+- **The profile and the settings** are `GitVolt::profile` and `settings`, JSON as the core says them (`Request::LoadState`); `update_profile` and `update_repo` change and save. A graph read carries its preset's `view` and `pin`: `graph_options`.
 - **Sizes a drag sets** go through `GitVolt::save_layout` (`src/layout.rs`).
 - **Drawing:** `theme.rs` has `ui/src/theme/tokens.css`'s colours: add tokens there with the CSS's
   name, never a stray hex. Paint-heavy views use `canvas`, as `graph.rs` and `diff/view.rs`.
 - **Icons:** add a Lucide name to `ICONS` in `assets/generate.mjs`, run it from `ui/` (`node
   ../crates/gitvolt-gpui/assets/generate.mjs`), then `icon("name", size, color)`.
 - **Text:** the UI font is `system-ui`'s; mono text is `diff::view::FONT`. There's no `letter-spacing`
-  in GPUI; uppercase captions go without it.
+  in GPUI; uppercase captions go without it. The root's line height is relative (1.4), as the CSS's: a smaller text has a smaller line.
 - **No input device here:** `GITVOLT_SHOW` (`bench.rs`) opens things by script for screenshots
   (`GitVolt::show_ui`: `menu3`, `sub7`, `hamburger`, `palette=q`, `find=q`, `filter=q`, `prompt`, `armed`;
   `-` for no selection or no file); extend it as needed. Clicks and keys are checked in tests with GPUI's `TestAppContext` (see `app.rs`).
   `GITVOLT_SCRIPT=<file>` runs a flow a line at a time, each input through the window as the platform's would be:
   `click x y`, `rclick`, `dclick`, `move`, `press`, `drag`, `release`, `key ctrl-s`, `type text`, `wait ms`, `select row`,
-  `open index`, `cmd id`, `shot out.png`, `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>`,
+  `open index`, `cmd id`, `pickfolder <path>` (the next directory picker answers this; under a script no real dialog ever opens), `shot out.png`, `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>` (a menu's or a picker's),
   `pickv <row>|<variant>`, `hover <row>`, `clickon`, `shiftclickon`, `ctrlclickon`, `rclickon`, `dclickon`, `presson`, `dragto`, `releaseon <end of an
-  anchor's key>`, `clickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
+  anchor's key>`, `clickrow`, `shiftclickrow`, `ctrlclickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
   under `target/bench/work/xdg`, no avatars, no global git config. Only ever on a throwaway repo under `target/bench/work/`.
   `tools/conflict-fixture.sh merge|rebase|irebase` makes one that's stopped in a merge, stopped in a rebase, or ready for a plan. `dump`'s
   `merge` and `rebase` say what those tools hold. Their anchors: `merge-hunk:<side>:<n>`, `merge-line:<side>`, `merge-take-all-<side>`, `merge-save`,

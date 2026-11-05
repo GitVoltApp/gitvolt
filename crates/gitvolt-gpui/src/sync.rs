@@ -1195,10 +1195,12 @@ fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, anchor: Optio
             _ => {}
         }
     });
-    let focus = input.read(cx).focus.clone();
     let name = b.name;
     let stops = [cx.focus_handle().tab_stop(true), cx.focus_handle().tab_stop(true), cx.focus_handle().tab_stop(true)];
-    let mut m = modal::Modal::new(ID, move |_, cx| {
+    // Push takes the keyboard: Enter goes, and Tab reaches the field.
+    let focus = stops[2].clone();
+    let mut m = modal::Modal::new(ID, move |window, cx| {
+        let branch_w = crate::ui::text_width(input.read(cx).text(), 13., FontWeight::NORMAL, cx) + 34.;
         let options: controls::SelectOptions<String> = Rc::new(remotes.iter().map(|r| (r.clone(), SharedString::from(r.clone()), None)).collect());
         let chosen = remote.borrow().clone();
         let set = remote.clone();
@@ -1228,7 +1230,7 @@ fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, anchor: Optio
                     .child(format!("Push {name} to"))
                     .child(div().flex().flex_none().w(px(110.)).child(select))
                     .child("/")
-                    .child(div().flex_1().min_w(px(220.)).h(px(28.)).px(px(7.)).flex().items_center().bg(crate::theme::app_bg()).border_1().border_color(crate::theme::blue()).rounded(px(4.)).text_color(crate::theme::text_selected()).child(input.clone())),
+                    .child(div().flex_none().w(px(branch_w.max(220.))).h(px(28.)).px(px(7.)).flex().items_center().bg(crate::theme::app_bg()).border_1().border_color(if input.read(cx).is_focused(window) { crate::theme::blue() } else { crate::theme::section_border() }).rounded(px(4.)).text_color(crate::theme::text_selected()).child(input.clone())),
             )
             .child(controls::tabbable(
                 check_row("push-track", track.get(), "Track it", move |on, _, cx| {
@@ -1248,7 +1250,7 @@ fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, anchor: Optio
             .child(
                 modal::actions_row()
                     .child(controls::tabbable(controls::button("push-cancel", "Cancel", ButtonKind::Quiet, true).on_click(|_, window, cx| modal::close(ID, window, cx)), &stops[1], |window, cx| modal::close(ID, window, cx)))
-                    .child(controls::tabbable(controls::button("push-ok", "Push", ButtonKind::Positive, ok).when(ok, |d| d.on_click(move |_, window, cx| s(window, cx))), &stops[2], move |window, cx| s2(window, cx))),
+                    .child(controls::tabbable(controls::button("push-ok", "Push", ButtonKind::Positive, ok).bg(crate::theme::green()).text_color(crate::theme::text_on_accent()).when(ok, |d| d.on_click(move |_, window, cx| s(window, cx))), &stops[2], move |window, cx| s2(window, cx))),
             )
             .into_any_element()
     })
