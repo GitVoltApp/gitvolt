@@ -126,6 +126,8 @@ pub fn free_remote_name(base: &str, taken: &[String]) -> String {
     (2..).map(|n| format!("{clean}-{n}")).find(|c| !taken.contains(c)).unwrap_or(clean)
 }
 
+type Suggest = Rc<dyn Fn(&str, &mut App)>;
+
 /// The inline "new file path" input on top of a file list.
 pub struct CreateFile {
     pub section: Option<crate::wip::Which>,
@@ -414,7 +416,7 @@ impl GitVolt {
         let suggest_error = Rc::new(RefCell::new(None::<String>));
         let open_tab = Rc::new(Cell::new(true));
         let (api, rt, repo) = (self.api.clone(), self.rt.clone(), tab.id);
-        let suggest: Rc<dyn Fn(&str, &mut App)> = {
+        let suggest: Suggest = {
             let (dir, edited, suggested, suggest_error) = (dir.clone(), edited.clone(), suggested.clone(), suggest_error.clone());
             Rc::new(move |name: &str, cx: &mut App| {
                 if edited.get() || name.is_empty() || branch_name_error(name).is_some() || cfg!(test) {

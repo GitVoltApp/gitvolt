@@ -827,7 +827,7 @@ impl GitVolt {
     }
 
     /// `fromOldest`: a selection a squash or rebase can start from: on HEAD's branch, no merge, the oldest not a root.
-    fn from_oldest(&self, commits: &[crate::selection::CommitRef]) -> Option<(String, String, Vec<String>)> {
+    fn oldest_selection(&self, commits: &[crate::selection::CommitRef]) -> Option<(String, String, Vec<String>)> {
         let tab = self.tabs.get(self.active)?;
         let g = tab.graph.as_ref()?;
         let head = tab.head_sha()?;
@@ -844,7 +844,7 @@ impl GitVolt {
     /// The selection's "Squash N commits" and "Squash N commits interactively…".
     pub fn squash_rows(&self, commits: &[crate::selection::CommitRef], this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
-        let Some((branch, base, oids)) = self.from_oldest(commits) else { return Vec::new() };
+        let Some((branch, base, oids)) = self.oldest_selection(commits) else { return Vec::new() };
         let busy = Self::rebase_busy(tab);
         let n = oids.len();
         let into = short(&oids[n - 1]);
@@ -864,7 +864,7 @@ impl GitVolt {
     /// The selection's "Interactive rebase from here": from its oldest commit up.
     pub fn selection_from_here_rows(&self, commits: &[crate::selection::CommitRef], this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
-        let Some((branch, base, oids)) = self.from_oldest(commits) else { return Vec::new() };
+        let Some((branch, base, oids)) = self.oldest_selection(commits) else { return Vec::new() };
         let oldest = short(&oids[oids.len() - 1]);
         let weak = this.clone();
         let tooltip = format!("Edit {branch}'s commits from {oldest} up");

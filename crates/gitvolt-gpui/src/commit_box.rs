@@ -558,9 +558,9 @@ pub fn commit_box(v: &GitVolt, tab: &Tab, panel_h: f32, window: &Window, cx: &mu
         .children(status)
         .child(fields)
         .child(row)
+        .children(notice)
         .child(button)
         .children(op_actions.flatten())
-        .children(notice)
         .children(still)
         .into_any_element()
 }

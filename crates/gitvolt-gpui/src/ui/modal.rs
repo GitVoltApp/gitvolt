@@ -136,8 +136,10 @@ pub fn is_open(id: &str, cx: &App) -> bool {
     Ui::get(cx).modals.iter().any(|m| m.id.as_ref() == id)
 }
 
+type Shown = (SharedString, f32, bool, Option<f32>, Option<super::place::Rect>, Build, FocusHandle);
+
 pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
-    let items: Vec<(SharedString, f32, bool, Option<f32>, Option<super::place::Rect>, Build, FocusHandle)> = Ui::get(cx).modals.iter().map(|m| (m.id.clone(), m.width, m.framed, m.top, m.anchored, m.build.clone(), m.focus.clone().expect("set on opening"))).collect();
+    let items: Vec<Shown> = Ui::get(cx).modals.iter().map(|m| (m.id.clone(), m.width, m.framed, m.top, m.anchored, m.build.clone(), m.focus.clone().expect("set on opening"))).collect();
     items
         .into_iter()
         .map(|(id, width, framed, top, anchored, build, focus)| {

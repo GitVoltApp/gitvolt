@@ -570,7 +570,7 @@ fn compare_commit(id: &str, row: Option<&RowView>) -> AnyElement {
 /// The compared (or multi-selected) working tree, as the WIP header names it.
 fn compare_worktree(row: Option<&RowView>) -> AnyElement {
     let name = row.and_then(|r| r.wip.as_ref()).and_then(|w| w.name.clone()).unwrap_or_else(|| "Working tree".into());
-    let counts = row.and_then(|r| r.wip.as_ref()).map(|w| crate::model::wip_counts_text(w));
+    let counts = row.and_then(|r| r.wip.as_ref()).map(crate::model::wip_counts_text);
     div()
         .flex()
         .flex_none()

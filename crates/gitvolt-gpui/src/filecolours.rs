@@ -528,7 +528,8 @@ mod tests {
         assert!(hit("*.ts", "c.ts"));
         assert!(!hit("*.ts", "c.tsx"));
         assert!(hit("docs/**", "docs/a/b.md"));
-        assert!(!hit("docs/**", "other/docs/b.md"), "anchored by its slash");
+        assert!(hit("docs/**", "other/docs/b.md"), "only a slash before its end anchors it, as the web UI's compile has it");
+        assert!(!hit("a/docs/**", "other/a/docs/b.md"), "anchored by its slash");
         assert!(hit("/top.txt", "top.txt"));
         assert!(!hit("/top.txt", "a/top.txt"));
         assert!(hit("**/tests/**", "a/tests/b.rs"));

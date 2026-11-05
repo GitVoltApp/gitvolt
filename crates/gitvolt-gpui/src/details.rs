@@ -1163,7 +1163,7 @@ pub fn details_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &W
         return None;
     }
     // A ⋮ row is no commit: there's nothing to show of it.
-    if tab.compare.is_none() && tab.picks.rows.is_empty() && tab.revealed.is_none() && tab.selected.and_then(|i| tab.graph.as_ref()?.rows.get(i)).is_some_and(|r| r.kind == gitvolt_graph::NodeKind::Collapsed) {
+    if tab.compare.is_none() && tab.picks.rows.is_empty() && tab.revealed.is_none() && tab.files.is_none() && tab.commit.is_none() && tab.selected.and_then(|i| tab.graph.as_ref()?.rows.get(i)).is_some_and(|r| r.kind == gitvolt_graph::NodeKind::Collapsed) {
         return None;
     }
     let selected = tab.diff.as_ref().map(|d| d.file.clone());
