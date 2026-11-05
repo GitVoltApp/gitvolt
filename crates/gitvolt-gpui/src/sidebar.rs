@@ -458,6 +458,10 @@ impl SideState {
     pub fn relist(&mut self, cx: &App) {
         let filter = self.filter.read(cx).text().to_string();
         self.panels = Rc::new(build_panels(&self.sections, &filter, &self.recent, &self.collapsed));
+        // A list keeps its scroll in its handle, so each panel's lasts as long as the tab.
+        for s in &self.sections {
+            self.scroll.entry(s.kind).or_default();
+        }
     }
 
     fn toggle(&mut self, key: String, cx: &App) {
@@ -859,7 +863,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                     }),
                 )
                 .with_sizing_behavior(ListSizingBehavior::Auto)
-                .track_scroll(&tab.side.scroll.get(&kind).cloned().unwrap_or_default())
+                .when_some(tab.side.scroll.get(&kind), |list, handle| list.track_scroll(handle))
                 .flex_1()
                 .min_h_0();
                 section = section.child(list);
@@ -927,7 +931,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
 fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_right: f32, this: &WeakEntity<GitVolt>, push: &PushCache, cx: &mut Context<GitVolt>) -> AnyElement {
     let base = div().id(i).relative().flex().w_full().h(px(ROW_H)).items_center().gap(px(ROW_GAP)).pr(px(8.)).whitespace_nowrap();
     let outlined = on_key || menu::is_target(row.key(), cx);
-    let outline = |d: Stateful<Div>| if outlined { d.border_1().border_color(theme::blue()) } else { d };
+    let outline = |d: Stateful<Div>| d.when(outlined, |d| d.child(crate::ui::outline()));
     match row {
         FlatRow::Folder { key, name, depth, collapsed, remote } => {
             let (toggle_key, menu_key, remote) = (key.clone(), key.clone(), remote.clone());

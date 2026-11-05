@@ -866,7 +866,7 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
             let left_of = window.viewport_size().width.as_f32() - panel_w;
             range
                 .map(|i| {
-                    let base = div().id(i).flex().w_full().h(px(FILE_ROW_H)).items_center().gap(px(6.)).pr(px(8.));
+                    let base = div().id(i).relative().flex().w_full().h(px(FILE_ROW_H)).items_center().gap(px(6.)).pr(px(8.));
                     let full_path: SharedString = match &rows[i] {
                         ListRow::Folder { path, .. } => path.clone(),
                         ListRow::File { index, .. } => changes[*index].path.clone(),
@@ -896,7 +896,7 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                                         crate::ui::menu::open_context_for(format!("folder:{path}"), rows, e.position, window, cx);
                                     }
                                 }))
-                                .when(crate::ui::menu::is_target(&format!("folder:{menu_path}"), cx), |d| d.border_1().border_color(theme::blue()))
+                                .when(crate::ui::menu::is_target(&format!("folder:{menu_path}"), cx), |d| d.child(crate::ui::outline()))
                                 .child(icon(if *collapsed { "chevron-right" } else { "chevron-down" }, 14., theme::text_secondary()))
                                 .child(div().flex_1().min_w_0().truncate().child(name.clone()))
                         }
@@ -927,7 +927,7 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                                         crate::ui::menu::open_context_for(format!("file:{}", file.path), rows, e.position, window, cx);
                                     }
                                 }))
-                                .when(crate::ui::menu::is_target(&format!("file:{}", change.path), cx), |d| d.border_1().border_color(theme::blue()))
+                                .when(crate::ui::menu::is_target(&format!("file:{}", change.path), cx), |d| d.child(crate::ui::outline()))
                                 .child(if unchanged { div().flex_none().size(px(14.)).into_any_element() } else { icon(glyph, 14., color).into_any_element() })
                                 .when(!dir.is_empty(), |d| d.child(div().flex().flex_none().max_w(relative(0.6)).overflow_hidden().text_color(theme::text_secondary()).children(marked(dir, &query)).child("/")))
                                 .child(div().flex().flex_1().min_w_0().overflow_hidden().when(unchanged && !on, |d| d.text_color(theme::text_secondary())).children(marked(name, &query)))

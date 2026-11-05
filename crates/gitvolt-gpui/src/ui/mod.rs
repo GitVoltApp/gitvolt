@@ -153,6 +153,12 @@ fn route_key(k: &Keystroke, window: &mut Window, cx: &mut App) {
     }
 }
 
+/// The 1 px blue outline a row wears while its menu is open, over it: nothing moves. Its parent is
+/// `relative`.
+pub fn outline() -> Div {
+    div().absolute().top_0().left_0().size_full().border_1().border_color(crate::theme::blue())
+}
+
 /// A box shadow: `0 y blur color`.
 pub fn shadow(color: Hsla, y: f32, blur: f32) -> Vec<BoxShadow> {
     vec![BoxShadow { color, offset: point(px(0.), px(y)), blur_radius: px(blur), spread_radius: px(0.), inset: false }]

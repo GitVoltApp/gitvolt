@@ -17,7 +17,6 @@ use gitvolt_core::events::AppEvent;
 use gpui::prelude::*;
 use gpui::*;
 use std::collections::{HashMap, HashSet};
-
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -593,7 +592,8 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .border_color(theme::section_border())
                 .when(active, |d| d.bg(theme::action_bar_bg()).text_color(theme::text_selected()))
                 .when(!active, |d| d.text_color(theme::text_secondary()).hover(|d| d.bg(theme::hover_row())))
-                .when(outlined, |d| d.border_1().border_color(theme::blue()))
+                .relative()
+                .when(outlined, |d| d.child(crate::ui::outline()))
                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                     this.active = i;
                     this.tab_drag = Some(i);

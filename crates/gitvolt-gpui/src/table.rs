@@ -51,7 +51,7 @@ fn chip_width(c: &Chip, cx: &App) -> f32 {
     let sources = usize::from(c.local) + c.remotes.len();
     let icons = usize::from(c.head) + usize::from(c.tag) + sources;
     let icon_w = if c.head { HEAD_CHECK } else { 0. } + if c.tag { 12. } else { 0. } + sources as f32 * ICON;
-    CHIP_PAD + crate::ui::text_width(&c.name, 13., if c.head { FontWeight::SEMIBOLD } else { FontWeight::NORMAL }, cx) + icon_w + icons as f32 * CHIP_GAP
+    CHIP_PAD + crate::ui::text_width(&c.name, 13., FontWeight::NORMAL, cx) + icon_w + icons as f32 * CHIP_GAP
 }
 
 /// `fitCount`: how many chips fit, a `+N` badge for the rest.
@@ -78,9 +78,10 @@ pub fn fit_count(widths: &[f32], avail: f32, more: impl Fn(usize) -> f32) -> usi
     1
 }
 
-fn chip_inner(c: &Chip, lane: usize, full: bool) -> Div {
-    let tint = theme::lane_alpha(lane, if c.head { 0.45 } else { 0.25 });
-    let text = if c.head { theme::text_selected() } else { theme::text_normal() };
+/// A chip. `row`: its row's group, whose hover lights it as selecting the row does.
+fn chip_inner(c: &Chip, lane: usize, full: bool, lit: bool, row: Option<SharedString>) -> Div {
+    let tint = theme::lane_alpha(lane, if c.head || lit { 0.45 } else { 0.25 });
+    let text = if c.head || lit { theme::text_selected() } else { theme::text_normal() };
     let local_name = c.name.clone();
     let mut chip = div()
         .flex()
@@ -92,7 +93,8 @@ fn chip_inner(c: &Chip, lane: usize, full: bool) -> Div {
         .rounded(px(3.))
         .bg(tint)
         .text_color(text)
-        .when(c.head, |d| d.font_weight(FontWeight::SEMIBOLD).child(icon("check", HEAD_CHECK, text)))
+        .when_some(row, |d, group| d.group_hover(group, move |d| d.bg(theme::lane_alpha(lane, 0.45)).text_color(theme::text_selected())))
+        .when(c.head, |d| d.child(icon("check", HEAD_CHECK, text)))
         .when(c.tag, |d| d.child(icon("tag", 12., text)))
         .child(div().when(!full, |d| d.min_w_0().truncate()).child(c.name.clone()));
     if c.local {
@@ -107,7 +109,7 @@ fn chip_inner(c: &Chip, lane: usize, full: bool) -> Div {
 
 /// The labels cell: what fits, `+N` for the rest with their list on hover; each chip its own menu and
 /// its branch's focus.
-fn chips_cell(row: &RowView, ix: usize, width: f32, this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Div {
+fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &SharedString, this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Div {
     let lane = row.color as usize;
     let widths: Vec<f32> = row.chips.iter().map(|c| chip_width(c, cx)).collect();
     let more_w = |n: usize| crate::ui::text_width(&format!("+{n}"), 11., FontWeight::NORMAL, cx) + 8. + CHIP_SPACING;
@@ -119,7 +121,7 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, this: &WeakEntity<GitVolt>, 
         let (chip, menu_sha, weak, hover) = (c.clone(), sha.clone(), this.clone(), this.clone());
         let tag = c.tag;
         let tag_tip = c.tag.then(|| format!("Tag at {}", &sha[..sha.len().min(SHORT_SHA)]));
-        let body = chip_inner(c, lane, false)
+        let body = chip_inner(c, lane, false, selected, Some(group.clone()))
             .id(("chip", ix * 64 + i))
             .cursor_pointer()
             .on_hover(move |entered, _, cx| {
@@ -170,7 +172,7 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, this: &WeakEntity<GitVolt>, 
         cell = cell.child(Anchor::new(badge).card(format!("chips:{ix}"), move |_, _| {
             let mut stack = div().flex().flex_col().gap(px(3.)).p(px(3.)).bg(theme::panel_bg1()).border_1().border_color(theme::section_border()).rounded(px(4.)).shadow(crate::ui::shadow(theme::shadow_popup(), 6., 20.)).text_size(px(13.));
             for c in &list {
-                stack = stack.child(chip_inner(c, lane, true));
+                stack = stack.child(chip_inner(c, lane, true, false, None));
             }
             stack.into_any_element()
         }));
@@ -489,7 +491,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                     let outlined = menu::is_target(&format!("row:{ix}"), cx);
                     let off = |c: Col| hidden.contains(&c);
                     let menu_weak = weak.clone();
-                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, &weak, cx));
+                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &weak, cx));
                     div()
                         .id(ix)
                         .group(group.clone())

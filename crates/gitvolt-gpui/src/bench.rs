@@ -184,9 +184,10 @@ impl GitVolt {
             req.body = "It has 3 commits no other branch has.".into();
             popover::confirm(req, true, None, |_, _, _| {}, window, cx);
         } else if part == "armed" {
-            arm::request(arm::ArmRequest::danger("Click again to discard 5 files", "Discard?", "Discard"), arm::Origin::control("tb-search"), |_, _, _| {}, window, cx);
+            arm::request(arm::ArmRequest::danger("Click again to discard 5 files", "Discard?", "Discard"), arm::Origin::control("tb-undo-caret"), |_, _, _| {}, window, cx);
         } else if part == "narrow" {
             self.sidebar_narrow = true;
+            cx.notify();
         }
     }
 }
