@@ -1,5 +1,5 @@
 import { Maximize2, Minimize2, Minus, X } from 'lucide-react';
-import { Fragment, useEffect, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from 'react';
+import { Fragment, useEffect, useRef, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from 'react';
 import { openContextMenu } from '../menu/menuStore';
 import type { MenuRow } from '../menu/types';
 import { HamburgerMenu } from '../tabs/HamburgerMenu';
@@ -94,6 +94,9 @@ function ButtonIcon({ button, maximized, platform }: { button: Exclude<WindowBut
 }
 
 function WindowButtons({ buttons, maximized, platform }: { buttons: WindowButton[]; maximized: boolean; platform: string }) {
+  // A press that moves before the release moves the window instead, as a GTK header bar's buttons
+  // do. Cleared on each press: the window manager may keep the release that ends a move.
+  const dragged = useRef(false);
   if (!buttons.length) return null;
   const run: Record<Exclude<WindowButton, 'spacer'>, () => Promise<unknown>> = {
     minimize: () => windowOps.minimize(),
@@ -108,9 +111,17 @@ function WindowButtons({ buttons, maximized, platform }: { buttons: WindowButton
           type="button"
           className={`wm-btn wm-${b}`}
           aria-label={LABELS[b](maximized)}
-          // A window button doesn't take the focus from where it is, as the window manager's don't.
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => void run[b]().catch((err: unknown) => console.warn(`[gitvolt] window ${b} failed`, err))}
+          onMouseDown={(e) => {
+            // A window button doesn't take the focus from where it is, as the window manager's don't.
+            e.preventDefault();
+            dragged.current = false;
+            beginWindowDrag(e, windowOps, document, () => { dragged.current = true; });
+          }}
+          onClick={(e) => {
+            // A keyboard click (no `detail`) always runs.
+            if (dragged.current && e.detail > 0) return;
+            void run[b]().catch((err: unknown) => console.warn(`[gitvolt] window ${b} failed`, err));
+          }}
         >
           <ButtonIcon button={b} maximized={maximized} platform={platform} />
         </button>

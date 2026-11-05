@@ -1,4 +1,5 @@
 import type { CustomTheme } from '../api/gen/CustomTheme';
+import { inTauri } from '../api/transport';
 import { contrastRatio } from './contrast';
 import { isCustomThemeId, opaqueHex } from './custom';
 import { COLOR_TOKENS, isThemeId, type ThemeDef } from './themes';
@@ -25,6 +26,24 @@ export function applyTheme(root: HTMLElement, def: ThemeDef, colors: ResolvedCol
   colors.graph.forEach((c, i) => root.style.setProperty(`--graph-${i}`, c));
   root.style.colorScheme = def.kind;
   root.dataset.theme = def.id;
+}
+
+/** The kind the window was last given; `null` until then, or after a refusal (the next tries again). */
+let windowKind: ThemeDef['kind'] | null = null;
+
+/**
+ * Gives the native window the theme's light or dark appearance, so it doesn't follow the OS's:
+ * on macOS a dark theme under a light OS otherwise draws the unfocused traffic lights as black
+ * circles on the dark bar, and a system title bar white. Only in the app, and only on a change
+ * (a preview keeps its theme's kind).
+ */
+export function setWindowTheme(kind: ThemeDef['kind']): void {
+  if (kind === windowKind || !inTauri()) return;
+  windowKind = kind;
+  void import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setTheme(kind)).catch((e: unknown) => {
+    if (windowKind === kind) windowKind = null;
+    console.warn('[gitvolt] window theme refused', e);
+  });
 }
 
 /**

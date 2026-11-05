@@ -854,10 +854,8 @@ impl SettingsStore {
     }
 
     pub fn create_profile(self: &Arc<Self>, name: &str, color: &str) -> Result<ProfileMeta, GbError> {
+        // An empty name is allowed: the switcher then shows just the profile's colour.
         let name = name.trim();
-        if name.is_empty() {
-            return Err(GbError::new(GbErrorKind::InvalidInput, "A profile needs a name"));
-        }
         let id = format!("{}-{}", slug(name), random_hex(3));
         let profile = Profile::new(&id, name, color);
         let meta = ProfileMeta::from(&profile);
@@ -1605,7 +1603,6 @@ mod tests {
         let store = SettingsStore::in_memory();
         let work = store.create_profile("Work stuff", "#ff0000").unwrap();
         assert!(work.id.starts_with("work-stuff-"), "{}", work.id);
-        assert!(store.create_profile("   ", "#fff").is_err());
         let st = store.switch_profile(&work.id).unwrap();
         assert_eq!(st.profile.id, work.id);
         assert_eq!(st.settings.active_profile, work.id);
@@ -1615,6 +1612,20 @@ mod tests {
         assert_eq!(left.len(), 1);
         assert_eq!(store.delete_profile(DEFAULT_PROFILE_ID).unwrap_err().kind, GbErrorKind::InvalidInput);
         assert!(store.switch_profile("nope").is_err());
+    }
+
+    #[test]
+    fn a_profile_may_have_no_name() {
+        let store = SettingsStore::in_memory();
+        let blank = store.create_profile("   ", "#2ece9d").unwrap();
+        assert_eq!(blank.name, "");
+        assert!(blank.id.starts_with("profile-"), "{}", blank.id);
+        let st = store.switch_profile(&blank.id).unwrap();
+        assert_eq!(st.profile.name, "");
+        let mut p = st.profile;
+        p.name = String::new();
+        store.save_profile(p).unwrap();
+        assert_eq!(store.profile(&blank.id).unwrap().name, "");
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { applyTheme, resolveColors, type ResolvedColors } from './apply';
+import { applyTheme, resolveColors, setWindowTheme, type ResolvedColors } from './apply';
 import { DEFAULT_THEME_ID, THEMES, type ColorToken, type ThemeDef } from './themes';
 
 /** Unsaved colours shown over the theme while the user edits one (a picker being dragged). */
@@ -28,7 +28,7 @@ let applied: ThemeDef = THEMES[DEFAULT_THEME_ID];
 
 /**
  * The applied theme: `set` writes it onto <html> (the DOM follows through the custom
- * properties) and publishes the resolved canvas colours, which the graph canvas, the ref chips
+ * properties), gives the window its light or dark appearance, and publishes the resolved canvas colours, which the graph canvas, the ref chips
  * and the avatars read, so a switch repaints them without a reload. `bind.ts` drives it from the
  * settings; nothing else should call `set` but tests.
  */
@@ -36,6 +36,7 @@ export const useTheme = create<ThemeState>((set, get) => {
   const show = (def: ThemeDef) => {
     const colors = resolveColors(def);
     applyTheme(document.documentElement, def, colors);
+    setWindowTheme(def.kind);
     set({ id: def.id, def, colors, version: get().version + 1 });
   };
   return {

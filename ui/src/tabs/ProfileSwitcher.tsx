@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import { Pencil, Plus, Trash2, type LucideIcon, type LucideProps } from 'lucide-react';
+import { profileLabel } from '../app/profileLabel';
 import { useAppState } from '../app/state';
 import { openMenuAt } from '../menu/menuStore';
 import { pressOpener } from '../menu/pressDrag';
@@ -38,7 +39,7 @@ function rows(): MenuRow[] {
     ...profiles.map((p): MenuRow => ({
       kind: 'action',
       id: `profile.${p.id}`,
-      label: p.name,
+      label: profileLabel(p.name),
       icon: profileDotIcon(p.color, p.id === profile.id),
       tooltip: '',
       run: () => { void switchProfile(p.id); },
@@ -49,34 +50,38 @@ function rows(): MenuRow[] {
     ...(others.length
       ? [{
           kind: 'submenu' as const, id: 'profile.delete', label: 'Delete profile', icon: Trash2, tooltip: 'Delete another profile (switch away before deleting the current one)',
-          rows: others.map((p): MenuRow => ({
-            kind: 'action', id: `profile.delete.${p.id}`, label: `${p.name}…`, icon: Trash2, tooltip: `Delete ${p.name} and its tabs`,
-            // K68: never in one click — the profile, its tabs and its recent list go.
-            run: () => {
-              void confirmAction({
-                title: `Delete the profile “${p.name}”?`,
-                body: 'Its tabs, recent repositories and settings are removed. Your repositories on disk are not touched. This cannot be undone.',
-                confirmLabel: 'Delete profile',
-                arm: `Click again to delete ${p.name} and its tabs`,
-                danger: true,
-              }).then((ok) => { if (ok) void deleteProfile(p.id); });
-            },
-          })),
+          rows: others.map((p): MenuRow => {
+            const name = profileLabel(p.name);
+            return {
+              kind: 'action', id: `profile.delete.${p.id}`, label: `${name}…`, icon: Trash2, tooltip: `Delete ${name} and its tabs`,
+              // K68: never in one click — the profile, its tabs and its recent list go.
+              run: () => {
+                void confirmAction({
+                  title: `Delete the profile “${name}”?`,
+                  body: 'Its tabs, recent repositories and settings are removed. Your repositories on disk are not touched. This cannot be undone.',
+                  confirmLabel: 'Delete profile',
+                  arm: `Click again to delete ${name} and its tabs`,
+                  danger: true,
+                }).then((ok) => { if (ok) void deleteProfile(p.id); });
+              },
+            };
+          }),
         }]
       : []),
   ];
 }
 
-/** Far right of the tab bar (spec §6.2), and its New/Edit/Delete dialog. */
+/** Far right of the tab bar (spec §6.2), and its New/Edit/Delete dialog. A profile without a
+ * name shows just its colour. */
 export function ProfileSwitcher() {
-  const name = useAppState((s) => s.profile.name);
+  const name = useAppState((s) => s.profile.name).trim();
   const color = useAppState((s) => s.profile.color);
   return (
     <>
       <HoverTooltip content="Switch profile">
-        <button type="button" className="profile-switcher" aria-label={`Profile: ${name}`} {...pressOpener((el) => openMenuAt(el, rows(), `profile.${useAppState.getState().profile.id}`, rows, 'Switch profile'))}>
+        <button type="button" className="profile-switcher" aria-label={`Profile: ${profileLabel(name)}`} {...pressOpener((el) => openMenuAt(el, rows(), `profile.${useAppState.getState().profile.id}`, rows, 'Switch profile'))}>
           <span className="profile-dot" style={{ background: color }} aria-hidden />
-          {name}
+          {name || null}
         </button>
       </HoverTooltip>
       <ProfileDialog />

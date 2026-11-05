@@ -28,8 +28,8 @@ function ProfileForm({ mode }: { mode: 'new' | 'rename' }) {
   // Create/Save, or unmount) returns focus to the profile switcher button that opened it.
   const ref = useModalKeys<HTMLFormElement>(true, close);
   const submit = async () => {
+    // An empty name is allowed: the switcher then shows just the colour.
     const trimmed = name.trim();
-    if (!trimmed) return;
     if (mode === 'new') await useAppState.getState().createProfile(trimmed, color);
     else useAppState.getState().renameProfile(trimmed, color);
     close();
@@ -47,8 +47,9 @@ function ProfileForm({ mode }: { mode: 'new' | 'rename' }) {
         <h2>{mode === 'new' ? 'New profile' : 'Edit profile'}</h2>
         <label>
           Name
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-label="Profile name" />
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-label="Profile name" aria-describedby="profile-name-hint" />
         </label>
+        <span className="profile-name-hint" id="profile-name-hint">Leave it empty to show just the color in the tab bar.</span>
         <div className="swatches" role="radiogroup" aria-label="Color">
           {PROFILE_COLORS.map((c) => (
             <button key={c} type="button" role="radio" aria-checked={c === color} aria-label={c} className="swatch" style={{ background: c }} onClick={() => setColor(c)} />
@@ -56,7 +57,7 @@ function ProfileForm({ mode }: { mode: 'new' | 'rename' }) {
         </div>
         <div className="modal-actions">
           <button type="button" onClick={close}>Cancel</button>
-          <button type="submit" disabled={!name.trim()}>{mode === 'new' ? 'Create' : 'Save'}</button>
+          <button type="submit">{mode === 'new' ? 'Create' : 'Save'}</button>
         </div>
       </form>
     </div>

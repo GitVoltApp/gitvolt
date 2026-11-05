@@ -113,6 +113,7 @@
 .modal-actions button.danger { background: var(--red); border-color: var(--red); }
 .modal p { margin: 4px 0 0; color: var(--text-secondary); max-width: 420px; }
 .modal-actions button[type="submit"]:disabled { opacity: 0.5; cursor: default; background: var(--panel-bg1); border-color: var(--section-border); }
+.profile-name-hint { margin-top: -4px; color: var(--text-secondary); font-size: 11px; }
 .swatches { display: flex; gap: 6px; margin-bottom: 4px; }
 .swatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
 .swatch[aria-checked="true"] { border-color: var(--text-selected); }

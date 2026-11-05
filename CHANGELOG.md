@@ -12,6 +12,9 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **Activity log.** An expected non-zero exit (a missing git-lfs, an unset config key) no
   longer shows in red as a failure.
 - **Profile menu.** The profiles' rows have no tooltip; it was a leftover note, and the label says it all.
+- **The window's light or dark appearance follows GitVolt's theme, not the OS's.** On macOS a dark
+  theme with the system in light mode no longer draws the unfocused traffic lights as black
+  circles, or a system title bar white.
 
 ### Added
 
@@ -24,6 +27,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   one, tags the release, and deletes the branch: one step, one Undo. A merge that would conflict
   isn't started: the finish stops before it and offers to make that merge, and finishing again
   afterwards picks up where it stopped.
+- **Window buttons move the window.** On Windows and Linux, dragging from GitVolt's title bar's
+  minimize, maximize or close moves the window instead of pressing the button, as a GTK header
+  bar's do; a click still presses it.
+- **A profile can have no name.** Leave the name empty in New profile… or Edit profile… and the
+  profile switcher shows just its color; menus call it Unnamed profile.
 
 ## [1.4.1] - 2026-11-01
 

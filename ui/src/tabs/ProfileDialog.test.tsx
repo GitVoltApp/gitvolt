@@ -26,7 +26,6 @@ describe('ProfileDialog: focus trap (fix round 1)', () => {
     const name = screen.getByLabelText('Profile name');
     expect(document.activeElement).toBe(name); // autoFocus wins over the trap's own fallback focus
 
-    // The submit button is disabled (no name yet), so it isn't a Tab stop until it's filled in.
     fireEvent.change(name, { target: { value: 'Work' } });
     const create = screen.getByRole('button', { name: 'Create' });
     const cancel = screen.getByRole('button', { name: 'Cancel' });
@@ -45,5 +44,25 @@ describe('ProfileDialog: focus trap (fix round 1)', () => {
     expect(fireEvent.keyDown(create, { key: 'Escape' })).toBe(false);
     expect(useProfileDialog.getState().mode).toBeNull();
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe('ProfileDialog: an empty name', () => {
+  afterEach(() => { useProfileDialog.setState({ mode: null }); });
+
+  it('saves the trimmed empty name, and the hint says what it does', async () => {
+    const { useAppState } = await import('../app/state');
+    const renameProfile = vi.fn();
+    useAppState.setState({ renameProfile, profile: { ...useAppState.getState().profile, name: 'Work', color: '#4d88ff' } });
+    render(<ProfileDialog />);
+    act(() => useProfileDialog.getState().open('rename'));
+    const name = screen.getByLabelText('Profile name');
+    expect(name).toHaveAccessibleDescription(/empty to show just the color/);
+    fireEvent.change(name, { target: { value: '   ' } });
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await vi.waitFor(() => expect(renameProfile).toHaveBeenCalledExactlyOnceWith('', '#4d88ff'));
+    expect(useProfileDialog.getState().mode).toBeNull();
   });
 });

@@ -26,14 +26,15 @@ interface Press { button: number; clientX: number; clientY: number }
 /**
  * A left press on a drag region: once the pointer has moved [`DRAG_THRESHOLD`] px with the button
  * still down, the window manager takes over and moves the window (edge tiling and snapping
- * included). The listeners go as soon as that happens or the button is released.
+ * included), and `onDrag` runs. The listeners go as soon as that happens or the button is released.
  */
-export function beginWindowDrag(press: Press, ops: WindowOps = windowOps, target: Pick<Document, 'addEventListener' | 'removeEventListener'> = document): void {
+export function beginWindowDrag(press: Press, ops: WindowOps = windowOps, target: Pick<Document, 'addEventListener' | 'removeEventListener'> = document, onDrag?: () => void): void {
   if (press.button !== 0) return;
   const move = (e: MouseEvent) => {
     if ((e.buttons & 1) === 0) return stop();
     if (Math.hypot(e.clientX - press.clientX, e.clientY - press.clientY) < DRAG_THRESHOLD) return;
     stop();
+    onDrag?.();
     void ops.startDragging().catch((err: unknown) => console.warn('[gitvolt] window move refused', err));
   };
   const stop = () => {

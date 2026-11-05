@@ -93,10 +93,11 @@ export function useSettingsRegistry(): number {
   return useSyncExternalStore(subscribe, getVersion);
 }
 
-/** The nav group's and breadcrumbs' name for a scope: GitVolt, `Profile · Work`, `Repository · orbital`. */
+/** The nav group's and breadcrumbs' name for a scope: GitVolt, `Profile · Work` (`Profile` for
+ * a profile without a name), `Repository · orbital`. */
 export function scopeLabel(scope: SettingsScope, profileName: string, repoName: string | null): string {
   if (scope === 'app') return 'GitVolt';
-  if (scope === 'profile') return `Profile · ${profileName}`;
+  if (scope === 'profile') return profileName.trim() ? `Profile · ${profileName}` : 'Profile';
   return `Repository · ${repoName ?? ''}`;
 }
 

@@ -64,19 +64,46 @@ describe('the title bar', () => {
     const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
     screen.getByRole('button', { name: 'Close' }).dispatchEvent(down);
     expect(down.defaultPrevented).toBe(true);
+    fireEvent.mouseUp(document);
   });
 
-  it('dragging its empty space or its title moves the window; a button never does', () => {
+  it('dragging its empty space or its title moves the window; ☰ never does', () => {
     show(linux('appmenu:close'));
     fireEvent.mouseDown(title(), { button: 0, clientX: 300, clientY: 10 });
     fireEvent.mouseMove(document, { buttons: 1, clientX: 330, clientY: 12 });
     expect(calls()).toEqual(['startDragging']);
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'Close' }), { button: 0, clientX: 500, clientY: 10 });
-    fireEvent.mouseMove(document, { buttons: 1, clientX: 530, clientY: 12 });
-    fireEvent.mouseUp(document);
     fireEvent.mouseDown(screen.getByRole('button', { name: 'Menu' }), { button: 0, clientX: 10, clientY: 10 });
     fireEvent.mouseMove(document, { buttons: 1, clientX: 40, clientY: 12 });
+    fireEvent.mouseUp(document);
     expect(calls()).toEqual(['startDragging']);
+  });
+
+  it("dragging from a window button moves the window instead of running it; a click still runs it", () => {
+    show(linux(':minimize,maximize,close'));
+    const close = screen.getByRole('button', { name: 'Close' });
+    fireEvent.mouseDown(close, { button: 0, clientX: 500, clientY: 10 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 502, clientY: 11 });
+    expect(calls()).toEqual([]);
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 530, clientY: 12 });
+    fireEvent.mouseUp(close);
+    fireEvent.click(close, { detail: 1 });
+    expect(calls()).toEqual(['startDragging']);
+    // A press that doesn't move is a click, even after a drag the window manager ended.
+    const minimize = screen.getByRole('button', { name: 'Minimize' });
+    fireEvent.mouseDown(minimize, { button: 0, clientX: 400, clientY: 10 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 401, clientY: 10 });
+    fireEvent.mouseUp(minimize);
+    fireEvent.click(minimize, { detail: 1 });
+    return waitFor(() => expect(calls()).toEqual(['startDragging', 'minimize']));
+  });
+
+  it('the keyboard still runs a window button after a drag from it', () => {
+    show(linux('appmenu:close'));
+    const close = screen.getByRole('button', { name: 'Close' });
+    fireEvent.mouseDown(close, { button: 0, clientX: 500, clientY: 10 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 530, clientY: 12 });
+    fireEvent.click(close, { detail: 0 });
+    return waitFor(() => expect(calls()).toEqual(['startDragging', 'close']));
   });
 
   it("a double click does the desktop's double-click action, on empty space only", () => {

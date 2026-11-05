@@ -79,3 +79,28 @@ describe('the profile picker: press, drag onto a profile, release', () => {
     expect(switchProfile).not.toHaveBeenCalled();
   });
 });
+
+describe('a profile without a name', () => {
+  afterEach(() => { cleanup(); act(() => useMenu.getState().close()); });
+  const mk = (id: string, name: string) => ({ ...EMPTY_PROFILE, id, name, color: '#d90171' });
+
+  it('the switcher shows just its colour, and still has a name and its tooltip', () => {
+    useAppState.setState({ profiles: [mk('a', ''), mk('b', 'Work')], profile: mk('a', '  ') });
+    render(<ProfileSwitcher />);
+    const button = screen.getByRole('button', { name: 'Profile: Unnamed profile' });
+    expect(button.textContent).toBe('');
+    expect([...button.childNodes].map((n) => (n as Element).className)).toEqual(['profile-dot']);
+    fireEvent.mouseEnter(button);
+    expect(screen.getByText('Switch profile')).toBeInTheDocument();
+  });
+
+  it('its menu row and its delete say "Unnamed profile"', () => {
+    useAppState.setState({ profiles: [mk('a', 'Work'), mk('b', '')], profile: mk('a', 'Work') });
+    render(<ProfileSwitcher />);
+    fireEvent.click(screen.getByRole('button', { name: 'Profile: Work' }));
+    const rows = useMenu.getState().rows!;
+    expect(rows.map((r) => ('label' in r ? r.label : r.kind))).toEqual(['Work', 'Unnamed profile', 'separator', 'New profile…', 'Edit profile…', 'Delete profile']);
+    const del = rows.at(-1)!;
+    expect(del.kind === 'submenu' && del.rows.map((r) => ('label' in r ? r.label : r.kind))).toEqual(['Unnamed profile…']);
+  });
+});
