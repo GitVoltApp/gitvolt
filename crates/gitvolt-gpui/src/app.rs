@@ -104,6 +104,8 @@ pub struct Tab {
     /// Each stop selects the WIP row once; a paused entry that ended outside GitVolt settles once.
     pub stops_shown: HashSet<String>,
     pub settled: HashSet<u64>,
+    /// `repoInfo`, as the core says it: the remotes' URLs, the worktrees' submodule support.
+    pub info: serde_json::Value,
     /// The sidebar's read, as the core says it: what the writes go by.
     pub sidebar: Rc<serde_json::Value>,
     /// Writes queued or running that move HEAD: `(id, branch, commit)`, folded into what's shown.
@@ -191,6 +193,7 @@ impl Tab {
             paused: None,
             stops_shown: HashSet::new(),
             settled: HashSet::new(),
+            info: serde_json::Value::Null,
             sidebar: Rc::default(),
             head_moves: Vec::new(),
             in_flight: HashSet::new(),
@@ -233,6 +236,7 @@ pub struct GitVolt {
     pub side_drag: SideDrag,
     pub last_pushes: PushCache,
     /// The profile and the settings, as the core says them; `Null` until they're read.
+    pub lfs: crate::lfs::Lfs,
     pub profile: serde_json::Value,
     pub settings: serde_json::Value,
     /// What opened before the profile was read.
@@ -306,7 +310,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -357,13 +361,17 @@ impl GitVolt {
     /// One event from the core: what's going on, and what to read again.
     pub fn on_event(&mut self, e: AppEvent, cx: &mut Context<Self>) {
         self.ops.apply(&e);
+        self.lfs_on_event(&e, cx);
         match e {
             AppEvent::RepoChanged { repo, .. } => {
                 self.reload(repo, cx);
                 self.reread_wip(repo, cx);
                 self.reread_open_file(repo, cx);
             }
-            AppEvent::RefsUpdated { repo } => self.reload(repo, cx),
+            AppEvent::RefsUpdated { repo } => {
+                self.reload(repo, cx);
+                self.read_repo_info(repo, cx);
+            }
             AppEvent::OpStarted { .. } => self.after_op_started(cx),
             AppEvent::AuthWaiting { .. } | AppEvent::AuthResolved { .. } | AppEvent::OpFinished { .. } => self.sync_auth_modal(cx),
             _ => {}
@@ -416,6 +424,8 @@ impl GitVolt {
                             }
                         };
                         this.active = at;
+                        this.load_lfs(id, false, false, cx);
+                        this.read_repo_info(id, cx);
                         this.list_openers(id, cx);
                         this.load_journal(id, worktree, cx);
                         this.reload(id, cx);

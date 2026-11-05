@@ -8,7 +8,7 @@ use crate::sidebar::SectionKind;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
-const KINDS: [SectionKind; 6] = [SectionKind::Local, SectionKind::Remote, SectionKind::Worktrees, SectionKind::Stashes, SectionKind::Tags, SectionKind::Submodules];
+const KINDS: [SectionKind; 7] = [SectionKind::Gitflow, SectionKind::Local, SectionKind::Remote, SectionKind::Worktrees, SectionKind::Stashes, SectionKind::Tags, SectionKind::Submodules];
 
 fn file() -> Option<PathBuf> {
     if cfg!(test) {

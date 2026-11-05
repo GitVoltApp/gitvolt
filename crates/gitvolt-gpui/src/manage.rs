@@ -394,17 +394,6 @@ impl GitVolt {
         self.write(w, cx);
     }
 
-    /// `git submodule update --init` of one, or all; a network command, its feedback the op's.
-    pub fn update_submodule(&mut self, path: Option<String>, cx: &mut Context<Self>) {
-        let Some(ctx) = self.tabs.get(self.active).map(|t| t.write_target()) else { return };
-        let (repo, worktree, p) = (ctx.repo, ctx.worktree.clone(), path.clone());
-        let w = Write::new(&ctx, move |asked| call("submoduleUpdate", json!({ "repo": repo, "worktree": worktree, "path": p, "confirm": asked.discard }))).on_success(move |_, _, cx| {
-            toast::show(path.as_ref().map_or("Updated the submodules".to_string(), |p| format!("Updated {p}")), cx);
-        });
-        self.write(w, cx);
-    }
-
-    /// `branch`: what the worktree checks out, as the core's `WorktreeBranch`; `{ "kind": "new", "at" }` asks a name.
     /// Create worktree: the branch, a directory that follows it until it's edited, Browse…, and Open in a new tab.
     pub fn open_create_worktree(&mut self, branch: Value, window: &mut Window, cx: &mut Context<Self>) {
         const ID: &str = "create-worktree";

@@ -13,6 +13,7 @@ mod feedback;
 mod diff;
 mod format;
 mod find;
+mod gitflow;
 mod goto;
 mod graph;
 mod history;
@@ -20,6 +21,7 @@ mod inline;
 mod icons;
 mod irebase;
 mod layout;
+mod lfs;
 mod manage;
 mod menus;
 mod merge;
@@ -31,6 +33,8 @@ mod palette;
 mod refs;
 mod selection;
 mod sidebar;
+mod stacks;
+mod submodules;
 mod sync;
 mod table;
 mod theme;
@@ -157,6 +161,12 @@ fn main() {
                 v.load_layout();
                 v.load_drafts();
                 v.listen(cx);
+                cx.observe_window_activation(window, |this, window, cx| {
+                    if window.is_window_active() {
+                        this.lfs_on_focus(cx);
+                    }
+                })
+                .detach();
                 match path.clone() {
                     Some(path) => v.open(path, cx),
                     None => {

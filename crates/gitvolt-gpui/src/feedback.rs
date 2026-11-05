@@ -450,6 +450,7 @@ fn link(id: &'static str, label: impl Into<SharedString>, cx: &mut Context<GitVo
 /// The middle of the status bar: the queue's chip, then the one thing it says.
 pub fn status_items(v: &GitVolt, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
     let mut out: Vec<AnyElement> = Vec::new();
+    out.extend(crate::lfs::lfs_notice(v, cx));
     let tab = v.tabs.get(v.active);
     let repo = tab.map(|t| t.id);
     if let Some(repo) = repo

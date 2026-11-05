@@ -109,6 +109,7 @@ impl GitVolt {
         let mut sync = Vec::new();
         if let Some(b) = &local_b {
             sync.extend(crate::sync::sync_rows(self, b, this));
+            sync.extend(self.push_stack_row(&b.name, this));
             let (weak, c, name) = (this.clone(), ctx.clone(), b.name.clone());
             sync.push(MenuRow::action("branch.setUpstream", "Set upstream", "arrow-up-right", format!("Choose the remote branch {name} tracks"), move |_, cx| {
                 let (c, name) = (c.clone(), name.clone());
@@ -140,6 +141,10 @@ impl GitVolt {
             let checked_out = local_b.as_ref().is_some_and(|l| l.checked_out.is_some());
             integrate = crate::refs::integrate_rows(&sha, b, checked_out, graph, &env, this, &ctx);
             integrate.extend(self.rebase_onto_rows(&sha, b, None, this));
+            if b.local {
+                integrate.extend(self.rebase_stack_row(&b.name, this));
+                integrate.extend(self.gitflow_finish_row(&b.name, this));
+            }
         }
 
         let mut branch_rows = Vec::new();
@@ -617,8 +622,9 @@ impl GitVolt {
                 e.update(cx, |v, cx| v.open_change_history(f, true, cx)).ok();
             }),
         ];
-        let lfs = ext.map_or(Vec::new(), |e| vec![MenuRow::pending("file.lfsTrack", format!("Track *.{e} with LFS"), "file-plus")]);
-        grouped(vec![stage, restore, colour, copy, vec![open], view, history, lfs, vec![create_file_row(file_section(file), None, this)]])
+        let lfs = self.lfs_rows(file, this);
+        let submodule = self.file_submodule_rows(file, this);
+        grouped(vec![stage, restore, submodule, colour, copy, vec![open], view, history, lfs, vec![create_file_row(file_section(file), None, this)]])
     }
 
     /// A folder of the file list.

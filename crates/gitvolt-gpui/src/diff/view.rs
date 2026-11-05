@@ -98,6 +98,8 @@ pub enum Notice {
     TooLarge,
     /// File History: the row's commit deleted the file.
     Deleted,
+    /// An LFS file that isn't downloaded: its sides.
+    Lfs(Vec<crate::lfs::LfsSide>),
 }
 
 pub enum Binary {
@@ -179,6 +181,10 @@ pub struct DiffState {
     pub mode: Mode,
     pub ignore_whitespace: bool,
     pub notice: Option<Notice>,
+    /// An LFS file's Show pointer, and its Download running.
+    pub lfs_pointer: bool,
+    pub lfs_busy: bool,
+    pub lfs_no_git: bool,
     pub data: Option<Arc<DiffData>>,
     pub highlight: Arc<Highlight>,
     /// The first colours arrived, or there are none to come.
@@ -249,6 +255,9 @@ impl DiffState {
     pub fn new(file: FileChange) -> Self {
         Self {
             file,
+            lfs_pointer: false,
+            lfs_busy: false,
+            lfs_no_git: false,
             view: ViewKind::Diff,
             mode: Mode::Inline,
             ignore_whitespace: false,
@@ -717,6 +726,7 @@ impl GitVolt {
         cx.spawn(async move |this, cx| {
             let result = read.await;
             this.update(cx, |this, cx| {
+                let no_git = this.lfs.status.get(&repo).is_some_and(|s| s.version.is_none());
                 let Some(diff) = this.tabs.iter_mut().find(|t| t.id == repo).and_then(|t| t.diff.as_mut()).filter(|d| d.generation == generation) else { return };
                 let (result, hunks, editable) = match result {
                     Ok(Ok((read, hunks, editable))) => (Ok(Ok(read)), hunks, editable),
@@ -757,7 +767,10 @@ impl GitVolt {
                             this.color(repo, generation, data, texts, stop, cx);
                         }
                     }
-                    Ok(Ok(Read::Notice(n))) => diff.notice = Some(n),
+                    Ok(Ok(Read::Notice(n))) => {
+                        diff.notice = Some(n);
+                        diff.lfs_no_git = no_git;
+                    }
                     Ok(Err(e)) => diff.notice = Some(Notice::Failed(e.message.into())),
                     Err(e) => diff.notice = Some(Notice::Failed(e.to_string().into())),
                 }
@@ -953,6 +966,10 @@ fn wants_hex(v: &Value, history_file: bool) -> bool {
 fn contents(path: &str, v: &Value, ignore_whitespace: bool, history_file: bool, svg: &SvgRenderer) -> Read {
     if v["tooLarge"].as_bool() == Some(true) {
         return Read::Notice(Notice::TooLarge);
+    }
+    let missing = crate::lfs::lfs_missing(v);
+    if !missing.is_empty() {
+        return Read::Notice(Notice::Lfs(missing));
     }
     let binary = |s: &Value| s["binary"].as_bool() == Some(true);
     if v["image"].as_bool() == Some(true) && (binary(&v["old"]) || binary(&v["new"])) {
@@ -1681,6 +1698,7 @@ fn message(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
                 .child("Load anyway"),
         ),
         Some(Notice::Deleted) => base.child(format!("{} was deleted in this commit", diff.file.path)),
+        Some(Notice::Lfs(_)) => base,
         _ => base,
     }
 }
@@ -1908,6 +1926,9 @@ pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, undo: Option
 
 /// What's under the toolbar, in an editor `width` px wide.
 pub fn diff_body(diff: &DiffState, width: f32, zoom_input: &Entity<crate::ui::input::TextInput>, cx: &mut Context<GitVolt>) -> AnyElement {
+    if let Some(Notice::Lfs(missing)) = &diff.notice {
+        return crate::lfs::lfs_placeholder(missing, diff.lfs_pointer, diff.lfs_busy, diff.lfs_no_git, cx);
+    }
     let file = diff.view == ViewKind::File;
     if let Some(image) = &diff.image {
         let source = match (image.source_on, image.svg, &diff.hex) {

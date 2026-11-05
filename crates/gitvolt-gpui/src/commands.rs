@@ -146,6 +146,14 @@ fn has_tab(v: &GitVolt, _: &App) -> bool {
     !v.tabs.is_empty()
 }
 
+fn lfs_ready(v: &GitVolt, _: &App) -> bool {
+    v.tabs.get(v.active).and_then(|t| v.lfs.status.get(&t.id)).is_some_and(|s| s.used && s.version.is_some())
+}
+
+fn has_flow(v: &GitVolt, _: &App) -> bool {
+    v.tabs.get(v.active).is_some_and(|t| t.flow().is_some())
+}
+
 fn has_repo(v: &GitVolt, _: &App) -> bool {
     v.tabs.get(v.active).is_some_and(|t| !t.is_open_tab())
 }
@@ -256,7 +264,16 @@ pub fn all() -> Vec<Command> {
             v.pull(ctx, mode, None, crate::ui::arm::Origin::None, cx);
         }),
         Command::new("sync.push", "Push", Repository, "upload", "Push the current branch", &["Mod+Shift+K"]).yields().when(has_tab).run(|v, _, cx| v.push_head(crate::ui::arm::Origin::None, cx)),
-        Command::new("gitflow.init", "Set up git flow…", Repository, "workflow", "Choose git flow's branches and prefixes for this repository", &[]),
+        Command::new("gitflow.init", "Set up git flow…", Repository, "workflow", "Choose git flow's branches and prefixes for this repository", &[]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| !t.is_open_tab() && t.flow().is_none())).run(|v, window, cx| v.open_gitflow_settings(window, cx)),
+        Command::new("gitflow.settings", "Git flow settings…", Repository, "settings-2", "Change git flow's branches and prefixes for this repository", &[]).when(has_flow).run(|v, window, cx| v.open_gitflow_settings(window, cx)),
+        Command::new("gitflow.start.feature", "Start feature…", Repository, "sparkles", "Start a git flow feature from the development branch", &[]).when(has_flow).run(|v, window, cx| v.open_gitflow_start("feature", window, cx)),
+        Command::new("gitflow.start.release", "Start release…", Repository, "rocket", "Start a git flow release from the development branch", &[]).when(has_flow).run(|v, window, cx| v.open_gitflow_start("release", window, cx)),
+        Command::new("gitflow.start.hotfix", "Start hotfix…", Repository, "wrench", "Start a git flow hotfix from the production branch", &[]).when(has_flow).run(|v, window, cx| v.open_gitflow_start("hotfix", window, cx)),
+        Command::new("gitflow.finish", "Finish the checked-out git flow branch…", Repository, "circle-check-big", "Finish the feature, release or hotfix that's checked out", &[]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.head_flow_branch().is_some())).run(|v, window, cx| {
+            if let Some(b) = v.tabs.get(v.active).and_then(crate::app::Tab::head_flow_branch) {
+                v.open_gitflow_finish(b, window, cx);
+            }
+        }),
         Command::new("irebase.moveUp", "Move the selected commits up", Repository, "arrow-up", "Move the rebase plan's selected rows up a place", &["Mod+Up"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some())).hidden().run(|v, _, cx| v.with_rebase(cx, |s, _| s.edit(|st| crate::irebase::model::move_selected(st, false)))),
         Command::new("irebase.moveDown", "Move the selected commits down", Repository, "arrow-down", "Move the rebase plan's selected rows down a place", &["Mod+Down"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some())).hidden().run(|v, _, cx| v.with_rebase(cx, |s, _| s.edit(|st| crate::irebase::model::move_selected(st, true)))),
         Command::new("irebase.start", "Start the interactive rebase", Repository, "list-ordered", "Run the plan in the rebase editor", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.rebase_shown()).is_some_and(|s| crate::irebase::model::problems(&s.state, &crate::irebase::model::grouping(&s.state.rows)).is_empty())).run(|v, _, cx| v.start_rebase(crate::ui::arm::Origin::control("rebase-start"), cx)),
@@ -265,8 +282,13 @@ pub fn all() -> Vec<Command> {
         Command::new("merge.takeIncoming", "Take all from Incoming", Repository, "arrow-right-to-line", "In the merge tool: every conflict's lines from the incoming side", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.merge_shown()).is_some_and(|m| m.textual())).run(|v, _, cx| v.merge_take_all(crate::merge::model::Side::Incoming, cx)),
         Command::new("repo.interactiveRebase", "Interactive rebase…", Repository, "list-ordered", "Reorder, reword, squash or drop the current branch's commits on its upstream", &[]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_head().is_some() || t.rebase_op().is_some())).run(|v, _, cx| v.palette_rebase(cx)),
         Command::new("file.create", "Create file…", Repository, "file-plus", "Create a new, empty file in the working tree (you can undo this)", &[]).when(has_repo).run(|v, window, cx| v.open_create_file(window, cx)),
+        Command::new("lfs.pull", "LFS: Pull", Repository, "cloud-download", "Download the Git LFS files of the checked-out commit and put them in the working tree (git lfs pull)", &[]).when(lfs_ready).run(|v, _, cx| v.lfs_transfer(true, cx)),
+        Command::new("lfs.fetch", "LFS: Fetch", Repository, "download", "Download the Git LFS files of the checked-out commit, leaving the working tree as it is (git lfs fetch)", &[]).when(lfs_ready).run(|v, _, cx| v.lfs_transfer(false, cx)),
         Command::new("remote.add", "Add remote…", Repository, "plus", "Add a remote by URL, or one of the project's forks", &[]).when(has_repo).run(|v, window, cx| v.open_add_remote(window, cx)),
-        Command::new("submodule.add", "Submodules: Add…", Repository, "boxes", "Clone a repository into this one as a submodule (git submodule add)", &[]),
+        Command::new("submodule.update", "Submodules: Update", Repository, "folder-sync", "Check out each submodule at its recorded commit, cloning any not initialised yet (git submodule update --init --recursive)", &["Mod+Alt+B"]).when(|v, _| v.uses_submodules()).run(|v, _, cx| v.palette_submodule_update(cx)),
+        Command::new("submodule.sync", "Submodules: Sync URLs", Repository, "link-2", "Copy the submodules' URLs from .gitmodules into the config (git submodule sync --recursive)", &[]).when(|v, _| v.uses_submodules()).run(|v, _, cx| v.palette_submodule_sync(cx)),
+        Command::new("submodule.open", "Submodules: Open in a tab…", Repository, "boxes", "Choose a submodule to open as a repository tab", &["Mod+Alt+O"]).when(|v, _| v.uses_submodules()).run(|v, _, cx| v.palette_submodule_open(cx)),
+        Command::new("submodule.add", "Submodules: Add…", Repository, "plus", "Clone a repository into this one as a submodule (git submodule add)", &[]).when(has_repo).run(|v, window, cx| v.open_add_submodule(window, cx)),
         Command::new("file.save", "Save", File, "save", "Save the working copy being edited", &["Mod+S"]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.merge_shown().is_some_and(|m| m.textual() && m.base.is_some()) || t.diff.as_ref().is_some_and(|d| d.edit.is_some()))).hidden().run(|v, _, cx| {
             if v.tabs.get(v.active).and_then(|t| t.merge_shown()).is_some() {
                 v.merge_save(false, cx);

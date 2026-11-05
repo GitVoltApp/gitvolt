@@ -39,6 +39,7 @@ pub fn row_indent(depth: u8) -> f32 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SectionKind {
+    Gitflow,
     Local,
     Remote,
     Worktrees,
@@ -50,6 +51,7 @@ pub enum SectionKind {
 impl SectionKind {
     pub fn key(self) -> &'static str {
         match self {
+            SectionKind::Gitflow => "gitflow",
             SectionKind::Local => "local",
             SectionKind::Remote => "remote",
             SectionKind::Worktrees => "worktrees",
@@ -62,6 +64,7 @@ impl SectionKind {
     pub fn label(self) -> &'static str {
         match self {
             SectionKind::Local => "Local",
+            SectionKind::Gitflow => "Git Flow",
             SectionKind::Remote => "Remote",
             SectionKind::Worktrees => "Worktrees",
             SectionKind::Stashes => "Stashes",
@@ -73,6 +76,7 @@ impl SectionKind {
     pub fn icon(self) -> &'static str {
         match self {
             SectionKind::Local => "laptop",
+            SectionKind::Gitflow => "workflow",
             SectionKind::Remote => "cloud",
             SectionKind::Worktrees => "tree-pine",
             SectionKind::Stashes => "archive",
@@ -82,11 +86,11 @@ impl SectionKind {
     }
 
     fn nests(self) -> bool {
-        matches!(self, SectionKind::Local | SectionKind::Remote | SectionKind::Tags)
+        matches!(self, SectionKind::Gitflow | SectionKind::Local | SectionKind::Remote | SectionKind::Tags)
     }
 
     fn empty(self) -> &'static str {
-        "Nothing here"
+        if self == SectionKind::Gitflow { "No feature, release or hotfix branches" } else { "Nothing here" }
     }
 }
 
@@ -197,13 +201,21 @@ pub fn sections_of(v: &Value, worktree: &str) -> Vec<Section> {
             kind: ItemKind::Submodule { url: opt(m, "url"), recorded: text(m, "recorded"), head: opt(m, "head"), branch: opt(m, "branch"), status: text(m, "status"), real_name: text(m, "name") },
         })
         .collect();
-    let mut out = vec![
+    let flow = crate::gitflow::Flow::of(&v["gitflow"]);
+    let locals: Vec<SideItem> = locals;
+    let flow_section = flow.map(|f| Section {
+        kind: SectionKind::Gitflow,
+        // Keyed apart from the Local panel's rows of the same branches.
+        items: locals.iter().filter(|b| f.classify(&b.name).is_some()).map(|b| SideItem { key: format!("gitflow:{}", b.key), ..b.clone() }).collect(),
+    });
+    let mut out: Vec<Section> = flow_section.into_iter().collect();
+    out.extend([
         Section { kind: SectionKind::Local, items: locals },
         Section { kind: SectionKind::Remote, items: remotes },
         Section { kind: SectionKind::Worktrees, items: worktrees },
         Section { kind: SectionKind::Stashes, items: stashes },
         Section { kind: SectionKind::Tags, items: tags },
-    ];
+    ]);
     if !subs.is_empty() {
         out.push(Section { kind: SectionKind::Submodules, items: subs });
     }
@@ -616,6 +628,7 @@ impl GitVolt {
                 let branch = full.trim_start_matches(&format!("refs/remotes/{remote}/")).to_string();
                 self.checkout_remote(remote, &branch, item.target.as_deref().unwrap_or_default(), cx);
             }
+            ItemKind::Submodule { status, .. } => self.activate_submodule(item.name.clone(), status, cx),
             _ => {}
         }
     }
@@ -653,13 +666,7 @@ impl GitVolt {
             ItemKind::Worktree { path, branch, head, .. } => self.worktree_rows(path, branch.as_deref(), head.as_deref(), this),
             ItemKind::Stash { message, .. } => self.stash_rows(item.target.as_deref().unwrap_or_default(), message, this),
             ItemKind::Tag { .. } => self.tag_rows(&item.name, item.target.as_deref(), true, this),
-            ItemKind::Submodule { .. } => vec![menu::MenuRow::pending("sidebar.submodule.open", "Open in a tab", "square-plus"), {
-                let (weak, p) = (this.clone(), item.name.clone());
-                menu::MenuRow::action("sidebar.submodule.update", "Update this submodule", "folder-sync", "git submodule update --init of this one", move |_, cx| {
-                    let p = p.clone();
-                    weak.update(cx, |v, cx| v.update_submodule(Some(p), cx)).ok();
-                })
-            }],
+            ItemKind::Submodule { status, .. } => self.sidebar_submodule_rows(&item.name, status, this),
         }
     }
 
@@ -845,12 +852,21 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                     .child(div().flex_1().truncate().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(kind.label().to_uppercase()))
                     .child(div().text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(theme::count_blue()).child(panel.matched.to_string())),
             )
-            .when(matches!(kind, SectionKind::Remote | SectionKind::Worktrees), |d| {
-                let (glyph, label) = if kind == SectionKind::Remote { ("plus", "Add remote…") } else { ("folder-plus", "Add worktree…") };
+            .when(matches!(kind, SectionKind::Remote | SectionKind::Worktrees | SectionKind::Gitflow | SectionKind::Submodules), |d| {
+                let (glyph, label) = match kind {
+                    SectionKind::Remote => ("plus", "Add remote…"),
+                    SectionKind::Gitflow => ("plus", "Start a feature, release or hotfix"),
+                    SectionKind::Submodules => ("plus", "Add submodule"),
+                    _ => ("folder-plus", "Add worktree…"),
+                };
                 d.child(tip(label, div().id(("side-add", kind as usize)).flex().flex_none().size(px(18.)).items_center().justify_center().rounded(px(3.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(cx.listener(move |this, _, window, cx| {
                     cx.stop_propagation();
                     if kind == SectionKind::Remote {
                         this.open_add_remote(window, cx);
+                    } else if kind == SectionKind::Gitflow {
+                        this.open_gitflow_start("feature", window, cx);
+                    } else if kind == SectionKind::Submodules {
+                        this.open_add_submodule(window, cx);
                     } else {
                         let at = this.tabs.get(this.active).and_then(Tab::head_sha).unwrap_or_default();
                         this.open_create_worktree(serde_json::json!({ "kind": "new", "name": "", "at": at }), window, cx);
@@ -1104,7 +1120,7 @@ fn hover_card(item: &SideItem, push: &PushCache, this: &WeakEntity<GitVolt>, cx:
             .when(real_name != &item.name, |d| d.child(meta(format!("Name: {real_name}"))))
             .child(meta(format!("Recorded: {}", short(recorded))))
             .when_some(head.clone(), |d, h| d.child(meta(format!("Checked out: {}{}", branch.as_ref().map_or(String::new(), |b| format!("{b} at ")), short(&h)))))
-            .child(meta(status.clone())),
+            .child(meta(crate::submodules::card_state(status).to_string())),
         ItemKind::Tag { message, tagger, .. } => {
             let sha = item.target.as_deref().unwrap_or_default();
             let line = match (message, tagger) {

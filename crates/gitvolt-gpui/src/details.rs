@@ -1042,6 +1042,7 @@ pub fn file_list(id: &'static str, view: ListView, handle: &UniformListScrollHan
                                 .child(if unchanged { div().flex_none().size(px(14.)).into_any_element() } else { icon(glyph, 14., color).into_any_element() })
                                 .when(!dir.is_empty(), |d| d.child(div().flex().flex_none().max_w(relative(0.6)).overflow_hidden().text_color(theme::text_secondary()).children(marked(dir, &query)).child("/")))
                                 .child(div().flex().flex_1().min_w_0().overflow_hidden().when(unchanged && !on, |d| d.text_color(theme::text_secondary())).children(marked(name, &query)))
+                                .children(this.lfs_mark(&change.path, cx).map(crate::lfs::lfs_mark_element))
                                 .when_some(change.conflict.as_deref().map(crate::wip::conflict_label), |d, label| d.child(div().flex_none().ml_auto().text_size(px(11.)).text_color(theme::status_conflicted()).child(label)))
                                 .when(!unchanged && actions.is_none() && change.conflict.is_none(), |d| {
                                     d.child(
