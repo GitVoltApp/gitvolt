@@ -2,6 +2,7 @@
 //! (`ui/src/diff/{DiffPanel,DiffToolbar,options}`). Each row is shaped and painted when it's on
 //! screen; GPUI keeps what it shaped from frame to frame.
 
+use super::hex::{HexData, HexView, choose_per, hex_body};
 use super::language::highlight_language;
 use super::model::*;
 use super::textmate::{FONT_BOLD, FONT_ITALIC, FONT_UNDERLINE, Span, Tokenizer};
@@ -34,7 +35,7 @@ const HIDDEN_H: f32 = 24.;
 const MINIMAP_LINE: f32 = 2.;
 const MINIMAP_MAX: f32 = 120.;
 const SCROLLBAR_W: f32 = 10.;
-const RULER_W: f32 = 30.;
+pub const RULER_W: f32 = 30.;
 /// A split's left pane has more margin before its text than the right one (Monaco's).
 const SPLIT_LEFT_MARGIN: f32 = 18.;
 pub const HEADER_H: f32 = 37.;
@@ -94,10 +95,13 @@ pub enum Notice {
     Loading,
     Failed(SharedString),
     TooLarge,
-    Binary,
     Image,
     /// File History: the row's commit deleted the file.
     Deleted,
+}
+
+pub enum Binary {
+    Hex(Arc<HexData>),
 }
 
 /// A position in the text: a row, and a byte of what it shows on `new` (or the old side).
@@ -203,6 +207,8 @@ pub struct DiffState {
     pub generation: u64,
     /// File History's File: an image shows as hex there, as any binary.
     pub history_file: bool,
+    /// A binary's hex view.
+    pub hex: Option<HexView>,
     /// Coming back from File History: the same file, where it was.
     restored: bool,
 }
@@ -245,6 +251,7 @@ impl DiffState {
             body: Rc::new(Cell::new(Bounds::default())),
             generation: 0,
             history_file: false,
+            hex: None,
             restored: false,
         }
     }
@@ -272,10 +279,15 @@ impl DiffState {
 
     /// A binary is shown, not lines: it has no blame.
     pub fn shows_binary(&self) -> bool {
-        matches!(self.notice, Some(Notice::Binary | Notice::Image))
+        self.hex.is_some() || matches!(self.notice, Some(Notice::Image))
     }
 
     pub fn relayout(&mut self) {
+        if self.hex.is_some() {
+            // `ensure_layout` lays it out anew, for this view's sides.
+            self.layout = Rc::new(Layout { width: -1., ..Layout::default() });
+            return;
+        }
         let Some(data) = &self.data else { return };
         let rows = match self.view {
             ViewKind::File => {
@@ -309,7 +321,14 @@ impl DiffState {
     /// Lays the rows out for a body `width` by `height` px, when any of that changed.
     pub fn ensure_layout(&mut self, width: f32, height: f32) {
         let same = self.layout.width == width && self.layout.height == height && self.layout.wrap == self.wrap;
-        if same || self.data.is_none() {
+        if same {
+            return;
+        }
+        if self.hex.is_some() {
+            self.layout_hex(width, height);
+            return;
+        }
+        if self.data.is_none() {
             return;
         }
         let Some(data) = self.data.clone() else { return };
@@ -353,6 +372,27 @@ impl DiffState {
         self.scroll = self.scroll.clamp(0., self.layout.max_scroll());
     }
 
+    /// 16 or 8 bytes a row by the room there is, the same byte staying at the top. A new file opens at
+    /// its top, or with its first change in view when that's further down.
+    fn layout_hex(&mut self, width: f32, height: f32) {
+        let file = self.view == ViewKind::File;
+        let Some(hex) = self.hex.as_mut() else { return };
+        let top_byte = (self.scroll / LINE_H) * hex.per as f32;
+        let fresh = self.layout.offsets.is_empty() && self.reveal_first;
+        hex.per = choose_per(hex.data.sides(file).len(), width + RULER_W);
+        hex.blocks = Rc::new(if file { Vec::new() } else { super::hex::changed_rows(&hex.data.runs, hex.per) });
+        self.changes = hex.blocks.iter().map(|b| b.0).collect();
+        let rows = hex.rows(file);
+        let offsets = (0..=rows).map(|r| r as f32 * LINE_H).collect();
+        self.scroll = top_byte / hex.per as f32 * LINE_H;
+        self.layout = Rc::new(Layout { width, height, wrap: self.wrap, offsets, ..Layout::default() });
+        if fresh {
+            self.reveal_first = false;
+            self.scroll = self.changes.first().filter(|first| (**first + 1) as f32 * LINE_H > height).map_or(0., |first| super::hex::top_of(*first));
+        }
+        self.scroll = self.scroll.clamp(0., self.layout.max_scroll());
+    }
+
     /// As Monaco's `revealLineInCenter`.
     pub fn center_on(&mut self, row: usize) {
         let y = self.layout.offsets.get(row).copied().unwrap_or(0.);
@@ -361,6 +401,14 @@ impl DiffState {
 
     pub fn scroll_by(&mut self, px: f32) {
         self.scroll = (self.scroll + px).clamp(0., self.layout.max_scroll());
+    }
+
+    pub fn set_hex(&mut self, data: Arc<HexData>) {
+        self.hex = Some(HexView::new(data));
+        self.notice = None;
+        self.reveal_first = !std::mem::take(&mut self.restored);
+        self.scroll = if self.reveal_first { 0. } else { self.scroll };
+        self.layout = Rc::new(Layout { width: -1., ..Layout::default() });
     }
 
     pub fn set_data(&mut self, data: Arc<DiffData>) {
@@ -457,15 +505,28 @@ impl GitVolt {
         }
         let Some(tab) = self.tabs.get(self.active) else { return };
         let Some(diff) = &tab.diff else { return };
-        let (repo, generation, ignore) = (tab.id, diff.generation, diff.ignore_whitespace);
+        let (repo, generation, ignore, history_file) = (tab.id, diff.generation, diff.ignore_whitespace, diff.history_file);
         let file = diff.file.clone();
         let api = self.api.clone();
         let read = self.rt.spawn(async move {
             let (old, new) = (serde_json::from_value(file.old.clone()), serde_json::from_value(file.new.clone()));
             let (Ok(old), Ok(new)) = (old, new) else { return Err(GbError::other("This file's sides can't be read")) };
+            let (old_side, new_side) = (file.old.clone(), file.new.clone());
             let v = api.dispatch(Request::DiffContents { repo, path: file.path.to_string(), old, new, force, old_path: file.old_path.clone() }).await?;
             let path = file.path.to_string();
-            tokio::task::spawn_blocking(move || contents(&path, &v, ignore)).await.map_err(|e| GbError::other(e.to_string()))
+            // A binary's dumps load with its contents, so it's ready to show as a text file is.
+            let hex = if wants_hex(&v, history_file) {
+                let (Ok(old), Ok(new)) = (serde_json::from_value(old_side), serde_json::from_value(new_side)) else { return Err(GbError::other("This file's sides can't be read")) };
+                Some(api.dispatch(Request::HexDump { repo, path: path.clone(), old, new }).await?)
+            } else {
+                None
+            };
+            tokio::task::spawn_blocking(move || match hex {
+                Some(hex) => Read::Binary(Binary::Hex(Arc::new(HexData::of(&hex)))),
+                None => contents(&path, &v, ignore),
+            })
+            .await
+            .map_err(|e| GbError::other(e.to_string()))
         });
         cx.spawn(async move |this, cx| {
             let result = read.await;
@@ -480,6 +541,7 @@ impl GitVolt {
                         let stop = diff.stop_colours.clone();
                         this.color(repo, generation, data, texts, stop, cx);
                     }
+                    Ok(Ok(Read::Binary(Binary::Hex(data)))) => diff.set_hex(data),
                     Ok(Ok(Read::Notice(n))) => diff.notice = Some(n),
                     Ok(Err(e)) => diff.notice = Some(Notice::Failed(e.message.into())),
                     Err(e) => diff.notice = Some(Notice::Failed(e.to_string().into())),
@@ -553,6 +615,13 @@ impl GitVolt {
 
     pub fn step_change(&mut self, forward: bool, cx: &mut Context<Self>) {
         self.with_diff(cx, |d| {
+            if let Some(hex) = &d.hex {
+                if let Some(row) = super::hex::step(hex, d.cursor, forward) {
+                    d.cursor = row;
+                    d.scroll = super::hex::top_of(row).clamp(0., d.layout.max_scroll());
+                }
+                return;
+            }
             if let Some(row) = d.step_change(forward, d.layout.row_at(d.scroll + d.layout.height / 2.)) {
                 d.center_on(row);
                 d.cursor = row;
@@ -593,7 +662,16 @@ struct Texts {
 
 enum Read {
     Text(Arc<DiffData>, Texts),
+    Binary(Binary),
     Notice(Notice),
+}
+
+/// A binary that isn't shown as an image: its hex dump. An image too, in File History's File. Media
+/// and PDFs, which this build can't show yet, fall here as well.
+fn wants_hex(v: &Value, history_file: bool) -> bool {
+    let binary = |s: &Value| s["binary"].as_bool() == Some(true);
+    let any = binary(&v["old"]) || binary(&v["new"]);
+    any && v["tooLarge"].as_bool() != Some(true) && (v["image"].as_bool() != Some(true) || history_file)
 }
 
 fn contents(path: &str, v: &Value, ignore_whitespace: bool) -> Read {
@@ -603,17 +681,13 @@ fn contents(path: &str, v: &Value, ignore_whitespace: bool) -> Read {
     if v["image"].as_bool() == Some(true) {
         return Read::Notice(Notice::Image);
     }
-    let binary = |s: &Value| s["binary"].as_bool() == Some(true);
-    if binary(&v["old"]) || binary(&v["new"]) {
-        return Read::Notice(Notice::Binary);
-    }
     let (old, new) = (blob_text(&v["old"]), blob_text(&v["new"]));
     let encoding = v["new"]["encoding"].as_str().or(v["old"]["encoding"].as_str()).unwrap_or_default().to_string();
     let data = DiffData::build(old.as_deref(), new.as_deref(), ignore_whitespace, encoding.into(), v["eolOnly"].as_bool() == Some(true));
     Read::Text(Arc::new(data), Texts { path: path.to_string(), old, new })
 }
 
-fn mono() -> Font {
+pub fn mono() -> Font {
     Font { family: FONT.into(), features: FontFeatures::disable_ligatures(), fallbacks: Some(FontFallbacks::from_fonts(vec!["Noto Sans Mono".into(), "monospace".into()])), weight: FontWeight::NORMAL, style: FontStyle::Normal }
 }
 
@@ -1081,7 +1155,7 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
 }
 
 /// Dragging or pressing a strip scrolls by where the pointer is along it.
-fn strip_events(el: Stateful<Div>, cell: Rc<Cell<Bounds<Pixels>>>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
+pub fn strip_events(el: Stateful<Div>, cell: Rc<Cell<Bounds<Pixels>>>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
     let jump = |this: &mut GitVolt, y: Pixels, b: Bounds<Pixels>, cx: &mut Context<GitVolt>| {
         this.with_diff(cx, |d| {
             let share = ((y - b.origin.y) / b.size.height).clamp(0., 1.);
@@ -1235,7 +1309,6 @@ fn message(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
                 .child("Load anyway"),
         ),
         Some(Notice::Deleted) => base.child(format!("{} was deleted in this commit", diff.file.path)),
-        Some(Notice::Binary) => base.child("Binary file"),
         Some(Notice::Image) => base.child("Image preview isn't in this build yet"),
         _ => base,
     }
@@ -1249,6 +1322,8 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
     };
     let (glyph, color) = status_icon(diff.file.status);
     let encoding = diff.data.as_ref().map(|d| d.encoding.clone()).unwrap_or_default();
+    let file = diff.view == ViewKind::File;
+    let binary = diff.hex.as_ref().map(|h| (h.data.summary(file), h.data.capped_note(file)));
     div()
         .flex()
         .flex_none()
@@ -1263,6 +1338,16 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
         .child(icon(glyph, 14., color))
         .child(div().flex().flex_1().min_w_0().overflow_hidden().child(div().flex_none().text_color(theme::text_normal()).child(dir)).child(div().flex_none().font_weight(FontWeight::BOLD).text_color(theme::text_selected()).child(name)))
         .child(div().flex_none().text_size(px(11.)).text_color(theme::text_secondary()).child(encoding))
+        .when_some(binary, |d, (sizes, capped)| {
+            let mut summary = div().flex().flex_none().items_center().gap(px(4.)).text_size(px(12.)).text_color(theme::text_secondary()).child("Binary ·");
+            for (i, size) in sizes.into_iter().enumerate() {
+                if i > 0 {
+                    summary = summary.child(icon("arrow-right", 12., theme::text_secondary()));
+                }
+                summary = summary.child(size);
+            }
+            d.child(summary).when_some(capped, |d, note| d.child(div().flex_none().text_size(px(12.)).text_color(theme::text_normal()).child(note)))
+        })
         .child(
             div()
                 .id("diff-close")
@@ -1295,8 +1380,9 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
             .into_any_element()
     };
     let mode_button = |id: &'static str, label: &'static str, mode: Mode, cx: &mut Context<GitVolt>| {
-        segment(id, label, diff.mode == mode, in_diff)
-            .when(in_diff, |d| {
+        let enabled = in_diff && diff.hex.is_none();
+        segment(id, label, diff.mode == mode, enabled)
+            .when(enabled, |d| {
                 d.on_click(cx.listener(move |this, _, _, cx| {
                     this.with_diff(cx, |d| {
                         d.mode = mode;
@@ -1323,6 +1409,7 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
     // File View hides what never applies there; File History keeps it in place, off.
     let diff_tools = in_diff || !panel;
     let binary = diff.shows_binary();
+    let hex = diff.hex.is_some();
     div()
         .flex()
         .flex_none()
@@ -1363,13 +1450,15 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                     div()
                         .flex()
                         .gap(px(2.))
-                        .when(diff_tools, |d| d.child(icon_button("ignore-ws", "pilcrow", diff.ignore_whitespace, in_diff).when(in_diff, |d| d.on_click(cx.listener(|this, _, _, cx| this.toggle_whitespace(cx))))))
-                        .child(icon_button("wrap", "text-wrap", diff.wrap, true).on_click(cx.listener(|this, _, _, cx| {
-                            this.with_diff(cx, |d| {
-                                d.wrap = !d.wrap;
-                                d.hscroll = 0.;
-                            });
-                        }))),
+                        .when(diff_tools, |d| d.child(icon_button("ignore-ws", "pilcrow", diff.ignore_whitespace, in_diff && !hex).when(in_diff && !hex, |d| d.on_click(cx.listener(|this, _, _, cx| this.toggle_whitespace(cx))))))
+                        .child(icon_button("wrap", "text-wrap", diff.wrap, !hex).when(!hex, |d| {
+                            d.on_click(cx.listener(|this, _, _, cx| {
+                                this.with_diff(cx, |d| {
+                                    d.wrap = !d.wrap;
+                                    d.hscroll = 0.;
+                                });
+                            }))
+                        })),
                 ),
         )
 }
@@ -1377,6 +1466,9 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
 /// The text's body in a panel `width` by `height` px: what `ensure_layout` lays out.
 pub fn body_size(diff: &DiffState, width: f32, height: f32) -> (f32, f32) {
     // `height`: what's under the panel's header.
+    if diff.hex.is_some() {
+        return (width - RULER_W, height - TOOLBAR_H);
+    }
     let right = match diff.view {
         ViewKind::File => minimap_width(width) + SCROLLBAR_W,
         ViewKind::Diff if diff.split() => RULER_W,
@@ -1397,6 +1489,9 @@ pub fn diff_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option<An
 
 /// What's under the toolbar, in an editor `width` px wide.
 pub fn diff_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElement {
+    if let Some(hex) = &diff.hex {
+        return hex_body(diff, hex, cx);
+    }
     let banner = diff.data.as_ref().is_some_and(|d| d.eol_only);
     let has_text = diff.data.is_some();
     let file_view = diff.view == ViewKind::File;
@@ -1556,14 +1651,39 @@ mod tests {
     }
 
     #[test]
+    fn a_hex_view_lays_out_by_width_and_opens_on_its_first_change_when_that_is_further_down() {
+        let bytes = |at: Option<usize>| serde_json::json!({ "size": 2048, "shown": 2048, "dump": (0..128).map(|r| format!("{:08x}  {}\n", r * 16, (0..16).map(|j| format!("{:02x}{}", if Some(r * 16 + j) == at { 1 } else { 0 }, if j == 7 { "  " } else { " " })).collect::<String>())).collect::<String>() });
+        let data = Arc::new(HexData::of(&serde_json::json!({ "old": bytes(None), "new": bytes(Some(1000)), "cap": 262_144 })));
+        let mut d = DiffState::new(change());
+        d.set_hex(data);
+        d.ensure_layout(1128., 600.);
+        let hex = d.hex.as_ref().unwrap();
+        assert_eq!((hex.per, hex.rows(false)), (8, 256), "too narrow for 16 a row beside each other");
+        assert_eq!(d.changes, [125]);
+        assert_eq!(d.scroll, 122. * LINE_H, "three rows above the change");
+        // Wider: the same byte stays at the top.
+        d.ensure_layout(1400., 600.);
+        assert_eq!(d.hex.as_ref().unwrap().per, 16);
+        assert_eq!(d.scroll, 61. * LINE_H);
+        // One side in File View, with nothing to step through.
+        d.view = ViewKind::File;
+        d.relayout();
+        d.ensure_layout(1400., 600.);
+        assert!(d.changes.is_empty());
+    }
+
+    #[test]
     fn what_a_sides_read_says_decides_what_shows() {
         let notice = |v: Value| match contents("a.rs", &v, false) {
             Read::Notice(n) => Some(n),
-            Read::Text(..) => None,
+            Read::Text(..) | Read::Binary(_) => None,
         };
         assert_eq!(notice(serde_json::json!({"tooLarge": true})), Some(Notice::TooLarge));
         assert_eq!(notice(serde_json::json!({"image": true})), Some(Notice::Image));
-        assert_eq!(notice(serde_json::json!({"new": {"binary": true}})), Some(Notice::Binary));
+        assert!(wants_hex(&serde_json::json!({"new": {"binary": true}}), false));
+        assert!(!wants_hex(&serde_json::json!({"new": {"binary": true}, "image": true}), false), "an image shows as one");
+        assert!(wants_hex(&serde_json::json!({"new": {"binary": true}, "image": true}), true), "but as hex in File History's File");
+        assert!(!wants_hex(&serde_json::json!({"new": {"binary": true}, "tooLarge": true}), false));
         assert_eq!(notice(serde_json::json!({"old": {"text": "a"}, "new": {"text": "b", "encoding": "UTF-8"}})), None);
     }
 }

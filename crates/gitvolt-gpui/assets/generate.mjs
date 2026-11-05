@@ -60,7 +60,7 @@ tables.forEach((t, i) => {
 writeFileSync(new URL('fonts/JetBrainsMono-Latin-400.ttf', out), Buffer.concat(parts));
 
 // Lucide (ISC), as the web UI's lucide-react draws them, and its own status glyphs (StatusIcon.tsx).
-const ICONS = ['archive', 'arrow-down', 'arrow-up', 'bell', 'check', 'chevron-down', 'chevron-left', 'chevron-right', 'chevrons-down-up', 'cloud', 'command', 'download', 'folder-open', 'folder-plus', 'git-branch', 'git-branch-plus', 'git-graph', 'house', 'laptop', 'list', 'list-tree', 'menu', 'minus', 'pilcrow', 'pin', 'redo-2', 'search', 'settings', 'shield-check', 'square', 'tag', 'tree-pine', 'undo-2', 'unfold-vertical', 'upload', 'text-wrap', 'x'];
+const ICONS = ['app-window', 'archive', 'arrow-down', 'arrow-right', 'arrow-up', 'file-code', 'globe', 'mouse-pointer-click', 'scaling', 'bell', 'check', 'chevron-down', 'chevron-left', 'chevron-right', 'chevrons-down-up', 'cloud', 'command', 'download', 'folder-open', 'folder-plus', 'git-branch', 'git-branch-plus', 'git-graph', 'house', 'laptop', 'list', 'list-tree', 'menu', 'minus', 'pilcrow', 'pin', 'redo-2', 'search', 'settings', 'shield-check', 'square', 'tag', 'tree-pine', 'undo-2', 'unfold-vertical', 'upload', 'text-wrap', 'x'];
 rmSync(new URL('icons/', out), { recursive: true, force: true });
 mkdirSync(new URL('icons/', out), { recursive: true });
 const svg = (box, width, body) => `<svg xmlns="http://www.w3.org/2000/svg" width="${box}" height="${box}" viewBox="0 0 ${box} ${box}" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${body}</svg>\n`;
