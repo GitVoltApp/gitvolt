@@ -102,11 +102,14 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   `merge` and `rebase` say what those tools hold, `settings` and `profile` what those hold, `zoom` the zoom. `GITVOLT_FAKE_UPDATE=<state>` shows the update pill in that state, asking no host. Their anchors: `merge-hunk:<side>:<n>`, `merge-line:<side>`, `merge-take-all-<side>`, `merge-save`,
   `merge-next`, `irow:<oid>`, `iaction:<oid>`, `ichip:<oid>:<branch>`, `ichip-add:<oid>`, `rebase-start`, `rebase-cancel`, `op-abort-at`, `op-continue-at`.
 
-- **Real input:** `tools/realinput.sh <repo> <script>` starts a nested, invisible KWin with its own Xwayland and runs the build in it
-  unscripted, so it starts as a user's does (`NATIVE=1`: on Wayland, the desktop's default). In the script, `tools/realinput.py` sends
-  a device's events through the compositor (`move`, `click`, `dclick`, `down`, `up`, `wheel`, `key Ctrl+p`, `type`, `wait`) and `tools/xshot.sh out.png`
-  takes the picture. It refuses to run without the nested socket, so it can't reach the desktop. `GITVOLT_SCRIPT` skips the single instance and more:
-  a flow that only ever ran scripted hasn't shown that the app starts.
+- **Real input:** `tools/realinput.sh <repo|-> <command...>` starts a nested, invisible KWin with its own Xwayland and runs the build in it
+  unscripted, so it starts as a user's does (`NATIVE=1`: on Wayland, the desktop's default; `LAYOUT=de`: that keyboard). The app there has no D-Bus, its own HOME and XDG folders,
+  a plain `sh` login shell and a `PATH` of an allowlist with `xdg-open` and the like faked (what they're asked goes in `$OPENED`), its working directory away from this repository, and `GITVOLT_TEST_FORGE=off` unless a flow sets it: a click can't reach the desktop or a real host.
+  `tools/realinput.py` sends a device's events through the compositor (`move`, `click`, `dclick`, `down`, `up`, `wheel`, `scroll`, `key Ctrl+p`, `raw 100+16` by evdev code, `hold`, `release`, `type`, `wait`), one device for a run; it refuses to run without the nested socket. `tools/wshot.py out.png [x y w h]` takes the picture, on Xwayland and on Wayland, by KWin's own call on the nested compositor's private bus.
+  `GITVOLT_DEBUG_PIPE=<fifo>` (off without it; `realinput.sh` sets it) makes the app answer a line on the fifo with what's on screen in `<fifo>.out`: `dump`, every anchor, a menu's and a picker's rows with where to press, the window, the cursor last asked for, the last input events, where a frame's time went.
+- **Flows:** `tools/flows/run.sh [name...]`, from the repository's root, runs the suite, each in a nested compositor of its own, on Wayland too where a flow says `# native: yes`; it stops on nothing and prints each flow's count. A flow is a shell script over `flows/lib.sh`: `up <repo>`, `clickon <anchor>`, `clickrow <summary>`, `pick <row>`, `pickv <row> <variant>`, `key`, `ri <realinput verbs>`, `q <python over d>`, `check`, `check_sh`, `until_q`, `shot name`, `finish` (fails on any panic in the log). `flows/session.sh` holds a compositor open, to find out a flow a command at a time. `flows/monkey.sh` is random input (`MONKEY_SEED`, `MONKEY_SECS`); give each run its own `REALINPUT_ROOT`. Under real input the fake device's wheel has no notch (`value120`): through Xwayland it's a notch by the numbers, on Wayland GPUI drops it, so a wheel on Wayland can't run here.
+  `GITVOLT_SCRIPT` skips the single instance and more: a flow that only ever ran scripted hasn't shown that the app starts.
+- **What's cached:** `main.rs`'s `Root` holds `GitVolt` as a cached view, as Zed caches a pane, with `ui::spin`'s layer over it. Everything that's a child of `GitVolt` still redraws it when it notifies. What turns goes through `ui::spin::spinner`, never GPUI's `with_animation`, which is a frame of the whole window at the display's rate; `spin::cover()`, the first child of what floats, hides what turns under it.
 
 ## Tests
 

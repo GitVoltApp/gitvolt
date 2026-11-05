@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# native: yes
 # Worktrees, checked out elsewhere, tab groups, profiles, and the Open screen's banner.
 source "$(dirname "$0")/lib.sh"
 clean_app

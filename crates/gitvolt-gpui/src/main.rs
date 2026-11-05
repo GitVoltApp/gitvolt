@@ -263,6 +263,8 @@ fn main() {
         let options = WindowOptions {
             window_bounds: Some(if saved_window.as_ref().is_some_and(|w| w.maximized) { WindowBounds::Maximized(bounds) } else { WindowBounds::Windowed(bounds) }),
             titlebar: None,
+            // `tauri.conf.json`'s.
+            window_min_size: Some(size(px(900.), px(500.))),
             window_decorations: Some(if system_title_bar { WindowDecorations::Server } else { WindowDecorations::Client }),
             app_id: Some("gitvolt-gpui".into()),
             // Measuring: a window behind another isn't throttled to GPUI's 24 Hz.

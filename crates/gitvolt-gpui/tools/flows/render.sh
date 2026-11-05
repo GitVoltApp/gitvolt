@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# native: yes
 # Rendered Markdown by mouse, diagrams, a live theme switch with a diff open, a details toggle, a <video> box.
 source "$(dirname "$0")/lib.sh"
 clean_app

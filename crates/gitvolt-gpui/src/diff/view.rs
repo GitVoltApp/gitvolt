@@ -1109,6 +1109,20 @@ impl GitVolt {
         }
     }
 
+    /// Linux's primary selection, as Chromium's page and Monaco's `selectionClipboard` keep it: what a press selected in a
+    /// diff, a merge editor or rendered Markdown. A field keeps its own (`ui::input`).
+    pub fn publish_selection(&mut self, cx: &mut Context<Self>) {
+        let text = if let Some(view) = self.shown_md() {
+            view.read(cx).state.borrow().selected_text()
+        } else {
+            self.merge_selected_text().or_else(|| self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).and_then(DiffState::selected_text))
+        };
+        if let Some(text) = text.filter(|t| !t.is_empty() && self.last_primary.as_ref() != Some(t)) {
+            cx.write_to_primary(ClipboardItem::new_string(text.clone()));
+            self.last_primary = Some(text);
+        }
+    }
+
     pub fn select_all(&mut self, cx: &mut Context<Self>) {
         if let Some(view) = self.shown_md() {
             view.update(cx, |v, cx| {

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# native: yes
 # Branches, tags, remotes and resets by their menus, with a real mouse; checked in the fixture's git state.
 source "$(dirname "$0")/lib.sh"
 clean_app

@@ -26,6 +26,7 @@ ri move 500 $((LY - 40)) -- wait 500 -- click -- wait 100
 ri hold Shift -- wait 30 -- move 500 $((LY + 60)) -- wait 40 -- click -- wait 30 -- release Shift -- wait 150
 check "many lines" "d['diff']['selected'] and d['diff']['selected'].count(chr(10)) >= 3"
 q "repr(d['diff']['selected'])[:120]"
+check "the selection is the primary one too" "d['primary'] and 'with some words' in d['primary']"
 echo "a selection, then Ctrl+C"
 key Control+c; pause 0.3
 check "copied" "d['clipboard'] and 'with some words' in d['clipboard']"
@@ -35,6 +36,11 @@ ri move $pos -- wait 40 -- click -- wait 100
 key Control+v; pause 0.3
 check "the summary has it" "'with some words' in d['summary']"
 shot select-paste
+echo "the middle button pastes the primary selection in a field"
+key Control+a; ri key Backspace; pause 0.2
+ri move $pos -- wait 40 -- click middle -- wait 300
+check "pasted" "'with some words' in d['summary']"
+key Control+a; ri key Backspace; pause 0.2
 echo "a drag past the text's bottom keeps scrolling while the pointer rests there, and out of the window too"
 S0=$(q "d['diff']['scroll']")
 ri move 400 860 -- wait 300 -- down -- wait 40 -- move 500 870 -- wait 40 -- move 500 895 -- wait 100

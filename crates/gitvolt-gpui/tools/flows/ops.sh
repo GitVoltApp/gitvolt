@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# native: yes
 # Stops by real input: a cherry-pick's and a revert's conflict through the merge tool; hiding with Alt+click and the hidden list.
 source "$(dirname "$0")/lib.sh"
 clean_app

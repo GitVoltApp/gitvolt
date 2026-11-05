@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# native: yes
 # Starts that aren't the usual one: the system title bar, git too old, the Open screen's banner, a minimized window's pause.
 source "$(dirname "$0")/lib.sh"
 clean_app
