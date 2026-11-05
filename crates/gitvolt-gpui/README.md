@@ -94,7 +94,7 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   `-` for no selection or no file); extend it as needed. Clicks and keys are checked in tests with GPUI's `TestAppContext` (see `app.rs`).
   `GITVOLT_SCRIPT=<file>` runs a flow a line at a time, each input through the window as the platform's would be:
   `click x y`, `rclick`, `dclick`, `move`, `press`, `drag`, `release`, `key ctrl-s`, `type text`, `wait ms`, `select row`,
-  `open index`, `cmd id`, `show <ui part>`, `mdscroll y`, `pdfscroll y`, `wheel x y`, `ctrlwheel x y`, `pickfolder <path>` (the next directory picker answers this; under a script no real dialog ever opens), `shot out.png`, `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>` (a menu's or a picker's),
+  `open index`, `cmd id`, `show <ui part>`, `mdscroll y`, `pdfscroll y`, `wheel x y`, `wheelup x y`, `ctrlwheel x y`, `goto <text>` (what a paste of it would go to; the clipboard stays alone), `pickfolder <path>` (the next directory picker answers this; under a script no real dialog ever opens), `shot out.png`, `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>` (a menu's or a picker's),
   `pickv <row>|<variant>`, `hover <row>`, `clickon`, `shiftclickon`, `ctrlclickon`, `rclickon`, `dclickon`, `presson`, `dragto`, `releaseon <end of an
   anchor's key>`, `clickrow`, `shiftclickrow`, `ctrlclickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
   under `target/bench/work/xdg`, no avatars, no global git config. Only ever on a throwaway repo under `target/bench/work/`.
@@ -115,3 +115,13 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 - The core's own tests stay in `gitvolt-core`. Eight of them fail on this machine, on `main` too (lfs,
   rebase signing, watch busy-inactive): not yours.
 - Idle costs nothing (`AGENTS.md`): no animation or timer that runs while nothing changes.
+
+## The forge
+
+Only ever the harness's fake forge, on 127.0.0.1, with its fictional seed and fake tokens: no fixture or run reaches a real host, or the real keyring.
+
+- `tools/forge-lab.sh start|stop|base|fixture|profile|account|requests|seed|reset`: the fake forge, fixtures whose origin is named by a forge URL but reads a local bare repository, and clean profiles. `stop` ends the exact pid it started.
+- `GITVOLT_TEST_FORGE=<base>` points this build's forge hosts at it, with tokens in a file in the data folder and links printed (`openUrl <url>`) rather than opened. `off`, or any scripted run, also keeps off the keyring. `tools/run.sh` sets it to `off` unless it's given.
+- `tools/forgeref.mjs <repo> <steps.mjs> <out-prefix>`: the reference: the web UI's e2e bundle in Playwright's Chromium, on the same harness, with the same host rules as the e2e.
+- `dump` has `forge`: kind, list, badges, the open MR/PR, its threads, a review, the Create flyout. Their anchors: `side:mr:<n>`, `mr-*`, `rv-*`, `create-*`, `stack-*`, `fork-add:<path>`, `toast-action:<label>`. A scripted window may never be the active one, so a menu doesn't close for that under a script.
+- `GITVOLT_XDG` must be absolute. A rewritten stack only pushes with a lease when its commits are the fixture's identity's: give the fixture the author's `user.email`.

@@ -126,17 +126,17 @@ Markdown (`src/md/`) is pulldown-cmark into a tree of its own, the web's plugins
 
 ## Not there yet
 
-By size of the work: the MR/PR views and review comments (the Markdown field and renderer they'll use are here, shown so far by a script's `show mdfield`), the Accounts page's content, accessibility roles, spell check, sticky scroll, and macOS and Windows checks. In the diff: moved-code detection and code lens.
+By size of the work: accessibility roles, spell check, sticky scroll, and macOS and Windows checks. In the diff: moved-code detection and code lens. In the forge: comments on a rendered Markdown diff's blocks, and a forge-hosted video in a body (`forgeVideo`, `forgeOpenVideo`).
 In the details panel: editing a commit's message (the pencil, `HeadMessageEditor`), and "vs 1st parent" on a merge.
 
-Everything above was run from the tests and from `GITVOLT_SCRIPT`, which sends events through the window as the
+The forge's flows ran by script against the harness's fake forge only (GitLab, GitHub, Forgejo), never a real one. Everything above was run from the tests and from `GITVOLT_SCRIPT`, which sends events through the window as the
 platform would (`README`). **None of it has had a real mouse or keyboard on it**, IME included.
 
 ## Differences from the web UI
 
 Known, in the area that's there:
 
-- **Writes, dialogs:** Add remote has no forks list: that's the forge layer's. Tab reaches a prompt's checkbox and buttons, but no select. An annotated tag's message box has no resize. A clone's progress bar is drawn, not Chromium's.
+- **Writes, dialogs:** Tab reaches a prompt's checkbox and buttons, but no select. An annotated tag's message box has no resize. A clone's progress bar is drawn, not Chromium's.
 - **Writes, questions:** a question from a write's own answer, when the menu row that began it has closed, is a
   popover (asking first, as a preview does, holds the row and arms it, as there). A linked worktree's tab moves to the main
   one rather than a twin closing. Undo's menu opens once its entries are read. Finish's and Start's radio buttons and Set up's fields are the app's, drawn alike.
@@ -164,6 +164,13 @@ Known, in the area that's there:
 - **Activity log:** Requests and Actions are plain lists, without the web UI's filters and copy-all; there's no performance overlay, and Open logs folder and debug logging have no log file to work on yet: this build writes none. Actions lists commands, not every menu row a view adds by itself.
 - **Rendered Markdown:** raw HTML goes through a small parser rather than Chromium's: no adoption agency, only text is fostered out of a table, about 110 named entities, a nesting limit of 100 (Chromium's is 512, and past it they both flatten). `rowspan` is ignored, `ruby` is inline, a picture's `align` doesn't float. Footnotes number across the whole file, where the web's chunks each start again, and no margin breaks at a chunk's end. A checkbox and the disclosure triangle are drawn alike, the focus ring is near; emoji and ↩ come from the system's fonts, a little different in their advances. Positions are within a pixel of Chromium's after a scroll (its scroll snapping), the pane's content 0.19 px off. Find doesn't look in rendered text. `<video>` in Markdown is a box that opens the page or Open in; the `@user` hover card and the flavour by forge come with the forge views. A selection across blocks is by the text's order.
 - **Markdown field:** no resize handle on the textarea; compared against the web's styles and markup injected into a CEF page, as a forge view needs a forge.
+- **The forge (`src/forge`):** every view here was compared with the web UI in Playwright's Chromium (the engine the e2e runs on, at the same viewport) on the e2e bundle against the fake forge, by `tools/forgeref.mjs`, not with the CEF build, which can't be pointed at one. Headless hides its scrollbars. Compared by image: Accounts (add, connected), the sidebar's section and badges, the MR/PR view on GitLab, Submit review and the cards, Add remote's forks, Create on GitHub. Not compared: Create stack MRs, the Stack panel, the reaction picker's search, GitHub's and Forgejo's MR/PR views (looked at, no reference beside them). None against a real forge.
+  - A running pipeline's icon stands still: a pipeline can run for an hour, and a turning icon redraws the window all that while. Something a click started (Merging, Refresh) still turns.
+  - Rendered bodies are `crate::md`'s, with its differences above. The text gutter of a commented diff is 98 px wide against Monaco's 116; a card is a block over a blank row of the scroller, not a Monaco zone. Comments on a rendered Markdown diff's blocks aren't here: its source view takes them.
+  - A suggestion's Apply is a row under the note, not in the suggestion's caption, and lines that moved since say so on the click, not by greying it first. In a pending comment's preview a suggestion shows only what it adds.
+  - Tab in a flyout and on review cards walks the controls in view by a ring, and Enter or Space presses the one it's on, instead of moving real focus; PageUp and PageDown scroll, so what's out of view is a page away. A flyout's scrollbar is a thumb that shows where you are; the wheel moves it, a drag doesn't.
+  - A people cap learned from a refusal (`learnLimit`) isn't kept for the session: the project's limits are read as on the web, and the refusal is the toast. Create's Template asking to replace edited text says so in a toast, and choosing it again replaces it. Create stack MRs is a modal, as the web's. Push stack's server warnings inside the after-merge flow show in its own toast only for that moment.
+  - Keyring: this build keeps forge tokens under the service `gitvolt-gpui` in the system keyring, and never touches the app's `gitvolt` entries. Only `GITVOLT_TEST_FORGE` or a scripted run takes the file store, in its own data folder.
 - **Lightbox:** no video; above 100% it's smooth rather than pixelated; a wheel notch steps once, whatever its size.
 - **Mermaid:** the layout and shapes are that crate's, not mermaid.js's: rounded corners, no glow, thicker arrows, different spacing, DejaVu or the system's font rather than `trebuchet ms`. It's more forgiving: a sequence line with no target draws where mermaid.js says it's an error. The picture is drawn once at the column's width, up to 4×, so a pane widened later keeps its width; each diagram is drawn in turn from the top rather than as it comes near the view, the first after about 700 ms (the worker's fonts). One diagram's timeout gives up on the rest of that file, which stay as source. The error line doesn't wrap, and isn't selectable.
 - **PDF:** no text layer, so no selecting, copying or finding in a page. No form widgets or annotations but what `hayro` draws, and encrypted files with a user password say so, as the web's. After switching from Diff to File View the web's Fit width stays at 100% until a resize (a measure that comes too soon there); here it fits at once. A page that fails stays blank paper, as there, but a worker that's died fails its whole side, with the error.
@@ -193,19 +200,17 @@ Known, in the area that's there:
 - **Tooltips and cards** appear without the 150 ms fade. A card takes no pointer: nothing floats that the
   pointer can enter.
 - **Menus:** a row's highlight doesn't fade in (the web UI's 50 ms). The Open in dropdown in the diff's toolbar is still its own menu, without
-  press, drag and release; the same list in a file's right-click menu is the shared one. No forge rows; tab groups' rows are absent or disabled. A menu's note row is told its line count.
-- **Chips:** a truncated chip doesn't float its full copy on hover, a stack from `+N` is read-only (its right-click is on the `+N`, by submenus), and a
-  remote's icon is the cloud, not its forge's mark.
+  press, drag and release; the same list in a file's right-click menu is the shared one. Tab groups' rows are absent or disabled. A menu's note row is told its line count.
+- **Chips:** a truncated chip doesn't float its full copy on hover, a stack from `+N` is read-only (its right-click is on the `+N`, by submenus).
 - **Graph:** rows change colour at once, without the 200 and 500 ms easing. The table clips where the web UI
   scrolls sideways, so a hand-set wide Message runs off the edge, and a graph with too many lanes for its
   default width shows the collapse zone sooner than it would. No lane scrollbar under a clipped Graph column; a Branch/Tag column at its minimum shows chips as they fit rather than their icons alone. Column resizers and panel dividers are for the mouse, not the arrow keys. The SHA shows six characters however wide its column.
 - **Settings:** the live preview on the theme page is a small drawing of the same tokens, not the graph's own rows and canvas. A press outside the colour picker commits and doesn't also reach what's under it. The font list opens below its button rather than choosing a side away from the preview. The Reading rows store and show their values, and take effect with the Markdown views; sticky scroll, debug logging and the forge rows (Merge requests target, Update an MR's branch by, From your forge accounts) likewise store only. Search folds Latin accents by a table, not Unicode's NFD. A page's scrollbar doesn't take a click on its track. Setting focus on a deep link goes to the dialog, not the row's control. Tab reaches only some controls.
 - **Themes:** an active indent guide isn't drawn in its own colour (the diff never drew one).
-- **Sidebar:** a remote's folder has a plain folder icon; a card doesn't list an MR.
 - **Tabs:** the other tabs jump rather than slide 150 ms when a dragged one crosses them; a tab can't be dragged into or out of a group, or a group by its chip (the menu's rows do that); a group's chip has no hover list of its tabs and no animated fold or underline running across the chips; Rename is a dialog, not the inline field, and a double click on a tab doesn't start it. A strip wider than the window clips rather than scrolling. Position isn't restored (Wayland doesn't let a client), only size and maximized.
 - **Tabs' restore:** a tab whose repository can't be opened any more is dropped without saying so.
 - **Palette:** an action that isn't ported is listed and says so when picked.
-- **Go to:** a pasted forge link or MR number says the forge views aren't here yet.
+- **Go to:** a forge page or number goes by the tabs already shown: a tab not shown yet isn't opened to look in it, as the web's is. A `file://` line takes no drive letter.
 - **Find:** a full hash outside the loaded window says so rather than loading until it appears. In a file
   it's this box and not Monaco's widget, without its regex, case or whole-word toggles.
 - **Commit:** no edit button; the signature is its icon without the badge's card; a parent that isn't loaded says so instead of

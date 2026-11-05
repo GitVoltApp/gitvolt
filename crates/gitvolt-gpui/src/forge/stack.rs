@@ -712,7 +712,7 @@ impl GitVolt {
             let can = label.is_some() && !merged && !empty;
             let intro: String = match &s.view {
                 Some(v) if v.mode == StackMode::Native => format!("Each {noun} targets the branch below it. GitLab shows them as a stack."),
-                Some(_) => format!("Each {noun} targets the branch below it. GitVolt keeps a Stack table in each description."),
+                Some(_) => format!("Each {noun} targets the branch below it. GitVolt keeps a Stack table in every description up to date."),
                 None if s.error.is_none() => format!("Loading the stack's {noun}s…"),
                 None => String::new(),
             };
