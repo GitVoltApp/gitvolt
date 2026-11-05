@@ -195,7 +195,7 @@ fn status_count(glyph: &'static str, color: Hsla, n: u32) -> Option<Div> {
 }
 
 /// The WIP row's message: its draft box, the worktree's name, and the counts.
-fn wip_cell(draft: &Entity<crate::ui::input::TextInput>, w: &WipCounts, width: f32, focused: bool) -> Div {
+fn wip_cell(draft: Option<&Entity<crate::ui::input::TextInput>>, w: &WipCounts, width: f32, focused: bool) -> Div {
     div()
         .flex()
         .flex_none()
@@ -218,14 +218,14 @@ fn wip_cell(draft: &Entity<crate::ui::input::TextInput>, w: &WipCounts, width: f
                 .border_color(if focused { theme::blue() } else { theme::wip_input_border() })
                 .rounded(px(4.))
                 .text_color(theme::text_normal())
-                .child(draft.clone()),
+                .children(draft.cloned()),
         )
         .when_some(w.name.clone(), |d, n| d.child(div().min_w_0().truncate().text_color(theme::text_secondary()).child(n)))
         .children(status_count("status-modified", theme::status_modified(), w.modified))
         .children(status_count("status-added", theme::status_added(), w.added))
         .children(status_count("status-deleted", theme::status_deleted(), w.deleted))
         .children(status_count("status-renamed", theme::blue(), w.renamed))
-        .children(status_count("status-conflicted", theme::status_deleted(), w.conflicted))
+        .children(status_count("status-conflicted", theme::status_conflicted(), w.conflicted))
 }
 
 /// A number with thousands separators.
@@ -439,15 +439,14 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
     let keep = tab.find.keep.clone();
     let branch_keep = tab.branch_keep.clone();
     let row_cols = cols;
-    let draft = tab.wip_draft.clone();
-    let draft_focused = tab.wip_draft.read(cx).is_focused(window);
+    let drafts = tab.row_drafts.clone();
     let (repo, loaded, loading) = (tab.id, graph.rows.len() as u32, tab.loading);
     let older = graph.truncated;
     let messages = this.messages.clone();
     let list = uniform_list(
         "graph",
         graph.rows.len() + usize::from(older),
-        cx.processor(move |_, range: Range<usize>, _, cx| {
+        cx.processor(move |_, range: Range<usize>, window, cx| {
             let graph = rows.clone();
             let cols = &row_cols;
             let weak = cx.weak_entity();
@@ -483,7 +482,12 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                             .child(div().truncate().child(text))
                     };
                     let message: AnyElement = match row.wip.as_ref() {
-                        Some(w) => wip_cell(&draft, w, cols.message, draft_focused).when(is_selected, |d| d.bg(theme::selected_row())).group_hover(group.clone(), |d| d.bg(theme::hover_row())).into_any_element(),
+                        Some(w) => {
+                            let draft = row.worktree.as_ref().and_then(|p| drafts.get(p));
+                            let focused = draft.is_some_and(|d| d.read(cx).is_focused(window));
+                            wip_cell(draft, w, cols.message, focused)
+                        }
+                        .when(is_selected, |d| d.bg(theme::selected_row())).group_hover(group.clone(), |d| d.bg(theme::hover_row())).into_any_element(),
                         None => {
                             let body = cell(cols.message, theme::text_normal(), row.summary.clone()).when_some(row.stash_branch.clone(), |d, b| d.child(div().flex_none().ml(px(12.)).text_color(theme::text_disabled()).child(b)));
                             if row.kind == NodeKind::Collapsed {

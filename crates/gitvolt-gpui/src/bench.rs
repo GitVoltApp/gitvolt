@@ -192,6 +192,123 @@ impl GitVolt {
     }
 }
 
+/// `GITVOLT_SCRIPT=<file>`: real flows on a fixture with no input device, a line at a time, each input
+/// going through the window as an event from the platform would: `click x y`, `rclick x y`, `dclick x y`,
+/// `move x y`, `press x y`, `release x y`, `key ctrl-s`, `type text`, `wait ms`, `select row`, `open index`,
+/// `cmd id`, `dump` (a JSON line of what's on screen), `quit`.
+async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
+    let Ok(text) = std::fs::read_to_string(file) else {
+        eprintln!("No script at {file}");
+        return;
+    };
+    let lines: Vec<String> = text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(str::to_string).collect();
+    for line in lines {
+        let (verb, rest) = line.split_once(' ').unwrap_or((&line, ""));
+        let (verb, rest) = (verb.to_string(), rest.to_string());
+        let verb = verb.as_str();
+        let xy = || {
+            let mut n = rest.split_whitespace().filter_map(|t| t.parse::<f32>().ok());
+            point(px(n.next().unwrap_or(0.)), px(n.next().unwrap_or(0.)))
+        };
+        let down = |position, button, click_count| PlatformInput::MouseDown(MouseDownEvent { button, position, modifiers: Modifiers::default(), click_count, first_mouse: false });
+        let up = |position, button, click_count| PlatformInput::MouseUp(MouseUpEvent { button, position, modifiers: Modifiers::default(), click_count });
+        let moved = |position| PlatformInput::MouseMove(MouseMoveEvent { position, pressed_button: None, modifiers: Modifiers::default() });
+        let events: Vec<PlatformInput> = match verb {
+            "click" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1)],
+            "rclick" => vec![moved(xy()), down(xy(), MouseButton::Right, 1), up(xy(), MouseButton::Right, 1)],
+            "dclick" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1), down(xy(), MouseButton::Left, 2), up(xy(), MouseButton::Left, 2)],
+            "move" => vec![moved(xy())],
+            "press" => vec![moved(xy()), down(xy(), MouseButton::Left, 1)],
+            "drag" => vec![PlatformInput::MouseMove(MouseMoveEvent { position: xy(), pressed_button: Some(MouseButton::Left), modifiers: Modifiers::default() })],
+            "release" => vec![up(xy(), MouseButton::Left, 1)],
+            _ => Vec::new(),
+        };
+        for e in events {
+            cx.update(|window, cx| {
+                window.dispatch_event(e, cx);
+            })
+            .ok();
+            cx.background_executor().timer(Duration::from_millis(16)).await;
+        }
+        match verb {
+            "key" => {
+                cx.update(|window, cx| {
+                    for k in rest.split_whitespace() {
+                        if let Ok(stroke) = Keystroke::parse(k.to_string().leak()) {
+                            window.dispatch_keystroke(stroke, cx);
+                        }
+                    }
+                })
+                .ok();
+            }
+            "type" => {
+                cx.update(|window, cx| {
+                    for c in rest.chars() {
+                        let key = if c == ' ' { "space".to_string() } else { c.to_string() };
+                        window.dispatch_keystroke(Keystroke { modifiers: Modifiers::default(), key, key_char: Some(c.to_string()) }, cx);
+                    }
+                })
+                .ok();
+            }
+            "wait" => cx.background_executor().timer(Duration::from_millis(rest.parse().unwrap_or(100))).await,
+            "select" => v.update(cx, |g, cx| g.select(rest.parse().unwrap_or(0), cx)),
+            "open" => v.update(cx, |g, cx| g.open_file(rest.parse().unwrap_or(0), cx)),
+            "cmd" => {
+                cx.update(|window, cx| {
+                    v.update(cx, |g, cx| {
+                        if !crate::commands::invoke(&rest, g, window, cx) {
+                            println!("{{\"unusable\":{:?}}}", rest);
+                        }
+                    });
+                })
+                .ok();
+            }
+            "dump" => {
+                cx.update(|_, cx| println!("{}", v.read(cx).dump(cx))).ok();
+            }
+            "quit" => {
+                cx.update(|_, cx| cx.quit()).ok();
+                return;
+            }
+            _ => {}
+        }
+        cx.background_executor().timer(Duration::from_millis(40)).await;
+    }
+}
+
+impl GitVolt {
+    /// What a script checks: the toast, the selection, what's open, what's going on.
+    pub fn dump(&self, cx: &App) -> String {
+        let tab = self.tabs.get(self.active);
+        let sections = tab.and_then(|t| t.files.as_ref()).filter(|f| f.wip.is_some()).map(|f| {
+            use crate::wip::Which;
+            let list = |w| f.section_files(w).iter().map(|x| x.path.to_string()).collect::<Vec<_>>();
+            serde_json::json!({ "conflicted": list(Which::Conflicted), "unstaged": list(Which::Unstaged), "staged": list(Which::Staged) })
+        });
+        let head = tab.and_then(|t| t.graph.as_ref()).map(|g| (g.head_branch.to_string(), g.head_sha.clone(), g.rows.len()));
+        let journal = tab.and_then(|t| self.ops.journal(t.id, &t.worktree));
+        serde_json::json!({
+            "toast": crate::ui::toast::message(cx).map(|m| m.to_string()),
+            "armed": crate::ui::arm::is_armed(cx),
+            "menu": crate::ui::menu::shown(cx),
+            "selected": tab.and_then(|t| t.selected),
+            "commit": tab.and_then(|t| t.commit.as_ref()).map(|c| c.summary.to_string()),
+            "open": tab.and_then(|t| t.diff.as_ref()).map(|d| d.file.path.to_string()),
+            "wip": sections,
+            "summary": tab.map(|t| t.wip.summary.read(cx).text().to_string()),
+            "head": head.as_ref().map(|h| h.0.clone()),
+            "headSha": head.as_ref().and_then(|h| h.1.clone()),
+            "rows": head.as_ref().map(|h| h.2),
+            "undo": journal.and_then(|j| j.undo.as_ref()).map(|u| u.label.clone()),
+            "redo": journal.and_then(|j| j.redo.as_ref()).map(|u| u.label.clone()),
+            "running": self.ops.ops.values().map(|o| o.label.clone()).collect::<Vec<_>>(),
+            "prompts": self.ops.prompts.iter().map(|p| p.text.clone()).collect::<Vec<_>>(),
+            "activity": self.ops.activity.iter().take(5).map(|e| format!("{}: {:?}", e.label, e.outcome)).collect::<Vec<_>>(),
+        })
+        .to_string()
+    }
+}
+
 /// The same run as the CEF build's: settle 5 s, idle 20 s, scroll 16 px per frame for 8 s.
 pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
     const STEP: f32 = 16.;
@@ -232,8 +349,8 @@ pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
                 cx.background_executor().timer(Duration::from_millis(5)).await;
             }
             let shown = match std::env::var("GITVOLT_SHOW") {
-                Ok(spec) => Some(show(&v, &spec, cx).await),
-                Err(_) => None,
+                Ok(spec) if !spec.is_empty() => Some(show(&v, &spec, cx).await),
+                _ => None,
             };
             // Another file, then the first again: what a grammar already compiled costs.
             let mut later = Vec::new();
@@ -242,6 +359,9 @@ pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
                     timer(cx, 2).await;
                     later.push(reopen(&v, file, cx).await);
                 }
+            }
+            if let Ok(file) = std::env::var("GITVOLT_SCRIPT") {
+                script(&v, &file, cx).await;
             }
             if std::env::var_os("GITVOLT_BENCH").is_none() {
                 return;

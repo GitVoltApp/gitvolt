@@ -353,6 +353,22 @@ pub struct GraphView {
     /// More history than this window holds.
     pub truncated: bool,
     pub by_sha: HashMap<String, usize>,
+    /// HEAD's commit.
+    pub head_sha: Option<String>,
+    /// Each worktree's branch and HEAD.
+    pub worktrees: Vec<gitvolt_graph::GraphWorktree>,
+    /// A worktree's merge, rebase or other operation.
+    pub in_progress: std::collections::BTreeMap<String, gitvolt_graph::InProgress>,
+}
+
+impl GraphView {
+    /// A worktree's own branch, short.
+    pub fn worktree_branch(&self, worktree: &str) -> Option<SharedString> {
+        match self.worktrees.iter().find(|w| w.path == worktree) {
+            Some(w) => w.branch.as_deref().map(|b| b.trim_start_matches("refs/heads/").to_string().into()),
+            None => (self.head_branch.as_ref() != "detached").then(|| self.head_branch.clone()),
+        }
+    }
 }
 
 const LANES: usize = 10;
@@ -412,6 +428,9 @@ pub fn graph_view(g: &GraphPayload) -> GraphView {
         pinned: g.pinned_refs.first().map(|r| short(r)).unwrap_or_default().into(),
         truncated: g.truncated,
         by_sha,
+        head_sha: g.head.target.clone(),
+        worktrees: g.worktrees.clone(),
+        in_progress: g.in_progress.clone(),
     }
 }
 
@@ -505,7 +524,7 @@ mod tests {
         let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, wip: None };
         let rows = vec![row("d", &["b"]), row("c", &["b"]), row("b", &["a"]), row("a", &[])];
         let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
-        let g = GraphView { rows, max_lanes: 2, head_row: None, head_branch: SharedString::default(), pinned: SharedString::default(), truncated: false, by_sha };
+        let g = GraphView { rows, max_lanes: 2, head_row: None, head_branch: SharedString::default(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default() };
         let mut reach: Vec<usize> = branch_rows(&g, 1).into_iter().collect();
         reach.sort_unstable();
         assert_eq!(reach, [1, 2, 3]);

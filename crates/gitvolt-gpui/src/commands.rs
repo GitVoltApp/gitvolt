@@ -224,6 +224,19 @@ pub fn all() -> Vec<Command> {
         Command::new("file.create", "Create file…", Repository, "file-plus", "Create a new, empty file in the working tree (you can undo this)", &[]),
         Command::new("remote.add", "Add remote…", Repository, "plus", "Add a remote by URL, or one of the project's forks", &[]),
         Command::new("submodule.add", "Submodules: Add…", Repository, "boxes", "Clone a repository into this one as a submodule (git submodule add)", &[]),
+        Command::new("stage.file", "Stage file", Repository, "file-plus", "Stage the open file", &["Mod+Shift+S"]).when(|v, _| v.open_wip_file().is_some_and(|f| f.1 == Some(false))).hidden().run(|v, _, cx| v.stage_open_file(cx)),
+        Command::new("stage.unstageFile", "Unstage file", Repository, "file-minus", "Move the open file back to Unstaged", &["Mod+Shift+S"]).when(|v, _| v.open_wip_file().is_some_and(|f| f.1 == Some(true))).hidden().run(|v, _, cx| v.stage_open_file(cx)),
+        Command::new("stage.all", "Stage all changes", Repository, "list-plus", "Stage every unstaged change", &[]).when(|v, _| v.wip_counts().is_some_and(|c| c.1 > 0)).hidden().run(|v, _, cx| {
+            if let Some(ctx) = v.panel_ctx() {
+                v.stage_all_guarded(&ctx, cx);
+            }
+        }),
+        Command::new("stage.unstageAll", "Unstage all changes", Repository, "list-minus", "Move every staged change back to Unstaged", &[]).when(|v, _| v.wip_counts().is_some_and(|c| c.0 > 0)).hidden().run(|v, _, cx| {
+            if let Some(ctx) = v.panel_ctx() {
+                v.unstage_all(&ctx, cx);
+            }
+        }),
+        Command::new("commit.commit", "Commit", Repository, "git-commit-horizontal", "Commit with the message in the commit box", &["Mod+Enter"]).when(|v, _| v.panel_ctx().is_some()).hidden().yields().run(|v, _, cx| v.commit_key(cx)),
         Command::new("help.about", "About GitVolt", Help, "info", "Version information", &[]).run(|v, window, cx| v.open_about(window, cx)),
         Command::new("help.activityLog", "Activity log", Help, "history", "Every finished fetch and clone, with git's message", &[]),
         Command::new("help.debug", "Debug…", Help, "bug", "The git commands GitVolt ran, the actions you ran, diagnostics and the perf overlay", &[]),

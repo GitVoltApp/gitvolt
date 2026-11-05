@@ -16,3 +16,4 @@ if [ -z "$win" ]; then echo "no window for pid $pid" >&2; kill -TERM "$pid"; exi
 import -window "$win" "$out"
 kill -TERM "$pid"
 wait "$pid" 2>/dev/null
+rm -f "${XDG_RUNTIME_DIR:-/nonexistent}/gitvolt-askpass-$pid-"*.sock

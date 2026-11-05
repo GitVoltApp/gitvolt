@@ -79,8 +79,10 @@ pub struct Tab {
     /// A compare in the details panel: from and to, as its bar names them.
     pub compare: Option<(SharedString, SharedString)>,
     pub find: crate::find::FindState,
-    /// The WIP row's draft summary.
-    pub wip_draft: Entity<TextInput>,
+    /// The WIP panel's own state.
+    pub wip: crate::wip::WipUi,
+    /// The WIP rows' draft boxes, by worktree.
+    pub row_drafts: HashMap<String, Entity<TextInput>>,
     pub column_prefs: ColumnPrefs,
     pub hidden_columns: HashSet<Col>,
     /// The rows of the branch whose chip the pointer rests on; the others dim.
@@ -141,7 +143,8 @@ impl Tab {
             list: UniformListScrollHandle::new(),
             compare: None,
             find: crate::find::FindState::new(id, cx),
-            wip_draft: cx.new(|cx| TextInput::new(cx).placeholder("// WIP").placeholder_color(theme::wip_input_placeholder()).claim_escape()),
+            wip: crate::wip::WipUi::new(id, cx),
+            row_drafts: HashMap::new(),
             column_prefs: ColumnPrefs::default(),
             hidden_columns: HashSet::new(),
             branch_keep: None,
@@ -190,6 +193,20 @@ pub struct GitVolt {
     pub retired_images: Rc<std::cell::RefCell<Vec<Arc<RenderImage>>>>,
     /// Measuring (`GITVOLT_BENCH`, bench.rs): called once per frame.
     pub frame_hook: Option<FrameHook>,
+    /// The window, for what an answer from the core has to ask or open.
+    pub window: Option<AnyWindowHandle>,
+    /// What the core's events say is going on.
+    pub ops: crate::ops::Ops,
+    /// The WIP draft of each worktree, and how far they're saved.
+    pub drafts: HashMap<String, crate::wip::Draft>,
+    pub drafts_dirty: u64,
+    pub drafts_saved: u64,
+    /// The WIP lists' split, and which sections are collapsed.
+    pub wip_ratio: f32,
+    pub wip_closed: [bool; 3],
+    /// For a test: what was sent, and what's not been answered yet.
+    pub sent: Rc<std::cell::RefCell<Vec<serde_json::Value>>>,
+    pub unanswered: Vec<(Rc<crate::write::Write>, crate::write::Asked, Vec<gitvolt_core::askpass::SshOffer>)>,
 }
 
 impl GitVolt {
@@ -197,7 +214,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None }
+        Self { api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sent: Rc::default(), unanswered: Vec::new() }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -220,11 +237,7 @@ impl GitVolt {
         });
         cx.spawn(async move |this, cx| {
             while let Some(e) = rx.recv().await {
-                let repo = match e {
-                    AppEvent::RepoChanged { repo, .. } | AppEvent::RefsUpdated { repo } => repo,
-                    _ => continue,
-                };
-                if this.update(cx, |this, cx| this.reload(repo, cx)).is_err() {
+                if this.update(cx, |this, cx| this.on_event(e, cx)).is_err() {
                     return;
                 }
             }
@@ -245,6 +258,21 @@ impl GitVolt {
             }
         })
         .detach();
+    }
+
+    /// One event from the core: what's going on, and what to read again.
+    pub fn on_event(&mut self, e: AppEvent, cx: &mut Context<Self>) {
+        self.ops.apply(&e);
+        match e {
+            AppEvent::RepoChanged { repo, .. } => {
+                self.reload(repo, cx);
+                self.reread_wip(repo, cx);
+                self.reread_open_file(repo, cx);
+            }
+            AppEvent::RefsUpdated { repo } => self.reload(repo, cx),
+            _ => {}
+        }
+        cx.notify();
     }
 
     pub fn open(&mut self, path: String, cx: &mut Context<Self>) {
@@ -302,6 +330,7 @@ impl GitVolt {
             this.update(cx, |this, cx| {
                 let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
                 tab.loading = false;
+                let was_wip = tab.is_wip_selected();
                 match result {
                     Ok(Ok((graph, sections))) => {
                         // The selection follows its commit across a reload.
@@ -312,9 +341,17 @@ impl GitVolt {
                         tab.side.sections = sections.0;
                         tab.side.relist(cx);
                         tab.error = None;
+                        this.sync_row_drafts(repo, cx);
+                        this.check_amend(repo, cx);
                     }
                     Ok(Err(e)) => tab.error = Some(e.message.into()),
                     Err(e) => tab.error = Some(e.to_string().into()),
+                }
+                let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
+                // A WIP row that's gone (the last change committed) leaves the panel with it.
+                if was_wip && !tab.is_wip_selected() {
+                    tab.selected = None;
+                    tab.files = None;
                 }
                 let again = std::mem::take(&mut tab.again);
                 let pending = tab.select_after_load.take_if(|sha| tab.graph.as_ref().is_some_and(|g| g.by_sha.contains_key(sha.as_str())));
@@ -340,6 +377,7 @@ impl GitVolt {
     }
 
     pub fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
+        self.flush_drafts();
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let Some(row) = tab.graph.as_ref().and_then(|g| g.rows.get(ix)) else { return };
         let (kind, id, worktree) = (row.kind, row.id.to_string(), row.worktree.clone());
@@ -352,7 +390,10 @@ impl GitVolt {
         cx.notify();
         match (kind, worktree) {
             (gitvolt_graph::NodeKind::Commit | gitvolt_graph::NodeKind::Merge | gitvolt_graph::NodeKind::Stash, _) => self.read_commit(repo, id, ix, cx),
-            (gitvolt_graph::NodeKind::Wip, Some(w)) => self.read_wip(repo, w, ix, cx),
+            (gitvolt_graph::NodeKind::Wip, Some(w)) => {
+                self.show_draft(repo, cx);
+                self.read_wip(repo, w, cx);
+            }
             _ => {}
         }
     }
@@ -896,6 +937,7 @@ impl Render for GitVolt {
             window.focus(&handle, cx);
         }
         crate::ui::begin_frame(window, cx);
+        self.window = Some(window.window_handle());
         if let (Some(hook), Some(tab)) = (self.frame_hook.as_mut(), self.tabs.get_mut(self.active)) {
             hook(tab, window);
         }
@@ -905,7 +947,8 @@ impl Render for GitVolt {
         let viewport = window.viewport_size();
         self.fetch_avatars(cx);
         let details_w = self.details_w;
-        let details = self.tabs.get(self.active).and_then(|t| details_panel(t, details_w, window, cx));
+        let panel_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
+        let details = self.tabs.get(self.active).and_then(|t| details_panel(self, t, details_w, panel_h, window, cx));
         let tab = self.tabs.get(self.active);
         let open_file = tab.is_some_and(|t| t.diff.is_some() || t.history.is_some());
         let folded = open_file && !tab.is_some_and(|t| t.sidebar_open);
@@ -1040,7 +1083,7 @@ pub mod tests {
                         let rows: Vec<RowView> = (0..count).map(row).collect();
                         let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
                         let mut tab = Tab::new(1, "fixture".into(), cx);
-                        tab.graph = Some(Rc::new(GraphView { rows, max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), truncated: false, by_sha }));
+                        tab.graph = Some(Rc::new(GraphView { rows, max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default() }));
                         v.tabs.push(tab);
                         window.focus(&v.focus, cx);
                         v

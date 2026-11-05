@@ -296,6 +296,11 @@ impl DiffState {
         self.match_picks = from.match_picks.clone();
     }
 
+    /// There's typing in it that's not saved.
+    pub fn editing_dirty(&self) -> bool {
+        false
+    }
+
     /// The next read is the same file again: it stays where it is.
     pub fn keep_scroll(&mut self) {
         self.restored = true;

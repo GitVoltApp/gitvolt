@@ -42,6 +42,13 @@ pub enum Origin {
     Wip { worktree: String, staged: bool },
 }
 
+impl FileChange {
+    /// A submodule's own changes are discarded inside it.
+    pub fn is_submodule(&self) -> bool {
+        self.old["kind"] == "submodule" || self.new["kind"] == "submodule"
+    }
+}
+
 pub fn file_changes(v: &Value, origin: &Origin) -> Vec<FileChange> {
     v["files"]
         .as_array()
@@ -69,7 +76,8 @@ pub enum ListMode {
 /// A row of the file list.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ListRow {
-    Folder { path: SharedString, name: SharedString, depth: u8, collapsed: bool },
+    /// `key`: what its collapsed state and the cursor go by, `path` but for a WIP section's own.
+    Folder { key: SharedString, path: SharedString, name: SharedString, depth: u8, collapsed: bool },
     File { index: usize, name: SharedString, dir: SharedString, depth: u8 },
 }
 
@@ -79,7 +87,8 @@ struct Node {
     files: Vec<usize>,
 }
 
-fn add_rows(node: &Node, prefix: &str, depth: u8, files: &[FileChange], collapsed: &HashSet<String>, out: &mut Vec<ListRow>) {
+#[allow(clippy::too_many_arguments)]
+fn add_rows(node: &Node, prefix: &str, depth: u8, files: &[FileChange], collapsed: &HashSet<String>, scope: &str, offset: usize, out: &mut Vec<ListRow>) {
     for (name, child) in &node.folders {
         // A folder whose only child is a folder merges into one row (`a/b/c`, spec §9.3).
         let (mut name, mut child) = (name.clone(), child);
@@ -89,26 +98,42 @@ fn add_rows(node: &Node, prefix: &str, depth: u8, files: &[FileChange], collapse
             child = grand;
         }
         let path = if prefix.is_empty() { name.clone() } else { format!("{prefix}/{name}") };
-        let closed = collapsed.contains(&path);
-        out.push(ListRow::Folder { path: path.clone().into(), name: name.into(), depth, collapsed: closed });
+        let key = folder_key(scope, &path);
+        let closed = collapsed.contains(&key);
+        out.push(ListRow::Folder { key: key.into(), path: path.clone().into(), name: name.into(), depth, collapsed: closed });
         if !closed {
-            add_rows(child, &path, depth + 1, files, collapsed, out);
+            add_rows(child, &path, depth + 1, files, collapsed, scope, offset, out);
         }
     }
     for &index in &node.files {
         let name = files[index].path.rsplit('/').next().unwrap_or_default().to_string();
-        out.push(ListRow::File { index, name: name.into(), dir: SharedString::default(), depth });
+        out.push(ListRow::File { index: index + offset, name: name.into(), dir: SharedString::default(), depth });
     }
 }
 
+/// A folder's key: two WIP sections can both have a `src`, each with its own collapsed state.
+pub fn folder_key(scope: &str, path: &str) -> String {
+    if scope.is_empty() { path.to_string() } else { format!("{scope}\0{path}") }
+}
+
+/// What a folder's key says of its path.
+pub fn folder_path(key: &str) -> &str {
+    key.rsplit('\0').next().unwrap_or(key)
+}
+
 pub fn list_rows(files: &[FileChange], mode: ListMode, collapsed: &HashSet<String>) -> Vec<ListRow> {
+    list_rows_in(files, mode, collapsed, "", 0)
+}
+
+/// The rows of `files`; their indexes count from `offset`, in the whole list a section is part of.
+pub fn list_rows_in(files: &[FileChange], mode: ListMode, collapsed: &HashSet<String>, scope: &str, offset: usize) -> Vec<ListRow> {
     if mode == ListMode::Path {
         return files
             .iter()
             .enumerate()
             .map(|(index, f)| {
                 let (dir, name) = f.path.rsplit_once('/').unwrap_or(("", &f.path));
-                ListRow::File { index, name: name.to_string().into(), dir: dir.to_string().into(), depth: 0 }
+                ListRow::File { index: index + offset, name: name.to_string().into(), dir: dir.to_string().into(), depth: 0 }
             })
             .collect();
     }
@@ -123,7 +148,7 @@ pub fn list_rows(files: &[FileChange], mode: ListMode, collapsed: &HashSet<Strin
         node.files.push(i);
     }
     let mut out = Vec::new();
-    add_rows(&root, "", 0, files, collapsed, &mut out);
+    add_rows(&root, "", 0, files, collapsed, scope, offset, &mut out);
     out
 }
 
@@ -131,7 +156,7 @@ pub fn all_folders(files: &[FileChange]) -> HashSet<String> {
     list_rows(files, ListMode::Tree, &HashSet::new())
         .into_iter()
         .filter_map(|r| match r {
-            ListRow::Folder { path, .. } => Some(path.to_string()),
+            ListRow::Folder { key, .. } => Some(key.to_string()),
             ListRow::File { .. } => None,
         })
         .collect()
@@ -142,7 +167,7 @@ pub fn status_icon(status: char) -> (&'static str, Hsla) {
         'A' | 'C' => ("status-added", theme::status_added()),
         'D' => ("status-deleted", theme::status_deleted()),
         'R' => ("status-renamed", theme::blue()),
-        'U' | 'X' => ("status-conflicted", theme::status_deleted()),
+        'U' | 'X' => ("status-conflicted", theme::status_conflicted()),
         _ => ("status-modified", theme::status_modified()),
     }
 }
@@ -225,6 +250,8 @@ pub struct Files {
     pub tree_error: Option<SharedString>,
     /// "View all files"' filter (`Tab::file_filter` holds what's typed): never kept when it's off.
     pub filter: String,
+    /// The WIP row's sections; `changes` is then theirs, one after another.
+    pub wip: Option<crate::wip::WipList>,
 }
 
 impl GitVolt {
@@ -317,10 +344,13 @@ impl Files {
         let (mode, collapsed) = (ListMode::Tree, HashSet::new());
         let rows = Rc::new(list_rows(&changes, mode, &collapsed));
         let changes = Rc::new(changes);
-        Self { changed: changes.clone(), changes, added, deleted, mode, by_status: false, collapsed, rows, list: UniformListScrollHandle::new(), cursor: None, commit: None, tree: None, tree_error: None, filter: String::new() }
+        Self { changed: changes.clone(), changes, added, deleted, mode, by_status: false, collapsed, rows, list: UniformListScrollHandle::new(), cursor: None, commit: None, tree: None, tree_error: None, filter: String::new(), wip: None }
     }
 
-    fn relist(&mut self) {
+    pub(crate) fn relist(&mut self) {
+        if self.wip.is_some() {
+            return self.relist_wip();
+        }
         self.rows = Rc::new(list_rows(&self.changes, self.mode, &self.collapsed));
     }
 
@@ -333,16 +363,29 @@ impl Files {
         let query = self.filter.trim().to_lowercase();
         let tree = self.tree.as_deref().zip(self.commit.as_deref());
         let by_status = self.by_status && self.mode == ListMode::Path;
-        self.changes = Rc::new(listed_files(&self.changed, tree, &query, by_status));
+        if self.wip.is_some() {
+            self.changes = Rc::new(self.wip_listed(&query, by_status));
+        } else {
+            self.changes = Rc::new(listed_files(&self.changed, tree, &query, by_status));
+        }
         if let Some(file) = on {
             self.cursor = self.changes.iter().position(|f| f.path == file.path && f.origin == file.origin).map(Cursor::File);
         }
         self.relist();
     }
 
-    /// Every file in display order, whatever's collapsed.
+    /// Every file in display order, whatever's collapsed: in a WIP list, of the sections that aren't.
     fn all_files(&self) -> Vec<usize> {
+        if self.wip.is_some() {
+            return self.wip_order();
+        }
         list_rows(&self.changes, self.mode, &HashSet::new()).iter().filter_map(|r| if let ListRow::File { index, .. } = r { Some(*index) } else { None }).collect()
+    }
+
+    /// Whether file `i` is under the folder with this key.
+    fn in_folder(&self, i: usize, key: &str) -> bool {
+        let path = folder_path(key);
+        self.changes[i].path.starts_with(&format!("{path}/")) && self.wip.as_ref().is_none_or(|w| w.scope_of(i) == key.split('\0').next().unwrap_or_default())
     }
 
     /// ↑ / ↓ from the cursor, past a folder and wrapping around: the file there.
@@ -355,10 +398,10 @@ impl Files {
             Some(Cursor::File(i)) => order.iter().position(|o| o == i),
             Some(Cursor::Folder(path)) => {
                 // The folder's first file going down, the file before it going up.
-                let first = order.iter().position(|i| self.changes[*i].path.starts_with(&format!("{path}/")));
+                let first = order.iter().position(|i| self.in_folder(*i, path));
                 return first.map(|f| {
                     if down {
-                        let past = order[f..].iter().position(|i| !self.changes[*i].path.starts_with(&format!("{path}/")));
+                        let past = order[f..].iter().position(|i| !self.in_folder(*i, path));
                         if self.collapsed.contains(path.as_ref()) { order[(f + past.unwrap_or(order.len() - f)) % order.len()] } else { order[f] }
                     } else {
                         order[(f + order.len() - 1) % order.len()]
@@ -392,9 +435,14 @@ impl Files {
     pub fn reveal(&mut self, index: usize) {
         if let Some(f) = self.changes.get(index) {
             let path = f.path.to_string();
-            self.collapsed.retain(|c| !path.starts_with(&format!("{c}/")));
+            let scope = self.wip.as_ref().map_or("", |w| w.scope_of(index));
+            self.collapsed.retain(|c| !(path.starts_with(&format!("{}/", folder_path(c))) && (scope.is_empty() || c.starts_with(&format!("{scope}\0")))));
         }
         self.relist();
+        if let Some(wip) = self.wip.as_ref() {
+            wip.reveal(index);
+            return;
+        }
         if let Some(row) = self.rows.iter().position(|r| matches!(r, ListRow::File { index: i, .. } if *i == index)) {
             self.list.scroll_to_item(row, ScrollStrategy::Nearest);
         }
@@ -413,6 +461,9 @@ impl Files {
     }
 
     pub fn toggle_all(&mut self) {
+        if self.wip.is_some() {
+            return self.toggle_all_wip();
+        }
         self.collapsed = if self.collapsed.is_empty() { all_folders(&self.changes) } else { HashSet::new() };
         if let Some(Cursor::Folder(_)) = self.cursor {
             self.cursor = None;
@@ -454,34 +505,6 @@ impl GitVolt {
         .detach();
     }
 
-    /// Reads the panel for a WIP row: the worktree's unstaged changes, then its staged ones.
-    pub fn read_wip(&mut self, repo: u32, worktree: String, ix: usize, cx: &mut Context<Self>) {
-        let api = self.api.clone();
-        let tree = worktree.clone();
-        let read = self.rt.spawn(async move {
-            let unstaged = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Wip { worktree: worktree.clone(), staged: false } }).await?;
-            let staged = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Wip { worktree, staged: true } }).await?;
-            Ok::<_, gitvolt_core::error::GbError>((unstaged, staged))
-        });
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok((unstaged, staged))) = read.await else { return };
-            this.update(cx, |this, cx| {
-                let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
-                if tab.selected != Some(ix) {
-                    return;
-                }
-                let mut files = file_changes(&unstaged, &Origin::Wip { worktree: tree.clone(), staged: false });
-                files.extend(file_changes(&staged, &Origin::Wip { worktree: tree.clone(), staged: true }));
-                let sum = |k: &str| (unstaged[k].as_u64().unwrap_or(0) + staged[k].as_u64().unwrap_or(0)) as u32;
-                let mut list = Files::new(files, sum("added"), sum("deleted"));
-                list.by_status = tab.sort_by_status;
-                tab.files = Some(list);
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
 }
 
 impl GitVolt {
@@ -535,7 +558,7 @@ impl GitVolt {
         cx.notify();
     }
 
-    fn with_files(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Files)) {
+    pub fn with_files(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Files)) {
         if let Some(files) = self.tabs.get_mut(self.active).and_then(|t| t.files.as_mut()) {
             f(files);
             cx.notify();
@@ -585,7 +608,7 @@ impl GitVolt {
         }
         let cursor = files.cursor.clone();
         let folder = match &cursor {
-            Some(Cursor::Folder(path)) => Some((path.clone(), files.collapsed.contains(path.as_ref()))),
+            Some(Cursor::Folder(key)) => Some((key.clone(), files.collapsed.contains(key.as_ref()))),
             _ => None,
         };
         let file = match &cursor {
@@ -601,10 +624,10 @@ impl GitVolt {
                 (Some((path, true)), _) => self.with_files(cx, |f| f.toggle_folder(&path)),
                 (Some((path, false)), _) => {
                     // On to its first child.
-                    let at = files.rows.iter().position(|r| matches!(r, ListRow::Folder { path: p, .. } if *p == path));
+                    let at = files.rows.iter().position(|r| matches!(r, ListRow::Folder { key, .. } if *key == path));
                     match at.and_then(|a| files.rows.get(a + 1)).cloned() {
                         Some(ListRow::File { index, .. }) => self.move_to_file(index, cx),
-                        Some(ListRow::Folder { path: child, .. }) if child.starts_with(path.as_ref()) => self.with_files(cx, |f| f.cursor = Some(Cursor::Folder(child))),
+                        Some(ListRow::Folder { key: child, path: inner, .. }) if inner.starts_with(folder_path(&path)) => self.with_files(cx, |f| f.cursor = Some(Cursor::Folder(child))),
                         _ => {}
                     }
                 }
@@ -734,9 +757,10 @@ fn commit_view(c: &Commit, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
                 .bg(theme::file_bar_bg())
                 .border_b_1()
                 .border_color(theme::section_border())
-                .child(div().flex().flex_1().child(icon("shield-check", 16., if c.signed { theme::status_added() } else { theme::text_disabled() })))
+                .gap(px(10.))
+                .child(div().flex().flex_1().min_w_0().child(icon("shield-check", 16., if c.signed { theme::status_added() } else { theme::text_disabled() })))
                 .child(id("commit", c.id.clone()))
-                .child(div().flex().flex_1().justify_end().gap(px(4.)).text_color(theme::text_secondary()).children(parent_label).children(parents)),
+                .child(div().flex().flex_1().justify_end().gap(px(4.)).whitespace_nowrap().text_color(theme::text_secondary()).children(parent_label).child(div().flex().flex_none().gap(px(6.)).children(parents))),
         )
         .child(
             div()
@@ -766,7 +790,7 @@ fn commit_view(c: &Commit, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
 }
 
 #[allow(clippy::too_many_arguments)]
-fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&SharedString>, all_files: bool, keys_here: bool, panel_w: f32, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&FileChange>, all_files: bool, keys_here: bool, panel_w: f32, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let (mut added, mut changed, mut gone, mut renamed) = (0, 0, 0, 0);
     for f in files.changed.iter() {
         match status_icon(f.status).0 {
@@ -854,15 +878,34 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
         })))
     });
     let query = if all_on { files.filter.trim().to_lowercase() } else { String::new() };
-    let cursor = files.cursor.clone();
-    let on_keys = keys_here;
-    let rows = files.rows.clone();
-    let changes = files.changes.clone();
-    let selected = selected.cloned();
-    let list = uniform_list(
-        "file-list",
-        files.rows.len(),
-        cx.processor(move |_, range: Range<usize>, window, cx| {
+    let view = ListView { rows: files.rows.clone(), changes: files.changes.clone(), cursor: files.cursor.clone(), keys_here, selected: selected.cloned(), query, panel_w, section: None };
+    let list = file_list("file-list", view, &files.list, cx);
+    div().flex().flex_col().flex_1().min_h_0().child(summary).child(tools).children(filter_row).children(tree_error).child(list)
+}
+
+/// What a file list shows: all of it, or a WIP section's part of it.
+pub struct ListView {
+    pub rows: Rc<Vec<ListRow>>,
+    pub changes: Rc<Vec<FileChange>>,
+    pub cursor: Option<Cursor>,
+    pub keys_here: bool,
+    /// The open file.
+    pub selected: Option<FileChange>,
+    /// The filter, marked in the names.
+    pub query: String,
+    pub panel_w: f32,
+    /// The WIP section it is, for its rows' actions.
+    pub section: Option<crate::wip::Which>,
+}
+
+/// The rows: whichever are in view, each with what its hover and right-click do.
+pub fn file_list(id: &'static str, view: ListView, handle: &UniformListScrollHandle, cx: &mut Context<GitVolt>) -> UniformList {
+    let ListView { rows, changes, cursor, keys_here: on_keys, selected, query, panel_w, section } = view;
+    let count = rows.len();
+    uniform_list(
+        id,
+        count,
+        cx.processor(move |this, range: Range<usize>, window, cx| {
             let left_of = window.viewport_size().width.as_f32() - panel_w;
             range
                 .map(|i| {
@@ -871,12 +914,15 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                         ListRow::Folder { path, .. } => path.clone(),
                         ListRow::File { index, .. } => changes[*index].path.clone(),
                     };
+                    let group: SharedString = format!("{id}-{i}").into();
                     let row = match &rows[i] {
-                        ListRow::Folder { path, name, depth, collapsed } => {
-                            let on = on_keys && cursor.as_ref() == Some(&Cursor::Folder(path.clone()));
-                            let path = path.clone();
+                        ListRow::Folder { key, path, name, depth, collapsed } => {
+                            let on = on_keys && cursor.as_ref() == Some(&Cursor::Folder(key.clone()));
+                            let cursor_key = key.clone();
                             let menu_path = path.clone();
-                            base.pl(px(TREE_BASE + f32::from(*depth) * TREE_LEVEL))
+                            let actions = section.and_then(|w| crate::wip::row_actions(this, w, &rows[i], &changes, &group, on, panel_w, cx));
+                            base.group(group.clone())
+                                .pl(px(TREE_BASE + f32::from(*depth) * TREE_LEVEL))
                                 .when(on, |d| d.bg(theme::selected_row()))
                                 .when(!on, |d| d.hover(|d| d.bg(theme::hover_row())))
                                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -884,30 +930,32 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                                         tab.keys = KeyArea::Files;
                                     }
                                     this.with_files(cx, |f| {
-                                        f.cursor = Some(Cursor::Folder(path.clone()));
-                                        f.toggle_folder(&path);
+                                        f.cursor = Some(Cursor::Folder(cursor_key.clone()));
+                                        f.toggle_folder(&cursor_key);
                                     });
                                 }))
                                 .on_mouse_down(MouseButton::Right, cx.listener({
                                     let path = menu_path.clone();
                                     move |this, e: &MouseDownEvent, window, cx| {
+                                        cx.stop_propagation();
                                         let weak = cx.weak_entity();
-                                        let rows = this.file_folder_rows(&path, &weak);
+                                        let rows = this.file_folder_rows(&path, section, &weak);
                                         crate::ui::menu::open_context_for(format!("folder:{path}"), rows, e.position, window, cx);
                                     }
                                 }))
                                 .when(crate::ui::menu::is_target(&format!("folder:{menu_path}"), cx), |d| d.child(crate::ui::outline()))
                                 .child(icon(if *collapsed { "chevron-right" } else { "chevron-down" }, 14., theme::text_secondary()))
                                 .child(div().flex_1().min_w_0().truncate().child(name.clone()))
+                                .children(actions)
                         }
                         ListRow::File { index, name, dir, depth } => {
                             let change = &changes[*index];
                             let (glyph, color) = status_icon(change.status);
-                            let on = selected.as_ref() == Some(&change.path) && cursor.as_ref().is_none_or(|c| !matches!(c, Cursor::File(i) if changes[*i].path == change.path && *i != *index));
+                            let on = selected.as_ref().is_some_and(|s| s.path == change.path && (section.is_none() || s.origin == change.origin)) && cursor.as_ref().is_none_or(|c| !matches!(c, Cursor::File(i) if changes[*i].path == change.path && *i != *index && section.is_none()));
                             let index = *index;
                             let unchanged = change.status == UNCHANGED;
-                            let group: SharedString = format!("file-{i}").into();
                             let stat = |text: String, c: Hsla| div().text_size(px(11.)).text_color(c).child(text);
+                            let actions = section.and_then(|w| crate::wip::row_actions(this, w, &rows[i], &changes, &group, on, panel_w, cx));
                             base.group(group.clone())
                                 .pl(px(TREE_BASE + f32::from(*depth) * TREE_LEVEL))
                                 .when(on, |d| d.bg(theme::selected_row()).text_color(theme::text_selected()))
@@ -922,6 +970,7 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                                 .on_mouse_down(MouseButton::Right, cx.listener({
                                     let file = change.clone();
                                     move |this, e: &MouseDownEvent, window, cx| {
+                                        cx.stop_propagation();
                                         let weak = cx.weak_entity();
                                         let rows = this.file_rows(&file, &weak);
                                         crate::ui::menu::open_context_for(format!("file:{}", file.path), rows, e.position, window, cx);
@@ -931,17 +980,18 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                                 .child(if unchanged { div().flex_none().size(px(14.)).into_any_element() } else { icon(glyph, 14., color).into_any_element() })
                                 .when(!dir.is_empty(), |d| d.child(div().flex().flex_none().max_w(relative(0.6)).overflow_hidden().text_color(theme::text_secondary()).children(marked(dir, &query)).child("/")))
                                 .child(div().flex().flex_1().min_w_0().overflow_hidden().when(unchanged && !on, |d| d.text_color(theme::text_secondary())).children(marked(name, &query)))
-                                .when(!unchanged, |d| {
+                                .when(!unchanged && actions.is_none(), |d| {
                                     d.child(
                                         div()
                                             .flex()
                                             .flex_none()
                                             .gap(px(4.))
-                                            .when(!on, |d| d.invisible().group_hover(group, |d| d.visible()))
+                                            .when(!on, |d| d.invisible().group_hover(group.clone(), |d| d.visible()))
                                             .when(change.additions.is_none(), |d| d.child(stat("binary".to_string(), theme::text_normal())))
                                             .when_some(change.additions, |d, n| d.child(stat(format!("+{n}"), theme::status_added())).child(stat(format!("−{}", change.deletions.unwrap_or(0)), theme::status_deleted()))),
                                     )
                                 })
+                                .children(actions)
                         }
                     };
                     crate::ui::tooltip::Anchor::new(row).tip(full_path).placement(crate::ui::tooltip::Placement::LeftOf(left_of))
@@ -949,10 +999,9 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                 .collect()
         }),
     )
-    .track_scroll(&files.list)
+    .track_scroll(handle)
     .flex_1()
-    .min_h_0();
-    div().flex().flex_col().flex_1().min_h_0().child(summary).child(tools).children(filter_row).children(tree_error).child(list)
+    .min_h_0()
 }
 
 /// Bits of `text`, the filter's match marked.
@@ -1041,11 +1090,14 @@ fn filter_row(files: &Files, input: &Entity<TextInput>, window: &Window, cx: &mu
         .child(div().flex().flex_none().gap(px(2.)).child(step("files-prev", "arrow-up", false, cx)).child(step("files-next", "arrow-down", true, cx)))
 }
 
-pub fn details_panel(tab: &Tab, width: f32, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
+pub fn details_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     if tab.selected.is_none() && tab.compare.is_none() {
         return None;
     }
-    let selected = tab.diff.as_ref().map(|d| d.file.path.clone());
+    let selected = tab.diff.as_ref().map(|d| d.file.clone());
+    if tab.is_wip_selected() {
+        return Some(crate::wip::wip_panel(v, tab, width, height, window, cx));
+    }
     let files = tab.files.as_ref().map(|f| files_view(f, &tab.file_filter, selected.as_ref(), tab.all_files, tab.keys == KeyArea::Files, width, window, cx));
     let commit = tab.commit.as_ref().filter(|_| tab.compare.is_none()).map(|c| commit_view(c, cx));
     let compare = tab.compare.as_ref().map(|(from, to)| {
@@ -1081,29 +1133,31 @@ pub fn details_panel(tab: &Tab, width: f32, window: &Window, cx: &mut Context<Gi
             .children(compare)
             .children(commit)
             .children(files)
-            .child(
-                // Its resizer, on the panel's left edge.
-                div()
-                    .id("details-resize")
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .left(px(-3.))
-                    .w(px(6.))
-                    .cursor(CursorStyle::ResizeLeftRight)
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-                        cx.stop_propagation();
-                        if e.click_count == 2 {
-                            this.details_w = DETAILS_W;
-                            this.save_layout();
-                            cx.notify();
-                            return;
-                        }
-                        this.side_drag = crate::sidebar::SideDrag::Details { x: e.position.x.as_f32(), w: width };
-                    })),
-            )
+            .child(details_resizer(width, cx))
             .into_any_element(),
     )
+}
+
+/// The panel's resizer, on its left edge.
+pub fn details_resizer(width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    div()
+        .id("details-resize")
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .left(px(-3.))
+        .w(px(6.))
+        .cursor(CursorStyle::ResizeLeftRight)
+        .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+            cx.stop_propagation();
+            if e.click_count == 2 {
+                this.details_w = DETAILS_W;
+                this.save_layout();
+                cx.notify();
+                return;
+            }
+            this.side_drag = crate::sidebar::SideDrag::Details { x: e.position.x.as_f32(), w: width };
+        }))
 }
 
 #[cfg(test)]

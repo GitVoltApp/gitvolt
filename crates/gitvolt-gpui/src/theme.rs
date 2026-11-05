@@ -39,6 +39,9 @@ pub fn panel_bg1() -> Hsla { c(0x30343c) }
 pub fn status_added() -> Hsla { c(0x5cb85c) }
 pub fn status_modified() -> Hsla { c(0xde9b43) }
 pub fn status_deleted() -> Hsla { c(0xd9413d) }
+pub fn status_conflicted() -> Hsla { c(0xb56ee6) }
+pub fn stats_added_bright() -> Hsla { c(0x5cb85c) }
+pub fn stats_deleted_bright() -> Hsla { c(0xf0625d) }
 pub fn selection_bg() -> Hsla { c(0x264f78) }
 pub fn scroll_thumb() -> Hsla { a(0xffffff26) }
 pub fn diff_inserted_text() -> Hsla { a(0x5cb85c1f) }

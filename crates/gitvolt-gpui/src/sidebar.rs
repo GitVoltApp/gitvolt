@@ -479,6 +479,8 @@ impl SideState {
 /// What a drag on the sidebar is moving.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SideDrag {
+    /// The WIP lists' divider.
+    WipSplit { y: f32, ratio: f32 },
     None,
     /// The width: where it started, and the width then.
     Width { x: f32, w: f32 },
@@ -652,6 +654,17 @@ impl GitVolt {
                 }
                 self.details_w = (w + x - e.position.x.as_f32()).round().clamp(crate::details::DETAILS_MIN, crate::details::DETAILS_MAX);
                 cx.notify();
+            }
+            SideDrag::WipSplit { y, ratio } => {
+                if e.pressed_button != Some(MouseButton::Left) {
+                    return self.end_side_drag(cx);
+                }
+                let height = crate::ui::Ui::get(cx).anchor("wip-split").map_or(0., |b| b.size.height.as_f32());
+                if height > 0. {
+                    let (lo, hi) = crate::wip::split_bounds(height);
+                    self.wip_ratio = (ratio + (e.position.y.as_f32() - y) / height).clamp(lo, hi);
+                    cx.notify();
+                }
             }
             SideDrag::Width { x, w } => {
                 if e.pressed_button != Some(MouseButton::Left) {

@@ -482,7 +482,6 @@ pub fn is_target(key: &str, cx: &App) -> bool {
 }
 
 /// What's open, for a test: the deepest level's rows, active marked.
-#[cfg(test)]
 pub fn shown(cx: &App) -> Vec<Vec<String>> {
     Ui::get(cx)
         .menu

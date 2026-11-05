@@ -729,7 +729,10 @@ impl TextInput {
     }
 
     fn arrow(&mut self, down: bool, shift: bool, cx: &mut Context<Self>) {
-        if self.multiline {
+        // A textarea's first line: Up leaves it, for an owner that has a field above it.
+        if self.multiline && self.claim_arrows && !down && !shift && self.buffer.sel.is_empty() && !self.buffer.text[..self.buffer.caret()].contains('\n') {
+            cx.emit(InputEvent::Arrow { down, shift });
+        } else if self.multiline {
             let at = self.vertical(down);
             self.jump(shift, at, cx);
         } else if self.claim_arrows {

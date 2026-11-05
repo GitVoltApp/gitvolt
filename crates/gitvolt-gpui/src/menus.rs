@@ -72,7 +72,7 @@ impl GitVolt {
         let Some(graph) = tab.graph.as_ref() else { return Vec::new() };
         let Some(row) = graph.rows.get(row_ix) else { return Vec::new() };
         if row.kind == NodeKind::Wip {
-            return self.wip_rows(row);
+            return self.wip_rows(this);
         }
         let sha = row.id.to_string();
         let head = graph.head_branch.to_string();
@@ -199,8 +199,8 @@ impl GitVolt {
         grouped(vec![sync, integrate, branch_rows, commit_rows, stash_rows, manage, copy, view])
     }
 
-    fn wip_rows(&self, _: &RowView) -> Vec<MenuRow> {
-        vec![MenuRow::pending("wip.stash", "Stash changes", "archive"), MenuRow::pending("wip.discardAll", "Discard all changes…", "trash-2")]
+    fn wip_rows(&self, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+        vec![MenuRow::pending("wip.stash", "Stash changes", "archive"), self.discard_all_row(this)]
     }
 
     /// A tag's menu.
@@ -328,15 +328,7 @@ impl GitVolt {
         let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
         let path = file.path.to_string();
         let abs = format!("{}/{path}", tab.worktree.trim_end_matches('/'));
-        let mut stage = Vec::new();
-        match &file.origin {
-            Origin::Wip { staged: true, .. } => stage.push(MenuRow::pending("file.unstage", "Unstage", "minus")),
-            Origin::Wip { staged: false, .. } => {
-                stage.push(MenuRow::pending("file.stageFile", "Stage", "plus"));
-                stage.push(MenuRow::pending("file.discard", "Discard changes…", "trash-2"));
-            }
-            Origin::Commit { .. } => {}
-        }
+        let stage = self.file_stage_rows(file, this);
         let restore = match &file.origin {
             Origin::Commit { .. } => vec![MenuRow::pending("file.restore", "Restore from this commit", "rotate-ccw")],
             Origin::Wip { .. } => Vec::new(),
@@ -390,11 +382,12 @@ impl GitVolt {
     }
 
     /// A folder of the file list.
-    pub fn file_folder_rows(&self, path: &str, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+    pub fn file_folder_rows(&self, path: &str, section: Option<crate::wip::Which>, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
         let abs = format!("{}/{path}", tab.worktree.trim_end_matches('/'));
         let (weak, folder) = (this.clone(), abs.clone());
         grouped(vec![
+            section.map_or(Vec::new(), |which| self.folder_stage_rows(path, which, this)),
             vec![MenuRow::pending("folder.colour", "Colour this folder…", "palette")],
             vec![
                 MenuRow::action("folder.copyPath", "Copy path", "copy", format!("Copy \"{path}\""), copier(this, path.to_string())).variants(
