@@ -43,11 +43,12 @@ pub fn parse_zoom(raw: Option<u64>) -> Option<u32> {
 }
 
 type Resized = Rc<RefCell<Option<Box<dyn FnMut(Size<Pixels>, f32)>>>>;
-type ReadSize = Box<dyn Fn() -> (Size<Pixels>, f32)>;
+type ResizedWeak = std::rc::Weak<RefCell<Option<Box<dyn FnMut(Size<Pixels>, f32)>>>>;
+type ReadSize = Box<dyn Fn() -> Option<(Size<Pixels>, f32)>>;
 
 thread_local! {
     /// The window's resize callback and how to read its true size: what a change of zoom goes through.
-    static WINDOW: RefCell<Option<(Resized, ReadSize)>> = const { RefCell::new(None) };
+    static WINDOW: RefCell<Option<(ResizedWeak, ReadSize)>> = const { RefCell::new(None) };
 }
 
 /// Sets the zoom before the first window, or for a shown one: it relays out as on a resize. Not from inside a window's
@@ -56,7 +57,7 @@ pub fn set_percent(p: u32) {
     ZOOM.store(p, Relaxed);
     WINDOW.with_borrow(|w| {
         let Some((resized, read)) = w else { return };
-        let (size_now, scale) = read();
+        let (Some((size_now, scale)), Some(resized)) = (read(), resized.upgrade()) else { return };
         if let Some(cb) = resized.borrow_mut().as_mut() {
             cb(scaled_down(size_now), scale * factor());
         }
@@ -120,10 +121,12 @@ impl Platform for Zoomed {
         let inner = self.0.open_window(handle, options)?;
         let inner = Rc::new(RefCell::new(inner));
         let resized: Resized = Rc::default();
-        let i2 = inner.clone();
-        WINDOW.set(Some((resized.clone(), Box::new(move || {
-            let w = i2.borrow();
-            (w.content_size(), w.scale_factor())
+        // Weak: the window goes when GPUI drops it, not with this thread's locals after the display connection's gone.
+        let i2 = Rc::downgrade(&inner);
+        WINDOW.set(Some((Rc::downgrade(&resized), Box::new(move || {
+            let w = i2.upgrade()?;
+            let w = w.borrow();
+            Some((w.content_size(), w.scale_factor()))
         }))));
         Ok(Box::new(ZoomWindow { inner: SharedWindow(inner), resized }))
     }
