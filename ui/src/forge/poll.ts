@@ -156,18 +156,19 @@ async function pollOnce(tabId: string, reason: PollReason): Promise<PollOutcome>
       patchForge(tabId, (f) => ({ target: projects.target, targetChosen: projects.targetChosen, remoteErrors: keepSame(f.remoteErrors, remoteErrors), ownerAvatars: keepSame(f.ownerAvatars, ownerAvatars) }));
       if (target && !target.project && target.account && target.error) {
         // The target (the user's choice, or origin) is on a forge but its project can't be loaded: say why, don't hide the section or show another remote.
-        patchForge(tabId, { kind: target.account, remote: target.remote, project: null, mapped: [], byRef: {}, history: {}, upstreams: {}, list: null, error: `${target.path ?? target.remote}: ${target.error}`, failures: forgeOf(tabId).failures + 1, updatedAt: Date.now() });
+        patchForge(tabId, { kind: target.account, remote: target.remote, project: null, accountId: target.accountId, mapped: [], byRef: {}, history: {}, upstreams: {}, list: null, error: `${target.path ?? target.remote}: ${target.error}`, failures: forgeOf(tabId).failures + 1, updatedAt: Date.now() });
         return { runningPipeline: false, serverIntervalMs: backoffMs(fetchIntervalMs(), forgeOf(tabId).failures) };
       }
       if (!target?.project || !target.account) {
-        patchForge(tabId, { kind: null, remote: null, project: null, mapped: [], byRef: {}, history: {}, upstreams: {}, list: null, error: null, failures: 0, updatedAt: Date.now() });
+        patchForge(tabId, { kind: null, remote: null, project: null, accountId: null, mapped: [], byRef: {}, history: {}, upstreams: {}, list: null, error: null, failures: 0, updatedAt: Date.now() });
         return IDLE;
       }
       if (gone()) return IDLE;
       const host = target.project.host;
-      // Read each full poll: the repository may have switched to another account on the host.
-      const me = (await api.forgeAccounts()).find((a) => a.account.host === host && (target.accountId === null || a.account.id === target.accountId))?.account.user.username ?? null;
-      patchForge(tabId, (f) => ({ kind: target.account, remote: target.remote, project: target.project, mapped: keepSame(f.mapped, mappedRemotes(projects, host)), me }));
+      // Read again when the repository switched to another account on the host.
+      const known = forgeOf(tabId);
+      const me = known.accountId === target.accountId && known.me !== null ? known.me : (await api.forgeAccounts()).find((a) => a.account.id === target.accountId)?.account.user.username ?? null;
+      patchForge(tabId, (f) => ({ kind: target.account, remote: target.remote, project: target.project, accountId: target.accountId, mapped: keepSame(f.mapped, mappedRemotes(projects, host)), me }));
     }
     // The badges failing (one slow request) costs only the badges: the list is still asked.
     let partial: unknown = null;

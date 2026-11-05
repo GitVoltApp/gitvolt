@@ -64,6 +64,9 @@ export interface TabForge {
   ownerAvatars: Record<string, string>;
   /** The account's username (Approve's "You approved it"). */
   me: string | null;
+  /** The account behind the target project (`ForgeAccount.id`): the repository's chosen one on
+   * the host, else the host's default. */
+  accountId: string | null;
   /** Remote-tracking ref (`refs/remotes/origin/dev`) → its MR/PR: the badges. */
   byRef: Record<string, ForgeMr>;
   /** Remote-tracking ref → a merged or closed MR/PR that badges nothing (its branch moved on, or its tip is unknown here): 4D's stack walk and after-merge flow read it (`branchMrs` in `stack/deps.ts`). */
@@ -97,7 +100,7 @@ export interface TabForge {
 }
 
 export const EMPTY_FORGE: TabForge = {
-  kind: null, remote: null, project: null, mapped: [], target: null, targetChosen: false, remoteErrors: {}, ownerAvatars: {}, me: null, byRef: {}, history: {}, upstreams: {}, filter: 'all', list: null,
+  kind: null, remote: null, project: null, mapped: [], target: null, targetChosen: false, remoteErrors: {}, ownerAvatars: {}, me: null, accountId: null, byRef: {}, history: {}, upstreams: {}, filter: 'all', list: null,
   details: {}, detailErrors: {}, discussions: {}, openMr: null, updatedAt: null, error: null, limitedUntil: null, cachedAt: null, failures: 0, review: null, refreshing: [],
 };
 

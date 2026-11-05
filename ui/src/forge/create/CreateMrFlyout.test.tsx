@@ -58,7 +58,7 @@ beforeEach(() => {
   useForge.setState({ byTab: { t1: { ...EMPTY_FORGE } } });
   useToast.getState().dismiss();
   setRuntime();
-  patchForge('t1', { kind: 'gitlab', remote: 'origin', project: project as never });
+  patchForge('t1', { kind: 'gitlab', remote: 'origin', project: project as never, accountId: 'gitlab.example.com' });
   api.forgeRepoProjects.mockResolvedValue({ remotes: [{ remote: 'origin', host: 'gitlab.example.com', path: 'group/project', account: 'gitlab', project, error: null }], target: 'origin' });
   api.forgeCreateContext.mockResolvedValue(CTX);
 });
@@ -318,11 +318,17 @@ describe('the Create flyout (spec #4 §4 "4C")', () => {
     expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ arm: 'Click again to replace your description' }));
   });
 
-  it('people: + Add searches and adds a chip, × removes it; Assign to me adds the account user', async () => {
+  it('people: + Add searches and adds a chip, × removes it; Assign to me adds the user of the account the repository uses', async () => {
     const grace = { id: 5, username: 'grace', name: 'Grace Hopper', avatarUrl: null, webUrl: '', email: null };
     const ada = { id: 9, username: 'ada', name: 'Ada Lovelace', avatarUrl: null, webUrl: '', email: null };
+    const linus = { id: 3, username: 'linus', name: 'Linus', avatarUrl: null, webUrl: '', email: null };
     api.forgeSearchUsers.mockResolvedValue([grace] as never);
-    api.forgeAccounts.mockResolvedValue([{ account: { id: '', host: 'gitlab.example.com', kind: 'gitlab', user: ada }, status: { kind: 'ok' } }] as never);
+    // The host's default account is linus's; this repository chose ada's.
+    api.forgeAccounts.mockResolvedValue([
+      { account: { id: 'gitlab.example.com', host: 'gitlab.example.com', kind: 'gitlab', user: linus }, status: { kind: 'ok' } },
+      { account: { id: 'gitlab.example.com#9', host: 'gitlab.example.com', kind: 'gitlab', user: ada }, status: { kind: 'ok' } },
+    ] as never);
+    patchForge('t1', { accountId: 'gitlab.example.com#9' });
     api.forgeCreateMr.mockResolvedValue({ mr: { number: 12, webUrl: 'w' }, failed: [] });
     await show();
     const people = screen.getByRole('group', { name: 'People and labels' });
