@@ -272,6 +272,7 @@ pub(super) fn element(_: &mut Window, cx: &mut App) -> Option<AnyElement> {
     let card = div()
         .id("popover")
         .occlude()
+            .child(crate::ui::spin::cover())
         .flex()
         .flex_col()
         .gap(px(8.))

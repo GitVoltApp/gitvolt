@@ -1119,6 +1119,7 @@ pub fn create_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mu
         .id("create-flyout")
         .key_context("MrView")
         .occlude()
+            .child(crate::ui::spin::cover())
         .relative()
         .flex()
         .flex_col()

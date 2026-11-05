@@ -5,8 +5,12 @@ import json, sys
 d = json.load(open(sys.argv[2]))
 
 
+# What the app calls (0,0) is the window's, the input's is the screen's: they part when a window's been moved on Xwayland.
+OX, OY = d.get("window", {}).get("x", 0), d.get("window", {}).get("y", 0)
+
+
 def centre(b):
-    return f"{round(b[0] + b[2] / 2)} {round(b[1] + b[3] / 2)}"
+    return f"{round(b[0] + b[2] / 2 + OX)} {round(b[1] + b[3] / 2 + OY)}"
 
 
 def at(key):
@@ -22,7 +26,7 @@ def at(key):
 def row_at(text):
     for r in d["menuRows"][::-1] + d["pickerRows"]:
         if text in r["label"]:
-            return f"{round(r['x'])} {round(r['y'])}"
+            return f"{round(r['x'] + OX)} {round(r['y'] + OY)}"
     return ""
 
 
@@ -31,7 +35,7 @@ def rowat(text):
         if text in r["summary"]:
             b = d["anchors"].get("tip:msg:" + str(r["id"]))
             if b:
-                return f"{round(b[0] + 60)} {round(b[1] + b[3] / 2)}"
+                return f"{round(b[0] + 60 + OX)} {round(b[1] + b[3] / 2 + OY)}"
     return ""
 
 

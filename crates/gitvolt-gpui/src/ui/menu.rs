@@ -1135,6 +1135,7 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
             .w(px(lv.w))
             .min_h(px(lv.h))
             .occlude()
+            .child(crate::ui::spin::cover())
             .flex()
             .flex_col()
             .py(px(PAD_Y))

@@ -806,6 +806,7 @@ impl GitVolt {
         let hscroll = m.view(index).hscroll;
         let byte = shape(&text, window).closest_index_for_x(px((x - gutter + hscroll).max(0.)));
         window.focus(&m.view(index).focus.clone(), cx);
+        m.last_pressed = index;
         if index < 2 {
             let p = &mut m.panes[index];
             p.want_col = None;
@@ -851,6 +852,14 @@ impl GitVolt {
 
     /// The press drags, wherever the pointer's gone: the root sends it here.
     pub fn on_merge_drag(&mut self, e: &MouseMoveEvent, window: &Window, cx: &mut Context<Self>) {
+        // Past a pane's edge, the text's own drag goes by `text_drag_moved`.
+        if self.tabs.get(self.active).and_then(Tab::merge_shown).is_some_and(|m| (0..m.editor_count()).any(|i| m.view(i).drag == PaneDrag::Text && !m.view(i).body.get().contains(&e.position))) {
+            return;
+        }
+        self.merge_drag(e, window, cx);
+    }
+
+    pub fn merge_drag(&mut self, e: &MouseMoveEvent, window: &Window, cx: &mut Context<Self>) {
         let Some(m) = self.tabs.get_mut(self.active).and_then(Tab::merge_shown_mut) else { return };
         let Some(index) = (0..m.editor_count()).find(|i| m.view(*i).drag != PaneDrag::None) else { return };
         if e.pressed_button != Some(MouseButton::Left) {

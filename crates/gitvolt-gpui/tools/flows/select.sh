@@ -35,4 +35,14 @@ ri move $pos -- wait 40 -- click -- wait 100
 key Control+v; pause 0.3
 check "the summary has it" "'with some words' in d['summary']"
 shot select-paste
+echo "a drag past the text's bottom keeps scrolling while the pointer rests there, and out of the window too"
+S0=$(q "d['diff']['scroll']")
+ri move 400 860 -- wait 300 -- down -- wait 40 -- move 500 870 -- wait 40 -- move 500 895 -- wait 100
+S1=$(q "d['diff']['scroll']"); pause 0.5; S2=$(q "d['diff']['scroll']")
+ri up -- wait 100
+check_sh "the first move past the edge scrolled ($S0 to $S1)" "python3 -c 'import sys; sys.exit(0 if $S1 > $S0 else 1)'"
+check_sh "and it went on at rest ($S1 to $S2)" "python3 -c 'import sys; sys.exit(0 if $S2 > $S1 else 1)'"
+check "the selection is many lines" "d['diff']['selected'] and d['diff']['selected'].count(chr(10)) > 10"
+S3=$(q "d['diff']['scroll']"); pause 0.2
+check "it stopped at the release" "d['diff']['scroll'] == $S3"
 finish

@@ -245,6 +245,8 @@ pub enum Loaded {
 }
 
 pub struct MergeTool {
+    /// The editor a press last went into: what Ctrl+C copies from.
+    pub last_pressed: usize,
     pub worktree: String,
     pub path: String,
     pub loaded: Loaded,
@@ -266,7 +268,7 @@ pub struct MergeTool {
 
 impl MergeTool {
     pub fn loading(worktree: String, path: String) -> Self {
-        Self { worktree, path, loaded: Loaded::Loading, picks: Picks::new(), panes: Vec::new(), output: None, saving: false, busy: false, pending_reveal: None, generation: 0, base: None, kept: None }
+        Self { last_pressed: 2, worktree, path, loaded: Loaded::Loading, picks: Picks::new(), panes: Vec::new(), output: None, saving: false, busy: false, pending_reveal: None, generation: 0, base: None, kept: None }
     }
 
     pub fn file(&self) -> Option<&Rc<ConflictFile>> {
@@ -1031,10 +1033,9 @@ impl GitVolt {
     /// The Copy of a pane, or of the output.
     pub fn merge_selected_text(&self) -> Option<String> {
         let m = self.tabs.get(self.active)?.merge_shown()?;
-        for p in &m.panes {
-            if let Some(t) = p.selected_text() {
-                return Some(t);
-            }
+        // The editor last pressed in: each keeps its own selection, as Monaco's do.
+        if let Some(p) = m.panes.get(m.last_pressed) {
+            return p.selected_text();
         }
         let o = m.output.as_ref()?;
         (!o.edit.buffer.sel.is_empty()).then(|| o.edit.buffer.selected().to_string())

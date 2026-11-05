@@ -312,6 +312,7 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
             .w(px(WIDTH))
             .h(px(h))
             .occlude()
+            .child(crate::ui::spin::cover())
             .flex()
             .flex_col()
             .bg(theme::panel_bg1())

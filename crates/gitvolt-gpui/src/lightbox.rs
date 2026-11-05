@@ -226,6 +226,7 @@ pub fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
             div()
                 .id("lightbox-bar")
                 .occlude()
+            .child(crate::ui::spin::cover())
                 .flex()
                 .items_center()
                 .gap(px(4.))
@@ -253,6 +254,7 @@ pub fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
             .left_0()
             .size_full()
             .occlude()
+            .child(crate::ui::spin::cover())
             .key_context("Lightbox")
             .track_focus(&focus)
             // Theme-free: a dark backdrop in every theme.

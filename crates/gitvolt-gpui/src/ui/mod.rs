@@ -24,6 +24,7 @@ pub mod modal;
 pub mod place;
 pub mod picker;
 pub mod popover;
+pub mod spin;
 pub mod toast;
 pub mod tooltip;
 
@@ -209,6 +210,7 @@ pub fn set_font(family: SharedString, cx: &mut App) {
 
 /// The next frame's anchors begin here; what armed control or tooltip lost its anchor goes.
 pub fn begin_frame(window: &mut Window, cx: &mut App) {
+    spin::begin_frame();
     let ui = Ui::get_mut(cx);
     if ui.measurer.is_none() {
         ui.measurer = Some(window.text_system().clone());

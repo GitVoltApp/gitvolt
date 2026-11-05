@@ -355,8 +355,8 @@ fn danger(id: impl Into<ElementId>, label: impl Into<SharedString>, blocked: boo
 }
 
 /// `.spin`: turns only while the write it stands for runs.
-pub fn spinner(id: impl Into<ElementId>, size_px: f32, color: Hsla) -> impl IntoElement {
-    icon("loader-circle", size_px, color).with_animation(id, Animation::new(Duration::from_secs(1)).repeat(), |svg, delta| svg.with_transformation(Transformation::rotate(percentage(delta))))
+pub fn spinner(_id: impl Into<ElementId>, size_px: f32, color: Hsla) -> impl IntoElement {
+    crate::ui::spin::spinner("loader-circle", size_px, color)
 }
 
 /// How many rows the description shows: its text's, within what the panel's height allows.

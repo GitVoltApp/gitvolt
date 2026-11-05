@@ -149,7 +149,7 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
         .into_iter()
         .map(|(id, width, framed, top, anchored, build, focus)| {
             let content = build(window, cx);
-            let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).occlude().flex().flex_col().flex_none().when(anchored.is_none(), |d| d.w(px(width))).when(anchored.is_some(), |d| d.max_w(px(width))).max_w(window.viewport_size().width - px(32.));
+            let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).occlude().child(crate::ui::spin::cover()).flex().flex_col().flex_none().when(anchored.is_none(), |d| d.w(px(width))).when(anchored.is_some(), |d| d.max_w(px(width))).max_w(window.viewport_size().width - px(32.));
             let body = if framed {
                 body.gap(px(10.))
                     .when(anchored.is_none(), |d| d.px(px(18.)).py(px(16.)))
@@ -176,6 +176,7 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
                     .left_0()
                     .size_full()
                     .occlude()
+            .child(crate::ui::spin::cover())
                     .key_context("Modal")
                     .track_focus(&focus)
                     .on_action(|_: &CloseModal, window, cx| close_top(window, cx))
@@ -192,6 +193,7 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
                 .left_0()
                 .size_full()
                 .occlude()
+            .child(crate::ui::spin::cover())
                 .flex()
                 .justify_center()
                 .bg(theme::backdrop())

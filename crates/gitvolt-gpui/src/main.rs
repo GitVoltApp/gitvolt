@@ -73,6 +73,21 @@ use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
 
+/// The window's root: the app, cached, so a frame of what turns over it (`ui::spin`) doesn't lay it out and paint it again.
+struct Root {
+    app: Entity<GitVolt>,
+    layer: Entity<ui::spin::SpinLayer>,
+}
+
+impl Render for Root {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let mut full = StyleRefinement::default();
+        full.size.width = Some(relative(1.).into());
+        full.size.height = Some(relative(1.).into());
+        div().size_full().relative().child(AnyView::from(self.app.clone()).cached(full)).child(self.layer.clone())
+    }
+}
+
 struct Assets;
 
 impl AssetSource for Assets {
@@ -300,7 +315,8 @@ fn main() {
                 bench::start(view.clone(), window, cx);
             }
             bench::start_debug_pipe(view.clone(), window, cx);
-            view
+            let layer = ui::spin::SpinLayer::new(cx);
+            cx.new(|_| Root { app: view, layer })
         });
         if let Err(e) = result {
             eprintln!("Couldn't open a window: {e}");

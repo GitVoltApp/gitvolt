@@ -14,7 +14,6 @@ use gitvolt_core::forge::ForgeKind;
 use gpui::prelude::*;
 use gpui::*;
 use std::collections::HashMap;
-use std::time::Duration;
 
 const FILTERS: [(MrFilter, &str, &str, &str); 3] = [
     (MrFilter::Mine, "mine", "Mine", "Show the open ones you opened"),
@@ -42,8 +41,8 @@ pub fn state_glyph(s: MrState) -> &'static str {
     }
 }
 
-fn turning(name: &'static str, size: f32, color: Hsla, key: impl Into<ElementId>) -> AnyElement {
-    icon(name, size, color).with_animation(key, Animation::new(Duration::from_secs(1)).repeat(), |s, d| s.with_transformation(Transformation::rotate(percentage(d)))).into_any_element()
+fn turning(name: &'static str, size: f32, color: Hsla, _key: impl Into<ElementId>) -> AnyElement {
+    crate::ui::spin::spinner(name, size, color).into_any_element()
 }
 
 /// The badge's icon: one per state, coloured by it. A merge under way turns, for the moments it lasts.
@@ -71,7 +70,9 @@ pub fn pipeline_icon(p: &ForgePipeline, size: f32) -> AnyElement {
         PipelineStatus::Canceled | PipelineStatus::Skipped => ("circle-slash", theme::text_secondary()),
         PipelineStatus::Manual => ("hand", theme::text_secondary()),
     };
-    // A pipeline can run for an hour, and a turning icon redraws the window all that while: it stands still.
+    if p.status == PipelineStatus::Running {
+        return crate::ui::spin::spinner(glyph, size, color).into_any_element();
+    }
     icon(glyph, size, color).into_any_element()
 }
 

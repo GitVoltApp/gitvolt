@@ -1077,6 +1077,24 @@ fn hamburger(cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     )
 }
 
+/// What an element's own mouse-move can't see: a press that's moved out of it, or out of the window.
+fn text_drag_listener(cx: &mut Context<GitVolt>) -> impl IntoElement {
+    let this = cx.weak_entity();
+    canvas(
+        |_, _, _| {},
+        move |_, _, window, _| {
+            let this = this.clone();
+            window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
+                if phase == DispatchPhase::Bubble && e.pressed_button == Some(MouseButton::Left) {
+                    this.update(cx, |this, cx| this.text_drag_moved(e, window, cx)).ok();
+                }
+            });
+        },
+    )
+    .absolute()
+    .size_0()
+}
+
 fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let name = this.tabs.get(this.active).map(|t| format!("GitVolt — {}", t.name)).unwrap_or_else(|| "GitVolt".into());
     let button = |id: &'static str, name: &'static str| {
@@ -1648,6 +1666,7 @@ impl Render for GitVolt {
         if let Some(handle) = self.focus_next_frame.take() {
             window.focus(&handle, cx);
         }
+        crate::zoom::frame_start();
         crate::ui::begin_frame(window, cx);
         self.forge_sync_poller(cx);
         self.measure_editor_font(window);
@@ -1757,6 +1776,7 @@ impl Render for GitVolt {
         let settings = crate::settings::frame::settings_overlay(self, window, cx);
         let font_picker = crate::settings::fonts::font_picker_overlay(self, window, cx);
         let overlays = crate::ui::overlays(window, cx);
+        crate::zoom::frame_rendered();
         let app = div()
             .relative()
             .size_full()
@@ -1871,6 +1891,7 @@ impl Render for GitVolt {
             .children(font_picker)
             .children(submit_popover)
             .children(self.flyout_ring(cx))
+            .child(text_drag_listener(cx))
             .children(overlays)
             .children(resize_handles(window))
             .into_any_element()

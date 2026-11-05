@@ -1025,6 +1025,16 @@ impl MdState {
         (start, end)
     }
 
+    /// A selection's drag is going on.
+    pub fn text_dragging(&self) -> bool {
+        matches!(self.drag, Drag::Text)
+    }
+
+    /// The pane's box, for what's past its edge.
+    pub fn view_bounds(&self) -> Bounds<Pixels> {
+        self.bounds
+    }
+
     pub fn selected_text(&self) -> Option<String> {
         let (a, b) = self.selection?;
         let (a, b) = (a.min(b), a.max(b));
@@ -2510,7 +2520,7 @@ impl MdView {
         cx.notify();
     }
 
-    fn on_move(&mut self, e: &MouseMoveEvent, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn on_move(&mut self, e: &MouseMoveEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let mut st = self.state.borrow_mut();
         let pressed = e.pressed_button == Some(MouseButton::Left);
         match st.drag {

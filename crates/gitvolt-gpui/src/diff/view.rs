@@ -1607,15 +1607,44 @@ fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx
 }
 
 impl GitVolt {
-    /// A selection's drag that's left the text, and maybe the window: it goes on, and past the top or the bottom the text keeps
-    /// coming while the pointer rests there, as Monaco's does.
-    fn text_drag_outside(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).is_none_or(|d| d.drag != Drag::Text) {
+    /// Where a selection's drag is going on, if one is: the text's box.
+    fn text_drag_bounds(&self, cx: &App) -> Option<Bounds<Pixels>> {
+        if let Some(view) = self.shown_md() {
+            let view = view.read(cx);
+            let st = view.state.borrow();
+            return st.text_dragging().then(|| st.view_bounds());
+        }
+        let tab = self.tabs.get(self.active)?;
+        if let Some(m) = tab.merge_shown() {
+            let i = (0..m.editor_count()).find(|i| m.view(*i).drag == crate::merge::PaneDrag::Text)?;
+            return Some(m.view(i).body.get());
+        }
+        tab.diff.as_ref().filter(|d| d.drag == Drag::Text).map(|d| d.body.get())
+    }
+
+    fn text_drag_step(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(view) = self.shown_md() {
+            view.update(cx, |m, cx| m.on_move(e, window, cx));
+        } else if self.tabs.get(self.active).is_some_and(|t| t.merge_shown().is_some()) {
+            self.merge_drag(e, window, cx);
+        } else {
+            on_mouse_move(self, e, window, cx);
+        }
+    }
+
+    /// A press moved. A selection's drag that's left the text goes on, wherever the pointer is, even out of the window; past
+    /// the top or the bottom the text keeps coming while the pointer rests there, as Monaco's and Chromium's do.
+    pub fn text_drag_moved(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(bounds) = self.text_drag_bounds(cx) else {
+            self.text_drag_at = None;
+            return;
+        };
+        if bounds.contains(&e.position) {
+            self.text_drag_at = None;
             return;
         }
-        on_mouse_move(self, e, window, cx);
-        let running = self.text_drag_at.replace(e.position).is_some();
-        if running {
+        self.text_drag_step(e, window, cx);
+        if self.text_drag_at.replace(e.position).is_some() {
             return;
         }
         cx.spawn_in(window, async move |this, cx| {
@@ -1623,11 +1652,11 @@ impl GitVolt {
                 cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
                 let more = this.update_in(cx, |this, window, cx| {
                     let Some(position) = this.text_drag_at else { return false };
-                    if this.tabs.get(this.active).and_then(|t| t.diff.as_ref()).is_none_or(|d| d.drag != Drag::Text) {
+                    if this.text_drag_bounds(cx).is_none() {
                         this.text_drag_at = None;
                         return false;
                     }
-                    on_mouse_move(this, &MouseMoveEvent { position, pressed_button: Some(MouseButton::Left), modifiers: Modifiers::default() }, window, cx);
+                    this.text_drag_step(&MouseMoveEvent { position, pressed_button: Some(MouseButton::Left), modifiers: Modifiers::default() }, window, cx);
                     true
                 });
                 if !matches!(more, Ok(true)) {
@@ -1731,18 +1760,6 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
                         window.paint_quad(fill(Bounds::new(point(x, bounds.origin.y + bounds.size.height - px(SCROLLBAR_W)), size(px(thumb), px(SCROLLBAR_W))), theme::scroll_thumb()));
                     }
                     let entity = entity.clone();
-                    let dragging = entity.clone();
-                    window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
-                        if phase != DispatchPhase::Bubble || e.pressed_button != Some(MouseButton::Left) {
-                            return;
-                        }
-                        // Back over the text its own handler takes it.
-                        if bounds.contains(&e.position) {
-                            dragging.update(cx, |this, _| this.text_drag_at = None).ok();
-                        } else {
-                            dragging.update(cx, |this, cx| this.text_drag_outside(e, window, cx)).ok();
-                        }
-                    });
                     window.on_mouse_event(move |e: &ScrollEvent, phase, window, cx| {
                         if phase != DispatchPhase::Capture || !bounds.contains(&e.position) {
                             return;

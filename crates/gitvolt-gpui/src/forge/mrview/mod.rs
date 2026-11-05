@@ -357,7 +357,7 @@ pub fn mr_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mut Co
     let web_url = mr.as_ref().map(|m| m.web_url.clone());
     let title = mr.as_ref().map(|m| m.title.clone()).unwrap_or_default();
     let head_btn = |id: &'static str| div().id(id).flex().flex_none().size(px(24.)).items_center().justify_center().rounded(px(4.)).cursor_pointer().hover(|d| d.bg(theme::hover_row()));
-    let spin = |n: &'static str, key: &'static str| icon(n, 14., theme::text_secondary()).with_animation(key, Animation::new(std::time::Duration::from_secs(1)).repeat(), |s, d| s.with_transformation(Transformation::rotate(percentage(d))));
+    let spin = |n: &'static str, _key: &'static str| crate::ui::spin::spinner(n, 14., theme::text_secondary());
     let dock_tip = if docked || dock_pref && !dockable { "Undock (float over the graph)" } else if dockable { "Dock beside the graph" } else { "The window is too narrow to dock" };
     let mut head = div()
         .flex()
@@ -430,6 +430,7 @@ pub fn mr_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mut Co
         .id("mr-flyout")
         .key_context("MrView")
         .occlude()
+            .child(crate::ui::spin::cover())
         .relative()
         .flex()
         .flex_col()

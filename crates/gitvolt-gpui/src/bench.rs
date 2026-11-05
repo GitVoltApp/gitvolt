@@ -483,6 +483,8 @@ pub fn start_debug_pipe(view: Entity<GitVolt>, window: &mut Window, cx: &mut App
                     d["cursor"] = crate::zoom::last_cursor().into();
                     d["pid"] = std::process::id().into();
                     d["input"] = crate::zoom::input_trace().into();
+                    let f = crate::zoom::frame_times();
+                    d["frames"] = serde_json::json!({ "n": f.frames, "render": f.render_us, "layoutPaint": f.layout_paint_us, "submit": f.submit_us });
                     let v = view.read(cx);
                     let tab = v.tabs.get(v.active);
                     d["graphRows"] = tab.and_then(|t| t.graph.as_ref()).map_or(Vec::new(), |g| g.rows.iter().take(300).map(|r| serde_json::json!({ "id": r.id, "summary": r.summary })).collect::<Vec<_>>()).into();

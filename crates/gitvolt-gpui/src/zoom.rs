@@ -35,6 +35,57 @@ pub fn trace_input() {
     TRACE_INPUT.store(true, Relaxed);
 }
 
+/// Where a frame's time goes, for the real-input flows; only with `GITVOLT_DEBUG_PIPE`.
+#[derive(Default, Clone, Copy)]
+pub struct FrameTimes {
+    pub frames: u64,
+    pub render_us: u64,
+    pub layout_paint_us: u64,
+    pub submit_us: u64,
+    start: Option<std::time::Instant>,
+    rendered: Option<std::time::Instant>,
+}
+
+thread_local! {
+    static FRAMES: std::cell::Cell<FrameTimes> = std::cell::Cell::new(FrameTimes::default());
+}
+
+pub fn frame_times() -> FrameTimes {
+    FRAMES.get()
+}
+
+pub fn frame_start() {
+    if TRACE_INPUT.load(Relaxed) {
+        FRAMES.set(FrameTimes { start: Some(std::time::Instant::now()), ..FRAMES.get() });
+    }
+}
+
+pub fn frame_rendered() {
+    if !TRACE_INPUT.load(Relaxed) {
+        return;
+    }
+    let mut f = FRAMES.get();
+    let now = std::time::Instant::now();
+    if let Some(s) = f.start {
+        f.render_us += (now - s).as_micros() as u64;
+    }
+    f.rendered = Some(now);
+    FRAMES.set(f);
+}
+
+fn frame_drawn(before: std::time::Instant) {
+    if !TRACE_INPUT.load(Relaxed) {
+        return;
+    }
+    let mut f = FRAMES.get();
+    f.frames += 1;
+    if let Some(r) = f.rendered.take() {
+        f.layout_paint_us += (before - r).as_micros() as u64;
+    }
+    f.submit_us += before.elapsed().as_micros() as u64;
+    FRAMES.set(f);
+}
+
 pub fn input_trace() -> Vec<String> {
     INPUT_TRACE.with_borrow(|t| t.iter().cloned().collect())
 }
@@ -542,7 +593,9 @@ impl PlatformWindow for ZoomWindow {
     }
 
     fn draw(&self, scene: &Scene) {
+        let before = std::time::Instant::now();
         self.inner.0.borrow().draw(scene);
+        frame_drawn(before);
     }
 
     fn is_maximized(&self) -> bool {
