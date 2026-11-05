@@ -3,7 +3,8 @@
 # authors, no remote. usage: conflict-fixture.sh merge|rebase|irebase [dir]
 #   merge:   stopped in a merge of feature/parser into main: two text conflicts, a binary, a delete/modify.
 #   rebase:  stopped in a rebase of topic onto main, one conflicted file, two more commits to replay.
-#   irebase: clean; main with six commits above base-tag, chips feature/a and feature/b on two of them.
+#   irebase: clean; main with six commits above base-tag, chips feature/a and feature/b on two of them;
+#            the last two both change shared.txt, so swapping them conflicts.
 set -eu
 kind=$1
 dir=${2:-$(pwd)/target/bench/work/$kind-fixture}
@@ -64,11 +65,12 @@ case "$kind" in
     git rebase main >/dev/null 2>&1 || true
     ;;
   irebase)
-    printf 'base\n' > base.txt && git add . && git commit -qm 'Base of the plan'
+    printf 'base\n' > base.txt && printf 'shared 0\n' > shared.txt && git add . && git commit -qm 'Base of the plan'
     git tag base-tag
     git branch trunk
     for i in 1 2 3 4 5 6; do
       printf 'line %s\n' "$i" > "file$i.txt"
+      if [ "$i" -ge 5 ]; then printf 'shared %s\n' "$i" > shared.txt; fi
       git add . && GIT_AUTHOR_NAME="Bob Example" GIT_AUTHOR_EMAIL=bob@example.com git commit -qm "Commit number $i" -m "Body of commit $i."
       if [ "$i" = 2 ]; then git branch feature/a; fi
       if [ "$i" = 4 ]; then git branch feature/b; fi

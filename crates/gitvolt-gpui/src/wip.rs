@@ -931,7 +931,13 @@ impl GitVolt {
     /// Puts a worktree's draft (or what's being amended) in the commit box.
     pub fn show_draft(&mut self, repo: u32, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
-        let Some(worktree) = tab.wip_worktree() else { return };
+        let Some(worktree) = tab.wip_worktree() else {
+            // No WIP row: what the box holds is nobody's now.
+            let (summary, description) = (tab.wip.summary.clone(), tab.wip.description.clone());
+            summary.update(cx, |i, cx| i.set_text("", cx));
+            description.update(cx, |i, cx| i.set_text("", cx));
+            return;
+        };
         let op_box = tab.box_state().op_box();
         let d = match (&tab.wip.amend, tab.wip.stop.as_ref().filter(|_| op_box)) {
             (Some((text, _)), _) => text.clone(),
@@ -1181,6 +1187,14 @@ impl GitVolt {
     /// A HEAD move ends the amend; the draft shows again.
     pub fn check_amend(&mut self, repo: u32, cx: &mut Context<Self>) {
         self.sync_merge_drafts(repo, cx);
+        let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
+        // The WIP row went with the operation: its message goes too, and the draft shows when the row's next there.
+        if tab.wip.stop.is_some() && tab.graph.as_ref().is_some_and(|g| !g.in_progress.contains_key(&tab.worktree)) {
+            if let Some(tab) = self.wip_tab_mut(repo) {
+                tab.wip.stop = None;
+            }
+            self.show_draft(repo, cx);
+        }
         let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
         let Some(worktree) = tab.wip_worktree() else { return };
         let owns = tab.box_state().owns;

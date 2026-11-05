@@ -79,7 +79,12 @@ fn lane_or(color: Option<Hsla>, fallback: usize) -> Hsla {
 }
 
 /// The chip itself: its colour by what it is.
-fn chip_body(item: &ChipItem, dragged: bool) -> Div {
+/// `text-decoration: line-through`, over text this wide.
+fn strike_through(width: f32, height: f32) -> Div {
+    div().absolute().left_0().top(px((height / 2.).floor())).w(px(width)).h(px(1.)).bg(theme::text_disabled())
+}
+
+fn chip_body(item: &ChipItem, dragged: bool, deleted_w: f32) -> Div {
     let lane = lane_or(item.color, if matches!(item.kind, ChipKind::Base) { 1 } else { 0 });
     let mut d = div().flex_none().h(px(CHIP_H)).line_height(px(CHIP_H)).px(px(5.)).rounded(px(3.)).text_size(px(12.)).whitespace_nowrap().overflow_hidden().text_ellipsis().min_w_0().text_color(theme::text_selected()).bg(theme::mix(lane, 0.3, transparent_black()));
     match &item.kind {
@@ -88,7 +93,7 @@ fn chip_body(item: &ChipItem, dragged: bool) -> Div {
         }
         ChipKind::Chip(c) => {
             if c.deleted {
-                d = d.line_through().opacity(0.6);
+                d = d.relative().opacity(0.6).child(strike_through(deleted_w, CHIP_H));
             }
             if c.locked.is_some() {
                 d = d.bg(theme::mix(lane, 0.18, transparent_black())).text_color(theme::text_normal());
@@ -139,12 +144,13 @@ fn press_chip(item: &ChipItem) -> Option<String> {
 
 /// A chip at its full name, every control of the chip in it: the hover expansion of a truncated chip, and the "+N" list.
 fn full_chip(item: &ChipItem, key: String, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let deleted_w = crate::ui::text_width(&item.branch, 12., FontWeight::NORMAL, cx);
     let lane = lane_or(item.color, if matches!(item.kind, ChipKind::Base) { 1 } else { 0 });
     let free = press_chip(item);
     let menu_branch = item.branch.clone();
     let id: SharedString = format!("{key}:full").into();
     let x_id: SharedString = format!("{key}:full-x").into();
-    let name = div().flex_none().h_full().line_height(px(CHIP_H)).px(px(5.)).rounded(px(3.)).text_color(theme::text_selected()).bg(theme::mix(lane, 0.3, theme::panel_bg())).when(matches!(&item.kind, ChipKind::Chip(c) if c.deleted), |d| d.line_through().text_color(theme::text_secondary())).when(matches!(item.kind, ChipKind::Rebased), |d| d.font_weight(FontWeight::BOLD)).child(item.branch.clone());
+    let name = div().flex_none().h_full().line_height(px(CHIP_H)).px(px(5.)).rounded(px(3.)).text_color(theme::text_selected()).bg(theme::mix(lane, 0.3, theme::panel_bg())).when(matches!(&item.kind, ChipKind::Chip(c) if c.deleted), |d| d.relative().text_color(theme::text_secondary()).child(strike_through(deleted_w, CHIP_H))).when(matches!(item.kind, ChipKind::Rebased), |d| d.font_weight(FontWeight::BOLD)).child(item.branch.clone());
     let controls = match &item.kind {
         ChipKind::Chip(c) if c.locked.is_some() => Some(icon("lock", 11., theme::text_secondary()).mx(px(2.)).into_any_element()),
         ChipKind::Chip(c) => Some(x_button(x_id, c, None, cx).into_any_element()),
@@ -238,7 +244,7 @@ fn chip_column(s: &RebaseSession, state: &EditorState, g: &Grouping, row: &str, 
                     this.start_chip_drag(b, e.position, cx);
                 }
             }))
-            .child(chip_body(item, is_dragged).w(px(body_w)).child(item.branch.clone()));
+            .child(chip_body(item, is_dragged, (body_w - 10.).min(crate::ui::text_width(&item.branch, 12., FontWeight::NORMAL, cx)) + 5.).w(px(body_w)).child(item.branch.clone()));
         let leave_branch = branch.clone();
         let wrap = div()
             .id(ElementId::Name(format!("{key}:wrap").into()))
@@ -328,6 +334,7 @@ fn chip_column(s: &RebaseSession, state: &EditorState, g: &Grouping, row: &str, 
     let mut column = div().flex().flex_none().w(px(CHIPS_W)).h(px(ROW_H)).items_center().gap(px(3.)).child(list);
     if !base {
         let r = row.to_string();
+        let add_key = format!("ichip-add:{row}");
         column = column.child(tip(
             "Add a branch at this commit",
             div()
@@ -345,7 +352,8 @@ fn chip_column(s: &RebaseSession, state: &EditorState, g: &Grouping, row: &str, 
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_click(cx.listener(move |this, _, _, cx| this.open_add_branch(r.clone(), cx)))
                 .child(icon("plus", 12., theme::text_secondary())),
-        ));
+        )
+        .key(add_key));
     }
     column
 }
@@ -487,7 +495,8 @@ fn row_view(s: &RebaseSession, index: usize, row: &EditorRow, g: &Grouping, chip
     let summary = if editing {
         message_editor(s, window, cx).into_any_element()
     } else {
-        div().flex_1().min_w_0().h(px(ROW_H)).line_height(px(ROW_H)).truncate().opacity(dim).when(dropped, |d| d.line_through().text_color(theme::text_disabled())).child(first_line).into_any_element()
+        let strike = dropped.then(|| crate::ui::text_width(&first_line, 13., FontWeight::NORMAL, cx));
+        div().relative().flex_1().min_w_0().h(px(ROW_H)).line_height(px(ROW_H)).truncate().opacity(dim).when(dropped, |d| d.text_color(theme::text_disabled())).child(first_line).children(strike.map(|w| strike_through(w, ROW_H))).into_any_element()
     };
     let dot = div().flex().flex_none().w(px(12.)).h(px(ROW_H)).items_center().justify_center().opacity(dim).font_weight(FontWeight::BOLD).text_color(theme::blue()).when(row.edited.is_some(), |d| d.child("•"));
     let handle = div().flex().flex_none().w(px(18.)).h(px(ROW_H)).items_center().justify_center().cursor(CursorStyle::OpenHand).child(icon("grip-vertical", 14., theme::text_disabled()).group_hover(group.clone(), |s| s.text_color(theme::text_secondary())));
@@ -525,7 +534,7 @@ fn row_view(s: &RebaseSession, index: usize, row: &EditorRow, g: &Grouping, chip
         .child(conflict_el)
         .child(div().flex().flex_none().w(px(ACTION_W)).h(px(ROW_H)).items_center().child(action_button(s, row, selected, cx)))
         .child(fold_el)
-        .child(avatar)
+        .child(div().flex_none().w(px(22.)).child(avatar))
         .child(summary)
         .child(dot)
         .when(chip_over, |d| d.child(div().absolute().top_0().left_0().size_full().border_2().border_color(theme::blue())))

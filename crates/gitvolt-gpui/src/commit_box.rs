@@ -449,12 +449,15 @@ pub fn commit_box(v: &GitVolt, tab: &Tab, panel_h: f32, window: &Window, cx: &mu
     let tooltip = view.reason.clone().unwrap_or_else(|| format!("{label} ({})", crate::commands::display_chord("Mod+Enter")));
     let button = tip(
         tooltip,
-        positive("commit-button", label, blocked)
-            .w_full()
-            .min_h(px(30.))
-            .py(px(6.))
-            .when(committing, |d| d.child(spinner("commit-spin", 13., theme::text_secondary())))
-            .when(!blocked, |d| d.on_click(cx.listener(|this, _, _, cx| this.submit_commit(cx)))),
+        crate::ui::anchor(
+            "commit-button",
+            positive("commit-button", label, blocked)
+                .w_full()
+                .min_h(px(30.))
+                .py(px(6.))
+                .when(committing, |d| d.child(spinner("commit-spin", 13., theme::text_secondary())))
+                .when(!blocked, |d| d.on_click(cx.listener(|this, _, _, cx| this.submit_commit(cx)))),
+        ),
     );
     let status = operation.as_ref().map(|op| {
         div()
@@ -554,6 +557,7 @@ fn operation_actions(tab: &Tab, op: &Operation, state: &BoxState, blocked: bool,
             reason.unwrap_or(tip_text),
             positive("op-continue", "Continue rebase", off).flex_1().when(!off, |d| d.on_click(cx.listener(move |this, _, _, cx| this.operation_control(OpName::Rebase, "continue", message.clone(), Origin::None, cx)))),
         )
+        .key("op-continue-at")
     });
     let abort_tip = if kind == OpName::Merge { "Put the branch back as it was before the merge".to_string() } else { format!("Put the branch back as it was before the {name}") };
     let skip = op.skip.then(|| {
@@ -561,6 +565,7 @@ fn operation_actions(tab: &Tab, op: &Operation, state: &BoxState, blocked: bool,
             if kind == OpName::Rebase { "Drop the stopped commit and go on".to_string() } else { format!("Drop this commit's {name} and go on") },
             neutral("op-skip", "Skip", blocked).flex_1().when(!blocked, |d| d.on_click(cx.listener(move |this, _, _, cx| this.operation_control(kind, "skip", None, Origin::None, cx)))),
         )
+        .key("op-skip-at")
     });
     // An armed Abort counts what it throws away: a different count disarms it.
     let resolved = if op.edit_stop.is_some() { 0 } else { staged };
@@ -593,7 +598,8 @@ fn operation_actions(tab: &Tab, op: &Operation, state: &BoxState, blocked: bool,
                 );
             }))
         }),
-    );
+    )
+    .key("op-abort-at");
     Some(crate::ui::anchor("op-abort-anchor", div().flex().flex_none().gap(px(6.)).children(cont).children(skip).child(abort)))
 }
 

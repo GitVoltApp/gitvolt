@@ -828,7 +828,7 @@ impl GitVolt {
         self.run_preset(branch, base, preset, "drop", format!("Dropped {}", short(&oid)), cx);
     }
 
-    /// Multi-select Squash, direct: the selected commits fold into the oldest, one interactive rebase with no editor.
+    /// Runs `preset` on the plan from `base` without the editor.
     pub fn run_preset(&mut self, branch: String, base: String, preset: Preset, verb: &'static str, done: String, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let ctx = tab.write_target();

@@ -120,15 +120,28 @@ fn chip_inner(c: &Chip, lane: usize, full: bool, lit: bool, row: Option<SharedSt
 /// The labels cell: what fits, `+N` for the rest with their list on hover; each chip its own menu and
 /// its branch's focus.
 #[allow(clippy::too_many_arguments)]
-fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &SharedString, row_pending: &[&str], this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Div {
+/// The branch a rebase is replaying, at HEAD's row while its worktree rebases: a ring and the name, dashed.
+fn rebasing_chip(name: &str, lane: usize) -> impl IntoElement + use<> {
+    let color = theme::lane(lane);
+    tip(
+        format!("{name} is being rebased"),
+        div().flex().flex_none().items_center().gap(px(CHIP_GAP)).h(px(CHIP_H)).px(px(5.)).rounded(px(3.)).bg(theme::lane_alpha(lane, 0.45)).border_1().border_dashed().border_color(color).text_color(theme::text_selected()).child(icon("loader-circle", 12., theme::text_selected())).child(name.to_string()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &SharedString, row_pending: &[&str], rebasing: Option<&str>, this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Div {
     let lane = row.color as usize;
-    let widths: Vec<f32> = row.chips.iter().map(|c| chip_width(c, cx)).collect();
+    // A detached HEAD sharing the cell with the rebasing chip is just its check.
+    let chips: Vec<Chip> = row.chips.iter().map(|c| if rebasing.is_some() && c.head && c.name.as_ref() == "HEAD" { Chip { name: SharedString::default(), ..c.clone() } } else { c.clone() }).collect();
+    let widths: Vec<f32> = chips.iter().map(|c| chip_width(c, cx)).collect();
     let more_w = |n: usize| crate::ui::text_width(&format!("+{n}"), 11., FontWeight::NORMAL, cx) + 8. + CHIP_SPACING;
-    let shown = fit_count(&widths, width - CELL_PAD, more_w);
-    let hidden = row.chips.len().saturating_sub(shown);
+    let room = rebasing.map_or(0., |n| crate::ui::text_width(n, 13., FontWeight::NORMAL, cx) + CHIP_PAD + 12. + CHIP_GAP + CHIP_SPACING + 2.);
+    let shown = fit_count(&widths, width - CELL_PAD - room, more_w);
+    let hidden = chips.len().saturating_sub(shown);
     let sha = row.id.to_string();
-    let mut cell = div().flex().flex_none().w(px(width)).h(px(ROW_H)).items_center().gap(px(CHIP_SPACING)).pl(px(CELL_PAD)).overflow_hidden();
-    for (i, c) in row.chips.iter().take(shown).enumerate() {
+    let mut cell = div().flex().flex_none().w(px(width)).h(px(ROW_H)).items_center().gap(px(CHIP_SPACING)).pl(px(CELL_PAD)).overflow_hidden().children(rebasing.map(|n| rebasing_chip(n, lane)));
+    for (i, c) in chips.iter().take(shown).enumerate() {
         let (chip, menu_sha, weak, hover) = (c.clone(), sha.clone(), this.clone(), this.clone());
         let (press_chip, press_sha) = (c.clone(), sha.clone());
         let tag = c.tag;
@@ -168,7 +181,7 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
         });
     }
     if hidden > 0 {
-        let list: Vec<Chip> = row.chips.clone();
+        let list: Vec<Chip> = chips.clone();
         let tint = theme::lane_alpha(lane, 0.25);
         let (weak, menu_list, menu_sha) = (this.clone(), list.clone(), sha);
         let badge = div()
@@ -464,6 +477,11 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
     let row_cols = cols;
     let drafts = tab.row_drafts.clone();
     let pending = tab.pending.clone();
+    let head_sha = tab.graph.as_ref().and_then(|g| g.head_sha.clone());
+    let rebasing_branch = tab.graph.as_ref().and_then(|g| match g.in_progress.get(&tab.worktree) {
+        Some(gitvolt_graph::InProgress::Rebase { head_name, .. }) => Some(head_name.trim_start_matches("refs/heads/").to_string()),
+        _ => None,
+    });
     let (repo, loaded, loading) = (tab.id, graph.rows.len() as u32, tab.loading);
     let older = graph.truncated;
     let messages = this.messages.clone();
@@ -530,7 +548,8 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                     let off = |c: Col| hidden.contains(&c);
                     let menu_weak = weak.clone();
                     let pending_refs: Vec<&str> = pending.keys().map(String::as_str).collect();
-                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &pending_refs, &weak, cx));
+                    let rebasing = rebasing_branch.as_deref().filter(|_| head_sha.as_deref() == Some(row.id.as_ref()));
+                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &pending_refs, rebasing, &weak, cx));
                     div()
                         .id(ix)
                         .group(group.clone())
