@@ -55,6 +55,11 @@ impl EditState {
         self.buffer.text != self.loaded
     }
 
+    /// The text changed: where its lines start.
+    pub fn refresh_lines(&mut self) {
+        self.starts = line_starts(&self.buffer.text);
+    }
+
     /// What a save writes.
     pub fn text_to_save(&self) -> String {
         if self.crlf { self.buffer.text.replace('\n', "\r\n") } else { self.buffer.text.clone() }
@@ -66,14 +71,14 @@ impl EditState {
         (n, at - self.starts[n])
     }
 
-    fn line_range(&self, n: usize) -> Range<usize> {
+    pub fn line_range(&self, n: usize) -> Range<usize> {
         let start = self.starts[n];
         let end = self.starts.get(n + 1).map_or(self.buffer.text.len(), |s| s - 1);
         start..end
     }
 
     /// The offset on line `n` nearest column `col`, on a character's boundary.
-    fn at_line(&self, n: usize, col: usize) -> usize {
+    pub fn at_line(&self, n: usize, col: usize) -> usize {
         let r = self.line_range(n);
         let mut at = (r.start + col).min(r.end);
         while !self.buffer.text.is_char_boundary(at) {
@@ -200,6 +205,29 @@ impl DiffState {
 
 impl GitVolt {
     fn with_edit(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut EditState) -> bool) {
+        if let Some(m) = self.tabs.get_mut(self.active).and_then(crate::app::Tab::merge_shown_mut)
+            && let Some(o) = m.output.as_mut()
+        {
+            let changed = f(&mut o.edit);
+            if changed {
+                m.after_output_edit();
+            } else {
+                o.edit.buffer.take_change();
+                let caret = o.caret_line() as f32 * crate::merge::LINE_H;
+                if caret < o.view.scroll {
+                    o.view.scroll = caret;
+                } else if caret + crate::merge::LINE_H > o.view.scroll + o.view.height {
+                    o.view.scroll = caret + crate::merge::LINE_H - o.view.height;
+                }
+                m.sync_scroll(2);
+            }
+            if changed {
+                m.sync_scroll(2);
+                self.merge_colour_after_edit(cx);
+            }
+            cx.notify();
+            return;
+        }
         let Some(diff) = self.tabs.get_mut(self.active).and_then(|t| t.diff.as_mut()) else { return };
         let Some(edit) = diff.edit.as_mut() else { return };
         let (before, changed) = (edit.buffer.text.len(), f(edit));
@@ -473,7 +501,7 @@ impl GitVolt {
 
     /// The window's closing: unsaved edits in any tab ask first, one at a time; `false` keeps it open.
     pub fn may_close(&mut self, cx: &mut Context<Self>) -> bool {
-        if let Some(i) = self.tabs.iter().position(|t| t.diff.as_ref().is_some_and(|d| d.editing_dirty())) {
+        if let Some(i) = self.tabs.iter().position(|t| t.diff.as_ref().is_some_and(|d| d.editing_dirty()) || t.merge_dirty()) {
             self.active = i;
             cx.notify();
             let again = self.ask_unsaved(|this, cx| this.close_window(cx), cx);
@@ -495,6 +523,10 @@ impl GitVolt {
     /// Leaving the file with unsaved edits asks [Save] [Discard edits] [Cancel]; `go` runs once it's settled.
     /// Whether it asked: the caller stops there.
     pub fn ask_unsaved(&mut self, go: impl Fn(&mut Self, &mut Context<Self>) + 'static, cx: &mut Context<Self>) -> bool {
+        if self.tabs.get(self.active).is_some_and(crate::app::Tab::merge_dirty) {
+            self.ask_unsaved_merge(Rc::new(go), cx);
+            return true;
+        }
         let Some(diff) = self.tabs.get(self.active).and_then(|t| t.diff.as_ref()) else { return false };
         if !diff.editing_dirty() {
             return false;
@@ -526,9 +558,36 @@ impl GitVolt {
         true
     }
 
+    /// Leaving the merge tool's unsaved work: [Save] [Discard edits] [Cancel].
+    fn ask_unsaved_merge(&mut self, go: crate::write::After, cx: &mut Context<Self>) {
+        let Some(path) = self.tabs.get(self.active).and_then(crate::app::Tab::merge_shown).map(|m| m.path.clone()) else { return };
+        let this = cx.weak_entity();
+        let req = ChoiceRequest { title: format!("Save your changes to {path}?").into(), body: Some("Your merge of this file isn't saved yet.".into()), note: None, choices: vec![Choice { id: "save".into(), label: "Save".into(), primary: true, ..Default::default() }, Choice { id: "discard".into(), label: "Discard edits".into(), danger: true, ..Default::default() }] };
+        self.with_window(cx, move |window, cx| {
+            popover::ask_choice(
+                req,
+                None,
+                move |pick, _, cx| {
+                    let go = go.clone();
+                    this.update(cx, |v, cx| match pick.as_deref() {
+                        Some("save") => v.merge_save_then(go, cx),
+                        Some("discard") => {
+                            v.merge_discard(cx);
+                            go(v, cx);
+                        }
+                        _ => {}
+                    })
+                    .ok();
+                },
+                window,
+                cx,
+            );
+        });
+    }
+
     /// Tab: as the line's indent is made, a tab or four spaces.
     pub fn edit_tab(&mut self, cx: &mut Context<Self>) {
-        let tabs = self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).and_then(|d| d.edit.as_ref()).is_some_and(|e| e.buffer.text.lines().any(|l| l.starts_with('\t')));
+        let tabs = self.active_buffer().is_some_and(|b| b.text.lines().any(|l| l.starts_with('\t')));
         self.insert(if tabs { "\t" } else { "    " }, EditKind::Other, cx);
     }
 
@@ -599,16 +658,27 @@ impl GitVolt {
     }
 }
 
+impl GitVolt {
+    /// The buffer the keyboard's typing goes to: the merge tool's output, else the open file's.
+    fn active_buffer(&self) -> Option<&Buffer> {
+        let tab = self.tabs.get(self.active)?;
+        if let Some(m) = tab.merge_shown() {
+            return Some(&m.output.as_ref()?.edit.buffer);
+        }
+        Some(&tab.diff.as_ref()?.edit.as_ref()?.buffer)
+    }
+}
+
 impl EntityInputHandler for GitVolt {
     fn text_for_range(&mut self, range: Range<usize>, actual: &mut Option<Range<usize>>, _: &mut Window, _: &mut Context<Self>) -> Option<String> {
-        let b = &self.tabs.get(self.active)?.diff.as_ref()?.edit.as_ref()?.buffer;
+        let b = self.active_buffer()?;
         let r = b.range_from_utf16(&range);
         actual.replace(b.range_to_utf16(&r));
         Some(b.text[r].to_string())
     }
 
     fn selected_text_range(&mut self, _: bool, _: &mut Window, _: &mut Context<Self>) -> Option<UTF16Selection> {
-        let b = &self.tabs.get(self.active)?.diff.as_ref()?.edit.as_ref()?.buffer;
+        let b = self.active_buffer()?;
         Some(UTF16Selection { range: b.range_to_utf16(&b.sel), reversed: b.reversed })
     }
 
@@ -621,11 +691,11 @@ impl EntityInputHandler for GitVolt {
     }
 
     fn text_length_utf16(&mut self, _: &mut Window, _: &mut Context<Self>) -> Option<usize> {
-        Some(self.tabs.get(self.active)?.diff.as_ref()?.edit.as_ref()?.buffer.text.encode_utf16().count())
+        Some(self.active_buffer()?.text.encode_utf16().count())
     }
 
     fn marked_text_range(&self, _: &mut Window, _: &mut Context<Self>) -> Option<Range<usize>> {
-        let b = &self.tabs.get(self.active)?.diff.as_ref()?.edit.as_ref()?.buffer;
+        let b = self.active_buffer()?;
         b.marked.as_ref().map(|r| b.range_to_utf16(r))
     }
 
@@ -669,6 +739,9 @@ impl EntityInputHandler for GitVolt {
     }
 
     fn bounds_for_range(&mut self, _: Range<usize>, bounds: Bounds<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<Bounds<Pixels>> {
+        if let Some(m) = self.tabs.get(self.active)?.merge_shown() {
+            return crate::merge::view::caret_bounds(m, bounds);
+        }
         let diff = self.tabs.get(self.active)?.diff.as_ref()?;
         let at = diff.caret?;
         let y = diff.layout.offsets.get(at.row).copied().unwrap_or(0.) - diff.scroll;

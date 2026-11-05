@@ -68,7 +68,7 @@ fn branch_of(name: &str) -> &str {
 }
 
 /// The branch a merge's default message names.
-fn merged_name(message: &str) -> Option<String> {
+pub fn merged_name(message: &str) -> Option<String> {
     let rest = message.strip_prefix("Merge ")?;
     let rest = rest.strip_prefix("remote-tracking ").unwrap_or(rest).strip_prefix("branch '")?;
     Some(rest.split('\'').next()?.to_string())

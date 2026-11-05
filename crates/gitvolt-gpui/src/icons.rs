@@ -3,6 +3,9 @@
 pub fn load(path: &str) -> Option<&'static [u8]> {
     Some(match path {
         "icons/app-window.svg" => include_bytes!("../assets/icons/app-window.svg"),
+        "icons/grip-vertical.svg" => include_bytes!("../assets/icons/grip-vertical.svg"),
+        "icons/chevron-up.svg" => include_bytes!("../assets/icons/chevron-up.svg"),
+        "icons/combine.svg" => include_bytes!("../assets/icons/combine.svg"),
         "icons/archive.svg" => include_bytes!("../assets/icons/archive.svg"),
         "icons/arrow-down.svg" => include_bytes!("../assets/icons/arrow-down.svg"),
         "icons/arrow-down-wide-narrow.svg" => include_bytes!("../assets/icons/arrow-down-wide-narrow.svg"),

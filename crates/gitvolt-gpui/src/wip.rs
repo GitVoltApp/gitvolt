@@ -560,6 +560,7 @@ impl GitVolt {
         if tab.wip_worktree() != Some(worktree.as_str()) {
             return;
         }
+        let open_conflict = tab.diff.as_ref().is_some_and(|d| crate::merge::is_conflict(&d.file));
         match tab.files.as_mut().filter(|f| f.wip.is_some()) {
             Some(files) => files.set_wip_lists(unstaged, staged),
             None => {
@@ -574,6 +575,10 @@ impl GitVolt {
                     self.read_worktree_paths(repo, cx);
                 }
             }
+        }
+        // Resolved elsewhere (a row's Take, `git add`, Abort): the tool mustn't keep offering its buttons.
+        if open_conflict {
+            self.merge_left_resolved(repo, None, cx);
         }
         cx.notify();
     }
@@ -601,7 +606,8 @@ impl GitVolt {
     pub fn follow_open_file(&mut self, repo: u32, from: Option<AdvanceFrom>, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
         let (Some(diff), Some(files)) = (tab.diff.as_ref(), tab.files.as_ref()) else { return };
-        if !matches!(diff.file.origin, Origin::Wip { .. }) || diff.file.status == UNCHANGED {
+        // A conflicted file stays until it's resolved (`merge_left_resolved`).
+        if !matches!(diff.file.origin, Origin::Wip { .. }) || diff.file.status == UNCHANGED || diff.file.status == 'U' {
             return;
         }
         let open = diff.file.clone();
@@ -1368,11 +1374,7 @@ impl GitVolt {
         let ctx = WriteCtx { repo: tab.id, worktree: worktree.clone() };
         let queued = tab.wip.committing.then_some(COMMIT_QUEUED);
         if file.status == 'U' {
-            let (weak, c, path) = (this.clone(), ctx, file.path.to_string());
-            return vec![MenuRow::action("file.markResolved", "Mark resolved", "check-check", format!("Mark {path} resolved"), move |_, cx| {
-                let (c, path) = (c.clone(), path.clone());
-                weak.update(cx, |v, cx| v.mark_resolved(&c, path, ArmOrigin::None, cx)).ok();
-            }).disabled_if(queued)];
+            return self.conflict_rows(ctx, file.path.as_ref(), this);
         }
         let name = file.path.rsplit('/').next().unwrap_or_default().to_string();
         if *staged {
@@ -1404,10 +1406,24 @@ impl GitVolt {
         let (Some(ctx), Some(files)) = (tab.wip_ctx(), tab.files.as_ref()) else { return Vec::new() };
         let prefix = format!("{path}/");
         let under: Vec<FileChange> = files.section_files(which).into_iter().filter(|f| f.path.starts_with(&prefix)).collect();
-        if under.is_empty() || which == Which::Conflicted {
+        if under.is_empty() {
             return Vec::new();
         }
         let queued = tab.wip.committing.then_some(COMMIT_QUEUED);
+        if which == Which::Conflicted {
+            // Each as it is, in one write; files that still have markers arm the row first.
+            let paths: Vec<String> = under.iter().map(|f| f.path.to_string()).collect();
+            let n = paths.len();
+            let word = if n == 1 { "file" } else { "files" };
+            let dirty = paths.iter().find(|p| tab.merge_dirty_on(p)).cloned();
+            let reason = queued.map(str::to_string).or(dirty.as_ref().map(|_| crate::merge::MERGE_SAVE_FIRST.to_string()));
+            let (weak, c, tooltip) = (this.clone(), ctx, format!("Mark the {n} {word} conflicted in {path}/ resolved as they are now"));
+            return vec![MenuRow::action("folder.markResolved", format!("Mark {n} {word} resolved"), "check-check", tooltip, move |_, cx| {
+                let (c, paths) = (c.clone(), paths.clone());
+                let origin = ArmOrigin::current(cx);
+                weak.update(cx, |v, cx| v.mark_all_resolved(&c, paths, origin, cx)).ok();
+            }).disabled_if(reason)];
+        }
         if which == Which::Staged {
             let (weak, c) = (this.clone(), ctx);
             return vec![MenuRow::action("folder.unstage", "Unstage", "minus", format!("Move the staged changes in {path} back to Unstaged"), move |_, cx| {
@@ -1430,6 +1446,43 @@ impl GitVolt {
             }).disabled_if(queued));
         }
         rows
+    }
+
+    /// A conflicted WIP file's menu: Take current, Take incoming, Mark resolved, by the sides' names.
+    fn conflict_rows(&self, ctx: WriteCtx, path: &str, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+        let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
+        let dirty = tab.merge_dirty_on(path);
+        let reason = if tab.wip.committing { Some(COMMIT_QUEUED) } else if dirty { Some(crate::merge::MERGE_SAVE_FIRST) } else { None };
+        let target = self.ops.journal(ctx.repo, &ctx.worktree).and_then(|j| j.paused.as_ref()).map(|p| p.target.clone());
+        let (cur, inc) = crate::merge::sides_of(tab, &ctx.worktree, target.as_deref());
+        let side = |name: Option<String>, generic: &str| name.map_or(format!("the {generic} side"), |n| format!("{n} ({generic})"));
+        let row = |id: &str, label: &str, glyph: &'static str, tooltip: String, kind: &'static str| {
+            let (weak, c, p) = (this.clone(), ctx.clone(), path.to_string());
+            MenuRow::action(id.to_string(), label.to_string(), glyph, tooltip, move |_, cx| {
+                let (c, p) = (c.clone(), p.clone());
+                let origin = ArmOrigin::current(cx);
+                weak.update(cx, |v, cx| v.resolve_file(&c, p, kind, None, origin, cx)).ok();
+            })
+            .disabled_if(reason)
+        };
+        let (weak, c, p) = (this.clone(), ctx.clone(), path.to_string());
+        vec![
+            row("file.takeCurrent", "Take current", "arrow-left-to-line", format!("Resolve {path} with the version in {}", side(cur, "current")), "current"),
+            row("file.takeIncoming", "Take incoming", "arrow-right-to-line", format!("Resolve {path} with the version in {}", side(inc, "incoming")), "incoming"),
+            MenuRow::action("file.markResolved", "Mark resolved", "check-check", format!("Mark {path} resolved as it is now"), move |_, cx| {
+                let (c, p) = (c.clone(), p.clone());
+                let origin = ArmOrigin::current(cx);
+                weak.update(cx, |v, cx| v.mark_resolved(&c, p, origin, cx)).ok();
+            })
+            .disabled_if(reason),
+        ]
+    }
+
+    /// Several files at once, each as it is: one write, one question for those that still have markers.
+    pub fn mark_all_resolved(&mut self, ctx: &WriteCtx, paths: Vec<String>, origin: ArmOrigin, cx: &mut Context<Self>) {
+        let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
+        let w = Write::new(ctx, move |asked| call("markResolved", json!({ "repo": repo, "worktree": worktree, "paths": paths, "confirmMarkers": asked.markers }))).origin(origin);
+        self.write(w, cx);
     }
 
     /// Mark resolved: the file as it is; asks first while conflict markers remain.
@@ -1461,7 +1514,8 @@ impl GitVolt {
         let is_active = self.tabs.get(self.active).is_some_and(|t| t.id == repo);
         let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo).filter(|_| is_active) else { return };
         let Some(diff) = tab.diff.as_mut().filter(|d| matches!(d.file.origin, Origin::Wip { .. }) && tab.history.is_none()) else { return };
-        if diff.editing_dirty() {
+        // The merge tool's work is its own: a change on disk meets it at the save.
+        if diff.editing_dirty() || crate::merge::is_conflict(&diff.file) {
             return;
         }
         diff.keep_scroll();
@@ -1625,7 +1679,9 @@ pub fn row_actions(v: &GitVolt, which: Which, row: &ListRow, changes: &[FileChan
                 return None;
             }
             let control: SharedString = format!("{key}:resolve").into();
-            bar = bar.child(crate::ui::anchor(control.clone(), action_icon(ElementId::Name(control.clone()), queued(&format!("Mark {path} resolved")), "check-check", Tone::Plain, None, committing, move |_, cx| {
+            let merging = tab.merge_dirty_on(&path);
+            let resolve_tip = if merging && !committing { crate::merge::MERGE_SAVE_FIRST.to_string() } else { queued(&format!("Mark {path} resolved")) };
+            bar = bar.child(crate::ui::anchor(control.clone(), action_icon(ElementId::Name(control.clone()), resolve_tip, "check-check", Tone::Plain, None, committing || merging, move |_, cx| {
                 let (path, ctx) = (path.clone(), ctx.clone());
                 let origin = ArmOrigin::Control { key: format!("{k}:resolve").into(), cover: None, grow_right: Some(false) };
                 weak.update(cx, |v, cx| v.mark_resolved(&ctx, path, origin, cx)).ok();

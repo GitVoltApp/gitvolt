@@ -20,6 +20,7 @@ mod icons;
 mod layout;
 mod manage;
 mod menus;
+mod merge;
 mod model;
 mod open_in;
 mod ops;

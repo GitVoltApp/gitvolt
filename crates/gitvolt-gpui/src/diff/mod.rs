@@ -2,7 +2,7 @@
 
 pub mod hex;
 pub mod image;
-mod language;
+pub mod language;
 mod languages;
 pub mod model;
 pub mod textmate;

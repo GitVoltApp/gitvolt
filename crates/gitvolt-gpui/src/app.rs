@@ -62,6 +62,8 @@ pub struct Tab {
     pub commit: Option<Commit>,
     pub files: Option<Files>,
     pub diff: Option<DiffState>,
+    /// The merge tool, while `diff` is a conflicted file.
+    pub merge: Option<crate::merge::MergeTool>,
     /// File History in the diff's and the graph's place; `diff` then is the file it shows.
     pub history: Option<FileHistory>,
     pub keys: KeyArea,
@@ -145,6 +147,7 @@ impl Tab {
             commit: None,
             files: None,
             diff: None,
+            merge: None,
             history: None,
             keys: KeyArea::Graph,
             all_files: false,
@@ -244,6 +247,12 @@ pub struct GitVolt {
     /// For a test: what was sent, and what's not been answered yet.
     pub sent: Rc<std::cell::RefCell<Vec<serde_json::Value>>>,
     pub unanswered: Vec<(Rc<crate::write::Write>, crate::write::Asked, Vec<gitvolt_core::askpass::SshOffer>)>,
+    /// A newer conflict read replaces what an older one was going to show.
+    pub merge_generation: u64,
+    /// The newest colouring: an older one stops at its next piece.
+    pub merge_colour_stop: Arc<std::sync::atomic::AtomicU64>,
+    /// What the unsaved question's Save goes on to, once that file's resolved.
+    pub merge_after_save: Option<(String, crate::write::After)>,
 }
 
 impl GitVolt {
@@ -251,7 +260,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new() }
+        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -496,6 +505,11 @@ impl GitVolt {
     pub fn close_tab(&mut self, ix: usize, cx: &mut Context<Self>) {
         if ix >= self.tabs.len() {
             return;
+        }
+        // A hidden tab's unsaved merge is shown, to be asked about.
+        if ix != self.active && self.tabs[ix].merge_dirty() {
+            self.active = ix;
+            cx.notify();
         }
         if ix == self.active && self.ask_unsaved(move |v, cx| v.close_tab(ix, cx), cx) {
             return;
@@ -1126,6 +1140,9 @@ impl Render for GitVolt {
         let left = if folded { NARROW_W } else { self.sidebar_w };
         let center = viewport.width.as_f32() - left - if details.is_some() { self.details_w } else { 0. };
         let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
+        if let Some(m) = self.tabs.get_mut(self.active).and_then(Tab::merge_shown_mut) {
+            m.set_size(center, body_h - crate::diff::view::HEADER_H);
+        }
         if let Some(tab) = self.tabs.get_mut(self.active) {
             let (width, height) = match &tab.history {
                 Some(h) => {
@@ -1193,13 +1210,15 @@ impl Render for GitVolt {
                     cx.notify();
                 }
             }))
-            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| {
+            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| {
+                this.on_merge_drag(e, window, cx);
                 this.on_side_drag(e, cx);
                 this.on_column_drag(e, cx);
                 this.on_tab_drag(e, cx);
                 this.on_branch_drag(e, cx);
             }))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, window, cx| {
+.on_mouse_up(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                this.end_merge_drag();
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
                 this.tab_drag = None;
@@ -1214,7 +1233,8 @@ impl Render for GitVolt {
                     });
                 }
             }))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, window, cx| {
+.on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                this.end_merge_drag();
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
                 this.tab_drag = None;

@@ -40,6 +40,9 @@ pub fn status_added() -> Hsla { c(0x5cb85c) }
 pub fn status_modified() -> Hsla { c(0xde9b43) }
 pub fn status_deleted() -> Hsla { c(0xd9413d) }
 pub fn status_conflicted() -> Hsla { c(0xb56ee6) }
+pub fn conflict_ours() -> Hsla { c(0x15a0bf) }
+pub fn conflict_theirs() -> Hsla { c(0xf2ca33) }
+pub fn conflict_base() -> Hsla { c(0xc517b6) }
 pub fn stats_added_bright() -> Hsla { c(0x5cb85c) }
 pub fn stats_deleted_bright() -> Hsla { c(0xf0625d) }
 pub fn selection_bg() -> Hsla { c(0x264f78) }

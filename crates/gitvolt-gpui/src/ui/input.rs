@@ -120,6 +120,7 @@ struct Snapshot {
     text: String,
     sel: Range<usize>,
     reversed: bool,
+    version: u64,
 }
 
 /// A word character, as the browser's word movement sees one.
@@ -139,6 +140,11 @@ pub struct Buffer {
     redo: Vec<Snapshot>,
     run: Option<EditKind>,
     multiline: bool,
+    /// Which text this is: each edit makes a new one, an undo or redo goes back to an old one.
+    version: u64,
+    last_version: u64,
+    /// The last edit: where, how many bytes went, how many came. `None` after an undo or redo.
+    change: Option<(usize, usize, usize)>,
 }
 
 impl Buffer {
@@ -155,7 +161,7 @@ impl Buffer {
     }
 
     fn snapshot(&self) -> Snapshot {
-        Snapshot { text: self.text.clone(), sel: self.sel.clone(), reversed: self.reversed }
+        Snapshot { text: self.text.clone(), sel: self.sel.clone(), reversed: self.reversed, version: self.version }
     }
 
     fn restore(&mut self, s: Snapshot) {
@@ -163,6 +169,56 @@ impl Buffer {
         self.sel = s.sel;
         self.reversed = s.reversed;
         self.marked = None;
+        self.version = s.version;
+        self.change = None;
+    }
+
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
+    /// The edit since this was last asked; `None` when the text came from an undo or a redo.
+    pub fn take_change(&mut self) -> Option<(usize, usize, usize)> {
+        self.change.take()
+    }
+
+    fn edited(&mut self, start: usize, removed: usize, inserted: usize) {
+        self.last_version += 1;
+        self.version = self.last_version;
+        self.change = Some((start, removed, inserted));
+    }
+
+    /// One undoable edit of several ranges, not overlapping, in order; the selection follows its text.
+    pub fn apply_ops(&mut self, ops: &[(Range<usize>, String)]) {
+        self.undo.push(self.snapshot());
+        self.redo.clear();
+        self.run = None;
+        let map = |at: usize| {
+            let mut delta = 0isize;
+            for (r, t) in ops {
+                // A caret where text goes in goes after it, as Monaco's does.
+                if at == r.start && r.is_empty() {
+                    return (at as isize + delta) as usize + t.len();
+                }
+                if at <= r.start {
+                    break;
+                }
+                if at < r.end {
+                    return (r.start as isize + delta) as usize + t.len().min(at - r.start);
+                }
+                delta += t.len() as isize - r.len() as isize;
+            }
+            (at as isize + delta) as usize
+        };
+        let sel = map(self.sel.start)..map(self.sel.end);
+        for (r, t) in ops.iter().rev() {
+            self.text.replace_range(r.clone(), t);
+        }
+        self.sel = sel;
+        self.marked = None;
+        self.last_version += 1;
+        self.version = self.last_version;
+        self.change = None;
     }
 
     /// Before an edit: a new undo step, unless it goes on the run before it.
@@ -214,6 +270,7 @@ impl Buffer {
             return;
         }
         self.checkpoint(kind);
+        self.edited(range.start, range.len(), new.len());
         self.text.replace_range(range.clone(), &new);
         let at = range.start + new.len();
         self.sel = at..at;
@@ -225,6 +282,7 @@ impl Buffer {
     pub fn replace_marked(&mut self, range: Option<Range<usize>>, new: &str, selected: Option<Range<usize>>) {
         let range = range.or_else(|| self.marked.clone()).unwrap_or_else(|| self.sel.clone());
         self.checkpoint(EditKind::Typing);
+        self.edited(range.start, range.len(), new.len());
         self.text.replace_range(range.clone(), new);
         self.marked = (!new.is_empty()).then(|| range.start..range.start + new.len());
         self.sel = match selected {

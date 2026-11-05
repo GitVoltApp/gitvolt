@@ -641,6 +641,10 @@ impl GitVolt {
             return;
         }
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
+        // A tool left from a file that closed some other way isn't this one's work.
+        if tab.diff.is_none() {
+            tab.merge = None;
+        }
         // A file with no history (new in the working tree) ends File History.
         if let Some(history) = tab.history.take() {
             tab.diff = tab.diff.take().or(history.saved);
@@ -660,6 +664,7 @@ impl GitVolt {
         }
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.diff = None;
+            tab.merge = None;
             tab.history = None;
             tab.keys = KeyArea::Graph;
             if let Some(files) = tab.files.as_mut() {
@@ -676,6 +681,9 @@ impl GitVolt {
         }
         let Some(tab) = self.tabs.get(self.active) else { return };
         let Some(diff) = &tab.diff else { return };
+        if crate::merge::is_conflict(&diff.file) && tab.history.is_none() {
+            return self.read_conflict(cx);
+        }
         let (repo, generation, ignore, history_file) = (tab.id, diff.generation, diff.ignore_whitespace, diff.history_file);
         let file = diff.file.clone();
         let (old_side, new_side) = super::edit::sides_for(&file, diff.view);
@@ -872,6 +880,9 @@ impl GitVolt {
     }
 
     pub fn step_change(&mut self, forward: bool, cx: &mut Context<Self>) {
+        if self.tabs.get(self.active).and_then(Tab::merge_shown).is_some() {
+            return self.merge_step(forward, cx);
+        }
         self.with_diff(cx, |d| {
             if let Some(hex) = &d.hex {
                 if let Some(row) = super::hex::step(hex, d.cursor, forward) {
@@ -892,7 +903,7 @@ impl GitVolt {
     }
 
     pub fn copy_selection(&mut self, cx: &mut Context<Self>) {
-        let text = self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).and_then(DiffState::selected_text);
+        let text = self.merge_selected_text().or_else(|| self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).and_then(DiffState::selected_text));
         if let Some(text) = text {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
@@ -968,7 +979,7 @@ fn run(len: usize, base: &Font, color: u32, flags: u8) -> TextRun {
     TextRun { len, font, color: rgb(color).into(), background_color: None, underline, strikethrough: None }
 }
 
-fn runs(text: &str, spans: &[Span], base: &Font) -> Vec<TextRun> {
+pub(crate) fn runs(text: &str, spans: &[Span], base: &Font) -> Vec<TextRun> {
     let mut out = Vec::with_capacity(spans.len() + 1);
     let mut at = 0usize;
     for s in spans {
@@ -1236,7 +1247,7 @@ fn pos_at(diff: &DiffState, position: Point<Pixels>, window: &Window) -> Option<
     Some((TextPos { row, byte: from + shaped.closest_index_for_x((x - px(indent)).max(px(0.))) }, old_side))
 }
 
-fn word_at(text: &str, byte: usize) -> (usize, usize) {
+pub(crate) fn word_at(text: &str, byte: usize) -> (usize, usize) {
     let is_word = |c: char| c.is_alphanumeric() || c == '_';
     let byte = byte.min(text.len());
     let start = text[..byte].char_indices().rev().take_while(|(_, c)| is_word(*c)).last().map_or(byte, |(i, _)| i);
@@ -1495,7 +1506,7 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
         .into_any_element()
 }
 
-fn edit_keys_of(el: Stateful<Div>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
+pub(crate) fn edit_keys_of(el: Stateful<Div>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
     let tab_key = cx.listener(|this: &mut GitVolt, e: &KeyDownEvent, _: &mut Window, cx: &mut Context<GitVolt>| {
         if e.keystroke.key == "tab" && !e.keystroke.modifiers.modified() {
             this.edit_tab(cx);
@@ -1674,7 +1685,7 @@ fn message(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
     }
 }
 
-fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+pub(crate) fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let dirty = diff.editing_dirty();
     let can_save = diff.edit.is_some();
     let path = diff.file.path.as_ref();
@@ -1886,6 +1897,9 @@ fn minimap_width(width: f32) -> f32 {
 /// The panel for `tab`'s open file, `width` px wide.
 pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, undo: Option<&gitvolt_core::write::types::StagingUndoState>, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     let diff = tab.diff.as_ref()?;
+    if crate::merge::is_conflict(&diff.file) {
+        return Some(crate::merge::view::merge_panel(tab, diff, tab.merge.as_ref(), cx));
+    }
     let staging = tab.wip_ctx().map(|ctx| crate::wip::staging_buttons(("diff-staging-undo", "diff-staging-redo"), ctx, undo, tab.wip.committing, cx).into_any_element());
     let open_in = crate::open_in::open_in_button(tab, last_opener, cx);
     let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));

@@ -243,7 +243,13 @@ pub fn all() -> Vec<Command> {
         Command::new("file.create", "Create file…", Repository, "file-plus", "Create a new, empty file in the working tree (you can undo this)", &[]),
         Command::new("remote.add", "Add remote…", Repository, "plus", "Add a remote by URL, or one of the project's forks", &[]),
         Command::new("submodule.add", "Submodules: Add…", Repository, "boxes", "Clone a repository into this one as a submodule (git submodule add)", &[]),
-        Command::new("file.save", "Save", File, "save", "Save the working copy being edited", &["Mod+S"]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.edit.is_some())).hidden().run(|v, _, cx| v.save_working_copy(None, cx)),
+        Command::new("file.save", "Save", File, "save", "Save the working copy being edited", &["Mod+S"]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.merge_shown().is_some_and(|m| m.textual() && m.base.is_some()) || t.diff.as_ref().is_some_and(|d| d.edit.is_some()))).hidden().run(|v, _, cx| {
+            if v.tabs.get(v.active).and_then(|t| t.merge_shown()).is_some() {
+                v.merge_save(false, cx);
+            } else {
+                v.save_working_copy(None, cx);
+            }
+        }),
         Command::new("stage.file", "Stage file", Repository, "file-plus", "Stage the open file", &["Mod+Shift+S"]).when(|v, _| v.open_wip_file().is_some_and(|f| f.1 == Some(false))).hidden().run(|v, _, cx| v.stage_open_file(cx)),
         Command::new("stage.unstageFile", "Unstage file", Repository, "file-minus", "Move the open file back to Unstaged", &["Mod+Shift+S"]).when(|v, _| v.open_wip_file().is_some_and(|f| f.1 == Some(true))).hidden().run(|v, _, cx| v.stage_open_file(cx)),
         Command::new("stage.hunk", "Stage the hunk or lines at the cursor", Repository, "square-split-vertical", "The lines selected in the diff, else the hunk the cursor is in (F7 moves it to the next change)", &["Mod+Shift+D"]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).and_then(|d| d.hunks.as_ref()).is_some_and(|h| !h.hunks.is_empty())).hidden().run(|v, _, cx| v.stage_at_cursor(cx)),

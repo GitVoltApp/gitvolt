@@ -213,13 +213,13 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
                 "pick" | "hover" => crate::ui::menu::row_point(&rest, cx),
                 // `pickv Delete|Both`.
                 "pickv" => rest.split_once('|').and_then(|(row, variant)| crate::ui::menu::variant_point(row, variant, cx)),
-                "clickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" => crate::ui::Ui::get(cx).anchor_ending(&rest).map(|b| b.center()),
+                "clickon" | "shiftclickon" | "ctrlclickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" => crate::ui::Ui::get(cx).anchor_ending(&rest).map(|b| b.center()),
                 "clickrow" | "rclickrow" | "dclickrow" => v.read(cx).row_point(&rest),
                 _ => None,
             })
             .ok()
             .flatten();
-        if target.is_none() && matches!(verb, "pick" | "pickv" | "hover" | "clickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" | "clickrow" | "rclickrow" | "dclickrow") {
+        if target.is_none() && matches!(verb, "pick" | "pickv" | "hover" | "clickon" | "shiftclickon" | "ctrlclickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" | "clickrow" | "rclickrow" | "dclickrow") {
             println!("{{\"nothing\":{:?},\"text\":{:?}}}", verb, rest);
         }
         let xy = || {
@@ -229,13 +229,18 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
             let mut n = rest.split_whitespace().filter_map(|t| t.parse::<f32>().ok());
             point(px(n.next().unwrap_or(0.)), px(n.next().unwrap_or(0.)))
         };
-        let down = |position, button, click_count| PlatformInput::MouseDown(MouseDownEvent { button, position, modifiers: Modifiers::default(), click_count, first_mouse: false });
-        let up = |position, button, click_count| PlatformInput::MouseUp(MouseUpEvent { button, position, modifiers: Modifiers::default(), click_count });
+        let modifiers = match verb {
+            "shiftclickon" => Modifiers::shift(),
+            "ctrlclickon" => Modifiers::control(),
+            _ => Modifiers::default(),
+        };
+        let down = move |position, button, click_count| PlatformInput::MouseDown(MouseDownEvent { button, position, modifiers, click_count, first_mouse: false });
+        let up = move |position, button, click_count| PlatformInput::MouseUp(MouseUpEvent { button, position, modifiers, click_count });
         let moved = |position| PlatformInput::MouseMove(MouseMoveEvent { position, pressed_button: None, modifiers: Modifiers::default() });
         let events: Vec<PlatformInput> = match verb {
-            "click" | "pick" | "pickv" | "clickon" | "clickrow" if verb != "click" && target.is_none() => Vec::new(),
+            "click" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" if verb != "click" && target.is_none() => Vec::new(),
             "rclickon" | "dclickon" | "rclickrow" | "dclickrow" | "presson" | "dragto" | "releaseon" | "hover" if target.is_none() => Vec::new(),
-            "click" | "pick" | "pickv" | "clickon" | "clickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1)],
+            "click" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1)],
             "rclick" | "rclickon" | "rclickrow" => vec![moved(xy()), down(xy(), MouseButton::Right, 1), up(xy(), MouseButton::Right, 1)],
             "dclick" | "dclickon" | "dclickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1), down(xy(), MouseButton::Left, 2), up(xy(), MouseButton::Left, 2)],
             "move" | "hover" => vec![moved(xy())],
@@ -323,7 +328,21 @@ impl GitVolt {
         });
         let head = tab.and_then(|t| t.graph.as_ref()).map(|g| (g.head_branch.to_string(), g.head_sha.clone(), g.rows.len()));
         let journal = tab.and_then(|t| self.ops.journal(t.id, &t.worktree));
+        let merge = tab.and_then(|t| t.merge_shown()).map(|m| {
+            let view = |i: usize| m.view(i).scroll;
+            serde_json::json!({
+                "path": m.path,
+                "dirty": m.dirty(),
+                "count": m.count_text(),
+                "regions": m.output.as_ref().map(|o| o.spans.iter().map(|s| o.edit.buffer.text[s.from..s.to].to_string()).collect::<Vec<_>>()),
+                "lines": m.output.as_ref().map(|o| o.edit.buffer.text.lines().count()),
+                "edited": m.output.as_ref().map(|o| o.edited.iter().copied().collect::<Vec<_>>()),
+                "scroll": (0..m.editor_count()).map(view).collect::<Vec<_>>(),
+                "picked": m.picks.values().filter(|p| p.any()).count(),
+            })
+        });
         serde_json::json!({
+            "merge": merge,
             "toast": crate::ui::toast::message(cx).map(|m| m.to_string()),
             "armed": crate::ui::arm::is_armed(cx),
             "menu": crate::ui::menu::shown(cx),
