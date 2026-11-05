@@ -54,7 +54,7 @@ struct State {
     frames: u64,
 }
 
-/// `GITVOLT_SHOW=<row>,<file>[,hunk|split|file|wrap]`: selects a graph row and opens a file of its list,
+/// `GITVOLT_SHOW=<row>,<file>[,hunk|split|file|wrap|history|blame]...`: selects a graph row and opens a file of its list,
 /// with no input device: for screenshots and `GITVOLT_BENCH=diff`. Returns when the file has its
 /// text and when it has its colours, in ms from opening it.
 async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (u128, u128) {
@@ -71,19 +71,26 @@ async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (
     let opened = Instant::now();
     v.update(cx, |g, cx| {
         g.open_file(file, cx);
-        g.with_diff(cx, |d| match parts.get(2) {
-            Some(&"hunk") => d.mode = Mode::Hunk,
-            Some(&"split") => d.mode = Mode::Split,
-            Some(&"file") => d.view = ViewKind::File,
-            Some(&"wrap") => d.wrap = true,
-            _ => {}
-        });
+        for part in parts.iter().skip(2) {
+            g.with_diff(cx, |d| match *part {
+                "hunk" => d.mode = Mode::Hunk,
+                "split" => d.mode = Mode::Split,
+                "file" => d.view = ViewKind::File,
+                "wrap" => d.wrap = true,
+                _ => {}
+            });
+            match *part {
+                "history" => g.open_history(false, cx),
+                "blame" => g.open_history(true, cx),
+                _ => {}
+            }
+        }
     });
-    while !v.read_with(cx, |g, _| g.tabs[0].diff.as_ref().is_some_and(|d| d.data.is_some() || d.notice != Some(Notice::Loading))) {
+    while !v.read_with(cx, |g, _| g.tabs[0].history.is_some() || g.tabs[0].diff.as_ref().is_some_and(|d| d.data.is_some() || d.notice != Some(Notice::Loading))) {
         wait(cx).await;
     }
     let text = opened.elapsed().as_millis();
-    while !v.read_with(cx, |g, _| g.tabs[0].diff.as_ref().is_none_or(|d| d.coloured || d.data.is_none())) {
+    while !v.read_with(cx, |g, _| g.tabs[0].history.is_some() || g.tabs[0].diff.as_ref().is_none_or(|d| d.coloured || d.data.is_none())) {
         wait(cx).await;
     }
     (text, opened.elapsed().as_millis())

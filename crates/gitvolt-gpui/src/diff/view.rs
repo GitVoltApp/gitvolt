@@ -5,7 +5,7 @@
 use super::language::highlight_language;
 use super::model::*;
 use super::textmate::{FONT_BOLD, FONT_ITALIC, FONT_UNDERLINE, Span, Tokenizer};
-use crate::app::{GitVolt, Tab, icon};
+use crate::app::{GitVolt, KeyArea, Tab, icon};
 use crate::details::{FileChange, segment, segmented, status_icon};
 use crate::theme;
 use gitvolt_core::api::Request;
@@ -37,8 +37,9 @@ const SCROLLBAR_W: f32 = 10.;
 const RULER_W: f32 = 30.;
 /// A split's left pane has more margin before its text than the right one (Monaco's).
 const SPLIT_LEFT_MARGIN: f32 = 18.;
-const HEADER_H: f32 = 37.;
+pub const HEADER_H: f32 = 37.;
 const TOOLBAR_H: f32 = 33.;
+const TOOLBAR_NARROW: f32 = 900.;
 pub const FONT: &str = "JetBrains Mono";
 const TEXT: u32 = 0xD4D4D4;
 
@@ -95,6 +96,8 @@ pub enum Notice {
     TooLarge,
     Binary,
     Image,
+    /// File History: the row's commit deleted the file.
+    Deleted,
 }
 
 /// A position in the text: a row, and a byte of what it shows on `new` (or the old side).
@@ -130,7 +133,7 @@ pub enum Drag {
 #[derive(Default)]
 pub struct Layout {
     width: f32,
-    height: f32,
+    pub height: f32,
     wrap: bool,
     /// Each row's top, and the end of the last one.
     pub offsets: Vec<f32>,
@@ -198,6 +201,18 @@ pub struct DiffState {
     pub body: Rc<Cell<Bounds<Pixels>>>,
     /// A newer read replaces what an older one was going to show.
     pub generation: u64,
+    /// File History's File: an image shows as hex there, as any binary.
+    pub history_file: bool,
+    /// Coming back from File History: the same file, where it was.
+    restored: bool,
+}
+
+/// Which bar `toolbar` draws.
+pub enum ToolbarKind {
+    /// The diff panel's; whether the file has a history to show.
+    Panel { has_history: bool },
+    /// File History's: its `File | Changes` in File View / Diff View's place, and no Blame or History.
+    History(AnyElement),
 }
 
 impl DiffState {
@@ -229,7 +244,35 @@ impl DiffState {
             drag: Drag::None,
             body: Rc::new(Cell::new(Bounds::default())),
             generation: 0,
+            history_file: false,
+            restored: false,
         }
+    }
+
+    /// A file opened from another: the view's choices carry from file to file.
+    pub fn carrying(file: FileChange, from: Option<&DiffState>) -> Self {
+        let mut state = Self::new(file);
+        if let Some(d) = from {
+            state.view = d.view;
+            state.take_prefs(d);
+            state.generation = d.generation + 1;
+        }
+        state
+    }
+
+    /// What's the web UI's global prefs.
+    pub fn take_prefs(&mut self, from: &DiffState) {
+        (self.mode, self.ignore_whitespace, self.wrap) = (from.mode, from.ignore_whitespace, from.wrap);
+    }
+
+    /// The next read is the same file again: it stays where it is.
+    pub fn keep_scroll(&mut self) {
+        self.restored = true;
+    }
+
+    /// A binary is shown, not lines: it has no blame.
+    pub fn shows_binary(&self) -> bool {
+        matches!(self.notice, Some(Notice::Binary | Notice::Image))
     }
 
     pub fn relayout(&mut self) {
@@ -325,7 +368,7 @@ impl DiffState {
         self.notice = None;
         self.relayout();
         // As Monaco: a diff opens with its first change in the middle.
-        self.reveal_first = true;
+        self.reveal_first = !std::mem::take(&mut self.restored);
     }
 
     /// The first change at or past the top (F7), or the last one before it (Shift+F7).
@@ -384,14 +427,17 @@ fn blob_text(v: &Value) -> Option<String> {
 impl GitVolt {
     /// Opens file `index` of the panel's list in the tab's diff.
     pub fn open_file(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(tab) = self.tabs.get_mut(self.active) else { return };
+        let Some(tab) = self.tabs.get(self.active) else { return };
         let Some(file) = tab.files.as_ref().and_then(|f| f.changes.get(index)).cloned() else { return };
-        // The view's choices carry from file to file.
-        let (view, mode, ignore) = tab.diff.as_ref().map_or((ViewKind::Diff, Mode::Inline, false), |d| (d.view, d.mode, d.ignore_whitespace));
-        let generation = tab.diff.as_ref().map_or(0, |d| d.generation) + 1;
-        let mut state = DiffState::new(file);
-        (state.view, state.mode, state.ignore_whitespace, state.generation) = (view, mode, ignore, generation);
-        tab.diff = Some(state);
+        if self.follow_file(file.clone(), cx) {
+            return;
+        }
+        let Some(tab) = self.tabs.get_mut(self.active) else { return };
+        // A file with no history (new in the working tree) ends File History.
+        if let Some(history) = tab.history.take() {
+            tab.diff = tab.diff.take().or(history.saved);
+        }
+        tab.diff = Some(DiffState::carrying(file, tab.diff.as_ref()));
         tab.sidebar_open = false;
         self.read_contents(false, cx);
         cx.notify();
@@ -406,6 +452,9 @@ impl GitVolt {
 
     /// Reads the open file's sides, aligns them off the UI thread, then colours them.
     pub fn read_contents(&mut self, force: bool, cx: &mut Context<Self>) {
+        if cfg!(test) {
+            return;
+        }
         let Some(tab) = self.tabs.get(self.active) else { return };
         let Some(diff) = &tab.diff else { return };
         let (repo, generation, ignore) = (tab.id, diff.generation, diff.ignore_whitespace);
@@ -834,7 +883,9 @@ fn content_width(data: &DiffData) -> f32 {
 }
 
 fn on_mouse_down(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<GitVolt>) {
-    let Some(diff) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
+    let Some(tab) = this.tabs.get_mut(this.active) else { return };
+    tab.keys = KeyArea::Diff;
+    let Some(diff) = tab.diff.as_mut() else { return };
     let Some(data) = diff.data.clone() else { return };
     let b = diff.body.get();
     let y = (e.position.y - b.origin.y).as_f32() + diff.scroll;
@@ -1183,6 +1234,7 @@ fn message(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
                 }))
                 .child("Load anyway"),
         ),
+        Some(Notice::Deleted) => base.child(format!("{} was deleted in this commit", diff.file.path)),
         Some(Notice::Binary) => base.child("Binary file"),
         Some(Notice::Image) => base.child("Image preview isn't in this build yet"),
         _ => base,
@@ -1226,7 +1278,7 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
         )
 }
 
-fn toolbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let in_diff = diff.view == ViewKind::Diff;
     let can_diff = diff.file.status != 'A' || diff.data.as_ref().is_none_or(|d| d.has_old);
     let view_button = |id: &'static str, label: &'static str, kind: ViewKind, on: bool, enabled: bool, cx: &mut Context<GitVolt>| {
@@ -1243,7 +1295,7 @@ fn toolbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
             .into_any_element()
     };
     let mode_button = |id: &'static str, label: &'static str, mode: Mode, cx: &mut Context<GitVolt>| {
-        segment(id, label, in_diff && diff.mode == mode, in_diff)
+        segment(id, label, diff.mode == mode, in_diff)
             .when(in_diff, |d| {
                 d.on_click(cx.listener(move |this, _, _, cx| {
                     this.with_diff(cx, |d| {
@@ -1256,10 +1308,21 @@ fn toolbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
             .into_any_element()
     };
     let icon_button = |id: &'static str, name: &'static str, pressed: bool, enabled: bool| {
-        let color = if !enabled { theme::text_disabled() } else if pressed { theme::text_selected() } else { theme::text_secondary() };
-        div().id(id).flex().flex_none().size(px(22.)).items_center().justify_center().rounded(px(4.)).when(pressed, |d| d.bg(theme::selected_row())).when(enabled, |d| d.hover(|d| d.bg(theme::hover_row()))).child(icon(name, 14., color))
+        let color = if pressed { theme::text_selected() } else { theme::text_secondary() };
+        div().id(id).flex().flex_none().size(px(22.)).items_center().justify_center().rounded(px(3.)).when(pressed, |d| d.bg(theme::selected_row())).when(enabled, |d| d.hover(|d| d.bg(theme::hover_row()))).when(!enabled, |d| d.opacity(0.4)).child(icon(name, 14., color))
     };
     let can_step = in_diff && !diff.changes.is_empty();
+    let (panel, has_history) = match kind {
+        ToolbarKind::Panel { has_history } => (true, has_history),
+        ToolbarKind::History(_) => (false, false),
+    };
+    let views = match kind {
+        ToolbarKind::History(views) => views,
+        ToolbarKind::Panel { .. } => segmented(vec![view_button("view-file", "File View", ViewKind::File, !in_diff, true, cx), view_button("view-diff", "Diff View", ViewKind::Diff, in_diff, can_diff, cx)]).into_any_element(),
+    };
+    // File View hides what never applies there; File History keeps it in place, off.
+    let diff_tools = in_diff || !panel;
+    let binary = diff.shows_binary();
     div()
         .flex()
         .flex_none()
@@ -1270,8 +1333,9 @@ fn toolbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
         .bg(theme::app_bg())
         .border_b_1()
         .border_color(theme::section_border())
-        .child(div().flex_1())
-        .child(segmented(vec![view_button("view-file", "File View", ViewKind::File, !in_diff, true, cx), view_button("view-diff", "Diff View", ViewKind::Diff, in_diff, can_diff, cx)]))
+        // Too narrow for three columns, the view switch isn't centred.
+        .child(div().when(width > TOOLBAR_NARROW, |d| d.flex_1()))
+        .child(views)
         .child(
             div()
                 .flex()
@@ -1279,21 +1343,27 @@ fn toolbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
                 .justify_end()
                 .items_center()
                 .gap(px(10.))
-                // Blame and History aren't in this build yet.
-                .child(segmented(vec![segment("blame", "Blame", false, false).into_any_element(), segment("history", "History", false, false).into_any_element()]))
+                .when(panel, |d| {
+                    d.child(segmented(vec![
+                        segment("blame", "Blame", false, has_history && !binary).when(has_history && !binary, |d| d.on_click(cx.listener(|this, _, _, cx| this.open_history(true, cx)))).into_any_element(),
+                        segment("history", "History", false, has_history).when(has_history, |d| d.on_click(cx.listener(|this, _, _, cx| this.open_history(false, cx)))).into_any_element(),
+                    ]))
+                })
+                .when(diff_tools, |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .gap(px(2.))
+                            .child(icon_button("change-prev", "arrow-up", false, can_step).when(can_step, |d| d.on_click(cx.listener(|this, _, _, cx| this.step_change(false, cx)))))
+                            .child(icon_button("change-next", "arrow-down", false, can_step).when(can_step, |d| d.on_click(cx.listener(|this, _, _, cx| this.step_change(true, cx))))),
+                    )
+                    .child(segmented(vec![mode_button("mode-hunk", "Hunk", Mode::Hunk, cx), mode_button("mode-inline", "Inline", Mode::Inline, cx), mode_button("mode-split", "Split", Mode::Split, cx)]))
+                })
                 .child(
                     div()
                         .flex()
                         .gap(px(2.))
-                        .child(icon_button("change-prev", "arrow-up", false, can_step).when(can_step, |d| d.on_click(cx.listener(|this, _, _, cx| this.step_change(false, cx)))))
-                        .child(icon_button("change-next", "arrow-down", false, can_step).when(can_step, |d| d.on_click(cx.listener(|this, _, _, cx| this.step_change(true, cx))))),
-                )
-                .child(segmented(vec![mode_button("mode-hunk", "Hunk", Mode::Hunk, cx), mode_button("mode-inline", "Inline", Mode::Inline, cx), mode_button("mode-split", "Split", Mode::Split, cx)]))
-                .child(
-                    div()
-                        .flex()
-                        .gap(px(2.))
-                        .child(icon_button("ignore-ws", "pilcrow", diff.ignore_whitespace, in_diff).when(in_diff, |d| d.on_click(cx.listener(|this, _, _, cx| this.toggle_whitespace(cx)))))
+                        .when(diff_tools, |d| d.child(icon_button("ignore-ws", "pilcrow", diff.ignore_whitespace, in_diff).when(in_diff, |d| d.on_click(cx.listener(|this, _, _, cx| this.toggle_whitespace(cx))))))
                         .child(icon_button("wrap", "text-wrap", diff.wrap, true).on_click(cx.listener(|this, _, _, cx| {
                             this.with_diff(cx, |d| {
                                 d.wrap = !d.wrap;
@@ -1306,47 +1376,48 @@ fn toolbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
 
 /// The text's body in a panel `width` by `height` px: what `ensure_layout` lays out.
 pub fn body_size(diff: &DiffState, width: f32, height: f32) -> (f32, f32) {
+    // `height`: what's under the panel's header.
     let right = match diff.view {
         ViewKind::File => minimap_width(width) + SCROLLBAR_W,
         ViewKind::Diff if diff.split() => RULER_W,
         ViewKind::Diff => RULER_W + SCROLLBAR_W,
     };
-    (width - right, height - HEADER_H - TOOLBAR_H - if diff.data.as_ref().is_some_and(|d| d.eol_only) { 26. } else { 0. })
+    (width - right, height - TOOLBAR_H - if diff.data.as_ref().is_some_and(|d| d.eol_only) { 26. } else { 0. })
 }
 
 fn minimap_width(width: f32) -> f32 {
     (width * 0.0975).min(MINIMAP_MAX).floor()
 }
 
-/// The panel for `tab`'s open file, `width` by `height` px.
+/// The panel for `tab`'s open file, `width` px wide.
 pub fn diff_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     let diff = tab.diff.as_ref()?;
+    Some(div().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some() }, width, cx)).child(diff_body(diff, width, cx)).into_any_element())
+}
+
+/// What's under the toolbar, in an editor `width` px wide.
+pub fn diff_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElement {
     let banner = diff.data.as_ref().is_some_and(|d| d.eol_only);
     let has_text = diff.data.is_some();
     let file_view = diff.view == ViewKind::File;
-    Some(
-        div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_w_0()
-            .min_h_0()
-            .bg(theme::app_bg())
-            .child(header(diff, cx))
-            .child(toolbar(diff, cx))
-            .when(banner, |d| d.child(div().flex_none().h(px(26.)).px(px(12.)).py(px(4.)).bg(theme::yellow_banner()).text_color(theme::text_selected()).child("Only the line endings changed")))
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .child(text_area(diff, cx))
-                    .when(has_text && file_view, |d| d.child(minimap(diff, minimap_width(width), cx)).child(scrollbar(diff, cx)))
-                    .when(has_text && !file_view && !diff.split(), |d| d.child(div().flex_none().w(px(SCROLLBAR_W)).h_full().border_l_1().border_color(theme::section_border())))
-                    .when(has_text && !file_view, |d| d.child(ruler(diff, cx))),
-            )
-            .into_any_element(),
-    )
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .min_h_0()
+        .when(banner, |d| d.child(div().flex_none().h(px(26.)).px(px(12.)).py(px(4.)).bg(theme::yellow_banner()).text_color(theme::text_selected()).child("Only the line endings changed")))
+        .child(
+            div()
+                .flex()
+                .flex_1()
+                .min_h_0()
+                .child(text_area(diff, cx))
+                .when(has_text && file_view, |d| d.child(minimap(diff, minimap_width(width), cx)).child(scrollbar(diff, cx)))
+                .when(has_text && !file_view && !diff.split(), |d| d.child(div().flex_none().w(px(SCROLLBAR_W)).h_full().border_l_1().border_color(theme::section_border())))
+                .when(has_text && !file_view, |d| d.child(ruler(diff, cx))),
+        )
+        .into_any_element()
 }
 
 impl GitVolt {
@@ -1363,7 +1434,7 @@ mod tests {
     use std::prelude::v1::test;
 
     fn change() -> FileChange {
-        FileChange { path: "a.rs".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null }
+        FileChange { path: "a.rs".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, origin: crate::details::Origin::Commit { id: "c".into() } }
     }
 
     fn state(old: &str, new: &str) -> DiffState {

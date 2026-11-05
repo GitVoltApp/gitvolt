@@ -4,6 +4,7 @@
 use crate::details::{Commit, Files, details_panel};
 use crate::diff::view::{DiffState, body_size, diff_panel};
 use crate::graph::{RowGeometry, paint_row};
+use crate::history::{FileHistory, HISTORY_H, history_panel};
 use crate::model::*;
 use crate::theme;
 use gitvolt_core::api::{Api, Request};
@@ -14,7 +15,7 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
-actions!(gitvolt, [SelectNext, SelectPrevious, ClearSelection, OpenRepository, CloseTab, NextTab, NextChange, PreviousChange, Copy, SelectAll, PageDown, PageUp]);
+actions!(gitvolt, [SelectNext, SelectPrevious, ClearSelection, OpenRepository, CloseTab, NextTab, NextChange, PreviousChange, Copy, SelectAll, PageDown, PageUp, OpenFileHistory, OpenBlame]);
 
 const TITLE_H: f32 = 30.;
 const TAB_H: f32 = 34.;
@@ -26,7 +27,7 @@ const HEADER_H: f32 = 25.;
 const SIDE_ROW_H: f32 = 24.;
 const RESIZE: f32 = 6.;
 const SHA_PAD: f32 = 6.;
-const MONO_FONT: &str = "Noto Sans Mono";
+pub const MONO_FONT: &str = "Noto Sans Mono";
 pub const GRAPH_LIMIT: u32 = 2000;
 
 pub fn bind_keys(cx: &mut App) {
@@ -43,12 +44,25 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-a", SelectAll, Some("GitVolt")),
         KeyBinding::new("pagedown", PageDown, Some("GitVolt")),
         KeyBinding::new("pageup", PageUp, Some("GitVolt")),
+        KeyBinding::new("ctrl-shift-h", OpenFileHistory, Some("GitVolt")),
+        KeyBinding::new("ctrl-shift-b", OpenBlame, Some("GitVolt")),
     ]);
+}
+
+/// What the arrow keys move: the area last clicked in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyArea {
+    Graph,
+    Files,
+    History,
+    Diff,
 }
 
 pub struct Tab {
     pub id: u32,
     pub name: SharedString,
+    /// The worktree this tab shows, as the core's answer to opening it names it.
+    pub worktree: String,
     pub graph: Option<Rc<GraphView>>,
     pub panels: Rc<Vec<Panel>>,
     pub collapsed: [bool; 5],
@@ -56,6 +70,9 @@ pub struct Tab {
     pub commit: Option<Commit>,
     pub files: Option<Files>,
     pub diff: Option<DiffState>,
+    /// File History in the diff's and the graph's place; `diff` then is the file it shows.
+    pub history: Option<FileHistory>,
+    pub keys: KeyArea,
     /// The sidebar stays open beside a file (it folds to its strip by default).
     pub sidebar_open: bool,
     pub list: UniformListScrollHandle,
@@ -71,6 +88,7 @@ impl Tab {
         Self {
             id,
             name,
+            worktree: String::new(),
             graph: None,
             panels: Rc::new(Vec::new()),
             collapsed: [false; 5],
@@ -78,6 +96,8 @@ impl Tab {
             commit: None,
             files: None,
             diff: None,
+            history: None,
+            keys: KeyArea::Graph,
             sidebar_open: false,
             list: UniformListScrollHandle::new(),
             side: std::array::from_fn(|_| UniformListScrollHandle::new()),
@@ -161,17 +181,19 @@ impl GitVolt {
             let v = api.dispatch(Request::OpenRepo { path }).await?;
             let id = v["id"].as_u64().unwrap_or(0) as u32;
             api.dispatch(Request::WatchRepo { repo: id }).await?;
-            Ok::<_, gitvolt_core::error::GbError>((id, v["name"].as_str().unwrap_or_default().to_string()))
+            Ok::<_, gitvolt_core::error::GbError>((id, v["name"].as_str().unwrap_or_default().to_string(), v["worktree"].as_str().unwrap_or_default().to_string()))
         });
         cx.spawn(async move |this, cx| {
             let result = opened.await;
             this.update(cx, |this, cx| match result {
-                Ok(Ok((id, name))) => {
+                Ok(Ok((id, name, worktree))) => {
                     crate::bench::mark("repo_open");
                     if let Some(i) = this.tabs.iter().position(|t| t.id == id) {
                         this.active = i;
                     } else {
-                        this.tabs.push(Tab::new(id, name.into()));
+                        let mut tab = Tab::new(id, name.into());
+                        tab.worktree = worktree;
+                        this.tabs.push(tab);
                         this.active = this.tabs.len() - 1;
                         this.reload(id, cx);
                     }
@@ -252,6 +274,17 @@ impl GitVolt {
         }
         let at = tab.selected.map_or(0, |s| (s as i64 + by).clamp(0, count as i64 - 1) as usize);
         self.select(at, cx);
+    }
+
+    /// ↑ / ↓ move what was last clicked in: the graph, the file list, the history's list or the diff.
+    fn arrow(&mut self, down: bool, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else { return };
+        let by = if down { 1 } else { -1 };
+        match tab.keys {
+            KeyArea::History if tab.history.is_some() => self.step_history(down, cx),
+            _ if self.diff_open() => self.scroll_diff(by as f32, cx),
+            _ => self.move_selection(by, cx),
+        }
     }
 
     fn close_tab(&mut self, ix: usize, cx: &mut Context<Self>) {
@@ -755,18 +788,27 @@ impl Render for GitVolt {
         let viewport = window.viewport_size();
         let details = self.tabs.get(self.active).and_then(|t| details_panel(t, cx));
         let tab = self.tabs.get(self.active);
-        let open_file = tab.is_some_and(|t| t.diff.is_some());
+        let open_file = tab.is_some_and(|t| t.diff.is_some() || t.history.is_some());
         let folded = open_file && !tab.is_some_and(|t| t.sidebar_open);
         let left = if folded { 41. } else { SIDEBAR_W };
         let center = viewport.width.as_f32() - left - if details.is_some() { crate::details::DETAILS_W } else { 0. };
         let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
-        if let Some(diff) = self.tabs.get_mut(self.active).and_then(|t| t.diff.as_mut()) {
-            let (w, h) = body_size(diff, center, body_h);
-            diff.ensure_layout(w, h);
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            let (width, height) = match &tab.history {
+                Some(h) => {
+                    let editor = center - h.list_w;
+                    (editor - h.margin(tab.diff.as_ref(), editor), body_h - HISTORY_H)
+                }
+                None => (center, body_h - crate::diff::view::HEADER_H),
+            };
+            if let Some(diff) = tab.diff.as_mut() {
+                let (w, h) = body_size(diff, width, height);
+                diff.ensure_layout(w, h);
+            }
         }
         let tab = self.tabs.get(self.active);
         let strip = tab.filter(|_| folded).map(|t| sidebar_strip(t, cx));
-        let main = match tab.and_then(|t| diff_panel(t, center, cx)) {
+        let main = match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, cx) }) {
             Some(panel) => panel,
             None => graph_table(self, center, cx),
         };
@@ -782,20 +824,10 @@ impl Render for GitVolt {
             .text_color(theme::text_normal())
             .key_context("GitVolt")
             .track_focus(&self.focus)
-            .on_action(cx.listener(|this, _: &SelectNext, _, cx| {
-                if this.diff_open() {
-                    this.scroll_diff(1., cx);
-                } else {
-                    this.move_selection(1, cx);
-                }
-            }))
-            .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| {
-                if this.diff_open() {
-                    this.scroll_diff(-1., cx);
-                } else {
-                    this.move_selection(-1, cx);
-                }
-            }))
+            .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.arrow(true, cx)))
+            .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.arrow(false, cx)))
+            .on_action(cx.listener(|this, _: &OpenFileHistory, _, cx| this.open_history(false, cx)))
+            .on_action(cx.listener(|this, _: &OpenBlame, _, cx| this.open_history(true, cx)))
             .on_action(cx.listener(|this, _: &NextChange, _, cx| this.step_change(true, cx)))
             .on_action(cx.listener(|this, _: &PreviousChange, _, cx| this.step_change(false, cx)))
             .on_action(cx.listener(|this, _: &Copy, _, cx| this.copy_selection(cx)))
@@ -803,7 +835,9 @@ impl Render for GitVolt {
             .on_action(cx.listener(|this, _: &PageDown, window, cx| this.scroll_diff((window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
             .on_action(cx.listener(|this, _: &PageUp, window, cx| this.scroll_diff(-(window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
             .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
-                if this.diff_open() {
+                if this.tabs.get(this.active).is_some_and(|t| t.history.is_some()) {
+                    this.close_history(cx);
+                } else if this.diff_open() {
                     this.close_file(cx);
                 } else if let Some(tab) = this.tabs.get_mut(this.active) {
                     tab.selected = None;
@@ -830,7 +864,7 @@ impl Render for GitVolt {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use gitvolt_core::git::GitCli;
     use gitvolt_core::log::CommandLog;
@@ -848,7 +882,7 @@ mod tests {
         RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None }
     }
 
-    fn with_rows(cx: &mut TestAppContext, count: usize) -> (WindowHandle<GitVolt>, VisualTestContext, tokio::runtime::Runtime) {
+    pub fn with_rows(cx: &mut TestAppContext, count: usize) -> (WindowHandle<GitVolt>, VisualTestContext, tokio::runtime::Runtime) {
         cx.update(bind_keys);
         let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();
         let handle = runtime.handle().clone();

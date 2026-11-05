@@ -29,9 +29,17 @@ pub struct FileChange {
     pub deletions: Option<u32>,
     pub old: Value,
     pub new: Value,
+    pub origin: Origin,
 }
 
-pub fn file_changes(v: &Value) -> Vec<FileChange> {
+/// The list a file came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Origin {
+    Commit { id: String },
+    Wip { worktree: String, staged: bool },
+}
+
+pub fn file_changes(v: &Value, origin: &Origin) -> Vec<FileChange> {
     v["files"]
         .as_array()
         .map_or(&[][..], Vec::as_slice)
@@ -44,6 +52,7 @@ pub fn file_changes(v: &Value) -> Vec<FileChange> {
             deletions: f["deletions"].as_u64().map(|n| n as u32),
             old: f["old"].clone(),
             new: f["new"].clone(),
+            origin: origin.clone(),
         })
         .collect()
 }
@@ -139,6 +148,8 @@ pub fn status_icon(status: char) -> (&'static str, Hsla) {
 pub struct Commit {
     pub id: SharedString,
     pub parent: Option<SharedString>,
+    /// Every parent, whole.
+    pub parents: Vec<SharedString>,
     pub author: SharedString,
     pub date: SharedString,
     pub co_authors: Vec<SharedString>,
@@ -159,11 +170,10 @@ pub struct Files {
 }
 
 impl Files {
-    pub fn new(v: &Value) -> Self {
-        let changes = file_changes(v);
+    pub fn new(changes: Vec<FileChange>, added: u32, deleted: u32) -> Self {
         let (mode, collapsed) = (ListMode::Tree, HashSet::new());
         let rows = Rc::new(list_rows(&changes, mode, &collapsed));
-        Self { changes: Rc::new(changes), added: v["added"].as_u64().unwrap_or(0) as u32, deleted: v["deleted"].as_u64().unwrap_or(0) as u32, mode, collapsed, rows, list: UniformListScrollHandle::new() }
+        Self { changes: Rc::new(changes), added, deleted, mode, collapsed, rows, list: UniformListScrollHandle::new() }
     }
 
     fn relist(&mut self) {
@@ -195,18 +205,19 @@ impl GitVolt {
         let read = self.rt.spawn(async move {
             let details = api.dispatch(Request::CommitDetails { repo, id: id.clone() }).await?;
             let message = api.dispatch(Request::CommitMessage { repo, id: id.clone() }).await?;
-            let files = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Commit { id, parent: 0 } }).await?;
-            Ok::<_, gitvolt_core::error::GbError>((details, message, files))
+            let files = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Commit { id: id.clone(), parent: 0 } }).await?;
+            Ok::<_, gitvolt_core::error::GbError>((details, message, files, id))
         });
         cx.spawn(async move |this, cx| {
-            let Ok(Ok((details, message, files))) = read.await else { return };
+            let Ok(Ok((details, message, files, id))) = read.await else { return };
             this.update(cx, |this, cx| {
                 let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
                 if tab.selected != Some(ix) {
                     return;
                 }
                 tab.commit = Some(commit_of(&details, &message));
-                tab.files = Some(Files::new(&files));
+                let count = |k: &str| files[k].as_u64().unwrap_or(0) as u32;
+                tab.files = Some(Files::new(file_changes(&files, &Origin::Commit { id }), count("added"), count("deleted")));
                 cx.notify();
             })
             .ok();
@@ -217,6 +228,7 @@ impl GitVolt {
     /// Reads the panel for a WIP row: the worktree's unstaged changes, then its staged ones.
     pub fn read_wip(&mut self, repo: u32, worktree: String, ix: usize, cx: &mut Context<Self>) {
         let api = self.api.clone();
+        let tree = worktree.clone();
         let read = self.rt.spawn(async move {
             let unstaged = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Wip { worktree: worktree.clone(), staged: false } }).await?;
             let staged = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Wip { worktree, staged: true } }).await?;
@@ -229,10 +241,10 @@ impl GitVolt {
                 if tab.selected != Some(ix) {
                     return;
                 }
-                let mut files = unstaged["files"].as_array().cloned().unwrap_or_default();
-                files.extend(staged["files"].as_array().cloned().unwrap_or_default());
-                let sum = |k: &str| unstaged[k].as_u64().unwrap_or(0) + staged[k].as_u64().unwrap_or(0);
-                tab.files = Some(Files::new(&serde_json::json!({ "files": files, "added": sum("added"), "deleted": sum("deleted") })));
+                let mut files = file_changes(&unstaged, &Origin::Wip { worktree: tree.clone(), staged: false });
+                files.extend(file_changes(&staged, &Origin::Wip { worktree: tree.clone(), staged: true }));
+                let sum = |k: &str| (unstaged[k].as_u64().unwrap_or(0) + staged[k].as_u64().unwrap_or(0)) as u32;
+                tab.files = Some(Files::new(files, sum("added"), sum("deleted")));
                 cx.notify();
             })
             .ok();
@@ -246,6 +258,7 @@ fn commit_of(details: &Value, message: &Value) -> Commit {
     Commit {
         id: short(details["id"].as_str().unwrap_or_default()).into(),
         parent: details["parents"][0].as_str().map(|p| short(p).into()),
+        parents: details["parents"].as_array().map_or(&[][..], Vec::as_slice).iter().filter_map(|p| p.as_str()).map(|p| p.to_string().into()).collect(),
         author: details["author"]["name"].as_str().unwrap_or_default().to_string().into(),
         date: crate::model::format_date(details["committer"]["time"].as_i64().unwrap_or(0)).into(),
         co_authors: details["coAuthors"].as_array().map_or(&[][..], Vec::as_slice).iter().filter_map(|c| c["name"].as_str()).map(|n| n.to_string().into()).collect(),
@@ -255,9 +268,9 @@ fn commit_of(details: &Value, message: &Value) -> Commit {
     }
 }
 
-fn avatar(name: &SharedString, size: f32) -> Div {
-    let lane = crate::model::avatar_lane(name, "", theme::LANES.len());
-    div().flex().flex_none().items_center().justify_center().size(px(size)).rounded_full().bg(theme::lane(lane)).text_color(theme::lane_text(lane)).text_size(px((size * 0.4).round())).font_weight(FontWeight::SEMIBOLD).child(initials(name))
+pub fn avatar(name: &SharedString, email: &str, size: f32) -> Div {
+    let lane = crate::model::avatar_lane(name, email, theme::LANES.len());
+    div().flex().flex_none().items_center().justify_center().size(px(size)).rounded_full().bg(theme::lane(lane)).text_color(theme::lane_text(lane)).text_size(px((size * 0.4).round().max(7.))).font_weight(FontWeight::SEMIBOLD).child(initials(name))
 }
 
 pub fn segmented(items: Vec<AnyElement>) -> Div {
@@ -281,8 +294,9 @@ fn segment_base(id: impl Into<ElementId>, on: bool, enabled: bool) -> Stateful<D
         .px(px(8.))
         .py(px(2.))
         .when(on, |d| d.bg(theme::selected_row()).text_color(theme::text_selected()))
-        .when(!on && enabled, |d| d.text_color(theme::text_secondary()).hover(|d| d.text_color(theme::text_selected())))
-        .when(!enabled, |d| d.text_color(theme::text_disabled()))
+        .when(!on, |d| d.text_color(theme::text_secondary()))
+        .when(!on && enabled, |d| d.hover(|d| d.text_color(theme::text_selected())))
+        .when(!enabled, |d| d.opacity(0.4))
 }
 
 fn commit_view(c: &Commit) -> impl IntoElement + use<> {
@@ -315,8 +329,8 @@ fn commit_view(c: &Commit) -> impl IntoElement + use<> {
                 .px(px(12.))
                 .pt(px(6.))
                 .gap(px(4.))
-                .child(div().flex().flex_none().h(px(28.)).items_center().gap(px(6.)).child(avatar(&c.author, 28.)).child(div().flex_1().min_w_0().truncate().child(c.author.clone())).child(div().flex_none().text_color(theme::text_normal()).child(c.date.clone())))
-                .when(!c.co_authors.is_empty(), |d| d.child(div().flex().flex_none().gap(px(6.)).children(c.co_authors.iter().map(|n| div().flex().items_center().gap(px(4.)).pr(px(6.)).pl(px(1.)).py(px(1.)).rounded(px(10.)).bg(theme::panel_bg1()).child(avatar(n, 18.)).child(n.clone())))))
+                .child(div().flex().flex_none().h(px(28.)).items_center().gap(px(6.)).child(avatar(&c.author, "", 28.)).child(div().flex_1().min_w_0().truncate().child(c.author.clone())).child(div().flex_none().text_color(theme::text_normal()).child(c.date.clone())))
+                .when(!c.co_authors.is_empty(), |d| d.child(div().flex().flex_none().gap(px(6.)).children(c.co_authors.iter().map(|n| div().flex().items_center().gap(px(4.)).pr(px(6.)).pl(px(1.)).py(px(1.)).rounded(px(10.)).bg(theme::panel_bg1()).child(avatar(n, "", 18.)).child(n.clone())))))
                 .child(
                     div()
                         .id("message")
@@ -493,7 +507,7 @@ mod tests {
     use std::prelude::v1::test;
 
     fn change(path: &str) -> FileChange {
-        FileChange { path: path.to_string().into(), old_path: None, status: 'M', additions: Some(1), deletions: None, old: Value::Null, new: Value::Null }
+        FileChange { path: path.to_string().into(), old_path: None, status: 'M', additions: Some(1), deletions: None, old: Value::Null, new: Value::Null, origin: Origin::Commit { id: "c".into() } }
     }
 
     fn shown(rows: &[ListRow]) -> Vec<(String, u8)> {
@@ -538,7 +552,7 @@ mod tests {
 
     #[test]
     fn a_file_list_reads_the_camel_case_payload() {
-        let list = file_changes(&serde_json::json!({"files": [{"path": "a", "oldPath": "b", "status": "R100", "additions": 2, "old": {"kind": "absent"}}]}));
+        let list = file_changes(&serde_json::json!({"files": [{"path": "a", "oldPath": "b", "status": "R100", "additions": 2, "old": {"kind": "absent"}}]}), &Origin::Commit { id: "c".into() });
         assert_eq!((list[0].status, list[0].old_path.as_deref(), list[0].additions, list[0].deletions), ('R', Some("b"), Some(2), None));
     }
 
