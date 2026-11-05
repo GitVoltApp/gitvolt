@@ -471,7 +471,9 @@ impl ForgeConnector for FakeConnector {
 
 /// Tokens in memory. `put` answers `storage`.
 pub(crate) struct MemTokens {
-    pub map: Mutex<HashMap<AccountKey, String>>,
+    /// Keyed as the real stores key it (`AccountKey::keyring_account`), so a legacy id and its
+    /// old token name meet.
+    pub map: Mutex<HashMap<String, String>>,
     pub storage: TokenStorage,
 }
 
@@ -480,21 +482,22 @@ impl MemTokens {
         Arc::new(Self { map: Mutex::default(), storage })
     }
 
-    pub fn token(&self, profile: &str, host: &str) -> Option<String> {
-        self.map.lock().unwrap().get(&AccountKey { profile: profile.into(), host: host.into() }).cloned()
+    pub fn token_for(&self, profile: &str, host: &str, id: &str) -> Option<String> {
+        let key = AccountKey { profile: profile.into(), host: host.into(), id: id.into() };
+        self.map.lock().unwrap().get(&key.keyring_account()).cloned()
     }
 }
 
 impl TokenStore for MemTokens {
     fn put(&self, key: &AccountKey, token: &Secret) -> Result<TokenStorage, GbError> {
-        self.map.lock().unwrap().insert(key.clone(), token.expose().to_string());
+        self.map.lock().unwrap().insert(key.keyring_account(), token.expose().to_string());
         Ok(self.storage)
     }
     fn get(&self, key: &AccountKey, _storage: TokenStorage) -> Result<Option<Secret>, GbError> {
-        Ok(self.map.lock().unwrap().get(key).cloned().map(Secret::new))
+        Ok(self.map.lock().unwrap().get(&key.keyring_account()).cloned().map(Secret::new))
     }
     fn delete(&self, key: &AccountKey) -> Result<(), GbError> {
-        self.map.lock().unwrap().remove(key);
+        self.map.lock().unwrap().remove(&key.keyring_account());
         Ok(())
     }
 }

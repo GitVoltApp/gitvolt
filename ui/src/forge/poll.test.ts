@@ -27,7 +27,7 @@ const { clampFetchInterval } = await import('../settings/schema');
 const { detailOf, mrOf, projectOf } = await import('./testMrs');
 
 const project = projectOf();
-const target = { remote: 'origin', host: 'gitlab.example.com', path: 'group/project', account: 'gitlab', project, error: null };
+const target = { remote: 'origin', host: 'gitlab.example.com', path: 'group/project', account: 'gitlab', accountId: '', project, error: null };
 const fresh = <T,>(value: T) => ({ value, notModified: false, pollIntervalSecs: null, fetchedAt: 1 });
 const branch = (name: string, upstream: string | null, tipTime: number) => ({ name, fullName: `refs/heads/${name}`, upstream, tipTime, gone: false }) as LocalBranch;
 const running = mrOf(5, { state: 'draft', pipeline: { status: 'running', webUrl: null } });
@@ -39,7 +39,7 @@ beforeEach(() => {
   useAppState.setState({ settings: { ...DEFAULT_SETTINGS, fetchIntervalSecs: 300 } });
   useRuntime.setState({ tabs: { t: { status: 'ready', repo: { id: 4 }, sidebar: { locals: [branch('dev', 'refs/remotes/origin/dev', 5), branch('old', 'refs/remotes/origin/old', 9), branch('loose', null, 1)] } } as never } });
   api.forgeRepoProjects.mockResolvedValue({ remotes: [target], target: 'origin' });
-  api.forgeAccounts.mockResolvedValue([{ account: { host: 'gitlab.example.com', user: { username: 'ada' } }, status: { kind: 'ok' } }]);
+  api.forgeAccounts.mockResolvedValue([{ account: { id: '', host: 'gitlab.example.com', user: { username: 'ada' } }, status: { kind: 'ok' } }]);
   api.forgeBranchMrs.mockResolvedValue({ kind: 'gitlab', remote: 'origin', mrs: [{ remoteRef: 'refs/remotes/origin/dev', mr: mrOf(12) }], history: [], fetchedAt: 1, pollIntervalSecs: 30 });
   api.forgeMrList.mockResolvedValue({ kind: 'gitlab', remote: 'origin', project, filter: 'all', mrs: [mrOf(12), running], fetchedAt: 1, pollIntervalSecs: null });
   api.forgeMrDetail.mockResolvedValue(fresh(detailOf(mrOf(12))));
@@ -117,7 +117,7 @@ describe('pollForge (spec #4 §3.4)', () => {
   });
 
   it('a repository without a forge target has no MR/PR UI', async () => {
-    api.forgeRepoProjects.mockResolvedValue({ remotes: [{ ...target, account: null, project: null }], target: null });
+    api.forgeRepoProjects.mockResolvedValue({ remotes: [{ ...target, account: null, accountId: null, project: null }], target: null });
     patchForge('t', { kind: 'gitlab', byRef: { r: mrOf(1) } });
     expect(await pollForge('t', 'timer')).toEqual({ runningPipeline: false, serverIntervalMs: null });
     expect([forgeOf('t').kind, forgeOf('t').byRef, forgeOf('t').list]).toEqual([null, {}, null]);

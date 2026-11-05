@@ -96,9 +96,13 @@ mod tests {
     }
 
     #[test]
-    fn the_keyring_account_is_profile_slash_host() {
-        let k = AccountKey { profile: "default".into(), host: "gitlab.example.com".into() };
+    fn the_keyring_account_is_profile_slash_host_and_the_account_id_for_another_one() {
+        let k = AccountKey { profile: "default".into(), host: "gitlab.example.com".into(), id: String::new() };
         assert_eq!(k.keyring_account(), "default/gitlab.example.com");
+        let second = AccountKey { id: "42".into(), ..k.clone() };
+        assert_eq!(second.keyring_account(), "default/gitlab.example.com#42");
+        let legacy = AccountKey { id: "legacy:gitlab.example.com".into(), ..k };
+        assert_eq!(legacy.keyring_account(), "default/gitlab.example.com", "an account from before ids keeps its token's name");
         assert_eq!(KEYRING_SERVICE, "gitvolt");
     }
 

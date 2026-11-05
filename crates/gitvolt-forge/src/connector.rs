@@ -183,8 +183,8 @@ mod tests {
         let hub = ForgeHub::new(forge, Arc::new(OneToken), Arc::new(move || now_secs * 1000));
         let store = SettingsStore::in_memory();
         let user = ForgeUser { id: 1, username: "ada".into(), name: "Ada".into(), avatar_url: None, web_url: String::new(), email: None, emails: vec![] };
-        store.set_forge_accounts("default", vec![ForgeAccount { host: HOST.into(), kind: ForgeKind::GitLab, user, storage: TokenStorage::Keyring, version: None, version_checked_at: now_secs, added_at: now_secs }]).unwrap();
-        let remotes = [gitvolt_core::payload::RemotePayload { name: "origin".into(), host: Some(HOST.into()), path: Some("group/project".into()), host_kind: gitvolt_core::remotes::HostKind::GitLab, main: false }];
+        store.set_forge_accounts("default", vec![ForgeAccount { id: String::new(), host: HOST.into(), kind: ForgeKind::GitLab, user, storage: TokenStorage::Keyring, version: None, version_checked_at: now_secs, added_at: now_secs }]).unwrap();
+        let remotes = [gitvolt_core::payload::RemotePayload { name: "origin".into(), host: Some(HOST.into()), path: Some("group/project".into()), host_kind: gitvolt_core::remotes::HostKind::GitLab, main: false, account: None }];
         assert!(hub.avatar(&store, &remotes, "ada@example.com").await.is_none());
         let status = hub.accounts(&store)[0].status.clone();
         assert!(matches!(&status, AccountStatus::Unreachable { message } if message.starts_with("Couldn't reach gitlab.example.com")), "{status:?}");

@@ -141,7 +141,7 @@ export async function forgeRemotes(ctx: DemoContext, repo: number): Promise<Remo
 
 /** hub.rs `accounts`: the demo's one account, always fine. No token, so none to show. */
 export function accounts(f: DemoForge): ForgeAccountView[] {
-  return [{ account: { host: HOST, kind: 'gitlab', user: f.provider.me(), storage: 'keyring', version: f.fake.seed.version || null, versionCheckedAt: 0, addedAt: 0 }, status: { kind: 'ok' } }];
+  return [{ account: { id: '', host: HOST, kind: 'gitlab', user: f.provider.me(), storage: 'keyring', version: f.fake.seed.version || null, versionCheckedAt: 0, addedAt: 0 }, status: { kind: 'ok' } }];
 }
 
 /** hub.rs `account_for`, for the demo's one account. */
@@ -186,7 +186,7 @@ function projectOn(f: DemoForge, host: string, path: string): ForgeProject | nul
 /** hub.rs `repo_projects`. */
 export async function repoProjects(f: DemoForge, r: Remotes): Promise<RepoProjects> {
   const remotes = r.remotes.map((x): RemoteProject => {
-    const rp: RemoteProject = { remote: x.name, host: x.host, path: x.path, account: null, project: null, error: null };
+    const rp: RemoteProject = { remote: x.name, host: x.host, path: x.path, account: null, accountId: null, project: null, error: null };
     if (x.host !== null && x.path !== null) {
       rp.account = hasAccount(x.host) ? 'gitlab' : null;
       if (rp.account !== null) {
@@ -425,7 +425,7 @@ export function cachedMrs(f: DemoForge, r: Remotes, refs: string[], repo: BadgeR
   const known = (x: RemotePayload): ForgeProject | null => (hasAccount(x.host) && x.path !== null ? (f.cache.get(x.path)?.project ?? null) : null);
   const list = r.remotes.map((x): RemoteProject => {
     const account = x.host !== null && hasAccount(x.host) ? ('gitlab' as const) : null;
-    return { remote: x.name, host: x.host, path: x.path, account, project: account !== null ? known(x) : null, error: null };
+    return { remote: x.name, host: x.host, path: x.path, account, accountId: account !== null ? '' : null, project: account !== null ? known(x) : null, error: null };
   });
   const remote = targetRemote(list, r.preferred);
   if (remote === null) return null;

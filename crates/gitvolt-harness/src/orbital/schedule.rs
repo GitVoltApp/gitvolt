@@ -656,7 +656,7 @@ impl Timeline<'_> {
                 if deps.is_empty() {
                     return None;
                 }
-                releases::bump(main, rng.pick(&deps), self.messages, rng)?
+                releases::bump(main, rng.pick(&deps).as_str(), self.messages, rng)?
             }
             // Without a workspace manifest (the tests' small histories), a dependency bump
             // retunes a constant instead.

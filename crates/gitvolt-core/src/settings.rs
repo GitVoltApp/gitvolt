@@ -431,6 +431,12 @@ pub struct RepoSettings {
     // --- end 4B T11 ---
     /// The remote whose forge project the repo's MRs/PRs target; `None` picks automatically.
     pub forge_target_remote: Option<String>,
+    /// The forge account (a `ForgeAccount.id`) this repository's forge calls use on its host;
+    /// `None` uses the first account on the host. Lets private and work repositories use
+    /// different accounts on the same forge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub forge_account: Option<String>,
     /// How the merge panel last brought an MR's branch up to date (its split button's default);
     /// `None`: the forge's default.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -781,6 +787,14 @@ impl SettingsStore {
                 match load_json::<Profile>(&entry.path().join("profile.json"), PROFILE_VERSION) {
                     Loaded::Found(mut p) => {
                         p.id = id;
+                        // An account from before a host could have several: give it an id now
+                        // (its token keeps the old store name, `AccountKey::keyring_account`).
+                        for a in &mut p.forge_accounts {
+                            if a.id.is_empty() {
+                                a.id = format!("legacy:{}", a.host);
+                                inner.dirty_profiles.insert(p.id.clone());
+                            }
+                        }
                         inner.profiles.insert(p.id.clone(), p);
                     }
                     Loaded::Absent => {}
@@ -1246,7 +1260,7 @@ mod tests {
         let mut p = store.active_profile();
         p.repos_folder = Some("/home/u/repos".into());
         p.right_panel_width = Some(420);
-        p.repos.insert("/r".into(), RepoSettings { columns: Some(ColumnPrefsDto { labels: 200, graph: None, author: 160, date: 170, sha: 90, message: Some(333) }), branch_update: Some(crate::forge::BranchUpdate::Merge), ..Default::default() });
+        p.repos.insert("/r".into(), RepoSettings { columns: Some(ColumnPrefsDto { labels: 200, graph: None, author: 160, date: 170, sha: 90, message: Some(333) }), branch_update: Some(crate::forge::BranchUpdate::Merge), forge_account: Some("42".into()), ..Default::default() });
         p.repos.insert("/s".into(), RepoSettings::default());
         store.save_profile(p).unwrap();
         store.flush_now().unwrap();
@@ -1259,13 +1273,16 @@ mod tests {
         assert_eq!(profile["repos"]["/r"]["columns"]["sha"], 90);
         assert_eq!(profile["repos"]["/r"]["columns"]["message"], 333);
         assert_eq!(profile["repos"]["/r"]["branchUpdate"], "merge");
+        assert_eq!(profile["repos"]["/r"]["forgeAccount"], "42");
         assert_eq!(profile["repos"]["/s"].get("branchUpdate"), None, "none chosen: not written");
+        assert_eq!(profile["repos"]["/s"].get("forgeAccount"), None, "automatic: not written");
         let again = SettingsStore::open(dir.path()).state();
         assert_eq!(again.settings.commit_limit, 500);
         assert_eq!(again.profile.repos_folder.as_deref(), Some("/home/u/repos"));
         assert_eq!(again.profile.right_panel_width, Some(420));
         assert_eq!(again.profile.repos["/r"].columns.as_ref().unwrap().sha, 90, "a saved SHA width survives a reload");
         assert_eq!(again.profile.repos["/r"].branch_update, Some(crate::forge::BranchUpdate::Merge), "the merge panel's last update way survives a reload");
+        assert_eq!(again.profile.repos["/r"].forge_account.as_deref(), Some("42"), "the repository's forge account survives a reload");
     }
 
     #[test]
@@ -1331,6 +1348,25 @@ mod tests {
         assert_eq!(st.settings.commit_limit, 2000);
         let aside: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.starts_with("settings.json.corrupt-")).collect();
         assert_eq!(aside.len(), 1, "the unreadable file is kept, not overwritten");
+    }
+
+    #[test]
+    fn a_forge_account_from_before_ids_gets_a_host_qualified_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let pdir = dir.path().join("profiles/default");
+        std::fs::create_dir_all(&pdir).unwrap();
+        let old = serde_json::json!({
+            "version": 1, "id": "default", "name": "Default",
+            "forgeAccounts": [{
+                "host": "gitlab.example.com", "kind": "gitlab", "storage": "keyring",
+                "user": {"id": 7, "username": "ada", "name": "Ada"},
+            }],
+        });
+        std::fs::write(pdir.join("profile.json"), serde_json::to_vec(&old).unwrap()).unwrap();
+        let store = SettingsStore::open(dir.path());
+        assert_eq!(store.forge_accounts(DEFAULT_PROFILE_ID)[0].id, "legacy:gitlab.example.com");
+        store.flush_now().unwrap();
+        assert_eq!(read(&pdir.join("profile.json"))["forgeAccounts"][0]["id"], "legacy:gitlab.example.com");
     }
 
     #[test]

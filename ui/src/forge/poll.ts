@@ -165,7 +165,8 @@ async function pollOnce(tabId: string, reason: PollReason): Promise<PollOutcome>
       }
       if (gone()) return IDLE;
       const host = target.project.host;
-      const me = forgeOf(tabId).me ?? (await api.forgeAccounts()).find((a) => a.account.host === host)?.account.user.username ?? null;
+      // Read each full poll: the repository may have switched to another account on the host.
+      const me = (await api.forgeAccounts()).find((a) => a.account.host === host && (target.accountId === null || a.account.id === target.accountId))?.account.user.username ?? null;
       patchForge(tabId, (f) => ({ kind: target.account, remote: target.remote, project: target.project, mapped: keepSame(f.mapped, mappedRemotes(projects, host)), me }));
     }
     // The badges failing (one slow request) costs only the badges: the list is still asked.

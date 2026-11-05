@@ -322,7 +322,7 @@ describe('the Create flyout (spec #4 §4 "4C")', () => {
     const grace = { id: 5, username: 'grace', name: 'Grace Hopper', avatarUrl: null, webUrl: '', email: null };
     const ada = { id: 9, username: 'ada', name: 'Ada Lovelace', avatarUrl: null, webUrl: '', email: null };
     api.forgeSearchUsers.mockResolvedValue([grace] as never);
-    api.forgeAccounts.mockResolvedValue([{ account: { host: 'gitlab.example.com', kind: 'gitlab', user: ada }, status: { kind: 'ok' } }] as never);
+    api.forgeAccounts.mockResolvedValue([{ account: { id: '', host: 'gitlab.example.com', kind: 'gitlab', user: ada }, status: { kind: 'ok' } }] as never);
     api.forgeCreateMr.mockResolvedValue({ mr: { number: 12, webUrl: 'w' }, failed: [] });
     await show();
     const people = screen.getByRole('group', { name: 'People and labels' });

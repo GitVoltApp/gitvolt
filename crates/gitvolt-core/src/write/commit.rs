@@ -186,7 +186,7 @@ impl WriteIntent for Commit {
         if !self.amend && !merging {
             let staged = entries.iter().any(|e| matches!(e.kind, EntryKind::Ordinary | EntryKind::Renamed) && e.index != '.');
             let changed = entries.iter().any(|e| e.kind != EntryKind::Ignored);
-            if !staged && !(self.stage_all && changed) {
+            if !(staged || self.stage_all && changed) {
                 return Err(GbError::new(GbErrorKind::InvalidInput, "Nothing to commit"));
             }
         }

@@ -1,4 +1,4 @@
-//! What the hub remembers per project (profile, host, project path), between polls and across
+//! What the hub remembers per project (profile, host, account, project path), between polls and across
 //! restarts, so a poll asks the forge only what may have changed and a relaunch shows the last
 //! list and badges at once:
 //! - per remote-tracking ref, what its lookup in any state found (`RefLookup`), and which refs
@@ -10,8 +10,9 @@
 //!
 //! On disk: `<data dir>/forge-cache/<profile>/<host>/<project path>.json` (names
 //! percent-encoded), versioned, at most `MAX_FILE_BYTES`, ignored (and deleted) after `TTL_SECS`.
-//! Never a token: the forge's own data, in the user's own data dir. Removing the account deletes
-//! its host's directory.
+//! A host's second and later accounts add `<account id>/` before the project path.
+//! Never a token: the forge's own data, in the user's own data dir. Removing an account deletes
+//! its project files, and none of the host's other accounts'.
 
 use crate::forge::{AccountKey, ForgeMr, ForgeProject, MrState, PeopleLimits, StoredResponse};
 use crate::journal::Clock;
@@ -93,11 +94,29 @@ pub struct ProjectCache {
 /// The people limits are the namespace's tier's: asked again after a day.
 pub const PEOPLE_LIMITS_SECS: i64 = 24 * 3600;
 
-/// (profile, host, project path).
-pub type CacheKey = (String, String, String);
+/// (profile, host, account id, project path). The id is empty for a host's first (or only)
+/// account, whose files stay where they were before several were possible.
+pub type CacheKey = (String, String, String, String);
 
 pub fn cache_key(account: &AccountKey, project_path: &str) -> CacheKey {
-    (account.profile.clone(), account.host.clone(), project_path.to_string())
+    let id = cache_id(&account.id).to_string();
+    (account.profile.clone(), account.host.clone(), id, project_path.to_string())
+}
+
+/// An account from before ids (`legacy:<host>`) keeps the directory its projects were saved in.
+pub(crate) fn cache_id(id: &str) -> &str {
+    if id.starts_with("legacy:") { "" } else { id }
+}
+
+/// Whether a cache key is one account's (`AccountKey`), whatever its project.
+fn same_account_key(key: &CacheKey, account: &AccountKey) -> bool {
+    key.0 == account.profile && key.1 == account.host && key.2 == cache_id(&account.id)
+}
+
+/// The host directory, then the account's own directory for the second and later accounts there.
+fn account_dir(dir: &Path, account: &AccountKey) -> PathBuf {
+    let host = dir.join(file_name(&account.profile)).join(file_name(&account.host));
+    if cache_id(&account.id).is_empty() { host } else { host.join(file_name(&account.id)) }
 }
 
 /// A file or directory name for any text: RFC 3986's unreserved characters stay, the rest are
@@ -152,7 +171,8 @@ impl ForgeCache {
     }
 
     fn file(&self, key: &CacheKey) -> Option<PathBuf> {
-        Some(self.dir()?.join(file_name(&key.0)).join(file_name(&key.1)).join(format!("{}.json", file_name(&key.2))))
+        let account = account_dir(&self.dir()?, &AccountKey { profile: key.0.clone(), host: key.1.clone(), id: key.2.clone() });
+        Some(account.join(format!("{}.json", file_name(&key.3))))
     }
 
     fn load(&self, key: &CacheKey) -> ProjectCache {
@@ -226,13 +246,25 @@ impl ForgeCache {
         self.save(key);
     }
 
-    /// Forgets an account's projects (it was removed or replaced), on disk too.
+    /// Forgets one account's projects (it was removed or replaced), on disk too.
     pub fn drop_account(&self, account: &AccountKey) {
-        let mine = |(p, h, _): &CacheKey| p == &account.profile && h == &account.host;
+        let mine = |k: &CacheKey| same_account_key(k, account);
         self.projects.lock().expect("forge cache poisoned").retain(|k, _| !mine(k));
         self.written.lock().expect("forge cache poisoned").retain(|k, _| !mine(k));
-        if let Some(dir) = self.dir() {
-            let _ = std::fs::remove_dir_all(dir.join(file_name(&account.profile)).join(file_name(&account.host)));
+        let Some(dir) = self.dir() else { return };
+        let account_dir = account_dir(&dir, account);
+        if account.id.is_empty() {
+            // A first account's files sit directly in the host's directory; other accounts'
+            // files are in subdirectories there and stay.
+            if let Ok(entries) = std::fs::read_dir(&account_dir) {
+                for e in entries.flatten() {
+                    if e.file_type().is_ok_and(|t| t.is_file()) {
+                        let _ = std::fs::remove_file(e.path());
+                    }
+                }
+            }
+        } else {
+            let _ = std::fs::remove_dir_all(account_dir);
         }
     }
 
@@ -262,19 +294,19 @@ fn shrink(c: &mut ProjectCache) {
     }
 }
 
-/// Deletes the files saved more than `TTL_SECS` before `now`.
+/// Deletes the files saved more than `TTL_SECS` before `now`, at any depth (a host's second
+/// account keeps its projects in a subdirectory).
 fn prune(dir: &Path, now: i64) {
-    let Ok(profiles) = std::fs::read_dir(dir) else { return };
-    for p in profiles.flatten() {
-        let Ok(hosts) = std::fs::read_dir(p.path()) else { continue };
-        for h in hosts.flatten() {
-            let Ok(files) = std::fs::read_dir(h.path()) else { continue };
-            for f in files.flatten() {
-                let stale = std::fs::read(f.path()).ok().and_then(|b| serde_json::from_slice::<ProjectCache>(&b).ok()).is_none_or(|c| c.version != CACHE_VERSION || now.saturating_sub(c.saved_at) >= TTL_SECS);
-                if stale {
-                    let _ = std::fs::remove_file(f.path());
-                }
-            }
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let path = e.path();
+        if e.file_type().is_ok_and(|t| t.is_dir()) {
+            prune(&path, now);
+            continue;
+        }
+        let stale = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<ProjectCache>(&b).ok()).is_none_or(|c| c.version != CACHE_VERSION || now.saturating_sub(c.saved_at) >= TTL_SECS);
+        if stale {
+            let _ = std::fs::remove_file(&path);
         }
     }
 }
@@ -286,7 +318,11 @@ mod tests {
     use std::sync::atomic::{AtomicI64, Ordering};
 
     fn key() -> CacheKey {
-        ("default".into(), "gitlab.example.com".into(), "group/sub/project".into())
+        ("default".into(), "gitlab.example.com".into(), String::new(), "group/sub/project".into())
+    }
+
+    fn account() -> AccountKey {
+        AccountKey { profile: "default".into(), host: "gitlab.example.com".into(), id: String::new() }
     }
 
     fn cache(dir: &Path, now: &Arc<AtomicI64>) -> ForgeCache {
@@ -326,8 +362,33 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(20));
         a.save(&key());
         assert_eq!(std::fs::metadata(&file).unwrap().modified().unwrap(), first);
-        a.drop_account(&AccountKey { profile: "default".into(), host: "gitlab.example.com".into() });
-        assert!(!tmp.path().join("default").join("gitlab.example.com").exists());
+        a.drop_account(&account());
+        assert!(!tmp.path().join("default").join("gitlab.example.com").join("group%2Fsub%2Fproject.json").exists());
+    }
+
+    #[test]
+    fn a_second_account_on_the_host_keeps_its_projects_apart() {
+        let tmp = tempfile::tempdir().unwrap();
+        let now = Arc::new(AtomicI64::new(1_000_000));
+        let c = cache(tmp.path(), &now);
+        let first = key();
+        let second = ("default".into(), "gitlab.example.com".into(), "2".into(), "group/project".into());
+        c.with(&first, |p| p.open_refs.insert("first".into()));
+        c.with(&second, |p| p.open_refs.insert("second".into()));
+        c.save(&first);
+        c.save(&second);
+        assert!(tmp.path().join("default").join("gitlab.example.com").join("group%2Fsub%2Fproject.json").is_file());
+        assert!(tmp.path().join("default").join("gitlab.example.com").join("2").join("group%2Fproject.json").is_file());
+        c.drop_account(&AccountKey { profile: "default".into(), host: "gitlab.example.com".into(), id: "2".into() });
+        assert!(c.with(&first, |p| p.open_refs.contains("first")), "the first account's project stays");
+        assert!(!c.with(&second, |p| p.open_refs.contains("second")), "only the removed account's is forgotten");
+        assert!(!tmp.path().join("default").join("gitlab.example.com").join("2").exists());
+    }
+
+    #[test]
+    fn an_account_from_before_ids_keeps_the_hosts_cache_directory() {
+        let legacy = AccountKey { profile: "default".into(), host: "gitlab.example.com".into(), id: "legacy:gitlab.example.com".into() };
+        assert_eq!(cache_key(&legacy, "group/project").2, "", "the host folder, where it already is");
     }
 
     #[test]

@@ -469,8 +469,10 @@ with an Open in browser action. A diff shows the old and new pages side by side.
 ## Forge layer
 
 GitHub, GitLab and Forgejo are the providers (`gitvolt-forge`), all over personal access tokens. Core
-holds the `ForgeHub` (`forge/hub.rs`): the active profile's accounts, a provider per account built
-on first use, and each account's last known status. It maps each remote to its forge project and
+holds the `ForgeHub` (`forge/hub.rs`): the active profile's accounts (any number per host, a
+private and a work one, say), a provider per account built on first use, and each account's last
+known status. A repository's `RepoSettings::forge_account` picks which of its host's accounts its
+remotes use (`RemotePayload::account`), else the host's first. It maps each remote to its forge project and
 answers the MR/PR badges, the sidebar list, the MR/PR view, the Create MR/PR flow, stacked
 MRs/PRs and inline review comments (`forge/mrs.rs`, `forge/create.rs`, `forge/stack.rs`,
 `forge/review.rs`: the lines a forge's diff takes comments on, positions and GitLab line codes,
@@ -483,7 +485,8 @@ limits (once limited, requests fail fast until the reset time), timeouts, and
 `User-Agent: GitVolt/<version>`.
 
 **Tokens** (`gitvolt-forge/src/tokens.rs`) live in the system Secret Service through the `keyring`
-crate (service `gitvolt`, account `<profile id>/<host>`). Where there's no Secret Service, they go
+crate (service `gitvolt`, account `<profile id>/<host>`, or `<profile id>/<host>#<account id>` for
+a host's second and later accounts). Where there's no Secret Service, they go
 to `~/.local/share/gitvolt/forge-tokens` (file 0600, directory 0700), and Settings › Accounts warns
 about it. Tokens never go in settings files, and nothing logs, prints or formats one.
 

@@ -77,6 +77,11 @@ pub struct RemotePayload {
     #[serde(skip)]
     #[ts(skip)]
     pub main: bool,
+    /// The profile's account for this host, when `RepoSettings::forge_account` names one.
+    /// Server-side only.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub account: Option<String>,
 }
 
 /// Where one side of a file diff comes from (spec §10.2). The file list builds these and the

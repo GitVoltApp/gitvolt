@@ -119,17 +119,26 @@ pub fn is_forbidden(e: &GbError) -> bool {
 /// The keyring's service name (core spec §14.3).
 pub const KEYRING_SERVICE: &str = "gitvolt";
 
-/// One account: a host in a profile (spec #4 §2: one account per host per profile).
+/// One account: a host in a profile, and which of the host's accounts (spec #4 §2). `id` is
+/// empty for an account saved before GitVolt kept several on one host: its token stays where it
+/// was (`<profile>/<host>`), so an update never loses it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AccountKey {
     pub profile: String,
     pub host: String,
+    pub id: String,
 }
 
 impl AccountKey {
-    /// The keyring's account name: `<profile-id>/<host>` (core spec §14.3).
+    /// The keyring's account name: `<profile-id>/<host>`, or `<profile-id>/<host>#<id>` for the
+    /// second and later accounts on a host (core spec §14.3). An account from before ids existed
+    /// (now `legacy:<host>`) keeps the old name, so its token is found after an update.
     pub fn keyring_account(&self) -> String {
-        format!("{}/{}", self.profile, self.host)
+        if self.id.is_empty() || self.id.starts_with("legacy:") {
+            format!("{}/{}", self.profile, self.host)
+        } else {
+            format!("{}/{}#{}", self.profile, self.host, self.id)
+        }
     }
 }
 

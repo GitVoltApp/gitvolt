@@ -34,6 +34,12 @@ mrFilter: MrFilter | null,
  */
 forgeTargetRemote: string | null, 
 /**
+ * The forge account (a `ForgeAccount.id`) this repository's forge calls use on its host;
+ * `None` uses the first account on the host. Lets private and work repositories use
+ * different accounts on the same forge.
+ */
+forgeAccount?: string, 
+/**
  * How the merge panel last brought an MR's branch up to date (its split button's default);
  * `None`: the forge's default.
  */

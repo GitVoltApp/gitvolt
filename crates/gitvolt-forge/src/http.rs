@@ -929,7 +929,7 @@ fn too_large(host: &str, limit: u64) -> GbError {
 /// started on plain http: the harness) and `allowed` takes it; otherwise `get_image_within` answers
 /// `Elsewhere(<host>)` and the UI offers "Load image from <host>".
 fn image_redirect_followed(from: &str, next: &str, allowed: &(dyn Fn(&str) -> bool + Sync)) -> bool {
-    !(is_https(from) && !is_https(next)) && allowed(next)
+    (is_https(next) || !is_https(from)) && allowed(next)
 }
 
 /// `url`'s path is a forge's sign-in page.

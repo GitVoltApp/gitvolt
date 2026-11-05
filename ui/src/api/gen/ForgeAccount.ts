@@ -3,7 +3,14 @@ import type { ForgeKind } from "./ForgeKind";
 import type { ForgeUser } from "./ForgeUser";
 import type { TokenStorage } from "./TokenStorage";
 
-export type ForgeAccount = { host: string, kind: ForgeKind, 
+export type ForgeAccount = { 
+/**
+ * Stable within its host and profile: the forge's user id for an account added now, and
+ * `legacy:<host>` for one saved before a host could have more than one (given on load; its
+ * token keeps the old store key). The token store and the forge cache key their entries by
+ * it, so it must never change.
+ */
+id: string, host: string, kind: ForgeKind, 
 /**
  * The token's user when the account was added (avatar and name in Settings).
  */

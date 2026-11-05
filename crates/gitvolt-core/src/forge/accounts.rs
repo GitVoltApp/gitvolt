@@ -1,5 +1,5 @@
-//! Forge accounts (spec #4 §3.2): one per host per profile, kept in the profile (never the
-//! token: that's in the token store), with what the UI shows about each.
+//! Forge accounts (spec #4 §3.2): any number per host per profile, kept in the profile (never
+//! the token: that's in the token store), with what the UI shows about each.
 
 use crate::error::{GbError, GbErrorKind};
 use crate::forge::types::{ForgeKind, ForgeUser, TokenStorage};
@@ -10,6 +10,12 @@ use ts_rs::TS;
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ForgeAccount {
+    /// Stable within its host and profile: the forge's user id for an account added now, and
+    /// `legacy:<host>` for one saved before a host could have more than one (given on load; its
+    /// token keeps the old store key). The token store and the forge cache key their entries by
+    /// it, so it must never change.
+    #[serde(default)]
+    pub id: String,
     pub host: String,
     pub kind: ForgeKind,
     /// The token's user when the account was added (avatar and name in Settings).
@@ -140,6 +146,7 @@ mod tests {
         });
         let profile: crate::settings::Profile = serde_json::from_value(profile).unwrap();
         let a = profile.forge_accounts.into_iter().next().unwrap();
+        assert_eq!(a.id, "", "an account saved before a host could have several keeps the empty id");
         assert_eq!((a.version, a.version_checked_at, a.added_at), (None, 0, 0));
         assert_eq!((a.user.avatar_url, a.user.email, a.user.web_url.as_str()), (None, None, ""));
     }

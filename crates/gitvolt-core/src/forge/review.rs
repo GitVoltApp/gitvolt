@@ -87,7 +87,7 @@ impl ForgeHub {
         if t.project.kind != ForgeKind::GitLab {
             return true;
         }
-        let version = crate::forge::hub::account_for(&store.active_profile().forge_accounts, &t.key.host).and_then(|a| a.version.clone());
+        let version = crate::forge::hub::account_by_key(&store.active_profile().forge_accounts, &t.key).and_then(|a| a.version.clone());
         version.is_none_or(|v| version_at_least(&v, GITLAB_DRAFT_POSITIONS.0, GITLAB_DRAFT_POSITIONS.1))
     }
 
@@ -252,8 +252,8 @@ mod tests {
         let p = conn.add(TOKEN, p);
         let hub = ForgeHub::new(conn, MemTokens::new(TokenStorage::Keyring), Arc::new(|| 1_791_115_200_000));
         let store = SettingsStore::in_memory();
-        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN)).await.unwrap();
-        let origin = RemotePayload { name: "origin".into(), host: Some(HOST.into()), path: Some("group/project".into()), host_kind: HostKind::GitLab, main: false };
+        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), None).await.unwrap();
+        let origin = RemotePayload { name: "origin".into(), host: Some(HOST.into()), path: Some("group/project".into()), host_kind: HostKind::GitLab, main: false, account: None };
         (p, hub, store, vec![origin])
     }
 

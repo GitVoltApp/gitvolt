@@ -242,7 +242,7 @@ impl ForgeHub {
         let projects = self.repo_projects(store, remotes, false).await;
         let remote = projects.target.ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, "This repository has no forge project: add an account in Settings › Accounts"))?;
         let (key, provider, project) = self.project_for_remote(store, remotes, &remote).await?;
-        let version = crate::forge::hub::account_for(&store.active_profile().forge_accounts, &key.host).and_then(|a| a.version.clone());
+        let version = crate::forge::hub::account_by_key(&store.active_profile().forge_accounts, &key).and_then(|a| a.version.clone());
         let mode = if native_stacked_mrs(provider.kind(), version.as_deref()) { StackMode::Native } else { StackMode::Managed };
         Ok(StackCtx { remote, key, provider, project, mode })
     }
@@ -540,8 +540,8 @@ mod tests {
         let fake = Arc::new(fake);
         let hub = ForgeHub::new(Arc::new(Solo(fake.clone())), MemTokens::new(TokenStorage::Keyring), Arc::new(|| 1_791_115_200_000));
         let store = SettingsStore::in_memory();
-        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new("glpat-FAKE-test-token")).await.unwrap();
-        let remotes = vec![RemotePayload { name: "origin".into(), host: Some(HOST.into()), path: Some("group/project".into()), host_kind: HostKind::GitLab, main: false }];
+        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new("glpat-FAKE-test-token"), None).await.unwrap();
+        let remotes = vec![RemotePayload { name: "origin".into(), host: Some(HOST.into()), path: Some("group/project".into()), host_kind: HostKind::GitLab, main: false, account: None }];
         (fake, hub, store, remotes)
     }
 

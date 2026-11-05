@@ -1,6 +1,9 @@
 import { FolderGit2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { api } from '../../api/client';
 import type { BranchUpdate } from '../../api/gen/BranchUpdate';
 import type { EditorChoice } from '../../api/gen/EditorChoice';
+import type { ForgeAccountView } from '../../api/gen/ForgeAccountView';
 import type { PinSetting } from '../../api/gen/PinSetting';
 import { useRuntime } from '../../app/runtime';
 import { flushSaves } from '../../app/state';
@@ -37,6 +40,28 @@ function TargetRemoteControl({ ctx }: { ctx: SettingsCtx }) {
   const options: Array<[string, string]> = [['', 'Automatic'], ...remotes.map((r): [string, string] => [r.name, r.name])];
   if (remote && !options.some(([v]) => v === remote)) options.push([remote, remote]);
   return <Select<string> id="input-forgeTargetRemote" aria-labelledby="label-forgeTargetRemote" value={remote ?? ''} onChange={(v) => set(v || null)} options={options} />;
+}
+
+const AUTO_ACCOUNT = '__auto__';
+const legacyAccountKey = (host: string) => `legacy|${host}`;
+
+/** Which of the host's forge accounts this repository uses (private vs work on the same forge). */
+function ForgeAccountControl({ ctx }: { ctx: SettingsCtx }) {
+  const [account, set] = useSettingValue<string | undefined>(settingDef('forgeAccount')!, ctx);
+  const [accounts, setAccounts] = useState<ForgeAccountView[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.forgeAccounts().then((a) => { if (live) setAccounts(a); }, () => { if (live) setAccounts([]); });
+    return () => { live = false; };
+  }, []);
+  const chosen = accounts?.find((a) => a.account.id === account);
+  const value = account === undefined ? AUTO_ACCOUNT : chosen?.account.id === '' ? legacyAccountKey(chosen.account.host) : account;
+  const options: Array<[string, string]> = [
+    [AUTO_ACCOUNT, 'Automatic (the first account on the host)'],
+    ...(accounts ?? []).map((a): [string, string] => [a.account.id === '' ? legacyAccountKey(a.account.host) : a.account.id, `@${a.account.user.username} · ${a.account.host}`]),
+  ];
+  const choose = (v: string) => set(v === AUTO_ACCOUNT ? undefined : v.startsWith('legacy|') ? '' : v);
+  return <Select<string> id="input-forgeAccount" aria-labelledby="label-forgeAccount" value={value} onChange={choose} options={options} />;
 }
 
 /** The trunk the graph detected: its pinned branches by name (`origin/main` and `main` are one). */
@@ -98,6 +123,13 @@ const offs = [
       description: 'The remote whose project merge requests and pull requests go to.',
       Control: TargetRemoteControl,
       binding: repoField('forgeTargetRemote', null, () => void flushSaves().then(notifyForgeAccountsChanged)),
+    },
+    {
+      id: 'forgeAccount', label: 'Forge account', page: 'repository', group: 'Merge requests',
+      keywords: 'account github gitlab forge private work multiple identities',
+      description: "Which of the host's accounts this repository's merge requests, forks and avatars use. Automatic uses the first account on the host.",
+      Control: ForgeAccountControl,
+      binding: repoField('forgeAccount', undefined, () => void flushSaves().then(notifyForgeAccountsChanged)),
     },
     {
       id: 'branchUpdate', label: "Update an MR's branch by", page: 'repository', group: 'Merge requests', labelFor: 'group',

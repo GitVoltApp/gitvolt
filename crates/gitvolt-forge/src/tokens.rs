@@ -304,7 +304,7 @@ mod tests {
     const TOKEN: &str = "glpat-FAKE-test-token";
 
     fn key(host: &str) -> AccountKey {
-        AccountKey { profile: "default".into(), host: host.into() }
+        AccountKey { profile: "default".into(), host: host.into(), id: String::new() }
     }
 
     fn mode(p: &std::path::Path) -> u32 {
@@ -363,6 +363,25 @@ mod tests {
         let mut leftovers: Vec<_> = std::fs::read_dir(path.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name()).collect();
         leftovers.sort();
         assert_eq!(leftovers, vec![std::ffi::OsString::from("forge-tokens"), std::ffi::OsString::from("forge-tokens.lock")], "no temp file left");
+    }
+
+    #[test]
+    fn two_accounts_on_one_host_keep_two_tokens() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("forge-tokens");
+        let store = FileTokenStore::new(path.clone());
+        let first = key("gitlab.example.com");
+        let second = AccountKey { id: "8".into(), ..first.clone() };
+        store.put(&first, &Secret::new("one")).unwrap();
+        store.put(&second, &Secret::new("two")).unwrap();
+        assert_eq!(store.get(&first, TokenStorage::File).unwrap().unwrap().expose(), "one");
+        assert_eq!(store.get(&second, TokenStorage::File).unwrap().unwrap().expose(), "two");
+        let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(json["tokens"]["default/gitlab.example.com"], "one");
+        assert_eq!(json["tokens"]["default/gitlab.example.com#8"], "two");
+        store.delete(&second).unwrap();
+        assert!(store.get(&second, TokenStorage::File).unwrap().is_none());
+        assert_eq!(store.get(&first, TokenStorage::File).unwrap().unwrap().expose(), "one");
     }
 
     #[test]

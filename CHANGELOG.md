@@ -5,6 +5,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **Several accounts on one forge.** Settings › Accounts can hold more than one GitHub,
+  GitLab or Forgejo account per host (a private account and a work one, say), each with its own
+  token, status and avatar. Add another account with the same host and a different user's token;
+  adding the same user's token replaces it. Settings › Repository › Forge account chooses which
+  one a repository's merge requests, forks and avatars use; Automatic keeps the host's first.
+
 ### Fixed
 
 - **Split diffs open with both sides at the first change.** A file opened again, its first

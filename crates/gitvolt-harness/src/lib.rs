@@ -726,7 +726,7 @@ struct TestForgeAccount {
 impl Harness {
     /// The app's own `addForgeAccount` (tests only: the fake forge's tokens).
     pub async fn add_forge_account_for_test(&self, host: &str, kind: gitvolt_core::forge::ForgeKind, token: &str) -> Result<serde_json::Value, GbError> {
-        self.api.dispatch(Request::AddForgeAccount { host: host.to_string(), kind, token: gitvolt_core::redact::Secret::new(token) }).await
+        self.api.dispatch(Request::AddForgeAccount { host: host.to_string(), kind, token: gitvolt_core::redact::Secret::new(token), account: None }).await
     }
 }
 

@@ -55,7 +55,7 @@ describe('settings pages', () => {
     ['shortcuts', 'keyboard'], ['debugLogging', 'advanced'], ['openLogs', 'advanced'], ['resetAll', 'advanced'],
     ['extraGitconfig', 'git-identity'], ['editor', 'editor-folders'], ['reposFolder', 'editor-folders'],
     ['forgeAccounts', 'accounts'], ['hostOverrides', 'hosts'],
-    ['repoEditor', 'repository'], ['repoPin', 'repository'], ['trunkPatterns', 'repository'], ['forgeTargetRemote', 'repository'], ['branchUpdate', 'repository'],
+    ['repoEditor', 'repository'], ['repoPin', 'repository'], ['trunkPatterns', 'repository'], ['forgeTargetRemote', 'repository'], ['forgeAccount', 'repository'], ['branchUpdate', 'repository'],
   ])('%s is registered once, on %s', (id, page) => {
     expect(allSettings().filter((d) => d.id === id)).toHaveLength(1);
     expect(settingDef(id)?.page).toBe(page);
@@ -122,6 +122,22 @@ describe('settings pages', () => {
     fireEvent.click(pin);
     fireEvent.click(screen.getByRole('menuitem', { name: 'feature/docking' }));
     expect(useAppState.getState().profile.repos[PATH].pin).toEqual({ kind: 'ref', name: 'refs/heads/feature/docking' });
+  });
+
+  it("Repository's forge account picks one of the host's accounts", async () => {
+    const { api } = await import('../../api/client');
+    const user = (id: number, username: string) => ({ id, username, name: username, avatarUrl: null, webUrl: '', email: null, emails: [] });
+    vi.mocked(api.forgeAccounts).mockResolvedValueOnce([
+      { account: { id: '7', host: 'gitlab.example.com', kind: 'gitlab', user: user(7, 'ada'), storage: 'keyring', version: null, versionCheckedAt: 0, addedAt: 0 }, status: { kind: 'ok' } },
+      { account: { id: '8', host: 'gitlab.example.com', kind: 'gitlab', user: user(8, 'grace'), storage: 'keyring', version: null, versionCheckedAt: 0, addedAt: 0 }, status: { kind: 'ok' } },
+    ] as never);
+    show('forgeAccount');
+    const control = screen.getByRole('button', { name: 'Forge account' });
+    await waitFor(() => expect(control).toHaveTextContent('Automatic'));
+    fireEvent.click(control);
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Automatic (the first account on the host)', '@ada · gitlab.example.com', '@grace · gitlab.example.com']);
+    fireEvent.click(screen.getByRole('menuitem', { name: '@grace · gitlab.example.com' }));
+    expect(useAppState.getState().profile.repos[PATH].forgeAccount).toBe('8');
   });
 
   describe('Appearance › Fonts', () => {
