@@ -429,11 +429,19 @@ impl GitVolt {
         let _ = start;
         let picked = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: None });
         cx.spawn(async move |this, cx| {
-            let path = match picked.await {
+            let answer = picked.await;
+            let path = match &answer {
                 Ok(Ok(Some(paths))) => paths.first().map(|p| p.to_string_lossy().into_owned()),
                 _ => None,
             };
-            this.update(cx, |this, cx| then(this, path, cx)).ok();
+            this.update(cx, |this, cx| {
+                // No desktop portal: nothing would open, and a click that does nothing says nothing.
+                if let Ok(Err(e)) = &answer {
+                    this.show_toast(format!("The folder dialog isn't available: {e}"), cx);
+                }
+                then(this, path, cx);
+            })
+            .ok();
         })
         .detach();
     }
@@ -669,13 +677,13 @@ pub fn open_screen(this: &mut GitVolt, id: u32, window: &Window, cx: &mut Contex
             .border_color(theme::section_border())
             .child("Set a default repos directory: it's where clones go (and “Your repos” scans it).")
             .children(use_btn)
-            .child(open_btn("open-choose", false, true).child("Choose…").on_click(cx.listener(move |this, _, _, cx| {
+            .child(crate::ui::anchor("open-choose", open_btn("open-choose", false, true).child("Choose…").on_click(cx.listener(move |this, _, _, cx| {
                 this.pick_folder(start.clone(), |this, picked, cx| {
                     if let Some(p) = picked {
                         this.set_default_folder(p, cx);
                     }
                 }, cx);
-            })))
+            }))))
             .children(screen.banner_error.clone().map(error_text))
     });
 

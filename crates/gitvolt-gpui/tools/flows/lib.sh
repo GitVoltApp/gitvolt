@@ -22,12 +22,20 @@ g() { git -C "$1" "${@:2}"; }
 # The app's state as JSON in $STATE; a dead or hung app fails the flow here.
 state() {
   rm -f "$GITVOLT_DEBUG_PIPE.out"
-  kill -0 "${APP_PID:-0}" 2>/dev/null && timeout 2 bash -c "echo x >\"$GITVOLT_DEBUG_PIPE\""
-  for _ in $(seq 1 200); do
-    [ -f "$GITVOLT_DEBUG_PIPE.out" ] && { STATE=$GITVOLT_DEBUG_PIPE.out; return 0; }
+  local wrote= i
+  # A fifo blocks its writer until the app reads it, which at the start takes a moment.
+  for i in $(seq 1 40); do
     kill -0 "${APP_PID:-0}" 2>/dev/null || { fail "the app is gone"; tail -30 "$REALINPUT_ROOT/app.log"; finish; exit 3; }
-    sleep 0.02
+    [ -p "$GITVOLT_DEBUG_PIPE" ] && timeout 0.25 bash -c "echo x >'$GITVOLT_DEBUG_PIPE'" 2>/dev/null && { wrote=1; break; }
+    sleep 0.05
   done
+  if [ -n "$wrote" ]; then
+    for _ in $(seq 1 200); do
+      [ -f "$GITVOLT_DEBUG_PIPE.out" ] && { STATE=$GITVOLT_DEBUG_PIPE.out; return 0; }
+      kill -0 "${APP_PID:-0}" 2>/dev/null || { fail "the app is gone"; tail -30 "$REALINPUT_ROOT/app.log"; finish; exit 3; }
+      sleep 0.02
+    done
+  fi
   fail "the app doesn't answer: hung"
   finish
   exit 4
@@ -83,10 +91,7 @@ clean_app() {
 up() {
   start_app "$@"
   local i
-  for i in $(seq 1 100); do
-    [ -p "$GITVOLT_DEBUG_PIPE" ] && state 2>/dev/null >/dev/null && [ -f "$STATE" ] && break
-    sleep 0.1
-  done
+  state
   until_q "d['window']['active']" 5 || true
   # A pointer at rest in the corner, where no hover can matter.
   ri move 1 500

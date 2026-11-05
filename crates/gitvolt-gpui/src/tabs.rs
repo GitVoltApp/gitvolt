@@ -370,7 +370,9 @@ impl GitVolt {
         let s2 = submit.clone();
         let sub = cx.subscribe_in(&input, window, move |_, _, e: &InputEvent, window, cx| {
             if matches!(e, InputEvent::Submit { .. }) {
-                s2(window, cx);
+                // Out of this view's update: `submit` goes back into it.
+                let s2 = s2.clone();
+                window.defer(cx, move |window, cx| s2(window, cx));
             }
         });
         let view = input.clone();
@@ -639,15 +641,16 @@ impl GitVolt {
         });
         let focus = name.read(cx).focus.clone();
         let weak = cx.weak_entity();
-        let (w0, id0) = (weak.clone(), id.clone());
-        let sub = cx.subscribe(&name, move |_, input, e: &InputEvent, cx| {
+        let id0 = id.clone();
+        // It runs inside this view's update: `this`, never a handle to the same view.
+        let sub = cx.subscribe(&name, move |this, input, e: &InputEvent, cx| {
             if matches!(e, InputEvent::Changed | InputEvent::Submit { .. }) {
                 let (text, id) = (input.read(cx).text().to_string(), id0.clone());
-                w0.update(cx, |v, cx| v.edit_groups(move |g| {
+                this.edit_groups(move |g| {
                     if let Some(x) = g.iter_mut().find(|x| x["id"] == id.as_str()) {
                         x["name"] = json!(text);
                     }
-                }, cx)).ok();
+                }, cx);
             }
         });
         let bounds = crate::ui::Ui::get(cx).anchor(&anchor);

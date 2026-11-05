@@ -46,10 +46,12 @@ clickon tg-save; pause 0.7
 check "Save and close: the tab's gone, the group saved" "d['profile']['saved'] == 1 and len(d['tabs']) == 1"
 echo "brought back from the tab bar's menu"
 clickxy 800 47 right; pause 0.3; q "d['menu'][0]"; shot wt-barmenu
-pick "wt"; pause 0.3; q "d['menu'][-1]"
-P=$(q "row_at('Open')"); [ -n "$P" ] && { ri move $P -- wait 60 -- click; pause 1; }
+P=$(row_at "Saved groups"); ri move $P -- wait 400; q "d['menu']"; shot wt-saved
+SUB=$(q "d['menuRows'][-1]['label']"); echo "saved row: $SUB"
+pick "$SUB"; pause 0.4; q "d['menu'][-1] if d['menu'] else None"; shot wt-saved2
+[ "$(q "bool(d['menu'])")" = True ] && { pick "Open"; pause 1; }
 q "d['tabs'], d['profile']['saved'], d['profile']['groups']"
-check "the group's tab came back" "len(d['tabs']) == 2"
+check "the group's tab came back" "len(d['tabs']) == 2 and len(d['profile']['groups']) == 1"
 shot wt-group-back
 
 echo "profiles: new, switch, delete"
@@ -58,8 +60,9 @@ pick "New profile"; pause 0.5; q "d['modals']"
 ri type "Second"; pause 0.2; key Return; pause 1
 q "d['profile']['name'], d['profile']['count'], d['tabs']"
 check "on the new profile" "d['profile']['name'] == 'Second' and d['profile']['count'] == 2"
-clickon profile-switcher; pause 0.3; q "d['menu'][0]"; pick "Second"; pause 0.4; q "d['menu']"; shot wt-profile-sub
-pick "Delete"; pause 0.3; q "d['armed']"; shot wt-profile-del
-pick "Delete"; pause 1
-check "deleted, back on the first" "d['profile']['count'] == 1 and d['profile']['name'] != 'Second'"
+clickon profile-switcher; pause 0.3
+P=$(row_at "Delete profile"); ri move $P -- wait 400
+pick "Default"; pause 0.3; q "d['armed']"; shot wt-profile-del
+pick "Default"; pause 1
+check "the other's deleted" "d['profile']['count'] == 1 and d['profile']['name'] == 'Second'"
 finish
