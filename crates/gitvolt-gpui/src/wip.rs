@@ -575,23 +575,20 @@ impl GitVolt {
     /// The open diff shows `file`: the same file stays where it was, with its fresh sides.
     fn reopen_file(&mut self, repo: u32, file: FileChange, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
-        let same = tab.diff.as_ref().is_some_and(|d| d.file.path == file.path && d.file.origin == file.origin);
-        let scroll = tab.diff.as_ref().map(|d| (d.scroll, d.cursor));
-        let mut next = DiffState::carrying(file, tab.diff.as_ref());
-        if same {
-            next.keep_scroll();
-            if let Some((s, c)) = scroll {
-                next.scroll = s;
-                next.cursor = c;
+        // The same file stays on screen, with its fresh sides when they come.
+        match tab.diff.as_mut().filter(|d| d.file.path == file.path && d.file.origin == file.origin) {
+            Some(d) => {
+                d.file = file;
+                d.generation += 1;
+                d.keep_scroll();
             }
+            None => tab.diff = Some(DiffState::carrying(file, tab.diff.as_ref())),
         }
-        tab.diff = Some(next);
         let at = tab.files.as_ref().and_then(|f| tab.diff.as_ref().and_then(|d| f.changes.iter().position(|c| c.path == d.file.path && c.origin == d.file.origin)));
         if let (Some(i), Some(files)) = (at, tab.files.as_mut()) {
             files.cursor = Some(Cursor::File(i));
         }
         self.read_contents(false, cx);
-        self.load_diff_hunks(cx);
         cx.notify();
     }
 
@@ -1311,11 +1308,7 @@ impl GitVolt {
         diff.keep_scroll();
         diff.generation += 1;
         self.read_contents(false, cx);
-        self.load_diff_hunks(cx);
     }
-
-    /// Filled in by the diff's hunks.
-    pub fn load_diff_hunks(&mut self, _: &mut Context<Self>) {}
 }
 
 /// The commit button's state now: the fields' text is read through `cx`.

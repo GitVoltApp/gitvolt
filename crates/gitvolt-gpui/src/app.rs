@@ -377,6 +377,9 @@ impl GitVolt {
     }
 
     pub fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if self.tabs.get(self.active).is_some_and(|t| t.selected != Some(ix)) && self.ask_unsaved(move |v, cx| v.select(ix, cx), cx) {
+            return;
+        }
         self.flush_drafts();
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let Some(row) = tab.graph.as_ref().and_then(|g| g.rows.get(ix)) else { return };
@@ -442,6 +445,9 @@ impl GitVolt {
 
     pub fn close_tab(&mut self, ix: usize, cx: &mut Context<Self>) {
         if ix >= self.tabs.len() {
+            return;
+        }
+        if ix == self.active && self.ask_unsaved(move |v, cx| v.close_tab(ix, cx), cx) {
             return;
         }
         let tab = self.tabs.remove(ix);
@@ -964,7 +970,9 @@ impl Render for GitVolt {
                 }
                 None => (center, body_h - crate::diff::view::HEADER_H),
             };
+            let committing = tab.wip.committing;
             if let Some(diff) = tab.diff.as_mut() {
+                diff.commit_held = committing;
                 let (w, h) = body_size(diff, width, height);
                 diff.ensure_layout(w, h);
             }

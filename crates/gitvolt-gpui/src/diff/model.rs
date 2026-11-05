@@ -60,6 +60,19 @@ impl Line {
         Self { text: text.into(), tabs, marks: Vec::new(), guides: if blank { u16::MAX } else { (indent / TAB_SIZE) as u16 } }
     }
 
+    /// A byte of `text` → the raw line's: inside a tab's spaces, the tab.
+    pub fn raw(&self, display: u32) -> u32 {
+        let (mut r0, mut d0) = (0, 0);
+        for &(r, d) in &self.tabs {
+            if d > display {
+                // Before this tab's spaces, one to one; inside them, the tab itself.
+                return (r0 + (display - d0)).min(r - 1);
+            }
+            (r0, d0) = (r, d);
+        }
+        r0 + (display - d0)
+    }
+
     /// A byte of the raw line → a byte of `text`.
     pub fn display(&self, raw: u32) -> u32 {
         let (mut from, mut to) = (0, 0);
@@ -132,6 +145,8 @@ pub enum RowKind {
     Change,
     /// An unchanged region folded away (hunk mode): `count` lines, region `region`.
     Hidden { count: u32, region: u32 },
+    /// Hunk mode's header above hunk `hunk` of a WIP diff.
+    HunkHeader { hunk: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -413,7 +428,7 @@ pub fn ruler_marks(rows: &[Row]) -> Vec<(usize, usize, bool)> {
                     add(i, false);
                 }
             }
-            RowKind::Same | RowKind::Hidden { .. } => {}
+            RowKind::Same | RowKind::Hidden { .. } | RowKind::HunkHeader { .. } => {}
         }
     }
     out

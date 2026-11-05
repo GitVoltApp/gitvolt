@@ -7,3 +7,5 @@ mod languages;
 pub mod model;
 pub mod textmate;
 pub mod view;
+pub mod staging;
+pub mod edit;

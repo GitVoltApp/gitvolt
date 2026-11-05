@@ -362,11 +362,11 @@ impl Buffer {
         u8s
     }
 
-    fn range_to_utf16(&self, r: &Range<usize>) -> Range<usize> {
+    pub fn range_to_utf16(&self, r: &Range<usize>) -> Range<usize> {
         self.to_utf16(r.start)..self.to_utf16(r.end)
     }
 
-    fn range_from_utf16(&self, r: &Range<usize>) -> Range<usize> {
+    pub fn range_from_utf16(&self, r: &Range<usize>) -> Range<usize> {
         self.utf8_of(r.start)..self.utf8_of(r.end)
     }
 }

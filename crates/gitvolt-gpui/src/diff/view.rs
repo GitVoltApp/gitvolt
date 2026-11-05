@@ -223,6 +223,18 @@ pub struct DiffState {
     pub match_picks: Rc<std::cell::RefCell<HashMap<String, bool>>>,
     /// Coming back from File History: the same file, where it was.
     restored: bool,
+    /// A WIP file's hunks, read with its text.
+    pub hunks: Option<super::staging::WipHunks>,
+    /// The selection's bar: what its Stage and Discard take.
+    pub bar_counts: Option<(usize, usize)>,
+    /// A commit of the worktree is queued: staging waits.
+    pub commit_held: bool,
+    /// The working copy, when this file's new side can be edited.
+    pub edit: Option<super::edit::EditState>,
+    /// Where the editor's caret is drawn.
+    pub caret: Option<TextPos>,
+    /// Bring the caret into view at the next layout.
+    pub reveal_caret: bool,
 }
 
 /// Which bar `toolbar` draws.
@@ -271,6 +283,12 @@ impl DiffState {
             background: Background::Checker,
             match_picks: Rc::default(),
             restored: false,
+            hunks: None,
+            bar_counts: None,
+            commit_held: false,
+            edit: None,
+            caret: None,
+            reveal_caret: false,
         }
     }
 
@@ -298,7 +316,7 @@ impl DiffState {
 
     /// There's typing in it that's not saved.
     pub fn editing_dirty(&self) -> bool {
-        false
+        self.edit.as_ref().is_some_and(super::edit::EditState::dirty)
     }
 
     /// The next read is the same file again: it stays where it is.
@@ -333,7 +351,13 @@ impl DiffState {
                 }
                 file_rows(&data.new, &data.old, &self.folded, &self.fold_ends)
             }
-            ViewKind::Diff => rows(&data.ops, self.mode, &self.expanded),
+            ViewKind::Diff => {
+                let list = rows(&data.ops, self.mode, &self.expanded);
+                match self.hunks.as_ref().filter(|_| self.mode == Mode::Hunk) {
+                    Some(h) => super::staging::with_headers(list, &h.hunks),
+                    None => list,
+                }
+            }
         };
         self.changes = change_starts(&rows);
         self.ruler = Rc::new(ruler_marks(&rows));
@@ -393,6 +417,10 @@ impl DiffState {
                 y += HIDDEN_H;
                 continue;
             }
+            if matches!(r.kind, RowKind::HunkHeader { .. }) {
+                y += super::staging::HUNK_ROW_H;
+                continue;
+            }
             let mut lines = 1;
             if self.wrap {
                 let mut wrapped = |n: Option<u32>, side: &Side, cols: usize, map: &mut HashMap<u32, Vec<u32>>| {
@@ -420,6 +448,26 @@ impl DiffState {
             self.center_on(*first);
         }
         self.scroll = self.scroll.clamp(0., self.layout.max_scroll());
+        if std::mem::take(&mut self.reveal_caret)
+            && let Some(at) = self.caret
+        {
+            let (top, end) = (self.layout.offsets.get(at.row).copied().unwrap_or(0.), self.layout.offsets.get(at.row + 1).copied().unwrap_or(0.));
+            if top < self.scroll {
+                self.scroll = top;
+            } else if end > self.scroll + height {
+                self.scroll = (end - height).clamp(0., self.layout.max_scroll());
+            }
+            // Sideways too: the caret's column stays in the text's room.
+            if !self.wrap {
+                let room = (if self.split() { width / 2. - NUM_W - SIGN_W } else { width - self.gutter() }).max(ADVANCE);
+                let x = at.byte as f32 * ADVANCE;
+                if x < self.hscroll {
+                    self.hscroll = x;
+                } else if x > self.hscroll + room - ADVANCE {
+                    self.hscroll = x - room + ADVANCE;
+                }
+            }
+        }
     }
 
     /// 16 or 8 bytes a row by the room there is, the same byte staying at the top. A new file opens at
@@ -503,6 +551,37 @@ impl DiffState {
         out
     }
 
+    /// The changed lines the selection covers, by side, 1-based. `None`: no selection, or it's empty.
+    pub fn selected_changes(&self) -> Option<(Vec<u32>, Vec<u32>)> {
+        let (sel, h) = (self.selection?, self.hunks.as_ref()?);
+        let (from, to) = sel.range();
+        if from == to {
+            return None;
+        }
+        // A selection ending at a line's very start doesn't take that line.
+        let last = if to.byte == 0 && to.row > from.row { to.row - 1 } else { to.row };
+        Some(super::staging::changed_in_rows(&self.rows, from.row, last, &h.hunks, self.split().then_some(sel.old_side)))
+    }
+
+    /// Whether the selection holds row `row`.
+    pub fn selection_holds(&self, row: usize) -> bool {
+        self.selection.is_some_and(|s| {
+            let (a, b) = s.range();
+            a != b && a.row <= row && row <= b.row
+        })
+    }
+
+    /// Where the gutter's button goes on a removed line and on an added one.
+    pub fn glyph_columns(&self) -> (f32, f32) {
+        let width = self.body.get().size.width.as_f32();
+        if self.split() { (SPLIT_LEFT_MARGIN + NUM_W + 2., width / 2. + NUM_W + 2.) } else { (2. * NUM_W + 2., 2. * NUM_W + 2.) }
+    }
+
+    /// The text's left edge, for what's placed against it.
+    pub fn gutter_w(&self) -> f32 {
+        self.gutter()
+    }
+
     pub fn selected_text(&self) -> Option<String> {
         let (data, sel) = (self.data.as_ref()?, self.selection?);
         let (from, to) = sel.range();
@@ -535,7 +614,7 @@ impl Drop for DiffState {
 
 /// The line a selection takes from row `r`.
 fn row_line<'a>(data: &'a DiffData, r: &Row, split: bool, old_side: bool) -> Option<&'a Line> {
-    if matches!(r.kind, RowKind::Hidden { .. }) {
+    if matches!(r.kind, RowKind::Hidden { .. } | RowKind::HunkHeader { .. }) {
         return None;
     }
     if split {
@@ -554,6 +633,10 @@ impl GitVolt {
     pub fn open_file(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let Some(file) = tab.files.as_ref().and_then(|f| f.changes.get(index)).cloned() else { return };
+        let same = tab.diff.as_ref().is_some_and(|d| d.file.path == file.path && d.file.origin == file.origin);
+        if !same && self.ask_unsaved(move |v, cx| v.open_file(index, cx), cx) {
+            return;
+        }
         if self.follow_file(file.clone(), cx) {
             return;
         }
@@ -572,6 +655,9 @@ impl GitVolt {
     }
 
     pub fn close_file(&mut self, cx: &mut Context<Self>) {
+        if self.ask_unsaved(|v, cx| v.close_file(cx), cx) {
+            return;
+        }
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.diff = None;
             tab.history = None;
@@ -592,14 +678,20 @@ impl GitVolt {
         let Some(diff) = &tab.diff else { return };
         let (repo, generation, ignore, history_file) = (tab.id, diff.generation, diff.ignore_whitespace, diff.history_file);
         let file = diff.file.clone();
+        let (old_side, new_side) = super::edit::sides_for(&file, diff.view);
         let api = self.api.clone();
         let svg = cx.svg_renderer();
         let read = self.rt.spawn(async move {
-            let (old, new) = (serde_json::from_value(file.old.clone()), serde_json::from_value(file.new.clone()));
+            let (old, new) = (serde_json::from_value(old_side.clone()), serde_json::from_value(new_side.clone()));
             let (Ok(old), Ok(new)) = (old, new) else { return Err(GbError::other("This file's sides can't be read")) };
-            let (old_side, new_side) = (file.old.clone(), file.new.clone());
             let v = api.dispatch(Request::DiffContents { repo, path: file.path.to_string(), old, new, force, old_path: file.old_path.clone() }).await?;
             let path = file.path.to_string();
+            let editable = super::edit::is_editable(&file, &new_side, &v).then(|| (v["new"]["text"].as_str().unwrap_or_default().to_string(), v["old"]["text"].as_str().map(str::to_string), v["new"]["hash"].as_str().unwrap_or_default().to_string(), new_side["worktree"].as_str().unwrap_or_default().to_string()));
+            // A WIP diff's hunks, so its header rows are laid out with it.
+            let wip_hunks = match &file.origin {
+                crate::details::Origin::Wip { worktree, staged } if file.status != UNCHANGED && file.status != 'U' => api.dispatch(Request::WipHunks { repo, worktree: worktree.clone(), path: path.clone(), staged: *staged }).await.ok().map(|h| super::staging::WipHunks::of(&h)),
+                _ => None,
+            };
             // A binary's dumps load with its contents, so it's ready to show as a text file is.
             let hex = if wants_hex(&v, history_file) {
                 let (Ok(old), Ok(new)) = (serde_json::from_value(old_side), serde_json::from_value(new_side)) else { return Err(GbError::other("This file's sides can't be read")) };
@@ -608,8 +700,8 @@ impl GitVolt {
                 None
             };
             tokio::task::spawn_blocking(move || match hex {
-                Some(hex) => Read::Binary(Binary::Hex(Arc::new(HexData::of(&hex)))),
-                None => contents(&path, &v, ignore, history_file, &svg),
+                Some(hex) => (Read::Binary(Binary::Hex(Arc::new(HexData::of(&hex)))), wip_hunks, editable),
+                None => (contents(&path, &v, ignore, history_file, &svg), wip_hunks, editable),
             })
             .await
             .map_err(|e| GbError::other(e.to_string()))
@@ -618,12 +710,31 @@ impl GitVolt {
             let result = read.await;
             this.update(cx, |this, cx| {
                 let Some(diff) = this.tabs.iter_mut().find(|t| t.id == repo).and_then(|t| t.diff.as_mut()).filter(|d| d.generation == generation) else { return };
+                let (result, hunks, editable) = match result {
+                    Ok(Ok((read, hunks, editable))) => (Ok(Ok(read)), hunks, editable),
+                    Ok(Err(e)) => (Ok(Err(e)), None, None),
+                    Err(e) => (Err(e), None, None),
+                };
+                diff.hunks = hunks;
+                diff.bar_counts = None;
+                // Unsaved typing stays: what's on disk meets it at the save.
+                if diff.editing_dirty() {
+                    return;
+                }
+                match (editable, diff.edit.as_mut()) {
+                    (Some((text, old, base, _)), Some(edit)) => edit.reload(&text, base, old),
+                    (Some((text, old, base, worktree)), None) => diff.edit = Some(super::edit::EditState::new(&text, old, base, worktree, cx)),
+                    (None, _) => {
+                        diff.edit = None;
+                        diff.caret = None;
+                    }
+                }
                 match result {
                     Ok(Ok(Read::Text(data, texts))) => {
                         diff.set_data(data.clone());
+                        diff.sync_selection();
                         diff.stop_colours.store(true, Ordering::Relaxed);
                         diff.stop_colours = Arc::default();
-                        diff.highlight = Arc::default();
                         let stop = diff.stop_colours.clone();
                         this.color(repo, generation, data, texts, stop, cx);
                     }
@@ -681,7 +792,8 @@ impl GitVolt {
     }
 
     /// Colours both sides from their tops, taking turns, a piece at a time.
-    fn color(&mut self, repo: u32, generation: u64, data: Arc<DiffData>, texts: Texts, stop: Arc<AtomicBool>, cx: &mut Context<Self>) {
+    pub fn color(&mut self, repo: u32, generation: u64, data: Arc<DiffData>, texts: Texts, stop: Arc<AtomicBool>, cx: &mut Context<Self>) {
+        let (keep_old, keep_new) = (texts.old.is_none(), texts.new.is_none());
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         self.rt.spawn_blocking(move || {
             let mut sides = [(colourable(&texts.path, texts.old.as_deref()), &data.old, true), (colourable(&texts.path, texts.new.as_deref()), &data.new, false)];
@@ -704,16 +816,35 @@ impl GitVolt {
             }
         });
         cx.spawn(async move |this, cx| {
+            // A read again keeps what was coloured until its new colours come, piece over piece.
+            let (mut old_at, mut new_at) = (0, 0);
             loop {
                 let piece = rx.recv().await;
                 let done = piece.is_none();
                 let live = this.update(cx, |this, cx| {
                     let Some(diff) = this.tabs.iter_mut().find(|t| t.id == repo).and_then(|t| t.diff.as_mut()).filter(|d| d.generation == generation) else { return false };
                     diff.coloured = true;
-                    if let Some(piece) = piece {
-                        let h = Arc::make_mut(&mut diff.highlight);
-                        if piece.old_side { &mut h.old } else { &mut h.new }.push(Arc::new(piece.spans));
-                        cx.notify();
+                    let h = Arc::make_mut(&mut diff.highlight);
+                    match piece {
+                        Some(piece) => {
+                            let (list, at) = if piece.old_side { (&mut h.old, &mut old_at) } else { (&mut h.new, &mut new_at) };
+                            let spans = Arc::new(piece.spans);
+                            match list.get_mut(*at) {
+                                Some(slot) => *slot = spans,
+                                None => list.push(spans),
+                            }
+                            *at += 1;
+                            cx.notify();
+                        }
+                        None => {
+                            if !keep_old {
+                                h.old.truncate(old_at);
+                            }
+                            if !keep_new {
+                                h.new.truncate(new_at);
+                            }
+                            cx.notify();
+                        }
                     }
                     true
                 });
@@ -785,6 +916,13 @@ pub struct Texts {
     path: String,
     old: Option<String>,
     new: Option<String>,
+}
+
+impl Texts {
+    /// Colours only the new side: what typing changed.
+    pub fn new_side(path: String, new: String) -> Self {
+        Self { path, old: None, new: Some(new) }
+    }
 }
 
 enum Read {
@@ -868,6 +1006,8 @@ struct Painter {
     /// Find's marks, and the one it's on.
     found: Rc<Vec<crate::find::TextMatch>>,
     found_at: Option<usize>,
+    /// The editor's caret, while it has the keyboard.
+    caret: Rc<Cell<Option<TextPos>>>,
 }
 
 fn shape(line: &Line, spans: &[Span], font: &Font, window: &Window) -> ShapedLine {
@@ -947,6 +1087,11 @@ fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, ma
             }
             if to > from {
                 shaped.paint(point(start, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+            }
+            if !old_side
+                && let Some(at) = p.caret.get().filter(|c| c.row == ix && c.byte >= from && (c.byte < to || part == breaks.len()))
+            {
+                window.paint_quad(fill(Bounds::new(point(start + shaped.x_for_index(at.byte - from), y), size(px(2.), px(LINE_H))), theme::c(0xAEAFAD)));
             }
         }
     });
@@ -1132,6 +1277,9 @@ fn on_mouse_down(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx
         cx.notify();
         return;
     }
+    if matches!(r.kind, RowKind::HunkHeader { .. }) {
+        return;
+    }
     if diff.view == ViewKind::File && (NUM_W..NUM_W + FOLD_W).contains(&x) {
         let n = r.new.or(r.old).unwrap_or(0);
         if diff.fold_ends.get(n as usize).copied().flatten().is_some() {
@@ -1157,13 +1305,17 @@ fn on_mouse_down(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx
     diff.selection = Some(selection);
     diff.cursor = at.row;
     diff.drag = Drag::Text;
+    let editing = diff.edit.is_some() && !old_side;
+    if editing {
+        this.edit_press(at, e.modifiers.shift, e.click_count, window, cx);
+    }
     cx.notify();
 }
 
 /// A right-click on the text: a press inside a selection keeps it; elsewhere, the caret goes there.
 fn on_text_menu(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<GitVolt>) {
     let Some(diff) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
-    let Some((at, _)) = pos_at(diff, e.position, window) else { return };
+    let Some((at, old_side)) = pos_at(diff, e.position, window) else { return };
     let line_of = |row: usize, diff: &DiffState| diff.rows.get(row).and_then(|r| r.new.or(r.old)).map_or(1, |n| n + 1);
     let (from, to) = match diff.selection.map(|s| s.range()) {
         Some((a, b)) if a != b && a.row <= at.row && at.row <= b.row => (line_of(a.row, diff), line_of(b.row, diff)),
@@ -1174,7 +1326,8 @@ fn on_text_menu(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx:
     };
     let (file, text) = (diff.file.clone(), diff.selected_text());
     let weak = cx.weak_entity();
-    let rows = this.diff_text_rows(&file, text, (from.min(to), from.max(to)), &weak);
+    let staging = this.staging_menu_rows(at.row, old_side, &weak);
+    let rows = crate::ui::menu::grouped(vec![staging, this.diff_text_rows(&file, text, (from.min(to), from.max(to)), &weak)]);
     crate::ui::menu::open_context(rows, e.position, window, cx);
 }
 
@@ -1198,6 +1351,9 @@ fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx
             {
                 sel.head = at;
                 diff.cursor = at.row;
+                if diff.edit.is_some() {
+                    this.edit_drag(at, cx);
+                }
                 cx.notify();
             }
         }
@@ -1213,7 +1369,7 @@ fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx
             let row = diff.layout.row_at((e.position.y - b.origin.y).as_f32() + diff.scroll);
             let hover = inside.then_some((row, x < diff.gutter()));
             // Only what hovering changes: a hidden row, and whether the chevrons show.
-            let shows = |h: Option<(usize, bool)>, d: &DiffState| h.map(|(r, g)| (if matches!(d.rows.get(r).map(|x| x.kind), Some(RowKind::Hidden { .. })) { Some(r) } else { None }, g && d.view == ViewKind::File));
+            let shows = |h: Option<(usize, bool)>, d: &DiffState| h.map(|(r, g)| (if d.hunks.is_some() || matches!(d.rows.get(r).map(|x| x.kind), Some(RowKind::Hidden { .. })) { Some(r) } else { None }, g && d.view == ViewKind::File));
             let changed = shows(hover, diff) != shows(diff.hover, diff);
             diff.hover = hover;
             if changed {
@@ -1227,6 +1383,7 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
     let Some(data) = diff.data.clone() else {
         return message(diff, cx).into_any_element();
     };
+    let staging = super::staging::overlays(diff, cx);
     let split = diff.split();
     let hover_row = diff.hover.and_then(|(r, _)| matches!(diff.rows.get(r).map(|x| x.kind), Some(RowKind::Hidden { .. })).then_some(r));
     let p = Painter {
@@ -1245,15 +1402,24 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
         folded: diff.folded.clone(),
         fold_ends: diff.fold_ends.clone(),
         hover: hover_row,
+        caret: Rc::new(Cell::new(None)),
     };
+    let caret_cell = p.caret.clone();
+    let caret_at = diff.caret;
+    let editor = diff.edit.as_ref().map(|e| e.focus.clone());
+    let input_entity = cx.entity();
     let rows = diff.rows.clone();
     let body_cell = diff.body.clone();
     let scroll = diff.scroll;
     let (gutter, wrap) = (diff.gutter(), diff.wrap);
     let hscroll = diff.hscroll;
     let entity = cx.entity().downgrade();
-    div()
-        .id("diff-body")
+    let body = div().id("diff-body");
+    let body = match diff.edit.as_ref() {
+        Some(e) => edit_keys_of(body.track_focus(&e.focus), cx),
+        None => body,
+    };
+    body
         .relative()
         .flex_1()
         .min_w_0()
@@ -1263,13 +1429,17 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
         .on_mouse_down(MouseButton::Left, cx.listener(on_mouse_down))
         .on_mouse_down(MouseButton::Right, cx.listener(on_text_menu))
         .on_mouse_move(cx.listener(on_mouse_move))
-        .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
-        .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
+        .on_mouse_up(MouseButton::Left, cx.listener(selection_settled))
+        .on_mouse_up_out(MouseButton::Left, cx.listener(selection_settled))
         .child(
             canvas(
                 move |_, _, _| {},
                 move |bounds, _, window, cx| {
                     body_cell.set(bounds);
+                    if let Some(focus) = &editor {
+                        caret_cell.set(caret_at.filter(|_| focus.is_focused(window)));
+                        window.handle_input(focus, ElementInputHandler::new(bounds, input_entity.clone()), cx);
+                    }
                     window.with_content_mask(Some(ContentMask { bounds }), |window| {
                         if !rows.is_empty() {
                             let first = p.layout.row_at(scroll);
@@ -1281,6 +1451,7 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
                                 let b = Bounds::new(point(bounds.origin.x, bounds.origin.y + px(top - scroll)), size(bounds.size.width, px(end - top)));
                                 match rows[ix].kind {
                                     RowKind::Hidden { count, .. } => paint_hidden(b, ix, count, &p, window, cx),
+                                    RowKind::HunkHeader { .. } => {}
                                     _ if p.split => paint_split(b, ix, &rows[ix], &p, window, cx),
                                     _ => paint_inline(b, ix, &rows[ix], &p, window, cx),
                                 }
@@ -1320,7 +1491,28 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
             )
             .size_full(),
         )
+        .children(staging)
         .into_any_element()
+}
+
+fn edit_keys_of(el: Stateful<Div>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
+    let tab_key = cx.listener(|this: &mut GitVolt, e: &KeyDownEvent, _: &mut Window, cx: &mut Context<GitVolt>| {
+        if e.keystroke.key == "tab" && !e.keystroke.modifiers.modified() {
+            this.edit_tab(cx);
+            cx.stop_propagation();
+        }
+    });
+    GitVolt::edit_keys_static(el.on_key_down(tab_key), cx)
+}
+
+/// The press ended: what a selection covers is known.
+fn selection_settled(this: &mut GitVolt, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<GitVolt>) {
+    let dragging = this.tabs.get(this.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.drag == Drag::Text);
+    this.with_diff_quiet(|d| d.drag = Drag::None);
+    if dragging {
+        this.read_selection_counts(cx);
+        cx.notify();
+    }
 }
 
 /// Dragging or pressing a strip scrolls by where the pointer is along it.
@@ -1483,6 +1675,8 @@ fn message(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + us
 }
 
 fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let dirty = diff.editing_dirty();
+    let can_save = diff.edit.is_some();
     let path = diff.file.path.as_ref();
     let (dir, name) = match path.rsplit_once('/') {
         Some((d, n)) => (format!("{d}/"), n.to_string()),
@@ -1505,7 +1699,7 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
         .border_b_1()
         .border_color(theme::section_border())
         .child(icon(glyph, 14., color))
-        .child(div().flex().flex_1().min_w_0().overflow_hidden().child(div().flex_none().text_color(theme::text_normal()).child(dir)).child(div().flex_none().font_weight(FontWeight::BOLD).text_color(theme::text_selected()).child(name)))
+        .child(div().flex().flex_1().min_w_0().overflow_hidden().child(div().flex_none().text_color(theme::text_normal()).child(dir)).child(div().flex_none().font_weight(FontWeight::BOLD).text_color(theme::text_selected()).child(name)).when(dirty, |d| d.child(div().flex_none().ml(px(6.)).mr(px(4.)).text_color(theme::orange()).child("●"))))
         .child(div().flex_none().text_size(px(11.)).text_color(theme::text_secondary()).child(encoding))
         .when_some(binary, |d, (sizes, capped)| {
             let mut summary = div().flex().flex_none().items_center().gap(px(4.)).text_size(px(12.)).text_color(theme::text_secondary()).child("Binary ·");
@@ -1518,6 +1712,22 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
             d.child(summary).when_some(capped, |d, note| d.child(div().flex_none().text_size(px(12.)).text_color(theme::text_normal()).child(note)))
         })
         .when_some(image_cap, |d, note| d.child(div().flex_none().text_size(px(12.)).text_color(theme::text_normal()).child(note)))
+        .when(can_save, |d| {
+            d.child(crate::ui::tooltip::tip(
+                format!("Save ({})", crate::commands::display_chord("Mod+S")),
+                div()
+                    .id("diff-save")
+                    .flex_none()
+                    .px(px(10.))
+                    .py(px(3.))
+                    .rounded(px(4.))
+                    .bg(theme::blue())
+                    .text_color(theme::text_on_accent())
+                    .when(!dirty, |d| d.opacity(0.5))
+                    .when(dirty, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.save_working_copy(None, cx))))
+                    .child("Save"),
+            ))
+        })
         .child(
             div()
                 .id("diff-close")
@@ -1543,11 +1753,20 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
         segment(id, label, on, enabled)
             .when(enabled, |d| {
                 d.on_click(cx.listener(move |this, _, _, cx| {
+                    let before = this.tabs.get(this.active).and_then(|t| t.diff.as_ref()).map(|d| super::edit::sides_for(&d.file, d.view));
                     this.with_diff(cx, |d| {
                         d.view = kind;
                         d.hscroll = 0.;
                         d.relayout();
                     });
+                    let after = this.tabs.get(this.active).and_then(|t| t.diff.as_ref()).map(|d| super::edit::sides_for(&d.file, d.view));
+                    if before != after {
+                        this.with_diff(cx, |d| {
+                            d.generation += 1;
+                            d.keep_scroll();
+                        });
+                        this.read_contents(false, cx);
+                    }
                 }))
             })
             .into_any_element()
@@ -1699,6 +1918,7 @@ fn text_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElem
         .flex_1()
         .min_w_0()
         .min_h_0()
+        .when_some(diff.hunks.as_ref().and_then(|h| h.refused.clone()), |d, why| d.child(div().flex_none().px(px(12.)).py(px(4.)).bg(theme::yellow_banner()).text_color(theme::text_selected()).child(why)))
         .when(banner, |d| d.child(div().flex_none().h(px(26.)).px(px(12.)).py(px(4.)).bg(theme::yellow_banner()).text_color(theme::text_selected()).child("Only the line endings changed")))
         .child(
             div()
