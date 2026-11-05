@@ -1591,7 +1591,7 @@ fn resize_handles(window: &Window) -> Option<impl IntoElement + use<>> {
 }
 
 impl Render for GitVolt {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(handle) = self.focus_next_frame.take() {
             window.focus(&handle, cx);
         }

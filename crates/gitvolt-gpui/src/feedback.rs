@@ -732,8 +732,7 @@ fn activity_view(v: &ActivityShown, weak: WeakEntity<GitVolt>, window: &Window, 
     let tools = crate::ui::anchor("copy-diagnostics", div().id("copy-diagnostics").flex_none().px(px(8.)).py(px(3.)).rounded(px(4.)).border_1().border_color(theme::section_border()).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(move |_, _, cx| {
         w_diag.update(cx, |v, cx| v.copy_diagnostics(cx)).ok();
     }).child("Copy diagnostics"));
-    let head = div().flex().flex_none().items_center().gap(px(8.)).child(div().flex().flex_1().min_w_0().gap(px(2.)).child(tab_button("activity-tab", "Activity", !commands_view && extra.is_none(), false, weak.clone())).child(tab_button("commands-tab", "Commands", commands_view, true, weak.clone())).child(extra_tab("requests-tab", "Requests", "requests", weak.clone())).child(extra_tab("actions-tab", "Actions", "actions", weak.clone()))).child(close);
-    let head = head.child(tools);
+    let head = div().flex().flex_none().items_center().gap(px(8.)).child(div().flex().flex_1().min_w_0().gap(px(2.)).child(tab_button("activity-tab", "Activity", !commands_view && extra.is_none(), false, weak.clone())).child(tab_button("commands-tab", "Commands", commands_view, true, weak.clone())).child(extra_tab("requests-tab", "Requests", "requests", weak.clone())).child(extra_tab("actions-tab", "Actions", "actions", weak.clone())).child(div().ml_auto().child(tools))).child(close);
     let body = match extra {
         Some("requests") => requests_body(v),
         Some(_) => actions_body(v),
