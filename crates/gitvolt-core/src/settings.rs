@@ -444,6 +444,11 @@ pub struct RepoSettings {
     pub branch_update: Option<crate::forge::BranchUpdate>,
     /// The commit panel's "committing to main in your fork" notice was dismissed for this repo.
     pub fork_trunk_notice_dismissed: bool,
+    /// Settings › Repository › Commit message: a `:` typed in a commit message offers the
+    /// gitmojis, and a whole `:code:` typed becomes its emoji. Off (and not written) by default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub gitmoji: bool,
     // --- branch presets ---
     /// The current branch preset's id; `None`: `"all"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1587,6 +1592,17 @@ mod tests {
         assert_eq!(v["readingLineWidth"], 72);
         assert_eq!(v["uiFontFamily"], "Inter");
         assert_eq!(serde_json::from_value::<AppSettings>(v).unwrap(), s);
+    }
+
+    #[test]
+    fn repo_gitmoji_off_unwritten_and_round_trip() {
+        let plain = serde_json::to_value(RepoSettings::default()).unwrap();
+        assert!(plain.get("gitmoji").is_none(), "off is not written");
+        assert!(!serde_json::from_value::<RepoSettings>(plain).unwrap().gitmoji);
+        let on = RepoSettings { gitmoji: true, ..Default::default() };
+        let json = serde_json::to_value(&on).unwrap();
+        assert_eq!(json["gitmoji"], true);
+        assert_eq!(serde_json::from_value::<RepoSettings>(json).unwrap(), on);
     }
 
     #[test]
