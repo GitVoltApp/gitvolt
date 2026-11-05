@@ -578,9 +578,10 @@ impl GitVolt {
         let w = Write::new(&ctx, move |_| call("worktreeAdd", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": p, "branch": branch }))).on_success(move |this, out, cx| {
             let made = out["path"].as_str().map_or_else(|| path.clone(), str::to_string);
             toast::show(format!("Created worktree {made}"), cx);
-            this.reload(repo, cx);
             if open {
                 this.switch_worktree(made, cx);
+            } else {
+                this.reload(repo, cx);
             }
         });
         self.write(w, cx);
@@ -696,10 +697,28 @@ impl GitVolt {
     }
 
     /// Switch to: this tab's worktree becomes `path` (its WIP, commit box and Undo).
+    /// `setActiveWorktree`: what the tab's HEAD, WIP panel, commit box, staging and Undo are about.
     pub fn switch_worktree(&mut self, path: String, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else { return };
+        if tab.worktree == path {
+            return;
+        }
+        let (repo, core) = (tab.id, crate::app::core_repo(tab.id));
+        // Another tab already shows this worktree: go there rather than make two tabs of one.
+        if let Some(twin) = self.tabs.iter().position(|t| t.id != repo && crate::app::core_repo(t.id) == core && t.worktree == path) {
+            let main = tab.graph.as_ref().and_then(|g| g.worktrees.iter().find(|w| w.is_main).map(|w| w.path.clone())).unwrap_or_default();
+            toast::show(format!("{} is already open in another tab", worktree_shown(&main, &path)), cx);
+            self.active = twin;
+            self.save_tabs(cx);
+            cx.notify();
+            return;
+        }
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
-        tab.worktree = path;
-        let repo = tab.id;
+        // A WIP row selected: the panel follows to the new worktree's, when it has changes.
+        tab.reveal_wip = tab.is_wip_selected();
+        tab.worktree = path.clone();
+        self.load_journal(repo, path, cx);
+        self.save_tabs(cx);
         self.reload(repo, cx);
         cx.notify();
     }

@@ -30,6 +30,15 @@ def row_at(text):
     return ""
 
 
+def variant_at(row, label):
+    for r in d["menuRows"][::-1]:
+        if row in r["label"]:
+            for v in r.get("variants", []):
+                if label in v["label"]:
+                    return f"{round(v['x'] + OX)} {round(r['y'] + OY)}"
+    return ""
+
+
 def rowat(text):
     for r in d["graphRows"]:
         if text in r["summary"]:

@@ -129,6 +129,16 @@ impl Selection {
     }
 }
 
+/// What a change of mode or a toggle keeps in place (`scrollAnchor.ts`): the first change the open showed, the top or the bottom
+/// when it's scrolled to one, or the line at the viewport's centre.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ScrollAnchor {
+    First,
+    Top,
+    Bottom,
+    Line { new: Option<u32>, old: Option<u32>, fraction: f32 },
+}
+
 /// Monaco's own step: 50 px a notch, where the page's is 53 (`zoom::wheel_delta`).
 pub const MONACO_WHEEL: f32 = 50. / 53.;
 
@@ -188,6 +198,10 @@ pub struct ReviewState {
 }
 
 pub struct DiffState {
+    /// The place `set_mode` and the toggles keep (`setDiffPrefs`), until the next layout.
+    pub pending_anchor: Option<ScrollAnchor>,
+    /// Where the open's reveal of the first change left it: while it's still there, a change of mode reveals it again.
+    pub first_change_at: Option<f32>,
     /// Review mode: its cards' places among the rows, what they measured, and the elements built for this frame.
     pub zones: Vec<crate::forge::review::zones::ZoneSlot>,
     pub zone_heights: Rc<std::cell::RefCell<HashMap<String, f32>>>,
@@ -305,6 +319,8 @@ impl DiffState {
             folded: HashSet::new(),
             fold_ends: Rc::new(Vec::new()),
             reveal_first: false,
+            pending_anchor: None,
+            first_change_at: None,
             hover: None,
             hscroll: 0.,
             selection: None,
@@ -508,6 +524,10 @@ impl DiffState {
             && let Some(first) = self.changes.first()
         {
             self.center_on(*first);
+            self.first_change_at = Some(self.scroll);
+        }
+        if let Some(anchor) = self.pending_anchor.take() {
+            self.restore_anchor(anchor);
         }
         self.scroll = self.scroll.clamp(0., self.layout.max_scroll());
         if std::mem::take(&mut self.reveal_caret)
@@ -587,9 +607,59 @@ impl DiffState {
 
     /// The selected text, lines joined by `\n`.
     pub fn set_mode(&mut self, mode: Mode) {
+        self.keep_place();
         self.mode = mode;
         self.hscroll = 0.;
         self.relayout();
+    }
+
+    /// `captureAnchor`: what the next layout puts back.
+    pub fn keep_place(&mut self) {
+        if self.pending_anchor.is_some() || self.layout.offsets.is_empty() {
+            return;
+        }
+        let (top, height) = (self.scroll, self.layout.height);
+        self.pending_anchor = Some(if self.first_change_at == Some(top) {
+            ScrollAnchor::First
+        } else if top <= 0. {
+            ScrollAnchor::Top
+        } else if top + height >= self.layout.content() - 1. {
+            ScrollAnchor::Bottom
+        } else {
+            let y = top + height / 2.;
+            let row = self.layout.row_at(y);
+            let (from, to) = (self.layout.offsets[row], self.layout.offsets.get(row + 1).copied().unwrap_or(y));
+            let r = self.rows.get(row);
+            ScrollAnchor::Line { new: r.and_then(|r| r.new), old: r.and_then(|r| r.old), fraction: if to > from { (y - from) / (to - from) } else { 0. } }
+        });
+    }
+
+    /// `restoreAnchor`, on the new rows: a line a mode hides goes to the first one shown after it.
+    fn restore_anchor(&mut self, anchor: ScrollAnchor) {
+        let height = self.layout.height;
+        match anchor {
+            ScrollAnchor::First => {
+                if let Some(first) = self.changes.first() {
+                    self.center_on(*first);
+                    self.first_change_at = Some(self.scroll);
+                }
+            }
+            ScrollAnchor::Top => self.scroll = 0.,
+            ScrollAnchor::Bottom => self.scroll = (self.layout.content() - height).clamp(0., self.layout.max_scroll()),
+            ScrollAnchor::Line { new, old, fraction } => {
+                let exact = self.rows.iter().position(|r| (new.is_some() && r.new == new) || (new.is_none() && old.is_some() && r.old == old));
+                let row = exact.or_else(|| self.rows.iter().position(|r| match (new, r.new, old, r.old) {
+                    (Some(a), Some(b), _, _) => b >= a,
+                    (_, _, Some(a), Some(b)) => b >= a,
+                    _ => false,
+                }));
+                if let Some(row) = row {
+                    let (from, to) = (self.layout.offsets[row], self.layout.offsets.get(row + 1).copied().unwrap_or(0.));
+                    let y = from + if exact.is_some() { fraction * (to - from) } else { 0. };
+                    self.scroll = (y - height / 2.).clamp(0., self.layout.max_scroll());
+                }
+            }
+        }
     }
 
     /// Find's matches in what's shown, in row order.
@@ -970,6 +1040,7 @@ impl GitVolt {
 
     pub fn toggle_whitespace(&mut self, cx: &mut Context<Self>) {
         self.with_diff(cx, |d| {
+            d.keep_place();
             d.ignore_whitespace = !d.ignore_whitespace;
             d.generation += 1;
         });
@@ -2155,6 +2226,7 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                         .when(!rendered, |d| d.child(tip("Word wrap", icon_button("wrap", "text-wrap", diff.wrap, !hex).when(!hex, |d| {
                             d.on_click(cx.listener(|this, _, _, cx| {
                                 this.with_diff(cx, |d| {
+                                    d.keep_place();
                                     d.wrap = !d.wrap;
                                     d.hscroll = 0.;
                                 });
@@ -2324,6 +2396,58 @@ mod tests {
         d.relayout();
         d.selection = Some(Selection { anchor: TextPos { row: 1, byte: 0 }, head: TextPos { row: 1, byte: 3 }, old_side: true });
         assert_eq!(d.selected_text().as_deref(), Some("two"));
+    }
+
+    fn long_pair() -> (String, String) {
+        let old: Vec<String> = (0..400).map(|i| format!("line {i}")).collect();
+        let mut new = old.clone();
+        new[100] = "changed 100".into();
+        new[300] = "changed 300".into();
+        (old.join("\n"), new.join("\n"))
+    }
+
+    #[test]
+    fn a_change_of_mode_keeps_the_line_at_the_viewports_centre() {
+        let (old, new) = long_pair();
+        let mut d = state(&old, &new);
+        d.ensure_layout(800., 600.);
+        // The user's place, somewhere that's no change's: into the hidden lines Hunk leaves out.
+        d.scroll = d.layout.offsets[200];
+        let y = d.scroll + 300.;
+        let line = d.rows[d.layout.row_at(y)].new;
+        d.set_mode(Mode::Split);
+        d.ensure_layout(800., 600.);
+        assert_eq!(d.rows[d.layout.row_at(d.scroll + 300.)].new, line, "the same line in Split");
+        d.set_mode(Mode::Hunk);
+        d.ensure_layout(800., 600.);
+        assert!(d.scroll < d.layout.max_scroll(), "not the empty end of a shorter view");
+        let shown = d.rows[d.layout.row_at(d.scroll + 300.)].new;
+        assert!(shown.is_some_and(|n| n >= line.unwrap_or(0)), "the first line shown after it, not the end: {shown:?}");
+    }
+
+    #[test]
+    fn a_change_of_mode_shows_the_opens_first_change_while_its_still_there() {
+        let (old, new) = long_pair();
+        let mut d = state(&old, &new);
+        d.reveal_first = true;
+        d.ensure_layout(800., 600.);
+        let first = d.first_change_at;
+        assert_eq!(first, Some(d.scroll));
+        d.set_mode(Mode::Hunk);
+        d.ensure_layout(800., 600.);
+        let at = d.changes.first().map_or(-1., |c| d.layout.offsets[*c]);
+        assert!(at >= d.scroll && at < d.scroll + 600., "the change is in view: at {at}, scrolled {}", d.scroll);
+    }
+
+    #[test]
+    fn a_change_of_mode_at_the_top_stays_at_the_top() {
+        let (old, new) = long_pair();
+        let mut d = state(&old, &new);
+        d.ensure_layout(800., 600.);
+        d.scroll = 0.;
+        d.set_mode(Mode::Split);
+        d.ensure_layout(800., 600.);
+        assert_eq!(d.scroll, 0.);
     }
 
     #[test]

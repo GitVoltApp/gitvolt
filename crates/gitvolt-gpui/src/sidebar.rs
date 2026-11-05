@@ -163,6 +163,21 @@ fn mark_preset_states(out: &mut [Section], view: Option<&Value>) {
     }
 }
 
+/// `withActiveSidebar`: the sidebar marks the tab's own current branch and worktree. The core reads it once for every tab.
+pub fn with_active_sidebar(v: &mut Value, active: &str) {
+    if active.is_empty() {
+        return;
+    }
+    for b in v["locals"].as_array_mut().into_iter().flatten() {
+        let checked_out = b["checkedOut"].as_str().map(str::to_string);
+        b["isHead"] = Value::Bool(checked_out.as_deref() == Some(active));
+        b["worktree"] = checked_out.filter(|c| c != active).map_or(Value::Null, Value::String);
+    }
+    for w in v["worktrees"].as_array_mut().into_iter().flatten() {
+        w["isCurrent"] = Value::Bool(w["path"].as_str() == Some(active));
+    }
+}
+
 pub fn sections_of(v: &Value, worktree: &str, view: Option<&Value>) -> Vec<Section> {
     let list = |key: &str| v[key].as_array().cloned().unwrap_or_default();
     let n = |b: &Value, key: &str| b[key].as_u64().unwrap_or(0) as u32;
@@ -706,7 +721,7 @@ impl GitVolt {
         }
     }
 
-    /// A branch row's double-click: checks it out; a checked-out one does nothing.
+    /// A row's double-click: a branch is checked out (a checked-out one does nothing), a worktree becomes the tab's active one.
     fn side_double_click(&mut self, item: &SideItem, cx: &mut Context<Self>) {
         match &item.kind {
             ItemKind::Local { .. } => self.checkout_local(&item.name, cx),
@@ -715,6 +730,7 @@ impl GitVolt {
                 self.checkout_remote(remote, &branch, item.target.as_deref().unwrap_or_default(), cx);
             }
             ItemKind::Submodule { status, .. } => self.activate_submodule(item.name.clone(), status, cx),
+            ItemKind::Worktree { path, .. } => self.switch_worktree(path.clone(), cx),
             _ => {}
         }
     }
@@ -1441,6 +1457,22 @@ mod tests {
                 FlatRow::Item { label, .. } => label.clone(),
             })
             .collect()
+    }
+
+    #[test]
+    fn the_sidebar_marks_the_tabs_own_worktree() {
+        let mut v = serde_json::json!({
+            "locals": [{ "name": "main", "isHead": true, "checkedOut": "/a", "worktree": null }, { "name": "one", "isHead": false, "checkedOut": "/b", "worktree": "/b" }, { "name": "free", "isHead": false, "checkedOut": null, "worktree": null }],
+            "worktrees": [{ "path": "/a", "isCurrent": true }, { "path": "/b", "isCurrent": false }],
+        });
+        with_active_sidebar(&mut v, "/b");
+        assert_eq!(v["locals"][0]["isHead"], false);
+        assert_eq!(v["locals"][0]["worktree"], "/a");
+        assert_eq!(v["locals"][1]["isHead"], true);
+        assert_eq!(v["locals"][1]["worktree"], serde_json::Value::Null);
+        assert_eq!(v["locals"][2]["isHead"], false);
+        assert_eq!(v["worktrees"][0]["isCurrent"], false);
+        assert_eq!(v["worktrees"][1]["isCurrent"], true);
     }
 
     #[test]

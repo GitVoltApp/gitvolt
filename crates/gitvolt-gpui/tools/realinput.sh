@@ -98,7 +98,9 @@ printf 'export PATH=%s\n' "$REALINPUT_ROOT/bin" >"$home/.profile"
 [ -p "$GITVOLT_DEBUG_PIPE" ] || mkfifo "$GITVOLT_DEBUG_PIPE"
 # The Vulkan loader finds its drivers through XDG_DATA_DIRS, which is empty here so no desktop file is found.
 icds=$(ls /usr/share/vulkan/icd.d/*.json /etc/vulkan/icd.d/*.json 2>/dev/null | paste -sd:)
-bin=$(realpath "${GITVOLT_GPUI_BIN:-target/bench/release/gitvolt-gpui}")
+bin=$(realpath "${GITVOLT_GPUI_BIN:-$REALINPUT_ROOT/../../../release/gitvolt-gpui}")
+# Never this repository as the working directory: a relative path typed in a field lands in the isolated home.
+cd "$home" || exit 1
 exec env -u GIT_ASKPASS -u SSH_AUTH_SOCK -u SSH_ASKPASS -u DESKTOP_SESSION -u SESSION_MANAGER HOME="$home" SHELL=/bin/sh PATH="$REALINPUT_ROOT/bin" \
   XDG_CONFIG_HOME="$REALINPUT_ROOT/app/config" XDG_DATA_HOME="$REALINPUT_ROOT/app/data" XDG_CACHE_HOME="$REALINPUT_ROOT/app/cache" \
   XDG_DATA_DIRS="$REALINPUT_ROOT/app/share" XDG_RUNTIME_DIR="$REALINPUT_RUN" DBUS_SESSION_BUS_ADDRESS=disabled: \

@@ -653,8 +653,10 @@ impl GitVolt {
         let limit = tab.limit;
         let (view, pin) = self.graph_options(repo);
         let read = self.rt.spawn(async move {
-            let graph = api.graph(core_repo(repo), Some(limit), pin, None, None, view).await?;
-            let sidebar = api.dispatch(Request::Sidebar { repo: crate::app::core_repo(repo) }).await?;
+            // The tab's own worktree: its HEAD, labels and row-0 WIP, as `withActive` and the core's `active` have them.
+            let graph = api.graph(core_repo(repo), Some(limit), pin, None, (!worktree.is_empty()).then(|| worktree.clone()), view).await?;
+            let mut sidebar = api.dispatch(Request::Sidebar { repo: crate::app::core_repo(repo) }).await?;
+            crate::sidebar::with_active_sidebar(&mut sidebar, &worktree);
             let view_json = graph.view.as_ref().and_then(|v| serde_json::to_value(v).ok());
             let sections = SendSections(sections_of(&sidebar, &worktree, view_json.as_ref()));
             Ok::<_, gitvolt_core::error::GbError>((SendGraph(graph_view(&graph)), sections, sidebar))

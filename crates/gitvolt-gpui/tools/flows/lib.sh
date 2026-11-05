@@ -67,6 +67,8 @@ moveon() { local p; p=$(at "$1"); [ -n "$p" ] || { fail "no anchor $1"; return 1
 clickon() { local p; p=$(at "$1"); [ -n "$p" ] || { fail "no anchor $1"; return 1; }; ri move $p -- wait 40 -- click "${2:-left}"; }
 dclickon() { local p; p=$(at "$1"); [ -n "$p" ] || { fail "no anchor $1"; return 1; }; ri move $p -- wait 40 -- click -- click; }
 pick() { local p; p=$(row_at "$1"); [ -n "$p" ] || { fail "no row $1"; return 1; }; ri move $p -- wait 40 -- click; }
+# A menu row's variant: pickv <row> <variant>.
+pickv() { local p; p=$(q "variant_at('$1', '$2')"); [ -n "$p" ] || { fail "no variant $1 $2"; return 1; }; ri move $p -- wait 40 -- click; }
 clickxy() { ri move "$1" "$2" -- wait 40 -- click "${3:-left}"; }
 key() { for k; do ri key "$k"; done; }
 pause() { sleep "$1"; }

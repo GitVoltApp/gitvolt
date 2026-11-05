@@ -1312,7 +1312,17 @@ pub fn rows_at(cx: &App) -> Vec<serde_json::Value> {
                 MenuRow::Submenu { label, .. } => label.to_string(),
                 _ => continue,
             };
-            out.push(serde_json::json!({ "level": level, "label": label, "x": lv.left + 40., "y": lv.row_top(i, None) + lv.rows[i].height() / 2. }));
+            let y = lv.row_top(i, None) + lv.rows[i].height() / 2.;
+            let mut variants = Vec::new();
+            if let MenuRow::Action(a) = r {
+                let mut right = lv.left + lv.w - BORDER - 8.;
+                for v in a.variants.iter().rev() {
+                    let w = variant_w(v, cx);
+                    variants.push(serde_json::json!({ "label": v.label.as_ref().map_or(v.id.to_string(), |l| l.to_string()), "x": right - w / 2. }));
+                    right -= w;
+                }
+            }
+            out.push(serde_json::json!({ "level": level, "label": label, "x": lv.left + 40., "y": y, "variants": variants }));
         }
     }
     out
