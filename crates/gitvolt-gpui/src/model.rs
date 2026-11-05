@@ -6,6 +6,7 @@ use chrono::{Datelike, Local, TimeZone, Timelike};
 use gitvolt_graph::{GraphPayload, NodeKind, RefLabel, RowPayload};
 use gpui::SharedString;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub const ROW_H: f32 = 28.;
 pub const LANE_W: f32 = 22.;
@@ -275,6 +276,102 @@ pub fn branch_rows(g: &GraphView, tip: usize) -> std::collections::HashSet<usize
     seen
 }
 
+/// The branch a commit belongs to: shown as a dimmed chip on a hovered or selected row that isn't that branch's tip.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Membership {
+    pub name: SharedString,
+    pub color: u8,
+    pub full_ref: String,
+}
+
+/// The branch refs a chip stands for: its local branch and every remote one it carries. A tag or a detached HEAD: none.
+pub fn chip_refs(c: &Chip) -> Vec<String> {
+    if c.tag {
+        return Vec::new();
+    }
+    let mut refs = Vec::new();
+    if c.local {
+        refs.push(format!("refs/heads/{}", c.name));
+    }
+    refs.extend(c.remotes.iter().map(|r| r.1.clone()));
+    refs
+}
+
+/// `branchMembership`: walks each branch's first parents, in claimant order, claiming what's unclaimed. Order: the
+/// trunk's local branch; the other pinned refs; the other local branches, newest tip first; remote branches with no local
+/// one of that name; the remaining remote ones. Tags and a detached HEAD never claim. A tip isn't a member of its own.
+pub fn branch_membership(rows: &[RowView], pinned_refs: &[String]) -> Vec<Option<Arc<Membership>>> {
+    struct Local { name: SharedString, full: String, tip: usize, head: bool }
+    struct Remote { name: String, branch: String, full: String, tip: usize }
+    let index: HashMap<&str, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.as_ref(), i)).collect();
+    let parent: Vec<Option<usize>> = rows.iter().map(|r| r.parents.first().and_then(|p| index.get(p.as_str()).copied())).collect();
+    let (mut locals, mut remotes) = (Vec::new(), Vec::new());
+    for (tip, row) in rows.iter().enumerate() {
+        for c in row.chips.iter().filter(|c| !c.tag) {
+            if c.local {
+                locals.push(Local { name: c.name.clone(), full: format!("refs/heads/{}", c.name), tip, head: c.head });
+            }
+            for (remote, full) in &c.remotes {
+                remotes.push(Remote { name: full.trim_start_matches("refs/remotes/").to_string(), branch: full.trim_start_matches(&format!("refs/remotes/{remote}/")).to_string(), full: full.clone(), tip });
+            }
+        }
+    }
+    let local_names: std::collections::HashSet<&str> = locals.iter().map(|l| l.name.as_ref()).collect();
+    let pinned: Vec<&String> = pinned_refs.iter().filter(|r| r.starts_with("refs/heads/") || r.starts_with("refs/remotes/")).collect();
+    let pinned_local = pinned.iter().find(|r| r.starts_with("refs/heads/")).map(|r| r.as_str());
+    let trunk: Option<String> = if let Some(p) = pinned_local {
+        Some(p.to_string())
+    } else if let Some(first) = pinned.first() {
+        let branch = remotes.iter().find(|r| &&r.full == first).map_or_else(|| first.trim_start_matches("refs/remotes/").split_once('/').map_or(String::new(), |x| x.1.to_string()), |r| r.branch.clone());
+        Some(locals.iter().find(|l| l.name.as_ref() == branch).map_or_else(|| first.to_string(), |l| l.full.clone()))
+    } else {
+        locals.iter().find(|l| l.head).map(|l| l.full.clone())
+    };
+    let mut ranked1: std::collections::HashSet<String> = pinned.iter().filter(|r| Some(r.as_str()) != trunk.as_deref()).map(|r| r.to_string()).collect();
+    if pinned.len() == 1
+        && let Some(name) = pinned_local.and_then(|p| locals.iter().find(|l| l.full == p)).map(|l| l.name.clone())
+    {
+        ranked1.extend(remotes.iter().filter(|r| r.branch == name.as_ref()).map(|r| r.full.clone()));
+    }
+    let top = |full: &str| if trunk.as_deref() == Some(full) { Some(0) } else if ranked1.contains(full) { Some(1) } else { None };
+    let mut claimants: Vec<(u8, usize, Arc<Membership>)> = Vec::new();
+    for l in &locals {
+        claimants.push((top(&l.full).unwrap_or(2), l.tip, Arc::new(Membership { name: l.name.clone(), color: rows[l.tip].color, full_ref: l.full.clone() })));
+    }
+    for r in &remotes {
+        let rank = top(&r.full).unwrap_or(if local_names.contains(r.branch.as_str()) { 4 } else { 3 });
+        claimants.push((rank, r.tip, Arc::new(Membership { name: r.name.clone().into(), color: rows[r.tip].color, full_ref: r.full.clone() })));
+    }
+    claimants.sort_by_key(|c| (c.0, c.1));
+    let mut claim: Vec<Option<(usize, Arc<Membership>)>> = vec![None; rows.len()];
+    for (_, tip, m) in &claimants {
+        let mut at = Some(*tip);
+        while let Some(i) = at {
+            if claim[i].is_some() {
+                break;
+            }
+            claim[i] = Some((*tip, m.clone()));
+            at = parent[i];
+        }
+    }
+    claim.into_iter().enumerate().map(|(i, c)| c.and_then(|(tip, m)| (tip != i).then_some(m))).collect()
+}
+
+/// `branchRows`: the rows "in" the branches `refs`: what membership claimed for them, and their tips. Not all reachable
+/// history: a commit a higher-ranked branch claimed isn't in.
+pub fn focus_rows(g: &GraphView, refs: &[String]) -> std::collections::HashSet<usize> {
+    let mut out = std::collections::HashSet::new();
+    for (i, row) in g.rows.iter().enumerate() {
+        if row.chips.iter().any(|c| chip_refs(c).iter().any(|r| refs.contains(r))) {
+            out.insert(i);
+        }
+        if g.membership.get(i).is_some_and(|m| m.as_ref().is_some_and(|m| refs.contains(&m.full_ref))) {
+            out.insert(i);
+        }
+    }
+    out
+}
+
 /// The collapse zone's width: a node, a gap either side and the rail.
 pub fn zone_width() -> f32 {
     (2. * NODE_R).ceil() + 2. * ZONE_GAP + RAIL_W
@@ -324,6 +421,8 @@ pub struct RowView {
     pub parents: Vec<String>,
     /// A stash's branch, dimmed after its text.
     pub stash_branch: Option<SharedString>,
+    /// The first line of its body, dimmed after the summary.
+    pub body: SharedString,
     pub wip: Option<WipCounts>,
 }
 
@@ -336,6 +435,11 @@ pub struct WipCounts {
     pub deleted: u32,
     pub renamed: u32,
     pub conflicted: u32,
+}
+
+/// `wipCountsText`: `✎n +n −n ⚠n`, zeros left out.
+pub fn wip_counts_text(w: &WipCounts) -> String {
+    [(w.modified, '✎'), (w.added, '+'), (w.deleted, '−'), (w.renamed, '➜'), (w.conflicted, '⚠')].iter().filter(|(n, _)| *n > 0).map(|(n, s)| format!("{s}{n}")).collect::<Vec<_>>().join(" ")
 }
 
 impl WipCounts {
@@ -359,6 +463,8 @@ pub struct GraphView {
     pub worktrees: Vec<gitvolt_graph::GraphWorktree>,
     /// A worktree's merge, rebase or other operation.
     pub in_progress: std::collections::BTreeMap<String, gitvolt_graph::InProgress>,
+    /// Each row's branch, when it isn't that branch's tip.
+    pub membership: Vec<Option<Arc<Membership>>>,
 }
 
 impl GraphView {
@@ -400,6 +506,7 @@ fn row_view(r: &RowPayload, chips: Vec<Chip>) -> RowView {
         email: r.author_email.clone(),
         parents: r.parents.clone(),
         stash_branch: stash_branch.map(Into::into),
+        body: r.body_first_line.clone().into(),
         wip: r.wip.as_ref().map(|w| WipCounts { name: w.worktree_name.clone().map(Into::into), modified: w.modified, added: w.added, deleted: w.deleted, renamed: w.renamed, conflicted: w.conflicted }),
     }
 }
@@ -419,6 +526,7 @@ pub fn graph_view(g: &GraphPayload) -> GraphView {
     }
     let rows: Vec<RowView> = g.rows.iter().enumerate().map(|(i, r)| row_view(r, chips.remove(&(i as u32)).unwrap_or_default())).collect();
     let by_sha = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
+    let membership = branch_membership(&rows, &g.pinned_refs);
     let short = |name: &str| name.trim_start_matches("refs/heads/").trim_start_matches("refs/remotes/").to_string();
     GraphView {
         rows,
@@ -431,6 +539,7 @@ pub fn graph_view(g: &GraphPayload) -> GraphView {
         head_sha: g.head.target.clone(),
         worktrees: g.worktrees.clone(),
         in_progress: g.in_progress.clone(),
+        membership,
     }
 }
 
@@ -521,12 +630,52 @@ mod tests {
 
     #[test]
     fn a_branch_reaches_its_ancestors_only() {
-        let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, wip: None };
+        let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None };
         let rows = vec![row("d", &["b"]), row("c", &["b"]), row("b", &["a"]), row("a", &[])];
         let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
-        let g = GraphView { rows, max_lanes: 2, head_row: None, head_branch: SharedString::default(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default() };
+        let g = GraphView { rows, max_lanes: 2, head_row: None, head_branch: SharedString::default(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default(), membership: Vec::new() };
         let mut reach: Vec<usize> = branch_rows(&g, 1).into_iter().collect();
         reach.sort_unstable();
         assert_eq!(reach, [1, 2, 3]);
+    }
+}
+
+#[cfg(test)]
+mod membership_tests {
+    use super::*;
+
+    fn row(id: &str, parents: &[&str], chips: Vec<Chip>) -> RowView {
+        RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 1, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips, worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None }
+    }
+
+    fn local(name: &str, head: bool) -> Chip {
+        Chip { name: name.to_string().into(), head, local: true, remote: false, tag: false, remotes: Vec::new() }
+    }
+
+    #[test]
+    fn the_trunk_claims_its_history_before_a_branch_forked_off_it() {
+        // hotfix forked from main's tip and is the newer one: main keeps what's below.
+        let rows = vec![row("h", &["m"], vec![local("hotfix", false)]), row("m", &["a"], vec![local("main", true)]), row("a", &["b"], vec![]), row("b", &[], vec![])];
+        let m = branch_membership(&rows, &[]);
+        assert_eq!(m[0], None, "a tip is no member of its own branch");
+        assert_eq!(m[1], None);
+        assert_eq!(m[2].as_ref().map(|m| m.name.clone()), Some("main".into()));
+        assert_eq!(m[3].as_ref().map(|m| m.full_ref.clone()), Some("refs/heads/main".to_string()));
+    }
+
+    #[test]
+    fn a_remote_branch_gets_what_nobody_else_claimed() {
+        let origin = Chip { name: "main".into(), head: false, local: false, remote: true, tag: false, remotes: vec![("origin".into(), "refs/remotes/origin/main".into())] };
+        let rows = vec![row("o", &["l"], vec![origin]), row("l", &["a"], vec![local("main", true)]), row("a", &[], vec![])];
+        let m = branch_membership(&rows, &[]);
+        assert_eq!(m[2].as_ref().map(|m| m.name.clone()), Some("main".into()), "the local one first");
+        assert_eq!(m[0], None);
+    }
+
+    #[test]
+    fn a_tag_never_claims() {
+        let tag = Chip { name: "v1".into(), head: false, local: false, remote: false, tag: true, remotes: Vec::new() };
+        let rows = vec![row("t", &["a"], vec![tag]), row("a", &[], vec![])];
+        assert_eq!(branch_membership(&rows, &[]), vec![None, None]);
     }
 }

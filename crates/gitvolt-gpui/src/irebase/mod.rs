@@ -826,6 +826,72 @@ impl GitVolt {
         rows
     }
 
+    /// `fromOldest`: a selection a squash or rebase can start from: on HEAD's branch, no merge, the oldest not a root.
+    fn from_oldest(&self, commits: &[crate::selection::CommitRef]) -> Option<(String, String, Vec<String>)> {
+        let tab = self.tabs.get(self.active)?;
+        let g = tab.graph.as_ref()?;
+        let head = tab.head_sha()?;
+        let branch = tab.head_branch().or_else(|| Self::rebase_busy(tab).map(|_| "HEAD".to_string()))?;
+        if commits.len() < 2 || commits.iter().any(|c| c.merge || crate::refs::is_ancestor(g, &c.oid, &head) == Some(false)) {
+            return None;
+        }
+        let oldest = commits.last()?;
+        let row = g.by_sha.get(&oldest.oid).and_then(|i| g.rows.get(*i))?;
+        let [parent] = row.parents.as_slice() else { return None };
+        Some((branch, parent.clone(), commits.iter().map(|c| c.oid.clone()).collect()))
+    }
+
+    /// The selection's "Squash N commits" and "Squash N commits interactively…".
+    pub fn squash_rows(&self, commits: &[crate::selection::CommitRef], this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+        let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
+        let Some((branch, base, oids)) = self.from_oldest(commits) else { return Vec::new() };
+        let busy = Self::rebase_busy(tab);
+        let n = oids.len();
+        let into = short(&oids[n - 1]);
+        let row = |interactive: bool| {
+            let (weak, branch, base, oids) = (this.clone(), branch.clone(), base.clone(), oids.clone());
+            move |_: &mut Window, cx: &mut App| {
+                let (branch, base, oids) = (branch.clone(), base.clone(), oids.clone());
+                weak.update(cx, |v, cx| v.squash_selection(branch, oids, base, interactive, cx)).ok();
+            }
+        };
+        vec![
+            MenuRow::action("irebase.squash", format!("Squash {n} commits"), "combine", format!("Squash the {n} commits into {into}, their messages merged"), row(false)).disabled_if(busy.clone()),
+            MenuRow::action("irebase.squashInteractive", format!("Squash {n} commits interactively…"), "list-ordered", "Open the interactive rebase with them set to squash", row(true)).disabled_if(busy),
+        ]
+    }
+
+    /// The selection's "Interactive rebase from here": from its oldest commit up.
+    pub fn selection_from_here_rows(&self, commits: &[crate::selection::CommitRef], this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+        let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
+        let Some((branch, base, oids)) = self.from_oldest(commits) else { return Vec::new() };
+        let oldest = short(&oids[oids.len() - 1]);
+        let weak = this.clone();
+        let tooltip = format!("Edit {branch}'s commits from {oldest} up");
+        vec![
+            MenuRow::action("irebase.selectionFromHere", "Interactive rebase from here", "list-ordered", tooltip, move |_, cx| {
+                let opts = OpenRebase { branch: branch.clone(), base: base.clone(), preset: None };
+                weak.update(cx, |v, cx| v.open_rebase_editor(opts, cx)).ok();
+            })
+            .disabled_if(Self::rebase_busy(tab)),
+        ]
+    }
+
+    /// `squashSelection`: the selected commits (newest first) fold into the oldest, their messages merged. Direct, one
+    /// interactive rebase with no editor; `interactive` opens the editor with the same preset.
+    pub fn squash_selection(&mut self, branch: String, oids: Vec<String>, base: String, interactive: bool, cx: &mut Context<Self>) {
+        let n = oids.len();
+        let Some(oldest) = oids.last().cloned() else { return };
+        let mut preset = Preset { rows: HashMap::new(), gather: Some(oldest.clone()) };
+        for o in &oids[..n - 1] {
+            preset.rows.insert(o.clone(), RowAction::Squash);
+        }
+        if interactive {
+            return self.open_rebase_editor(OpenRebase { branch, base, preset: Some(preset) }, cx);
+        }
+        self.run_preset(branch, base, preset, "squash", format!("Squashed {n} commits into {}", short(&oldest)), cx);
+    }
+
     /// The Drop row: the plan from the commit's parent with only that commit dropped, run with no editor.
     pub fn drop_commit(&mut self, branch: String, oid: String, base: String, cx: &mut Context<Self>) {
         let mut preset = Preset::default();

@@ -181,26 +181,8 @@ impl GitVolt {
                 weak.update(cx, |v, cx| v.create_branch_at(id, start, window, cx)).ok();
             }));
 
-            let sequence = |pick: bool, no_commit: bool| -> crate::ui::Action {
-                let (weak, id) = (this.clone(), sha.clone());
-                Rc::new(move |_: &mut Window, cx: &mut App| {
-                    let id = id.clone();
-                    weak.update(cx, |v, cx| v.start_sequence(pick, id, no_commit, cx)).ok();
-                })
-            };
-            let seq_busy = busy.clone().or_else(|| head_for.is_none().then(|| "Check out a branch first".to_string())).or_else(|| head_sha_now.is_none().then(|| "Make a first commit first".to_string()));
-            let merge = row.parents.len() > 1;
-            let in_head = head_sha_now.as_deref().and_then(|h| crate::refs::is_ancestor(graph, &sha, h));
-            if !merge && !is_head_commit {
-                let run = sequence(true, false);
-                let named = format!("{s6} {summary}");
-                commit_rows.push(MenuRow::action("commit.cherryPick", format!("Cherry-pick onto {head}"), "cherry", format!("Apply {named} on top of {head}"), move |w, cx| run(w, cx)).variants(vec![Variant { id: "noCommit".into(), label: Some("No commit".into()), icon: None, tooltip: format!("Apply the changes to {head}'s files and stage them, without committing").into(), run: sequence(true, true), disabled: seq_busy.clone().map(Into::into) }], None).disabled_if(seq_busy.clone()));
-            }
-            if !merge && in_head != Some(false) {
-                let run = sequence(false, false);
-                let named = format!("{s6} {summary}");
-                commit_rows.push(MenuRow::action("commit.revert", "Revert this commit", "undo-2", format!("Make a commit on {head} that undoes {named}"), move |w, cx| run(w, cx)).variants(vec![Variant { id: "noCommit".into(), label: Some("No commit".into()), icon: None, tooltip: format!("Undo the changes in {head}'s files and stage that, without committing").into(), run: sequence(false, true), disabled: seq_busy.clone().map(Into::into) }], None).disabled_if(seq_busy.clone()));
-            }
+            let one = crate::selection::CommitRef { oid: sha.clone(), summary: summary.clone(), merge: row.parents.len() > 1 };
+            commit_rows.extend(self.pick_rows(&[one], this));
             let tag = |annotated: bool| -> crate::ui::Action {
                 let (weak, id) = (this.clone(), sha.clone());
                 Rc::new(move |window: &mut Window, cx: &mut App| {

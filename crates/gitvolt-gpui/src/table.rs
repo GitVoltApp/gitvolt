@@ -2,7 +2,7 @@
 //! header with its resizers and its right-click menu, the rows with their chips, the WIP row and the
 //! Load older commits row.
 
-use crate::app::{GitVolt, MONO_FONT, Tab, icon};
+use crate::app::{GitVolt, Tab, icon};
 use crate::graph::{RowGeometry, paint_row};
 use crate::model::*;
 use crate::theme;
@@ -130,7 +130,7 @@ fn rebasing_chip(name: &str, lane: usize) -> impl IntoElement + use<> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &SharedString, row_pending: &[&str], rebasing: Option<&str>, this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Div {
+fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &SharedString, row_pending: &[&str], rebasing: Option<&str>, member: Option<std::sync::Arc<Membership>>, this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
     let lane = row.color as usize;
     // A detached HEAD sharing the cell with the rebasing chip is just its check.
     let chips: Vec<Chip> = row.chips.iter().map(|c| if rebasing.is_some() && c.head && c.name.as_ref() == "HEAD" { Chip { name: SharedString::default(), ..c.clone() } } else { c.clone() }).collect();
@@ -140,11 +140,12 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
     let shown = fit_count(&widths, width - CELL_PAD - room, more_w);
     let hidden = chips.len().saturating_sub(shown);
     let sha = row.id.to_string();
-    let mut cell = div().flex().flex_none().w(px(width)).h(px(ROW_H)).items_center().gap(px(CHIP_SPACING)).pl(px(CELL_PAD)).overflow_hidden().children(rebasing.map(|n| rebasing_chip(n, lane)));
+    // Only the chips select the row: a press on the space around them stops here.
+    let mut cell = div().id(("labels", ix)).flex().flex_none().w(px(width)).h(px(ROW_H)).items_center().gap(px(CHIP_SPACING)).pl(px(CELL_PAD)).overflow_hidden().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).children(rebasing.map(|n| rebasing_chip(n, lane)));
     for (i, c) in chips.iter().take(shown).enumerate() {
         let (chip, menu_sha, weak, hover) = (c.clone(), sha.clone(), this.clone(), this.clone());
         let (press_chip, press_sha) = (c.clone(), sha.clone());
-        let tag = c.tag;
+        let refs = chip_refs(c);
         let tag_tip = c.tag.then(|| format!("Tag at {}", &sha[..sha.len().min(SHORT_SHA)]));
         let pending = row_pending.iter().any(|p| c_refs(c).iter().any(|r| r == *p));
         let body = chip_inner(c, lane, false, selected, Some(group.clone()))
@@ -152,19 +153,20 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
             .id(("chip", ix * 64 + i))
             .cursor_pointer()
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-                // A double click checks it out; a drag takes a local branch onto another.
+                // The press selects the row; a double click checks it out; a drag takes a local branch onto another.
+                cx.stop_propagation();
                 if e.click_count == 2 {
-                    cx.stop_propagation();
                     this.checkout_chip(&press_sha, &press_chip, cx);
                 } else {
                     this.start_branch_drag(ix, press_chip.clone(), e.position);
+                    this.select_row(ix, e.modifiers.into(), cx);
                 }
             }))
             .on_hover(move |entered, _, cx| {
                 hover
                     .update(cx, |v, cx| {
-                        if !tag {
-                            v.hover_branch(entered.then_some(ix), cx);
+                        if !refs.is_empty() {
+                            v.hover_branch(entered.then(|| refs.clone()), cx);
                         }
                     })
                     .ok();
@@ -193,6 +195,10 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
             .cursor_pointer()
             .text_size(px(11.))
             .text_color(theme::text_normal())
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                this.select_row(ix, e.modifiers.into(), cx);
+            }))
             .on_mouse_down(MouseButton::Right, cx.listener(move |this, e: &MouseDownEvent, window, cx| {
                 cx.stop_propagation();
                 let rows = menu_list
@@ -214,7 +220,48 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
             stack.into_any_element()
         }));
     }
+    if let Some(m) = member {
+        let used = chips_end(row, width, cx);
+        let w = dim_chip_width(&m, cx);
+        if row.chips.is_empty() || used + CHIP_SPACING + w <= width {
+            cell = cell.child(dim_chip(&m, ix, row.chips.is_empty(), this, cx));
+        }
+    }
     cell
+}
+
+fn dim_chip_width(m: &Membership, cx: &App) -> f32 {
+    CHIP_PAD + crate::ui::text_width(&m.name, 13., FontWeight::NORMAL, cx)
+}
+
+/// The dimmed branch-membership chip: the lit chip look at half opacity, just the branch's name, no tooltip. Hovered, it's
+/// at full strength; a press selects the row.
+fn dim_chip(m: &Membership, ix: usize, alone: bool, this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let lane = m.color as usize;
+    let hover = this.clone();
+    let refs = vec![m.full_ref.clone()];
+    div()
+        .id(("chip-dim", ix))
+        .flex()
+        .items_center()
+        .when(alone, |d| d.min_w_0())
+        .when(!alone, |d| d.flex_none())
+        .h(px(CHIP_H))
+        .px(px(5.))
+        .rounded(px(3.))
+        .bg(theme::lane_alpha(lane, 0.45))
+        .text_color(theme::text_selected())
+        .opacity(0.5)
+        .hover(|d| d.opacity(1.))
+        .cursor_pointer()
+        .on_hover(move |entered, _, cx| {
+            hover.update(cx, |v, cx| v.hover_branch(entered.then(|| refs.clone()), cx)).ok();
+        })
+        .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+            cx.stop_propagation();
+            this.select_row(ix, e.modifiers.into(), cx);
+        }))
+        .child(div().min_w_0().truncate().child(m.name.clone()))
 }
 
 fn status_count(glyph: &'static str, color: Hsla, n: u32) -> Option<Div> {
@@ -279,11 +326,11 @@ pub fn with_commas(n: u32) -> String {
 
 impl GitVolt {
     /// A chip hovered: after a rest, every row outside its branch dims; leaving it undims at once.
-    pub fn hover_branch(&mut self, row: Option<usize>, cx: &mut Context<Self>) {
+    pub fn hover_branch(&mut self, refs: Option<Vec<String>>, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         tab.branch_hover = tab.branch_hover.wrapping_add(1);
         let (generation, repo) = (tab.branch_hover, tab.id);
-        let Some(row) = row else {
+        let Some(refs) = refs else {
             if tab.branch_keep.take().is_some() {
                 cx.notify();
             }
@@ -295,7 +342,7 @@ impl GitVolt {
             this.update(cx, |this, cx| {
                 let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo).filter(|t| t.branch_hover == generation) else { return };
                 let Some(graph) = tab.graph.clone() else { return };
-                tab.branch_keep = Some(Rc::new(branch_rows(&graph, row)));
+                tab.branch_keep = Some(Rc::new(focus_rows(&graph, &refs)));
                 cx.notify();
             })
             .ok();
@@ -424,7 +471,11 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
         let text: SharedString = tab.error.clone().unwrap_or_else(|| "Loading…".into());
         return div().flex().flex_1().items_center().justify_center().text_color(theme::text_disabled()).child(text).into_any_element();
     };
-    let available = width - SCROLLBAR_W;
+    // The scrollbar takes its room only when there's something to scroll.
+    let list_h = window.viewport_size().height.as_f32() - 30. - 34. - 44. - 22. - HEADER_H;
+    let scrolls = (graph.rows.len() + usize::from(graph.truncated)) as f32 * ROW_H > list_h;
+    let gutter = if scrolls { SCROLLBAR_W } else { 0. };
+    let available = width - gutter;
     let cols = allocate_columns(&tab.column_prefs, available, &tab.hidden_columns, graph.max_lanes);
     let hidden = tab.hidden_columns.clone();
     let head = HeadContext { cols, available, graph_max: lanes_width(graph.max_lanes) };
@@ -471,6 +522,8 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
         header = header.child(head_cell(Col::Sha, cols.sha, "SHA", "SHA", "hash", &head, cx));
     }
     let selected = tab.selected;
+    let picked = tab.picked();
+    let hover_chip = tab.hover_chip.clone();
     let rows = graph.clone();
     let keep = tab.find.keep.clone();
     let branch_keep = tab.branch_keep.clone();
@@ -498,10 +551,16 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                         return load_older_row(repo, loaded, loading, cx);
                     }
                     let row = &graph.rows[ix];
-                    let is_selected = selected == Some(ix);
+                    let is_selected = selected == Some(ix) || picked.contains(&ix);
+                    let member = graph.membership.get(ix).cloned().flatten().filter(|_| is_selected || hover_chip.as_ref() == Some(&row.id));
                     let filter = keep.as_ref().is_some_and(|k| !k.contains(&ix));
                     let branch = branch_keep.as_ref().is_some_and(|k| !k.contains(&ix));
-                    let geometry = RowGeometry { chips_end: chips_end(row, cols.labels, cx), graph_x: cols.labels, graph_w: cols.graph, clipped: cols.clipped, selected: is_selected, head: graph.head_row == Some(ix) };
+                    let chips_stop = chips_end(row, cols.labels, cx);
+                    let chips_stop = match &member {
+                        Some(m) if !row.chips.is_empty() && chips_stop + CHIP_SPACING + dim_chip_width(m, cx) <= cols.labels => chips_stop + CHIP_SPACING + dim_chip_width(m, cx),
+                        _ => chips_stop,
+                    };
+                    let geometry = RowGeometry { chips_end: chips_stop, graph_x: cols.labels, graph_w: cols.graph, clipped: cols.clipped, selected: is_selected, head: graph.head_row == Some(ix) };
                     let painter = graph.clone();
                     let picture = if row.kind == NodeKind::Commit { crate::avatars::image_for(&row.email, &row.author) } else { None };
                     let group: SharedString = format!("row-{ix}").into();
@@ -520,7 +579,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                             .text_color(color)
                             .when(is_selected && !filter && !branch, |d| d.text_color(theme::text_selected()))
                             .when(is_selected, |d| d.bg(theme::selected_row()))
-                            .group_hover(group.clone(), |d| d.bg(theme::hover_row()))
+                            .when(!is_selected, |d| d.group_hover(group.clone(), |d| d.bg(theme::hover_row())))
                             .child(div().truncate().child(text))
                     };
                     let message: AnyElement = match row.wip.as_ref() {
@@ -529,9 +588,11 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                             let focused = draft.is_some_and(|d| d.read(cx).is_focused(window));
                             wip_cell(draft, w, cols.message, focused)
                         }
-                        .when(is_selected, |d| d.bg(theme::selected_row())).group_hover(group.clone(), |d| d.bg(theme::hover_row())).into_any_element(),
+                        .when(is_selected, |d| d.bg(theme::selected_row())).when(!is_selected, |d| d.group_hover(group.clone(), |d| d.bg(theme::hover_row()))).into_any_element(),
                         None => {
-                            let body = cell(cols.message, theme::text_normal(), row.summary.clone()).when_some(row.stash_branch.clone(), |d, b| d.child(div().flex_none().ml(px(12.)).text_color(theme::text_disabled()).child(b)));
+                            let dim_color = if filter { theme::text_row_dimmed() } else if branch { theme::text_row_dimmed_branch() } else { theme::text_disabled() };
+                            let tail = row.stash_branch.clone().into_iter().chain((!row.body.is_empty()).then(|| row.body.clone()));
+                            let body = message_cell(cols.message, is_selected, filter, branch, row.summary.clone(), tail, dim_color, group.clone());
                             if row.kind == NodeKind::Collapsed {
                                 body.into_any_element()
                             } else {
@@ -549,27 +610,45 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                     let menu_weak = weak.clone();
                     let pending_refs: Vec<&str> = pending.keys().map(String::as_str).collect();
                     let rebasing = rebasing_branch.as_deref().filter(|_| head_sha.as_deref() == Some(row.id.as_ref()));
-                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &pending_refs, rebasing, &weak, cx));
+                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &pending_refs, rebasing, member, &weak, cx));
                     div()
                         .id(ix)
                         .group(group.clone())
                         .relative()
                         .flex()
                         .h(px(ROW_H))
-                        .on_click(cx.listener(move |this, _, _, cx| this.select(ix, cx)))
+                        .on_hover(cx.listener(move |this, entered: &bool, _, cx| this.hover_row(ix, *entered, cx)))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                            if e.click_count == 2 {
+                                this.double_click_row(ix, cx);
+                            } else {
+                                this.select_row(ix, e.modifiers.into(), cx);
+                            }
+                        }))
                         .on_mouse_down(MouseButton::Right, cx.listener(move |this, e: &MouseDownEvent, window, cx| {
-                            let rows = this.commit_rows(ix, None, &menu_weak);
-                            menu::open_context_for(format!("row:{ix}"), rows, e.position, window, cx);
+                            let rows = this.row_menu(ix, &menu_weak);
+                            if !rows.is_empty() {
+                                menu::open_context_for(format!("row:{ix}"), rows, e.position, window, cx);
+                            }
                         }))
                         .child(canvas(|_, _, _| {}, move |bounds, _, window, cx| paint_row(bounds, &painter.rows[ix], ix, geometry, picture.clone(), window, cx)).absolute().top_0().left_0().size_full())
                         .children(labels)
                         .child(div().flex_none().w(px(cols.graph)))
                         .child(message)
-                        .when(!off(Col::Author), |d| d.child(cell(cols.author, theme::text_disabled(), row.author.clone())))
+                        .when(!off(Col::Author), |d| {
+                            if is_collapsed(Col::Author, cols.author) && matches!(row.kind, NodeKind::Commit | NodeKind::Merge) {
+                                d.child(cell(cols.author, theme::text_disabled(), SharedString::default()).justify_center().child(tip(row.author.clone(), crate::details::avatar(&row.author, &row.email, 16.))))
+                            } else {
+                                d.child(cell(cols.author, theme::text_disabled(), row.author.clone()))
+                            }
+                        })
                         .when(!off(Col::Date), |d| d.child(cell(cols.date, theme::text_disabled(), row.date.clone())))
-                        .when(!off(Col::Sha), |d| d.child(cell(cols.sha, theme::text_disabled(), row.sha.clone()).px(px(SHA_PAD)).font_family(MONO_FONT).text_size(px(12.))))
+                        .when(!off(Col::Sha), |d| {
+                            let color = if filter { theme::text_row_dimmed() } else if branch { theme::text_row_dimmed_branch() } else if is_selected { theme::text_selected() } else { theme::text_disabled() };
+                            d.child(sha_cell(cols.sha, row, color, is_selected, group.clone(), cx))
+                        })
                         // The space past the last column takes the row's hover and selection too.
-                        .child(div().flex_1().h(px(ROW_H)).when(is_selected, |d| d.bg(theme::selected_row())).group_hover(group.clone(), |d| d.bg(theme::hover_row())))
+                        .child(div().flex_1().h(px(ROW_H)).when(is_selected, |d| d.bg(theme::selected_row())).when(!is_selected, |d| d.group_hover(group.clone(), |d| d.bg(theme::hover_row()))))
                         .children(node_tip)
                         .when(outlined, |d| d.child(div().absolute().top_0().left_0().size_full().border_1().border_color(theme::blue())))
                         .into_any_element()
@@ -582,7 +661,38 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
     .min_w_0();
     let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));
     let thumb = scrollbar(tab, cx);
-    div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(div().flex().flex_none().pr(px(SCROLLBAR_W)).overflow_hidden().child(header)).child(div().flex().flex_1().min_h_0().child(list).child(thumb)).into_any_element()
+    div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(div().flex().flex_none().pr(px(gutter)).overflow_hidden().child(header)).child(div().flex().flex_1().min_h_0().child(list).when(scrolls, |d| d.child(thumb))).into_any_element()
+}
+
+/// The Message cell: the summary, and after it what's dimmed (a stash's branch, a body's first line), cut off first.
+#[allow(clippy::too_many_arguments)]
+fn message_cell(width: f32, selected: bool, filter: bool, branch: bool, summary: SharedString, tail: impl Iterator<Item = SharedString>, dim: Hsla, group: SharedString) -> Div {
+    let color = if filter { theme::text_row_dimmed() } else if branch { theme::text_row_dimmed_branch() } else if selected { theme::text_selected() } else { theme::text_normal() };
+    div()
+        .h(px(ROW_H))
+        .flex()
+        .flex_none()
+        .w(px(width))
+        .items_center()
+        .px(px(CELL_PAD))
+        .min_w_0()
+        .overflow_hidden()
+        .text_color(color)
+        .when(selected, |d| d.bg(theme::selected_row()))
+        .when(!selected, |d| d.group_hover(group, |d| d.bg(theme::hover_row())))
+        .child(div().flex_none().max_w_full().truncate().child(summary))
+        .children(tail.map(|t| div().flex_1().min_w_0().ml(px(10.)).truncate().text_color(dim).child(t)))
+}
+
+/// The SHA cell: the hash, which copies itself; a press on it doesn't select the row.
+fn sha_cell(width: f32, row: &RowView, color: Hsla, selected: bool, group: SharedString, cx: &mut Context<GitVolt>) -> Div {
+    let id = row.id.to_string();
+    let base = div().font_family("JetBrains Mono").h(px(ROW_H)).flex().flex_none().w(px(width)).items_center().px(px(SHA_PAD)).min_w_0().overflow_hidden().when(selected, |d| d.bg(theme::selected_row())).when(!selected, |d| d.group_hover(group, |d| d.bg(theme::hover_row())));
+    if row.sha.is_empty() {
+        return base;
+    }
+    let button = div().id(SharedString::from(format!("sha-{id}"))).cursor_pointer().text_color(color).hover(|d| d.text_color(theme::text_selected()).underline()).on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(cx.listener(move |this, _, _, cx| this.copy_text(id.clone(), cx))).child(row.sha.clone());
+    base.child(tip("Copy full SHA", button))
 }
 
 /// The row after the last of a truncated graph: loads the next step.
@@ -742,6 +852,12 @@ mod tests {
     #[gpui::test]
     fn a_right_click_on_a_row_opens_its_menu_without_selecting_it(cx: &mut TestAppContext) {
         let (window, mut cx, _runtime) = with_rows(cx, 5);
+        window
+            .update(&mut cx, |v, _, _| {
+                let g = Rc::get_mut(v.tabs[0].graph.as_mut().unwrap()).unwrap();
+                g.rows.iter_mut().for_each(|r| r.kind = NodeKind::Commit);
+            })
+            .unwrap();
         cx.run_until_parked();
         let at = point(px(1100.), px(30. + 34. + 44. + 25. + ROW_H * 1.5));
         cx.simulate_mouse_down(at, MouseButton::Right, Modifiers::none());

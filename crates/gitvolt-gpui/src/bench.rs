@@ -214,12 +214,12 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
                 // `pickv Delete|Both`.
                 "pickv" => rest.split_once('|').and_then(|(row, variant)| crate::ui::menu::variant_point(row, variant, cx)),
                 "clickon" | "shiftclickon" | "ctrlclickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" => crate::ui::Ui::get(cx).anchor_ending(&rest).map(|b| b.center()),
-                "clickrow" | "rclickrow" | "dclickrow" => v.read(cx).row_point(&rest),
+                "clickrow" | "shiftclickrow" | "ctrlclickrow" | "rclickrow" | "dclickrow" => v.read(cx).row_point(&rest),
                 _ => None,
             })
             .ok()
             .flatten();
-        if target.is_none() && matches!(verb, "pick" | "pickv" | "hover" | "clickon" | "shiftclickon" | "ctrlclickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" | "clickrow" | "rclickrow" | "dclickrow") {
+        if target.is_none() && matches!(verb, "pick" | "pickv" | "hover" | "clickon" | "shiftclickon" | "ctrlclickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" | "clickrow" | "shiftclickrow" | "ctrlclickrow" | "rclickrow" | "dclickrow") {
             println!("{{\"nothing\":{:?},\"text\":{:?}}}", verb, rest);
         }
         let xy = || {
@@ -230,17 +230,17 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
             point(px(n.next().unwrap_or(0.)), px(n.next().unwrap_or(0.)))
         };
         let modifiers = match verb {
-            "shiftclickon" => Modifiers::shift(),
-            "ctrlclickon" => Modifiers::control(),
+            "shiftclickon" | "shiftclickrow" => Modifiers::shift(),
+            "ctrlclickon" | "ctrlclickrow" => Modifiers::control(),
             _ => Modifiers::default(),
         };
         let down = move |position, button, click_count| PlatformInput::MouseDown(MouseDownEvent { button, position, modifiers, click_count, first_mouse: false });
         let up = move |position, button, click_count| PlatformInput::MouseUp(MouseUpEvent { button, position, modifiers, click_count });
         let moved = |position| PlatformInput::MouseMove(MouseMoveEvent { position, pressed_button: None, modifiers: Modifiers::default() });
         let events: Vec<PlatformInput> = match verb {
-            "click" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" if verb != "click" && target.is_none() => Vec::new(),
+            "click" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" | "shiftclickrow" | "ctrlclickrow" if verb != "click" && target.is_none() => Vec::new(),
             "rclickon" | "dclickon" | "rclickrow" | "dclickrow" | "presson" | "dragto" | "releaseon" | "hover" if target.is_none() => Vec::new(),
-            "click" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1)],
+            "click" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" | "shiftclickrow" | "ctrlclickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1)],
             "rclick" | "rclickon" | "rclickrow" => vec![moved(xy()), down(xy(), MouseButton::Right, 1), up(xy(), MouseButton::Right, 1)],
             "dclick" | "dclickon" | "dclickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1), down(xy(), MouseButton::Left, 2), up(xy(), MouseButton::Left, 2)],
             "move" | "hover" => vec![moved(xy())],
@@ -360,6 +360,8 @@ impl GitVolt {
             "armed": crate::ui::arm::is_armed(cx),
             "menu": crate::ui::menu::shown(cx),
             "selected": tab.and_then(|t| t.selected),
+            "picks": tab.map(|t| t.picks.rows.clone()),
+            "compare": tab.and_then(|t| t.compare.as_ref()).map(|c| format!("{c:?}")),
             "busy": tab.and_then(|t| t.busy_reason()),
             "operation": tab.and_then(|t| t.operation()).map(|o| (o.title, o.hint, o.detail)),
             "commit": tab.and_then(|t| t.commit.as_ref()).map(|c| c.summary.to_string()),

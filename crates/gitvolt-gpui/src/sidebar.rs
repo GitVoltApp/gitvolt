@@ -26,11 +26,11 @@ const ICON_W: f32 = 13.;
 const ROW_GAP: f32 = 6.;
 const ROW_PAD: f32 = 8.;
 const DEFAULT_WEIGHT: f32 = 200.;
-pub const DEFAULT_SIDEBAR_W: f32 = 240.;
+pub const DEFAULT_SIDEBAR_W: f32 = 241.;
 pub const MIN_W: f32 = 160.;
 pub const MAX_W: f32 = 480.;
 pub const NARROW_W: f32 = 41.;
-const FILTER_H: f32 = 41.;
+const FILTER_H: f32 = 40.;
 
 /// A tree row's left padding at `depth` (1-based): a child's icon sits under its parent's name.
 pub fn row_indent(depth: u8) -> f32 {

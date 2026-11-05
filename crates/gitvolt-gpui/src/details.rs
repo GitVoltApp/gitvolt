@@ -16,7 +16,6 @@ use std::rc::Rc;
 pub const DETAILS_W: f32 = 400.;
 pub const DETAILS_MIN: f32 = 280.;
 pub const DETAILS_MAX: f32 = 720.;
-const COMMIT_H: f32 = 188.;
 const FILE_ROW_H: f32 = 26.;
 /// A tree row: `[chevron | status icon][gap][name]`, indented by level (`TREE`, fileTree.ts).
 const TREE_BASE: f32 = 8.;
@@ -222,6 +221,11 @@ pub enum Cursor {
 /// What the panel shows for the selected row, read when it's selected.
 pub struct Commit {
     pub id: SharedString,
+    pub full_id: SharedString,
+    /// A committer who isn't the author: their row carries the committed date.
+    pub committer: Option<(SharedString, String)>,
+    /// The author's date, when it differs from the committed one.
+    pub authored: Option<SharedString>,
     /// Every parent, whole.
     pub parents: Vec<SharedString>,
     pub author: SharedString,
@@ -291,55 +295,6 @@ impl GitVolt {
         .detach();
     }
 
-    fn read_compare(&mut self, spec: gitvolt_core::diff::DiffSpec, title: (SharedString, SharedString), cx: &mut Context<Self>) {
-        let Some(tab) = self.tabs.get_mut(self.active) else { return };
-        let repo = tab.id;
-        tab.history = None;
-        tab.diff = None;
-        tab.commit = None;
-        tab.files = None;
-        tab.compare = Some(title);
-        cx.notify();
-        let api = self.api.clone();
-        let done = self.rt.spawn(async move { api.dispatch(Request::FileList { repo, spec }).await });
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(files)) = done.await else { return };
-            this.update(cx, |this, cx| {
-                let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo).filter(|t| t.compare.is_some()) else { return };
-                let count = |k: &str| files[k].as_u64().unwrap_or(0) as u32;
-                let mut list = Files::new(file_changes(&files, &Origin::Commit { id: String::new() }), count("added"), count("deleted"));
-                list.by_status = tab.sort_by_status;
-                tab.files = Some(list);
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    /// `from` → `to`, in the details panel; Esc or the × leaves it.
-    pub fn compare_commits(&mut self, from: String, to: String, cx: &mut Context<Self>) {
-        let short = |s: &str| SharedString::from(s.chars().take(SHORT_SHA).collect::<String>());
-        let title = (short(&from), short(&to));
-        self.read_compare(gitvolt_core::diff::DiffSpec::Compare { from, to }, title, cx);
-    }
-
-    /// A commit against the files on disk.
-    pub fn compare_with_worktree(&mut self, from: String, cx: &mut Context<Self>) {
-        let Some(worktree) = self.tabs.get(self.active).map(|t| t.worktree.clone()) else { return };
-        let title = (SharedString::from(from.chars().take(SHORT_SHA).collect::<String>()), SharedString::from("working tree"));
-        self.read_compare(gitvolt_core::diff::DiffSpec::Worktree { from, worktree }, title, cx);
-    }
-
-    /// Whether there was a compare to leave.
-    pub fn exit_compare(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(tab) = self.tabs.get_mut(self.active).filter(|t| t.compare.is_some()) else { return false };
-        tab.compare = None;
-        tab.files = None;
-        tab.diff = None;
-        cx.notify();
-        true
-    }
 }
 
 impl Files {
@@ -685,8 +640,13 @@ impl GitVolt {
 
 fn commit_of(details: &Value, message: &Value) -> Commit {
     let short = |s: &str| s.chars().take(SHORT_SHA).collect::<String>();
+    let (who, by) = (&details["author"], &details["committer"]);
+    let differs = who["name"] != by["name"] || who["email"] != by["email"];
     Commit {
         id: short(details["id"].as_str().unwrap_or_default()).into(),
+        full_id: details["id"].as_str().unwrap_or_default().to_string().into(),
+        committer: differs.then(|| (by["name"].as_str().unwrap_or_default().to_string().into(), by["email"].as_str().unwrap_or_default().to_string())),
+        authored: (who["time"] != by["time"]).then(|| crate::model::format_date(who["time"].as_i64().unwrap_or(0)).into()),
         parents: details["parents"].as_array().map_or(&[][..], Vec::as_slice).iter().filter_map(|p| p.as_str()).map(|p| p.to_string().into()).collect(),
         author: details["author"]["name"].as_str().unwrap_or_default().to_string().into(),
         email: details["author"]["email"].as_str().unwrap_or_default().to_string(),
@@ -696,6 +656,11 @@ fn commit_of(details: &Value, message: &Value) -> Commit {
         body: message["body"].as_str().unwrap_or_default().trim().split('\n').filter(|_| message["body"].as_str().is_some_and(|b| !b.trim().is_empty())).map(|l| l.to_string().into()).collect(),
         signed: details["signed"].as_bool() == Some(true),
     }
+}
+
+/// `personLabel`.
+pub fn person_label(name: &str, email: &str) -> String {
+    if email.is_empty() { name.to_string() } else { format!("{name} <{email}>") }
 }
 
 pub fn avatar(name: &SharedString, email: &str, size: f32) -> Div {
@@ -732,11 +697,17 @@ fn segment_base(id: impl Into<ElementId>, on: bool, enabled: bool) -> Stateful<D
         .when(!enabled, |d| d.opacity(0.4))
 }
 
-fn commit_view(c: &Commit, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+/// A hash in the commit's bar: white monospace, underlined under the pointer.
+fn hash_button(id: impl Into<ElementId>, hash: &SharedString, tooltip: &'static str, cx: &mut Context<GitVolt>, run: impl Fn(&mut GitVolt, &mut Context<GitVolt>) + 'static) -> AnyElement {
+    let short: String = hash.chars().take(SHORT_SHA).collect();
+    crate::ui::tooltip::tip(tooltip, div().id(id).font_family("JetBrains Mono").text_color(theme::text_selected()).cursor_pointer().hover(|d| d.underline()).on_click(cx.listener(move |this, _, _, cx| run(this, cx))).child(short)).into_any_element()
+}
+
+/// The commit's header and message: the split's share of the panel, the header fixed and only the message scrolling.
+fn commit_view(c: &Commit, height: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let parents = c.parents.iter().enumerate().map(|(i, p)| {
         let sha = p.clone();
-        let short: String = p.chars().take(SHORT_SHA).collect();
-        div().id(("parent", i)).font_family("JetBrains Mono").text_color(theme::text_selected()).cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.go_to_commit(sha.clone(), cx))).child(short).into_any_element()
+        hash_button(("parent", i), p, "Go to parent commit", cx, move |this, cx| this.go_to_commit(sha.clone(), cx))
     });
     let parents: Vec<AnyElement> = parents.collect();
     let parent_label = match c.parents.len() {
@@ -744,52 +715,123 @@ fn commit_view(c: &Commit, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
         1 => Some("parent:"),
         _ => Some("parents:"),
     };
-    let id = |label: &'static str, sha: SharedString| div().flex().gap(px(8.)).text_color(theme::text_secondary()).child(format!("{label}:")).child(div().font_family("JetBrains Mono").text_color(theme::text_selected()).child(sha));
+    let full = c.full_id.clone();
+    let date_col = |top: Option<SharedString>, authored: Option<SharedString>| div().flex().flex_col().flex_none().ml_auto().items_end().text_size(px(12.)).line_height(px(15.6)).text_color(theme::text_normal()).children(top).children(authored.map(|a| div().text_size(px(11.)).text_color(theme::text_disabled()).child(format!("authored {a}"))));
+    let person = |name: &SharedString, email: &str, size: f32| div().flex().min_w_0().items_center().gap(px(6.)).child(avatar(name, email, size)).child(div().min_w_0().truncate().text_color(theme::text_selected()).child(name.clone()));
+    let author = div().flex().flex_none().min_h(px(32.)).items_center().gap(px(8.)).min_w_0().child(person(&c.author, &c.email, 28.)).child(date_col(c.committer.is_none().then(|| c.date.clone()), c.authored.clone()));
+    let committer = c.committer.as_ref().map(|(name, email)| div().flex().flex_none().min_h(px(32.)).items_center().gap(px(8.)).min_w_0().child(person(name, email, 20.)).child(div().text_color(theme::text_disabled()).child("committed")).child(date_col(Some(c.date.clone()), None)));
     div()
         .flex()
         .flex_col()
         .flex_none()
-        .h(px(COMMIT_H))
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .h(px(37.))
-                .items_center()
-                .px(px(12.))
-                .bg(theme::file_bar_bg())
-                .border_b_1()
-                .border_color(theme::section_border())
-                .gap(px(10.))
-                .child(div().flex().flex_1().min_w_0().child(icon("shield-check", 16., if c.signed { theme::status_added() } else { theme::text_disabled() })))
-                .child(id("commit", c.id.clone()))
-                .child(div().flex().flex_1().justify_end().gap(px(8.)).whitespace_nowrap().text_color(theme::text_secondary()).children(parent_label).child(div().flex().flex_none().gap(px(6.)).children(parents))),
-        )
+        .h(px(height))
+        .min_h(px(72.))
+        .overflow_hidden()
+        .px(px(12.))
         .child(
             div()
                 .flex()
                 .flex_col()
-                .flex_1()
-                .min_h_0()
-                .px(px(12.))
-                .pt(px(6.))
+                .flex_none()
                 .gap(px(4.))
-                .child(div().flex().flex_none().h(px(28.)).items_center().gap(px(6.)).child(avatar(&c.author, &c.email, 28.)).child(div().flex_1().min_w_0().truncate().child(c.author.clone())).child(div().flex_none().text_color(theme::text_normal()).child(c.date.clone())))
-                .when(!c.co_authors.is_empty(), |d| d.child(div().flex().flex_none().gap(px(6.)).children(c.co_authors.iter().map(|n| div().flex().items_center().gap(px(4.)).pr(px(6.)).pl(px(1.)).py(px(1.)).rounded(px(10.)).bg(theme::panel_bg1()).child(avatar(n, "", 18.)).child(n.clone())))))
+                .mb(px(6.))
                 .child(
                     div()
-                        .id("message")
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_y_scroll()
-                        .px(px(10.))
-                        .py(px(6.))
-                        .rounded(px(4.))
-                        .bg(theme::app_bg())
-                        .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).mb(px(6.)).child(c.summary.clone()))
-                        .children(c.body.iter().map(|l| div().min_h(px(18.2)).child(l.clone()))),
-                ),
+                        .flex()
+                        .flex_none()
+                        .h(px(37.))
+                        .mx(px(-12.))
+                        .px(px(12.))
+                        .items_center()
+                        .bg(theme::file_bar_bg())
+                        .border_b_1()
+                        .border_color(theme::section_border())
+                        .gap(px(10.))
+                        .child(div().flex().flex_1().min_w_0().child(icon("shield-check", 16., if c.signed { theme::status_added() } else { theme::text_disabled() })))
+                        .child(div().flex().flex_none().gap(px(8.)).text_color(theme::text_secondary()).child("commit:").child(hash_button("commit-sha", &c.id, "Copy full SHA", cx, move |this, cx| this.copy_text(full.to_string(), cx))))
+                        .child(div().flex().flex_1().justify_end().gap(px(8.)).whitespace_nowrap().text_color(theme::text_secondary()).children(parent_label).child(div().flex().flex_none().gap(px(6.)).children(parents))),
+                )
+                .child(author)
+                .children(committer)
+                .when(!c.co_authors.is_empty(), |d| d.child(div().flex().flex_none().gap(px(6.)).children(c.co_authors.iter().map(|n| div().flex().items_center().gap(px(4.)).pr(px(6.)).pl(px(1.)).py(px(1.)).rounded(px(10.)).bg(theme::panel_bg1()).child(avatar(n, "", 18.)).child(n.clone()))))),
         )
+        .child(
+            div()
+                .id("message")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .mb(px(8.))
+                .px(px(10.))
+                .pt(px(6.))
+                .pb(px(8.))
+                .rounded(px(4.))
+                .bg(theme::app_bg())
+                .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).mb(px(6.)).child(c.summary.clone()))
+                .children(c.body.iter().map(|l| div().min_h(px(18.2)).child(l.clone()))),
+        )
+}
+
+/// The line between the commit and its files, which moves.
+fn split_resizer(panel_h: f32, header: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    div().relative().flex_none().h(px(1.)).bg(theme::section_border()).child(
+        div()
+            .id("details-split")
+            .absolute()
+            .left_0()
+            .right_0()
+            .top(px(-2.))
+            .h(px(5.))
+            .cursor(CursorStyle::ResizeUpDown)
+            .hover(|d| d.bg(theme::blue()))
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                if e.click_count == 2 {
+                    this.details_split = SPLIT_DEFAULT;
+                    this.save_layout();
+                    return cx.notify();
+                }
+                this.split_drag = Some(SplitDrag { y: e.position.y.as_f32(), ratio: this.details_split, panel_h, header });
+            })),
+    )
+}
+
+/// The commit's share of the panel, dragged: the top keeps its header and a couple of message lines, the files 160 px.
+pub const SPLIT_DEFAULT: f32 = 0.25;
+
+pub fn split_bounds(panel: f32, header: f32) -> (f32, f32) {
+    if panel <= 0. {
+        return (0.1, 0.75);
+    }
+    let hi = (1. - 160. / panel).min(0.75);
+    let lo = ((header + 56.) / panel).max(0.1);
+    (lo.min(hi), hi)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SplitDrag {
+    pub y: f32,
+    pub ratio: f32,
+    pub panel_h: f32,
+    pub header: f32,
+}
+
+impl GitVolt {
+    pub fn on_split_drag(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+        let Some(d) = self.split_drag else { return };
+        if e.pressed_button != Some(MouseButton::Left) {
+            return self.end_split_drag();
+        }
+        let (lo, hi) = split_bounds(d.panel_h, d.header);
+        self.details_split = (d.ratio + (e.position.y.as_f32() - d.y) / d.panel_h).clamp(lo, hi);
+        cx.notify();
+    }
+
+    pub fn end_split_drag(&mut self) {
+        if self.split_drag.take().is_some() {
+            self.save_layout();
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -807,7 +849,7 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&FileCh
     let summary = div()
         .flex()
         .flex_none()
-        .h(px(24.))
+        .h(px(30.))
         .items_center()
         .gap(px(8.))
         .px(px(12.))
@@ -817,8 +859,7 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&FileCh
         .children(count("status-deleted", gone, theme::status_deleted()))
         .children(count("status-renamed", renamed, theme::blue()))
         .child(div().flex_1())
-        .child(div().text_color(theme::status_added()).child(format!("+{}", files.added)))
-        .child(div().text_color(theme::status_deleted()).child(format!("−{}", files.deleted)));
+        .child(div().flex().flex_none().gap(px(4.)).child(div().text_color(theme::status_added()).child(format!("+{}", files.added))).child(div().text_color(theme::status_deleted()).child(format!("−{}", files.deleted))));
     let mode = files.mode;
     let all_on = all_files && files.commit.is_some();
     let lead_button = |id: &'static str, glyph: &'static str, label: &'static str, on: bool| {
@@ -1096,7 +1137,7 @@ fn filter_row(files: &Files, input: &Entity<TextInput>, window: &Window, cx: &mu
 }
 
 pub fn details_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
-    if tab.selected.is_none() && tab.compare.is_none() {
+    if tab.selected.is_none() && tab.compare.is_none() && tab.picks.rows.is_empty() {
         return None;
     }
     let selected = tab.diff.as_ref().map(|d| d.file.clone());
@@ -1104,32 +1145,20 @@ pub fn details_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &W
         return Some(crate::wip::wip_panel(v, tab, width, height, window, cx));
     }
     let files = tab.files.as_ref().map(|f| files_view(f, &tab.file_filter, selected.as_ref(), tab.all_files, tab.keys == KeyArea::Files, width, window, cx));
-    let commit = tab.commit.as_ref().filter(|_| tab.compare.is_none()).map(|c| commit_view(c, cx));
-    let compare = tab.compare.as_ref().map(|(from, to)| {
-        div()
-            .flex()
-            .flex_none()
-            .h(px(41.))
-            .items_center()
-            .gap(px(6.))
-            .px(px(12.))
-            .border_b_1()
-            .border_color(theme::section_border())
-            .child(div().flex_1().min_w_0().truncate().child(format!("Comparing {from} → {to}")))
-            .child(crate::ui::tooltip::tip(
-                "Close (Esc)",
-                div().id("compare-close").flex().size(px(22.)).items_center().justify_center().rounded(px(3.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(cx.listener(|this, _, _, cx| {
-                    this.exit_compare(cx);
-                })).child(icon("x", 14., theme::text_secondary())),
-            ))
-    });
+    let header = 37. + 4. + 32. + 6. + if tab.commit.as_ref().is_some_and(|c| c.committer.is_some()) { 36. } else { 0. } + if tab.commit.as_ref().is_some_and(|c| !c.co_authors.is_empty()) { 26. } else { 0. };
+    let (lo, hi) = split_bounds(height, header);
+    let commit_h = (v.details_split.clamp(lo, hi) * height).round();
+    let commit = tab.commit.as_ref().filter(|_| tab.compare.is_none()).map(|c| commit_view(c, commit_h, cx));
+    let split = tab.commit.as_ref().filter(|_| tab.compare.is_none()).map(|_| split_resizer(height, header, cx));
+    let compare = tab.compare.as_ref().map(|c| crate::selection::compare_header(tab, c, cx));
+    let multi = tab.multi_ids().map(|rows| crate::selection::multi_summary(tab, rows, cx));
     Some(
         div()
             .relative()
             .flex()
             .flex_col()
             .flex_none()
-            .w(px(width))
+            .w(px(width + 1.))
             .h_full()
             .min_h_0()
             .bg(theme::panel_bg())
@@ -1137,6 +1166,8 @@ pub fn details_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &W
             .border_color(theme::section_border())
             .children(compare)
             .children(commit)
+            .children(split)
+            .children(multi)
             .children(files)
             .child(details_resizer(width, cx))
             .into_any_element(),

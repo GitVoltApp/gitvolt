@@ -649,22 +649,24 @@ impl GitVolt {
     }
 
     /// Cherry-pick or revert one commit.
-    pub fn start_sequence(&mut self, pick: bool, oid: String, no_commit: bool, cx: &mut Context<Self>) {
+    /// Cherry-pick or revert `commits` (newest first) on `branch`; the autostash's question is the write's.
+    pub fn start_sequence(&mut self, pick: bool, commits: Vec<crate::selection::CommitRef>, no_commit: bool, branch: String, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
-        let (ctx, head, branch) = (tab.write_target(), tab.head_sha(), tab.head_branch().unwrap_or_else(|| "HEAD".into()));
+        let (ctx, head) = (tab.write_target(), tab.head_sha());
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let method = if pick { "cherryPick" } else { "revert" };
-        let short: String = oid.chars().take(crate::model::SHORT_SHA).collect();
-        let send_oid = oid;
-        let w = Write::new(&ctx, move |asked| call(method, json!({ "repo": repo, "worktree": worktree, "oids": [send_oid], "noCommit": no_commit, "expect": { "head": head, "refs": {} }, "confirm": { "autostash": asked.autostash } }))).on_success(move |this, o, cx| {
+        let oids: Vec<String> = commits.iter().map(|c| c.oid.clone()).collect();
+        let count = commits.len();
+        let what = if let [one] = commits.as_slice() { one.oid.chars().take(crate::model::SHORT_SHA).collect::<String>() } else { format!("{count} commits") };
+        let w = Write::new(&ctx, move |asked| call(method, json!({ "repo": repo, "worktree": worktree, "oids": oids, "noCommit": no_commit, "expect": { "head": head, "refs": {} }, "confirm": { "autostash": asked.autostash } }))).on_success(move |this, o, cx| {
             let verb = if pick { "Cherry-picked" } else { "Reverted" };
             let committed = o["committed"].as_bool() == Some(true);
             let warn = |m: String, cx: &mut Context<GitVolt>| toast::show_with(m, Options { warning: true, ..Default::default() }, cx);
             if o["status"] == "done" {
                 if committed {
-                    toast::show(if pick { format!("{verb} {short} onto {branch}") } else { format!("{verb} {short}") }, cx);
+                    toast::show(if pick { format!("{verb} {what} onto {branch}") } else { format!("{verb} {what}") }, cx);
                 } else {
-                    toast::show(format!("{verb} {short} without committing: the changes are staged"), cx);
+                    toast::show(format!("{verb} {what} without committing: the changes are staged"), cx);
                 }
             } else {
                 let at = o["at"].as_str().map_or(String::new(), |a| format!(" at {}", a.chars().take(crate::model::SHORT_SHA).collect::<String>()));
@@ -673,7 +675,8 @@ impl GitVolt {
                     let e = e.trim_start_matches("error: ").trim_start_matches("fatal: ").trim_end_matches('.');
                     warn(format!("The {op} couldn't commit{at}: {e}. Its changes are staged."), cx);
                 } else if !committed {
-                    warn(format!("Stopped on conflicts in {}{at}", files_word(o["files"].as_u64().unwrap_or(0) as usize)), cx);
+                    let rest = if count > 1 { format!(": {} of {count} applied, the rest weren't", o["applied"].as_u64().unwrap_or(0)) } else { String::new() };
+                    warn(format!("Stopped on conflicts in {}{at}{rest}", files_word(o["files"].as_u64().unwrap_or(0) as usize)), cx);
                 }
             }
             if !committed {

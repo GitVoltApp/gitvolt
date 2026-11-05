@@ -20,7 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 
-actions!(gitvolt, [SelectNext, SelectPrevious, ClearSelection, Copy, SelectAll, PageDown, PageUp]);
+actions!(gitvolt, [SelectNext, SelectPrevious, ExtendNext, ExtendPrevious, ClearSelection, Copy, SelectAll, PageDown, PageUp]);
 
 const TITLE_H: f32 = 30.;
 const TAB_H: f32 = 34.;
@@ -34,6 +34,8 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("down", SelectNext, Some("GitVolt")),
         KeyBinding::new("up", SelectPrevious, Some("GitVolt")),
+        KeyBinding::new("shift-down", ExtendNext, Some("GitVolt")),
+        KeyBinding::new("shift-up", ExtendPrevious, Some("GitVolt")),
         KeyBinding::new("escape", ClearSelection, Some("GitVolt")),
         KeyBinding::new("ctrl-c", Copy, Some("GitVolt")),
         KeyBinding::new("ctrl-a", SelectAll, Some("GitVolt")),
@@ -81,7 +83,9 @@ pub struct Tab {
     pub zoom_input: Entity<TextInput>,
     pub list: UniformListScrollHandle,
     /// A compare in the details panel: from and to, as its bar names them.
-    pub compare: Option<(SharedString, SharedString)>,
+    pub compare: Option<crate::selection::Compare>,
+    /// A compare's or multi-selection's rows; `selected` is then the keyboard's row among them.
+    pub picks: crate::selection::Picks,
     pub find: crate::find::FindState,
     /// The WIP panel's own state.
     pub wip: crate::wip::WipUi,
@@ -110,6 +114,8 @@ pub struct Tab {
     /// The rows of the branch whose chip the pointer rests on; the others dim.
     pub branch_keep: Option<Rc<HashSet<usize>>>,
     pub branch_hover: u64,
+    /// The commit whose dimmed branch chip the pointer's hover shows.
+    pub hover_chip: Option<SharedString>,
     /// How deep the graph reads, past `GRAPH_LIMIT` once a jump or Load older asked for more.
     pub limit: u32,
     /// What to select once the graph that's loading holds it.
@@ -166,6 +172,7 @@ impl Tab {
             zoom_input,
             list: UniformListScrollHandle::new(),
             compare: None,
+            picks: Default::default(),
             find: crate::find::FindState::new(id, cx),
             wip: crate::wip::WipUi::new(id, cx),
             row_drafts: HashMap::new(),
@@ -183,6 +190,7 @@ impl Tab {
             hidden_columns: HashSet::new(),
             branch_keep: None,
             branch_hover: 0,
+            hover_chip: None,
             limit: GRAPH_LIMIT,
             select_after_load: None,
             error: None,
@@ -213,6 +221,9 @@ pub struct GitVolt {
     pub side_drag: SideDrag,
     pub last_pushes: PushCache,
     pub details_w: f32,
+    /// The commit's share of the details panel, and its divider being dragged.
+    pub details_split: f32,
+    pub split_drag: Option<crate::details::SplitDrag>,
     pub column_drag: Option<ColumnDrag>,
     pub messages: MessageCache,
     /// A tab being dragged along the strip.
@@ -271,7 +282,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -399,6 +410,7 @@ impl GitVolt {
                         // The selection follows its commit across a reload.
                         let selected = tab.selected.and_then(|i| tab.graph.as_ref()?.rows.get(i)).map(|r| r.id.to_string());
                         tab.selected = selected.and_then(|id| graph.0.by_sha.get(&id).copied());
+                        let before: Vec<SharedString> = if tab.picks.rows.is_empty() { Vec::new() } else { tab.graph.as_ref().map_or(Vec::new(), |g| g.rows.iter().map(|r| r.id.clone()).collect()) };
                         tab.graph = Some(Rc::new(graph.0));
                         crate::bench::mark("graph_read");
                         tab.side.sections = sections.0;
@@ -408,6 +420,7 @@ impl GitVolt {
                         this.sync_paused(repo);
                         this.check_amend(repo, cx);
                         this.after_stop(repo, cx);
+                        this.remap_picks(repo, &before, cx);
                     }
                     Ok(Err(e)) => tab.error = Some(e.message.into()),
                     Err(e) => tab.error = Some(e.to_string().into()),
@@ -415,7 +428,7 @@ impl GitVolt {
                 let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
                 // A WIP row that's gone (the last change committed) leaves the panel with it; a commit
                 // that's gone (undone) too.
-                if (was_wip && !tab.is_wip_selected()) || (tab.selected.is_none() && tab.compare.is_none()) {
+                if (was_wip && !tab.is_wip_selected()) || (tab.selected.is_none() && tab.compare.is_none() && tab.picks.rows.is_empty()) {
                     tab.selected = None;
                     tab.commit = None;
                     tab.files = None;
@@ -509,6 +522,8 @@ impl GitVolt {
         let Some(row) = tab.graph.as_ref().and_then(|g| g.rows.get(ix)) else { return };
         let (kind, id, worktree) = (row.kind, row.id.to_string(), row.worktree.clone());
         tab.selected = Some(ix);
+        tab.compare = None;
+        tab.picks = Default::default();
         tab.keys = KeyArea::Graph;
         tab.commit = None;
         tab.files = None;
@@ -566,6 +581,21 @@ impl GitVolt {
             _ if self.diff_open() => self.scroll_diff(by as f32, cx),
             _ => self.move_selection(by, cx),
         }
+    }
+
+    /// Shift+↑ / ↓: the range from the anchor grows, in the graph. False: they're not the graph's (a file or the rebase
+    /// editor is on top, or the keyboard's elsewhere).
+    fn extend(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
+        let Some(tab) = self.tabs.get(self.active) else { return false };
+        if tab.keys != KeyArea::Graph || tab.diff.is_some() || tab.history.is_some() || tab.rebase_shown().is_some() {
+            return false;
+        }
+        let Some(count) = tab.graph.as_ref().map(|g| g.rows.len()).filter(|n| *n > 0) else { return false };
+        let at = tab.selected.map_or(0, |s| if down { (s + 1).min(count - 1) } else { s.saturating_sub(1) });
+        if tab.selected != Some(at) {
+            self.select_row(at, crate::selection::SelectMods { ctrl: false, shift: true }, cx);
+        }
+        true
     }
 
     pub fn close_tab(&mut self, ix: usize, cx: &mut Context<Self>) {
@@ -761,6 +791,7 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .flex_none()
                 .items_center()
                 .gap(px(6.))
+                .h(px(TAB_H))
                 .min_w(px(90.))
                 .max_w(px(220.))
                 .pl(px(12.))
@@ -1209,7 +1240,7 @@ impl Render for GitVolt {
         // The rebase editor takes the sidebar's place too.
         let no_sidebar = tab.is_some_and(|t| t.rebase_shown().is_some());
         let left = if no_sidebar { 0. } else if folded { NARROW_W } else { self.sidebar_w };
-        let center = viewport.width.as_f32() - left - if details.is_some() { self.details_w } else { 0. };
+        let center = viewport.width.as_f32() - left - if details.is_some() { self.details_w + 1. } else { 0. };
         let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
         if let Some(m) = self.tabs.get_mut(self.active).and_then(Tab::merge_shown_mut) {
             m.set_size(center, body_h - crate::diff::view::HEADER_H);
@@ -1256,6 +1287,16 @@ impl Render for GitVolt {
             .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.arrow(true, cx)))
             .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.arrow(false, cx)))
+            .on_action(cx.listener(|this, _: &ExtendNext, window, cx| {
+                if crate::ui::input::is_typing(window) || !this.extend(true, cx) {
+                    cx.propagate();
+                }
+            }))
+            .on_action(cx.listener(|this, _: &ExtendPrevious, window, cx| {
+                if crate::ui::input::is_typing(window) || !this.extend(false, cx) {
+                    cx.propagate();
+                }
+            }))
             .on_action(cx.listener(|this, _: &Copy, _, cx| this.copy_selection(cx)))
             .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.select_all(cx)))
             .on_action(cx.listener(|this, _: &PageDown, window, cx| this.page(true, window, cx)))
@@ -1271,11 +1312,12 @@ impl Render for GitVolt {
                 }
             }))
             .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
-                if this.close_open_in(cx) || this.exit_compare(cx) {
+                if this.close_open_in(cx) {
                 } else if this.tabs.get(this.active).is_some_and(|t| t.history.is_some()) {
                     this.close_history(cx);
                 } else if this.diff_open() {
                     this.close_file(cx);
+                } else if this.exit_compare(cx) {
                 } else if let Some(tab) = this.tabs.get_mut(this.active) {
                     tab.selected = None;
                     tab.commit = None;
@@ -1285,6 +1327,7 @@ impl Render for GitVolt {
             }))
             .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| {
                 this.on_merge_drag(e, window, cx);
+                this.on_split_drag(e, cx);
                 this.on_rebase_drag(e, cx);
                 this.on_side_drag(e, cx);
                 this.on_column_drag(e, cx);
@@ -1293,6 +1336,7 @@ impl Render for GitVolt {
             }))
 .on_mouse_up(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.end_merge_drag();
+                this.end_split_drag();
                 this.end_rebase_drag(cx);
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
@@ -1310,6 +1354,7 @@ impl Render for GitVolt {
             }))
 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.end_merge_drag();
+                this.end_split_drag();
                 this.end_rebase_drag(cx);
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
@@ -1332,7 +1377,7 @@ impl Render for GitVolt {
             .size_full()
             .font_family(self.font.clone())
             .text_size(px(13.))
-            .line_height(px(18.2))
+            .line_height(relative(1.4))
             .bg(theme::app_bg())
             .text_color(theme::text_normal())
             .child(app)
@@ -1357,7 +1402,7 @@ pub mod tests {
     /// Neither a commit nor WIP: selecting one would read on the runtime, whose wake-up from
     /// another thread GPUI's deterministic test scheduler refuses.
     fn row(i: usize) -> RowView {
-        RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: Vec::new(), stash_branch: None, wip: None }
+        RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: Vec::new(), stash_branch: None, body: SharedString::default(), wip: None }
     }
 
     pub fn with_rows(cx: &mut TestAppContext, count: usize) -> (WindowHandle<GitVolt>, VisualTestContext, tokio::runtime::Runtime) {
@@ -1375,7 +1420,7 @@ pub mod tests {
                         let rows: Vec<RowView> = (0..count).map(row).collect();
                         let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
                         let mut tab = Tab::new(1, "fixture".into(), cx);
-                        tab.graph = Some(Rc::new(GraphView { rows, max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default() }));
+                        tab.graph = Some(Rc::new(GraphView { rows, max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default(), membership: Vec::new() }));
                         v.tabs.push(tab);
                         window.focus(&v.focus, cx);
                         v

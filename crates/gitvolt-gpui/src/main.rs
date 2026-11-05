@@ -27,6 +27,7 @@ mod open_in;
 mod ops;
 mod palette;
 mod refs;
+mod selection;
 mod sidebar;
 mod sync;
 mod table;

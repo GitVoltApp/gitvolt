@@ -455,7 +455,7 @@ impl WipUi {
 impl Tab {
     /// The worktree of the selected WIP row.
     pub fn wip_worktree(&self) -> Option<&str> {
-        if self.compare.is_some() {
+        if self.compare.is_some() || !self.picks.rows.is_empty() {
             return None;
         }
         let row = self.graph.as_ref()?.rows.get(self.selected?)?;
@@ -2136,7 +2136,7 @@ pub fn wip_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Windo
         .flex()
         .flex_col()
         .flex_none()
-        .w(px(width))
+        .w(px(width + 1.))
         .h_full()
         .min_h_0()
         .bg(theme::panel_bg())
@@ -2403,7 +2403,7 @@ mod ui_tests {
     }
 
     fn wip_row() -> RowView {
-        RowView { id: "wip".into(), kind: NodeKind::Wip, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: Some("/w".into()), email: String::new(), parents: vec!["abc".into()], stash_branch: None, wip: Some(Default::default()) }
+        RowView { id: "wip".into(), kind: NodeKind::Wip, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: Some("/w".into()), email: String::new(), parents: vec!["abc".into()], stash_branch: None, body: SharedString::default(), wip: Some(Default::default()) }
     }
 
     /// A window with the WIP row selected and its lists in.
@@ -2414,7 +2414,7 @@ mod ui_tests {
             .update(&mut cx, |v, _, cx| {
                 let by_sha = std::collections::HashMap::new();
                 v.tabs[0].worktree = "/w".into();
-                v.tabs[0].graph = Some(Rc::new(GraphView { rows: vec![wip_row()], max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: Some("abc".into()), worktrees: Vec::new(), in_progress: Default::default() }));
+                v.tabs[0].graph = Some(Rc::new(GraphView { rows: vec![wip_row()], max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: Some("abc".into()), worktrees: Vec::new(), in_progress: Default::default(), membership: Vec::new() }));
                 v.tabs[0].selected = Some(0);
                 v.put_wip(1, "/w".into(), &u, &s, cx);
                 cx.notify();
