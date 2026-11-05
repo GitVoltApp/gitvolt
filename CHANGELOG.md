@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-05
+
 ### Fixed
 
 - **Activity log.** A push's, clone's or fetch's entry keeps each progress phase's final line
