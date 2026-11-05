@@ -292,6 +292,8 @@ struct Build {
     params: Params,
     /// What a suggestion replaces, when the caller knows it.
     base: Option<super::SuggestionBase>,
+    /// The last split row continues into the next.
+    joined_before: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -1031,6 +1033,18 @@ impl Build {
                         }
                     }
                 }
+                // `.md-split-joined + .md-split-row`: a list split into rows keeps its items' gap.
+                if std::mem::replace(&mut self.joined_before, *joined) {
+                    for col in &mut cols {
+                        if let BoxKind::Flow(kids) = &mut col.kind
+                            && let Some(BoxNode { kind: BoxKind::Flow(items), padding, .. }) = kids.first_mut()
+                            && padding.left > 0.
+                            && let Some(first) = items.first_mut()
+                        {
+                            first.margin.top = 2.;
+                        }
+                    }
+                }
                 let id = self.id();
                 let mut n = BoxNode::new(id, BoxKind::Columns { cols, gap: 24. }, start);
                 n.mark = *mark;
@@ -1223,13 +1237,23 @@ pub fn plain(text: &str, params: Params, note: Option<&str>) -> Built {
 
 /// The tree's boxes.
 pub fn build(dom: &[Dom], params: Params, base: Option<super::SuggestionBase>) -> Built {
-    let mut b = Build { out: Built::default(), params, base };
+    let mut b = Build { out: Built::default(), params, base, joined_before: false };
     let root = TextStyle { family: Family::Reading, size: params.font_px, weight: 400, italic: false, color: Tok::TextNormal, line: LineH::Num(params.line_height), valign: VAlign::Base, link: None, strike: false, underline: false, code: false, word: None, tint: None };
     let ctx = Ctx { style: root, align: Align::None, list_depth: 0, pre: false, pre_line: false, nowrap: false, old_side: false, in_link: false, tint: None };
     let mut tops = b.children(dom, &ctx);
     // `.md > :first-child`, `.md > :last-child`.
     if let Some(first) = tops.first_mut() {
         first.margin.top = 0.;
+        // `.md > .md-split-row:first-child > .md-split-cell > :first-child`.
+        if let BoxKind::Columns { cols, .. } = &mut first.kind {
+            for col in cols {
+                if let BoxKind::Flow(kids) = &mut col.kind
+                    && let Some(k) = kids.first_mut()
+                {
+                    k.margin.top = 0.;
+                }
+            }
+        }
     }
     if let Some(last) = tops.last_mut() {
         last.margin.bottom = 0.;

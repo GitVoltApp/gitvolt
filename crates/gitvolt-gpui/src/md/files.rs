@@ -130,7 +130,7 @@ impl GitVolt {
                 by_sha.iter().find(|s| s.starts_with(&p)).cloned()
             })),
         };
-        let opts = MdOptions { ctx, old_ctx: Some(old_ctx), env, flavor: Flavor::Github, frontmatter: true, params, pane: true, base: None, worktree, reading_font: reading, max_bytes: DEFAULT_MAX_BYTES, measure_ch: measure };
+        let opts = MdOptions { ctx, old_ctx: Some(old_ctx), env, flavor: Flavor::Github, frontmatter: true, params, pane: true, base: None, worktree, reading_font: reading, max_bytes: DEFAULT_MAX_BYTES, measure_ch: measure, ruled: !file_view, split };
         let same_place = diff.md.as_ref().is_some_and(|m| m.key == key);
         let keep = same_place;
         if !same_place {

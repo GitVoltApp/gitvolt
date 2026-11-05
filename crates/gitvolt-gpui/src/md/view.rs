@@ -68,11 +68,15 @@ pub struct MdOptions {
     pub max_bytes: usize,
     /// `--md-measure`: in characters.
     pub measure_ch: Option<f32>,
+    /// A rendered diff's pane: an overview ruler stands in for its scrollbar, and the text keeps clear of it.
+    pub ruled: bool,
+    /// Side by side: two reading columns and the gap between them.
+    pub split: bool,
 }
 
 impl MdOptions {
     pub fn for_comment(repo: u32, env: LinkEnv, flavor: Flavor, params: Params) -> Self {
-        Self { ctx: MdContext::Forge { repo }, old_ctx: None, env, flavor, frontmatter: false, params, pane: false, base: None, worktree: String::new(), reading_font: None, max_bytes: MR_BODY_MAX_BYTES, measure_ch: None }
+        Self { ctx: MdContext::Forge { repo }, old_ctx: None, env, flavor, frontmatter: false, params, pane: false, base: None, worktree: String::new(), reading_font: None, max_bytes: MR_BODY_MAX_BYTES, measure_ch: None, ruled: false, split: false }
     }
 }
 
@@ -578,8 +582,14 @@ impl MdState {
         if !self.opts.pane {
             return (0., w);
         }
-        let room = (w - 48. - BAR).max(0.);
-        let measure = self.opts.measure_ch.map_or(880., |ch| ch * (self.opts.params.font_px * 0.5).round());
+        let room = if self.opts.ruled { (w - 24. - 54.).max(0.) } else { (w - 48. - BAR).max(0.) };
+        let ch = (self.opts.params.font_px * 0.5).round();
+        let measure = match (self.opts.split, self.opts.measure_ch) {
+            (true, Some(n)) => 2. * n * ch + 24.,
+            (true, None) => 1784.,
+            (false, Some(n)) => n * ch,
+            (false, None) => 880.,
+        };
         let cw = room.min(measure);
         (24. + (room - cw) / 2., cw)
     }
@@ -1323,7 +1333,8 @@ impl PaintCx<'_> {
                 let b = Bounds::new(point(px(x), px(y)), size(px(w), px(h)));
                 window.paint_image(b, b, Corners::default(), thumb.as_ref().unwrap_or(image).clone(), 0, false).ok();
                 if let Some(ins) = s.src.word {
-                    window.paint_quad(PaintQuad { bounds: b, corner_radii: Corners::default(), background: gpui::transparent_black().into(), border_widths: Edges::all(px(2.)), border_color: if ins { theme::status_added() } else { theme::status_deleted() }, border_style: BorderStyle::Solid });
+                    // An outline: outside the picture.
+                    window.paint_quad(PaintQuad { bounds: b.dilate(px(2.)), corner_radii: Corners::default(), background: gpui::transparent_black().into(), border_widths: Edges::all(px(2.)), border_color: if ins { theme::status_added() } else { theme::status_deleted() }, border_style: BorderStyle::Solid });
                 }
                 if self.st.focused == Some(Focus::Image(slot)) {
                     window.paint_quad(PaintQuad { bounds: b.dilate(px(4.)), corner_radii: Corners::default(), background: gpui::transparent_black().into(), border_widths: Edges::all(px(2.)), border_color: theme::blue(), border_style: BorderStyle::Solid });
@@ -1474,7 +1485,8 @@ impl PaintCx<'_> {
                 }
                 let row_x = tx + 0.5;
                 let row_w = l.width - 1.;
-                if let Some(bg) = rb.bg {
+                // An added or removed row's tint takes the zebra's place.
+                if let Some(bg) = rb.bg.filter(|_| !matches!(rb.mark, Some(Mark::Added | Mark::Removed))) {
                     q(window, row_x, ry, row_w, row.h, bg.color());
                 }
                 if let Some(m) = rb.mark {
@@ -2261,7 +2273,7 @@ impl MdView {
             let _ = by;
             let w = st.bounds.size.width.as_f32();
             let x = (e.position.x - bx).as_f32();
-            if st.opts.pane && x >= w - BAR && st.max_scroll() > 0. {
+            if st.opts.pane && !st.opts.ruled && x >= w - BAR && st.max_scroll() > 0. {
                 drop(st);
                 self.pane_bar_press(e.position.y, cx);
                 return;
@@ -2754,7 +2766,7 @@ impl Element for MdElement {
                     pc.paint_node(&d.built.tops[i], laid, origin_x, y, window, cx);
                 }
             }
-            if st.opts.pane && st.max_scroll() > 0. {
+            if st.opts.pane && !st.opts.ruled && st.max_scroll() > 0. {
                 let (h, total) = (st.view_h, st.max_scroll() + st.view_h);
                 let thumb = (h * h / total.max(1.)).max(24.);
                 let top = (h - thumb) * (st.scroll / st.max_scroll().max(1.));

@@ -1324,7 +1324,7 @@ fn sided(n: &Node, side: Side) -> Vec<Node> {
         }
         Kind::TableRow => {
             if n.data().and_then(|d| d.diff) == Some(other) {
-                let mut row = Node::with(Kind::TableRow, n.children.iter().map(|_| Node::with(Kind::TableCell, vec![Node::text(" ")])).collect());
+                let mut row = Node::with(Kind::TableRow, n.children.iter().map(|_| Node::with(Kind::TableCell, vec![Node::text("\u{a0}")])).collect());
                 row.data_mut().empty = true;
                 vec![row]
             } else {

@@ -203,6 +203,8 @@ fn item_text<'a>(item: &Item, stream: &'a str) -> &'a str {
 fn box_size(item: &Item, shaped: &Shaped, s: &mut dyn Shaper, stream: &str, max_w: f32) -> Option<(f32, f32, f32)> {
     match item {
         Item::Image { slot, style } => {
+            // A changed word's picture sits in half the room, beside the other side's.
+            let max_w = if style.word.is_some() { (max_w * 0.5 - 4.).max(1.) } else { max_w };
             let (w, h) = match s.image(*slot) {
                 ImageState::Shown { w, h } => {
                     let scale = if w > max_w && max_w > 0. { max_w / w } else { 1. };
@@ -396,6 +398,7 @@ pub fn layout_inline(ib: &InlineBlock, width: f32, stream: &str, s: &mut dyn Sha
     let mut y = 0.;
     for list in lines {
         let (mut above, mut below) = (strut_above, strut_below);
+        let mut top_aligned: f32 = 0.;
         let mut frags = Vec::with_capacity(list.len());
         let mut right: f32 = 0.;
         for (item, a, b, fx, w) in list {
@@ -422,12 +425,23 @@ pub fn layout_inline(ib: &InlineBlock, width: f32, stream: &str, s: &mut dyn Sha
                     let (_, ab, h) = box_size(other, &shaped[item], s, stream, width).unwrap_or((0., 0., 0.));
                     frag.above = ab;
                     frag.h = h;
-                    above = above.max(ab);
-                    below = below.max(h - ab);
+                    if matches!(other, Item::Image { style, .. } if style.word.is_some()) {
+                        // `vertical-align: top`: it doesn't move the baseline, and makes the line as tall.
+                        top_aligned = top_aligned.max(h);
+                    } else {
+                        above = above.max(ab);
+                        below = below.max(h - ab);
+                    }
                     right = right.max(fx + w);
                 }
             }
             frags.push(frag);
+        }
+        below = below.max(top_aligned - above);
+        for f in &mut frags {
+            if matches!(&ib.items[f.item as usize], Item::Image { style, .. } if style.word.is_some()) {
+                f.above = above;
+            }
         }
         let h = above + below;
         let offset = match ib.align {
@@ -680,6 +694,12 @@ pub fn layout_box(node: &BoxNode, avail: f32, stream: &str, s: &mut dyn Shaper) 
                 let l = layout_box(c, col_w, stream, s);
                 h = h.max(l.h + l.mt + l.mb);
                 placed.push(Placed { x: inner_x + i as f32 * (col_w + gap), y: pad_top + l.mt, laid: l });
+            }
+            // A side with nothing here: its placeholder fills the row, less its margin.
+            for (p, c) in placed.iter_mut().zip(cols) {
+                if matches!(c.kind, BoxKind::Hatch) {
+                    p.laid.h = (h - c.margin.bottom).max(0.);
+                }
             }
             laid.h = h + pad_top + pad_bottom;
             laid.kind = LaidKind::Flow(placed);
