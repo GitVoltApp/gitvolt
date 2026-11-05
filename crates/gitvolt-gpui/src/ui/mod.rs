@@ -88,6 +88,11 @@ impl Ui {
     }
 
     /// Where an anchor was last painted.
+    /// For a script: an anchor by the end of its key.
+    pub fn anchor_ending(&self, end: &str) -> Option<Bounds<Pixels>> {
+        self.anchors.iter().chain(self.last_anchors.iter()).find(|(k, _)| k.ends_with(end)).map(|(_, b)| *b)
+    }
+
     pub fn anchor(&self, key: &str) -> Option<Bounds<Pixels>> {
         self.anchors.get(key).or_else(|| self.last_anchors.get(key)).copied()
     }

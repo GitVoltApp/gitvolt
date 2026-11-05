@@ -1050,12 +1050,12 @@ pub fn undo_history_rows(loaded: &[Value], s: Option<&JournalState>, ctx: &Write
 
 /// The Fetch/Pull ▾: the default action's choices; picking sets it and runs nothing.
 pub fn sync_menu_rows(mode: SyncMode, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
-    let mut rows = vec![MenuRow::header("fetch.title", "Select a default pull/fetch operation to execute when clicking this button")];
+    let mut rows = vec![MenuRow::note("Select a default pull/fetch operation to execute when clicking this button", 2)];
     for (m, label) in [(SyncMode::FetchAll, "Fetch All"), (SyncMode::FfOrMerge, "Pull (fast-forward if possible)"), (SyncMode::FfOnly, "Pull (fast-forward only)"), (SyncMode::Rebase, "Pull (rebase)")] {
         let weak = this.clone();
-        rows.push(MenuRow::action(format!("fetch.{}", m.key()), label, if m == mode { "check" } else { "" }, label, move |_, cx| {
+        rows.push(MenuRow::action(format!("fetch.{}", m.key()), label, "", label, move |_, cx| {
             weak.update(cx, |v, cx| v.set_sync_mode(m, cx)).ok();
-        }));
+        }).radio(m == mode));
     }
     rows
 }
@@ -1070,20 +1070,20 @@ pub fn push_menu_rows(v: &GitVolt, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         for (name, full, _) in branches.into_iter().filter(|x| x.0 == b.name) {
             let current = b.upstream.as_deref() == Some(full.as_str());
             let (weak, c, branch, g, n) = (this.clone(), ctx.clone(), b.name.clone(), group.clone(), name.clone());
-            rows.push(MenuRow::action(format!("push.upstream.{group}"), format!("{group}/{name}"), if current { "circle-stop" } else { "git-branch" }, if current { format!("{} tracks {group}/{name}", b.name) } else { format!("Track {group}/{name} (pushes nothing)") }, move |_, cx| {
+            rows.push(MenuRow::action(format!("push.upstream.{group}"), format!("{group}/{name}"), if current { "circle-dot" } else { "circle" }, if current { format!("{} tracks {group}/{name}", b.name) } else { format!("Track {group}/{name} (pushes nothing)") }, move |_, cx| {
                 let (c, branch, g, n) = (c.clone(), branch.clone(), g.clone(), n.clone());
                 weak.update(cx, |v, cx| v.set_upstream(c, branch, Some((g, n)), cx)).ok();
             }));
         }
     }
     let (w1, c1, name) = (this.clone(), ctx.clone(), b.name.clone());
-    rows.push(MenuRow::action("push.otherBranch", "Other branch…", "git-branch", format!("Choose the remote branch {} tracks", b.name), move |_, cx| {
+    rows.push(MenuRow::action("push.otherBranch", "Other branch…", "arrow-up-right", format!("Choose the remote branch {} tracks", b.name), move |_, cx| {
         let (c, name) = (c1.clone(), name.clone());
         w1.update(cx, |v, cx| v.pick_upstream(c, name, cx)).ok();
     }));
     rows.push(MenuRow::Separator);
     let (w2, target) = (this.clone(), b.push_target.clone());
-    let force = MenuRow::action("push.force", "Force push (with lease)…", "upload", format!("Replace {} with {}, only if nobody else pushed since your last fetch", target.as_deref().unwrap_or("the remote branch"), b.name), {
+    let force = MenuRow::action("push.force", "Force push (with lease)…", "shield-alert", format!("Replace {} with {}, only if nobody else pushed since your last fetch", target.as_deref().unwrap_or("the remote branch"), b.name), {
         let b = b.clone();
         move |window, cx| {
             let (ctx, b) = (ctx.clone(), b.clone());
@@ -1125,7 +1125,7 @@ pub fn sync_rows(v: &GitVolt, b: &LocalBranch, this: &WeakEntity<GitVolt>) -> Ve
     }
     if !nothing_to_push(b) {
         let (w1, c1, b1) = (this.clone(), ctx.clone(), b.clone());
-        let row = MenuRow::action("sync.push", "Push", "upload", push_label(b), move |_, cx| {
+        let row = MenuRow::action("sync.push", "Push", "arrow-up-from-line", push_label(b), move |_, cx| {
             let (c, bb) = (c1.clone(), b1.clone());
             w1.update(cx, |v, cx| v.push_branch(c, bb, Origin::None, cx)).ok();
         });
@@ -1189,6 +1189,7 @@ fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, this: WeakEnt
     });
     let focus = input.read(cx).focus.clone();
     let name = b.name;
+    let stops = [cx.focus_handle().tab_stop(true), cx.focus_handle().tab_stop(true), cx.focus_handle().tab_stop(true)];
     let mut m = modal::Modal::new(ID, move |_, cx| {
         let options: controls::SelectOptions<String> = Rc::new(remotes.iter().map(|r| (r.clone(), SharedString::from(r.clone()), None)).collect());
         let chosen = remote.borrow().clone();
@@ -1205,7 +1206,7 @@ fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, this: WeakEnt
             cx,
         );
         let ok = !input.read(cx).text().trim().is_empty();
-        let (s, t) = (submit.clone(), track.clone());
+        let (s, s2, t, t2) = (submit.clone(), submit.clone(), track.clone(), track.clone());
         div()
             .flex()
             .flex_col()
@@ -1221,14 +1222,25 @@ fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, this: WeakEnt
                     .child("/")
                     .child(div().flex_1().min_w(px(220.)).h(px(28.)).px(px(7.)).flex().items_center().bg(crate::theme::app_bg()).border_1().border_color(crate::theme::blue()).rounded(px(4.)).text_color(crate::theme::text_selected()).child(input.clone())),
             )
-            .child(check_row("push-track", track.get(), "Track it", move |on, _, cx| {
-                t.set(on);
-                cx.refresh_windows();
-            }))
+            .child(controls::tabbable(
+                check_row("push-track", track.get(), "Track it", move |on, _, cx| {
+                    t.set(on);
+                    cx.refresh_windows();
+                })
+                .border_1()
+                .border_color(transparent_black())
+                .rounded(px(3.))
+                .ml(px(-1.)),
+                &stops[0],
+                move |_, cx| {
+                    t2.set(!t2.get());
+                    cx.refresh_windows();
+                },
+            ))
             .child(
                 modal::actions_row()
-                    .child(controls::button("push-cancel", "Cancel", ButtonKind::Quiet, true).on_click(|_, window, cx| modal::close(ID, window, cx)))
-                    .child(controls::button("push-ok", "Push", ButtonKind::Positive, ok).when(ok, |d| d.on_click(move |_, window, cx| s(window, cx)))),
+                    .child(controls::tabbable(controls::button("push-cancel", "Cancel", ButtonKind::Quiet, true).on_click(|_, window, cx| modal::close(ID, window, cx)), &stops[1], |window, cx| modal::close(ID, window, cx)))
+                    .child(controls::tabbable(controls::button("push-ok", "Push", ButtonKind::Positive, ok).when(ok, |d| d.on_click(move |_, window, cx| s(window, cx))), &stops[2], move |window, cx| s2(window, cx))),
             )
             .into_any_element()
     })

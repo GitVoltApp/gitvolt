@@ -1352,7 +1352,7 @@ mod tests {
     /// A tab with an image open; the stage is under the header, the toolbar and the image's toolbar.
     fn opened(v: &mut GitVolt, cx: &mut Context<GitVolt>, img: ImageView) {
         let tab = &mut v.tabs[0];
-        let mut d = crate::diff::view::DiffState::new(crate::details::FileChange { path: "a.png".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, origin: crate::details::Origin::Commit { id: "c".into() } });
+        let mut d = crate::diff::view::DiffState::new(crate::details::FileChange { path: "a.png".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, conflict: None, origin: crate::details::Origin::Commit { id: "c".into() } });
         d.notice = None;
         d.image = Some(img);
         tab.diff = Some(d);

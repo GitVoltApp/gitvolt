@@ -364,6 +364,54 @@ impl Draft {
 }
 
 /// What the tab keeps of its WIP panel.
+/// What the box holds at a stop: git's message for it (`original`), and the user's edits.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StopBox {
+    pub key: String,
+    pub original: Draft,
+    pub text: Draft,
+}
+
+impl StopBox {
+    /// What Continue sends: the box's message, only when the user edited it (`continueMessage`).
+    pub fn edited_message(&self) -> Option<String> {
+        (self.text != self.original && !self.text.summary.trim().is_empty()).then(|| self.text.message())
+    }
+}
+
+/// `CONFLICT_LABEL`: a conflicted row's short status.
+pub fn conflict_label(kind: &str) -> &'static str {
+    match kind {
+        "bothAdded" => "added in both",
+        "bothDeleted" => "deleted in both",
+        "addedByUs" => "added in current",
+        "addedByThem" => "added in incoming",
+        "deletedByUs" => "deleted in current",
+        "deletedByThem" => "deleted in incoming",
+        _ => "changed in both",
+    }
+}
+
+/// A stopped merge's draft, set aside: `head` the merge, `applied` what the merge wrote to the box.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeAside {
+    pub head: String,
+    pub draft: Draft,
+    pub applied: Draft,
+}
+
+/// MERGE_MSG goes below what's typed: the summary stays, and an empty one takes its first line.
+pub fn with_merge_message(d: &Draft, merge_msg: &str) -> Draft {
+    let text: String = lf(merge_msg).split('\n').filter(|l| !l.starts_with('#')).collect::<Vec<_>>().join("\n");
+    let m = Draft::of_message(&text);
+    let join = |a: &str, b: &str| [a, b].into_iter().filter(|p| !p.trim().is_empty()).collect::<Vec<_>>().join("\n\n");
+    if d.summary.trim().is_empty() {
+        Draft { summary: m.summary, description: join(&d.description, &m.description) }
+    } else {
+        Draft { summary: d.summary.clone(), description: join(&d.description, &m.message()) }
+    }
+}
+
 pub struct WipUi {
     pub filter_open: bool,
     pub filter: Entity<TextInput>,
@@ -371,6 +419,8 @@ pub struct WipUi {
     pub description: Entity<TextInput>,
     /// Amend: HEAD's message in the box, the draft put aside. Ends with a HEAD move.
     pub amend: Option<(Draft, String)>,
+    /// A rebase, cherry-pick or revert stopped: its message in the box, the draft put aside.
+    pub stop: Option<StopBox>,
     /// A commit for the worktree is queued or running: staging and discards wait.
     pub committing: bool,
     /// Staging writes sent and not answered: the commit button waits for them.
@@ -396,7 +446,7 @@ impl WipUi {
         cx.subscribe(&summary, move |this, _, e: &InputEvent, cx| this.commit_field_event(id, true, e, cx)).detach();
         let description = cx.new(|cx| TextInput::multiline(cx).placeholder("Description").placeholder_color(theme::wip_input_placeholder()).claim_escape().claim_arrows());
         cx.subscribe(&description, move |this, _, e: &InputEvent, cx| this.commit_field_event(id, false, e, cx)).detach();
-        Self { filter_open: false, filter, summary, description, amend: None, committing: false, staging: 0, discarding: false, identity: None, all_files: false, committing_since: None }
+        Self { filter_open: false, filter, summary, description, amend: None, stop: None, committing: false, staging: 0, discarding: false, identity: None, all_files: false, committing_since: None }
     }
 }
 
@@ -874,9 +924,10 @@ impl GitVolt {
     pub fn show_draft(&mut self, repo: u32, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
         let Some(worktree) = tab.wip_worktree() else { return };
-        let d = match &tab.wip.amend {
-            Some((text, _)) => text.clone(),
-            None => self.drafts.get(worktree).cloned().unwrap_or_default(),
+        let d = match (&tab.wip.amend, &tab.wip.stop) {
+            (Some((text, _)), _) => text.clone(),
+            (None, Some(stop)) => stop.text.clone(),
+            (None, None) => self.drafts.get(worktree).cloned().unwrap_or_default(),
         };
         let (summary, description) = (tab.wip.summary.clone(), tab.wip.description.clone());
         summary.update(cx, |i, cx| i.set_text(&d.summary, cx));
@@ -892,11 +943,14 @@ impl GitVolt {
                 let Some(worktree) = tab.wip_worktree().map(str::to_string) else { return };
                 let row = tab.row_drafts.get(&worktree).cloned();
                 let amending = tab.wip.amend.is_some();
-                if amending {
-                    if let Some(tab) = self.wip_tab_mut(repo)
-                        && let Some(a) = tab.wip.amend.as_mut()
-                    {
-                        a.0 = d;
+                let stopped = tab.wip.stop.is_some();
+                if amending || stopped {
+                    if let Some(tab) = self.wip_tab_mut(repo) {
+                        match (tab.wip.amend.as_mut(), tab.wip.stop.as_mut()) {
+                            (Some(a), _) => a.0 = d,
+                            (None, Some(s)) => s.text = d,
+                            _ => {}
+                        }
                     }
                 } else {
                     let text = d.summary.clone();
@@ -976,7 +1030,9 @@ impl GitVolt {
         }
         self.drafts_saved = self.drafts_dirty;
         let Some(path) = drafts_file() else { return };
-        let text = drafts_json(&self.drafts).to_string();
+        let mut all = drafts_json(&self.drafts);
+        all[ASIDES_KEY] = asides_json(&self.merge_asides);
+        let text = all.to_string();
         self.rt.spawn(async move {
             if let Some(dir) = path.parent() {
                 std::fs::create_dir_all(dir).ok();
@@ -988,6 +1044,7 @@ impl GitVolt {
     pub fn load_drafts(&mut self) {
         let Some(v) = drafts_file().and_then(|f| std::fs::read(f).ok()).and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { return };
         self.drafts = drafts_of(&v);
+        self.merge_asides = asides_of(&v);
     }
 
     /// Commit, from its button, Ctrl+Enter or the box's fields.
@@ -998,6 +1055,10 @@ impl GitVolt {
         if view.reason.is_some() || tab.wip.committing || self.integrating(ctx.repo) {
             return;
         }
+        if let Some(op) = tab.operation().filter(|o| !o.is_merge()) {
+            let message = tab.wip.stop.as_ref().and_then(StopBox::edited_message);
+            return self.operation_control(op.kind, "continue", message, ArmOrigin::None, cx);
+        }
         let d = Draft { summary: tab.wip.summary.read(cx).text().to_string(), description: tab.wip.description.read(cx).text().to_string() };
         let amend = tab.wip.amend.is_some();
         let head = tab.wip_head(&ctx.worktree);
@@ -1006,6 +1067,8 @@ impl GitVolt {
         let Some(tab) = self.wip_tab_mut(repo) else { return };
         tab.wip.committing = true;
         tab.wip.committing_since = Some(std::time::Instant::now());
+        self.remind_still_working(cx);
+        let Some(tab) = self.wip_tab_mut(repo) else { return };
         tab.wip.summary.update(cx, |i, cx| i.set_disabled(true, cx));
         tab.wip.description.update(cx, |i, cx| i.set_disabled(true, cx));
         let done_worktree = worktree.clone();
@@ -1100,6 +1163,7 @@ impl GitVolt {
 
     /// A HEAD move ends the amend; the draft shows again.
     pub fn check_amend(&mut self, repo: u32, cx: &mut Context<Self>) {
+        self.sync_merge_drafts(repo, cx);
         let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
         let Some(worktree) = tab.wip_worktree() else { return };
         let moved = tab.wip.amend.as_ref().is_some_and(|(_, head)| tab.wip_head(worktree).as_deref() != Some(head));
@@ -1109,6 +1173,99 @@ impl GitVolt {
             }
             self.show_draft(repo, cx);
         }
+        let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
+        // Each stop fills the box with git's message once; edits stay until the next stop.
+        let stop = tab.operation().filter(|o| !o.is_merge());
+        if tab.wip.stop.as_ref().map(|s| s.key.as_str()) != stop.as_ref().map(|o| o.stop.as_str()) {
+            let stop = stop.map(|o| {
+                let text = Draft::of_message(&o.message);
+                StopBox { key: o.stop, original: text.clone(), text }
+            });
+            if let Some(tab) = self.wip_tab_mut(repo) {
+                tab.wip.stop = stop;
+            }
+            self.show_draft(repo, cx);
+        }
+    }
+
+    /// The worktree's draft is now `d`, wherever it shows.
+    fn set_draft(&mut self, repo: u32, worktree: &str, d: Draft, cx: &mut Context<Self>) {
+        let row = self.tabs.iter().find(|t| t.id == repo).and_then(|t| t.row_drafts.get(worktree).cloned());
+        if let Some(row) = row {
+            let text = d.summary.clone();
+            row.update(cx, |i, cx| i.set_text(&text, cx));
+        }
+        self.drafts.insert(worktree.to_string(), d);
+        self.touch_drafts(cx);
+        self.show_draft(repo, cx);
+    }
+
+    /// Once per stopped merge, its message joins the draft, never replacing what's typed. A merge that
+    /// ended without Abort (a commit, a terminal): an untouched message gives way to the old draft.
+    fn sync_merge_drafts(&mut self, repo: u32, cx: &mut Context<Self>) {
+        let Some(g) = self.tabs.iter().find(|t| t.id == repo).and_then(|t| t.graph.clone()) else { return };
+        for w in &g.worktrees {
+            let merge = match g.in_progress.get(&w.path) {
+                Some(gitvolt_graph::InProgress::Merge { merge_head, message, .. }) => Some((merge_head.clone(), message.clone())),
+                _ => None,
+            };
+            match merge {
+                Some((head, message)) => {
+                    if self.merge_asides.get(&w.path).is_some_and(|a| a.head == head) {
+                        continue;
+                    }
+                    let draft = self.drafts.get(&w.path).cloned().unwrap_or_default();
+                    let applied = with_merge_message(&draft, &message);
+                    self.merge_asides.insert(w.path.clone(), MergeAside { head, draft, applied: applied.clone() });
+                    self.set_draft(repo, &w.path, applied, cx);
+                }
+                None if self.merge_aborting.contains(&w.path) => {}
+                None => {
+                    if let Some(a) = self.merge_asides.remove(&w.path) {
+                        self.drafts_dirty += 1;
+                        if self.drafts.get(&w.path).cloned().unwrap_or_default() == a.applied {
+                            self.set_draft(repo, &w.path, a.draft, cx);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Abort puts the draft back as it was; if the merge message has since been edited, it asks first.
+    pub fn restore_draft_after_abort(&mut self, repo: u32, worktree: String, cx: &mut Context<Self>) {
+        let Some(a) = self.merge_asides.remove(&worktree) else { return };
+        self.drafts_dirty += 1;
+        let current = self.drafts.get(&worktree).cloned().unwrap_or_default();
+        if current == a.applied || current == Draft::default() {
+            return self.set_draft(repo, &worktree, a.draft, cx);
+        }
+        let mut req = ArmRequest::new(arm::Tone::Positive, "Click again to restore your earlier message", "Restore your earlier message?", "Restore");
+        req.body = "You edited the merge message. Replace it with the commit message you had before the merge?".into();
+        let this = cx.weak_entity();
+        self.with_window(cx, move |window, cx| {
+            arm::request(
+                req,
+                ArmOrigin::None,
+                move |answer, _, cx| {
+                    if answer.ok {
+                        let (d, w) = (a.draft.clone(), worktree.clone());
+                        this.update(cx, |v, cx| v.set_draft(repo, &w, d, cx)).ok();
+                    }
+                },
+                window,
+                cx,
+            );
+        });
+    }
+
+    /// The box says "Still working…" past 30 s: a frame then shows it, and nothing wakes before.
+    pub fn remind_still_working(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(crate::commit_box::STILL_WORKING + std::time::Duration::from_millis(50)).await;
+            this.update(cx, |_, cx| cx.notify()).ok();
+        })
+        .detach();
     }
 
     /// A merge, rebase or pull of this repo is running: the commit panel's controls wait.
@@ -1214,7 +1371,7 @@ impl GitVolt {
             let (weak, c, path) = (this.clone(), ctx, file.path.to_string());
             return vec![MenuRow::action("file.markResolved", "Mark resolved", "check-check", format!("Mark {path} resolved"), move |_, cx| {
                 let (c, path) = (c.clone(), path.clone());
-                weak.update(cx, |v, cx| v.mark_resolved(&c, path, cx)).ok();
+                weak.update(cx, |v, cx| v.mark_resolved(&c, path, ArmOrigin::None, cx)).ok();
             }).disabled_if(queued)];
         }
         let name = file.path.rsplit('/').next().unwrap_or_default().to_string();
@@ -1276,9 +1433,9 @@ impl GitVolt {
     }
 
     /// Mark resolved: the file as it is; asks first while conflict markers remain.
-    pub fn mark_resolved(&mut self, ctx: &WriteCtx, path: String, cx: &mut Context<Self>) {
+    pub fn mark_resolved(&mut self, ctx: &WriteCtx, path: String, origin: ArmOrigin, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(ctx, move |asked| call("markResolved", json!({ "repo": repo, "worktree": worktree, "paths": [path], "confirmMarkers": asked.markers })));
+        let w = Write::new(ctx, move |asked| call("markResolved", json!({ "repo": repo, "worktree": worktree, "paths": [path], "confirmMarkers": asked.markers }))).origin(origin);
         self.write(w, cx);
     }
 
@@ -1317,7 +1474,11 @@ impl GitVolt {
 pub fn commit_view_of(tab: &Tab, cx: &App) -> CommitView {
     let (staged, unstaged, conflicted) = tab.files.as_ref().map_or((0, 0, 0), Files::counts);
     let summary = tab.wip.summary.read(cx).text().to_string();
-    let in_merge = tab.operation().is_some_and(|o| o.is_merge());
+    let operation = tab.operation();
+    if let Some(op) = operation.as_ref().filter(|o| !o.is_merge()) {
+        return crate::commit_box::continue_button(op, &summary, tab.wip.description.read(cx).text());
+    }
+    let in_merge = operation.is_some_and(|o| o.is_merge());
     commit_button(&CommitState { staged, unstaged, conflicted, amend: tab.wip.amend.is_some(), in_merge, summary: &summary, staging: tab.wip.staging > 0 })
 }
 
@@ -1333,8 +1494,21 @@ fn drafts_json(drafts: &std::collections::HashMap<String, Draft>) -> Value {
     Value::Object(map)
 }
 
+fn asides_json(asides: &std::collections::HashMap<String, MergeAside>) -> Value {
+    let part = |d: &Draft| json!({ "summary": d.summary, "description": d.description });
+    Value::Object(asides.iter().map(|(k, a)| (k.clone(), json!({ "head": a.head, "draft": part(&a.draft), "applied": part(&a.applied) }))).collect())
+}
+
+fn asides_of(v: &Value) -> std::collections::HashMap<String, MergeAside> {
+    let part = |d: &Value| Draft { summary: d["summary"].as_str().unwrap_or_default().to_string(), description: d["description"].as_str().unwrap_or_default().to_string() };
+    v[ASIDES_KEY].as_object().map_or_else(Default::default, |m| m.iter().map(|(k, a)| (k.clone(), MergeAside { head: a["head"].as_str().unwrap_or_default().to_string(), draft: part(&a["draft"]), applied: part(&a["applied"]) })).collect())
+}
+
+/// In `drafts.json`, beside the worktrees' drafts: no worktree's path starts so.
+const ASIDES_KEY: &str = "#mergeAsides";
+
 fn drafts_of(v: &Value) -> std::collections::HashMap<String, Draft> {
-    v.as_object().map_or_else(Default::default, |m| m.iter().map(|(k, d)| (k.clone(), Draft { summary: d["summary"].as_str().unwrap_or_default().to_string(), description: d["description"].as_str().unwrap_or_default().to_string() })).collect())
+    v.as_object().map_or_else(Default::default, |m| m.iter().filter(|(k, _)| k.as_str() != ASIDES_KEY).map(|(k, d)| (k.clone(), Draft { summary: d["summary"].as_str().unwrap_or_default().to_string(), description: d["description"].as_str().unwrap_or_default().to_string() })).collect())
 }
 
 // ---- Views ----
@@ -1446,14 +1620,16 @@ pub fn row_actions(v: &GitVolt, which: Which, row: &ListRow, changes: &[FileChan
     match which {
         Which::Conflicted => {
             let path = files[0].path.to_string();
-            let (weak, ctx) = (this.clone(), ctx.clone());
+            let (weak, ctx, k) = (this.clone(), ctx.clone(), key.clone());
             if !matches!(row, ListRow::File { .. }) {
                 return None;
             }
-            bar = bar.child(action_icon(ElementId::Name(format!("{key}:resolve").into()), queued(&format!("Mark {path} resolved")), "check-check", Tone::Plain, None, committing, move |_, cx| {
+            let control: SharedString = format!("{key}:resolve").into();
+            bar = bar.child(crate::ui::anchor(control.clone(), action_icon(ElementId::Name(control.clone()), queued(&format!("Mark {path} resolved")), "check-check", Tone::Plain, None, committing, move |_, cx| {
                 let (path, ctx) = (path.clone(), ctx.clone());
-                weak.update(cx, |v, cx| v.mark_resolved(&ctx, path, cx)).ok();
-            }));
+                let origin = ArmOrigin::Control { key: format!("{k}:resolve").into(), cover: None, grow_right: Some(false) };
+                weak.update(cx, |v, cx| v.mark_resolved(&ctx, path, origin, cx)).ok();
+            })));
         }
         Which::Unstaged => {
             let discardable: Vec<FileChange> = files.iter().filter(|f| !f.is_submodule()).cloned().collect();
@@ -1547,8 +1723,8 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
         .pl(px(9.))
         .pr(px(8.))
         // Its line's on top of its height; with both open the handle's line is the one above Staged.
-        .when(basis.is_none() || which != Which::Staged, |d| d.h(px(FILE_ROW_H + 1.)).border_t_1().border_color(theme::section_border()))
-        .when(basis.is_some() && which == Which::Staged, |d| d.h(px(FILE_ROW_H)))
+        .when(which != Which::Conflicted && (basis.is_none() || which != Which::Staged), |d| d.h(px(FILE_ROW_H + 1.)).border_t_1().border_color(theme::section_border()))
+        .when(which == Which::Conflicted || (basis.is_some() && which == Which::Staged), |d| d.h(px(FILE_ROW_H)))
         .cursor_pointer()
         .on_click(cx.listener(move |this, _, _, cx| this.toggle_wip_section(which, cx)))
         .on_mouse_down(MouseButton::Right, cx.listener(move |this, e: &MouseDownEvent, window, cx| {
@@ -1884,6 +2060,34 @@ mod tests {
     }
 
     #[test]
+    fn a_merge_message_joins_the_draft_and_never_replaces_it() {
+        let msg = "Merge branch 'x'\n\nBody\n# Conflicts:\n#\tREADME\n";
+        assert_eq!(with_merge_message(&Draft::default(), msg), Draft { summary: "Merge branch 'x'".into(), description: "Body".into() });
+        let typed = Draft { summary: "Mine".into(), description: "Why".into() };
+        assert_eq!(with_merge_message(&typed, msg), Draft { summary: "Mine".into(), description: "Why\n\nMerge branch 'x'\n\nBody".into() });
+    }
+
+    #[test]
+    fn a_stops_box_sends_a_message_only_when_it_was_edited() {
+        let text = Draft { summary: "Git's".into(), description: String::new() };
+        let mut stop = StopBox { key: "k".into(), original: text.clone(), text };
+        assert_eq!(stop.edited_message(), None);
+        stop.text.summary = "Mine".into();
+        assert_eq!(stop.edited_message().as_deref(), Some("Mine"));
+        stop.text.summary = "  ".into();
+        assert_eq!(stop.edited_message(), None, "an emptied box: git's own");
+    }
+
+    #[test]
+    fn asides_keep_their_place_in_the_drafts_file() {
+        let mut all = drafts_json(&[("/w".to_string(), Draft { summary: "s".into(), description: String::new() })].into_iter().collect());
+        let aside = MergeAside { head: "h".into(), draft: Draft::default(), applied: Draft { summary: "m".into(), description: String::new() } };
+        all[ASIDES_KEY] = asides_json(&[("/w".to_string(), aside.clone())].into_iter().collect());
+        assert_eq!(drafts_of(&all).len(), 1, "the asides aren't a worktree's draft");
+        assert_eq!(asides_of(&all)["/w"], aside);
+    }
+
+    #[test]
     fn a_conflicted_file_leaves_the_other_sections() {
         let f = lists();
         assert_eq!(paths(&f, Which::Conflicted), ["c"]);
@@ -2112,6 +2316,28 @@ mod ui_tests {
 
     fn sent(window: &WindowHandle<GitVolt>, cx: &VisualTestContext) -> Vec<Value> {
         window.read_with(cx, |v, _| v.sent.borrow().clone()).unwrap()
+    }
+
+    #[gpui::test]
+    fn the_activity_log_opens_with_its_entries_and_commands(cx: &mut TestAppContext) {
+        let (window, mut cx, _rt) = wip_window(cx, &[("a.txt", "M")], &[]);
+        window
+            .update(&mut cx, |v, window, cx| {
+                v.ops.activity.push(crate::ops::ActivityEntry { op: 1, kind: gitvolt_core::events::OpKind::Fetch, label: "fetch origin".into(), background: false, duration_ms: 10, outcome: gitvolt_core::events::OpOutcome::Failed, message: Some("no route".into()), command: None, output: Vec::new(), remote: Vec::new() });
+                v.activity.commands = vec![json!({ "id": 1, "args": ["fetch"], "ok": false, "stderr": "no route" })];
+                v.open_activity(None, window, cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+        window
+            .update(&mut cx, |v, _, cx| {
+                assert_eq!(v.activity_shown.borrow().ops.activity.len(), 1, "it drew from what it was given");
+                v.activity.commands_view = true;
+                cx.notify();
+            })
+            .unwrap();
+        cx.run_until_parked();
+        window.read_with(&cx, |v, _| assert!(v.activity_shown.borrow().activity.commands_view)).unwrap();
     }
 
     #[gpui::test]

@@ -74,7 +74,7 @@ fn at_commit(commit: &str) -> Value {
 
 /// The file at `row`'s commit, as File View opens it.
 pub fn file_target(row: &HistoryRow) -> FileChange {
-    FileChange { path: row.path.clone().into(), old_path: None, status: ' ', additions: None, deletions: None, old: ABSENT(), new: at_commit(&row.sha), origin: Origin::Commit { id: row.sha.to_string() } }
+    FileChange { path: row.path.clone().into(), old_path: None, status: ' ', additions: None, deletions: None, old: ABSENT(), new: at_commit(&row.sha), conflict: None, origin: Origin::Commit { id: row.sha.to_string() } }
 }
 
 fn renamed(row: &HistoryRow) -> bool {
@@ -101,7 +101,7 @@ pub fn changes_target(row: &HistoryRow, files: Option<&[FileChange]>) -> FileCha
         _ => ABSENT(),
     };
     let new = if row.status == "D" { ABSENT() } else { at_commit(&row.sha) };
-    FileChange { path: row.path.clone().into(), old_path: None, status: row.status.chars().next().unwrap_or('M'), additions: None, deletions: None, old, new, origin: Origin::Commit { id: row.sha.to_string() } }
+    FileChange { path: row.path.clone().into(), old_path: None, status: row.status.chars().next().unwrap_or('M'), additions: None, deletions: None, old, new, conflict: None, origin: Origin::Commit { id: row.sha.to_string() } }
 }
 
 /// Where a file's history starts: its commit's version (a deleted file: the parent's), or a WIP
@@ -927,7 +927,7 @@ mod tests {
     const BODY_TOP: f32 = 30. + 34. + 44. + HISTORY_H;
 
     fn opened(v: &mut GitVolt, cx: &mut Context<GitVolt>, blame: bool) {
-        let mut h = FileHistory::new(start(), blame, HistoryView::File, Some(DiffState::new(FileChange { path: "open.rs".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, origin: Origin::Commit { id: "c".into() } })));
+        let mut h = FileHistory::new(start(), blame, HistoryView::File, Some(DiffState::new(FileChange { path: "open.rs".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, conflict: None, origin: Origin::Commit { id: "c".into() } })));
         h.with_page(vec![row("aa", "M"), row("bb", "M"), row("cc", "A")], false);
         let tab = &mut v.tabs[0];
         tab.history = Some(h);
@@ -1054,7 +1054,7 @@ mod tests {
         r.old_path = Some("b.rs".into());
         assert!(needs_file_list(&r));
         assert_eq!(changes_target(&r, None).old["kind"].as_str(), Some("absent"), "no list: it shows as added");
-        let entry = FileChange { path: "a.rs".into(), old_path: Some("b.rs".into()), status: 'R', additions: None, deletions: None, old: json!({"kind": "atCommit", "commit": "p"}), new: at_commit("c"), origin: Origin::Commit { id: "c".into() } };
+        let entry = FileChange { path: "a.rs".into(), old_path: Some("b.rs".into()), status: 'R', additions: None, deletions: None, old: json!({"kind": "atCommit", "commit": "p"}), new: at_commit("c"), conflict: None, origin: Origin::Commit { id: "c".into() } };
         let t = changes_target(&r, Some(&[entry]));
         assert_eq!((t.old_path.as_deref(), t.status), (Some("b.rs"), 'R'));
         assert!(needs_file_list(&row("c", "")), "a merge");
@@ -1063,7 +1063,7 @@ mod tests {
 
     #[test]
     fn history_starts_at_the_commit_the_parent_or_head() {
-        let file = |status: char, new: Value, origin: Origin| FileChange { path: "n.rs".into(), old_path: Some("o.rs".into()), status, additions: None, deletions: None, old: Value::Null, new, origin };
+        let file = |status: char, new: Value, origin: Origin| FileChange { path: "n.rs".into(), old_path: Some("o.rs".into()), status, additions: None, deletions: None, old: Value::Null, new, conflict: None, origin };
         let commit = Origin::Commit { id: "c".into() };
         let at = history_start(&file('M', at_commit("c"), commit.clone()), &[], "/w").unwrap();
         assert_eq!((at.path.as_str(), at.rev.as_deref()), ("n.rs", Some("c")));

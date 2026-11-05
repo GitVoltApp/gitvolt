@@ -31,6 +31,9 @@ const BORDER: f32 = 1.;
 const ROOT_MIN_W: f32 = 220.;
 const SUB_MIN_W: f32 = 200.;
 const OPTION_H: f32 = 28.;
+const NOTE_W: f32 = 264.;
+const NOTE_LINE_H: f32 = 15.;
+const NOTE_PAD_Y: f32 = 10.;
 /// The pointer may cross sibling rows on a diagonal into an open submenu: a row takes over once it
 /// stops heading there, at once for any other move, or after this long without one.
 pub const SUBMENU_GRACE: Duration = Duration::from_millis(300);
@@ -71,6 +74,8 @@ pub struct ActionRow {
     pub disabled: Option<SharedString>,
     pub shortcut: Option<SharedString>,
     pub swatch: Option<Hsla>,
+    /// A choice among its siblings: a radio instead of the icon, green when it's the one.
+    pub radio: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -79,6 +84,8 @@ pub enum MenuRow {
     Submenu { id: SharedString, label: SharedString, icon: &'static str, tooltip: SharedString, rows: Rc<Vec<MenuRow>>, initial: Option<SharedString> },
     /// Names what the menu is about; not focusable.
     Header { id: SharedString, label: SharedString, detail: Option<SharedString>, swatch: Option<Hsla> },
+    /// A line or `lines` of small text on what the rows below choose.
+    Note { label: SharedString, lines: u8 },
     Separator,
 }
 
@@ -87,7 +94,7 @@ pub const NOT_YET: &str = "Not in this build yet";
 
 impl MenuRow {
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>, icon: &'static str, tooltip: impl Into<SharedString>, run: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        MenuRow::Action(ActionRow { id: id.into(), label: label.into(), icon, tooltip: tooltip.into(), run: Rc::new(run), variants: Vec::new(), default_variant: None, disabled: None, shortcut: None, swatch: None })
+        MenuRow::Action(ActionRow { id: id.into(), label: label.into(), icon, tooltip: tooltip.into(), run: Rc::new(run), variants: Vec::new(), default_variant: None, disabled: None, shortcut: None, swatch: None, radio: None })
     }
 
     /// In its place, greyed: its action needs what isn't ported yet.
@@ -101,6 +108,17 @@ impl MenuRow {
 
     pub fn header(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
         MenuRow::Header { id: id.into(), label: label.into(), detail: None, swatch: None }
+    }
+
+    pub fn note(label: impl Into<SharedString>, lines: u8) -> Self {
+        MenuRow::Note { label: label.into(), lines }
+    }
+
+    pub fn radio(mut self, on: bool) -> Self {
+        if let MenuRow::Action(a) = &mut self {
+            a.radio = Some(on);
+        }
+        self
     }
 
     pub fn disabled(mut self, why: impl Into<SharedString>) -> Self {
@@ -143,7 +161,7 @@ impl MenuRow {
         match self {
             MenuRow::Action(a) => Some(&a.id),
             MenuRow::Submenu { id, .. } | MenuRow::Header { id, .. } => Some(id),
-            MenuRow::Separator => None,
+            MenuRow::Note { .. } | MenuRow::Separator => None,
         }
     }
 
@@ -151,7 +169,7 @@ impl MenuRow {
         match self {
             MenuRow::Action(a) => a.disabled.is_none(),
             MenuRow::Submenu { .. } => true,
-            MenuRow::Header { .. } | MenuRow::Separator => false,
+            MenuRow::Header { .. } | MenuRow::Note { .. } | MenuRow::Separator => false,
         }
     }
 
@@ -168,7 +186,11 @@ impl MenuRow {
     }
 
     fn height(&self) -> f32 {
-        if matches!(self, MenuRow::Separator) { SEP_H } else { ROW_H }
+        match self {
+            MenuRow::Separator => SEP_H,
+            MenuRow::Note { lines, .. } => NOTE_PAD_Y + *lines as f32 * NOTE_LINE_H,
+            _ => ROW_H,
+        }
     }
 }
 
@@ -355,6 +377,7 @@ fn level_size(rows: &[MenuRow], min_w: f32, cx: &App) -> (f32, f32) {
         h += r.height();
         let row = match r {
             MenuRow::Separator => 0.,
+            MenuRow::Note { label, .. } => 24. + ui.measure(label, 11., FontWeight::NORMAL).min(NOTE_W),
             MenuRow::Header { label, detail, swatch, .. } => 18. + ui.measure(label, 13., FontWeight::NORMAL) + swatch.map_or(0., |_| 18.) + detail.as_ref().map_or(0., |d| 24. + ui.measure(d, 11., FontWeight::NORMAL)),
             MenuRow::Submenu { label, .. } => 18. + 22. + ui.measure(label, 13., FontWeight::NORMAL) + 20.,
             MenuRow::Action(a) => {
@@ -496,7 +519,7 @@ pub fn shown(cx: &App) -> Vec<Vec<String>> {
                         .map(|(i, r)| {
                             let label = match r {
                                 MenuRow::Action(a) => a.label.to_string(),
-                                MenuRow::Submenu { label, .. } | MenuRow::Header { label, .. } => label.to_string(),
+                                MenuRow::Submenu { label, .. } | MenuRow::Header { label, .. } | MenuRow::Note { label, .. } => label.to_string(),
                                 MenuRow::Separator => "-".to_string(),
                             };
                             if i == l.active { format!("*{label}") } else { label }
@@ -902,7 +925,8 @@ fn pick(depth: usize, index: usize, run: Run, by_key: bool, window: &mut Window,
     Ui::get_mut(cx).arm.running_row = true;
     run(window, cx);
     Ui::get_mut(cx).arm.running_row = false;
-    if arm::armed_on_row(cx) {
+    let held = std::mem::take(&mut Ui::get_mut(cx).arm.held);
+    if arm::armed_on_row(cx) || held {
         with_menu(cx, |m| m.armed_row = Some((depth, index)));
         tooltip::hide(cx);
         cx.refresh_windows();
@@ -1099,6 +1123,9 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
             let active = i == lv.active;
             match r {
                 MenuRow::Separator => level = level.child(div().flex_none().h(px(1.)).my(px(4.)).bg(theme::section_border())),
+                MenuRow::Note { label, lines } => {
+                    level = level.child(div().flex_none().h(px(r.height())).max_h(px(NOTE_PAD_Y + *lines as f32 * NOTE_LINE_H)).pt(px(4.)).pb(px(6.)).px(px(12.)).text_size(px(11.)).line_height(px(NOTE_LINE_H)).text_color(theme::text_secondary()).child(label.clone()));
+                }
                 MenuRow::Header { label, detail, swatch, .. } => {
                     level = level.child(
                         div()
@@ -1128,12 +1155,15 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
                 }
                 MenuRow::Action(a) => {
                     let disabled = a.disabled.is_some();
-                    let color = if disabled { theme::text_disabled() } else if active { theme::text_selected() } else { theme::text_normal() };
+                    let color = if disabled { theme::text_disabled() } else if a.radio == Some(true) { theme::green() } else if active { theme::text_selected() } else { theme::text_normal() };
                     let armed_here = armed.is_some() && m.armed_row == Some((depth, i));
                     let over_variant = m.over_variant == Some((depth, i));
                     let mut row = row_base(active, disabled)
                         .text_color(color)
-                        .child(icon_slot(a.icon, color))
+                        .child(match a.radio {
+                            Some(on) => radio_mark(on),
+                            None => icon_slot(a.icon, color),
+                        })
                         .when_some(a.swatch, |d, s| d.child(div().flex_none().size(px(8.)).rounded_full().bg(s)))
                         .child(div().flex_1().child(a.label.clone()))
                         .when_some(a.shortcut.clone(), |d, s| d.child(div().ml(px(16.)).text_size(px(11.)).text_color(theme::text_secondary()).child(s)));
@@ -1226,6 +1256,43 @@ fn hovered_variant(lv: &Level, i: usize, j: usize, window: &Window, cx: &App) ->
 
 fn row_base(active: bool, _disabled: bool) -> Div {
     div().relative().flex().flex_none().items_center().gap(px(8.)).h(px(ROW_H)).pl(px(10.)).pr(px(8.)).whitespace_nowrap().when(active, |d| d.bg(theme::selected_row()))
+}
+
+/// For a script: where the open menu's row whose label holds `text` is, the deepest level first.
+pub fn row_point(text: &str, cx: &App) -> Option<Point<Pixels>> {
+    let menu = Ui::get(cx).menu.as_ref()?;
+    menu.levels.iter().rev().find_map(|lv| {
+        let i = lv.rows.iter().position(|r| match r {
+            MenuRow::Action(a) => a.label.contains(text),
+            MenuRow::Submenu { label, .. } => label.contains(text),
+            _ => false,
+        })?;
+        Some(point(px(lv.left + 40.), px(lv.row_top(i, None) + lv.rows[i].height() / 2.)))
+    })
+}
+
+/// For a script: where the variant `label` of the open menu's row holding `text` is.
+pub fn variant_point(text: &str, label: &str, cx: &App) -> Option<Point<Pixels>> {
+    let menu = Ui::get(cx).menu.as_ref()?;
+    menu.levels.iter().rev().find_map(|lv| {
+        let i = lv.rows.iter().position(|r| matches!(r, MenuRow::Action(a) if a.label.contains(text) && !a.variants.is_empty()))?;
+        let MenuRow::Action(a) = &lv.rows[i] else { return None };
+        let mut right = lv.left + lv.w - BORDER - 8.;
+        for v in a.variants.iter().rev() {
+            let w = variant_w(v, cx);
+            if v.label.as_ref().is_some_and(|l| l.as_ref() == label) {
+                return Some(point(px(right - w / 2.), px(lv.row_top(i, None) + lv.rows[i].height() / 2.)));
+            }
+            right -= w;
+        }
+        None
+    })
+}
+
+/// `.tb-radio`.
+fn radio_mark(on: bool) -> AnyElement {
+    let ring = if on { theme::green() } else { theme::text_secondary() };
+    div().flex().flex_none().size(px(14.)).items_center().justify_center().rounded_full().border(px(1.5)).border_color(ring).when(on, |d| d.child(div().size(px(7.)).rounded_full().bg(theme::green()))).into_any_element()
 }
 
 /// The row's icon, 14 px at 85%; a blank keeps the column (a select's unchosen rows).
@@ -1361,6 +1428,21 @@ mod tests {
         assert_eq!(levels(&mut cx)[0][4], "*Two");
         cx.simulate_click(at, Modifiers::none());
         assert_eq!(*log.borrow(), ["two"]);
+        assert!(levels(&mut cx).is_empty());
+    }
+
+    #[gpui::test]
+    fn a_held_row_keeps_its_menu_until_it_is_released(cx: &mut TestAppContext) {
+        let (mut cx, _) = open_window(cx);
+        let hold: Rc<std::cell::Cell<Option<u64>>> = Rc::default();
+        let h = hold.clone();
+        cx.update(|window, cx| {
+            open_context(vec![MenuRow::action("ask", "Ask", "check", "", move |_, cx| h.set(arm::hold_row(cx)))], point(px(100.), px(200.)), window, cx);
+        });
+        cx.simulate_click(point(px(150.), px(row_y(0))), Modifiers::none());
+        assert!(hold.get().is_some());
+        assert_eq!(levels(&mut cx).len(), 1, "the action asks later");
+        cx.update(|window, cx| arm::release_row(hold.get(), window, cx));
         assert!(levels(&mut cx).is_empty());
     }
 

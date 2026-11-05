@@ -33,6 +33,8 @@ pub struct FileChange {
     pub old: Value,
     pub new: Value,
     pub origin: Origin,
+    /// An unmerged WIP path's conflict kind.
+    pub conflict: Option<String>,
 }
 
 /// The list a file came from.
@@ -63,6 +65,7 @@ pub fn file_changes(v: &Value, origin: &Origin) -> Vec<FileChange> {
             old: f["old"].clone(),
             new: f["new"].clone(),
             origin: origin.clone(),
+            conflict: f["conflict"].as_str().map(str::to_string),
         })
         .collect()
 }
@@ -179,7 +182,7 @@ const STATUS_ORDER: &str = "AMTRCDUX";
 
 /// An unchanged file of commit `id`, as File View opens it.
 fn unchanged_file(path: &str, id: &str) -> FileChange {
-    FileChange { path: path.to_string().into(), old_path: None, status: UNCHANGED, additions: None, deletions: None, old: serde_json::json!({ "kind": "absent" }), new: serde_json::json!({ "kind": "atCommit", "commit": id }), origin: Origin::Commit { id: id.to_string() } }
+    FileChange { path: path.to_string().into(), old_path: None, status: UNCHANGED, additions: None, deletions: None, old: serde_json::json!({ "kind": "absent" }), new: serde_json::json!({ "kind": "atCommit", "commit": id }), conflict: None, origin: Origin::Commit { id: id.to_string() } }
 }
 
 /// A file as it is at a commit, opened by name (the palette's `/`).
@@ -189,7 +192,7 @@ pub fn file_at_commit(path: &str, id: &str) -> FileChange {
 
 /// A file of the working tree, opened by name (a pasted path).
 pub fn file_in_worktree(path: &str, worktree: &str) -> FileChange {
-    FileChange { path: path.to_string().into(), old_path: None, status: UNCHANGED, additions: None, deletions: None, old: serde_json::json!({ "kind": "absent" }), new: serde_json::json!({ "kind": "worktree", "worktree": worktree }), origin: Origin::Wip { worktree: worktree.to_string(), staged: false } }
+    FileChange { path: path.to_string().into(), old_path: None, status: UNCHANGED, additions: None, deletions: None, old: serde_json::json!({ "kind": "absent" }), new: serde_json::json!({ "kind": "worktree", "worktree": worktree }), conflict: None, origin: Origin::Wip { worktree: worktree.to_string(), staged: false } }
 }
 
 /// What's listed: the changed files and, with `tree`, the others; narrowed by `query` (lower case).
@@ -741,7 +744,7 @@ fn commit_view(c: &Commit, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
         1 => Some("parent:"),
         _ => Some("parents:"),
     };
-    let id = |label: &'static str, sha: SharedString| div().flex().gap(px(4.)).text_color(theme::text_secondary()).child(format!("{label}:")).child(div().font_family("JetBrains Mono").text_color(theme::text_selected()).child(sha));
+    let id = |label: &'static str, sha: SharedString| div().flex().gap(px(8.)).text_color(theme::text_secondary()).child(format!("{label}:")).child(div().font_family("JetBrains Mono").text_color(theme::text_selected()).child(sha));
     div()
         .flex()
         .flex_col()
@@ -760,7 +763,7 @@ fn commit_view(c: &Commit, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
                 .gap(px(10.))
                 .child(div().flex().flex_1().min_w_0().child(icon("shield-check", 16., if c.signed { theme::status_added() } else { theme::text_disabled() })))
                 .child(id("commit", c.id.clone()))
-                .child(div().flex().flex_1().justify_end().gap(px(4.)).whitespace_nowrap().text_color(theme::text_secondary()).children(parent_label).child(div().flex().flex_none().gap(px(6.)).children(parents))),
+                .child(div().flex().flex_1().justify_end().gap(px(8.)).whitespace_nowrap().text_color(theme::text_secondary()).children(parent_label).child(div().flex().flex_none().gap(px(6.)).children(parents))),
         )
         .child(
             div()
@@ -981,7 +984,8 @@ pub fn file_list(id: &'static str, view: ListView, handle: &UniformListScrollHan
                                 .child(if unchanged { div().flex_none().size(px(14.)).into_any_element() } else { icon(glyph, 14., color).into_any_element() })
                                 .when(!dir.is_empty(), |d| d.child(div().flex().flex_none().max_w(relative(0.6)).overflow_hidden().text_color(theme::text_secondary()).children(marked(dir, &query)).child("/")))
                                 .child(div().flex().flex_1().min_w_0().overflow_hidden().when(unchanged && !on, |d| d.text_color(theme::text_secondary())).children(marked(name, &query)))
-                                .when(!unchanged && actions.is_none(), |d| {
+                                .when_some(change.conflict.as_deref().map(crate::wip::conflict_label), |d, label| d.child(div().flex_none().ml_auto().text_size(px(11.)).text_color(theme::status_conflicted()).child(label)))
+                                .when(!unchanged && actions.is_none() && change.conflict.is_none(), |d| {
                                     d.child(
                                         div()
                                             .flex()
@@ -1322,7 +1326,7 @@ mod tests {
     }
 
     fn change(path: &str) -> FileChange {
-        FileChange { path: path.to_string().into(), old_path: None, status: 'M', additions: Some(1), deletions: None, old: Value::Null, new: Value::Null, origin: Origin::Commit { id: "c".into() } }
+        FileChange { path: path.to_string().into(), old_path: None, status: 'M', additions: Some(1), deletions: None, old: Value::Null, new: Value::Null, conflict: None, origin: Origin::Commit { id: "c".into() } }
     }
 
     fn shown(rows: &[ListRow]) -> Vec<(String, u8)> {

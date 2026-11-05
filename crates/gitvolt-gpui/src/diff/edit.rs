@@ -667,7 +667,7 @@ mod tests {
 
     #[test]
     fn a_staged_files_file_view_shows_the_working_tree_over_its_staged_version() {
-        let staged = crate::details::FileChange { path: "a".into(), old_path: None, status: 'M', additions: None, deletions: None, old: json!({ "kind": "head" }), new: json!({ "kind": "index" }), origin: Origin::Wip { worktree: "/w".into(), staged: true } };
+        let staged = crate::details::FileChange { path: "a".into(), old_path: None, status: 'M', additions: None, deletions: None, old: json!({ "kind": "head" }), new: json!({ "kind": "index" }), conflict: None, origin: Origin::Wip { worktree: "/w".into(), staged: true } };
         let (old, new) = sides_for(&staged, ViewKind::File);
         assert_eq!((old["kind"].as_str(), new["kind"].as_str()), (Some("index"), Some("worktree")));
         assert_eq!(sides_for(&staged, ViewKind::Diff).1["kind"], "index");
@@ -677,7 +677,7 @@ mod tests {
 
     #[test]
     fn only_a_plain_working_file_can_be_edited() {
-        let file = crate::details::FileChange { path: "a".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, origin: Origin::Wip { worktree: "/w".into(), staged: false } };
+        let file = crate::details::FileChange { path: "a".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, conflict: None, origin: Origin::Wip { worktree: "/w".into(), staged: false } };
         let wt = json!({ "kind": "worktree" });
         let text = json!({ "new": { "text": "x", "binary": false } });
         assert!(is_editable(&file, &wt, &text));
@@ -704,7 +704,7 @@ mod tests {
 
     fn real_file(text: &str) -> crate::details::FileChange {
         let _ = text;
-        crate::details::FileChange { path: "a".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: json!({ "kind": "worktree", "worktree": "/w" }), origin: Origin::Wip { worktree: "/w".into(), staged: false } }
+        crate::details::FileChange { path: "a".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: json!({ "kind": "worktree", "worktree": "/w" }), conflict: None, origin: Origin::Wip { worktree: "/w".into(), staged: false } }
     }
 
     #[gpui::test]

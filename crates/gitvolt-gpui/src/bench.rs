@@ -206,7 +206,26 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
         let (verb, rest) = line.split_once(' ').unwrap_or((&line, ""));
         let (verb, rest) = (verb.to_string(), rest.to_string());
         let verb = verb.as_str();
+        // `pick <label>`: a row of the open menu. `clickon`, `rclickon`, `dclickon`, `presson`: the anchor whose key
+        // ends with the text (a chip's `chip:<row>:<name>`). `clickrow`, `rclickrow`, `dclickrow`: a graph row by its summary.
+        let target = cx
+            .update(|_, cx| match verb {
+                "pick" | "hover" => crate::ui::menu::row_point(&rest, cx),
+                // `pickv Delete|Both`.
+                "pickv" => rest.split_once('|').and_then(|(row, variant)| crate::ui::menu::variant_point(row, variant, cx)),
+                "clickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" => crate::ui::Ui::get(cx).anchor_ending(&rest).map(|b| b.center()),
+                "clickrow" | "rclickrow" | "dclickrow" => v.read(cx).row_point(&rest),
+                _ => None,
+            })
+            .ok()
+            .flatten();
+        if target.is_none() && matches!(verb, "pick" | "pickv" | "hover" | "clickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" | "clickrow" | "rclickrow" | "dclickrow") {
+            println!("{{\"nothing\":{:?},\"text\":{:?}}}", verb, rest);
+        }
         let xy = || {
+            if let Some(t) = target {
+                return t;
+            }
             let mut n = rest.split_whitespace().filter_map(|t| t.parse::<f32>().ok());
             point(px(n.next().unwrap_or(0.)), px(n.next().unwrap_or(0.)))
         };
@@ -214,13 +233,15 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
         let up = |position, button, click_count| PlatformInput::MouseUp(MouseUpEvent { button, position, modifiers: Modifiers::default(), click_count });
         let moved = |position| PlatformInput::MouseMove(MouseMoveEvent { position, pressed_button: None, modifiers: Modifiers::default() });
         let events: Vec<PlatformInput> = match verb {
-            "click" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1)],
-            "rclick" => vec![moved(xy()), down(xy(), MouseButton::Right, 1), up(xy(), MouseButton::Right, 1)],
-            "dclick" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1), down(xy(), MouseButton::Left, 2), up(xy(), MouseButton::Left, 2)],
-            "move" => vec![moved(xy())],
-            "press" => vec![moved(xy()), down(xy(), MouseButton::Left, 1)],
-            "drag" => vec![PlatformInput::MouseMove(MouseMoveEvent { position: xy(), pressed_button: Some(MouseButton::Left), modifiers: Modifiers::default() })],
-            "release" => vec![up(xy(), MouseButton::Left, 1)],
+            "click" | "pick" | "pickv" | "clickon" | "clickrow" if verb != "click" && target.is_none() => Vec::new(),
+            "rclickon" | "dclickon" | "rclickrow" | "dclickrow" | "presson" | "dragto" | "releaseon" | "hover" if target.is_none() => Vec::new(),
+            "click" | "pick" | "pickv" | "clickon" | "clickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1)],
+            "rclick" | "rclickon" | "rclickrow" => vec![moved(xy()), down(xy(), MouseButton::Right, 1), up(xy(), MouseButton::Right, 1)],
+            "dclick" | "dclickon" | "dclickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1), down(xy(), MouseButton::Left, 2), up(xy(), MouseButton::Left, 2)],
+            "move" | "hover" => vec![moved(xy())],
+            "press" | "presson" => vec![moved(xy()), down(xy(), MouseButton::Left, 1)],
+            "drag" | "dragto" => vec![PlatformInput::MouseMove(MouseMoveEvent { position: xy(), pressed_button: Some(MouseButton::Left), modifiers: Modifiers::default() })],
+            "release" | "releaseon" => vec![up(xy(), MouseButton::Left, 1)],
             _ => Vec::new(),
         };
         for e in events {
@@ -286,6 +307,13 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
 
 impl GitVolt {
     /// What a script checks: the toast, the selection, what's open, what's going on.
+    /// For a script: where the graph's row with this summary is, while it's scrolled to the top.
+    pub fn row_point(&self, text: &str) -> Option<Point<Pixels>> {
+        let g = self.tabs.get(self.active)?.graph.as_ref()?;
+        let i = g.rows.iter().position(|r| r.summary.contains(text))?;
+        Some(point(px(650.), px(133. + 28. * i as f32 + 14.)))
+    }
+
     pub fn dump(&self, cx: &App) -> String {
         let tab = self.tabs.get(self.active);
         let sections = tab.and_then(|t| t.files.as_ref()).filter(|f| f.wip.is_some()).map(|f| {
@@ -300,6 +328,8 @@ impl GitVolt {
             "armed": crate::ui::arm::is_armed(cx),
             "menu": crate::ui::menu::shown(cx),
             "selected": tab.and_then(|t| t.selected),
+            "busy": tab.and_then(|t| t.busy_reason()),
+            "operation": tab.and_then(|t| t.operation()).map(|o| o.title),
             "commit": tab.and_then(|t| t.commit.as_ref()).map(|c| c.summary.to_string()),
             "open": tab.and_then(|t| t.diff.as_ref()).map(|d| d.file.path.to_string()),
             "wip": sections,

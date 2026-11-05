@@ -207,6 +207,11 @@ pub struct GitVolt {
     pub saved_columns: serde_json::Value,
     /// Where the keyboard goes next frame: a subscription has no window to move it with.
     pub focus_next_frame: Option<FocusHandle>,
+    pub activity_shown: Rc<std::cell::RefCell<crate::feedback::ActivityShown>>,
+    /// By worktree: the drafts stopped merges set aside.
+    pub merge_asides: std::collections::HashMap<String, crate::wip::MergeAside>,
+    /// Worktrees whose merge Abort is running: Abort's handler restores their drafts.
+    pub merge_aborting: HashSet<String>,
     /// The opener used last, "Open in…"'s default for this session.
     pub last_opener: Option<String>,
     /// Images no longer shown: the frame after they go, the window drops them from its atlas.
@@ -246,7 +251,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new() }
+        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new() }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -439,6 +444,7 @@ impl GitVolt {
             (gitvolt_graph::NodeKind::Commit | gitvolt_graph::NodeKind::Merge | gitvolt_graph::NodeKind::Stash, _) => self.read_commit(repo, id, ix, cx),
             (gitvolt_graph::NodeKind::Wip, Some(w)) => {
                 self.show_draft(repo, cx);
+                self.check_amend(repo, cx);
                 self.read_wip(repo, w, cx);
             }
             _ => {}
@@ -1145,6 +1151,9 @@ impl Render for GitVolt {
         let drag_ghost = self.branch_drag.as_ref().filter(|d| d.active).map(|d| {
             div().absolute().left(d.at.x + px(8.)).top(d.at.y + px(8.)).flex().items_center().gap(px(4.)).h(px(20.)).px(px(5.)).rounded(px(3.)).bg(theme::panel_bg1()).border_1().border_color(theme::blue()).text_color(theme::text_selected()).child(icon("git-branch", 13., theme::text_selected())).child(d.chip.name.clone())
         });
+        if self.activity_open(cx) {
+            self.sync_activity_shown();
+        }
         let overlays = crate::ui::overlays(window, cx);
         let app = div()
             .relative()

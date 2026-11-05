@@ -91,7 +91,7 @@ impl GitVolt {
         if let Some(b) = &local_b {
             sync.extend(crate::sync::sync_rows(self, b, this));
             let (weak, c, name) = (this.clone(), ctx.clone(), b.name.clone());
-            sync.push(MenuRow::action("branch.setUpstream", "Set upstream", "arrow-up-from-dot", format!("Choose the remote branch {name} tracks"), move |_, cx| {
+            sync.push(MenuRow::action("branch.setUpstream", "Set upstream", "arrow-up-right", format!("Choose the remote branch {name} tracks"), move |_, cx| {
                 let (c, name) = (c.clone(), name.clone());
                 weak.update(cx, |v, cx| v.pick_upstream(c, name, cx)).ok();
             }));
@@ -155,13 +155,13 @@ impl GitVolt {
                 worktree.push(MenuRow::Separator);
             }
             let (weak, id, c, h) = (this.clone(), sha.clone(), ctx.clone(), head_sha_now.clone());
-            checkout.push(MenuRow::action("checkout:detached", format!("Detached HEAD at {s7}"), "git-commit-horizontal", "Check out this commit without a branch", move |_, cx| {
+            checkout.push(MenuRow::action("checkout:detached", format!("Detached HEAD at {s7}"), "git-commit-vertical", "Check out this commit without a branch", move |_, cx| {
                 let (id, c, h) = (id.clone(), c.clone(), h.clone());
                 weak.update(cx, |v, cx| v.checkout(c, serde_json::json!({ "kind": "detached", "oid": id }), serde_json::json!({ "head": h, "refs": {} }), None, crate::ui::arm::Origin::None, None, cx)).ok();
             }).disabled_if(busy.clone()));
-            worktree.push(MenuRow::pending("wt:new", "New branch here…", "git-branch-plus"));
+            worktree.push(MenuRow::pending("wt:new", "New branch here…", "folder-plus"));
             branch_rows.push(MenuRow::submenu("branch.checkout", "Checkout", "git-branch", "Check out a branch at this commit, or the commit itself", checkout));
-            branch_rows.push(MenuRow::submenu("branch.createWorktree", "Create worktree from", "tree-pine", "Check out a branch in a new directory", worktree));
+            branch_rows.push(MenuRow::submenu("branch.createWorktree", "Create worktree from", "folder-plus", "Check out a branch in a new directory", worktree));
             let (weak, id, start) = (this.clone(), sha.clone(), branch.map(|b| if b.local { format!("refs/heads/{}", b.name) } else { b.remotes.first().map_or(String::new(), |r| r.1.clone()) }).filter(|s| !s.is_empty()));
             branch_rows.push(MenuRow::action("branch.createHere", "Create branch here", "git-branch-plus", format!("Create a branch at {}", branch.map_or(s7.clone(), |b| b.name.to_string())), move |window, cx| {
                 let (id, start) = (id.clone(), start.clone());
@@ -181,12 +181,12 @@ impl GitVolt {
             if !merge && !is_head_commit {
                 let run = sequence(true, false);
                 let named = format!("{s6} {summary}");
-                commit_rows.push(MenuRow::action("commit.cherryPick", format!("Cherry-pick onto {head}"), "git-commit-horizontal", format!("Apply {named} on top of {head}"), move |w, cx| run(w, cx)).variants(vec![Variant { id: "noCommit".into(), label: Some("No commit".into()), icon: None, tooltip: format!("Apply the changes to {head}'s files and stage them, without committing").into(), run: sequence(true, true), disabled: seq_busy.clone().map(Into::into) }], None).disabled_if(seq_busy.clone()));
+                commit_rows.push(MenuRow::action("commit.cherryPick", format!("Cherry-pick onto {head}"), "cherry", format!("Apply {named} on top of {head}"), move |w, cx| run(w, cx)).variants(vec![Variant { id: "noCommit".into(), label: Some("No commit".into()), icon: None, tooltip: format!("Apply the changes to {head}'s files and stage them, without committing").into(), run: sequence(true, true), disabled: seq_busy.clone().map(Into::into) }], None).disabled_if(seq_busy.clone()));
             }
             if !merge && in_head != Some(false) {
                 let run = sequence(false, false);
                 let named = format!("{s6} {summary}");
-                commit_rows.push(MenuRow::action("commit.revert", "Revert this commit", "rotate-ccw", format!("Make a commit on {head} that undoes {named}"), move |w, cx| run(w, cx)).variants(vec![Variant { id: "noCommit".into(), label: Some("No commit".into()), icon: None, tooltip: format!("Undo the changes in {head}'s files and stage that, without committing").into(), run: sequence(false, true), disabled: seq_busy.clone().map(Into::into) }], None).disabled_if(seq_busy.clone()));
+                commit_rows.push(MenuRow::action("commit.revert", "Revert this commit", "undo-2", format!("Make a commit on {head} that undoes {named}"), move |w, cx| run(w, cx)).variants(vec![Variant { id: "noCommit".into(), label: Some("No commit".into()), icon: None, tooltip: format!("Undo the changes in {head}'s files and stage that, without committing").into(), run: sequence(false, true), disabled: seq_busy.clone().map(Into::into) }], None).disabled_if(seq_busy.clone()));
             }
             let tag = |annotated: bool| -> crate::ui::Action {
                 let (weak, id) = (this.clone(), sha.clone());
@@ -213,7 +213,7 @@ impl GitVolt {
         if let Some(b) = branch {
             if let Some(l) = &local_b {
                 let (weak, name, oid) = (this.clone(), l.name.clone(), l.target.clone());
-                manage.push(MenuRow::action("branch.rename", format!("Rename {}", l.name), "pencil", format!("Rename the local branch {}", l.name), move |window, cx| {
+                manage.push(MenuRow::action("branch.rename", format!("Rename {}", l.name), "pencil-line", format!("Rename the local branch {}", l.name), move |window, cx| {
                     let (name, oid) = (name.clone(), oid.clone());
                     weak.update(cx, |v, cx| v.rename_branch(name, oid, window, cx)).ok();
                 }));
@@ -288,7 +288,7 @@ impl GitVolt {
         };
         let (weak, oid, name) = (this.clone(), sha.to_string(), message.map(str::to_string));
         vec![
-            MenuRow::action("stash.apply", "Apply", "archive-restore", "Apply the stash and keep it (staged changes come back staged)", apply(false)),
+            MenuRow::action("stash.apply", "Apply", "package-open", "Apply the stash and keep it (staged changes come back staged)", apply(false)),
             MenuRow::action("stash.pop", "Pop", "archive-restore", "Apply the stash, then delete it (you can undo this)", apply(true)),
             MenuRow::action("stash.drop", "Delete", "trash-2", "Delete the stash (you can undo this)", move |window, cx| {
                 let (c, oid, name) = (ctx.clone(), oid.clone(), name.clone());
@@ -530,7 +530,7 @@ impl GitVolt {
                 e.update(cx, |v, cx| v.open_change_history(f, true, cx)).ok();
             }),
         ];
-        let lfs = ext.map_or(Vec::new(), |e| vec![MenuRow::pending("file.lfsTrack", format!("Track *.{e} with LFS"), "cloud-download")]);
+        let lfs = ext.map_or(Vec::new(), |e| vec![MenuRow::pending("file.lfsTrack", format!("Track *.{e} with LFS"), "file-plus")]);
         grouped(vec![stage, restore, colour, copy, vec![open], view, history, lfs, vec![MenuRow::pending("files.createFile", "Create file…", "file-plus")]])
     }
 

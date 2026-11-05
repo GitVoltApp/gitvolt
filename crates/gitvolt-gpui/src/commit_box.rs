@@ -15,7 +15,7 @@ use serde_json::json;
 use std::time::{Duration, Instant};
 
 /// A write past this says so, with Cancel.
-const STILL_WORKING: Duration = Duration::from_secs(30);
+pub const STILL_WORKING: Duration = Duration::from_secs(30);
 const LINE_H: f32 = 18.2;
 
 /// What the box shows for an operation in progress (`conflicts/inProgress.ts`).
@@ -84,7 +84,11 @@ fn without_comments(message: &str) -> String {
     }
 }
 
-pub fn operation_view(p: &InProgress, branch: Option<&str>) -> Operation {
+pub fn operation_view(p: &InProgress, branch: Option<&str>, subject_of: &dyn Fn(&str) -> Option<String>, name_at: &dyn Fn(&str) -> Option<String>) -> Operation {
+    let at = |sha: &str, verb: &str| match subject_of(sha) {
+        Some(subject) => format!("{verb} {} {subject}", short(sha)),
+        None => format!("{verb} {}", short(sha)),
+    };
     let finish_where = "Finish this in a terminal, or abort it there.".to_string();
     match p {
         InProgress::Merge { merge_head, message, conflicted } => {
@@ -103,8 +107,8 @@ pub fn operation_view(p: &InProgress, branch: Option<&str>) -> Operation {
         }
         InProgress::Rebase { onto, head_name, step, total, stopped_at, conflicted, message, .. } => Operation {
             kind: OpName::Rebase,
-            title: format!("Rebasing {} onto {} (step {step} of {total})", branch_of(head_name), short(onto)),
-            detail: stopped_at.as_ref().map(|s| format!("Stopped at {}", short(s))),
+            title: format!("Rebasing {} onto {} (step {step} of {total})", branch_of(head_name), name_at(onto).unwrap_or_else(|| short(onto))),
+            detail: stopped_at.as_ref().map(|s| at(s, "Stopped at")),
             hint: if *conflicted > 0 { resolve_first(*conflicted as usize) } else { "No conflicted files left: it is paused. Continue to go on.".into() },
             conflicted: *conflicted,
             primary: Some("Continue rebase".into()),
@@ -114,7 +118,7 @@ pub fn operation_view(p: &InProgress, branch: Option<&str>) -> Operation {
         },
         InProgress::CherryPick { head, message, conflicted } => Operation {
             kind: OpName::CherryPick,
-            title: head.as_ref().map_or("A cherry-pick is in progress".to_string(), |h| format!("Cherry-picking {}", short(h))),
+            title: head.as_ref().map_or("A cherry-pick is in progress".to_string(), |h| at(h, "Cherry-picking")),
             detail: None,
             hint: if *conflicted > 0 { resolve_first(*conflicted as usize) } else { "No conflicted files left: Continue to commit the cherry-pick.".into() },
             conflicted: *conflicted,
@@ -125,7 +129,7 @@ pub fn operation_view(p: &InProgress, branch: Option<&str>) -> Operation {
         },
         InProgress::Revert { head, message, conflicted } => Operation {
             kind: OpName::Revert,
-            title: head.as_ref().map_or("A revert is in progress".to_string(), |h| format!("Reverting {}", short(h))),
+            title: head.as_ref().map_or("A revert is in progress".to_string(), |h| at(h, "Reverting")),
             detail: None,
             hint: if *conflicted > 0 { resolve_first(*conflicted as usize) } else { "No conflicted files left: Continue to commit the revert.".into() },
             conflicted: *conflicted,
@@ -144,8 +148,29 @@ impl Tab {
         let worktree = self.wip_worktree()?;
         let g = self.graph.as_ref()?;
         let p = g.in_progress.get(worktree)?;
-        Some(operation_view(p, g.worktree_branch(worktree).as_deref()))
+        let row = |sha: &str| g.by_sha.get(sha).and_then(|i| g.rows.get(*i));
+        let subject = |sha: &str| row(sha).map(|r| r.summary.to_string());
+        let name = |sha: &str| {
+            let chips: Vec<_> = row(sha)?.chips.iter().filter(|c| !c.tag).collect();
+            chips.iter().find(|c| c.local).map(|c| c.name.to_string()).or_else(|| chips.iter().flat_map(|c| c.remotes.first()).next().map(|r| r.1.trim_start_matches("refs/remotes/").to_string()))
+        };
+        Some(operation_view(p, g.worktree_branch(worktree).as_deref(), &subject, &name))
     }
+}
+
+/// A rebase, cherry-pick or revert's primary button. An unedited or emptied box sends no message: git
+/// commits with its own. A description with no summary would be lost, so it waits for one.
+pub fn continue_button(op: &Operation, summary: &str, description: &str) -> crate::wip::CommitView {
+    let reason = if op.primary.is_none() {
+        Some(op.hint.clone())
+    } else if op.conflicted > 0 {
+        Some(crate::wip::resolve_first(op.conflicted as usize))
+    } else if summary.trim().is_empty() && !description.trim().is_empty() {
+        Some("Write a commit summary".to_string())
+    } else {
+        None
+    };
+    crate::wip::CommitView { label: op.primary.clone().unwrap_or_else(|| "Commit".to_string()), reason, stage_all: false }
 }
 
 fn button_base(id: impl Into<ElementId>) -> Stateful<Div> {
@@ -267,7 +292,7 @@ pub fn commit_box(v: &GitVolt, tab: &Tab, panel_h: f32, window: &Window, cx: &mu
                 .child(div().min_w_0().truncate().child(email.clone())),
         )).into_any_element(),
     };
-    let row = div().flex().flex_none().items_center().gap(px(8.)).min_h(px(20.)).children(amend).child(identity);
+    let row = div().flex().flex_none().items_center().gap(px(8.)).min_h(px(if amend.is_some() { 20. } else { 18. })).children(amend).child(identity);
     let label = view.label.clone();
     let tooltip = view.reason.clone().unwrap_or_else(|| format!("{label} ({})", crate::commands::display_chord("Mod+Enter")));
     let button = tip(
@@ -292,6 +317,7 @@ pub fn commit_box(v: &GitVolt, tab: &Tab, panel_h: f32, window: &Window, cx: &mu
             .rounded(px(4.))
             .bg(theme::panel_bg())
             .text_size(px(12.))
+            .line_height(px(17.))
             .child(div().font_weight(FontWeight::SEMIBOLD).text_color(theme::text_normal()).when(panel_h <= 640., |d| d.truncate()).child(op.title.clone()))
             .when_some(op.detail.clone(), |d, t| d.child(div().truncate().text_color(theme::text_secondary()).child(t)))
             .child(div().text_color(if op.conflicted > 0 { theme::orange() } else { theme::text_secondary() }).child(op.hint.clone()))
@@ -382,6 +408,12 @@ impl GitVolt {
         let repo = tab.id;
         tab.wip.committing = true;
         tab.wip.committing_since = Some(Instant::now());
+        self.remind_still_working(cx);
+        let aborted_merge = (kind == OpName::Merge).then(|| worktree.clone());
+        let ended = aborted_merge.clone();
+        if let Some(w) = aborted_merge.clone() {
+            self.merge_aborting.insert(w);
+        }
         let ctx = crate::write::WriteCtx { repo, worktree: worktree.clone() };
         let w = Write::new(&ctx, move |_| match kind {
             OpName::Merge => call("mergeAbort", json!({ "repo": repo, "worktree": worktree })),
@@ -391,9 +423,15 @@ impl GitVolt {
         .origin(origin)
         .on_success(move |this, out, cx| {
             this.toast_rebase_outcome(out, cx);
+            if let Some(w) = aborted_merge.clone() {
+                this.restore_draft_after_abort(repo, w, cx);
+            }
             this.reload(repo, cx);
         })
         .on_end(move |this, _, cx| {
+            if let Some(w) = &ended {
+                this.merge_aborting.remove(w);
+            }
             if let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) {
                 tab.wip.committing = false;
                 tab.wip.committing_since = None;
@@ -442,11 +480,29 @@ mod tests {
     #[test]
     fn a_merge_says_what_it_merges_and_its_box_commits_it() {
         let p = InProgress::Merge { merge_head: "abcdef123".into(), message: "Merge branch 'feature/x' into main\n".into(), conflicted: 2 };
-        let o = operation_view(&p, Some("refs/heads/main"));
+        let o = operation_view(&p, Some("refs/heads/main"), &|_| None, &|_| None);
         assert_eq!(o.title, "Merging feature/x into main");
         assert_eq!(o.hint, "Resolve 2 conflicted files first");
         assert_eq!(o.primary.as_deref(), Some("Commit and merge"));
         assert!(!o.skip);
+    }
+
+    #[test]
+    fn a_rebase_names_what_it_stopped_at_and_what_it_goes_onto() {
+        let p = InProgress::Rebase { onto: "abcdef123".into(), head_name: "refs/heads/main".into(), step: 1, total: 2, stopped_at: Some("1234567890".into()), conflicted: 1, message: "Mine\n".into(), edit_stop: None, edit_base: None, edit_added: vec![], edit_changed: false, edit_conflict: false, message_failed: None, gitvolt: false };
+        let o = operation_view(&p, None, &|_| Some("Fix x".into()), &|_| Some("topic".into()));
+        assert_eq!(o.title, "Rebasing main onto topic (step 1 of 2)");
+        assert_eq!(o.detail.as_deref(), Some("Stopped at 1234567 Fix x"));
+    }
+
+    #[test]
+    fn continue_waits_for_conflicts_and_for_a_summary_over_a_description() {
+        let mut op = Operation { kind: OpName::Rebase, title: String::new(), detail: None, hint: String::new(), conflicted: 2, primary: Some("Continue rebase".into()), skip: true, message: String::new(), stop: String::new() };
+        assert_eq!(continue_button(&op, "s", "").reason.as_deref(), Some("Resolve 2 conflicted files first"));
+        op.conflicted = 0;
+        assert_eq!(continue_button(&op, "", "d").reason.as_deref(), Some("Write a commit summary"));
+        let v = continue_button(&op, "", "");
+        assert_eq!((v.label.as_str(), v.reason), ("Continue rebase", None), "an empty box: git's message");
     }
 
     #[test]

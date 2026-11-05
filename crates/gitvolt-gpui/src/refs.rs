@@ -108,7 +108,7 @@ pub fn integrate_rows(sha: &str, y: &Chip, checked_out: bool, g: &GraphView, env
     {
         let (weak, c, name, to) = (this.clone(), ctx.clone(), l.clone(), x.clone());
         rows.push(
-            MenuRow::action("integrate.ff", format!("Fast-forward {l} to {x}"), "git-merge", format!("Move {l} up to {x}"), move |_, cx| {
+            MenuRow::action("integrate.ff", format!("Fast-forward {l} to {x}"), "fast-forward", format!("Move {l} up to {x}"), move |_, cx| {
                 let (c, name, to) = (c.clone(), name.clone(), to.clone());
                 weak.update(cx, |v, cx| v.fast_forward(c, name, to, cx)).ok();
             })
@@ -477,6 +477,8 @@ impl GitVolt {
             refs.push(format!("refs/remotes/{}/{}", r.0, r.1));
         }
         self.start_pending(repo, &refs, "delete");
+        // A local delete may come back unmerged: the row's menu stays open, so that question arms the row.
+        let hold = if force { None } else { arm::hold_row(cx) };
         let p = plan.clone();
         let (d_ctx, d_plan, d_origin) = (ctx.clone(), plan, origin.clone());
         let w = Write::new(&ctx, move |_| {
@@ -516,6 +518,7 @@ impl GitVolt {
         })
         .on_end(move |this, _, cx| {
             this.end_pending(repo, &refs, "delete");
+            this.with_window(cx, move |window, cx| arm::release_row(hold, window, cx));
             cx.notify();
         });
         self.write(w, cx);
@@ -531,11 +534,16 @@ impl GitVolt {
         let api = self.api.clone();
         let body = call("integratePreview", json!({ "repo": ctx.repo, "worktree": ctx.worktree, "kind": kind, "target": target }));
         let read = self.rt.spawn(async move { api.dispatch(crate::write::request_of(body)?).await });
+        let hold = arm::hold_row(cx);
         cx.spawn(async move |this, cx| {
             let preview = read.await.unwrap_or_else(|e| Err(GbError::other(e.to_string())));
-            this.update(cx, |this, cx| match preview {
-                Ok(p) => this.previewed(ctx, kind, target, x, ff_only, p, origin, cx),
-                Err(e) => this.toast_error(&e, Some(ctx.repo), None, None, cx),
+            this.update(cx, |this, cx| {
+                match preview {
+                    Ok(p) => this.previewed(ctx, kind, target, x, ff_only, p, origin, cx),
+                    Err(e) => this.toast_error(&e, Some(ctx.repo), None, None, cx),
+                }
+                // Armed first, then the hold goes: the row stays armed in its open menu.
+                this.with_window(cx, move |window, cx| arm::release_row(hold, window, cx));
             })
             .ok();
         })

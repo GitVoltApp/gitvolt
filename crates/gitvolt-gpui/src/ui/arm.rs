@@ -126,6 +126,8 @@ pub struct ArmState {
     pub armed: Option<Armed>,
     /// A menu is running a row: `Origin::current` is that row.
     pub(crate) running_row: bool,
+    /// The running row's action asks later: its menu stays open meanwhile.
+    pub(crate) held: bool,
 }
 
 /// Arms `origin`; `then` answers on the second click (`ok`) or once it's disarmed (`!ok`). Only one
@@ -146,6 +148,24 @@ pub fn request(req: ArmRequest, origin: Origin, then: impl FnOnce(ArmAnswer, &mu
     Ui::get_mut(cx).arm.armed = Some(Armed { req, origin, at: Instant::now(), checked, overlay: None, then: Some(Box::new(then)) });
     super::tooltip::hide(cx);
     cx.refresh_windows();
+}
+
+/// For a menu row's action that may ask after an `await`: the menu stays open until `release_row`, so
+/// the question can arm the row. What it returns goes to `release_row`.
+pub fn hold_row(cx: &mut App) -> Option<u64> {
+    let ui = Ui::get_mut(cx);
+    if !ui.arm.running_row {
+        return None;
+    }
+    ui.arm.held = true;
+    ui.menu.as_ref().map(|m| m.seq)
+}
+
+/// The hold's over: the menu closes unless the row armed meanwhile.
+pub fn release_row(hold: Option<u64>, window: &mut Window, cx: &mut App) {
+    if hold.is_some() && Ui::get(cx).menu.as_ref().map(|m| m.seq) == hold && !armed_on_row(cx) {
+        super::menu::close(window, cx);
+    }
 }
 
 fn origin_bounds(origin: &Origin, cx: &App) -> Option<Bounds<Pixels>> {

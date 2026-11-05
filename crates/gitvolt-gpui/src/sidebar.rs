@@ -653,7 +653,7 @@ impl GitVolt {
             ItemKind::Worktree { path, branch, head, .. } => self.worktree_rows(path, branch.as_deref(), head.as_deref(), this),
             ItemKind::Stash { message, .. } => self.stash_rows(item.target.as_deref().unwrap_or_default(), message, this),
             ItemKind::Tag { .. } => self.tag_rows(&item.name, item.target.as_deref(), true, this),
-            ItemKind::Submodule { .. } => vec![menu::MenuRow::pending("sidebar.submodule.open", "Open in a tab", "boxes"), menu::MenuRow::pending("sidebar.submodule.update", "Update this submodule", "refresh-cw")],
+            ItemKind::Submodule { .. } => vec![menu::MenuRow::pending("sidebar.submodule.open", "Open in a tab", "square-plus"), menu::MenuRow::pending("sidebar.submodule.update", "Update this submodule", "folder-sync")],
         }
     }
 

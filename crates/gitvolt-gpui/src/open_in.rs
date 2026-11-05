@@ -369,7 +369,7 @@ mod tests {
     }
 
     fn file(path: &str, origin: Origin, old: Value, new: Value) -> FileChange {
-        FileChange { path: path.to_string().into(), old_path: None, status: 'M', additions: None, deletions: None, old, new, origin }
+        FileChange { path: path.to_string().into(), old_path: None, status: 'M', additions: None, deletions: None, old, new, conflict: None, origin }
     }
 
     fn all() -> Vec<Opener> {

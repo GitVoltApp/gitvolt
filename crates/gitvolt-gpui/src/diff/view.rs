@@ -1949,7 +1949,7 @@ mod tests {
     use std::prelude::v1::test;
 
     fn change() -> FileChange {
-        FileChange { path: "a.rs".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, origin: crate::details::Origin::Commit { id: "c".into() } }
+        FileChange { path: "a.rs".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, conflict: None, origin: crate::details::Origin::Commit { id: "c".into() } }
     }
 
     fn state(old: &str, new: &str) -> DiffState {

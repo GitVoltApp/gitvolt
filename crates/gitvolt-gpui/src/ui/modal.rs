@@ -217,6 +217,7 @@ pub fn prompt(req: PromptRequest, then: impl Fn(Option<PromptAnswer>, &mut Windo
     });
     let checked = Rc::new(std::cell::Cell::new(req.checkbox.as_ref().is_some_and(|c| c.1)));
     let answered = Rc::new(std::cell::Cell::new(false));
+    let stops = [cx.focus_handle().tab_stop(true), cx.focus_handle().tab_stop(true), cx.focus_handle().tab_stop(true)];
     let tried = Rc::new(std::cell::Cell::new(false));
 
     let blocked = {
@@ -269,7 +270,7 @@ pub fn prompt(req: PromptRequest, then: impl Fn(Option<PromptAnswer>, &mut Windo
             let blocked = error.is_some() || (req.require_change && unchanged);
             let show_error = error.filter(|_| !value.is_empty() && (tried.get() || !unchanged));
             let focused = true;
-            let submit2 = submit.clone();
+            let (submit2, submit3) = (submit.clone(), submit.clone());
             let checked2 = checked.clone();
             div()
                 .flex()
@@ -286,15 +287,20 @@ pub fn prompt(req: PromptRequest, then: impl Fn(Option<PromptAnswer>, &mut Windo
                 )
                 .when_some(show_error, |d, e| d.child(div().text_color(theme::red()).child(e)))
                 .when_some(req.checkbox.clone(), |d, (label, _)| {
-                    d.child(check_row("prompt-check", checked.get(), label, move |on, _, cx| {
-                        checked2.set(on);
+                    let toggled = checked2.clone();
+                    let row = check_row("prompt-check", checked.get(), label, move |on, _, cx| {
+                        toggled.set(on);
+                        cx.refresh_windows();
+                    });
+                    d.child(controls::tabbable(row.border_1().border_color(transparent_black()).rounded(px(3.)).ml(px(-1.)), &stops[0], move |_, cx| {
+                        checked2.set(!checked2.get());
                         cx.refresh_windows();
                     }))
                 })
                 .child(
                     actions_row()
-                        .child(controls::button("prompt-cancel", "Cancel", ButtonKind::Plain, true).on_click(|_, window, cx| close(ID, window, cx)))
-                        .child(controls::button("prompt-ok", req.confirm_label.clone(), ButtonKind::Plain, !blocked).when(!blocked, |d| d.on_click(move |_, window, cx| submit2(window, cx)))),
+                        .child(controls::tabbable(controls::button("prompt-cancel", "Cancel", ButtonKind::Plain, true).on_click(|_, window, cx| close(ID, window, cx)), &stops[1], |window, cx| close(ID, window, cx)))
+                        .child(controls::tabbable(controls::button("prompt-ok", req.confirm_label.clone(), ButtonKind::Plain, !blocked).when(!blocked, |d| d.on_click(move |_, window, cx| submit2(window, cx))), &stops[2], move |window, cx| submit3(window, cx))),
                 )
                 .into_any_element()
         }
@@ -387,5 +393,25 @@ mod tests {
         cx.simulate_keystrokes("enter");
         cx.run_until_parked();
         assert_eq!(*got.borrow(), [Some("new".to_string())]);
+    }
+
+    #[gpui::test]
+    fn tab_reaches_a_prompts_checkbox_and_buttons(cx: &mut TestAppContext) {
+        let (mut cx, _) = open_host(cx);
+        let got: Rc<RefCell<Vec<Option<PromptAnswer>>>> = Rc::default();
+        let log = got.clone();
+        cx.update(|window, cx| {
+            let req = PromptRequest { title: "New".into(), label: "Name".into(), initial: "a".into(), confirm_label: "Make".into(), checkbox: Some(("Check out".into(), true)), ..Default::default() };
+            prompt(req, move |a, _, _| log.borrow_mut().push(a), window, cx);
+        });
+        cx.run_until_parked();
+        cx.simulate_keystrokes("tab space");
+        cx.run_until_parked();
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert!(got.borrow().is_empty(), "Enter on the checkbox toggles it: Space and Enter both did");
+        cx.simulate_keystrokes("space tab tab enter");
+        cx.run_until_parked();
+        assert_eq!(*got.borrow(), [Some(PromptAnswer { value: "a".into(), checked: false })]);
     }
 }

@@ -447,7 +447,7 @@ impl TextInput {
     }
 
     fn with_lines(multiline: bool, cx: &mut Context<Self>) -> Self {
-        let focus = cx.focus_handle();
+        let focus = cx.focus_handle().tab_stop(true);
         Self {
             focus,
             buffer: Buffer::new(multiline),

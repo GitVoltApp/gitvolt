@@ -27,8 +27,17 @@ use std::time::Duration;
 pub const SLOW_MS: Duration = Duration::from_millis(2000);
 /// How long an autostash step runs before the status names it.
 pub const SLOW_STASH: Duration = Duration::from_secs(60);
-/// What the background fetch waits between runs, the settings' default.
-pub const FETCH_INTERVAL: Duration = Duration::from_secs(300);
+/// `fetchIntervalSecs` as it runs: its default when unread; 0 turns it off.
+pub fn fetch_interval(secs: Option<u64>) -> Option<Duration> {
+    match secs.unwrap_or(FETCH_DEFAULT_SECS) {
+        0 => None,
+        n => Some(Duration::from_secs(n.clamp(FETCH_MIN_SECS, FETCH_MAX_SECS))),
+    }
+}
+
+const FETCH_DEFAULT_SECS: u64 = 60;
+const FETCH_MIN_SECS: u64 = 60;
+const FETCH_MAX_SECS: u64 = 86_400;
 
 fn capitalized(s: &str) -> String {
     let mut c = s.chars();
@@ -108,8 +117,19 @@ pub fn entry_text(e: &ActivityEntry) -> String {
     parts.join("\n")
 }
 
-/// The modal's own state.
 #[derive(Default)]
+pub struct ActivityShown {
+    pub activity: ActivityUi,
+    pub ops: ActivityOps,
+}
+
+#[derive(Default)]
+pub struct ActivityOps {
+    pub activity: Vec<ActivityEntry>,
+}
+
+/// The modal's own state.
+#[derive(Default, Clone)]
 pub struct ActivityUi {
     pub commands_view: bool,
     pub errors_only: bool,
@@ -151,18 +171,23 @@ impl GitVolt {
         });
     }
 
-    /// The app's one background fetch, each interval, of the shown tab: a hidden one does no work.
+    /// The app's one background fetch, each interval of the settings', of the shown tab: a hidden one
+    /// does no work, and between fetches nothing wakes.
     pub fn start_fetch_schedule(&mut self, cx: &mut Context<Self>) {
         if cfg!(test) || std::env::var_os("GITVOLT_NO_BACKGROUND_FETCH").is_some() {
             return;
         }
+        let api = self.api.clone();
+        let state = self.rt.spawn(async move { api.dispatch(gitvolt_core::api::Request::LoadState).await });
         cx.spawn(async move |this, cx| {
+            let saved = state.await.ok().and_then(Result::ok).and_then(|v| v["settings"]["fetchIntervalSecs"].as_u64());
+            let Some(interval) = fetch_interval(saved) else { return };
             loop {
-                cx.background_executor().timer(Duration::from_secs(30)).await;
+                cx.background_executor().timer(interval).await;
                 let live = this.update(cx, |v, cx| {
                     let Some(tab) = v.tabs.get(v.active) else { return };
-                    let due = tab.last_fetch.is_none_or(|at| at.elapsed() >= FETCH_INTERVAL);
-                    if due {
+                    // A fetch by hand this interval counts.
+                    if tab.last_fetch.is_none_or(|at| at.elapsed() + Duration::from_secs(1) >= interval) {
                         v.run_fetch(tab.id, true, None, cx);
                     }
                 });
@@ -246,12 +271,20 @@ impl GitVolt {
         }
         let this = cx.weak_entity();
         let size = window.viewport_size();
-        let m = Modal::new(ACTIVITY_ID, move |window, cx| {
-            let Some(view) = this.upgrade() else { return div().into_any_element() };
-            activity_view(view, window, cx)
-        })
+        self.sync_activity_shown();
+        let shown = self.activity_shown.clone();
+        let m = Modal::new(ACTIVITY_ID, move |window, cx| activity_view(&shown.borrow(), this.clone(), window, cx))
         .width(size.width.as_f32() * 0.8);
         modal::open(m, window, cx);
+    }
+
+    /// What the open log draws: overlays build while the app is being updated, so it can't be read then.
+    pub fn sync_activity_shown(&mut self) {
+        *self.activity_shown.borrow_mut() = ActivityShown { activity: self.activity.clone(), ops: ActivityOps { activity: self.ops.activity.clone() } };
+    }
+
+    pub fn activity_open(&self, cx: &App) -> bool {
+        modal::is_open(ACTIVITY_ID, cx)
     }
 
     /// The tab's banners, from its worktree's journal.
@@ -361,13 +394,13 @@ pub fn bell_rows(v: &GitVolt, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         })
     };
     if v.ops.errors.is_empty() {
-        return vec![MenuRow::action("bell.none", "No notifications", "bell", "Background errors (a failed background fetch) appear here", |_, _| {}).disabled("Nothing yet"), MenuRow::Separator, activity];
+        return vec![MenuRow::action("bell.none", "No notifications", "bell-off", "Background errors (a failed background fetch) appear here", |_, _| {}).disabled("Nothing yet"), MenuRow::Separator, activity];
     }
     let mut rows: Vec<MenuRow> = v.ops.errors.iter().enumerate().map(|(i, e)| MenuRow::action(format!("bell.{i}"), e.message.clone(), "triangle-alert", e.message.clone(), |_, _| {})).collect();
     let weak = this.clone();
     rows.push(MenuRow::Separator);
     rows.push(activity);
-    rows.push(MenuRow::action("bell.clear", "Clear notifications", "bell", "Forget these notifications", move |_, cx| {
+    rows.push(MenuRow::action("bell.clear", "Clear notifications", "bell-off", "Forget these notifications", move |_, cx| {
         weak.update(cx, |v, cx| {
             v.ops.errors.clear();
             v.ops.unread = 0;
@@ -478,9 +511,7 @@ pub fn status_items(v: &GitVolt, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
     out
 }
 
-fn activity_view(view: Entity<GitVolt>, window: &Window, cx: &mut App) -> AnyElement {
-    let v = view.read(cx);
-    let weak = view.downgrade();
+fn activity_view(v: &ActivityShown, weak: WeakEntity<GitVolt>, window: &Window, _: &mut App) -> AnyElement {
     let height = window.viewport_size().height.as_f32() * 0.8;
     let commands_view = v.activity.commands_view;
     let tab_button = |id: &'static str, label: &'static str, on: bool, go_commands: bool, weak: WeakEntity<GitVolt>| {
@@ -510,7 +541,7 @@ fn activity_view(view: Entity<GitVolt>, window: &Window, cx: &mut App) -> AnyEle
     div().flex().flex_col().gap(px(10.)).h(px(height - 32.)).child(head).child(body).into_any_element()
 }
 
-fn activity_body(v: &GitVolt, weak: WeakEntity<GitVolt>) -> AnyElement {
+fn activity_body(v: &ActivityShown, weak: WeakEntity<GitVolt>) -> AnyElement {
     let a = &v.activity;
     let rows = activity_rows(&v.ops.activity, a.errors_only, !a.show_background, a.focus_op);
     let shown: usize = rows.iter().map(Vec::len).sum();
@@ -619,13 +650,12 @@ fn activity_body(v: &GitVolt, weak: WeakEntity<GitVolt>) -> AnyElement {
     div().flex().flex_col().flex_1().min_h_0().gap(px(8.)).child(toolbar).child(list).into_any_element()
 }
 
-fn commands_body(v: &GitVolt) -> AnyElement {
+fn commands_body(v: &ActivityShown) -> AnyElement {
     let mut list = div().id("commands-list").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().border_t_1().border_color(theme::section_border());
     for c in &v.activity.commands {
         let id = c["id"].as_u64().unwrap_or(0);
         let focused = v.activity.focus_command == Some(id);
-        let exit = c["exitCode"].as_i64();
-        let failed = exit.is_some_and(|e| e != 0);
+        let failed = c["ok"] == false;
         let text = c["args"].as_array().map_or_else(|| c["command"].as_str().unwrap_or_default().to_string(), |a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" "));
         let stderr = c["stderr"].as_str().filter(|s| !s.is_empty() && (focused || failed)).map(str::to_string);
         list = list.child(

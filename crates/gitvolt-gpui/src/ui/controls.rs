@@ -136,6 +136,19 @@ pub fn check_row(id: impl Into<ElementId>, checked: bool, label: impl Into<Share
     div().id(id).flex().items_center().gap(px(6.)).cursor_pointer().on_click(move |_, window, cx| on_change(!checked, window, cx)).child(check_box(checked, 13.).mt_0()).child(label.into())
 }
 
+/// A control Tab reaches in a dialog: Enter or Space runs it, and it's outlined while it has the keyboard.
+pub fn tabbable(el: Stateful<Div>, focus: &FocusHandle, run: impl Fn(&mut Window, &mut App) + 'static) -> Stateful<Div> {
+    el.track_focus(focus)
+        .focus(|s| s.border_color(theme::blue()))
+        .on_key_down(move |e: &KeyDownEvent, window, cx| {
+            let m = &e.keystroke.modifiers;
+            if matches!(e.keystroke.key.as_str(), "enter" | "space") && !m.control && !m.alt && !m.shift && !m.platform {
+                cx.stop_propagation();
+                run(window, cx);
+            }
+        })
+}
+
 /// A chord as keycaps: `Ctrl+Shift+T` draws three.
 pub fn keycaps(chord: &str) -> Div {
     let mut row = div().flex().flex_none().gap(px(3.));
