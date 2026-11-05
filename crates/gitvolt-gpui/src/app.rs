@@ -8,6 +8,7 @@ use crate::history::{FileHistory, HISTORY_H, history_panel};
 use crate::open_in::{OpenIn, open_in_menu};
 use crate::model::*;
 use crate::theme;
+use crate::ui::input::{InputEvent, TextInput};
 use gitvolt_core::api::{Api, Request};
 use gitvolt_core::events::AppEvent;
 use gpui::prelude::*;
@@ -81,6 +82,10 @@ pub struct Tab {
     pub open_in: OpenIn,
     /// The sidebar stays open beside a file (it folds to its strip by default).
     pub sidebar_open: bool,
+    /// "View all files"' filter.
+    pub file_filter: Entity<TextInput>,
+    /// An image's zoom, while a number's being typed.
+    pub zoom_input: Entity<TextInput>,
     pub list: UniformListScrollHandle,
     pub side: [UniformListScrollHandle; 5],
     pub error: Option<SharedString>,
@@ -90,7 +95,29 @@ pub struct Tab {
 }
 
 impl Tab {
-    pub fn new(id: u32, name: SharedString) -> Self {
+    pub fn new(id: u32, name: SharedString, cx: &mut Context<GitVolt>) -> Self {
+        let file_filter = cx.new(|cx| TextInput::new(cx).placeholder("Filter files").claim_escape_with_text());
+        cx.subscribe(&file_filter, move |this, input, e: &InputEvent, cx| match e {
+            InputEvent::Changed => this.file_filter_changed(id, cx),
+            InputEvent::Escape => {
+                input.update(cx, |input, cx| input.set_text("", cx));
+                this.file_filter_changed(id, cx);
+            }
+            InputEvent::Focused => {
+                if let Some(tab) = this.tabs.iter_mut().find(|t| t.id == id) {
+                    tab.keys = KeyArea::Files;
+                }
+            }
+            _ => {}
+        })
+        .detach();
+        let zoom_input = cx.new(|cx| TextInput::new(cx).claim_escape());
+        cx.subscribe(&zoom_input, |this, _, e: &InputEvent, cx| match e {
+            InputEvent::Submit { .. } | InputEvent::Blurred => this.end_zoom_edit(true, cx),
+            InputEvent::Escape => this.end_zoom_edit(false, cx),
+            _ => {}
+        })
+        .detach();
         Self {
             id,
             name,
@@ -108,6 +135,8 @@ impl Tab {
             sort_by_status: false,
             open_in: OpenIn::default(),
             sidebar_open: false,
+            file_filter,
+            zoom_input,
             list: UniformListScrollHandle::new(),
             side: std::array::from_fn(|_| UniformListScrollHandle::new()),
             error: None,
@@ -128,6 +157,8 @@ pub struct GitVolt {
     pub font: SharedString,
     pub git_version: SharedString,
     pub dragging_scrollbar: bool,
+    /// Where the keyboard goes next frame: a subscription has no window to move it with.
+    pub focus_next_frame: Option<FocusHandle>,
     /// The opener used last, "Open in…"'s default for this session.
     pub last_opener: Option<String>,
     /// A message for a moment, over the bottom of the window.
@@ -140,7 +171,8 @@ pub struct GitVolt {
 
 impl GitVolt {
     pub fn new(api: Arc<Api>, rt: tokio::runtime::Handle, font: SharedString, cx: &mut Context<Self>) -> Self {
-        Self { api, rt, tabs: Vec::new(), active: 0, focus: cx.focus_handle(), font, git_version: SharedString::default(), dragging_scrollbar: false, last_opener: None, toast: None, retired_images: Rc::default(), frame_hook: None }
+        let focus = cx.focus_handle();
+        Self { api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, focus_next_frame: None, last_opener: None, toast: None, retired_images: Rc::default(), frame_hook: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -206,7 +238,7 @@ impl GitVolt {
                     if let Some(i) = this.tabs.iter().position(|t| t.id == id) {
                         this.active = i;
                     } else {
-                        let mut tab = Tab::new(id, name.into());
+                        let mut tab = Tab::new(id, name.into(), cx);
                         tab.worktree = worktree;
                         this.tabs.push(tab);
                         this.list_openers(id, cx);
@@ -834,6 +866,9 @@ fn resize_handles(window: &Window) -> Option<impl IntoElement + use<>> {
 
 impl Render for GitVolt {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(handle) = self.focus_next_frame.take() {
+            window.focus(&handle, cx);
+        }
         if let (Some(hook), Some(tab)) = (self.frame_hook.as_mut(), self.tabs.get_mut(self.active)) {
             hook(tab, window);
         }
@@ -841,7 +876,7 @@ impl Render for GitVolt {
             window.drop_image(image).ok();
         }
         let viewport = window.viewport_size();
-        let details = self.tabs.get(self.active).and_then(|t| details_panel(t, cx));
+        let details = self.tabs.get(self.active).and_then(|t| details_panel(t, window, cx));
         let tab = self.tabs.get(self.active);
         let open_file = tab.is_some_and(|t| t.diff.is_some() || t.history.is_some());
         let folded = open_file && !tab.is_some_and(|t| t.sidebar_open);
@@ -900,16 +935,18 @@ impl Render for GitVolt {
             .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.select_all(cx)))
             .on_action(cx.listener(|this, _: &PageDown, window, cx| this.page(true, window, cx)))
             .on_action(cx.listener(|this, _: &PageUp, window, cx| this.page(false, window, cx)))
-            .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
                 let k = &e.keystroke;
-                if this.zoom_field_key(k, cx) || (k.key == "enter" && this.activate_open_in(cx)) || this.filter_key(k, cx) || this.file_list_key(k, cx) {
+                // A field's characters are its own.
+                if crate::ui::input::is_typing(window) {
+                    return;
+                }
+                if (k.key == "enter" && this.activate_open_in(cx)) || this.file_list_key(k, cx) {
                     cx.stop_propagation();
                 }
             }))
             .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
-                if this.close_open_in(cx) || this.filter_escape(cx) {
-                } else if this.zoom_editing() {
-                    this.end_zoom_edit(false, cx);
+                if this.close_open_in(cx) {
                 } else if this.tabs.get(this.active).is_some_and(|t| t.history.is_some()) {
                     this.close_history(cx);
                 } else if this.diff_open() {
@@ -961,6 +998,7 @@ pub mod tests {
 
     pub fn with_rows(cx: &mut TestAppContext, count: usize) -> (WindowHandle<GitVolt>, VisualTestContext, tokio::runtime::Runtime) {
         cx.update(bind_keys);
+        cx.update(crate::ui::init);
         let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();
         let handle = runtime.handle().clone();
         let api = Arc::new(Api::new(GitCli::new(Arc::new(CommandLog::new(10))), None));
@@ -972,7 +1010,7 @@ pub mod tests {
                         let mut v = GitVolt::new(api, handle, "Noto Sans".into(), cx);
                         let rows: Vec<RowView> = (0..count).map(row).collect();
                         let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
-                        let mut tab = Tab::new(1, "fixture".into());
+                        let mut tab = Tab::new(1, "fixture".into(), cx);
                         tab.graph = Some(Rc::new(GraphView { rows, max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), by_sha }));
                         v.tabs.push(tab);
                         window.focus(&v.focus, cx);

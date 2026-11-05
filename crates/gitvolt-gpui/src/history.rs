@@ -844,7 +844,7 @@ pub fn history_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option
                 .flex_1()
                 .min_h_0()
                 .when(margin > 0., |d| d.child(blame_strip(h, diff, margin, cx)))
-                .child(diff_body(diff, editor - margin, cx))
+                .child(diff_body(diff, editor - margin, &tab.zoom_input, cx))
                 .when_some(if let BlameState::Failed(e) = &h.blame { Some(e.clone()) } else { None }, |d, e| {
                     d.child(div().absolute().left(px(8.)).bottom(px(8.)).px(px(8.)).py(px(4.)).rounded(px(4.)).bg(theme::panel_bg1()).text_color(theme::text_secondary()).child(format!("Couldn't load the blame: {e}")))
                 }),

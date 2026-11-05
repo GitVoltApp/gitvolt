@@ -1,5 +1,8 @@
 //! The default dark theme: `ui/src/theme/tokens.css`'s first-paint values, as colours.
 
+// Every token the CSS has, whether a view uses it yet or not.
+#![allow(dead_code)]
+
 use gpui::{Hsla, Rgba, rgb, rgba};
 
 pub fn c(hex: u32) -> Hsla {
@@ -43,6 +46,28 @@ pub fn diff_removed_line() -> Hsla { a(0xd9413d26) }
 pub fn diff_diagonal() -> Hsla { a(0xcccccc33) }
 pub fn ruler_added() -> Hsla { a(0x5cb85c99) }
 pub fn ruler_removed() -> Hsla { a(0xd9413d99) }
+pub fn red() -> Hsla { c(0xd9413d) }
+pub fn green() -> Hsla { c(0x5cb85c) }
+pub fn orange() -> Hsla { c(0xde9b43) }
+pub fn yellow() -> Hsla { c(0xecb91c) }
+pub fn link() -> Hsla { c(0x40c5ec) }
+pub fn purple() -> Hsla { c(0xa371f7) }
+pub fn stats_added() -> Hsla { c(0x347d39) }
+pub fn stats_deleted() -> Hsla { c(0xc93c37) }
+pub fn switch_on() -> Hsla { c(0x4d88ff) }
+pub fn switch_off() -> Hsla { a(0xffffff29) }
+pub fn focus_outline() -> Hsla { a(0x4d88ff99) }
+pub fn text_on_accent() -> Hsla { c(0xffffff) }
+pub fn text_row_dimmed() -> Hsla { a(0xffffff33) }
+pub fn text_row_dimmed_branch() -> Hsla { a(0xffffff80) }
+pub fn shadow_modal() -> Hsla { a(0x00000080) }
+pub fn shadow_popup() -> Hsla { a(0x00000073) }
+pub fn shadow_tooltip() -> Hsla { a(0x00000066) }
+pub fn backdrop() -> Hsla { a(0x00000073) }
+pub fn collapse_strip() -> Hsla { a(0x00000066) }
+pub fn wip_input_bg() -> Hsla { c(0x16181c) }
+pub fn wip_input_border() -> Hsla { c(0x282a2d) }
+pub fn wip_input_placeholder() -> Hsla { c(0x6e6f71) }
 pub fn yellow_banner() -> Hsla { a(0xecb91c2e) }
 /// `--blue` at 35%: the filter's matched substring.
 pub fn filter_match() -> Hsla { a(0x4d88ff59) }
@@ -51,6 +76,18 @@ pub fn image_frame_border() -> Hsla { a(0xffffff38) }
 pub fn range_fill() -> Hsla { c(0x99c8ff) }
 pub fn range_track() -> Hsla { c(0x3b3b3b) }
 pub fn range_border() -> Hsla { c(0x858585) }
+
+/// `color-mix(in srgb, a share, b)`: `share` of `a`, the rest of `b`, alpha mixed too.
+pub fn mix(a: Hsla, share: f32, b: Hsla) -> Hsla {
+    let (x, y) = (a.to_rgb(), b.to_rgb());
+    let (ax, ay) = (x.a * share, y.a * (1. - share));
+    let alpha = ax + ay;
+    if alpha <= 0. {
+        return Hsla::transparent_black();
+    }
+    let ch = |p: f32, q: f32| (p * ax + q * ay) / alpha;
+    Rgba { r: ch(x.r, y.r), g: ch(x.g, y.g), b: ch(x.b, y.b), a: alpha }.into()
+}
 
 /// Lane colours 0-9 (`--graph-0`..`--graph-9`).
 pub const LANES: [u32; 10] = [0x15a0bf, 0x0669f7, 0x8e00c2, 0xc517b6, 0xd90171, 0xcd0101, 0xf25d2e, 0xf2ca33, 0x7bd938, 0x2ece9d];

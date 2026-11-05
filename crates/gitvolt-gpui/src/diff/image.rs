@@ -5,9 +5,9 @@
 use super::view::ViewKind;
 use crate::app::{GitVolt, icon};
 use crate::details::{segment, segmented};
-use crate::field::{Field, Typed};
 use crate::format::format_bytes;
 use crate::theme;
+use crate::ui::input::TextInput;
 use base64::Engine;
 use gpui::prelude::*;
 use gpui::*;
@@ -347,7 +347,8 @@ pub struct ImageView {
     pub opacity: f32,
     pub match_pick: Option<bool>,
     /// The zoom % being typed.
-    pub zoom_edit: Option<Field>,
+    /// A number's being typed for the zoom (`GitVolt::zoom_input`).
+    pub zoom_edit: bool,
     /// The Hex or Source toggle.
     pub source_on: bool,
     pub drag: ImageDrag,
@@ -402,7 +403,7 @@ impl ImageView {
             swipe: MODE_START,
             opacity: MODE_START,
             match_pick,
-            zoom_edit: None,
+            zoom_edit: false,
             source_on: false,
             drag: ImageDrag::None,
             stage: (0., 0.),
@@ -859,7 +860,7 @@ fn background_button(id: &'static str, which: Background, on: bool, swatch: Div,
         .into_any_element()
 }
 
-fn image_toolbar(img: &ImageView, file: bool, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+fn image_toolbar(img: &ImageView, file: bool, zoom_input: &Entity<TextInput>, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let both = img.both(file);
     let active = img.active_mode(file);
     let mode_button = |id: &'static str, label: &'static str, mode: Mode, cx: &mut Context<GitVolt>| {
@@ -933,13 +934,13 @@ fn image_toolbar(img: &ImageView, file: bool, cx: &mut Context<GitVolt>) -> impl
                         this.with_image(cx, |img, file| img.apply_step(DEFAULT_STEP, None, false, file));
                     }
                 })))
-                .child(match &img.zoom_edit {
-                    Some(field) => div()
+                .child(match img.zoom_edit {
+                    true => div()
                         .id("zoom-input")
                         .flex()
                         .flex_none()
-                        .min_w(px(51.))
-                        .justify_center()
+                        .w(px(51.))
+                        .items_center()
                         .px(px(4.))
                         .py(px(1.))
                         .bg(theme::app_bg())
@@ -947,14 +948,13 @@ fn image_toolbar(img: &ImageView, file: bool, cx: &mut Context<GitVolt>) -> impl
                         .border_color(theme::section_border())
                         .rounded(px(4.))
                         .text_color(theme::text_selected())
-                        .on_mouse_down_out(cx.listener(|this, _, _, cx| this.end_zoom_edit(true, cx)))
-                        .child(field.view(true))
+                        .child(zoom_input.clone())
                         .into_any_element(),
-                    None => toolbar_button("img-zoom-pct", format!("{}%", img.zoom_pct), false)
+                    false => toolbar_button("img-zoom-pct", format!("{}%", img.zoom_pct), false)
                         .min_w(px(51.))
                         .flex()
                         .justify_center()
-                        .on_click(cx.listener(|this, _, _, cx| this.start_zoom_edit(cx)))
+                        .on_click(cx.listener(|this, _, window, cx| this.start_zoom_edit(window, cx)))
                         .into_any_element(),
                 }),
         )
@@ -1275,50 +1275,39 @@ impl GitVolt {
     }
 
     /// A click on the zoom %: type an exact one.
-    fn start_zoom_edit(&mut self, cx: &mut Context<Self>) {
-        self.with_image(cx, |img, _| img.zoom_edit = Some(Field { text: img.zoom_pct.to_string(), selected: true }));
+    fn start_zoom_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut pct = None;
+        self.with_image(cx, |img, _| {
+            img.zoom_edit = true;
+            pct = Some(img.zoom_pct);
+        });
+        let Some(pct) = pct else { return };
+        let Some(zoom_input) = self.tabs.get(self.active).map(|t| t.zoom_input.clone()) else { return };
+        zoom_input.update(cx, |input, cx| {
+            input.set_text(&pct.to_string(), cx);
+            input.select_all_text(cx);
+        });
+        window.focus(&zoom_input.read(cx).focus.clone(), cx);
     }
 
     /// Enter or leaving it applies what's typed; Esc doesn't.
     pub fn end_zoom_edit(&mut self, commit: bool, cx: &mut Context<Self>) {
+        let Some(typed) = self.tabs.get(self.active).map(|t| t.zoom_input.read(cx).text().to_string()) else { return };
+        let mut was = false;
         self.with_image(cx, |img, file| {
-            let Some(field) = img.zoom_edit.take() else { return };
-            if commit
-                && let Ok(n) = field.text.trim().parse::<f32>()
+            was = std::mem::take(&mut img.zoom_edit);
+            if was
+                && commit
+                && let Ok(n) = typed.trim().parse::<f32>()
                 && n.is_finite()
                 && n > 0.
             {
                 img.apply_scale(n / 100., file);
             }
         });
-    }
-
-    /// A key for the zoom's field, if it's being typed in. Whether it took it.
-    pub fn zoom_field_key(&mut self, k: &Keystroke, cx: &mut Context<Self>) -> bool {
-        let field = self.tabs.get_mut(self.active).and_then(|t| t.diff.as_mut()).and_then(|d| d.image.as_mut()).and_then(|i| i.zoom_edit.as_mut());
-        let Some(field) = field else { return false };
-        if k.modifiers.control && k.key == "v" {
-            if let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) {
-                field.paste(&text);
-                cx.notify();
-            }
-            return true;
+        if was {
+            self.focus_next_frame = Some(self.focus.clone());
         }
-        match field.key(k) {
-            Typed::None => false,
-            Typed::Changed => {
-                cx.notify();
-                true
-            }
-            Typed::Enter => {
-                self.end_zoom_edit(true, cx);
-                true
-            }
-        }
-    }
-
-    pub fn zoom_editing(&self) -> bool {
-        self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).and_then(|d| d.image.as_ref()).is_some_and(|i| i.zoom_edit.is_some())
     }
 
     fn slider_track(&self, which: ImageDrag) -> Option<(f32, f32)> {
@@ -1332,12 +1321,12 @@ impl GitVolt {
     }
 }
 
-pub fn image_body(img: &ImageView, file: bool, source: Option<AnyElement>, cx: &mut Context<GitVolt>) -> AnyElement {
+pub fn image_body(img: &ImageView, file: bool, source: Option<AnyElement>, zoom_input: &Entity<TextInput>, cx: &mut Context<GitVolt>) -> AnyElement {
     let body = match source {
         Some(source) if img.source_on => source,
         _ => stage(img, file, cx),
     };
-    div().flex().flex_col().flex_1().min_w_0().min_h_0().child(image_toolbar(img, file, cx)).child(body).into_any_element()
+    div().flex().flex_col().flex_1().min_w_0().min_h_0().child(image_toolbar(img, file, zoom_input, cx)).child(body).into_any_element()
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 //! (`ui/src/details`, `ui/src/files`).
 
 use crate::app::{GitVolt, KeyArea, Tab, icon};
-use crate::field::{Field, Typed};
+use crate::ui::input::TextInput;
 use crate::model::{SHORT_SHA, initials};
 use crate::theme;
 use gitvolt_core::api::Request;
@@ -211,9 +211,8 @@ pub struct Files {
     pub commit: Option<String>,
     pub tree: Option<Vec<String>>,
     pub tree_error: Option<SharedString>,
-    /// "View all files"' filter: never kept when it's turned off.
-    pub filter: Field,
-    pub filter_focused: bool,
+    /// "View all files"' filter (`Tab::file_filter` holds what's typed): never kept when it's off.
+    pub filter: String,
 }
 
 impl Files {
@@ -221,7 +220,7 @@ impl Files {
         let (mode, collapsed) = (ListMode::Tree, HashSet::new());
         let rows = Rc::new(list_rows(&changes, mode, &collapsed));
         let changes = Rc::new(changes);
-        Self { changed: changes.clone(), changes, added, deleted, mode, by_status: false, collapsed, rows, list: UniformListScrollHandle::new(), cursor: None, commit: None, tree: None, tree_error: None, filter: Field::default(), filter_focused: false }
+        Self { changed: changes.clone(), changes, added, deleted, mode, by_status: false, collapsed, rows, list: UniformListScrollHandle::new(), cursor: None, commit: None, tree: None, tree_error: None, filter: String::new() }
     }
 
     fn relist(&mut self) {
@@ -234,7 +233,7 @@ impl Files {
             Some(Cursor::File(i)) => self.changes.get(*i).cloned(),
             _ => None,
         };
-        let query = self.filter.text.trim().to_lowercase();
+        let query = self.filter.trim().to_lowercase();
         let tree = self.tree.as_deref().zip(self.commit.as_deref());
         let by_status = self.by_status && self.mode == ListMode::Path;
         self.changes = Rc::new(listed_files(&self.changed, tree, &query, by_status));
@@ -427,9 +426,11 @@ impl GitVolt {
         if !on {
             files.tree = None;
             files.tree_error = None;
-            files.filter = Field::default();
-            files.filter_focused = false;
+            files.filter.clear();
             files.rebuild();
+        }
+        if !on {
+            self.tabs[self.active].file_filter.update(cx, |input, cx| input.set_text("", cx));
         }
         if on {
             self.read_tree(repo, cx);
@@ -532,39 +533,15 @@ impl GitVolt {
         true
     }
 
-    /// A key for the filter, if it has the keyboard. Whether it took it.
-    pub fn filter_key(&mut self, k: &Keystroke, cx: &mut Context<Self>) -> bool {
-        let Some(files) = self.tabs.get_mut(self.active).and_then(|t| t.files.as_mut()).filter(|f| f.filter_focused) else { return false };
-        if k.modifiers.control && k.key == "v" {
-            if let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) {
-                files.filter.paste(&text);
-                files.rebuild();
-                cx.notify();
-            }
-            return true;
+    /// The filter's text changed.
+    pub fn file_filter_changed(&mut self, repo: u32, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
+        let text = tab.file_filter.read(cx).text().to_string();
+        if let Some(files) = tab.files.as_mut() {
+            files.filter = text;
+            files.rebuild();
+            cx.notify();
         }
-        match files.filter.key(k) {
-            Typed::None => false,
-            Typed::Enter => true,
-            Typed::Changed => {
-                files.rebuild();
-                cx.notify();
-                true
-            }
-        }
-    }
-
-    /// Esc in the filter: it clears first; empty, it's the app's Esc as usual. Whether it took it.
-    pub fn filter_escape(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(files) = self.tabs.get_mut(self.active).and_then(|t| t.files.as_mut()).filter(|f| f.filter_focused) else { return false };
-        if files.filter.text.is_empty() {
-            files.filter_focused = false;
-            return false;
-        }
-        files.filter = Field::default();
-        files.rebuild();
-        cx.notify();
-        true
     }
 
     /// A parent's id: selects its commit, or says it isn't loaded.
@@ -688,7 +665,7 @@ fn commit_view(c: &Commit, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
         )
 }
 
-fn files_view(files: &Files, selected: Option<&SharedString>, all_files: bool, keys_here: bool, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&SharedString>, all_files: bool, keys_here: bool, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let (mut added, mut changed, mut gone, mut renamed) = (0, 0, 0, 0);
     for f in files.changed.iter() {
         match status_icon(f.status).0 {
@@ -768,14 +745,14 @@ fn files_view(files: &Files, selected: Option<&SharedString>, all_files: bool, k
                 .into_any_element(),
         ]))
         .child(div().flex().flex_1().min_w_0().justify_end().when(files.commit.is_some(), |d| d.child(lead_button("view-all", "folder-open", "View all files", all_on).on_click(cx.listener(|this, _, _, cx| this.toggle_all_files(cx))))));
-    let filter_row = all_on.then(|| filter_row(files, cx));
+    let filter_row = all_on.then(|| filter_row(files, input, window, cx));
     let tree_error = files.tree_error.clone().filter(|_| all_on).map(|e| {
         div().flex().flex_none().gap(px(6.)).px(px(12.)).pb(px(6.)).text_color(theme::text_secondary()).child(format!("Couldn't list all files: {e}")).child(div().id("tree-retry").cursor_pointer().text_color(theme::blue()).child("Retry").on_click(cx.listener(|this, _, _, cx| {
             let Some(repo) = this.tabs.get(this.active).map(|t| t.id) else { return };
             this.read_tree(repo, cx);
         })))
     });
-    let query = if all_on { files.filter.text.trim().to_lowercase() } else { String::new() };
+    let query = if all_on { files.filter.trim().to_lowercase() } else { String::new() };
     let cursor = files.cursor.clone();
     let on_keys = keys_here;
     let rows = files.rows.clone();
@@ -863,9 +840,9 @@ fn marked(text: &SharedString, query: &str) -> Vec<AnyElement> {
 }
 
 /// "View all files"' filter row: a path filter with its clear button, and the changed-file jumps.
-fn filter_row(files: &Files, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
-    let focused = files.filter_focused;
-    let empty = files.filter.text.is_empty();
+fn filter_row(files: &Files, input: &Entity<TextInput>, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let empty = files.filter.is_empty();
+    let focused = input.read(cx).is_focused(window);
     let can_step = files.rows.iter().any(|r| matches!(r, ListRow::File { index, .. } if files.changes[*index].status != UNCHANGED));
     let step = |id: &'static str, glyph: &'static str, down: bool, cx: &mut Context<GitVolt>| {
         div()
@@ -887,6 +864,7 @@ fn filter_row(files: &Files, cx: &mut Context<GitVolt>) -> impl IntoElement + us
             })
             .child(icon(glyph, 13., theme::text_secondary()))
     };
+    let clear_input = input.clone();
     div()
         .flex()
         .flex_none()
@@ -909,17 +887,8 @@ fn filter_row(files: &Files, cx: &mut Context<GitVolt>) -> impl IntoElement + us
                 .border_color(if focused { theme::blue() } else { theme::section_border() })
                 .rounded(px(4.))
                 .bg(theme::app_bg())
-                .cursor(CursorStyle::IBeam)
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                    cx.stop_propagation();
-                    if let Some(tab) = this.tabs.get_mut(this.active) {
-                        tab.keys = KeyArea::Files;
-                    }
-                    this.with_files(cx, |f| f.filter_focused = true);
-                }))
-                .on_mouse_down_out(cx.listener(|this, _, _, cx| this.with_files(cx, |f| f.filter_focused = false)))
-                .when(empty && !focused, |d| d.text_color(theme::text_disabled()).child("Filter files"))
-                .when(!empty || focused, |d| d.child(files.filter.view(focused)))
+                .text_color(theme::text_selected())
+                .child(input.clone())
                 .when(!empty, |d| {
                     d.child(
                         div()
@@ -934,11 +903,10 @@ fn filter_row(files: &Files, cx: &mut Context<GitVolt>) -> impl IntoElement + us
                             .cursor_pointer()
                             .hover(|d| d.bg(theme::hover_row()))
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.with_files(cx, |f| {
-                                    f.filter = Field::default();
-                                    f.rebuild();
-                                });
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                clear_input.update(cx, |input, cx| input.set_text("", cx));
+                                let Some(repo) = this.tabs.get(this.active).map(|t| t.id) else { return };
+                                this.file_filter_changed(repo, cx);
                             }))
                             .child(icon("x", 12., theme::text_secondary())),
                     )
@@ -947,10 +915,10 @@ fn filter_row(files: &Files, cx: &mut Context<GitVolt>) -> impl IntoElement + us
         .child(div().flex().flex_none().gap(px(2.)).child(step("files-prev", "arrow-up", false, cx)).child(step("files-next", "arrow-down", true, cx)))
 }
 
-pub fn details_panel(tab: &Tab, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
+pub fn details_panel(tab: &Tab, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     tab.selected?;
     let selected = tab.diff.as_ref().map(|d| d.file.path.clone());
-    let files = tab.files.as_ref().map(|f| files_view(f, selected.as_ref(), tab.all_files, tab.keys == KeyArea::Files, cx));
+    let files = tab.files.as_ref().map(|f| files_view(f, &tab.file_filter, selected.as_ref(), tab.all_files, tab.keys == KeyArea::Files, window, cx));
     let commit = tab.commit.as_ref().map(|c| commit_view(c, cx));
     Some(
         div()
@@ -1027,11 +995,11 @@ mod tests {
     fn the_filter_keeps_the_cursor_on_its_file() {
         let mut f = files(&["a", "b", "c"]);
         f.cursor = Some(Cursor::File(2));
-        f.filter.text = "c".into();
+        f.filter = "c".into();
         f.rebuild();
         assert_eq!(f.changes.len(), 1);
         assert_eq!(f.cursor, Some(Cursor::File(0)));
-        f.filter.text = "a".into();
+        f.filter = "a".into();
         f.rebuild();
         assert_eq!(f.cursor, None, "filtered out");
     }
@@ -1066,24 +1034,29 @@ mod tests {
                 let list = v.tabs[0].files.as_mut().unwrap();
                 list.tree = Some(vec!["README".into(), "src/a.rs".into(), "src/b.rs".into()]);
                 list.rebuild();
-                list.filter_focused = true;
                 v.tabs[0].keys = KeyArea::Files;
                 cx.notify();
             })
             .unwrap();
         cx.run_until_parked();
+        window
+            .update(&mut cx, |v, window, cx| window.focus(&v.tabs[0].file_filter.read(cx).focus.clone(), cx))
+            .unwrap();
+        cx.run_until_parked();
         window.read_with(&cx, |v, _| assert_eq!(v.tabs[0].files.as_ref().unwrap().changes.len(), 3)).unwrap();
-        cx.simulate_keystrokes("b");
+        cx.simulate_input("b");
+        cx.run_until_parked();
         window.read_with(&cx, |v, _| {
             let f = v.tabs[0].files.as_ref().unwrap();
-            assert_eq!(f.filter.text, "b");
+            assert_eq!(f.filter, "b");
             assert_eq!(f.changes.iter().map(|c| c.path.as_ref()).collect::<Vec<_>>(), ["src/b.rs"]);
         }).unwrap();
         // Esc clears it first; empty, the app's Esc goes on.
         cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
         window.read_with(&cx, |v, _| {
             let f = v.tabs[0].files.as_ref().unwrap();
-            assert_eq!(f.filter.text, "");
+            assert_eq!(f.filter, "");
             assert_eq!(f.changes.len(), 3);
         }).unwrap();
         // Off: the filter and the tree go.

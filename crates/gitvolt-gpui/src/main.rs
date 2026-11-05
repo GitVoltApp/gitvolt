@@ -7,7 +7,6 @@ mod app;
 mod bench;
 mod details;
 mod diff;
-mod field;
 mod format;
 mod graph;
 mod history;
@@ -15,6 +14,7 @@ mod icons;
 mod model;
 mod open_in;
 mod theme;
+mod ui;
 
 use app::GitVolt;
 use gitvolt_core::api::Api;
@@ -82,6 +82,7 @@ fn main() {
     application().with_assets(Assets).run(move |cx: &mut App| {
         bench::mark("platform_up");
         app::bind_keys(cx);
+        ui::init(cx);
         // The bundled editor font's Latin face (the web UI's, assets/generate.mjs); what it lacks
         // falls back to the system's.
         if let Err(e) = cx.text_system().add_fonts(vec![Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-Latin-400.ttf"))]) {

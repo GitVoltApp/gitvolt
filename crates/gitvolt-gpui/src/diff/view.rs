@@ -1581,11 +1581,11 @@ fn minimap_width(width: f32) -> f32 {
 pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     let diff = tab.diff.as_ref()?;
     let open_in = crate::open_in::open_in_button(tab, last_opener, cx);
-    Some(div().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in }, width, cx)).child(diff_body(diff, width, cx)).into_any_element())
+    Some(div().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in }, width, cx)).child(diff_body(diff, width, &tab.zoom_input, cx)).into_any_element())
 }
 
 /// What's under the toolbar, in an editor `width` px wide.
-pub fn diff_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElement {
+pub fn diff_body(diff: &DiffState, width: f32, zoom_input: &Entity<crate::ui::input::TextInput>, cx: &mut Context<GitVolt>) -> AnyElement {
     let file = diff.view == ViewKind::File;
     if let Some(image) = &diff.image {
         let source = match (image.source_on, image.svg, &diff.hex) {
@@ -1594,7 +1594,7 @@ pub fn diff_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> Any
             (_, _, Some(hex)) => Some(hex_body(diff, hex, cx)),
             _ => Some(message(diff, cx).into_any_element()),
         };
-        return image_body(image, file, source, cx);
+        return image_body(image, file, source, zoom_input, cx);
     }
     if let Some(hex) = &diff.hex {
         return hex_body(diff, hex, cx);
