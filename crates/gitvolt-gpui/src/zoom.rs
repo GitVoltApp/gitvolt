@@ -249,7 +249,7 @@ impl Platform for Zoomed {
         self.0.foreground_executor()
     }
     fn text_system(&self) -> Arc<dyn PlatformTextSystem> {
-        self.0.text_system()
+        Arc::new(crate::glyphs::Whole(self.0.text_system()))
     }
     fn run(&self, on_finish_launching: Box<dyn 'static + FnOnce()>) {
         self.0.run(on_finish_launching)

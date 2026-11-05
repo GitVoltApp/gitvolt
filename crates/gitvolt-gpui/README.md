@@ -87,14 +87,14 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 - **Zoom** is the platform wrapper in `zoom.rs`, generated once from `gpui`'s `Platform` and `PlatformWindow` traits: when the pinned `gpui` moves, new trait methods need a line of delegation there.
 - **Icons:** add a Lucide name to `ICONS` in `assets/generate.mjs`, run it from `ui/` (`node
   ../crates/gitvolt-gpui/assets/generate.mjs`), then `icon("name", size, color)`.
-- **Text:** the UI font is `system-ui`'s; mono text is `diff::view::FONT`. There's no `letter-spacing`
+- **Text:** the UI font is `system-ui`'s; mono text is `diff::view::FONT`. `glyphs::Whole` wraps the platform's text system so a line's advances are whole pixels, as Chromium's; `metrics::advance()` is a shaped `m`'s. There's no `letter-spacing`
   in GPUI; uppercase captions go without it. The root's line height is relative (1.4), as the CSS's: a smaller text has a smaller line.
 - **No input device here:** `GITVOLT_SHOW` (`bench.rs`) opens things by script for screenshots
   (`GitVolt::show_ui`: `menu3`, `sub7`, `hamburger`, `palette=q`, `find=q`, `filter=q`, `prompt`, `armed`;
   `-` for no selection or no file); extend it as needed. Clicks and keys are checked in tests with GPUI's `TestAppContext` (see `app.rs`).
   `GITVOLT_SCRIPT=<file>` runs a flow a line at a time, each input through the window as the platform's would be:
   `click x y`, `rclick`, `dclick`, `move`, `press`, `drag`, `release`, `key ctrl-s`, `type text`, `wait ms`, `select row`,
-  `open index`, `cmd id`, `show <ui part>`, `mdscroll y`, `pdfscroll y`, `wheel x y`, `wheelup x y`, `ctrlwheel x y`, `goto <text>` (what a paste of it would go to; the clipboard stays alone), `pickfolder <path>` (the next directory picker answers this; under a script no real dialog ever opens), `shot out.png`, `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>` (a menu's or a picker's),
+  `open index`, `cmd id`, `show <ui part>`, `mdscroll y`, `pdfscroll y`, `wheel x y`, `wheelup x y`, `ctrlwheel x y`, `goto <text>` (what a paste of it would go to; the clipboard stays alone), `pickfolder <path>` (the next directory picker answers this; under a script no real dialog ever opens), `shot out.png`, `measure <file>` (widths of a JSON list `[[size, weight, text, family|null]..]`, into `<file>.out`), `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>` (a menu's or a picker's),
   `pickv <row>|<variant>`, `hover <row>`, `clickon`, `shiftclickon`, `ctrlclickon`, `rclickon`, `dclickon`, `presson`, `dragto`, `releaseon <end of an
   anchor's key>`, `clickrow`, `shiftclickrow`, `ctrlclickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
   under `target/bench/work/xdg`, no avatars, no global git config. Only ever on a throwaway repo under `target/bench/work/`.

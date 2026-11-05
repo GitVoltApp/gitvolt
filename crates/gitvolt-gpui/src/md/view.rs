@@ -392,18 +392,7 @@ impl WinShaper<'_> {
                 glyphs.push(Glyph { id: g.id, font: r.font_id, index: g.index as u32, x: g.position.x.as_f32(), emoji: g.is_emoji });
             }
         }
-        // Advances in whole pixels, as Chromium's are with hinting on.
-        let mut at = 0.;
-        let mut out_w = 0.;
-        let count = glyphs.len();
-        for i in 0..count {
-            let next = glyphs.get(i + 1).map_or(layout.width.as_f32(), |g| g.x);
-            let adv = (next - glyphs[i].x).round();
-            glyphs[i].x = at;
-            at += adv;
-            out_w = at;
-        }
-        Shaped { glyphs, width: out_w }
+        Shaped { glyphs, width: layout.width.as_f32() }
     }
 
     fn image_box(&mut self, slot: u32) -> ImageState {

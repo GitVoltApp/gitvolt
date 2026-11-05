@@ -234,9 +234,7 @@ impl GitVolt {
         self.editor_font_dirty = false;
         let ts = window.text_system();
         let id = ts.resolve_font(&crate::diff::view::mono());
-        if let Ok(a) = ts.advance(id, px(crate::metrics::editor_font_size()), 'm') {
-            crate::metrics::set_advance(a.width.as_f32());
-        }
+        crate::metrics::set_advance(ts.layout_width(id, px(crate::metrics::editor_font_size()), 'm').as_f32());
     }
 
     /// What's laid out by these sizes is laid out again.

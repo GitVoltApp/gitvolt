@@ -754,7 +754,7 @@ impl EntityInputHandler for GitVolt {
         let diff = self.tabs.get(self.active)?.diff.as_ref()?;
         let at = diff.caret?;
         let y = diff.layout.offsets.get(at.row).copied().unwrap_or(0.) - diff.scroll;
-        Some(Bounds::new(bounds.origin + point(px(diff.gutter_w() + at.byte as f32 * 7.8 - diff.hscroll), px(y)), size(px(1.), px(crate::metrics::line_h()))))
+        Some(Bounds::new(bounds.origin + point(px(diff.gutter_w() + at.byte as f32 * crate::metrics::advance() - diff.hscroll), px(y)), size(px(1.), px(crate::metrics::line_h()))))
     }
 
     fn character_index_for_point(&mut self, _: Point<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<usize> {

@@ -11,6 +11,7 @@ mod commands;
 mod commit_box;
 mod details;
 mod feedback;
+mod glyphs;
 mod diff;
 mod format;
 mod filecolours;
@@ -80,7 +81,8 @@ struct Root {
 }
 
 impl Render for Root {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        glyphs::follow(window, cx);
         let mut full = StyleRefinement::default();
         full.size.width = Some(relative(1.).into());
         full.size.height = Some(relative(1.).into());

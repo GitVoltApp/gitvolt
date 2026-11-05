@@ -184,8 +184,7 @@ Known, in the area that's there:
 - **Fonts:** WOFF2 isn't read: its tables are one Brotli stream with transforms of their own, so the pane says the font couldn't be loaded. Glyphs are outlines without hinting, a little lighter than Chromium's at small sizes. The samples have no colour-font or variable axes support, beyond the default instance, and no shaping: a pangram in Latin needs none.
 - **Toolbar buttons of a PDF, film or font** aren't Tab stops, like the image diff's. Their keyboard way is Ctrl+= Ctrl+- Ctrl+0 for the zoom, and Show hex in the palette. A font's pane scrolls across by the wheel or its bar only.
 - **Credentials:** a password field shows stars rather than the browser's dots.
-- **Text:** a line's advance is 7.8 px, the font's; Chromium rounds it to 8. Lines end a little earlier
-  and wrap a little later. The hex view paints on Chromium's 8 px grid. UI text is a pixel or two wider.
+- **Text:** advances are whole pixels, as Chromium's on Linux at a device scale of 1 (`src/glyphs.rs`, round each glyph's own advance FreeType's way, add its kerning, round again, as Blink's `RoundHarfBuzzBufferPositions`): 319 of 320 measured widths (8 strings, 10 sizes, 4 weights) equal CEF's, where 41 of 320 did before, and the one left is 3 px on a line of kerning pairs at 12.5 px. A long line at 13 px is 494 px in both (it was 507). Glyphs are still GPUI's rasterizing, not Skia's: a stem can fall on another pixel.
 - **Diff:** the first change is centred about 10 px lower than Monaco's, its rows a pixel lower; the removed side's
   number column isn't tinted beside an added line; the toolbar stays one row when it's too narrow
   instead of wrapping. Monaco's taller hidden-lines row is its 24 px here too.

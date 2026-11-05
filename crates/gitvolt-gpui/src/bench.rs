@@ -288,6 +288,23 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
                 .ok();
             }
             "wait" => cx.background_executor().timer(Duration::from_millis(rest.parse().unwrap_or(100))).await,
+            // Widths of `[[size, weight, text, family?], ..]` in a file, into `<file>.out`, to set beside the reference's.
+            "measure" => {
+                cx.update(|window, cx| {
+                    let asked: Vec<(f32, f32, String, Option<String>)> = std::fs::read_to_string(&rest).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+                    let family = v.read(cx).font.clone();
+                    let out: Vec<f32> = asked
+                        .iter()
+                        .map(|(size, weight, text, other)| {
+                            let f = Font { weight: FontWeight(*weight), ..font(other.clone().map_or(family.clone(), Into::into)) };
+                            let run = TextRun { len: text.len(), font: f, color: black(), background_color: None, underline: None, strikethrough: None };
+                            window.text_system().shape_line(text.clone().into(), px(*size), &[run], None).width.as_f32()
+                        })
+                        .collect();
+                    std::fs::write(format!("{rest}.out"), serde_json::to_string(&out).unwrap_or_default()).ok();
+                })
+                .ok();
+            }
             "select" => v.update(cx, |g, cx| g.select(rest.parse().unwrap_or(0), cx)),
             "open" => v.update(cx, |g, cx| g.open_file(rest.parse().unwrap_or(0), cx)),
             "cmd" => {

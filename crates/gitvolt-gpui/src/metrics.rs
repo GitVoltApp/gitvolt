@@ -29,7 +29,7 @@ metric! {
     PANEL_BAR_H, panel_bar_h, set_panel_bar_h, 37.;
     FONT_SIZE, editor_font_size, set_editor_font_size, 13.;
     LINE_H, line_h, set_line_h, 18.;
-    ADVANCE, advance, set_advance, 7.8;
+    ADVANCE, advance, set_advance, 8.;
     TAB_SIZE, tab_size_f, set_tab_size_f, 4.;
 }
 
