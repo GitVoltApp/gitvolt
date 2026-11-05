@@ -471,6 +471,12 @@ impl DiffState {
     }
 
     /// The selected text, lines joined by `\n`.
+    pub fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+        self.hscroll = 0.;
+        self.relayout();
+    }
+
     /// Find's matches in what's shown, in row order.
     pub fn find_text(&self, query: &str) -> Vec<crate::find::TextMatch> {
         let Some(data) = self.data.as_ref() else { return Vec::new() };
@@ -1523,6 +1529,9 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
 }
 
 pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    use crate::ui::tooltip::tip;
+    let blame_tip = format!("Show who last changed each line of {}", diff.file.path);
+    let history_tip = format!("Show the commits that changed {}", diff.file.path);
     let in_diff = diff.view == ViewKind::Diff;
     let can_diff = diff.file.status != UNCHANGED && (diff.file.status != 'A' || diff.data.as_ref().is_none_or(|d| d.has_old));
     let view_button = |id: &'static str, label: &'static str, kind: ViewKind, on: bool, enabled: bool, cx: &mut Context<GitVolt>| {
@@ -1593,8 +1602,8 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                 .gap(px(10.))
                 .when(panel, |d| {
                     d.child(segmented(vec![
-                        segment("blame", "Blame", false, has_history && !binary).when(has_history && !binary, |d| d.on_click(cx.listener(|this, _, _, cx| this.open_history(true, cx)))).into_any_element(),
-                        segment("history", "History", false, has_history).when(has_history, |d| d.on_click(cx.listener(|this, _, _, cx| this.open_history(false, cx)))).into_any_element(),
+                        tip(blame_tip, segment("blame", "Blame", false, has_history && !binary).when(has_history && !binary, |d| d.on_click(cx.listener(|this, _, _, cx| this.open_history(true, cx))))).into_any_element(),
+                        tip(history_tip, segment("history", "History", false, has_history).when(has_history, |d| d.on_click(cx.listener(|this, _, _, cx| this.open_history(false, cx))))).into_any_element(),
                     ]))
                 })
                 .when(diff_tools && text_tools, |d| {
@@ -1602,8 +1611,8 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                         div()
                             .flex()
                             .gap(px(2.))
-                            .child(icon_button("change-prev", "arrow-up", false, can_step).when(can_step, |d| d.on_click(cx.listener(|this, _, _, cx| this.step_change(false, cx)))))
-                            .child(icon_button("change-next", "arrow-down", false, can_step).when(can_step, |d| d.on_click(cx.listener(|this, _, _, cx| this.step_change(true, cx))))),
+                            .child(tip(if can_step { "Previous change (Shift+F7)" } else { "" }, icon_button("change-prev", "arrow-up", false, can_step).when(can_step, |d| d.on_click(cx.listener(|this, _, _, cx| this.step_change(false, cx))))))
+                            .child(tip(if can_step { "Next change (F7)" } else { "" }, icon_button("change-next", "arrow-down", false, can_step).when(can_step, |d| d.on_click(cx.listener(|this, _, _, cx| this.step_change(true, cx)))))),
                     )
                     .child(segmented(vec![mode_button("mode-hunk", "Hunk", Mode::Hunk, cx), mode_button("mode-inline", "Inline", Mode::Inline, cx), mode_button("mode-split", "Split", Mode::Split, cx)]))
                 })
@@ -1613,14 +1622,14 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                         .flex()
                         .gap(px(2.))
                         .when(diff_tools, |d| d.child(icon_button("ignore-ws", "pilcrow", diff.ignore_whitespace, in_diff && !hex).when(in_diff && !hex, |d| d.on_click(cx.listener(|this, _, _, cx| this.toggle_whitespace(cx))))))
-                        .child(icon_button("wrap", "text-wrap", diff.wrap, !hex).when(!hex, |d| {
+                        .child(tip("Word wrap", icon_button("wrap", "text-wrap", diff.wrap, !hex).when(!hex, |d| {
                             d.on_click(cx.listener(|this, _, _, cx| {
                                 this.with_diff(cx, |d| {
                                     d.wrap = !d.wrap;
                                     d.hscroll = 0.;
                                 });
                             }))
-                        })),
+                        }))),
                     )
                 }),
         )

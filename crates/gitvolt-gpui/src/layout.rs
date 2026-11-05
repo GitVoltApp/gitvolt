@@ -2,7 +2,8 @@
 //! the graph's columns. The web UI keeps them in the profile; until this build has profiles they're a
 //! small file in its own cache folder.
 
-use crate::app::GitVolt;
+use crate::app::{GitVolt, Tab};
+use crate::model::{Col, ColumnPrefs, HIDEABLE};
 use crate::sidebar::SectionKind;
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -14,6 +15,17 @@ fn file() -> Option<PathBuf> {
         return None;
     }
     Some(gitvolt_core::paths::cache_base()?.join("gitvolt-gpui").join("layout.json"))
+}
+
+fn col_key(c: Col) -> &'static str {
+    match c {
+        Col::Labels => "labels",
+        Col::Graph => "graph",
+        Col::Message => "message",
+        Col::Author => "author",
+        Col::Date => "date",
+        Col::Sha => "sha",
+    }
 }
 
 impl GitVolt {
@@ -28,6 +40,10 @@ impl GitVolt {
             self.sidebar_w = (w as f32).clamp(crate::sidebar::MIN_W, crate::sidebar::MAX_W);
         }
         self.sidebar_narrow = v["sidebarNarrow"].as_bool().unwrap_or(false);
+        if let Some(w) = v["detailsWidth"].as_f64() {
+            self.details_w = (w as f32).clamp(crate::details::DETAILS_MIN, crate::details::DETAILS_MAX);
+        }
+        self.saved_columns = v["columns"].clone();
         for kind in KINDS {
             if let Some(h) = v["sidebarPanels"][kind.key()].as_f64() {
                 self.side_weights.insert(kind, h as f32);
@@ -37,7 +53,29 @@ impl GitVolt {
 
     pub fn layout_json(&self) -> Value {
         let panels: serde_json::Map<String, Value> = self.side_weights.iter().map(|(k, h)| (k.key().to_string(), json!(h))).collect();
-        json!({ "sidebarWidth": self.sidebar_w, "sidebarNarrow": self.sidebar_narrow, "sidebarPanels": panels })
+        let mut columns = self.saved_columns.as_object().cloned().unwrap_or_default();
+        for tab in &self.tabs {
+            let p = &tab.column_prefs;
+            let hidden: Vec<&str> = HIDEABLE.iter().filter(|(c, _)| tab.hidden_columns.contains(c)).map(|(c, _)| col_key(*c)).collect();
+            columns.insert(tab.worktree.clone(), json!({ "labels": p.labels, "graph": p.graph, "author": p.author, "date": p.date, "sha": p.sha, "message": p.message, "hidden": hidden }));
+        }
+        json!({ "sidebarWidth": self.sidebar_w, "sidebarNarrow": self.sidebar_narrow, "sidebarPanels": panels, "detailsWidth": self.details_w, "columns": columns })
+    }
+
+    /// A repository's columns, as they were left.
+    pub fn restore_columns(&self, tab: &mut Tab) {
+        let v = &self.saved_columns[&tab.worktree];
+        if v.is_null() {
+            return;
+        }
+        let d = ColumnPrefs::default();
+        let num = |k: &str, or: f32| v[k].as_f64().map_or(or, |n| n as f32);
+        tab.column_prefs = ColumnPrefs { labels: num("labels", d.labels), graph: v["graph"].as_f64().map(|n| n as f32), author: num("author", d.author), date: num("date", d.date), sha: num("sha", d.sha), message: v["message"].as_f64().map(|n| n as f32) };
+        for (c, _) in HIDEABLE {
+            if v["hidden"].as_array().is_some_and(|h| h.iter().any(|x| x.as_str() == Some(col_key(c)))) {
+                tab.hidden_columns.insert(c);
+            }
+        }
     }
 
     /// At a drag's end; off the UI thread's way, it's one small write.

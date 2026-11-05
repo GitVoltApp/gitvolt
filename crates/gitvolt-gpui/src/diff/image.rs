@@ -187,7 +187,7 @@ impl Side {
     }
 }
 
-fn render_image(mut rgba: image::RgbaImage) -> RenderImage {
+pub fn render_image(mut rgba: image::RgbaImage) -> RenderImage {
     // RenderImage is BGRA.
     for px in rgba.as_chunks_mut::<4>().0 {
         px.swap(0, 2);

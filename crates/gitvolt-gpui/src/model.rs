@@ -93,17 +93,186 @@ pub fn format_date(unix_seconds: i64) -> String {
 /// The graph's column widths at `total` px of row, and whether its lanes need more than they get.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Columns {
+    pub labels: f32,
     pub graph: f32,
     pub message: f32,
+    pub author: f32,
+    pub date: f32,
+    pub sha: f32,
+    pub total: f32,
     pub clipped: bool,
 }
 
+/// The graph table's columns, left to right (`ui/src/graph/columns.ts`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Col {
+    Labels,
+    Graph,
+    Message,
+    Author,
+    Date,
+    Sha,
+}
+
+pub const HIDEABLE: [(Col, &str); 4] = [(Col::Labels, "Branch / Tag"), (Col::Author, "Author"), (Col::Date, "Commit date / time"), (Col::Sha, "SHA")];
+const MIN_LABELS: f32 = 80.;
+const MIN_AUTHOR: f32 = 60.;
+const MIN_DATE: f32 = 90.;
+const SHA_MAX: f32 = 326.;
+const AUTHOR_DATE_MAX: f32 = 800.;
+const MESSAGE_MAX: f32 = 4000.;
+
+fn col_min(col: Col) -> f32 {
+    match col {
+        Col::Labels => MIN_LABELS,
+        Col::Graph => GRAPH_MIN,
+        Col::Message => MESSAGE_MIN,
+        Col::Author => MIN_AUTHOR,
+        Col::Date => MIN_DATE,
+        Col::Sha => SHA_W,
+    }
+}
+
+/// The user's widths. `graph`: `None` fits the lanes; `message`: `None` fills the table.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColumnPrefs {
+    pub labels: f32,
+    pub graph: Option<f32>,
+    pub author: f32,
+    pub date: f32,
+    pub sha: f32,
+    pub message: Option<f32>,
+}
+
+impl Default for ColumnPrefs {
+    fn default() -> Self {
+        Self { labels: LABELS_W, graph: None, author: AUTHOR_W, date: DATE_W, sha: SHA_W, message: None }
+    }
+}
+
+/// `isCollapsed`: a column at its minimum shows an icon instead of its title.
+pub fn is_collapsed(col: Col, width: f32) -> bool {
+    col != Col::Sha && width <= col_min(col)
+}
+
+pub fn lanes_width(max_lanes: u16) -> f32 {
+    LANE_W * (f32::from(max_lanes) + 1.)
+}
+
+/// `allocateColumns`: Branch/Tag, Graph and SHA always get their width; Message fills what's left, and
+/// at its minimum squeezes Author and Date in proportion; a hand-set Message squeezes nothing, and the
+/// table runs past the window. With no hand-set width, the Graph fits its lanes while Message has room.
+pub fn allocate_columns(prefs: &ColumnPrefs, available: f32, hidden: &std::collections::HashSet<Col>, max_lanes: u16) -> Columns {
+    let off = |c: Col| hidden.contains(&c);
+    let labels = if off(Col::Labels) { 0. } else { prefs.labels.max(MIN_LABELS) };
+    let sha = if off(Col::Sha) { 0. } else { prefs.sha.clamp(SHA_W, SHA_MAX) };
+    let mut author = if off(Col::Author) { 0. } else { prefs.author.max(MIN_AUTHOR) };
+    let mut date = if off(Col::Date) { 0. } else { prefs.date.max(MIN_DATE) };
+    let wanted = lanes_width(max_lanes);
+    let graph = match prefs.graph {
+        Some(g) => g.max(GRAPH_MIN),
+        None => wanted.min((available - labels - author - date - sha - MESSAGE_MIN).max(GRAPH_MIN)),
+    };
+    let clipped = graph < wanted;
+    if let Some(m) = prefs.message {
+        let message = m.max(MESSAGE_MIN);
+        return Columns { labels, graph, message, author, date, sha, total: labels + graph + message + author + date + sha, clipped };
+    }
+    let leftover = available - (labels + graph + author + date + sha);
+    if leftover >= MESSAGE_MIN {
+        return Columns { labels, graph, message: leftover, author, date, sha, total: available, clipped };
+    }
+    let deficit = MESSAGE_MIN - leftover;
+    let room_a = if off(Col::Author) { 0. } else { author - MIN_AUTHOR };
+    let room_d = if off(Col::Date) { 0. } else { date - MIN_DATE };
+    if deficit >= room_a + room_d {
+        if !off(Col::Author) {
+            author = MIN_AUTHOR;
+        }
+        if !off(Col::Date) {
+            date = MIN_DATE;
+        }
+    } else {
+        let from_a = (deficit * room_a / (room_a + room_d)).round();
+        author -= from_a;
+        date -= deficit - from_a;
+    }
+    Columns { labels, graph, message: MESSAGE_MIN, author, date, sha, total: labels + graph + MESSAGE_MIN + author + date + sha, clipped }
+}
+
+/// The default widths' columns for a table `total` px wide.
+#[cfg(test)]
 pub fn columns(total: f32, max_lanes: u16) -> Columns {
-    let fixed = LABELS_W + AUTHOR_W + DATE_W + SHA_W;
-    let wanted = LANE_W * (f32::from(max_lanes) + 1.);
-    let room = (total - fixed - MESSAGE_MIN).max(GRAPH_MIN);
-    let graph = wanted.min(room);
-    Columns { graph, message: (total - fixed - graph).max(MESSAGE_MIN), clipped: wanted > room }
+    allocate_columns(&ColumnPrefs::default(), total, &std::collections::HashSet::new(), max_lanes)
+}
+
+/// `handleRange`: how far a column's right edge may go.
+pub fn handle_range(col: Col, w: &Columns, available: f32, graph_max: f32) -> (f32, f32) {
+    let total_min = MIN_LABELS + GRAPH_MIN + MESSAGE_MIN + MIN_AUTHOR + MIN_DATE + SHA_W;
+    match col {
+        Col::Labels => (MIN_LABELS, (available - (total_min - MIN_LABELS)).max(MIN_LABELS).max(w.labels)),
+        Col::Graph => (GRAPH_MIN, (available - (total_min - GRAPH_MIN)).max(GRAPH_MIN).max(w.graph).min(graph_max.max(GRAPH_MIN))),
+        Col::Message => (MESSAGE_MIN, w.message.max(MESSAGE_MAX)),
+        Col::Author => (MIN_AUTHOR, w.author.max(AUTHOR_DATE_MAX)),
+        Col::Date => (MIN_DATE, w.date.max(AUTHOR_DATE_MAX)),
+        Col::Sha => (SHA_W, w.sha.max(SHA_MAX)),
+    }
+}
+
+/// `resizeColumn`: the prefs after moving `col`'s edge `dx` px from where a drag started.
+pub fn resize_column(col: Col, start: &Columns, prefs: &ColumnPrefs, dx: f32, available: f32, graph_max: f32) -> ColumnPrefs {
+    let (min, max) = handle_range(col, start, available, graph_max);
+    let width_of = |w: f32| (w + dx.round()).max(min).min(max);
+    let mut out = prefs.clone();
+    match col {
+        Col::Labels => out.labels = width_of(start.labels),
+        Col::Graph => out.graph = Some(width_of(start.graph)),
+        Col::Message => {
+            out.author = start.author;
+            out.date = start.date;
+            out.message = Some(width_of(start.message));
+        }
+        Col::Author | Col::Date | Col::Sha => {
+            let was = match col {
+                Col::Author => start.author,
+                Col::Date => start.date,
+                _ => start.sha,
+            };
+            let width = width_of(was);
+            let grow = width - was;
+            let fill = prefs.message.is_none();
+            out.author = start.author;
+            out.date = start.date;
+            out.message = if !fill || grow < 0. {
+                Some(start.message)
+            } else if grow <= start.message - MESSAGE_MIN {
+                None
+            } else {
+                Some(MESSAGE_MIN)
+            };
+            match col {
+                Col::Author => out.author = width,
+                Col::Date => out.date = width,
+                _ => out.sha = width,
+            }
+        }
+    }
+    out
+}
+
+/// `branchRows`: the rows a branch's tip reaches through parents.
+pub fn branch_rows(g: &GraphView, tip: usize) -> std::collections::HashSet<usize> {
+    let mut seen = std::collections::HashSet::new();
+    let mut stack = vec![tip];
+    while let Some(i) = stack.pop() {
+        if !seen.insert(i) {
+            continue;
+        }
+        if let Some(r) = g.rows.get(i) {
+            stack.extend(r.parents.iter().filter_map(|p| g.by_sha.get(p).copied()));
+        }
+    }
+    seen
 }
 
 /// The collapse zone's width: a node, a gap either side and the rail.
@@ -151,6 +320,28 @@ pub struct RowView {
     pub chips: Vec<Chip>,
     /// A WIP row's worktree.
     pub worktree: Option<String>,
+    pub email: String,
+    pub parents: Vec<String>,
+    /// A stash's branch, dimmed after its text.
+    pub stash_branch: Option<SharedString>,
+    pub wip: Option<WipCounts>,
+}
+
+/// A WIP row's change counts, and its worktree's name when it isn't the main one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WipCounts {
+    pub name: Option<SharedString>,
+    pub modified: u32,
+    pub added: u32,
+    pub deleted: u32,
+    pub renamed: u32,
+    pub conflicted: u32,
+}
+
+impl WipCounts {
+    pub fn files(&self) -> u32 {
+        self.modified + self.added + self.deleted + self.renamed + self.conflicted
+    }
 }
 
 pub struct GraphView {
@@ -159,6 +350,8 @@ pub struct GraphView {
     pub head_row: Option<usize>,
     pub head_branch: SharedString,
     pub pinned: SharedString,
+    /// More history than this window holds.
+    pub truncated: bool,
     pub by_sha: HashMap<String, usize>,
 }
 
@@ -169,7 +362,11 @@ fn chip(l: &RefLabel) -> Chip {
 }
 
 fn row_view(r: &RowPayload, chips: Vec<Chip>) -> RowView {
-    let summary = if r.kind == NodeKind::Wip { "// WIP".to_string() } else { r.summary.clone() };
+    let (summary, stash_branch) = match r.kind {
+        NodeKind::Wip => ("// WIP".to_string(), None),
+        NodeKind::Stash => crate::sidebar::stash_label(&r.summary),
+        _ => (r.summary.clone(), None),
+    };
     RowView {
         id: r.id.clone().into(),
         kind: r.kind,
@@ -184,6 +381,10 @@ fn row_view(r: &RowPayload, chips: Vec<Chip>) -> RowView {
         avatar: avatar_lane(&r.author_name, &r.author_email, LANES),
         chips,
         worktree: r.wip.as_ref().map(|w| w.worktree_path.clone()),
+        email: r.author_email.clone(),
+        parents: r.parents.clone(),
+        stash_branch: stash_branch.map(Into::into),
+        wip: r.wip.as_ref().map(|w| WipCounts { name: w.worktree_name.clone().map(Into::into), modified: w.modified, added: w.added, deleted: w.deleted, renamed: w.renamed, conflicted: w.conflicted }),
     }
 }
 
@@ -209,6 +410,7 @@ pub fn graph_view(g: &GraphPayload) -> GraphView {
         head_row,
         head_branch: g.head.branch.as_deref().map(short).unwrap_or_else(|| "detached".into()).into(),
         pinned: g.pinned_refs.first().map(|r| short(r)).unwrap_or_default().into(),
+        truncated: g.truncated,
         by_sha,
     }
 }
@@ -243,7 +445,8 @@ mod tests {
     #[test]
     fn the_graph_column_takes_what_its_lanes_want_until_the_message_needs_the_room() {
         // The web UI's measured layout: 22 lanes at a 1349 px row.
-        assert_eq!(columns(1349., 22), Columns { graph: 506., message: 253., clipped: false });
+        let wide = columns(1349., 22);
+        assert_eq!((wide.graph, wide.message, wide.clipped), (506., 253., false));
         let tight = columns(1000., 22);
         assert_eq!((tight.graph, tight.message, tight.clipped), (250., 160., true));
         assert_eq!(columns(400., 22).graph, 48., "never under its minimum");
@@ -256,5 +459,55 @@ mod tests {
         assert_eq!(node_x(0, 100., true), Some(22.));
         assert_eq!(node_x(3, 100., true), None);
         assert!(packed_x(100.) > 100. - zone_width());
+    }
+
+    // Web: graph/columnsFit.test.ts and columns.test.ts.
+    #[test]
+    fn message_fills_then_squeezes_author_and_date_by_their_room() {
+        let none = std::collections::HashSet::new();
+        let c = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 1000., &none, 2);
+        assert_eq!((c.message, c.author, c.date), (310., 160., 170.));
+        let tight = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 700., &none, 2);
+        assert_eq!(tight.message, 160.);
+        assert_eq!(tight.author + tight.date, 180. + 0., "what's left past the fixed columns");
+        let floor = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 300., &none, 2);
+        assert_eq!((floor.author, floor.date), (60., 90.));
+    }
+
+    #[test]
+    fn a_hidden_column_takes_no_room_and_a_hand_set_message_stays() {
+        let mut hidden = std::collections::HashSet::new();
+        hidden.insert(Col::Author);
+        hidden.insert(Col::Labels);
+        let c = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 1000., &hidden, 2);
+        assert_eq!((c.labels, c.author, c.message), (0., 0., 670.));
+        let set = allocate_columns(&ColumnPrefs { message: Some(900.), graph: Some(100.), ..ColumnPrefs::default() }, 800., &std::collections::HashSet::new(), 2);
+        assert_eq!(set.message, 900.);
+        assert!(set.total > 800., "the table runs past the window");
+    }
+
+    #[test]
+    fn a_drag_stops_at_a_columns_limits() {
+        let none = std::collections::HashSet::new();
+        let prefs = ColumnPrefs::default();
+        let c = allocate_columns(&prefs, 1400., &none, 2);
+        assert_eq!(resize_column(Col::Labels, &c, &prefs, 40., 1400., 66.).labels, 240.);
+        assert_eq!(resize_column(Col::Labels, &c, &prefs, -500., 1400., 66.).labels, 80.);
+        assert_eq!(resize_column(Col::Graph, &c, &prefs, 500., 1400., 88.).graph, Some(88.), "never past its lanes");
+        assert_eq!(resize_column(Col::Sha, &c, &prefs, 900., 1400., 66.).sha, 326.);
+        let grown = resize_column(Col::Author, &c, &prefs, 30., 1400., 66.);
+        assert_eq!((grown.author, grown.message), (190., None), "Message keeps filling");
+        assert_eq!(resize_column(Col::Message, &c, &prefs, 10., 1400., 66.).message, Some(c.message + 10.));
+    }
+
+    #[test]
+    fn a_branch_reaches_its_ancestors_only() {
+        let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, wip: None };
+        let rows = vec![row("d", &["b"]), row("c", &["b"]), row("b", &["a"]), row("a", &[])];
+        let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
+        let g = GraphView { rows, max_lanes: 2, head_row: None, head_branch: SharedString::default(), pinned: SharedString::default(), truncated: false, by_sha };
+        let mut reach: Vec<usize> = branch_rows(&g, 1).into_iter().collect();
+        reach.sort_unstable();
+        assert_eq!(reach, [1, 2, 3]);
     }
 }

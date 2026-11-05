@@ -5,8 +5,11 @@ use crate::model::*;
 use crate::theme;
 use gitvolt_graph::NodeKind;
 use gpui::*;
+use std::sync::Arc;
 
 const DASH: f32 = 3.;
+/// Left of the collapse zone, how wide its shade fades.
+const SHADE_W: f32 = 12.;
 const DOT_EVERY: f32 = 2. * LINE_W;
 
 #[derive(Clone, Copy)]
@@ -81,7 +84,7 @@ fn paint_segment(window: &mut Window, seg: Seg, origin: Point<Pixels>, content_y
     }
 }
 
-fn paint_node(window: &mut Window, cx: &mut App, row: &RowView, c: Point<Pixels>, packed: bool) {
+fn paint_node(window: &mut Window, cx: &mut App, row: &RowView, c: Point<Pixels>, packed: bool, picture: Option<Arc<RenderImage>>) {
     let color = theme::lane(row.color as usize);
     let dim = |h: Hsla| if packed { Hsla { a: h.a * 0.5, ..h } } else { h };
     let kind = if packed && row.kind == NodeKind::Merge { NodeKind::Commit } else { row.kind };
@@ -97,6 +100,13 @@ fn paint_node(window: &mut Window, cx: &mut App, row: &RowView, c: Point<Pixels>
         NodeKind::Commit => {
             let r = NODE_R + LINE_W / 2.;
             window.paint_quad(quad(circle(r), px(r), dim(theme::lane(row.avatar)), px(LINE_W), dim(color), BorderStyle::default()));
+            if let Some(picture) = picture.filter(|_| !packed) {
+                // A transparent picture shows on the backdrop, not on the lane's colour.
+                let inner = NODE_R - LINE_W / 2.;
+                window.paint_quad(quad(circle(inner), px(inner), theme::avatar_backdrop(), px(0.), transparent_black(), BorderStyle::default()));
+                window.paint_image(circle(inner), circle(inner), Corners::all(px(inner)), picture, 0, false).ok();
+                return;
+            }
             let size_px = px((ROW_H * 0.32).round());
             let font = Font { weight: FontWeight::SEMIBOLD, ..window.text_style().font() };
             let run = TextRun { len: row.initials.len(), font, color: dim(theme::lane_text(row.avatar)), background_color: None, underline: None, strikethrough: None };
@@ -109,7 +119,7 @@ fn paint_node(window: &mut Window, cx: &mut App, row: &RowView, c: Point<Pixels>
 
 /// Paints row `row` (index `ix`) in `bounds`, the whole row: the labels column's connector, the
 /// graph column's band, lines, node and rail. The cells' text goes on top, as elements.
-pub fn paint_row(bounds: Bounds<Pixels>, row: &RowView, ix: usize, g: RowGeometry, window: &mut Window, cx: &mut App) {
+pub fn paint_row(bounds: Bounds<Pixels>, row: &RowView, ix: usize, g: RowGeometry, picture: Option<Arc<RenderImage>>, window: &mut Window, cx: &mut App) {
     let color = theme::lane(row.color as usize);
     let origin = point(bounds.origin.x + px(g.graph_x), bounds.origin.y);
     let column_end = origin.x + px(g.graph_w);
@@ -135,8 +145,14 @@ pub fn paint_row(bounds: Bounds<Pixels>, row: &RowView, ix: usize, g: RowGeometr
     });
     let centre_y = origin.y + px(ROW_H / 2.);
     match node {
-        Some(x) => paint_node(window, cx, row, point(origin.x + px(x), centre_y), false),
-        None => paint_node(window, cx, row, point(origin.x + px(packed_x(g.graph_w)), centre_y), true),
+        Some(x) => paint_node(window, cx, row, point(origin.x + px(x), centre_y), false, picture),
+        None => paint_node(window, cx, row, point(origin.x + px(packed_x(g.graph_w)), centre_y), true, picture),
+    }
+    // The collapse zone's shade: black fading in over the last lanes, up to the zone.
+    if g.clipped {
+        let zone = column_end - px(zone_width());
+        let shade = Bounds::from_corners(point(zone - px(SHADE_W), origin.y), point(zone, origin.y + px(ROW_H)));
+        window.paint_quad(fill(shade, linear_gradient(90., linear_color_stop(Hsla::transparent_black(), 0.), linear_color_stop(theme::collapse_strip(), 1.))));
     }
     window.paint_quad(fill(Bounds::from_corners(point(column_end - px(RAIL_W), band_top), point(column_end, band_bottom)), color));
 }

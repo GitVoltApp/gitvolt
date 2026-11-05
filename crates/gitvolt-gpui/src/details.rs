@@ -14,6 +14,8 @@ use std::ops::Range;
 use std::rc::Rc;
 
 pub const DETAILS_W: f32 = 400.;
+pub const DETAILS_MIN: f32 = 280.;
+pub const DETAILS_MAX: f32 = 720.;
 const COMMIT_H: f32 = 188.;
 const FILE_ROW_H: f32 = 26.;
 /// A tree row: `[chevron | status icon][gap][name]`, indented by level (`TREE`, fileTree.ts).
@@ -671,6 +673,9 @@ fn commit_of(details: &Value, message: &Value) -> Commit {
 }
 
 pub fn avatar(name: &SharedString, email: &str, size: f32) -> Div {
+    if let Some(picture) = crate::avatars::image_for(email, name) {
+        return div().flex_none().size(px(size)).rounded_full().overflow_hidden().bg(theme::avatar_backdrop()).child(img(picture).size(px(size)).rounded_full());
+    }
     let lane = crate::model::avatar_lane(name, email, theme::LANES.len());
     div().flex().flex_none().items_center().justify_center().size(px(size)).rounded_full().bg(theme::lane(lane)).text_color(theme::lane_text(lane)).text_size(px((size * 0.4).round().max(7.))).font_weight(FontWeight::SEMIBOLD).child(initials(name))
 }
@@ -760,7 +765,8 @@ fn commit_view(c: &Commit, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
         )
 }
 
-fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&SharedString>, all_files: bool, keys_here: bool, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+#[allow(clippy::too_many_arguments)]
+fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&SharedString>, all_files: bool, keys_here: bool, panel_w: f32, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let (mut added, mut changed, mut gone, mut renamed) = (0, 0, 0, 0);
     for f in files.changed.iter() {
         match status_icon(f.status).0 {
@@ -856,11 +862,16 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
     let list = uniform_list(
         "file-list",
         files.rows.len(),
-        cx.processor(move |_, range: Range<usize>, _, cx| {
+        cx.processor(move |_, range: Range<usize>, window, cx| {
+            let left_of = window.viewport_size().width.as_f32() - panel_w;
             range
                 .map(|i| {
                     let base = div().id(i).flex().w_full().h(px(FILE_ROW_H)).items_center().gap(px(6.)).pr(px(8.));
-                    match &rows[i] {
+                    let full_path: SharedString = match &rows[i] {
+                        ListRow::Folder { path, .. } => path.clone(),
+                        ListRow::File { index, .. } => changes[*index].path.clone(),
+                    };
+                    let row = match &rows[i] {
                         ListRow::Folder { path, name, depth, collapsed } => {
                             let on = on_keys && cursor.as_ref() == Some(&Cursor::Folder(path.clone()));
                             let path = path.clone();
@@ -932,7 +943,8 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                                     )
                                 })
                         }
-                    }
+                    };
+                    crate::ui::tooltip::Anchor::new(row).tip(full_path).placement(crate::ui::tooltip::Placement::LeftOf(left_of))
                 })
                 .collect()
         }),
@@ -1029,12 +1041,12 @@ fn filter_row(files: &Files, input: &Entity<TextInput>, window: &Window, cx: &mu
         .child(div().flex().flex_none().gap(px(2.)).child(step("files-prev", "arrow-up", false, cx)).child(step("files-next", "arrow-down", true, cx)))
 }
 
-pub fn details_panel(tab: &Tab, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
+pub fn details_panel(tab: &Tab, width: f32, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     if tab.selected.is_none() && tab.compare.is_none() {
         return None;
     }
     let selected = tab.diff.as_ref().map(|d| d.file.path.clone());
-    let files = tab.files.as_ref().map(|f| files_view(f, &tab.file_filter, selected.as_ref(), tab.all_files, tab.keys == KeyArea::Files, window, cx));
+    let files = tab.files.as_ref().map(|f| files_view(f, &tab.file_filter, selected.as_ref(), tab.all_files, tab.keys == KeyArea::Files, width, window, cx));
     let commit = tab.commit.as_ref().filter(|_| tab.compare.is_none()).map(|c| commit_view(c, cx));
     let compare = tab.compare.as_ref().map(|(from, to)| {
         div()
@@ -1056,10 +1068,11 @@ pub fn details_panel(tab: &Tab, window: &Window, cx: &mut Context<GitVolt>) -> O
     });
     Some(
         div()
+            .relative()
             .flex()
             .flex_col()
             .flex_none()
-            .w(px(DETAILS_W))
+            .w(px(width))
             .h_full()
             .min_h_0()
             .bg(theme::panel_bg())
@@ -1068,6 +1081,27 @@ pub fn details_panel(tab: &Tab, window: &Window, cx: &mut Context<GitVolt>) -> O
             .children(compare)
             .children(commit)
             .children(files)
+            .child(
+                // Its resizer, on the panel's left edge.
+                div()
+                    .id("details-resize")
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left(px(-3.))
+                    .w(px(6.))
+                    .cursor(CursorStyle::ResizeLeftRight)
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                        cx.stop_propagation();
+                        if e.click_count == 2 {
+                            this.details_w = DETAILS_W;
+                            this.save_layout();
+                            cx.notify();
+                            return;
+                        }
+                        this.side_drag = crate::sidebar::SideDrag::Details { x: e.position.x.as_f32(), w: width };
+                    })),
+            )
             .into_any_element(),
     )
 }

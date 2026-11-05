@@ -723,8 +723,10 @@ fn blame_strip(h: &FileHistory, diff: &DiffState, width: f32, cx: &mut Context<G
             let c = data.commits.get(&g.sha);
             let sha = g.sha.clone();
             let id: SharedString = format!("blame-{}", g.start).into();
+            let tip_key = format!("blame:{}:{}", g.sha, g.start);
+            let card = c.map(|c| (c.summary.clone(), c.author.clone(), c.time));
             strip = strip.child(
-                div()
+                crate::ui::tooltip::Anchor::new(div()
                     .id(id)
                     .absolute()
                     .top(px(top - diff.scroll))
@@ -755,7 +757,12 @@ fn blame_strip(h: &FileHistory, diff: &DiffState, width: f32, cx: &mut Context<G
                             .child(div().flex().flex_none().w(px(45.5)).justify_end().when_some(c, |d, c| d.child(compact_relative_time(c.time, now)))),
                     )
                     // The separator is a line on top, so it doesn't push the row down.
-                    .child(div().absolute().top_0().left_0().right_0().h(px(1.)).bg(theme::section_border())),
+                    .child(div().absolute().top_0().left_0().right_0().h(px(1.)).bg(theme::section_border())))
+                .card(tip_key, move |_, _| match &card {
+                    Some((summary, author, time)) => blame_tip(summary, author, *time),
+                    None => div().into_any_element(),
+                })
+                .placement(crate::ui::tooltip::Placement::Pointer),
             );
         }
     }
@@ -768,6 +775,12 @@ fn view_switch(view: HistoryView, cx: &mut Context<GitVolt>) -> AnyElement {
         segment("fh-changes", "Changes", view == HistoryView::Changes, true).on_click(cx.listener(|this, _, _, cx| this.set_history_view(HistoryView::Changes, cx))).into_any_element(),
     ])
     .into_any_element()
+}
+
+/// `BlameTip`: the commit's summary; who and when under it.
+fn blame_tip(summary: &SharedString, author: &SharedString, time: i64) -> AnyElement {
+    let when = format!("{author} · {} · {}", crate::format::relative_time(time, crate::format::now()), crate::model::format_date(time));
+    div().flex().flex_col().flex_none().max_w(px(320.)).px(px(8.)).py(px(5.)).rounded(px(4.)).border_1().border_color(theme::section_border()).bg(theme::panel_bg1()).text_color(theme::text_selected()).text_size(px(12.)).line_height(px(16.8)).shadow(crate::ui::shadow(theme::shadow_tooltip(), 2., 8.)).child(summary.clone()).child(div().text_color(theme::text_secondary()).child(when)).into_any_element()
 }
 
 pub fn history_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
@@ -795,7 +808,7 @@ pub fn history_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option
                 .pl(px(4.))
                 .pr(px(8.))
                 .child(
-                    div()
+                    crate::ui::tooltip::tip(if pressed { "Hide who last changed each line" } else { "Show who last changed each line" }, div()
                         .id("blame-toggle")
                         .px(px(8.))
                         .py(px(2.))
@@ -804,10 +817,10 @@ pub fn history_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option
                         .when(pressed, |d| d.bg(theme::selected_row()).text_color(theme::text_selected()))
                         .when(no_blame, |d| d.opacity(0.5))
                         .when(!no_blame, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.toggle_blame(cx))))
-                        .child("Blame"),
+                        .child("Blame")),
                 )
                 .child(
-                    div()
+                    crate::ui::tooltip::tip("Close (Esc)", div()
                         .id("history-close")
                         .flex()
                         .flex_none()
@@ -817,7 +830,7 @@ pub fn history_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option
                         .rounded(px(3.))
                         .hover(|d| d.bg(theme::control_hover_bg()))
                         .on_click(cx.listener(|this, _, _, cx| this.close_history(cx)))
-                        .child(icon("x", 14., theme::text_secondary())),
+                        .child(icon("x", 14., theme::text_secondary()))),
                 ),
         );
     let rows = h.rows.clone();

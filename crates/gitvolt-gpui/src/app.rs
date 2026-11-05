@@ -3,11 +3,11 @@
 
 use crate::details::{Commit, Files, details_panel};
 use crate::diff::view::{DiffState, body_size, diff_panel};
-use crate::graph::{RowGeometry, paint_row};
 use crate::history::{FileHistory, HISTORY_H, history_panel};
 use crate::open_in::{OpenIn, open_in_menu};
 use crate::model::*;
 use crate::sidebar::{DEFAULT_SIDEBAR_W, NARROW_W, PushCache, Section, SectionKind, SideDrag, SideState, narrow_strip, sections_of, sidebar};
+use crate::table::{ColumnDrag, MessageCache, graph_table};
 use crate::theme;
 use crate::ui::input::{InputEvent, TextInput};
 use crate::ui::menu::{self, MenuRow, OpenOptions};
@@ -16,8 +16,8 @@ use gitvolt_core::api::{Api, Request};
 use gitvolt_core::events::AppEvent;
 use gpui::prelude::*;
 use gpui::*;
-use std::collections::HashMap;
-use std::ops::Range;
+use std::collections::{HashMap, HashSet};
+
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -27,10 +27,7 @@ const TITLE_H: f32 = 30.;
 const TAB_H: f32 = 34.;
 const TOOLBAR_H: f32 = 44.;
 const STATUS_H: f32 = 22.;
-const SCROLLBAR_W: f32 = 10.;
-const HEADER_H: f32 = 25.;
 const RESIZE: f32 = 6.;
-const SHA_PAD: f32 = 6.;
 pub const MONO_FONT: &str = "Noto Sans Mono";
 pub const GRAPH_LIMIT: u32 = 2000;
 
@@ -83,6 +80,13 @@ pub struct Tab {
     /// A compare in the details panel: from and to, as its bar names them.
     pub compare: Option<(SharedString, SharedString)>,
     pub find: crate::find::FindState,
+    /// The WIP row's draft summary.
+    pub wip_draft: Entity<TextInput>,
+    pub column_prefs: ColumnPrefs,
+    pub hidden_columns: HashSet<Col>,
+    /// The rows of the branch whose chip the pointer rests on; the others dim.
+    pub branch_keep: Option<Rc<HashSet<usize>>>,
+    pub branch_hover: u64,
     /// How deep the graph reads, past `GRAPH_LIMIT` once a jump or Load older asked for more.
     pub limit: u32,
     /// What to select once the graph that's loading holds it.
@@ -138,6 +142,11 @@ impl Tab {
             list: UniformListScrollHandle::new(),
             compare: None,
             find: crate::find::FindState::new(id, cx),
+            wip_draft: cx.new(|cx| TextInput::new(cx).placeholder("// WIP").placeholder_color(theme::wip_input_placeholder()).claim_escape()),
+            column_prefs: ColumnPrefs::default(),
+            hidden_columns: HashSet::new(),
+            branch_keep: None,
+            branch_hover: 0,
             limit: GRAPH_LIMIT,
             select_after_load: None,
             error: None,
@@ -167,6 +176,13 @@ pub struct GitVolt {
     pub side_weights: HashMap<SectionKind, f32>,
     pub side_drag: SideDrag,
     pub last_pushes: PushCache,
+    pub details_w: f32,
+    pub column_drag: Option<ColumnDrag>,
+    pub messages: MessageCache,
+    /// A tab being dragged along the strip.
+    pub tab_drag: Option<usize>,
+    /// What the layout file says of repositories' columns, until their tabs open.
+    pub saved_columns: serde_json::Value,
     /// Where the keyboard goes next frame: a subscription has no window to move it with.
     pub focus_next_frame: Option<FocusHandle>,
     /// The opener used last, "Open in…"'s default for this session.
@@ -182,7 +198,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None }
+        Self { api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -250,6 +266,7 @@ impl GitVolt {
                     } else {
                         let mut tab = Tab::new(id, name.into(), cx);
                         tab.worktree = worktree;
+                        this.restore_columns(&mut tab);
                         this.tabs.push(tab);
                         this.list_openers(id, cx);
                         this.active = this.tabs.len() - 1;
@@ -395,6 +412,29 @@ impl GitVolt {
         cx.notify();
     }
 
+    /// A tab dragged over another's far half takes its place.
+    pub fn on_tab_drag(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+        let Some(from) = self.tab_drag else { return };
+        if e.pressed_button != Some(MouseButton::Left) {
+            self.tab_drag = None;
+            return;
+        }
+        let ui = crate::ui::Ui::get(cx);
+        let x = e.position.x.as_f32();
+        let spot = (0..self.tabs.len()).find(|i| ui.anchor(&format!("tabx:{i}")).is_some_and(|b| x >= b.left().as_f32() && x < b.right().as_f32()));
+        let Some(to) = spot.filter(|to| *to != from) else { return };
+        let Some(b) = ui.anchor(&format!("tabx:{to}")) else { return };
+        let middle = b.left().as_f32() + b.size.width.as_f32() / 2.;
+        if (to > from && x < middle) || (to < from && x > middle) {
+            return;
+        }
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        self.active = to;
+        self.tab_drag = Some(to);
+        cx.notify();
+    }
+
     pub fn close_other_tabs(&mut self, ix: usize, cx: &mut Context<Self>) {
         for i in (0..self.tabs.len()).rev() {
             if i != ix {
@@ -456,7 +496,7 @@ impl GitVolt {
         self.tabs.get(self.active).is_some_and(|t| t.diff.is_some())
     }
 
-    fn scroll_to_pointer(&mut self, y: Pixels, top: Pixels, height: Pixels, cx: &mut Context<Self>) {
+    pub fn scroll_to_pointer(&mut self, y: Pixels, top: Pixels, height: Pixels, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let handle = &tab.list.0.borrow().base_handle;
         let max = handle.max_offset().y;
@@ -537,7 +577,8 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         let active = i == this.active;
         let outlined = menu::is_target(&format!("tab:{}", tab.id), cx);
         let key: SharedString = format!("tab:{}", tab.id).into();
-        tabs = tabs.child(
+        tabs = tabs.child(crate::ui::anchor(
+            format!("tabx:{i}"),
             div()
                 .id(("tab", i))
                 .flex()
@@ -555,6 +596,7 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .when(outlined, |d| d.border_1().border_color(theme::blue()))
                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                     this.active = i;
+                    this.tab_drag = Some(i);
                     cx.notify();
                 }))
                 .on_mouse_down(MouseButton::Middle, cx.listener(move |this, _, _, cx| this.close_tab(i, cx)))
@@ -582,7 +624,7 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                         }))
                         .child(icon("x", 12., theme::text_secondary())),
                 )),
-        );
+        ));
     }
     let tabs = tabs.on_mouse_down(MouseButton::Right, cx.listener(|this, e: &MouseDownEvent, window, cx| {
         let weak = cx.weak_entity();
@@ -736,6 +778,7 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let write = |id: &'static str, name: &'static str, label: &'static str, command: &str| tip(tip_of(command), tb_button(id, name, label, false));
     let branch = tab.and_then(|t| t.graph.as_ref()).map(|g| g.head_branch.clone()).unwrap_or_default();
     let repo_name = tab.map(|t| t.name.clone()).unwrap_or_default();
+    let changes = tab.and_then(|t| t.graph.as_ref()).and_then(|g| g.rows.first()).and_then(|r| r.wip.as_ref()).map_or(0, WipCounts::files);
     div()
         .flex()
         .flex_none()
@@ -768,169 +811,41 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .justify_end()
                 .items_center()
                 .gap(px(12.))
+                .when(changes > 0, |d| {
+                    d.child(tip(
+                        tip_of("view.goToWip"),
+                        div()
+                            .id("tb-wip")
+                            .flex()
+                            .flex_col()
+                            .flex_none()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(2.))
+                            .min_w(px(44.))
+                            .h(px(38.))
+                            .px(px(6.))
+                            .rounded(px(4.))
+                            .text_size(px(11.))
+                            .text_color(theme::orange())
+                            .bg(theme::mix(theme::orange(), 0.14, transparent_black()))
+                            .border_1()
+                            .border_color(theme::mix(theme::orange(), 0.4, transparent_black()))
+                            .cursor_pointer()
+                            .hover(|d| d.bg(theme::mix(theme::orange(), 0.24, transparent_black())))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                crate::commands::invoke("view.goToWip", this, window, cx);
+                            }))
+                            .child(icon("file-pen", 16., theme::orange()))
+                            .child(format!("{changes} change{}", if changes == 1 { "" } else { "s" })),
+                    ))
+                })
                 .child(tip(tip_of("edit.palette"), tb_button("tb-actions", "command", "Actions", true).on_click(cx.listener(|this, _, window, cx| {
                     crate::commands::invoke("edit.palette", this, window, cx);
                 }))))
                 .child(tip(tip_of("edit.find"), tb_button("tb-search", "search", "Search", true).on_click(cx.listener(|this, _, window, cx| {
                     crate::commands::invoke("edit.find", this, window, cx);
                 })))),
-        )
-}
-
-fn chip_view(c: &Chip, lane: usize, more: usize) -> Div {
-    let tint = theme::lane_alpha(lane, if c.head { 0.45 } else { 0.25 });
-    let text = if c.head { theme::text_selected() } else { theme::text_normal() };
-    let source = if c.tag { "tag" } else if c.local { "laptop" } else { "cloud" };
-    div()
-        .flex()
-        .min_w_0()
-        .items_center()
-        .gap(px(3.))
-        .child(
-            div()
-                .flex()
-                .min_w_0()
-                .items_center()
-                .gap(px(3.))
-                .h(px(CHIP_H))
-                .px(px(5.))
-                .rounded(px(3.))
-                .bg(tint)
-                .text_color(text)
-                .when(c.head, |d| d.child(icon("check", 16., text)))
-                .child(div().min_w_0().truncate().child(c.name.clone()))
-                .child(icon(source, 13., text)),
-        )
-        .when(more > 0, |d| d.child(div().flex_none().px(px(4.)).rounded(px(3.)).bg(tint).text_size(px(11.)).text_color(theme::text_normal()).child(format!("+{more}"))))
-}
-
-fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context<GitVolt>) -> AnyElement {
-    let Some(tab) = this.tabs.get(this.active) else {
-        return div().flex().flex_1().items_center().justify_center().text_color(theme::text_disabled()).child("Open a repository (Ctrl+O)").into_any_element();
-    };
-    let Some(graph) = tab.graph.clone() else {
-        let text: SharedString = tab.error.clone().unwrap_or_else(|| "Loading…".into());
-        return div().flex().flex_1().items_center().justify_center().text_color(theme::text_disabled()).child(text).into_any_element();
-    };
-    let cols = columns(width - SCROLLBAR_W, graph.max_lanes);
-    let head_cell = |w: f32, text: &'static str| div().flex_none().w(px(w)).pl(px(CELL_PAD)).child(text);
-    let header = div()
-        .flex()
-        .flex_none()
-        .h(px(HEADER_H))
-        .items_center()
-        .border_b_1()
-        .border_color(theme::section_border())
-        .text_size(px(11.))
-        .text_color(theme::text_secondary())
-        .child(head_cell(LABELS_W, "BRANCH / TAG"))
-        .child(head_cell(cols.graph, "GRAPH").flex().items_center().gap(px(10.)).when(!graph.pinned.is_empty(), |d| d.child(div().flex().items_center().gap(px(3.)).child(icon("pin", 11., theme::text_secondary())).child(graph.pinned.clone()))))
-        .child(head_cell(cols.message, "COMMIT MESSAGE"))
-        .child(head_cell(AUTHOR_W, "AUTHOR"))
-        .child(head_cell(DATE_W, "COMMIT DATE / TIME"))
-        .child(head_cell(SHA_W, "SHA"));
-    let selected = tab.selected;
-    let rows = graph.clone();
-    let keep = tab.find.keep.clone();
-    let list = uniform_list(
-        "graph",
-        graph.rows.len(),
-        cx.processor(move |_, range: Range<usize>, _, cx| {
-            let graph = rows.clone();
-            range
-                .map(|ix| {
-                    let row = &graph.rows[ix];
-                    let is_selected = selected == Some(ix);
-                    let dimmed = keep.as_ref().is_some_and(|k| !k.contains(&ix));
-                    let geometry = RowGeometry { graph_x: LABELS_W, graph_w: cols.graph, clipped: cols.clipped, selected: is_selected, head: graph.head_row == Some(ix) };
-                    let painter = graph.clone();
-                    let group: SharedString = format!("row-{ix}").into();
-                    let cell = |w: Option<f32>, color: Hsla, text: SharedString| {
-                        let base = div().h(px(ROW_H)).flex().items_center().px(px(CELL_PAD)).min_w_0().overflow_hidden().text_color(if dimmed { theme::text_row_dimmed() } else { color }).when(is_selected, |d| d.bg(theme::selected_row()).text_color(theme::text_selected())).group_hover(group.clone(), |d| d.bg(theme::hover_row()));
-                        match w {
-                            Some(w) => base.flex_none().w(px(w)),
-                            None => base.flex_none().w(px(cols.message)),
-                        }
-                        .child(div().truncate().child(text))
-                    };
-                    div()
-                        .id(ix)
-                        .group(group.clone())
-                        .relative()
-                        .flex()
-                        .h(px(ROW_H))
-                        .on_click(cx.listener(move |this, _, _, cx| this.select(ix, cx)))
-                        .on_mouse_down(MouseButton::Right, cx.listener(move |this, e: &MouseDownEvent, window, cx| {
-                            let weak = cx.weak_entity();
-                            let rows = this.commit_rows(ix, None, &weak);
-                            menu::open_context_for(format!("row:{ix}"), rows, e.position, window, cx);
-                        }))
-                        .child(canvas(|_, _, _| {}, move |bounds, _, window, cx| paint_row(bounds, &painter.rows[ix], ix, geometry, window, cx)).absolute().top_0().left_0().size_full())
-                        .child(div().flex().flex_none().w(px(LABELS_W)).h(px(ROW_H)).items_center().px(px(CELL_PAD)).when_some(row.chips.first(), |d, c| d.child(chip_view(c, row.color as usize, row.chips.len() - 1))))
-                        .child(div().flex_none().w(px(cols.graph)))
-                        .child(cell(None, theme::text_normal(), row.summary.clone()))
-                        .child(cell(Some(AUTHOR_W), theme::text_disabled(), row.author.clone()))
-                        .child(cell(Some(DATE_W), theme::text_disabled(), row.date.clone()))
-                        .child(cell(Some(SHA_W), theme::text_disabled(), row.sha.clone()).px(px(SHA_PAD)).font_family(MONO_FONT).text_size(px(12.)))
-                })
-                .collect()
-        }),
-    )
-    .track_scroll(&tab.list)
-    .flex_1()
-    .min_w_0();
-    let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));
-    let thumb = scrollbar(tab, cx);
-    div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(div().flex().flex_none().pr(px(SCROLLBAR_W)).child(header.flex_1())).child(div().flex().flex_1().min_h_0().child(list).child(thumb)).into_any_element()
-}
-
-/// The graph's scrollbar: its thumb follows the list; a press or a drag jumps the list there.
-fn scrollbar(tab: &Tab, cx: &mut Context<GitVolt>) -> impl IntoElement {
-    let handle = tab.list.0.borrow().base_handle.clone();
-    let track_bounds = Rc::new(std::cell::Cell::new(Bounds::<Pixels>::default()));
-    let (for_paint, on_down, on_move) = (track_bounds.clone(), track_bounds.clone(), track_bounds);
-    div()
-        .id("graph-scrollbar")
-        .relative()
-        .flex_none()
-        .w(px(SCROLLBAR_W))
-        .h_full()
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-                this.dragging_scrollbar = true;
-                let b = on_down.get();
-                this.scroll_to_pointer(e.position.y, b.origin.y, b.size.height, cx);
-            }),
-        )
-        .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, _| this.dragging_scrollbar = false))
-        .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.dragging_scrollbar = false))
-        .on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, _, cx| {
-            if this.dragging_scrollbar && e.pressed_button == Some(MouseButton::Left) {
-                let b = on_move.get();
-                this.scroll_to_pointer(e.position.y, b.origin.y, b.size.height, cx);
-            }
-        }))
-        .child(
-            canvas(
-                |_, _, _| {},
-                move |bounds, _, window, _| {
-                    for_paint.set(bounds);
-                    let max = handle.max_offset().y;
-                    if max <= px(0.) {
-                        return;
-                    }
-                    let height = bounds.size.height;
-                    let thumb = (height * (height / (height + max))).max(px(24.));
-                    let top = (height - thumb) * (-handle.offset().y / max);
-                    let b = Bounds::new(point(bounds.origin.x + px(2.), bounds.origin.y + top), size(px(6.), thumb));
-                    window.paint_quad(quad(b, px(3.), theme::control_hover_bg(), px(0.), transparent_black(), BorderStyle::default()));
-                },
-            )
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_full(),
         )
 }
 
@@ -947,8 +862,9 @@ fn status_bar(this: &GitVolt) -> impl IntoElement {
         .border_color(theme::section_border())
         .text_size(px(11.))
         .text_color(theme::text_secondary())
-        .child("100%")
+        .child(tip(format!("Zoom ({} / {})", crate::commands::display_chord("Mod+="), crate::commands::display_chord("Mod+-")), div().child("100%")))
         .child(div().flex_1())
+        .child(tip(format!("Keyboard shortcuts ({})", crate::commands::display_chord("Mod+/")), icon("keyboard", 13., theme::text_secondary())))
         .when(!this.git_version.is_empty(), |d| d.child(format!("git {}", this.git_version)))
         .child(concat!("GitVolt ", env!("CARGO_PKG_VERSION")))
 }
@@ -987,13 +903,15 @@ impl Render for GitVolt {
             window.drop_image(image).ok();
         }
         let viewport = window.viewport_size();
-        let details = self.tabs.get(self.active).and_then(|t| details_panel(t, window, cx));
+        self.fetch_avatars(cx);
+        let details_w = self.details_w;
+        let details = self.tabs.get(self.active).and_then(|t| details_panel(t, details_w, window, cx));
         let tab = self.tabs.get(self.active);
         let open_file = tab.is_some_and(|t| t.diff.is_some() || t.history.is_some());
         let folded = open_file && !tab.is_some_and(|t| t.sidebar_open);
         let folded = folded || self.sidebar_narrow;
         let left = if folded { NARROW_W } else { self.sidebar_w };
-        let center = viewport.width.as_f32() - left - if details.is_some() { crate::details::DETAILS_W } else { 0. };
+        let center = viewport.width.as_f32() - left - if details.is_some() { self.details_w } else { 0. };
         let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
         if let Some(tab) = self.tabs.get_mut(self.active) {
             let (width, height) = match &tab.history {
@@ -1052,9 +970,21 @@ impl Render for GitVolt {
                     cx.notify();
                 }
             }))
-            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| this.on_side_drag(e, cx)))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| this.end_side_drag(cx)))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| this.end_side_drag(cx)))
+            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| {
+                this.on_side_drag(e, cx);
+                this.on_column_drag(e, cx);
+                this.on_tab_drag(e, cx);
+            }))
+            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.end_side_drag(cx);
+                this.end_column_drag(cx);
+                this.tab_drag = None;
+            }))
+            .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.end_side_drag(cx);
+                this.end_column_drag(cx);
+                this.tab_drag = None;
+            }))
             .child(title_bar(self, window, cx))
             .child(tab_bar(self, cx))
             .child(toolbar(self, cx))
@@ -1087,12 +1017,12 @@ pub mod tests {
     use std::prelude::v1::test;
 
     /// The graph's first row's top: title bar, tab bar, toolbar, table header.
-    const ROWS_TOP: f32 = TITLE_H + TAB_H + TOOLBAR_H + HEADER_H;
+    const ROWS_TOP: f32 = TITLE_H + TAB_H + TOOLBAR_H + crate::table::HEADER_H;
 
     /// Neither a commit nor WIP: selecting one would read on the runtime, whose wake-up from
     /// another thread GPUI's deterministic test scheduler refuses.
     fn row(i: usize) -> RowView {
-        RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None }
+        RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: Vec::new(), stash_branch: None, wip: None }
     }
 
     pub fn with_rows(cx: &mut TestAppContext, count: usize) -> (WindowHandle<GitVolt>, VisualTestContext, tokio::runtime::Runtime) {
@@ -1110,7 +1040,7 @@ pub mod tests {
                         let rows: Vec<RowView> = (0..count).map(row).collect();
                         let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
                         let mut tab = Tab::new(1, "fixture".into(), cx);
-                        tab.graph = Some(Rc::new(GraphView { rows, max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), by_sha }));
+                        tab.graph = Some(Rc::new(GraphView { rows, max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), truncated: false, by_sha }));
                         v.tabs.push(tab);
                         window.focus(&v.focus, cx);
                         v

@@ -30,7 +30,7 @@ pub const DEFAULT_SIDEBAR_W: f32 = 240.;
 pub const MIN_W: f32 = 160.;
 pub const MAX_W: f32 = 480.;
 pub const NARROW_W: f32 = 41.;
-const FILTER_H: f32 = 38.;
+const FILTER_H: f32 = 41.;
 
 /// A tree row's left padding at `depth` (1-based): a child's icon sits under its parent's name.
 pub fn row_indent(depth: u8) -> f32 {
@@ -480,6 +480,8 @@ pub enum SideDrag {
     Width { x: f32, w: f32 },
     /// A divider: where it started and the two panels' heights then.
     Divider { y: f32, upper: usize, lower: usize, up_h: f32, low_h: f32 },
+    /// The details panel's width, which grows as the edge goes left.
+    Details { x: f32, w: f32 },
 }
 
 /// Last pushes, by remote ref, for the hover card; `None`: loading.
@@ -640,6 +642,13 @@ impl GitVolt {
     pub fn on_side_drag(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
         match self.side_drag {
             SideDrag::None => {}
+            SideDrag::Details { x, w } => {
+                if e.pressed_button != Some(MouseButton::Left) {
+                    return self.end_side_drag(cx);
+                }
+                self.details_w = (w + x - e.position.x.as_f32()).round().clamp(crate::details::DETAILS_MIN, crate::details::DETAILS_MAX);
+                cx.notify();
+            }
             SideDrag::Width { x, w } => {
                 if e.pressed_button != Some(MouseButton::Left) {
                     return self.end_side_drag(cx);
@@ -801,6 +810,10 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                     .child(div().flex_1().truncate().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(kind.label().to_uppercase()))
                     .child(div().text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(theme::count_blue()).child(panel.matched.to_string())),
             )
+            .when(matches!(kind, SectionKind::Remote | SectionKind::Worktrees), |d| {
+                let (glyph, label) = if kind == SectionKind::Remote { ("plus", "Add remote…") } else { ("folder-plus", "Add worktree…") };
+                d.child(tip(format!("{label} ({})", crate::ui::menu::NOT_YET), div().flex().flex_none().size(px(18.)).items_center().justify_center().child(icon(glyph, 13., theme::text_disabled()))))
+            })
             .when(kind.nests() && !panel.collapsed, |d| {
                 let recent = panel.recent;
                 d.child(tip(
@@ -958,7 +971,7 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
             let label_el = match &item.kind {
                 ItemKind::Stash { .. } => {
                     let (text, branch) = stash_label(label);
-                    div().flex_1().min_w_0().truncate().child(text).when_some(branch, |d, b| d.child(format!(" {b}")))
+                    div().flex().flex_1().min_w_0().overflow_hidden().child(div().min_w_0().truncate().child(text)).when_some(branch, |d, b| d.child(div().flex_none().ml(px(4.)).text_size(px(11.)).text_color(theme::text_secondary()).child(b)))
                 }
                 _ => div().flex_1().min_w_0().truncate().child(label.clone()),
             };

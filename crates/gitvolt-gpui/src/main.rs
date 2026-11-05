@@ -4,6 +4,7 @@
 //! `gitvolt-gpui [path]`, or `GITVOLT_OPEN=<path>`, opens a repository.
 
 mod app;
+mod avatars;
 mod bench;
 mod commands;
 mod details;
@@ -20,16 +21,19 @@ mod model;
 mod open_in;
 mod palette;
 mod sidebar;
+mod table;
 mod theme;
 mod ui;
 
 use app::GitVolt;
 use gitvolt_core::api::Api;
+use gitvolt_core::avatar::AvatarProvider;
 use gitvolt_core::git::GitCli;
 use gitvolt_core::log::CommandLog;
 use gitvolt_core::openers::chooser::system_chooser;
 use gitvolt_core::openers::default_app::system_default_app;
 use gitvolt_core::openers::{ChildEnvHook, detect_system, launcher};
+use gitvolt_forge::gravatar::{DEFAULT_BASE_URL, Gravatar};
 use gpui::*;
 use gpui_platform::application;
 use std::borrow::Cow;
@@ -71,7 +75,7 @@ fn with_openers(api: Api) -> Api {
         None => api,
     };
     match gitvolt_core::paths::cache_base() {
-        Some(cache) => api.with_open_cache(cache.join("gitvolt-gpui").join("open")),
+        Some(cache) => api.with_open_cache(cache.join("gitvolt-gpui").join("open")).with_avatars(Arc::new(Gravatar::new(cache.join("gitvolt-gpui").join("avatars"), DEFAULT_BASE_URL)) as Arc<dyn AvatarProvider>),
         None => api,
     }
 }

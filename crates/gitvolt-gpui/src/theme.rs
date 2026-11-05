@@ -30,6 +30,7 @@ pub fn count_blue() -> Hsla { c(0x6d9deb) }
 pub fn sidebar_icon() -> Hsla { a(0xffffff73) }
 pub fn checked_out_row() -> Hsla { c(0x37563e) }
 pub fn checked_out() -> Hsla { c(0x457c4a) }
+pub fn avatar_backdrop() -> Hsla { c(0xe6e7ea) }
 pub fn control_bg() -> Hsla { a(0xffffff0f) }
 pub fn control_hover_bg() -> Hsla { a(0xffffff1f) }
 pub fn node_fill() -> Hsla { c(0x1c1e23) }
