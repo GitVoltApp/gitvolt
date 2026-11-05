@@ -499,6 +499,34 @@ pub fn reply_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, number: u64, dis
     div().flex().flex_col().gap(px(6.)).child(crate::ui::anchor(format!("mr-field:{key}"), div().child(field))).child(row)
 }
 
+/// A suggestion's Apply. Greyed, with why, where it wouldn't land; a line that's moved since says so on the click.
+#[allow(clippy::too_many_arguments)]
+fn apply_buttons(this: &GitVolt, tab: u32, kind: ForgeKind, number: u64, text: &str, base: Option<&crate::md::SuggestionBase>, position: Option<&gitvolt_core::forge::types::DiffPosition>, id: &str, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
+    let (Some(base), Some(pos), Some(t)) = (base, position, this.tabs.iter().find(|t| t.id == tab)) else { return Vec::new() };
+    let Some(mr) = t.forge.known_mr(number).cloned() else { return Vec::new() };
+    let head = t.forge.details.get(&number).and_then(|d| d.mr.head_sha.clone()).or(mr.head_sha.clone());
+    let gate = crate::forge::review::apply::apply_gate(t, kind, &mr, head.as_deref(), &pos.path, Some(pos));
+    let found = crate::forge::review::apply::suggestions_of(text);
+    let several = found.len() > 1;
+    found
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, (lang, suggested))| {
+            let replaced = base.replaced(&lang)?;
+            let from = base.start(&lang);
+            let key = format!("mr-apply:{id}:{i}");
+            let on = gate.is_ok();
+            let label = if several { format!("Apply suggestion {}", i + 1) } else { "Apply suggestion".to_string() };
+            let tip_text = gate.as_ref().err().cloned().unwrap_or_else(|| format!("Apply it to {} in the working copy", pos.path));
+            let (m, path, position) = (mr.clone(), pos.path.clone(), pos.clone());
+            let btn = super::header::mr_button(ElementId::Name(key.clone().into()), on).child(label).when(on, |d| {
+                d.on_click(cx.listener(move |v, _, _, cx| v.mr_apply_suggestion(tab, kind, m.clone(), path.clone(), from, replaced.clone(), suggested.clone(), Some(position.clone()), cx)))
+            });
+            Some(div().flex().mt(px(4.)).child(tip(tip_text, crate::ui::anchor(key, btn))).into_any_element())
+        })
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn note_view(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, d: &ForgeDiscussion, n: &ForgeNote, first: bool, avatar: bool, in_card: bool, lead: Option<AnyElement>, where_: Option<AnyElement>, cx: &mut Context<GitVolt>) -> AnyElement {
     let number = mr.number;
@@ -621,8 +649,11 @@ fn note_view(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, d: &Fo
         if text.len() > MR_BODY_MAX_BYTES {
             div().whitespace_normal().text_size(px(12.)).child(text).into_any_element()
         } else {
-            match this.mr_body(tab, number, &n.id, &text, cx) {
-                Some(view) => view.into_any_element(),
+            let position = d.notes.iter().find_map(|x| x.position.clone());
+            let base = crate::forge::review::apply::snippet_base(super::flavor_of(kind), position.as_ref());
+            let applies = apply_buttons(this, tab, kind, number, &text, base.as_ref(), position.as_ref(), &n.id, cx);
+            match this.mr_body_on(tab, number, &n.id, &text, base, cx) {
+                Some(view) => div().flex().flex_col().child(view).children(applies).into_any_element(),
                 None => div().into_any_element(),
             }
         }

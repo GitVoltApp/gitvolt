@@ -78,7 +78,10 @@ impl Hit {
     }
 }
 
+pub type Toolbar = Rc<dyn Fn(&mut App) -> AnyElement>;
+
 pub struct MarkdownField {
+    toolbar: Option<Toolbar>,
     pub input: Entity<TextInput>,
     preview: Entity<MdView>,
     preview_focus: FocusHandle,
@@ -115,7 +118,7 @@ impl MarkdownField {
         let md = opts.md;
         let preview = cx.new(|cx| MdView::new(md, api, rt, retired, cx));
         let subs = vec![cx.subscribe(&input, |this, _, e: &InputEvent, cx| this.on_input(e, cx))];
-        Self { input, preview, preview_focus: cx.focus_handle(), mode: Mode::Write, shown: String::new(), label: opts.label, rows: opts.rows.max(1), grow: opts.grow_preview, floor: 0., disabled: false, people: opts.people, active: 0, closed_at: None, more: (String::new(), Vec::new()), asked: String::new(), last_tag: String::new(), debounce: 0, open_items: Rc::default(), _subs: subs }
+        Self { toolbar: None, input, preview, preview_focus: cx.focus_handle(), mode: Mode::Write, shown: String::new(), label: opts.label, rows: opts.rows.max(1), grow: opts.grow_preview, floor: 0., disabled: false, people: opts.people, active: 0, closed_at: None, more: (String::new(), Vec::new()), asked: String::new(), last_tag: String::new(), debounce: 0, open_items: Rc::default(), _subs: subs }
     }
 
     pub fn text(&self, cx: &App) -> String {
@@ -125,6 +128,11 @@ impl MarkdownField {
     pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
         self.input.update(cx, |i, cx| i.set_text(text, cx));
         cx.notify();
+    }
+
+    /// What sits at the end of the tabs' row: a template's picker.
+    pub fn set_toolbar(&mut self, build: Toolbar) {
+        self.toolbar = Some(build);
     }
 
     pub fn set_disabled(&mut self, on: bool, cx: &mut Context<Self>) {
@@ -410,6 +418,7 @@ impl Render for MarkdownField {
                 cx.stop_propagation();
             }
         };
+        let tool = self.toolbar.clone().map(|b| b(cx));
         let foot = format!("Markdown supported · {} to preview", crate::commands::display_chord("Mod+Shift+P"));
         div()
             .id("md-field")
@@ -442,7 +451,10 @@ impl Render for MarkdownField {
                     .bg(theme::panel_bg1())
                     .border_b_1()
                     .border_color(theme::wip_input_border())
-                    .child(div().flex().gap(px(2.)).child(self.tab("md-write", "Write", Mode::Write, cx)).child(self.tab("md-preview", "Preview", Mode::Preview, cx))),
+                    .justify_between()
+                    .items_center()
+                    .child(div().flex().gap(px(2.)).child(self.tab("md-write", "Write", Mode::Write, cx)).child(self.tab("md-preview", "Preview", Mode::Preview, cx)))
+                    .children(tool),
             )
             .child(
                 div()

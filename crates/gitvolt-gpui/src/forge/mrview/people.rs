@@ -32,6 +32,13 @@ impl Role {
         }
     }
 
+    pub fn name_plural(self) -> &'static str {
+        match self {
+            Role::Reviewers => "Reviewers",
+            Role::Assignees => "Assignees",
+        }
+    }
+
     pub fn noun(self) -> &'static str {
         match self {
             Role::Reviewers => "reviewer",

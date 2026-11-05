@@ -101,6 +101,8 @@ pub struct Tab {
     /// Each MR/PR view's own state, by number: it outlives closing the view.
     pub mr_views: HashMap<u64, crate::forge::mrview::MrUi>,
     /// What waits for the next reload to land.
+    /// The Create MR/PR flyout, while it's open.
+    pub create: Option<crate::forge::create::CreateUi>,
     pub after_reload: Vec<AfterReload>,
     /// The tab's forge state, in memory.
     pub forge: crate::forge::store::TabForge,
@@ -220,6 +222,7 @@ impl Tab {
             graph: None,
             side: SideState::new(id, cx),
             mr_views: HashMap::new(),
+            create: None,
             after_reload: Vec::new(),
             forge: Default::default(),
             selected: None,
@@ -362,6 +365,7 @@ pub struct GitVolt {
     pub frame_hook: Option<FrameHook>,
     /// The shown tab's forge poller.
     pub forge_poller: Option<crate::forge::poll::Poller>,
+    pub after_stack_push: Option<crate::stacks::AfterPush>,
     /// The MR/PR view's edge being dragged: where it started, the width then, docked.
     pub mr_drag: Option<(f32, f32, bool)>,
     /// A Markdown field on its own, for a script: the forge views will hold theirs.
@@ -405,7 +409,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { forge_poller: None, mr_drag: None, base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, update_state: serde_json::Value::Null, git_problem: None, profiles: serde_json::json!([]), restoring_tabs: false, start_path: None, state_loaded: false, pending_group: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, system_title_bar: false, fetch_missed: false, window_width: 1600., window_height: 900., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, tab_press_x: 0., tab_drag_dx: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, field_demo: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { after_stack_push: None, forge_poller: None, mr_drag: None, base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, update_state: serde_json::Value::Null, git_problem: None, profiles: serde_json::json!([]), restoring_tabs: false, start_path: None, state_loaded: false, pending_group: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, system_title_bar: false, fetch_missed: false, window_width: 1600., window_height: 900., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, tab_press_x: 0., tab_drag_dx: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, field_demo: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// `gitCheck.ts`'s retry.

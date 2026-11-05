@@ -295,6 +295,13 @@ pub fn all() -> Vec<Command> {
         Command::new("review.comment", "Comment on the selected lines", Repository, "message-square", "Start a review comment on the lines selected in the diff", &["Mod+Alt+C"]).hidden().when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.review.is_some())).run(|v, _, cx| v.review_comment_key(cx)),
         Command::new("review.nextThread", "Next review thread", Repository, "message-square", "Go to the next thread or pending comment in the file", &["F9"]).hidden().when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| !d.zones.is_empty())).run(|v, _, cx| v.review_step(true, cx)),
         Command::new("review.prevThread", "Previous review thread", Repository, "message-square", "Go to the previous thread or pending comment in the file", &["Shift+F9"]).hidden().when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| !d.zones.is_empty())).run(|v, _, cx| v.review_step(false, cx)),
+        Command::new("forge.createMr", "Create MR/PR…", Repository, "git-pull-request-create", "Create a merge request or pull request from the current branch", &[])
+            .when(|v, _| v.create_target(v.tabs.get(v.active).and_then(|t| t.head_branch()).as_deref(), None).is_some())
+            .run(|v, window, cx| {
+                if let Some(b) = v.tabs.get(v.active).and_then(|t| t.head_branch()) {
+                    v.forge_open_create(b, window, cx);
+                }
+            }),
         Command::new("mr.approve", "Approve the MR/PR", Repository, "check", "Approve the open merge request or pull request", &["Mod+Shift+A"]).yields().hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.forge.open_mr.is_some())).run(|v, window, cx| v.mr_key("approve", window, cx)),
         Command::new("mr.merge", "Merge the MR/PR", Repository, "git-merge", "Merge the open merge request or pull request", &["Mod+Shift+M"]).yields().hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.forge.lent_merge.is_some() && t.forge.open_mr.is_some())).run(|v, window, cx| v.mr_key("merge", window, cx)),
         Command::new("mr.updateBranch", "Update the MR/PR's branch", Repository, "git-pull-request-arrow", "Rebase or update the open merge request's or pull request's branch with its target", &["Mod+Alt+U"]).yields().hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.forge.lent_update.is_some() && t.forge.open_mr.is_some())).run(|v, window, cx| v.mr_key("update", window, cx)),

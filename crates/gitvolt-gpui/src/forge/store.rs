@@ -137,6 +137,9 @@ pub struct TabForge {
     /// The refs a review's diff was last read for.
     pub review_refs: Option<String>,
     /// A head Compare fetched into a ref of its own: the MR/PR, the head, and whether its compare has shown.
+    /// Prompted this session, and running now: merged MRs/PRs' numbers.
+    pub stack_prompted: std::collections::HashSet<u64>,
+    pub stack_running: std::collections::HashSet<u64>,
     /// The compare last looked at, for `forge_watch_compare`.
     pub compare_seen: Option<(String, Option<String>)>,
     pub compare_ref: Option<(u64, String, bool)>,
@@ -160,7 +163,7 @@ pub struct TabForge {
 
 impl Default for TabForge {
     fn default() -> Self {
-        Self { compare_seen: None, kind: None, remote: None, project: None, mapped: Vec::new(), target: None, target_chosen: false, remote_errors: HashMap::new(), owner_avatars: HashMap::new(), me: None, by_ref: BTreeMap::new(), history: BTreeMap::new(), upstreams: BTreeMap::new(), filter: MrFilter::All, filter_read: false, list: None, details: HashMap::new(), detail_errors: HashMap::new(), discussions: HashMap::new(), fresh_at: HashMap::new(), loading: Vec::new(), write_epoch: 0, activated_at: None, recheck: false, open_mr: None, updated_at: None, error: None, limited_until: None, cached_at: None, failures: 0, refreshing: Vec::new(), review: None, review_refs: None, compare_ref: None, settings: HashMap::new(), settings_asked: HashMap::new(), settings_error: None, behind: HashMap::new(), limits: None, limits_asked: false, people_queue: Default::default(), people_busy: false, note_after_compare: None, review_ui: Default::default(), lent_merge: None, lent_update: None }
+        Self { stack_prompted: Default::default(), stack_running: Default::default(), compare_seen: None, kind: None, remote: None, project: None, mapped: Vec::new(), target: None, target_chosen: false, remote_errors: HashMap::new(), owner_avatars: HashMap::new(), me: None, by_ref: BTreeMap::new(), history: BTreeMap::new(), upstreams: BTreeMap::new(), filter: MrFilter::All, filter_read: false, list: None, details: HashMap::new(), detail_errors: HashMap::new(), discussions: HashMap::new(), fresh_at: HashMap::new(), loading: Vec::new(), write_epoch: 0, activated_at: None, recheck: false, open_mr: None, updated_at: None, error: None, limited_until: None, cached_at: None, failures: 0, refreshing: Vec::new(), review: None, review_refs: None, compare_ref: None, settings: HashMap::new(), settings_asked: HashMap::new(), settings_error: None, behind: HashMap::new(), limits: None, limits_asked: false, people_queue: Default::default(), people_busy: false, note_after_compare: None, review_ui: Default::default(), lent_merge: None, lent_update: None }
     }
 }
 

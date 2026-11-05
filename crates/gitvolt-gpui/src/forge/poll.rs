@@ -296,6 +296,11 @@ impl GitVolt {
                 if reason != Reason::Fast {
                     v.review_refresh(tab, cx);
                 }
+                // A store changed: the cards' stack lines, and a stack whose bottom just merged.
+                if let Some(t) = v.tabs.iter().find(|t| t.id == tab) {
+                    super::stack::refresh_stack_lines(t);
+                }
+                v.stack_prompt(tab, cx);
                 let Some(p) = v.forge_poller.as_mut().filter(|p| p.tab == tab && p.epoch == epoch) else { return };
                 let next = p.state.finished(outcome);
                 match next {

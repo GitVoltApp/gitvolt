@@ -126,6 +126,7 @@ impl GitVolt {
         if let Some(b) = &local_b {
             sync.extend(crate::sync::sync_rows(self, b, this));
             sync.extend(self.push_stack_row(&b.name, this));
+            sync.extend(self.stack_create_rows(&b.name, this));
             let (weak, c, name) = (this.clone(), ctx.clone(), b.name.clone());
             sync.push(MenuRow::action("branch.setUpstream", "Set upstream", "arrow-up-right", format!("Choose the remote branch {name} tracks"), move |_, cx| {
                 let (c, name) = (c.clone(), name.clone());
@@ -159,6 +160,7 @@ impl GitVolt {
             integrate.extend(self.rebase_onto_rows(&sha, b, None, this));
             if b.local {
                 integrate.extend(self.rebase_stack_row(&b.name, this));
+                integrate.extend(self.stack_after_merge_rows(&b.name, this));
                 integrate.extend(self.gitflow_finish_row(&b.name, this));
             }
         }
@@ -273,6 +275,9 @@ impl GitVolt {
             let chips: Vec<Chip> = branch.map_or_else(|| row.chips.clone(), |b| vec![b.clone()]);
             let mut rows = if stash { Vec::new() } else { self.commit_mr_rows(&chips, this) };
             rows.extend(self.commit_ref_rows(&row.mr_refs, this));
+            if !stash {
+                rows.extend(self.create_mr_rows(branch, this));
+            }
             rows
         };
 

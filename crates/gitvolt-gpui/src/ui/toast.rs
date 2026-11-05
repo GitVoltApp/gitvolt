@@ -155,7 +155,8 @@ pub(super) fn element(_: &mut Window, cx: &mut App) -> Option<AnyElement> {
         .child(message)
         .children(o.actions.iter().enumerate().map(|(i, a)| {
             let run = a.run.clone();
-            div()
+            let key = format!("toast-action:{}", a.label);
+            crate::ui::anchor(key, div()
                 .id(("toast-action", i))
                 .text_color(theme::link())
                 .cursor_pointer()
@@ -164,7 +165,7 @@ pub(super) fn element(_: &mut Window, cx: &mut App) -> Option<AnyElement> {
                     dismiss(cx);
                     run(window, cx);
                 })
-                .child(a.label.clone())
+                .child(a.label.clone()))
         }))
         .when(o.sticky, |d| {
             d.child(div().id("toast-dismiss").flex().items_center().rounded(px(3.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(|_, _, cx| dismiss(cx)).child(crate::app::icon("x", 14., theme::text_secondary())))

@@ -5,6 +5,7 @@
 pub mod accounts;
 pub mod accounts_forks;
 pub mod card;
+pub mod create;
 pub mod goto;
 pub mod menu;
 pub mod mrview;
@@ -112,10 +113,13 @@ pub fn dump(t: &crate::app::Tab) -> serde_json::Value {
         "list": f.list.as_ref().map(|l| l.mrs.iter().map(|m| m.number).collect::<Vec<_>>()),
         "badges": f.by_ref.iter().map(|(k, m)| format!("{k}={}", m.number)).collect::<Vec<_>>(),
         "openMr": f.open_mr,
+        "create": t.create.as_ref().map(|u| serde_json::json!({ "branch": u.branch, "problem": u.problem, "busy": u.busy, "error": u.error, "draft": u.draft.as_ref().map(|d| serde_json::json!({ "title": d.title, "description": d.description, "reviewers": d.reviewers.len(), "assignees": d.assignees.len(), "labels": d.labels, "asDraft": d.draft, "target": d.target_branch })) })),
         "error": f.error,
         "failures": f.failures,
         "state": f.open_mr.and_then(|n| f.known_mr(n)).map(|m| serde_json::to_value(m.state).unwrap_or_default()),
         "threads": f.open_mr.and_then(|n| f.discussions.get(&n)).map(Vec::len),
+        "threadIds": f.open_mr.and_then(|n| f.discussions.get(&n)).map(|l| l.iter().filter(|d| d.notes.iter().any(|n| !n.system)).take(50).map(|d| d.id.clone()).collect::<Vec<_>>()),
+        "resolved": f.open_mr.and_then(|n| f.discussions.get(&n)).map(|l| l.iter().filter(|d| d.resolved).count()),
         "review": r.map(|s| serde_json::json!({ "number": s.number, "drafts": s.drafts.len(), "pending": s.pending_review.is_some(), "files": s.files.len(), "refs": s.refs.is_some(), "error": s.error })),
     })
 }

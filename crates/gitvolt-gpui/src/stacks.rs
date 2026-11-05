@@ -240,10 +240,32 @@ pub fn push_summary(steps: &[(String, StepResult)], failed: Option<(&str, bool, 
 
 /// `stackPlan`: Rebase stack as an interactive rebase: every row Pick, but rows already in the base: Drop; a lower member
 /// whose tip row, or a row below it, is still replayed moves with its row; the rest stay.
+#[cfg(test)]
 pub fn stack_plan(stack: &Stack, plan: &Value) -> Value {
+    stack_plan_dropping(stack, plan, None)
+}
+
+/// A merged bottom's commits to drop: every row at or below `from`; `branch` names it in the confirm.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Drop {
+    pub from: Vec<String>,
+    pub branch: String,
+}
+
+/// `dropCut`: the plan row of the first drop candidate it holds; rows are newest first.
+pub fn drop_cut(plan: &Value, drop: Option<&Drop>) -> Option<usize> {
+    let rows = plan["rows"].as_array()?;
+    drop?.from.iter().find_map(|oid| rows.iter().position(|r| r["oid"].as_str() == Some(oid.as_str())))
+}
+
+pub type AfterRebase = Rc<dyn Fn(&mut GitVolt, &str, &mut Context<GitVolt>)>;
+pub type AfterPush = Rc<dyn Fn(&mut GitVolt, bool, &mut Context<GitVolt>)>;
+
+pub fn stack_plan_dropping(stack: &Stack, plan: &Value, drop: Option<&Drop>) -> Value {
     let rows = plan["rows"].as_array().cloned().unwrap_or_default();
     let index: HashMap<&str, usize> = rows.iter().enumerate().map(|(i, r)| (r["oid"].as_str().unwrap_or_default(), i)).collect();
-    let goes = |i: usize| rows[i]["upstream"] == true;
+    let cut = drop_cut(plan, drop);
+    let goes = |i: usize| rows[i]["upstream"] == true || cut.is_some_and(|c| i >= c);
     let replayed = |at: &str| index.get(at).is_some_and(|i| (*i..rows.len()).any(|k| !goes(k)));
     let lower: HashSet<&String> = stack.branches[..stack.branches.len() - 1].iter().collect();
     let out_rows: Vec<Value> = rows.iter().enumerate().map(|(i, r)| json!({ "oid": r["oid"], "action": if goes(i) { "drop" } else { "pick" } })).collect();
@@ -297,6 +319,18 @@ pub fn rebase_confirm(stack: &Stack, req: &Value, conflicting: usize) -> (String
 }
 
 impl Tab {
+    /// Its stack base, as the graph's and the remotes' branches say.
+    pub fn graph_stack_base(&self) -> Option<String> {
+        let g = self.graph.as_ref()?;
+        let remotes: Vec<(String, Option<String>)> = self.sidebar["remotes"].as_array().map_or(Vec::new(), |r| r.iter().map(|x| (x["name"].as_str().unwrap_or_default().to_string(), x["defaultBranch"].as_str().map(str::to_string))).collect());
+        stack_base(g, &remotes)
+    }
+
+    pub fn all_stacks(&self) -> Vec<Stack> {
+        let Some((g, base)) = self.graph.as_ref().zip(self.graph_stack_base()) else { return Vec::new() };
+        detect_stacks(g, &base)
+    }
+
     /// The stacks of the loaded graph, on its base.
     pub fn stack_of(&self, branch: &str) -> Option<Stack> {
         let g = self.graph.as_ref()?;
@@ -337,6 +371,12 @@ impl GitVolt {
     }
 
     /// `pushStack`: each member's Push, bottom first; the first failure stops it, and one toast says which pushed.
+    /// `push_stack`, and `after` once it's reported: whether it failed.
+    pub fn push_stack_then(&mut self, stack: Stack, after: AfterPush, cx: &mut Context<Self>) {
+        self.after_stack_push = Some(after);
+        self.push_stack(stack, cx);
+    }
+
     pub fn push_stack(&mut self, stack: Stack, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let ctx = tab.write_target();
@@ -402,7 +442,11 @@ impl GitVolt {
                 }),
             });
         }
+        let failed_push = failed.is_some();
         toast::show_with(message, Options { error, detail: detail.map(Into::into), actions, ..Default::default() }, cx);
+        if let Some(after) = self.after_stack_push.take() {
+            after(self, failed_push, cx);
+        }
     }
 
     /// "Rebase stack onto <base>" on any member's chip: hidden when it already sits on the base; greyed during another
@@ -442,6 +486,12 @@ impl GitVolt {
 
     /// `rebaseStack`: the plan, the refusals, the confirm; then one interactive rebase moving every member, one Undo for all.
     pub fn rebase_stack(&mut self, stack: Stack, origin: Origin, hold: Option<u64>, window: &mut Window, cx: &mut Context<Self>) {
+        self.rebase_stack_then(stack, origin, hold, None, None, window, cx);
+    }
+
+    /// With a merged bottom's rows to drop, and `then` told how it ended: done, upToDate, cancelled, editor, stopped, failed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn rebase_stack_then(&mut self, stack: Stack, origin: Origin, hold: Option<u64>, drop: Option<Drop>, then: Option<AfterRebase>, window: &mut Window, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let ctx = tab.write_target();
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
@@ -469,7 +519,7 @@ impl GitVolt {
             let Some(window_handle) = this.update(cx, |v, _| v.window).ok().flatten() else { return };
             window_handle
                 .update(cx, |_, window, cx| {
-                    this.update(cx, |v, cx| v.rebase_stack_read(stack, ctx, origin, hold, answer, base, window, cx)).ok();
+                    this.update(cx, |v, cx| v.rebase_stack_read(stack, ctx, origin, hold, answer, base, drop, then, window, cx)).ok();
                 })
                 .ok();
         })
@@ -477,13 +527,17 @@ impl GitVolt {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn rebase_stack_read(&mut self, stack: Stack, ctx: WriteCtx, origin: Origin, hold: Option<u64>, answer: Result<(Value, Option<Value>), GbError>, base: String, window: &mut Window, cx: &mut Context<Self>) {
+    fn rebase_stack_read(&mut self, stack: Stack, ctx: WriteCtx, origin: Origin, hold: Option<u64>, answer: Result<(Value, Option<Value>), GbError>, base: String, drop: Option<Drop>, then: Option<AfterRebase>, window: &mut Window, cx: &mut Context<Self>) {
         let top = stack.branches.last().cloned().unwrap_or_default();
         let (plan, predicted) = match answer {
             Ok(x) => x,
             Err(e) => {
                 arm::release_row(hold, window, cx);
-                return toast::show_with(e.message, Options { error: true, ..Default::default() }, cx);
+                toast::show_with(e.message, Options { error: true, ..Default::default() }, cx);
+                if let Some(t) = &then {
+                    t(self, "failed", cx);
+                }
+                return;
             }
         };
         let merges = plan["merges"].as_u64().unwrap_or(0);
@@ -498,10 +552,18 @@ impl GitVolt {
                 req,
                 None,
                 move |picked, _, cx| {
-                    if picked.as_deref() == Some("editor") {
-                        let opts = OpenRebase { branch: branch.clone(), base: b2.clone(), preset: None };
-                        weak.update(cx, |v, cx| v.open_rebase_editor(opts, cx)).ok();
-                    }
+                    let editor = picked.as_deref() == Some("editor");
+                    let then2 = then.clone();
+                    let opts = OpenRebase { branch: branch.clone(), base: b2.clone(), preset: None };
+                    weak.update(cx, |v, cx| {
+                        if editor {
+                            v.open_rebase_editor(opts, cx);
+                        }
+                        if let Some(t) = then2 {
+                            t(v, if editor { "editor" } else { "cancelled" }, cx);
+                        }
+                    })
+                    .ok();
                 },
                 window,
                 cx,
@@ -509,17 +571,33 @@ impl GitVolt {
             return;
         }
         let rows = plan["rows"].as_array().cloned().unwrap_or_default();
+        let cut = drop_cut(&plan, drop.as_ref());
         if !rows.is_empty() && rows.iter().all(|r| r["upstream"] == true) {
             arm::release_row(hold, window, cx);
-            return toast::show(format!("{top} is already in {base}"), cx);
+            toast::show(format!("{top} is already in {base}"), cx);
+            if let Some(t) = &then {
+                t(self, "upToDate", cx);
+            }
+            return;
         }
-        if plan["behind"].as_u64() == Some(0) {
+        if plan["behind"].as_u64() == Some(0) && cut.is_none() {
             arm::release_row(hold, window, cx);
-            return toast::show(format!("The stack is already on {base}"), cx);
+            toast::show(format!("The stack is already on {base}"), cx);
+            if let Some(t) = &then {
+                t(self, "upToDate", cx);
+            }
+            return;
         }
-        let req = stack_plan(&stack, &plan);
+        let req = stack_plan_dropping(&stack, &plan, drop.as_ref());
         let conflicting = predicted.as_ref().filter(|p| p.get("off").is_none_or(Value::is_null)).and_then(|p| p["rows"].as_array()).map_or(0, |r| r.iter().filter(|x| x["conflicts"].as_array().is_some_and(|c| !c.is_empty())).count());
         let (label, caption, warn) = rebase_confirm(&stack, &req, conflicting);
+        // What goes with a merged bottom, said first.
+        let dropped = cut.map_or(0, |c| rows.len() - c);
+        let caption = match &drop {
+            Some(d) if cut.is_none() => Some(format!("The merged commits of {} weren't found in the stack: they'll be replayed (resolve or drop them in the editor). {}", d.branch, caption.unwrap_or_default()).trim().to_string()),
+            Some(d) if dropped > 0 => Some(format!("{} of {} (merged) {} dropped. {}", commits_word(dropped), d.branch, if dropped == 1 { "is" } else { "are" }, caption.unwrap_or_default()).trim().to_string()),
+            _ => caption,
+        };
         let mut armed = ArmRequest::new(if warn { Tone::Warn } else { Tone::Positive }, label, format!("Rebase the stack onto {base}?"), "Rebase");
         armed.body = caption.clone().unwrap_or_default().into();
         armed.caption = caption.map(Into::into);
@@ -530,8 +608,10 @@ impl GitVolt {
             origin,
             move |a, _, cx| {
                 if a.ok {
-                    let (ctx, req, base, origin) = (ctx.clone(), req.clone(), base.clone(), again.clone());
-                    weak.update(cx, |v, cx| v.send_stack_rebase(ctx, req, moving, base, origin, cx)).ok();
+                    let (ctx, req, base, origin, then) = (ctx.clone(), req.clone(), base.clone(), again.clone(), then.clone());
+                    weak.update(cx, |v, cx| v.send_stack_rebase(ctx, req, moving, base, origin, then, cx)).ok();
+                } else if let Some(t) = then.clone() {
+                    weak.update(cx, |v, cx| t(v, "cancelled", cx)).ok();
                 }
             },
             window,
@@ -540,10 +620,16 @@ impl GitVolt {
         arm::release_row(hold, window, cx);
     }
 
-    fn send_stack_rebase(&mut self, ctx: WriteCtx, req: Value, moving: usize, base: String, origin: Origin, cx: &mut Context<Self>) {
+    #[allow(clippy::too_many_arguments)]
+    fn send_stack_rebase(&mut self, ctx: WriteCtx, req: Value, moving: usize, base: String, origin: Origin, then: Option<AfterRebase>, cx: &mut Context<Self>) {
+        let then2 = then.clone();
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let w = Write::new(&ctx, move |asked| call("interactiveRebase", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": req["branch"], "base": req["base"], "expect": req["expect"], "rows": req["rows"], "chips": req["chips"], "confirm": { "autostash": asked.autostash } })))
-            .on_success(move |_, out, cx| match out["status"].as_str() {
+            .on_success(move |this, out, cx| {
+                if let Some(t) = &then {
+                    t(this, out["status"].as_str().unwrap_or("stopped"), cx);
+                }
+                match out["status"].as_str() {
                 Some("done") => toast::show_with(format!("Rebased {moving} branches onto {base}"), Options { warning: out["warning"].is_string(), detail: out["warning"].as_str().map(|w| w.to_string().into()), ..Default::default() }, cx),
                 Some("upToDate") => toast::show(format!("The stack is already on {base}"), cx),
                 Some("stopped") => {
@@ -552,6 +638,12 @@ impl GitVolt {
                     }
                 }
                 _ => {}
+            }
+            })
+            .on_end(move |this, ok, cx| {
+                if !ok && let Some(t) = &then2 {
+                    t(this, "failed", cx);
+                }
             })
             .origin(origin);
         self.write(w, cx);

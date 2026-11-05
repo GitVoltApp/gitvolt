@@ -34,7 +34,9 @@ case "${1:-}" in
     dir=$root/$name
     repo=$(target/bench/release/gitvolt-harness fixture "$kind" "$dir")
     origin=$(dirname "$repo")/origin.git
-    git -C "$repo" remote set-url origin "https://$forge/$project.git"
+    # A fixture without a remote (`stack`) gets its bare origin here.
+    [ -d "$origin" ] || git init -q --bare "$origin"
+    git -C "$repo" remote set-url origin "https://$forge/$project.git" 2>/dev/null || git -C "$repo" remote add origin "https://$forge/$project.git"
     # Fetches and pushes go to the fixture's own bare origin: "ssh" to the forge's host runs this script (the forge stays
     # the URL's host, as the e2e does), and git may use nothing else.
     cat >"$dir/fake-ssh.sh" <<SH

@@ -2,6 +2,7 @@
 //! user's drafts sit. The session's writes go through the core; a write that works updates it at once, then reads the forge back; one the forge
 //! refuses changes nothing and gives the reason to the box that asked.
 
+pub mod apply;
 pub mod zones;
 
 use crate::app::{GitVolt, core_repo};

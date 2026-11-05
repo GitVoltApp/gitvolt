@@ -139,6 +139,7 @@ impl GitVolt {
         {
             ui.bodies.clear();
         }
+        t.create = None;
         t.forge.open_mr = Some(number);
         t.mr_views.entry(number).or_default();
         // A beat of grace: arrowing down the sidebar's list opens each row in turn; only the one it rests on loads.
@@ -262,6 +263,11 @@ impl GitVolt {
 
     /// A rendered body, made once per note and its text; what it links to acts through the app.
     pub fn mr_body(&mut self, tab: u32, number: u64, key: &str, text: &str, cx: &mut Context<Self>) -> Option<Entity<MdView>> {
+        self.mr_body_on(tab, number, key, text, None, cx)
+    }
+
+    /// The same, for a note whose suggestions replace known lines.
+    pub fn mr_body_on(&mut self, tab: u32, number: u64, key: &str, text: &str, base: Option<crate::md::SuggestionBase>, cx: &mut Context<Self>) -> Option<Entity<MdView>> {
         let t = self.tabs.iter().find(|t| t.id == tab)?;
         if let Some((seen, view)) = t.mr_views.get(&number)?.bodies.get(key)
             && seen == text
@@ -269,7 +275,8 @@ impl GitVolt {
             return Some(view.clone());
         }
         let kind = t.forge.kind?;
-        let opts = MdOptions::for_comment(core_repo(tab), link_env(t), flavor_of(kind), Default::default());
+        let mut opts = MdOptions::for_comment(core_repo(tab), link_env(t), flavor_of(kind), Default::default());
+        opts.base = base;
         let (api, rt, retired) = (self.api.clone(), self.rt.clone(), self.retired_images.clone());
         let content: Arc<str> = Arc::from(text);
         let view = cx.new(|cx| {
@@ -325,6 +332,9 @@ pub enum FieldKey {
 
 /// A flyout's frame around the view: the header (title, dock, refresh, browser, ×), and its scrolling body.
 pub fn mr_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mut Context<GitVolt>) -> Option<(AnyElement, bool)> {
+    if this.tabs.get(this.active)?.create.is_some() {
+        return crate::forge::create::create_flyout(this, room, window, cx).map(|f| (f, false));
+    }
     let t = this.tabs.get(this.active)?;
     let tab = t.id;
     let number = t.forge.open_mr?;

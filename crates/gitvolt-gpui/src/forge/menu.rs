@@ -146,6 +146,19 @@ impl GitVolt {
         rows
     }
 
+    /// `Create merge request…`: a local branch with none open yet.
+    pub fn create_mr_rows(&self, branch: Option<&Chip>, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+        let Some(c) = branch.filter(|c| c.local) else { return Vec::new() };
+        let name = c.name.to_string();
+        let Some(kind) = self.create_target(Some(&name), Some(c)) else { return Vec::new() };
+        let noun = mr_long_noun(kind);
+        let w = this.clone();
+        vec![MenuRow::action("forge.createMr", format!("Create {noun}…"), "git-pull-request-create", format!("Create a {noun} from {name} on {}", forge_name(kind)), move |window, cx| {
+            let name = name.clone();
+            w.update(cx, |v, cx| v.forge_open_create(name, window, cx)).ok();
+        })]
+    }
+
     /// The commit's `Forge link`, last of the copy group.
     pub fn commit_forge_row(&self, sha: &str, branch: Option<&Chip>, this: &WeakEntity<GitVolt>) -> Option<MenuRow> {
         let remote_branch = branch.and_then(|b| {

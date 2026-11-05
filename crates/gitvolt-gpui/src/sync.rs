@@ -623,6 +623,7 @@ impl GitVolt {
         let refs = vec![b.full_name.clone()];
         self.start_pending(repo, &refs, "push");
         let (worktree, send_b, send_opts) = (ctx.worktree.clone(), b.clone(), opts.clone());
+        let (created_b, created) = (b.clone(), b.push_target.is_none() || b.push_behind.is_none());
         let (rejected_b, rejected_ctx, rejected_opts, rejected_origin) = (b.clone(), ctx.clone(), opts.clone(), origin.clone());
         let w = Write::new(&ctx, move |_| {
             let mut params = json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": send_b.name, "expect": { "head": null, "refs": { send_b.full_name.clone(): send_b.target } } });
@@ -647,7 +648,8 @@ impl GitVolt {
             };
             let shown = if o["upToDate"].as_bool() == Some(true) { format!("{dst} is up to date") } else { done.clone() };
             let problem = format!("{done}; the server reported a problem");
-            this.show_server_result(&shown, &problem, &o["server"], o["op"].as_u64().unwrap_or(0), Vec::new(), cx);
+            let extra = this.push_create_link(&created_b, created, o["remote"].as_str().unwrap_or_default(), o["upToDate"].as_bool() == Some(true), cx);
+            this.show_server_result(&shown, &problem, &o["server"], o["op"].as_u64().unwrap_or(0), extra, cx);
             this.forge_branch_pushed(repo, cx);
         })
         .handle(move |this, err, cx| {

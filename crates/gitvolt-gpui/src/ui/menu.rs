@@ -1095,8 +1095,8 @@ fn watch_window(window: &mut Window, cx: &mut App) {
     if m.viewport != window.viewport_size() {
         return window.defer(cx, close);
     }
-    // So does the window losing focus, once that lasts.
-    if window.is_window_active() || m.blur_pending {
+    // So does the window losing focus, once that lasts. A scripted run may never have had it.
+    if window.is_window_active() || m.blur_pending || std::env::var_os("GITVOLT_SCRIPT").is_some() {
         return;
     }
     with_menu(cx, |m| m.blur_pending = true);
