@@ -8,7 +8,7 @@ const { DEFAULT_SETTINGS, useAppState } = await import('../../app/state');
 const { appSetting } = await import('../bindings');
 const { registerSettings, registerSettingsPage } = await import('../registry');
 const { useSettingsUi } = await import('../schema');
-const { SettingRow } = await import('./SettingRow');
+const { Description, SettingRow } = await import('./SettingRow');
 const { SettingsPageView } = await import('./SettingsPage');
 
 const ctx = { repoPath: null, repoName: null, tabId: null };
@@ -68,5 +68,19 @@ describe('SettingRow', () => {
     expect(screen.getByRole('region', { name: 'Fetch and push' })).toBeInTheDocument();
     expect(screen.getByText('Background fetch.')).toBeInTheDocument();
     expect(screen.getAllByRole('group').map((g) => g.getAttribute('aria-labelledby') && document.getElementById(g.getAttribute('aria-labelledby')!)?.textContent)).toEqual(['Fetch', 'Push']);
+  });
+});
+
+describe('Description', () => {
+  it('one line is a paragraph; several are paragraphs, with a run of "• " lines as a list, each part with its share of the highlights', () => {
+    const { container, rerender } = render(<Description text="One line." />);
+    expect(container.innerHTML).toBe('<p class="setting-desc">One line.</p>');
+    const text = 'Intro.\n• Alpha: first.\n• Beta: second.\nAfter.';
+    const at = (word: string) => ({ start: text.indexOf(word), end: text.indexOf(word) + word.length });
+    rerender(<Description text={text} ranges={[at('Alpha'), at('second'), at('After')]} />);
+    const desc = container.querySelector('div.setting-desc')!;
+    expect([...desc.children].map((c) => c.tagName)).toEqual(['P', 'UL', 'P']);
+    expect([...desc.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['Alpha: first.', 'Beta: second.']);
+    expect([...desc.querySelectorAll('mark')].map((m) => m.textContent)).toEqual(['Alpha', 'second', 'After']);
   });
 });

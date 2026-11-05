@@ -204,13 +204,28 @@ describe('SettingsOverlay', () => {
   });
 
   describe('settings', () => {
-    it('density is a three-way radio over the density store, persisted', () => {
-      const dialog = show('density');
+    it('density is a three-way button group over the density store, persisted', () => {
+      show('density');
+      const group = screen.getByRole('radiogroup', { name: 'Density' });
+      expect(group).toHaveClass('segmented');
+      const radios = within(group).getAllByRole('radio');
+      expect(radios.map((r) => r.textContent)).toEqual(['Compact', 'Standard', 'Comfortable']);
       expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked();
       fireEvent.click(screen.getByRole('radio', { name: 'Compact' }));
       expect(useDensity.getState().density).toBe('compact');
       expect(localStorage.getItem('gitvolt.density.v1')).toBe('compact');
-      expect(dialog.querySelectorAll('input[name="density"]')).toHaveLength(3);
+      // One tab stop, on the chosen button; the arrows (wrapping), Home and End move and choose.
+      expect(radios.map((r) => r.tabIndex)).toEqual([0, -1, -1]);
+      radios[0]!.focus();
+      fireEvent.keyDown(radios[0]!, { key: 'ArrowLeft' });
+      expect(useDensity.getState().density).toBe('comfortable');
+      expect(radios[2]).toHaveFocus();
+      fireEvent.keyDown(radios[2]!, { key: 'ArrowRight' });
+      expect(useDensity.getState().density).toBe('compact');
+      fireEvent.keyDown(radios[0]!, { key: 'End' });
+      expect(useDensity.getState().density).toBe('comfortable');
+      fireEvent.keyDown(radios[2]!, { key: 'Home' });
+      expect(useDensity.getState().density).toBe('compact');
     });
 
     it('sticky scroll toggles the editor setting, with its description shown', () => {

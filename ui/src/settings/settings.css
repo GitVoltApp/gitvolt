@@ -46,6 +46,10 @@
 .setting-label { color: var(--text-selected); }
 .setting-reset { width: 18px; height: 18px; }
 .setting-desc { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); }
+/* A description of several lines (SettingRow's `Description`): paragraphs and bullet lists. */
+.setting-desc p, .setting-desc ul { margin: 0; }
+.setting-desc ul { padding-left: 16px; }
+.setting-desc > * + * { margin-top: 2px; }
 .setting-control { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; min-width: 0; min-height: 28px; }
 .setting-control input:not([type="checkbox"]):not([type="radio"]), .setting-control select { flex: 1; min-width: 0; font: inherit; padding: 5px 8px; color: var(--text-selected); background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 4px; outline: none; }
 /* A number box between its −/+ buttons (frame/fields.tsx), one bordered control; the browser's
@@ -59,15 +63,33 @@
 .setting-control > .select { flex: 0 1 240px; }
 .setting-control input:focus, .setting-control select:focus { border-color: var(--blue); }
 .setting-control input[aria-invalid="true"] { border-color: var(--status-deleted); }
-.setting-control button:not(.select):not(.switch):not(.icon-button):not(.clearable-clear) { font: inherit; padding: 5px 12px; border-radius: 4px; border: 1px solid var(--section-border); background: var(--panel-bg1); color: var(--text-selected); cursor: pointer; }
-.setting-control button:hover:not(:disabled):not(.select):not(.switch):not(.icon-button) { background: var(--hover-row); }
+.setting-control button:not(.select):not(.switch):not(.icon-button):not(.clearable-clear):not(.primary):not([role="radio"]) { font: inherit; padding: 5px 12px; border-radius: 4px; border: 1px solid var(--section-border); background: var(--panel-bg1); color: var(--text-selected); cursor: pointer; }
+.setting-control button:hover:not(:disabled):not(.select):not(.switch):not(.icon-button):not(.primary):not([role="radio"]) { background: var(--hover-row); }
+/* The one action a setting leads to (Restart GitVolt), in the theme editor's primary colour. */
+.setting-control button.primary { font: inherit; padding: 5px 12px; border-radius: 4px; border: 1px solid var(--button-primary); background: var(--button-primary); color: var(--text-on-accent); cursor: pointer; }
+.setting-control button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+.setting-control button.primary:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .setting-control button:disabled { color: var(--text-disabled); cursor: default; }
 .setting-control button.danger { color: var(--status-deleted); }
 /* A switch's own text is the row's label: kept for its accessible name, not shown twice. */
 .setting-control .switch-row { padding: 4px; }
 .setting-control .switch-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.radio-group { display: flex; gap: 16px; }
-.radio { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+/* A choice of a few (frame/controls.tsx `ChoiceGroup`): the toolbars' `.segmented` (files.css) at
+   a setting control's height, here in full so it doesn't hang on files.css; the chosen button is
+   `aria-checked` rather than `aria-pressed`. */
+.setting-control .choice-group { display: inline-flex; flex: none; border: 1px solid var(--section-border); border-radius: 4px; overflow: hidden; }
+.setting-control .choice-group > button { all: unset; cursor: pointer; padding: 4px 12px; line-height: 18px; color: var(--text-secondary); white-space: nowrap; transition: color var(--motion-fast), background-color var(--motion-base); }
+.setting-control .choice-group > button + button { border-left: 1px solid var(--section-border); }
+.setting-control .choice-group > button:hover:not(:disabled) { color: var(--text-selected); }
+.setting-control .choice-group > button:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.setting-control .choice-group > button[aria-checked="true"] { background: var(--selected-row); color: var(--text-selected); }
+.setting-control .choice-group > button:disabled { cursor: default; color: var(--text-disabled); }
+.setting-control .choice-group > button[aria-checked="true"]:disabled { color: var(--text-secondary); }
+/* Title bar (pages/appearance.tsx): the choice, and under it the restart line (or, in an X11
+   session, the note), in a box of one height whose space is kept while it's hidden, so the choice
+   never moves. */
+.title-bar-choice { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.title-bar-restart { display: flex; align-items: center; justify-content: flex-end; gap: 8px; height: 30px; }
 .editor-picker { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
 .setting-error { color: var(--status-deleted); font-size: 12px; overflow-wrap: anywhere; }
 .setting-hint { color: var(--text-secondary); font-size: 12px; }

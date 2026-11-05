@@ -10,7 +10,7 @@
 # the taskbar, each border and the bottom-right corner resize it (cursors too), and the page's top
 # edge; the edges' pixels, active and not; the buttons; the window menu (right click, Alt+Space);
 # Aero Snap; shake minimizes another window and brings it back (after Notepad's own title bar, the
-# control: some sessions don't shake); a restart keeps the size; "Use the system title bar"; and last, best
+# control: some sessions don't shake); a restart keeps the size; Title bar › System; and last, best
 # effort, the same at 150% display scaling, switched live (DisplayConfigSetDeviceInfo, as Settings
 # does; no sign-out).
 param(
@@ -499,7 +499,7 @@ Stop-Process -Id $run.Process.Id -Force; Wait 3000
 StopAll
 
 # --- the system title bar setting ---
-Log "`n## Use the system title bar"
+Log "`n## Title bar: System"
 if (Test-Path $settings) {
   SystemTitleBar $true
   $run = Launch; $h = $run.Hwnd

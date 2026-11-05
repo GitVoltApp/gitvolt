@@ -54,8 +54,9 @@ get back; `window_state.rs` restores the window's size and position.
 **Window chrome.** On Linux, in a Wayland session, the window is built without the system's
 decorations, and the UI draws its own 30 px title bar above the tab bar (`ui/src/chrome/`): ☰, the
 window's title, and the window buttons as GNOME's `button-layout` has them, with resize handles
-along the window's edges. `chrome.rs` decides the frame (Settings › Appearance › "Use the system
-title bar" keeps the system's, from the next start), reads GNOME's
+along the window's edges. `chrome.rs` decides the frame (Settings › Appearance › Title bar › System
+keeps the system's, from the next start; Restart GitVolt there relaunches through the update
+runner's `relaunch`), reads GNOME's
 `org.gnome.desktop.wm.preferences` (the button layout and what a double, middle and right click on a
 title bar do; the defaults off GNOME) and hands it to the page in an initialization script, so the
 first render already has its title bar, then sends `gb:window-chrome` when GNOME's settings change.
@@ -64,8 +65,9 @@ through Tauri's window API; the runtime makes the moves and resizes EWMH `_NET_W
 requests, so the window manager moves the window (edge tiling and snapping included), and
 `window_manager` shows its window menu (`_GTK_SHOW_WINDOW_MENU`) or lowers the window
 (`GITVOLT-PATCH.md`). Without a window (the harness's browser, the website demo) there's no title
-bar and ☰ stays in the tab bar. An X11 session keeps the system frame: there the window manager
-needs the X pointer grab, which Chromium's connection holds while the button is down.
+bar and ☰ stays in the tab bar. An X11 session keeps the system frame (`systemOnly`, so the
+setting shows System, fixed): there the window manager needs the X pointer grab, which
+Chromium's connection holds while the button is down.
 
 On macOS the window keeps its frame with Tauri's overlay title bar style (transparent, the title
 hidden, the page under it), and the same bar has Apple's traffic lights in a slot at its start,
@@ -77,8 +79,8 @@ window immovable otherwise, and it sends a resize when a full screen transition 
 sees full screen end (`GITVOLT-PATCH.md`). `ui/scripts/mac-titlebar.mjs` checks it all with real
 input on the `mac-port.yml` runner.
 
-**Compact mode** (Settings › Appearance › "Use compact mode", `compact_title_bar`, read when the
-window is built like the system title bar setting, and only under GitVolt's own title bar) is the
+**Compact mode** (Settings › Appearance › Title bar › Combined, `compact_title_bar`, read when the
+window is built like `system_title_bar`, and only under GitVolt's own title bar) is the
 same on every platform: there's no title bar row, the tab bar is the title bar (`TabBar`,
 `useCompactTitleBar`). It holds macOS's traffic lights' slot or the window buttons as the
 desktop lays them out, ☰, the tab strip, then a fixed empty space that always moves the window

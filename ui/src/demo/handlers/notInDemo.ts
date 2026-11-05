@@ -40,6 +40,7 @@ const WHAT: Record<NotInDemoMethod, string> = {
   updateDownload: 'updates',
   updateInstall: 'updates',
   updateRestart: 'updates',
+  relaunchApp: 'restarting GitVolt',
 };
 
 export const notInDemoHandlers = Object.fromEntries(

@@ -1,32 +1,25 @@
 import { Type } from 'lucide-react';
-import { useAppState } from '../../app/state';
+import { api, errorMessage } from '../../api/client';
+import { flushSaves, useAppState } from '../../app/state';
+import { useWindowChrome, type WindowChromeInfo } from '../../chrome/windowChrome';
+import { confirmDiscardUnsaved } from '../../diff/workingCopy';
 import { DEFAULT_DENSITY, DENSITIES, useDensity, type Density } from '../../theme/density';
 import {
   clampReadingFont, clampReadingLineHeight, clampReadingWidth, DEFAULT_FONT_SETTINGS as F, DEFAULT_UI_FONT, READING_FONT_MAX, READING_FONT_MIN, READING_LINE_HEIGHT_MAX,
   READING_LINE_HEIGHT_MIN, READING_WIDTH_MAX, READING_WIDTH_MIN,
 } from '../../theme/fontSettings';
 import { displayChord } from '../../ui/platformKeys';
-import { appSetting, storeBinding, useSettingValue } from '../bindings';
-import { Switch } from '../../ui/Switch';
+import { useToast } from '../../ui/toastStore';
+import { appSetting, storeBinding } from '../bindings';
 import { settingDef, type SettingsCtx } from '../registry';
-import { switchControl } from '../frame/controls';
+import { ChoiceGroup, choiceControl } from '../frame/controls';
 import { NumberField } from '../frame/fields';
 import type { FontRole } from '../frame/FontPicker';
 import { FontSetting, ReadingFontPreview, UiFontPreview } from '../frame/FontSetting';
 import { registerSettings, registerSettingsPage, type SettingDef } from '../registry';
 
 const DENSITY_LABELS: Record<Density, string> = { compact: 'Compact', standard: 'Standard', comfortable: 'Comfortable' };
-
-function DensityControl() {
-  const density = useDensity((s) => s.density);
-  return (
-    <div role="radiogroup" aria-labelledby="label-density" className="radio-group">
-      {DENSITIES.map((d) => (
-        <label key={d} className="radio"><input type="radio" name="density" checked={density === d} onChange={() => useDensity.getState().setDensity(d)} />{DENSITY_LABELS[d]}</label>
-      ))}
-    </div>
-  );
-}
+const DENSITY_CHOICES = DENSITIES.map((d) => [d, DENSITY_LABELS[d]] as const);
 
 const save = (patch: Partial<typeof F>) => useAppState.getState().setSettings(patch);
 
@@ -65,58 +58,109 @@ function ReadingWidthControl() {
 /** The platform of the app's window, which can draw its own title bar; none in a browser. */
 const WINDOW_PLATFORM = typeof window === 'undefined' ? undefined : window.__GITVOLT_WINDOW__?.platform;
 
-const SYSTEM_TITLE_BAR_DESCRIPTIONS: Record<'linux' | 'windows' | 'macos', string> = {
-  linux: 'The desktop\'s own title bar and window frame instead of GitVolt\'s, with ☰ back in the tab bar. Takes effect when GitVolt restarts. An X11 session always has the desktop\'s.',
-  windows: 'The system\'s own title bar and window frame instead of GitVolt\'s, with ☰ back in the tab bar. Takes effect when GitVolt restarts.',
-  macos: 'macOS\'s standard title bar instead of GitVolt\'s, with ☰ back in the tab bar. Takes effect when GitVolt restarts.',
+const RESTART_NOTE = 'Takes effect when GitVolt restarts.';
+const TITLE_BAR_DESCRIPTIONS: Record<'linux' | 'windows' | 'macos', string> = {
+  linux: [
+    '• Separate: GitVolt\'s title bar, above the tabs.',
+    '• Combined: the tabs in the title bar, with ☰ and the window buttons.',
+    '• System: the desktop\'s own title bar and frame, ☰ in the tab bar.',
+    RESTART_NOTE,
+  ].join('\n'),
+  windows: [
+    '• Separate: GitVolt\'s title bar, above the tabs.',
+    '• Combined: the tabs in the title bar, with ☰ and the window buttons.',
+    '• System: Windows\' own title bar and frame, ☰ in the tab bar.',
+    RESTART_NOTE,
+  ].join('\n'),
+  macos: [
+    '• Separate: GitVolt\'s title bar with the traffic lights, above the tabs.',
+    '• Combined: the tabs in the title bar, after the traffic lights and ☰.',
+    '• System: macOS\'s standard title bar, ☰ in the tab bar.',
+    RESTART_NOTE,
+  ].join('\n'),
 };
 
-const COMPACT_DESCRIPTIONS: Record<'linux' | 'windows' | 'macos', string> = {
-  linux: 'No title bar row: the tabs move up into the title bar, with ☰ and the window buttons, and an empty space before the bell that always moves the window. Not with the system title bar, and not in an X11 session, which always has the desktop\'s. Takes effect when GitVolt restarts.',
-  windows: 'No title bar row: the tabs move up into the title bar, with ☰ and the window buttons, and an empty space before the bell that always moves the window. Not with the system title bar. Takes effect when GitVolt restarts.',
-  macos: 'No title bar row: the tabs move up into the title bar, after the traffic lights and ☰, with an empty space before the bell that always moves the window. Not with the system title bar. Takes effect when GitVolt restarts.',
+export type TitleBarChoice = 'separate' | 'combined' | 'system';
+const TITLE_BAR_CHOICES: readonly (readonly [TitleBarChoice, string])[] = [['separate', 'Separate'], ['combined', 'Combined'], ['system', 'System']];
+
+/** The choice the two stored switches make: the system title bar wins over compact mode
+ * (Combined), which needs GitVolt's own. */
+export function titleBarChoice(s: { systemTitleBar: boolean; compactTitleBar: boolean }): TitleBarChoice {
+  return s.systemTitleBar ? 'system' : s.compactTitleBar ? 'combined' : 'separate';
+}
+
+/** The choice the window was built with, from the window chrome the app handed over. */
+function runningChoice(info: WindowChromeInfo | null): TitleBarChoice {
+  return info?.frame === 'system' ? 'system' : info?.compact ? 'combined' : 'separate';
+}
+
+const restart = async () => {
+  try {
+    // Unsaved edits ask first, as the window's close does (cancelled: no restart). The choice is
+    // saved before this process goes; the window's placement and tabs as at quit.
+    if (!(await confirmDiscardUnsaved())) return;
+    await flushSaves();
+    await api.relaunchApp();
+  } catch (e) {
+    useToast.getState().show(errorMessage(e), { error: true });
+  }
 };
 
-/** "Use compact mode"'s switch: off and greyed out while the system title bar is on, which has
- * no row of GitVolt's to fold into the tabs (the stored choice comes back with GitVolt's). */
-function CompactSwitch({ ctx }: { ctx: SettingsCtx }) {
-  const def = settingDef('compactTitleBar')!;
-  const [on, set] = useSettingValue<boolean>(def, ctx);
-  const system = useAppState((s) => s.settings.systemTitleBar);
-  return <Switch id="input-compactTitleBar" checked={on && !system} onChange={set} disabled={system} label={def.label} />;
+/** Separate, Combined or System, and under it Restart GitVolt once the choice isn't what the
+ * window was built with. That line keeps its space while hidden, so nothing moves. In an X11
+ * session it's System, fixed, and the same line says why. */
+function TitleBarControl({ ctx }: { ctx: SettingsCtx }) {
+  const systemOnly = useWindowChrome((s) => !!s.info?.systemOnly);
+  const running = useWindowChrome((s) => runningChoice(s.info));
+  const def = settingDef('titleBar')!;
+  const stored = useAppState((s) => titleBarChoice(s.settings));
+  const choice = systemOnly ? 'system' : stored;
+  const set = (c: TitleBarChoice) => def.binding?.(ctx)?.set(c);
+  const restartShown = !systemOnly && choice !== running;
+  return (
+    <div className="title-bar-choice">
+      <ChoiceGroup<TitleBarChoice> id="titleBar" value={choice} options={TITLE_BAR_CHOICES} onChange={set} disabled={systemOnly} />
+      <div className="title-bar-restart" style={{ visibility: systemOnly || restartShown ? 'visible' : 'hidden' }}>
+        {systemOnly ? <span className="setting-hint">An X11 session always has the desktop's title bar.</span> : (
+          <>
+            <span className="setting-hint">Takes effect after a restart.</span>
+            <button type="button" className="primary" onClick={() => void restart()}>Restart GitVolt</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
-/** "Use compact mode": next to "Use the system title bar", on every platform with a window. */
-export function compactTitleBarSetting(platform: 'linux' | 'windows' | 'macos'): SettingDef {
+/** "Title bar": where GitVolt can draw its own (the app's window, on Linux, Windows and macOS),
+ * over the two stored switches. In an X11 session there's nothing to change, so nothing to reset. */
+export function titleBarSetting(platform: 'linux' | 'windows' | 'macos'): SettingDef {
   return {
-    id: 'compactTitleBar', label: 'Use compact mode', page: 'appearance', group: 'Window',
-    keywords: 'compact title bar titlebar tabs space height row browser window frame',
-    description: COMPACT_DESCRIPTIONS[platform],
-    Control: CompactSwitch, binding: appSetting('compactTitleBar', false),
-  };
-}
-
-/** "Use the system title bar": only where GitVolt draws its own (the app's window, on Linux,
- * Windows and macOS). */
-export function systemTitleBarSetting(platform: 'linux' | 'windows' | 'macos'): SettingDef {
-  return {
-    id: 'systemTitleBar', label: 'Use the system title bar', page: 'appearance', group: 'Window',
-    keywords: 'title bar titlebar window frame decorations buttons minimize maximize close native gnome desktop windows macos traffic lights',
-    description: SYSTEM_TITLE_BAR_DESCRIPTIONS[platform],
-    Control: switchControl('systemTitleBar'), binding: appSetting('systemTitleBar', false),
+    id: 'titleBar', label: 'Title bar', page: 'appearance', group: 'Window', labelFor: 'group',
+    keywords: 'title bar titlebar separate combined compact system gitvolt tabs space height row browser window frame decorations buttons minimize maximize close native gnome desktop windows macos traffic lights restart',
+    description: TITLE_BAR_DESCRIPTIONS[platform],
+    Control: TitleBarControl,
+    binding: () => useWindowChrome.getState().info?.systemOnly ? null : {
+      get: () => titleBarChoice(useAppState.getState().settings),
+      set: (c: TitleBarChoice) => useAppState.getState().setSettings({ systemTitleBar: c === 'system', compactTitleBar: c === 'combined' }),
+      defaultValue: 'separate',
+      subscribe: (cb) => useAppState.subscribe(cb),
+    },
   };
 }
 
 const offs = [
-  registerSettingsPage({ id: 'appearance', label: 'Appearance', scope: 'app', order: 20, icon: Type, summary: 'Density and fonts. The theme and colours are under Theme, the editor font under Diffs and editors, the zoom in the status bar.' }),
+  registerSettingsPage({ id: 'appearance', label: 'Appearance', scope: 'app', order: 20, icon: Type, summary: 'Density, the window\'s title bar and fonts. The theme and colours are under Theme, the editor font under Diffs and editors, the zoom in the status bar.' }),
   registerSettings([
     {
       id: 'density', label: 'Density', page: 'appearance', group: 'Density', labelFor: 'group',
       keywords: 'compact standard comfortable row height spacing padding',
       description: 'Row height and padding of the graph and the file lists.',
-      Control: DensityControl,
+      Control: choiceControl<Density>('density', DENSITY_CHOICES),
       binding: storeBinding(useDensity, () => useDensity.getState().density, (d) => useDensity.getState().setDensity(d), DEFAULT_DENSITY),
     },
+    // Groups show in the order their first setting registers: Window before Fonts.
+    ...(WINDOW_PLATFORM ? [titleBarSetting(WINDOW_PLATFORM)] : []),
     {
       id: 'uiFontFamily', label: 'UI font', page: 'appearance', group: 'Fonts',
       keywords: 'font family face typeface interface chrome menus lists graph dialogs installed picker custom list css',
@@ -147,7 +191,6 @@ const offs = [
       description: `The longest line in the Markdown view and the rendered diff, in characters, 20 to 240. Empty: none (their usual 880 px column); + from there starts at ${READING_WIDTH_START}.`,
       Control: ReadingWidthControl, binding: appSetting('readingLineWidth', F.readingLineWidth),
     },
-    ...(WINDOW_PLATFORM ? [systemTitleBarSetting(WINDOW_PLATFORM), compactTitleBarSetting(WINDOW_PLATFORM)] : []),
   ]),
 ];
 import.meta.hot?.dispose(() => offs.forEach((off) => off()));

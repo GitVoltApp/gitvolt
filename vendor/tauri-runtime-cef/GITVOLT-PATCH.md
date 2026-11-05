@@ -419,7 +419,7 @@ gets the pointer there. Win+Z opens the flyout for the window meanwhile.
 - **Aero Snap:** a drag to the screen's top maximizes, and one to its left snaps to the left half,
   with Snap Assist.
 - **Restarts:** after one, the client and window rectangles are identical (no drift); with
-  "Use the system title bar" on, the 31 px system caption is back.
+  Title bar › System, the 31 px system caption is back.
 
 Then `windows-titlebar.yml` (`ui/scripts/win-titlebar.ps1`) on `windows-2025` and `windows-2022`
 (Server 2022: Windows 10's shell), with the window moved clear of the taskbar first:

@@ -19,6 +19,8 @@ export interface WindowChromeInfo {
   /** Compact mode (Settings › Appearance): no title bar row, the tab bar is the title bar. Only
    * with a `custom` frame; absent (off) where the page was handed an older object (e2e). */
   compact?: boolean;
+  /** The system's frame whatever Settings › Appearance › Title bar says (an X11 session). */
+  systemOnly?: boolean;
 }
 
 declare global {

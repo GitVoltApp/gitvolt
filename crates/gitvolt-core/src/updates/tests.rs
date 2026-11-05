@@ -515,3 +515,31 @@ async fn a_package_under_the_old_name_isnt_offered() {
     let UpdateState::Available { release } = s.updates.check(false, 1).await.unwrap() else { panic!() };
     assert_eq!(release.asset, None, "GitVolt takes only its own names");
 }
+
+#[tokio::test]
+async fn relaunch_app_restarts_gitvolt_with_no_update_installed() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner = Arc::new(FakeRunner::default());
+    let exe = PathBuf::from("/usr/share/GitVolt/gitvolt");
+    let cfg = UpdateConfig { source: FakeSource::with(vec![], ""), runner: runner.clone(), dir: dir.path().join("updates"), kind: InstallKind::Deb, exe: Some(exe.clone()) };
+    let cli = crate::git::GitCli::new(Arc::new(crate::log::CommandLog::new(10))).with_env(crate::testing::isolated_git_env());
+    let api = crate::api::Api::new(cli, None).with_updates(cfg);
+    let restart: crate::api::Request = serde_json::from_value(serde_json::json!({"method": "updateRestart"})).unwrap();
+    assert!(api.dispatch(restart).await.is_err(), "an update's Restart still needs one installed");
+    assert!(runner.spawned.lock().unwrap().is_empty());
+    let relaunch: crate::api::Request = serde_json::from_value(serde_json::json!({"method": "relaunchApp"})).unwrap();
+    assert!(!relaunch.is_write());
+    api.dispatch(relaunch).await.unwrap();
+    assert_eq!(*runner.spawned.lock().unwrap(), [relaunch_command(&exe, std::process::id())]);
+    assert_eq!(runner.quits.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn relaunch_without_the_binary_s_path_asks_to_start_it_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner = Arc::new(FakeRunner::default());
+    let cfg = UpdateConfig { source: FakeSource::with(vec![], ""), runner: runner.clone(), dir: dir.path().join("updates"), kind: InstallKind::Deb, exe: None };
+    let updates = Updates::new(cfg, "0.2.0", EventBus::new());
+    assert!(updates.relaunch().unwrap_err().message.contains("start it again yourself"));
+    assert_eq!(runner.quits.load(Ordering::SeqCst), 0, "GitVolt stays open");
+}

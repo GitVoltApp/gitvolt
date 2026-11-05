@@ -28,6 +28,8 @@ export interface SettingsPageDef {
 }
 export interface SettingDef {
   id: string; label: string; page: string; group: string; keywords: string;
+  /** Shown under the label. Several lines (`\n`) are paragraphs, and lines starting with `• `
+   * a bullet list (SettingRow's `Description`). */
   description?: string;
   /** The row's control (the page and search results render it). None: the row offers "Open page". */
   Control?: ComponentType<{ ctx: SettingsCtx }>;
