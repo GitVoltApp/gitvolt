@@ -464,7 +464,7 @@ fn colour_row(this: &mut GitVolt, token: &'static str, label: &'static str, note
         .min_h(px(if compact { 28. } else { 30. }))
         .child(swatch)
         .child(div().flex().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_size(px(12.)).text_color(theme::text_normal()).child(label).when(!note.is_empty(), |d| d.child(div().ml(px(4.)).text_color(theme::text_secondary()).child(note.to_string()))))
-        .child(div().flex().flex_none().items_center().w(px(w)).h(px(24.)).px(px(6.)).rounded(px(4.)).bg(theme::app_bg()).border_1().border_color(if invalid { theme::status_deleted() } else if focused { theme::blue() } else { theme::section_border() }).font_family(mono).text_size(px(12.)).text_color(theme::text_selected()).overflow_hidden().child(input))
+        .child(crate::ui::anchor(key.clone(), div().flex().flex_none().items_center().w(px(w)).h(px(24.)).px(px(6.)).rounded(px(4.)).bg(theme::app_bg()).border_1().border_color(if invalid { theme::status_deleted() } else if focused { theme::blue() } else { theme::section_border() }).font_family(mono).text_size(px(12.)).text_color(theme::text_selected()).overflow_hidden().child(input)))
         .into_any_element()
 }
 

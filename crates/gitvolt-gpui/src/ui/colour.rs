@@ -476,7 +476,7 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
         )
         .child(div().flex().flex_1().items_center().gap(px(6.)).px(px(6.)).py(px(3.)).border_1().border_color(theme::section_border()).rounded(px(4.)).child(chip(cur)).child("New"));
     let tab = |id: &'static str, text: &'static str, on: bool, to: bool| {
-        div().id(id).px(px(10.)).py(px(3.)).text_size(px(12.)).border_b_2().cursor_pointer().border_color(if on { theme::blue() } else { transparent_black() }).text_color(if on { theme::text_selected() } else { theme::text_secondary() }).on_click(move |_, _, cx| with_state(cx, |p| p.oklch_tab = to)).child(text)
+        super::anchor(id, div().id(id).px(px(10.)).py(px(3.)).text_size(px(12.)).border_b_2().cursor_pointer().border_color(if on { theme::blue() } else { transparent_black() }).text_color(if on { theme::text_selected() } else { theme::text_secondary() }).on_click(move |_, _, cx| with_state(cx, |p| p.oklch_tab = to)).child(text))
     };
     let tabs = div().flex().gap(px(2.)).border_b_1().border_color(theme::section_border()).child(tab("colour-tab-picker", "Picker", !oklch_tab, false)).child(tab("colour-tab-oklch", "OKLCH", oklch_tab, true));
     let body = if oklch_tab {
