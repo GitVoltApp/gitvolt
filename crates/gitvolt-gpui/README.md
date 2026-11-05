@@ -19,9 +19,11 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 
 - **Never push.** Commit on the current branch only. No `Co-Authored-By`, no mention of Claude or any
   AI in commits. `git add <paths>`, never `-A`. Commit messages as in `CONTRIBUTING.md`.
-- **Builds go on disk, one at a time, with `-j 12`:**
-  `cargo build --release -j 12 -p gitvolt-gpui --target-dir target/bench`. Never put a target dir or
+- **Builds go on disk, one at a time, with `-j 8`:**
+  `cargo build --release -j 8 -p gitvolt-gpui --target-dir target/bench`. Never put a target dir or
   anything large under `/tmp`: it's a RAM disk, and filling it has killed the user's desktop app.
+- **Memory is shared with the user's own programs and has run out twice.** Close the CEF reference as
+  soon as you have its images, and don't run it during a build. Delete any `core.*` file a crash leaves.
 - **Don't touch the user's things.** A GitVolt from `/usr/bin` runs on this machine: never kill or
   drive it (`pkill` only by the exact path you started). No screenshots of the desktop or of "the
   active window"; `tools/shot.sh` finds the window by its own pid. Never run a write against a real
@@ -49,7 +51,7 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 
 ## Tests
 
-- `cargo test -j 12 -p gitvolt-gpui`, and `CEF_PATH=$HOME/.cache/tauri-cef cargo clippy -j 12 -p
+- `cargo test -j 8 -p gitvolt-gpui`, and `CEF_PATH=$HOME/.cache/tauri-cef cargo clippy -j 8 -p
   gitvolt-gpui -p gitvolt-core --all-targets -- -D warnings` before each commit.
 - In a test module: `use std::prelude::v1::test;` (`gpui::*` brings its own `test`). GPUI's test
   scheduler panics when another thread wakes one of its tasks, so a test can't await `self.rt`: test
