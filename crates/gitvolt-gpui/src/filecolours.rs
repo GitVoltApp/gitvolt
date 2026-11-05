@@ -360,6 +360,18 @@ impl Matcher {
         self.fill(self.folder_scope_of(folder))
     }
 
+    /// `startsCollapsed`: the scope's folders a tree starts with closed: not one whose parent is in that scope too.
+    pub fn starts_collapsed(&self, folder: &str, starts: &[bool]) -> bool {
+        let Ok(i) = usize::try_from(self.folder_scope_of(folder)) else { return false };
+        if !starts.get(i).copied().unwrap_or(false) {
+            return false;
+        }
+        match folder.rsplit_once('/') {
+            Some((parent, _)) => self.folder_scope_of(parent) != i as i32,
+            None => true,
+        }
+    }
+
     /// The winning scope's index and its first positive pattern that matched.
     pub fn explain(&self, path: &str) -> Option<(usize, String)> {
         let i = usize::try_from(self.scope_of(path)).ok()?;
@@ -397,6 +409,28 @@ impl GitVolt {
         let m = std::rc::Rc::new(Matcher::new(scopes));
         cache.insert(dir.to_string(), m.clone());
         Some(m)
+    }
+
+    /// A commit's list as it opens: the folders whose scope starts collapsed, closed; the user's toggles go from there.
+    pub fn seed_start_collapsed(&self, files: &mut crate::details::Files) {
+        let Some(m) = self.colours() else { return };
+        let Some(dir) = self.common_dir() else { return };
+        let starts: Vec<bool> = self.profile["fileColours"][&dir].as_array().map_or(Vec::new(), |l| l.iter().map(|s| s["startCollapsed"] == true).collect());
+        if !starts.contains(&true) {
+            return;
+        }
+        let closed: Vec<String> = match files.wip.as_ref() {
+            // A WIP section's folders have keys of their own.
+            Some(w) => w.sections.iter().flat_map(|s| crate::details::list_rows_in(&files.changes[s.start..s.start + s.count], crate::details::ListMode::Tree, &std::collections::HashSet::new(), s.which.scope(), s.start)).filter_map(|r| match r {
+                crate::details::ListRow::Folder { key, path, .. } if m.starts_collapsed(&path, &starts) => Some(key.to_string()),
+                _ => None,
+            }).collect(),
+            None => crate::details::all_folders(&files.changes).into_iter().filter(|f| m.starts_collapsed(f, &starts)).collect(),
+        };
+        if !closed.is_empty() {
+            files.collapsed.extend(closed);
+            files.rebuild();
+        }
     }
 
     fn common_dir(&self) -> Option<String> {

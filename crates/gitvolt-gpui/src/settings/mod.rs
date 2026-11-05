@@ -69,7 +69,6 @@ pub struct SettingsUi {
     /// A preset page's and the file colours page's own state.
     #[allow(dead_code)]
     pub presets: crate::presets::settings_page::PageState,
-    #[allow(dead_code)]
     pub file_colours: crate::filecolours::settings_page::PageState,
     /// Hosts' "Add a host" kind.
     pub host_kind: String,

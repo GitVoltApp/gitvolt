@@ -451,8 +451,11 @@ impl GitVolt {
                 let mut list = Files::new(file_changes(&files, &Origin::Commit { id: id.clone() }), count("added"), count("deleted"));
                 list.commit = Some(id);
                 list.by_status = tab.sort_by_status;
+                let all_files = tab.all_files;
+                this.seed_start_collapsed(&mut list);
+                let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
                 tab.files = Some(list);
-                if tab.all_files {
+                if all_files {
                     this.read_tree(repo, cx);
                 }
                 cx.notify();

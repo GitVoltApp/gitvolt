@@ -1429,9 +1429,10 @@ impl Render for GitVolt {
         let menu = tab.and_then(|t| open_in_menu(t, cx));
         let rebase_ghost = tab.and_then(crate::irebase::view::chip_ghost);
         let rebase = tab.and_then(|t| crate::irebase::view::rebase_panel(t, center, window, cx));
+        let opener_id = self.default_opener_id();
         let open_page = open_id.map(|id| crate::open::open_screen(self, id, window, cx));
         let tab = self.tabs.get(self.active);
-        let main = if let Some(page) = open_page { page } else if let Some(panel) = rebase { panel } else { match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), t.wip_ctx().and_then(|c| self.ops.staging(c.repo, &c.worktree)), window, cx) }) {
+        let main = if let Some(page) = open_page { page } else if let Some(panel) = rebase { panel } else { match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, opener_id.as_deref(), t.wip_ctx().and_then(|c| self.ops.staging(c.repo, &c.worktree)), window, cx) }) {
             Some(panel) => panel,
             None => graph_table(self, center, window, cx),
         } };

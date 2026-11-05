@@ -136,6 +136,18 @@ pub struct OpenIn {
 }
 
 impl GitVolt {
+    /// `configuredOpenerId`, else the last used: the repository's own editor over the profile's.
+    pub fn default_opener_id(&self) -> Option<String> {
+        let path = self.tabs.get(self.active).map(|t| t.repo_path.as_str());
+        let repo = path.map(|p| &self.profile["repos"][p]["editor"]).filter(|c| !c.is_null());
+        let choice = repo.unwrap_or(&self.profile["editor"]);
+        match choice["kind"].as_str() {
+            Some("custom") => Some("custom".to_string()),
+            Some(_) => choice["id"].as_str().map(str::to_string),
+            None => self.last_opener.clone(),
+        }
+    }
+
     /// Asks the core for the openers: when a tab opens, and again as its menu opens.
     pub fn list_openers(&mut self, repo: u32, cx: &mut Context<Self>) {
         if cfg!(test) {
@@ -202,7 +214,7 @@ impl GitVolt {
     /// The toggle, or ↓ on it: the menu opens on the default opener. Pressed again it closes.
     pub fn toggle_open_in(&mut self, cx: &mut Context<Self>) {
         let Some((rows, _)) = self.open_in_menu_rows() else { return };
-        let last = self.last_opener.clone();
+        let last = self.default_opener_id();
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         if tab.open_in.menu.take().is_none() {
             let list = tab.open_in.openers.clone().unwrap_or_default();

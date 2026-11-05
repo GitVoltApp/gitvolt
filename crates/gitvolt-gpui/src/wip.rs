@@ -61,7 +61,7 @@ impl Which {
         }
     }
 
-    fn scope(self) -> &'static str {
+    pub fn scope(self) -> &'static str {
         match self {
             Which::Conflicted => "c",
             Which::Unstaged => "u",
@@ -579,8 +579,11 @@ impl GitVolt {
                     w.closed = closed;
                 }
                 files.rebuild();
+                let all_files = tab.wip.all_files;
+                self.seed_start_collapsed(&mut files);
+                let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
                 tab.files = Some(files);
-                if tab.wip.all_files {
+                if all_files {
                     self.read_worktree_paths(repo, cx);
                 }
             }
