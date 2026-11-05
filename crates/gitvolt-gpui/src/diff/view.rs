@@ -1044,6 +1044,23 @@ fn wants_hex(v: &Value, history_file: bool) -> bool {
     any && v["tooLarge"].as_bool() != Some(true) && (v["image"].as_bool() != Some(true) || history_file) && (history_file || !shows_pdf(v))
 }
 
+/// A press in a view that isn't the code's: the file's keys are the ones that apply, as over the code.
+fn takes_keys(body: AnyElement, cx: &mut Context<GitVolt>) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .min_h_0()
+        .capture_any_mouse_down(cx.listener(|this, _, _, _| {
+            if let Some(tab) = this.tabs.get_mut(this.active) {
+                tab.keys = KeyArea::Diff;
+            }
+        }))
+        .child(body)
+        .into_any_element()
+}
+
 /// `isPdf`: the core's `pdf` flag, and every side there with its bytes.
 fn shows_pdf(v: &Value) -> bool {
     let with_bytes = |s: &Value| !s.is_object() || s["base64"].as_str().is_some();
@@ -2101,17 +2118,17 @@ pub fn diff_body(diff: &DiffState, width: f32, zoom_input: &Entity<crate::ui::in
     }
     if let Some(pdf) = &diff.pdf {
         let source = diff.hex.as_ref().filter(|_| pdf.source_on).map(|h| hex_body(diff, h, cx));
-        return crate::pdf::pdf_body(pdf, source, cx);
+        return takes_keys(crate::pdf::pdf_body(pdf, source, cx), cx);
     }
     if let Some(media) = &diff.media {
         let source = diff.hex.as_ref().filter(|_| media.source_on).map(|h| hex_body(diff, h, cx));
-        return crate::media::media_body(media, source, open_in_el, cx);
+        return takes_keys(crate::media::media_body(media, source, open_in_el, cx), cx);
     }
     if let Some(hex) = &diff.hex {
         return hex_body(diff, hex, cx);
     }
     if let Some(body) = crate::md::files::rendered_body(diff, cx) {
-        return body;
+        return takes_keys(body, cx);
     }
     let banner = crate::md::files::too_large_banner(diff, cx);
     if let Some(banner) = banner {

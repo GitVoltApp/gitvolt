@@ -204,6 +204,9 @@ impl GitVolt {
         if over_file && self.shown_md().is_some() {
             return self.reading_zoom(dir, cx);
         }
+        if over_file && self.pdf_zoom(dir, cx) {
+            return;
+        }
         if over_file {
             let now = self.settings["editorFontSize"].as_f64().unwrap_or(13.);
             let next = if dir == 0 { 13. } else { (now + dir as f64).clamp(8., 32.) };

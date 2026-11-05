@@ -766,7 +766,7 @@ pub fn unplayable_note(side_kind: Kind, mime: &str, codec: Option<&str>) -> Stri
     }
 }
 
-fn player_pane(side: &MediaSide, label: Option<&'static str>, open_in: Option<AnyElement>, cx: &mut Context<GitVolt>) -> AnyElement {
+fn player_pane(i: usize, side: &MediaSide, label: Option<&'static str>, open_in: Option<AnyElement>, cx: &mut Context<GitVolt>) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -796,7 +796,7 @@ fn player_pane(side: &MediaSide, label: Option<&'static str>, open_in: Option<An
                         .children(open_in)
                         .child(
                             div()
-                                .id("media-show-hex")
+                                .id(if i == 0 { "media-show-hex-old" } else { "media-show-hex-new" })
                                 .px(px(10.))
                                 .py(px(3.))
                                 .rounded(px(3.))
@@ -866,7 +866,7 @@ pub fn media_body(media: &MediaView, source: Option<AnyElement>, open_in: Option
                 } else {
                     // Open in opens the new side, or the one side there is.
                     let here = if i == 1 || !both { open_in.take() } else { None };
-                    player_pane(side, label(text), here, cx)
+                    player_pane(i, side, label(text), here, cx)
                 };
                 row = row.child(pane);
             }

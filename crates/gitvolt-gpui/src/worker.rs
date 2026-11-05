@@ -188,7 +188,7 @@ fn serve(op: u8, payload: Vec<u8>, pdf: &mut Option<hayro::hayro_syntax::Pdf>) -
     match op {
         OP_OPEN_PDF => {
             let opened = hayro::hayro_syntax::Pdf::new(payload).map_err(|e| match format!("{e:?}") {
-                s if s.contains("assword") || s.contains("ncrypt") => "This PDF is encrypted".to_string(),
+                s if s.contains("assword") || s.contains("ncrypt") => "This PDF is password-protected".to_string(),
                 _ => "This PDF couldn't be opened".to_string(),
             })?;
             let mut out = Vec::new();

@@ -28,6 +28,7 @@ const HINTS: &[H] = &[
     H { id: "key.textSizeIn", section: "Diff", label: "Larger text (over code: the code; over rendered Markdown: the reading text; also Ctrl+wheel)", keys: &["Mod+="], context: "" },
     H { id: "key.textSizeOut", section: "Diff", label: "Smaller text (over a file or diff)", keys: &["Mod+-"], context: "" },
     H { id: "key.textSizeReset", section: "Diff", label: "Reset the text size (over a file or diff)", keys: &["Mod+0"], context: "" },
+    H { id: "key.pdfZoom", section: "Diff", label: "Zoom a PDF in / out, or back to Fit width", keys: &["Mod+=", "Mod+-", "Mod+0"], context: "(over a PDF; also Ctrl+wheel)" },
     H { id: "key.mdPreview", section: "Markdown", label: "Switch between Write and Preview", keys: &["Mod+Shift+P"], context: "(when writing a comment or description)" },
     H { id: "lightbox.zoom", section: "Image viewer", label: "Zoom in / out", keys: &["+", "-"], context: "(or the mouse wheel)" },
     H { id: "lightbox.fit", section: "Image viewer", label: "Fit to the window", keys: &["0"], context: "" },

@@ -443,6 +443,18 @@ impl GitVolt {
         }
     }
 
+    /// Larger and Smaller text, over a PDF: its zoom, a step of the ladder. 0: Fit width. `false`: no PDF's shown.
+    pub fn pdf_zoom(&mut self, dir: i32, cx: &mut Context<Self>) -> bool {
+        let shown = self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).and_then(|d| d.pdf.as_ref()).is_some_and(|p| !p.source_on);
+        if shown {
+            self.with_pdf(cx, |p| {
+                let next = (dir != 0).then(|| ZOOM_STEPS[next_step_index(p.scale(), dir > 0)]);
+                p.set_fixed(next);
+            });
+        }
+        shown
+    }
+
     pub fn pdf_scroll_to(&mut self, y: f32, cx: &mut Context<Self>) {
         self.with_pdf(cx, |p| {
             let lead = p.new.is_none();
@@ -558,9 +570,7 @@ fn pane(is_old: bool, label: Option<&'static str>, pdf: &PdfView, cx: &mut Conte
             cx.stop_propagation();
         }))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-            let Some(tab) = this.tabs.get_mut(this.active) else { return };
-            tab.keys = crate::app::KeyArea::Diff;
-            let Some(pdf) = tab.diff.as_mut().and_then(|d| d.pdf.as_mut()) else { return };
+            let Some(pdf) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()).and_then(|d| d.pdf.as_mut()) else { return };
             let b = if is_old { pdf.bounds.borrow().0 } else { pdf.bounds.borrow().1 };
             let (x, y) = ((e.position.x - b.origin.x).as_f32(), (e.position.y - b.origin.y).as_f32());
             let (w, view) = (b.size.width.as_f32(), b.size.height.as_f32());
@@ -727,7 +737,7 @@ fn toolbar(pdf: &PdfView, cx: &mut Context<GitVolt>) -> AnyElement {
                 .items_center()
                 .gap(px(6.))
                 .text_color(theme::text_disabled())
-                .when(shown.is_some(), |d| d.child(div().flex_none().child(format!("Page {}", pdf.page + 1))).child("·"))
+                .when(shown.is_some(), |d| d.child(div().flex().flex_none().gap(px(4.)).mr(px(-3.)).child(format!("Page {}", pdf.page + 1)).child("·")))
                 .child(arrowed(counts))
                 .child("·")
                 .child(arrowed(sizes))
