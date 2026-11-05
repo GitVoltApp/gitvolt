@@ -530,15 +530,15 @@ impl GitVolt {
         let read = self.rt.spawn(async move {
             let unstaged = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Wip { worktree: worktree.clone(), staged: false } }).await?;
             let staged = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Wip { worktree: worktree.clone(), staged: true } }).await?;
-            let staging = api.dispatch(Request::StagingState { repo, worktree: worktree.clone() }).await.ok();
-            let identity = api.dispatch(Request::CommitIdentity { repo, worktree }).await.ok();
+            let staging = api.dispatch(Request::StagingState { repo: crate::app::core_repo(repo), worktree: worktree.clone() }).await.ok();
+            let identity = api.dispatch(Request::CommitIdentity { repo: crate::app::core_repo(repo), worktree }).await.ok();
             Ok::<_, gitvolt_core::error::GbError>((unstaged, staged, staging, identity))
         });
         cx.spawn(async move |this, cx| {
             let Ok(Ok((unstaged, staged, staging, identity))) = read.await else { return };
             this.update(cx, |this, cx| {
                 if let Some(state) = staging.and_then(|s| serde_json::from_value(s).ok()) {
-                    this.ops.staging.insert((repo, tree.clone()), state);
+                    this.ops.staging.insert((crate::app::core_repo(repo), tree.clone()), state);
                 }
                 if let Some(id) = identity {
                     let who = id["name"].as_str().zip(id["email"].as_str()).map(|(n, e)| (n.to_string(), e.to_string()));
@@ -691,7 +691,7 @@ impl GitVolt {
 
     pub fn stage_paths(&mut self, ctx: &WriteCtx, paths: Vec<String>, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        self.staging_write(ctx, ArmOrigin::None, true, move || call("stage", json!({ "repo": repo, "worktree": worktree, "paths": paths })), cx);
+        self.staging_write(ctx, ArmOrigin::None, true, move || call("stage", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "paths": paths })), cx);
     }
 
     /// Renames unstage with both paths.
@@ -699,12 +699,12 @@ impl GitVolt {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let paths: Vec<String> = files.iter().map(|f| f.path.to_string()).collect();
         let old: Vec<String> = files.iter().filter_map(|f| f.old_path.clone()).collect();
-        self.staging_write(ctx, ArmOrigin::None, true, move || call("unstage", json!({ "repo": repo, "worktree": worktree, "paths": paths, "oldPaths": old })), cx);
+        self.staging_write(ctx, ArmOrigin::None, true, move || call("unstage", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "paths": paths, "oldPaths": old })), cx);
     }
 
     pub fn stage_all(&mut self, ctx: &WriteCtx, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        self.staging_write(ctx, ArmOrigin::None, true, move || call("stageAll", json!({ "repo": repo, "worktree": worktree })), cx);
+        self.staging_write(ctx, ArmOrigin::None, true, move || call("stageAll", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree })), cx);
     }
 
     /// While files are conflicted, only the other paths: `git add -A` would mark them resolved.
@@ -721,17 +721,17 @@ impl GitVolt {
 
     pub fn unstage_all(&mut self, ctx: &WriteCtx, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        self.staging_write(ctx, ArmOrigin::None, true, move || call("unstageAll", json!({ "repo": repo, "worktree": worktree })), cx);
+        self.staging_write(ctx, ArmOrigin::None, true, move || call("unstageAll", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree })), cx);
     }
 
     pub fn discard_paths(&mut self, ctx: &WriteCtx, paths: Vec<String>, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        self.staging_write(ctx, ArmOrigin::None, true, move || call("discard", json!({ "repo": repo, "worktree": worktree, "scope": { "kind": "paths", "paths": paths } })), cx);
+        self.staging_write(ctx, ArmOrigin::None, true, move || call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "paths", "paths": paths } })), cx);
     }
 
     pub fn discard_unstaged(&mut self, ctx: &WriteCtx, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        self.staging_write(ctx, ArmOrigin::None, true, move || call("discard", json!({ "repo": repo, "worktree": worktree, "scope": { "kind": "unstaged" } })), cx);
+        self.staging_write(ctx, ArmOrigin::None, true, move || call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "unstaged" } })), cx);
     }
 
     /// A row's Discard: arms where it started, then discards those files' changes (undoable).
@@ -790,7 +790,7 @@ impl GitVolt {
         let worktree = ctx.worktree.clone();
         let w = Write::new(&ctx, move |_| {
             let scope = if confirmed.is_empty() { json!({ "kind": "all" }) } else { json!({ "kind": "all", "confirmed": confirmed }) };
-            call("discard", json!({ "repo": repo, "worktree": worktree, "scope": scope }))
+            call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": scope }))
         })
         .on_success(move |this, _, cx| this.follow_open_file(repo, None, cx))
         .on_end(move |this, _, cx| {
@@ -805,7 +805,7 @@ impl GitVolt {
     pub fn staging_undo(&mut self, ctx: &WriteCtx, redo: bool, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let method = if redo { "stagingRedo" } else { "stagingUndo" };
-        self.staging_write(ctx, ArmOrigin::None, false, move || call(method, json!({ "repo": repo, "worktree": worktree })), cx);
+        self.staging_write(ctx, ArmOrigin::None, false, move || call(method, json!({ "repo": crate::app::core_repo(repo), "worktree": worktree })), cx);
     }
 
     pub fn toggle_wip_filter(&mut self, repo: u32, open: bool, cx: &mut Context<Self>) {
@@ -867,7 +867,7 @@ impl GitVolt {
             return;
         }
         let api = self.api.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::WorktreeFiles { repo, worktree }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::WorktreeFiles { repo: crate::app::core_repo(repo), worktree }).await });
         cx.spawn(async move |this, cx| {
             let result = read.await;
             this.update(cx, |this, cx| {
@@ -1099,7 +1099,7 @@ impl GitVolt {
         tab.wip.summary.update(cx, |i, cx| i.set_disabled(true, cx));
         tab.wip.description.update(cx, |i, cx| i.set_disabled(true, cx));
         let done_worktree = worktree.clone();
-        let w = Write::new(&ctx, move |_| call("commit", json!({ "repo": repo, "worktree": worktree, "summary": d.summary, "description": d.description, "amend": amend, "stageAll": stage_all, "expect": { "head": head, "refs": {} } })))
+        let w = Write::new(&ctx, move |_| call("commit", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "summary": d.summary, "description": d.description, "amend": amend, "stageAll": stage_all, "expect": { "head": head, "refs": {} } })))
             .on_success(move |this, out, cx| {
                 let oid = out["oid"].as_str().unwrap_or_default().to_string();
                 if amend {
@@ -1173,7 +1173,7 @@ impl GitVolt {
         }
         let api = self.api.clone();
         let id = head.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo, id }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo: crate::app::core_repo(repo), id }).await });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(m)) = read.await else { return };
             this.update(cx, |this, cx| {
@@ -1240,7 +1240,7 @@ impl GitVolt {
                 && !cfg!(test)
             {
                 let api = self.api.clone();
-                let read = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo, id }).await });
+                let read = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo: crate::app::core_repo(repo), id }).await });
                 cx.spawn(async move |this, cx| {
                     let Ok(Ok(m)) = read.await else { return };
                     this.update(cx, |this, cx| {
@@ -1341,7 +1341,7 @@ impl GitVolt {
     /// A merge, rebase or pull of this repo is running: the commit panel's controls wait.
     pub fn integrating(&self, repo: u32) -> bool {
         use gitvolt_core::events::OpKind;
-        self.ops.ops.values().any(|o| o.repo == Some(repo) && matches!(o.kind, OpKind::Merge | OpKind::Rebase | OpKind::Pull))
+        self.ops.ops.values().any(|o| o.repo == Some(crate::app::core_repo(repo)) && matches!(o.kind, OpKind::Merge | OpKind::Rebase | OpKind::Pull))
     }
 
     /// A section's own rows, as its header's buttons; then Discard all.
@@ -1545,14 +1545,14 @@ impl GitVolt {
     /// Several files at once, each as it is: one write, one question for those that still have markers.
     pub fn mark_all_resolved(&mut self, ctx: &WriteCtx, paths: Vec<String>, origin: ArmOrigin, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(ctx, move |asked| call("markResolved", json!({ "repo": repo, "worktree": worktree, "paths": paths, "confirmMarkers": asked.markers }))).origin(origin);
+        let w = Write::new(ctx, move |asked| call("markResolved", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "paths": paths, "confirmMarkers": asked.markers }))).origin(origin);
         self.write(w, cx);
     }
 
     /// Mark resolved: the file as it is; asks first while conflict markers remain.
     pub fn mark_resolved(&mut self, ctx: &WriteCtx, path: String, origin: ArmOrigin, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(ctx, move |asked| call("markResolved", json!({ "repo": repo, "worktree": worktree, "paths": [path], "confirmMarkers": asked.markers }))).origin(origin);
+        let w = Write::new(ctx, move |asked| call("markResolved", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "paths": [path], "confirmMarkers": asked.markers }))).origin(origin);
         self.write(w, cx);
     }
 
@@ -2344,22 +2344,22 @@ mod tests {
         f.write("a.txt", "changed\n");
         f.write("new.txt", "new\n");
         let (repo, worktree) = (f.repo, f.worktree.clone());
-        let r = f.ok(call("stage", json!({ "repo": repo, "worktree": worktree, "paths": ["a.txt"] }))).await;
+        let r = f.ok(call("stage", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "paths": ["a.txt"] }))).await;
         assert!(status(&f).contains("M  a.txt"), "{}", status(&f));
         assert_eq!(r["wip"]["staged"]["files"][0]["path"], "a.txt", "the answer carries the fresh lists");
         assert!(r["staging"]["undo"].as_str().is_some(), "and the staging log");
-        f.ok(call("unstage", json!({ "repo": repo, "worktree": worktree, "paths": ["a.txt"], "oldPaths": [] }))).await;
+        f.ok(call("unstage", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "paths": ["a.txt"], "oldPaths": [] }))).await;
         assert!(status(&f).contains(" M a.txt"), "{}", status(&f));
-        f.ok(call("stageAll", json!({ "repo": repo, "worktree": worktree }))).await;
+        f.ok(call("stageAll", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree }))).await;
         assert!(status(&f).contains("A  new.txt"));
-        f.ok(call("stagingUndo", json!({ "repo": repo, "worktree": worktree }))).await;
+        f.ok(call("stagingUndo", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree }))).await;
         assert!(status(&f).contains("?? new.txt"), "{}", status(&f));
-        f.ok(call("stagingRedo", json!({ "repo": repo, "worktree": worktree }))).await;
+        f.ok(call("stagingRedo", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree }))).await;
         assert!(status(&f).contains("A  new.txt"));
-        f.ok(call("unstageAll", json!({ "repo": repo, "worktree": worktree }))).await;
-        f.ok(call("discard", json!({ "repo": repo, "worktree": worktree, "scope": { "kind": "paths", "paths": ["a.txt"] } }))).await;
+        f.ok(call("unstageAll", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree }))).await;
+        f.ok(call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "paths", "paths": ["a.txt"] } }))).await;
         assert!(!status(&f).contains("a.txt"));
-        f.ok(call("discard", json!({ "repo": repo, "worktree": worktree, "scope": { "kind": "unstaged" } }))).await;
+        f.ok(call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "unstaged" } }))).await;
         assert_eq!(status(&f), "", "the untracked file goes too");
     }
 
@@ -2371,12 +2371,12 @@ mod tests {
         f.write("b.txt", "other\n");
         let (repo, worktree) = (f.repo, f.worktree.clone());
         // A change it didn't confirm refuses it.
-        let e = f.send(call("discard", json!({ "repo": repo, "worktree": worktree, "scope": { "kind": "all", "confirmed": ["a.txt"] } }))).await.unwrap_err();
+        let e = f.send(call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "all", "confirmed": ["a.txt"] } }))).await.unwrap_err();
         assert_eq!(e.kind, gitvolt_core::error::GbErrorKind::Stale);
-        let r = f.ok(call("discard", json!({ "repo": repo, "worktree": worktree, "scope": { "kind": "all", "confirmed": ["a.txt", "b.txt"] } }))).await;
+        let r = f.ok(call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "all", "confirmed": ["a.txt", "b.txt"] } }))).await;
         assert_eq!(status(&f), "");
         let entry = r["journal"]["undo"]["entry"].as_u64().unwrap();
-        f.ok(call("undo", json!({ "repo": repo, "worktree": worktree, "entry": entry }))).await;
+        f.ok(call("undo", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "entry": entry }))).await;
         assert!(status(&f).contains("a.txt") && status(&f).contains("b.txt"), "{}", status(&f));
     }
 
@@ -2386,7 +2386,7 @@ mod tests {
         f.write("a.txt", "changed\n");
         let head = f.git(&["rev-parse", "HEAD"]);
         let (repo, worktree) = (f.repo, f.worktree.clone());
-        let body = |h: &str, amend: bool, stage_all: bool, summary: &str| call("commit", json!({ "repo": repo, "worktree": worktree, "summary": summary, "description": "body", "amend": amend, "stageAll": stage_all, "expect": { "head": h, "refs": {} } }));
+        let body = |h: &str, amend: bool, stage_all: bool, summary: &str| call("commit", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "summary": summary, "description": "body", "amend": amend, "stageAll": stage_all, "expect": { "head": h, "refs": {} } }));
         let wrong = f.send(body("0000000000000000000000000000000000000000", false, true, "x")).await;
         assert!(wrong.is_err());
         let r = f.ok(body(&head, false, true, "A commit")).await;
@@ -2412,7 +2412,7 @@ mod tests {
             std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let head = f.git(&["rev-parse", "HEAD"]);
-        let e = f.send(call("commit", json!({ "repo": f.repo, "worktree": f.worktree, "summary": "s", "description": "", "amend": false, "stageAll": true, "expect": { "head": head, "refs": {} } }))).await.unwrap_err();
+        let e = f.send(call("commit", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "summary": "s", "description": "", "amend": false, "stageAll": true, "expect": { "head": head, "refs": {} } }))).await.unwrap_err();
         assert_eq!(e.kind, gitvolt_core::error::GbErrorKind::HookFailed);
         assert_eq!(crate::write::describe_error(&e).unwrap().0, "pre-commit hook failed");
         assert_eq!(f.git(&["rev-parse", "HEAD"]), head);

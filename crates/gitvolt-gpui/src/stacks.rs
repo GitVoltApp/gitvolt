@@ -362,7 +362,7 @@ impl GitVolt {
         let publish = b.push_target.is_none();
         let (repo, worktree, send_name, full, target, r2) = (ctx.repo, ctx.worktree.clone(), name.clone(), b.full_name.clone(), b.target.clone(), remote.clone());
         let body = move |_: crate::write::Asked| {
-            let mut opts = json!({ "repo": repo, "worktree": worktree, "branch": send_name, "expect": { "head": null, "refs": { full.clone(): target } } });
+            let mut opts = json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": send_name, "expect": { "head": null, "refs": { full.clone(): target } } });
             if publish {
                 opts["target"] = json!({ "remote": r2, "branch": send_name });
                 opts["setUpstream"] = json!(true);
@@ -447,7 +447,7 @@ impl GitVolt {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let top = stack.branches.last().cloned().unwrap_or_default();
         let base = short_ref(&stack.base);
-        let plan_body = call("rebasePlan", json!({ "repo": repo, "worktree": worktree, "branch": top, "base": stack.base }));
+        let plan_body = call("rebasePlan", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": top, "base": stack.base }));
         let _ = window;
         if cfg!(test) {
             self.sent.borrow_mut().push(plan_body);
@@ -457,7 +457,7 @@ impl GitVolt {
         let read = self.rt.spawn(async move {
             let plan = api.dispatch(crate::write::request_of(plan_body)?).await?;
             let req_rows = plan["rows"].as_array().map_or(Vec::new(), |rows| rows.iter().map(|r| json!({ "oid": r["oid"], "action": if r["upstream"] == true { "drop" } else { "pick" } })).collect::<Vec<_>>());
-            let predict = call("predictRebase", json!({ "repo": repo, "worktree": worktree, "base": plan["base"].as_str().map_or(Value::Null, |_| plan["base"].clone()), "rows": req_rows }));
+            let predict = call("predictRebase", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "base": plan["base"].as_str().map_or(Value::Null, |_| plan["base"].clone()), "rows": req_rows }));
             let p = match crate::write::request_of(predict) {
                 Ok(req) => api.dispatch(req).await.ok(),
                 Err(_) => None,
@@ -542,7 +542,7 @@ impl GitVolt {
 
     fn send_stack_rebase(&mut self, ctx: WriteCtx, req: Value, moving: usize, base: String, origin: Origin, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(&ctx, move |asked| call("interactiveRebase", json!({ "repo": repo, "worktree": worktree, "branch": req["branch"], "base": req["base"], "expect": req["expect"], "rows": req["rows"], "chips": req["chips"], "confirm": { "autostash": asked.autostash } })))
+        let w = Write::new(&ctx, move |asked| call("interactiveRebase", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": req["branch"], "base": req["base"], "expect": req["expect"], "rows": req["rows"], "chips": req["chips"], "confirm": { "autostash": asked.autostash } })))
             .on_success(move |_, out, cx| match out["status"].as_str() {
                 Some("done") => toast::show_with(format!("Rebased {moving} branches onto {base}"), Options { warning: out["warning"].is_string(), detail: out["warning"].as_str().map(|w| w.to_string().into()), ..Default::default() }, cx),
                 Some("upToDate") => toast::show(format!("The stack is already on {base}"), cx),

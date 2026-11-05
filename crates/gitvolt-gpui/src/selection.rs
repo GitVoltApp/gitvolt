@@ -359,7 +359,7 @@ impl GitVolt {
             return;
         }
         let api = self.api.clone();
-        let done = self.rt.spawn(async move { api.dispatch(Request::FileList { repo, spec }).await });
+        let done = self.rt.spawn(async move { api.dispatch(Request::FileList { repo: crate::app::core_repo(repo), spec }).await });
         cx.spawn(async move |this, cx| {
             let answer = done.await;
             this.update(cx, |this, cx| {

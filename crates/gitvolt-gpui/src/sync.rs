@@ -363,8 +363,8 @@ impl GitVolt {
 
     fn fetch_now(&mut self, repo: u32, background: bool, remote: Option<String>, key: String, switched: Vec<gitvolt_core::askpass::SshOffer>, cx: &mut Context<Self>) {
         let body = match &remote {
-            Some(r) => call("fetch", json!({ "repo": repo, "background": background, "remote": r })),
-            None => call("fetch", json!({ "repo": repo, "background": background })),
+            Some(r) => call("fetch", json!({ "repo": crate::app::core_repo(repo), "background": background, "remote": r })),
+            None => call("fetch", json!({ "repo": crate::app::core_repo(repo), "background": background })),
         };
         if cfg!(test) {
             self.sent.borrow_mut().push(body);
@@ -417,7 +417,7 @@ impl GitVolt {
                         t.fetch_skipped = Some("Fetch skipped: authentication required".into());
                     }
                 } else if !background {
-                    let running = self.ops.ops.values().find(|o| o.kind == gitvolt_core::events::OpKind::Fetch && o.repo == Some(repo)).map(|o| o.op);
+                    let running = self.ops.ops.values().find(|o| o.kind == gitvolt_core::events::OpKind::Fetch && o.repo == Some(crate::app::core_repo(repo))).map(|o| o.op);
                     match running {
                         Some(op) => self.ops.show_op(op),
                         None => toast::show("A fetch is already running", cx),
@@ -483,6 +483,8 @@ impl GitVolt {
     pub fn set_sync_mode(&mut self, mode: SyncMode, cx: &mut Context<Self>) {
         self.sync_mode = mode;
         self.save_layout();
+        let key = mode.key();
+        self.set_settings(move |s| s["syncButton"] = json!(key), cx);
         cx.notify();
     }
 
@@ -503,7 +505,7 @@ impl GitVolt {
         let done_ctx = ctx.clone();
         let done_origin = origin.clone();
         let w = Write::new(&ctx, move |asked| {
-            let mut params = json!({ "repo": repo, "worktree": worktree, "mode": mode, "confirm": { "autostash": asked.autostash } });
+            let mut params = json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "mode": mode, "confirm": { "autostash": asked.autostash } });
             if let Some(b) = &send_branch {
                 params["branch"] = json!(b);
             }
@@ -578,7 +580,7 @@ impl GitVolt {
     #[allow(clippy::too_many_arguments)]
     fn integrate_upstream(&mut self, ctx: WriteCtx, kind: String, upstream: String, branch: String, behind: u64, server: Value, op: u64, cx: &mut Context<Self>) {
         let (repo, worktree, k) = (ctx.repo, ctx.worktree.clone(), kind.clone());
-        let w = Write::new(&ctx, move |asked| call("integrate", json!({ "repo": repo, "worktree": worktree, "kind": k, "target": upstream, "confirm": { "autostash": asked.autostash } }))).on_success(move |this, out, cx| {
+        let w = Write::new(&ctx, move |asked| call("integrate", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "kind": k, "target": upstream, "confirm": { "autostash": asked.autostash } }))).on_success(move |this, out, cx| {
             if out["status"] == "done" {
                 let text = format!("Pulled {} into {branch} ({kind})", commits_word(behind));
                 let problem = format!("{text}; the server reported a problem");
@@ -623,7 +625,7 @@ impl GitVolt {
         let (worktree, send_b, send_opts) = (ctx.worktree.clone(), b.clone(), opts.clone());
         let (rejected_b, rejected_ctx, rejected_opts, rejected_origin) = (b.clone(), ctx.clone(), opts.clone(), origin.clone());
         let w = Write::new(&ctx, move |_| {
-            let mut params = json!({ "repo": repo, "worktree": worktree, "branch": send_b.name, "expect": { "head": null, "refs": { send_b.full_name.clone(): send_b.target } } });
+            let mut params = json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": send_b.name, "expect": { "head": null, "refs": { send_b.full_name.clone(): send_b.target } } });
             if let Some((remote, branch)) = &send_opts.target {
                 params["target"] = json!({ "remote": remote, "branch": branch });
             }
@@ -764,7 +766,7 @@ impl GitVolt {
         }
         let (repo, worktree, send_confirm) = (ctx.repo, ctx.worktree.clone(), confirm);
         let (done_ctx, done_origin) = (ctx.clone(), origin.clone());
-        let w = Write::new(&ctx, move |asked| call("undo", json!({ "repo": repo, "worktree": worktree, "entry": entry, "confirm": send_confirm, "confirmAutostash": asked.autostash, "withoutIndex": asked.without_index, "confirmDiscard": asked.discard })))
+        let w = Write::new(&ctx, move |asked| call("undo", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "entry": entry, "confirm": send_confirm, "confirmAutostash": asked.autostash, "withoutIndex": asked.without_index, "confirmDiscard": asked.discard })))
             .origin(origin)
             .on_success(move |this, out, cx| this.undone(done_ctx.clone(), entry, out, done_origin.clone(), cx))
             .on_end(move |this, _, _| this.end_once(repo, &key));
@@ -834,7 +836,7 @@ impl GitVolt {
             return;
         }
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(&ctx, move |asked| call("redo", json!({ "repo": repo, "worktree": worktree, "entry": top, "confirmAutostash": asked.autostash, "withoutIndex": asked.without_index })))
+        let w = Write::new(&ctx, move |asked| call("redo", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "entry": top, "confirmAutostash": asked.autostash, "withoutIndex": asked.without_index })))
             .origin(origin)
             .on_success(|_, out, cx| {
                 if out["status"] == "done" {
@@ -876,7 +878,7 @@ impl GitVolt {
             return;
         }
         let api = self.api.clone();
-        let body = call("journalHistory", json!({ "repo": ctx.repo, "worktree": ctx.worktree }));
+        let body = call("journalHistory", json!({ "repo": crate::app::core_repo(ctx.repo), "worktree": ctx.worktree }));
         let read = self.rt.spawn(async move { api.dispatch(crate::write::request_of(body)?).await });
         // The press is still held when the read answers: its release can pick a row.
         cx.spawn_in(window, async move |this, cx| {
@@ -899,7 +901,7 @@ impl GitVolt {
         }
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let (done_ctx, done_origin) = (ctx.clone(), origin.clone());
-        let w = Write::new(&ctx, move |asked| call("undoEntry", json!({ "repo": repo, "worktree": worktree, "entry": entry, "confirmAutostash": asked.autostash })))
+        let w = Write::new(&ctx, move |asked| call("undoEntry", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "entry": entry, "confirmAutostash": asked.autostash })))
             .origin(origin)
             .on_success(move |this, out, cx| {
                 if out["status"] == "moved" {
@@ -919,7 +921,7 @@ impl GitVolt {
         let message = self.drafts.get(&ctx.worktree).map_or(String::new(), |d| d.message().trim().to_string());
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let done_worktree = worktree.clone();
-        let w = Write::new(&ctx, move |_| call("stashPush", json!({ "repo": repo, "worktree": worktree, "message": message }))).on_success(move |this, out, cx| match out["status"].as_str() {
+        let w = Write::new(&ctx, move |_| call("stashPush", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "message": message }))).on_success(move |this, out, cx| match out["status"].as_str() {
             Some("nothingToStash") => toast::show("No changes to stash", cx),
             Some("stashed") => this.clear_draft(repo, &done_worktree, cx),
             _ => {}
@@ -930,7 +932,7 @@ impl GitVolt {
     /// Apply or Pop, by the stash's oid; then the WIP row.
     pub fn apply_stash(&mut self, ctx: WriteCtx, oid: String, pop: bool, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(&ctx, move |asked| call("stashApply", json!({ "repo": repo, "worktree": worktree, "oid": oid, "pop": pop, "withoutIndex": asked.without_index }))).on_success(move |this, out, cx| {
+        let w = Write::new(&ctx, move |asked| call("stashApply", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "oid": oid, "pop": pop, "withoutIndex": asked.without_index }))).on_success(move |this, out, cx| {
             if out["status"] == "conflicts" {
                 let n = out["files"].as_u64().unwrap_or(0);
                 toast::show_with(format!("The stash conflicts in {n} {}; resolve them in Conflicted. The stash is kept.", if n == 1 { "file" } else { "files" }), Options { error: true, ..Default::default() }, cx);
@@ -952,7 +954,7 @@ impl GitVolt {
             move |a, _, cx| {
                 if a.ok {
                     let (repo, worktree, oid, ctx) = (ctx.repo, ctx.worktree.clone(), oid.clone(), ctx.clone());
-                    this.update(cx, |v, cx| v.write(Write::new(&ctx, move |_| call("stashDrop", json!({ "repo": repo, "worktree": worktree, "oid": oid }))), cx)).ok();
+                    this.update(cx, |v, cx| v.write(Write::new(&ctx, move |_| call("stashDrop", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "oid": oid }))), cx)).ok();
                 }
             },
             window,
@@ -982,13 +984,13 @@ impl GitVolt {
     /// A kept stash's Apply or Restore, from a banner.
     pub fn apply_kept_stash(&mut self, ctx: WriteCtx, entry: u64, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(&ctx, move |asked| call("applyKeptStash", json!({ "repo": repo, "worktree": worktree, "entry": entry, "withoutIndex": asked.without_index, "confirmAutostash": asked.autostash }))).on_success(move |this, _, cx| this.reveal_wip(repo, cx));
+        let w = Write::new(&ctx, move |asked| call("applyKeptStash", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "entry": entry, "withoutIndex": asked.without_index, "confirmAutostash": asked.autostash }))).on_success(move |this, _, cx| this.reveal_wip(repo, cx));
         self.write(w, cx);
     }
 
     /// Dismisses a banner, the stash kept or dropped.
     pub fn dismiss_banner(&mut self, ctx: WriteCtx, entry: u64, drop_stash: bool, cx: &mut Context<Self>) {
-        let body = call("dismissBanner", json!({ "repo": ctx.repo, "worktree": ctx.worktree, "entry": entry, "dropStash": drop_stash }));
+        let body = call("dismissBanner", json!({ "repo": crate::app::core_repo(ctx.repo), "worktree": ctx.worktree, "entry": entry, "dropStash": drop_stash }));
         if cfg!(test) {
             self.sent.borrow_mut().push(body);
             return;
@@ -1001,7 +1003,7 @@ impl GitVolt {
                 match answer {
                     Ok(state) => {
                         if let Ok(state) = serde_json::from_value(state) {
-                            this.ops.journals.insert((ctx.repo, ctx.worktree.clone()), state);
+                            this.ops.journals.insert((crate::app::core_repo(ctx.repo), ctx.worktree.clone()), state);
                         }
                     }
                     Err(e) => this.toast_error(&e, Some(ctx.repo), None, None, cx),
@@ -1311,16 +1313,16 @@ mod tests {
         f.write("a.txt", "changed\n");
         let head = f.git(&["rev-parse", "HEAD"]);
         let (repo, wt) = (f.repo, f.worktree.clone());
-        let r = f.ok(call("commit", json!({ "repo": repo, "worktree": wt, "summary": "Work", "description": "", "amend": false, "stageAll": true, "expect": { "head": head, "refs": {} } }))).await;
+        let r = f.ok(call("commit", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "summary": "Work", "description": "", "amend": false, "stageAll": true, "expect": { "head": head, "refs": {} } }))).await;
         let entry = r["journal"]["undo"]["entry"].as_u64().unwrap();
         assert!(r["journal"]["undo"]["label"].as_str().unwrap().contains("Work"));
-        let hist = f.ok(call("journalHistory", json!({ "repo": repo, "worktree": wt }))).await;
+        let hist = f.ok(call("journalHistory", json!({ "repo": crate::app::core_repo(repo), "worktree": wt }))).await;
         assert_eq!(hist[0]["entry"].as_u64(), Some(entry));
-        let u = f.ok(call("undo", json!({ "repo": repo, "worktree": wt, "entry": entry, "confirm": null, "confirmAutostash": false, "withoutIndex": false, "confirmDiscard": false }))).await;
+        let u = f.ok(call("undo", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "entry": entry, "confirm": null, "confirmAutostash": false, "withoutIndex": false, "confirmDiscard": false }))).await;
         assert_eq!(u["outcome"]["status"], "done");
         assert_eq!(f.git(&["rev-parse", "HEAD"]), head);
         let top = u["journal"]["redo"]["entry"].as_u64().unwrap();
-        f.ok(call("redo", json!({ "repo": repo, "worktree": wt, "entry": top, "confirmAutostash": false, "withoutIndex": false }))).await;
+        f.ok(call("redo", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "entry": top, "confirmAutostash": false, "withoutIndex": false }))).await;
         assert_ne!(f.git(&["rev-parse", "HEAD"]), head);
         assert_eq!(f.git(&["log", "-1", "--format=%s"]), "Work");
     }
@@ -1331,12 +1333,12 @@ mod tests {
         f.write("a.txt", "changed\n");
         let head = f.git(&["rev-parse", "HEAD"]);
         let (repo, wt) = (f.repo, f.worktree.clone());
-        let r = f.ok(call("commit", json!({ "repo": repo, "worktree": wt, "summary": "Work", "description": "", "amend": false, "stageAll": true, "expect": { "head": head, "refs": {} } }))).await;
+        let r = f.ok(call("commit", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "summary": "Work", "description": "", "amend": false, "stageAll": true, "expect": { "head": head, "refs": {} } }))).await;
         let entry = r["journal"]["undo"]["entry"].as_u64().unwrap();
         f.write("b.txt", "outside\n");
         f.git(&["add", "."]);
         f.git(&["commit", "-qm", "Outside"]);
-        let body = |confirm: Value| call("undo", json!({ "repo": repo, "worktree": wt, "entry": entry, "confirm": confirm, "confirmAutostash": false, "withoutIndex": false, "confirmDiscard": false }));
+        let body = |confirm: Value| call("undo", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "entry": entry, "confirm": confirm, "confirmAutostash": false, "withoutIndex": false, "confirmDiscard": false }));
         let asked = f.ok(body(Value::Null)).await;
         assert_eq!(asked["outcome"]["status"], "moved");
         let refs = asked["outcome"]["refs"].as_array().unwrap().clone();
@@ -1360,22 +1362,22 @@ mod tests {
         git(&other, &["add", "."]);
         git(&other, &["commit", "-qm", "From elsewhere"]);
         git(&other, &["push", "-q"]);
-        let fetched = f.ok(call("fetch", json!({ "repo": repo, "background": false }))).await;
+        let fetched = f.ok(call("fetch", json!({ "repo": crate::app::core_repo(repo), "background": false }))).await;
         assert_eq!(fetched["status"], "done");
         assert_eq!(f.git(&["rev-list", "--count", "HEAD..origin/main"]), "1");
-        let pulled = f.ok(call("pull", json!({ "repo": repo, "worktree": wt, "mode": "ffOnly", "confirm": { "autostash": false } }))).await;
+        let pulled = f.ok(call("pull", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "mode": "ffOnly", "confirm": { "autostash": false } }))).await;
         assert_eq!(pulled["outcome"]["result"]["status"], "fastForward");
         assert_eq!(f.git(&["log", "-1", "--format=%s"]), "From elsewhere");
         // A push goes up; a new branch with a target tracks it.
         f.write("a.txt", "mine\n");
         f.git(&["commit", "-qam", "Mine"]);
         let oid = f.git(&["rev-parse", "HEAD"]);
-        let pushed = f.ok(call("push", json!({ "repo": repo, "worktree": wt, "branch": "main", "expect": { "head": null, "refs": { "refs/heads/main": oid } } }))).await;
+        let pushed = f.ok(call("push", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "branch": "main", "expect": { "head": null, "refs": { "refs/heads/main": oid } } }))).await;
         assert_eq!(pushed["outcome"]["dst"], "main");
         assert_eq!(git(&bare, &["rev-parse", "main"]), oid);
         f.git(&["checkout", "-q", "-b", "feature/new"]);
         let oid = f.git(&["rev-parse", "HEAD"]);
-        f.ok(call("push", json!({ "repo": repo, "worktree": wt, "branch": "feature/new", "target": { "remote": "origin", "branch": "feature/new" }, "setUpstream": true, "expect": { "head": null, "refs": { "refs/heads/feature/new": oid } } }))).await;
+        f.ok(call("push", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "branch": "feature/new", "target": { "remote": "origin", "branch": "feature/new" }, "setUpstream": true, "expect": { "head": null, "refs": { "refs/heads/feature/new": oid } } }))).await;
         assert_eq!(f.git(&["rev-parse", "--abbrev-ref", "@{u}"]), "origin/feature/new");
     }
 
@@ -1387,7 +1389,7 @@ mod tests {
         f.git(&["commit", "-q", "--amend", "-m", "Rewritten"]);
         let oid = f.git(&["rev-parse", "HEAD"]);
         let tracking = f.git(&["rev-parse", "origin/main"]);
-        let body = |lease: Value| call("push", json!({ "repo": repo, "worktree": wt, "branch": "main", "lease": lease, "expect": { "head": null, "refs": { "refs/heads/main": oid } } }));
+        let body = |lease: Value| call("push", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "branch": "main", "lease": lease, "expect": { "head": null, "refs": { "refs/heads/main": oid } } }));
         let e = f.send(body(Value::Null)).await.unwrap_err();
         assert_eq!(e.kind, GbErrorKind::NonFastForward);
         // A stale lease refuses it too.
@@ -1402,24 +1404,24 @@ mod tests {
         let f = Fixture::new().await;
         let (repo, wt) = (f.repo, f.worktree.clone());
         f.write("a.txt", "changed\n");
-        let r = f.ok(call("stashPush", json!({ "repo": repo, "worktree": wt, "message": "My draft" }))).await;
+        let r = f.ok(call("stashPush", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "message": "My draft" }))).await;
         assert_eq!(r["outcome"]["status"], "stashed");
         assert_eq!(f.git(&["status", "--porcelain"]), "");
         assert!(f.git(&["stash", "list"]).contains("My draft"));
         let oid = f.git(&["rev-parse", "stash@{0}"]);
-        let r = f.ok(call("stashApply", json!({ "repo": repo, "worktree": wt, "oid": oid, "pop": false, "withoutIndex": false }))).await;
+        let r = f.ok(call("stashApply", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "oid": oid, "pop": false, "withoutIndex": false }))).await;
         assert_eq!(r["outcome"]["status"], "applied");
         assert_eq!(f.read("a.txt"), "changed\n");
         assert!(f.git(&["stash", "list"]).contains("My draft"), "Apply keeps it");
         f.git(&["checkout", "-q", "--", "a.txt"]);
-        f.ok(call("stashApply", json!({ "repo": repo, "worktree": wt, "oid": oid, "pop": true, "withoutIndex": false }))).await;
+        f.ok(call("stashApply", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "oid": oid, "pop": true, "withoutIndex": false }))).await;
         assert_eq!(f.git(&["stash", "list"]), "", "Pop deletes it");
-        let again = f.ok(call("stashPush", json!({ "repo": repo, "worktree": wt, "message": "" }))).await;
+        let again = f.ok(call("stashPush", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "message": "" }))).await;
         let oid = f.git(&["rev-parse", "stash@{0}"]);
         assert_eq!(again["outcome"]["status"], "stashed");
-        f.ok(call("stashDrop", json!({ "repo": repo, "worktree": wt, "oid": oid }))).await;
+        f.ok(call("stashDrop", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "oid": oid }))).await;
         assert_eq!(f.git(&["stash", "list"]), "");
-        let nothing = f.ok(call("stashPush", json!({ "repo": repo, "worktree": wt, "message": "" }))).await;
+        let nothing = f.ok(call("stashPush", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "message": "" }))).await;
         assert_eq!(nothing["outcome"]["status"], "nothingToStash");
     }
 }

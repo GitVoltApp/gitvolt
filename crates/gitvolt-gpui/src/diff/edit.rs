@@ -396,7 +396,7 @@ impl GitVolt {
         let (saved, handled_path, saved_path, send_path, send_text) = (text.clone(), path.clone(), path.clone(), path.clone(), text.clone());
         let handled_then = then.clone();
         let (retry_worktree, retry_text) = (worktree.clone(), text);
-        let w = Write::new(&ctx, move |_| call("writeWorktreeFile", json!({ "repo": repo, "worktree": worktree, "path": send_path, "text": send_text, "base": base })))
+        let w = Write::new(&ctx, move |_| call("writeWorktreeFile", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": send_path, "text": send_text, "base": base })))
             .on_success(move |this, out, cx| {
                 let hash = out["hash"].as_str().unwrap_or_default().to_string();
                 if let Some(diff) = this.tabs.iter_mut().find(|t| t.id == repo).and_then(|t| t.diff.as_mut()).filter(|d| d.file.path.as_ref() == saved_path)
@@ -468,7 +468,7 @@ impl GitVolt {
         }
         let api = self.api.clone();
         let (w, p) = (worktree.clone(), path.clone());
-        let body = call("diffContents", json!({ "repo": repo, "path": p, "old": { "kind": "absent" }, "new": { "kind": "worktree", "worktree": w }, "force": true }));
+        let body = call("diffContents", json!({ "repo": crate::app::core_repo(repo), "path": p, "old": { "kind": "absent" }, "new": { "kind": "worktree", "worktree": w }, "force": true }));
         let read = self.rt.spawn(async move { api.dispatch(crate::write::request_of(body)?).await });
         cx.spawn(async move |this, cx| {
             let now = read.await;
@@ -836,9 +836,9 @@ mod tests {
     async fn a_save_writes_behind_its_base_and_a_stale_one_refuses() {
         let f = Fixture::new().await;
         f.write("a.txt", "edited\n");
-        let contents = f.ok(call("diffContents", json!({ "repo": f.repo, "path": "a.txt", "old": { "kind": "absent" }, "new": { "kind": "worktree", "worktree": f.worktree }, "force": false }))).await;
+        let contents = f.ok(call("diffContents", json!({ "repo": crate::app::core_repo(f.repo), "path": "a.txt", "old": { "kind": "absent" }, "new": { "kind": "worktree", "worktree": f.worktree }, "force": false }))).await;
         let base = contents["new"]["hash"].as_str().unwrap().to_string();
-        let save = |text: &str, base: &str| call("writeWorktreeFile", json!({ "repo": f.repo, "worktree": f.worktree, "path": "a.txt", "text": text, "base": base }));
+        let save = |text: &str, base: &str| call("writeWorktreeFile", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "path": "a.txt", "text": text, "base": base }));
         let r = f.ok(save("saved\n", &base)).await;
         assert_eq!(f.read("a.txt"), "saved\n");
         assert_ne!(r["outcome"]["hash"].as_str().unwrap(), base);

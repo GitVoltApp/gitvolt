@@ -30,6 +30,15 @@ const RESIZE: f32 = 6.;
 pub const MONO_FONT: &str = "Noto Sans Mono";
 pub const GRAPH_LIMIT: u32 = 2000;
 
+/// A tab's id: the core's repository id, with which of that repository's tabs it is above it. The first tab on a
+/// repository is plainly its id. What goes to the core goes through `core_repo`; an event from it goes to every tab on it.
+const CORE_BITS: u32 = 20;
+
+#[inline]
+pub fn core_repo(tab_id: u32) -> u32 {
+    tab_id & ((1 << CORE_BITS) - 1)
+}
+
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("down", SelectNext, Some("GitVolt")),
@@ -53,9 +62,26 @@ pub enum KeyArea {
     Diff,
 }
 
+/// How `open_with` opens a path.
+pub struct OpenAs {
+    pub path: String,
+    /// The Open tab the repository takes the place of.
+    pub in_tab: Option<u32>,
+    /// A tab of its own, even with one on that worktree already.
+    pub new_tab: bool,
+    pub alias: Option<String>,
+    pub at: Option<usize>,
+    pub activate: bool,
+}
+
 pub struct Tab {
     pub id: u32,
     pub name: SharedString,
+    /// Rename's display name, kept in the profile; `name` shows it.
+    pub alias: Option<String>,
+    pub repo_name: SharedString,
+    /// The profile's id for this tab.
+    pub state_id: String,
     /// The worktree this tab shows, as the core's answer to opening it names it.
     pub worktree: String,
     /// The repository's main path: what the profile's settings for it go by.
@@ -173,6 +199,9 @@ impl Tab {
         Self {
             id,
             name,
+            alias: None,
+            repo_name: SharedString::default(),
+            state_id: crate::tabs::new_tab_state_id(),
             worktree: String::new(),
             repo_path: String::new(),
             expanded: Vec::new(),
@@ -246,16 +275,27 @@ pub struct GitVolt {
     /// What the web UI keeps in localStorage: density, the file list's preferences, the zoom.
     pub prefs: serde_json::Value,
     pub settings_openers: Option<Rc<Vec<crate::open_in::Opener>>>,
+    /// `ProfileMeta[]`: the switcher's list.
+    pub profiles: serde_json::Value,
+    /// The profile's tabs are coming up: nothing saves over them meanwhile.
+    pub restoring_tabs: bool,
+    /// What the start was asked to open, once the profile's read.
+    pub start_path: Option<String>,
+    pub state_loaded: bool,
+    /// A saved group reopening: its tabs join it as they open.
+    pub pending_group: Option<(serde_json::Value, usize)>,
     pub fetch_schedule: Option<(u32, Task<()>)>,
     pub relative_clock: Option<Task<()>>,
     pub editor_font_dirty: bool,
     /// A minimized window: the background fetch waits.
     pub window_hidden: bool,
+    pub fetch_missed: bool,
     pub window_width: f32,
+    pub window_height: f32,
     pub git_version: SharedString,
     pub dragging_scrollbar: bool,
     /// The closed tabs' paths, newest last, for Reopen closed tab.
-    pub closed_tabs: Vec<String>,
+    pub closed_tabs: Vec<crate::tabs::ClosedTab>,
     pub sidebar_w: f32,
     /// The icon strip, by hand (Ctrl+B); a file on top folds it too, by itself.
     pub sidebar_narrow: bool,
@@ -286,6 +326,8 @@ pub struct GitVolt {
     pub messages: MessageCache,
     /// A tab being dragged along the strip.
     pub tab_drag: Option<usize>,
+    pub tab_press_x: f32,
+    pub tab_drag_dx: Option<f32>,
     /// What the layout file says of repositories' columns, until their tabs open.
     pub saved_columns: serde_json::Value,
     /// Where the keyboard goes next frame: a subscription has no window to move it with.
@@ -340,7 +382,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, window_width: 1600., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, profiles: serde_json::json!([]), restoring_tabs: false, start_path: None, state_loaded: false, pending_group: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, fetch_missed: false, window_width: 1600., window_height: 900., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, tab_press_x: 0., tab_drag_dx: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -387,19 +429,33 @@ impl GitVolt {
         .detach();
     }
 
+    /// The tabs on one of the core's repositories.
+    pub fn tabs_on(&self, repo: u32) -> Vec<u32> {
+        self.tabs.iter().filter(|t| !t.is_open_tab() && core_repo(t.id) == repo).map(|t| t.id).collect()
+    }
+
+    /// A tab id free on `repo`: the first tab is plainly the repository's id.
+    fn free_tab_id(&self, repo: u32) -> u32 {
+        (0..).map(|n| repo | (n << CORE_BITS)).find(|id| !self.tabs.iter().any(|t| t.id == *id)).unwrap_or(repo)
+    }
+
     /// One event from the core: what's going on, and what to read again.
     pub fn on_event(&mut self, e: AppEvent, cx: &mut Context<Self>) {
         self.ops.apply(&e);
         self.lfs_on_event(&e, cx);
         match e {
             AppEvent::RepoChanged { repo, .. } => {
-                self.reload(repo, cx);
-                self.reread_wip(repo, cx);
-                self.reread_open_file(repo, cx);
+                for tab in self.tabs_on(repo) {
+                    self.reload(tab, cx);
+                    self.reread_wip(tab, cx);
+                    self.reread_open_file(tab, cx);
+                }
             }
             AppEvent::RefsUpdated { repo } => {
-                self.reload(repo, cx);
-                self.read_repo_info(repo, cx);
+                for tab in self.tabs_on(repo) {
+                    self.reload(tab, cx);
+                    self.read_repo_info(tab, cx);
+                }
             }
             AppEvent::OpStarted { .. } => self.after_op_started(cx),
             AppEvent::AuthWaiting { .. } | AppEvent::AuthResolved { .. } | AppEvent::OpFinished { .. } => self.sync_auth_modal(cx),
@@ -416,12 +472,33 @@ impl GitVolt {
 
     /// `in_tab`: the Open tab the repository takes the place of.
     pub fn open_in(&mut self, path: String, in_tab: Option<u32>, cx: &mut Context<Self>) {
+        self.open_as(OpenAs { path, in_tab, new_tab: false, alias: None, at: None, activate: true }, cx);
+    }
+
+    /// "Open in a new tab": a second tab on the same repository, whichever worktree this path is.
+    pub fn open_new_tab(&mut self, path: String, cx: &mut Context<Self>) {
+        self.open_as(OpenAs { path, in_tab: None, new_tab: true, alias: None, at: None, activate: true }, cx);
+    }
+
+    /// `openWorktreeTab`: the tab already showing it, else one of its own on the same repository.
+    pub fn open_worktree_tab(&mut self, path: String, cx: &mut Context<Self>) {
+        if let Some(i) = self.tabs.iter().position(|t| !t.is_open_tab() && t.worktree == path) {
+            self.active = i;
+            self.save_tabs(cx);
+            cx.notify();
+            return;
+        }
+        self.open_new_tab(path, cx);
+    }
+
+    pub fn open_as(&mut self, how: OpenAs, cx: &mut Context<Self>) {
+        let OpenAs { path, in_tab, new_tab, alias, at: place, activate } = how;
         let asked = path.clone();
         let api = self.api.clone();
         let opened = self.rt.spawn(async move {
             let v = api.dispatch(Request::OpenRepo { path }).await?;
             let id = v["id"].as_u64().unwrap_or(0) as u32;
-            api.dispatch(Request::WatchRepo { repo: id }).await?;
+            api.dispatch(Request::WatchRepo { repo: crate::app::core_repo(id) }).await?;
             Ok::<_, gitvolt_core::error::GbError>((id, v["name"].as_str().unwrap_or_default().to_string(), v["worktree"].as_str().unwrap_or_default().to_string(), v["path"].as_str().unwrap_or_default().to_string()))
         });
         cx.spawn(async move |this, cx| {
@@ -431,35 +508,39 @@ impl GitVolt {
                     crate::bench::mark("repo_open");
                     this.note_recent(&repo_path, &name);
                     let spot = in_tab.and_then(|t| this.tabs.iter().position(|x| x.id == t));
-                    if let Some(i) = this.tabs.iter().position(|t| t.id == id) {
-                        this.active = i;
+                    // Already showing that worktree: there it goes, unless a tab of its own was asked for.
+                    let already = this.tabs.iter().position(|t| core_repo(t.id) == id && !t.is_open_tab() && t.worktree == worktree).filter(|_| !new_tab);
+                    if let Some(i) = already {
+                        if activate {
+                            this.active = i;
+                        }
                         if let Some(s) = spot {
+                            let on = this.tabs[i].id;
                             this.tabs.remove(s);
-                            this.active = this.tabs.iter().position(|t| t.id == id).unwrap_or(0);
+                            this.active = this.tabs.iter().position(|t| t.id == on).unwrap_or(0);
                         }
                     } else {
-                        let mut tab = Tab::new(id, name.into(), cx);
-                        tab.worktree = worktree.clone();
-                        tab.repo_path = repo_path.clone();
-                        this.restore_columns(&mut tab);
-                        let at = match spot {
+                        let opened = crate::tabs::Opened { id, name: name.clone(), worktree: worktree.clone(), path: repo_path.clone() };
+                        match spot {
                             Some(s) => {
-                                this.tabs[s] = tab;
-                                s
+                                let state = this.tabs[s].state_id.clone();
+                                this.tabs.remove(s);
+                                this.add_opened_tab(opened, alias.clone(), Some(state), s, cx);
+                                if activate {
+                                    this.active = s;
+                                }
                             }
                             None => {
-                                let at = if this.tabs.is_empty() { 0 } else { (this.active + 1).min(this.tabs.len()) };
-                                this.tabs.insert(at, tab);
-                                at
+                                let at = place.unwrap_or(if this.tabs.is_empty() { 0 } else { (this.active + 1).min(this.tabs.len()) }).min(this.tabs.len());
+                                let state = this.add_opened_tab(opened, alias.clone(), None, at, cx);
+                                if activate {
+                                    this.active = at;
+                                }
+                                this.take_into_pending_group(&state, cx);
                             }
-                        };
-                        this.active = at;
-                        this.load_lfs(id, false, false, cx);
-                        this.read_repo_info(id, cx);
-                        this.list_openers(id, cx);
-                        this.load_journal(id, worktree, cx);
-                        this.reload(id, cx);
+                        }
                     }
+                    this.save_tabs(cx);
                     cx.notify();
                 }
                 Ok(Err(e)) => this.open_failed(in_tab, &asked, e.message, cx),
@@ -468,6 +549,28 @@ impl GitVolt {
             .ok();
         })
         .detach();
+    }
+
+    /// A tab on what the core opened, at `at`; its state id, given or new.
+    pub fn add_opened_tab(&mut self, o: crate::tabs::Opened, alias: Option<String>, state_id: Option<String>, at: usize, cx: &mut Context<Self>) -> String {
+        let id = self.free_tab_id(o.id);
+        let mut tab = Tab::new(id, alias.clone().unwrap_or_else(|| o.name.clone()).into(), cx);
+        tab.alias = alias;
+        tab.repo_name = o.name.into();
+        tab.worktree = o.worktree.clone();
+        tab.repo_path = o.path;
+        if let Some(s) = state_id {
+            tab.state_id = s;
+        }
+        let state = tab.state_id.clone();
+        self.restore_columns(&mut tab);
+        self.tabs.insert(at.min(self.tabs.len()), tab);
+        self.load_lfs(id, false, false, cx);
+        self.read_repo_info(id, cx);
+        self.list_openers(id, cx);
+        self.load_journal(id, o.worktree, cx);
+        self.reload(id, cx);
+        state
     }
 
     /// Reads the tab's graph and sidebar, parsed and formatted off the UI thread.
@@ -483,7 +586,7 @@ impl GitVolt {
         let limit = tab.limit;
         let (view, pin) = self.graph_options(repo);
         let read = self.rt.spawn(async move {
-            let graph = api.graph(repo, Some(limit), pin, None, None, view).await?;
+            let graph = api.graph(core_repo(repo), Some(limit), pin, None, None, view).await?;
             let sidebar = api.dispatch(Request::Sidebar { repo }).await?;
             let view_json = graph.view.as_ref().and_then(|v| serde_json::to_value(v).ok());
             let sections = SendSections(sections_of(&sidebar, &worktree, view_json.as_ref()));
@@ -586,7 +689,7 @@ impl GitVolt {
             let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
             if tab.settled.insert(entry) {
                 let ctx = crate::write::WriteCtx { repo, worktree: worktree.clone() };
-                let w = crate::write::Write::new(&ctx, move |_| crate::write::call("settlePaused", serde_json::json!({ "repo": repo, "worktree": worktree }))).on_end(move |this, ok, _| {
+                let w = crate::write::Write::new(&ctx, move |_| crate::write::call("settlePaused", serde_json::json!({ "repo": crate::app::core_repo(repo), "worktree": worktree }))).on_end(move |this, ok, _| {
                     if !ok && let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) {
                         tab.settled.remove(&entry);
                     }
@@ -726,15 +829,22 @@ impl GitVolt {
         }
         let tab = self.tabs.remove(ix);
         if !tab.is_open_tab() {
-            self.closed_tabs.push(tab.worktree.clone());
-            let api = self.api.clone();
-            self.rt.spawn(async move { api.dispatch(Request::UnwatchRepo { repo: tab.id }).await });
+            self.closed_tabs.push(crate::tabs::ClosedTab { path: tab.worktree.clone(), alias: tab.alias.clone(), index: ix });
+            if self.closed_tabs.len() > 20 {
+                self.closed_tabs.remove(0);
+            }
+            // The last tab on it stops watching.
+            if !self.tabs.iter().any(|t| core_repo(t.id) == core_repo(tab.id) && !t.is_open_tab()) {
+                let api = self.api.clone();
+                self.rt.spawn(async move { api.dispatch(Request::UnwatchRepo { repo: crate::app::core_repo(tab.id) }).await });
+            }
         }
         self.active = self.active.min(self.tabs.len().saturating_sub(1));
         // With no tab open, the Open Repository screen.
         if self.tabs.is_empty() {
             self.open_blank_tab(cx);
         }
+        self.save_tabs(cx);
         cx.notify();
     }
 
@@ -743,7 +853,14 @@ impl GitVolt {
         let Some(from) = self.tab_drag else { return };
         if e.pressed_button != Some(MouseButton::Left) {
             self.tab_drag = None;
+            self.tab_drag_dx = None;
             return;
+        }
+        // It follows the pointer: the rest of the strip moves when it crosses another's far half.
+        let dx = e.position.x.as_f32() - self.tab_press_x;
+        if dx.abs() > 4. || self.tab_drag_dx.is_some() {
+            self.tab_drag_dx = Some(dx);
+            cx.notify();
         }
         let ui = crate::ui::Ui::get(cx);
         let x = e.position.x.as_f32();
@@ -754,11 +871,22 @@ impl GitVolt {
         if (to > from && x < middle) || (to < from && x > middle) {
             return;
         }
-        let tab = self.tabs.remove(from);
-        self.tabs.insert(to, tab);
+        let moved = self.tabs.remove(from);
+        let width = b.size.width.as_f32();
+        self.tabs.insert(to, moved);
         self.active = to;
         self.tab_drag = Some(to);
+        // The strip laid out anew: the pointer's offset is from the tab's new slot.
+        self.tab_press_x += if to > from { width } else { -width };
+        self.tab_drag_dx = Some(e.position.x.as_f32() - self.tab_press_x);
         cx.notify();
+    }
+
+    fn end_tab_drag(&mut self, cx: &mut Context<Self>) {
+        if self.tab_drag.take().is_some() && self.tab_drag_dx.take().is_some() {
+            self.save_tabs(cx);
+            cx.notify();
+        }
     }
 
     pub fn close_other_tabs(&mut self, ix: usize, cx: &mut Context<Self>) {
@@ -777,8 +905,9 @@ impl GitVolt {
     }
 
     pub fn reopen_tab(&mut self, cx: &mut Context<Self>) {
-        if let Some(path) = self.closed_tabs.pop() {
-            self.open(path, cx);
+        if let Some(c) = self.closed_tabs.pop() {
+            let at = Some(c.index);
+            self.open_as(OpenAs { path: c.path, in_tab: None, new_tab: true, alias: c.alias, at, activate: true }, cx);
         }
     }
 
@@ -794,9 +923,12 @@ impl GitVolt {
                 let Some(answer) = answer else { return };
                 this.update(cx, |v, cx| {
                     if let Some(tab) = v.tabs.iter_mut().find(|t| t.id == id) {
-                        tab.name = answer.value.trim().to_string().into();
+                        let name = answer.value.trim().to_string();
+                        tab.alias = (!name.is_empty()).then(|| name.clone());
+                        tab.name = if name.is_empty() { tab.repo_name.clone() } else { name.into() };
                         cx.notify();
                     }
+                    v.save_tabs(cx);
                 })
                 .ok();
             },
@@ -886,8 +1018,21 @@ fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> impl
 
 fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let mut tabs = div().id("tabs").flex().flex_1().min_w_0().overflow_hidden().h_full();
+    let groups = this.profile["tabGroups"].as_array().cloned().unwrap_or_default();
     for (i, tab) in this.tabs.iter().enumerate() {
         let active = i == this.active;
+        let group = groups.iter().find(|g| g["tabs"].as_array().is_some_and(|t| t.iter().any(|x| x == tab.state_id.as_str())));
+        if let Some(g) = group
+            && g["tabs"][0] == tab.state_id.as_str()
+        {
+            tabs = tabs.child(this.group_chip(g, cx));
+        }
+        // In a folded group only the active tab shows.
+        if group.is_some_and(|g| g["collapsed"] == true) && !active {
+            continue;
+        }
+        let group_color = group.map(|g| theme::tag_group(g["color"].as_str().unwrap_or("gray")));
+        let drag_dx = this.tab_drag_dx.filter(|_| this.tab_drag == Some(i)).unwrap_or(0.);
         let outlined = menu::is_target(&format!("tab:{}", tab.id), cx);
         let key: SharedString = format!("tab:{}", tab.id).into();
         tabs = tabs.child(crate::ui::anchor(
@@ -909,10 +1054,15 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .when(!active, |d| d.text_color(theme::text_secondary()).hover(|d| d.bg(theme::hover_row())))
                 .relative()
                 .when(outlined, |d| d.child(crate::ui::outline()))
-                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                .when_some(group_color, |d, c| d.child(div().absolute().left_0().right_0().bottom_0().h(px(2.)).bg(c)))
+                .when(drag_dx != 0., |d| d.left(px(drag_dx)).opacity(0.9).bg(theme::action_bar_bg()))
+                .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
                     cx.stop_propagation();
                     this.active = i;
                     this.tab_drag = Some(i);
+                    this.tab_press_x = e.position.x.as_f32();
+                    this.tab_drag_dx = None;
+                    this.save_tabs(cx);
                     cx.notify();
                 }))
                 .on_mouse_down(MouseButton::Middle, cx.listener(move |this, _, _, cx| this.close_tab(i, cx)))
@@ -967,7 +1117,13 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         .child(tabs)
         .child(crate::feedback::bell(this, cx))
         .child(tip(format!("Settings ({})", crate::commands::display_chord("Mod+,")), crate::ui::anchor("tb-settings", bar_button("settings", "settings").on_click(cx.listener(|this, _, window, cx| this.show_settings(None, window, cx))))))
-        .child(tip("Switch profile", div().flex().flex_none().items_center().gap(px(6.)).px(px(12.)).h_full().child(div().size(px(7.)).rounded_full().bg(theme::blue())).child("Default")))
+        .child(tip("Switch profile", crate::ui::anchor("profile-switcher", div().id("profile-switcher").flex().flex_none().items_center().gap(px(6.)).px(px(12.)).h_full().cursor_pointer().when(menu::is_open_on("profile-switcher", cx), |d| d.bg(theme::hover_row())).hover(|d| d.bg(theme::hover_row())).on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+            cx.stop_propagation();
+            let weak = cx.weak_entity();
+            let rows = this.profile_rows(&weak);
+            let initial = this.profile["id"].as_str().map(|id| SharedString::from(format!("profile.{id}")));
+            menu::open_below("profile-switcher", rows, OpenOptions { label: Some("Switch profile".into()), initial, ..Default::default() }, window, cx);
+        })).child(div().size(px(7.)).rounded_full().bg(crate::profiles::profile_color(this))).child(this.profile["name"].as_str().unwrap_or_default().trim().to_string()))))
 }
 
 /// How long holding a split button's main part takes to open its menu.
@@ -1110,11 +1266,13 @@ fn repo_menu(this: &GitVolt, weak: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
     for w in worktrees {
         if let crate::sidebar::ItemKind::Worktree { path, branch, is_current, .. } = &w.kind {
             let label = format!("{path} · {}", branch.as_deref().unwrap_or("detached"));
-            let row = MenuRow::action(format!("repo.worktree:{path}"), label, if *is_current { "check" } else { "" }, if *is_current { "This tab's worktree" } else { "Switch this tab to this worktree" }, |_, _| {});
-            rows.push(if *is_current { row } else { row.disabled(menu::NOT_YET) });
+            let (w, p) = (weak.clone(), path.clone());
+            rows.push(MenuRow::action(format!("repo.worktree:{path}"), label, if *is_current { "check" } else { "" }, if *is_current { "This tab's worktree" } else { "Switch this tab to this worktree" }, move |_, cx| {
+                let p = p.clone();
+                w.update(cx, |v, cx| v.switch_worktree(p, cx)).ok();
+            }));
         }
     }
-    let _ = weak;
     rows
 }
 
@@ -1228,7 +1386,7 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let queued = |kind: OpKind| this.ops.queued_kind(repo, kind);
     let sync = crate::sync::sync_view(this.sync_mode, local.as_ref(), head.as_deref());
     let in_flight = |key: String| tab.is_some_and(|t| t.in_flight.contains(&key));
-    let sync_running = this.ops.ops.values().any(|o| o.repo == Some(repo) && ((o.kind == OpKind::Fetch && (o.interactive || o.shown)) || o.kind == OpKind::Pull));
+    let sync_running = this.ops.ops.values().any(|o| o.repo == Some(core_repo(repo)) && ((o.kind == OpKind::Fetch && (o.interactive || o.shown)) || o.kind == OpKind::Pull));
     let sync_busy = in_flight("fetch|".into()) || in_flight(format!("pull|{}", head.as_deref().unwrap_or(""))) || sync_running;
     let sync_tip: SharedString = if in_flight("fetch|".into()) && this.sync_mode == crate::sync::SyncMode::FetchAll { "Fetching…".into() } else if sync_busy && this.sync_mode != crate::sync::SyncMode::FetchAll && head.is_some() { format!("Pulling {}…", head.as_deref().unwrap_or_default()).into() } else { sync.tooltip.clone().into() };
     let (push_tip, push_off) = crate::sync::push_view(local.as_ref(), head.as_deref(), &tab.map_or("origin".to_string(), Tab::default_remote));
@@ -1345,7 +1503,18 @@ fn status_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement + u
         .border_color(theme::section_border())
         .text_size(px(11.))
         .text_color(theme::text_secondary())
-        .child(tip(format!("Zoom ({} / {})", crate::commands::display_chord("Mod+="), crate::commands::display_chord("Mod+-")), div().child("100%")))
+        .child(tip(format!("Zoom ({} / {})", crate::commands::display_chord("Mod+="), crate::commands::display_chord("Mod+-")), crate::ui::anchor("status-zoom", div().id("status-zoom").cursor_pointer().on_mouse_down(MouseButton::Left, cx.listener(|_, _, window, cx| {
+            cx.stop_propagation();
+            let weak = cx.weak_entity();
+            let now = crate::zoom::percent();
+            let rows: Vec<MenuRow> = crate::zoom::ZOOM_STEPS.iter().map(|p| {
+                let (w, p) = (weak.clone(), *p);
+                MenuRow::action(format!("zoom.{p}"), format!("{p}%"), if p == now { "check" } else { "" }, format!("Zoom to {p}%"), move |_, cx| {
+                    w.update(cx, |v, cx| v.set_zoom(p, cx)).ok();
+                })
+            }).collect();
+            menu::open_below("status-zoom", rows, OpenOptions { label: Some("Zoom".into()), initial: Some(format!("zoom.{now}").into()), ..Default::default() }, window, cx);
+        })).child(format!("{}%", crate::zoom::percent())))))
         .children(items)
         .child(div().flex_1())
         .child(tip(format!("Keyboard shortcuts ({})", crate::commands::display_chord("Mod+/")), crate::ui::anchor("status-shortcuts", div().id("status-shortcuts").flex().cursor_pointer().on_click(cx.listener(|this, _, window, cx| this.open_shortcuts(window, cx))).child(icon("keyboard", 13., theme::text_secondary())))))
@@ -1445,6 +1614,7 @@ impl Render for GitVolt {
             self.sync_activity_shown();
         }
         self.window_width = viewport.width.as_f32();
+        self.window_height = viewport.height.as_f32();
         let settings = crate::settings::frame::settings_overlay(self, window, cx);
         let font_picker = crate::settings::fonts::font_picker_overlay(self, window, cx);
         let overlays = crate::ui::overlays(window, cx);
@@ -1510,7 +1680,7 @@ impl Render for GitVolt {
                 this.end_rebase_drag(cx);
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
-                this.tab_drag = None;
+                this.end_tab_drag(cx);
                 this.end_branch_drag(window, cx);
                 if this.hold.is_some_and(|h| !h.1) {
                     // A click follows and takes it.
@@ -1528,7 +1698,7 @@ impl Render for GitVolt {
                 this.end_rebase_drag(cx);
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
-                this.tab_drag = None;
+                this.end_tab_drag(cx);
                 this.end_branch_drag(window, cx);
                 this.hold = None;
             }))

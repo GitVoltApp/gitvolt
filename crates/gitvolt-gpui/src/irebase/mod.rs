@@ -229,7 +229,7 @@ impl GitVolt {
             let Ok(request) = this.update(cx, |this, _| {
                 let s = this.rebase_tab(repo)?.rebase.as_ref().filter(|s| s.predict_seq == seq)?;
                 let rows = to_request(&s.state).0;
-                Some(call("predictRebase", json!({ "repo": s.ctx.repo, "worktree": s.ctx.worktree, "base": s.state.base.oid, "rows": rows })))
+                Some(call("predictRebase", json!({ "repo": crate::app::core_repo(s.ctx.repo), "worktree": s.ctx.worktree, "base": s.state.base.oid, "rows": rows })))
             }) else {
                 return;
             };
@@ -281,11 +281,11 @@ impl GitVolt {
             }
         }
         if cfg!(test) {
-            self.sent.borrow_mut().push(call("rebasePlan", json!({ "repo": repo, "worktree": ctx.worktree, "branch": opts.branch, "base": opts.base })));
+            self.sent.borrow_mut().push(call("rebasePlan", json!({ "repo": crate::app::core_repo(repo), "worktree": ctx.worktree, "branch": opts.branch, "base": opts.base })));
             return;
         }
         let api = self.api.clone();
-        let body = call("rebasePlan", json!({ "repo": repo, "worktree": ctx.worktree, "branch": opts.branch, "base": opts.base }));
+        let body = call("rebasePlan", json!({ "repo": crate::app::core_repo(repo), "worktree": ctx.worktree, "branch": opts.branch, "base": opts.base }));
         let read = self.rt.spawn(async move { api.dispatch(crate::write::request_of(body)?).await });
         cx.spawn(async move |this, cx| {
             let answer = read.await.unwrap_or_else(|e| Err(GbError::other(e.to_string())));
@@ -391,7 +391,7 @@ impl GitVolt {
         self.close_rebase_view(repo, cx);
         let (done_branch, done_base) = (branch.clone(), base.clone());
         let worktree = ctx.worktree.clone();
-        let w = Write::new(&ctx, move |asked| call("interactiveRebase", json!({ "repo": repo, "worktree": worktree, "branch": branch, "base": base, "expect": expect, "rows": rows, "chips": chips, "confirm": { "autostash": asked.autostash } })))
+        let w = Write::new(&ctx, move |asked| call("interactiveRebase", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": branch, "base": base, "expect": expect, "rows": rows, "chips": chips, "confirm": { "autostash": asked.autostash } })))
             .origin(origin)
             .on_success(move |this, out, cx| {
                 if let Some(tab) = this.rebase_tab(repo) {
@@ -441,7 +441,7 @@ impl GitVolt {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let repo = tab.id;
         let Some(s) = tab.rebase_shown() else { return };
-        let body = call("rebasePlan", json!({ "repo": repo, "worktree": s.ctx.worktree, "branch": s.opened.branch, "base": s.opened.base }));
+        let body = call("rebasePlan", json!({ "repo": crate::app::core_repo(repo), "worktree": s.ctx.worktree, "branch": s.opened.branch, "base": s.opened.base }));
         if cfg!(test) {
             self.sent.borrow_mut().push(body);
             return;
@@ -904,7 +904,7 @@ impl GitVolt {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let ctx = tab.write_target();
         let repo = ctx.repo;
-        let body = call("rebasePlan", json!({ "repo": repo, "worktree": ctx.worktree, "branch": branch, "base": base }));
+        let body = call("rebasePlan", json!({ "repo": crate::app::core_repo(repo), "worktree": ctx.worktree, "branch": branch, "base": base }));
         if cfg!(test) {
             self.sent.borrow_mut().push(body);
             return;
@@ -927,7 +927,7 @@ impl GitVolt {
                 let worktree = ctx.worktree.clone();
                 let (send_branch, send_base, expect) = (branch.clone(), base.clone(), state.expect.clone());
                 let done = done.clone();
-                let w = Write::new(&ctx, move |asked| call("interactiveRebase", json!({ "repo": repo, "worktree": worktree, "branch": send_branch, "base": send_base, "expect": expect, "rows": rows, "chips": chips, "confirm": { "autostash": asked.autostash } }))).on_success(move |this, out, cx| {
+                let w = Write::new(&ctx, move |asked| call("interactiveRebase", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": send_branch, "base": send_base, "expect": expect, "rows": rows, "chips": chips, "confirm": { "autostash": asked.autostash } }))).on_success(move |this, out, cx| {
                     if out["status"] == "done" {
                         toast::show(done.clone(), cx);
                     }
@@ -994,7 +994,7 @@ mod tests {
     #[tokio::test]
     async fn a_plan_goes_through_the_core_as_the_editor_says() {
         let (f, base) = fixture().await;
-        let plan = f.ok(call("rebasePlan", json!({ "repo": f.repo, "worktree": f.worktree, "branch": "main", "base": base }))).await;
+        let plan = f.ok(call("rebasePlan", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "branch": "main", "base": base }))).await;
         let mut s = from_plan(&plan, None);
         let oid = |s: &EditorState, sub: &str| s.rows.iter().find(|r| r.summary == sub).unwrap().oid.clone();
         assert_eq!(s.rows.len(), 5);
@@ -1006,7 +1006,7 @@ mod tests {
         edit_message(&mut s, &c3, "Reworded three");
         set_actions(&mut s, std::slice::from_ref(&c4), RowAction::Squash);
         let (rows, chips) = to_request(&s);
-        let body = call("interactiveRebase", json!({ "repo": f.repo, "worktree": f.worktree, "branch": s.branch, "base": s.base.name, "expect": s.expect, "rows": rows, "chips": chips, "confirm": { "autostash": false } }));
+        let body = call("interactiveRebase", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "branch": s.branch, "base": s.base.name, "expect": s.expect, "rows": rows, "chips": chips, "confirm": { "autostash": false } }));
         let out = f.ok(body).await;
         assert_eq!(out["outcome"]["status"], "done");
         assert_eq!(subjects(&f), ["Reworded three", "Commit 5", "Commit 1", "Second", "Base"]);
@@ -1019,12 +1019,12 @@ mod tests {
     #[tokio::test]
     async fn an_edit_stop_is_about_to_commit_and_continue_goes_on() {
         let (f, base) = fixture().await;
-        let plan = f.ok(call("rebasePlan", json!({ "repo": f.repo, "worktree": f.worktree, "branch": "main", "base": base }))).await;
+        let plan = f.ok(call("rebasePlan", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "branch": "main", "base": base }))).await;
         let mut s = from_plan(&plan, None);
         let c3 = s.rows.iter().find(|r| r.summary == "Commit 3").unwrap().oid.clone();
         set_actions(&mut s, std::slice::from_ref(&c3), RowAction::Edit);
         let (rows, chips) = to_request(&s);
-        let out = f.ok(call("interactiveRebase", json!({ "repo": f.repo, "worktree": f.worktree, "branch": s.branch, "base": s.base.name, "expect": s.expect, "rows": rows, "chips": chips, "confirm": { "autostash": false } }))).await;
+        let out = f.ok(call("interactiveRebase", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "branch": s.branch, "base": s.base.name, "expect": s.expect, "rows": rows, "chips": chips, "confirm": { "autostash": false } }))).await;
         assert_eq!(out["outcome"]["status"], "stopped");
         let graph = f.api.graph(f.repo, Some(100), None, None, None, None).await.unwrap();
         let progress = serde_json::to_value(&graph).unwrap()["inProgress"][&f.worktree].clone();
@@ -1032,7 +1032,7 @@ mod tests {
         assert_eq!(op["kind"], "rebase");
         assert!(op["editBase"].is_string(), "GitVolt's stop has HEAD on the parent: {op}");
         assert_eq!(f.git(&["diff", "--cached", "--name-only"]), "f3.txt", "its changes staged");
-        let out = f.ok(call("rebaseControl", json!({ "repo": f.repo, "worktree": f.worktree, "action": "continue", "message": null }))).await;
+        let out = f.ok(call("rebaseControl", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "action": "continue", "message": null }))).await;
         assert_eq!(out["outcome"]["status"], "done");
         assert_eq!(subjects(&f)[..3], ["Commit 5", "Commit 4", "Commit 3"]);
     }

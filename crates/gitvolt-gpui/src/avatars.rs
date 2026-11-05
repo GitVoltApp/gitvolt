@@ -69,7 +69,7 @@ impl GitVolt {
             let api = self.api.clone();
             let asked = email.clone();
             let done = self.rt.spawn(async move {
-                let v = api.dispatch(Request::Avatar { email: asked, repo, name: Some(name) }).await.ok()?;
+                let v = api.dispatch(Request::Avatar { email: asked, repo: repo.map(crate::app::core_repo), name: Some(name) }).await.ok()?;
                 decode(v["base64"].as_str()?)
             });
             cx.spawn(async move |this, cx| {

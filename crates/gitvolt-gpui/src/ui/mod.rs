@@ -120,7 +120,12 @@ pub fn init(cx: &mut App) {
 /// The key router's layers (`ui/keyRouter.ts`): an open menu takes every key but zoom; then an armed
 /// control's Esc; a popover; a shown tooltip's Esc; a sticky toast's Esc. Below that, the view's own.
 fn route_key(k: &Keystroke, window: &mut Window, cx: &mut App) {
-    if is_zoom(k) {
+    if is_zoom(k) && Ui::get(cx).menu.is_none() {
+        if let Some(keys) = Ui::get(cx).app_keys.clone()
+            && keys(k, window, cx)
+        {
+            cx.stop_propagation();
+        }
         return;
     }
     if Ui::get(cx).menu.is_some() {

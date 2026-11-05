@@ -288,6 +288,7 @@ impl GitVolt {
                 weak.update(cx, |v, cx| v.switch_worktree(p, cx)).ok();
             }));
         }
+        worktree.extend(self.open_tab_row("wip.openTab", &path, this));
         worktree.extend(self.remove_worktree_rows("wip.remove", &path, None, this));
         if !worktree.is_empty() {
             rows.push(MenuRow::Separator);
@@ -379,6 +380,21 @@ impl GitVolt {
     }
 
     /// A worktree in the sidebar.
+    /// Open in a new tab: none for this tab's own worktree; "Go to its tab" when another tab already shows it.
+    fn open_tab_row(&self, id: &'static str, path: &str, this: &WeakEntity<GitVolt>) -> Option<MenuRow> {
+        let tab = self.tabs.get(self.active)?;
+        if tab.worktree == path {
+            return None;
+        }
+        let other = self.tabs.iter().any(|t| t.id != tab.id && !t.is_open_tab() && t.worktree == path);
+        let (weak, p) = (this.clone(), path.to_string());
+        let tooltip = if other { format!("Switch to the tab already showing {path}") } else { format!("Open {path} in its own tab (the same repository, already loaded)") };
+        Some(MenuRow::action(id, if other { "Go to its tab" } else { "Open in a new tab" }, "square-plus", tooltip, move |_, cx| {
+            let p = p.clone();
+            weak.update(cx, |v, cx| v.open_worktree_tab(p, cx)).ok();
+        }))
+    }
+
     pub fn worktree_rows(&self, path: &str, branch: Option<&str>, head: Option<&str>, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         let mut copy = vec![MenuRow::action("sidebar.copyPath", "Copy path", "copy", format!("Copy \"{path}\""), copier(this, path.to_string()))];
         if let Some(b) = branch {
@@ -403,6 +419,7 @@ impl GitVolt {
                     weak.update(cx, |v, cx| v.switch_worktree(p, cx)).ok();
                 }));
             }
+            rows.extend(self.open_tab_row("sidebar.worktree.openTab", path, this));
             rows.extend(self.remove_worktree_rows("sidebar.worktree.remove", path, branch, this));
             rows
         };
@@ -529,14 +546,18 @@ impl GitVolt {
     /// The tab bar's empty space.
     pub fn tabbar_rows(&self, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         let (a, b, c) = (this.clone(), this.clone(), this.clone());
+        let last = self.closed_tabs.last();
+        let reopen_label = last.map_or("Reopen closed tab".to_string(), |l| format!("Reopen {}", l.alias.clone().unwrap_or_else(|| l.path.rsplit('/').next().unwrap_or_default().to_string())));
+        let saved = self.saved_group_rows(this);
         grouped(vec![
             vec![
-                MenuRow::action("tabbar.reopen", "Reopen closed tab", "rotate-ccw", "Reopen the most recently closed tab", move |_, cx| {
+                MenuRow::action("tabbar.reopen", reopen_label, "rotate-ccw", "Reopen the most recently closed tab", move |_, cx| {
                     a.update(cx, |v, cx| v.reopen_tab(cx)).ok();
                 })
                 .shortcut("Ctrl+Shift+T")
                 .disabled_if(self.closed_tabs.is_empty().then_some("No recently closed tabs")),
             ],
+            saved,
             vec![
                 MenuRow::action("tabbar.openRepo", "Open repository…", "folder-plus", "Open the Open Repository screen in a new tab", move |_, cx| {
                     b.update(cx, |v, cx| {

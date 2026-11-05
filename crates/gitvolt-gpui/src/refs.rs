@@ -184,7 +184,7 @@ impl GitVolt {
         let mv = self.head_move(repo, branch, sha);
         let (worktree, t, e) = (ctx.worktree.clone(), target.clone(), expect.clone());
         let (d_ctx, d_target, d_expect, d_origin, d_then) = (ctx.clone(), target, expect, origin.clone(), then.clone());
-        let w = Write::new(&ctx, move |asked| call("checkout", json!({ "repo": repo, "worktree": worktree, "target": t, "onDiverged": on_diverged, "expect": e, "confirmAutostash": asked.autostash })))
+        let w = Write::new(&ctx, move |asked| call("checkout", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "target": t, "onDiverged": on_diverged, "expect": e, "confirmAutostash": asked.autostash })))
             .origin(origin)
             .handle(|this, err, cx| this.offer_worktree(err, cx))
             .on_success(move |this, out, cx| {
@@ -212,7 +212,7 @@ impl GitVolt {
             label: label.into(),
             run: Rc::new(move |_, cx| {
                 let path = path.clone();
-                this.update(cx, |v, cx| v.switch_worktree(path, cx)).ok();
+                this.update(cx, |v, cx| if label == "Switch to it" { v.switch_worktree(path, cx) } else { v.open_worktree_tab(path, cx) }).ok();
             }),
         };
         let this = cx.weak_entity();
@@ -321,7 +321,7 @@ impl GitVolt {
         let mv = checkout.then(|| self.head_move(repo, Some(Some(name.clone())), Some(sha.clone())));
         let worktree = ctx.worktree.clone();
         let full = format!("refs/heads/{name}");
-        let w = Write::new(&ctx, move |asked| call("createBranch", json!({ "repo": repo, "worktree": worktree, "name": name, "start": sha, "startRef": start_ref, "checkout": checkout, "expect": { "head": null, "refs": { full.clone(): null } }, "confirmAutostash": asked.autostash }))).on_end(move |this, _, cx| {
+        let w = Write::new(&ctx, move |asked| call("createBranch", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "name": name, "start": sha, "startRef": start_ref, "checkout": checkout, "expect": { "head": null, "refs": { full.clone(): null } }, "confirmAutostash": asked.autostash }))).on_end(move |this, _, cx| {
             if let Some(mv) = mv {
                 this.end_move(repo, mv);
             }
@@ -344,7 +344,7 @@ impl GitVolt {
                 let (repo, worktree, from, to, oid, ctx) = (ctx.repo, ctx.worktree.clone(), name.clone(), answer.value, oid.clone(), ctx.clone());
                 this.update(cx, |v, cx| {
                     let (a, b) = (format!("refs/heads/{from}"), format!("refs/heads/{to}"));
-                    v.write(Write::new(&ctx, move |_| call("renameBranch", json!({ "repo": repo, "worktree": worktree, "from": from, "to": to, "expect": { "head": null, "refs": { a.clone(): oid, b.clone(): null } } }))), cx);
+                    v.write(Write::new(&ctx, move |_| call("renameBranch", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "from": from, "to": to, "expect": { "head": null, "refs": { a.clone(): oid, b.clone(): null } } }))), cx);
                 })
                 .ok();
             },
@@ -358,7 +358,7 @@ impl GitVolt {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let w = Write::new(&ctx, move |_| {
             let up = upstream.as_ref().map(|(r, b)| json!({ "remote": r, "branch": b }));
-            call("setUpstream", json!({ "repo": repo, "worktree": worktree, "branch": branch, "upstream": up }))
+            call("setUpstream", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": branch, "upstream": up }))
         });
         self.write(w, cx);
     }
@@ -451,7 +451,7 @@ impl GitVolt {
         let repo = ctx.repo;
         let mv = self.head_move(repo, None, Some(sha.clone()));
         let worktree = ctx.worktree.clone();
-        let w = Write::new(&ctx, move |asked| call("reset", json!({ "repo": repo, "worktree": worktree, "to": sha, "mode": mode, "expect": { "head": head, "refs": {} }, "discard": asked.discard })))
+        let w = Write::new(&ctx, move |asked| call("reset", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "to": sha, "mode": mode, "expect": { "head": head, "refs": {} }, "discard": asked.discard })))
             .origin(origin)
             .on_end(move |this, _, cx| {
                 this.end_move(repo, mv);
@@ -519,7 +519,7 @@ impl GitVolt {
                 Some(oid) => json!({ "head": null, "refs": { format!("refs/heads/{}", p.branch): oid } }),
                 None => json!({ "head": null, "refs": {} }),
             };
-            call("deleteBranch", json!({ "repo": repo, "worktree": worktree, "branch": p.branch, "local": p.local.is_some(), "remote": remote, "force": force, "expect": expect }))
+            call("deleteBranch", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": p.branch, "local": p.local.is_some(), "remote": remote, "force": force, "expect": expect }))
         })
         .origin(origin)
         .on_success(move |this, out, cx| {
@@ -564,7 +564,7 @@ impl GitVolt {
             return;
         }
         let api = self.api.clone();
-        let body = call("integratePreview", json!({ "repo": ctx.repo, "worktree": ctx.worktree, "kind": kind, "target": target }));
+        let body = call("integratePreview", json!({ "repo": crate::app::core_repo(ctx.repo), "worktree": ctx.worktree, "kind": kind, "target": target }));
         let read = self.rt.spawn(async move { api.dispatch(crate::write::request_of(body)?).await });
         let hold = arm::hold_row(cx);
         cx.spawn(async move |this, cx| {
@@ -645,7 +645,7 @@ impl GitVolt {
     fn send_integrate(&mut self, ctx: WriteCtx, kind: &'static str, target: String, x: String, ff_only: bool, update_refs: Option<bool>, origin: Origin, cx: &mut Context<Self>) {
         let (repo, worktree, t) = (ctx.repo, ctx.worktree.clone(), target.clone());
         let w = Write::new(&ctx, move |asked| {
-            let mut params = json!({ "repo": repo, "worktree": worktree, "kind": kind, "target": t, "confirm": { "autostash": asked.autostash } });
+            let mut params = json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "kind": kind, "target": t, "confirm": { "autostash": asked.autostash } });
             if let Some(u) = update_refs {
                 params["updateRefs"] = json!(u);
             }
@@ -676,7 +676,7 @@ impl GitVolt {
     /// "Fast-forward Y to X".
     pub fn fast_forward(&mut self, ctx: WriteCtx, branch: String, to: String, cx: &mut Context<Self>) {
         let (repo, worktree, b, t) = (ctx.repo, ctx.worktree.clone(), branch.clone(), to.clone());
-        let w = Write::new(&ctx, move |_| call("fastForward", json!({ "repo": repo, "worktree": worktree, "branch": b, "to": t, "expect": { "head": null, "refs": {} } }))).on_success(move |_, o, cx| toast::show(if o["status"] == "upToDate" { format!("{branch} is up to date") } else { format!("Fast-forwarded {branch} to {to}") }, cx));
+        let w = Write::new(&ctx, move |_| call("fastForward", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": b, "to": t, "expect": { "head": null, "refs": {} } }))).on_success(move |_, o, cx| toast::show(if o["status"] == "upToDate" { format!("{branch} is up to date") } else { format!("Fast-forwarded {branch} to {to}") }, cx));
         self.write(w, cx);
     }
 
@@ -690,7 +690,7 @@ impl GitVolt {
         let oids: Vec<String> = commits.iter().map(|c| c.oid.clone()).collect();
         let count = commits.len();
         let what = if let [one] = commits.as_slice() { one.oid.chars().take(crate::model::SHORT_SHA).collect::<String>() } else { format!("{count} commits") };
-        let w = Write::new(&ctx, move |asked| call(method, json!({ "repo": repo, "worktree": worktree, "oids": oids, "noCommit": no_commit, "expect": { "head": head, "refs": {} }, "confirm": { "autostash": asked.autostash } }))).on_success(move |this, o, cx| {
+        let w = Write::new(&ctx, move |asked| call(method, json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "oids": oids, "noCommit": no_commit, "expect": { "head": head, "refs": {} }, "confirm": { "autostash": asked.autostash } }))).on_success(move |this, o, cx| {
             let verb = if pick { "Cherry-picked" } else { "Reverted" };
             let committed = o["committed"].as_bool() == Some(true);
             let warn = |m: String, cx: &mut Context<GitVolt>| toast::show_with(m, Options { warning: true, ..Default::default() }, cx);
@@ -761,7 +761,7 @@ impl GitVolt {
     pub fn create_tag(&mut self, ctx: WriteCtx, sha: String, name: String, message: Option<String>, cx: &mut Context<Self>) {
         let (repo, worktree, n) = (ctx.repo, ctx.worktree.clone(), name.clone());
         let plain = message.is_none();
-        let w = Write::new(&ctx, move |_| call("createTag", json!({ "repo": repo, "worktree": worktree, "name": n, "target": sha, "message": message }))).on_success(move |_, _, cx| toast::show(if plain { format!("Created tag {name}") } else { format!("Created annotated tag {name}") }, cx));
+        let w = Write::new(&ctx, move |_| call("createTag", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "name": n, "target": sha, "message": message }))).on_success(move |_, _, cx| toast::show(if plain { format!("Created tag {name}") } else { format!("Created annotated tag {name}") }, cx));
         self.write(w, cx);
     }
 
@@ -795,7 +795,7 @@ impl GitVolt {
             (Some(r), false) => format!("Deleted {tag} from {r}"),
             (None, _) => format!("Deleted tag {tag}"),
         };
-        let w = Write::new(&ctx, move |_| call("deleteTag", json!({ "repo": repo, "worktree": worktree, "name": tag, "local": local, "remote": remote }))).on_success(move |_, _, cx| toast::show(done.clone(), cx));
+        let w = Write::new(&ctx, move |_| call("deleteTag", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "name": tag, "local": local, "remote": remote }))).on_success(move |_, _, cx| toast::show(done.clone(), cx));
         self.write(w, cx);
     }
 
@@ -804,7 +804,7 @@ impl GitVolt {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let ctx = tab.write_target();
         let (repo, worktree, r, t) = (ctx.repo, ctx.worktree.clone(), remote.clone(), tag.clone());
-        let w = Write::new(&ctx, move |_| call("pushTags", json!({ "repo": repo, "worktree": worktree, "remote": r, "tag": t }))).on_success(move |this, o, cx| {
+        let w = Write::new(&ctx, move |_| call("pushTags", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "remote": r, "tag": t }))).on_success(move |this, o, cx| {
             let done = match (o["upToDate"].as_bool() == Some(true), &tag) {
                 (true, Some(t)) => format!("{remote} already has {t}"),
                 (true, None) => format!("{remote} already has every tag"),
@@ -822,7 +822,7 @@ impl GitVolt {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let ctx = tab.write_target();
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(&ctx, move |asked| call("restoreFile", json!({ "repo": repo, "worktree": worktree, "sha": sha, "path": path, "confirm": asked.discard }))).origin(origin);
+        let w = Write::new(&ctx, move |asked| call("restoreFile", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "sha": sha, "path": path, "confirm": asked.discard }))).origin(origin);
         self.write(w, cx);
     }
 
@@ -1034,14 +1034,14 @@ mod tests {
         let f = Fixture::new().await;
         let (repo, wt) = (f.repo, f.worktree.clone());
         let head = f.git(&["rev-parse", "HEAD"]);
-        f.ok(call("createBranch", json!({ "repo": repo, "worktree": wt, "name": "feature/x", "start": head, "startRef": "refs/heads/main", "checkout": true, "expect": { "head": null, "refs": { "refs/heads/feature/x": null } }, "confirmAutostash": false }))).await;
+        f.ok(call("createBranch", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "name": "feature/x", "start": head, "startRef": "refs/heads/main", "checkout": true, "expect": { "head": null, "refs": { "refs/heads/feature/x": null } }, "confirmAutostash": false }))).await;
         assert_eq!(f.git(&["branch", "--show-current"]), "feature/x");
-        f.ok(call("checkout", json!({ "repo": repo, "worktree": wt, "target": { "kind": "branch", "name": "main" }, "onDiverged": null, "expect": { "head": head, "refs": { "refs/heads/main": head } }, "confirmAutostash": false }))).await;
+        f.ok(call("checkout", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "target": { "kind": "branch", "name": "main" }, "onDiverged": null, "expect": { "head": head, "refs": { "refs/heads/main": head } }, "confirmAutostash": false }))).await;
         assert_eq!(f.git(&["branch", "--show-current"]), "main");
-        f.ok(call("checkout", json!({ "repo": repo, "worktree": wt, "target": { "kind": "detached", "oid": head }, "onDiverged": null, "expect": { "head": head, "refs": {} }, "confirmAutostash": false }))).await;
+        f.ok(call("checkout", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "target": { "kind": "detached", "oid": head }, "onDiverged": null, "expect": { "head": head, "refs": {} }, "confirmAutostash": false }))).await;
         assert_eq!(f.git(&["branch", "--show-current"]), "");
-        f.ok(call("checkout", json!({ "repo": repo, "worktree": wt, "target": { "kind": "branch", "name": "main" }, "onDiverged": null, "expect": { "head": head, "refs": {} }, "confirmAutostash": false }))).await;
-        f.ok(call("renameBranch", json!({ "repo": repo, "worktree": wt, "from": "feature/x", "to": "feature/y", "expect": { "head": null, "refs": { "refs/heads/feature/x": head, "refs/heads/feature/y": null } } }))).await;
+        f.ok(call("checkout", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "target": { "kind": "branch", "name": "main" }, "onDiverged": null, "expect": { "head": head, "refs": {} }, "confirmAutostash": false }))).await;
+        f.ok(call("renameBranch", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "from": "feature/x", "to": "feature/y", "expect": { "head": null, "refs": { "refs/heads/feature/x": head, "refs/heads/feature/y": null } } }))).await;
         assert!(f.git(&["branch"]).contains("feature/y"));
         // Unmerged: the core says so first, and force takes it, and undo brings it back.
         f.git(&["checkout", "-q", "feature/y"]);
@@ -1050,14 +1050,14 @@ mod tests {
         f.git(&["commit", "-qm", "Unmerged"]);
         f.git(&["checkout", "-q", "main"]);
         let tip = f.git(&["rev-parse", "feature/y"]);
-        let del = |force: bool| call("deleteBranch", json!({ "repo": repo, "worktree": wt, "branch": "feature/y", "local": true, "remote": null, "force": force, "expect": { "head": null, "refs": { "refs/heads/feature/y": tip } } }));
+        let del = |force: bool| call("deleteBranch", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "branch": "feature/y", "local": true, "remote": null, "force": force, "expect": { "head": null, "refs": { "refs/heads/feature/y": tip } } }));
         let asked = f.ok(del(false)).await;
         assert_eq!(asked["outcome"]["status"], "unmerged");
         assert!(f.git(&["branch"]).contains("feature/y"), "nothing ran");
         let r = f.ok(del(true)).await;
         assert!(!f.git(&["branch"]).contains("feature/y"));
         let entry = r["journal"]["undo"]["entry"].as_u64().unwrap();
-        f.ok(call("undo", json!({ "repo": repo, "worktree": wt, "entry": entry, "confirm": null, "confirmAutostash": false, "withoutIndex": false, "confirmDiscard": false }))).await;
+        f.ok(call("undo", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "entry": entry, "confirm": null, "confirmAutostash": false, "withoutIndex": false, "confirmDiscard": false }))).await;
         assert!(f.git(&["branch"]).contains("feature/y"));
     }
 
@@ -1071,7 +1071,7 @@ mod tests {
         f.git(&["checkout", "-q", "main"]);
         f.write("a.txt", "mine\n");
         let (head, tip) = (f.git(&["rev-parse", "HEAD"]), f.git(&["rev-parse", "other"]));
-        let body = |confirm: bool| call("checkout", json!({ "repo": repo, "worktree": wt, "target": { "kind": "branch", "name": "other" }, "onDiverged": null, "expect": { "head": head, "refs": { "refs/heads/other": tip } }, "confirmAutostash": confirm }));
+        let body = |confirm: bool| call("checkout", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "target": { "kind": "branch", "name": "other" }, "onDiverged": null, "expect": { "head": head, "refs": { "refs/heads/other": tip } }, "confirmAutostash": confirm }));
         let e = f.send(body(false)).await.unwrap_err();
         let q = crate::write::question(&e, Default::default()).expect("the clean-restore question");
         assert_eq!(q.flag, crate::write::Flag::Autostash);
@@ -1085,7 +1085,7 @@ mod tests {
         let f = Fixture::new().await;
         let (repo, wt) = (f.repo, f.worktree.clone());
         let (top, base) = (f.git(&["rev-parse", "HEAD"]), f.git(&["rev-parse", "HEAD~1"]));
-        let body = |to: &str, mode: &str, head: &str, discard: bool| call("reset", json!({ "repo": repo, "worktree": wt, "to": to, "mode": mode, "expect": { "head": head, "refs": {} }, "discard": discard }));
+        let body = |to: &str, mode: &str, head: &str, discard: bool| call("reset", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "to": to, "mode": mode, "expect": { "head": head, "refs": {} }, "discard": discard }));
         f.ok(body(&base, "soft", &top, false)).await;
         assert!(f.git(&["status", "--porcelain"]).starts_with('M'), "soft keeps it staged");
         f.ok(body(&top, "mixed", &base, false)).await;
@@ -1110,10 +1110,10 @@ mod tests {
         f.git(&["commit", "-qm", "Side"]);
         f.git(&["checkout", "-q", "main"]);
         // Behind: Fast-forward main to side.
-        let p = f.ok(call("integratePreview", json!({ "repo": repo, "worktree": wt, "kind": "merge", "target": "side" }))).await;
+        let p = f.ok(call("integratePreview", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "kind": "merge", "target": "side" }))).await;
         assert_eq!(p["conflicts"].as_array().map(Vec::len), Some(0));
         let body = |kind: &str, target: &str, ff: bool| {
-            let mut params = json!({ "repo": repo, "worktree": wt, "kind": kind, "target": target, "confirm": { "autostash": false } });
+            let mut params = json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "kind": kind, "target": target, "confirm": { "autostash": false } });
             if ff {
                 params["ffOnly"] = json!(true);
             }
@@ -1142,7 +1142,7 @@ mod tests {
         f.git(&["checkout", "-q", "main"]);
         f.git(&["branch", "behind", "HEAD~1"]);
         let main = f.git(&["rev-parse", "HEAD"]);
-        f.ok(call("fastForward", json!({ "repo": repo, "worktree": wt, "branch": "behind", "to": "main", "expect": { "head": null, "refs": {} } }))).await;
+        f.ok(call("fastForward", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "branch": "behind", "to": "main", "expect": { "head": null, "refs": {} } }))).await;
         assert_eq!(f.git(&["rev-parse", "behind"]), main);
     }
 
@@ -1157,12 +1157,12 @@ mod tests {
         f.write("a.txt", "main\n");
         f.git(&["commit", "-qam", "Main"]);
         let head = f.git(&["rev-parse", "HEAD"]);
-        let p = f.ok(call("integratePreview", json!({ "repo": repo, "worktree": wt, "kind": "merge", "target": "side" }))).await;
+        let p = f.ok(call("integratePreview", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "kind": "merge", "target": "side" }))).await;
         assert_eq!(p["conflicts"].as_array().map(Vec::len), Some(1));
-        let r = f.ok(call("integrate", json!({ "repo": repo, "worktree": wt, "kind": "merge", "target": "side", "confirm": { "autostash": false } }))).await;
+        let r = f.ok(call("integrate", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "kind": "merge", "target": "side", "confirm": { "autostash": false } }))).await;
         assert_eq!(r["outcome"]["status"], "stopped");
         assert!(f.git(&["status", "--porcelain"]).contains("UU a.txt"));
-        f.ok(call("mergeAbort", json!({ "repo": repo, "worktree": wt }))).await;
+        f.ok(call("mergeAbort", json!({ "repo": crate::app::core_repo(repo), "worktree": wt }))).await;
         assert_eq!(f.git(&["rev-parse", "HEAD"]), head);
         assert_eq!(f.git(&["status", "--porcelain"]), "");
     }
@@ -1178,7 +1178,7 @@ mod tests {
         let pick = f.git(&["rev-parse", "HEAD"]);
         f.git(&["checkout", "-q", "main"]);
         let head = f.git(&["rev-parse", "HEAD"]);
-        let body = |method: &str, oid: &str, no_commit: bool, head: &str| call(method, json!({ "repo": repo, "worktree": wt, "oids": [oid], "noCommit": no_commit, "expect": { "head": head, "refs": {} }, "confirm": { "autostash": false } }));
+        let body = |method: &str, oid: &str, no_commit: bool, head: &str| call(method, json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "oids": [oid], "noCommit": no_commit, "expect": { "head": head, "refs": {} }, "confirm": { "autostash": false } }));
         let r = f.ok(body("cherryPick", &pick, false, &head)).await;
         assert_eq!(r["outcome"]["status"], "done");
         assert_eq!(f.git(&["log", "-1", "--format=%s"]), "Side");
@@ -1198,16 +1198,16 @@ mod tests {
         let bare = f.bare_origin();
         let (repo, wt) = (f.repo, f.worktree.clone());
         let head = f.git(&["rev-parse", "HEAD"]);
-        let make = |name: &str, message: Value| call("createTag", json!({ "repo": repo, "worktree": wt, "name": name, "target": head, "message": message }));
+        let make = |name: &str, message: Value| call("createTag", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "name": name, "target": head, "message": message }));
         f.ok(make("v1", Value::Null)).await;
         f.ok(make("v2", json!("A message"))).await;
         assert_eq!(f.git(&["cat-file", "-t", "v1"]), "commit");
         assert_eq!(f.git(&["cat-file", "-t", "v2"]), "tag");
-        f.ok(call("pushTags", json!({ "repo": repo, "worktree": wt, "remote": "origin", "tag": "v1" }))).await;
+        f.ok(call("pushTags", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "remote": "origin", "tag": "v1" }))).await;
         assert!(git(&bare, &["tag"]).contains("v1"));
-        f.ok(call("pushTags", json!({ "repo": repo, "worktree": wt, "remote": "origin", "tag": null }))).await;
+        f.ok(call("pushTags", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "remote": "origin", "tag": null }))).await;
         assert!(git(&bare, &["tag"]).contains("v2"));
-        f.ok(call("deleteTag", json!({ "repo": repo, "worktree": wt, "name": "v1", "local": true, "remote": "origin" }))).await;
+        f.ok(call("deleteTag", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "name": "v1", "local": true, "remote": "origin" }))).await;
         assert!(!f.git(&["tag"]).contains("v1"));
         assert!(!git(&bare, &["tag"]).contains("v1"));
     }
@@ -1219,12 +1219,12 @@ mod tests {
         let (repo, wt) = (f.repo, f.worktree.clone());
         f.git(&["branch", "x"]);
         f.git(&["push", "-q", "origin", "x"]);
-        f.ok(call("setUpstream", json!({ "repo": repo, "worktree": wt, "branch": "x", "upstream": { "remote": "origin", "branch": "x" } }))).await;
+        f.ok(call("setUpstream", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "branch": "x", "upstream": { "remote": "origin", "branch": "x" } }))).await;
         assert_eq!(f.git(&["rev-parse", "--abbrev-ref", "x@{u}"]), "origin/x");
-        f.ok(call("setUpstream", json!({ "repo": repo, "worktree": wt, "branch": "x", "upstream": null }))).await;
+        f.ok(call("setUpstream", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "branch": "x", "upstream": null }))).await;
         assert!(!f.git(&["config", "--list"]).contains("branch.x.merge"));
         let tracking = f.git(&["rev-parse", "origin/x"]);
-        f.ok(call("deleteBranch", json!({ "repo": repo, "worktree": wt, "branch": "x", "local": false, "remote": { "remote": "origin", "branch": "x", "lease": tracking }, "force": false, "expect": { "head": null, "refs": {} } }))).await;
+        f.ok(call("deleteBranch", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "branch": "x", "local": false, "remote": { "remote": "origin", "branch": "x", "lease": tracking }, "force": false, "expect": { "head": null, "refs": {} } }))).await;
         assert!(!git(&bare, &["branch"]).contains('x'));
     }
 
@@ -1234,7 +1234,7 @@ mod tests {
         let (repo, wt) = (f.repo, f.worktree.clone());
         let old = f.git(&["rev-parse", "HEAD~1"]);
         f.write("b.txt", "dirty\n");
-        let body = |confirm: bool| call("restoreFile", json!({ "repo": repo, "worktree": wt, "sha": old, "path": "b.txt", "confirm": confirm }));
+        let body = |confirm: bool| call("restoreFile", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "sha": old, "path": "b.txt", "confirm": confirm }));
         let e = f.send(body(false)).await.unwrap_err();
         assert!(crate::write::question(&e, Default::default()).is_some_and(|q| q.flag == crate::write::Flag::Discard));
         f.ok(body(true)).await;

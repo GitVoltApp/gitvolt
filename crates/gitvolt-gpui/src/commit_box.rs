@@ -671,9 +671,9 @@ impl GitVolt {
         }
         let ctx = crate::write::WriteCtx { repo, worktree: worktree.clone() };
         let w = Write::new(&ctx, move |_| match kind {
-            OpName::Merge => call("mergeAbort", json!({ "repo": repo, "worktree": worktree })),
-            OpName::Rebase => call("rebaseControl", json!({ "repo": repo, "worktree": worktree, "action": action, "message": message })),
-            _ => call("pickControl", json!({ "repo": repo, "worktree": worktree, "action": action, "message": message })),
+            OpName::Merge => call("mergeAbort", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree })),
+            OpName::Rebase => call("rebaseControl", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "action": action, "message": message })),
+            _ => call("pickControl", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "action": action, "message": message })),
         })
         .origin(origin)
         .on_success(move |this, out, cx| {

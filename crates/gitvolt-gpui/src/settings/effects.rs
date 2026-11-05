@@ -43,7 +43,7 @@ impl GitVolt {
         }
         self.settings_ui.identity_for = Some(key);
         let api = self.api.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::GitIdentity { repo, worktree }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::GitIdentity { repo: repo.map(crate::app::core_repo), worktree }).await });
         cx.spawn(async move |this, cx| {
             let answer = read.await;
             this.update(cx, |v, cx| {
@@ -195,6 +195,28 @@ impl GitVolt {
             cx.refresh_windows();
         }
         self.sync_fetch_schedule(cx);
+    }
+
+    /// Ctrl+=, Ctrl+- and Ctrl+0: over an open file its text size, else the app's zoom.
+    pub fn zoom_key(&mut self, dir: i32, cx: &mut Context<Self>) {
+        let over_file = self.tabs.get(self.active).is_some_and(|t| t.diff.is_some() && t.keys == crate::app::KeyArea::Diff);
+        if over_file {
+            let now = self.settings["editorFontSize"].as_f64().unwrap_or(13.);
+            let next = if dir == 0 { 13. } else { (now + dir as f64).clamp(8., 32.) };
+            return self.set_settings(move |s| s["editorFontSize"] = json!(next as u32), cx);
+        }
+        self.set_zoom(crate::zoom::next_zoom(crate::zoom::percent(), dir), cx);
+    }
+
+    pub fn set_zoom(&mut self, percent: u32, cx: &mut Context<Self>) {
+        self.prefs["zoom"] = json!(percent);
+        self.save_layout();
+        // Not from inside the window's own update: it relays out as a resize does.
+        cx.spawn(async move |this, cx| {
+            cx.update(|_| crate::zoom::set_percent(percent));
+            this.update(cx, |_, cx| cx.notify()).ok();
+        })
+        .detach();
     }
 
     /// The advance a line wraps by, of the font that's set: measured with a window to hand.

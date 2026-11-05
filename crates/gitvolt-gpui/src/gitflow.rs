@@ -313,7 +313,7 @@ impl GitVolt {
 
     pub fn init_gitflow(&mut self, ctx: WriteCtx, config: Flow, editing: bool, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(&ctx, move |_| call("gitflowInit", json!({ "repo": repo, "worktree": worktree, "config": config.json() }))).on_success(move |this, _, cx| {
+        let w = Write::new(&ctx, move |_| call("gitflowInit", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "config": config.json() }))).on_success(move |this, _, cx| {
             toast::show(if editing { "Git flow settings saved" } else { "Git flow is set up" }, cx);
             this.reload(repo, cx);
         });
@@ -428,7 +428,7 @@ impl GitVolt {
         // An earlier finish that stopped before development tagged production already: that tag stays.
         if tagged && !cfg!(test) {
             let (api, b, t, m, k, tags) = (self.api.clone(), branch.clone(), tag.clone(), message.clone(), kept.clone(), tags);
-            let read = self.rt.spawn(async move { api.dispatch(Request::GitflowFinishedTag { repo, branch: b }).await });
+            let read = self.rt.spawn(async move { api.dispatch(Request::GitflowFinishedTag { repo: crate::app::core_repo(repo), branch: b }).await });
             cx.spawn(async move |_, cx| {
                 let Ok(Ok(v)) = read.await else { return };
                 let Some(found) = v.as_str().map(str::to_string) else { return };
@@ -566,7 +566,7 @@ impl GitVolt {
         let (repo, worktree, b) = (ctx.repo, ctx.worktree.clone(), branch.clone());
         let c2 = ctx.clone();
         let w = Write::new(&ctx, move |_| {
-            let mut params = json!({ "repo": repo, "worktree": worktree, "branch": b, "keep": keep, "expect": { "head": null, "refs": refs } });
+            let mut params = json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "branch": b, "keep": keep, "expect": { "head": null, "refs": refs } });
             if let Some(t) = &tag {
                 params["tag"] = json!(t);
             }

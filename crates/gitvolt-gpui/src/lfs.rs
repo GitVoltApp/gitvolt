@@ -88,7 +88,7 @@ impl GitVolt {
         self.lfs.failed.remove(&repo);
         self.lfs.loading.insert(repo);
         let api = self.api.clone();
-        let body = call("lfsStatus", if recheck { json!({ "repo": repo, "recheck": true }) } else { json!({ "repo": repo }) });
+        let body = call("lfsStatus", if recheck { json!({ "repo": crate::app::core_repo(repo), "recheck": true }) } else { json!({ "repo": crate::app::core_repo(repo) }) });
         let read = self.rt.spawn(async move { api.dispatch(crate::write::request_of(body)?).await });
         cx.spawn(async move |this, cx| {
             let answer = read.await;
@@ -131,7 +131,7 @@ impl GitVolt {
         for ((repo, worktree), paths) in std::mem::take(&mut self.lfs.queued) {
             let asked: Vec<String> = paths.into_iter().collect();
             let api = self.api.clone();
-            let body = call("lfsTracked", json!({ "repo": repo, "worktree": worktree, "paths": asked }));
+            let body = call("lfsTracked", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "paths": asked }));
             let read = self.rt.spawn(async move { api.dispatch(crate::write::request_of(body)?).await });
             cx.spawn(async move |this, cx| {
                 let Ok(Ok(found)) = read.await else { return };
@@ -236,7 +236,7 @@ impl GitVolt {
     pub fn lfs_transfer(&mut self, pull: bool, cx: &mut Context<Self>) {
         let Some(ctx) = self.tabs.get(self.active).map(|t| t.write_target()) else { return };
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        let w = Write::new(&ctx, move |_| call(if pull { "lfsPull" } else { "lfsFetch" }, json!({ "repo": repo, "worktree": worktree }))).on_success(move |this, out, cx| {
+        let w = Write::new(&ctx, move |_| call(if pull { "lfsPull" } else { "lfsFetch" }, json!({ "repo": crate::app::core_repo(repo), "worktree": worktree }))).on_success(move |this, out, cx| {
             this.lfs_downloaded(cx);
             if out["notSetUp"] == true {
                 toast::show_with(format!("Fetched the LFS files. {NOT_SET_UP}"), Options { warning: true, detail: Some(INSTALL_COMMAND.into()), ..Default::default() }, cx);
@@ -250,7 +250,7 @@ impl GitVolt {
     /// Track or stop tracking `pattern`: `.gitattributes` changes, a WIP change to commit, undoable.
     pub fn lfs_set_tracked(&mut self, ctx: WriteCtx, pattern: String, track: bool, cx: &mut Context<Self>) {
         let (repo, worktree, p) = (ctx.repo, ctx.worktree.clone(), pattern.clone());
-        let w = Write::new(&ctx, move |_| call(if track { "lfsTrack" } else { "lfsUntrack" }, json!({ "repo": repo, "worktree": worktree, "pattern": p }))).on_success(move |this, _, cx| {
+        let w = Write::new(&ctx, move |_| call(if track { "lfsTrack" } else { "lfsUntrack" }, json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "pattern": p }))).on_success(move |this, _, cx| {
             let set_up = this.lfs.status.get(&repo).is_none_or(|s| s.filter);
             this.refresh_lfs(repo, false, cx);
             if !track {
@@ -305,7 +305,7 @@ impl GitVolt {
         refs.dedup();
         diff.lfs_busy = true;
         let (repo, worktree, p) = (ctx.repo, ctx.worktree.clone(), path.clone());
-        let w = Write::new(&ctx, move |_| call("lfsDownload", json!({ "repo": repo, "worktree": worktree, "path": p, "refs": refs, "oids": oids })))
+        let w = Write::new(&ctx, move |_| call("lfsDownload", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": p, "refs": refs, "oids": oids })))
             .on_success(move |this, out, cx| {
                 this.lfs_downloaded(cx);
                 if out["missing"].as_array().is_some_and(|m| !m.is_empty()) {

@@ -145,7 +145,7 @@ impl GitVolt {
         page.loading_files = true;
         let api = self.api.clone();
         let wt = worktree.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::WorktreeFiles { repo, worktree: wt }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::WorktreeFiles { repo: crate::app::core_repo(repo), worktree: wt }).await });
         cx.spawn(async move |this, cx| {
             let answer = read.await;
             this.update(cx, |v, cx| {

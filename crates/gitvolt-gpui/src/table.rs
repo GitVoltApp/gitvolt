@@ -364,7 +364,7 @@ impl GitVolt {
         }
         let api = self.api.clone();
         let at = id.clone();
-        let done = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo, id: at }).await });
+        let done = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo: crate::app::core_repo(repo), id: at }).await });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(v)) = done.await else { return };
             let (summary, body) = (v["summary"].as_str().unwrap_or_default(), v["body"].as_str().unwrap_or_default().trim());

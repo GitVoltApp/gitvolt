@@ -196,11 +196,51 @@ impl GitVolt {
             }
         });
         self.fetch_schedule = Some((secs, task));
+        self.fetch_if_due(cx);
+    }
+
+    /// Started, or the tab became active: one fetch at once if the last one is older than the interval.
+    pub fn fetch_if_due(&mut self, cx: &mut Context<Self>) {
+        if let Some(secs) = self.fetch_schedule.as_ref().map(|f| f.0) {
+            self.scheduled_fetch(Duration::from_secs(secs as u64), cx);
+        }
+    }
+
+    /// A tick missed while minimized is replayed once when the window's back.
+    pub fn fetch_on_focus(&mut self, cx: &mut Context<Self>) {
+        if std::mem::take(&mut self.fetch_missed) {
+            self.fetch_if_due(cx);
+        }
+    }
+
+    pub fn listen_for_launches(&mut self, rx: std::sync::mpsc::Receiver<Option<String>>, cx: &mut Context<Self>) {
+        let rx = std::sync::Arc::new(std::sync::Mutex::new(rx));
+        cx.spawn(async move |this, cx| {
+            loop {
+                let r = rx.clone();
+                let next = cx.background_executor().spawn(async move { r.lock().map_or(None, |r| r.recv().ok()) }).await;
+                let Some(path) = next else { return };
+                let live = this.update(cx, |v, cx| {
+                    if let Some(path) = path {
+                        v.open_as(crate::app::OpenAs { path, in_tab: None, new_tab: false, alias: None, at: None, activate: true }, cx);
+                    }
+                    if let Some(window) = v.window {
+                        window.update(cx, |_, window, _| window.activate_window()).ok();
+                    }
+                    cx.notify();
+                });
+                if live.is_err() {
+                    return;
+                }
+            }
+        })
+        .detach();
     }
 
     fn scheduled_fetch(&mut self, interval: Duration, cx: &mut Context<Self>) {
         // A minimized window fetches nothing; coming back asks at once if it's due.
         if self.window_hidden {
+            self.fetch_missed = true;
             return;
         }
         let Some(tab) = self.tabs.get(self.active).filter(|t| !t.is_open_tab()) else { return };
@@ -213,7 +253,7 @@ impl GitVolt {
 
     /// Cancels the queue's running op, drops an item, resumes or clears.
     fn queue_rows(&self, repo: u32, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
-        let Some(q) = self.ops.queues.get(&repo) else { return Vec::new() };
+        let Some(q) = self.ops.queues.get(&crate::app::core_repo(repo)) else { return Vec::new() };
         let mut rows = Vec::new();
         let action = |id: String, label: String, glyph: &'static str, tooltip: String, body: Value| {
             let weak = this.clone();
@@ -227,12 +267,12 @@ impl GitVolt {
         }
         for item in &q.queued {
             let tip = if q.stopped.is_some() { "Not run: drop it from the queue" } else { "Queued: drop it from the queue" };
-            rows.push(action(format!("queue.{}", item.id), format!("Remove {}", item.label), "x", tip.into(), call("queueRemove", json!({ "repo": repo, "id": item.id }))));
+            rows.push(action(format!("queue.{}", item.id), format!("Remove {}", item.label), "x", tip.into(), call("queueRemove", json!({ "repo": crate::app::core_repo(repo), "id": item.id }))));
         }
         if q.stopped.is_some() {
             rows.push(MenuRow::Separator);
-            rows.push(action("queue.resume".into(), "Resume".into(), "play", "Run the items that didn't run, each against the repository as it is now".into(), call("queueResume", json!({ "repo": repo }))));
-            rows.push(action("queue.clear".into(), "Clear".into(), "list-x", "Drop the items that didn't run".into(), call("queueClear", json!({ "repo": repo }))));
+            rows.push(action("queue.resume".into(), "Resume".into(), "play", "Run the items that didn't run, each against the repository as it is now".into(), call("queueResume", json!({ "repo": crate::app::core_repo(repo) }))));
+            rows.push(action("queue.clear".into(), "Clear".into(), "list-x", "Drop the items that didn't run".into(), call("queueClear", json!({ "repo": crate::app::core_repo(repo) }))));
         }
         rows
     }
@@ -466,8 +506,8 @@ pub fn status_items(v: &GitVolt, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
     let tab = v.tabs.get(v.active);
     let repo = tab.map(|t| t.id);
     if let Some(repo) = repo
-        && !queue_idle(v.ops.queues.get(&repo))
-        && let Some(q) = v.ops.queues.get(&repo)
+        && !queue_idle(v.ops.queues.get(&crate::app::core_repo(repo)))
+        && let Some(q) = v.ops.queues.get(&crate::app::core_repo(repo))
     {
         let stopped = q.stopped.is_some();
         out.push(

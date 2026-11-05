@@ -25,7 +25,7 @@ pub const REVEAL_HOVER_MS: u64 = 400;
 /// Above the row only when the title and this many rows (fewer for a shorter run) fit there.
 pub const REVEAL_MIN_ROWS: f32 = 8.;
 
-fn no_repo() -> Value {
+pub fn no_repo() -> Value {
     json!({ "pin": null, "columns": null, "hiddenColumns": [], "sidebarSort": {}, "collapsed": [], "editor": null, "mrFilter": null, "forgeTargetRemote": null, "forkTrunkNoticeDismissed": false })
 }
 
@@ -36,6 +36,10 @@ fn builtin_presets() -> Vec<Value> {
         builtin("all-collapsed", "All, collapsed", "cyan", json!([{ "action": "show", "matcher": { "kind": "trunk" } }, { "action": "show", "matcher": { "kind": "checkedOut" } }]), "collapse", true),
         builtin("mine", "Mine", "green", json!([{ "action": "show", "matcher": { "kind": "trunk" } }, { "action": "show", "matcher": { "kind": "checkedOut" } }, { "action": "show", "matcher": { "kind": "commitsBy", "author": { "kind": "me" } } }]), "hide", true),
     ]
+}
+
+pub fn is_builtin(id: &str) -> bool {
+    builtin_presets().iter().any(|b| b["id"] == id)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -602,6 +606,11 @@ impl GitVolt {
                 );
             }
         }
+        rows.push(MenuRow::Separator);
+        let w = weak.clone();
+        rows.push(MenuRow::action("presets.edit", "Edit presets…", "settings-2", "Settings › Branch presets", move |window, cx| {
+            w.update(cx, |v, cx| v.open_presets_page(window, cx)).ok();
+        }));
         menu::open_below("preset-caret", rows, OpenOptions { label: Some("Branch presets".into()), ..Default::default() }, window, cx);
     }
 
@@ -637,7 +646,7 @@ impl GitVolt {
         }
         let api = self.api.clone();
         let asked = key.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::GraphReveal { repo, limit: Some(limit), pin, active: None, view, key: asked, below }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::GraphReveal { repo: crate::app::core_repo(repo), limit: Some(limit), pin, active: None, view, key: asked, below }).await });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(v)) = read.await else { return };
             if v.is_null() {

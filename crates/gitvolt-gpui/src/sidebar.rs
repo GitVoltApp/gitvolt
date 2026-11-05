@@ -1270,7 +1270,7 @@ impl GitVolt {
             return;
         }
         let (api, r) = (self.api.clone(), remote_ref.clone());
-        let done = self.rt.spawn(async move { api.dispatch(Request::LastPush { repo, remote_ref: r }).await });
+        let done = self.rt.spawn(async move { api.dispatch(Request::LastPush { repo: crate::app::core_repo(repo), remote_ref: r }).await });
         cx.spawn(async move |this, cx| {
             let v = match done.await {
                 Ok(Ok(v)) => v,

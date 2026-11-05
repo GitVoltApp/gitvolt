@@ -252,7 +252,7 @@ impl GitVolt {
         }
         let (repo, api) = (tab.id, self.api.clone());
         let at = id.clone();
-        let done = self.rt.spawn(async move { api.dispatch(Request::TreeFiles { repo, id: at }).await });
+        let done = self.rt.spawn(async move { api.dispatch(Request::TreeFiles { repo: crate::app::core_repo(repo), id: at }).await });
         cx.spawn(async move |_, cx| {
             let paths: Vec<String> = match done.await {
                 Ok(Ok(v)) => v.as_array().map_or(Vec::new(), |a| a.iter().filter_map(|p| p.as_str().map(str::to_string)).collect()),
@@ -459,9 +459,6 @@ fn palette_view(state: &Rc<RefCell<PaletteState>>, input: &Entity<TextInput>, wi
 }
 
 impl GitVolt {
-    pub fn tab_group_rows(&self, _ix: usize, _this: &WeakEntity<GitVolt>) -> Vec<crate::ui::menu::MenuRow> {
-        vec![crate::ui::menu::MenuRow::pending("tab.newGroup", "Add to new group", "layers")]
-    }
 
     /// About GitVolt: its version, the build it is.
     pub fn open_about(&mut self, window: &mut Window, cx: &mut Context<Self>) {

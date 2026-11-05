@@ -242,13 +242,20 @@ impl GitVolt {
             this.update(cx, |this, cx| {
                 this.profile = state["profile"].clone();
                 this.settings = state["settings"].clone();
+                this.profiles = state["profiles"].clone();
                 this.colours_cache.borrow_mut().clear();
+                this.apply_profile_layout();
                 this.settings_changed(cx);
                 let opened: Vec<(String, String)> = std::mem::take(&mut this.pending_recent);
                 for (path, name) in opened {
                     this.note_recent(&path, &name);
                 }
                 this.refresh_open_tabs(cx);
+                if !this.state_loaded {
+                    this.state_loaded = true;
+                    let path = this.start_path.take();
+                    this.restore_tabs(path, cx);
+                }
                 // What was read before the profile knew its preset and pin.
                 let repos: Vec<u32> = this.tabs.iter().filter(|t| !t.is_open_tab()).map(|t| t.id).collect();
                 for repo in repos {

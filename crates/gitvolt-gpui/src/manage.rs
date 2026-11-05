@@ -251,7 +251,7 @@ impl GitVolt {
 
     pub fn add_remote(&mut self, ctx: WriteCtx, name: String, url: String, cx: &mut Context<Self>) {
         let (repo, worktree, n) = (ctx.repo, ctx.worktree.clone(), name.clone());
-        let w = Write::new(&ctx, move |_| call("addRemote", json!({ "repo": repo, "worktree": worktree, "name": n, "url": url }))).on_success(move |this, _, cx| {
+        let w = Write::new(&ctx, move |_| call("addRemote", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "name": n, "url": url }))).on_success(move |this, _, cx| {
             toast::show(format!("Added remote {name}"), cx);
             this.run_fetch(repo, false, Some(name.clone()), cx);
         });
@@ -275,7 +275,7 @@ impl GitVolt {
                     let (ctx, name) = (ctx.clone(), name.clone());
                     this.update(cx, |v, cx| {
                         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-                        v.write(Write::new(&ctx, move |_| call("removeRemote", json!({ "repo": repo, "worktree": worktree, "name": name }))), cx);
+                        v.write(Write::new(&ctx, move |_| call("removeRemote", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "name": name }))), cx);
                     })
                     .ok();
                 }
@@ -377,7 +377,7 @@ impl GitVolt {
     /// `inline`: the input that asked stays, with the name, if the core refuses it.
     pub fn create_file(&mut self, ctx: WriteCtx, path: String, inline: Option<u32>, cx: &mut Context<Self>) {
         let (repo, worktree, p) = (ctx.repo, ctx.worktree.clone(), path.clone());
-        let w = Write::new(&ctx, move |_| call("createWorktreeFile", json!({ "repo": repo, "worktree": worktree, "path": p })))
+        let w = Write::new(&ctx, move |_| call("createWorktreeFile", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": p })))
             .on_success(move |this, _, cx| {
                 if let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) {
                     tab.create_file = None;
@@ -423,7 +423,7 @@ impl GitVolt {
                     return;
                 }
                 let (api, branch, dir, suggested, suggest_error) = (api.clone(), name.to_string(), dir.clone(), suggested.clone(), suggest_error.clone());
-                let read = rt.spawn(async move { api.dispatch(Request::SuggestWorktreePath { repo, branch }).await });
+                let read = rt.spawn(async move { api.dispatch(Request::SuggestWorktreePath { repo: crate::app::core_repo(repo), branch }).await });
                 cx.spawn(async move |cx| {
                     let answer = read.await;
                     cx.update(|cx| match answer {
@@ -573,7 +573,7 @@ impl GitVolt {
     /// `open`: the new worktree shows at once. One tab per repository here: it's this tab that goes to it.
     pub fn add_worktree(&mut self, ctx: WriteCtx, path: String, branch: Value, open: bool, cx: &mut Context<Self>) {
         let (repo, worktree, p) = (ctx.repo, ctx.worktree.clone(), path.clone());
-        let w = Write::new(&ctx, move |_| call("worktreeAdd", json!({ "repo": repo, "worktree": worktree, "path": p, "branch": branch }))).on_success(move |this, out, cx| {
+        let w = Write::new(&ctx, move |_| call("worktreeAdd", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": p, "branch": branch }))).on_success(move |this, out, cx| {
             let made = out["path"].as_str().map_or_else(|| path.clone(), str::to_string);
             toast::show(format!("Created worktree {made}"), cx);
             this.reload(repo, cx);
@@ -630,7 +630,7 @@ impl GitVolt {
         }
         let (c2, o2) = (ctx.clone(), origin.clone());
         let d2 = delete.clone();
-        let w = Write::new(&ctx, move |_| call("worktreeRemove", json!({ "repo": repo, "worktree": worktree, "path": p, "force": force }))).on_success(move |this, out, cx| {
+        let w = Write::new(&ctx, move |_| call("worktreeRemove", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": p, "force": force }))).on_success(move |this, out, cx| {
             this.reload(repo, cx);
             if out["status"] != "needsForce" {
                 // With its branch: then the branch's delete, from the main worktree, with its unmerged question.
@@ -737,21 +737,21 @@ mod tests {
     async fn remotes_worktrees_and_a_new_file_go_through_the_core() {
         let f = Fixture::new().await;
         let (repo, wt) = (f.repo, f.worktree.clone());
-        f.ok(call("addRemote", json!({ "repo": repo, "worktree": wt, "name": "backup", "url": "/nowhere/fictional.git" }))).await;
+        f.ok(call("addRemote", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "name": "backup", "url": "/nowhere/fictional.git" }))).await;
         assert_eq!(f.git(&["remote"]), "backup");
-        f.ok(call("removeRemote", json!({ "repo": repo, "worktree": wt, "name": "backup" }))).await;
+        f.ok(call("removeRemote", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "name": "backup" }))).await;
         assert_eq!(f.git(&["remote"]), "");
         let dir = format!("{wt}-tree");
         let head = f.git(&["rev-parse", "HEAD"]);
-        f.ok(call("worktreeAdd", json!({ "repo": repo, "worktree": wt, "path": dir, "branch": { "kind": "new", "name": "side", "at": head } }))).await;
+        f.ok(call("worktreeAdd", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "path": dir, "branch": { "kind": "new", "name": "side", "at": head } }))).await;
         assert!(f.git(&["worktree", "list"]).contains("side"));
         std::fs::write(format!("{dir}/dirty.txt"), "x").expect("a file");
-        let out = f.ok(call("worktreeRemove", json!({ "repo": repo, "worktree": wt, "path": dir, "force": false }))).await;
+        let out = f.ok(call("worktreeRemove", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "path": dir, "force": false }))).await;
         assert_eq!(out["outcome"]["status"], "needsForce", "{out}");
-        let out = f.ok(call("worktreeRemove", json!({ "repo": repo, "worktree": wt, "path": dir, "force": true }))).await;
+        let out = f.ok(call("worktreeRemove", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "path": dir, "force": true }))).await;
         assert_eq!(out["outcome"]["status"], "removed");
         assert!(!f.git(&["worktree", "list"]).contains("side"));
-        f.ok(call("createWorktreeFile", json!({ "repo": repo, "worktree": wt, "path": "deep/new.txt" }))).await;
+        f.ok(call("createWorktreeFile", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "path": "deep/new.txt" }))).await;
         assert_eq!(f.read("deep/new.txt"), "");
     }
 }

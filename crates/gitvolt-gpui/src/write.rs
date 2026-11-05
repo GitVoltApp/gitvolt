@@ -407,7 +407,7 @@ impl GitVolt {
     fn remove_lock(&mut self, repo: u32, path: String, mtime_ms: i64, ino: u64, dev: u64, cx: &mut Context<Self>) {
         let api = self.api.clone();
         let label = lock_label(&path);
-        let body = call("removeIndexLock", json!({ "repo": repo, "path": path, "mtimeMs": mtime_ms, "ino": ino, "dev": dev }));
+        let body = call("removeIndexLock", json!({ "repo": crate::app::core_repo(repo), "path": path, "mtimeMs": mtime_ms, "ino": ino, "dev": dev }));
         if cfg!(test) {
             self.sent.borrow_mut().push(body);
             return;
@@ -428,10 +428,10 @@ impl GitVolt {
     /// waits on the file watcher.
     pub fn apply_result(&mut self, ctx: &WriteCtx, v: &Value, cx: &mut Context<Self>) {
         if let Ok(j) = serde_json::from_value(v["journal"].clone()) {
-            self.ops.journals.insert((ctx.repo, ctx.worktree.clone()), j);
+            self.ops.journals.insert((crate::app::core_repo(ctx.repo), ctx.worktree.clone()), j);
         }
         if let Ok(s) = serde_json::from_value(v["staging"].clone()) {
-            self.ops.staging.insert((ctx.repo, ctx.worktree.clone()), s);
+            self.ops.staging.insert((crate::app::core_repo(ctx.repo), ctx.worktree.clone()), s);
         }
         if v["wip"].is_object() {
             let wip = &v["wip"];
@@ -446,13 +446,13 @@ impl GitVolt {
         }
         let api = self.api.clone();
         let (r, w) = (repo, worktree.clone());
-        let read = self.rt.spawn(async move { api.dispatch(Request::JournalState { repo: r, worktree: w }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::JournalState { repo: crate::app::core_repo(r), worktree: w }).await });
         cx.spawn(async move |this, cx| {
             if let Ok(Ok(v)) = read.await
                 && let Ok(state) = serde_json::from_value(v)
             {
                 this.update(cx, |this, cx| {
-                    this.ops.journals.insert((repo, worktree), state);
+                    this.ops.journals.insert((crate::app::core_repo(repo), worktree), state);
                     cx.notify();
                 })
                 .ok();
@@ -479,7 +479,7 @@ impl GitVolt {
         };
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let next = ctx.clone();
-        let w = Write::new(&ctx, move |_| call("switchRemoteToSsh", json!({ "repo": repo, "worktree": worktree, "remote": r.remote, "url": r.url }))).on_success(move |this, _, cx| this.switch_next(next.clone(), remotes.clone(), at + 1, then.clone(), cx));
+        let w = Write::new(&ctx, move |_| call("switchRemoteToSsh", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "remote": r.remote, "url": r.url }))).on_success(move |this, _, cx| this.switch_next(next.clone(), remotes.clone(), at + 1, then.clone(), cx));
         self.write(w, cx);
     }
 
@@ -520,7 +520,7 @@ impl GitVolt {
         };
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let next = ctx.clone();
-        let w = Write::new(&ctx, move |_| call("switchRemoteBack", json!({ "repo": repo, "worktree": worktree, "remote": r.remote }))).on_success(move |this, _, cx| this.switch_back(next.clone(), remotes.clone(), at + 1, cx));
+        let w = Write::new(&ctx, move |_| call("switchRemoteBack", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "remote": r.remote }))).on_success(move |this, _, cx| this.switch_back(next.clone(), remotes.clone(), at + 1, cx));
         self.write(w, cx);
     }
 

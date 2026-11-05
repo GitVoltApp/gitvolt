@@ -28,6 +28,12 @@ fn col_key(c: Col) -> &'static str {
     }
 }
 
+/// The zoom the last run left: before the first window, as the web UI's localStorage.
+pub fn saved_zoom() -> Option<u64> {
+    let v: Value = serde_json::from_slice(&std::fs::read(file()?).ok()?).ok()?;
+    v["prefs"]["zoom"].as_u64()
+}
+
 impl GitVolt {
     /// What the last run left, once at the start.
     pub fn load_layout(&mut self) {
@@ -85,8 +91,79 @@ impl GitVolt {
         json!({ "prefs": self.prefs, "sidebarWidth": self.sidebar_w, "sidebarNarrow": self.sidebar_narrow, "sidebarPanels": panels, "branchPickerOrder": if self.branch_order_recent { "recent" } else { "alpha" }, "yourReposOrder": if self.repo_order == crate::open::RepoOrder::Alpha { "alpha" } else { "recent" }, "yourReposLayout": if self.repo_grouped { "grouped" } else { "merged" }, "detailsWidth": self.details_w, "detailsSplit": self.details_split, "columns": columns, "wipRatio": self.wip_ratio, "wipCollapsed": self.wip_closed, "syncButton": self.sync_mode.key() })
     }
 
+    /// What the profile keeps of the sizes (`sidebarWidth`, `sidebarNarrow`, `sidebarPanels`, `rightPanelWidth`).
+    pub fn apply_profile_layout(&mut self) {
+        let p = &self.profile;
+        if let Some(w) = p["sidebarWidth"].as_f64().filter(|w| *w > 0.) {
+            self.sidebar_w = (w as f32).clamp(crate::sidebar::MIN_W, crate::sidebar::MAX_W);
+        }
+        self.sidebar_narrow = p["sidebarNarrow"] == true;
+        if let Some(w) = p["rightPanelWidth"].as_f64() {
+            self.details_w = (w as f32).clamp(crate::details::DETAILS_MIN, crate::details::DETAILS_MAX);
+        }
+        self.side_weights.clear();
+        for kind in KINDS {
+            if let Some(h) = p["sidebarPanels"][kind.key()].as_f64() {
+                self.side_weights.insert(kind, h as f32);
+            }
+        }
+        if let Some(m) = self.settings["syncButton"].as_str() {
+            self.sync_mode = crate::sync::SyncMode::of(m);
+        }
+    }
+
+    /// The sizes into the profile, and a repository's columns into its settings, saved as they change.
+    fn save_profile_layout(&mut self) {
+        if self.profile.is_null() {
+            return;
+        }
+        let panels: serde_json::Map<String, Value> = self.side_weights.iter().map(|(k, h)| (k.key().to_string(), json!(h.round() as u32))).collect();
+        let mut p = self.profile.clone();
+        p["sidebarWidth"] = json!(self.sidebar_w.round() as u32);
+        p["sidebarNarrow"] = json!(self.sidebar_narrow);
+        p["sidebarPanels"] = json!(panels);
+        p["rightPanelWidth"] = json!(self.details_w.round() as u32);
+        for tab in self.tabs.iter().filter(|t| !t.is_open_tab()) {
+            let c = &tab.column_prefs;
+            let hidden: Vec<&str> = HIDEABLE.iter().filter(|(x, _)| tab.hidden_columns.contains(x)).map(|(x, _)| col_key(*x)).collect();
+            if !p["repos"].is_object() {
+                p["repos"] = json!({});
+            }
+            if !p["repos"][&tab.repo_path].is_object() {
+                p["repos"][&tab.repo_path] = crate::presets::no_repo();
+            }
+            p["repos"][&tab.repo_path]["columns"] = json!({ "labels": c.labels as u32, "graph": c.graph.map(|g| g as u32), "author": c.author as u32, "date": c.date as u32, "sha": c.sha as u32, "message": c.message.map(|m| m as u32) });
+            p["repos"][&tab.repo_path]["hiddenColumns"] = json!(hidden);
+        }
+        if p != self.profile {
+            self.profile = p;
+            let body = crate::write::call("saveProfile", json!({ "profile": self.profile }));
+            if !cfg!(test) {
+                let api = self.api.clone();
+                self.rt.spawn(async move {
+                    if let Ok(req) = crate::write::request_of(body) {
+                        api.dispatch(req).await.ok();
+                    }
+                });
+            }
+        }
+    }
+
     /// A repository's columns, as they were left.
     pub fn restore_columns(&self, tab: &mut Tab) {
+        let saved = &self.profile["repos"][&tab.repo_path];
+        if saved["columns"].is_object() {
+            let v = &saved["columns"];
+            let d = ColumnPrefs::default();
+            let num = |k: &str, or: f32| v[k].as_f64().map_or(or, |n| n as f32);
+            tab.column_prefs = ColumnPrefs { labels: num("labels", d.labels), graph: v["graph"].as_f64().map(|n| n as f32), author: num("author", d.author), date: num("date", d.date), sha: num("sha", d.sha), message: v["message"].as_f64().map(|n| n as f32) };
+            for (c, _) in HIDEABLE {
+                if saved["hiddenColumns"].as_array().is_some_and(|h| h.iter().any(|x| x.as_str() == Some(col_key(c)))) {
+                    tab.hidden_columns.insert(c);
+                }
+            }
+            return;
+        }
         let v = &self.saved_columns[&tab.worktree];
         if v.is_null() {
             return;
@@ -102,7 +179,8 @@ impl GitVolt {
     }
 
     /// At a drag's end; off the UI thread's way, it's one small write.
-    pub fn save_layout(&self) {
+    pub fn save_layout(&mut self) {
+        self.save_profile_layout();
         let Some(path) = file() else { return };
         let text = self.layout_json().to_string();
         self.rt.spawn(async move {

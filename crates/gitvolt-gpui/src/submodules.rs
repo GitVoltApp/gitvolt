@@ -115,7 +115,7 @@ impl GitVolt {
         let Some(ctx) = self.tabs.get(self.active).map(|t| t.write_target()) else { return };
         let (repo, worktree, p) = (ctx.repo, ctx.worktree.clone(), path.clone());
         let w = Write::new(&ctx, move |asked| {
-            let mut params = json!({ "repo": repo, "worktree": worktree });
+            let mut params = json!({ "repo": crate::app::core_repo(repo), "worktree": worktree });
             if let Some(p) = &p {
                 params["path"] = json!(p);
             }
@@ -151,7 +151,7 @@ impl GitVolt {
             |v, cx| {
                 let Some(ctx) = v.tabs.get(v.active).map(|t| t.write_target()) else { return };
                 let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-                let w = Write::new(&ctx, move |_| call("submoduleSync", json!({ "repo": repo, "worktree": worktree }))).on_success(|_, out, cx| ran("Submodule URLs synced".to_string(), out, cx));
+                let w = Write::new(&ctx, move |_| call("submoduleSync", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree }))).on_success(|_, out, cx| ran("Submodule URLs synced".to_string(), out, cx));
                 v.write(w, cx);
             },
             cx,
@@ -166,7 +166,7 @@ impl GitVolt {
                 let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
                 let api = v.api.clone();
                 let tree = worktree.clone();
-                let read = v.rt.spawn(async move { api.dispatch(Request::Submodules { repo, worktree: tree }).await });
+                let read = v.rt.spawn(async move { api.dispatch(Request::Submodules { repo: crate::app::core_repo(repo), worktree: tree }).await });
                 cx.spawn(async move |this, cx| {
                     let answer = read.await;
                     this.update(cx, |this, cx| match answer {
@@ -261,7 +261,7 @@ impl GitVolt {
                 let (ctx, path, origin) = (ctx.clone(), path.clone(), again.clone());
                 this.update(cx, |v, cx| {
                     let (repo, worktree, p) = (ctx.repo, ctx.worktree.clone(), path.clone());
-                    let w = Write::new(&ctx, move |_| call("submoduleRemove", json!({ "repo": repo, "worktree": worktree, "path": p }))).on_success(move |_, out, cx| ran(format!("Removed {path}: commit to record it"), out, cx)).origin(origin);
+                    let w = Write::new(&ctx, move |_| call("submoduleRemove", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": p }))).on_success(move |_, out, cx| ran(format!("Removed {path}: commit to record it"), out, cx)).origin(origin);
                     v.write(w, cx);
                 })
                 .ok();
@@ -375,7 +375,7 @@ impl GitVolt {
                 this.update(cx, |v, cx| {
                     let (repo, worktree, u2, p2) = (ctx.repo, ctx.worktree.clone(), u.clone(), p.clone());
                     let w = Write::new(&ctx, move |_| {
-                        let mut params = json!({ "repo": repo, "worktree": worktree, "url": u2, "path": p2 });
+                        let mut params = json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "url": u2, "path": p2 });
                         if !b.is_empty() {
                             params["branch"] = json!(b);
                         }

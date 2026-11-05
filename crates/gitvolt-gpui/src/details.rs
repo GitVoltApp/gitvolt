@@ -284,7 +284,7 @@ impl GitVolt {
     pub fn copy_message(&mut self, id: String, cx: &mut Context<Self>) {
         let Some(repo) = self.tabs.get(self.active).map(|t| t.id) else { return };
         let api = self.api.clone();
-        let done = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo, id }).await });
+        let done = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo: crate::app::core_repo(repo), id }).await });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(v)) = done.await else { return };
             let (summary, body) = (v["summary"].as_str().unwrap_or_default(), v["body"].as_str().unwrap_or_default().trim());
@@ -434,8 +434,8 @@ impl GitVolt {
     pub fn read_commit(&mut self, repo: u32, id: String, ix: usize, cx: &mut Context<Self>) {
         let api = self.api.clone();
         let read = self.rt.spawn(async move {
-            let details = api.dispatch(Request::CommitDetails { repo, id: id.clone() }).await?;
-            let message = api.dispatch(Request::CommitMessage { repo, id: id.clone() }).await?;
+            let details = api.dispatch(Request::CommitDetails { repo: crate::app::core_repo(repo), id: id.clone() }).await?;
+            let message = api.dispatch(Request::CommitMessage { repo: crate::app::core_repo(repo), id: id.clone() }).await?;
             let files = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Commit { id: id.clone(), parent: 0 } }).await?;
             Ok::<_, gitvolt_core::error::GbError>((details, message, files, id))
         });
@@ -477,7 +477,7 @@ impl GitVolt {
         }
         let api = self.api.clone();
         let asked = id.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::TreeFiles { repo, id: asked }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::TreeFiles { repo: crate::app::core_repo(repo), id: asked }).await });
         cx.spawn(async move |this, cx| {
             let result = read.await;
             this.update(cx, |this, cx| {

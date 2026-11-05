@@ -316,6 +316,10 @@ pub fn all() -> Vec<Command> {
             }
         }),
         Command::new("commit.commit", "Commit", Repository, "git-commit-horizontal", "Commit with the message in the commit box", &["Mod+Enter"]).when(|v, _| v.panel_ctx().is_some()).hidden().yields().run(|v, _, cx| v.commit_key(cx)),
+        Command::new("view.zoomIn", "Zoom in", View, "zoom-in", "Zoom the app in, or the open file's text", &["Mod+="]).hidden().run(|v, _, cx| v.zoom_key(1, cx)),
+        Command::new("view.zoomInPlus", "Zoom in", View, "zoom-in", "Zoom the app in, or the open file's text", &["Mod++"]).hidden().run(|v, _, cx| v.zoom_key(1, cx)),
+        Command::new("view.zoomOut", "Zoom out", View, "zoom-out", "Zoom the app out, or the open file's text", &["Mod+-"]).hidden().run(|v, _, cx| v.zoom_key(-1, cx)),
+        Command::new("view.zoomReset", "Reset zoom", View, "scaling", "Back to 100%, or the open file's own text size", &["Mod+0"]).hidden().run(|v, _, cx| v.zoom_key(0, cx)),
         Command::new("help.about", "About GitVolt", Help, "info", "Version information", &[]).run(|v, window, cx| v.open_about(window, cx)),
         Command::new("help.activityLog", "Activity log", Help, "history", "Every finished fetch and clone, with git's message", &[]).run(|v, window, cx| v.open_activity(None, window, cx)),
         Command::new("help.debug", "Debug…", Help, "bug", "The git commands GitVolt ran, the actions you ran, diagnostics and the perf overlay", &[]).run(|v, window, cx| v.open_debug(None, window, cx)),
@@ -435,7 +439,7 @@ impl GitVolt {
         let Some(repo) = self.tabs.get(self.active).map(|t| t.id) else { return };
         let api = self.api.clone();
         // No request of its own: `OpenIn` finds the containing folder of `<path>/root`, `path` itself.
-        let done = self.rt.spawn(async move { api.dispatch(Request::OpenIn { repo, worktree: path, path: "root".into(), line: None, opener: "file-manager".into(), source: None, fallback: None }).await });
+        let done = self.rt.spawn(async move { api.dispatch(Request::OpenIn { repo: crate::app::core_repo(repo), worktree: path, path: "root".into(), line: None, opener: "file-manager".into(), source: None, fallback: None }).await });
         cx.spawn(async move |this, cx| {
             let failure = match done.await {
                 Ok(Ok(_)) => None,
@@ -453,6 +457,7 @@ impl GitVolt {
         let n = self.tabs.len() as i64;
         if n > 0 {
             self.active = (self.active as i64 + by).rem_euclid(n) as usize;
+            self.save_tabs(cx);
             cx.notify();
         }
     }
@@ -460,6 +465,7 @@ impl GitVolt {
     pub fn go_to_tab(&mut self, ix: usize, cx: &mut Context<Self>) {
         if ix < self.tabs.len() {
             self.active = ix;
+            self.save_tabs(cx);
             cx.notify();
         }
     }

@@ -254,6 +254,8 @@ impl GitVolt {
         self.settings_ui.hold += 1;
         self.settings_ui.scroll_drag = None;
         self.settings_ui.float_drag = None;
+        self.settings_ui.file_colours.drag = None;
+        self.settings_ui.presets.drag = None;
         self.end_lane_drag(cx);
     }
 }
@@ -701,11 +703,33 @@ pub fn settings_overlay(this: &mut GitVolt, window: &mut Window, cx: &mut Contex
                     cx.stop_propagation();
                 }
             }))
-            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| this.on_settings_drag(e, cx)))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| this.settings_release(cx)))
             .child(panel)
+            .child(release_listener(cx))
             .into_any_element(),
     )
+}
+
+/// Drags and a held button end wherever the release lands, and follow the pointer wherever it goes.
+pub fn release_listener(cx: &mut Context<GitVolt>) -> AnyElement {
+    let (up, moved) = (cx.weak_entity(), cx.weak_entity());
+    canvas(
+        |_, _, _| {},
+        move |_, _, window, _| {
+            window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+                if phase == DispatchPhase::Capture {
+                    up.update(cx, |this, cx| this.settings_release(cx)).ok();
+                }
+            });
+            window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+                if phase == DispatchPhase::Capture && e.pressed_button.is_some() {
+                    moved.update(cx, |this, cx| this.on_settings_drag(e, cx)).ok();
+                }
+            });
+        },
+    )
+    .absolute()
+    .size_0()
+    .into_any_element()
 }
 
 /// The slim thumb over the page's right edge.
@@ -737,6 +761,7 @@ fn body_scrollbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> AnyElement {
 impl GitVolt {
     fn on_settings_drag(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
         self.on_lane_drag(e, cx);
+        self.on_float_drag(e, cx);
         let Some((from, start)) = self.settings_ui.scroll_drag else { return };
         if e.pressed_button != Some(MouseButton::Left) {
             self.settings_ui.scroll_drag = None;

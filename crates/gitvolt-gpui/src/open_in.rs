@@ -116,7 +116,7 @@ pub fn open_request(repo: u32, tab_worktree: &str, file: &FileChange, opener: &s
         }
     };
     Ok(Request::OpenIn {
-        repo,
+        repo: crate::app::core_repo(repo),
         worktree,
         path: file.path.to_string(),
         line: None,

@@ -39,10 +39,13 @@ const BAR_H: f32 = 29.;
 pub const RULER_W: f32 = 10.;
 /// The panes' gutter: the hunk column, the numbers, the line buttons' lane.
 pub const HUNK_W: f32 = 18.;
-pub const NUM_W: f32 = 40.;
 pub const LANE_W: f32 = 22.;
-pub const PANE_GUTTER: f32 = HUNK_W + NUM_W + LANE_W;
-pub const OUT_GUTTER: f32 = NUM_W + 10.;
+pub fn pane_gutter() -> f32 {
+    HUNK_W + crate::diff::view::num_w() + LANE_W
+}
+pub fn out_gutter() -> f32 {
+    crate::diff::view::num_w() + 10.
+}
 const MINIMAP_MAX: f32 = 120.;
 
 /// Monaco's minimap for an editor this wide: a character a pixel wide, 8 px of gutter, 120 columns at most.
@@ -625,7 +628,7 @@ impl GitVolt {
         }
         let api = self.api.clone();
         let (w, p) = (worktree.clone(), path.clone());
-        let read = self.rt.spawn(async move { api.dispatch(Request::ConflictFile { repo, worktree: w, path: p }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::ConflictFile { repo: crate::app::core_repo(repo), worktree: w, path: p }).await });
         cx.spawn(async move |this, cx| {
             let answer = read.await.unwrap_or_else(|e| Err(GbError::other(e.to_string())));
             this.update(cx, |this, cx| {
@@ -852,7 +855,7 @@ impl GitVolt {
         let ctx = WriteCtx { repo, worktree: worktree.clone() };
         let (send_path, send_worktree) = (path.clone(), worktree.clone());
         let (done_path, stale_path, stale_worktree, stale_text) = (path.clone(), path, worktree, text.clone());
-        let w = Write::new(&ctx, move |asked| call("resolveFile", json!({ "repo": repo, "worktree": send_worktree, "path": send_path, "resolution": { "kind": "text", "text": text }, "base": base, "confirmMarkers": asked.markers, "confirmDiscard": asked.discard })))
+        let w = Write::new(&ctx, move |asked| call("resolveFile", json!({ "repo": crate::app::core_repo(repo), "worktree": send_worktree, "path": send_path, "resolution": { "kind": "text", "text": text }, "base": base, "confirmMarkers": asked.markers, "confirmDiscard": asked.discard })))
             .on_success(move |this, out, cx| {
                 this.toast_submodule_behind(out, cx);
                 this.merge_left_resolved(repo, Some(done_path.clone()), cx);
@@ -917,7 +920,7 @@ impl GitVolt {
         }
         let api = self.api.clone();
         let (w, p) = (worktree.clone(), path.clone());
-        let read = self.rt.spawn(async move { api.dispatch(Request::ConflictFile { repo, worktree: w, path: p }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::ConflictFile { repo: crate::app::core_repo(repo), worktree: w, path: p }).await });
         cx.spawn(async move |this, cx| {
             let now = read.await.unwrap_or_else(|e| Err(GbError::other(e.to_string())));
             this.update(cx, |this, cx| {
@@ -951,7 +954,7 @@ impl GitVolt {
     pub fn resolve_file(&mut self, ctx: &WriteCtx, path: String, kind: &'static str, base: Option<String>, origin: ArmOrigin, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let (done_path, stale_path) = (path.clone(), path.clone());
-        let w = Write::new(ctx, move |asked| call("resolveFile", json!({ "repo": repo, "worktree": worktree, "path": path, "resolution": { "kind": kind }, "base": base, "confirmMarkers": asked.markers, "confirmDiscard": asked.discard })))
+        let w = Write::new(ctx, move |asked| call("resolveFile", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": path, "resolution": { "kind": kind }, "base": base, "confirmMarkers": asked.markers, "confirmDiscard": asked.discard })))
             .origin(origin)
             .on_success(move |this, out, cx| {
                 this.toast_submodule_behind(out, cx);
@@ -1204,7 +1207,7 @@ mod tests {
         f.git(&["commit", "-qam", "Main"]);
         let out = std::process::Command::new("git").args(["merge", "--no-edit", "topic"]).current_dir(&f.path).env("GIT_CONFIG_GLOBAL", "/dev/null").env("GIT_CONFIG_NOSYSTEM", "1").output().unwrap();
         assert!(!out.status.success());
-        let body = call("conflictFile", json!({ "repo": f.repo, "worktree": f.worktree, "path": "a.txt" }));
+        let body = call("conflictFile", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "path": "a.txt" }));
         let v = f.ok(body).await;
         let file = ConflictFile::of(&v).unwrap();
         assert!(file.textual());
@@ -1212,7 +1215,7 @@ mod tests {
         let picks = take_all(&empty_picks(&file.segments), &file.segments, Side::Incoming, true);
         let (text, _) = build_output(&file.segments, &picks, eol_text(&file.eol));
         assert_eq!(text, "topic\n");
-        let save = |text: &str, base: Option<&str>| call("resolveFile", json!({ "repo": f.repo, "worktree": f.worktree, "path": "a.txt", "resolution": { "kind": "text", "text": text }, "base": base, "confirmMarkers": false, "confirmDiscard": false }));
+        let save = |text: &str, base: Option<&str>| call("resolveFile", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "path": "a.txt", "resolution": { "kind": "text", "text": text }, "base": base, "confirmMarkers": false, "confirmDiscard": false }));
         let stale = f.send(save(&text, Some("not-the-hash"))).await.unwrap_err();
         assert_eq!(stale.kind, GbErrorKind::Stale);
         f.ok(save(&text, file.base.as_deref())).await;

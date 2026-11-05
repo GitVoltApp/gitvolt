@@ -129,7 +129,7 @@ impl GitVolt {
             return self.go_to_sha(&tip, cx);
         }
         let (repo, name, api, id) = (tab.id, tab.name.clone(), self.api.clone(), sha.clone());
-        let located = self.rt.spawn(async move { api.dispatch(Request::LocateCommit { repo, sha: id }).await });
+        let located = self.rt.spawn(async move { api.dispatch(Request::LocateCommit { repo: crate::app::core_repo(repo), sha: id }).await });
         cx.spawn(async move |this, cx| {
             let v = match located.await {
                 Ok(Ok(v)) => v,
@@ -170,7 +170,7 @@ impl GitVolt {
             path.clone()
         };
         let (repo, name, api, at, query) = (tab.id, tab.name.clone(), self.api.clone(), rel.clone(), worktree.clone());
-        let kind = self.rt.spawn(async move { api.dispatch(Request::WorktreePathKind { repo, worktree: query, path: at }).await });
+        let kind = self.rt.spawn(async move { api.dispatch(Request::WorktreePathKind { repo: crate::app::core_repo(repo), worktree: query, path: at }).await });
         cx.spawn(async move |this, cx| {
             let kind = match kind.await {
                 Ok(Ok(v)) => v.as_str().map(str::to_string),

@@ -3023,9 +3023,11 @@ dependencies = [
 name = "gitvolt-gpui"
 version = "1.4.1"
 dependencies = [
+ "anyhow",
  "base64 0.23.1",
  "chrono",
  "flate2",
+ "futures",
  "gitvolt-core",
  "gitvolt-forge",
  "gitvolt-graph",
@@ -3033,8 +3035,10 @@ dependencies = [
  "gpui_platform",
  "image",
  "onig",
+ "raw-window-handle",
  "serde_json",
  "similar",
+ "smallvec",
  "tokio",
  "unicode-segmentation",
 ]

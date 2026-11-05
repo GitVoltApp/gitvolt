@@ -212,7 +212,7 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
             let color = if n == s.current_line { theme::editor().line_number_active } else { theme::editor().line_number };
             let color = if last_empty && n != s.current_line { Hsla { a: 0.3, ..color } } else { color };
             let shaped = window.text_system().shape_line(number.clone(), px(crate::metrics::editor_font_size()), &[TextRun { len: number.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
-            let num_right = b.origin.x + px(if s.pane { HUNK_W + NUM_W } else { NUM_W });
+            let num_right = b.origin.x + px(if s.pane { HUNK_W + crate::diff::view::num_w() } else { crate::diff::view::num_w() });
             shaped.paint(point(num_right - shaped.width, y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
             let Some(line) = lines.get(n) else { continue };
             let clip = Bounds::from_corners(point(text_x, y), point(b.origin.x + px(view_right), y + px(crate::metrics::line_h())));
@@ -252,7 +252,7 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
             if let Some((hn, on)) = s.hover_button
                 && hn == n
             {
-                let box_ = Bounds::new(point(b.origin.x + px(HUNK_W + NUM_W + (LANE_W - 15.) / 2.), y + px((crate::metrics::line_h() - 15.) / 2.)), size(px(15.), px(15.)));
+                let box_ = Bounds::new(point(b.origin.x + px(HUNK_W + crate::diff::view::num_w() + (LANE_W - 15.) / 2.), y + px((crate::metrics::line_h() - 15.) / 2.)), size(px(15.), px(15.)));
                 window.paint_quad(quad(box_, px(3.), if on { theme::red() } else { theme::green() }, px(0.), transparent_black(), BorderStyle::default()));
                 let glyph = Bounds::new(box_.origin + point(px(1.5), px(1.5)), size(px(12.), px(12.)));
                 window.paint_svg(glyph, if on { "icons/minus.svg" } else { "icons/plus.svg" }.into(), None, TransformationMatrix::unit(), theme::text_on_accent(), cx).ok();
@@ -286,7 +286,7 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
                 let v = m.view_mut(index);
                 v.scroll = (v.scroll - dy.as_f32()).clamp(0., v.max_scroll());
                 let content = v.widest as f32 * crate::metrics::advance();
-                let gutter = if index < 2 { PANE_GUTTER } else { OUT_GUTTER };
+                let gutter = if index < 2 { pane_gutter() } else { out_gutter() };
                 let track = v.width - RULER_W - minimap_width(v.width, gutter) - gutter;
                 v.hscroll = (v.hscroll - dx.as_f32()).clamp(0., (content - track).max(0.));
                 m.sync_scroll(index);
@@ -534,9 +534,9 @@ fn snapshot_pane(tool: &MergeTool, i: usize, cx: &mut Context<GitVolt>) -> Snaps
         scroll: p.view.scroll,
         hscroll: p.view.hscroll,
         widest: p.view.widest,
-        gutter: PANE_GUTTER,
+        gutter: pane_gutter(),
         pane: true,
-        minimap: minimap_width(p.view.width, PANE_GUTTER),
+        minimap: minimap_width(p.view.width, pane_gutter()),
         hover_button,
         current_line: p.caret.0,
         caret: Some(p.caret),
@@ -566,9 +566,9 @@ fn snapshot_output(tool: &MergeTool, cx: &mut Context<GitVolt>) -> Option<Snapsh
         scroll: o.view.scroll,
         hscroll: o.view.hscroll,
         widest: o.view.widest,
-        gutter: OUT_GUTTER,
+        gutter: out_gutter(),
         pane: false,
-        minimap: minimap_width(o.view.width, OUT_GUTTER),
+        minimap: minimap_width(o.view.width, out_gutter()),
         hover_button: None,
         current_line: caret.0,
         caret: Some(caret),
@@ -635,7 +635,7 @@ fn line_button(tool: &MergeTool, i: usize, cx: &mut Context<GitVolt>) -> Option<
             div()
                 .id(ElementId::Name(key))
                 .absolute()
-                .left(px(HUNK_W + NUM_W))
+                .left(px(HUNK_W + crate::diff::view::num_w()))
                 .top(px(y))
                 .w(px(LANE_W))
                 .h(px(crate::metrics::line_h()))
@@ -744,7 +744,7 @@ pub fn caret_bounds(m: &MergeTool, bounds: Bounds<Pixels>) -> Option<Bounds<Pixe
     let o = m.output.as_ref()?;
     let (n, col) = o.edit.line_col(o.edit.buffer.caret());
     let y = n as f32 * crate::metrics::line_h() - o.view.scroll;
-    Some(Bounds::new(bounds.origin + point(px(OUT_GUTTER + col as f32 * crate::metrics::advance() - o.view.hscroll), px(y)), size(px(1.), px(crate::metrics::line_h()))))
+    Some(Bounds::new(bounds.origin + point(px(out_gutter() + col as f32 * crate::metrics::advance() - o.view.hscroll), px(y)), size(px(1.), px(crate::metrics::line_h()))))
 }
 
 impl GitVolt {
@@ -760,7 +760,7 @@ impl GitVolt {
         let b = v.body.get();
         let (x, y) = ((e.position.x - b.origin.x).as_f32(), (e.position.y - b.origin.y).as_f32());
         let (width, height) = (b.size.width.as_f32(), b.size.height.as_f32());
-        let gutter = if index < 2 { PANE_GUTTER } else { OUT_GUTTER };
+        let gutter = if index < 2 { pane_gutter() } else { out_gutter() };
         let mini = minimap_width(v.width, gutter);
         // The minimap and the ruler: the view goes where the press is.
         if x >= width - RULER_W - mini {
@@ -794,7 +794,7 @@ impl GitVolt {
                 }
                 return;
             }
-            if (HUNK_W + NUM_W..PANE_GUTTER).contains(&x) {
+            if (HUNK_W + crate::diff::view::num_w()..pane_gutter()).contains(&x) {
                 if let Some((id, at)) = region {
                     self.merge_toggle(id, side, Some(at), cx);
                 }
@@ -860,7 +860,7 @@ impl GitVolt {
         let v = m.view(index);
         let b = v.body.get();
         let (x, y) = ((e.position.x - b.origin.x).as_f32(), (e.position.y - b.origin.y).as_f32());
-        let gutter = if index < 2 { PANE_GUTTER } else { OUT_GUTTER };
+        let gutter = if index < 2 { pane_gutter() } else { out_gutter() };
         let (width, height) = (b.size.width.as_f32(), b.size.height.as_f32());
         match v.drag {
             PaneDrag::Strip => {
@@ -920,7 +920,7 @@ impl GitVolt {
         let v = m.view_mut(index);
         let b = v.body.get();
         let (x, y) = ((e.position.x - b.origin.x).as_f32(), (e.position.y - b.origin.y).as_f32());
-        let over = x < b.size.width.as_f32() - RULER_W - minimap_width(v.width, if index < 2 { PANE_GUTTER } else { OUT_GUTTER });
+        let over = x < b.size.width.as_f32() - RULER_W - minimap_width(v.width, if index < 2 { pane_gutter() } else { out_gutter() });
         let hover = (over && y >= 0. && y < b.size.height.as_f32() && (y + v.scroll) < v.content()).then(|| v.line_at(y));
         let changed = hover != v.hover || !v.pointer_in;
         v.hover = hover;

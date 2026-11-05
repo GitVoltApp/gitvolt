@@ -43,9 +43,11 @@ mod stacks;
 mod submodules;
 mod sync;
 mod table;
+mod tabs;
 mod theme;
 mod ui;
 mod wip;
+mod zoom;
 mod write;
 
 use app::GitVolt;
@@ -59,8 +61,8 @@ use gitvolt_core::openers::{ChildEnvHook, detect_system, launcher};
 use gitvolt_core::shellenv::ShellEnv;
 use gitvolt_forge::gravatar::{DEFAULT_BASE_URL, Gravatar};
 use gpui::*;
-use gpui_platform::application;
 use std::borrow::Cow;
+use std::rc::Rc;
 use std::sync::Arc;
 
 struct Assets;
@@ -108,6 +110,27 @@ fn with_openers(api: Api, shell_env: Option<Arc<ShellEnv>>) -> Api {
     }
 }
 
+type Forwarded = std::sync::mpsc::Receiver<Option<String>>;
+
+fn claim_instance(launch: Option<&str>) -> (Option<Arc<gitvolt_core::instance::Primary>>, Option<Forwarded>) {
+    use gitvolt_core::instance::{Claim, claim};
+    let Ok(runtime) = gitvolt_core::paths::runtime_dir() else { return (None, None) };
+    match claim(&runtime, &gitvolt_core::paths::config_base().join(APP_DIR), launch) {
+        Claim::Forwarded => std::process::exit(0),
+        Claim::Primary(p) => {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let p = Arc::new(p);
+            if let Err(e) = p.serve(move |path| {
+                tx.send(path).ok();
+            }) {
+                eprintln!("Couldn't listen for later launches: {e}");
+            }
+            (Some(p), Some(rx))
+        }
+        Claim::Unguarded(_) => (None, None),
+    }
+}
+
 fn main() {
     // Git and ssh run this binary as their askpass: it asks the running app over its socket, prints
     // the answer and exits, before any of the app starts.
@@ -116,6 +139,10 @@ fn main() {
     }
     bench::mark("main");
     let path = std::env::args().nth(1).or_else(|| std::env::var("GITVOLT_OPEN").ok()).filter(|p| !p.is_empty());
+    // The single instance, by this build's own config folder: a later launch hands its path over and goes. A script or a
+    // measurement is a process of its own.
+    let scripted = ["GITVOLT_BENCH", "GITVOLT_SHOW", "GITVOLT_SCRIPT"].iter().any(|k| std::env::var_os(k).is_some());
+    let (instance, mut forwarded) = if scripted { (None, None) } else { claim_instance(path.as_deref()) };
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("a tokio runtime");
     let handle = runtime.handle().clone();
     // The login shell's environment, captured once: git started meanwhile waits for it, bounded.
@@ -126,6 +153,7 @@ fn main() {
     // The profile and the settings (recent repositories, presets, file colours), in a folder of this build's own, never the CEF app's.
     let store = gitvolt_core::settings::SettingsStore::open(gitvolt_core::paths::config_base().join(APP_DIR));
     let exit_store = store.clone();
+    let saved_store = store.clone();
     let saved = store.state();
     let api = api.with_store(store);
     let api = Arc::new(with_openers(api, opener_env));
@@ -144,7 +172,8 @@ fn main() {
     let exit_api = api.clone();
     let font = ui_font();
     bench::mark("before_platform");
-    application().with_assets(Assets).run(move |cx: &mut App| {
+    zoom::set_percent(zoom::parse_zoom(layout::saved_zoom()).unwrap_or(100));
+    Application::with_platform(Rc::new(zoom::Zoomed(gpui_platform::current_platform(false)))).with_assets(Assets).run(move |cx: &mut App| {
         bench::mark("platform_up");
         app::bind_keys(cx);
         ui::init(cx);
@@ -158,9 +187,12 @@ fn main() {
         if let Err(e) = cx.text_system().add_fonts(vec![Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-Latin-400.ttf"))]) {
             eprintln!("Couldn't load the editor font: {e}");
         }
-        let bounds = Bounds::centered(None, size(px(1600.), px(900.)), cx);
+        // The window as it was left; the first time, the web UI's first size.
+        let saved_window = saved_store.window();
+        let start_size = saved_window.as_ref().map_or(size(px(1600.), px(900.)), |w| size(px(w.width as f32), px(w.height as f32)));
+        let bounds = Bounds::centered(None, start_size, cx);
         let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            window_bounds: Some(if saved_window.as_ref().is_some_and(|w| w.maximized) { WindowBounds::Maximized(bounds) } else { WindowBounds::Windowed(bounds) }),
             titlebar: None,
             window_decorations: Some(WindowDecorations::Client),
             app_id: Some("gitvolt-gpui".into()),
@@ -168,6 +200,7 @@ fn main() {
             inactive_frame_interval: std::env::var_os("GITVOLT_BENCH").map(|_| std::time::Duration::ZERO),
             ..Default::default()
         };
+        let mut forwarded = forwarded.take();
         let result = cx.open_window(options, |window, cx| {
             bench::mark("window_open");
             let view = cx.new(|cx| GitVolt::new(api.clone(), handle.clone(), font.clone(), cx));
@@ -179,15 +212,31 @@ fn main() {
                 cx.observe_window_activation(window, |this, window, cx| {
                     if window.is_window_active() {
                         this.lfs_on_focus(cx);
+                        this.fetch_on_focus(cx);
                     }
                 })
                 .detach();
-                match path.clone() {
-                    Some(path) => v.open(path, cx),
-                    None => {
-                        v.open_blank_tab(cx);
+                cx.observe_window_visibility(window, |this, _, window, cx| {
+                    this.window_hidden = !window.is_visible();
+                    if !this.window_hidden {
+                        this.fetch_on_focus(cx);
                     }
+                })
+                .detach();
+                let geometry = saved_store.clone();
+                cx.observe_window_bounds(window, move |_, window, _| {
+                    let maximized = window.is_maximized();
+                    let b = window.window_bounds().get_bounds();
+                    let was = geometry.window();
+                    let size_now = if maximized { was.as_ref().map_or((b.size.width.as_f32() as f64, b.size.height.as_f32() as f64), |w| (w.width, w.height)) } else { (b.size.width.as_f32() as f64, b.size.height.as_f32() as f64) };
+                    geometry.save_window(gitvolt_core::settings::WindowGeometry { x: None, y: None, width: size_now.0, height: size_now.1, maximized, monitor: None });
+                })
+                .detach();
+                // A later launch's path: a tab, and the window comes forward.
+                if let Some(rx) = forwarded.take() {
+                    v.listen_for_launches(rx, cx);
                 }
+                v.start_path = path.clone();
             });
             let closing = view.clone();
             window.on_window_should_close(cx, move |_, cx| closing.update(cx, |v, cx| v.may_close(cx)));
@@ -214,6 +263,9 @@ fn main() {
     // The socket file would otherwise stay behind in the runtime folder.
     if let Some(askpass) = exit_api.askpass() {
         askpass.close();
+    }
+    if let Some(i) = instance {
+        i.close();
     }
     drop(runtime);
 }

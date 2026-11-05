@@ -22,7 +22,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const NUM_W: f32 = 40.;
 const SIGN_W: f32 = 18.;
 /// File View's column between the numbers and the text: the fold chevrons.
 const FOLD_W: f32 = 26.;
@@ -377,9 +376,9 @@ impl DiffState {
     /// The text's left edge in the body, the left pane's in a split.
     fn gutter(&self) -> f32 {
         match (self.view, self.split()) {
-            (ViewKind::File, _) => NUM_W + FOLD_W,
-            (_, true) => SPLIT_LEFT_MARGIN + NUM_W + SIGN_W,
-            (_, false) => 2. * NUM_W + SIGN_W,
+            (ViewKind::File, _) => num_w() + FOLD_W,
+            (_, true) => SPLIT_LEFT_MARGIN + num_w() + SIGN_W,
+            (_, false) => 2. * num_w() + SIGN_W,
         }
     }
 
@@ -417,7 +416,7 @@ impl DiffState {
         let Some(data) = self.data.clone() else { return };
         let split = self.split();
         let columns = |text: f32| (text / crate::metrics::advance()).floor().max(8.) as usize;
-        let (old_cols, new_cols) = if split { (columns(width / 2. - self.gutter()), columns(width / 2. - NUM_W - SIGN_W)) } else { (columns(width - self.gutter()), columns(width - self.gutter())) };
+        let (old_cols, new_cols) = if split { (columns(width / 2. - self.gutter()), columns(width / 2. - num_w() - SIGN_W)) } else { (columns(width - self.gutter()), columns(width - self.gutter())) };
         let mut layout = Layout { width, height, wrap: self.wrap, offsets: Vec::with_capacity(self.rows.len() + 1), ..Layout::default() };
         let mut y = 0.;
         for r in self.rows.iter() {
@@ -468,7 +467,7 @@ impl DiffState {
             }
             // Sideways too: the caret's column stays in the text's room.
             if !self.wrap {
-                let room = (if self.split() { width / 2. - NUM_W - SIGN_W } else { width - self.gutter() }).max(crate::metrics::advance());
+                let room = (if self.split() { width / 2. - num_w() - SIGN_W } else { width - self.gutter() }).max(crate::metrics::advance());
                 let x = at.byte as f32 * crate::metrics::advance();
                 if x < self.hscroll {
                     self.hscroll = x;
@@ -583,7 +582,7 @@ impl DiffState {
     /// Where the gutter's button goes on a removed line and on an added one.
     pub fn glyph_columns(&self) -> (f32, f32) {
         let width = self.body.get().size.width.as_f32();
-        if self.split() { (SPLIT_LEFT_MARGIN + NUM_W + 2., width / 2. + NUM_W + 2.) } else { (NUM_W + 1., NUM_W + 1.) }
+        if self.split() { (SPLIT_LEFT_MARGIN + num_w() + 2., width / 2. + num_w() + 2.) } else { (num_w() + 1., num_w() + 1.) }
     }
 
     /// The text's left edge, for what's placed against it.
@@ -701,18 +700,18 @@ impl GitVolt {
         let read = self.rt.spawn(async move {
             let (old, new) = (serde_json::from_value(old_side.clone()), serde_json::from_value(new_side.clone()));
             let (Ok(old), Ok(new)) = (old, new) else { return Err(GbError::other("This file's sides can't be read")) };
-            let v = api.dispatch(Request::DiffContents { repo, path: file.path.to_string(), old, new, force, old_path: file.old_path.clone() }).await?;
+            let v = api.dispatch(Request::DiffContents { repo: crate::app::core_repo(repo), path: file.path.to_string(), old, new, force, old_path: file.old_path.clone() }).await?;
             let path = file.path.to_string();
             let editable = super::edit::is_editable(&file, &new_side, &v).then(|| (v["new"]["text"].as_str().unwrap_or_default().to_string(), v["old"]["text"].as_str().map(str::to_string), v["new"]["hash"].as_str().unwrap_or_default().to_string(), new_side["worktree"].as_str().unwrap_or_default().to_string()));
             // A WIP diff's hunks, so its header rows are laid out with it.
             let wip_hunks = match &file.origin {
-                crate::details::Origin::Wip { worktree, staged } if file.status != UNCHANGED && file.status != 'U' => api.dispatch(Request::WipHunks { repo, worktree: worktree.clone(), path: path.clone(), staged: *staged }).await.ok().map(|h| super::staging::WipHunks::of(&h)),
+                crate::details::Origin::Wip { worktree, staged } if file.status != UNCHANGED && file.status != 'U' => api.dispatch(Request::WipHunks { repo: crate::app::core_repo(repo), worktree: worktree.clone(), path: path.clone(), staged: *staged }).await.ok().map(|h| super::staging::WipHunks::of(&h)),
                 _ => None,
             };
             // A binary's dumps load with its contents, so it's ready to show as a text file is.
             let hex = if wants_hex(&v, history_file) {
                 let (Ok(old), Ok(new)) = (serde_json::from_value(old_side), serde_json::from_value(new_side)) else { return Err(GbError::other("This file's sides can't be read")) };
-                Some(api.dispatch(Request::HexDump { repo, path: path.clone(), old, new }).await?)
+                Some(api.dispatch(Request::HexDump { repo: crate::app::core_repo(repo), path: path.clone(), old, new }).await?)
             } else {
                 None
             };
@@ -793,7 +792,7 @@ impl GitVolt {
         let api = self.api.clone();
         let read = self.rt.spawn(async move {
             let (Ok(old), Ok(new)) = (serde_json::from_value(file.old.clone()), serde_json::from_value(file.new.clone())) else { return Err(GbError::other("This file's sides can't be read")) };
-            let v = api.dispatch(Request::HexDump { repo, path: file.path.to_string(), old, new }).await?;
+            let v = api.dispatch(Request::HexDump { repo: crate::app::core_repo(repo), path: file.path.to_string(), old, new }).await?;
             tokio::task::spawn_blocking(move || HexData::of(&v)).await.map_err(|e| GbError::other(e.to_string()))
         });
         cx.spawn(async move |this, cx| {
@@ -986,6 +985,11 @@ fn contents(path: &str, v: &Value, ignore_whitespace: bool, history_file: bool, 
     Read::Text(data, texts)
 }
 
+/// Monaco's line number column: five characters' room, a pixel over.
+pub fn num_w() -> f32 {
+    (crate::metrics::advance() * 5. + 1.).floor()
+}
+
 pub fn mono() -> Font {
     let style = crate::metrics::editor_style();
     let family = crate::settings::fonts::families_of(&style.family).into_iter().next().unwrap_or_else(|| FONT.to_string());
@@ -1151,8 +1155,8 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
     let y = b.origin.y;
     let bottom = y + b.size.height;
     let num = if ix == p.cursor { theme::editor().line_number_active } else { theme::editor().line_number };
-    let (old_right, new_right) = (b.origin.x + px(NUM_W - 4.), b.origin.x + px(2. * NUM_W - 4.));
-    let sign_x = b.origin.x + px(2. * NUM_W);
+    let (old_right, new_right) = (b.origin.x + px(num_w() - 4.), b.origin.x + px(2. * num_w() - 4.));
+    let sign_x = b.origin.x + px(2. * num_w());
     let text_x = sign_x + px(SIGN_W);
     let clip = Bounds::from_corners(point(text_x, y), point(b.origin.x + b.size.width, bottom));
     let hl = &p.highlight;
@@ -1166,7 +1170,7 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
             }
         }
         RowKind::Added => {
-            window.paint_quad(fill(Bounds::from_corners(point(b.origin.x + px(NUM_W), y), point(b.origin.x + b.size.width, bottom)), theme::diff_inserted_line()));
+            window.paint_quad(fill(Bounds::from_corners(point(b.origin.x + px(num_w()), y), point(b.origin.x + b.size.width, bottom)), theme::diff_inserted_line()));
             if let Some(n) = r.new {
                 paint_number(n, new_right, y, num, p, window, cx);
                 paint_sign("+", sign_x, y, theme::status_added(), p, window, cx);
@@ -1174,8 +1178,8 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
             }
         }
         _ if p.view == ViewKind::File => {
-            let right = b.origin.x + px(NUM_W - 4.);
-            let at = b.origin.x + px(NUM_W + FOLD_W);
+            let right = b.origin.x + px(num_w() - 4.);
+            let at = b.origin.x + px(num_w() + FOLD_W);
             let clip = Bounds::from_corners(point(at, y), point(b.origin.x + b.size.width, bottom));
             let (n, old_side) = match (r.new, r.old) {
                 (Some(n), _) => (n, false),
@@ -1185,7 +1189,7 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
             paint_number(n, right, y, num, p, window, cx);
             let folded = p.folded.contains(&n);
             if folded || (p.fold_hover && p.fold_ends.get(n as usize).copied().flatten().is_some()) {
-                let chevron = Bounds::new(point(b.origin.x + px(NUM_W + 6.), y + px(2.)), size(px(14.), px(14.)));
+                let chevron = Bounds::new(point(b.origin.x + px(num_w() + 6.), y + px(2.)), size(px(14.), px(14.)));
                 window.paint_svg(chevron, if folded { "icons/chevron-right.svg" } else { "icons/chevron-down.svg" }.into(), None, TransformationMatrix::unit(), theme::editor().fold_icon, cx).ok();
             }
             let (line, spans, mark) = if old_side { (&p.data.old.lines[n as usize], spans_of(&hl.old, n), theme::diff_removed_text()) } else { (&p.data.new.lines[n as usize], spans_of(&hl.new, n), theme::diff_inserted_text()) };
@@ -1215,12 +1219,12 @@ fn paint_hidden(b: Bounds<Pixels>, ix: usize, count: u32, p: &Painter, window: &
         window.set_window_cursor_style(CursorStyle::PointingHand);
     }
     let color = if hovered { theme::text_selected() } else { theme::text_normal() };
-    let icon_at = Bounds::new(point(b.origin.x + px(2. * NUM_W - 16.), b.origin.y + px(5.)), size(px(14.), px(14.)));
+    let icon_at = Bounds::new(point(b.origin.x + px(2. * num_w() - 16.), b.origin.y + px(5.)), size(px(14.), px(14.)));
     window.paint_svg(icon_at, "icons/unfold-vertical.svg".into(), None, TransformationMatrix::unit(), color, cx).ok();
     let text: SharedString = format!("{count} hidden lines").into();
     let run = TextRun { len: text.len(), font: window.text_style().font(), color, background_color: None, underline: None, strikethrough: None };
     let line = window.text_system().shape_line(text, px(12.), &[run], None);
-    line.paint(point(b.origin.x + px(2. * NUM_W + SIGN_W), b.origin.y), b.size.height, TextAlign::Left, None, window, cx).ok();
+    line.paint(point(b.origin.x + px(2. * num_w() + SIGN_W), b.origin.y), b.size.height, TextAlign::Left, None, window, cx).ok();
 }
 
 fn paint_split(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut Window, cx: &mut App) {
@@ -1240,12 +1244,12 @@ fn paint_split(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut 
         }
         let (side, spans, mark) = if old_side { (&p.data.old, spans_of(&hl.old, n), theme::diff_removed_text()) } else { (&p.data.new, spans_of(&hl.new, n), theme::diff_inserted_text()) };
         let margin = if old_side { SPLIT_LEFT_MARGIN } else { 0. };
-        paint_number(n, left + px(margin + NUM_W - 4.), y, if ix == p.cursor { theme::editor().line_number_active } else { theme::editor().line_number }, p, window, cx);
+        paint_number(n, left + px(margin + num_w() - 4.), y, if ix == p.cursor { theme::editor().line_number_active } else { theme::editor().line_number }, p, window, cx);
         if change {
             let (glyph, color) = if old_side { ("−", theme::status_deleted()) } else { ("+", theme::status_added()) };
-            paint_sign(glyph, left + px(margin + NUM_W), y, color, p, window, cx);
+            paint_sign(glyph, left + px(margin + num_w()), y, color, p, window, cx);
         }
-        let text_x = left + px(margin + NUM_W + SIGN_W);
+        let text_x = left + px(margin + num_w() + SIGN_W);
         let clip = Bounds::from_corners(point(text_x, y), point(left + half, y + height));
         paint_text(ix, n, &side.lines[n as usize], spans, old_side, mark, text_x, y, clip, p, window, cx);
     };
@@ -1264,7 +1268,7 @@ fn pos_at(diff: &DiffState, position: Point<Pixels>, window: &Window) -> Option<
     let (old_side, gutter) = if split {
         let half = b.size.width / 2.;
         let left = position.x < b.origin.x + half;
-        (left, if left { px(diff.gutter()) } else { half + px(NUM_W + SIGN_W) })
+        (left, if left { px(diff.gutter()) } else { half + px(num_w() + SIGN_W) })
     } else {
         (r.new.is_none(), px(diff.gutter()))
     };
@@ -1325,7 +1329,7 @@ fn on_mouse_down(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx
     if matches!(r.kind, RowKind::HunkHeader { .. }) {
         return;
     }
-    if diff.view == ViewKind::File && (NUM_W..NUM_W + FOLD_W).contains(&x) {
+    if diff.view == ViewKind::File && (num_w()..num_w() + FOLD_W).contains(&x) {
         let n = r.new.or(r.old).unwrap_or(0);
         if diff.fold_ends.get(n as usize).copied().flatten().is_some() {
             if !diff.folded.remove(&n) {

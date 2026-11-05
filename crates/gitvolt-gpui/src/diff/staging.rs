@@ -204,9 +204,9 @@ impl GitVolt {
             false,
             move || {
                 if discard {
-                    call("discard", json!({ "repo": repo, "worktree": worktree, "scope": { "kind": "patch", "path": path, "selection": selection, "base": base } }))
+                    call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "patch", "path": path, "selection": selection, "base": base } }))
                 } else {
-                    call("stagePatch", json!({ "repo": repo, "worktree": worktree, "path": path, "staged": staged, "selection": selection, "base": base }))
+                    call("stagePatch", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": path, "staged": staged, "selection": selection, "base": base }))
                 }
             },
             cx,
@@ -306,7 +306,7 @@ impl GitVolt {
         }
         let selection = lines_selection(&old, &new);
         let api = self.api.clone();
-        let body = call("selectionLines", json!({ "repo": repo, "worktree": worktree, "path": path, "staged": staged, "selection": selection }));
+        let body = call("selectionLines", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "path": path, "staged": staged, "selection": selection }));
         let read = self.rt.spawn(async move { api.dispatch(crate::write::request_of(body)?).await });
         cx.spawn(async move |this, cx| {
             if let Ok(Ok(c)) = read.await {
@@ -573,7 +573,7 @@ mod tests {
     }
 
     async fn hunks_of(f: &Fixture, path: &str, staged: bool) -> Value {
-        f.ok(call("wipHunks", json!({ "repo": f.repo, "worktree": f.worktree, "path": path, "staged": staged }))).await
+        f.ok(call("wipHunks", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "path": path, "staged": staged }))).await
     }
 
     #[tokio::test]
@@ -585,7 +585,7 @@ mod tests {
         let h = WipHunks::of(&v);
         assert_eq!(h.hunks.len(), 2, "two hunks: {v}");
         let (repo, wt) = (f.repo, f.worktree.clone());
-        let stage = |sel: Value, base: Value, staged: bool| call("stagePatch", json!({ "repo": repo, "worktree": wt, "path": "a.txt", "staged": staged, "selection": sel, "base": base }));
+        let stage = |sel: Value, base: Value, staged: bool| call("stagePatch", json!({ "repo": crate::app::core_repo(repo), "worktree": wt, "path": "a.txt", "staged": staged, "selection": sel, "base": base }));
         f.ok(stage(hunk_selection(0), h.base.clone(), false)).await;
         assert!(f.git(&["diff", "--cached"]).contains("+line one"));
         assert!(!f.git(&["diff", "--cached"]).contains("+line ten"));
@@ -601,7 +601,7 @@ mod tests {
         // Discarded from the file.
         let v = hunks_of(&f, "a.txt", false).await;
         let u = WipHunks::of(&v);
-        f.ok(call("discard", json!({ "repo": repo, "worktree": f.worktree, "scope": { "kind": "patch", "path": "a.txt", "selection": hunk_selection(1), "base": u.base } }))).await;
+        f.ok(call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": f.worktree, "scope": { "kind": "patch", "path": "a.txt", "selection": hunk_selection(1), "base": u.base } }))).await;
         assert!(!f.read("a.txt").contains("line ten"));
         assert!(f.read("a.txt").contains("line one"));
     }
@@ -616,13 +616,13 @@ mod tests {
         let add = h.hunks[0].add.clone();
         assert_eq!(add.len(), 2);
         let sel = lines_selection(&[], &add[..1]);
-        let c = f.ok(call("selectionLines", json!({ "repo": f.repo, "worktree": f.worktree, "path": "a.txt", "staged": false, "selection": sel }))).await;
+        let c = f.ok(call("selectionLines", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "path": "a.txt", "staged": false, "selection": sel }))).await;
         assert_eq!(c["apply"].as_u64(), Some(1));
-        f.ok(call("stagePatch", json!({ "repo": f.repo, "worktree": f.worktree, "path": "a.txt", "staged": false, "selection": sel, "base": h.base }))).await;
+        f.ok(call("stagePatch", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree, "path": "a.txt", "staged": false, "selection": sel, "base": h.base }))).await;
         let cached = f.git(&["diff", "--cached"]);
         assert!(cached.contains("+two") && !cached.contains("+more"), "{cached}");
         // And the staging log takes it back.
-        f.ok(call("stagingUndo", json!({ "repo": f.repo, "worktree": f.worktree }))).await;
+        f.ok(call("stagingUndo", json!({ "repo": crate::app::core_repo(f.repo), "worktree": f.worktree }))).await;
         assert_eq!(f.git(&["diff", "--cached"]), "");
     }
 

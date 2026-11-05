@@ -156,10 +156,12 @@ impl Ops {
     }
 
     pub fn journal(&self, repo: u32, worktree: &str) -> Option<&JournalState> {
+        let repo = crate::app::core_repo(repo);
         self.journals.get(&(repo, worktree.to_string()))
     }
 
     pub fn staging(&self, repo: u32, worktree: &str) -> Option<&StagingUndoState> {
+        let repo = crate::app::core_repo(repo);
         self.staging.get(&(repo, worktree.to_string()))
     }
 
@@ -185,6 +187,7 @@ impl Ops {
 
     /// An op of `kind` waits in `repo`'s queue.
     pub fn queued_kind(&self, repo: u32, kind: OpKind) -> bool {
+        let repo = crate::app::core_repo(repo);
         self.queues.get(&repo).is_some_and(|q| q.queued.iter().any(|i| i.kind == kind))
     }
 }

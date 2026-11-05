@@ -388,7 +388,7 @@ impl GitVolt {
         let generation = h.generation;
         let (worktree, path, rev, skip) = (h.worktree.clone(), h.path.to_string(), h.rev.clone(), h.rows.len() as u32);
         let api = self.api.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::FileHistory { repo, worktree, path, rev, skip, limit: PAGE }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::FileHistory { repo: crate::app::core_repo(repo), worktree, path, rev, skip, limit: PAGE }).await });
         cx.spawn(async move |this, cx| {
             let result = read.await;
             this.update(cx, |this, cx| {
@@ -535,7 +535,7 @@ impl GitVolt {
         h.blame = BlameState::Loading;
         let worktree = h.worktree.clone();
         let api = self.api.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::Blame { repo, worktree, rev, path }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::Blame { repo: crate::app::core_repo(repo), worktree, rev, path }).await });
         cx.spawn(async move |this, cx| {
             let result = read.await;
             this.update(cx, |this, cx| {

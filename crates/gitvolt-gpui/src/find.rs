@@ -198,7 +198,7 @@ impl GitVolt {
         tab.find.path_pending = false;
         let api = self.api.clone();
         let query = q.clone();
-        let text = self.rt.spawn(async move { api.dispatch(Request::FindText { repo, query }).await });
+        let text = self.rt.spawn(async move { api.dispatch(Request::FindText { repo: crate::app::core_repo(repo), query }).await });
         let api = self.api.clone();
         cx.spawn(async move |this, cx| {
             let Ok(Ok(found)) = text.await else {
@@ -220,7 +220,7 @@ impl GitVolt {
                     }
                     let (query, text_hits) = (q.clone(), found.clone());
                     let rt = this.rt.clone();
-                    let paths = rt.spawn(async move { api.dispatch(Request::FindPaths { repo, query }).await });
+                    let paths = rt.spawn(async move { api.dispatch(Request::FindPaths { repo: crate::app::core_repo(repo), query }).await });
                     cx.spawn(async move |this, cx| {
                         let more = match paths.await {
                             Ok(Ok(v)) => ids(&v),
@@ -321,7 +321,7 @@ impl GitVolt {
         tab.find.older_loading = true;
         cx.notify();
         let api = self.api.clone();
-        let done = self.rt.spawn(async move { api.dispatch(Request::SearchHistory { repo, query }).await });
+        let done = self.rt.spawn(async move { api.dispatch(Request::SearchHistory { repo: crate::app::core_repo(repo), query }).await });
         cx.spawn(async move |this, cx| {
             let hits = match done.await {
                 Ok(Ok(v)) => v.as_array().map_or(Vec::new(), |a| a.iter().map(|h| OlderHit { id: h["id"].as_str().unwrap_or_default().to_string(), summary: h["summary"].as_str().unwrap_or_default().to_string(), author: h["author"].as_str().unwrap_or_default().to_string(), time: h["time"].as_i64().unwrap_or(0) }).collect()),
@@ -345,7 +345,7 @@ impl GitVolt {
         let repo = tab.id;
         let api = self.api.clone();
         let id = sha.clone();
-        let located = self.rt.spawn(async move { api.dispatch(Request::LocateCommit { repo, sha: id }).await });
+        let located = self.rt.spawn(async move { api.dispatch(Request::LocateCommit { repo: crate::app::core_repo(repo), sha: id }).await });
         cx.spawn(async move |this, cx| {
             let limit = match located.await {
                 Ok(Ok(v)) if v["found"].as_bool() == Some(true) => v["limit"].as_u64(),

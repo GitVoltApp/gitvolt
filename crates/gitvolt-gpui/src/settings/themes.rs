@@ -610,7 +610,7 @@ fn lane_colours(this: &mut GitVolt, compact: bool, cx: &mut Context<GitVolt>) ->
                 .when(!compact, |d| d.child(div().max_w_full().overflow_hidden().font_family(crate::diff::view::FONT).text_size(px(11.)).text_color(theme::text_secondary()).child(c.css()))),
         ));
     }
-    row.on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| this.on_lane_drag(e, cx))).on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| this.end_lane_drag(cx))).into_any_element()
+    row.into_any_element()
 }
 
 /// A card's picture of a theme, in that theme's own colours.
@@ -901,7 +901,8 @@ impl GitVolt {
         cx.notify();
     }
 
-    pub fn on_float_drag(&mut self, e: &MouseMoveEvent, viewport: Size<Pixels>, cx: &mut Context<Self>) {
+    pub fn on_float_drag(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+        let viewport = size(px(self.window_width), px(self.window_height));
         let Some((from, at)) = self.settings_ui.float_drag else { return };
         if e.pressed_button != Some(MouseButton::Left) {
             self.settings_ui.float_drag = None;
@@ -984,8 +985,6 @@ pub fn floating_editor(this: &mut GitVolt, window: &mut Window, cx: &mut Context
         .text_size(px(12.))
         .text_color(theme::text_normal())
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, window, cx| this.on_float_drag(e, window.viewport_size(), cx)))
-        .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| this.settings_release(cx)))
         .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
             let k = &e.keystroke;
             if k.key == "escape" && !k.modifiers.modified() {
@@ -993,6 +992,7 @@ pub fn floating_editor(this: &mut GitVolt, window: &mut Window, cx: &mut Context
                 this.floating_done(cx);
             }
         }))
+        .child(super::frame::release_listener(cx))
         .child(bar)
         .child(find)
         .child(div().id("theme-float-body").flex_1().min_h_0().overflow_y_scroll().px(px(10.)).pt(px(6.)).pb(px(10.)).child(list))
