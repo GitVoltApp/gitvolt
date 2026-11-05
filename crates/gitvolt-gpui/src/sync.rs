@@ -734,7 +734,7 @@ impl GitVolt {
     }
 
     /// "Push main to [origin ▾] / [main]", ☑ Track it.
-    pub fn open_push_upstream(&mut self, ctx: WriteCtx, b: LocalBranch, _origin: Origin, cx: &mut Context<Self>) {
+    pub fn open_push_upstream(&mut self, ctx: WriteCtx, b: LocalBranch, origin: Origin, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.iter().find(|t| t.id == ctx.repo) else { return };
         let mut remotes: Vec<String> = tab.remote_groups().into_iter().map(|g| g.0).collect();
         if remotes.is_empty() {
@@ -743,7 +743,15 @@ impl GitVolt {
         }
         remotes.sort_by_key(|r| r != "origin");
         let this = cx.weak_entity();
-        self.with_window(cx, move |window, cx| push_panel(ctx, b, remotes, this, window, cx));
+        // Dropped from where the push started: the button, or where the menu's row was.
+        let anchor = match &origin {
+            Origin::Control { key, .. } => crate::ui::Ui::get(cx).anchor(key),
+            _ => {
+                let at = crate::ui::menu::last_origin(cx);
+                Some(Bounds::new(at, size(px(0.), px(0.))))
+            }
+        };
+        self.with_window(cx, move |window, cx| push_panel(ctx, b, remotes, anchor, this, window, cx));
     }
 
     // ---- Undo and redo ----
@@ -1153,7 +1161,7 @@ pub fn sync_rows(v: &GitVolt, b: &LocalBranch, this: &WeakEntity<GitVolt>) -> Ve
 }
 
 /// The panel that asks where: remote, branch name and Track it.
-fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, this: WeakEntity<GitVolt>, window: &mut Window, cx: &mut App) {
+fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, anchor: Option<Bounds<Pixels>>, this: WeakEntity<GitVolt>, window: &mut Window, cx: &mut App) {
     const ID: &str = "push-upstream";
     let input = cx.new(|cx| {
         let mut i = TextInput::new(cx);
@@ -1245,6 +1253,7 @@ fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, this: WeakEnt
             .into_any_element()
     })
     .width(520.)
+    .anchored(anchor)
     .focus(focus);
     m.keep.push(enter);
     modal::open(m, window, cx);

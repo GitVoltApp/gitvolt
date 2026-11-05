@@ -835,7 +835,7 @@ impl GitVolt {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&FileChange>, all_files: bool, keys_here: bool, panel_w: f32, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+fn files_view(files: &Files, creating: Option<&crate::manage::CreateFile>, input: &Entity<TextInput>, selected: Option<&FileChange>, all_files: bool, keys_here: bool, panel_w: f32, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let (mut added, mut changed, mut gone, mut renamed) = (0, 0, 0, 0);
     for f in files.changed.iter() {
         match status_icon(f.status).0 {
@@ -925,7 +925,24 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&FileCh
     let query = if all_on { files.filter.trim().to_lowercase() } else { String::new() };
     let view = ListView { rows: files.rows.clone(), changes: files.changes.clone(), cursor: files.cursor.clone(), keys_here, selected: selected.cloned(), query, panel_w, section: None };
     let list = file_list("file-list", view, &files.list, cx);
-    div().flex().flex_col().flex_1().min_h_0().child(summary).child(tools).children(filter_row).children(tree_error).child(list)
+    let creating = creating.map(|c| crate::manage::create_file_input(c, cx));
+    div()
+        .id("files-body")
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_h_0()
+        .on_mouse_down(MouseButton::Right, cx.listener(|_, e: &MouseDownEvent, window, cx| {
+            let weak = cx.weak_entity();
+            let rows = vec![crate::menus::create_file_row(None, None, &weak)];
+            crate::ui::menu::open_context(rows, e.position, window, cx);
+        }))
+        .child(summary)
+        .child(tools)
+        .children(filter_row)
+        .children(tree_error)
+        .children(creating)
+        .child(list)
 }
 
 /// What a file list shows: all of it, or a WIP section's part of it.
@@ -1144,7 +1161,7 @@ pub fn details_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &W
     if tab.is_wip_selected() {
         return Some(crate::wip::wip_panel(v, tab, width, height, window, cx));
     }
-    let files = tab.files.as_ref().map(|f| files_view(f, &tab.file_filter, selected.as_ref(), tab.all_files, tab.keys == KeyArea::Files, width, window, cx));
+    let files = tab.files.as_ref().map(|f| files_view(f, tab.create_file.as_ref().filter(|c| c.section.is_none()), &tab.file_filter, selected.as_ref(), tab.all_files, tab.keys == KeyArea::Files, width, window, cx));
     let header = 37. + 4. + 32. + 6. + if tab.commit.as_ref().is_some_and(|c| c.committer.is_some()) { 36. } else { 0. } + if tab.commit.as_ref().is_some_and(|c| !c.co_authors.is_empty()) { 26. } else { 0. };
     let (lo, hi) = split_bounds(height, header);
     let commit_h = (v.details_split.clamp(lo, hi) * height).round();

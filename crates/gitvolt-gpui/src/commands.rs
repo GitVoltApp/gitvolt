@@ -146,6 +146,10 @@ fn has_tab(v: &GitVolt, _: &App) -> bool {
     !v.tabs.is_empty()
 }
 
+fn has_repo(v: &GitVolt, _: &App) -> bool {
+    v.tabs.get(v.active).is_some_and(|t| !t.is_open_tab())
+}
+
 fn many_tabs(v: &GitVolt, _: &App) -> bool {
     v.tabs.len() > 1
 }
@@ -230,7 +234,7 @@ pub fn all() -> Vec<Command> {
             v.run_fetch(repo, false, None, cx);
         }),
         Command::new("repo.syncDefault", "Fetch", Repository, "download", "Fetch every remote", &[]).when(has_tab).run(|v, _, cx| v.sync_default(cx)),
-        Command::new("worktree.switch", "Switch worktree…", Repository, "arrow-right-left", "Change the tab's active worktree", &[]),
+        Command::new("worktree.switch", "Switch worktree…", Repository, "arrow-right-left", "Change the tab's active worktree", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.graph.as_ref()).is_some_and(|g| g.worktrees.len() > 1)).run(|v, window, cx| v.choose_worktree(window, cx)),
         Command::new("branch.create", "Branch", Repository, "git-branch-plus", "Create a branch at HEAD", &["Mod+Shift+N"]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.head_sha().is_some())).run(|v, window, cx| {
             let Some(tab) = v.tabs.get(v.active) else { return };
             let (Some(sha), start) = (tab.head_sha(), tab.head_branch().map(|b| format!("refs/heads/{b}"))) else { return };
@@ -260,8 +264,8 @@ pub fn all() -> Vec<Command> {
         Command::new("merge.takeCurrent", "Take all from Current", Repository, "arrow-left-to-line", "In the merge tool: every conflict's lines from the current side", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.merge_shown()).is_some_and(|m| m.textual())).run(|v, _, cx| v.merge_take_all(crate::merge::model::Side::Current, cx)),
         Command::new("merge.takeIncoming", "Take all from Incoming", Repository, "arrow-right-to-line", "In the merge tool: every conflict's lines from the incoming side", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.merge_shown()).is_some_and(|m| m.textual())).run(|v, _, cx| v.merge_take_all(crate::merge::model::Side::Incoming, cx)),
         Command::new("repo.interactiveRebase", "Interactive rebase…", Repository, "list-ordered", "Reorder, reword, squash or drop the current branch's commits on its upstream", &[]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_head().is_some() || t.rebase_op().is_some())).run(|v, _, cx| v.palette_rebase(cx)),
-        Command::new("file.create", "Create file…", Repository, "file-plus", "Create a new, empty file in the working tree (you can undo this)", &[]),
-        Command::new("remote.add", "Add remote…", Repository, "plus", "Add a remote by URL, or one of the project's forks", &[]),
+        Command::new("file.create", "Create file…", Repository, "file-plus", "Create a new, empty file in the working tree (you can undo this)", &[]).when(has_repo).run(|v, window, cx| v.open_create_file(window, cx)),
+        Command::new("remote.add", "Add remote…", Repository, "plus", "Add a remote by URL, or one of the project's forks", &[]).when(has_repo).run(|v, window, cx| v.open_add_remote(window, cx)),
         Command::new("submodule.add", "Submodules: Add…", Repository, "boxes", "Clone a repository into this one as a submodule (git submodule add)", &[]),
         Command::new("file.save", "Save", File, "save", "Save the working copy being edited", &["Mod+S"]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.merge_shown().is_some_and(|m| m.textual() && m.base.is_some()) || t.diff.as_ref().is_some_and(|d| d.edit.is_some()))).hidden().run(|v, _, cx| {
             if v.tabs.get(v.active).and_then(|t| t.merge_shown()).is_some() {

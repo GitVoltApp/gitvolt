@@ -45,6 +45,7 @@ impl GitVolt {
         }
         self.repo_order = if v["yourReposOrder"] == "alpha" { crate::open::RepoOrder::Alpha } else { crate::open::RepoOrder::Recent };
         self.repo_grouped = v["yourReposLayout"] == "grouped";
+        self.branch_order_recent = v["branchPickerOrder"] == "recent";
         if let Some(r) = v["detailsSplit"].as_f64() {
             self.details_split = (r as f32).clamp(0.1, 0.75);
         }
@@ -75,7 +76,7 @@ impl GitVolt {
             let hidden: Vec<&str> = HIDEABLE.iter().filter(|(c, _)| tab.hidden_columns.contains(c)).map(|(c, _)| col_key(*c)).collect();
             columns.insert(tab.worktree.clone(), json!({ "labels": p.labels, "graph": p.graph, "author": p.author, "date": p.date, "sha": p.sha, "message": p.message, "hidden": hidden }));
         }
-        json!({ "sidebarWidth": self.sidebar_w, "sidebarNarrow": self.sidebar_narrow, "sidebarPanels": panels, "yourReposOrder": if self.repo_order == crate::open::RepoOrder::Alpha { "alpha" } else { "recent" }, "yourReposLayout": if self.repo_grouped { "grouped" } else { "merged" }, "detailsWidth": self.details_w, "detailsSplit": self.details_split, "columns": columns, "wipRatio": self.wip_ratio, "wipCollapsed": self.wip_closed, "syncButton": self.sync_mode.key() })
+        json!({ "sidebarWidth": self.sidebar_w, "sidebarNarrow": self.sidebar_narrow, "sidebarPanels": panels, "branchPickerOrder": if self.branch_order_recent { "recent" } else { "alpha" }, "yourReposOrder": if self.repo_order == crate::open::RepoOrder::Alpha { "alpha" } else { "recent" }, "yourReposLayout": if self.repo_grouped { "grouped" } else { "merged" }, "detailsWidth": self.details_w, "detailsSplit": self.details_split, "columns": columns, "wipRatio": self.wip_ratio, "wipCollapsed": self.wip_closed, "syncButton": self.sync_mode.key() })
     }
 
     /// A repository's columns, as they were left.

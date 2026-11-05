@@ -557,6 +557,15 @@ impl GitVolt {
 
     /// Fresh lists for `worktree`: the panel shows them if it's on that row, and the open file follows.
     pub fn put_wip(&mut self, repo: u32, worktree: String, unstaged: &Value, staged: &Value, cx: &mut Context<Self>) {
+        self.put_wip_lists(repo, worktree, unstaged, staged, cx);
+        let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
+        let Some(path) = tab.open_after_wip.clone() else { return };
+        let Some(file) = tab.files.as_ref().filter(|f| f.wip.is_some()).and_then(|f| f.changes.iter().find(|c| c.path.as_ref() == path).cloned()) else { return };
+        tab.open_after_wip = None;
+        self.open_change_as_file(file, cx);
+    }
+
+    fn put_wip_lists(&mut self, repo: u32, worktree: String, unstaged: &Value, staged: &Value, cx: &mut Context<Self>) {
         let closed = self.wip_closed;
         let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
         if tab.wip_worktree() != Some(worktree.as_str()) {
@@ -1929,6 +1938,7 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
                 menu::open_context(rows, e.position, window, cx);
             }))
             .children(tool_line)
+            .children(tab.create_file.as_ref().filter(|c| c.section == Some(which)).map(|c| crate::manage::create_file_input(c, cx)))
             .child(list)
     });
     let el = div().flex().flex_col().min_h_0().overflow_hidden().child(head).children(body);

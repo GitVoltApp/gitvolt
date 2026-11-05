@@ -13,6 +13,16 @@ use gpui::prelude::*;
 use gpui::*;
 use std::rc::Rc;
 
+/// Which WIP list a file's row is in; a commit's list has none.
+fn file_section(file: &FileChange) -> Option<crate::wip::Which> {
+    match &file.origin {
+        Origin::Wip { staged: true, .. } => Some(crate::wip::Which::Staged),
+        Origin::Wip { .. } if file.conflict.is_some() => Some(crate::wip::Which::Conflicted),
+        Origin::Wip { .. } => Some(crate::wip::Which::Unstaged),
+        Origin::Commit { .. } => None,
+    }
+}
+
 fn short(sha: &str) -> String {
     sha.chars().take(SHORT_SHA).collect()
 }
@@ -33,10 +43,12 @@ fn copier(this: &WeakEntity<GitVolt>, text: String) -> impl Fn(&mut Window, &mut
     }
 }
 
-fn create_file_row(this: &WeakEntity<GitVolt>) -> MenuRow {
+/// A file list's Create file…: the inline input on top of that list. `prefill`: a folder's path.
+pub fn create_file_row(section: Option<crate::wip::Which>, prefill: Option<String>, this: &WeakEntity<GitVolt>) -> MenuRow {
     let weak = this.clone();
-    MenuRow::action("files.createFile", "Create file…", "file-plus", "Create an empty file in the working tree", move |window, cx| {
-        weak.update(cx, |v, cx| v.open_create_file(window, cx)).ok();
+    MenuRow::action("files.createFile", "Create file…", "file-plus", "Create a new, empty file in the working tree (you can undo this)", move |_, cx| {
+        let prefill = prefill.clone();
+        weak.update(cx, |v, cx| v.open_create_file_inline(section, prefill, cx)).ok();
     })
 }
 
@@ -264,7 +276,22 @@ impl GitVolt {
             let ctx = ctx.clone();
             weak.update(cx, |v, cx| v.stash_push(ctx, cx)).ok();
         });
-        vec![stash, self.discard_all_row(this)]
+        let mut rows = vec![stash, self.discard_all_row(this)];
+        let path = row.worktree.clone().unwrap_or_else(|| tab.worktree.clone());
+        let mut worktree = Vec::new();
+        if path != tab.worktree {
+            let (weak, p, shown) = (this.clone(), path.clone(), path.clone());
+            worktree.push(MenuRow::action("wip.switch", "Switch to this worktree", "arrow-right-left", format!("Make {shown} this tab's worktree (its WIP, commit box and Undo)"), move |_, cx| {
+                let p = p.clone();
+                weak.update(cx, |v, cx| v.switch_worktree(p, cx)).ok();
+            }));
+        }
+        worktree.extend(self.remove_worktree_rows("wip.remove", &path, None, this));
+        if !worktree.is_empty() {
+            rows.push(MenuRow::Separator);
+            rows.extend(worktree);
+        }
+        rows
     }
 
     /// A stash's Apply, Pop and Delete.
@@ -364,7 +391,6 @@ impl GitVolt {
             weak.update(cx, |v, cx| v.open_folder(folder, cx)).ok();
         })];
         let tab = self.tabs.get(self.active);
-        let is_main = tab.and_then(|t| t.graph.as_ref()).and_then(|g| g.worktrees.iter().find(|w| w.path == path)).is_some_and(|w| w.is_main);
         let manage = {
             let mut rows = Vec::new();
             if tab.is_some_and(|t| t.worktree != path) {
@@ -375,17 +401,47 @@ impl GitVolt {
                     weak.update(cx, |v, cx| v.switch_worktree(p, cx)).ok();
                 }));
             }
-            if !is_main {
-                let (weak, p, b) = (this.clone(), path.to_string(), branch.map(str::to_string));
-                let shown = path.to_string();
-                rows.push(MenuRow::action("sidebar.worktree.remove", "Remove worktree", "x", format!("Remove {shown}: its directory is deleted"), move |window, cx| {
-                    let (p, b, origin) = (p.clone(), b.clone(), crate::ui::arm::Origin::current(cx));
-                    weak.update(cx, |v, cx| v.remove_worktree(p, b, origin, window, cx)).ok();
-                }));
-            }
+            rows.extend(self.remove_worktree_rows("sidebar.worktree.remove", path, branch, this));
             rows
         };
         grouped(vec![manage, copy, open, show_in_graph(head, head.is_some_and(|h| self.in_graph(h)), this)])
+    }
+
+    /// `Remove worktree | Worktree | With branch |`: the variant also deletes its local branch (none when detached). Never
+    /// the main worktree's; greyed for a locked one.
+    pub fn remove_worktree_rows(&self, id: &'static str, path: &str, branch: Option<&str>, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+        let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
+        let Some(g) = tab.graph.as_ref() else { return Vec::new() };
+        let main = g.worktrees.iter().find(|w| w.is_main).map_or(String::new(), |w| w.path.clone());
+        let w = g.worktrees.iter().find(|w| w.path == path);
+        if w.is_some_and(|w| w.is_main) || path == main {
+            return Vec::new();
+        }
+        let shown = crate::manage::worktree_shown(&main, path);
+        let name = w.and_then(|w| w.branch.clone()).or_else(|| branch.map(str::to_string)).map(|b| b.trim_start_matches("refs/heads/").to_string());
+        let local = name.as_deref().and_then(|n| tab.local_branch(n));
+        let locked = tab.sidebar["worktrees"].as_array().and_then(|l| l.iter().find(|x| x["path"] == path)).is_some_and(|x| x["locked"].as_bool() == Some(true)).then_some("Locked: unlock it first");
+        let tooltip = format!("Delete {shown}'s directory (its branch stays)");
+        let go = |with: bool| -> crate::ui::Action {
+            let (weak, p, b) = (this.clone(), path.to_string(), name.clone());
+            Rc::new(move |window: &mut Window, cx: &mut App| {
+                let (p, b, origin) = (p.clone(), b.clone(), crate::ui::arm::Origin::current(cx));
+                weak.update(cx, |v, cx| v.remove_worktree(p, b, with, origin, window, cx)).ok();
+            })
+        };
+        let run = go(false);
+        let mut row = MenuRow::action(id, "Remove worktree", "folder-x", tooltip.clone(), move |w, cx| run(w, cx));
+        if let Some(l) = local {
+            let off: Option<SharedString> = locked.map(Into::into);
+            row = row.variants(
+                vec![
+                    Variant { id: "worktree".into(), label: Some("Worktree".into()), icon: None, tooltip: tooltip.into(), run: go(false), disabled: off.clone() },
+                    Variant { id: "branch".into(), label: Some("With branch".into()), icon: None, tooltip: format!("Remove {shown} and delete its branch {} (you can undo deleting the branch)", l.name).into(), run: go(true), disabled: off },
+                ],
+                Some("worktree"),
+            );
+        }
+        vec![row.disabled_if(locked)]
     }
 
     /// A stash in the sidebar.
@@ -562,7 +618,7 @@ impl GitVolt {
             }),
         ];
         let lfs = ext.map_or(Vec::new(), |e| vec![MenuRow::pending("file.lfsTrack", format!("Track *.{e} with LFS"), "file-plus")]);
-        grouped(vec![stage, restore, colour, copy, vec![open], view, history, lfs, vec![create_file_row(this)]])
+        grouped(vec![stage, restore, colour, copy, vec![open], view, history, lfs, vec![create_file_row(file_section(file), None, this)]])
     }
 
     /// A folder of the file list.
@@ -586,6 +642,7 @@ impl GitVolt {
                 let f = folder.clone();
                 weak.update(cx, |v, cx| v.open_folder(f, cx)).ok();
             })],
+            vec![create_file_row(section, Some(format!("{path}/")), this)],
         ])
     }
 

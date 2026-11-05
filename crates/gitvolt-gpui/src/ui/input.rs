@@ -452,6 +452,7 @@ struct Laid {
 }
 
 pub struct TextInput {
+    enter_submits: bool,
     pub focus: FocusHandle,
     pub buffer: Buffer,
     placeholder: SharedString,
@@ -510,6 +511,7 @@ impl TextInput {
             focus,
             buffer: Buffer::new(multiline),
             placeholder: SharedString::default(),
+            enter_submits: false,
             multiline,
             claim_escape: Claim::Never,
             claim_arrows: false,
@@ -565,6 +567,12 @@ impl TextInput {
     }
 
     /// ↑ and ↓ are the owner's in a field: `InputEvent::Arrow`.
+    /// A textarea whose Enter submits; Shift+Enter is its new line.
+    pub fn enter_submits(mut self) -> Self {
+        self.enter_submits = true;
+        self
+    }
+
     pub fn claim_arrows(mut self) -> Self {
         self.claim_arrows = true;
         self
@@ -809,8 +817,10 @@ impl TextInput {
     }
 
     fn enter(&mut self, shift: bool, cx: &mut Context<Self>) {
-        if self.multiline {
+        if self.multiline && (shift || !self.enter_submits) {
             self.edit(None, "\n", EditKind::Other, cx);
+        } else if self.multiline {
+            cx.emit(InputEvent::Submit { shift: false, ctrl: false });
         } else {
             cx.emit(InputEvent::Submit { shift, ctrl: false });
         }

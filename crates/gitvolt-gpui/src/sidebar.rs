@@ -809,7 +809,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
     let Some(tab) = tab else { return bar.into_any_element() };
     let panels = tab.side.panels.clone();
     let specs = this.side_specs(&panels);
-    let heights = layout_panels((body_h - FILTER_H).max(0.), &specs);
+    let heights = layout_panels((body_h - FILTER_H - 5.).max(0.), &specs);
     let targets = divider_targets(&specs);
     let sidebar_right = width + 6.;
     let mut stack = div().flex().flex_col().flex_1().min_h_0().overflow_hidden();

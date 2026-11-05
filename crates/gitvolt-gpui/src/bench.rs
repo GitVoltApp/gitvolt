@@ -210,7 +210,7 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
         // ends with the text (a chip's `chip:<row>:<name>`). `clickrow`, `rclickrow`, `dclickrow`: a graph row by its summary.
         let target = cx
             .update(|_, cx| match verb {
-                "pick" | "hover" => crate::ui::menu::row_point(&rest, cx),
+                "pick" | "hover" => crate::ui::menu::row_point(&rest, cx).or_else(|| crate::ui::picker::row_point(&rest, cx)),
                 // `pickv Delete|Both`.
                 "pickv" => rest.split_once('|').and_then(|(row, variant)| crate::ui::menu::variant_point(row, variant, cx)),
                 "clickon" | "shiftclickon" | "ctrlclickon" | "rclickon" | "dclickon" | "presson" | "dragto" | "releaseon" => crate::ui::Ui::get(cx).anchor_ending(&rest).map(|b| b.center()),
@@ -361,6 +361,8 @@ impl GitVolt {
             "toast": crate::ui::toast::message(cx).map(|m| m.to_string()),
             "armed": crate::ui::arm::is_armed(cx),
             "menu": crate::ui::menu::shown(cx),
+            "picker": crate::ui::picker::shown(cx),
+            "editor": tab.and_then(|t| t.row_editor.as_ref()).map(|e| (e.row_id.clone(), e.name.read(cx).text().to_string(), e.error(cx))),
             "selected": tab.and_then(|t| t.selected),
             "tabs": self.tabs.iter().map(|t| t.name.to_string()).collect::<Vec<_>>(),
             "openScreen": tab.and_then(|t| t.open_screen.as_ref()).map(|s| serde_json::json!({ "error": s.error, "cloneError": s.clone_error, "busy": s.busy, "url": s.url.read(cx).text(), "dest": s.dest.read(cx).text(), "repos": s.repos.as_ref().map(|r| r.iter().map(|x| x.name.clone()).collect::<Vec<_>>()) })),

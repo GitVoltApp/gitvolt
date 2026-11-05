@@ -5,6 +5,7 @@
 use crate::app::{GitVolt, Tab};
 use crate::model::{Chip, GraphView};
 use crate::ui::arm::{self, ArmOption, ArmRequest, Origin, Tone};
+use crate::ui::picker::PickItem;
 use crate::ui::menu::{self, MenuRow, Variant};
 use crate::ui::modal::{self, PromptRequest};
 use crate::ui::popover::{self, Choice, ChoiceRequest};
@@ -204,10 +205,18 @@ impl GitVolt {
 
     /// "feature/x is checked out in ../shop-feature-x": said, with no way to switch yet.
     fn offer_worktree(&mut self, err: &GbError, cx: &mut Context<Self>) -> bool {
-        if !matches!(err.detail, Some(ErrorDetail::CheckedOutElsewhere { .. })) {
-            return false;
-        }
-        toast::show_with(err.message.clone(), Options { error: true, ..Default::default() }, cx);
+        let Some(ErrorDetail::CheckedOutElsewhere { branch, .. }) = &err.detail else { return false };
+        let path = self.tabs.get(self.active).and_then(|t| t.graph.as_ref()).and_then(|g| g.worktrees.iter().find(|w| w.branch.as_deref() == Some(format!("refs/heads/{branch}").as_str())).map(|w| w.path.clone()));
+        let Some(path) = path else { return false };
+        let link = |label: &'static str, this: WeakEntity<GitVolt>, path: String| toast::ToastAction {
+            label: label.into(),
+            run: Rc::new(move |_, cx| {
+                let path = path.clone();
+                this.update(cx, |v, cx| v.switch_worktree(path, cx)).ok();
+            }),
+        };
+        let this = cx.weak_entity();
+        toast::show_with(err.message.clone(), Options { error: true, actions: vec![link("Switch to it", this.clone(), path.clone()), link("Open in a new tab", this, path)], ..Default::default() }, cx);
         true
     }
 
@@ -281,7 +290,11 @@ impl GitVolt {
     }
 
     /// Create: a dialog with Check out on.
+    /// Create branch here and the toolbar's Branch: the inline input in the commit's row, the dialog where there's no row.
     pub fn create_branch_at(&mut self, sha: String, start_ref: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open_branch_editor(&sha, start_ref.clone(), cx) {
+            return;
+        }
         let Some(tab) = self.tabs.get(self.active) else { return };
         let (ctx, locals) = (tab.write_target(), tab.locals());
         let title = match &start_ref {
@@ -351,35 +364,54 @@ impl GitVolt {
     }
 
     /// The picker: a remote branch, None, or one the next push creates. A menu here, not a searchable list.
+    /// Set upstream, and Push's Change upstream: a remote branch, or None, in the searchable picker where the menu was.
     pub fn pick_upstream(&mut self, ctx: WriteCtx, branch: String, cx: &mut Context<Self>) {
+        const NONE: &str = "\u{0}none";
+        const NEW: &str = "\u{0}new";
         let Some(tab) = self.tabs.iter().find(|t| t.id == ctx.repo) else { return };
         let current = tab.local_branch(&branch).and_then(|b| b.upstream);
         let groups = tab.remote_groups();
         let remotes: Vec<String> = groups.iter().map(|g| g.0.clone()).collect();
-        let mut items: Vec<(String, Option<(String, String)>)> = groups.iter().flat_map(|(g, b)| b.iter().map(move |x| (format!("{g}/{}", x.0), Some((g.clone(), x.0.clone()))))).collect();
-        items.sort_by_key(|i| !i.1.as_ref().is_some_and(|x| x.1 == branch));
+        let mut listed: Vec<(PickItem, bool)> = groups
+            .iter()
+            .flat_map(|(g, b)| {
+                let current = current.clone();
+                let branch = branch.clone();
+                b.iter().map(move |x| {
+                    let label = format!("{g}/{}", x.0);
+                    (PickItem { id: format!("{g}\u{0}{}", x.0).into(), label: label.clone().into(), icon: Some("git-branch"), current: current.as_deref() == Some(format!("refs/remotes/{g}/{}", x.0).as_str()), tooltip: Some(format!("Track {label}").into()), ..Default::default() }, x.0 == branch)
+                })
+            })
+            .collect();
+        listed.sort_by_key(|i| !i.1);
+        let mut items = vec![
+            PickItem { id: NONE.into(), label: "None".into(), detail: Some("Track nothing".into()), icon: Some("x"), current: current.is_none(), tooltip: Some(format!("{branch} tracks no remote branch").into()) },
+            PickItem { id: NEW.into(), label: "A branch the next push creates…".into(), detail: Some("Type its name".into()), icon: Some("git-branch"), current: false, tooltip: Some("Name a remote branch that doesn't exist yet".into()) },
+        ];
+        items.extend(listed.into_iter().map(|i| i.0));
         let this = cx.weak_entity();
-        let mut rows: Vec<MenuRow> = Vec::new();
-        let (w, c, b) = (this.clone(), ctx.clone(), branch.clone());
-        rows.push(MenuRow::action("upstream.none", "None", if current.is_none() { "check" } else { "x" }, format!("{branch} tracks no remote branch"), move |_, cx| {
-            let (c, b) = (c.clone(), b.clone());
-            w.update(cx, |v, cx| v.set_upstream(c, b, None, cx)).ok();
-        }));
-        let (w, c, b, rs) = (this.clone(), ctx.clone(), branch.clone(), remotes);
-        rows.push(MenuRow::action("upstream.new", "A branch the next push creates…", "git-branch", "Name a remote branch that doesn't exist yet", move |window, cx| {
-            let (c, b, rs) = (c.clone(), b.clone(), rs.clone());
-            w.update(cx, |v, cx| v.ask_new_upstream(c, b, rs, window, cx)).ok();
-        }));
-        for (label, up) in items {
-            let (w, c, b) = (this.clone(), ctx.clone(), branch.clone());
-            let is_current = up.as_ref().is_some_and(|(r, n)| current.as_deref() == Some(format!("refs/remotes/{r}/{n}").as_str()));
-            rows.push(MenuRow::action(format!("upstream:{label}"), label.clone(), if is_current { "check" } else { "git-branch" }, format!("Track {label}"), move |_, cx| {
-                let (c, b, up) = (c.clone(), b.clone(), up.clone());
-                w.update(cx, |v, cx| v.set_upstream(c, b, up, cx)).ok();
-            }));
-        }
+        let placeholder = format!("Upstream of {branch}");
         self.with_window(cx, move |window, cx| {
-            menu::open_context(rows, point(px(420.), px(120.)), window, cx);
+            // Where the menu it was chained off is: it takes that menu's place.
+            let at = crate::ui::menu::last_origin(cx);
+            let anchor = Bounds::new(point(at.x, at.y - px(4.)), size(px(0.), px(0.)));
+            let on_pick = move |item: &PickItem, window: &mut Window, cx: &mut App| {
+                let (ctx, branch, remotes) = (ctx.clone(), branch.clone(), remotes.clone());
+                match item.id.as_ref() {
+                    NEW => {
+                        this.update(cx, |v, cx| v.ask_new_upstream(ctx, branch, remotes, window, cx)).ok();
+                    }
+                    NONE => {
+                        this.update(cx, |v, cx| v.set_upstream(ctx, branch, None, cx)).ok();
+                    }
+                    id => {
+                        let Some((remote, name)) = id.split_once('\u{0}') else { return };
+                        let up = Some((remote.to_string(), name.to_string()));
+                        this.update(cx, |v, cx| v.set_upstream(ctx, branch, up, cx)).ok();
+                    }
+                }
+            };
+            crate::ui::picker::open(crate::ui::picker::PickRequest { key: None, anchor, items, placeholder: placeholder.into(), toggle: None, on_pick: Rc::new(on_pick) }, window, cx);
         });
     }
 
@@ -467,7 +499,7 @@ impl GitVolt {
         self.send_delete(ctx, plan, force, origin, cx);
     }
 
-    fn send_delete(&mut self, ctx: WriteCtx, plan: DeletePlan, force: bool, origin: Origin, cx: &mut Context<Self>) {
+    pub fn send_delete(&mut self, ctx: WriteCtx, plan: DeletePlan, force: bool, origin: Origin, cx: &mut Context<Self>) {
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
         let mut refs = Vec::new();
         if plan.local.is_some() {
@@ -686,8 +718,11 @@ impl GitVolt {
         self.write(w, cx);
     }
 
-    /// Create tag: a dialog, then its message for an annotated one.
+    /// Create tag here: the inline input; where there's no row, a dialog, then its message for an annotated one.
     pub fn create_tag_at(&mut self, sha: String, annotated: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open_tag_editor(&sha, annotated, cx) {
+            return;
+        }
         let Some(tab) = self.tabs.get(self.active) else { return };
         let ctx = tab.write_target();
         let names: Vec<String> = tab.sidebar["tags"].as_array().map_or(Vec::new(), |t| t.iter().filter_map(|x| x["name"].as_str().map(str::to_string)).collect());

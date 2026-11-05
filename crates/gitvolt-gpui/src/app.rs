@@ -83,6 +83,12 @@ pub struct Tab {
     pub zoom_input: Entity<TextInput>,
     pub list: UniformListScrollHandle,
     /// A compare in the details panel: from and to, as its bar names them.
+    /// Create file…'s inline input, on top of the list it was asked from.
+    pub create_file: Option<crate::manage::CreateFile>,
+    /// A file just made: it opens in File View once the WIP lists hold it.
+    pub open_after_wip: Option<String>,
+    /// The inline editor open on a row of the graph.
+    pub row_editor: Option<crate::inline::RowEditor>,
     /// An Open tab's screen: it has no repository, and `id` isn't one.
     pub open_screen: Option<Box<crate::open::OpenScreen>>,
     pub compare: Option<crate::selection::Compare>,
@@ -173,6 +179,9 @@ impl Tab {
             file_filter,
             zoom_input,
             list: UniformListScrollHandle::new(),
+            create_file: None,
+            open_after_wip: None,
+            row_editor: None,
             open_screen: None,
             compare: None,
             picks: Default::default(),
@@ -233,6 +242,8 @@ pub struct GitVolt {
     pub script_folder: Option<String>,
     pub repo_order: crate::open::RepoOrder,
     pub repo_grouped: bool,
+    /// The branch picker's order: the newest tip first, else by name.
+    pub branch_order_recent: bool,
     pub details_w: f32,
     /// The commit's share of the details panel, and its divider being dragged.
     pub details_split: f32,
@@ -295,7 +306,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -1062,28 +1073,71 @@ fn repo_menu(this: &GitVolt, weak: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
     rows
 }
 
-fn branch_menu(this: &GitVolt, weak: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+/// The toolbar's branch picker: the local branches, by name or by the newest tip.
+pub fn branch_items(this: &GitVolt) -> Vec<crate::ui::picker::PickItem> {
     let Some(tab) = this.tabs.get(this.active) else { return Vec::new() };
-    let locals = tab.side.sections.iter().find(|s| s.kind == SectionKind::Local).map_or(&[][..], |s| &s.items[..]);
     let current = tab.head_branch();
+    let mut locals = tab.locals();
+    let by_name = |a: &str, b: &str| a.to_lowercase().cmp(&b.to_lowercase()).then_with(|| a.cmp(b));
+    if this.branch_order_recent {
+        locals.sort_by(|a, b| b.tip_time.cmp(&a.tip_time).then_with(|| by_name(&a.name, &b.name)));
+    } else {
+        locals.sort_by(|a, b| by_name(&a.name, &b.name));
+    }
     locals
-        .iter()
+        .into_iter()
         .map(|b| {
-            let is_head = current.as_deref() == Some(b.name.as_str());
-            let (weak, name) = (weak.clone(), b.name.clone());
-            MenuRow::action(format!("branch:{}", b.name), b.name.clone(), if is_head { "check" } else { "git-branch" }, if is_head { format!("{} is checked out", b.name) } else { format!("Check out {}", b.name) }, move |_, cx| {
-                let name = name.clone();
-                weak.update(cx, |v, cx| v.checkout_local(&name, cx)).ok();
-            })
+            let on = current.as_deref() == Some(b.name.as_str());
+            let detail = (b.ahead > 0 || b.behind > 0).then(|| SharedString::from(format!("{}↑ {}↓", b.ahead, b.behind)));
+            crate::ui::picker::PickItem { id: b.name.clone().into(), label: b.name.into(), detail, icon: Some(if on { "check" } else { "git-branch" }), current: on, tooltip: None }
         })
         .collect()
+}
+
+fn branch_toggle(this: &GitVolt, weak: &WeakEntity<GitVolt>) -> crate::ui::picker::PickToggle {
+    let w = weak.clone();
+    let recent = this.branch_order_recent;
+    crate::ui::picker::PickToggle {
+        icon: if recent { "clock" } else { "arrow-down-az" },
+        label: if recent { "Most recent first: switch to A–Z".into() } else { "Sorted A–Z: switch to most recent first".into() },
+        run: Rc::new(move |_, cx| {
+            let w2 = w.clone();
+            w.update(cx, |v, cx| {
+                v.branch_order_recent = !v.branch_order_recent;
+                v.save_layout();
+                crate::ui::picker::set_items(branch_items(v), Some(branch_toggle(v, &w2)), cx);
+            })
+            .ok();
+        }),
+    }
+}
+
+fn open_branch_picker(this: &GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) {
+    let weak = cx.weak_entity();
+    let items = branch_items(this);
+    let toggle = branch_toggle(this, &weak);
+    crate::ui::picker::open_below(
+        "toolbar.branch",
+        items,
+        "Check out a local branch",
+        Some(toggle),
+        move |item, _, cx| {
+            let name = item.id.clone();
+            if item.current {
+                return;
+            }
+            weak.update(cx, |v, cx| v.checkout_local(&name, cx)).ok();
+        },
+        window,
+        cx,
+    );
 }
 
 fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let tab = this.tabs.get(this.active);
     let field = |id: &'static str, caption: &'static str, value: SharedString, branch: bool, rows: fn(&GitVolt, &WeakEntity<GitVolt>) -> Vec<MenuRow>, cx: &mut Context<GitVolt>| {
         let label = format!("{}: {value}", if branch { "Branch" } else { "Repository" });
-        let open = menu::is_open_on(id, cx);
+        let open = menu::is_open_on(id, cx) || crate::ui::picker::is_open_on(id, cx);
         crate::ui::anchor(
             id,
             div()
@@ -1100,6 +1154,9 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .hover(|d| d.bg(theme::hover_row()))
                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
                     cx.stop_propagation();
+                    if branch {
+                        return open_branch_picker(this, window, cx);
+                    }
                     let weak = cx.weak_entity();
                     let list = rows(this, &weak);
                     menu::open_below(id, list, OpenOptions { label: Some(label.clone().into()), ..Default::default() }, window, cx);
@@ -1166,7 +1223,7 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         .bg(theme::action_bar_bg())
         .border_b_1()
         .border_color(theme::section_border())
-        .child(div().flex().flex_1().min_w_0().gap(px(4.)).child(field("toolbar.repo", "REPOSITORY", repo_name, false, repo_menu, cx)).child(field("toolbar.branch", "BRANCH", branch, true, branch_menu, cx)))
+        .child(div().flex().flex_1().min_w_0().gap(px(4.)).child(field("toolbar.repo", "REPOSITORY", repo_name, false, repo_menu, cx)).child(tip("Check out a local branch", field("toolbar.branch", "BRANCH", branch, true, repo_menu, cx))))
         .child(
             div()
                 .flex()

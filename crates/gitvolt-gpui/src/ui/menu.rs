@@ -559,9 +559,19 @@ pub fn close(window: &mut Window, cx: &mut App) {
         arm::disarm(window, cx);
     }
     tooltip::hide(cx);
+    let at = Ui::get(cx).menu.as_ref().and_then(|m| m.levels.first()).map(|l| point(px(l.left), px(l.top)));
+    if let Some(at) = at {
+        Ui::get_mut(cx).last_menu_at = at;
+    }
     if Ui::get_mut(cx).menu.take().is_some() {
         cx.refresh_windows();
     }
+}
+
+/// Where the last menu stood: what's chained off it takes its place.
+pub fn last_origin(cx: &App) -> Point<Pixels> {
+    let ui = Ui::get(cx);
+    ui.menu.as_ref().and_then(|m| m.levels.first()).map_or(ui.last_menu_at, |l| point(px(l.left), px(l.top)))
 }
 
 /// Runs the menu's builder again: the rows update, the open submenus and the active rows stay.

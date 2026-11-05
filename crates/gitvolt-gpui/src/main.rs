@@ -16,6 +16,7 @@ mod find;
 mod goto;
 mod graph;
 mod history;
+mod inline;
 mod icons;
 mod irebase;
 mod layout;

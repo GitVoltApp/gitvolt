@@ -21,6 +21,7 @@ pub mod input;
 pub mod menu;
 pub mod modal;
 pub mod place;
+pub mod picker;
 pub mod popover;
 pub mod toast;
 pub mod tooltip;
@@ -40,8 +41,10 @@ pub struct Ui {
     pub tips: tooltip::Tips,
     pub menu: Option<menu::MenuState>,
     pub menu_seq: u64,
+    pub last_menu_at: Point<Pixels>,
     pub arm: arm::ArmState,
     pub popover: Option<popover::Popover>,
+    pub picker: Option<picker::Picker>,
     pub modals: Vec<modal::Modal>,
     pub toast: toast::ToastState,
     /// Where the anchors (`anchor`, `tip`) are this frame and were last frame.
@@ -99,7 +102,7 @@ impl Ui {
 
     /// Something floats that wants the keyboard: the app's shortcuts stay out of it.
     pub fn captures_keys(&self) -> bool {
-        self.menu.is_some() || self.popover.is_some() || !self.modals.is_empty()
+        self.menu.is_some() || self.popover.is_some() || self.picker.is_some() || !self.modals.is_empty()
     }
 }
 
@@ -120,6 +123,10 @@ fn route_key(k: &Keystroke, window: &mut Window, cx: &mut App) {
     if Ui::get(cx).menu.is_some() {
         menu::on_key(k, window, cx);
         cx.stop_propagation();
+        return;
+    }
+    // A picker owns the keyboard: every key goes on to its search box, none to the app behind it.
+    if Ui::get(cx).picker.is_some() {
         return;
     }
     let plain_esc = k.key == "escape" && !k.modifiers.modified();
@@ -201,6 +208,7 @@ pub fn overlays(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
     out.extend(toast::element(window, cx));
     out.extend(modal::elements(window, cx));
     out.extend(popover::element(window, cx));
+    out.extend(picker::element(window, cx));
     out.extend(menu::element(window, cx));
     out.extend(tooltip::element(window, cx));
     out.extend(arm::element(window, cx));
@@ -222,6 +230,7 @@ fn listen(window: &mut Window) {
             tooltip::on_press(cx);
             arm::on_press(e, window, cx);
             popover::on_press(e, window, cx);
+            picker::on_press(e, window, cx);
             menu::on_press(e, window, cx);
         }
     });

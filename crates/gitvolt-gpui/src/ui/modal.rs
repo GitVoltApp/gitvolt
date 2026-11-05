@@ -37,6 +37,8 @@ pub struct Modal {
     pub framed: bool,
     /// How far down the window it sits, for one that's not centred (the palette's 12vh).
     pub top: Option<f32>,
+    /// Dropped from where its action started, in the anchored-popover family: no shade behind it, a press outside cancels.
+    pub anchored: Option<super::place::Rect>,
     build: Build,
     on_close: Option<super::Action>,
     focus: Option<FocusHandle>,
@@ -49,7 +51,7 @@ pub struct Modal {
 
 impl Modal {
     pub fn new(id: impl Into<SharedString>, build: impl Fn(&mut Window, &mut App) -> AnyElement + 'static) -> Self {
-        Self { id: id.into(), width: 420., framed: true, top: None, build: Rc::new(build), on_close: None, focus: None, return_to: None, toggle: None, keep: Vec::new() }
+        Self { id: id.into(), width: 420., framed: true, top: None, anchored: None, build: Rc::new(build), on_close: None, focus: None, return_to: None, toggle: None, keep: Vec::new() }
     }
 
     pub fn width(mut self, width: f32) -> Self {
@@ -59,6 +61,11 @@ impl Modal {
 
     pub fn unframed(mut self) -> Self {
         self.framed = false;
+        self
+    }
+
+    pub fn anchored(mut self, anchor: Option<Bounds<Pixels>>) -> Self {
+        self.anchored = Some(anchor.map_or(super::place::Rect::at(0., 0.), super::place::Rect::of));
         self
     }
 
@@ -130,10 +137,10 @@ pub fn is_open(id: &str, cx: &App) -> bool {
 }
 
 pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
-    let items: Vec<(SharedString, f32, bool, Option<f32>, Build, FocusHandle)> = Ui::get(cx).modals.iter().map(|m| (m.id.clone(), m.width, m.framed, m.top, m.build.clone(), m.focus.clone().expect("set on opening"))).collect();
+    let items: Vec<(SharedString, f32, bool, Option<f32>, Option<super::place::Rect>, Build, FocusHandle)> = Ui::get(cx).modals.iter().map(|m| (m.id.clone(), m.width, m.framed, m.top, m.anchored, m.build.clone(), m.focus.clone().expect("set on opening"))).collect();
     items
         .into_iter()
-        .map(|(id, width, framed, top, build, focus)| {
+        .map(|(id, width, framed, top, anchored, build, focus)| {
             let content = build(window, cx);
             let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).occlude().flex().flex_col().flex_none().w(px(width)).max_w(window.viewport_size().width - px(32.));
             let body = if framed {
@@ -150,6 +157,27 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
                 body
             };
             let body = body.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(content);
+            if let Some(anchor) = anchored {
+                let placed = super::place::placed(body, move |size, vp, _| {
+                    let (x, y) = super::place::place_popover(Some(anchor), size.width.as_f32(), size.height.as_f32(), vp.width.as_f32(), vp.height.as_f32());
+                    point(px(x), px(y))
+                });
+                return div()
+                    .id(ElementId::Name(SharedString::from(format!("{id}-backdrop"))))
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .occlude()
+                    .key_context("Modal")
+                    .track_focus(&focus)
+                    .on_action(|_: &CloseModal, window, cx| close_top(window, cx))
+                    .on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
+                    .on_action(|_: &FocusPrev, window, cx| window.focus_prev(cx))
+                    .on_mouse_down(MouseButton::Left, |_, window, cx| close_top(window, cx))
+                    .child(placed)
+                    .into_any_element();
+            }
             div()
                 .id(ElementId::Name(SharedString::from(format!("{id}-backdrop"))))
                 .absolute()

@@ -130,7 +130,7 @@ fn rebasing_chip(name: &str, lane: usize) -> impl IntoElement + use<> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &SharedString, row_pending: &[&str], rebasing: Option<&str>, member: Option<std::sync::Arc<Membership>>, this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
+fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &SharedString, row_pending: &[&str], rebasing: Option<&str>, member: Option<std::sync::Arc<Membership>>, editor: Option<AnyElement>, this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
     let lane = row.color as usize;
     // A detached HEAD sharing the cell with the rebasing chip is just its check.
     let chips: Vec<Chip> = row.chips.iter().map(|c| if rebasing.is_some() && c.head && c.name.as_ref() == "HEAD" { Chip { name: SharedString::default(), ..c.clone() } } else { c.clone() }).collect();
@@ -141,7 +141,7 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
     let hidden = chips.len().saturating_sub(shown);
     let sha = row.id.to_string();
     // Only the chips select the row: a press on the space around them stops here.
-    let mut cell = div().id(("labels", ix)).flex().flex_none().w(px(width)).h(px(ROW_H)).items_center().gap(px(CHIP_SPACING)).pl(px(CELL_PAD)).overflow_hidden().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).children(rebasing.map(|n| rebasing_chip(n, lane)));
+    let mut cell = div().id(("labels", ix)).relative().flex().flex_none().w(px(width)).h(px(ROW_H)).items_center().gap(px(CHIP_SPACING)).pl(px(CELL_PAD)).overflow_hidden().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).children(rebasing.map(|n| rebasing_chip(n, lane)));
     for (i, c) in chips.iter().take(shown).enumerate() {
         let (chip, menu_sha, weak, hover) = (c.clone(), sha.clone(), this.clone(), this.clone());
         let (press_chip, press_sha) = (c.clone(), sha.clone());
@@ -219,6 +219,9 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
             }
             stack.into_any_element()
         }));
+    }
+    if let Some(e) = editor {
+        cell = cell.child(e);
     }
     if let Some(m) = member {
         let used = chips_end(row, width, cx);
@@ -541,7 +544,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
     let list = uniform_list(
         "graph",
         graph.rows.len() + usize::from(older),
-        cx.processor(move |_, range: Range<usize>, window, cx| {
+        cx.processor(move |view, range: Range<usize>, window, cx| {
             let graph = rows.clone();
             let cols = &row_cols;
             let weak = cx.weak_entity();
@@ -610,7 +613,8 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                     let menu_weak = weak.clone();
                     let pending_refs: Vec<&str> = pending.keys().map(String::as_str).collect();
                     let rebasing = rebasing_branch.as_deref().filter(|_| head_sha.as_deref() == Some(row.id.as_ref()));
-                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &pending_refs, rebasing, member, &weak, cx));
+                    let editor = view.tabs.get(view.active).and_then(|t| t.row_editor.as_ref()).filter(|e| e.row_id == row.id.as_ref()).map(|e| crate::inline::editor_element(e, cols.labels, window, cx));
+                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &pending_refs, rebasing, member, editor, &weak, cx));
                     div()
                         .id(ix)
                         .group(group.clone())
