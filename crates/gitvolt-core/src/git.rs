@@ -499,7 +499,7 @@ impl GitCli {
             duration_ms: started.elapsed().as_millis() as u64,
             exit_code,
             ok: result.is_ok(),
-            stderr: truncate_utf8(&redact(&stderr_text), STDERR_LOG_LIMIT).to_string(),
+            stderr: truncate_utf8(&collapse_progress(&redact(&stderr_text)), STDERR_LOG_LIMIT).to_string(),
         });
         result
     }
@@ -559,6 +559,30 @@ async fn stop_group(group: &Group, child: &mut tokio::process::Child, grace: Opt
     }
     group.kill();
     let _ = child.wait().await;
+}
+
+/// The log's stderr with progress collapsed: `\r` counts as a line break, and a run of
+/// consecutive updates of one phase (`Counting objects:  12% (3/24)`, `remote: Compressing ...`)
+/// keeps only its last line. Everything else stays as it is, in order.
+fn collapse_progress(stderr: &str) -> String {
+    static PROGRESS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = PROGRESS.get_or_init(|| regex::Regex::new(r"^(.*?):\s+\d{1,3}% \(").expect("valid regex"));
+    let mut out: Vec<&str> = Vec::new();
+    let mut last_label: Option<&str> = None;
+    for line in stderr.split(['\r', '\n']).filter(|l| !l.trim().is_empty()) {
+        let label = re.captures(line).map(|c| c.get(1).map_or("", |m| m.as_str()));
+        if label.is_some() && label == last_label {
+            *out.last_mut().expect("a progress run has a line") = line;
+        } else {
+            out.push(line);
+        }
+        last_label = label;
+    }
+    let mut text = out.join("\n");
+    if !out.is_empty() && stderr.ends_with(['\n', '\r']) {
+        text.push('\n');
+    }
+    text
 }
 
 /// Collects stderr (up to `STDERR_KEEP`) and, with `lines`, streams it: see
@@ -717,6 +741,33 @@ fn index_lock_detail(stderr: &str) -> Option<crate::error::ErrorDetail> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn collapse_progress_keeps_each_runs_last_line() {
+        let mut s = String::new();
+        for p in 0..=100 {
+            s += &format!("Counting objects: {p:>3}% ({}/154)\r", p + 1);
+        }
+        s += "Counting objects: 100% (154/154), done.\nDelta compression using up to 16 threads\n";
+        for p in 0..=100 {
+            s += &format!("Compressing objects: {p:>3}% ({}/110)\n", p + 1);
+        }
+        s += "Compressing objects: 100% (110/110), done.\nWriting objects:  99% (109/110)\nWriting objects: 100% (110/110), 24.28 KiB | 253.00 KiB/s, done.\n";
+        let want = "Counting objects: 100% (154/154), done.\nDelta compression using up to 16 threads\nCompressing objects: 100% (110/110), done.\nWriting objects: 100% (110/110), 24.28 KiB | 253.00 KiB/s, done.\n";
+        assert_eq!(collapse_progress(&s), want);
+    }
+
+    #[test]
+    fn collapse_progress_keeps_an_interrupted_run_and_plain_lines() {
+        let s = "To example.test:o/r.git\nWriting objects:   1% (2/110)\rWriting objects:  45% (50/110)\nerror: failed to push\nhint: pull first\n";
+        assert_eq!(collapse_progress(s), "To example.test:o/r.git\nWriting objects:  45% (50/110)\nerror: failed to push\nhint: pull first\n");
+    }
+
+    #[test]
+    fn collapse_progress_handles_remote_prefix() {
+        let s = "remote: Counting objects:  50% (1/2)\rremote: Counting objects: 100% (2/2), done.\nremote: Resolving deltas:  10% (1/9)\nremote: Resolving deltas: 100% (9/9)\n";
+        assert_eq!(collapse_progress(s), "remote: Counting objects: 100% (2/2), done.\nremote: Resolving deltas: 100% (9/9)\n");
+    }
+
     use super::*;
     use crate::error::GbErrorKind;
     use crate::testing::{isolated_git_env, TestRepo};

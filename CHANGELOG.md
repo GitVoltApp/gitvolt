@@ -7,6 +7,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Fixed
 
+- **Activity log.** A push's, clone's or fetch's entry keeps each progress phase's final line
+  (`Writing objects: 100% (110/110), done.`) instead of hundreds of percentage updates.
 - **Activity log.** An expected non-zero exit (a missing git-lfs, an unset config key) no
   longer shows in red as a failure.
 - **Profile menu.** The profiles' rows have no tooltip; it was a leftover note, and the label says it all.
