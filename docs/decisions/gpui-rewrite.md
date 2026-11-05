@@ -11,33 +11,70 @@ five panels and its folded strip, the graph table with bands, lines, nodes, chip
 zone, the status bar, reloads on the core's events, and the default dark theme. Sizes and colours are
 the web UI's, read from its CSS and from the running app.
 
-The details panel has a commit's ids, people and message and its files, by path or as a tree. The
-diff has Inline, Split and Hunk, File View, word-level marks, the overview ruler, indent guides,
-"ignore whitespace", the next and previous change (F7), and selecting and copying text. It colours
-with a TextMate tokenizer on Oniguruma, `vscode-textmate`'s algorithm with Shiki's grammars and theme.
-Against Shiki on real files of this repository (Rust, TypeScript, TSX, CSS, Markdown, TOML, JSON,
-YAML, Python, about 392,000 characters), not one character's colour differs.
+The details panel has a commit's ids, every parent as a link, its author and message, and its files, by
+path (with Sort by status) or as a tree, with "View all files" and its filter row, and the arrows and
+Left, Right, Enter, Space, Home, End and the page keys once the list has the keyboard. Up and Down move
+the area last clicked in: the graph, the file list, the history's list or the diff.
+
+The diff has Inline, Split and Hunk, File View, word-level marks, the overview ruler, indent guides,
+"ignore whitespace", the next and previous change (F7), selecting and copying text, word wrap, folds
+and File View's minimap. It colours with a TextMate tokenizer on Oniguruma, `vscode-textmate`'s algorithm
+with injections, and Shiki's grammars and theme. Against Shiki on real files of this repository (Rust,
+TypeScript, TSX, CSS, Markdown, TOML, JSON, YAML, Python, about 392,000 characters), not one character's
+colour differs; the test's samples cover 34 languages, 21 of them for their injections.
+
+File History and Blame open from the toolbar, Ctrl+Shift+H and Ctrl+Shift+B, in the graph's place: the
+commits, paged, File | Changes over the file at a commit or its diff, the resizable list, and the blame
+gutter whose groups pick their commit (Alt: in the graph). A binary shows in the hex view (16 or 8 bytes
+a row, changed bytes by position, the bar's marks); an image in Side-by-side, Swipe, Onion skin or
+Difference with zoom, pan, Match sizes, the backgrounds and its Hex or Source toggle. "Open in" lists
+every opener, as the app's `Api` wires them.
 
 Not there yet, by size of the work: every write (the toolbar's buttons are disabled, and so hunk and
-line staging, and editing in a diff), the MR/PR views and review comments, Markdown, Mermaid, PDF,
-images, hex and other non-text views, settings, profiles and other themes, avatars, the command
-palette and menus, find, tooltips, branch presets, accessibility roles, spell check, zoom, and macOS
-and Windows checks. In the diff: word wrap, Blame, History, "Open in", moved-code detection, folding,
-code lens and the minimap; dragging the horizontal scrollbar (it scrolls by wheel); grammar
-injections; Monaco's taller hidden-lines row (its 24 px are a line's 18 here). The core still runs on a
+line staging, and editing in a diff), the MR/PR views and review comments, Markdown, Mermaid, PDF and
+media views (a PDF or media file shows as hex), settings, profiles and other themes, avatars, the
+command palette and menus, find, tooltips, branch presets, accessibility roles, spell check, zoom, and
+macOS and Windows checks. In the diff: moved-code detection and code lens. The core still runs on a
 temporary data directory until this build writes.
+
+Differences from the web UI that are known, in the area that's there:
+
+- **Text:** a line's advance is 7.8 px, the font's; Chromium rounds it to 8. Lines end a little earlier
+  and wrap a little later. The hex view paints on Chromium's 8 px grid. UI text is a pixel or two wider.
+- **Diff:** the first change is centred about 10 px lower than Monaco's; the ruler sits beside a 10 px
+  column where Monaco overlays its scrollbar on the text; the toolbar stays one row when it's too narrow
+  instead of wrapping. Monaco's taller hidden-lines row is its 24 px here too.
+- **Embedded languages** load as a grammar names them. Shiki leaves a lazy one plain until it's been
+  loaded, which depends on what was opened before: a Markdown fence is coloured here from the start.
+- **File History:** the list's width isn't remembered; a file with no history closes the panel instead
+  of opening over it; going back and forward to it isn't there.
+- **Blame** has no tooltip. Blame from Diff View opens on Changes, with the toggle off, as the web UI does.
+- **Images:** AVIF isn't decoded; a GIF shows its first frame; an SVG draws through `usvg`, not Chromium;
+  a side over 4096 px holds a smaller copy, and above 100% stays smooth where the crisp copy would pass
+  that; zooming out samples linearly. No right-click menu, no keyboard on the swipe handle, and the
+  background pick lasts the session. As in the web UI, only Ctrl+wheel zooms.
+- **Hex:** the panes don't select or copy, and have no find.
+- **Open in:** an editor starts from this process's environment, since this build doesn't capture the
+  login shell's; the opener from Settings isn't read; the last one used lasts the session; stored
+  versions' copies go in a `gitvolt-gpui` cache folder of their own.
+- **File list:** View all files is for commits, not the WIP row (`Request::WorktreeFiles`). Folder rows
+  have no change counts or guide lines. A text field's caret stays at the end, with no IME.
+- **Commit:** no committer row, edit button or copying an id; a parent that isn't loaded says so instead of
+  loading more of the graph.
+- **Toast:** one kind, for a few seconds, no details.
 
 ## Dependency
 
 `gpui` and `gpui_platform` are pinned to Zed's `v1.27.0` commit, as
 [zed-industries/zed#66275](https://github.com/zed-industries/zed/issues/66275) advises: crates.io's
 0.2.2 is a year behind. Both are Apache-2.0. Zed's `editor`, `multi_buffer`, `language`, `markdown`
-and `ui` are GPL, so GitVolt can't use them; the diff editor has to be its own. Every crate the
+and `ui` are GPL, so GitVolt can't use them; the diff editor has to be its own. `image` (MIT/Apache) was
+already in the lockfile through gpui. Every crate the
 binary links on Linux is under an allowed license, checked from `cargo metadata` against `about.toml`.
 
 `assets/generate.mjs` makes what's embedded from the web UI's npm packages, so both draw the same:
-233 grammars (1.9 MB gzipped, the ones `ui/src/diff/shikiLanguages.ts` keeps for their licenses), the
-theme, the icons and the editor font's Latin face (OFL-1.1). What that face lacks falls back to the
+252 grammars (1.9 MB gzipped: the 233 `ui/src/diff/shikiLanguages.ts` keeps for their licenses, and the
+internal ones Shiki loads with them for injections), the theme, the icons and the editor font's Latin face (OFL-1.1). What that face lacks falls back to the
 system's, unlike the web UI's other subsets. The release notices don't cover this build yet.
 
 ## Measurements
@@ -112,6 +149,9 @@ screen here; Monaco's are when the screen's lines have their colours.
   and GPUI by a set offset each frame, over about the same distance. Treat the factor as rough.
 - **Idle:** a run with a file open shows 0.05–0.45% CPU and now and then a few frames, not always
   none. That's not investigated yet.
+- **Since then:** with File History, the hex and image views and Open in added, two runs on the same
+  kind of file show 7–24 / 12–33 ms to open, a 6.95 ms median and 9.37–9.46 ms worst frame, 2.27–2.36 ms
+  of CPU per frame, 0.05–0.10% idle CPU with no frames, and 60–73 MB anonymous memory, up from 56.
 
 To repeat the GPUI side, with `GITVOLT_T0` the launcher's clock in ms:
 
@@ -119,5 +159,5 @@ To repeat the GPUI side, with `GITVOLT_T0` the launcher's clock in ms:
 GITVOLT_T0=$(date +%s%3N) GITVOLT_BENCH=1 GITVOLT_OPEN=<repo> target/release/gitvolt-gpui
 ```
 
-`GITVOLT_SHOW=<graph row>,<file>[,hunk|split|file|wrap]` opens a file without an input device, for screenshots
-and for the diff's run above.
+`GITVOLT_SHOW=<graph row>,<file>[,hunk|split|file|wrap|history|blame|swipe|onion|difference|fit|zoom4|menu|allfiles]...`
+opens a file without an input device, for screenshots and for the diff's run above.
