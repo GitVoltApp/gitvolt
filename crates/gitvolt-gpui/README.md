@@ -40,6 +40,14 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   `this.update`. `api.dispatch(Request::X { .. })` gives JSON (camelCase, as `ui/src/api/gen/` types
   it). Writes go through the same `Request`s, so the core's write pipeline and journal apply. Add a
   typed method to `Api` when a payload is big, as `Api::graph` does.
+- **Writes:** `src/write.rs`, the port of `runWrite`. `self.write(Write::new(&ctx, move |asked| call("method",
+  json!({ .. }))).origin(origin).on_success(..).on_end(..), cx)`: `call` builds a request as `ui/src/api/client.ts`
+  does, a question from the core arms at `origin` and sends again with `asked`, an error toasts, the answer feeds the
+  journal, staging and WIP lists. Test it in a `#[tokio::test]` with `write::testing::Fixture`, a throwaway repo through
+  a real `Api`; a GPUI test can't await the runtime, so under `cfg!(test)` writes land in `GitVolt::sent`.
+  `wip.rs`, `commit_box.rs`, `sync.rs`, `refs.rs`, `feedback.rs`, `manage.rs` and `diff/staging.rs`, `diff/edit.rs` hold them.
+- **A modal's `build` and an overlay run while `GitVolt` is being updated:** reading it there panics. Copy what it
+  draws into something shared before `ui::overlays`, as `sync_activity_shown` does.
 - **What floats:** `src/ui/` is the shared UI; `ui::init` once, `ui::begin_frame` first in the root's
   `render`, `ui::overlays` as the root's last children. Its state is the `Ui` global, so anything with
   an `App` can open or close it. What's in it:
@@ -56,11 +64,12 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
     ..)`: from `on_mouse_down`, not `on_click`, so press, drag and release picks. `src/menus.rs` has
     what each right-click shows: wire a write by replacing its `pending` row.
   - `ui::arm::request(req, Origin::control("anchor"), then, window, cx)` arms a control in place; in a
-    menu row's `run`, pass `Origin::current(cx)`. With no control (`Origin::None`) it asks in a popover.
+    menu row's `run`, pass `Origin::current(cx)`, with `arm::hold_row` and `release_row` around a read that comes
+    first, so the row can still arm. With no control (`Origin::None`) it asks in a popover. `.icon(name)`: the label keeps an icon button's icon.
   - `ui::popover::ask_choice`, `ui::modal::open` and `ui::modal::prompt` (a dialog takes the keyboard
     in its own subtree, so no shortcut acts behind it), `ui::toast::show` and `show_with`,
     `ui::banner::banners`, and `ui::controls`: `button`, `select`, `switch`, `check_row`, `keycaps`,
-    `clearable`.
+    `clearable`, and `tabbable`, which gives a dialog's control a Tab stop.
   - `ui::fuzzy::go` ranks as `fuzzysort` does.
 - **Commands:** `src/commands.rs` is the one table of actions: id, label, group, icon, tooltip, chords,
   when and run. The hamburger, the chords, the toolbar's tooltips and the palette read it; a row with no
@@ -76,6 +85,12 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 - **No input device here:** `GITVOLT_SHOW` (`bench.rs`) opens things by script for screenshots
   (`GitVolt::show_ui`: `menu3`, `sub7`, `hamburger`, `palette=q`, `find=q`, `filter=q`, `prompt`, `armed`;
   `-` for no selection or no file); extend it as needed. Clicks and keys are checked in tests with GPUI's `TestAppContext` (see `app.rs`).
+  `GITVOLT_SCRIPT=<file>` runs a flow a line at a time, each input through the window as the platform's would be:
+  `click x y`, `rclick`, `dclick`, `move`, `press`, `drag`, `release`, `key ctrl-s`, `type text`, `wait ms`, `select row`,
+  `open index`, `cmd id`, `shot out.png`, `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>`,
+  `pickv <row>|<variant>`, `hover <row>`, `clickon`, `rclickon`, `dclickon`, `presson`, `dragto`, `releaseon <end of an anchor's
+  key>`, `clickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
+  under `target/bench/work/xdg`, no avatars, no global git config. Only ever on a throwaway repo under `target/bench/work/`.
 
 ## Tests
 

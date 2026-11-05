@@ -1,8 +1,9 @@
 # GPUI rewrite: first slice and measurements
 
 **Status:** in progress on the `gpui-rewrite` branch, beside the CEF app, which stays the product.
-`crates/gitvolt-gpui` draws GitVolt's main view natively from the same `gitvolt-core`. It reads and
-doesn't write. **The rewrite's goal is the current look, 1:1; most of the app isn't there yet.**
+`crates/gitvolt-gpui` draws GitVolt's main view natively from the same `gitvolt-core`. It reads, and writes
+through the same `Request`s as the web UI, so hooks, config, credentials and the journal behave the same.
+**The rewrite's goal is the current look, 1:1; a good part of the app isn't there yet.**
 
 ## What the slice has
 
@@ -41,19 +42,73 @@ a row, changed bytes by position, the bar's marks); an image in Side-by-side, Sw
 Difference with zoom, pan, Match sizes, the backgrounds and its Hex or Source toggle. "Open in" lists
 every opener, as the app's `Api` wires them.
 
-Not there yet, by size of the work: every write (the toolbar's buttons and the menus' rows are disabled,
-and so hunk and line staging, and editing in a diff), the MR/PR views and review comments, Markdown, Mermaid,
-PDF and media views (a PDF or media file shows as hex), settings, profiles and other themes, tab groups,
-branch presets, the Keyboard Shortcuts panel, accessibility roles, spell check, zoom, and macOS and Windows
-checks. In the diff: moved-code detection and code lens. The core still runs on a
-temporary data directory until this build writes.
+## What writes
 
-Differences from the web UI that are known, in the area that's there:
+`build_api` wires the `Api` as the app does: the login shell's environment, askpass, and a data folder of its
+own (`gitvolt-gpui`, beside the CEF app's, never shared). Requests are built as `ui/src/api/client.ts` builds
+them and go through `src/write.rs`, the port of `runWrite`: a question the core answers with arms where the
+action started and sends again, an error toasts, the answer updates the journal, the staging state and the lists.
 
+- **The WIP panel:** its header and discard, View all files, Path and Tree, the filter, Conflicted, Unstaged and
+  Staged with their resizer, stage, unstage and discard of a file, a folder or everything, staging's own Undo and
+  Redo, per-worktree drafts (the WIP row's input and the commit box are one text, kept in `drafts.json`), the commit
+  box with Amend, the identity line and Ctrl+Enter, the operation box (status, Continue, Skip, Abort, each stop's
+  message once, a merge's message added to the draft and taken back on Abort), and Mark resolved.
+- **The diff:** hunk rows with Stage, Unstage and Discard, the line button in the gutter, staging a selection,
+  the working copy edited in place (Inline and File View), Save, Stale and the unsaved-edits question on leaving a
+  file or closing the window.
+- **The toolbar:** Undo and Redo with their history menu, Fetch or the chosen Pull, Push (force with lease, the
+  upstream panel, a rejection's choice), Branch, Stash, Pop, the WIP button, split buttons' hold and
+  press-drag-release.
+- **Feedback:** the core's op events, the action queue with Resume and Clear, spinners only while working, running
+  marks on chips and sidebar rows, the activity log, Debug's command list, the bell, the status bar's items, background
+  fetch on the settings' interval, refs events reloading, banners with their actions.
+- **Credentials:** the askpass modal (one at a time, a password's characters as stars), the switch-to-SSH offer, a
+  background fetch's "authentication required" in the status bar.
+- **Branches, tags, commits:** checkout (with a chip's double click, the sidebar's, diverged and autostash questions),
+  create, rename, delete with its remote, merge, rebase, fast-forward, cherry-pick, revert, reset, set upstream, tag
+  create, delete and push, a branch dragged onto a chip, and the real Fast-forward, Merge and Rebase rows.
+- **Managing:** add and remove a remote, Copy URL, create, remove and switch a worktree, Create file, a submodule's update.
+
+## Not there yet
+
+By size of the work: the merge tool and interactive rebase (their rows hold their place, disabled), the MR/PR views
+and review comments, Markdown, Mermaid, PDF and media views (a PDF or media file shows as hex), settings, profiles
+and other themes, tab groups, branch presets and Hide, file colours, the Keyboard Shortcuts panel, accessibility
+roles, spell check, zoom, and macOS and Windows checks. Writes left outside those: Clone and the open-repository
+screen, LFS, Gitflow, adding a submodule or opening one in a tab, stacks. In the diff: moved-code detection and code lens.
+
+Everything above was run from the tests and from `GITVOLT_SCRIPT`, which sends events through the window as the
+platform would (`README`). **None of it has had a real mouse or keyboard on it**, IME included.
+
+## Differences from the web UI
+
+Known, in the area that's there:
+
+- **Writes, dialogs:** creating a branch or a tag is a dialog, not a row with a field. The upstream and branch
+  pickers are menus, not the searchable picker. The push panel is a centred dialog, not a popover at the button.
+  Add remote and Create worktree are small dialogs without the forks list, the folder picker or Open in a new tab.
+  Create file is a dialog from the row or the palette, with no inline field in the list, and doesn't open the file.
+  Tab reaches a prompt's checkbox and buttons, but no select.
+- **Writes, questions:** a question from a write's own answer, when the menu row that began it has closed, is a
+  popover (asking first, as a preview does, holds the row and arms it, as there). A checkout "checked out elsewhere" toast
+  has no Switch or Open links. Remove worktree has no With branch variant; a linked worktree's tab moves to the main
+  one rather than a twin closing. Undo's menu opens once its entries are read.
+- **WIP and commit box:** no Fork trunk notice, no Edit stop (it comes with interactive rebase), a rebase's stop keeps
+  the box's message once it ends until the WIP row is next shown. A conflicted row's label sits under the row's hover
+  buttons, as there, but no file opens in the merge tool.
+- **Editing:** a plain editor, not Monaco: no multiple cursors, no suggestions, no blink; Up and Down go by logical line,
+  and so do Home and End in wrapped text. Colours catch up 120 ms after typing. A press on a removed line doesn't
+  move the caret. An inline selection can take removed lines too.
+- **Background fetch:** the interval is read at the start; it isn't paused for a minimized window, and doesn't run at once
+  on opening. The chosen Pull is kept in `layout.json`, drafts and merge drafts in `drafts.json`, not the profile.
+- **Activity log:** Activity and Commands only, without Requests, Actions, the diagnostics or the performance overlay;
+  rows are simpler.
+- **Credentials:** a password field shows stars rather than the browser's dots.
 - **Text:** a line's advance is 7.8 px, the font's; Chromium rounds it to 8. Lines end a little earlier
   and wrap a little later. The hex view paints on Chromium's 8 px grid. UI text is a pixel or two wider.
-- **Diff:** the first change is centred about 10 px lower than Monaco's; the ruler sits beside a 10 px
-  column where Monaco overlays its scrollbar on the text; the toolbar stays one row when it's too narrow
+- **Diff:** the first change is centred about 10 px lower than Monaco's, its rows a pixel lower; the removed side's
+  number column isn't tinted beside an added line; the toolbar stays one row when it's too narrow
   instead of wrapping. Monaco's taller hidden-lines row is its 24 px here too.
 - **Embedded languages** load as a grammar names them. Shiki leaves a lazy one plain until it's been
   loaded, which depends on what was opened before: a Markdown fence is coloured here from the start.
@@ -65,8 +120,7 @@ Differences from the web UI that are known, in the area that's there:
   that; zooming out samples linearly. No right-click menu, no keyboard on the swipe handle, and the
   background pick lasts the session. As in the web UI, only Ctrl+wheel zooms.
 - **Hex:** the panes don't select or copy, and have no find.
-- **Open in:** an editor starts from this process's environment, since this build doesn't capture the
-  login shell's; the opener from Settings isn't read; the last one used lasts the session; stored
+- **Open in:** the opener from Settings isn't read; the last one used lasts the session; stored
   versions' copies go in a `gitvolt-gpui` cache folder of their own.
 - **File list:** View all files is for commits, not the WIP row (`Request::WorktreeFiles`). Folder rows
   have no change counts or guide lines.
@@ -74,20 +128,17 @@ Differences from the web UI that are known, in the area that's there:
   right-click menu in a field.
 - **Tooltips and cards** appear without the 150 ms fade. A card takes no pointer: nothing floats that the
   pointer can enter.
-- **Menus:** a row's highlight doesn't fade in (the web UI's 50 ms). A split button's hold doesn't open its
-  menu yet, since no split button acts. The Open in dropdown in the diff's toolbar is still its own menu, without
-  press, drag and release; the same list in a file's right-click menu is the shared one. No forge rows,
-  and which of Fast-forward, Merge and Rebase a branch offers is approximated by where its row is, until they're
-  wired. Forge's and tab groups' rows are absent or disabled.
+- **Menus:** a row's highlight doesn't fade in (the web UI's 50 ms). The Open in dropdown in the diff's toolbar is still its own menu, without
+  press, drag and release; the same list in a file's right-click menu is the shared one. No forge rows; tab groups' rows are absent or disabled. A menu's note row is told its line count.
 - **Chips:** a truncated chip doesn't float its full copy on hover, a selected commit doesn't show the dim
   chip of the branch it's on, a stack from `+N` is read-only (its right-click is on the `+N`, by submenus), and a
-  remote's icon is the cloud, not its forge's mark. Dragging a branch onto another isn't there.
+  remote's icon is the cloud, not its forge's mark.
 - **Graph:** rows change colour at once, without the 200 and 500 ms easing. The table clips where the web UI
   scrolls sideways, so a hand-set wide Message runs off the edge, and a graph with too many lanes for its
   default width shows the collapse zone sooner than it would. The pin in the header says the trunk and doesn't
   pick another. Column resizers and panel dividers are for the mouse, not the arrow keys.
 - **Sidebar:** no eye on a row, since there are no presets; a remote's folder has a plain folder icon; a card
-  doesn't list an MR. Copy URL on a remote is disabled until its URL is read.
+  doesn't list an MR.
 - **Tabs:** a dragged tab doesn't slide; there are no groups, and Add to new group is disabled. Rename lasts
   the session.
 - **Sizes** are remembered in `layout.json` in this build's cache folder, not in the profile, since there are no
