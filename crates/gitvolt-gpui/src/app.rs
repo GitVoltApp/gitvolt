@@ -5,6 +5,7 @@ use crate::details::{Commit, Files, details_panel};
 use crate::diff::view::{DiffState, body_size, diff_panel};
 use crate::graph::{RowGeometry, paint_row};
 use crate::history::{FileHistory, HISTORY_H, history_panel};
+use crate::open_in::{OpenIn, open_in_menu};
 use crate::model::*;
 use crate::theme;
 use gitvolt_core::api::{Api, Request};
@@ -29,6 +30,7 @@ const RESIZE: f32 = 6.;
 const SHA_PAD: f32 = 6.;
 pub const MONO_FONT: &str = "Noto Sans Mono";
 pub const GRAPH_LIMIT: u32 = 2000;
+const TOAST_SECS: u64 = 4;
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
@@ -73,6 +75,7 @@ pub struct Tab {
     /// File History in the diff's and the graph's place; `diff` then is the file it shows.
     pub history: Option<FileHistory>,
     pub keys: KeyArea,
+    pub open_in: OpenIn,
     /// The sidebar stays open beside a file (it folds to its strip by default).
     pub sidebar_open: bool,
     pub list: UniformListScrollHandle,
@@ -98,6 +101,7 @@ impl Tab {
             diff: None,
             history: None,
             keys: KeyArea::Graph,
+            open_in: OpenIn::default(),
             sidebar_open: false,
             list: UniformListScrollHandle::new(),
             side: std::array::from_fn(|_| UniformListScrollHandle::new()),
@@ -119,6 +123,10 @@ pub struct GitVolt {
     pub font: SharedString,
     pub git_version: SharedString,
     pub dragging_scrollbar: bool,
+    /// The opener used last, "Open in…"'s default for this session.
+    pub last_opener: Option<String>,
+    /// A message for a moment, over the bottom of the window.
+    pub toast: Option<(u64, SharedString)>,
     /// Images no longer shown: the frame after they go, the window drops them from its atlas.
     pub retired_images: Rc<std::cell::RefCell<Vec<Arc<RenderImage>>>>,
     /// Measuring (`GITVOLT_BENCH`, bench.rs): called once per frame.
@@ -127,7 +135,7 @@ pub struct GitVolt {
 
 impl GitVolt {
     pub fn new(api: Arc<Api>, rt: tokio::runtime::Handle, font: SharedString, cx: &mut Context<Self>) -> Self {
-        Self { api, rt, tabs: Vec::new(), active: 0, focus: cx.focus_handle(), font, git_version: SharedString::default(), dragging_scrollbar: false, retired_images: Rc::default(), frame_hook: None }
+        Self { api, rt, tabs: Vec::new(), active: 0, focus: cx.focus_handle(), font, git_version: SharedString::default(), dragging_scrollbar: false, last_opener: None, toast: None, retired_images: Rc::default(), frame_hook: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -196,6 +204,7 @@ impl GitVolt {
                         let mut tab = Tab::new(id, name.into());
                         tab.worktree = worktree;
                         this.tabs.push(tab);
+                        this.list_openers(id, cx);
                         this.active = this.tabs.len() - 1;
                         this.reload(id, cx);
                     }
@@ -278,9 +287,31 @@ impl GitVolt {
         self.select(at, cx);
     }
 
+    /// Shows `message` for a few seconds.
+    pub fn show_toast(&mut self, message: impl Into<SharedString>, cx: &mut Context<Self>) {
+        let id = self.toast.as_ref().map_or(0, |t| t.0) + 1;
+        self.toast = Some((id, message.into()));
+        cx.notify();
+        let timer = cx.background_executor().timer(std::time::Duration::from_secs(TOAST_SECS));
+        cx.spawn(async move |this, cx| {
+            timer.await;
+            this.update(cx, |this, cx| {
+                if this.toast.as_ref().is_some_and(|t| t.0 == id) {
+                    this.toast = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     /// ↑ / ↓ move what was last clicked in: the graph, the file list, the history's list or the diff.
     fn arrow(&mut self, down: bool, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
+        if tab.open_in.menu.is_some() {
+            return self.step_open_in(down, cx);
+        }
         let by = if down { 1 } else { -1 };
         match tab.keys {
             KeyArea::History if tab.history.is_some() => self.step_history(down, cx),
@@ -813,7 +844,18 @@ impl Render for GitVolt {
         }
         let tab = self.tabs.get(self.active);
         let strip = tab.filter(|_| folded).map(|t| sidebar_strip(t, cx));
-        let main = match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, cx) }) {
+        let menu = tab.and_then(|t| open_in_menu(t, cx));
+        let toast = self.toast.as_ref().map(|t| {
+            div()
+                .absolute()
+                .bottom(px(24.))
+                .left_0()
+                .right_0()
+                .flex()
+                .justify_center()
+                .child(div().max_w(px(720.)).px(px(12.)).py(px(6.)).rounded(px(4.)).bg(theme::panel_bg1()).border_1().border_color(theme::section_border()).text_color(theme::text_selected()).child(t.1.clone()))
+        });
+        let main = match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), cx) }) {
             Some(panel) => panel,
             None => graph_table(self, center, cx),
         };
@@ -840,12 +882,13 @@ impl Render for GitVolt {
             .on_action(cx.listener(|this, _: &PageDown, window, cx| this.scroll_diff((window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
             .on_action(cx.listener(|this, _: &PageUp, window, cx| this.scroll_diff(-(window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
-                if this.zoom_field_key(&e.keystroke, cx) {
+                if this.zoom_field_key(&e.keystroke, cx) || (e.keystroke.key == "enter" && this.activate_open_in(cx)) {
                     cx.stop_propagation();
                 }
             }))
             .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
-                if this.zoom_editing() {
+                if this.close_open_in(cx) {
+                } else if this.zoom_editing() {
                     this.end_zoom_edit(false, cx);
                 } else if this.tabs.get(this.active).is_some_and(|t| t.history.is_some()) {
                     this.close_history(cx);
@@ -871,6 +914,8 @@ impl Render for GitVolt {
             .child(toolbar(self))
             .child(div().flex().flex_1().min_h_0().when_some(strip, |d, s| d.child(s)).when(!folded, |d| d.child(sidebar(self, cx))).child(main).children(details))
             .child(status_bar(self))
+            .children(toast)
+            .children(menu)
             .children(resize_handles(window))
     }
 }

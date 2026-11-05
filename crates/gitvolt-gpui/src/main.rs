@@ -13,12 +13,16 @@ mod graph;
 mod history;
 mod icons;
 mod model;
+mod open_in;
 mod theme;
 
 use app::GitVolt;
 use gitvolt_core::api::Api;
 use gitvolt_core::git::GitCli;
 use gitvolt_core::log::CommandLog;
+use gitvolt_core::openers::chooser::system_chooser;
+use gitvolt_core::openers::default_app::system_default_app;
+use gitvolt_core::openers::{ChildEnvHook, detect_system, launcher};
 use gpui::*;
 use gpui_platform::application;
 use std::borrow::Cow;
@@ -45,6 +49,26 @@ fn ui_font() -> SharedString {
     }
 }
 
+/// "Open in…", as `gitvolt-app`'s `build_api` wires it, but that an editor starts from this process's
+/// environment: this build doesn't capture the login shell's yet. Stored versions' copies have a cache
+/// folder of their own, apart from the app's.
+fn with_openers(api: Api) -> Api {
+    let child_env: ChildEnvHook = Arc::new(|_| {});
+    let api = api.with_openers(Arc::new(detect_system), launcher(child_env.clone(), None));
+    let api = match system_default_app(child_env.clone()) {
+        Some(default_app) => api.with_default_app(default_app),
+        None => api,
+    };
+    let api = match system_chooser(child_env) {
+        Some(chooser) => api.with_chooser(chooser),
+        None => api,
+    };
+    match gitvolt_core::paths::cache_base() {
+        Some(cache) => api.with_open_cache(cache.join("gitvolt-gpui").join("open")),
+        None => api,
+    }
+}
+
 fn main() {
     bench::mark("main");
     let path = std::env::args().nth(1).or_else(|| std::env::var("GITVOLT_OPEN").ok());
@@ -52,7 +76,7 @@ fn main() {
     let handle = runtime.handle().clone();
     // No `with_data_dir` yet: the core keeps its journal in a temp dir, apart from the app's, until
     // this build writes.
-    let api = Arc::new(Api::new(GitCli::new(Arc::new(CommandLog::new(1000))), None).with_app_version(env!("CARGO_PKG_VERSION")));
+    let api = Arc::new(with_openers(Api::new(GitCli::new(Arc::new(CommandLog::new(1000))), None).with_app_version(env!("CARGO_PKG_VERSION"))));
     let font = ui_font();
     bench::mark("before_platform");
     application().with_assets(Assets).run(move |cx: &mut App| {

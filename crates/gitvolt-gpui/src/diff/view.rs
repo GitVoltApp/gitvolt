@@ -223,7 +223,7 @@ pub struct DiffState {
 /// Which bar `toolbar` draws.
 pub enum ToolbarKind {
     /// The diff panel's; whether the file has a history to show.
-    Panel { has_history: bool },
+    Panel { has_history: bool, open_in: Option<AnyElement> },
     /// File History's: its `File | Changes` in File View / Diff View's place, and no Blame or History.
     History(AnyElement),
 }
@@ -1472,13 +1472,13 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
         div().id(id).flex().flex_none().size(px(22.)).items_center().justify_center().rounded(px(3.)).when(pressed, |d| d.bg(theme::selected_row())).when(enabled, |d| d.hover(|d| d.bg(theme::hover_row()))).when(!enabled, |d| d.opacity(0.4)).child(icon(name, 14., color))
     };
     let can_step = in_diff && !diff.changes.is_empty();
-    let (panel, has_history) = match kind {
-        ToolbarKind::Panel { has_history } => (true, has_history),
+    let (panel, has_history) = match &kind {
+        ToolbarKind::Panel { has_history, .. } => (true, *has_history),
         ToolbarKind::History(_) => (false, false),
     };
-    let views = match kind {
-        ToolbarKind::History(views) => views,
-        ToolbarKind::Panel { .. } => segmented(vec![view_button("view-file", "File View", ViewKind::File, !in_diff, true, cx), view_button("view-diff", "Diff View", ViewKind::Diff, in_diff, can_diff, cx)]).into_any_element(),
+    let (views, open_in) = match kind {
+        ToolbarKind::History(views) => (views, None),
+        ToolbarKind::Panel { open_in, .. } => (segmented(vec![view_button("view-file", "File View", ViewKind::File, !in_diff, true, cx), view_button("view-diff", "Diff View", ViewKind::Diff, in_diff, can_diff, cx)]).into_any_element(), open_in),
     };
     // File View hides what never applies there; File History keeps it in place, off.
     let diff_tools = in_diff || !panel;
@@ -1497,7 +1497,7 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
         .border_b_1()
         .border_color(theme::section_border())
         // Too narrow for three columns, the view switch isn't centred.
-        .child(div().when(width > TOOLBAR_NARROW, |d| d.flex_1()))
+        .child(div().flex().when(width > TOOLBAR_NARROW, |d| d.flex_1()).children(open_in))
         .child(views)
         .child(
             div()
@@ -1565,9 +1565,10 @@ fn minimap_width(width: f32) -> f32 {
 }
 
 /// The panel for `tab`'s open file, `width` px wide.
-pub fn diff_panel(tab: &Tab, width: f32, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
+pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     let diff = tab.diff.as_ref()?;
-    Some(div().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some() }, width, cx)).child(diff_body(diff, width, cx)).into_any_element())
+    let open_in = crate::open_in::open_in_button(tab, last_opener, cx);
+    Some(div().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in }, width, cx)).child(diff_body(diff, width, cx)).into_any_element())
 }
 
 /// What's under the toolbar, in an editor `width` px wide.

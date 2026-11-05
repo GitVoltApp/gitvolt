@@ -55,7 +55,7 @@ struct State {
     frames: u64,
 }
 
-/// `GITVOLT_SHOW=<row>,<file>[,hunk|split|file|wrap|history|blame|swipe|onion|difference|fit|zoom4]...`: selects a graph row and opens a file of its list,
+/// `GITVOLT_SHOW=<row>,<file>[,hunk|split|file|wrap|history|blame|swipe|onion|difference|fit|zoom4|menu]...`: selects a graph row and opens a file of its list,
 /// with no input device: for screenshots and `GITVOLT_BENCH=diff`. Returns when the file has its
 /// text and when it has its colours, in ms from opening it.
 async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (u128, u128) {
@@ -95,6 +95,14 @@ async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (
         wait(cx).await;
     }
     let shown = (text, opened.elapsed().as_millis());
+    // Their first layout places an image at 100%.
+    cx.background_executor().timer(Duration::from_millis(50)).await;
+    if parts.contains(&"menu") {
+        while !v.read_with(cx, |g, _| g.tabs[0].open_in.openers.is_some()) {
+            wait(cx).await;
+        }
+        v.update(cx, |g, cx| g.toggle_open_in(cx));
+    }
     v.update(cx, |g, cx| {
         for part in parts.iter().skip(2) {
             g.with_image(cx, |img, file| match *part {

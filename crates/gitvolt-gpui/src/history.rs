@@ -213,7 +213,6 @@ pub struct FileHistory {
     pub more: bool,
     pub loading: bool,
     pub error: Option<SharedString>,
-    pub note: Option<SharedString>,
     pub selected: Option<SharedString>,
     pub blame_on: bool,
     pub view: HistoryView,
@@ -241,7 +240,6 @@ impl FileHistory {
             more: true,
             loading: false,
             error: None,
-            note: None,
             selected: None,
             blame_on,
             view,
@@ -571,13 +569,13 @@ impl GitVolt {
         if in_graph {
             self.close_history(cx);
             let at = self.tabs.get(self.active).and_then(|t| t.graph.as_ref()?.by_sha.get(sha.as_ref()).copied());
-            if let Some(at) = at {
-                self.select(at, cx);
+            match at {
+                Some(at) => self.select(at, cx),
+                None => self.show_toast("Not in the loaded history", cx),
             }
             return;
         }
         let Some(h) = self.tabs.get_mut(self.active).and_then(|t| t.history.as_mut()) else { return };
-        h.note = None;
         h.seek = Some((sha.to_string(), SEEK_PAGES));
         self.continue_seek(cx);
     }
@@ -593,7 +591,7 @@ impl GitVolt {
         if !h.more || h.error.is_some() || pages == 0 {
             let short: String = sha.chars().take(SHORT_SHA).collect();
             h.seek = None;
-            h.note = Some(format!("{short} isn't in this file's history").into());
+            self.show_toast(format!("{short} isn't in this file's history"), cx);
             return;
         }
         if !h.loading {
@@ -612,9 +610,10 @@ impl GitVolt {
 fn sha_button(sha: SharedString, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let short: String = sha.chars().take(SHORT_SHA).collect();
     let id: SharedString = format!("copy-{sha}").into();
-    div().id(id).flex_none().font_family(crate::app::MONO_FONT).text_size(px(11.)).text_color(theme::text_secondary()).cursor_pointer().child(short).on_click(cx.listener(move |_, _, _, cx| {
+    div().id(id).flex_none().font_family(crate::app::MONO_FONT).text_size(px(11.)).text_color(theme::text_secondary()).cursor_pointer().child(short).on_click(cx.listener(move |this, _, _, cx| {
         cx.stop_propagation();
         cx.write_to_clipboard(ClipboardItem::new_string(sha.to_string()));
+        this.show_toast("Copied", cx);
     }))
 }
 
@@ -656,7 +655,6 @@ fn history_row(r: &HistoryRow, on: bool, cx: &mut Context<GitVolt>) -> AnyElemen
 
 /// What follows the rows: a failure, "Load more", or where the history ends.
 fn list_end(h: &FileHistory, cx: &mut Context<GitVolt>) -> AnyElement {
-    let note = h.note.clone();
     let mut out = div().flex().flex_col().w_full().text_color(theme::text_secondary());
     if let Some(e) = &h.error {
         out = out.child(
@@ -691,7 +689,7 @@ fn list_end(h: &FileHistory, cx: &mut Context<GitVolt>) -> AnyElement {
                 .child("End of history"),
         );
     }
-    out.when_some(note, |d, n| d.child(div().px(px(8.)).py(px(6.)).child(n))).into_any_element()
+    out.into_any_element()
 }
 
 /// Where a group lies in the rows' layout: its first line's top and its last's bottom, wherever the
