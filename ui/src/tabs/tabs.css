@@ -12,7 +12,7 @@
    always be moved. Another before ☰, 15 px (Firefox's is 40). The profile keeps its name, which
    is how you tell profiles apart (an empty name shows the dot alone). */
 .tab-bar.compact .tab-bar-btn { width: 28px; }
-.tab-bar.compact .tab { min-width: 72px; }
+.tab-bar.compact .tab:not(.tab-hidden) { min-width: 72px; }
 .tab-bar-drag { width: 48px; flex: none; }
 .tab-bar-drag.lead { width: 15px; }
 .tab-bar.compact .title-bar-buttons { padding: 0 6px; }
