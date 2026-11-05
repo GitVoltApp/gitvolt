@@ -342,7 +342,7 @@ fn hint(text: &str) -> Div {
 }
 
 fn section_head(title: &str, note: Option<&str>) -> Div {
-    div().flex().items_baseline().gap(px(6.)).mb(px(6.)).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child(title.to_string()).children(note.map(hint))
+    div().flex().items_baseline().gap(px(6.)).mb(px(6.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child(title.to_string()).children(note.map(hint))
 }
 
 /// Show / Hide / Collapse.
@@ -351,7 +351,7 @@ fn action_choice(key: String, value: &str, read_only: bool, on: OnAction, cx: &m
     for (a, text) in [("show", "Show"), ("hide", "Hide"), ("collapse", "Collapse")] {
         let on_now = value == a;
         let handler = on.clone();
-        seg = seg.child(crate::ui::anchor(format!("{key}:{a}"), div().id(ElementId::Name(format!("{key}-{a}").into())).px(px(8.)).py(px(2.)).text_size(px(12.)).when(on_now, |d| d.bg(theme::selected_row()).text_color(theme::text_selected())).when(!on_now, |d| d.text_color(theme::text_secondary())).when(read_only && !on_now, |d| d.opacity(0.5)).when(!read_only, |d| d.cursor_pointer().hover(|d| d.bg(theme::hover_row()))).on_click(cx.listener(move |v, _, _, cx| {
+        seg = seg.child(crate::ui::anchor(format!("{key}:{a}"), div().id(ElementId::Name(format!("{key}-{a}").into())).px(px(8.)).py(px(3.)).when(on_now, |d| d.bg(theme::selected_row()).text_color(match a { "show" => theme::green(), "hide" => theme::red(), _ => theme::blue() })).when(!on_now, |d| d.text_color(theme::text_secondary())).when(!read_only, |d| d.cursor_pointer().hover(|d| d.bg(theme::hover_row()))).on_click(cx.listener(move |v, _, _, cx| {
             if !read_only {
                 handler(v, a, cx);
             }
@@ -493,7 +493,7 @@ fn rule_row(this: &mut GitVolt, pid: &str, i: usize, rule: &Value, count: Option
             .child(div().flex_none().w(px(14.)).text_size(px(12.)).text_color(theme::text_secondary()).child(n.to_string()))
             .child(action)
             .child(what)
-            .child(div().flex_none().min_w(px(70.)).flex().justify_end().text_size(px(12.)).text_color(theme::text_secondary()).child(count_text(count)))
+            .child(div().flex_none().min_w(px(66.)).flex().justify_end().text_size(px(12.)).text_color(theme::text_secondary()).child(count_text(count)))
             .child(if read_only { div().flex_none().size(px(20.)).into_any_element() } else {
                 crate::ui::anchor(format!("rule-x:{i}"), div().id(ElementId::Name(format!("rule-x-{n}").into())).flex().flex_none().size(px(20.)).items_center().justify_center().rounded(px(3.)).text_color(theme::text_secondary()).cursor_pointer().hover(|d| d.bg(theme::hover_row()).text_color(theme::text_selected())).on_click(cx.listener(move |v, _, _, cx| {
                     let pid2 = pid2.clone();
@@ -564,7 +564,7 @@ pub fn body(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
     let preview = this.settings_ui.presets.preview.clone().filter(|x| x.0 == pid).map(|x| x.1);
     // The left column.
     let mut side = div().flex().flex_col().flex_none().gap(px(10.)).w(px(236.)).px(px(8.)).py(px(12.)).border_r_1().border_color(theme::section_border());
-    let group = |title: &str, detail: Option<&str>, head: bool| div().flex().justify_between().items_baseline().mb(px(4.)).px(px(6.)).font_features(crate::glyphs::spacing(0.06)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(div().flex().child(title.to_uppercase()).children(detail.map(|d| div().font_weight(FontWeight::NORMAL).child(format!(" · {d}"))))).when(head, |d| d.child(div().text_size(px(10.)).font_weight(FontWeight::NORMAL).child("in the cycle")));
+    let group = |title: &str, detail: Option<&str>, head: bool| div().flex().justify_between().items_baseline().mb(px(4.)).px(px(6.)).font_features(crate::glyphs::spacing(0.06)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(div().flex().child(title.to_uppercase()).children(detail.map(|d| div().font_weight(FontWeight::NORMAL).child(format!(" · {d}"))))).when(head, |d| d.child(div().font_features(crate::glyphs::spacing(0.)).text_size(px(10.)).font_weight(FontWeight::NORMAL).child("in the cycle")));
     for (g, title) in [("builtin", "Built in"), ("all", "All repositories"), ("repo", "This repository")] {
         if g == "repo" && !has_repo {
             continue;
@@ -590,9 +590,9 @@ pub fn body(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
         .child(div().mt_auto().px(px(6.)).pt(px(10.)).border_t_1().border_color(theme::section_border()).text_size(px(11.)).line_height(relative(1.45)).text_color(theme::text_secondary()).child("Drag to set the order. The button's click steps through the ticked presets; the ▾ menu always lists them all."));
     // The editor.
     let mut editor = div().flex().flex_col().flex_1().min_w_0().gap(px(14.)).px(px(16.)).pt(px(14.)).pb(px(16.));
-    let label = |t: &str| div().mb(px(4.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(t.to_string());
+    let label = |t: &str| div().mb(px(4.)).text_size(px(12.)).text_color(theme::text_secondary()).child(t.to_string());
     let name_field: AnyElement = if read_only {
-        div().flex().items_center().h(px(26.)).px(px(8.)).w(px(220.)).rounded(px(4.)).bg(theme::app_bg()).border_1().border_color(theme::section_border()).text_color(theme::text_selected()).child(entry.name().to_string()).into_any_element()
+        div().flex().items_center().h(px(28.)).px(px(8.)).w_full().rounded(px(4.)).bg(theme::app_bg()).border_1().border_color(theme::section_border()).text_color(theme::text_selected()).child(entry.name().to_string()).into_any_element()
     } else {
         let id2 = pid.clone();
         let input = this.settings_field(&format!("bp-name:{pid}"), entry.name(), "", Rc::new(move |v, text, cx| {
@@ -623,11 +623,11 @@ pub fn body(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
         }
         seg.into_any_element()
     };
-    editor = editor.child(div().flex().flex_wrap().items_end().gap(px(16.)).child(div().child(label("Name")).child(name_field)).child(div().child(label("Available in")).child(scope_el)));
-    let mut colours = div().flex().gap(px(6.));
+    editor = editor.child(div().flex().flex_wrap().items_end().gap(px(16.)).child(div().flex_1().min_w(px(180.)).child(label("Name")).child(name_field)).child(div().child(label("Available in")).child(scope_el)));
+    let mut colours = div().flex().gap(px(8.));
     for c in GROUP_COLORS {
         let (on, id2) = (p["color"] == c, pid.clone());
-        colours = colours.child(crate::ui::tooltip::tip(c, crate::ui::anchor(format!("bp-colour:{c}"), div().id(ElementId::Name(format!("bp-colour-{c}").into())).size(px(18.)).rounded_full().bg(preset_colour(c)).border_2().border_color(if on { theme::text_selected() } else { transparent_black() }).when(read_only && !on, |d| d.opacity(0.4)).when(!read_only, |d| d.cursor_pointer()).on_click(cx.listener(move |v, _, _, cx| {
+        colours = colours.child(crate::ui::tooltip::tip(c, crate::ui::anchor(format!("bp-colour:{c}"), div().id(ElementId::Name(format!("bp-colour-{c}").into())).relative().size(px(20.)).rounded_full().bg(preset_colour(c)).border_2().border_color(if on { theme::text_selected() } else { preset_colour(c) }).child(div().absolute().top_0().left_0().size_full().rounded_full().border_1().border_color(theme::panel_bg())).when(!read_only, |d| d.cursor_pointer()).on_click(cx.listener(move |v, _, _, cx| {
             if !read_only && !on {
                 v.preset_edit(&id2, move |p| p["color"] = json!(c), cx);
             }
@@ -637,15 +637,15 @@ pub fn body(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
     // Rules.
     let rules = p["rules"].as_array().cloned().unwrap_or_default();
     let counts = preview.as_ref().and_then(|v| v["rules"].as_array()).filter(|c| c.len() == rules.len() + 1).cloned();
-    let mut rule_list = div().flex().flex_col();
+    let mut rule_list = div().flex().flex_col().border_1().border_color(theme::section_border()).rounded(px(6.));
     for (i, r) in rules.iter().enumerate() {
         rule_list = rule_list.child(rule_row(this, &pid, i, r, counts.as_ref().and_then(|c| c[i].as_u64()), read_only, window, cx));
     }
     let id3 = pid.clone();
-    rule_list = rule_list.child(div().flex().items_center().gap(px(8.)).py(px(4.)).child(div().flex_none().size(px(20.))).child(div().flex_none().w(px(14.))).child(action_choice("rule:else".into(), p["otherwise"].as_str().unwrap_or("show"), read_only, Rc::new(move |v, a, cx| {
+    rule_list = rule_list.child(div().flex().items_center().gap(px(8.)).min_h(px(30.)).pl(px(4.)).pr(px(8.)).py(px(4.)).when(!rules.is_empty(), |d| d.border_t_1().border_color(theme::section_border())).child(div().flex_none().size(px(20.))).child(div().flex_none().w(px(14.))).child(action_choice("rule:else".into(), p["otherwise"].as_str().unwrap_or("show"), read_only, Rc::new(move |v, a, cx| {
         let (id, a) = (id3.clone(), a.to_string());
         v.preset_edit(&id, move |p| p["otherwise"] = json!(a), cx);
-    }), cx)).child(div().flex_1().min_w_0().child("Everything else")).child(div().flex_none().min_w(px(70.)).flex().justify_end().text_size(px(12.)).text_color(theme::text_secondary()).child(count_text(counts.as_ref().and_then(|c| c[rules.len()].as_u64())))).child(div().flex_none().size(px(20.))));
+    }), cx)).child(div().flex_1().min_w_0().child("Everything else")).child(div().flex_none().min_w(px(66.)).flex().justify_end().text_size(px(12.)).text_color(theme::text_secondary()).child(count_text(counts.as_ref().and_then(|c| c[rules.len()].as_u64())))).child(div().flex_none().size(px(20.))));
     let mut rules_section = div().child(section_head("Rules", Some("top to bottom; the first that matches a branch decides"))).child(rule_list.on_mouse_move(cx.listener({
         let pid = pid.clone();
         move |v, e: &MouseMoveEvent, _, cx| v.bp_rule_drag(&pid, e, cx)
@@ -707,11 +707,11 @@ pub fn body(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
         }))
     };
     let ghost = p["ghostLines"] == true;
-    editor = editor.child(div().child(section_head("Options", None)).child(div().flex().flex_col().child(opt("bp-fold", "foldMerged", "Fold branches merged into the trunk", Some("into their merge commit; hover it to see them"), p["foldMerged"] == true, read_only, pid.clone(), cx)).child(opt("bp-ghost", "ghostLines", "Mark where hidden branches fork", Some("those the rules hide; hover the mark to see them"), ghost, read_only, pid.clone(), cx)).child(div().pl(px(40.)).child(opt("bp-ghost-picks", "ghostPicks", "Also for branches and tags hidden by hand", None, p["ghostPicks"] == true, read_only || !ghost, pid.clone(), cx)))));
+    editor = editor.child(div().child(section_head("Options", None)).child(div().flex().flex_col().gap(px(6.)).child(opt("bp-fold", "foldMerged", "Fold branches merged into the trunk", Some("into their merge commit; hover it to see them"), p["foldMerged"] == true, read_only, pid.clone(), cx)).child(opt("bp-ghost", "ghostLines", "Mark where hidden branches fork", Some("those the rules hide; hover the mark to see them"), ghost, read_only, pid.clone(), cx)).child(div().pl(px(40.)).child(opt("bp-ghost-picks", "ghostPicks", "Also for branches and tags hidden by hand", None, p["ghostPicks"] == true, read_only || !ghost, pid.clone(), cx)))));
     // The summary.
     let num = |k: &str| preview.as_ref().and_then(|v| v[k].as_u64()).map_or("–".to_string(), |n| n.to_string());
     editor = editor.child(match &repo_name {
-        Some(n) => div().text_size(px(12.)).text_color(theme::text_secondary()).child(format!("In {n} now: {} shown · {} collapsed · {} hidden · {} merged branches folded", num("shown"), num("collapsed"), num("hidden"), num("folded"))),
+        Some(n) => div().px(px(10.)).py(px(8.)).bg(theme::panel_bg1()).border_1().border_color(theme::section_border()).rounded(px(4.)).text_size(px(12.)).text_color(theme::text_secondary()).child(format!("In {n} now: {} shown · {} collapsed · {} hidden · {} merged branches folded", num("shown"), num("collapsed"), num("hidden"), num("folded"))),
         None => hint("Open a repository to see what this preset decides in it."),
     });
     let (e2, copy, del_id, del_name, del_key) = (entry.clone(), p.clone(), pid.clone(), entry.name().to_string(), "bp-delete");

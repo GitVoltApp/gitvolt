@@ -526,6 +526,10 @@ pub fn is_light_theme() -> bool {
     CURRENT.with_borrow(|p| p.light)
 }
 
+pub fn light_now() -> bool {
+    CURRENT.with_borrow(|p| p.light)
+}
+
 pub fn editor() -> EditorColors {
     CURRENT.with_borrow(|p| p.editor)
 }

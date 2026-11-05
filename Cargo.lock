@@ -3109,6 +3109,7 @@ dependencies = [
  "onig",
  "pulldown-cmark",
  "raw-window-handle",
+ "regex",
  "serde",
  "serde_json",
  "similar",

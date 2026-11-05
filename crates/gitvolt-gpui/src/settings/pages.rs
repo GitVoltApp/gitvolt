@@ -285,7 +285,7 @@ pub fn radio(id: &'static str, on: bool, label: &'static str, click: impl Fn(&Cl
         .gap(px(6.))
         .cursor_pointer()
         .on_click(click)
-        .child(div().flex_none().flex().items_center().justify_center().size(px(13.)).rounded_full().border_1().border_color(if on { theme::blue() } else { theme::text_secondary() }).when(on, |d| d.child(div().size(px(7.)).rounded_full().bg(theme::blue()))))
+        .child(div().flex_none().ml(px(5.)).mr(px(3.)).flex().items_center().justify_center().size(px(13.)).rounded_full().bg(controls::native_ground()).border_1().border_color(if on { controls::native_accent() } else { controls::native_border() }).when(on, |d| d.child(div().size(px(7.)).rounded_full().bg(controls::native_accent()))))
         .child(label)
 }
 
@@ -296,7 +296,7 @@ fn open_logs(_: &mut GitVolt, _: &'static Def, _: &mut Window, cx: &mut Context<
 fn reset_all(_: &mut GitVolt, _: &'static Def, _: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
     crate::ui::anchor(
         "setting:resetAll",
-        plain_button("input-resetAll", "Reset all settings…", true).text_color(theme::status_deleted()).on_click(cx.listener(|_, _, window, cx| {
+        plain_button("input-resetAll", "Reset all settings…", true).on_click(cx.listener(|_, _, window, cx| {
             let weak = cx.weak_entity();
             let req = arm::ArmRequest { body: "Every setting in the GitVolt group goes back to its default. Profile and repository settings, custom themes, branch presets and file colours stay.".into(), ..arm::ArmRequest::danger("Click again to reset every GitVolt setting", "Reset GitVolt settings?", "Reset") };
             arm::request(
@@ -339,7 +339,7 @@ fn git_identity(this: &mut GitVolt, _: &'static Def, _: &mut Window, cx: &mut Co
             col = col.child(desc("No name and email set: commits will fail until you set user.name and user.email.".into()));
         }
     }
-    col.child(desc(format!("{from}, with this profile's extra config applied. Change it there, not here."))).into_any_element()
+    col.child(desc(format!("{from}, with this profile's extra config applied. Change it there, not here."))).text_right().into_any_element()
 }
 
 fn extra_gitconfig(this: &mut GitVolt, _: &'static Def, window: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
@@ -459,7 +459,7 @@ fn host_rows(this: &mut GitVolt, _: &'static Def, window: &mut Window, cx: &mut 
     }
     let mut col = div().flex().flex_col().gap(px(8.)).flex_1().min_w_0();
     if hosts.is_empty() {
-        col = col.child(div().text_color(theme::text_secondary()).child("No remotes in the open repository. Add a host to set its type for every repository."));
+        col = col.child(crate::ui::hanging(div()).text_color(theme::text_secondary()).child("No remotes in the open repository. Add a host to set its type for every repository."));
     }
     for (h, kind) in hosts {
         let weak = cx.weak_entity();
@@ -496,7 +496,7 @@ fn host_rows(this: &mut GitVolt, _: &'static Def, window: &mut Window, cx: &mut 
             .flex()
             .gap(px(8.))
             .child(input_box("host-add-box", added, false, window, cx))
-            .child(div().flex().flex_none().w(px(120.)).child(controls::select("setting:host-add-kind", kind, Rc::new(options), None, on_kind, cx)))
+            .child(div().flex().flex_none().w(px(87.)).child(controls::select("setting:host-add-kind", kind, Rc::new(options), None, on_kind, cx)))
             .child(crate::ui::anchor("setting:host-add", plain_button("host-add-button", "Add", enabled).when(enabled, |d| {
                 d.on_click(cx.listener(move |this, _, _, cx| {
                     let kind = this.settings_ui.host_kind.clone();

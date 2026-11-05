@@ -241,6 +241,8 @@ pub struct DiffState {
     pub selection: Option<Selection>,
     /// A line to go to, once the file's there (a pasted `path:12`).
     pub pending_line: Option<u32>,
+    /// The pointer's over File View's minimap: its slider shows.
+    pub minimap_hover: bool,
     /// Find's marks in the file, and the one it's on.
     pub found: Rc<Vec<crate::find::TextMatch>>,
     pub found_at: Option<usize>,
@@ -332,6 +334,7 @@ impl DiffState {
             pending_line: None,
             found: Rc::new(Vec::new()),
             found_at: None,
+            minimap_hover: false,
             cursor: 0,
             drag: Drag::None,
             body: Rc::new(Cell::new(Bounds::default())),
@@ -663,19 +666,23 @@ impl DiffState {
     }
 
     /// Find's matches in what's shown, in row order.
-    pub fn find_text(&self, query: &str) -> Vec<crate::find::TextMatch> {
+    pub fn find_text(&self, query: &str, flags: crate::find::FindFlags) -> Vec<crate::find::TextMatch> {
         let Some(data) = self.data.as_ref() else { return Vec::new() };
         if query.is_empty() {
             return Vec::new();
         }
+        let matcher = crate::find::Matcher::new(query, flags);
+        let within = self.selection.filter(|_| flags.selection).map(|s| s.range());
         let split = self.split();
         let mut out = Vec::new();
         for (row, r) in self.rows.iter().enumerate() {
             let sides: &[bool] = if split { &[true, false] } else { &[false] };
             for &old_side in sides {
                 if let Some(line) = row_line(data, r, split, old_side) {
-                    for (from, to) in crate::find::find_in_line(&line.text, query) {
-                        out.push(crate::find::TextMatch { row, old_side, from, to });
+                    for (from, to) in matcher.in_line(&line.text) {
+                        if within.is_none_or(|(a, b)| row >= a.row && row <= b.row) {
+                            out.push(crate::find::TextMatch { row, old_side, from, to });
+                        }
                     }
                 }
             }
@@ -1246,7 +1253,7 @@ fn contents(path: &str, old_path_markdown: bool, v: &Value, ignore_whitespace: b
 
 /// Monaco's line number column: five characters' room, a pixel over.
 pub fn num_w() -> f32 {
-    (crate::metrics::advance() * 5. + 1.).floor()
+    (crate::metrics::advance() * 5.).floor()
 }
 
 pub fn mono() -> Font {
@@ -1321,9 +1328,13 @@ fn paint_number(n: u32, right: Pixels, y: Pixels, color: Hsla, p: &Painter, wind
     line.paint(point(right - line.width, y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
 }
 
-fn paint_sign(glyph: &'static str, x: Pixels, y: Pixels, color: Hsla, p: &Painter, window: &mut Window, cx: &mut App) {
-    let line = window.text_system().shape_line(glyph.into(), px(crate::metrics::editor_font_size()), &[TextRun { len: glyph.len(), font: p.font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
-    line.paint(point(x + (px(SIGN_W) - line.width) / 2., y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
+fn paint_sign(glyph: &'static str, x: Pixels, y: Pixels, color: Hsla, _: &Painter, window: &mut Window, _: &mut App) {
+    // Monaco's diff glyphs: strokes of a pixel, nine across, in the margin's first pixels.
+    let (left, mid) = (x + px(1.), y + px((crate::metrics::line_h() / 2.).floor()));
+    window.paint_quad(fill(Bounds::new(point(left, mid), size(px(9.), px(1.))), color));
+    if glyph == "+" {
+        window.paint_quad(fill(Bounds::new(point(left + px(4.), mid - px(4.)), size(px(1.), px(9.))), color));
+    }
 }
 
 /// One pane's text from `x`, clipped to `clip`: each visual line with its guides, word marks and
@@ -1344,7 +1355,7 @@ fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, ma
                 let gx = x - px(p.hscroll) + px(crate::metrics::advance() * ((usize::from(level) - 1) * crate::metrics::tab_size()) as f32);
                 window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(crate::metrics::line_h()))), theme::editor().indent_guide));
             }
-            for &(a, b) in &line.marks {
+            for &(a, b) in line.marks.iter().filter(|_| p.view != ViewKind::File) {
                 let (a, b) = ((a as usize).max(from), (b as usize).min(to));
                 if b > a {
                     let (l, r) = (shaped.x_for_index(a - from), shaped.x_for_index(b - from));
@@ -1413,8 +1424,8 @@ fn spans_of(pieces: &[Arc<Vec<Vec<Span>>>], n: u32) -> &[Span] {
 fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut Window, cx: &mut App) {
     let y = b.origin.y;
     let bottom = y + b.size.height;
-    let num = if ix == p.cursor { theme::editor().line_number_active } else { theme::editor().line_number };
-    let (old_right, new_right) = (b.origin.x + px(num_w() - 4.), b.origin.x + px(2. * num_w() - 4.));
+    let num = if ix == p.cursor && r.kind != RowKind::Removed { theme::editor().line_number_active } else { theme::editor().line_number };
+    let (old_right, new_right) = (b.origin.x + px(num_w() - 1.), b.origin.x + px(2. * num_w() - 1.));
     let sign_x = b.origin.x + px(2. * num_w());
     let text_x = sign_x + px(SIGN_W);
     let clip = Bounds::from_corners(point(text_x, y), point(b.origin.x + b.size.width, bottom));
@@ -1423,6 +1434,10 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
         RowKind::Removed => {
             window.paint_quad(fill(b, theme::diff_removed_line()));
             if let Some(n) = r.old {
+                // A line with no words of its own marked changed whole: Monaco tints its text's whole row.
+                if p.data.old.lines[n as usize].marks.is_empty() {
+                    window.paint_quad(fill(clip, theme::diff_removed_text()));
+                }
                 paint_number(n, old_right, y, num, p, window, cx);
                 paint_sign("−", sign_x, y, theme::status_deleted(), p, window, cx);
                 paint_text(ix, n, &p.data.old.lines[n as usize], spans_of(&hl.old, n), true, theme::diff_removed_text(), text_x, y, clip, p, window, cx);
@@ -1431,15 +1446,22 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
         RowKind::Added => {
             window.paint_quad(fill(Bounds::from_corners(point(b.origin.x + px(num_w()), y), point(b.origin.x + b.size.width, bottom)), theme::diff_inserted_line()));
             if let Some(n) = r.new {
+                if p.data.new.lines[n as usize].marks.is_empty() {
+                    window.paint_quad(fill(clip, theme::diff_inserted_text()));
+                }
                 paint_number(n, new_right, y, num, p, window, cx);
                 paint_sign("+", sign_x, y, theme::status_added(), p, window, cx);
                 paint_text(ix, n, &p.data.new.lines[n as usize], spans_of(&hl.new, n), false, theme::diff_inserted_text(), text_x, y, clip, p, window, cx);
             }
         }
         _ if p.view == ViewKind::File => {
-            let right = b.origin.x + px(num_w() - 4.);
+            let right = b.origin.x + px(num_w() - 1.);
             let at = b.origin.x + px(num_w() + FOLD_W);
             let clip = Bounds::from_corners(point(at, y), point(b.origin.x + b.size.width, bottom));
+            // Monaco's current line.
+            if ix == p.cursor && let Some(band) = theme::editor().line_highlight {
+                window.paint_quad(fill(clip, band));
+            }
             let (n, old_side) = match (r.new, r.old) {
                 (Some(n), _) => (n, false),
                 (None, Some(n)) => (n, true),
@@ -1494,16 +1516,22 @@ fn paint_split(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut 
     let change = r.kind == RowKind::Change;
     let pane = |left: Pixels, n: Option<u32>, old_side: bool, window: &mut Window, cx: &mut App| {
         let area = Bounds::new(point(left, y), size(half, height));
+        let margin = if old_side { SPLIT_LEFT_MARGIN } else { 0. };
+        let text_at = px(margin + num_w() + SIGN_W);
         let Some(n) = n else {
-            window.paint_quad(fill(area, pattern_slash(theme::diff_diagonal(), 2., 6.)));
+            let hatch = Bounds::from_corners(point(left + text_at, y), area.bottom_right());
+            window.paint_quad(fill(hatch, pattern_slash(theme::diff_diagonal(), 2., 6.)));
             return;
         };
         if change {
             window.paint_quad(fill(area, if old_side { theme::diff_removed_line() } else { theme::diff_inserted_line() }));
+            let side = if old_side { &p.data.old } else { &p.data.new };
+            if side.lines[n as usize].marks.is_empty() {
+                window.paint_quad(fill(Bounds::from_corners(point(left + text_at, y), area.bottom_right()), if old_side { theme::diff_removed_text() } else { theme::diff_inserted_text() }));
+            }
         }
         let (side, spans, mark) = if old_side { (&p.data.old, spans_of(&hl.old, n), theme::diff_removed_text()) } else { (&p.data.new, spans_of(&hl.new, n), theme::diff_inserted_text()) };
-        let margin = if old_side { SPLIT_LEFT_MARGIN } else { 0. };
-        paint_number(n, left + px(margin + num_w() - 4.), y, if ix == p.cursor { theme::editor().line_number_active } else { theme::editor().line_number }, p, window, cx);
+        paint_number(n, left + px(margin + num_w() - 1.), y, if ix == p.cursor && !old_side { theme::editor().line_number_active } else { theme::editor().line_number }, p, window, cx);
         if change {
             let (glyph, color) = if old_side { ("−", theme::status_deleted()) } else { ("+", theme::status_added()) };
             paint_sign(glyph, left + px(margin + num_w()), y, color, p, window, cx);
@@ -1948,10 +1976,14 @@ fn ruler(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
 
 /// File View's strip: the file in small, each character a pixel wide, and the viewport over it.
 fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let hover = diff.minimap_hover;
     let (data, hl, rows, layout, scroll) = (diff.data.clone(), diff.highlight.clone(), diff.rows.clone(), diff.layout.clone(), diff.scroll);
     let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
     let paint_cell = cell.clone();
-    strip_events(div().id("minimap").flex_none().w(px(width)).h_full(), cell, cx).child(
+    let bar = div().id("minimap").flex_none().w(px(width)).h_full().on_hover(cx.listener(|this, on: &bool, _, cx| {
+        this.with_diff(cx, |d| d.minimap_hover = *on);
+    }));
+    strip_events(bar, cell, cx).child(
         canvas(
             |_, _, _| {},
             move |b, _, window, _| {
@@ -1997,7 +2029,10 @@ fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl Into
                     }
                 });
                 let top = (top_row as f32 - first as f32) * MINIMAP_LINE;
-                window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(top)), size(b.size.width, px(view_rows as f32 * MINIMAP_LINE))), theme::scroll_thumb()));
+                // Monaco's `showSlider: mouseover`.
+                if hover {
+                    window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(top)), size(b.size.width, px(view_rows as f32 * MINIMAP_LINE))), theme::scroll_thumb()));
+                }
             },
         )
         .size_full(),
@@ -2281,7 +2316,8 @@ fn minimap_width(width: f32) -> f32 {
     if !crate::metrics::editor_style().minimap {
         return 0.;
     }
-    (width * 0.0975).min(MINIMAP_MAX).floor()
+    // Monaco's layout: what's left beside the margin and the scrollbar, at a character's width and two.
+    ((width - num_w() - FOLD_W - SCROLLBAR_W) / (crate::metrics::advance() + 2.)).min(MINIMAP_MAX).floor()
 }
 
 /// The panel for `tab`'s open file, `width` px wide.
@@ -2293,8 +2329,8 @@ pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, undo: Option
     let staging = tab.wip_ctx().map(|ctx| crate::wip::staging_buttons(("diff-staging-undo", "diff-staging-redo"), ctx, undo, tab.wip.committing, cx).into_any_element());
     let open_in = crate::open_in::open_in_button(tab, last_opener, cx);
     let media_open_in = if diff.media.is_some() { crate::open_in::open_in_button(tab, last_opener, cx) } else { None };
-    let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));
-    Some(div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in, staging }, width, cx)).child(diff_body(diff, width, &tab.zoom_input, media_open_in, cx)).into_any_element())
+    let find = tab.find.open.then(|| crate::find::editor_find(&tab.find, if diff.view == ViewKind::File { minimap_width(width) } else { RULER_W }, window, cx));
+    Some(div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in, staging }, width, cx)).child(diff_body(diff, width, &tab.zoom_input, media_open_in, cx)).children(find).into_any_element())
 }
 
 /// What's under the toolbar, in an editor `width` px wide.

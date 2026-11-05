@@ -57,10 +57,15 @@ pub struct Spec {
     pub delay_ms: u64,
 }
 
+/// `--motion-base`.
+const FADE_SECS: f32 = 0.15;
+
 struct Shown {
     spec: Spec,
     bounds: Bounds<Pixels>,
     pointer: Point<Pixels>,
+    /// When it first drew: it fades in from there.
+    drawn: Option<std::time::Instant>,
 }
 
 #[derive(Default)]
@@ -108,7 +113,7 @@ pub fn show_at(text: impl Into<SharedString>, bounds: Bounds<Pixels>, placement:
     tips.pending = None;
     tips.generation += 1;
     tips.imperative = true;
-    tips.shown = Some(Shown { spec: Spec { content: Content::Text(text.into()), placement, delay_ms: 0 }, bounds, pointer: bounds.origin });
+    tips.shown = Some(Shown { spec: Spec { content: Content::Text(text.into()), placement, delay_ms: 0 }, bounds, drawn: None, pointer: bounds.origin });
     cx.refresh_windows();
 }
 
@@ -118,7 +123,7 @@ pub fn show_card_at(key: impl Into<SharedString>, build: Build, bounds: Bounds<P
     tips.pending = None;
     tips.generation += 1;
     tips.imperative = true;
-    tips.shown = Some(Shown { spec: Spec { content: Content::Card { key: key.into(), build }, placement, delay_ms: 0 }, bounds, pointer: bounds.origin });
+    tips.shown = Some(Shown { spec: Spec { content: Content::Card { key: key.into(), build }, placement, delay_ms: 0 }, bounds, drawn: None, pointer: bounds.origin });
     cx.refresh_windows();
 }
 
@@ -135,12 +140,12 @@ fn start(spec: Spec, bounds: Bounds<Pixels>, pointer: Point<Pixels>, cx: &mut Ap
     tips.generation += 1;
     if delay == 0 {
         tips.pending = None;
-        tips.shown = Some(Shown { spec, bounds, pointer });
+        tips.shown = Some(Shown { spec, bounds, pointer, drawn: None });
         cx.refresh_windows();
         return;
     }
     let had = tips.shown.take().is_some();
-    tips.pending = Some(Shown { spec, bounds, pointer });
+    tips.pending = Some(Shown { spec, bounds, pointer, drawn: None });
     let generation = tips.generation;
     if had {
         cx.refresh_windows();
@@ -231,6 +236,15 @@ fn anchor_key(c: &Content) -> SharedString {
 }
 
 pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+    let opacity = {
+        let shown = Ui::get_mut(cx).tips.shown.as_mut()?;
+        let t = shown.drawn.get_or_insert_with(std::time::Instant::now).elapsed().as_secs_f32() / FADE_SECS;
+        if t < 1. && !cfg!(test) {
+            window.request_animation_frame();
+        }
+        // `--motion-base`: ease-in.
+        (t * t).min(1.)
+    };
     let ui = Ui::get(cx);
     let s = ui.tips.shown.as_ref()?;
     let spec = s.spec.clone();
@@ -260,18 +274,19 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
                 .line_height(px(LINE_H))
                 .shadow(super::shadow(theme::shadow_tooltip(), 2., 8.))
                 .overflow_hidden()
+                .opacity(opacity)
                 .child(text);
             Some(el.into_any_element())
         }
         Content::Card { build, .. } => {
             let card = build(window, cx);
             let placement = spec.placement;
-            Some(place::placed(card, move |size, viewport, _| {
+            let placed = place::placed(card, move |size, viewport, _| {
                 let (w, h, vw, vh) = (size.width.as_f32(), size.height.as_f32(), viewport.width.as_f32(), viewport.height.as_f32());
                 let (left, top) = position(placement, anchor, pointer, w, h, vw, vh);
                 point(px(left), px(top))
-            })
-            .into_any_element())
+            });
+            Some(div().absolute().top_0().left_0().size_full().opacity(opacity).child(placed).into_any_element())
         }
     }
 }

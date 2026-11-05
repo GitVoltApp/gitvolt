@@ -170,7 +170,8 @@ fn number_control(this: &mut GitVolt, def: &'static Def, spec: NumberSpec, windo
         .id(ElementId::Name(format!("{id}-number").into()))
         .flex()
         .flex_none()
-        .w(px(132.))
+        // The CSS's 132 is the content's; its border is on top.
+        .w(px(134.))
         .h(px(28.))
         .rounded(px(4.))
         .bg(theme::app_bg())
@@ -193,7 +194,24 @@ fn number_control(this: &mut GitVolt, def: &'static Def, spec: NumberSpec, windo
             }
         }))
         .child(minus)
-        .child(div().flex().flex_1().min_w_0().items_center().justify_center().overflow_hidden().child(input))
+        .child({
+            // Centred, as the CSS's `text-align`: the field is as wide as its text, and a press beside it still lands in it.
+            let typed = input.read(cx).text().to_string();
+            let run = TextRun { len: typed.len(), font: window.text_style().font(), color: black(), background_color: None, underline: None, strikethrough: None };
+            let width = window.text_system().shape_line(typed.into(), window.text_style().font_size.to_pixels(window.rem_size()), &[run], None).width.as_f32();
+            let press = focus.clone();
+            div()
+                .id(ElementId::Name(format!("{id}-field").into()))
+                .flex()
+                .flex_1()
+                .min_w_0()
+                .items_center()
+                .justify_center()
+                .overflow_hidden()
+                .cursor(CursorStyle::IBeam)
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| window.focus(&press, cx))
+                .child(div().flex_none().w(px(width + 2.)).max_w_full().child(input))
+        })
         .child(plus)
         .into_any_element()
 }
@@ -252,7 +270,6 @@ impl GitVolt {
     /// What's at a release: a held button stops, drags end.
     pub fn settings_release(&mut self, cx: &mut Context<Self>) {
         self.settings_ui.hold += 1;
-        self.settings_ui.scroll_drag = None;
         self.settings_ui.float_drag = None;
         self.settings_ui.file_colours.drag = None;
         self.settings_ui.presets.drag = None;
@@ -333,7 +350,7 @@ pub fn setting_row(this: &mut GitVolt, def: &'static Def, first: bool, words: &[
         .flex_1()
         .min_w_0()
         .child(div().flex().items_center().gap(px(4.)).min_h(px(22.)).child(div().text_color(theme::text_selected()).child(marked(def.label, &label))).child(restore))
-        .when(!def.description.is_empty(), |d| d.child(div().mt(px(2.)).text_size(px(12.)).text_color(theme::text_secondary()).child(marked(&def.description, &desc))));
+        .when(!def.description.is_empty(), |d| d.child(crate::ui::hanging(div().mt(px(2.)).text_size(px(12.)).text_color(theme::text_secondary())).child(marked(&def.description, &desc))));
     let (text, control) = if font_row { super::fonts::font_row_parts(this, def, text, control, window, cx) } else { (text, control) };
     crate::ui::anchor(
         format!("setting-row:{}", def.id),
@@ -466,7 +483,7 @@ fn nav(this: &GitVolt, listed: &[&'static Page], current: &str, counts: Option<&
                     .items_center()
                     .gap(px(8.))
                     .px(px(8.))
-                    .py(px(5.))
+                    .h(px(28.125))
                     .rounded(px(4.))
                     .cursor_pointer()
                     .when(count == Some(0), |d| d.opacity(0.45))
@@ -660,8 +677,7 @@ pub fn settings_overlay(this: &mut GitVolt, window: &mut Window, cx: &mut Contex
                 .flex_1()
                 .min_w_0()
                 .h_full()
-                .child(div().id("settings-body").size_full().overflow_y_scroll().track_scroll(&scroll).px(px(28.)).pt(px(18.)).pb(px(28.)).children(body))
-                .child(body_scrollbar(this, cx)),
+                .child(div().flex().size_full().child(div().id("settings-body").flex_1().min_w_0().h_full().overflow_y_scroll().track_scroll(&scroll).px(px(28.)).pt(px(18.)).pb(px(28.)).children(body)).child(crate::ui::scrollbar::vertical("settings-bar", &scroll))),
         )
         .child(tip(
             "Close (Esc)",
@@ -734,50 +750,10 @@ pub fn release_listener(cx: &mut Context<GitVolt>) -> AnyElement {
     .into_any_element()
 }
 
-/// The slim thumb over the page's right edge.
-fn body_scrollbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> AnyElement {
-    let handle = this.settings_ui.scroll.clone();
-    let (view, offset, max) = (handle.bounds().size.height.as_f32(), -handle.offset().y.as_f32(), handle.max_offset().y.as_f32());
-    if max <= 0. || view <= 0. {
-        return div().into_any_element();
-    }
-    let content = view + max;
-    let thumb_h = (view * view / content).max(24.);
-    let top = (view - thumb_h) * (offset / max);
-    div()
-        .id("settings-thumb")
-        .absolute()
-        .top(px(top))
-        .right(px(0.))
-        .w(px(10.))
-        .h(px(thumb_h))
-        .child(div().mx(px(2.)).my(px(2.)).h(px(thumb_h - 4.)).rounded(px(4.)).bg(if this.settings_ui.scroll_drag.is_some() { theme::scroll_thumb_hover() } else { theme::scroll_thumb() }).hover(|d| d.bg(theme::scroll_thumb_hover())))
-        .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-            cx.stop_propagation();
-            this.settings_ui.scroll_drag = Some((e.position.y.as_f32(), offset));
-            cx.notify();
-        }))
-        .into_any_element()
-}
 
 impl GitVolt {
     fn on_settings_drag(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
         self.on_lane_drag(e, cx);
         self.on_float_drag(e, cx);
-        let Some((from, start)) = self.settings_ui.scroll_drag else { return };
-        if e.pressed_button != Some(MouseButton::Left) {
-            self.settings_ui.scroll_drag = None;
-            return;
-        }
-        let handle = self.settings_ui.scroll.clone();
-        let (view, max) = (handle.bounds().size.height.as_f32(), handle.max_offset().y.as_f32());
-        if max <= 0. {
-            return;
-        }
-        let thumb = (view * view / (view + max)).max(24.);
-        let per = max / (view - thumb).max(1.);
-        let to = (start + (e.position.y.as_f32() - from) * per).clamp(0., max);
-        handle.set_offset(point(handle.offset().x, px(-to)));
-        cx.notify();
     }
 }

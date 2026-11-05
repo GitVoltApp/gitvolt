@@ -131,9 +131,27 @@ pub fn check_box(checked: bool, size_px: f32) -> Div {
         .size(px(size_px))
         .mt(px(2.))
         .border_1()
-        .border_color(if checked { theme::green() } else { theme::text_secondary() })
-        .rounded(px(3.))
-        .when(checked, |d| d.bg(theme::green()).child(icon("check", size_px - 2., theme::text_on_accent())))
+        .border_color(if checked { native_accent() } else { native_border() })
+        .rounded(px(2.))
+        .bg(if checked { native_accent() } else { native_ground() })
+        .when(checked, |d| d.child(icon("check", size_px - 2., native_mark())))
+}
+
+/// What Chromium draws a native checkbox and radio with, in the colour scheme of the theme.
+pub fn native_accent() -> Hsla {
+    rgb(if theme::light_now() { 0x0075ff } else { 0x99c8ff }).into()
+}
+
+pub fn native_border() -> Hsla {
+    rgb(if theme::light_now() { 0x767676 } else { 0x858585 }).into()
+}
+
+pub fn native_ground() -> Hsla {
+    rgb(if theme::light_now() { 0xffffff } else { 0x3b3b3b }).into()
+}
+
+fn native_mark() -> Hsla {
+    rgb(if theme::light_now() { 0xffffff } else { 0x3b3b3b }).into()
 }
 
 /// A labelled checkbox row (`.modal-check`).

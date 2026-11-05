@@ -17,6 +17,7 @@ pub mod arm;
 pub mod banner;
 pub mod colour;
 pub mod controls;
+pub mod ease;
 pub mod fuzzy;
 pub mod input;
 pub mod menu;
@@ -228,6 +229,12 @@ pub(crate) fn set_anchor(key: SharedString, bounds: Bounds<Pixels>, cx: &mut App
 
 /// Everything that floats, in the web UI's z-order: the toast, dialogs (800), menus (900), tooltips
 /// and cards (1000), the armed overlay (1010). Goes last in the root.
+/// For a wrapped text: GPUI counts a line's trailing space towards its width, where a browser lets it hang past the edge, so a
+/// last word within a space of the edge went to the next line. A space's room past the edge gives the browser's breaks.
+pub fn hanging(el: Div) -> Div {
+    el.mr(px(-3.))
+}
+
 pub fn overlays(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
     let mut out = Vec::new();
     out.extend(toast::element(window, cx));

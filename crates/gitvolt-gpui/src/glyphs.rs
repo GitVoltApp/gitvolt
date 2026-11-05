@@ -122,7 +122,13 @@ impl PlatformTextSystem for Whole {
             let per_em = self.0.font_metrics(font).units_per_em as f32;
             self.0.advance(font, glyph).map_or(0., |a| a.width / per_em * font_size.as_f32())
         };
-        round_advances(&mut layout, f32::from_bits(GRID.load(Relaxed)), own, spacing);
+        let grid = f32::from_bits(GRID.load(Relaxed));
+        round_advances(&mut layout, grid, own, spacing);
+        // Chromium rounds a font's ascent and descent too: a line's baseline falls where theirs half-leading puts it.
+        if grid > 0. {
+            layout.ascent = px((layout.ascent.as_f32() * grid).round() / grid);
+            layout.descent = px((layout.descent.as_f32() * grid).round() / grid);
+        }
         layout
     }
     fn recommended_rendering_mode(&self, font_id: FontId, font_size: Pixels) -> TextRenderingMode {

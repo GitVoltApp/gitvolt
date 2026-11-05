@@ -50,7 +50,6 @@ pub struct SettingsUi {
     pub float_all: Option<bool>,
     /// A −/+ button held: the press its repeats belong to.
     pub hold: u64,
-    pub scroll_drag: Option<(f32, f32)>,
     /// A lane being dragged: its index, and where the pointer is over.
     pub lane_drag: Option<(usize, bool, Point<Pixels>)>,
     /// `custom-<hex>` counter for a test; a new id's randomness otherwise.
@@ -77,7 +76,7 @@ pub struct SettingsUi {
 
 impl Default for SettingsUi {
     fn default() -> Self {
-        Self { open: false, page: "general".into(), flash: None, floating: false, float_at: (0., 0.), float_drag: None, float_filter: None, search: None, fields: HashMap::new(), focus: None, return_to: None, scroll: ScrollHandle::new(), nav_cursor: None, all_colours: None, float_all: None, hold: 0, scroll_drag: None, lane_drag: None, fonts: None, fonts_loading: false, font_picker: None, font_preview: None, font_draft: HashMap::new(), font_asked: HashSet::new(), editor_custom: HashMap::new(), editor_seq: 0, identity: None, identity_for: None, presets: Default::default(), file_colours: Default::default(), host_kind: "gitlab".into(), keyboard_filter: None, accounts: Default::default() }
+        Self { open: false, page: "general".into(), flash: None, floating: false, float_at: (0., 0.), float_drag: None, float_filter: None, search: None, fields: HashMap::new(), focus: None, return_to: None, scroll: ScrollHandle::new(), nav_cursor: None, all_colours: None, float_all: None, hold: 0, lane_drag: None, fonts: None, fonts_loading: false, font_picker: None, font_preview: None, font_draft: HashMap::new(), font_asked: HashSet::new(), editor_custom: HashMap::new(), editor_seq: 0, identity: None, identity_for: None, presets: Default::default(), file_colours: Default::default(), host_kind: "gitlab".into(), keyboard_filter: None, accounts: Default::default() }
     }
 }
 

@@ -653,7 +653,7 @@ fn theme_cards(this: &mut GitVolt, cx: &mut Context<GitVolt>) -> AnyElement {
         let checked = def.id == current.id;
         let id = def.id.clone();
         let label = def.label.clone();
-        grid = grid.child(crate::ui::anchor(
+        grid = grid.child(div().relative().flex_none().child(crate::ui::anchor(
             format!("theme-card:{}", def.id),
             div()
                 .id(("theme-card", i))
@@ -671,14 +671,14 @@ fn theme_cards(this: &mut GitVolt, cx: &mut Context<GitVolt>) -> AnyElement {
                 .cursor_pointer()
                 .hover(|d| d.border_color(theme::text_secondary()))
                 .relative()
-                .when(checked, |d| d.child(div().absolute().top_0().left_0().size_full().rounded(px(8.)).border_2().border_color(theme::blue())))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     let id = id.clone();
                     this.set_settings(move |s| s["theme"] = json!(id), cx);
                 }))
                 .child(card_preview(&def))
                 .child(div().flex().flex_1().items_center().justify_between().gap(px(6.)).px(px(9.)).text_size(px(12.)).border_t_1().border_color(theme::section_border()).child(div().min_w_0().truncate().child(label)).when(custom, |d| d.child(div().flex_none().text_color(theme::text_secondary()).child("✎")))),
-        ));
+        // The CSS's outline: 2 px, a pixel off the card.
+        )).when(checked, |d| d.child(div().absolute().top(px(-3.)).left(px(-3.)).right(px(-3.)).bottom(px(-3.)).rounded(px(11.)).border_2().border_color(theme::blue()))));
     }
     grid.child(crate::ui::anchor(
         "theme-paste",

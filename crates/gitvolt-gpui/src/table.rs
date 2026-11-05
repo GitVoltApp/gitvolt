@@ -21,6 +21,9 @@ use std::time::Duration;
 pub const HEADER_H: f32 = 25.;
 pub const SCROLLBAR_W: f32 = 10.;
 const SHA_PAD: f32 = 6.;
+/// `--motion-row-color` and `--motion-row-dim`.
+const ROW_COLOR: Duration = Duration::from_millis(200);
+const ROW_DIM: Duration = Duration::from_millis(500);
 const PIN_FULL_MIN: f32 = 130.;
 /// How long the pointer rests on a chip before its branch is focused.
 const BRANCH_FOCUS_DELAY: Duration = Duration::from_millis(500);
@@ -590,9 +593,22 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                     let painter = graph.clone();
                     let picture = if row.kind == NodeKind::Commit { crate::avatars::image_for(&row.email, &row.author) } else { None };
                     let group: SharedString = format!("row-{ix}").into();
+                    // `graph.css`'s row motion: a selection's and a dim's colour ease.
+                    let row_key = { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); row.id.hash(&mut h); h.finish() };
+                    let running = std::cell::Cell::new(false);
+                    let eased = |slot: u64, target: Hsla| {
+                        let (length, curve) = if filter || branch { (ROW_DIM, crate::ui::ease::Curve::EaseOut) } else { (ROW_COLOR, crate::ui::ease::Curve::EaseIn) };
+                        let mut on = false;
+                        let c = crate::ui::ease::colour(row_key ^ slot, target, length, curve, &mut on);
+                        if on {
+                            running.set(true);
+                        }
+                        c
+                    };
                     let cell = |w: f32, color: Hsla, text: SharedString| {
                         // A dim row keeps its dim; the stronger of Find's and a branch's wins.
-                        let color = if filter { theme::text_row_dimmed() } else if branch { theme::text_row_dimmed_branch() } else { color };
+                        let color = if filter { theme::text_row_dimmed() } else if branch { theme::text_row_dimmed_branch() } else if is_selected { theme::text_selected() } else { color };
+                        let color = eased(w.to_bits() as u64 + 16, color);
                         div()
                             .h(px(crate::metrics::row_h()))
                             .flex()
@@ -603,7 +619,6 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                             .min_w_0()
                             .overflow_hidden()
                             .text_color(color)
-                            .when(is_selected && !filter && !branch, |d| d.text_color(theme::text_selected()))
                             .when(is_selected, |d| d.bg(theme::selected_row()))
                             .when(!is_selected, |d| d.group_hover(group.clone(), |d| d.bg(theme::hover_row())))
                             .child(div().truncate().child(text))
@@ -618,7 +633,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                         None => {
                             let dim_color = if filter { theme::text_row_dimmed() } else if branch { theme::text_row_dimmed_branch() } else { theme::text_disabled() };
                             let body = if let Some(c) = &row.collapsed {
-                                message_cell(cols.message, is_selected, filter, branch, format!("⋮ {} more commits on {}", c.count, c.branch).into(), Vec::new(), None, dim_color, true, group.clone())
+                                message_cell(cols.message, is_selected, filter, branch, format!("⋮ {} more commits on {}", c.count, c.branch).into(), Vec::new(), None, dim_color, true, group.clone(), &eased)
                             } else {
                                 let mut marks: Vec<AnyElement> = row.stash_branch.clone().into_iter().map(|b| div().flex_none().ml(px(10.)).text_color(dim_color).child(b).into_any_element()).collect();
                                 if let Some(f) = &row.fold {
@@ -633,7 +648,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                                         this.open_ghosts(ghosts.clone(), at, window, cx);
                                     })).child(crate::presets::hidden_text(&row.ghosts).0)).into_any_element());
                                 }
-                                message_cell(cols.message, is_selected, filter, branch, row.summary.clone(), marks, (!row.body.is_empty()).then(|| row.body.clone()), dim_color, false, group.clone())
+                                message_cell(cols.message, is_selected, filter, branch, row.summary.clone(), marks, (!row.body.is_empty()).then(|| row.body.clone()), dim_color, false, group.clone(), &eased)
                             };
                             if row.kind == NodeKind::Collapsed {
                                 body.into_any_element()
@@ -654,7 +669,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                     let rebasing = rebasing_branch.as_deref().filter(|_| head_sha.as_deref() == Some(row.id.as_ref()));
                     let editor = view.tabs.get(view.active).and_then(|t| t.row_editor.as_ref()).filter(|e| e.row_id == row.id.as_ref()).map(|e| crate::inline::editor_element(e, cols.labels, window, cx));
                     let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &pending_refs, rebasing, member, editor, &weak, cx));
-                    div()
+                    let element = div()
                         .id(ix)
                         .group(group.clone())
                         .relative()
@@ -697,13 +712,17 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                         })
                         .when(!off(Col::Sha), |d| {
                             let color = if filter { theme::text_row_dimmed() } else if branch { theme::text_row_dimmed_branch() } else if is_selected { theme::text_selected() } else { theme::text_disabled() };
-                            d.child(sha_cell(cols.sha, row, color, is_selected, group.clone(), cx))
+                            d.child(sha_cell(cols.sha, row, eased(3, color), is_selected, group.clone(), cx))
                         })
                         // The space past the last column takes the row's hover and selection too.
                         .child(div().flex_1().h(px(crate::metrics::row_h())).when(is_selected, |d| d.bg(theme::selected_row())).when(!is_selected, |d| d.group_hover(group.clone(), |d| d.bg(theme::hover_row()))))
                         .children(node_tip)
                         .when(outlined, |d| d.child(div().absolute().top_0().left_0().size_full().border_1().border_color(theme::blue())))
-                        .into_any_element()
+                        .into_any_element();
+                    if running.get() {
+                        window.request_animation_frame();
+                    }
+                    element
                 })
                 .collect()
         }),
@@ -720,8 +739,9 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
 /// The Message cell: the summary, and after it what's dimmed (a stash's branch, a fold's and a hidden branch's marks, a body's
 /// first line), cut off first. `all_dim`: a ⋮ row's text.
 #[allow(clippy::too_many_arguments)]
-fn message_cell(width: f32, selected: bool, filter: bool, branch: bool, summary: SharedString, marks: Vec<AnyElement>, body: Option<SharedString>, dim: Hsla, all_dim: bool, group: SharedString) -> Div {
+fn message_cell(width: f32, selected: bool, filter: bool, branch: bool, summary: SharedString, marks: Vec<AnyElement>, body: Option<SharedString>, dim: Hsla, all_dim: bool, group: SharedString, eased: &dyn Fn(u64, Hsla) -> Hsla) -> Div {
     let color = if all_dim { dim } else if filter { theme::text_row_dimmed() } else if branch { theme::text_row_dimmed_branch() } else if selected { theme::text_selected() } else { theme::text_normal() };
+    let (color, dim) = (eased(1, color), eased(2, dim));
     div()
         .h(px(crate::metrics::row_h()))
         .flex()

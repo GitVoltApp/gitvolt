@@ -57,6 +57,7 @@ pub struct FindState {
     /// The open file's matches, and the current one.
     pub text_matches: Rc<Vec<TextMatch>>,
     pub text_index: Option<usize>,
+    pub flags: FindFlags,
 }
 
 impl FindState {
@@ -70,7 +71,7 @@ impl FindState {
             _ => {}
         })
         .detach();
-        Self { open: false, input, query: String::new(), matches: Vec::new(), rows: Vec::new(), index: None, path_pending: false, older: None, older_loading: false, message: None, keep: None, seq: 0, text_matches: Rc::new(Vec::new()), text_index: None }
+        Self { open: false, input, query: String::new(), matches: Vec::new(), rows: Vec::new(), index: None, path_pending: false, older: None, older_loading: false, message: None, keep: None, seq: 0, text_matches: Rc::new(Vec::new()), text_index: None, flags: FindFlags::default() }
     }
 
     fn clear(&mut self) {
@@ -111,6 +112,40 @@ pub fn ordered(ids: &[String], by_sha: &HashMap<String, usize>) -> (Vec<String>,
 }
 
 /// Case-insensitive matches of `query` in `text`, as byte ranges.
+/// Monaco's toggles.
+#[derive(Clone, Copy, Default, PartialEq)]
+pub struct FindFlags {
+    pub case: bool,
+    pub word: bool,
+    pub regex: bool,
+    pub selection: bool,
+}
+
+/// What finds in a line, by the toggles: a bad pattern finds nothing.
+pub enum Matcher {
+    Plain(String),
+    Pattern(Option<regex::Regex>),
+}
+
+impl Matcher {
+    pub fn new(query: &str, flags: FindFlags) -> Self {
+        if !flags.case && !flags.word && !flags.regex {
+            return Self::Plain(query.to_string());
+        }
+        let body = if flags.regex { query.to_string() } else { regex::escape(query) };
+        let body = if flags.word { format!(r"\b(?:{body})\b") } else { body };
+        Self::Pattern(regex::RegexBuilder::new(&body).case_insensitive(!flags.case).size_limit(1 << 20).build().ok())
+    }
+
+    pub fn in_line(&self, text: &str) -> Vec<(usize, usize)> {
+        match self {
+            Self::Plain(q) => find_in_line(text, q),
+            Self::Pattern(Some(re)) => re.find_iter(text).filter(|m| !m.is_empty()).map(|m| (m.start(), m.end())).collect(),
+            Self::Pattern(None) => Vec::new(),
+        }
+    }
+}
+
 pub fn find_in_line(text: &str, query: &str) -> Vec<(usize, usize)> {
     if query.is_empty() {
         return Vec::new();
@@ -133,7 +168,11 @@ impl GitVolt {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         tab.find.open = true;
         let input = tab.find.input.clone();
-        input.update(cx, |i, cx| i.select_all_text(cx));
+        let placeholder = if tab.diff.is_some() { "Find" } else { "Message, SHA or path" };
+        input.update(cx, |i, cx| {
+            i.set_placeholder(placeholder);
+            i.select_all_text(cx);
+        });
         window.focus(&input.read(cx).focus.clone(), cx);
         cx.notify();
     }
@@ -300,7 +339,7 @@ impl GitVolt {
     pub fn find_in_file(&mut self, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let Some(diff) = tab.diff.as_mut() else { return };
-        let matches = diff.find_text(tab.find.query.trim());
+        let matches = diff.find_text(tab.find.query.trim(), tab.find.flags);
         let from = diff.layout.row_at(diff.scroll);
         let index = matches.iter().position(|m| m.row >= from).or(if matches.is_empty() { None } else { Some(0) });
         if let Some(m) = index.map(|i| matches[i]) {
@@ -391,6 +430,135 @@ fn find_button(id: &'static str, tooltip: &'static str, glyph: &'static str, ena
 }
 
 /// The box, over the top-right corner of the graph or the file.
+/// `case`, `word`, `regex`, `selection`, by a toggle's click or Alt and its letter.
+fn toggle_find(this: &mut GitVolt, which: char, cx: &mut Context<GitVolt>) {
+    let Some(tab) = this.tabs.get_mut(this.active) else { return };
+    let f = &mut tab.find.flags;
+    match which {
+        'c' => f.case = !f.case,
+        'w' => f.word = !f.word,
+        'r' => f.regex = !f.regex,
+        _ => f.selection = !f.selection,
+    }
+    this.find_in_file(cx);
+}
+
+/// Monaco's find widget, over an open file: `right` is what's beside the text at the editor's right, its minimap or ruler.
+pub fn editor_find(find: &FindState, right: f32, window: &Window, cx: &mut Context<GitVolt>) -> AnyElement {
+    let light = theme::light_now();
+    let (bg, border, sash, input_bg, fg, focus) = if light {
+        (rgb(0xf3f3f3), rgb(0xc8c8c8), rgb(0xc8c8c8), rgb(0xffffff), rgb(0x424242), rgb(0x0090f1))
+    } else {
+        (rgb(0x252526), rgb(0x303031), rgb(0x474747), rgb(0x3c3c3c), rgb(0xcccccc), rgb(0x007fd4))
+    };
+    let fg: Hsla = fg.into();
+    let focused = find.input.read(cx).is_focused(window);
+    let flags = find.flags;
+    let toggle = |id: &'static str, letter: char, on: bool, tooltip: &'static str, face: AnyElement, cx: &mut Context<GitVolt>| {
+        tip(
+            tooltip,
+            div()
+                .id(id)
+                .flex()
+                .flex_none()
+                .size(px(20.))
+                .items_center()
+                .justify_center()
+                .rounded(px(3.))
+                .border_1()
+                .border_color(if on { focus.into() } else { transparent_black() })
+                .when(on, |d| d.bg(Hsla { a: 0.4, ..focus.into() }))
+                .when(!on, |d| d.hover(|d| d.bg(rgba(if light { 0xb8b8b850 } else { 0x5a5d5e50 }))))
+                .text_color(fg)
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(move |this, _, _, cx| toggle_find(this, letter, cx)))
+                .child(face),
+        )
+    };
+    let glyphs = |t: &'static str, underline: bool| div().text_size(px(12.)).line_height(px(14.)).when(underline, |d| d.border_b_1().border_color(fg)).child(t).into_any_element();
+    let any = !find.text_matches.is_empty();
+    let count = if find.query.trim().is_empty() || !any { "No results".to_string() } else { format!("{} of {}", find.text_index.map_or(0, |i| i + 1), find.text_matches.len()) };
+    let button = |id: &'static str, tooltip: &'static str, glyph: &'static str, enabled: bool, cx: &mut Context<GitVolt>, run: fn(&mut GitVolt, &mut Context<GitVolt>)| {
+        tip(
+            tooltip,
+            div()
+                .id(id)
+                .flex()
+                .flex_none()
+                .size(px(20.))
+                .items_center()
+                .justify_center()
+                .rounded(px(3.))
+                .when(!enabled, |d| d.opacity(0.4))
+                .when(enabled, |d| d.cursor_pointer().hover(|d| d.bg(rgba(if light { 0xb8b8b850 } else { 0x5a5d5e50 }))).on_click(cx.listener(move |this, _, _, cx| run(this, cx))))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(icon(glyph, 16., fg)),
+        )
+    };
+    div()
+        .id("find-box")
+        .absolute()
+        .top(px(74.))
+        .right(px(32. + right))
+        .w(px(419.))
+        .h(px(33.))
+        .occlude()
+        .flex()
+        .items_center()
+        .bg(bg)
+        .border_1()
+        .border_color(border)
+        .shadow(crate::ui::shadow(theme::shadow_popup(), 0., 8.))
+        .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
+            let m = e.keystroke.modifiers;
+            if m.alt && !m.control {
+                match e.keystroke.key.as_str() {
+                    "c" => toggle_find(this, 'c', cx),
+                    "w" => toggle_find(this, 'w', cx),
+                    "r" => toggle_find(this, 'r', cx),
+                    "l" => toggle_find(this, 's', cx),
+                    _ => return,
+                }
+                cx.stop_propagation();
+            }
+        }))
+        .child(div().flex_none().w(px(2.)).h_full().bg(sash))
+        .child(
+            div()
+                .relative()
+                .flex()
+                .flex_none()
+                .ml(px(24.))
+                .w(px(215.))
+                .h(px(25.))
+                .items_center()
+                .pl(px(6.))
+                .pr(px(66.))
+                .bg(input_bg)
+                .border_1()
+                .border_color(if focused { focus.into() } else { transparent_black() })
+                .rounded(px(2.))
+                .text_size(px(13.))
+                .text_color(fg)
+                .child(find.input.clone())
+                .child(
+                    div()
+                        .absolute()
+                        .right(px(2.))
+                        .top(px(1.))
+                        .flex()
+                        .gap(px(2.))
+                        .child(toggle("find-case", 'c', flags.case, "Match Case (Alt+C)", glyphs("Aa", false), cx))
+                        .child(toggle("find-word", 'w', flags.word, "Match Whole Word (Alt+W)", glyphs("ab", true), cx))
+                        .child(toggle("find-regex", 'r', flags.regex, "Use Regular Expression (Alt+R)", glyphs(".*", false), cx)),
+                ),
+        )
+        .child(div().flex_none().ml(px(6.)).w(px(69.)).text_size(px(12.5)).whitespace_nowrap().when(!any && !find.query.trim().is_empty(), |d| d.text_color(rgb(if light { 0xa1260d } else { 0xf48771 }))).when(any || find.query.trim().is_empty(), |d| d.text_color(fg)).child(count))
+        .child(div().flex().flex_none().gap(px(5.)).child(button("find-prev", "Previous Match (Shift+Enter)", "arrow-up", any, cx, |this, cx| this.step_find(-1, cx))).child(button("find-next", "Next Match (Enter)", "arrow-down", any, cx, |this, cx| this.step_find(1, cx))).child(toggle("find-selection", 's', flags.selection, "Find in Selection (Alt+L)", icon("list", 16., fg).into_any_element(), cx)).child(button("find-close", "Close (Escape)", "x", true, cx, |this, cx| this.close_find(cx))))
+        .into_any_element()
+}
+
 pub fn find_box(find: &FindState, window: &Window, cx: &mut Context<GitVolt>) -> AnyElement {
     let focused = find.input.read(cx).is_focused(window);
     let counter = find.counter();

@@ -317,7 +317,7 @@ fn preview_panel(this: &GitVolt, role: &str, window: &Window, cx: &App) -> AnyEl
         }
         _ => {
             let first = families_of(&family).into_iter().next().unwrap_or_else(|| this.base_font.to_string());
-            frame.p(px(12.)).h(px(100.)).font_family(SharedString::from(first)).line_height(relative(1.4)).child(div().text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).child("Sphinx of black quartz, judge my vow")).child("The quick brown fox jumps over the lazy dog. 0123456789").child(div().text_size(px(11.)).text_color(theme::text_secondary()).child("How vexingly quick daft zebras jump")).child(MIXED_SCRIPTS).into_any_element()
+            frame.flex().flex_col().gap(px(3.)).px(px(12.)).py(px(8.)).font_family(SharedString::from(first)).text_size(px(13.)).text_color(theme::text_normal()).child(div().text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child("Sphinx of black quartz, judge my vow")).child("The quick brown fox jumps over the lazy dog. 0123456789").child(div().text_size(px(11.)).text_color(theme::text_secondary()).child("How vexingly quick daft zebras jump")).child(MIXED_SCRIPTS).into_any_element()
         }
     };
     div().min_w_0().child(div().mb(px(4.)).text_size(px(10.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child("PREVIEW")).child(body).into_any_element()

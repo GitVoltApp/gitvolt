@@ -162,6 +162,12 @@ impl GitVolt {
             menu::open_context(rows, point(px(700.), px(160. + row as f32 * 28.)), window, cx);
         } else if let Some(i) = part.strip_prefix("sub").and_then(|n| n.parse::<usize>().ok()) {
             menu::open_sub_for_screenshot(i, window, cx);
+        } else if let Some(label) = part.strip_prefix("settings=") {
+            if let Some(page) = crate::settings::pages::pages().iter().find(|p| p.label == label) {
+                self.show_settings(None, window, cx);
+                self.settings_ui.page = page.id.to_string();
+                cx.notify();
+            }
         } else if part == "hamburger" {
             let rows = crate::commands::hamburger_rows(&weak, self, cx);
             menu::open_below("hamburger", rows, Default::default(), window, cx);

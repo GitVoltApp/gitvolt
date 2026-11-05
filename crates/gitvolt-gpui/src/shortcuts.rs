@@ -183,6 +183,11 @@ pub fn sections() -> Vec<Section> {
     }
     let rank = |t: &str| ORDER.iter().position(|o| *o == t).unwrap_or(ORDER.len());
     by.sort_by(|x, y| rank(&x.0).cmp(&rank(&y.0)).then_with(|| x.0.cmp(&y.0)));
+    // In the web's order, which its registries make: `assets/shortcut-order.txt` is that list, read from the panel.
+    let order: Vec<&str> = include_str!("../assets/shortcut-order.txt").lines().collect();
+    for (_, rows) in &mut by {
+        rows.sort_by_key(|r| order.iter().position(|o| *o == r.label).unwrap_or(order.len()));
+    }
     by.into_iter().map(|(title, rows)| Section { title, rows }).collect()
 }
 
