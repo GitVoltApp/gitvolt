@@ -51,7 +51,9 @@ current code; each point names where to look.
 - GitHub, GitLab and Forgejo personal access tokens are kept in the system keyring, through the Secret
   Service D-Bus API (GNOME Keyring, KWallet, KeePassXC…) via the `keyring` crate
   (`crates/gitvolt-forge/src/tokens.rs`). Each is an item in the default collection with the
-  attributes `service` = `gitvolt` and `username` = `<profile id>/<host>`.
+  attributes `service` = `gitvolt` and `username` = `<profile id>/<host>` for a host's first
+  account, `<profile id>/<host>#<user id>` for another account on the same host. Removing an
+  account deletes its own item only.
 - When no Secret Service is available, or it refuses the token, the token goes to a fallback
   file, `~/.local/share/gitvolt/forge-tokens`: mode 0600 in a 0700 directory you own, written
   through a temporary file and a rename, never through a symbolic link. Settings › Accounts marks

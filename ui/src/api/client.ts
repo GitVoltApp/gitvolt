@@ -565,9 +565,11 @@ export const api = {
   // --- 4A T11 ---
   /** The active profile's forge accounts and their last known status (no network). */
   forgeAccounts: () => call<ForgeAccountView[]>({ method: 'forgeAccounts' }),
-  /** Checks the token against the host and keeps it (system keyring, else the 0600 file). */
-  addForgeAccount: (host: string, kind: ForgeKind, token: string) => call<ForgeAccountView>({ method: 'addForgeAccount', params: { host, kind, token } }),
-  removeForgeAccount: (host: string) => call<null>({ method: 'removeForgeAccount', params: { host } }),
+  /** Checks the token against the host and keeps it (system keyring, else the 0600 file). `account`
+   * replaces that account's token; omitted, it replaces the same user's or adds another account. */
+  addForgeAccount: (host: string, kind: ForgeKind, token: string, account?: string) => call<ForgeAccountView>({ method: 'addForgeAccount', params: { host, kind, token, account: account ?? null } }),
+  /** Removes one account and its token; `account` omitted removes the host's first. */
+  removeForgeAccount: (host: string, account?: string) => call<null>({ method: 'removeForgeAccount', params: { host, account: account ?? null } }),
   /** The forge's prefilled "new token" page: open it with `openUrl`. */
   forgeTokenPage: (host: string, kind: ForgeKind, classic?: boolean) => call<string>({ method: 'forgeTokenPage', params: { host, kind, classic: classic ?? false } }),
   /** The forge `host` runs: by its name, else asked without a token; `generic` when neither says. */

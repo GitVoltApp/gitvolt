@@ -73,7 +73,15 @@ interface RowProps {
 export function SettingRow(props: RowProps) {
   useSettingsRegistry();
   const def = settingDef(props.id);
-  return def ? <DefRow def={def} {...props} /> : null;
+  if (!def) return null;
+  return def.useShown ? <ShownRow def={def} {...props} /> : <DefRow def={def} {...props} />;
+}
+
+/** A row its def may leave out of its page (`SettingDef.useShown`, a hook: called here on every
+ * render). A search that found it shows it all the same. */
+function ShownRow(props: RowProps & { def: SettingDef }) {
+  const shown = props.def.useShown!(props.ctx);
+  return shown || props.highlights ? <DefRow {...props} /> : null;
 }
 
 function DefRow({ def, ctx, children, highlights }: RowProps & { def: SettingDef }) {

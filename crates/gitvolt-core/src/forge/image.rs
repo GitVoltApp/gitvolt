@@ -117,7 +117,7 @@ mod tests {
     const UPLOAD: &str = "https://gitlab.example.com/group/project/uploads/0123456789abcdef0123456789abcdef/a.png";
 
     fn origin() -> Vec<RemotePayload> {
-        vec![RemotePayload { name: "origin".into(), host: Some(HOST.into()), path: Some("group/project".into()), host_kind: HostKind::GitLab, main: false }]
+        vec![RemotePayload { name: "origin".into(), host: Some(HOST.into()), path: Some("group/project".into()), host_kind: HostKind::GitLab, main: false, account: None }]
     }
 
     fn png() -> ForgeImage {
@@ -132,7 +132,7 @@ mod tests {
         let p = conn.add(TOKEN, p);
         let hub = ForgeHub::new(conn.clone(), MemTokens::new(TokenStorage::Keyring), Arc::new(|| 1_791_115_200_000));
         let store = SettingsStore::in_memory();
-        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN)).await.unwrap();
+        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), None).await.unwrap();
         (conn, p, hub, store)
     }
 

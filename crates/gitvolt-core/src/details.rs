@@ -63,7 +63,7 @@ pub fn remotes(repo: &gix::Repository) -> Vec<RemotePayload> {
             let name = n.to_str_lossy().into_owned();
             let parsed = remote_url(repo, &name, Direction::Fetch).and_then(|u| parse_remote_url(&u));
             let host_kind = parsed.as_ref().map(|u| host_kind(&u.host)).unwrap_or(HostKind::Generic);
-            RemotePayload { host: parsed.as_ref().map(|u| u.host.clone()), path: parsed.map(|u| u.path), host_kind, name, main: false }
+            RemotePayload { host: parsed.as_ref().map(|u| u.host.clone()), path: parsed.map(|u| u.path), host_kind, name, main: false, account: None }
         })
         .collect();
     out.sort_by(|a, b| (a.name != "origin", &a.name).cmp(&(b.name != "origin", &b.name)));
@@ -181,8 +181,8 @@ mod tests {
         r.git(&["remote", "add", "backup", "/tmp/nowhere.git"]);
         let repo = gix::open(r.path()).unwrap();
         let list = remotes(&repo);
-        assert_eq!(list[0], RemotePayload { name: "origin".into(), host: Some("gitlab.example.com".into()), path: Some("group/project".into()), host_kind: HostKind::GitLab, main: false });
-        assert_eq!(list[1], RemotePayload { name: "backup".into(), host: None, path: None, host_kind: HostKind::Generic, main: false });
+        assert_eq!(list[0], RemotePayload { name: "origin".into(), host: Some("gitlab.example.com".into()), path: Some("group/project".into()), host_kind: HostKind::GitLab, main: false, account: None });
+        assert_eq!(list[1], RemotePayload { name: "backup".into(), host: None, path: None, host_kind: HostKind::Generic, main: false, account: None });
     }
 
     /// Deferred Rust minor #13: a remote configured through an `insteadOf` alias still gets a
@@ -196,6 +196,6 @@ mod tests {
         r.git(&["remote", "add", "origin", "gh:owner/repo.git"]);
         let repo = gix::open(r.path()).unwrap();
         let list = remotes(&repo);
-        assert_eq!(list, vec![RemotePayload { name: "origin".into(), host: Some("github.com".into()), path: Some("owner/repo".into()), host_kind: HostKind::GitHub, main: false }]);
+        assert_eq!(list, vec![RemotePayload { name: "origin".into(), host: Some("github.com".into()), path: Some("owner/repo".into()), host_kind: HostKind::GitHub, main: false, account: None }]);
     }
 }

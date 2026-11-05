@@ -33,6 +33,9 @@
 .account-add .field > label, .account-add .field-label { text-align: right; color: var(--text-secondary); }
 .account-add .field-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .account-add .field-help { grid-column: 2; margin: 0; font-size: 12px; }
+/* One line, kept while empty: the form keeps its height as the host changes. */
+.account-add .account-taken { min-height: 1.4em; line-height: 1.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.accounts-notice { margin: 0; color: var(--green); }
 .account-add input { width: 100%; min-width: 0; font: inherit; padding: 6px 9px; border-radius: 5px; border: 1px solid var(--section-border); background: var(--app-bg0); color: var(--text-selected); outline: none; box-sizing: border-box; }
 .account-add input:focus { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
 .account-add .field-row input { flex: 1; }

@@ -22,12 +22,24 @@ const offs = [
     },
     { id: 't-list', label: 'Hosts', page: 't-hosts', group: 'Hosts', keywords: '' },
     { id: 't-tags', label: 'Push tags', page: 't-fetch', group: 'Push', keywords: '' },
+    { id: 't-only', label: 'Only where it applies', page: 't-fetch', group: 'Push', keywords: '', useShown: () => useAppState((s) => s.settings.prune) },
   ]),
 ];
 afterAll(() => offs.forEach((off) => off()));
 
 describe('SettingRow', () => {
   beforeEach(() => useAppState.setState({ settings: { ...DEFAULT_SETTINGS } }));
+
+  it('a row its def leaves out (useShown) is off its page until it applies, and a search still finds it', () => {
+    act(() => useAppState.getState().setSettings({ prune: false }));
+    const { container, rerender } = render(<SettingRow id="t-only" ctx={ctx} />);
+    expect(container.querySelector('[data-setting-id="t-only"]')).toBeNull();
+    act(() => useAppState.getState().setSettings({ prune: true }));
+    expect(container.querySelector('[data-setting-id="t-only"]')).not.toBeNull();
+    act(() => useAppState.getState().setSettings({ prune: false }));
+    rerender(<SettingRow id="t-only" ctx={ctx} highlights={{ label: [], description: [] }} />);
+    expect(container.querySelector('[data-setting-id="t-only"]')).not.toBeNull();
+  });
 
   it('renders the label for its control and the description under it', () => {
     render(<SettingRow id="t-prune" ctx={ctx} />);

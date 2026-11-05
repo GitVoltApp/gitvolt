@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../api/client', () => ({ api: { saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []) }, errorMessage: String }));
+vi.mock('../../api/client', () => ({ api: { saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []), forgeRepoProjects: vi.fn(async () => ({ remotes: [], target: null, targetChosen: false })) }, errorMessage: String }));
 
 await import('../pages');
 const { DEFAULT_SETTINGS, EMPTY_PROFILE, useAppState } = await import('../../app/state');

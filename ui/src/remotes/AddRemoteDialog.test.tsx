@@ -29,7 +29,7 @@ beforeEach(() => {
     { name: 'origin', url: 'https://gitlab.example.com/group/project.git', host: 'gitlab.example.com', path: 'group/project', hostKind: 'gitlab' },
     { name: 'bob', url: 'https://gitlab.example.com/bob/project.git', host: 'gitlab.example.com', path: 'bob/project', hostKind: 'gitlab' },
   ] } } } as never });
-  api.forgeRepoProjects.mockResolvedValue({ remotes: [{ remote: 'origin', host: 'gitlab.example.com', path: 'group/project', account: 'gitlab', project: project('group/project', 9, null), error: null }], target: 'origin' });
+  api.forgeRepoProjects.mockResolvedValue({ remotes: [{ remote: 'origin', host: 'gitlab.example.com', path: 'group/project', account: 'gitlab', accountId: null, project: project('group/project', 9, null), error: null }], target: 'origin' });
   api.forgeForks.mockResolvedValue({ forks: [project('alice/project', 1_791_021_600), project('bob/project', 1_700_000_000)], next: null });
   useForge.setState({ byTab: { t1: { ...EMPTY_FORGE, kind: 'gitlab' } } });
   act(() => closeAddRemote());
@@ -86,7 +86,7 @@ describe('Add remote', () => {
 
   it('shows no forks section without an account', async () => {
     useForge.setState({ byTab: {} });
-    api.forgeRepoProjects.mockResolvedValueOnce({ remotes: [{ remote: 'origin', host: 'gitlab.example.com', path: 'group/project', account: null, project: null, error: null }], target: null });
+    api.forgeRepoProjects.mockResolvedValueOnce({ remotes: [{ remote: 'origin', host: 'gitlab.example.com', path: 'group/project', account: null, accountId: null, project: null, error: null }], target: null });
     show();
     await waitFor(() => expect(api.forgeRepoProjects).toHaveBeenCalled());
     expect(screen.queryByRole('region', { name: 'Forks' })).toBeNull();

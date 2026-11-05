@@ -2,9 +2,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api/client', () => ({
-  api: { gitIdentity: vi.fn(async () => ({ identity: null, signing: null })), saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []), listOpeners: vi.fn(async () => []), fontFamilies: vi.fn(async () => [{ name: 'Orbit Mono', monospace: true }, { name: 'Zeta Sans', monospace: false }]), openLogsFolder: vi.fn(async () => null) },
+  api: { gitIdentity: vi.fn(async () => ({ identity: null, signing: null })), saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []), forgeRepoProjects: vi.fn(async () => ({ remotes: [], target: null, targetChosen: false })), listOpeners: vi.fn(async () => []), fontFamilies: vi.fn(async () => [{ name: 'Orbit Mono', monospace: true }, { name: 'Zeta Sans', monospace: false }]), openLogsFolder: vi.fn(async () => null) },
   errorMessage: String,
 }));
+const resetAvatars = vi.hoisted(() => vi.fn());
+vi.mock('../../avatars/avatarStore', async (actual) => ({ ...(await actual<typeof import('../../avatars/avatarStore')>()), resetAvatars }));
 
 // The feature registers the pages and the Settings action (Ctrl+,) the Keyboard page lists.
 await import('../feature');
@@ -55,7 +57,7 @@ describe('settings pages', () => {
     ['shortcuts', 'keyboard'], ['debugLogging', 'advanced'], ['openLogs', 'advanced'], ['resetAll', 'advanced'],
     ['extraGitconfig', 'git-identity'], ['editor', 'editor-folders'], ['reposFolder', 'editor-folders'],
     ['forgeAccounts', 'accounts'], ['hostOverrides', 'hosts'],
-    ['repoEditor', 'repository'], ['repoPin', 'repository'], ['trunkPatterns', 'repository'], ['forgeTargetRemote', 'repository'], ['branchUpdate', 'repository'],
+    ['repoEditor', 'repository'], ['repoPin', 'repository'], ['trunkPatterns', 'repository'], ['forgeTargetRemote', 'repository'], ['forgeAccount', 'repository'], ['branchUpdate', 'repository'],
   ])('%s is registered once, on %s', (id, page) => {
     expect(allSettings().filter((d) => d.id === id)).toHaveLength(1);
     expect(settingDef(id)?.page).toBe(page);
@@ -122,6 +124,51 @@ describe('settings pages', () => {
     fireEvent.click(pin);
     fireEvent.click(screen.getByRole('menuitem', { name: 'feature/docking' }));
     expect(useAppState.getState().profile.repos[PATH].pin).toEqual({ kind: 'ref', name: 'refs/heads/feature/docking' });
+  });
+
+  describe("Repository's forge account", () => {
+    const HOST = 'gitlab.example.com';
+    const user = (id: number, username: string) => ({ id, username, name: username, avatarUrl: null, webUrl: '', email: null, emails: [] });
+    const account = (id: string, host: string, u: number, name: string) => ({ account: { id, host, kind: 'gitlab', user: user(u, name), storage: 'keyring', version: null, versionCheckedAt: 0, addedAt: 0 }, status: { kind: 'ok' } });
+    const ada = account(HOST, HOST, 7, 'ada');
+    const grace = account(`${HOST}#8`, HOST, 8, 'grace');
+    const elsewhere = account('code.example.org', 'code.example.org', 7, 'ada-at-code');
+    /** The repository's origin is on HOST, its account `accountId` (the core's pick). */
+    async function given(accounts: unknown[], accountId: string | null = HOST) {
+      const { api } = await import('../../api/client');
+      vi.mocked(api.forgeAccounts).mockResolvedValue(accounts as never);
+      vi.mocked(api.forgeRepoProjects).mockResolvedValue({ remotes: [{ remote: 'origin', host: HOST, path: 'group/project', account: 'gitlab', accountId, project: null, error: null }], target: 'origin', targetChosen: false });
+    }
+    const row = () => document.querySelector('[data-setting-id="forgeAccount"]');
+
+    it("picks one of the repository's host's accounts, Automatic naming the default, and resets avatars", async () => {
+      await given([ada, elsewhere, grace]);
+      show('forgeAccount');
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Forge account' })).toHaveTextContent('Automatic (@ada)'));
+      fireEvent.click(screen.getByRole('button', { name: 'Forge account' }));
+      expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Automatic (@ada)', '@ada', '@grace']);
+      fireEvent.click(screen.getByRole('menuitem', { name: '@grace' }));
+      expect(useAppState.getState().profile.repos[PATH].forgeAccount).toBe('gitlab.example.com#8');
+      await waitFor(() => expect(resetAvatars).toHaveBeenCalled());
+    });
+
+    it('a chosen account since removed reads Removed account', async () => {
+      await given([ada, grace]);
+      act(() => useAppState.getState().updateRepo(PATH, (r) => ({ ...r, forgeAccount: 'gitlab.example.com#9' })));
+      show('forgeAccount');
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Forge account' })).toHaveTextContent('Removed account'));
+    });
+
+    it("isn't on the page while the repository's host has one account", async () => {
+      const { api } = await import('../../api/client');
+      await given([ada, elsewhere]);
+      show();
+      openPage('Repository');
+      await waitFor(() => expect(api.forgeRepoProjects).toHaveBeenCalled());
+      await act(async () => {});
+      expect(row()).toBeNull();
+      expect(document.querySelector('[data-setting-id="forgeTargetRemote"]')).not.toBeNull();
+    });
   });
 
   describe('Appearance › Fonts', () => {

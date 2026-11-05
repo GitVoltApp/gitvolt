@@ -3,7 +3,16 @@ import type { ForgeKind } from "./ForgeKind";
 import type { ForgeUser } from "./ForgeUser";
 import type { TokenStorage } from "./TokenStorage";
 
-export type ForgeAccount = { host: string, kind: ForgeKind, 
+export type ForgeAccount = { 
+/**
+ * Names the account in its profile, whatever the host (`RepoSettings::forge_account` keeps
+ * it): the host itself for the account a host had first, `<host>#<user id>` for the others
+ * (`new_account_id`). The token store and the forge cache name its entries by it
+ * (`AccountKey::keyring_account`), so it never changes: when a host's first account is
+ * removed, the others keep theirs. Empty in a profile from 1.5.0 or before (one account per
+ * host): `assign_account_ids` gives it the host on load.
+ */
+id: string, host: string, kind: ForgeKind, 
 /**
  * The token's user when the account was added (avatar and name in Settings).
  */

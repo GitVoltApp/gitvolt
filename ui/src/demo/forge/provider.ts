@@ -78,7 +78,7 @@ function bodyMessage(body: unknown): string | null {
 /** gitvolt-forge's http.rs `status_error`. */
 export function statusError(status: number, body: unknown): GbError {
   const s = bodyMessage(body);
-  if (status === 401) return gbError('AuthFailed', `${HOST} rejected the token: add the account again in Settings › Accounts`);
+  if (status === 401) return gbError('AuthFailed', `${HOST} rejected the token: replace it in Settings › Accounts.`);
   if (status === 403) return gbError('AuthFailed', `${HOST}${REFUSED}${s ?? "the token isn't allowed to do this"}`);
   if (status === 404) return gbError('NotFound', `Not found on ${HOST}`);
   if (status === 409 || status === 422) return gbError('InvalidInput', `${HOST}: ${s ?? `HTTP ${status}`}`);
