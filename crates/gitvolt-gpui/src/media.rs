@@ -648,7 +648,7 @@ fn font_pane(i: usize, media: &MediaView, side: &MediaSide, label: Option<&'stat
         .bg(theme::app_bg())
         .on_scroll(cx.listener(move |this, e: &ScrollEvent, window, cx| {
             let delta = e.delta.pixel_delta(window.line_height());
-            let (dx, dy) = if e.modifiers.shift { (delta.y.as_f32(), 0.) } else { (delta.x.as_f32(), delta.y.as_f32()) };
+            let (dx, dy) = (delta.x.as_f32(), delta.y.as_f32());
             this.with_diff(cx, |d| {
                 if let Some(m) = d.media.as_mut() {
                     let (my, mx) = m.max_scroll(i);

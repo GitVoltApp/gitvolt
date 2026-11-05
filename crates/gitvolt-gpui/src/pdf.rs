@@ -577,7 +577,7 @@ fn pane(is_old: bool, label: Option<&'static str>, pdf: &PdfView, cx: &mut Conte
                 cx.stop_propagation();
                 return;
             }
-            let (dx, dy) = if e.modifiers.shift { (delta.y, px(0.)) } else { (delta.x, delta.y) };
+            let (dx, dy) = (delta.x, delta.y);
             this.with_pdf(cx, |p| {
                 let scale = p.scale();
                 let now = p.side(is_old).map_or(0., |s| s.scroll);

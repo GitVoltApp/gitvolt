@@ -30,7 +30,8 @@ FocusStealingPreventionLevel=0
 [Xwayland]
 Scale=1
 CFG
-if [ -n "${LAYOUT:-}" ]; then printf '[Layout]\nUse=true\nLayoutList=%s\n' "$LAYOUT" >"$kwin_xdg/config/kxkbrc"; else rm -f "$kwin_xdg/config/kxkbrc"; fi
+# Named, or KWin asks the system's locale settings for one.
+printf '[Layout]\nUse=true\nLayoutList=%s\n' "${LAYOUT:-us}" >"$kwin_xdg/config/kxkbrc"
 # A bus of the nested compositor's own, for its screenshots (`wshot.py`) only; no service can be activated on it.
 cat >"$root/nested-bus.conf" <<CFG
 <busconfig><type>session</type><listen>unix:path=$run/bus</listen>

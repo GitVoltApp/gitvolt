@@ -442,6 +442,7 @@ impl GitVolt {
 pub fn start_debug_pipe(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
     use futures::StreamExt;
     let Some(fifo) = std::env::var_os("GITVOLT_DEBUG_PIPE").map(std::path::PathBuf::from) else { return };
+    crate::zoom::trace_input();
     let (tx, mut rx) = futures::channel::mpsc::unbounded::<()>();
     let reading = fifo.clone();
     std::thread::spawn(move || {
@@ -478,13 +479,21 @@ pub fn start_debug_pipe(view: Entity<GitVolt>, window: &mut Window, cx: &mut App
                     d["pickerRows"] = crate::ui::picker::rows_at(cx).into();
                     d["modals"] = crate::ui::modal::ids(cx).into();
                     d["popover"] = crate::ui::Ui::get(cx).popover.is_some().into();
-                    d["tooltip"] = crate::ui::Ui::get(cx).tips.shown().into();
+                    d["tooltip"] = crate::ui::Ui::get(cx).tips.text().map(|t| t.to_string()).into();
                     d["cursor"] = crate::zoom::last_cursor().into();
                     d["pid"] = std::process::id().into();
+                    d["input"] = crate::zoom::input_trace().into();
                     let v = view.read(cx);
                     let tab = v.tabs.get(v.active);
                     d["graphRows"] = tab.and_then(|t| t.graph.as_ref()).map_or(Vec::new(), |g| g.rows.iter().take(300).map(|r| serde_json::json!({ "id": r.id, "summary": r.summary })).collect::<Vec<_>>()).into();
                     d["listOffset"] = tab.map_or(0., |t| t.list.0.borrow().base_handle.offset().y.as_f32()).into();
+                    d["sideScroll"] = tab.map_or(Vec::new(), |t| t.side.scroll.values().map(|h| h.0.borrow().base_handle.offset().y.as_f32()).collect::<Vec<_>>()).into();
+                    d["diff"] = tab.and_then(|t| t.diff.as_ref()).map(|x| serde_json::json!({
+                        "path": x.file.path.to_string(), "view": format!("{:?}", x.view), "mode": format!("{:?}", x.mode), "scroll": x.scroll, "max": x.layout.max_scroll(), "hscroll": x.hscroll,
+                        "selected": x.selected_text(), "cursor": x.cursor, "wrap": x.wrap, "dirty": x.editing_dirty(), "drag": format!("{:?}", x.drag),
+                    })).into();
+                    d["clipboard"] = cx.read_from_clipboard().and_then(|c| c.text()).into();
+                    d["primary"] = cx.read_from_primary().and_then(|c| c.text()).into();
                     d
                 });
                 if let Ok(d) = answer {

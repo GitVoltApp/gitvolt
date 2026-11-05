@@ -129,6 +129,9 @@ impl Selection {
     }
 }
 
+/// Monaco's own step: 50 px a notch, where the page's is 53 (`zoom::wheel_delta`).
+pub const MONACO_WHEEL: f32 = 50. / 53.;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Drag {
     None,
@@ -1569,10 +1572,11 @@ fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx
             } else if below > 0. {
                 diff.scroll_by(below.min(crate::metrics::line_h() * 3.));
             }
-            if let Some((at, _)) = pos_at(diff, e.position, window)
-                && let Some(sel) = diff.selection.as_mut()
-            {
-                sel.head = at;
+            if let Some((at, _)) = pos_at(diff, e.position, window) {
+                // A press in an editor leaves no selection until the head moves: only the caret.
+                if let Some(sel) = diff.selection.as_mut() {
+                    sel.head = at;
+                }
                 diff.cursor = at.row;
                 if diff.edit.is_some() {
                     this.edit_drag(at, cx);
@@ -1599,6 +1603,39 @@ fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx
                 cx.notify();
             }
         }
+    }
+}
+
+impl GitVolt {
+    /// A selection's drag that's left the text, and maybe the window: it goes on, and past the top or the bottom the text keeps
+    /// coming while the pointer rests there, as Monaco's does.
+    fn text_drag_outside(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).is_none_or(|d| d.drag != Drag::Text) {
+            return;
+        }
+        on_mouse_move(self, e, window, cx);
+        let running = self.text_drag_at.replace(e.position).is_some();
+        if running {
+            return;
+        }
+        cx.spawn_in(window, async move |this, cx| {
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+                let more = this.update_in(cx, |this, window, cx| {
+                    let Some(position) = this.text_drag_at else { return false };
+                    if this.tabs.get(this.active).and_then(|t| t.diff.as_ref()).is_none_or(|d| d.drag != Drag::Text) {
+                        this.text_drag_at = None;
+                        return false;
+                    }
+                    on_mouse_move(this, &MouseMoveEvent { position, pressed_button: Some(MouseButton::Left), modifiers: Modifiers::default() }, window, cx);
+                    true
+                });
+                if !matches!(more, Ok(true)) {
+                    return;
+                }
+            }
+        })
+        .detach();
     }
 }
 
@@ -1694,13 +1731,25 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
                         window.paint_quad(fill(Bounds::new(point(x, bounds.origin.y + bounds.size.height - px(SCROLLBAR_W)), size(px(thumb), px(SCROLLBAR_W))), theme::scroll_thumb()));
                     }
                     let entity = entity.clone();
+                    let dragging = entity.clone();
+                    window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
+                        if phase != DispatchPhase::Bubble || e.pressed_button != Some(MouseButton::Left) {
+                            return;
+                        }
+                        // Back over the text its own handler takes it.
+                        if bounds.contains(&e.position) {
+                            dragging.update(cx, |this, _| this.text_drag_at = None).ok();
+                        } else {
+                            dragging.update(cx, |this, cx| this.text_drag_outside(e, window, cx)).ok();
+                        }
+                    });
                     window.on_mouse_event(move |e: &ScrollEvent, phase, window, cx| {
                         if phase != DispatchPhase::Capture || !bounds.contains(&e.position) {
                             return;
                         }
                         cx.stop_propagation();
                         let delta = e.delta.pixel_delta(window.line_height());
-                        let (dx, dy) = if e.modifiers.shift { (delta.y, px(0.)) } else { (delta.x, delta.y) };
+                        let (dx, dy) = (delta.x * MONACO_WHEEL, delta.y * MONACO_WHEEL);
                         entity
                             .update(cx, |this, cx| {
                                 this.with_diff(cx, |d| {

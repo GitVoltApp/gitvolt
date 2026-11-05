@@ -89,7 +89,7 @@ def sync():
 
 
 BTN = {"left": 0x110, "right": 0x111, "middle": 0x112}
-SYM = {"Control": 0xffe3, "Ctrl": 0xffe3, "Shift": 0xffe1, "Alt": 0xffe9, "Return": 0xff0d, "Enter": 0xff0d, "Escape": 0xff1b, "Esc": 0xff1b, "Tab": 0xff09, "Backspace": 0xff08, "Delete": 0xffff, "Space": 0x20, "Home": 0xff50, "End": 0xff57, "Left": 0xff51, "Up": 0xff52, "Right": 0xff53, "Down": 0xff54, "PageUp": 0xff55, "PageDown": 0xff56}
+SYM = {"Control": 0xffe3, "Ctrl": 0xffe3, "Shift": 0xffe1, "Alt": 0xffe9, "Return": 0xff0d, "Enter": 0xff0d, "Escape": 0xff1b, "Esc": 0xff1b, "Tab": 0xff09, "Backspace": 0xff08, "Delete": 0xffff, "Space": 0x20, "Home": 0xff50, "End": 0xff57, "Left": 0xff51, "Up": 0xff52, "Right": 0xff53, "Down": 0xff54, "PageUp": 0xff55, "PageDown": 0xff56, "comma": 0x2c, "slash": 0x2f, "equal": 0x3d, "minus": 0x2d, "plus": 0x2b, "F10": 0xffc7}
 SYM.update({f"F{i}": 0xffbe + i - 1 for i in range(1, 13)})
 
 
@@ -125,7 +125,9 @@ def run(a):
                     send(FAKE, 2, struct.pack("<II", b, 0))
                     sync()
         elif v == "wheel":
-            d = {"up": -15.0, "down": 15.0}[a.pop(0)]
+            # Through Xwayland, 10 of the axis is a device's notch. On Wayland, what the fake device sends is what a touchpad does,
+            # with no discrete notch, and the same pixels arrive as a client's continuous scroll: a real wheel's path can't run here.
+            d = {"up": -10.0, "down": 10.0}[a.pop(0)]
             for _ in range(int(a.pop(0)) if a and a[0].isdigit() else 1):
                 send(FAKE, 3, struct.pack("<I", 0) + fixed(d))
                 sync()

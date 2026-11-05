@@ -2605,7 +2605,7 @@ impl MdView {
             return;
         }
         let delta = e.delta.pixel_delta(window.line_height());
-        let (dx, dy) = if e.modifiers.shift { (delta.y, px(0.)) } else { (delta.x, delta.y) };
+        let (dx, dy) = (delta.x, delta.y);
         let mut st = self.state.borrow_mut();
         if dx.as_f32() != 0.
             && let Some(block) = st.hit(e.position).hblock

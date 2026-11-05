@@ -25,6 +25,40 @@ thread_local! {
     static LAST_CURSOR: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
+/// The last events as the platform gave them, for the real-input flows; empty unless `GITVOLT_DEBUG_PIPE` turned it on.
+static TRACE_INPUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+thread_local! {
+    static INPUT_TRACE: RefCell<std::collections::VecDeque<String>> = const { RefCell::new(std::collections::VecDeque::new()) };
+}
+
+pub fn trace_input() {
+    TRACE_INPUT.store(true, Relaxed);
+}
+
+pub fn input_trace() -> Vec<String> {
+    INPUT_TRACE.with_borrow(|t| t.iter().cloned().collect())
+}
+
+fn trace(e: &PlatformInput) {
+    if !TRACE_INPUT.load(Relaxed) {
+        return;
+    }
+    let line = match e {
+        PlatformInput::MouseMove(m) => format!("move {:.0},{:.0} {:?}", m.position.x.as_f32(), m.position.y.as_f32(), m.pressed_button),
+        PlatformInput::MouseDown(m) => format!("down {:.0},{:.0} {:?} x{}", m.position.x.as_f32(), m.position.y.as_f32(), m.button, m.click_count),
+        PlatformInput::MouseUp(m) => format!("up {:.0},{:.0} {:?}", m.position.x.as_f32(), m.position.y.as_f32(), m.button),
+        PlatformInput::KeyDown(k) => format!("key {:?} {:?} {:?} held {}", k.keystroke.modifiers, k.keystroke.key, k.keystroke.key_char, k.is_held),
+        PlatformInput::Scroll(s) => format!("wheel {:?}", s.delta),
+        other => format!("{other:?}").chars().take(40).collect(),
+    };
+    INPUT_TRACE.with_borrow_mut(|t| {
+        if t.len() == 24 {
+            t.pop_front();
+        }
+        t.push_back(line);
+    });
+}
+
 pub fn last_cursor() -> String {
     LAST_CURSOR.with_borrow(Clone::clone)
 }
@@ -113,13 +147,27 @@ fn input_down(e: PlatformInput) -> PlatformInput {
         }
         PlatformInput::Scroll(mut x) => {
             x.position = down(x.position);
-            if let ScrollDelta::Pixels(d) = x.delta {
-                x.delta = ScrollDelta::Pixels(down(d));
-            }
+            x.delta = wheel_delta(x.delta, x.modifiers.shift);
             PlatformInput::Scroll(x)
         }
         other => other,
     }
+}
+
+/// A wheel's notch in Chromium on Linux (`kPixelsPerTick`), and what GPUI's platforms call a notch.
+const NOTCH_PX: f32 = 53.;
+const NOTCH_LINES: f32 = 3.;
+
+/// The wheel as Chromium moves it: the same pixels a notch in every view, where GPUI's lines are worth whatever line height
+/// was current for the view asking (81 px a notch in the graph, 117 in a diff). A platform swaps the axes under Shift on
+/// some platforms and not others; the views get across for Shift, always.
+fn wheel_delta(delta: ScrollDelta, shift: bool) -> ScrollDelta {
+    let d = match delta {
+        ScrollDelta::Pixels(d) => d,
+        ScrollDelta::Lines(l) => point(px(l.x * NOTCH_PX / NOTCH_LINES), px(l.y * NOTCH_PX / NOTCH_LINES)),
+    };
+    let d = if shift && d.x == px(0.) { point(d.y, px(0.)) } else { d };
+    ScrollDelta::Pixels(down(d))
 }
 
 pub struct Zoomed(pub Rc<dyn Platform>);
@@ -460,7 +508,10 @@ impl PlatformWindow for ZoomWindow {
     }
 
     fn on_input(&self, mut callback: Box<dyn FnMut(PlatformInput) -> DispatchEventResult>) {
-        self.inner.0.borrow().on_input(Box::new(move |e| callback(input_down(e))));
+        self.inner.0.borrow().on_input(Box::new(move |e| {
+            trace(&e);
+            callback(input_down(e))
+        }));
     }
 
     fn on_resize(&self, callback: Box<dyn FnMut(Size<Pixels>, f32)>) {
@@ -772,5 +823,31 @@ mod tests {
         assert_eq!(next_zoom(175, 0), 100);
         assert_eq!(parse_zoom(Some(150)), Some(150));
         assert_eq!(parse_zoom(Some(151)), None);
+    }
+}
+
+#[cfg(test)]
+mod wheel_tests {
+    use super::*;
+    use std::prelude::v1::test;
+
+    #[test]
+    fn a_notch_is_chromiums_whatever_the_view() {
+        let ScrollDelta::Pixels(d) = wheel_delta(ScrollDelta::Lines(point(0., -3.)), false) else { panic!("not pixels") };
+        assert_eq!((d.x.as_f32(), d.y.as_f32()), (0., -53.));
+    }
+
+    #[test]
+    fn shift_goes_across_with_or_without_the_platform_having_swapped() {
+        let ScrollDelta::Pixels(d) = wheel_delta(ScrollDelta::Lines(point(0., -3.)), true) else { panic!("not pixels") };
+        assert_eq!((d.x.as_f32(), d.y.as_f32()), (-53., 0.));
+        let ScrollDelta::Pixels(d) = wheel_delta(ScrollDelta::Lines(point(-3., 0.)), true) else { panic!("not pixels") };
+        assert_eq!((d.x.as_f32(), d.y.as_f32()), (-53., 0.));
+    }
+
+    #[test]
+    fn a_touchpads_pixels_stay_as_they_came() {
+        let ScrollDelta::Pixels(d) = wheel_delta(ScrollDelta::Pixels(point(px(0.), px(7.))), false) else { panic!("not pixels") };
+        assert_eq!(d.y.as_f32(), 7.);
     }
 }

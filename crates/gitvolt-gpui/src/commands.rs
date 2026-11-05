@@ -105,7 +105,16 @@ pub fn combo_of(k: &Keystroke) -> Option<String> {
         return None;
     }
     let primary = if m.platform { Some("Cmd") } else if m.control { Some("Ctrl") } else { None };
+    // A Shift+digit by the character it types on a US or a German keyboard: the web has the key's code, a platform here gives
+    // the character and takes the Shift away.
+    let shifted_digit = primary.and(match k.key.as_str() {
+        "!" => Some("1"),
+        "@" | "\"" => Some("2"),
+        "#" | "section" => Some("3"),
+        _ => None,
+    });
     let key = match k.key.as_str() {
+        _ if shifted_digit.is_some() => shifted_digit.unwrap_or_default().to_string(),
         "tab" => "Tab".to_string(),
         "pageup" => "PageUp".to_string(),
         "pagedown" => "PageDown".to_string(),
@@ -115,10 +124,6 @@ pub fn combo_of(k: &Keystroke) -> Option<String> {
         "down" => "Down".to_string(),
         "left" => "Left".to_string(),
         "right" => "Right".to_string(),
-        // A Shift+digit by the character it types, as some layouts report it.
-        "!" if m.shift => "1".to_string(),
-        "@" if m.shift => "2".to_string(),
-        "#" if m.shift => "3".to_string(),
         key if key.len() == 1 => key.to_uppercase(),
         key if key.starts_with('f') && key[1..].parse::<u8>().is_ok() => key.to_uppercase(),
         _ => return None,
@@ -135,7 +140,7 @@ pub fn combo_of(k: &Keystroke) -> Option<String> {
     if m.alt {
         parts.push("Alt");
     }
-    if m.shift {
+    if m.shift || shifted_digit.is_some() {
         parts.push("Shift");
     }
     parts.push(&key);
@@ -426,6 +431,9 @@ pub fn hamburger_rows(this: &WeakEntity<GitVolt>, v: &GitVolt, cx: &App) -> Vec<
 impl GitVolt {
     /// The app layer of the key router: a chord that names a usable command runs it.
     pub fn app_key(&mut self, k: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if k.key == "escape" && !k.modifiers.modified() && self.cancel_drag(cx) {
+            return true;
+        }
         let Some(combo) = combo_of(k) else { return false };
         // Settings owns the keys while it's open, not while it's the floating editor.
         if self.settings_ui.open && !self.settings_ui.floating {
@@ -528,6 +536,11 @@ mod tests {
         assert_eq!(combo_of(&key("f7")).as_deref(), Some("F7"));
         assert_eq!(combo_of(&key("shift-f8")).as_deref(), Some("Shift+F8"));
         assert_eq!(combo_of(&key("alt-1")).as_deref(), Some("Alt+1"));
+        // Ctrl+Shift+digit as a platform gives it: the character, no Shift. US, then German.
+        let typed = |c: &str| Keystroke { modifiers: Modifiers::control(), key: c.into(), key_char: Some(c.into()) };
+        for (c, combo) in [("!", "Ctrl+Shift+1"), ("@", "Ctrl+Shift+2"), ("#", "Ctrl+Shift+3"), ("\"", "Ctrl+Shift+2"), ("section", "Ctrl+Shift+3")] {
+            assert_eq!(combo_of(&typed(c)).as_deref(), Some(combo));
+        }
         assert_eq!(combo_of(&key("ctrl-tab")).as_deref(), Some("Ctrl+Tab"));
         assert_eq!(combo_of(&key("ctrl-,")).as_deref(), Some("Ctrl+,"));
         assert_eq!(combo_of(&key("a")), None);

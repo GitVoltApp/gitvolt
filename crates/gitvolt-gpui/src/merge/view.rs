@@ -277,7 +277,7 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
         }
         cx.stop_propagation();
         let delta = e.delta.pixel_delta(window.line_height());
-        let (dx, dy) = if e.modifiers.shift { (delta.y, px(0.)) } else { (delta.x, delta.y) };
+        let (dx, dy) = (delta.x * crate::diff::view::MONACO_WHEEL, delta.y * crate::diff::view::MONACO_WHEEL);
         weak.update(cx, |this, cx| {
             this.with_merge(cx, |m, _| {
                 if index >= m.editor_count() {

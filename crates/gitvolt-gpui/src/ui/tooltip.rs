@@ -82,7 +82,6 @@ impl Tips {
         self.shown.is_some()
     }
 
-    #[cfg(test)]
     pub fn text(&self) -> Option<SharedString> {
         match &self.shown.as_ref()?.spec.content {
             Content::Text(t) => Some(t.clone()),

@@ -113,3 +113,32 @@ finish() {
   echo "RESULT $(basename "${FLOW_NAME:-$0}" .sh): $((CHECKS - FAILS))/$CHECKS checks, $FAILS failures"
   [ "$FAILS" = 0 ]
 }
+# A repository with a long graph, fast, with a file of many lines, and a change on top of it in the working copy.
+long_repo() {
+  local dir=$WORK/flows/$1 n=${2:-600}
+  rm -rf "$dir"; mkdir -p "$dir"
+  g "$dir" init -q -b main
+  g "$dir" config user.name 'Ada Fixture'; g "$dir" config user.email ada@example.com
+  python3 - "$n" <<'PY' | g "$dir" fast-import --quiet
+import sys
+n = int(sys.argv[1])
+text = "".join(f"line {i} of the long file, with some words to select\n" for i in range(3000))
+out = sys.stdout
+mark = 0
+for i in range(n):
+    mark += 1
+    body = text.replace(f"line {i * 3} of", f"LINE {i * 3} of") if i else text
+    msg = f"Commit number {i} in the long fixture"
+    out.write(f"commit refs/heads/main\nmark :{mark}\ncommitter Ada Fixture <ada@example.com> {1700000000 + i * 3600} +0000\ndata {len(msg)}\n{msg}\n")
+    if mark > 1:
+        out.write(f"from :{mark - 1}\n")
+    out.write(f"M 100644 inline long.txt\ndata {len(body)}\n{body}\n")
+    other = f"file {i}\n"
+    out.write(f"M 100644 inline dir/f{i % 150}.txt\ndata {len(other)}\n{other}\n\n")
+    if i % 50 == 25:
+        out.write(f"reset refs/heads/topic/b{i}\nfrom :{mark}\n\n")
+PY
+  g "$dir" checkout -q main
+  sed -i 's/^line 1000 of/LINE ONE THOUSAND of/; s/^line 2500 of/LINE TWENTY-FIVE HUNDRED of/' "$dir/long.txt"
+  echo "$dir"
+}

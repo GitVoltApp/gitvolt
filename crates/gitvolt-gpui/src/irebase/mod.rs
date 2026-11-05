@@ -664,6 +664,20 @@ impl GitVolt {
         }
     }
 
+    /// Esc during a row's or a chip's drag: the plan stays as it was.
+    pub fn cancel_rebase_drag(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(s) = self.tabs.get_mut(self.active).and_then(|t| t.rebase.as_mut()).filter(|s| s.view_open) else { return false };
+        let row = s.row_drag.as_ref().is_some_and(|d| d.active);
+        let chip = s.chip_drag.as_ref().is_some_and(|d| d.active);
+        if !row && !chip {
+            return false;
+        }
+        s.row_drag = None;
+        s.chip_drag = None;
+        cx.notify();
+        true
+    }
+
     /// The release: a drag lands, a press that didn't drag is a click.
     pub fn end_rebase_drag(&mut self, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
