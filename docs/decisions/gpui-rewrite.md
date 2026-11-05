@@ -6,10 +6,21 @@ doesn't write. **The rewrite's goal is the current look, 1:1; most of the app is
 
 ## What the slice has
 
-Title bar with window buttons and resize edges, repository tabs, the toolbar's layout, the sidebar's
-five panels and its folded strip, the graph table with bands, lines, nodes, chips and the collapse
-zone, the status bar, reloads on the core's events, and the default dark theme. Sizes and colours are
-the web UI's, read from its CSS and from the running app.
+Title bar with window buttons and resize edges, repository tabs you can drag along the strip, the
+toolbar, the sidebar's panels (filter, sort, collapse, dividers, width, the narrow strip, hover cards),
+the graph table (columns that resize, hide and are remembered, chips with `+N`, the WIP row, the collapse
+zone and its shade, Load older commits, the dim on resting on a branch's chip), avatars, the status bar,
+reloads on the core's events, and the default dark theme. Sizes and colours are the web UI's, read from its
+CSS and from the running app.
+
+The shared UI every later feature builds on is in `crates/gitvolt-gpui/src/ui` (its README says how to
+use it): text fields and textareas with IME, tooltips and hover cards, context and dropdown menus, arming in
+place, popovers, dialogs, select, switch, checkbox and keycaps, toasts and banners. One table of commands
+(`src/commands.rs`) drives the shortcuts, the hamburger and the command palette, which ranks as `fuzzysort`
+does; `/`, `@` and `>` work. Ctrl+V goes to the commit, file or branch the clipboard names, and Ctrl+F finds in
+the graph or an open file. Right-click menus are there on graph rows, chips, the header, the sidebar, tabs, the
+tab bar, file rows and a diff's text, with the web UI's rows and tooltips; Copy, Compare, Open in, File history,
+Show in graph and the like work, and every row that needs a write or a dialog holds its place, disabled.
 
 The details panel has a commit's ids, every parent as a link, its author and message, and its files, by
 path (with Sort by status) or as a tree, with "View all files" and its filter row, and the arrows and
@@ -30,11 +41,11 @@ a row, changed bytes by position, the bar's marks); an image in Side-by-side, Sw
 Difference with zoom, pan, Match sizes, the backgrounds and its Hex or Source toggle. "Open in" lists
 every opener, as the app's `Api` wires them.
 
-Not there yet, by size of the work: every write (the toolbar's buttons are disabled, and so hunk and
-line staging, and editing in a diff), the MR/PR views and review comments, Markdown, Mermaid, PDF and
-media views (a PDF or media file shows as hex), settings, profiles and other themes, avatars, the
-command palette and menus, find, tooltips, branch presets, accessibility roles, spell check, zoom, and
-macOS and Windows checks. In the diff: moved-code detection and code lens. The core still runs on a
+Not there yet, by size of the work: every write (the toolbar's buttons and the menus' rows are disabled,
+and so hunk and line staging, and editing in a diff), the MR/PR views and review comments, Markdown, Mermaid,
+PDF and media views (a PDF or media file shows as hex), settings, profiles and other themes, tab groups,
+branch presets, the Keyboard Shortcuts panel, accessibility roles, spell check, zoom, and macOS and Windows
+checks. In the diff: moved-code detection and code lens. The core still runs on a
 temporary data directory until this build writes.
 
 Differences from the web UI that are known, in the area that's there:
@@ -48,7 +59,7 @@ Differences from the web UI that are known, in the area that's there:
   loaded, which depends on what was opened before: a Markdown fence is coloured here from the start.
 - **File History:** the list's width isn't remembered; a file with no history closes the panel instead
   of opening over it; going back and forward to it isn't there.
-- **Blame** has no tooltip. Blame from Diff View opens on Changes, with the toggle off, as the web UI does.
+- **Blame** from Diff View opens on Changes, with the toggle off, as the web UI does.
 - **Images:** AVIF isn't decoded; a GIF shows its first frame; an SVG draws through `usvg`, not Chromium;
   a side over 4096 px holds a smaller copy, and above 100% stays smooth where the crisp copy would pass
   that; zooming out samples linearly. No right-click menu, no keyboard on the swipe handle, and the
@@ -58,10 +69,36 @@ Differences from the web UI that are known, in the area that's there:
   login shell's; the opener from Settings isn't read; the last one used lasts the session; stored
   versions' copies go in a `gitvolt-gpui` cache folder of their own.
 - **File list:** View all files is for commits, not the WIP row (`Request::WorktreeFiles`). Folder rows
-  have no change counts or guide lines. A text field's caret stays at the end, with no IME.
+  have no change counts or guide lines.
+- **Text fields:** the caret doesn't blink, since an idle app costs nothing. There's no spell check and no
+  right-click menu in a field.
+- **Tooltips and cards** appear without the 150 ms fade. A card takes no pointer: nothing floats that the
+  pointer can enter.
+- **Menus:** a row's highlight doesn't fade in (the web UI's 50 ms). A split button's hold doesn't open its
+  menu yet, since no split button acts. The Open in dropdown in the diff's toolbar is still its own menu, without
+  press, drag and release; the same list in a file's right-click menu is the shared one. No forge rows,
+  and which of Fast-forward, Merge and Rebase a branch offers is approximated by where its row is, until they're
+  wired. Forge's and tab groups' rows are absent or disabled.
+- **Chips:** a truncated chip doesn't float its full copy on hover, a selected commit doesn't show the dim
+  chip of the branch it's on, a stack from `+N` is read-only (its right-click is on the `+N`, by submenus), and a
+  remote's icon is the cloud, not its forge's mark. Dragging a branch onto another isn't there.
+- **Graph:** rows change colour at once, without the 200 and 500 ms easing. The table clips where the web UI
+  scrolls sideways, so a hand-set wide Message runs off the edge, and a graph with too many lanes for its
+  default width shows the collapse zone sooner than it would. The pin in the header says the trunk and doesn't
+  pick another. Column resizers and panel dividers are for the mouse, not the arrow keys.
+- **Sidebar:** no eye on a row, since there are no presets; a remote's folder has a plain folder icon; a card
+  doesn't list an MR. Copy URL on a remote is disabled until its URL is read.
+- **Tabs:** a dragged tab doesn't slide; there are no groups, and Add to new group is disabled. Rename lasts
+  the session.
+- **Sizes** are remembered in `layout.json` in this build's cache folder, not in the profile, since there are no
+  profiles here yet.
+- **Palette:** no Settings or recent repositories yet. An action that isn't ported is listed and says so when
+  picked.
+- **Go to:** a pasted forge link or MR number says the forge views aren't here yet.
+- **Find:** a full hash outside the loaded window says so rather than loading until it appears. In a file
+  it's this box and not Monaco's widget, without its regex, case or whole-word toggles.
 - **Commit:** no committer row, edit button or copying an id; a parent that isn't loaded says so instead of
   loading more of the graph.
-- **Toast:** one kind, for a few seconds, no details.
 
 ## Dependency
 
@@ -100,9 +137,10 @@ Both are optimized builds without LTO. The CEF build has debug assertions on in 
 
 ### Reading the numbers
 
-- **The GPUI build does far less.** It has no diff view, no MR views and few of the features whose
-  code the web UI loads at startup. Its memory will grow as they arrive, so ~9× is an upper bound
-  on the final gain, not a forecast. The same goes for size: it has no forge layer yet.
+- **The GPUI build does less.** The table above was measured when it had only the main view, before the
+  diff and everything since. It still has no MR views or settings, whose code the web UI loads at startup. Its
+  memory has grown and will grow as they arrive, so ~9× is an upper bound on the final gain, not a forecast.
+  The same goes for size: it links only the forge layer's Gravatar client so far.
 - **The summed RSS overcounts CEF:** its processes share `libcef.so`, and a sandboxed renderer's
   PSS can't be read, so there's no exact PSS for it. Anonymous memory is the fairer figure.
 - **Scrolling looks the same:** both hold the display's rate with no frame over 20 ms. The gain is

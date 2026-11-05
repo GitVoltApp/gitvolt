@@ -40,14 +40,42 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   `this.update`. `api.dispatch(Request::X { .. })` gives JSON (camelCase, as `ui/src/api/gen/` types
   it). Writes go through the same `Request`s, so the core's write pipeline and journal apply. Add a
   typed method to `Api` when a payload is big, as `Api::graph` does.
+- **What floats:** `src/ui/` is the shared UI; `ui::init` once, `ui::begin_frame` first in the root's
+  `render`, `ui::overlays` as the root's last children. Its state is the `Ui` global, so anything with
+  an `App` can open or close it. What's in it:
+  - `ui::input::TextInput`: `cx.new(|cx| TextInput::new(cx).placeholder("Filter"))`, a child like any
+    other; `TextInput::multiline` for a textarea. It tells its owner through `InputEvent` (`cx.subscribe`).
+    Up, Down and Esc go on to the parent unless the owner claims them (`claim_arrows`, `claim_escape`).
+    A subscription has no window: to move the keyboard from one, set `GitVolt::focus_next_frame`.
+  - `ui::tooltip::tip("text", child)`: at once, under the target. `.delay(ms)`, `.placement(..)`, and
+    `Anchor::new(child).card(key, build)` for rich content (a hover card). A target needs no id.
+  - `ui::anchor("name", child)` records where a control is, for what's placed against it.
+  - `ui::menu`: rows are `MenuRow::action/submenu/header/Separator`, `.shortcut`, `.variants`, `.swatch`,
+    `.disabled(why)`. `MenuRow::pending` holds a row's place until its action is ported. Open with
+    `menu::open_context(rows, e.position, window, cx)` from a press, or `menu::open_below("anchor", rows,
+    ..)`: from `on_mouse_down`, not `on_click`, so press, drag and release picks. `src/menus.rs` has
+    what each right-click shows: wire a write by replacing its `pending` row.
+  - `ui::arm::request(req, Origin::control("anchor"), then, window, cx)` arms a control in place; in a
+    menu row's `run`, pass `Origin::current(cx)`. With no control (`Origin::None`) it asks in a popover.
+  - `ui::popover::ask_choice`, `ui::modal::open` and `ui::modal::prompt` (a dialog takes the keyboard
+    in its own subtree, so no shortcut acts behind it), `ui::toast::show` and `show_with`,
+    `ui::banner::banners`, and `ui::controls`: `button`, `select`, `switch`, `check_row`, `keycaps`,
+    `clearable`.
+  - `ui::fuzzy::go` ranks as `fuzzysort` does.
+- **Commands:** `src/commands.rs` is the one table of actions: id, label, group, icon, tooltip, chords,
+  when and run. The hamburger, the chords, the toolbar's tooltips and the palette read it; a row with no
+  `run` shows disabled until it's ported. To add a chord, add a row: bare keys stay GPUI bindings.
+- **The palette** can open as a picker: `GitVolt::choose(Choices { .. })`.
+- **Sizes a drag sets** go through `GitVolt::save_layout` (`src/layout.rs`).
 - **Drawing:** `theme.rs` has `ui/src/theme/tokens.css`'s colours: add tokens there with the CSS's
   name, never a stray hex. Paint-heavy views use `canvas`, as `graph.rs` and `diff/view.rs`.
 - **Icons:** add a Lucide name to `ICONS` in `assets/generate.mjs`, run it from `ui/` (`node
   ../crates/gitvolt-gpui/assets/generate.mjs`), then `icon("name", size, color)`.
 - **Text:** the UI font is `system-ui`'s; mono text is `diff::view::FONT`. There's no `letter-spacing`
   in GPUI; uppercase captions go without it.
-- **No input device here:** `GITVOLT_SHOW` (`bench.rs`) opens things by script for screenshots; extend
-  it as needed. Clicks and keys are checked in tests with GPUI's `TestAppContext` (see `app.rs`).
+- **No input device here:** `GITVOLT_SHOW` (`bench.rs`) opens things by script for screenshots
+  (`GitVolt::show_ui`: `menu3`, `sub7`, `hamburger`, `palette=q`, `find=q`, `filter=q`, `prompt`, `armed`;
+  `-` for no selection or no file); extend it as needed. Clicks and keys are checked in tests with GPUI's `TestAppContext` (see `app.rs`).
 
 ## Tests
 

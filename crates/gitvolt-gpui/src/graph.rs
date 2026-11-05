@@ -14,6 +14,8 @@ const DOT_EVERY: f32 = 2. * LINE_W;
 
 #[derive(Clone, Copy)]
 pub struct RowGeometry {
+    /// Where the row's chips end, from the row's left.
+    pub chips_end: f32,
     /// Where the graph column starts, from the row's left.
     pub graph_x: f32,
     pub graph_w: f32,
@@ -134,7 +136,8 @@ pub fn paint_row(bounds: Bounds<Pixels>, row: &RowView, ix: usize, g: RowGeometr
         let y = origin.y + px(((ROW_H - thick) / 2.).floor());
         let to = origin.x + px(node.unwrap_or_else(|| packed_x(g.graph_w) - NODE_R));
         let tint = if g.head { color } else { theme::lane_alpha(row.color as usize, CONNECTOR_ALPHA) };
-        window.paint_quad(fill(Bounds::from_corners(point(bounds.origin.x, y), point(to, y + px(thick))), tint));
+        // From where the chips end: it reaches the node, it doesn't run under them.
+        window.paint_quad(fill(Bounds::from_corners(point(bounds.origin.x + px(g.chips_end), y), point(to, y + px(thick))), tint));
     }
     let content_y = ix as f32 * ROW_H;
     let mask = ContentMask { bounds: Bounds::from_corners(point(origin.x, origin.y), point(origin.x + px(area), origin.y + px(ROW_H))) };

@@ -78,6 +78,16 @@ pub fn fit_count(widths: &[f32], avail: f32, more: impl Fn(usize) -> f32) -> usi
     1
 }
 
+/// Where a row's chips end, for the connector to start: what fits, and the `+N` for the rest.
+fn chips_end(row: &RowView, width: f32, cx: &App) -> f32 {
+    let widths: Vec<f32> = row.chips.iter().map(|c| chip_width(c, cx)).collect();
+    let more_w = |n: usize| crate::ui::text_width(&format!("+{n}"), 11., FontWeight::NORMAL, cx) + 8. + CHIP_SPACING;
+    let shown = fit_count(&widths, width - CELL_PAD, more_w);
+    let hidden = widths.len().saturating_sub(shown);
+    let sum: f32 = widths.iter().take(shown).sum::<f32>() + shown.saturating_sub(1) as f32 * CHIP_SPACING;
+    (CELL_PAD + sum + if hidden > 0 { more_w(hidden) } else { 0. }).min(width)
+}
+
 /// A chip. `row`: its row's group, whose hover lights it as selecting the row does.
 fn chip_inner(c: &Chip, lane: usize, full: bool, lit: bool, row: Option<SharedString>) -> Div {
     let tint = theme::lane_alpha(lane, if c.head || lit { 0.45 } else { 0.25 });
@@ -450,7 +460,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                     let is_selected = selected == Some(ix);
                     let filter = keep.as_ref().is_some_and(|k| !k.contains(&ix));
                     let branch = branch_keep.as_ref().is_some_and(|k| !k.contains(&ix));
-                    let geometry = RowGeometry { graph_x: cols.labels, graph_w: cols.graph, clipped: cols.clipped, selected: is_selected, head: graph.head_row == Some(ix) };
+                    let geometry = RowGeometry { chips_end: chips_end(row, cols.labels, cx), graph_x: cols.labels, graph_w: cols.graph, clipped: cols.clipped, selected: is_selected, head: graph.head_row == Some(ix) };
                     let painter = graph.clone();
                     let picture = if row.kind == NodeKind::Commit { crate::avatars::image_for(&row.email, &row.author) } else { None };
                     let group: SharedString = format!("row-{ix}").into();
