@@ -491,7 +491,8 @@ pub fn reply_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, number: u64, dis
     div().flex().flex_col().gap(px(6.)).child(crate::ui::anchor(format!("mr-field:{key}"), div().child(field))).child(row)
 }
 
-fn note_view(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, d: &ForgeDiscussion, n: &ForgeNote, first: bool, avatar: bool, lead: Option<AnyElement>, where_: Option<AnyElement>, cx: &mut Context<GitVolt>) -> AnyElement {
+#[allow(clippy::too_many_arguments)]
+fn note_view(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, d: &ForgeDiscussion, n: &ForgeNote, first: bool, avatar: bool, in_card: bool, lead: Option<AnyElement>, where_: Option<AnyElement>, cx: &mut Context<GitVolt>) -> AnyElement {
     let number = mr.number;
     let key = format!("mr-note:{}", n.id);
     let me = this.tabs.iter().find(|t| t.id == tab).and_then(|t| t.forge.me.clone());
@@ -626,7 +627,7 @@ fn note_view(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, d: &Fo
         .flex()
         .flex_col()
         .min_w_0()
-        .px(px(12.))
+        .when(!(avatar || in_card), |e| e.px(px(12.)))
         .py(px(if first { 8. } else { 6. }))
         .when(!first, |e| e.border_t_1().border_color(theme::section_border()))
         .child(head)
@@ -725,7 +726,9 @@ fn discussion_card(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, 
     let rolled = rolls && !chosen.unwrap_or(false);
     let open = replies.is_empty() || if rolls { !rolled } else { chosen.unwrap_or(!d.resolved) };
     let pos = d.notes.iter().find_map(|n| n.position.as_ref());
-    let card = || div().flex().flex_col().min_w_0().flex_1().rounded(px(8.)).border_1().border_color(theme::section_border()).bg(theme::panel_bg1()).text_color(theme::text_normal());
+    // In a card at its line in the diff, the card is its frame.
+    let card = || div().flex().flex_col().min_w_0().flex_1().when(show_where, |d| d.rounded(px(8.)).border_1().border_color(theme::section_border()).bg(theme::panel_bg1())).text_color(theme::text_normal());
+    let side_pad = if show_where { 12. } else { 0. };
     let did = d.id.clone();
     let set_fold = move |v: &mut GitVolt, on: bool, cx: &mut Context<GitVolt>| {
         if let Some(ui) = v.mr_ui(tab, number) {
@@ -770,7 +773,7 @@ fn discussion_card(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, 
         let resolved = div().flex().flex_wrap().gap_x(px(3.)).pl(px(24.)).text_size(px(11.)).text_color(theme::text_secondary()).child("Resolved").when_some(resolved_at, |e, w| e.child(w)).when_some(d.resolved_by.clone(), |e, b| e.child("by").child(div().text_color(theme::text_normal()).child(b)));
         let mut c = card().child(div().id(ElementId::Name(format!("mr-rolled:{}", d.id).into())).flex().flex_col().px(px(12.)).py(px(8.)).cursor_pointer().on_click(cx.listener(move |v, _, _, cx| fold_b(v, true, cx))).child(div().flex().items_center().gap(px(6.)).min_h(px(22.)).text_size(px(12.)).child(lead).child(line)).child(resolved));
         if !replies.is_empty() {
-            c = c.child(replies_row(this, &replies, false, Box::new(fold_a.clone()), &d.id, cx));
+            c = c.child(replies_row(this, &replies, false, Box::new(fold_a.clone()), &d.id, side_pad, cx));
         }
         return Some(c.into_any_element());
     }
@@ -786,24 +789,24 @@ fn discussion_card(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, 
             .when_some(p.snippet.clone().filter(|_| !over), |e, s| e.child(div().mt(px(6.)).px(px(8.)).py(px(5.)).rounded(px(4.)).bg(theme::app_bg()).font_family(crate::app::MONO_FONT).text_size(px(11.)).line_height(px(16.5)).text_color(theme::text_secondary()).overflow_hidden().whitespace_nowrap().children(s.lines().map(|l| div().child(if l.is_empty() { " ".to_string() } else { l.to_string() })).collect::<Vec<_>>())))
             .into_any_element()
     });
-    let mut c = card().child(note_view(this, tab, kind, mr, d, first, true, !show_where, lead, where_, cx));
+    let mut c = card().child(note_view(this, tab, kind, mr, d, first, true, !show_where, !show_where, lead, where_, cx));
     if !replies.is_empty() {
-        c = c.child(replies_row(this, &replies, open, Box::new(fold_a.clone()), &d.id, cx));
+        c = c.child(replies_row(this, &replies, open, Box::new(fold_a.clone()), &d.id, side_pad, cx));
     }
     if open {
         for n in d.notes.iter().filter(|n| n.id != first.id) {
             if n.system {
                 let p = parse_system_note(&n.body, &mr.web_url);
                 let parts = note_parts(&p.parts, &format!("mr-sys:{}", n.id), cx);
-                c = c.child(div().flex().items_start().gap(px(8.)).px(px(12.)).py(px(4.)).border_t_1().border_color(theme::section_border()).text_size(px(12.)).text_color(theme::text_secondary()).min_w_0().child(node(p.kind)).child(event_line(this, &n.author.name, parts, n.created_at).flex_1().min_w_0()));
+                c = c.child(div().flex().items_start().gap(px(8.)).px(px(side_pad)).py(px(4.)).border_t_1().border_color(theme::section_border()).text_size(px(12.)).text_color(theme::text_secondary()).min_w_0().child(node(p.kind)).child(event_line(this, &n.author.name, parts, n.created_at).flex_1().min_w_0()));
             } else {
-                c = c.child(note_view(this, tab, kind, mr, d, n, false, false, None, None, cx));
+                c = c.child(note_view(this, tab, kind, mr, d, n, false, false, !show_where, None, None, cx));
             }
         }
         // A discussion's own reply (GitLab: any; GitHub, Forgejo: review threads). It opens by itself when a draft waits in it.
         if kind == ForgeKind::GitLab || d.id.starts_with("thread-") {
             let has_draft = this.tabs.iter().find(|t| t.id == tab).and_then(|t| t.mr_views.get(&number)).is_some_and(|u| u.reply_open.contains(&d.id) || u.replies.get(&d.id).is_some_and(|f| !f.read(cx).text(cx).is_empty()));
-            let foot = div().flex().flex_col().items_start().gap(px(6.)).px(px(12.)).py(px(8.)).border_t_1().border_color(theme::section_border());
+            let foot = div().flex().flex_col().items_start().gap(px(6.)).px(px(side_pad)).py(px(8.)).border_t_1().border_color(theme::section_border());
             if has_draft {
                 if let Some(field) = this.mr_field(tab, number, FieldKey::Reply(d.id.clone()), cx) {
                     c = c.child(foot.child(div().w_full().child(reply_box(this, tab, kind, number, Some(d), field, Some(d.id.clone()), cx))));
@@ -825,7 +828,8 @@ fn discussion_card(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, 
     Some(c.into_any_element())
 }
 
-fn replies_row(this: &GitVolt, replies: &[&ForgeNote], open: bool, fold: Box<dyn Fn(&mut GitVolt, bool, &mut Context<GitVolt>)>, id: &str, cx: &mut Context<GitVolt>) -> AnyElement {
+#[allow(clippy::too_many_arguments)]
+fn replies_row(this: &GitVolt, replies: &[&ForgeNote], open: bool, fold: Box<dyn Fn(&mut GitVolt, bool, &mut Context<GitVolt>)>, id: &str, side_pad: f32, cx: &mut Context<GitVolt>) -> AnyElement {
     let n = replies.len();
     let mut people: Vec<&gitvolt_core::forge::types::ForgeUser> = Vec::new();
     for r in replies {
@@ -842,7 +846,7 @@ fn replies_row(this: &GitVolt, replies: &[&ForgeNote], open: bool, fold: Box<dyn
         .flex()
         .items_center()
         .gap(px(8.))
-        .px(px(12.))
+        .px(px(side_pad))
         .py(px(4.))
         .border_t_1()
         .border_color(theme::section_border())

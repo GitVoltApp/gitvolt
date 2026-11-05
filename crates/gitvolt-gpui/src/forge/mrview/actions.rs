@@ -140,7 +140,7 @@ impl GitVolt {
         cx.notify();
     }
 
-    fn mr_composer(&mut self, tab: u32, number: u64, cx: &mut Context<Self>) -> (Entity<TextInput>, &'static str) {
+    pub fn mr_composer(&mut self, tab: u32, number: u64, cx: &mut Context<Self>) -> (Entity<TextInput>, &'static str) {
         let existing = self.mr_ui(tab, number).and_then(|u| u.review.input.clone());
         let input = existing.unwrap_or_else(|| {
             let i = cx.new(TextInput::multiline);
@@ -557,7 +557,7 @@ pub fn mr_forms(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, det
         body = body.child(list);
     }
     for d in &placed.unplaced {
-        body = body.child(super::super::review::zones::draft_card(this, tab, kind, d, false, cx));
+        body = body.child(crate::forge::review::zones::draft_card(this, tab, kind, d, false, cx));
     }
     body = body.child(composer);
     Some(div().id("mr-pending").flex().flex_col().gap(px(8.)).flex_none().rounded(px(8.)).border_1().border_color(theme::mix(theme::yellow(), 0.45, theme::section_border())).bg(theme::panel_bg1()).child(head).child(body).into_any_element())
@@ -567,7 +567,7 @@ fn t_discussions(this: &GitVolt, tab: u32, number: u64) -> Vec<gitvolt_core::for
     this.tabs.iter().find(|t| t.id == tab).and_then(|t| t.forge.discussions.get(&number).cloned()).unwrap_or_default()
 }
 
-fn review_composer(this: &mut GitVolt, tab: u32, kind: ForgeKind, number: u64, keep: bool, window: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
+pub fn review_composer(this: &mut GitVolt, tab: u32, kind: ForgeKind, number: u64, keep: bool, window: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
     let (input, event) = this.mr_composer(tab, number, cx);
     let t = this.tabs.iter().find(|t| t.id == tab);
     let session = t.and_then(|t| t.forge.review.clone()).filter(|s| s.number == number);

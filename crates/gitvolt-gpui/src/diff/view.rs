@@ -34,7 +34,7 @@ const MINIMAP_MAX: f32 = 120.;
 const SCROLLBAR_W: f32 = 10.;
 pub const RULER_W: f32 = 30.;
 /// A split's left pane has more margin before its text than the right one (Monaco's).
-const SPLIT_LEFT_MARGIN: f32 = 18.;
+pub const SPLIT_LEFT_MARGIN: f32 = 18.;
 const TOOLBAR_H: f32 = 33.;
 const TOOLBAR_NARROW: f32 = 900.;
 pub const FONT: &str = "JetBrains Mono";
@@ -175,7 +175,22 @@ impl Layout {
 }
 
 /// The open file of a tab.
+/// What review mode's gutter and the frame need of the session.
+pub struct ReviewState {
+    pub old: std::collections::HashSet<u32>,
+    pub new: std::collections::HashSet<u32>,
+    pub icons: HashMap<(bool, u32), Vec<gitvolt_core::forge::types::ForgeDiscussion>>,
+    pub banner: Option<String>,
+    pub tab: u32,
+}
+
 pub struct DiffState {
+    /// Review mode: its cards' places among the rows, what they measured, and the elements built for this frame.
+    pub zones: Vec<crate::forge::review::zones::ZoneSlot>,
+    pub zone_heights: Rc<std::cell::RefCell<HashMap<String, f32>>>,
+    pub zone_elements: Rc<std::cell::RefCell<Vec<(String, AnyElement)>>>,
+    pub review: Option<ReviewState>,
+    pub review_drag: Option<(bool, u32, u32)>,
     pub file: FileChange,
     pub view: ViewKind,
     pub mode: Mode,
@@ -290,6 +305,11 @@ impl DiffState {
             hover: None,
             hscroll: 0.,
             selection: None,
+            zones: Vec::new(),
+            zone_heights: Default::default(),
+            zone_elements: Default::default(),
+            review: None,
+            review_drag: None,
             pending_line: None,
             found: Rc::new(Vec::new()),
             found_at: None,
@@ -379,10 +399,11 @@ impl DiffState {
             }
             ViewKind::Diff => {
                 let list = rows(&data.ops, self.mode, &self.expanded);
-                match self.hunks.as_ref().filter(|_| self.mode == Mode::Hunk) {
+                let list = match self.hunks.as_ref().filter(|_| self.mode == Mode::Hunk) {
                     Some(h) => super::staging::with_headers(list, &h.hunks),
                     None => list,
-                }
+                };
+                crate::forge::review::zones::with_zones(list, &self.zones, self.mode == Mode::Split)
             }
         };
         self.changes = change_starts(&rows);
@@ -453,6 +474,10 @@ impl DiffState {
             }
             if matches!(r.kind, RowKind::HunkHeader { .. }) {
                 y += super::staging::HUNK_ROW_H;
+                continue;
+            }
+            if let RowKind::Zone { zone } = r.kind {
+                y += self.zones.get(zone as usize).map_or(0., |z| z.height);
                 continue;
             }
             let mut lines = 1;
@@ -611,6 +636,20 @@ impl DiffState {
         if self.split() { (SPLIT_LEFT_MARGIN + num_w() + 2., width / 2. + num_w() + 2.) } else { (num_w() + 1., num_w() + 1.) }
     }
 
+    pub fn split_shown(&self) -> bool {
+        self.split()
+    }
+
+    /// The lines a selection covers on a side, 1-based.
+    pub fn selection_lines(&self, new_side: bool) -> Option<(u32, u32)> {
+        let sel = self.selection?;
+        let (from, to) = sel.range();
+        let line = |row: usize| self.rows.get(row).and_then(|r| if new_side { r.new } else { r.old }).map(|n| n + 1);
+        let a = (from.row..=to.row).find_map(line)?;
+        let b = (from.row..=to.row).rev().find_map(line)?;
+        Some((a, b))
+    }
+
     /// The text's left edge, for what's placed against it.
     pub fn gutter_w(&self) -> f32 {
         self.gutter()
@@ -648,7 +687,7 @@ impl Drop for DiffState {
 
 /// The line a selection takes from row `r`.
 fn row_line<'a>(data: &'a DiffData, r: &Row, split: bool, old_side: bool) -> Option<&'a Line> {
-    if matches!(r.kind, RowKind::Hidden { .. } | RowKind::HunkHeader { .. }) {
+    if matches!(r.kind, RowKind::Hidden { .. } | RowKind::HunkHeader { .. } | RowKind::Zone { .. }) {
         return None;
     }
     if split {
@@ -1458,7 +1497,7 @@ fn on_mouse_down(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx
         cx.notify();
         return;
     }
-    if matches!(r.kind, RowKind::HunkHeader { .. }) {
+    if matches!(r.kind, RowKind::HunkHeader { .. } | RowKind::Zone { .. }) {
         return;
     }
     if diff.view == ViewKind::File && (num_w()..num_w() + FOLD_W).contains(&x) {
@@ -1513,6 +1552,9 @@ fn on_text_menu(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx:
 }
 
 fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<GitVolt>) {
+    if this.review_drag_move(e, cx) {
+        return;
+    }
     let Some(diff) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
     let b = diff.body.get();
     let inside = b.contains(&e.position);
@@ -1551,7 +1593,7 @@ fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx
             let hover = inside.then_some((row, x < diff.gutter()));
             // Only what hovering changes: a hidden row, and whether the chevrons show.
             let shows = |h: Option<(usize, bool)>, d: &DiffState| h.map(|(r, g)| (if d.hunks.is_some() || matches!(d.rows.get(r).map(|x| x.kind), Some(RowKind::Hidden { .. })) { Some(r) } else { None }, g && d.view == ViewKind::File));
-            let changed = shows(hover, diff) != shows(diff.hover, diff);
+            let changed = shows(hover, diff) != shows(diff.hover, diff) || (diff.review.is_some() && hover.map(|h| h.0) != diff.hover.map(|h| h.0));
             diff.hover = hover;
             if changed {
                 cx.notify();
@@ -1564,7 +1606,9 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
     let Some(data) = diff.data.clone() else {
         return message(diff, cx).into_any_element();
     };
-    let staging = super::staging::overlays(diff, cx);
+    let mut staging = crate::forge::review::zones::drag_marks(diff);
+    staging.extend(super::staging::overlays(diff, cx));
+    staging.extend(crate::forge::review::zones::overlays(diff, cx));
     let split = diff.split();
     let hover_row = diff.hover.and_then(|(r, _)| matches!(diff.rows.get(r).map(|x| x.kind), Some(RowKind::Hidden { .. })).then_some(r));
     let p = Painter {
@@ -1632,7 +1676,7 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
                                 let b = Bounds::new(point(bounds.origin.x, bounds.origin.y + px(top - scroll)), size(bounds.size.width, px(end - top)));
                                 match rows[ix].kind {
                                     RowKind::Hidden { count, .. } => paint_hidden(b, ix, count, &p, window, cx),
-                                    RowKind::HunkHeader { .. } => {}
+                                    RowKind::HunkHeader { .. } | RowKind::Zone { .. } => {}
                                     _ if p.split => paint_split(b, ix, &rows[ix], &p, window, cx),
                                     _ => paint_inline(b, ix, &rows[ix], &p, window, cx),
                                 }

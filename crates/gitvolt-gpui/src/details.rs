@@ -1049,6 +1049,7 @@ pub fn file_list(id: &'static str, view: ListView, handle: &UniformListScrollHan
                                 .child(div().flex().flex_initial().min_w_0().overflow_hidden().when(unchanged && !on, |d| d.text_color(theme::text_secondary())).children(marked(name, &query)))
                                 .children(this.lfs_mark(&change.path, cx).map(crate::lfs::lfs_mark_element))
                                 .child(div().flex_1())
+                                .children(crate::forge::review::zones::row_badge(this, &change.path, cx))
                                 .when_some(change.conflict.as_deref().map(crate::wip::conflict_label), |d, label| d.child(div().flex_none().ml_auto().text_size(px(11.)).text_color(theme::status_conflicted()).child(label)))
                                 .when(!unchanged && actions.is_none() && change.conflict.is_none(), |d| {
                                     d.child(

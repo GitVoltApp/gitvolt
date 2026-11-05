@@ -150,6 +150,8 @@ pub enum RowKind {
     Hidden { count: u32, region: u32 },
     /// Hunk mode's header above hunk `hunk` of a WIP diff.
     HunkHeader { hunk: u32 },
+    /// A review card's space among the lines: the card itself is laid over it (`forge::review::zones`).
+    Zone { zone: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -431,7 +433,7 @@ pub fn ruler_marks(rows: &[Row]) -> Vec<(usize, usize, bool)> {
                     add(i, false);
                 }
             }
-            RowKind::Same | RowKind::Hidden { .. } | RowKind::HunkHeader { .. } => {}
+            RowKind::Same | RowKind::Hidden { .. } | RowKind::HunkHeader { .. } | RowKind::Zone { .. } => {}
         }
     }
     out

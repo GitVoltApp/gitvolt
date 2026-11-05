@@ -1494,7 +1494,7 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         .bg(theme::action_bar_bg())
         .border_b_1()
         .border_color(theme::section_border())
-        .child(div().flex().flex_1().min_w_0().gap(px(4.)).child(field("toolbar.repo", "REPOSITORY", repo_name, false, repo_menu, cx)).child(tip("Check out a local branch", field("toolbar.branch", "BRANCH", branch, true, repo_menu, cx))))
+        .child(div().flex().flex_1().min_w_0().gap(px(4.)).child(field("toolbar.repo", "REPOSITORY", repo_name, false, repo_menu, cx)).child(tip("Check out a local branch", field("toolbar.branch", "BRANCH", branch, true, repo_menu, cx))).children(crate::forge::review::zones::review_chip(this, cx)))
         .child(
             div()
                 .flex()
@@ -1651,6 +1651,7 @@ impl Render for GitVolt {
         if let Some(m) = self.tabs.get_mut(self.active).and_then(Tab::merge_shown_mut) {
             m.set_size(center, body_h - crate::metrics::panel_bar_h());
         }
+        self.review_sync(window, cx);
         if let Some(tab) = self.tabs.get_mut(self.active) {
             let (width, height) = match &tab.history {
                 Some(h) => {
@@ -1694,6 +1695,7 @@ impl Render for GitVolt {
                 }
             }
         }
+        let submit_popover = crate::forge::review::zones::submit_popover(self, window, cx);
         let tab = self.tabs.get(self.active);
         let strip = tab.filter(|_| folded && !no_sidebar).map(|t| narrow_strip(t, cx));
         let menu = tab.and_then(|t| open_in_menu(t, cx));
@@ -1724,6 +1726,7 @@ impl Render for GitVolt {
         let settings = crate::settings::frame::settings_overlay(self, window, cx);
         let font_picker = crate::settings::fonts::font_picker_overlay(self, window, cx);
         let overlays = crate::ui::overlays(window, cx);
+        let submit_popover = submit_popover;
         let app = div()
             .relative()
             .size_full()
@@ -1832,6 +1835,7 @@ impl Render for GitVolt {
             .child(app)
             .children(settings)
             .children(font_picker)
+            .children(submit_popover)
             .children(overlays)
             .children(resize_handles(window))
             .into_any_element()

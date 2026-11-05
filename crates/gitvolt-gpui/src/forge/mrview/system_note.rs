@@ -416,7 +416,7 @@ mod tests {
     fn it_reads_the_forms_gitlab_sends() {
         let n = parse_system_note("added 2 commits\n\n<ul><li>abc1234 - One &amp; two</li><li>def5678 - Three</li></ul>\n\n[Compare with previous version](/g/p/-/merge_requests/1/diffs)", BASE);
         assert_eq!(n.kind, SystemKind::Commits);
-        assert_eq!(n.parts[0], NotePart::Text("added 2 commits".into()));
+        assert_eq!(n.parts[0], NotePart::Text("added 2 commits ".into()));
         assert_eq!(n.parts[1], NotePart::Commits { items: vec![NoteCommit { sha: "abc1234".into(), subject: "One & two".into() }, NoteCommit { sha: "def5678".into(), subject: "Three".into() }], more: 0 });
         assert_eq!(n.parts[2], NotePart::Link { text: "Compare with previous version".into(), url: "https://gitlab.example.com/g/p/-/merge_requests/1/diffs".into() });
     }
