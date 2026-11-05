@@ -53,6 +53,12 @@ fn decode(base64_text: &str) -> Option<image::RgbaImage> {
 
 impl GitVolt {
     /// What the frame before asked for.
+    /// `resetAvatars`: a setting changed what the core answers, so everyone's asked again.
+    pub fn reset_avatars(&mut self, cx: &mut Context<Self>) {
+        STORE.with(|s| s.borrow_mut().clear());
+        cx.notify();
+    }
+
     pub fn fetch_avatars(&mut self, cx: &mut Context<Self>) {
         let wanted = WANTED.with(|w| std::mem::take(&mut *w.borrow_mut()));
         if wanted.is_empty() || cfg!(test) {

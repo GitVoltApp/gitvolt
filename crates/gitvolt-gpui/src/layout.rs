@@ -60,6 +60,12 @@ impl GitVolt {
         if let Some(m) = v["syncButton"].as_str() {
             self.sync_mode = crate::sync::SyncMode::of(m);
         }
+        if let Some(m) = v["prefs"].as_object() {
+            for (k, x) in m {
+                self.prefs[k] = x.clone();
+            }
+        }
+        crate::metrics::set_density(self.prefs["density"].as_str().unwrap_or("standard"));
         self.saved_columns = v["columns"].clone();
         for kind in KINDS {
             if let Some(h) = v["sidebarPanels"][kind.key()].as_f64() {
@@ -76,7 +82,7 @@ impl GitVolt {
             let hidden: Vec<&str> = HIDEABLE.iter().filter(|(c, _)| tab.hidden_columns.contains(c)).map(|(c, _)| col_key(*c)).collect();
             columns.insert(tab.worktree.clone(), json!({ "labels": p.labels, "graph": p.graph, "author": p.author, "date": p.date, "sha": p.sha, "message": p.message, "hidden": hidden }));
         }
-        json!({ "sidebarWidth": self.sidebar_w, "sidebarNarrow": self.sidebar_narrow, "sidebarPanels": panels, "branchPickerOrder": if self.branch_order_recent { "recent" } else { "alpha" }, "yourReposOrder": if self.repo_order == crate::open::RepoOrder::Alpha { "alpha" } else { "recent" }, "yourReposLayout": if self.repo_grouped { "grouped" } else { "merged" }, "detailsWidth": self.details_w, "detailsSplit": self.details_split, "columns": columns, "wipRatio": self.wip_ratio, "wipCollapsed": self.wip_closed, "syncButton": self.sync_mode.key() })
+        json!({ "prefs": self.prefs, "sidebarWidth": self.sidebar_w, "sidebarNarrow": self.sidebar_narrow, "sidebarPanels": panels, "branchPickerOrder": if self.branch_order_recent { "recent" } else { "alpha" }, "yourReposOrder": if self.repo_order == crate::open::RepoOrder::Alpha { "alpha" } else { "recent" }, "yourReposLayout": if self.repo_grouped { "grouped" } else { "merged" }, "detailsWidth": self.details_w, "detailsSplit": self.details_split, "columns": columns, "wipRatio": self.wip_ratio, "wipCollapsed": self.wip_closed, "syncButton": self.sync_mode.key() })
     }
 
     /// A repository's columns, as they were left.

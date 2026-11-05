@@ -2,6 +2,8 @@
 //! take the first matching scope's tint, a folder's when a scope covers all of it. The scopes live in the profile, by the
 //! repository's common directory. Settings' page isn't here yet: a file's menu adds to a scope through a picker.
 
+pub mod settings_page;
+
 use crate::app::GitVolt;
 use crate::ui::menu::MenuRow;
 use crate::ui::picker::{self, PickItem};

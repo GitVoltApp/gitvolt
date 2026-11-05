@@ -240,6 +240,18 @@ pub struct GitVolt {
     pub active: usize,
     pub focus: FocusHandle,
     pub font: SharedString,
+    /// What `system-ui` is here: an unset UI font.
+    pub base_font: SharedString,
+    pub settings_ui: crate::settings::SettingsUi,
+    /// What the web UI keeps in localStorage: density, the file list's preferences, the zoom.
+    pub prefs: serde_json::Value,
+    pub settings_openers: Option<Rc<Vec<crate::open_in::Opener>>>,
+    pub fetch_schedule: Option<(u32, Task<()>)>,
+    pub relative_clock: Option<Task<()>>,
+    pub editor_font_dirty: bool,
+    /// A minimized window: the background fetch waits.
+    pub window_hidden: bool,
+    pub window_width: f32,
     pub git_version: SharedString,
     pub dragging_scrollbar: bool,
     /// The closed tabs' paths, newest last, for Reopen closed tab.
@@ -328,7 +340,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, window_width: 1600., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -357,7 +369,6 @@ impl GitVolt {
             }
         })
         .detach();
-        self.start_fetch_schedule(cx);
         self.load_state(cx);
         let info = rt.spawn({
             let api = api.clone();
@@ -492,14 +503,14 @@ impl GitVolt {
                         if let Some(old) = tab.graph.as_ref() {
                             let handle = tab.list.0.borrow().base_handle.clone();
                             let (top, view) = (-handle.offset().y.as_f32(), handle.bounds().size.height.as_f32());
-                            let on_screen = tab.selected.filter(|i| (*i as f32 + 1.) * ROW_H > top && (*i as f32) * ROW_H < top + view);
-                            let anchor = on_screen.or(Some((top / ROW_H).floor() as usize));
+                            let on_screen = tab.selected.filter(|i| (*i as f32 + 1.) * crate::metrics::row_h() > top && (*i as f32) * crate::metrics::row_h() < top + view);
+                            let anchor = on_screen.or(Some((top / crate::metrics::row_h()).floor() as usize));
                             if let Some(a) = anchor
                                 && let Some(id) = old.rows.get(a).map(|r| r.id.clone())
                                 && let Some(now) = graph.0.by_sha.get(id.as_ref())
                                 && *now != a
                             {
-                                let to = (top + (*now as f32 - a as f32) * ROW_H).max(0.);
+                                let to = (top + (*now as f32 - a as f32) * crate::metrics::row_h()).max(0.);
                                 handle.set_offset(point(handle.offset().x, px(-to)));
                             }
                         }
@@ -660,14 +671,14 @@ impl GitVolt {
         let sign = if down { 1. } else { -1. };
         // In the graph, a page of rows from the keyboard's row.
         if self.tabs.get(self.active).is_some_and(|t| t.keys == KeyArea::Graph && t.diff.is_none() && t.history.is_none()) {
-            let rows = (((height - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H - crate::table::HEADER_H) / ROW_H).floor() - 1.).max(1.);
+            let rows = (((height - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H - crate::table::HEADER_H) / crate::metrics::row_h()).floor() - 1.).max(1.);
             return self.move_selection((sign * rows) as i64, cx);
         }
         if self.tabs.get(self.active).is_some_and(|t| t.keys == KeyArea::Files && t.files.is_some()) {
             // What's over the list: the window's bars, the commit, the list's own header.
             self.page_files(down, ((height - 400.) / 26.).max(1.) as usize, cx);
         } else {
-            self.scroll_diff(sign * (height / crate::diff::view::LINE_H - 8.).max(1.), cx);
+            self.scroll_diff(sign * (height / crate::metrics::line_h() - 8.).max(1.), cx);
         }
     }
 
@@ -955,7 +966,7 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         }))))
         .child(tabs)
         .child(crate::feedback::bell(this, cx))
-        .child(tip(format!("Settings ({})", crate::commands::display_chord("Mod+,")), bar_button("settings", "settings")))
+        .child(tip(format!("Settings ({})", crate::commands::display_chord("Mod+,")), crate::ui::anchor("tb-settings", bar_button("settings", "settings").on_click(cx.listener(|this, _, window, cx| this.show_settings(None, window, cx))))))
         .child(tip("Switch profile", div().flex().flex_none().items_center().gap(px(6.)).px(px(12.)).h_full().child(div().size(px(7.)).rounded_full().bg(theme::blue())).child("Default")))
 }
 
@@ -1337,7 +1348,7 @@ fn status_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement + u
         .child(tip(format!("Zoom ({} / {})", crate::commands::display_chord("Mod+="), crate::commands::display_chord("Mod+-")), div().child("100%")))
         .children(items)
         .child(div().flex_1())
-        .child(tip(format!("Keyboard shortcuts ({})", crate::commands::display_chord("Mod+/")), icon("keyboard", 13., theme::text_secondary())))
+        .child(tip(format!("Keyboard shortcuts ({})", crate::commands::display_chord("Mod+/")), crate::ui::anchor("status-shortcuts", div().id("status-shortcuts").flex().cursor_pointer().on_click(cx.listener(|this, _, window, cx| this.open_shortcuts(window, cx))).child(icon("keyboard", 13., theme::text_secondary())))))
         .when(!this.git_version.is_empty(), |d| d.child(format!("git {}", this.git_version)))
         .child(concat!("GitVolt ", env!("CARGO_PKG_VERSION")))
 }
@@ -1369,6 +1380,7 @@ impl Render for GitVolt {
             window.focus(&handle, cx);
         }
         crate::ui::begin_frame(window, cx);
+        self.measure_editor_font(window);
         self.window = Some(window.window_handle());
         if let (Some(hook), Some(tab)) = (self.frame_hook.as_mut(), self.tabs.get_mut(self.active)) {
             hook(tab, window);
@@ -1395,7 +1407,7 @@ impl Render for GitVolt {
         let center = viewport.width.as_f32() - left - if details.is_some() { self.details_w + 1. } else { 0. };
         let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
         if let Some(m) = self.tabs.get_mut(self.active).and_then(Tab::merge_shown_mut) {
-            m.set_size(center, body_h - crate::diff::view::HEADER_H);
+            m.set_size(center, body_h - crate::metrics::panel_bar_h());
         }
         if let Some(tab) = self.tabs.get_mut(self.active) {
             let (width, height) = match &tab.history {
@@ -1403,7 +1415,7 @@ impl Render for GitVolt {
                     let editor = center - h.list_w;
                     (editor - h.margin(tab.diff.as_ref(), editor), body_h - HISTORY_H)
                 }
-                None => (center, body_h - crate::diff::view::HEADER_H),
+                None => (center, body_h - crate::metrics::panel_bar_h()),
             };
             let committing = tab.wip.committing;
             if let Some(diff) = tab.diff.as_mut() {
@@ -1431,6 +1443,9 @@ impl Render for GitVolt {
         if self.activity_open(cx) {
             self.sync_activity_shown();
         }
+        self.window_width = viewport.width.as_f32();
+        let settings = crate::settings::frame::settings_overlay(self, window, cx);
+        let font_picker = crate::settings::fonts::font_picker_overlay(self, window, cx);
         let overlays = crate::ui::overlays(window, cx);
         let app = div()
             .relative()
@@ -1535,6 +1550,8 @@ impl Render for GitVolt {
             .bg(theme::app_bg())
             .text_color(theme::text_normal())
             .child(app)
+            .children(settings)
+            .children(font_picker)
             .children(overlays)
             .children(resize_handles(window))
     }
@@ -1556,7 +1573,7 @@ pub mod tests {
     /// Neither a commit nor WIP: selecting one would read on the runtime, whose wake-up from
     /// another thread GPUI's deterministic test scheduler refuses.
     fn row(i: usize) -> RowView {
-        RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: Vec::new(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
+        RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), time: 0, sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: Vec::new(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
     }
 
     pub fn with_rows(cx: &mut TestAppContext, count: usize) -> (WindowHandle<GitVolt>, VisualTestContext, tokio::runtime::Runtime) {
@@ -1594,7 +1611,7 @@ pub mod tests {
     fn a_click_selects_its_row_and_the_arrows_and_esc_move_it(cx: &mut TestAppContext) {
         let (window, mut cx, _runtime) = with_rows(cx, 100);
         cx.run_until_parked();
-        cx.simulate_click(point(px(1100.), px(ROWS_TOP + ROW_H * 6.5)), Modifiers::none());
+        cx.simulate_click(point(px(1100.), px(ROWS_TOP + crate::metrics::row_h() * 6.5)), Modifiers::none());
         assert_eq!(selected(&window, &mut cx), Some(6));
         cx.simulate_keystrokes("down down");
         assert_eq!(selected(&window, &mut cx), Some(8));

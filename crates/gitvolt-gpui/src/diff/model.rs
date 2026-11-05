@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 
 /// Monaco's `stopRenderingLineAfter`: what's past this in a line isn't drawn.
 const MAX_LINE_CHARS: usize = 10_000;
-pub const TAB_SIZE: usize = 4;
 /// Hunk mode's unchanged regions (`HUNK_REGIONS`, ui/src/diff/options.ts).
 const CONTEXT_LINES: usize = 3;
 const MIN_HIDDEN: usize = 3;
@@ -23,6 +22,8 @@ pub struct Line {
     pub text: SharedString,
     /// What a tab-free line can skip: (raw byte, display byte) where the mapping changes.
     tabs: Vec<(u32, u32)>,
+    /// Where each tab's spaces start, for showing whitespace.
+    pub tab_starts: Vec<u32>,
     /// The words changed in this line.
     pub marks: Vec<(u32, u32)>,
     /// Indent guides, in tab stops; a blank line takes its neighbours'.
@@ -37,12 +38,14 @@ impl Line {
             None => raw,
         };
         let mut tabs = Vec::new();
+        let mut tab_starts = Vec::new();
         let text = if raw.contains('\t') {
             let mut out = String::with_capacity(raw.len() + 16);
             let mut column = 0usize;
             for (i, c) in raw.char_indices() {
                 if c == '\t' {
-                    let width = TAB_SIZE - column % TAB_SIZE;
+                    let width = crate::metrics::tab_size() - column % crate::metrics::tab_size();
+                    tab_starts.push(out.len() as u32);
                     out.extend(std::iter::repeat_n(' ', width));
                     column += width;
                     tabs.push(((i + 1) as u32, out.len() as u32));
@@ -57,7 +60,7 @@ impl Line {
         };
         let indent = text.bytes().take_while(|b| *b == b' ').count();
         let blank = indent == text.len();
-        Self { text: text.into(), tabs, marks: Vec::new(), guides: if blank { u16::MAX } else { (indent / TAB_SIZE) as u16 } }
+        Self { text: text.into(), tabs, tab_starts, marks: Vec::new(), guides: if blank { u16::MAX } else { (indent / crate::metrics::tab_size()) as u16 } }
     }
 
     /// A byte of `text` → the raw line's: inside a tab's spaces, the tab.
@@ -434,9 +437,37 @@ pub fn ruler_marks(rows: &[Row]) -> Vec<(usize, usize, bool)> {
     out
 }
 
+/// `renderWhitespace`: where in `text`, within `from..to`, a space's dot goes, and a tab's arrow. `mode` 1 is Monaco's
+/// `boundary`: single spaces between words stay plain.
+pub fn whitespace_marks(text: &str, tab_starts: &[u32], from: usize, to: usize, mode: u8, tab: usize) -> (Vec<usize>, Vec<usize>) {
+    let b = text.as_bytes();
+    let in_tab = |i: usize| tab_starts.iter().any(|s| (*s as usize) <= i && i < *s as usize + tab);
+    let mut dots = Vec::new();
+    for i in from..to.min(b.len()) {
+        if b[i] != b' ' || in_tab(i) {
+            continue;
+        }
+        let single = i > 0 && i + 1 < b.len() && b[i - 1] != b' ' && b[i + 1] != b' ';
+        if mode == 2 || !single {
+            dots.push(i);
+        }
+    }
+    (dots, tab_starts.iter().map(|s| *s as usize).filter(|s| *s >= from && *s < to).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whitespace_shows_by_its_mode() {
+        let (dots, _) = whitespace_marks("  a b  ", &[], 0, 7, 1, 4);
+        assert_eq!(dots, [0, 1, 5, 6], "at boundaries: not the single one between words");
+        let (dots, _) = whitespace_marks("  a b  ", &[], 0, 7, 2, 4);
+        assert_eq!(dots, [0, 1, 3, 5, 6]);
+        let (dots, tabs) = whitespace_marks("    a", &[0], 0, 5, 2, 4);
+        assert_eq!((dots, tabs), (vec![], vec![0]), "a tab's spaces are its arrow");
+    }
 
     fn ops(a: &str, b: &str) -> Vec<DiffOp> {
         line_ops(&split_lines(Some(a)), &split_lines(Some(b)), false)

@@ -51,13 +51,13 @@ fn patterned(window: &mut Window, x: Pixels, top: f32, bottom: f32, origin_y: Pi
 
 fn paint_segment(window: &mut Window, seg: Seg, origin: Point<Pixels>, content_y: f32, color: Hsla) {
     let (xa, xb) = (origin.x + px(lane_x(seg.from)), origin.x + px(lane_x(seg.to)));
-    let (top, mid, bottom) = (origin.y, origin.y + px(ROW_H / 2.), origin.y + px(ROW_H));
+    let (top, mid, bottom) = (origin.y, origin.y + px(crate::metrics::row_h() / 2.), origin.y + px(crate::metrics::row_h()));
     let straight = seg.from == seg.to || seg.half == HALF_FULL;
     if straight {
         let (a, b, from) = match seg.half {
             HALF_FULL => (top, bottom, 0.),
             HALF_TOP => (top, mid, 0.),
-            _ => (mid, bottom, ROW_H / 2.),
+            _ => (mid, bottom, crate::metrics::row_h() / 2.),
         };
         if seg.dashed || seg.dotted {
             let span = (b - a).as_f32();
@@ -67,7 +67,7 @@ fn paint_segment(window: &mut Window, seg: Seg, origin: Point<Pixels>, content_y
         }
         return;
     }
-    let r = px((LANE_W / 2.).min(ROW_H / 2.));
+    let r = px((crate::metrics::lane_w() / 2.).min(crate::metrics::row_h() / 2.));
     let dir = if xb > xa { 1. } else { -1. };
     let mut p = PathBuilder::stroke(px(LINE_W));
     if seg.half == HALF_TOP {
@@ -93,28 +93,28 @@ fn paint_node(window: &mut Window, cx: &mut App, row: &RowView, c: Point<Pixels>
     let circle = |r: f32| Bounds::new(c - point(px(r), px(r)), size(px(2. * r), px(2. * r)));
     match kind {
         NodeKind::Collapsed => {}
-        NodeKind::Merge => window.paint_quad(quad(circle(MERGE_R), px(MERGE_R), dim(color), px(0.), transparent_black(), BorderStyle::default())),
+        NodeKind::Merge => window.paint_quad(quad(circle(crate::metrics::merge_r()), px(crate::metrics::merge_r()), dim(color), px(0.), transparent_black(), BorderStyle::default())),
         NodeKind::Stash => {
-            let s = NODE_R * 0.95 + LINE_W / 2.;
+            let s = crate::metrics::node_r() * 0.95 + LINE_W / 2.;
             window.paint_quad(quad(circle(s), px(0.), theme::node_fill(), px(LINE_W), dim(color), BorderStyle::Dashed));
         }
-        NodeKind::Wip => window.paint_quad(quad(circle(NODE_R + LINE_W / 2.), px(NODE_R + LINE_W / 2.), theme::node_fill(), px(LINE_W), dim(color), BorderStyle::Dashed)),
+        NodeKind::Wip => window.paint_quad(quad(circle(crate::metrics::node_r() + LINE_W / 2.), px(crate::metrics::node_r() + LINE_W / 2.), theme::node_fill(), px(LINE_W), dim(color), BorderStyle::Dashed)),
         NodeKind::Commit => {
-            let r = NODE_R + LINE_W / 2.;
+            let r = crate::metrics::node_r() + LINE_W / 2.;
             window.paint_quad(quad(circle(r), px(r), dim(theme::lane(row.avatar)), px(LINE_W), dim(color), BorderStyle::default()));
             if let Some(picture) = picture.filter(|_| !packed) {
                 // A transparent picture shows on the backdrop, not on the lane's colour.
-                let inner = NODE_R - LINE_W / 2.;
+                let inner = crate::metrics::node_r() - LINE_W / 2.;
                 window.paint_quad(quad(circle(inner), px(inner), theme::avatar_backdrop(), px(0.), transparent_black(), BorderStyle::default()));
                 window.paint_image(circle(inner), circle(inner), Corners::all(px(inner)), picture, 0, false).ok();
                 return;
             }
-            let size_px = px((ROW_H * 0.32).round());
+            let size_px = px((crate::metrics::row_h() * 0.32).round());
             let font = Font { weight: FontWeight::SEMIBOLD, ..window.text_style().font() };
             let run = TextRun { len: row.initials.len(), font, color: dim(theme::lane_text(row.avatar)), background_color: None, underline: None, strikethrough: None };
             let line = window.text_system().shape_line(row.initials.clone(), size_px, &[run], None);
-            let origin = point(c.x - line.width / 2., c.y - px(ROW_H / 2.));
-            line.paint(origin, px(ROW_H + 1.), TextAlign::Left, None, window, cx).ok();
+            let origin = point(c.x - line.width / 2., c.y - px(crate::metrics::row_h() / 2.));
+            line.paint(origin, px(crate::metrics::row_h() + 1.), TextAlign::Left, None, window, cx).ok();
         }
     }
 }
@@ -128,25 +128,25 @@ pub fn paint_row(bounds: Bounds<Pixels>, row: &RowView, ix: usize, g: RowGeometr
     let node = node_x(row.lane, g.graph_w, g.clipped);
     let area = if g.clipped { g.graph_w - zone_width() } else { g.graph_w };
     let node_left = origin.x + px(node.unwrap_or(area));
-    let (band_top, band_bottom) = (origin.y + px(BAND_INSET), origin.y + px(ROW_H - BAND_INSET));
+    let (band_top, band_bottom) = (origin.y + px(crate::metrics::band_inset()), origin.y + px(crate::metrics::row_h() - crate::metrics::band_inset()));
 
     window.paint_quad(fill(Bounds::from_corners(point(node_left, band_top), point(column_end, band_bottom)), theme::lane_alpha(row.color as usize, if g.selected { SELECTED_BAND_ALPHA } else { BAND_ALPHA })));
     if !row.chips.is_empty() {
         let thick = if g.head { LINE_W } else { 1. };
-        let y = origin.y + px(((ROW_H - thick) / 2.).floor());
-        let to = origin.x + px(node.unwrap_or_else(|| packed_x(g.graph_w) - NODE_R));
+        let y = origin.y + px(((crate::metrics::row_h() - thick) / 2.).floor());
+        let to = origin.x + px(node.unwrap_or_else(|| packed_x(g.graph_w) - crate::metrics::node_r()));
         let tint = if g.head { color } else { theme::lane_alpha(row.color as usize, CONNECTOR_ALPHA) };
         // From where the chips end: it reaches the node, it doesn't run under them.
         window.paint_quad(fill(Bounds::from_corners(point(bounds.origin.x + px(g.chips_end), y), point(to, y + px(thick))), tint));
     }
-    let content_y = ix as f32 * ROW_H;
-    let mask = ContentMask { bounds: Bounds::from_corners(point(origin.x, origin.y), point(origin.x + px(area), origin.y + px(ROW_H))) };
+    let content_y = ix as f32 * crate::metrics::row_h();
+    let mask = ContentMask { bounds: Bounds::from_corners(point(origin.x, origin.y), point(origin.x + px(area), origin.y + px(crate::metrics::row_h()))) };
     window.with_content_mask(Some(mask), |window| {
         for seg in &row.segments {
             paint_segment(window, *seg, origin, content_y, theme::lane(seg.color as usize));
         }
     });
-    let centre_y = origin.y + px(ROW_H / 2.);
+    let centre_y = origin.y + px(crate::metrics::row_h() / 2.);
     match node {
         Some(x) => paint_node(window, cx, row, point(origin.x + px(x), centre_y), false, picture),
         None => paint_node(window, cx, row, point(origin.x + px(packed_x(g.graph_w)), centre_y), true, picture),
@@ -154,7 +154,7 @@ pub fn paint_row(bounds: Bounds<Pixels>, row: &RowView, ix: usize, g: RowGeometr
     // The collapse zone's shade: black fading in over the last lanes, up to the zone.
     if g.clipped {
         let zone = column_end - px(zone_width());
-        let shade = Bounds::from_corners(point(zone - px(SHADE_W), origin.y), point(zone, origin.y + px(ROW_H)));
+        let shade = Bounds::from_corners(point(zone - px(SHADE_W), origin.y), point(zone, origin.y + px(crate::metrics::row_h())));
         window.paint_quad(fill(shade, linear_gradient(90., linear_color_stop(Hsla::transparent_black(), 0.), linear_color_stop(theme::collapse_strip(), 1.))));
     }
     window.paint_quad(fill(Bounds::from_corners(point(column_end - px(RAIL_W), band_top), point(column_end, band_bottom)), color));

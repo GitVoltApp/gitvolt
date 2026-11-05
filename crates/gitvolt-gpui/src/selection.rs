@@ -209,7 +209,7 @@ impl GitVolt {
                 let Some(ix) = tab.selected else { return false };
                 let ghosts = g.rows[ix].ghosts.clone();
                 let handle = tab.list.0.borrow().base_handle.clone();
-                let at = handle.bounds().origin + point(px(300.), handle.offset().y + px(ix as f32 * crate::model::ROW_H));
+                let at = handle.bounds().origin + point(px(300.), handle.offset().y + px(ix as f32 * crate::metrics::row_h()));
                 self.open_ghosts(ghosts, Bounds::new(at, size(px(8.), px(8.))), window, cx);
             }
             "enter" if !m.shift && tab.selected.and_then(|i| g.rows.get(i)).is_some_and(|r| r.collapsed.is_some() || r.fold.is_some()) => {
@@ -234,7 +234,7 @@ impl GitVolt {
                 let weak = cx.weak_entity();
                 let rows = self.row_menu(ix, &weak);
                 let x = tab.list.0.borrow().base_handle.bounds().origin.x;
-                crate::ui::menu::open_context_for(format!("row:{ix}"), rows, point(x, top + px((ix + 1) as f32 * crate::model::ROW_H)), window, cx);
+                crate::ui::menu::open_context_for(format!("row:{ix}"), rows, point(x, top + px((ix + 1) as f32 * crate::metrics::row_h())), window, cx);
             }
             _ => return false,
         }
@@ -563,7 +563,7 @@ fn compare_commit(id: &str, row: Option<&RowView>) -> AnyElement {
         .min_w_0()
         .child(avatar(&row.author, &row.email, 20.))
         .child(card)
-        .child(div().flex_none().text_size(px(12.)).line_height(px(16.8)).text_color(theme::text_normal()).child(row.date.clone()))
+        .child(div().flex_none().text_size(px(12.)).line_height(px(16.8)).text_color(theme::text_normal()).child(if row.time > 0 { SharedString::from(crate::model::date_cell(row.time)) } else { row.date.clone() }))
         .into_any_element()
 }
 

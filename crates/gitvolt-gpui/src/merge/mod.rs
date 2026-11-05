@@ -28,7 +28,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub const LINE_H: f32 = 18.;
 const COLOUR_CHUNK: usize = 128;
 /// A switch keeps the previous file up this long while the next one is read.
 const SWITCH_WAIT: Duration = Duration::from_millis(200);
@@ -99,7 +98,7 @@ impl TextView {
     }
 
     pub fn content(&self) -> f32 {
-        self.line_count() as f32 * LINE_H
+        self.line_count() as f32 * crate::metrics::line_h()
     }
 
     pub fn max_scroll(&self) -> f32 {
@@ -108,12 +107,12 @@ impl TextView {
 
     /// Where line `n` (0-based) goes to stand in the middle.
     fn centre_on(&self, n: usize) -> f32 {
-        (n as f32 * LINE_H - (self.height - LINE_H) / 2.).clamp(0., self.max_scroll())
+        (n as f32 * crate::metrics::line_h() - (self.height - crate::metrics::line_h()) / 2.).clamp(0., self.max_scroll())
     }
 
     /// The line at `y` px from the editor's top.
     pub fn line_at(&self, y: f32) -> usize {
-        (((y + self.scroll) / LINE_H).max(0.) as usize).min(self.line_count() - 1)
+        (((y + self.scroll) / crate::metrics::line_h()).max(0.) as usize).min(self.line_count() - 1)
     }
 
 }
@@ -158,11 +157,11 @@ impl SidePane {
             self.anchor = None;
         }
         self.caret = at;
-        let n = at.0 as f32 * LINE_H;
+        let n = at.0 as f32 * crate::metrics::line_h();
         if n < self.view.scroll {
             self.view.scroll = n;
-        } else if n + LINE_H > self.view.scroll + self.view.height {
-            self.view.scroll = n + LINE_H - self.view.height;
+        } else if n + crate::metrics::line_h() > self.view.scroll + self.view.height {
+            self.view.scroll = n + crate::metrics::line_h() - self.view.height;
         }
     }
 }
@@ -226,11 +225,11 @@ impl Output {
     }
 
     pub fn show_caret(&mut self) {
-        let n = self.caret_line() as f32 * LINE_H;
+        let n = self.caret_line() as f32 * crate::metrics::line_h();
         if n < self.view.scroll {
             self.view.scroll = n;
-        } else if n + LINE_H > self.view.scroll + self.view.height {
-            self.view.scroll = (n + LINE_H - self.view.height).min(self.view.max_scroll());
+        } else if n + crate::metrics::line_h() > self.view.scroll + self.view.height {
+            self.view.scroll = (n + crate::metrics::line_h() - self.view.height).min(self.view.max_scroll());
         }
     }
 }

@@ -185,7 +185,7 @@ pub fn all() -> Vec<Command> {
         Command::new("file.closeFile", "Close file", File, "file-x", "Close the open file and go back to the graph", &["Mod+W"]).when(file_open).hidden().run(|v, _, cx| v.close_file_or_history(cx)),
         Command::new("file.closeTab", "Close tab", File, "x", "Close the current tab", &["Mod+W"]).when(has_tab).run(|v, _, cx| v.close_tab(v.active, cx)),
         Command::new("file.reopenTab", "Reopen closed tab", File, "rotate-ccw", "Reopen the most recently closed tab", &["Mod+Shift+T"]).when(|v, _| !v.closed_tabs.is_empty()).run(|v, _, cx| v.reopen_tab(cx)),
-        Command::new("file.settings", "Settings", File, "settings", "App, profile and repository settings", &["Mod+,"]),
+        Command::new("file.settings", "Settings", File, "settings", "App, profile and repository settings", &["Mod+,"]).run(|v, window, cx| v.show_settings(None, window, cx)),
         Command::new("file.quit", "Quit", File, "log-out", "Quit GitVolt", &[]).run(|this, _, cx| this.close_window(cx)),
         Command::new("view.nextTab", "Next tab", View, "arrow-right-to-line", "Switch to the next tab", &["Ctrl+Tab", "Ctrl+PageDown"]).when(many_tabs).hidden().run(|v, _, cx| v.step_tab(1, cx)),
         Command::new("view.prevTab", "Previous tab", View, "arrow-left-to-line", "Switch to the previous tab", &["Ctrl+Shift+Tab", "Ctrl+PageUp"]).when(many_tabs).hidden().run(|v, _, cx| v.step_tab(-1, cx)),
@@ -224,7 +224,7 @@ pub fn all() -> Vec<Command> {
         Command::new("edit.gotoClipboard", "Go to what's on the clipboard", Edit, "clipboard-paste", "Go to the commit, merge request, file or branch the clipboard names", &["Mod+V"]).when(has_tab).yields().run(|v, _, cx| v.go_to_clipboard(cx)),
         Command::new("view.goToWip", "Go to working directory changes", View, "file-pen", "Show the working directory changes", &["Mod+Shift+G"]).when(has_wip).run(|v, _, cx| v.go_to_wip(cx)),
         Command::new("view.toggleSidebar", "Toggle sidebar", View, "panel-left", "Switch the sidebar between full and icon strip", &["Mod+B"]).when(has_tab).run(|v, _, cx| v.toggle_sidebar(cx)),
-        Command::new("view.theme", "Theme…", View, "palette", "Choose the colour theme", &[]),
+        Command::new("view.theme", "Theme…", View, "palette", "Choose the colour theme", &[]).run(|v, window, cx| v.show_settings(Some("theme"), window, cx)),
         Command::new("nav.back", "Go back", View, "arrow-left", "Back to the previous MR/PR, file or commit you visited", &[]),
         Command::new("nav.forward", "Go forward", View, "arrow-right", "Forward to the next MR/PR, file or commit you visited", &[]),
         Command::new("presets.next", "Next branch preset", View, "git-fork", "Switch the graph to the next branch preset in the cycle", &["Mod+Alt+G"]).when(has_repo).run(|v, _, cx| v.cycle_preset(cx)),
@@ -319,7 +319,7 @@ pub fn all() -> Vec<Command> {
         Command::new("help.about", "About GitVolt", Help, "info", "Version information", &[]).run(|v, window, cx| v.open_about(window, cx)),
         Command::new("help.activityLog", "Activity log", Help, "history", "Every finished fetch and clone, with git's message", &[]).run(|v, window, cx| v.open_activity(None, window, cx)),
         Command::new("help.debug", "Debug…", Help, "bug", "The git commands GitVolt ran, the actions you ran, diagnostics and the perf overlay", &[]).run(|v, window, cx| v.open_debug(None, window, cx)),
-        Command::new("help.shortcuts", "Keyboard shortcuts", Help, "keyboard", "Every keyboard shortcut, filterable", &["Mod+/"]),
+        Command::new("help.shortcuts", "Keyboard shortcuts", Help, "keyboard", "Every keyboard shortcut, filterable", &["Mod+/"]).run(|v, window, cx| v.open_shortcuts(window, cx)),
         Command::new("help.checkUpdates", "Check for updates", Help, "refresh-cw", "Ask GitHub for a newer GitVolt release (GitVolt's own; nothing about your repositories)", &[]),
     ]);
     out
@@ -395,6 +395,10 @@ impl GitVolt {
     /// The app layer of the key router: a chord that names a usable command runs it.
     pub fn app_key(&mut self, k: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(combo) = combo_of(k) else { return false };
+        // Settings owns the keys while it's open, not while it's the floating editor.
+        if self.settings_ui.open && !self.settings_ui.floating {
+            return self.settings_chord(&combo, window, cx);
+        }
         let typing = crate::ui::input::is_typing(window);
         let Some(c) = table().iter().find(|c| c.usable(self, cx) && c.shortcuts.iter().any(|s| resolve_chord(s) == combo)).cloned() else { return false };
         if c.yields_to_typing && typing {

@@ -433,6 +433,7 @@ pub struct EditorColors {
     pub line_number: Hsla,
     pub line_number_active: Hsla,
     pub indent_guide: Hsla,
+    pub whitespace: Hsla,
     pub cursor: Hsla,
     pub find_match: Hsla,
     pub find_highlight: Hsla,
@@ -463,7 +464,7 @@ impl Palette {
         let t = crate::diff::textmate::theme_named(&def.editor_theme);
         let h = |c: Col| c.hsla();
         let e = &t.editor;
-        let editor = EditorColors { foreground: h(e.foreground), line_number: h(e.line_number), line_number_active: h(e.line_number_active), indent_guide: h(e.indent_guide), cursor: h(e.cursor), find_match: h(e.find_match), find_highlight: h(e.find_highlight), fold_icon: h(e.fold_icon), line_highlight: e.line_highlight.map(h), line_highlight_border: e.line_highlight_border.map(h) };
+        let editor = EditorColors { foreground: h(e.foreground), line_number: h(e.line_number), line_number_active: h(e.line_number_active), indent_guide: h(e.indent_guide), whitespace: h(e.whitespace), cursor: h(e.cursor), find_match: h(e.find_match), find_highlight: h(e.find_highlight), fold_icon: h(e.fold_icon), line_highlight: e.line_highlight.map(h), line_highlight_border: e.line_highlight_border.map(h) };
         Self { tokens, lanes: std::array::from_fn(|i| lane(i).hsla()), lane_text: std::array::from_fn(|i| on(i).hsla()), editor, light: def.light, version }
     }
 }

@@ -3,6 +3,8 @@
 //! Custom), the ⋮ rows' reveal panel and the hidden list. The presets live in the settings and the profile; "Edit presets…"
 //! is Settings', which isn't here yet.
 
+pub mod settings_page;
+
 use crate::app::{GitVolt, Tab, icon};
 use crate::model::{Chip, Ghost, RowView, graph_rows};
 use crate::theme;
@@ -623,8 +625,8 @@ impl GitVolt {
         }
         let handle = tab.list.0.borrow().base_handle.clone();
         let (top, view_h) = (-handle.offset().y.as_f32(), handle.bounds().size.height.as_f32());
-        let row_top = ix as f32 * crate::model::ROW_H;
-        let below = reveal_below(row_top, top, crate::model::ROW_H, count as f32, fold);
+        let row_top = ix as f32 * crate::metrics::row_h();
+        let below = reveal_below(row_top, top, crate::metrics::row_h(), count as f32, fold);
         let _ = view_h;
         let repo = tab.id;
         let limit = tab.limit;
@@ -848,12 +850,12 @@ impl GitVolt {
 /// A reveal panel over the graph: its rows drawn as the graph's, its title on the side away from the row.
 pub fn reveal_panel(tab: &Tab, r: &Reveal, cols: crate::model::Columns, view_h: f32, selected: Option<&str>, cx: &mut Context<GitVolt>) -> AnyElement {
     use crate::graph::{RowGeometry, paint_row};
-    use crate::model::{Col, ROW_H};
+    use crate::model::{Col};
     let handle = tab.list.0.borrow().base_handle.clone();
     let offset = handle.offset().y.as_f32();
-    let (view_top, row_top) = (-offset, r.row as f32 * ROW_H);
-    let (top, height) = panel_box(r.below, row_top, view_top, view_top + view_h, ROW_H, r.rows.len() as f32);
-    let list_h = height - ROW_H;
+    let (view_top, row_top) = (-offset, r.row as f32 * crate::metrics::row_h());
+    let (top, height) = panel_box(r.below, row_top, view_top, view_top + view_h, crate::metrics::row_h(), r.rows.len() as f32);
+    let list_h = height - crate::metrics::row_h();
     let fold = r.key.starts_with("fold:");
     let word = if r.count == 1 { "commit" } else { "commits" };
     let what = if fold { format!("{} {word} merged", r.count) } else { format!("{} hidden {word}", r.count) };
@@ -862,10 +864,10 @@ pub fn reveal_panel(tab: &Tab, r: &Reveal, cols: crate::model::Columns, view_h: 
     let title = div()
         .flex()
         .flex_none()
-        .h(px(ROW_H))
+        .h(px(crate::metrics::row_h()))
         .items_center()
         .gap(px(6.))
-        .px(px(crate::model::CELL_PAD))
+        .px(px(crate::metrics::cell_pad()))
         .bg(theme::panel_bg1())
         .whitespace_nowrap()
         .child(div().truncate().font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child(r.branch.clone()))
@@ -889,7 +891,7 @@ pub fn reveal_panel(tab: &Tab, r: &Reveal, cols: crate::model::Columns, view_h: 
                     let on = selected.as_deref() == Some(row.id.as_ref());
                     let geometry = RowGeometry { chips_end: 0., graph_x: if hidden.contains(&Col::Labels) { 0. } else { cols.labels }, graph_w: cols.graph, clipped: cols.clipped, selected: on, head: false };
                     let painter = rows.clone();
-                    let cell = |w: f32, color: Hsla, text: SharedString| div().flex().flex_none().w(px(w)).h(px(ROW_H)).items_center().px(px(crate::model::CELL_PAD)).min_w_0().overflow_hidden().text_color(if on { theme::text_selected() } else { color }).when(on, |d| d.bg(theme::selected_row())).child(div().truncate().child(text));
+                    let cell = |w: f32, color: Hsla, text: SharedString| div().flex().flex_none().w(px(w)).h(px(crate::metrics::row_h())).items_center().px(px(crate::metrics::cell_pad())).min_w_0().overflow_hidden().text_color(if on { theme::text_selected() } else { color }).when(on, |d| d.bg(theme::selected_row())).child(div().truncate().child(text));
                     let id = row.id.to_string();
                     let badges = tags.iter().filter(|t| t.0 as usize == ix).map(|t| div().flex_none().ml(px(6.)).px(px(5.)).border_1().border_color(theme::section_border()).rounded(px(3.)).text_size(px(10.)).line_height(px(14.)).child(t.1.clone()));
                     div()
@@ -897,7 +899,7 @@ pub fn reveal_panel(tab: &Tab, r: &Reveal, cols: crate::model::Columns, view_h: 
                         .relative()
                         .flex()
                         .w_full()
-                        .h(px(ROW_H))
+                        .h(px(crate::metrics::row_h()))
                         .hover(|d| d.bg(theme::hover_row()))
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                             cx.stop_propagation();
@@ -910,7 +912,7 @@ pub fn reveal_panel(tab: &Tab, r: &Reveal, cols: crate::model::Columns, view_h: 
                         .when(!hidden.contains(&Col::Author), |d| d.child(cell(cols.author, theme::text_disabled(), row.author.clone())))
                         .when(!hidden.contains(&Col::Date), |d| d.child(cell(cols.date, theme::text_disabled(), row.date.clone())))
                         .when(!hidden.contains(&Col::Sha), |d| d.child(cell(cols.sha, theme::text_disabled(), row.sha.clone()).font_family("JetBrains Mono").px(px(6.))))
-                        .child(div().flex_1().h(px(ROW_H)).when(on, |d| d.bg(theme::selected_row())))
+                        .child(div().flex_1().h(px(crate::metrics::row_h())).when(on, |d| d.bg(theme::selected_row())))
                         .into_any_element()
                 })
                 .collect()

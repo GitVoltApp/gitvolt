@@ -739,7 +739,7 @@ fn blame_strip(h: &FileHistory, diff: &DiffState, width: f32, cx: &mut Context<G
                     .overflow_hidden()
                     .bg(theme::panel_bg())
                     .text_color(theme::text_secondary())
-                    .line_height(px(crate::diff::view::LINE_H))
+                    .line_height(px(crate::metrics::line_h()))
                     .cursor_pointer()
                     .hover(|d| d.bg(theme::hover_row()).text_color(theme::text_normal()))
                     .on_click(cx.listener(move |this, e: &ClickEvent, _, cx| this.pick_blame(sha.clone(), e.modifiers().alt, cx)))
@@ -751,7 +751,7 @@ fn blame_strip(h: &FileHistory, diff: &DiffState, width: f32, cx: &mut Context<G
                             .min_w_0()
                             .items_center()
                             .gap(px(6.))
-                            .h(px(crate::diff::view::LINE_H))
+                            .h(px(crate::metrics::line_h()))
                             .when_some(c, |d, c| d.child(avatar(&c.author, &c.email, AVATAR_PX)))
                             .child(div().flex_1().min_w_0().truncate().when_some(c, |d, c| d.child(c.summary.clone())))
                             .child(div().flex().flex_none().w(px(45.5)).justify_end().when_some(c, |d, c| d.child(compact_relative_time(c.time, now)))),

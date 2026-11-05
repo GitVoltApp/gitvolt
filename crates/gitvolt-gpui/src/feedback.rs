@@ -28,16 +28,14 @@ pub const SLOW_MS: Duration = Duration::from_millis(2000);
 /// How long an autostash step runs before the status names it.
 pub const SLOW_STASH: Duration = Duration::from_secs(60);
 /// `fetchIntervalSecs` as it runs: its default when unread; 0 turns it off.
-pub fn fetch_interval(secs: Option<u64>) -> Option<Duration> {
-    match secs.unwrap_or(FETCH_DEFAULT_SECS) {
-        0 => None,
-        n => Some(Duration::from_secs(n.clamp(FETCH_MIN_SECS, FETCH_MAX_SECS))),
+/// `clampFetchInterval`: 0 (or less, or not a number) is off; else between a minute and a day.
+pub fn clamp_fetch_interval(secs: f64) -> u32 {
+    if secs <= 0. || secs.is_nan() {
+        return 0;
     }
+    secs.round().clamp(60., 86_400.) as u32
 }
 
-const FETCH_DEFAULT_SECS: u64 = 60;
-const FETCH_MIN_SECS: u64 = 60;
-const FETCH_MAX_SECS: u64 = 86_400;
 
 fn capitalized(s: &str) -> String {
     let mut c = s.chars();
@@ -172,31 +170,45 @@ impl GitVolt {
     }
 
     /// The app's one background fetch, each interval of the settings', of the shown tab: a hidden one
-    /// does no work, and between fetches nothing wakes.
-    pub fn start_fetch_schedule(&mut self, cx: &mut Context<Self>) {
-        if cfg!(test) || std::env::var_os("GITVOLT_NO_BACKGROUND_FETCH").is_some() {
+    /// does no work, nor does a minimized window, and between fetches nothing wakes. A change of the interval
+    /// starts it anew; the first fetch comes at once on opening, as the web UI's does.
+    pub fn sync_fetch_schedule(&mut self, cx: &mut Context<Self>) {
+        if cfg!(test) || std::env::var_os("GITVOLT_NO_BACKGROUND_FETCH").is_some() || self.settings.is_null() {
             return;
         }
-        let api = self.api.clone();
-        let state = self.rt.spawn(async move { api.dispatch(gitvolt_core::api::Request::LoadState).await });
-        cx.spawn(async move |this, cx| {
-            let saved = state.await.ok().and_then(Result::ok).and_then(|v| v["settings"]["fetchIntervalSecs"].as_u64());
-            let Some(interval) = fetch_interval(saved) else { return };
+        let secs = clamp_fetch_interval(self.settings["fetchIntervalSecs"].as_f64().unwrap_or(60.));
+        if self.fetch_schedule.as_ref().is_some_and(|f| f.0 == secs) {
+            return;
+        }
+        // Dropping the old task ends its loop.
+        if secs == 0 {
+            self.fetch_schedule = None;
+            return;
+        }
+        let interval = Duration::from_secs(secs as u64);
+        let task = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(interval).await;
-                let live = this.update(cx, |v, cx| {
-                    let Some(tab) = v.tabs.get(v.active) else { return };
-                    // A fetch by hand this interval counts.
-                    if tab.last_fetch.is_none_or(|at| at.elapsed() + Duration::from_secs(1) >= interval) {
-                        v.run_fetch(tab.id, true, None, cx);
-                    }
-                });
+                let live = this.update(cx, |v, cx| v.scheduled_fetch(interval, cx));
                 if live.is_err() {
                     return;
                 }
             }
-        })
-        .detach();
+        });
+        self.fetch_schedule = Some((secs, task));
+    }
+
+    fn scheduled_fetch(&mut self, interval: Duration, cx: &mut Context<Self>) {
+        // A minimized window fetches nothing; coming back asks at once if it's due.
+        if self.window_hidden {
+            return;
+        }
+        let Some(tab) = self.tabs.get(self.active).filter(|t| !t.is_open_tab()) else { return };
+        // A fetch by hand this interval counts.
+        if tab.last_fetch.is_none_or(|at| at.elapsed() + Duration::from_secs(1) >= interval) {
+            let id = tab.id;
+            self.run_fetch(id, true, None, cx);
+        }
     }
 
     /// Cancels the queue's running op, drops an item, resumes or clears.

@@ -15,6 +15,7 @@
 
 pub mod arm;
 pub mod banner;
+pub mod colour;
 pub mod controls;
 pub mod fuzzy;
 pub mod input;
@@ -46,6 +47,8 @@ pub struct Ui {
     pub popover: Option<popover::Popover>,
     pub picker: Option<picker::Picker>,
     pub modals: Vec<modal::Modal>,
+    /// The colour picker's popover.
+    pub colour: Option<Box<colour::PickerState>>,
     pub toast: toast::ToastState,
     /// Where the anchors (`anchor`, `tip`) are this frame and were last frame.
     anchors: HashMap<SharedString, Bounds<Pixels>>,
@@ -102,7 +105,7 @@ impl Ui {
 
     /// Something floats that wants the keyboard: the app's shortcuts stay out of it.
     pub fn captures_keys(&self) -> bool {
-        self.menu.is_some() || self.popover.is_some() || self.picker.is_some() || !self.modals.is_empty()
+        self.menu.is_some() || self.popover.is_some() || self.picker.is_some() || self.colour.is_some() || !self.modals.is_empty()
     }
 }
 
@@ -126,7 +129,7 @@ fn route_key(k: &Keystroke, window: &mut Window, cx: &mut App) {
         return;
     }
     // A picker owns the keyboard: every key goes on to its search box, none to the app behind it.
-    if Ui::get(cx).picker.is_some() {
+    if Ui::get(cx).picker.is_some() || Ui::get(cx).colour.is_some() {
         return;
     }
     let plain_esc = k.key == "escape" && !k.modifiers.modified();
@@ -209,6 +212,7 @@ pub fn overlays(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
     out.extend(modal::elements(window, cx));
     out.extend(popover::element(window, cx));
     out.extend(picker::element(window, cx));
+    out.extend(colour::element(window, cx));
     out.extend(menu::element(window, cx));
     out.extend(tooltip::element(window, cx));
     out.extend(arm::element(window, cx));

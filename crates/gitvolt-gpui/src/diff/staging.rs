@@ -3,7 +3,7 @@
 //! rows and the bar under a selection that covers changed lines, over the hunks the core read for this show.
 
 use super::model::{Row, RowKind};
-use super::view::{DiffState, LINE_H};
+use super::view::{DiffState};
 use crate::app::{GitVolt, icon};
 use crate::details::Origin;
 use crate::theme;
@@ -445,7 +445,7 @@ pub fn overlays(diff: &DiffState, cx: &mut Context<GitVolt>) -> Vec<AnyElement> 
                     .id(id)
                     .absolute()
                     .left(px(x))
-                    .top(px(top + (LINE_H - 14.) / 2.))
+                    .top(px(top + (crate::metrics::line_h() - 14.) / 2.))
                     .flex()
                     .size(px(14.))
                     .items_center()

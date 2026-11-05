@@ -538,6 +538,10 @@ impl TextInput {
         self
     }
 
+    pub fn set_text_color(&mut self, color: Option<Hsla>) {
+        self.text_color = color;
+    }
+
     pub fn placeholder_color(mut self, color: Hsla) -> Self {
         self.placeholder_color = Some(color);
         self

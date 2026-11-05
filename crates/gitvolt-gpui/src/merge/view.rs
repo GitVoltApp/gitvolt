@@ -10,8 +10,6 @@ use crate::theme;
 use crate::ui::tooltip::tip;
 use gpui::prelude::*;
 
-const FONT_SIZE: f32 = 13.;
-const ADVANCE: f32 = FONT_SIZE * 0.6;
 const SCROLLBAR_H: f32 = 10.;
 /// Monaco's overview ruler draws a mark at least this tall.
 const MIN_RULER_MARK: f32 = 6.;
@@ -179,28 +177,28 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
     let font = mono();
     let lines = &s.lines.lines;
     let count = lines.len().max(1);
-    let first = (s.scroll / LINE_H).max(0.) as usize;
-    let last = (((s.scroll + height) / LINE_H).ceil() as usize).min(count);
+    let first = (s.scroll / crate::metrics::line_h()).max(0.) as usize;
+    let last = (((s.scroll + height) / crate::metrics::line_h()).ceil() as usize).min(count);
     let text_x = b.origin.x + px(s.gutter);
     let hovered_pointer = b.contains(&window.mouse_position());
     window.with_content_mask(Some(ContentMask { bounds: b }), |window| {
         let view_w = px(view_right - s.gutter);
         for n in first..last {
-            let y = b.origin.y + px(n as f32 * LINE_H - s.scroll);
+            let y = b.origin.y + px(n as f32 * crate::metrics::line_h() - s.scroll);
             let deco = s.decos.get(&n).copied().unwrap_or_default();
             if let Some(t) = deco.tint {
-                window.paint_quad(fill(Bounds::new(point(text_x, y), size(view_w, px(LINE_H))), t));
+                window.paint_quad(fill(Bounds::new(point(text_x, y), size(view_w, px(crate::metrics::line_h()))), t));
             }
             if let Some((below, color)) = deco.rule {
-                let at = if below { y + px(LINE_H - 2.) } else { y };
+                let at = if below { y + px(crate::metrics::line_h() - 2.) } else { y };
                 window.paint_quad(fill(Bounds::new(point(text_x, at), size(view_w, px(2.))), color));
             }
             if let Some(h) = deco.hunk {
-                window.paint_quad(fill(Bounds::new(point(b.origin.x, y), size(px(HUNK_W), px(LINE_H))), h));
+                window.paint_quad(fill(Bounds::new(point(b.origin.x, y), size(px(HUNK_W), px(crate::metrics::line_h()))), h));
             }
             // Monaco's current line: a border the width of the text.
             if n == s.current_line {
-                let o = Bounds::new(point(text_x, y), size(view_w, px(LINE_H)));
+                let o = Bounds::new(point(text_x, y), size(view_w, px(crate::metrics::line_h())));
                 if let Some(c) = theme::editor().line_highlight {
                     window.paint_quad(fill(o, c));
                 }
@@ -213,18 +211,18 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
             let last_empty = n + 1 == count && count > 1 && lines.get(n).is_some_and(|l| l.text.is_empty());
             let color = if n == s.current_line { theme::editor().line_number_active } else { theme::editor().line_number };
             let color = if last_empty && n != s.current_line { Hsla { a: 0.3, ..color } } else { color };
-            let shaped = window.text_system().shape_line(number.clone(), px(FONT_SIZE), &[TextRun { len: number.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
+            let shaped = window.text_system().shape_line(number.clone(), px(crate::metrics::editor_font_size()), &[TextRun { len: number.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
             let num_right = b.origin.x + px(if s.pane { HUNK_W + NUM_W } else { NUM_W });
-            shaped.paint(point(num_right - shaped.width, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+            shaped.paint(point(num_right - shaped.width, y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
             let Some(line) = lines.get(n) else { continue };
-            let clip = Bounds::from_corners(point(text_x, y), point(b.origin.x + px(view_right), y + px(LINE_H)));
+            let clip = Bounds::from_corners(point(text_x, y), point(b.origin.x + px(view_right), y + px(crate::metrics::line_h())));
             window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
                 let start = text_x - px(s.hscroll);
                 let spans = s.colours.get(n / COLOUR_CHUNK).and_then(|p| p.get(n % COLOUR_CHUNK)).map_or(&[][..], Vec::as_slice);
-                let shaped = window.text_system().shape_line(line.text.clone(), px(FONT_SIZE), &runs(&line.text, spans, &font), None);
+                let shaped = window.text_system().shape_line(line.text.clone(), px(crate::metrics::editor_font_size()), &runs(&line.text, spans, &font), None);
                 for level in 1..=line.guides {
-                    let gx = start + px(ADVANCE * ((usize::from(level) - 1) * crate::diff::model::TAB_SIZE) as f32);
-                    window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(LINE_H))), theme::editor().indent_guide));
+                    let gx = start + px(crate::metrics::advance() * ((usize::from(level) - 1) * crate::metrics::tab_size()) as f32);
+                    window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(crate::metrics::line_h()))), theme::editor().indent_guide));
                 }
                 if let Some((from, to)) = s.selection
                     && from.0 <= n
@@ -234,27 +232,27 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
                     let r = if n == to.0 { to.1.min(line.text.len()) } else { line.text.len() };
                     let (lx, mut rx) = (shaped.x_for_index(l), shaped.x_for_index(r));
                     if n != to.0 {
-                        rx += px(ADVANCE);
+                        rx += px(crate::metrics::advance());
                     }
                     if rx > lx {
-                        window.paint_quad(fill(Bounds::from_corners(point(start + lx, y), point(start + rx, y + px(LINE_H))), theme::selection_bg()));
+                        window.paint_quad(fill(Bounds::from_corners(point(start + lx, y), point(start + rx, y + px(crate::metrics::line_h()))), theme::selection_bg()));
                     }
                 }
                 if !line.text.is_empty() {
-                    shaped.paint(point(start, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+                    shaped.paint(point(start, y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
                 }
                 if focused
                     && let Some((cn, cb)) = s.caret
                     && cn == n
                 {
-                    window.paint_quad(fill(Bounds::new(point(start + shaped.x_for_index(cb.min(line.text.len())), y), size(px(2.), px(LINE_H))), theme::editor().cursor));
+                    window.paint_quad(fill(Bounds::new(point(start + shaped.x_for_index(cb.min(line.text.len())), y), size(px(2.), px(crate::metrics::line_h()))), theme::editor().cursor));
                 }
             });
             // A line's button, under the pointer: a green + takes it, a red − drops it once taken.
             if let Some((hn, on)) = s.hover_button
                 && hn == n
             {
-                let box_ = Bounds::new(point(b.origin.x + px(HUNK_W + NUM_W + (LANE_W - 15.) / 2.), y + px((LINE_H - 15.) / 2.)), size(px(15.), px(15.)));
+                let box_ = Bounds::new(point(b.origin.x + px(HUNK_W + NUM_W + (LANE_W - 15.) / 2.), y + px((crate::metrics::line_h() - 15.) / 2.)), size(px(15.), px(15.)));
                 window.paint_quad(quad(box_, px(3.), if on { theme::red() } else { theme::green() }, px(0.), transparent_black(), BorderStyle::default()));
                 let glyph = Bounds::new(box_.origin + point(px(1.5), px(1.5)), size(px(12.), px(12.)));
                 window.paint_svg(glyph, if on { "icons/minus.svg" } else { "icons/plus.svg" }.into(), None, TransformationMatrix::unit(), theme::text_on_accent(), cx).ok();
@@ -263,7 +261,7 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
         paint_minimap(s, b, view_right, window);
         paint_ruler(s, b, hovered_pointer, window);
         // Sideways: only while the pointer is over the text, or it's scrolled.
-        let content = s.widest as f32 * ADVANCE;
+        let content = s.widest as f32 * crate::metrics::advance();
         let track = view_right - s.gutter;
         let max_h = (content - track).max(0.);
         if max_h > 0. && (s.hscroll > 0. || hovered_pointer) {
@@ -287,7 +285,7 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
                 }
                 let v = m.view_mut(index);
                 v.scroll = (v.scroll - dy.as_f32()).clamp(0., v.max_scroll());
-                let content = v.widest as f32 * ADVANCE;
+                let content = v.widest as f32 * crate::metrics::advance();
                 let gutter = if index < 2 { PANE_GUTTER } else { OUT_GUTTER };
                 let track = v.width - RULER_W - minimap_width(v.width, gutter) - gutter;
                 v.hscroll = (v.hscroll - dx.as_f32()).clamp(0., (content - track).max(0.));
@@ -306,7 +304,7 @@ fn paint_minimap(s: &Snapshot, b: Bounds<Pixels>, view_right: f32, window: &mut 
     let (height, x) = (b.size.height.as_f32(), b.origin.x + px(view_right + MINIMAP_GUTTER));
     let count = s.lines.lines.len().max(1);
     let shown = (height / MINIMAP_LINE) as usize;
-    let max = (count as f32 * LINE_H - height).max(0.);
+    let max = (count as f32 * crate::metrics::line_h() - height).max(0.);
     let share = if max > 0. { s.scroll / max } else { 0. };
     let first = (share * count.saturating_sub(shown) as f32) as usize;
     let width = s.minimap - MINIMAP_GUTTER;
@@ -350,7 +348,7 @@ fn paint_ruler(s: &Snapshot, b: Bounds<Pixels>, hovered: bool, window: &mut Wind
     let height = b.size.height.as_f32();
     let x = b.origin.x + b.size.width - px(RULER_W);
     let count = s.lines.lines.len().max(1) as f32;
-    let scale = (height / (count * LINE_H).max(height)) * LINE_H;
+    let scale = (height / (count * crate::metrics::line_h()).max(height)) * crate::metrics::line_h();
     let mut lines: Vec<(usize, Hsla)> = s.decos.iter().filter_map(|(n, d)| d.mark.map(|m| (*n, m))).collect();
     lines.sort_by_key(|l| l.0);
     let mut at = 0;
@@ -366,7 +364,7 @@ fn paint_ruler(s: &Snapshot, b: Bounds<Pixels>, hovered: bool, window: &mut Wind
         window.paint_quad(fill(Bounds::new(point(x, b.origin.y + px(y.max(0.))), size(px(RULER_W), px(h))), color));
         at = end;
     }
-    let total = count * LINE_H;
+    let total = count * crate::metrics::line_h();
     if hovered && total > height {
         let thumb = (height * height / total).max(20.);
         let max = total - height;
@@ -592,8 +590,8 @@ fn hunk_boxes(tool: &MergeTool, i: usize, file: &ConflictFile, cx: &mut Context<
         if r.lines == 0 || seg.of(p.side).is_empty() {
             continue;
         }
-        let y = (r.start - 1) as f32 * LINE_H - p.view.scroll;
-        if y + LINE_H <= 0. || y >= view_h {
+        let y = (r.start - 1) as f32 * crate::metrics::line_h() - p.view.scroll;
+        if y + crate::metrics::line_h() <= 0. || y >= view_h {
             continue;
         }
         let state = tool.picks.get(&r.id).map_or(CheckState::None, |x| hunk_state(seg, x, p.side));
@@ -608,7 +606,7 @@ fn hunk_boxes(tool: &MergeTool, i: usize, file: &ConflictFile, cx: &mut Context<
                     .left_0()
                     .top(px(y))
                     .w(px(HUNK_W))
-                    .h(px(LINE_H))
+                    .h(px(crate::metrics::line_h()))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -629,7 +627,7 @@ fn line_button(tool: &MergeTool, i: usize, cx: &mut Context<GitVolt>) -> Option<
     let n = p.view.hover?;
     let (id, at) = p.data.region_at(n + 1)?;
     let side = p.side;
-    let y = n as f32 * LINE_H - p.view.scroll;
+    let y = n as f32 * crate::metrics::line_h() - p.view.scroll;
     let key: SharedString = format!("merge-line:{}", side.index()).into();
     Some(
         crate::ui::anchor(
@@ -640,7 +638,7 @@ fn line_button(tool: &MergeTool, i: usize, cx: &mut Context<GitVolt>) -> Option<
                 .left(px(HUNK_W + NUM_W))
                 .top(px(y))
                 .w(px(LANE_W))
-                .h(px(LINE_H))
+                .h(px(crate::metrics::line_h()))
                 .cursor_pointer()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_click(cx.listener(move |this, _, _, cx| this.merge_toggle(id, side, Some(at), cx))),
@@ -745,8 +743,8 @@ pub fn merge_panel(tab: &Tab, diff: &DiffState, tool: Option<&MergeTool>, cx: &m
 pub fn caret_bounds(m: &MergeTool, bounds: Bounds<Pixels>) -> Option<Bounds<Pixels>> {
     let o = m.output.as_ref()?;
     let (n, col) = o.edit.line_col(o.edit.buffer.caret());
-    let y = n as f32 * LINE_H - o.view.scroll;
-    Some(Bounds::new(bounds.origin + point(px(OUT_GUTTER + col as f32 * ADVANCE - o.view.hscroll), px(y)), size(px(1.), px(LINE_H))))
+    let y = n as f32 * crate::metrics::line_h() - o.view.scroll;
+    Some(Bounds::new(bounds.origin + point(px(OUT_GUTTER + col as f32 * crate::metrics::advance() - o.view.hscroll), px(y)), size(px(1.), px(crate::metrics::line_h()))))
 }
 
 impl GitVolt {
@@ -774,7 +772,7 @@ impl GitVolt {
             return;
         }
         // The sideways scrollbar, along the bottom.
-        let content = v.widest as f32 * ADVANCE;
+        let content = v.widest as f32 * crate::metrics::advance();
         let track = width - RULER_W - mini - gutter;
         if content > track && y >= height - SCROLLBAR_H && x >= gutter {
             let v = m.view_mut(index);
@@ -803,7 +801,7 @@ impl GitVolt {
                 return;
             }
         }
-        let shape = |text: &SharedString, window: &Window| window.text_system().shape_line(text.clone(), px(FONT_SIZE), &[TextRun { len: text.len(), font: mono(), color: theme::text_normal(), background_color: None, underline: None, strikethrough: None }], None);
+        let shape = |text: &SharedString, window: &Window| window.text_system().shape_line(text.clone(), px(crate::metrics::editor_font_size()), &[TextRun { len: text.len(), font: mono(), color: theme::text_normal(), background_color: None, underline: None, strikethrough: None }], None);
         let text = m.view(index).lines.lines.get(line).map_or(SharedString::default(), |l| l.text.clone());
         let hscroll = m.view(index).hscroll;
         let byte = shape(&text, window).closest_index_for_x(px((x - gutter + hscroll).max(0.)));
@@ -872,7 +870,7 @@ impl GitVolt {
             }
             PaneDrag::Horizontal => {
                 let track = width - RULER_W - minimap_width(v.width, gutter) - gutter;
-                let content = v.widest as f32 * ADVANCE;
+                let content = v.widest as f32 * crate::metrics::advance();
                 let v = m.view_mut(index);
                 v.hscroll = ((x - gutter) / track).clamp(0., 1.) * (content - track).max(0.);
                 m.sync_scroll(index);
@@ -881,14 +879,14 @@ impl GitVolt {
                 // Past the top or the bottom, the text comes to the pointer.
                 let v = m.view_mut(index);
                 if y < 0. {
-                    v.scroll = (v.scroll + y.max(-LINE_H * 3.)).max(0.);
+                    v.scroll = (v.scroll + y.max(-crate::metrics::line_h() * 3.)).max(0.);
                 } else if y > height {
-                    v.scroll = (v.scroll + (y - height).min(LINE_H * 3.)).min(v.max_scroll());
+                    v.scroll = (v.scroll + (y - height).min(crate::metrics::line_h() * 3.)).min(v.max_scroll());
                 }
                 let line = v.line_at(y.clamp(0., height));
                 let text = v.lines.lines.get(line).map_or(SharedString::default(), |l| l.text.clone());
                 let hscroll = v.hscroll;
-                let shaped = window.text_system().shape_line(text.clone(), px(FONT_SIZE), &[TextRun { len: text.len(), font: mono(), color: theme::text_normal(), background_color: None, underline: None, strikethrough: None }], None);
+                let shaped = window.text_system().shape_line(text.clone(), px(crate::metrics::editor_font_size()), &[TextRun { len: text.len(), font: mono(), color: theme::text_normal(), background_color: None, underline: None, strikethrough: None }], None);
                 let byte = shaped.closest_index_for_x(px((x - gutter + hscroll).max(0.)));
                 if index < 2 {
                     let p = &mut m.panes[index];
@@ -938,7 +936,7 @@ impl GitVolt {
         let Some(p) = m.panes.get_mut(index) else { return };
         let (line, byte) = p.caret;
         let count = p.view.line_count();
-        let page = (p.view.height / LINE_H).max(1.) as usize;
+        let page = (p.view.height / crate::metrics::line_h()).max(1.) as usize;
         let want = |p: &mut SidePane, n: usize| {
             let col = *p.want_col.get_or_insert(byte);
             (n, col.min(p.line_len(n)))

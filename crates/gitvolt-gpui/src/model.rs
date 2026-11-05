@@ -8,16 +8,8 @@ use gpui::SharedString;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub const ROW_H: f32 = 28.;
-pub const LANE_W: f32 = 22.;
-pub const PAD_X: f32 = LANE_W / 2.;
-pub const BAND_INSET: f32 = 3.;
-pub const CHIP_H: f32 = 22.;
-pub const CELL_PAD: f32 = 8.;
 pub const LINE_W: f32 = 2.;
 pub const RAIL_W: f32 = 2.;
-pub const NODE_R: f32 = ROW_H * 0.36;
-pub const MERGE_R: f32 = ROW_H * 0.18;
 pub const BAND_ALPHA: f32 = 0.18;
 pub const SELECTED_BAND_ALPHA: f32 = 0.5;
 pub const CONNECTOR_ALPHA: f32 = 0.25;
@@ -59,7 +51,7 @@ pub fn decode_segment(p: u32) -> Seg {
 }
 
 pub fn lane_x(lane: u16) -> f32 {
-    PAD_X + f32::from(lane) * LANE_W + LANE_W / 2.
+    crate::metrics::pad_x() + f32::from(lane) * crate::metrics::lane_w() + crate::metrics::lane_w() / 2.
 }
 
 /// The picks a person's initials avatar: FNV-1a over the UTF-16 of the trimmed, lowercased email
@@ -83,12 +75,26 @@ pub fn initials(name: &str) -> String {
     words.iter().take(2).filter_map(|w| w.chars().next()).flat_map(char::to_uppercase).collect()
 }
 
-/// `formatDate`'s default preset: `2023-11-17 @ 5:53 PM`, local time.
+/// `formatDate`, in the setting's preset, local time.
 pub fn format_date(unix_seconds: i64) -> String {
     let Some(d) = Local.timestamp_opt(unix_seconds, 0).single() else { return String::new() };
-    let hour = d.hour();
-    let h12 = if hour % 12 == 0 { 12 } else { hour % 12 };
-    format!("{}-{:02}-{:02} @ {h12}:{:02} {}", d.year(), d.month(), d.day(), d.minute(), if hour < 12 { "AM" } else { "PM" })
+    format_date_parts(d.year(), d.month(), d.day(), d.hour(), d.minute(), crate::metrics::date_format())
+}
+
+pub fn format_date_parts(y: i32, mo: u32, day: u32, hour: u32, mi: u32, preset: u32) -> String {
+    let h12 = format!("{}:{mi:02} {}", if hour.is_multiple_of(12) { 12 } else { hour % 12 }, if hour < 12 { "AM" } else { "PM" });
+    match preset {
+        1 => format!("{y}-{mo:02}-{day:02} {hour:02}:{mi:02}"),
+        2 => format!("{day:02}/{mo:02}/{y} {hour:02}:{mi:02}"),
+        3 => format!("{day:02}.{mo:02}.{y} {hour:02}:{mi:02}"),
+        4 => format!("{mo:02}/{day:02}/{y} {h12}"),
+        _ => format!("{y}-{mo:02}-{day:02} @ {h12}"),
+    }
+}
+
+/// What the date column shows: relative under its setting, the exact format on hover.
+pub fn date_cell(unix_seconds: i64) -> String {
+    if crate::metrics::relative_dates() { crate::format::relative_time(unix_seconds, crate::format::now()) } else { format_date(unix_seconds) }
 }
 
 /// The graph's column widths at `total` px of row, and whether its lanes need more than they get.
@@ -157,7 +163,7 @@ pub fn is_collapsed(col: Col, width: f32) -> bool {
 }
 
 pub fn lanes_width(max_lanes: u16) -> f32 {
-    LANE_W * (f32::from(max_lanes) + 1.)
+    crate::metrics::lane_w() * (f32::from(max_lanes) + 1.)
 }
 
 /// `allocateColumns`: Branch/Tag, Graph and SHA always get their width; Message fills what's left, and
@@ -374,7 +380,7 @@ pub fn focus_rows(g: &GraphView, refs: &[String]) -> std::collections::HashSet<u
 
 /// The collapse zone's width: a node, a gap either side and the rail.
 pub fn zone_width() -> f32 {
-    (2. * NODE_R).ceil() + 2. * ZONE_GAP + RAIL_W
+    (2. * crate::metrics::node_r()).ceil() + 2. * ZONE_GAP + RAIL_W
 }
 
 /// A row's node x in a graph column `width` wide: `None` while its lane is past the lane area
@@ -411,6 +417,8 @@ pub struct RowView {
     pub summary: SharedString,
     pub author: SharedString,
     pub date: SharedString,
+    /// `committerTime`: what the date column goes by, under the settings of the moment.
+    pub time: i64,
     pub sha: SharedString,
     pub initials: SharedString,
     pub avatar: usize,
@@ -538,6 +546,7 @@ fn row_view(r: &RowPayload, chips: Vec<Chip>) -> RowView {
         summary: summary.into(),
         author: r.author_name.clone().into(),
         date: if r.committer_time > 0 { format_date(r.committer_time).into() } else { SharedString::default() },
+        time: r.committer_time,
         sha: if r.kind == NodeKind::Commit || r.kind == NodeKind::Merge { r.id.chars().take(SHORT_SHA).collect::<String>().into() } else { SharedString::default() },
         initials: initials(&r.author_name).into(),
         avatar: avatar_lane(&r.author_name, &r.author_email, LANES),
@@ -675,7 +684,7 @@ mod tests {
 
     #[test]
     fn a_branch_reaches_its_ancestors_only() {
-        let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() };
+        let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), time: 0, sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() };
         let rows = vec![row("d", &["b"]), row("c", &["b"]), row("b", &["a"]), row("a", &[])];
         let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
         let g = GraphView { rows, max_lanes: 2, head_row: None, head_branch: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default(), membership: Vec::new(), pinned_refs: Vec::new(), view: None, fork: None };
@@ -690,7 +699,7 @@ mod membership_tests {
     use super::*;
 
     fn row(id: &str, parents: &[&str], chips: Vec<Chip>) -> RowView {
-        RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 1, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips, worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
+        RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 1, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), time: 0, sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips, worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
     }
 
     fn local(name: &str, head: bool) -> Chip {

@@ -4,7 +4,7 @@
 //! a file's on top, Branch/Tag is hidden), the dialog in `refs.rs` instead.
 
 use crate::app::GitVolt;
-use crate::model::{CHIP_H, Col};
+use crate::model::{Col};
 use crate::refs::{branch_name_error, tag_name_error};
 use crate::theme;
 use crate::ui::input::{InputEvent, TextInput};
@@ -222,7 +222,7 @@ pub fn editor_element(ed: &RowEditor, labels_w: f32, window: &Window, cx: &App) 
             .cursor_default()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-            .child(div().relative().flex().flex_1().min_w_0().child(div().flex().flex_1().min_w_0().items_center().h(px(CHIP_H + 4.)).px(px(6.)).bg(theme::app_bg()).border_1().border_color(border).rounded(px(3.)).text_color(theme::text_selected()).child(ed.name.clone())).children(below.map(|b| div().absolute().left_0().top(px(CHIP_H + 7.)).child(b)))),
+            .child(div().relative().flex().flex_1().min_w_0().child(div().flex().flex_1().min_w_0().items_center().h(px(crate::metrics::chip_h() + 4.)).px(px(6.)).bg(theme::app_bg()).border_1().border_color(border).rounded(px(3.)).text_color(theme::text_selected()).child(ed.name.clone())).children(below.map(|b| div().absolute().left_0().top(px(crate::metrics::chip_h() + 7.)).child(b)))),
     )
     .with_priority(1)
     .into_any_element()

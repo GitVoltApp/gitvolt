@@ -1091,6 +1091,7 @@ pub struct EditorColors {
     pub line_number: crate::theme::Col,
     pub line_number_active: crate::theme::Col,
     pub indent_guide: crate::theme::Col,
+    pub whitespace: crate::theme::Col,
     pub cursor: crate::theme::Col,
     pub find_match: crate::theme::Col,
     pub find_highlight: crate::theme::Col,
@@ -1120,7 +1121,7 @@ impl Theme {
         let v: Value = serde_json::from_str(json).ok()?;
         let e = &v["editor"];
         let col = |k: &str| e[k].as_str().and_then(crate::theme::Col::parse);
-        let editor = EditorColors { foreground: col("foreground")?, line_number: col("lineNumber")?, line_number_active: col("lineNumberActive")?, indent_guide: col("indentGuide")?, cursor: col("cursor")?, find_match: col("findMatch")?, find_highlight: col("findMatchHighlight")?, fold_icon: col("foldIcon")?, line_highlight: col("lineHighlight"), line_highlight_border: col("lineHighlightBorder") };
+        let editor = EditorColors { foreground: col("foreground")?, line_number: col("lineNumber")?, line_number_active: col("lineNumberActive")?, indent_guide: col("indentGuide")?, whitespace: col("whitespace")?, cursor: col("cursor")?, find_match: col("findMatch")?, find_highlight: col("findMatchHighlight")?, fold_icon: col("foldIcon")?, line_highlight: col("lineHighlight"), line_highlight_border: col("lineHighlightBorder") };
         let mut rules = Vec::new();
         let mut default = (parse_color(v["foreground"].as_str()?)?, 0u8);
         for entry in v["tokenColors"].as_array()? {

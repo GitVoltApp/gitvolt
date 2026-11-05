@@ -16,7 +16,6 @@ use std::rc::Rc;
 pub const DETAILS_W: f32 = 400.;
 pub const DETAILS_MIN: f32 = 280.;
 pub const DETAILS_MAX: f32 = 720.;
-const FILE_ROW_H: f32 = 26.;
 /// A tree row: `[chevron | status icon][gap][name]`, indented by level (`TREE`, fileTree.ts).
 const TREE_BASE: f32 = 8.;
 const TREE_LEVEL: f32 = 20.;
@@ -971,7 +970,7 @@ pub fn file_list(id: &'static str, view: ListView, handle: &UniformListScrollHan
             let left_of = window.viewport_size().width.as_f32() - panel_w;
             range
                 .map(|i| {
-                    let base = div().id(i).relative().flex().w_full().h(px(FILE_ROW_H)).items_center().gap(px(6.)).pr(px(8.));
+                    let base = div().id(i).relative().flex().w_full().h(px(crate::metrics::file_row_h())).items_center().gap(px(6.)).pr(px(8.));
                     let full_path: SharedString = match &rows[i] {
                         ListRow::Folder { path, .. } => path.clone(),
                         ListRow::File { index, .. } => changes[*index].path.clone(),

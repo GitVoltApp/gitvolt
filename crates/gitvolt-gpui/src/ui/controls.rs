@@ -84,9 +84,9 @@ pub fn select<T: Clone + PartialEq + 'static>(key: impl Into<SharedString>, valu
     .into_any_element()
 }
 
-/// An on/off toggle, with its label and a line under it; a click on either flips it.
-pub fn switch(id: impl Into<ElementId>, checked: bool, label: impl Into<SharedString>, description: Option<SharedString>, disabled: bool, on_change: impl Fn(bool, &mut Window, &mut App) + 'static) -> Stateful<Div> {
-    let track = div()
+/// A switch's track and knob (`.switch-track`).
+pub fn switch_track(checked: bool, disabled: bool) -> Div {
+    div()
         .relative()
         .flex_none()
         .w(px(30.))
@@ -94,7 +94,12 @@ pub fn switch(id: impl Into<ElementId>, checked: bool, label: impl Into<SharedSt
         .rounded(px(9.))
         .bg(if checked { theme::switch_on() } else { theme::switch_off() })
         .when(disabled, |d| d.opacity(0.55))
-        .child(div().absolute().top(px(2.)).left(px(if checked { 15. } else { 2. })).size(px(13.)).rounded_full().bg(theme::text_on_accent()));
+        .child(div().absolute().top(px(2.)).left(px(if checked { 15. } else { 2. })).size(px(13.)).rounded_full().bg(theme::text_on_accent()))
+}
+
+/// An on/off toggle, with its label and a line under it; a click on either flips it.
+pub fn switch(id: impl Into<ElementId>, checked: bool, label: impl Into<SharedString>, description: Option<SharedString>, disabled: bool, on_change: impl Fn(bool, &mut Window, &mut App) + 'static) -> Stateful<Div> {
+    let track = switch_track(checked, disabled);
     div()
         .id(id)
         .flex()
@@ -173,6 +178,11 @@ pub fn keycaps(chord: &str) -> Div {
         );
     }
     row
+}
+
+/// One keycap holding a whole chord (`.sc-key`).
+pub fn keycap_one(text: &str) -> Div {
+    div().flex().items_center().justify_center().min_w(px(18.)).px(px(6.)).py(px(3.)).text_size(px(11.)).line_height(px(11.)).border_1().border_b_2().border_color(theme::section_border()).rounded(px(4.)).bg(theme::app_bg()).text_color(theme::text_secondary()).child(text.to_string())
 }
 
 /// `keycaps`: a trailing `+` key stays a key.

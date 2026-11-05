@@ -23,8 +23,6 @@ use std::rc::Rc;
 pub const COMMIT_QUEUED: &str = "Commit queued";
 pub const TYPE_A_MESSAGE: &str = "Type a message to commit";
 pub const STAGING_BUSY: &str = "Staging…";
-const FILE_ROW_H: f32 = 26.;
-const HEADER_H: f32 = 37.;
 const VIEW_BAR_H: f32 = 36.;
 pub const WIP_DRAFT_COUNTER_FROM: usize = 60;
 pub const WIP_DRAFT_WARN_FROM: usize = 72;
@@ -671,7 +669,7 @@ impl GitVolt {
         if self.staging_gate(ctx) {
             return;
         }
-        let from = if advance { self.advance_from(ctx) } else { None };
+        let from = if advance && self.prefs["advanceAfterStage"] != false { self.advance_from(ctx) } else { None };
         let repo = ctx.repo;
         if let Some(tab) = self.wip_tab_mut(repo) {
             tab.wip.staging += 1;
@@ -1862,8 +1860,8 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
         .pl(px(9.))
         .pr(px(8.))
         // Its line's on top of its height; with both open the handle's line is the one above Staged.
-        .when(which != Which::Conflicted && (basis.is_none() || which != Which::Staged), |d| d.h(px(FILE_ROW_H + 1.)).border_t_1().border_color(theme::section_border()))
-        .when(which == Which::Conflicted || (basis.is_some() && which == Which::Staged), |d| d.h(px(FILE_ROW_H)))
+        .when(which != Which::Conflicted && (basis.is_none() || which != Which::Staged), |d| d.h(px(crate::metrics::file_row_h() + 1.)).border_t_1().border_color(theme::section_border()))
+        .when(which == Which::Conflicted || (basis.is_some() && which == Which::Staged), |d| d.h(px(crate::metrics::file_row_h())))
         .cursor_pointer()
         .on_click(cx.listener(move |this, _, _, cx| this.toggle_wip_section(which, cx)))
         .on_mouse_down(MouseButton::Right, cx.listener(move |this, e: &MouseDownEvent, window, cx| {
@@ -1976,7 +1974,7 @@ pub fn split_bounds(height: f32) -> (f32, f32) {
     if height <= 0. {
         return (0.1, 0.9);
     }
-    let lo = (SPLIT_CHROME + SPLIT_MIN_ROWS * FILE_ROW_H) / height;
+    let lo = (SPLIT_CHROME + SPLIT_MIN_ROWS * crate::metrics::file_row_h()) / height;
     if lo >= 0.5 { (0.5, 0.5) } else { (lo, 1. - lo) }
 }
 
@@ -2030,7 +2028,7 @@ pub fn wip_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Windo
     let header = div()
         .flex()
         .flex_none()
-        .h(px(HEADER_H))
+        .h(px(crate::metrics::panel_bar_h()))
         .items_center()
         .gap(px(6.))
         .px(px(12.))
@@ -2134,7 +2132,7 @@ pub fn wip_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Windo
     let (lo, hi) = split_bounds(split_h);
     let shown = ratio.clamp(lo, hi);
     let conflicted_rows = tab.files.as_ref().and_then(|f| f.wip.as_ref()).map_or(0, |w| w.section(Which::Conflicted).rows.len());
-    let conflicted_h = (26. + 25. + conflicted_rows as f32 * FILE_ROW_H).min((height / 3.).max(2. * FILE_ROW_H + 25.));
+    let conflicted_h = (26. + 25. + conflicted_rows as f32 * crate::metrics::file_row_h()).min((height / 3.).max(2. * crate::metrics::file_row_h() + 25.));
     let conflicted = section_view(Which::Conflicted, tab, keys_here, selected.clone(), width, closed[0], None, Some(conflicted_h), cx);
     let unstaged = section_view(Which::Unstaged, tab, keys_here, selected.clone(), width, closed[1], both.then_some(shown), None, cx);
     let resizer = both.then(|| {
@@ -2433,7 +2431,7 @@ mod ui_tests {
     }
 
     fn wip_row() -> RowView {
-        RowView { id: "wip".into(), kind: NodeKind::Wip, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: Some("/w".into()), email: String::new(), parents: vec!["abc".into()], stash_branch: None, body: SharedString::default(), wip: Some(Default::default()), collapsed: None, fold: None, ghosts: Vec::new() }
+        RowView { id: "wip".into(), kind: NodeKind::Wip, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), time: 0, sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: Some("/w".into()), email: String::new(), parents: vec!["abc".into()], stash_branch: None, body: SharedString::default(), wip: Some(Default::default()), collapsed: None, fold: None, ghosts: Vec::new() }
     }
 
     /// A window with the WIP row selected and its lists in.

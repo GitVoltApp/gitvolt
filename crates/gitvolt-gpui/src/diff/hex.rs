@@ -2,7 +2,7 @@
 //! text panes per side, byte i against byte i, the changed bytes coloured in both panes. It scrolls as
 //! the diff does, on `DiffState`'s `scroll` and `layout`, with one row of the layout per row of bytes.
 
-use super::view::{DiffState, LINE_H, RULER_W, mono, strip_events};
+use super::view::{DiffState, RULER_W, mono, strip_events};
 use crate::app::GitVolt;
 use crate::theme;
 use gpui::prelude::*;
@@ -27,7 +27,6 @@ const PANE_PAD: f32 = 4.;
 const CONTEXT_ROWS: usize = 3;
 /// At most this many marks on the bar: closer changes share one.
 const RULER_MARKS: usize = 400;
-const FONT_SIZE: f32 = 13.;
 
 /// The column of byte `j`'s first digit in a hex row: `48 65 6c 6c  6f 20 …`.
 pub fn hex_col(j: usize, per: usize) -> usize {
@@ -255,12 +254,12 @@ static CHAR: LazyLock<Vec<SharedString>> = LazyLock::new(|| (0..=255u8).map(|b| 
 
 fn paint_cell(text: &SharedString, x: Pixels, y: Pixels, font: &Font, window: &mut Window, cx: &mut App) {
     let run = TextRun { len: text.len(), font: font.clone(), color: theme::editor().foreground, background_color: None, underline: None, strikethrough: None };
-    let line = window.text_system().shape_line(text.clone(), px(FONT_SIZE), &[run], None);
-    line.paint(point(x, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+    let line = window.text_system().shape_line(text.clone(), px(crate::metrics::editor_font_size()), &[run], None);
+    line.paint(point(x, y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
 }
 
 fn band(x: Pixels, y: Pixels, from: f32, to: f32, color: Hsla, window: &mut Window) {
-    window.paint_quad(fill(Bounds::from_corners(point(x + px(from), y), point(x + px(to), y + px(LINE_H))), color));
+    window.paint_quad(fill(Bounds::from_corners(point(x + px(from), y), point(x + px(to), y + px(crate::metrics::line_h()))), color));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -272,10 +271,10 @@ fn paint_side(side: &HexSide, old_side: bool, file: bool, view: (usize, &[ByteRu
     let own = side.bytes.len().div_ceil(per);
     let text_x = hex_w + 1. + TEXT_LEFT;
     for row in first..=last {
-        let y = bounds.origin.y + px(row as f32 * LINE_H - scroll);
+        let y = bounds.origin.y + px(row as f32 * crate::metrics::line_h() - scroll);
         if row >= own {
             // A side's rows past its end, hatched as the diff's empty side is.
-            window.paint_quad(fill(Bounds::new(point(x, y), size(px(hex_w + text_w), px(LINE_H))), pattern_slash(theme::diff_diagonal(), 2., 6.)));
+            window.paint_quad(fill(Bounds::new(point(x, y), size(px(hex_w + text_w), px(crate::metrics::line_h()))), pattern_slash(theme::diff_diagonal(), 2., 6.)));
             continue;
         }
         let at = row * per;
@@ -296,7 +295,7 @@ fn paint_side(side: &HexSide, old_side: bool, file: bool, view: (usize, &[ByteRu
         let number = offset_label(row, per);
         let color = if row == cursor { theme::editor().line_number_active } else { theme::editor().line_number };
         let run = TextRun { len: number.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None };
-        window.text_system().shape_line(number.into(), px(FONT_SIZE), &[run], None).paint(point(x, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+        window.text_system().shape_line(number.into(), px(crate::metrics::editor_font_size()), &[run], None).paint(point(x, y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
         for (j, b) in side.bytes[at..(at + per).min(side.bytes.len())].iter().enumerate() {
             paint_cell(&HEX[*b as usize], x + px(HEX_LEFT + hex_col(j, per) as f32 * CELL), y, font, window, cx);
             paint_cell(&CHAR[*b as usize], x + px(text_x + j as f32 * CELL), y, font, window, cx);
@@ -356,8 +355,8 @@ pub fn hex_body(diff: &DiffState, view: &HexView, cx: &mut Context<GitVolt>) -> 
                 |_, _, _| {},
                 move |bounds, _, window, cx| {
                     let font = mono();
-                    let first = (scroll / LINE_H) as usize;
-                    let last = (((scroll + bounds.size.height.as_f32()) / LINE_H) as usize).min(rows.saturating_sub(1));
+                    let first = (scroll / crate::metrics::line_h()) as usize;
+                    let last = (((scroll + bounds.size.height.as_f32()) / crate::metrics::line_h()) as usize).min(rows.saturating_sub(1));
                     let (hex_w, text_w) = pane_widths(per);
                     window.with_content_mask(Some(ContentMask { bounds }), |window| {
                         let mut x = bounds.origin.x;
@@ -392,7 +391,7 @@ pub fn step(view: &HexView, cursor: usize, forward: bool) -> Option<usize> {
 
 /// The scroll that puts `row` under its context.
 pub fn top_of(row: usize) -> f32 {
-    row.saturating_sub(CONTEXT_ROWS) as f32 * LINE_H
+    row.saturating_sub(CONTEXT_ROWS) as f32 * crate::metrics::line_h()
 }
 
 #[cfg(test)]

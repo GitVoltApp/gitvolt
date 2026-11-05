@@ -105,6 +105,7 @@ for (const name of EDITOR_THEMES) {
     lineNumber: c['editorLineNumber.foreground'] ?? m.lineNumber,
     lineNumberActive: c['editorLineNumber.activeForeground'] ?? m.lineNumberActive,
     indentGuide: c['editorIndentGuide.background1'] ?? c['editorIndentGuide.background'] ?? c['editorWhitespace.foreground'] ?? m.indentGuide,
+    whitespace: c['editorWhitespace.foreground'] ?? m.indentGuide,
     cursor: c['editorCursor.foreground'] ?? m.cursor,
     findMatch: c['editor.findMatchBackground'] ?? m.findMatch,
     findMatchHighlight: c['editor.findMatchHighlightBackground'] ?? m.findMatchHighlight,

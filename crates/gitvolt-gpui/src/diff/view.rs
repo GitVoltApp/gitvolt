@@ -22,14 +22,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub const LINE_H: f32 = 18.;
-const FONT_SIZE: f32 = 13.;
 const NUM_W: f32 = 40.;
 const SIGN_W: f32 = 18.;
 /// File View's column between the numbers and the text: the fold chevrons.
 const FOLD_W: f32 = 26.;
-/// JetBrains Mono's advance at `FONT_SIZE`; lines wrap by it.
-const ADVANCE: f32 = FONT_SIZE * 0.6;
+/// JetBrains Mono's advance at `crate::metrics::editor_font_size()`; lines wrap by it.
 /// Monaco's hidden-lines row.
 const HIDDEN_H: f32 = 24.;
 /// The minimap's scale: a character is 1 px wide, a line 2 px high.
@@ -39,7 +36,6 @@ const SCROLLBAR_W: f32 = 10.;
 pub const RULER_W: f32 = 30.;
 /// A split's left pane has more margin before its text than the right one (Monaco's).
 const SPLIT_LEFT_MARGIN: f32 = 18.;
-pub const HEADER_H: f32 = 37.;
 const TOOLBAR_H: f32 = 33.;
 const TOOLBAR_NARROW: f32 = 900.;
 pub const FONT: &str = "JetBrains Mono";
@@ -161,7 +157,7 @@ impl Layout {
 
     /// As `scrollBeyondLastLine`: the last line can scroll to the top.
     pub fn total(&self) -> f32 {
-        self.content() + (self.height - LINE_H).max(0.)
+        self.content() + (self.height - crate::metrics::line_h()).max(0.)
     }
 
     pub fn max_scroll(&self) -> f32 {
@@ -388,6 +384,11 @@ impl DiffState {
     }
 
     /// Lays the rows out for a body `width` by `height` px, when any of that changed.
+    /// The sizes changed: the next frame lays it out again.
+    pub fn invalidate_layout(&mut self) {
+        self.layout = Rc::new(Layout::default());
+    }
+
     pub fn ensure_layout(&mut self, width: f32, height: f32) {
         if let Some(line) = self.pending_line.filter(|_| self.data.is_some() && !self.rows.is_empty()) {
             self.pending_line = None;
@@ -415,7 +416,7 @@ impl DiffState {
         }
         let Some(data) = self.data.clone() else { return };
         let split = self.split();
-        let columns = |text: f32| (text / ADVANCE).floor().max(8.) as usize;
+        let columns = |text: f32| (text / crate::metrics::advance()).floor().max(8.) as usize;
         let (old_cols, new_cols) = if split { (columns(width / 2. - self.gutter()), columns(width / 2. - NUM_W - SIGN_W)) } else { (columns(width - self.gutter()), columns(width - self.gutter())) };
         let mut layout = Layout { width, height, wrap: self.wrap, offsets: Vec::with_capacity(self.rows.len() + 1), ..Layout::default() };
         let mut y = 0.;
@@ -446,7 +447,7 @@ impl DiffState {
                 wrapped(r.old, &data.old, old_cols, &mut layout.breaks_old);
                 wrapped(r.new, &data.new, new_cols, &mut layout.breaks_new);
             }
-            y += lines as f32 * LINE_H;
+            y += lines as f32 * crate::metrics::line_h();
         }
         layout.offsets.push(y);
         self.layout = Rc::new(layout);
@@ -467,12 +468,12 @@ impl DiffState {
             }
             // Sideways too: the caret's column stays in the text's room.
             if !self.wrap {
-                let room = (if self.split() { width / 2. - NUM_W - SIGN_W } else { width - self.gutter() }).max(ADVANCE);
-                let x = at.byte as f32 * ADVANCE;
+                let room = (if self.split() { width / 2. - NUM_W - SIGN_W } else { width - self.gutter() }).max(crate::metrics::advance());
+                let x = at.byte as f32 * crate::metrics::advance();
                 if x < self.hscroll {
                     self.hscroll = x;
-                } else if x > self.hscroll + room - ADVANCE {
-                    self.hscroll = x - room + ADVANCE;
+                } else if x > self.hscroll + room - crate::metrics::advance() {
+                    self.hscroll = x - room + crate::metrics::advance();
                 }
             }
         }
@@ -483,18 +484,18 @@ impl DiffState {
     fn layout_hex(&mut self, width: f32, height: f32) {
         let file = self.view == ViewKind::File;
         let Some(hex) = self.hex.as_mut() else { return };
-        let top_byte = (self.scroll / LINE_H) * hex.per as f32;
+        let top_byte = (self.scroll / crate::metrics::line_h()) * hex.per as f32;
         let fresh = self.layout.offsets.is_empty() && self.reveal_first;
         hex.per = choose_per(hex.data.sides(file).len(), width + RULER_W);
         hex.blocks = Rc::new(if file { Vec::new() } else { super::hex::changed_rows(&hex.data.runs, hex.per) });
         self.changes = hex.blocks.iter().map(|b| b.0).collect();
         let rows = hex.rows(file);
-        let offsets = (0..=rows).map(|r| r as f32 * LINE_H).collect();
-        self.scroll = top_byte / hex.per as f32 * LINE_H;
+        let offsets = (0..=rows).map(|r| r as f32 * crate::metrics::line_h()).collect();
+        self.scroll = top_byte / hex.per as f32 * crate::metrics::line_h();
         self.layout = Rc::new(Layout { width, height, wrap: self.wrap, offsets, ..Layout::default() });
         if fresh {
             self.reveal_first = false;
-            self.scroll = self.changes.first().filter(|first| (**first + 1) as f32 * LINE_H > height).map_or(0., |first| super::hex::top_of(*first));
+            self.scroll = self.changes.first().filter(|first| (**first + 1) as f32 * crate::metrics::line_h() > height).map_or(0., |first| super::hex::top_of(*first));
         }
         self.scroll = self.scroll.clamp(0., self.layout.max_scroll());
     }
@@ -502,7 +503,7 @@ impl DiffState {
     /// As Monaco's `revealLineInCenter`.
     pub fn center_on(&mut self, row: usize) {
         let y = self.layout.offsets.get(row).copied().unwrap_or(0.);
-        self.scroll = (y - self.layout.height / 2. + LINE_H / 2.).clamp(0., self.layout.max_scroll());
+        self.scroll = (y - self.layout.height / 2. + crate::metrics::line_h() / 2.).clamp(0., self.layout.max_scroll());
     }
 
     pub fn scroll_by(&mut self, px: f32) {
@@ -911,7 +912,7 @@ impl GitVolt {
     }
 
     pub fn scroll_diff(&mut self, rows: f32, cx: &mut Context<Self>) {
-        self.with_diff(cx, |d| d.scroll_by(rows * LINE_H));
+        self.with_diff(cx, |d| d.scroll_by(rows * crate::metrics::line_h()));
     }
 
     pub fn copy_selection(&mut self, cx: &mut Context<Self>) {
@@ -986,7 +987,9 @@ fn contents(path: &str, v: &Value, ignore_whitespace: bool, history_file: bool, 
 }
 
 pub fn mono() -> Font {
-    Font { family: FONT.into(), features: FontFeatures::disable_ligatures(), fallbacks: Some(FontFallbacks::from_fonts(vec!["Noto Sans Mono".into(), "monospace".into()])), weight: FontWeight::NORMAL, style: FontStyle::Normal }
+    let style = crate::metrics::editor_style();
+    let family = crate::settings::fonts::families_of(&style.family).into_iter().next().unwrap_or_else(|| FONT.to_string());
+    Font { family: family.into(), features: if style.ligatures { FontFeatures::default() } else { FontFeatures::disable_ligatures() }, fallbacks: Some(FontFallbacks::from_fonts(vec![FONT.into(), "Noto Sans Mono".into(), "monospace".into()])), weight: FontWeight::NORMAL, style: FontStyle::Normal }
 }
 
 fn run(len: usize, base: &Font, color: Hsla, flags: u8) -> TextRun {
@@ -1039,25 +1042,25 @@ struct Painter {
 }
 
 fn shape(line: &Line, spans: &[Span], font: &Font, window: &Window) -> ShapedLine {
-    window.text_system().shape_line(line.text.clone(), px(FONT_SIZE), &runs(&line.text, spans, font), None)
+    window.text_system().shape_line(line.text.clone(), px(crate::metrics::editor_font_size()), &runs(&line.text, spans, font), None)
 }
 
 /// A visual line: bytes `from..to` of a line that wraps.
 fn shape_part(text: &str, from: usize, to: usize, spans: &[Span], font: &Font, window: &Window) -> ShapedLine {
     let part = &text[from..to];
     let clipped: Vec<Span> = spans.iter().filter(|s| (s.start as usize) < to && (s.end as usize) > from).map(|s| Span { start: (s.start as usize).saturating_sub(from) as u32, end: ((s.end as usize).min(to) - from) as u32, ..*s }).collect();
-    window.text_system().shape_line(part.to_string().into(), px(FONT_SIZE), &runs(part, &clipped, font), None)
+    window.text_system().shape_line(part.to_string().into(), px(crate::metrics::editor_font_size()), &runs(part, &clipped, font), None)
 }
 
 fn paint_number(n: u32, right: Pixels, y: Pixels, color: Hsla, p: &Painter, window: &mut Window, cx: &mut App) {
     let text: SharedString = (n + 1).to_string().into();
-    let line = window.text_system().shape_line(text.clone(), px(FONT_SIZE), &[TextRun { len: text.len(), font: p.font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
-    line.paint(point(right - line.width, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+    let line = window.text_system().shape_line(text.clone(), px(crate::metrics::editor_font_size()), &[TextRun { len: text.len(), font: p.font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
+    line.paint(point(right - line.width, y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
 }
 
 fn paint_sign(glyph: &'static str, x: Pixels, y: Pixels, color: Hsla, p: &Painter, window: &mut Window, cx: &mut App) {
-    let line = window.text_system().shape_line(glyph.into(), px(FONT_SIZE), &[TextRun { len: glyph.len(), font: p.font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
-    line.paint(point(x + (px(SIGN_W) - line.width) / 2., y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+    let line = window.text_system().shape_line(glyph.into(), px(crate::metrics::editor_font_size()), &[TextRun { len: glyph.len(), font: p.font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
+    line.paint(point(x + (px(SIGN_W) - line.width) / 2., y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
 }
 
 /// One pane's text from `x`, clipped to `clip`: each visual line with its guides, word marks and
@@ -1066,23 +1069,37 @@ fn paint_sign(glyph: &'static str, x: Pixels, y: Pixels, color: Hsla, p: &Painte
 fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, mark: Hsla, x: Pixels, y: Pixels, clip: Bounds<Pixels>, p: &Painter, window: &mut Window, cx: &mut App) {
     let breaks = p.layout.breaks(old_side, n);
     let text = line.text.as_ref();
-    let indent = text.bytes().take_while(|b| *b == b' ').count() as f32 * ADVANCE;
+    let indent = text.bytes().take_while(|b| *b == b' ').count() as f32 * crate::metrics::advance();
     window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
         for part in 0..=breaks.len() {
             let from = if part == 0 { 0 } else { breaks[part - 1] as usize };
             let to = breaks.get(part).map_or(text.len(), |b| *b as usize);
-            let y = y + px(part as f32 * LINE_H);
+            let y = y + px(part as f32 * crate::metrics::line_h());
             let start = x - px(p.hscroll) + if part == 0 { px(0.) } else { px(indent) };
             let shaped = if breaks.is_empty() { shape(line, spans, &p.font, window) } else { shape_part(text, from, to, spans, &p.font, window) };
             for level in 1..=line.guides {
-                let gx = x - px(p.hscroll) + px(ADVANCE * ((usize::from(level) - 1) * TAB_SIZE) as f32);
-                window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(LINE_H))), theme::editor().indent_guide));
+                let gx = x - px(p.hscroll) + px(crate::metrics::advance() * ((usize::from(level) - 1) * crate::metrics::tab_size()) as f32);
+                window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(crate::metrics::line_h()))), theme::editor().indent_guide));
             }
             for &(a, b) in &line.marks {
                 let (a, b) = ((a as usize).max(from), (b as usize).min(to));
                 if b > a {
                     let (l, r) = (shaped.x_for_index(a - from), shaped.x_for_index(b - from));
-                    window.paint_quad(fill(Bounds::from_corners(point(start + l, y), point(start + r, y + px(LINE_H))), mark));
+                    window.paint_quad(fill(Bounds::from_corners(point(start + l, y), point(start + r, y + px(crate::metrics::line_h()))), mark));
+                }
+            }
+            let mode = crate::metrics::whitespace_mode();
+            if mode > 0 {
+                let (dots, arrows) = super::model::whitespace_marks(text, &line.tab_starts, from, to, mode, crate::metrics::tab_size());
+                let c = theme::editor().whitespace;
+                for i in dots {
+                    let cx_ = start + shaped.x_for_index(i - from) + px(crate::metrics::advance() / 2. - 1.);
+                    window.paint_quad(fill(Bounds::new(point(cx_, y + px(crate::metrics::line_h() / 2. - 1.)), size(px(2.), px(2.))), c));
+                }
+                for i in arrows {
+                    let at = start + shaped.x_for_index(i - from);
+                    let arrow = window.text_system().shape_line("→".into(), px(crate::metrics::editor_font_size()), &[TextRun { len: "→".len(), font: p.font.clone(), color: c, background_color: None, underline: None, strikethrough: None }], None);
+                    arrow.paint(point(at, y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
                 }
             }
             // Monaco's colours for a match and the current one.
@@ -1093,7 +1110,7 @@ fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, ma
                     if b > a {
                         let (l, r) = (shaped.x_for_index(a - from), shaped.x_for_index(b - from));
                         let color = if p.found_at == Some(k) { theme::editor().find_match } else { theme::editor().find_highlight };
-                        window.paint_quad(fill(Bounds::from_corners(point(start + l, y), point(start + r, y + px(LINE_H))), color));
+                        window.paint_quad(fill(Bounds::from_corners(point(start + l, y), point(start + r, y + px(crate::metrics::line_h()))), color));
                     }
                 }
             }
@@ -1106,20 +1123,20 @@ fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, ma
                     let (lx, mut rx) = (shaped.x_for_index(l - from), shaped.x_for_index(r - from));
                     // A selected line's end shows, as a sliver past its text.
                     if ix != b.row && last {
-                        rx += px(ADVANCE);
+                        rx += px(crate::metrics::advance());
                     }
                     if rx > lx {
-                        window.paint_quad(fill(Bounds::from_corners(point(start + lx, y), point(start + rx, y + px(LINE_H))), theme::selection_bg()));
+                        window.paint_quad(fill(Bounds::from_corners(point(start + lx, y), point(start + rx, y + px(crate::metrics::line_h()))), theme::selection_bg()));
                     }
                 }
             }
             if to > from {
-                shaped.paint(point(start, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
+                shaped.paint(point(start, y), px(crate::metrics::line_h()), TextAlign::Left, None, window, cx).ok();
             }
             if !old_side
                 && let Some(at) = p.caret.get().filter(|c| c.row == ix && c.byte >= from && (c.byte < to || part == breaks.len()))
             {
-                window.paint_quad(fill(Bounds::new(point(start + shaped.x_for_index(at.byte - from), y), size(px(2.), px(LINE_H))), theme::editor().cursor));
+                window.paint_quad(fill(Bounds::new(point(start + shaped.x_for_index(at.byte - from), y), size(px(2.), px(crate::metrics::line_h()))), theme::editor().cursor));
             }
         }
     });
@@ -1174,7 +1191,7 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
             let (line, spans, mark) = if old_side { (&p.data.old.lines[n as usize], spans_of(&hl.old, n), theme::diff_removed_text()) } else { (&p.data.new.lines[n as usize], spans_of(&hl.new, n), theme::diff_inserted_text()) };
             paint_text(ix, n, line, spans, old_side, mark, at, y, clip, p, window, cx);
             if folded {
-                let x = at - px(p.hscroll) + px(line.text.chars().count() as f32 * ADVANCE + 6.);
+                let x = at - px(p.hscroll) + px(line.text.chars().count() as f32 * crate::metrics::advance() + 6.);
                 window.paint_quad(quad(Bounds::new(point(x, y + px(3.)), size(px(22.), px(12.))), px(2.), theme::control_hover_bg(), px(0.), transparent_black(), BorderStyle::default()));
             }
         }
@@ -1256,10 +1273,10 @@ fn pos_at(diff: &DiffState, position: Point<Pixels>, window: &Window) -> Option<
     let n = if old_side { r.old } else { r.new }.or(r.old).unwrap_or(0);
     let breaks = diff.layout.breaks(old_side, n);
     let text = line.text.as_ref();
-    let part = (((y - diff.layout.offsets[row]) / LINE_H).max(0.) as usize).min(breaks.len());
+    let part = (((y - diff.layout.offsets[row]) / crate::metrics::line_h()).max(0.) as usize).min(breaks.len());
     let from = if part == 0 { 0 } else { breaks[part - 1] as usize };
     let to = breaks.get(part).map_or(text.len(), |b| *b as usize);
-    let indent = if part == 0 { 0. } else { text.bytes().take_while(|b| *b == b' ').count() as f32 * ADVANCE };
+    let indent = if part == 0 { 0. } else { text.bytes().take_while(|b| *b == b' ').count() as f32 * crate::metrics::advance() };
     let shaped = shape_part(text, from, to, &[], &mono(), window);
     Some((TextPos { row, byte: from + shaped.closest_index_for_x((x - px(indent)).max(px(0.))) }, old_side))
 }
@@ -1274,7 +1291,7 @@ pub(crate) fn word_at(text: &str, byte: usize) -> (usize, usize) {
 
 /// The widest line in px, as far as a pane scrolls sideways.
 fn content_width(data: &DiffData) -> f32 {
-    data.widest as f32 * ADVANCE
+    data.widest as f32 * crate::metrics::advance()
 }
 
 fn on_mouse_down(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<GitVolt>) {
@@ -1370,9 +1387,9 @@ fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx
             let above = (b.origin.y - e.position.y).as_f32();
             let below = (e.position.y - b.origin.y - b.size.height).as_f32();
             if above > 0. {
-                diff.scroll_by(-above.min(LINE_H * 3.));
+                diff.scroll_by(-above.min(crate::metrics::line_h() * 3.));
             } else if below > 0. {
-                diff.scroll_by(below.min(LINE_H * 3.));
+                diff.scroll_by(below.min(crate::metrics::line_h() * 3.));
             }
             if let Some((at, _)) = pos_at(diff, e.position, window)
                 && let Some(sel) = diff.selection.as_mut()
@@ -1611,7 +1628,7 @@ fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl Into
                 let Some(data) = &data else { return };
                 let height = b.size.height.as_f32();
                 let shown = (height / MINIMAP_LINE) as usize;
-                let view_rows = (layout.height / LINE_H).ceil() as usize;
+                let view_rows = (layout.height / crate::metrics::line_h()).ceil() as usize;
                 let top_row = layout.row_at(scroll);
                 let share = if layout.max_scroll() > 0. { scroll / layout.max_scroll() } else { 0. };
                 // A long file's map moves slower than the file, so it stays under the viewport.
@@ -1719,7 +1736,7 @@ pub(crate) fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoEl
     div()
         .flex()
         .flex_none()
-        .h(px(HEADER_H))
+        .h(px(crate::metrics::panel_bar_h()))
         .items_center()
         .gap(px(10.))
         .pl(px(12.))
@@ -1909,6 +1926,9 @@ pub fn body_size(diff: &DiffState, width: f32, height: f32) -> (f32, f32) {
 }
 
 fn minimap_width(width: f32) -> f32 {
+    if !crate::metrics::editor_style().minimap {
+        return 0.;
+    }
     (width * 0.0975).min(MINIMAP_MAX).floor()
 }
 
@@ -1964,7 +1984,7 @@ fn text_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElem
                 .flex_1()
                 .min_h_0()
                 .child(text_area(diff, cx))
-                .when(has_text && file_view, |d| d.child(minimap(diff, minimap_width(width), cx)).child(scrollbar(diff, cx)))
+                .when(has_text && file_view, |d| d.when(crate::metrics::editor_style().minimap, |d| d.child(minimap(diff, minimap_width(width), cx))).child(scrollbar(diff, cx)))
                 .when(has_text && !file_view && !diff.split(), |d| d.child(div().absolute().top_0().bottom_0().right(px(RULER_W)).w(px(SCROLLBAR_W)).border_l_1().border_color(theme::section_border())))
                 .when(has_text && !file_view, |d| d.child(ruler(diff, cx))),
         )
@@ -2060,19 +2080,19 @@ mod tests {
         d.ensure_layout(600., 200.);
         let hidden = d.rows.iter().position(|r| matches!(r.kind, RowKind::Hidden { .. })).unwrap();
         assert_eq!(hidden, 0);
-        assert_eq!((d.layout.offsets[0], d.layout.offsets[1], d.layout.offsets[2]), (0., HIDDEN_H, HIDDEN_H + LINE_H));
+        assert_eq!((d.layout.offsets[0], d.layout.offsets[1], d.layout.offsets[2]), (0., HIDDEN_H, HIDDEN_H + crate::metrics::line_h()));
         assert_eq!((d.layout.row_at(0.), d.layout.row_at(HIDDEN_H - 1.), d.layout.row_at(HIDDEN_H)), (0, 0, 1));
 
         let long = "word ".repeat(100);
         let mut d = state(&format!("a\n{long}\nb"), &format!("a\n{long}\nb"));
         d.ensure_layout(600., 200.);
-        assert_eq!(d.layout.content(), 3. * LINE_H);
+        assert_eq!(d.layout.content(), 3. * crate::metrics::line_h());
         d.wrap = true;
         d.ensure_layout(600., 200.);
         let lines = 1 + d.layout.breaks(false, 1).len();
         assert!(lines > 1);
-        assert_eq!(d.layout.content(), (2 + lines) as f32 * LINE_H);
-        assert_eq!(d.layout.row_at(LINE_H * 2.), 1, "a continuation belongs to its row");
+        assert_eq!(d.layout.content(), (2 + lines) as f32 * crate::metrics::line_h());
+        assert_eq!(d.layout.row_at(crate::metrics::line_h() * 2.), 1, "a continuation belongs to its row");
     }
 
     #[test]
@@ -2081,11 +2101,11 @@ mod tests {
         let new = old.replace("l50\n", "changed\n");
         let mut d = state(&old, &new);
         d.ensure_layout(600., 180.);
-        assert_eq!(d.scroll, 50. * LINE_H - 90. + LINE_H / 2., "row 50 in the middle");
+        assert_eq!(d.scroll, 50. * crate::metrics::line_h() - 90. + crate::metrics::line_h() / 2., "row 50 in the middle");
         d.scroll_by(-1e6);
         assert_eq!(d.scroll, 0.);
         d.scroll_by(1e6);
-        assert_eq!(d.scroll, d.layout.content() - LINE_H, "the last line can reach the top");
+        assert_eq!(d.scroll, d.layout.content() - crate::metrics::line_h(), "the last line can reach the top");
     }
 
     #[test]
@@ -2116,11 +2136,11 @@ mod tests {
         let hex = d.hex.as_ref().unwrap();
         assert_eq!((hex.per, hex.rows(false)), (8, 256), "too narrow for 16 a row beside each other");
         assert_eq!(d.changes, [125]);
-        assert_eq!(d.scroll, 122. * LINE_H, "three rows above the change");
+        assert_eq!(d.scroll, 122. * crate::metrics::line_h(), "three rows above the change");
         // Wider: the same byte stays at the top.
         d.ensure_layout(1400., 600.);
         assert_eq!(d.hex.as_ref().unwrap().per, 16);
-        assert_eq!(d.scroll, 61. * LINE_H);
+        assert_eq!(d.scroll, 61. * crate::metrics::line_h());
         // One side in File View, with nothing to step through.
         d.view = ViewKind::File;
         d.relayout();
