@@ -55,6 +55,11 @@ pub fn show(message: impl Into<SharedString>, cx: &mut App) {
     show_with(message, Options::default(), cx);
 }
 
+/// A toast that says something failed.
+pub fn show_error(message: impl Into<SharedString>, cx: &mut App) {
+    show_with(message, Options { error: true, ..Default::default() }, cx);
+}
+
 pub fn show_with(message: impl Into<SharedString>, options: Options, cx: &mut App) {
     let left = duration(&options);
     let t = &mut Ui::get_mut(cx).toast;

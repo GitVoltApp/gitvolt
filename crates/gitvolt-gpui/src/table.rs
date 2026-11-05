@@ -49,8 +49,9 @@ pub type MessageCache = Rc<RefCell<HashMap<String, Option<SharedString>>>>;
 
 fn chip_width(c: &Chip, cx: &App) -> f32 {
     let sources = usize::from(c.local) + c.remotes.len();
-    let icons = usize::from(c.head) + usize::from(c.tag) + sources;
-    let icon_w = if c.head { HEAD_CHECK } else { 0. } + if c.tag { 12. } else { 0. } + sources as f32 * ICON;
+    let badge = usize::from(crate::forge::card::chip_badge(c).is_some());
+    let icons = usize::from(c.head) + usize::from(c.tag) + sources + badge;
+    let icon_w = if c.head { HEAD_CHECK } else { 0. } + if c.tag { 12. } else { 0. } + (sources + badge) as f32 * ICON;
     CHIP_PAD + crate::ui::text_width(&c.name, 13., FontWeight::NORMAL, cx) + icon_w + icons as f32 * CHIP_GAP
 }
 
@@ -112,7 +113,11 @@ fn chip_inner(c: &Chip, lane: usize, full: bool, lit: bool, row: Option<SharedSt
     }
     for (remote, full_ref) in &c.remotes {
         let branch = full_ref.trim_start_matches("refs/remotes/").trim_start_matches(&format!("{remote}/")).to_string();
-        chip = chip.child(tip(format!("{remote} → {branch} (Remote)"), icon("cloud", ICON, text)));
+        let glyph = match crate::forge::card::chip_remote_kind(remote) {
+            Some(k) => icon(crate::forge::text::mark_icon(k), 12., text).mx(px((ICON - 12.) / 2.)),
+            None => icon("cloud", ICON, text),
+        };
+        chip = chip.child(tip(format!("{remote} → {branch} (Remote)"), glyph));
     }
     chip
 }
@@ -148,7 +153,9 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
         let refs = chip_refs(c);
         let tag_tip = c.tag.then(|| format!("Tag at {}", &sha[..sha.len().min(SHORT_SHA)]));
         let pending = row_pending.iter().any(|p| c_refs(c).iter().any(|r| r == *p));
+        let badge = crate::forge::card::chip_badge(c).map(|(tab, kind, mr)| crate::forge::card::mr_badge(tab, kind, &mr, ICON, true, cx));
         let body = chip_inner(c, lane, false, selected, Some(group.clone()))
+            .children(badge)
             .when(pending, |d| d.child(crate::commit_box::spinner(("chip-spin", ix * 64 + i), 11., theme::text_secondary())))
             .id(("chip", ix * 64 + i))
             .cursor_pointer()

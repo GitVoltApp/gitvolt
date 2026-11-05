@@ -72,11 +72,12 @@ pub struct SettingsUi {
     /// Hosts' "Add a host" kind.
     pub host_kind: String,
     pub keyboard_filter: Option<Entity<TextInput>>,
+    pub accounts: crate::forge::accounts::AccountsUi,
 }
 
 impl Default for SettingsUi {
     fn default() -> Self {
-        Self { open: false, page: "general".into(), flash: None, floating: false, float_at: (0., 0.), float_drag: None, float_filter: None, search: None, fields: HashMap::new(), focus: None, return_to: None, scroll: ScrollHandle::new(), nav_cursor: None, all_colours: None, float_all: None, hold: 0, scroll_drag: None, lane_drag: None, fonts: None, fonts_loading: false, font_picker: None, font_preview: None, font_draft: HashMap::new(), font_asked: HashSet::new(), editor_custom: HashMap::new(), editor_seq: 0, identity: None, identity_for: None, presets: Default::default(), file_colours: Default::default(), host_kind: "gitlab".into(), keyboard_filter: None }
+        Self { open: false, page: "general".into(), flash: None, floating: false, float_at: (0., 0.), float_drag: None, float_filter: None, search: None, fields: HashMap::new(), focus: None, return_to: None, scroll: ScrollHandle::new(), nav_cursor: None, all_colours: None, float_all: None, hold: 0, scroll_drag: None, lane_drag: None, fonts: None, fonts_loading: false, font_picker: None, font_preview: None, font_draft: HashMap::new(), font_asked: HashSet::new(), editor_custom: HashMap::new(), editor_seq: 0, identity: None, identity_for: None, presets: Default::default(), file_colours: Default::default(), host_kind: "gitlab".into(), keyboard_filter: None, accounts: Default::default() }
     }
 }
 
@@ -90,6 +91,7 @@ impl GitVolt {
         ui.floating = false;
         ui.flash = focus.map(str::to_string);
         ui.nav_cursor = None;
+        ui.accounts.asked = false;
         if let Some(page) = focus.and_then(pages::def).map(|d| d.page) {
             ui.page = page.to_string();
         }

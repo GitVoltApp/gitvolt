@@ -283,10 +283,19 @@ impl GitVolt {
 
     /// A remote branch: tracking it locally.
     pub fn checkout_remote(&mut self, remote: &str, branch: &str, target: &str, cx: &mut Context<Self>) {
+        self.checkout_remote_as(remote, branch, target, None, cx);
+    }
+
+    /// The same, under another local name (a branch of its name tracks something else).
+    pub fn checkout_remote_as(&mut self, remote: &str, branch: &str, target: &str, local: Option<&str>, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let (ctx, head) = (tab.write_target(), tab.head_sha());
         let full = format!("refs/remotes/{remote}/{branch}");
-        self.checkout(ctx, json!({ "kind": "remote", "remote": remote, "branch": branch }), json!({ "head": head, "refs": { full: target } }), None, Origin::None, None, cx);
+        let mut target_json = json!({ "kind": "remote", "remote": remote, "branch": branch });
+        if let Some(local) = local {
+            target_json["local"] = json!(local);
+        }
+        self.checkout(ctx, target_json, json!({ "head": head, "refs": { full: target } }), None, Origin::None, None, cx);
     }
 
     /// Create: a dialog with Check out on.

@@ -1,7 +1,7 @@
 //! The registry (`registry.ts`) and the pages' settings (`pages/*.tsx`, and each feature's own).
 
 use super::frame::{self, bound, input_box, plain_button, set_bound};
-use crate::app::{GitVolt, icon};
+use crate::app::GitVolt;
 use crate::theme;
 use crate::ui::arm;
 use crate::ui::controls::{self, OnSelect};
@@ -161,7 +161,7 @@ pub fn pages() -> &'static [Page] {
             Page { id: "advanced", label: "Advanced", scope: Scope::App, icon: "terminal", summary: fixed("advanced"), body: None },
             Page { id: "git-identity", label: "Git identity", scope: Scope::Profile, icon: "user-round", summary: fixed("git-identity"), body: None },
             Page { id: "editor-folders", label: "Editor and folders", scope: Scope::Profile, icon: "folder-open", summary: fixed("editor-folders"), body: None },
-            Page { id: "accounts", label: "Accounts", scope: Scope::Profile, icon: "key-round", summary: fixed("accounts"), body: Some(accounts_body) },
+            Page { id: "accounts", label: "Accounts", scope: Scope::Profile, icon: "key-round", summary: fixed("accounts"), body: Some(crate::forge::accounts::body) },
             Page { id: "hosts", label: "Hosts", scope: Scope::Profile, icon: "server", summary: fixed("hosts"), body: None },
             Page { id: "repository", label: "Repository", scope: Scope::Repo, icon: "folder-git-2", summary: |v| format!("Settings for {} only.", repo_name(v)), body: None },
             Page { id: "file-colours", label: "File colours", scope: Scope::Repo, icon: "palette", summary: |v| match v.tabs.get(v.active).filter(|t| !t.is_open_tab()) { Some(t) => format!("For {}. Top to bottom: a file takes the first scope that matches it.", t.name), None => "Top to bottom: a file takes the first scope that matches it.".into() }, body: Some(crate::filecolours::settings_page::body) },
@@ -602,11 +602,6 @@ fn gitflow_control(this: &mut GitVolt, _: &'static Def, _: &mut Window, cx: &mut
         crate::commands::invoke(id, this, window, cx);
     })))
     .into_any_element()
-}
-
-/// Accounts belong to the forge round: the page holds its place.
-fn accounts_body(_: &mut GitVolt, _: &mut Window, _: &mut Context<GitVolt>) -> Vec<AnyElement> {
-    vec![div().mt(px(16.)).text_color(theme::text_secondary()).child("Forge accounts come with the merge request views.").child(div().child(icon("key-round", 14., theme::text_disabled()))).into_any_element()]
 }
 
 #[cfg(test)]

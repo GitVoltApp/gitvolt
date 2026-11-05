@@ -12,9 +12,11 @@ ulimit -v "${GITVOLT_RUN_VM:-16000000}"
 ulimit -c 0
 mkdir -p "$root/config" "$root/data" "$root/cache"
 export XDG_CONFIG_HOME=$root/config XDG_DATA_HOME=$root/data XDG_CACHE_HOME=$root/cache GITVOLT_NO_AVATARS=1
+# Never the real keyring or a real forge: the fake forge when one's named, else none (`GITVOLT_TEST_FORGE`, main.rs).
+export GITVOLT_TEST_FORGE=${GITVOLT_TEST_FORGE:-off}
 export GIT_CONFIG_GLOBAL=${GIT_CONFIG_GLOBAL:-/dev/null} GIT_CONFIG_NOSYSTEM=1
 bin=${GITVOLT_GPUI_BIN:-target/bench/release/gitvolt-gpui}
-env -u WAYLAND_DISPLAY DISPLAY="${DISPLAY:-:0}" GITVOLT_SCRIPT="$script" GITVOLT_OPEN="$repo" timeout "${GITVOLT_RUN_SECS:-120}" "$bin" &
+env -u WAYLAND_DISPLAY -u GIT_ASKPASS DISPLAY="${DISPLAY:-:0}" GITVOLT_SCRIPT="$script" GITVOLT_OPEN="$repo" timeout "${GITVOLT_RUN_SECS:-120}" "$bin" &
 pid=$!
 if [ -n "$out" ]; then
   sleep "${SHOT_WAIT:-4}"

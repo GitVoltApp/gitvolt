@@ -46,6 +46,8 @@ pub enum SectionKind {
     Stashes,
     Tags,
     Submodules,
+    /// A forge's open MRs/PRs: `forge::store`.
+    Mrs,
 }
 
 impl SectionKind {
@@ -58,6 +60,7 @@ impl SectionKind {
             SectionKind::Stashes => "stashes",
             SectionKind::Tags => "tags",
             SectionKind::Submodules => "submodules",
+            SectionKind::Mrs => "mrs",
         }
     }
 
@@ -70,6 +73,7 @@ impl SectionKind {
             SectionKind::Stashes => "Stashes",
             SectionKind::Tags => "Tags",
             SectionKind::Submodules => "Submodules",
+            SectionKind::Mrs => "Merge requests",
         }
     }
 
@@ -82,6 +86,7 @@ impl SectionKind {
             SectionKind::Stashes => "archive",
             SectionKind::Tags => "tag",
             SectionKind::Submodules => "boxes",
+            SectionKind::Mrs => "git-pull-request",
         }
     }
 
@@ -103,6 +108,7 @@ pub enum ItemKind {
     Stash { index: u32, message: String },
     Tag { annotated: bool, message: Option<String>, tagger: Option<String> },
     Submodule { url: Option<String>, recorded: String, head: Option<String>, branch: Option<String>, status: String, real_name: String },
+    Mr { mr: Box<gitvolt_core::forge::types::ForgeMr>, forge: gitvolt_core::forge::ForgeKind },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -529,7 +535,46 @@ pub enum SideDrag {
 /// Last pushes, by remote ref, for the hover card; `None`: loading.
 pub type PushCache = Rc<RefCell<HashMap<String, Option<Value>>>>;
 
+impl Tab {
+    /// The section with the tab's MRs/PRs for the filter, below the worktrees and stashes (`withMrSection`); none without a forge
+    /// target. A poll rebuilds only this.
+    pub fn sync_mr_section(&mut self, cx: &App) {
+        let section = self.forge.kind.map(|kind| Section {
+            kind: SectionKind::Mrs,
+            items: self.forge.list.iter().flat_map(|l| l.mrs.iter()).map(|mr| SideItem {
+                state: None,
+                key: format!("mr:{}", mr.number),
+                name: format!("{} {}", crate::forge::text::mr_ref(kind, mr.number), mr.title),
+                target: mr.head_sha.clone(),
+                time: mr.updated_at,
+                kind: ItemKind::Mr { mr: Box::new(mr.clone()), forge: kind },
+            }).collect(),
+        });
+        let sections = &mut self.side.sections;
+        let at = sections.iter().position(|s| s.kind == SectionKind::Mrs);
+        if at.is_some() == section.is_some() && at.map(|i| &sections[i]) == section.as_ref() {
+            return;
+        }
+        if let Some(i) = at {
+            sections.remove(i);
+        }
+        if let Some(section) = section {
+            let i = sections.iter().rposition(|s| matches!(s.kind, SectionKind::Local | SectionKind::Remote | SectionKind::Worktrees | SectionKind::Stashes)).map_or(0, |i| i + 1);
+            sections.insert(i, section);
+        }
+        self.side.relist(cx);
+    }
+}
+
 impl GitVolt {
+    /// The forge said something about the tab's list or its target.
+    pub fn forge_list_changed(&mut self, repo: u32, cx: &mut Context<Self>) {
+        if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) {
+            tab.sync_mr_section(cx);
+        }
+        cx.notify();
+    }
+
     pub fn relist_sidebar(&mut self, repo: u32, cx: &mut Context<Self>) {
         if let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) {
             tab.side.relist(cx);
@@ -585,6 +630,7 @@ impl GitVolt {
             return false;
         }
         let Some(tab) = self.tabs.get_mut(self.active) else { return false };
+        let tab_id = tab.id;
         let Some(kind) = tab.side.keys else { return false };
         let Some(panel) = tab.side.panels.iter().find(|p| p.kind == kind).cloned() else { return false };
         let count = panel.rows.len();
@@ -600,6 +646,11 @@ impl GitVolt {
             "enter" | "space" => {
                 match panel.rows.get(cursor) {
                     Some(FlatRow::Item { item, .. }) => {
+                        if let ItemKind::Mr { mr, .. } = &item.kind {
+                            let n = mr.number;
+                            self.forge_open_mr(tab_id, n, cx);
+                            return true;
+                        }
                         let target = item.target.clone();
                         self.jump_to(target, cx);
                     }
@@ -632,6 +683,17 @@ impl GitVolt {
         let to = to.min(count.saturating_sub(1));
         tab.side.cursor.insert(kind, to);
         tab.side.scroll_of(kind).scroll_to_item(to, ScrollStrategy::Nearest);
+        // The list's arrow keys swap the view's MR/PR.
+        let next_mr = match panel.rows.get(to) {
+            Some(FlatRow::Item { item, .. }) if to != cursor => match &item.kind {
+                ItemKind::Mr { mr, .. } => Some(mr.number),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(n) = next_mr {
+            self.forge_open_mr(tab_id, n, cx);
+        }
         cx.notify();
         true
     }
@@ -691,6 +753,7 @@ impl GitVolt {
             ItemKind::Stash { message, .. } => self.stash_rows(item.target.as_deref().unwrap_or_default(), message, this),
             ItemKind::Tag { .. } => self.tag_rows(&item.name, item.target.as_deref(), true, this),
             ItemKind::Submodule { status, .. } => self.sidebar_submodule_rows(&item.name, status, this),
+            ItemKind::Mr { mr, forge } => self.mr_rows(mr, *forge, this),
         }
     }
 
@@ -873,7 +936,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                     }))
                     .child(icon(if panel.collapsed { "chevron-right" } else { "chevron-down" }, 12., theme::sidebar_icon()))
                     .child(icon(kind.icon(), 13., theme::text_secondary()))
-                    .child(div().flex_1().truncate().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(kind.label().to_uppercase()))
+                    .child(div().flex_1().truncate().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(panel_label(tab, kind).to_uppercase()))
                     .child(div().text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(theme::count_blue()).child(panel.matched.to_string())),
             )
             .when(matches!(kind, SectionKind::Remote | SectionKind::Worktrees | SectionKind::Gitflow | SectionKind::Submodules), |d| {
@@ -897,6 +960,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                     }
                 })).child(icon(glyph, 13., theme::text_secondary()))))
             })
+            .when(kind == SectionKind::Mrs, |d| d.children(crate::forge::section::head_actions(tab, cx)))
             .when(kind.nests() && !panel.collapsed, |d| {
                 let recent = panel.recent;
                 d.child(tip(
@@ -926,7 +990,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
         let mut section = div().relative().flex().flex_col().flex_none().h(px(height)).min_h_0().border_t_1().border_color(theme::section_border()).child(header);
         if !panel.collapsed {
             if panel.rows.is_empty() {
-                section = section.child(div().px(px(12.)).py(px(6.)).italic().text_color(theme::text_disabled()).child(if panel.filtering { "No matches" } else { kind.empty() }));
+                section = section.child(div().px(px(12.)).py(px(6.)).italic().text_color(theme::text_disabled()).child(if panel.filtering { "No matches".to_string() } else if kind == SectionKind::Mrs { tab.forge.kind.map_or(String::new(), |k| crate::forge::store::empty_text(k, &tab.forge)) } else { kind.empty().to_string() }));
             } else {
                 let rows = panels.clone();
                 let keys_here = tab.side.keys == Some(kind);
@@ -934,12 +998,16 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                 let weak = weak.clone();
                 let push = this.last_pushes.clone();
                 let pending = tab.pending.clone();
+                let main_remote = (tab.forge.target.clone(), tab.forge.target_chosen, tab.forge.kind);
+                let lookups = tab.forge.remote_errors.clone();
+                let open_mr = tab.forge.open_mr;
+                let marks = Rc::new(RowMarks { main_remote, lookups, open_mr, host_kinds: crate::forge::section::remote_kinds(tab, &this.profile["hostOverrides"]), owners: tab.forge.owner_avatars.clone(), by_ref: tab.forge.by_ref.clone(), tab: tab.id });
                 let list = uniform_list(
                     ("side-list", p),
                     panel.rows.len(),
                     cx.processor(move |_, range: Range<usize>, _, cx| {
                         let list = &rows[p].rows;
-                        range.map(|i| side_row(&list[i], i, kind, keys_here && cursor == i, sidebar_right, &weak, &push, &pending, cx)).collect()
+                        range.map(|i| side_row(&list[i], i, kind, keys_here && cursor == i, sidebar_right, &weak, &push, &pending, &marks, cx)).collect()
                     }),
                 )
                 .with_sizing_behavior(ListSizingBehavior::Auto)
@@ -1014,14 +1082,33 @@ fn folder_prefix(kind: SectionKind, key: &str) -> String {
     format!("{path}/")
 }
 
+/// What a row needs from the tab's forge state.
+struct RowMarks {
+    main_remote: (Option<String>, bool, Option<gitvolt_core::forge::ForgeKind>),
+    lookups: HashMap<String, String>,
+    open_mr: Option<u64>,
+    host_kinds: HashMap<String, gitvolt_core::forge::ForgeKind>,
+    owners: HashMap<String, String>,
+    by_ref: BTreeMap<String, gitvolt_core::forge::types::ForgeMr>,
+    tab: u32,
+}
+
+fn panel_label(tab: &Tab, kind: SectionKind) -> &'static str {
+    match (kind, tab.forge.kind) {
+        (SectionKind::Mrs, Some(k)) => crate::forge::text::mr_section_label(k),
+        _ => kind.label(),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_right: f32, this: &WeakEntity<GitVolt>, push: &PushCache, pending: &HashMap<String, &'static str>, cx: &mut Context<GitVolt>) -> AnyElement {
+fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_right: f32, this: &WeakEntity<GitVolt>, push: &PushCache, pending: &HashMap<String, &'static str>, marks: &RowMarks, cx: &mut Context<GitVolt>) -> AnyElement {
     let base = div().id(i).relative().flex().w_full().h(px(ROW_H)).items_center().gap(px(ROW_GAP)).pr(px(8.)).whitespace_nowrap();
     let outlined = on_key || menu::is_target(row.key(), cx);
     let outline = |d: Stateful<Div>| d.when(outlined, |d| d.child(crate::ui::outline()));
     match row {
         FlatRow::Folder { key, name, depth, collapsed, remote } => {
             let (toggle_key, menu_key, remote) = (key.clone(), key.clone(), remote.clone());
+            let marks_remote = remote.clone();
             let weak = this.clone();
             outline(base)
                 .pl(px(row_indent(*depth)))
@@ -1045,8 +1132,13 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                     };
                     menu::open_context_for(menu_key.clone(), rows, e.position, window, cx);
                 }))
-                .child(icon(if *collapsed { "folder" } else { "folder-open" }, 13., theme::sidebar_icon()))
+                .child(match &marks_remote {
+                    Some(r) => crate::forge::section::remote_icon(r, marks.host_kinds.get(r).copied(), marks.owners.get(r).map(String::as_str), 13.),
+                    None => icon(if *collapsed { "folder" } else { "folder-open" }, 13., theme::sidebar_icon()).into_any_element(),
+                })
                 .child(div().flex_1().min_w_0().truncate().child(name.clone()))
+                .when_some(marks_remote.as_ref().filter(|r| Some(*r) == marks.main_remote.0.as_ref() && kind == SectionKind::Remote), |d, r| d.child(crate::forge::section::main_chip(r, marks.main_remote.2, marks.main_remote.1)))
+                .when_some(marks_remote.as_ref().and_then(|r| marks.lookups.get(r)), |d, why| d.child(crate::forge::section::lookup_warning(why)))
                 .into_any_element()
         }
         FlatRow::Item { key, item, label, depth } => {
@@ -1072,6 +1164,7 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                 ItemKind::Stash { .. } => icon("archive", 13., theme::sidebar_icon()).into_any_element(),
                 ItemKind::Tag { .. } => icon("tag", 13., theme::sidebar_icon()).into_any_element(),
                 ItemKind::Submodule { .. } => icon("boxes", 13., theme::sidebar_icon()).into_any_element(),
+                ItemKind::Mr { mr, .. } => crate::forge::section::state_icon(mr.state, 13.),
             };
             // A branch or tag row's leading icon: an eye-off while the preset hides it; on hover, a button that hides or shows it.
             let can_eye = !running && matches!(item.kind, ItemKind::Local { is_head: false, .. } | ItemKind::Remote { .. } | ItemKind::Tag { .. });
@@ -1119,14 +1212,26 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                 ItemKind::Submodule { status, .. } if status != "current" => Some(status.clone()),
                 _ => None,
             };
+            let mr_number = match &item.kind {
+                ItemKind::Mr { mr, .. } => Some(mr.number),
+                _ => None,
+            };
+            let tab_id = marks.tab;
+            let selected_mr = mr_number.is_some() && mr_number == marks.open_mr;
+            let trailing = crate::forge::section::row_trailing(&item.kind, tab_id, marks.main_remote.2, &marks.by_ref, cx);
             let body = outline(base)
                 .pl(px(row_indent(*depth)))
+                .when(selected_mr, |d| d.bg(theme::hover_row()))
                 .when(head, |d| d.bg(theme::checked_out_row()).text_color(theme::text_selected()).font_weight(FontWeight::SEMIBOLD))
                 .when(!head, |d| d.hover(|d| d.bg(theme::hover_row())))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if let Some(tab) = this.tabs.get_mut(this.active) {
                         tab.side.cursor.insert(kind, i);
                         tab.side.keys = Some(kind);
+                    }
+                    if let Some(n) = mr_number {
+                        this.forge_open_mr(tab_id, n, cx);
+                        return;
                     }
                     this.jump_to(target.clone(), cx);
                 }))
@@ -1156,22 +1261,24 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                 .child(glyph)
                 .child(label_el)
                 .children(ab)
+                .children(trailing)
                 .when_some(state, |d, s| d.child(div().flex_none().ml_auto().pl(px(6.)).text_size(px(11.)).text_color(theme::text_secondary()).child(s)))
                 .when(item.state.as_deref() == Some("folded"), |d| d.child(div().flex_none().ml_auto().pl(px(6.)).text_size(px(11.)).text_color(theme::text_secondary()).child("folded")));
             let (card_this, card_push) = (this.clone(), push.clone());
-            Anchor::new(body).card(format!("side:{key}"), move |_, cx| hover_card(&hover_item, &card_push, &card_this, cx)).placement(Placement::BesideAt(sidebar_right)).into_any_element()
+            Anchor::new(body).card(format!("side:{key}"), move |_, cx| hover_card(&hover_item, tab_id, &card_push, &card_this, cx)).placement(Placement::BesideAt(sidebar_right)).into_any_element()
         }
     }
 }
 
 /// `sidebar/HoverCard.tsx`: shows at once; only "Last push" waits on the core.
-fn hover_card(item: &SideItem, push: &PushCache, this: &WeakEntity<GitVolt>, cx: &mut App) -> AnyElement {
+fn hover_card(item: &SideItem, tab: u32, push: &PushCache, this: &WeakEntity<GitVolt>, cx: &mut App) -> AnyElement {
     let shell = div().flex().flex_col().flex_none().w(px(300.)).px(px(12.)).py(px(10.)).bg(theme::panel_bg1()).border_1().border_color(theme::section_border()).rounded(px(6.)).shadow(crate::ui::shadow(theme::shadow_popup(), 6., 20.)).text_color(theme::text_normal());
     let name = |t: &str| div().mb(px(4.)).truncate().font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child(t.to_string());
     let summary = |t: String| div().mb(px(4.)).child(t);
     let meta = |t: String| div().text_size(px(11.)).text_color(theme::text_secondary()).child(t);
     let short = |s: &str| s.chars().take(SHORT_SHA).collect::<String>();
     let card = match &item.kind {
+        ItemKind::Mr { mr, forge } => shell.child(crate::forge::card::mr_card_live(tab, *forge, mr, Some("Click to open"), this, cx)),
         ItemKind::Worktree { path, branch, head, is_main, is_current } => {
             let state = [if *is_main { "Main checkout" } else { "Linked worktree" }, if *is_current { "current" } else { "" }].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(" · ");
             shell
@@ -1202,6 +1309,10 @@ fn hover_card(item: &SideItem, push: &PushCache, this: &WeakEntity<GitVolt>, cx:
             shell.child(name(&item.name)).child(summary(line))
         }
         ItemKind::Local { .. } | ItemKind::Remote { .. } | ItemKind::Stash { .. } => {
+            let mr_block = match &item.kind {
+                ItemKind::Local { upstream, .. } => crate::forge::card::branch_mr_block(tab, upstream.as_deref(), this, cx),
+                _ => None,
+            };
             let (text, author) = match &item.kind {
                 ItemKind::Local { summary, author, .. } | ItemKind::Remote { summary, author, .. } => (summary.clone(), author.clone()),
                 ItemKind::Stash { message, .. } => (message.clone(), String::new()),
@@ -1229,6 +1340,7 @@ fn hover_card(item: &SideItem, push: &PushCache, this: &WeakEntity<GitVolt>, cx:
                 .child(meta(who))
                 .when_some(vs, |d, v| d.child(meta(v)))
                 .when_some(last, |d, l| d.child(meta(l)))
+                .children(mr_block)
         }
     };
     card.into_any_element()

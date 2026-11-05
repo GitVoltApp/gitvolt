@@ -44,11 +44,35 @@ pub fn image_for(email: &str, name: &str) -> Option<Arc<RenderImage>> {
     })
 }
 
-/// Whether `bytes` decode; what the core gave is PNG or JPEG.
+/// A forge user's or project owner's picture by the address the forge gave; asked of the core once. The core fetches it only from
+/// an account's own host or its forge's avatar host, and not at all with the setting off.
+pub fn image_for_url(url: &str) -> Option<Arc<RenderImage>> {
+    let k = format!("url:{url}");
+    STORE.with(|s| {
+        let mut s = s.borrow_mut();
+        match s.get(&k) {
+            Some(Avatar::Image(i)) => Some(i.clone()),
+            Some(_) => None,
+            None => {
+                s.insert(k.clone(), Avatar::Loading);
+                WANTED.with(|w| w.borrow_mut().push((k, String::new())));
+                None
+            }
+        }
+    })
+}
+
+/// What the core gave, decoded; a picture from a stranger's forge has a bound on its size.
 fn decode(base64_text: &str) -> Option<image::RgbaImage> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD.decode(base64_text).ok()?;
-    Some(image::load_from_memory(&bytes).ok()?.to_rgba8())
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(4096);
+    limits.max_image_height = Some(4096);
+    limits.max_alloc = Some(64 * 1024 * 1024);
+    reader.limits(limits);
+    Some(reader.decode().ok()?.to_rgba8())
 }
 
 impl GitVolt {
@@ -69,7 +93,10 @@ impl GitVolt {
             let api = self.api.clone();
             let asked = email.clone();
             let done = self.rt.spawn(async move {
-                let v = api.dispatch(Request::Avatar { email: asked, repo: repo.map(crate::app::core_repo), name: Some(name) }).await.ok()?;
+                let v = match asked.strip_prefix("url:") {
+                    Some(url) => api.dispatch(Request::ForgeAvatarImage { url: url.to_string() }).await.ok()?,
+                    None => api.dispatch(Request::Avatar { email: asked, repo: repo.map(crate::app::core_repo), name: Some(name) }).await.ok()?,
+                };
                 decode(v["base64"].as_str()?)
             });
             cx.spawn(async move |this, cx| {

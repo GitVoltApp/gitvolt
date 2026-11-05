@@ -15,6 +15,7 @@ mod diff;
 mod format;
 mod filecolours;
 mod find;
+mod forge;
 mod gitflow;
 mod goto;
 mod graph;
@@ -117,6 +118,42 @@ fn with_openers(api: Api, shell_env: Option<Arc<ShellEnv>>) -> Api {
     }
 }
 
+/// The forge layer. As `gitvolt-app`'s `build_api`, in this build's own folders and keyring service: a profile's id is
+/// the same across builds (`default`), so sharing a service would let this build overwrite the app's tokens.
+///
+/// `GITVOLT_TEST_FORGE=<http://127.0.0.1:port>` (or any scripted run, or `off`) never touches the keyring: tokens go in a
+/// file in the (isolated) data folder, only the fake forge's hosts can be reached, and a link only prints.
+fn with_forge(api: Api, scripted: bool) -> Api {
+    use gitvolt_forge::connector::{Forge, ForgeConfig};
+    use gitvolt_forge::endpoints::HostEndpoints;
+    use gitvolt_forge::tokens::{FileTokenStore, KeyringBackend, SystemTokenStore};
+    let data = gitvolt_core::paths::data_base().join(APP_DIR);
+    let test = std::env::var("GITVOLT_TEST_FORGE").ok().or_else(|| scripted.then(|| "off".to_string()));
+    if let Some(base) = test {
+        let mut overrides = std::collections::HashMap::new();
+        // Only ever this machine's own address.
+        if base.starts_with("http://127.0.0.1:") {
+            overrides.insert("gitlab.example.com".to_string(), HostEndpoints { api: format!("{base}/gitlab/api/v4"), web: format!("{base}/gitlab"), avatars: None });
+            overrides.insert("github.com".to_string(), HostEndpoints { api: format!("{base}/github"), web: format!("{base}/github-web"), avatars: Some(format!("{base}/github-avatars")) });
+            overrides.insert("forgejo.example.com".to_string(), HostEndpoints { api: format!("{base}/forgejo/api/v1"), web: format!("{base}/forgejo"), avatars: None });
+        }
+        let forge = Forge::new(ForgeConfig { overrides, only_overrides: true, avatar_dir: None });
+        let forge = if base.starts_with("http://127.0.0.1:") { forge.with_image_bases("github.com", vec![format!("{base}/github-web"), format!("{base}/github-images"), format!("{base}/github-avatars")]) } else { forge };
+        return api.with_forge(Arc::new(forge), Arc::new(FileTokenStore::new(data.join("forge-tokens")))).with_url_opener(Arc::new(|url: &str| {
+            eprintln!("openUrl {url}");
+            Ok(())
+        }));
+    }
+    let child_env: ChildEnvHook = Arc::new(|_| {});
+    let avatar_dir = gitvolt_core::paths::cache_base().map(|c| c.join(APP_DIR).join("forge-avatars"));
+    let tokens = SystemTokenStore::new(Some(Box::new(KeyringBackend::new("gitvolt-gpui"))), FileTokenStore::new(data.join("forge-tokens")));
+    let api = api.with_forge(Arc::new(Forge::new(ForgeConfig { overrides: Default::default(), only_overrides: false, avatar_dir })), Arc::new(tokens));
+    match gitvolt_core::openers::system_url_opener(child_env) {
+        Some(opener) => api.with_url_opener(opener),
+        None => api,
+    }
+}
+
 type Forwarded = std::sync::mpsc::Receiver<Option<String>>;
 
 fn claim_instance(launch: Option<&str>) -> (Option<Arc<gitvolt_core::instance::Primary>>, Option<Forwarded>) {
@@ -165,7 +202,7 @@ fn main() {
     let exit_store = store.clone();
     let saved_store = store.clone();
     let saved = store.state();
-    let api = api.with_store(store);
+    let api = with_forge(api.with_store(store), scripted);
     let api = Arc::new(with_openers(api, opener_env));
     runtime.spawn(shell_env.warm());
     // The per-session askpass socket, before anything can run a network command. Without it the app
@@ -221,6 +258,7 @@ fn main() {
                 v.load_drafts();
                 v.listen(cx);
                 cx.observe_window_activation(window, |this, window, cx| {
+                    this.forge_on_focus(window.is_window_active(), cx);
                     if window.is_window_active() {
                         this.lfs_on_focus(cx);
                         this.fetch_on_focus(cx);
