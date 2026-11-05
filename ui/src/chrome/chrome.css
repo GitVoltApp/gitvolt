@@ -6,8 +6,9 @@
 .title-bar-title > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 12px; }
 .title-bar-buttons { display: flex; align-items: center; gap: 8px; padding: 0 6px; flex: none; }
 .title-bar-spacer { width: 12px; }
-/* macOS's traffic lights, drawn by the system over this slot: from 12 px in (TRAFFIC_LIGHTS in
-   the app's chrome.rs) to 66 px, then as much room again. */
+/* macOS's traffic lights, drawn by the system over this slot, in the title bar or in compact mode
+   at the tab bar's start: from 12 px in (`traffic_lights` in the app's chrome.rs) to 66 px, then
+   as much room again. */
 .title-bar-lights { width: 78px; flex: none; }
 
 /* GNOME's: round, the same for every button. */

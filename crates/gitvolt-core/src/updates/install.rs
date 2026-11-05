@@ -254,9 +254,30 @@ pub fn manual_command(kind: InstallKind, file: &Path) -> Option<String> {
 
 /// Starts `exe` again once process `pid` (this one) has exited: the single-instance guard is
 /// free by then, so the new version starts on its own instead of handing over to the old one.
-/// `exe` and `pid` are arguments to the script, never part of it.
+/// `exe` and `pid` are arguments to the script, never part of it. Windows has no `/bin/sh`:
+/// [`windows_relaunch_command`].
 pub fn relaunch_command(exe: &Path, pid: u32) -> InstallCommand {
+    if cfg!(windows) {
+        return windows_relaunch_command(exe, pid);
+    }
     InstallCommand::new("/bin/sh", &["-c", r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec "$2""#, "gitvolt-relaunch", &pid.to_string(), &text(exe)])
+}
+
+/// [`relaunch_command`] on Windows (Restart GitVolt after a Title bar change; an update's
+/// installer restarts it on its own): PowerShell waits for `pid`, then starts `exe`, which goes
+/// in as a single-quoted literal (each of PowerShell's single quote characters doubled), so
+/// nothing in the path is ever run. No console shows: `SystemRunner::spawn` starts it through
+/// `openers::launch_command`, with `CREATE_NO_WINDOW`.
+fn windows_relaunch_command(exe: &Path, pid: u32) -> InstallCommand {
+    let mut literal = String::new();
+    for c in text(exe).chars() {
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            literal.push(c);
+        }
+        literal.push(c);
+    }
+    let script = format!("Wait-Process -Id {pid} -ErrorAction SilentlyContinue; Start-Process -FilePath '{literal}'");
+    InstallCommand::new("powershell.exe", &["-NoProfile", "-NonInteractive", "-Command", &script])
 }
 
 #[cfg(test)]
@@ -473,5 +494,15 @@ mod tests {
         let out = std::process::Command::new(&c.program).args(&c.args[..2]).args(["x", "999999999", "true"]).output().unwrap();
         #[cfg(unix)]
         assert!(out.status.success());
+    }
+
+    #[test]
+    fn on_windows_powershell_waits_for_this_process_and_the_path_stays_a_literal() {
+        let c = windows_relaunch_command(Path::new(r"C:\Users\o'neil\AppData\Local\GitVolt\gitvolt.exe"), 4242);
+        assert_eq!(c.program, "powershell.exe");
+        assert_eq!(c.args[..3], ["-NoProfile".to_string(), "-NonInteractive".into(), "-Command".into()]);
+        assert_eq!(c.args[3], r"Wait-Process -Id 4242 -ErrorAction SilentlyContinue; Start-Process -FilePath 'C:\Users\o''neil\AppData\Local\GitVolt\gitvolt.exe'");
+        let curly = windows_relaunch_command(Path::new("C:\\it\u{2019}s\\gitvolt.exe"), 1);
+        assert!(curly.args[3].ends_with("'C:\\it\u{2019}\u{2019}s\\gitvolt.exe'"), "{}", curly.args[3]);
     }
 }

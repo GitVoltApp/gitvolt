@@ -26,6 +26,37 @@ export function Marked({ text, ranges }: { text: string; ranges?: readonly Highl
   return <>{parts}</>;
 }
 
+/** `ranges` (over a whole text) within its part from `start`, `length` long, from 0. */
+function clip(ranges: readonly Highlight[] | undefined, start: number, length: number): Highlight[] {
+  return (ranges ?? []).filter((r) => r.end > start && r.start < start + length).map((r) => ({ start: Math.max(r.start, start) - start, end: Math.min(r.end, start + length) - start }));
+}
+
+/** A setting's description: one line as a paragraph, or several lines (`\n`), each a paragraph,
+ * where a run of lines starting with `• ` is a bullet list. Search highlights are over the whole
+ * text, so each part shows its share. */
+export function Description({ text, ranges }: { text: string; ranges?: readonly Highlight[] }) {
+  if (!text.includes('\n')) return <p className="setting-desc"><Marked text={text} ranges={ranges} /></p>;
+  const parts: ReactNode[] = [];
+  let items: ReactNode[] = [];
+  const endList = () => {
+    if (items.length) parts.push(<ul key={`ul${parts.length}`}>{items}</ul>);
+    items = [];
+  };
+  let at = 0;
+  for (const line of text.split('\n')) {
+    if (line.startsWith('• ')) {
+      const body = line.slice(2);
+      items.push(<li key={at}><Marked text={body} ranges={clip(ranges, at + 2, body.length)} /></li>);
+    } else {
+      endList();
+      parts.push(<p key={at}><Marked text={line} ranges={clip(ranges, at, line.length)} /></p>);
+    }
+    at += line.length + 1;
+  }
+  endList();
+  return <div className="setting-desc">{parts}</div>;
+}
+
 interface RowProps {
   id: string;
   ctx: SettingsCtx;
@@ -70,7 +101,7 @@ function DefRow({ def, ctx, children, highlights }: RowProps & { def: SettingDef
             </button>
           </HoverTooltip>
         </div>
-        {def.description && <p className="setting-desc"><Marked text={def.description} ranges={highlights?.description} /></p>}
+        {def.description && <Description text={def.description} ranges={highlights?.description} />}
       </div>
       <div className="setting-control">
         {children ?? (Control ? <Control ctx={ctx} /> : (

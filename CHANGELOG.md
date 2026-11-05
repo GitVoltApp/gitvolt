@@ -9,6 +9,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 - **Activity log.** A push's, clone's or fetch's entry keeps each progress phase's final line
   (`Writing objects: 100% (110/110), done.`) instead of hundreds of percentage updates.
+- **macOS: the traffic lights are centred in the title bar** on macOS 26 too, where they sat a
+  few pixels high.
+- **The window comes back on screen when a monitor goes.** Unplugging the monitor GitVolt was on
+  no longer leaves the window at the remaining screen's edge, too little of it showing to drag
+  back: it's centred on the main screen.
 - **Activity log.** An expected non-zero exit (a missing git-lfs, an unset config key) no
   longer shows in red as a failure.
 - **Profile menu.** The profiles' rows have no tooltip; it was a leftover note, and the label says it all.
@@ -33,6 +38,20 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   Settings buttons.
 - **A profile can have no name.** Leave the name empty in New profile… or Edit profile… and the
   profile switcher shows just its color; menus call it Unnamed profile.
+- **Tabs in the title bar.** Settings › Appearance › Title bar is one choice: Separate (the title
+  bar above the tabs), Combined or System (the system title bar switch before). Combined puts the
+  tabs in the title bar, as in a browser, on every platform: no title bar row, 30 px more for the
+  repository. The traffic lights (macOS) or the window buttons sit in the tab bar, and an empty
+  space before the bell always moves the window, however many tabs are open (the tabs scroll
+  first). To leave the tabs more room, the row's buttons and the tabs' minimum width are a little
+  narrower. A change takes effect when GitVolt restarts, and a Restart GitVolt button under the
+  choice does that; an X11 session always has System. The Window group is now above Fonts.
+- **Settings: choices as button groups.** A choice of a few (Density, Title bar) is one row of
+  joined buttons, the chosen one highlighted, instead of radio buttons; the arrow keys move
+  between them.
+- **Restart GitVolt asks about unsaved edits.** The update dialog's Restart, and the Title bar's,
+  ask "Discard unsaved changes?" first, as closing the window does, and save the settings and
+  tabs before GitVolt goes.
 
 ## [1.4.1] - 2026-11-01
 

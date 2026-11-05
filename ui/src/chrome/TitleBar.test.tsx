@@ -333,3 +333,91 @@ describe('the tab bar under the title bar', () => {
     expect(runAction).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('compact mode: the tab bar is the title bar, the same on every platform', () => {
+  const tabBar = () => document.querySelector<HTMLElement>('.tab-bar')!;
+  const parts = () => [...tabBar().children].map((el) => el.getAttribute('aria-label') ?? el.className.split(' ')[0]);
+  const showCompact = (info: WindowChromeInfo, tabs = 1) => {
+    act(() => {
+      useWindowChrome.setState({ info: { ...info, compact: true }, maximized: false, fullscreen: false });
+      useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', name: 'Default', tabs: Array.from({ length: tabs }, (_, i) => ({ id: `t${i}`, kind: 'repo' as const, path: `/r${i}`, alias: null })), activeTab: 't0' } });
+    });
+    render(<><TitleBar /><TabBar /></>);
+  };
+  const mac = (): WindowChromeInfo => ({ frame: 'custom', platform: 'macos', layout: '', doubleClick: 'toggle-maximize', middleClick: 'none', rightClick: 'none' });
+  const windows = (): WindowChromeInfo => ({ ...linux(':minimize,maximize,close'), platform: 'windows', middleClick: 'none' });
+  afterEach(() => act(() => useAppState.setState({ profile: EMPTY_PROFILE })));
+
+  it('on Windows: no title bar row; ☰, the tabs, the drag space, then the window buttons in the tab bar', () => {
+    showCompact(windows());
+    expect(bar()).toBeNull();
+    expect(tabBar()).toHaveClass('compact', 'platform-windows');
+    expect(parts()).toEqual(['tab-bar-drag', 'Menu', 'Open repository', 'Repositories', 'tab-bar-drag', 'Notifications', 'Settings', 'Profile: Default', 'title-bar-buttons']);
+    expect(within(tabBar()).getAllByRole('button').slice(-3).map((b) => b.getAttribute('aria-label'))).toEqual(['Minimize', 'Maximize', 'Close']);
+    // The page's top edge still resizes the window.
+    expect(document.querySelector('.window-edge-n')).not.toBeNull();
+  });
+
+  it('on Linux: the window buttons on the side GNOME puts them', () => {
+    showCompact(linux('close:minimize'));
+    expect(parts()[0]).toBe('title-bar-buttons');
+    expect(parts().slice(1, 4)).toEqual(['tab-bar-drag', 'Menu', 'Open repository']);
+    expect(within(tabBar()).getAllByRole('button')[0]).toHaveAccessibleName('Close');
+    // Maximized, the space stays: the close button is the screen's corner, not the space.
+    act(() => useWindowChrome.setState({ maximized: true }));
+    expect(screen.getByTestId('tab-bar-drag-lead')).toBeInTheDocument();
+  });
+
+  it('the space before ☰ moves the window, and goes when maximized with nothing on the left', () => {
+    showCompact(windows());
+    fireEvent.mouseDown(screen.getByTestId('tab-bar-drag-lead'), { button: 0, clientX: 10, clientY: 15 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 50, clientY: 20 });
+    fireEvent.mouseUp(document);
+    expect(calls()).toEqual(['startDragging']);
+    act(() => useWindowChrome.setState({ maximized: true }));
+    expect(screen.queryByTestId('tab-bar-drag-lead')).toBeNull();
+  });
+
+  it("on macOS: the traffic lights' slot first, and nothing at the end; full screen drops the slot", () => {
+    showCompact(mac());
+    expect(bar()).toBeNull();
+    expect(parts().slice(0, 4)).toEqual(['title-bar-lights', 'tab-bar-drag', 'Menu', 'Open repository']);
+    expect(parts().at(-1)).toBe('Profile: Default');
+    expect(document.querySelector('.window-edge')).toBeNull();
+    act(() => useWindowChrome.setState({ fullscreen: true }));
+    expect(parts()[0]).toBe('Menu');
+  });
+
+  it("the drag space and the strip's empty space move the window, and a double click does what a title bar's does", () => {
+    showCompact(windows());
+    fireEvent.mouseDown(screen.getByTestId('tab-bar-drag'), { button: 0, clientX: 900, clientY: 15 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 940, clientY: 20 });
+    fireEvent.mouseUp(document);
+    fireEvent.mouseDown(screen.getByRole('tablist'), { button: 0, clientX: 600, clientY: 15 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 640, clientY: 20 });
+    fireEvent.mouseUp(document);
+    fireEvent.doubleClick(screen.getByRole('tablist'));
+    fireEvent.doubleClick(screen.getByTestId('tab-bar-drag'));
+    // Not a new tab, as the strip's double click is without compact mode.
+    expect(useAppState.getState().profile.tabs).toHaveLength(1);
+    expect(calls()).toEqual(['startDragging', 'startDragging', 'toggleMaximize', 'toggleMaximize']);
+  });
+
+  it('keeps the drag space with a full strip: the tabs scroll, nothing on the right goes', () => {
+    showCompact(windows(), 30);
+    expect(screen.getByTestId('tab-bar-drag')).toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(30);
+    for (const name of ['Notifications', 'Settings', 'Profile: Default', 'Close']) expect(within(tabBar()).getByRole('button', { name })).toBeInTheDocument();
+  });
+
+  it('is off under the system title bar: the plain tab bar, ☰ in it', () => {
+    act(() => {
+      useWindowChrome.setState({ info: { ...windows(), frame: 'system', compact: false }, maximized: false, fullscreen: false });
+      useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 'a', kind: 'repo', path: '/a', alias: null }], activeTab: 'a' } });
+    });
+    render(<><TitleBar /><TabBar /></>);
+    expect(tabBar()).not.toHaveClass('compact');
+    expect(screen.queryByTestId('tab-bar-drag')).toBeNull();
+    expect(within(tabBar()).getByRole('button', { name: 'Menu' })).toBeInTheDocument();
+  });
+});

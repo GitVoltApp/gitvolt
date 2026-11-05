@@ -498,6 +498,12 @@ impl Updates {
         if !matches!(self.lock().state, UpdateState::Installed { .. }) {
             return Err(not_ready("No update has been installed"));
         }
+        self.relaunch()
+    }
+
+    /// Starts GitVolt again once this one has quit, and quits: an installed update's Restart, or
+    /// a setting read only when the window is built (Settings › Appearance › Title bar).
+    pub fn relaunch(&self) -> Result<(), GbError> {
         let exe = self.cfg.exe.as_ref().ok_or_else(|| not_ready("GitVolt doesn't know where its binary is: start it again yourself"))?;
         self.cfg.runner.spawn(&relaunch_command(exe, std::process::id())).map_err(|e| GbError::new(GbErrorKind::Io, format!("Couldn't restart GitVolt: {e}")))?;
         self.cfg.runner.quit();

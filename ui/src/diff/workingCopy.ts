@@ -242,6 +242,14 @@ export function guardTabClose(ids: string[], go: () => void): void {
 }
 
 const anyDirty = () => Object.values(useWorkingCopy.getState().copies).some((c) => c?.dirty) || [...unsavedSources].some((s) => s.anyAtAll()); // 2D T20: + other unsaved work
+/** Before GitVolt goes (the window's close, Restart GitVolt): true when nothing is unsaved, or
+ * the user chose to discard it; false when they cancelled. */
+export async function confirmDiscardUnsaved(): Promise<boolean> {
+  if (!anyDirty()) return true;
+  const pick = await chooseAction({ title: 'Discard unsaved changes?', choices: [{ id: 'discard', label: 'Discard edits', danger: true }] });
+  return pick === 'discard';
+}
+
 let windowGuard = false;
 /** Closing the window with unsaved edits asks (Tauri's close request; `beforeunload` in a browser). Idempotent. */
 export function installWindowCloseGuard(): void {
@@ -264,8 +272,8 @@ export function installWindowCloseGuard(): void {
     return win.onCloseRequested((ev) => {
       if (!anyDirty()) return;
       ev.preventDefault();
-      void chooseAction({ title: 'Discard unsaved changes?', choices: [{ id: 'discard', label: 'Discard edits', danger: true }] }).then((pick) => {
-        if (pick === 'discard') void win.destroy();
+      void confirmDiscardUnsaved().then((discard) => {
+        if (discard) void win.destroy();
       });
     });
   }).catch((e: unknown) => console.warn('[gitvolt] window close events unavailable', e));

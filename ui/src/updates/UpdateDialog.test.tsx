@@ -15,11 +15,14 @@ const api = vi.hoisted(() => ({
 const copyText = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('../api/client', () => ({ api, errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)), onEvent: () => () => {} }));
 vi.mock('../api/transport', () => ({ copyText, inTauri: () => false }));
+const choose = vi.hoisted(() => vi.fn());
+vi.mock('../ui/ConfirmDialog', async (orig) => ({ ...(await orig<typeof import('../ui/ConfirmDialog')>()), chooseAction: choose }));
 
 const { UpdateDialog } = await import('./UpdateDialog');
 const { useUpdates, resetUpdatesForTest } = await import('./store');
 const { useAppInfo } = await import('../app/appInfo');
 const { useAppState, DEFAULT_SETTINGS } = await import('../app/state');
+const { useWorkingCopy } = await import('../diff/workingCopy');
 
 const release: UpdateRelease = { version: '0.3.0', name: 'GitVolt 0.3.0', notes: [{ version: '0.3.0', publishedAt: null, notes: '## Added\n\n- **Updates** from GitHub' }], url: 'https://github.example/GitVoltApp/gitvolt/releases/tag/v0.3.0', prerelease: false, publishedAt: null, asset: { name: 'GitVolt_0.3.0_amd64.deb', size: 98 * 1024 * 1024 } };
 
@@ -67,8 +70,22 @@ describe('UpdateDialog', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/^The install failed \(exit 100\)\.$/);
     expect(screen.getByLabelText('Package manager output')).toHaveTextContent('E: Sub-process /usr/bin/dpkg returned an error code (1)');
     act(() => useUpdates.getState().setState({ state: 'installed', release }));
-    fireEvent.click(button('Restart GitVolt'));
-    expect(api.updateRestart).toHaveBeenCalled();
+    // A setting not saved yet is saved before GitVolt goes.
+    act(() => useAppState.getState().setSettings({ gravatar: false }));
+    await act(async () => { fireEvent.click(button('Restart GitVolt')); });
+    expect(api.updateRestart).toHaveBeenCalledTimes(1);
+    expect(api.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ gravatar: false }));
+    expect(api.saveSettings.mock.invocationCallOrder[0]).toBeLessThan(api.updateRestart.mock.invocationCallOrder[0]);
+    // Unsaved edits ask first: Cancel doesn't restart, Discard edits does.
+    useWorkingCopy.setState({ copies: { t: { key: 'k', path: 'a.txt', worktree: '/r', repo: 1, base: 'h0', dirty: true, view: 'diff' } } });
+    choose.mockResolvedValueOnce(null);
+    await act(async () => { fireEvent.click(button('Restart GitVolt')); });
+    expect(choose).toHaveBeenCalledWith(expect.objectContaining({ title: 'Discard unsaved changes?' }));
+    expect(api.updateRestart).toHaveBeenCalledTimes(1);
+    choose.mockResolvedValueOnce('discard');
+    await act(async () => { fireEvent.click(button('Restart GitVolt')); });
+    expect(api.updateRestart).toHaveBeenCalledTimes(2);
+    useWorkingCopy.setState({ copies: {} });
   });
 
   it('arch: asks how, remembers the answer; pacman installs, an AUR helper shows its commands', () => {

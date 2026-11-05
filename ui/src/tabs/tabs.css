@@ -6,6 +6,17 @@
 .tab-bar { display: flex; align-items: stretch; height: 34px; background: linear-gradient(to top, var(--section-border) 1px, transparent 1px), var(--tab-bar-bg); flex: none; user-select: none; }
 .tab-bar-btn { all: unset; display: inline-flex; align-items: center; justify-content: center; width: 34px; flex: none; position: relative; color: var(--text-secondary); cursor: pointer; transition: background-color var(--motion-fast), color var(--motion-fast); }
 .tab-bar-btn:hover, .tab-bar-btn:focus-visible { color: var(--text-selected); background: var(--hover-row); }
+/* Compact mode (TabBar, `useCompactTitleBar`): the tab bar is the title bar, so its row is tighter
+   to leave the tabs more room. Nothing goes: narrower icon buttons, smaller tabs before the strip
+   scrolls, and an empty space before the bell that the strip never covers, so the window can
+   always be moved. Another before ☰, 15 px (Firefox's is 40). The profile keeps its name, which
+   is how you tell profiles apart (an empty name shows the dot alone). */
+.tab-bar.compact .tab-bar-btn { width: 28px; }
+.tab-bar.compact .tab:not(.tab-hidden) { min-width: 72px; }
+.tab-bar-drag { width: 48px; flex: none; }
+.tab-bar-drag.lead { width: 15px; }
+.tab-bar.compact .title-bar-buttons { padding: 0 6px; }
+.tab-bar.compact.platform-windows .title-bar-buttons { padding: 0; }
 
 /* The strip's slides (a drag's, a group collapsing or expanding): `SLIDE_MS` in useTabDrag.ts.
    Widths animate to and from `auto` (a tab's own). */

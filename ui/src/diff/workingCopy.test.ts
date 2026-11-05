@@ -11,7 +11,7 @@ vi.mock('./monaco/load', () => ({ loadMonacoHost: async () => host }));
 vi.mock('../write/client', () => ({ applyResult: vi.fn() }));
 vi.mock('../debug/errorToast', () => ({ toastActionError: vi.fn() }));
 
-import { guardTabClose, isEditableTarget, saveWorkingCopy, suspendCopy, trackCopy, useWorkingCopy, worktreeFileTarget } from './workingCopy';
+import { confirmDiscardUnsaved, guardTabClose, isEditableTarget, saveWorkingCopy, suspendCopy, trackCopy, useWorkingCopy, worktreeFileTarget } from './workingCopy';
 import { toastActionError } from '../debug/errorToast';
 
 const wipTarget = { key: '{"kind":"wip","worktree":"/r","staged":false}|a.txt', path: 'a.txt', oldPath: null, status: 'M', old: { kind: 'object', oid: 'i' }, new: { kind: 'worktree', worktree: '/r' }, view: 'diff' } as const;
@@ -142,6 +142,19 @@ describe('the editable working copy (spec #2 §7.5)', () => {
     expect(go).toHaveBeenCalledTimes(1);
     guardTabClose(['t'], go);
     expect(go).toHaveBeenCalledTimes(2);
+  });
+
+  it('before GitVolt goes (close, Restart): unsaved edits ask; Cancel keeps it, Discard edits lets it go', async () => {
+    choose.mockResolvedValueOnce(null);
+    expect(await confirmDiscardUnsaved()).toBe(false);
+    expect(choose).toHaveBeenCalledWith(expect.objectContaining({ title: 'Discard unsaved changes?' }));
+    choose.mockResolvedValueOnce('discard');
+    expect(await confirmDiscardUnsaved()).toBe(true);
+    // Nothing unsaved: no question.
+    choose.mockClear();
+    useWorkingCopy.setState({ copies: {} });
+    expect(await confirmDiscardUnsaved()).toBe(true);
+    expect(choose).not.toHaveBeenCalled();
   });
 
   it('two tabs on the same relative path in different worktrees never swap text', async () => {

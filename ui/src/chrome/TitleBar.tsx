@@ -93,7 +93,8 @@ function ButtonIcon({ button, maximized, platform }: { button: Exclude<WindowBut
   );
 }
 
-function WindowButtons({ buttons, maximized, platform }: { buttons: WindowButton[]; maximized: boolean; platform: string }) {
+/** The window buttons of one side of the title bar (the tab bar's, in compact mode). */
+export function WindowButtons({ buttons, maximized, platform }: { buttons: WindowButton[]; maximized: boolean; platform: string }) {
   // A press that moves before the release moves the window instead, as a GTK header bar's buttons
   // do. A window button doesn't take the focus from where it is, as the window manager's don't.
   const drag = useDragOrClick(true, true);
@@ -133,7 +134,9 @@ function WindowButtons({ buttons, maximized, platform }: { buttons: WindowButton
  * at the end. Its empty space and title move the window, and the window's edges resize it
  * (`ResizeEdges`; on Windows only the top, the system's border doing the rest; macOS keeps its
  * own frame). Nothing when the window has the system's title bar, or no window at all (a browser,
- * the website demo).
+ * the website demo). In compact mode (`useCompactTitleBar`) there's no row: the tab bar is the
+ * title bar, with the lights' slot or the window buttons (`TabBar`), and only the resize edges
+ * are here.
  */
 export function TitleBar() {
   const info = useWindowChrome((s) => s.info);
@@ -143,6 +146,7 @@ export function TitleBar() {
   const title = useDocumentTitle();
   useEffect(() => (custom ? followWindow() : undefined), [custom]);
   if (!custom) return null;
+  if (info.compact) return info.platform !== 'macos' && !maximized ? <ResizeEdges platform={info.platform} /> : null;
   const { start, end } = buttonSets(info.platform, info.layout);
   return (
     <Fragment>
