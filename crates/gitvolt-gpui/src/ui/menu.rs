@@ -1300,6 +1300,23 @@ pub fn row_point(text: &str, cx: &App) -> Option<Point<Pixels>> {
     })
 }
 
+/// For the real-input flows: every row of every level, its label and the point to press.
+pub fn rows_at(cx: &App) -> Vec<serde_json::Value> {
+    let Some(menu) = Ui::get(cx).menu.as_ref() else { return Vec::new() };
+    let mut out = Vec::new();
+    for (level, lv) in menu.levels.iter().enumerate() {
+        for (i, r) in lv.rows.iter().enumerate() {
+            let label = match r {
+                MenuRow::Action(a) => a.label.to_string(),
+                MenuRow::Submenu { label, .. } => label.to_string(),
+                _ => continue,
+            };
+            out.push(serde_json::json!({ "level": level, "label": label, "x": lv.left + 40., "y": lv.row_top(i, None) + lv.rows[i].height() / 2. }));
+        }
+    }
+    out
+}
+
 /// For a script: where the variant `label` of the open menu's row holding `text` is.
 pub fn variant_point(text: &str, label: &str, cx: &App) -> Option<Point<Pixels>> {
     let menu = Ui::get(cx).menu.as_ref()?;

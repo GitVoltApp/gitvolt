@@ -186,6 +186,12 @@ pub fn row_point(text: &str, cx: &App) -> Option<Point<Pixels>> {
     Some(point(p.bounds.origin.x + px(40.), px(top)))
 }
 
+/// For the real-input flows: the rows shown and the point to press.
+pub fn rows_at(cx: &App) -> Vec<serde_json::Value> {
+    let Some(p) = Ui::get(cx).picker.as_ref() else { return Vec::new() };
+    p.shown.iter().enumerate().map(|(row, i)| serde_json::json!({ "label": p.items[*i].label.to_string(), "x": p.bounds.origin.x.as_f32() + 40., "y": p.bounds.origin.y.as_f32() + HEAD_H + row as f32 * ROW_H + ROW_H / 2. })).collect()
+}
+
 pub fn shown(cx: &App) -> Vec<String> {
     Ui::get(cx).picker.as_ref().map_or(Vec::new(), |p| p.shown.iter().map(|i| p.items[*i].label.to_string()).collect())
 }

@@ -20,6 +20,15 @@ pub const ZOOM_STEPS: [u32; 12] = [80, 90, 100, 110, 120, 130, 140, 150, 175, 20
 
 static ZOOM: AtomicU32 = AtomicU32::new(100);
 
+thread_local! {
+    /// The cursor last asked of the platform, for the real-input flows: the window server's isn't readable from a client.
+    static LAST_CURSOR: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+pub fn last_cursor() -> String {
+    LAST_CURSOR.with_borrow(Clone::clone)
+}
+
 pub fn percent() -> u32 {
     ZOOM.load(Relaxed)
 }
@@ -331,6 +340,7 @@ impl Platform for Zoomed {
         self.0.path_for_auxiliary_executable(name)
     }
     fn set_cursor_style(&self, style: CursorStyle) {
+        LAST_CURSOR.with_borrow_mut(|c| c.clone_from(&format!("{style:?}")));
         self.0.set_cursor_style(style)
     }
     fn hide_cursor_until_mouse_moves(&self) {

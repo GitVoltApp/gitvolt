@@ -436,6 +436,68 @@ impl GitVolt {
     }
 }
 
+/// `GITVOLT_DEBUG_PIPE=<fifo>`: for the real-input flows (`tools/flows/`), which have no script inside the app. Each line
+/// written to the fifo answers with what's on screen in `<fifo>.out`: `dump`, the anchors, the menu's rows and where the
+/// window is. A thread blocked on the fifo, so it costs nothing while it's quiet; without the variable, nothing runs.
+pub fn start_debug_pipe(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
+    use futures::StreamExt;
+    let Some(fifo) = std::env::var_os("GITVOLT_DEBUG_PIPE").map(std::path::PathBuf::from) else { return };
+    let (tx, mut rx) = futures::channel::mpsc::unbounded::<()>();
+    let reading = fifo.clone();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        // Open for reading and writing: a blocking read then waits across each writer that comes and goes.
+        let Ok(file) = std::fs::OpenOptions::new().read(true).write(true).open(&reading) else { return };
+        for line in std::io::BufReader::new(file).lines() {
+            if line.is_err() || tx.unbounded_send(()).is_err() {
+                return;
+            }
+        }
+    });
+    window
+        .spawn(cx, async move |cx| {
+            let mut out = fifo.into_os_string();
+            out.push(".out");
+            let tmp = {
+                let mut t = out.clone();
+                t.push(".tmp");
+                t
+            };
+            while rx.next().await.is_some() {
+                let answer = cx.update(|window, cx| {
+                    let mut d: serde_json::Value = serde_json::from_str(&view.read(cx).dump(cx)).unwrap_or_default();
+                    let b = window.window_bounds().get_bounds();
+                    d["window"] = serde_json::json!({
+                        "x": b.origin.x.as_f32(), "y": b.origin.y.as_f32(), "w": b.size.width.as_f32(), "h": b.size.height.as_f32(),
+                        "viewW": window.viewport_size().width.as_f32(), "viewH": window.viewport_size().height.as_f32(),
+                        "active": window.is_window_active(), "visible": window.is_visible(), "maximized": window.is_maximized(),
+                        "scale": window.scale_factor(),
+                    });
+                    d["anchors"] = crate::ui::Ui::get(cx).all_anchors().into_iter().map(|(k, b)| (k, serde_json::json!([b.origin.x.as_f32(), b.origin.y.as_f32(), b.size.width.as_f32(), b.size.height.as_f32()]))).collect::<serde_json::Map<_, _>>().into();
+                    d["menuRows"] = crate::ui::menu::rows_at(cx).into();
+                    d["pickerRows"] = crate::ui::picker::rows_at(cx).into();
+                    d["modals"] = crate::ui::modal::ids(cx).into();
+                    d["popover"] = crate::ui::Ui::get(cx).popover.is_some().into();
+                    d["tooltip"] = crate::ui::Ui::get(cx).tips.shown().into();
+                    d["cursor"] = crate::zoom::last_cursor().into();
+                    d["pid"] = std::process::id().into();
+                    let v = view.read(cx);
+                    let tab = v.tabs.get(v.active);
+                    d["graphRows"] = tab.and_then(|t| t.graph.as_ref()).map_or(Vec::new(), |g| g.rows.iter().take(300).map(|r| serde_json::json!({ "id": r.id, "summary": r.summary })).collect::<Vec<_>>()).into();
+                    d["listOffset"] = tab.map_or(0., |t| t.list.0.borrow().base_handle.offset().y.as_f32()).into();
+                    d
+                });
+                if let Ok(d) = answer {
+                    // A rename, so a reader never sees half of it.
+                    if std::fs::write(&tmp, d.to_string()).is_ok() {
+                        std::fs::rename(&tmp, &out).ok();
+                    }
+                }
+            }
+        })
+        .detach();
+}
+
 /// The same run as the CEF build's: settle 5 s, idle 20 s, scroll 16 px per frame for 8 s.
 pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
     const STEP: f32 = 16.;

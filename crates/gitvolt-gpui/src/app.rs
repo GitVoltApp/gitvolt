@@ -1083,9 +1083,9 @@ fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> impl
                 .items_center()
                 .gap(px(8.))
                 .px(px(6.))
-                .child(button("minimize", "minus").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(|_, window, _| window.minimize_window()))
-                .child(button("maximize", "square").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(|_, window, _| window.zoom_window()))
-                .child(button("close", "x").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(cx.listener(|this, _, _, cx| this.close_window(cx)))),
+                .child(crate::ui::anchor("win-minimize", button("minimize", "minus").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(|_, window, _| window.minimize_window())))
+                .child(crate::ui::anchor("win-maximize", button("maximize", "square").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(|_, window, _| window.zoom_window())))
+                .child(crate::ui::anchor("win-close", button("close", "x").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(cx.listener(|this, _, _, cx| this.close_window(cx))))),
         )
 }
 

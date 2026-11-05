@@ -299,6 +299,7 @@ fn main() {
             if std::env::var_os("GITVOLT_BENCH").is_some() || std::env::var_os("GITVOLT_SHOW").is_some() || std::env::var_os("GITVOLT_SCRIPT").is_some() {
                 bench::start(view.clone(), window, cx);
             }
+            bench::start_debug_pipe(view.clone(), window, cx);
             view
         });
         if let Err(e) = result {

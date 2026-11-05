@@ -107,6 +107,12 @@ impl Ui {
         current.iter().filter(|(k, _)| prefixes.iter().any(|p| k.starts_with(p))).map(|(k, b)| (k.to_string(), *b)).collect()
     }
 
+    /// For the real-input flows: every anchor that's shown.
+    pub fn all_anchors(&self) -> Vec<(String, Bounds<Pixels>)> {
+        let current = if self.anchors.is_empty() { &self.last_anchors } else { &self.anchors };
+        current.iter().map(|(k, b)| (k.to_string(), *b)).collect()
+    }
+
     pub fn anchor(&self, key: &str) -> Option<Bounds<Pixels>> {
         self.anchors.get(key).or_else(|| self.last_anchors.get(key)).copied()
     }

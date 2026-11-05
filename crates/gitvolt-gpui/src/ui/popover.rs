@@ -267,7 +267,7 @@ pub(super) fn element(_: &mut Window, cx: &mut App) -> Option<AnyElement> {
                     .child(text),
             );
         }
-        row = row.child(b);
+        row = row.child(super::anchor(format!("popover:{id}"), b));
     }
     let card = div()
         .id("popover")

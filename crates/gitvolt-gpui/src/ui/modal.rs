@@ -132,6 +132,11 @@ pub(super) fn toggle_key(combo: &str, window: &mut Window, cx: &mut App) -> bool
     false
 }
 
+/// For the real-input flows: what's open, bottom first.
+pub fn ids(cx: &App) -> Vec<String> {
+    Ui::get(cx).modals.iter().map(|m| m.id.to_string()).collect()
+}
+
 pub fn is_open(id: &str, cx: &App) -> bool {
     Ui::get(cx).modals.iter().any(|m| m.id.as_ref() == id)
 }
