@@ -37,6 +37,9 @@ export interface SettingDef {
   labelFor?: 'input' | 'group';
   /** Its value and default, for the modified dot, ↺ and Reset all. None: never marked (lists, accounts). */
   binding?: (ctx: SettingsCtx) => SettingBinding | null;
+  /** A hook: false leaves the row off its page (a choice with nothing to choose from here); a
+   * search still finds it. None: always shown. */
+  useShown?: (ctx: SettingsCtx) => boolean;
 }
 
 const SCOPE_RANK: Record<SettingsScope, number> = { app: 0, profile: 1, repo: 2 };

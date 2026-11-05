@@ -7,6 +7,7 @@ import type { HostKind } from '../api/gen/HostKind';
 import { useRuntime } from '../app/runtime';
 import { useAppState } from '../app/state';
 import { resetAvatars } from '../avatars/avatarStore';
+import { byHost, isHostDefault, removalEffects } from './accountChoice';
 import { notifyForgeAccountsChanged } from './accountsBus';
 import { escOwners } from '../app/modalKeys';
 import { ForgeMark } from '../icons/brands';
@@ -45,7 +46,6 @@ export function statusChip(v: ForgeAccountView): { tone: 'ok' | 'warn' | 'err'; 
 }
 
 type Panel = { mode: 'add' } | { mode: 'replace'; account: ForgeAccount };
-const rowKey = (a: ForgeAccount) => `${a.host}\u0000${a.id}`;
 const TOKEN_HELP: Record<ForgeKind, string> = {
   gitlab: 'Opens your profile\'s token page with the api scope selected. Copy the token, then paste it here.',
   github: 'Opens GitHub\'s fine-grained token page with the permissions GitVolt needs selected. Some organizations cap these tokens\' lifetime (e.g. 90 days); use a classic token for those.',
@@ -64,7 +64,10 @@ const FINE_GRAINED_REFUSED = 'forbids access via a fine-grained';
 export function AccountsSection() {
   const [accounts, setAccounts] = useState<ForgeAccountView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel | null>(null);
+  const [panel, setPanelNow] = useState<Panel | null>(null);
+  /** What the last add did when it wasn't a new row ("Updated @ada's token"), until the next action. */
+  const [notice, setNotice] = useState<string | null>(null);
+  const setPanel = useCallback((p: Panel | null) => { setNotice(null); setPanelNow(p); }, []);
   const addButton = useRef<HTMLButtonElement>(null);
   const refocusAdd = useRef(false);
   const reload = useCallback(async (keepError = false) => {
@@ -79,20 +82,30 @@ export function AccountsSection() {
   useEffect(() => {
     if (!panel && refocusAdd.current) { refocusAdd.current = false; addButton.current?.focus(); }
   }, [panel]);
-  const close = useCallback(() => { refocusAdd.current = true; setPanel(null); }, []);
+  const close = useCallback(() => { refocusAdd.current = true; setPanel(null); }, [setPanel]);
   // Avatars: what the backend answers depends on the accounts (forge avatars come first).
   const changed = async () => {
     await reload();
     resetAvatars();
     notifyForgeAccountsChanged();
   };
+  /** A token for a user who has an account replaced theirs: say so, as no row is added. */
+  const added = async (view: ForgeAccountView) => {
+    const updated = accounts?.some((a) => a.account.id === view.account.id) ?? false;
+    await changed();
+    close();
+    if (updated) setNotice(`Updated @${view.account.user.username}'s token`);
+  };
   const remove = async (account: ForgeAccount) => {
+    setNotice(null);
     const who = `@${account.user.username} on ${account.host}`;
+    const effects = removalEffects(accounts ?? [], account, useAppState.getState().profile.repos);
     const ok = await confirmAction({
-      title: `Remove the ${who} account?`,
-      body: `Its token is deleted from this computer. Revoke it on ${account.host} too if you no longer need it.`,
+      title: `Remove ${who}?`,
+      body: `${effects ? `${effects} ` : ''}Its token is deleted from this computer. Revoke it on ${account.host} too if you no longer need it.`,
       confirmLabel: 'Remove account',
-      arm: `Click again to remove the ${who} account`,
+      arm: `Click again to remove ${who}`,
+      caption: effects || undefined,
       danger: true,
     });
     if (!ok) return;
@@ -113,10 +126,11 @@ export function AccountsSection() {
     <div className="accounts-box" id="setting-forgeAccounts" data-setting-id="forgeAccounts">
       <p className="dim accounts-help">
         Connect GitLab, GitHub or Forgejo to see merge requests, pull requests and forks. A host can have
-        several accounts; each repository picks the one it uses in Settings › Repository.
+        several accounts: repositories use its default unless Settings › Repository picks another.
         {accounts?.length === 0 && ' Tokens are kept in the system keyring.'}
       </p>
       {error && <p role="alert" className="setting-error">{error}</p>}
+      {notice && <p role="status" className="accounts-notice">{notice}</p>}
       {accounts?.length === 0 && !panel && (
         <div className="accounts-empty">
           <p>No accounts yet.</p>
@@ -125,26 +139,32 @@ export function AccountsSection() {
       )}
       {accounts && accounts.length > 0 && (
         <ul className="accounts" aria-label="Forge accounts">
-          {accounts.map((v) => (
-            <AccountRow key={rowKey(v.account)} v={v} onReplace={() => setPanel({ mode: 'replace', account: v.account })} onRemove={() => void remove(v.account)} />
+          {byHost(accounts).map((v) => (
+            <AccountRow
+              key={v.account.id} v={v}
+              // Marked only where there's a choice: the host has another account.
+              isDefault={isHostDefault(accounts, v.account) && accounts.some((o) => o.account.host === v.account.host && o.account.id !== v.account.id)}
+              onReplace={() => setPanel({ mode: 'replace', account: v.account })} onRemove={() => void remove(v.account)}
+            />
           ))}
         </ul>
       )}
-      {panel && <AddAccount key={panel.mode === 'replace' ? rowKey(panel.account) : 'add'} panel={panel} taken={accounts?.map((a) => a.account) ?? []} onAdded={async () => { await changed(); close(); }} onCancel={close} onReplace={(account) => setPanel({ mode: 'replace', account })} />}
+      {panel && <AddAccount key={panel.mode === 'replace' ? panel.account.id : 'add'} panel={panel} taken={accounts?.map((a) => a.account) ?? []} onAdded={added} onCancel={close} onReplace={(account) => setPanel({ mode: 'replace', account })} />}
       {!panel && accounts && accounts.length > 0 && addButtonEl(false)}
     </div>
   );
 }
 
-function AccountRow({ v, onReplace, onRemove }: { v: ForgeAccountView; onReplace(): void; onRemove(): void }) {
+function AccountRow({ v, isDefault, onReplace, onRemove }: { v: ForgeAccountView; isDefault: boolean; onReplace(): void; onRemove(): void }) {
   const a = v.account;
+  const who = `@${a.user.username} on ${a.host}`;
   const note = statusText(v);
   const chip = statusChip(v);
   const file = a.storage === 'file';
   // Forgejo's version carries the Gitea it's compatible with (`11.0.1+gitea-1.22.0`).
   const version = a.version?.replace(/\+gitea-.*$/, '');
   return (
-    <li className="account" aria-label={`${a.user.username} on ${a.host} account`}>
+    <li className="account" aria-label={who}>
       <span className={`forge-mark is-${a.kind}`}><ForgeMark kind={a.kind} size={18} /></span>
       <div className="account-main">
         <div className="account-line">
@@ -155,20 +175,21 @@ function AccountRow({ v, onReplace, onRemove }: { v: ForgeAccountView; onReplace
           <span>{a.host} · {forgeName(a.kind)}{version ? ` ${version}` : ''}</span>
           <span className={`chip is-${chip.tone}`}>● {chip.label}</span>
           <span className={`chip${file ? ' is-warn' : ''}`}>{file ? 'File — not secure' : 'System keyring'}</span>
+          {isDefault && <span className="chip" title="Automatic uses it, in Settings › Repository › Forge account">Default for {a.host}</span>}
         </div>
         {file && <p className="account-note is-warn">{FILE_WARNING}</p>}
         {note && chip.tone === 'err' && <p className="account-note is-err" role="status">{note}{v.status.kind === 'authFailed' ? ' Replace it to reconnect.' : ''}</p>}
       </div>
       <div className="account-actions">
-        <button type="button" className={chip.tone === 'err' ? undefined : 'ghost'} aria-label={`Replace the token for @${a.user.username} on ${a.host}`} onClick={onReplace}>Replace token</button>
-        <button type="button" className="ghost danger" aria-label={`Remove the @${a.user.username} on ${a.host} account`} onClick={onRemove}>Remove</button>
+        <button type="button" className={chip.tone === 'err' ? undefined : 'ghost'} aria-label={`Replace the token for ${who}`} onClick={onReplace}>Replace token</button>
+        <button type="button" className="ghost danger" aria-label={`Remove ${who}`} onClick={onRemove}>Remove</button>
       </div>
     </li>
   );
 }
 
 /** Host (the open repo's forge hosts first), forge, Create token, the token; Cancel / Add account. */
-function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Panel; taken: ForgeAccount[]; onAdded(): Promise<void>; onCancel(): void; onReplace(account: ForgeAccount): void }) {
+function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Panel; taken: ForgeAccount[]; onAdded(view: ForgeAccountView): Promise<void>; onCancel(): void; onReplace(account: ForgeAccount): void }) {
   const replacing = panel.mode === 'replace';
   const activeTab = useAppState((s) => s.profile.activeTab);
   const overrides = useAppState((s) => s.profile.hostOverrides);
@@ -289,10 +310,9 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
     try {
       const k = await settledKind();
       if (!k) return;
-      if (replacing) await api.addForgeAccount(host, k, token, panel.account.id);
-      else await api.addForgeAccount(host, k, token);
+      const view = replacing ? await api.addForgeAccount(host, k, token, panel.account.id) : await api.addForgeAccount(host, k, token);
       setToken('');
-      await onAdded();
+      await onAdded(view);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -308,12 +328,16 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
         {replacing
           ? <input id="account-host" aria-label="Host" readOnly value={host} />
           : <div><HostCombobox inputRef={hostRef} value={host} suggestions={suggestions} onChange={(h) => { setTyped(h); setPicked(null); }} onBlur={() => void ask()} onOpenChange={(o) => { listOpen.current = o; }} closeRef={closeList} /></div>}
-        {existing.length > 0 && (
+        {/* Its line is kept while empty: the form doesn't move as a host is typed. */}
+        {!replacing && (
           <p className="field-help account-taken" role="status">
-            {bare} already has {existing.length === 1 ? `an account (@${existing[0].user.username})` : `${existing.length} accounts`}.
-            {' '}Add a token for another user to add another account.
-            {existing.length === 1 && (
-              <>{' '}<button type="button" className="link-btn" onClick={() => onReplace(existing[0])}>Replace its token</button></>
+            {existing.length > 0 && (
+              <>
+                Has {existing.map((t) => `@${t.user.username}`).join(', ')}; another user's token adds an account.
+                {existing.length === 1 && (
+                  <>{' '}<button type="button" className="link-btn" onClick={() => onReplace(existing[0])}>Replace @{existing[0].user.username}'s token</button></>
+                )}
+              </>
             )}
           </p>
         )}
@@ -343,7 +367,11 @@ function AddAccount({ panel, taken, onAdded, onCancel, onReplace }: { panel: Pan
           <input ref={tokenRef} id="account-token" aria-label="Token" type="password" autoComplete="off" spellCheck={false} placeholder="Paste the personal access token" value={token} onChange={(e) => setToken(e.target.value)} />
           <button type="button" disabled={!host} aria-busy={opening && asking} title={!host ? 'Enter the host first' : undefined} onClick={() => void openTokenPage()}>Create token on {host || 'the host'} ↗</button>
         </div>
-        <p className="dim field-help">{kind === 'github' && classic ? CLASSIC_HELP : TOKEN_HELP[kind]}</p>
+        <p className="dim field-help">
+          {/* The token page opens in the browser, as whoever is signed in there. */}
+          {replacing ? `Sign in as @${panel.account.user.username} in your browser first. ` : "Sign in as the account's user in your browser first. "}
+          {kind === 'github' && classic ? CLASSIC_HELP : TOKEN_HELP[kind]}
+        </p>
       </div>
       <div className="account-foot">
         <p className="setting-error account-add-error" role={error ? 'alert' : undefined}>

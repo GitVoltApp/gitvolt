@@ -23,7 +23,7 @@ test.describe('forge accounts and remotes (spec #4 §7, 4A)', () => {
     await expect(settings(page).getByLabel('Host')).toHaveValue('gitlab.example.com');
     await settings(page).getByLabel('Token').fill(E2E_GITLAB_TOKEN);
     await settings(page).getByRole('button', { name: 'Add account', exact: true }).click();
-    const account = settings(page).getByRole('listitem', { name: 'gitlab.example.com account' });
+    const account = settings(page).getByRole('listitem', { name: '@ada on gitlab.example.com' });
     await expect(account).toContainText('Ada Lovelace');
     await expect(account).toContainText('File — not secure');
     await expect(account).toContainText('Stored in a file, not the system keyring');

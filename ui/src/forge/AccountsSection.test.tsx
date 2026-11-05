@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ForgeAccountView } from '../api/gen/ForgeAccountView';
-import { DEFAULT_SETTINGS, EMPTY_PROFILE } from '../app/state';
+import { DEFAULT_SETTINGS, EMPTY_PROFILE, EMPTY_REPO_SETTINGS } from '../app/state';
 import { armClock, press } from '../ui/arm/armTesting';
 
 const TOKEN = 'glpat-FAKE-test-token';
 const ada = (storage: 'keyring' | 'file', status: ForgeAccountView['status'] = { kind: 'ok' }): ForgeAccountView => ({
-  account: { id: '', host: 'gitlab.example.com', kind: 'gitlab', user: { id: 7, username: 'ada', name: 'Ada Lovelace', avatarUrl: null, webUrl: 'https://gitlab.example.com/ada', email: 'ada@example.com', emails: [] }, storage, version: '18.9.1-ee', versionCheckedAt: 0, addedAt: 0 },
+  account: { id: 'gitlab.example.com', host: 'gitlab.example.com', kind: 'gitlab', user: { id: 7, username: 'ada', name: 'Ada Lovelace', avatarUrl: null, webUrl: 'https://gitlab.example.com/ada', email: 'ada@example.com', emails: [] }, storage, version: '18.9.1-ee', versionCheckedAt: 0, addedAt: 0 },
   status,
 });
 
@@ -32,7 +32,7 @@ const { avatars } = await import('../avatars/avatarStore');
 
 const show = () => render(<><AccountsSection /><ConfirmDialog /></>);
 const openAdd = async () => { fireEvent.click(await screen.findByRole('button', { name: '+ Add account' })); await screen.findByRole('form', { name: 'Add a forge account' }); };
-const row = () => screen.findByRole('listitem', { name: /on gitlab\.example\.com account/ });
+const row = () => screen.findByRole('listitem', { name: / on gitlab\.example\.com$/ });
 
 // jsdom has no layout, so a control is never "shown" and a confirm opens its dialog; happy-dom reports
 // one box for every element, which would arm in place instead. These tests are of the dialog.
@@ -42,6 +42,7 @@ beforeEach(() => {
   rects = vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(() => [] as unknown as DOMRectList);
   vi.clearAllMocks();
   api.forgeAccounts.mockResolvedValue([]);
+  api.addForgeAccount.mockResolvedValue(ada('keyring'));
   useAppState.setState({ settings: DEFAULT_SETTINGS, profile: { ...EMPTY_PROFILE, name: 'Work', tabs: [{ id: 't1', kind: 'repo', path: '/r/shop', alias: null }], activeTab: 't1' } });
   useRuntime.setState({
     tabs: { t1: { status: 'ready', error: null, repo: { id: 7, name: 'shop', path: '/r/shop' } as never, graph: null, sidebar: null, lastFetchAt: 0, fetchSkipped: null, limit: null, worktree: null,
@@ -63,23 +64,77 @@ describe('Settings › Accounts', () => {
   });
 
   it('lists more than one account on a host, each removed by its own id', async () => {
-    const grace = { ...ada('keyring'), account: { ...ada('keyring').account, id: '8', user: { ...ada('keyring').account.user, id: 8, username: 'grace', name: 'Grace Hopper' } } };
+    const grace = { ...ada('keyring'), account: { ...ada('keyring').account, id: 'gitlab.example.com#8', user: { ...ada('keyring').account.user, id: 8, username: 'grace', name: 'Grace Hopper' } } };
     api.forgeAccounts.mockResolvedValue([ada('keyring'), grace]);
     show();
-    expect(await screen.findAllByRole('listitem', { name: /on gitlab\.example\.com account/ })).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: 'Remove the @grace on gitlab.example.com account' }));
+    expect(await screen.findAllByRole('listitem', { name: / on gitlab\.example\.com$/ })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove @grace on gitlab.example.com' }));
     const clock = armClock();
     const confirm = await screen.findByRole('button', { name: 'Remove account' });
     clock.settle();
     press(confirm);
     clock.restore();
-    await waitFor(() => expect(api.removeForgeAccount).toHaveBeenCalledWith('gitlab.example.com', '8'));
+    await waitFor(() => expect(api.removeForgeAccount).toHaveBeenCalledWith('gitlab.example.com', 'gitlab.example.com#8'));
+  });
+
+  it("rows come grouped by host, the host's default marked where it has another account", async () => {
+    const as = (id: string, host: string, username: string): ForgeAccountView => ({ ...ada('keyring'), account: { ...ada('keyring').account, id, host, user: { ...ada('keyring').account.user, username } } });
+    api.forgeAccounts.mockResolvedValue([as('gitlab.example.com', 'gitlab.example.com', 'ada'), as('github.com', 'github.com', 'octocat'), as('gitlab.example.com#8', 'gitlab.example.com', 'grace')]);
+    show();
+    await row().catch(() => null);
+    const rows = await screen.findAllByRole('listitem');
+    expect(rows.map((r) => r.getAttribute('aria-label'))).toEqual(['@ada on gitlab.example.com', '@grace on gitlab.example.com', '@octocat on github.com']);
+    expect(rows.map((r) => r.textContent?.includes('Default for'))).toEqual([true, false, false]);
+    expect(rows[0].textContent).toContain('Default for gitlab.example.com');
+  });
+
+  it("Remove says what else changes: Automatic's account and the repositories that chose this one", async () => {
+    const grace = { ...ada('keyring'), account: { ...ada('keyring').account, id: 'gitlab.example.com#8', user: { ...ada('keyring').account.user, id: 8, username: 'grace' } } };
+    api.forgeAccounts.mockResolvedValue([ada('keyring'), grace]);
+    useAppState.setState({ profile: { ...useAppState.getState().profile, repos: { '/r/shop': { ...EMPTY_REPO_SETTINGS, forgeAccount: 'gitlab.example.com' } } } });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove @ada on gitlab.example.com' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Remove @ada on gitlab.example.com?' });
+    expect(dialog.textContent).toContain('Automatic then uses @grace; the repository that chose it goes back to Automatic.');
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    // Grace's removal changes nothing else.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove @grace on gitlab.example.com' }));
+    const second = await screen.findByRole('alertdialog', { name: 'Remove @grace on gitlab.example.com?' });
+    expect(second.textContent).not.toContain('Automatic');
+    fireEvent.keyDown(second, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  });
+
+  it("a token for a user who has an account says it updated theirs (no row is added)", async () => {
+    api.forgeAccounts.mockResolvedValue([ada('keyring')]);
+    show();
+    await row();
+    await openAdd();
+    const form = screen.getByRole('form', { name: 'Add a forge account' });
+    expect(form.textContent).toContain("Sign in as the account's user in your browser first.");
+    fireEvent.change(within(form).getByLabelText('Token'), { target: { value: TOKEN } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Add account' }));
+    expect(await screen.findByText("Updated @ada's token")).toHaveAttribute('role', 'status');
+    // Gone with the next action.
+    fireEvent.click(screen.getByRole('button', { name: '+ Add account' }));
+    expect(screen.queryByText("Updated @ada's token")).toBeNull();
+  });
+
+  it("the add form keeps the host's account line while it's empty, so it doesn't move", async () => {
+    show();
+    await openAdd();
+    const form = screen.getByRole('form', { name: 'Add a forge account' });
+    const line = form.querySelector('.account-taken');
+    expect(line).not.toBeNull();
+    expect(line!.textContent).toBe('');
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Host' }), { target: { value: 'code.example.org' } });
+    expect(form.querySelector('.account-taken')).toBe(line);
   });
 
   it("a Forgejo account shows its mark, its name and its version without the Gitea it matches", async () => {
     api.forgeAccounts.mockResolvedValue([{ ...ada('keyring'), account: { ...ada('keyring').account, host: 'forgejo.example.org', kind: 'forgejo', version: '11.0.1+gitea-1.22.0' } }]);
     show();
-    const r = await screen.findByRole('listitem', { name: /on forgejo\.example\.org account/ });
+    const r = await screen.findByRole('listitem', { name: / on forgejo\.example\.org$/ });
     expect(r.textContent).toContain('forgejo.example.org · Forgejo 11.0.1');
     expect(r.textContent).not.toContain('gitea');
     expect(within(r).getByRole('img', { name: 'Forgejo' }).closest('.forge-mark')).toHaveClass('is-forgejo');
@@ -124,7 +179,7 @@ describe('Settings › Accounts', () => {
     });
     api.forgeAccounts.mockResolvedValue([{ ...ada('keyring'), account: { ...ada('keyring').account, host: 'taken.example.com' } }]);
     show();
-    await screen.findByRole('listitem', { name: /on taken\.example\.com account/ });
+    await screen.findByRole('listitem', { name: / on taken\.example\.com$/ });
     fireEvent.click(screen.getByRole('button', { name: '+ Add account' }));
     const host = await screen.findByLabelText('Host');
     fireEvent.focus(host);
@@ -159,18 +214,18 @@ describe('Settings › Accounts', () => {
     expect((await row()).textContent).toContain('Replace it to reconnect');
     fireEvent.click(screen.getByRole('button', { name: 'Replace the token for @ada on gitlab.example.com' }));
     const form = await screen.findByRole('form', { name: 'Replace the token for @ada on gitlab.example.com' });
-    expect(form).toBeTruthy();
+    expect(form.textContent).toContain('Sign in as @ada in your browser first.');
     expect((screen.getByLabelText('Host') as HTMLInputElement).readOnly).toBe(true);
     expect((screen.getByLabelText('Host') as HTMLInputElement).value).toBe('gitlab.example.com');
     fireEvent.change(screen.getByLabelText('Token'), { target: { value: TOKEN } });
     fireEvent.click(screen.getByRole('button', { name: 'Replace token' }));
-    await waitFor(() => expect(api.addForgeAccount).toHaveBeenCalledWith('gitlab.example.com', 'gitlab', TOKEN, ''));
+    await waitFor(() => expect(api.addForgeAccount).toHaveBeenCalledWith('gitlab.example.com', 'gitlab', TOKEN, 'gitlab.example.com'));
     await waitFor(() => expect(screen.queryByRole('form')).toBeNull());
     expect(polling.notifyForgeAccountsChanged).toHaveBeenCalledTimes(1);
     expect(document.body.innerHTML).not.toContain(TOKEN);
   });
 
-  it('picking GitHub with no GitHub remote fills github.com; a host with an account offers Replace its token', async () => {
+  it('picking GitHub with no GitHub remote fills github.com; a host with an account says who has it and offers to replace their token', async () => {
     api.forgeAccounts.mockResolvedValue([{ ...ada('keyring'), account: { ...ada('keyring').account, host: 'github.com', kind: 'github' } }]);
     show();
     await openAdd();
@@ -178,9 +233,9 @@ describe('Settings › Accounts', () => {
     expect(within(form).getByRole('combobox', { name: 'Host' })).toHaveValue('gitlab.example.com');
     fireEvent.click(within(form).getByRole('button', { name: 'GitHub' }));
     expect(within(form).getByRole('combobox', { name: 'Host' })).toHaveValue('github.com');
-    expect(within(form).getByRole('status')).toHaveTextContent('github.com already has an account (@ada).');
+    expect(within(form).getByRole('status')).toHaveTextContent("Has @ada; another user's token adds an account. Replace @ada's token");
     expect(within(form).getByRole('button', { name: /Create token on github.com/ })).toBeEnabled();
-    fireEvent.click(within(form).getByRole('button', { name: 'Replace its token' }));
+    fireEvent.click(within(form).getByRole('button', { name: "Replace @ada's token" }));
     expect(await screen.findByRole('form', { name: 'Replace the token for @ada on github.com' })).toBeInTheDocument();
   });
 
@@ -297,14 +352,14 @@ describe('Settings › Accounts', () => {
     fireEvent.blur(field);
     expect(api.detectForge).toHaveBeenCalledTimes(2);
     // Replacing the taken host's token keeps its host and its forge.
-    expect(within(form).getByRole('status')).toHaveTextContent('code.example.org already has an account (@ada).');
-    fireEvent.click(within(form).getByRole('button', { name: 'Replace its token' }));
+    expect(within(form).getByRole('status')).toHaveTextContent("Has @ada; another user's token adds an account.");
+    fireEvent.click(within(form).getByRole('button', { name: "Replace @ada's token" }));
     const replace = await screen.findByRole('form', { name: 'Replace the token for @ada on code.example.org' });
     expect(within(replace).getByLabelText('Host')).toHaveValue('code.example.org');
     expect(within(replace).getByRole('button', { name: 'Forgejo' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.change(within(replace).getByLabelText('Token'), { target: { value: TOKEN } });
     fireEvent.click(within(replace).getByRole('button', { name: 'Replace token' }));
-    await waitFor(() => expect(api.addForgeAccount).toHaveBeenCalledWith('code.example.org', 'forgejo', TOKEN, ''));
+    await waitFor(() => expect(api.addForgeAccount).toHaveBeenCalledWith('code.example.org', 'forgejo', TOKEN, 'gitlab.example.com'));
     expect(api.detectForge).toHaveBeenCalledTimes(2);
   });
 
@@ -396,13 +451,13 @@ describe('Settings › Accounts', () => {
   it('Remove asks first, then removes the account', async () => {
     api.forgeAccounts.mockResolvedValue([ada('keyring')]);
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove the @ada on gitlab.example.com account' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove @ada on gitlab.example.com' }));
     const clock = armClock();
     const confirm = await screen.findByRole('button', { name: 'Remove account' });
     clock.settle();
     press(confirm);
     clock.restore();
-    await waitFor(() => expect(api.removeForgeAccount).toHaveBeenCalledWith('gitlab.example.com', ''));
+    await waitFor(() => expect(api.removeForgeAccount).toHaveBeenCalledWith('gitlab.example.com', 'gitlab.example.com'));
     await waitFor(() => expect(polling.notifyForgeAccountsChanged).toHaveBeenCalled());
   });
 
@@ -411,7 +466,7 @@ describe('Settings › Accounts', () => {
     api.forgeAccounts.mockResolvedValue([ada('keyring')]);
     api.removeForgeAccount.mockRejectedValueOnce({ kind: 'Other', message });
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove the @ada on gitlab.example.com account' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove @ada on gitlab.example.com' }));
     const clock = armClock();
     const confirm = await screen.findByRole('button', { name: 'Remove account' });
     clock.settle();
