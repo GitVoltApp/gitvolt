@@ -44,6 +44,8 @@ pub fn diff_diagonal() -> Hsla { a(0xcccccc33) }
 pub fn ruler_added() -> Hsla { a(0x5cb85c99) }
 pub fn ruler_removed() -> Hsla { a(0xd9413d99) }
 pub fn yellow_banner() -> Hsla { a(0xecb91c2e) }
+/// `--blue` at 35%: the filter's matched substring.
+pub fn filter_match() -> Hsla { a(0x4d88ff59) }
 pub fn image_frame_border() -> Hsla { a(0xffffff38) }
 /// Chromium's dark range input (the web UI leaves it unstyled).
 pub fn range_fill() -> Hsla { c(0x99c8ff) }

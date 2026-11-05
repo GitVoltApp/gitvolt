@@ -8,7 +8,7 @@ use super::language::highlight_language;
 use super::model::*;
 use super::textmate::{FONT_BOLD, FONT_ITALIC, FONT_UNDERLINE, Span, Tokenizer};
 use crate::app::{GitVolt, KeyArea, Tab, icon};
-use crate::details::{FileChange, segment, segmented, status_icon};
+use crate::details::{FileChange, UNCHANGED, segment, segmented, status_icon};
 use crate::theme;
 use gitvolt_core::api::Request;
 use gitvolt_core::error::GbError;
@@ -268,11 +268,16 @@ impl DiffState {
 
     /// A file opened from another: the view's choices carry from file to file.
     pub fn carrying(file: FileChange, from: Option<&DiffState>) -> Self {
+        let unchanged = file.status == UNCHANGED;
         let mut state = Self::new(file);
         if let Some(d) = from {
-            state.view = d.view;
+            // An unchanged file only has File View; the next one's as it was.
+            state.view = if d.file.status == UNCHANGED { ViewKind::Diff } else { d.view };
             state.take_prefs(d);
             state.generation = d.generation + 1;
+        }
+        if unchanged {
+            state.view = ViewKind::File;
         }
         state
     }
@@ -511,6 +516,9 @@ impl GitVolt {
             tab.diff = tab.diff.take().or(history.saved);
         }
         tab.diff = Some(DiffState::carrying(file, tab.diff.as_ref()));
+        if let Some(files) = tab.files.as_mut() {
+            files.cursor = Some(crate::details::Cursor::File(index));
+        }
         tab.sidebar_open = false;
         self.read_contents(false, cx);
         cx.notify();
@@ -519,6 +527,11 @@ impl GitVolt {
     pub fn close_file(&mut self, cx: &mut Context<Self>) {
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.diff = None;
+            tab.history = None;
+            tab.keys = KeyArea::Graph;
+            if let Some(files) = tab.files.as_mut() {
+                files.cursor = None;
+            }
             cx.notify();
         }
     }
@@ -1439,7 +1452,7 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
 
 pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let in_diff = diff.view == ViewKind::Diff;
-    let can_diff = diff.file.status != 'A' || diff.data.as_ref().is_none_or(|d| d.has_old);
+    let can_diff = diff.file.status != UNCHANGED && (diff.file.status != 'A' || diff.data.as_ref().is_none_or(|d| d.has_old));
     let view_button = |id: &'static str, label: &'static str, kind: ViewKind, on: bool, enabled: bool, cx: &mut Context<GitVolt>| {
         segment(id, label, on, enabled)
             .when(enabled, |d| {

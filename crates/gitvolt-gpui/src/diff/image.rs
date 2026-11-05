@@ -948,7 +948,7 @@ fn image_toolbar(img: &ImageView, file: bool, cx: &mut Context<GitVolt>) -> impl
                         .rounded(px(4.))
                         .text_color(theme::text_selected())
                         .on_mouse_down_out(cx.listener(|this, _, _, cx| this.end_zoom_edit(true, cx)))
-                        .child(field.view())
+                        .child(field.view(true))
                         .into_any_element(),
                     None => toolbar_button("img-zoom-pct", format!("{}%", img.zoom_pct), false)
                         .min_w(px(51.))

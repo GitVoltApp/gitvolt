@@ -55,10 +55,10 @@ impl Field {
         self.text.push_str(text.split(['\n', '\r']).next().unwrap_or_default());
     }
 
-    /// Its text and a caret at the end, or the whole of it selected.
-    pub fn view(&self) -> Div {
-        let text = div().when(self.selected, |d| d.bg(theme::selection_bg())).child(self.text.clone());
-        div().flex().items_center().min_w_0().child(text).when(!self.selected, |d| d.child(div().flex_none().w(px(1.)).h(px(14.)).bg(theme::text_selected())))
+    /// Its text, and while it has the keyboard a caret at the end or the whole of it selected.
+    pub fn view(&self, focused: bool) -> Div {
+        let text = div().when(focused && self.selected, |d| d.bg(theme::selection_bg())).child(self.text.clone());
+        div().flex().items_center().min_w_0().child(text).when(focused && !self.selected, |d| d.child(div().flex_none().w(px(1.)).h(px(14.)).bg(theme::text_selected())))
     }
 }
 

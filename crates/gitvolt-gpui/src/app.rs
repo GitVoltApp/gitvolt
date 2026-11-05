@@ -75,6 +75,9 @@ pub struct Tab {
     /// File History in the diff's and the graph's place; `diff` then is the file it shows.
     pub history: Option<FileHistory>,
     pub keys: KeyArea,
+    /// The file list's View all files and its sort by status hold from commit to commit.
+    pub all_files: bool,
+    pub sort_by_status: bool,
     pub open_in: OpenIn,
     /// The sidebar stays open beside a file (it folds to its strip by default).
     pub sidebar_open: bool,
@@ -101,6 +104,8 @@ impl Tab {
             diff: None,
             history: None,
             keys: KeyArea::Graph,
+            all_files: false,
+            sort_by_status: false,
             open_in: OpenIn::default(),
             sidebar_open: false,
             list: UniformListScrollHandle::new(),
@@ -265,6 +270,7 @@ impl GitVolt {
         let Some(row) = tab.graph.as_ref().and_then(|g| g.rows.get(ix)) else { return };
         let (kind, id, worktree) = (row.kind, row.id.to_string(), row.worktree.clone());
         tab.selected = Some(ix);
+        tab.keys = KeyArea::Graph;
         tab.commit = None;
         tab.files = None;
         tab.list.scroll_to_item(ix, ScrollStrategy::Nearest);
@@ -306,6 +312,18 @@ impl GitVolt {
         .detach();
     }
 
+    /// Page Up and Down, in what was last clicked in.
+    fn page(&mut self, down: bool, window: &Window, cx: &mut Context<Self>) {
+        let height = window.viewport_size().height.as_f32();
+        let sign = if down { 1. } else { -1. };
+        if self.tabs.get(self.active).is_some_and(|t| t.keys == KeyArea::Files && t.files.is_some()) {
+            // What's over the list: the window's bars, the commit, the list's own header.
+            self.page_files(down, ((height - 400.) / 26.).max(1.) as usize, cx);
+        } else {
+            self.scroll_diff(sign * (height / crate::diff::view::LINE_H - 8.).max(1.), cx);
+        }
+    }
+
     /// ↑ / ↓ move what was last clicked in: the graph, the file list, the history's list or the diff.
     fn arrow(&mut self, down: bool, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
@@ -315,6 +333,7 @@ impl GitVolt {
         let by = if down { 1 } else { -1 };
         match tab.keys {
             KeyArea::History if tab.history.is_some() => self.step_history(down, cx),
+            KeyArea::Files if tab.files.is_some() => self.step_files(down, cx),
             _ if self.diff_open() => self.scroll_diff(by as f32, cx),
             _ => self.move_selection(by, cx),
         }
@@ -879,15 +898,16 @@ impl Render for GitVolt {
             .on_action(cx.listener(|this, _: &PreviousChange, _, cx| this.step_change(false, cx)))
             .on_action(cx.listener(|this, _: &Copy, _, cx| this.copy_selection(cx)))
             .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.select_all(cx)))
-            .on_action(cx.listener(|this, _: &PageDown, window, cx| this.scroll_diff((window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
-            .on_action(cx.listener(|this, _: &PageUp, window, cx| this.scroll_diff(-(window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
+            .on_action(cx.listener(|this, _: &PageDown, window, cx| this.page(true, window, cx)))
+            .on_action(cx.listener(|this, _: &PageUp, window, cx| this.page(false, window, cx)))
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
-                if this.zoom_field_key(&e.keystroke, cx) || (e.keystroke.key == "enter" && this.activate_open_in(cx)) {
+                let k = &e.keystroke;
+                if this.zoom_field_key(k, cx) || (k.key == "enter" && this.activate_open_in(cx)) || this.filter_key(k, cx) || this.file_list_key(k, cx) {
                     cx.stop_propagation();
                 }
             }))
             .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
-                if this.close_open_in(cx) {
+                if this.close_open_in(cx) || this.filter_escape(cx) {
                 } else if this.zoom_editing() {
                     this.end_zoom_edit(false, cx);
                 } else if this.tabs.get(this.active).is_some_and(|t| t.history.is_some()) {
