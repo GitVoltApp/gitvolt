@@ -275,6 +275,10 @@ pub struct GitVolt {
     /// What the web UI keeps in localStorage: density, the file list's preferences, the zoom.
     pub prefs: serde_json::Value,
     pub settings_openers: Option<Rc<Vec<crate::open_in::Opener>>>,
+    /// `UpdateState`, as the core says it.
+    pub update_state: serde_json::Value,
+    /// Git can't be run, or is too old: nothing works, and this says why (`GitTooOldScreen`).
+    pub git_problem: Option<(bool, SharedString)>,
     /// `ProfileMeta[]`: the switcher's list.
     pub profiles: serde_json::Value,
     /// The profile's tabs are coming up: nothing saves over them meanwhile.
@@ -289,6 +293,8 @@ pub struct GitVolt {
     pub editor_font_dirty: bool,
     /// A minimized window: the background fetch waits.
     pub window_hidden: bool,
+    /// The desktop draws the title bar: the setting, as it was when the window was made.
+    pub system_title_bar: bool,
     pub fetch_missed: bool,
     pub window_width: f32,
     pub window_height: f32,
@@ -382,7 +388,26 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, profiles: serde_json::json!([]), restoring_tabs: false, start_path: None, state_loaded: false, pending_group: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, fetch_missed: false, window_width: 1600., window_height: 900., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, tab_press_x: 0., tab_drag_dx: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, update_state: serde_json::Value::Null, git_problem: None, profiles: serde_json::json!([]), restoring_tabs: false, start_path: None, state_loaded: false, pending_group: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, system_title_bar: false, fetch_missed: false, window_width: 1600., window_height: 900., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), tab_drag: None, tab_press_x: 0., tab_drag_dx: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+    }
+
+    /// `gitCheck.ts`'s retry.
+    pub fn listen_app_info(&mut self, cx: &mut Context<Self>) {
+        let api = self.api.clone();
+        let info = self.rt.spawn(async move { api.dispatch(Request::AppInfo).await });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Err(e)) = info.await
+                && crate::feedback::blocks_git(&e)
+            {
+                let too_old = format!("{:?}", e.kind) == "GitTooOld";
+                this.update(cx, |this, cx| {
+                    this.git_problem = Some((too_old, e.message.clone().into()));
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -416,14 +441,28 @@ impl GitVolt {
             let api = api.clone();
             async move { api.dispatch(Request::AppInfo).await }
         });
+        self.read_update_state(cx);
         cx.spawn(async move |this, cx| {
-            if let Ok(Ok(v)) = info.await {
-                let version = v["gitVersion"].as_str().unwrap_or_default().to_string();
-                this.update(cx, |this, cx| {
-                    this.git_version = version.into();
-                    cx.notify();
-                })
-                .ok();
+            match info.await {
+                Ok(Ok(v)) => {
+                    let version = v["gitVersion"].as_str().unwrap_or_default().to_string();
+                    this.update(cx, |this, cx| {
+                        this.git_version = version.into();
+                        this.git_problem = None;
+                        cx.notify();
+                    })
+                    .ok();
+                }
+                // No git at all, or one too old: `gitCheck.ts`.
+                Ok(Err(e)) if crate::feedback::blocks_git(&e) => {
+                    let too_old = format!("{:?}", e.kind) == "GitTooOld";
+                    this.update(cx, |this, cx| {
+                        this.git_problem = Some((too_old, e.message.clone().into()));
+                        cx.notify();
+                    })
+                    .ok();
+                }
+                _ => {}
             }
         })
         .detach();
@@ -457,6 +496,7 @@ impl GitVolt {
                     self.read_repo_info(tab, cx);
                 }
             }
+            AppEvent::UpdateChanged { state } => self.update_state = serde_json::to_value(&state).unwrap_or_default(),
             AppEvent::OpStarted { .. } => self.after_op_started(cx),
             AppEvent::AuthWaiting { .. } | AppEvent::AuthResolved { .. } | AppEvent::OpFinished { .. } => self.sync_auth_modal(cx),
             _ => {}
@@ -587,7 +627,7 @@ impl GitVolt {
         let (view, pin) = self.graph_options(repo);
         let read = self.rt.spawn(async move {
             let graph = api.graph(core_repo(repo), Some(limit), pin, None, None, view).await?;
-            let sidebar = api.dispatch(Request::Sidebar { repo }).await?;
+            let sidebar = api.dispatch(Request::Sidebar { repo: crate::app::core_repo(repo) }).await?;
             let view_json = graph.view.as_ref().and_then(|v| serde_json::to_value(v).ok());
             let sections = SendSections(sections_of(&sidebar, &worktree, view_json.as_ref()));
             Ok::<_, gitvolt_core::error::GbError>((SendGraph(graph_view(&graph)), sections, sidebar))
@@ -959,6 +999,32 @@ pub fn icon(name: &'static str, size_px: f32, color: Hsla) -> Svg {
     svg().path(SharedString::from(format!("icons/{name}.svg"))).flex_none().size(px(size_px)).text_color(color)
 }
 
+/// ☰, on the title bar or, with the desktop's, in the tab bar.
+fn hamburger(cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    tip(
+        "Menu",
+        crate::ui::anchor(
+            "hamburger",
+            div()
+                .id("hamburger")
+                .flex()
+                .flex_none()
+                .w(px(34.))
+                .h_full()
+                .items_center()
+                .justify_center()
+                .hover(|d| d.bg(theme::hover_row()))
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                    cx.stop_propagation();
+                    let weak = cx.weak_entity();
+                    let rows = crate::commands::hamburger_rows(&weak, this, cx);
+                    menu::open_below("hamburger", rows, OpenOptions { label: Some("Menu".into()), ..Default::default() }, window, cx);
+                }))
+                .child(icon("menu", 16., theme::text_secondary())),
+        ),
+    )
+}
+
 fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let name = this.tabs.get(this.active).map(|t| format!("GitVolt — {}", t.name)).unwrap_or_else(|| "GitVolt".into());
     let button = |id: &'static str, name: &'static str| {
@@ -980,28 +1046,7 @@ fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> impl
             }
         })
         .on_mouse_down(MouseButton::Right, |e, window, _| window.show_window_menu(e.position))
-        .child(tip(
-            "Menu",
-            crate::ui::anchor(
-                "hamburger",
-                div()
-                    .id("hamburger")
-                    .flex()
-                    .flex_none()
-                    .w(px(34.))
-                    .h_full()
-                    .items_center()
-                    .justify_center()
-                    .hover(|d| d.bg(theme::hover_row()))
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
-                        cx.stop_propagation();
-                        let weak = cx.weak_entity();
-                        let rows = crate::commands::hamburger_rows(&weak, this, cx);
-                        menu::open_below("hamburger", rows, OpenOptions { label: Some("Menu".into()), ..Default::default() }, window, cx);
-                    }))
-                    .child(icon("menu", 16., theme::text_secondary())),
-            ),
-        ))
+        .child(hamburger(cx))
         .child(div().flex().flex_1().min_w_0().items_center().justify_center().text_size(px(12.)).child(name))
         .child(
             div()
@@ -1111,6 +1156,7 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         .bg(theme::tab_bar_bg())
         .border_b_1()
         .border_color(theme::section_border())
+        .when(this.system_title_bar, |d| d.child(hamburger(cx)))
         .child(tip(format!("Open repository ({})", crate::commands::display_chord("Mod+O")), bar_button("open", "folder-plus").on_click(cx.listener(|this, _, _, cx| {
             this.open_blank_tab(cx);
         }))))
@@ -1517,6 +1563,7 @@ fn status_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement + u
         })).child(format!("{}%", crate::zoom::percent())))))
         .children(items)
         .child(div().flex_1())
+        .children(crate::updates::update_pill(this, cx))
         .child(tip(format!("Keyboard shortcuts ({})", crate::commands::display_chord("Mod+/")), crate::ui::anchor("status-shortcuts", div().id("status-shortcuts").flex().cursor_pointer().on_click(cx.listener(|this, _, window, cx| this.open_shortcuts(window, cx))).child(icon("keyboard", 13., theme::text_secondary())))))
         .when(!this.git_version.is_empty(), |d| d.child(format!("git {}", this.git_version)))
         .child(concat!("GitVolt ", env!("CARGO_PKG_VERSION")))
@@ -1544,7 +1591,7 @@ fn resize_handles(window: &Window) -> Option<impl IntoElement + use<>> {
 }
 
 impl Render for GitVolt {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if let Some(handle) = self.focus_next_frame.take() {
             window.focus(&handle, cx);
         }
@@ -1702,7 +1749,7 @@ impl Render for GitVolt {
                 this.end_branch_drag(window, cx);
                 this.hold = None;
             }))
-            .child(title_bar(self, window, cx))
+            .when(!self.system_title_bar, |d| d.child(title_bar(self, window, cx)))
             .child(tab_bar(self, cx))
             .when(open_id.is_none(), |d| d.child(toolbar(self, cx)))
             .children(banners)
@@ -1711,6 +1758,9 @@ impl Render for GitVolt {
             .children(menu)
             .children(drag_ghost)
             .children(rebase_ghost);
+        if let Some((too_old, message)) = self.git_problem.clone() {
+            return crate::feedback::git_too_old_screen(too_old, message, cx).into_any_element();
+        }
         // Dialogs and menus float outside the app's key context: no shortcut acts behind them.
         div()
             .relative()
@@ -1725,6 +1775,7 @@ impl Render for GitVolt {
             .children(font_picker)
             .children(overlays)
             .children(resize_handles(window))
+            .into_any_element()
     }
 }
 

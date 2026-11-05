@@ -402,7 +402,7 @@ pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
         v.frame_hook = Some(Box::new(move |tab, window| {
             let mut s = hooked.borrow_mut();
             s.frames += 1;
-            if s.first_rows_ms == 0 && (tab.graph.is_some() || tab.is_open_tab()) {
+            if s.first_rows_ms == 0 && (tab.graph.is_some() || tab.is_open_tab() || tab.error.is_some()) {
                 s.first_rows_ms = now_ms();
             }
             if s.scrolling {

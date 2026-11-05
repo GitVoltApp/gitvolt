@@ -474,7 +474,7 @@ impl GitVolt {
         if view == HistoryView::Changes && needs_file_list(&row) {
             let api = self.api.clone();
             let id = row.sha.to_string();
-            let read = self.rt.spawn(async move { api.dispatch(Request::FileList { repo, spec: DiffSpec::Commit { id, parent: 0 } }).await });
+            let read = self.rt.spawn(async move { api.dispatch(Request::FileList { repo: crate::app::core_repo(repo), spec: DiffSpec::Commit { id, parent: 0 } }).await });
             cx.spawn(async move |this, cx| {
                 let files = read.await.ok().and_then(Result::ok).map(|v| file_changes(&v, &Origin::Commit { id: row.sha.to_string() }));
                 this.update(cx, |this, cx| {

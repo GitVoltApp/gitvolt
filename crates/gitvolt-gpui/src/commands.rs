@@ -324,7 +324,7 @@ pub fn all() -> Vec<Command> {
         Command::new("help.activityLog", "Activity log", Help, "history", "Every finished fetch and clone, with git's message", &[]).run(|v, window, cx| v.open_activity(None, window, cx)),
         Command::new("help.debug", "Debug…", Help, "bug", "The git commands GitVolt ran, the actions you ran, diagnostics and the perf overlay", &[]).run(|v, window, cx| v.open_debug(None, window, cx)),
         Command::new("help.shortcuts", "Keyboard shortcuts", Help, "keyboard", "Every keyboard shortcut, filterable", &["Mod+/"]).run(|v, window, cx| v.open_shortcuts(window, cx)),
-        Command::new("help.checkUpdates", "Check for updates", Help, "refresh-cw", "Ask GitHub for a newer GitVolt release (GitVolt's own; nothing about your repositories)", &[]),
+        Command::new("help.checkUpdates", "Check for updates", Help, "refresh-cw", "Ask GitHub for a newer GitVolt release (GitVolt's own; nothing about your repositories)", &[]).run(|v, window, cx| v.check_for_updates(window, cx)),
     ]);
     out
 }
@@ -344,6 +344,7 @@ pub fn get(id: &str) -> Option<Command> {
 /// Runs `id` if it's usable.
 pub fn invoke(id: &str, v: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) -> bool {
     let Some(c) = get(id).filter(|c| c.usable(v, cx)) else { return false };
+    v.log_action(c.id, &c.label);
     if let Some(run) = c.run {
         run(v, window, cx);
     }
@@ -352,10 +353,15 @@ pub fn invoke(id: &str, v: &mut GitVolt, window: &mut Window, cx: &mut Context<G
 
 /// A row for a menu: its action through the view. Disabled while it isn't ported, or isn't usable.
 pub fn row(c: &Command, this: &WeakEntity<GitVolt>, usable: bool) -> MenuRow {
-    let (run, weak) = (c.run, this.clone());
+    let (run, weak, id, label) = (c.run, this.clone(), c.id, c.label.clone());
     let row = MenuRow::action(c.id, c.label.clone(), c.icon, c.tooltip.clone(), move |window, cx| {
         if let Some(run) = run {
-            weak.update(cx, |v, cx| run(v, window, cx)).ok();
+            let (id, label) = (id, label.clone());
+            weak.update(cx, |v, cx| {
+                v.log_action(id, &label);
+                run(v, window, cx);
+            })
+            .ok();
         }
     });
     let row = match c.chord() {
@@ -408,6 +414,7 @@ impl GitVolt {
         if c.yields_to_typing && typing {
             return false;
         }
+        self.log_action(c.id, &c.label);
         if let Some(run) = c.run {
             run(self, window, cx);
         }

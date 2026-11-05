@@ -436,7 +436,7 @@ impl GitVolt {
         let read = self.rt.spawn(async move {
             let details = api.dispatch(Request::CommitDetails { repo: crate::app::core_repo(repo), id: id.clone() }).await?;
             let message = api.dispatch(Request::CommitMessage { repo: crate::app::core_repo(repo), id: id.clone() }).await?;
-            let files = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Commit { id: id.clone(), parent: 0 } }).await?;
+            let files = api.dispatch(Request::FileList { repo: crate::app::core_repo(repo), spec: gitvolt_core::diff::DiffSpec::Commit { id: id.clone(), parent: 0 } }).await?;
             Ok::<_, gitvolt_core::error::GbError>((details, message, files, id))
         });
         cx.spawn(async move |this, cx| {

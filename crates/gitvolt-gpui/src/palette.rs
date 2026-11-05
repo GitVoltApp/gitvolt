@@ -179,6 +179,29 @@ impl GitVolt {
             .collect()
     }
 
+    /// A custom theme's "Theme: <name>", and every setting (`#`).
+    fn setting_entries(&self, this: &WeakEntity<GitVolt>) -> Vec<Entry> {
+        let mut out: Vec<Entry> = Vec::new();
+        for t in self.settings["customThemes"].as_array().cloned().unwrap_or_default() {
+            let (id, name) = (t["id"].as_str().unwrap_or_default().to_string(), t["name"].as_str().unwrap_or_default().to_string());
+            let weak = this.clone();
+            out.push(Entry { group: PaletteGroup::Action, label: format!("Theme: {name}").into(), detail: None, alt: None, run: Rc::new(move |_, cx| {
+                let id = id.clone();
+                weak.update(cx, |v, cx| v.set_settings(move |s| s["theme"] = serde_json::json!(id), cx)).ok();
+            }) });
+        }
+        let listed = self.settings_pages();
+        for d in crate::settings::pages::defs().iter().filter(|d| listed.iter().any(|p| p.id == d.page)) {
+            let weak = this.clone();
+            let page = crate::settings::pages::page(d.page).map_or("", |p| p.label);
+            let id = d.id;
+            out.push(Entry { group: PaletteGroup::Setting, label: d.label.into(), detail: Some(page.into()), alt: None, run: Rc::new(move |window, cx| {
+                weak.update(cx, |v, cx| v.show_settings(Some(id), window, cx)).ok();
+            }) });
+        }
+        out
+    }
+
     fn ref_entries(&self, this: &WeakEntity<GitVolt>) -> Vec<Entry> {
         let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
         let jump = |target: Option<String>, this: &WeakEntity<GitVolt>| -> Action {
@@ -319,6 +342,7 @@ impl GitVolt {
         }
         let this = cx.weak_entity();
         let mut entries = self.action_entries(&this, cx);
+        entries.extend(self.setting_entries(&this));
         entries.extend(self.ref_entries(&this));
         entries.extend(self.tab_entries(&this));
         self.open_palette_with(Prepared::new(entries), prefix, None, "Type to search · > actions · @ branches · / files · # settings".into(), window, cx);

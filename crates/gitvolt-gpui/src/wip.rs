@@ -528,8 +528,8 @@ impl GitVolt {
         let api = self.api.clone();
         let tree = worktree.clone();
         let read = self.rt.spawn(async move {
-            let unstaged = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Wip { worktree: worktree.clone(), staged: false } }).await?;
-            let staged = api.dispatch(Request::FileList { repo, spec: gitvolt_core::diff::DiffSpec::Wip { worktree: worktree.clone(), staged: true } }).await?;
+            let unstaged = api.dispatch(Request::FileList { repo: crate::app::core_repo(repo), spec: gitvolt_core::diff::DiffSpec::Wip { worktree: worktree.clone(), staged: false } }).await?;
+            let staged = api.dispatch(Request::FileList { repo: crate::app::core_repo(repo), spec: gitvolt_core::diff::DiffSpec::Wip { worktree: worktree.clone(), staged: true } }).await?;
             let staging = api.dispatch(Request::StagingState { repo: crate::app::core_repo(repo), worktree: worktree.clone() }).await.ok();
             let identity = api.dispatch(Request::CommitIdentity { repo: crate::app::core_repo(repo), worktree }).await.ok();
             Ok::<_, gitvolt_core::error::GbError>((unstaged, staged, staging, identity))

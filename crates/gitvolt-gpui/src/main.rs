@@ -46,6 +46,7 @@ mod table;
 mod tabs;
 mod theme;
 mod ui;
+mod updates;
 mod wip;
 mod zoom;
 mod write;
@@ -188,13 +189,14 @@ fn main() {
             eprintln!("Couldn't load the editor font: {e}");
         }
         // The window as it was left; the first time, the web UI's first size.
+        let system_title_bar = saved_store.state().settings.system_title_bar;
         let saved_window = saved_store.window();
         let start_size = saved_window.as_ref().map_or(size(px(1600.), px(900.)), |w| size(px(w.width as f32), px(w.height as f32)));
         let bounds = Bounds::centered(None, start_size, cx);
         let options = WindowOptions {
             window_bounds: Some(if saved_window.as_ref().is_some_and(|w| w.maximized) { WindowBounds::Maximized(bounds) } else { WindowBounds::Windowed(bounds) }),
             titlebar: None,
-            window_decorations: Some(WindowDecorations::Client),
+            window_decorations: Some(if system_title_bar { WindowDecorations::Server } else { WindowDecorations::Client }),
             app_id: Some("gitvolt-gpui".into()),
             // Measuring: a window behind another isn't throttled to GPUI's 24 Hz.
             inactive_frame_interval: std::env::var_os("GITVOLT_BENCH").map(|_| std::time::Duration::ZERO),
@@ -237,6 +239,7 @@ fn main() {
                     v.listen_for_launches(rx, cx);
                 }
                 v.start_path = path.clone();
+                v.system_title_bar = system_title_bar;
             });
             let closing = view.clone();
             window.on_window_should_close(cx, move |_, cx| closing.update(cx, |v, cx| v.may_close(cx)));

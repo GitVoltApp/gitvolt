@@ -130,12 +130,135 @@ pub struct ActivityOps {
 #[derive(Default, Clone)]
 pub struct ActivityUi {
     pub commands_view: bool,
+    /// Requests or Actions in the place of the others.
+    pub extra_view: Option<&'static str>,
+    pub requests: Vec<Value>,
+    /// What the user ran, newest last (`actionLog.ts`).
+    pub actions: Vec<ActionEntry>,
+    pub failed_only: bool,
     pub errors_only: bool,
     pub show_background: bool,
     pub focus_op: Option<u64>,
     pub focus_command: Option<u64>,
     pub commands: Vec<Value>,
     pub open_rows: std::collections::HashSet<u64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ActionEntry {
+    pub id: String,
+    pub label: String,
+    pub at: String,
+}
+
+/// A request's and an action's line.
+fn debug_list(id: &'static str, lines: Vec<(bool, String, String)>, empty: &'static str) -> AnyElement {
+    let mut list = div().id(id).flex().flex_col().flex_1().min_h_0().overflow_y_scroll().border_t_1().border_color(theme::section_border());
+    if lines.is_empty() {
+        list = list.child(div().p(px(12.)).text_color(theme::text_secondary()).child(empty));
+    }
+    for (ok, text, detail) in lines {
+        list = list.child(div().flex().gap(px(8.)).items_center().px(px(6.)).py(px(4.)).border_b_1().border_color(theme::section_border()).child(div().flex_none().size(px(8.)).rounded_full().bg(if ok { theme::green() } else { theme::red() })).child(div().flex_1().min_w_0().truncate().font_family(crate::diff::view::FONT).text_size(px(12.)).child(text)).child(div().flex_none().text_size(px(11.)).text_color(theme::text_secondary()).child(detail)));
+    }
+    list.into_any_element()
+}
+
+fn requests_body(v: &ActivityShown) -> AnyElement {
+    let lines = v.activity.requests.iter().rev().filter(|r| !v.activity.failed_only || r["ok"] == false).map(|r| (r["ok"] != false, format!("{} {}", r["method"].as_str().unwrap_or_default(), r["params"].as_str().unwrap_or_default()), format!("{:.1} ms", r["durationMs"].as_f64().unwrap_or(0.)))).collect();
+    debug_list("requests-list", lines, "No requests yet")
+}
+
+fn actions_body(v: &ActivityShown) -> AnyElement {
+    let lines = v.activity.actions.iter().rev().map(|a| (true, format!("{} ({})", a.label, a.id), a.at.clone())).collect();
+    debug_list("actions-list", lines, "No actions yet: every menu, palette, shortcut and toolbar action is listed here")
+}
+
+/// `gitCheck.ts`: the spawn failed because there's no git binary, or it's too old.
+pub fn blocks_git(e: &gitvolt_core::error::GbError) -> bool {
+    let kind = format!("{:?}", e.kind);
+    let lower = e.message.to_lowercase();
+    kind == "GitTooOld" || (kind == "Io" && lower.contains("failed to run git") && (lower.contains("no such file") || lower.contains("not found") || lower.contains("os error 2")))
+}
+
+/// `GitTooOldScreen`: the app is blocked until git's there.
+pub fn git_too_old_screen(too_old: bool, message: SharedString, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(10.))
+        .bg(theme::app_bg())
+        .text_color(theme::text_normal())
+        .text_size(px(13.))
+        .child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child(if too_old { "GitVolt needs git 2.40 or newer" } else { "GitVolt could not run git" }))
+        .child(message)
+        .child("Install or upgrade git, then retry:")
+        .child(div().font_family(crate::diff::view::FONT).px(px(8.)).py(px(4.)).rounded(px(4.)).bg(theme::panel_bg()).child("sudo apt install git"))
+        .child(div().text_color(theme::text_secondary()).child("Other systems: https://git-scm.com/downloads"))
+        .child(controls::button("git-retry", "Retry", controls::ButtonKind::Primary, true).on_click(cx.listener(|this, _, _, cx| {
+            this.git_problem = None;
+            this.listen_app_info(cx);
+            cx.notify();
+        })))
+}
+
+impl GitVolt {
+    /// `actionLog.ts`'s record: a command ran.
+    pub fn log_action(&mut self, id: &str, label: &str) {
+        let at = crate::model::format_date(crate::format::now() as i64);
+        self.activity.actions.push(ActionEntry { id: id.to_string(), label: label.to_string(), at });
+        if self.activity.actions.len() > 500 {
+            self.activity.actions.remove(0);
+        }
+    }
+
+    fn read_requests(&mut self, cx: &mut Context<Self>) {
+        if cfg!(test) {
+            return;
+        }
+        let api = self.api.clone();
+        let read = self.rt.spawn(async move { api.dispatch(gitvolt_core::api::Request::RequestLog).await });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(v)) = read.await {
+                this.update(cx, |t, cx| {
+                    t.activity.requests = v.as_array().cloned().unwrap_or_default();
+                    t.sync_activity_shown();
+                    cx.refresh_windows();
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    /// "Copy diagnostics": what the core says of itself, secrets scrubbed.
+    fn copy_diagnostics(&mut self, cx: &mut Context<Self>) {
+        let api = self.api.clone();
+        let tabs = self.tabs.len();
+        let ui = serde_json::from_value(serde_json::json!({ "userAgent": "GPUI", "settings": { "zoom": crate::zoom::percent(), "theme": crate::theme::applied().id, "tabs": tabs } }));
+        let read = self.rt.spawn(async move {
+            match ui {
+                Ok(ui) => api.dispatch(gitvolt_core::api::Request::Diagnostics { ui }).await,
+                Err(e) => Err(gitvolt_core::error::GbError::other(e.to_string())),
+            }
+        });
+        cx.spawn(async move |this, cx| {
+            let answer = read.await;
+            this.update(cx, |_, cx| match answer {
+                Ok(Ok(v)) => {
+                    let text = v.as_str().map_or_else(|| v.to_string(), str::to_string);
+                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                    crate::ui::toast::show("Copied diagnostics", cx);
+                }
+                Ok(Err(e)) => crate::ui::toast::show(e.message, cx),
+                Err(e) => crate::ui::toast::show(e.to_string(), cx),
+            })
+            .ok();
+        })
+        .detach();
+    }
 }
 
 const ACTIVITY_ID: &str = "activity-log";
@@ -579,6 +702,7 @@ fn activity_view(v: &ActivityShown, weak: WeakEntity<GitVolt>, window: &Window, 
             .on_click(move |_, _, cx| {
                 weak.update(cx, |v, cx| {
                     v.activity.commands_view = go_commands;
+                    v.activity.extra_view = None;
                     if go_commands {
                         v.read_commands(cx);
                     }
@@ -589,8 +713,33 @@ fn activity_view(v: &ActivityShown, weak: WeakEntity<GitVolt>, window: &Window, 
             .child(label)
     };
     let close = div().id("activity-close").flex().size(px(22.)).items_center().justify_center().rounded(px(3.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(|_, window, cx| modal::close(ACTIVITY_ID, window, cx)).child(icon("x", 14., theme::text_secondary()));
-    let head = div().flex().flex_none().items_center().gap(px(8.)).child(div().flex().flex_1().min_w_0().gap(px(2.)).child(tab_button("activity-tab", "Activity", !commands_view, false, weak.clone())).child(tab_button("commands-tab", "Commands", commands_view, true, weak.clone()))).child(close);
-    let body = if commands_view { commands_body(v) } else { activity_body(v, weak) };
+    let extra = v.activity.extra_view;
+    let extra_tab = |id: &'static str, label: &'static str, which: &'static str, weak: WeakEntity<GitVolt>| {
+        let on = extra == Some(which);
+        crate::ui::anchor(id, div().id(id).px(px(10.)).py(px(4.)).rounded(px(4.)).cursor_pointer().when(on, |d| d.bg(theme::selected_row()).text_color(theme::text_selected())).when(!on, |d| d.text_color(theme::text_secondary()).hover(|d| d.bg(theme::hover_row()).text_color(theme::text_normal()))).on_click(move |_, _, cx| {
+            weak.update(cx, |v, cx| {
+                v.activity.extra_view = Some(which);
+                v.activity.commands_view = false;
+                if which == "requests" {
+                    v.read_requests(cx);
+                }
+                v.sync_activity_shown();
+                cx.refresh_windows();
+            }).ok();
+        }).child(label))
+    };
+    let w_diag = weak.clone();
+    let tools = crate::ui::anchor("copy-diagnostics", div().id("copy-diagnostics").flex_none().px(px(8.)).py(px(3.)).rounded(px(4.)).border_1().border_color(theme::section_border()).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(move |_, _, cx| {
+        w_diag.update(cx, |v, cx| v.copy_diagnostics(cx)).ok();
+    }).child("Copy diagnostics"));
+    let head = div().flex().flex_none().items_center().gap(px(8.)).child(div().flex().flex_1().min_w_0().gap(px(2.)).child(tab_button("activity-tab", "Activity", !commands_view && extra.is_none(), false, weak.clone())).child(tab_button("commands-tab", "Commands", commands_view, true, weak.clone())).child(extra_tab("requests-tab", "Requests", "requests", weak.clone())).child(extra_tab("actions-tab", "Actions", "actions", weak.clone()))).child(close);
+    let head = head.child(tools);
+    let body = match extra {
+        Some("requests") => requests_body(v),
+        Some(_) => actions_body(v),
+        None if commands_view => commands_body(v),
+        None => activity_body(v, weak),
+    };
     div().flex().flex_col().gap(px(10.)).h(px(height - 32.)).child(head).child(body).into_any_element()
 }
 

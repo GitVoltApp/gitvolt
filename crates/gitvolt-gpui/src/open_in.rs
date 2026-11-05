@@ -154,7 +154,7 @@ impl GitVolt {
             return;
         }
         let api = self.api.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::ListOpenersFor { repo }).await });
+        let read = self.rt.spawn(async move { api.dispatch(Request::ListOpenersFor { repo: crate::app::core_repo(repo) }).await });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(v)) = read.await else { return };
             this.update(cx, |this, cx| {

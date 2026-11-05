@@ -476,6 +476,10 @@ pub struct TextInput {
     viewport: Size<Pixels>,
     last_caret: usize,
     follow_caret: bool,
+    /// The caret's blink: off in a blink's dark half; running only for a while after the caret moved.
+    blink_off: bool,
+    blink_epoch: u64,
+    blink_seen: (usize, bool),
     secret: bool,
 }
 
@@ -528,6 +532,9 @@ impl TextInput {
             line_h: px(18.),
             viewport: Size::default(),
             last_caret: 0,
+            blink_off: false,
+            blink_epoch: 0,
+            blink_seen: (0, false),
             follow_caret: true,
             secret: false,
         }
@@ -1097,7 +1104,7 @@ impl Element for InputElement {
                     l.line.paint(point(bounds.origin.x + shift.x, y), line_h, TextAlign::Left, None, window, cx).ok();
                 }
             }
-            if focused && !disabled && let Some(c) = p.caret {
+            if focused && !disabled && let Some(c) = p.caret.filter(|_| !self.input.read(cx).blink_off) {
                 window.paint_quad(fill(c, theme::text_selected()));
             }
         });
@@ -1107,8 +1114,49 @@ impl Element for InputElement {
     }
 }
 
+/// How many blinks a caret gives after it moved or the field took the keyboard, then it stays lit: an idle app costs
+/// nothing (`AGENTS.md`), where Chromium's goes on for as long as the field has the focus.
+const BLINKS: u32 = 10;
+const BLINK: std::time::Duration = std::time::Duration::from_millis(530);
+
+impl TextInput {
+    /// The caret just moved or came: lit, and a few blinks from now on.
+    fn restart_blink(&mut self, focused: bool, cx: &mut Context<Self>) {
+        let now = (self.buffer.caret(), focused);
+        if now == self.blink_seen {
+            return;
+        }
+        self.blink_seen = now;
+        self.blink_off = false;
+        self.blink_epoch += 1;
+        if !focused || cfg!(test) || std::env::var_os("GITVOLT_BENCH").is_some() {
+            return;
+        }
+        let epoch = self.blink_epoch;
+        cx.spawn(async move |this, cx| {
+            for i in 0..BLINKS * 2 {
+                cx.background_executor().timer(BLINK).await;
+                let live = this.update(cx, |input, cx| {
+                    if input.blink_epoch != epoch {
+                        return false;
+                    }
+                    input.blink_off = i % 2 == 0 && i + 1 < BLINKS * 2;
+                    cx.notify();
+                    true
+                });
+                if !matches!(live, Ok(true)) {
+                    return;
+                }
+            }
+        })
+        .detach();
+    }
+}
+
 impl Render for TextInput {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let focused_now = self.focus.is_focused(window);
+        self.restart_blink(focused_now, cx);
         let multiline = self.multiline;
         let focused = self.focus.is_focused(window);
         if focused != self.was_focused {
