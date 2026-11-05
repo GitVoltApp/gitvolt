@@ -5,14 +5,20 @@
 
 mod app;
 mod bench;
+mod commands;
 mod details;
 mod diff;
 mod format;
+mod find;
 mod graph;
 mod history;
 mod icons;
+mod layout;
+mod menus;
 mod model;
 mod open_in;
+mod palette;
+mod sidebar;
 mod theme;
 mod ui;
 
@@ -83,6 +89,7 @@ fn main() {
         bench::mark("platform_up");
         app::bind_keys(cx);
         ui::init(cx);
+        ui::set_font(font.clone(), cx);
         // The bundled editor font's Latin face (the web UI's, assets/generate.mjs); what it lacks
         // falls back to the system's.
         if let Err(e) = cx.text_system().add_fonts(vec![Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-Latin-400.ttf"))]) {
@@ -103,6 +110,7 @@ fn main() {
             let view = cx.new(|cx| GitVolt::new(api.clone(), handle.clone(), font.clone(), cx));
             view.update(cx, |v, cx| {
                 window.focus(&v.focus, cx);
+                v.load_layout();
                 v.listen(cx);
                 if let Some(path) = path.clone() {
                     v.open(path, cx);

@@ -97,7 +97,7 @@ pub fn menu_rows(list: &[Opener], file: &FileChange) -> Vec<Option<Opener>> {
     rows
 }
 
-fn row_disabled(o: &Opener, path: &str) -> bool {
+pub fn row_disabled(o: &Opener, path: &str) -> bool {
     o.kind == "defaultApp" && runs_as_program(path)
 }
 
@@ -161,6 +161,12 @@ impl GitVolt {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         tab.open_in.menu = None;
         let Some(file) = tab.diff.as_ref().map(|d| d.file.clone()) else { return };
+        self.open_file_with(opener, file, cx);
+    }
+
+    /// Opens `file`, of the active tab's lists, with `opener`.
+    pub fn open_file_with(&mut self, opener: Opener, file: FileChange, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get_mut(self.active) else { return };
         if opener.kind != "defaultApp" {
             self.last_opener = Some(opener.id.clone());
         }

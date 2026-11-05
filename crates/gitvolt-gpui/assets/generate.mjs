@@ -91,12 +91,15 @@ tables.forEach((t, i) => {
 writeFileSync(new URL('fonts/JetBrainsMono-Latin-400.ttf', out), Buffer.concat(parts));
 
 // Lucide (ISC), as the web UI's lucide-react draws them, and its own status glyphs (StatusIcon.tsx).
-const ICONS = ['app-window', 'archive', 'arrow-down', 'arrow-down-wide-narrow', 'arrow-right', 'arrow-up', 'chevrons-up-down', 'file-code', 'globe', 'mouse-pointer-click', 'scaling', 'bell', 'check', 'chevron-down', 'chevron-left', 'chevron-right', 'chevrons-down-up', 'cloud', 'command', 'download', 'folder-open', 'folder-plus', 'git-branch', 'git-branch-plus', 'git-graph', 'house', 'laptop', 'list', 'list-tree', 'menu', 'minus', 'pilcrow', 'pin', 'redo-2', 'search', 'settings', 'shield-check', 'square', 'tag', 'tree-pine', 'undo-2', 'unfold-vertical', 'upload', 'text-wrap', 'x'];
+const ICONS = ['app-window', 'archive', 'arrow-down', 'arrow-down-wide-narrow', 'arrow-right', 'arrow-up', 'chevrons-up-down', 'file-code', 'globe', 'mouse-pointer-click', 'scaling', 'bell', 'check', 'chevron-down', 'chevron-left', 'chevron-right', 'chevrons-down-up', 'cloud', 'command', 'download', 'folder-open', 'folder-plus', 'git-branch', 'git-branch-plus', 'git-graph', 'house', 'laptop', 'list', 'list-tree', 'menu', 'minus', 'pilcrow', 'pin', 'redo-2', 'search', 'settings', 'shield-check', 'square', 'tag', 'tree-pine', 'undo-2', 'unfold-vertical', 'upload', 'text-wrap', 'x', 'copy', 'hash', 'message-square', 'external-link', 'square-arrow-out-up-right', 'git-commit-horizontal', 'git-compare', 'git-merge', 'git-pull-request', 'code', 'file-diff', 'file-text', 'pencil', 'square-x', 'arrow-right-to-line', 'arrow-left-to-line', 'rotate-ccw', 'copy-plus', 'folder-git-2', 'columns-3', 'eye', 'eye-off', 'loader-circle', 'circle-alert', 'flag', 'trash-2', 'plus', 'list-filter', 'file-x', 'log-out', 'panel-left', 'palette', 'git-fork', 'file-down', 'file-up', 'history', 'user', 'arrow-right-left', 'archive-restore', 'arrow-down-to-line', 'arrow-up-from-dot', 'workflow', 'list-ordered', 'file-plus', 'boxes', 'info', 'bug', 'keyboard', 'refresh-cw', 'clipboard-paste', 'file-pen', 'layout-panel-left', 'circle-help', 'folder', 'clock', 'layers', 'arrow-up-from-line', 'chevrons-down', 'chevrons-up', 'cloud-download', 'arrow-left', 'ellipsis', 'terminal', 'lock'];
 rmSync(new URL('icons/', out), { recursive: true, force: true });
 mkdirSync(new URL('icons/', out), { recursive: true });
 const svg = (box, width, body) => `<svg xmlns="http://www.w3.org/2000/svg" width="${box}" height="${box}" viewBox="0 0 ${box} ${box}" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${body}</svg>\n`;
 for (const name of ICONS) {
-  const nodes = (await import(new URL(`node_modules/lucide-react/dist/esm/icons/${name}.mjs`, ui))).__iconData.node;
+  // An old name is an alias: a file that re-exports the icon under its new one.
+  const file = new URL(`node_modules/lucide-react/dist/esm/icons/${name}.mjs`, ui);
+  const alias = readFileSync(file, 'utf8').match(/export \{ default \} from '\.\/(.+)\.mjs'/)?.[1];
+  const nodes = (await import(alias ? new URL(`${alias}.mjs`, file) : file)).__iconData.node;
   const body = nodes.map(([tag, attrs]) => { const { key, ...rest } = attrs; return `<${tag} ${Object.entries(rest).map(([k, v]) => `${k}="${v}"`).join(' ')}/>`; }).join('');
   writeFileSync(new URL(`icons/${name}.svg`, out), svg(24, 2, body));
 }

@@ -215,6 +215,91 @@ pub struct Files {
     pub filter: String,
 }
 
+impl GitVolt {
+    /// A file row's View: its changes in the centre.
+    pub fn open_change(&mut self, file: FileChange, cx: &mut Context<Self>) {
+        let at = self.tabs.get(self.active).and_then(|t| t.files.as_ref()).and_then(|f| f.changes.iter().position(|c| c.path == file.path && c.origin == file.origin));
+        if let Some(at) = at {
+            self.open_file(at, cx);
+        }
+    }
+
+    /// View's File variant: the whole file.
+    pub fn open_change_as_file(&mut self, file: FileChange, cx: &mut Context<Self>) {
+        self.open_change(file, cx);
+        self.with_diff(cx, |d| d.view = crate::diff::view::ViewKind::File);
+    }
+
+    pub fn open_change_history(&mut self, file: FileChange, blame: bool, cx: &mut Context<Self>) {
+        self.open_change(file, cx);
+        self.open_history(blame, cx);
+    }
+
+    /// Copies a commit's whole message.
+    pub fn copy_message(&mut self, id: String, cx: &mut Context<Self>) {
+        let Some(repo) = self.tabs.get(self.active).map(|t| t.id) else { return };
+        let api = self.api.clone();
+        let done = self.rt.spawn(async move { api.dispatch(Request::CommitMessage { repo, id }).await });
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(v)) = done.await else { return };
+            let (summary, body) = (v["summary"].as_str().unwrap_or_default(), v["body"].as_str().unwrap_or_default().trim());
+            let text = if body.is_empty() { summary.to_string() } else { format!("{summary}\n\n{body}") };
+            this.update(cx, |this, cx| this.copy_text(text, cx)).ok();
+        })
+        .detach();
+    }
+
+    fn read_compare(&mut self, spec: gitvolt_core::diff::DiffSpec, title: (SharedString, SharedString), cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get_mut(self.active) else { return };
+        let repo = tab.id;
+        tab.history = None;
+        tab.diff = None;
+        tab.commit = None;
+        tab.files = None;
+        tab.compare = Some(title);
+        cx.notify();
+        let api = self.api.clone();
+        let done = self.rt.spawn(async move { api.dispatch(Request::FileList { repo, spec }).await });
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(files)) = done.await else { return };
+            this.update(cx, |this, cx| {
+                let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo).filter(|t| t.compare.is_some()) else { return };
+                let count = |k: &str| files[k].as_u64().unwrap_or(0) as u32;
+                let mut list = Files::new(file_changes(&files, &Origin::Commit { id: String::new() }), count("added"), count("deleted"));
+                list.by_status = tab.sort_by_status;
+                tab.files = Some(list);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// `from` → `to`, in the details panel; Esc or the × leaves it.
+    pub fn compare_commits(&mut self, from: String, to: String, cx: &mut Context<Self>) {
+        let short = |s: &str| SharedString::from(s.chars().take(SHORT_SHA).collect::<String>());
+        let title = (short(&from), short(&to));
+        self.read_compare(gitvolt_core::diff::DiffSpec::Compare { from, to }, title, cx);
+    }
+
+    /// A commit against the files on disk.
+    pub fn compare_with_worktree(&mut self, from: String, cx: &mut Context<Self>) {
+        let Some(worktree) = self.tabs.get(self.active).map(|t| t.worktree.clone()) else { return };
+        let title = (SharedString::from(from.chars().take(SHORT_SHA).collect::<String>()), SharedString::from("working tree"));
+        self.read_compare(gitvolt_core::diff::DiffSpec::Worktree { from, worktree }, title, cx);
+    }
+
+    /// Whether there was a compare to leave.
+    pub fn exit_compare(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(tab) = self.tabs.get_mut(self.active).filter(|t| t.compare.is_some()) else { return false };
+        tab.compare = None;
+        tab.files = None;
+        tab.diff = None;
+        cx.notify();
+        true
+    }
+}
+
 impl Files {
     pub fn new(changes: Vec<FileChange>, added: u32, deleted: u32) -> Self {
         let (mode, collapsed) = (ListMode::Tree, HashSet::new());
@@ -769,6 +854,7 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                         ListRow::Folder { path, name, depth, collapsed } => {
                             let on = on_keys && cursor.as_ref() == Some(&Cursor::Folder(path.clone()));
                             let path = path.clone();
+                            let menu_path = path.clone();
                             base.pl(px(TREE_BASE + f32::from(*depth) * TREE_LEVEL))
                                 .when(on, |d| d.bg(theme::selected_row()))
                                 .when(!on, |d| d.hover(|d| d.bg(theme::hover_row())))
@@ -781,6 +867,15 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                                         f.toggle_folder(&path);
                                     });
                                 }))
+                                .on_mouse_down(MouseButton::Right, cx.listener({
+                                    let path = menu_path.clone();
+                                    move |this, e: &MouseDownEvent, window, cx| {
+                                        let weak = cx.weak_entity();
+                                        let rows = this.file_folder_rows(&path, &weak);
+                                        crate::ui::menu::open_context_for(format!("folder:{path}"), rows, e.position, window, cx);
+                                    }
+                                }))
+                                .when(crate::ui::menu::is_target(&format!("folder:{menu_path}"), cx), |d| d.border_1().border_color(theme::blue()))
                                 .child(icon(if *collapsed { "chevron-right" } else { "chevron-down" }, 14., theme::text_secondary()))
                                 .child(div().flex_1().min_w_0().truncate().child(name.clone()))
                         }
@@ -803,6 +898,15 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&Shared
                                     this.with_files(cx, |f| f.cursor = Some(Cursor::File(index)));
                                     this.open_file(index, cx);
                                 }))
+                                .on_mouse_down(MouseButton::Right, cx.listener({
+                                    let file = change.clone();
+                                    move |this, e: &MouseDownEvent, window, cx| {
+                                        let weak = cx.weak_entity();
+                                        let rows = this.file_rows(&file, &weak);
+                                        crate::ui::menu::open_context_for(format!("file:{}", file.path), rows, e.position, window, cx);
+                                    }
+                                }))
+                                .when(crate::ui::menu::is_target(&format!("file:{}", change.path), cx), |d| d.border_1().border_color(theme::blue()))
                                 .child(if unchanged { div().flex_none().size(px(14.)).into_any_element() } else { icon(glyph, 14., color).into_any_element() })
                                 .when(!dir.is_empty(), |d| d.child(div().flex().flex_none().max_w(relative(0.6)).overflow_hidden().text_color(theme::text_secondary()).children(marked(dir, &query)).child("/")))
                                 .child(div().flex().flex_1().min_w_0().overflow_hidden().when(unchanged && !on, |d| d.text_color(theme::text_secondary())).children(marked(name, &query)))
@@ -916,10 +1020,30 @@ fn filter_row(files: &Files, input: &Entity<TextInput>, window: &Window, cx: &mu
 }
 
 pub fn details_panel(tab: &Tab, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
-    tab.selected?;
+    if tab.selected.is_none() && tab.compare.is_none() {
+        return None;
+    }
     let selected = tab.diff.as_ref().map(|d| d.file.path.clone());
     let files = tab.files.as_ref().map(|f| files_view(f, &tab.file_filter, selected.as_ref(), tab.all_files, tab.keys == KeyArea::Files, window, cx));
-    let commit = tab.commit.as_ref().map(|c| commit_view(c, cx));
+    let commit = tab.commit.as_ref().filter(|_| tab.compare.is_none()).map(|c| commit_view(c, cx));
+    let compare = tab.compare.as_ref().map(|(from, to)| {
+        div()
+            .flex()
+            .flex_none()
+            .h(px(41.))
+            .items_center()
+            .gap(px(6.))
+            .px(px(12.))
+            .border_b_1()
+            .border_color(theme::section_border())
+            .child(div().flex_1().min_w_0().truncate().child(format!("Comparing {from} → {to}")))
+            .child(crate::ui::tooltip::tip(
+                "Close (Esc)",
+                div().id("compare-close").flex().size(px(22.)).items_center().justify_center().rounded(px(3.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(cx.listener(|this, _, _, cx| {
+                    this.exit_compare(cx);
+                })).child(icon("x", 14., theme::text_secondary())),
+            ))
+    });
     Some(
         div()
             .flex()
@@ -931,6 +1055,7 @@ pub fn details_panel(tab: &Tab, window: &Window, cx: &mut Context<GitVolt>) -> O
             .bg(theme::panel_bg())
             .border_l_1()
             .border_color(theme::section_border())
+            .children(compare)
             .children(commit)
             .children(files)
             .into_any_element(),

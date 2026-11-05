@@ -5,7 +5,6 @@
 use chrono::{Datelike, Local, TimeZone, Timelike};
 use gitvolt_graph::{GraphPayload, NodeKind, RefLabel, RowPayload};
 use gpui::SharedString;
-use serde_json::Value;
 use std::collections::HashMap;
 
 pub const ROW_H: f32 = 28.;
@@ -132,6 +131,8 @@ pub struct Chip {
     pub local: bool,
     pub remote: bool,
     pub tag: bool,
+    /// Its remote branches: `(remote, full ref)`.
+    pub remotes: Vec<(String, String)>,
 }
 
 /// One graph row, ready to draw: nothing here is formatted during a frame.
@@ -164,7 +165,7 @@ pub struct GraphView {
 const LANES: usize = 10;
 
 fn chip(l: &RefLabel) -> Chip {
-    Chip { name: l.name.clone().into(), head: l.is_head, local: l.local.is_some(), remote: !l.remotes.is_empty(), tag: l.tag }
+    Chip { name: l.name.clone().into(), head: l.is_head, local: l.local.is_some(), remote: !l.remotes.is_empty(), tag: l.tag, remotes: l.remotes.iter().map(|r| (r.remote.clone(), r.full_name.clone())).collect() }
 }
 
 fn row_view(r: &RowPayload, chips: Vec<Chip>) -> RowView {
@@ -212,109 +213,9 @@ pub fn graph_view(g: &GraphPayload) -> GraphView {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SideIcon {
-    Folder,
-    Branch,
-    Tag,
-    Stash,
-    Home,
-}
-
-/// A row of a sidebar panel.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SideRow {
-    pub label: SharedString,
-    pub depth: u8,
-    pub icon: SideIcon,
-    /// The checked-out branch, the open worktree: the green row.
-    pub current: bool,
-    /// The commit it points at; a folder has none.
-    pub target: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PanelKind {
-    Local,
-    Remote,
-    Worktrees,
-    Stashes,
-    Tags,
-}
-
-pub struct Panel {
-    pub kind: PanelKind,
-    pub title: &'static str,
-    pub count: usize,
-    pub rows: Vec<SideRow>,
-}
-
-/// `(name, target, current)`s as a tree by `/`: a folder before its branches, each level sorted.
-fn branch_tree(mut items: Vec<(String, String, bool)>, icon: SideIcon) -> Vec<SideRow> {
-    items.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut out = Vec::new();
-    let mut open: Vec<String> = Vec::new();
-    // Folders first at each level: a folder sorts by its name with a low byte in front.
-    items.sort_by_key(|(name, _, _)| {
-        let parts: Vec<&str> = name.split('/').collect();
-        let last = parts.len() - 1;
-        parts.iter().enumerate().map(|(i, p)| format!("{}{p}", if i < last { '\u{1}' } else { '\u{2}' })).collect::<Vec<_>>()
-    });
-    for (name, target, current) in items {
-        let parts: Vec<&str> = name.split('/').collect();
-        let (leaf, folders) = parts.split_last().expect("split gives one part at least");
-        let shared = open.iter().zip(folders.iter()).take_while(|(a, b)| a.as_str() == **b).count();
-        open.truncate(shared);
-        for f in &folders[shared..] {
-            out.push(SideRow { label: (*f).to_string().into(), depth: open.len() as u8, icon: SideIcon::Folder, current: false, target: None });
-            open.push((*f).to_string());
-        }
-        out.push(SideRow { label: (*leaf).to_string().into(), depth: open.len() as u8, icon, current, target: Some(target) });
-    }
-    out
-}
-
-fn text(v: &Value, key: &str) -> String {
-    v[key].as_str().unwrap_or_default().to_string()
-}
-
-/// The `sidebar` read's five panels, in the UI's order.
-pub fn panels(v: &Value) -> Vec<Panel> {
-    let list = |key: &str| v[key].as_array().cloned().unwrap_or_default();
-    let locals = list("locals");
-    let local_rows = branch_tree(locals.iter().map(|b| (text(b, "name"), text(b, "target"), b["isHead"].as_bool() == Some(true))).collect(), SideIcon::Branch);
-    let remotes = list("remotes");
-    let mut remote_rows = Vec::new();
-    let mut remote_count = 0;
-    for r in &remotes {
-        let branches = r["branches"].as_array().cloned().unwrap_or_default();
-        remote_count += branches.len();
-        remote_rows.push(SideRow { label: text(r, "name").into(), depth: 0, icon: SideIcon::Folder, current: false, target: None });
-        let prefix = format!("{}/", text(r, "name"));
-        for mut row in branch_tree(branches.iter().map(|b| (text(b, "name").trim_start_matches(&prefix).to_string(), text(b, "target"), false)).collect(), SideIcon::Branch) {
-            row.depth += 1;
-            remote_rows.push(row);
-        }
-    }
-    let worktrees = list("worktrees");
-    let worktree_rows = worktrees.iter().map(|w| SideRow { label: text(w, "name").into(), depth: 0, icon: SideIcon::Home, current: w["isCurrent"].as_bool() == Some(true), target: w["head"].as_str().map(str::to_string) }).collect();
-    let stashes = list("stashes");
-    let stash_rows = stashes.iter().map(|s| SideRow { label: text(s, "message").into(), depth: 0, icon: SideIcon::Stash, current: false, target: Some(text(s, "id")) }).collect();
-    let tags = list("tags");
-    let tag_rows = tags.iter().map(|t| SideRow { label: text(t, "name").into(), depth: 0, icon: SideIcon::Tag, current: false, target: Some(text(t, "target")) }).collect();
-    vec![
-        Panel { kind: PanelKind::Local, title: "LOCAL", count: locals.len(), rows: local_rows },
-        Panel { kind: PanelKind::Remote, title: "REMOTE", count: remote_count, rows: remote_rows },
-        Panel { kind: PanelKind::Worktrees, title: "WORKTREES", count: worktrees.len(), rows: worktree_rows },
-        Panel { kind: PanelKind::Stashes, title: "STASHES", count: stashes.len(), rows: stash_rows },
-        Panel { kind: PanelKind::Tags, title: "TAGS", count: tags.len(), rows: tag_rows },
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn a_segment_unpacks_as_the_layout_packs_it() {
@@ -356,23 +257,4 @@ mod tests {
         assert_eq!(node_x(3, 100., true), None);
         assert!(packed_x(100.) > 100. - zone_width());
     }
-
-    #[test]
-    fn branches_nest_by_slash_with_folders_first() {
-        let v = json!({"locals": [
-            {"name": "main", "target": "a", "isHead": true},
-            {"name": "feature/b10", "target": "c"},
-            {"name": "feature/b1", "target": "b"},
-            {"name": "fix/deep/x", "target": "d"},
-        ], "remotes": [{"name": "origin", "branches": [{"name": "origin/main", "target": "a"}]}], "worktrees": [{"name": "w", "isCurrent": true, "head": "a"}], "stashes": [], "tags": [{"name": "v1", "target": "t"}]});
-        let p = panels(&v);
-        let shown: Vec<(&str, u8, bool)> = p[0].rows.iter().map(|r| (r.label.as_ref(), r.depth, r.current)).collect();
-        assert_eq!(shown, [("feature", 0, false), ("b1", 1, false), ("b10", 1, false), ("fix", 0, false), ("deep", 1, false), ("x", 2, false), ("main", 0, true)]);
-        assert_eq!(p[0].count, 4);
-        assert_eq!(p[1].rows.iter().map(|r| r.label.as_ref()).collect::<Vec<_>>(), ["origin", "main"]);
-        assert_eq!((p[1].count, p[1].rows[1].depth), (1, 1));
-        assert!(p[2].rows[0].current);
-        assert_eq!(p[4].rows[0].target.as_deref(), Some("t"));
-    }
-
 }

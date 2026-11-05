@@ -1098,6 +1098,24 @@ fn on_mouse_down(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx
     cx.notify();
 }
 
+/// A right-click on the text: a press inside a selection keeps it; elsewhere, the caret goes there.
+fn on_text_menu(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<GitVolt>) {
+    let Some(diff) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
+    let Some((at, _)) = pos_at(diff, e.position, window) else { return };
+    let line_of = |row: usize, diff: &DiffState| diff.rows.get(row).and_then(|r| r.new.or(r.old)).map_or(1, |n| n + 1);
+    let (from, to) = match diff.selection.map(|s| s.range()) {
+        Some((a, b)) if a != b && a.row <= at.row && at.row <= b.row => (line_of(a.row, diff), line_of(b.row, diff)),
+        _ => {
+            let n = line_of(at.row, diff);
+            (n, n)
+        }
+    };
+    let (file, text) = (diff.file.clone(), diff.selected_text());
+    let weak = cx.weak_entity();
+    let rows = this.diff_text_rows(&file, text, (from.min(to), from.max(to)), &weak);
+    crate::ui::menu::open_context(rows, e.position, window, cx);
+}
+
 fn on_mouse_move(this: &mut GitVolt, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<GitVolt>) {
     let Some(diff) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
     let b = diff.body.get();
@@ -1179,6 +1197,7 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
         .overflow_hidden()
         .cursor(CursorStyle::IBeam)
         .on_mouse_down(MouseButton::Left, cx.listener(on_mouse_down))
+        .on_mouse_down(MouseButton::Right, cx.listener(on_text_menu))
         .on_mouse_move(cx.listener(on_mouse_move))
         .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
         .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))

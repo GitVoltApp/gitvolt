@@ -61,17 +61,23 @@ struct State {
 async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (u128, u128) {
     let parts: Vec<&str> = spec.split(',').collect();
     let (row, file): (usize, usize) = (parts[0].parse().unwrap_or(0), parts.get(1).and_then(|f| f.parse().ok()).unwrap_or(0));
+    // `<row>,-`: no file, and with `-,-` no selection.
+    let no_file = parts.get(1) == Some(&"-");
     let wait = |cx: &AsyncWindowContext| cx.background_executor().timer(Duration::from_millis(2));
     while !v.read_with(cx, |g, _| g.tabs.first().is_some_and(|t| t.graph.is_some())) {
         wait(cx).await;
     }
-    v.update(cx, |g, cx| g.select(row, cx));
-    while !v.read_with(cx, |g, _| g.tabs.first().is_some_and(|t| t.files.is_some())) {
-        wait(cx).await;
+    if parts[0] != "-" {
+        v.update(cx, |g, cx| g.select(row, cx));
+        while !v.read_with(cx, |g, _| g.tabs.first().is_some_and(|t| t.files.is_some())) {
+            wait(cx).await;
+        }
     }
     let opened = Instant::now();
     v.update(cx, |g, cx| {
-        g.open_file(file, cx);
+        if !no_file {
+            g.open_file(file, cx);
+        }
         for part in parts.iter().skip(2) {
             g.with_diff(cx, |d| match *part {
                 "hunk" => d.mode = Mode::Hunk,
@@ -87,7 +93,7 @@ async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (
             }
         }
     });
-    while !v.read_with(cx, |g, _| g.tabs[0].history.is_some() || g.tabs[0].diff.as_ref().is_some_and(|d| d.data.is_some() || d.notice != Some(Notice::Loading))) {
+    while !no_file && !v.read_with(cx, |g, _| g.tabs[0].history.is_some() || g.tabs[0].diff.as_ref().is_some_and(|d| d.data.is_some() || d.notice != Some(Notice::Loading))) {
         wait(cx).await;
     }
     let text = opened.elapsed().as_millis();
@@ -97,6 +103,11 @@ async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (
     let shown = (text, opened.elapsed().as_millis());
     // Their first layout places an image at 100%.
     cx.background_executor().timer(Duration::from_millis(50)).await;
+    for part in parts.iter().skip(2) {
+        let part = part.to_string();
+        cx.update(|window, cx| v.update(cx, |g, cx| g.show_ui(&part, window, cx))).ok();
+        cx.background_executor().timer(Duration::from_millis(30)).await;
+    }
     if parts.contains(&"allfiles") {
         v.update(cx, |g, cx| g.toggle_all_files(cx));
     }
@@ -133,6 +144,51 @@ async fn reopen(v: &Entity<GitVolt>, file: usize, cx: &mut AsyncWindowContext) -
         wait(cx).await;
     }
     (text, opened.elapsed().as_millis())
+}
+
+impl GitVolt {
+    /// `GITVOLT_SHOW`'s parts for what floats, for screenshots: `menu<row>` a row's context menu,
+    /// `sub<i>` the open menu's i-th row's submenu, `hamburger`, `filter=<text>`, `tip=<text>`,
+    /// `toast=<text>`, `palette=<query>`, `find=<query>`, `prompt`, `confirm`, `armed`, `narrow`.
+    pub fn show_ui(&mut self, part: &str, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::ui::{arm, menu, modal, popover, toast, tooltip};
+        let weak = cx.weak_entity();
+        if let Some(row) = part.strip_prefix("menu").and_then(|n| n.parse::<usize>().ok()) {
+            let rows = self.commit_rows(row, None, &weak);
+            menu::open_context(rows, point(px(700.), px(160. + row as f32 * 28.)), window, cx);
+        } else if let Some(i) = part.strip_prefix("sub").and_then(|n| n.parse::<usize>().ok()) {
+            menu::open_sub_for_screenshot(i, window, cx);
+        } else if part == "hamburger" {
+            let rows = crate::commands::hamburger_rows(&weak, self, cx);
+            menu::open_below("hamburger", rows, Default::default(), window, cx);
+        } else if let Some(text) = part.strip_prefix("filter=") {
+            if let Some(tab) = self.tabs.get(self.active) {
+                let (input, id) = (tab.side.filter.clone(), tab.id);
+                input.update(cx, |i, cx| i.set_text(text, cx));
+                self.relist_sidebar(id, cx);
+                window.focus(&input.read(cx).focus.clone(), cx);
+            }
+        } else if let Some(text) = part.strip_prefix("tip=") {
+            tooltip::show_at(text.to_string(), Bounds::new(point(px(600.), px(85.)), size(px(60.), px(38.))), tooltip::Placement::Below, cx);
+        } else if let Some(text) = part.strip_prefix("toast=") {
+            toast::show(text.to_string(), cx);
+        } else if let Some(q) = part.strip_prefix("palette=") {
+            self.open_palette(q, window, cx);
+        } else if let Some(q) = part.strip_prefix("find=") {
+            self.open_find(window, cx);
+            self.set_find_text(q, cx);
+        } else if part == "prompt" {
+            modal::prompt(modal::PromptRequest { title: "Rename tab".into(), label: "Name".into(), initial: "fixture".into(), confirm_label: "Rename".into(), require_change: true, ..Default::default() }, |_, _, _| {}, window, cx);
+        } else if part == "confirm" {
+            let mut req = arm::ArmRequest::danger("Click again to delete", "Delete the branch?", "Delete");
+            req.body = "It has 3 commits no other branch has.".into();
+            popover::confirm(req, true, None, |_, _, _| {}, window, cx);
+        } else if part == "armed" {
+            arm::request(arm::ArmRequest::danger("Click again to discard 5 files", "Discard?", "Discard"), arm::Origin::control("tb-search"), |_, _, _| {}, window, cx);
+        } else if part == "narrow" {
+            self.sidebar_narrow = true;
+        }
+    }
 }
 
 /// The same run as the CEF build's: settle 5 s, idle 20 s, scroll 16 px per frame for 8 s.
