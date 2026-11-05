@@ -258,11 +258,13 @@ pub struct MergeTool {
     pub generation: u64,
     /// The base as the work started from it; `None` with a file means no file on disk.
     pub base: Option<String>,
+    /// While the conflict's read again: what was there, to keep its ticks if the conflict is the same.
+    kept: Option<(Rc<ConflictFile>, Picks, bool)>,
 }
 
 impl MergeTool {
     pub fn loading(worktree: String, path: String) -> Self {
-        Self { worktree, path, loaded: Loaded::Loading, picks: Picks::new(), panes: Vec::new(), output: None, saving: false, busy: false, pending_reveal: None, generation: 0, base: None }
+        Self { worktree, path, loaded: Loaded::Loading, picks: Picks::new(), panes: Vec::new(), output: None, saving: false, busy: false, pending_reveal: None, generation: 0, base: None, kept: None }
     }
 
     pub fn file(&self) -> Option<&Rc<ConflictFile>> {
@@ -595,8 +597,10 @@ impl GitVolt {
         let has_old = self.merge_tab(repo).is_some_and(|t| t.merge.is_some());
         if !wait || !has_old {
             if let Some(tab) = self.merge_tab(repo) {
+                let kept = tab.merge.as_ref().filter(|m| m.path == path && m.worktree == worktree).and_then(|m| Some((m.file()?.clone(), m.picks.clone(), m.dirty())));
                 let mut loading = MergeTool::loading(worktree.clone(), path.clone());
                 loading.generation = generation;
+                loading.kept = kept;
                 tab.merge = Some(loading);
             }
         } else {
@@ -640,8 +644,9 @@ impl GitVolt {
     fn adopt_conflict(&mut self, repo: u32, worktree: String, path: String, answer: Result<Value, GbError>, cx: &mut Context<Self>) {
         let Some(tab) = self.merge_tab(repo) else { return };
         let same_file = tab.merge.as_ref().filter(|m| m.path == path && m.worktree == worktree);
-        let kept = same_file.and_then(|m| Some((m.file()?.clone(), m.picks.clone(), m.dirty())));
-        let generation = same_file.map_or(0, |m| m.generation);
+        let kept = same_file.and_then(|m| m.kept.clone().or_else(|| Some((m.file()?.clone(), m.picks.clone(), m.dirty()))));
+        let generation = self.merge_generation;
+        let Some(tab) = self.merge_tab(repo) else { return };
         match answer {
             Err(e) => {
                 let mut failed = MergeTool::loading(worktree, path);

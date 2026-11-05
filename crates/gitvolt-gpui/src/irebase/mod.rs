@@ -254,6 +254,11 @@ impl GitVolt {
     /// session is never silently replaced. While Start's write runs, the tab is only focused. An edited plan comes back
     /// as it is: for the same target quietly, for another with a toast to finish or cancel it first.
     pub fn open_rebase_editor(&mut self, opts: OpenRebase, cx: &mut Context<Self>) {
+        // It takes the open file's place.
+        let again = opts.clone();
+        if self.ask_unsaved(move |v, cx| v.open_rebase_editor(again.clone(), cx), cx) {
+            return;
+        }
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let ctx = tab.write_target();
         let repo = tab.id;
@@ -929,7 +934,7 @@ mod tests {
         assert_eq!(s.rows.len(), 5);
         // Reorder, squash, reword, drop.
         let (c5, c4, c3, c2) = (oid(&s, "Commit 5"), oid(&s, "Commit 4"), oid(&s, "Commit 3"), oid(&s, "Commit 2"));
-        move_rows(&mut s, &[c5.clone()], 2);
+        move_rows(&mut s, std::slice::from_ref(&c5), 2);
         set_actions(&mut s, std::slice::from_ref(&c2), RowAction::Drop);
         set_actions(&mut s, std::slice::from_ref(&c3), RowAction::Reword);
         edit_message(&mut s, &c3, "Reworded three");
@@ -938,8 +943,8 @@ mod tests {
         let body = call("interactiveRebase", json!({ "repo": f.repo, "worktree": f.worktree, "branch": s.branch, "base": s.base.name, "expect": s.expect, "rows": rows, "chips": chips, "confirm": { "autostash": false } }));
         let out = f.ok(body).await;
         assert_eq!(out["outcome"]["status"], "done");
-        assert_eq!(subjects(&f), ["Commit 5", "Reworded three", "Commit 1", "Second", "Base"]);
-        let body = f.git(&["log", "-1", "--format=%B", "HEAD~1"]);
+        assert_eq!(subjects(&f), ["Reworded three", "Commit 5", "Commit 1", "Second", "Base"]);
+        let body = f.git(&["log", "-1", "--format=%B", "HEAD"]);
         assert!(body.starts_with("Reworded three"), "{body}");
         assert!(!f.path.join("f2.txt").exists(), "the dropped commit's file went");
         assert!(f.path.join("f4.txt").exists(), "the squashed one's stayed");
@@ -964,6 +969,75 @@ mod tests {
         let out = f.ok(call("rebaseControl", json!({ "repo": f.repo, "worktree": f.worktree, "action": "continue", "message": null }))).await;
         assert_eq!(out["outcome"]["status"], "done");
         assert_eq!(subjects(&f)[..3], ["Commit 5", "Commit 4", "Commit 3"]);
+    }
+
+    fn open_plan(window: &WindowHandle<GitVolt>, vcx: &mut VisualTestContext) {
+        window
+            .update(vcx, |v, _, cx| {
+                let row = |o: &str| json!({ "oid": o, "summary": o, "message": format!("{o}\n"), "authorName": "x", "authorEmail": "x@example.com" });
+                let plan = json!({ "branch": "main", "base": "t", "baseOid": "b", "baseSummary": "B", "baseChips": [], "merges": 0, "rows": [row("c"), row("b1"), row("a")], "chips": [], "branches": [], "expect": {} });
+                let ctx = WriteCtx { repo: 1, worktree: "/w".into() };
+                v.show_rebase_plan(1, ctx, OpenRebase { branch: "main".into(), base: "t".into(), preset: None }, &plan, cx);
+            })
+            .unwrap();
+        vcx.run_until_parked();
+    }
+
+    #[gpui::test]
+    fn the_keys_walk_the_rows_set_their_actions_and_esc_cancels(cx: &mut TestAppContext) {
+        let (window, mut vcx, _rt) = crate::app::tests::with_rows(cx, 1);
+        open_plan(&window, &mut vcx);
+        let read = |window: &WindowHandle<GitVolt>, vcx: &mut VisualTestContext| window.read_with(vcx, |v, _| v.tabs[0].rebase.as_ref().map(|s| (s.state.selected.clone(), s.state.rows.iter().map(|r| r.action).collect::<Vec<_>>(), s.state.rows.iter().map(|r| r.oid.clone()).collect::<Vec<_>>()))).unwrap();
+        vcx.simulate_keystrokes("down");
+        assert_eq!(read(&window, &mut vcx).unwrap().0, ["c"]);
+        vcx.simulate_keystrokes("down d");
+        let (sel, actions, _) = read(&window, &mut vcx).unwrap();
+        assert_eq!(sel, ["b1"]);
+        assert_eq!(actions[1], RowAction::Drop);
+        vcx.simulate_keystrokes("shift-up");
+        assert_eq!(read(&window, &mut vcx).unwrap().0.len(), 2, "a range");
+        vcx.simulate_keystrokes("down ctrl-up");
+        assert_eq!(read(&window, &mut vcx).unwrap().2, ["c", "a", "b1"], "the selected one moved a place");
+        vcx.simulate_keystrokes("ctrl-z");
+        assert_eq!(read(&window, &mut vcx).unwrap().2, ["c", "b1", "a"], "the plan's undo");
+        // An edited plan arms its Cancel first; a press of Esc again disarms it.
+        vcx.simulate_keystrokes("escape");
+        vcx.run_until_parked();
+        assert!(read(&window, &mut vcx).is_some(), "still open");
+        assert!(vcx.update(|_, cx| crate::ui::arm::is_armed(cx)));
+        vcx.simulate_keystrokes("escape");
+        vcx.run_until_parked();
+        assert!(!vcx.update(|_, cx| crate::ui::arm::is_armed(cx)));
+        // Reset, then Esc closes at once.
+        window.update(&mut vcx, |v, _, cx| v.with_rebase(cx, |s, _| s.edit(reset))).unwrap();
+        vcx.run_until_parked();
+        vcx.simulate_keystrokes("escape");
+        vcx.run_until_parked();
+        assert!(read(&window, &mut vcx).is_none());
+    }
+
+    #[gpui::test]
+    fn a_drag_past_the_threshold_moves_and_a_press_without_one_selects(cx: &mut TestAppContext) {
+        let (window, mut vcx, _rt) = crate::app::tests::with_rows(cx, 1);
+        open_plan(&window, &mut vcx);
+        window
+            .update(&mut vcx, |v, _, cx| {
+                let s = v.tabs[0].rebase.as_mut().unwrap();
+                s.row_drag = Some(RowDrag { from: 0, group: vec![0], oids: vec!["c".into()], home: 0, to: 0, dy: 0., heights: vec![30., 30., 30.], start: point(px(0.), px(0.)), active: false, oid: "c".into(), shift: false, ctrl: false });
+                v.end_rebase_drag(cx);
+                assert_eq!(v.tabs[0].rebase.as_ref().unwrap().state.selected, ["c"], "a click");
+                let s = v.tabs[0].rebase.as_mut().unwrap();
+                s.row_drag = Some(RowDrag { from: 0, group: vec![0], oids: vec!["c".into()], home: 0, to: 0, dy: 0., heights: vec![30., 30., 30.], start: point(px(0.), px(0.)), active: false, oid: "c".into(), shift: false, ctrl: false });
+                let e = MouseMoveEvent { position: point(px(0.), px(2.)), pressed_button: Some(MouseButton::Left), modifiers: Modifiers::default() };
+                v.on_rebase_drag(&e, cx);
+                assert!(!v.tabs[0].rebase.as_ref().unwrap().row_drag.as_ref().unwrap().active, "under the threshold");
+                let e = MouseMoveEvent { position: point(px(0.), px(40.)), ..e };
+                v.on_rebase_drag(&e, cx);
+                v.end_rebase_drag(cx);
+                let oids: Vec<String> = v.tabs[0].rebase.as_ref().unwrap().state.rows.iter().map(|r| r.oid.clone()).collect();
+                assert_eq!(oids, ["b1", "c", "a"]);
+            })
+            .unwrap();
     }
 
     #[gpui::test]

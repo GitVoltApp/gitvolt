@@ -729,7 +729,16 @@ pub fn rebase_panel(tab: &Tab, width: f32, window: &Window, cx: &mut Context<Git
         .on_action(cx.listener(|this, _: &crate::app::SelectPrevious, window, cx| {
             this.rebase_key(&Keystroke::parse("up").expect("a key"), window, cx);
         }))
-        .on_action(cx.listener(|this, _: &crate::app::ClearSelection, window, cx| this.cancel_rebase(Origin::control("rebase-cancel"), window, cx)))
+        .on_action(cx.listener(|this, _: &crate::app::ClearSelection, window, cx| {
+            // Esc in a drag puts it back and nothing else.
+            let Some(s) = this.tabs.get_mut(this.active).and_then(Tab::rebase_shown_mut) else { return };
+            if s.row_drag.as_ref().is_some_and(|d| d.active) || s.chip_drag.as_ref().is_some_and(|d| d.active) {
+                s.row_drag = None;
+                s.chip_drag = None;
+                return cx.notify();
+            }
+            this.cancel_rebase(Origin::control("rebase-cancel"), window, cx);
+        }))
         .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
             if this.rebase_key(&e.keystroke, window, cx) {
                 cx.stop_propagation();

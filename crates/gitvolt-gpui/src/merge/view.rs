@@ -205,7 +205,10 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
                 window.paint_quad(outline(o, c, BorderStyle::Solid));
             }
             let number: SharedString = (n + 1).to_string().into();
+            // A file's last, empty line: its number dimmed, as Monaco's `renderFinalNewline`.
+            let last_empty = n + 1 == count && count > 1 && lines.get(n).is_some_and(|l| l.text.is_empty());
             let color = theme::c(if n == s.current_line { 0xC6C6C6 } else { 0x858585 });
+            let color = if last_empty && n != s.current_line { Hsla { a: 0.3, ..color } } else { color };
             let shaped = window.text_system().shape_line(number.clone(), px(FONT_SIZE), &[TextRun { len: number.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
             let num_right = b.origin.x + px(if s.pane { HUNK_W + NUM_W } else { NUM_W });
             shaped.paint(point(num_right - shaped.width, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();

@@ -45,7 +45,7 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   does, a question from the core arms at `origin` and sends again with `asked`, an error toasts, the answer feeds the
   journal, staging and WIP lists. Test it in a `#[tokio::test]` with `write::testing::Fixture`, a throwaway repo through
   a real `Api`; a GPUI test can't await the runtime, so under `cfg!(test)` writes land in `GitVolt::sent`.
-  `wip.rs`, `commit_box.rs`, `sync.rs`, `refs.rs`, `feedback.rs`, `manage.rs` and `diff/staging.rs`, `diff/edit.rs` hold them.
+  `wip.rs`, `commit_box.rs`, `sync.rs`, `refs.rs`, `feedback.rs`, `manage.rs`, `merge/`, `irebase/` and `diff/staging.rs`, `diff/edit.rs` hold them.
 - **A modal's `build` and an overlay run while `GitVolt` is being updated:** reading it there panics. Copy what it
   draws into something shared before `ui::overlays`, as `sync_activity_shown` does.
 - **What floats:** `src/ui/` is the shared UI; `ui::init` once, `ui::begin_frame` first in the root's
@@ -88,9 +88,12 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   `GITVOLT_SCRIPT=<file>` runs a flow a line at a time, each input through the window as the platform's would be:
   `click x y`, `rclick`, `dclick`, `move`, `press`, `drag`, `release`, `key ctrl-s`, `type text`, `wait ms`, `select row`,
   `open index`, `cmd id`, `shot out.png`, `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>`,
-  `pickv <row>|<variant>`, `hover <row>`, `clickon`, `rclickon`, `dclickon`, `presson`, `dragto`, `releaseon <end of an anchor's
-  key>`, `clickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
+  `pickv <row>|<variant>`, `hover <row>`, `clickon`, `shiftclickon`, `ctrlclickon`, `rclickon`, `dclickon`, `presson`, `dragto`, `releaseon <end of an
+  anchor's key>`, `clickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
   under `target/bench/work/xdg`, no avatars, no global git config. Only ever on a throwaway repo under `target/bench/work/`.
+  `tools/conflict-fixture.sh merge|rebase|irebase` makes one that's stopped in a merge, stopped in a rebase, or ready for a plan. `dump`'s
+  `merge` and `rebase` say what those tools hold. Their anchors: `merge-hunk:<side>:<n>`, `merge-line:<side>`, `merge-take-all-<side>`, `merge-save`,
+  `merge-next`, `irow:<oid>`, `iaction:<oid>`, `ichip:<oid>:<branch>`, `ichip-add:<oid>`, `rebase-start`, `rebase-cancel`, `op-abort-at`, `op-continue-at`.
 
 ## Tests
 

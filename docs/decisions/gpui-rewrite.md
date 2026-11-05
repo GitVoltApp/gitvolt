@@ -69,14 +69,26 @@ action started and sends again, an error toasts, the answer updates the journal,
   create, rename, delete with its remote, merge, rebase, fast-forward, cherry-pick, revert, reset, set upstream, tag
   create, delete and push, a branch dragged onto a chip, and the real Fast-forward, Merge and Rebase rows.
 - **Managing:** add and remove a remote, Copy URL, create, remove and switch a worktree, Create file, a submodule's update.
+- **The merge tool (`src/merge/`):** a conflicted WIP file opens it in the diff's place: Current and Incoming over the output, each with its hunk
+  column, line numbers, the hovered line's take or drop button, minimap and ruler; ticks by hunk, by line (Space, Shift+Space for the hunk) and by side;
+  the output edited by hand, its regions tracked as Monaco tracks them, a tick an undoable edit that takes the ticks back too; F7 and the arrows;
+  Ctrl+S or Save and mark resolved, arming for what's left unresolved; a stale save's Reload from disk or Overwrite; a file deleted on disk; binary,
+  delete/modify and other non-text conflicts' buttons; a conflicted row's Take current, Take incoming, Mark resolved and a folder's; moving to the next
+  conflicted file when one's resolved, however it was; the unsaved-work question on leaving, closing a tab or the window.
+- **Interactive rebase (`src/irebase/`):** the editor in the graph's place with the sidebar away and the selected row in the details panel: pick, reword,
+  squash, fixup, drop, edit by the dropdown or the keys, Ctrl+arrows and dragging a row or a selection, the message edited in place, predicted conflicts,
+  chips dragged to a row, added, struck out and reverted, Undo and Redo of the plan, Reset, Reload after RefMoved, Start. From a branch's menu, a dropped
+  chip's menu, "after this commit", Drop commit and the palette. An Edit stop in the box: commit in pieces, Continue under it, what Abort keeps. Each stop
+  selects the WIP row once, and an operation that ended outside GitVolt settles its paused entry.
 
 ## Not there yet
 
-By size of the work: the merge tool and interactive rebase (their rows hold their place, disabled), the MR/PR views
+By size of the work: the MR/PR views
 and review comments, Markdown, Mermaid, PDF and media views (a PDF or media file shows as hex), settings, profiles
 and other themes, tab groups, branch presets and Hide, file colours, the Keyboard Shortcuts panel, accessibility
 roles, spell check, zoom, and macOS and Windows checks. Writes left outside those: Clone and the open-repository
-screen, LFS, Gitflow, adding a submodule or opening one in a tab, stacks. In the diff: moved-code detection and code lens.
+screen, LFS, Gitflow, adding a submodule or opening one in a tab, stacks, and what a selection of several graph rows offers (there's no multi-select in
+the graph yet, so no Squash N commits or Interactive rebase from here). In the diff: moved-code detection and code lens.
 
 Everything above was run from the tests and from `GITVOLT_SCRIPT`, which sends events through the window as the
 platform would (`README`). **None of it has had a real mouse or keyboard on it**, IME included.
@@ -94,9 +106,17 @@ Known, in the area that's there:
   popover (asking first, as a preview does, holds the row and arms it, as there). A checkout "checked out elsewhere" toast
   has no Switch or Open links. Remove worktree has no With branch variant; a linked worktree's tab moves to the main
   one rather than a twin closing. Undo's menu opens once its entries are read.
-- **WIP and commit box:** no Fork trunk notice, no Edit stop (it comes with interactive rebase), a rebase's stop keeps
-  the box's message once it ends until the WIP row is next shown. A conflicted row's label sits under the row's hover
-  buttons, as there, but no file opens in the merge tool.
+- **WIP and commit box:** no Fork trunk notice. A conflicted row's label sits under the row's hover buttons, as there.
+- **Merge tool:** the editors are the plain one under Editing below: no find (Ctrl+F does nothing there), no multiple cursors, and their right-click has Copy,
+  and Paste in the output, not Monaco's whole menu. The work lives in the open tool: every way of leaving asks first, so there's no store of drafts behind it,
+  it goes with the app (the web UI's goes with its window's session), and without work coming back to a file opens at its first conflict rather than where you
+  were. An undo of a hand edit takes its region's "edited" mark back too. A hunk's checkbox and Take all aren't Tab stops: Shift+Space on a pane's line takes its
+  hunk, and Take all from Current or Incoming are in the palette. The minimap draws its characters as bars and has no slider; the ruler's thumb shows while
+  the pointer's over the editor, not on a scroll. The unsaved and stale questions are the centred popover. No fade on a line button; its + and − are icons.
+- **Interactive rebase:** in a drag the rows move at once, without the 150 ms slide. The action dropdown's rows have no tooltip beside them while the menu's
+  on the keyboard. Start, Reset and Take all's keyboard way is the palette, not Tab. The rebasing chip's ring stands still (an idle app costs nothing), and it
+  doesn't float its full name on hover. A deleted chip's and a dropped row's line is drawn over the text, a little under where Chromium's goes. A stop's
+  question from Drop commit (the autostash) is a popover, as it comes after the row's menu closed. The title's chips don't truncate with an ellipsis.
 - **Editing:** a plain editor, not Monaco: no multiple cursors, no suggestions, no blink; Up and Down go by logical line,
   and so do Home and End in wrapped text. Colours catch up 120 ms after typing. A press on a removed line doesn't
   move the caret. An inline selection can take removed lines too.

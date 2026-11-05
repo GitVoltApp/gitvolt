@@ -199,7 +199,7 @@ pub fn all() -> Vec<Command> {
             }
         }),
         Command::new("edit.filterSidebar", "Filter sidebar", Edit, "list-filter", "Focus the sidebar filter", &["Mod+Alt+F"]).when(has_tab).run(|v, window, cx| v.focus_sidebar_filter(window, cx)),
-        Command::new("edit.find", "Find in graph", Edit, "search", "Find commits by message, SHA or path", &["Mod+F"]).when(has_graph).run(|v, window, cx| v.open_find(window, cx)),
+        Command::new("edit.find", "Find in graph", Edit, "search", "Find commits by message, SHA or path", &["Mod+F"]).when(|v, cx| has_graph(v, cx) && v.tabs.get(v.active).is_none_or(|t| t.merge_shown().is_none() && t.rebase_shown().is_none())).run(|v, window, cx| v.open_find(window, cx)),
         Command::new("edit.palette", "Command palette", Edit, "command", "Search actions, branches, files, settings and tabs", &["Mod+P"]).run(|v, window, cx| v.open_palette("", window, cx)),
         Command::new("edit.gotoClipboard", "Go to what's on the clipboard", Edit, "clipboard-paste", "Go to the commit, merge request, file or branch the clipboard names", &["Mod+V"]).when(has_tab).yields().run(|v, _, cx| v.go_to_clipboard(cx)),
         Command::new("view.goToWip", "Go to working directory changes", View, "file-pen", "Show the working directory changes", &["Mod+Shift+G"]).when(has_wip).run(|v, _, cx| v.go_to_wip(cx)),

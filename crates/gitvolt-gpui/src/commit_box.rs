@@ -181,7 +181,6 @@ pub fn operation_view(p: &InProgress, paused: Option<&PausedInfo>, branch: Optio
                 caution: base.is_some().then(|| AMEND_IN_TERMINAL.to_string()),
                 edit_stop: edit,
                 edit_base: base,
-                ..plain
             }
         }
         InProgress::CherryPick { head, message, conflicted } => Operation {
