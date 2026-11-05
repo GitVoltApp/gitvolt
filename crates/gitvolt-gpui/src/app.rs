@@ -82,6 +82,11 @@ pub struct Tab {
     pub list: UniformListScrollHandle,
     /// A compare in the details panel: from and to, as its bar names them.
     pub compare: Option<(SharedString, SharedString)>,
+    pub find: crate::find::FindState,
+    /// How deep the graph reads, past `GRAPH_LIMIT` once a jump or Load older asked for more.
+    pub limit: u32,
+    /// What to select once the graph that's loading holds it.
+    pub select_after_load: Option<String>,
     pub error: Option<SharedString>,
     /// A reload is on its way; a change meanwhile asks for one more after it.
     pub loading: bool,
@@ -132,6 +137,9 @@ impl Tab {
             zoom_input,
             list: UniformListScrollHandle::new(),
             compare: None,
+            find: crate::find::FindState::new(id, cx),
+            limit: GRAPH_LIMIT,
+            select_after_load: None,
             error: None,
             loading: false,
             again: false,
@@ -267,8 +275,9 @@ impl GitVolt {
         tab.loading = true;
         let api = self.api.clone();
         let worktree = tab.worktree.clone();
+        let limit = tab.limit;
         let read = self.rt.spawn(async move {
-            let graph = api.graph(repo, Some(GRAPH_LIMIT), None, None, None, None).await?;
+            let graph = api.graph(repo, Some(limit), None, None, None, None).await?;
             let sidebar = api.dispatch(Request::Sidebar { repo }).await?;
             Ok::<_, gitvolt_core::error::GbError>((SendGraph(graph_view(&graph)), SendSections(sections_of(&sidebar, &worktree))))
         });
@@ -291,14 +300,27 @@ impl GitVolt {
                     Ok(Err(e)) => tab.error = Some(e.message.into()),
                     Err(e) => tab.error = Some(e.to_string().into()),
                 }
-                if std::mem::take(&mut tab.again) {
+                let again = std::mem::take(&mut tab.again);
+                let pending = tab.select_after_load.take_if(|sha| tab.graph.as_ref().is_some_and(|g| g.by_sha.contains_key(sha.as_str())));
+                if again {
                     this.reload(repo, cx);
+                }
+                if let Some(sha) = pending {
+                    this.go_to_sha(&sha, cx);
                 }
                 cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    /// Reads a deeper window; `select` once it holds that commit.
+    pub fn load_deep(&mut self, repo: u32, limit: u32, select: Option<String>, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo) else { return };
+        tab.limit = tab.limit.max(limit);
+        tab.select_after_load = select;
+        self.reload(repo, cx);
     }
 
     pub fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
@@ -782,7 +804,7 @@ fn chip_view(c: &Chip, lane: usize, more: usize) -> Div {
         .when(more > 0, |d| d.child(div().flex_none().px(px(4.)).rounded(px(3.)).bg(tint).text_size(px(11.)).text_color(theme::text_normal()).child(format!("+{more}"))))
 }
 
-fn graph_table(this: &GitVolt, width: f32, cx: &mut Context<GitVolt>) -> AnyElement {
+fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context<GitVolt>) -> AnyElement {
     let Some(tab) = this.tabs.get(this.active) else {
         return div().flex().flex_1().items_center().justify_center().text_color(theme::text_disabled()).child("Open a repository (Ctrl+O)").into_any_element();
     };
@@ -809,6 +831,7 @@ fn graph_table(this: &GitVolt, width: f32, cx: &mut Context<GitVolt>) -> AnyElem
         .child(head_cell(SHA_W, "SHA"));
     let selected = tab.selected;
     let rows = graph.clone();
+    let keep = tab.find.keep.clone();
     let list = uniform_list(
         "graph",
         graph.rows.len(),
@@ -818,11 +841,12 @@ fn graph_table(this: &GitVolt, width: f32, cx: &mut Context<GitVolt>) -> AnyElem
                 .map(|ix| {
                     let row = &graph.rows[ix];
                     let is_selected = selected == Some(ix);
+                    let dimmed = keep.as_ref().is_some_and(|k| !k.contains(&ix));
                     let geometry = RowGeometry { graph_x: LABELS_W, graph_w: cols.graph, clipped: cols.clipped, selected: is_selected, head: graph.head_row == Some(ix) };
                     let painter = graph.clone();
                     let group: SharedString = format!("row-{ix}").into();
                     let cell = |w: Option<f32>, color: Hsla, text: SharedString| {
-                        let base = div().h(px(ROW_H)).flex().items_center().px(px(CELL_PAD)).min_w_0().overflow_hidden().text_color(color).when(is_selected, |d| d.bg(theme::selected_row()).text_color(theme::text_selected())).group_hover(group.clone(), |d| d.bg(theme::hover_row()));
+                        let base = div().h(px(ROW_H)).flex().items_center().px(px(CELL_PAD)).min_w_0().overflow_hidden().text_color(if dimmed { theme::text_row_dimmed() } else { color }).when(is_selected, |d| d.bg(theme::selected_row()).text_color(theme::text_selected())).group_hover(group.clone(), |d| d.bg(theme::hover_row()));
                         match w {
                             Some(w) => base.flex_none().w(px(w)),
                             None => base.flex_none().w(px(cols.message)),
@@ -855,8 +879,9 @@ fn graph_table(this: &GitVolt, width: f32, cx: &mut Context<GitVolt>) -> AnyElem
     .track_scroll(&tab.list)
     .flex_1()
     .min_w_0();
+    let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));
     let thumb = scrollbar(tab, cx);
-    div().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).child(div().flex().flex_none().pr(px(SCROLLBAR_W)).child(header.flex_1())).child(div().flex().flex_1().min_h_0().child(list).child(thumb)).into_any_element()
+    div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(div().flex().flex_none().pr(px(SCROLLBAR_W)).child(header.flex_1())).child(div().flex().flex_1().min_h_0().child(list).child(thumb)).into_any_element()
 }
 
 /// The graph's scrollbar: its thumb follows the list; a press or a drag jumps the list there.
@@ -986,9 +1011,9 @@ impl Render for GitVolt {
         let tab = self.tabs.get(self.active);
         let strip = tab.filter(|_| folded).map(|t| narrow_strip(t, cx));
         let menu = tab.and_then(|t| open_in_menu(t, cx));
-        let main = match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), cx) }) {
+        let main = match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), window, cx) }) {
             Some(panel) => panel,
-            None => graph_table(self, center, cx),
+            None => graph_table(self, center, window, cx),
         };
         let overlays = crate::ui::overlays(window, cx);
         let app = div()

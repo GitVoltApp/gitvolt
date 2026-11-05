@@ -201,6 +201,11 @@ pub struct DiffState {
     pub hover: Option<(usize, bool)>,
     pub hscroll: f32,
     pub selection: Option<Selection>,
+    /// A line to go to, once the file's there (a pasted `path:12`).
+    pub pending_line: Option<u32>,
+    /// Find's marks in the file, and the one it's on.
+    pub found: Rc<Vec<crate::find::TextMatch>>,
+    pub found_at: Option<usize>,
     pub cursor: usize,
     pub drag: Drag,
     /// The text area, as last painted, for the mouse.
@@ -253,6 +258,9 @@ impl DiffState {
             hover: None,
             hscroll: 0.,
             selection: None,
+            pending_line: None,
+            found: Rc::new(Vec::new()),
+            found_at: None,
             cursor: 0,
             drag: Drag::None,
             body: Rc::new(Cell::new(Bounds::default())),
@@ -344,6 +352,13 @@ impl DiffState {
 
     /// Lays the rows out for a body `width` by `height` px, when any of that changed.
     pub fn ensure_layout(&mut self, width: f32, height: f32) {
+        if let Some(line) = self.pending_line.filter(|_| self.data.is_some() && !self.rows.is_empty()) {
+            self.pending_line = None;
+            if let Some(row) = self.rows.iter().position(|r| r.new == Some(line)) {
+                self.center_on(row);
+                self.cursor = row;
+            }
+        }
         let same = self.layout.width == width && self.layout.height == height && self.layout.wrap == self.wrap;
         if let Some(image) = self.image.as_mut() {
             image.sync((width, height), self.view == ViewKind::File);
@@ -456,6 +471,27 @@ impl DiffState {
     }
 
     /// The selected text, lines joined by `\n`.
+    /// Find's matches in what's shown, in row order.
+    pub fn find_text(&self, query: &str) -> Vec<crate::find::TextMatch> {
+        let Some(data) = self.data.as_ref() else { return Vec::new() };
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let split = self.split();
+        let mut out = Vec::new();
+        for (row, r) in self.rows.iter().enumerate() {
+            let sides: &[bool] = if split { &[true, false] } else { &[false] };
+            for &old_side in sides {
+                if let Some(line) = row_line(data, r, split, old_side) {
+                    for (from, to) in crate::find::find_in_line(&line.text, query) {
+                        out.push(crate::find::TextMatch { row, old_side, from, to });
+                    }
+                }
+            }
+        }
+        out
+    }
+
     pub fn selected_text(&self) -> Option<String> {
         let (data, sel) = (self.data.as_ref()?, self.selection?);
         let (from, to) = sel.range();
@@ -818,6 +854,9 @@ struct Painter {
     folded: HashSet<u32>,
     fold_ends: Rc<Vec<Option<u32>>>,
     hover: Option<usize>,
+    /// Find's marks, and the one it's on.
+    found: Rc<Vec<crate::find::TextMatch>>,
+    found_at: Option<usize>,
 }
 
 fn shape(line: &Line, spans: &[Span], font: &Font, window: &Window) -> ShapedLine {
@@ -865,6 +904,18 @@ fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, ma
                 if b > a {
                     let (l, r) = (shaped.x_for_index(a - from), shaped.x_for_index(b - from));
                     window.paint_quad(fill(Bounds::from_corners(point(start + l, y), point(start + r, y + px(LINE_H))), mark));
+                }
+            }
+            // Monaco's colours for a match and the current one.
+            let first = p.found.partition_point(|m| m.row < ix);
+            for (k, m) in p.found.iter().enumerate().skip(first).take_while(|(_, m)| m.row == ix) {
+                if m.old_side == old_side || !p.split {
+                    let (a, b) = (m.from.max(from), m.to.min(to));
+                    if b > a {
+                        let (l, r) = (shaped.x_for_index(a - from), shaped.x_for_index(b - from));
+                        let color = if p.found_at == Some(k) { theme::c(0x515c6a) } else { theme::a(0xea5c0055) };
+                        window.paint_quad(fill(Bounds::from_corners(point(start + l, y), point(start + r, y + px(LINE_H))), color));
+                    }
                 }
             }
             if let Some(sel) = p.selection.filter(|s| !p.split || s.old_side == old_side) {
@@ -1168,6 +1219,8 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
     let split = diff.split();
     let hover_row = diff.hover.and_then(|(r, _)| matches!(diff.rows.get(r).map(|x| x.kind), Some(RowKind::Hidden { .. })).then_some(r));
     let p = Painter {
+        found: diff.found.clone(),
+        found_at: diff.found_at,
         data: data.clone(),
         highlight: diff.highlight.clone(),
         view: diff.view,
@@ -1597,10 +1650,11 @@ fn minimap_width(width: f32) -> f32 {
 }
 
 /// The panel for `tab`'s open file, `width` px wide.
-pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
+pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     let diff = tab.diff.as_ref()?;
     let open_in = crate::open_in::open_in_button(tab, last_opener, cx);
-    Some(div().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in }, width, cx)).child(diff_body(diff, width, &tab.zoom_input, cx)).into_any_element())
+    let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));
+    Some(div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in }, width, cx)).child(diff_body(diff, width, &tab.zoom_input, cx)).into_any_element())
 }
 
 /// What's under the toolbar, in an editor `width` px wide.

@@ -155,6 +155,16 @@ fn unchanged_file(path: &str, id: &str) -> FileChange {
     FileChange { path: path.to_string().into(), old_path: None, status: UNCHANGED, additions: None, deletions: None, old: serde_json::json!({ "kind": "absent" }), new: serde_json::json!({ "kind": "atCommit", "commit": id }), origin: Origin::Commit { id: id.to_string() } }
 }
 
+/// A file as it is at a commit, opened by name (the palette's `/`).
+pub fn file_at_commit(path: &str, id: &str) -> FileChange {
+    unchanged_file(path, id)
+}
+
+/// A file of the working tree, opened by name (a pasted path).
+pub fn file_in_worktree(path: &str, worktree: &str) -> FileChange {
+    FileChange { path: path.to_string().into(), old_path: None, status: UNCHANGED, additions: None, deletions: None, old: serde_json::json!({ "kind": "absent" }), new: serde_json::json!({ "kind": "worktree", "worktree": worktree }), origin: Origin::Wip { worktree: worktree.to_string(), staged: false } }
+}
+
 /// What's listed: the changed files and, with `tree`, the others; narrowed by `query` (lower case).
 /// Path mode can sort by status, then path, the unchanged last.
 pub fn listed_files(changed: &[FileChange], tree: Option<(&[String], &str)>, query: &str, by_status: bool) -> Vec<FileChange> {

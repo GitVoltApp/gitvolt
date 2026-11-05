@@ -135,6 +135,11 @@ fn route_key(k: &Keystroke, window: &mut Window, cx: &mut App) {
         return;
     }
     if !Ui::get(cx).modals.is_empty() {
+        if let Some(combo) = crate::commands::combo_of(k)
+            && modal::toggle_key(&combo, window, cx)
+        {
+            cx.stop_propagation();
+        }
         return;
     }
     if plain_esc && toast::dismiss_sticky(cx) {

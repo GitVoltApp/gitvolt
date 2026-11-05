@@ -10,6 +10,7 @@ mod details;
 mod diff;
 mod format;
 mod find;
+mod goto;
 mod graph;
 mod history;
 mod icons;

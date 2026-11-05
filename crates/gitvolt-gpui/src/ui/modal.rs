@@ -39,13 +39,15 @@ pub struct Modal {
     on_close: Option<super::Action>,
     focus: Option<FocusHandle>,
     return_to: Option<FocusHandle>,
+    /// The chord that opened it closes it (the palette's Ctrl+P).
+    pub toggle: Option<String>,
     /// Keeps what the dialog's entities need alive for as long as it's open.
     pub keep: Vec<Subscription>,
 }
 
 impl Modal {
     pub fn new(id: impl Into<SharedString>, build: impl Fn(&mut Window, &mut App) -> AnyElement + 'static) -> Self {
-        Self { id: id.into(), width: 420., framed: true, top: None, build: Rc::new(build), on_close: None, focus: None, return_to: None, keep: Vec::new() }
+        Self { id: id.into(), width: 420., framed: true, top: None, build: Rc::new(build), on_close: None, focus: None, return_to: None, toggle: None, keep: Vec::new() }
     }
 
     pub fn width(mut self, width: f32) -> Self {
@@ -60,6 +62,11 @@ impl Modal {
 
     pub fn top(mut self, top: f32) -> Self {
         self.top = Some(top);
+        self
+    }
+
+    pub fn toggle(mut self, chord: String) -> Self {
+        self.toggle = Some(chord);
         self
     }
 
@@ -105,6 +112,15 @@ fn close_top(window: &mut Window, cx: &mut App) {
     if let Some(id) = Ui::get(cx).modals.last().map(|m| m.id.clone()) {
         close(&id, window, cx);
     }
+}
+
+/// The topmost dialog's own chord closes it. Whether it did.
+pub(super) fn toggle_key(combo: &str, window: &mut Window, cx: &mut App) -> bool {
+    if Ui::get(cx).modals.last().and_then(|m| m.toggle.as_deref()) == Some(combo) {
+        close_top(window, cx);
+        return true;
+    }
+    false
 }
 
 pub fn is_open(id: &str, cx: &App) -> bool {
