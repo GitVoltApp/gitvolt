@@ -570,12 +570,12 @@ mod tests {
     }
 
     fn row(id: &str, parents: &[&str], chips: Vec<Chip>) -> RowView {
-        RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips, worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None }
+        RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips, worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
     }
 
     fn graph(rows: Vec<RowView>) -> GraphView {
         let by_sha = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
-        GraphView { rows, max_lanes: 1, head_row: None, head_branch: SharedString::default(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default(), membership: Vec::new() }
+        GraphView { rows, max_lanes: 1, head_row: None, head_branch: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default(), membership: Vec::new(), pinned_refs: Vec::new(), view: None, fork: None }
     }
 
     fn stacked() -> GraphView {

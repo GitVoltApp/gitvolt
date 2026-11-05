@@ -86,6 +86,21 @@ pub fn range_track() -> Hsla { c(0x3b3b3b) }
 pub fn range_border() -> Hsla { c(0x858585) }
 
 /// `color-mix(in srgb, a share, b)`: `share` of `a`, the rest of `b`, alpha mixed too.
+/// `--tg-<name>`: a tab group's and a preset's colours; a name outside the palette is gray.
+pub fn tag_group(name: &str) -> Hsla {
+    c(match name {
+        "blue" => 0x5b9cff,
+        "purple" => 0xb48cff,
+        "cyan" => 0x3fc8d8,
+        "orange" => 0xff9e4a,
+        "yellow" => 0xf2c94c,
+        "pink" => 0xff7ab8,
+        "green" => 0x5fd17f,
+        "red" => 0xff6b6b,
+        _ => 0xa6aab1,
+    })
+}
+
 pub fn mix(a: Hsla, share: f32, b: Hsla) -> Hsla {
     let (x, y) = (a.to_rgb(), b.to_rgb());
     let (ax, ay) = (x.a * share, y.a * (1. - share));

@@ -205,6 +205,17 @@ impl GitVolt {
         match k.key.as_str() {
             "home" if !g.rows.is_empty() => self.select(0, cx),
             "end" if !g.rows.is_empty() => self.select(g.rows.len() - 1, cx),
+            "enter" if !m.shift && tab.selected.and_then(|i| g.rows.get(i)).is_some_and(|r| !r.ghosts.is_empty()) => {
+                let Some(ix) = tab.selected else { return false };
+                let ghosts = g.rows[ix].ghosts.clone();
+                let handle = tab.list.0.borrow().base_handle.clone();
+                let at = handle.bounds().origin + point(px(300.), handle.offset().y + px(ix as f32 * crate::model::ROW_H));
+                self.open_ghosts(ghosts, Bounds::new(at, size(px(8.), px(8.))), window, cx);
+            }
+            "enter" if !m.shift && tab.selected.and_then(|i| g.rows.get(i)).is_some_and(|r| r.collapsed.is_some() || r.fold.is_some()) => {
+                let Some(ix) = tab.selected else { return false };
+                self.open_reveal(ix, true, cx);
+            }
             "right" | "enter" if !m.shift => {
                 let first = tab.files.as_ref().and_then(|f| f.rows.iter().find_map(|r| if let crate::details::ListRow::File { index, .. } = r { Some(*index) } else { None }));
                 let Some(first) = first else { return k.key == "right" };
@@ -235,7 +246,17 @@ impl GitVolt {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let Some(g) = tab.graph.as_ref() else { return };
         let Some(row) = g.rows.get(ix) else { return };
+        let opens = row.collapsed.is_some() && g.view.is_some();
         let target = (entered && g.membership.get(ix).is_some_and(Option::is_some)).then(|| row.id.clone());
+        if opens {
+            if entered {
+                self.hover_reveal(ix, true, cx);
+            } else {
+                self.hover_reveal(ix, false, cx);
+                self.leave_reveal(cx);
+            }
+            return;
+        }
         if !entered && tab.hover_chip.as_ref() != Some(&row.id) {
             return;
         }

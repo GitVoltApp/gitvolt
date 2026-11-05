@@ -265,10 +265,7 @@ impl GitVolt {
                 weak.update(cx, |v, cx| v.compare_with_worktree(from, cx)).ok();
             }));
         }
-        if let Some(b) = branch {
-            let hide = MenuRow::pending("presets.hideBranch", "Hide branch", "eye-off");
-            view.push(if b.head { hide.disabled("The trunk is always shown") } else { hide });
-        }
+        view.extend(self.preset_branch_rows(&sha, branch, this));
         grouped(vec![sync, integrate, branch_rows, commit_rows, stash_rows, manage, copy, view])
     }
 
@@ -372,7 +369,7 @@ impl GitVolt {
             push,
             vec![MenuRow::action("tag.delete", "Delete", "trash-2", format!("Delete the tag {name} here"), move |w, cx| plain(w, cx)).variants(variants, Some("local"))],
             vec![MenuRow::action("tag.copyName", "Copy tag name", "copy", format!("Copy \"{name}\""), copier(this, name.to_string()))],
-            vec![MenuRow::pending("presets.hideTag", "Hide tag", "eye-off")],
+            vec![self.preset_tag_row(name, this)],
             if in_sidebar { show_in_graph(sha, loaded, this) } else { Vec::new() },
         ])
     }
@@ -485,11 +482,6 @@ impl GitVolt {
         ])
     }
 
-    /// A branch folder in the sidebar.
-    pub fn folder_rows(&self) -> Vec<MenuRow> {
-        vec![MenuRow::pending("presets.hideFolder", "Hide folder", "eye-off")]
-    }
-
     /// A tab.
     pub fn tab_rows(&self, ix: usize, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         let Some(tab) = self.tabs.get(ix) else { return Vec::new() };
@@ -578,8 +570,7 @@ impl GitVolt {
             Origin::Commit { .. } => Vec::new(),
             Origin::Wip { .. } => Vec::new(),
         };
-        let ext = path.rsplit_once('.').map(|(_, e)| e.to_string());
-        let colour = ext.as_ref().map_or(Vec::new(), |e| vec![MenuRow::pending("file.colour.type", format!("Colour *.{e} files…"), "palette")]);
+        let colour = self.file_colour_rows(&path, this);
         let copy = vec![
             MenuRow::action("file.copyPath", "Copy path", "copy", format!("Copy \"{path}\""), copier(this, path.clone())).variants(
                 vec![
@@ -634,7 +625,7 @@ impl GitVolt {
         let (weak, folder) = (this.clone(), abs.clone());
         grouped(vec![
             section.map_or(Vec::new(), |which| self.folder_stage_rows(path, which, this)),
-            vec![MenuRow::pending("folder.colour", "Colour this folder…", "palette")],
+            self.folder_colour_rows(path, this),
             vec![
                 MenuRow::action("folder.copyPath", "Copy path", "copy", format!("Copy \"{path}\""), copier(this, path.to_string())).variants(
                     vec![

@@ -373,6 +373,54 @@ pub fn description_rows(text: &str, chars_per_line: usize, panel_h: f32) -> usiz
     lines.clamp(min, max)
 }
 
+/// `ForkTrunkNotice`: above the Commit button, in a fork, while the worktree is on a trunk branch: Create branch…, or Dismiss,
+/// remembered for the repository.
+fn fork_trunk_notice(v: &GitVolt, tab: &Tab, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
+    let g = tab.graph.as_ref()?;
+    let fork = g.fork.as_ref()?;
+    let worktree = tab.wip_worktree()?;
+    let w = g.worktrees.iter().find(|w| w.path == worktree)?;
+    let (branch, head) = (w.branch.as_ref()?, w.head.clone()?);
+    if !fork["trunkBranches"].as_array().is_some_and(|t| t.iter().any(|x| x == branch.as_str())) || tab.repo_settings(&v.profile)["forkTrunkNoticeDismissed"] == true {
+        return None;
+    }
+    let noun = if fork["hostKind"] == "gitlab" { "merge request" } else { "pull request" };
+    let name = branch.trim_start_matches("refs/heads/").to_string();
+    let action = |id: &'static str| div().id(id).flex().items_center().gap(px(4.)).text_color(theme::blue()).cursor_pointer().hover(|d| d.underline());
+    let path = tab.repo_path.clone();
+    Some(
+        div()
+            .flex()
+            .flex_col()
+            .flex_none()
+            .gap(px(4.))
+            .px(px(8.))
+            .py(px(6.))
+            .border_l_3()
+            .border_color(theme::blue())
+            .rounded(px(4.))
+            .bg(theme::panel_bg())
+            .text_size(px(12.))
+            .text_color(theme::text_secondary())
+            .child(format!("You're committing to {name} in your fork. Changes for a {noun} usually go on their own branch."))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(12.))
+                    .child(crate::ui::tooltip::tip(format!("Create a branch at {name}'s tip and switch to it: what's staged and changed comes along"), crate::ui::anchor("fork-create-branch", action("fork-create-branch").on_click(cx.listener(move |this, _, window, cx| {
+                        this.create_branch_at(head.clone(), None, window, cx);
+                        if let Some(ed) = this.tabs.get_mut(this.active).and_then(|t| t.row_editor.as_mut()) {
+                            ed.back_to_wip = true;
+                        }
+                    })).child(icon("git-branch-plus", 12., theme::blue())).child("Create branch…"))))
+                    .child(crate::ui::tooltip::tip("Don't show this again for this repository", action("fork-dismiss").on_click(cx.listener(move |this, _, _, cx| {
+                        this.update_repo(&path, |rs| rs["forkTrunkNoticeDismissed"] = serde_json::json!(true), cx);
+                    })).child("Dismiss"))),
+            )
+            .into_any_element(),
+    )
+}
+
 pub fn commit_box(v: &GitVolt, tab: &Tab, panel_h: f32, window: &Window, cx: &mut Context<GitVolt>) -> AnyElement {
     let view = commit_view_of(tab, cx);
     let state = tab.box_state();
@@ -478,6 +526,7 @@ pub fn commit_box(v: &GitVolt, tab: &Tab, panel_h: f32, window: &Window, cx: &mu
             .when_some(op.caution.clone(), |d, t| d.child(div().text_color(theme::text_secondary()).child(t)))
     });
     let op_actions = operation.as_ref().map(|op| operation_actions(tab, op, &state, committing || integrating, window, cx));
+    let notice = operation.is_none().then(|| fork_trunk_notice(v, tab, cx)).flatten();
     let still = tab.wip.committing_since.filter(|at| at.elapsed() >= STILL_WORKING).map(|_| {
         let op = v.ops.user_write().map(|o| o.op);
         div()
@@ -511,6 +560,7 @@ pub fn commit_box(v: &GitVolt, tab: &Tab, panel_h: f32, window: &Window, cx: &mu
         .child(row)
         .child(button)
         .children(op_actions.flatten())
+        .children(notice)
         .children(still)
         .into_any_element()
 }

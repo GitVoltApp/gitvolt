@@ -30,6 +30,8 @@ pub struct RowEditor {
     pub name: Entity<TextInput>,
     pub message: Option<Entity<TextInput>>,
     pub taken: Vec<String>,
+    /// Started from the WIP panel: the selection goes back to it once the input closes.
+    pub back_to_wip: bool,
 }
 
 /// `BRANCH_INPUT_HINT`.
@@ -74,7 +76,7 @@ impl GitVolt {
         cx.subscribe(&name, move |this, _, e: &InputEvent, cx| this.editor_event(id, e, false, cx)).detach();
         self.focus_next_frame = Some(name.read(cx).focus.clone());
         if let Some(tab) = self.tabs.get_mut(self.active) {
-            tab.row_editor = Some(RowEditor { row_id: sha, kind, ctx, name, message: None, taken });
+            tab.row_editor = Some(RowEditor { row_id: sha, kind, ctx, name, message: None, taken, back_to_wip: false });
         }
         cx.notify();
     }
@@ -101,9 +103,13 @@ impl GitVolt {
 
     pub fn close_editor(&mut self, cx: &mut Context<Self>) {
         if let Some(tab) = self.tabs.get_mut(self.active)
-            && tab.row_editor.take().is_some()
+            && let Some(ed) = tab.row_editor.take()
         {
             self.focus_next_frame = Some(self.focus.clone());
+            if ed.back_to_wip {
+                let repo = tab.id;
+                self.reveal_wip(repo, cx);
+            }
             cx.notify();
         }
     }

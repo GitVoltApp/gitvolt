@@ -444,7 +444,7 @@ impl GitVolt {
             let Ok(Ok((details, message, files, id))) = read.await else { return };
             this.update(cx, |this, cx| {
                 let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
-                if tab.selected != Some(ix) {
+                if tab.selected != Some(ix) && tab.revealed.as_deref() != Some(id.as_str()) {
                     return;
                 }
                 tab.commit = Some(commit_of(&details, &message));
@@ -1005,6 +1005,7 @@ pub fn file_list(id: &'static str, view: ListView, handle: &UniformListScrollHan
                                         crate::ui::menu::open_context_for(format!("folder:{path}"), rows, e.position, window, cx);
                                     }
                                 }))
+                                .when_some(this.colours().and_then(|m| m.folder_tint(&menu_path)), |d, t| d.bg(t))
                                 .when(crate::ui::menu::is_target(&format!("folder:{menu_path}"), cx), |d| d.child(crate::ui::outline()))
                                 .child(icon(if *collapsed { "chevron-right" } else { "chevron-down" }, 14., theme::text_secondary()))
                                 .child(div().flex_1().min_w_0().truncate().child(name.clone()))
@@ -1018,8 +1019,10 @@ pub fn file_list(id: &'static str, view: ListView, handle: &UniformListScrollHan
                             let unchanged = change.status == UNCHANGED;
                             let stat = |text: String, c: Hsla| div().text_size(px(11.)).text_color(c).child(text);
                             let actions = section.and_then(|w| crate::wip::row_actions(this, w, &rows[i], &changes, &group, on, panel_w, cx));
+                            let tint = this.colours().and_then(|m| m.file_tint(&change.path));
                             base.group(group.clone())
                                 .pl(px(TREE_BASE + f32::from(*depth) * TREE_LEVEL))
+                                .when_some(tint.filter(|_| !on), |d, t| d.bg(t))
                                 .when(on, |d| d.bg(theme::selected_row()).text_color(theme::text_selected()))
                                 .when(!on, |d| d.hover(|d| d.bg(theme::hover_row())))
                                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -1041,8 +1044,9 @@ pub fn file_list(id: &'static str, view: ListView, handle: &UniformListScrollHan
                                 .when(crate::ui::menu::is_target(&format!("file:{}", change.path), cx), |d| d.child(crate::ui::outline()))
                                 .child(if unchanged { div().flex_none().size(px(14.)).into_any_element() } else { icon(glyph, 14., color).into_any_element() })
                                 .when(!dir.is_empty(), |d| d.child(div().flex().flex_none().max_w(relative(0.6)).overflow_hidden().text_color(theme::text_secondary()).children(marked(dir, &query)).child("/")))
-                                .child(div().flex().flex_1().min_w_0().overflow_hidden().when(unchanged && !on, |d| d.text_color(theme::text_secondary())).children(marked(name, &query)))
+                                .child(div().flex().flex_initial().min_w_0().overflow_hidden().when(unchanged && !on, |d| d.text_color(theme::text_secondary())).children(marked(name, &query)))
                                 .children(this.lfs_mark(&change.path, cx).map(crate::lfs::lfs_mark_element))
+                                .child(div().flex_1())
                                 .when_some(change.conflict.as_deref().map(crate::wip::conflict_label), |d, label| d.child(div().flex_none().ml_auto().text_size(px(11.)).text_color(theme::status_conflicted()).child(label)))
                                 .when(!unchanged && actions.is_none() && change.conflict.is_none(), |d| {
                                     d.child(
@@ -1155,7 +1159,11 @@ fn filter_row(files: &Files, input: &Entity<TextInput>, window: &Window, cx: &mu
 }
 
 pub fn details_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
-    if tab.selected.is_none() && tab.compare.is_none() && tab.picks.rows.is_empty() {
+    if tab.selected.is_none() && tab.compare.is_none() && tab.picks.rows.is_empty() && tab.revealed.is_none() {
+        return None;
+    }
+    // A ⋮ row is no commit: there's nothing to show of it.
+    if tab.compare.is_none() && tab.picks.rows.is_empty() && tab.revealed.is_none() && tab.selected.and_then(|i| tab.graph.as_ref()?.rows.get(i)).is_some_and(|r| r.kind == gitvolt_graph::NodeKind::Collapsed) {
         return None;
     }
     let selected = tab.diff.as_ref().map(|d| d.file.clone());

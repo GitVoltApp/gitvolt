@@ -107,6 +107,8 @@ pub enum ItemKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SideItem {
+    /// `hidden`, `collapsed` or `folded` under the open preset.
+    pub state: Option<String>,
     pub key: String,
     pub name: String,
     pub target: Option<String>,
@@ -139,12 +141,29 @@ fn opt(v: &Value, key: &str) -> Option<String> {
 }
 
 /// `sectionsOf`: the sidebar's sections, in their fixed order.
-pub fn sections_of(v: &Value, worktree: &str) -> Vec<Section> {
+/// What each row is under the open preset.
+fn mark_preset_states(out: &mut [Section], view: Option<&Value>) {
+    let Some(view) = view else { return };
+    let states: HashMap<&str, &str> = view["branches"].as_array().map_or(HashMap::new(), |b| b.iter().filter_map(|x| Some((x["name"].as_str()?, x["state"].as_str()?))).collect());
+    let hidden_tags: HashSet<&str> = view["hiddenTags"].as_array().map_or(HashSet::new(), |t| t.iter().filter_map(Value::as_str).collect());
+    for s in out {
+        for it in &mut s.items {
+            it.state = match s.kind {
+                SectionKind::Local | SectionKind::Remote | SectionKind::Gitflow => states.get(it.name.as_str()).filter(|x| **x != "shown").map(|x| x.to_string()),
+                SectionKind::Tags => hidden_tags.contains(it.name.as_str()).then(|| "hidden".to_string()),
+                _ => None,
+            };
+        }
+    }
+}
+
+pub fn sections_of(v: &Value, worktree: &str, view: Option<&Value>) -> Vec<Section> {
     let list = |key: &str| v[key].as_array().cloned().unwrap_or_default();
     let n = |b: &Value, key: &str| b[key].as_u64().unwrap_or(0) as u32;
     let locals = list("locals")
         .iter()
         .map(|b| SideItem {
+            state: None,
             key: text(b, "fullName"),
             name: text(b, "name"),
             target: opt(b, "target"),
@@ -157,6 +176,7 @@ pub fn sections_of(v: &Value, worktree: &str) -> Vec<Section> {
         let remote = text(&r, "name");
         for b in r["branches"].as_array().map_or(&[][..], Vec::as_slice) {
             remotes.push(SideItem {
+                state: None,
                 key: text(b, "fullName"),
                 name: text(b, "name").trim_start_matches(&format!("{remote}/")).to_string(),
                 target: opt(b, "target"),
@@ -168,6 +188,7 @@ pub fn sections_of(v: &Value, worktree: &str) -> Vec<Section> {
     let worktrees = list("worktrees")
         .iter()
         .map(|w| SideItem {
+            state: None,
             key: format!("wt:{}", text(w, "path")),
             name: text(w, "name"),
             target: opt(w, "head"),
@@ -177,11 +198,12 @@ pub fn sections_of(v: &Value, worktree: &str) -> Vec<Section> {
         .collect();
     let stashes = list("stashes")
         .iter()
-        .map(|s| SideItem { key: format!("stash:{}", n(s, "index")), name: text(s, "message"), target: opt(s, "id"), time: s["time"].as_i64().unwrap_or(0), kind: ItemKind::Stash { index: n(s, "index"), message: text(s, "message") } })
+        .map(|s| SideItem { state: None, key: format!("stash:{}", n(s, "index")), name: text(s, "message"), target: opt(s, "id"), time: s["time"].as_i64().unwrap_or(0), kind: ItemKind::Stash { index: n(s, "index"), message: text(s, "message") } })
         .collect();
     let tags = list("tags")
         .iter()
         .map(|t| SideItem {
+            state: None,
             key: text(t, "fullName"),
             name: text(t, "name"),
             target: opt(t, "target"),
@@ -194,6 +216,7 @@ pub fn sections_of(v: &Value, worktree: &str) -> Vec<Section> {
         .map_or(&[][..], Vec::as_slice)
         .iter()
         .map(|m| SideItem {
+            state: None,
             key: format!("submodule:{}", text(m, "path")),
             name: text(m, "path"),
             target: None,
@@ -219,6 +242,7 @@ pub fn sections_of(v: &Value, worktree: &str) -> Vec<Section> {
     if !subs.is_empty() {
         out.push(Section { kind: SectionKind::Submodules, items: subs });
     }
+    mark_preset_states(&mut out, view);
     out
 }
 
@@ -811,7 +835,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
             .p(px(6.))
             .child(collapse)
             .children(filter)
-            .child(tip(crate::ui::menu::NOT_YET, div().flex().flex_none().size(px(26.)).items_center().justify_center().rounded(px(4.)).bg(theme::control_bg()).child(icon("git-graph", 13., theme::text_disabled())))),
+            .child(crate::presets::preset_button(this, cx))
     );
     let Some(tab) = tab else { return bar.into_any_element() };
     let panels = tab.side.panels.clone();
@@ -983,6 +1007,13 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
     .into_any_element()
 }
 
+/// A branch or tag folder's prefix (`deployed-commit/`), what hiding it picks; a remote's name left out.
+fn folder_prefix(kind: SectionKind, key: &str) -> String {
+    let path = key.split_once(':').map_or(key, |x| x.1);
+    let path = if kind == SectionKind::Remote { path.split_once('/').map_or("", |x| x.1) } else { path };
+    format!("{path}/")
+}
+
 #[allow(clippy::too_many_arguments)]
 fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_right: f32, this: &WeakEntity<GitVolt>, push: &PushCache, pending: &HashMap<String, &'static str>, cx: &mut Context<GitVolt>) -> AnyElement {
     let base = div().id(i).relative().flex().w_full().h(px(ROW_H)).items_center().gap(px(ROW_GAP)).pr(px(8.)).whitespace_nowrap();
@@ -1006,7 +1037,11 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this, e: &MouseDownEvent, window, cx| {
                     let rows = match &remote {
                         Some(r) => this.remote_rows(r, &weak),
-                        None => this.folder_rows(),
+                        None => {
+                            let prefix = folder_prefix(kind, &menu_key);
+                            let hidden = this.folder_looks_hidden(kind, &prefix);
+                            vec![this.preset_folder_row(&prefix, kind == SectionKind::Tags, hidden, &weak)]
+                        }
                     };
                     menu::open_context_for(menu_key.clone(), rows, e.position, window, cx);
                 }))
@@ -1020,6 +1055,10 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
             let (weak, menu_item, menu_key) = (this.clone(), item.clone(), key.clone());
             let hover_item = item.clone();
             let dbl_item = item.clone();
+            let alt_item = item.clone();
+            let hidden = item.state.as_deref() == Some("hidden");
+            let eye_item = item.clone();
+            let eye_group: SharedString = format!("side-eye-{i}").into();
             let running = match &item.kind {
                 ItemKind::Local { full, .. } | ItemKind::Remote { full, .. } => pending.contains_key(full),
                 _ => false,
@@ -1033,6 +1072,27 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                 ItemKind::Stash { .. } => icon("archive", 13., theme::sidebar_icon()).into_any_element(),
                 ItemKind::Tag { .. } => icon("tag", 13., theme::sidebar_icon()).into_any_element(),
                 ItemKind::Submodule { .. } => icon("boxes", 13., theme::sidebar_icon()).into_any_element(),
+            };
+            // A branch or tag row's leading icon: an eye-off while the preset hides it; on hover, a button that hides or shows it.
+            let can_eye = !running && matches!(item.kind, ItemKind::Local { is_head: false, .. } | ItemKind::Remote { .. } | ItemKind::Tag { .. });
+            let glyph: AnyElement = if can_eye {
+                let rest: AnyElement = if hidden { icon("eye-off", 13., theme::text_disabled()).into_any_element() } else { glyph };
+                div()
+                    .id(("side-eye", i))
+                    .relative()
+                    .flex_none()
+                    .size(px(13.))
+                    .rounded(px(3.))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.toggle_side_item(&eye_item, cx);
+                    }))
+                    .child(div().absolute().top_0().left_0().group_hover(eye_group.clone(), |d| d.invisible()).child(rest))
+                    .child(div().absolute().top_0().left_0().invisible().group_hover(eye_group.clone(), |d| d.visible()).child(icon(if hidden { "eye" } else { "eye-off" }, 13., theme::text_selected())))
+                    .into_any_element()
+            } else {
+                glyph
             };
             let label_el = match &item.kind {
                 ItemKind::Stash { .. } => {
@@ -1083,10 +1143,21 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                     let rows = this.side_item_menu(&menu_item, &weak);
                     menu::open_context_for(menu_key.clone(), rows, e.position, window, cx);
                 }))
+                .on_mouse_down(MouseButton::Left, cx.listener({
+                    let item = alt_item.clone();
+                    move |this, e: &MouseDownEvent, _, cx| {
+                        if e.modifiers.alt {
+                            cx.stop_propagation();
+                            this.toggle_side_item(&item, cx);
+                        }
+                    }
+                }))
+                .when(hidden, |d| d.text_color(theme::text_disabled()))
                 .child(glyph)
                 .child(label_el)
                 .children(ab)
-                .when_some(state, |d, s| d.child(div().flex_none().ml_auto().pl(px(6.)).text_size(px(11.)).text_color(theme::text_secondary()).child(s)));
+                .when_some(state, |d, s| d.child(div().flex_none().ml_auto().pl(px(6.)).text_size(px(11.)).text_color(theme::text_secondary()).child(s)))
+                .when(item.state.as_deref() == Some("folded"), |d| d.child(div().flex_none().ml_auto().pl(px(6.)).text_size(px(11.)).text_color(theme::text_secondary()).child("folded")));
             let (card_this, card_push) = (this.clone(), push.clone());
             Anchor::new(body).card(format!("side:{key}"), move |_, cx| hover_card(&hover_item, &card_push, &card_this, cx)).placement(Placement::BesideAt(sidebar_right)).into_any_element()
         }
@@ -1237,6 +1308,7 @@ mod tests {
                 "submodules": {},
             }),
             "/w",
+            None,
         )
     }
 

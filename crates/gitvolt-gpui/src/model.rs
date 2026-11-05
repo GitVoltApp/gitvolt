@@ -424,6 +424,43 @@ pub struct RowView {
     /// The first line of its body, dimmed after the summary.
     pub body: SharedString,
     pub wip: Option<WipCounts>,
+    /// A ⋮ row's run, a folded merge's mark, the hidden branches that fork here.
+    pub collapsed: Option<Collapsed>,
+    pub fold: Option<Fold>,
+    pub ghosts: Vec<Ghost>,
+}
+
+/// `CollapsedRow`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Collapsed {
+    pub key: String,
+    pub branch: String,
+    pub count: u32,
+    pub authors: u32,
+}
+
+/// `FoldMark`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fold {
+    pub key: String,
+    pub branch: String,
+    pub count: u32,
+}
+
+/// `GhostBranch`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ghost {
+    pub branch: String,
+    pub tag: bool,
+    pub color: u8,
+    pub summary: String,
+    pub author_name: String,
+    pub author_time: i64,
+}
+
+/// A reveal panel's rows, drawn as the graph's.
+pub fn graph_rows(rows: &[RowPayload]) -> Vec<RowView> {
+    rows.iter().map(|r| row_view(r, Vec::new())).collect()
 }
 
 /// A WIP row's change counts, and its worktree's name when it isn't the main one.
@@ -453,7 +490,6 @@ pub struct GraphView {
     pub max_lanes: u16,
     pub head_row: Option<usize>,
     pub head_branch: SharedString,
-    pub pinned: SharedString,
     /// More history than this window holds.
     pub truncated: bool,
     pub by_sha: HashMap<String, usize>,
@@ -465,6 +501,10 @@ pub struct GraphView {
     pub in_progress: std::collections::BTreeMap<String, gitvolt_graph::InProgress>,
     /// Each row's branch, when it isn't that branch's tip.
     pub membership: Vec<Option<Arc<Membership>>>,
+    pub pinned_refs: Vec<String>,
+    /// `ViewPayload`, under a preset; and the fork's facts, as the core says them.
+    pub view: Option<serde_json::Value>,
+    pub fork: Option<serde_json::Value>,
 }
 
 impl GraphView {
@@ -507,6 +547,9 @@ fn row_view(r: &RowPayload, chips: Vec<Chip>) -> RowView {
         parents: r.parents.clone(),
         stash_branch: stash_branch.map(Into::into),
         body: r.body_first_line.clone().into(),
+        collapsed: r.collapsed.as_ref().map(|c| Collapsed { key: c.key.clone(), branch: c.branch.clone(), count: c.count, authors: c.authors }),
+        fold: r.fold.as_ref().map(|f| Fold { key: f.key.clone(), branch: f.branch.clone(), count: f.count }),
+        ghosts: r.ghosts.iter().map(|g| Ghost { branch: g.branch.clone(), tag: g.tag, color: g.color, summary: g.summary.clone(), author_name: g.author_name.clone(), author_time: g.author_time }).collect(),
         wip: r.wip.as_ref().map(|w| WipCounts { name: w.worktree_name.clone().map(Into::into), modified: w.modified, added: w.added, deleted: w.deleted, renamed: w.renamed, conflicted: w.conflicted }),
     }
 }
@@ -533,13 +576,15 @@ pub fn graph_view(g: &GraphPayload) -> GraphView {
         max_lanes: g.max_lanes,
         head_row,
         head_branch: g.head.branch.as_deref().map(short).unwrap_or_else(|| "detached".into()).into(),
-        pinned: g.pinned_refs.first().map(|r| short(r)).unwrap_or_default().into(),
         truncated: g.truncated,
         by_sha,
         head_sha: g.head.target.clone(),
         worktrees: g.worktrees.clone(),
         in_progress: g.in_progress.clone(),
         membership,
+        pinned_refs: g.pinned_refs.clone(),
+        view: g.view.as_ref().and_then(|v| serde_json::to_value(v).ok()),
+        fork: g.fork.as_ref().and_then(|v| serde_json::to_value(v).ok()),
     }
 }
 
@@ -630,10 +675,10 @@ mod tests {
 
     #[test]
     fn a_branch_reaches_its_ancestors_only() {
-        let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None };
+        let row = |id: &str, parents: &[&str]| RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() };
         let rows = vec![row("d", &["b"]), row("c", &["b"]), row("b", &["a"]), row("a", &[])];
         let by_sha: HashMap<String, usize> = rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), i)).collect();
-        let g = GraphView { rows, max_lanes: 2, head_row: None, head_branch: SharedString::default(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default(), membership: Vec::new() };
+        let g = GraphView { rows, max_lanes: 2, head_row: None, head_branch: SharedString::default(), truncated: false, by_sha, head_sha: None, worktrees: Vec::new(), in_progress: Default::default(), membership: Vec::new(), pinned_refs: Vec::new(), view: None, fork: None };
         let mut reach: Vec<usize> = branch_rows(&g, 1).into_iter().collect();
         reach.sort_unstable();
         assert_eq!(reach, [1, 2, 3]);
@@ -645,7 +690,7 @@ mod membership_tests {
     use super::*;
 
     fn row(id: &str, parents: &[&str], chips: Vec<Chip>) -> RowView {
-        RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 1, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips, worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None }
+        RowView { id: id.to_string().into(), kind: NodeKind::Commit, lane: 0, color: 1, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips, worktree: None, email: String::new(), parents: parents.iter().map(|p| p.to_string()).collect(), stash_branch: None, body: SharedString::default(), wip: None, collapsed: None, fold: None, ghosts: Vec::new() }
     }
 
     fn local(name: &str, head: bool) -> Chip {

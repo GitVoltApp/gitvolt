@@ -317,7 +317,7 @@ impl GitVolt {
     /// For a script: where the graph's row with this summary is, while it's scrolled to the top.
     pub fn row_point(&self, text: &str) -> Option<Point<Pixels>> {
         let g = self.tabs.get(self.active)?.graph.as_ref()?;
-        let i = g.rows.iter().position(|r| r.summary.contains(text))?;
+        let i = g.rows.iter().position(|r| r.summary.contains(text) || r.collapsed.as_ref().is_some_and(|c| format!("more commits on {}", c.branch).contains(text)))?;
         Some(point(px(650.), px(133. + 28. * i as f32 + 14.)))
     }
 
@@ -362,6 +362,7 @@ impl GitVolt {
             "armed": crate::ui::arm::is_armed(cx),
             "menu": crate::ui::menu::shown(cx),
             "picker": crate::ui::picker::shown(cx),
+            "fork": tab.and_then(|t| t.graph.as_ref()).and_then(|g| g.fork.clone()),
             "editor": tab.and_then(|t| t.row_editor.as_ref()).map(|e| (e.row_id.clone(), e.name.read(cx).text().to_string(), e.error(cx))),
             "selected": tab.and_then(|t| t.selected),
             "tabs": self.tabs.iter().map(|t| t.name.to_string()).collect::<Vec<_>>(),

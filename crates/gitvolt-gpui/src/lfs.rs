@@ -352,7 +352,9 @@ pub fn lfs_notice(v: &GitVolt, cx: &mut Context<GitVolt>) -> Option<AnyElement> 
 /// were the file.
 pub fn lfs_placeholder(missing: &[LfsSide], pointer: bool, busy: bool, no_git_lfs: bool, cx: &mut Context<GitVolt>) -> AnyElement {
     let sizes: Vec<String> = missing.iter().map(|l| crate::format::format_bytes(Some(l.size))).collect();
-    let line = div().flex().items_center().gap(px(4.)).child("LFS file (").when_some(sizes.first(), |d, s| d.child(s.clone())).when(sizes.len() == 2 && sizes[0] != sizes[1], |d| d.child(icon("arrow-right", 12., theme::text_secondary())).child(sizes[1].clone())).child("), not downloaded");
+    let two = sizes.len() == 2 && sizes[0] != sizes[1];
+    let first = sizes.first().cloned().unwrap_or_default();
+    let line = div().flex().items_center().when(two, |d| d.child(format!("LFS file ({first}")).child(div().mx(px(4.)).child(icon("arrow-right", 12., theme::text_secondary()))).child(format!("{}), not downloaded", sizes[1]))).when(!two, |d| d.child(format!("LFS file ({first}), not downloaded")));
     let off = busy || no_git_lfs;
     let text_button = |id: &'static str, label: &'static str| div().id(id).flex().justify_center().px(px(10.)).py(px(3.)).rounded(px(4.)).bg(theme::blue()).text_color(theme::text_on_accent()).cursor_pointer().child(label);
     div()
@@ -368,7 +370,7 @@ pub fn lfs_placeholder(missing: &[LfsSide], pointer: bool, busy: bool, no_git_lf
             div()
                 .flex()
                 .gap(px(8.))
-                .child(crate::ui::anchor("lfs-download", text_button("lfs-download", if busy { "Downloading…" } else { "Download" }).min_w(px(96.)).when(off, |d| d.opacity(0.5)).when(!off, |d| d.on_click(cx.listener(|this, _, _, cx| this.lfs_download(cx))))))
+                .child(crate::ui::anchor("lfs-download", text_button("lfs-download", if busy { "Downloading…" } else { "Download" }).min_w(px(81.)).when(off, |d| d.opacity(0.5)).when(!off, |d| d.on_click(cx.listener(|this, _, _, cx| this.lfs_download(cx))))))
                 .child(crate::ui::anchor(
                     "lfs-pointer",
                     text_button("lfs-pointer", if pointer { "Hide pointer" } else { "Show pointer" }).on_click(cx.listener(|this, _, _, cx| {
