@@ -245,14 +245,14 @@ pub fn commit_box(v: &GitVolt, tab: &Tab, panel_h: f32, window: &Window, cx: &mu
                 .text_color(theme::text_secondary())
                 .when(can_amend, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.toggle_amend(cx))))
                 .when(!can_amend, |d| d.opacity(0.5))
-                .child(crate::ui::controls::check_box(amend_on, 13.).mt_0())
+                .child(crate::ui::controls::check_box(amend_on, 13.).mt_0().ml(px(4.)).mr(px(3.)))
                 .child("Amend"),
         )
     });
     let identity = match &tab.wip.identity {
         None => div().flex_1().into_any_element(),
         Some(None) => div().flex().flex_1().min_w_0().items_center().justify_end().gap(px(6.)).text_size(px(12.)).text_color(theme::orange()).child(icon("triangle-alert", 13., theme::orange())).child("No git identity set: commits will fail").into_any_element(),
-        Some(Some((name, email))) => div().flex_1().min_w_0().child(tip(
+        Some(Some((name, email))) => div().flex_1().min_w_0().pb(px(3.)).child(tip(
             format!("Commits as {name} <{email}> (git config user.name, user.email)"),
             div()
                 .flex()

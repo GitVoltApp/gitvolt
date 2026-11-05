@@ -386,9 +386,11 @@ impl GitVolt {
                     Err(e) => tab.error = Some(e.to_string().into()),
                 }
                 let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
-                // A WIP row that's gone (the last change committed) leaves the panel with it.
-                if was_wip && !tab.is_wip_selected() {
+                // A WIP row that's gone (the last change committed) leaves the panel with it; a commit
+                // that's gone (undone) too.
+                if (was_wip && !tab.is_wip_selected()) || (tab.selected.is_none() && tab.compare.is_none()) {
                     tab.selected = None;
+                    tab.commit = None;
                     tab.files = None;
                 }
                 let again = std::mem::take(&mut tab.again);
@@ -1134,7 +1136,7 @@ impl Render for GitVolt {
         let tab = self.tabs.get(self.active);
         let strip = tab.filter(|_| folded).map(|t| narrow_strip(t, cx));
         let menu = tab.and_then(|t| open_in_menu(t, cx));
-        let main = match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), window, cx) }) {
+        let main = match tab.and_then(|t| if t.history.is_some() { history_panel(t, center, cx) } else { diff_panel(t, center, self.last_opener.as_deref(), t.wip_ctx().and_then(|c| self.ops.staging(c.repo, &c.worktree)), window, cx) }) {
             Some(panel) => panel,
             None => graph_table(self, center, window, cx),
         };

@@ -12,6 +12,7 @@ use crate::ui::menu::{self, MenuRow, grouped};
 use crate::ui::tooltip::tip;
 use crate::write::{Write, WriteCtx, call};
 use gitvolt_core::api::Request;
+use gitvolt_core::write::types::StagingUndoState;
 use gpui::prelude::*;
 use gpui::*;
 use serde_json::{Value, json};
@@ -24,6 +25,7 @@ pub const TYPE_A_MESSAGE: &str = "Type a message to commit";
 pub const STAGING_BUSY: &str = "Staging…";
 const FILE_ROW_H: f32 = 26.;
 const HEADER_H: f32 = 37.;
+const VIEW_BAR_H: f32 = 36.;
 pub const WIP_DRAFT_COUNTER_FROM: usize = 60;
 pub const WIP_DRAFT_WARN_FROM: usize = 72;
 /// `wipPanelPrefs`: each section keeps its header and tool line plus three rows.
@@ -418,7 +420,7 @@ impl Tab {
         row.parents.first().map(|p| p.to_string())
     }
 
-    fn wip_ctx(&self) -> Option<WriteCtx> {
+    pub fn wip_ctx(&self) -> Option<WriteCtx> {
         Some(WriteCtx { repo: self.id, worktree: self.wip_worktree()?.to_string() })
     }
 
@@ -692,7 +694,7 @@ impl GitVolt {
         }
         let (count, confirmed) = tab.files.as_ref().map_or((0, Vec::new()), Files::discard_scope);
         let arm_label = if count > 0 { format!("Click again to discard {}", files_word(count)) } else { "Click again to discard every change".to_string() };
-        let mut req = ArmRequest::danger(arm_label, "Discard all changes?", "Discard all");
+        let mut req = ArmRequest::danger(arm_label, "Discard all changes?", "Discard all").icon("trash-2");
         req.body = "Staged, unstaged and untracked changes are removed. You can undo this.".into();
         let this = cx.weak_entity();
         arm::request(
@@ -1346,6 +1348,12 @@ pub enum Tone {
 
 /// `.row-action`: an icon button in a row, a press never selecting the row; with `text`, an outlined one.
 pub fn action_icon(id: impl Into<ElementId>, tooltip: impl Into<SharedString>, glyph: &'static str, tone: Tone, text: Option<SharedString>, disabled: bool, on_click: impl Fn(&mut Window, &mut App) + 'static) -> impl IntoElement {
+    action_sized(id, tooltip, glyph, tone, text, disabled, (22., 22.), on_click)
+}
+
+/// `.row-action`'s sizes where it isn't a row's: `(icon button's width, height)`; a text one has the height.
+#[allow(clippy::too_many_arguments)]
+pub fn action_sized(id: impl Into<ElementId>, tooltip: impl Into<SharedString>, glyph: &'static str, tone: Tone, text: Option<SharedString>, disabled: bool, sized: (f32, f32), on_click: impl Fn(&mut Window, &mut App) + 'static) -> impl IntoElement {
     let color = match tone {
         Tone::Plain => theme::text_secondary(),
         Tone::Danger => theme::red(),
@@ -1380,8 +1388,8 @@ pub fn action_icon(id: impl Into<ElementId>, tooltip: impl Into<SharedString>, g
             .text_size(px(12.))
             .whitespace_nowrap()
             .text_color(color)
-            .when(has_text, |d| d.h(px(22.)).px(px(10.)))
-            .when(!has_text, |d| d.min_w(px(22.)).h(px(22.)))
+            .when(has_text, |d| d.h(px(sized.1)).px(px(10.)))
+            .when(!has_text, |d| d.w(px(sized.0)).h(px(sized.1)))
             .when(bordered, |d| d.border_1().border_color(color))
             .when(disabled, |d| d.opacity(0.4))
             .when(!disabled, |d| d.cursor_pointer().hover(move |d| d.bg(hover_fill).text_color(hover_text).border_color(hover_fill)))
@@ -1422,7 +1430,7 @@ pub fn row_actions(v: &GitVolt, which: Which, row: &ListRow, changes: &[FileChan
         ListRow::Folder { path, .. } => format!("row-actions:{}:{path}/", which.scope()).into(),
     };
     let queued = |t: &str| if committing { COMMIT_QUEUED.to_string() } else { t.to_string() };
-    let bg = if on { theme::mix(theme::selected_row(), 1., theme::panel_bg()) } else { theme::mix(theme::hover_row(), 1., theme::panel_bg()) };
+    let bg = theme::over(if on { theme::selected_row() } else { theme::hover_row() }, theme::panel_bg());
     let narrow = panel_w <= 280.;
     let mut bar = div()
         .absolute()
@@ -1511,19 +1519,19 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
         if which == Which::Unstaged {
             if !shown.iter().all(FileChange::is_submodule) {
                 let (w, c) = (weak.clone(), ctx.clone());
-                row = row.child(action_icon("wip-discard-unstaged", queued("Discard unstaged changes"), "trash-2", Tone::Danger, None, committing, move |_, cx| {
+                row = row.child(action_sized("wip-discard-unstaged", queued("Discard unstaged changes"), "trash-2", Tone::Danger, None, committing, (24., 24.), move |_, cx| {
                     let c = c.clone();
                     w.update(cx, |v, cx| v.discard_unstaged(&c, cx)).ok();
                 }));
             }
             let (w, c) = (weak.clone(), ctx.clone());
-            row = row.child(action_icon("wip-stage-all", queued("Stage all changes"), "list-plus", Tone::Positive, label("Stage All Changes", "Stage all"), committing, move |_, cx| {
+            row = row.child(action_sized("wip-stage-all", queued("Stage all changes"), "list-plus", Tone::Positive, label("Stage All Changes", "Stage all"), committing, (24., 24.), move |_, cx| {
                 let c = c.clone();
                 w.update(cx, |v, cx| v.stage_all_guarded(&c, cx)).ok();
             }));
         } else {
             let (w, c) = (weak.clone(), ctx.clone());
-            row = row.child(action_icon("wip-unstage-all", queued("Unstage all changes"), "list-minus", Tone::Danger, label("Unstage All Changes", "Unstage all"), committing, move |_, cx| {
+            row = row.child(action_sized("wip-unstage-all", queued("Unstage all changes"), "list-minus", Tone::Danger, label("Unstage All Changes", "Unstage all"), committing, (24., 24.), move |_, cx| {
                 let c = c.clone();
                 w.update(cx, |v, cx| v.unstage_all(&c, cx)).ok();
             }));
@@ -1534,12 +1542,13 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
         .id(("wip-section-head", which.index()))
         .flex()
         .flex_none()
-        .h(px(FILE_ROW_H))
         .items_center()
         .gap(px(6.))
         .pl(px(9.))
         .pr(px(8.))
-        .when(basis.is_none() || which != Which::Staged, |d| d.border_t_1().border_color(theme::section_border()))
+        // Its line's on top of its height; with both open the handle's line is the one above Staged.
+        .when(basis.is_none() || which != Which::Staged, |d| d.h(px(FILE_ROW_H + 1.)).border_t_1().border_color(theme::section_border()))
+        .when(basis.is_some() && which == Which::Staged, |d| d.h(px(FILE_ROW_H)))
         .cursor_pointer()
         .on_click(cx.listener(move |this, _, _, cx| this.toggle_wip_section(which, cx)))
         .on_mouse_down(MouseButton::Right, cx.listener(move |this, e: &MouseDownEvent, window, cx| {
@@ -1569,7 +1578,8 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
         let f = files.expect("a section has its files");
         let mode = f.mode;
         let expanded = f.collapsed.is_empty();
-        let tool = |id: &'static str, glyph: &'static str, label: &'static str, on: bool| {
+        let has_folders = s.rows.iter().any(|r| matches!(r, ListRow::Folder { .. }));
+        let tool = |id: &'static str, glyph: &'static str, label: &'static str, on: bool, off: bool| {
             div()
                 .id(id)
                 .flex()
@@ -1580,15 +1590,16 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
                 .py(px(1.))
                 .rounded(px(3.))
                 .text_size(px(11.))
+                .line_height(px(15.))
                 .text_color(if on { theme::text_selected() } else { theme::text_secondary() })
-                .cursor_pointer()
-                .hover(|d| d.text_color(theme::text_selected()).bg(theme::control_hover_bg()))
+                .when(off, |d| d.opacity(0.5))
+                .when(!off, |d| d.cursor_pointer().hover(|d| d.text_color(theme::text_selected()).bg(theme::control_hover_bg())))
                 .child(icon(glyph, 12., if on { theme::text_selected() } else { theme::text_secondary() }))
                 .child(label)
         };
         let lead = match mode {
-            ListMode::Tree => tool(if which == Which::Unstaged { "wip-collapse-u" } else if which == Which::Staged { "wip-collapse-s" } else { "wip-collapse-c" }, if expanded { "chevrons-down-up" } else { "chevrons-up-down" }, if expanded { "Collapse all" } else { "Expand all" }, false).on_click(cx.listener(|this, _, _, cx| this.with_files(cx, Files::toggle_all))),
-            ListMode::Path => tool(if which == Which::Unstaged { "wip-sort-u" } else if which == Which::Staged { "wip-sort-s" } else { "wip-sort-c" }, "arrow-down-wide-narrow", "Sort by status", f.by_status).on_click(cx.listener(|this, _, _, cx| {
+            ListMode::Tree => tool(if which == Which::Unstaged { "wip-collapse-u" } else if which == Which::Staged { "wip-collapse-s" } else { "wip-collapse-c" }, if expanded { "chevrons-down-up" } else { "chevrons-up-down" }, if expanded { "Collapse all" } else { "Expand all" }, false, !has_folders).when(has_folders, |d| d.on_click(cx.listener(|this, _, _, cx| this.with_files(cx, Files::toggle_all)))),
+            ListMode::Path => tool(if which == Which::Unstaged { "wip-sort-u" } else if which == Which::Staged { "wip-sort-s" } else { "wip-sort-c" }, "arrow-down-wide-narrow", "Sort by status", f.by_status, false).on_click(cx.listener(|this, _, _, cx| {
                 if let Some(tab) = this.tabs.get_mut(this.active) {
                     tab.sort_by_status = !tab.sort_by_status;
                     let on = tab.sort_by_status;
@@ -1653,6 +1664,37 @@ pub fn split_bounds(height: f32) -> (f32, f32) {
     if lo >= 0.5 { (0.5, 0.5) } else { (lo, 1. - lo) }
 }
 
+/// Undo and Redo for the staging log (`StagingUndoButtons`), in the file list's header and a WIP diff's toolbar.
+pub fn staging_buttons(ids: (&'static str, &'static str), ctx: WriteCtx, staging: Option<&StagingUndoState>, committing: bool, cx: &mut Context<GitVolt>) -> Div {
+    let view = |which: &str, label: Option<&String>| -> (String, bool) {
+        if committing {
+            return (COMMIT_QUEUED.to_string(), true);
+        }
+        if let Some(off) = staging.and_then(|s| s.off.clone()) {
+            return (off, true);
+        }
+        match label {
+            None => (format!("Nothing to {which} in staging"), true),
+            Some(l) => (format!("{} {l} ({})", if which == "undo" { "Undo" } else { "Redo" }, crate::commands::display_chord(if which == "undo" { "Mod+Z" } else { "Mod+Shift+Z" })), false),
+        }
+    };
+    let (u, r) = (view("undo", staging.and_then(|s| s.undo.as_ref())), view("redo", staging.and_then(|s| s.redo.as_ref())));
+    let weak = cx.weak_entity();
+    let (w1, c1, w2, c2) = (weak.clone(), ctx.clone(), weak, ctx);
+    div()
+        .flex()
+        .flex_none()
+        .gap(px(2.))
+        .child(action_sized(ids.0, u.0, "undo-2", Tone::Plain, None, u.1, (20., 18.), move |_, cx| {
+            let c = c1.clone();
+            w1.update(cx, |v, cx| v.staging_undo(&c, false, cx)).ok();
+        }))
+        .child(action_sized(ids.1, r.0, "redo-2", Tone::Plain, None, r.1, (20., 18.), move |_, cx| {
+            let c = c2.clone();
+            w2.update(cx, |v, cx| v.staging_undo(&c, true, cx)).ok();
+        }))
+}
+
 /// The whole panel for a WIP row.
 pub fn wip_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Window, cx: &mut Context<GitVolt>) -> AnyElement {
     let (ratio, closed) = (v.wip_ratio, v.wip_closed);
@@ -1667,6 +1709,8 @@ pub fn wip_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Windo
     let weak = cx.weak_entity();
     let discard_tip = if tab.wip.committing { COMMIT_QUEUED } else if tab.wip.discarding { "Discarding…" } else if in_progress { "Abort instead" } else if count == 0 { "Nothing to discard" } else { "Discard all changes" };
     let discard_off = tab.wip.committing || tab.wip.discarding || in_progress || count == 0;
+    // What the armed label covers dims underneath (`data-arm-dim`).
+    let armed = crate::ui::arm::armed_control(cx).is_some_and(|k| k == "wip-discard-all");
     let header = div()
         .flex()
         .flex_none()
@@ -1681,7 +1725,7 @@ pub fn wip_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Windo
                 let w = weak.clone();
                 d.child(crate::ui::anchor(
                     "wip-discard-all",
-                    action_icon("wip-discard-all-btn", discard_tip, "trash-2", Tone::Danger, None, discard_off, move |window, cx| {
+                    action_sized("wip-discard-all-btn", discard_tip, "trash-2", Tone::Danger, None, discard_off, (20., 18.), move |window, cx| {
                         let ctx = ctx.clone();
                         let origin = ArmOrigin::Control { key: "wip-discard-all".into(), cover: None, grow_right: Some(true) };
                         w.update(cx, |v, cx| v.discard_all(ctx, origin, window, cx)).ok();
@@ -1695,11 +1739,12 @@ pub fn wip_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Windo
                 .flex_none()
                 .items_center()
                 .gap(px(4.))
+                .when(armed, |d| d.opacity(0.3))
                 .child(format!("{count} file {}", if count == 1 { "change" } else { "changes" }))
                 .when_some(branch, |d, b| d.child("on").child(div().px(px(6.)).rounded(px(3.)).bg(theme::mix(theme::blue(), 0.3, transparent_black())).text_color(theme::text_selected()).truncate().child(b))),
         )
         .child(
-            div().flex().flex_1().min_w_0().justify_end().child(tip(
+            div().flex().flex_1().min_w_0().justify_end().when(armed, |d| d.opacity(0.3)).child(tip(
                 "Filter files",
                 div()
                     .id("wip-filter-toggle")
@@ -1720,44 +1765,16 @@ pub fn wip_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Windo
             )),
         );
     let mode = tab.files.as_ref().map_or(ListMode::Tree, |f| f.mode);
-    let staging = ctx.as_ref().and_then(|c| v.ops.staging(c.repo, &c.worktree).cloned());
-    let committing = tab.wip.committing;
-    let staging_buttons = ctx.clone().map(|ctx| {
-        let view = |which: &str, label: Option<&String>| -> (String, bool) {
-            if committing {
-                return (COMMIT_QUEUED.to_string(), true);
-            }
-            if let Some(off) = staging.as_ref().and_then(|s| s.off.clone()) {
-                return (off, true);
-            }
-            match label {
-                None => (format!("Nothing to {which} in staging"), true),
-                Some(l) => (format!("{} {l} ({})", if which == "undo" { "Undo" } else { "Redo" }, crate::commands::display_chord(if which == "undo" { "Mod+Z" } else { "Mod+Shift+Z" })), false),
-            }
-        };
-        let (u, r) = (view("undo", staging.as_ref().and_then(|s| s.undo.as_ref())), view("redo", staging.as_ref().and_then(|s| s.redo.as_ref())));
-        let (w1, c1, w2, c2) = (weak.clone(), ctx.clone(), weak.clone(), ctx);
-        div()
-            .flex()
-            .flex_none()
-            .gap(px(2.))
-            .child(action_icon("wip-staging-undo", u.0, "undo-2", Tone::Plain, None, u.1, move |_, cx| {
-                let c = c1.clone();
-                w1.update(cx, |v, cx| v.staging_undo(&c, false, cx)).ok();
-            }))
-            .child(action_icon("wip-staging-redo", r.0, "redo-2", Tone::Plain, None, r.1, move |_, cx| {
-                let c = c2.clone();
-                w2.update(cx, |v, cx| v.staging_undo(&c, true, cx)).ok();
-            }))
-    });
+    let staging_buttons = ctx.clone().map(|ctx| staging_buttons(("wip-staging-undo", "wip-staging-redo"), ctx, v.ops.staging(tab.id, tab.wip_worktree().unwrap_or_default()), tab.wip.committing, cx));
     let all_on = tab.wip.all_files;
     let view_bar = div()
         .relative()
         .flex()
         .flex_none()
+        .h(px(VIEW_BAR_H))
+        .items_center()
         .justify_center()
         .px(px(12.))
-        .py(px(6.))
         .child(
             div().absolute().left(px(12.)).top_0().bottom_0().flex().items_center().child(tip(
                 "Every tracked file of the working tree, not only the changed ones",

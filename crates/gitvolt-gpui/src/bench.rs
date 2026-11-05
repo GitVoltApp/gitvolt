@@ -195,7 +195,7 @@ impl GitVolt {
 /// `GITVOLT_SCRIPT=<file>`: real flows on a fixture with no input device, a line at a time, each input
 /// going through the window as an event from the platform would: `click x y`, `rclick x y`, `dclick x y`,
 /// `move x y`, `press x y`, `release x y`, `key ctrl-s`, `type text`, `wait ms`, `select row`, `open index`,
-/// `cmd id`, `dump` (a JSON line of what's on screen), `quit`.
+/// `cmd id`, `shot out.png`, `dump` (a JSON line of what's on screen), `quit`.
 async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
     let Ok(text) = std::fs::read_to_string(file) else {
         eprintln!("No script at {file}");
@@ -262,6 +262,14 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
                     });
                 })
                 .ok();
+            }
+            // The window, as a file: another process looks at it, so the frame's already on screen.
+            "shot" => {
+                cx.background_executor().timer(Duration::from_millis(120)).await;
+                let status = std::process::Command::new("crates/gitvolt-gpui/tools/winshot.sh").arg(std::process::id().to_string()).arg(&rest).status();
+                if let Err(e) = status {
+                    eprintln!("No screenshot: {e}");
+                }
             }
             "dump" => {
                 cx.update(|_, cx| println!("{}", v.read(cx).dump(cx))).ok();

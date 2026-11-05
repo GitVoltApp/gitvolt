@@ -240,7 +240,7 @@ pub struct DiffState {
 /// Which bar `toolbar` draws.
 pub enum ToolbarKind {
     /// The diff panel's; whether the file has a history to show.
-    Panel { has_history: bool, open_in: Option<AnyElement> },
+    Panel { has_history: bool, open_in: Option<AnyElement>, staging: Option<AnyElement> },
     /// File History's: its `File | Changes` in File View / Diff View's place, and no Blame or History.
     History(AnyElement),
 }
@@ -1723,8 +1723,8 @@ fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use
                     .rounded(px(4.))
                     .bg(theme::blue())
                     .text_color(theme::text_on_accent())
-                    .when(!dirty, |d| d.opacity(0.5))
-                    .when(dirty, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.save_working_copy(None, cx))))
+                    .cursor_pointer()
+                    .when(dirty, |d| d.on_click(cx.listener(|this, _, _, cx| this.save_working_copy(None, cx))))
                     .child("Save"),
             ))
         })
@@ -1794,9 +1794,9 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
         ToolbarKind::Panel { has_history, .. } => (true, *has_history),
         ToolbarKind::History(_) => (false, false),
     };
-    let (views, open_in) = match kind {
-        ToolbarKind::History(views) => (views, None),
-        ToolbarKind::Panel { open_in, .. } => (segmented(vec![view_button("view-file", "File View", ViewKind::File, !in_diff, true, cx), view_button("view-diff", "Diff View", ViewKind::Diff, in_diff, can_diff, cx)]).into_any_element(), open_in),
+    let (views, open_in, staging) = match kind {
+        ToolbarKind::History(views) => (views, None, None),
+        ToolbarKind::Panel { open_in, staging, .. } => (segmented(vec![view_button("view-file", "File View", ViewKind::File, !in_diff, true, cx), view_button("view-diff", "Diff View", ViewKind::Diff, in_diff, can_diff, cx)]).into_any_element(), open_in, staging),
     };
     // File View hides what never applies there; File History keeps it in place, off.
     let diff_tools = in_diff || !panel;
@@ -1824,6 +1824,7 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
                 .justify_end()
                 .items_center()
                 .gap(px(10.))
+                .children(staging)
                 .when(panel, |d| {
                     d.child(segmented(vec![
                         tip(blame_tip, segment("blame", "Blame", false, has_history && !binary).when(has_history && !binary, |d| d.on_click(cx.listener(|this, _, _, cx| this.open_history(true, cx))))).into_any_element(),
@@ -1883,11 +1884,12 @@ fn minimap_width(width: f32) -> f32 {
 }
 
 /// The panel for `tab`'s open file, `width` px wide.
-pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
+pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, undo: Option<&gitvolt_core::write::types::StagingUndoState>, window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     let diff = tab.diff.as_ref()?;
+    let staging = tab.wip_ctx().map(|ctx| crate::wip::staging_buttons(("diff-staging-undo", "diff-staging-redo"), ctx, undo, tab.wip.committing, cx).into_any_element());
     let open_in = crate::open_in::open_in_button(tab, last_opener, cx);
     let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));
-    Some(div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in }, width, cx)).child(diff_body(diff, width, &tab.zoom_input, cx)).into_any_element())
+    Some(div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in, staging }, width, cx)).child(diff_body(diff, width, &tab.zoom_input, cx)).into_any_element())
 }
 
 /// What's under the toolbar, in an editor `width` px wide.

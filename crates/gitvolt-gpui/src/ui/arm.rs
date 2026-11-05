@@ -60,11 +60,18 @@ pub struct ArmRequest {
     pub body: SharedString,
     pub confirm_label: SharedString,
     pub option: Option<ArmOption>,
+    /// An icon button's own icon: the armed label keeps it.
+    pub icon: Option<&'static str>,
 }
 
 impl ArmRequest {
     pub fn new(tone: Tone, arm: impl Into<SharedString>, title: impl Into<SharedString>, confirm_label: impl Into<SharedString>) -> Self {
-        Self { arm: arm.into(), tone, caption: None, title: title.into(), body: SharedString::default(), confirm_label: confirm_label.into(), option: None }
+        Self { arm: arm.into(), tone, caption: None, title: title.into(), body: SharedString::default(), confirm_label: confirm_label.into(), option: None, icon: None }
+    }
+
+    pub fn icon(mut self, name: &'static str) -> Self {
+        self.icon = Some(name);
+        self
     }
 
     pub fn danger(arm: impl Into<SharedString>, title: impl Into<SharedString>, confirm_label: impl Into<SharedString>) -> Self {
@@ -193,6 +200,14 @@ pub fn is_armed(cx: &App) -> bool {
     Ui::get(cx).arm.armed.is_some()
 }
 
+/// The key of the control that's armed, if one is.
+pub fn armed_control(cx: &App) -> Option<SharedString> {
+    match &Ui::get(cx).arm.armed.as_ref()?.origin {
+        Origin::Control { key, .. } => Some(key.clone()),
+        _ => None,
+    }
+}
+
 pub(super) fn is_armed_in_place(cx: &App) -> bool {
     Ui::get(cx).arm.armed.as_ref().is_some_and(|a| matches!(a.origin, Origin::Control { .. }))
 }
@@ -230,9 +245,9 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
     let Origin::Control { key, cover, grow_right } = &a.origin else { return None };
     let bounds = cover.as_ref().and_then(|c| ui.anchor(c)).or_else(|| ui.anchor(key))?;
     let covering = cover.is_some();
-    let (label, tone, caption) = (a.req.arm.clone(), a.req.tone, a.req.caption.clone());
+    let (label, tone, caption, glyph) = (a.req.arm.clone(), a.req.tone, a.req.caption.clone(), a.req.icon);
     let grow_right = *grow_right;
-    let needed = super::text_width(&label, 12.5, FontWeight::SEMIBOLD, cx) + 22.;
+    let needed = super::text_width(&label, 12.5, FontWeight::SEMIBOLD, cx) + 22. + if glyph.is_some() { 19. } else { 0. };
     let vw = window.viewport_size().width.as_f32();
     let box_ = Rect::of(bounds);
     let width = bounds.size.width.as_f32();
@@ -251,6 +266,7 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
         .occlude()
         .flex()
         .items_center()
+        .gap(px(6.))
         .when(covering, |d| d.justify_center())
         .px(px(10.))
         .border_1()
@@ -267,6 +283,7 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
         .on_click(|_, window, cx| {
             confirm_click(window, cx);
         })
+        .children(glyph.map(|g| crate::app::icon(g, 13., theme::mix(color, 0.35, theme::text_selected()))))
         .child(label);
     Ui::get_mut(cx).arm.armed.as_mut()?.overlay = Some(Bounds::new(point(px(left), px(box_.top)), size(px(w), px(h))));
     let shown = div().absolute().top_0().left_0().size_0().child(overlay);

@@ -840,7 +840,8 @@ fn files_view(files: &Files, input: &Entity<TextInput>, selected: Option<&FileCh
     let start = match mode {
         ListMode::Tree => {
             let expanded = files.collapsed.is_empty();
-            lead_button("collapse-all", if expanded { "chevrons-down-up" } else { "chevrons-up-down" }, if expanded { "Collapse all" } else { "Expand all" }, false).on_click(cx.listener(|this, _, _, cx| this.with_files(cx, Files::toggle_all)))
+            let has_folders = files.rows.iter().any(|r| matches!(r, ListRow::Folder { .. }));
+            lead_button("collapse-all", if expanded { "chevrons-down-up" } else { "chevrons-up-down" }, if expanded { "Collapse all" } else { "Expand all" }, false).when(!has_folders, |d| d.opacity(0.4)).when(has_folders, |d| d.on_click(cx.listener(|this, _, _, cx| this.with_files(cx, Files::toggle_all))))
         }
         ListMode::Path => lead_button("sort-status", "arrow-down-wide-narrow", "Sort by status", files.by_status).on_click(cx.listener(|this, _, _, cx| {
             if let Some(tab) = this.tabs.get_mut(this.active) {

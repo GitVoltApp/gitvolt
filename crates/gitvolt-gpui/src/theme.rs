@@ -94,6 +94,11 @@ pub fn mix(a: Hsla, share: f32, b: Hsla) -> Hsla {
     Rgba { r: ch(x.r, y.r), g: ch(x.g, y.g), b: ch(x.b, y.b), a: alpha }.into()
 }
 
+/// `top`, with its alpha, painted over `below`: an opaque stand-in for a translucent background.
+pub fn over(top: Hsla, below: Hsla) -> Hsla {
+    mix(Hsla { a: 1., ..top }, top.a, below)
+}
+
 /// Lane colours 0-9 (`--graph-0`..`--graph-9`).
 pub const LANES: [u32; 10] = [0x15a0bf, 0x0669f7, 0x8e00c2, 0xc517b6, 0xd90171, 0xcd0101, 0xf25d2e, 0xf2ca33, 0x7bd938, 0x2ece9d];
 
