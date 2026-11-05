@@ -161,7 +161,7 @@ const offs = [
     {
       id: 'forgeAccount', label: 'Forge account', page: 'repository', group: 'Merge requests', labelFor: 'group',
       keywords: 'account github gitlab forgejo forge private work multiple identities',
-      description: "The account this repository's merge requests, forks and avatars use on its forge. It applies to the remotes on that account's host; remotes on another forge use that host's default. Automatic: the host's default, its first account in Settings › Accounts.",
+      description: "The account for this repository's merge requests, forks and avatars. Automatic: the host's first account in Settings › Accounts.",
       Control: ForgeAccountControl,
       useShown: useForgeAccountShown,
       // Avatars too: which account asks the forge for them changed.
