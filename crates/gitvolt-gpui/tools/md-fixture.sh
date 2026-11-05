@@ -250,6 +250,51 @@ sequenceDiagram
   Ada->>Ben: Is the tide high?
   Ben-->>Ada: Not yet
 MD
+cat > .git/mkpdf.py <<'PY'
+# A generated PDF: text, shapes and a second page, with no library.
+def pdf(path, pages, media=(612, 792)):
+    objs = []
+    def add(b):
+        objs.append(b)
+        return len(objs)
+    font = add(b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+    font2 = add(b'<< /Type /Font /Subtype /Type1 /BaseFont /Times-Italic >>')
+    kids = []
+    pages_id = len(objs) + 2 * len(pages) + 1
+    for i, text in enumerate(pages):
+        stream = text.encode('latin-1')
+        c = add(b'<< /Length %d >>\nstream\n' % len(stream) + stream + b'\nendstream')
+        p = add(b'<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %d %d] /Contents %d 0 R /Resources << /Font << /F1 %d 0 R /F2 %d 0 R >> >> >>' % (pages_id, media[0], media[1], c, font, font2))
+        kids.append(p)
+    add(b'<< /Type /Pages /Kids [' + b' '.join(b'%d 0 R' % k for k in kids) + b'] /Count %d >>' % len(kids))
+    root = add(b'<< /Type /Catalog /Pages %d 0 R >>' % pages_id)
+    out = b'%PDF-1.4\n'
+    offs = []
+    for n, o in enumerate(objs, 1):
+        offs.append(len(out))
+        out += b'%d 0 obj\n' % n + o + b'\nendobj\n'
+    x = len(out)
+    out += b'xref\n0 %d\n0000000000 65535 f \n' % (len(objs) + 1)
+    for o in offs:
+        out += b'%010d 00000 n \n' % o
+    out += b'trailer\n<< /Size %d /Root %d 0 R >>\nstartxref\n%d\n%%%%EOF\n' % (len(objs) + 1, root, x)
+    open(path, 'wb').write(out)
+PY
+python3 - "$root" <<'PY'
+import sys, wave, math, struct
+sys.path.insert(0, '.git')
+from mkpdf import pdf
+pdf('rich/tides.pdf', ['BT /F1 24 Tf 72 700 Td (Port Example tide tables) Tj ET\nBT /F2 14 Tf 72 670 Td (An older draft, page one) Tj ET\n0.5 0.3 0.1 rg 72 500 300 80 re f', 'BT /F1 18 Tf 72 700 Td (Page two: the old quay) Tj ET\n0.6 0.2 0.4 rg 72 300 468 200 re f'])
+w = wave.open('rich/bell.wav', 'wb')
+w.setnchannels(2); w.setsampwidth(2); w.setframerate(11025)
+w.writeframes(b''.join(struct.pack('<hh', int(9000 * math.sin(i * 0.03)), 0) for i in range(5512)))
+w.close()
+# The bundled face under a fictional family name, of the same length.
+ttf = open(sys.argv[1] + '/crates/gitvolt-gpui/assets/fonts/JetBrainsMono-Latin-400.ttf', 'rb').read()
+a, b = 'JetBrains Mono'.encode('utf-16-be'), 'Older Fixture '.encode('utf-16-be')
+open('rich/face.ttf', 'wb').write(ttf.replace(a, b).replace(b'JetBrains Mono', b'Older Fixture '))
+PY
+ffmpeg -loglevel error -y -f lavfi -i testsrc=duration=2:size=120x90:rate=10 -c:v libx264 -pix_fmt yuv420p rich/clip.mp4 2>/dev/null || true
 git add .
 git -c commit.gpgsign=false commit -qm 'Old versions' --date '2026-01-01T10:00:00' 
 cat > CHANGES.md <<'MD'
@@ -288,38 +333,14 @@ graph TD
 ```
 MD
 python3 - <<'PY'
-# A generated PDF: text, shapes and a second page, with no library.
-def pdf(path, pages, media=(612, 792)):
-    objs = []
-    def add(b):
-        objs.append(b)
-        return len(objs)
-    font = add(b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
-    font2 = add(b'<< /Type /Font /Subtype /Type1 /BaseFont /Times-Italic >>')
-    kids = []
-    pages_id = len(objs) + 2 * len(pages) + 1
-    for i, text in enumerate(pages):
-        stream = text.encode('latin-1')
-        c = add(b'<< /Length %d >>\nstream\n' % len(stream) + stream + b'\nendstream')
-        p = add(b'<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %d %d] /Contents %d 0 R /Resources << /Font << /F1 %d 0 R /F2 %d 0 R >> >> >>' % (pages_id, media[0], media[1], c, font, font2))
-        kids.append(p)
-    add(b'<< /Type /Pages /Kids [' + b' '.join(b'%d 0 R' % k for k in kids) + b'] /Count %d >>' % len(kids))
-    root = add(b'<< /Type /Catalog /Pages %d 0 R >>' % pages_id)
-    out = b'%PDF-1.4\n'
-    offs = []
-    for n, o in enumerate(objs, 1):
-        offs.append(len(out))
-        out += b'%d 0 obj\n' % n + o + b'\nendobj\n'
-    x = len(out)
-    out += b'xref\n0 %d\n0000000000 65535 f \n' % (len(objs) + 1)
-    for o in offs:
-        out += b'%010d 00000 n \n' % o
-    out += b'trailer\n<< /Size %d /Root %d 0 R >>\nstartxref\n%d\n%%%%EOF\n' % (len(objs) + 1, root, x)
-    open(path, 'wb').write(out)
+import sys
+sys.path.insert(0, '.git')
+from mkpdf import pdf
 page1 = 'BT /F1 24 Tf 72 700 Td (Port Example tide tables) Tj ET\nBT /F2 14 Tf 72 670 Td (A fictional document, page one) Tj ET\n0.15 0.33 0.49 rg 72 500 200 120 re f\n0.9 0.3 0.2 RG 4 w 300 500 m 500 620 l S\n1 0.82 0.4 rg 420 560 m 470 560 470 610 420 610 c 370 610 370 560 420 560 c f\n0 0 0 rg BT /F1 12 Tf 72 460 Td (High water 06:12, low water 12:30, high water 18:40.) Tj ET'
 page2 = 'BT /F1 18 Tf 72 700 Td (Page two: the quay) Tj ET\n0.2 0.6 0.4 rg 72 300 468 300 re f\n1 1 1 rg BT /F1 36 Tf 120 430 Td (Mind the gap) Tj ET'
 page3 = 'BT /F1 18 Tf 72 700 Td (Page three) Tj ET'
 pdf('rich/tides.pdf', [page1, page2, page3])
+pdf('rich/extra.pdf', [page2])
 PY
 python3 - <<'PY'
 import wave, math, struct
@@ -329,6 +350,22 @@ w.writeframes(b''.join(struct.pack('<h', int(12000 * math.sin(i * 0.05) * math.e
 w.close()
 PY
 cp "$root/crates/gitvolt-gpui/assets/fonts/JetBrainsMono-Latin-400.ttf" rich/face.ttf
+python3 - <<'PY'
+# The new face again as a WOFF: each table packed by itself.
+import struct, zlib
+t = open('rich/face.ttf', 'rb').read()
+n = struct.unpack('>H', t[4:6])[0]
+tables, parts, at = [], b'', 44 + n * 20
+for i in range(n):
+    tag, sum_, off, length = struct.unpack('>4sIII', t[12 + i * 16:28 + i * 16])
+    raw = t[off:off + length]
+    packed = zlib.compress(raw)
+    if len(packed) >= length: packed = raw
+    tables.append(struct.pack('>4sIIII', tag, at + len(parts), len(packed), length, sum_))
+    parts += packed + b'\0' * (-len(packed) % 4)
+head = b'wOFF' + t[:4] + struct.pack('>IHHIHHIIIII', 44 + n * 20 + len(parts), n, 0, len(t), 1, 0, 0, 0, 0, 0, 0)
+open('rich/face.woff', 'wb').write(head + b''.join(tables) + parts)
+PY
 ffmpeg -loglevel error -y -f lavfi -i testsrc=duration=1:size=160x120:rate=10 -c:v libvpx -b:v 200k rich/clip.webm 2>/dev/null || true
 ffmpeg -loglevel error -y -f lavfi -i testsrc=duration=1:size=160x120:rate=10 -c:v libx264 -pix_fmt yuv420p rich/clip.mp4 2>/dev/null || true
 python3 - <<'PY'
@@ -355,4 +392,77 @@ open('big.md', 'w').write('\n'.join(out[:5000]) + '\n')
 PY
 git add .
 git -c commit.gpgsign=false commit -qm 'New versions' --date '2026-02-01T10:00:00'
+cat > mermaid-kinds.md <<'MD'
+# Diagrams
+
+```mermaid
+graph TD
+  A[Quay] --> B{Tide high?}
+  B -->|Yes| C[Sail]
+  B -->|No| D[Wait]
+  D --> B
+```
+
+```mermaid
+sequenceDiagram
+  participant A as Ada
+  participant B as Ben
+  A->>B: Is the tide high?
+  B-->>A: Not yet
+  A->>B: Tell me when it is
+```
+
+```mermaid
+classDiagram
+  class Boat {
+    +String name
+    +sail()
+  }
+  class Mooring
+  Boat --> Mooring : ties to
+```
+
+```mermaid
+stateDiagram-v2
+  [*] --> Moored
+  Moored --> Sailing : cast off
+  Sailing --> Moored : tie up
+  Sailing --> [*]
+```
+
+```mermaid
+erDiagram
+  BOAT ||--o{ MOORING : uses
+  BOAT {
+    string name
+  }
+```
+
+```mermaid
+gantt
+  title Harbour works
+  dateFormat YYYY-MM-DD
+  section Quay
+  Repair :a1, 2026-01-01, 10d
+  Paint :after a1, 5d
+```
+
+```mermaid
+pie title Boats
+  "Sail" : 40
+  "Motor" : 25
+  "Row" : 10
+```
+
+```mermaid
+gitGraph
+  commit
+  branch fix
+  commit
+  checkout main
+  merge fix
+```
+MD
+git add mermaid-kinds.md
+git -c commit.gpgsign=false commit -qm 'Diagrams' --date '2026-03-01T10:00:00'
 echo "$dir"

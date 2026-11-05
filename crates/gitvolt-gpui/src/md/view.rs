@@ -149,6 +149,10 @@ struct Doc {
 
 pub struct MdState {
     pub opts: MdOptions,
+    diagrams: Arc<super::mermaid::Diagrams>,
+    /// Each diagram's picture or error, by source and dark or not, so a rebuild doesn't draw them again.
+    drawn: HashMap<(String, bool), Result<super::mermaid::Drawn, String>>,
+    mermaid_waits: bool,
     api: Arc<Api>,
     rt: tokio::runtime::Handle,
     retired: Rc<RefCell<Vec<Arc<RenderImage>>>>,
@@ -286,6 +290,26 @@ fn slots_of(node: &BoxNode, top: usize, out: &mut Vec<(u32, usize)>) {
     }
 }
 
+/// What a diagram's box holds now.
+fn set_kids(node: &mut BoxNode, id: u32, new: Vec<BoxNode>) -> bool {
+    fn go(node: &mut BoxNode, id: u32, new: &mut Option<Vec<BoxNode>>) -> bool {
+        if node.id == id
+            && let BoxKind::Flow(kids) = &mut node.kind
+        {
+            *kids = new.take().unwrap_or_default();
+            return true;
+        }
+        match &mut node.kind {
+            BoxKind::Flow(kids) => kids.iter_mut().any(|k| go(k, id, new)),
+            BoxKind::Details { summary, body, .. } => go(summary, id, new) || body.iter_mut().any(|k| go(k, id, new)),
+            BoxKind::Table(t) => t.rows.iter_mut().any(|r| r.cells.iter_mut().any(|c| go(&mut c.content, id, new))),
+            BoxKind::Columns { cols, .. } => cols.iter_mut().any(|k| go(k, id, new)),
+            _ => false,
+        }
+    }
+    go(node, id, &mut Some(new))
+}
+
 fn toggle_in(node: &mut BoxNode, id: u32) -> bool {
     if node.id == id
         && let BoxKind::Details { open, .. } = &mut node.kind
@@ -402,6 +426,11 @@ impl WinShaper<'_> {
                 let width = aw.unwrap_or(*w);
                 let height = if *w > 0. { width * *h / *w } else { *h };
                 ImageState::Shown { w: width, h: height }
+            }
+            SlotState::Broken { why } if s.src.mermaid => {
+                let text = format!("Couldn't draw the diagram: {why}");
+                let w = self.small_width(&text);
+                ImageState::Boxed { w, h: 17. }
             }
             SlotState::Loading if s.src.video => boxed(240., 135.),
             SlotState::Loading => boxed(18., 24.),
@@ -565,7 +594,7 @@ impl MdState {
         for t in &built.tops {
             walk_focus(t, &mut focusables);
         }
-        focusables.retain(|(f, _)| !matches!(f, Focus::Link(l) if targets.get(*l as usize) == Some(&LinkTarget::Inert)));
+        focusables.retain(|(f, _)| !matches!(f, Focus::Link(l) if targets.get(*l as usize) == Some(&LinkTarget::Inert)) && !matches!(f, Focus::Image(s) if slots.get(*s as usize).is_some_and(|s| s.src.mermaid)));
         let tops = built.tops.iter().map(|_| Top { laid: None, h: 0., mt: 0., mb: 0., measured: false, marks: Vec::new() }).collect();
         let colours = vec![None; built.codes.len()];
         self.doc = Some(Doc { built, targets, slots, tops, offsets: Vec::new(), width: -1., colours, measured: 0, focusables });
@@ -1388,6 +1417,9 @@ impl PaintCx<'_> {
                 border_box(window, bx, y + 5., run_w + 18., bh, 4., if hovered { theme::control_hover_bg() } else { theme::control_bg() }, theme::section_border(), BorderStyle::Solid);
                 paint_small_text(&label, bx + 9., base, theme::text_normal(), 11., window, cx);
             }
+            SlotState::Broken { why } if s.src.mermaid => {
+                paint_small_text(&format!("Couldn't draw the diagram: {why}"), x, y + 13., theme::red(), 11., window, cx);
+            }
             SlotState::Broken { .. } => {
                 dashed(window, gpui::transparent_black());
                 window.paint_svg(Bounds::new(point(px(x + 9.), px(y + (h - 14.) / 2.)), size(px(14.), px(14.))), "icons/image-off.svg".into(), None, TransformationMatrix::unit(), theme::text_secondary(), cx).ok();
@@ -1769,6 +1801,9 @@ impl MdView {
             doc: None,
             too_large: false,
             generation: 0,
+            diagrams: Arc::default(),
+            drawn: HashMap::new(),
+            mermaid_waits: false,
             stop: Arc::default(),
             theme_version: theme::version(),
             scroll: 0.,
@@ -1843,6 +1878,7 @@ impl MdView {
                 st.adopt(built);
                 drop(st);
                 self.colour(cx);
+                self.draw_mermaid(0, cx);
             }
             Err(_) => {
                 self.state.borrow_mut().too_large = true;
@@ -1899,6 +1935,8 @@ impl MdView {
             }
             st.scroll = share * st.max_scroll();
         }
+        drop(st);
+        self.draw_mermaid(0, cx);
         cx.notify();
     }
 
@@ -2237,15 +2275,89 @@ impl MdView {
             walk_focus(t, &mut d.focusables);
         }
         let targets = d.targets.clone();
-        d.focusables.retain(|(f, _)| !matches!(f, Focus::Link(l) if targets.get(*l as usize) == Some(&LinkTarget::Inert)));
+        let slots = &d.slots;
+        d.focusables.retain(|(f, _)| !matches!(f, Focus::Link(l) if targets.get(*l as usize) == Some(&LinkTarget::Inert)) && !matches!(f, Focus::Image(s) if slots.get(*s as usize).is_some_and(|s| s.src.mermaid)));
         drop(st);
+        cx.notify();
+    }
+
+    /// The document's diagrams, in turn, each by what's cached of it or the worker; the next starts when one's done.
+    fn draw_mermaid(&mut self, index: usize, cx: &mut Context<Self>) {
+        if cfg!(test) || index >= super::mermaid::MAX_DIAGRAMS {
+            return;
+        }
+        let dark = !theme::applied().light;
+        let (source, width, generation, rt, diagrams, cached) = {
+            let st = self.state.borrow();
+            let Some(d) = st.doc.as_ref() else { return };
+            let Some(m) = d.built.mermaids.get(index) else { return };
+            let key = (m.source.clone(), dark);
+            (m.source.clone(), d.width, st.generation, st.rt.clone(), st.diagrams.clone(), st.drawn.get(&key).cloned())
+        };
+        if let Some(done) = cached {
+            self.show_mermaid(index, done, cx);
+            return self.draw_mermaid(index + 1, cx);
+        }
+        // The column's width isn't known until the first layout: its paint asks again.
+        if width <= 0. {
+            self.state.borrow_mut().mermaid_waits = true;
+            return;
+        }
+        let svg = cx.svg_renderer();
+        let key = (source.clone(), dark);
+        let job = rt.spawn_blocking(move || diagrams.draw(&source, dark, width, &svg));
+        cx.spawn(async move |this, cx| {
+            let result = job.await.unwrap_or_else(|e| Err(e.to_string()));
+            this.update(cx, |this, cx| {
+                if this.state.borrow().generation != generation {
+                    return;
+                }
+                this.state.borrow_mut().drawn.insert(key, result.clone());
+                this.show_mermaid(index, result, cx);
+                this.draw_mermaid(index + 1, cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn show_mermaid(&mut self, index: usize, result: Result<super::mermaid::Drawn, String>, cx: &mut Context<Self>) {
+        let mut st = self.state.borrow_mut();
+        let Some(d) = st.doc.as_mut() else { return };
+        let Some(m) = d.built.mermaids.get(index).cloned() else { return };
+        let Some(i) = d.built.tops.iter().position(|t| contains_id(t, m.id)) else { return };
+        let (kids, state) = match result {
+            Ok(done) => (vec![m.drawn], SlotState::Shown { image: done.image, w: done.w, h: done.h, thumb: None }),
+            Err(why) => {
+                let mut note = m.drawn;
+                note.margin.top = 4.;
+                let why = why.split('\n').next().unwrap_or_default().chars().take(200).collect::<String>();
+                (vec![m.code, note], SlotState::Broken { why })
+            }
+        };
+        let shown = matches!(state, SlotState::Shown { .. });
+        set_kids(&mut d.built.tops[i], m.id, kids);
+        if let Some(s) = d.slots.get_mut(m.slot as usize) {
+            s.state = state;
+            s.asked = true;
+            s.top = i;
+        }
+        d.tops[i].laid = None;
+        if d.tops[i].measured {
+            d.tops[i].measured = false;
+            d.measured -= 1;
+        }
+        drop(st);
+        if shown {
+            self.shrink_image(m.slot, cx);
+        }
         cx.notify();
     }
 
     fn open_slot(&mut self, slot: u32, modifiers: Modifiers, window: &mut Window, cx: &mut Context<Self>) {
         let item = {
             let st = self.state.borrow();
-            let Some(s) = st.doc.as_ref().and_then(|d| d.slots.get(slot as usize)) else { return };
+            let Some(s) = st.doc.as_ref().and_then(|d| d.slots.get(slot as usize)).filter(|s| !s.src.mermaid) else { return };
             let SlotState::Shown { image, w, h, .. } = &s.state else { return };
             let browser_url = match &s.source {
                 ImageSource::Forge { url } | ImageSource::Remote { url, .. } => Some(url.clone()),
@@ -2754,6 +2866,14 @@ impl Element for MdElement {
             (more, settled)
         };
         let _ = marks_stale;
+        let diagrams = {
+            let mut st = self.state.borrow_mut();
+            let ready = st.doc.as_ref().is_some_and(|d| d.width > 0.);
+            ready && std::mem::take(&mut st.mermaid_waits)
+        };
+        if diagrams {
+            self.view.update(cx, |v, cx| v.draw_mermaid(0, cx));
+        }
         let want = !self.state.borrow().pending_load.is_empty();
         if want {
             self.view.update(cx, |v, cx| v.load_images(cx));
@@ -2814,6 +2934,7 @@ impl Render for MdView {
         };
         if stale {
             self.colour(cx);
+            self.draw_mermaid(0, cx);
         }
         let (pane, inset) = (self.state.borrow().opts.pane, self.state.borrow().opts.inset.is_some());
         div()

@@ -250,6 +250,11 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
             "rclick" | "rclickon" | "rclickrow" => vec![moved(xy()), down(xy(), MouseButton::Right, 1), up(xy(), MouseButton::Right, 1)],
             "dclick" | "dclickon" | "dclickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1), down(xy(), MouseButton::Left, 2), up(xy(), MouseButton::Left, 2)],
             "move" | "hover" => vec![moved(xy())],
+            // A wheel's notches, up with `ctrlwheel` (a zoom) and down with `wheel`.
+            "wheel" | "ctrlwheel" => {
+                let (y, modifiers) = if verb == "wheel" { (-3., Modifiers::default()) } else { (1., Modifiers::control()) };
+                vec![moved(xy()), PlatformInput::Scroll(ScrollEvent { position: xy(), delta: ScrollDelta::Lines(point(0., y)), modifiers, touch_phase: TouchPhase::Moved, source: ScrollSource::Pointer })]
+            }
             "press" | "presson" => vec![moved(xy()), down(xy(), MouseButton::Left, 1)],
             "drag" | "dragto" => vec![PlatformInput::MouseMove(MouseMoveEvent { position: xy(), pressed_button: Some(MouseButton::Left), modifiers: Modifiers::default() })],
             "release" | "releaseon" => vec![up(xy(), MouseButton::Left, 1)],
@@ -309,6 +314,9 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
             // The rendered view's scroll, as the reference's script sets `scrollTop`.
             "show" => {
                 cx.update(|window, cx| v.update(cx, |g, cx| g.show_ui(&rest, window, cx))).ok();
+            }
+            "pdfscroll" => {
+                v.update(cx, |g, cx| g.pdf_scroll_to(rest.parse().unwrap_or(0.), cx));
             }
             "mdscroll" => {
                 v.update(cx, |g, cx| {
@@ -375,6 +383,7 @@ impl GitVolt {
                 "moved": s.moved,
             })
         });
+        let rich = self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).map(|d| serde_json::json!({ "pdf": d.pdf.as_ref().map(crate::pdf::PdfView::dump), "media": d.media.as_ref().map(crate::media::MediaView::dump) }));
         let md = self.shown_md().map(|v| {
             let view = v.read(cx);
             let st = view.state.borrow();
@@ -383,6 +392,7 @@ impl GitVolt {
         serde_json::json!({
             "md": md,
             "lightbox": crate::lightbox::shown_percent(cx),
+            "rich": rich,
             "field": self.field_demo.as_ref().map(|f| { let m = f.read(cx); serde_json::json!({ "text": m.text(cx), "mode": format!("{:?}", m.mode), "caret": m.input.read(cx).buffer.caret() }) }),
             "rebase": rebase,
             "merge": merge,

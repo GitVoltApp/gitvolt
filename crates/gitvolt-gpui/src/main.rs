@@ -2,6 +2,7 @@
 //! `gitvolt-app`, with its data kept apart from it (`gitvolt-gpui` folders) until the switch.
 //!
 //! `gitvolt-gpui [path]`, or `GITVOLT_OPEN=<path>`, opens a repository.
+#![recursion_limit = "256"]
 
 mod app;
 mod avatars;
@@ -26,6 +27,7 @@ mod lightbox;
 mod lfs;
 mod manage;
 mod md;
+mod media;
 mod menus;
 mod metrics;
 mod merge;
@@ -34,6 +36,7 @@ mod open;
 mod open_in;
 mod ops;
 mod palette;
+mod pdf;
 mod presets;
 mod profiles;
 mod refs;
@@ -50,6 +53,7 @@ mod theme;
 mod ui;
 mod updates;
 mod wip;
+mod worker;
 mod zoom;
 mod write;
 
@@ -135,6 +139,9 @@ fn claim_instance(launch: Option<&str>) -> (Option<Arc<gitvolt_core::instance::P
 }
 
 fn main() {
+    if worker::run_if_worker() {
+        return;
+    }
     // Git and ssh run this binary as their askpass: it asks the running app over its socket, prints
     // the answer and exits, before any of the app starts.
     if let Some(code) = gitvolt_core::askpass::run_client_from_env() {

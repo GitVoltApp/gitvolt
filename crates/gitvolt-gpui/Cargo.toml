@@ -27,6 +27,12 @@ pulldown-cmark = { version = "0.13", default-features = false }
 # A file's front matter: plain data only, as `ui/src/markdown/plugins/frontmatter.ts`.
 toml = { version = "1", default-features = false, features = ["parse", "serde", "preserve_order"] }
 yaml-rust2 = { version = "0.13", default-features = false }
+# A repository's PDFs and Mermaid diagrams, read and drawn in a process of their own (`src/worker.rs`).
+hayro = "0.9"
+mermaid-rs-renderer = { version = "0.3", default-features = false }
+libc = "0.2"
+# A font file's outlines, drawn without adding it to the app's fonts. Already in the lockfile through gpui.
+ttf-parser = "0.25"
 # Where a line of rendered Markdown may break. Already in the lockfile through gpui.
 unicode-linebreak = "0.1"
 # Oniguruma, the engine TextMate grammars are written for; Shiki runs the same one as WASM.

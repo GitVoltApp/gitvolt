@@ -102,6 +102,10 @@ pub enum Binary {
     Hex(Arc<HexData>),
     /// A raster image, or an SVG with its text's diff for its Source toggle.
     Image { old: ImageSide, new: ImageSide, svg: Option<(Arc<DiffData>, Texts)> },
+    /// A PDF's bytes and sizes, by side.
+    Pdf { old: Option<(Arc<Vec<u8>>, u64)>, new: Option<(Arc<Vec<u8>>, u64)>, binary: bool, encoding: SharedString },
+    /// Audio, video or a font, by side.
+    Media(Box<(Option<crate::media::MediaSide>, Option<crate::media::MediaSide>)>),
 }
 
 /// A position in the text: a row, and a byte of what it shows on `new` (or the old side).
@@ -220,6 +224,10 @@ pub struct DiffState {
     pub hex: Option<HexView>,
     /// An image's diff.
     pub image: Option<ImageView>,
+    /// A PDF's pages.
+    pub pdf: Option<crate::pdf::PdfView>,
+    /// Audio, video or a font.
+    pub media: Option<crate::media::MediaView>,
     /// The picks that hold from image to image, and "Match sizes" per file for the session.
     pub background: Background,
     pub match_picks: Rc<std::cell::RefCell<HashMap<String, bool>>>,
@@ -292,6 +300,8 @@ impl DiffState {
             history_file: false,
             hex: None,
             image: None,
+            pdf: None,
+            media: None,
             background: Background::Checker,
             match_picks: Rc::default(),
             restored: false,
@@ -342,7 +352,7 @@ impl DiffState {
 
     /// A binary is shown, not lines: it has no blame.
     pub fn shows_binary(&self) -> bool {
-        self.hex.is_some() || self.image.as_ref().is_some_and(|i| !i.svg)
+        self.hex.is_some() || self.image.as_ref().is_some_and(|i| !i.svg) || self.pdf.as_ref().is_some_and(|p| p.binary) || self.media.is_some()
     }
 
     /// Lays out anew at the next frame: what's under the toolbar changed.
@@ -415,6 +425,9 @@ impl DiffState {
             if !image.source_on {
                 return;
             }
+        }
+        if self.pdf.as_ref().is_some_and(|p| !p.source_on) || self.media.as_ref().is_some_and(|m| !m.source_on) {
+            return;
         }
         if same {
             return;
@@ -723,7 +736,7 @@ impl GitVolt {
                 _ => None,
             };
             // A binary's dumps load with its contents, so it's ready to show as a text file is.
-            let hex = if wants_hex(&v, history_file) {
+            let hex = if wants_hex(&v, history_file) && !(shows_media(&v) && crate::media::media_of(&path).is_some() && !history_file) {
                 let (Ok(old), Ok(new)) = (serde_json::from_value(old_side), serde_json::from_value(new_side)) else { return Err(GbError::other("This file's sides can't be read")) };
                 Some(api.dispatch(Request::HexDump { repo: crate::app::core_repo(repo), path: path.clone(), old, new }).await?)
             } else {
@@ -780,6 +793,21 @@ impl GitVolt {
                             let stop = diff.stop_colours.clone();
                             this.color(repo, generation, data, texts, stop, cx);
                         }
+                    }
+                    Ok(Ok(Read::Binary(Binary::Pdf { old, new, binary, encoding }))) => {
+                        let mut pdf = crate::pdf::PdfView::new(old.as_ref().map(|s| s.1), new.as_ref().map(|s| s.1), diff.view == ViewKind::File, this.retired_images.clone());
+                        pdf.binary = binary;
+                        pdf.encoding = encoding;
+                        diff.pdf = Some(pdf);
+                        diff.hex = None;
+                        diff.notice = None;
+                        this.open_pdf_sides(old.map(|s| s.0), new.map(|s| s.0), generation, cx);
+                    }
+                    Ok(Ok(Read::Binary(Binary::Media(sides)))) => {
+                        let (old, new) = *sides;
+                        diff.media = Some(crate::media::MediaView::new(old, new, diff.view == ViewKind::File, this.retired_images.clone()));
+                        diff.hex = None;
+                        diff.notice = None;
                     }
                     Ok(Ok(Read::Notice(n))) => {
                         diff.notice = Some(n);
@@ -933,6 +961,16 @@ impl GitVolt {
     }
 
     pub fn scroll_diff(&mut self, rows: f32, cx: &mut Context<Self>) {
+        if let Some(pdf) = self.tabs.get_mut(self.active).and_then(|t| t.diff.as_mut()).and_then(|d| d.pdf.as_mut()).filter(|p| !p.source_on) {
+            let by = if rows.abs() <= 1. { rows * 40. } else { rows.signum() * (pdf.view_height() - 40.).max(40.) };
+            pdf.scroll_by(by);
+            self.draw_pdf_pages(cx);
+            cx.notify();
+            return;
+        }
+        if self.tabs.get(self.active).and_then(|t| t.diff.as_ref()).and_then(|d| d.media.as_ref()).is_some_and(|m| !m.source_on) {
+            return self.media_scroll(rows * 40., cx);
+        }
         if let Some(view) = self.shown_md() {
             // Chromium's arrow step, and a page less a little.
             let by = if rows.abs() <= 1. { rows * 40. } else { rows.signum() * (view.read(cx).state.borrow().view_height() - 40.).max(40.) };
@@ -1003,7 +1041,26 @@ enum Read {
 fn wants_hex(v: &Value, history_file: bool) -> bool {
     let binary = |s: &Value| s["binary"].as_bool() == Some(true);
     let any = binary(&v["old"]) || binary(&v["new"]);
-    any && v["tooLarge"].as_bool() != Some(true) && (v["image"].as_bool() != Some(true) || history_file)
+    any && v["tooLarge"].as_bool() != Some(true) && (v["image"].as_bool() != Some(true) || history_file) && (history_file || !shows_pdf(v))
+}
+
+/// `isPdf`: the core's `pdf` flag, and every side there with its bytes.
+fn shows_pdf(v: &Value) -> bool {
+    let with_bytes = |s: &Value| !s.is_object() || s["base64"].as_str().is_some();
+    v["pdf"].as_bool() == Some(true) && v["tooLarge"].as_bool() != Some(true) && (v["old"].is_object() || v["new"].is_object()) && with_bytes(&v["old"]) && with_bytes(&v["new"])
+}
+
+/// `showsMedia`: a media path, loaded, and each side there binary with its bytes.
+fn shows_media(v: &Value) -> bool {
+    let with_bytes = |s: &Value| !s.is_object() || (s["binary"].as_bool() == Some(true) && s["base64"].as_str().is_some());
+    v["media"].as_bool() == Some(true) && v["tooLarge"].as_bool() != Some(true) && (v["old"].is_object() || v["new"].is_object()) && with_bytes(&v["old"]) && with_bytes(&v["new"])
+}
+
+fn side_bytes(s: &Value) -> Option<(Arc<Vec<u8>>, u64)> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(s["base64"].as_str()?).ok()?;
+    let size = s["size"].as_u64().unwrap_or(bytes.len() as u64);
+    Some((Arc::new(bytes), size))
 }
 
 fn contents(path: &str, old_path_markdown: bool, v: &Value, ignore_whitespace: bool, history_file: bool, svg: &SvgRenderer) -> Read {
@@ -1015,6 +1072,16 @@ fn contents(path: &str, old_path_markdown: bool, v: &Value, ignore_whitespace: b
         return Read::Notice(Notice::Lfs(missing));
     }
     let binary = |s: &Value| s["binary"].as_bool() == Some(true);
+    if shows_pdf(v) && !history_file {
+        let encoding = v["new"]["encoding"].as_str().or(v["old"]["encoding"].as_str()).unwrap_or_default().to_string().into();
+        return Read::Binary(Binary::Pdf { old: side_bytes(&v["old"]), new: side_bytes(&v["new"]), binary: binary(&v["old"]) || binary(&v["new"]), encoding });
+    }
+    if shows_media(v) && !history_file
+        && let Some((kind, mime)) = crate::media::media_of(path)
+    {
+        let side = |s: &Value| side_bytes(s).map(|(b, size)| crate::media::MediaSide::of(&b, size, kind, mime));
+        return Read::Binary(Binary::Media(Box::new((side(&v["old"]), side(&v["new"])))));
+    }
     if v["image"].as_bool() == Some(true) && (binary(&v["old"]) || binary(&v["new"])) {
         return Read::Binary(Binary::Image { old: decode_side(&v["old"], svg), new: decode_side(&v["new"], svg), svg: None });
     }
@@ -1781,9 +1848,9 @@ pub(crate) fn header(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoEl
         None => (String::new(), path.to_string()),
     };
     let (glyph, color) = status_icon(diff.file.status);
-    let encoding = diff.data.as_ref().map(|d| d.encoding.clone()).unwrap_or_default();
+    let encoding = diff.data.as_ref().map(|d| d.encoding.clone()).or(diff.pdf.as_ref().map(|p| p.encoding.clone())).unwrap_or_default();
     let file = diff.view == ViewKind::File;
-    let binary = diff.hex.as_ref().filter(|_| diff.image.is_none()).map(|h| (h.data.summary(file), h.data.capped_note(file)));
+    let binary = diff.hex.as_ref().filter(|_| diff.image.is_none() && diff.pdf.is_none() && diff.media.is_none()).map(|h| (h.data.summary(file), h.data.capped_note(file)));
     let image_cap = diff.hex.as_ref().filter(|_| diff.image.as_ref().is_some_and(|i| i.source_on)).and_then(|h| h.data.capped_note(file));
     div()
         .flex()
@@ -1911,7 +1978,7 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
     let binary = diff.shows_binary();
     let hex = diff.hex.is_some();
     // Not for an image, unless it's an SVG's Source, which is a text diff.
-    let text_tools = diff.image.as_ref().is_none_or(|i| i.source_on);
+    let text_tools = diff.image.as_ref().is_none_or(|i| i.source_on) && diff.pdf.is_none() && diff.media.is_none();
     div()
         .flex()
         .flex_none()
@@ -1974,6 +2041,13 @@ pub fn toolbar(diff: &DiffState, kind: ToolbarKind, width: f32, cx: &mut Context
 /// The text's body in a panel `width` by `height` px: what `ensure_layout` lays out.
 pub fn body_size(diff: &DiffState, width: f32, height: f32) -> (f32, f32) {
     // `height`: what's under the panel's header.
+    if diff.pdf.is_some() || diff.media.is_some() {
+        let bar = if diff.pdf.is_some() { crate::pdf::TOOLBAR_H } else { crate::media::TOOLBAR_H };
+        if diff.pdf.as_ref().is_some_and(|p| p.source_on) || diff.media.as_ref().is_some_and(|m| m.source_on) {
+            return (width - RULER_W, height - TOOLBAR_H - bar);
+        }
+        return (width, height - TOOLBAR_H - bar);
+    }
     if let Some(image) = diff.image.as_ref().filter(|i| !i.source_on) {
         let _ = image;
         return (width, height - TOOLBAR_H - IMAGE_TOOLBAR_H);
@@ -2005,12 +2079,13 @@ pub fn diff_panel(tab: &Tab, width: f32, last_opener: Option<&str>, undo: Option
     }
     let staging = tab.wip_ctx().map(|ctx| crate::wip::staging_buttons(("diff-staging-undo", "diff-staging-redo"), ctx, undo, tab.wip.committing, cx).into_any_element());
     let open_in = crate::open_in::open_in_button(tab, last_opener, cx);
+    let media_open_in = if diff.media.is_some() { crate::open_in::open_in_button(tab, last_opener, cx) } else { None };
     let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));
-    Some(div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in, staging }, width, cx)).child(diff_body(diff, width, &tab.zoom_input, cx)).into_any_element())
+    Some(div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(header(diff, cx)).child(toolbar(diff, ToolbarKind::Panel { has_history: crate::history::history_start(&diff.file, tab.commit.as_ref().map_or(&[][..], |c| c.parents.as_slice()), &tab.worktree).is_some(), open_in, staging }, width, cx)).child(diff_body(diff, width, &tab.zoom_input, media_open_in, cx)).into_any_element())
 }
 
 /// What's under the toolbar, in an editor `width` px wide.
-pub fn diff_body(diff: &DiffState, width: f32, zoom_input: &Entity<crate::ui::input::TextInput>, cx: &mut Context<GitVolt>) -> AnyElement {
+pub fn diff_body(diff: &DiffState, width: f32, zoom_input: &Entity<crate::ui::input::TextInput>, open_in_el: Option<AnyElement>, cx: &mut Context<GitVolt>) -> AnyElement {
     if let Some(Notice::Lfs(missing)) = &diff.notice {
         return crate::lfs::lfs_placeholder(missing, diff.lfs_pointer, diff.lfs_busy, diff.lfs_no_git, cx);
     }
@@ -2023,6 +2098,14 @@ pub fn diff_body(diff: &DiffState, width: f32, zoom_input: &Entity<crate::ui::in
             _ => Some(message(diff, cx).into_any_element()),
         };
         return image_body(image, file, source, zoom_input, cx);
+    }
+    if let Some(pdf) = &diff.pdf {
+        let source = diff.hex.as_ref().filter(|_| pdf.source_on).map(|h| hex_body(diff, h, cx));
+        return crate::pdf::pdf_body(pdf, source, cx);
+    }
+    if let Some(media) = &diff.media {
+        let source = diff.hex.as_ref().filter(|_| media.source_on).map(|h| hex_body(diff, h, cx));
+        return crate::media::media_body(media, source, open_in_el, cx);
     }
     if let Some(hex) = &diff.hex {
         return hex_body(diff, hex, cx);

@@ -757,7 +757,7 @@ impl GitVolt {
 }
 
 /// The range input, as Chromium draws it in dark: an 8 px track, filled to a 16 px thumb.
-fn paint_slider(b: Bounds<Pixels>, frac: f32, window: &mut Window) {
+pub fn paint_slider(b: Bounds<Pixels>, frac: f32, window: &mut Window) {
     let y = b.origin.y + (b.size.height - px(8.)) / 2.;
     let track = Bounds::new(point(b.origin.x, y), size(b.size.width, px(8.)));
     window.paint_quad(quad(track, px(4.), theme::range_track(), px(1.), theme::range_border(), BorderStyle::default()));
@@ -808,7 +808,7 @@ impl GitVolt {
     }
 }
 
-fn toolbar_button(id: &'static str, label: impl Into<SharedString>, on: bool) -> Stateful<Div> {
+pub fn toolbar_button(id: &'static str, label: impl Into<SharedString>, on: bool) -> Stateful<Div> {
     div()
         .id(id)
         .flex_none()
@@ -821,7 +821,7 @@ fn toolbar_button(id: &'static str, label: impl Into<SharedString>, on: bool) ->
         .child(label.into())
 }
 
-fn arrowed(parts: Vec<String>) -> Div {
+pub fn arrowed(parts: Vec<String>) -> Div {
     let mut d = div().flex().flex_none().items_center().gap(px(4.));
     for (i, p) in parts.into_iter().enumerate() {
         if i > 0 {

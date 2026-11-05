@@ -254,6 +254,19 @@ pub struct ImageSrc {
     pub old_side: bool,
     /// A changed word's picture: what it's outlined in, added or removed.
     pub word: Option<bool>,
+    /// A diagram's, drawn from the block's source.
+    pub mermaid: bool,
+}
+
+/// A ```mermaid block, in the tree as its source until it's drawn.
+#[derive(Debug, Clone)]
+pub struct MermaidBox {
+    /// The box in the tree, that takes these.
+    pub id: u32,
+    pub slot: u32,
+    pub source: String,
+    pub code: BoxNode,
+    pub drawn: BoxNode,
 }
 
 /// What a body is shown with.
@@ -280,6 +293,7 @@ pub struct Built {
     pub stream: String,
     pub links: Vec<LinkSrc>,
     pub images: Vec<ImageSrc>,
+    pub mermaids: Vec<MermaidBox>,
     /// A slot's or a block's id and the stream's offset an anchor goes to.
     pub anchors: HashMap<String, usize>,
     /// The fenced blocks, as colouring asks for them: language, stream range.
@@ -587,7 +601,7 @@ impl Build {
         let src = el.attr("src").unwrap_or_default().to_string();
         let video = is_video_src(&src);
         let word = ctx.style.word;
-        self.out.images.push(ImageSrc { src, alt: el.attr("alt").unwrap_or_default().to_string(), width: size("width"), height: size("height"), in_link: ctx.in_link, video, old_side: ctx.old_side, word });
+        self.out.images.push(ImageSrc { src, alt: el.attr("alt").unwrap_or_default().to_string(), width: size("width"), height: size("height"), in_link: ctx.in_link, video, old_side: ctx.old_side, word, mermaid: false });
         flow.run.push(Item::Image { slot: self.out.images.len() as u32 - 1, style: ctx.style });
         flow.spaced = false;
     }
@@ -1099,19 +1113,28 @@ impl Build {
         n
     }
 
-    /// `MdMermaid`, with nothing here that draws one: its source, and why (`mermaid.rs`).
+    /// `MdMermaid`: its source until it's drawn (`mermaid.rs`); a picture of it, or its source and why not, after.
     fn mermaid(&mut self, value: &str, ctx: &Ctx) -> Vec<BoxNode> {
-        let mut n = self.code(Some("mermaid".into()), value, None, None, false, ctx);
-        n.margin.bottom = 0.;
+        let start = self.out.stream.len();
+        let mut code = self.code(Some("mermaid".into()), value, None, None, false, ctx);
+        code.margin.bottom = 0.;
         let at = self.out.stream.len();
         let mut c = *ctx;
         c.style.size = 11.;
         c.style.color = Tok::TextSecondary;
-        let d = [Dom::Text(super::MERMAID_NOTE.into())];
-        let mut note = self.content(&d, &c, at);
-        note.margin = Edges::new(4., 0., 10., 0.);
-        self.sep(2);
-        vec![n, note]
+        // A block of its own: a picture with no line around it, as `display: block`.
+        c.style.line = LineH::Zero;
+        let d = [Dom::El(El { tag: "img".into(), attrs: Vec::new(), kids: Vec::new(), special: None })];
+        let drawn = self.content(&d, &c, at);
+        let slot = self.out.images.len() as u32 - 1;
+        if let Some(i) = self.out.images.last_mut() {
+            i.mermaid = true;
+        }
+        let id = self.id();
+        let mut n = BoxNode::new(id, BoxKind::Flow(vec![code.clone()]), start);
+        n.margin.bottom = 10.;
+        self.out.mermaids.push(MermaidBox { id, slot, source: value.to_string(), code, drawn });
+        vec![n]
     }
 
     /// `MdSuggestion`: a diff of the lines it replaces and the lines it puts in.

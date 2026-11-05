@@ -17,10 +17,10 @@ pub mod files;
 pub mod frontmatter;
 pub mod layout;
 pub mod links;
+pub mod mermaid;
 pub mod safe;
 pub mod view;
 
-pub const MERMAID_NOTE: &str = "This build shows a Mermaid diagram as its source";
 
 /// What a suggestion replaces (`MdSuggestionBase`), from whoever renders the note.
 #[derive(Clone)]

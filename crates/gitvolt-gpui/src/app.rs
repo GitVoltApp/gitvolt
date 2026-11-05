@@ -1640,11 +1640,33 @@ impl Render for GitVolt {
                 diff.commit_held = committing;
                 let (w, h) = body_size(diff, width, height);
                 diff.ensure_layout(w, h);
+                let file = diff.view == crate::diff::view::ViewKind::File;
+                let pdf_resized = diff.pdf.as_mut().is_some_and(|p| {
+                    let was_file = p.file;
+                    p.set_file(file);
+                    if p.source_on {
+                        return was_file != file;
+                    }
+                    let pane = if p.both() { (w - 2.) / 2. } else { w };
+                    let changed = was_file != file || p.pane_size() != (pane, h);
+                    p.resize(pane, h);
+                    changed
+                });
+                let font_size = diff.media.as_mut().filter(|m| !m.source_on).map(|m| {
+                    m.set_file(file);
+                    (w, h)
+                });
                 // The rendered diff's Split gives way to one column when the pane's narrow.
                 diff.md_width = Some(width);
                 let split_changed = diff.md.as_ref().is_some_and(|m| m.split != crate::md::files::wants_split(diff));
                 if split_changed {
                     self.sync_markdown(cx);
+                }
+                if pdf_resized {
+                    self.draw_pdf_pages(cx);
+                }
+                if let Some((w, h)) = font_size {
+                    self.draw_font_samples(w, h, cx);
                 }
             }
         }
