@@ -79,6 +79,8 @@ pub struct TextView {
     pub body: Rc<Cell<Bounds<Pixels>>>,
     pub hover: Option<usize>,
     pub pointer_in: bool,
+    /// The pointer's over the minimap: its slider shows, Monaco's `showSlider: mouseover`.
+    pub minimap_hover: bool,
     pub drag: PaneDrag,
     pub focus: FocusHandle,
 }
@@ -87,7 +89,7 @@ impl TextView {
     fn new(text: &str, cx: &mut App) -> Self {
         let lines = Lines::new(Some(text));
         let widest = lines.lines.iter().map(|l| l.text.len()).max().unwrap_or(0);
-        Self { lines: Arc::new(lines), colours: Vec::new(), scroll: 0., hscroll: 0., height: 0., width: 0., widest, body: Rc::default(), hover: None, pointer_in: false, drag: PaneDrag::None, focus: cx.focus_handle() }
+        Self { lines: Arc::new(lines), colours: Vec::new(), scroll: 0., hscroll: 0., height: 0., width: 0., widest, body: Rc::default(), hover: None, pointer_in: false, minimap_hover: false, drag: PaneDrag::None, focus: cx.focus_handle() }
     }
 
     fn set_text(&mut self, text: &str) {

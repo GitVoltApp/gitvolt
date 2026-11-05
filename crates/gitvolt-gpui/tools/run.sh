@@ -6,6 +6,8 @@
 # the GPU driver's mappings count), GITVOLT_RUN_SECS. GITVOLT_XDG: another profile than the default, for a clean run.
 # usage: run.sh <repo> [script] [out.png]
 set -u
+# Under memory pressure this and what it starts die first, not the user's programs: the kernel's pick, inherited by children.
+choom -n 1000 -p $$ >/dev/null
 repo=$1; script=${2:-}; out=${3:-}
 root=${GITVOLT_XDG:-$(pwd)/target/bench/work/xdg}
 ulimit -v "${GITVOLT_RUN_VM:-16000000}"

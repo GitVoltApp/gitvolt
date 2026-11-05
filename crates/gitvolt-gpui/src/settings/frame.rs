@@ -30,7 +30,7 @@ pub fn marked(text: &str, ranges: &[Range<usize>]) -> AnyElement {
     StyledText::new(text.to_string()).with_highlights(ranges.iter().map(|r| (r.clone(), style))).into_any_element()
 }
 
-fn scope_label(scope: Scope, this: &GitVolt) -> String {
+pub fn scope_label(scope: Scope, this: &GitVolt) -> String {
     match scope {
         Scope::App => "GitVolt".into(),
         Scope::Profile => {

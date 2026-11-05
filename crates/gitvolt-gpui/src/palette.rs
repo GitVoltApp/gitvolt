@@ -193,7 +193,8 @@ impl GitVolt {
         let listed = self.settings_pages();
         for d in crate::settings::pages::defs().iter().filter(|d| listed.iter().any(|p| p.id == d.page)) {
             let weak = this.clone();
-            let page = crate::settings::pages::page(d.page).map_or("", |p| p.label);
+            // `settingEntries`: scope › page › group.
+            let page = crate::settings::pages::page(d.page).map_or(String::new(), |p| format!("{} › {} › {}", crate::settings::frame::scope_label(p.scope, self), p.label, d.group));
             let id = d.id;
             out.push(Entry { group: PaletteGroup::Setting, label: d.label.into(), detail: Some(page.into()), alt: None, run: Rc::new(move |window, cx| {
                 weak.update(cx, |v, cx| v.show_settings(Some(id), window, cx)).ok();

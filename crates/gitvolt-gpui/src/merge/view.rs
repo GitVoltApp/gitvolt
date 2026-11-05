@@ -51,6 +51,7 @@ struct Snapshot {
     gutter: f32,
     pane: bool,
     minimap: f32,
+    minimap_hover: bool,
     hover_button: Option<(usize, bool)>,
     current_line: usize,
     caret: Option<(usize, usize)>,
@@ -147,7 +148,17 @@ fn editor(s: Snapshot, cx: &mut Context<GitVolt>) -> AnyElement {
     } else {
         crate::diff::view::edit_keys_of(el, cx)
     };
-    el.on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, window, cx| this.merge_press(index, e, window, cx)))
+    el.on_mouse_down(MouseButton::Middle, cx.listener(move |this, e: &MouseDownEvent, window, cx| {
+        if index != 2 {
+            return;
+        }
+        this.merge_press(index, e, window, cx);
+        this.end_merge_drag();
+        if let Some(text) = cx.read_from_primary().and_then(|i| i.text()) {
+            this.merge_paste(&text, cx);
+        }
+    }))
+    .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, window, cx| this.merge_press(index, e, window, cx)))
         .on_mouse_down(MouseButton::Right, cx.listener(move |this, e: &MouseDownEvent, window, cx| this.merge_text_menu(index, e, window, cx)))
         .on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, _, cx| this.merge_hover(index, e, cx)))
         .on_hover(cx.listener(move |this, over: &bool, _, cx| {
@@ -309,6 +320,11 @@ fn paint_minimap(s: &Snapshot, b: Bounds<Pixels>, view_right: f32, window: &mut 
     let first = (share * count.saturating_sub(shown) as f32) as usize;
     let width = s.minimap - MINIMAP_GUTTER;
     let area = Bounds::new(point(x, b.origin.y), size(px(width), b.size.height));
+    if s.minimap_hover {
+        let lines_in_view = height / crate::metrics::line_h();
+        let top = (s.scroll / crate::metrics::line_h() - first as f32) * MINIMAP_LINE;
+        window.paint_quad(fill(Bounds::new(point(x, b.origin.y + px(top)), size(px(width), px(lines_in_view * MINIMAP_LINE))), theme::scroll_thumb()));
+    }
     window.with_content_mask(Some(ContentMask { bounds: area }), |window| {
         for (i, n) in (first..count.min(first + shown)).enumerate() {
             let y = b.origin.y + px(i as f32 * MINIMAP_LINE);
@@ -537,6 +553,7 @@ fn snapshot_pane(tool: &MergeTool, i: usize, cx: &mut Context<GitVolt>) -> Snaps
         gutter: pane_gutter(),
         pane: true,
         minimap: minimap_width(p.view.width, pane_gutter()),
+        minimap_hover: p.view.minimap_hover,
         hover_button,
         current_line: p.caret.0,
         caret: Some(p.caret),
@@ -569,6 +586,7 @@ fn snapshot_output(tool: &MergeTool, cx: &mut Context<GitVolt>) -> Option<Snapsh
         gutter: out_gutter(),
         pane: false,
         minimap: minimap_width(o.view.width, out_gutter()),
+        minimap_hover: o.view.minimap_hover,
         hover_button: None,
         current_line: caret.0,
         caret: Some(caret),
@@ -931,7 +949,9 @@ impl GitVolt {
         let (x, y) = ((e.position.x - b.origin.x).as_f32(), (e.position.y - b.origin.y).as_f32());
         let over = x < b.size.width.as_f32() - RULER_W - minimap_width(v.width, if index < 2 { pane_gutter() } else { out_gutter() });
         let hover = (over && y >= 0. && y < b.size.height.as_f32() && (y + v.scroll) < v.content()).then(|| v.line_at(y));
-        let changed = hover != v.hover || !v.pointer_in;
+        let strip = !over && x < b.size.width.as_f32() - RULER_W && y >= 0. && y < b.size.height.as_f32();
+        let changed = hover != v.hover || !v.pointer_in || strip != v.minimap_hover;
+        v.minimap_hover = strip;
         v.hover = hover;
         v.pointer_in = true;
         if changed {

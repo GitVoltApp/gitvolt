@@ -288,20 +288,20 @@ impl GitVolt {
             let creates = error.is_none() && !missing && !locals2.contains(&c.develop);
             let can = usable(&c);
             let (s1, s2) = (send.clone(), send.clone());
-            let mut grid = div().flex().flex_wrap().gap_y(px(10.)).gap_x(px(12.));
+            // The web's grid: columns a little wider than the dialog's content, so the second reaches its padding's edge.
+            let mut grid = div().flex().flex_wrap().w(px(440.)).gap_y(px(12.)).gap_x(px(12.));
             for (i, l) in LABELS.iter().enumerate() {
-                grid = grid.child(div().w(px(206.)).child(labelled(*l, &inputs[i], window, cx)));
+                grid = grid.child(div().w(px(214.)).child(labelled(*l, &inputs[i], window, cx)));
             }
             div()
                 .flex()
                 .flex_col()
-                .gap(px(10.))
+                .gap(px(12.))
                 .child(modal::title(if editing { "Git flow settings" } else { "Set up git flow" }))
                 .child(grid)
                 .children(error.map(err))
                 .when(missing, |d| d.child(err(format!("There's no branch {}: create it first", c.master))))
-                .when(creates, |d| d.child(format!("{} doesn't exist yet: it's created at {}.", c.develop, c.master)))
-                .child("Kept in this repository's git config, where the git flow command line reads them too.")
+                .child(div().flex().flex_col().gap(px(4.)).when(creates, |d| d.child(format!("{} doesn't exist yet: it's created at {}.", c.develop, c.master))).child(crate::ui::hanging(div()).child("Kept in this repository's git config, where the git flow command line reads them too.")))
                 .child(modal::actions_row().child(controls::tabbable(controls::button("form-cancel", "Cancel", ButtonKind::Plain, true).on_click(|_, window, cx| modal::close(ID, window, cx)), &stops[0], |window, cx| modal::close(ID, window, cx))).child(crate::ui::anchor("form-ok", controls::tabbable(controls::button("form-ok", if editing { "Save" } else { "Set up git flow" }, ButtonKind::Primary, can).when(can, |d| d.on_click(move |_, window, cx| s1(window, cx))), &stops[1], move |window, cx| s2(window, cx)))))
                 .into_any_element()
         })
@@ -382,7 +382,7 @@ impl GitVolt {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(10.))
+                .gap(px(12.))
                 .child(modal::title(format!("Start a {}", kind_label(k).to_lowercase())))
                 .child(div().flex().gap(px(16.)).children(radios))
                 .child(div().flex().flex_col().gap(px(4.)).child(if k == "feature" { "Name" } else { "Version" }).child(div().flex().h(px(30.2)).items_center().bg(theme::app_bg()).border_1().border_color(if focused { theme::blue() } else { theme::section_border() }).rounded(px(4.)).child(div().flex_none().pl(px(8.)).text_color(theme::text_secondary()).child(prefix)).child(div().flex().flex_1().min_w_0().pl(px(1.)).pr(px(8.)).text_color(theme::text_selected()).child(name.clone()))))
@@ -522,7 +522,7 @@ impl GitVolt {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(10.))
+                .gap(px(12.))
                 .child(modal::title(format!("Finish {name}")))
                 .child(format!("Finishing {}, then leaves you on {develop}.", steps.join(", ")))
                 .when(tagged, |d| d.child(labelled("Tag", &tag, window, cx)).when_some(error.clone().filter(|_| !t.is_empty()), |d, e| d.child(err(e))).child(labelled("Tag message", &message, window, cx)))

@@ -70,6 +70,42 @@ pub fn colour(key: u64, target: Hsla, length: Duration, curve: Curve, running: &
     })
 }
 
+thread_local! {
+    static NUMBERS: RefCell<HashMap<u64, (f32, f32, Instant)>> = RefCell::new(HashMap::new());
+}
+
+/// A commit's new order: what slid is where it belongs, with no slide back.
+pub fn forget(key: u64) {
+    NUMBERS.with_borrow_mut(|map| {
+        map.remove(&key);
+    });
+}
+
+/// An offset's slide, as CSS's `transition: transform`, ease-out; what's not asked for lately starts where it's asked.
+pub fn number(key: u64, target: f32, length: Duration, running: &mut bool) -> f32 {
+    if cfg!(test) {
+        return target;
+    }
+    let now = Instant::now();
+    let at = |from: f32, to: f32, start: Instant| {
+        let t = ((now - start).as_secs_f32() / length.as_secs_f32()).min(1.);
+        from + (to - from) * (1. - (1. - t) * (1. - t))
+    };
+    NUMBERS.with_borrow_mut(|map| {
+        if map.len() > KEPT {
+            map.clear();
+        }
+        let e = map.entry(key).or_insert((target, target, now - length));
+        if e.1 != target {
+            *e = (at(e.0, e.1, e.2), target, now);
+        }
+        if now - e.2 < length {
+            *running = true;
+        }
+        at(e.0, e.1, e.2)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

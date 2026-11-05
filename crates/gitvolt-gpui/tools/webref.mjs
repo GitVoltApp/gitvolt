@@ -19,7 +19,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 rmSync(resolve('target/bench/release/chrome-sandbox'), { force: true });
 const profile = resolve('target/bench/work/web-profile');
 mkdirSync(profile, { recursive: true });
-const app = spawn(bin, [], { stdio: 'ignore', env: { ...process.env, CHROME_DEVEL_SANDBOX: '/usr/share/GitVolt/chrome-sandbox', GITVOLT_DEV_DIRS: profile, GITVOLT_DEV_CDP_PORT: String(PORT), GITVOLT_OPEN: resolve(repo) } });
+// `choom`: under memory pressure this dies first, not the user's programs.
+const app = spawn('choom', ['-n', '1000', '--', bin], { stdio: 'ignore', env: { ...process.env, CHROME_DEVEL_SANDBOX: '/usr/share/GitVolt/chrome-sandbox', GITVOLT_DEV_DIRS: profile, GITVOLT_DEV_CDP_PORT: String(PORT), GITVOLT_OPEN: resolve(repo) } });
 
 let url;
 for (let i = 0; i < 400 && !url; i++) {

@@ -274,6 +274,10 @@ impl GitVolt {
         });
     }
 
+    pub fn paste_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.insert(text, EditKind::Other, cx);
+    }
+
     fn insert(&mut self, text: &str, kind: EditKind, cx: &mut Context<Self>) {
         self.with_edit(cx, |e| {
             e.buffer.replace(None, text, kind);

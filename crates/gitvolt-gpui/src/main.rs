@@ -227,6 +227,12 @@ fn main() {
     let saved_store = store.clone();
     let saved = store.state();
     let api = with_forge(api.with_store(store), scripted);
+    // This build's log files, in its own cache folder: Settings' Debug logging and Logs folder work on them.
+    let logging = gitvolt_core::paths::cache_base().and_then(|c| gitvolt_core::logging::init(&c.join(APP_DIR).join("logs"), false, false).ok());
+    let (api, _log_guard) = match logging {
+        Some(l) => (api.with_log_handle(l.handle), Some(l.guard)),
+        None => (api, None),
+    };
     let api = Arc::new(with_openers(api, opener_env));
     runtime.spawn(shell_env.warm());
     // The per-session askpass socket, before anything can run a network command. Without it the app

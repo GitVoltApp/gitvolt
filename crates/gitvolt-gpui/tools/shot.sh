@@ -3,6 +3,8 @@
 # window is found by this process's pid, so no other window on the desktop can end up in the image.
 # usage: shot.sh <out.png> <repo> [GITVOLT_SHOW spec]
 set -u
+# Under memory pressure this and what it starts die first, not the user's programs: the kernel's pick, inherited by children.
+choom -n 1000 -p $$ >/dev/null
 out=$1; repo=$2; spec=${3:-}
 bin=${GITVOLT_GPUI_BIN:-target/bench/release/gitvolt-gpui}
 env -u WAYLAND_DISPLAY DISPLAY="${DISPLAY:-:0}" GITVOLT_SHOW="$spec" GITVOLT_OPEN="$repo" "$bin" >/dev/null 2>&1 &

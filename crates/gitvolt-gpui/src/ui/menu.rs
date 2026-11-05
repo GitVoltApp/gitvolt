@@ -74,6 +74,7 @@ pub struct ActionRow {
     pub disabled: Option<SharedString>,
     pub shortcut: Option<SharedString>,
     pub swatch: Option<Hsla>,
+    pub dot: Option<(Hsla, bool)>,
     /// A choice among its siblings: a radio instead of the icon, green when it's the one.
     pub radio: Option<bool>,
     /// In its own colour, in bold, with no icon's place: a dropdown's named options.
@@ -96,7 +97,7 @@ pub const NOT_YET: &str = "Not in this build yet";
 
 impl MenuRow {
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>, icon: &'static str, tooltip: impl Into<SharedString>, run: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        MenuRow::Action(ActionRow { id: id.into(), label: label.into(), icon, tooltip: tooltip.into(), run: Rc::new(run), variants: Vec::new(), default_variant: None, disabled: None, shortcut: None, swatch: None, radio: None, tint: None })
+        MenuRow::Action(ActionRow { id: id.into(), label: label.into(), icon, tooltip: tooltip.into(), run: Rc::new(run), variants: Vec::new(), default_variant: None, disabled: None, shortcut: None, swatch: None, dot: None, radio: None, tint: None })
     }
 
     /// In its place, greyed: its action needs what isn't ported yet.
@@ -147,6 +148,14 @@ impl MenuRow {
     pub fn tint(mut self, color: Hsla) -> Self {
         if let MenuRow::Action(a) = &mut self {
             a.tint = Some(color);
+        }
+        self
+    }
+
+    /// The row's icon is this colour's dot, ringed when it's the current one.
+    pub fn dot(mut self, color: Hsla, current: bool) -> Self {
+        if let MenuRow::Action(a) = &mut self {
+            a.dot = Some((color, current));
         }
         self
     }
@@ -1191,7 +1200,11 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
                         .when(a.tint.is_none(), |d| {
                             d.child(match a.radio {
                                 Some(on) => radio_mark(on),
-                                None => icon_slot(a.icon, color),
+                                None => match a.dot {
+                                    // `profileDotIcon`: the colour in the icon's place, a ring round the current one.
+                                    Some((c, current)) => div().flex().flex_none().size(px(14.)).items_center().justify_center().when(current, |d| d.child(div().flex().items_center().justify_center().size(px(13.)).rounded_full().border_1().border_color(color).child(div().size(px(7.)).rounded_full().bg(c)))).when(!current, |d| d.child(div().size(px(8.)).rounded_full().bg(c))).into_any_element(),
+                                    None => icon_slot(a.icon, color).into_any_element(),
+                                },
                             })
                         })
                         .when_some(a.swatch, |d, s| d.child(div().flex_none().size(px(8.)).rounded_full().bg(s)))

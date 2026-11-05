@@ -168,6 +168,11 @@ impl GitVolt {
                 self.settings_ui.page = page.id.to_string();
                 cx.notify();
             }
+        } else if let Some(label) = part.strip_prefix("theme=") {
+            if let Some(t) = crate::theme::builtins().iter().find(|t| t.label == label) {
+                let id = t.id.clone();
+                self.set_settings(move |s| s["theme"] = serde_json::json!(id), cx);
+            }
         } else if part == "hamburger" {
             let rows = crate::commands::hamburger_rows(&weak, self, cx);
             menu::open_below("hamburger", rows, Default::default(), window, cx);

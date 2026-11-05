@@ -475,10 +475,31 @@ fn row_view(s: &RebaseSession, index: usize, row: &EditorRow, g: &Grouping, chip
     let chip_over = s.chip_drag.as_ref().is_some_and(|d| d.active && d.over.as_deref() == Some(row.oid.as_str()));
     let conflict = s.prediction.by_row.get(&row.oid).cloned();
     let drag = s.row_drag.as_ref().filter(|d| d.active);
+    let row_key = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        row.oid.hash(&mut h);
+        h.finish()
+    };
     let (offset, in_group, count) = match drag {
         Some(d) if d.group.contains(&index) => (group_offset(&d.heights, &d.group, d.from, index, d.dy), true, (d.from == index && d.group.len() > 1).then_some(d.group.len())),
-        Some(d) => (slot_shifts(&d.heights, &d.group, d.to).get(index).copied().unwrap_or(0.), false, None),
-        None => (0., false, None),
+        Some(d) => {
+            // The rows a drag passes slide aside, 150 ms.
+            let mut running = false;
+            let slid = crate::ui::ease::number(row_key, slot_shifts(&d.heights, &d.group, d.to).get(index).copied().unwrap_or(0.), std::time::Duration::from_millis(150), &mut running);
+            if running {
+                cx.spawn(async |this, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(16)).await;
+                    this.update(cx, |_, cx| cx.notify()).ok();
+                })
+                .detach();
+            }
+            (slid, false, None)
+        }
+        None => {
+            crate::ui::ease::forget(row_key);
+            (0., false, None)
+        }
     };
     let text = target_message(state, &row.oid, g);
     let first_line = text.split('\n').next().unwrap_or_default().to_string();

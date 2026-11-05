@@ -28,6 +28,8 @@ pub fn button(id: impl Into<ElementId>, label: impl Into<SharedString>, kind: Bu
     let base = div().id(id).flex().flex_none().items_center().justify_center().px(px(14.)).py(px(5.)).rounded(px(4.)).border_1().whitespace_nowrap().child(label.into());
     let base = match kind {
         ButtonKind::Plain => base.bg(theme::control_bg()).border_color(theme::section_border()).text_color(theme::text_normal()).when(enabled, |d| d.hover(|d| d.bg(theme::hover_row()).text_color(theme::text_selected()))),
+        // `.modal-actions button[type="submit"]:disabled`: no blue.
+        ButtonKind::Primary if !enabled => base.bg(theme::panel_bg1()).border_color(theme::section_border()).text_color(theme::text_selected()),
         ButtonKind::Primary => base.bg(theme::blue()).border_color(theme::blue()).text_color(theme::text_on_accent()),
         ButtonKind::Positive => base.border_color(theme::green()).text_color(theme::green()).when(enabled, |d| d.hover(|d| d.bg(theme::green()).text_color(theme::text_on_accent()))),
         ButtonKind::Danger => base.border_color(theme::red()).text_color(theme::mix(theme::red(), 0.6, theme::text_selected())).when(enabled, |d| d.hover(|d| d.bg(theme::mix(theme::red(), 0.2, transparent_black())))),

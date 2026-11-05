@@ -18,7 +18,7 @@ const { chromium } = createRequire(resolve('ui/package.json'))('@playwright/test
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const env = { ...process.env, VITE_GITVOLT_HARNESS: 'ws://127.0.0.1:7433/ws' };
 execFileSync('node', ['e2e/build-ui.mjs'], { cwd: ui, env, stdio: 'inherit' });
-const vite = spawn('npx', ['vite', 'preview', '--mode', 'e2e', '--outDir', 'dist-e2e', '--port', '1420', '--strictPort'], { cwd: ui, env, stdio: 'ignore', detached: true });
+const vite = spawn('choom', ['-n', '1000', '--', 'npx', 'vite', 'preview', '--mode', 'e2e', '--outDir', 'dist-e2e', '--port', '1420', '--strictPort'], { cwd: ui, env, stdio: 'ignore', detached: true });
 for (let i = 0; i < 200; i++) {
   try { await fetch('http://localhost:1420'); break; } catch { await sleep(100); }
 }

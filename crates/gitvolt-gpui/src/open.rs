@@ -589,9 +589,11 @@ fn open_btn(id: impl Into<ElementId>, primary: bool, enabled: bool) -> Stateful<
         .px(px(12.))
         .rounded(px(4.))
         .border_1()
-        .when(primary, |d| d.bg(theme::blue()).border_color(theme::blue()).text_color(theme::text_on_accent()))
+        .when(primary && enabled, |d| d.bg(theme::blue()).border_color(theme::blue()).text_color(theme::text_on_accent()))
+        // Chromium's opacity is the whole button's; GPUI's would lay the border and the text over a dimmed ground.
+        .when(primary && !enabled, |d| d.bg(theme::mix(theme::blue(), 0.5, theme::app_bg())).border_color(theme::mix(theme::blue(), 0.5, theme::app_bg())).text_color(theme::mix(theme::text_on_accent(), 0.5, theme::app_bg())))
         .when(!primary, |d| d.bg(theme::panel_bg1()).border_color(theme::section_border()).text_color(theme::text_selected()))
-        .when(!enabled, |d| d.opacity(0.5))
+        .when(!enabled && !primary, |d| d.opacity(0.5))
         .when(enabled, |d| d.cursor_pointer().when(!primary, |d| d.hover(|d| d.bg(theme::hover_row()))).when(primary, |d| d.hover(|d| d.bg(theme::mix(theme::blue(), 0.9, white())))))
 }
 

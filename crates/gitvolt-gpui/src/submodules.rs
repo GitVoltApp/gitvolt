@@ -421,7 +421,7 @@ impl GitVolt {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(10.))
+                .gap(px(12.))
                 .child(modal::title("Add submodule"))
                 .child(labelled("URL", &url, window, cx))
                 .child(labelled("Path", &path, window, cx))

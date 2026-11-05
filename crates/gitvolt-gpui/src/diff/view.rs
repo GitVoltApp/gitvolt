@@ -731,6 +731,23 @@ impl DiffState {
     }
 
     /// The text's left edge, for what's placed against it.
+    /// Monaco's sticky scroll, in File View with the setting on: the rows of the scopes around what's at the view's top, at most five.
+    pub fn sticky_rows(&self) -> Vec<usize> {
+        if self.view != ViewKind::File || !crate::metrics::editor_style().sticky || self.rows.is_empty() {
+            return Vec::new();
+        }
+        let scopes_at = |y: f32| {
+            let ix = self.layout.row_at(y).min(self.rows.len() - 1);
+            let Some(n) = self.rows[ix].new.or(self.rows[ix].old) else { return Vec::new() };
+            (0..n).filter(|i| self.fold_ends.get(*i as usize).copied().flatten().is_some_and(|end| end > n)).collect::<Vec<u32>>()
+        };
+        let mut lines = scopes_at(self.scroll);
+        // What's under the pinned lines is what they have to be the scopes of.
+        lines = scopes_at(self.scroll + lines.len().min(5) as f32 * crate::metrics::line_h());
+        let keep = lines.len().saturating_sub(5);
+        lines[keep..].iter().filter_map(|n| self.rows.iter().position(|r| r.new.or(r.old) == Some(*n))).collect()
+    }
+
     pub fn gutter_w(&self) -> f32 {
         self.gutter()
     }
@@ -1603,6 +1620,13 @@ fn on_mouse_down(this: &mut GitVolt, e: &MouseDownEvent, window: &mut Window, cx
         cx.notify();
         return;
     }
+    // A press on a pinned line goes to it.
+    let pinned = ((e.position.y - b.origin.y).as_f32() / crate::metrics::line_h()) as usize;
+    if let Some(ix) = diff.sticky_rows().get(pinned).copied() {
+        diff.scroll = diff.layout.offsets.get(ix).copied().unwrap_or(0.).clamp(0., diff.layout.max_scroll());
+        cx.notify();
+        return;
+    }
     let Some(r) = diff.rows.get(row).copied() else { return };
     if y >= diff.layout.content() {
         return;
@@ -1809,6 +1833,7 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
         caret: Rc::new(Cell::new(None)),
     };
     let caret_cell = p.caret.clone();
+    let sticky = diff.sticky_rows();
     let caret_at = diff.caret;
     let editor = diff.edit.as_ref().map(|e| e.focus.clone());
     let input_entity = cx.entity();
@@ -1832,6 +1857,17 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
         .cursor(CursorStyle::IBeam)
         .on_mouse_down(MouseButton::Left, cx.listener(on_mouse_down))
         .on_mouse_down(MouseButton::Right, cx.listener(on_text_menu))
+        .on_mouse_down(MouseButton::Middle, cx.listener(|this, e: &MouseDownEvent, window, cx| {
+            // X's primary selection, at the place pressed, as Monaco's.
+            if !this.tabs.get(this.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.edit.is_some()) {
+                return;
+            }
+            on_mouse_down(this, e, window, cx);
+            this.with_diff_quiet(|d| d.drag = Drag::None);
+            if let Some(text) = cx.read_from_primary().and_then(|i| i.text()) {
+                this.paste_text(&text, cx);
+            }
+        }))
         .on_mouse_move(cx.listener(on_mouse_move))
         .on_mouse_up(MouseButton::Left, cx.listener(selection_settled))
         .on_mouse_up_out(MouseButton::Left, cx.listener(selection_settled))
@@ -1859,6 +1895,15 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
                                     _ if p.split => paint_split(b, ix, &rows[ix], &p, window, cx),
                                     _ => paint_inline(b, ix, &rows[ix], &p, window, cx),
                                 }
+                            }
+                            let h = crate::metrics::line_h();
+                            for (k, ix) in sticky.iter().enumerate() {
+                                let b = Bounds::new(point(bounds.origin.x, bounds.origin.y + px(k as f32 * h)), size(bounds.size.width, px(h)));
+                                window.paint_quad(fill(b, theme::app_bg()));
+                                paint_inline(b, *ix, &rows[*ix], &p, window, cx);
+                            }
+                            if !sticky.is_empty() {
+                                window.paint_quad(fill(Bounds::new(point(bounds.origin.x, bounds.origin.y + px(sticky.len() as f32 * h)), size(bounds.size.width, px(1.))), theme::section_border()));
                             }
                         }
                     });

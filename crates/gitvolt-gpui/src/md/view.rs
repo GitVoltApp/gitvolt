@@ -310,6 +310,21 @@ fn set_kids(node: &mut BoxNode, id: u32, new: Vec<BoxNode>) -> bool {
     go(node, id, &mut Some(new))
 }
 
+/// Each `details` of the tree, in order: what a read of the same file again keeps open.
+fn walk_details(node: &mut BoxNode, f: &mut dyn FnMut(&mut bool)) {
+    match &mut node.kind {
+        BoxKind::Details { open, summary, body } => {
+            f(open);
+            walk_details(summary, f);
+            body.iter_mut().for_each(|k| walk_details(k, f));
+        }
+        BoxKind::Flow(kids) => kids.iter_mut().for_each(|k| walk_details(k, f)),
+        BoxKind::Table(t) => t.rows.iter_mut().for_each(|r| r.cells.iter_mut().for_each(|c| walk_details(&mut c.content, f))),
+        BoxKind::Columns { cols, .. } => cols.iter_mut().for_each(|k| walk_details(k, f)),
+        _ => {}
+    }
+}
+
 fn toggle_in(node: &mut BoxNode, id: u32) -> bool {
     if node.id == id
         && let BoxKind::Details { open, .. } = &mut node.kind
@@ -1871,9 +1886,20 @@ impl MdView {
 
     fn adopt(&mut self, result: Result<(Arc<Vec<safe::Dom>>, Built), bool>, cx: &mut Context<Self>) {
         match result {
-            Ok((dom, built)) => {
+            Ok((dom, mut built)) => {
                 let mut st = self.state.borrow_mut();
                 st.dom = Some(dom);
+                // A read of the same file again (a theme switch, a save) keeps what was opened, as the web's DOM does.
+                let mut opened = Vec::new();
+                if let Some(old) = st.doc.as_mut() {
+                    old.built.tops.iter_mut().for_each(|t| walk_details(t, &mut |o| opened.push(*o)));
+                }
+                let mut fresh = 0;
+                built.tops.iter_mut().for_each(|t| walk_details(t, &mut |_| fresh += 1));
+                if fresh == opened.len() {
+                    let mut at = opened.into_iter();
+                    built.tops.iter_mut().for_each(|t| walk_details(t, &mut |o| *o = at.next().unwrap_or(*o)));
+                }
                 st.adopt(built);
                 drop(st);
                 self.colour(cx);

@@ -19,8 +19,8 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 
 - **Never push.** Commit on the current branch only. No `Co-Authored-By`, no mention of Claude or any
   AI in commits. `git add <paths>`, never `-A`. Commit messages as in `CONTRIBUTING.md`.
-- **Builds go on disk, one at a time, with `-j 8`:**
-  `cargo build --release -j 8 -p gitvolt-gpui --target-dir target/bench`. Never put a target dir or
+- **Builds go on disk, one at a time, with `-j 4`, under `choom`:**
+  `choom -n 1000 -- cargo build --release -j 4 -p gitvolt-gpui --target-dir target/bench`. Every build, test, app and nested compositor runs with an OOM score of 1000, so under memory pressure it dies first, not the user's programs; a signal 9 is that doing its job: check `journalctl -k`, wait for memory, retry, and don't raise a limit to get round it. The tools set it themselves (`run.sh`, `shot.sh`, `realinput.sh`, `flows/run.sh`, `webref.mjs`). Before a build or a run, `free -m`'s available column says at least 4 GB, or wait. Never put a target dir or
   anything large under `/tmp`: it's a RAM disk, and filling it has killed the user's desktop app.
 - **Memory is shared with the user's own programs and has run out twice.** Close the CEF reference as
   soon as you have its images, and don't run it during a build. Delete any `core.*` file a crash leaves.
@@ -114,9 +114,9 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 ## Tests
 
 - **Every run of a test binary or of the app goes under a memory cap and a timeout**, so a runaway fails on its own and can't take the machine down (one has, holding 20 GB):
-  `( ulimit -v 10000000; timeout 300 cargo test -j 8 -p gitvolt-gpui --target-dir target/bench )`. If the cap kills cargo or rustc while building, build first with `cargo test --no-run` without it, then run under it. The same around a scripted run of the app (`tools/run.sh`), raised only if a GPU driver's address space needs more. A repository's file is untrusted: a loop that walks it or grows a buffer has a bound, pinned by a test.
+  `( ulimit -v 10000000; timeout 300 choom -n 1000 -- cargo test -j 4 -p gitvolt-gpui --target-dir target/bench -- --test-threads=8 )`. If the cap kills cargo or rustc while building, build first with `cargo test --no-run` without it, then run under it. The same around a scripted run of the app (`tools/run.sh`), raised only if a GPU driver's address space needs more. A repository's file is untrusted: a loop that walks it or grows a buffer has a bound, pinned by a test.
 - **What takes a repository's bytes and can't be bounded from the inside runs in `src/worker.rs`** (a PDF, a diagram), under its own memory limit and timeout. What runs in the app's process (Markdown's parsers, a font's tables) has a bound on every loop and buffer, and a test on it.
-- `cargo test -j 8 -p gitvolt-gpui`, and `CEF_PATH=$HOME/.cache/tauri-cef cargo clippy -j 8 -p
+- `choom -n 1000 -- cargo test -j 4 -p gitvolt-gpui`, and `CEF_PATH=$HOME/.cache/tauri-cef choom -n 1000 -- cargo clippy -j 4 -p
   gitvolt-gpui -p gitvolt-core --all-targets -- -D warnings` before each commit.
 - In a test module: `use std::prelude::v1::test;` (`gpui::*` brings its own `test`). GPUI's test
   scheduler panics when another thread wakes one of its tasks, so a test can't await `self.rt`: test

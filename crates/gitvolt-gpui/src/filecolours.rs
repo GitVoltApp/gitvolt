@@ -6,7 +6,6 @@ pub mod settings_page;
 
 use crate::app::GitVolt;
 use crate::ui::menu::MenuRow;
-use crate::ui::picker::{self, PickItem};
 use gpui::prelude::*;
 use gpui::*;
 use serde_json::{Value, json};
@@ -380,6 +379,39 @@ impl Matcher {
 }
 
 /// `nextTint`: the first preset no scope uses, else gray.
+/// `planAdd`: what adding `pattern` to scope `target` would do over `paths`: `shadowed` is the highest scope above it that already
+/// takes some matching path, and `recolours` the other paths whose scope changes if `target` moves just above that one.
+pub fn plan_add(scopes: &[Value], target: usize, pattern: &str, paths: &[String]) -> (Option<usize>, usize) {
+    let old = Matcher::new(&json!(scopes));
+    let Some(compiled) = compile(pattern) else { return (None, 0) };
+    let matching: Vec<&String> = paths.iter().filter(|p| compiled.file(p)).collect();
+    let mut shadowed: Option<usize> = None;
+    for p in &matching {
+        if let Ok(s) = usize::try_from(old.scope_of(p))
+            && s < target
+            && shadowed.is_none_or(|h| s < h)
+        {
+            shadowed = Some(s);
+        }
+    }
+    let Some(above) = shadowed else { return (None, 0) };
+    let mut entries = scopes.to_vec();
+    let mut ids: Vec<usize> = (0..entries.len()).collect();
+    if let Some(t) = entries.get_mut(target).and_then(|s| s["patterns"].as_array_mut()) {
+        t.push(json!(pattern));
+    }
+    if target < entries.len() {
+        let moved = entries.remove(target);
+        let id = ids.remove(target);
+        entries.insert(above, moved);
+        ids.insert(above, id);
+    }
+    let next = Matcher::new(&json!(entries));
+    let scope_after = |p: &String| usize::try_from(next.scope_of(p)).ok().and_then(|i| ids.get(i).copied());
+    let recolours = paths.iter().filter(|p| !matching.contains(p)).filter(|p| usize::try_from(old.scope_of(p)).ok() != scope_after(p)).count();
+    (Some(above), recolours)
+}
+
 pub fn next_tint(scopes: &[Value]) -> &'static str {
     TINT_PRESETS.iter().map(|p| p.0).find(|n| !scopes.iter().any(|s| s["tint"] == *n)).unwrap_or("gray")
 }
@@ -468,29 +500,11 @@ impl GitVolt {
         );
     }
 
-    /// "Colour …": which scope takes the pattern; the web UI's Settings page isn't here yet.
-    fn pick_colour_scope(&mut self, pattern: String, window: &mut Window, cx: &mut Context<Self>) {
-        const NEW: &str = "\u{0}new";
-        let Some(dir) = self.common_dir() else { return };
-        let list = self.profile["fileColours"][&dir].as_array().cloned().unwrap_or_default();
-        let mut items: Vec<PickItem> = list.iter().enumerate().map(|(i, s)| PickItem { id: i.to_string().into(), label: s["name"].as_str().unwrap_or_default().to_string().into(), detail: s["tint"].as_str().map(|t| t.to_string().into()), icon: Some("palette"), current: false, tooltip: Some(format!("Add {pattern} to this scope").into()) }).collect();
-        items.push(PickItem { id: NEW.into(), label: "New scope".into(), detail: None, icon: Some("plus"), current: false, tooltip: Some(format!("A new scope for {pattern}").into()) });
-        let at = crate::ui::menu::last_origin(cx);
-        let anchor = Bounds::new(point(at.x, at.y - px(4.)), size(px(0.), px(0.)));
-        let weak = cx.weak_entity();
-        let on_pick = move |item: &PickItem, _: &mut Window, cx: &mut App| {
-            let scope = item.id.parse::<usize>().ok();
-            let (dir, pattern) = (dir.clone(), pattern.clone());
-            weak.update(cx, |v, cx| v.add_colour_pattern(dir, scope, pattern, cx)).ok();
-        };
-        picker::open(picker::PickRequest { key: None, anchor, items, placeholder: "Colour with a scope".into(), toggle: None, on_pick: std::rc::Rc::new(on_pick) }, window, cx);
-    }
-
     fn colour_item(&self, id: &'static str, label: String, pattern: String, this: &WeakEntity<GitVolt>) -> MenuRow {
-        let (w, p) = (this.clone(), pattern.clone());
+        let (w, p, via) = (this.clone(), pattern.clone(), label.clone());
         MenuRow::action(id, label, "palette", format!("Add {pattern} to a scope"), move |window, cx| {
-            let p = p.clone();
-            w.update(cx, |v, cx| v.pick_colour_scope(p, window, cx)).ok();
+            let (p, via) = (p.clone(), via.clone());
+            w.update(cx, |v, cx| v.request_colour_pattern(p, via, window, cx)).ok();
         })
     }
 
@@ -537,6 +551,15 @@ impl GitVolt {
 mod tests {
     use super::*;
     use std::prelude::v1::test;
+
+    #[test]
+    fn adding_under_a_scope_that_already_takes_the_files_says_so() {
+        let scopes = vec![json!({ "id": "a", "name": "Docs", "tint": "blue", "patterns": ["docs/**"] }), json!({ "id": "b", "name": "Tests", "tint": "green", "patterns": ["**/*.test.ts"] })];
+        let paths = ["docs/a.md".to_string(), "src/b.test.ts".to_string(), "src/c.ts".to_string()];
+        assert_eq!(plan_add(&scopes, 1, "docs/**", &paths), (Some(0), 0));
+        assert_eq!(plan_add(&scopes, 1, "src/**", &paths), (None, 0));
+        assert_eq!(plan_add(&scopes, 0, "src/**", &paths), (None, 0));
+    }
 
     fn hit(p: &str, path: &str) -> bool {
         compile(p).is_some_and(|c| c.file(path))

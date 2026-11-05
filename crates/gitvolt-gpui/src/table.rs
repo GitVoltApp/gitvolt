@@ -136,7 +136,7 @@ fn rebasing_chip(name: &str, lane: usize) -> impl IntoElement + use<> {
     let color = theme::lane(lane);
     tip(
         format!("{name} is being rebased"),
-        div().flex().flex_none().items_center().gap(px(CHIP_GAP)).h(px(crate::metrics::chip_h())).px(px(5.)).rounded(px(3.)).bg(theme::lane_alpha(lane, 0.45)).border_1().border_dashed().border_color(color).text_color(theme::text_selected()).child(icon("loader-circle", 12., theme::text_selected())).child(name.to_string()),
+        div().flex().flex_none().items_center().gap(px(CHIP_GAP)).h(px(crate::metrics::chip_h())).px(px(5.)).rounded(px(3.)).bg(theme::lane_alpha(lane, 0.45)).border_1().border_dashed().border_color(color).text_color(theme::text_selected()).child(crate::ui::spin::spinner("loader-circle", 12., theme::text_selected())).child(name.to_string()),
     )
 }
 
@@ -730,10 +730,23 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
     .track_scroll(&tab.list)
     .flex_1()
     .min_w_0();
+    // Columns wider than the pane scroll sideways, the header with them and a scrollbar along the bottom, as `.graph-scroll`.
+    let total = [Col::Labels, Col::Graph, Col::Message, Col::Author, Col::Date, Col::Sha].into_iter().filter(|c| *c == Col::Graph || *c == Col::Message || !tab.hidden_columns.contains(c)).map(|c| match c {
+        Col::Labels => cols.labels,
+        Col::Graph => cols.graph,
+        Col::Message => cols.message,
+        Col::Author => cols.author,
+        Col::Date => cols.date,
+        Col::Sha => cols.sha,
+    }).sum::<f32>();
+    let wide = total > available + 0.5;
+    let base_handle = tab.list.0.borrow().base_handle.clone();
+    let list = if wide { list.with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained) } else { list };
+    let across = if wide { base_handle.offset().x.as_f32().max(available - total) } else { 0. };
     let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));
     let thumb = scrollbar(tab, cx);
     let reveal = tab.reveal.as_ref().map(|r| crate::presets::reveal_panel(tab, r, cols, list_h, tab.revealed.as_deref(), cx));
-    div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(div().flex().flex_none().pr(px(gutter)).overflow_hidden().child(header)).child(div().relative().flex().flex_1().min_h_0().child(list).when(scrolls, |d| d.child(thumb)).children(reveal)).into_any_element()
+    div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(div().flex().flex_none().pr(px(gutter)).overflow_hidden().child(header.ml(px(across)).when(wide, |d| d.flex_none().w(px(total))))).child(div().relative().flex().flex_1().min_h_0().child(list).when(scrolls, |d| d.child(thumb)).children(reveal)).when(wide, |d| d.child(div().flex_none().h(px(crate::ui::scrollbar::LANE)).pr(px(gutter)).child(crate::ui::scrollbar::horizontal("graph-across", &base_handle)))).into_any_element()
 }
 
 /// The Message cell: the summary, and after it what's dimmed (a stash's branch, a fold's and a hidden branch's marks, a body's

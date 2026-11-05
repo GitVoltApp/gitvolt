@@ -312,14 +312,14 @@ impl GitVolt {
             let swatch = p["color"].as_str().and_then(theme::Col::parse).map_or(theme::blue(), theme::Col::hsla);
             let weak = this.clone();
             let id2 = id.clone();
-            MenuRow::action(format!("profile.{id}"), label(p), if on { "check" } else { "" }, "", move |_, cx| {
+            MenuRow::action(format!("profile.{id}"), label(p), "", "", move |_, cx| {
                 let id = id2.clone();
                 weak.update(cx, |v, cx| {
                     if v.profile["id"] != id.as_str() {
                         v.switch_profile(id, cx);
                     }
                 }).ok();
-            }).swatch(swatch)
+            }).dot(swatch, on)
         }).collect();
         rows.push(MenuRow::Separator);
         let weak = this.clone();
@@ -407,7 +407,7 @@ impl GitVolt {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(10.))
+                .gap(px(12.))
                 .child(modal::title(if new { "New profile" } else { "Edit profile" }))
                 .child(div().flex().flex_col().gap(px(4.)).child("Name").child(div().flex().items_center().h(px(28.)).px(px(8.)).rounded(px(4.)).bg(theme::app_bg()).border_1().border_color(if focused { theme::blue() } else { theme::section_border() }).text_color(theme::text_selected()).child(view.clone())))
                 .child(div().text_size(px(12.)).text_color(theme::text_secondary()).child("Leave it empty to show just the color in the tab bar."))

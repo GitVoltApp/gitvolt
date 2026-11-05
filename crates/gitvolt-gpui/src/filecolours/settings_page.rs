@@ -24,6 +24,16 @@ pub struct PageState {
     /// The worktree's tracked files, and the worktree they're of.
     pub repo_files: Option<(String, Rc<Vec<String>>)>,
     pub loading_files: bool,
+    /// The file list's "Colour …": the strip at the page's top.
+    pub add: Option<AddStrip>,
+}
+
+/// `AddStrip`: the pattern, editable, the scope it goes to, what the menu's row said.
+pub struct AddStrip {
+    pub dir: String,
+    pub pattern: Entity<crate::ui::input::TextInput>,
+    pub target: usize,
+    pub via: String,
 }
 
 const STARTERS: [(&str, &str, &[&str], bool); 3] = [("Tests", "green", &["**/tests/**", "**/test/**", "**/__tests__/**", "*.test.*", "*.spec.*", "*_test.*", "*.snap"], false), ("Generated", "gray", &["**/generated/**", "*.generated.*", "*.pb.*", "*.min.js", "*.lock", "package-lock.json"], true), ("Docs", "blue", &["docs/**", "*.md", "*.rst", "*.adoc"], false)];
@@ -92,6 +102,30 @@ fn plural(n: usize) -> String {
 }
 
 impl GitVolt {
+    /// "Colour …" from a file list's menu: the page, with its strip.
+    pub fn request_colour_pattern(&mut self, pattern: String, via: String, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(dir) = self.scopes_dir() else { return };
+        let input = cx.new(|cx| {
+            let mut i = crate::ui::input::TextInput::new(cx).claim_escape();
+            i.set_text(&pattern, cx);
+            i
+        });
+        cx.subscribe(&input, |this, _, e: &crate::ui::input::InputEvent, cx| match e {
+            crate::ui::input::InputEvent::Escape => {
+                this.settings_ui.file_colours.add = None;
+                cx.notify();
+            }
+            crate::ui::input::InputEvent::Changed => cx.notify(),
+            _ => {}
+        })
+        .detach();
+        self.settings_ui.file_colours.add = Some(AddStrip { dir, pattern: input.clone(), target: 0, via });
+        self.show_settings(None, window, cx);
+        self.settings_ui.page = "file-colours".to_string();
+        self.focus_next_frame = Some(input.read(cx).focus.clone());
+        cx.notify();
+    }
+
     fn scopes_dir(&self) -> Option<String> {
         self.tabs.get(self.active).filter(|t| !t.is_open_tab()).and_then(|t| t.info["commonDir"].as_str().map(str::to_string))
     }
@@ -368,12 +402,83 @@ fn scope_row(this: &mut GitVolt, i: usize, scope: &Value, counts: (Option<usize>
     crate::ui::anchor(format!("fc-row:{i}"), row).into_any_element()
 }
 
+fn add_strip(this: &mut GitVolt, dir: &str, scopes: &[Value], window: &Window, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
+    let add = this.settings_ui.file_colours.add.as_ref().filter(|a| a.dir == dir)?;
+    let (input, via) = (add.pattern.clone(), add.via.clone());
+    let t = add.target.min(scopes.len().saturating_sub(1));
+    let typed = input.read(cx).text().trim().to_string();
+    let enabled = !typed.is_empty();
+    let files = this.settings_ui.file_colours.repo_files.as_ref().map(|f| f.1.clone());
+    let (shadowed, recolours) = match &files {
+        Some(paths) if enabled && !scopes.is_empty() => super::plan_add(scopes, t, &typed, paths),
+        _ => (None, 0),
+    };
+    let weak = cx.weak_entity();
+    let on_scope: crate::ui::controls::OnSelect<usize> = Rc::new(move |v, _, cx| {
+        let v = *v;
+        weak.update(cx, |this, cx| {
+            if let Some(a) = this.settings_ui.file_colours.add.as_mut() {
+                a.target = v;
+            }
+            cx.notify();
+        })
+        .ok();
+    });
+    let options: Vec<(usize, SharedString, Option<SharedString>)> = scopes.iter().enumerate().map(|(i, s)| (i, s["name"].as_str().unwrap_or_default().to_string().into(), None)).collect();
+    let mut row = div().flex().items_center().gap(px(8.)).child("Add").child(div().flex().flex_none().w(px(220.)).child(input_box("fc-strip-pattern", input, false, window, cx)));
+    if !scopes.is_empty() {
+        row = row.child("to").child(div().flex().flex_none().min_w(px(120.)).child(crate::ui::controls::select("setting:fc-strip-scope", t, Rc::new(options), None, on_scope, cx)));
+    }
+    let (add_dir, new_dir, pat_add, pat_new) = (dir.to_string(), dir.to_string(), typed.clone(), typed.clone());
+    row = row.child(div().flex_1());
+    if !scopes.is_empty() {
+        row = row.child(crate::ui::anchor("fc-strip-add", crate::ui::controls::button("fc-strip-add", "Add", crate::ui::controls::ButtonKind::Primary, enabled).when(enabled, |d| {
+            d.on_click(cx.listener(move |this, _, _, cx| {
+                this.add_colour_pattern(add_dir.clone(), Some(t), pat_add.clone(), cx);
+                this.settings_ui.file_colours.add = None;
+            }))
+        })));
+    }
+    row = row
+        .child(crate::ui::anchor("fc-strip-new", fc_button("fc-strip-new", "New scope", enabled).when(enabled, |d| {
+            d.on_click(cx.listener(move |this, _, _, cx| {
+                this.add_colour_pattern(new_dir.clone(), None, pat_new.clone(), cx);
+                this.settings_ui.file_colours.add = None;
+            }))
+        })))
+        .child(crate::ui::anchor("fc-strip-cancel", fc_button("fc-strip-cancel", "Cancel", true).on_click(cx.listener(|this, _, _, cx| {
+            this.settings_ui.file_colours.add = None;
+            cx.notify();
+        }))));
+    let warn = shadowed.and_then(|above| {
+        let (higher, target) = (scopes.get(above)?["name"].as_str()?.to_string(), scopes.get(t)?["name"].as_str()?.to_string());
+        let pattern = typed.clone();
+        let label = format!("Move {target} above {higher}{}", if recolours > 0 { format!(" (recolours {recolours} other files)") } else { String::new() });
+        Some(div().flex().items_center().justify_between().gap(px(8.)).text_color(theme::text_normal()).child(format!("{higher} is higher in the list and also matches these files, so they'd stay {higher}.")).child(fc_button("fc-strip-move", label, true).on_click(cx.listener(move |this, _, _, cx| {
+            let mut list = this.scopes();
+            if t < list.len() {
+                if let Some(ps) = list[t]["patterns"].as_array_mut()
+                    && !ps.iter().any(|x| x == &json!(pattern))
+                {
+                    ps.push(json!(pattern));
+                }
+                let moved = list.remove(t);
+                list.insert(above, moved);
+                this.set_scopes(list, cx);
+            }
+            this.settings_ui.file_colours.add = None;
+        }))))
+    });
+    Some(div().flex().flex_col().gap(px(6.)).px(px(10.)).py(px(8.)).bg(theme::panel_bg()).border_1().border_color(theme::blue()).rounded(px(6.)).child(row).children(warn).child(div().text_size(px(11.)).text_color(theme::text_secondary()).child(format!("From the file list: {via}"))).into_any_element())
+}
+
 pub fn body(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
     let Some(dir) = this.scopes_dir() else {
         return vec![div().mt(px(16.)).text_color(theme::text_secondary()).child("Open a repository to set its file colours.").into_any_element()];
     };
     this.read_repo_files(cx);
     let scopes = this.scopes();
+    let strip = add_strip(this, &dir, &scopes, window, cx);
     let matcher = super::Matcher::new(&json!(scopes));
     let counted = |paths: &[String]| -> Vec<usize> {
         let mut n = vec![0; scopes.len()];
@@ -389,7 +494,7 @@ pub fn body(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
     let changed: Vec<String> = this.tabs.get(this.active).and_then(|t| t.files.as_ref()).map_or(Vec::new(), |f| f.changes.iter().map(|c| c.path.to_string()).collect());
     let changed_n = counted(&changed);
     let repo_n = this.settings_ui.file_colours.repo_files.as_ref().map(|(_, f)| counted(f));
-    let mut page = div().flex().flex_col().gap(px(12.)).mt(px(16.));
+    let mut page = div().flex().flex_col().gap(px(12.)).mt(px(16.)).children(strip);
     if scopes.is_empty() {
         let mut row = div().flex().items_center().gap(px(8.)).p(px(12.)).bg(theme::panel_bg()).border_1().border_color(theme::section_border()).rounded(px(6.)).child(div().text_color(theme::text_secondary()).child("No scopes yet. Start from one:"));
         for (i, (name, tint, patterns, collapsed)) in STARTERS.iter().enumerate() {

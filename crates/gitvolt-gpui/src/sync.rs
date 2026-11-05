@@ -1225,7 +1225,7 @@ fn push_panel(ctx: WriteCtx, b: LocalBranch, remotes: Vec<String>, anchor: Optio
         div()
             .flex()
             .flex_col()
-            .gap(px(10.))
+            .gap(px(12.))
             .child(
                 div()
                     .flex()

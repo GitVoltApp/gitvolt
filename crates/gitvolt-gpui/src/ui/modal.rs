@@ -151,10 +151,9 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
             let content = build(window, cx);
             let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).occlude().child(crate::ui::spin::cover()).flex().flex_col().flex_none().when(anchored.is_none(), |d| d.w(px(width))).when(anchored.is_some(), |d| d.max_w(px(width))).max_w(window.viewport_size().width - px(32.));
             let body = if framed {
-                body.gap(px(10.))
-                    .when(anchored.is_none(), |d| d.px(px(18.)).py(px(16.)))
-                    .when(anchored.is_some(), |d| d.px(px(14.)).py(px(12.)))
-                    .bg(theme::panel_bg1())
+                body.gap(px(12.))
+                    .when(anchored.is_none(), |d| d.px(px(20.)).py(px(16.)).bg(theme::panel_bg()))
+                    .when(anchored.is_some(), |d| d.px(px(14.)).py(px(12.)).bg(theme::panel_bg1()))
                     .border_1()
                     .border_color(theme::section_border())
                     .rounded(px(8.))
@@ -213,7 +212,7 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
 
 /// A dialog's title (`.modal h2`).
 pub fn title(text: impl Into<SharedString>) -> Div {
-    div().flex().items_center().gap(px(8.)).text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child(text.into())
+    div().flex().items_center().gap(px(8.)).mb(px(9.)).text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child(text.into())
 }
 
 /// `.modal-actions`.
@@ -314,7 +313,7 @@ pub fn prompt(req: PromptRequest, then: impl Fn(Option<PromptAnswer>, &mut Windo
             div()
                 .flex()
                 .flex_col()
-                .gap(px(10.))
+                .gap(px(12.))
                 .child(title(req.title.clone()))
                 .child(
                     div()
@@ -339,7 +338,7 @@ pub fn prompt(req: PromptRequest, then: impl Fn(Option<PromptAnswer>, &mut Windo
                 .child(
                     actions_row()
                         .child(controls::tabbable(controls::button("prompt-cancel", "Cancel", ButtonKind::Plain, true).on_click(|_, window, cx| close(ID, window, cx)), &stops[1], |window, cx| close(ID, window, cx)))
-                        .child(controls::tabbable(controls::button("prompt-ok", req.confirm_label.clone(), ButtonKind::Plain, !blocked).when(!blocked, |d| d.on_click(move |_, window, cx| submit2(window, cx))), &stops[2], move |window, cx| submit3(window, cx))),
+                        .child(controls::tabbable(controls::button("prompt-ok", req.confirm_label.clone(), ButtonKind::Primary, !blocked).when(!blocked, |d| d.on_click(move |_, window, cx| submit2(window, cx))), &stops[2], move |window, cx| submit3(window, cx))),
                 )
                 .into_any_element()
         }
