@@ -1181,7 +1181,7 @@ fn create_form(this: &mut GitVolt, tab: u32, c: &CreateContext, d: &MrDraft, win
             w.update(cx, |this, cx| this.create_move(tab, move |r| if source { r.source_remote = v } else { r.target_remote = v }, window, cx)).ok();
         })
     };
-    let end_head = |caption: &'static str| div().text_size(px(10.5)).text_color(theme::text_disabled()).child(caption.to_uppercase());
+    let end_head = |caption: &'static str| div().font_features(crate::glyphs::spacing(0.06)).text_size(px(10.5)).text_color(theme::text_disabled()).child(caption.to_uppercase());
     let name_el = |name: String| tip(name.clone(), div().min_w_0().truncate().font_family(crate::app::MONO_FONT).text_size(px(12.5)).text_color(theme::text_selected()).child(name));
     let targets: Vec<String> = t.side.sections.iter().flat_map(|s| &s.items).filter_map(|i| match &i.kind {
         crate::sidebar::ItemKind::Remote { remote, .. } if *remote == d.target_remote && i.name != "HEAD" => Some(i.name.clone()),

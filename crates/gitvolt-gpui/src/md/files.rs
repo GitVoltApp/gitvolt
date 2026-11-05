@@ -286,7 +286,7 @@ fn paint_ruler(b: Bounds<Pixels>, view: &Entity<MdView>, marks: &[(f32, f32, Mar
     let st = view.read(cx).state.clone();
     let (content, visible, scroll, max) = {
         let s = st.borrow();
-        (s.total_height(), s.view_height(), s.scroll, s.max_scroll())
+        (s.total_height().max(s.view_height()), s.view_height(), s.scroll, s.max_scroll())
     };
     let strip = b.size.height.as_f32();
     if content <= 0. || strip <= 0. {

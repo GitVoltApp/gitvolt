@@ -469,7 +469,7 @@ fn colour_row(this: &mut GitVolt, token: &'static str, label: &'static str, note
 }
 
 fn colour_group_title(t: &str) -> Div {
-    div().mb(px(4.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(t.to_uppercase())
+    div().mb(px(4.)).font_features(crate::glyphs::spacing(0.05)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(t.to_uppercase())
 }
 
 /// `ThemeColourList`: the core colours in four groups, then All colours behind a disclosure.

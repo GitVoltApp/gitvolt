@@ -405,6 +405,8 @@ pub struct Chip {
     pub tag: bool,
     /// Its remote branches: `(remote, full ref)`.
     pub remotes: Vec<(String, String)>,
+    /// The other worktree that has it checked out.
+    pub worktree: Option<SharedString>,
 }
 
 /// One graph row, ready to draw: nothing here is formatted during a frame.
@@ -530,7 +532,7 @@ impl GraphView {
 const LANES: usize = 10;
 
 fn chip(l: &RefLabel) -> Chip {
-    Chip { name: l.name.clone().into(), head: l.is_head, local: l.local.is_some(), remote: !l.remotes.is_empty(), tag: l.tag, remotes: l.remotes.iter().map(|r| (r.remote.clone(), r.full_name.clone())).collect() }
+    Chip { name: l.name.clone().into(), head: l.is_head, local: l.local.is_some(), remote: !l.remotes.is_empty(), tag: l.tag, remotes: l.remotes.iter().map(|r| (r.remote.clone(), r.full_name.clone())).collect(), worktree: l.worktree.clone().map(Into::into) }
 }
 
 fn row_view(r: &RowPayload, chips: Vec<Chip>) -> RowView {
@@ -706,7 +708,7 @@ mod membership_tests {
     }
 
     fn local(name: &str, head: bool) -> Chip {
-        Chip { name: name.to_string().into(), head, local: true, remote: false, tag: false, remotes: Vec::new() }
+        Chip { name: name.to_string().into(), head, local: true, remote: false, tag: false, remotes: Vec::new(), worktree: None }
     }
 
     #[test]
@@ -722,7 +724,7 @@ mod membership_tests {
 
     #[test]
     fn a_remote_branch_gets_what_nobody_else_claimed() {
-        let origin = Chip { name: "main".into(), head: false, local: false, remote: true, tag: false, remotes: vec![("origin".into(), "refs/remotes/origin/main".into())] };
+        let origin = Chip { name: "main".into(), head: false, local: false, remote: true, tag: false, remotes: vec![("origin".into(), "refs/remotes/origin/main".into())], worktree: None };
         let rows = vec![row("o", &["l"], vec![origin]), row("l", &["a"], vec![local("main", true)]), row("a", &[], vec![])];
         let m = branch_membership(&rows, &[]);
         assert_eq!(m[2].as_ref().map(|m| m.name.clone()), Some("main".into()), "the local one first");
@@ -731,7 +733,7 @@ mod membership_tests {
 
     #[test]
     fn a_tag_never_claims() {
-        let tag = Chip { name: "v1".into(), head: false, local: false, remote: false, tag: true, remotes: Vec::new() };
+        let tag = Chip { name: "v1".into(), head: false, local: false, remote: false, tag: true, remotes: Vec::new(), worktree: None };
         let rows = vec![row("t", &["a"], vec![tag]), row("a", &[], vec![])];
         assert_eq!(branch_membership(&rows, &[]), vec![None, None]);
     }

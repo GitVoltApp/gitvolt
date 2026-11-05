@@ -119,6 +119,9 @@ fn chip_inner(c: &Chip, lane: usize, full: bool, lit: bool, row: Option<SharedSt
         };
         chip = chip.child(tip(format!("{remote} → {branch} (Remote)"), glyph));
     }
+    if let Some(path) = &c.worktree {
+        chip = chip.child(tip(format!("Checked out in {path}"), icon("tree-pine", ICON, text)));
+    }
     chip
 }
 
@@ -505,7 +508,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
         pin_tip,
         crate::ui::anchor(
             "graph-pin",
-            div().id("graph-pin").flex().flex_none().min_w_0().items_center().gap(px(3.)).px(px(4.)).rounded(px(3.)).cursor_pointer().when(pin_open, |d| d.bg(theme::hover_row())).hover(|d| d.bg(theme::hover_row())).on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+            div().id("graph-pin").flex().min_w_0().items_center().gap(px(3.)).ml(px(6.)).px(px(4.)).py(px(1.)).font_features(crate::glyphs::spacing(0.)).rounded(px(3.)).cursor_pointer().when(pin_open, |d| d.bg(theme::hover_row())).hover(|d| d.bg(theme::hover_row())).on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 cx.stop_propagation();
                 this.open_pin_picker(window, cx);
             })).child(icon("pin", 12., theme::text_secondary())).when(!compact, |d| d.child(div().min_w_0().truncate().child(pin_label.clone()))),
@@ -519,7 +522,8 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
         .items_center()
         .border_b_1()
         .border_color(theme::section_border())
-        .text_size(px(11.))
+        .font_features(crate::glyphs::spacing(0.04))
+        .text_size(px(10.))
         .text_color(theme::text_secondary())
         .on_mouse_down(MouseButton::Right, {
             let weak = weak.clone();
@@ -532,7 +536,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
         header = header.child(head_cell(Col::Labels, cols.labels, "BRANCH / TAG", "Branch / Tag", "tag", &head, cx));
     }
     header = header
-        .child(head_cell(Col::Graph, cols.graph, "GRAPH", "Graph", "git-graph", &head, cx).gap(px(10.)).children(pin))
+        .child(head_cell(Col::Graph, cols.graph, "GRAPH", "Graph", "git-graph", &head, cx).children(pin))
         .child(head_cell(Col::Message, cols.message, "COMMIT MESSAGE", "Commit message", "message-square", &head, cx));
     if shown(Col::Author) {
         header = header.child(head_cell(Col::Author, cols.author, "AUTHOR", "Author", "user", &head, cx));

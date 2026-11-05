@@ -61,7 +61,7 @@ pub fn fact(id: &'static str) -> Stateful<Div> {
 
 /// A card's uppercase name.
 pub fn fact_k(text: &str) -> Div {
-    div().flex_1().min_w_0().truncate().min_h(px(22.)).line_height(px(22.)).text_size(px(11.)).text_color(theme::text_secondary()).child(text.to_uppercase())
+    div().flex_1().min_w_0().truncate().min_h(px(22.)).line_height(px(22.)).font_features(crate::glyphs::spacing(0.04)).text_size(px(11.)).text_color(theme::text_secondary()).child(text.to_uppercase())
 }
 
 fn fact_v(color: Hsla) -> Div {
@@ -164,7 +164,7 @@ pub fn flow_ends(from: (String, String), into: (String, String)) -> Div {
             .min_w_0()
             .px(px(12.))
             .py(px(10.))
-            .child(div().text_size(px(10.5)).text_color(theme::text_disabled()).child(caption.to_uppercase()))
+            .child(div().font_features(crate::glyphs::spacing(0.06)).text_size(px(10.5)).text_color(theme::text_disabled()).child(caption.to_uppercase()))
             .child(tip(name.clone(), div().min_w_0().truncate().font_family(crate::app::MONO_FONT).text_size(px(12.5)).text_color(theme::text_selected()).child(name)))
             .child(div().min_w_0().truncate().text_size(px(12.)).text_color(theme::text_secondary()).child(sub))
     };

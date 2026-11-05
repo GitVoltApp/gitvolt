@@ -1882,6 +1882,7 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
                 .flex_none()
                 .items_center()
                 .gap(px(4.))
+                .font_features(crate::glyphs::spacing(0.04))
                 .text_size(px(11.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(theme::text_secondary())

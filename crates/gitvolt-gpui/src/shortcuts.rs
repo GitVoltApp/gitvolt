@@ -212,7 +212,7 @@ fn list_view(input: &Entity<TextInput>, window: &Window, cx: &App) -> AnyElement
         body = body.child(div().px(px(4.)).py(px(16.)).text_color(theme::text_secondary()).child("No shortcuts match."));
     }
     for s in shown {
-        body = body.child(div().mt(px(14.)).mb(px(4.)).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(s.title.to_uppercase()));
+        body = body.child(div().mt(px(14.)).mb(px(4.)).font_features(crate::glyphs::spacing(0.04)).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(s.title.to_uppercase()));
         for r in s.rows {
             let mut keys = div().flex().flex_none().items_center().gap(px(6.));
             for (i, k) in r.keys.iter().enumerate() {

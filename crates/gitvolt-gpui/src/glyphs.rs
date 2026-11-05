@@ -4,37 +4,51 @@
 //! platform's text system and rounds what it lays out, so everything drawn or measured, the wrapper's widths too, agrees.
 //! Page zoom keeps the grid in device pixels, as Chromium lays out at the zoomed size; a display's own scale turns it off, as
 //! Chromium turns subpixel positioning on there.
+//!
+//! GPUI has no `letter-spacing`, so a font asked for with the feature `ltsp`, its value in thousandths of an em, gets it here:
+//! `spacing(0.04)` on any element. No shaper knows that tag, and it gives the font an id of its own. Text then ends on fractions
+//! of a pixel as Chromium's does, and each glyph is drawn on a whole one, as Skia draws it with no subpixel positioning.
 
 use anyhow::Result;
 use gpui::*;
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 
 /// Device pixels a logical pixel is on the grid: 0 for no grid. `f32` bits.
 static GRID: AtomicU32 = AtomicU32::new(1f32.to_bits());
 
+const LETTER_SPACING: &str = "ltsp";
+
+/// CSS's `letter-spacing` in ems, for `.font_features(..)`; `spacing(0.)` turns an inherited one off.
+pub fn spacing(em: f32) -> FontFeatures {
+    FontFeatures(Arc::new(vec![(LETTER_SPACING.to_string(), (em * 1000.).round() as u32)]))
+}
+
 /// A line's glyphs on the grid, as Blink's: Skia gives HarfBuzz each glyph's own advance rounded, GPOS adds its kerning to
 /// that, and `RoundHarfBuzzBufferPositions` rounds the sum. `own` is a glyph's own advance at this size.
-pub fn round_advances(layout: &mut LineLayout, grid: f32, own: impl Fn(FontId, GlyphId) -> f32) {
-    if grid <= 0. {
-        return;
-    }
-    let snap = |gap: f32| (gap * grid).round() / grid;
+pub fn round_advances(layout: &mut LineLayout, grid: f32, own: impl Fn(FontId, GlyphId) -> f32, spacing: impl Fn(FontId) -> f32) {
+    let snap = |gap: f32| if grid > 0. { (gap * grid).round() / grid } else { gap };
     let mut at = 0f32;
-    let mut last: Option<(f32, f32)> = None;
+    // A glyph's place in the shaper's terms, its own advance and its letter spacing.
+    let mut last: Option<(f32, f32, f32)> = None;
     let width = layout.width.as_f32();
-    let step = |last: Option<(f32, f32)>, next: f32| last.map_or(next, |(x, own): (f32, f32)| {
+    let step = |last: Option<(f32, f32, f32)>, next: f32| last.map_or(next, |(x, own, extra): (f32, f32, f32)| {
+        if grid <= 0. {
+            return next - x + extra;
+        }
         let kerning = next - x - own;
         // FreeType scales an advance to 26.6 first: 6.498 is 6.5 there, and rounds up.
-        snap(snap((own * 64.).round() / 64.) + kerning)
+        snap(snap((own * 64.).round() / 64.) + kerning) + extra
     });
     for run in &mut layout.runs {
+        let extra = spacing(run.font_id);
         for glyph in &mut run.glyphs {
             let x = glyph.position.x.as_f32();
             at += step(last, x);
-            last = Some((x, own(run.font_id, glyph.id)));
-            glyph.position.x = px(at);
+            last = Some((x, own(run.font_id, glyph.id), extra));
+            glyph.position.x = px(snap(at));
         }
     }
     if last.is_some() {
@@ -52,7 +66,13 @@ pub fn follow(window: &Window, cx: &App) {
     }
 }
 
-pub struct Whole(pub Arc<dyn PlatformTextSystem>);
+pub struct Whole(pub Arc<dyn PlatformTextSystem>, pub RwLock<HashMap<FontId, f32>>);
+
+impl Whole {
+    pub fn new(inner: Arc<dyn PlatformTextSystem>) -> Self {
+        Self(inner, RwLock::default())
+    }
+}
 
 impl PlatformTextSystem for Whole {
     fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()> {
@@ -65,7 +85,13 @@ impl PlatformTextSystem for Whole {
         self.0.all_font_names()
     }
     fn font_id(&self, descriptor: &Font) -> Result<FontId> {
-        self.0.font_id(descriptor)
+        let id = self.0.font_id(descriptor)?;
+        if let Some((_, em)) = descriptor.features.tag_value_list().iter().find(|(tag, _)| tag == LETTER_SPACING)
+            && let Ok(mut spaced) = self.1.write()
+        {
+            spaced.insert(id, *em as f32 / 1000.);
+        }
+        Ok(id)
     }
     fn prewarm_fonts(&self, font_ids: &[FontId]) {
         self.0.prewarm_fonts(font_ids)
@@ -90,10 +116,13 @@ impl PlatformTextSystem for Whole {
     }
     fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout {
         let mut layout = self.0.layout_line(text, font_size, runs);
-        round_advances(&mut layout, f32::from_bits(GRID.load(Relaxed)), |font, glyph| {
+        let spaced = self.1.read().ok();
+        let spacing = |font: FontId| spaced.as_ref().and_then(|s| s.get(&font).copied()).unwrap_or(0.) * font_size.as_f32();
+        let own = |font: FontId, glyph: GlyphId| {
             let per_em = self.0.font_metrics(font).units_per_em as f32;
             self.0.advance(font, glyph).map_or(0., |a| a.width / per_em * font_size.as_f32())
-        });
+        };
+        round_advances(&mut layout, f32::from_bits(GRID.load(Relaxed)), own, spacing);
         layout
     }
     fn recommended_rendering_mode(&self, font_id: FontId, font_size: Pixels) -> TextRenderingMode {
@@ -121,7 +150,7 @@ mod tests {
     #[test]
     fn each_advance_rounds_on_its_own() {
         let mut l = line(&[0., 7.29, 14.58, 21.87], 29.16);
-        round_advances(&mut l, 1., |_, _| 7.29);
+        round_advances(&mut l, 1., |_, _| 7.29, |_| 0.);
         assert_eq!(xs(&l), [0., 7., 14., 21.]);
         assert_eq!(l.width.as_f32(), 28.);
     }
@@ -130,7 +159,7 @@ mod tests {
     fn kerning_adds_to_the_rounded_advance() {
         // Noto Sans's `r.` at 13 px: 5.37 with a kerning of -1.7, then 3.48: 3, then 3; rounding the sum would say 4.
         let mut l = line(&[0., 3.67], 7.15);
-        round_advances(&mut l, 1., |_, g| if g.0 == 0 { 5.37 } else { 3.48 });
+        round_advances(&mut l, 1., |_, g| if g.0 == 0 { 5.37 } else { 3.48 }, |_| 0.);
         assert_eq!(xs(&l), [0., 3.]);
         assert_eq!(l.width.as_f32(), 6.);
     }
@@ -138,7 +167,7 @@ mod tests {
     #[test]
     fn a_zoom_rounds_in_device_pixels() {
         let mut l = line(&[0., 7.33], 14.66);
-        round_advances(&mut l, 1.5, |_, _| 7.33);
+        round_advances(&mut l, 1.5, |_, _| 7.33, |_| 0.);
         // 7.33 × 1.5 = 10.995: 11 device pixels.
         assert!((xs(&l)[1] - 11. / 1.5).abs() < 0.001);
     }
@@ -146,15 +175,23 @@ mod tests {
     #[test]
     fn no_grid_leaves_the_line_alone() {
         let mut l = line(&[0., 7.29], 14.5);
-        round_advances(&mut l, 0., |_, _| 7.29);
+        round_advances(&mut l, 0., |_, _| 7.29, |_| 0.);
         assert_eq!(xs(&l), [0., 7.29]);
         assert_eq!(l.width.as_f32(), 14.5);
     }
 
     #[test]
+    fn letter_spacing_adds_to_each_and_a_glyph_stays_on_a_whole_pixel() {
+        let mut l = line(&[0., 7.29, 14.58], 21.87);
+        round_advances(&mut l, 1., |_, _| 7.29, |_| 0.4);
+        assert_eq!(xs(&l), [0., 7., 15.]);
+        assert!((l.width.as_f32() - 22.2).abs() < 0.001);
+    }
+
+    #[test]
     fn an_empty_line_stays_empty() {
         let mut l = line(&[], 0.);
-        round_advances(&mut l, 1., |_, _| 0.);
+        round_advances(&mut l, 1., |_, _| 0., |_| 0.);
         assert_eq!(l.width.as_f32(), 0.);
     }
 }

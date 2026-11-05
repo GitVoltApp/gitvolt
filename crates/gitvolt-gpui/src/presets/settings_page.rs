@@ -564,7 +564,7 @@ pub fn body(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
     let preview = this.settings_ui.presets.preview.clone().filter(|x| x.0 == pid).map(|x| x.1);
     // The left column.
     let mut side = div().flex().flex_col().flex_none().gap(px(10.)).w(px(236.)).px(px(8.)).py(px(12.)).border_r_1().border_color(theme::section_border());
-    let group = |title: &str, detail: Option<&str>, head: bool| div().flex().justify_between().items_baseline().mb(px(4.)).px(px(6.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(div().flex().child(title.to_uppercase()).children(detail.map(|d| div().font_weight(FontWeight::NORMAL).child(format!(" · {d}"))))).when(head, |d| d.child(div().text_size(px(10.)).font_weight(FontWeight::NORMAL).child("in the cycle")));
+    let group = |title: &str, detail: Option<&str>, head: bool| div().flex().justify_between().items_baseline().mb(px(4.)).px(px(6.)).font_features(crate::glyphs::spacing(0.06)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(div().flex().child(title.to_uppercase()).children(detail.map(|d| div().font_weight(FontWeight::NORMAL).child(format!(" · {d}"))))).when(head, |d| d.child(div().text_size(px(10.)).font_weight(FontWeight::NORMAL).child("in the cycle")));
     for (g, title) in [("builtin", "Built in"), ("all", "All repositories"), ("repo", "This repository")] {
         if g == "repo" && !has_repo {
             continue;

@@ -354,7 +354,7 @@ pub fn setting_row(this: &mut GitVolt, def: &'static Def, first: bool, words: &[
 }
 
 pub fn group_title(title: &str, hint: Option<&str>) -> Div {
-    div().mb(px(6.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(title.to_uppercase()).when_some(hint, |d, h| d.child(div().font_weight(FontWeight::NORMAL).child(format!(" · {h}"))).flex().flex_row())
+    div().mb(px(6.)).font_features(crate::glyphs::spacing(0.06)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(title.to_uppercase()).when_some(hint, |d, h| d.child(div().font_weight(FontWeight::NORMAL).child(format!(" · {h}"))).flex().flex_row())
 }
 
 pub fn card() -> Div {

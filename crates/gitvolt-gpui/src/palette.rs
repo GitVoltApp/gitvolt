@@ -425,7 +425,7 @@ fn palette_view(state: &Rc<RefCell<PaletteState>>, input: &Entity<TextInput>, wi
                 (Some(t), PaletteGroup::Choice) => t.to_uppercase().into(),
                 _ => e.group.label().into(),
             };
-            row = row.child(div().px(px(14.)).pt(px(6.)).pb(px(2.)).text_size(px(10.)).text_color(theme::text_disabled()).child(title));
+            row = row.child(div().px(px(14.)).pt(px(6.)).pb(px(2.)).font_features(crate::glyphs::spacing(0.06)).text_size(px(10.)).text_color(theme::text_disabled()).child(title));
             last_group = Some(e.group);
         }
         let on = i == s.cursor;

@@ -658,7 +658,7 @@ mod tests {
     use std::prelude::v1::test;
 
     fn local(name: &str) -> Chip {
-        Chip { name: name.to_string().into(), head: false, local: true, remote: false, tag: false, remotes: Vec::new() }
+        Chip { name: name.to_string().into(), head: false, local: true, remote: false, tag: false, remotes: Vec::new(), worktree: None }
     }
 
     fn row(id: &str, parents: &[&str], chips: Vec<Chip>) -> RowView {
@@ -691,7 +691,7 @@ mod tests {
         let g = graph(vec![row("a", &["m"], vec![local("one")]), row("m", &[], vec![local("main")])]);
         assert!(detect_stacks(&g, "refs/heads/main").is_empty());
         assert_eq!(stack_base(&g, &[]).as_deref(), Some("refs/heads/main"));
-        let origin = Chip { name: "main".into(), head: false, local: false, remote: true, tag: false, remotes: vec![("origin".into(), "refs/remotes/origin/main".into())] };
+        let origin = Chip { name: "main".into(), head: false, local: false, remote: true, tag: false, remotes: vec![("origin".into(), "refs/remotes/origin/main".into())], worktree: None };
         let g = graph(vec![row("m", &[], vec![origin])]);
         assert_eq!(stack_base(&g, &[("origin".into(), Some("refs/remotes/origin/main".into()))]).as_deref(), Some("refs/remotes/origin/main"));
     }

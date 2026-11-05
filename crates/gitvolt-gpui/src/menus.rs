@@ -549,7 +549,7 @@ impl GitVolt {
         let _ = weak3;
         grouped(vec![
             vec![MenuRow::action("tab.rename", "Rename…", "pencil", "Give this tab a display name (the repository is unchanged)", move |window, cx| {
-                weak.update(cx, |v, cx| v.prompt_tab_name(rename_ix, window, cx)).ok();
+                weak.update(cx, |v, cx| v.start_tab_rename(rename_ix, window, cx)).ok();
             })],
             groups,
             vec![

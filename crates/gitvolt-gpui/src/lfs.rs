@@ -326,7 +326,7 @@ impl GitVolt {
 
 /// `LfsMark`: a file row's mark; every row of a repository that uses LFS keeps its space.
 pub fn lfs_mark_element(on: bool) -> AnyElement {
-    let mark = div().flex_none().px(px(4.)).border_1().border_color(theme::section_border()).rounded(px(3.)).text_size(px(9.)).line_height(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child("LFS");
+    let mark = div().flex_none().px(px(4.)).border_1().border_color(theme::section_border()).rounded(px(3.)).font_features(crate::glyphs::spacing(0.02)).text_size(px(9.)).line_height(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child("LFS");
     if on { tip("Stored with Git LFS", mark).into_any_element() } else { mark.invisible().into_any_element() }
 }
 

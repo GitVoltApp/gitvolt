@@ -50,6 +50,7 @@ mod stacks;
 mod submodules;
 mod sync;
 mod table;
+mod tabstrip;
 mod tabs;
 mod theme;
 mod ui;

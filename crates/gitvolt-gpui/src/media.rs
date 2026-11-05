@@ -697,7 +697,7 @@ fn font_pane(i: usize, media: &MediaView, side: &MediaSide, label: Option<&'stat
                 .flex_col()
                 .gap(px(12.))
                 .p(px(PAD))
-                .when_some(label, |d, l| d.child(div().flex().flex_none().justify_center().h(px(15.4)).text_size(px(11.)).line_height(px(15.4)).text_color(theme::text_secondary()).child(l.to_uppercase())))
+                .when_some(label, |d, l| d.child(div().flex().flex_none().justify_center().h(px(15.4)).font_features(crate::glyphs::spacing(0.03)).text_size(px(11.)).line_height(px(15.4)).text_color(theme::text_secondary()).child(l.to_uppercase())))
                 .child(div().flex_none().h(px(18.2)).overflow_hidden().whitespace_nowrap().text_color(theme::text_secondary()).child(name))
                 .when(failed, |d| d.child(div().flex().justify_center().text_color(theme::text_secondary()).child("This font couldn't be loaded")))
                 .when(loading, |d| d.child(div().text_color(theme::text_secondary()).child("Loading…")))
@@ -778,7 +778,7 @@ fn player_pane(i: usize, side: &MediaSide, label: Option<&'static str>, open_in:
         .gap(px(12.))
         .p(px(16.))
         .bg(theme::app_bg())
-        .when_some(label, |d, l| d.child(div().h(px(15.4)).text_size(px(11.)).line_height(px(15.4)).text_color(theme::text_secondary()).child(l.to_uppercase())))
+        .when_some(label, |d, l| d.child(div().h(px(15.4)).font_features(crate::glyphs::spacing(0.03)).text_size(px(11.)).line_height(px(15.4)).text_color(theme::text_secondary()).child(l.to_uppercase())))
         .child(
             div()
                 .flex()

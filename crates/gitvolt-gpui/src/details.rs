@@ -234,6 +234,8 @@ pub struct Commit {
     pub summary: SharedString,
     pub body: Vec<SharedString>,
     pub signed: bool,
+    /// What checking its signature said: the status's name and the card's lines.
+    pub signature: Option<(String, Vec<String>)>,
 }
 
 /// The commit's or worktree's files, and how they're listed.
@@ -446,7 +448,12 @@ impl GitVolt {
                 if tab.selected != Some(ix) && tab.revealed.as_deref() != Some(id.as_str()) {
                     return;
                 }
-                tab.commit = Some(commit_of(&details, &message));
+                let commit = commit_of(&details, &message);
+                if commit.signed {
+                    this.check_signature(repo, id.clone(), cx);
+                }
+                let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
+                tab.commit = Some(commit);
                 let count = |k: &str| files[k].as_u64().unwrap_or(0) as u32;
                 let mut list = Files::new(file_changes(&files, &Origin::Commit { id: id.clone() }), count("added"), count("deleted"));
                 list.commit = Some(id);
@@ -465,6 +472,36 @@ impl GitVolt {
         .detach();
     }
 
+}
+
+impl GitVolt {
+    /// The signature's verdict, as `SignatureBadge` asks it once a commit's selected.
+    fn check_signature(&mut self, repo: u32, id: String, cx: &mut Context<Self>) {
+        if cfg!(test) {
+            return;
+        }
+        let api = self.api.clone();
+        let asked = id.clone();
+        let read = self.rt.spawn(async move { api.dispatch(Request::Signature { repo: crate::app::core_repo(repo), id: asked }).await });
+        cx.spawn(async move |this, cx| {
+            let answer = read.await;
+            this.update(cx, |this, cx| {
+                let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo) else { return };
+                let Some(commit) = tab.commit.as_mut().filter(|c| c.full_id.as_ref() == id) else { return };
+                commit.signature = Some(match answer {
+                    Ok(Ok(s)) => {
+                        let line = |k: &str, label: &str| s[k].as_str().filter(|v| !v.is_empty()).map(|v| format!("{label}{v}"));
+                        let lines = [line("signer", "Signer: "), line("key", "Key: "), (s["fingerprint"] != s["key"]).then(|| line("fingerprint", "Fingerprint: ")).flatten(), line("trust", "Trust: "), line("detail", "")];
+                        (s["kind"].as_str().unwrap_or("unknownKey").to_string(), lines.into_iter().flatten().collect())
+                    }
+                    _ => ("error".to_string(), Vec::new()),
+                });
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
 }
 
 impl GitVolt {
@@ -657,6 +694,7 @@ fn commit_of(details: &Value, message: &Value) -> Commit {
         summary: message["summary"].as_str().unwrap_or_default().to_string().into(),
         body: message["body"].as_str().unwrap_or_default().trim().split('\n').filter(|_| message["body"].as_str().is_some_and(|b| !b.trim().is_empty())).map(|l| l.to_string().into()).collect(),
         signed: details["signed"].as_bool() == Some(true),
+        signature: None,
     }
 }
 
@@ -697,6 +735,29 @@ fn segment_base(id: impl Into<ElementId>, on: bool, enabled: bool) -> Stateful<D
         .when(!on, |d| d.text_color(theme::text_secondary()))
         .when(!on && enabled, |d| d.hover(|d| d.text_color(theme::text_selected())))
         .when(!enabled, |d| d.opacity(0.4))
+}
+
+/// `SignatureBadge`: a shield per verdict, in a box of its own; a bare dim one when it's not signed or not checked yet.
+fn signature_badge(c: &Commit) -> AnyElement {
+    let kind = if !c.signed { "unsigned" } else { c.signature.as_ref().map_or("loading", |s| s.0.as_str()) };
+    let (name, color, title): (&'static str, Hsla, &str) = match kind {
+        "verified" => ("sig-verified", theme::status_added(), "Verified"),
+        "unverified" => ("sig-unverified", theme::status_modified(), "Unverified"),
+        "bad" => ("sig-bad", theme::status_deleted(), "Bad signature"),
+        "expired" => ("sig-expired", theme::status_modified(), "Expired"),
+        "unknownKey" => ("sig-unknownKey", theme::status_modified(), "Unknown key"),
+        "error" => ("sig-error", theme::status_deleted(), "Couldn't check the signature"),
+        "loading" => ("sig-loading", theme::text_disabled(), "Checking signature…"),
+        _ => ("sig-unsigned", theme::text_disabled(), "Not signed"),
+    };
+    let mut text = title.to_string();
+    if let Some((_, lines)) = &c.signature {
+        for l in lines {
+            text.push('\n');
+            text.push_str(l);
+        }
+    }
+    crate::ui::tooltip::tip(text, icon(name, 16., color)).into_any_element()
 }
 
 /// A hash in the commit's bar: white monospace, underlined under the pointer.
@@ -749,7 +810,7 @@ fn commit_view(c: &Commit, height: f32, cx: &mut Context<GitVolt>) -> impl IntoE
                         .border_b_1()
                         .border_color(theme::section_border())
                         .gap(px(10.))
-                        .child(div().flex().flex_1().min_w_0().child(icon("shield-check", 16., if c.signed { theme::status_added() } else { theme::text_disabled() })))
+                        .child(div().flex().flex_1().min_w_0().child(signature_badge(c)))
                         .child(div().flex().flex_none().gap(px(8.)).text_color(theme::text_secondary()).child("commit:").child(hash_button("commit-sha", &c.id, "Copy full SHA", cx, move |this, cx| this.copy_text(full.to_string(), cx))))
                         .child(div().flex().flex_1().justify_end().gap(px(8.)).whitespace_nowrap().text_color(theme::text_secondary()).children(parent_label).child(div().flex().flex_none().gap(px(6.)).children(parents))),
                 )

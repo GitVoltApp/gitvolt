@@ -755,7 +755,7 @@ impl GitVolt {
                 let row = item.target.as_ref().and_then(|t| self.tabs.get(self.active)?.graph.as_ref()?.by_sha.get(t).copied());
                 let Some(row) = row else { return vec![menu::MenuRow::pending("sidebar.showInGraph", "Show in graph", "git-graph").disabled("Not in the loaded history")] };
                 let chip = self.tabs.get(self.active).and_then(|t| t.graph.as_ref()).and_then(|g| g.rows[row].chips.iter().find(|c| c.name.as_ref() == item.name.as_str() || c.name.as_ref() == item.full_name()).cloned());
-                let fallback = crate::model::Chip { name: item.full_name().into(), head: matches!(item.kind, ItemKind::Local { is_head: true, .. }), local: matches!(item.kind, ItemKind::Local { .. }), remote: matches!(item.kind, ItemKind::Remote { .. }), tag: false, remotes: Vec::new() };
+                let fallback = crate::model::Chip { name: item.full_name().into(), head: matches!(item.kind, ItemKind::Local { is_head: true, .. }), local: matches!(item.kind, ItemKind::Local { .. }), remote: matches!(item.kind, ItemKind::Remote { .. }), tag: false, remotes: Vec::new() , worktree: None };
                 let mut rows = self.commit_rows(row, Some(chip.as_ref().unwrap_or(&fallback)), this);
                 rows.push(menu::MenuRow::Separator);
                 let (weak, sha) = (this.clone(), item.target.clone().unwrap_or_default());
@@ -892,7 +892,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
     let width = this.sidebar_w;
     let weak = cx.weak_entity();
     let tab = this.tabs.get(this.active);
-    let mut bar = div().relative().flex().flex_col().flex_none().w(px(width)).h_full().min_h_0().bg(theme::panel_bg()).border_r_1().border_color(theme::section_border());
+    let mut bar = div().relative().flex().flex_col().flex_none().w(px(width + 1.)).h_full().min_h_0().bg(theme::panel_bg()).border_r_1().border_color(theme::section_border());
     let collapse = tip(
         format!("Collapse sidebar ({})", crate::commands::display_chord("Mod+B")),
         div().id("sidebar-fold").flex().flex_none().size(px(22.)).items_center().justify_center().rounded_full().bg(theme::panel_bg1()).hover(|d| d.bg(theme::hover_row())).cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))).child(icon("chevron-left", 14., theme::text_secondary())),
@@ -961,7 +961,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                     }))
                     .child(icon(if panel.collapsed { "chevron-right" } else { "chevron-down" }, 12., theme::sidebar_icon()))
                     .child(icon(kind.icon(), 13., theme::text_secondary()))
-                    .child(div().flex_1().truncate().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(panel_label(tab, kind).to_uppercase()))
+                    .child(div().flex_1().truncate().font_features(crate::glyphs::spacing(0.04)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_secondary()).child(panel_label(tab, kind).to_uppercase()))
                     .child(div().text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(theme::count_blue()).child(panel.matched.to_string())),
             )
             .when(matches!(kind, SectionKind::Remote | SectionKind::Worktrees | SectionKind::Gitflow | SectionKind::Submodules), |d| {
@@ -1038,8 +1038,11 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                 .with_sizing_behavior(ListSizingBehavior::Auto)
                 .when_some(tab.side.scroll.get(&kind), |list, handle| list.track_scroll(handle))
                 .flex_1()
+                .min_w_0()
                 .min_h_0();
-                section = section.child(list);
+                // Chromium's lane takes its width from the rows.
+                let lane = tab.side.scroll.get(&kind).map(|h| crate::ui::scrollbar::vertical(("side-bar", p), &h.0.borrow().base_handle));
+                section = section.child(div().flex().flex_1().min_h_0().child(list).children(lane));
             }
         }
         if let Some(j) = targets[p] {

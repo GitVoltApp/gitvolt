@@ -24,6 +24,7 @@ pub mod modal;
 pub mod place;
 pub mod picker;
 pub mod popover;
+pub mod scrollbar;
 pub mod spin;
 pub mod toast;
 pub mod tooltip;

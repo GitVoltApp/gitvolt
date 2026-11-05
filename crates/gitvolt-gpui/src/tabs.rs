@@ -83,7 +83,7 @@ impl GitVolt {
         self.groups().into_iter().find(|g| g["tabs"].as_array().is_some_and(|t| t.iter().any(|x| x == state_id)))
     }
 
-    fn next_group_color(&self) -> &'static str {
+    pub fn next_group_color(&self) -> &'static str {
         let groups = self.groups();
         GROUP_COLORS.iter().find(|c| !groups.iter().any(|g| g["color"] == **c)).copied().unwrap_or(GROUP_COLORS[groups.len() % GROUP_COLORS.len()])
     }
@@ -102,7 +102,9 @@ impl GitVolt {
         }
         let active_id = self.tabs.get(self.active).map(|t| t.state_id.clone());
         let tabs: Vec<Value> = self.tabs.iter().map(|t| {
-            if t.is_open_tab() {
+            if let Some(path) = &t.unopened {
+                json!({ "id": t.state_id, "kind": "repo", "path": path, "alias": t.alias, "worktree": t.worktree })
+            } else if t.is_open_tab() {
                 json!({ "id": t.state_id, "kind": "open", "path": null, "alias": t.alias })
             } else {
                 json!({ "id": t.state_id, "kind": "repo", "path": t.repo_path, "alias": t.alias, "worktree": t.worktree })
@@ -142,7 +144,7 @@ impl GitVolt {
             let mut out = Vec::new();
             for path in paths {
                 out.push(match path {
-                    Some(path) => crate::tabs::open_one(&api, path).await.ok(),
+                    Some(path) => Some(crate::tabs::open_one(&api, path).await.map_err(|e| e.to_string())),
                     None => None,
                 });
             }
@@ -156,9 +158,9 @@ impl GitVolt {
             let Ok((opened, extra_opened)) = read.await else { return };
             this.update(cx, |this, cx| {
                 let mut active_at = None;
-                for ((state_id, kind, _, alias), found) in wanted.into_iter().zip(opened) {
+                for ((state_id, kind, path, alias), found) in wanted.into_iter().zip(opened) {
                     match found {
-                        Some(o) => {
+                        Some(Ok(o)) => {
                             let at = this.tabs.len();
                             this.add_opened_tab(o, alias, Some(state_id.clone()), at, cx);
                         }
@@ -166,6 +168,21 @@ impl GitVolt {
                             this.open_blank_tab(cx);
                             let last = this.active;
                             this.tabs[last].state_id = state_id.clone();
+                        }
+                        // It stays in the strip and the profile, saying why, and comes back if the repository does.
+                        Some(Err(error)) => {
+                            let path = path.unwrap_or_default();
+                            this.open_blank_tab(cx);
+                            let last = this.active;
+                            let name = std::path::Path::new(&path).file_name().map_or(path.clone(), |n| n.to_string_lossy().into_owned());
+                            let tab = &mut this.tabs[last];
+                            tab.state_id = state_id.clone();
+                            tab.name = alias.clone().unwrap_or(name).into();
+                            tab.alias = alias;
+                            if let Some(screen) = tab.open_screen.as_mut() {
+                                screen.error = Some(format!("Couldn't open {path}: {error}"));
+                            }
+                            tab.unopened = Some(path);
                         }
                         None => continue,
                     }
@@ -412,7 +429,7 @@ impl GitVolt {
         }
     }
 
-    fn edit_groups(&mut self, change: impl FnOnce(&mut Vec<Value>), cx: &mut Context<Self>) {
+    pub fn edit_groups(&mut self, change: impl FnOnce(&mut Vec<Value>), cx: &mut Context<Self>) {
         let mut groups = self.groups();
         change(&mut groups);
         self.profile["tabGroups"] = json!(groups);
@@ -588,46 +605,6 @@ impl GitVolt {
             self.pending_group = Some((g, left - 1));
         }
         self.save_tabs(cx);
-    }
-
-    /// The group's chip: its colour, its name; a click folds it, a right-click is its menu.
-    pub fn group_chip(&self, g: &Value, cx: &mut Context<GitVolt>) -> AnyElement {
-        let id = g["id"].as_str().unwrap_or_default().to_string();
-        let collapsed = g["collapsed"] == true;
-        let color = theme::tag_group(g["color"].as_str().unwrap_or("gray"));
-        let name = g["name"].as_str().unwrap_or_default().to_string();
-        let (i1, i2) = (id.clone(), id.clone());
-        let key: SharedString = format!("tab-group:{id}").into();
-        let k2 = key.clone();
-        crate::ui::tooltip::tip(
-            group_label(g),
-            crate::ui::anchor(
-                key,
-                div()
-                    .id(ElementId::Name(format!("tab-group-{id}").into()))
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .h_full()
-                    .px(px(6.))
-                    .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(cx.listener(move |v, _, _, cx| {
-                        let id = i1.clone();
-                        v.edit_groups(move |g| {
-                            if let Some(x) = g.iter_mut().find(|x| x["id"] == id.as_str()) {
-                                x["collapsed"] = json!(x["collapsed"] != true);
-                            }
-                        }, cx);
-                    }))
-                    .on_mouse_down(MouseButton::Right, cx.listener(move |v, _, window, cx| {
-                        cx.stop_propagation();
-                        v.open_group_menu(i2.clone(), k2.clone(), window, cx);
-                    }))
-                    .child(div().flex().items_center().justify_center().min_w(px(14.)).h(px(18.)).px(px(6.)).rounded(px(4.)).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).when(!collapsed, |d| d.bg(color).text_color(theme::tg_ink())).when(collapsed, |d| d.text_color(color).border_1().border_color(color)).child(name)),
-            ),
-        )
-        .into_any_element()
     }
 
     /// `GroupMenu.tsx`: its name and colour, then New tab in group, Save and close group, Ungroup tabs and Delete group.
