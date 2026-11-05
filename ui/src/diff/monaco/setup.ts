@@ -6,6 +6,7 @@
 import * as monaco from 'monaco-editor/editor/editor.api';
 import 'monaco-editor/features/register.all';
 import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
+import './monaco.css';
 import { api, errorMessage } from '../../api/client';
 import { useAppState } from '../../app/state';
 import { useToast } from '../../ui/toastStore';

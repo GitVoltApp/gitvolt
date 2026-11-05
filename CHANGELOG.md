@@ -10,6 +10,9 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **Split diffs open with both sides at the first change.** A file opened again, its first
   change where the editor was last scrolled to, no longer had its old side jump back to the top
   a few frames on, the two sides then scrolling together out of line.
+- **The editor's find widget takes clicks.** In a diff or a file, Previous and Next Match, the
+  Match Case, Whole Word and Regex toggles and Close work when clicked after the pointer rests on
+  them: their tooltip no longer wraps over the button and takes the click (it flickered there).
 
 ## [1.5.0] - 2026-11-05
 
