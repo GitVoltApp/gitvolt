@@ -96,6 +96,10 @@ async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (
     while !no_file && !v.read_with(cx, |g, _| g.tabs[0].history.is_some() || g.tabs[0].diff.as_ref().is_some_and(|d| d.data.is_some() || d.notice != Some(Notice::Loading))) {
         wait(cx).await;
     }
+    // A rendered Markdown file: until its first blocks are on screen.
+    while v.read_with(cx, |g, cx| g.shown_md().is_some_and(|m| !m.read(cx).is_painted())) {
+        wait(cx).await;
+    }
     let text = opened.elapsed().as_millis();
     while !v.read_with(cx, |g, _| g.tabs[0].history.is_some() || g.tabs[0].diff.as_ref().is_none_or(|d| d.coloured || d.data.is_none())) {
         wait(cx).await;
@@ -185,6 +189,8 @@ impl GitVolt {
             popover::confirm(req, true, None, |_, _, _| {}, window, cx);
         } else if part == "armed" {
             arm::request(arm::ArmRequest::danger("Click again to discard 5 files", "Discard?", "Discard"), arm::Origin::control("tb-undo-caret"), |_, _, _| {}, window, cx);
+        } else if part == "mdfield" {
+            self.open_field_demo(window, cx);
         } else if part == "narrow" {
             self.sidebar_narrow = true;
             cx.notify();
@@ -301,6 +307,9 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
                 cx.update(|_, cx| println!("{}", v.read(cx).dump(cx))).ok();
             }
             // The rendered view's scroll, as the reference's script sets `scrollTop`.
+            "show" => {
+                cx.update(|window, cx| v.update(cx, |g, cx| g.show_ui(&rest, window, cx))).ok();
+            }
             "mdscroll" => {
                 v.update(cx, |g, cx| {
                     if let Some(view) = g.shown_md() {
@@ -369,10 +378,12 @@ impl GitVolt {
         let md = self.shown_md().map(|v| {
             let view = v.read(cx);
             let st = view.state.borrow();
-            serde_json::json!({ "ready": view.is_ready(), "tooLarge": view.too_large(), "scroll": st.scroll, "total": st.total_height(), "height": st.view_height(), "marks": st.change_marks().len(), "selected": st.selected_text(), "tops": st.top_offsets() })
+            serde_json::json!({ "ready": view.is_ready(), "tooLarge": view.too_large(), "scroll": st.scroll, "total": st.total_height(), "height": st.view_height(), "marks": st.change_marks().len(), "selected": st.selected_text(), "tops": st.top_offsets().len(), "focused": st.focused_name(), "hscroll": st.hscrolled() })
         });
         serde_json::json!({
             "md": md,
+            "lightbox": crate::lightbox::shown_percent(cx),
+            "field": self.field_demo.as_ref().map(|f| { let m = f.read(cx); serde_json::json!({ "text": m.text(cx), "mode": format!("{:?}", m.mode), "caret": m.input.read(cx).buffer.caret() }) }),
             "rebase": rebase,
             "merge": merge,
             "toast": crate::ui::toast::message(cx).map(|m| m.to_string()),
@@ -429,7 +440,11 @@ pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
                 }
                 s.last = Some(now);
                 s.y += STEP;
-                if let Some(d) = tab.diff.as_mut() {
+                if let Some(m) = tab.diff.as_ref().and_then(|d| d.md.as_ref()) {
+                    let mut st = m.state.borrow_mut();
+                    s.reached_end |= s.y >= st.max_scroll();
+                    st.set_scroll(s.y);
+                } else if let Some(d) = tab.diff.as_mut() {
                     s.reached_end |= s.y >= d.layout.max_scroll();
                     d.scroll = s.y.min(d.layout.max_scroll());
                 } else {

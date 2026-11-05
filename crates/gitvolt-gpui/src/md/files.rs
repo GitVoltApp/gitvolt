@@ -34,6 +34,7 @@ pub enum MdPick {
 
 pub struct MdPane {
     pub view: Entity<MdView>,
+    pub state: Rc<std::cell::RefCell<super::view::MdState>>,
     pub key: (String, ViewKind, bool),
     pub split: bool,
     _events: Subscription,
@@ -130,13 +131,14 @@ impl GitVolt {
                 by_sha.iter().find(|s| s.starts_with(&p)).cloned()
             })),
         };
-        let opts = MdOptions { ctx, old_ctx: Some(old_ctx), env, flavor: Flavor::Github, frontmatter: true, params, pane: true, base: None, worktree, reading_font: reading, max_bytes: DEFAULT_MAX_BYTES, measure_ch: measure, ruled: !file_view, split };
+        let opts = MdOptions { ctx, old_ctx: Some(old_ctx), env, flavor: Flavor::Github, frontmatter: true, params, pane: true, base: None, worktree, reading_font: reading, max_bytes: DEFAULT_MAX_BYTES, measure_ch: measure, ruled: !file_view, split, inset: None };
         let same_place = diff.md.as_ref().is_some_and(|m| m.key == key);
         let keep = same_place;
         if !same_place {
             let view = cx.new(|cx| MdView::new(opts, api, rt, retired, cx));
             let events = cx.subscribe(&view, |this, _, e: &MdEvent, cx| this.on_md_event(e, cx));
-            diff.md = Some(MdPane { view, key, split, _events: events });
+            let state = view.read(cx).state.clone();
+            diff.md = Some(MdPane { view, state, key, split, _events: events });
         }
         let anchor = diff.md_anchor.take();
         if let Some(m) = diff.md.as_ref() {
@@ -200,6 +202,22 @@ impl GitVolt {
         }
         self.apply_reading_settings(cx);
         crate::ui::toast::show(format!("Reading text {} px", next as u32), cx);
+    }
+
+    /// `GITVOLT_SHOW`'s and a script's `mdfield`: a field in a dialog, as a comment box has it.
+    pub fn open_field_demo(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use super::field::{FieldOptions, MarkdownField, PeopleSource};
+        use super::complete::Person;
+        let repo = self.tabs.get(self.active).map_or(0, |t| crate::app::core_repo(t.id));
+        let md = MdOptions::for_comment(repo, LinkEnv::default(), Flavor::Github, Params::default());
+        let people = PeopleSource { participants: vec![Person { id: 1, username: "ada".into(), name: "Ada Fixture".into() }, Person { id: 2, username: "ben".into(), name: "Ben Harbour".into() }], search: None, avatar: None };
+        let opts = FieldOptions { md, label: "Write a comment".into(), placeholder: "Leave a comment".into(), rows: 6, grow_preview: false, people: Some(people) };
+        let (api, rt, retired) = (self.api.clone(), self.rt.clone(), self.retired_images.clone());
+        let field = cx.new(|cx| MarkdownField::new(opts, api, rt, retired, cx));
+        self.field_demo = Some(field.clone());
+        let focus = field.read(cx).input.read(cx).focus.clone();
+        let shown = field.clone();
+        crate::ui::modal::open(crate::ui::modal::Modal::new("md-field-demo", move |_, _| div().w(px(560.)).child(shown.clone()).into_any_element()).width(600.).focus(focus), window, cx);
     }
 
     fn pick_markdown(&mut self, pick: MdPick, cx: &mut Context<Self>) {

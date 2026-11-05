@@ -72,11 +72,13 @@ pub struct MdOptions {
     pub ruled: bool,
     /// Side by side: two reading columns and the gap between them.
     pub split: bool,
+    /// A pane with this padding, sides and top, and its whole width: the field's preview.
+    pub inset: Option<(f32, f32)>,
 }
 
 impl MdOptions {
     pub fn for_comment(repo: u32, env: LinkEnv, flavor: Flavor, params: Params) -> Self {
-        Self { ctx: MdContext::Forge { repo }, old_ctx: None, env, flavor, frontmatter: false, params, pane: false, base: None, worktree: String::new(), reading_font: None, max_bytes: MR_BODY_MAX_BYTES, measure_ch: None, ruled: false, split: false }
+        Self { ctx: MdContext::Forge { repo }, old_ctx: None, env, flavor, frontmatter: false, params, pane: false, base: None, worktree: String::new(), reading_font: None, max_bytes: MR_BODY_MAX_BYTES, measure_ch: None, ruled: false, split: false, inset: None }
     }
 }
 
@@ -582,6 +584,9 @@ impl MdState {
         if !self.opts.pane {
             return (0., w);
         }
+        if let Some((x, _)) = self.opts.inset {
+            return (x, (w - 2. * x).max(0.));
+        }
         let room = if self.opts.ruled { (w - 24. - 54.).max(0.) } else { (w - 48. - BAR).max(0.) };
         let ch = (self.opts.params.font_px * 0.5).round();
         let measure = match (self.opts.split, self.opts.measure_ch) {
@@ -595,7 +600,11 @@ impl MdState {
     }
 
     fn pad_top(&self) -> f32 {
-        if self.opts.pane { PANE_PAD_TOP } else { 0. }
+        match (self.opts.pane, self.opts.inset) {
+            (true, Some((_, y))) => y,
+            (true, None) => PANE_PAD_TOP,
+            _ => 0.,
+        }
     }
 
     pub fn max_scroll(&self) -> f32 {
@@ -634,6 +643,7 @@ impl MdState {
         let (_, cw) = self.column(bounds.size.width.as_f32());
         self.view_h = bounds.size.height.as_f32();
         let pane = self.opts.pane;
+        let (pad_top, view_h) = (self.pad_top(), self.view_h);
         let Some(d) = self.doc.as_mut() else { return false };
         let stream = std::mem::take(&mut d.built.stream);
         if d.width != cw {
@@ -660,7 +670,6 @@ impl MdState {
         let colours = std::mem::take(&mut d.colours);
         let mut slots = std::mem::take(&mut d.slots);
         let mut shaper = WinShaper { sys: &sys, base, reading: self.opts.reading_font.as_deref(), code_font, slots: &mut slots, colours: &colours, wanted: Vec::new(), metrics: HashMap::new(), font_px: self.opts.params.font_px };
-        let (pad_top, view_h) = (if pane { PANE_PAD_TOP } else { 0. }, self.view_h);
         let mut more = false;
         let measure_one = |i: usize, d: &mut Doc, s: &mut WinShaper| -> f32 {
             let laid = layout_box(&d.built.tops[i], cw, &stream, s);
@@ -1006,6 +1015,14 @@ impl MdState {
     /// The pane's content height, what a ruler maps its marks against.
     pub fn total_height(&self) -> f32 {
         self.content_h() + 2. * self.pad_top()
+    }
+
+    pub fn focused_name(&self) -> Option<String> {
+        self.focused.map(|f| format!("{f:?}"))
+    }
+
+    pub fn hscrolled(&self) -> f32 {
+        self.hscroll.values().fold(0., |a, b| a.max(*b))
     }
 
     /// For a script: where each top-level block lies, in the document.
@@ -1848,6 +1865,12 @@ impl MdView {
 
     pub fn is_ready(&self) -> bool {
         self.state.borrow().doc.is_some()
+    }
+
+    /// Its first blocks have been laid out for a frame.
+    pub fn is_painted(&self) -> bool {
+        let st = self.state.borrow();
+        st.too_large || st.doc.as_ref().is_some_and(|d| d.tops.first().is_none_or(|t| t.measured))
     }
 
     /// The reading size or the line height changed: its boxes anew, what it scrolled to where it was.
@@ -2792,14 +2815,15 @@ impl Render for MdView {
         if stale {
             self.colour(cx);
         }
-        let pane = self.state.borrow().opts.pane;
+        let (pane, inset) = (self.state.borrow().opts.pane, self.state.borrow().opts.inset.is_some());
         div()
             .id("md-view")
             .key_context("Markdown")
             .track_focus(&self.focus)
             .relative()
             .w_full()
-            .when(pane, |d| d.h_full().flex_1().min_h_0().min_w_0().overflow_hidden().bg(theme::app_bg()))
+            .when(pane, |d| d.h_full().flex_1().min_h_0().min_w_0().overflow_hidden())
+            .when(pane && !inset, |d| d.bg(theme::app_bg()))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_down))
             .on_mouse_down(MouseButton::Right, cx.listener(Self::on_right))
             .on_mouse_move(cx.listener(Self::on_move))

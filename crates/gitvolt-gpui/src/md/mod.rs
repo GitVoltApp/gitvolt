@@ -6,9 +6,13 @@
 #![allow(dead_code)]
 
 pub mod ast;
+pub mod attachments;
 pub mod boxes;
+pub mod complete;
 pub mod diff;
 pub mod emoji;
+pub mod excerpt;
+pub mod field;
 pub mod files;
 pub mod frontmatter;
 pub mod layout;

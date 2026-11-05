@@ -459,6 +459,8 @@ pub struct TextInput {
     multiline: bool,
     claim_escape: Claim,
     claim_arrows: bool,
+    /// A popup of the owner's is open: ↑, ↓, Enter and Esc are all its.
+    popup_keys: bool,
     was_focused: bool,
     /// A monospace field, a size or colour other than what it inherits.
     text_color: Option<Hsla>,
@@ -519,6 +521,7 @@ impl TextInput {
             multiline,
             claim_escape: Claim::Never,
             claim_arrows: false,
+            popup_keys: false,
             was_focused: false,
             text_color: None,
             placeholder_color: None,
@@ -587,6 +590,26 @@ impl TextInput {
     pub fn claim_arrows(mut self) -> Self {
         self.claim_arrows = true;
         self
+    }
+
+    pub fn set_popup_keys(&mut self, on: bool) {
+        self.popup_keys = on;
+    }
+
+    /// Where a byte of the text is on screen: its line's left and top, and the line's height.
+    pub fn point_of(&self, at: usize) -> Option<(Point<Pixels>, Pixels)> {
+        let l = self.laid.iter().rev().find(|l| l.start <= at)?;
+        let p = l.line.position_for_index(at - l.start, self.line_h)?;
+        Some((self.origin + point(p.x, l.y + p.y), self.line_h))
+    }
+
+    /// Text and caret together, as an insertion by the app is: an undoable edit, the caret after it.
+    pub fn set_text_caret(&mut self, text: &str, caret: usize, cx: &mut Context<Self>) {
+        let len = self.buffer.text.len();
+        self.buffer.replace(Some(0..len), text, EditKind::Other);
+        self.buffer.move_to(caret.min(text.len()));
+        cx.emit(InputEvent::Changed);
+        cx.notify();
     }
 
     pub fn set_disabled(&mut self, disabled: bool, cx: &mut Context<Self>) {
@@ -806,7 +829,7 @@ impl TextInput {
         if self.buffer.marked.take().is_some() {
             window.notify_text_input_changed(&self.focus);
             cx.notify();
-        } else if self.claim_escape == Claim::Always || (self.claim_escape == Claim::WhenText && !self.buffer.text.is_empty()) {
+        } else if self.popup_keys || self.claim_escape == Claim::Always || (self.claim_escape == Claim::WhenText && !self.buffer.text.is_empty()) {
             cx.emit(InputEvent::Escape);
         } else {
             cx.propagate();
@@ -814,6 +837,10 @@ impl TextInput {
     }
 
     fn arrow(&mut self, down: bool, shift: bool, cx: &mut Context<Self>) {
+        if self.popup_keys {
+            cx.emit(InputEvent::Arrow { down, shift });
+            return;
+        }
         // A textarea's first line: Up leaves it, for an owner that has a field above it.
         if self.multiline && self.claim_arrows && !down && !shift && self.buffer.sel.is_empty() && !self.buffer.text[..self.buffer.caret()].contains('\n') {
             cx.emit(InputEvent::Arrow { down, shift });
@@ -828,6 +855,10 @@ impl TextInput {
     }
 
     fn enter(&mut self, shift: bool, cx: &mut Context<Self>) {
+        if self.popup_keys && !shift {
+            cx.emit(InputEvent::Submit { shift: false, ctrl: false });
+            return;
+        }
         if self.multiline && (shift || !self.enter_submits) {
             self.edit(None, "\n", EditKind::Other, cx);
         } else if self.multiline {

@@ -307,3 +307,8 @@ pub fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
             .into_any_element(),
     )
 }
+
+/// For a script: its zoom, while it's open.
+pub fn shown_percent(cx: &App) -> Option<u32> {
+    Ui::get(cx).lightbox.as_ref().map(|s| (s.view.scale * 100.).round() as u32)
+}
