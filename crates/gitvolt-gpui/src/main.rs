@@ -18,6 +18,7 @@ mod graph;
 mod history;
 mod icons;
 mod layout;
+mod manage;
 mod menus;
 mod model;
 mod open_in;

@@ -219,7 +219,8 @@ fn start_index(rows: &[MenuRow], initial: Option<&str>) -> usize {
     let at = initial.and_then(|i| rows.iter().position(|r| r.id().is_some_and(|id| id.as_ref() == i)));
     match at {
         Some(i) if rows[i].enabled() => i,
-        _ => first_enabled(rows),
+        // Of a choice's rows, the one that's chosen.
+        _ => rows.iter().position(|r| matches!(r, MenuRow::Action(a) if a.radio == Some(true))).unwrap_or_else(|| first_enabled(rows)),
     }
 }
 

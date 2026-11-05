@@ -226,6 +226,7 @@ pub fn all() -> Vec<Command> {
             let ctx = v.tabs[v.active].write_target();
             v.stash_push(ctx, cx);
         }),
+        Command::new("files.createFile", "Create file…", File, "file-plus", "Create an empty file in the working tree", &[]).run(|this, window, cx| this.open_create_file(window, cx)),
         Command::new("stash.pop", "Pop", Repository, "archive-restore", "Apply the newest stash and delete it", &["Mod+Alt+P"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.sidebar["stashes"].as_array().is_some_and(|s| !s.is_empty()))).run(|v, _, cx| {
             let tab = &v.tabs[v.active];
             let (ctx, oid) = (tab.write_target(), tab.sidebar["stashes"][0]["id"].as_str().unwrap_or_default().to_string());

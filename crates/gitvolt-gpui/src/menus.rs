@@ -33,6 +33,13 @@ fn copier(this: &WeakEntity<GitVolt>, text: String) -> impl Fn(&mut Window, &mut
     }
 }
 
+fn create_file_row(this: &WeakEntity<GitVolt>) -> MenuRow {
+    let weak = this.clone();
+    MenuRow::action("files.createFile", "Create file…", "file-plus", "Create an empty file in the working tree", move |window, cx| {
+        weak.update(cx, |v, cx| v.open_create_file(window, cx)).ok();
+    })
+}
+
 fn copy_sha_row(id: &str, sha: &str, this: &WeakEntity<GitVolt>) -> MenuRow {
     MenuRow::action(id.to_string(), "Copy SHA", "hash", "Copy the full commit id", copier(this, sha.to_string())).variants(
         vec![
@@ -137,7 +144,11 @@ impl GitVolt {
                         let (chip, id) = (chip.clone(), id.clone());
                         weak.update(cx, |v, cx| v.checkout_chip(&id, &chip, cx)).ok();
                     }).disabled_if(busy.clone()));
-                    worktree.push(MenuRow::pending(format!("wt:{}", c.name), c.name.clone(), "git-branch"));
+                    let (weak, name) = (this.clone(), c.name.to_string());
+                    worktree.push(MenuRow::action(format!("wt:{}", c.name), c.name.clone(), "git-branch", format!("Check out {} in a new directory", c.name), move |window, cx| {
+                        let name = name.clone();
+                        weak.update(cx, |v, cx| v.open_create_worktree(serde_json::json!({ "kind": "existing", "name": name }), window, cx)).ok();
+                    }));
                 } else if !c.local && !c.remotes.is_empty() {
                     let r = c.remotes.iter().find(|x| x.0 == "origin").or(c.remotes.first()).cloned().unwrap_or_default();
                     let branch_name = r.1.trim_start_matches(&format!("refs/remotes/{}/", r.0)).to_string();
@@ -159,7 +170,11 @@ impl GitVolt {
                 let (id, c, h) = (id.clone(), c.clone(), h.clone());
                 weak.update(cx, |v, cx| v.checkout(c, serde_json::json!({ "kind": "detached", "oid": id }), serde_json::json!({ "head": h, "refs": {} }), None, crate::ui::arm::Origin::None, None, cx)).ok();
             }).disabled_if(busy.clone()));
-            worktree.push(MenuRow::pending("wt:new", "New branch here…", "folder-plus"));
+            let (weak, at) = (this.clone(), sha.clone());
+            worktree.push(MenuRow::action("wt:new", "New branch here…", "folder-plus", "Create a branch here and check it out in a new directory", move |window, cx| {
+                let at = at.clone();
+                weak.update(cx, |v, cx| v.open_create_worktree(serde_json::json!({ "kind": "new", "name": "", "at": at }), window, cx)).ok();
+            }));
             branch_rows.push(MenuRow::submenu("branch.checkout", "Checkout", "git-branch", "Check out a branch at this commit, or the commit itself", checkout));
             branch_rows.push(MenuRow::submenu("branch.createWorktree", "Create worktree from", "folder-plus", "Check out a branch in a new directory", worktree));
             let (weak, id, start) = (this.clone(), sha.clone(), branch.map(|b| if b.local { format!("refs/heads/{}", b.name) } else { b.remotes.first().map_or(String::new(), |r| r.1.clone()) }).filter(|s| !s.is_empty()));
@@ -371,7 +386,29 @@ impl GitVolt {
             let folder = folder.clone();
             weak.update(cx, |v, cx| v.open_folder(folder, cx)).ok();
         })];
-        grouped(vec![copy, open, show_in_graph(head, head.is_some_and(|h| self.in_graph(h)), this)])
+        let tab = self.tabs.get(self.active);
+        let is_main = tab.and_then(|t| t.graph.as_ref()).and_then(|g| g.worktrees.iter().find(|w| w.path == path)).is_some_and(|w| w.is_main);
+        let manage = {
+            let mut rows = Vec::new();
+            if tab.is_some_and(|t| t.worktree != path) {
+                let (weak, p) = (this.clone(), path.to_string());
+                let shown = path.to_string();
+                rows.push(MenuRow::action("sidebar.worktree.switch", "Switch to", "arrow-right-left", format!("Make {shown} this tab's worktree (its WIP, commit box and Undo)"), move |_, cx| {
+                    let p = p.clone();
+                    weak.update(cx, |v, cx| v.switch_worktree(p, cx)).ok();
+                }));
+            }
+            if !is_main {
+                let (weak, p, b) = (this.clone(), path.to_string(), branch.map(str::to_string));
+                let shown = path.to_string();
+                rows.push(MenuRow::action("sidebar.worktree.remove", "Remove worktree", "x", format!("Remove {shown}: its directory is deleted"), move |window, cx| {
+                    let (p, b, origin) = (p.clone(), b.clone(), crate::ui::arm::Origin::current(cx));
+                    weak.update(cx, |v, cx| v.remove_worktree(p, b, origin, window, cx)).ok();
+                }));
+            }
+            rows
+        };
+        grouped(vec![manage, copy, open, show_in_graph(head, head.is_some_and(|h| self.in_graph(h)), this)])
     }
 
     /// A stash in the sidebar.
@@ -393,8 +430,20 @@ impl GitVolt {
                     weak.update(cx, |v, cx| v.push_tags(r, None, cx)).ok();
                 })
             }],
-            vec![MenuRow::action("sidebar.copyRemote", "Copy remote name", "copy", format!("Copy \"{name}\""), copier(this, name.to_string())), MenuRow::pending("sidebar.copyUrl", "Copy URL", "square-arrow-out-up-right")],
-            vec![MenuRow::pending("sidebar.removeRemote", "Remove remote…", "trash-2")],
+            vec![MenuRow::action("sidebar.copyRemote", "Copy remote name", "copy", format!("Copy \"{name}\""), copier(this, name.to_string())), {
+                let (weak, r) = (this.clone(), name.to_string());
+                MenuRow::action("sidebar.copyUrl", "Copy URL", "square-arrow-out-up-right", format!("Copy the URL of {name}"), move |_, cx| {
+                    let r = r.clone();
+                    weak.update(cx, |v, cx| v.copy_remote_url(r, cx)).ok();
+                })
+            }],
+            vec![{
+                let (weak, r) = (this.clone(), name.to_string());
+                MenuRow::action("sidebar.removeRemote", "Remove remote…", "trash-2", format!("Remove {name} from this repository"), move |window, cx| {
+                    let (r, origin) = (r.clone(), crate::ui::arm::Origin::current(cx));
+                    weak.update(cx, |v, cx| v.remove_remote(r, origin, window, cx)).ok();
+                })
+            }],
         ])
     }
 
@@ -531,7 +580,7 @@ impl GitVolt {
             }),
         ];
         let lfs = ext.map_or(Vec::new(), |e| vec![MenuRow::pending("file.lfsTrack", format!("Track *.{e} with LFS"), "file-plus")]);
-        grouped(vec![stage, restore, colour, copy, vec![open], view, history, lfs, vec![MenuRow::pending("files.createFile", "Create file…", "file-plus")]])
+        grouped(vec![stage, restore, colour, copy, vec![open], view, history, lfs, vec![create_file_row(this)]])
     }
 
     /// A folder of the file list.

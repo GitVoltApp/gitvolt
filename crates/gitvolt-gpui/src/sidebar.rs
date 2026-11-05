@@ -653,7 +653,13 @@ impl GitVolt {
             ItemKind::Worktree { path, branch, head, .. } => self.worktree_rows(path, branch.as_deref(), head.as_deref(), this),
             ItemKind::Stash { message, .. } => self.stash_rows(item.target.as_deref().unwrap_or_default(), message, this),
             ItemKind::Tag { .. } => self.tag_rows(&item.name, item.target.as_deref(), true, this),
-            ItemKind::Submodule { .. } => vec![menu::MenuRow::pending("sidebar.submodule.open", "Open in a tab", "square-plus"), menu::MenuRow::pending("sidebar.submodule.update", "Update this submodule", "folder-sync")],
+            ItemKind::Submodule { .. } => vec![menu::MenuRow::pending("sidebar.submodule.open", "Open in a tab", "square-plus"), {
+                let (weak, p) = (this.clone(), item.name.clone());
+                menu::MenuRow::action("sidebar.submodule.update", "Update this submodule", "folder-sync", "git submodule update --init of this one", move |_, cx| {
+                    let p = p.clone();
+                    weak.update(cx, |v, cx| v.update_submodule(Some(p), cx)).ok();
+                })
+            }],
         }
     }
 
@@ -841,7 +847,15 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
             )
             .when(matches!(kind, SectionKind::Remote | SectionKind::Worktrees), |d| {
                 let (glyph, label) = if kind == SectionKind::Remote { ("plus", "Add remote…") } else { ("folder-plus", "Add worktree…") };
-                d.child(tip(format!("{label} ({})", crate::ui::menu::NOT_YET), div().flex().flex_none().size(px(18.)).items_center().justify_center().child(icon(glyph, 13., theme::text_disabled()))))
+                d.child(tip(label, div().id(("side-add", kind as usize)).flex().flex_none().size(px(18.)).items_center().justify_center().rounded(px(3.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    if kind == SectionKind::Remote {
+                        this.open_add_remote(window, cx);
+                    } else {
+                        let at = this.tabs.get(this.active).and_then(Tab::head_sha).unwrap_or_default();
+                        this.open_create_worktree(serde_json::json!({ "kind": "new", "name": "", "at": at }), window, cx);
+                    }
+                })).child(icon(glyph, 13., theme::text_secondary()))))
             })
             .when(kind.nests() && !panel.collapsed, |d| {
                 let recent = panel.recent;
@@ -879,12 +893,13 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                 let cursor = tab.side.cursor.get(&kind).copied().unwrap_or(0);
                 let weak = weak.clone();
                 let push = this.last_pushes.clone();
+                let pending = tab.pending.clone();
                 let list = uniform_list(
                     ("side-list", p),
                     panel.rows.len(),
                     cx.processor(move |_, range: Range<usize>, _, cx| {
                         let list = &rows[p].rows;
-                        range.map(|i| side_row(&list[i], i, kind, keys_here && cursor == i, sidebar_right, &weak, &push, cx)).collect()
+                        range.map(|i| side_row(&list[i], i, kind, keys_here && cursor == i, sidebar_right, &weak, &push, &pending, cx)).collect()
                     }),
                 )
                 .with_sizing_behavior(ListSizingBehavior::Auto)
@@ -953,7 +968,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
 }
 
 #[allow(clippy::too_many_arguments)]
-fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_right: f32, this: &WeakEntity<GitVolt>, push: &PushCache, cx: &mut Context<GitVolt>) -> AnyElement {
+fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_right: f32, this: &WeakEntity<GitVolt>, push: &PushCache, pending: &HashMap<String, &'static str>, cx: &mut Context<GitVolt>) -> AnyElement {
     let base = div().id(i).relative().flex().w_full().h(px(ROW_H)).items_center().gap(px(ROW_GAP)).pr(px(8.)).whitespace_nowrap();
     let outlined = on_key || menu::is_target(row.key(), cx);
     let outline = |d: Stateful<Div>| d.when(outlined, |d| d.child(crate::ui::outline()));
@@ -989,7 +1004,12 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
             let (weak, menu_item, menu_key) = (this.clone(), item.clone(), key.clone());
             let hover_item = item.clone();
             let dbl_item = item.clone();
+            let running = match &item.kind {
+                ItemKind::Local { full, .. } | ItemKind::Remote { full, .. } => pending.contains_key(full),
+                _ => false,
+            };
             let glyph: AnyElement = match &item.kind {
+                _ if running => crate::commit_box::spinner(("side-spin", i), 13., theme::text_secondary()).into_any_element(),
                 ItemKind::Local { is_head: true, .. } => div().flex().flex_none().items_center().justify_center().size(px(15.)).mx(px(-1.)).rounded(px(3.)).bg(theme::checked_out()).child(icon("check", 11., theme::text_on_accent())).into_any_element(),
                 ItemKind::Local { .. } | ItemKind::Remote { .. } => icon("git-branch", 13., theme::sidebar_icon()).into_any_element(),
                 ItemKind::Worktree { is_main: true, .. } => icon("house", 13., theme::sidebar_icon()).into_any_element(),
