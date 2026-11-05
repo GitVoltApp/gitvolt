@@ -30,7 +30,7 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   repository: use throwaway fixtures under `target/bench/work/` (`tools/fixture.sh`), with fictional
   names and emails. Never the real keyring or a real forge: tests use the harness's fake forge.
 - **When you run the build**, isolate it: `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME`
-  under `target/bench/work/`, so the user's settings are never read or written.
+  under `target/bench/work/`, so the user's settings are never read or written. Tabs restore from the profile there: a script's first state is what the last run left, so delete `xdg/config/gitvolt-gpui` for a clean start.
 
 ## How it's put together
 
@@ -78,9 +78,13 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   `run` shows disabled until it's ported. To add a chord, add a row: bare keys stay GPUI bindings.
 - **The palette** can open as a picker: `GitVolt::choose(Choices { .. })`.
 - **The profile and the settings** are `GitVolt::profile` and `settings`, JSON as the core says them (`Request::LoadState`); `update_profile` and `update_repo` change and save. A graph read carries its preset's `view` and `pin`: `graph_options`.
-- **Sizes a drag sets** go through `GitVolt::save_layout` (`src/layout.rs`).
-- **Drawing:** `theme.rs` has `ui/src/theme/tokens.css`'s colours: add tokens there with the CSS's
-  name, never a stray hex. Paint-heavy views use `canvas`, as `graph.rs` and `diff/view.rs`.
+- **Sizes a drag sets** go through `GitVolt::save_layout` (`src/layout.rs`): those the web UI has in the profile go there, what it has in localStorage stays in `layout.json`, `prefs` among it.
+- **Drawing:** `theme.rs` has the shown theme's colours, every `tokens.css` token by the CSS's name: `theme::blue()`, never a stray hex, and never a colour kept in a struct across frames (a theme switch only refreshes). `theme::editor()` has what Monaco draws with. Built-in themes come from `assets/themes.json` and `assets/editor-themes/`: `assets/generate.mjs` writes them, and the goldens in `src/testdata/` and `src/diff/testdata/`. Paint-heavy views use `canvas`, as `graph.rs` and `diff/view.rs`.
+- **Sizes that follow a setting** are functions, `metrics::row_h()`, `line_h()`, `advance()`, `chip_h()`, `file_row_h()`, `panel_bar_h()`; `settings/effects.rs` applies a change.
+- **Tabs and repositories:** `Tab::id` and every variable named `repo` in the views are a tab's id, not the core's. What goes to the core goes through `app::core_repo(id)` (`Request`s and `"repo": ..` in a `call`); an event from it goes to `tabs_on(repo)`. `Tab::state_id` is the profile's id for the tab; `save_tabs` writes the strip to the profile.
+- **Settings:** a setting is a row in `settings/pages.rs` (`Def`: label, page, group, keywords, control, binding). What it does goes in `settings/effects.rs`, not in the row. `set_settings` and `update_profile` save through the core. `settings_field` gives a page a text box by id.
+- **Colour picker:** `ui::colour::swatch(key, value, label, alpha, size, on_preview, on_commit, on_cancel, cx)`; `theme::preview` shows a value without saving it.
+- **Zoom** is the platform wrapper in `zoom.rs`, generated once from `gpui`'s `Platform` and `PlatformWindow` traits: when the pinned `gpui` moves, new trait methods need a line of delegation there.
 - **Icons:** add a Lucide name to `ICONS` in `assets/generate.mjs`, run it from `ui/` (`node
   ../crates/gitvolt-gpui/assets/generate.mjs`), then `icon("name", size, color)`.
 - **Text:** the UI font is `system-ui`'s; mono text is `diff::view::FONT`. There's no `letter-spacing`
@@ -95,7 +99,7 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   anchor's key>`, `clickrow`, `shiftclickrow`, `ctrlclickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
   under `target/bench/work/xdg`, no avatars, no global git config. Only ever on a throwaway repo under `target/bench/work/`.
   `tools/conflict-fixture.sh merge|rebase|irebase` makes one that's stopped in a merge, stopped in a rebase, or ready for a plan. `dump`'s
-  `merge` and `rebase` say what those tools hold. Their anchors: `merge-hunk:<side>:<n>`, `merge-line:<side>`, `merge-take-all-<side>`, `merge-save`,
+  `merge` and `rebase` say what those tools hold, `settings` and `profile` what those hold, `zoom` the zoom. `GITVOLT_FAKE_UPDATE=<state>` shows the update pill in that state, asking no host. Their anchors: `merge-hunk:<side>:<n>`, `merge-line:<side>`, `merge-take-all-<side>`, `merge-save`,
   `merge-next`, `irow:<oid>`, `iaction:<oid>`, `ichip:<oid>:<branch>`, `ichip-add:<oid>`, `rebase-start`, `rebase-cancel`, `op-abort-at`, `op-continue-at`.
 
 ## Tests

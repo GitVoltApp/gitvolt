@@ -11,7 +11,7 @@ Title bar with window buttons and resize edges, repository tabs you can drag alo
 toolbar, the sidebar's panels (filter, sort, collapse, dividers, width, the narrow strip, hover cards),
 the graph table (columns that resize, hide and are remembered, chips with `+N`, the WIP row, the collapse
 zone and its shade, Load older commits, the dim on resting on a branch's chip), avatars, the status bar,
-reloads on the core's events, and the default dark theme. Sizes and colours are the web UI's, read from its
+reloads on the core's events, and every theme. Sizes and colours are the web UI's, read from its
 CSS and from the running app.
 
 The shared UI every later feature builds on is in `crates/gitvolt-gpui/src/ui` (its README says how to
@@ -31,7 +31,7 @@ the area last clicked in: the graph, the file list, the history's list or the di
 The diff has Inline, Split and Hunk, File View, word-level marks, the overview ruler, indent guides,
 "ignore whitespace", the next and previous change (F7), selecting and copying text, word wrap, folds
 and File View's minimap. It colours with a TextMate tokenizer on Oniguruma, `vscode-textmate`'s algorithm
-with injections, and Shiki's grammars and theme. Against Shiki on real files of this repository (Rust,
+with injections, and Shiki's grammars and themes. Against Shiki on real files of this repository (Rust,
 TypeScript, TSX, CSS, Markdown, TOML, JSON, YAML, Python, about 392,000 characters), not one character's
 colour differs; the test's samples cover 34 languages, 21 of them for their injections.
 
@@ -105,11 +105,18 @@ action started and sends again, an error toasts, the answer updates the journal,
 - **File colours (`src/filecolours.rs`):** the patterns compiled by hand as `glob.ts` does, the rows' tints by `rowTint`, the menus' Scope line and Colour rows.
 - **The Fork trunk notice** above Commit, with Create branch… and Dismiss.
 
+- **Themes (`src/theme.rs`):** the ten built-ins, from `assets/themes.json`, which `assets/generate.mjs` writes from `themes.ts`; `derive` and `customThemeDef` ported, golden-tested on a custom theme per base; each editor theme's tokens and Monaco's colours in `assets/editor-themes/`, against Shiki on ten samples per theme. Every `theme::x()` reads the UI thread's palette, cheaper than the `rgb` conversion it replaced; a switch swaps it and refreshes, and an open file or merge tool is read and coloured again, keeping unsaved typing. The saved theme applies before the first frame. Lanes and their text, file tints and Chromium's range colours follow the theme.
+- **Settings (`src/settings/`):** the overlay, its nav and search with marks, deep links with the flash, Reset all and ↺, all the pages but Accounts' content. The theme page has the cards, the strip (rename, Copy as JSON, Export file…, Delete arming), Paste a theme and Ctrl+V, the lanes dragged or changed, every colour with its picker (`ui/colour.rs`, OKLCH, previewing on the app), All colours and the floating Edit mode. The font picker lists the installed families, previews beside it, and takes a custom list. Branch presets (`presets/settings_page.rs`) has the list with its ticks and drags, rules with live counts, picks, options, sharing and Edit presets… in the button's menu. File colours (`filecolours/settings_page.rs`) has scopes, chips, tints, Start collapsed (which a tree now honours), counts, try a path, share and copy from another repository.
+- **What the rows do (`settings/effects.rs`, `metrics.rs`):** density (row, chip, lane, file row and panel bar sizes), UI font, editor font, size, line height, ligatures, tab width, whitespace, minimap; commit limit; date format and relative dates, ticking once a minute only while on; avatars asked again; fetch interval applied live, off, the first fetch at once when it's due, a tick missed while hidden replayed on coming back; Open in's default from the repository's or the profile's editor, a custom command checked by the core; hosts, trunk, pin.
+- **Profiles (`src/tabs.rs`):** the switcher, New, Edit, Delete arming in its submenu; switching asks about unsaved work, closes the tabs and brings up the other profile's. Sidebar and details widths, sidebar panels and each repository's columns live in the profile; the chosen Pull in the settings. As in the web UI, drafts, merge drafts, the WIP split and the details split stay beside the app (`drafts.json`, `layout.json`), per machine, not per profile.
+- **Tabs and window:** a tab's id is the core's repository id with the tab's number above it (`app::core_repo`), so several tabs can show one repository, each its worktree: Open in a new tab and Go to its tab from Create worktree, the checked-out-elsewhere toast, the sidebar's and WIP's menus. Tabs, the active one, closed tabs and names persist and come back at the start. Tab groups: chips, folding, colours, names, New tab in group, Save and close, Ungroup, Delete arming, saved groups in the tab bar's menu. A dragged tab follows the pointer. The window's size and maximized state are kept. Zoom scales through the platform (`src/zoom.rs`): Ctrl+=, Ctrl+-, Ctrl+0 and the status bar's menu, sharp as a browser's; over an open file they change its text size. A later launch hands its path to the running one (`gitvolt_core::instance`). System title bar is honoured at the start.
+- **Keyboard Shortcuts (`src/shortcuts.rs`):** the panel and Settings › Keyboard, from the command table and the web UI's hints, the rebase editor's bare keys included. The web UI has no rebinding, so neither has this.
+- **Debug:** Requests from the core's log, Actions as commands run, Copy diagnostics. **Git check:** the blocking screen when git is missing or too old. **Update pill and dialog (`src/updates.rs`):** every state, on the core's `UpdateState`.
+
 ## Not there yet
 
-By size of the work: the MR/PR views and review comments, Markdown, Mermaid, PDF and media views (a PDF or media file shows as hex), settings (Branch presets' and File colours' pages among them),
-profiles and other themes, tab groups, the Keyboard Shortcuts panel, accessibility roles, spell check, zoom, and macOS and Windows checks. In the diff: moved-code detection and code lens.
-In the details panel: editing a commit's message (the pencil, `HeadMessageEditor`), and "vs 1st parent" on a merge.
+By size of the work: the MR/PR views and review comments, Markdown, Mermaid, PDF and media views (a PDF or media file shows as hex), the Accounts page's content, accessibility roles, spell check, sticky scroll, and macOS and Windows checks. In the diff: moved-code detection and code lens.
+In the details panel: editing a commit's message (the pencil, `HeadMessageEditor`), and "vs 1st parent" on a merge. The lightbox belongs with Markdown: only `MdImage` and `MdVideo` open it.
 
 Everything above was run from the tests and from `GITVOLT_SCRIPT`, which sends events through the window as the
 platform would (`README`). **None of it has had a real mouse or keyboard on it**, IME included.
@@ -118,8 +125,6 @@ platform would (`README`). **None of it has had a real mouse or keyboard on it**
 
 Known, in the area that's there:
 
-- **One tab per repository:** tabs go by the core's repository id, and a worktree of an open repository shares its handle, so a linked worktree is never a second tab. "Open in a new tab" (Create
-  worktree's checkbox, the checked-out-elsewhere toast's link) switches this tab to it, and the sidebar and WIP menus have no Open in a new tab or Go to its tab rows; opening a linked worktree's folder goes to the repository's tab.
 - **Writes, dialogs:** Add remote has no forks list: that's the forge layer's. Tab reaches a prompt's checkbox and buttons, but no select. An annotated tag's message box has no resize. A clone's progress bar is drawn, not Chromium's.
 - **Writes, questions:** a question from a write's own answer, when the menu row that began it has closed, is a
   popover (asking first, as a preview does, holds the row and arms it, as there). A linked worktree's tab moves to the main
@@ -127,9 +132,9 @@ Known, in the area that's there:
 - **Selecting rows:** the compare's sides and the multi list take their tooltips on the summary only, as there, without the web's keyboard path into them. The menu key opens the row's menu at its left under the row.
 - **Open screen:** the window's title says the Open tab rather than the last repository's. Below 900 px wide the three columns don't stack. A group of "grouped" lists scrolls with its column rather than by even shares of the height.
   Tab reaches the fields, Recent's rows, Open directory and Clone, not the pin and remove buttons or Your repos' rows. The directory picker doesn't start where the web's does: the portal is asked for no start.
-- **Presets:** "Edit presets…" isn't in the menu, since Settings isn't here. The ghost stub's hover zone on the graph isn't there: the "⋮ N hidden" text opens the list on a press, or Enter on the row; so the list needs a press, not a hover. The reveal panel's rows have no right-click, and no
+- **Presets:** The ghost stub's hover zone on the graph isn't there: the "⋮ N hidden" text opens the list on a press, or Enter on the row; so the list needs a press, not a hover. The reveal panel's rows have no right-click, and no
   Up and Down inside it; a ⋮ row's dotted lane opens it after the same rest as the row, not at once; a fold's panel opens on a press, not a hover. It doesn't curve the merge's row into its lane. H on a sidebar row isn't bound (the eye and Alt+click are). Going to a commit a preset hides (`revealCommit`) says it's not loaded rather than unfolding it.
-- **File colours:** with no Settings page, "Colour …" asks which scope in a picker and adds there at once; there's no edit, reorder, try-a-path or import. A scope's Start collapsed isn't applied. The menu's Scope line is text, with no swatch. The tints are for the default dark theme.
+- **File colours:** "Colour …" asks which scope in a picker and adds there at once, without the page's add strip (its warnings about an earlier scope matching, and its Undo-less preview). A dragged scope moves at once, without the slide. The menu's Scope line is text, with no swatch.
 - **LFS:** the "not downloaded" notice is the diff's; a File History row's sides use the same read, so they show it too.
 - **WIP and commit box:** a conflicted row's label sits under the row's hover buttons, as there.
 - **Merge tool:** the editors are the plain one under Editing below: no find (Ctrl+F does nothing there), no multiple cursors, and their right-click has Copy,
@@ -145,10 +150,7 @@ Known, in the area that's there:
 - **Editing:** a plain editor, not Monaco: no multiple cursors, no suggestions, no blink; Up and Down go by logical line,
   and so do Home and End in wrapped text. Colours catch up 120 ms after typing. A press on a removed line doesn't
   move the caret. An inline selection can take removed lines too.
-- **Background fetch:** the interval is read at the start; it isn't paused for a minimized window, and doesn't run at once
-  on opening. The chosen Pull is kept in `layout.json`, drafts and merge drafts in `drafts.json`, not the profile.
-- **Activity log:** Activity and Commands only, without Requests, Actions, the diagnostics or the performance overlay;
-  rows are simpler.
+- **Activity log:** Requests and Actions are plain lists, without the web UI's filters and copy-all; there's no performance overlay, and Open logs folder and debug logging have no log file to work on yet: this build writes none. Actions lists commands, not every menu row a view adds by itself.
 - **Credentials:** a password field shows stars rather than the browser's dots.
 - **Text:** a line's advance is 7.8 px, the font's; Chromium rounds it to 8. Lines end a little earlier
   and wrap a little later. The hex view paints on Chromium's 8 px grid. UI text is a pixel or two wider.
@@ -165,12 +167,10 @@ Known, in the area that's there:
   that; zooming out samples linearly. No right-click menu, no keyboard on the swipe handle, and the
   background pick lasts the session. As in the web UI, only Ctrl+wheel zooms.
 - **Hex:** the panes don't select or copy, and have no find.
-- **Open in:** the opener from Settings isn't read; the last one used lasts the session; stored
-  versions' copies go in a `gitvolt-gpui` cache folder of their own.
+- **Open in:** the last one used lasts the session; stored versions' copies go in a `gitvolt-gpui` cache folder of their own.
 - **File list:** View all files is for commits, not the WIP row (`Request::WorktreeFiles`). Folder rows
   have no change counts or guide lines.
-- **Text fields:** the caret doesn't blink, since an idle app costs nothing. There's no spell check and no
-  right-click menu in a field.
+- **Text fields:** the caret blinks ten times after it moves or the field takes the keyboard, then stays lit, since an idle app costs nothing; Chromium's blinks for as long as the field has focus. A number field's text is left-aligned, not centred. There's no spell check (`spellCheck` is Chromium's; a native one would need a dictionary dependency, not added) and no right-click menu in a field.
 - **Tooltips and cards** appear without the 150 ms fade. A card takes no pointer: nothing floats that the
   pointer can enter.
 - **Menus:** a row's highlight doesn't fade in (the web UI's 50 ms). The Open in dropdown in the diff's toolbar is still its own menu, without
@@ -180,13 +180,12 @@ Known, in the area that's there:
 - **Graph:** rows change colour at once, without the 200 and 500 ms easing. The table clips where the web UI
   scrolls sideways, so a hand-set wide Message runs off the edge, and a graph with too many lanes for its
   default width shows the collapse zone sooner than it would. No lane scrollbar under a clipped Graph column; a Branch/Tag column at its minimum shows chips as they fit rather than their icons alone. Column resizers and panel dividers are for the mouse, not the arrow keys. The SHA shows six characters however wide its column.
+- **Settings:** the live preview on the theme page is a small drawing of the same tokens, not the graph's own rows and canvas. A press outside the colour picker commits and doesn't also reach what's under it. The font list opens below its button rather than choosing a side away from the preview. The Reading rows store and show their values, and take effect with the Markdown views; sticky scroll, debug logging and the forge rows (Merge requests target, Update an MR's branch by, From your forge accounts) likewise store only. Search folds Latin accents by a table, not Unicode's NFD. A page's scrollbar doesn't take a click on its track. Setting focus on a deep link goes to the dialog, not the row's control. Tab reaches only some controls.
+- **Themes:** an active indent guide isn't drawn in its own colour (the diff never drew one).
 - **Sidebar:** a remote's folder has a plain folder icon; a card doesn't list an MR.
-- **Tabs:** a dragged tab doesn't slide; there are no groups, and Add to new group is disabled. Rename lasts
-  the session.
-- **Sizes** are remembered in `layout.json` in this build's cache folder, not in the profile, since there's no
-  switching profiles here yet. The profile and the settings (recent repositories, presets, pins, file colours) are the core's, in a `gitvolt-gpui` config folder of this build's own. Tabs aren't restored from it: a start opens the given repository, or the Open screen.
-- **Palette:** no Settings yet. An action that isn't ported is listed and says so when
-  picked.
+- **Tabs:** the other tabs jump rather than slide 150 ms when a dragged one crosses them; a tab can't be dragged into or out of a group, or a group by its chip (the menu's rows do that); a group's chip has no hover list of its tabs and no animated fold or underline running across the chips; Rename is a dialog, not the inline field, and a double click on a tab doesn't start it. A strip wider than the window clips rather than scrolling. Position isn't restored (Wayland doesn't let a client), only size and maximized.
+- **Tabs' restore:** a tab whose repository can't be opened any more is dropped without saying so.
+- **Palette:** an action that isn't ported is listed and says so when picked.
 - **Go to:** a pasted forge link or MR number says the forge views aren't here yet.
 - **Find:** a full hash outside the loaded window says so rather than loading until it appears. In a file
   it's this box and not Monaco's widget, without its regex, case or whole-word toggles.
@@ -280,6 +279,7 @@ screen here; Monaco's are when the screen's lines have their colours.
   and GPUI by a set offset each frame, over about the same distance. Treat the factor as rough.
 - **Idle:** a run with a file open shows 0.05–0.45% CPU and now and then a few frames, not always
   none. That's not investigated yet.
+- **Since this round (themes, settings, profiles, tabs):** on the fixture, natively, warm: 0.15% idle CPU with 1 or 2 frames in 20 s, under XWayland 0.35 to 0.40% with 0 or 1 frames; the first launch after a build 2.7 to 3.6% with 40 to 82 frames, the one this page already leaves uninvestigated.
 - **Since then:** with File History, the hex and image views and Open in added, two runs on the same
   kind of file show 7–24 / 12–33 ms to open, a 6.95 ms median and 9.37–9.46 ms worst frame, 2.27–2.36 ms
   of CPU per frame, 0.05–0.10% idle CPU with no frames, and 60–73 MB anonymous memory, up from 56.
