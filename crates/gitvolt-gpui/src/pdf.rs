@@ -455,6 +455,28 @@ impl GitVolt {
         shown
     }
 
+    /// Hex, on a PDF or on audio, video or a font.
+    pub fn toggle_rich_hex(&mut self, cx: &mut Context<Self>) {
+        let mut load = false;
+        self.with_diff(cx, |d| {
+            let on = if let Some(p) = d.pdf.as_mut() {
+                p.source_on = !p.source_on;
+                p.source_on
+            } else if let Some(m) = d.media.as_mut() {
+                m.source_on = !m.source_on;
+                m.source_on
+            } else {
+                return;
+            };
+            load = on && d.hex.is_none();
+            d.layout_again();
+        });
+        if load {
+            self.read_hex(cx);
+        }
+        self.draw_pdf_pages(cx);
+    }
+
     pub fn pdf_scroll_to(&mut self, y: f32, cx: &mut Context<Self>) {
         self.with_pdf(cx, |p| {
             let lead = p.new.is_none();
@@ -666,20 +688,7 @@ fn toolbar(pdf: &PdfView, cx: &mut Context<GitVolt>) -> AnyElement {
                 .rounded(px(4.))
                 .text_color(if source_on { theme::text_selected() } else { theme::text_secondary() })
                 .when(source_on, |d| d.bg(theme::selected_row()))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    let mut load = false;
-                    this.with_diff(cx, |d| {
-                        if let Some(p) = d.pdf.as_mut() {
-                            p.source_on = !p.source_on;
-                            load = p.source_on && d.hex.is_none();
-                        }
-                        d.layout_again();
-                    });
-                    if load {
-                        this.read_hex(cx);
-                    }
-                    this.draw_pdf_pages(cx);
-                }))
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_rich_hex(cx)))
                 .child("Hex"),
         )
         .child(

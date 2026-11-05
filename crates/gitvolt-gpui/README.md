@@ -94,11 +94,11 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
   `-` for no selection or no file); extend it as needed. Clicks and keys are checked in tests with GPUI's `TestAppContext` (see `app.rs`).
   `GITVOLT_SCRIPT=<file>` runs a flow a line at a time, each input through the window as the platform's would be:
   `click x y`, `rclick`, `dclick`, `move`, `press`, `drag`, `release`, `key ctrl-s`, `type text`, `wait ms`, `select row`,
-  `open index`, `cmd id`, `pickfolder <path>` (the next directory picker answers this; under a script no real dialog ever opens), `shot out.png`, `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>` (a menu's or a picker's),
+  `open index`, `cmd id`, `show <ui part>`, `mdscroll y`, `pdfscroll y`, `wheel x y`, `ctrlwheel x y`, `pickfolder <path>` (the next directory picker answers this; under a script no real dialog ever opens), `shot out.png`, `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>` (a menu's or a picker's),
   `pickv <row>|<variant>`, `hover <row>`, `clickon`, `shiftclickon`, `ctrlclickon`, `rclickon`, `dclickon`, `presson`, `dragto`, `releaseon <end of an
   anchor's key>`, `clickrow`, `shiftclickrow`, `ctrlclickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
   under `target/bench/work/xdg`, no avatars, no global git config. Only ever on a throwaway repo under `target/bench/work/`.
-  `tools/conflict-fixture.sh merge|rebase|irebase` makes one that's stopped in a merge, stopped in a rebase, or ready for a plan. `dump`'s
+  `tools/md-fixture.sh` makes `md-fixture`, with old and new versions of Markdown, PDFs, a WAV, videos and fonts, and diagrams. `tools/conflict-fixture.sh merge|rebase|irebase` makes one that's stopped in a merge, stopped in a rebase, or ready for a plan. `dump`'s
   `merge` and `rebase` say what those tools hold, `settings` and `profile` what those hold, `zoom` the zoom. `GITVOLT_FAKE_UPDATE=<state>` shows the update pill in that state, asking no host. Their anchors: `merge-hunk:<side>:<n>`, `merge-line:<side>`, `merge-take-all-<side>`, `merge-save`,
   `merge-next`, `irow:<oid>`, `iaction:<oid>`, `ichip:<oid>:<branch>`, `ichip-add:<oid>`, `rebase-start`, `rebase-cancel`, `op-abort-at`, `op-continue-at`.
 
@@ -106,6 +106,7 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 
 - **Every run of a test binary or of the app goes under a memory cap and a timeout**, so a runaway fails on its own and can't take the machine down (one has, holding 20 GB):
   `( ulimit -v 10000000; timeout 300 cargo test -j 8 -p gitvolt-gpui --target-dir target/bench )`. If the cap kills cargo or rustc while building, build first with `cargo test --no-run` without it, then run under it. The same around a scripted run of the app (`tools/run.sh`), raised only if a GPU driver's address space needs more. A repository's file is untrusted: a loop that walks it or grows a buffer has a bound, pinned by a test.
+- **What takes a repository's bytes and can't be bounded from the inside runs in `src/worker.rs`** (a PDF, a diagram), under its own memory limit and timeout. What runs in the app's process (Markdown's parsers, a font's tables) has a bound on every loop and buffer, and a test on it.
 - `cargo test -j 8 -p gitvolt-gpui`, and `CEF_PATH=$HOME/.cache/tauri-cef cargo clippy -j 8 -p
   gitvolt-gpui -p gitvolt-core --all-targets -- -D warnings` before each commit.
 - In a test module: `use std::prelude::v1::test;` (`gpui::*` brings its own `test`). GPUI's test

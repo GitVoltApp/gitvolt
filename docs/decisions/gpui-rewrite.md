@@ -113,10 +113,21 @@ action started and sends again, an error toasts, the answer updates the journal,
 - **Keyboard Shortcuts (`src/shortcuts.rs`):** the panel and Settings › Keyboard, from the command table and the web UI's hints, the rebase editor's bare keys included. The web UI has no rebinding, so neither has this.
 - **Debug:** Requests from the core's log, Actions as commands run, Copy diagnostics. **Git check:** the blocking screen when git is missing or too old. **Update pill and dialog (`src/updates.rs`):** every state, on the core's `UpdateState`.
 
+## Markdown, PDFs, sounds, films and fonts
+
+Markdown (`src/md/`) is pulldown-cmark into a tree of its own, the web's plugins (GFM autolinks, GitLab image sizes, emoji, references, slugs, front matter), then its own HTML tree builder and sanitizer with the tables of `sanitize.ts`, boxes, and a layout that follows Chromium's: margins collapsing, half-leading, whole-pixel advances, UAX #14 breaks, table auto-layout. Off the UI thread up to the boxes; lazily by top-level block after that; a selection, links, images with the same consent and rules as the web, `details`, Tab and Enter on what's focusable. File View and Diff View have the Source and Rendered toggle, inline and split with its ruler, and Previous/Next change and F7. The field (`field.rs`) is Write and Preview with its toolbar and completions; the lightbox (`lightbox.rs`) is the web's keys and wheel. A repository's Markdown is untrusted: every loop over its text is bounded, and the tests pin each one (`ast.rs`, `frontmatter.rs`, `safe.rs`, `layout.rs`).
+
+**What reads a PDF or draws a diagram runs in a process of its own** (`src/worker.rs`), this same binary with `--render-worker`, as pdf.js has a Web Worker: `hayro` and `mermaid-rs-renderer` take a repository's bytes and can't be bounded from outside except this way. The worker has a 3 GB address space and no core dump, and a request past its time (20 s for a page, 10 s for a diagram) kills it; the view then says so. A flate-of-flate PDF unpacking to 8 GB took the worker to 2.1 GB and failed it, and the app kept running. A document's worker goes with it, and exits when its pipe closes.
+
+- **PDF (`src/pdf.rs`):** pages, Fit width and the slider's ladder, Ctrl+wheel and a double click for 100%, the keys Ctrl+= Ctrl+- Ctrl+0 (the Keyboard Shortcuts panel lists them), Page N, Hex, Old and New side by side in step page by page, only the pages near the view drawn, each page within pdf.js's 16 megapixels. On generated files (embedded fonts, a gradient, a clip, dashes, a JPEG, half alpha, Multiply, rotated, landscape and small pages, an owner-password file, 300 pages) `hayro` matched pdf.js to the eye in every image compared.
+- **Mermaid (`src/md/mermaid.rs`):** `mermaid-rs-renderer` drew all eight kinds tried (flowchart, sequence, class, state, ER, gantt, pie, gitGraph) correctly, in the web's dark or default colours. It's drawn from a picture of its SVG, so nothing in it can run or load; a label can't add markup (a test pins it). A `.mmd` file shows its source, as the web's.
+- **Sounds and films (`src/media.rs`):** GPUI has no player and a decoder's a heavy dependency, so there's no playback and no frame. A pane says so, with what the header holds (a WAV's or FLAC's length, rate and channels; an MP4's or QuickTime's length, picture size and codec), Open in and Show hex.
+- **Fonts (`src/media.rs`):** the sample and Basic Latin's grid are drawn from the file's own outlines (`ttf-parser`) as one picture, never added to the app's fonts, so a repository's font can't change the app's text, and they can't collide with its families. TTF, OTF and WOFF (each table unpacked within a bound).
+
 ## Not there yet
 
-By size of the work: the MR/PR views and review comments, Markdown, Mermaid, PDF and media views (a PDF or media file shows as hex), the Accounts page's content, accessibility roles, spell check, sticky scroll, and macOS and Windows checks. In the diff: moved-code detection and code lens.
-In the details panel: editing a commit's message (the pencil, `HeadMessageEditor`), and "vs 1st parent" on a merge. The lightbox belongs with Markdown: only `MdImage` and `MdVideo` open it.
+By size of the work: the MR/PR views and review comments (the Markdown field and renderer they'll use are here, shown so far by a script's `show mdfield`), the Accounts page's content, accessibility roles, spell check, sticky scroll, and macOS and Windows checks. In the diff: moved-code detection and code lens.
+In the details panel: editing a commit's message (the pencil, `HeadMessageEditor`), and "vs 1st parent" on a merge.
 
 Everything above was run from the tests and from `GITVOLT_SCRIPT`, which sends events through the window as the
 platform would (`README`). **None of it has had a real mouse or keyboard on it**, IME included.
@@ -151,6 +162,14 @@ Known, in the area that's there:
   and so do Home and End in wrapped text. Colours catch up 120 ms after typing. A press on a removed line doesn't
   move the caret. An inline selection can take removed lines too.
 - **Activity log:** Requests and Actions are plain lists, without the web UI's filters and copy-all; there's no performance overlay, and Open logs folder and debug logging have no log file to work on yet: this build writes none. Actions lists commands, not every menu row a view adds by itself.
+- **Rendered Markdown:** raw HTML goes through a small parser rather than Chromium's: no adoption agency, only text is fostered out of a table, about 110 named entities, a nesting limit of 100 (Chromium's is 512, and past it they both flatten). `rowspan` is ignored, `ruby` is inline, a picture's `align` doesn't float. Footnotes number across the whole file, where the web's chunks each start again, and no margin breaks at a chunk's end. A checkbox and the disclosure triangle are drawn alike, the focus ring is near; emoji and ↩ come from the system's fonts, a little different in their advances. Positions are within a pixel of Chromium's after a scroll (its scroll snapping), the pane's content 0.19 px off. Find doesn't look in rendered text. `<video>` in Markdown is a box that opens the page or Open in; the `@user` hover card and the flavour by forge come with the forge views. A selection across blocks is by the text's order.
+- **Markdown field:** no resize handle on the textarea; compared against the web's styles and markup injected into a CEF page, as a forge view needs a forge.
+- **Lightbox:** no video; above 100% it's smooth rather than pixelated; a wheel notch steps once, whatever its size.
+- **Mermaid:** the layout and shapes are that crate's, not mermaid.js's: rounded corners, no glow, thicker arrows, different spacing, DejaVu or the system's font rather than `trebuchet ms`. It's more forgiving: a sequence line with no target draws where mermaid.js says it's an error. The picture is drawn once at the column's width, up to 4×, so a pane widened later keeps its width; each diagram is drawn in turn from the top rather than as it comes near the view, the first after about 700 ms (the worker's fonts). One diagram's timeout gives up on the rest of that file, which stay as source. The error line doesn't wrap, and isn't selectable.
+- **PDF:** no text layer, so no selecting, copying or finding in a page. No form widgets or annotations but what `hayro` draws, and encrypted files with a user password say so, as the web's. After switching from Diff to File View the web's Fit width stays at 100% until a resize (a measure that comes too soon there); here it fits at once. A page that fails stays blank paper, as there, but a worker that's died fails its whole side, with the error.
+- **Sounds and films:** nothing plays, no first frame, no controls, also for what Chromium would play (WAV, FLAC, MP3, Ogg, WebM, H.264 where it has the codec): the note says "This build can't play…". An MP4 or QuickTime's H.264 or HEVC note is the web's words. The header's details are an addition, which the web's player doesn't show. A WebM says no codec.
+- **Fonts:** WOFF2 isn't read: its tables are one Brotli stream with transforms of their own, so the pane says the font couldn't be loaded. Glyphs are outlines without hinting, a little lighter than Chromium's at small sizes. The samples have no colour-font or variable axes support, beyond the default instance, and no shaping: a pangram in Latin needs none.
+- **Toolbar buttons of a PDF, film or font** aren't Tab stops, like the image diff's. Their keyboard way is Ctrl+= Ctrl+- Ctrl+0 for the zoom, and Show hex in the palette. A font's pane scrolls across by the wheel or its bar only.
 - **Credentials:** a password field shows stars rather than the browser's dots.
 - **Text:** a line's advance is 7.8 px, the font's; Chromium rounds it to 8. Lines end a little earlier
   and wrap a little later. The hex view paints on Chromium's 8 px grid. UI text is a pixel or two wider.
@@ -206,6 +225,8 @@ binary links on Linux is under an allowed license, checked from `cargo metadata`
 internal ones Shiki loads with them for injections), the theme, the icons and the editor font's Latin face (OFL-1.1). What that face lacks falls back to the
 system's, unlike the web UI's other subsets. The release notices don't cover this build yet.
 
+The Markdown round added `pulldown-cmark` (MIT), `toml` (MIT/Apache), `yaml-rust2` (MIT/Apache), `hayro` (Apache/MIT), `mermaid-rs-renderer` (MIT) and, already in the lockfile through gpui, `ttf-parser` and `unicode-linebreak`; every new crate under them is MIT, Apache-2.0 or BSD-3-Clause (`cargo metadata` against `about.toml`). The release binary went from 101 MB to 115 MB with `hayro` and `mermaid-rs-renderer`.
+
 ## Measurements
 
 Same machine, repository and run for both: 24 threads, RTX 2080 SUPER, KDE on Wayland, about 144 Hz;
@@ -247,6 +268,10 @@ Both are optimized builds without LTO. The CEF build has debug assertions on in 
   (not investigated; it must be before this ships, since an idle app costs nothing), and one run
   with the window in the background, where GPUI held it at 24 Hz by design. The measuring build
   turns that throttle off.
+
+### Rendered Markdown, PDFs, fonts
+
+Same machine and build, under a script. The 5000-line Markdown file: first blocks in 51 ms, colours by 107 ms (the web's about 770 ms, roughly: its script sleeps were taken off), then 6–18 ms for the next files. Scrolling: 1150 frames, median 6.95, p99 6.99, worst 7.70 ms, no frame over 20 ms, 2.63 ms of CPU a frame. Idle on a file, a PDF or a font: 0.25–0.35% with a script's timer waiting and no frame drawn; the worker 0.00% and 16–17 MB. A window on a 300-page PDF at 180%, at page 70: 270 MB resident, holding the three pages near the view. Eight diagrams at the column's width: 404 MB.
 
 ### The diff, against Monaco
 

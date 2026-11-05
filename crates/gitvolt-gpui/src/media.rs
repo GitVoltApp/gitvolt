@@ -802,28 +802,12 @@ fn player_pane(i: usize, side: &MediaSide, label: Option<&'static str>, open_in:
                                 .rounded(px(3.))
                                 .bg(theme::blue())
                                 .text_color(theme::text_on_accent())
-                                .on_click(cx.listener(|this, _, _, cx| this.toggle_media_hex(cx)))
+                                .on_click(cx.listener(|this, _, _, cx| this.toggle_rich_hex(cx)))
                                 .child("Show hex"),
                         ),
                 ),
         )
         .into_any_element()
-}
-
-impl GitVolt {
-    pub fn toggle_media_hex(&mut self, cx: &mut Context<Self>) {
-        let mut load = false;
-        self.with_diff(cx, |d| {
-            if let Some(m) = d.media.as_mut() {
-                m.source_on = !m.source_on;
-                load = m.source_on && d.hex.is_none();
-            }
-            d.layout_again();
-        });
-        if load {
-            self.read_hex(cx);
-        }
-    }
 }
 
 /// Audio, video or a font, in the diff panel's body.
@@ -843,7 +827,7 @@ pub fn media_body(media: &MediaView, source: Option<AnyElement>, open_in: Option
         .px(px(8.))
         .border_b_1()
         .border_color(theme::section_border())
-        .child(div().id("media-hex").flex_none().px(px(8.)).py(px(2.)).border_1().border_color(theme::section_border()).rounded(px(4.)).text_color(if source_on { theme::text_selected() } else { theme::text_secondary() }).when(source_on, |d| d.bg(theme::selected_row())).on_click(cx.listener(|this, _, _, cx| this.toggle_media_hex(cx))).child("Hex"))
+        .child(div().id("media-hex").flex_none().px(px(8.)).py(px(2.)).border_1().border_color(theme::section_border()).rounded(px(4.)).text_color(if source_on { theme::text_selected() } else { theme::text_secondary() }).when(source_on, |d| d.bg(theme::selected_row())).on_click(cx.listener(|this, _, _, cx| this.toggle_rich_hex(cx))).child("Hex"))
         .child(tip(meta_text, div().id("media-meta").ml(px(6.)).child(shown)));
     let stage: AnyElement = match source {
         Some(s) if source_on => div().flex().flex_col().flex_1().min_h_0().child(s).into_any_element(),

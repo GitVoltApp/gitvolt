@@ -212,7 +212,7 @@ fn serve(op: u8, payload: Vec<u8>, pdf: &mut Option<hayro::hayro_syntax::Pdf>) -
         OP_MERMAID => {
             let (dark, source) = payload.split_first().ok_or("a bad request")?;
             let source = std::str::from_utf8(source).map_err(|e| e.to_string())?;
-            let mut options = mermaid_rs_renderer::RenderOptions::modern();
+            let mut options = mermaid_rs_renderer::RenderOptions::mermaid_default();
             if *dark != 0 {
                 options.theme = mermaid_rs_renderer::Theme::dark();
             }
