@@ -328,6 +328,17 @@ impl GitVolt {
         .detach();
     }
 
+    /// A new theme's colours for what's being typed.
+    pub fn recolour_after_edit(&mut self, repo: u32, cx: &mut Context<Self>) {
+        let Some(diff) = self.tabs.iter_mut().find(|t| t.id == repo).and_then(|t| t.diff.as_mut()) else { return };
+        let (Some(edit), Some(data)) = (diff.edit.as_ref(), diff.data.clone()) else { return };
+        let texts = super::view::Texts::new_side(diff.file.path.to_string(), edit.buffer.text.clone());
+        diff.stop_colours.store(true, std::sync::atomic::Ordering::Relaxed);
+        diff.stop_colours = Arc::default();
+        let (stop, generation) = (diff.stop_colours.clone(), diff.generation);
+        self.color(repo, generation, data, texts, stop, cx);
+    }
+
     /// A press in the text: the caret goes there, and the keyboard's the editor's.
     pub fn edit_press(&mut self, at: super::view::TextPos, extend: bool, unit: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(diff) = self.tabs.get_mut(self.active).and_then(|t| t.diff.as_mut()) else { return };

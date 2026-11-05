@@ -743,7 +743,7 @@ fn blame_strip(h: &FileHistory, diff: &DiffState, width: f32, cx: &mut Context<G
                     .cursor_pointer()
                     .hover(|d| d.bg(theme::hover_row()).text_color(theme::text_normal()))
                     .on_click(cx.listener(move |this, e: &ClickEvent, _, cx| this.pick_blame(sha.clone(), e.modifiers().alt, cx)))
-                    .child(div().flex_none().w(px(3.)).h_full().bg(theme::lane(color_index(&g.sha, theme::LANES.len()))))
+                    .child(div().flex_none().w(px(3.)).h_full().bg(theme::lane(color_index(&g.sha, 10))))
                     .child(
                         div()
                             .flex()

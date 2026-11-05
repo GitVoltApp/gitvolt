@@ -34,6 +34,7 @@ mod palette;
 mod presets;
 mod refs;
 mod selection;
+mod settings;
 mod sidebar;
 mod stacks;
 mod submodules;
@@ -122,6 +123,7 @@ fn main() {
     // The profile and the settings (recent repositories, presets, file colours), in a folder of this build's own, never the CEF app's.
     let store = gitvolt_core::settings::SettingsStore::open(gitvolt_core::paths::config_base().join(APP_DIR));
     let exit_store = store.clone();
+    let saved = store.state();
     let api = api.with_store(store);
     let api = Arc::new(with_openers(api, opener_env));
     runtime.spawn(shell_env.warm());
@@ -144,6 +146,10 @@ fn main() {
         app::bind_keys(cx);
         ui::init(cx);
         ui::set_font(font.clone(), cx);
+        // The saved theme before the first paint: a light theme's user never sees the dark one.
+        if let Ok(v) = serde_json::to_value(&saved.settings) {
+            theme::apply(theme::theme_def(v["theme"].as_str().unwrap_or(theme::DEFAULT_THEME_ID), &v["customThemes"]));
+        }
         // The bundled editor font's Latin face (the web UI's, assets/generate.mjs); what it lacks
         // falls back to the system's.
         if let Err(e) = cx.text_system().add_fonts(vec![Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-Latin-400.ttf"))]) {

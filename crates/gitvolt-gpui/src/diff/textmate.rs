@@ -1082,6 +1082,21 @@ fn same_rule_entered_here(below: &[Frame], pushed: Option<&Frame>) -> bool {
 pub struct Theme {
     rules: Vec<ThemeRule>,
     pub default: (u32, u8),
+    pub editor: EditorColors,
+}
+
+/// What an editor draws with besides its tokens: the theme's own, or Monaco's defaults (`assets/generate.mjs`).
+pub struct EditorColors {
+    pub foreground: crate::theme::Col,
+    pub line_number: crate::theme::Col,
+    pub line_number_active: crate::theme::Col,
+    pub indent_guide: crate::theme::Col,
+    pub cursor: crate::theme::Col,
+    pub find_match: crate::theme::Col,
+    pub find_highlight: crate::theme::Col,
+    pub fold_icon: crate::theme::Col,
+    pub line_highlight: Option<crate::theme::Col>,
+    pub line_highlight_border: Option<crate::theme::Col>,
 }
 
 struct ThemeRule {
@@ -1103,6 +1118,9 @@ fn parse_color(c: &str) -> Option<u32> {
 impl Theme {
     pub fn parse(json: &str) -> Option<Self> {
         let v: Value = serde_json::from_str(json).ok()?;
+        let e = &v["editor"];
+        let col = |k: &str| e[k].as_str().and_then(crate::theme::Col::parse);
+        let editor = EditorColors { foreground: col("foreground")?, line_number: col("lineNumber")?, line_number_active: col("lineNumberActive")?, indent_guide: col("indentGuide")?, cursor: col("cursor")?, find_match: col("findMatch")?, find_highlight: col("findMatchHighlight")?, fold_icon: col("foldIcon")?, line_highlight: col("lineHighlight"), line_highlight_border: col("lineHighlightBorder") };
         let mut rules = Vec::new();
         let mut default = (parse_color(v["foreground"].as_str()?)?, 0u8);
         for entry in v["tokenColors"].as_array()? {
@@ -1130,7 +1148,7 @@ impl Theme {
                 rules.push(ThemeRule { scope: leaf, parents: parts, color, font });
             }
         }
-        Some(Self { rules, default })
+        Some(Self { rules, default, editor })
     }
 
     fn parents_match(scopes: &[Scope], from: Option<ScopeId>, parents: &[String]) -> bool {
@@ -1175,40 +1193,70 @@ impl Theme {
     }
 }
 
-pub fn dark_plus() -> &'static Theme {
-    static THEME: OnceLock<Theme> = OnceLock::new();
-    THEME.get_or_init(|| Theme::parse(include_str!("../../assets/dark-plus.json")).expect("the embedded theme parses"))
+/// The editor themes the app themes name, as `assets/generate.mjs` writes them.
+const EDITOR_THEMES: [(&str, &str); 10] = [
+    ("dark-plus", include_str!("../../assets/editor-themes/dark-plus.json")),
+    ("light-plus", include_str!("../../assets/editor-themes/light-plus.json")),
+    ("monokai", include_str!("../../assets/editor-themes/monokai.json")),
+    ("darcula", include_str!("../../assets/editor-themes/darcula.json")),
+    ("dracula", include_str!("../../assets/editor-themes/dracula.json")),
+    ("one-dark-pro", include_str!("../../assets/editor-themes/one-dark-pro.json")),
+    ("solarized-dark", include_str!("../../assets/editor-themes/solarized-dark.json")),
+    ("solarized-light", include_str!("../../assets/editor-themes/solarized-light.json")),
+    ("github-dark-default", include_str!("../../assets/editor-themes/github-dark-default.json")),
+    ("nord", include_str!("../../assets/editor-themes/nord.json")),
+];
+
+/// An editor theme, parsed once; an unknown name is Dark+.
+pub fn theme_named(name: &str) -> &'static Theme {
+    static THEMES: [OnceLock<Theme>; 10] = [const { OnceLock::new() }; 10];
+    let i = EDITOR_THEMES.iter().position(|(n, _)| *n == name).unwrap_or(0);
+    THEMES[i].get_or_init(|| Theme::parse(EDITOR_THEMES[i].1).expect("the embedded theme parses"))
+}
+
+/// The editor theme new tokenizers colour with: a worker reads it, so it isn't on the UI thread's palette.
+static TOKEN_THEME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub fn set_token_theme(name: &str) {
+    let i = EDITOR_THEMES.iter().position(|(n, _)| *n == name).unwrap_or(0);
+    TOKEN_THEME.store(i, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The theme's default foreground: the colour of the text no token covers.
+pub fn token_theme() -> &'static Theme {
+    theme_named(EDITOR_THEMES[TOKEN_THEME.load(std::sync::atomic::Ordering::Relaxed)].0)
 }
 
 /// Compiled engines, one per language, kept for the session: only ever used under the lock.
-struct Engines(HashMap<&'static str, Engine>);
+struct Engines(HashMap<(&'static str, usize), Engine>);
 // SAFETY: an `Engine`'s `Rc`s never leave it, and it's only reached under `ENGINES`'s lock.
 unsafe impl Send for Engines {}
 
 static ENGINES: OnceLock<Mutex<Engines>> = OnceLock::new();
 
 /// Colours a text's lines a few at a time, so a long file shows from its top without waiting for
-/// its end, and two files can take turns with one language's engine. Default Dark's theme.
+/// its end, and two files can take turns with one language's engine. In the theme shown when it's made.
 pub struct Tokenizer {
     lang: &'static Lang,
+    theme: &'static Theme,
     state: Option<LineState>,
 }
 
 impl Tokenizer {
     /// `None`: there's no grammar `id` (`Lang::id`).
     pub fn new(id: &str) -> Option<Self> {
-        Some(Self { lang: LANGS.iter().find(|l| l.id == id)?, state: None })
+        Some(Self { lang: LANGS.iter().find(|l| l.id == id)?, theme: token_theme(), state: None })
     }
 
     /// The next `lines`, in order. `None`: its grammar can't be read. Blocking: call it off the UI
     /// thread.
     pub fn lines(&mut self, lines: &[&str]) -> Option<Vec<Vec<Span>>> {
         let mut engines = ENGINES.get_or_init(|| Mutex::new(Engines(HashMap::new()))).lock().ok()?;
-        if !engines.0.contains_key(self.lang.id) {
-            let engine = Engine::new(self.lang, dark_plus())?;
-            engines.0.insert(self.lang.id, engine);
-        }
-        let engine = engines.0.get_mut(self.lang.id)?;
+        let key = (self.lang.id, self.theme as *const Theme as usize);
+        let engine = match engines.0.entry(key) {
+            std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+            std::collections::hash_map::Entry::Vacant(e) => e.insert(Engine::new(self.lang, self.theme)?),
+        };
         let state = self.state.get_or_insert_with(|| engine.start());
         Some(lines.iter().map(|l| engine.tokenize_line(l, state)).collect())
     }
@@ -1217,7 +1265,15 @@ impl Tokenizer {
 /// `text`'s lines coloured as language `id`, all at once.
 #[cfg(test)]
 pub fn highlight(id: &str, text: &str) -> Option<Vec<Vec<Span>>> {
-    Tokenizer::new(id)?.lines(&text.split('\n').collect::<Vec<_>>())
+    highlight_in("dark-plus", id, text)
+}
+
+/// In the editor theme `name`.
+#[cfg(test)]
+pub fn highlight_in(name: &str, id: &str, text: &str) -> Option<Vec<Vec<Span>>> {
+    let mut t = Tokenizer::new(id)?;
+    t.theme = theme_named(name);
+    t.lines(&text.split('\n').collect::<Vec<_>>())
 }
 
 #[cfg(test)]
@@ -1230,7 +1286,7 @@ mod tests {
         let mut wrong = Vec::new();
         for sample in golden.as_array().unwrap() {
             let (lang, code) = (sample["lang"].as_str().unwrap(), sample["code"].as_str().unwrap());
-            let lines = highlight(lang, code).unwrap_or_else(|| panic!("no grammar for {lang}"));
+            let lines = highlight_in(sample["theme"].as_str().unwrap(), lang, code).unwrap_or_else(|| panic!("no grammar for {lang}"));
             for (n, want) in sample["lines"].as_array().unwrap().iter().enumerate() {
                 let mut at = 0u32;
                 for token in want.as_array().unwrap() {
@@ -1322,7 +1378,7 @@ mod tests {
     #[test]
     fn a_grammars_injections_are_sorted_by_priority() {
         // Each of these has its own `injections`, or injects by `injectTo` when it's loaded with it.
-        let engine = |id: &str| Engine::new(LANGS.iter().find(|l| l.id == id).unwrap(), dark_plus()).unwrap();
+        let engine = |id: &str| Engine::new(LANGS.iter().find(|l| l.id == id).unwrap(), theme_named("dark-plus")).unwrap();
         for id in ["html", "svelte", "astro", "twig", "angular-html", "ts-tags"] {
             let e = engine(id);
             assert!(!e.injections.is_empty(), "{id}");

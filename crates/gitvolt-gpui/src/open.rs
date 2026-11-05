@@ -243,6 +243,7 @@ impl GitVolt {
                 this.profile = state["profile"].clone();
                 this.settings = state["settings"].clone();
                 this.colours_cache.borrow_mut().clear();
+                this.settings_changed(cx);
                 let opened: Vec<(String, String)> = std::mem::take(&mut this.pending_recent);
                 for (path, name) in opened {
                     this.note_recent(&path, &name);

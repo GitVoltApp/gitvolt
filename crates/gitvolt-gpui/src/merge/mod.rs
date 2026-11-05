@@ -689,6 +689,13 @@ impl GitVolt {
         cx.notify();
     }
 
+    /// A new theme's token colours for the tool on `repo`'s tab.
+    pub fn recolour_merge(&mut self, repo: u32, cx: &mut Context<Self>) {
+        let Some(generation) = self.merge_tab(repo).and_then(|t| t.merge.as_ref()).map(|m| m.generation) else { return };
+        self.merge_generation += 1;
+        self.colour_merge(repo, generation, cx);
+    }
+
     /// Colours the panes and the output, from their tops.
     fn colour_merge(&mut self, repo: u32, generation: u64, cx: &mut Context<Self>) {
         for i in 0..3 {

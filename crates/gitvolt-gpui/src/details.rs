@@ -667,7 +667,7 @@ pub fn avatar(name: &SharedString, email: &str, size: f32) -> Div {
     if let Some(picture) = crate::avatars::image_for(email, name) {
         return div().flex_none().size(px(size)).rounded_full().overflow_hidden().bg(theme::avatar_backdrop()).child(img(picture).size(px(size)).rounded_full());
     }
-    let lane = crate::model::avatar_lane(name, email, theme::LANES.len());
+    let lane = crate::model::avatar_lane(name, email, 10);
     div().flex().flex_none().items_center().justify_center().size(px(size)).rounded_full().bg(theme::lane(lane)).text_color(theme::lane_text(lane)).text_size(px((size * 0.4).round().max(7.))).font_weight(FontWeight::SEMIBOLD).child(initials(name))
 }
 

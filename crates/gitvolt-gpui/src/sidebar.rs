@@ -960,7 +960,7 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                     .bottom(px(-3.))
                     .h(px(6.))
                     .cursor(CursorStyle::ResizeUpDown)
-                    .hover(|d| d.bg(theme::a(0x4d88ff80)))
+                    .hover(|d| d.bg(Hsla { a: 0.5, ..theme::blue() }))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
                         cx.stop_propagation();
                         if e.click_count == 2 {

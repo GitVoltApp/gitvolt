@@ -28,7 +28,6 @@ const CONTEXT_ROWS: usize = 3;
 /// At most this many marks on the bar: closer changes share one.
 const RULER_MARKS: usize = 400;
 const FONT_SIZE: f32 = 13.;
-const TEXT: u32 = 0xD4D4D4;
 
 /// The column of byte `j`'s first digit in a hex row: `48 65 6c 6c  6f 20 …`.
 pub fn hex_col(j: usize, per: usize) -> usize {
@@ -255,7 +254,7 @@ static HEX: LazyLock<Vec<SharedString>> = LazyLock::new(|| (0..=255u8).map(|b| f
 static CHAR: LazyLock<Vec<SharedString>> = LazyLock::new(|| (0..=255u8).map(|b| if (0x20..0x7f).contains(&b) { (b as char).to_string().into() } else { ".".into() }).collect());
 
 fn paint_cell(text: &SharedString, x: Pixels, y: Pixels, font: &Font, window: &mut Window, cx: &mut App) {
-    let run = TextRun { len: text.len(), font: font.clone(), color: theme::c(TEXT), background_color: None, underline: None, strikethrough: None };
+    let run = TextRun { len: text.len(), font: font.clone(), color: theme::editor().foreground, background_color: None, underline: None, strikethrough: None };
     let line = window.text_system().shape_line(text.clone(), px(FONT_SIZE), &[run], None);
     line.paint(point(x, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
 }
@@ -295,7 +294,7 @@ fn paint_side(side: &HexSide, old_side: bool, file: bool, view: (usize, &[ByteRu
             }
         }
         let number = offset_label(row, per);
-        let color = theme::c(if row == cursor { 0xC6C6C6 } else { 0x858585 });
+        let color = if row == cursor { theme::editor().line_number_active } else { theme::editor().line_number };
         let run = TextRun { len: number.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None };
         window.text_system().shape_line(number.into(), px(FONT_SIZE), &[run], None).paint(point(x, y), px(LINE_H), TextAlign::Left, None, window, cx).ok();
         for (j, b) in side.bytes[at..(at + per).min(side.bytes.len())].iter().enumerate() {

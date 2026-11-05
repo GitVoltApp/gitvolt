@@ -1573,6 +1573,26 @@ impl GitVolt {
     }
 
     /// A watched change under the open WIP file: its sides again, where it was.
+    /// A new theme's token colours: the tab's open file coloured again, or the merge tool's panes.
+    pub fn recolour_file(&mut self, repo: u32, cx: &mut Context<Self>) {
+        let active = self.active;
+        let Some(ix) = self.tabs.iter().position(|t| t.id == repo) else { return };
+        if self.tabs[ix].merge.is_some() {
+            return self.recolour_merge(repo, cx);
+        }
+        let Some(diff) = self.tabs[ix].diff.as_mut() else { return };
+        // Unsaved typing keeps its text: only what it holds is coloured again; a read reads the rest.
+        diff.keep_scroll();
+        if diff.editing_dirty() {
+            return self.recolour_after_edit(repo, cx);
+        }
+        diff.generation += 1;
+        // `read_contents` reads the active tab's.
+        self.active = ix;
+        self.read_contents(false, cx);
+        self.active = active;
+    }
+
     pub fn reread_open_file(&mut self, repo: u32, cx: &mut Context<Self>) {
         let is_active = self.tabs.get(self.active).is_some_and(|t| t.id == repo);
         let Some(tab) = self.tabs.iter_mut().find(|t| t.id == repo).filter(|_| is_active) else { return };

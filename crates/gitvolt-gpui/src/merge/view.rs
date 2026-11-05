@@ -200,14 +200,18 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
             }
             // Monaco's current line: a border the width of the text.
             if n == s.current_line {
-                let c = theme::c(0x282828);
                 let o = Bounds::new(point(text_x, y), size(view_w, px(LINE_H)));
-                window.paint_quad(outline(o, c, BorderStyle::Solid));
+                if let Some(c) = theme::editor().line_highlight {
+                    window.paint_quad(fill(o, c));
+                }
+                if let Some(c) = theme::editor().line_highlight_border {
+                    window.paint_quad(outline(o, c, BorderStyle::Solid));
+                }
             }
             let number: SharedString = (n + 1).to_string().into();
             // A file's last, empty line: its number dimmed, as Monaco's `renderFinalNewline`.
             let last_empty = n + 1 == count && count > 1 && lines.get(n).is_some_and(|l| l.text.is_empty());
-            let color = theme::c(if n == s.current_line { 0xC6C6C6 } else { 0x858585 });
+            let color = if n == s.current_line { theme::editor().line_number_active } else { theme::editor().line_number };
             let color = if last_empty && n != s.current_line { Hsla { a: 0.3, ..color } } else { color };
             let shaped = window.text_system().shape_line(number.clone(), px(FONT_SIZE), &[TextRun { len: number.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
             let num_right = b.origin.x + px(if s.pane { HUNK_W + NUM_W } else { NUM_W });
@@ -220,7 +224,7 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
                 let shaped = window.text_system().shape_line(line.text.clone(), px(FONT_SIZE), &runs(&line.text, spans, &font), None);
                 for level in 1..=line.guides {
                     let gx = start + px(ADVANCE * ((usize::from(level) - 1) * crate::diff::model::TAB_SIZE) as f32);
-                    window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(LINE_H))), theme::c(0x404040)));
+                    window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(LINE_H))), theme::editor().indent_guide));
                 }
                 if let Some((from, to)) = s.selection
                     && from.0 <= n
@@ -243,7 +247,7 @@ fn paint_editor(s: &Snapshot, b: Bounds<Pixels>, window: &mut Window, cx: &mut A
                     && let Some((cn, cb)) = s.caret
                     && cn == n
                 {
-                    window.paint_quad(fill(Bounds::new(point(start + shaped.x_for_index(cb.min(line.text.len())), y), size(px(2.), px(LINE_H))), theme::c(0xAEAFAD)));
+                    window.paint_quad(fill(Bounds::new(point(start + shaped.x_for_index(cb.min(line.text.len())), y), size(px(2.), px(LINE_H))), theme::editor().cursor));
                 }
             });
             // A line's button, under the pointer: a green + takes it, a red − drops it once taken.
@@ -331,7 +335,7 @@ fn paint_minimap(s: &Snapshot, b: Bounds<Pixels>, view_right: f32, window: &mut 
             };
             let spans = s.colours.get(n / COLOUR_CHUNK).and_then(|p| p.get(n % COLOUR_CHUNK)).map_or(&[][..], Vec::as_slice);
             if spans.is_empty() {
-                paint(0, text.len(), Hsla { a: 0.6, ..theme::c(0xD4D4D4) });
+                paint(0, text.len(), Hsla { a: 0.6, ..theme::editor().foreground });
             } else {
                 for t in spans {
                     paint(t.start as usize, (t.end as usize).min(text.len()), Hsla { a: 0.75, ..theme::c(t.color) });

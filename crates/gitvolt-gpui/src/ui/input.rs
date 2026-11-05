@@ -462,7 +462,7 @@ pub struct TextInput {
     was_focused: bool,
     /// A monospace field, a size or colour other than what it inherits.
     text_color: Option<Hsla>,
-    placeholder_color: Hsla,
+    placeholder_color: Option<Hsla>,
     disabled: bool,
     selecting: bool,
     /// The press's granularity while it drags: a double click extends by words, a triple by lines.
@@ -517,7 +517,7 @@ impl TextInput {
             claim_arrows: false,
             was_focused: false,
             text_color: None,
-            placeholder_color: theme::text_disabled(),
+            placeholder_color: None,
             disabled: false,
             selecting: false,
             drag_unit: 1,
@@ -539,7 +539,7 @@ impl TextInput {
     }
 
     pub fn placeholder_color(mut self, color: Hsla) -> Self {
-        self.placeholder_color = color;
+        self.placeholder_color = Some(color);
         self
     }
 
@@ -982,7 +982,7 @@ impl Element for InputElement {
         } else {
             input.buffer.text.clone().into()
         };
-        let color = if empty { input.placeholder_color } else { input.text_color.unwrap_or(style.color) };
+        let color = if empty { input.placeholder_color.unwrap_or_else(theme::text_disabled) } else { input.text_color.unwrap_or(style.color) };
         let run = TextRun { len: shown.len(), font: style.font(), color, background_color: None, underline: None, strikethrough: None };
         let runs: Vec<TextRun> = match input.buffer.marked.as_ref().filter(|_| !empty) {
             Some(m) => vec![

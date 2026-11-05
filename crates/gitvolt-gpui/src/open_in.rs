@@ -312,7 +312,7 @@ pub fn open_in_menu(tab: &Tab, cx: &mut Context<GitVolt>) -> Option<impl IntoEle
         .border_1()
         .border_color(theme::section_border())
         .rounded(px(6.))
-        .shadow(vec![BoxShadow { color: theme::a(0x00000073), offset: point(px(0.), px(6.)), blur_radius: px(20.), spread_radius: px(0.), inset: false }])
+        .shadow(vec![BoxShadow { color: theme::shadow_popup(), offset: point(px(0.), px(6.)), blur_radius: px(20.), spread_radius: px(0.), inset: false }])
         .on_mouse_down_out(cx.listener(move |this, e: &MouseDownEvent, _, cx| {
             // A press on the toggle is the toggle's: it closes the menu itself.
             if !toggle.get().contains(&e.position) {

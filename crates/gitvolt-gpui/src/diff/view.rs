@@ -43,7 +43,6 @@ pub const HEADER_H: f32 = 37.;
 const TOOLBAR_H: f32 = 33.;
 const TOOLBAR_NARROW: f32 = 900.;
 pub const FONT: &str = "JetBrains Mono";
-const TEXT: u32 = 0xD4D4D4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewKind {
@@ -990,27 +989,28 @@ pub fn mono() -> Font {
     Font { family: FONT.into(), features: FontFeatures::disable_ligatures(), fallbacks: Some(FontFallbacks::from_fonts(vec!["Noto Sans Mono".into(), "monospace".into()])), weight: FontWeight::NORMAL, style: FontStyle::Normal }
 }
 
-fn run(len: usize, base: &Font, color: u32, flags: u8) -> TextRun {
+fn run(len: usize, base: &Font, color: Hsla, flags: u8) -> TextRun {
     let font = Font { weight: if flags & FONT_BOLD != 0 { FontWeight::BOLD } else { FontWeight::NORMAL }, style: if flags & FONT_ITALIC != 0 { FontStyle::Italic } else { FontStyle::Normal }, ..base.clone() };
     let underline = (flags & FONT_UNDERLINE != 0).then(|| UnderlineStyle { thickness: px(1.), ..Default::default() });
-    TextRun { len, font, color: rgb(color).into(), background_color: None, underline, strikethrough: None }
+    TextRun { len, font, color, background_color: None, underline, strikethrough: None }
 }
 
 pub(crate) fn runs(text: &str, spans: &[Span], base: &Font) -> Vec<TextRun> {
+    let text_color = theme::editor().foreground;
     let mut out = Vec::with_capacity(spans.len() + 1);
     let mut at = 0usize;
     for s in spans {
         let (start, end) = ((s.start as usize).min(text.len()), (s.end as usize).min(text.len()));
         if start > at {
-            out.push(run(start - at, base, TEXT, 0));
+            out.push(run(start - at, base, text_color, 0));
         }
         if end > start {
-            out.push(run(end - start, base, s.color, s.font));
+            out.push(run(end - start, base, crate::theme::c(s.color), s.font));
         }
         at = at.max(end);
     }
     if at < text.len() {
-        out.push(run(text.len() - at, base, TEXT, 0));
+        out.push(run(text.len() - at, base, text_color, 0));
     }
     out
 }
@@ -1076,7 +1076,7 @@ fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, ma
             let shaped = if breaks.is_empty() { shape(line, spans, &p.font, window) } else { shape_part(text, from, to, spans, &p.font, window) };
             for level in 1..=line.guides {
                 let gx = x - px(p.hscroll) + px(ADVANCE * ((usize::from(level) - 1) * TAB_SIZE) as f32);
-                window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(LINE_H))), theme::c(0x404040)));
+                window.paint_quad(fill(Bounds::new(point(gx, y), size(px(1.), px(LINE_H))), theme::editor().indent_guide));
             }
             for &(a, b) in &line.marks {
                 let (a, b) = ((a as usize).max(from), (b as usize).min(to));
@@ -1092,7 +1092,7 @@ fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, ma
                     let (a, b) = (m.from.max(from), m.to.min(to));
                     if b > a {
                         let (l, r) = (shaped.x_for_index(a - from), shaped.x_for_index(b - from));
-                        let color = if p.found_at == Some(k) { theme::c(0x515c6a) } else { theme::a(0xea5c0055) };
+                        let color = if p.found_at == Some(k) { theme::editor().find_match } else { theme::editor().find_highlight };
                         window.paint_quad(fill(Bounds::from_corners(point(start + l, y), point(start + r, y + px(LINE_H))), color));
                     }
                 }
@@ -1119,7 +1119,7 @@ fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, ma
             if !old_side
                 && let Some(at) = p.caret.get().filter(|c| c.row == ix && c.byte >= from && (c.byte < to || part == breaks.len()))
             {
-                window.paint_quad(fill(Bounds::new(point(start + shaped.x_for_index(at.byte - from), y), size(px(2.), px(LINE_H))), theme::c(0xAEAFAD)));
+                window.paint_quad(fill(Bounds::new(point(start + shaped.x_for_index(at.byte - from), y), size(px(2.), px(LINE_H))), theme::editor().cursor));
             }
         }
     });
@@ -1133,7 +1133,7 @@ fn spans_of(pieces: &[Arc<Vec<Vec<Span>>>], n: u32) -> &[Span] {
 fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut Window, cx: &mut App) {
     let y = b.origin.y;
     let bottom = y + b.size.height;
-    let num = theme::c(if ix == p.cursor { 0xC6C6C6 } else { 0x858585 });
+    let num = if ix == p.cursor { theme::editor().line_number_active } else { theme::editor().line_number };
     let (old_right, new_right) = (b.origin.x + px(NUM_W - 4.), b.origin.x + px(2. * NUM_W - 4.));
     let sign_x = b.origin.x + px(2. * NUM_W);
     let text_x = sign_x + px(SIGN_W);
@@ -1169,7 +1169,7 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
             let folded = p.folded.contains(&n);
             if folded || (p.fold_hover && p.fold_ends.get(n as usize).copied().flatten().is_some()) {
                 let chevron = Bounds::new(point(b.origin.x + px(NUM_W + 6.), y + px(2.)), size(px(14.), px(14.)));
-                window.paint_svg(chevron, if folded { "icons/chevron-right.svg" } else { "icons/chevron-down.svg" }.into(), None, TransformationMatrix::unit(), theme::c(0xC5C5C5), cx).ok();
+                window.paint_svg(chevron, if folded { "icons/chevron-right.svg" } else { "icons/chevron-down.svg" }.into(), None, TransformationMatrix::unit(), theme::editor().fold_icon, cx).ok();
             }
             let (line, spans, mark) = if old_side { (&p.data.old.lines[n as usize], spans_of(&hl.old, n), theme::diff_removed_text()) } else { (&p.data.new.lines[n as usize], spans_of(&hl.new, n), theme::diff_inserted_text()) };
             paint_text(ix, n, line, spans, old_side, mark, at, y, clip, p, window, cx);
@@ -1223,7 +1223,7 @@ fn paint_split(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut 
         }
         let (side, spans, mark) = if old_side { (&p.data.old, spans_of(&hl.old, n), theme::diff_removed_text()) } else { (&p.data.new, spans_of(&hl.new, n), theme::diff_inserted_text()) };
         let margin = if old_side { SPLIT_LEFT_MARGIN } else { 0. };
-        paint_number(n, left + px(margin + NUM_W - 4.), y, theme::c(if ix == p.cursor { 0xC6C6C6 } else { 0x858585 }), p, window, cx);
+        paint_number(n, left + px(margin + NUM_W - 4.), y, if ix == p.cursor { theme::editor().line_number_active } else { theme::editor().line_number }, p, window, cx);
         if change {
             let (glyph, color) = if old_side { ("−", theme::status_deleted()) } else { ("+", theme::status_added()) };
             paint_sign(glyph, left + px(margin + NUM_W), y, color, p, window, cx);
@@ -1640,7 +1640,7 @@ fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl Into
                         };
                         let spans = spans_of(pieces, n);
                         if spans.is_empty() {
-                            paint(0, text.len(), Hsla { a: 0.6, ..theme::c(TEXT) });
+                            paint(0, text.len(), Hsla { a: 0.6, ..theme::editor().foreground });
                         } else {
                             for s in spans {
                                 paint(s.start as usize, (s.end as usize).min(text.len()), Hsla { a: 0.75, ..theme::c(s.color) });

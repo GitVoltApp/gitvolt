@@ -14,6 +14,7 @@ use std::collections::HashMap;
 pub const TINT_PRESETS: [(&str, u32); 7] = [("green", 0x3fb950), ("blue", 0x4d88ff), ("orange", 0xf0883e), ("violet", 0xa371f7), ("rose", 0xf778ba), ("yellow", 0xd29922), ("gray", 0x8b949e)];
 /// A dark theme's fill strength.
 const TINT_STRENGTH: f32 = 0.1;
+const TINT_STRENGTH_LIGHT: f32 = 0.14;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Tok {
@@ -269,46 +270,29 @@ pub fn tint_hex(tint: &str) -> Option<u32> {
     u32::from_str_radix(h, 16).ok()
 }
 
-fn rgb(h: u32) -> [f32; 3] {
-    [((h >> 16) & 255) as f32, ((h >> 8) & 255) as f32, (h & 255) as f32]
-}
-
-fn luminance(c: [f32; 3]) -> f32 {
-    let f = |v: f32| {
-        let s = v / 255.;
-        if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
-    };
-    0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2])
-}
-
-fn contrast(a: [f32; 3], b: [f32; 3]) -> f32 {
-    let (x, y) = (luminance(a), luminance(b));
-    (x.max(y) + 0.05) / (x.min(y) + 0.05)
-}
-
-fn over(top: [f32; 3], alpha: f32, base: [f32; 3]) -> [f32; 3] {
-    [top[0] * alpha + base[0] * (1. - alpha), top[1] * alpha + base[1] * (1. - alpha), top[2] * alpha + base[2] * (1. - alpha)]
-}
-
-/// `rowTint`: the tint at the theme's strength, lowered until the file names keep 4.5:1 (or no worse than they read). The
-/// default dark theme's ground: `--panel-bg0`, with white text at 75% and 60%.
+/// `rowTint`: the tint at the theme's strength, lowered until the file names keep 4.5:1 (or no worse than they read), on
+/// the shown theme's ground (`currentGround`).
 pub fn row_tint(tint: &str) -> Option<(u32, f32)> {
     let hex = tint_hex(tint)?;
-    let color = rgb(hex);
-    let bg = rgb(0x262930);
-    let white = [255., 255., 255.];
-    let texts = [over(white, 0.75, bg), over(white, 0.6, bg)];
-    let targets = [contrast(texts[0], bg).min(4.5), contrast(texts[1], bg).min(4.5)];
-    let mut steps = (TINT_STRENGTH / 0.005).round() as i32;
+    let def = crate::theme::applied();
+    let bg = def.colors.get("panel-bg0").copied().filter(|c| c.a >= 1.)?;
+    let texts: Vec<crate::theme::Col> = ["text-normal", "text-secondary"].iter().filter_map(|t| def.colors.get(*t).copied()).collect();
+    let targets: Vec<f32> = texts.iter().map(|t| t.contrast(bg).min(4.5)).collect();
+    let color = crate::theme::Col::of_hex(hex);
+    let fill_at = |a: f32| crate::theme::Col::opaque(mixed(color.r, bg.r, a), mixed(color.g, bg.g, a), mixed(color.b, bg.b, a));
+    let mut steps = ((if def.light { TINT_STRENGTH_LIGHT } else { TINT_STRENGTH }) / 0.005).round() as i32;
     while steps > 0 {
-        let fill = over(color, steps as f32 * 0.005, bg);
-        let ok = [0.75_f32, 0.6].iter().enumerate().all(|(i, a)| contrast(over(white, *a, fill), fill) >= targets[i] - 1e-6);
-        if ok {
+        let fill = fill_at(steps as f32 * 0.005);
+        if texts.iter().zip(&targets).all(|(t, target)| t.contrast(fill) >= *target - 1e-6) {
             break;
         }
         steps -= 1;
     }
     Some((hex, steps as f32 * 0.005))
+}
+
+fn mixed(v: u8, base: u8, a: f32) -> u8 {
+    (v as f32 * a + base as f32 * (1. - a)).round() as u8
 }
 
 struct Scope {

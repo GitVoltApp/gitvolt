@@ -196,6 +196,12 @@ pub fn all() -> Vec<Command> {
         };
     }
     out.extend([tab_command!("view.tab1", 1), tab_command!("view.tab2", 2), tab_command!("view.tab3", 3), tab_command!("view.tab4", 4), tab_command!("view.tab5", 5), tab_command!("view.tab6", 6), tab_command!("view.tab7", 7), tab_command!("view.tab8", 8)]);
+    macro_rules! theme_command {
+        ($id:literal, $label:literal) => {
+            Command::new(concat!("view.theme.", $id), concat!("Theme: ", $label), View, "palette", concat!("Switch to the ", $label, " theme"), &[]).hidden().run(|v, _, cx| v.set_settings(|s| s["theme"] = $id.into(), cx))
+        };
+    }
+    out.extend([theme_command!("default-dark", "Default Dark"), theme_command!("light", "Light"), theme_command!("monokai", "Monokai"), theme_command!("darcula", "Darcula"), theme_command!("dracula", "Dracula"), theme_command!("one-dark", "One Dark"), theme_command!("solarized-dark", "Solarized Dark"), theme_command!("solarized-light", "Solarized Light"), theme_command!("github-dark", "GitHub Dark"), theme_command!("nord", "Nord")]);
     out.extend([
         Command::new("view.lastTab", "Go to the last tab", View, "arrow-right-to-line", "Switch to the last tab", &["Mod+9"]).when(many_tabs).hidden().run(|v, _, cx| v.go_to_tab(v.tabs.len() - 1, cx)),
         Command::new("edit.undo", "Undo", Edit, "undo-2", "Undo the last action", &["Mod+Z"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some()) || v.staging_ctx().is_some() || v.tabs.get(v.active).and_then(|t| v.ops.journal(t.id, &t.worktree)).is_some_and(|s| s.undo.is_some() && s.undo_blocked.is_none())).run(|v, _, cx| {
