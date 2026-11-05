@@ -405,7 +405,7 @@ pub fn overlays(diff: &DiffState, cx: &mut Context<GitVolt>) -> Vec<AnyElement> 
         out.push(
             div()
                 .absolute()
-                .left_0()
+                .left(px(diff.gutter_w()))
                 .right_0()
                 .top(px(top))
                 .h(px(HUNK_ROW_H))

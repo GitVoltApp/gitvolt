@@ -155,6 +155,8 @@ fn main() {
                     v.open(path, cx);
                 }
             });
+            let closing = view.clone();
+            window.on_window_should_close(cx, move |_, cx| closing.update(cx, |v, cx| v.may_close(cx)));
             if std::env::var_os("GITVOLT_BENCH").is_some() || std::env::var_os("GITVOLT_SHOW").is_some() || std::env::var_os("GITVOLT_SCRIPT").is_some() {
                 bench::start(view.clone(), window, cx);
             }

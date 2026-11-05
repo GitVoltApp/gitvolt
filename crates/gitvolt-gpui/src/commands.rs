@@ -172,7 +172,7 @@ pub fn all() -> Vec<Command> {
         Command::new("file.closeTab", "Close tab", File, "x", "Close the current tab", &["Mod+W"]).when(has_tab).run(|v, _, cx| v.close_tab(v.active, cx)),
         Command::new("file.reopenTab", "Reopen closed tab", File, "rotate-ccw", "Reopen the most recently closed tab", &["Mod+Shift+T"]).when(|v, _| !v.closed_tabs.is_empty()).run(|v, _, cx| v.reopen_tab(cx)),
         Command::new("file.settings", "Settings", File, "settings", "App, profile and repository settings", &["Mod+,"]),
-        Command::new("file.quit", "Quit", File, "log-out", "Quit GitVolt", &[]).run(|_, _, cx| cx.quit()),
+        Command::new("file.quit", "Quit", File, "log-out", "Quit GitVolt", &[]).run(|this, _, cx| this.close_window(cx)),
         Command::new("view.nextTab", "Next tab", View, "arrow-right-to-line", "Switch to the next tab", &["Ctrl+Tab", "Ctrl+PageDown"]).when(many_tabs).hidden().run(|v, _, cx| v.step_tab(1, cx)),
         Command::new("view.prevTab", "Previous tab", View, "arrow-left-to-line", "Switch to the previous tab", &["Ctrl+Shift+Tab", "Ctrl+PageUp"]).when(many_tabs).hidden().run(|v, _, cx| v.step_tab(-1, cx)),
     ];

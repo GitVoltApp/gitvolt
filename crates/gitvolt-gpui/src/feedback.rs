@@ -467,7 +467,7 @@ pub fn status_items(v: &GitVolt, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
                         .flex()
                         .h_full()
                         .items_center()
-                        .px(px(6.))
+                        .px(px(1.))
                         .rounded(px(3.))
                         .whitespace_nowrap()
                         .when(stopped, |d| d.text_color(theme::orange()))
@@ -485,7 +485,7 @@ pub fn status_items(v: &GitVolt, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
             .into_any_element(),
         );
     }
-    let item = || div().flex().flex_none().h_full().items_center().gap(px(4.)).px(px(6.)).whitespace_nowrap();
+    let item = || div().flex().flex_none().h_full().items_center().gap(px(4.)).px(px(1.)).whitespace_nowrap();
     if let Some(p) = v.ops.prompts.first() {
         let op = p.op;
         out.push(item().text_color(theme::text_selected()).child("Waiting for authentication…").child(link("sb-auth-cancel", "Cancel", cx, move |this, cx| this.cancel_op(op, cx))).into_any_element());
@@ -711,8 +711,8 @@ fn open_auth(p: crate::ops::AuthPrompt, this: WeakEntity<GitVolt>, window: &mut 
             .flex()
             .flex_col()
             .gap(px(10.))
-            .child(modal::title("Authentication required").child(icon("key-round", 16., theme::text_selected())))
-            .child(div().child(text.clone()))
+            .child(div().flex().items_center().gap(px(8.)).child(icon("key-round", 16., theme::text_selected())).child(modal::title("Authentication required")))
+            .child(div().mt(px(6.)).text_color(theme::text_secondary()).child(text.clone()))
             .when_some(ssh.clone(), |d, offer| {
                 d.child(
                     div()

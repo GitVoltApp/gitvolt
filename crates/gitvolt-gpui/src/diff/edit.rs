@@ -471,6 +471,27 @@ impl GitVolt {
         });
     }
 
+    /// The window's closing: unsaved edits in any tab ask first, one at a time; `false` keeps it open.
+    pub fn may_close(&mut self, cx: &mut Context<Self>) -> bool {
+        if let Some(i) = self.tabs.iter().position(|t| t.diff.as_ref().is_some_and(|d| d.editing_dirty())) {
+            self.active = i;
+            cx.notify();
+            let again = self.ask_unsaved(|this, cx| this.close_window(cx), cx);
+            if again {
+                return false;
+            }
+        }
+        self.flush_drafts();
+        true
+    }
+
+    /// Closes it, once nothing's left to ask.
+    pub fn close_window(&mut self, cx: &mut Context<Self>) {
+        if self.may_close(cx) {
+            self.with_window(cx, |window, _| window.remove_window());
+        }
+    }
+
     /// Leaving the file with unsaved edits asks [Save] [Discard edits] [Cancel]; `go` runs once it's settled.
     /// Whether it asked: the caller stops there.
     pub fn ask_unsaved(&mut self, go: impl Fn(&mut Self, &mut Context<Self>) + 'static, cx: &mut Context<Self>) -> bool {

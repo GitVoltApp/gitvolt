@@ -244,7 +244,8 @@ pub(super) fn element(_: &mut Window, cx: &mut App) -> Option<AnyElement> {
         if armed.as_ref() == Some(&id) {
             let text = ARMED_LABEL.with(|l| l.borrow().clone());
             let color = theme::red();
-            b = b.relative().child(
+            // A border paints over its children: the button's would show through the label.
+            b = b.relative().border_color(transparent_black()).child(
                 div()
                     .absolute()
                     .top(px(-1.))

@@ -739,7 +739,7 @@ pub fn narrow_strip(tab: &Tab, cx: &mut Context<GitVolt>) -> AnyElement {
                 .hover(|d| d.bg(theme::hover_row()))
                 .on_click(cx.listener(move |this, _, _, cx| this.expand_sidebar(Some(kind), cx)))
                 .child(icon(kind.icon(), 15., theme::sidebar_icon()))
-                .child(div().text_size(px(10.)).font_weight(FontWeight::BOLD).text_color(theme::count_blue()).child(panel.matched.to_string())),
+                .child(div().text_size(px(10.)).line_height(px(14.)).font_weight(FontWeight::BOLD).text_color(theme::count_blue()).child(panel.matched.to_string())),
         ));
     }
     strip.into_any_element()

@@ -574,7 +574,7 @@ impl DiffState {
     /// Where the gutter's button goes on a removed line and on an added one.
     pub fn glyph_columns(&self) -> (f32, f32) {
         let width = self.body.get().size.width.as_f32();
-        if self.split() { (SPLIT_LEFT_MARGIN + NUM_W + 2., width / 2. + NUM_W + 2.) } else { (2. * NUM_W + 2., 2. * NUM_W + 2.) }
+        if self.split() { (SPLIT_LEFT_MARGIN + NUM_W + 2., width / 2. + NUM_W + 2.) } else { (NUM_W + 1., NUM_W + 1.) }
     }
 
     /// The text's left edge, for what's placed against it.
@@ -1925,11 +1925,12 @@ fn text_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElem
         .child(
             div()
                 .flex()
+                .relative()
                 .flex_1()
                 .min_h_0()
                 .child(text_area(diff, cx))
                 .when(has_text && file_view, |d| d.child(minimap(diff, minimap_width(width), cx)).child(scrollbar(diff, cx)))
-                .when(has_text && !file_view && !diff.split(), |d| d.child(div().flex_none().w(px(SCROLLBAR_W)).h_full().border_l_1().border_color(theme::section_border())))
+                .when(has_text && !file_view && !diff.split(), |d| d.child(div().absolute().top_0().bottom_0().right(px(RULER_W)).w(px(SCROLLBAR_W)).border_l_1().border_color(theme::section_border())))
                 .when(has_text && !file_view, |d| d.child(ruler(diff, cx))),
         )
         .into_any_element()

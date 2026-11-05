@@ -663,7 +663,7 @@ fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> impl
                 .px(px(6.))
                 .child(button("minimize", "minus").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(|_, window, _| window.minimize_window()))
                 .child(button("maximize", "square").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(|_, window, _| window.zoom_window()))
-                .child(button("close", "x").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(cx.listener(|_, _, window, _| window.remove_window()))),
+                .child(button("close", "x").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(cx.listener(|this, _, _, cx| this.close_window(cx)))),
         )
 }
 
@@ -1019,6 +1019,8 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .items_center()
                 .gap(px(12.))
                 .when(changes > 0, |d| {
+                    let pressed = tab.is_some_and(Tab::is_wip_selected);
+                    let color = if pressed { theme::text_selected() } else { theme::orange() };
                     d.child(tip(
                         tip_of("view.goToWip"),
                         div()
@@ -1034,16 +1036,16 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                             .px(px(6.))
                             .rounded(px(4.))
                             .text_size(px(11.))
-                            .text_color(theme::orange())
-                            .bg(theme::mix(theme::orange(), 0.14, transparent_black()))
+                            .text_color(color)
+                            .bg(theme::mix(theme::orange(), if pressed { 0.3 } else { 0.14 }, transparent_black()))
                             .border_1()
-                            .border_color(theme::mix(theme::orange(), 0.4, transparent_black()))
+                            .border_color(theme::mix(theme::orange(), if pressed { 0.6 } else { 0.4 }, transparent_black()))
                             .cursor_pointer()
-                            .hover(|d| d.bg(theme::mix(theme::orange(), 0.24, transparent_black())))
+                            .when(!pressed, |d| d.hover(|d| d.bg(theme::mix(theme::orange(), 0.24, transparent_black()))))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 crate::commands::invoke("view.goToWip", this, window, cx);
                             }))
-                            .child(icon("file-pen", 16., theme::orange()))
+                            .child(icon("file-pen", 16., color))
                             .child(format!("{changes} change{}", if changes == 1 { "" } else { "s" })),
                     ))
                 })
