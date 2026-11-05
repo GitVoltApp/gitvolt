@@ -105,7 +105,7 @@ impl FakeProvider {
     }
 
     fn check(&self) -> Result<(), GbError> {
-        if self.reject { Err(GbError::new(GbErrorKind::AuthFailed, format!("{} rejected the token: add the account again in Settings › Accounts", self.host))) } else { Ok(()) }
+        if self.reject { Err(GbError::new(GbErrorKind::AuthFailed, format!("{} rejected the token: replace it in Settings › Accounts.", self.host))) } else { Ok(()) }
     }
 
     // --- 4B T1 ---

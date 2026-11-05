@@ -178,7 +178,7 @@ function AccountRow({ v, isDefault, onReplace, onRemove }: { v: ForgeAccountView
           {isDefault && <span className="chip" title="Automatic uses it, in Settings › Repository › Forge account">Default for {a.host}</span>}
         </div>
         {file && <p className="account-note is-warn">{FILE_WARNING}</p>}
-        {note && chip.tone === 'err' && <p className="account-note is-err" role="status">{note}{v.status.kind === 'authFailed' ? ' Replace it to reconnect.' : ''}</p>}
+        {note && chip.tone === 'err' && <p className="account-note is-err" role="status">{note}</p>}
       </div>
       <div className="account-actions">
         <button type="button" className={chip.tone === 'err' ? undefined : 'ghost'} aria-label={`Replace the token for ${who}`} onClick={onReplace}>Replace token</button>

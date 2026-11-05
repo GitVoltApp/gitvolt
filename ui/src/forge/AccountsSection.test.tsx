@@ -209,9 +209,9 @@ describe('Settings › Accounts', () => {
   });
 
   it('Replace token opens the panel for that host (read-only) and re-adds it', async () => {
-    api.forgeAccounts.mockResolvedValue([ada('keyring', { kind: 'authFailed', message: 'gitlab.example.com rejected the token: it may have expired.' })]);
+    api.forgeAccounts.mockResolvedValue([ada('keyring', { kind: 'authFailed', message: 'gitlab.example.com rejected the token: replace it in Settings › Accounts.' })]);
     show();
-    expect((await row()).textContent).toContain('Replace it to reconnect');
+    expect((await row()).textContent).toContain('rejected the token: replace it in Settings › Accounts.');
     fireEvent.click(screen.getByRole('button', { name: 'Replace the token for @ada on gitlab.example.com' }));
     const form = await screen.findByRole('form', { name: 'Replace the token for @ada on gitlab.example.com' });
     expect(form.textContent).toContain('Sign in as @ada in your browser first.');

@@ -242,7 +242,7 @@ impl ForgeHub {
             Ok(Some(token)) => token,
             Ok(None) => {
                 self.status.lock().expect("status poisoned").insert(key.clone(), AccountStatus::TokenMissing);
-                return Err(self.fail(key, &account, GbError::new(GbErrorKind::AuthFailed, format!("The token for {host} is missing: add the account again in Settings › Accounts"))));
+                return Err(self.fail(key, &account, GbError::new(GbErrorKind::AuthFailed, format!("The token for {host} is missing: replace it in Settings › Accounts."))));
             }
             // The keyring refused or is away: Settings shows it, not OK.
             Err(e) => {
@@ -1017,7 +1017,7 @@ mod tests {
         tokens.map.lock().unwrap().clear();
         hub.reset();
         let e = hub.provider_for_host(&store, HOST).await.err().unwrap();
-        assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::AuthFailed, "The token for gitlab.example.com is missing: add the account again in Settings › Accounts"));
+        assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::AuthFailed, "The token for gitlab.example.com is missing: replace it in Settings › Accounts."));
         assert_eq!(hub.accounts(&store)[0].status, AccountStatus::TokenMissing);
         assert_eq!(hub.accounts(&store)[0].account.storage, TokenStorage::File);
     }

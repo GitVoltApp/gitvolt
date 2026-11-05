@@ -234,7 +234,7 @@ pub use gitvolt_core::forge::{is_forbidden, FORBIDDEN_MARK as REFUSED};
 pub fn status_error(host: &str, status: u16, body: &[u8]) -> GbError {
     let said = body_message(body);
     match status {
-        401 => GbError::new(GbErrorKind::AuthFailed, format!("{host} rejected the token: add the account again in Settings › Accounts")),
+        401 => GbError::new(GbErrorKind::AuthFailed, format!("{host} rejected the token: replace it in Settings › Accounts.")),
         403 => GbError::new(GbErrorKind::AuthFailed, format!("{host}{REFUSED}{}", said.unwrap_or_else(|| "the token isn't allowed to do this".into()))),
         404 => GbError::new(GbErrorKind::NotFound, format!("Not found on {host}")),
         409 | 422 => GbError::new(GbErrorKind::InvalidInput, format!("{host}: {}", said.unwrap_or_else(|| format!("HTTP {status}")))),
@@ -1077,7 +1077,7 @@ mod tests {
         let s = TestServer::start(|_, _| Canned::json(401, r#"{"message":"401 Unauthorized"}"#));
         let e = client(&s.base).get("/user").await.unwrap_err();
         assert_eq!(e.kind, GbErrorKind::AuthFailed);
-        assert_eq!(e.message, "gitlab.example.com rejected the token: add the account again in Settings › Accounts");
+        assert_eq!(e.message, "gitlab.example.com rejected the token: replace it in Settings › Accounts.");
         let head = s.heads.lock().unwrap()[0].clone();
         assert!(head.starts_with("get /api/v4/user http/1.1"), "{head}");
         assert!(head.contains(&format!("authorization: bearer {}", TOKEN.to_ascii_lowercase())), "{head}");
