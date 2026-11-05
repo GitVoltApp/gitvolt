@@ -56,6 +56,8 @@ pub type Send = Rc<dyn Fn(Asked) -> Value>;
 pub type OnSuccess = Rc<dyn Fn(&mut GitVolt, &Value, &mut Context<GitVolt>)>;
 pub type OnHandle = Rc<dyn Fn(&mut GitVolt, &GbError, &mut Context<GitVolt>) -> bool>;
 pub type OnEnd = Rc<dyn Fn(&mut GitVolt, bool, &mut Context<GitVolt>)>;
+/// What runs after something, in the view.
+pub type After = Rc<dyn Fn(&mut GitVolt, &mut Context<GitVolt>)>;
 
 pub struct Write {
     pub ctx: WriteCtx,
@@ -466,11 +468,11 @@ impl GitVolt {
 
     /// Points each remote at its SSH URL, one write each, then `then`.
     pub fn switch_to_ssh(&mut self, ctx: &WriteCtx, remotes: Vec<SshOffer>, then: impl Fn(&mut Self, &mut Context<Self>) + 'static, cx: &mut Context<Self>) {
-        let then: Rc<dyn Fn(&mut Self, &mut Context<Self>)> = Rc::new(then);
+        let then: crate::write::After = Rc::new(then);
         self.switch_next(ctx.clone(), Rc::new(remotes), 0, then, cx);
     }
 
-    fn switch_next(&mut self, ctx: WriteCtx, remotes: Rc<Vec<SshOffer>>, at: usize, then: Rc<dyn Fn(&mut Self, &mut Context<Self>)>, cx: &mut Context<Self>) {
+    fn switch_next(&mut self, ctx: WriteCtx, remotes: Rc<Vec<SshOffer>>, at: usize, then: crate::write::After, cx: &mut Context<Self>) {
         let Some(r) = remotes.get(at).cloned() else {
             then(self, cx);
             return;
@@ -520,11 +522,6 @@ impl GitVolt {
         let next = ctx.clone();
         let w = Write::new(&ctx, move |_| call("switchRemoteBack", json!({ "repo": repo, "worktree": worktree, "remote": r.remote }))).on_success(move |this, _, cx| this.switch_back(next.clone(), remotes.clone(), at + 1, cx));
         self.write(w, cx);
-    }
-
-    /// Details: the Debug window, at this command.
-    pub fn open_debug(&mut self, command: Option<u64>, window: &mut Window, cx: &mut Context<Self>) {
-        let _ = (command, window, cx);
     }
 
     /// What a write from the active tab targets.
@@ -616,10 +613,6 @@ pub mod testing {
 
         pub fn read(&self, file: &str) -> String {
             std::fs::read_to_string(self.path.join(file)).expect("a file")
-        }
-
-        pub fn ctx(&self) -> super::WriteCtx {
-            super::WriteCtx { repo: self.repo, worktree: self.worktree.clone() }
         }
 
         /// Sends what the UI would, as it would.

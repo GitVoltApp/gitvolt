@@ -83,6 +83,19 @@ pub struct Tab {
     pub wip: crate::wip::WipUi,
     /// The WIP rows' draft boxes, by worktree.
     pub row_drafts: HashMap<String, Entity<TextInput>>,
+    /// The sidebar's read, as the core says it: what the writes go by.
+    pub sidebar: Rc<serde_json::Value>,
+    /// Writes queued or running that move HEAD: `(id, branch, commit)`, folded into what's shown.
+    pub head_moves: Vec<(u64, Option<Option<String>>, Option<String>)>,
+    /// Actions queued or running: the same one on the same target isn't started twice.
+    pub in_flight: HashSet<String>,
+    /// What a ref is being put through: its chip and row show a spinner meanwhile.
+    pub pending: HashMap<String, &'static str>,
+    /// The WIP row, once the graph that has it arrives.
+    pub reveal_wip: bool,
+    pub last_fetch: Option<std::time::Instant>,
+    /// "Fetch skipped: authentication required", until a fetch succeeds.
+    pub fetch_skipped: Option<String>,
     pub column_prefs: ColumnPrefs,
     pub hidden_columns: HashSet<Col>,
     /// The rows of the branch whose chip the pointer rests on; the others dim.
@@ -145,6 +158,13 @@ impl Tab {
             find: crate::find::FindState::new(id, cx),
             wip: crate::wip::WipUi::new(id, cx),
             row_drafts: HashMap::new(),
+            sidebar: Rc::default(),
+            head_moves: Vec::new(),
+            in_flight: HashSet::new(),
+            pending: HashMap::new(),
+            reveal_wip: false,
+            last_fetch: None,
+            fetch_skipped: None,
             column_prefs: ColumnPrefs::default(),
             hidden_columns: HashSet::new(),
             branch_keep: None,
@@ -204,6 +224,18 @@ pub struct GitVolt {
     /// The WIP lists' split, and which sections are collapsed.
     pub wip_ratio: f32,
     pub wip_closed: [bool; 3],
+    /// The Fetch/Pull button's default.
+    pub sync_mode: crate::sync::SyncMode,
+    /// The activity log's own state.
+    pub activity: crate::feedback::ActivityUi,
+    /// The credential prompt on screen.
+    pub auth_shown: Option<u64>,
+    /// Repos whose last fetch failed: a background failure reaches the bell only when it starts.
+    pub failing_fetch: HashSet<u32>,
+    pub next_move: u64,
+    pub branch_drag: Option<crate::refs::BranchDrag>,
+    /// A split button's main part held down: which, and whether its menu opened.
+    pub hold: Option<(&'static str, bool)>,
     /// For a test: what was sent, and what's not been answered yet.
     pub sent: Rc<std::cell::RefCell<Vec<serde_json::Value>>>,
     pub unanswered: Vec<(Rc<crate::write::Write>, crate::write::Asked, Vec<gitvolt_core::askpass::SshOffer>)>,
@@ -214,7 +246,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sent: Rc::default(), unanswered: Vec::new() }
+        Self { api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), details_w: crate::details::DETAILS_W, column_drag: None, messages: Rc::default(), tab_drag: None, saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new() }
     }
 
     /// Follows the core's events and reads the versions the status bar shows.
@@ -243,6 +275,7 @@ impl GitVolt {
             }
         })
         .detach();
+        self.start_fetch_schedule(cx);
         let info = rt.spawn({
             let api = api.clone();
             async move { api.dispatch(Request::AppInfo).await }
@@ -270,6 +303,8 @@ impl GitVolt {
                 self.reread_open_file(repo, cx);
             }
             AppEvent::RefsUpdated { repo } => self.reload(repo, cx),
+            AppEvent::OpStarted { .. } => self.after_op_started(cx),
+            AppEvent::AuthWaiting { .. } | AppEvent::AuthResolved { .. } | AppEvent::OpFinished { .. } => self.sync_auth_modal(cx),
             _ => {}
         }
         cx.notify();
@@ -296,6 +331,7 @@ impl GitVolt {
                         this.restore_columns(&mut tab);
                         this.tabs.push(tab);
                         this.list_openers(id, cx);
+                        this.load_journal(id, this.tabs.last().map_or(String::new(), |t| t.worktree.clone()), cx);
                         this.active = this.tabs.len() - 1;
                         this.reload(id, cx);
                     }
@@ -323,7 +359,8 @@ impl GitVolt {
         let read = self.rt.spawn(async move {
             let graph = api.graph(repo, Some(limit), None, None, None, None).await?;
             let sidebar = api.dispatch(Request::Sidebar { repo }).await?;
-            Ok::<_, gitvolt_core::error::GbError>((SendGraph(graph_view(&graph)), SendSections(sections_of(&sidebar, &worktree))))
+            let sections = SendSections(sections_of(&sidebar, &worktree));
+            Ok::<_, gitvolt_core::error::GbError>((SendGraph(graph_view(&graph)), sections, sidebar))
         });
         cx.spawn(async move |this, cx| {
             let result = read.await;
@@ -332,7 +369,8 @@ impl GitVolt {
                 tab.loading = false;
                 let was_wip = tab.is_wip_selected();
                 match result {
-                    Ok(Ok((graph, sections))) => {
+                    Ok(Ok((graph, sections, raw))) => {
+                        tab.sidebar = Rc::new(raw);
                         // The selection follows its commit across a reload.
                         let selected = tab.selected.and_then(|i| tab.graph.as_ref()?.rows.get(i)).map(|r| r.id.to_string());
                         tab.selected = selected.and_then(|id| graph.0.by_sha.get(&id).copied());
@@ -355,8 +393,12 @@ impl GitVolt {
                 }
                 let again = std::mem::take(&mut tab.again);
                 let pending = tab.select_after_load.take_if(|sha| tab.graph.as_ref().is_some_and(|g| g.by_sha.contains_key(sha.as_str())));
+                let wip_row = std::mem::take(&mut tab.reveal_wip).then(|| tab.graph.as_ref().and_then(|g| g.rows.iter().position(|r| r.worktree.as_deref() == Some(tab.worktree.as_str())))).flatten();
                 if again {
                     this.reload(repo, cx);
+                }
+                if let Some(row) = wip_row {
+                    this.select(row, cx);
                 }
                 if let Some(sha) = pending {
                     this.go_to_sha(&sha, cx);
@@ -688,12 +730,84 @@ fn tab_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         .border_color(theme::section_border())
         .child(tip(format!("Open repository ({})", crate::commands::display_chord("Mod+O")), bar_button("open", "folder-plus").on_click(cx.listener(|this, _, _, cx| this.pick_repository(cx)))))
         .child(tabs)
-        .child(tip("Notifications: background errors", bar_button("bell", "bell")))
+        .child(crate::feedback::bell(this, cx))
         .child(tip(format!("Settings ({})", crate::commands::display_chord("Mod+,")), bar_button("settings", "settings")))
         .child(tip("Switch profile", div().flex().flex_none().items_center().gap(px(6.)).px(px(12.)).h_full().child(div().size(px(7.)).rounded_full().bg(theme::blue())).child("Default")))
 }
 
-/// A toolbar's button (`.tb-btn`): its icon over its caption. Writes aren't in this build yet: those say so by being disabled.
+/// How long holding a split button's main part takes to open its menu.
+const LONG_PRESS: std::time::Duration = std::time::Duration::from_millis(400);
+
+/// What a toolbar's action button says and does.
+struct TbAction {
+    id: &'static str,
+    glyph: &'static str,
+    label: SharedString,
+    tooltip: SharedString,
+    off: bool,
+    busy: bool,
+    queued: bool,
+    /// Its ▾, when it's a split button: holding the button opens that menu.
+    caret: Option<(&'static str, &'static str)>,
+    run: fn(&mut GitVolt, &mut Window, &mut Context<GitVolt>),
+}
+
+fn tb_action(a: TbAction, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let TbAction { id, glyph, label, tooltip, off, busy, queued, caret, run } = a;
+    let color = if off { theme::text_disabled() } else { theme::text_normal() };
+    let (icon_el, spin): (Option<Svg>, Option<AnyElement>) = if busy { (None, Some(crate::commit_box::spinner(ElementId::Name(format!("{id}-spin").into()), 16., color).into_any_element())) } else { (Some(icon(glyph, 16., color)), None) };
+    let button = div()
+        .id(id)
+        .relative()
+        .flex()
+        .flex_col()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .gap(px(2.))
+        .min_w(px(44.))
+        .h(px(38.))
+        .px(px(6.))
+        .when(caret.is_some(), |d| d.pr(px(4.)).rounded_l(px(4.)))
+        .when(caret.is_none(), |d| d.rounded(px(4.)))
+        .text_size(px(11.))
+        .text_color(color)
+        .when(!off && !busy, |d| d.cursor_pointer().hover(|d| d.bg(theme::hover_row()).text_color(theme::text_selected())))
+        .children(icon_el)
+        .children(spin)
+        .child(label)
+        .when(queued, |d| d.child(div().absolute().top(px(4.)).right(px(4.)).size(px(6.)).rounded_full().bg(theme::blue())))
+        .when_some(caret, |d, (caret_id, caption)| {
+            d.on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                this.hold = Some((id, false));
+                let timer = cx.background_executor().timer(LONG_PRESS);
+                cx.spawn(async move |this, cx| {
+                    timer.await;
+                    let Some(this) = this.upgrade() else { return };
+                    let window = this.read_with(cx, |v, _| if v.hold == Some((id, false)) { v.window } else { None });
+                    let Some(window) = window else { return };
+                    window
+                        .update(cx, |_, window, cx| {
+                            this.update(cx, |v, cx| {
+                                v.hold = Some((id, true));
+                                open_caret_menu(caret_id, caption, window, cx, v);
+                            });
+                        })
+                        .ok();
+                })
+                .detach();
+            }))
+        })
+        .on_click(cx.listener(move |this, _, window, cx| {
+            let held = this.hold.take().is_some_and(|h| h.1);
+            if !held && !off && !busy {
+                run(this, window, cx);
+            }
+        }));
+    tip(tooltip, crate::ui::anchor(id, button))
+}
+
+/// A toolbar's button (`.tb-btn`): its icon over its caption.
 fn tb_button(id: &'static str, name: &'static str, label: &'static str, enabled: bool) -> Stateful<Div> {
     let color = if enabled { theme::text_normal() } else { theme::text_disabled() };
     div()
@@ -715,8 +829,19 @@ fn tb_button(id: &'static str, name: &'static str, label: &'static str, enabled:
         .child(label)
 }
 
+/// Opens a split button's menu under its ▾.
+fn open_caret_menu(id: &'static str, label: &str, window: &mut Window, cx: &mut Context<GitVolt>, this: &mut GitVolt) {
+    let weak = cx.weak_entity();
+    let rows = match id {
+        "tb-undo-caret" => return this.open_undo_menu(window, cx),
+        "tb-sync-caret" => crate::sync::sync_menu_rows(this.sync_mode, &weak),
+        _ => crate::sync::push_menu_rows(this, &weak),
+    };
+    menu::open_below(id, rows, OpenOptions { label: Some(format!("{label} options").into()), ..Default::default() }, window, cx);
+}
+
 /// A split button's ▾, its own hover and tooltip; a press opens its menu.
-fn tb_caret(id: &'static str, label: &'static str, rows: fn(&GitVolt, &WeakEntity<GitVolt>) -> Vec<MenuRow>, cx: &mut Context<GitVolt>) -> impl IntoElement {
+fn tb_caret(id: &'static str, label: &'static str, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let open = menu::is_open_on(id, cx);
     tip(
         format!("{label} options"),
@@ -736,31 +861,11 @@ fn tb_caret(id: &'static str, label: &'static str, rows: fn(&GitVolt, &WeakEntit
                 .hover(|d| d.bg(theme::hover_row()))
                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
                     cx.stop_propagation();
-                    let weak = cx.weak_entity();
-                    let list = rows(this, &weak);
-                    menu::open_below(id, list, OpenOptions { label: Some(format!("{label} options").into()), ..Default::default() }, window, cx);
+                    open_caret_menu(id, label, window, cx, this);
                 }))
                 .child(icon("chevron-down", 11., theme::text_secondary())),
         ),
     )
-}
-
-fn undo_menu(_: &GitVolt, _: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
-    vec![MenuRow::action("undo.history.none", "Nothing to undo", "undo-2", "Nothing to undo", |_, _| {}).disabled("Nothing to undo")]
-}
-
-fn fetch_menu(_: &GitVolt, _: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
-    vec![
-        MenuRow::header("fetch.title", "Default action"),
-        MenuRow::pending("fetch.fetchAll", "Fetch All", "check"),
-        MenuRow::pending("fetch.pullFfOrMerge", "Pull (fast-forward if possible)", ""),
-        MenuRow::pending("fetch.pullFfOnly", "Pull (fast-forward only)", ""),
-        MenuRow::pending("fetch.pullRebase", "Pull (rebase)", ""),
-    ]
-}
-
-fn push_menu(_: &GitVolt, _: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
-    vec![MenuRow::pending("push.otherBranch", "Other branch…", "git-branch"), MenuRow::Separator, MenuRow::pending("push.force", "Force push (with lease)…", "upload")]
 }
 
 fn repo_menu(this: &GitVolt, weak: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
@@ -781,13 +886,16 @@ fn repo_menu(this: &GitVolt, weak: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
 fn branch_menu(this: &GitVolt, weak: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
     let Some(tab) = this.tabs.get(this.active) else { return Vec::new() };
     let locals = tab.side.sections.iter().find(|s| s.kind == SectionKind::Local).map_or(&[][..], |s| &s.items[..]);
-    let _ = weak;
+    let current = tab.head_branch();
     locals
         .iter()
         .map(|b| {
-            let is_head = matches!(b.kind, crate::sidebar::ItemKind::Local { is_head: true, .. });
-            let row = MenuRow::action(format!("branch:{}", b.name), b.name.clone(), if is_head { "check" } else { "" }, if is_head { format!("{} is checked out", b.name) } else { format!("Check out {}", b.name) }, |_, _| {});
-            if is_head { row } else { row.disabled(menu::NOT_YET) }
+            let is_head = current.as_deref() == Some(b.name.as_str());
+            let (weak, name) = (weak.clone(), b.name.clone());
+            MenuRow::action(format!("branch:{}", b.name), b.name.clone(), if is_head { "check" } else { "git-branch" }, if is_head { format!("{} is checked out", b.name) } else { format!("Check out {}", b.name) }, move |_, cx| {
+                let name = name.clone();
+                weak.update(cx, |v, cx| v.checkout_local(&name, cx)).ok();
+            })
         })
         .collect()
 }
@@ -822,10 +930,54 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         )
     };
     let tip_of = |id: &str| crate::commands::get(id).map_or(SharedString::default(), |c| c.full_tooltip());
-    let write = |id: &'static str, name: &'static str, label: &'static str, command: &str| tip(tip_of(command), tb_button(id, name, label, false));
-    let branch = tab.and_then(|t| t.graph.as_ref()).map(|g| g.head_branch.clone()).unwrap_or_default();
+    let head = tab.and_then(Tab::head_branch);
+    let branch: SharedString = match (&head, tab.and_then(Tab::head_sha)) {
+        (Some(b), _) => b.clone().into(),
+        (None, Some(sha)) => format!("HEAD ({})", sha.chars().take(7).collect::<String>()).into(),
+        _ => tab.and_then(|t| t.graph.as_ref()).map(|g| g.head_branch.clone()).unwrap_or_default(),
+    };
     let repo_name = tab.map(|t| t.name.clone()).unwrap_or_default();
     let changes = tab.and_then(|t| t.graph.as_ref()).and_then(|g| g.rows.first()).and_then(|r| r.wip.as_ref()).map_or(0, WipCounts::files);
+    use gitvolt_core::events::OpKind;
+    let local = tab.and_then(|t| head.as_ref().and_then(|h| t.local_branch(h)));
+    let journal = tab.and_then(|t| this.ops.journal(t.id, &t.worktree));
+    let (undo_tip, undo_off) = crate::sync::undo_view(journal, true, &crate::commands::display_chord("Mod+Z"));
+    let (redo_tip, redo_off) = crate::sync::undo_view(journal, false, &crate::commands::display_chord("Mod+Shift+Z"));
+    let repo = tab.map(|t| t.id).unwrap_or_default();
+    let queued = |kind: OpKind| this.ops.queued_kind(repo, kind);
+    let sync = crate::sync::sync_view(this.sync_mode, local.as_ref(), head.as_deref());
+    let in_flight = |key: String| tab.is_some_and(|t| t.in_flight.contains(&key));
+    let sync_running = this.ops.ops.values().any(|o| o.repo == Some(repo) && ((o.kind == OpKind::Fetch && (o.interactive || o.shown)) || o.kind == OpKind::Pull));
+    let sync_busy = in_flight("fetch|".into()) || in_flight(format!("pull|{}", head.as_deref().unwrap_or(""))) || sync_running;
+    let sync_tip: SharedString = if in_flight("fetch|".into()) && this.sync_mode == crate::sync::SyncMode::FetchAll { "Fetching…".into() } else if sync_busy && this.sync_mode != crate::sync::SyncMode::FetchAll && head.is_some() { format!("Pulling {}…", head.as_deref().unwrap_or_default()).into() } else { sync.tooltip.clone().into() };
+    let (push_tip, push_off) = crate::sync::push_view(local.as_ref(), head.as_deref(), &tab.map_or("origin".to_string(), Tab::default_remote));
+    let push_busy = local.as_ref().is_some_and(|b| in_flight(format!("push|{}", b.full_name)));
+    let push_tip: SharedString = if push_busy { format!("Pushing {}…", local.as_ref().map_or("", |b| b.name.as_str())).into() } else { push_tip.into() };
+    let dirty = tab.is_some_and(|t| t.graph.as_ref().is_some_and(|g| g.rows.iter().any(|r| r.worktree.as_deref() == Some(t.worktree.as_str()))));
+    let newest = tab.and_then(|t| t.sidebar["stashes"].as_array().and_then(|s| s.first().cloned()));
+    let pop_tip: SharedString = newest.as_ref().map_or("No stashes".to_string(), |s| format!("Pop \"{}\"", s["message"].as_str().unwrap_or_default())).into();
+    let has_head = tab.and_then(Tab::head_sha).is_some();
+    let undo = tb_action(TbAction { id: "tb-undo", glyph: "undo-2", label: "Undo".into(), tooltip: undo_tip.into(), off: undo_off, busy: false, queued: queued(OpKind::Undo), caret: Some(("tb-undo-caret", "Undo")), run: |v, _, cx| {
+        if let Some(ctx) = v.tabs.get(v.active).map(Tab::write_target) {
+            v.undo(ctx, crate::ui::arm::Origin::control("tb-undo"), cx);
+        }
+    } }, cx);
+    let redo = tb_action(TbAction { id: "tb-redo", glyph: "redo-2", label: "Redo".into(), tooltip: redo_tip.into(), off: redo_off, busy: false, queued: queued(OpKind::Redo), caret: None, run: |v, _, cx| {
+        if let Some(ctx) = v.tabs.get(v.active).map(Tab::write_target) {
+            v.redo(ctx, crate::ui::arm::Origin::control("tb-redo"), cx);
+        }
+    } }, cx);
+    let sync_button = tb_action(TbAction { id: "tb-sync", glyph: if this.sync_mode == crate::sync::SyncMode::FetchAll { "download" } else { "arrow-down-to-line" }, label: sync.label.clone().into(), tooltip: sync_tip, off: sync.disabled, busy: sync_busy, queued: queued(OpKind::Fetch) || queued(OpKind::Pull), caret: Some(("tb-sync-caret", "Fetch")), run: |v, _, cx| v.sync_default(cx) }, cx);
+    let push = tb_action(TbAction { id: "tb-push", glyph: "upload", label: "Push".into(), tooltip: push_tip, off: push_off, busy: push_busy, queued: queued(OpKind::Push), caret: Some(("tb-push-caret", "Push")), run: |v, _, cx| v.push_head(crate::ui::arm::Origin::control("tb-push"), cx) }, cx);
+    let branch_button = tb_action(TbAction { id: "tb-branch", glyph: "git-branch-plus", label: "Branch".into(), tooltip: tip_of("branch.create"), off: !has_head, busy: false, queued: false, caret: None, run: |v, window, cx| {
+        crate::commands::invoke("branch.create", v, window, cx);
+    } }, cx);
+    let stash = tb_action(TbAction { id: "tb-stash", glyph: "archive", label: "Stash".into(), tooltip: if dirty { "Stash every change, named from the WIP message".into() } else { "No changes to stash".into() }, off: !dirty, busy: false, queued: queued(OpKind::Stash), caret: None, run: |v, window, cx| {
+        crate::commands::invoke("stash.push", v, window, cx);
+    } }, cx);
+    let pop = tb_action(TbAction { id: "tb-pop", glyph: "archive-restore", label: "Pop".into(), tooltip: pop_tip, off: newest.is_none(), busy: false, queued: false, caret: None, run: |v, window, cx| {
+        crate::commands::invoke("stash.pop", v, window, cx);
+    } }, cx);
     div()
         .flex()
         .flex_none()
@@ -842,13 +994,13 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .flex_none()
                 .items_center()
                 .gap(px(12.))
-                .child(div().flex().flex_none().items_center().child(write("tb-undo", "undo-2", "Undo", "edit.undo")).child(tb_caret("tb-undo-caret", "Undo", undo_menu, cx)))
-                .child(write("tb-redo", "redo-2", "Redo", "edit.redo"))
-                .child(div().flex().flex_none().items_center().child(write("tb-fetch", "download", "Fetch", "repo.fetch")).child(tb_caret("tb-fetch-caret", "Fetch", fetch_menu, cx)))
-                .child(div().flex().flex_none().items_center().child(write("tb-push", "upload", "Push", "sync.push")).child(tb_caret("tb-push-caret", "Push", push_menu, cx)))
-                .child(write("tb-branch", "git-branch-plus", "Branch", "branch.create"))
-                .child(write("tb-stash", "archive", "Stash", "stash.push"))
-                .child(write("tb-pop", "archive", "Pop", "stash.pop")),
+                .child(div().flex().flex_none().items_center().child(undo).child(tb_caret("tb-undo-caret", "Undo", cx)))
+                .child(redo)
+                .child(div().flex().flex_none().items_center().child(sync_button).child(tb_caret("tb-sync-caret", "Fetch", cx)))
+                .child(div().flex().flex_none().items_center().child(push).child(tb_caret("tb-push-caret", "Push", cx)))
+                .child(branch_button)
+                .child(stash)
+                .child(pop),
         )
         .child(
             div()
@@ -896,7 +1048,8 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
         )
 }
 
-fn status_bar(this: &GitVolt) -> impl IntoElement {
+fn status_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+    let items = crate::feedback::status_items(this, cx);
     div()
         .flex()
         .flex_none()
@@ -910,6 +1063,7 @@ fn status_bar(this: &GitVolt) -> impl IntoElement {
         .text_size(px(11.))
         .text_color(theme::text_secondary())
         .child(tip(format!("Zoom ({} / {})", crate::commands::display_chord("Mod+="), crate::commands::display_chord("Mod+-")), div().child("100%")))
+        .children(items)
         .child(div().flex_1())
         .child(tip(format!("Keyboard shortcuts ({})", crate::commands::display_chord("Mod+/")), icon("keyboard", 13., theme::text_secondary())))
         .when(!this.git_version.is_empty(), |d| d.child(format!("git {}", this.git_version)))
@@ -984,6 +1138,11 @@ impl Render for GitVolt {
             Some(panel) => panel,
             None => graph_table(self, center, window, cx),
         };
+        let banner_list = self.tabs.get(self.active).map_or(Vec::new(), |t| self.banner_list(t, cx));
+        let banners = crate::ui::banner::banners(&banner_list);
+        let drag_ghost = self.branch_drag.as_ref().filter(|d| d.active).map(|d| {
+            div().absolute().left(d.at.x + px(8.)).top(d.at.y + px(8.)).flex().items_center().gap(px(4.)).h(px(20.)).px(px(5.)).rounded(px(3.)).bg(theme::panel_bg1()).border_1().border_color(theme::blue()).text_color(theme::text_selected()).child(icon("git-branch", 13., theme::text_selected())).child(d.chip.name.clone())
+        });
         let overlays = crate::ui::overlays(window, cx);
         let app = div()
             .relative()
@@ -1025,23 +1184,38 @@ impl Render for GitVolt {
                 this.on_side_drag(e, cx);
                 this.on_column_drag(e, cx);
                 this.on_tab_drag(e, cx);
+                this.on_branch_drag(e, cx);
             }))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
+            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
                 this.tab_drag = None;
+                this.end_branch_drag(window, cx);
+                if this.hold.is_some_and(|h| !h.1) {
+                    // A click follows and takes it.
+                    let hold = this.hold;
+                    cx.defer_in(window, move |this, _, _| {
+                        if this.hold == hold {
+                            this.hold = None;
+                        }
+                    });
+                }
             }))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| {
+            .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.end_side_drag(cx);
                 this.end_column_drag(cx);
                 this.tab_drag = None;
+                this.end_branch_drag(window, cx);
+                this.hold = None;
             }))
             .child(title_bar(self, window, cx))
             .child(tab_bar(self, cx))
             .child(toolbar(self, cx))
+            .children(banners)
             .child(div().flex().flex_1().min_h_0().when_some(strip, |d, s| d.child(s)).when(!folded, |d| d.child(sidebar(self, body_h, window, cx))).child(main).children(details))
-            .child(status_bar(self))
-            .children(menu);
+            .child(status_bar(self, cx))
+            .children(menu)
+            .children(drag_ghost);
         // Dialogs and menus float outside the app's key context: no shortcut acts behind them.
         div()
             .relative()

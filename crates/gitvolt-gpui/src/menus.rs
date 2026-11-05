@@ -1,7 +1,7 @@
 //! What each right-click shows (`ui/src/menu/builders.ts`, `menuEnv.ts`, each feature's `menus.ts`):
-//! labels, groups and order as in the web UI. Rows whose action needs writes or a dialog not ported yet
-//! stay in their place, disabled (`MenuRow::pending`); read-only ones work. Which integrate rows show
-//! is approximated until they're wired. No forge rows: there's no forge layer here yet.
+//! labels, groups and order as in the web UI. Rows whose action isn't ported yet (interactive rebase,
+//! worktrees, LFS, file colours, presets) stay in their place, disabled (`MenuRow::pending`). No forge
+//! rows: there's no forge layer here yet.
 
 use crate::app::GitVolt;
 use crate::details::{FileChange, Origin};
@@ -23,11 +23,6 @@ fn short7(sha: &str) -> String {
 
 fn variant(id: &str, label: &str, tooltip: impl Into<SharedString>, run: impl Fn(&mut Window, &mut App) + 'static) -> Variant {
     Variant { id: id.to_string().into(), label: Some(label.to_string().into()), icon: None, tooltip: tooltip.into(), run: Rc::new(run), disabled: None }
-}
-
-/// A variant of a row that's waiting for its action.
-fn pending_variant(id: &str, label: &str, tooltip: impl Into<SharedString>) -> Variant {
-    Variant { id: id.to_string().into(), label: Some(label.to_string().into()), icon: None, tooltip: tooltip.into(), run: Rc::new(|_, _| {}), disabled: Some(crate::ui::menu::NOT_YET.into()) }
 }
 
 fn copier(this: &WeakEntity<GitVolt>, text: String) -> impl Fn(&mut Window, &mut App) + 'static {
@@ -72,10 +67,9 @@ impl GitVolt {
         let Some(graph) = tab.graph.as_ref() else { return Vec::new() };
         let Some(row) = graph.rows.get(row_ix) else { return Vec::new() };
         if row.kind == NodeKind::Wip {
-            return self.wip_rows(this);
+            return self.wip_rows(this, row);
         }
         let sha = row.id.to_string();
-        let head = graph.head_branch.to_string();
         let head_sha = graph.head_row.and_then(|i| graph.rows.get(i)).map(|r| r.id.to_string());
         let is_head_commit = head_sha.as_deref() == Some(sha.as_str());
         let stash = row.kind == NodeKind::Stash;
@@ -85,31 +79,50 @@ impl GitVolt {
         let summary = row.summary.to_string();
         let target = branch.map_or(s6.clone(), |b| b.name.to_string());
 
+        let ctx = tab.write_target();
+        let local_b = local.and_then(|c| tab.local_branch(&c.name));
+        let head_for = tab.head_branch();
+        let head = head_for.clone().unwrap_or_else(|| "HEAD".to_string());
+        let head_sha_now = tab.head_sha();
+        let is_head_commit = head_sha_now.as_deref() == Some(sha.as_str()) || is_head_commit;
+        let busy = tab.busy_reason();
+
         let mut sync = Vec::new();
-        if let Some(b) = local {
-            sync.push(MenuRow::pending("sync.push", "Push", "upload"));
-            sync.push(MenuRow::pending("branch.setUpstream", "Set upstream", "arrow-up-from-dot"));
-            let _ = b;
+        if let Some(b) = &local_b {
+            sync.extend(crate::sync::sync_rows(self, b, this));
+            let (weak, c, name) = (this.clone(), ctx.clone(), b.name.clone());
+            sync.push(MenuRow::action("branch.setUpstream", "Set upstream", "arrow-up-from-dot", format!("Choose the remote branch {name} tracks"), move |_, cx| {
+                let (c, name) = (c.clone(), name.clone());
+                weak.update(cx, |v, cx| v.pick_upstream(c, name, cx)).ok();
+            }));
         }
         if !stash && !is_head_commit {
+            let reset = |mode: &'static str| -> crate::ui::Action {
+                let (weak, to) = (this.clone(), sha.clone());
+                Rc::new(move |_: &mut Window, cx: &mut App| {
+                    let to = to.clone();
+                    let origin = crate::ui::arm::Origin::None;
+                    weak.update(cx, |v, cx| v.reset_to(to, mode, origin, cx)).ok();
+                })
+            };
+            let v = |id: &str, label: &str, tip: &str, run: crate::ui::Action| Variant { id: id.to_string().into(), label: Some(label.to_string().into()), icon: None, tooltip: tip.to_string().into(), run, disabled: busy.clone().map(Into::into) };
+            let mixed = reset("mixed");
             sync.push(
-                MenuRow::pending("commit.reset", format!("Reset {head} to this commit"), "rotate-ccw").variants(
-                    vec![pending_variant("soft", "Soft", "keep all changes"), pending_variant("mixed", "Mixed", "keep working copy but reset index"), pending_variant("hard", "Hard", "discard all changes")],
-                    Some("mixed"),
-                ),
+                MenuRow::action("commit.reset", format!("Reset {head} to this commit"), "rotate-ccw", format!("Move {head} to {s7}, keeping the working copy but resetting the index"), move |w, cx| mixed(w, cx))
+                    .variants(vec![v("soft", "Soft", "keep all changes", reset("soft")), v("mixed", "Mixed", "keep working copy but reset index", reset("mixed")), v("hard", "Hard", "discard all changes", reset("hard"))], Some("mixed"))
+                    .disabled_if(busy.clone()),
             );
         }
 
         let mut integrate = Vec::new();
-        if let Some(b) = branch.filter(|b| !b.head) {
-            let below = graph.head_row.is_some_and(|h| row_ix > h);
-            if below {
-                integrate.push(MenuRow::pending("integrate.ff", format!("Fast-forward {} to {head}", b.name), "git-merge"));
-            } else {
-                integrate.push(MenuRow::pending("integrate.merge", format!("Merge {} into {head}", b.name), "git-merge"));
-                integrate.push(MenuRow::pending("integrate.rebase", format!("Rebase {head} onto {}", b.name), "git-branch"));
+        if let Some(b) = branch {
+            let why = busy.clone().or_else(|| head_for.is_none().then(|| "Check out a branch first".to_string()));
+            let env = crate::refs::IntegrateEnv { head_branch: head_for.clone(), head_sha: head_sha_now.clone(), busy: why };
+            let checked_out = local_b.as_ref().is_some_and(|l| l.checked_out.is_some());
+            integrate = crate::refs::integrate_rows(&sha, b, checked_out, graph, &env, this, &ctx);
+            if !b.head {
+                integrate.push(MenuRow::pending("irebase.onto", format!("Interactive rebase {head} onto {}", b.name), "list-ordered"));
             }
-            integrate.push(MenuRow::pending("irebase.onto", format!("Interactive rebase {head} onto {}", b.name), "list-ordered"));
         }
 
         let mut branch_rows = Vec::new();
@@ -117,44 +130,95 @@ impl GitVolt {
         if !stash {
             let mut checkout = Vec::new();
             let mut worktree = Vec::new();
-            for c in row.chips.iter().filter(|c| c.local && !c.head) {
-                checkout.push(MenuRow::pending(format!("checkout:{}", c.name), c.name.clone(), "git-branch"));
-                worktree.push(MenuRow::pending(format!("wt:{}", c.name), c.name.clone(), "git-branch"));
+            for c in row.chips.iter().filter(|c| !c.tag) {
+                if c.local && !c.head {
+                    let (weak, chip, id) = (this.clone(), c.clone(), sha.clone());
+                    checkout.push(MenuRow::action(format!("checkout:{}", c.name), c.name.clone(), "git-branch", format!("Check out {}", c.name), move |_, cx| {
+                        let (chip, id) = (chip.clone(), id.clone());
+                        weak.update(cx, |v, cx| v.checkout_chip(&id, &chip, cx)).ok();
+                    }).disabled_if(busy.clone()));
+                    worktree.push(MenuRow::pending(format!("wt:{}", c.name), c.name.clone(), "git-branch"));
+                } else if !c.local && !c.remotes.is_empty() {
+                    let r = c.remotes.iter().find(|x| x.0 == "origin").or(c.remotes.first()).cloned().unwrap_or_default();
+                    let branch_name = r.1.trim_start_matches(&format!("refs/remotes/{}/", r.0)).to_string();
+                    let (weak, chip, id) = (this.clone(), c.clone(), sha.clone());
+                    checkout.push(MenuRow::action(format!("checkout:{}", r.1), format!("{}/{branch_name}", r.0), "git-branch", format!("Check out {branch_name}, tracking {}/{branch_name}", r.0), move |_, cx| {
+                        let (chip, id) = (chip.clone(), id.clone());
+                        weak.update(cx, |v, cx| v.checkout_chip(&id, &chip, cx)).ok();
+                    }).disabled_if(busy.clone()));
+                }
             }
             if !checkout.is_empty() {
                 checkout.push(MenuRow::Separator);
+            }
+            if !worktree.is_empty() {
                 worktree.push(MenuRow::Separator);
             }
-            checkout.push(MenuRow::pending("checkout:detached", format!("Detached HEAD at {s7}"), "git-commit-horizontal"));
+            let (weak, id, c, h) = (this.clone(), sha.clone(), ctx.clone(), head_sha_now.clone());
+            checkout.push(MenuRow::action("checkout:detached", format!("Detached HEAD at {s7}"), "git-commit-horizontal", "Check out this commit without a branch", move |_, cx| {
+                let (id, c, h) = (id.clone(), c.clone(), h.clone());
+                weak.update(cx, |v, cx| v.checkout(c, serde_json::json!({ "kind": "detached", "oid": id }), serde_json::json!({ "head": h, "refs": {} }), None, crate::ui::arm::Origin::None, None, cx)).ok();
+            }).disabled_if(busy.clone()));
             worktree.push(MenuRow::pending("wt:new", "New branch here…", "git-branch-plus"));
             branch_rows.push(MenuRow::submenu("branch.checkout", "Checkout", "git-branch", "Check out a branch at this commit, or the commit itself", checkout));
             branch_rows.push(MenuRow::submenu("branch.createWorktree", "Create worktree from", "tree-pine", "Check out a branch in a new directory", worktree));
-            branch_rows.push(MenuRow::pending("branch.createHere", "Create branch here", "git-branch-plus"));
+            let (weak, id, start) = (this.clone(), sha.clone(), branch.map(|b| if b.local { format!("refs/heads/{}", b.name) } else { b.remotes.first().map_or(String::new(), |r| r.1.clone()) }).filter(|s| !s.is_empty()));
+            branch_rows.push(MenuRow::action("branch.createHere", "Create branch here", "git-branch-plus", format!("Create a branch at {}", branch.map_or(s7.clone(), |b| b.name.to_string())), move |window, cx| {
+                let (id, start) = (id.clone(), start.clone());
+                weak.update(cx, |v, cx| v.create_branch_at(id, start, window, cx)).ok();
+            }));
 
-            if !is_head_commit {
-                commit_rows.push(MenuRow::pending("commit.cherryPick", format!("Cherry-pick onto {head}"), "git-commit-horizontal").variants(vec![pending_variant("noCommit", "No commit", format!("Apply the changes to {head}'s files and stage them, without committing"))], None));
-                commit_rows.push(MenuRow::pending("commit.revert", "Revert this commit", "rotate-ccw").variants(vec![pending_variant("noCommit", "No commit", format!("Undo the changes in {head}'s files and stage that, without committing"))], None));
+            let sequence = |pick: bool, no_commit: bool| -> crate::ui::Action {
+                let (weak, id) = (this.clone(), sha.clone());
+                Rc::new(move |_: &mut Window, cx: &mut App| {
+                    let id = id.clone();
+                    weak.update(cx, |v, cx| v.start_sequence(pick, id, no_commit, cx)).ok();
+                })
+            };
+            let seq_busy = busy.clone().or_else(|| head_for.is_none().then(|| "Check out a branch first".to_string())).or_else(|| head_sha_now.is_none().then(|| "Make a first commit first".to_string()));
+            let merge = row.parents.len() > 1;
+            let in_head = head_sha_now.as_deref().and_then(|h| crate::refs::is_ancestor(graph, &sha, h));
+            if !merge && !is_head_commit {
+                let run = sequence(true, false);
+                let named = format!("{s6} {summary}");
+                commit_rows.push(MenuRow::action("commit.cherryPick", format!("Cherry-pick onto {head}"), "git-commit-horizontal", format!("Apply {named} on top of {head}"), move |w, cx| run(w, cx)).variants(vec![Variant { id: "noCommit".into(), label: Some("No commit".into()), icon: None, tooltip: format!("Apply the changes to {head}'s files and stage them, without committing").into(), run: sequence(true, true), disabled: seq_busy.clone().map(Into::into) }], None).disabled_if(seq_busy.clone()));
             }
-            commit_rows.push(MenuRow::pending("tag.createHere", "Create tag here", "tag").variants(vec![pending_variant("lightweight", "Lightweight", format!("A tag that only names {s6}")), pending_variant("annotated", "Annotated", "A tag with its own message, author and date")], None));
+            if !merge && in_head != Some(false) {
+                let run = sequence(false, false);
+                let named = format!("{s6} {summary}");
+                commit_rows.push(MenuRow::action("commit.revert", "Revert this commit", "rotate-ccw", format!("Make a commit on {head} that undoes {named}"), move |w, cx| run(w, cx)).variants(vec![Variant { id: "noCommit".into(), label: Some("No commit".into()), icon: None, tooltip: format!("Undo the changes in {head}'s files and stage that, without committing").into(), run: sequence(false, true), disabled: seq_busy.clone().map(Into::into) }], None).disabled_if(seq_busy.clone()));
+            }
+            let tag = |annotated: bool| -> crate::ui::Action {
+                let (weak, id) = (this.clone(), sha.clone());
+                Rc::new(move |window: &mut Window, cx: &mut App| {
+                    let id = id.clone();
+                    weak.update(cx, |v, cx| v.create_tag_at(id, annotated, window, cx)).ok();
+                })
+            };
+            let plain = tag(false);
+            commit_rows.push(MenuRow::action("tag.createHere", "Create tag here", "tag", format!("Create a lightweight tag at {s6}"), move |w, cx| plain(w, cx)).variants(vec![Variant { id: "lightweight".into(), label: Some("Lightweight".into()), icon: None, tooltip: format!("A tag that only names {s6}").into(), run: tag(false), disabled: None }, Variant { id: "annotated".into(), label: Some("Annotated".into()), icon: None, tooltip: "A tag with its own message, author and date".into(), run: tag(true), disabled: None }], None));
             if !is_head_commit {
                 commit_rows.push(MenuRow::pending("irebase.fromHere", "Interactive rebase after this commit", "list-ordered"));
                 commit_rows.push(MenuRow::pending("irebase.drop", "Drop commit", "trash-2"));
             }
         }
-        let _ = (&summary, &target);
+        let _ = &target;
 
         let mut stash_rows = Vec::new();
         if stash {
-            stash_rows.push(MenuRow::pending("stash.apply", "Apply", "archive-restore"));
-            stash_rows.push(MenuRow::pending("stash.pop", "Pop", "archive-restore"));
-            stash_rows.push(MenuRow::pending("stash.drop", "Delete", "trash-2"));
+            stash_rows = self.stash_action_rows(&sha, Some(&summary), this);
         }
 
         let mut manage = Vec::new();
-        if let Some(b) = local {
-            manage.push(MenuRow::pending("branch.rename", format!("Rename {}", b.name), "pencil"));
-            let delete = MenuRow::pending("branch.delete", "Delete", "trash-2").variants(vec![pending_variant("local", "Local", format!("Delete the local branch {} (you can undo this)", b.name))], None);
-            manage.push(if b.head { delete.disabled(format!("Can't delete {}: it's checked out", b.name)) } else { delete });
+        if let Some(b) = branch {
+            if let Some(l) = &local_b {
+                let (weak, name, oid) = (this.clone(), l.name.clone(), l.target.clone());
+                manage.push(MenuRow::action("branch.rename", format!("Rename {}", l.name), "pencil", format!("Rename the local branch {}", l.name), move |window, cx| {
+                    let (name, oid) = (name.clone(), oid.clone());
+                    weak.update(cx, |v, cx| v.rename_branch(name, oid, window, cx)).ok();
+                }));
+            }
+            manage.extend(crate::refs::delete_row(tab, b, this));
         }
 
         let mut copy = Vec::new();
@@ -182,7 +246,7 @@ impl GitVolt {
         let mut view = Vec::new();
         let (weak, from) = (this.clone(), sha.clone());
         if let (Some(b), Some(h)) = (branch, head_sha.filter(|h| *h != sha)) {
-            view.push(MenuRow::action("commit.compareHead", "Compare with HEAD", "git-compare", format!("Compare {} with HEAD ({head})", b.name), move |_, cx| {
+            view.push(MenuRow::action("commit.compareHead", "Compare with HEAD", "git-compare", format!("Compare {} with HEAD ({})", b.name, graph.head_branch), move |_, cx| {
                 let (from, to) = (from.clone(), h.clone());
                 weak.update(cx, |v, cx| v.compare_commits(from, to, cx)).ok();
             }));
@@ -199,15 +263,90 @@ impl GitVolt {
         grouped(vec![sync, integrate, branch_rows, commit_rows, stash_rows, manage, copy, view])
     }
 
-    fn wip_rows(&self, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
-        vec![MenuRow::pending("wip.stash", "Stash changes", "archive"), self.discard_all_row(this)]
+    fn wip_rows(&self, this: &WeakEntity<GitVolt>, row: &RowView) -> Vec<MenuRow> {
+        let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
+        let worktree = row.worktree.clone().unwrap_or_else(|| tab.worktree.clone());
+        let name = row.wip.as_ref().and_then(|w| w.name.clone()).map_or("this worktree".to_string(), |n| n.to_string());
+        let (weak, ctx) = (this.clone(), crate::write::WriteCtx { repo: tab.id, worktree });
+        let stash = MenuRow::action("wip.stash", "Stash changes", "archive", format!("Stash every change in {name}, named from its WIP message"), move |_, cx| {
+            let ctx = ctx.clone();
+            weak.update(cx, |v, cx| v.stash_push(ctx, cx)).ok();
+        });
+        vec![stash, self.discard_all_row(this)]
+    }
+
+    /// A stash's Apply, Pop and Delete.
+    pub fn stash_action_rows(&self, sha: &str, message: Option<&str>, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+        let Some(tab) = self.tabs.get(self.active) else { return Vec::new() };
+        let ctx = tab.write_target();
+        let apply = |pop: bool| {
+            let (weak, c, oid) = (this.clone(), ctx.clone(), sha.to_string());
+            move |_: &mut Window, cx: &mut App| {
+                let (c, oid) = (c.clone(), oid.clone());
+                weak.update(cx, |v, cx| v.apply_stash(c, oid, pop, cx)).ok();
+            }
+        };
+        let (weak, oid, name) = (this.clone(), sha.to_string(), message.map(str::to_string));
+        vec![
+            MenuRow::action("stash.apply", "Apply", "archive-restore", "Apply the stash and keep it (staged changes come back staged)", apply(false)),
+            MenuRow::action("stash.pop", "Pop", "archive-restore", "Apply the stash, then delete it (you can undo this)", apply(true)),
+            MenuRow::action("stash.drop", "Delete", "trash-2", "Delete the stash (you can undo this)", move |window, cx| {
+                let (c, oid, name) = (ctx.clone(), oid.clone(), name.clone());
+                let origin = crate::ui::arm::Origin::current(cx);
+                weak.update(cx, |v, cx| v.drop_stash(c, oid, name, origin, window, cx)).ok();
+            }),
+        ]
     }
 
     /// A tag's menu.
     pub fn tag_rows(&self, name: &str, sha: Option<&str>, in_sidebar: bool, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         let loaded = sha.is_some_and(|s| self.in_graph(s));
+        let remotes: Vec<String> = self.tabs.get(self.active).map_or(Vec::new(), |t| t.remote_groups().into_iter().map(|g| g.0).collect());
+        let remote = remotes.iter().find(|r| *r == "origin").or(remotes.first()).cloned();
+        let del = |local: bool, r: Option<String>| -> crate::ui::Action {
+            let (weak, tag) = (this.clone(), name.to_string());
+            Rc::new(move |window: &mut Window, cx: &mut App| {
+                let (tag, r) = (tag.clone(), r.clone());
+                let origin = crate::ui::arm::Origin::current(cx);
+                weak.update(cx, |v, cx| v.delete_tag(tag, local, r, origin, window, cx)).ok();
+            })
+        };
+        let vr = |id: &str, label: &str, tip: String, run: crate::ui::Action| Variant { id: id.to_string().into(), label: Some(label.to_string().into()), icon: None, tooltip: tip.into(), run, disabled: None };
+        let mut variants = vec![vr("local", "Local", format!("Delete the tag {name} here (you can undo this)"), del(true, None))];
+        if let Some(r) = &remote {
+            variants.push(vr("remote", "Remote", format!("Delete {name} from {r} (a push: can't be undone)"), del(false, Some(r.clone()))));
+            variants.push(vr("both", "Both", format!("Delete {name} from {r}, then here"), del(true, Some(r.clone()))));
+        }
+        let plain = del(true, None);
+        let push: Vec<MenuRow> = match remotes.len() {
+            0 => Vec::new(),
+            1 => {
+                let (weak, r, tag) = (this.clone(), remotes[0].clone(), name.to_string());
+                vec![MenuRow::action("tag.push", format!("Push {name} to {r}"), "upload", format!("Send the tag {name} to {r}"), move |_, cx| {
+                    let (r, tag) = (r.clone(), tag.clone());
+                    weak.update(cx, |v, cx| v.push_tags(r, Some(tag), cx)).ok();
+                })]
+            }
+            _ => vec![MenuRow::submenu(
+                "tag.push",
+                format!("Push {name} to"),
+                "upload",
+                format!("Send the tag {name} to a remote"),
+                remotes
+                    .iter()
+                    .map(|r| {
+                        let (weak, r2, tag) = (this.clone(), r.clone(), name.to_string());
+                        MenuRow::action(format!("tag.push.{r}"), r.clone(), "upload", format!("Send the tag {name} to {r}"), move |_, cx| {
+                            let (r2, tag) = (r2.clone(), tag.clone());
+                            weak.update(cx, |v, cx| v.push_tags(r2, Some(tag), cx)).ok();
+                        })
+                    })
+                    .collect(),
+            )],
+        };
         grouped(vec![
-            vec![MenuRow::pending("tag.delete", "Delete", "trash-2").variants(vec![pending_variant("local", "Local", format!("Delete the tag {name} here (you can undo this)"))], Some("local"))],
+            push,
+            vec![MenuRow::action("tag.delete", "Delete", "trash-2", format!("Delete the tag {name} here"), move |w, cx| plain(w, cx)).variants(variants, Some("local"))],
             vec![MenuRow::action("tag.copyName", "Copy tag name", "copy", format!("Copy \"{name}\""), copier(this, name.to_string()))],
             vec![MenuRow::pending("presets.hideTag", "Hide tag", "eye-off")],
             if in_sidebar { show_in_graph(sha, loaded, this) } else { Vec::new() },
@@ -238,7 +377,7 @@ impl GitVolt {
     /// A stash in the sidebar.
     pub fn stash_rows(&self, sha: &str, message: &str, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         grouped(vec![
-            vec![MenuRow::pending("stash.apply", "Apply", "archive-restore"), MenuRow::pending("stash.pop", "Pop", "archive-restore"), MenuRow::pending("stash.drop", "Delete", "trash-2")],
+            self.stash_action_rows(sha, Some(message), this),
             vec![copy_sha_row("sidebar.copySha", sha, this), MenuRow::action("sidebar.copyStash", "Copy message", "message-square", "Copy the stash's message", copier(this, message.to_string()))],
             show_in_graph(Some(sha), self.in_graph(sha), this),
         ])
@@ -247,7 +386,13 @@ impl GitVolt {
     /// A remote's folder in the sidebar.
     pub fn remote_rows(&self, name: &str, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
         grouped(vec![
-            vec![MenuRow::pending("remote.pushTags", format!("Push all tags to {name}"), "upload")],
+            vec![{
+                let (weak, r) = (this.clone(), name.to_string());
+                MenuRow::action("remote.pushTags", format!("Push all tags to {name}"), "upload", format!("Send every local tag {name} doesn't have"), move |_, cx| {
+                    let r = r.clone();
+                    weak.update(cx, |v, cx| v.push_tags(r, None, cx)).ok();
+                })
+            }],
             vec![MenuRow::action("sidebar.copyRemote", "Copy remote name", "copy", format!("Copy \"{name}\""), copier(this, name.to_string())), MenuRow::pending("sidebar.copyUrl", "Copy URL", "square-arrow-out-up-right")],
             vec![MenuRow::pending("sidebar.removeRemote", "Remove remote…", "trash-2")],
         ])
@@ -330,7 +475,15 @@ impl GitVolt {
         let abs = format!("{}/{path}", tab.worktree.trim_end_matches('/'));
         let stage = self.file_stage_rows(file, this);
         let restore = match &file.origin {
-            Origin::Commit { .. } => vec![MenuRow::pending("file.restore", "Restore from this commit", "rotate-ccw")],
+            Origin::Commit { id } if file.status != crate::details::UNCHANGED && !id.is_empty() => {
+                let (weak, sha, p) = (this.clone(), id.clone(), path.clone());
+                vec![MenuRow::action("file.restore", "Restore from this commit", "rotate-ccw", format!("Put {path} back as this commit has it (you can undo this)"), move |_, cx| {
+                    let (sha, p) = (sha.clone(), p.clone());
+                    let origin = crate::ui::arm::Origin::None;
+                    weak.update(cx, |v, cx| v.restore_file(sha, p, origin, cx)).ok();
+                })]
+            }
+            Origin::Commit { .. } => Vec::new(),
             Origin::Wip { .. } => Vec::new(),
         };
         let ext = path.rsplit_once('.').map(|(_, e)| e.to_string());

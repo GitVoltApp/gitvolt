@@ -119,7 +119,8 @@ fn chip_inner(c: &Chip, lane: usize, full: bool, lit: bool, row: Option<SharedSt
 
 /// The labels cell: what fits, `+N` for the rest with their list on hover; each chip its own menu and
 /// its branch's focus.
-fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &SharedString, this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Div {
+#[allow(clippy::too_many_arguments)]
+fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &SharedString, row_pending: &[&str], this: &WeakEntity<GitVolt>, cx: &mut Context<GitVolt>) -> Div {
     let lane = row.color as usize;
     let widths: Vec<f32> = row.chips.iter().map(|c| chip_width(c, cx)).collect();
     let more_w = |n: usize| crate::ui::text_width(&format!("+{n}"), 11., FontWeight::NORMAL, cx) + 8. + CHIP_SPACING;
@@ -129,11 +130,23 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
     let mut cell = div().flex().flex_none().w(px(width)).h(px(ROW_H)).items_center().gap(px(CHIP_SPACING)).pl(px(CELL_PAD)).overflow_hidden();
     for (i, c) in row.chips.iter().take(shown).enumerate() {
         let (chip, menu_sha, weak, hover) = (c.clone(), sha.clone(), this.clone(), this.clone());
+        let (press_chip, press_sha) = (c.clone(), sha.clone());
         let tag = c.tag;
         let tag_tip = c.tag.then(|| format!("Tag at {}", &sha[..sha.len().min(SHORT_SHA)]));
+        let pending = row_pending.iter().any(|p| c_refs(c).iter().any(|r| r == *p));
         let body = chip_inner(c, lane, false, selected, Some(group.clone()))
+            .when(pending, |d| d.child(crate::commit_box::spinner(("chip-spin", ix * 64 + i), 11., theme::text_secondary())))
             .id(("chip", ix * 64 + i))
             .cursor_pointer()
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                // A double click checks it out; a drag takes a local branch onto another.
+                if e.click_count == 2 {
+                    cx.stop_propagation();
+                    this.checkout_chip(&press_sha, &press_chip, cx);
+                } else {
+                    this.start_branch_drag(ix, press_chip.clone(), e.position);
+                }
+            }))
             .on_hover(move |entered, _, cx| {
                 hover
                     .update(cx, |v, cx| {
@@ -148,9 +161,10 @@ fn chips_cell(row: &RowView, ix: usize, width: f32, selected: bool, group: &Shar
                 let rows = if chip.tag { this.tag_rows(&chip.name, Some(&menu_sha), false, &weak) } else { this.commit_rows(ix, Some(&chip), &weak) };
                 menu::open_context_for(format!("row:{ix}"), rows, e.position, window, cx);
             }));
+        let key = format!("chip:{ix}:{}", c.name);
         cell = cell.child(match tag_tip {
-            Some(t) => Anchor::new(body).tip(t).into_any_element(),
-            None => body.into_any_element(),
+            Some(t) => crate::ui::anchor(key, body).tip(t).into_any_element(),
+            None => crate::ui::anchor(key, body).into_any_element(),
         });
     }
     if hidden > 0 {
@@ -226,6 +240,15 @@ fn wip_cell(draft: Option<&Entity<crate::ui::input::TextInput>>, w: &WipCounts, 
         .children(status_count("status-deleted", theme::status_deleted(), w.deleted))
         .children(status_count("status-renamed", theme::blue(), w.renamed))
         .children(status_count("status-conflicted", theme::status_conflicted(), w.conflicted))
+}
+
+/// A chip's full ref names.
+fn c_refs(c: &Chip) -> Vec<String> {
+    let mut out: Vec<String> = c.remotes.iter().map(|r| r.1.clone()).collect();
+    if c.local {
+        out.push(format!("refs/heads/{}", c.name));
+    }
+    out
 }
 
 /// A number with thousands separators.
@@ -440,6 +463,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
     let branch_keep = tab.branch_keep.clone();
     let row_cols = cols;
     let drafts = tab.row_drafts.clone();
+    let pending = tab.pending.clone();
     let (repo, loaded, loading) = (tab.id, graph.rows.len() as u32, tab.loading);
     let older = graph.truncated;
     let messages = this.messages.clone();
@@ -505,7 +529,8 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                     let outlined = menu::is_target(&format!("row:{ix}"), cx);
                     let off = |c: Col| hidden.contains(&c);
                     let menu_weak = weak.clone();
-                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &weak, cx));
+                    let pending_refs: Vec<&str> = pending.keys().map(String::as_str).collect();
+                    let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &pending_refs, &weak, cx));
                     div()
                         .id(ix)
                         .group(group.clone())

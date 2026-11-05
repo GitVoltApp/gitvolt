@@ -608,6 +608,18 @@ impl GitVolt {
         }
     }
 
+    /// A branch row's double-click: checks it out; a checked-out one does nothing.
+    fn side_double_click(&mut self, item: &SideItem, cx: &mut Context<Self>) {
+        match &item.kind {
+            ItemKind::Local { .. } => self.checkout_local(&item.name, cx),
+            ItemKind::Remote { remote, full, .. } => {
+                let branch = full.trim_start_matches(&format!("refs/remotes/{remote}/")).to_string();
+                self.checkout_remote(remote, &branch, item.target.as_deref().unwrap_or_default(), cx);
+            }
+            _ => {}
+        }
+    }
+
     pub fn go_to_sha(&mut self, sha: &str, cx: &mut Context<Self>) {
         let at = self.tabs.get(self.active).and_then(|t| t.graph.as_ref()?.by_sha.get(sha).copied());
         match at {
@@ -976,6 +988,7 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
             let target = item.target.clone();
             let (weak, menu_item, menu_key) = (this.clone(), item.clone(), key.clone());
             let hover_item = item.clone();
+            let dbl_item = item.clone();
             let glyph: AnyElement = match &item.kind {
                 ItemKind::Local { is_head: true, .. } => div().flex().flex_none().items_center().justify_center().size(px(15.)).mx(px(-1.)).rounded(px(3.)).bg(theme::checked_out()).child(icon("check", 11., theme::text_on_accent())).into_any_element(),
                 ItemKind::Local { .. } | ItemKind::Remote { .. } => icon("git-branch", 13., theme::sidebar_icon()).into_any_element(),
@@ -1020,6 +1033,14 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                         tab.side.keys = Some(kind);
                     }
                     this.jump_to(target.clone(), cx);
+                }))
+                .on_mouse_down(MouseButton::Left, cx.listener({
+                    let item = dbl_item.clone();
+                    move |this, e: &MouseDownEvent, _, cx| {
+                        if e.click_count == 2 {
+                            this.side_double_click(&item, cx);
+                        }
+                    }
                 }))
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this, e: &MouseDownEvent, window, cx| {
                     crate::ui::tooltip::hide(cx);

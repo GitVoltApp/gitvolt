@@ -51,6 +51,9 @@ impl GitVolt {
                 self.wip_closed[i] = on.as_bool() == Some(true);
             }
         }
+        if let Some(m) = v["syncButton"].as_str() {
+            self.sync_mode = crate::sync::SyncMode::of(m);
+        }
         self.saved_columns = v["columns"].clone();
         for kind in KINDS {
             if let Some(h) = v["sidebarPanels"][kind.key()].as_f64() {
@@ -67,7 +70,7 @@ impl GitVolt {
             let hidden: Vec<&str> = HIDEABLE.iter().filter(|(c, _)| tab.hidden_columns.contains(c)).map(|(c, _)| col_key(*c)).collect();
             columns.insert(tab.worktree.clone(), json!({ "labels": p.labels, "graph": p.graph, "author": p.author, "date": p.date, "sha": p.sha, "message": p.message, "hidden": hidden }));
         }
-        json!({ "sidebarWidth": self.sidebar_w, "sidebarNarrow": self.sidebar_narrow, "sidebarPanels": panels, "detailsWidth": self.details_w, "columns": columns, "wipRatio": self.wip_ratio, "wipCollapsed": self.wip_closed })
+        json!({ "sidebarWidth": self.sidebar_w, "sidebarNarrow": self.sidebar_narrow, "sidebarPanels": panels, "detailsWidth": self.details_w, "columns": columns, "wipRatio": self.wip_ratio, "wipCollapsed": self.wip_closed, "syncButton": self.sync_mode.key() })
     }
 
     /// A repository's columns, as they were left.

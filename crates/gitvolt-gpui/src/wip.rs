@@ -164,7 +164,7 @@ impl Files {
                 shown.extend(paths.iter().filter(|p| !listed.contains(p.as_str()) && matches(p)).map(|p| file_in_worktree(p, &wip.worktree)));
                 shown.sort_by(|a, b| a.path.cmp(&b.path));
             }
-            shown.sort_by(|a, b| rank(a).cmp(&rank(b)));
+            shown.sort_by_key(rank);
             s.start = out.len();
             s.count = shown.len();
             out.extend(shown);
@@ -1490,6 +1490,7 @@ fn status_counts(files: &[FileChange], size: f32) -> Vec<AnyElement> {
     [count("status-modified", changed, theme::status_modified()), count("status-added", added, theme::status_added()), count("status-deleted", gone, theme::status_deleted()), count("status-renamed", renamed, theme::blue()), count("status-conflicted", conflicted, theme::status_conflicted())].into_iter().flatten().collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileChange>, panel_w: f32, closed: bool, basis: Option<f32>, conflicted_h: Option<f32>, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     let files = tab.files.as_ref();
     let section = files.and_then(|f| f.wip.as_ref()).map(|w| w.section(which));
@@ -1984,7 +1985,7 @@ mod tests {
         let r = f.ok(call("stage", json!({ "repo": repo, "worktree": worktree, "paths": ["a.txt"] }))).await;
         assert!(status(&f).contains("M  a.txt"), "{}", status(&f));
         assert_eq!(r["wip"]["staged"]["files"][0]["path"], "a.txt", "the answer carries the fresh lists");
-        assert_eq!(r["staging"]["undo"].as_str().is_some(), true, "and the staging log");
+        assert!(r["staging"]["undo"].as_str().is_some(), "and the staging log");
         f.ok(call("unstage", json!({ "repo": repo, "worktree": worktree, "paths": ["a.txt"], "oldPaths": [] }))).await;
         assert!(status(&f).contains(" M a.txt"), "{}", status(&f));
         f.ok(call("stageAll", json!({ "repo": repo, "worktree": worktree }))).await;
@@ -2053,5 +2054,209 @@ mod tests {
         assert_eq!(e.kind, gitvolt_core::error::GbErrorKind::HookFailed);
         assert_eq!(crate::write::describe_error(&e).unwrap().0, "pre-commit hook failed");
         assert_eq!(f.git(&["rev-parse", "HEAD"]), head);
+    }
+}
+
+#[cfg(test)]
+mod ui_tests {
+    use super::*;
+    use crate::app::tests::with_rows;
+    use crate::model::{GraphView, RowView};
+    use gitvolt_graph::NodeKind;
+    use serde_json::json;
+    use std::prelude::v1::test;
+
+    fn payload(files: &[(&str, &str)]) -> Value {
+        let list: Vec<Value> = files.iter().map(|(p, s)| json!({ "path": p, "status": s, "additions": 1, "deletions": 0, "old": {"kind": "absent"}, "new": {"kind": "worktree", "worktree": "/w"} })).collect();
+        json!({ "files": list, "added": files.len(), "deleted": 0 })
+    }
+
+    fn wip_row() -> RowView {
+        RowView { id: "wip".into(), kind: NodeKind::Wip, lane: 0, color: 0, segments: Vec::new(), summary: SharedString::default(), author: SharedString::default(), date: SharedString::default(), sha: SharedString::default(), initials: SharedString::default(), avatar: 0, chips: Vec::new(), worktree: Some("/w".into()), email: String::new(), parents: vec!["abc".into()], stash_branch: None, wip: Some(Default::default()) }
+    }
+
+    /// A window with the WIP row selected and its lists in.
+    fn wip_window(cx: &mut TestAppContext, unstaged: &[(&str, &str)], staged: &[(&str, &str)]) -> (WindowHandle<GitVolt>, VisualTestContext, tokio::runtime::Runtime) {
+        let (window, mut cx, rt) = with_rows(cx, 0);
+        let (u, s) = (payload(unstaged), payload(staged));
+        window
+            .update(&mut cx, |v, _, cx| {
+                let by_sha = std::collections::HashMap::new();
+                v.tabs[0].worktree = "/w".into();
+                v.tabs[0].graph = Some(Rc::new(GraphView { rows: vec![wip_row()], max_lanes: 1, head_row: None, head_branch: "main".into(), pinned: SharedString::default(), truncated: false, by_sha, head_sha: Some("abc".into()), worktrees: Vec::new(), in_progress: Default::default() }));
+                v.tabs[0].selected = Some(0);
+                v.put_wip(1, "/w".into(), &u, &s, cx);
+                cx.notify();
+            })
+            .unwrap();
+        cx.run_until_parked();
+        (window, cx, rt)
+    }
+
+    fn sent(window: &WindowHandle<GitVolt>, cx: &VisualTestContext) -> Vec<Value> {
+        window.read_with(cx, |v, _| v.sent.borrow().clone()).unwrap()
+    }
+
+    #[gpui::test]
+    fn stage_all_sends_the_core_its_request_and_the_answer_moves_the_lists(cx: &mut TestAppContext) {
+        let (window, mut cx, _rt) = wip_window(cx, &[("a.txt", "M"), ("b.txt", "A")], &[]);
+        window.update(&mut cx, |v, window, cx| crate::commands::invoke("stage.all", v, window, cx)).unwrap();
+        assert_eq!(sent(&window, &cx)[0], json!({ "method": "stageAll", "params": { "repo": 1, "worktree": "/w" } }));
+        // The commit button holds off until it's answered.
+        window.read_with(&cx, |v, cx| assert_eq!(commit_view_of(&v.tabs[0], cx).reason.as_deref(), Some(STAGING_BUSY))).unwrap();
+        let answer = json!({ "outcome": null, "journal": { "undo": null, "redo": null, "undoBlocked": null, "redoBlocked": null, "banners": [], "paused": null }, "staging": { "undo": "stage all", "redo": null, "off": null }, "wip": { "worktree": "/w", "unstaged": payload(&[]), "staged": payload(&[("a.txt", "M"), ("b.txt", "A")]), "version": "1" } });
+        window.update(&mut cx, |v, _, cx| v.answer_write(Ok(answer), cx)).unwrap();
+        window.read_with(&cx, |v, _| {
+            let f = v.tabs[0].files.as_ref().unwrap();
+            assert_eq!(f.counts(), (2, 0, 0));
+            assert_eq!(v.ops.staging(1, "/w").unwrap().undo.as_deref(), Some("stage all"));
+            assert_eq!(v.tabs[0].wip.staging, 0);
+        })
+        .unwrap();
+    }
+
+    #[gpui::test]
+    fn a_click_on_a_rows_stage_button_stages_that_file(cx: &mut TestAppContext) {
+        let (window, mut cx, _rt) = wip_window(cx, &[("a.txt", "M")], &[]);
+        window.update(&mut cx, |v, _, cx| v.with_files(cx, |f| f.set_mode(ListMode::Path))).unwrap();
+        cx.run_until_parked();
+        // The first row of the Unstaged list, its Stage File at the panel's right edge. The panel's top:
+        // bars 108 + header 37 + the view bar ~36 + the head 26 + the tool line 25.
+        let (w, y) = (1600., 108. + 37. + 36. + 26. + 25. + 13.);
+        cx.simulate_mouse_move(point(px(w - 200.), px(y)), None, Modifiers::none());
+        cx.run_until_parked();
+        cx.simulate_click(point(px(w - 40.), px(y)), Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(sent(&window, &cx).first().map(|s| s["method"].clone()), Some(json!("stage")), "{:?}", sent(&window, &cx));
+        assert_eq!(sent(&window, &cx)[0]["params"]["paths"], json!(["a.txt"]));
+    }
+
+    #[gpui::test]
+    fn discard_all_arms_first_and_a_second_click_sends_what_it_confirmed(cx: &mut TestAppContext) {
+        let (window, mut cx, _rt) = wip_window(cx, &[("a.txt", "M")], &[("c.txt", "A")]);
+        // The header's trash, at the panel's left edge.
+        let at = point(px(1600. - 400. + 12. + 11.), px(108. + 18.));
+        cx.simulate_mouse_move(at, None, Modifiers::none());
+        cx.run_until_parked();
+        cx.simulate_click(at, Modifiers::none());
+        cx.run_until_parked();
+        assert!(cx.update(|_, cx| crate::ui::arm::is_armed(cx)));
+        assert!(sent(&window, &cx).is_empty(), "nothing yet");
+        cx.update(|_, cx| crate::ui::arm::age_for_test(cx));
+        cx.simulate_click(at, Modifiers::none());
+        cx.run_until_parked();
+        let s = sent(&window, &cx);
+        assert_eq!(s[0]["params"]["scope"]["kind"], "all");
+        assert_eq!(s[0]["params"]["scope"]["confirmed"], json!(["a.txt", "c.txt"]));
+    }
+
+    #[gpui::test]
+    fn a_failed_write_says_so_and_a_question_arms_before_it_sends_again(cx: &mut TestAppContext) {
+        use gitvolt_core::error::{ErrorDetail, GbError, GbErrorKind};
+        let (window, mut cx, _rt) = wip_window(cx, &[("a.txt", "M")], &[]);
+        window.update(&mut cx, |v, _, cx| v.reset_to("abc".into(), "hard", ArmOrigin::None, cx)).unwrap();
+        let e = GbError { kind: GbErrorKind::DirtyWorktree, message: "Reset main?".into(), command_id: None, stderr: None, detail: Some(ErrorDetail::ResetDiscards { branch: "main".into(), to: "abc".into(), files: 2 }) };
+        window.update(&mut cx, |v, _, cx| v.answer_write(Err(e), cx)).unwrap();
+        cx.run_until_parked();
+        assert!(cx.update(|_, cx| crate::ui::popover::is_open(cx)), "no control to arm: it asks in a popover");
+        cx.update(|_, cx| crate::ui::popover::age_for_test(cx));
+        // Cancel first, the risky answer's a step away.
+        cx.simulate_keystrokes("right enter");
+        cx.run_until_parked();
+        let s = sent(&window, &cx);
+        assert_eq!(s.len(), 2, "sent again: {s:?}");
+        assert_eq!(s[1]["params"]["discard"], json!(true));
+        // A failure that's no question goes to the toast, with its kind's word.
+        let e = GbError { kind: GbErrorKind::Other, message: "It broke".into(), command_id: None, stderr: None, detail: None };
+        window.update(&mut cx, |v, _, cx| v.answer_write(Err(e), cx)).unwrap();
+        assert_eq!(cx.update(|_, cx| crate::ui::toast::message(cx)).map(|m| m.to_string()).as_deref(), Some("Something went wrong: It broke"));
+    }
+
+    #[gpui::test]
+    fn typing_in_either_box_is_the_same_draft_and_commit_needs_a_summary(cx: &mut TestAppContext) {
+        let (window, mut cx, _rt) = wip_window(cx, &[("a.txt", "M")], &[]);
+        window.update(&mut cx, |v, _, cx| v.sync_row_drafts(1, cx)).unwrap();
+        let focus = window.read_with(&cx, |v, cx| v.tabs[0].wip.summary.read(cx).focus.clone()).unwrap();
+        window.update(&mut cx, |_, window, cx| window.focus(&focus, cx)).unwrap();
+        cx.run_until_parked();
+        window.read_with(&cx, |v, cx| assert_eq!(commit_view_of(&v.tabs[0], cx).reason.as_deref(), Some("Write a commit summary"))).unwrap();
+        cx.simulate_input("Fix");
+        cx.run_until_parked();
+        window
+            .read_with(&cx, |v, cx| {
+                assert_eq!(v.drafts["/w"].summary, "Fix");
+                assert_eq!(v.tabs[0].row_drafts["/w"].read(cx).text(), "Fix", "the row's box shows it");
+                assert_eq!(commit_view_of(&v.tabs[0], cx), CommitView { label: "Stage all & commit".into(), reason: None, stage_all: true });
+            })
+            .unwrap();
+        // Enter moves to the description; Ctrl+Enter commits from there.
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        cx.simulate_input("Body");
+        cx.simulate_keystrokes("ctrl-enter");
+        cx.run_until_parked();
+        let s = sent(&window, &cx);
+        assert_eq!(s[0]["method"], "commit");
+        assert_eq!((s[0]["params"]["summary"].as_str(), s[0]["params"]["description"].as_str(), s[0]["params"]["stageAll"].as_bool()), (Some("Fix"), Some("Body"), Some(true)));
+        assert_eq!(s[0]["params"]["expect"]["head"], "abc");
+        // While it runs, the fields wait; the answer clears the draft.
+        window.read_with(&cx, |v, _| assert!(v.tabs[0].wip.committing)).unwrap();
+        let answer = json!({ "outcome": { "oid": "def" }, "journal": null, "staging": null, "wip": null });
+        window.update(&mut cx, |v, _, cx| v.answer_write(Ok(answer), cx)).unwrap();
+        window
+            .read_with(&cx, |v, cx| {
+                assert!(!v.tabs[0].wip.committing);
+                assert!(!v.drafts.contains_key("/w"));
+                assert_eq!(v.tabs[0].wip.summary.read(cx).text(), "");
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn amend_puts_the_draft_aside_and_a_head_move_ends_it(cx: &mut TestAppContext) {
+        let (window, mut cx, _rt) = wip_window(cx, &[("a.txt", "M")], &[]);
+        window
+            .update(&mut cx, |v, _, cx| {
+                v.drafts.insert("/w".into(), Draft { summary: "Mine".into(), description: String::new() });
+                v.show_draft(1, cx);
+                v.start_amend(1, Draft { summary: "Head's".into(), description: "x".into() }, "abc".into(), cx);
+            })
+            .unwrap();
+        window
+            .read_with(&cx, |v, cx| {
+                assert_eq!(v.tabs[0].wip.summary.read(cx).text(), "Head's");
+                assert_eq!(commit_view_of(&v.tabs[0], cx).label, "Amend previous commit");
+            })
+            .unwrap();
+        window.update(&mut cx, |v, _, cx| {
+            let g = Rc::get_mut(v.tabs[0].graph.as_mut().unwrap()).unwrap();
+            g.rows[0].parents = vec!["moved".into()];
+            v.check_amend(1, cx);
+        }).unwrap();
+        window.read_with(&cx, |v, cx| {
+            assert!(v.tabs[0].wip.amend.is_none());
+            assert_eq!(v.tabs[0].wip.summary.read(cx).text(), "Mine");
+        }).unwrap();
+    }
+
+    #[gpui::test]
+    fn leaving_a_dirty_file_asks_and_discard_goes_on(cx: &mut TestAppContext) {
+        let (window, mut cx, _rt) = wip_window(cx, &[("a.txt", "M"), ("b.txt", "M")], &[]);
+        window
+            .update(&mut cx, |v, _, cx| {
+                let file = v.tabs[0].files.as_ref().unwrap().changes[0].clone();
+                let mut d = DiffState::new(file);
+                d.edit = Some(crate::diff::edit::EditState::new("x\n", None, "h".into(), "/w".into(), cx));
+                d.edit.as_mut().unwrap().buffer.replace(None, "typed", crate::ui::input::EditKind::Typing);
+                v.tabs[0].diff = Some(d);
+                v.close_file(cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+        assert!(cx.update(|_, cx| crate::ui::popover::is_open(cx)), "it asks");
+        window.read_with(&cx, |v, _| assert!(v.tabs[0].diff.is_some(), "still there")).unwrap();
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        window.read_with(&cx, |v, _| assert!(v.tabs[0].diff.is_some(), "Cancel keeps it")).unwrap();
     }
 }

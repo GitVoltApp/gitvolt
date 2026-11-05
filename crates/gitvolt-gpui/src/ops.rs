@@ -45,7 +45,6 @@ pub struct AuthPrompt {
 /// One finished operation, for the activity log.
 #[derive(Debug, Clone)]
 pub struct ActivityEntry {
-    pub at: i64,
     pub op: u64,
     pub kind: OpKind,
     pub label: String,
@@ -60,7 +59,6 @@ pub struct ActivityEntry {
 
 #[derive(Debug, Clone)]
 pub struct BgError {
-    pub at: i64,
     pub message: String,
 }
 
@@ -78,10 +76,6 @@ pub struct Ops {
     pub queues: HashMap<u32, QueueStatePayload>,
     pub journals: HashMap<(u32, String), JournalState>,
     pub staging: HashMap<(u32, String), StagingUndoState>,
-}
-
-fn now_ms() -> i64 {
-    chrono::Utc::now().timestamp_millis()
 }
 
 impl Ops {
@@ -123,7 +117,6 @@ impl Ops {
                     return;
                 }
                 let entry = ActivityEntry {
-                    at: now_ms(),
                     op: *op,
                     kind: *kind,
                     label: done.as_ref().map_or(String::new(), |d| d.label.clone()),
@@ -154,7 +147,7 @@ impl Ops {
     }
 
     pub fn push_error(&mut self, message: String) {
-        self.errors.insert(0, BgError { at: now_ms(), message });
+        self.errors.insert(0, BgError { message });
         self.errors.truncate(MAX_ERRORS);
         self.unread += 1;
     }

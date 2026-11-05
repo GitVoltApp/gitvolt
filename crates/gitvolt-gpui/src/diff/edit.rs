@@ -337,7 +337,7 @@ impl GitVolt {
     }
 
     /// Ctrl+S: behind the loaded base. A `Stale` save keeps the text and asks.
-    pub fn save_working_copy(&mut self, then: Option<Rc<dyn Fn(&mut Self, &mut Context<Self>)>>, cx: &mut Context<Self>) {
+    pub fn save_working_copy(&mut self, then: Option<crate::write::After>, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let repo = tab.id;
         let Some(diff) = tab.diff.as_ref() else { return };
@@ -354,7 +354,7 @@ impl GitVolt {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn send_save(&mut self, repo: u32, worktree: String, path: String, text: String, base: String, then: Option<Rc<dyn Fn(&mut Self, &mut Context<Self>)>>, cx: &mut Context<Self>) {
+    fn send_save(&mut self, repo: u32, worktree: String, path: String, text: String, base: String, then: Option<crate::write::After>, cx: &mut Context<Self>) {
         let ctx = WriteCtx { repo, worktree: worktree.clone() };
         let (saved, handled_path, saved_path, send_path, send_text) = (text.clone(), path.clone(), path.clone(), path.clone(), text.clone());
         let handled_then = then.clone();
@@ -392,7 +392,7 @@ impl GitVolt {
 
     /// The file changed on disk since it loaded: Reload (edits lost) or Overwrite with this text.
     #[allow(clippy::too_many_arguments)]
-    fn ask_stale(&mut self, repo: u32, worktree: String, path: String, text: String, title: String, then: Option<Rc<dyn Fn(&mut Self, &mut Context<Self>)>>, cx: &mut Context<Self>) {
+    fn ask_stale(&mut self, repo: u32, worktree: String, path: String, text: String, title: String, then: Option<crate::write::After>, cx: &mut Context<Self>) {
         let this = cx.weak_entity();
         let req = ChoiceRequest {
             title: title.into(),
@@ -424,7 +424,7 @@ impl GitVolt {
 
     /// Reads the disk's hash now, then saves over it.
     #[allow(clippy::too_many_arguments)]
-    fn overwrite(&mut self, repo: u32, worktree: String, path: String, text: String, then: Option<Rc<dyn Fn(&mut Self, &mut Context<Self>)>>, cx: &mut Context<Self>) {
+    fn overwrite(&mut self, repo: u32, worktree: String, path: String, text: String, then: Option<crate::write::After>, cx: &mut Context<Self>) {
         if cfg!(test) {
             self.sent.borrow_mut().push(call("overwrite", json!({ "path": path })));
             return;
@@ -480,7 +480,7 @@ impl GitVolt {
         }
         let path = diff.file.path.to_string();
         let this = cx.weak_entity();
-        let go: Rc<dyn Fn(&mut Self, &mut Context<Self>)> = Rc::new(go);
+        let go: crate::write::After = Rc::new(go);
         let req = ChoiceRequest { title: format!("Save your changes to {path}?").into(), body: None, note: None, choices: vec![Choice { id: "save".into(), label: "Save".into(), primary: true, ..Default::default() }, Choice { id: "discard".into(), label: "Discard edits".into(), danger: true, ..Default::default() }] };
         self.with_window(cx, move |window, cx| {
             popover::ask_choice(
@@ -733,7 +733,7 @@ mod tests {
     async fn a_save_writes_behind_its_base_and_a_stale_one_refuses() {
         let f = Fixture::new().await;
         f.write("a.txt", "edited\n");
-        let contents = f.ok(call("diffContents", json!({ "repo": f.repo, "path": "a.txt", "old": { "kind": "index" }, "new": { "kind": "worktree", "worktree": f.worktree }, "force": false }))).await;
+        let contents = f.ok(call("diffContents", json!({ "repo": f.repo, "path": "a.txt", "old": { "kind": "absent" }, "new": { "kind": "worktree", "worktree": f.worktree }, "force": false }))).await;
         let base = contents["new"]["hash"].as_str().unwrap().to_string();
         let save = |text: &str, base: &str| call("writeWorktreeFile", json!({ "repo": f.repo, "worktree": f.worktree, "path": "a.txt", "text": text, "base": base }));
         let r = f.ok(save("saved\n", &base)).await;

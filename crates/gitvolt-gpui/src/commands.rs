@@ -184,8 +184,8 @@ pub fn all() -> Vec<Command> {
     out.extend([tab_command!("view.tab1", 1), tab_command!("view.tab2", 2), tab_command!("view.tab3", 3), tab_command!("view.tab4", 4), tab_command!("view.tab5", 5), tab_command!("view.tab6", 6), tab_command!("view.tab7", 7), tab_command!("view.tab8", 8)]);
     out.extend([
         Command::new("view.lastTab", "Go to the last tab", View, "arrow-right-to-line", "Switch to the last tab", &["Mod+9"]).when(many_tabs).hidden().run(|v, _, cx| v.go_to_tab(v.tabs.len() - 1, cx)),
-        Command::new("edit.undo", "Undo", Edit, "undo-2", "Undo the last action", &["Mod+Z"]).yields(),
-        Command::new("edit.redo", "Redo", Edit, "redo-2", "Redo what was undone", &["Mod+Shift+Z"]).yields(),
+        Command::new("edit.undo", "Undo", Edit, "undo-2", "Undo the last action", &["Mod+Z"]).yields().when(|v, _| v.staging_ctx().is_some() || v.tabs.get(v.active).and_then(|t| v.ops.journal(t.id, &t.worktree)).is_some_and(|s| s.undo.is_some() && s.undo_blocked.is_none())).run(|v, _, cx| v.undo_key(false, cx)),
+        Command::new("edit.redo", "Redo", Edit, "redo-2", "Redo what was undone", &["Mod+Shift+Z"]).yields().when(|v, _| v.staging_ctx().is_some() || v.tabs.get(v.active).and_then(|t| v.ops.journal(t.id, &t.worktree)).is_some_and(|s| s.redo.is_some() && s.redo_blocked.is_none())).run(|v, _, cx| v.undo_key(true, cx)),
         Command::new("edit.filterSidebar", "Filter sidebar", Edit, "list-filter", "Focus the sidebar filter", &["Mod+Alt+F"]).when(has_tab).run(|v, window, cx| v.focus_sidebar_filter(window, cx)),
         Command::new("edit.find", "Find in graph", Edit, "search", "Find commits by message, SHA or path", &["Mod+F"]).when(has_graph).run(|v, window, cx| v.open_find(window, cx)),
         Command::new("edit.palette", "Command palette", Edit, "command", "Search actions, branches, files, settings and tabs", &["Mod+P"]).run(|v, window, cx| v.open_palette("", window, cx)),
@@ -211,14 +211,32 @@ pub fn all() -> Vec<Command> {
         Command::new("history.blame", "Blame the open file", View, "user", "Show who last changed each line of the open file", &["Mod+Shift+B"]).when(file_open).hidden().run(|v, _, cx| v.open_history(true, cx)),
         Command::new("repo.copyPath", "Copy repository path", Repository, "copy", "Copy the current repository's directory path", &[]).when(has_tab).run(|v, _, cx| v.copy_repo_path(cx)),
         Command::new("repo.openFolder", "Open in file manager", Repository, "folder-open", "Open the tab's worktree directory in the file manager", &[]).when(has_tab).run(|v, _, cx| v.open_repo_folder(cx)),
-        Command::new("repo.fetch", "Fetch all", Repository, "download", "Fetch every remote of the current repository", &["Mod+L"]),
-        Command::new("repo.syncDefault", "Fetch", Repository, "download", "Fetch every remote", &[]),
+        Command::new("repo.fetch", "Fetch all", Repository, "download", "Fetch every remote of the current repository", &["Mod+L"]).yields().when(has_tab).run(|v, _, cx| {
+            let repo = v.tabs[v.active].id;
+            v.run_fetch(repo, false, None, cx);
+        }),
+        Command::new("repo.syncDefault", "Fetch", Repository, "download", "Fetch every remote", &[]).when(has_tab).run(|v, _, cx| v.sync_default(cx)),
         Command::new("worktree.switch", "Switch worktree…", Repository, "arrow-right-left", "Change the tab's active worktree", &[]),
-        Command::new("branch.create", "Branch", Repository, "git-branch-plus", "Create a branch at HEAD", &["Mod+Shift+N"]),
-        Command::new("stash.push", "Stash", Repository, "archive", "Stash every change, named from the WIP message", &["Mod+Alt+S"]),
-        Command::new("stash.pop", "Pop", Repository, "archive-restore", "Apply the newest stash and delete it", &["Mod+Alt+P"]),
-        Command::new("sync.pull", "Pull", Repository, "arrow-down-to-line", "Pull the current branch's upstream", &["Mod+Shift+L"]),
-        Command::new("sync.push", "Push", Repository, "upload", "Push the current branch", &["Mod+Shift+K"]),
+        Command::new("branch.create", "Branch", Repository, "git-branch-plus", "Create a branch at HEAD", &["Mod+Shift+N"]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.head_sha().is_some())).run(|v, window, cx| {
+            let Some(tab) = v.tabs.get(v.active) else { return };
+            let (Some(sha), start) = (tab.head_sha(), tab.head_branch().map(|b| format!("refs/heads/{b}"))) else { return };
+            v.create_branch_at(sha, start, window, cx);
+        }),
+        Command::new("stash.push", "Stash", Repository, "archive", "Stash every change, named from the WIP message", &["Mod+Alt+S"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.graph.as_ref().is_some_and(|g| g.rows.iter().any(|r| r.worktree.as_deref() == Some(t.worktree.as_str()))))).run(|v, _, cx| {
+            let ctx = v.tabs[v.active].write_target();
+            v.stash_push(ctx, cx);
+        }),
+        Command::new("stash.pop", "Pop", Repository, "archive-restore", "Apply the newest stash and delete it", &["Mod+Alt+P"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.sidebar["stashes"].as_array().is_some_and(|s| !s.is_empty()))).run(|v, _, cx| {
+            let tab = &v.tabs[v.active];
+            let (ctx, oid) = (tab.write_target(), tab.sidebar["stashes"][0]["id"].as_str().unwrap_or_default().to_string());
+            v.apply_stash(ctx, oid, true, cx);
+        }),
+        Command::new("sync.pull", "Pull", Repository, "arrow-down-to-line", "Pull the current branch's upstream", &["Mod+Shift+L"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.head_branch().and_then(|h| t.local_branch(&h)).is_some_and(|b| b.upstream.is_some() && !b.gone))).run(|v, _, cx| {
+            let ctx = v.tabs[v.active].write_target();
+            let mode = if v.sync_mode == crate::sync::SyncMode::FetchAll { "ffOrMerge" } else { v.sync_mode.pull_mode() };
+            v.pull(ctx, mode, None, crate::ui::arm::Origin::None, cx);
+        }),
+        Command::new("sync.push", "Push", Repository, "upload", "Push the current branch", &["Mod+Shift+K"]).yields().when(has_tab).run(|v, _, cx| v.push_head(crate::ui::arm::Origin::None, cx)),
         Command::new("gitflow.init", "Set up git flow…", Repository, "workflow", "Choose git flow's branches and prefixes for this repository", &[]),
         Command::new("repo.interactiveRebase", "Interactive rebase…", Repository, "list-ordered", "Reorder, reword, squash or drop the current branch's commits on its upstream", &[]),
         Command::new("file.create", "Create file…", Repository, "file-plus", "Create a new, empty file in the working tree (you can undo this)", &[]),
@@ -240,8 +258,8 @@ pub fn all() -> Vec<Command> {
         }),
         Command::new("commit.commit", "Commit", Repository, "git-commit-horizontal", "Commit with the message in the commit box", &["Mod+Enter"]).when(|v, _| v.panel_ctx().is_some()).hidden().yields().run(|v, _, cx| v.commit_key(cx)),
         Command::new("help.about", "About GitVolt", Help, "info", "Version information", &[]).run(|v, window, cx| v.open_about(window, cx)),
-        Command::new("help.activityLog", "Activity log", Help, "history", "Every finished fetch and clone, with git's message", &[]),
-        Command::new("help.debug", "Debug…", Help, "bug", "The git commands GitVolt ran, the actions you ran, diagnostics and the perf overlay", &[]),
+        Command::new("help.activityLog", "Activity log", Help, "history", "Every finished fetch and clone, with git's message", &[]).run(|v, window, cx| v.open_activity(None, window, cx)),
+        Command::new("help.debug", "Debug…", Help, "bug", "The git commands GitVolt ran, the actions you ran, diagnostics and the perf overlay", &[]).run(|v, window, cx| v.open_debug(None, window, cx)),
         Command::new("help.shortcuts", "Keyboard shortcuts", Help, "keyboard", "Every keyboard shortcut, filterable", &["Mod+/"]),
         Command::new("help.checkUpdates", "Check for updates", Help, "refresh-cw", "Ask GitHub for a newer GitVolt release (GitVolt's own; nothing about your repositories)", &[]),
     ]);

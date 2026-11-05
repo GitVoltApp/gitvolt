@@ -417,6 +417,7 @@ pub struct TextInput {
     viewport: Size<Pixels>,
     last_caret: usize,
     follow_caret: bool,
+    secret: bool,
 }
 
 /// Whether Esc is the owner's.
@@ -468,6 +469,7 @@ impl TextInput {
             viewport: Size::default(),
             last_caret: 0,
             follow_caret: true,
+            secret: false,
         }
     }
 
@@ -487,6 +489,12 @@ impl TextInput {
     }
 
     /// Esc is the owner's: `InputEvent::Escape`, and nothing behind the field sees it.
+    /// A password's field: each byte shows as a star, so the caret's offsets hold.
+    pub fn secret(mut self, on: bool) -> Self {
+        self.secret = on;
+        self
+    }
+
     pub fn claim_escape(mut self) -> Self {
         self.claim_escape = Claim::Always;
         self
@@ -899,7 +907,13 @@ impl Element for InputElement {
         let font_size = style.font_size.to_pixels(window.rem_size());
         let line_h = window.line_height();
         let empty = input.buffer.text.is_empty();
-        let shown: SharedString = if empty { input.placeholder.clone() } else { input.buffer.text.clone().into() };
+        let shown: SharedString = if empty {
+            input.placeholder.clone()
+        } else if input.secret {
+            "*".repeat(input.buffer.text.len()).into()
+        } else {
+            input.buffer.text.clone().into()
+        };
         let color = if empty { input.placeholder_color } else { input.text_color.unwrap_or(style.color) };
         let run = TextRun { len: shown.len(), font: style.font(), color, background_color: None, underline: None, strikethrough: None };
         let runs: Vec<TextRun> = match input.buffer.marked.as_ref().filter(|_| !empty) {
