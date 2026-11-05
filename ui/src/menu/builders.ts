@@ -5,7 +5,7 @@ import { activeStore, activeTab } from '../app/actions';
 import { pathsOf, stagePaths, unstageFiles } from '../stage/actions';
 import { discardableOf, discardFiles } from '../stage/discardFiles';
 import { discardAllRow } from '../stage/menuRows';
-import { COMMIT_QUEUED, stagingKey, useStaging } from '../stage/store';
+import { COMMIT_QUEUED, DISCARDING, discardingAny, stagingKey, useStaging } from '../stage/store';
 import { refTokenFromLabel } from '../details/messageLinks';
 import { branchUrl, commitUrl, fileUrl, repoUrl, type ProjectRemote } from '../forge/urls';
 import { defaultOpener, isSubmodule, openerRowId, openInSubmenuRows } from '../openIn/openerRows';
@@ -47,15 +47,19 @@ registerMenu<FileTarget, MenuEnv>({
     const repo = activeStore()?.getState().repo;
     if (!tab || repo === undefined) return [];
     const ctx = { tabId: tab.id, repoId: repo, worktree: wip.worktree };
-    const queued = useStaging.getState().committing[stagingKey(repo, wip.worktree)] ? COMMIT_QUEUED : undefined;
+    const st = useStaging.getState();
+    const queued = st.committing[stagingKey(repo, wip.worktree)] ? COMMIT_QUEUED : undefined;
     if (wip.staged) {
       const change = { path: t.path, oldPath: wip.oldPath } as FileChange;
       return [row({ id: 'file.unstage', label: 'Unstage', icon: Minus, tooltip: 'Move this file’s staged changes back to Unstaged', run: () => void unstageFiles(ctx, [change]), disabledReason: queued })];
     }
+    const paths = pathsOf([{ path: t.path, oldPath: wip.oldPath }]);
+    // Being discarded already (its row's button, or this menu again): the answer is on its way.
+    const busy = queued ?? (discardingAny(st, repo, wip.worktree, paths) ? DISCARDING : undefined);
     return [
-      row({ id: 'file.stageFile', label: 'Stage', icon: Plus, tooltip: 'Stage this file’s changes', run: () => void stagePaths(ctx, pathsOf([{ path: t.path, oldPath: wip.oldPath }])), disabledReason: queued }),
+      row({ id: 'file.stageFile', label: 'Stage', icon: Plus, tooltip: 'Stage this file’s changes', run: () => void stagePaths(ctx, paths), disabledReason: busy }),
       // A submodule's changes are discarded inside it.
-      ...(wip.submodule ? [] : [row({ id: 'file.discard', label: 'Discard changes…', icon: Trash2, tooltip: 'Discard this file’s unstaged changes (you can undo this)', run: () => void discardFiles(ctx, [{ path: t.path, oldPath: wip.oldPath } as FileChange], t.path.split('/').pop() ?? t.path), disabledReason: queued })]),
+      ...(wip.submodule ? [] : [row({ id: 'file.discard', label: 'Discard changes…', icon: Trash2, tooltip: 'Discard this file’s unstaged changes (you can undo this)', run: () => void discardFiles(ctx, [{ path: t.path, oldPath: wip.oldPath } as FileChange], t.path.split('/').pop() ?? t.path), disabledReason: busy })]),
     ];
   },
 });
@@ -71,13 +75,16 @@ registerMenu<FolderTarget, MenuEnv>({
     const repo = activeStore()?.getState().repo;
     if (!t.wip || files.length === 0 || !tab || repo === undefined) return [];
     const ctx = { tabId: tab.id, repoId: repo, worktree: t.wip.worktree };
-    const queued = useStaging.getState().committing[stagingKey(repo, t.wip.worktree)] ? COMMIT_QUEUED : undefined;
+    const st = useStaging.getState();
+    const queued = st.committing[stagingKey(repo, t.wip.worktree)] ? COMMIT_QUEUED : undefined;
     const name = `${t.path}/`;
     if (t.wip.staged) return [row({ id: 'folder.unstage', label: `Unstage ${name}`, icon: Minus, tooltip: `Move the staged changes of the files in ${name} back to Unstaged`, run: () => void unstageFiles(ctx, files), disabledReason: queued })];
     const discardable = discardableOf(files);
+    // As the folder's buttons: off while a Discard of any file under it runs.
+    const busy = queued ?? (discardingAny(st, repo, t.wip.worktree, pathsOf(discardable)) ? DISCARDING : undefined);
     return [
-      row({ id: 'folder.stageFiles', label: `Stage ${name}`, icon: Plus, tooltip: `Stage the changes of the files in ${name}`, run: () => void stagePaths(ctx, pathsOf(files)), disabledReason: queued }),
-      ...(discardable.length === 0 ? [] : [row({ id: 'folder.discard', label: `Discard changes in ${name}…`, icon: Trash2, tooltip: `Discard the unstaged changes in ${name} and delete its untracked files (you can undo this)`, run: () => void discardFiles(ctx, discardable, t.path), disabledReason: queued })]),
+      row({ id: 'folder.stageFiles', label: `Stage ${name}`, icon: Plus, tooltip: `Stage the changes of the files in ${name}`, run: () => void stagePaths(ctx, pathsOf(files)), disabledReason: busy }),
+      ...(discardable.length === 0 ? [] : [row({ id: 'folder.discard', label: `Discard changes in ${name}…`, icon: Trash2, tooltip: `Discard the unstaged changes in ${name} and delete its untracked files (you can undo this)`, run: () => void discardFiles(ctx, discardable, t.path), disabledReason: busy })]),
     ];
   },
 });

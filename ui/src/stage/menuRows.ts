@@ -4,7 +4,7 @@ import type { FileListPayload } from '../api/gen/FileListPayload';
 import type { MenuRow } from '../menu/types';
 import type { WriteCtx } from '../write/client';
 import { discardAll, discardUnstaged, pathsOf, stageAll, stagePaths, unstageAll } from './actions';
-import { COMMIT_QUEUED, stagingKey, useStaging } from './store';
+import { COMMIT_QUEUED, DISCARDING, stagingKey, useStaging } from './store';
 
 // The WIP lists' right-click rows that stand for their buttons: a section header's (and its
 // list's empty space), and the WIP header's Discard all (also on the graph's WIP row). Each
@@ -29,7 +29,7 @@ export function discardScopeOf(lists: readonly FileListPayload[]): Pick<DiscardA
 export function discardAllRow(ctx: WriteCtx, scope: DiscardAllScope): MenuRow {
   const st = useStaging.getState();
   const key = stagingKey(ctx.repoId, ctx.worktree);
-  const reason = st.committing[key] ? COMMIT_QUEUED : st.discarding[key] ? 'Discarding…' : scope.inProgress ? 'Abort instead' : scope.count === 0 ? 'Nothing to discard' : undefined;
+  const reason = st.committing[key] ? COMMIT_QUEUED : st.discarding[key] ? DISCARDING : scope.inProgress ? 'Abort instead' : scope.count === 0 ? 'Nothing to discard' : undefined;
   return row({
     id: 'wip.discardAll', label: 'Discard all changes…', icon: Trash2,
     tooltip: 'Discard every staged, unstaged and untracked change, back to HEAD (you can undo this)',
@@ -50,7 +50,8 @@ export function sectionRows(ctx: WriteCtx, which: 'unstaged' | 'staged', files: 
   }
   const discard: MenuRow[] = [];
   if (which === 'unstaged' && files.length > 0 && !files.every((f) => f.submodule)) {
-    discard.push(row({ id: 'wip.discardUnstaged', label: 'Discard unstaged changes', icon: Trash2, tooltip: 'Discard every unstaged change and delete the untracked files; the staged ones stay (you can undo this)', run: () => void discardUnstaged(ctx), disabledReason: queued }));
+    const running = useStaging.getState().discarding[stagingKey(ctx.repoId, ctx.worktree)] ? DISCARDING : undefined;
+    discard.push(row({ id: 'wip.discardUnstaged', label: 'Discard unstaged changes', icon: Trash2, tooltip: 'Discard every unstaged change and delete the untracked files; the staged ones stay (you can undo this)', run: () => void discardUnstaged(ctx), disabledReason: queued ?? running }));
   }
   discard.push(discardAllRow(ctx, o.all));
   return [...own, ...(own.length ? [{ kind: 'separator' } as const] : []), ...discard];

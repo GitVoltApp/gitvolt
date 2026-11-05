@@ -8,7 +8,7 @@ import { useDisarmOnChange } from '../ui/arm/useDisarmOnChange';
 import { toggleWipFilter, useWipFilter, wipFilterOf } from './wipFilter';
 import { discardAll, useWipCtx } from '../stage/actions';
 import { ActionIcon } from '../stage/RowActions';
-import { COMMIT_QUEUED, useCommitting, useDiscardingAll } from '../stage/store';
+import { COMMIT_QUEUED, DISCARDING, useCommitting, useDiscardingAll } from '../stage/store';
 
 /** Spec §8.6, read-only in #1: `N file change(s) on [branch]`, no stage, unstage or discard
  * controls (#2). N counts each changed path once, staged or not. */
@@ -72,7 +72,7 @@ export function WipHeader() {
       {/* --- 2B T9: Discard all (it arms in place, spec §ui confirms) --- */}
       {wipCtx && (
         <span className="wip-head-left" data-arm-grow="right">
-          <ActionIcon label="Discard all" tip={committing ? COMMIT_QUEUED : discarding ? 'Discarding…' : midOp ? 'Abort instead' : count === 0 ? 'Nothing to discard' : 'Discard all changes'} icon={Trash2} danger disabled={committing || discarding || midOp || count === 0} onClick={() => void discardAll(wipCtx, count, shown === null ? undefined : shown.split('\0'))} />
+          <ActionIcon label="Discard all" tip={committing ? COMMIT_QUEUED : discarding ? DISCARDING : midOp ? 'Abort instead' : count === 0 ? 'Nothing to discard' : 'Discard all changes'} icon={Trash2} danger disabled={committing || discarding || midOp || count === 0} onClick={() => void discardAll(wipCtx, count, shown === null ? undefined : shown.split('\0'))} />
         </span>
       )}
       {/* --- end 2B T9 --- */}

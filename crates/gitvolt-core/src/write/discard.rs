@@ -20,7 +20,7 @@ use crate::events::{ChangeKind, OpKind};
 use crate::git::{GitCli, GitInvocation};
 use crate::hunks::{wip_diff, WipBase};
 use crate::journal::{snapshot, UndoKind};
-use crate::status::{status, EntryKind, StatusEntry};
+use crate::status::{status, status_of, EntryKind, StatusEntry};
 use crate::write::patch::{parse, partial_patch, selection_label, Dir, StageSelection};
 use crate::write::stage::{files_label, nul_list, stale_paths, unborn};
 use crate::write::stage_patch::{base_now, stale};
@@ -97,8 +97,14 @@ fn separate_repo(path: &str) -> GbError {
 
 /// The discard's files, before the snapshot (step 4) and the label.
 async fn plan_targets(api: &Api, root: &Path, scope: &DiscardScope) -> Result<Targets, GbError> {
-    let entries = status(&api.cli, root).await?;
-    let links = gitlinks(root).await?;
+    // A file, folder or hunk discard reads the status of its paths only: the whole worktree's
+    // made one file's discard in a large repository cost a full scan, twice.
+    let entries = match scope {
+        DiscardScope::Paths { paths } => status_of(&api.cli, root, &paths.iter().map(|p| p.trim_end_matches('/').to_string()).collect::<Vec<_>>()).await?,
+        DiscardScope::Patch { path, .. } => status_of(&api.cli, root, std::slice::from_ref(path)).await?,
+        DiscardScope::Unstaged | DiscardScope::All { .. } => status(&api.cli, root).await?,
+    };
+    let links = gitlinks(root, matches!(scope, DiscardScope::All { .. })).await?;
     let t = targets_of(&api.cli, root, scope, &entries, &links).await?;
     // A snapshot carries an intent-to-add entry as an untracked file: Undo couldn't bring the
     // mark back, and every later state would look changed against it.
@@ -117,6 +123,7 @@ fn intent_to_add(e: &StatusEntry) -> bool {
 #[derive(Default)]
 struct Gitlinks {
     index: BTreeSet<String>,
+    /// Only Discard all's (it writes HEAD's entries back): read with `head`, else empty.
     head: BTreeSet<String>,
 }
 
@@ -128,13 +135,17 @@ impl Gitlinks {
     }
 }
 
-async fn gitlinks(root: &Path) -> Result<Gitlinks, GbError> {
+/// `head`: HEAD's too, a walk of its whole tree.
+async fn gitlinks(root: &Path, head: bool) -> Result<Gitlinks, GbError> {
     let root = root.to_path_buf();
     blocking(move || {
         use gix::bstr::ByteSlice;
         let repo = gix::open(&root).map_err(gix_err)?;
         let index = repo.index_or_empty().map_err(gix_err)?;
         let index_links = index.entries().iter().filter(|e| e.mode == gix::index::entry::Mode::COMMIT).map(|e| e.path(&index).to_str_lossy().into_owned()).collect();
+        if !head {
+            return Ok(Gitlinks { index: index_links, head: BTreeSet::new() });
+        }
         let mut head = BTreeSet::new();
         if let Some(tree) = repo.head_commit().ok().and_then(|c| c.tree().ok()) {
             let mut rec = gix::traverse::tree::Recorder::default();
@@ -1331,5 +1342,24 @@ mod tests {
         let pre = crate::write::Pre { api: &api, h: &h, root: &root, expect: &Default::default(), before: &before };
         d.plan(&pre).await.unwrap();
         assert_eq!(d.label(), "discard 2 files");
+    }
+
+    /// 1.5.0 report (a one-file discard took seconds in a large repository): its git commands
+    /// read only that file's status, and no snapshot builds a temp index of the whole tree. The
+    /// one full status left is the fresh lists the answer carries.
+    #[tokio::test]
+    async fn a_file_discard_costs_what_the_file_does() {
+        let data = tempfile::tempdir().unwrap();
+        let r = dirty();
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        let skip = api.cli.log().entries().len();
+        round_trip(&api, id, &r, json!({ "kind": "paths", "paths": ["b.txt"] }), "discard b.txt").await;
+        let entries = api.cli.log().entries();
+        let ran: Vec<String> = entries[skip..].iter().map(|e| e.args.join(" ")).collect();
+        let discard = &ran[..ran.iter().position(|a| a.contains("diff ")).expect("the lists after it")];
+        assert!(discard.iter().all(|a| !a.contains("read-tree") && !a.contains("write-tree")), "{discard:#?}");
+        let statuses: Vec<&String> = discard.iter().filter(|a| a.starts_with("status")).collect();
+        assert_eq!(statuses.iter().filter(|a| !a.contains(" -- ")).count(), 1, "{statuses:#?}");
     }
 }

@@ -125,6 +125,25 @@ pub async fn status(cli: &GitCli, worktree: &Path) -> Result<Vec<StatusEntry>, G
     Ok(parse_porcelain_v2(&status_raw(cli, worktree).await?))
 }
 
+/// Past this many bytes of paths, [`status_of`] reads the whole status: `status` takes its
+/// pathspecs on the command line only (no `--pathspec-from-file`), which Windows caps at 32K.
+const STATUS_OF_ARGV: usize = 8 * 1024;
+
+/// [`status`] of `paths` only (literal pathspecs: a folder's with every file under it), so a
+/// write on a few files costs what they do, not a scan of the whole worktree. A rename shows as
+/// one only when both its paths are among them. Many paths: the whole status.
+pub async fn status_of(cli: &GitCli, worktree: &Path, paths: &[String]) -> Result<Vec<StatusEntry>, GbError> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    if paths.iter().map(|p| p.len() + 1).sum::<usize>() > STATUS_OF_ARGV {
+        return status(cli, worktree).await;
+    }
+    let args = ["status", "--porcelain=v2", "-z", "--untracked-files=all", "--"].into_iter().map(String::from).chain(paths.iter().cloned());
+    let out = cli.run(GitInvocation::new(worktree, args).env("GIT_LITERAL_PATHSPECS", "1")).await?;
+    Ok(parse_porcelain_v2(&out.stdout))
+}
+
 pub fn summarize(entries: &[StatusEntry]) -> WipCounts {
     let mut c = WipCounts::default();
     for e in entries {

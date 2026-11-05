@@ -41,6 +41,19 @@ describe('the WIP file menu (spec #2 §7.1)', () => {
     await vi.waitFor(() => expect(discard).toHaveBeenLastCalledWith({ tabId: 't', repoId: 1, worktree: '/r' }, ['a.txt', 'a.png']));
   });
 
+  it('Discard and Stage are off while the file’s Discard runs (the keyboard’s path too)', async () => {
+    const { useStaging } = await import('../stage/store');
+    useStaging.getState().setDiscardingPaths(1, '/r', ['a.png'], true);
+    try {
+      const rows = buildMenu('file', target({ worktree: '/r', staged: false, oldPath: 'a.png', status: 'R' }), env);
+      const reasons = rows.slice(0, 2).map((r) => (r.kind === 'action' ? r.disabledReason : null));
+      expect(reasons).toEqual(['Discarding…', 'Discarding…']);
+      expect(folderRows(folder({ worktree: '/r', conflicted: [], staged: false, files: [change('src/a.txt')] })).find((r) => r.id === 'folder.discard')?.disabledReason).toBeUndefined();
+    } finally {
+      useStaging.getState().setDiscardingPaths(1, '/r', ['a.png'], false);
+    }
+  });
+
   it('runs on the row’s worktree', () => {
     const rows = buildMenu('file', target({ worktree: '/r', staged: false, oldPath: null, status: 'M' }), env);
     const first = rows[0];
