@@ -7,15 +7,25 @@ doesn't write. **The rewrite's goal is the current look, 1:1; most of the app is
 ## What the slice has
 
 Title bar with window buttons and resize edges, repository tabs, the toolbar's layout, the sidebar's
-five panels, the graph table with bands, lines, nodes, chips and the collapse zone, a commit's basic
-details, the status bar, reloads on the core's events, and the default dark theme. Sizes and colours
-are the web UI's, read from its CSS and from the running app.
+five panels and its folded strip, the graph table with bands, lines, nodes, chips and the collapse
+zone, the status bar, reloads on the core's events, and the default dark theme. Sizes and colours are
+the web UI's, read from its CSS and from the running app.
 
-Not there yet, by size of the work: the diff and file views (Monaco, Shiki), every write (the
-toolbar's buttons are disabled), the MR/PR views, Markdown, Mermaid and PDF, settings, profiles and
-other themes, avatars, the command palette and menus, find, tooltips, the details panel's file list,
-branch presets, text selection, accessibility roles, spell check, zoom, and macOS and Windows
-checks. The core still runs on a temporary data directory until this build writes.
+The details panel has a commit's ids, people and message and its files, by path or as a tree. The
+diff has Inline, Split and Hunk, File View, word-level marks, the overview ruler, indent guides,
+"ignore whitespace", the next and previous change (F7), and selecting and copying text. It colours
+with a TextMate tokenizer on Oniguruma, `vscode-textmate`'s algorithm with Shiki's grammars and theme.
+Against Shiki on real files of this repository (Rust, TypeScript, TSX, CSS, Markdown, TOML, JSON,
+YAML, Python, about 392,000 characters), not one character's colour differs.
+
+Not there yet, by size of the work: every write (the toolbar's buttons are disabled, and so hunk and
+line staging, and editing in a diff), the MR/PR views and review comments, Markdown, Mermaid, PDF,
+images, hex and other non-text views, settings, profiles and other themes, avatars, the command
+palette and menus, find, tooltips, branch presets, accessibility roles, spell check, zoom, and macOS
+and Windows checks. In the diff: word wrap, Blame, History, "Open in", moved-code detection, folding,
+code lens and the minimap; dragging the horizontal scrollbar (it scrolls by wheel); grammar
+injections; Monaco's taller hidden-lines row (its 24 px are a line's 18 here). The core still runs on a
+temporary data directory until this build writes.
 
 ## Dependency
 
@@ -24,6 +34,11 @@ checks. The core still runs on a temporary data directory until this build write
 0.2.2 is a year behind. Both are Apache-2.0. Zed's `editor`, `multi_buffer`, `language`, `markdown`
 and `ui` are GPL, so GitVolt can't use them; the diff editor has to be its own. Every crate the
 binary links on Linux is under an allowed license, checked from `cargo metadata` against `about.toml`.
+
+`assets/generate.mjs` makes what's embedded from the web UI's npm packages, so both draw the same:
+233 grammars (1.9 MB gzipped, the ones `ui/src/diff/shikiLanguages.ts` keeps for their licenses), the
+theme, the icons and the editor font's Latin face (OFL-1.1). What that face lacks falls back to the
+system's, unlike the web UI's other subsets. The release notices don't cover this build yet.
 
 ## Measurements
 
@@ -58,16 +73,51 @@ Both are optimized builds without LTO. The CEF build has debug assertions on in 
 - **CEF's DevTools connection** was open while it scrolled and adds some of its CPU. It runs under
   XWayland, GPUI natively.
 - **Git operations** weren't measured: they run the same core and the git CLI in both.
-- **The start times are warm ones.** The first GPUI launch of a series took 1465–1610 ms in three
-  series, against 1312 ms for CEF's first run here, so a cold start may gain little or nothing. The
-  cause isn't investigated yet.
+- **The start times are warm ones.** A first launch took up to about 1.8 s, against 1312 ms for CEF's
+  first run. The time goes to the platform coming up (49 ms warm, up to 1255 ms cold) and the window
+  and its GPU context (about 250 ms warm, 500 ms cold), before any of GitVolt's own code draws.
 - **Left out:** those first launches, two of which also showed 2.7–5.2% idle CPU with 69–126 frames
   (not investigated; it must be before this ships, since an idle app costs nothing), and one run
   with the window in the background, where GPUI held it at 24 Hz by design. The measuring build
   turns that throttle off.
+
+### The diff, against Monaco
+
+The same run on a file of about 5000 lines, with a change every few dozen lines: open it, open a
+second file of that size, open the first again, then scroll about 18,000 px in 8 s. Monaco's side is
+3 runs while the machine was quiet, GPUI's 4; each app's other runs had another program using a dozen
+cores, and aren't counted. GPUI's numbers are its first piece of colour, which covers the first
+screen here; Monaco's are when the screen's lines have their colours.
+
+| | Monaco on CEF | GPUI |
+|---|---|---|
+| First open: text / colours | 592–685 / 627–718 ms | 8–24 / 18–29 ms |
+| A second file: text / colours | 129–204 / 152–237 ms | 7–11 / 22–24 ms |
+| The first again: text / colours | 104–127 / 106–129 ms | 9–15 / 10–15 ms |
+| Scroll frame time, median | 6.9–7.0 ms | 6.94–6.95 ms |
+| Scroll frame time, p99 | 7.0–13.9 ms | 7.29–13.95 ms |
+| Scroll frame time, worst | 7.1–83.4 ms | 9.37–14.66 ms |
+| Scroll CPU per frame, all processes | 4.5–5.1 ms | 2.48–2.91 ms |
+| Anonymous memory, file open | 532–540 MB | 55–56 MB |
+| Anonymous memory, after scrolling | 701–706 MB | 56 MB |
+
+- **Opening is the clearest gain,** and it can be felt: a large file's first open goes from over half
+  a second to a frame or two. Monaco's first open also loads its own code; that's a real cost of it,
+  but it's paid once a session.
+- **Colours run from the file's top down,** in pieces. A first change deep in a long file waits for
+  the lines above it: about 0.4 s at the end of a 5000-line Rust file, while the text shows at once.
+- **Monaco does far more** (moves, folding, its editing model), and this view will grow. The memory
+  column is again an upper bound.
+- **Not all CPU is alike:** Monaco scrolled by real wheel events, about 50 a second that it smooths,
+  and GPUI by a set offset each frame, over about the same distance. Treat the factor as rough.
+- **Idle:** a run with a file open shows 0.05–0.45% CPU and now and then a few frames, not always
+  none. That's not investigated yet.
 
 To repeat the GPUI side, with `GITVOLT_T0` the launcher's clock in ms:
 
 ```bash
 GITVOLT_T0=$(date +%s%3N) GITVOLT_BENCH=1 GITVOLT_OPEN=<repo> target/release/gitvolt-gpui
 ```
+
+`GITVOLT_SHOW=<graph row>,<file>[,hunk|split|file]` opens a file without an input device, for screenshots
+and for the diff's run above.

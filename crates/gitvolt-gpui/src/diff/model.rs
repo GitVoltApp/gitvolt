@@ -1,0 +1,462 @@
+//! What a diff shows, with no window: both sides' lines, how they align, the words that changed in
+//! them, and the rows each mode draws.
+
+use super::textmate::Span;
+use gpui::SharedString;
+use similar::{Algorithm, DiffOp, capture_diff_slices_deadline};
+use std::collections::HashSet;
+use std::time::{Duration, Instant};
+
+/// Monaco's `stopRenderingLineAfter`: what's past this in a line isn't drawn.
+const MAX_LINE_CHARS: usize = 10_000;
+pub const TAB_SIZE: usize = 4;
+/// Hunk mode's unchanged regions (`HUNK_REGIONS`, ui/src/diff/options.ts).
+const CONTEXT_LINES: usize = 3;
+const MIN_HIDDEN: usize = 3;
+/// A change bigger than this gets no word-level marks: comparing it would take too long to help.
+const MAX_WORD_DIFF_BYTES: usize = 64 * 1024;
+const LINE_DIFF_LIMIT: Duration = Duration::from_secs(3);
+const WORD_DIFF_LIMIT: Duration = Duration::from_millis(200);
+
+/// One line as drawn: tabs expanded. Spans and marks are byte offsets into `text`.
+pub struct Line {
+    pub text: SharedString,
+    /// What a tab-free line can skip: (raw byte, display byte) where the mapping changes.
+    tabs: Vec<(u32, u32)>,
+    /// The words changed in this line.
+    pub marks: Vec<(u32, u32)>,
+    /// Indent guides, in tab stops; a blank line takes its neighbours'.
+    pub guides: u16,
+}
+
+impl Line {
+    fn new(raw: &str) -> Self {
+        let raw = raw.strip_suffix('\r').unwrap_or(raw);
+        let raw = match raw.char_indices().nth(MAX_LINE_CHARS) {
+            Some((at, _)) => &raw[..at],
+            None => raw,
+        };
+        let mut tabs = Vec::new();
+        let text = if raw.contains('\t') {
+            let mut out = String::with_capacity(raw.len() + 16);
+            let mut column = 0usize;
+            for (i, c) in raw.char_indices() {
+                if c == '\t' {
+                    let width = TAB_SIZE - column % TAB_SIZE;
+                    out.extend(std::iter::repeat_n(' ', width));
+                    column += width;
+                    tabs.push(((i + 1) as u32, out.len() as u32));
+                } else {
+                    out.push(c);
+                    column += 1;
+                }
+            }
+            out
+        } else {
+            raw.to_string()
+        };
+        let indent = text.bytes().take_while(|b| *b == b' ').count();
+        let blank = indent == text.len();
+        Self { text: text.into(), tabs, marks: Vec::new(), guides: if blank { u16::MAX } else { (indent / TAB_SIZE) as u16 } }
+    }
+
+    /// A byte of the raw line → a byte of `text`.
+    pub fn display(&self, raw: u32) -> u32 {
+        let (mut from, mut to) = (0, 0);
+        for &(r, d) in &self.tabs {
+            if r > raw {
+                break;
+            }
+            (from, to) = (r, d);
+        }
+        (to + (raw - from)).min(self.text.len() as u32)
+    }
+}
+
+pub struct Side {
+    pub lines: Vec<Line>,
+}
+
+impl Side {
+    pub fn new(text: Option<&str>) -> Self {
+        let mut lines: Vec<Line> = text.map_or_else(Vec::new, |t| {
+            let mut parts: Vec<&str> = t.split('\n').collect();
+            if t.is_empty() {
+                parts.clear();
+            }
+            parts.into_iter().map(Line::new).collect()
+        });
+        // A blank line's guides are the lesser of the lines around it, as Monaco's.
+        let mut last = 0;
+        for line in &mut lines {
+            if line.guides == u16::MAX {
+                line.guides = last;
+            } else {
+                last = line.guides;
+            }
+        }
+        let mut next = 0;
+        for line in lines.iter_mut().rev() {
+            if line.text.bytes().all(|b| b == b' ') {
+                line.guides = line.guides.min(next);
+            } else {
+                next = line.guides;
+            }
+        }
+        Self { lines }
+    }
+
+    /// Colours of the raw text's lines from line `first` on, in display offsets.
+    pub fn mapped_spans(&self, first: usize, highlighted: Vec<Vec<Span>>) -> Vec<Vec<Span>> {
+        self.lines[first..].iter().zip(highlighted).map(|(line, spans)| spans.into_iter().map(|s| Span { start: line.display(s.start), end: line.display(s.end), ..s }).filter(|s| s.end > s.start).collect()).collect()
+    }
+
+    pub fn len(&self) -> u32 {
+        self.lines.len() as u32
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Hunk,
+    Inline,
+    Split,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKind {
+    Same,
+    Removed,
+    Added,
+    /// A split row of a change: its left is removed, its right added; either may be a filler.
+    Change,
+    /// An unchanged region folded away (hunk mode): `count` lines, region `region`.
+    Hidden { count: u32, region: u32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Row {
+    pub old: Option<u32>,
+    pub new: Option<u32>,
+    pub kind: RowKind,
+}
+
+/// Compares lines by what's left without their ends' whitespace (`ignoreTrimWhitespace`).
+fn keys(side: &[&str], ignore_whitespace: bool) -> Vec<String> {
+    side.iter().map(|l| if ignore_whitespace { l.trim().to_string() } else { l.strip_suffix('\r').unwrap_or(l).to_string() }).collect()
+}
+
+pub fn split_lines(text: Option<&str>) -> Vec<&str> {
+    match text {
+        Some("") | None => Vec::new(),
+        Some(t) => t.split('\n').collect(),
+    }
+}
+
+pub fn line_ops(old: &[&str], new: &[&str], ignore_whitespace: bool) -> Vec<DiffOp> {
+    let (a, b) = (keys(old, ignore_whitespace), keys(new, ignore_whitespace));
+    capture_diff_slices_deadline(Algorithm::Myers, &a, &b, Some(Instant::now() + LINE_DIFF_LIMIT))
+}
+
+/// A word, or one character of anything else: what a change is marked in.
+fn tokens(text: &str) -> Vec<(usize, &str)> {
+    let mut out = Vec::new();
+    let mut start = None;
+    for (i, c) in text.char_indices() {
+        if c.is_alphanumeric() || c == '_' {
+            start.get_or_insert(i);
+        } else {
+            if let Some(s) = start.take() {
+                out.push((s, &text[s..i]));
+            }
+            out.push((i, &text[i..i + c.len_utf8()]));
+        }
+    }
+    if let Some(s) = start {
+        out.push((s, &text[s..]));
+    }
+    out
+}
+
+type Ranges = Vec<(usize, usize)>;
+
+/// The byte ranges that differ between `old` and `new`, on each side.
+pub fn word_changes(old: &str, new: &str) -> (Ranges, Ranges) {
+    if old.len() + new.len() > MAX_WORD_DIFF_BYTES {
+        return (Vec::new(), Vec::new());
+    }
+    let (a, b) = (tokens(old), tokens(new));
+    let (ta, tb): (Vec<&str>, Vec<&str>) = (a.iter().map(|t| t.1).collect(), b.iter().map(|t| t.1).collect());
+    let range = |list: &[(usize, &str)], total: usize, from: usize, to: usize| {
+        let start = list.get(from).map_or(total, |t| t.0);
+        let end = list.get(to).map_or(total, |t| t.0);
+        (start, end)
+    };
+    let (mut left, mut right): (Ranges, Ranges) = (Vec::new(), Vec::new());
+    let push = |list: &mut Vec<(usize, usize)>, r: (usize, usize)| {
+        if r.1 > r.0 {
+            match list.last_mut() {
+                Some(l) if l.1 == r.0 => l.1 = r.1,
+                _ => list.push(r),
+            }
+        }
+    };
+    for op in capture_diff_slices_deadline(Algorithm::Myers, &ta, &tb, Some(Instant::now() + WORD_DIFF_LIMIT)) {
+        match op {
+            DiffOp::Equal { .. } => {}
+            DiffOp::Delete { old_index, old_len, .. } => push(&mut left, range(&a, old.len(), old_index, old_index + old_len)),
+            DiffOp::Insert { new_index, new_len, .. } => push(&mut right, range(&b, new.len(), new_index, new_index + new_len)),
+            DiffOp::Replace { old_index, old_len, new_index, new_len } => {
+                push(&mut left, range(&a, old.len(), old_index, old_index + old_len));
+                push(&mut right, range(&b, new.len(), new_index, new_index + new_len));
+            }
+        }
+    }
+    (left, right)
+}
+
+/// The word marks of every replaced block: line by line when its sides have as many lines,
+/// else over the whole block's text.
+pub fn mark_words(ops: &[DiffOp], old_raw: &[&str], new_raw: &[&str], old: &mut Side, new: &mut Side) {
+    for op in ops {
+        let DiffOp::Replace { old_index, old_len, new_index, new_len } = *op else { continue };
+        if old_len == new_len {
+            for i in 0..old_len {
+                let (l, r) = word_changes(strip(old_raw[old_index + i]), strip(new_raw[new_index + i]));
+                old.lines[old_index + i].marks = display_marks(&old.lines[old_index + i], &l);
+                new.lines[new_index + i].marks = display_marks(&new.lines[new_index + i], &r);
+            }
+        } else {
+            let (a, b) = (old_raw[old_index..old_index + old_len].iter().map(|l| strip(l)).collect::<Vec<_>>().join("\n"), new_raw[new_index..new_index + new_len].iter().map(|l| strip(l)).collect::<Vec<_>>().join("\n"));
+            let (l, r) = word_changes(&a, &b);
+            spread_marks(&a, &l, old, old_index);
+            spread_marks(&b, &r, new, new_index);
+        }
+    }
+}
+
+fn strip(line: &str) -> &str {
+    line.strip_suffix('\r').unwrap_or(line)
+}
+
+fn display_marks(line: &Line, marks: &[(usize, usize)]) -> Vec<(u32, u32)> {
+    marks.iter().map(|m| (line.display(m.0 as u32), line.display(m.1 as u32))).filter(|m| m.1 > m.0).collect()
+}
+
+/// Marks in a block's joined text → the marks of the lines they fall in.
+fn spread_marks(joined: &str, marks: &[(usize, usize)], side: &mut Side, first: usize) {
+    let mut start = 0;
+    for (n, text) in joined.split('\n').enumerate() {
+        let end = start + text.len();
+        let line = &mut side.lines[first + n];
+        let here: Vec<(usize, usize)> = marks.iter().filter(|m| m.0 < end && m.1 > start).map(|m| (m.0.max(start) - start, m.1.min(end) - start)).collect();
+        line.marks = display_marks(line, &here);
+        start = end + 1;
+    }
+}
+
+/// The rows of `mode`. `expanded`: the hunk mode regions the user opened.
+pub fn rows(ops: &[DiffOp], mode: Mode, expanded: &HashSet<u32>) -> Vec<Row> {
+    let mut out = Vec::new();
+    let same = |out: &mut Vec<Row>, o: usize, n: usize, len: usize| {
+        for i in 0..len {
+            out.push(Row { old: Some((o + i) as u32), new: Some((n + i) as u32), kind: RowKind::Same });
+        }
+    };
+    let last = ops.len().saturating_sub(1);
+    for (i, op) in ops.iter().enumerate() {
+        match *op {
+            DiffOp::Equal { old_index, new_index, len } => {
+                let head = if i == 0 { 0 } else { CONTEXT_LINES };
+                let tail = if i == last { 0 } else { CONTEXT_LINES };
+                if mode == Mode::Hunk && !expanded.contains(&(i as u32)) && len >= head + tail + MIN_HIDDEN {
+                    same(&mut out, old_index, new_index, head);
+                    out.push(Row { old: Some((old_index + head) as u32), new: Some((new_index + head) as u32), kind: RowKind::Hidden { count: (len - head - tail) as u32, region: i as u32 } });
+                    same(&mut out, old_index + len - tail, new_index + len - tail, tail);
+                } else {
+                    same(&mut out, old_index, new_index, len);
+                }
+            }
+            DiffOp::Delete { old_index, old_len, .. } => {
+                for k in 0..old_len {
+                    out.push(Row { old: Some((old_index + k) as u32), new: None, kind: if mode == Mode::Split { RowKind::Change } else { RowKind::Removed } });
+                }
+            }
+            DiffOp::Insert { new_index, new_len, .. } => {
+                for k in 0..new_len {
+                    out.push(Row { old: None, new: Some((new_index + k) as u32), kind: if mode == Mode::Split { RowKind::Change } else { RowKind::Added } });
+                }
+            }
+            DiffOp::Replace { old_index, old_len, new_index, new_len } => {
+                if mode == Mode::Split {
+                    for k in 0..old_len.max(new_len) {
+                        out.push(Row { old: (k < old_len).then_some((old_index + k) as u32), new: (k < new_len).then_some((new_index + k) as u32), kind: RowKind::Change });
+                    }
+                } else {
+                    for k in 0..old_len {
+                        out.push(Row { old: Some((old_index + k) as u32), new: None, kind: RowKind::Removed });
+                    }
+                    for k in 0..new_len {
+                        out.push(Row { old: None, new: Some((new_index + k) as u32), kind: RowKind::Added });
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// File View's rows: the new side alone (or the old one, for a deleted file).
+pub fn file_rows(new: &Side, old: &Side) -> Vec<Row> {
+    if new.len() > 0 {
+        (0..new.len()).map(|i| Row { old: None, new: Some(i), kind: RowKind::Same }).collect()
+    } else {
+        (0..old.len()).map(|i| Row { old: Some(i), new: None, kind: RowKind::Same }).collect()
+    }
+}
+
+pub fn is_change(kind: RowKind) -> bool {
+    matches!(kind, RowKind::Removed | RowKind::Added | RowKind::Change)
+}
+
+/// Where each block of changed rows starts: what F7 steps through.
+pub fn change_starts(rows: &[Row]) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut in_change = false;
+    for (i, r) in rows.iter().enumerate() {
+        let c = is_change(r.kind);
+        if c && !in_change {
+            out.push(i);
+        }
+        in_change = c;
+    }
+    out
+}
+
+/// The overview ruler's blocks: (first row, rows, removed?), runs of one colour.
+pub fn ruler_marks(rows: &[Row]) -> Vec<(usize, usize, bool)> {
+    let mut out: Vec<(usize, usize, bool)> = Vec::new();
+    let mut add = |i: usize, removed: bool| match out.iter_mut().rev().find(|m| m.2 == removed) {
+        Some(m) if m.0 + m.1 == i => m.1 += 1,
+        _ => out.push((i, 1, removed)),
+    };
+    for (i, r) in rows.iter().enumerate() {
+        match r.kind {
+            RowKind::Removed => add(i, true),
+            RowKind::Added => add(i, false),
+            RowKind::Change => {
+                if r.old.is_some() {
+                    add(i, true);
+                }
+                if r.new.is_some() {
+                    add(i, false);
+                }
+            }
+            RowKind::Same | RowKind::Hidden { .. } => {}
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ops(a: &str, b: &str) -> Vec<DiffOp> {
+        line_ops(&split_lines(Some(a)), &split_lines(Some(b)), false)
+    }
+
+    #[test]
+    fn inline_rows_put_a_changes_removed_lines_before_its_added_ones() {
+        let r = rows(&ops("a\nb\nc", "a\nB\nc"), Mode::Inline, &HashSet::new());
+        assert_eq!(r.iter().map(|x| (x.old, x.new, x.kind)).collect::<Vec<_>>(), [
+            (Some(0), Some(0), RowKind::Same),
+            (Some(1), None, RowKind::Removed),
+            (None, Some(1), RowKind::Added),
+            (Some(2), Some(2), RowKind::Same),
+        ]);
+    }
+
+    #[test]
+    fn split_rows_pair_a_change_and_fill_the_shorter_side() {
+        let r = rows(&ops("a\nb\nz", "a\nB\nC\nz"), Mode::Split, &HashSet::new());
+        assert_eq!(r.iter().map(|x| (x.old, x.new)).collect::<Vec<_>>(), [(Some(0), Some(0)), (Some(1), Some(1)), (None, Some(2)), (Some(2), Some(3))]);
+        assert_eq!(r[2].kind, RowKind::Change);
+    }
+
+    #[test]
+    fn hunk_mode_folds_all_but_three_lines_around_a_change_until_opened() {
+        let old: String = (0..30).map(|i| format!("l{i}\n")).collect();
+        let new = old.replace("l15\n", "changed\n");
+        let d = ops(&old, &new);
+        let folded = rows(&d, Mode::Hunk, &HashSet::new());
+        let hidden: Vec<(usize, u32)> = folded.iter().enumerate().filter_map(|(i, r)| match r.kind {
+            RowKind::Hidden { count, .. } => Some((i, count)),
+            _ => None,
+        }).collect();
+        // Start of file to 3 above; 3 below to the end, and the final empty line.
+        assert_eq!(hidden.iter().map(|h| h.1).collect::<Vec<_>>(), [12, 12]);
+        assert_eq!(folded.iter().filter(|r| !matches!(r.kind, RowKind::Hidden { .. })).filter_map(|r| r.old).count(), 7, "3 + the removed line + 3");
+        let RowKind::Hidden { region, .. } = folded[hidden[0].0].kind else { unreachable!() };
+        let opened = rows(&d, Mode::Hunk, &HashSet::from([region]));
+        assert_eq!(opened.iter().filter(|r| matches!(r.kind, RowKind::Hidden { .. })).count(), 1);
+    }
+
+    #[test]
+    fn a_short_unchanged_run_isnt_folded() {
+        let d = ops("a\nb\nc\nd\ne\nf\ng\nh\ni", "A\nb\nc\nd\ne\nf\ng\nh\nI");
+        assert!(!rows(&d, Mode::Hunk, &HashSet::new()).iter().any(|r| matches!(r.kind, RowKind::Hidden { .. })), "7 lines: 3 + 3 + 1, under the minimum of 3 to hide");
+    }
+
+    #[test]
+    fn whitespace_at_a_lines_ends_can_be_ignored() {
+        let (a, b) = (split_lines(Some("  x\ny")), split_lines(Some("x  \ny")));
+        assert!(line_ops(&a, &b, true).iter().all(|o| matches!(o, DiffOp::Equal { .. })));
+        assert!(line_ops(&a, &b, false).iter().any(|o| !matches!(o, DiffOp::Equal { .. })));
+    }
+
+    #[test]
+    fn a_change_marks_the_words_that_differ() {
+        let (l, r) = word_changes("let count = 1;", "let total = 1 + 2;");
+        assert_eq!((l.as_slice(), r.as_slice()), (&[(4, 9)][..], &[(4, 9), (13, 17)][..]));
+    }
+
+    #[test]
+    fn a_block_of_unequal_length_spreads_its_marks_over_its_lines() {
+        let (old_raw, new_raw) = (vec!["one two"], vec!["one", "two three"]);
+        let d = vec![DiffOp::Replace { old_index: 0, old_len: 1, new_index: 0, new_len: 2 }];
+        let (mut old, mut new) = (Side::new(Some("one two")), Side::new(Some("one\ntwo three")));
+        mark_words(&d, &old_raw, &new_raw, &mut old, &mut new);
+        assert!(!old.lines[0].marks.is_empty());
+        assert_eq!(new.lines[1].marks.last().map(|m| m.1), Some(9), "through the line's end, within it");
+        assert!(new.lines[0].marks.iter().all(|m| m.1 <= 3));
+    }
+
+    #[test]
+    fn tabs_expand_to_their_stops_and_offsets_follow() {
+        let l = Line::new("a\tb\tc");
+        assert_eq!(l.text.as_ref(), "a   b   c");
+        assert_eq!((l.display(0), l.display(2), l.display(4)), (0, 4, 8));
+        assert_eq!(Line::new("\r").text.as_ref(), "");
+    }
+
+    #[test]
+    fn a_blank_line_takes_the_lesser_guides_around_it() {
+        let side = Side::new(Some("a\n        b\n\n    c\n\nd"));
+        assert_eq!(side.lines.iter().map(|l| l.guides).collect::<Vec<_>>(), [0, 2, 1, 1, 0, 0]);
+    }
+
+    #[test]
+    fn changes_step_by_block_and_the_ruler_has_one_mark_per_run_and_colour() {
+        let r = rows(&ops("a\nb\nc\nd", "a\nB\nc\nD\nE"), Mode::Inline, &HashSet::new());
+        assert_eq!(change_starts(&r), [1, 4]);
+        assert_eq!(ruler_marks(&r), [(1, 1, true), (2, 1, false), (4, 1, true), (5, 2, false)]);
+    }
+
+    #[test]
+    fn file_view_shows_the_new_side_or_a_deleted_files_old_one() {
+        let (a, b) = (Side::new(Some("x\ny")), Side::new(None));
+        assert_eq!(file_rows(&a, &b)[1], Row { old: None, new: Some(1), kind: RowKind::Same });
+        assert_eq!(file_rows(&b, &a)[1], Row { old: Some(1), new: None, kind: RowKind::Same });
+    }
+}

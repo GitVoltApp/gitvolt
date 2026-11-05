@@ -29,6 +29,21 @@ pub fn checked_out_row() -> Hsla { c(0x37563e) }
 pub fn control_bg() -> Hsla { a(0xffffff0f) }
 pub fn control_hover_bg() -> Hsla { a(0xffffff1f) }
 pub fn node_fill() -> Hsla { c(0x1c1e23) }
+pub fn file_bar_bg() -> Hsla { c(0x272a31) }
+pub fn panel_bg1() -> Hsla { c(0x30343c) }
+pub fn status_added() -> Hsla { c(0x5cb85c) }
+pub fn status_modified() -> Hsla { c(0xde9b43) }
+pub fn status_deleted() -> Hsla { c(0xd9413d) }
+pub fn selection_bg() -> Hsla { c(0x264f78) }
+pub fn scroll_thumb() -> Hsla { a(0xffffff26) }
+pub fn diff_inserted_text() -> Hsla { a(0x5cb85c1f) }
+pub fn diff_removed_text() -> Hsla { a(0xd9413d33) }
+pub fn diff_inserted_line() -> Hsla { a(0x5cb85c1a) }
+pub fn diff_removed_line() -> Hsla { a(0xd9413d26) }
+pub fn diff_diagonal() -> Hsla { a(0xcccccc33) }
+pub fn ruler_added() -> Hsla { a(0x5cb85c99) }
+pub fn ruler_removed() -> Hsla { a(0xd9413d99) }
+pub fn yellow_banner() -> Hsla { a(0xecb91c2e) }
 
 /// Lane colours 0-9 (`--graph-0`..`--graph-9`).
 pub const LANES: [u32; 10] = [0x15a0bf, 0x0669f7, 0x8e00c2, 0xc517b6, 0xd90171, 0xcd0101, 0xf25d2e, 0xf2ca33, 0x7bd938, 0x2ece9d];

@@ -3,10 +3,21 @@
 //! (ms since the epoch), for the time from exec to the first frame with graph rows.
 
 use crate::app::GitVolt;
+use crate::diff::model::Mode;
+use crate::diff::view::{Notice, ViewKind};
 use gpui::*;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// When the startup's phases were reached (`GITVOLT_T0`'s clock), for the report.
+pub static PHASES: std::sync::Mutex<Vec<(&str, u128)>> = std::sync::Mutex::new(Vec::new());
+
+pub fn mark(phase: &'static str) {
+    if let Ok(mut p) = PHASES.lock() {
+        p.push((phase, now_ms()));
+    }
+}
 
 pub fn now_ms() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()
@@ -43,6 +54,54 @@ struct State {
     frames: u64,
 }
 
+/// `GITVOLT_SHOW=<row>,<file>[,hunk|split|file]`: selects a graph row and opens a file of its list,
+/// with no input device: for screenshots and `GITVOLT_BENCH=diff`. Returns when the file has its
+/// text and when it has its colours, in ms from opening it.
+async fn show(v: &Entity<GitVolt>, spec: &str, cx: &mut AsyncWindowContext) -> (u128, u128) {
+    let parts: Vec<&str> = spec.split(',').collect();
+    let (row, file): (usize, usize) = (parts[0].parse().unwrap_or(0), parts.get(1).and_then(|f| f.parse().ok()).unwrap_or(0));
+    let wait = |cx: &AsyncWindowContext| cx.background_executor().timer(Duration::from_millis(2));
+    while !v.read_with(cx, |g, _| g.tabs.first().is_some_and(|t| t.graph.is_some())) {
+        wait(cx).await;
+    }
+    v.update(cx, |g, cx| g.select(row, cx));
+    while !v.read_with(cx, |g, _| g.tabs.first().is_some_and(|t| t.files.is_some())) {
+        wait(cx).await;
+    }
+    let opened = Instant::now();
+    v.update(cx, |g, cx| {
+        g.open_file(file, cx);
+        g.with_diff(cx, |d| match parts.get(2) {
+            Some(&"hunk") => d.mode = Mode::Hunk,
+            Some(&"split") => d.mode = Mode::Split,
+            Some(&"file") => d.view = ViewKind::File,
+            _ => {}
+        });
+    });
+    while !v.read_with(cx, |g, _| g.tabs[0].diff.as_ref().is_some_and(|d| d.data.is_some() || d.notice != Some(Notice::Loading))) {
+        wait(cx).await;
+    }
+    let text = opened.elapsed().as_millis();
+    while !v.read_with(cx, |g, _| g.tabs[0].diff.as_ref().is_none_or(|d| d.coloured || d.data.is_none())) {
+        wait(cx).await;
+    }
+    (text, opened.elapsed().as_millis())
+}
+
+async fn reopen(v: &Entity<GitVolt>, file: usize, cx: &mut AsyncWindowContext) -> (u128, u128) {
+    let wait = |cx: &AsyncWindowContext| cx.background_executor().timer(Duration::from_millis(2));
+    let opened = Instant::now();
+    v.update(cx, |g, cx| g.open_file(file, cx));
+    while !v.read_with(cx, |g, _| g.tabs[0].diff.as_ref().is_some_and(|d| d.data.is_some() || d.notice != Some(Notice::Loading))) {
+        wait(cx).await;
+    }
+    let text = opened.elapsed().as_millis();
+    while !v.read_with(cx, |g, _| g.tabs[0].diff.as_ref().is_none_or(|d| d.coloured || d.data.is_none())) {
+        wait(cx).await;
+    }
+    (text, opened.elapsed().as_millis())
+}
+
 /// The same run as the CEF build's: settle 5 s, idle 20 s, scroll 16 px per frame for 8 s.
 pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
     const STEP: f32 = 16.;
@@ -63,7 +122,7 @@ pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
                 }
                 s.last = Some(now);
                 s.y += STEP;
-                let handle = &tab.list.0.borrow().base_handle;
+                let handle = tab.diff.as_ref().map_or(&tab.list, |d| &d.list).0.borrow().base_handle.clone();
                 s.reached_end |= px(s.y) >= handle.max_offset().y;
                 handle.set_offset(point(px(0.), px(-s.y)));
                 window.request_animation_frame();
@@ -76,6 +135,21 @@ pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
             let timer = |cx: &AsyncWindowContext, secs: u64| cx.background_executor().timer(Duration::from_secs(secs));
             while state.borrow().first_rows_ms == 0 {
                 cx.background_executor().timer(Duration::from_millis(5)).await;
+            }
+            let shown = match std::env::var("GITVOLT_SHOW") {
+                Ok(spec) => Some(show(&v, &spec, cx).await),
+                Err(_) => None,
+            };
+            // Another file, then the first again: what a grammar already compiled costs.
+            let mut later = Vec::new();
+            if std::env::var_os("GITVOLT_BENCH").is_some() && shown.is_some() {
+                for file in [1, 0] {
+                    timer(cx, 2).await;
+                    later.push(reopen(&v, file, cx).await);
+                }
+            }
+            if std::env::var_os("GITVOLT_BENCH").is_none() {
+                return;
             }
             timer(cx, 5).await;
             let settled = memory_mb();
@@ -96,7 +170,8 @@ pub fn start(view: Entity<GitVolt>, window: &mut Window, cx: &mut App) {
             let after = memory_mb();
             let s = state.borrow();
             println!(
-                "{{\"t0_to_graph_rows_ms\":{},\"settled_rss_anon_pss_mb\":{:?},\"idle_cpu_pct\":{idle:.3},\"idle_frames\":{idle_frames},\"scroll\":{{\"step\":{STEP},\"reached_end\":{},{},\"cpu_ms\":{cpu},\"cpu_ms_per_frame\":{:.2}}},\"after_scroll_rss_anon_pss_mb\":{:?}}}",
+                "{{\"phases\":{:?},\"file_text_colours_ms\":{shown:?},\"later\":{later:?},\"t0_to_graph_rows_ms\":{},\"settled_rss_anon_pss_mb\":{:?},\"idle_cpu_pct\":{idle:.3},\"idle_frames\":{idle_frames},\"scroll\":{{\"step\":{STEP},\"reached_end\":{},{},\"cpu_ms\":{cpu},\"cpu_ms_per_frame\":{:.2}}},\"after_scroll_rss_anon_pss_mb\":{:?}}}",
+                PHASES.lock().map(|p| p.iter().map(|(n, at)| (*n, at.saturating_sub(t0))).collect::<Vec<_>>()).unwrap_or_default(),
                 s.first_rows_ms.saturating_sub(t0),
                 settled,
                 s.reached_end,

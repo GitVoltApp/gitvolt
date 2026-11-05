@@ -148,6 +148,8 @@ pub struct RowView {
     pub initials: SharedString,
     pub avatar: usize,
     pub chips: Vec<Chip>,
+    /// A WIP row's worktree.
+    pub worktree: Option<String>,
 }
 
 pub struct GraphView {
@@ -180,6 +182,7 @@ fn row_view(r: &RowPayload, chips: Vec<Chip>) -> RowView {
         initials: initials(&r.author_name).into(),
         avatar: avatar_lane(&r.author_name, &r.author_email, LANES),
         chips,
+        worktree: r.wip.as_ref().map(|w| w.worktree_path.clone()),
     }
 }
 
@@ -308,28 +311,6 @@ pub fn panels(v: &Value) -> Vec<Panel> {
     ]
 }
 
-/// The `commitDetails` read, as the details panel shows it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Details {
-    pub id: SharedString,
-    pub author: SharedString,
-    pub email: SharedString,
-    pub date: SharedString,
-    pub parents: Vec<SharedString>,
-    pub signed: bool,
-}
-
-pub fn details(v: &Value) -> Details {
-    Details {
-        id: text(v, "id").into(),
-        author: text(&v["author"], "name").into(),
-        email: text(&v["author"], "email").into(),
-        date: format_date(v["committer"]["time"].as_i64().unwrap_or(0)).into(),
-        parents: v["parents"].as_array().map(|p| p.iter().filter_map(|x| x.as_str()).map(|s| s.chars().take(SHORT_SHA).collect::<String>().into()).collect()).unwrap_or_default(),
-        signed: v["signed"].as_bool() == Some(true),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,10 +375,4 @@ mod tests {
         assert_eq!(p[4].rows[0].target.as_deref(), Some("t"));
     }
 
-    #[test]
-    fn details_read_the_camel_case_payload() {
-        let d = details(&json!({"id": "abcdef123", "parents": ["1234567890"], "author": {"name": "Ada", "email": "a@example.com", "time": 1}, "committer": {"time": 1_700_000_000}, "signed": true}));
-        assert_eq!((d.author.as_ref(), d.parents[0].as_ref(), d.signed), ("Ada", "123456", true));
-        assert!(d.date.contains(" @ "));
-    }
 }

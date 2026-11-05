@@ -1,6 +1,8 @@
 //! The window: title bar, tabs, toolbar, sidebar, graph, details, status bar. Laid out with the web
 //! UI's measured sizes (`ui/src/{chrome,tabs,toolbar,sidebar,graph,statusbar}/*.css`).
 
+use crate::details::{Commit, Files, details_panel};
+use crate::diff::view::{DiffState, diff_panel};
 use crate::graph::{RowGeometry, paint_row};
 use crate::model::*;
 use crate::theme;
@@ -12,14 +14,13 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
-actions!(gitvolt, [SelectNext, SelectPrevious, ClearSelection, OpenRepository, CloseTab, NextTab]);
+actions!(gitvolt, [SelectNext, SelectPrevious, ClearSelection, OpenRepository, CloseTab, NextTab, NextChange, PreviousChange, Copy, SelectAll, PageDown, PageUp]);
 
 const TITLE_H: f32 = 30.;
 const TAB_H: f32 = 34.;
 const TOOLBAR_H: f32 = 44.;
 const STATUS_H: f32 = 22.;
 const SIDEBAR_W: f32 = 241.;
-const DETAILS_W: f32 = 340.;
 const SCROLLBAR_W: f32 = 10.;
 const HEADER_H: f32 = 25.;
 const SIDE_ROW_H: f32 = 24.;
@@ -36,6 +37,12 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-o", OpenRepository, Some("GitVolt")),
         KeyBinding::new("ctrl-w", CloseTab, Some("GitVolt")),
         KeyBinding::new("ctrl-tab", NextTab, Some("GitVolt")),
+        KeyBinding::new("f7", NextChange, Some("GitVolt")),
+        KeyBinding::new("shift-f7", PreviousChange, Some("GitVolt")),
+        KeyBinding::new("ctrl-c", Copy, Some("GitVolt")),
+        KeyBinding::new("ctrl-a", SelectAll, Some("GitVolt")),
+        KeyBinding::new("pagedown", PageDown, Some("GitVolt")),
+        KeyBinding::new("pageup", PageUp, Some("GitVolt")),
     ]);
 }
 
@@ -46,7 +53,11 @@ pub struct Tab {
     pub panels: Rc<Vec<Panel>>,
     pub collapsed: [bool; 5],
     pub selected: Option<usize>,
-    pub details: Option<Details>,
+    pub commit: Option<Commit>,
+    pub files: Option<Files>,
+    pub diff: Option<DiffState>,
+    /// The sidebar stays open beside a file (it folds to its strip by default).
+    pub sidebar_open: bool,
     pub list: UniformListScrollHandle,
     pub side: [UniformListScrollHandle; 5],
     pub error: Option<SharedString>,
@@ -64,7 +75,10 @@ impl Tab {
             panels: Rc::new(Vec::new()),
             collapsed: [false; 5],
             selected: None,
-            details: None,
+            commit: None,
+            files: None,
+            diff: None,
+            sidebar_open: false,
             list: UniformListScrollHandle::new(),
             side: std::array::from_fn(|_| UniformListScrollHandle::new()),
             error: None,
@@ -153,6 +167,7 @@ impl GitVolt {
             let result = opened.await;
             this.update(cx, |this, cx| match result {
                 Ok(Ok((id, name))) => {
+                    crate::bench::mark("repo_open");
                     if let Some(i) = this.tabs.iter().position(|t| t.id == id) {
                         this.active = i;
                     } else {
@@ -195,6 +210,7 @@ impl GitVolt {
                         let selected = tab.selected.and_then(|i| tab.graph.as_ref()?.rows.get(i)).map(|r| r.id.to_string());
                         tab.selected = selected.and_then(|id| graph.0.by_sha.get(&id).copied());
                         tab.graph = Some(Rc::new(graph.0));
+                        crate::bench::mark("graph_read");
                         tab.panels = Rc::new(panels.0);
                         tab.error = None;
                     }
@@ -211,34 +227,21 @@ impl GitVolt {
         .detach();
     }
 
-    fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
+    pub fn select(&mut self, ix: usize, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get_mut(self.active) else { return };
         let Some(row) = tab.graph.as_ref().and_then(|g| g.rows.get(ix)) else { return };
+        let (kind, id, worktree) = (row.kind, row.id.to_string(), row.worktree.clone());
         tab.selected = Some(ix);
-        tab.details = None;
+        tab.commit = None;
+        tab.files = None;
         tab.list.scroll_to_item(ix, ScrollStrategy::Nearest);
+        let repo = tab.id;
         cx.notify();
-        if !matches!(row.kind, gitvolt_graph::NodeKind::Commit | gitvolt_graph::NodeKind::Merge) {
-            return;
+        match (kind, worktree) {
+            (gitvolt_graph::NodeKind::Commit | gitvolt_graph::NodeKind::Merge | gitvolt_graph::NodeKind::Stash, _) => self.read_commit(repo, id, ix, cx),
+            (gitvolt_graph::NodeKind::Wip, Some(w)) => self.read_wip(repo, w, ix, cx),
+            _ => {}
         }
-        let (repo, id) = (tab.id, row.id.to_string());
-        let api = self.api.clone();
-        let read = self.rt.spawn(async move { api.dispatch(Request::CommitDetails { repo, id }).await });
-        cx.spawn(async move |this, cx| {
-            if let Ok(Ok(v)) = read.await {
-                let d = details(&v);
-                this.update(cx, |this, cx| {
-                    if let Some(tab) = this.tabs.iter_mut().find(|t| t.id == repo)
-                        && tab.selected == Some(ix)
-                    {
-                        tab.details = Some(d);
-                        cx.notify();
-                    }
-                })
-                .ok();
-            }
-        })
-        .detach();
     }
 
     fn move_selection(&mut self, by: i64, cx: &mut Context<Self>) {
@@ -275,6 +278,10 @@ impl GitVolt {
         .detach();
     }
 
+    fn diff_open(&self) -> bool {
+        self.tabs.get(self.active).is_some_and(|t| t.diff.is_some())
+    }
+
     fn scroll_to_pointer(&mut self, y: Pixels, top: Pixels, height: Pixels, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else { return };
         let handle = &tab.list.0.borrow().base_handle;
@@ -289,7 +296,7 @@ impl GitVolt {
 struct SendGraph(GraphView);
 struct SendPanels(Vec<Panel>);
 
-fn icon(name: &'static str, size_px: f32, color: Hsla) -> Svg {
+pub fn icon(name: &'static str, size_px: f32, color: Hsla) -> Svg {
     svg().path(SharedString::from(format!("icons/{name}.svg"))).flex_none().size(px(size_px)).text_color(color)
 }
 
@@ -451,9 +458,29 @@ fn panel_icon(k: PanelKind) -> &'static str {
     }
 }
 
+/// The sidebar folded beside an open file: each panel's icon and count; the chevron opens it.
+fn sidebar_strip(tab: &Tab, cx: &mut Context<GitVolt>) -> AnyElement {
+    let toggle = div().id("sidebar-open").flex().flex_none().size(px(22.)).items_center().justify_center().rounded_full().bg(theme::control_bg()).hover(|d| d.bg(theme::control_hover_bg())).on_click(cx.listener(|this, _, _, cx| {
+        if let Some(tab) = this.tabs.get_mut(this.active) {
+            tab.sidebar_open = true;
+            cx.notify();
+        }
+    })).child(icon("chevron-right", 12., theme::text_secondary()));
+    let mut strip = div().flex().flex_col().flex_none().items_center().gap(px(4.)).w(px(41.)).h_full().pt(px(6.)).bg(theme::panel_bg()).border_r_1().border_color(theme::section_border()).child(toggle);
+    for panel in tab.panels.iter() {
+        strip = strip.child(div().flex().flex_col().flex_none().items_center().gap(px(1.)).w(px(36.)).py(px(4.)).text_color(theme::text_secondary()).child(icon(panel_icon(panel.kind), 15., theme::text_secondary())).child(div().text_size(px(10.)).font_weight(FontWeight::BOLD).text_color(theme::count_blue()).child(panel.count.to_string())));
+    }
+    strip.into_any_element()
+}
+
 fn sidebar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let mut bar = div().flex().flex_col().flex_none().w(px(SIDEBAR_W)).h_full().min_h_0().bg(theme::panel_bg()).border_r_1().border_color(theme::section_border()).child(
-        div().flex().flex_none().h(px(41.)).items_center().gap(px(6.)).px(px(8.)).child(icon("chevron-left", 14., theme::text_disabled())).child(div().flex().flex_1().h(px(26.)).items_center().px(px(8.)).rounded(px(4.)).bg(theme::app_bg()).border_1().border_color(theme::section_border()).text_color(theme::text_disabled()).child("Filter (Ctrl+Alt+F)")).child(div().flex().flex_none().size(px(26.)).items_center().justify_center().rounded(px(4.)).bg(theme::control_bg()).child(icon("git-graph", 13., theme::text_disabled()))),
+        div().flex().flex_none().h(px(41.)).items_center().gap(px(6.)).px(px(8.)).child(div().id("sidebar-fold").when(this.tabs.get(this.active).is_some_and(|t| t.diff.is_some()), |d| d.on_click(cx.listener(|this, _, _, cx| {
+            if let Some(tab) = this.tabs.get_mut(this.active) {
+                tab.sidebar_open = false;
+                cx.notify();
+            }
+        }))).child(icon("chevron-left", 14., theme::text_secondary()))).child(div().flex().flex_1().h(px(26.)).items_center().px(px(8.)).rounded(px(4.)).bg(theme::app_bg()).border_1().border_color(theme::section_border()).text_color(theme::text_disabled()).child("Filter (Ctrl+Alt+F)")).child(div().flex().flex_none().size(px(26.)).items_center().justify_center().rounded(px(4.)).bg(theme::control_bg()).child(icon("git-graph", 13., theme::text_disabled()))),
     );
     let Some(tab) = this.tabs.get(this.active) else { return bar };
     for (p, panel) in tab.panels.iter().enumerate() {
@@ -499,6 +526,7 @@ fn sidebar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                                 div()
                                     .id(i)
                                     .flex()
+                                    .w_full()
                                     .h(px(SIDE_ROW_H))
                                     .items_center()
                                     .gap(px(6.))
@@ -679,22 +707,6 @@ fn scrollbar(tab: &Tab, cx: &mut Context<GitVolt>) -> impl IntoElement {
         )
 }
 
-fn details_panel(tab: &Tab) -> Option<impl IntoElement + use<>> {
-    let row = tab.graph.as_ref()?.rows.get(tab.selected?)?;
-    let meta = |label: &'static str, value: SharedString| div().flex().gap(px(8.)).child(div().flex_none().w(px(56.)).text_color(theme::text_disabled()).child(label)).child(div().min_w_0().child(value));
-    let mut panel = div().id("details").flex().flex_col().flex_none().gap(px(8.)).w(px(DETAILS_W)).h_full().p(px(12.)).overflow_y_scroll().bg(theme::panel_bg()).border_l_1().border_color(theme::section_border()).child(div().font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child(row.summary.clone()));
-    if let Some(d) = &tab.details {
-        panel = panel.child(meta("Author", format!("{} <{}>", d.author, d.email).into())).child(meta("Date", d.date.clone())).child(meta("Commit", d.id.clone()));
-        if !d.parents.is_empty() {
-            panel = panel.child(meta("Parents", d.parents.iter().map(SharedString::as_ref).collect::<Vec<_>>().join(", ").into()));
-        }
-        if d.signed {
-            panel = panel.child(meta("Signed", "Yes".into()));
-        }
-    }
-    Some(panel)
-}
-
 fn status_bar(this: &GitVolt) -> impl IntoElement {
     div()
         .flex()
@@ -740,9 +752,19 @@ impl Render for GitVolt {
         if let (Some(hook), Some(tab)) = (self.frame_hook.as_mut(), self.tabs.get_mut(self.active)) {
             hook(tab, window);
         }
-        let viewport = window.viewport_size().width.as_f32();
-        let details = self.tabs.get(self.active).and_then(details_panel);
-        let center = viewport - SIDEBAR_W - if details.is_some() { DETAILS_W } else { 0. };
+        let viewport = window.viewport_size();
+        let details = self.tabs.get(self.active).and_then(|t| details_panel(t, cx));
+        let tab = self.tabs.get(self.active);
+        let open_file = tab.is_some_and(|t| t.diff.is_some());
+        let folded = open_file && !tab.is_some_and(|t| t.sidebar_open);
+        let left = if folded { 41. } else { SIDEBAR_W };
+        let center = viewport.width.as_f32() - left - if details.is_some() { crate::details::DETAILS_W } else { 0. };
+        let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
+        let strip = tab.filter(|_| folded).map(|t| sidebar_strip(t, cx));
+        let main = match tab.and_then(|t| diff_panel(t, center, body_h, cx)) {
+            Some(panel) => panel,
+            None => graph_table(self, center, cx),
+        };
         div()
             .relative()
             .size_full()
@@ -755,12 +777,33 @@ impl Render for GitVolt {
             .text_color(theme::text_normal())
             .key_context("GitVolt")
             .track_focus(&self.focus)
-            .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.move_selection(1, cx)))
-            .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.move_selection(-1, cx)))
+            .on_action(cx.listener(|this, _: &SelectNext, _, cx| {
+                if this.diff_open() {
+                    this.scroll_diff(1., cx);
+                } else {
+                    this.move_selection(1, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| {
+                if this.diff_open() {
+                    this.scroll_diff(-1., cx);
+                } else {
+                    this.move_selection(-1, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &NextChange, _, cx| this.step_change(true, cx)))
+            .on_action(cx.listener(|this, _: &PreviousChange, _, cx| this.step_change(false, cx)))
+            .on_action(cx.listener(|this, _: &Copy, _, cx| this.copy_selection(cx)))
+            .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.select_all(cx)))
+            .on_action(cx.listener(|this, _: &PageDown, window, cx| this.scroll_diff((window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
+            .on_action(cx.listener(|this, _: &PageUp, window, cx| this.scroll_diff(-(window.viewport_size().height.as_f32() / crate::diff::view::LINE_H - 8.).max(1.), cx)))
             .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
-                if let Some(tab) = this.tabs.get_mut(this.active) {
+                if this.diff_open() {
+                    this.close_file(cx);
+                } else if let Some(tab) = this.tabs.get_mut(this.active) {
                     tab.selected = None;
-                    tab.details = None;
+                    tab.commit = None;
+                    tab.files = None;
                     cx.notify();
                 }
             }))
@@ -775,7 +818,7 @@ impl Render for GitVolt {
             .child(title_bar(self, window, cx))
             .child(tab_bar(self, cx))
             .child(toolbar(self))
-            .child(div().flex().flex_1().min_h_0().child(sidebar(self, cx)).child(graph_table(self, center, cx)).children(details))
+            .child(div().flex().flex_1().min_h_0().when_some(strip, |d, s| d.child(s)).when(!folded, |d| d.child(sidebar(self, cx))).child(main).children(details))
             .child(status_bar(self))
             .children(resize_handles(window))
     }
@@ -794,10 +837,10 @@ mod tests {
     /// The graph's first row's top: title bar, tab bar, toolbar, table header.
     const ROWS_TOP: f32 = TITLE_H + TAB_H + TOOLBAR_H + HEADER_H;
 
-    /// Not a commit: selecting one would read its details on the runtime, whose wake-up from
+    /// Neither a commit nor WIP: selecting one would read on the runtime, whose wake-up from
     /// another thread GPUI's deterministic test scheduler refuses.
     fn row(i: usize) -> RowView {
-        RowView { id: format!("{i:040}").into(), kind: NodeKind::Wip, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new() }
+        RowView { id: format!("{i:040}").into(), kind: NodeKind::Collapsed, lane: 0, color: 0, segments: Vec::new(), summary: format!("Change {i}").into(), author: "Ada".into(), date: SharedString::default(), sha: format!("{i:06}").into(), initials: "A".into(), avatar: 0, chips: Vec::new(), worktree: None }
     }
 
     fn with_rows(cx: &mut TestAppContext, count: usize) -> (WindowHandle<GitVolt>, VisualTestContext, tokio::runtime::Runtime) {

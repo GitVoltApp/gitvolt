@@ -1,11 +1,14 @@
 //! GitVolt on GPUI: the same core, drawn natively instead of in Chromium. A work in progress beside
-//! `gitvolt-app`: it reads (graph, sidebar, commit details) and doesn't write yet.
+//! `gitvolt-app`: it reads (graph, sidebar, commit details, diffs) and doesn't write yet.
 //!
 //! `gitvolt-gpui [path]`, or `GITVOLT_OPEN=<path>`, opens a repository.
 
 mod app;
 mod bench;
+mod details;
+mod diff;
 mod graph;
+mod icons;
 mod model;
 mod theme;
 
@@ -20,21 +23,9 @@ use std::sync::Arc;
 
 struct Assets;
 
-macro_rules! icons {
-    ($path:ident, $($name:literal),+ $(,)?) => {
-        match $path {
-            $(concat!("icons/", $name, ".svg") => Some(include_bytes!(concat!("../assets/icons/", $name, ".svg")).as_slice()),)+
-            _ => None,
-        }
-    };
-}
-
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
-        let found = icons!(
-            path, "archive", "bell", "check", "chevron-down", "chevron-left", "chevron-right", "cloud", "command", "download", "folder-open", "folder-plus", "git-branch", "git-branch-plus", "git-graph", "house", "laptop", "list-tree", "menu", "minus", "pin", "redo-2", "search", "settings", "square", "tag", "tree-pine", "undo-2", "upload", "x",
-        );
-        Ok(found.map(Cow::Borrowed))
+        Ok(icons::load(path).map(Cow::Borrowed))
     }
 
     fn list(&self, _path: &str) -> Result<Vec<SharedString>> {
@@ -52,6 +43,7 @@ fn ui_font() -> SharedString {
 }
 
 fn main() {
+    bench::mark("main");
     let path = std::env::args().nth(1).or_else(|| std::env::var("GITVOLT_OPEN").ok());
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("a tokio runtime");
     let handle = runtime.handle().clone();
@@ -59,8 +51,15 @@ fn main() {
     // this build writes.
     let api = Arc::new(Api::new(GitCli::new(Arc::new(CommandLog::new(1000))), None).with_app_version(env!("CARGO_PKG_VERSION")));
     let font = ui_font();
+    bench::mark("before_platform");
     application().with_assets(Assets).run(move |cx: &mut App| {
+        bench::mark("platform_up");
         app::bind_keys(cx);
+        // The bundled editor font's Latin face (the web UI's, assets/generate.mjs); what it lacks
+        // falls back to the system's.
+        if let Err(e) = cx.text_system().add_fonts(vec![Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono-Latin-400.ttf"))]) {
+            eprintln!("Couldn't load the editor font: {e}");
+        }
         let bounds = Bounds::centered(None, size(px(1600.), px(900.)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -72,6 +71,7 @@ fn main() {
             ..Default::default()
         };
         let result = cx.open_window(options, |window, cx| {
+            bench::mark("window_open");
             let view = cx.new(|cx| GitVolt::new(api.clone(), handle.clone(), font.clone(), cx));
             view.update(cx, |v, cx| {
                 window.focus(&v.focus, cx);
@@ -80,7 +80,7 @@ fn main() {
                     v.open(path, cx);
                 }
             });
-            if std::env::var_os("GITVOLT_BENCH").is_some() {
+            if std::env::var_os("GITVOLT_BENCH").is_some() || std::env::var_os("GITVOLT_SHOW").is_some() {
                 bench::start(view.clone(), window, cx);
             }
             view
