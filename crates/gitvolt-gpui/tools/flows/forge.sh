@@ -72,6 +72,8 @@ echo "Create MR: the flyout, as draft, the target's picker"
 clickon "side:refs/heads/feature/new" right; pause 0.3; q "[r for r in d['menu'][0] if 'merge request' in r.lower()]"
 P=$(row_at "merge request"); [ -n "$P" ] && ri move $P -- wait 40 -- click; pause 1
 q "d['forge']['create'] and d['forge']['create']['draft'], sorted(k for k in d['anchors'] if k.startswith('create-'))"; shot forge-create
+clickon create-target; pause 0.5; shot forge-create-target; q "d['picker'][:3]"; key Escape; pause 0.3
+Q=$(q "at([k for k in d['anchors'] if 'draft' in k][0])" 2>/dev/null); [ -n "$Q" ] && { ri move $Q -- wait 40 -- click; pause 0.3; shot forge-create-draft; check "as draft" "d['forge']['create']['draft']"; }
 key Escape; pause 0.5
 reqs | python3 -c "
 import json,sys

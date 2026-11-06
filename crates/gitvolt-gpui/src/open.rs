@@ -813,11 +813,11 @@ pub fn open_screen(this: &mut GitVolt, id: u32, window: &Window, cx: &mut Contex
             .child(div().flex_none().child(text))
             .child(div().relative().flex_1().h(px(8.)).rounded(px(4.)).bg(theme::app_bg()).overflow_hidden().child(div().absolute().left_0().top_0().bottom_0().w(relative(f32::from(percent.unwrap_or(0)) / 100.)).bg(theme::blue())))
             .children(op_id.map(|op| {
-                open_btn("clone-cancel", false, true).child("Cancel").on_click(cx.listener(move |this, _, _, cx| {
+                crate::ui::anchor("clone-cancel", open_btn("clone-cancel", false, true).child("Cancel").on_click(cx.listener(move |this, _, _, cx| {
                     let api = this.api.clone();
                     this.rt.spawn(async move { api.dispatch(Request::CancelOp { op }).await });
                     cx.notify();
-                }))
+                })))
             }))
     });
     let w = weak.clone();
