@@ -2501,6 +2501,30 @@ mod tests {
         (old.join("\n"), new.join("\n"))
     }
 
+    /// The e2e's `ledger.php`: Monaco's two editors drifted apart on a file opened again. Here both sides are one list of rows with one scroll.
+    #[test]
+    fn split_opens_a_file_again_with_both_sides_at_its_first_change() {
+        let old: Vec<String> = (0..2800).map(|i| format!("line {i}")).collect();
+        let mut new = old.clone();
+        new.insert(1654, "inserted one".into());
+        new.insert(1655, "inserted two".into());
+        let (old, new) = (old.join("\n"), new.join("\n"));
+        for _ in 0..2 {
+            let mut d = state(&old, &new);
+            d.mode = Mode::Split;
+            d.relayout();
+            d.reveal_first = true;
+            d.ensure_layout(800., 600.);
+            assert!(d.scroll > 0., "at the change, not the top");
+            let top = &d.rows[d.layout.row_at(d.scroll)];
+            let (top_old, top_new) = (top.old.unwrap(), top.new.unwrap());
+            assert_eq!(top_old, top_new, "above the insertions the two sides show the same line at the top");
+            assert!(top_new > 1600, "{top_new}");
+            let change = d.rows[d.changes[0]].new.unwrap();
+            assert!(d.rows[d.layout.row_at(d.scroll + 300.)].new.is_some_and(|n| n.abs_diff(change) <= 1), "the change in the middle");
+        }
+    }
+
     #[test]
     fn a_change_of_mode_keeps_the_line_at_the_viewports_centre() {
         let (old, new) = long_pair();

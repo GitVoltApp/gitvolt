@@ -66,6 +66,8 @@ pub struct RemoteProject {
     pub host: Option<String>,
     pub path: Option<String>,
     pub account: Option<ForgeKind>,
+    /// Which of the host's accounts is used (`ForgeAccount.id`).
+    pub account_id: Option<String>,
     pub project: Option<ForgeProject>,
     pub error: Option<String>,
 }
@@ -105,6 +107,8 @@ pub struct TabForge {
     pub remote_errors: HashMap<String, String>,
     pub owner_avatars: HashMap<String, String>,
     pub me: Option<String>,
+    /// The account behind the target project (`ForgeAccount.id`): the repository's chosen one on the host, else the host's default.
+    pub account_id: Option<String>,
     /// Remote-tracking ref → its MR/PR: the badges.
     pub by_ref: BTreeMap<String, ForgeMr>,
     /// Merged or closed ones that badge nothing: a stack's walk reads them.
@@ -163,7 +167,7 @@ pub struct TabForge {
 
 impl Default for TabForge {
     fn default() -> Self {
-        Self { stack_prompted: Default::default(), stack_running: Default::default(), compare_seen: None, kind: None, remote: None, project: None, mapped: Vec::new(), target: None, target_chosen: false, remote_errors: HashMap::new(), owner_avatars: HashMap::new(), me: None, by_ref: BTreeMap::new(), history: BTreeMap::new(), upstreams: BTreeMap::new(), filter: MrFilter::All, filter_read: false, list: None, details: HashMap::new(), detail_errors: HashMap::new(), discussions: HashMap::new(), fresh_at: HashMap::new(), loading: Vec::new(), write_epoch: 0, activated_at: None, recheck: false, open_mr: None, updated_at: None, error: None, limited_until: None, cached_at: None, failures: 0, refreshing: Vec::new(), review: None, review_refs: None, compare_ref: None, settings: HashMap::new(), settings_asked: HashMap::new(), settings_error: None, behind: HashMap::new(), limits: None, limits_asked: false, people_queue: Default::default(), people_busy: false, note_after_compare: None, review_ui: Default::default(), lent_merge: None, lent_update: None }
+        Self { stack_prompted: Default::default(), stack_running: Default::default(), compare_seen: None, account_id: None, kind: None, remote: None, project: None, mapped: Vec::new(), target: None, target_chosen: false, remote_errors: HashMap::new(), owner_avatars: HashMap::new(), me: None, by_ref: BTreeMap::new(), history: BTreeMap::new(), upstreams: BTreeMap::new(), filter: MrFilter::All, filter_read: false, list: None, details: HashMap::new(), detail_errors: HashMap::new(), discussions: HashMap::new(), fresh_at: HashMap::new(), loading: Vec::new(), write_epoch: 0, activated_at: None, recheck: false, open_mr: None, updated_at: None, error: None, limited_until: None, cached_at: None, failures: 0, refreshing: Vec::new(), review: None, review_refs: None, compare_ref: None, settings: HashMap::new(), settings_asked: HashMap::new(), settings_error: None, behind: HashMap::new(), limits: None, limits_asked: false, people_queue: Default::default(), people_busy: false, note_after_compare: None, review_ui: Default::default(), lent_merge: None, lent_update: None }
     }
 }
 

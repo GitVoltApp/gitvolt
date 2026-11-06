@@ -566,11 +566,13 @@ async fn poll_once(this: WeakEntity<GitVolt>, tab: u32, reason: Reason, cx: &mut
             let t = target.as_ref();
             if let Some(t) = t.filter(|t| t.project.is_none() && t.account.is_some() && t.error.is_some()) {
                 // The target is on a forge but its project can't be loaded: say why, don't hide the section or show another remote.
+                let account_id = t.account_id.clone();
                 let (kind, remote, msg) = (t.account, t.remote.clone(), format!("{}: {}", t.path.as_deref().unwrap_or(&t.remote), t.error.as_deref().unwrap_or_default()));
                 let fails = with(&this, cx, tab, |f| {
                     f.kind = kind;
                     f.remote = Some(remote);
                     f.project = None;
+                    f.account_id = account_id;
                     f.mapped.clear();
                     f.by_ref.clear();
                     f.history.clear();
@@ -590,6 +592,7 @@ async fn poll_once(this: WeakEntity<GitVolt>, tab: u32, reason: Reason, cx: &mut
                     f.kind = None;
                     f.remote = None;
                     f.project = None;
+                    f.account_id = None;
                     f.mapped.clear();
                     f.by_ref.clear();
                     f.history.clear();
@@ -603,10 +606,12 @@ async fn poll_once(this: WeakEntity<GitVolt>, tab: u32, reason: Reason, cx: &mut
                 return Some(Ok(Outcome::default()));
             };
             let host = project.host.clone();
-            let known_me = with(&this, cx, tab, |f| f.me.clone())?;
+            // Read again when the repository switched to another account on the host.
+            let account_id = t.and_then(|t| t.account_id.clone());
+            let known_me = with(&this, cx, tab, |f| f.me.clone().filter(|_| f.account_id == account_id))?;
             let me = match known_me {
                 Some(m) => Some(m),
-                None => ask::<Vec<super::accounts::AccountView>>(api.clone(), rt.clone(), Request::ForgeAccounts).await.ok().and_then(|a| a.into_iter().find(|x| x.account.host == host).map(|x| x.account.user.username)),
+                None => ask::<Vec<super::accounts::AccountView>>(api.clone(), rt.clone(), Request::ForgeAccounts).await.ok().and_then(|a| a.into_iter().find(|x| Some(&x.account.id) == account_id.as_ref()).map(|x| x.account.user.username)),
             };
             let mapped: Vec<String> = projects.remotes.iter().filter(|r| r.project.as_ref().is_some_and(|p| p.host.eq_ignore_ascii_case(&host))).map(|r| r.remote.clone()).collect();
             let remote = t.map(|t| t.remote.clone());
@@ -616,6 +621,7 @@ async fn poll_once(this: WeakEntity<GitVolt>, tab: u32, reason: Reason, cx: &mut
                 f.project = Some(project);
                 f.mapped = mapped;
                 f.me = me;
+                f.account_id = account_id;
             })?;
         }
         // The badges failing (one slow request) costs only the badges: the list is still asked.

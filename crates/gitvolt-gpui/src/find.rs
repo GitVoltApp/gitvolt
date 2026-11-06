@@ -482,7 +482,7 @@ pub fn editor_find(find: &FindState, right: f32, window: &Window, cx: &mut Conte
     let button = |id: &'static str, tooltip: &'static str, glyph: &'static str, enabled: bool, cx: &mut Context<GitVolt>, run: fn(&mut GitVolt, &mut Context<GitVolt>)| {
         tip(
             tooltip,
-            div()
+            crate::ui::anchor(id, div()
                 .id(id)
                 .flex()
                 .flex_none()
@@ -493,7 +493,7 @@ pub fn editor_find(find: &FindState, right: f32, window: &Window, cx: &mut Conte
                 .when(!enabled, |d| d.opacity(0.4))
                 .when(enabled, |d| d.cursor_pointer().hover(|d| d.bg(rgba(if light { 0xb8b8b850 } else { 0x5a5d5e50 }))).on_click(cx.listener(move |this, _, _, cx| run(this, cx))))
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .child(icon(glyph, 16., fg)),
+                .child(icon(glyph, 16., fg))),
         )
     };
     div()

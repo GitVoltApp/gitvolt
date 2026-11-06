@@ -258,6 +258,7 @@ fn build_defs() -> Vec<Def> {
         d("repoPin", "Pinned trunk", "repository", "Graph", "pin trunk main branch left lane", "The branch kept at the graph's left. The pin button in the graph's header sets it too.", Ctl::Custom(pin_control), Binding::Repo("pin", || Value::Null, Some(refresh_graph))),
         d("trunkPatterns", "Trunk branches", "repository", "Graph", "trunk branch presets release patterns glob never hidden collapsed main", "Branch presets never hide or collapse these, beside the detected trunk. Comma-separated globs, like release/*.", Ctl::Custom(trunk_patterns), Binding::Repo("trunkPatterns", || Value::Null, Some(refresh_graph))),
         d("forgeTargetRemote", "Merge requests target", "repository", "Merge requests", "merge request pull request target remote upstream fork project", "The remote whose project merge requests and pull requests go to.", Ctl::Custom(target_remote), Binding::Repo("forgeTargetRemote", || Value::Null, None)),
+        d("forgeAccount", "Forge account", "repository", "Merge requests", "account github gitlab forgejo forge private work multiple identities", "The account for this repository's merge requests, forks and avatars. Automatic: the host's first account in Settings › Accounts.", Ctl::Custom(forge_account_control), Binding::Repo("forgeAccount", || Value::Null, Some(|v, cx| v.forge_account_chosen(cx)))),
         d("branchUpdate", "Update an MR's branch by", "repository", "Merge requests", "rebase merge update branch behind pipeline skip ci pull request", "What the merge panel's update button does. It remembers your last choice.", Ctl::Select(|_| vec![(Value::Null, "The forge's default".into()), (json!("rebase"), "Rebase".into()), (json!("rebaseSkipCi"), "Rebase without pipeline".into()), (json!("merge"), "Merge".into())]), Binding::Repo("branchUpdate", || Value::Null, None)),
         d("gitflow", "Git flow", "repository", "Branches", "gitflow git-flow feature release hotfix develop production prefix version tag", "Its production and development branches, and the prefixes of its feature, release and hotfix branches.", Ctl::Custom(gitflow_control), Binding::None),
     ];
@@ -610,6 +611,25 @@ fn target_remote(this: &mut GitVolt, def: &'static Def, _: &mut Window, cx: &mut
         .ok();
     });
     div().flex().flex_none().w(px(240.)).child(controls::select("setting:forgeTargetRemote", remote, Rc::new(options), None, on_change, cx)).into_any_element()
+}
+
+/// `ForgeAccountControl`: which account this repository uses on its forge host (a private and a work one, say).
+fn forge_account_control(this: &mut GitVolt, def: &'static Def, _: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
+    this.repo_accounts_wanted(cx);
+    let chosen = bound(this, &def.binding).as_str().map(str::to_string);
+    let options = crate::forge::accounts::forge_account_options(this.repo_accounts_seen(), chosen.as_deref());
+    let options: Vec<(String, SharedString, Option<SharedString>)> = options.into_iter().map(|(v, l)| (v, l.into(), None)).collect();
+    let weak = cx.weak_entity();
+    let on_change: OnSelect<String> = Rc::new(move |v, _, cx| {
+        let value = if v.is_empty() { Value::Null } else { json!(v) };
+        weak.update(cx, |this, cx| set_bound(this, &def.binding, value, cx)).ok();
+    });
+    div().flex().flex_none().w(px(240.)).child(controls::select("setting:forgeAccount", chosen.unwrap_or_default(), Rc::new(options), None, on_change, cx)).into_any_element()
+}
+
+/// `useShown`: whether a setting's row is on its page now. A search finds it all the same.
+pub fn on_its_page(this: &GitVolt, def: &Def) -> bool {
+    def.id != "forgeAccount" || crate::forge::accounts::forge_account_shown(this.repo_accounts_seen(), bound(this, &def.binding).as_str())
 }
 
 fn gitflow_control(this: &mut GitVolt, _: &'static Def, _: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {

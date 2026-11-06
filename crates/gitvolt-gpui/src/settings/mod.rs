@@ -85,6 +85,7 @@ impl Default for SettingsUi {
 impl GitVolt {
     /// `show`: opens Settings, on the page of setting `focus` if it's given, its row flashing.
     pub fn show_settings(&mut self, focus: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings_ui.accounts.repo_asked = None;
         let ui = &mut self.settings_ui;
         let handle = ui.focus.get_or_insert_with(|| cx.focus_handle()).clone();
         ui.return_to = if ui.open { ui.return_to.take() } else { window.focused(cx) };

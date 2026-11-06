@@ -308,14 +308,19 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
     Ui::get_mut(cx).arm.armed.as_mut()?.overlay = Some(Bounds::new(point(px(left), px(box_.top)), size(px(w), px(h))));
     let shown = div().absolute().top_0().left_0().size_0().child(overlay);
     Some(match caption {
-        Some(text) => div()
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_0()
-            .child(shown)
-            .child(div().absolute().left(px(left)).top(px(box_.bottom + 6.)).max_w(px(320.)).px(px(10.)).py(px(6.)).bg(theme::panel_bg1()).border_1().border_color(theme::section_border()).rounded(px(6.)).text_color(theme::mix(color, 0.45, theme::text_selected())).text_size(px(12.)).child(text))
-            .into_any_element(),
+        Some(text) => {
+            // `max-width: 320px` of a box as wide as its text, on the side the control grew from. A parent of no size would squeeze it to a letter a line.
+            let cap_w = (super::text_width(&text, 12., FontWeight::NORMAL, cx) + 22.).min(320.);
+            let cap_left = if grow { left } else { left + w - cap_w };
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_0()
+                .child(shown)
+                .child(div().absolute().left(px(cap_left)).top(px(box_.bottom + 6.)).w(px(cap_w)).px(px(10.)).py(px(6.)).bg(theme::panel_bg1()).border_1().border_color(theme::section_border()).rounded(px(6.)).shadow(vec![BoxShadow { color: theme::shadow_popup(), offset: point(px(0.), px(6.)), blur_radius: px(20.), spread_radius: px(0.), inset: false }]).text_color(theme::mix(color, 0.45, theme::text_selected())).text_size(px(12.)).child(text))
+                .into_any_element()
+        }
         None => shown.into_any_element(),
     })
 }

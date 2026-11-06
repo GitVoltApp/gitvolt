@@ -407,6 +407,7 @@ impl GitVolt {
         }
         let (Some(remote), Some(project)) = (remote, project) else { return };
         let host = project.host.clone();
+        let account_id = self.tabs.iter().find(|t| t.id == tab).and_then(|t| t.forge.account_id.clone());
         let (api, rt) = (self.api.clone(), self.rt.clone());
         let handle = window.window_handle();
         cx.spawn(async move |this, cx| {
@@ -416,7 +417,8 @@ impl GitVolt {
                 Err(_) => vec![remote.clone()],
             };
             let accounts = super::ask::<Vec<super::accounts::AccountView>>(api, rt, Request::ForgeAccounts).await.unwrap_or_default();
-            let me = accounts.into_iter().find(|a| a.account.host == host).map(|a| a.account.user);
+            // "Assign to me": the user of the account the repository uses for its target.
+            let me = accounts.into_iter().find(|a| Some(&a.account.id) == account_id.as_ref()).map(|a| a.account.user);
             handle
                 .update(cx, |_, window, cx| {
                     this.update(cx, |v, cx| v.create_begin(tab, seq, remote, project, mapped, me, window, cx)).ok();

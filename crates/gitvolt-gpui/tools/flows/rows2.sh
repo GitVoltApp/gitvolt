@@ -32,6 +32,18 @@ echo "find's toggles"
 key Control+f; pause 0.3; ri type "LONG"; pause 0.4; shot r2-find
 clickon find-case; pause 0.3; shot r2-find-case
 clickon find-case; pause 0.2; clickon find-regex; pause 0.2; key Control+a; ri type "long.*edge"; pause 0.4; shot r2-find-regex
+echo "find's buttons take a click after the pointer rests on them, their tooltips shown"
+clickon find-regex; pause 0.2; key Control+a; ri type "line"; pause 0.4
+moveon find-next; pause 0.8
+check "Next's tooltip is up" "(d['tooltip'] or '').startswith('Next Match')"
+shot r2-find-next-tip
+before=$(q "d['find']['textIndex']"); ri click; pause 0.3
+check "and the press moves on ($before)" "d['find']['textIndex'] != $before"
+moveon find-close; pause 0.8
+check "Close's tooltip is up" "(d['tooltip'] or '').startswith('Close')"
+ri click; pause 0.3
+check "and the press closes it" "not d['find']"
+key Control+f; pause 0.3
 key Escape; pause 0.3
 echo "the file list's Colour row: the page's strip; Add"
 clickon "tip:src" right; pause 0.3; shot r2-menu

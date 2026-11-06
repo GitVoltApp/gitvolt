@@ -110,6 +110,7 @@ pub fn dump(t: &crate::app::Tab) -> serde_json::Value {
         "kind": f.kind,
         "remote": f.remote,
         "me": f.me,
+        "accountId": f.account_id,
         "target": f.target,
         "list": f.list.as_ref().map(|l| l.mrs.iter().map(|m| m.number).collect::<Vec<_>>()),
         "badges": f.by_ref.iter().map(|(k, m)| format!("{k}={}", m.number)).collect::<Vec<_>>(),

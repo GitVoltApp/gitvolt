@@ -594,7 +594,10 @@ pub fn card() -> Div {
 /// `PageGroups`: a page's settings as rows, in titled groups, in registration order; `skip` leaves groups out.
 pub fn page_groups(this: &mut GitVolt, page_id: &str, skip: &[&str], window: &mut Window, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
     let mut groups: Vec<(&'static str, Vec<&'static Def>)> = Vec::new();
-    for d in pages::defs().iter().filter(|d| d.page == page_id && !skip.contains(&d.group)) {
+    if page_id == "repository" {
+        this.repo_accounts_wanted(cx);
+    }
+    for d in pages::defs().iter().filter(|d| d.page == page_id && !skip.contains(&d.group) && pages::on_its_page(this, d)) {
         match groups.iter_mut().find(|g| g.0 == d.group) {
             Some(g) => g.1.push(d),
             None => groups.push((d.group, vec![d])),
