@@ -7,9 +7,11 @@ set -u
 grep -q '/run-[^/]*\.scope$' /proc/self/cgroup || exec "$(dirname "$0")/../capped.sh" "$0" "$@"
 here=$(cd "$(dirname "$0")" && pwd)
 names=("$@")
-[ ${#names[@]} = 0 ] && names=($(ls "$here" | grep -E '^[0-9a-z].*\.sh$' | grep -vE '^(lib|run)\.sh$' | sed 's/\.sh$//'))
+[ ${#names[@]} = 0 ] && names=($(ls "$here" | grep -E '^[0-9a-z].*\.sh$' | grep -vE '^(lib|run|session|monkey)\.sh$' | sed 's/\.sh$//'))
 bad=0
 for n in "${names[@]}"; do
+  # The machine is shared: below 2.5 GB available a flow waits, up to half an hour.
+  for _ in $(seq 1 60); do [ "$(free -m | awk 'NR==2{print $7}')" -ge 2560 ] && break; sleep 30; done
   f=$here/$n.sh
   layout=$(sed -n 's/^# layout: //p' "$f" | head -1)
   modes=(x11)

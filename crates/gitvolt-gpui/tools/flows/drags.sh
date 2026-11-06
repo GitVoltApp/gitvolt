@@ -21,9 +21,9 @@ ri move 79 47 -- wait 60 -- down -- wait 40 -- move 200 47 -- wait 60 -- move 33
 check "Esc: as it was" "str(d['tabs']) == '''$T0'''"
 ri move 79 47 -- wait 60 -- down -- wait 40 -- move 200 47 -- wait 60 -- move 330 47 -- wait 60 -- up -- wait 200
 check "moved" "str(d['tabs']) != '''$T0'''"
-key Control+3; pause 0.4
+N=$(q "d['tabs'].index('drag-c') + 1"); key Control+$N; pause 0.4
 echo "chip onto chip, Esc, the menu"
-FROM=$(at "chip:1:feature/two"); TO=$(at "chip:0:main")
+FROM=$(q "at([k for k in d['anchors'] if k.endswith(':feature/two') and k.startswith('chip:')][0])"); TO=$(q "at([k for k in d['anchors'] if k.endswith(':main') and k.startswith('chip:')][0])")
 ri move $FROM -- wait 80 -- down -- wait 50 -- move 320 165 -- wait 50 -- move $TO -- wait 80; key Escape; pause 0.1; ri up -- wait 300
 check "Esc: no menu" "d['menu'] == []"
 ri move $FROM -- wait 80 -- down -- wait 50 -- move 320 165 -- wait 50 -- move $TO -- wait 80 -- up -- wait 300
@@ -75,7 +75,7 @@ key Control+z; pause 0.3
 check "Ctrl+Z takes it back" "d['merge']['picked'] == 0"
 ri move 200 300 -- wait 60 -- down -- wait 40 -- move 300 300 -- wait 60 -- move 360 320 -- wait 80 -- up -- wait 100; key Control+c; pause 0.2
 check "a pane's selection copies" "d['clipboard'] and len(d['clipboard']) > 3"
-ri move 300 340 -- wait 400 -- click -- click -- wait 100; key Control+c; pause 0.2
+ri move 316 340 -- wait 400 -- click -- click -- wait 100; key Control+c; pause 0.2
 check "a double click's word, from the pane pressed in" "d['clipboard'] and chr(10) not in d['clipboard']"
 ri move 500 720 -- wait 60 -- click -- wait 200; ri type "typed"; pause 0.3
 check "typing in the output" "d['merge']['dirty']"
