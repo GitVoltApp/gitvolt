@@ -44,6 +44,26 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     expect(hints[0].querySelector('kbd.sc-key')!.textContent).toBe('P');
     expect(hints[6].querySelectorAll('kbd.sc-key').length).toBe(3);
   });
+  it('an action key moves the selection to the next row down; the last row and a multi-selection keep to the rules', () => {
+    show();
+    const acts = () => sessionOf('t1')!.state.rows.map((r) => r.action).join(',');
+    const sel = () => sessionOf('t1')!.state.selected;
+    fireEvent.click(row('e'));
+    key('d');
+    key('d');
+    expect(acts()).toBe('drop,drop,pick,pick,pick');
+    expect(sel()).toEqual([oid('c')]);
+    // Last row: stays selected.
+    fireEvent.click(row('a'));
+    key('f');
+    expect(sel()).toEqual([oid('a')]);
+    // Several rows: all take it, then the row after the last selected one.
+    fireEvent.click(row('d'));
+    fireEvent.click(row('c'), { shiftKey: true });
+    key('s');
+    expect(sel()).toEqual([oid('b')]);
+  });
+
   it('letters set the selected rows\' action; Ctrl+↓ moves them; a folded row shows ↓', () => {
     show();
     fireEvent.click(row('c'));
@@ -51,6 +71,8 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     key('s');
     expect(sessionOf('t1')!.state.rows.filter((r) => r.action === 'squash').map((r) => r.oid)).toEqual([oid('d'), oid('c')]);
     expect(row('d').classList.contains('is-folded')).toBe(true);
+    fireEvent.click(row('c'));
+    fireEvent.click(row('d'), { ctrlKey: true });
     key('ArrowDown', { ctrlKey: true });
     expect(sessionOf('t1')!.state.rows.map((r) => r.summary).join('')).toBe('EBDCA');
   });
@@ -158,6 +180,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     fireEvent.click(row('c'));
     expect(undo.getAttribute('aria-disabled')).toBe('true');
     key('d');
+    fireEvent.click(row('c'));
     key('ArrowDown', { ctrlKey: true });
     expect(order()).toBe('EDBCA');
     act(() => editState('t1', reset));
@@ -186,6 +209,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     show();
     fireEvent.click(row('b'));
     key('d');
+    fireEvent.click(row('b'));
     key('Enter');
     const summary = screen.getByRole('textbox', { name: 'Commit summary' });
     fireEvent.keyDown(summary, { key: 'z', ctrlKey: true });
@@ -196,6 +220,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     show();
     fireEvent.click(row('b'));
     key('d');
+    fireEvent.click(row('b'));
     key('Enter');
     const summary = screen.getByRole('textbox', { name: 'Commit summary' }) as HTMLInputElement;
     fireEvent.change(summary, { target: { value: 'B, draft' } });
