@@ -1476,8 +1476,17 @@ fn status_bar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement + u
         .child(concat!("GitVolt ", env!("CARGO_PKG_VERSION")))
 }
 
+/// The edges that take a resize: none in a maximized or fullscreen window, and none where it's tiled, as a window manager's own frame.
+fn resizable_edges(tiling: Tiling, maximized: bool, fullscreen: bool) -> Tiling {
+    if maximized || fullscreen {
+        return Tiling { top: true, left: true, right: true, bottom: true };
+    }
+    tiling
+}
+
 fn resize_handles(window: &Window) -> Option<impl IntoElement + use<>> {
-    let Decorations::Client { .. } = window.window_decorations() else { return None };
+    let Decorations::Client { tiling } = window.window_decorations() else { return None };
+    let tiled = resizable_edges(tiling, window.is_maximized(), window.is_fullscreen());
     let edge = |id: &'static str, edge: ResizeEdge, cursor: CursorStyle| div().id(id).absolute().occlude().cursor(cursor).on_mouse_down(MouseButton::Left, move |_, window, _| window.start_window_resize(edge));
     let w = px(RESIZE);
     Some(
@@ -1486,14 +1495,14 @@ fn resize_handles(window: &Window) -> Option<impl IntoElement + use<>> {
             .top_0()
             .left_0()
             .size_full()
-            .child(edge("r-top", ResizeEdge::Top, CursorStyle::ResizeUpDown).top_0().left_0().right_0().h(w))
-            .child(edge("r-bottom", ResizeEdge::Bottom, CursorStyle::ResizeUpDown).bottom_0().left_0().right_0().h(w))
-            .child(edge("r-left", ResizeEdge::Left, CursorStyle::ResizeLeftRight).top_0().bottom_0().left_0().w(w))
-            .child(edge("r-right", ResizeEdge::Right, CursorStyle::ResizeLeftRight).top_0().bottom_0().right_0().w(w))
-            .child(edge("r-tl", ResizeEdge::TopLeft, CursorStyle::ResizeUpLeftDownRight).top_0().left_0().size(w))
-            .child(edge("r-tr", ResizeEdge::TopRight, CursorStyle::ResizeUpRightDownLeft).top_0().right_0().size(w))
-            .child(edge("r-bl", ResizeEdge::BottomLeft, CursorStyle::ResizeUpRightDownLeft).bottom_0().left_0().size(w))
-            .child(edge("r-br", ResizeEdge::BottomRight, CursorStyle::ResizeUpLeftDownRight).bottom_0().right_0().size(w)),
+            .when(!tiled.top, |d| d.child(edge("r-top", ResizeEdge::Top, CursorStyle::ResizeUpDown).top_0().left_0().right_0().h(w)))
+            .when(!tiled.bottom, |d| d.child(edge("r-bottom", ResizeEdge::Bottom, CursorStyle::ResizeUpDown).bottom_0().left_0().right_0().h(w)))
+            .when(!tiled.left, |d| d.child(edge("r-left", ResizeEdge::Left, CursorStyle::ResizeLeftRight).top_0().bottom_0().left_0().w(w)))
+            .when(!tiled.right, |d| d.child(edge("r-right", ResizeEdge::Right, CursorStyle::ResizeLeftRight).top_0().bottom_0().right_0().w(w)))
+            .when(!tiled.top && !tiled.left, |d| d.child(edge("r-tl", ResizeEdge::TopLeft, CursorStyle::ResizeUpLeftDownRight).top_0().left_0().size(w)))
+            .when(!tiled.top && !tiled.right, |d| d.child(edge("r-tr", ResizeEdge::TopRight, CursorStyle::ResizeUpRightDownLeft).top_0().right_0().size(w)))
+            .when(!tiled.bottom && !tiled.left, |d| d.child(edge("r-bl", ResizeEdge::BottomLeft, CursorStyle::ResizeUpRightDownLeft).bottom_0().left_0().size(w)))
+            .when(!tiled.bottom && !tiled.right, |d| d.child(edge("r-br", ResizeEdge::BottomRight, CursorStyle::ResizeUpLeftDownRight).bottom_0().right_0().size(w))),
     )
 }
 
@@ -1737,6 +1746,18 @@ impl Render for GitVolt {
 
 #[cfg(test)]
 pub mod tests {
+    #[test]
+    fn a_maximized_or_fullscreen_window_has_no_edge_to_resize_and_a_tiled_edge_neither() {
+        let free = Tiling::default();
+        let all = |t: Tiling| t.top && t.left && t.right && t.bottom;
+        assert!(all(super::resizable_edges(free, true, false)));
+        assert!(all(super::resizable_edges(free, false, true)));
+        assert!(!super::resizable_edges(free, false, false).top);
+        let half = Tiling { left: true, top: true, bottom: true, right: false };
+        assert!(!super::resizable_edges(half, false, false).right, "only where it's free");
+        assert!(super::resizable_edges(half, false, false).left);
+    }
+
     use super::*;
     use gitvolt_core::git::GitCli;
     use gitvolt_core::log::CommandLog;

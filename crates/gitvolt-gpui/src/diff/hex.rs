@@ -2,7 +2,7 @@
 //! text panes per side, byte i against byte i, the changed bytes coloured in both panes. It scrolls as
 //! the diff does, on `DiffState`'s `scroll` and `layout`, with one row of the layout per row of bytes.
 
-use super::view::{DiffState, RULER_W, mono, strip_events};
+use super::view::{DiffState, RULER_W, mono, strip_drag, strip_events};
 use crate::app::GitVolt;
 use crate::theme;
 use gpui::prelude::*;
@@ -314,11 +314,13 @@ fn bar(diff: &DiffState, view: &HexView, file: bool, cx: &mut Context<GitVolt>) 
     let tones: Vec<Hsla> = if file { Vec::new() } else { view.data.sides(false).iter().map(|(_, old)| if *old { theme::ruler_removed() } else { theme::ruler_added() }).collect() };
     let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
     let paint_cell = cell.clone();
+    let view_handle = cx.weak_entity();
     strip_events(div().id("hex-bar").flex_none().w(px(RULER_W)).h_full(), cell, cx).child(
         canvas(
             |_, _, _| {},
             move |b, _, window, _| {
                 paint_cell.set(b);
+                strip_drag(view_handle.clone(), window);
                 let height = b.size.height.as_f32();
                 let share = |row: usize| row as f32 / rows.max(1) as f32 * height;
                 for &(first, last) in &marks {
@@ -327,9 +329,8 @@ fn bar(diff: &DiffState, view: &HexView, file: bool, cx: &mut Context<GitVolt>) 
                         window.paint_quad(fill(Bounds::new(point(b.origin.x + w * i as f32, b.origin.y + px(share(first))), size(w, px((share(last + 1) - share(first)).max(2.)))), *tone));
                     }
                 }
-                let total = layout.total().max(1.);
-                if total > height {
-                    window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(scroll * height / total)), size(b.size.width, px(height * height / total))), theme::scroll_thumb()));
+                if let Some(s) = super::model::slider_of(layout.height, layout.total().max(1.), scroll, height) {
+                    window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(s.top)), size(b.size.width, px(s.height))), theme::scroll_thumb()));
                 }
             },
         )

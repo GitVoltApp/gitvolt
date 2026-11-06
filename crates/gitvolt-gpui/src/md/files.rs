@@ -304,24 +304,24 @@ fn paint_ruler(b: Bounds<Pixels>, view: &Entity<MdView>, marks: &[(f32, f32, Mar
         };
         window.paint_quad(fill(Bounds::new(point(b.origin.x + px(x), b.origin.y + px(centre - half)), size(px(w), px(2. * half))), mark_tint(*kind)));
     }
-    let slider_h = if content > visible { ((visible * strip / content).floor().max(20.)).round() } else { strip };
-    if content > visible {
-        let slide = (strip - slider_h) / (content - visible);
-        window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px((scroll * slide).round())), size(px(RULER_W), px(slider_h))), theme::scroll_thumb()));
+    if let Some(s) = crate::diff::model::slider_of(visible, content, scroll, strip) {
+        window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(s.top)), size(px(RULER_W), px(s.height))), theme::scroll_thumb()));
     }
-    let to_scroll = move |y: f32| ((y - slider_h / 2.) / (strip - slider_h).max(1.)).clamp(0., 1.) * max;
+    let to_scroll = move |y: f32, at: f32| crate::diff::model::scroll_top_at(y, visible, content, strip, at).min(max);
     let (v1, v2) = (view.clone(), view.clone());
     let (s1, s2) = (st.clone(), st);
-    let dragging = Rc::new(std::cell::Cell::new(false));
-    let d2 = dragging.clone();
     window.on_mouse_event(move |e: &MouseDownEvent, phase, _, cx| {
         if phase == DispatchPhase::Bubble && b.contains(&e.position) && e.button == MouseButton::Left {
-            s1.borrow_mut().set_scroll(to_scroll((e.position.y - b.origin.y).as_f32()));
-            s1.borrow_mut().ruler_drag = true;
+            let y = (e.position.y - b.origin.y).as_f32();
+            let at = crate::diff::model::slider_grab(y, visible, content, scroll, strip);
+            let mut state = s1.borrow_mut();
+            state.ruler_grab = at;
+            state.set_scroll(to_scroll(y, at));
+            state.ruler_drag = true;
+            drop(state);
             v1.update(cx, |_, cx| cx.notify());
         }
     });
-    let _ = d2;
     window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
         if phase != DispatchPhase::Bubble {
             return;
@@ -329,14 +329,14 @@ fn paint_ruler(b: Bounds<Pixels>, view: &Entity<MdView>, marks: &[(f32, f32, Mar
         let drag = s2.borrow().ruler_drag;
         if drag {
             if e.pressed_button == Some(MouseButton::Left) {
-                s2.borrow_mut().set_scroll(to_scroll((e.position.y - b.origin.y).as_f32()));
+                let at = s2.borrow().ruler_grab;
+                s2.borrow_mut().set_scroll(to_scroll((e.position.y - b.origin.y).as_f32(), at));
             } else {
                 s2.borrow_mut().ruler_drag = false;
             }
             v2.update(cx, |_, cx| cx.notify());
         }
     });
-    let _ = dragging;
 }
 
 #[cfg(test)]

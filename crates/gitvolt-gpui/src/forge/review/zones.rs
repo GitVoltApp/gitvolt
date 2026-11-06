@@ -39,6 +39,8 @@ pub struct ZoneSlot {
     pub new_side: bool,
     /// 1-based, on its side.
     pub line: u32,
+    /// Where its range starts, when it has lines before `line`.
+    pub start_line: Option<u32>,
     pub height: f32,
 }
 
@@ -142,19 +144,21 @@ pub fn review_mode(s: Option<&ReviewSession>, compare: Option<(&str, &str)>, pat
 }
 
 /// `reviewEntries`: one file's cards, in line order (at one line: its threads, then drafts, then boxes), with whether a thread's folded to the gutter.
-pub fn entries(placed: &[PlacedItem], boxes: &[OpenBox]) -> Vec<(String, bool, u32, Entry)> {
-    let mut out: Vec<(u8, String, bool, u32, Entry)> = Vec::new();
+pub fn entries(placed: &[PlacedItem], boxes: &[OpenBox]) -> Vec<(String, bool, u32, Option<u32>, Entry)> {
+    let mut out: Vec<(u8, String, bool, u32, Option<u32>, Entry)> = Vec::new();
     for p in placed.iter().filter(|p| p.shown()) {
         match p {
-            PlacedItem::Draft { draft, at } => out.push((1, format!("d:{}", draft.id), at.side == DiffSide::New, at.line, Entry::Draft { draft: draft.clone(), outdated: at.outdated })),
-            PlacedItem::Thread { thread, at } => out.push((0, format!("t:{}", thread.id), at.side == DiffSide::New, at.line, Entry::Thread { thread: thread.clone(), outdated: at.outdated })),
+            PlacedItem::Draft { draft, at } => out.push((1, format!("d:{}", draft.id), at.side == DiffSide::New, at.line, at.start_line, Entry::Draft { draft: draft.clone(), outdated: at.outdated })),
+            PlacedItem::Thread { thread, at } => out.push((0, format!("t:{}", thread.id), at.side == DiffSide::New, at.line, at.start_line, Entry::Thread { thread: thread.clone(), outdated: at.outdated })),
         }
     }
     for b in boxes {
-        out.push((2, format!("b:{}", b.key), b.anchor.end.side() == DiffSide::New, b.anchor.end.number(), Entry::Box(b.clone())));
+        let side = b.anchor.end.side();
+        let start = b.anchor.start.filter(|s| s.side() == side).map(|s| s.number());
+        out.push((2, format!("b:{}", b.key), side == DiffSide::New, b.anchor.end.number(), start, Entry::Box(b.clone())));
     }
     out.sort_by_key(|e| (e.3, e.0));
-    out.into_iter().map(|e| (e.1, e.2, e.3, e.4)).collect()
+    out.into_iter().map(|e| (e.1, e.2, e.3, e.4, e.5)).collect()
 }
 
 /// What review mode keeps in a tab, for the session.
@@ -418,26 +422,31 @@ impl GitVolt {
         let mut slots = Vec::new();
         let mut shown = Vec::new();
         let mut icons: HashMap<(bool, u32), Vec<ForgeDiscussion>> = HashMap::new();
-        for (key, new_side, line, e) in list {
+        let mut icon_starts: HashMap<(bool, u32), u32> = HashMap::new();
+        for (key, new_side, line, start_line, e) in list {
             if let Entry::Thread { thread, .. } = &e
                 && !open_of(&thread.id, thread.resolved)
             {
                 icons.entry((new_side, line)).or_default().push(thread.clone());
+                if let Some(start) = start_line {
+                    icon_starts.entry((new_side, line)).and_modify(|s| *s = start.min(*s)).or_insert(start);
+                }
                 continue;
             }
-            slots.push(ZoneSlot { height: heights.get(&key).copied().unwrap_or(FIRST_H), key: key.clone(), new_side, line });
+            slots.push(ZoneSlot { height: heights.get(&key).copied().unwrap_or(FIRST_H), key: key.clone(), new_side, line, start_line });
             shown.push((key, e));
         }
         let review = crate::diff::view::ReviewState {
             old: file.as_ref().map_or(Default::default(), |f| f.old.keys().copied().collect()),
             new: file.as_ref().map_or(Default::default(), |f| f.new.keys().copied().collect()),
             icons,
+            icon_starts,
             banner: stale.then(|| if updating { format!("{} is still catching up with the latest push: comments are off until it has", forge_name(kind)) } else { "This merge request moved on: compare again to review its latest changes".to_string() }).or(too_large.then(|| format!("{} sent no diff for this file: it takes no comments here", forge_name(kind)))),
             tab,
         };
         let t = self.tabs.get_mut(self.active).expect("the tab");
         let d = t.diff.as_mut().expect("the diff");
-        let same_set = d.zones.len() == slots.len() && d.zones.iter().zip(&slots).all(|(a, b)| a.key == b.key && a.new_side == b.new_side && a.line == b.line);
+        let same_set = d.zones.len() == slots.len() && d.zones.iter().zip(&slots).all(|(a, b)| a.start_line == b.start_line && a.key == b.key && a.new_side == b.new_side && a.line == b.line);
         d.review = Some(review);
         if !same_set {
             d.zones = slots;
@@ -610,6 +619,9 @@ fn thread_card(this: &mut GitVolt, tab: u32, kind: ForgeKind, number: u64, threa
 pub fn overlays(diff: &DiffState, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
     let mut out = Vec::new();
     let Some(review) = diff.review.as_ref() else { return out };
+    if diff.review_drag.is_some() {
+        out.push(drag_capture(cx));
+    }
     let tab = review.tab;
     let scroll = diff.scroll;
     let height = diff.layout.height;
@@ -683,6 +695,10 @@ pub fn overlays(diff: &DiffState, cx: &mut Context<GitVolt>) -> Vec<AnyElement> 
                 .left(px(x))
                 .top(px(top + 1.))
                 .cursor_pointer()
+                .on_hover({
+                    let at = (*new_side, *line);
+                    cx.listener(move |v, on: &bool, _, cx| v.with_diff(cx, |d| d.review_icon_hover = on.then_some(at)))
+                })
                 .on_mouse_down(MouseButton::Left, |_, window, cx| {
                     window.prevent_default();
                     cx.stop_propagation();
@@ -949,16 +965,78 @@ pub fn row_badge(this: &GitVolt, path: &str, cx: &mut Context<GitVolt>) -> Optio
 }
 
 /// The lines a drag from the "+" has gone over: their tint, under the rows' text.
+/// A drag from the "+" goes on wherever the pointer is, over a card or off the diff, and ends wherever it's let go.
+fn drag_capture(cx: &mut Context<GitVolt>) -> AnyElement {
+    let view = cx.weak_entity();
+    canvas(
+        |_, _, _| {},
+        move |_, _, window, _| {
+            let moved = view.clone();
+            window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+                if phase == DispatchPhase::Capture {
+                    let _ = moved.update(cx, |v, cx| {
+                        if v.review_drag_move(e, cx) {
+                            cx.stop_propagation();
+                        }
+                    });
+                }
+            });
+            let up = view.clone();
+            window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
+                if phase == DispatchPhase::Capture && e.button == MouseButton::Left {
+                    let _ = up.update(cx, |v, cx| v.review_release(cx));
+                }
+            });
+        },
+    )
+    .absolute()
+    .size_full()
+    .into_any_element()
+}
+
+/// The rows that show a side's lines `lo..=hi`.
+pub fn rows_of_lines(rows: &[Row], new_side: bool, lo: u32, hi: u32) -> Vec<usize> {
+    rows.iter().enumerate().filter(|(_, r)| if new_side { r.new } else { r.old }.is_some_and(|n| (lo..=hi).contains(&(n + 1)))).map(|(i, _)| i).collect()
+}
+
+/// A side's lines tinted where its editor draws them: its half in Split; inline, an old line on the line numbers' strip.
+fn line_marks(diff: &DiffState, new_side: bool, lo: u32, hi: u32, tint: Hsla) -> Vec<AnyElement> {
+    let width = diff.body.get().size.width.as_f32();
+    let (left, w) = match (diff.split_shown(), new_side) {
+        (true, false) => (0., width / 2.),
+        (true, true) => (width / 2., width / 2.),
+        (false, true) => (0., width),
+        (false, false) => (0., diff.gutter_w()),
+    };
+    rows_of_lines(&diff.rows, new_side, lo, hi)
+        .into_iter()
+        .filter_map(|ix| {
+            let (top, end) = (diff.layout.offsets.get(ix)? - diff.scroll, diff.layout.offsets.get(ix + 1)? - diff.scroll);
+            Some(div().absolute().left(px(left)).w(px(w)).top(px(top)).h(px(end - top)).bg(tint).into_any_element())
+        })
+        .collect()
+}
+
+/// `.review-drag`: the lines a drag from the "+" has gone over.
 pub fn drag_marks(diff: &DiffState) -> Vec<AnyElement> {
     let Some((new_side, a, b)) = diff.review_drag else { return Vec::new() };
-    let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+    line_marks(diff, new_side, a.min(b), a.max(b), Hsla { a: 0.18, ..theme::blue() })
+}
+
+/// `.review-range`: the lines of an open card's range, and of a hovered icon's.
+pub fn range_marks(diff: &DiffState) -> Vec<AnyElement> {
+    let Some(review) = diff.review.as_ref() else { return Vec::new() };
+    let tint = Hsla { a: 0.12, ..theme::yellow() };
     let mut out = Vec::new();
-    for (ix, r) in diff.rows.iter().enumerate() {
-        let n = if new_side { r.new } else { r.old }.map(|n| n + 1);
-        if n.is_some_and(|n| (lo..=hi).contains(&n)) {
-            let (Some(top), Some(end)) = (diff.layout.offsets.get(ix).map(|t| t - diff.scroll), diff.layout.offsets.get(ix + 1).map(|t| t - diff.scroll)) else { continue };
-            out.push(div().absolute().left_0().right_0().top(px(top)).h(px(end - top)).bg(Hsla { a: 0.15, ..theme::blue() }).into_any_element());
+    for z in &diff.zones {
+        if let Some(start) = z.start_line.filter(|s| *s < z.line) {
+            out.extend(line_marks(diff, z.new_side, start, z.line, tint));
         }
+    }
+    if let Some(at) = diff.review_icon_hover
+        && let Some(start) = review.icon_starts.get(&at).filter(|s| **s < at.1)
+    {
+        out.extend(line_marks(diff, at.0, *start, at.1, tint));
     }
     out
 }
@@ -973,7 +1051,15 @@ mod tests {
     }
 
     fn slot(key: &str, new_side: bool, line: u32) -> ZoneSlot {
-        ZoneSlot { key: key.into(), new_side, line, height: 40. }
+        ZoneSlot { key: key.into(), new_side, line, start_line: None, height: 40. }
+    }
+
+    #[test]
+    fn a_ranges_rows_are_its_sides_lines_and_skip_what_the_other_side_alone_shows() {
+        let rows = vec![row(Some(0), Some(0)), row(Some(1), None), row(None, Some(1)), row(Some(2), Some(2)), row(Some(3), Some(3))];
+        assert_eq!(rows_of_lines(&rows, true, 2, 3), [2, 3], "the new side's lines 2 and 3");
+        assert_eq!(rows_of_lines(&rows, false, 2, 3), [1, 3], "the old side's");
+        assert!(rows_of_lines(&rows, true, 9, 12).is_empty());
     }
 
     #[test]

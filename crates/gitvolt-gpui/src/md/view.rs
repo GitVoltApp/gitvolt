@@ -188,6 +188,8 @@ pub struct MdState {
     press_at: Point<Pixels>,
     last_step: Option<(usize, f32)>,
     pub ruler_drag: bool,
+    /// The slider's point a press on the ruler took.
+    pub ruler_grab: f32,
 }
 
 pub struct MdView {
@@ -1842,6 +1844,7 @@ impl MdView {
             press_at: Point::default(),
             last_step: None,
             ruler_drag: false,
+            ruler_grab: 0.5,
         };
         Self { state: Rc::new(RefCell::new(state)), focus: cx.focus_handle() }
     }

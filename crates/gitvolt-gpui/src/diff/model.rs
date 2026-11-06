@@ -414,6 +414,48 @@ pub fn change_starts(rows: &[Row]) -> Vec<usize> {
     out
 }
 
+/// A viewport's slider on a strip (`mdRuler.ts`'s `Slider`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Slider {
+    pub top: f32,
+    pub height: f32,
+    pub ratio: f32,
+}
+
+/// `sliderOf`, Monaco's `ScrollbarState`: proportional, at least 20 px; `None` when nothing scrolls.
+pub fn slider_of(visible: f32, content: f32, scroll: f32, strip: f32) -> Option<Slider> {
+    if content <= visible || content <= 0. {
+        return None;
+    }
+    let height = (visible * strip / content).floor().max(20.).round();
+    let ratio = (strip - height) / (content - visible);
+    Some(Slider { top: (scroll * ratio).round(), height, ratio })
+}
+
+/// `scrollTopAt`: the scroll that puts the slider's point `at` (a share of its height) on `y`.
+pub fn scroll_top_at(y: f32, visible: f32, content: f32, strip: f32, at: f32) -> f32 {
+    match slider_of(visible, content, 0., strip) {
+        Some(s) if s.ratio > 0. => ((y - s.height * at) / s.ratio).clamp(0., content - visible),
+        _ => 0.,
+    }
+}
+
+/// What a press at `y` holds: the slider's point it's on, which then stays under the pointer (the view doesn't move), or off
+/// the slider its middle, which centres the view there (`sliderPointAt`, and Monaco's scrollbar).
+pub fn slider_grab(y: f32, visible: f32, content: f32, scroll: f32, strip: f32) -> f32 {
+    let Some(s) = slider_of(visible, content, scroll, strip) else { return 0.5 };
+    let exact = scroll * s.ratio;
+    if y >= exact && y < exact + s.height && s.height > 0. { (y - exact) / s.height } else { 0.5 }
+}
+
+/// `markRects`' rows on the strip: at least 2 px, centred on the change and kept on the strip: (top, height).
+pub fn mark_span(top: f32, height: f32, ratio: f32, strip: f32) -> (f32, f32) {
+    let (y1, y2) = ((top * ratio).floor(), ((top + height) * ratio).floor());
+    let centre = (y1 + y2) / 2.;
+    let half = (y2 - centre).max(1.);
+    (centre.min(strip - half).max(half) - half, 2. * half)
+}
+
 /// The overview ruler's blocks: (first row, rows, removed?), runs of one colour.
 pub fn ruler_marks(rows: &[Row]) -> Vec<(usize, usize, bool)> {
     let mut out: Vec<(usize, usize, bool)> = Vec::new();
@@ -553,6 +595,34 @@ mod tests {
     fn a_blank_line_takes_the_lesser_guides_around_it() {
         let side = Side::new(Some("a\n        b\n\n    c\n\nd"));
         assert_eq!(side.lines.iter().map(|l| l.guides).collect::<Vec<_>>(), [0, 2, 1, 1, 0, 0]);
+    }
+
+    #[test]
+    fn a_held_slider_stays_under_the_pointer_and_a_press_off_it_centres() {
+        let (visible, content, strip) = (400., 1000., 400.);
+        let s = slider_of(visible, content, 300., strip).unwrap();
+        assert_eq!((s.top, s.height), (120., 160.), "proportional");
+        let y = 150.;
+        let at = slider_grab(y, visible, content, 300., strip);
+        assert!(at > 0. && at < 1.);
+        assert!((scroll_top_at(y, visible, content, strip, at) - 300.).abs() < 0.5, "holding it doesn't move the view");
+        assert_eq!(slider_grab(380., visible, content, 300., strip), 0.5);
+        assert_eq!(scroll_top_at(10_000., visible, content, strip, 0.5), content - visible, "past the end");
+        assert_eq!(scroll_top_at(-10_000., visible, content, strip, 0.5), 0., "before the start");
+    }
+
+    #[test]
+    fn a_long_files_slider_keeps_its_least_size_and_a_short_one_has_none() {
+        assert_eq!(slider_of(400., 100_000., 0., 400.).unwrap().height, 20.);
+        assert_eq!(slider_of(400., 300., 0., 400.), None);
+        assert_eq!(slider_grab(5., 400., 300., 0., 400.), 0.5);
+    }
+
+    #[test]
+    fn a_short_change_still_shows_on_the_strip_and_stays_on_it() {
+        assert_eq!(mark_span(100., 1., 0.1, 400.), (9., 2.));
+        assert_eq!(mark_span(0., 1., 0.1, 400.), (0., 2.), "at the top");
+        assert_eq!(mark_span(3999., 1., 0.1, 400.), (398., 2.), "at the end");
     }
 
     #[test]

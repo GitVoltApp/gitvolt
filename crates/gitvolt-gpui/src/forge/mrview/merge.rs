@@ -55,6 +55,17 @@ pub fn method_label(kind: ForgeKind, m: MergeMethod) -> &'static str {
     }
 }
 
+/// `filter: brightness(1.1)`, the merge button's hover.
+fn brighter(c: Hsla) -> Hsla {
+    Hsla { l: (c.l * 1.1).min(1.), ..c }
+}
+
+/// `.mr-merge-pick`'s left border over the button's ground, between a split button's parts: GPUI has one border colour to an
+/// element, and draws it over the element's children.
+fn pick_divider(ground: Option<Hsla>) -> Div {
+    div().flex_none().w(px(1.)).bg(ground.map_or(theme::section_border(), |g| theme::mix(theme::text_on_accent(), 0.35, g)))
+}
+
 fn method_tip(m: MergeMethod) -> &'static str {
     match m {
         MergeMethod::Merge => "Merges with a merge commit",
@@ -481,7 +492,7 @@ pub fn merge_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, listed: &ForgeMr
     let (m_run, d_run) = (mr.clone(), detail.cloned());
     let go = {
         let base = mr_button("mr-merge-go", ready).font_weight(if ready && mode != MergeMode::Cancel { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM }).child(label);
-        let styled = if ready && mode != MergeMode::Cancel { base.bg(theme::green()).border_color(theme::green()).text_color(theme::text_on_accent()).hover(|d| d.bg(theme::green())) } else { base };
+        let styled = if ready && mode != MergeMode::Cancel { base.bg(theme::green()).border_color(theme::green()).text_color(theme::text_on_accent()).hover(|d| d.bg(brighter(theme::green()))) } else { base };
         let styled = if pick { styled.rounded_r(px(0.)) } else { styled };
         styled.when(ready, |d| {
             d.on_click(cx.listener(move |v, _, window, cx| v.merge_run(tab, kind, &m_run, d_run.as_ref(), mode, Origin::control("mr-merge-act"), window, cx)))
@@ -495,7 +506,7 @@ pub fn merge_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, listed: &ForgeMr
         let key = "mr-merge-method";
         let rows_methods = methods.clone();
         let weak = cx.weak_entity();
-        crate::ui::anchor(key, mr_button(key, busy.is_none()).px(px(5.)).rounded_l(px(0.)).border_l_1().bg(if ready { theme::green() } else { theme::control_bg() }).border_color(if ready { theme::green() } else { theme::section_border() }).child(icon("chevron-down", 14., if ready { theme::text_on_accent() } else { theme::text_disabled() })).on_mouse_down(MouseButton::Left, cx.listener(move |_, _, window, cx| {
+        crate::ui::anchor(key, mr_button(key, busy.is_none()).px(px(5.)).border_l_0().rounded_l(px(0.)).bg(if ready { theme::green() } else { theme::control_bg() }).border_color(if ready { theme::green() } else { theme::section_border() }).when(ready, |d| d.hover(|d| d.bg(brighter(theme::green())))).child(icon("chevron-down", 14., if ready { theme::text_on_accent() } else { theme::text_disabled() })).on_mouse_down(MouseButton::Left, cx.listener(move |_, _, window, cx| {
             cx.stop_propagation();
             let rows: Vec<MenuRow> = rows_methods.iter().map(|m| {
                 let (w, m) = (weak.clone(), *m);
@@ -526,7 +537,7 @@ pub fn merge_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, listed: &ForgeMr
         .bg(theme::panel_bg1())
         .child(div().flex().flex_none().size(px(22.)).items_center().justify_center().rounded_full().bg(theme::mix(tone_color, 0.18, transparent_black())).child(dot_icon))
         .child(div().flex().flex_col().flex_1().min_w_0().child(title_row).child(div().min_h(px(17.)).text_size(px(12.)).text_color(note_color).child(note.unwrap_or_default())))
-        .child(crate::ui::anchor("mr-merge-act", div().flex().flex_none().items_center().child(go).children(chevron)));
+        .child(crate::ui::anchor("mr-merge-act", div().flex().flex_none().items_stretch().child(go).when(pick, |d| d.child(pick_divider(ready.then(theme::green)))).children(chevron)));
     let mut section = div().id("mr-merge").flex().flex_col().flex_none().rounded(px(8.)).border_1().border_color(theme::section_border()).overflow_hidden().child(top);
     if let (true, Some(main), Some(o)) = (show_update, main, offer.as_ref()) {
         let others: Vec<BranchUpdate> = offered.iter().copied().filter(|k| *k != main).collect();
@@ -543,10 +554,11 @@ pub fn merge_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, listed: &ForgeMr
         let enabled = updating.is_none() && busy.is_none();
         let btn = mr_primary("mr-update", enabled).when(!others.is_empty(), |d| d.rounded_r(px(0.))).child(if updating.is_some() { busy_label.to_string() } else { label }).when(enabled, |d| d.on_click(cx.listener(move |v, _, _, cx| v.merge_update(tab, kind, &m_up, main, settled, cx))));
         let btn: AnyElement = if updating.is_none() { tip(tip_text, btn).into_any_element() } else { btn.into_any_element() };
-        let more = (!others.is_empty()).then(|| {
+        let has_more = !others.is_empty();
+        let more = has_more.then(|| {
             let key = "mr-update-more";
             let (m3, weak, target) = (mr.clone(), cx.weak_entity(), mr.target_branch.clone());
-            crate::ui::anchor(key, mr_primary(key, enabled).px(px(5.)).rounded_l(px(0.)).child(icon("chevron-down", 14., theme::text_on_accent())).on_mouse_down(MouseButton::Left, cx.listener(move |_, _, window, cx| {
+            crate::ui::anchor(key, mr_primary(key, enabled).px(px(5.)).border_l_0().rounded_l(px(0.)).child(icon("chevron-down", 14., theme::text_on_accent())).on_mouse_down(MouseButton::Left, cx.listener(move |_, _, window, cx| {
                 cx.stop_propagation();
                 let rows: Vec<MenuRow> = others.iter().filter_map(|k| {
                     let (l, _, t) = update_label(kind, *k, &target)?;
@@ -559,7 +571,7 @@ pub fn merge_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, listed: &ForgeMr
                 menu::open_below(key, rows, Default::default(), window, cx);
             })))
         });
-        section = section.child(div().flex().flex_wrap().items_center().gap_x(px(12.)).gap_y(px(4.)).px(px(12.)).py(px(8.)).min_h(px(38.)).border_t_1().border_color(theme::section_border()).child(div().flex_1().min_w(px(200.)).text_size(px(12.)).child(note)).child(div().flex().ml_auto().child(btn).children(more)));
+        section = section.child(div().flex().flex_wrap().items_center().gap_x(px(12.)).gap_y(px(4.)).px(px(12.)).py(px(8.)).min_h(px(38.)).border_t_1().border_color(theme::section_border()).child(div().flex_1().min_w(px(200.)).text_size(px(12.)).child(note)).child(div().flex().ml_auto().items_stretch().child(btn).when(has_more, |d| d.child(pick_divider(Some(theme::button_primary())))).children(more)));
     }
     if live && auto.is_none() && (kind == ForgeKind::GitLab || settings.as_ref().is_some_and(|s| s.delete_source_branch)) {
         let mut opts = div().flex().flex_wrap().items_center().gap(px(16.)).px(px(12.)).py(px(8.)).min_h(px(38.)).border_t_1().border_color(theme::section_border());

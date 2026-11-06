@@ -193,6 +193,8 @@ pub struct ReviewState {
     pub old: std::collections::HashSet<u32>,
     pub new: std::collections::HashSet<u32>,
     pub icons: HashMap<(bool, u32), Vec<gitvolt_core::forge::types::ForgeDiscussion>>,
+    /// Where a folded thread's range starts, by its icon.
+    pub icon_starts: HashMap<(bool, u32), u32>,
     pub banner: Option<String>,
     pub tab: u32,
 }
@@ -208,6 +210,11 @@ pub struct DiffState {
     pub zone_elements: Rc<std::cell::RefCell<Vec<(String, AnyElement)>>>,
     pub review: Option<ReviewState>,
     pub review_drag: Option<(bool, u32, u32)>,
+    /// A folded thread's icon under the pointer: its side and line, whose range shows.
+    pub review_icon_hover: Option<(bool, u32)>,
+    pub ruler_hover: bool,
+    /// The strip that's held (`Drag::Ruler`), and the slider's point the press took.
+    pub strip_held: Option<(Bounds<Pixels>, f32)>,
     pub file: FileChange,
     pub view: ViewKind,
     pub mode: Mode,
@@ -331,10 +338,13 @@ impl DiffState {
             zone_elements: Default::default(),
             review: None,
             review_drag: None,
+            review_icon_hover: None,
             pending_line: None,
             found: Rc::new(Vec::new()),
             found_at: None,
             minimap_hover: false,
+            ruler_hover: false,
+            strip_held: None,
             cursor: 0,
             drag: Drag::None,
             body: Rc::new(Cell::new(Bounds::default())),
@@ -1809,7 +1819,8 @@ fn text_area(diff: &DiffState, cx: &mut Context<GitVolt>) -> AnyElement {
     let Some(data) = diff.data.clone() else {
         return message(diff, cx).into_any_element();
     };
-    let mut staging = crate::forge::review::zones::drag_marks(diff);
+    let mut staging = crate::forge::review::zones::range_marks(diff);
+    staging.extend(crate::forge::review::zones::drag_marks(diff));
     staging.extend(super::staging::overlays(diff, cx));
     staging.extend(crate::forge::review::zones::overlays(diff, cx));
     let split = diff.split();
@@ -1964,30 +1975,63 @@ fn selection_settled(this: &mut GitVolt, _: &MouseUpEvent, _: &mut Window, cx: &
     }
 }
 
-/// Dragging or pressing a strip scrolls by where the pointer is along it.
+/// A press on a strip: on its slider it holds the point it's on, elsewhere the view centres there.
 pub fn strip_events(el: Stateful<Div>, cell: Rc<Cell<Bounds<Pixels>>>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
-    let jump = |this: &mut GitVolt, y: Pixels, b: Bounds<Pixels>, cx: &mut Context<GitVolt>| {
-        this.with_diff(cx, |d| {
-            let share = ((y - b.origin.y) / b.size.height).clamp(0., 1.);
-            d.scroll = d.layout.max_scroll() * share;
-        });
-    };
-    let moved = cell.clone();
     el.on_mouse_down(
         MouseButton::Left,
         cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-            this.with_diff_quiet(|d| d.drag = Drag::Ruler);
-            jump(this, e.position.y, cell.get(), cx);
+            let b = cell.get();
+            this.with_diff(cx, |d| {
+                let (y, strip) = ((e.position.y - b.origin.y).as_f32(), b.size.height.as_f32());
+                let (visible, content) = (d.layout.height, d.layout.total());
+                let at = slider_grab(y, visible, content, d.scroll, strip);
+                d.drag = Drag::Ruler;
+                d.strip_held = Some((b, at));
+                d.scroll = scroll_top_at(y, visible, content, strip, at);
+            });
         }),
     )
-    .on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, _, cx| {
-        let dragging = this.tabs.get(this.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.drag == Drag::Ruler);
-        if dragging && e.pressed_button == Some(MouseButton::Left) {
-            jump(this, e.position.y, moved.get(), cx);
+}
+
+/// While a strip is held the pointer counts wherever it goes, off the strip and out of the window, until it's let go.
+pub fn strip_drag(view: WeakEntity<GitVolt>, window: &mut Window) {
+    let up = view.clone();
+    window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+        if phase != DispatchPhase::Capture {
+            return;
         }
-    }))
-    .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
-    .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, _| this.with_diff_quiet(|d| d.drag = Drag::None)))
+        let _ = view.update(cx, |this, cx| {
+            let Some(d) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
+            let (Drag::Ruler, Some((b, at))) = (d.drag, d.strip_held) else { return };
+            if e.pressed_button == Some(MouseButton::Left) {
+                let (visible, content) = (d.layout.height, d.layout.total());
+                d.scroll = scroll_top_at((e.position.y - b.origin.y).as_f32(), visible, content, b.size.height.as_f32(), at);
+            } else {
+                d.drag = Drag::None;
+                d.strip_held = None;
+            }
+            cx.notify();
+            cx.stop_propagation();
+        });
+    });
+    window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
+        if phase != DispatchPhase::Capture || e.button != MouseButton::Left {
+            return;
+        }
+        let _ = up.update(cx, |this, cx| {
+            let Some(d) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
+            if d.drag == Drag::Ruler {
+                d.drag = Drag::None;
+                d.strip_held = None;
+                cx.notify();
+            }
+        });
+    });
+}
+
+/// A slider's colour: Monaco's on hover and while it's held.
+fn slider_tint(diff_hover: bool, held: bool) -> Hsla {
+    if diff_hover || held { theme::scroll_thumb_hover() } else { theme::scroll_thumb() }
 }
 
 /// The overview ruler: each change's place in the file, and the viewport.
@@ -1995,24 +2039,30 @@ fn ruler(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
     let marks = diff.ruler.clone();
     let layout = diff.layout.clone();
     let scroll = diff.scroll;
+    let tint = slider_tint(diff.ruler_hover, diff.drag == Drag::Ruler);
     let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
     let paint_cell = cell.clone();
-    strip_events(div().id("diff-ruler").flex_none().w(px(RULER_W)).h_full(), cell, cx).child(
+    let view = cx.weak_entity();
+    let bar = div().id("diff-ruler").flex_none().w(px(RULER_W)).h_full().on_hover(cx.listener(|this, on: &bool, _, cx| this.with_diff(cx, |d| d.ruler_hover = *on)));
+    strip_events(bar, cell, cx).child(
         canvas(
             |_, _, _| {},
             move |b, _, window, _| {
                 paint_cell.set(b);
+                strip_drag(view.clone(), window);
                 let total = layout.total().max(1.);
-                let scale = b.size.height.as_f32() / total;
+                let strip = b.size.height.as_f32();
+                let ratio = strip / total;
                 let half = b.size.width / 2.;
                 let top_of = |row: usize| layout.offsets.get(row).copied().unwrap_or(0.);
                 for &(first, rows, removed) in marks.iter() {
-                    let top = top_of(first) * scale;
-                    let h = ((top_of(first + rows) - top_of(first)) * scale).max(4.);
+                    let (top, h) = mark_span(top_of(first), top_of(first + rows) - top_of(first), ratio, strip);
                     let x = if removed { b.origin.x } else { b.origin.x + half };
                     window.paint_quad(fill(Bounds::new(point(x, b.origin.y + px(top)), size(half, px(h))), if removed { theme::ruler_removed() } else { theme::ruler_added() }));
                 }
-                window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(scroll * scale)), size(b.size.width, px(layout.height * scale).min(b.size.height))), theme::scroll_thumb()));
+                if let Some(s) = slider_of(layout.height, total, scroll, strip) {
+                    window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(s.top)), size(b.size.width, px(s.height))), tint));
+                }
             },
         )
         .size_full(),
@@ -2025,6 +2075,7 @@ fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl Into
     let (data, hl, rows, layout, scroll) = (diff.data.clone(), diff.highlight.clone(), diff.rows.clone(), diff.layout.clone(), diff.scroll);
     let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
     let paint_cell = cell.clone();
+    let view = cx.weak_entity();
     let bar = div().id("minimap").flex_none().w(px(width)).h_full().on_hover(cx.listener(|this, on: &bool, _, cx| {
         this.with_diff(cx, |d| d.minimap_hover = *on);
     }));
@@ -2033,6 +2084,7 @@ fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl Into
             |_, _, _| {},
             move |b, _, window, _| {
                 paint_cell.set(b);
+                strip_drag(view.clone(), window);
                 let Some(data) = &data else { return };
                 let height = b.size.height.as_f32();
                 let shown = (height / MINIMAP_LINE) as usize;
@@ -2087,20 +2139,19 @@ fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl Into
 /// File View's scrollbar: a thumb, with no track.
 fn scrollbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let (layout, scroll) = (diff.layout.clone(), diff.scroll);
+    let tint = slider_tint(diff.ruler_hover, diff.drag == Drag::Ruler);
     let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
     let paint_cell = cell.clone();
-    strip_events(div().id("diff-scrollbar").flex_none().w(px(SCROLLBAR_W)).h_full(), cell, cx).child(
+    let view = cx.weak_entity();
+    let bar = div().id("diff-scrollbar").flex_none().w(px(SCROLLBAR_W)).h_full().on_hover(cx.listener(|this, on: &bool, _, cx| this.with_diff(cx, |d| d.ruler_hover = *on)));
+    strip_events(bar, cell, cx).child(
         canvas(
             |_, _, _| {},
             move |b, _, window, _| {
                 paint_cell.set(b);
-                let (height, total) = (b.size.height.as_f32(), layout.total().max(1.));
-                if total <= height {
-                    return;
-                }
-                let thumb = (height * height / total).max(20.);
-                let top = (height - thumb) * (scroll / layout.max_scroll().max(1.));
-                window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(top)), size(b.size.width, px(thumb))), theme::scroll_thumb()));
+                strip_drag(view.clone(), window);
+                let Some(s) = slider_of(layout.height, layout.total().max(1.), scroll, b.size.height.as_f32()) else { return };
+                window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(s.top)), size(b.size.width, px(s.height))), tint));
             },
         )
         .size_full(),
@@ -2435,7 +2486,7 @@ fn text_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElem
                 .child(text_area(diff, cx))
                 .when(has_text && file_view, |d| d.when(crate::metrics::editor_style().minimap, |d| d.child(minimap(diff, minimap_width(width), cx))).child(scrollbar(diff, cx)))
                 .when(has_text && !file_view && !diff.split(), |d| d.child(div().absolute().top_0().bottom_0().right(px(RULER_W)).w(px(SCROLLBAR_W)).border_l_1().border_color(theme::section_border())))
-                .when(has_text && !file_view, |d| d.child(ruler(diff, cx))),
+                .when(has_text && !file_view, |d| d.child(crate::ui::anchor("diff-ruler", ruler(diff, cx)))),
         )
         .into_any_element()
 }
