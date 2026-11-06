@@ -45,7 +45,9 @@ pub struct GitCli {
 }
 
 /// Adjusts every command just before it starts, after the runner's own environment: the app
-/// uses it to give children the session's values of what it changed for itself.
+/// uses it to give children the session's values of what it changed for itself. It may run
+/// twice for one command (`run_bin` builds it again to start git by its full path), so it
+/// only sets the command up.
 pub type CommandHook = Arc<dyn Fn(&mut std::process::Command) + Send + Sync>;
 
 pub struct GitInvocation {
@@ -305,72 +307,85 @@ impl GitCli {
         let started = Instant::now();
         let started_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
 
+        let shell_vars = match &self.shell_env {
+            Some(shell) => shell.get().await,
+            None => None,
+        };
+        let input = inv.stdin.take();
         // Environment, lowest to highest: the captured login-shell env (replacing the inherited
         // one) or the inherited one, `with_env`, the invocation's `envs`, the fixed variables
         // below, then `PRIVATE_ENV` removal, then the hook.
-        let mut cmd = tokio::process::Command::new(bin);
-        if let Some(shell) = &self.shell_env
-            && let Some(vars) = shell.get().await
-        {
-            cmd.env_clear().envs(vars.iter().map(|(k, v)| (k, v)));
-        }
-        // The profile include comes first, so GitVolt's fixed `-c` values after it win.
-        cmd.current_dir(&inv.cwd);
-        if git {
-            cmd.arg("--no-pager");
-            if let Some(inc) = self.include_path() {
-                let mut arg = OsString::from("include.path=");
-                arg.push(&inc);
-                cmd.arg("-c").arg(arg);
+        let build = |program: &Path| {
+            let mut cmd = std::process::Command::new(program);
+            if let Some(vars) = &shell_vars {
+                cmd.env_clear().envs(vars.iter().map(|(k, v)| (k, v)));
             }
-            cmd.args(["-c", "core.quotepath=false"]).args(&inv.args);
-        } else {
-            // `args[0]` is the program itself, there for the log.
-            cmd.args(&inv.args[1..]);
-        }
-        cmd
-            // A partial clone must never fetch missing objects behind the user's back from a
-            // read (status, log, numstat, the watcher's lists). Network ops override it
-            // (netops.rs), as a clone's checkout needs the lazy fetch.
-            .env("GIT_NO_LAZY_FETCH", "1")
-            .envs(self.env.iter().map(|(k, v)| (k, v)))
-            .envs(inv.envs.iter().map(|(k, v)| (k, v)))
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("LC_ALL", "C");
-        if !inv.write {
-            // Reads only (the never-write invariant, core §5.2): this disables *optional* locks
-            // (the stat refresh `git status` writes back into `.git/index`). Writes
-            // (`GitInvocation::write`) take git's normal locks.
-            cmd.env("GIT_OPTIONAL_LOCKS", "0");
-        } else {
-            // An inherited `GIT_OPTIONAL_LOCKS=0` (login-shell or process env) must not survive.
-            cmd.env_remove("GIT_OPTIONAL_LOCKS");
-        }
-        let input = inv.stdin.take();
-        cmd.stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            // A write dropped mid-run must get SIGTERM first (git removes its locks), so its
-            // stop is `DropStop`'s alone; a read may die at once.
-            .kill_on_drop(inv.term_grace.is_none());
-        // GitVolt's own environment (openers::PRIVATE_ENV) must never leak into a child, the
-        // same guarantee `openers::launch_command` gives an opener/chooser/URL-open launch, and
-        // regardless of whether a command hook is installed.
-        for var in crate::openers::PRIVATE_ENV {
-            cmd.as_std_mut().env_remove(var);
-        }
-        if let Some(hook) = &self.hook {
-            hook(cmd.as_std_mut());
+            // The profile include comes first, so GitVolt's fixed `-c` values after it win.
+            cmd.current_dir(&inv.cwd);
+            if git {
+                cmd.arg("--no-pager");
+                if let Some(inc) = self.include_path() {
+                    let mut arg = OsString::from("include.path=");
+                    arg.push(&inc);
+                    cmd.arg("-c").arg(arg);
+                }
+                cmd.args(["-c", "core.quotepath=false"]).args(&inv.args);
+            } else {
+                // `args[0]` is the program itself, there for the log.
+                cmd.args(&inv.args[1..]);
+            }
+            cmd
+                // A partial clone must never fetch missing objects behind the user's back from a
+                // read (status, log, numstat, the watcher's lists). Network ops override it
+                // (netops.rs), as a clone's checkout needs the lazy fetch.
+                .env("GIT_NO_LAZY_FETCH", "1")
+                .envs(self.env.iter().map(|(k, v)| (k, v)))
+                .envs(inv.envs.iter().map(|(k, v)| (k, v)))
+                .env("GIT_TERMINAL_PROMPT", "0")
+                .env("LC_ALL", "C");
+            if !inv.write {
+                // Reads only (the never-write invariant, core §5.2): this disables *optional* locks
+                // (the stat refresh `git status` writes back into `.git/index`). Writes
+                // (`GitInvocation::write`) take git's normal locks.
+                cmd.env("GIT_OPTIONAL_LOCKS", "0");
+            } else {
+                // An inherited `GIT_OPTIONAL_LOCKS=0` (login-shell or process env) must not survive.
+                cmd.env_remove("GIT_OPTIONAL_LOCKS");
+            }
+            cmd.stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
+            // GitVolt's own environment (openers::PRIVATE_ENV) must never leak into a child, the
+            // same guarantee `openers::launch_command` gives an opener/chooser/URL-open launch, and
+            // regardless of whether a command hook is installed.
+            for var in crate::openers::PRIVATE_ENV {
+                cmd.env_remove(var);
+            }
+            if let Some(hook) = &self.hook {
+                hook(&mut cmd);
+            }
+            cmd
+        };
+        // A bare `git` with the login shell's `PATH` would make std fork to search it, which can
+        // hang the child for good in this process (platform::process module docs): the same
+        // command again, with the program found here.
+        let mut std_cmd = build(bin);
+        if let Some(found) = crate::platform::process::spawnable_program(&std_cmd, shell_vars.is_some()) {
+            std_cmd = build(&found);
+            #[cfg(unix)]
+            std::os::unix::process::CommandExt::arg0(&mut std_cmd, bin);
         }
 
         // Its own process group (cancel kills git's children too). A detached command gets its
         // own session instead, whose group it leads (`setsid` fails in a group leader, so it's
         // one or the other). Windows: no console window; a job object holds the group.
         if inv.detach {
-            crate::platform::process::own_session(cmd.as_std_mut());
+            crate::platform::process::own_session(&mut std_cmd);
         } else {
-            crate::platform::process::own_group(cmd.as_std_mut());
+            crate::platform::process::own_group(&mut std_cmd);
         }
+        let mut cmd = tokio::process::Command::from(std_cmd);
+        // A write dropped mid-run must get SIGTERM first (git removes its locks), so its stop is
+        // `DropStop`'s alone; a read may die at once.
+        cmd.kill_on_drop(inv.term_grace.is_none());
 
         let mut child = match cmd.spawn() {
             Ok(c) => c,
@@ -905,18 +920,27 @@ mod tests {
         assert_eq!(signing_failure("error: boom\n"), None);
     }
 
-    /// K96: a network command runs in its own session, with no controlling terminal: ssh (or a
-    /// credential helper) can't open `/dev/tty`, so it can't stop on a terminal read and hang the
-    /// op when GitVolt was started from a shell. Cancel still kills the whole group.
-    #[cfg(target_os = "linux")] // reads the session id from /proc
+    /// K96: a network command has no controlling terminal: ssh (or a credential helper) can't
+    /// open `/dev/tty`, so it can't stop on a terminal read and hang the op when GitVolt was
+    /// started from a shell. With a terminal (a run from a shell) that takes its own session;
+    /// without one (CI, the Dock) its own group. Cancel still kills the whole group.
+    #[cfg(unix)]
     #[tokio::test]
-    async fn a_detached_command_has_its_own_session_and_still_cancels_as_a_group() {
+    async fn a_detached_command_has_no_terminal_and_still_cancels_as_a_group() {
         let r = TestRepo::new();
-        let alias = "alias.sid=!cut -d' ' -f6 /proc/$$/stat";
-        let own = nix::unistd::getsid(None).unwrap().as_raw().to_string();
-        let sid = |out: GitOutput| String::from_utf8_lossy(&out.stdout).trim().to_string();
-        assert_eq!(sid(cli().run(GitInvocation::new(r.path(), ["-c", alias, "sid"])).await.unwrap()), own, "a local command stays in the app's session");
-        assert_ne!(sid(cli().run(GitInvocation::new(r.path(), ["-c", alias, "sid"]).detach_terminal()).await.unwrap()), own);
+        let out = |out: GitOutput| String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let tty = "alias.tty=!( : </dev/tty ) 2>/dev/null && echo yes || echo no";
+        assert_eq!(out(cli().run(GitInvocation::new(r.path(), ["-c", tty, "tty"]).detach_terminal()).await.unwrap()), "no");
+        // The session id from /proc.
+        #[cfg(target_os = "linux")]
+        {
+            let alias = "alias.sid=!cut -d' ' -f6 /proc/$$/stat";
+            let own = nix::unistd::getsid(None).unwrap().as_raw().to_string();
+            assert_eq!(out(cli().run(GitInvocation::new(r.path(), ["-c", alias, "sid"])).await.unwrap()), own, "a local command stays in the app's session");
+            if crate::platform::process::detaches_by_setsid() {
+                assert_ne!(out(cli().run(GitInvocation::new(r.path(), ["-c", alias, "sid"]).detach_terminal()).await.unwrap()), own);
+            }
+        }
 
         let marker = r.root().join("marker-detached");
         let slow = format!("alias.slow=!sleep 1 && touch {}", crate::platform::fs::to_git_path(&marker));
@@ -1380,5 +1404,62 @@ mod tests {
         assert_eq!((log[0].exit_code, log[0].ok), (Some(1), true));
         assert_eq!((log[1].exit_code, log[1].ok), (Some(1), false));
         assert!(!log[2].ok);
+    }
+
+    #[cfg(unix)]
+    thread_local! {
+        static FORKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    /// The forks this thread has made so far (`pthread_atfork` runs `prepare` in the forking
+    /// thread; `posix_spawn` runs no atfork handler). A `#[tokio::test]` spawns on its own thread.
+    #[cfg(unix)]
+    fn forks_here() -> usize {
+        extern "C" fn prepare() {
+            FORKS.with(|n| n.set(n.get() + 1));
+        }
+        static REGISTER: std::sync::Once = std::sync::Once::new();
+        // SAFETY: registers a handler that only bumps a thread-local counter.
+        REGISTER.call_once(|| assert_eq!(unsafe { libc::pthread_atfork(Some(prepare), None, None) }, 0));
+        FORKS.with(|n| n.get())
+    }
+
+    /// The app's git runs with the login shell's environment, `PATH` included, which made std
+    /// fork to search it; in the CEF runtime a forked child can hang before `exec` for good
+    /// (`platform::process`). Git starts with `posix_spawn`: found here, by its full path. A
+    /// detached command too, when the app has no terminal (CI, the Dock).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn git_starts_without_fork_under_the_login_shell_env() {
+        let r = TestRepo::new();
+        let shell = vec![("PATH".into(), std::env::var_os("PATH").unwrap()), ("HOME".into(), r.root().as_os_str().to_owned())];
+        let cli = GitCli::new(Arc::new(CommandLog::new(10))).with_shell_env(crate::shellenv::ShellEnv::fixed(shell)).with_env(isolated_git_env());
+        let before = forks_here();
+        let out = cli.run(GitInvocation::new(r.path(), ["status", "--porcelain"])).await.unwrap();
+        assert!(out.stdout.is_empty());
+        assert_eq!(forks_here(), before, "a read forked");
+        if !crate::platform::process::detaches_by_setsid() {
+            cli.run(GitInvocation::new(r.path(), ["rev-parse", "--git-dir"]).detach_terminal()).await.unwrap();
+            assert_eq!(forks_here(), before, "a detached command forked");
+        }
+    }
+
+    /// The program is found in the `PATH` the child gets, the hook's last of all.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn git_is_found_in_the_path_the_hook_leaves() {
+        let r = TestRepo::new();
+        let bin = r.root().join("fake-bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("git"), "#!/bin/sh\necho \"fake $*\"\n").unwrap();
+        crate::platform::fs::set_mode(bin.join("git"), 0o755).unwrap();
+        let path = bin.clone();
+        let cli = cli().with_command_hook(Arc::new(move |cmd: &mut std::process::Command| {
+            cmd.env("PATH", &path);
+        }));
+        let before = forks_here();
+        let out = cli.run(GitInvocation::new(r.path(), ["status"])).await.unwrap();
+        assert!(String::from_utf8_lossy(&out.stdout).starts_with("fake --no-pager"), "{:?}", String::from_utf8_lossy(&out.stdout));
+        assert_eq!(forks_here(), before);
     }
 }
