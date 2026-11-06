@@ -21,6 +21,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 pub const COMMIT_QUEUED: &str = "Commit queued";
+pub const DISCARDING: &str = "Discarding…";
 pub const TYPE_A_MESSAGE: &str = "Type a message to commit";
 pub const STAGING_BUSY: &str = "Staging…";
 const VIEW_BAR_H: f32 = 36.;
@@ -424,6 +425,8 @@ pub struct WipUi {
     /// Staging writes sent and not answered: the commit button waits for them.
     pub staging: u32,
     pub discarding: bool,
+    /// The paths a Discard of theirs is running for: until it's answered, it can't be sent again.
+    pub discarding_paths: Vec<String>,
     /// `None`: not asked yet. `Some(None)`: git has no identity.
     pub identity: Option<Option<(String, String)>>,
     pub all_files: bool,
@@ -434,6 +437,11 @@ pub struct WipUi {
 }
 
 impl WipUi {
+    /// `discardingAny`: everything's being discarded, or one of these paths is.
+    pub fn discarding_any(&self, paths: &[String]) -> bool {
+        self.discarding || paths.iter().any(|p| self.discarding_paths.contains(p))
+    }
+
     pub fn new(id: u32, cx: &mut Context<GitVolt>) -> Self {
         let filter = cx.new(|cx| TextInput::new(cx).placeholder("Filter files").claim_escape());
         cx.subscribe(&filter, move |this, _, e: &InputEvent, cx| match e {
@@ -446,7 +454,7 @@ impl WipUi {
         cx.subscribe(&summary, move |this, _, e: &InputEvent, cx| this.commit_field_event(id, true, e, cx)).detach();
         let description = cx.new(|cx| TextInput::multiline(cx).placeholder("Description").placeholder_color(theme::wip_input_placeholder()).claim_escape().claim_arrows());
         cx.subscribe(&description, move |this, _, e: &InputEvent, cx| this.commit_field_event(id, false, e, cx)).detach();
-        Self { filter_open: false, filter, summary, description, amend: None, stop: None, committing: false, staging: 0, discarding: false, identity: None, all_files: false, committing_since: None, abort_armed_at: None }
+        Self { filter_open: false, filter, summary, description, amend: None, stop: None, committing: false, staging: 0, discarding: false, discarding_paths: Vec::new(), identity: None, all_files: false, committing_since: None, abort_armed_at: None }
     }
 }
 
@@ -669,6 +677,10 @@ impl GitVolt {
     /// One staging or discard write: refused while a commit is queued; the commit button holds off until
     /// it's answered; then the open diff follows. `advance`: a whole-file one.
     pub fn staging_write(&mut self, ctx: &WriteCtx, origin: ArmOrigin, advance: bool, send: impl Fn() -> Value + 'static, cx: &mut Context<Self>) {
+        self.staging_write_then(ctx, origin, advance, send, |_| {}, cx);
+    }
+
+    fn staging_write_then(&mut self, ctx: &WriteCtx, origin: ArmOrigin, advance: bool, send: impl Fn() -> Value + 'static, after: impl Fn(&mut Tab) + 'static, cx: &mut Context<Self>) {
         if self.staging_gate(ctx) {
             return;
         }
@@ -683,6 +695,7 @@ impl GitVolt {
             .on_end(move |this, _, cx| {
                 if let Some(tab) = this.wip_tab_mut(repo) {
                     tab.wip.staging = tab.wip.staging.saturating_sub(1);
+                    after(tab);
                 }
                 cx.notify();
             });
@@ -724,18 +737,42 @@ impl GitVolt {
         self.staging_write(ctx, ArmOrigin::None, true, move || call("unstageAll", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree })), cx);
     }
 
+    /// `discardOnce`: while one of `paths` is being discarded, or everything is, another is a no-op: sent before the first was
+    /// answered it would find nothing left and fail. They're marked until the answer, and the row shows it's running.
     pub fn discard_paths(&mut self, ctx: &WriteCtx, paths: Vec<String>, cx: &mut Context<Self>) {
-        let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        self.staging_write(ctx, ArmOrigin::None, true, move || call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "paths", "paths": paths } })), cx);
+        let Some(tab) = self.wip_tab_mut(ctx.repo) else { return };
+        if tab.wip.discarding_any(&paths) || tab.wip.committing {
+            return;
+        }
+        tab.wip.discarding_paths.extend(paths.iter().cloned());
+        let (repo, worktree, sent) = (ctx.repo, ctx.worktree.clone(), paths.clone());
+        self.staging_write_then(
+            ctx,
+            ArmOrigin::None,
+            true,
+            move || call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "paths", "paths": paths } })),
+            move |tab| tab.wip.discarding_paths.retain(|p| !sent.contains(p)),
+            cx,
+        );
     }
 
+    /// One at a time per worktree, as Discard all: it has no confirm, so a double click sent two.
     pub fn discard_unstaged(&mut self, ctx: &WriteCtx, cx: &mut Context<Self>) {
+        let Some(tab) = self.wip_tab_mut(ctx.repo) else { return };
+        if tab.wip.discarding || tab.wip.committing {
+            return;
+        }
+        tab.wip.discarding = true;
         let (repo, worktree) = (ctx.repo, ctx.worktree.clone());
-        self.staging_write(ctx, ArmOrigin::None, true, move || call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "unstaged" } })), cx);
+        self.staging_write_then(ctx, ArmOrigin::None, true, move || call("discard", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "scope": { "kind": "unstaged" } })), |tab| tab.wip.discarding = false, cx);
     }
 
     /// A row's Discard: arms where it started, then discards those files' changes (undoable).
     pub fn discard_files(&mut self, ctx: WriteCtx, files: Vec<FileChange>, name: String, origin: ArmOrigin, window: &mut Window, cx: &mut Context<Self>) {
+        // Already being discarded: nothing to arm.
+        if self.tabs.iter().find(|t| t.id == ctx.repo).is_some_and(|t| t.wip.discarding_any(&paths_of(&files))) {
+            return;
+        }
         let n = files.len();
         let mut req = ArmRequest::danger(discard_arm(n, &name), format!("Discard {name}?"), "Discard");
         req.body = "Its changes are removed. You can undo this.".into();
@@ -1364,12 +1401,13 @@ impl GitVolt {
             }).disabled_if(queued));
         }
         let mut discard = Vec::new();
+        let discarding_all = self.tabs.get(self.active).is_some_and(|t| t.wip.discarding);
         if which == Which::Unstaged && !shown.is_empty() && !shown.iter().all(FileChange::is_submodule) {
             let (w2, c2) = (this.clone(), ctx.clone());
             discard.push(MenuRow::action("wip.discardUnstaged", "Discard unstaged changes", "trash-2", "Discard every unstaged change and delete the untracked files; the staged ones stay (you can undo this)", move |_, cx| {
                 let c = c2.clone();
                 w2.update(cx, |v, cx| v.discard_unstaged(&c, cx)).ok();
-            }).disabled_if(queued));
+            }).disabled_if(queued.or(discarding_all.then_some(DISCARDING))));
         }
         discard.push(self.discard_all_row(this));
         grouped(vec![own, discard])
@@ -1383,7 +1421,7 @@ impl GitVolt {
         let count = count.or_else(|| tab.and_then(|t| t.graph.as_ref()?.rows.first()?.wip.as_ref()).map(|w| w.files() as usize)).unwrap_or(0);
         let reason = match tab {
             Some(t) if t.wip.committing => Some(COMMIT_QUEUED),
-            Some(t) if t.wip.discarding => Some("Discarding…"),
+            Some(t) if t.wip.discarding => Some(DISCARDING),
             Some(t) if t.operation().is_some() => Some("Abort instead"),
             _ if count == 0 => Some("Nothing to discard"),
             _ => None,
@@ -1448,18 +1486,20 @@ impl GitVolt {
                 weak.update(cx, |v, cx| v.unstage_files(&c, vec![f], cx)).ok();
             }).disabled_if(queued)];
         }
+        // Being discarded already (its row's button, or this menu again): the answer is on its way.
+        let busy = queued.or(tab.wip.discarding_any(&paths_of(std::slice::from_ref(file))).then_some(DISCARDING));
         let (w1, c1, f1) = (this.clone(), ctx.clone(), file.clone());
         let mut rows = vec![MenuRow::action("file.stageFile", "Stage", "plus", "Stage this file's change", move |_, cx| {
             let (c, p) = (c1.clone(), paths_of(std::slice::from_ref(&f1)));
             w1.update(cx, |v, cx| v.stage_paths(&c, p, cx)).ok();
-        }).disabled_if(queued)];
+        }).disabled_if(busy)];
         if !file.is_submodule() {
             let (w2, f2) = (this.clone(), file.clone());
             rows.push(MenuRow::action("file.discard", "Discard changes…", "trash-2", "Discard this file's unstaged change (you can undo this)", move |window, cx| {
                 let (c, f, n) = (ctx.clone(), f2.clone(), name.clone());
                 let origin = ArmOrigin::current(cx);
                 w2.update(cx, |v, cx| v.discard_files(c, vec![f], n, origin, window, cx)).ok();
-            }).disabled_if(queued));
+            }).disabled_if(busy));
         }
         rows
     }
@@ -1495,11 +1535,12 @@ impl GitVolt {
                 weak.update(cx, |v, cx| v.unstage_files(&c, f, cx)).ok();
             }).disabled_if(queued)];
         }
+        let busy = queued.or(self.tabs.get(self.active).is_some_and(|t| t.wip.discarding_any(&paths_of(&under.iter().filter(|f| !f.is_submodule()).cloned().collect::<Vec<_>>()))).then_some(DISCARDING));
         let (w1, c1, p1) = (this.clone(), ctx.clone(), paths_of(&under));
         let mut rows = vec![MenuRow::action("folder.stage", "Stage", "plus", format!("Stage the changes in {path}"), move |_, cx| {
             let (c, p) = (c1.clone(), p1.clone());
             w1.update(cx, |v, cx| v.stage_paths(&c, p, cx)).ok();
-        }).disabled_if(queued)];
+        }).disabled_if(busy)];
         let discardable: Vec<FileChange> = under.into_iter().filter(|f| !f.is_submodule()).collect();
         if !discardable.is_empty() {
             let (w2, name) = (this.clone(), path.to_string());
@@ -1507,7 +1548,7 @@ impl GitVolt {
                 let (c, f, n) = (ctx.clone(), discardable.clone(), name.clone());
                 let origin = ArmOrigin::current(cx);
                 w2.update(cx, |v, cx| v.discard_files(c, f, n, origin, window, cx)).ok();
-            }).disabled_if(queued));
+            }).disabled_if(busy));
         }
         rows
     }
@@ -1658,6 +1699,29 @@ pub enum Tone {
     Positive,
 }
 
+/// `.row-action[data-pending]`: its write runs: the spinner in the icon's box, at full strength, taking no click.
+fn action_pending(id: impl Into<ElementId>, tooltip: impl Into<SharedString>, color: Hsla) -> impl IntoElement {
+    tip(
+        tooltip.into(),
+        div()
+            .id(id.into())
+            .flex()
+            .flex_none()
+            .size(px(22.))
+            .items_center()
+            .justify_center()
+            .rounded(px(3.))
+            .border_1()
+            .border_color(color)
+            .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                window.prevent_default();
+                cx.stop_propagation();
+            })
+            .on_click(|_, _, cx| cx.stop_propagation())
+            .child(crate::commit_box::spinner("row-action-pending", 13., color)),
+    )
+}
+
 /// `.row-action`: an icon button in a row, a press never selecting the row; with `text`, an outlined one.
 pub fn action_icon(id: impl Into<ElementId>, tooltip: impl Into<SharedString>, glyph: &'static str, tone: Tone, text: Option<SharedString>, disabled: bool, on_click: impl Fn(&mut Window, &mut App) + 'static) -> impl IntoElement {
     action_sized(id, tooltip, glyph, tone, text, disabled, (22., 22.), on_click)
@@ -1744,6 +1808,9 @@ pub fn row_actions(v: &GitVolt, which: Which, row: &ListRow, changes: &[FileChan
     let queued = |t: &str| if committing { COMMIT_QUEUED.to_string() } else { t.to_string() };
     let bg = theme::over(if on { theme::selected_row() } else { theme::hover_row() }, theme::panel_bg());
     let narrow = panel_w <= 280.;
+    // Its files are being discarded: the Discard shows it runs, neither button sends another write, and they stay up while it does.
+    let discarding = which == Which::Unstaged && tab.wip.discarding_any(&paths_of(&files.iter().filter(|f| !f.is_submodule()).cloned().collect::<Vec<_>>()));
+    let busy = |t: &str| if committing { COMMIT_QUEUED.to_string() } else if discarding { DISCARDING.to_string() } else { t.to_string() };
     let mut bar = div()
         .absolute()
         .right(px(8.))
@@ -1754,7 +1821,7 @@ pub fn row_actions(v: &GitVolt, which: Which, row: &ListRow, changes: &[FileChan
         .gap(px(4.))
         .pl(px(6.))
         .bg(bg)
-        .when(!on, |d| d.invisible().group_hover(group.clone(), |d| d.visible()));
+        .when(!on && !discarding, |d| d.invisible().group_hover(group.clone(), |d| d.visible()));
     match which {
         Which::Conflicted => {
             let path = files[0].path.to_string();
@@ -1776,14 +1843,18 @@ pub fn row_actions(v: &GitVolt, which: Which, row: &ListRow, changes: &[FileChan
             if !discardable.is_empty() {
                 let (weak, ctx, list, nm, k) = (this.clone(), ctx.clone(), discardable, name.clone(), key.clone());
                 let control: SharedString = format!("{key}:discard").into();
+                if discarding && !committing {
+                    bar = bar.child(crate::ui::anchor(control.clone(), action_pending(ElementId::Name(control.clone()), DISCARDING, theme::red())));
+                } else {
                 bar = bar.child(crate::ui::anchor(control.clone(), action_icon(ElementId::Name(control.clone()), queued("Discard changes"), "trash-2", Tone::Danger, None, committing, move |window, cx| {
                     let origin = ArmOrigin::Control { key: format!("{k}:discard").into(), cover: Some(k.clone()), grow_right: Some(false) };
                     let (ctx, list, nm) = (ctx.clone(), list.clone(), nm.clone());
                     weak.update(cx, |v, cx| v.discard_files(ctx, list, nm, origin, window, cx)).ok();
                 })));
+                }
             }
             let (weak, ctx, paths) = (this.clone(), ctx.clone(), paths_of(&files));
-            bar = bar.child(action_icon(ElementId::Name(format!("{key}:stage").into()), queued("Stage"), "plus", Tone::Positive, (!narrow).then(|| "Stage File".into()), committing, move |_, cx| {
+            bar = bar.child(action_icon(ElementId::Name(format!("{key}:stage").into()), busy("Stage"), "plus", Tone::Positive, (!narrow).then(|| "Stage File".into()), committing || discarding, move |_, cx| {
                 let (ctx, paths) = (ctx.clone(), paths.clone());
                 weak.update(cx, |v, cx| v.stage_paths(&ctx, paths, cx)).ok();
             }));
@@ -1835,7 +1906,9 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
         if which == Which::Unstaged {
             if !shown.iter().all(FileChange::is_submodule) {
                 let (w, c) = (weak.clone(), ctx.clone());
-                row = row.child(action_sized("wip-discard-unstaged", queued("Discard unstaged changes"), "trash-2", Tone::Danger, None, committing, (24., 24.), move |_, cx| {
+                let discarding = tab.wip.discarding;
+                let tip_text = if discarding && !committing { DISCARDING.to_string() } else { queued("Discard unstaged changes") };
+                row = row.child(action_sized("wip-discard-unstaged", tip_text, "trash-2", Tone::Danger, None, committing || discarding, (24., 24.), move |_, cx| {
                     let c = c.clone();
                     w.update(cx, |v, cx| v.discard_unstaged(&c, cx)).ok();
                 }));
@@ -2025,7 +2098,7 @@ pub fn wip_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &Windo
     let ctx = tab.wip_ctx();
     let in_progress = tab.operation().is_some();
     let weak = cx.weak_entity();
-    let discard_tip = if tab.wip.committing { COMMIT_QUEUED } else if tab.wip.discarding { "Discarding…" } else if in_progress { "Abort instead" } else if count == 0 { "Nothing to discard" } else { "Discard all changes" };
+    let discard_tip = if tab.wip.committing { COMMIT_QUEUED } else if tab.wip.discarding { DISCARDING } else if in_progress { "Abort instead" } else if count == 0 { "Nothing to discard" } else { "Discard all changes" };
     let discard_off = tab.wip.committing || tab.wip.discarding || in_progress || count == 0;
     // What the armed label covers dims underneath (`data-arm-dim`).
     let armed = crate::ui::arm::armed_control(cx).is_some_and(|k| k == "wip-discard-all");
@@ -2533,6 +2606,26 @@ mod ui_tests {
         let s = sent(&window, &cx);
         assert_eq!(s[0]["params"]["scope"]["kind"], "all");
         assert_eq!(s[0]["params"]["scope"]["confirmed"], json!(["a.txt", "c.txt"]));
+    }
+
+    #[gpui::test]
+    fn a_files_discard_runs_once_until_its_answer(cx: &mut TestAppContext) {
+        use gitvolt_core::error::{GbError, GbErrorKind};
+        let (window, mut cx, _rt) = wip_window(cx, &[("a.txt", "M")], &[]);
+        let sent = |window: &WindowHandle<GitVolt>, cx: &mut VisualTestContext| {
+            window.update(cx, |v, _, cx| {
+                let ctx = v.tabs[v.active].wip_ctx().unwrap();
+                v.discard_paths(&ctx, vec!["a.txt".into()], cx);
+                v.discard_paths(&ctx, vec!["a.txt".into()], cx);
+                (v.tabs[v.active].wip.staging, v.tabs[v.active].wip.discarding_any(&["a.txt".to_string()]))
+            }).unwrap()
+        };
+        assert_eq!(sent(&window, &mut cx), (1, true), "the second click found it running");
+        let e = GbError { kind: GbErrorKind::Io, message: "no".into(), command_id: None, stderr: None, detail: None };
+        window.update(&mut cx, |v, _, cx| v.answer_write(Err(e), cx)).unwrap();
+        cx.run_until_parked();
+        let free = window.read_with(&cx, |v, _| (v.tabs[v.active].wip.staging, v.tabs[v.active].wip.discarding_any(&["a.txt".to_string()]))).unwrap();
+        assert_eq!(free, (0, false), "the answer frees it");
     }
 
     #[gpui::test]
