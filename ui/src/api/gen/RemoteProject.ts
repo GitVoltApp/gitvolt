@@ -9,7 +9,11 @@ export type RemoteProject = { remote: string, host: string | null, path: string 
 /**
  * The kind of the profile's account for `host`; `None` without one.
  */
-account: ForgeKind | null, project: ForgeProject | null, 
+account: ForgeKind | null, 
+/**
+ * Which of the host's accounts is used (`ForgeAccount.id`); `None` without one.
+ */
+accountId: string | null, project: ForgeProject | null, 
 /**
  * Why there's no project although there's an account (not found, rejected, unreachable).
  */

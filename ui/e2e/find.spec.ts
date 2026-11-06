@@ -148,8 +148,27 @@ test.describe('find', () => {
       await page.keyboard.press('Control+f');
       await expect(diff.locator('.editor.modified .find-widget.visible')).toBeVisible();
       await expect(page.getByRole('search', { name: 'Find in graph' })).toHaveCount(0);
-      // Closing the file, Ctrl+F is the graph's again.
-      await page.keyboard.press('Escape');
+    });
+    await test.step('the find widget\'s buttons take a click after the pointer rests on them, their tooltips shown', async () => {
+      const widget = page.getByRole('region', { name: 'Diff' }).locator('.editor.modified .find-widget');
+      const counter = widget.locator('.matchesCount');
+      await page.keyboard.type('n'); // twice in "content 4"
+      await expect(counter).toHaveText('1 of 2');
+      // As a user clicks: the pointer rests until the tooltip shows, then presses where the button
+      // is. A tooltip that wrapped once placed (monaco.css) covered the button and took the click.
+      const press = async (label: string) => {
+        // hover() waits for the widget to finish sliding in.
+        await widget.getByRole('button', { name: new RegExp(`^${label}`) }).hover();
+        await expect(page.locator('.workbench-hover')).toContainText(label);
+        await page.mouse.down();
+        await page.mouse.up();
+      };
+      await press('Next Match');
+      await expect(counter).toHaveText('2 of 2');
+      await press('Close');
+      await expect(widget).not.toHaveClass(/\bvisible\b/);
+    });
+    await test.step('closing the file, Ctrl+F is the graph\'s again', async () => {
       await page.keyboard.press('Escape');
       await expect(grid(page)).toBeVisible();
       await page.keyboard.press('Control+f');

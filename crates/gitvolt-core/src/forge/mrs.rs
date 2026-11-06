@@ -260,16 +260,16 @@ impl ForgeHub {
     pub fn cached_mrs(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], refs: &[String], repo: &BadgeRefs, filter: MrFilter) -> Option<CachedMrs> {
         let profile = store.active_profile();
         let known = |r: &RemotePayload| -> Option<(AccountKey, ForgeProject)> {
-            let account = crate::forge::hub::account_for(&profile.forge_accounts, r.host.as_deref()?)?;
-            let key = Self::key(&profile.id, &account.host);
+            let account = crate::forge::hub::account_for_selected(&profile.forge_accounts, r.host.as_deref()?, r.account.as_deref())?;
+            let key = Self::key_for(&profile.id, account);
             let project = self.cache.with(&cache_key(&key, r.path.as_deref()?), |c| c.project.clone())?;
             Some((key, project))
         };
         let list: Vec<crate::forge::hub::RemoteProject> = remotes
             .iter()
             .map(|r| {
-                let account = r.host.as_deref().and_then(|h| crate::forge::hub::account_for(&profile.forge_accounts, h)).map(|a| a.kind);
-                crate::forge::hub::RemoteProject { remote: r.name.clone(), host: r.host.clone(), path: r.path.clone(), account, project: account.and_then(|_| known(r)).map(|(_, p)| p), error: None }
+                let account = r.host.as_deref().and_then(|h| crate::forge::hub::account_for_selected(&profile.forge_accounts, h, r.account.as_deref()));
+                crate::forge::hub::RemoteProject { remote: r.name.clone(), host: r.host.clone(), path: r.path.clone(), account: account.map(|a| a.kind), account_id: account.map(|a| a.id.clone()), project: account.and_then(|_| known(r)).map(|(_, p)| p), error: None }
             })
             .collect();
         let remote = crate::forge::hub::target_remote(&list, remotes.iter().find(|r| r.main).map(|r| r.name.as_str()))?;
@@ -622,7 +622,7 @@ mod tests {
     const NOW_MS: i64 = 1_791_115_200_000;
 
     fn remote(name: &str, path: &str) -> RemotePayload {
-        RemotePayload { name: name.into(), host: Some(HOST.into()), path: Some(path.into()), host_kind: HostKind::GitLab, main: false }
+        RemotePayload { name: name.into(), host: Some(HOST.into()), path: Some(path.into()), host_kind: HostKind::GitLab, main: false, account: None }
     }
 
     /// An account on HOST; origin is `group/project` (the target), `alice` is alice's fork.
@@ -634,8 +634,8 @@ mod tests {
         let p = conn.add(TOKEN, p);
         let hub = ForgeHub::new(conn, MemTokens::new(TokenStorage::Keyring), Arc::new(|| NOW_MS));
         let store = SettingsStore::in_memory();
-        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN)).await.unwrap();
-        let remotes = vec![remote("origin", "group/project"), remote("alice", "alice/project"), RemotePayload { name: "backup".into(), host: None, path: None, host_kind: HostKind::Generic, main: false }];
+        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), None).await.unwrap();
+        let remotes = vec![remote("origin", "group/project"), remote("alice", "alice/project"), RemotePayload { name: "backup".into(), host: None, path: None, host_kind: HostKind::Generic, main: false, account: None }];
         (p, hub, store, remotes)
     }
 
@@ -649,7 +649,7 @@ mod tests {
         let p = conn.add(TOKEN, p);
         let hub = ForgeHub::new(conn, MemTokens::new(TokenStorage::Keyring), Arc::new(move || now));
         let store = SettingsStore::in_memory();
-        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN)).await.unwrap();
+        hub.add_account(&store, HOST, ForgeKind::GitLab, Secret::new(TOKEN), None).await.unwrap();
         // After the account (adding one forgets its host's cache): as a relaunch, which adds none.
         hub.set_cache_dir(dir.to_path_buf());
         (p, hub, store, vec![remote("origin", "group/project")])
@@ -721,7 +721,7 @@ mod tests {
         let (_, hub, store, remotes) = setup().await;
         let t = hub.mr_target(&store, &remotes).await.unwrap();
         assert_eq!((t.remote.as_str(), t.project.path.as_str()), ("origin", "group/project"));
-        let elsewhere = [RemotePayload { name: "origin".into(), host: Some("github.com".into()), path: Some("o/r".into()), host_kind: HostKind::GitHub, main: false }];
+        let elsewhere = [RemotePayload { name: "origin".into(), host: Some("github.com".into()), path: Some("o/r".into()), host_kind: HostKind::GitHub, main: false, account: None }];
         let e = hub.mr_target(&store, &elsewhere).await.err().unwrap();
         assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::InvalidInput, NO_TARGET));
         let gone = [remote("origin", "nobody/nothing")];

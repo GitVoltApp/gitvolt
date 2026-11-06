@@ -224,6 +224,20 @@ function changeBoxes(ed: MonacoNs.editor.IStandaloneDiffEditor, changes: LineCha
     return { top: Math.min(...tops), bottom: Math.max(...bottoms) };
   });
 }
+/**
+ * Puts both sides of a diff whose models were just swapped back in step with Monaco's scroll
+ * sync. A new model gives each editor a new view at the top without a scroll event, while the
+ * sync (DiffEditorViewZones) follows each side's scroll top through a value cached from the last
+ * event: still the previous diff's. A reveal to that same scroll top (the same file opened again,
+ * its first change where it was) then isn't a change to it, so the original side stays at the top
+ * while the modified one is at the change. Scrolling away and back fires the events that bring
+ * the cache to the real top first.
+ */
+function resyncScroll(ed: MonacoNs.editor.IStandaloneDiffEditor): void {
+  const m = ed.getModifiedEditor();
+  m.setScrollTop(1, SCROLL_IMMEDIATE);
+  m.setScrollTop(0, SCROLL_IMMEDIATE);
+}
 /** The modified line a change's cursor goes to. A pure deletion reports the line above it; its
  * removed lines show below that line. */
 const changeLine = (c: LineChange) => (c.modifiedEndLineNumber === 0 ? c.modifiedStartLineNumber + 1 : c.modifiedStartLineNumber);
@@ -457,6 +471,7 @@ class Host implements MonacoHost {
     // Zones belong to the view a model change replaces.
     this.review?.clear();
     ed.setModel(view);
+    resyncScroll(ed);
     this.hunkZones = req.hunkZones ? { req: req.hunkZones, zones } : null;
     this.layHunkZones();
     // Review mode's cards, in this frame too.

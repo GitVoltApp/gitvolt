@@ -7,9 +7,9 @@ const project = (path: string, host = 'gitlab.example.com') => ({
 });
 const RP = {
   remotes: [
-    { remote: 'origin', host: 'gitlab.example.com', path: 'me/project', account: 'gitlab' as const, project: { ...project('me/project'), forkOf: 'group/project' }, error: null },
-    { remote: 'upstream', host: 'gitlab.example.com', path: 'group/project', account: 'gitlab' as const, project: project('group/project'), error: null },
-    { remote: 'gh', host: 'github.com', path: 'o/r', account: null, project: null, error: null },
+    { remote: 'origin', host: 'gitlab.example.com', path: 'me/project', account: 'gitlab' as const, accountId: null, project: { ...project('me/project'), forkOf: 'group/project' }, error: null },
+    { remote: 'upstream', host: 'gitlab.example.com', path: 'group/project', account: 'gitlab' as const, accountId: null, project: project('group/project'), error: null },
+    { remote: 'gh', host: 'github.com', path: 'o/r', account: null, accountId: null, project: null, error: null },
   ],
   target: 'upstream', targetChosen: false,
 };
@@ -23,8 +23,8 @@ describe('the remotes a flyout can push from or to', () => {
 
   it('matches a ported project host to a port-less remote host, and skips remotes without a project', () => {
     const rp = { remotes: [
-      { remote: 'a', host: 'gitlab.example.com', path: 'x/y', account: 'gitlab' as const, project: project('x/y', 'gitlab.example.com:8443'), error: null },
-      { remote: 'b', host: 'gitlab.example.com', path: 'x/z', account: null, project: null, error: null },
+      { remote: 'a', host: 'gitlab.example.com', path: 'x/y', account: 'gitlab' as const, accountId: null, project: project('x/y', 'gitlab.example.com:8443'), error: null },
+      { remote: 'b', host: 'gitlab.example.com', path: 'x/z', account: null, accountId: null, project: null, error: null },
     ], target: 'a', targetChosen: false };
     expect(mappedRemotes(rp, 'gitlab.example.com:8443')).toEqual(['a']);
     expect(mappedRemotes(rp, 'gitlab.example.com')).toEqual(['a']);

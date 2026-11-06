@@ -1023,15 +1023,23 @@ pub enum Request {
     /// `ForgeAccountView[]`. Empty when this build has no forges.
     ForgeAccounts,
     /// Checks `token` against `host` (its user, its write scope, GitLab's version) and keeps it in
-    /// the token store (spec #4 §3.2): `ForgeAccountView`. Replaces the host's account if it has one.
+    /// the token store (spec #4 §3.2): `ForgeAccountView`. With `account`, replaces that account's
+    /// token; without it, replaces the same user's account or adds another user's on the host.
     AddForgeAccount {
         host: String,
         kind: crate::forge::ForgeKind,
         #[ts(type = "string")]
         token: crate::redact::Secret,
+        /// The account to replace (`ForgeAccount.id`); `None` adds or matches by user.
+        #[serde(default)]
+        account: Option<String>,
     },
-    /// Removes the account and deletes its token: `null`.
-    RemoveForgeAccount { host: String },
+    /// Removes the named account and deletes its token; without `account`, the host's first: `null`.
+    RemoveForgeAccount {
+        host: String,
+        #[serde(default)]
+        account: Option<String>,
+    },
     /// The forge's prefilled "new token" page for `host`: a URL for `openUrl`.
     ForgeTokenPage { host: String, kind: crate::forge::ForgeKind, #[serde(default)] classic: bool },
     /// The forge `host` runs (`HostKind`): by its name, else asked without a token
@@ -2892,9 +2900,9 @@ impl Api {
             Request::SubmoduleRemove { repo, worktree, path } => to_json(crate::write::run_write(self, repo, &worktree, Default::default(), crate::write::submodules::RemoveSubmodule { path }).await?),
             // --- 4A T5 ---
             Request::ForgeAccounts => to_json(self.forge.as_ref().map(|f| f.accounts(&self.store)).unwrap_or_default()),
-            Request::AddForgeAccount { host, kind, token } => to_json(self.forge_hub()?.add_account(&self.store, &host, kind, token).await?),
-            Request::RemoveForgeAccount { host } => {
-                self.forge_hub()?.remove_account(&self.store, &host).await?;
+            Request::AddForgeAccount { host, kind, token, account } => to_json(self.forge_hub()?.add_account(&self.store, &host, kind, token, account).await?),
+            Request::RemoveForgeAccount { host, account } => {
+                self.forge_hub()?.remove_account(&self.store, &host, account).await?;
                 to_json(())
             }
             Request::DetectForge { host } => {
@@ -3142,8 +3150,9 @@ impl Api {
                   let hub = self.forge_hub()?;
                   // Read the repository before any await: no gix handle crosses one.
                   let (list, prefills) = {
-                      let r = self.handle(repo)?.repo.to_thread_local();
-                      (crate::details::forge_remotes(&r), crate::forge::stack::prefills(&r, &branches, &base_ref))
+                      let h = self.handle(repo)?;
+                      let r = h.repo.to_thread_local();
+                      (self.forge_remotes_of(&h), crate::forge::stack::prefills(&r, &branches, &base_ref))
                   };
                   to_json(hub.stack_view(&self.store, &list, &branches, &base, prefills).await?)
               }
@@ -3557,13 +3566,21 @@ impl Api {
         .await
     }
 
-    /// The repo's remotes for the forge, the chosen main remote (when it still exists) flagged.
+    /// The repo's remotes for the forge, the chosen main remote (when it still exists) flagged,
+    /// each carrying the repository's chosen forge account (used where it's on the remote's host:
+    /// `hub::account_for_selected`).
     pub(crate) fn forge_remotes_of(&self, h: &RepoHandle) -> Vec<crate::payload::RemotePayload> {
         let mut list = crate::details::forge_remotes(&h.repo.to_thread_local());
-        let chosen = self.store.active_profile().repos.get(h.workdir.to_string_lossy().as_ref()).and_then(|r| r.forge_target_remote.clone());
-        if let Some(c) = chosen {
+        let profile = self.store.active_profile();
+        let repo = profile.repos.get(h.workdir.to_string_lossy().as_ref());
+        if let Some(c) = repo.and_then(|r| r.forge_target_remote.as_ref()) {
             for r in &mut list {
-                r.main = r.name == c;
+                r.main = &r.name == c;
+            }
+        }
+        if let Some(account) = repo.and_then(|r| r.forge_account.as_ref()) {
+            for r in &mut list {
+                r.account = Some(account.clone());
             }
         }
         list
@@ -5862,8 +5879,9 @@ mod tests {
         let work = api.dispatch(req(serde_json::json!({"method": "createProfile", "params": {"name": "Work", "color": "#336699"}}))).await.unwrap();
         let id = work["id"].as_str().unwrap().to_string();
         api.dispatch(req(serde_json::json!({"method": "switchProfile", "params": {"id": id}}))).await.unwrap();
-        api.dispatch(req(serde_json::json!({"method": "addForgeAccount", "params": {"host": "gitlab.example.com", "kind": "gitlab", "token": TOKEN}}))).await.unwrap();
-        assert_eq!(tokens.token(&id, "gitlab.example.com").as_deref(), Some(TOKEN));
+        let added = api.dispatch(req(serde_json::json!({"method": "addForgeAccount", "params": {"host": "gitlab.example.com", "kind": "gitlab", "token": TOKEN}}))).await.unwrap();
+        let account = added["account"]["id"].as_str().unwrap();
+        assert_eq!(tokens.token_for(&id, "gitlab.example.com", account).as_deref(), Some(TOKEN));
         api.dispatch(req(serde_json::json!({"method": "switchProfile", "params": {"id": "default"}}))).await.unwrap();
         api.dispatch(req(serde_json::json!({"method": "deleteProfile", "params": {"id": id}}))).await.unwrap();
         assert!(tokens.map.lock().unwrap().is_empty(), "no orphaned token");
@@ -5996,8 +6014,43 @@ mod tests {
         let api = api();
         let id = open(&api, &r).await as u32;
         let rp = api.dispatch(req(serde_json::json!({"method": "forgeRepoProjects", "params": {"repo": id, "refresh": false}}))).await.unwrap();
-        assert_eq!(rp, serde_json::json!({"remotes": [{"remote": "origin", "host": "gitlab.example.com", "path": "group/project", "account": null, "project": null, "error": null}], "target": null, "targetChosen": false}));
+        assert_eq!(rp, serde_json::json!({"remotes": [{"remote": "origin", "host": "gitlab.example.com", "path": "group/project", "account": null, "accountId": null, "project": null, "error": null}], "target": null, "targetChosen": false}));
     }
+    #[tokio::test]
+    async fn a_repository_uses_the_forge_account_it_chose() {
+        use crate::forge::fake::{project, FakeConnector, FakeProvider, MemTokens};
+        use crate::forge::{ForgeKind, ForgeUser, TokenStorage};
+        const TOKEN1: &str = "glpat-FAKE-private-token";
+        const TOKEN2: &str = "glpat-FAKE-work-token";
+        const HOST: &str = "gitlab.example.com";
+        let conn = Arc::new(FakeConnector::default());
+        let private = FakeProvider::new(ForgeKind::GitLab, HOST);
+        private.projects.lock().unwrap().insert("group/project".into(), project(HOST, "group/project", None, 1));
+        // Work's GitLab takes native stacked MRs (19.1); the private account's (18.9) doesn't.
+        let work = FakeProvider { user: ForgeUser { id: 2, ..crate::forge::fake::user("Grace") }, version: Some("19.1.0-ee".into()), ..FakeProvider::new(ForgeKind::GitLab, HOST) };
+        work.projects.lock().unwrap().insert("group/project".into(), project(HOST, "group/project", None, 2));
+        conn.add(TOKEN1, private);
+        conn.add(TOKEN2, work);
+        let api = api().with_forge(conn, MemTokens::new(TokenStorage::Keyring));
+        api.dispatch(req(serde_json::json!({"method": "addForgeAccount", "params": {"host": HOST, "kind": "gitlab", "token": TOKEN1}}))).await.unwrap();
+        let work = api.dispatch(req(serde_json::json!({"method": "addForgeAccount", "params": {"host": HOST, "kind": "gitlab", "token": TOKEN2}}))).await.unwrap();
+        let work_id = work["account"]["id"].as_str().unwrap().to_string();
+        let r = TestRepo::new();
+        r.commit("a");
+        r.git(&["remote", "add", "origin", &format!("https://{HOST}/group/project.git")]);
+        let id = open(&api, &r).await as u32;
+        let path = crate::platform::fs::canonicalize(r.path()).unwrap().display().to_string();
+        let mut profile = api.store().active_profile();
+        profile.repos.insert(path, crate::settings::RepoSettings { forge_account: Some(work_id.clone()), ..Default::default() });
+        api.store().save_profile(profile).unwrap();
+        let rp = api.dispatch(req(serde_json::json!({"method": "forgeRepoProjects", "params": {"repo": id, "refresh": false}}))).await.unwrap();
+        assert_eq!((rp["remotes"][0]["accountId"].as_str(), rp["remotes"][0]["project"]["id"].as_u64()), (Some(work_id.as_str()), Some(2)), "{rp}");
+        let list = api.dispatch(req(serde_json::json!({"method": "forgeMrList", "params": {"repo": id, "filter": "all"}}))).await.unwrap();
+        assert_eq!(list["project"]["id"].as_u64(), Some(2), "the chosen account's provider answered");
+        let stack = api.dispatch(req(serde_json::json!({"method": "forgeStack", "params": {"repo": id, "branches": [], "base": "main", "baseRef": "refs/heads/main"}}))).await.unwrap();
+        assert_eq!(stack["mode"], "native", "stacked MRs use the chosen account too: {stack}");
+    }
+
     // --- end 4A T6 ---
     // --- 4B T1 ---
     #[tokio::test]

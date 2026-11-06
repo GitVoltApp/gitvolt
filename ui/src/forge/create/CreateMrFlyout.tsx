@@ -23,7 +23,7 @@ import { Switch } from '../../ui/Switch';
 import { useToast } from '../../ui/toastStore';
 import { writeCtx } from '../../write/ctx';
 import { forgeName, mrLongNoun } from '../labels';
-import { forgeOf } from '../mrStore';
+import { forgeOf, useForge } from '../mrStore';
 import { mappedRemotes } from '../projects';
 import { BranchFlow, FlowStrip } from '../ui/BranchFlow';
 import { useCommitJump } from '../ui/commitJump';
@@ -74,14 +74,16 @@ export function CreateMrFlyout({ tabId, props: { branch }, close: closeFrame }: 
   // What the branch brings over its target: counted locally (merge base, then the compare list).
   const jump = useCommitJump(tabId);
   const stats = useRangeStats(tabId, local?.target ?? null, route ? `refs/remotes/${route.targetRemote}/${route.targetBranch}` : null);
-  // "Assign to me": the account's own user on the target's host.
+  // "Assign to me": the user of the account the repository uses for its target (its chosen one
+  // on the host, else the host's default).
+  const accountId = useForge((s) => s.byTab[tabId]?.accountId ?? null);
   const host = ctx?.project.host;
   useEffect(() => {
-    if (!host) return;
+    if (!host || accountId === null) return;
     let live = true;
-    api.forgeAccounts().then((a) => { if (live) setMe(a.find((x) => x.account.host === host)?.account.user ?? null); }, () => {});
+    api.forgeAccounts().then((a) => { if (live) setMe(a.find((x) => x.account.id === accountId)?.account.user ?? null); }, () => {});
     return () => { live = false; };
-  }, [host]);
+  }, [host, accountId]);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const close = () => { flushMrDrafts(); closeFrame(); };

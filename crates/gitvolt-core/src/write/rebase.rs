@@ -428,7 +428,7 @@ fn replayed(line: &str, fixups: bool) -> Option<String> {
     let mut words = line.split_whitespace();
     let cmd = words.next()?;
     let pick = ["pick", "p", "edit", "e", "reword", "r"].contains(&cmd);
-    if !pick && !(fixups && ["fixup", "f", "squash", "s"].contains(&cmd)) {
+    if !(pick || fixups && ["fixup", "f", "squash", "s"].contains(&cmd)) {
         return None;
     }
     let oid = words.find(|w| !w.starts_with('-'))?;

@@ -744,8 +744,8 @@ test.describe('presenting a long file', () => {
     const mid = (row.getBoundingClientRect().top + row.getBoundingClientRect().bottom) / 2;
     return mid >= box.top + box.height / 3 && mid <= box.top + (2 * box.height) / 3;
   }, line);
-  /** The smallest line number the modified editor draws: the top of its viewport. */
-  const topLine = (page: Page) => diff(page).locator('.editor.modified .margin-view-overlays .line-numbers').evaluateAll((els) => Math.min(...els.map((e) => Number(e.textContent))));
+  /** The smallest line number `side`'s editor draws: the top of its viewport. */
+  const topLine = (page: Page, side: 'modified' | 'original' = 'modified') => diff(page).locator(`.editor.${side} .margin-view-overlays .line-numbers`).evaluateAll((els) => Math.min(...els.map((e) => Number(e.textContent))));
   /** The line whose number sits at the vertical centre of `side`'s viewport, or null. */
   const centreLineOf = (page: Page, side: 'modified' | 'original') => diff(page).locator(`.editor.${side}`).evaluate((ed) => {
     const box = ed.querySelector('.overflow-guard')!.getBoundingClientRect();
@@ -960,6 +960,21 @@ test.describe('presenting a long file', () => {
       await expect.poll(() => inMiddleThird(page, 178)).toBe(true);
       await d.getByRole('button', { name: 'Previous change' }).click();
       await expect(active).toHaveText('150');
+    });
+
+    await test.step('Split: a file opened again has both sides at its first change, insertions only', async () => {
+      // ledger.php: 2800 lines, two inserted after line 1654. Opened again, its first change is at
+      // the scroll top the editor last had, which Monaco's scroll sync then missed: the original
+      // side stayed at the top a few frames on.
+      for (let i = 0; i < 2; i++) {
+        await present(page, 'ledger.php');
+        await expect.poll(() => inMiddleThird(page, 1655)).toBe(true);
+        await page.waitForTimeout(300);
+        expect(await topLine(page)).toBeGreaterThan(1600);
+        expect(await topLine(page, 'original')).toBe(await topLine(page));
+        await page.keyboard.press('Escape');
+        await expect(d).toHaveCount(0);
+      }
     });
 
     await test.step('Hunk + Ignore whitespace mid-file keeps the centre line, with the collapsed regions above the viewport changing', async () => {

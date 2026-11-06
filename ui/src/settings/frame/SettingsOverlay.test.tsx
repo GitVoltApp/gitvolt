@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS, EMPTY_PROFILE } from '../../app/state';
 
 const api = vi.hoisted(() => ({
-  forgeAccounts: vi.fn(async () => []),
+  forgeAccounts: vi.fn(async () => []), forgeRepoProjects: vi.fn(async () => ({ remotes: [], target: null, targetChosen: false })),
   saveSettings: vi.fn(async () => null),
   saveProfile: vi.fn(async () => null),
   pickFolder: vi.fn(async () => null),
@@ -89,12 +89,12 @@ describe('SettingsOverlay', () => {
     expect(screen.getByRole('region', { name: 'General' })).toBeInTheDocument();
   });
 
-  it('every page lists the settings registered on it', () => {
+  it('every page lists the settings registered on it (those it may leave out aside)', () => {
     const dialog = show();
     for (const page of settingsPages()) {
       if (page.id === 'keyboard' || page.id === 'accounts') continue;
       openPage(page.label);
-      for (const d of allSettings().filter((s) => s.page === page.id)) expect(dialog.querySelector(`[data-setting-id="${d.id}"]`), d.id).not.toBeNull();
+      for (const d of allSettings().filter((s) => s.page === page.id && !s.useShown)) expect(dialog.querySelector(`[data-setting-id="${d.id}"]`), d.id).not.toBeNull();
     }
   });
 

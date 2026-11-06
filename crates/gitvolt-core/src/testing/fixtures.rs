@@ -341,7 +341,20 @@ pub fn diff_view(r: &TestRepo) {
         _ => vec![format!("row {i:03}")],
     };
     r.write("mixed.txt", &lines(&mixed_old));
+    // ledger.php: 2800 lines, and the edit only inserts two after line 1654 (`@@ -1654,0 +1655,2 @@`).
+    let ledger_lines = |extra: bool| {
+        let mut s = String::from("<?php\n");
+        for i in 2..=2800 {
+            s.push_str(&format!("    $entries[{i}] = book_entry({i}, 'account {:03}');\n", i % 997));
+            if extra && i == 1654 {
+                s.push_str("    // Carried over from the previous period.\n    $entries[] = carry_over($entries);\n");
+            }
+        }
+        s
+    };
+    r.write("ledger.php", &ledger_lines(false));
     r.commit_all_as("Add long file", "Ada Lovelace", "ada@example.com");
+    r.write("ledger.php", &ledger_lines(true));
     r.write(
         "mixed.txt",
         &lines(&|i| match i {

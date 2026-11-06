@@ -119,17 +119,27 @@ pub fn is_forbidden(e: &GbError) -> bool {
 /// The keyring's service name (core spec §14.3).
 pub const KEYRING_SERVICE: &str = "gitvolt";
 
-/// One account: a host in a profile (spec #4 §2: one account per host per profile).
+/// One account: a host in a profile, and which of the host's accounts (spec #4 §2). `id` is its
+/// `ForgeAccount::id`: the host itself for the account the host had first, and
+/// `<host>#<user id>` for the others (empty also means the host).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AccountKey {
     pub profile: String,
     pub host: String,
+    pub id: String,
 }
 
 impl AccountKey {
-    /// The keyring's account name: `<profile-id>/<host>` (core spec §14.3).
+    /// What names the account within its profile: its id, else its host.
+    pub fn name(&self) -> &str {
+        if self.id.is_empty() { &self.host } else { &self.id }
+    }
+
+    /// The keyring's account name (core spec §14.3): `<profile-id>/<host>` for the account a host
+    /// had first (the name 1.5.0 and before gave every account, so a downgrade still finds that
+    /// token), `<profile-id>/<host>#<user id>` for the others.
     pub fn keyring_account(&self) -> String {
-        format!("{}/{}", self.profile, self.host)
+        format!("{}/{}", self.profile, self.name())
     }
 }
 

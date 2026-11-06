@@ -1,10 +1,15 @@
 import { FolderGit2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { api } from '../../api/client';
 import type { BranchUpdate } from '../../api/gen/BranchUpdate';
 import type { EditorChoice } from '../../api/gen/EditorChoice';
+import type { ForgeAccountView } from '../../api/gen/ForgeAccountView';
 import type { PinSetting } from '../../api/gen/PinSetting';
 import { useRuntime } from '../../app/runtime';
 import { flushSaves } from '../../app/state';
-import { notifyForgeAccountsChanged } from '../../forge/accountsBus';
+import { resetAvatars } from '../../avatars/avatarStore';
+import { hostDefault, repoAccountsOf, type RepoAccounts } from '../../forge/accountChoice';
+import { notifyForgeAccountsChanged, onForgeAccountsChanged } from '../../forge/accountsBus';
 import { refreshPresetViews } from '../../presets/store';
 import { Select } from '../../ui/Select';
 import { EditorPicker } from '../EditorPicker';
@@ -37,6 +42,60 @@ function TargetRemoteControl({ ctx }: { ctx: SettingsCtx }) {
   const options: Array<[string, string]> = [['', 'Automatic'], ...remotes.map((r): [string, string] => [r.name, r.name])];
   if (remote && !options.some(([v]) => v === remote)) options.push([remote, remote]);
   return <Select<string> id="input-forgeTargetRemote" aria-labelledby="label-forgeTargetRemote" value={remote ?? ''} onChange={(v) => set(v || null)} options={options} />;
+}
+
+/** Account ids name their host (`host#7`), so none is ever this. */
+const AUTO_ACCOUNT = '';
+const repoAccountsSeen = new Map<number, { all: ForgeAccountView[]; mine: RepoAccounts }>();
+
+/** The profile's forge accounts and those this repository can use (`repoAccountsOf`), read again
+ * when the accounts or the repository's choice change. The last answer per repository answers
+ * at once, so the row doesn't come and go each time the page opens. */
+function useRepoAccounts(ctx: SettingsCtx): { all: ForgeAccountView[]; mine: RepoAccounts } | null {
+  const repoId = useRuntime((s) => (ctx.tabId ? s.tabs[ctx.tabId]?.repo?.id ?? null : null));
+  const [, bump] = useState(0);
+  useEffect(() => {
+    if (repoId === null) return;
+    let live = true;
+    const load = () => {
+      Promise.all([api.forgeAccounts(), api.forgeRepoProjects(repoId)]).then(([all, projects]) => {
+        repoAccountsSeen.set(repoId, { all, mine: repoAccountsOf(all, projects) });
+        if (live) bump((n) => n + 1);
+      }, () => {});
+    };
+    load();
+    const off = onForgeAccountsChanged(load);
+    return () => { live = false; off(); };
+  }, [repoId]);
+  return repoId === null ? null : repoAccountsSeen.get(repoId) ?? null;
+}
+
+/** Shown where it's a choice: the repository's hosts have two accounts or more, or one was
+ * chosen (to go back to Automatic). */
+function useForgeAccountShown(ctx: SettingsCtx): boolean {
+  const [chosen] = useSettingValue<string | undefined>(settingDef('forgeAccount')!, ctx);
+  const seen = useRepoAccounts(ctx);
+  return (seen?.mine.accounts.length ?? 0) > 1 || chosen !== undefined;
+}
+
+/** Which account this repository uses on its forge host (a private and a work one, say). */
+function ForgeAccountControl({ ctx }: { ctx: SettingsCtx }) {
+  const [chosen, set] = useSettingValue<string | undefined>(settingDef('forgeAccount')!, ctx);
+  const seen = useRepoAccounts(ctx);
+  const mine = seen?.mine ?? { hosts: [], accounts: [] };
+  const several = mine.hosts.length > 1;
+  const name = (a: ForgeAccountView) => (several ? `@${a.account.user.username} · ${a.account.host}` : `@${a.account.user.username}`);
+  const defaults = mine.hosts.flatMap((h) => hostDefault(mine.accounts, h) ?? []);
+  const options: Array<[string, string]> = [
+    [AUTO_ACCOUNT, defaults.length ? `Automatic (${defaults.map(name).join(', ')})` : 'Automatic'],
+    ...mine.accounts.map((a): [string, string] => [a.account.id, name(a)]),
+  ];
+  if (chosen && !options.some(([v]) => v === chosen)) {
+    // Removed since, or on a host none of the repository's remotes is on now.
+    const elsewhere = seen?.all.find((a) => a.account.id === chosen);
+    options.push([chosen, elsewhere ? `@${elsewhere.account.user.username} · ${elsewhere.account.host} (no remote there)` : 'Removed account']);
+  }
+  return <Select<string> id="input-forgeAccount" aria-labelledby="label-forgeAccount" value={chosen ?? AUTO_ACCOUNT} onChange={(v) => set(v === AUTO_ACCOUNT ? undefined : v)} options={options} />;
 }
 
 /** The trunk the graph detected: its pinned branches by name (`origin/main` and `main` are one). */
@@ -98,6 +157,15 @@ const offs = [
       description: 'The remote whose project merge requests and pull requests go to.',
       Control: TargetRemoteControl,
       binding: repoField('forgeTargetRemote', null, () => void flushSaves().then(notifyForgeAccountsChanged)),
+    },
+    {
+      id: 'forgeAccount', label: 'Forge account', page: 'repository', group: 'Merge requests', labelFor: 'group',
+      keywords: 'account github gitlab forgejo forge private work multiple identities',
+      description: "The account for this repository's merge requests, forks and avatars. Automatic: the host's first account in Settings › Accounts.",
+      Control: ForgeAccountControl,
+      useShown: useForgeAccountShown,
+      // Avatars too: which account asks the forge for them changed.
+      binding: repoField('forgeAccount', undefined, () => void flushSaves().then(() => { resetAvatars(); notifyForgeAccountsChanged(); })),
     },
     {
       id: 'branchUpdate', label: "Update an MR's branch by", page: 'repository', group: 'Merge requests', labelFor: 'group',

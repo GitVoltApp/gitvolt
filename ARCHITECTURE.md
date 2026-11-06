@@ -473,8 +473,13 @@ with an Open in browser action. A diff shows the old and new pages side by side.
 ## Forge layer
 
 GitHub, GitLab and Forgejo are the providers (`gitvolt-forge`), all over personal access tokens. Core
-holds the `ForgeHub` (`forge/hub.rs`): the active profile's accounts, a provider per account built
-on first use, and each account's last known status. It maps each remote to its forge project and
+holds the `ForgeHub` (`forge/hub.rs`): the active profile's accounts (any number per host, a
+private and a work one, say), a provider per account built on first use, and each account's last
+known status. An account's id names its host: the host itself for the account a host had first,
+`<host>#<user id>` for the others (`ForgeAccount::id`). A repository's
+`RepoSettings::forge_account` picks which account its remotes on that host use
+(`RemotePayload::account`, `hub::account_for_selected`); otherwise, or once that account is
+removed, they use the host's default, its first account. It maps each remote to its forge project and
 answers the MR/PR badges, the sidebar list, the MR/PR view, the Create MR/PR flow, stacked
 MRs/PRs and inline review comments (`forge/mrs.rs`, `forge/create.rs`, `forge/stack.rs`,
 `forge/review.rs`: the lines a forge's diff takes comments on, positions and GitLab line codes,
@@ -487,12 +492,16 @@ limits (once limited, requests fail fast until the reset time), timeouts, and
 `User-Agent: GitVolt/<version>`.
 
 **Tokens** (`gitvolt-forge/src/tokens.rs`) live in the system Secret Service through the `keyring`
-crate (service `gitvolt`, account `<profile id>/<host>`). Where there's no Secret Service, they go
+crate (service `gitvolt`, account `<profile id>/<account id>`: `<profile id>/<host>` for the account a
+host had first, the name 1.5.0 gave every account, so a downgrade still finds that token, and
+`<profile id>/<host>#<user id>` for the others). Removing an account deletes its token and cache
+only; the host's other accounts keep their names, and the host's own name goes to a new account
+only when the host has none. Where there's no Secret Service, they go
 to `~/.local/share/gitvolt/forge-tokens` (file 0600, directory 0700), and Settings › Accounts warns
 about it. Tokens never go in settings files, and nothing logs, prints or formats one.
 
 **Cache** (`forge/cache.rs`): per project, the last MR/PR lists and badge lookups with their ETags,
-in `<data dir>/forge-cache/`. A relaunch shows the last list at once, and its first poll
+in `<data dir>/forge-cache/<profile>/<account id>/`. A relaunch shows the last list at once, and its first poll
 revalidates instead of downloading everything again. It holds the forge's own data, never a token.
 
 **Polling** (`ui/src/forge/poller.ts`): only the active tab polls, when it becomes active, on the

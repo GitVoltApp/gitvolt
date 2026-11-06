@@ -8,6 +8,7 @@
       "account": {
         "addedAt": "<untimed>",
         "host": "gitlab.example.com",
+        "id": "gitlab.example.com",
         "kind": "gitlab",
         "storage": "<untimed>",
         "user": {

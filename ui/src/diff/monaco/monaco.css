@@ -1,0 +1,5 @@
+/* Monaco's tooltips (the find widget's buttons') are absolute boxes inside an editor's element: the
+   focused editor's, else the first one made (in a diff, the original side, a strip in Inline). Past
+   that box's right edge one shrank and wrapped after Monaco had placed it by its one-line height, so
+   it covered the button it labels and took its clicks. At its natural width it stays as placed. */
+.context-view:has(> .workbench-hover-container) { width: max-content !important; }
