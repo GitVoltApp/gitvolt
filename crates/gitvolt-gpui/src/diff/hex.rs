@@ -315,7 +315,7 @@ fn bar(diff: &DiffState, view: &HexView, file: bool, cx: &mut Context<GitVolt>) 
     let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
     let paint_cell = cell.clone();
     let view_handle = cx.weak_entity();
-    strip_events(div().id("hex-bar").flex_none().w(px(RULER_W)).h_full(), cell, cx).child(
+    strip_events(div().id("hex-bar").flex_none().w(px(RULER_W)).h_full(), cell, false, cx).child(
         canvas(
             |_, _, _| {},
             move |b, _, window, _| {

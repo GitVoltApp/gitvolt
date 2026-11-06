@@ -746,7 +746,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
     let list = if wide { list.with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained) } else { list };
     let across = if wide { base_handle.offset().x.as_f32().max(available - total) } else { 0. };
     let find = tab.find.open.then(|| crate::find::find_box(&tab.find, window, cx));
-    let thumb = scrollbar(tab, cx);
+    let thumb = crate::ui::anchor("graph-scrollbar", scrollbar(tab, cx));
     let reveal = tab.reveal.as_ref().map(|r| crate::presets::reveal_panel(tab, r, cols, list_h, tab.revealed.as_deref(), cx));
     div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().bg(theme::app_bg()).children(find).child(div().flex().flex_none().pr(px(gutter)).overflow_hidden().child(header.ml(px(across)).when(wide, |d| d.flex_none().w(px(total))))).child(div().relative().flex().flex_1().min_h_0().child(list).when(scrolls, |d| d.child(thumb)).children(reveal)).when(wide, |d| d.child(div().flex_none().h(px(crate::ui::scrollbar::LANE)).pr(px(gutter)).child(crate::ui::scrollbar::horizontal("graph-across", &base_handle)))).into_any_element()
 }
@@ -840,8 +840,10 @@ fn message_card(id: &str, summary: &SharedString, cache: &MessageCache, this: &W
 /// The graph's scrollbar: its thumb follows the list; a press or a drag jumps the list there.
 fn scrollbar(tab: &Tab, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let handle = tab.list.0.borrow().base_handle.clone();
+    let press_handle = handle.clone();
     let track_bounds = Rc::new(std::cell::Cell::new(Bounds::<Pixels>::default()));
-    let (for_paint, on_down, on_move) = (track_bounds.clone(), track_bounds.clone(), track_bounds);
+    let (for_paint, on_down) = (track_bounds.clone(), track_bounds);
+    let view = cx.weak_entity();
     div()
         .id("graph-scrollbar")
         .relative()
@@ -851,32 +853,52 @@ fn scrollbar(tab: &Tab, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-                this.dragging_scrollbar = true;
+                cx.stop_propagation();
                 let b = on_down.get();
+                let y = (e.position.y - b.origin.y).as_f32();
+                // On the thumb the press holds the point it's on; elsewhere the thumb's middle comes to the pointer.
+                let thumb = crate::ui::scrollbar::thumb(b.size.height.as_f32(), b.size.height.as_f32(), press_handle.max_offset().y.as_f32(), (-press_handle.offset().y).as_f32());
+                let grab = thumb.and_then(|(len, at)| (y >= at && y < at + len).then_some(y - at)).unwrap_or_else(|| thumb.map_or(0., |t| t.0 / 2.));
+                this.dragging_scrollbar = true;
+                this.scrollbar_grab = grab;
                 this.scroll_to_pointer(e.position.y, b.origin.y, b.size.height, cx);
             }),
         )
-        .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, _| this.dragging_scrollbar = false))
-        .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.dragging_scrollbar = false))
-        .on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, _, cx| {
-            if this.dragging_scrollbar && e.pressed_button == Some(MouseButton::Left) {
-                let b = on_move.get();
-                this.scroll_to_pointer(e.position.y, b.origin.y, b.size.height, cx);
-            }
-        }))
         .child(
             canvas(
                 |_, _, _| {},
                 move |bounds, _, window, _| {
                     for_paint.set(bounds);
+                    let up = view.clone();
+                    let moved = view.clone();
+                    // Held, the pointer counts wherever it goes, until it's let go.
+                    window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+                        if phase != DispatchPhase::Capture {
+                            return;
+                        }
+                        let _ = moved.update(cx, |this, cx| {
+                            if !this.dragging_scrollbar {
+                                return;
+                            }
+                            if e.pressed_button == Some(MouseButton::Left) {
+                                this.scroll_to_pointer(e.position.y, bounds.origin.y, bounds.size.height, cx);
+                            } else {
+                                this.dragging_scrollbar = false;
+                            }
+                            cx.stop_propagation();
+                        });
+                    });
+                    window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
+                        if phase == DispatchPhase::Capture && e.button == MouseButton::Left {
+                            let _ = up.update(cx, |this, _| this.dragging_scrollbar = false);
+                        }
+                    });
                     let max = handle.max_offset().y;
                     if max <= px(0.) {
                         return;
                     }
-                    let height = bounds.size.height;
-                    let thumb = (height * (height / (height + max))).max(px(24.));
-                    let top = (height - thumb) * (-handle.offset().y / max);
-                    let b = Bounds::new(point(bounds.origin.x + px(2.), bounds.origin.y + top), size(px(6.), thumb));
+                    let Some((thumb, top)) = crate::ui::scrollbar::thumb(bounds.size.height.as_f32(), bounds.size.height.as_f32(), max.as_f32(), (-handle.offset().y).as_f32()) else { return };
+                    let b = Bounds::new(point(bounds.origin.x + px(2.), bounds.origin.y + px(top)), size(px(6.), px(thumb)));
                     window.paint_quad(quad(b, px(3.), theme::control_hover_bg(), px(0.), transparent_black(), BorderStyle::default()));
                 },
             )

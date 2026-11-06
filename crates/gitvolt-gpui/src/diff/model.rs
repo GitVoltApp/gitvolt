@@ -26,6 +26,9 @@ pub struct Line {
     pub tab_starts: Vec<u32>,
     /// The words changed in this line.
     pub marks: Vec<(u32, u32)>,
+    /// A change that goes on past this line's end, from this column: Monaco tints on to the row's end. A line added or removed
+    /// whole is one from its start.
+    pub to_end: Option<u32>,
     /// Indent guides, in tab stops; a blank line takes its neighbours'.
     pub guides: u16,
 }
@@ -60,7 +63,7 @@ impl Line {
         };
         let indent = text.bytes().take_while(|b| *b == b' ').count();
         let blank = indent == text.len();
-        Self { text: text.into(), tabs, tab_starts, marks: Vec::new(), guides: if blank { u16::MAX } else { (indent / crate::metrics::tab_size()) as u16 } }
+        Self { text: text.into(), tabs, tab_starts, marks: Vec::new(), to_end: None, guides: if blank { u16::MAX } else { (indent / crate::metrics::tab_size()) as u16 } }
     }
 
     /// A byte of `text` → the raw line's: inside a tab's spaces, the tab.
@@ -200,6 +203,38 @@ fn tokens(text: &str) -> Vec<(usize, &str)> {
 
 type Ranges = Vec<(usize, usize)>;
 
+/// `getBoundaryScore`'s worth of the place between two characters: higher, a better place for a change to start or end.
+fn boundary_score(text: &[u8], at: usize) -> u32 {
+    let category = |b: Option<&u8>| match b {
+        None => (0, 10),
+        Some(b) if b.is_ascii_lowercase() => (1, 0),
+        Some(b) if b.is_ascii_uppercase() => (2, 0),
+        Some(b) if b.is_ascii_digit() => (3, 0),
+        Some(b',' | b';') => (4, 30),
+        Some(b' ' | b'\t') => (5, 3),
+        Some(b'\n' | b'\r') => (6, 10),
+        Some(_) => (7, 2),
+    };
+    let (before, after) = (category(at.checked_sub(1).and_then(|i| text.get(i))), category(text.get(at)));
+    u32::from(before.0 != after.0) * 10 + before.1 + after.1
+}
+
+/// Monaco's `shiftSequenceDiffs`: a change on one side only can often lie a few characters earlier and mean the same (`rank or ` and
+/// ` rank or`): it takes the best place, and the earliest of those.
+fn shift_left(text: &str, (mut start, mut end): (usize, usize)) -> (usize, usize) {
+    let bytes = text.as_bytes();
+    let (mut best, mut best_score) = ((start, end), boundary_score(bytes, start) + boundary_score(bytes, end));
+    while start > 0 && end > start && bytes[start - 1] == bytes[end - 1] && bytes[start - 1].is_ascii() {
+        start -= 1;
+        end -= 1;
+        let score = boundary_score(bytes, start) + boundary_score(bytes, end);
+        if score >= best_score {
+            (best, best_score) = ((start, end), score);
+        }
+    }
+    best
+}
+
 /// The byte ranges that differ between `old` and `new`, on each side.
 pub fn word_changes(old: &str, new: &str) -> (Ranges, Ranges) {
     if old.len() + new.len() > MAX_WORD_DIFF_BYTES {
@@ -224,8 +259,8 @@ pub fn word_changes(old: &str, new: &str) -> (Ranges, Ranges) {
     for op in capture_diff_slices_deadline(Algorithm::Myers, &ta, &tb, Some(Instant::now() + WORD_DIFF_LIMIT)) {
         match op {
             DiffOp::Equal { .. } => {}
-            DiffOp::Delete { old_index, old_len, .. } => push(&mut left, range(&a, old.len(), old_index, old_index + old_len)),
-            DiffOp::Insert { new_index, new_len, .. } => push(&mut right, range(&b, new.len(), new_index, new_index + new_len)),
+            DiffOp::Delete { old_index, old_len, .. } => push(&mut left, shift_left(old, range(&a, old.len(), old_index, old_index + old_len))),
+            DiffOp::Insert { new_index, new_len, .. } => push(&mut right, shift_left(new, range(&b, new.len(), new_index, new_index + new_len))),
             DiffOp::Replace { old_index, old_len, new_index, new_len } => {
                 push(&mut left, range(&a, old.len(), old_index, old_index + old_len));
                 push(&mut right, range(&b, new.len(), new_index, new_index + new_len));
@@ -236,15 +271,31 @@ pub fn word_changes(old: &str, new: &str) -> (Ranges, Ranges) {
 }
 
 /// The word marks of every replaced block: line by line when its sides have as many lines,
-/// else over the whole block's text.
+/// else over the whole block's text. A block with lines on one side only is changed whole.
 pub fn mark_words(ops: &[DiffOp], old_raw: &[&str], new_raw: &[&str], old: &mut Side, new: &mut Side) {
     for op in ops {
+        match *op {
+            DiffOp::Delete { old_index, old_len, .. } => old.lines[old_index..old_index + old_len].iter_mut().for_each(|l| l.to_end = Some(0)),
+            DiffOp::Insert { new_index, new_len, .. } => new.lines[new_index..new_index + new_len].iter_mut().for_each(|l| l.to_end = Some(0)),
+            _ => {}
+        }
         let DiffOp::Replace { old_index, old_len, new_index, new_len } = *op else { continue };
         if old_len == new_len {
             for i in 0..old_len {
                 let (l, r) = word_changes(strip(old_raw[old_index + i]), strip(new_raw[new_index + i]));
                 old.lines[old_index + i].marks = display_marks(&old.lines[old_index + i], &l);
                 new.lines[new_index + i].marks = display_marks(&new.lines[new_index + i], &r);
+            }
+        } else if let Some(pairs) = align_lines(&old_raw[old_index..old_index + old_len], &new_raw[new_index..new_index + new_len]) {
+            old.lines[old_index..old_index + old_len].iter_mut().for_each(|l| l.to_end = Some(0));
+            new.lines[new_index..new_index + new_len].iter_mut().for_each(|l| l.to_end = Some(0));
+            for (o, n) in pairs {
+                let (o, n) = (old_index + o, new_index + n);
+                let (l, r) = word_changes(strip(old_raw[o]), strip(new_raw[n]));
+                old.lines[o].to_end = None;
+                new.lines[n].to_end = None;
+                old.lines[o].marks = display_marks(&old.lines[o], &l);
+                new.lines[n].marks = display_marks(&new.lines[n], &r);
             }
         } else {
             let (a, b) = (old_raw[old_index..old_index + old_len].iter().map(|l| strip(l)).collect::<Vec<_>>().join("\n"), new_raw[new_index..new_index + new_len].iter().map(|l| strip(l)).collect::<Vec<_>>().join("\n"));
@@ -253,6 +304,56 @@ pub fn mark_words(ops: &[DiffOp], old_raw: &[&str], new_raw: &[&str], old: &mut 
             spread_marks(&b, &r, new, new_index);
         }
     }
+}
+
+/// A block of unequal sides, line to line by the words they share: what Monaco's inner changes come to, a line with a partner marked
+/// in its words and the rest changed whole. Equally good, the later lines pair. `None`: too big a block to compare.
+fn align_lines(old: &[&str], new: &[&str]) -> Option<Vec<(usize, usize)>> {
+    const MAX_CELLS: usize = 2500;
+    let bytes: usize = old.iter().chain(new).map(|l| l.len()).sum();
+    if old.len() * new.len() > MAX_CELLS || bytes > MAX_WORD_DIFF_BYTES {
+        return None;
+    }
+    let words = |line: &&str| -> Vec<String> {
+        let mut list: Vec<String> = tokens(strip(line)).into_iter().map(|t| t.1.to_string()).filter(|t| !t.trim().is_empty()).collect();
+        list.sort_unstable();
+        list
+    };
+    let (a, b): (Vec<_>, Vec<_>) = (old.iter().map(words).collect(), new.iter().map(words).collect());
+    let shared = |x: &[String], y: &[String]| {
+        let (mut i, mut j, mut n) = (0, 0, 0u32);
+        while i < x.len() && j < y.len() {
+            match x[i].cmp(&y[j]) {
+                std::cmp::Ordering::Less => i += 1,
+                std::cmp::Ordering::Greater => j += 1,
+                std::cmp::Ordering::Equal => {
+                    (i, j, n) = (i + 1, j + 1, n + 1);
+                }
+            }
+        }
+        n
+    };
+    let mut best = vec![vec![0u32; b.len() + 1]; a.len() + 1];
+    for i in 1..=a.len() {
+        for j in 1..=b.len() {
+            let score = shared(&a[i - 1], &b[j - 1]);
+            let pair = if score > 0 { best[i - 1][j - 1] + score } else { 0 };
+            best[i][j] = pair.max(best[i - 1][j]).max(best[i][j - 1]);
+        }
+    }
+    let (mut i, mut j, mut pairs) = (a.len(), b.len(), Vec::new());
+    while i > 0 && j > 0 {
+        let score = shared(&a[i - 1], &b[j - 1]);
+        if score > 0 && best[i][j] == best[i - 1][j - 1] + score {
+            pairs.push((i - 1, j - 1));
+            (i, j) = (i - 1, j - 1);
+        } else if best[i][j] == best[i][j - 1] {
+            j -= 1;
+        } else {
+            i -= 1;
+        }
+    }
+    Some(pairs)
 }
 
 fn strip(line: &str) -> &str {
@@ -269,8 +370,11 @@ fn spread_marks(joined: &str, marks: &[(usize, usize)], side: &mut Side, first: 
     for (n, text) in joined.split('\n').enumerate() {
         let end = start + text.len();
         let line = &mut side.lines[first + n];
-        let here: Vec<(usize, usize)> = marks.iter().filter(|m| m.0 < end && m.1 > start).map(|m| (m.0.max(start) - start, m.1.min(end) - start)).collect();
+        // What goes on past the line's end is `to_end`'s, not a mark over it too.
+        let on = |m: &&(usize, usize)| m.0 <= end && m.1 > end;
+        let here: Vec<(usize, usize)> = marks.iter().filter(|m| m.0 < end && m.1 > start && !on(m)).map(|m| (m.0.max(start) - start, m.1.min(end) - start)).collect();
         line.marks = display_marks(line, &here);
+        line.to_end = marks.iter().find(|m| on(m)).map(|m| line.display((m.0.max(start) - start) as u32));
         start = end + 1;
     }
 }
@@ -440,12 +544,31 @@ pub fn scroll_top_at(y: f32, visible: f32, content: f32, strip: f32, at: f32) ->
     }
 }
 
+/// `MinimapLayout.create` for a proportional map at a pixel ratio of 1: a slider of the view's lines at the map's line height,
+/// moving from the top to the map's last place as the view goes from the file's start to its end.
+pub fn minimap_slider(scroll: f32, line_h: f32, map_line: f32, strip: f32, visible: f32, content: f32) -> Slider {
+    let lines = visible / line_h;
+    let height = (lines * map_line).floor();
+    // Scrolling past the last line: the map shows the file's lines and the view's, less the one that stays.
+    let file_lines = (content - (visible - line_h).max(0.)) / line_h;
+    let extra = (lines - 1.).max(0.);
+    let furthest = if extra > 0. { (file_lines + extra - lines - 1.) * map_line } else { (file_lines * map_line - height).max(0.) };
+    let room = furthest.min(strip - height).max(0.);
+    let ratio = if content > visible { room / (content - visible) } else { 0. };
+    Slider { top: scroll * ratio, height, ratio }
+}
+
 /// What a press at `y` holds: the slider's point it's on, which then stays under the pointer (the view doesn't move), or off
 /// the slider its middle, which centres the view there (`sliderPointAt`, and Monaco's scrollbar).
 pub fn slider_grab(y: f32, visible: f32, content: f32, scroll: f32, strip: f32) -> f32 {
     let Some(s) = slider_of(visible, content, scroll, strip) else { return 0.5 };
     let exact = scroll * s.ratio;
     if y >= exact && y < exact + s.height && s.height > 0. { (y - exact) / s.height } else { 0.5 }
+}
+
+/// The scroll that keeps the slider's point `at` on `y`.
+pub fn scroll_held(s: &Slider, y: f32, at: f32, max: f32) -> f32 {
+    if s.ratio > 0. { ((y - s.height * at) / s.ratio).clamp(0., max) } else { 0. }
 }
 
 /// `markRects`' rows on the strip: at least 2 px, centred on the change and kept on the strip: (top, height).
@@ -595,6 +718,56 @@ mod tests {
     fn a_blank_line_takes_the_lesser_guides_around_it() {
         let side = Side::new(Some("a\n        b\n\n    c\n\nd"));
         assert_eq!(side.lines.iter().map(|l| l.guides).collect::<Vec<_>>(), [0, 2, 1, 1, 0, 0]);
+    }
+
+    #[test]
+    fn an_insertion_takes_the_earliest_of_its_equally_good_places() {
+        let (left, right) = word_changes("if visited[rank] then", "if rank == nil or visited[rank] then");
+        assert!(left.is_empty(), "nothing of the old line changed");
+        assert_eq!(&"if rank == nil or visited[rank] then"[right[0].0..right[0].1], " rank == nil or");
+    }
+
+    #[test]
+    fn a_line_added_or_removed_whole_tints_to_its_end_and_a_paired_one_only_its_words() {
+        let (old_raw, new_raw) = (["keep", "gone", "a b"], ["keep", "a c", "new"]);
+        let ops = [DiffOp::Equal { old_index: 0, new_index: 0, len: 1 }, DiffOp::Delete { old_index: 1, old_len: 1, new_index: 1 }, DiffOp::Replace { old_index: 2, old_len: 1, new_index: 1, new_len: 1 }, DiffOp::Insert { old_index: 3, new_index: 2, new_len: 1 }];
+        let mut old = Side::new(Some(&old_raw.join("\n")));
+        let mut new = Side::new(Some(&new_raw.join("\n")));
+        mark_words(&ops, &old_raw, &new_raw, &mut old, &mut new);
+        assert_eq!(old.lines[1].to_end, Some(0));
+        assert_eq!(new.lines[2].to_end, Some(0));
+        assert_eq!(old.lines[2].to_end, None);
+        assert_eq!(new.lines[1].to_end, None);
+        assert!(!new.lines[1].marks.is_empty());
+    }
+
+    #[test]
+    fn a_block_of_unequal_sides_pairs_its_lines_by_their_words_and_the_rest_are_whole() {
+        let pairs = align_lines(&["local function step30(rank)", "    local v31 = 31"], &["    replaced_a = 1", "    replaced_b = 2", "    replaced_c = 3"]);
+        assert_eq!(pairs, Some(vec![(1, 2)]), "the later line of the equally good ones");
+        let huge = vec!["x"; 60];
+        assert_eq!(align_lines(&huge, &huge[..59]), None);
+    }
+
+    #[test]
+    fn a_change_across_lines_tints_to_the_end_of_each_but_the_last() {
+        let (a, b) = ("x", "one\ntwo\nthree");
+        let (_, r) = word_changes(a, b);
+        let mut new = Side::new(Some(b));
+        spread_marks(b, &r, &mut new, 0);
+        assert_eq!(new.lines[0].to_end, Some(0));
+        assert_eq!(new.lines[1].to_end, Some(0));
+        assert_eq!(new.lines[2].to_end, None);
+    }
+
+    #[test]
+    fn a_minimaps_slider_moves_slower_than_the_file_and_ends_at_its_end() {
+        let s = minimap_slider(0., 18., 2., 700., 700., 18_000.);
+        assert_eq!(s.height, (2. * 700f32 / 18.).floor());
+        assert_eq!(s.top, 0.);
+        let max = 18_000. - 700.;
+        let end = minimap_slider(max, 18., 2., 700., 700., 18_000.);
+        assert!((end.top - (700. - s.height)).abs() < 1., "the slider's at the strip's end at the file's end: {}", end.top);
     }
 
     #[test]

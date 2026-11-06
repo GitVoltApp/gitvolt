@@ -456,6 +456,7 @@ impl GitVolt {
             "operation": tab.and_then(|t| t.operation()).map(|o| (o.title, o.hint, o.detail)),
             "commit": tab.and_then(|t| t.commit.as_ref()).map(|c| c.summary.to_string()),
             "open": tab.and_then(|t| t.diff.as_ref()).map(|d| d.file.path.to_string()),
+            "graphScroll": tab.map(|t| -t.list.0.borrow().base_handle.offset().y.as_f32()),
             "wip": sections,
             "summary": tab.map(|t| t.wip.summary.read(cx).text().to_string()),
             "head": head.as_ref().map(|h| h.0.clone()),

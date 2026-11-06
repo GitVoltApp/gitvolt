@@ -213,8 +213,8 @@ pub struct DiffState {
     /// A folded thread's icon under the pointer: its side and line, whose range shows.
     pub review_icon_hover: Option<(bool, u32)>,
     pub ruler_hover: bool,
-    /// The strip that's held (`Drag::Ruler`), and the slider's point the press took.
-    pub strip_held: Option<(Bounds<Pixels>, f32)>,
+    /// The strip that's held (`Drag::Ruler`), the slider's point the press took, and whether it's the minimap's.
+    pub strip_held: Option<(Bounds<Pixels>, f32, bool)>,
     pub file: FileChange,
     pub view: ViewKind,
     pub mode: Mode,
@@ -440,6 +440,13 @@ impl DiffState {
         };
         self.changes = change_starts(&rows);
         self.ruler = Rc::new(ruler_marks(&rows));
+        // The caret's on a line, wherever the new rows show it.
+        if let Some(was) = self.rows.get(self.cursor).copied() {
+            let shows = |r: &Row| !matches!(r.kind, RowKind::Hidden { .. } | RowKind::Zone { .. }) && if was.new.is_some() { r.new == was.new } else { r.old == was.old };
+            if let Some(at) = rows.iter().position(shows) {
+                self.cursor = at;
+            }
+        }
         self.rows = Rc::new(rows);
         self.selection = None;
         self.layout = Rc::new(Layout { width: -1., ..Layout::default() });
@@ -534,10 +541,14 @@ impl DiffState {
         layout.offsets.push(y);
         self.layout = Rc::new(layout);
         if std::mem::take(&mut self.reveal_first)
-            && let Some(first) = self.changes.first()
+            && let Some(first) = self.changes.first().copied()
         {
-            self.center_on(*first);
+            self.center_on(first);
             self.first_change_at = Some(self.scroll);
+            // Monaco's caret goes with it: the first line of the change on the new side.
+            if let Some(at) = self.rows[first..].iter().position(|r| r.new.is_some()) {
+                self.cursor = first + at;
+            }
         }
         if let Some(anchor) = self.pending_anchor.take() {
             self.restore_anchor(anchor);
@@ -836,6 +847,13 @@ impl GitVolt {
         tab.sidebar_open = false;
         self.read_contents(false, cx);
         cx.notify();
+    }
+
+    /// Whether the file list's file at `index` is the one the diff shows.
+    pub fn file_is_open(&self, index: usize) -> bool {
+        let Some(tab) = self.tabs.get(self.active) else { return false };
+        let Some(file) = tab.files.as_ref().and_then(|f| f.changes.get(index)) else { return false };
+        tab.diff.as_ref().is_some_and(|d| d.file.path == file.path && d.file.origin == file.origin)
     }
 
     pub fn close_file(&mut self, cx: &mut Context<Self>) {
@@ -1356,7 +1374,8 @@ fn paint_number(n: u32, right: Pixels, y: Pixels, color: Hsla, p: &Painter, wind
 }
 
 fn paint_sign(glyph: &'static str, x: Pixels, y: Pixels, color: Hsla, _: &Painter, window: &mut Window, _: &mut App) {
-    // Monaco's diff glyphs: strokes of a pixel, nine across, in the margin's first pixels.
+    // Monaco's diff glyphs: strokes of a pixel, nine across, in the margin's first pixels, at `.insert-sign`'s opacity.
+    let color = Hsla { a: color.a * 0.7, ..color };
     let (left, mid) = (x + px(1.), y + px((crate::metrics::line_h() / 2.).floor()));
     window.paint_quad(fill(Bounds::new(point(left, mid), size(px(9.), px(1.))), color));
     if glyph == "+" {
@@ -1387,6 +1406,14 @@ fn paint_text(ix: usize, n: u32, line: &Line, spans: &[Span], old_side: bool, ma
                 if b > a {
                     let (l, r) = (shaped.x_for_index(a - from), shaped.x_for_index(b - from));
                     window.paint_quad(fill(Bounds::from_corners(point(start + l, y), point(start + r, y + px(crate::metrics::line_h()))), mark));
+                }
+            }
+            if let Some(a) = line.to_end.filter(|_| p.view != ViewKind::File).map(|a| (a as usize).max(from)).filter(|a| *a <= to) {
+                // Inline, Monaco draws a removed line in a zone of its own, whose tint ends with the text.
+                let left = if a == 0 { x - px(p.hscroll) } else { start + shaped.x_for_index(a - from) };
+                let right = if old_side && !p.split { start + shaped.x_for_index(to - from) } else { clip.right() };
+                if right > left {
+                    window.paint_quad(fill(Bounds::from_corners(point(left, y), point(right, y + px(crate::metrics::line_h()))), mark));
                 }
             }
             let mode = crate::metrics::whitespace_mode();
@@ -1448,6 +1475,15 @@ fn spans_of(pieces: &[Arc<Vec<Vec<Span>>>], n: u32) -> &[Span] {
     pieces.get(n / COLOUR_CHUNK).and_then(|p| p.get(n % COLOUR_CHUNK)).map_or(&[], Vec::as_slice)
 }
 
+/// Monaco's current line in a diff: 2 px above and below it, across the text.
+fn paint_current_line(left: Pixels, right: Pixels, y: Pixels, window: &mut Window) {
+    let Some(border) = theme::editor().line_highlight_border else { return };
+    let h = px(crate::metrics::line_h());
+    for at in [y, y + h - px(2.)] {
+        window.paint_quad(fill(Bounds::from_corners(point(left, at), point(right, at + px(2.))), border));
+    }
+}
+
 fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut Window, cx: &mut App) {
     let y = b.origin.y;
     let bottom = y + b.size.height;
@@ -1461,21 +1497,19 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
         RowKind::Removed => {
             window.paint_quad(fill(b, theme::diff_removed_line()));
             if let Some(n) = r.old {
-                // A line with no words of its own marked changed whole: Monaco tints its text's whole row.
-                if p.data.old.lines[n as usize].marks.is_empty() {
-                    window.paint_quad(fill(clip, theme::diff_removed_text()));
-                }
                 paint_number(n, old_right, y, num, p, window, cx);
                 paint_sign("−", sign_x, y, theme::status_deleted(), p, window, cx);
                 paint_text(ix, n, &p.data.old.lines[n as usize], spans_of(&hl.old, n), true, theme::diff_removed_text(), text_x, y, clip, p, window, cx);
             }
         }
         RowKind::Added => {
+            // Monaco's old numbers' strip, an editor behind the new one's, keeps the removed tint beside an added line.
+            window.paint_quad(fill(Bounds::from_corners(b.origin, point(b.origin.x + px(num_w()), bottom)), theme::diff_removed_line()));
             window.paint_quad(fill(Bounds::from_corners(point(b.origin.x + px(num_w()), y), point(b.origin.x + b.size.width, bottom)), theme::diff_inserted_line()));
+            if ix == p.cursor {
+                paint_current_line(text_x, b.origin.x + b.size.width, y, window);
+            }
             if let Some(n) = r.new {
-                if p.data.new.lines[n as usize].marks.is_empty() {
-                    window.paint_quad(fill(clip, theme::diff_inserted_text()));
-                }
                 paint_number(n, new_right, y, num, p, window, cx);
                 paint_sign("+", sign_x, y, theme::status_added(), p, window, cx);
                 paint_text(ix, n, &p.data.new.lines[n as usize], spans_of(&hl.new, n), false, theme::diff_inserted_text(), text_x, y, clip, p, window, cx);
@@ -1508,6 +1542,9 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
             }
         }
         _ => {
+            if ix == p.cursor {
+                paint_current_line(text_x, b.origin.x + b.size.width, y, window);
+            }
             if let Some(n) = r.old {
                 paint_number(n, old_right, y, num, p, window, cx);
             }
@@ -1521,14 +1558,19 @@ fn paint_inline(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut
 
 /// A hunk mode region's row: in the gutter what opens it, at the text how many lines it holds.
 fn paint_hidden(b: Bounds<Pixels>, ix: usize, count: u32, p: &Painter, window: &mut Window, cx: &mut App) {
-    window.paint_quad(fill(b, theme::panel_bg()));
+    // Monaco's unchanged region has no ground of its own: a shadow fades in from its top and bottom, 3 px.
+    for (i, alpha) in [0.15, 0.08, 0.04].into_iter().enumerate() {
+        let shade = Hsla { a: alpha, ..black() };
+        window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(i as f32)), size(b.size.width, px(1.))), shade));
+        window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + b.size.height - px(i as f32 + 1.)), size(b.size.width, px(1.))), shade));
+    }
     let hovered = p.hover == Some(ix);
     if hovered {
         window.set_window_cursor_style(CursorStyle::PointingHand);
     }
     let color = if hovered { theme::text_selected() } else { theme::text_normal() };
     let icon_at = Bounds::new(point(b.origin.x + px(2. * num_w() - 16.), b.origin.y + px(5.)), size(px(14.), px(14.)));
-    window.paint_svg(icon_at, "icons/unfold-vertical.svg".into(), None, TransformationMatrix::unit(), color, cx).ok();
+    window.paint_svg(icon_at, "icons/chevrons-up-down.svg".into(), None, TransformationMatrix::unit(), color, cx).ok();
     let text: SharedString = format!("{count} hidden lines").into();
     let run = TextRun { len: text.len(), font: window.text_style().font(), color, background_color: None, underline: None, strikethrough: None };
     let line = window.text_system().shape_line(text, px(12.), &[run], None);
@@ -1552,10 +1594,9 @@ fn paint_split(b: Bounds<Pixels>, ix: usize, r: &Row, p: &Painter, window: &mut 
         };
         if change {
             window.paint_quad(fill(area, if old_side { theme::diff_removed_line() } else { theme::diff_inserted_line() }));
-            let side = if old_side { &p.data.old } else { &p.data.new };
-            if side.lines[n as usize].marks.is_empty() {
-                window.paint_quad(fill(Bounds::from_corners(point(left + text_at, y), area.bottom_right()), if old_side { theme::diff_removed_text() } else { theme::diff_inserted_text() }));
-            }
+        }
+        if ix == p.cursor && !old_side {
+            paint_current_line(left + text_at, area.right(), y, window);
         }
         let (side, spans, mark) = if old_side { (&p.data.old, spans_of(&hl.old, n), theme::diff_removed_text()) } else { (&p.data.new, spans_of(&hl.new, n), theme::diff_inserted_text()) };
         paint_number(n, left + px(margin + num_w() - 1.), y, if ix == p.cursor && !old_side { theme::editor().line_number_active } else { theme::editor().line_number }, p, window, cx);
@@ -1975,19 +2016,39 @@ fn selection_settled(this: &mut GitVolt, _: &MouseUpEvent, _: &mut Window, cx: &
     }
 }
 
-/// A press on a strip: on its slider it holds the point it's on, elsewhere the view centres there.
-pub fn strip_events(el: Stateful<Div>, cell: Rc<Cell<Bounds<Pixels>>>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
+impl DiffState {
+    fn strip_slider(&self, minimap: bool, strip: f32) -> Option<Slider> {
+        let (visible, content) = (self.layout.height, self.layout.total());
+        if minimap { (content > visible).then(|| minimap_slider(self.scroll, crate::metrics::line_h(), MINIMAP_LINE, strip, visible, content)) } else { slider_of(visible, content, self.scroll, strip) }
+    }
+
+    /// The minimap's first row: `MinimapLayout`'s start line, so the slider lies over the lines it stands for.
+    fn minimap_first(&self, slider_top: f32) -> usize {
+        self.layout.row_at(self.scroll).saturating_sub((slider_top / MINIMAP_LINE) as usize)
+    }
+}
+
+/// A press on a strip: on its slider it holds the point it's on. Off it the view centres there: on the minimap on the line
+/// pressed, as Monaco's, elsewhere by how far along.
+pub fn strip_events(el: Stateful<Div>, cell: Rc<Cell<Bounds<Pixels>>>, minimap: bool, cx: &mut Context<GitVolt>) -> Stateful<Div> {
     el.on_mouse_down(
         MouseButton::Left,
         cx.listener(move |this, e: &MouseDownEvent, _, cx| {
             let b = cell.get();
             this.with_diff(cx, |d| {
                 let (y, strip) = ((e.position.y - b.origin.y).as_f32(), b.size.height.as_f32());
-                let (visible, content) = (d.layout.height, d.layout.total());
-                let at = slider_grab(y, visible, content, d.scroll, strip);
+                let Some(s) = d.strip_slider(minimap, strip) else { return };
+                let on_it = y >= s.top && y < s.top + s.height;
+                if minimap && !on_it {
+                    d.center_on(d.minimap_first(s.top) + (y / MINIMAP_LINE) as usize);
+                }
+                let s = d.strip_slider(minimap, strip).unwrap_or(s);
+                let at = if on_it || minimap { ((y - s.top) / s.height).clamp(0., 1.) } else { 0.5 };
                 d.drag = Drag::Ruler;
-                d.strip_held = Some((b, at));
-                d.scroll = scroll_top_at(y, visible, content, strip, at);
+                d.strip_held = Some((b, at, minimap));
+                if !minimap {
+                    d.scroll = scroll_held(&s, y, at, d.layout.max_scroll());
+                }
             });
         }),
     )
@@ -2002,10 +2063,11 @@ pub fn strip_drag(view: WeakEntity<GitVolt>, window: &mut Window) {
         }
         let _ = view.update(cx, |this, cx| {
             let Some(d) = this.tabs.get_mut(this.active).and_then(|t| t.diff.as_mut()) else { return };
-            let (Drag::Ruler, Some((b, at))) = (d.drag, d.strip_held) else { return };
+            let (Drag::Ruler, Some((b, at, minimap))) = (d.drag, d.strip_held) else { return };
             if e.pressed_button == Some(MouseButton::Left) {
-                let (visible, content) = (d.layout.height, d.layout.total());
-                d.scroll = scroll_top_at((e.position.y - b.origin.y).as_f32(), visible, content, b.size.height.as_f32(), at);
+                if let Some(s) = d.strip_slider(minimap, b.size.height.as_f32()) {
+                    d.scroll = scroll_held(&s, (e.position.y - b.origin.y).as_f32(), at, d.layout.max_scroll());
+                }
             } else {
                 d.drag = Drag::None;
                 d.strip_held = None;
@@ -2044,7 +2106,7 @@ fn ruler(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
     let paint_cell = cell.clone();
     let view = cx.weak_entity();
     let bar = div().id("diff-ruler").flex_none().w(px(RULER_W)).h_full().on_hover(cx.listener(|this, on: &bool, _, cx| this.with_diff(cx, |d| d.ruler_hover = *on)));
-    strip_events(bar, cell, cx).child(
+    strip_events(bar, cell, false, cx).child(
         canvas(
             |_, _, _| {},
             move |b, _, window, _| {
@@ -2071,7 +2133,7 @@ fn ruler(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + use<
 
 /// File View's strip: the file in small, each character a pixel wide, and the viewport over it.
 fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
-    let hover = diff.minimap_hover;
+    let hover = diff.minimap_hover || diff.strip_held.is_some_and(|h| h.2);
     let (data, hl, rows, layout, scroll) = (diff.data.clone(), diff.highlight.clone(), diff.rows.clone(), diff.layout.clone(), diff.scroll);
     let cell = Rc::new(Cell::new(Bounds::<Pixels>::default()));
     let paint_cell = cell.clone();
@@ -2079,7 +2141,7 @@ fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl Into
     let bar = div().id("minimap").flex_none().w(px(width)).h_full().on_hover(cx.listener(|this, on: &bool, _, cx| {
         this.with_diff(cx, |d| d.minimap_hover = *on);
     }));
-    strip_events(bar, cell, cx).child(
+    strip_events(bar, cell, true, cx).child(
         canvas(
             |_, _, _| {},
             move |b, _, window, _| {
@@ -2088,11 +2150,10 @@ fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl Into
                 let Some(data) = &data else { return };
                 let height = b.size.height.as_f32();
                 let shown = (height / MINIMAP_LINE) as usize;
-                let view_rows = (layout.height / crate::metrics::line_h()).ceil() as usize;
                 let top_row = layout.row_at(scroll);
-                let share = if layout.max_scroll() > 0. { scroll / layout.max_scroll() } else { 0. };
+                let slider = minimap_slider(scroll, crate::metrics::line_h(), MINIMAP_LINE, height, layout.height, layout.total().max(1.));
                 // A long file's map moves slower than the file, so it stays under the viewport.
-                let first = (share * (rows.len() + view_rows).saturating_sub(shown) as f32) as usize;
+                let first = top_row.saturating_sub((slider.top / MINIMAP_LINE) as usize);
                 window.with_content_mask(Some(ContentMask { bounds: b }), |window| {
                     for (i, r) in rows.iter().skip(first).take(shown).enumerate() {
                         let (side, pieces, n) = match (r.new, r.old) {
@@ -2125,10 +2186,9 @@ fn minimap(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> impl Into
                         }
                     }
                 });
-                let top = (top_row as f32 - first as f32) * MINIMAP_LINE;
                 // Monaco's `showSlider: mouseover`.
                 if hover {
-                    window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(top)), size(b.size.width, px(view_rows as f32 * MINIMAP_LINE))), theme::scroll_thumb()));
+                    window.paint_quad(fill(Bounds::new(point(b.origin.x, b.origin.y + px(slider.top)), size(b.size.width, px(slider.height))), theme::scroll_thumb()));
                 }
             },
         )
@@ -2144,7 +2204,7 @@ fn scrollbar(diff: &DiffState, cx: &mut Context<GitVolt>) -> impl IntoElement + 
     let paint_cell = cell.clone();
     let view = cx.weak_entity();
     let bar = div().id("diff-scrollbar").flex_none().w(px(SCROLLBAR_W)).h_full().on_hover(cx.listener(|this, on: &bool, _, cx| this.with_diff(cx, |d| d.ruler_hover = *on)));
-    strip_events(bar, cell, cx).child(
+    strip_events(bar, cell, false, cx).child(
         canvas(
             |_, _, _| {},
             move |b, _, window, _| {
@@ -2485,7 +2545,7 @@ fn text_body(diff: &DiffState, width: f32, cx: &mut Context<GitVolt>) -> AnyElem
                 .min_h_0()
                 .child(text_area(diff, cx))
                 .when(has_text && file_view, |d| d.when(crate::metrics::editor_style().minimap, |d| d.child(minimap(diff, minimap_width(width), cx))).child(scrollbar(diff, cx)))
-                .when(has_text && !file_view && !diff.split(), |d| d.child(div().absolute().top_0().bottom_0().right(px(RULER_W)).w(px(SCROLLBAR_W)).border_l_1().border_color(theme::section_border())))
+                .when(has_text && !file_view, |d| d.child(div().absolute().top_0().bottom_0().right(px(RULER_W)).w(px(1.)).bg(theme::section_border())))
                 .when(has_text && !file_view, |d| d.child(crate::ui::anchor("diff-ruler", ruler(diff, cx)))),
         )
         .into_any_element()

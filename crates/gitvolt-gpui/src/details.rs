@@ -1272,7 +1272,18 @@ pub fn file_list(id: &'static str, view: ListView, handle: &UniformListScrollHan
                                         tab.keys = KeyArea::Files;
                                     }
                                     this.with_files(cx, |f| f.cursor = Some(Cursor::File(index)));
-                                    this.open_file(index, cx);
+                                    // The open file's row closes it, as a toggle; the row keeps the cursor.
+                                    if this.file_is_open(index) {
+                                        this.close_file(cx);
+                                        if let Some(tab) = this.tabs.get_mut(this.active).filter(|t| t.diff.is_none()) {
+                                            tab.keys = KeyArea::Files;
+                                            if let Some(files) = tab.files.as_mut() {
+                                                files.cursor = Some(Cursor::File(index));
+                                            }
+                                        }
+                                    } else {
+                                        this.open_file(index, cx);
+                                    }
                                 }))
                                 .on_mouse_down(MouseButton::Right, cx.listener({
                                     let file = change.clone();
