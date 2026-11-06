@@ -5,6 +5,10 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **The line beside a diff's overview ruler** stands against the ruler, not 10 px to its left.
+
 ## [1.6.0] - 2026-11-06
 
 ### Added
