@@ -16,6 +16,8 @@ series() { # label binary native
   local root=$WORK/tmp/bench-$1
   mkdir -p "$root/app/config/gitvolt-gpui" "$root/app/config/gitvolt"
   [ -f "$root/app/config/gitvolt/settings.json" ] || { echo "$settings" >"$root/app/config/gitvolt/settings.json"; echo "$settings" >"$root/app/config/gitvolt-gpui/settings.json"; }
+  # The same tabs for each build: what's left from another use of the folder would be restored and timed.
+  [ "$4" = warm ] && rm -rf "$root/app/config/gitvolt/profiles" "$root/app/config/gitvolt-gpui/profiles"
   # Each run from the same place: a saved position moves a framed window down by its frame, and the clicks would miss.
   python3 -c 'import json,sys
 for f in sys.argv[1:]:
@@ -25,7 +27,7 @@ for f in sys.argv[1:]:
   REALINPUT_ROOT=$root GITVOLT_GPUI_BIN=$2 GITVOLT_RUN_KB=unlimited NATIVE=$3 NESTED_W=1920 NESTED_H=1200 \
     timeout -k 5 150 "$tools/realinput.sh" - python3 "$tools/benchvs.py" "$1" "$repo" "${BENCH_FILE_X:-1400}" "${BENCH_FILE_Y:-400}" "$out.$4" "$SHOTS/bench"
 }
-: >"$out.warm"; : >"$out"
+: >"$out.warm"; : >"$out.run"; : >"$out"
 for r in $(seq 0 "$rounds"); do
   [ "$r" = 0 ] && dest=warm || dest=
   for cfg in "cef $cef" "gpui-x11 $gpui" "gpui-wayland $gpui 1"; do

@@ -290,23 +290,23 @@ The Markdown round added `pulldown-cmark` (MIT), `toml` (MIT/Apache), `yaml-rust
 
 ## Measurements
 
-The ported app against the 1.5.0 release, `tools/benchvs.sh`, by turns on one generated repository (4000 commits, 2000 loaded, a 3000-line file with two changes in the working copy), each in a nested KWin at 1600x900 on a virtual 60 Hz output, with the desktop in ordinary use (load 2-3). Three runs each after a warm-up that doesn't count. Timed from pictures, about 30 ms apart, so a time is good to about that; memory and CPU from `/proc`, all the processes of a build. No frame times: a release of the CEF build has no port to ask.
+The ported app against the 1.6.0 release, `tools/benchvs.sh`, by turns on one generated repository (4000 commits, 2000 loaded, a 3000-line file with two changes in the working copy), each in a nested KWin at 1600x900 on a virtual 60 Hz output, with the desktop in ordinary use (load 1-3). Three runs each after a warm-up that doesn't count. Timed from pictures, about 30 ms apart; memory and CPU from `/proc`, all the processes of a build. No frame times: a release of the CEF build has no port to ask.
 
-| | CEF 1.5.0 (Xwayland) | GPUI (Xwayland) | GPUI (Wayland) |
+| | CEF 1.6.0 (Xwayland) | GPUI (Xwayland) | GPUI (Wayland) |
 |---|---|---|---|
-| Start to graph rows, warm | 974-1037 ms | 620-637 ms | 386-409 ms |
-| Open a 3000-line diff, first in the process | 562-595 ms | 24-31 ms | 19-25 ms |
-| Idle CPU, graph | 0.30-0.45% | 0.20-0.25% | 0.05-0.10% |
-| Idle CPU, diff open | 2.6-2.8% | 0.2-0.3% | 0.0-0.1% |
-| CPU while the wheel turns, 20 notches a second | 69-72% of a core | 10.1-10.7% | no wheel there (below) |
-| Memory after settling, PSS | 590-597 MB | 165-166 MB | 167 MB |
-| The same, anonymous | 432-438 MB | 54 MB | 54 MB |
-| The same, RSS summed | 1342-1354 MB, 10 processes | 238-239 MB, 1 process | 224-225 MB, 1 process |
-| With the diff open, PSS | 706-718 MB | 174-175 MB | 174 MB |
+| Start to graph rows, warm | 1003-1055 ms | 648-1138 ms | 373-665 ms |
+| Open a 3000-line diff, first in the process | 549-593 ms | under the method's limit | under the method's limit |
+| Idle CPU, graph | 0.40-0.45% | 0.20-0.25% | 0.05-0.10% |
+| Idle CPU, diff open | 2.1-2.3% | 0.1-0.2% | 0.0-0.1% |
+| CPU while the wheel turns, 20 notches a second | 71-73% of a core | 9.9-11.5% | no wheel there (below) |
+| Memory after settling, PSS | 572-574 MB | 149-153 MB | 145-147 MB |
+| The same, anonymous | 434-436 MB | 54 MB | 54 MB |
+| The same, RSS summed | 1352-1357 MB, 10 processes | 236-240 MB, 1 process | 224-226 MB, 1 process |
+| With the diff open, PSS | 688-697 MB | 159-162 MB | 152-154 MB |
 | GPU memory | 60 MiB | 92 MiB | 92 MiB |
 | Size | 369 MB installed | 122 MB binary, not stripped | same |
 
-The wheel's row isn't one quantity: CEF animates each notch at the display's rate, GPUI moves at once, so GPUI draws about 20 frames a second there where CEF draws about 60. Per frame that's near what the table below found. The fake device has no notch on Wayland. CEF ran with its system title bar (an X11 session) and `system-ui` from no desktop session, and that build's own first diff here is against a smaller file than the table below's. Not measured on the real desktop at its 144 Hz, and not with a forge account; a first run after a boot will be slower for both.
+A diff's time runs from the click's input process returning, so it starts up to some 30 ms late: GPUI's readings were 4-7 ms, which says only that it's drawn within that; CEF's 549-593 ms is good to about the same. Start times spread more on this run than the first's (620-637 and 386-409 ms a day earlier), so the desktop's load shows in them. The wheel's row isn't one quantity: CEF animates each notch at the display's rate, GPUI moves at once, so GPUI draws about 20 frames a second there where CEF draws about 60. Per frame that's near what the table below found. The fake device has no notch on Wayland. CEF ran with its system title bar (an X11 session) and `system-ui` from no desktop session. Not measured on the real desktop at its 144 Hz, and not with a forge account; a first run after a boot will be slower for both.
 
 The table below is the first slice's, kept for its frame times:
 

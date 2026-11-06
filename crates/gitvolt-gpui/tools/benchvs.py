@@ -161,9 +161,10 @@ try:
     # The working copy's row, then its one big file: until the pane stops changing.
     ri("move", "700", "147", "--", "wait", "60", "--", "click", "--", "wait", "1500")
     ri("move", file_x, file_y, "--", "wait", "300")
+    # Before the click: a build this quick has drawn before the first picture after it.
+    last = grab(PANE)[0]
     ri("click")
-    t = time.monotonic()
-    last, changed = grab(PANE)[0], t
+    t = changed = time.monotonic()
     while time.monotonic() - changed < 2.0 and time.monotonic() - t < 10:
         now = grab(PANE)[0]
         if now != last:
