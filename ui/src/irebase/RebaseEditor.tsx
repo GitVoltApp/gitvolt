@@ -40,15 +40,17 @@ const ACTION_OPTIONS = ACTIONS.map((a) => [a, ACTION_LABEL[a], ACTION_TIP[a]] as
 const startEditing = (tabId: string, oid: string | null) => editSession(tabId, (s) => ({ ...s, editing: oid }));
 
 /** The dropdown's and the keys' way to set `oids`' action: Reword opens its message at once (Q.3),
- * as does a Squash or Fixup of the bottom row that made it the Reword target; a refused one says why. */
-function applyAction(tabId: string, oids: readonly string[], action: RowAction, opens: string | null = oids.length === 1 ? oids[0] : null) {
+ * as does a Squash or Fixup of the bottom row that made it the Reword target; a refused one says why.
+ * True when it applied and opened no message editor. */
+function applyAction(tabId: string, oids: readonly string[], action: RowAction, opens: string | null = oids.length === 1 ? oids[0] : null): boolean {
   const s = sessionOf(tabId)?.state;
-  if (!s) return;
+  if (!s) return false;
   const r = chooseAction(s, oids, action);
-  if (r.refused) return void useToast.getState().show(r.refused);
+  if (r.refused) return void useToast.getState().show(r.refused), false;
   editState(tabId, () => r.state);
   const open = r.reword ?? (action === 'reword' ? opens : null);
   if (open) startEditing(tabId, open);
+  return !open;
 }
 
 /** The keys (spec #3 §4.1), before the app's own: none of them while typing in the message editor. */
@@ -92,7 +94,11 @@ function useEditorKeys(tabId: string, root: React.RefObject<HTMLElement | null>,
     const action = !e.ctrlKey && !e.metaKey && !e.altKey ? ACTION_KEYS[e.key.toLowerCase()] : undefined;
     if (action && state.selected.length > 0) {
       e.preventDefault();
-      applyAction(tabId, state.selected, action);
+      // The key then moves on to the row after the last selected one (none: stays), so `d d` drops two.
+      if (applyAction(tabId, state.selected, action)) {
+        const after = state.rows[state.rows.findIndex((r) => r.oid === state.selected.at(-1)) + 1];
+        if (after) editState(tabId, (x) => select(x, after.oid));
+      }
       return 'handled';
     }
   }), [tabId, root, cancel]);
