@@ -273,7 +273,8 @@ journaled.
 ### Askpass
 
 Git and ssh never prompt on a terminal. Network commands run with `GIT_TERMINAL_PROMPT=0`, stdin
-closed, and in their own session with no controlling terminal. `GIT_ASKPASS` and `SSH_ASKPASS`
+closed, and with no controlling terminal (their own session when GitVolt has one, else their own
+process group). `GIT_ASKPASS` and `SSH_ASKPASS`
 point at the `gitvolt` binary itself (`SSH_ASKPASS_REQUIRE=force`, so ssh uses it with or without
 `DISPLAY`; OpenSSH 8.4+).
 

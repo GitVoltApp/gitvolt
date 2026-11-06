@@ -18,6 +18,13 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Fixed
 
+- **Git commands no longer hang for good (seen on macOS).** Now and then a git command, a
+  status refresh say, stopped before git even started and never came back: that repository's
+  status no longer refreshed, and the git processes that ended beside it stayed as zombies.
+  GitVolt started git by forking, the whole app copied first, and in Chromium's runtime the copy
+  can wait for good on a lock another thread held at that moment. Git now starts without a fork:
+  GitVolt finds it in the `PATH` itself, and a network operation starts in a session of its own
+  only when GitVolt has a terminal (run from a shell).
 - **Split diffs open with both sides at the first change.** A file opened again, its first
   change where the editor was last scrolled to, no longer had its old side jump back to the top
   a few frames on, the two sides then scrolling together out of line.

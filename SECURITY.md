@@ -82,8 +82,8 @@ current code; each point names where to look.
 - Only a network operation that you started can show a prompt. GitVolt's own background fetch
   is denied at once and never prompts. It also sets `GCM_INTERACTIVE=never`, so Git Credential
   Manager doesn't prompt either.
-- Every git command runs with `GIT_TERMINAL_PROMPT=0`. Network commands run in a new session
-  with no controlling terminal, so nothing can prompt on the terminal GitVolt was started from.
+- Every git command runs with `GIT_TERMINAL_PROMPT=0`. Network commands run with no controlling
+  terminal (a new session when GitVolt was started from one), so nothing can prompt on it.
 - `ssh` gets `SSH_ASKPASS_REQUIRE=force`: passphrase, PIN and host key questions all come to
   GitVolt's dialog.
 - GitVolt doesn't keep your answers. A git credential helper you configured may keep them, as it
