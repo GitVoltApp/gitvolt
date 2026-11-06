@@ -1138,6 +1138,7 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
     for (depth, lv) in m.levels.iter().enumerate() {
         let mut level = div()
             .id(("menu-level", depth))
+            .role(Role::Menu)
             .absolute()
             .left(px(lv.left))
             .top(px(lv.top))

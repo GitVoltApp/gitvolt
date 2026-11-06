@@ -25,7 +25,8 @@ pub enum ButtonKind {
 
 /// `.modal-actions button`.
 pub fn button(id: impl Into<ElementId>, label: impl Into<SharedString>, kind: ButtonKind, enabled: bool) -> Stateful<Div> {
-    let base = div().id(id).flex().flex_none().items_center().justify_center().px(px(14.)).py(px(5.)).rounded(px(4.)).border_1().whitespace_nowrap().child(label.into());
+    let label: SharedString = label.into();
+    let base = div().id(id).role(Role::Button).aria_label(label.clone()).flex().flex_none().items_center().justify_center().px(px(14.)).py(px(5.)).rounded(px(4.)).border_1().whitespace_nowrap().child(label);
     let base = match kind {
         ButtonKind::Plain => base.bg(theme::control_bg()).border_color(theme::section_border()).text_color(theme::text_normal()).when(enabled, |d| d.hover(|d| d.bg(theme::hover_row()).text_color(theme::text_selected()))),
         // `.modal-actions button[type="submit"]:disabled`: no blue.
@@ -68,22 +69,25 @@ pub fn select<T: Clone + PartialEq + 'static>(key: impl Into<SharedString>, valu
             .border_color(if open { theme::blue() } else { theme::section_border() })
             .rounded(px(4.))
             .hover(|d| d.bg(theme::hover_row()))
-            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| open_select(&k, &options, &chosen, &on_change, window, cx))
+            .child(div().min_w_0().truncate().child(current))
+            .child(icon("chevron-down", 14., theme::text_secondary())),
+    )
+    .into_any_element()
+}
+
+/// A select's menu, under the control `key` anchors.
+pub fn open_select<T: Clone + PartialEq + 'static>(key: &SharedString, options: &SelectOptions<T>, chosen: &T, on_change: &OnSelect<T>, window: &mut Window, cx: &mut App) {
                 let rows = options
                     .iter()
                     .enumerate()
                     .map(|(i, (v, label, tip))| {
                         let (v, on_change) = (v.clone(), on_change.clone());
-                        MenuRow::action(format!("select.{i}"), label.clone(), if v == chosen { "check" } else { "" }, tip.clone().unwrap_or_else(|| label.clone()), move |window, cx| on_change(&v, window, cx))
+                        MenuRow::action(format!("select.{i}"), label.clone(), if v == *chosen { "check" } else { "" }, tip.clone().unwrap_or_else(|| label.clone()), move |window, cx| on_change(&v, window, cx))
                     })
                     .collect();
-                let initial = options.iter().position(|o| o.0 == chosen).map(|i| SharedString::from(format!("select.{i}")));
-                menu::open_below(k.clone(), rows, OpenOptions { initial, ..Default::default() }, window, cx);
-            })
-            .child(div().min_w_0().truncate().child(current))
-            .child(icon("chevron-down", 14., theme::text_secondary())),
-    )
-    .into_any_element()
+                let initial = options.iter().position(|o| o.0 == *chosen).map(|i| SharedString::from(format!("select.{i}")));
+                menu::open_below(key.clone(), rows, OpenOptions { initial, ..Default::default() }, window, cx);
 }
 
 /// A switch's track and knob (`.switch-track`).

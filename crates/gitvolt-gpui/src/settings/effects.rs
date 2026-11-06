@@ -151,7 +151,8 @@ impl GitVolt {
     pub fn settings_body_width(&self) -> f32 {
         let vw = self.window_width;
         let dialog = crate::settings::frame::SETTINGS_W.min(vw - 48.);
-        dialog - if vw <= 760. { 180. } else { 220. } - 56.
+        let lane = if crate::ui::scrollbar::shows(&self.settings_ui.scroll, Axis::Vertical) { crate::ui::scrollbar::LANE } else { 0. };
+        dialog - if vw <= 760. { 180. } else { 220. } - 56. - lane
     }
 
     /// What depends on the settings, compared with what's applied: nothing runs for an unrelated setting.

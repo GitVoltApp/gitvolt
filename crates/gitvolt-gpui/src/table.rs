@@ -671,6 +671,8 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
                     let labels = (!off(Col::Labels)).then(|| chips_cell(row, ix, cols.labels, is_selected, &group, &pending_refs, rebasing, member, editor, &weak, cx));
                     let element = div()
                         .id(ix)
+                        .role(Role::Row)
+                        .aria_label(row.summary.clone())
                         .group(group.clone())
                         .relative()
                         .flex()

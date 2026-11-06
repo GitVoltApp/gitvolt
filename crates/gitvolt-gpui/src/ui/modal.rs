@@ -149,7 +149,7 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
         .into_iter()
         .map(|(id, width, framed, top, anchored, build, focus)| {
             let content = build(window, cx);
-            let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).occlude().child(crate::ui::spin::cover()).flex().flex_col().flex_none().when(anchored.is_none(), |d| d.w(px(width))).when(anchored.is_some(), |d| d.max_w(px(width))).max_w(window.viewport_size().width - px(32.));
+            let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).role(Role::Dialog).occlude().child(crate::ui::spin::cover()).flex().flex_col().flex_none().when(anchored.is_none(), |d| d.w(px(width))).when(anchored.is_some(), |d| d.max_w(px(width))).max_w(window.viewport_size().width - px(32.));
             let body = if framed {
                 body.gap(px(12.))
                     .when(anchored.is_none(), |d| d.px(px(20.)).py(px(16.)).bg(theme::panel_bg()))

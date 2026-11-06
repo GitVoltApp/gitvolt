@@ -50,7 +50,7 @@ fn labels(g: &GraphView) -> impl Iterator<Item = (usize, &Chip)> {
 }
 
 /// `findBase`: the base's row, and its branch name (`main` for `origin/main`).
-fn find_base(g: &GraphView, base: &str) -> Option<(usize, String)> {
+pub fn find_base(g: &GraphView, base: &str) -> Option<(usize, String)> {
     for (row, c) in labels(g) {
         if c.local && format!("{HEADS}{}", c.name) == base {
             return Some((row, base[HEADS.len()..].to_string()));

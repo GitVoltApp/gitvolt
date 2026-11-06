@@ -10,7 +10,7 @@
 #   forge-lab.sh account <host> <kind> <token>   adds an account to the harness's own Api (the reference's)
 #   forge-lab.sh requests|seed              the fake forge's log, or its state
 set -eu
-choom -n 1000 -p $$ >/dev/null
+case "${1:-}" in start|fixture) grep -q '/run-[^/]*\.scope$' /proc/self/cgroup || exec "$(dirname "$0")/capped.sh" "$0" "$@" ;; esac
 root=$(pwd)/target/bench/work/forge
 port=${GITVOLT_E2E_PORT_BASE:-7433}
 http=http://127.0.0.1:$port

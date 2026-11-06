@@ -254,7 +254,10 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
     let anchor = Rect::of(bounds);
     match spec.content {
         Content::Text(text) => {
-            let (tw, th) = super::text_size(&text, FONT, LINE_H, MAX_W.min(vw - 16.) - 2. * PAD_X - 2., window, cx);
+            // A line's trailing space hangs, as a browser's: the text gets a space's room past the box it's measured for.
+            let room = MAX_W.min(vw - 16.) - 2. * PAD_X - 2.;
+            let (tw, th) = super::text_size(&text, FONT, LINE_H, room + 3., window, cx);
+            let (wrap, tw) = (tw + 3., tw.min(room));
             let (w, h) = (tw + 2. * PAD_X + 2., th + 2. * PAD_Y + 2.);
             let (left, top) = position(spec.placement, anchor, pointer, w, h, vw, vh);
             let el = div()
@@ -275,7 +278,7 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
                 .shadow(super::shadow(theme::shadow_tooltip(), 2., 8.))
                 .overflow_hidden()
                 .opacity(opacity)
-                .child(text);
+                .child(div().w(px(wrap)).child(text));
             Some(el.into_any_element())
         }
         Content::Card { build, .. } => {

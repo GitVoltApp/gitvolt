@@ -699,7 +699,7 @@ fn add_form(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
         None => "Add a forge account".to_string(),
     };
     // The host box, its list floating so opening it shifts nothing.
-    let mut host_box = div().relative().child(field_box("account-host", host_input, replacing.is_some(), window, cx));
+    let mut host_box = div().relative().child(crate::ui::anchor("account-host", field_box("account-host", host_input, replacing.is_some(), window, cx)));
     if list_open {
         let mut list = div().id("host-combo-list").occlude().absolute().left_0().right_0().top(px(36.)).p(px(4.)).bg(theme::panel_bg1()).border_1().border_color(theme::section_border()).rounded(px(6.)).shadow(vec![BoxShadow { color: theme::shadow_modal(), offset: point(px(0.), px(6.)), blur_radius: px(18.), spread_radius: px(0.), inset: false }]);
         for (i, s) in shown.iter().enumerate() {
@@ -787,7 +787,7 @@ fn add_form(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
     let create_label = format!("Create token on {} ↗", if host.is_empty() { "the host" } else { &host });
     let create = stop_button("account-create-token", account_button("account-create-token", create_label, Look::Plain, create_enabled), token_stop, create_enabled, |v, _, cx| v.accounts_open_page(cx), cx);
     let create = if host.is_empty() { tip("Enter the host first", create).into_any_element() } else { create };
-    let token_field = div().flex().flex_col().child(field_row("Token", div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w_0().child(field_box("account-token", token_input, false, window, cx))).child(create))).child(help_row(div().text_size(px(12.)).text_color(theme::text_secondary()).child(if kind == ForgeKind::GitHub && classic { CLASSIC_HELP } else { token_help(kind) })));
+    let token_field = div().flex().flex_col().child(field_row("Token", div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w_0().child(crate::ui::anchor("account-token", field_box("account-token", token_input, false, window, cx)))).child(create))).child(help_row(div().text_size(px(12.)).text_color(theme::text_secondary()).child(if kind == ForgeKind::GitHub && classic { CLASSIC_HELP } else { token_help(kind) })));
     // The foot.
     let refused = error.as_deref().is_some_and(|e| kind == ForgeKind::GitHub && !classic && e.contains(FINE_GRAINED_REFUSED));
     let error_line = div()

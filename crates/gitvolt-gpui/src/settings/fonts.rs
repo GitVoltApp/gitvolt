@@ -324,8 +324,31 @@ fn preview_panel(this: &GitVolt, role: &str, window: &Window, cx: &App) -> AnyEl
 }
 
 /// A font row's parts: the label's column takes the preview, the control's its picker.
+/// `placeList`: the list at its button's width, under it, else above it, wherever all of it fits without covering the preview; with room
+/// for neither, the larger side that keeps clear, scrolling more rows. `(left, top, rows' height)`.
+pub fn place_list(anchor: (f32, f32, f32, f32), chrome: f32, rows: f32, row: f32, avoid: Option<(f32, f32, f32, f32)>, bounds: (f32, f32, f32, f32)) -> (f32, f32, f32) {
+    const EDGE: f32 = 8.;
+    const GAP: f32 = 4.;
+    let width = anchor.2 - anchor.0;
+    let left = (bounds.0 + EDGE).max(anchor.0.min(bounds.2 - EDGE - width));
+    let clear = |top: f32, height: f32| avoid.is_none_or(|a| left >= a.2 || left + width <= a.0 || top >= a.3 || top + height <= a.1);
+    let height = chrome + rows;
+    let (room_below, room_above) = (bounds.3 - EDGE - anchor.3 - GAP, anchor.1 - GAP - EDGE - bounds.1);
+    let below = |h: f32| (left, anchor.3 + GAP, h - chrome);
+    let above = |h: f32| (left, anchor.1 - GAP - h, h - chrome);
+    if height <= room_below && clear(anchor.3 + GAP, height) {
+        return below(height);
+    }
+    if height <= room_above && clear(anchor.1 - GAP - height, height) {
+        return above(height);
+    }
+    let (ok_below, ok_above) = (clear(anchor.3 + GAP, room_below), clear(anchor.1 - GAP - room_above, room_above));
+    let fit = |room: f32| (chrome + row).max(height.min(room));
+    if ok_above && (!ok_below || room_above > room_below) { above(fit(room_above)) } else { below(fit(room_below)) }
+}
+
 pub fn font_row_parts(this: &mut GitVolt, def: &'static Def, text: Div, control: AnyElement, window: &mut Window, cx: &mut Context<GitVolt>) -> (Div, AnyElement) {
-    (text.child(div().mt(px(8.)).child(preview_panel(this, def.id, window, cx))), control)
+    (text.child(crate::ui::anchor(format!("font-preview:{}", def.id), div().mt(px(8.)).child(preview_panel(this, def.id, window, cx)))), control)
 }
 
 fn code_sample_spans() -> Vec<Vec<crate::diff::textmate::Span>> {
@@ -345,16 +368,14 @@ pub fn font_picker_overlay(this: &mut GitVolt, window: &mut Window, cx: &mut Con
     let anchor = crate::ui::Ui::get(cx).anchor(&format!("setting:{role}"));
     let vp = window.viewport_size();
     const ROW: f32 = 26.;
-    let view = (items.len() as f32 * ROW).min(312.);
     let chrome = 40. + if monospace { 26. } else { 0. } + 4.;
+    let rows = (items.len() as f32 * ROW).min(312.);
     let width = anchor.map_or(320., |a| a.size.width.as_f32());
-    let (left, top) = match anchor {
-        Some(a) => {
-            let below = a.bottom().as_f32() + 4.;
-            let h = view + chrome;
-            (a.left().as_f32(), if below + h + 8. > vp.height.as_f32() { (a.top().as_f32() - h - 4.).max(8.) } else { below })
-        }
-        None => (100., 100.),
+    let edges = |b: Bounds<Pixels>| (b.left().as_f32(), b.top().as_f32(), b.right().as_f32(), b.bottom().as_f32());
+    let avoid = crate::ui::Ui::get(cx).anchor(&format!("font-preview:{role}")).map(edges);
+    let (left, top, view) = match anchor {
+        Some(a) => place_list(edges(a), chrome, rows, ROW, avoid, (0., 0., vp.width.as_f32(), vp.height.as_f32())),
+        None => (100., 100., rows),
     };
     let weak = cx.weak_entity();
     let default_font = this.base_font.clone();
@@ -481,5 +502,24 @@ mod tests {
         assert_eq!(single_family("\"Fira Code\"").as_deref(), Some("Fira Code"));
         assert_eq!(single_family("Inter, sans-serif"), None);
         assert_eq!(families_of("\"Inter\", 'Noto Sans', sans-serif"), ["Inter", "Noto Sans", "sans-serif"]);
+    }
+}
+
+#[cfg(test)]
+mod place_tests {
+    use super::place_list;
+    use std::prelude::v1::test;
+
+    #[test]
+    fn the_list_goes_under_else_above_and_keeps_off_the_preview() {
+        let bounds = (0., 0., 1000., 800.);
+        let button = (600., 300., 900., 330.);
+        assert_eq!(place_list(button, 40., 200., 26., None, bounds), (600., 334., 200.));
+        // Under it would cover the preview; above it fits.
+        assert_eq!(place_list(button, 40., 200., 26., Some((500., 340., 950., 500.)), bounds), (600., 56., 200.));
+        // No room for all of it anywhere: the larger clear side, scrolling.
+        let low = (600., 700., 900., 730.);
+        let (_, top, view) = place_list(low, 40., 900., 26., None, bounds);
+        assert_eq!((top, view), (8., 648.));
     }
 }

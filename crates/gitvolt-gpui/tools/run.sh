@@ -6,10 +6,15 @@
 # the GPU driver's mappings count), GITVOLT_RUN_SECS. GITVOLT_XDG: another profile than the default, for a clean run.
 # usage: run.sh <repo> [script] [out.png]
 set -u
-# Under memory pressure this and what it starts die first, not the user's programs: the kernel's pick, inherited by children.
-choom -n 1000 -p $$ >/dev/null
+# In a capped scope of its own (`capped.sh`), what it starts with it: a kill stays there.
+grep -q '/run-[^/]*\.scope$' /proc/self/cgroup || exec "$(dirname "$0")/capped.sh" "$0" "$@"
 repo=$1; script=${2:-}; out=${3:-}
 root=${GITVOLT_XDG:-$(pwd)/target/bench/work/xdg}
+# Only a folder of ours, by its whole path: a joined path would land in the repository as files.
+case "$root" in
+  "$(pwd)"/target/bench/work/*) case "$root" in *//*) echo "run.sh: GITVOLT_XDG isn't a clean path: $root" >&2; exit 2 ;; esac ;;
+  *) echo "run.sh: GITVOLT_XDG must be absolute and under target/bench/work: $root" >&2; exit 2 ;;
+esac
 ulimit -v "${GITVOLT_RUN_VM:-16000000}"
 ulimit -c 0
 mkdir -p "$root/config" "$root/data" "$root/cache"

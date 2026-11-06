@@ -108,6 +108,7 @@ pub struct Tab {
     pub forge: crate::forge::store::TabForge,
     pub selected: Option<usize>,
     pub commit: Option<Commit>,
+    pub message_edit: Option<crate::details::MessageEdit>,
     pub files: Option<Files>,
     pub diff: Option<DiffState>,
     /// The merge tool, while `diff` is a conflicted file.
@@ -247,6 +248,7 @@ impl Tab {
             row_editor: None,
             open_screen: None,
             unopened: None,
+            message_edit: None,
             compare: None,
             picks: Default::default(),
             find: crate::find::FindState::new(id, cx),
@@ -1029,7 +1031,7 @@ fn text_drag_listener(cx: &mut Context<GitVolt>) -> impl IntoElement {
 fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let name = this.tabs.get(this.active).map(|t| format!("GitVolt — {}", t.name)).unwrap_or_else(|| "GitVolt".into());
     let button = |id: &'static str, name: &'static str| {
-        div().id(id).group(id).flex().items_center().justify_center().size(px(24.)).rounded_full().bg(theme::control_bg()).hover(|d| d.bg(theme::control_hover_bg())).child(icon(name, 10., theme::text_normal()).group_hover(id, |d| d.text_color(theme::text_selected())))
+        div().id(id).role(Role::Button).aria_label(id).group(id).flex().items_center().justify_center().size(px(24.)).rounded_full().bg(theme::control_bg()).hover(|d| d.bg(theme::control_hover_bg())).child(icon(name, 10., theme::text_normal()).group_hover(id, |d| d.text_color(theme::text_selected())))
     };
     div()
         .id("title-bar")
@@ -1063,7 +1065,7 @@ fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> impl
 
 fn tab_bar(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let tabs = crate::tabstrip::strip(this, window, cx);
-    let bar_button = |id: &'static str, name: &'static str| div().id(id).flex().flex_none().w(px(34.)).h_full().items_center().justify_center().hover(|d| d.bg(theme::hover_row())).child(icon(name, 16., theme::text_secondary()));
+    let bar_button = |id: &'static str, name: &'static str| div().id(id).role(Role::Button).aria_label(id).flex().flex_none().w(px(34.)).h_full().items_center().justify_center().hover(|d| d.bg(theme::hover_row())).child(icon(name, 16., theme::text_secondary()));
     div()
         .flex()
         .flex_none()
@@ -1110,6 +1112,8 @@ fn tb_action(a: TbAction, cx: &mut Context<GitVolt>) -> impl IntoElement + use<>
     let (icon_el, spin): (Option<Svg>, Option<AnyElement>) = if busy { (None, Some(crate::commit_box::spinner(ElementId::Name(format!("{id}-spin").into()), 16., color).into_any_element())) } else { (Some(icon(glyph, 16., color)), None) };
     let button = div()
         .id(id)
+        .role(Role::Button)
+        .aria_label(label.clone())
         .relative()
         .flex()
         .flex_col()
@@ -1312,7 +1316,6 @@ fn toolbar(this: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement {
                 .px(px(10.))
                 .min_w_0()
                 .rounded(px(4.))
-                .my(px(3.))
                 .cursor_pointer()
                 .when(open, |d| d.bg(theme::hover_row()))
                 .hover(|d| d.bg(theme::hover_row()))

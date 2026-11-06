@@ -6,6 +6,13 @@
 //
 // `steps.mjs` default-exports `async (r) => { ... }`, with `r` as below. The instance has its own
 // config, cache and data folders, under target/bench/work/web-profile.
+import { spawnSync as respawn } from 'node:child_process';
+import { readFileSync as readCgroup } from 'node:fs';
+// In a capped scope of its own (`capped.sh`), with everything it starts: a kill stays there.
+if (!/\/run-[^/]*\.scope$/m.test(readCgroup('/proc/self/cgroup', 'utf8'))) {
+  const again = respawn(new URL('capped.sh', import.meta.url).pathname, [process.execPath, ...process.argv.slice(1)], { stdio: 'inherit' });
+  process.exit(again.status ?? 1);
+}
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -19,8 +26,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 rmSync(resolve('target/bench/release/chrome-sandbox'), { force: true });
 const profile = resolve('target/bench/work/web-profile');
 mkdirSync(profile, { recursive: true });
-// `choom`: under memory pressure this dies first, not the user's programs.
-const app = spawn('choom', ['-n', '1000', '--', bin], { stdio: 'ignore', env: { ...process.env, CHROME_DEVEL_SANDBOX: '/usr/share/GitVolt/chrome-sandbox', GITVOLT_DEV_DIRS: profile, GITVOLT_DEV_CDP_PORT: String(PORT), GITVOLT_OPEN: resolve(repo) } });
+const app = spawn(bin, [], { stdio: 'ignore', env: { ...process.env, CHROME_DEVEL_SANDBOX: '/usr/share/GitVolt/chrome-sandbox', GITVOLT_DEV_DIRS: profile, GITVOLT_DEV_CDP_PORT: String(PORT), GITVOLT_OPEN: resolve(repo) } });
 
 let url;
 for (let i = 0; i < 400 && !url; i++) {

@@ -784,6 +784,8 @@ fn tab_element(this: &GitVolt, i: usize, group_color: Option<Hsla>, separator: b
     let group_id: SharedString = format!("tab-close-group-{i}").into();
     div()
         .id(("tab", i))
+        .role(Role::Tab)
+        .aria_label(tab.name.clone())
         .flex()
         .flex_none()
         .items_center()
@@ -843,6 +845,8 @@ fn tab_element(this: &GitVolt, i: usize, group_color: Option<Hsla>, separator: b
         .child(
             div()
                 .id(("tab-close", i))
+                .role(Role::Button)
+                .aria_label(format!("Close {}", tab.name))
                 .group(group_id.clone())
                 .flex()
                 .flex_none()
@@ -996,7 +1000,7 @@ pub fn strip(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>)
     let order: Vec<String> = drag.filter(|d| d.active).map(|d| d.strip.items(active_state.as_deref())).unwrap_or_else(|| strip_state.items(active_state.as_deref()));
     let moving: Vec<String> = drag.filter(|d| d.active).map(|d| d.moving.clone()).unwrap_or_default();
     let lifted_dx = drag.map_or(0., |d| d.settle.as_ref().map_or(d.dx, |(s, _)| s.now(now)));
-    let (mut row, mut lifted_children) = (div().id("tabs").flex().size_full().overflow_x_scroll().track_scroll(&handle), Vec::new());
+    let (mut row, mut lifted_children) = (div().id("tabs").role(Role::TabList).aria_label("Repositories").flex().size_full().overflow_x_scroll().track_scroll(&handle), Vec::new());
     let mut reveal_child = None;
     let view = crate::ui::Ui::get(cx).anchor("strip-view");
     for (child, key) in order.iter().enumerate() {

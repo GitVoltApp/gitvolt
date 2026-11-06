@@ -3,8 +3,8 @@
 # all. A flow's first lines can say `# native: yes` (run again on Wayland) or `# layout: de`. NATIVE=1 runs only on Wayland.
 # The memory cap is realinput.sh's; a flow past its time (FLOW_SECS, 300 s) fails.
 set -u
-# Under memory pressure this and what it starts die first, not the user's programs: the kernel's pick, inherited by children.
-choom -n 1000 -p $$ >/dev/null
+# In a capped scope of its own (`capped.sh`), what it starts with it: a kill stays there.
+grep -q '/run-[^/]*\.scope$' /proc/self/cgroup || exec "$(dirname "$0")/../capped.sh" "$0" "$@"
 here=$(cd "$(dirname "$0")" && pwd)
 names=("$@")
 [ ${#names[@]} = 0 ] && names=($(ls "$here" | grep -E '^[0-9a-z].*\.sh$' | grep -vE '^(lib|run)\.sh$' | sed 's/\.sh$//'))

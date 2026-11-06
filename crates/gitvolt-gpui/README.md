@@ -19,8 +19,8 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 
 - **Never push.** Commit on the current branch only. No `Co-Authored-By`, no mention of Claude or any
   AI in commits. `git add <paths>`, never `-A`. Commit messages as in `CONTRIBUTING.md`.
-- **Builds go on disk, one at a time, with `-j 4`, under `choom`:**
-  `choom -n 1000 -- cargo build --release -j 4 -p gitvolt-gpui --target-dir target/bench`. Every build, test, app and nested compositor runs with an OOM score of 1000, so under memory pressure it dies first, not the user's programs; a signal 9 is that doing its job: check `journalctl -k`, wait for memory, retry, and don't raise a limit to get round it. The tools set it themselves (`run.sh`, `shot.sh`, `realinput.sh`, `flows/run.sh`, `webref.mjs`). Before a build or a run, `free -m`'s available column says at least 4 GB, or wait. Never put a target dir or
+- **Builds go on disk, one at a time, with `-j 4`, in a capped scope:**
+  `crates/gitvolt-gpui/tools/capped.sh cargo build --release -j 4 -p gitvolt-gpui --target-dir target/bench`. `capped.sh` is a transient systemd scope with `MemoryMax=10G`, `OOMPolicy=continue` and an OOM score of 1000: a kill stays in that scope, where in the caller's scope it could stop the whole session. Every build, test, clippy, app, reference and compositor goes through it; `run.sh`, `shot.sh`, `realinput.sh`, `flows/run.sh`, `forge-lab.sh start`, `webref.mjs` and `forgeref.mjs` re-exec themselves under it, and `/proc/self/cgroup` inside shows `run-...scope`. A 137 is that doing its job: check `journalctl -k`, wait for memory, retry; don't raise the cap past 10G for builds. Before a build or a run, `free -m`'s available column says at least 2.5 GB, or wait, in a background command. Never put a target dir or
   anything large under `/tmp`: it's a RAM disk, and filling it has killed the user's desktop app.
 - **Memory is shared with the user's own programs and has run out twice.** Close the CEF reference as
   soon as you have its images, and don't run it during a build. Delete any `core.*` file a crash leaves.
@@ -73,6 +73,9 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
     `ui::banner::banners`, and `ui::controls`: `button`, `select`, `switch`, `check_row`, `keycaps`,
     `clearable`, and `tabbable`, which gives a dialog's control a Tab stop.
   - `ui::fuzzy::go` ranks as `fuzzysort` does.
+  - `ui::scrollbar::vertical(id, &handle)`, `horizontal`: Chromium's styled scrollbar, a lane of 10 px beside what scrolls, its track paging and its thumb dragging; `shows(&handle, axis)` says if it takes room.
+  - `ui::ease::colour(key, target, length, curve, &mut running)`, `number`: a short transition by a key; request a frame while `running`.
+  - `ui::hanging(div)`: for a wrapped text whose breaks must be the browser's (GPUI counts a trailing space).
 - **Commands:** `src/commands.rs` is the one table of actions: id, label, group, icon, tooltip, chords,
   when and run. The hamburger, the chords, the toolbar's tooltips and the palette read it; a row with no
   `run` shows disabled until it's ported. To add a chord, add a row: bare keys stay GPUI bindings.
@@ -87,14 +90,13 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 - **Zoom** is the platform wrapper in `zoom.rs`, generated once from `gpui`'s `Platform` and `PlatformWindow` traits: when the pinned `gpui` moves, new trait methods need a line of delegation there.
 - **Icons:** add a Lucide name to `ICONS` in `assets/generate.mjs`, run it from `ui/` (`node
   ../crates/gitvolt-gpui/assets/generate.mjs`), then `icon("name", size, color)`.
-- **Text:** the UI font is `system-ui`'s; mono text is `diff::view::FONT`. `glyphs::Whole` wraps the platform's text system so a line's advances are whole pixels, as Chromium's; `metrics::advance()` is a shaped `m`'s. There's no `letter-spacing`
-  in GPUI; uppercase captions go without it. The root's line height is relative (1.4), as the CSS's: a smaller text has a smaller line.
+- **Text:** the UI font is `system-ui`'s; mono text is `diff::view::FONT`. `glyphs::Whole` wraps the platform's text system so a line's advances are whole pixels, as Chromium's; `metrics::advance()` is a shaped `m`'s. Letter spacing is `.font_features(glyphs::spacing(0.04))`, in ems, a font feature `glyphs::Whole` reads. The root's line height is relative (1.4), as the CSS's: a smaller text has a smaller line.
 - **No input device here:** `GITVOLT_SHOW` (`bench.rs`) opens things by script for screenshots
   (`GitVolt::show_ui`: `menu3`, `sub7`, `hamburger`, `palette=q`, `find=q`, `filter=q`, `prompt`, `armed`;
   `-` for no selection or no file); extend it as needed. Clicks and keys are checked in tests with GPUI's `TestAppContext` (see `app.rs`).
   `GITVOLT_SCRIPT=<file>` runs a flow a line at a time, each input through the window as the platform's would be:
   `click x y`, `rclick`, `dclick`, `move`, `press`, `drag`, `release`, `key ctrl-s`, `type text`, `wait ms`, `select row`,
-  `open index`, `cmd id`, `show <ui part>`, `mdscroll y`, `pdfscroll y`, `wheel x y`, `wheelup x y`, `ctrlwheel x y`, `goto <text>` (what a paste of it would go to; the clipboard stays alone), `pickfolder <path>` (the next directory picker answers this; under a script no real dialog ever opens), `shot out.png`, `measure <file>` (widths of a JSON list `[[size, weight, text, family|null]..]`, into `<file>.out`), `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>` (a menu's or a picker's),
+  `open index`, `cmd id`, `show <ui part>`, `mdscroll y`, `pdfscroll y`, `wheel x y`, `wheelup x y`, `ctrlwheel x y`, `goto <text>` (what a paste of it would go to; the clipboard stays alone), `pickfolder <path>` (the next directory picker answers this; under a script no real dialog ever opens), `shot out.png`, `show settings=<page's label>`, `show theme=<theme's label>`, `measure <file>` (widths of a JSON list `[[size, weight, text, family|null]..]`, into `<file>.out`), `dump` (a JSON line of what's on screen), `quit`; and by name, `pick <row text>` (a menu's or a picker's),
   `pickv <row>|<variant>`, `hover <row>`, `clickon`, `shiftclickon`, `ctrlclickon`, `rclickon`, `dclickon`, `presson`, `dragto`, `releaseon <end of an
   anchor's key>`, `clickrow`, `shiftclickrow`, `ctrlclickrow`, `rclickrow`, `dclickrow <summary>`. `tools/run.sh <repo> <script>` runs one isolated: config, data and cache
   under `target/bench/work/xdg`, no avatars, no global git config. Only ever on a throwaway repo under `target/bench/work/`.
@@ -114,9 +116,9 @@ what's missing; keep it true. Read `AGENTS.md` first: its rules apply here, the 
 ## Tests
 
 - **Every run of a test binary or of the app goes under a memory cap and a timeout**, so a runaway fails on its own and can't take the machine down (one has, holding 20 GB):
-  `( ulimit -v 10000000; timeout 300 choom -n 1000 -- cargo test -j 4 -p gitvolt-gpui --target-dir target/bench -- --test-threads=8 )`. If the cap kills cargo or rustc while building, build first with `cargo test --no-run` without it, then run under it. The same around a scripted run of the app (`tools/run.sh`), raised only if a GPU driver's address space needs more. A repository's file is untrusted: a loop that walks it or grows a buffer has a bound, pinned by a test.
+  `( ulimit -v 10000000; timeout 300 crates/gitvolt-gpui/tools/capped.sh cargo test -j 4 -p gitvolt-gpui --target-dir target/bench -- --test-threads=8 )`. If the cap kills cargo or rustc while building, build first with `cargo test --no-run` without it, then run under it. The same around a scripted run of the app (`tools/run.sh`), raised only if a GPU driver's address space needs more. A repository's file is untrusted: a loop that walks it or grows a buffer has a bound, pinned by a test.
 - **What takes a repository's bytes and can't be bounded from the inside runs in `src/worker.rs`** (a PDF, a diagram), under its own memory limit and timeout. What runs in the app's process (Markdown's parsers, a font's tables) has a bound on every loop and buffer, and a test on it.
-- `choom -n 1000 -- cargo test -j 4 -p gitvolt-gpui`, and `CEF_PATH=$HOME/.cache/tauri-cef choom -n 1000 -- cargo clippy -j 4 -p
+- `tools/capped.sh cargo test -j 4 -p gitvolt-gpui`, and `CEF_PATH=$HOME/.cache/tauri-cef tools/capped.sh cargo clippy -j 4 -p
   gitvolt-gpui -p gitvolt-core --all-targets -- -D warnings` before each commit.
 - In a test module: `use std::prelude::v1::test;` (`gpui::*` brings its own `test`). GPUI's test
   scheduler panics when another thread wakes one of its tasks, so a test can't await `self.rt`: test
@@ -133,4 +135,4 @@ Only ever the harness's fake forge, on 127.0.0.1, with its fictional seed and fa
 - `GITVOLT_TEST_FORGE=<base>` points this build's forge hosts at it, with tokens in a file in the data folder and links printed (`openUrl <url>`) rather than opened. `off`, or any scripted run, also keeps off the keyring. `tools/run.sh` sets it to `off` unless it's given.
 - `tools/forgeref.mjs <repo> <steps.mjs> <out-prefix>`: the reference: the web UI's e2e bundle in Playwright's Chromium, on the same harness, with the same host rules as the e2e.
 - `dump` has `forge`: kind, list, badges, the open MR/PR, its threads, a review, the Create flyout. Their anchors: `side:mr:<n>`, `mr-*`, `rv-*`, `create-*`, `stack-*`, `fork-add:<path>`, `toast-action:<label>`. A scripted window may never be the active one, so a menu doesn't close for that under a script.
-- `GITVOLT_XDG` must be absolute. A rewritten stack only pushes with a lease when its commits are the fixture's identity's: give the fixture the author's `user.email`.
+- `GITVOLT_XDG` must be absolute and under `target/bench/work` (`run.sh` refuses others). A rewritten stack only pushes with a lease when its commits are the fixture's identity's: give the fixture the author's `user.email`.

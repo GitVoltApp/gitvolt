@@ -249,15 +249,16 @@ async fn script(v: &Entity<GitVolt>, file: &str, cx: &mut AsyncWindowContext) {
         let modifiers = match verb {
             "shiftclickon" | "shiftclickrow" => Modifiers::shift(),
             "ctrlclickon" | "ctrlclickrow" => Modifiers::control(),
+            "altclick" => Modifiers { alt: true, ..Default::default() },
             _ => Modifiers::default(),
         };
         let down = move |position, button, click_count| PlatformInput::MouseDown(MouseDownEvent { button, position, modifiers, click_count, first_mouse: false });
         let up = move |position, button, click_count| PlatformInput::MouseUp(MouseUpEvent { button, position, modifiers, click_count });
         let moved = |position| PlatformInput::MouseMove(MouseMoveEvent { position, pressed_button: None, modifiers: Modifiers::default() });
         let events: Vec<PlatformInput> = match verb {
-            "click" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" | "shiftclickrow" | "ctrlclickrow" if verb != "click" && target.is_none() => Vec::new(),
+            "click" | "altclick" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" | "shiftclickrow" | "ctrlclickrow" if verb != "click" && target.is_none() => Vec::new(),
             "rclickon" | "dclickon" | "rclickrow" | "dclickrow" | "presson" | "dragto" | "releaseon" | "hover" if target.is_none() => Vec::new(),
-            "click" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" | "shiftclickrow" | "ctrlclickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1)],
+            "click" | "altclick" | "pick" | "pickv" | "clickon" | "shiftclickon" | "ctrlclickon" | "clickrow" | "shiftclickrow" | "ctrlclickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1)],
             "rclick" | "rclickon" | "rclickrow" => vec![moved(xy()), down(xy(), MouseButton::Right, 1), up(xy(), MouseButton::Right, 1)],
             "dclick" | "dclickon" | "dclickrow" => vec![moved(xy()), down(xy(), MouseButton::Left, 1), up(xy(), MouseButton::Left, 1), down(xy(), MouseButton::Left, 2), up(xy(), MouseButton::Left, 2)],
             "move" | "hover" => vec![moved(xy())],

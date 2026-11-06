@@ -277,26 +277,45 @@ impl GitVolt {
     }
 }
 
-fn switch_control(on: bool, def: &'static Def, cx: &mut Context<GitVolt>) -> AnyElement {
+/// A control's Tab stop, the same one each frame.
+fn stop(this: &mut GitVolt, id: &'static str, cx: &mut Context<GitVolt>) -> FocusHandle {
+    this.settings_ui.stops.entry(id).or_insert_with(|| cx.focus_handle().tab_stop(true)).clone()
+}
+
+fn switch_control(this: &mut GitVolt, on: bool, def: &'static Def, cx: &mut Context<GitVolt>) -> AnyElement {
+    let focus = stop(this, def.id, cx);
+    let weak = cx.weak_entity();
     crate::ui::anchor(
         format!("setting:{}", def.id),
-        div()
-            .id(ElementId::Name(format!("input-{}", def.id).into()))
-            .flex()
-            .flex_none()
-            .p(px(4.))
-            .rounded(px(6.))
-            .cursor_pointer()
-            .hover(|d| d.bg(theme::control_bg()))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                set_bound(this, &def.binding, json!(!on), cx);
-            }))
-            .child(controls::switch_track(on, false)),
+        controls::tabbable(
+            div()
+                .id(ElementId::Name(format!("input-{}", def.id).into()))
+                .role(Role::Switch)
+                .aria_label(def.label)
+                .flex()
+                .flex_none()
+                .p(px(3.))
+                .border_1()
+                .border_color(transparent_black())
+                .rounded(px(6.))
+                .cursor_pointer()
+                .hover(|d| d.bg(theme::control_bg()))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    set_bound(this, &def.binding, json!(!on), cx);
+                }))
+                .child(controls::switch_track(on, false)),
+            &focus,
+            move |_, cx| {
+                weak.update(cx, |this, cx| set_bound(this, &def.binding, json!(!on), cx)).ok();
+            },
+        ),
     )
     .into_any_element()
 }
 
-fn select_control(this: &GitVolt, def: &'static Def, options: Vec<(Value, String)>, cx: &mut Context<GitVolt>) -> AnyElement {
+fn select_control(this: &mut GitVolt, def: &'static Def, options: Vec<(Value, String)>, window: &Window, cx: &mut Context<GitVolt>) -> AnyElement {
+    let focus = stop(this, def.id, cx);
+    let focus_on = focus.is_focused(window);
     let value = bound(this, &def.binding);
     let weak = cx.weak_entity();
     let opts: controls::SelectOptions<Value> = Rc::new(options.into_iter().map(|(v, l)| (v, SharedString::from(l), None)).collect());
@@ -306,7 +325,26 @@ fn select_control(this: &GitVolt, def: &'static Def, options: Vec<(Value, String
     });
     let shown = if opts.iter().any(|o| o.0 == value) { None } else { opts.first().map(|o| o.1.clone()) };
     let chosen = if opts.iter().any(|o| o.0 == value) { value } else { opts.first().map_or(Value::Null, |o| o.0.clone()) };
-    div().flex().flex_none().w(px(240.)).child(controls::select(format!("setting:{}", def.id), chosen, opts, shown, on_change, cx)).into_any_element()
+    let key: SharedString = format!("setting:{}", def.id).into();
+    let (k2, o2, c2, f2) = (key.clone(), opts.clone(), chosen.clone(), on_change.clone());
+    div()
+        .id(ElementId::Name(format!("stop-{}", def.id).into()))
+        .role(Role::ComboBox)
+        .aria_label(def.label)
+        .relative()
+        .flex()
+        .flex_none()
+        .w(px(240.))
+        .track_focus(&focus)
+        .on_key_down(move |e: &KeyDownEvent, window, cx| {
+            if matches!(e.keystroke.key.as_str(), "enter" | "space" | "down") {
+                cx.stop_propagation();
+                controls::open_select(&k2, &o2, &c2, &f2, window, cx);
+            }
+        })
+        .child(controls::select(key, chosen, opts, shown, on_change, cx))
+        .child(div().absolute().top_0().left_0().size_full().rounded(px(4.)).border_1().border_color(transparent_black()).when(focus_on, |d| d.border_color(theme::blue())))
+        .into_any_element()
 }
 
 /// A setting's row.
@@ -314,10 +352,13 @@ pub fn setting_row(this: &mut GitVolt, def: &'static Def, first: bool, words: &[
     let is_modified = modified(this, def);
     let flash = this.settings_ui.flash.as_deref() == Some(def.id);
     let control: AnyElement = match &def.control {
-        Ctl::Switch => switch_control(bound(this, &def.binding) == json!(true), def, cx),
+        Ctl::Switch => {
+            let on = bound(this, &def.binding) == json!(true);
+            switch_control(this, on, def, cx)
+        }
         Ctl::Select(options) => {
             let list = options(this);
-            select_control(this, def, list, cx)
+            select_control(this, def, list, window, cx)
         }
         Ctl::Number(spec) => number_control(this, def, *spec, window, cx),
         Ctl::Custom(f) => f(this, def, window, cx),

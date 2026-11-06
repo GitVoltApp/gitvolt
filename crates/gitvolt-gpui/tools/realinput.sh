@@ -10,8 +10,8 @@
 # What the app can reach is cut off, so a click can't reach the desktop session: no D-Bus (no portal, no keyring), its own HOME and
 # XDG folders, a login shell that's plain sh, and a PATH of an allowlist, where xdg-open and the like only write to `$OPENED`.
 set -u
-# Under memory pressure this and what it starts die first, not the user's programs: the kernel's pick, inherited by children.
-choom -n 1000 -p $$ >/dev/null
+# In a capped scope of its own (`capped.sh`), what it starts with it: a kill stays there.
+grep -q '/run-[^/]*\.scope$' /proc/self/cgroup || exec "$(dirname "$0")/capped.sh" "$0" "$@"
 repo=$1; shift
 root=${REALINPUT_ROOT:-$(pwd)/target/bench/work/tmp/realinput}
 # A socket's path has a short limit, so the runtime folder is short too.

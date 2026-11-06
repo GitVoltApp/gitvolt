@@ -7,6 +7,13 @@
 //
 // `steps.mjs` default-exports `async (r) => { ... }`: `r.page` is Playwright's page, and `shot`, `metrics` and `ev`
 // are as in `webref.mjs`.
+import { spawnSync as respawn } from 'node:child_process';
+import { readFileSync as readCgroup } from 'node:fs';
+// In a capped scope of its own (`capped.sh`), with everything it starts: a kill stays there.
+if (!/\/run-[^/]*\.scope$/m.test(readCgroup('/proc/self/cgroup', 'utf8'))) {
+  const again = respawn(new URL('capped.sh', import.meta.url).pathname, [process.execPath, ...process.argv.slice(1)], { stdio: 'inherit' });
+  process.exit(again.status ?? 1);
+}
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
@@ -18,7 +25,7 @@ const { chromium } = createRequire(resolve('ui/package.json'))('@playwright/test
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const env = { ...process.env, VITE_GITVOLT_HARNESS: 'ws://127.0.0.1:7433/ws' };
 execFileSync('node', ['e2e/build-ui.mjs'], { cwd: ui, env, stdio: 'inherit' });
-const vite = spawn('choom', ['-n', '1000', '--', 'npx', 'vite', 'preview', '--mode', 'e2e', '--outDir', 'dist-e2e', '--port', '1420', '--strictPort'], { cwd: ui, env, stdio: 'ignore', detached: true });
+const vite = spawn('npx', ['vite', 'preview', '--mode', 'e2e', '--outDir', 'dist-e2e', '--port', '1420', '--strictPort'], { cwd: ui, env, stdio: 'ignore', detached: true });
 for (let i = 0; i < 200; i++) {
   try { await fetch('http://localhost:1420'); break; } catch { await sleep(100); }
 }

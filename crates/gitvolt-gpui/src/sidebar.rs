@@ -1130,7 +1130,7 @@ fn panel_label(tab: &Tab, kind: SectionKind) -> &'static str {
 
 #[allow(clippy::too_many_arguments)]
 fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_right: f32, this: &WeakEntity<GitVolt>, push: &PushCache, pending: &HashMap<String, &'static str>, marks: &RowMarks, cx: &mut Context<GitVolt>) -> AnyElement {
-    let base = div().id(i).relative().flex().w_full().h(px(ROW_H)).items_center().gap(px(ROW_GAP)).pr(px(8.)).whitespace_nowrap();
+    let base = div().id(i).role(Role::TreeItem).relative().flex().w_full().h(px(ROW_H)).items_center().gap(px(ROW_GAP)).pr(px(8.)).whitespace_nowrap();
     let outlined = on_key || menu::is_target(row.key(), cx);
     let outline = |d: Stateful<Div>| d.when(outlined, |d| d.child(crate::ui::outline()));
     match row {

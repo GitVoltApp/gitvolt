@@ -8,7 +8,9 @@ use crate::theme;
 use gitvolt_core::api::Request;
 use gpui::prelude::*;
 use gpui::*;
-use serde_json::Value;
+use serde_json::{Value, json};
+use crate::write::call;
+use crate::ui::tooltip::tip;
 use std::collections::{BTreeMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
@@ -767,7 +769,170 @@ fn hash_button(id: impl Into<ElementId>, hash: &SharedString, tooltip: &'static 
 }
 
 /// The commit's header and message: the split's share of the panel, the header fixed and only the message scrolling.
-fn commit_view(c: &Commit, height: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+/// `HeadMessageEditor`: the message as two fields in place, Save (Ctrl+Enter) and Cancel (Esc). HEAD's is an amend of the message
+/// only; an older commit's is a reword, an interactive rebase.
+pub struct MessageEdit {
+    pub id: String,
+    pub summary: Entity<crate::ui::input::TextInput>,
+    pub body: Entity<crate::ui::input::TextInput>,
+    pub older: bool,
+    pub upstream: Option<String>,
+    pub busy: bool,
+}
+
+/// `rewordableOlder`: an older commit of HEAD's branch "Edit message" can reword: one parent, under HEAD, and not what the trunk has.
+pub fn rewordable_older(g: &crate::model::GraphView, id: &str) -> bool {
+    let (Some(target), branch) = (g.head_sha.as_deref(), g.head_branch.as_ref()) else { return false };
+    if branch.is_empty() || target == id {
+        return false;
+    }
+    let Some(row) = g.by_sha.get(id).and_then(|i| g.rows.get(*i)) else { return false };
+    if row.parents.len() != 1 || crate::refs::is_ancestor(g, id, target) != Some(true) {
+        return false;
+    }
+    let trunk = ["refs/heads/main", "refs/heads/master", "refs/remotes/origin/main", "refs/remotes/origin/master"].into_iter().find_map(|t| crate::stacks::find_base(g, t).map(|f| (t, f)));
+    if let Some((trunk, (at, name))) = trunk
+        && branch != trunk
+        && branch != format!("refs/heads/{name}").as_str()
+        && branch != name.as_str()
+        && let Some(tip) = g.rows.get(at)
+        && crate::refs::is_ancestor(g, id, &tip.id) == Some(true)
+    {
+        return false;
+    }
+    true
+}
+
+impl GitVolt {
+    fn start_message_edit(&mut self, older: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else { return };
+        let Some(c) = tab.commit.as_ref() else { return };
+        let (id, summary_text, body_text, repo, worktree) = (c.full_id.to_string(), c.summary.to_string(), c.body.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n"), tab.id, tab.wip_worktree().unwrap_or_default().to_string());
+        let summary = cx.new(|cx| {
+            let mut i = crate::ui::input::TextInput::new(cx).claim_escape();
+            i.set_text(&summary_text, cx);
+            i
+        });
+        let body = cx.new(|cx| {
+            let mut i = crate::ui::input::TextInput::multiline(cx).placeholder("Description").claim_escape();
+            i.set_text(&body_text, cx);
+            i
+        });
+        for input in [&summary, &body] {
+            let first = input == &summary;
+            let (down, repo_) = (body.clone(), repo);
+            cx.subscribe(input, move |this, _, e: &crate::ui::input::InputEvent, cx| match e {
+                crate::ui::input::InputEvent::Escape => {
+                    if let Some(t) = this.tabs.iter_mut().find(|t| t.id == repo_) {
+                        t.message_edit = None;
+                    }
+                    cx.notify();
+                }
+                crate::ui::input::InputEvent::Submit { ctrl: true, .. } => this.save_message_edit(repo_, cx),
+                crate::ui::input::InputEvent::Submit { .. } if first => {
+                    this.focus_next_frame = Some(down.read(cx).focus.clone());
+                    cx.notify();
+                }
+                _ => cx.notify(),
+            })
+            .detach();
+        }
+        let first_focus = summary.read(cx).focus.clone();
+        window.focus(&first_focus, cx);
+        let Some(tab) = self.tabs.get_mut(self.active) else { return };
+        tab.message_edit = Some(MessageEdit { id, summary, body, older, upstream: None, busy: false });
+        if cfg!(test) {
+            return;
+        }
+        let api = self.api.clone();
+        let read = self.rt.spawn(async move { api.dispatch(Request::HeadOnUpstream { repo: crate::app::core_repo(repo), worktree }).await });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(v)) = read.await {
+                this.update(cx, |this, cx| {
+                    if let Some(e) = this.tabs.iter_mut().find(|t| t.id == repo).and_then(|t| t.message_edit.as_mut()) {
+                        e.upstream = v.as_str().map(String::from);
+                        cx.notify();
+                    }
+                })
+                .ok();
+            }
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn save_message_edit(&mut self, repo: u32, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.iter().find(|t| t.id == repo) else { return };
+        let Some(e) = tab.message_edit.as_ref().filter(|e| !e.busy) else { return };
+        let (summary, body) = (e.summary.read(cx).text().trim().to_string(), e.body.read(cx).text().trim().to_string());
+        if summary.is_empty() {
+            return;
+        }
+        let Some(ctx) = tab.wip_ctx() else { return };
+        let message = if body.is_empty() { summary } else { format!("{summary}\n\n{body}") };
+        let (id, older, worktree) = (e.id.clone(), e.older, ctx.worktree.clone());
+        let head = tab.graph.as_ref().and_then(|g| g.head_sha.clone()).unwrap_or_else(|| id.clone());
+        if let Some(e) = self.tabs.iter_mut().find(|t| t.id == repo).and_then(|t| t.message_edit.as_mut()) {
+            e.busy = true;
+        }
+        let w = crate::write::Write::new(&ctx, move |asked| {
+            if older {
+                call("rewordCommit", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "oid": id, "message": message, "expect": { "head": head, "refs": {} }, "confirm": { "autostash": asked.autostash } }))
+            } else {
+                call("editHeadMessage", json!({ "repo": crate::app::core_repo(repo), "worktree": worktree, "message": message, "expect": { "head": head, "refs": {} } }))
+            }
+        })
+        .on_success(move |this, out, cx| {
+            if let Some(t) = this.tabs.iter_mut().find(|t| t.id == repo) {
+                t.message_edit = None;
+            }
+            this.reload(repo, cx);
+            let oid = out["oid"].as_str().or(out["rewritten"].as_str()).map(|s| s.to_string());
+            if let Some(oid) = oid {
+                this.go_to_commit(oid.into(), cx);
+            }
+        })
+        .on_end(move |this, _, cx| {
+            if let Some(e) = this.tabs.iter_mut().find(|t| t.id == repo).and_then(|t| t.message_edit.as_mut()) {
+                e.busy = false;
+            }
+            cx.notify();
+        });
+        self.write(w, cx);
+    }
+}
+
+fn message_editor(e: &MessageEdit, repo: u32, cx: &mut Context<GitVolt>) -> AnyElement {
+    use crate::ui::controls::{ButtonKind, button};
+    let can = !e.busy && !e.summary.read(cx).text().trim().is_empty();
+    let field = |input: Entity<crate::ui::input::TextInput>| div().px(px(8.)).py(px(5.)).bg(theme::app_bg()).border_1().border_color(theme::section_border()).rounded(px(4.)).child(input);
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.))
+        .mb(px(8.))
+        .p(px(2.))
+        .child(field(e.summary.clone()))
+        .child(field(e.body.clone()).min_h(px(46.)))
+        .when_some(e.upstream.clone(), |d, u| d.child(div().text_size(px(12.)).text_color(theme::status_modified()).child(format!("This commit is on {u}; you'll need to force push."))))
+        .when(e.older, |d| d.child(div().text_size(px(12.)).text_color(theme::status_modified()).child("Saving rebases the commits above it.")))
+        .child(
+            div()
+                .flex()
+                .justify_end()
+                .gap(px(6.))
+                .child(crate::ui::anchor("message-cancel", button("message-cancel", "Cancel", ButtonKind::Plain, true).on_click(cx.listener(move |this, _, _, cx| {
+                    if let Some(t) = this.tabs.iter_mut().find(|t| t.id == repo) {
+                        t.message_edit = None;
+                    }
+                    cx.notify();
+                }))))
+                .child(crate::ui::anchor("message-save", button("message-save", "Save", ButtonKind::Positive, can).on_click(cx.listener(move |this, _, _, cx| this.save_message_edit(repo, cx))))),
+        )
+        .into_any_element()
+}
+
+fn commit_view(c: &Commit, height: f32, edit: Option<(&MessageEdit, u32)>, editable: Option<bool>, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let parents = c.parents.iter().enumerate().map(|(i, p)| {
         let sha = p.clone();
         hash_button(("parent", i), p, "Go to parent commit", cx, move |this, cx| this.go_to_commit(sha.clone(), cx))
@@ -818,21 +983,35 @@ fn commit_view(c: &Commit, height: f32, cx: &mut Context<GitVolt>) -> impl IntoE
                 .children(committer)
                 .when(!c.co_authors.is_empty(), |d| d.child(div().flex().flex_none().gap(px(6.)).children(c.co_authors.iter().map(|n| div().flex().items_center().gap(px(4.)).pr(px(6.)).pl(px(1.)).py(px(1.)).rounded(px(10.)).bg(theme::panel_bg1()).child(avatar(n, "", 18.)).child(n.clone()))))),
         )
-        .child(
-            div()
-                .id("message")
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scroll()
-                .mb(px(8.))
-                .px(px(10.))
-                .pt(px(6.))
-                .pb(px(8.))
-                .rounded(px(4.))
-                .bg(theme::app_bg())
-                .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).mb(px(6.)).child(c.summary.clone()))
-                .children(c.body.iter().map(|l| div().min_h(px(18.2)).child(l.clone()))),
-        )
+        .map(|d| match edit.filter(|(e, _)| e.id == c.full_id.as_ref()) {
+            Some((e, repo)) => d.child(message_editor(e, repo, cx)),
+            None => d.child(
+                div()
+                    .id("message")
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .mb(px(8.))
+                    .px(px(10.))
+                    .pt(px(6.))
+                    .pb(px(8.))
+                    .rounded(px(4.))
+                    .bg(theme::app_bg())
+                    // The pencil comes first in the web's box, so the summary keeps its 4 px top margin.
+                    .when_some(editable, |d, older| {
+                        d.pr(px(28.)).child(crate::ui::anchor(
+                            "message-edit",
+                            tip(
+                                if older { "Edit the commit message (rebases the commits above it)" } else { "Edit the commit message" },
+                                div().id("message-edit").absolute().top(px(4.)).right(px(4.)).flex().size(px(22.)).items_center().justify_center().rounded(px(4.)).cursor_pointer().hover(|d| d.bg(theme::hover_row())).on_click(cx.listener(move |this, _, window, cx| this.start_message_edit(older, window, cx))).child(icon("pencil", 13., theme::text_secondary())),
+                            ),
+                        ))
+                    })
+                    .child(div().when(editable.is_some(), |d| d.mt(px(4.))).text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).mb(px(6.)).child(c.summary.clone()))
+                    .children(c.body.iter().map(|l| div().min_h(px(18.2)).child(l.clone()))),
+            ),
+        })
 }
 
 /// The line between the commit and its files, which moves.
@@ -1238,7 +1417,8 @@ pub fn details_panel(v: &GitVolt, tab: &Tab, width: f32, height: f32, window: &W
     let header = 37. + 4. + 32. + 6. + if tab.commit.as_ref().is_some_and(|c| c.committer.is_some()) { 36. } else { 0. } + if tab.commit.as_ref().is_some_and(|c| !c.co_authors.is_empty()) { 26. } else { 0. };
     let (lo, hi) = split_bounds(height, header);
     let commit_h = (v.details_split.clamp(lo, hi) * height).round();
-    let commit = tab.commit.as_ref().filter(|_| tab.compare.is_none()).map(|c| commit_view(c, commit_h, cx));
+    let editable = tab.commit.as_ref().zip(tab.graph.as_ref()).and_then(|(c, g)| if g.head_sha.as_deref() == Some(c.full_id.as_ref()) { Some(false) } else { rewordable_older(g, &c.full_id).then_some(true) });
+    let commit = tab.commit.as_ref().filter(|_| tab.compare.is_none()).map(|c| commit_view(c, commit_h, tab.message_edit.as_ref().map(|e| (e, tab.id)), editable, cx));
     let split = tab.commit.as_ref().filter(|_| tab.compare.is_none()).map(|_| split_resizer(height, header, cx));
     let compare = tab.compare.as_ref().map(|c| crate::selection::compare_header(tab, c, cx));
     let multi = tab.multi_ids().map(|rows| crate::selection::multi_summary(tab, rows, cx));

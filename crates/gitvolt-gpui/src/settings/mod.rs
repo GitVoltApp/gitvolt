@@ -57,6 +57,8 @@ pub struct SettingsUi {
     pub fonts_loading: bool,
     pub font_picker: Option<fonts::FontPicker>,
     pub font_preview: Option<String>,
+    /// The Tab stops of a page's switches and selects.
+    pub stops: HashMap<&'static str, FocusHandle>,
     pub font_draft: HashMap<String, String>,
     pub font_asked: HashSet<String>,
     /// Editor pickers' custom command: what's being typed, its error.
@@ -76,7 +78,7 @@ pub struct SettingsUi {
 
 impl Default for SettingsUi {
     fn default() -> Self {
-        Self { open: false, page: "general".into(), flash: None, floating: false, float_at: (0., 0.), float_drag: None, float_filter: None, search: None, fields: HashMap::new(), focus: None, return_to: None, scroll: ScrollHandle::new(), nav_cursor: None, all_colours: None, float_all: None, hold: 0, lane_drag: None, fonts: None, fonts_loading: false, font_picker: None, font_preview: None, font_draft: HashMap::new(), font_asked: HashSet::new(), editor_custom: HashMap::new(), editor_seq: 0, identity: None, identity_for: None, presets: Default::default(), file_colours: Default::default(), host_kind: "gitlab".into(), keyboard_filter: None, accounts: Default::default() }
+        Self { open: false, page: "general".into(), flash: None, floating: false, float_at: (0., 0.), float_drag: None, float_filter: None, search: None, fields: HashMap::new(), focus: None, return_to: None, scroll: ScrollHandle::new(), nav_cursor: None, all_colours: None, float_all: None, hold: 0, lane_drag: None, fonts: None, fonts_loading: false, font_picker: None, font_preview: None, stops: Default::default(), font_draft: HashMap::new(), font_asked: HashSet::new(), editor_custom: HashMap::new(), editor_seq: 0, identity: None, identity_for: None, presets: Default::default(), file_colours: Default::default(), host_kind: "gitlab".into(), keyboard_filter: None, accounts: Default::default() }
     }
 }
 
