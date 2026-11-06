@@ -7,6 +7,9 @@ d = json.load(open(sys.argv[2]))
 
 # What the app calls (0,0) is the window's, the input's is the screen's: they part when a window's been moved on Xwayland.
 OX, OY = d.get("window", {}).get("x", 0), d.get("window", {}).get("y", 0)
+# Maximized it's at the screen's corner, whatever GPUI's bounds kept from before.
+if d.get("window", {}).get("maximized"):
+    OX, OY = 0, 0
 
 
 def centre(b):

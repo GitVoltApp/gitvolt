@@ -7,6 +7,7 @@
 mod app;
 mod avatars;
 mod bench;
+mod chrome;
 mod commands;
 mod commit_box;
 mod details;
@@ -63,17 +64,24 @@ mod write;
 use app::GitVolt;
 use gitvolt_core::api::Api;
 use gitvolt_core::avatar::AvatarProvider;
+use gitvolt_core::error::{GbError, GbErrorKind};
+use gitvolt_core::forge::ForgeFuture;
 use gitvolt_core::git::GitCli;
 use gitvolt_core::log::CommandLog;
 use gitvolt_core::openers::chooser::system_chooser;
 use gitvolt_core::openers::default_app::system_default_app;
 use gitvolt_core::openers::{ChildEnvHook, detect_system, launcher};
 use gitvolt_core::shellenv::ShellEnv;
+use gitvolt_core::updates::install::InstallKind;
+use gitvolt_core::updates::release::GhRelease;
+use gitvolt_core::updates::{DownloadProgress, SystemRunner, UpdateConfig, UpdateSource};
 use gitvolt_forge::gravatar::{DEFAULT_BASE_URL, Gravatar};
 use gpui::*;
 use std::borrow::Cow;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 /// The window's root: the app, cached, so a frame of what turns over it (`ui::spin`) doesn't lay it out and paint it again.
 struct Root {
@@ -172,6 +180,38 @@ fn with_forge(api: Api, scripted: bool) -> Api {
     }
 }
 
+/// The updater's source here: this build isn't what gets installed yet, so it never asks any host, and Check for updates says so.
+struct NoReleases;
+
+fn no_releases() -> GbError {
+    GbError::new(GbErrorKind::InvalidInput, "Updates aren't available in this build")
+}
+
+impl UpdateSource for NoReleases {
+    fn releases(&self) -> ForgeFuture<'_, Vec<GhRelease>> {
+        Box::pin(async { Err(no_releases()) })
+    }
+
+    fn fetch<'a>(&'a self, _: &'a str) -> ForgeFuture<'a, Vec<u8>> {
+        Box::pin(async { Err(no_releases()) })
+    }
+
+    fn download<'a>(&'a self, _: &'a str, _: &'a Path, _: DownloadProgress, _: Arc<AtomicBool>) -> ForgeFuture<'a, u64> {
+        Box::pin(async { Err(no_releases()) })
+    }
+}
+
+/// The updater, for what it can do with no releases: `Request::RelaunchApp`. `restart_app` quits on its answer, from the UI thread, so the runner's
+/// `quit` has nothing to do. A script or a measurement has none: a Restart there says to start it again by hand, and starts nothing.
+fn with_relaunch(api: Api, scripted: bool) -> Api {
+    if scripted {
+        return api;
+    }
+    let runner = SystemRunner { hook: Arc::new(|_| {}), quit: Arc::new(|| {}) };
+    let dir = gitvolt_core::paths::cache_base().unwrap_or_default().join(APP_DIR).join("updates");
+    api.with_updates(UpdateConfig { source: Arc::new(NoReleases), runner: Arc::new(runner), dir, kind: InstallKind::Unpackaged, exe: std::env::current_exe().ok() })
+}
+
 type Forwarded = std::sync::mpsc::Receiver<Option<String>>;
 
 fn claim_instance(launch: Option<&str>) -> (Option<Arc<gitvolt_core::instance::Primary>>, Option<Forwarded>) {
@@ -226,7 +266,7 @@ fn main() {
     let exit_store = store.clone();
     let saved_store = store.clone();
     let saved = store.state();
-    let api = with_forge(api.with_store(store), scripted);
+    let api = with_relaunch(with_forge(api.with_store(store), scripted), scripted);
     // This build's log files, in its own cache folder: Settings' Debug logging and Logs folder work on them.
     let logging = gitvolt_core::paths::cache_base().and_then(|c| gitvolt_core::logging::init(&c.join(APP_DIR).join("logs"), false, false).ok());
     let (api, _log_guard) = match logging {
@@ -265,7 +305,8 @@ fn main() {
             eprintln!("Couldn't load the editor font: {e}");
         }
         // The window as it was left; the first time, the web UI's first size.
-        let system_title_bar = saved_store.state().settings.system_title_bar;
+        let start = saved_store.state().settings;
+        let chrome = chrome::WindowChrome::at_start(start.system_title_bar, start.compact_title_bar, std::env::var("WAYLAND_DISPLAY").ok().as_deref(), std::env::var("XDG_SESSION_TYPE").ok().as_deref());
         let saved_window = saved_store.window();
         let start_size = saved_window.as_ref().map_or(size(px(1600.), px(900.)), |w| size(px(w.width as f32), px(w.height as f32)));
         let bounds = Bounds::centered(None, start_size, cx);
@@ -274,7 +315,7 @@ fn main() {
             titlebar: None,
             // `tauri.conf.json`'s.
             window_min_size: Some(size(px(900.), px(500.))),
-            window_decorations: Some(if system_title_bar { WindowDecorations::Server } else { WindowDecorations::Client }),
+            window_decorations: Some(if chrome.custom { WindowDecorations::Client } else { WindowDecorations::Server }),
             app_id: Some("gitvolt-gpui".into()),
             // Measuring: a window behind another isn't throttled to GPUI's 24 Hz.
             inactive_frame_interval: std::env::var_os("GITVOLT_BENCH").map(|_| std::time::Duration::ZERO),
@@ -318,7 +359,7 @@ fn main() {
                     v.listen_for_launches(rx, cx);
                 }
                 v.start_path = path.clone();
-                v.system_title_bar = system_title_bar;
+                v.chrome = chrome;
             });
             let closing = view.clone();
             window.on_window_should_close(cx, move |_, cx| closing.update(cx, |v, cx| v.may_close(cx)));

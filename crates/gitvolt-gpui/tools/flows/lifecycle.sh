@@ -54,15 +54,7 @@ up "$A"; until_q "d['rows'] and d['rows'] >= 6" 5
 edit_and_close 1
 check "the question's up, the app's alive" "d['popover']"
 shot life-unsaved
-clickon "popover:save"
-for i in $(seq 1 50); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.1; done
-check_sh "Save closed it" "! kill -0 $APP_PID"
-check_sh "and wrote the file" "grep -q EDITED1 $A/src/main.txt"
-g "$A" checkout -q -- src/main.txt
-
-up "$A"; until_q "d['rows'] and d['rows'] >= 6" 5
-edit_and_close 2
-check "the question's up again" "d['popover']"
+check "no Save among its answers, as the web's" "'popover:discard' in d['anchors'] and 'popover:save' not in d['anchors']"
 key Escape; pause 0.3
 check "Esc keeps the window, the edit there" "not d['popover'] and d['open'] == 'src/main.txt'"
 clickon win-close; pause 0.5

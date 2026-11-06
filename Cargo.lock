@@ -3011,7 +3011,7 @@ dependencies = [
 name = "gitvolt-app"
 version = "1.5.0"
 dependencies = [
- "block2",
+ "block2 0.6.2",
  "gdk4-x11",
  "gio",
  "gitvolt-core",
@@ -3091,7 +3091,7 @@ dependencies = [
 
 [[package]]
 name = "gitvolt-gpui"
-version = "1.4.1"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",

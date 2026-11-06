@@ -512,15 +512,18 @@ impl GitVolt {
         });
     }
 
-    /// The window's closing: unsaved edits in any tab ask first, one at a time; `false` keeps it open.
+    /// The window's closing (`installWindowCloseGuard`): unsaved edits in any tab ask first; `false` keeps it open.
     pub fn may_close(&mut self, cx: &mut Context<Self>) -> bool {
-        if let Some(i) = self.tabs.iter().position(|t| t.diff.as_ref().is_some_and(|d| d.editing_dirty()) || t.merge_dirty()) {
-            self.active = i;
-            cx.notify();
-            let again = self.ask_unsaved(|this, cx| this.close_window(cx), cx);
-            if again {
-                return false;
-            }
+        if self.any_unsaved() {
+            self.confirm_discard_unsaved(
+                None,
+                |this, cx| {
+                    this.flush_drafts();
+                    this.with_window(cx, |window, _| window.remove_window());
+                },
+                cx,
+            );
+            return false;
         }
         self.flush_drafts();
         true

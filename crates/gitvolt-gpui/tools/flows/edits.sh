@@ -41,7 +41,7 @@ key End; ri type "HIDDEN"; pause 0.2
 launch_app "$B"; until_q "len(d['tabs']) == 2 and d['rows'] == 6" 5; pause 0.3
 check "on the other tab" "d['open'] is None"
 clickon win-close; pause 0.6
-check "it asks, on the tab with the work" "d['popover'] and d['open'] == 'src/main.txt'"
+check "it asks, where it is, as the web's" "d['popover'] and d['open'] is None"
 shot edits-hidden
 key Escape; pause 0.3
 echo "closing that tab itself asks too"

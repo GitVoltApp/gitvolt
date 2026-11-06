@@ -96,6 +96,24 @@ up() {
   # A pointer at rest in the corner, where no hover can matter.
   ri move 1 500
 }
+# A Restart GitVolt: the old process goes (the wait is what reaps it, as a launcher would, or what waits for it never sees it gone) and the new one
+# answers on the same fifo. Its pid becomes the flow's, and the one a cleanup kills.
+restarted() {
+  local old=$APP_PID i new
+  wait "$old" 2>/dev/null
+  RESTART_RC=$?
+  for i in $(seq 1 100); do
+    rm -f "$GITVOLT_DEBUG_PIPE.out"
+    timeout 0.25 bash -c "echo x >'$GITVOLT_DEBUG_PIPE'" 2>/dev/null
+    for _ in $(seq 1 20); do [ -f "$GITVOLT_DEBUG_PIPE.out" ] && break; sleep 0.02; done
+    new=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pid"])' "$GITVOLT_DEBUG_PIPE.out" 2>/dev/null)
+    [ -n "$new" ] && [ "$new" != "$old" ] && { APP_PID=$new; echo "$new" >"$REALINPUT_PIDFILE"; export APP_PID; return 0; }
+    sleep 0.1
+  done
+  fail "nothing came back after the restart"
+  finish
+  exit 5
+}
 # A small repository to write in, fictional, under the work folder, made anew.
 small_repo() {
   local dir=$WORK/flows/$1

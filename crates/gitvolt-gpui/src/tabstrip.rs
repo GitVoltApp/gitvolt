@@ -791,8 +791,8 @@ fn tab_element(this: &GitVolt, i: usize, group_color: Option<Hsla>, separator: b
         .items_center()
         .gap(px(6.))
         .h(px(crate::app::TAB_H))
-        // The CSS's 90 and 220 are the content's: padding and the border are on top of them.
-        .min_w(px(109.))
+        // The CSS's 90 (72 in the title bar) and 220 are the content's: padding and the border are on top of them.
+        .min_w(px(this.chrome.tab_min_w()))
         .max_w(px(239.))
         .pl(px(12.))
         .pr(px(6.))
@@ -1050,11 +1050,17 @@ pub fn strip(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>)
     let list = this.strip_ui.list.clone().filter(|_| this.strip_ui.drag.is_none()).and_then(|id| group_list(this, &id, cx));
     let row = row
         .on_mouse_down(MouseButton::Left, cx.listener(|this, e: &MouseDownEvent, window, cx| {
-            // Empty space only, as a browser's tab strip: a new tab on the Open repository screen; else it moves the window.
+            // Empty space only, as a browser's tab strip: a new tab on the Open repository screen, or where the strip is the title bar what a
+            // title bar's double click does; else it moves the window.
             if e.click_count == 2 {
-                this.open_blank_tab(cx);
-            } else if !this.system_title_bar {
-                window.start_window_move();
+                this.window_press = None;
+                if this.chrome.compact {
+                    window.zoom_window();
+                } else {
+                    this.open_blank_tab(cx);
+                }
+            } else {
+                this.window_press(e);
             }
         }))
         .on_mouse_down(MouseButton::Right, cx.listener(|this, e: &MouseDownEvent, window, cx| {

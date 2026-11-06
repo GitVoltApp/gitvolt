@@ -586,8 +586,8 @@ pub fn bell_rows(v: &GitVolt, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
     rows
 }
 
-/// The tab bar's bell, with its count.
-pub fn bell(v: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+/// The tab bar's bell, with its count. A click opens its menu and a second one closes it; a press that moves moves the window.
+pub fn bell(v: &GitVolt, width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     let unread = v.ops.unread;
     let open = menu::is_open_on("bell", cx);
     tip(
@@ -599,14 +599,22 @@ pub fn bell(v: &GitVolt, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> 
                 .relative()
                 .flex()
                 .flex_none()
-                .w(px(34.))
+                .w(px(width))
                 .h_full()
                 .items_center()
                 .justify_center()
                 .when(open, |d| d.bg(theme::hover_row()))
                 .hover(|d| d.bg(theme::hover_row()))
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, e: &MouseDownEvent, _, cx| {
                     cx.stop_propagation();
+                    this.bell_press_closed = menu::press_closed("bell", cx);
+                    this.window_press(e);
+                }))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    let closed = std::mem::take(&mut this.bell_press_closed);
+                    if this.press_moved_window() || closed {
+                        return;
+                    }
                     this.ops.unread = 0;
                     let weak = cx.weak_entity();
                     let rows = bell_rows(this, &weak);

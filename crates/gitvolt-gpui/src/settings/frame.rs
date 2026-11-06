@@ -6,6 +6,7 @@ use crate::theme;
 use crate::ui::controls::{self, OnSelect};
 use crate::ui::modal::{CloseModal, FocusNext, FocusPrev};
 use crate::ui::tooltip::tip;
+use gitvolt_core::api::Request;
 use gpui::prelude::*;
 use gpui::*;
 use serde_json::{Value, json};
@@ -49,6 +50,7 @@ pub fn bound(this: &GitVolt, b: &Binding) -> Value {
         Binding::Profile(k, _) => this.profile[*k].clone(),
         Binding::Repo(k, _, _) => this.tabs.get(this.active).map_or(Value::Null, |t| this.profile["repos"][&t.repo_path][*k].clone()),
         Binding::Local(k, _) => this.prefs[*k].clone(),
+        Binding::Computed { get, .. } => get(this),
     }
 }
 
@@ -56,6 +58,7 @@ pub fn default_of(b: &Binding) -> Value {
     match b {
         Binding::None => Value::Null,
         Binding::App(_, d, _) | Binding::Profile(_, d) | Binding::Repo(_, d, _) | Binding::Local(_, d) => (d)(),
+        Binding::Computed { default, .. } => default(),
     }
 }
 
@@ -65,6 +68,9 @@ pub fn modified(this: &GitVolt, def: &Def) -> bool {
     }
     if def.id == "fetchInterval" {
         return crate::feedback::clamp_fetch_interval(this.settings["fetchIntervalSecs"].as_f64().unwrap_or(60.)) != 60;
+    }
+    if matches!(def.binding, Binding::Computed { .. }) && bound(this, &def.binding).is_null() {
+        return false;
     }
     bound(this, &def.binding) != default_of(&def.binding)
 }
@@ -99,6 +105,7 @@ pub fn set_bound(this: &mut GitVolt, b: &Binding, value: Value, cx: &mut Context
             this.settings_changed(cx);
             cx.notify();
         }
+        Binding::Computed { set, .. } => set(this, value, cx),
     }
 }
 
@@ -347,6 +354,159 @@ fn select_control(this: &mut GitVolt, def: &'static Def, options: Vec<(Value, St
         .into_any_element()
 }
 
+/// What a [`choice_group`] offers: `(value, label)`s, and what a choice does.
+pub struct Choices<'a> {
+    pub value: &'a str,
+    pub options: &'static [(&'static str, &'static str)],
+    pub disabled: bool,
+    pub set: fn(&mut GitVolt, &'static str, &mut Context<GitVolt>),
+}
+
+/// `ChoiceGroup`: a setting's choice of a few, as one row of joined buttons, the chosen one highlighted. A radio group: Tab stops on it, the arrows
+/// (wrapping), Home and End move and choose, Space or Enter chooses. Its keyboard is the group's, its ring on the chosen button, by the keyboard only.
+pub fn choice_group(this: &mut GitVolt, def: &'static Def, choice: Choices<'_>, window: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
+    let Choices { value, options, disabled, set } = choice;
+    let id = def.id;
+    let focus = stop(this, id, cx);
+    let ring = !disabled && focus.is_focused(window) && window.last_input_was_keyboard();
+    let chosen = options.iter().position(|o| o.0 == value);
+    let running = std::cell::Cell::new(false);
+    let eased = |slot: usize, target: Hsla, ms: u64| {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (id, slot).hash(&mut h);
+        let mut on = false;
+        let c = crate::ui::ease::colour(h.finish(), target, std::time::Duration::from_millis(ms), crate::ui::ease::Curve::EaseIn, &mut on);
+        running.set(running.get() || on);
+        c
+    };
+    let at = chosen.unwrap_or(0);
+    let mut group = div().id(ElementId::Name(format!("choice-{id}").into())).role(Role::RadioGroup).aria_label(def.label).flex().flex_none().border_1().border_color(theme::section_border()).rounded(px(4.)).overflow_hidden();
+    if !disabled {
+        group = group.track_focus(&focus).on_key_down(cx.listener(move |this, e: &KeyDownEvent, _, cx| {
+            let m = &e.keystroke.modifiers;
+            if m.alt || m.control || m.platform {
+                return;
+            }
+            let Some(to) = next_choice(&e.keystroke.key, at, options.len()) else { return };
+            cx.stop_propagation();
+            set(this, options[to].0, cx);
+        }));
+    }
+    for (i, (v, label)) in options.iter().copied().enumerate() {
+        let on = chosen == Some(i);
+        // `:disabled`, and the chosen one's `:disabled` a little stronger.
+        let ink = match (disabled, on) {
+            (true, true) => theme::text_secondary(),
+            (true, false) => theme::text_disabled(),
+            (false, true) => theme::text_selected(),
+            (false, false) => theme::text_secondary(),
+        };
+        let button = div()
+            .id(ElementId::Name(format!("choice-{id}-{v}").into()))
+            .role(Role::RadioButton)
+            .aria_label(label)
+            .relative()
+            .flex_none()
+            .px(px(12.))
+            .py(px(4.))
+            .line_height(px(18.))
+            .whitespace_nowrap()
+            .text_color(eased(2 * i, ink, 50))
+            .bg(eased(2 * i + 1, if on { theme::selected_row() } else { transparent_black() }, 150))
+            .when(i > 0, |d| d.border_l_1().border_color(theme::section_border()))
+            .when(!disabled, |d| {
+                d.cursor_pointer().hover(|d| d.text_color(theme::text_selected())).on_click(cx.listener(move |this, _, _, cx| set(this, v, cx)))
+            })
+            .when(on && ring, |d| d.child(div().absolute().top_0().left_0().size_full().border_2().border_color(theme::blue())))
+            .child(label);
+        group = group.child(crate::ui::anchor(format!("setting:{id}:{v}"), button));
+    }
+    if running.get() {
+        window.request_animation_frame();
+    }
+    group.into_any_element()
+}
+
+/// Where a key goes from choice `at` of `len`, or `None` for a key that isn't the group's.
+pub fn next_choice(key: &str, at: usize, len: usize) -> Option<usize> {
+    match key {
+        "right" | "down" => Some((at + 1) % len),
+        "left" | "up" => Some((at + len - 1) % len),
+        "home" => Some(0),
+        "end" => Some(len - 1),
+        "space" | "enter" => Some(at),
+        _ => None,
+    }
+}
+
+/// `.setting-control button.primary`: Restart GitVolt. Hidden, it keeps its place and takes no press.
+pub fn restart_button(this: &mut GitVolt, shown: bool, cx: &mut Context<GitVolt>) -> AnyElement {
+    let button = theme::button_primary();
+    let lit = Rgba::from(button);
+    let lit = Rgba { r: (lit.r * 1.1).min(1.), g: (lit.g * 1.1).min(1.), b: (lit.b * 1.1).min(1.), a: lit.a };
+    const ANCHOR: &str = "setting:titleBarRestart";
+    let el = div().id("input-titleBarRestart").role(Role::Button).aria_label("Restart GitVolt").flex().flex_none().items_center().px(px(12.)).py(px(5.)).rounded(px(4.)).border_1().border_color(button).bg(button).text_color(theme::text_on_accent()).child("Restart GitVolt");
+    if !shown {
+        return el.into_any_element();
+    }
+    let focus = stop(this, "titleBarRestart", cx);
+    let weak = cx.weak_entity();
+    let el = el.cursor_pointer().hover(move |d| d.bg(lit).border_color(lit)).on_click(cx.listener(|this, _, _, cx| this.restart_app(|| Request::RelaunchApp, ANCHOR, cx)));
+    let el = controls::tabbable(el, &focus, move |_, cx| {
+        weak.update(cx, |this, cx| this.restart_app(|| Request::RelaunchApp, ANCHOR, cx)).ok();
+    });
+    crate::ui::anchor(ANCHOR, el).into_any_element()
+}
+
+/// `Description`'s lines: whether it's a `• ` bullet, its text without that, and where the text starts in the whole.
+pub fn description_lines(text: &str) -> Vec<(bool, &str, usize)> {
+    let mut at = 0;
+    text.split('\n')
+        .map(|line| {
+            let start = at;
+            at += line.len() + 1;
+            match line.strip_prefix("• ") {
+                Some(body) => (true, body, start + "• ".len()),
+                None => (false, line, start),
+            }
+        })
+        .collect()
+}
+
+/// `clip`: `ranges` over a whole text, within its part from `start`, `len` long, from 0.
+pub fn clip(ranges: &[Range<usize>], start: usize, len: usize) -> Vec<Range<usize>> {
+    ranges.iter().filter(|r| r.end > start && r.start < start + len).map(|r| r.start.max(start) - start..r.end.min(start + len) - start).collect()
+}
+
+/// `Description`: a setting's description, one line, or several, each a paragraph, where a run of `• ` lines is a bullet list. Search's marks are over
+/// the whole text, so each part shows its share.
+fn description(text: &str, ranges: &[Range<usize>]) -> AnyElement {
+    let base = crate::ui::hanging(div().mt(px(2.)).text_size(px(12.)).text_color(theme::text_secondary()));
+    if !text.contains('\n') {
+        return base.child(marked(text, ranges)).into_any_element();
+    }
+    let mut parts = div().flex().flex_col().gap(px(2.));
+    let mut items: Option<Div> = None;
+    for (bullet, line, start) in description_lines(text) {
+        let shown = marked(line, &clip(ranges, start, line.len()));
+        if bullet {
+            // `ul`'s 16 px, its disc where Chromium's `::marker` goes at this size.
+            let li = div().relative().child(div().absolute().left(px(-15.)).top(px(6.)).size(px(4.)).rounded_full().bg(theme::text_secondary())).child(shown);
+            items = Some(items.take().unwrap_or_else(|| div().flex().flex_col().pl(px(16.))).child(li));
+        } else {
+            if let Some(list) = items.take() {
+                parts = parts.child(list);
+            }
+            parts = parts.child(div().child(shown));
+        }
+    }
+    if let Some(list) = items.take() {
+        parts = parts.child(list);
+    }
+    base.child(parts).into_any_element()
+}
+
 /// A setting's row.
 pub fn setting_row(this: &mut GitVolt, def: &'static Def, first: bool, words: &[String], window: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
     let is_modified = modified(this, def);
@@ -371,7 +531,7 @@ pub fn setting_row(this: &mut GitVolt, def: &'static Def, first: bool, words: &[
     let (label, desc) = (crate::settings::search::highlights(def.label, words), crate::settings::search::highlights(&def.description, words));
     let restore = tip(
         "Restore the default",
-        div()
+        crate::ui::anchor(format!("setting-reset:{}", def.id), div()
             .id(ElementId::Name(format!("reset-{}", def.id).into()))
             .flex()
             .flex_none()
@@ -383,7 +543,7 @@ pub fn setting_row(this: &mut GitVolt, def: &'static Def, first: bool, words: &[
             .cursor_pointer()
             .hover(|d| d.bg(theme::hover_row()))
             .on_click(cx.listener(move |this, _, _, cx| reset(this, def, cx)))
-            .child(icon("rotate-ccw", 12., theme::text_secondary())),
+            .child(icon("rotate-ccw", 12., theme::text_secondary()))),
     );
     let text = div()
         .flex()
@@ -391,7 +551,7 @@ pub fn setting_row(this: &mut GitVolt, def: &'static Def, first: bool, words: &[
         .flex_1()
         .min_w_0()
         .child(div().flex().items_center().gap(px(4.)).min_h(px(22.)).child(div().text_color(theme::text_selected()).child(marked(def.label, &label))).child(restore))
-        .when(!def.description.is_empty(), |d| d.child(crate::ui::hanging(div().mt(px(2.)).text_size(px(12.)).text_color(theme::text_secondary())).child(marked(&def.description, &desc))));
+        .when(!def.description.is_empty(), |d| d.child(description(&def.description, &desc)));
     // A font's row: its preview under the text, the control centred beside the text only (`.setting-row:has(.font-preview-box)`).
     let (text, preview, control) = if font_row {
         let (t, p, c) = super::fonts::font_row_parts(this, def, text, control, window, cx);
@@ -815,5 +975,53 @@ impl GitVolt {
     fn on_settings_drag(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
         self.on_lane_drag(e, cx);
         self.on_float_drag(e, cx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::prelude::v1::test;
+
+    #[test]
+    fn a_groups_keys_wrap_and_choose() {
+        assert_eq!(next_choice("left", 0, 3), Some(2));
+        assert_eq!(next_choice("right", 2, 3), Some(0));
+        assert_eq!(next_choice("down", 0, 3), Some(1));
+        assert_eq!(next_choice("up", 1, 3), Some(0));
+        assert_eq!(next_choice("home", 2, 3), Some(0));
+        assert_eq!(next_choice("end", 0, 3), Some(2));
+        assert_eq!(next_choice("space", 1, 3), Some(1));
+        assert_eq!(next_choice("enter", 1, 3), Some(1));
+        assert_eq!(next_choice("a", 1, 3), None);
+    }
+
+    #[test]
+    fn a_description_of_several_lines_has_bullets_each_with_its_share_of_the_marks() {
+        let text = "Intro.\n• Alpha: first.\n• Beta: second.\nAfter.";
+        let lines = description_lines(text);
+        assert_eq!(lines.iter().map(|l| (l.0, l.1)).collect::<Vec<_>>(), [(false, "Intro."), (true, "Alpha: first."), (true, "Beta: second."), (false, "After.")]);
+        for (_, line, start) in &lines {
+            assert_eq!(&text[*start..*start + line.len()], *line);
+        }
+        let at = |w: &str| text.find(w).unwrap()..text.find(w).unwrap() + w.len();
+        let marks = [at("Alpha"), at("second"), at("After")];
+        let shown: Vec<Vec<&str>> = lines.iter().map(|(_, line, start)| clip(&marks, *start, line.len()).into_iter().map(|r| &line[r]).collect()).collect();
+        assert_eq!(shown, [vec![], vec!["Alpha"], vec!["second"], vec!["After"]]);
+    }
+
+    #[test]
+    fn the_title_bar_comes_before_the_fonts_and_lists_its_choices() {
+        let mut groups: Vec<&str> = Vec::new();
+        for d in pages::defs().iter().filter(|d| d.page == "appearance") {
+            if !groups.contains(&d.group) {
+                groups.push(d.group);
+            }
+        }
+        assert_eq!(groups, ["Density", "Window", "Fonts"]);
+        let lines = description_lines(&pages::def("titleBar").unwrap().description);
+        assert_eq!(lines.iter().filter(|l| l.0).count(), 3);
+        assert_eq!(lines.last().unwrap().1, "Takes effect when GitVolt restarts.");
+        assert!(pages::def("systemTitleBar").is_none(), "the switch is gone");
     }
 }

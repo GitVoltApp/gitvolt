@@ -1,6 +1,7 @@
 //! GitVolt's own updates (`ui/src/updates/`): the status bar's pill and the dialog, showing the core's `UpdateState`. This
-//! build's `Api` has no updater wired (it isn't what gets installed yet), so it never asks any host: the state stays
-//! idle, Help › Check for updates says so, and the views are there for when it is.
+//! build's updater has no source of releases (it isn't what gets installed yet; `main.rs`'s `NoReleases`), so it never asks any
+//! host: the state stays idle, Help › Check for updates says so, and the views are there for when it is. The updater's there for
+//! the restart it can do (`Request::RelaunchApp`).
 
 use crate::app::{GitVolt, icon};
 use crate::theme;
@@ -104,7 +105,13 @@ impl GitVolt {
                 "failed" => actions = actions.child(call("update-download", "Download again".into(), || Request::UpdateDownload, weak.clone())),
                 "downloading" => actions = actions.child(call("update-cancel", "Cancel".into(), || Request::UpdateCancel, weak.clone())),
                 "ready" => actions = actions.child(call("update-install", "Install".into(), || Request::UpdateInstall, weak.clone())),
-                "installed" => actions = actions.child(call("update-restart", "Restart GitVolt".into(), || Request::UpdateRestart, weak.clone())),
+                // Unsaved edits ask first, over the dialog, which stays if that's cancelled.
+                "installed" => {
+                    let weak = weak.clone();
+                    actions = actions.child(crate::ui::anchor("update-restart", controls::button("update-restart", "Restart GitVolt", ButtonKind::Primary, true).on_click(move |_, _, cx| {
+                        weak.update(cx, |t, cx| t.restart_app(|| Request::UpdateRestart, "update-restart", cx)).ok();
+                    })));
+                }
                 _ => {}
             }
             div()

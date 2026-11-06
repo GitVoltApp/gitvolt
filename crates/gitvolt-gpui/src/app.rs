@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 actions!(gitvolt, [SelectNext, SelectPrevious, ExtendNext, ExtendPrevious, ClearSelection, Copy, SelectAll, PageDown, PageUp]);
 
-const TITLE_H: f32 = 30.;
+pub const TITLE_H: f32 = 30.;
 pub const TAB_H: f32 = 34.;
 const TOOLBAR_H: f32 = 44.;
 const STATUS_H: f32 = 22.;
@@ -313,7 +313,12 @@ pub struct GitVolt {
     /// A minimized window: the background fetch waits.
     pub window_hidden: bool,
     /// The desktop draws the title bar: the setting, as it was when the window was made.
-    pub system_title_bar: bool,
+    /// What the window was built with: Settings › Appearance › Title bar takes effect on a restart.
+    pub chrome: crate::chrome::WindowChrome,
+    /// What may become a window move.
+    pub window_press: Option<crate::chrome::WindowPress>,
+    /// The press now going down closed the bell's menu: its click doesn't open it again.
+    pub bell_press_closed: bool,
     pub fetch_missed: bool,
     pub window_width: f32,
     pub window_height: f32,
@@ -419,7 +424,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { flyout_kb: None, after_stack_push: None, forge_poller: None, mr_drag: None, base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, update_state: serde_json::Value::Null, git_problem: None, profiles: serde_json::json!([]), restoring_tabs: false, start_path: None, state_loaded: false, pending_group: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, system_title_bar: false, fetch_missed: false, window_width: 1600., window_height: 900., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), last_primary: None, text_drag_at: None, strip_ui: Default::default(), saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, field_demo: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { flyout_kb: None, after_stack_push: None, forge_poller: None, mr_drag: None, base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, update_state: serde_json::Value::Null, git_problem: None, profiles: serde_json::json!([]), restoring_tabs: false, start_path: None, state_loaded: false, pending_group: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, chrome: Default::default(), window_press: None, bell_press_closed: false, fetch_missed: false, window_width: 1600., window_height: 900., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), last_primary: None, text_drag_at: None, strip_ui: Default::default(), saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, field_demo: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// `gitCheck.ts`'s retry.
@@ -852,7 +857,7 @@ impl GitVolt {
         let sign = if down { 1. } else { -1. };
         // In the graph, a page of rows from the keyboard's row.
         if self.tabs.get(self.active).is_some_and(|t| t.keys == KeyArea::Graph && t.diff.is_none() && t.history.is_none()) {
-            let rows = (((height - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H - crate::table::HEADER_H) / crate::metrics::row_h()).floor() - 1.).max(1.);
+            let rows = (((height - self.chrome.title_h() - TAB_H - TOOLBAR_H - STATUS_H - crate::table::HEADER_H) / crate::metrics::row_h()).floor() - 1.).max(1.);
             return self.move_selection((sign * rows) as i64, cx);
         }
         if self.tabs.get(self.active).is_some_and(|t| t.keys == KeyArea::Files && t.files.is_some()) {
@@ -984,8 +989,8 @@ pub fn icon(name: &'static str, size_px: f32, color: Hsla) -> Svg {
     svg().path(SharedString::from(format!("icons/{name}.svg"))).flex_none().size(px(size_px)).text_color(color)
 }
 
-/// ☰, on the title bar or, with the desktop's, in the tab bar.
-fn hamburger(cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
+/// ☰, on the title bar or, with the desktop's or under Combined, in the tab bar.
+pub fn hamburger(width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
     tip(
         "Menu",
         crate::ui::anchor(
@@ -994,7 +999,7 @@ fn hamburger(cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
                 .id("hamburger")
                 .flex()
                 .flex_none()
-                .w(px(34.))
+                .w(px(width))
                 .h_full()
                 .items_center()
                 .justify_center()
@@ -1018,9 +1023,16 @@ fn text_drag_listener(cx: &mut Context<GitVolt>) -> impl IntoElement {
         move |_, _, window, _| {
             let this = this.clone();
             window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
-                if phase == DispatchPhase::Bubble && e.pressed_button == Some(MouseButton::Left) {
-                    this.update(cx, |this, cx| this.text_drag_moved(e, window, cx)).ok();
+                if phase != DispatchPhase::Bubble {
+                    return;
                 }
+                this.update(cx, |this, cx| {
+                    this.window_press_moved(e, window);
+                    if e.pressed_button == Some(MouseButton::Left) {
+                        this.text_drag_moved(e, window, cx);
+                    }
+                })
+                .ok();
             });
         },
     )
@@ -1028,44 +1040,19 @@ fn text_drag_listener(cx: &mut Context<GitVolt>) -> impl IntoElement {
     .size_0()
 }
 
-fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> impl IntoElement {
-    let name = this.tabs.get(this.active).map(|t| format!("GitVolt — {}", t.name)).unwrap_or_else(|| "GitVolt".into());
-    let button = |id: &'static str, name: &'static str| {
-        div().id(id).role(Role::Button).aria_label(id).group(id).flex().items_center().justify_center().size(px(24.)).rounded_full().bg(theme::control_bg()).hover(|d| d.bg(theme::control_hover_bg())).child(icon(name, 10., theme::text_normal()).group_hover(id, |d| d.text_color(theme::text_selected())))
-    };
-    div()
-        .id("title-bar")
-        .flex()
-        .flex_none()
-        .h(px(TITLE_H))
-        .bg(theme::tab_bar_bg())
-        .text_color(theme::text_secondary())
-        .on_mouse_down(MouseButton::Left, |e, window, _| {
-            if e.click_count == 2 {
-                window.zoom_window();
-            } else {
-                window.start_window_move();
-            }
-        })
-        .on_mouse_down(MouseButton::Right, |e, window, _| window.show_window_menu(e.position))
-        .child(hamburger(cx))
-        .child(div().flex().flex_1().min_w_0().items_center().justify_center().text_size(px(12.)).child(name))
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .items_center()
-                .gap(px(8.))
-                .px(px(6.))
-                .child(crate::ui::anchor("win-minimize", button("minimize", "wm-minimize").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(|_, window, _| window.minimize_window())))
-                .child(crate::ui::anchor("win-maximize", button("maximize", if window.is_maximized() { "wm-restore" } else { "wm-maximize" }).on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(|_, window, _| window.zoom_window())))
-                .child(crate::ui::anchor("win-close", button("close", "wm-close").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(cx.listener(|this, _, _, cx| this.close_window(cx))))),
-        )
-}
-
+/// `TabBar`. Under Combined it's the title bar: the empty space before ☰, ☰, the tabs, an empty space that always moves the window (the strip
+/// scrolls before it would cover it), the bell, Settings, the profile, the window buttons.
 fn tab_bar(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) -> impl IntoElement {
     let tabs = crate::tabstrip::strip(this, window, cx);
-    let bar_button = |id: &'static str, name: &'static str| div().id(id).role(Role::Button).aria_label(id).flex().flex_none().w(px(34.)).h_full().items_center().justify_center().hover(|d| d.bg(theme::hover_row())).child(icon(name, 16., theme::text_secondary()));
+    let chrome = this.chrome;
+    let width = chrome.bar_button_w();
+    let bar_button = |id: &'static str, name: &'static str| div().id(id).role(Role::Button).aria_label(id).flex().flex_none().w(px(width)).h_full().items_center().justify_center().hover(|d| d.bg(theme::hover_row())).child(icon(name, 16., theme::text_secondary()));
+    let lead = chrome.lead_space(window.is_maximized(), window.is_fullscreen()).then(|| crate::ui::anchor("tab-bar-drag-lead", crate::chrome::drag_space(div().id("tab-bar-drag-lead"), cx).flex_none().w(px(15.)).h_full()));
+    let open = crate::chrome::drag_or_click(bar_button("open", "folder-plus"), |this, _, cx| {
+        this.open_blank_tab(cx);
+    }, cx);
+    let settings = crate::chrome::drag_or_click(bar_button("settings", "settings"), |this, window, cx| this.show_settings(None, window, cx), cx);
+    let buttons = chrome.compact.then(|| crate::chrome::window_buttons(window, cx));
     div()
         .flex()
         .flex_none()
@@ -1073,13 +1060,13 @@ fn tab_bar(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) -
         .bg(theme::tab_bar_bg())
         .border_b_1()
         .border_color(theme::section_border())
-        .when(this.system_title_bar, |d| d.child(hamburger(cx)))
-        .child(tip(format!("Open repository ({})", crate::commands::display_chord("Mod+O")), bar_button("open", "folder-plus").on_click(cx.listener(|this, _, _, cx| {
-            this.open_blank_tab(cx);
-        }))))
+        .children(lead)
+        .when(!chrome.custom || chrome.compact, |d| d.child(hamburger(width, cx)))
+        .child(tip(format!("Open repository ({})", crate::commands::display_chord("Mod+O")), crate::ui::anchor("tb-open", open)))
         .child(tabs)
-        .child(crate::feedback::bell(this, cx))
-        .child(tip(format!("Settings ({})", crate::commands::display_chord("Mod+,")), crate::ui::anchor("tb-settings", bar_button("settings", "settings").on_click(cx.listener(|this, _, window, cx| this.show_settings(None, window, cx))))))
+        .when(chrome.compact, |d| d.child(crate::ui::anchor("tab-bar-drag", crate::chrome::drag_space(div().id("tab-bar-drag"), cx).flex_none().w(px(48.)).h_full())))
+        .child(crate::feedback::bell(this, width, cx))
+        .child(tip(format!("Settings ({})", crate::commands::display_chord("Mod+,")), crate::ui::anchor("tb-settings", settings)))
         .child(tip("Switch profile", crate::ui::anchor("profile-switcher", div().id("profile-switcher").flex().flex_none().items_center().gap(px(6.)).px(px(12.)).h_full().cursor_pointer().when(menu::is_open_on("profile-switcher", cx), |d| d.bg(theme::hover_row())).hover(|d| d.bg(theme::hover_row())).on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
             cx.stop_propagation();
             let weak = cx.weak_entity();
@@ -1087,6 +1074,7 @@ fn tab_bar(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) -
             let initial = this.profile["id"].as_str().map(|id| SharedString::from(format!("profile.{id}")));
             menu::open_below("profile-switcher", rows, OpenOptions { label: Some("Switch profile".into()), initial, ..Default::default() }, window, cx);
         })).child(div().size(px(7.)).rounded_full().bg(crate::profiles::profile_color(this))).child(this.profile["name"].as_str().unwrap_or_default().trim().to_string()))))
+        .children(buttons)
 }
 
 /// How long holding a split button's main part takes to open its menu.
@@ -1531,7 +1519,7 @@ impl Render for GitVolt {
             self.sync_paused(repo);
         }
         let details_w = self.details_w;
-        let panel_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
+        let panel_h = viewport.height.as_f32() - self.chrome.title_h() - TAB_H - TOOLBAR_H - STATUS_H;
         let details = self.tabs.get(self.active).and_then(|t| details_panel(self, t, details_w, panel_h, window, cx));
         let tab = self.tabs.get(self.active);
         let open_file = tab.is_some_and(|t| t.diff.is_some() || t.history.is_some());
@@ -1545,7 +1533,7 @@ impl Render for GitVolt {
         // A docked MR/PR view is a pane beside the graph, which shrinks to fit.
         let center_room = center;
         let center = center - self.mr_dock_width(center_room).unwrap_or(0.);
-        let body_h = viewport.height.as_f32() - TITLE_H - TAB_H - TOOLBAR_H - STATUS_H;
+        let body_h = viewport.height.as_f32() - self.chrome.title_h() - TAB_H - TOOLBAR_H - STATUS_H;
         if let Some(m) = self.tabs.get_mut(self.active).and_then(Tab::merge_shown_mut) {
             m.set_size(center, body_h - crate::metrics::panel_bar_h());
         }
@@ -1714,7 +1702,7 @@ impl Render for GitVolt {
                 this.end_branch_drag(window, cx);
                 this.hold = None;
             }))
-            .when(!self.system_title_bar, |d| d.child(title_bar(self, window, cx)))
+            .when(self.chrome.title_h() > 0., |d| d.child(crate::chrome::title_bar(self, window, cx)))
             .child(tab_bar(self, window, cx))
             .when(open_id.is_none(), |d| d.child(toolbar(self, cx)))
             .children(banners)

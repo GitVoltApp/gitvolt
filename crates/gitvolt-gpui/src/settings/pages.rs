@@ -39,6 +39,8 @@ pub enum Binding {
     Repo(&'static str, fn() -> Value, Option<After>),
     /// Kept beside the sizes, where the web UI uses localStorage.
     Local(&'static str, fn() -> Value),
+    /// One choice over several stored values. `get` says null where it can't be changed, so there's nothing to reset.
+    Computed { get: fn(&GitVolt) -> Value, set: fn(&mut GitVolt, Value, &mut Context<GitVolt>), default: fn() -> Value },
 }
 
 #[derive(Clone, Copy)]
@@ -129,7 +131,7 @@ fn fixed(text: &'static str) -> fn(&GitVolt) -> String {
     // A page's line that names nothing goes through this table: fn pointers can't capture.
     match text {
         "general" => |_| "How GitVolt behaves day to day.".into(),
-        "appearance" => |_| "Density and fonts. The theme and colours are under Theme, the editor font under Diffs and editors, the zoom in the status bar.".into(),
+        "appearance" => |_| "Density, the window's title bar and fonts. The theme and colours are under Theme, the editor font under Diffs and editors, the zoom in the status bar.".into(),
         "theme" => |_| "The colours of the app, the commit graph and the editors. Density and fonts are under Appearance.".into(),
         "graph" => |_| "How the commit graph loads and draws. Branch visibility is in Branch presets.".into(),
         "branch-presets" => |_| "Views of the graph that hide, collapse or fold branches. The button beside the branch filter switches between them.".into(),
@@ -207,12 +209,13 @@ fn build_defs() -> Vec<Def> {
         d("updateCheck", "Check for updates automatically", "general", "Updates", "update upgrade new version release github check daily", "Asks GitHub for new releases at startup and once a day; nothing about you is sent. Off: only Help › Check for updates asks.", Ctl::Switch, app("updateCheck", || json!(true))),
         d("updatePrereleases", "Include pre-releases", "general", "Updates", "update beta rc alpha pre-release preview", "Also offers release candidates and betas.", Ctl::Switch, app("updatePrereleases", || json!(false))),
         d("density", "Density", "appearance", "Density", "compact standard comfortable row height spacing padding", "Row height and padding of the graph and the file lists.", Ctl::Custom(density_control), Binding::Local("density", || json!("standard"))),
+        // Groups show in the order their first setting comes: Window before Fonts.
+        d("titleBar", "Title bar", "appearance", "Window", "title bar titlebar separate combined compact system gitvolt tabs space height row browser window frame decorations buttons minimize maximize close native gnome desktop windows macos traffic lights restart", TITLE_BAR_DESCRIPTION, Ctl::Custom(title_bar_control), Binding::Computed { get: |v| if v.chrome.system_only { Value::Null } else { json!(crate::chrome::stored_choice(&v.settings)) }, set: |v, c, cx| set_title_bar(v, c.as_str().unwrap_or("separate"), cx), default: || json!("separate") }),
         d("uiFontFamily", "UI font", "appearance", "Fonts", "font family face typeface interface chrome menus lists graph dialogs installed picker custom list css", "The menus, lists, graph, settings and dialogs. Default: the system's UI font, which also draws what a chosen font lacks. \"Custom font list…\" takes a CSS font-family list. Its size follows the zoom and the density.", Ctl::Custom(super::fonts::font_control), app("uiFontFamily", || json!(""))),
         d("readingFontFamily", "Reading font", "appearance", "Fonts", "font family face typeface markdown prose rendered readme description comment serif installed picker custom list css", "Rendered Markdown: the Markdown view, the rendered diff, MR/PR descriptions and comments. Default: the UI font. Code in it keeps the editor font.", Ctl::Custom(super::fonts::font_control), app("readingFontFamily", || json!(""))),
         d("readingFontSize", "Reading text size", "appearance", "Fonts", "font size markdown prose rendered px zoom", &format!("Rendered Markdown in the Markdown view and the rendered diff, 8 to 32 px; descriptions and comments show it 1 px smaller. Over it, {} and {} change it, {} resets it.", chord("Mod+="), chord("Mod+-"), chord("Mod+0")), Ctl::Number(NumberSpec { get: num_field!("readingFontSize", 13.), set: |v, n, cx| v.set_settings(|s| s["readingFontSize"] = json!(n as u32), cx), min: 8., max: 32., step: 1., blank: None, blank_start: None, decimals: 0, placeholder: "" }), app("readingFontSize", || json!(13))),
         d("readingLineHeight", "Reading line height", "appearance", "Fonts", "markdown prose line spacing leading", "A multiple of the text size, 1.2 to 2.4.", Ctl::Number(NumberSpec { get: num_field!("readingLineHeight", 1.55), set: |v, n, cx| v.set_settings(|s| s["readingLineHeight"] = json!(n), cx), min: 1.2, max: 2.4, step: 0.05, blank: None, blank_start: None, decimals: 2, placeholder: "" }), app("readingLineHeight", || json!(1.55))),
         d("readingLineWidth", "Reading line width", "appearance", "Fonts", "markdown prose measure column max width characters ch", "The longest line in the Markdown view and the rendered diff, in characters, 20 to 240. Empty: none (their usual 880 px column); + from there starts at 80.", Ctl::Number(NumberSpec { get: num_field!("readingLineWidth", 0.), set: |v, n, cx| v.set_settings(|s| s["readingLineWidth"] = json!(n as u32), cx), min: 20., max: 240., step: 1., blank: Some(0.), blank_start: Some(|_| 80.), decimals: 0, placeholder: "None" }), app("readingLineWidth", || json!(0))),
-        d("systemTitleBar", "Use the system title bar", "appearance", "Window", "title bar titlebar window frame decorations buttons minimize maximize close native gnome desktop windows macos traffic lights", "The desktop's own title bar and window frame instead of GitVolt's, with ☰ back in the tab bar. Takes effect when GitVolt restarts. An X11 session always has the desktop's.", Ctl::Switch, app("systemTitleBar", || json!(false))),
         d("theme", "Theme", "theme", "Theme", "colour color scheme dark light default monokai darcula dracula one dark solarized github nord", "The colours of the app and the commit graph.", Ctl::Custom(super::themes::theme_select), app("theme", || json!("default-dark"))),
         d("graphColors", "Graph lanes", "theme", "Graph lanes", "colour color branch lane graph palette override reorder", "The commit graph's ten lane colours. Changing one on a built-in theme makes a custom copy of it.", Ctl::OpenPage, Binding::None),
         d("themeColours", "Colours", "theme", "Colours", "colour color token background text accent diff custom", "The theme's colours, each with a picker. Changing one on a built-in theme makes a custom copy of it.", Ctl::OpenPage, Binding::None),
@@ -263,30 +266,41 @@ fn build_defs() -> Vec<Def> {
     out
 }
 
-fn density_control(this: &mut GitVolt, _: &'static Def, _: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
+const DENSITY_CHOICES: &[(&str, &str)] = &[("compact", "Compact"), ("standard", "Standard"), ("comfortable", "Comfortable")];
+const TITLE_BAR_CHOICES: &[(&str, &str)] = &[("separate", "Separate"), ("combined", "Combined"), ("system", "System")];
+const TITLE_BAR_DESCRIPTION: &str = "• Separate: GitVolt's title bar, above the tabs.\n• Combined: the tabs in the title bar, with ☰ and the window buttons.\n• System: the desktop's own title bar and frame, ☰ in the tab bar.\nTakes effect when GitVolt restarts.";
+
+fn density_control(this: &mut GitVolt, def: &'static Def, window: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
     let now = this.prefs["density"].as_str().unwrap_or("standard").to_string();
-    let mut row = div().flex().flex_none().gap(px(16.));
-    for (id, label) in [("compact", "Compact"), ("standard", "Standard"), ("comfortable", "Comfortable")] {
-        let on = now == id;
-        row = row.child(crate::ui::anchor(format!("setting:density:{id}"), radio(id, on, label, cx.listener(move |this, _, _, cx| {
-            let def = def("density").expect("density");
-            set_bound(this, &def.binding, json!(id), cx);
-        }))));
-    }
-    row.into_any_element()
+    let set = |this: &mut GitVolt, id, cx: &mut Context<GitVolt>| set_bound(this, &def_of("density").binding, json!(id), cx);
+    frame::choice_group(this, def, frame::Choices { value: &now, options: DENSITY_CHOICES, disabled: false, set }, window, cx)
 }
 
-/// `.radio`.
-pub fn radio(id: &'static str, on: bool, label: &'static str, click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .gap(px(6.))
-        .cursor_pointer()
-        .on_click(click)
-        .child(div().flex_none().ml(px(5.)).mr(px(3.)).flex().items_center().justify_center().size(px(13.)).rounded_full().bg(controls::native_ground()).border_1().border_color(if on { controls::native_accent() } else { controls::native_border() }).when(on, |d| d.child(div().size(px(7.)).rounded_full().bg(controls::native_accent()))))
-        .child(label)
+fn set_title_bar(this: &mut GitVolt, choice: &str, cx: &mut Context<GitVolt>) {
+    this.set_settings(
+        |s| {
+            s["systemTitleBar"] = json!(choice == "system");
+            s["compactTitleBar"] = json!(choice == "combined");
+        },
+        cx,
+    );
+}
+
+/// `TitleBarControl`: Separate, Combined or System, and under it Restart GitVolt once the choice isn't what the window was built with. That line keeps
+/// its space while hidden, so nothing moves. In an X11 session it's System, fixed, and the same line says why.
+fn title_bar_control(this: &mut GitVolt, def: &'static Def, window: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
+    let chrome = this.chrome;
+    let choice = if chrome.system_only { "system" } else { crate::chrome::stored_choice(&this.settings) };
+    let group = frame::choice_group(this, def, frame::Choices { value: choice, options: TITLE_BAR_CHOICES, disabled: chrome.system_only, set: set_title_bar }, window, cx);
+    let restart = crate::chrome::restart_shown(chrome, &this.settings);
+    let hint = |text: &'static str| div().text_size(px(12.)).text_color(theme::text_secondary()).child(text);
+    let mut line = div().flex().items_center().justify_end().gap(px(8.)).h(px(30.)).when(!chrome.system_only && !restart, |d| d.invisible());
+    if chrome.system_only {
+        line = line.child(hint("An X11 session always has the desktop's title bar."));
+    } else {
+        line = line.child(hint("Takes effect after a restart.")).child(frame::restart_button(this, restart, cx));
+    }
+    div().flex().flex_none().flex_col().items_end().gap(px(10.)).child(group).child(line).into_any_element()
 }
 
 fn open_logs(_: &mut GitVolt, _: &'static Def, _: &mut Window, cx: &mut Context<GitVolt>) -> AnyElement {
