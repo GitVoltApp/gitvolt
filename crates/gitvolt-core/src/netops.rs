@@ -952,7 +952,7 @@ mod tests {
 
     /// K96: what ssh gets from a fetch: our askpass for every prompt (`SSH_ASKPASS_REQUIRE=force`,
     /// whatever DISPLAY says), git's askpass, git's own terminal prompt off, and no controlling
-    /// terminal (its own session), so nothing can wait on a tty.
+    /// terminal, so nothing can wait on a tty.
     #[tokio::test]
     async fn ssh_runs_with_our_askpass_forced_and_no_terminal() {
         let r = TestRepo::new();
@@ -961,7 +961,7 @@ mod tests {
         let script = r.root().join("env-ssh");
         std::fs::write(
             &script,
-            format!("#!/bin/sh\n{{ env; echo SID=$(cut -d' ' -f6 /proc/$$/stat); }} > '{}'\necho \"$1: Permission denied (publickey).\" >&2\nexit 255\n", crate::platform::fs::to_git_path(&dump)),
+            format!("#!/bin/sh\n{{ env; echo SID=$(cut -d' ' -f6 /proc/$$/stat 2>/dev/null); ( : </dev/tty ) 2>/dev/null && echo TTY=yes || echo TTY=no; }} > '{}'\necho \"$1: Permission denied (publickey).\" >&2\nexit 255\n", crate::platform::fs::to_git_path(&dump)),
         )
         .unwrap();
         crate::platform::fs::set_mode(&script, 0o755).unwrap();
@@ -984,9 +984,12 @@ mod tests {
         assert_eq!(get("SSH_ASKPASS_REQUIRE").as_deref(), Some("force"));
         assert_eq!(get("GIT_TERMINAL_PROMPT").as_deref(), Some("0"));
         assert!(get(crate::askpass::ENV_OP).is_some_and(|op| op != "0"), "the prompt is tied to the fetch's op");
-        // The session id comes from /proc (Linux only).
+        assert_eq!(get("TTY").as_deref(), Some("no"), "ssh can't open a terminal");
+        // The session id comes from /proc (Linux only); its own only when the app has a terminal.
         #[cfg(target_os = "linux")]
-        assert_ne!(get("SID"), Some(nix::unistd::getsid(None).unwrap().as_raw().to_string()), "ssh runs in its own session");
+        if crate::platform::process::detaches_by_setsid() {
+            assert_ne!(get("SID"), Some(nix::unistd::getsid(None).unwrap().as_raw().to_string()), "ssh runs in its own session");
+        }
     }
 
     /// K96: a fetch whose ssh can't authenticate (the agent is gone) is an `AuthFailed` error

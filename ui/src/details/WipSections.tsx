@@ -10,7 +10,7 @@ import type { FileSection } from '../repo/store';
 import { discardUnstaged, pathsOf, stageAll, stagePaths, unstageAll, useWipCtx } from '../stage/actions';
 import { StagingUndoButtons } from '../stage/UndoButtons';
 import { ActionIcon, filesUnder, RowActions } from '../stage/RowActions';
-import { COMMIT_QUEUED, useCommitting } from '../stage/store';
+import { COMMIT_QUEUED, DISCARDING, useCommitting, useDiscardingAll } from '../stage/store';
 import type { WriteCtx } from '../write/client';
 import { loadWipPanel, saveWipPanel, WIP_PANEL, wipSplitBounds, type WipPanelPrefs } from './wipPanelPrefs';
 import { SplitResizer } from './SplitResizer';
@@ -54,10 +54,11 @@ function ConflictRowActions({ ctx, path }: { ctx: WriteCtx; path: string }) {
  * would mark every conflict resolved. */
 function HeadActions({ ctx, which, files, guardConflicts }: { ctx: WriteCtx; which: Which; files: FileChange[]; guardConflicts: boolean }) {
   const committing = useCommitting(ctx.repoId, ctx.worktree);
+  const discarding = useDiscardingAll(ctx.repoId, ctx.worktree);
   const tip = (t: string) => (committing ? COMMIT_QUEUED : t);
   return (
     <span className="wip-head-actions" onClick={(e) => e.stopPropagation()}>
-      {which === 'unstaged' && !files.every((f) => f.submodule) && <ActionIcon label="Discard unstaged" tip={tip('Discard unstaged changes')} icon={Trash2} danger disabled={committing} onClick={() => void discardUnstaged(ctx)} />}
+      {which === 'unstaged' && !files.every((f) => f.submodule) && <ActionIcon label="Discard unstaged" tip={discarding && !committing ? DISCARDING : tip('Discard unstaged changes')} icon={Trash2} danger disabled={committing || discarding} onClick={() => void discardUnstaged(ctx)} />}
       {which === 'unstaged'
         ? <ActionIcon label="Stage all" tip={tip('Stage all changes')} icon={ListPlus} positive text="Stage All Changes" shortText="Stage all" disabled={committing} onClick={() => void (guardConflicts ? stagePaths(ctx, pathsOf(files)) : stageAll(ctx))} />
         : <ActionIcon label="Unstage all" tip={tip('Unstage all changes')} icon={ListMinus} danger text="Unstage All Changes" shortText="Unstage all" disabled={committing} onClick={() => void unstageAll(ctx)} />}

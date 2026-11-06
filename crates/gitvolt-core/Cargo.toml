@@ -50,6 +50,9 @@ objc2-uniform-type-identifiers.workspace = true
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
+[target.'cfg(unix)'.dev-dependencies]
+libc.workspace = true
+
 # The platform module's Windows side (src/platform/): job objects, file ids, named pipes.
 [target.'cfg(windows)'.dependencies]
 dunce.workspace = true

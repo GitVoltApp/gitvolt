@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileChange } from '../api/gen/FileChange';
 
@@ -19,7 +19,8 @@ beforeEach(() => {
   stage.mockClear();
   unstage.mockClear();
   discard.mockClear();
-  useStaging.setState({ states: {}, committing: {} });
+  useStaging.setState({ states: {}, committing: {}, discarding: {}, discardingPaths: {} });
+  confirm.mockClear();
 });
 
 describe('row actions (spec #2 §7.1)', () => {
@@ -69,5 +70,25 @@ describe('row actions (spec #2 §7.1)', () => {
     expect(stage).not.toHaveBeenCalled();
     fireEvent.mouseEnter(b);
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Commit queued');
+  });
+
+  it('shows its Discard running, in the icon’s place, and sends nothing more until it is answered', async () => {
+    useStaging.getState().setDiscardingPaths(1, '/r', ['src/a.txt'], true);
+    render(<RowActions ctx={ctx} which="unstaged" files={[f('src/a.txt'), f('src/b.txt')]} name="src" />);
+    const d = screen.getByRole('button', { name: 'Discard src' });
+    expect(d).toHaveAttribute('aria-busy', 'true');
+    expect(d).toHaveAttribute('aria-disabled', 'true');
+    expect(d.querySelector('svg.spin')).not.toBeNull();
+    fireEvent.click(d);
+    expect(confirm).not.toHaveBeenCalled();
+    const s = screen.getByRole('button', { name: 'Stage src' });
+    fireEvent.click(s);
+    expect(stage).not.toHaveBeenCalled();
+    fireEvent.mouseEnter(s);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Discarding…');
+    // Answered: the row's buttons are back.
+    act(() => useStaging.getState().setDiscardingPaths(1, '/r', ['src/a.txt'], false));
+    expect(screen.getByRole('button', { name: 'Discard src' })).not.toHaveAttribute('aria-busy');
+    expect(screen.getByRole('button', { name: 'Discard src' })).toHaveAttribute('aria-disabled', 'false');
   });
 });

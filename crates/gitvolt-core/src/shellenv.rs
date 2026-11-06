@@ -297,21 +297,25 @@ mod tests {
         assert_eq!(get(&vars, "GB_KEEP").unwrap(), "1");
     }
 
-    /// The capture shell leads a new session, so it has no controlling terminal. Otherwise, in a
-    /// dev run from a terminal, an interactive shell in a background process group gets SIGTTIN
-    /// (or SIGTTOU) when it touches the tty and stops, and every git command waits the full
-    /// timeout. CI has no controlling tty to reproduce that stop, so this checks the mechanism:
-    /// the shell's session id is its own pid (`/proc/<pid>/stat` field 6).
-    #[cfg(target_os = "linux")] // the session id from /proc
+    /// The capture shell has no controlling terminal. Otherwise, in a dev run from a terminal, an
+    /// interactive shell in a background process group gets SIGTTIN (or SIGTTOU) when it touches
+    /// the tty and stops, and every git command waits the full timeout. With a terminal it leads
+    /// a new session (its session id is its pid, `/proc/<pid>/stat` field 6); without one (CI,
+    /// the Dock) its own group is enough. Either way it can't open `/dev/tty`.
+    #[cfg(unix)]
     #[tokio::test]
-    async fn the_capture_shell_leads_its_own_session() {
+    async fn the_capture_shell_has_no_terminal() {
         let dir = tempfile::tempdir().unwrap();
         let shell = fake_shell(
             dir.path(),
-            "printf '%s\\n' __GITVOLT_ENV_START__\nprintf 'GB_PID=%s\\0GB_SID=%s\\0' \"$$\" \"$(awk '{print $6}' /proc/$$/stat)\"",
+            "printf '%s\\n' __GITVOLT_ENV_START__\nif ( : </dev/tty ) 2>/dev/null; then t=yes; else t=no; fi\nprintf 'GB_PID=%s\\0GB_SID=%s\\0GB_TTY=%s\\0' \"$$\" \"$(awk '{print $6}' /proc/$$/stat 2>/dev/null)\" \"$t\"",
         );
         let vars = ShellEnv::with_shell(shell, Duration::from_secs(2)).get().await.expect("captured");
-        assert_eq!(get(&vars, "GB_SID").unwrap(), get(&vars, "GB_PID").unwrap());
+        assert_eq!(get(&vars, "GB_TTY").and_then(|v| v.to_str()), Some("no"));
+        #[cfg(target_os = "linux")]
+        if crate::platform::process::detaches_by_setsid() {
+            assert_eq!(get(&vars, "GB_SID").unwrap(), get(&vars, "GB_PID").unwrap());
+        }
     }
 
     /// A real shell and the system's own `env -0` (BSD's on macOS): the capture parses.

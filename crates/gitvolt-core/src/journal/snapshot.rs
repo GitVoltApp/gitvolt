@@ -12,7 +12,7 @@ use crate::journal::Snapshot;
 use crate::write::WriteToken;
 use gix::bstr::{BString, ByteSlice};
 use gix::ObjectId;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::path::Path;
 
@@ -119,25 +119,54 @@ fn check_index_with(root: &Path, paths: &[&String], unmerged_ok: bool) -> Result
     Ok(unmerged)
 }
 
-/// `update-index -z --index-info` lines setting each of `paths` to its stage-0 entry in this
-/// worktree's real index (read with gix), or removing it (mode 0) where it has none.
-fn index_info(root: &Path, paths: &[&String]) -> Result<Vec<u8>, GbError> {
+/// One stage-0 index entry, as a tree holds it.
+type Entry = (gix::objs::tree::EntryKind, ObjectId);
+
+/// The stage-0 entries of `paths` (`under`: and of every path under one of them) in the index
+/// file `index` (this worktree's real one when `None`), intent-to-add ones left out.
+fn index_entries(root: &Path, index: Option<&Path>, paths: &[&String], under: bool) -> Result<BTreeMap<String, Entry>, GbError> {
+    use gix::index::entry::Flags;
     let repo = gix::open(root).map_err(gix_err)?;
-    let index = repo.index_or_empty().map_err(gix_err)?;
+    let file;
+    let index: &gix::index::File = match index {
+        None => {
+            file = repo.index_or_empty().map_err(gix_err)?;
+            &file
+        }
+        Some(path) if !path.exists() => return Ok(BTreeMap::new()),
+        Some(path) => &gix::index::File::at(path, repo.object_hash(), false, Default::default()).map_err(gix_err)?,
+    };
     let want: BTreeSet<&str> = paths.iter().map(|p| p.as_str()).collect();
-    let mut info = Vec::new();
-    let mut seen = BTreeSet::new();
+    let wanted = |path: &str| want.contains(path) || (under && path.match_indices('/').any(|(i, _)| want.contains(&path[..i])));
+    let mut out = BTreeMap::new();
     for e in index.entries() {
-        let path = e.path(&index).to_str_lossy();
-        if e.stage_raw() == 0 && !e.flags.contains(gix::index::entry::Flags::INTENT_TO_ADD) && want.contains(path.as_ref()) {
-            info.extend_from_slice(format!("{:o} {}\t{path}\0", e.mode.bits(), e.id).as_bytes());
-            seen.insert(path.into_owned());
+        let path = e.path(index).to_str_lossy();
+        if e.stage_raw() != 0 || e.flags.contains(Flags::INTENT_TO_ADD) || !wanted(path.as_ref()) {
+            continue;
+        }
+        if let Some(mode) = e.mode.to_tree_entry_mode() {
+            out.insert(path.into_owned(), (mode.kind(), e.id));
         }
     }
-    for p in paths.iter().filter(|p| !seen.contains(p.as_str())) {
-        info.extend_from_slice(format!("0 {ZERO_OID}\t{p}\0").as_bytes());
+    Ok(out)
+}
+
+/// `tree` with `remove`'s files taken out (a folder at one stays, as `update-index` leaves it),
+/// then `set`'s written in, replacing a file or a folder in their way as git's index does: the
+/// tree a temp index of `tree` would write after the same changes. Only the trees on those paths
+/// are read and written, so it costs what they do, not a pass over every file of `tree`.
+fn edit_tree<'a>(root: &Path, tree: ObjectId, remove: impl IntoIterator<Item = &'a String>, set: &BTreeMap<String, Entry>) -> Result<String, GbError> {
+    let repo = gix::open(root).map_err(gix_err)?;
+    let tree = repo.find_tree(tree).map_err(|_| missing())?;
+    let mut editor = tree.edit().map_err(gix_err)?.detach();
+    for p in remove {
+        editor.remove_if_leaf(p.split('/')).map_err(gix_err)?;
     }
-    Ok(info)
+    for (p, (kind, id)) in set {
+        editor.upsert(p.split('/'), *kind, *id).map_err(gix_err)?;
+    }
+    let id = editor.write(|t| repo.write_object(t).map(|id| id.detach())).map_err(gix_err)?;
+    Ok(id.to_string())
 }
 
 /// Each of `paths` in `tree`: its `--index-info` line (a removal where it's absent), and which are there.
@@ -183,7 +212,7 @@ fn tree_present(root: &Path, tree: &str, paths: &[&String]) -> Result<BTreeSet<S
 /// in the index nor holds any of it is a worktree-only directory the op doesn't touch: dropped.
 /// Every untracked path is in P. A path that isn't a directory stays as given.
 async fn files_only(cx: &SnapshotCx<'_>, paths: &[String], untracked: &[String]) -> Result<(Vec<String>, Vec<String>), GbError> {
-    let indexed: Vec<String> = {
+    let indexed: BTreeSet<String> = {
         let repo = gix::open(cx.root).map_err(gix_err)?;
         let index = repo.index_or_empty().map_err(gix_err)?;
         index.entries().iter().map(|e| e.path(&index).to_str_lossy().into_owned()).collect()
@@ -218,8 +247,8 @@ async fn files_only(cx: &SnapshotCx<'_>, paths: &[String], untracked: &[String])
     }
     for p in paths.iter().filter(|p| !untracked.contains(p)) {
         let prefix = format!("{p}/");
-        let exact = indexed.iter().any(|q| q == p);
-        let under: Vec<&String> = indexed.iter().filter(|q| q.starts_with(&prefix)).collect();
+        let exact = indexed.contains(p);
+        let under: Vec<&String> = indexed.range(prefix.clone()..).take_while(|q| q.starts_with(&prefix)).collect();
         let files: Vec<String> = match (exact, under.is_empty()) {
             (false, false) => under.into_iter().cloned().chain(head_files.contains(p).then(|| p.clone())).collect(),
             (false, true) if is_dir(p) && !head_files.contains(p) => Vec::new(),
@@ -249,29 +278,29 @@ pub(crate) async fn create(cx: &SnapshotCx<'_>, label: &str, paths: &[String], u
         // Unborn: a parentless empty-tree commit stands in for HEAD.
         None => cx.text(cx.git(["commit-tree", "--no-gpg-sign", EMPTY_TREE, "-m", "gitvolt: unborn base"])).await?,
     };
+    let base_tree = {
+        let repo = gix::open(cx.root).map_err(gix_err)?;
+        let commit = repo.find_commit(oid(&base)?).map_err(|_| missing())?;
+        commit.tree_id().map_err(|_| missing())?.detach()
+    };
     let dir = tempfile::Builder::new().prefix("snap-").tempdir_in(cx.tmp)?;
     let ti = dir.path().join("index");
 
-    // 1. I: the base tree with P's stage-0 entries from the real index.
-    cx.cli.run(cx.indexed(&ti, ["read-tree", base.as_str()])).await?;
-    if !tracked.is_empty() {
-        cx.cli.run(cx.indexed(&ti, ["update-index", "-z", "--index-info"]).stdin(index_info(cx.root, &tracked)?)).await?;
-    }
-    let i_tree = cx.text(cx.indexed(&ti, ["write-tree"])).await?;
+    // 1. I: the base tree with P's stage-0 entries from the real index (taken out where it has
+    //    none). The tree is edited along P's paths only: a temp index of the whole base tree
+    //    read and wrote every file's entry several times, for a one-file discard too.
+    let in_index = index_entries(cx.root, None, &tracked, false)?;
+    let i_tree = edit_tree(cx.root, base_tree, tracked.iter().copied(), &in_index)?;
     let i = cx.text(cx.git(["commit-tree", "--no-gpg-sign", i_tree.as_str(), "-p", base.as_str(), "-m", &format!("index on {title}")])).await?;
 
-    // 2. W-tree: the same temp index plus P's tracked worktree state (deletions included). Only
-    //    paths git knows of or that exist, or `add` fails the pathspec.
-    let (_, in_i) = tree_info(cx.root, &i_tree, &tracked)?;
+    // 2. W-tree: I plus P's tracked worktree state (deletions included), hashed by `add`
+    //    (filters, line endings, modes) in a temp index holding I's entries of the paths it adds.
+    //    Only paths git knows of or that exist, or `add` fails the pathspec.
     // --- 2B T4: a path with no file is a removal, never an `add` ---
     // No file at it (gone, a file where a folder of it must be) or a folder in its place (not a
     // submodule): W has nothing there. `add` would put the folder's files in W, which then looks
     // changed against every later state, or fail on an ignored file standing in its way.
-    let gitlinks: BTreeSet<String> = {
-        let repo = gix::open(cx.root).map_err(gix_err)?;
-        let tree = repo.find_tree(oid(&i_tree)?).map_err(|_| missing())?;
-        tracked.iter().filter(|p| tree.lookup_entry_by_path(p.as_str()).ok().flatten().is_some_and(|e| e.mode().is_commit())).map(|p| (*p).clone()).collect()
-    };
+    let gitlinks: BTreeSet<&String> = in_index.iter().filter(|(_, (kind, _))| *kind == gix::objs::tree::EntryKind::Commit).map(|(p, _)| p).collect();
     // Only "not found" and "not a directory" (a file where a folder of it is) mean no file: any
     // other error (permission denied) fails the snapshot, as `add` would have.
     let mut no_file = BTreeSet::new();
@@ -279,25 +308,30 @@ pub(crate) async fn create(cx: &SnapshotCx<'_>, label: &str, paths: &[String], u
         let none = match cx.root.join(p).symlink_metadata() {
             Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory) => true,
             Err(e) => return Err(e.into()),
-            Ok(m) => m.is_dir() && !gitlinks.contains(*p),
+            Ok(m) => m.is_dir() && !gitlinks.contains(p),
         };
         if none {
             no_file.insert((*p).clone());
         }
     }
-    let removals: Vec<u8> = tracked.iter().filter(|p| in_i.contains(p.as_str()) && no_file.contains(**p)).flat_map(|p| format!("0 {ZERO_OID}\t{p}\0").into_bytes()).collect();
-    if !removals.is_empty() {
-        cx.cli.run(cx.indexed(&ti, ["update-index", "-z", "--index-info"]).stdin(removals)).await?;
-    }
     let add: Vec<&String> = tracked.iter().copied().filter(|p| !no_file.contains(*p)).collect();
+    // `add` takes a file's mode from its entry where the worktree can't tell (`core.fileMode`,
+    // `core.symlinks` off), so the entries it updates start as I's.
+    let seed: Vec<u8> = add.iter().filter_map(|p| in_index.get(*p).map(|(kind, id)| format!("{} {id}\t{p}\0", kind.as_octal_str()))).flat_map(String::into_bytes).collect();
+    if !seed.is_empty() {
+        cx.cli.run(cx.indexed(&ti, ["update-index", "-z", "--index-info"]).stdin(seed)).await?;
+    }
     // `-f`: every path is named exactly, so it adds that file, nothing more. Without it, `add`
     // refuses a tracked file inside an ignored folder ("paths are ignored"), and a file at a
     // HEAD path the index doesn't have (a rename's source) that's ignored.
     if !add.is_empty() {
-        cx.cli.run(cx.indexed(&ti, ["add", "-A", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"]).stdin(nul_list(add))).await?;
+        cx.cli.run(cx.indexed(&ti, ["add", "-A", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"]).stdin(nul_list(add.iter().copied()))).await?;
     }
+    // W: every path of P taken out of I, then what `add` left at (or under) the ones it was
+    // given put back, so a path with no file (or one `add` dropped) has nothing in W.
+    let added = index_entries(cx.root, Some(&ti), &add, true)?;
     // --- end 2B T4 ---
-    let w_tree = cx.text(cx.indexed(&ti, ["write-tree"])).await?;
+    let w_tree = edit_tree(cx.root, oid(&i_tree)?, tracked.iter().copied(), &added)?;
 
     // 3. U: the untracked files the operation deletes, in a fresh temp index.
     let u = if untracked.is_empty() {
@@ -906,6 +940,66 @@ mod tests {
         assert!(inner.join("e.txt").exists() && inner.join(".git").exists());
     }
     // --- end 2B T4 ---
+
+    /// I and W are edited along P's paths only, not built in a temp index of the whole tree:
+    /// with every changed path in P they must still be the trees git itself writes, I the
+    /// index's (`write-tree`) and W the tracked worktree's (`stash create`), across the shapes
+    /// a tree edit can get wrong: nested folders that empty or appear, a file where a folder
+    /// was (and back), renames, modes, symlinks and binary files.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn i_and_w_are_the_trees_git_writes() {
+        let r = TestRepo::new();
+        for i in 0..30 {
+            r.write(&format!("src/m{}/f{i}.txt", i % 4), &format!("{i}\n"));
+        }
+        r.write("deep/a/b/c.txt", "c\n");
+        r.write("gone/only.txt", "only\n");
+        r.write("both.txt", "1\n2\n3\n");
+        r.write("old.txt", "renamed\n");
+        r.write("tool.sh", "echo\n");
+        r.write("x", "a file, then a folder\n");
+        r.write("y/inner.txt", "a folder, then a file\n");
+        r.write_bytes("img.bin", &[0, 1, 2, 255, 0]);
+        std::os::unix::fs::symlink("both.txt", r.path().join("link")).unwrap();
+        r.git(&["add", "-A"]);
+        r.git(&["commit", "-q", "-m", "base"]);
+        r.write("deep/a/b/c.txt", "c edited\n");
+        std::fs::remove_file(r.path().join("gone/only.txt")).unwrap();
+        r.write("both.txt", "1 staged\n2\n3\n");
+        r.git(&["add", "both.txt"]);
+        r.write("both.txt", "1 staged\n2\n3 unstaged\n");
+        std::fs::create_dir_all(r.path().join("new")).unwrap();
+        r.git(&["mv", "old.txt", "new/place.txt"]);
+        crate::platform::fs::set_mode(r.path().join("tool.sh"), 0o755).unwrap();
+        r.write_bytes("img.bin", &[9, 0, 8, 0]);
+        std::fs::remove_file(r.path().join("link")).unwrap();
+        std::os::unix::fs::symlink("tool.sh", r.path().join("link")).unwrap();
+        r.git(&["rm", "-q", "--cached", "x"]);
+        std::fs::remove_file(r.path().join("x")).unwrap();
+        r.write("x/now.txt", "x is a folder\n");
+        r.git(&["add", "x/now.txt"]);
+        r.git(&["rm", "-q", "-r", "--cached", "y"]);
+        std::fs::remove_dir_all(r.path().join("y")).unwrap();
+        r.write("y", "y is a file\n");
+        r.git(&["add", "y"]);
+        r.write("added/n.txt", "staged new\n");
+        r.git(&["add", "added/n.txt"]);
+        let p = strings(&["added/n.txt", "both.txt", "deep/a/b/c.txt", "gone/only.txt", "img.bin", "link", "new/place.txt", "old.txt", "tool.sh", "x", "x/now.txt", "y", "y/inner.txt"]);
+        let tmp = tempfile::tempdir().unwrap();
+        let (cli, token) = (cli(), WriteToken::for_tests());
+        let cx = SnapshotCx { cli: &cli, token: &token, root: r.path(), tmp: tmp.path() };
+        let snap = create(&cx, "x", &p, &[]).await.unwrap();
+        let (w, i, _) = trees(r.path(), &snap).unwrap();
+        assert_eq!(i, r.git(&["write-tree"]), "I is the index's tree");
+        let stash = r.git(&["stash", "create"]);
+        assert_eq!(w, r.git(&["rev-parse", &format!("{stash}^{{tree}}")]), "W is the tracked worktree's tree");
+        // And a restore over a reset brings both back.
+        let before = (split(&r), r.git(&["status", "--porcelain"]));
+        r.git(&["reset", "-q", "--hard"]);
+        restore(&cx, &snap).await.unwrap();
+        assert_eq!((split(&r), r.git(&["status", "--porcelain"])), before);
+    }
 
     // --- 2C repo-safety ---
     /// 2B T4 re-review N5: a repository standing where a file of the snapshot goes back is

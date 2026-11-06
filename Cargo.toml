@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/gitvolt-graph", "crates/gitvolt-graph-wasm", "crates/gitvolt-core", "crates/gitvolt-forge", "crates/gitvolt-app", "crates/gitvolt-harness", "crates/gitvolt-gpui"]
 
 [workspace.package]
-version = "1.5.0"
+version = "1.6.0"
 edition = "2024"
 publish = false
 license = "MIT"
@@ -32,6 +32,9 @@ block2 = "0.6"
 dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
 objc2-uniform-type-identifiers = { version = "0.3", default-features = false, features = ["std", "UTType", "UTCoreTypes"] }
 nix = { version = "0.31", features = ["signal", "process", "user", "fs"] }
+# Tests only: `pthread_atfork`, to prove a child starts without `fork` (core's git.rs). Already
+# in the tree through nix, tokio and others; same version.
+libc = "0.2"
 # Windows system calls (core's platform module: job objects, file ids, named-pipe security).
 # Already in the tree through tokio and others; same version.
 windows-sys = "0.61"

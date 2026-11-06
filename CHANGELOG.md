@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-06
+
 ### Added
 
 - **Several accounts on one forge.** Settings › Accounts can hold more than one GitHub,
@@ -18,12 +20,27 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Fixed
 
+- **Git commands no longer hang for good (seen on macOS).** Now and then a git command, a
+  status refresh say, stopped before git even started and never came back: that repository's
+  status no longer refreshed, and the git processes that ended beside it stayed as zombies.
+  GitVolt started git by forking, the whole app copied first, and in Chromium's runtime the copy
+  can wait for good on a lock another thread held at that moment. Git now starts without a fork:
+  GitVolt finds it in the `PATH` itself, and a network operation starts in a session of its own
+  only when GitVolt has a terminal (run from a shell).
 - **Split diffs open with both sides at the first change.** A file opened again, its first
   change where the editor was last scrolled to, no longer had its old side jump back to the top
   a few frames on, the two sides then scrolling together out of line.
 - **The editor's find widget takes clicks.** In a diff or a file, Previous and Next Match, the
   Match Case, Whole Word and Regex toggles and Close work when clicked after the pointer rests on
   them: their tooltip no longer wraps over the button and takes the click (it flickered there).
+- **A file's Discard runs once.** Clicked again while it runs, from the row's button, its menu
+  or the keyboard, it no longer sends a second discard that failed with an error: the row's
+  Discard shows a spinner and its Stage and Discard wait for the answer. Discard unstaged runs
+  once at a time too, as Discard all already did.
+- **Discarding a file is quicker in a large repository.** A one-file discard reads that file's
+  status only, and its undo snapshot edits the trees along the file's path instead of reading
+  and writing an index of the whole tree: about 0.3 s in a 60,000-file repository, from about
+  1 s. Undo and Redo restore the same contents as before.
 
 ## [1.5.0] - 2026-11-05
 

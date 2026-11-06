@@ -28,6 +28,11 @@
   .row-action.has-text { width: 24px; padding: 0; }
 }
 .row-action[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+/* Its write runs: the spinner (same box as the icon) stays at full strength, and the row's actions
+   stay up while it does, so a second click finds it busy, not gone. */
+.row-action[data-pending] { opacity: 1; cursor: progress; }
+.row-action.danger[data-pending]:hover { background: none; color: var(--red); border-color: currentColor; }
+.row-actions:has([data-pending]) { display: inline-flex; }
 .wip-head-actions { display: inline-flex; gap: 6px; flex: none; margin-left: auto; }
 .wip-head-actions .row-action { height: 24px; box-sizing: border-box; }
 .wip-head-actions .row-action:not(.has-text) { width: 24px; }

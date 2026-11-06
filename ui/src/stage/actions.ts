@@ -8,7 +8,7 @@ import { useRepoView } from '../repo/store';
 import { confirmAction } from '../ui/ConfirmDialog';
 import { runWrite, type WriteCtx } from '../write/client';
 import { advanceFrom, followOpenFile } from './follow';
-import { stagingKey, useStaging } from './store';
+import { discardingAny, stagingKey, useStaging } from './store';
 
 /** The WIP panel's write target: its tab, repo and the worktree of the WIP row it shows
  * (2B Deviation 17). `null` outside a WIP panel. */
@@ -61,9 +61,35 @@ export const stageAll = (ctx: WriteCtx) => writeAndFollow(ctx, () => api.stageAl
 export const unstageAll = (ctx: WriteCtx) => writeAndFollow(ctx, () => api.unstageAll(ctx.repoId, ctx.worktree), true);
 
 // --- 2B T9: discards (spec #2 §7.2, §7.4). Undoable from the toolbar; only Discard all asks. ---
+/** A Discard of `paths`, once at a time: while one of them is being discarded (or the worktree's
+ * Discard all or unstaged runs) another is a no-op, `false`. Sent again before the first was
+ * answered, it found nothing left to discard and failed (the row's button and menu were still
+ * there). The paths are marked busy until the answer, so the row shows it's running. */
+async function discardOnce(ctx: WriteCtx, paths: readonly string[], send: () => Promise<boolean>): Promise<boolean> {
+  const st = useStaging.getState();
+  if (discardingAny(st, ctx.repoId, ctx.worktree, paths)) return false;
+  st.setDiscardingPaths(ctx.repoId, ctx.worktree, paths, true);
+  try {
+    return await send();
+  } finally {
+    useStaging.getState().setDiscardingPaths(ctx.repoId, ctx.worktree, paths, false);
+  }
+}
+
 /** Explicit file paths: a folder row sends the files under it (the backend expands a directory too). */
-export const discardPaths = (ctx: WriteCtx, paths: string[]) => writeAndFollow(ctx, () => api.discard(ctx.repoId, ctx.worktree, { kind: 'paths', paths }), true);
-export const discardUnstaged = (ctx: WriteCtx) => writeAndFollow(ctx, () => api.discard(ctx.repoId, ctx.worktree, { kind: 'unstaged' }), true);
+export const discardPaths = (ctx: WriteCtx, paths: string[]) => discardOnce(ctx, paths, () => writeAndFollow(ctx, () => api.discard(ctx.repoId, ctx.worktree, { kind: 'paths', paths }), true));
+
+/** One at a time per worktree, as Discard all: it has no confirm, so a double click sent two. */
+export async function discardUnstaged(ctx: WriteCtx): Promise<boolean> {
+  const { discarding, setDiscarding } = useStaging.getState();
+  if (discarding[stagingKey(ctx.repoId, ctx.worktree)]) return false;
+  setDiscarding(ctx.repoId, ctx.worktree, true);
+  try {
+    return await writeAndFollow(ctx, () => api.discard(ctx.repoId, ctx.worktree, { kind: 'unstaged' }), true);
+  } finally {
+    useStaging.getState().setDiscarding(ctx.repoId, ctx.worktree, false);
+  }
+}
 
 /** `count`: the changed files the panel shows, for the armed label; `confirmed`: their paths (a
  * rename's both), sent so the backend never discards more than that (UX R1 C.2).
@@ -101,5 +127,5 @@ export async function loadStaging(repo: number, worktree: string): Promise<void>
 export const stagePatch = (ctx: WriteCtx, path: string, staged: boolean, selection: StageSelection, base: WipBase) =>
   writeAndFollow(ctx, () => api.stagePatch(ctx.repoId, ctx.worktree, { path, staged, selection, base }));
 export const discardPatch = (ctx: WriteCtx, path: string, selection: StageSelection, base: WipBase) =>
-  writeAndFollow(ctx, () => api.discard(ctx.repoId, ctx.worktree, { kind: 'patch', path, selection, base }));
+  discardOnce(ctx, [path], () => writeAndFollow(ctx, () => api.discard(ctx.repoId, ctx.worktree, { kind: 'patch', path, selection, base })));
 // --- end 2B T10 ---
