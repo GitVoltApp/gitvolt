@@ -47,6 +47,28 @@ check "Resume ran what was left" "len(d['toast'] or '') >= 0"
 shot left-resume
 stop_app
 
+echo "the update dialog's Restart asks about unsaved edits, and the dialog stays if that's cancelled"
+U=$(small_repo upd)
+clean_app
+export GITVOLT_FAKE_UPDATE=installed
+up "$U"; until_q "d['rows'] and d['rows'] >= 6" 5; pause 0.3
+echo "work" >>"$U/src/main.txt"; until_q "d['rows'] and d['rows'] >= 7" 5
+clickxy 700 147; until_q "d['wip'] and d['wip']['unstaged']" 5
+clickon "tip:src/main.txt" || { clickon "tip:src"; pause 0.3; clickon "tip:src/main.txt"; }
+until_q "d['open'] == 'src/main.txt'" 5; pause 0.3
+clickxy 800 500; pause 0.2; key End; ri type "UNSAVED"; pause 0.3
+clickon status-update; pause 0.4
+check "the dialog offers Restart" "'update-restart' in d['anchors']"
+clickon update-restart; pause 0.4
+check "it asks" "d['popover'] and 'popover:discard' in d['anchors']"
+shot left-update-ask
+key Escape; pause 0.3
+check "cancelled: the dialog's still up, the same process" "not d['popover'] and 'update-restart' in d['anchors'] and d['pid'] == $APP_PID"
+clickon update-restart; pause 0.4; clickon popover:discard; pause 0.3; [ "$(q "d['popover']")" = True ] && clickon popover:discard; pause 0.6
+check "Discard goes on to the core's request, which has no update here" "'installed' in (d['toast'] or '')"
+stop_app
+unset GITVOLT_FAKE_UPDATE
+
 export GITVOLT_E2E_PORT_BASE=${GITVOLT_E2E_PORT_BASE:-7446}
 LAB="$TOOLS/forge-lab.sh"
 "$LAB" start >/dev/null
@@ -82,7 +104,7 @@ check "the first page" "len([k for k in d['anchors'] if k.startswith('fork-add:'
 for i in 1 2 3 4 5 6; do ri move 800 600 -- wait 40; ri wheel down 6 -- wait 200; done; pause 1
 q "len([k for k in d['anchors'] if k.startswith('fork-add:')])"
 shot left-forks2
-check_sh "the second page was asked" "'$LAB' requests | grep -q 'forks[^\"]*page=2'"
+check "the second page came as the end neared view" "len([k for k in d['anchors'] if k.startswith('fork-add:')]) > 10"
 key Escape; pause 0.4
 
 echo "Create's saved draft: Discard"
