@@ -265,7 +265,7 @@ fn chips(this: &mut GitVolt, scope: &Value, open: bool, window: &Window, cx: &mu
             chip.child(div().id(ElementId::Name(format!("fc-chip-text-{id}-{i}").into())).cursor_pointer().on_click(cx.listener(move |v, _, _, cx| {
                 v.settings_ui.file_colours.chip = Some((sid.clone(), Some(i)));
                 cx.notify();
-            })).child(p.clone())).child(div().id(ElementId::Name(format!("fc-chip-x-{id}-{i}").into())).text_size(px(10.)).text_color(theme::text_secondary()).cursor_pointer().hover(|d| d.text_color(theme::text_selected())).on_click(cx.listener(move |v, _, _, cx| {
+            })).font_family(crate::app::MONO_FONT).child(p.clone())).child(div().id(ElementId::Name(format!("fc-chip-x-{id}-{i}").into())).text_size(px(10.)).text_color(theme::text_secondary()).cursor_pointer().hover(|d| d.text_color(theme::text_selected())).on_click(cx.listener(move |v, _, _, cx| {
                 let mut list = plist.clone();
                 list.remove(i);
                 v.change_scope(&sid2, move |s| s["patterns"] = json!(list), cx);

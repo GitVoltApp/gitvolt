@@ -45,8 +45,8 @@ pub fn mr_button(id: impl Into<ElementId>, enabled: bool) -> Stateful<Div> {
 
 /// `.mr-button.primary`.
 pub fn mr_primary(id: impl Into<ElementId>, enabled: bool) -> Stateful<Div> {
-    let b = mr_button(id, enabled);
-    if enabled { b.bg(theme::button_primary()).border_color(theme::button_primary()).text_color(theme::text_on_accent()).hover(|d| d.bg(theme::button_primary())) } else { b }
+    // The web's disabled primary stays blue: `.mr-button.primary`'s colours outrank `:disabled`'s.
+    mr_button(id, enabled).bg(theme::button_primary()).border_color(theme::button_primary()).text_color(theme::text_on_accent()).when(enabled, |d| d.hover(|d| d.bg(theme::button_primary())))
 }
 
 /// `.card-btn`.
@@ -351,14 +351,14 @@ pub fn mr_header(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, de
             "mr-fact-reviews",
             fact("mr-fact-reviews")
                 .child(div().flex().items_center().gap(px(6.)).child(fact_k(if kind == ForgeKind::GitLab { "Approvals" } else { "Reviews" })).children(super::actions::review_buttons(this, tab, kind, mr, detail, cx)))
-                .child(fact_v(tone).child(detail.map_or("Loading…".to_string(), |d| review_text(&d.mr.review)))),
+                .child(fact_v(tone).child(crate::ui::hanging(div().min_w_0()).child(detail.map_or("Loading…".to_string(), |d| review_text(&d.mr.review))))),
         );
         let (conflict_text, conflict_color) = match mr.conflicts {
             None => ("Checking…", theme::text_secondary()),
             Some(true) => ("Yes", theme::red()),
             Some(false) => ("None", theme::green()),
         };
-        let conflicts = fact("mr-fact-conflicts").child(fact_k("Conflicts")).child(fact_v(conflict_color).child(conflict_text));
+        let conflicts = fact("mr-fact-conflicts").child(fact_k("Conflicts")).child(fact_v(conflict_color).child(div().min_w_0().child(conflict_text)));
         let mut cards = vec![pipeline.into_any_element(), reviews.into_any_element(), conflicts.into_any_element()];
         cards.extend(super::people::people_cards(this, tab, kind, mr, detail, cx));
         let width = this.mr_body_width(window);

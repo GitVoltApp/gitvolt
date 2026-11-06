@@ -347,8 +347,8 @@ pub fn place_list(anchor: (f32, f32, f32, f32), chrome: f32, rows: f32, row: f32
     if ok_above && (!ok_below || room_above > room_below) { above(fit(room_above)) } else { below(fit(room_below)) }
 }
 
-pub fn font_row_parts(this: &mut GitVolt, def: &'static Def, text: Div, control: AnyElement, window: &mut Window, cx: &mut Context<GitVolt>) -> (Div, AnyElement) {
-    (text.child(crate::ui::anchor(format!("font-preview:{}", def.id), div().mt(px(8.)).child(preview_panel(this, def.id, window, cx)))), control)
+pub fn font_row_parts(this: &mut GitVolt, def: &'static Def, text: Div, control: AnyElement, window: &mut Window, cx: &mut Context<GitVolt>) -> (Div, AnyElement, AnyElement) {
+    (text, crate::ui::anchor(format!("font-preview:{}", def.id), div().child(preview_panel(this, def.id, window, cx))).into_any_element(), control)
 }
 
 fn code_sample_spans() -> Vec<Vec<crate::diff::textmate::Span>> {

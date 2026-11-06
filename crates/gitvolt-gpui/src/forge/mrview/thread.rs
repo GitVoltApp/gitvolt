@@ -677,6 +677,14 @@ fn note_view(this: &mut GitVolt, tab: u32, kind: ForgeKind, mr: &ForgeMr, d: &Fo
         .into_any_element()
 }
 
+/// A reaction's glyph in the emoji font, as a browser's `❤️` goes by its variation selector: GPUI's fallback takes the first font
+/// that has the character, a plain one here.
+fn emoji_text(glyph: impl Into<SharedString>, cx: &App) -> Div {
+    static INSTALLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let installed = *INSTALLED.get_or_init(|| cx.text_system().all_font_names().iter().any(|f| f == "Noto Color Emoji"));
+    div().when(installed, |d| d.font_family("Noto Color Emoji")).child(glyph.into())
+}
+
 fn reaction_pills(tab: u32, kind: ForgeKind, number: u64, d: &ForgeDiscussion, n: &ForgeNote, cx: &mut Context<GitVolt>) -> Option<AnyElement> {
     if n.reactions.is_empty() {
         return None;
@@ -700,7 +708,7 @@ fn reaction_pills(tab: u32, kind: ForgeKind, number: u64, d: &ForgeDiscussion, n
             .text_color(theme::text_normal())
             .cursor_pointer()
             .hover(|d| d.border_color(theme::text_disabled()))
-            .child(glyph)
+            .child(emoji_text(glyph, cx))
             .child(r.count.to_string())
             .on_click(cx.listener(move |v, _, _, cx| v.mr_toggle_reaction(tab, number, did.clone(), nid.clone(), name.clone(), cx)));
         let anchored = crate::ui::anchor(format!("mr-pill:{}:{}", n.id, r.name), pill);

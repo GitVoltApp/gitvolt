@@ -230,7 +230,7 @@ fn list_view(input: &Entity<TextInput>, window: &Window, cx: &App) -> AnyElement
         }
     }
     let i2 = input.clone();
-    div().flex().flex_col().gap(px(6.)).flex_1().min_h_0().child(div().flex().w(px(220.)).child(controls::clearable("sc-filter", input, move |_, cx| i2.update(cx, |i, cx| i.set_text("", cx)), window, cx))).child(body).into_any_element()
+    div().flex().flex_col().gap(px(6.)).flex_1().min_h_0().child(div().flex().w(px(220.)).child(controls::clearable("sc-filter", input, move |_, cx| i2.update(cx, |i, cx| i.set_text("", cx)), window, cx).h(px(29.)))).child(body).into_any_element()
 }
 
 impl GitVolt {

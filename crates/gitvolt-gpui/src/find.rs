@@ -457,7 +457,7 @@ pub fn editor_find(find: &FindState, right: f32, window: &Window, cx: &mut Conte
     let toggle = |id: &'static str, letter: char, on: bool, tooltip: &'static str, face: AnyElement, cx: &mut Context<GitVolt>| {
         tip(
             tooltip,
-            div()
+            crate::ui::anchor(id, div()
                 .id(id)
                 .flex()
                 .flex_none()
@@ -473,7 +473,7 @@ pub fn editor_find(find: &FindState, right: f32, window: &Window, cx: &mut Conte
                 .cursor_pointer()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_click(cx.listener(move |this, _, _, cx| toggle_find(this, letter, cx)))
-                .child(face),
+                .child(face)),
         )
     };
     let glyphs = |t: &'static str, underline: bool| div().text_size(px(12.)).line_height(px(14.)).when(underline, |d| d.border_b_1().border_color(fg)).child(t).into_any_element();

@@ -392,21 +392,32 @@ pub fn setting_row(this: &mut GitVolt, def: &'static Def, first: bool, words: &[
         .min_w_0()
         .child(div().flex().items_center().gap(px(4.)).min_h(px(22.)).child(div().text_color(theme::text_selected()).child(marked(def.label, &label))).child(restore))
         .when(!def.description.is_empty(), |d| d.child(crate::ui::hanging(div().mt(px(2.)).text_size(px(12.)).text_color(theme::text_secondary())).child(marked(&def.description, &desc))));
-    let (text, control) = if font_row { super::fonts::font_row_parts(this, def, text, control, window, cx) } else { (text, control) };
+    // A font's row: its preview under the text, the control centred beside the text only (`.setting-row:has(.font-preview-box)`).
+    let (text, preview, control) = if font_row {
+        let (t, p, c) = super::fonts::font_row_parts(this, def, text, control, window, cx);
+        (t, Some(p), c)
+    } else {
+        (text, None, control)
+    };
+    let top = div()
+        .flex()
+        .items_center()
+        .gap(px(16.))
+        .child(text)
+        .child(div().flex().flex_none().w(px(if font_row { 320. } else { 380. })).min_h(px(28.)).items_center().justify_end().flex_wrap().gap(px(8.)).child(control));
     crate::ui::anchor(
         format!("setting-row:{}", def.id),
         div()
             .id(ElementId::Name(format!("setting-{}", def.id).into()))
             .flex()
-            .items_center()
-            .gap(px(16.))
+            .flex_col()
+            .gap(px(8.))
             .px(px(14.))
             .py(px(10.))
-            .when(font_row, |d| d.items_start())
             .when(!first, |d| d.border_t_1().border_color(theme::section_border()))
             .when(flash, |d| d.bg(theme::selected_row()))
-            .child(text)
-            .child(div().flex().flex_none().w(px(if font_row { 320. } else { 380. })).min_h(px(28.)).items_center().justify_end().flex_wrap().gap(px(8.)).child(control)),
+            .child(top)
+            .children(preview.map(|p| div().flex().gap(px(16.)).child(div().flex_1().min_w_0().child(p)).child(div().flex_none().w(px(320.))))),
     )
     .into_any_element()
 }
@@ -547,6 +558,8 @@ fn nav(this: &GitVolt, listed: &[&'static Page], current: &str, counts: Option<&
 impl GitVolt {
     pub fn settings_set_page(&mut self, id: &str, cx: &mut Context<Self>) {
         self.settings_ui.page = id.to_string();
+        // A field of the page that's going keeps no keyboard: the dialog's Esc still has to reach it.
+        self.focus_next_frame = self.settings_ui.focus.clone();
         self.settings_ui.flash = None;
         self.settings_ui.scroll = ScrollHandle::new();
         if let Some(s) = self.settings_ui.search.clone() {
@@ -751,8 +764,14 @@ pub fn settings_overlay(this: &mut GitVolt, window: &mut Window, cx: &mut Contex
                     cx.notify();
                 }
             }))
-            .on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
-            .on_action(|_: &FocusPrev, window, cx| window.focus_prev(cx))
+            .on_action({
+                let root = focus.clone();
+                move |_: &FocusNext, window, cx| crate::ui::modal::step_focus(&root, false, window, cx)
+            })
+            .on_action({
+                let root = focus.clone();
+                move |_: &FocusPrev, window, cx| crate::ui::modal::step_focus(&root, true, window, cx)
+            })
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.close_settings(window, cx)))
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
                 if crate::ui::input::is_typing(window) {

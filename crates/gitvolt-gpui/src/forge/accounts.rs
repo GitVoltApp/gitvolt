@@ -753,14 +753,14 @@ fn add_form(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) 
     let mut seg = div().flex().flex_none().border_1().border_color(theme::section_border()).rounded(px(6.)).overflow_hidden();
     for (i, (k, name)) in KINDS.iter().copied().enumerate() {
         let stop = this.accounts_stop(&format!("kind:{name}"), cx);
-        seg = seg.child(seg_button(ElementId::Name(format!("account-kind:{name}").into()), name, kind == k, i == 0, move |v, _| {
+        seg = seg.child(crate::ui::anchor(format!("account-kind:{name}"), seg_button(ElementId::Name(format!("account-kind:{name}").into()), name, kind == k, i == 0, move |v, _| {
             if let Some(f) = v.settings_ui.accounts.form.as_mut() {
                 f.picked = Some(k);
                 if f.typed.is_some() && f.replacing.is_none() {
                     // The host stays what was typed.
                 }
             }
-        }, stop, cx));
+        }, stop, cx)));
     }
     let note = if picked.is_none() && !host.is_empty() {
         if asking_now { format!("Asking {bare} which forge it runs…") } else { "Detected from the host".to_string() }

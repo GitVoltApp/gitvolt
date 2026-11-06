@@ -42,6 +42,8 @@ pub struct Modal {
     build: Build,
     on_close: Option<super::Action>,
     focus: Option<FocusHandle>,
+    /// On the dialog's box: what Tab has to stay inside, whichever control `focus` is.
+    trap: Option<FocusHandle>,
     return_to: Option<FocusHandle>,
     /// The chord that opened it closes it (the palette's Ctrl+P).
     pub toggle: Option<String>,
@@ -51,7 +53,7 @@ pub struct Modal {
 
 impl Modal {
     pub fn new(id: impl Into<SharedString>, build: impl Fn(&mut Window, &mut App) -> AnyElement + 'static) -> Self {
-        Self { id: id.into(), width: 420., framed: true, top: None, anchored: None, build: Rc::new(build), on_close: None, focus: None, return_to: None, toggle: None, keep: Vec::new() }
+        Self { id: id.into(), width: 420., framed: true, top: None, anchored: None, build: Rc::new(build), on_close: None, focus: None, trap: None, return_to: None, toggle: None, keep: Vec::new() }
     }
 
     pub fn width(mut self, width: f32) -> Self {
@@ -96,6 +98,7 @@ pub fn open(mut modal: Modal, window: &mut Window, cx: &mut App) {
     super::menu::close(window, cx);
     super::tooltip::hide(cx);
     modal.return_to = window.focused(cx);
+    modal.trap = Some(cx.focus_handle());
     let handle = modal.focus.get_or_insert_with(|| cx.focus_handle()).clone();
     window.focus(&handle, cx);
     Ui::get_mut(cx).modals.push(modal);
@@ -141,15 +144,15 @@ pub fn is_open(id: &str, cx: &App) -> bool {
     Ui::get(cx).modals.iter().any(|m| m.id.as_ref() == id)
 }
 
-type Shown = (SharedString, f32, bool, Option<f32>, Option<super::place::Rect>, Build, FocusHandle);
+type Shown = (SharedString, f32, bool, Option<f32>, Option<super::place::Rect>, Build, FocusHandle, FocusHandle);
 
 pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
-    let items: Vec<Shown> = Ui::get(cx).modals.iter().map(|m| (m.id.clone(), m.width, m.framed, m.top, m.anchored, m.build.clone(), m.focus.clone().expect("set on opening"))).collect();
+    let items: Vec<Shown> = Ui::get(cx).modals.iter().map(|m| (m.id.clone(), m.width, m.framed, m.top, m.anchored, m.build.clone(), m.focus.clone().expect("set on opening"), m.trap.clone().expect("set on opening"))).collect();
     items
         .into_iter()
-        .map(|(id, width, framed, top, anchored, build, focus)| {
+        .map(|(id, width, framed, top, anchored, build, focus, trap)| {
             let content = build(window, cx);
-            let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).role(Role::Dialog).occlude().child(crate::ui::spin::cover()).flex().flex_col().flex_none().when(anchored.is_none(), |d| d.w(px(width))).when(anchored.is_some(), |d| d.max_w(px(width))).max_w(window.viewport_size().width - px(32.));
+            let body = div().id(ElementId::Name(SharedString::from(format!("{id}-dialog")))).role(Role::Dialog).track_focus(&trap).occlude().child(crate::ui::spin::cover()).flex().flex_col().flex_none().when(anchored.is_none(), |d| d.w(px(width))).when(anchored.is_some(), |d| d.max_w(px(width))).max_w(window.viewport_size().width - px(32.));
             let body = if framed {
                 body.gap(px(12.))
                     .when(anchored.is_none(), |d| d.px(px(20.)).py(px(16.)).bg(theme::panel_bg()))
@@ -179,8 +182,14 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
                     .key_context("Modal")
                     .track_focus(&focus)
                     .on_action(|_: &CloseModal, window, cx| close_top(window, cx))
-                    .on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
-                    .on_action(|_: &FocusPrev, window, cx| window.focus_prev(cx))
+                    .on_action({
+                        let root = trap.clone();
+                        move |_: &FocusNext, window, cx| step_focus(&root, false, window, cx)
+                    })
+                    .on_action({
+                        let root = trap.clone();
+                        move |_: &FocusPrev, window, cx| step_focus(&root, true, window, cx)
+                    })
                     .on_mouse_down(MouseButton::Left, |_, window, cx| close_top(window, cx))
                     .child(placed)
                     .into_any_element();
@@ -201,8 +210,14 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
                 .when_some(top, |d, t| d.items_start().pt(px(t)))
                 .when(top.is_none(), |d| d.items_center())
                 .on_action(|_: &CloseModal, window, cx| close_top(window, cx))
-                .on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
-                .on_action(|_: &FocusPrev, window, cx| window.focus_prev(cx))
+                .on_action({
+                    let root = trap.clone();
+                    move |_: &FocusNext, window, cx| step_focus(&root, false, window, cx)
+                })
+                .on_action({
+                    let root = trap.clone();
+                    move |_: &FocusPrev, window, cx| step_focus(&root, true, window, cx)
+                })
                 .on_mouse_down(MouseButton::Left, |_, window, cx| close_top(window, cx))
                 .child(body)
                 .into_any_element()
@@ -211,6 +226,21 @@ pub(super) fn elements(window: &mut Window, cx: &mut App) -> Vec<AnyElement> {
 }
 
 /// A dialog's title (`.modal h2`).
+/// Tab inside a dialog: the window's tab stops hold what's behind it too, which a dialog traps out, as the web's.
+pub fn step_focus(root: &FocusHandle, back: bool, window: &mut Window, cx: &mut App) {
+    for _ in 0..256 {
+        if back {
+            window.focus_prev(cx);
+        } else {
+            window.focus_next(cx);
+        }
+        if root.contains_focused(window, cx) {
+            return;
+        }
+    }
+    window.focus(root, cx);
+}
+
 pub fn title(text: impl Into<SharedString>) -> Div {
     div().flex().items_center().gap(px(8.)).mb(px(9.)).text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text_selected()).child(text.into())
 }

@@ -495,7 +495,7 @@ fn host_rows(this: &mut GitVolt, _: &'static Def, window: &mut Window, cx: &mut 
         div()
             .flex()
             .gap(px(8.))
-            .child(input_box("host-add-box", added, false, window, cx))
+            .child(crate::ui::anchor("host-add-box", input_box("host-add-box", added, false, window, cx)))
             .child(div().flex().flex_none().w(px(87.)).child(controls::select("setting:host-add-kind", kind, Rc::new(options), None, on_kind, cx)))
             .child(crate::ui::anchor("setting:host-add", plain_button("host-add-button", "Add", enabled).when(enabled, |d| {
                 d.on_click(cx.listener(move |this, _, _, cx| {
