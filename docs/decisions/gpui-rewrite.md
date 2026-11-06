@@ -279,6 +279,26 @@ The Markdown round added `pulldown-cmark` (MIT), `toml` (MIT/Apache), `yaml-rust
 
 ## Measurements
 
+The ported app against the 1.5.0 release, `tools/benchvs.sh`, by turns on one generated repository (4000 commits, 2000 loaded, a 3000-line file with two changes in the working copy), each in a nested KWin at 1600x900 on a virtual 60 Hz output, with the desktop in ordinary use (load 2-3). Three runs each after a warm-up that doesn't count. Timed from pictures, about 30 ms apart, so a time is good to about that; memory and CPU from `/proc`, all the processes of a build. No frame times: a release of the CEF build has no port to ask.
+
+| | CEF 1.5.0 (Xwayland) | GPUI (Xwayland) | GPUI (Wayland) |
+|---|---|---|---|
+| Start to graph rows, warm | 974-1037 ms | 620-637 ms | 386-409 ms |
+| Open a 3000-line diff, first in the process | 562-595 ms | 24-31 ms | 19-25 ms |
+| Idle CPU, graph | 0.30-0.45% | 0.20-0.25% | 0.05-0.10% |
+| Idle CPU, diff open | 2.6-2.8% | 0.2-0.3% | 0.0-0.1% |
+| CPU while the wheel turns, 20 notches a second | 69-72% of a core | 10.1-10.7% | no wheel there (below) |
+| Memory after settling, PSS | 590-597 MB | 165-166 MB | 167 MB |
+| The same, anonymous | 432-438 MB | 54 MB | 54 MB |
+| The same, RSS summed | 1342-1354 MB, 10 processes | 238-239 MB, 1 process | 224-225 MB, 1 process |
+| With the diff open, PSS | 706-718 MB | 174-175 MB | 174 MB |
+| GPU memory | 60 MiB | 92 MiB | 92 MiB |
+| Size | 369 MB installed | 122 MB binary, not stripped | same |
+
+The wheel's row isn't one quantity: CEF animates each notch at the display's rate, GPUI moves at once, so GPUI draws about 20 frames a second there where CEF draws about 60. Per frame that's near what the table below found. The fake device has no notch on Wayland. CEF ran with its system title bar (an X11 session) and `system-ui` from no desktop session, and that build's own first diff here is against a smaller file than the table below's. Not measured on the real desktop at its 144 Hz, and not with a forge account; a first run after a boot will be slower for both.
+
+The table below is the first slice's, kept for its frame times:
+
 Same machine, repository and run for both: 24 threads, RTX 2080 SUPER, KDE on Wayland, about 144 Hz;
 a generated repository of 4000 commits and 22 branches (`ui/e2e/perfRepo.ts`) with 2000 commits
 loaded; a 1600×900 window at scale 1. Settle 5 s, idle 20 s, then 8 s of scrolling 16 px per frame.
@@ -302,7 +322,7 @@ Both are optimized builds without LTO. The CEF build has debug assertions on in 
 
 - **The GPUI build does less.** The table above was measured when it had only the main view, before the
   diff and everything since. It still has no MR views or settings, whose code the web UI loads at startup. Its
-  memory has grown and will grow as they arrive, so ~9× is an upper bound on the final gain, not a forecast.
+  memory has grown and will grow as they arrive, so ~9× was an upper bound on the final gain, not a forecast; the table above has what it came to.
   The same goes for size: it links only the forge layer's Gravatar client so far.
 - **The summed RSS overcounts CEF:** its processes share `libcef.so`, and a sandboxed renderer's
   PSS can't be read, so there's no exact PSS for it. Anonymous memory is the fairer figure.
