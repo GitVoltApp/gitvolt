@@ -4,12 +4,13 @@
 `crates/gitvolt-gpui` draws GitVolt's main view natively from the same `gitvolt-core`. It reads, and writes
 through the same `Request`s as the web UI, so hooks, config, credentials and the journal behave the same.
 **The rewrite's goal is the current look, 1:1. The app is ported but for what "Not there yet" and "Differences from the web UI" name, the largest being sounds and films (no playback), and it has run on Linux only.**
-The branch is on GitVolt 1.6.0 (sections below).
+The branch is on GitVolt 1.6.0 and main at 50ddc69 (sections below).
 
 ## GitVolt 1.6.0
 
 What 1.6.0 adds beyond main at 55263b6, `git diff 55263b6..v1.6.0`:
 
+- **Ported, main's 50ddc69:** an action key in the rebase editor moves on to the row after the last selected one, unless it opened a message.
 - **Ported:** a file's Discard runs once until its answer (`discardOnce`), its row with a spinner in its Discard's place and its Stage and menu rows waiting; Discard unstaged one at a time.
 - **In the core, so here too:** git started without a fork, the quicker one-file discard, the first account's keyring name.
 
