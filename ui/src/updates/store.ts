@@ -3,6 +3,8 @@ import { api, errorMessage, onEvent } from '../api/client';
 import type { InstallOutcome } from '../api/gen/InstallOutcome';
 import type { UpdateRelease } from '../api/gen/UpdateRelease';
 import type { UpdateState } from '../api/gen/UpdateState';
+import { flushSaves } from '../app/state';
+import { confirmDiscardUnsaved } from '../diff/workingCopy';
 
 /**
  * The update the core found (core `updates.rs`): its state as `updateChanged` events report it,
@@ -64,7 +66,12 @@ export const useUpdates = create<UpdatesStore>((set, get) => {
     },
     async restart() {
       set({ error: null });
-      try { await api.updateRestart(); } catch (e) { failed(e); }
+      try {
+        // Unsaved edits ask first (cancelled: no restart); the settings and tabs are saved.
+        if (!(await confirmDiscardUnsaved())) return;
+        await flushSaves();
+        await api.updateRestart();
+      } catch (e) { failed(e); }
     },
     openDialog: () => set({ dialogOpen: true }),
     closeDialog: () => set({ dialogOpen: false }),

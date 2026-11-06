@@ -10,9 +10,9 @@ window.__GITVOLT_WINDOW__ = { frame: 'custom', platform: 'macos', layout: '', do
 await import('../feature');
 const { settingDef } = await import('../registry');
 
-it('"Use the system title bar" is on Appearance › Window on macOS too, in macOS\'s terms', () => {
-  const def = settingDef('systemTitleBar')!;
+it('"Title bar" is on Appearance › Window on macOS too, in macOS\'s terms', () => {
+  const def = settingDef('titleBar')!;
   expect(def).toMatchObject({ page: 'appearance', group: 'Window' });
-  expect(def.description).toMatch(/^macOS's standard title bar .*restarts\.$/);
+  expect(def.description).toMatch(/^• Separate: .*traffic lights.*\n• Combined: .*\n• System: macOS's standard title bar.*\nTakes effect when GitVolt restarts\.$/);
   expect(def.description).not.toMatch(/X11/);
 });

@@ -29,7 +29,10 @@ set -euo pipefail
 fail() { echo "check-rpm-pkg: FAIL: $*" >&2; exit 1; }
 step() { echo; echo "== $*"; }
 step "rpm -K"
-rpm -Kv "$PKG" | tee /tmp/k.log
+# rpm 6 (fedora:latest) exits non-zero when a package has no OpenPGP signature, and no release is
+# signed: the digests below are what this checks.
+rpm -Kv "$PKG" > /tmp/k.log 2>&1 || true
+cat /tmp/k.log
 grep -q "Header SHA256 digest: OK" /tmp/k.log && grep -q "Payload SHA256 digest: OK" /tmp/k.log || fail "rpm -K"
 grep -Eqi "BAD|NOT OK" /tmp/k.log && fail "rpm -K found a bad digest"
 step "rpm -qpR (Requires)"

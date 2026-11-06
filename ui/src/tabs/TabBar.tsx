@@ -27,8 +27,10 @@ import { tabDragRange, tabDropAt, unitLocator, useTabDrag, type DragBox, type Dr
 import { isWindowBlur, refocusWhenWindowReturns } from '../ui/windowBlur';
 import './tabs.css';
 import { displayChord } from '../ui/platformKeys';
-import { beginWindowDrag } from '../chrome/dragRegion';
-import { useCustomTitleBar } from '../chrome/windowChrome';
+import { beginWindowDrag, useDragOrClick } from '../chrome/dragRegion';
+import { runTitleBarAction, useCompactTitleBar, useCustomTitleBar, useWindowChrome } from '../chrome/windowChrome';
+import { buttonSets } from '../chrome/buttonLayout';
+import { titleBarMouse, WindowButtons } from '../chrome/TitleBar';
 
 function RenameInput({ tab }: { tab: TabState }) {
   const stop = useTabUi((s) => s.stopRename);
@@ -164,9 +166,21 @@ function groupPlan(p: Profile, id: string, update: (fn: (p: Profile) => Profile)
 /** Spec §6.2: hamburger, the Open Repository folder icon, tabs (drag, rename, middle-click,
  * right-click menu) and their groups (chips), the profile switcher. The app shell's `header`
  * slot. Under GitVolt's own title bar, ☰ is up there instead, and the strip's empty space moves
- * the window too. */
+ * the window too. In compact mode (`useCompactTitleBar`) it is the title bar, the same on every
+ * platform: macOS's traffic lights' slot or the window buttons the desktop puts on the left, an
+ * empty space that moves the window (as Firefox's), ☰,
+ * the tabs, then an empty space that always moves the window (the strip scrolls before it would
+ * cover it), the bell, Settings, the profile, and the window buttons on the right. A double click
+ * on the strip's empty space then does what a title bar's does. */
 export function TabBar() {
   const customTitleBar = useCustomTitleBar();
+  const buttonDrag = useDragOrClick(customTitleBar);
+  const compact = useCompactTitleBar();
+  const chrome = useWindowChrome((s) => s.info);
+  const fullscreen = useWindowChrome((s) => s.fullscreen);
+  const maximized = useWindowChrome((s) => s.maximized);
+  const platform = chrome?.platform ?? 'linux';
+  const winButtons = compact && chrome ? buttonSets(chrome.platform, chrome.layout) : null;
   const profile = useAppState((s) => s.profile);
   const { tabs, activeTab: active, tabGroups } = profile;
   const closedCount = profile.closedTabs.length;
@@ -220,10 +234,21 @@ export function TabBar() {
   const lifted = (key: string) => (dragged(key) ? ` lifted${drag!.phase === 'drag' ? ' dragging' : ''}` : '');
 
   return (
-    <div className="tab-bar">
-      {!customTitleBar && <HamburgerMenu />}
+    <div className={`tab-bar${compact ? ` compact platform-${platform}` : ''}`}>
+      {/* Compact mode: macOS draws its own traffic lights over the window's corner, so their slot,
+          which moves the window as a title bar does (full screen hides them, and the slot goes
+          too); elsewhere, the window buttons the desktop puts on the left. */}
+      {compact && platform === 'macos' && !fullscreen && <span className="title-bar-lights" {...titleBarMouse()} />}
+      {winButtons && <WindowButtons buttons={winButtons.start} maximized={maximized} platform={platform} />}
+      {/* Compact mode: an empty space before ☰ that moves the window, as Firefox's: gone in full
+          screen and, where nothing is on the left (Windows, most of Linux), maximized, since the
+          screen's top edge moves the window then. */}
+      {compact && !fullscreen && (platform === 'macos' || !maximized || !!winButtons?.start.length) && (
+        <span className="tab-bar-drag lead" data-testid="tab-bar-drag-lead" {...titleBarMouse()} />
+      )}
+      {(!customTitleBar || compact) && <HamburgerMenu />}
       <HoverTooltip content={`Open repository (${displayChord('Mod+O')})`}>
-        <button type="button" className="tab-bar-btn" aria-label="Open repository" onClick={() => runAction('file.openRepo')}>
+        <button type="button" className="tab-bar-btn" aria-label="Open repository" onMouseDown={buttonDrag.onMouseDown} onClick={(e) => { if (!buttonDrag.guardClick(e)) runAction('file.openRepo'); }}>
           <FolderPlus size={16} aria-hidden />
         </button>
       </HoverTooltip>
@@ -231,8 +256,14 @@ export function TabBar() {
         // Empty space only: a tab's own menu stops its event. The menu key and Shift+F10 reach this
         // too, as a native contextmenu event on whatever has focus.
         onContextMenu={(e) => openContextMenu(e, () => buildMenu<null, TabBarEnv>('tabbar', null, { lastClosed, savedGroups: useAppState.getState().profile.savedGroups }))}
-        // Empty space only, as a browser's tab strip: a new tab on the Open repository screen.
-        onDoubleClick={(e) => { if (e.target === e.currentTarget) runAction('file.openRepo'); }}
+        // Empty space only, as a browser's tab strip: a new tab on the Open repository screen; in
+        // compact mode, where the strip is the title bar, what a title bar's double click does
+        // (System Settings' on macOS, the desktop's elsewhere).
+        onDoubleClick={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (compact) void runTitleBarAction(useWindowChrome.getState().info?.doubleClick ?? 'toggle-maximize');
+          else runAction('file.openRepo');
+        }}
         // Empty space only, under GitVolt's own title bar: dragging it moves the window.
         onMouseDown={customTitleBar ? (e) => { if (e.target === e.currentTarget) beginWindowDrag(e); } : undefined}
       >
@@ -308,13 +339,16 @@ export function TabBar() {
       </div>
       {menuGroup && <GroupMenu key={menuGroup.id} group={menuGroup} />}
       {listGroup && !drag && <GroupTabList key={listGroup.id} group={listGroup} focus={list!.focus} />}
+      {/* Compact mode: the window can always be moved from here, however many tabs there are. */}
+      {compact && <span className="tab-bar-drag" data-testid="tab-bar-drag" {...titleBarMouse()} />}
       <NotificationsBell />
       <HoverTooltip content={`Settings (${displayChord('Mod+,')})`}>
-        <button type="button" className="tab-bar-btn" aria-label="Settings" onClick={() => runAction('file.settings')}>
+        <button type="button" className="tab-bar-btn" aria-label="Settings" onMouseDown={buttonDrag.onMouseDown} onClick={(e) => { if (!buttonDrag.guardClick(e)) runAction('file.settings'); }}>
           <Settings size={16} aria-hidden />
         </button>
       </HoverTooltip>
       <ProfileSwitcher />
+      {winButtons && <WindowButtons buttons={winButtons.end} maximized={maximized} platform={platform} />}
     </div>
   );
 }

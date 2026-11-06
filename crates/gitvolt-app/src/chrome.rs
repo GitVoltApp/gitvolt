@@ -4,8 +4,12 @@
 //! runtime (vendor/tauri-runtime-cef/GITVOLT-PATCH.md, "A window that draws its own title bar").
 //! On macOS the window keeps its frame, with an overlay title bar (transparent, the title hidden,
 //! the page under it), and Apple's traffic lights sit at the start of the UI's title bar, inset to
-//! its middle ([`TRAFFIC_LIGHTS`]). Settings › Appearance › "Use the system title bar" keeps the
-//! system's; it's read when the window is built, so a change applies after a restart.
+//! its middle ([`traffic_lights`]). Settings › Appearance › Title bar picks Separate (this
+//! title bar above the tabs), Combined or System. Combined, compact mode
+//! ([`WindowChrome::with_compact`]), has no title bar row on any platform: the tab
+//! bar is the title bar, with the window buttons or the traffic lights in it. System keeps the
+//! system's. It's read when the window is built, so a change applies after a restart (the
+//! setting offers Restart GitVolt).
 //!
 //! On Windows the undecorated window keeps the system's resize border, shadow and edge at its
 //! left, right and bottom (the runtime's `platform/windows/chrome.rs`), so only the top edge is
@@ -43,6 +47,27 @@ pub struct WindowChrome {
     pub double_click: String,
     pub middle_click: String,
     pub right_click: String,
+    /// Compact mode: no title bar row, the tab bar is the title bar. Only with a `custom` frame.
+    pub compact: bool,
+    /// The system's frame whatever Settings › Appearance › Title bar says: an X11 session
+    /// ([`custom_frame_on`]), where the setting shows System and can't change.
+    pub system_only: bool,
+}
+
+impl WindowChrome {
+    /// This title bar where GitVolt can't draw its own (`system_only`, see the field).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn with_system_only(mut self, system_only: bool) -> Self {
+        self.system_only = system_only;
+        self
+    }
+
+    /// This title bar in compact mode if `compact` (Settings › Appearance › Title bar › Combined)
+    /// and GitVolt draws it: under the system's title bar there's no row to fold into the tabs.
+    pub fn with_compact(mut self, compact: bool) -> Self {
+        self.compact = compact && self.frame == "custom";
+        self
+    }
 }
 
 /// The window buttons where the desktop doesn't say: minimise, maximise and close on the right.
@@ -74,12 +99,15 @@ pub fn custom_frame_on(platform: &str, system_title_bar: bool, wayland_display: 
 }
 
 /// Where macOS's traffic lights go, in logical px from the window's top-left corner (Tauri's
-/// `trafficLightPosition`: the close button's left edge, and the height AppKit's title bar view
-/// is stretched to under the buttons, which keep their distance from its bottom): vertically
-/// centred in the 30 px title bar. `ui/src/chrome/chrome.css`'s `.title-bar-lights` keeps their
-/// width free.
+/// `trafficLightPosition`: the close button's left edge, and the height of AppKit's title bar view
+/// less a button's 14 px; the runtime centres the buttons in it, GITVOLT-PATCH.md), so they're
+/// centred in the UI's title bar: the 30 px title bar row, or in compact mode the 34 px tab bar,
+/// which is the title bar then. `ui/src/chrome/chrome.css`'s `.title-bar-lights` keeps their width
+/// free.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub const TRAFFIC_LIGHTS: (f64, f64) = (12.0, 13.0);
+pub fn traffic_lights(compact: bool) -> (f64, f64) {
+    (12.0, if compact { 20.0 } else { 16.0 })
+}
 
 /// What a double click on a macOS title bar does, from System Settings › Desktop & Dock ›
 /// "Double-click a window's title bar to": `AppleActionOnDoubleClick` (`Maximize` is Zoom,
@@ -108,6 +136,8 @@ pub fn macos_chrome(custom: bool, double_click: &str) -> WindowChrome {
         double_click: double_click.to_owned(),
         middle_click: "none".to_owned(),
         right_click: "none".to_owned(),
+        compact: false,
+        system_only: false,
     }
 }
 
@@ -145,6 +175,8 @@ fn chrome_on(platform: &'static str, custom: bool, gnome: Option<SettingReader<'
         double_click: read("action-double-click-titlebar", "toggle-maximize"),
         middle_click: read("action-middle-click-titlebar", if platform == "windows" { "none" } else { "lower" }),
         right_click: read("action-right-click-titlebar", "menu"),
+        compact: false,
+        system_only: false,
     }
 }
 
@@ -259,6 +291,19 @@ mod tests {
         assert_eq!(macos_chrome(false, "toggle-maximize").frame, "system");
     }
 
+    /// Compact mode needs GitVolt's own title bar: there's no row of the system's to fold away.
+    #[test]
+    fn compact_mode_only_under_gitvolts_own_title_bar() {
+        assert!(!chrome_on("windows", true, None).compact, "off unless asked");
+        assert!(chrome_on("windows", true, None).with_compact(true).compact);
+        assert!(macos_chrome(true, "toggle-maximize").with_compact(true).compact);
+        assert!(!chrome_on("linux", false, None).with_compact(true).compact, "the system's title bar");
+        assert!(!macos_chrome(false, "toggle-maximize").with_compact(true).compact);
+        // The lights are centred in the 30 px title bar row, or the 34 px tab bar.
+        assert_eq!(traffic_lights(false), (12.0, 16.0));
+        assert_eq!(traffic_lights(true), (12.0, 20.0));
+    }
+
     #[test]
     fn gnome_is_any_entry_of_the_desktop_list() {
         for desktop in ["GNOME", "ubuntu:GNOME", "GNOME-Classic:GNOME", "gnome"] {
@@ -294,6 +339,8 @@ mod tests {
         let script = init_script(&c);
         assert!(script.starts_with("window.__GITVOLT_WINDOW__ = {\"frame\":\"custom\",\"platform\":"), "{script}");
         assert!(script.contains("\"doubleClick\":\"toggle-maximize\""), "{script}");
+        assert!(script.contains("\"systemOnly\":false"), "{script}");
+        assert!(init_script(&chrome(false, None).with_system_only(true)).contains("\"systemOnly\":true"));
         assert!(!script.contains("</script>"), "{script}");
         assert!(script.ends_with("};"));
     }

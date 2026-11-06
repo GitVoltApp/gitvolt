@@ -1,9 +1,10 @@
 import { Bell, BellOff, History, TriangleAlert } from 'lucide-react';
+import { useCustomTitleBar } from '../chrome/windowChrome';
+import { useDragOrClick } from '../chrome/dragRegion';
 import { copyText } from '../api/transport';
 import { openActivityLog } from '../app/activityLog';
 import { useOps } from '../app/ops';
 import { openMenuAt } from '../menu/menuStore';
-import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { useToast } from '../ui/toastStore';
@@ -30,6 +31,7 @@ function bellRows(): MenuRow[] {
  * of background errors with the activity log. */
 export function NotificationsBell() {
   const unread = useOps((s) => s.unread);
+  const drag = useDragOrClick(useCustomTitleBar());
   return (
     <HoverTooltip content="Notifications: background errors">
       <button
@@ -37,7 +39,11 @@ export function NotificationsBell() {
         className="tab-bar-btn bell-btn"
         aria-label={`Notifications${unread ? ` (${unread} new)` : ''}`}
         aria-haspopup="menu"
-        {...pressOpener((el) => { if (openMenuAt(el, bellRows(), undefined, bellRows, 'Notifications')) useOps.getState().markRead(); })}
+        onMouseDown={drag.onMouseDown}
+        onClick={(e) => {
+          if (drag.guardClick(e)) return;
+          if (openMenuAt(e.currentTarget, bellRows(), undefined, bellRows, 'Notifications')) useOps.getState().markRead();
+        }}
       >
         <Bell size={16} aria-hidden />{unread > 0 && <span className="bell-badge">{unread}</span>}
       </button>

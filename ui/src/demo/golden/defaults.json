@@ -43,6 +43,7 @@
     "collapseHoverOpen": true,
     "collapsePlacement": "keepDateOrder",
     "commitLimit": 2000,
+    "compactTitleBar": false,
     "customThemes": [],
     "dateFormat": "ymd12h",
     "debugLogging": false,
