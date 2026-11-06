@@ -661,7 +661,7 @@ pub fn open_screen(this: &mut GitVolt, id: u32, window: &Window, cx: &mut Contex
     let banner = (default_folder.is_none() && !profile.is_null()).then(|| {
         let use_btn = screen.suggestion.clone().map(|s| {
             let shown = format!("Use {}", tilde_of(&s));
-            open_btn("open-use", true, true).child(shown).on_click(cx.listener(move |this, _, _, cx| this.set_default_folder(s.clone(), cx)))
+            crate::ui::anchor("open-use", open_btn("open-use", true, true).child(shown).on_click(cx.listener(move |this, _, _, cx| this.set_default_folder(s.clone(), cx))))
         });
         let start = Option::<String>::None;
         div()

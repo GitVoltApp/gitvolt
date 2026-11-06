@@ -1026,7 +1026,11 @@ pub fn sidebar(this: &GitVolt, body_h: f32, window: &Window, cx: &mut Context<Gi
                 let main_remote = (tab.forge.target.clone(), tab.forge.target_chosen, tab.forge.kind);
                 let lookups = tab.forge.remote_errors.clone();
                 let open_mr = tab.forge.open_mr;
-                let marks = Rc::new(RowMarks { main_remote, lookups, open_mr, host_kinds: crate::forge::section::remote_kinds(tab, &this.profile["hostOverrides"]), owners: tab.forge.owner_avatars.clone(), by_ref: tab.forge.by_ref.clone(), tab: tab.id });
+                let hidden_folders = panel.rows.iter().filter_map(|r| match r {
+                    FlatRow::Folder { key, remote: None, .. } if this.folder_looks_hidden(kind, &folder_prefix(kind, key)) => Some(key.clone()),
+                    _ => None,
+                }).collect();
+                let marks = Rc::new(RowMarks { main_remote, lookups, open_mr, host_kinds: crate::forge::section::remote_kinds(tab, &this.profile["hostOverrides"]), owners: tab.forge.owner_avatars.clone(), by_ref: tab.forge.by_ref.clone(), tab: tab.id, hidden_folders });
                 let list = uniform_list(
                     ("side-list", p),
                     panel.rows.len(),
@@ -1119,6 +1123,8 @@ struct RowMarks {
     owners: HashMap<String, String>,
     by_ref: BTreeMap<String, gitvolt_core::forge::types::ForgeMr>,
     tab: u32,
+    /// The folder rows the open preset hides (`.sb-row.is-hidden`), by their keys.
+    hidden_folders: std::collections::HashSet<String>,
 }
 
 fn panel_label(tab: &Tab, kind: SectionKind) -> &'static str {
@@ -1137,11 +1143,20 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
         FlatRow::Folder { key, name, depth, collapsed, remote } => {
             let (toggle_key, menu_key, remote) = (key.clone(), key.clone(), remote.clone());
             let marks_remote = remote.clone();
+            let is_remote = remote.is_some();
+            let folder_hidden = marks.hidden_folders.contains(key);
             let weak = this.clone();
             outline(base)
                 .pl(px(row_indent(*depth)))
                 .hover(|d| d.bg(theme::hover_row()))
-                .on_click(cx.listener(move |this, _, _, cx| {
+                .on_click(cx.listener(move |this, e: &ClickEvent, _, cx| {
+                    // `altClickFolder`: Alt hides or shows what's under it, and doesn't fold it.
+                    if e.modifiers().alt && !is_remote {
+                        let prefix = folder_prefix(kind, &toggle_key);
+                        let hidden = this.folder_looks_hidden(kind, &prefix);
+                        this.pick_view_folder(prefix, kind == SectionKind::Tags, hidden, cx);
+                        return;
+                    }
                     if let Some(tab) = this.tabs.get_mut(this.active) {
                         tab.side.cursor.insert(kind, i);
                         tab.side.keys = Some(kind);
@@ -1162,9 +1177,10 @@ fn side_row(row: &FlatRow, i: usize, kind: SectionKind, on_key: bool, sidebar_ri
                 }))
                 .child(match &marks_remote {
                     Some(r) => crate::forge::section::remote_icon(r, marks.host_kinds.get(r).copied(), marks.owners.get(r).map(String::as_str), 13.),
+                    None if folder_hidden => icon("eye-off", 13., theme::text_disabled()).into_any_element(),
                     None => icon(if *collapsed { "folder" } else { "folder-open" }, 13., theme::sidebar_icon()).into_any_element(),
                 })
-                .child(div().flex_1().min_w_0().truncate().child(name.clone()))
+                .child(div().flex_1().min_w_0().truncate().when(folder_hidden, |d| d.text_color(theme::text_disabled())).child(name.clone()))
                 .when_some(marks_remote.as_ref().filter(|r| Some(*r) == marks.main_remote.0.as_ref() && kind == SectionKind::Remote), |d, r| d.child(crate::forge::section::main_chip(r, marks.main_remote.2, marks.main_remote.1)))
                 .when_some(marks_remote.as_ref().and_then(|r| marks.lookups.get(r)), |d, why| d.child(crate::forge::section::lookup_warning(why)))
                 .into_any_element()

@@ -166,6 +166,11 @@ pub fn lanes_width(max_lanes: u16) -> f32 {
     crate::metrics::lane_w() * (f32::from(max_lanes) + 1.)
 }
 
+/// `autoGraphWidth`: a graph of one lane still has room for its header's name and the pin.
+pub fn auto_graph_width(max_lanes: u16) -> f32 {
+    lanes_width(max_lanes).max(64.)
+}
+
 /// `allocateColumns`: Branch/Tag, Graph and SHA always get their width; Message fills what's left, and
 /// at its minimum squeezes Author and Date in proportion; a hand-set Message squeezes nothing, and the
 /// table runs past the window. With no hand-set width, the Graph fits its lanes while Message has room.
@@ -175,12 +180,13 @@ pub fn allocate_columns(prefs: &ColumnPrefs, available: f32, hidden: &std::colle
     let sha = if off(Col::Sha) { 0. } else { prefs.sha.clamp(SHA_W, SHA_MAX) };
     let mut author = if off(Col::Author) { 0. } else { prefs.author.max(MIN_AUTHOR) };
     let mut date = if off(Col::Date) { 0. } else { prefs.date.max(MIN_DATE) };
-    let wanted = lanes_width(max_lanes);
+    let wanted = auto_graph_width(max_lanes);
     let graph = match prefs.graph {
-        Some(g) => g.max(GRAPH_MIN),
+        // Never wider than its lanes need: the chosen width is kept, and only clamped while it exceeds this graph's.
+        Some(g) => g.min(wanted).max(GRAPH_MIN),
         None => wanted.min((available - labels - author - date - sha - MESSAGE_MIN).max(GRAPH_MIN)),
     };
-    let clipped = graph < wanted;
+    let clipped = graph < lanes_width(max_lanes);
     if let Some(m) = prefs.message {
         let message = m.max(MESSAGE_MIN);
         return Columns { labels, graph, message, author, date, sha, total: labels + graph + message + author + date + sha, clipped };
@@ -630,6 +636,16 @@ mod tests {
     }
 
     #[test]
+    fn a_graph_of_few_lanes_is_still_64_wide_and_a_chosen_width_stops_at_what_the_lanes_need() {
+        assert_eq!(columns(1349., 1).graph, 64.);
+        assert!(!columns(1349., 1).clipped);
+        let prefs = ColumnPrefs { graph: Some(300.), ..ColumnPrefs::default() };
+        let hidden = std::collections::HashSet::new();
+        assert_eq!(allocate_columns(&prefs, 1349., &hidden, 1).graph, 64.);
+        assert_eq!(allocate_columns(&prefs, 1349., &hidden, 22).graph, 300.);
+    }
+
+    #[test]
     fn the_graph_column_takes_what_its_lanes_want_until_the_message_needs_the_room() {
         // The web UI's measured layout: 22 lanes at a 1349 px row.
         let wide = columns(1349., 22);
@@ -652,12 +668,12 @@ mod tests {
     #[test]
     fn message_fills_then_squeezes_author_and_date_by_their_room() {
         let none = std::collections::HashSet::new();
-        let c = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 1000., &none, 2);
+        let c = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 1000., &none, 8);
         assert_eq!((c.message, c.author, c.date), (310., 160., 170.));
-        let tight = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 700., &none, 2);
+        let tight = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 700., &none, 8);
         assert_eq!(tight.message, 160.);
         assert_eq!(tight.author + tight.date, 180. + 0., "what's left past the fixed columns");
-        let floor = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 300., &none, 2);
+        let floor = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 300., &none, 8);
         assert_eq!((floor.author, floor.date), (60., 90.));
     }
 
@@ -666,9 +682,9 @@ mod tests {
         let mut hidden = std::collections::HashSet::new();
         hidden.insert(Col::Author);
         hidden.insert(Col::Labels);
-        let c = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 1000., &hidden, 2);
+        let c = allocate_columns(&ColumnPrefs { graph: Some(100.), ..ColumnPrefs::default() }, 1000., &hidden, 8);
         assert_eq!((c.labels, c.author, c.message), (0., 0., 670.));
-        let set = allocate_columns(&ColumnPrefs { message: Some(900.), graph: Some(100.), ..ColumnPrefs::default() }, 800., &std::collections::HashSet::new(), 2);
+        let set = allocate_columns(&ColumnPrefs { message: Some(900.), graph: Some(100.), ..ColumnPrefs::default() }, 800., &std::collections::HashSet::new(), 8);
         assert_eq!(set.message, 900.);
         assert!(set.total > 800., "the table runs past the window");
     }

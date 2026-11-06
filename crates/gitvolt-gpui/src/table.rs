@@ -497,7 +497,7 @@ pub fn graph_table(this: &GitVolt, width: f32, window: &Window, cx: &mut Context
     let available = width - gutter;
     let cols = allocate_columns(&tab.column_prefs, available, &tab.hidden_columns, graph.max_lanes);
     let hidden = tab.hidden_columns.clone();
-    let head = HeadContext { cols, available, graph_max: lanes_width(graph.max_lanes) };
+    let head = HeadContext { cols, available, graph_max: crate::model::auto_graph_width(graph.max_lanes) };
     let shown = |c: Col| !hidden.contains(&c);
     let weak = cx.weak_entity();
     let compact = cols.graph < PIN_FULL_MIN;
