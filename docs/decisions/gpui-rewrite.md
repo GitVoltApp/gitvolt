@@ -3,7 +3,7 @@
 **Status:** in progress on the `gpui-rewrite` branch, beside the CEF app, which stays the product.
 `crates/gitvolt-gpui` draws GitVolt's main view natively from the same `gitvolt-core`. It reads, and writes
 through the same `Request`s as the web UI, so hooks, config, credentials and the journal behave the same.
-**The rewrite's goal is the current look, 1:1; a good part of the app isn't there yet.**
+**The rewrite's goal is the current look, 1:1. The app is ported but for what "Not there yet" and "Differences from the web UI" name, the largest being sounds and films (no playback), and it has run on Linux only.**
 The branch is on main at 55263b6: GitVolt 1.5.0, then Several accounts on one forge and two fixes (section below).
 
 ## GitVolt 1.5.0 and main (55263b6)
