@@ -486,7 +486,8 @@ fn description(text: &str, ranges: &[Range<usize>]) -> AnyElement {
     if !text.contains('\n') {
         return base.child(marked(text, ranges)).into_any_element();
     }
-    let mut parts = div().flex().flex_col().gap(px(2.));
+    // The CSS's `> * + *` margin loses to `.setting-desc p, ul`'s 0: no gap between them.
+    let mut parts = div().flex().flex_col();
     let mut items: Option<Div> = None;
     for (bullet, line, start) in description_lines(text) {
         let shown = marked(line, &clip(ranges, start, line.len()));
