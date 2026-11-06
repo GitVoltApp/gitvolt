@@ -474,22 +474,29 @@ impl GitVolt {
 
     /// Sets `oids`' action, from the dropdown or the keys: Reword opens its message at once, as does a Squash of the
     /// bottom row that made it the Reword target; a refused one says why.
-    pub fn rebase_action(&mut self, oids: Vec<String>, action: RowAction, opens: Option<String>, cx: &mut Context<Self>) {
-        let Some(s) = self.tabs.get_mut(self.active).and_then(Tab::rebase_shown_mut) else { return };
+    /// True when it applied and opened no message editor.
+    pub fn rebase_action(&mut self, oids: Vec<String>, action: RowAction, opens: Option<String>, cx: &mut Context<Self>) -> bool {
+        let Some(s) = self.tabs.get_mut(self.active).and_then(Tab::rebase_shown_mut) else { return false };
         let mut next = s.state.clone();
         let result = choose_action(&mut next, &oids, action);
-        match result {
-            Err(why) => return self.show_toast(why, cx),
+        let moves_on = match result {
+            Err(why) => {
+                self.show_toast(why, cx);
+                return false;
+            }
             Ok(reword) => {
                 s.edit(|st| *st = next);
                 let open = reword.or(if action == RowAction::Reword { opens } else { None });
+                let none = open.is_none();
                 if let Some(oid) = open {
                     self.start_rebase_message(oid, cx);
                 }
+                none
             }
-        }
+        };
         self.rebase_changed(cx);
         cx.notify();
+        moves_on
     }
 
     /// A row's message opens in place, focused, the caret at the summary's end.
@@ -618,7 +625,13 @@ impl GitVolt {
                 let Some(action) = RowAction::of_key(&key.to_lowercase()) else { return false };
                 let oids = state.selected.clone();
                 let opens = (oids.len() == 1).then(|| oids[0].clone());
-                self.rebase_action(oids, action, opens, cx);
+                let after = oids.last().and_then(|last| state.rows.iter().position(|r| r.oid == *last)).and_then(|i| state.rows.get(i + 1)).map(|r| r.oid.clone());
+                // The key then moves on to the row after the last selected one (none: stays), so `d d` drops two.
+                if self.rebase_action(oids, action, opens, cx)
+                    && let Some(oid) = after
+                {
+                    self.rebase_select(&oid, false, false, cx);
+                }
                 true
             }
             _ => false,
@@ -1072,8 +1085,17 @@ mod tests {
         assert_eq!(read(&window, &mut vcx).unwrap().0, ["c"]);
         vcx.simulate_keystrokes("down d");
         let (sel, actions, _) = read(&window, &mut vcx).unwrap();
-        assert_eq!(sel, ["b1"]);
+        assert_eq!(sel, ["a"], "the key moved on");
         assert_eq!(actions[1], RowAction::Drop);
+        vcx.simulate_keystrokes("d");
+        let (sel, actions, _) = read(&window, &mut vcx).unwrap();
+        assert_eq!(sel, ["a"], "the last row stays");
+        assert_eq!(actions[2], RowAction::Drop);
+        vcx.simulate_keystrokes("up shift-up p");
+        let (sel, actions, _) = read(&window, &mut vcx).unwrap();
+        assert_eq!(sel, ["a"], "several rows: the one after the last selected");
+        assert_eq!(actions[..2], [RowAction::Pick, RowAction::Pick]);
+        vcx.simulate_keystrokes("up");
         vcx.simulate_keystrokes("shift-up");
         assert_eq!(read(&window, &mut vcx).unwrap().0.len(), 2, "a range");
         vcx.simulate_keystrokes("down ctrl-up");
