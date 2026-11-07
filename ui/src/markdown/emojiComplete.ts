@@ -1,10 +1,16 @@
-/** Emoji autocomplete for the Markdown field: typing `:sm` offers `:smile:` and friends. */
+/** Emoji autocomplete, in the Markdown fields and the commit message alike: a `:` offers the
+ * gitmojis matching what follows it (with their meaning), then the other emojis. */
+import { rankGitmojis, type Gitmoji } from './gitmoji';
 
 export interface EmojiEntry { emoji: string; names: string[] }
-export interface EmojiHit { emoji: string; name: string }
+/** `description`: a gitmoji's meaning. */
+export interface EmojiHit { emoji: string; name: string; description?: string }
 export interface Trigger { /** Index of the `:`. */ start: number; query: string }
 
 export const MAX_HITS = 8;
+
+/** The emoji popup lists this many (it scrolls): all the gitmojis (74 today) for a bare `:`. */
+export const EMOJI_MAX = 100;
 
 /** gemoji has no popularity order, so the everyday ones are named here and sort first. */
 const COMMON = ['+1', 'thumbsup', '-1', 'thumbsdown', 'smile', 'tada', 'heart', 'eyes', 'rocket', 'white_check_mark', 'warning', 'bug', 'fire', 'pray', 'joy', 'thinking', 'clap', 'sparkles', 'x', 'memo'];
@@ -24,11 +30,11 @@ export function inCode(before: string, start: number): boolean {
 }
 
 /** The shortcode being typed just before `caret`, or null (no popup): the colon starts the text
- * or follows whitespace or an opening bracket (so not `http://`, `12:30` or `a:b`), at least two
- * word characters follow it, and the caret is not in fenced or inline code. */
+ * or follows whitespace or an opening bracket (so not `http://`, `12:30` or `a:b`), the caret is
+ * after it or after word characters following it, and not in fenced or inline code. */
 export function findTrigger(text: string, caret: number): Trigger | null {
   const before = text.slice(0, caret);
-  const m = /(^|[\s([{]):([a-z0-9_+-]{2,})$/i.exec(before);
+  const m = /(^|[\s([{]):([a-z0-9_+-]*)$/i.exec(before);
   if (!m) return null;
   const start = m.index + m[1].length;
   if (inCode(before, start)) return null;
@@ -56,6 +62,19 @@ export function rankEmoji(list: readonly EmojiEntry[], query: string, limit = MA
   });
   const by = (a: Row, b: Row) => a.c - b.c || a.i - b.i;
   return [...prefix.sort(by), ...inner.sort(by)].slice(0, limit).map(({ emoji, name }) => ({ emoji, name }));
+}
+
+/** The same emoji, with or without the variation selector (gitmoji's 🏗️, gemoji's 🏗). */
+const bare = (emoji: string) => emoji.replace(/\uFE0F/g, '');
+
+/** Up to `limit` hits: the gitmojis whose code starts with the query (with their meaning), then
+ * `rankEmoji`'s, less the emojis already listed. Either list may still be loading (null). */
+export function rankHits(gitmojis: readonly Gitmoji[] | null, emojis: readonly EmojiEntry[] | null, query: string, limit = EMOJI_MAX): EmojiHit[] {
+  const q = query.toLowerCase();
+  const first = (gitmojis ? rankGitmojis(gitmojis, q) : []).map((g) => ({ emoji: g.emoji, name: g.code, description: g.description }));
+  const seen = new Set(first.map((h) => bare(h.emoji)));
+  const rest = (emojis ? rankEmoji(emojis, q, limit) : []).filter((h) => !seen.has(bare(h.emoji)));
+  return [...first, ...rest].slice(0, limit);
 }
 
 /** `text` with the typed trigger and query replaced by `token`, and the caret after it. */

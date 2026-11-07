@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmDialog, confirmAction } from '../ConfirmDialog';
 import { ArmLayer } from './ArmLayer';
-import { placePopover } from './anchor';
+import { placePopover, visibleRoom } from './anchor';
 import { setOrigin } from './origin';
 import { armClock, press, pressEnter } from './armTesting';
 import { arm, CLICK_SETTLE_MS, disarm, useArm } from './store';
@@ -268,5 +268,18 @@ describe('arm in place (spec §ui confirms)', () => {
     expect(placePopover({ left: 100, top: 50, bottom: 70 }, { w: 200, h: 100 }, { w: 800, h: 600 })).toEqual({ left: 100, top: 76 });
     expect(placePopover({ left: 700, top: 550, bottom: 570 }, { w: 200, h: 100 }, { w: 800, h: 600 })).toEqual({ left: 592, top: 444 });
     expect(placePopover(null, { w: 200, h: 100 }, { w: 800, h: 600 })).toEqual({ left: 300, top: 72 });
+  });
+
+  it('a popover keeps to the part of the window on screen, the window hanging off its bottom or right', () => {
+    const screen = { availLeft: 0, availTop: 25, availWidth: 1440, availHeight: 875 };
+    // Content 800 high under a 28 px title bar at y 400: 472 of it above the screen's bottom (900).
+    const low = { innerWidth: 1000, innerHeight: 800, outerWidth: 1000, outerHeight: 828, screenX: 0, screenY: 400, screen };
+    expect(visibleRoom(low, 1)).toEqual({ w: 1000, h: 472 });
+    // At 125%, the same window shows 800 page px of its 1000: 472 screen px are 377.6 page px.
+    expect(visibleRoom({ ...low, innerWidth: 800, innerHeight: 640 }, 1.25)).toEqual({ w: 800, h: 377.6 });
+    expect(visibleRoom({ ...low, screenX: 1040 }, 1)).toEqual({ w: 400, h: 472 });
+    expect(visibleRoom({ ...low, screenY: 25 }, 1)).toEqual({ w: 1000, h: 800 });
+    // No window numbers (a test DOM): the whole window.
+    expect(visibleRoom({ ...low, outerWidth: 0, outerHeight: 0, screenY: 0 }, 1)).toEqual({ w: 1000, h: 800 });
   });
 });
