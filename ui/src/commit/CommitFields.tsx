@@ -1,8 +1,7 @@
-import { useLayoutEffect, useMemo, useRef, type KeyboardEvent } from 'react';
+import { useMemo, useRef, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { shortcodes, typedShortcode } from '../markdown/emojiComplete';
 import { emojiProvider, useEmojiLists } from '../markdown/providers';
-import { typeInto, useCompletion } from '../markdown/useCompletion';
+import { useCompletion } from '../markdown/useCompletion';
 import { flushDrafts, WIP_DRAFT_COUNTER_FROM, WIP_DRAFT_WARN_FROM, type WipDraft } from './draft';
 import './commit.css';
 import { registerKeyHints } from '../shortcuts/hints';
@@ -20,46 +19,18 @@ const isSubmit = (e: KeyboardEvent) => e.key === 'Enter' && (e.ctrlKey || e.meta
  * app's Ctrl chords still come first (key router), and the app-wide Commit (Ctrl+Enter,
  * `commit/keyActions.ts`) yields to these fields.
  * A `:` in either field opens the emoji completion, the Markdown fields' own (`emojiProvider`:
- * the gitmojis first, then the other emojis), inserting the emoji itself, as nothing renders a
- * commit message's shortcodes; for the same reason a whole `:code:` typed becomes its emoji.
+ * the gitmojis first, then the other emojis); a pick inserts the emoji itself. A `:code:` typed in
+ * full stays as typed: GitHub and GitLab render it, and some teams write their gitmojis that way.
  */
 export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = false, autoFocus = false }: { value: WipDraft; onChange: (d: WipDraft) => void; onSubmit: () => void; onEscape?: () => void; disabled?: boolean; autoFocus?: boolean }) {
   const summary = useRef<HTMLInputElement>(null);
   const description = useRef<HTMLTextAreaElement>(null);
   const lists = useEmojiLists();
   const provider = useMemo(() => emojiProvider(lists, 'emoji'), [lists]);
-  const names = useMemo(() => shortcodes(lists.gitmojis, lists.emojis), [lists]);
   const setSummary = (text: string) => onChange({ ...value, summary: text });
   const setDescription = (text: string) => onChange({ ...value, description: text });
   const completion = useCompletion(summary, value.summary, setSummary, [provider]);
   const descCompletion = useCompletion(description, value.description, setDescription, [provider]);
-  /** Where the caret goes once a `:code:` became its emoji (where the box can't type it). */
-  const caretTo = useRef<{ box: HTMLInputElement | HTMLTextAreaElement; at: number; sync: () => void } | null>(null);
-  /** A `:code:` just typed, to become its emoji once React has the text as typed. */
-  const expandNext = useRef<{ box: HTMLInputElement | HTMLTextAreaElement; start: number; end: number; emoji: string } | null>(null);
-  useLayoutEffect(() => {
-    const c = caretTo.current;
-    if (c !== null) {
-      caretTo.current = null;
-      c.box.setSelectionRange(c.at, c.at);
-      c.sync();
-    }
-    const x = expandNext.current;
-    if (x !== null) {
-      expandNext.current = null;
-      // Typed into the box (its input event comes back through `changed`), so Cmd+Z gives the
-      // `:code:` back; after this commit, not inside it.
-      queueMicrotask(() => { typeInto(x.box, x.start, x.end, x.emoji); });
-    }
-  });
-  const changed = (box: HTMLInputElement | HTMLTextAreaElement, set: (text: string) => void, sync: () => void) => {
-    const x = typedShortcode(box.value, box.selectionStart ?? box.value.length, names);
-    const typed = x !== null && typeof document.execCommand === 'function';
-    if (x && typed) expandNext.current = { box, ...x };
-    else if (x) caretTo.current = { box, at: x.start + x.emoji.length, sync };
-    set(x && !typed ? box.value.slice(0, x.start) + x.emoji + box.value.slice(x.end) : box.value);
-    sync();
-  };
   const escape = (e: KeyboardEvent<HTMLElement>) => {
     e.preventDefault();
     if (onEscape) onEscape();
@@ -112,7 +83,7 @@ export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = f
           disabled={disabled}
           value={value.summary}
           {...completion.aria}
-          onChange={(e) => changed(e.target, setSummary, completion.sync)}
+          onChange={(e) => { setSummary(e.target.value); completion.sync(); }}
           onSelect={completion.sync}
           onKeyDown={onSummaryKey}
           onBlur={flushDrafts}
@@ -130,7 +101,7 @@ export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = f
         disabled={disabled}
         value={value.description}
         {...descCompletion.aria}
-        onChange={(e) => changed(e.target, setDescription, descCompletion.sync)}
+        onChange={(e) => { setDescription(e.target.value); descCompletion.sync(); }}
         onSelect={descCompletion.sync}
         onKeyDown={onDescriptionKey}
         onBlur={flushDrafts}

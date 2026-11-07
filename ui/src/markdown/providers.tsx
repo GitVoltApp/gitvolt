@@ -24,7 +24,7 @@ export function useEmojiLists(): { gitmojis: readonly Gitmoji[] | null; emojis: 
 
 /** `:shortcode` → the gitmojis, then gemoji's emojis. `as`: what a pick inserts. The shortcode
  * in Markdown (both forges and GitVolt's own renderer turn it into the emoji); the emoji itself
- * in a commit message, which nothing renders. */
+ * in a commit message, so it reads the same in `git log`. */
 export function emojiProvider(lists: ReturnType<typeof useEmojiLists>, as: 'shortcode' | 'emoji'): Provider<EmojiHit> {
   return {
     label: 'Emoji',

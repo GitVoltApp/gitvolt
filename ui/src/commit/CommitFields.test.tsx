@@ -111,14 +111,14 @@ describe('gitmoji in the summary', () => {
     expect(document.activeElement).toBe(summary());
   });
 
-  it('a whole :code: typed becomes its emoji', async () => {
+  it('a whole :code: typed stays as typed (the forges render it)', async () => {
     render(<Harness initial={{ summary: '', description: '' }} />);
     summary().focus();
     type('fix :');
     await screen.findByRole('listbox', { name: 'Emoji' });
     type('fix :bug:');
-    expect(summary().value).toBe('fix 🐛');
-    expect(summary().selectionStart).toBe('fix 🐛'.length);
+    await act(async () => {});
+    expect(summary().value).toBe('fix :bug:');
   });
 
   it('in the description too: the picker opens on a later line, Enter inserts there, not a newline', async () => {
@@ -236,7 +236,7 @@ describe('gitmoji in the summary', () => {
     expect(await screen.findByRole('listbox', { name: 'Emoji' })).toBeInTheDocument();
   });
 
-  it('inserts as typing does where the box can (so Cmd+Z takes it back): the picked emoji, a whole :code:', async () => {
+  it('inserts the picked emoji as typing does where the box can (so Cmd+Z takes it back)', async () => {
     const typed: [string, number | null, number | null][] = [];
     Object.defineProperty(document, 'execCommand', {
       configurable: true,
@@ -250,10 +250,6 @@ describe('gitmoji in the summary', () => {
       fireEvent.keyDown(summary(), { key: 'Enter' });
       expect(typed).toEqual([['🐛 ', 2, 5]]);
       expect(document.execCommand).toHaveBeenCalledWith('insertText', false, '🐛 ');
-      type('fix :bug:');
-      expect(summary().value).toBe('fix :bug:');
-      await act(async () => {});
-      expect(typed[1]).toEqual(['🐛', 4, 9]);
     } finally {
       delete (document as { execCommand?: unknown }).execCommand;
     }

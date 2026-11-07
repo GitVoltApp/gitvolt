@@ -77,24 +77,6 @@ export function rankHits(gitmojis: readonly Gitmoji[] | null, emojis: readonly E
   return [...first, ...rest].slice(0, limit);
 }
 
-/** Each shortcode's emoji: gemoji's names, and the gitmojis' codes over them. */
-export function shortcodes(gitmojis: readonly Gitmoji[] | null, emojis: readonly EmojiEntry[] | null): ReadonlyMap<string, string> {
-  const names = new Map<string, string>();
-  for (const e of emojis ?? []) for (const n of e.names) names.set(n, e.emoji);
-  for (const g of gitmojis ?? []) names.set(g.code, g.emoji);
-  return names;
-}
-
-const TYPED = /(^|[\s([{]):([a-z0-9_+-]+):$/i;
-
-/** A whole known `:code:` just typed (it ends at `caret`): where it is and its emoji; null
- * otherwise. */
-export function typedShortcode(text: string, caret: number, names: ReadonlyMap<string, string>): { start: number; end: number; emoji: string } | null {
-  const m = TYPED.exec(text.slice(0, caret));
-  const emoji = m ? names.get(m[2].toLowerCase()) : undefined;
-  return m && emoji ? { start: m.index + m[1].length, end: caret, emoji } : null;
-}
-
 /** `text` with the typed trigger and query replaced by `token`, and the caret after it. */
 export function insertToken(text: string, caret: number, trigger: Trigger, token: string): { text: string; caret: number } {
   return { text: text.slice(0, trigger.start) + token + text.slice(caret), caret: trigger.start + token.length };

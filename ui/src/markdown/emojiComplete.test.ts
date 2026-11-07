@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findTrigger, insertShortcode, rankEmoji, rankHits, shortcodes, typedShortcode, type EmojiEntry } from './emojiComplete';
+import { findTrigger, insertShortcode, rankEmoji, rankHits, type EmojiEntry } from './emojiComplete';
 import type { Gitmoji } from './gitmoji';
 
 const t = (s: string) => findTrigger(s, s.length);
@@ -88,19 +88,5 @@ describe('rankHits', () => {
     expect(rankHits(null, E, 'bu').map((h) => h.name)).toEqual(['bug', 'bus', 'building_construction', 'butterfly']);
     expect(rankHits(G, null, 'sp').map((h) => h.name)).toEqual(['sparkles']);
     expect(rankHits(G, E, '', 2)).toHaveLength(2);
-  });
-});
-
-describe('typedShortcode', () => {
-  const names = shortcodes(G, E);
-  it('finds a whole known :code: just typed, a gitmoji or any emoji', () => {
-    expect(typedShortcode(':bug:', 5, names)).toEqual({ start: 0, end: 5, emoji: '🐛' });
-    expect(typedShortcode('fix :SMILE:', 11, names)).toEqual({ start: 4, end: 11, emoji: '😄' });
-    expect(typedShortcode('x :building_construction:', 25, names)?.emoji).toBe('🏗️');
-  });
-  it('not an unknown code, one inside a word, or one the caret has left', () => {
-    expect(typedShortcode(':nope:', 6, names)).toBeNull();
-    expect(typedShortcode('at 10:bug:', 10, names)).toBeNull();
-    expect(typedShortcode(':bug: x', 7, names)).toBeNull();
   });
 });
