@@ -11,6 +11,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   commit down after setting the action (after the last selected one, when several are selected),
   so `D D` drops two in a row without the arrow keys. The last row stays selected.
 
+### Fixed
+
+- **Clone on Windows.** A destination like `F:\Projects\repo` is accepted; the form wanted a path
+  starting with `/` (#26). A local source path can be a Windows one too, on Windows.
+
 ## [1.6.0] - 2026-11-06
 
 ### Added
