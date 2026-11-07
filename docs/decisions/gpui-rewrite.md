@@ -1,6 +1,6 @@
 # GPUI rewrite: first slice and measurements
 
-**Status:** in progress on the `gpui-rewrite` branch, beside the CEF app, which stays the product.
+**Status:** in progress on the `gpui-rewrite` branch, beside the CEF app, which stays the product for now.
 `crates/gitvolt-gpui` draws GitVolt's main view natively from the same `gitvolt-core`. It reads, and writes
 through the same `Request`s as the web UI, so hooks, config, credentials and the journal behave the same.
 **The rewrite's goal is the current look, 1:1. The app is ported but for what "Not there yet" and "Differences from the web UI" name, the largest being sounds and films (no playback), and it has run on Linux only.**

@@ -104,8 +104,9 @@ with no Tauri, and adds a fake GitHub/GitLab/Forgejo, fixture repositories and t
 the Playwright suite drives; see [Testing](#testing).
 
 **`gitvolt-gpui`** is the same core drawn natively with GPUI instead of in Chromium: a work in
-progress that reads and doesn't write yet, beside `gitvolt-app`, which stays the product. Where it
-stands and how it measures up is in [docs/decisions/gpui-rewrite.md](docs/decisions/gpui-rewrite.md).
+progress that reads and writes through the same `Request`s, beside `gitvolt-app`, which stays the
+product for now. Where it stands and how it measures up is in
+[docs/decisions/gpui-rewrite.md](docs/decisions/gpui-rewrite.md).
 
 **`gitvolt-graph`** is the graph's pure pipeline: the walk's order, the pinned trunk, the WIP rows,
 the lane layout and the labels, from plain data (`GraphInput`) to `GraphPayload`, with no gix and no
