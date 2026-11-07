@@ -11,6 +11,10 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   commit down after setting the action (after the last selected one, when several are selected),
   so `D D` drops two in a row without the arrow keys. The last row stays selected.
 
+### Fixed
+
+- **The line beside a diff's overview ruler** stands against the ruler, not 10 px to its left.
+
 ## [1.6.0] - 2026-11-06
 
 ### Added

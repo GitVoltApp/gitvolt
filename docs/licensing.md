@@ -42,6 +42,10 @@ license files. The full text of each license follows its list once; texts that d
 than their copyright lines (a crate that adds its own terms, a header from a copied source file)
 are printed separately, each with the packages that use it.
 
+## The GPUI build (`crates/gitvolt-gpui`, not released)
+
+Nothing of the above is wired up for this build yet, and `just licenses` doesn't look at it. What its notices would be made from: the same `cargo about generate --format json --locked --fail -c about.toml`, with `-m crates/gitvolt-gpui/Cargo.toml`, then `scripts/notices.py rust`; plus Zed's crates, which `about.toml`'s `private = { ignore = true }` leaves out as they aren't published (Apache-2.0, so they need their notice all the same); plus what `crates/gitvolt-gpui/assets/generate.mjs` embeds from the web UI's npm packages (Shiki's grammars and themes, the Lucide icons, the editor font under OFL-1.1), which the UI build's plugin only sees in its own bundle. There's no CEF or Chromium to credit, and no dictionary. `docs/decisions/gpui-rewrite.md` has the last check's result.
+
 ## How they're generated
 
 `just licenses` generates everything. `just package` runs the same two steps around its build,
