@@ -5,6 +5,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **Emoji completion everywhere.** A `:` opens it in the commit summary and description too, not only
+  in Markdown fields: the gitmojis matching what you type come first, with their meaning, then the
+  other emojis. A pick inserts the emoji in a commit message and the `:shortcode:` in Markdown; a
+  `:code:` typed in full stays as typed. The popup stays on screen and Cmd+Z takes a pick back
+  (#24).
+
 ### Changed
 
 - **Interactive rebase: an action key moves on.** Pick, Squash, Fixup, Drop and Edit select the next
