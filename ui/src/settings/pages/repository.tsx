@@ -14,7 +14,6 @@ import { refreshPresetViews } from '../../presets/store';
 import { Select } from '../../ui/Select';
 import { EditorPicker } from '../EditorPicker';
 import { repoField, useSettingValue } from '../bindings';
-import { switchControl } from '../frame/controls';
 import { TextField } from '../frame/fields';
 import { registerSettings, registerSettingsPage, settingDef, type SettingsCtx } from '../registry';
 
@@ -129,12 +128,6 @@ function BranchUpdateControl({ ctx }: { ctx: SettingsCtx }) {
   return <Select<BranchUpdate | ''> id="input-branchUpdate" aria-labelledby="label-branchUpdate" value={how ?? ''} onChange={(v) => set(v || undefined)} options={UPDATE_CHOICES} />;
 }
 
-/** Off is absent (not written), so a repository that never turned it on has nothing stored. */
-function gitmojiBinding(ctx: SettingsCtx) {
-  const b = repoField('gitmoji', undefined)(ctx);
-  return b && { ...b, get: () => !!b.get(), set: (v: boolean) => b.set(v || undefined), defaultValue: false };
-}
-
 const offs = [
   registerSettingsPage({ id: 'repository', label: 'Repository', scope: 'repo', order: 10, icon: FolderGit2, summary: (ctx) => `Settings for ${ctx.repoName ?? 'this repository'} only.` }),
   registerSettings([
@@ -179,12 +172,6 @@ const offs = [
       keywords: 'rebase merge update branch behind pipeline skip ci pull request',
       description: "What the merge panel's update button does. It remembers your last choice.",
       Control: BranchUpdateControl, binding: repoField('branchUpdate', undefined),
-    },
-    {
-      id: 'gitmoji', label: 'Gitmoji', page: 'repository', group: 'Commit message',
-      keywords: 'gitmoji emoji commit summary title description message picker colon shortcode convention',
-      description: 'Typing : in a commit message (at its start or after a space) opens the gitmoji picker, narrowed as you type its code; a whole :code: becomes its emoji.',
-      Control: switchControl('gitmoji'), binding: gitmojiBinding,
     },
   ]),
 ];

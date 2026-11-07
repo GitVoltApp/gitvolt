@@ -5,3 +5,8 @@
 .md-emoji-glyph { width: 1.4em; text-align: center; font-size: 14px; }
 .md-mention-handle { color: var(--text-secondary); }
 .md-emoji-opt[aria-selected="true"] .md-mention-handle { color: inherit; opacity: 0.8; }
+/* The emoji list: each shortcode, and a gitmoji's meaning beside it. */
+.md-emoji-list { width: min(420px, 90vw); }
+.md-emoji-code { flex: none; }
+.md-emoji-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.md-emoji-opt[aria-selected="true"] .md-emoji-desc { color: inherit; opacity: 0.8; }

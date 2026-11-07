@@ -49,11 +49,6 @@ branchUpdate?: BranchUpdate,
  */
 forkTrunkNoticeDismissed: boolean, 
 /**
- * Settings › Repository › Commit message: a `:` typed in a commit message offers the
- * gitmojis, and a whole `:code:` typed becomes its emoji. Off (and not written) by default.
- */
-gitmoji?: boolean, 
-/**
  * The current branch preset's id; `None`: `"all"`.
  */
 branchPreset?: string, 

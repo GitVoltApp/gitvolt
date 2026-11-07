@@ -74,9 +74,3 @@
 .commit-still-cancel { all: unset; margin-left: auto; color: var(--blue); cursor: pointer; }
 .commit-still-cancel:focus-visible { outline: 1px solid var(--blue); }
 .commit-still-cancel:hover { text-decoration: underline; }
-
-/* The gitmoji picker (useCompletion's popup, under the summary): each code with its meaning. */
-.commit-gitmoji-pop { width: min(420px, 90vw); }
-.commit-gitmoji-code { flex: none; }
-.commit-gitmoji-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-.md-emoji-opt[aria-selected="true"] .commit-gitmoji-desc { color: inherit; opacity: 0.8; }

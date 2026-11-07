@@ -57,7 +57,7 @@ describe('settings pages', () => {
     ['shortcuts', 'keyboard'], ['debugLogging', 'advanced'], ['openLogs', 'advanced'], ['resetAll', 'advanced'],
     ['extraGitconfig', 'git-identity'], ['editor', 'editor-folders'], ['reposFolder', 'editor-folders'],
     ['forgeAccounts', 'accounts'], ['hostOverrides', 'hosts'],
-    ['repoEditor', 'repository'], ['repoPin', 'repository'], ['trunkPatterns', 'repository'], ['forgeTargetRemote', 'repository'], ['forgeAccount', 'repository'], ['branchUpdate', 'repository'], ['gitmoji', 'repository'],
+    ['repoEditor', 'repository'], ['repoPin', 'repository'], ['trunkPatterns', 'repository'], ['forgeTargetRemote', 'repository'], ['forgeAccount', 'repository'], ['branchUpdate', 'repository'],
   ])('%s is registered once, on %s', (id, page) => {
     expect(allSettings().filter((d) => d.id === id)).toHaveLength(1);
     expect(settingDef(id)?.page).toBe(page);

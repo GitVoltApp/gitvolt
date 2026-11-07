@@ -1,38 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { useRepoContext } from '../app/repoContext';
-import { useAppState } from '../app/state';
-import { typeInto, useCompletion, type Provider } from '../markdown/useCompletion';
+import { shortcodes, typedShortcode } from '../markdown/emojiComplete';
+import { emojiProvider, useEmojiLists } from '../markdown/providers';
+import { typeInto, useCompletion } from '../markdown/useCompletion';
 import { flushDrafts, WIP_DRAFT_COUNTER_FROM, WIP_DRAFT_WARN_FROM, type WipDraft } from './draft';
-import { expandGitmoji, findGitmojiTrigger, GITMOJI_MAX, loadGitmojis, rankGitmojis, type Gitmoji } from './gitmoji';
 import './commit.css';
 import { registerKeyHints } from '../shortcuts/hints';
 
 const isSubmit = (e: KeyboardEvent) => e.key === 'Enter' && (e.ctrlKey || e.metaKey);
-
-/** The gitmojis while the repository's setting is on (loaded once, as their own chunk), else
- * null; off outside a repository tab. */
-function useGitmojis(): readonly Gitmoji[] | null {
-  const { path } = useRepoContext();
-  const on = useAppState((s) => !!path && !!s.profile.repos[path]?.gitmoji);
-  const [list, setList] = useState<readonly Gitmoji[] | null>(null);
-  useEffect(() => { if (on) void loadGitmojis().then(setList, () => undefined); }, [on]);
-  return on ? list : null;
-}
-
-/** `:` in the summary or the description → the gitmojis; inserts the emoji and a space. */
-function gitmojiProvider(list: readonly Gitmoji[]): Provider<Gitmoji> {
-  return {
-    label: 'Gitmoji',
-    className: 'commit-gitmoji-pop',
-    max: GITMOJI_MAX,
-    find: findGitmojiTrigger,
-    local: (q) => rankGitmojis(list, q),
-    key: (g) => g.code,
-    token: (g) => `${g.emoji} `,
-    row: (g) => <><span className="md-emoji-glyph" aria-hidden>{g.emoji}</span><span className="commit-gitmoji-code">:{g.code}:</span><span className="commit-gitmoji-desc">{g.description}</span></>,
-  };
-}
 
 /**
  * The summary line and the description below it (spec #2 §8.1), the WIP draft's two fields.
@@ -44,14 +19,16 @@ function gitmojiProvider(list: readonly Gitmoji[]): Provider<Gitmoji> {
  * Keys typed here never reach the page's own handlers (the same rule as the WIP row's box); the
  * app's Ctrl chords still come first (key router), and the app-wide Commit (Ctrl+Enter,
  * `commit/keyActions.ts`) yields to these fields.
- * With gitmoji on (Settings), a `:` in either field opens the gitmoji picker (↑/↓, Enter/Tab,
- * Esc closes it; `findGitmojiTrigger` says where), and a whole `:code:` typed becomes its emoji.
+ * A `:` in either field opens the emoji completion, the Markdown fields' own (`emojiProvider`:
+ * the gitmojis first, then the other emojis), inserting the emoji itself, as nothing renders a
+ * commit message's shortcodes; for the same reason a whole `:code:` typed becomes its emoji.
  */
 export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = false, autoFocus = false }: { value: WipDraft; onChange: (d: WipDraft) => void; onSubmit: () => void; onEscape?: () => void; disabled?: boolean; autoFocus?: boolean }) {
   const summary = useRef<HTMLInputElement>(null);
   const description = useRef<HTMLTextAreaElement>(null);
-  const gitmojis = useGitmojis();
-  const provider = useMemo(() => (gitmojis ? gitmojiProvider(gitmojis) : null), [gitmojis]);
+  const lists = useEmojiLists();
+  const provider = useMemo(() => emojiProvider(lists, 'emoji'), [lists]);
+  const names = useMemo(() => shortcodes(lists.gitmojis, lists.emojis), [lists]);
   const setSummary = (text: string) => onChange({ ...value, summary: text });
   const setDescription = (text: string) => onChange({ ...value, description: text });
   const completion = useCompletion(summary, value.summary, setSummary, [provider]);
@@ -76,11 +53,11 @@ export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = f
     }
   });
   const changed = (box: HTMLInputElement | HTMLTextAreaElement, set: (text: string) => void, sync: () => void) => {
-    const x = gitmojis && expandGitmoji(box.value, box.selectionStart ?? box.value.length, gitmojis);
+    const x = typedShortcode(box.value, box.selectionStart ?? box.value.length, names);
     const typed = x !== null && typeof document.execCommand === 'function';
-    if (x && typed) expandNext.current = { box, start: x.start, end: x.end, emoji: x.emoji };
-    else if (x) caretTo.current = { box, at: x.caret, sync };
-    set(x && !typed ? x.text : box.value);
+    if (x && typed) expandNext.current = { box, ...x };
+    else if (x) caretTo.current = { box, at: x.start + x.emoji.length, sync };
+    set(x && !typed ? box.value.slice(0, x.start) + x.emoji + box.value.slice(x.end) : box.value);
     sync();
   };
   const escape = (e: KeyboardEvent<HTMLElement>) => {
@@ -167,6 +144,6 @@ export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = f
 registerKeyHints([
   { id: 'key.commit', section: 'Commit message', label: 'Commit', keys: ['Mod+Enter'], context: '(when in message input)', source: 'commit/CommitFields.tsx' },
   { id: 'key.msgNext', section: 'Commit message', label: 'Summary to description', keys: ['Enter'], context: '(when in the summary)', source: 'commit/CommitFields.tsx' },
-  { id: 'key.gitmoji', section: 'Commit message', label: 'Pick a gitmoji', keys: [':'], context: "(in the message, with gitmoji on in the repository's settings)", source: 'commit/CommitFields.tsx' },
+  { id: 'key.gitmoji', section: 'Commit message', label: 'Pick an emoji (gitmojis first)', keys: [':'], context: '(in the message)', source: 'commit/CommitFields.tsx' },
   { id: 'key.msgBlur', section: 'Commit message', label: 'Leave the message input', keys: ['Esc'], context: '(when in message input)', source: 'commit/CommitFields.tsx' },
 ]);

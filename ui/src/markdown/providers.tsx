@@ -5,24 +5,44 @@ import { useRuntime } from '../app/runtime';
 import { ForgeAvatar } from '../avatars/Avatar';
 import { useForge } from '../forge/mrStore';
 import { peopleSource } from '../forge/pickerCache';
-import { findTrigger, loadEmojiList, rankEmoji, type EmojiEntry, type EmojiHit } from './emojiComplete';
+import { EMOJI_MAX, findTrigger, loadEmojiList, rankHits, type EmojiEntry, type EmojiHit } from './emojiComplete';
+import { loadGitmojis, type Gitmoji } from './gitmoji';
 import { findMention, mergePeople, participantsOf, rankPeople } from './mentions';
 import type { Provider } from './useCompletion';
 
-/** `:shortcode` → gemoji's emoji; inserts the shortcode, not the glyph (both forges and GitVolt's
- * own renderer turn it into the emoji). */
-export function useEmojiProvider(): Provider<EmojiHit> {
-  const [list, setList] = useState<readonly EmojiEntry[] | null>(null);
-  const prepare = useCallback(() => { void loadEmojiList().then(setList, () => undefined); }, []);
-  return useMemo<Provider<EmojiHit>>(() => ({
+/** The emoji lists (gitmojis, gemoji), loaded on the first `:` (each its own chunk, once): null
+ * until then. */
+export function useEmojiLists(): { gitmojis: readonly Gitmoji[] | null; emojis: readonly EmojiEntry[] | null; prepare(): void } {
+  const [gitmojis, setGitmojis] = useState<readonly Gitmoji[] | null>(null);
+  const [emojis, setEmojis] = useState<readonly EmojiEntry[] | null>(null);
+  const prepare = useCallback(() => {
+    void loadGitmojis().then(setGitmojis, () => undefined);
+    void loadEmojiList().then(setEmojis, () => undefined);
+  }, []);
+  return useMemo(() => ({ gitmojis, emojis, prepare }), [gitmojis, emojis, prepare]);
+}
+
+/** `:shortcode` → the gitmojis, then gemoji's emojis. `as`: what a pick inserts. The shortcode
+ * in Markdown (both forges and GitVolt's own renderer turn it into the emoji); the emoji itself
+ * in a commit message, which nothing renders. */
+export function emojiProvider(lists: ReturnType<typeof useEmojiLists>, as: 'shortcode' | 'emoji'): Provider<EmojiHit> {
+  return {
     label: 'Emoji',
+    className: 'md-emoji-list',
+    max: EMOJI_MAX,
     find: findTrigger,
-    local: (q) => (list ? rankEmoji(list, q) : []),
-    prepare,
-    key: (h) => h.name,
-    token: (h) => `:${h.name}: `,
-    row: (h) => <><span className="md-emoji-glyph" aria-hidden>{h.emoji}</span><span>:{h.name}:</span></>,
-  }), [list, prepare]);
+    local: (q) => rankHits(lists.gitmojis, lists.emojis, q),
+    prepare: lists.prepare,
+    key: (h) => `${h.name} ${h.emoji}`,
+    token: (h) => (as === 'emoji' ? `${h.emoji} ` : `:${h.name}: `),
+    row: (h) => <><span className="md-emoji-glyph" aria-hidden>{h.emoji}</span><span className="md-emoji-code">:{h.name}:</span>{h.description && <span className="md-emoji-desc">{h.description}</span>}</>,
+  };
+}
+
+/** `emojiProvider` for a Markdown field: inserts the shortcode. */
+export function useEmojiProvider(): Provider<EmojiHit> {
+  const lists = useEmojiLists();
+  return useMemo(() => emojiProvider(lists, 'shortcode'), [lists]);
 }
 
 /** `@username` from the forge's people search (the reviewer picker's cached one), the MR/PR's own
