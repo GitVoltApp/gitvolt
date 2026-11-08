@@ -24,6 +24,15 @@ use std::time::{Duration, Instant};
 pub const CLICK_SETTLE: Duration = Duration::from_millis(200);
 pub const KEY_SETTLE: Duration = Duration::from_millis(350);
 
+/// The anchors an armed label stays inside (`bounds`).
+const BOUNDS: &str = "arm-bounds:";
+
+/// A container an armed label inside it doesn't grow out of, as the web's nearest scroll box
+/// (`grow.ts`'s `armBounds`): a panel's body.
+pub fn bounds(key: &str, child: impl IntoElement) -> super::tooltip::Anchor {
+    super::anchor(format!("{BOUNDS}{key}"), child)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tone {
     Danger,
@@ -228,6 +237,11 @@ pub fn armed_control(cx: &App) -> Option<SharedString> {
     }
 }
 
+/// Where the armed label is drawn, while it is: for the real-input flows.
+pub fn overlay(cx: &App) -> Option<Bounds<Pixels>> {
+    Ui::get(cx).arm.armed.as_ref()?.overlay
+}
+
 pub(super) fn is_armed_in_place(cx: &App) -> bool {
     Ui::get(cx).arm.armed.as_ref().is_some_and(|a| matches!(a.origin, Origin::Control { .. }))
 }
@@ -271,7 +285,8 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
     let vw = window.viewport_size().width.as_f32();
     let box_ = Rect::of(bounds);
     let width = bounds.size.width.as_f32();
-    let (grow, max_w) = place::arm_placement((box_.left, box_.right), (place::EDGE, vw - place::EDGE), needed, grow_right);
+    let containers = ui.anchors_starting(&[BOUNDS]).into_iter().map(|(_, b)| Rect::of(b));
+    let (grow, max_w) = place::arm_placement((box_.left, box_.right), place::arm_bounds(box_, containers, vw), needed, grow_right);
     let w = needed.max(width).min(max_w);
     let left = if grow { box_.left } else { box_.right - w };
     let h = bounds.size.height.as_f32();

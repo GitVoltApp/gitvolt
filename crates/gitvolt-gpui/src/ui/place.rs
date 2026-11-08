@@ -129,6 +129,17 @@ pub fn arm_placement(control: (f32, f32), bounds: (f32, f32), needed: f32, prefe
     (grow_right, (control.1 - control.0).max(if grow_right { room_right } else { room_left }))
 }
 
+/// The span an armed label stays inside (`grow.ts`'s `armBounds`): the narrowest container
+/// (`arm::bounds`) the control sits across, else the window, less the edge either way.
+pub fn arm_bounds(control: Rect, containers: impl IntoIterator<Item = Rect>, vw: f32) -> (f32, f32) {
+    let window = (EDGE, vw - EDGE);
+    containers
+        .into_iter()
+        .filter(|c| c.right > c.left && c.left <= control.left && control.right <= c.right && c.top < control.bottom && control.top < c.bottom)
+        .min_by(|a, b| (a.right - a.left).total_cmp(&(b.right - b.left)))
+        .map_or(window, |c| (c.left.max(window.0), c.right.min(window.1)))
+}
+
 /// A child put where `place` says from its measured size and the window's. Use it as a root child,
 /// so its coordinates are the window's.
 pub struct Placed {
@@ -239,6 +250,19 @@ mod tests {
         assert_eq!(arm_placement((900., 950.), (0., 1000.), 200., None), (false, 950.));
         assert_eq!(arm_placement((100., 150.), (0., 1000.), 120., Some(false)), (false, 150.));
         assert_eq!(arm_placement((100., 150.), (0., 200.), 500., Some(true)), (false, 150.), "room on neither side: the roomier");
+    }
+
+    #[test]
+    fn an_armed_label_stays_in_its_container() {
+        let merge = Rect { left: 440., right: 520., top: 300., bottom: 328. };
+        let panel = Rect { left: 0., right: 540., top: 100., bottom: 900. };
+        let column = Rect { left: 0., right: 1600., top: 0., bottom: 900. };
+        assert_eq!(arm_bounds(merge, [], 1600.), (8., 1592.), "no container: the window");
+        assert_eq!(arm_bounds(merge, [column, panel], 1600.), (8., 540.), "the narrowest one around it");
+        assert_eq!(arm_bounds(merge, [Rect { left: 600., ..panel }], 1600.), (8., 1592.), "one beside it doesn't count");
+        // A panel's right edge: the label grows left, keeping the button's right edge.
+        assert!(!arm_placement((merge.left, merge.right), arm_bounds(merge, [panel], 1600.), 250., None).0);
+        assert!(arm_placement((merge.left, merge.right), arm_bounds(merge, [], 1600.), 250., None).0, "the window had room right");
     }
 
     #[test]

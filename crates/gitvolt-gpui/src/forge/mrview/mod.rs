@@ -451,7 +451,7 @@ pub fn mr_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mut Co
             }
         }))
         .child(head)
-        .child(body)
+        .child(crate::ui::arm::bounds("mr-body", body))
         .children(bar)
         .child(
             div()

@@ -537,7 +537,8 @@ pub fn merge_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, listed: &ForgeMr
         .bg(theme::panel_bg1())
         .child(div().flex().flex_none().size(px(22.)).items_center().justify_center().rounded_full().bg(theme::mix(tone_color, 0.18, transparent_black())).child(dot_icon))
         .child(div().flex().flex_col().flex_1().min_w_0().child(title_row).child(div().min_h(px(17.)).text_size(px(12.)).text_color(note_color).child(note.unwrap_or_default())))
-        .child(crate::ui::anchor("mr-merge-act", div().flex().flex_none().items_stretch().child(go).when(pick, |d| d.child(pick_divider(ready.then(theme::green)))).children(chevron)));
+        // Merge alone arms, as the web's button does: the chevron stays beside its label.
+        .child(crate::ui::anchor("mr-merge-buttons", div().flex().flex_none().items_stretch().child(crate::ui::anchor("mr-merge-act", go)).when(pick, |d| d.child(pick_divider(ready.then(theme::green)))).children(chevron)));
     let mut section = div().id("mr-merge").flex().flex_col().flex_none().rounded(px(8.)).border_1().border_color(theme::section_border()).overflow_hidden().child(top);
     if let (true, Some(main), Some(o)) = (show_update, main, offer.as_ref()) {
         let others: Vec<BranchUpdate> = offered.iter().copied().filter(|k| *k != main).collect();

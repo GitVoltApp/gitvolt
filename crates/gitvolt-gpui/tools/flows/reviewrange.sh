@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# A range of lines picked by a drag from the "+" in review mode, against the harness's fake forge; the Merge split button.
+# A range of lines picked by a drag from the "+" in review mode, against the harness's fake forge; the Merge split button;
+# Submit review's box under the chip, typed into.
 source "$(dirname "$0")/lib.sh"
 export GITVOLT_E2E_PORT_BASE=${GITVOLT_E2E_PORT_BASE:-7443}
 LAB="$TOOLS/forge-lab.sh"
@@ -54,4 +55,27 @@ ri up -- wait 500
 shot rr-box
 ri move 500 800 -- wait 200
 shot rr-box2
+echo "Add to review, then Submit review under the chip: its box takes typing"
+ri move $((RX - 300)) $((RY + 9 + 18 * 2)) -- wait 100; ri type "a note on the range"; pause 0.3
+ADD=$(q "next((k for k in d['anchors'] if k.startswith('rv-add:')), '')")
+[ -n "$ADD" ] && clickon "$ADD"; until_q "d['forge']['review'] and d['forge']['review']['drafts'] >= 1" 5
+check "a pending comment" "d['forge']['review']['drafts'] >= 1"
+key Control+Alt+r; pause 0.6
+check "Submit review is open" "d['reviewSubmit'] is not None"
+ri type "the summary"; pause 0.3
+shot rr-submit
+check "its box took the typing" "d['reviewSubmit']['text'] == 'the summary'"
+check "and shows it: the input has a height" "d['anchors']['mr-review-input-pop'][3] >= 40"
+key Escape; pause 0.3
+check "Esc closed it, nothing sent" "d['reviewSubmit'] is None and d['forge']['review']['drafts'] >= 1"
+echo "the same from the chip's menu, then a click into the box"
+clickon tb-review-caret; pause 0.4; pick "Submit review…"; pause 0.6
+check "Submit review is open from the menu" "d['reviewSubmit'] is not None"
+ri type " more"; pause 0.3
+check "typing went in" "d['reviewSubmit']['text'] == 'the summary more'"
+read -r TX TY <<<"$(q "(lambda b: '%d %d' % (b[0] + 40, b[1] + 20))(d['anchors']['mr-review-text-pop'])")"
+ri move "$TX" "$TY" -- wait 60 -- click; pause 0.2; ri type "Z"; pause 0.3
+shot rr-submit-menu
+check "a click into it, then typing where it put the caret" "'Z' in d['reviewSubmit']['text'] and not d['reviewSubmit']['text'].endswith('Z')"
+key Escape; pause 0.3
 finish

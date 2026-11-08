@@ -598,7 +598,10 @@ pub fn review_composer(this: &mut GitVolt, tab: u32, kind: ForgeKind, number: u6
         }))));
     }
     let focused = input.read(cx).is_focused(window);
-    let area = div().id("mr-review-text").min_h(px(62.)).max_h(px(240.)).px(px(8.)).py(px(5.)).rounded(px(6.)).border_1().border_color(if focused { theme::blue() } else { theme::wip_input_border() }).bg(theme::wip_input_bg()).text_color(theme::text_normal()).text_size(px(12.)).child(input.clone());
+    // A height of its own: the input is as tall as its box, and a box of only a min height left it none, nothing drawn
+    // (Submit review's popover). Its lines' height, 12px at 1.4, between the web's 4.5em and 240px.
+    let rows = text.split('\n').count() as f32;
+    let area = div().id("mr-review-text").h(px((rows * 16.8 + 12.).clamp(62., 240.))).px(px(8.)).py(px(5.)).rounded(px(6.)).border_1().border_color(if focused { theme::blue() } else { theme::wip_input_border() }).bg(theme::wip_input_bg()).text_color(theme::text_normal()).text_size(px(12.)).child(crate::ui::anchor(if keep { "mr-review-input" } else { "mr-review-input-pop" }, input.clone()));
     let cancel_on = !(keep && text.is_empty());
     let clear = input.clone();
     let cancel = mr_button("mr-review-cancel", cancel_on).child("Cancel").when(cancel_on, |d| {
@@ -631,7 +634,7 @@ pub fn review_composer(this: &mut GitVolt, tab: u32, kind: ForgeKind, number: u6
         .flex_col()
         .gap(px(6.))
         .child(div().flex().child(modes))
-        .child(area)
+        .child(crate::ui::anchor(if keep { "mr-review-text" } else { "mr-review-text-pop" }, area))
         .child(div().flex().flex_wrap().items_start().gap_x(px(12.)).gap_y(px(4.)).child(notes).child(div().flex().flex_none().ml_auto().gap(px(6.)).child(crate::ui::anchor("mr-review-cancel", cancel)).child(crate::ui::anchor("mr-review-send", submit))))
         .into_any_element()
 }

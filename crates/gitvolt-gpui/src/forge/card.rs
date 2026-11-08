@@ -106,6 +106,13 @@ pub fn mr_card(kind: ForgeKind, mr: &ForgeMr, detail: Option<&ForgeMrDetail>, er
     let meta = || div().text_size(px(11.)).text_color(theme::text_secondary());
     let (from, to) = branches_parts(m);
     let wait = error.map_or("Loading…".to_string(), |e| format!("Couldn't load: {e}"));
+    // The reference and the title are one text, wrapping in the card beside the chip: as items of their own, a long title
+    // took a line of its own and ran past the card. (The web's wraps under the chip too; here it hangs beside it.) The
+    // title is the highlight: one on the reference, from the text's start, kept the title's colour.
+    let r = mr_ref(kind, mr.number);
+    let text = format!("{r} {}", crate::md::emoji::emojify(&m.title));
+    let name = HighlightStyle { color: Some(theme::text_selected()), font_weight: Some(FontWeight::SEMIBOLD), ..Default::default() };
+    let title = StyledText::new(text.clone()).with_highlights([(r.len()..text.len(), name)]);
     div()
         .flex()
         .flex_col()
@@ -114,14 +121,11 @@ pub fn mr_card(kind: ForgeKind, mr: &ForgeMr, detail: Option<&ForgeMrDetail>, er
         .child(
             div()
                 .flex()
-                .flex_wrap()
-                .items_center()
+                .items_start()
                 .gap(px(4.))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(theme::text_selected())
+                .text_color(theme::text_secondary())
                 .child(state_chip(m.state, 10., 7., 0.).mr(px(2.)))
-                .child(div().font_weight(FontWeight::NORMAL).text_color(theme::text_secondary()).child(mr_ref(kind, mr.number)))
-                .child(crate::md::emoji::emojify(&m.title)),
+                .child(div().flex_1().min_w_0().child(title)),
         )
         .child(meta().flex().items_center().gap(px(5.)).min_h(px(16.)).child(forge_avatar(&m.author, 16.)).child(m.author.name.clone()))
         .child(meta().flex().items_center().gap(px(3.)).child(from).child(icon("arrow-right", 11., theme::text_secondary())).child(to))
