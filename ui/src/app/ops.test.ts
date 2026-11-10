@@ -90,6 +90,12 @@ describe('write op output (spec #2 §3.5)', () => {
     expect(useOps.getState().outputs[9]).toBeUndefined();
   });
 
+  it('keeps only the last update of a progress phase', () => {
+    let lines: string[] = [];
+    for (const l of ['To x', 'Counting objects:   2% (1/44)', 'Counting objects:  50% (22/44)', 'Counting objects: 100% (44/44), done.', 'Writing objects:  10% (1/9)', 'Writing objects: 100% (9/9), done.', 'lint: ok']) lines = appendCapped(lines, l);
+    expect(lines).toEqual(['To x', 'Counting objects: 100% (44/44), done.', 'Writing objects: 100% (9/9), done.', 'lint: ok']);
+  });
+
   it('caps the output', () => {
     let lines: string[] = [];
     for (let i = 0; i < 2000; i++) lines = appendCapped(lines, 'x'.repeat(100));

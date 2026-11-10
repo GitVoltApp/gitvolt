@@ -38,12 +38,41 @@ pub struct RemoteSummary {
     pub warning: Option<String>,
 }
 
-/// §12.4's failure words, matched case-insensitively anywhere in the line.
+/// §12.4's failure words, matched case-insensitively as whole words: not when joined to a
+/// neighbouring identifier character (`-`, `_`, `/`, `.` or an alphanumeric), so `error-log-charts`
+/// or `fix_conflict_ui` don't count. A word may take a suffix of letters (`failed`, `rejected`,
+/// `aborting`), but `fail-fast` is an identifier. Multi-word phrases match as written.
 const WARNINGS: [&str; 10] = ["error", "fatal", "fail", "reject", "denied", "conflict", "could not", "cannot", "abort", "warning"];
 /// Forge lines followed by their URL line.
 const LINK_INTROS: [&str; 3] = ["To create a merge request for ", "View merge request for ", "Create a pull request for "];
 /// git's own pack messages from the remote side (Deviation 6).
 const METERS: [&str; 7] = ["Enumerating objects:", "Counting objects:", "Compressing objects:", "Finding sources:", "Resolving deltas:", "Writing objects:", "Total "];
+
+/// git's own echoes (a hook printing a pull or reset's output): never a failure, whatever the
+/// commit subjects and branch names in them say.
+fn is_git_echo(t: &str) -> bool {
+    static ECHO: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = ECHO.get_or_init(|| {
+        regex::Regex::new(
+            r"^(HEAD is now at [0-9a-f]{7,40}\b|\+?\s*[0-9a-f]{7,40}\.{2,3}[0-9a-f]{7,40}\s.*->|\*\s+\[(new|deleted)\b.*->|(From|To) \S+$|Already up[ -]to[ -]date|Fast-forward$|Updating [0-9a-f]{7,40}\.\.[0-9a-f]{7,40}$|\S.*\|\s+\d+(\s|$)|\d+ files? changed\b)",
+        )
+        .expect("valid regex")
+    });
+    re.is_match(t)
+}
+
+fn has_failure_word(lower: &str) -> bool {
+    let ident = |c: char| c.is_alphanumeric() || matches!(c, '-' | '_' | '/' | '.');
+    WARNINGS.iter().any(|w| {
+        lower.match_indices(w).any(|(i, _)| {
+            let before = lower[..i].chars().next_back();
+            // After the word: letters are a suffix (`failed`); `-`, `_`, `/`, `.` + more joins an identifier.
+            let rest = lower[i + w.len()..].trim_start_matches(|c: char| c.is_alphabetic());
+            let joined = rest.chars().next().is_some_and(|c| matches!(c, '-' | '_' | '/') || (c == '.' && rest[1..].chars().next().is_some_and(ident)));
+            !before.is_some_and(ident) && !joined
+        })
+    })
+}
 
 fn classify(text: &str, after_intro: bool) -> RemoteKind {
     let t = text.trim();
@@ -53,8 +82,10 @@ fn classify(text: &str, after_intro: bool) -> RemoteKind {
     if after_intro && (t.starts_with("https://") || t.starts_with("http://")) {
         return RemoteKind::Boilerplate;
     }
-    let lower = t.to_lowercase();
-    if WARNINGS.iter().any(|w| lower.contains(w)) { RemoteKind::Warning } else { RemoteKind::Info }
+    if is_git_echo(t) {
+        return RemoteKind::Info;
+    }
+    if has_failure_word(&t.to_lowercase()) { RemoteKind::Warning } else { RemoteKind::Info }
 }
 
 /// git's stderr → its `remote:` lines, in order: prefix stripped, a `\r`-rewritten line folded to
@@ -83,6 +114,7 @@ pub fn summarize(lines: &[RemoteLine]) -> RemoteSummary {
 /// A failure's Details (§12.4): the `remote:` lines (a hook's rejection reasons) first, then
 /// git's own (`error:`, `hint:`), each in order.
 pub fn details_first(stderr: &str) -> String {
+    let stderr = crate::git::collapse_progress(stderr);
     let (remote, rest): (Vec<&str>, Vec<&str>) = stderr.lines().partition(|l| l.trim_start_matches('\r').starts_with("remote:"));
     remote.into_iter().map(str::trim_end).chain(rest).collect::<Vec<_>>().join("\n")
 }
@@ -136,6 +168,24 @@ mod tests {
             ]
         );
         assert_eq!(summarize(&lines), RemoteSummary { lines: 2, warning: Some("integration: rebase onto dev failed: conflict in a.txt".into()) });
+    }
+
+    #[test]
+    fn a_hook_echoing_gits_output_is_not_a_warning() {
+        let out = "remote: Rebasing integration branch off origin/dev...Success!\nremote: --- host-a (OK  ) ---\nremote:    e9ae05a2767..a8d2bbb3b88  dev         -> origin/dev\nremote:  + 4e3c9be4f0a...fde7e19ce33 integration -> origin/integration  (forced update)\nremote: HEAD is now at a8d2bbb3b88 error-log-charts: scrollable summary table\nremote: === Summary ===\nremote:   OK    host-a\nremote:  src/a.rs | 3 ++-\nremote:  2 files changed, 4 insertions(+)\nremote: Already up to date.\n";
+        let lines = parse(out);
+        assert!(lines.iter().all(|l| l.kind == RemoteKind::Info), "{lines:?}");
+        assert_eq!(summarize(&lines), RemoteSummary { lines: 10, warning: None });
+    }
+
+    #[test]
+    fn a_failure_word_inside_an_identifier_is_not_a_warning() {
+        for w in ["error-log-charts", "fix_conflict_ui", "p/name/cannot-load", "see fail-fast.yml", "src/error.rs"] {
+            assert_eq!(parse(&format!("remote: {w}\n"))[0].kind, RemoteKind::Info, "{w}");
+        }
+        for w in ["build failed", "tests failure in x", "push rejected.", "merge conflict in a.txt", "Error."] {
+            assert_eq!(parse(&format!("remote: {w}\n"))[0].kind, RemoteKind::Warning, "{w}");
+        }
     }
 
     #[test]

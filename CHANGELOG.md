@@ -21,6 +21,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Fixed
 
+- **A clean push no longer warns.** A server hook that echoed git's own output (`HEAD is now at
+  <sha> error-log-charts: ...`, ref-update lines, diffstats) made the toast say there was a
+  problem. Those echoes are plain info now, and a failure word counts only as a whole word, not
+  inside a name like `error-log-charts` or `fix_conflict_ui`.
+- **Activity keeps a push's progress once.** An op's Activity details listed every
+  `Counting objects: 2% (1/44)` update on its own line; each phase now shows its last state.
 - **Clone on Windows.** A destination like `F:\Projects\repo` is accepted; the form wanted a path
   starting with `/` (#26). A local source path can be a Windows one too, on Windows.
 

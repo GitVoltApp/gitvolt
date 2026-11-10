@@ -49,9 +49,23 @@ const TRUNCATED = '… output truncated at 64 KB';
 /** Byte size of each array `appendCapped` returned (a line costs O(1), not a re-sum). */
 const bytes = new WeakMap<string[], number>();
 
-/** `lines` plus `line`, or plus the truncation note (once) past `OUTPUT_CAP` bytes. */
+/** A git progress update's phase (`Counting objects:  12% (3/24)`, also after `remote: `). */
+const progressPhase = (line: string): string | null => /^(.*?):\s+\d{1,3}% \(/.exec(line)?.[1] ?? null;
+
+/**
+ * `lines` plus `line`, or plus the truncation note (once) past `OUTPUT_CAP` bytes. An update of
+ * the same progress phase as the last line replaces it, so Activity keeps each phase's last state
+ * (the live `opProgress` stream is unaffected).
+ */
 export function appendCapped(lines: string[], line: string): string[] {
   if (lines[lines.length - 1] === TRUNCATED) return lines;
+  const phase = progressPhase(line);
+  if (phase !== null && lines.length > 0 && progressPhase(lines[lines.length - 1]) === phase) {
+    const enc = new TextEncoder();
+    const next = [...lines.slice(0, -1), line];
+    bytes.set(next, (bytes.get(lines) ?? 0) - enc.encode(lines[lines.length - 1]).length + enc.encode(line).length);
+    return next;
+  }
   const size = bytes.get(lines) ?? 0;
   const add = new TextEncoder().encode(line).length + 1;
   const next = size + add > OUTPUT_CAP ? [...lines, TRUNCATED] : [...lines, line];
