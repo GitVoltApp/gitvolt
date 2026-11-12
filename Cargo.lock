@@ -3107,6 +3107,7 @@ dependencies = [
  "hayro",
  "image",
  "libc",
+ "memchr",
  "mermaid-rs-renderer",
  "onig",
  "pulldown-cmark",

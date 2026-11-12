@@ -39,6 +39,8 @@ unicode-linebreak = "0.1"
 # Oniguruma, the engine TextMate grammars are written for; Shiki runs the same one as WASM.
 onig = { version = "6.5", default-features = false }
 similar = "2.7"
+# Counting a big file's line breaks after a keystroke. Already in the lockfile through regex.
+memchr = "2"
 anyhow = "1"
 futures = "0.3"
 raw-window-handle = "0.6.2"

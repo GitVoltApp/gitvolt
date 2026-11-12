@@ -32,6 +32,9 @@ pub struct EditState {
     pub want_col: Option<usize>,
     /// Colours follow typing after a breath.
     pub recolour: u64,
+    /// The diff `after_edit` last built and the text it built it of: the next keystroke's starts from them. Weak, so its
+    /// address can't go to another diff while this is kept.
+    built: Option<(std::sync::Weak<DiffData>, String)>,
 }
 
 fn line_starts(text: &str) -> Vec<usize> {
@@ -48,7 +51,7 @@ impl EditState {
         let loaded = buffer.text.clone();
         buffer.move_to(0);
         let starts = line_starts(&loaded);
-        Self { buffer, base, loaded, crlf, old_text, focus: cx.focus_handle(), worktree, starts, want_col: None, recolour: 0 }
+        Self { buffer, base, loaded, crlf, old_text, focus: cx.focus_handle(), worktree, starts, want_col: None, recolour: 0, built: None }
     }
 
     pub fn dirty(&self) -> bool {
@@ -140,8 +143,19 @@ impl DiffState {
         let Some(mut edit) = self.edit.take() else { return };
         edit.starts = line_starts(&edit.buffer.text);
         let (encoding, eol_only) = self.data.as_ref().map_or((SharedString::default(), false), |d| (d.encoding.clone(), d.eol_only));
-        let data = DiffData::build(edit.old_text.as_deref(), Some(&edit.buffer.text), self.ignore_whitespace, encoding, eol_only);
-        self.data = Some(Arc::new(data));
+        // From the last keystroke's diff when it's still the one shown and nothing else holds it (a colouring may): else whole.
+        let previous = match (self.data.take(), edit.built.take()) {
+            (Some(d), Some((was, text))) if std::ptr::eq(was.as_ptr(), Arc::as_ptr(&d)) => Arc::try_unwrap(d).ok().map(|d| (d, text)),
+            _ => None,
+        };
+        let (old, after) = (edit.old_text.as_deref(), edit.buffer.text.as_str());
+        let data = match previous {
+            Some((d, before)) => d.rebuild(old, &before, after, self.ignore_whitespace),
+            None => DiffData::build(old, Some(after), self.ignore_whitespace, encoding, eol_only),
+        };
+        let data = Arc::new(data);
+        edit.built = Some((Arc::downgrade(&data), edit.buffer.text.clone()));
+        self.data = Some(data);
         self.fold_ends = Rc::new(Vec::new());
         self.edit = Some(edit);
         self.relayout();

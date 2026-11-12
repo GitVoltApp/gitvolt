@@ -373,6 +373,15 @@ screen here; Monaco's are when the screen's lines have their colours.
 | Scroll frame time, p99 | 7.0–13.9 ms | 7.29–13.95 ms |
 | Scroll frame time, worst | 7.1–83.4 ms | 9.37–14.66 ms |
 | Scroll CPU per frame, all processes | 4.5–5.1 ms | 2.48–2.91 ms |
+
+### Typing into a big file
+
+A keystroke in File View made both sides' lines anew and compared them: on a generated file of 200,000
+lines, 79–82 ms of a model's rebuild, where the line diff itself took 2–3 ms. Now only the changed
+stretch's lines are made again (`DiffData::rebuild`, found by the texts' common start and end, and
+checked against a whole build by a test), and lines are compared without copying them: 16 ms. In the
+app, real input, ten characters typed into that file: 0.85–0.88 s of CPU before, 0.33–0.35 s now (3
+runs each); 3,000 lines: 0.13–0.15 s either way. Nothing's rebuilt off the window's thread.
 | Anonymous memory, file open | 532–540 MB | 55–56 MB |
 | Anonymous memory, after scrolling | 701–706 MB | 56 MB |
 

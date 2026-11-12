@@ -105,24 +105,26 @@ impl Side {
             }
             parts.into_iter().map(Line::new).collect()
         });
-        // A blank line's guides are the lesser of the lines around it, as Monaco's.
-        let mut last = 0;
-        for line in &mut lines {
-            if line.guides == u16::MAX {
-                line.guides = last;
-            } else {
-                last = line.guides;
-            }
-        }
-        let mut next = 0;
-        for line in lines.iter_mut().rev() {
-            if line.text.bytes().all(|b| b == b' ') {
-                line.guides = line.guides.min(next);
-            } else {
-                next = line.guides;
-            }
-        }
+        blank_guides(&mut lines, 0, 0);
         Self { lines }
+    }
+
+    /// Lines `from..to` swapped for `raw`'s, made anew, and the blank lines around them given their guides again: what
+    /// `new` makes of the text with that change, without making the rest.
+    pub fn splice(&mut self, from: usize, to: usize, raw: &[&str]) {
+        self.lines.splice(from..to, raw.iter().map(|l| Line::new(l)));
+        let (mut start, mut stop) = (from, from + raw.len());
+        while start > 0 && is_blank(&self.lines[start - 1]) {
+            start -= 1;
+        }
+        while stop < self.lines.len() && is_blank(&self.lines[stop]) {
+            stop += 1;
+        }
+        let lines = &mut self.lines;
+        lines[start..stop].iter_mut().filter(|l| is_blank(l)).for_each(|l| l.guides = u16::MAX);
+        let before = start.checked_sub(1).map_or(0, |i| lines[i].guides);
+        let after = lines.get(stop).map_or(0, |l| l.guides);
+        blank_guides(&mut lines[start..stop], before, after);
     }
 
     /// Colours of the raw text's lines from line `first` on, in display offsets.
@@ -164,9 +166,45 @@ pub struct Row {
     pub kind: RowKind,
 }
 
-/// Compares lines by what's left without their ends' whitespace (`ignoreTrimWhitespace`).
-fn keys(side: &[&str], ignore_whitespace: bool) -> Vec<String> {
-    side.iter().map(|l| if ignore_whitespace { l.trim().to_string() } else { l.strip_suffix('\r').unwrap_or(l).to_string() }).collect()
+fn is_blank(line: &Line) -> bool {
+    line.text.bytes().all(|b| b == b' ')
+}
+
+/// A blank line's guides are the lesser of the lines around it, as Monaco's: a blank line's are `u16::MAX` until then.
+/// `before` and `after`: the guides of the lines either side of `lines`, 0 at the text's ends.
+fn blank_guides(lines: &mut [Line], before: u16, after: u16) {
+    let mut last = before;
+    for line in lines.iter_mut() {
+        if line.guides == u16::MAX {
+            line.guides = last;
+        } else {
+            last = line.guides;
+        }
+    }
+    let mut next = after;
+    for line in lines.iter_mut().rev() {
+        if is_blank(line) {
+            line.guides = line.guides.min(next);
+        } else {
+            next = line.guides;
+        }
+    }
+}
+
+/// What `mark_words` set for `ops`, cleared: the marks and tints of every changed line.
+pub fn clear_marks(ops: &[DiffOp], old: &mut Side, new: &mut Side) {
+    for op in ops.iter().filter(|op| !matches!(op, DiffOp::Equal { .. })) {
+        for line in old.lines[op.old_range()].iter_mut().chain(&mut new.lines[op.new_range()]) {
+            line.marks.clear();
+            line.to_end = None;
+        }
+    }
+}
+
+/// Compares lines by what's left without their ends' whitespace (`ignoreTrimWhitespace`). Borrowed: a big file's keystroke
+/// copied every line of both sides here.
+fn keys<'a>(side: &[&'a str], ignore_whitespace: bool) -> Vec<&'a str> {
+    side.iter().map(|l| if ignore_whitespace { l.trim() } else { l.strip_suffix('\r').unwrap_or(l) }).collect()
 }
 
 pub fn split_lines(text: Option<&str>) -> Vec<&str> {

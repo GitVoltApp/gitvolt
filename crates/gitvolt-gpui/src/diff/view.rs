@@ -59,6 +59,20 @@ pub struct DiffData {
     pub raw: Option<(Arc<str>, Arc<str>)>,
 }
 
+/// How many bytes `a` and `b` start with alike, compared a block at a time.
+fn common_prefix(a: &[u8], b: &[u8]) -> usize {
+    const BLOCK: usize = 128;
+    let blocks = a.as_chunks::<BLOCK>().0.iter().zip(b.as_chunks::<BLOCK>().0).take_while(|(x, y)| x == y).count() * BLOCK;
+    blocks + a[blocks..].iter().zip(&b[blocks..]).take_while(|(x, y)| x == y).count()
+}
+
+/// How many bytes `a` and `b` end with alike.
+fn common_prefix_rev(a: &[u8], b: &[u8]) -> usize {
+    const BLOCK: usize = 128;
+    let blocks = a.as_rchunks::<BLOCK>().1.iter().rev().zip(b.as_rchunks::<BLOCK>().1.iter().rev()).take_while(|(x, y)| x == y).count() * BLOCK;
+    blocks + a[..a.len() - blocks].iter().rev().zip(b[..b.len() - blocks].iter().rev()).take_while(|(x, y)| x == y).count()
+}
+
 impl DiffData {
     pub fn build(old: Option<&str>, new: Option<&str>, ignore_whitespace: bool, encoding: SharedString, eol_only: bool) -> Self {
         let (old_raw, new_raw) = (split_lines(old), split_lines(new));
@@ -67,6 +81,30 @@ impl DiffData {
         mark_words(&ops, &old_raw, &new_raw, &mut a, &mut b);
         let widest = a.lines.iter().chain(&b.lines).map(|l| l.text.len()).max().unwrap_or(0);
         Self { old: a, new: b, ops, has_old: old.is_some(), encoding, eol_only, widest, raw: None }
+    }
+
+    /// After typing: what `build` makes of `after`, from `self`, built of `before` against the same `old`. The two texts
+    /// differ in one stretch, found by their common start and end; only its lines are made anew, then the lines are
+    /// compared and marked again. On a big file, making every line of both sides was most of a keystroke's cost.
+    pub fn rebuild(mut self, old: Option<&str>, before: &str, after: &str, ignore_whitespace: bool) -> Self {
+        if before.is_empty() || after.is_empty() {
+            return Self::build(old, Some(after), ignore_whitespace, self.encoding, self.eol_only);
+        }
+        let (old_raw, new_raw) = (split_lines(old), split_lines(Some(after)));
+        let (b, a) = (before.as_bytes(), after.as_bytes());
+        let prefix = common_prefix(b, a);
+        let suffix = common_prefix_rev(&b[prefix..], &a[prefix..]);
+        // A line's index is the line breaks before it: the changed bytes run from the first line to the last, inclusive.
+        let breaks = |bytes: &[u8]| memchr::memchr_iter(b'\n', bytes).count();
+        let first = breaks(&b[..prefix]);
+        let (last_before, last_after) = (first + breaks(&b[prefix..b.len() - suffix]), first + breaks(&a[prefix..a.len() - suffix]));
+        clear_marks(&self.ops, &mut self.old, &mut self.new);
+        self.new.splice(first, last_before + 1, &new_raw[first..=last_after]);
+        self.ops = line_ops(&old_raw, &new_raw, ignore_whitespace);
+        mark_words(&self.ops, &old_raw, &new_raw, &mut self.old, &mut self.new);
+        self.widest = self.old.lines.iter().chain(&self.new.lines).map(|l| l.text.len()).max().unwrap_or(0);
+        self.raw = None;
+        self
     }
 }
 
@@ -2563,6 +2601,50 @@ impl GitVolt {
 mod tests {
     use super::*;
     use std::prelude::v1::test;
+
+    fn same_data(got: &DiffData, want: &DiffData, what: &str) {
+        assert_eq!(got.ops, want.ops, "{what}: ops");
+        assert_eq!(got.widest, want.widest, "{what}: widest");
+        for (side, (g, w)) in [("old", (&got.old, &want.old)), ("new", (&got.new, &want.new))] {
+            assert_eq!(g.lines.len(), w.lines.len(), "{what}: {side}'s lines");
+            for (i, (a, b)) in g.lines.iter().zip(&w.lines).enumerate() {
+                let line = |l: &Line| (l.text.clone(), l.marks.clone(), l.to_end, l.guides, l.tab_starts.clone());
+                assert_eq!(line(a), line(b), "{what}: {side} line {i}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_keystrokes_rebuild_is_what_a_whole_build_makes() {
+        let old = "fn main() {\n\tlet a = 1;\n\n    \n    if a > 0 {\r\n        go(a);\n    }\n}\n\nmod rest {\n    // more\n}\n";
+        // Each: replace `range` of the text so far with `with`, a range past the end clamped to it.
+        let edits: &[(std::ops::Range<usize>, &str)] = &[
+            (0..0, "x"),
+            (14..15, ""),
+            (20..20, "\n"),
+            (5..30, ""),
+            (6..6, "\n\n    \n"),
+            (1000..1000, "tail\n"),
+            (0..3, "pub fn"),
+            (9..10, "\t"),
+            (30..45, "one\ntwo\n\nthree"),
+            (2..2, "\r\n"),
+            (0..1000, "all of it\n"),
+            (0..0, "    \n\n"),
+        ];
+        for ignore_whitespace in [false, true] {
+            let mut text = old.replace("let a = 1;", "let a = 2;");
+            let mut data = DiffData::build(Some(old), Some(&text), ignore_whitespace, "UTF-8".into(), false);
+            for (n, (range, with)) in edits.iter().enumerate() {
+                let before = text.clone();
+                let (start, end) = (range.start.min(text.len()), range.end.min(text.len()));
+                text.replace_range(start..end, with);
+                data = data.rebuild(Some(old), &before, &text, ignore_whitespace);
+                let whole = DiffData::build(Some(old), Some(&text), ignore_whitespace, "UTF-8".into(), false);
+                same_data(&data, &whole, &format!("edit {n} {:?}, ignoring whitespace {ignore_whitespace}", (start..end, with)));
+            }
+        }
+    }
 
     fn change() -> FileChange {
         FileChange { path: "a.rs".into(), old_path: None, status: 'M', additions: None, deletions: None, old: Value::Null, new: Value::Null, conflict: None, origin: crate::details::Origin::Commit { id: "c".into() } }
