@@ -12,6 +12,19 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   the one you ran last, newest first. Help › What's new shows them again. The notes come with the
   app (its changelog, built in), so nothing is fetched.
 
+### Changed
+
+- **Updates take one click.** The update dialog's **Install and restart** downloads the package,
+  checks it against the release's SHA256SUMS, installs it and restarts GitVolt, with no further
+  click. Unsaved edits ask before the download starts, not at the end (edits made during it ask
+  again before the restart; kept, the update waits on **Restart GitVolt**); a step that fails or is
+  cancelled stops there and says why, and GitVolt never restarts after one. It carries on with
+  the dialog closed (the status bar's pill shows its progress). On Windows the installer takes
+  over as before (the `.msi`'s button is **Install**: start GitVolt again after it). The status
+  bar's **Update to X** opens the dialog, with the notes of every version since yours, instead
+  of starting a download; and Check for updates in About opens it as soon as it finds an update,
+  in place of the **Show update** button.
+
 ## [1.6.1] - 2026-11-12
 
 ### Added

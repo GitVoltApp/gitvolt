@@ -166,6 +166,8 @@ export interface UnsavedSource {
   any(tabId: string): UnsavedWork | null;
   /** Any at all (closing the window). */
   anyAtAll(): boolean;
+  /** What identifies each piece of its unsaved work (`unsavedKeys`). */
+  keys(): string[];
 }
 const unsavedSources = new Set<UnsavedSource>();
 /** Adds `source` to the leave, tab-close and window-close guards; returns its removal. */
@@ -242,6 +244,14 @@ export function guardTabClose(ids: string[], go: () => void): void {
 }
 
 const anyDirty = () => Object.values(useWorkingCopy.getState().copies).some((c) => c?.dirty) || [...unsavedSources].some((s) => s.anyAtAll()); // 2D T20: + other unsaved work
+/** Every unsaved piece of work, by what identifies it (a tab's file; another source's own keys):
+ * to tell work that came later from work the user already agreed to discard. */
+export function unsavedKeys(): Set<string> {
+  const keys = new Set<string>();
+  for (const [tabId, c] of Object.entries(useWorkingCopy.getState().copies)) if (c?.dirty) keys.add(`wc:${tabId}:${c.key}`);
+  for (const s of unsavedSources) for (const k of s.keys()) keys.add(k);
+  return keys;
+}
 /** Before GitVolt goes (the window's close, Restart GitVolt): true when nothing is unsaved, or
  * the user chose to discard it; false when they cancelled. */
 export async function confirmDiscardUnsaved(): Promise<boolean> {

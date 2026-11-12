@@ -4,7 +4,7 @@ import type { InstallOutcome } from '../api/gen/InstallOutcome';
 import type { UpdateRelease } from '../api/gen/UpdateRelease';
 import type { UpdateState } from '../api/gen/UpdateState';
 import { flushSaves } from '../app/state';
-import { confirmDiscardUnsaved } from '../diff/workingCopy';
+import { confirmDiscardUnsaved, unsavedKeys } from '../diff/workingCopy';
 
 /**
  * The update the core found (core `updates.rs`): its state as `updateChanged` events report it,
@@ -20,17 +20,26 @@ interface UpdatesStore {
   outcome: InstallOutcome | null;
   /** A request that failed outside a check (download, install, restart). */
   error: string | null;
+  /** Install and restart is under way: a second press does nothing. */
+  running: boolean;
   setState(state: UpdateState): void;
   /** Starts listening and reads the current state, once. */
   listen(): void;
   check(): Promise<void>;
-  download(): Promise<void>;
+  /**
+   * The dialog's one action: downloads the update (unless it already is), installs it, and
+   * restarts GitVolt, each step only on the last one's success. Unsaved edits ask first, before
+   * anything starts, and again before the restart only for edits made since. It runs here, not
+   * in the dialog, so closing the dialog doesn't stop it.
+   */
+  installAndRestart(): Promise<void>;
   cancel(): Promise<void>;
-  install(): Promise<void>;
-  restart(): Promise<void>;
   openDialog(): void;
   closeDialog(): void;
 }
+
+/** An update a download can start from: offered, or offered again after a failure. */
+const downloadable = (s: UpdateState) => s.state === 'available' || (s.state === 'failed' && s.release !== null);
 
 let listening = false;
 
@@ -42,6 +51,7 @@ export const useUpdates = create<UpdatesStore>((set, get) => {
     checkError: null,
     outcome: null,
     error: null,
+    running: false,
     setState: (state) => set((s) => ({ state, outcome: state.state === 'ready' || state.state === 'installing' ? s.outcome : null })),
     listen() {
       if (listening) return;
@@ -53,30 +63,68 @@ export const useUpdates = create<UpdatesStore>((set, get) => {
       set({ checkError: null });
       try { get().setState(await api.updateCheck()); } catch (e) { set({ checkError: errorMessage(e) }); }
     },
-    async download() {
-      set({ error: null, outcome: null });
-      try { get().setState(await api.updateDownload()); } catch (e) { failed(e); }
+    async installAndRestart() {
+      if (get().running) return;
+      set({ running: true, error: null, outcome: null });
+      try {
+        // Asked now, not once it's installed. Cancelled: nothing starts.
+        if (!(await confirmDiscardUnsaved())) return;
+        const agreed = unsavedKeys();
+        if (get().state.state !== 'installed') {
+          if (downloadable(get().state)) {
+            const started = await api.updateDownload();
+            // Its events may have moved it on already (a small, fast download).
+            if (downloadable(get().state)) get().setState(started);
+          }
+          // Cancelled (offered again) or failed: the dialog and the pill say so.
+          if ((await downloadEnded()).state !== 'ready') return;
+          await flushSaves();
+          const outcome = await api.updateInstall();
+          set({ outcome });
+          // Windows: the installer took over and GitVolt is quitting. Manual: the dialog shows
+          // the command to run instead.
+          if (outcome.outcome !== 'installed') return;
+        }
+        // Edits made since the answer ask again; kept, the update waits on Restart GitVolt.
+        if ([...unsavedKeys()].some((k) => !agreed.has(k)) && !(await confirmDiscardUnsaved())) return;
+        // Settings changed meanwhile are saved too.
+        await flushSaves();
+        await api.updateRestart();
+      } catch (e) { failed(e); } finally { set({ running: false }); }
     },
     async cancel() {
       try { get().setState(await api.updateCancel()); } catch (e) { failed(e); }
-    },
-    async install() {
-      set({ error: null, outcome: null });
-      try { set({ outcome: await api.updateInstall() }); } catch (e) { failed(e); }
-    },
-    async restart() {
-      set({ error: null });
-      try {
-        // Unsaved edits ask first (cancelled: no restart); the settings and tabs are saved.
-        if (!(await confirmDiscardUnsaved())) return;
-        await flushSaves();
-        await api.updateRestart();
-      } catch (e) { failed(e); }
     },
     openDialog: () => set({ dialogOpen: true }),
     closeDialog: () => set({ dialogOpen: false }),
   };
 });
+
+/** The state once the download under way, if any, has ended (ready, failed, or cancelled). */
+function downloadEnded(): Promise<UpdateState> {
+  const now = useUpdates.getState().state;
+  if (now.state !== 'downloading') return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const off = useUpdates.subscribe(({ state }) => {
+      if (state.state === 'downloading') return;
+      off();
+      resolve(state);
+    });
+  });
+}
+
+/**
+ * Check for updates from About (its button, Help › Check for updates): an update it finds, or one
+ * already known, opens the update dialog right away, with `closeAbout` in the same update so About
+ * closes under it.
+ */
+export async function checkAndShow(closeAbout: () => void): Promise<void> {
+  await useUpdates.getState().check();
+  const { state, checkError } = useUpdates.getState();
+  if (checkError || !releaseOf(state)) return;
+  closeAbout();
+  useUpdates.getState().openDialog();
+}
 
 /** The release the pill and the dialog show, if any. A check that failed has none. */
 export function releaseOf(s: UpdateState): UpdateRelease | null {
@@ -98,5 +146,5 @@ export function formatSize(bytes: number): string {
 /** Tests only: forget the subscription. */
 export function resetUpdatesForTest(): void {
   listening = false;
-  useUpdates.setState({ state: { state: 'idle' }, dialogOpen: false, checkError: null, outcome: null, error: null });
+  useUpdates.setState({ state: { state: 'idle' }, dialogOpen: false, checkError: null, outcome: null, error: null, running: false });
 }

@@ -298,5 +298,9 @@ const off = registerUnsaved({
     for (const t of live.values()) t.flush();
     return Object.values(useMergeDrafts.getState().drafts).some(dirty);
   },
+  keys: () => {
+    for (const t of live.values()) t.flush();
+    return Object.entries(useMergeDrafts.getState().drafts).filter(([, d]) => dirty(d)).map(([key]) => `merge:${key}`);
+  },
 });
 import.meta.hot?.dispose(off);

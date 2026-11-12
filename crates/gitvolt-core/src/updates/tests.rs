@@ -175,6 +175,22 @@ async fn an_update_across_three_releases_carries_all_their_notes_newest_first() 
 }
 
 #[tokio::test]
+async fn skipped_versions_notes_follow_the_pre_release_setting_and_skip_drafts() {
+    let pre = |tag: &str| GhRelease { prerelease: true, ..release(tag, &[]) };
+    let draft = |tag: &str| GhRelease { draft: true, ..release(tag, &[]) };
+    let list = vec![release("v1.6.1", &[]), pre("v1.7.0-rc.1"), release("v1.6.0", &[]), pre("v1.6.0-rc.1"), draft("v1.5.2"), release("v1.5.1", &[]), release("v1.5.0", &[]), release("v1.4.0", &[])];
+    let notes = |include_pre| {
+        let s = setup(InstallKind::Deb, "1.5.0", FakeSource::with(list.clone(), &good_sums()));
+        async move {
+            let UpdateState::Available { release } = s.updates.check(include_pre, 1000).await.unwrap() else { panic!() };
+            (release.version.clone(), release.notes.iter().map(|n| n.version.clone()).collect::<Vec<_>>())
+        }
+    };
+    assert_eq!(notes(false).await, ("1.6.1".into(), vec!["1.6.1".to_string(), "1.6.0".into(), "1.5.1".into()]));
+    assert_eq!(notes(true).await, ("1.7.0-rc.1".into(), vec!["1.7.0-rc.1".to_string(), "1.6.1".into(), "1.6.0".into(), "1.6.0-rc.1".into(), "1.5.1".into()]));
+}
+
+#[tokio::test]
 async fn up_to_date_and_a_failed_check_leaves_the_state_as_it_was() {
     let s = setup(InstallKind::Deb, "0.3.0", FakeSource::with(deb_release(), &good_sums()));
     assert!(s.updates.due(0));

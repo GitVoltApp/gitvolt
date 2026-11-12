@@ -1,12 +1,11 @@
-import { releaseOf, useUpdates } from './store';
+import { checkAndShow, releaseOf, useUpdates } from './store';
 import './updates.css';
 
-/** About's update line: Check for updates, and what the check found. "Show update" opens the
- *  update dialog (About closes under it). */
-export function UpdateStatus({ onShow }: { onShow?: () => void }) {
+/** About's update line: Check for updates, and what the check found. An update it finds opens the
+ *  update dialog at once, `onShow` closing About under it. */
+export function UpdateStatus({ onShow }: { onShow: () => void }) {
   const state = useUpdates((s) => s.state);
   const checkError = useUpdates((s) => s.checkError);
-  const { check, openDialog } = useUpdates.getState();
   const release = releaseOf(state);
   const checking = state.state === 'checking';
   let text: string | null = null;
@@ -17,10 +16,9 @@ export function UpdateStatus({ onShow }: { onShow?: () => void }) {
   else if (release) text = `GitVolt ${release.version} is available.`;
   return (
     <div className="update-about">
-      <p className={checkError ? 'update-message error' : 'update-message'} role="status">{text ?? ' '}</p>
+      <p className={checkError ? 'update-message error' : 'update-message'} role="status">{text ?? ' '}</p>
       <div className="modal-actions">
-        {release && <button type="button" onClick={() => { onShow?.(); openDialog(); }}>Show update</button>}
-        <button type="button" disabled={checking} onClick={() => void check()}>Check for updates</button>
+        <button type="button" disabled={checking} onClick={() => void checkAndShow(onShow)}>Check for updates</button>
       </div>
     </div>
   );

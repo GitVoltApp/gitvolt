@@ -11,7 +11,7 @@ vi.mock('./monaco/load', () => ({ loadMonacoHost: async () => host }));
 vi.mock('../write/client', () => ({ applyResult: vi.fn() }));
 vi.mock('../debug/errorToast', () => ({ toastActionError: vi.fn() }));
 
-import { confirmDiscardUnsaved, guardTabClose, isEditableTarget, saveWorkingCopy, suspendCopy, trackCopy, useWorkingCopy, worktreeFileTarget } from './workingCopy';
+import { confirmDiscardUnsaved, guardTabClose, isEditableTarget, registerUnsaved, saveWorkingCopy, suspendCopy, trackCopy, unsavedKeys, useWorkingCopy, worktreeFileTarget } from './workingCopy';
 import { toastActionError } from '../debug/errorToast';
 
 const wipTarget = { key: '{"kind":"wip","worktree":"/r","staged":false}|a.txt', path: 'a.txt', oldPath: null, status: 'M', old: { kind: 'object', oid: 'i' }, new: { kind: 'worktree', worktree: '/r' }, view: 'diff' } as const;
@@ -155,6 +155,14 @@ describe('the editable working copy (spec #2 §7.5)', () => {
     useWorkingCopy.setState({ copies: {} });
     expect(await confirmDiscardUnsaved()).toBe(true);
     expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('unsavedKeys names each unsaved piece of work: a tab and its file, and other sources\' own keys', () => {
+    expect(unsavedKeys()).toEqual(new Set([`wc:t:${wipTarget.key}`]));
+    const off = registerUnsaved({ shown: () => null, any: () => null, anyAtAll: () => true, keys: () => ['merge:m1'] });
+    useWorkingCopy.setState({ copies: { ...useWorkingCopy.getState().copies, u: { key: 'k2', path: 'b.txt', worktree: '/r', repo: 1, base: 'h0', dirty: false, view: 'diff' } } });
+    expect(unsavedKeys()).toEqual(new Set([`wc:t:${wipTarget.key}`, 'merge:m1']));
+    off();
   });
 
   it('two tabs on the same relative path in different worktrees never swap text', async () => {
