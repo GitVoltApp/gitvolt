@@ -4,6 +4,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './theme/tokens.css';
 import { App } from './App';
+import { installBusyPageDetector } from './debug/busyPage';
 import { bindDebugLogging, installFrontendErrorLogging } from './debug/frontendLog';
 import { bindThemeToSettings } from './theme/bind';
 import { installEditorSettingsMigration } from './diff/editorSettings';
@@ -16,6 +17,12 @@ import { applyPageZoom } from './demo/pageZoom';
 // First, before anything else can throw: uncaught errors reach the backend log file (spec §16.2).
 installFrontendErrorLogging();
 bindDebugLogging();
+// A page that keeps the main thread busy for nothing writes what ran to the log file. Not in the
+// website demo: it has no log file.
+if (import.meta.env.MODE !== 'demo') {
+  const busy = installBusyPageDetector();
+  if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') window.__gbBusy = busy;
+}
 
 // Before the first render: the saved zoom applies from the start (spec §12.2), and so does the
 // last saved theme (its localStorage mirror, R3) until the settings load and take over. The

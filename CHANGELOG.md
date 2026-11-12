@@ -12,6 +12,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   other emojis. A pick inserts the emoji in a commit message and the `:shortcode:` in Markdown; a
   `:code:` typed in full stays as typed. The popup stays on screen and Cmd+Z takes a pick back
   (#24).
+- **Busy-page diagnostics.** When the window keeps its main thread busy with nothing running (an
+  animation-frame loop that never stops, long frames back to back, an endless CSS animation that
+  restyles every frame) for 10 seconds, GitVolt writes one warning to its log file: what ran and
+  from which code location, the window's focus and visibility, and the running animations; and a
+  second line when it ends. Only code locations and class names, no repository content, and it
+  stays in the local log file. It costs nothing while the app is idle.
 
 ### Changed
 

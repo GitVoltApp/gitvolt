@@ -16,7 +16,14 @@ async function runFromPalette(page: Page, query: string) {
 }
 
 test.describe('the Debug modal', () => {
+  // The lines the page sends to the log file (logFrontend), for the busy-page step.
+  let logged: string[] = [];
   test.beforeEach(async ({ page }) => {
+    logged = [];
+    page.on('websocket', (ws) => ws.on('framesent', ({ payload }) => {
+      const { req } = JSON.parse(String(payload)) as { req?: { method?: string; params?: { message?: string } } };
+      if (req?.method === 'logFrontend' && req.params?.message) logged.push(req.params.message);
+    }));
     await page.goto(openUrl(fixtures.basic));
     await expect(page.getByRole('grid', { name: 'Commit graph' })).toBeVisible();
   });
@@ -101,6 +108,24 @@ test.describe('the Debug modal', () => {
       await runFromPalette(page, 'Activity log');
       await debugDialog(page).getByRole('button', { name: 'Perf overlay' }).click();
       await expect(overlay).toHaveCount(0);
+    });
+    await test.step('a rAF loop that keeps going is written to the log file, naming its call site, and so is its end', async () => {
+      // The thresholds shortened from 10 s (debug/busyPage.ts), the loop running 2.5 s.
+      await page.evaluate(() => {
+        window.__gbBusy!.configure({ sustainMs: 1_500, quietMs: 500 });
+        const end = performance.now() + 2_500;
+        function busyLoopForTest() {
+          if (performance.now() < end) requestAnimationFrame(busyLoopForTest);
+        }
+        requestAnimationFrame(busyLoopForTest);
+      });
+      await expect.poll(() => logged.some((m) => m.startsWith('busy page: ended ')), { timeout: 10_000 }).toBe(true);
+      const reports = logged.filter((m) => m.startsWith('busy page: {'));
+      expect(reports).toHaveLength(1);
+      const report = JSON.parse(reports[0].slice('busy page: '.length));
+      expect(report).toMatchObject({ why: 'raf', ops: 0, hidden: false });
+      expect(report.raf.sites.map(([site]: [string]) => site).join('\n')).toContain('busyLoopForTest');
+      expect(logged.some((m) => m.startsWith('busy page: look in '))).toBe(true);
     });
   });
 });
