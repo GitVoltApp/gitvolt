@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-12
+
 ### Added
 
 - **Emoji completion everywhere.** A `:` opens it in the commit summary and description too, not only
