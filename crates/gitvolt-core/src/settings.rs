@@ -157,6 +157,10 @@ pub struct AppSettings {
     pub compact_title_bar: bool,
     /// How an Arch install updates, once the update dialog asked; `None` until then.
     pub update_arch_method: Option<crate::updates::install::ArchMethod>,
+    /// The GitVolt version that last ran (`X.Y.Z`, as `app_info` reports it): a newer one at
+    /// startup puts "Updated to GitVolt …" in the notification bell. `None` until a version that
+    /// knows this setting ran (a first install, or settings from before it).
+    pub last_run_version: Option<String>,
     /// Per-theme lane colour overrides (plan 1D): theme id → lane index → `#rrggbb`, or null for
     /// the theme's own colour. The UI validates the entries; an invalid one shows the theme's.
     #[ts(type = "Record<string, (string | null)[]>")]
@@ -267,6 +271,7 @@ impl Default for AppSettings {
             system_title_bar: false,
             compact_title_bar: false,
             update_arch_method: None,
+            last_run_version: None,
             graph_color_overrides: BTreeMap::new(),
             custom_themes: Vec::new(),
             window: None,
@@ -1599,6 +1604,18 @@ mod tests {
         let s = AppSettings { relative_dates: true, ..AppSettings::default() };
         let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert!(back.relative_dates);
+    }
+
+    #[test]
+    fn last_run_version_defaults_to_none_and_round_trips() {
+        let mut v = serde_json::to_value(AppSettings::default()).unwrap();
+        v.as_object_mut().unwrap().remove("lastRunVersion");
+        let s: AppSettings = serde_json::from_value(v).unwrap();
+        assert_eq!(s.last_run_version, None);
+
+        let s = AppSettings { last_run_version: Some("1.6.1".into()), ..AppSettings::default() };
+        let back: AppSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.last_run_version.as_deref(), Some("1.6.1"));
     }
 
     #[test]

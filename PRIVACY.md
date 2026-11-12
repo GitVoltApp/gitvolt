@@ -274,7 +274,7 @@ Paths are the XDG defaults. `$XDG_CONFIG_HOME`, `$XDG_CACHE_HOME` and `$XDG_DATA
 
 | Where | What |
 |---|---|
-| `~/.config/gitvolt/settings.json` | App settings and the window's last position. |
+| `~/.config/gitvolt/settings.json` | App settings, the window's last position, and the GitVolt version that last ran (for What's new). |
 | `~/.config/gitvolt/profiles/<id>/profile.json` | Each profile: open tabs and recent repositories (their paths), repository folders, editor choice, extra git config path, per-repository settings, and the forge accounts (host, user name, where the token is kept, never the token). |
 | System keyring, items with `service` = `gitvolt` | Forge tokens, one per profile and host. |
 | `~/.local/share/gitvolt/forge-tokens` | Forge tokens, only when no keyring was available. |

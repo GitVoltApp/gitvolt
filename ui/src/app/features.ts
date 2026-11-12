@@ -112,6 +112,8 @@ import '../forge/mrview/keyActions';
 // --- end Shortcuts pass ---
 // Updates from GitHub Releases: Help → Check for updates and the update dialog.
 import '../updates/feature';
+// What's new: the bell's "Updated to GitVolt …" after an update, and Help → What's new.
+import '../updates/whatsNewFeature';
 // Paste anywhere to go to it: Ctrl+V outside a text field goes to what the clipboard names.
 import '../goto/feature';
 // Git LFS: LFS: Pull / Fetch, and a file row's Track / Stop tracking.

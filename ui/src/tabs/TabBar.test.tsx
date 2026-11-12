@@ -16,6 +16,7 @@ const { TabBar } = await import('./TabBar');
 const { useTabUi } = await import('./tabMenu');
 const { useOps } = await import('../app/ops');
 const { useMenu } = await import('../menu/menuStore');
+const { useWhatsNew, resetWhatsNewForTest } = await import('../updates/whatsNew');
 
 const tab = (id: string) => ({ id, kind: 'repo' as const, path: `/${id}`, alias: null });
 
@@ -271,5 +272,29 @@ describe('TabBar: the notification bell', () => {
     fireEvent.click(bell());
     expect(labels()).toEqual(['Fetch failed (b): two', 'Fetch failed (a): one', '-', 'Activity log…', 'Clear notifications']);
     expect(bell()).toHaveAccessibleName('Notifications');
+  });
+
+  it('an update since the last run: one unread row first that opens What\'s new, and Clear forgets it', () => {
+    setTabs(['a'], 'a');
+    act(() => { useOps.getState().clearErrors(); resetWhatsNewForTest(); });
+    render(<TabBar />);
+    const bell = () => screen.getByRole('button', { name: /^Notifications/ });
+    const rows = () => useMenu.getState().rows!;
+    const labels = () => rows().map((r) => (r.kind === 'separator' ? '-' : r.label));
+    act(() => useWhatsNew.setState({ notice: { version: '1.6.1', since: '1.5.0' }, unread: true, updatedFrom: '1.5.0' }));
+    expect(bell()).toHaveAccessibleName('Notifications (1 new)');
+    fireEvent.click(bell());
+    expect(labels()).toEqual(["Updated to GitVolt 1.6.1 — see what's new", '-', 'Activity log…', 'Clear notifications']);
+    expect(bell()).toHaveAccessibleName('Notifications');
+    act(() => { const r = rows()[0]; if (r.kind === 'action') void r.run(); });
+    expect(useWhatsNew.getState().open).toEqual({ version: '1.6.1', since: '1.5.0' });
+    act(() => { useMenu.getState().close(); useWhatsNew.getState().close(); useOps.getState().pushError('Fetch failed (a): one'); });
+    fireEvent.click(bell());
+    expect(labels()).toEqual(["Updated to GitVolt 1.6.1 — see what's new", 'Fetch failed (a): one', '-', 'Activity log…', 'Clear notifications']);
+    act(() => { const r = rows().at(-1)!; if (r.kind === 'action') void r.run(); useMenu.getState().close(); });
+    expect(useWhatsNew.getState().notice).toBeNull();
+    expect(useWhatsNew.getState().updatedFrom).toBe('1.5.0');
+    fireEvent.click(bell());
+    expect(labels()).toEqual(['No notifications', '-', 'Activity log…']);
   });
 });

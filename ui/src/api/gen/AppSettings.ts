@@ -117,6 +117,12 @@ compactTitleBar: boolean,
  */
 updateArchMethod: ArchMethod | null, 
 /**
+ * The GitVolt version that last ran (`X.Y.Z`, as `app_info` reports it): a newer one at
+ * startup puts "Updated to GitVolt …" in the notification bell. `None` until a version that
+ * knows this setting ran (a first install, or settings from before it).
+ */
+lastRunVersion: string | null, 
+/**
  * Per-theme lane colour overrides (plan 1D): theme id → lane index → `#rrggbb`, or null for
  * the theme's own colour. The UI validates the entries; an invalid one shows the theme's.
  */

@@ -5,6 +5,13 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **What's new after an update.** The first start of a new version puts "Updated to GitVolt
+  <version> — see what's new" in the notification bell; it opens the notes of every version since
+  the one you ran last, newest first. Help › What's new shows them again. The notes come with the
+  app (its changelog, built in), so nothing is fetched.
+
 ## [1.6.1] - 2026-11-12
 
 ### Added

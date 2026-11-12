@@ -25,6 +25,7 @@ const MARKERS = [
   "couldn't be fetched from", // an MR's Compare (forge/mrview/compare.ts): loads with the MR view, or on the review chip's click
   'has new commits since this compare', // review mode (diff/review/ReviewMode.tsx), which Compare brings: with the diff panel
   'Setting up fake worker failed', // pdf.js (pdf/pdfjs.ts): loads on the first PDF shown
+  'gitvolt-whats-new', // What's new's body and the bundled changelog (updates/WhatsNew.tsx): loads with its panel
 ];
 
 const html = readFileSync(join(dist, 'index.html'), 'utf8');
