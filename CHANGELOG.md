@@ -25,6 +25,17 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   of starting a download; and Check for updates in About opens it as soon as it finds an update,
   in place of the **Show update** button.
 
+### Fixed
+
+- **The window no longer gets stuck full screen on GNOME (Linux).** After a change of monitors,
+  GitVolt could reopen or put itself back at exactly a monitor's size, on a monitor with no panel
+  or dock; GNOME then took the window for an old app going full screen and put it over the panels
+  and docks, where double-clicking or dragging the title bar did nothing, until GitVolt was
+  closed. GitVolt now tells GNOME it draws its own frame, never sizes itself to a whole monitor
+  (it takes 90 % of it, centred), and doesn't save a full screen window's size as its normal one.
+  A double click on the title bar, the maximize button, or a drag from the title bar of a window
+  that is full screen anyway takes it out of full screen.
+
 ## [1.6.1] - 2026-11-12
 
 ### Added

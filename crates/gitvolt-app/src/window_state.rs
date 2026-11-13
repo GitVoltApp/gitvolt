@@ -135,8 +135,33 @@ fn clamp_size((w, h): (f64, f64), area: &Rect) -> ((f64, f64), bool, bool) {
     ((cw, ch), cw < w, ch < h)
 }
 
-fn centred_on(screen: &Screen, size: (f64, f64)) -> Placement {
+/// Of a monitor's width and height, the most a window GitVolt sizes itself takes when it would
+/// otherwise cover all of it.
+const WHOLE_MONITOR_FILL: f64 = 0.9;
+
+/// Whether `size` covers all of `screen`, panels included: a monitor with no panel or dock (or
+/// whose dock isn't back yet after a change of monitors) has a work area as big as itself. mutter
+/// takes an undecorated X11 window that asks for exactly a monitor's rect for an old app making
+/// itself full screen ("legacy fullscreen", `meta_window_move_resize_request`): it's put above the
+/// panels and docks, and the window manager won't maximize, unmaximize or move it any more.
+fn covers_monitor(size: (f64, f64), screen: &Screen) -> bool {
+    const EPS: f64 = 0.5;
+    size.0 >= screen.bounds.width - EPS && size.1 >= screen.bounds.height - EPS
+}
+
+/// `size` no larger than `screen`'s work area, and never all of the monitor ([`covers_monitor`]):
+/// then [`WHOLE_MONITOR_FILL`] of it.
+fn fit_size(size: (f64, f64), screen: &Screen) -> (f64, f64) {
     let (size, _, _) = clamp_size(size, &screen.work_area);
+    if !covers_monitor(size, screen) {
+        return size;
+    }
+    let b = screen.bounds;
+    ((b.width * WHOLE_MONITOR_FILL).floor(), (b.height * WHOLE_MONITOR_FILL).floor())
+}
+
+fn centred_on(screen: &Screen, size: (f64, f64)) -> Placement {
+    let size = fit_size(size, screen);
     let wa = screen.work_area;
     let x = wa.x + (wa.width - size.0) / 2.0;
     let y = wa.y + (wa.height - size.1) / 2.0;
@@ -147,7 +172,8 @@ fn centred_on(screen: &Screen, size: (f64, f64)) -> Placement {
 /// unusable (the window then opens at its configured default).
 ///
 /// On its saved monitor (found by name, even if it moved in the layout) it keeps its place
-/// relative to that monitor, shrunk to the monitor's work area if it no longer fits. If that
+/// relative to that monitor, shrunk to the monitor's work area if it no longer fits (and never to
+/// all of the monitor: [`covers_monitor`], it's then centred, smaller). If that
 /// monitor is gone, or the window would be mostly off every work area, it's centred on the
 /// primary monitor with its saved size, clamped to the work area. Without `can_position`
 /// (Wayland), only its size comes back, clamped to the primary monitor.
@@ -181,6 +207,10 @@ pub fn placement(saved: &WindowGeometry, screens: &[Screen], primary: Option<usi
     };
     let wa = screen.work_area;
     let (size, shrunk_w, shrunk_h) = clamp_size(size, &wa);
+    // All of a monitor with no panel: smaller, in its middle.
+    if covers_monitor(size, screen) {
+        return with_maximized(centred_on(screen, size));
+    }
     let mut x = x + dx;
     let mut y = y + dy;
     // A window shrunk to fit is moved onto the work area along that axis.
@@ -388,6 +418,11 @@ fn observe<R: Runtime>(w: &WebviewWindow<R>, can_position: bool) -> tauri::Resul
 
 impl Tracker {
     fn save<R: Runtime>(&self, w: &WebviewWindow<R>) {
+        // Full screen keeps the last normal rect: the monitor's own rect, restored as a normal
+        // window's, would put it back in full screen ([`covers_monitor`]).
+        if w.is_fullscreen().unwrap_or(false) {
+            return;
+        }
         match observe(w, self.can_position) {
             Ok(now) => {
                 if let Some(g) = next_saved(self.store.window().as_ref(), now, self.default_size) {
@@ -952,6 +987,53 @@ mod tests {
         assert_eq!(placement(&g, &[laptop()], Some(0), true), None);
         let g = saved_on(&laptop(), 10.0, 40.0, 1000.0, 700.0);
         assert_eq!(placement(&g, &[], None, true), Some(Placement { position: None, size: (1000.0, 700.0), maximized: false }));
+    }
+
+    /// A monitor with no panel or dock: its work area is all of it.
+    fn bare(name: &str, x: f64, y: f64, w: f64, h: f64) -> Screen {
+        Screen { name: Some(name.into()), bounds: Rect::new(x, y, w, h), work_area: Rect::new(x, y, w, h) }
+    }
+
+    fn covers(p: &Placement, s: &Screen) -> bool {
+        let (x, y) = p.position.unwrap();
+        Rect::new(x, y, p.size.0, p.size.1).same_as(&s.bounds)
+    }
+
+    #[test]
+    fn a_window_never_comes_back_as_all_of_a_monitor_with_no_panel() {
+        // Saved at exactly the monitor's rect (mutter fitted it there after a change of monitors):
+        // asked for again, mutter would make it full screen. 90 % of it, in its middle.
+        let side = bare("HDMI-1", 1920.0, 0.0, 1280.0, 800.0);
+        let g = saved_on(&side, 1920.0, 0.0, 1280.0, 800.0);
+        let p = placement(&g, &[laptop(), side.clone()], Some(0), true).unwrap();
+        assert_eq!(p, Placement { position: Some((1920.0 + 64.0, 40.0)), size: (1152.0, 720.0), maximized: false });
+        assert!(!covers(&p, &side));
+        // Bigger than it: the same.
+        let g = saved_on(&side, 1900.0, -20.0, 1500.0, 900.0);
+        assert_eq!(placement(&g, &[laptop(), side.clone()], Some(0), true).unwrap().size, (1152.0, 720.0));
+        // Its maximized state stays.
+        let g = WindowGeometry { maximized: true, ..saved_on(&side, 1920.0, 0.0, 1280.0, 800.0) };
+        assert!(placement(&g, &[laptop(), side.clone()], Some(0), true).unwrap().maximized);
+        // The same centred on a bare primary monitor, its own gone.
+        let g = saved_on(&external(), 1920.0, 0.0, 2560.0, 1440.0);
+        let p = placement(&g, std::slice::from_ref(&side), Some(0), true).unwrap();
+        assert!(!covers(&p, &side));
+        // Anything that leaves some of the monitor out is kept, as is all of a work area that a
+        // panel makes smaller than its monitor.
+        let g = saved_on(&side, 1920.0, 0.0, 1280.0, 799.0);
+        assert_eq!(placement(&g, &[laptop(), side.clone()], Some(0), true).unwrap().size, (1280.0, 799.0));
+        let g = saved_on(&laptop(), 0.0, 32.0, 1920.0, 1168.0);
+        assert_eq!(placement(&g, &[laptop()], Some(0), true).unwrap(), Placement { position: Some((0.0, 32.0)), size: (1920.0, 1168.0), maximized: false });
+    }
+
+    #[test]
+    fn a_window_put_back_on_a_monitor_with_no_panel_is_never_all_of_it() {
+        // The dock's strut isn't back yet when the window is put back: no work area to keep off.
+        let primary = bare("eDP-1", 0.0, 0.0, 1280.0, 800.0);
+        let now = observed(1915.0, 100.0, 2400.0, 1300.0, &primary);
+        let p = back_on_screen(&now, std::slice::from_ref(&primary), Some(0)).unwrap();
+        assert_eq!(p, Placement { position: Some((64.0, 40.0)), size: (1152.0, 720.0), maximized: false });
+        assert!(!covers(&p, &primary));
     }
 
     fn observed(x: f64, y: f64, w: f64, h: f64, monitor: &Screen) -> Observed {
