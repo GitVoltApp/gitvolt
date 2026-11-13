@@ -5,6 +5,46 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Added
+
+- **What's new after an update.** The first start of a new version puts "Updated to GitVolt
+  <version> — see what's new" in the notification bell; it opens the notes of every version since
+  the one you ran last, newest first. Help › What's new shows them again. The notes come with the
+  app (its changelog, built in), so nothing is fetched.
+
+### Changed
+
+- **Updates take one click.** The update dialog's **Install and restart** downloads the package,
+  checks it against the release's SHA256SUMS, installs it and restarts GitVolt, with no further
+  click. Unsaved edits ask before the download starts, not at the end (edits made during it ask
+  again before the restart; kept, the update waits on **Restart GitVolt**); a step that fails or is
+  cancelled stops there and says why, and GitVolt never restarts after one. It carries on with
+  the dialog closed (the status bar's pill shows its progress). On Windows the installer takes
+  over as before (the `.msi`'s button is **Install**: start GitVolt again after it). The status
+  bar's **Update to X** opens the dialog, with the notes of every version since yours, instead
+  of starting a download; and Check for updates in About opens it as soon as it finds an update,
+  in place of the **Show update** button.
+
+### Fixed
+
+- **The line beside a diff's overview ruler** stands against the ruler, not 10 px to its left.
+
+## [1.6.1] - 2026-11-12
+
+### Added
+
+- **Emoji completion everywhere.** A `:` opens it in the commit summary and description too, not only
+  in Markdown fields: the gitmojis matching what you type come first, with their meaning, then the
+  other emojis. A pick inserts the emoji in a commit message and the `:shortcode:` in Markdown; a
+  `:code:` typed in full stays as typed. The popup stays on screen and Cmd+Z takes a pick back
+  (#24).
+- **Busy-page diagnostics.** When the window keeps its main thread busy with nothing running (an
+  animation-frame loop that never stops, long frames back to back, an endless CSS animation that
+  restyles every frame) for 10 seconds, GitVolt writes one warning to its log file: what ran and
+  from which code location, the window's focus and visibility, and the running animations; and a
+  second line when it ends. Only code locations and class names, no repository content, and it
+  stays in the local log file. It costs nothing while the app is idle.
+
 ### Changed
 
 - **Interactive rebase: an action key moves on.** Pick, Squash, Fixup, Drop and Edit select the next
@@ -13,7 +53,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Fixed
 
-- **The line beside a diff's overview ruler** stands against the ruler, not 10 px to its left.
+- **A clean push no longer warns.** A server hook that echoed git's own output (`HEAD is now at
+  <sha> error-log-charts: ...`, ref-update lines, diffstats) made the toast say there was a
+  problem. Those echoes are plain info now, and a failure word counts only as a whole word, not
+  inside a name like `error-log-charts` or `fix_conflict_ui`.
+- **Activity keeps a push's progress once.** An op's Activity details listed every
+  `Counting objects: 2% (1/44)` update on its own line; each phase now shows its last state.
+- **Clone on Windows.** A destination like `F:\Projects\repo` is accepted; the form wanted a path
+  starting with `/` (#26). A local source path can be a Windows one too, on Windows.
 
 ## [1.6.0] - 2026-11-06
 

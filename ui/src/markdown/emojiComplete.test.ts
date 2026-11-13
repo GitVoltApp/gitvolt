@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { findTrigger, insertShortcode, rankEmoji, type EmojiEntry } from './emojiComplete';
+import { findTrigger, insertShortcode, rankEmoji, rankHits, type EmojiEntry } from './emojiComplete';
+import type { Gitmoji } from './gitmoji';
 
 const t = (s: string) => findTrigger(s, s.length);
 const L: EmojiEntry[] = [
@@ -17,7 +18,14 @@ describe('findTrigger', () => {
     expect(t('a\n:thu')).toEqual({ start: 2, query: 'thu' });
     expect(t('(:sm')).toEqual({ start: 1, query: 'sm' });
   });
-  it('needs two characters', () => { expect(t(':s')).toBeNull(); expect(t(':')).toBeNull(); });
+  it('opens on the colon itself', () => {
+    expect(t(':')).toEqual({ start: 0, query: '' });
+    expect(t('fix :B')).toEqual({ start: 4, query: 'b' });
+    expect(t('one\n:')).toEqual({ start: 4, query: '' });
+    expect(t('fix : it')).toBeNull();
+    expect(t('Note:')).toBeNull();
+    expect(t('')).toBeNull();
+  });
   it('stays quiet in URLs, times and words', () => {
     expect(t('see http://example')).toBeNull();
     expect(t('at 12:30')).toBeNull();
@@ -48,5 +56,37 @@ describe('rankEmoji', () => {
 describe('insertShortcode', () => {
   it('replaces the typed query with :name: and a space', () => {
     expect(insertShortcode('hi :thu there', 7, { start: 3, query: 'thu' }, 'thumbsup')).toEqual({ text: 'hi :thumbsup:  there', caret: 14 });
+  });
+});
+
+const G: Gitmoji[] = [
+  { emoji: '🐛', code: 'bug', description: 'Fix a bug.' },
+  { emoji: '🏗️', code: 'building_construction', description: 'Make architectural changes.' },
+  { emoji: '✨', code: 'sparkles', description: 'Introduce new features.' },
+];
+const E: EmojiEntry[] = [
+  { emoji: '🚌', names: ['bus'] },
+  { emoji: '🐛', names: ['bug'] },
+  { emoji: '🏗', names: ['building_construction'] },
+  { emoji: '😄', names: ['smile'] },
+  { emoji: '🦋', names: ['butterfly'] },
+];
+
+describe('rankHits', () => {
+  it('lists the matching gitmojis first, with their meaning, then the other emojis without repeats', () => {
+    expect(rankHits(G, E, 'bu')).toEqual([
+      { emoji: '🐛', name: 'bug', description: 'Fix a bug.' },
+      { emoji: '🏗️', name: 'building_construction', description: 'Make architectural changes.' },
+      { emoji: '🚌', name: 'bus' },
+      { emoji: '🦋', name: 'butterfly' },
+    ]);
+  });
+  it('a bare colon: every gitmoji first', () => {
+    expect(rankHits(G, E, '').slice(0, 3).map((h) => h.name)).toEqual(['bug', 'building_construction', 'sparkles']);
+  });
+  it('either list may still be loading, and the whole is capped', () => {
+    expect(rankHits(null, E, 'bu').map((h) => h.name)).toEqual(['bug', 'bus', 'building_construction', 'butterfly']);
+    expect(rankHits(G, null, 'sp').map((h) => h.name)).toEqual(['sparkles']);
+    expect(rankHits(G, E, '', 2)).toHaveLength(2);
   });
 });

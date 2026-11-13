@@ -35,16 +35,18 @@ describe('UpdatePill', () => {
     }
   });
 
-  it('"Update to 0.3.0" starts the download', () => {
+  it('"Update to 0.3.0" opens the dialog (its notes, and Install and restart); nothing downloads', () => {
     render(<UpdatePill />);
     set({ state: 'available', release });
     expect(pill()).toHaveTextContent('Update to 0.3.0');
+    fireEvent.mouseEnter(pill()!);
+    expect(screen.getByText('GitVolt 0.3.0 is available')).toBeInTheDocument();
     fireEvent.click(pill()!);
-    expect(api.updateDownload).toHaveBeenCalledTimes(1);
-    expect(useUpdates.getState().dialogOpen).toBe(false);
+    expect(useUpdates.getState().dialogOpen).toBe(true);
+    expect(api.updateDownload).not.toHaveBeenCalled();
   });
 
-  it('a build from source, or an AUR install, opens the dialog instead', () => {
+  it('a build from source, or an AUR install, opens the dialog too', () => {
     useAppInfo.setState({ info: { appVersion: '0.2.0', build: null, gitVersion: '2.47.1', installKind: 'none', home: null } });
     render(<UpdatePill />);
     set({ state: 'available', release: { ...release, asset: null } });
@@ -71,12 +73,22 @@ describe('UpdatePill', () => {
     expect(useUpdates.getState().dialogOpen).toBe(true);
   });
 
-  it('ready: "Install 0.3.0" opens the dialog; installed offers the restart; a failure says so', () => {
+  it('ready: "Installing 0.3.0" while Install and restart goes on to the install, else "Install 0.3.0" (it stopped short); both open the dialog', () => {
     render(<UpdatePill />);
+    act(() => useUpdates.setState({ running: true }));
     set({ state: 'ready', release });
+    expect(pill()).toHaveTextContent('Installing 0.3.0');
+    expect(pill()).toHaveAttribute('data-state', 'installing');
+    fireEvent.click(pill()!);
+    expect(useUpdates.getState().dialogOpen).toBe(true);
+    act(() => useUpdates.setState({ running: false, dialogOpen: false }));
     expect(pill()).toHaveTextContent('Install 0.3.0');
     fireEvent.click(pill()!);
     expect(useUpdates.getState().dialogOpen).toBe(true);
+  });
+
+  it('installed offers the restart; a failure says so', () => {
+    render(<UpdatePill />);
     set({ state: 'installed', release });
     expect(pill()).toHaveTextContent('Restart to update');
     set({ state: 'failed', message: "The download doesn't match its checksum", release });

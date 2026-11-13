@@ -36,7 +36,7 @@ describe('About: focus trap (fix round 1)', () => {
 describe('About: Check for updates', () => {
   afterEach(() => { useAbout.setState({ open: false }); resetUpdatesForTest(); });
 
-  it('checks, and says up to date, available (Show update opens the dialog and closes About) or why it failed', async () => {
+  it('checks, and says up to date or why it failed; an update it finds opens the update dialog at once, About closing under it', async () => {
     render(<About />);
     act(() => useAbout.getState().setOpen(true));
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check for updates' })); });
@@ -44,11 +44,34 @@ describe('About: Check for updates', () => {
     api.updateCheck.mockRejectedValueOnce(new Error("Couldn't reach api.github.com"));
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check for updates' })); });
     expect(screen.getByRole('status')).toHaveTextContent("Couldn't check for updates: Couldn't reach api.github.com");
-    const release = { version: '1.3.0', name: 'GitVolt 1.3.0', notes: '', url: 'u', prerelease: false, publishedAt: null, asset: null };
+    expect(useUpdates.getState().dialogOpen).toBe(false);
+    const release = { version: '1.3.0', name: 'GitVolt 1.3.0', notes: [], url: 'u', prerelease: false, publishedAt: null, asset: null };
     api.updateCheck.mockResolvedValueOnce({ state: 'available', release });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check for updates' })); });
+    expect(useUpdates.getState().dialogOpen).toBe(true);
+    expect(useAbout.getState().open).toBe(false);
+    // Opened again with the update known: its line, and no Show update (Check for updates opens it).
+    act(() => { useUpdates.getState().closeDialog(); useAbout.getState().setOpen(true); });
     expect(screen.getByRole('status')).toHaveTextContent('GitVolt 1.3.0 is available.');
-    fireEvent.click(screen.getByRole('button', { name: 'Show update' }));
+    expect(screen.queryByRole('button', { name: 'Show update' })).toBeNull();
+    // One already downloaded: the check returns it as it is, and the dialog opens.
+    api.updateCheck.mockResolvedValueOnce({ state: 'ready', release });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check for updates' })); });
+    expect(useUpdates.getState().dialogOpen).toBe(true);
+    expect(useAbout.getState().open).toBe(false);
+  });
+
+  it('Help › Check for updates opens About, and the update dialog over it when there is one', async () => {
+    const { runAction } = await import('./actions');
+    await import('../updates/feature');
+    render(<About />);
+    const release = { version: '1.3.0', name: 'GitVolt 1.3.0', notes: [], url: 'u', prerelease: false, publishedAt: null, asset: null };
+    api.updateCheck.mockResolvedValueOnce({ state: 'upToDate' });
+    await act(async () => { runAction('help.checkUpdates'); });
+    expect(useAbout.getState().open).toBe(true);
+    expect(useUpdates.getState().dialogOpen).toBe(false);
+    api.updateCheck.mockResolvedValueOnce({ state: 'available', release });
+    await act(async () => { runAction('help.checkUpdates'); });
     expect(useUpdates.getState().dialogOpen).toBe(true);
     expect(useAbout.getState().open).toBe(false);
   });

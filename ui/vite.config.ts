@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { changelog } from './build/changelog.ts';
 import { demoData } from './build/demoData.ts';
 import { licenseNotices } from './build/licenses.ts';
 import { replacedGrammars } from './build/replacedGrammars.ts';
@@ -69,7 +70,7 @@ export default defineConfig(({ mode }) => {
   const demo = mode === 'demo';
   return {
     base: demo ? './' : '/',
-    plugins: [react(), grammars(), notices.main, ...(demo ? [demoPolicy(), demoData(process.env.GITVOLT_DEMO_DATA ? resolve(here('..'), process.env.GITVOLT_DEMO_DATA) : here('../site/demo-data'), here('src/demo/wasm/THIRD-PARTY-NOTICES-wasm.txt'))] : [])],
+    plugins: [react(), grammars(), notices.main, changelog(here('../CHANGELOG.md')), ...(demo ? [demoPolicy(), demoData(process.env.GITVOLT_DEMO_DATA ? resolve(here('..'), process.env.GITVOLT_DEMO_DATA) : here('../site/demo-data'), here('src/demo/wasm/THIRD-PARTY-NOTICES-wasm.txt'))] : [])],
     define: { 'import.meta.env.VITE_GITVOLT_VERSION': JSON.stringify(uiVersion) },
     // ES workers: the highlight worker (diff/highlight/) loads each grammar as its own chunk, as the
     // main build does; an IIFE worker inlines every dynamic import (all of Shiki's grammars).

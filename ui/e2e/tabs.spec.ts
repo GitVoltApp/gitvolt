@@ -30,7 +30,7 @@ test.describe('tabs', () => {
       await page.keyboard.press('Escape');
       await expect(dialog).toBeHidden();
     });
-    await test.step('an update: Check for updates finds it, the pill downloads it, then the dialog offers the install', async () => {
+    await test.step('an update: Check for updates opens its dialog; Install and restart downloads and installs, and stops at a failure', async () => {
       const bar = page.locator('.status-bar');
       await expect(bar).toContainText(/git [\d.]+GitVolt \d+\.\d+\.\d+/);
       // The fake GitHub's release (never the real one), served slowly enough to see the download.
@@ -43,20 +43,24 @@ test.describe('tabs', () => {
       await page.getByRole('button', { name: 'Menu' }).click();
       await page.getByRole('menuitem', { name: 'Help' }).hover();
       await page.getByRole('menuitem', { name: 'Check for updates' }).click();
-      const about = page.getByRole('dialog', { name: 'About GitVolt' });
-      await expect(about.getByRole('status')).toHaveText('GitVolt 90.0.0 is available.');
+      // The update shows at once, About closed under it.
+      const dialog = page.getByRole('dialog', { name: 'Update to GitVolt 90.0.0' });
+      await expect(dialog.getByRole('heading', { name: 'Added' })).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'About GitVolt' })).toBeHidden();
+      await expect(dialog).toContainText('GitVolt_90.0.0_amd64.deb · 1.0 MB');
+      await expect(dialog.getByRole('button', { name: 'View on GitHub' })).toBeVisible();
       await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+      // The pill opens it too; one press downloads, checks and installs. The harness never
+      // installs (as if pkexec were missing), so it stops there, showing the command: no restart.
       const pill = bar.locator('.sb-update');
       await expect(pill).toHaveText('Update to 90.0.0');
       await pill.click();
-      await expect(pill.getByRole('progressbar')).toBeVisible();
-      await expect(pill).toHaveText('Install 90.0.0', { timeout: 15_000 });
-      await pill.click();
-      const dialog = page.getByRole('dialog', { name: 'Update to GitVolt 90.0.0' });
-      await expect(dialog.getByRole('heading', { name: 'Added' })).toBeVisible();
-      await expect(dialog).toContainText('GitVolt_90.0.0_amd64.deb · 1.0 MB');
-      await expect(dialog.getByRole('button', { name: 'Install 90.0.0' })).toBeVisible();
-      await expect(dialog.getByRole('button', { name: 'View on GitHub' })).toBeVisible();
+      await dialog.getByRole('button', { name: 'Install and restart' }).click();
+      await expect(dialog.getByRole('progressbar', { name: 'Download' })).toBeVisible();
+      await expect(dialog.getByText('Run this in a terminal instead:')).toBeVisible({ timeout: 15_000 });
+      await expect(dialog.getByRole('alert')).toContainText("pkexec isn't installed");
+      await expect(pill).toHaveText('Install 90.0.0');
       await page.keyboard.press('Escape');
       await expect(dialog).toBeHidden();
     });

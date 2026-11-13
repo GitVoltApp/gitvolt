@@ -42,6 +42,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   systemTitleBar: false,
   compactTitleBar: false,
   updateArchMethod: null,
+  lastRunVersion: null,
   graphColorOverrides: {},
   customThemes: [],
   // --- branch presets ---

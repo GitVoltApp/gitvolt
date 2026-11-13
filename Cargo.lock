@@ -3009,7 +3009,7 @@ dependencies = [
 
 [[package]]
 name = "gitvolt-app"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "block2 0.6.2",
  "gdk4-x11",
@@ -3033,7 +3033,7 @@ dependencies = [
 
 [[package]]
 name = "gitvolt-core"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "base64 0.23.1",
  "block2 0.6.2",
@@ -3073,7 +3073,7 @@ dependencies = [
 
 [[package]]
 name = "gitvolt-forge"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "base64 0.23.1",
  "gitvolt-core",
@@ -3092,7 +3092,7 @@ dependencies = [
 
 [[package]]
 name = "gitvolt-gpui"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -3127,7 +3127,7 @@ dependencies = [
 
 [[package]]
 name = "gitvolt-graph"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3136,7 +3136,7 @@ dependencies = [
 
 [[package]]
 name = "gitvolt-graph-wasm"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "gitvolt-graph",
  "serde_json",
@@ -3145,7 +3145,7 @@ dependencies = [
 
 [[package]]
 name = "gitvolt-harness"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "axum",
  "base64 0.23.1",

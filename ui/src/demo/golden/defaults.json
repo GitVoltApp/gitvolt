@@ -59,6 +59,7 @@
     "forgeAvatars": true,
     "graphColorOverrides": {},
     "gravatar": true,
+    "lastRunVersion": null,
     "prune": true,
     "pushFollowTags": true,
     "readingFontFamily": "",

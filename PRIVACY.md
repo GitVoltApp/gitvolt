@@ -274,14 +274,14 @@ Paths are the XDG defaults. `$XDG_CONFIG_HOME`, `$XDG_CACHE_HOME` and `$XDG_DATA
 
 | Where | What |
 |---|---|
-| `~/.config/gitvolt/settings.json` | App settings and the window's last position. |
+| `~/.config/gitvolt/settings.json` | App settings, the window's last position, and the GitVolt version that last ran (for What's new). |
 | `~/.config/gitvolt/profiles/<id>/profile.json` | Each profile: open tabs and recent repositories (their paths), repository folders, editor choice, extra git config path, per-repository settings, and the forge accounts (host, user name, where the token is kept, never the token). |
 | System keyring, items with `service` = `gitvolt` | Forge tokens, one per profile and host. |
 | `~/.local/share/gitvolt/forge-tokens` | Forge tokens, only when no keyring was available. |
 | `~/.local/share/gitvolt/forge-cache/` | The last MR/PR lists and project data per account, so a restart shows them at once. Removing an account deletes its host's folder. |
 | `~/.local/share/gitvolt/journal/`, `rewrites/`, `tmp/` | The undo journal per worktree, the notes Push uses after a rewrite, and temporary index files. |
 | `~/.local/share/gitvolt/remote-tags/` | Per repository, the tag names and commit ids each remote listed at the last fetch, so the graph's tag chips show where each tag is after a restart. |
-| `~/.cache/gitvolt/logs/` | Log files: daily, the newest 7 kept, at most 50 MB in all, redacted. They contain repository paths, git commands and error messages. |
+| `~/.cache/gitvolt/logs/` | Log files: daily, the newest 7 kept, at most 50 MB in all, redacted. They contain repository paths, git commands and error messages, and, when the window stays busy for nothing, which UI code ran (code locations and class names only). |
 | `~/.cache/gitvolt/avatars/`, `forge-avatars/` | Avatar and Markdown image caches, named by SHA-256 hashes. |
 | `~/.cache/gitvolt/updates/` | The downloaded update package, while it waits to be installed (0700). Each download replaces the last. |
 | `~/.cache/gitvolt/open/` | Old file versions written for "Open in…", and videos opened with the default app. Copies older than a week are removed at startup. |

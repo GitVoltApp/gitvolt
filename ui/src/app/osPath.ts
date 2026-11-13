@@ -5,6 +5,10 @@ const isWin = (p: string) => /^([A-Za-z]:|\\\\)/.test(p);
 const seps = (p: string) => (isWin(p) ? /[\\/]/ : /\//);
 const trailing = (p: string) => new RegExp(`(${seps(p).source})+$`);
 
+/** An absolute path on the OS that wrote it: `/…`, or Windows' `C:\…` / `C:/…` and `\\server\share`
+ * (a drive-relative `C:foo` isn't). The core checks again with the real OS's rules. */
+export const isAbsolutePath = (p: string) => /^(\/|[A-Za-z]:[\\/]|\\\\[^\\])/.test(p);
+
 export const basename = (p: string) => p.replace(trailing(p), '').split(seps(p)).pop() || p;
 
 /** The containing folder; '' for a top-level name. */

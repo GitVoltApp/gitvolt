@@ -1,0 +1,8 @@
+/* What's new: the bundled changelog's notes, each version under a sticky heading. */
+.modal.whats-new-dialog { width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 64px); }
+.whats-new-sub { margin: -4px 0 0; color: var(--text-secondary); }
+.whats-new-notes { flex: 1 1 auto; min-height: 60px; max-height: 62vh; overflow: auto; padding: 0 12px 8px; background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 6px; }
+.whats-new-notes:focus-visible { outline: 1px solid var(--text-selected); }
+.whats-new-version > h3 { position: sticky; top: 0; z-index: 1; margin: 0 -12px; padding: 8px 12px 6px; background: var(--app-bg0); border-bottom: 1px solid var(--section-border); font-size: 14px; font-weight: 600; color: var(--text-selected); }
+.whats-new-date { font-weight: 400; color: var(--text-secondary); }
+.whats-new-empty { color: var(--text-secondary); font-style: italic; }

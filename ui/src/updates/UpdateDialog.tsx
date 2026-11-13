@@ -32,20 +32,28 @@ function Command({ text }: { text: string }) {
   );
 }
 
-/** What the install button does, per install kind. */
-const INSTALL_NOTE: Record<Exclude<InstallKind, 'none'>, string> = {
-  deb: 'GitVolt installs the package with apt; your system asks for your password.',
-  arch: 'GitVolt installs the package with pacman; your system asks for your password.',
-  rpm: 'GitVolt installs the package with dnf (or zypper); your system asks for your password.',
-  nsis: 'The installer opens, and GitVolt closes so it can be replaced.',
-  msi: 'Windows Installer opens (and may ask for permission), and GitVolt closes so it can be replaced.',
-  dmg: 'GitVolt copies the new version from the disk image over this one; then restart it.',
+type Kind = Exclude<InstallKind, 'none'>;
+
+/** What GitVolt does with the verified package, per install kind (the core's `install.rs`). */
+const INSTALLS: Record<Kind, string> = {
+  deb: 'installs it with apt (your system asks for your password) and restarts',
+  arch: 'installs it with pacman (your system asks for your password) and restarts',
+  rpm: 'installs it with dnf or zypper (your system asks for your password) and restarts',
+  dmg: 'copies its GitVolt.app over this one and restarts',
+  // The installer's last page starts GitVolt (its Start GitVolt box, ticked).
+  nsis: "opens the installer and closes so it can be replaced; the installer's last page starts the new version",
+  // Windows Installer doesn't start it again.
+  msi: "opens Windows Installer (which may ask for permission) and closes so it can be replaced; start GitVolt again once it's done",
 };
+
+/** The one button's label: on Windows the installer, not GitVolt, finishes the job. */
+const label = (kind: Kind) => (kind === 'msi' ? 'Install' : 'Install and restart');
 
 /** The dialog's middle: what can be done now, for this install. */
 function Action({ state, release, kind }: { state: UpdateState; release: UpdateRelease; kind: InstallKind }) {
-  const { download, cancel, install } = useUpdates.getState();
+  const { installAndRestart, cancel } = useUpdates.getState();
   const outcome = useUpdates((s) => s.outcome);
+  const running = useUpdates((s) => s.running);
   const archMethod = useAppState((s) => s.settings.updateArchMethod);
   if (!release.asset || kind === 'none') {
     return <p className="update-message">{kind === 'none' ? 'This GitVolt was built from source: get the new version from its release page.' : `This release has no package for this install: get it from its release page.`}</p>;
@@ -65,27 +73,34 @@ function Action({ state, release, kind }: { state: UpdateState; release: UpdateR
       </>
     );
   }
+  // Arch asks how first: Install and restart then knows what to do at the end.
+  const needsChoice = kind === 'arch' && !archMethod;
+  const plan = (text: string) => <p className="update-message">{needsChoice ? 'How did you install GitVolt? GitVolt remembers your answer.' : text}</p>;
+  const go = (text: string, busy: boolean) => !needsChoice && <div className="modal-actions"><button type="button" className="primary" disabled={busy} onClick={() => void installAndRestart()}>{text}</button></div>;
+  const whole = `Downloads GitVolt ${release.version}, checks it against the release's SHA256SUMS, ${INSTALLS[kind]}.`;
   switch (state.state) {
     case 'available':
-      return <>{arch}<p className="update-message">Download the package, check it against the release&apos;s SHA256SUMS, then install it.</p><div className="modal-actions"><button type="button" className="primary" onClick={() => void download()}>Download</button></div></>;
+      return <>{arch}{plan(whole)}{go(label(kind), running)}</>;
     case 'downloading': {
       const pct = percentOf(state);
       return (
-        <div className="update-progress">
-          <span className="sb-update-bar" role="progressbar" aria-label="Download" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><span style={{ width: `${pct}%` }} /></span>
-          <span>{pct}%</span>
-          <button type="button" onClick={() => void cancel()}>Cancel</button>
-        </div>
+        <>
+          {plan(whole)}
+          <div className="update-progress">
+            <span className="sb-update-bar" role="progressbar" aria-label="Download" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><span style={{ width: `${pct}%` }} /></span>
+            <span>{pct}%</span>
+            <button type="button" onClick={() => void cancel()}>Cancel</button>
+          </div>
+        </>
       );
     }
     case 'ready':
     case 'installing': {
-      const busy = state.state === 'installing';
-      const needsChoice = kind === 'arch' && !archMethod;
+      const busy = running || state.state === 'installing';
       return (
         <>
           {arch}
-          {needsChoice ? <p className="update-message">How did you install GitVolt? GitVolt remembers your answer.</p> : <p className="update-message">{INSTALL_NOTE[kind]}</p>}
+          {plan(`Downloaded and checked against the release's SHA256SUMS: GitVolt ${INSTALLS[kind]}.`)}
           {outcome?.outcome === 'manual' && (
             <>
               <p className="update-message error" role="alert">{outcome.reason}</p>
@@ -95,22 +110,24 @@ function Action({ state, release, kind }: { state: UpdateState; release: UpdateR
               <Command text={outcome.command} />
             </>
           )}
-          {!needsChoice && <div className="modal-actions"><button type="button" className="primary" disabled={busy} onClick={() => void install()}>{busy ? 'Installing…' : `Install ${release.version}`}</button></div>}
+          {go(busy ? 'Installing…' : label(kind), busy)}
         </>
       );
     }
     case 'installed':
+      // A restart that didn't happen (it failed, or unsaved edits were kept).
       return (
         <>
           <p className="update-message">GitVolt {release.version} is installed. Restart GitVolt to use it.</p>
-          <div className="modal-actions"><button type="button" className="primary" onClick={() => void useUpdates.getState().restart()}>Restart GitVolt</button></div>
+          <div className="modal-actions"><button type="button" className="primary" disabled={running} onClick={() => void installAndRestart()}>{running ? 'Restarting…' : 'Restart GitVolt'}</button></div>
         </>
       );
     case 'failed':
       return (
         <>
+          {arch}
           <p className="update-message error">{state.message}</p>
-          <div className="modal-actions"><button type="button" className="primary" onClick={() => void download()}>Download again</button></div>
+          {go('Try again', running)}
         </>
       );
     default:
@@ -118,36 +135,12 @@ function Action({ state, release, kind }: { state: UpdateState; release: UpdateR
   }
 }
 
-/** `Oct 19, 2026` for a release's publish time; empty when it has none. UTC, as the release's day. */
-function releaseDay(iso: string | null): string {
-  const d = iso ? new Date(iso) : null;
-  return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '';
-}
-
-/** The notes of every version from this install's up to the offered one, newest first. One version
- * has no divider; several each get a muted label (not a heading: the bodies have their own). */
-function Notes({ release }: { release: UpdateRelease }) {
-  if (!release.notes.some((n) => n.notes.trim())) return <p className="update-notes-empty">No release notes.</p>;
-  const many = release.notes.length > 1;
-  return (
-    <>
-      {release.notes.map((n) => (
-        <section key={n.version} className="update-version">
-          {many && <div className="update-version-label">{[n.version, releaseDay(n.publishedAt)].filter(Boolean).join(' · ')}</div>}
-          {n.notes.trim()
-            ? <Suspense fallback={<p aria-busy="true">Loading…</p>}><ReleaseNotes text={n.notes} /></Suspense>
-            : <p className="update-notes-empty">No release notes.</p>}
-        </section>
-      ))}
-    </>
-  );
-}
-
 /**
- * The update dialog (from the status bar's pill, or About): the release's notes, rendered; its
- * package and size; and what installs it on this machine (the install kind the package baked
- * in). A build from source, or a release without this install's package, only links to the
- * release page. View on GitHub opens it in the browser.
+ * The update dialog (from the status bar's pill, or a check from About): the notes of every
+ * version since this one, rendered; the package and its size; and Install and restart, which
+ * does what this install takes (the install kind the package baked in). A build from source, or
+ * a release without this install's package, only links to the release page. View on GitHub opens
+ * it in the browser.
  */
 export function UpdateDialog() {
   const open = useUpdates((s) => s.dialogOpen);
@@ -167,7 +160,7 @@ export function UpdateDialog() {
         <h2>{release.name}{release.prerelease && <span className="update-badge">Pre-release</span>}</h2>
         <p className="update-sub">You have GitVolt {info?.appVersion ?? '…'}.</p>
         <div className="update-notes" tabIndex={0} aria-label="Release notes">
-          <Notes release={release} />
+          <Suspense fallback={<p aria-busy="true">Loading…</p>}><ReleaseNotes notes={release.notes} /></Suspense>
         </div>
         {file}
         <Action state={state} release={release} kind={kind} />

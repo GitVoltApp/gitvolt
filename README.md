@@ -48,9 +48,21 @@ Download the package for your system from the
   Windows SmartScreen warns the first time: **More info** › **Run anyway**.
 - **macOS (Apple Silicon):** open `GitVolt_<version>_aarch64.dmg` and drag GitVolt to
   Applications. The app is signed with GitVolt's own certificate, not an Apple Developer ID, and
-  isn't notarized, so the first launch is blocked ("Apple could not verify…"). Either run
-  `xattr -dr com.apple.quarantine /Applications/GitVolt.app` once, or try to open it, then
-  go to System Settings › Privacy & Security and click **Open Anyway**.
+  isn't notarized, so the first launch is blocked ("Apple could not verify…"). Clear the
+  quarantine flag the browser set, once, either on the disk image before you open it:
+
+  ```sh
+  xattr -d com.apple.quarantine ~/Downloads/GitVolt_<version>_aarch64.dmg
+  ```
+
+  or on the app once it's installed (a copy from a quarantined image inherits the flag):
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/GitVolt.app
+  ```
+
+  Or try to open it, then go to System Settings › Privacy & Security and click **Open Anyway**
+  (with a self-signed app, some macOS versions don't offer it).
 
 GitVolt needs Git 2.40 or newer on your `PATH` (on Windows,
 [Git for Windows](https://gitforwindows.org/); on macOS, Xcode's command line tools or Homebrew's
@@ -262,23 +274,26 @@ checksums. After that, GitVolt updates itself (see [Updates](#updates)).
 
 GitVolt checks GitHub for a new release at startup and once a day. When there is one:
 
-1. A pill at the bottom right says **Update to 0.6.0** (the new version). A click downloads the package for how
-   you installed GitVolt.
-2. GitVolt checks the download against the release's `SHA256SUMS`, then offers **Install**.
-3. **Install** depends on the platform:
+1. A pill at the bottom right says **Update to 0.6.0** (the new version). A click opens the update:
+   the release notes of every version since yours.
+2. **Install and restart** downloads the package for how you installed GitVolt, checks it against
+   the release's `SHA256SUMS`, installs it and restarts GitVolt. Unsaved edits ask first, before
+   the download starts; edits made during it ask again before the restart. A step that fails
+   stops it there and says why.
+3. The install depends on the platform:
    - **Linux (`.deb`, `.rpm`, Arch):** GitVolt runs the package manager through `pkexec`
      (`pkexec apt install`, `pkexec dnf install` or zypper, `pkexec pacman -U`), so your desktop
      asks for your password. If it can't ask, it shows the command to run in a terminal; on Arch,
      it can show your AUR helper's command instead.
    - **Windows:** GitVolt starts the installer you installed with (the setup `.exe` or the `.msi`)
-     and closes so it can be replaced.
+     and closes so it can be replaced. The setup `.exe`'s last page starts the new version; after
+     the `.msi` (its button is **Install**), start GitVolt yourself.
    - **macOS:** GitVolt copies the new GitVolt.app over the one you run, with no password. If it
      can't write to its folder, it says to open the `.dmg` and drag GitVolt to Applications.
-4. **Restart GitVolt** starts the new version (on Linux and macOS).
 
 A build from source only links to the release page.
 
-- **Check now:** Help › **Check for updates**.
+- **Check now:** Help › **Check for updates**; an update it finds opens at once.
 - **Settings › General › Updates:** turn the automatic check off, or include pre-releases.
 - **Privacy and security:** [PRIVACY.md](PRIVACY.md) says what the check sends, and
   [SECURITY.md](SECURITY.md) how a download is verified.

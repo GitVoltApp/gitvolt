@@ -3,9 +3,10 @@ import { useAbout } from '../app/About';
 import { registerActions } from '../app/actions';
 import { registerAppSlot } from '../app/slots';
 import { UpdateDialog } from './UpdateDialog';
-import { useUpdates } from './store';
+import { checkAndShow } from './store';
 
-/** Help → Check for updates (About shows the answer), and the update dialog. */
+/** Help → Check for updates (About shows the answer; an update it finds opens the update dialog
+ *  over it), and the update dialog. */
 const offs = [
   registerAppSlot('overlay', 'updates.dialog', UpdateDialog),
   registerActions([
@@ -13,7 +14,7 @@ const offs = [
       id: 'help.checkUpdates', label: 'Check for updates', group: 'Help', icon: RefreshCw, tooltip: "Ask GitHub for a newer GitVolt release (GitVolt's own; nothing about your repositories)",
       run: () => {
         useAbout.getState().setOpen(true);
-        void useUpdates.getState().check();
+        void checkAndShow(() => useAbout.getState().setOpen(false));
       },
     },
   ]),

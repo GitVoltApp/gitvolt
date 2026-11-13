@@ -331,8 +331,9 @@ Developer Program) gives a partition that survives updates.
 
 **It isn't notarization.** The certificate isn't Apple's: no Developer ID, no Team ID, and the
 `.dmg` isn't notarized. Gatekeeper still rejects a downloaded copy (`spctl --assess` says
-"rejected"), so it needs `xattr -dr com.apple.quarantine /Applications/GitVolt.app` or **Open
-Anyway** once (README.md). An update downloaded by GitVolt itself carries no quarantine flag, so
+"rejected"), so it needs the quarantine flag cleared once, on the downloaded `.dmg` before it's
+opened (`xattr -d com.apple.quarantine GitVolt_<version>_aarch64.dmg`) or on the installed app
+(`xattr -dr com.apple.quarantine /Applications/GitVolt.app`), or **Open Anyway** (README.md). An update downloaded by GitVolt itself carries no quarantine flag, so
 it needs neither. Nothing trusts the certificate, and nothing needs to: codesign signs with an
 untrusted identity by its hash (`security find-identity` lists it as `CSSMERR_TP_NOT_TRUSTED`,
 "0 valid identities"), `codesign --verify --deep --strict` checks the signature against its own

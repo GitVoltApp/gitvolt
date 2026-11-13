@@ -1,7 +1,5 @@
 import { ArrowDownToLine, LoaderCircle, RotateCw, TriangleAlert } from 'lucide-react';
 import { useEffect } from 'react';
-import { useAppState } from '../app/state';
-import { useAppInfo } from '../app/appInfo';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { percentOf, releaseOf, useUpdates } from './store';
 import './updates.css';
@@ -9,26 +7,24 @@ import './updates.css';
 /**
  * The status bar's update pill, left of the Keyboard Shortcuts button: shown only while there's
  * an update (so it takes no room otherwise), the same width in every state (no shift as it
- * moves on). "Update to 0.3.0" starts the download (or, for a build from source or an AUR
- * install, opens the dialog); while downloading it's a small progress bar, the percentage in its
- * tooltip; "Install 0.3.0" and the later states open the update dialog.
+ * moves on). Every state opens the update dialog: "Update to 0.3.0" (its notes, and Install and
+ * restart); while that runs, a small progress bar (the percentage in its tooltip), then
+ * "Installing 0.3.0". "Install 0.3.0" and "Restart to update" are left when it stopped short:
+ * an install that couldn't run by itself, a restart that failed.
  */
 export function UpdatePill() {
   const state = useUpdates((s) => s.state);
-  const archMethod = useAppState((s) => s.settings.updateArchMethod);
-  const kind = useAppInfo((s) => s.info?.installKind);
+  const running = useUpdates((s) => s.running);
   useEffect(() => { useUpdates.getState().listen(); }, []);
   const release = releaseOf(state);
   if (!release) return null;
-  const { download, openDialog } = useUpdates.getState();
+  const { openDialog } = useUpdates.getState();
   const v = release.version;
-  // An AUR install updates with its helper: nothing to download.
-  const viaDialog = !release.asset || (kind === 'arch' && archMethod === 'aur');
   switch (state.state) {
     case 'available':
       return (
-        <HoverTooltip content={viaDialog ? `GitVolt ${v} is available` : `Download GitVolt ${v}`}>
-          <button type="button" className="sb-update" data-state="available" onClick={() => (viaDialog ? openDialog() : void download())}>
+        <HoverTooltip content={`GitVolt ${v} is available`}>
+          <button type="button" className="sb-update" data-state="available" onClick={openDialog}>
             <ArrowDownToLine size={11} aria-hidden />Update to {v}
           </button>
         </HoverTooltip>
@@ -44,7 +40,9 @@ export function UpdatePill() {
       );
     }
     case 'ready':
-      return <button type="button" className="sb-update" data-state="ready" onClick={openDialog}><ArrowDownToLine size={11} aria-hidden />Install {v}</button>;
+      // Install and restart goes straight on to the install.
+      if (!running) return <button type="button" className="sb-update" data-state="ready" onClick={openDialog}><ArrowDownToLine size={11} aria-hidden />Install {v}</button>;
+    // falls through
     case 'installing':
       return <button type="button" className="sb-update" data-state="installing" onClick={openDialog}><LoaderCircle size={11} className="sb-spin" aria-hidden />Installing {v}</button>;
     case 'installed':

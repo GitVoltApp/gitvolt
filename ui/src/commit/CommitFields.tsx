@@ -1,4 +1,7 @@
-import { useRef, type KeyboardEvent } from 'react';
+import { useMemo, useRef, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { emojiProvider, useEmojiLists } from '../markdown/providers';
+import { useCompletion } from '../markdown/useCompletion';
 import { flushDrafts, WIP_DRAFT_COUNTER_FROM, WIP_DRAFT_WARN_FROM, type WipDraft } from './draft';
 import './commit.css';
 import { registerKeyHints } from '../shortcuts/hints';
@@ -15,10 +18,19 @@ const isSubmit = (e: KeyboardEvent) => e.key === 'Enter' && (e.ctrlKey || e.meta
  * Keys typed here never reach the page's own handlers (the same rule as the WIP row's box); the
  * app's Ctrl chords still come first (key router), and the app-wide Commit (Ctrl+Enter,
  * `commit/keyActions.ts`) yields to these fields.
+ * A `:` in either field opens the emoji completion, the Markdown fields' own (`emojiProvider`:
+ * the gitmojis first, then the other emojis); a pick inserts the emoji itself. A `:code:` typed in
+ * full stays as typed: GitHub and GitLab render it, and some teams write their gitmojis that way.
  */
 export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = false, autoFocus = false }: { value: WipDraft; onChange: (d: WipDraft) => void; onSubmit: () => void; onEscape?: () => void; disabled?: boolean; autoFocus?: boolean }) {
   const summary = useRef<HTMLInputElement>(null);
   const description = useRef<HTMLTextAreaElement>(null);
+  const lists = useEmojiLists();
+  const provider = useMemo(() => emojiProvider(lists, 'emoji'), [lists]);
+  const setSummary = (text: string) => onChange({ ...value, summary: text });
+  const setDescription = (text: string) => onChange({ ...value, description: text });
+  const completion = useCompletion(summary, value.summary, setSummary, [provider]);
+  const descCompletion = useCompletion(description, value.description, setDescription, [provider]);
   const escape = (e: KeyboardEvent<HTMLElement>) => {
     e.preventDefault();
     if (onEscape) onEscape();
@@ -29,6 +41,8 @@ export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = f
   };
   const onSummaryKey = (e: KeyboardEvent<HTMLInputElement>) => {
     e.stopPropagation();
+    if (completion.keyDown(e)) return;
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return; // the input method's Enter or arrow
     if (isSubmit(e)) {
       e.preventDefault();
       onSubmit();
@@ -40,6 +54,8 @@ export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = f
   };
   const onDescriptionKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     e.stopPropagation();
+    if (descCompletion.keyDown(e)) return;
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return; // the input method's Enter or arrow
     const t = e.currentTarget;
     if (isSubmit(e)) {
       e.preventDefault();
@@ -66,10 +82,14 @@ export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = f
           autoFocus={autoFocus}
           disabled={disabled}
           value={value.summary}
-          onChange={(e) => onChange({ ...value, summary: e.target.value })}
+          {...completion.aria}
+          onChange={(e) => { setSummary(e.target.value); completion.sync(); }}
+          onSelect={completion.sync}
           onKeyDown={onSummaryKey}
           onBlur={flushDrafts}
         />
+        {/* On the body: the details panel is a size container, which fixed positioning goes by. */}
+        {completion.popup && createPortal(completion.popup, document.body)}
         {n > WIP_DRAFT_COUNTER_FROM && <span className={`commit-counter${n > WIP_DRAFT_WARN_FROM ? ' warn' : ''}`} data-testid="commit-counter">{n}</span>}
       </div>
       <textarea
@@ -80,10 +100,13 @@ export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = f
         spellCheck
         disabled={disabled}
         value={value.description}
-        onChange={(e) => onChange({ ...value, description: e.target.value })}
+        {...descCompletion.aria}
+        onChange={(e) => { setDescription(e.target.value); descCompletion.sync(); }}
+        onSelect={descCompletion.sync}
         onKeyDown={onDescriptionKey}
         onBlur={flushDrafts}
       />
+      {descCompletion.popup && createPortal(descCompletion.popup, document.body)}
     </div>
   );
 }
@@ -92,5 +115,6 @@ export function CommitFields({ value, onChange, onSubmit, onEscape, disabled = f
 registerKeyHints([
   { id: 'key.commit', section: 'Commit message', label: 'Commit', keys: ['Mod+Enter'], context: '(when in message input)', source: 'commit/CommitFields.tsx' },
   { id: 'key.msgNext', section: 'Commit message', label: 'Summary to description', keys: ['Enter'], context: '(when in the summary)', source: 'commit/CommitFields.tsx' },
+  { id: 'key.gitmoji', section: 'Commit message', label: 'Pick an emoji (gitmojis first)', keys: [':'], context: '(in the message)', source: 'commit/CommitFields.tsx' },
   { id: 'key.msgBlur', section: 'Commit message', label: 'Leave the message input', keys: ['Esc'], context: '(when in message input)', source: 'commit/CommitFields.tsx' },
 ]);

@@ -579,7 +579,7 @@ async fn stop_group(group: &Group, child: &mut tokio::process::Child, grace: Opt
 /// The log's stderr with progress collapsed: `\r` counts as a line break, and a run of
 /// consecutive updates of one phase (`Counting objects:  12% (3/24)`, `remote: Compressing ...`)
 /// keeps only its last line. Everything else stays as it is, in order.
-fn collapse_progress(stderr: &str) -> String {
+pub(crate) fn collapse_progress(stderr: &str) -> String {
     static PROGRESS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let re = PROGRESS.get_or_init(|| regex::Regex::new(r"^(.*?):\s+\d{1,3}% \(").expect("valid regex"));
     let mut out: Vec<&str> = Vec::new();
