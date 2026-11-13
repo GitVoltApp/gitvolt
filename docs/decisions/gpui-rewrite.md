@@ -4,7 +4,19 @@
 `crates/gitvolt-gpui` draws GitVolt's main view natively from the same `gitvolt-core`. It reads, and writes
 through the same `Request`s as the web UI, so hooks, config, credentials and the journal behave the same.
 **The rewrite's goal is the current look, 1:1. The app is ported but for what "Not there yet" and "Differences from the web UI" name, the largest being sounds and films (no playback), and it has run on Linux only.**
-The branch is on GitVolt 1.6.0 and main at 50ddc69 (sections below).
+The branch is on GitVolt 1.6.1 and main at 7776601 (sections below).
+
+## GitVolt 1.6.1 and main (7776601)
+
+What the web UI gained beyond 50ddc69, `git diff 50ddc69..7776601 -- ui/`:
+
+- **Ported, Clone (`open.rs`):** a destination may be a Windows absolute path (`C:\…`, `C:/…`, `\\server\share`, not a drive-relative `C:foo`), a source only on Windows (`isAbsolutePath`), with the web's tests.
+- **Ported, Activity (`ops.rs`):** an update of the last line's progress phase (`Counting objects:  50% (22/44)`, also after `remote: `) replaces it, so an op's output keeps each phase's last state.
+- **Ported, emoji completion everywhere (`ui/input.rs`, `md/complete.rs`):** a `:` opens it in the commit summary and description (the WIP box, the rebase editor's message, the HEAD message editor) as well as the Markdown fields, a bare `:` too. The gitmojis whose code matches come first with their meaning (`assets/gitmojis.json.gz`, which `generate.mjs` now writes from the `gitmojis` package, MIT), then gemoji's, up to 100 in a list that scrolls. A pick inserts the emoji itself in a commit message and the `:shortcode:` in Markdown, as one edit Ctrl+Z takes back. The popup sits under the colon (under the caret when the colon has scrolled out of a field), kept on screen with at least about four rows; ↑ and ↓ scroll the active row into view, the pointer picks a row only when it moves, it closes while the field hasn't the keyboard, a paste doesn't open it, and an input method's Enter is the composition's. It's the input's own now (`emoji_completion`): the Markdown field keeps `@` mentions only. The Keyboard Shortcuts panel lists it.
+- **Ported, What's new (`whats_new.rs`):** the first start of a newer version (`lastRunVersion`, this build's own settings) puts "Updated to GitVolt … — see what's new" in the bell, unread; it opens the notes of every version since the last one, newest first, each under its version and day; Help › What's new shows them again. CHANGELOG.md is built in (`include_str!`) and parsed as `changelog.ts` does, with its tests. The version headings scroll with the notes, where the web's stay at the panel's top.
+- **Ported, updates in one click (`updates.rs`):** Install and restart downloads, waits for the download, installs and restarts, each step on the last one's success, carrying on with the dialog closed; unsaved edits ask before it starts and again before the restart only for edits made since (`unsaved_keys`). The dialog follows the state live (progress, Installing…, Restarting…, a failure's Try again, a manual install's command), says what the install will do per install kind (`AppInfo`'s `installKind`; a build from source points to the release page), and renders the notes of every version since this one as Markdown (they were plain text here). The pill opens the dialog in every state; Help › Check for updates opens it over About when it finds an update. `GITVOLT_FAKE_UPDATE` fakes a `.deb` install, so a flow sees the whole dialog. Still not here: About's own update line, and Arch's how-did-you-install choice.
+- **Doesn't apply:** busy-page diagnostics, a detector of the renderer's animation-frame loops, long frames and CSS animations: there's no renderer here. The site and release commits.
+- **Checked (`leftovers`):** a start after 1.5.0's settings puts the unread notice in the bell, stores 1.6.1, and the notice opens What's new; `:bu` in the summary lists the gitmojis first, Enter puts 🐛 in, Ctrl+Z takes it back, Esc closes the popup; Install and restart on an installed update asks about unsaved edits, and stays when that's cancelled.
 
 ## GitVolt 1.6.0
 

@@ -50,21 +50,43 @@ stop_app
 echo "the update dialog's Restart asks about unsaved edits, and the dialog stays if that's cancelled"
 U=$(small_repo upd)
 clean_app
+# A settings file from an older GitVolt: this start is an update.
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["lastRunVersion"]="1.5.0"; json.dump(d,open(p,"w"))' "$REALINPUT_ROOT/app/config/gitvolt-gpui/settings.json"
 export GITVOLT_FAKE_UPDATE=installed
 up "$U"; until_q "d['rows'] and d['rows'] >= 6" 5; pause 0.3
+echo "after an update: the bell has an unread notice that opens What's new, and the version's stored"
+check "the notice, from 1.5.0" "d['whatsNew']['unread'] and d['whatsNew']['notice'][1] == '1.5.0'"
+check_sh "the running version is the last-run one now" "python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))[\"lastRunVersion\"]; sys.exit(v == \"1.5.0\")' '$REALINPUT_ROOT/app/config/gitvolt-gpui/settings.json'"
+clickon bell; pause 0.4
+check "opening the bell reads it" "not d['whatsNew']['unread']"
+pick "Updated to GitVolt $(q "d['whatsNew']['notice'][0]") — see what's new"; pause 0.6
+check "What's new is open" "'whats-new' in d['modals']"
+shot left-whats-new
+clickon whats-new-close; pause 0.3
 echo "work" >>"$U/src/main.txt"; until_q "d['rows'] and d['rows'] >= 7" 5
 clickxy 700 147; until_q "d['wip'] and d['wip']['unstaged']" 5
 clickon "tip:src/main.txt" || { clickon "tip:src"; pause 0.3; clickon "tip:src/main.txt"; }
 until_q "d['open'] == 'src/main.txt'" 5; pause 0.3
+echo "a : in the commit summary: the gitmojis first; Enter puts the emoji itself in, Ctrl+Z takes it back, Esc closes"
+clickxy 1400 708; pause 0.2; ri type ":bu"; pause 0.5
+check "the popup's open, the gitmojis first" "'emoji-pop' in d['anchors'] and d['anchors']['emoji-opt:bug'][1] < d['anchors']['emoji-opt:building_construction'][1] < d['anchors']['emoji-opt:bus'][1]"
+shot left-emoji
+key Down; pause 0.1; key Up; pause 0.1; key Return; pause 0.4
+check "the emoji itself, the popup gone" "d['summary'] == '🐛 ' and 'emoji-pop' not in d['anchors']"
+key Control+z; pause 0.3
+check "Ctrl+Z takes the pick back" "d['summary'] == ':bu'"
+key Escape; pause 0.3
+check "Esc closes it, the text stays" "d['summary'] == ':bu' and 'emoji-pop' not in d['anchors']"
+key Control+a; ri raw 14; pause 0.2
 clickxy 800 500; pause 0.2; key End; ri type "UNSAVED"; pause 0.3
 clickon status-update; pause 0.4
-check "the dialog offers Restart" "'update-restart' in d['anchors']"
-clickon update-restart; pause 0.4
+check "the dialog offers Restart" "'update-install' in d['anchors']"
+clickon update-install; pause 0.4
 check "it asks" "d['popover'] and 'popover:discard' in d['anchors']"
 shot left-update-ask
 key Escape; pause 0.3
-check "cancelled: the dialog's still up, the same process" "not d['popover'] and 'update-restart' in d['anchors'] and d['pid'] == $APP_PID"
-clickon update-restart; pause 0.4; clickon popover:discard; pause 0.3; [ "$(q "d['popover']")" = True ] && clickon popover:discard; pause 0.6
+check "cancelled: the dialog's still up, the same process" "not d['popover'] and 'update-install' in d['anchors'] and d['pid'] == $APP_PID"
+clickon update-install; pause 0.4; clickon popover:discard; pause 0.3; [ "$(q "d['popover']")" = True ] && clickon popover:discard; pause 0.6
 check "Discard goes on to the core's request, which has no update here" "'installed' in (d['toast'] or '')"
 stop_app
 unset GITVOLT_FAKE_UPDATE

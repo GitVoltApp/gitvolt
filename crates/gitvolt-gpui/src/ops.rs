@@ -12,6 +12,18 @@ use std::time::Instant;
 
 pub const OUTPUT_CAP: usize = 64 * 1024;
 const TRUNCATED: &str = "… output truncated at 64 KB";
+
+/// `progressPhase`: a git progress update's phase (`Counting objects:  12% (3/24)`, also after `remote: `): what's before the
+/// first `:` that whitespace, up to three digits and `% (` follow.
+fn progress_phase(line: &str) -> Option<&str> {
+    line.match_indices(':').map(|(i, _)| i).find(|&i| {
+        let rest = &line[i + 1..];
+        let digits = rest.trim_start();
+        let n = digits.bytes().take_while(u8::is_ascii_digit).count();
+        digits.len() < rest.len() && (1..=3).contains(&n) && digits[n..].starts_with("% (")
+    })
+    .map(|i| &line[..i])
+}
 pub const MAX_ERRORS: usize = 100;
 pub const MAX_ACTIVITY: usize = 200;
 
@@ -103,6 +115,12 @@ impl Ops {
             AppEvent::OpOutput { op, line } => {
                 let (lines, size) = self.outputs.entry(*op).or_default();
                 if lines.last().is_some_and(|l| l == TRUNCATED) {
+                    return;
+                }
+                // An update of the last line's progress phase replaces it: Activity keeps each phase's last state.
+                if let Some(last) = lines.last_mut().filter(|l| progress_phase(l).is_some_and(|p| Some(p) == progress_phase(line))) {
+                    *size = *size - last.len() + line.len();
+                    last.clone_from(line);
                     return;
                 }
                 *size += line.len() + 1;
@@ -266,6 +284,19 @@ mod tests {
         assert_eq!(o.prompts.len(), 1);
         o.apply(&finished(1, OpKind::Push, OpOutcome::Failed));
         assert!(o.prompts.is_empty());
+    }
+
+    #[test]
+    fn a_progress_phase_keeps_its_last_update_only() {
+        let mut o = Ops::default();
+        o.apply(&started(1, OpKind::Push, true));
+        for l in ["To x", "Counting objects:   2% (1/44)", "Counting objects:  50% (22/44)", "Counting objects: 100% (44/44), done.", "Writing objects:  10% (1/9)", "Writing objects: 100% (9/9), done.", "lint: ok"] {
+            o.apply(&AppEvent::OpOutput { op: 1, line: l.into() });
+        }
+        o.apply(&finished(1, OpKind::Push, OpOutcome::Ok));
+        assert_eq!(o.activity[0].output, ["To x", "Counting objects: 100% (44/44), done.", "Writing objects: 100% (9/9), done.", "lint: ok"]);
+        assert_eq!(progress_phase("remote: Compressing objects:  50% (1/2)"), Some("remote: Compressing objects"));
+        assert_eq!(progress_phase("Note: 100% of it"), None);
     }
 
     #[test]

@@ -6,6 +6,7 @@
 // - editor-themes/*.json: each one's editor theme (tm-themes, and the web UI's own Darcula): its token colours and
 //   the colours Monaco draws an editor with, its own or Monaco's defaults for its kind;
 // - emoji.json.gz: gemoji's list, for rendered Markdown's shortcodes and the field's completion;
+// - gitmojis.json.gz: the gitmojis (emoji, code, meaning), first in the emoji completion;
 // - fonts/JetBrainsMono-Latin-400.ttf: the bundled editor font's Latin face, unwrapped from its WOFF;
 // - src/diff/testdata/shiki-golden.json: what Shiki colours the samples, for the engine's test;
 // - src/testdata/themes-golden.json: what custom.ts makes of a custom theme on each base, for theme.rs's test.
@@ -73,6 +74,9 @@ const { customThemeDef } = await import(new URL('src/theme/custom.ts', ui));
 const { darcula } = await import(new URL('src/theme/darcula.ts', ui));
 const { gemoji } = await import(pathToFileURL(new URL('node_modules/gemoji/index.js', ui).pathname).href);
 writeFileSync(new URL('emoji.json.gz', out), gzipSync(JSON.stringify(gemoji.map((e) => [e.emoji, e.names]))));
+// The gitmojis, as ui/src/markdown/gitmoji.ts loads them: each code without its colons, with its meaning.
+const { gitmojis } = await import(pathToFileURL(new URL('node_modules/gitmojis/dist/index.mjs', ui).pathname).href);
+writeFileSync(new URL('gitmojis.json.gz', out), gzipSync(JSON.stringify(gitmojis.map((g) => [g.emoji, g.code.replace(/^:|:$/g, ''), g.description]))));
 writeFileSync(new URL('themes.json', out), JSON.stringify(THEME_IDS.map((id) => {
   const t = THEMES[id];
   return { id, label: t.label, kind: t.kind, editorTheme: t.editorTheme, colors: t.colors, graph: t.graph, ...(t.laneText && { laneText: t.laneText }) };

@@ -11,6 +11,7 @@
 //! `Buffer` is the editing model, pure and tested; `TextInput` is the entity that draws it and takes
 //! the keys. Up, Down and Esc go on to the parent unless the owner claims them.
 
+use crate::md::complete::{EmojiHit, Trigger, emoji_hits, find_trigger};
 use crate::theme;
 use gpui::prelude::*;
 use gpui::*;
@@ -483,6 +484,34 @@ pub struct TextInput {
     blink_epoch: u64,
     blink_seen: (usize, bool),
     secret: bool,
+    /// `:` completes emojis here (`emoji_completion`): what a pick inserts.
+    emoji: Option<EmojiPick>,
+    emoji_ui: EmojiPopup,
+    /// The buffer's version right after a paste: a paste doesn't open the emoji popup, only typing does.
+    pasted: Option<u64>,
+}
+
+/// What an emoji pick inserts: the `:shortcode:` in Markdown (the forges render it), the emoji itself in a commit message
+/// (`git log` reads the same).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmojiPick {
+    Shortcode,
+    Glyph,
+}
+
+/// The emoji popup's state (`useCompletion.tsx`): what this frame offers, which row is active, where it was closed.
+#[derive(Default)]
+struct EmojiPopup {
+    hits: Vec<EmojiHit>,
+    trigger: Option<Trigger>,
+    open: bool,
+    active: usize,
+    closed_at: Option<usize>,
+    tag: String,
+    /// The pointer's last place over the list: a row is picked by the pointer only when it moves, not when the list
+    /// scrolls under it.
+    pointer: Option<Point<Pixels>>,
+    scroll: ScrollHandle,
 }
 
 /// Whether Esc is the owner's.
@@ -540,6 +569,9 @@ impl TextInput {
             blink_seen: (0, false),
             follow_caret: true,
             secret: false,
+            emoji: None,
+            emoji_ui: EmojiPopup::default(),
+            pasted: None,
         }
     }
 
@@ -598,6 +630,131 @@ impl TextInput {
 
     pub fn set_popup_keys(&mut self, on: bool) {
         self.popup_keys = on;
+    }
+
+    /// A `:` opens the emoji completion (`emojiProvider`): the gitmojis matching what follows it first, with their meaning,
+    /// then the other emojis.
+    pub fn emoji_completion(mut self, pick: EmojiPick) -> Self {
+        self.emoji = Some(pick);
+        self
+    }
+
+    fn emoji_move(&mut self, down: bool, cx: &mut Context<Self>) {
+        let n = self.emoji_ui.hits.len().max(1);
+        let a = &mut self.emoji_ui.active;
+        *a = if down { (*a + 1) % n } else { (*a + n - 1) % n };
+        self.emoji_ui.scroll.scroll_to_item(*a);
+        cx.notify();
+    }
+
+    /// The pick replaces the `:` and what follows it to the caret, as one edit: Ctrl+Z takes it back.
+    fn emoji_insert(&mut self, i: usize, cx: &mut Context<Self>) {
+        let (Some(pick), Some(t), Some(hit)) = (self.emoji, self.emoji_ui.trigger.clone(), self.emoji_ui.hits.get(i).cloned()) else { return };
+        let token = match pick {
+            EmojiPick::Shortcode => format!(":{}: ", hit.name),
+            EmojiPick::Glyph => format!("{} ", hit.emoji),
+        };
+        let caret = self.buffer.caret();
+        self.emoji_ui.open = false;
+        self.edit(Some(t.start..caret.max(t.start)), &token, EditKind::Other, cx);
+    }
+
+    /// This frame's emoji completion, and its popup when it's open: under the trigger's colon (under the caret when the colon
+    /// has scrolled out of a field's view), kept on screen, a shorter list in a short window.
+    fn emoji_frame(&mut self, focused: bool, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.emoji?;
+        let caret = self.buffer.caret();
+        let trigger = (!self.disabled && self.buffer.sel.is_empty() && self.buffer.marked.is_none()).then(|| find_trigger(&self.buffer.text, caret)).flatten();
+        let version = self.buffer.version();
+        let p = &mut self.emoji_ui;
+        let tag = trigger.as_ref().map_or(String::new(), |t| format!("{}:{}", t.start, t.query));
+        if tag != p.tag {
+            p.active = 0;
+            p.tag = tag;
+            p.scroll.set_offset(Point::default());
+        }
+        if trigger.is_none() {
+            p.closed_at = None;
+        }
+        if let Some(at) = self.pasted {
+            if at != version {
+                self.pasted = None;
+            } else if let Some(t) = &trigger {
+                p.closed_at = Some(t.start);
+                self.pasted = None;
+            }
+        }
+        p.hits = trigger.as_ref().map(|t| emoji_hits(&t.query)).unwrap_or_default();
+        p.open = focused && trigger.as_ref().is_some_and(|t| !p.hits.is_empty() && p.closed_at != Some(t.start));
+        p.trigger = trigger.clone();
+        if !p.open {
+            return None;
+        }
+        let t = trigger?;
+        // On screen, as the text is drawn: scrolled sideways in a field, up and down in a textarea.
+        let shown = |at: usize| self.point_of(at).map(|(p, line)| (if self.multiline { point(p.x, p.y - self.scroll) } else { point(p.x - self.scroll, p.y) }, line));
+        let (left_edge, right_edge) = (self.origin.x, self.origin.x + self.viewport.width);
+        let (at, line) = shown(t.start).filter(|(p, _)| self.multiline || (p.x >= left_edge && p.x <= right_edge)).or_else(|| shown(caret))?;
+        let vp = window.viewport_size();
+        let (vw, vh) = (vp.width.as_f32(), vp.height.as_f32());
+        let anchor = super::place::Rect { left: at.x.as_f32(), right: at.x.as_f32(), top: at.y.as_f32(), bottom: (at.y + line).as_f32() };
+        const ROW: f32 = 3. * 2. + 12. * 1.4;
+        const MIN_HEIGHT: f32 = 96.;
+        let natural = self.emoji_ui.hits.len() as f32 * ROW + 10.;
+        let h = natural.min(super::place::popover_room(anchor, vh)).max(natural.min(MIN_HEIGHT)).min(260.);
+        let w = 420f32.min(vw * 0.9);
+        let (left, top) = super::place::place_popover(Some(anchor), w, h, vw, vh);
+        let current = self.emoji_ui.active.min(self.emoji_ui.hits.len().saturating_sub(1));
+        let rows: Vec<AnyElement> = self
+            .emoji_ui
+            .hits
+            .iter()
+            .enumerate()
+            .map(|(i, hit)| {
+                let on = i == current;
+                let row = div()
+                    .id(SharedString::from(format!("emoji-opt-{}", hit.name)))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .px(px(8.))
+                    .py(px(3.))
+                    .rounded(px(4.))
+                    .cursor_pointer()
+                    .text_color(if on { theme::text_selected() } else { theme::text_normal() })
+                    .when(on, |d| d.bg(theme::selected_row()))
+                    .on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, _, cx| {
+                        let was = this.emoji_ui.pointer.replace(e.position);
+                        if was.is_some_and(|p| p != e.position) && this.emoji_ui.active != i {
+                            this.emoji_ui.active = i;
+                            cx.notify();
+                        }
+                    }))
+                    .on_click(cx.listener(move |this, _, _, cx| this.emoji_insert(i, cx)))
+                    .child(div().flex_none().w(px(19.6)).flex().justify_center().text_size(px(14.)).child(hit.emoji.clone()))
+                    .child(div().flex_none().child(format!(":{}:", hit.name)))
+                    .when_some(hit.description.clone(), |d, text| d.child(div().flex_1().min_w_0().truncate().when(!on, |d| d.text_color(theme::text_secondary())).when(on, |d| d.opacity(0.8)).child(text)));
+                super::anchor(format!("emoji-opt:{}", hit.name), row).into_any_element()
+            })
+            .collect();
+        let list = div()
+            .id("md-emoji-pop")
+            .occlude()
+            .w(px(w))
+            .max_h(px(h))
+            .overflow_y_scroll()
+            .track_scroll(&self.emoji_ui.scroll)
+            .p(px(4.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(theme::wip_input_border())
+            .bg(theme::panel_bg1())
+            .shadow(crate::ui::shadow(theme::shadow_popup(), 6., 18.))
+            .text_size(px(12.))
+            .line_height(relative(1.4))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .children(rows);
+        Some(deferred(anchored().position(point(px(left), px(top))).child(super::anchor("emoji-pop", list))).with_priority(1).into_any_element())
     }
 
     /// Where a byte of the text is on screen: its line's left and top, and the line's height.
@@ -825,6 +982,7 @@ impl TextInput {
         self.buffer.move_to(at);
         if let Some(text) = cx.read_from_primary().and_then(|i| i.text()) {
             self.edit(None, &text, EditKind::Other, cx);
+            self.pasted = Some(self.buffer.version());
         }
     }
 
@@ -832,6 +990,9 @@ impl TextInput {
         // Esc ends a composition first, as a browser does.
         if self.buffer.marked.take().is_some() {
             window.notify_text_input_changed(&self.focus);
+            cx.notify();
+        } else if self.emoji_ui.open {
+            self.emoji_ui.closed_at = self.emoji_ui.trigger.as_ref().map(|t| t.start);
             cx.notify();
         } else if self.popup_keys || self.claim_escape == Claim::Always || (self.claim_escape == Claim::WhenText && !self.buffer.text.is_empty()) {
             cx.emit(InputEvent::Escape);
@@ -841,6 +1002,10 @@ impl TextInput {
     }
 
     fn arrow(&mut self, down: bool, shift: bool, cx: &mut Context<Self>) {
+        if self.emoji_ui.open && !shift {
+            self.emoji_move(down, cx);
+            return;
+        }
         if self.popup_keys {
             cx.emit(InputEvent::Arrow { down, shift });
             return;
@@ -859,6 +1024,11 @@ impl TextInput {
     }
 
     fn enter(&mut self, shift: bool, cx: &mut Context<Self>) {
+        // An input method's Enter is the composition's own.
+        if self.emoji_ui.open && !shift && self.buffer.marked.is_none() {
+            self.emoji_insert(self.emoji_ui.active, cx);
+            return;
+        }
         if self.popup_keys && !shift {
             cx.emit(InputEvent::Submit { shift: false, ctrl: false });
             return;
@@ -1201,10 +1371,19 @@ impl Render for TextInput {
             }
             cx.emit(if focused { InputEvent::Focused } else { InputEvent::Blurred });
         }
+        let emoji = self.emoji_frame(focused, window, cx);
         div()
             .id("text-input")
             .key_context("TextInput")
             .track_focus(&self.focus)
+            // Tab takes the active emoji, before it would move the keyboard on.
+            .capture_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
+                let m = e.keystroke.modifiers;
+                if this.emoji_ui.open && e.keystroke.key == "tab" && !m.modified() {
+                    this.emoji_insert(this.emoji_ui.active, cx);
+                    cx.stop_propagation();
+                }
+            }))
             .size_full()
             .flex()
             .items_center()
@@ -1243,6 +1422,7 @@ impl Render for TextInput {
             .on_action(cx.listener(|this, _: &Paste, _, cx| {
                 if let Some(text) = cx.read_from_clipboard().and_then(|i| i.text()) {
                     this.edit(None, &text, EditKind::Other, cx);
+                    this.pasted = Some(this.buffer.version());
                 }
             }))
             .on_action(cx.listener(|this, _: &Copy, _, cx| {
@@ -1284,6 +1464,7 @@ impl Render for TextInput {
                 }))
             })
             .child(InputElement { input: cx.entity() })
+            .children(emoji)
     }
 }
 

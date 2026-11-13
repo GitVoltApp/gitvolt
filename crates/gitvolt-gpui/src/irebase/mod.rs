@@ -304,8 +304,8 @@ impl GitVolt {
             return self.show_toast(format!("{} has no commits to rebase onto {}", opts.branch, opts.base), cx);
         }
         let state = from_plan(plan, opts.preset.as_ref());
-        let summary = cx.new(|cx| TextInput::new(cx).placeholder("Summary").placeholder_color(crate::theme::wip_input_placeholder()).claim_escape().claim_arrows());
-        let description = cx.new(|cx| TextInput::multiline(cx).placeholder("Description").placeholder_color(crate::theme::wip_input_placeholder()).claim_escape().claim_arrows());
+        let summary = cx.new(|cx| TextInput::new(cx).placeholder("Summary").placeholder_color(crate::theme::wip_input_placeholder()).claim_escape().claim_arrows().emoji_completion(crate::ui::input::EmojiPick::Glyph));
+        let description = cx.new(|cx| TextInput::multiline(cx).placeholder("Description").placeholder_color(crate::theme::wip_input_placeholder()).claim_escape().claim_arrows().emoji_completion(crate::ui::input::EmojiPick::Glyph));
         cx.subscribe(&summary, move |this, _, e: &InputEvent, cx| this.rebase_message_event(repo, true, e, cx)).detach();
         cx.subscribe(&description, move |this, _, e: &InputEvent, cx| this.rebase_message_event(repo, false, e, cx)).detach();
         let focus = cx.focus_handle();

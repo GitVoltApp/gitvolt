@@ -118,6 +118,11 @@ pub fn place_popover(anchor: Option<Rect>, w: f32, h: f32, vw: f32, vh: f32) -> 
     (left, POPOVER_M.max(top.min(vh - h - POPOVER_M)))
 }
 
+/// `popoverRoom`: the most height a popover at `anchor` has, the larger room below it or above.
+pub fn popover_room(anchor: Rect, vh: f32) -> f32 {
+    (vh - POPOVER_M - anchor.bottom - POPOVER_GAP).max(anchor.top - POPOVER_GAP - POPOVER_M)
+}
+
 /// Which way an armed control's label grows, and how wide it may get: toward the side of `bounds`
 /// with room for it, `preferred` first; with room on neither, the roomier one, clipped.
 pub fn arm_placement(control: (f32, f32), bounds: (f32, f32), needed: f32, preferred: Option<bool>) -> (bool, f32) {

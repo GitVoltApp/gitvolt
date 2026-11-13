@@ -432,6 +432,7 @@ impl GitVolt {
             "merge": merge,
             "toast": crate::ui::toast::message(cx).map(|m| m.to_string()),
             "armed": crate::ui::arm::is_armed(cx),
+            "whatsNew": { "notice": self.whats_new.notice.as_ref().map(|n| (n.version.clone(), n.since.clone())), "unread": self.whats_new.unread },
             "reviewSubmit": tab.and_then(|t| t.forge.review_ui.submit_open.map(|n| serde_json::json!({ "number": n, "text": t.mr_views.get(&n).and_then(|u| u.review.input.as_ref()).map(|i| i.read(cx).text().to_string()) }))),
             "armOverlay": crate::ui::arm::overlay(cx).map(|b| [b.origin.x.as_f32(), b.origin.y.as_f32(), b.size.width.as_f32(), b.size.height.as_f32()]),
             "menu": crate::ui::menu::shown(cx),

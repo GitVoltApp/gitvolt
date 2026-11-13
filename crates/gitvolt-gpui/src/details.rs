@@ -809,12 +809,12 @@ impl GitVolt {
         let Some(c) = tab.commit.as_ref() else { return };
         let (id, summary_text, body_text, repo, worktree) = (c.full_id.to_string(), c.summary.to_string(), c.body.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n"), tab.id, tab.wip_worktree().unwrap_or_default().to_string());
         let summary = cx.new(|cx| {
-            let mut i = crate::ui::input::TextInput::new(cx).claim_escape();
+            let mut i = crate::ui::input::TextInput::new(cx).claim_escape().emoji_completion(crate::ui::input::EmojiPick::Glyph);
             i.set_text(&summary_text, cx);
             i
         });
         let body = cx.new(|cx| {
-            let mut i = crate::ui::input::TextInput::multiline(cx).placeholder("Description").claim_escape();
+            let mut i = crate::ui::input::TextInput::multiline(cx).placeholder("Description").claim_escape().emoji_completion(crate::ui::input::EmojiPick::Glyph);
             i.set_text(&body_text, cx);
             i
         });

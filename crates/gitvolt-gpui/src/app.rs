@@ -296,6 +296,14 @@ pub struct GitVolt {
     pub settings_openers: Option<Rc<Vec<crate::open_in::Opener>>>,
     /// `UpdateState`, as the core says it.
     pub update_state: serde_json::Value,
+    /// Install and restart is under way: a second press does nothing.
+    pub update_running: bool,
+    /// What the install answered (`InstallOutcome`), while the dialog shows it.
+    pub update_outcome: serde_json::Value,
+    /// How this GitVolt was installed (`AppInfo`'s `installKind`): what Install and restart does.
+    pub install_kind: String,
+    /// What the update dialog shows, copied before each frame: the dialog draws while this view does, and can't read it then.
+    pub update_mirror: Rc<std::cell::RefCell<(serde_json::Value, bool, serde_json::Value, String)>>,
     /// Git can't be run, or is too old: nothing works, and this says why (`GitTooOldScreen`).
     pub git_problem: Option<(bool, SharedString)>,
     /// `ProfileMeta[]`: the switcher's list.
@@ -376,6 +384,8 @@ pub struct GitVolt {
     pub last_opener: Option<String>,
     /// Images no longer shown: the frame after they go, the window drops them from its atlas.
     pub retired_images: Rc<std::cell::RefCell<Vec<Arc<RenderImage>>>>,
+    /// After an update: the bell's "Updated to GitVolt …" and Help › What's new.
+    pub whats_new: crate::whats_new::WhatsNew,
     /// Measuring (`GITVOLT_BENCH`, bench.rs): called once per frame.
     pub frame_hook: Option<FrameHook>,
     /// The shown tab's forge poller.
@@ -426,7 +436,7 @@ impl GitVolt {
         let focus = cx.focus_handle();
         let weak = cx.weak_entity();
         crate::ui::Ui::get_mut(cx).app_keys = Some(Rc::new(move |k, window, cx| weak.update(cx, |v, cx| v.app_key(k, window, cx)).unwrap_or(false)));
-        Self { flyout_kb: None, after_stack_push: None, forge_poller: None, mr_drag: None, base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, update_state: serde_json::Value::Null, git_problem: None, profiles: serde_json::json!([]), restoring_tabs: false, start_path: None, state_loaded: false, pending_group: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, chrome: Default::default(), window_press: None, bell_press_closed: false, fetch_missed: false, window_width: 1600., window_height: 900., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, scrollbar_grab: 0., closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), last_primary: None, text_drag_at: None, strip_ui: Default::default(), saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, field_demo: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
+        Self { update_mirror: Default::default(), update_running: false, update_outcome: serde_json::Value::Null, install_kind: "none".into(), whats_new: Default::default(), flyout_kb: None, after_stack_push: None, forge_poller: None, mr_drag: None, base_font: font.clone(), settings_ui: Default::default(), prefs: serde_json::json!({ "density": "standard", "advanceAfterStage": true }), settings_openers: None, update_state: serde_json::Value::Null, git_problem: None, profiles: serde_json::json!([]), restoring_tabs: false, start_path: None, state_loaded: false, pending_group: None, fetch_schedule: None, relative_clock: None, editor_font_dirty: false, window_hidden: false, chrome: Default::default(), window_press: None, bell_press_closed: false, fetch_missed: false, window_width: 1600., window_height: 900., activity_shown: Default::default(), merge_asides: HashMap::new(), merge_aborting: HashSet::new(), api, rt, tabs: Vec::new(), active: 0, focus, font, git_version: SharedString::default(), dragging_scrollbar: false, scrollbar_grab: 0., closed_tabs: Vec::new(), sidebar_w: DEFAULT_SIDEBAR_W, sidebar_narrow: false, side_weights: HashMap::new(), side_drag: SideDrag::None, last_pushes: Rc::default(), lfs: Default::default(), colours_cache: Default::default(), profile: serde_json::Value::Null, settings: serde_json::Value::Null, pending_recent: Vec::new(), open_tabs_made: 0, script_folder: None, repo_order: Default::default(), repo_grouped: false, branch_order_recent: false, details_w: crate::details::DETAILS_W, details_split: crate::details::SPLIT_DEFAULT, split_drag: None, column_drag: None, messages: Rc::default(), last_primary: None, text_drag_at: None, strip_ui: Default::default(), saved_columns: serde_json::Value::Null, focus_next_frame: None, last_opener: None, retired_images: Rc::default(), frame_hook: None, field_demo: None, window: None, ops: Default::default(), drafts: HashMap::new(), drafts_dirty: 0, drafts_saved: 0, wip_ratio: crate::wip::SPLIT_DEFAULT, wip_closed: [false; 3], sync_mode: crate::sync::SyncMode::FetchAll, activity: Default::default(), auth_shown: None, failing_fetch: HashSet::new(), next_move: 0, branch_drag: None, hold: None, sent: Rc::default(), unanswered: Vec::new(), merge_generation: 0, merge_colour_stop: Arc::default(), merge_after_save: None }
     }
 
     /// `gitCheck.ts`'s retry.
@@ -484,8 +494,12 @@ impl GitVolt {
             match info.await {
                 Ok(Ok(v)) => {
                     let version = v["gitVersion"].as_str().unwrap_or_default().to_string();
+                    let kind = v["installKind"].as_str().unwrap_or("none").to_string();
                     this.update(cx, |this, cx| {
                         this.git_version = version.into();
+                        if std::env::var_os("GITVOLT_FAKE_UPDATE").is_none() {
+                            this.install_kind = kind;
+                        }
                         this.git_problem = None;
                         cx.notify();
                     })
@@ -1593,6 +1607,7 @@ impl Render for GitVolt {
                 }
             }
         }
+        *self.update_mirror.borrow_mut() = (self.update_state.clone(), self.update_running, self.update_outcome.clone(), self.install_kind.clone());
         let submit_popover = crate::forge::review::zones::submit_popover(self, window, cx);
         let tab = self.tabs.get(self.active);
         let strip = tab.filter(|_| folded && !no_sidebar).map(|t| narrow_strip(t, cx));

@@ -56,6 +56,7 @@ mod tabs;
 mod theme;
 mod ui;
 mod updates;
+mod whats_new;
 mod wip;
 mod worker;
 mod zoom;

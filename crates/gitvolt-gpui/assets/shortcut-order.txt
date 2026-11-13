@@ -56,6 +56,7 @@ Redo the staging action
 Commit
 Commit
 Summary to description
+Pick an emoji (gitmojis first)
 Leave the message input
 Hunk diff view
 Inline diff view

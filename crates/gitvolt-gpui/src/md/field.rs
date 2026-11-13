@@ -1,12 +1,12 @@
 //! The Markdown field (`MarkdownField.tsx`, `useCompletion.tsx`, `field.css`): a textarea with Write and Preview tabs in
-//! one editor box, completions at the caret, a "Markdown supported" footer. Preview renders the text, debounced, over the
+//! one editor box, completions at the caret (`:emoji:` the input's own, `@people` here), a "Markdown supported" footer. Preview renders the text, debounced, over the
 //! textarea, which stays and keeps its size, text and caret. Ctrl+Shift+P switches while the field has the keyboard.
 
 use super::boxes::Params;
 use super::complete::*;
 use super::view::{Content, MdOptions, MdView};
 use crate::theme;
-use crate::ui::input::{InputEvent, TextInput};
+use crate::ui::input::{EmojiPick, InputEvent, TextInput};
 use gitvolt_core::api::Api;
 use gpui::prelude::*;
 use gpui::*;
@@ -58,21 +58,18 @@ pub enum Mode {
 
 #[derive(Clone)]
 enum Hit {
-    Emoji(EmojiHit),
     Person(Person),
 }
 
 impl Hit {
     fn key(&self) -> String {
         match self {
-            Hit::Emoji(e) => e.name.clone(),
             Hit::Person(p) => p.id.to_string(),
         }
     }
 
     fn token(&self) -> String {
         match self {
-            Hit::Emoji(e) => format!(":{}: ", e.name),
             Hit::Person(p) => format!("@{} ", p.username),
         }
     }
@@ -109,7 +106,7 @@ impl EventEmitter<FieldEvent> for MarkdownField {}
 impl MarkdownField {
     pub fn new(mut opts: FieldOptions, api: Arc<Api>, rt: tokio::runtime::Handle, retired: Rc<RefCell<Vec<Arc<RenderImage>>>>, cx: &mut Context<Self>) -> Self {
         let placeholder = opts.placeholder.clone();
-        let input = cx.new(|cx| TextInput::multiline(cx).placeholder(placeholder));
+        let input = cx.new(|cx| TextInput::multiline(cx).placeholder(placeholder).emoji_completion(EmojiPick::Shortcode));
         opts.md.pane = true;
         opts.md.inset = Some((12., 10.));
         if opts.md.params == Params::default() {
@@ -218,16 +215,12 @@ impl MarkdownField {
         self.rows as f32 * LINE + 20.
     }
 
-    /// What it completes, at the caret: `(hits, trigger)`, the first provider whose trigger is there.
+    /// The `@people` it completes at the caret: `(hits, trigger)`.
     fn candidates(&mut self, cx: &mut Context<Self>) -> (Vec<Hit>, Option<Trigger>) {
         let (text, caret) = {
             let i = self.input.read(cx);
             (i.text().to_string(), i.buffer.caret())
         };
-        if let Some(t) = find_trigger(&text, caret) {
-            let hits = rank_emoji(&t.query, MAX_HITS).into_iter().map(Hit::Emoji).collect();
-            return (hits, Some(t));
-        }
         let Some(people) = self.people.clone() else { return (Vec::new(), None) };
         let Some(t) = find_mention(&text, caret) else { return (Vec::new(), None) };
         let tag = t.query.clone();
@@ -308,7 +301,6 @@ impl MarkdownField {
                     }))
                     .on_click(cx.listener(move |this, _, _, cx| this.insert(insert.clone(), cx)))
                     .map(|d| match hit {
-                        Hit::Emoji(e) => d.child(div().flex_none().w(px(19.6)).flex().justify_center().text_size(px(14.)).child(e.emoji.clone())).child(format!(":{}:", e.name)),
                         Hit::Person(p) => d
                             .when_some(avatar.as_ref(), |d, a| d.child(a(p, 18.)))
                             .child(p.name.clone())

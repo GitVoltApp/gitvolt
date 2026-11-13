@@ -24,6 +24,7 @@ struct H {
 const HINTS: &[H] = &[
     H { id: "key.commit", section: "Commit message", label: "Commit", keys: &["Mod+Enter"], context: "(when in message input)" },
     H { id: "key.msgNext", section: "Commit message", label: "Summary to description", keys: &["Enter"], context: "(when in the summary)" },
+    H { id: "key.gitmoji", section: "Commit message", label: "Pick an emoji (gitmojis first)", keys: &[":"], context: "(in the message)" },
     H { id: "key.msgBlur", section: "Commit message", label: "Leave the message input", keys: &["Esc"], context: "(when in message input)" },
     H { id: "key.textSizeIn", section: "Diff", label: "Larger text (over code: the code; over rendered Markdown: the reading text; also Ctrl+wheel)", keys: &["Mod+="], context: "" },
     H { id: "key.textSizeOut", section: "Diff", label: "Smaller text (over a file or diff)", keys: &["Mod+-"], context: "" },

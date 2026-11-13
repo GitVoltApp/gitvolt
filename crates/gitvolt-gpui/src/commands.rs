@@ -352,6 +352,7 @@ pub fn all() -> Vec<Command> {
         Command::new("help.debug", "Debug…", Help, "bug", "The git commands GitVolt ran, the actions you ran, diagnostics and the perf overlay", &[]).run(|v, window, cx| v.open_debug(None, window, cx)),
         Command::new("help.shortcuts", "Keyboard shortcuts", Help, "keyboard", "Every keyboard shortcut, filterable", &["Mod+/"]).run(|v, window, cx| v.open_shortcuts(window, cx)),
         Command::new("help.checkUpdates", "Check for updates", Help, "refresh-cw", "Ask GitHub for a newer GitVolt release (GitVolt's own; nothing about your repositories)", &[]).run(|v, window, cx| v.check_for_updates(window, cx)),
+        Command::new("help.whatsNew", "What's new", Help, "sparkles", "This version's changes, from the notes that come with GitVolt", &[]).run(|v, window, cx| v.show_whats_new_now(window, cx)),
     ]);
     out
 }

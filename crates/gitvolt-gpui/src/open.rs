@@ -109,21 +109,35 @@ fn scp_style(u: &str) -> bool {
     word(who) && word(host) && !path.is_empty() && !path.chars().any(char::is_whitespace)
 }
 
+/// `isAbsolutePath`: an absolute path on the OS that wrote it: `/…`, or Windows' `C:\…` / `C:/…` and `\\server\share` (a
+/// drive-relative `C:foo` isn't). The core checks again with the real OS's rules.
+fn is_absolute_path(p: &str) -> bool {
+    let b = p.as_bytes();
+    p.starts_with('/')
+        || (b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/'))
+        || (b.len() >= 3 && b[0] == b'\\' && b[1] == b'\\' && b[2] != b'\\')
+}
+
 /// `cloneUrlProblem`: why `url` can't be cloned: http(s), ssh, git and file URLs, scp-style `user@host:path` and absolute
 /// paths, each with a name to give the folder.
 pub fn clone_url_problem(url: &str) -> Option<&'static str> {
+    clone_url_problem_on(url, cfg!(windows))
+}
+
+/// A Windows path only on Windows: elsewhere git would read `C:\x` as ssh's `host:path`.
+fn clone_url_problem_on(url: &str, windows: bool) -> Option<&'static str> {
     let u = url.trim();
     if u.is_empty() {
         return None;
     }
-    let ok = scheme_url(u) || scp_style(u) || u.starts_with('/');
+    let ok = scheme_url(u) || scp_style(u) || u.starts_with('/') || (windows && is_absolute_path(u));
     (!ok || repo_name_from_url(u).is_empty()).then_some("Not a repository URL: use https://, ssh://, git@host:path, file:// or an absolute path")
 }
 
 /// `cloneDestProblem`: it must be an absolute path.
 pub fn clone_dest_problem(dest: &str) -> Option<&'static str> {
     let d = dest.trim();
-    (!d.is_empty() && !d.starts_with('/')).then_some("The destination must be an absolute path")
+    (!d.is_empty() && !is_absolute_path(d)).then_some("The destination must be an absolute path")
 }
 
 fn segments(p: &str) -> Vec<&str> {
@@ -253,6 +267,7 @@ impl GitVolt {
                 this.refresh_open_tabs(cx);
                 if !this.state_loaded {
                     this.state_loaded = true;
+                    this.check_last_run(cx);
                     let path = this.start_path.take();
                     this.restore_tabs(path, cx);
                 }
@@ -1038,7 +1053,21 @@ mod tests {
         }
         assert_eq!(clone_dest_problem("/home/x"), None);
         assert_eq!(clone_dest_problem(""), None);
-        assert!(clone_dest_problem("x/y").is_some());
+        assert!(clone_dest_problem("x/y").is_some());        assert!(clone_url_problem("C:repos\\origin").is_some(), "drive-relative");
+    }
+
+    #[test]
+    fn a_windows_path_is_a_source_on_windows_only_and_a_destination_anywhere() {
+        for u in ["C:\\repos\\origin.git", "D:/repos/origin", "\\\\server\\share\\origin.git"] {
+            assert_eq!(clone_url_problem_on(u, true), None, "{u}");
+            assert!(clone_url_problem_on(u, false).is_some(), "{u}");
+        }
+        for d in ["F:\\Github_Projects\\anyrpg", "c:/code/r", "\\\\server\\share\\r"] {
+            assert_eq!(clone_dest_problem(d), None, "{d}");
+        }
+        for d in ["F:Github_Projects", "repos\\r", "\\single"] {
+            assert!(clone_dest_problem(d).is_some(), "{d}");
+        }
     }
 
     #[test]

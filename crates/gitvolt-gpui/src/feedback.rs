@@ -560,38 +560,54 @@ impl GitVolt {
     }
 }
 
-/// The bell's menu: background errors, the activity log, Clear.
+/// The bell's menu: "Updated to GitVolt …" after an update (it opens What's new), then the background errors, the activity
+/// log, Clear.
 pub fn bell_rows(v: &GitVolt, this: &WeakEntity<GitVolt>) -> Vec<MenuRow> {
+    let updated: Vec<MenuRow> = v.whats_new.notice.clone().map(|n| {
+        let weak = this.clone();
+        let since = n.since.clone().unwrap_or_default();
+        MenuRow::action("bell.whatsNew", format!("Updated to GitVolt {} — see what's new", n.version), "sparkles", format!("The changes since {since}, from the notes that come with GitVolt"), move |window, cx| {
+            weak.update(cx, |v, cx| v.open_whats_new(n.clone(), window, cx)).ok();
+        })
+    }).into_iter().collect();
+    let clear = {
+        let weak = this.clone();
+        MenuRow::action("bell.clear", "Clear notifications", "bell-off", "Forget these notifications", move |_, cx| {
+            weak.update(cx, |v, cx| {
+                v.ops.errors.clear();
+                v.ops.unread = 0;
+                v.whats_new.notice = None;
+                v.whats_new.unread = false;
+                cx.notify();
+            })
+            .ok();
+        })
+    };
     let activity = {
         let weak = this.clone();
         MenuRow::action("bell.activity", "Activity log", "history", "Every finished fetch and clone, with git's message", move |window, cx| {
             weak.update(cx, |v, cx| v.open_activity(None, window, cx)).ok();
         })
     };
+    if v.ops.errors.is_empty() && !updated.is_empty() {
+        return updated.into_iter().chain([MenuRow::Separator, activity, clear]).collect();
+    }
     if v.ops.errors.is_empty() {
         return vec![MenuRow::action("bell.none", "No notifications", "bell-off", "Background errors (a failed background fetch) appear here", |_, _| {}).disabled("Nothing yet"), MenuRow::Separator, activity];
     }
     let mut rows: Vec<MenuRow> = v.ops.errors.iter().enumerate().map(|(i, e)| MenuRow::action(format!("bell.{i}"), e.message.clone(), "triangle-alert", e.message.clone(), |_, _| {})).collect();
-    let weak = this.clone();
     rows.push(MenuRow::Separator);
     rows.push(activity);
-    rows.push(MenuRow::action("bell.clear", "Clear notifications", "bell-off", "Forget these notifications", move |_, cx| {
-        weak.update(cx, |v, cx| {
-            v.ops.errors.clear();
-            v.ops.unread = 0;
-            cx.notify();
-        })
-        .ok();
-    }));
-    rows
+    rows.push(clear);
+    updated.into_iter().chain(rows).collect()
 }
 
 /// The tab bar's bell, with its count. A click opens its menu and a second one closes it; a press that moves moves the window.
 pub fn bell(v: &GitVolt, width: f32, cx: &mut Context<GitVolt>) -> impl IntoElement + use<> {
-    let unread = v.ops.unread;
+    let unread = v.ops.unread + usize::from(v.whats_new.unread);
     let open = menu::is_open_on("bell", cx);
     tip(
-        "Notifications: background errors",
+        "Notifications: background errors and updates",
         crate::ui::anchor(
             "bell",
             div()
@@ -616,6 +632,7 @@ pub fn bell(v: &GitVolt, width: f32, cx: &mut Context<GitVolt>) -> impl IntoElem
                         return;
                     }
                     this.ops.unread = 0;
+                    this.whats_new.unread = false;
                     let weak = cx.weak_entity();
                     let rows = bell_rows(this, &weak);
                     menu::open_below("bell", rows, OpenOptions { label: Some("Notifications".into()), ..Default::default() }, window, cx);

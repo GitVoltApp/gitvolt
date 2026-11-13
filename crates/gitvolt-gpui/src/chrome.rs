@@ -169,7 +169,7 @@ impl GitVolt {
         self.confirm_discard_unsaved(Some(anchor), move |v, cx| v.restart_now(req, cx), cx);
     }
 
-    fn restart_now(&mut self, req: fn() -> Request, cx: &mut Context<Self>) {
+    pub(crate) fn restart_now(&mut self, req: fn() -> Request, cx: &mut Context<Self>) {
         self.flush_drafts();
         self.save_layout();
         self.save_tabs(cx);

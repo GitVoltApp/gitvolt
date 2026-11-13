@@ -450,9 +450,9 @@ impl WipUi {
             _ => {}
         })
         .detach();
-        let summary = cx.new(|cx| TextInput::new(cx).placeholder("Summary").placeholder_color(theme::wip_input_placeholder()).claim_escape().claim_arrows());
+        let summary = cx.new(|cx| TextInput::new(cx).placeholder("Summary").placeholder_color(theme::wip_input_placeholder()).claim_escape().claim_arrows().emoji_completion(crate::ui::input::EmojiPick::Glyph));
         cx.subscribe(&summary, move |this, _, e: &InputEvent, cx| this.commit_field_event(id, true, e, cx)).detach();
-        let description = cx.new(|cx| TextInput::multiline(cx).placeholder("Description").placeholder_color(theme::wip_input_placeholder()).claim_escape().claim_arrows());
+        let description = cx.new(|cx| TextInput::multiline(cx).placeholder("Description").placeholder_color(theme::wip_input_placeholder()).claim_escape().claim_arrows().emoji_completion(crate::ui::input::EmojiPick::Glyph));
         cx.subscribe(&description, move |this, _, e: &InputEvent, cx| this.commit_field_event(id, false, e, cx)).detach();
         Self { filter_open: false, filter, summary, description, amend: None, stop: None, committing: false, staging: 0, discarding: false, discarding_paths: Vec::new(), identity: None, all_files: false, committing_since: None, abort_armed_at: None }
     }
