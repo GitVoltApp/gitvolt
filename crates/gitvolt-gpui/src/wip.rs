@@ -2034,7 +2034,7 @@ fn section_view(which: Which, tab: &Tab, keys_here: bool, selected: Option<FileC
             }))
             .children(tool_line)
             .children(tab.create_file.as_ref().filter(|c| c.section == Some(which)).map(|c| crate::manage::create_file_input(c, cx)))
-            .child(list)
+            .child(div().flex().flex_1().min_h_0().child(list).child(crate::ui::scrollbar::vertical(("wip-list-bar", which.index()), &s.list.0.borrow().base_handle)))
     });
     let el = div().flex().flex_col().min_h_0().overflow_hidden().child(head).children(body);
     let el = match (closed, basis, conflicted_h) {

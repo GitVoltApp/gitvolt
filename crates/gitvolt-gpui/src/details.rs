@@ -1184,7 +1184,8 @@ fn files_view(files: &Files, creating: Option<&crate::manage::CreateFile>, input
         .children(filter_row)
         .children(tree_error)
         .children(creating)
-        .child(list)
+        // Chromium's lane beside the rows, as the sidebar's: the web's list scrolls with one.
+        .child(div().flex().flex_1().min_h_0().child(list).child(crate::ui::scrollbar::vertical("file-list-bar", &files.list.0.borrow().base_handle)))
 }
 
 /// What a file list shows: all of it, or a WIP section's part of it.
