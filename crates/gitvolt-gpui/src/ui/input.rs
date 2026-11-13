@@ -697,8 +697,11 @@ impl TextInput {
         let (at, line) = shown(t.start).filter(|(p, _)| self.multiline || (p.x >= left_edge && p.x <= right_edge)).or_else(|| shown(caret))?;
         let vp = window.viewport_size();
         let (vw, vh) = (vp.width.as_f32(), vp.height.as_f32());
-        let anchor = super::place::Rect { left: at.x.as_f32(), right: at.x.as_f32(), top: at.y.as_f32(), bottom: (at.y + line).as_f32() };
-        const ROW: f32 = 3. * 2. + 12. * 1.4;
+        // The line, and the padding a field's box has around it (a commit summary's 8px): the popup keeps clear of the box's edge.
+        const CLEAR: f32 = 4.;
+        let anchor = super::place::Rect { left: at.x.as_f32(), right: at.x.as_f32(), top: at.y.as_f32() - CLEAR, bottom: (at.y + line).as_f32() + CLEAR };
+        const ROW_LINE: f32 = 20.;
+        const ROW: f32 = 3. * 2. + ROW_LINE;
         const MIN_HEIGHT: f32 = 96.;
         let natural = self.emoji_ui.hits.len() as f32 * ROW + 10.;
         let h = natural.min(super::place::popover_room(anchor, vh)).max(natural.min(MIN_HEIGHT)).min(260.);
@@ -719,6 +722,7 @@ impl TextInput {
                     .gap(px(8.))
                     .px(px(8.))
                     .py(px(3.))
+                    .h(px(ROW))
                     .rounded(px(4.))
                     .cursor_pointer()
                     .text_color(if on { theme::text_selected() } else { theme::text_normal() })
@@ -731,7 +735,8 @@ impl TextInput {
                         }
                     }))
                     .on_click(cx.listener(move |this, _, _, cx| this.emoji_insert(i, cx)))
-                    .child(div().flex_none().w(px(19.6)).flex().justify_center().text_size(px(14.)).child(hit.emoji.clone()))
+                    // The glyph a line of its own size: on the text's 12px line it sat low, its foot cut off.
+                    .child(div().flex_none().w(px(19.6)).h(px(ROW_LINE)).flex().items_center().justify_center().text_size(px(14.)).line_height(px(ROW_LINE)).child(hit.emoji.clone()))
                     .child(div().flex_none().child(format!(":{}:", hit.name)))
                     .when_some(hit.description.clone(), |d, text| d.child(div().flex_1().min_w_0().truncate().when(!on, |d| d.text_color(theme::text_secondary())).when(on, |d| d.opacity(0.8)).child(text)));
                 super::anchor(format!("emoji-opt:{}", hit.name), row).into_any_element()
