@@ -1,0 +1,143 @@
+Open repository…
+Close file
+Close tab
+Reopen closed tab
+Fetch all
+Settings
+Branch
+Stash
+Pop
+Push
+Pull
+Next tab
+Previous tab
+Go to tab 1
+Go to tab 2
+Go to tab 3
+Go to tab 4
+Go to tab 5
+Go to tab 6
+Go to tab 7
+Go to tab 8
+Go to the last tab
+Go to working directory changes
+Toggle sidebar
+Go back
+Go forward
+Focus the sidebar
+Focus the graph
+Focus the file list
+Focus the diff
+Next branch preset
+Choose branch preset…
+Zoom in
+Zoom out
+Reset zoom
+List the hidden branches that start at a commit
+Close the hidden branches list
+Hide or show a branch, tag or folder
+Close the open file or leave compare
+Commit / cancel a tab rename
+Activate the focused tab
+Collapse / expand the tab group
+Tab group menu (colour, name, actions)
+List the group's tabs; move, switch, close
+Undo
+Redo
+Filter sidebar
+Find in graph
+Command palette
+Go to what's on the clipboard
+Stage file
+Unstage file
+Stage the hunk or lines at the cursor
+Undo the last staging action
+Redo the staging action
+Commit
+Commit
+Summary to description
+Pick an emoji (gitmojis first)
+Leave the message input
+Hunk diff view
+Inline diff view
+Split diff view
+Toggle Source / Rendered
+Next change
+Previous change
+Comment on the line or selection
+Next thread
+Previous thread
+Next file
+Previous file
+Move the swipe handle
+Save the working copy
+Larger text (over code: the code; over rendered Markdown: the reading text; also Ctrl+wheel)
+Smaller text (over a file or diff)
+Reset the text size (over a file or diff)
+File history of the open file
+Blame the open file
+Close file history
+Submit the pending review…
+Approve the MR/PR
+Merge the MR/PR
+Update the MR/PR's branch
+Open the MR/PR in the browser
+Create the stack of merge/pull requests
+Pick / Reword / Squash / Fixup / Drop / Edit
+Move row
+Edit message
+Save the plan
+Cancel
+Keyboard shortcuts
+Previous / next result
+Run the result
+Close
+Close the dialog / menu
+Move in a menu
+Previous / next file
+Page up / down
+First / last file
+Expand folder, or open the file
+Collapse folder, or close the diff
+Open or close the file, toggle a folder
+Context menu
+Close the file filter
+Clear the file filter
+Create the file / cancel
+Next match
+Previous match
+Close find
+Show the commits a collapsed branch or folded merge holds
+Select the previous / next hidden commit
+Close the reveal panel
+Select previous / next commit
+Page up / down
+First / last commit
+Extend the selection
+Open the selected commit's first changed file
+Context menu
+Leave the WIP summary box
+Zoom in / out
+Fit to the window
+Actual size (100%)
+Pan a zoomed image
+Close
+View an image full size
+Next / previous conflict
+Save the result
+Toggle the conflict at the cursor
+Move the focused scope up or down
+Paste scopes from the clipboard
+Move the focused preset or rule up or down
+Paste a branch preset from the clipboard
+Previous / next row
+First / last row
+Activate the row
+Expand / collapse a group
+Hide or show the branch or folder in the graph
+Clear the filter / move into the list
+Reset the width
+Submodules: Update
+Submodules: Open in a tab…
+Move the floating theme editor
+Back to Settings

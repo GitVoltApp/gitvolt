@@ -25,6 +25,10 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   of starting a download; and Check for updates in About opens it as soon as it finds an update,
   in place of the **Show update** button.
 
+### Fixed
+
+- **The line beside a diff's overview ruler** stands against the ruler, not 10 px to its left.
+
 ## [1.6.1] - 2026-11-12
 
 ### Added

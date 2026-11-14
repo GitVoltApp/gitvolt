@@ -13,7 +13,7 @@ use gitvolt_core::open_copy;
 use gitvolt_core::paths;
 use gitvolt_core::settings::SettingsStore;
 use gitvolt_core::shellenv::ShellEnv;
-use gitvolt_core::openers::{detect_system, spawn_detached_with, system_url_opener, ChildEnvHook, LaunchCommand, Launcher};
+use gitvolt_core::openers::{detect_system, launcher, system_url_opener, ChildEnvHook};
 use gitvolt_forge::gravatar::{Gravatar, DEFAULT_BASE_URL};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -135,24 +135,6 @@ fn build_api(cli: GitCli, launch: Option<String>, child_env: ChildEnvHook, quit:
             Arc::new(gitvolt_forge::tokens::SystemTokenStore::system(paths::data_dir().join("forge-tokens"))),
         ),
     }
-}
-
-/// "Open in…"'s launcher: detached, argv only, with `child_env`'s environment (so an editor
-/// doesn't start under XWayland or with the app's IBus sync mode). With a captured login-shell
-/// environment (spec §5.3: `SSH_AUTH_SOCK`, `PATH` additions), the editor starts from that one
-/// instead of the app's, and `child_env` still runs last. The API awaits the capture before an
-/// editor launch, so `captured()` has it by then (or it failed, and the app's own env is used).
-fn launcher(child_env: ChildEnvHook, shell_env: Option<Arc<ShellEnv>>) -> Launcher {
-    Arc::new(move |c: &LaunchCommand| {
-        let captured = shell_env.as_ref().and_then(|s| s.captured());
-        spawn_detached_with(c, &|cmd: &mut std::process::Command| {
-            // The capture already left GitVolt's own variables (`PRIVATE_ENV`) out.
-            if let Some(vars) = &captured {
-                cmd.env_clear().envs(vars.iter().map(|(k, v)| (k, v)));
-            }
-            child_env(cmd);
-        })
-    })
 }
 
 /// The main window as the folder-picker portal's parent: `x11:<xid>` (the CEF runtime's window is
@@ -861,7 +843,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let out = dir.join("env");
         let script = format!("printf '%s|%s' \"${{GDK_BACKEND-unset}}\" \"${{IBUS_ENABLE_SYNC_MODE-unset}}\" > '{}'", out.display());
-        launcher(hook, None)(&LaunchCommand { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()] }).unwrap();
+        launcher(hook, None)(&gitvolt_core::openers::LaunchCommand { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()] }).unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let mut got = String::new();
         while std::time::Instant::now() < deadline {
@@ -893,7 +875,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let out = dir.join("env");
         let script = format!("printf '%s|%s|%s' \"${{GB_FROM_LOGIN-unset}}\" \"${{GDK_BACKEND-unset}}\" \"${{CARGO_PKG_NAME-unset}}\" > '{}'", out.display());
-        launcher(hook, Some(shell))(&LaunchCommand { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()] }).unwrap();
+        launcher(hook, Some(shell))(&gitvolt_core::openers::LaunchCommand { program: "/bin/sh".into(), args: vec!["-c".into(), script.into()] }).unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let mut got = String::new();
         while std::time::Instant::now() < deadline {
