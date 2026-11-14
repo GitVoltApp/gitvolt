@@ -462,6 +462,7 @@ impl GitVolt {
             "graphScroll": tab.map(|t| -t.list.0.borrow().base_handle.offset().y.as_f32()),
             "wip": sections,
             "summary": tab.map(|t| t.wip.summary.read(cx).text().to_string()),
+            "summarySel": tab.map(|t| { let s = &t.wip.summary.read(cx).buffer.sel; [s.start, s.end] }),
             "head": head.as_ref().map(|h| h.0.clone()),
             "headSha": head.as_ref().and_then(|h| h.1.clone()),
             "rows": head.as_ref().map(|h| h.2),

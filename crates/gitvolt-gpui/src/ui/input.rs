@@ -471,6 +471,9 @@ pub struct TextInput {
     /// The press's granularity while it drags: a double click extends by words, a triple by lines.
     drag_unit: u8,
     drag_origin: Range<usize>,
+    /// The pointer while a press selects, wherever it is: held past the text's edge, the text scrolls on (`drag_scroll`).
+    drag_pos: Option<Point<Pixels>>,
+    drag_scrolling: bool,
     /// Scrolled so the caret stays in view: x in a field, y in a textarea.
     scroll: Pixels,
     laid: Vec<Laid>,
@@ -558,6 +561,8 @@ impl TextInput {
             selecting: false,
             drag_unit: 1,
             drag_origin: 0..0,
+            drag_pos: None,
+            drag_scrolling: false,
             scroll: px(0.),
             laid: Vec::new(),
             origin: Point::default(),
@@ -964,9 +969,14 @@ impl TextInput {
         if !self.selecting || e.pressed_button != Some(MouseButton::Left) {
             return;
         }
-        let at = self.index_at(e.position);
+        self.drag_to(e.position, cx);
+    }
+
+    /// The press's selection to the text under `position`, which may be past the text's edge: the caret goes there, and the view
+    /// follows it.
+    fn drag_to(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let at = self.index_at(position);
         match self.drag_unit {
-            1 if !e.modifiers.shift => self.buffer.select_to(at),
             1 => self.buffer.select_to(at),
             unit => {
                 let around = if unit == 2 { self.buffer.word_at(at) } else if self.multiline { self.buffer.line_at(at) } else { 0..self.buffer.text.len() };
@@ -976,6 +986,47 @@ impl TextInput {
             }
         }
         self.moved(cx);
+    }
+
+    /// Whether `position` is past the text's edge, the way the view scrolls: sideways in a field, up or down in a textarea.
+    fn past_edge(&self, position: Point<Pixels>) -> bool {
+        let p = position - self.origin;
+        if self.multiline { p.y < px(0.) || p.y > self.viewport.height } else { p.x < px(0.) || p.x > self.viewport.width }
+    }
+
+    /// A press held past the text's edge scrolls on, as a browser's field does: each step takes the selection to the text under
+    /// the pointer, which the scroll has moved on, so it goes the faster the further out the pointer is. Only while the press
+    /// selects; it ends with the press, and after a second of nothing to scroll (the text's end, or a release outside the
+    /// window, which never arrives): the next move starts it again.
+    fn drag_scroll(&mut self, cx: &mut Context<Self>) {
+        if self.drag_scrolling {
+            return;
+        }
+        self.drag_scrolling = true;
+        cx.spawn(async move |this, cx| {
+            let mut still = 0;
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+                let go_on = this
+                    .update(cx, |i, cx| {
+                        let Some(at) = i.drag_pos.filter(|_| i.selecting && still < 20) else {
+                            i.drag_scrolling = false;
+                            return false;
+                        };
+                        let before = i.buffer.sel.clone();
+                        if i.past_edge(at) {
+                            i.drag_to(at, cx);
+                        }
+                        still = if i.buffer.sel == before { still + 1 } else { 0 };
+                        true
+                    })
+                    .unwrap_or(false);
+                if !go_on {
+                    return;
+                }
+            }
+        })
+        .detach();
     }
 
     fn on_middle_down(&mut self, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -1298,6 +1349,38 @@ impl Element for InputElement {
     fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, bounds: Bounds<Pixels>, _: &mut (), p: &mut Prepainted, window: &mut Window, cx: &mut App) {
         let input = self.input.read(cx);
         let (focus, multiline, disabled) = (input.focus.clone(), input.multiline, input.disabled);
+        // A press that selects follows the pointer anywhere in the window until it's let go: past the text's edge, the text scrolls.
+        if input.selecting {
+            let (moved, up) = (self.input.clone(), self.input.clone());
+            window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+                if phase != DispatchPhase::Capture {
+                    return;
+                }
+                moved.update(cx, |i, cx| {
+                    if !i.selecting {
+                        return;
+                    }
+                    if e.pressed_button != Some(MouseButton::Left) {
+                        i.selecting = false;
+                        i.drag_pos = None;
+                        return;
+                    }
+                    i.drag_pos = Some(e.position);
+                    i.drag_to(e.position, cx);
+                    if i.past_edge(e.position) {
+                        i.drag_scroll(cx);
+                    }
+                });
+            });
+            window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
+                if phase == DispatchPhase::Capture && e.button == MouseButton::Left {
+                    up.update(cx, |i, _| {
+                        i.selecting = false;
+                        i.drag_pos = None;
+                    });
+                }
+            });
+        }
         window.handle_input(&focus, ElementInputHandler::new(bounds, self.input.clone()), cx);
         let focused = focus.is_focused(window);
         let shift = if multiline { point(px(0.), -p.scroll) } else { point(-p.scroll, px(0.)) };

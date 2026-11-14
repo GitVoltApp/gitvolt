@@ -22,6 +22,13 @@ ri raw 21; ri raw 44; pause 0.2
 check "y and z where they are on a German keyboard" "d['summary'].endswith('zy')"
 key Control+a; ri raw 14; pause 0.2
 check "the field's empty" "d['summary'] == ''"
+echo "a drag held past the field's right edge scrolls on to the text's end"
+ri type "Merge branch main into a branch with a rather long name, longer than the summary field shows at once"; pause 0.3
+key Home; pause 0.2
+ri move 1250 708 -- wait 60 -- down -- wait 80 -- move 1450 708 -- wait 60 -- move 1598 708 -- wait 2500 -- up; pause 0.3
+check "the selection went on to the end" "d['summarySel'][1] == len(d['summary'].encode()) and d['summarySel'][0] < 20"
+q "d['summarySel'], len(d['summary'])"
+key Control+a; ri raw 14; pause 0.2
 key Escape; pause 0.2
 # The shortcuts: out of the field.
 clickxy 700 500; pause 0.2
