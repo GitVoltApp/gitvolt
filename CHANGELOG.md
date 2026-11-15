@@ -28,6 +28,9 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 ### Fixed
 
 - **The line beside a diff's overview ruler** stands against the ruler, not 10 px to its left.
+- **A submodule opens in a tab of its own.** Opened from the Submodules panel (or as a folder), it showed only
+  "… is not a worktree of this repository": git names a submodule's git dir (`.git/modules/…`) as its main worktree,
+  and GitVolt took that for its checkout. Its checkout is its `core.worktree`, and that's what opens now.
 
 ## [1.6.1] - 2026-11-12
 

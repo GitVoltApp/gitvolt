@@ -3859,6 +3859,21 @@ mod tests {
         Api::new(GitCli::new(Arc::new(CommandLog::new(100))).with_env(isolated_git_env()), Some("/launch/path".into()))
     }
 
+    /// A submodule's git dir is the superproject's `.git/modules/…`, where `git worktree list` names the git dir itself as
+    /// the main worktree: opened, it's its checkout, and its graph reads with the checkout as the active worktree.
+    #[tokio::test]
+    async fn a_submodule_opens_as_its_checkout_and_reads_its_graph() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let sub = crate::platform::fs::canonicalize(r.path().join("vendor/parser")).unwrap();
+        let api = api();
+        let s = api.open_repo(sub.to_str().unwrap()).await.unwrap();
+        assert_eq!(s.path, sub.display().to_string(), "its checkout, not its git dir");
+        assert_eq!(s.worktree, sub.display().to_string());
+        let graph = api.graph(s.id, Some(50), None, None, Some(s.worktree.clone()), None).await;
+        assert!(graph.is_ok(), "{:?}", graph.err().map(|e| e.message));
+    }
+
     #[tokio::test]
     async fn the_write_guard_decides_and_none_allows_everything() {
         let r = TestRepo::new();
