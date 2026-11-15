@@ -129,6 +129,7 @@ describe('Sidebar panels', () => {
       const g = useRuntime.getState().tabs.t.graph!;
       const tag = (name: string) => ({ name, fullName: `refs/tags/${name}`, target: 't'.repeat(40), time: 0 });
       useRuntime.getState().patch('t', { sidebar: { ...s, tags: [tag('archive/a'), tag('archive/b'), tag('v1')] }, graph: { ...g, view: { ...g.view!, hiddenTags: ['archive/a', 'archive/b'] } } });
+      useAppState.getState().updateRepo('/r', (r) => ({ ...r, sidebarSort: { tags: 'tree' } })); // Tags start newest first, flat: as a tree to show folders.
       renderIt();
       const tags = panel('Tags');
       const tagRow = (name: string) => within(tags).getByRole('treeitem', { name });
@@ -382,6 +383,7 @@ describe('Sidebar item menus (plan 1C Task 15b)', () => {
     const services = fakeServices();
     const store = createRepoViewStore(4, '/r', EMPTY_GRAPH, services);
     useTabViews.setState({ views: { t: { repo: 4, services, store } } });
+    useAppState.getState().updateRepo('/r', (r) => ({ ...r, sidebarSort: { tags: 'tree' } })); // Tags start newest first, flat: as a tree to show folders.
     render(<RepoViewContext value={store}><RepoContext value={ctx}><Sidebar /></RepoContext></RepoViewContext>);
     fireEvent.contextMenu(within(panel('Local')).getByRole('treeitem', { name: 'feature' }));
     expect(rowsOpen()).toEqual(['Hide folder']);

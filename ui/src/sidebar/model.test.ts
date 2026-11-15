@@ -67,6 +67,14 @@ describe('sidebar model', () => {
     expect(view(panels).slice(0, 7)).toEqual(['[Local 3]', '  feature/login', '  main', '  feature/pay/v2', '[Remote 1]', '  origin/', '    main']);
   });
 
+  it('Tags start newest first, flat; picking the tree nests them again', () => {
+    const tag = (name: string, time: number) => ({ name, fullName: `refs/tags/${name}`, target: 't'.repeat(40), time });
+    const p: SidebarPayload = { ...payload, tags: [tag('rel/v1', 10), tag('v2', 30), tag('rel/v3', 20)] };
+    const tags = (sort: Record<string, 'tree' | 'recent'>) => view([buildPanels(sectionsOf(p), opts({ sort })).find((x) => x.section.id === 'tags')!]);
+    expect(tags({})).toEqual(['[Tags 3]', '  v2', '  rel/v3', '  rel/v1']);
+    expect(tags({ tags: 'tree' })).toEqual(['[Tags 3]', '  rel/', '    v1', '    v3', '  v2']);
+  });
+
   it('K76: remote groups order by newest tip, branches inside newest first (ties by name), flat, no prefix', () => {
     const rb = (name: string, tipTime: number, remote: string) => ({ name, fullName: `refs/remotes/${remote}/${name}`, target: 'x'.repeat(40), tipTime, summary: '', author: '' });
     const p: SidebarPayload = { ...payload, remotes: [
@@ -98,7 +106,7 @@ describe('sidebar model', () => {
       expect(sectionsOf(payload, view)[1].items[0].presetState).toBe('folded');
     });
 
-    const folders = (p: SidebarPayload, v?: ViewPayload, picks?: BranchPicks) => buildPanels(sectionsOf(p, v, picks), opts()).flatMap((panel) => panel.rows)
+    const folders = (p: SidebarPayload, v?: ViewPayload, picks?: BranchPicks) => buildPanels(sectionsOf(p, v, picks), opts({ sort: { tags: 'tree' } })).flatMap((panel) => panel.rows)
       .flatMap((r) => (r.type === 'folder' ? [[r.key, r.branchFolder, r.hidden]] : []));
     const states2 = (hidden: string[]): ViewPayload => ({ trunk: ['main'], branches: ['feature/login', 'feature/pay/v2', 'bot/x'].map((name) => ({ name, refs: [], state: hidden.includes(name) ? 'hidden' : 'shown', by: { kind: 'otherwise' } })) });
     const withBot: SidebarPayload = { ...payload, remotes: [{ ...payload.remotes[0], branches: [...payload.remotes[0].branches, { name: 'bot/x', fullName: 'refs/remotes/origin/bot/x', target: 'b'.repeat(40), tipTime: 1, summary: '', author: '' }] }], tags: [{ ...payload.tags[0], name: 'rel/v1' }] };

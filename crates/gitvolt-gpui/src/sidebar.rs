@@ -341,6 +341,11 @@ fn walk(n: &Node<'_>, depth: u8, prefix: &str, kind: SectionKind, filtering: boo
     }
 }
 
+/// `defaultSort`: the panels that start newest first, Tags alone (the latest release on top); the rest start as a tree.
+pub fn default_recent() -> HashSet<SectionKind> {
+    HashSet::from([SectionKind::Tags])
+}
+
 /// `buildPanels`: a case-insensitive substring filter over every panel, forcing open the parents of a
 /// match. `tree` sort nests by `/`; `recent` is flat, newest first (a remote's stays grouped).
 pub fn build_panels(sections: &[Section], filter: &str, recent: &HashSet<SectionKind>, collapsed: &HashSet<String>) -> Vec<Panel> {
@@ -509,7 +514,7 @@ impl SideState {
             _ => {}
         })
         .detach();
-        Self { filter, sections: Vec::new(), recent: HashSet::new(), collapsed: HashSet::new(), panels: Rc::new(Vec::new()), scroll: HashMap::new(), cursor: HashMap::new(), keys: None }
+        Self { filter, sections: Vec::new(), recent: default_recent(), collapsed: HashSet::new(), panels: Rc::new(Vec::new()), scroll: HashMap::new(), cursor: HashMap::new(), keys: None }
     }
 
     pub fn relist(&mut self, cx: &App) {
@@ -1528,6 +1533,16 @@ mod tests {
         let c = build_panels(&sample(), "", &HashSet::new(), &collapsed);
         assert!(c[0].rows.is_empty());
         assert_eq!(c[0].matched, 4);
+    }
+
+    #[test]
+    fn tags_start_newest_first_and_the_tree_nests_them_again() {
+        let tag = |name: &str, time: i64| json!({"name": name, "fullName": format!("refs/tags/{name}"), "target": "t", "time": time});
+        let v = json!({"locals": [], "remotes": [], "worktrees": [], "stashes": [], "submodules": {}, "tags": [tag("rel/v1", 10), tag("v2", 30), tag("rel/v3", 20)]});
+        let s = sections_of(&v, "/w", None);
+        let tags = |recent: &HashSet<SectionKind>| build_panels(&s, "", recent, &HashSet::new()).into_iter().find(|p| p.kind == SectionKind::Tags).unwrap();
+        assert_eq!(labels(&tags(&default_recent())), ["v2", "rel/v3", "rel/v1"]);
+        assert_eq!(labels(&tags(&HashSet::new())), ["rel/", "v1", "v3", "v2"]);
     }
 
     fn spec(collapsed: bool, weight: Option<f32>) -> PanelSpec {
