@@ -88,16 +88,21 @@ describe('BranchFlow', () => {
   });
 });
 
-describe('commitsBetween (the first-parent line from the tip down to the base)', () => {
+describe("commitsBetween (what the tip has and the base hasn't: git's base..tip)", () => {
   const row = (id: string, parents: string[]) => ({ id, parents, summary: `s-${id}`, wip: null }) as unknown as RowPayload;
   const rows = [row('t', ['m', 'x']), row('x', ['b']), row('m', ['b']), row('b', ['r']), row('r', [])];
-  it('oldest first, the base left out; the tip itself is empty', () => {
-    expect(commitsBetween(rows, 't', 'b')?.map((c) => c.sha)).toEqual(['m', 't']);
+  it('oldest first, a merged side branch\'s commit included, the base left out; the tip itself is empty', () => {
+    expect(commitsBetween(rows, 't', 'b')?.map((c) => c.sha)).toEqual(['m', 'x', 't']);
     expect(commitsBetween(rows, 'b', 'b')).toEqual([]);
   });
-  it("null when the walk leaves the loaded graph or never meets the base", () => {
+  it('a branch that merged its target in lists its own commits: the base is then on a second parent', () => {
+    // main: o ← b ← n; the branch forked at o, merged b in, then committed on.
+    const merged = [row('n', ['b']), row('t', ['g']), row('g', ['f', 'b']), row('b', ['o']), row('f', ['o']), row('o', ['z'])];
+    expect(commitsBetween(merged, 't', 'b')?.map((c) => c.sha)).toEqual(['f', 'g', 't']);
+  });
+  it('null when the range leaves the loaded graph', () => {
     expect(commitsBetween(rows, 'gone', 'b')).toBeNull();
-    expect(commitsBetween(rows, 't', 'x')).toBeNull();
+    expect(commitsBetween([row('t', ['u']), row('b', [])], 't', 'b')).toBeNull();
   });
 });
 

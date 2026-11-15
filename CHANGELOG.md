@@ -24,9 +24,15 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   bar's **Update to X** opens the dialog, with the notes of every version since yours, instead
   of starting a download; and Check for updates in About opens it as soon as it finds an update,
   in place of the **Show update** button.
+- **Tags list newest first,** the latest release on top. The panel's sort button still switches
+  to the folder tree, and a repository where you picked one keeps it.
 
 ### Fixed
 
+- **A merge request whose branch merged its target in lists its commits.** Its header showed the
+  files but no commit count and no **Show commits**: the list followed only the branch's first
+  parents, which never meet the merge base then. It now holds what the branch has and its target
+  hasn't, as the forge lists them (a side branch merged into it included).
 - **The line beside a diff's overview ruler** stands against the ruler, not 10 px to its left.
 - **A submodule opens in a tab of its own.** Opened from the Submodules panel (or as a folder), it showed only
   "… is not a worktree of this repository": git names a submodule's git dir (`.git/modules/…`) as its main worktree,

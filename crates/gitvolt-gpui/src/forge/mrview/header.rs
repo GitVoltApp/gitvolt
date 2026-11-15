@@ -110,7 +110,7 @@ impl GitVolt {
                 let state = match answer {
                     None => RangeState::None,
                     Some((base, list)) => {
-                        let commits = t.graph.as_ref().and_then(|g| commits_between(g.rows.iter().filter(|r| r.wip.is_none()).map(|r| (r.id.as_ref(), r.summary.as_ref(), r.parents.first().map(String::as_str))), &tip, &base));
+                        let commits = t.graph.as_ref().and_then(|g| commits_between(g.rows.iter().filter(|r| r.wip.is_none()).map(|r| (r.id.as_ref(), r.summary.as_ref(), r.parents.as_slice())), &tip, &base));
                         RangeState::Ready { commits, files: list["files"].as_array().map_or(0, |f| f.len() as u64), added: list["added"].as_u64().unwrap_or(0), deleted: list["deleted"].as_u64().unwrap_or(0) }
                     }
                 };
@@ -129,28 +129,37 @@ impl GitVolt {
 
 const MAX_WALK: usize = 1000;
 
-/// The commits on `tip`'s first-parent line down to `base` (excluded), oldest first; `None` when the walk leaves what's loaded or never meets it.
-pub fn commits_between<'a>(rows: impl Iterator<Item = (&'a str, &'a str, Option<&'a str>)>, tip: &str, base: &str) -> Option<Vec<(String, String)>> {
+/// `commitsBetween`: the commits `tip` has that `base` hasn't (git's `base..tip`, what the forge lists), oldest first, so a branch
+/// that merged its target in still lists its own; `None` when that range leaves what's loaded or passes `MAX_WALK` commits.
+pub fn commits_between<'a>(rows: impl Iterator<Item = (&'a str, &'a str, &'a [String])>, tip: &str, base: &str) -> Option<Vec<(String, String)>> {
+    use std::collections::{HashMap, HashSet};
     if tip == base {
         return Some(Vec::new());
     }
-    let by: std::collections::HashMap<&str, (&str, Option<&str>)> = rows.map(|(id, s, p)| (id, (s, p))).collect();
-    let mut out = Vec::new();
-    let mut at = Some(tip);
-    while let Some(id) = at.filter(|i| *i != base) {
-        let (summary, parent) = by.get(id)?;
-        if out.len() >= MAX_WALK {
+    let rows: Vec<(&str, &str, &[String])> = rows.collect();
+    let by: HashMap<&str, &[String]> = rows.iter().map(|&(id, _, parents)| (id, parents)).collect();
+    // What the base reaches, unloaded parents included by name: the tip's walk stops at any of them.
+    let mut behind = HashSet::new();
+    let mut stack = vec![base];
+    while let Some(id) = stack.pop() {
+        if behind.insert(id) {
+            stack.extend(by.get(id).into_iter().flat_map(|p| p.iter().map(String::as_str)));
+        }
+    }
+    let mut ahead = HashSet::new();
+    let mut stack = vec![tip];
+    while let Some(id) = stack.pop() {
+        if behind.contains(id) || !ahead.insert(id) {
+            continue;
+        }
+        // Unloaded, and not the base's: the range runs past what's loaded.
+        let parents = by.get(id)?;
+        if ahead.len() > MAX_WALK {
             return None;
         }
-        out.push((id.to_string(), summary.to_string()));
-        at = *parent;
+        stack.extend(parents.iter().map(String::as_str));
     }
-    if at == Some(base) {
-        out.reverse();
-        Some(out)
-    } else {
-        None
-    }
+    Some(rows.iter().rev().filter(|r| ahead.contains(r.0)).map(|&(id, summary, _)| (id.to_string(), summary.to_string())).collect())
 }
 
 /// `BranchFlow`, without Create's parts (`create.rs` draws its own ends).
@@ -381,3 +390,30 @@ impl GitVolt {
 
 /// `Value` of what the core's compare lists.
 pub type _Unused = Value;
+
+#[cfg(test)]
+mod tests {
+    use super::commits_between;
+
+    fn between(rows: &[(&str, &[&str])], tip: &str, base: &str) -> Option<Vec<String>> {
+        let rows: Vec<(String, String, Vec<String>)> = rows.iter().map(|(id, p)| (id.to_string(), format!("s-{id}"), p.iter().map(|p| p.to_string()).collect())).collect();
+        commits_between(rows.iter().map(|(id, s, p)| (id.as_str(), s.as_str(), p.as_slice())), tip, base).map(|c| c.into_iter().map(|(id, _)| id).collect())
+    }
+
+    // Web: forge/ui/BranchFlow.test.tsx.
+    #[test]
+    fn the_range_is_what_the_tip_has_and_the_base_hasnt() {
+        let rows: &[(&str, &[&str])] = &[("t", &["m", "x"]), ("x", &["b"]), ("m", &["b"]), ("b", &["r"]), ("r", &[])];
+        assert_eq!(between(rows, "t", "b").unwrap(), ["m", "x", "t"], "oldest first, a merged side branch's commit included, the base left out");
+        assert_eq!(between(rows, "b", "b").unwrap(), Vec::<String>::new());
+        assert_eq!(between(rows, "gone", "b"), None);
+        assert_eq!(between(&[("t", &["u"]), ("b", &[])], "t", "b"), None, "the range runs past what's loaded");
+    }
+
+    #[test]
+    fn a_branch_that_merged_its_target_in_lists_its_own_commits() {
+        // main: o ← b ← n; the branch forked at o, merged b in, then committed on: the merge base is b, a second parent.
+        let rows: &[(&str, &[&str])] = &[("n", &["b"]), ("t", &["g"]), ("g", &["f", "b"]), ("b", &["o"]), ("f", &["o"]), ("o", &["z"])];
+        assert_eq!(between(rows, "t", "b").unwrap(), ["f", "g", "t"]);
+    }
+}

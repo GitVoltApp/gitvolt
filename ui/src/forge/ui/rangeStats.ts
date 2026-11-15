@@ -20,23 +20,36 @@ export type RangeState = { status: 'loading' } | { status: 'ready'; stats: Range
 const MAX_WALK = 1000;
 
 /**
- * The commits on `tip`'s first-parent line down to `base` (excluded), oldest first, from the
- * graph's rows; null when the walk leaves the loaded graph (a truncated one) or never meets the
- * base (a branch that merged its target in: the base is then on a second parent).
+ * The commits `tip` has that `base` hasn't (git's `base..tip`, what the forge lists), oldest
+ * first, from the graph's rows, so a branch that merged its target in still lists its own; null
+ * when that range leaves the loaded graph (a truncated one) or passes MAX_WALK commits.
  */
 export function commitsBetween(rows: readonly RowPayload[], tip: string, base: string): RangeCommit[] | null {
   if (tip === base) return [];
   const byId = new Map<string, RowPayload>();
   for (const r of rows) if (!r.wip) byId.set(r.id, r);
-  const out: RangeCommit[] = [];
-  let at: string | undefined = tip;
-  while (at && at !== base) {
-    const row = byId.get(at);
-    if (!row || out.length >= MAX_WALK) return null;
-    out.push({ sha: row.id, summary: row.summary });
-    at = row.parents[0];
+  // What the base reaches, unloaded parents included by name: the tip's walk stops at any of them.
+  const behind = new Set<string>();
+  for (const stack = [base]; stack.length > 0;) {
+    const id = stack.pop()!;
+    if (behind.has(id)) continue;
+    behind.add(id);
+    stack.push(...(byId.get(id)?.parents ?? []));
   }
-  return at === base ? out.reverse() : null;
+  const ahead = new Set<string>();
+  for (const stack = [tip]; stack.length > 0;) {
+    const id = stack.pop()!;
+    if (behind.has(id) || ahead.has(id)) continue;
+    const row = byId.get(id);
+    // Unloaded, and not the base's: the range runs past what's loaded.
+    if (!row) return null;
+    ahead.add(id);
+    if (ahead.size > MAX_WALK) return null;
+    stack.push(...row.parents);
+  }
+  const out: RangeCommit[] = [];
+  for (let i = rows.length - 1; i >= 0; i--) if (ahead.has(rows[i].id) && !rows[i].wip) out.push({ sha: rows[i].id, summary: rows[i].summary });
+  return out;
 }
 
 /**

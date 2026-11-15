@@ -590,7 +590,7 @@ impl GitVolt {
                 let Some(t) = v.tabs.iter_mut().find(|t| t.id == tab) else { return };
                 let commits = answer.as_ref().and_then(|(base, tip, _)| {
                     let g = t.graph.as_ref()?;
-                    super::mrview::header::commits_between(g.rows.iter().filter(|r| r.wip.is_none()).map(|r| (r.id.as_ref(), r.summary.as_ref(), r.parents.first().map(String::as_str))), tip, base)
+                    super::mrview::header::commits_between(g.rows.iter().filter(|r| r.wip.is_none()).map(|r| (r.id.as_ref(), r.summary.as_ref(), r.parents.as_slice())), tip, base)
                 });
                 if let Some(ui) = t.create.as_mut() {
                     ui.commits = commits.unwrap_or_default();
