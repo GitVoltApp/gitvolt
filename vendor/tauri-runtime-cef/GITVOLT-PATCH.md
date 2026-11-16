@@ -256,6 +256,10 @@ says.
     doc of `window_manager_request`.
   - `Cargo.toml`: the `Win32_UI_HiDpi` feature of `windows` (no new crate).
 
+- `src/cef_impl/request_handler.rs` (a request's headers, below): `get_request_headers` reads
+  the headers through the C API instead of iterating a `CefStringMultimap`. No other change in
+  this file.
+
 ## A window that draws its own title bar (Linux, X11)
 
 GitVolt draws its own title bar on Linux (`crates/gitvolt-app/src/chrome.rs`), with the window
@@ -714,6 +718,18 @@ No other files differ from the published 3.0.0-alpha.6 crate (its `Cargo.lock` i
 that only blocks name resolution and can't redirect traffic, which is what the warning is about.
 **Fix:** a value made only of `MAP * ~NOTFOUND` and `EXCLUDE …` rules is logged at debug instead;
 any other rule (a real redirect) still warns. Test: `resolver_rules_that_only_block_are_not_a_redirect`.
+
+## A request's headers (a leak in cef 154.5)
+
+Every request to a custom scheme, so every IPC call, goes through `get_request_headers`, which
+iterated a `cef::CefStringMultimap`. In cef 154.5 that type's `Drop` clears the map without
+freeing it, and its iterator never clears the key and value copies CEF's getters write out (the
+caller owns them). Each request left about 1.5 KB in the browser process.
+**Fix:** the map is allocated and freed here, and each key and value is cleared once read, through
+`cef_string_multimap_alloc` / `_key` / `_value` / `_free` and `cef_string_utf16_clear`. A header
+that isn't valid HTTP is skipped: `HeaderValue::from_str(..).unwrap()` used to panic, and abort
+the app, on a control character `fetch` allows. The root fix is tauri-apps/cef-rs#516; once a
+`cef` release with it is picked up, this patch can go.
 
 ## AppArmor denying user namespaces outright (Linux)
 
