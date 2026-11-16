@@ -201,6 +201,20 @@ pub fn shadow(color: Hsla, y: f32, blur: f32) -> Vec<BoxShadow> {
     vec![BoxShadow { color, offset: point(px(0.), px(y)), blur_radius: px(blur), spread_radius: px(0.), inset: false }]
 }
 
+/// `.flyout::after`: a flyout's shadow on its right edge only, a strip just outside it (its own box would darken the
+/// flyout under the blur) clipped to the flyout's height, so it never spills up over the toolbar. `width` is the
+/// flyout's, border included; the flyout must be `relative()`.
+pub fn flyout_shadow(width: f32) -> Div {
+    div()
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .left(px(width))
+        .w(px(32.))
+        .overflow_hidden()
+        .child(div().absolute().top_0().bottom_0().left(px(-24.)).w(px(24.)).shadow(vec![BoxShadow { color: crate::theme::shadow_popup(), offset: point(px(4.), px(0.)), blur_radius: px(16.), spread_radius: px(0.), inset: false }]))
+}
+
 fn is_zoom(k: &Keystroke) -> bool {
     k.modifiers.control && !k.modifiers.alt && matches!(k.key.as_str(), "=" | "+" | "-" | "0")
 }

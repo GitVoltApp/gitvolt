@@ -442,7 +442,7 @@ pub fn mr_flyout(this: &mut GitVolt, room: f32, window: &mut Window, cx: &mut Co
         .text_color(theme::text_normal())
         .border_r_1()
         .border_color(theme::section_border())
-        .when(!docked, |d| d.shadow(vec![BoxShadow { color: theme::shadow_popup(), offset: point(px(4.), px(0.)), blur_radius: px(16.), spread_radius: px(0.), inset: false }]))
+        .when(!docked, |d| d.child(crate::ui::flyout_shadow(width)))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_key_down(cx.listener(move |v, e: &KeyDownEvent, window, cx| {
             if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
