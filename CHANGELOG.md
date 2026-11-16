@@ -57,6 +57,10 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   `Counting objects: 2% (1/44)` update on its own line; each phase now shows its last state.
 - **Clone on Windows.** A destination like `F:\Projects\repo` is accepted; the form wanted a path
   starting with `/` (#26). A local source path can be a Windows one too, on Windows.
+- **Memory no longer grows with every call to the core.** Each request from the UI left its
+  headers behind in the app process, about 1.5 KB a request, for as long as GitVolt ran (20,000
+  requests: +31 MB). The `cef` crate's `CefStringMultimap` frees neither the map nor the strings
+  read from it; the runtime now reads a request's headers through CEF's C API.
 
 ## [1.6.0] - 2026-11-06
 

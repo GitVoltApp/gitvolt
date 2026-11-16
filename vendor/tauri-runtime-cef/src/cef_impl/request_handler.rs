@@ -648,22 +648,45 @@ fn read_request_body(request: &mut Request) -> Vec<u8> {
   body
 }
 
+/// The request's headers, read through the C API rather than `cef::CefStringMultimap`: in cef
+/// 154.5 that type's `Drop` clears the map without freeing it, and its iterator never clears the
+/// key and value copies CEF hands out. Every request to a custom scheme, so every IPC call, leaked
+/// its headers (about 1.5 KB) in the browser process, for as long as the app ran.
 fn get_request_headers(request: &mut Request) -> HeaderMap {
   let mut headers = HeaderMap::new();
 
-  let mut map = CefStringMultimap::new();
+  // Owned here (`From<*mut _>` only borrows it) and freed below.
+  let raw = unsafe { sys::cef_string_multimap_alloc() };
+  if raw.is_null() {
+    return headers;
+  }
+  request.header_map(Some(&mut CefStringMultimap::from(raw)));
 
-  request.header_map(Some(&mut map));
-
-  // Iterate through all entries
-  for (name, value) in map {
-    for v in value {
-      headers.append(
-        HeaderName::from_bytes(name.as_bytes()).unwrap(),
-        HeaderValue::from_str(&v).unwrap(),
-      );
+  // CEF copies each key and value into the `cef_string_t` it's given; the caller clears it.
+  let take = |s: &mut sys::cef_string_t| {
+    let text = if s.str_.is_null() {
+      String::new()
+    } else {
+      String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(s.str_, s.length) })
+    };
+    unsafe { sys::cef_string_utf16_clear(s) };
+    text
+  };
+  for i in 0..unsafe { sys::cef_string_multimap_size(raw) } {
+    let mut key: sys::cef_string_t = unsafe { std::mem::zeroed() };
+    let mut value: sys::cef_string_t = unsafe { std::mem::zeroed() };
+    let found = unsafe {
+      sys::cef_string_multimap_key(raw, i, &mut key) != 0
+        && sys::cef_string_multimap_value(raw, i, &mut value) != 0
+    };
+    let (key, value) = (take(&mut key), take(&mut value));
+    if found
+      && let (Ok(name), Ok(value)) = (HeaderName::from_bytes(key.as_bytes()), HeaderValue::from_str(&value))
+    {
+      headers.append(name, value);
     }
   }
+  unsafe { sys::cef_string_multimap_free(raw) };
 
   headers
 }
