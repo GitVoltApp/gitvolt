@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-11-15
+
 ### Added
 
 - **What's new after an update.** The first start of a new version puts "Updated to GitVolt
