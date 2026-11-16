@@ -75,6 +75,10 @@ impl CefX11Host {
     gtk_window.set_child(Some(&default_vbox));
 
     let parent_xid = window_xid(window);
+    // GitVolt patch: an undecorated window draws its own frame (`chrome.rs`).
+    if !window.is_decorated() {
+      chrome::set_client_decorated(parent_xid, true);
+    }
     let initial_size = window.surface_size();
     let (xid, colormap) = create_cef_container(parent_xid, initial_size)?;
     let take_focus =
@@ -310,6 +314,12 @@ impl AppWindow {
   /// `edge`, following the pointer while button 1 is held (`chrome.rs`).
   pub(crate) fn begin_move_resize(&self, edge: Option<tauri_runtime::ResizeDirection>) -> bool {
     chrome::begin_move_resize(self.xid(), edge)
+  }
+
+  /// GitVolt patch: an undecorated window is marked as drawing its own frame, so mutter never
+  /// takes it for an old app making itself full screen (`chrome.rs`).
+  pub(crate) fn sync_client_decorated(&self, decorated: bool) {
+    chrome::set_client_decorated(self.xid(), !decorated);
   }
 
   /// GitVolt patch: whether the window manager was asked (`chrome.rs`). It takes Alt+Space

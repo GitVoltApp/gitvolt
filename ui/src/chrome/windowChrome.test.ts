@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { followWindow, runTitleBarAction, useWindowChrome, windowOps, type WindowChromeInfo, type WindowOps } from './windowChrome';
+import { followWindow, runTitleBarAction, toggleMaximizeOf, useWindowChrome, windowOps, type WindowChromeInfo, type WindowOps } from './windowChrome';
 
 const fakeOps = () => ({
   startDragging: vi.fn(async () => {}),
@@ -34,6 +34,42 @@ describe("a title bar click's action (GNOME's action-*-click-titlebar)", () => {
     const ops = fakeOps();
     for (const action of ['none', 'toggle-shade', 'bogus', '']) expect(runTitleBarAction(action, ops)).toBeNull();
     for (const fn of Object.values(ops)) expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe('the maximize toggle', () => {
+  const target = (fullscreen: boolean | Error) => ({
+    isFullscreen: vi.fn(async () => { if (fullscreen instanceof Error) throw fullscreen; return fullscreen; }),
+    setFullscreen: vi.fn(async (_: boolean) => {}),
+    toggleMaximize: vi.fn(async () => {}),
+  });
+
+  it('maximizes or restores a window that is not full screen', async () => {
+    for (const platform of ['linux', 'windows', 'macos', undefined] as const) {
+      const w = target(false);
+      await toggleMaximizeOf(w, platform);
+      expect(w.toggleMaximize).toHaveBeenCalledTimes(1);
+      expect(w.setFullscreen).not.toHaveBeenCalled();
+    }
+  });
+
+  it('takes a full screen window out of full screen instead (mutter ignores maximize there), except on macOS', async () => {
+    for (const platform of ['linux', 'windows'] as const) {
+      const w = target(true);
+      await toggleMaximizeOf(w, platform);
+      expect(w.setFullscreen).toHaveBeenCalledWith(false);
+      expect(w.toggleMaximize).not.toHaveBeenCalled();
+    }
+    const mac = target(true);
+    await toggleMaximizeOf(mac, 'macos');
+    expect(mac.toggleMaximize).toHaveBeenCalledTimes(1);
+    expect(mac.setFullscreen).not.toHaveBeenCalled();
+  });
+
+  it("still maximizes when the full screen state can't be read", async () => {
+    const w = target(new Error('no window'));
+    await toggleMaximizeOf(w, 'linux');
+    expect(w.toggleMaximize).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -78,5 +114,13 @@ describe('with no window (a browser, e2e)', () => {
     await windowOps.close();
     expect(await windowOps.windowManager('menu')).toBe(false);
     expect(window.__gbWindowCalls).toEqual(['startDragging', 'startResizeDragging:SouthEast', 'toggleMaximize', 'minimize', 'close', 'windowManager:menu']);
+  });
+
+  it('a full screen window leaves full screen rather than maximizing', async () => {
+    useWindowChrome.setState({ info: { frame: 'custom', platform: 'linux', layout: ':close', doubleClick: 'toggle-maximize', middleClick: 'none', rightClick: 'menu' }, fullscreen: true });
+    await windowOps.toggleMaximize();
+    expect(useWindowChrome.getState()).toMatchObject({ fullscreen: false, maximized: false });
+    await windowOps.toggleMaximize();
+    expect(window.__gbWindowCalls).toEqual(['setFullscreen:false', 'toggleMaximize']);
   });
 });

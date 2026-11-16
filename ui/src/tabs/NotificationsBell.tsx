@@ -8,7 +8,7 @@ import { openMenuAt } from '../menu/menuStore';
 import type { MenuRow } from '../menu/types';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { useToast } from '../ui/toastStore';
-import { useWhatsNew } from '../updates/whatsNew';
+import { useWhatsNew } from '../updates/whatsNewStore';
 
 const BELL_ROWS = 20;
 const BELL_LABEL = 80;

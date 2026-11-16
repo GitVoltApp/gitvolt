@@ -65,6 +65,7 @@ export type WindowManagerRequest = 'menu' | 'keyboard-menu' | 'lower';
 export interface WindowOps {
   startDragging(): Promise<void>;
   startResizeDragging(direction: ResizeDirection): Promise<void>;
+  /** Maximizes or restores the window, or takes it out of full screen ([`toggleMaximizeOf`]). */
   toggleMaximize(): Promise<void>;
   minimize(): Promise<void>;
   close(): Promise<void>;
@@ -80,10 +81,27 @@ export interface WindowOps {
 
 const win = async () => (await import('@tauri-apps/api/window')).getCurrentWindow();
 
+/** What [`toggleMaximizeOf`] asks of a window. */
+export interface MaximizeTarget {
+  isFullscreen(): Promise<boolean>;
+  setFullscreen(fullscreen: boolean): Promise<void>;
+  toggleMaximize(): Promise<void>;
+}
+
+/** The maximize toggle (a title bar double click, the maximize button), except that a window
+ * that is full screen leaves full screen instead. A window manager won't maximize, unmaximize or
+ * move a full screen window, and mutter makes one full screen on its own when it asks for exactly
+ * a monitor's rect without decorations ("legacy fullscreen"), so the title bar would otherwise be
+ * stuck there. Not on macOS, whose full screen has its own way out. */
+export async function toggleMaximizeOf(w: MaximizeTarget, platform: WindowChromeInfo['platform'] | undefined): Promise<void> {
+  if (platform !== 'macos' && await w.isFullscreen().catch(() => false)) return w.setFullscreen(false);
+  return w.toggleMaximize();
+}
+
 const tauriOps: WindowOps = {
   startDragging: async () => { await (await import('@tauri-apps/api/window')).getCurrentWindow().startDragging(); },
   startResizeDragging: async (direction) => { await (await import('@tauri-apps/api/window')).getCurrentWindow().startResizeDragging(direction); },
-  toggleMaximize: async () => { await (await import('@tauri-apps/api/window')).getCurrentWindow().toggleMaximize(); },
+  toggleMaximize: async () => toggleMaximizeOf(await win(), useWindowChrome.getState().info?.platform),
   minimize: async () => { await (await import('@tauri-apps/api/window')).getCurrentWindow().minimize(); },
   close: async () => {
     // As Quit does: the settings written first, then the window's own close (which still asks
@@ -112,6 +130,12 @@ const recordingOps: WindowOps = {
   startDragging: async () => { record('startDragging'); },
   startResizeDragging: async (direction) => { record(`startResizeDragging:${direction}`); },
   toggleMaximize: async () => {
+    const { fullscreen, info } = useWindowChrome.getState();
+    if (fullscreen && info?.platform !== 'macos') {
+      record('setFullscreen:false');
+      useWindowChrome.setState({ fullscreen: false });
+      return;
+    }
     record('toggleMaximize');
     useWindowChrome.setState((s) => ({ maximized: !s.maximized }));
   },

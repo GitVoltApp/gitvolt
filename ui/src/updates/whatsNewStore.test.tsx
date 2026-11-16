@@ -8,7 +8,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../api/client', () => ({ api, errorMessage: (e: unknown) => String(e), onEvent: () => () => {} }));
 
-const { checkLastRun, lastRunChange, resetWhatsNewForTest, useWhatsNew } = await import('./whatsNew');
+const { checkLastRun, lastRunChange, resetWhatsNewForTest, useWhatsNew } = await import('./whatsNewStore');
 const { WhatsNewDialog } = await import('./WhatsNewDialog');
 const { WhatsNewNotes } = await import('./WhatsNew');
 const { useAppInfo } = await import('../app/appInfo');

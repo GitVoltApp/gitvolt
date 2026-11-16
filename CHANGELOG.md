@@ -5,6 +5,24 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Changed
+
+- **Tags list newest first,** the latest release on top. The panel's sort button still switches
+  to the folder tree, and a repository where you picked one keeps it.
+
+### Fixed
+
+- **The line beside a diff's overview ruler** stands against the ruler, not 10 px to its left.
+- **A merge request whose branch merged its target in lists its commits.** Its header showed the
+  files but no commit count and no **Show commits**: the list followed only the branch's first
+  parents, which never meet the merge base then. It now holds what the branch has and its target
+  hasn't, as the forge lists them (a side branch merged into it included).
+- **A submodule opens in a tab of its own.** Opened from the Submodules panel (or as a folder), it showed only
+  "… is not a worktree of this repository": git names a submodule's git dir (`.git/modules/…`) as its main worktree,
+  and GitVolt took that for its checkout. Its checkout is its `core.worktree`, and that's what opens now.
+
+## [1.6.2] - 2026-11-15
+
 ### Added
 
 - **What's new after an update.** The first start of a new version puts "Updated to GitVolt
@@ -24,19 +42,21 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   bar's **Update to X** opens the dialog, with the notes of every version since yours, instead
   of starting a download; and Check for updates in About opens it as soon as it finds an update,
   in place of the **Show update** button.
-- **Tags list newest first,** the latest release on top. The panel's sort button still switches
-  to the folder tree, and a repository where you picked one keeps it.
 
 ### Fixed
 
-- **A merge request whose branch merged its target in lists its commits.** Its header showed the
-  files but no commit count and no **Show commits**: the list followed only the branch's first
-  parents, which never meet the merge base then. It now holds what the branch has and its target
-  hasn't, as the forge lists them (a side branch merged into it included).
-- **The line beside a diff's overview ruler** stands against the ruler, not 10 px to its left.
-- **A submodule opens in a tab of its own.** Opened from the Submodules panel (or as a folder), it showed only
-  "… is not a worktree of this repository": git names a submodule's git dir (`.git/modules/…`) as its main worktree,
-  and GitVolt took that for its checkout. Its checkout is its `core.worktree`, and that's what opens now.
+- **Memory no longer grows with every call to the core.** Each request from the UI left its
+  headers behind in the app process, about 1.5 KB a request, for as long as GitVolt ran (20,000
+  requests: +31 MB). The `cef` crate's `CefStringMultimap` frees neither the map nor the strings
+  read from it; the runtime now reads a request's headers through CEF's C API.
+- **The window no longer gets stuck full screen on GNOME (Linux).** After a change of monitors,
+  GitVolt could reopen or put itself back at exactly a monitor's size, on a monitor with no panel
+  or dock; GNOME then took the window for an old app going full screen and put it over the panels
+  and docks, where double-clicking or dragging the title bar did nothing, until GitVolt was
+  closed. GitVolt now tells GNOME it draws its own frame, never sizes itself to a whole monitor
+  (it takes 90 % of it, centred), and doesn't save a full screen window's size as its normal one.
+  A double click on the title bar, the maximize button, or a drag from the title bar of a window
+  that is full screen anyway takes it out of full screen.
 
 ## [1.6.1] - 2026-11-12
 

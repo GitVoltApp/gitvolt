@@ -130,6 +130,10 @@ impl GitVolt {
         if e.pressed_button != Some(MouseButton::Left) {
             press.waiting = false;
         } else if press.moved(e.position) {
+            // A window manager doesn't move a full screen window: out of it first, so the title bar is never stuck.
+            if leaves_fullscreen(window.is_fullscreen()) {
+                window.toggle_fullscreen();
+            }
             window.start_window_move();
         }
     }
@@ -200,12 +204,46 @@ impl GitVolt {
     }
 }
 
+/// `toggleMaximizeOf`: maximise or restore, except that a full screen window leaves full screen instead, since a window
+/// manager won't maximise, restore or move one.
+pub fn toggle_maximize(window: &mut Window) {
+    if leaves_fullscreen(window.is_fullscreen()) {
+        window.toggle_fullscreen();
+    } else {
+        window.zoom_window();
+    }
+}
+
+/// Not on macOS, whose full screen has its own way out.
+fn leaves_fullscreen(fullscreen: bool) -> bool {
+    fullscreen && !cfg!(target_os = "macos")
+}
+
+/// `WHOLE_MONITOR_FILL`: of a monitor's width and height, the most a window GitVolt sizes itself takes when it would
+/// otherwise cover all of it.
+const WHOLE_MONITOR_FILL: f32 = 0.9;
+
+/// `fit_size`: `size` no larger than the monitor's work area, and never all of the monitor (`covers_monitor`): then
+/// 90 % of it. mutter takes an undecorated X11 window that asks for exactly a monitor's rect for an old app going full
+/// screen; and a size saved while the window filled a monitor with no panel would otherwise come back as all of it.
+pub fn fit_size(size: Size<Pixels>, monitor: Size<Pixels>, work: Size<Pixels>) -> Size<Pixels> {
+    if monitor.width <= px(0.) || monitor.height <= px(0.) {
+        return size;
+    }
+    let fitted = Size { width: size.width.min(work.width), height: size.height.min(work.height) };
+    const EPS: f32 = 0.5;
+    if fitted.width.as_f32() < monitor.width.as_f32() - EPS || fitted.height.as_f32() < monitor.height.as_f32() - EPS {
+        return fitted;
+    }
+    Size { width: px((monitor.width.as_f32() * WHOLE_MONITOR_FILL).floor()), height: px((monitor.height.as_f32() * WHOLE_MONITOR_FILL).floor()) }
+}
+
 /// `titleBarMouse`, on an empty space: dragged, it moves the window; a double click does what a title bar's does, a right click shows the window menu.
 pub fn drag_space(el: Stateful<Div>, cx: &mut Context<GitVolt>) -> Stateful<Div> {
     el.on_mouse_down(MouseButton::Left, cx.listener(|this, e: &MouseDownEvent, window, _| {
         if e.click_count == 2 {
             this.window_press = None;
-            window.zoom_window();
+            toggle_maximize(window);
         } else {
             this.window_press(e);
         }
@@ -239,7 +277,7 @@ pub fn window_buttons(window: &Window, cx: &mut Context<GitVolt>) -> impl IntoEl
         .gap(px(8.))
         .px(px(6.))
         .child(crate::ui::anchor("win-minimize", drag_or_click(wm_button("minimize", "wm-minimize"), |_, window, _| window.minimize_window(), cx)))
-        .child(crate::ui::anchor("win-maximize", drag_or_click(wm_button("maximize", if window.is_maximized() { "wm-restore" } else { "wm-maximize" }), |_, window, _| window.zoom_window(), cx)))
+        .child(crate::ui::anchor("win-maximize", drag_or_click(wm_button("maximize", if window.is_maximized() { "wm-restore" } else { "wm-maximize" }), |_, window, _| toggle_maximize(window), cx)))
         .child(crate::ui::anchor("win-close", drag_or_click(wm_button("close", "wm-close"), |this, _, cx| this.close_window(cx), cx)))
 }
 
@@ -261,6 +299,24 @@ pub fn title_bar(this: &GitVolt, window: &Window, cx: &mut Context<GitVolt>) -> 
 mod tests {
     use super::*;
     use std::prelude::v1::test;
+
+    // Web: crates/gitvolt-app/src/window_state.rs, a_window_never_comes_back_as_all_of_a_monitor_with_no_panel.
+    #[test]
+    fn a_window_never_opens_as_all_of_a_monitor() {
+        let sz = |w: f32, h: f32| size(px(w), px(h));
+        let bare = sz(1280., 800.);
+        assert_eq!(fit_size(sz(1280., 800.), bare, bare), sz(1152., 720.), "all of a monitor with no panel: 90 % of it");
+        assert_eq!(fit_size(sz(1500., 900.), bare, bare), sz(1152., 720.), "bigger than it: the same");
+        assert_eq!(fit_size(sz(1280., 799.), bare, bare), sz(1280., 799.), "anything that leaves some of it out is kept");
+        assert_eq!(fit_size(sz(1920., 1200.), sz(1920., 1200.), sz(1920., 1168.)), sz(1920., 1168.), "all of a work area a panel makes smaller");
+        assert_eq!(fit_size(sz(1600., 900.), sz(0., 0.), sz(0., 0.)), sz(1600., 900.), "no monitor known: as saved");
+    }
+
+    #[test]
+    fn a_full_screen_window_leaves_full_screen_where_it_would_maximise() {
+        assert_eq!(leaves_fullscreen(true), !cfg!(target_os = "macos"));
+        assert!(!leaves_fullscreen(false));
+    }
 
     fn on_wayland(system: bool, compact: bool) -> WindowChrome {
         WindowChrome::at_start(system, compact, Some("wayland-1"), None)

@@ -310,6 +310,8 @@ fn main() {
         let chrome = chrome::WindowChrome::at_start(start.system_title_bar, start.compact_title_bar, std::env::var("WAYLAND_DISPLAY").ok().as_deref(), std::env::var("XDG_SESSION_TYPE").ok().as_deref());
         let saved_window = saved_store.window();
         let start_size = saved_window.as_ref().map_or(size(px(1600.), px(900.)), |w| size(px(w.width as f32), px(w.height as f32)));
+        // Never all of a monitor (the web's `fit_size`).
+        let start_size = cx.primary_display().map_or(start_size, |d| chrome::fit_size(start_size, d.bounds().size, d.visible_bounds().size));
         let bounds = Bounds::centered(None, start_size, cx);
         let options = WindowOptions {
             window_bounds: Some(if saved_window.as_ref().is_some_and(|w| w.maximized) { WindowBounds::Maximized(bounds) } else { WindowBounds::Windowed(bounds) }),
@@ -348,6 +350,10 @@ fn main() {
                 .detach();
                 let geometry = saved_store.clone();
                 cx.observe_window_bounds(window, move |_, window, _| {
+                    // Full screen keeps the last normal size: the monitor's own, restored as a normal window's, would cover all of it.
+                    if window.is_fullscreen() {
+                        return;
+                    }
                     let maximized = window.is_maximized();
                     let b = window.window_bounds().get_bounds();
                     let was = geometry.window();

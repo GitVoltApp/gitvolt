@@ -118,6 +118,18 @@ describe('the title bar', () => {
     expect(calls()).toEqual(['toggleMaximize', 'minimize']);
   });
 
+  it('a double click or the maximize button takes a full screen window out of full screen first', () => {
+    show(linux('appmenu:maximize,close'));
+    act(() => useWindowChrome.setState({ fullscreen: true }));
+    fireEvent.doubleClick(title());
+    expect(calls()).toEqual(['setFullscreen:false']);
+    fireEvent.doubleClick(title());
+    expect(calls()).toEqual(['setFullscreen:false', 'toggleMaximize']);
+    act(() => useWindowChrome.setState({ fullscreen: true, maximized: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    return waitFor(() => expect(calls()).toEqual(['setFullscreen:false', 'toggleMaximize', 'setFullscreen:false']));
+  });
+
   it('a middle click lowers the window (or what the desktop says); none does nothing', () => {
     show(linux('appmenu:close'));
     fireEvent(title(), new MouseEvent('auxclick', { bubbles: true, button: 1 }));

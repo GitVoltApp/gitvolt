@@ -20,6 +20,10 @@
 //!   support; it is only sent when the window manager lists it in `_NET_SUPPORTED`;
 //! - lowering the window below the others: `XLowerWindow`, as `gdk_x11_surface_lower` does.
 //!
+//! An undecorated window is also marked as drawing its own frame ([`set_client_decorated`]):
+//! mutter otherwise takes one that asks for exactly a monitor's rect for an old app making itself
+//! full screen, and a move started from a full screen window first takes it out of full screen.
+//!
 //! The grab the button press made belongs to Chromium's X connection, and only the client that
 //! holds a grab can release it. The ungrab is made on the display CEF hands out
 //! (`cef_get_xdisplay`), which is enough where the window manager is also the compositor
@@ -32,7 +36,7 @@ use std::os::raw::{c_int, c_long, c_uint, c_ulong};
 use tauri_runtime::ResizeDirection;
 use x11_dl::xlib;
 
-use super::utils::{atom, with_cef_display, with_x11};
+use super::utils::{atom, set_wm_state, with_cef_display, with_x11};
 
 /// EWMH `_NET_WM_MOVERESIZE` directions.
 const MOVERESIZE_SIZE_TOPLEFT: c_long = 0;
@@ -163,15 +167,31 @@ unsafe fn send_to_window_manager(
 unsafe fn wm_supports(xlib: &xlib::Xlib, display: *mut xlib::Display, name: &str) -> bool {
   unsafe {
     let root = (xlib.XDefaultRootWindow)(display);
-    let supported = atom(xlib, display, "_NET_SUPPORTED");
+    lists_atom(xlib, display, root, "_NET_SUPPORTED", name)
+  }
+}
+
+/// Whether `window`'s atom list `property` holds `name`.
+///
+/// # Safety
+/// `display` must be a live Xlib display.
+unsafe fn lists_atom(
+  xlib: &xlib::Xlib,
+  display: *mut xlib::Display,
+  window: c_ulong,
+  property: &str,
+  name: &str,
+) -> bool {
+  unsafe {
+    let property = atom(xlib, display, property);
     let wanted = atom(xlib, display, name);
     let (mut actual_type, mut actual_format) = (0, 0);
     let (mut count, mut after) = (0, 0);
     let mut data: *mut u8 = std::ptr::null_mut();
     let status = (xlib.XGetWindowProperty)(
       display,
-      root,
-      supported,
+      window,
+      property,
       0,
       4096,
       0,
@@ -196,15 +216,25 @@ unsafe fn wm_supports(xlib: &xlib::Xlib, display: *mut xlib::Display, name: &str
 /// Asks the window manager to move `window` (`edge` is `None`) or resize it from `edge`,
 /// following the pointer until button 1 is released. False if button 1 isn't down any more, or
 /// there's no X display.
+///
+/// A window manager doesn't move a full screen window (mutter turns off its move function), so a
+/// move from one asks first for it to leave full screen, on the same connection, so the window
+/// manager has that before the move: the title bar is never stuck.
 pub(super) fn begin_move_resize(window: c_ulong, edge: Option<ResizeDirection>) -> bool {
-  let Some(root) = with_x11(None, |xlib, display| unsafe {
+  let Some((root, fullscreen)) = with_x11(None, |xlib, display| unsafe {
     query_pointer(xlib, display)
       .filter(|(_, mask)| button_held(*mask))
-      .map(|(root, _)| root)
+      .map(|(root, _)| {
+        let state = "_NET_WM_STATE";
+        (root, lists_atom(xlib, display, window, state, "_NET_WM_STATE_FULLSCREEN"))
+      })
   }) else {
     return false;
   };
   release_pointer_grab();
+  if fullscreen && edge.is_none() {
+    set_wm_state(window, false, "_NET_WM_STATE_FULLSCREEN", None);
+  }
   with_x11((), |xlib, display| unsafe {
     let message = atom(xlib, display, "_NET_WM_MOVERESIZE");
     let data = moveresize_data(root, moveresize_direction(edge));
@@ -230,6 +260,37 @@ pub(super) fn show_window_menu(window: c_ulong) -> bool {
     send_to_window_manager(xlib, display, window, message, window_menu_data(root));
   });
   true
+}
+
+/// Marks `window` as drawing its own frame, or not any more: `_GTK_FRAME_EXTENTS` of 0 on every
+/// side, what a GTK window with client-side decorations and no shadow has, or no such property.
+///
+/// Without it, mutter treats an undecorated window that asks for exactly a monitor's rect (a
+/// window fitted to a monitor with no panel, restored there) as an old app making itself full
+/// screen ("legacy fullscreen", `meta_window_move_resize_request`, skipped for a window with
+/// custom frame extents of any value): full screen above the panels and docks, which the window
+/// manager then won't maximize or move. GTK only writes the property for a shadow, which an
+/// undecorated window doesn't have, so it isn't overwritten.
+pub(super) fn set_client_decorated(window: c_ulong, client_decorated: bool) {
+  with_x11((), |xlib, display| unsafe {
+    let property = atom(xlib, display, "_GTK_FRAME_EXTENTS");
+    if client_decorated {
+      // Left, right, top, bottom: the frame is the window's edge.
+      let extents: [c_ulong; 4] = [0; 4];
+      (xlib.XChangeProperty)(
+        display,
+        window,
+        property,
+        xlib::XA_CARDINAL,
+        32,
+        xlib::PropModeReplace,
+        extents.as_ptr().cast(),
+        4,
+      );
+    } else {
+      (xlib.XDeleteProperty)(display, window, property);
+    }
+  });
 }
 
 /// Puts `window` below the other windows.

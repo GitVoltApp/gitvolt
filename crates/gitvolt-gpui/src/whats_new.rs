@@ -1,4 +1,4 @@
-//! What's new (`ui/src/updates/whatsNew.ts`, `changelog.ts`, `WhatsNew.tsx`, `WhatsNewDialog.tsx`): the first start of a newer
+//! What's new (`ui/src/updates/whatsNewStore.ts`, `changelog.ts`, `WhatsNew.tsx`, `WhatsNewDialog.tsx`): the first start of a newer
 //! version puts "Updated to GitVolt …" in the bell, which opens the notes of every version since the one that last ran, newest
 //! first; Help › What's new shows them again. The notes are CHANGELOG.md's released sections, built in: nothing is fetched.
 

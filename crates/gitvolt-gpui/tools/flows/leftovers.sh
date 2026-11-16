@@ -56,6 +56,9 @@ export GITVOLT_FAKE_UPDATE=installed
 up "$U"; until_q "d['rows'] and d['rows'] >= 6" 5; pause 0.3
 echo "after an update: the bell has an unread notice that opens What's new, and the version's stored"
 check "the notice, from 1.5.0" "d['whatsNew']['unread'] and d['whatsNew']['notice'][1] == '1.5.0'"
+stored() { python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["lastRunVersion"]; sys.exit(v == "1.5.0")' "$REALINPUT_ROOT/app/config/gitvolt-gpui/settings.json" 2>/dev/null; }
+# The settings are written off the start's path: give the write a moment.
+for _ in $(seq 30); do stored && break; pause 0.1; done
 check_sh "the running version is the last-run one now" "python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))[\"lastRunVersion\"]; sys.exit(v == \"1.5.0\")' '$REALINPUT_ROOT/app/config/gitvolt-gpui/settings.json'"
 clickon bell; pause 0.4
 check "opening the bell reads it" "not d['whatsNew']['unread']"

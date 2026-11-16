@@ -1174,6 +1174,15 @@ impl<T: UserEvent> WinitCefApp<T> {
         // GitVolt patch: an undecorated window keeps Windows' resize border.
         #[cfg(windows)]
         appwindow.sync_custom_frame();
+        // GitVolt patch: and is marked as drawing its own frame on X11.
+        #[cfg(any(
+          target_os = "linux",
+          target_os = "dragonfly",
+          target_os = "freebsd",
+          target_os = "netbsd",
+          target_os = "openbsd"
+        ))]
+        appwindow.sync_client_decorated(value);
       }
       // GitVolt patch: on Windows, the client area's size whatever the frame.
       #[cfg(windows)]

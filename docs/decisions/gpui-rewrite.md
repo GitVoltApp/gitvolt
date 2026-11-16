@@ -4,7 +4,15 @@
 `crates/gitvolt-gpui` draws GitVolt's main view natively from the same `gitvolt-core`. It reads, and writes
 through the same `Request`s as the web UI, so hooks, config, credentials and the journal behave the same.
 **The rewrite's goal is the current look, 1:1. The app is ported but for what "Not there yet" and "Differences from the web UI" name, the largest being sounds and films (no playback), and it has run on Linux only.**
-The branch is on GitVolt 1.6.1 and main at 7776601 (sections below).
+The branch is on GitVolt 1.6.2 and main at 78e6743 (sections below).
+
+## GitVolt 1.6.2 and main (78e6743)
+
+What changed beyond 7776601, `git diff 7776601..78e6743`:
+
+- **Ported, never stuck full screen (`chrome.rs`, `main.rs`):** a title bar double click, the maximize button and a double click on the Combined tab strip take a full screen window out of full screen instead of maximizing (`toggle_maximize`, the web's `toggleMaximizeOf`; not on macOS), and a drag from the title bar leaves full screen before the move. The window never opens as all of a monitor: a saved size that covers one is 90 % of it (`fit_size`, `window_state.rs`'s, with its tests), and a full screen window's size isn't saved as its normal one.
+- **Doesn't apply, `_GTK_FRAME_EXTENTS`:** mutter's "legacy fullscreen" takes an *undecorated* X11 window that asks for exactly a monitor's rect. On X11 this build always has the window manager's own frame (`WindowChrome::at_start`: the custom title bar is Wayland's, macOS' and Windows'), which mutter never takes.
+- **Doesn't apply:** the IPC header leak (#27) is in the CEF runtime's custom-scheme handler; there's no IPC here. `whatsNew.ts` became `whatsNewStore.ts` (a case clash on macOS and Windows); `whats_new.rs` names the new file. The release and site commits.
 
 ## GitVolt 1.6.1 and main (7776601)
 

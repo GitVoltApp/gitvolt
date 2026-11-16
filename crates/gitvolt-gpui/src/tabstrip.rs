@@ -1055,7 +1055,7 @@ pub fn strip(this: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>)
             if e.click_count == 2 {
                 this.window_press = None;
                 if this.chrome.compact {
-                    window.zoom_window();
+                    crate::chrome::toggle_maximize(window);
                 } else {
                     this.open_blank_tab(cx);
                 }

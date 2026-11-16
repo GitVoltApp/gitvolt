@@ -217,6 +217,10 @@ says.
     `button_held()` and their unit tests.
   - `src/platform/linux/window.rs`: `AppWindow::begin_move_resize()` and
     `AppWindow::window_manager_request()`; `src/platform/linux/mod.rs`: `mod chrome;`.
+  - Legacy fullscreen (below): `src/platform/linux/chrome.rs` gains `set_client_decorated()` and
+    `lists_atom()` (`wm_supports()` uses it), and `begin_move_resize()` leaves full screen before
+    a move; `src/platform/linux/window.rs`: `CefX11Host::new` marks an undecorated window,
+    `AppWindow::sync_client_decorated()`; `src/window.rs`: `SetDecorations` calls it on Linux/BSD.
   - `src/window.rs`: the public `WindowManagerRequest`, `WindowMessage::WindowManager`, its
     handler, a no-op `window_manager_request` off X11, and `StartDragging` /
     `StartResizeDragging` going to `begin_move_resize` on Linux/BSD (winit's calls elsewhere;
@@ -252,6 +256,10 @@ says.
     doc of `window_manager_request`.
   - `Cargo.toml`: the `Win32_UI_HiDpi` feature of `windows` (no new crate).
 
+- `src/cef_impl/request_handler.rs` (a request's headers, below): `get_request_headers` reads
+  the headers through the C API instead of iterating a `CefStringMultimap`. No other change in
+  this file.
+
 ## A window that draws its own title bar (Linux, X11)
 
 GitVolt draws its own title bar on Linux (`crates/gitvolt-app/src/chrome.rs`), with the window
@@ -275,6 +283,25 @@ all). What the runtime lacked for that:
   app can show a menu of its own where there's none.
 - Maximise, minimise and `is_maximized` already worked through winit-gtk4 (GTK's
   `notify::maximized` keeps the state when the window manager maximizes it).
+- **mutter's "legacy fullscreen" took the window and kept it.** An X11 window that asks for
+  exactly a monitor's rect (a `ConfigureRequest`; `meta_window_move_resize_request`, mutter 50)
+  is made full screen, unless it is decorated by the window manager or has `_GTK_FRAME_EXTENTS`
+  (of any value). An undecorated window without that property qualifies, and a full screen window
+  has no move, resize or maximize function in mutter: a title bar double click and a title bar
+  drag did nothing, and the window sat over the panels and docks. **Fix:** an undecorated window
+  gets `_GTK_FRAME_EXTENTS` = 0, 0, 0, 0 (what a GTK client-side decorated window without a
+  shadow has; GTK writes the property only when its shadow changes, which an undecorated window
+  never has, so it stays), set when the host is created and kept in step with `SetDecorations`.
+  And a move (`_NET_WM_MOVERESIZE`) from a window whose `_NET_WM_STATE` holds
+  `_NET_WM_STATE_FULLSCREEN` first sends a `_NET_WM_STATE` remove for it, on the same X
+  connection, so mutter has it before the move.
+
+  Evidence (headless GNOME Shell 50.1 / mutter 50.1 with two virtual monitors, the panel's strut
+  removed): without the property, an `XMoveResizeWindow` to the monitor's rect (0,0 1280x800) made
+  the window `_NET_WM_STATE_FULLSCREEN`, unmovable (`allows_move()` false), over the top bar, and
+  double clicks and a drag on its title bar changed nothing; with it, the same request was
+  constrained to the work area and the window stayed a normal one. With the window made full
+  screen by the window manager, a title bar drag took it out of full screen and moved it.
 
 **Evidence** (headless GNOME Shell 50 with Xwayland in a container, real compositor input through
 `org.gnome.Mutter.RemoteDesktop`, the app's debug build): a title bar drag moves the window by the
@@ -691,6 +718,18 @@ No other files differ from the published 3.0.0-alpha.6 crate (its `Cargo.lock` i
 that only blocks name resolution and can't redirect traffic, which is what the warning is about.
 **Fix:** a value made only of `MAP * ~NOTFOUND` and `EXCLUDE …` rules is logged at debug instead;
 any other rule (a real redirect) still warns. Test: `resolver_rules_that_only_block_are_not_a_redirect`.
+
+## A request's headers (a leak in cef 154.5)
+
+Every request to a custom scheme, so every IPC call, goes through `get_request_headers`, which
+iterated a `cef::CefStringMultimap`. In cef 154.5 that type's `Drop` clears the map without
+freeing it, and its iterator never clears the key and value copies CEF's getters write out (the
+caller owns them). Each request left about 1.5 KB in the browser process.
+**Fix:** the map is allocated and freed here, and each key and value is cleared once read, through
+`cef_string_multimap_alloc` / `_key` / `_value` / `_free` and `cef_string_utf16_clear`. A header
+that isn't valid HTTP is skipped: `HeaderValue::from_str(..).unwrap()` used to panic, and abort
+the app, on a control character `fetch` allows. The root fix is tauri-apps/cef-rs#516; once a
+`cef` release with it is picked up, this patch can go.
 
 ## AppArmor denying user namespaces outright (Linux)
 

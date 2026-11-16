@@ -3,7 +3,7 @@ import { useAppInfo } from '../app/appInfo';
 import { registerActions } from '../app/actions';
 import { registerAppSlot } from '../app/slots';
 import { WhatsNewDialog } from './WhatsNewDialog';
-import { useWhatsNew } from './whatsNew';
+import { useWhatsNew } from './whatsNewStore';
 
 /** Help → What's new (this version's notes, from the changelog bundled with the app; every version
  * since the last one when this session updated), and its panel. */

@@ -16,7 +16,7 @@ const { TabBar } = await import('./TabBar');
 const { useTabUi } = await import('./tabMenu');
 const { useOps } = await import('../app/ops');
 const { useMenu } = await import('../menu/menuStore');
-const { useWhatsNew, resetWhatsNewForTest } = await import('../updates/whatsNew');
+const { useWhatsNew, resetWhatsNewForTest } = await import('../updates/whatsNewStore');
 
 const tab = (id: string) => ({ id, kind: 'repo' as const, path: `/${id}`, alias: null });
 
