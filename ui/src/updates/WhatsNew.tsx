@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import changelog from 'virtual:gitvolt-changelog';
 import { Markdown } from '../markdown/Markdown';
 import { notesBetween, type ChangelogEntry } from './changelog';
-import type { WhatsNewRange } from './whatsNew';
+import type { WhatsNewRange } from './whatsNewStore';
 
 /** No tab's forge behind it: links open in the browser, references stay text. */
 const CONTEXT = { kind: 'forge', tabId: 'gitvolt-whats-new' } as const;

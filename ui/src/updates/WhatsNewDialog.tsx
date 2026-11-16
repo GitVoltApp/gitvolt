@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useModalKeys } from '../app/modalKeys';
-import { checkLastRun, useWhatsNew } from './whatsNew';
+import { checkLastRun, useWhatsNew } from './whatsNewStore';
 import './whatsNew.css';
 
 // The changelog and the Markdown renderer load with the panel, never at startup.
