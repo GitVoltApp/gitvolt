@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-11-17
+
 ### Fixed
 
 - **A second click on a menu row no longer runs it again instead of confirming.** While a row's
