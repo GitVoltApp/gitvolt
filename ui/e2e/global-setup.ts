@@ -1,11 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HARNESS_BIN } from './harness-path';
 
 export default function globalSetup() {
-  const root = mkdtempSync(join(tmpdir(), 'gitvolt-e2e-'));
+  // The real path: macOS's temp dir /var/… is a symlink to /private/var/…, and the app shows and
+  // passes on the resolved path, so a test that compares it with one built from `root` would differ.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'gitvolt-e2e-')));
   const make = (name: string) =>
     execFileSync(HARNESS_BIN, ['fixture', name, join(root, name)], { encoding: 'utf8' }).trim();
   const fixtures = { basic: make('basic'), unborn: make('unborn'), longLabels: make('long_labels'), wide: make('wide'), details: make('details'), longHistory: make('long_history'), diffView: make('diff_view'), mergeLock: make('merge_lock'), notRepo: root };
