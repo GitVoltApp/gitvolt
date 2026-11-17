@@ -9,10 +9,10 @@ const item = (id: number, label: string) => ({ id, label, kind: 'push' as const,
 
 describe('the action queue chip (spec #2 §3.6)', () => {
   it('says what runs and how many wait, or what stopped and how many did not run', () => {
-    expect(chipText({ running: item(1, 'push dev'), queued: [item(2, 'b'), item(3, 'c')], stopped: null })).toBe('Running: push dev · 2 queued');
+    expect(chipText({ running: item(1, 'push dev'), queued: [item(2, 'b'), item(3, 'c')], stopped: null })).toBe('Push dev · B and 1 more waiting');
     expect(chipText({ running: item(1, 'push dev'), queued: [], stopped: null })).toBe('Running: push dev');
     expect(chipText({ running: null, queued: [item(2, 'b'), item(3, 'c')], stopped: { label: 'push dev', message: 'rejected' } })).toBe('Stopped: push dev failed · 2 not run');
-    expect(chipText({ running: null, queued: [item(2, 'b')], stopped: null })).toBe('1 queued');
+    expect(chipText({ running: null, queued: [item(2, 'b')], stopped: null })).toBe('B waiting');
   });
 
   it('is hidden when idle', () => {

@@ -114,7 +114,7 @@ test.describe('undo (spec #2 §5.5)', () => {
       const t0 = performance.now();
       document.querySelector<HTMLButtonElement>('[role="toolbar"] button[aria-label="Undo"]')!.click();
       await new Promise<void>((done) => {
-        const tick = () => (document.querySelector('.status-bar .sb-queue')?.textContent?.includes('1 queued') ? done() : requestAnimationFrame(tick));
+        const tick = () => (document.querySelector('.status-bar .sb-queue')?.textContent?.includes('waiting') ? done() : requestAnimationFrame(tick));
         tick();
       });
       return performance.now() - t0;

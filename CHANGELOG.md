@@ -17,7 +17,7 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **A fetch your merge, rebase or other change cancelled runs again as soon as the change is done.**
   A change you start still stops a background fetch at once; the fetch used to wait for its next
   scheduled time (a minute or more). A fetch you started yourself isn't stopped: the change waits
-  its turn, and the status bar's queue says so (`Running: fetch … · 1 queued`).
+  its turn, and the status bar's queue says so (`Fetch repo · Rebase waiting`).
 
 ## [1.6.2] - 2026-11-15
 
@@ -30,6 +30,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Changed
 
+- **The status bar's queue names what is waiting.** `Fetch repo · Rebase waiting`, or `Fetch repo ·
+  Rebase and 2 more waiting`, instead of `Running: fetch repo · 1 queued`; the tooltip lists them all.
 - **Updates take one click.** The update dialog's **Install and restart** downloads the package,
   checks it against the release's SHA256SUMS, installs it and restarts GitVolt, with no further
   click. Unsaved edits ask before the download starts, not at the end (edits made during it ask

@@ -41,7 +41,7 @@ describe('QueueChip (spec #2 §3.6)', () => {
   it('opens the list: Cancel the running item, × a queued one', () => {
     act(() => useQueue.getState().set(4, { running: item(1, 'push dev'), queued: [item(2, 'commit "x"')], stopped: null }));
     render(<QueueChip />);
-    fireEvent.click(screen.getByRole('button', { name: 'Running: push dev · 1 queued' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Push dev · Commit "x" waiting' }));
     expect(rowLabels()).toEqual(['Cancel push dev', 'Remove commit "x"']);
     run('Cancel push dev');
     expect(api.cancelOp).toHaveBeenCalledWith(101);
