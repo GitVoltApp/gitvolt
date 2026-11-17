@@ -1337,4 +1337,96 @@ mod tests {
         r.git(&["remote", "remove", "mirror"]);
         assert_eq!(read().await, (vec!["origin".to_string()], vec!["origin".to_string()]));
     }
+
+    /// An ssh stand-in that marks `started`, waits for `go` (never, without one), then serves the
+    /// bare repo its command names, as `scripts/fake-ssh` does.
+    #[cfg(unix)]
+    fn gated_ssh(r: &TestRepo, started: &Path, go: &Path) -> String {
+        let script = r.root().join("gated-ssh");
+        let (started, go) = (crate::platform::fs::to_git_path(started), crate::platform::fs::to_git_path(go));
+        std::fs::write(&script, format!("#!/bin/sh\ntouch '{started}'\nwhile [ ! -e '{go}' ]; do sleep 0.05; done\nshift\neval \"exec $*\"\n")).unwrap();
+        crate::platform::fs::set_mode(&script, 0o755).unwrap();
+        crate::platform::fs::to_git_path(&script)
+    }
+
+    async fn wait_for(path: &Path) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !path.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the fetch reached the remote");
+    }
+
+    /// A branch created from a menu while a fetch runs: a write the queue runs (spec #2 §3.6).
+    async fn create_branch(api: &Api, r: &TestRepo, id: u32, name: &str) -> Result<serde_json::Value, GbError> {
+        let head = r.git(&["rev-parse", "HEAD"]);
+        let params = serde_json::json!({"repo": id, "worktree": crate::write::test_support::wt(r.path()), "name": name, "start": head, "checkout": false});
+        crate::write::test_support::call(api, "createBranch", params).await
+    }
+
+    /// The user's report: a write started while a long background fetch ran waited for the fetch.
+    /// It doesn't: the write cancels the background fetch (SIGTERM; it comes back skipped, and the
+    /// scheduler runs it again once the queue is idle) and runs at once.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_user_write_cancels_a_background_fetch_and_runs_at_once() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let (started, never) = (r.root().join("ssh-started"), r.root().join("never"));
+        ssh_origin(&r, &gated_ssh(&r, &started, &never));
+        let data = tempfile::tempdir().unwrap();
+        let api = Arc::new(crate::write::test_support::api(data.path()));
+        let id = open(&api, &r).await;
+        let a2 = api.clone();
+        let fetch = tokio::spawn(async move { a2.fetch(id, true).await });
+        wait_for(&started).await;
+        tokio::time::timeout(Duration::from_secs(5), create_branch(&api, &r, id, "topic")).await.expect("the write doesn't wait for the fetch").unwrap();
+        assert_eq!(r.git(&["branch", "--list", "topic"]).trim_start_matches(['*', ' ']), "topic");
+        let out = tokio::time::timeout(Duration::from_secs(5), fetch).await.unwrap().unwrap().unwrap();
+        assert_eq!(out, FetchOutcome::Skipped { reason: SkipReason::Busy }, "cancelled: the scheduler retries it");
+    }
+
+    /// A user's own fetch is a queue item: a write started meanwhile waits its turn behind it (the
+    /// queue chip says `Running: fetch … · 1 queued`), and runs once the fetch is done; the fetch
+    /// isn't cancelled.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_user_write_waits_in_line_behind_a_users_fetch() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        push_from_elsewhere(&r, "from-elsewhere");
+        let (started, go) = (r.root().join("ssh-started"), r.root().join("go"));
+        ssh_origin(&r, &gated_ssh(&r, &started, &go));
+        let data = tempfile::tempdir().unwrap();
+        let api = Arc::new(crate::write::test_support::api(data.path()));
+        let id = open(&api, &r).await;
+        let a2 = api.clone();
+        let fetch = tokio::spawn(async move { a2.fetch(id, false).await });
+        wait_for(&started).await;
+        let (a3, r_path, head) = (api.clone(), r.path().to_path_buf(), r.git(&["rev-parse", "HEAD"]));
+        let write = tokio::spawn(async move {
+            let params = serde_json::json!({"repo": id, "worktree": crate::write::test_support::wt(&r_path), "name": "topic", "start": head, "checkout": false});
+            crate::write::test_support::call(&a3, "createBranch", params).await
+        });
+        let w = api.repo_writes(&api.handle(id).unwrap());
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while w.queue.state().queued.is_empty() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the write is queued");
+        let s = w.queue.state();
+        assert_eq!(s.running.map(|i| i.kind), Some(OpKind::Fetch));
+        assert_eq!(s.queued.iter().map(|i| i.label.as_str()).collect::<Vec<_>>(), ["create branch topic"]);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!write.is_finished(), "it waits for the fetch");
+        std::fs::write(&go, "").unwrap();
+        let out = tokio::time::timeout(Duration::from_secs(10), fetch).await.unwrap().unwrap().unwrap();
+        assert!(matches!(out, FetchOutcome::Done { changed: true, .. }), "the fetch ran to the end: {out:?}");
+        tokio::time::timeout(Duration::from_secs(10), write).await.expect("then the write runs").unwrap().unwrap();
+        assert_eq!(r.git(&["branch", "--list", "topic"]).trim_start_matches(['*', ' ']), "topic");
+    }
 }

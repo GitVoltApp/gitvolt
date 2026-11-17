@@ -14,13 +14,15 @@ import { useRuntime } from './runtime';
 import { clampFetchInterval } from '../settings/schema';
 import { useAppState } from './state';
 import { runOnce } from '../pending/store';
+import { isIdle, useQueue } from '../queue/store';
 
 export interface FetchDeps {
   now(): number;
   /** ms epoch of the tab's last fetch attempt; 0 = never. */
   lastFetchAt(): number;
   isMinimized(): Promise<boolean>;
-  fetch(): Promise<void>;
+  /** True: skipped because the repo's queue was busy (a user's op cancelled it, or was running). */
+  fetch(): Promise<boolean | void>;
 }
 
 export const FETCH_SKIPPED_AUTH = 'Fetch skipped: authentication required';
@@ -32,11 +34,14 @@ export const FETCH_SKIPPED_AUTH = 'Fetch skipped: authentication required';
  * - a tick while the window is minimized is skipped, and replayed once when the window gets the
  *   focus back. CEF has no minimize event, so each tick asks (`isMinimized`), and the focus event
  *   is what tells the window is back. Visible but unfocused, the ticks go on;
- * - an interval of 0 (or less) is off.
+ * - an interval of 0 (or less) is off;
+ * - a fetch skipped because the queue was busy (a user's op cancels a background fetch, spec #2
+ *   §3.6) is owed: it runs again once the queue is idle (`onIdle`), not an interval later.
  */
 export class FetchScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private missed = false;
+  private owed = false;
   private running = false;
   private readonly intervalMs: number;
   private readonly deps: FetchDeps;
@@ -76,12 +81,18 @@ export class FetchScheduler {
     if (focused && this.missed && this.timer && !this.running) void this.run();
   }
 
+  /** The repo's queue went idle: the fetch a user's op cancelled (or skipped) runs now. */
+  onIdle(): void {
+    if (this.owed) void this.tick();
+  }
+
   /** One fetch, which also makes up for any skipped tick. */
   private async run(): Promise<void> {
     this.running = true;
     this.missed = false;
+    this.owed = false;
     try {
-      await this.deps.fetch();
+      this.owed = (await this.deps.fetch()) === true;
     } finally {
       this.running = false;
     }
@@ -118,15 +129,22 @@ const failing = new Set<number>();
  * on its credential prompt switches the remote, then fetches again (`sshSwitch.ts`).
  */
 export async function runFetch(tabId: string, background: boolean, remote?: string, mrHead?: MrHead): Promise<void> {
+  await fetchOnce(tabId, background, remote, mrHead);
+}
+
+/** `runFetch`, resolving true when it was skipped because the queue was busy (the scheduler then
+ * owes it, `onIdle`). */
+async function fetchOnce(tabId: string, background: boolean, remote?: string, mrHead?: MrHead): Promise<boolean> {
   // A background fetch has its own key: it must not light the Fetch button (K30).
-  await runOnce(tabId, 'fetch', `${background ? 'bg:' : ''}${remote ?? ''}${mrHead ? `:${mrHead.number}` : ''}`, () => fetchNow(tabId, background, remote, mrHead));
+  return !!await runOnce(tabId, 'fetch', `${background ? 'bg:' : ''}${remote ?? ''}${mrHead ? `:${mrHead.number}` : ''}`, () => fetchNow(tabId, background, remote, mrHead));
 }
 
 /** `mrHead` (with `remote`): only that MR/PR's head (the MR view's Compare). `switched`: the
- * remotes this fetch's prompts switched to SSH before this run. */
-async function fetchNow(tabId: string, background: boolean, remote?: string, mrHead?: MrHead, switched: SshOffer[] = []): Promise<void> {
+ * remotes this fetch's prompts switched to SSH before this run. True when it was skipped because
+ * the queue was busy. */
+async function fetchNow(tabId: string, background: boolean, remote?: string, mrHead?: MrHead, switched: SshOffer[] = []): Promise<boolean> {
   const rt = useRuntime.getState().tabs[tabId];
-  if (!rt?.repo) return;
+  if (!rt?.repo) return false;
   const repo = rt.repo;
   const patch = (p: { lastFetchAt?: number; fetchSkipped?: string | null; remoteFetchErrors?: Record<string, { reason: string; at: number }> }) => {
     // The tab may have been closed (or re-pointed) while the fetch ran.
@@ -151,18 +169,18 @@ async function fetchNow(tabId: string, background: boolean, remote?: string, mrH
       if (running) useOps.getState().showOp(running.op);
       else useToast.getState().show('A fetch is already running');
     }
+    return out.status === 'skipped' && out.reason === 'busy';
   } catch (e) {
     const ssh = sshSwitches(e as GbError | null);
     const ctx = writeCtx(tabId);
     if (ssh && ctx) {
-      if (await switchToSsh(ctx, ssh)) await fetchNow(tabId, background, remote, mrHead, [...switched, ...ssh]);
-      return;
+      return (await switchToSsh(ctx, ssh)) ? fetchNow(tabId, background, remote, mrHead, [...switched, ...ssh]) : false;
     }
     if (remote === undefined) patch({ lastFetchAt: Date.now() });
     const kind = (e as GbError | null)?.kind;
     if (kind === 'Cancelled') {
       if (switched.length && ctx) toastAfterSwitch(ctx, switched, e as GbError, 'Fetch failed');
-      return;
+      return false;
     }
     if (remote === undefined) patch({ remoteFetchErrors: failedRemotes(e as GbError | null, repo.id) });
     else {
@@ -179,6 +197,7 @@ async function fetchNow(tabId: string, background: boolean, remote?: string, mrH
     if (!background && switched.length && ctx) toastAfterSwitch(ctx, switched, e as GbError, 'Fetch failed');
     else if (!background) useToast.getState().show(`Fetch failed: ${text}`, { error: true, action: { label: 'Activity log', run: openActivityLog } });
     else if (started) useOps.getState().pushError(`Fetch failed (${repo.name}): ${text}`);
+    return false;
   }
 }
 
@@ -195,13 +214,18 @@ export function useFetchScheduler(tabId: string, repoId: number | undefined): vo
       now: Date.now,
       lastFetchAt: () => useRuntime.getState().tabs[tabId]?.lastFetchAt ?? 0,
       isMinimized: () => platform.isMinimized().catch(() => false),
-      fetch: () => runFetch(tabId, true),
+      fetch: () => fetchOnce(tabId, true),
     });
     s.start();
     const off = platform.onFocusChanged((f) => s.onFocus(f));
+    // The queue going idle: a fetch a user's op cancelled runs again now (`onIdle`).
+    const offQueue = useQueue.subscribe((st, prev) => {
+      if (isIdle(st.byRepo[repoId]) && !isIdle(prev.byRepo[repoId])) s.onIdle();
+    });
     return () => {
       s.stop();
       off();
+      offQueue();
     };
   }, [tabId, repoId, intervalMs]);
 }

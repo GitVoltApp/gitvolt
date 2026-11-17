@@ -104,6 +104,34 @@ describe('FetchScheduler', () => {
     s.stop();
   });
 
+  // Spec #2 §3.6: a user's op cancels a background fetch (it comes back skipped: busy); it runs
+  // again once the queue is idle, not an interval later. Owed only once: an idle queue with nothing
+  // owed fetches nothing.
+  it('a fetch skipped because the queue was busy runs again when the queue goes idle', async () => {
+    const results = [true, false];
+    const deps = { now: () => Date.now(), lastFetchAt: () => 0, isMinimized: vi.fn(async () => false), fetch: vi.fn(async () => results.shift() ?? false) };
+    const s = new FetchScheduler(60_000, deps);
+    s.onIdle();
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.fetch).toHaveBeenCalledTimes(1);
+    s.onIdle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.fetch).toHaveBeenCalledTimes(2);
+    s.onIdle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.fetch).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(deps.fetch).toHaveBeenCalledTimes(3);
+    // Stopped (the tab hidden): an idle queue then fetches nothing.
+    results.push(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+    s.stop();
+    s.onIdle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.fetch).toHaveBeenCalledTimes(4);
+  });
+
   it('an interval of 0 never fetches', async () => {
     const deps = { now: () => Date.now(), lastFetchAt: () => 0, isMinimized: vi.fn(async () => false), fetch: vi.fn(async () => {}) };
     const s = new FetchScheduler(0, deps);
