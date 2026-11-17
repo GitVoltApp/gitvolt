@@ -34,8 +34,7 @@
 .tb-btn.tb-wip[aria-pressed="true"], .tb-btn.tb-wip[aria-pressed="true"]:hover:not(:disabled) { color: var(--text-selected); background: color-mix(in srgb, var(--orange) 30%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orange) 60%, transparent); }
 /* Hidden, a button keeps its place, so its neighbours never move. */
 .tb-hidden { visibility: hidden; }
-.spin { animation: gb-spin 1s linear infinite; }
-@keyframes gb-spin { to { transform: rotate(360deg); } }
+.spin { animation: spinner-turns 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 /* Busy: the spinner takes the icon's place (same box); with reduced motion a static dot does. */
 .tb-busy-dot { display: none; }

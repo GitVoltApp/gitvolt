@@ -24,8 +24,7 @@
 .debug-status.ok { color: var(--green); }
 .debug-status.failed { color: var(--red); }
 .debug-status.cancelled, .debug-status.skipped { color: var(--text-secondary); }
-.debug-status.running svg { animation: debug-spin 1s linear infinite; }
-@keyframes debug-spin { to { transform: rotate(360deg); } }
+.debug-status.running svg { animation: spinner-turns 60s linear infinite; }
 .debug-time { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .debug-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-normal); }
 .debug-label .activity-cmd { font-family: var(--font-mono); font-size: 12px; }

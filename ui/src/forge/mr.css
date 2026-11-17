@@ -21,8 +21,10 @@
 .mr-card-branches .arrow-glyph { vertical-align: 0.05em; }
 .mr-card-bad { color: var(--red); }
 .mr-card-hint { font-size: 11px; color: var(--text-disabled); margin-top: 2px; }
-.mr-pipeline-icon.spin, .mr-state-icon.spin { animation: mr-spin 1s linear infinite; }
-@keyframes mr-spin { to { transform: rotate(360deg); } }
+.mr-pipeline-icon.spin, .mr-state-icon.spin { animation: spinner-turns 60s linear infinite; }
+/* A pipeline or a merge runs on the forge, not in GitVolt, and isn't polled while the window is in
+   the background (forge/poller.ts): its spinner stops there too (ui/windowBlur.ts). */
+[data-window-blurred] .mr-pipeline-icon.spin, [data-window-blurred] .mr-state-icon.spin { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .mr-pipeline-icon.spin, .mr-state-icon.spin { animation: none; } }
 
 /* 4B T9: stale data after a failed poll. */
@@ -42,6 +44,5 @@
 .mr-state .mr-state-icon { color: inherit; }
 
 /* A refresh button while it runs: the icon turns in place (a transform alone, and only then). */
-.is-refreshing svg { animation: forge-refresh-spin 1s linear infinite; }
-@keyframes forge-refresh-spin { to { transform: rotate(360deg); } }
+.is-refreshing svg { animation: spinner-turns 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .is-refreshing svg { animation: none; opacity: 0.5; } }

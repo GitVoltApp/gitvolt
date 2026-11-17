@@ -18,6 +18,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   A change you start still stops a background fetch at once; the fetch used to wait for its next
   scheduled time (a minute or more). A fetch you started yourself isn't stopped: the change waits
   its turn, and the status bar's queue says so (`Fetch repo · Rebase waiting`).
+- **A running pipeline's spinner no longer keeps the app busy in the background.** Spinners turn
+  without waking the page's main thread: each turn used to make Chromium redraw the page about
+  five times a second, for as long as a merge request's pipeline ran. A pipeline's or a forge
+  merge's spinner also stops while GitVolt's window is in the background, where the merge request
+  isn't refreshed anyway, and turns again when you come back. The busy-page log now names an
+  animation still running a minute after the window lost the focus.
 
 ## [1.6.2] - 2026-11-15
 

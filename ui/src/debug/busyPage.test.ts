@@ -205,6 +205,60 @@ describe('installBusyPageDetector', () => {
     delete document.getAnimations;
   });
 
+  it('reports an endless animation still running a minute after the window lost the focus, whatever it animates', () => {
+    const el = document.createElement('svg');
+    el.setAttribute('class', 'mr-pipeline-icon spin');
+    const spinner = { playState: 'running', id: '', effect: { target: el, getComputedTiming: () => ({ endTime: Infinity }), getKeyframes: () => [{ offset: 1, transform: 'rotate(21600deg)' }] } };
+    document.getAnimations = () => [spinner] as unknown as Animation[];
+    const has = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    install();
+    const wait = (ms: number) => {
+      t += ms;
+      vi.advanceTimersByTime(ms);
+    };
+    const blur = () => {
+      has.mockReturnValue(false);
+      window.dispatchEvent(new Event('blur'));
+    };
+    const focus = () => {
+      has.mockReturnValue(true);
+      window.dispatchEvent(new Event('focus'));
+    };
+    // Focused, a spinner is something at work, however long; a click's WM bounce is no blur.
+    wait(120_000);
+    blur();
+    wait(5);
+    focus();
+    wait(120_000);
+    expect(log).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    // In the background for under a minute, or with the spinner paused there: nothing.
+    blur();
+    wait(59_000);
+    focus();
+    blur();
+    spinner.playState = 'paused';
+    wait(60_000);
+    expect(log).not.toHaveBeenCalled();
+    focus();
+
+    spinner.playState = 'running';
+    blur();
+    wait(60_000);
+    expect(log).toHaveBeenCalledTimes(2);
+    const report = reportOf(lines()[0]);
+    expect(report).toMatchObject({ why: 'unfocused', forS: 60, focus: false, animations: { n: 1, costly: 0 } });
+    expect(report.animations.top[0]).toMatchObject({ target: 'svg.mr-pipeline-icon.spin', endless: true, props: ['transform'] });
+    // It stops: one "ended" line, and no timer left.
+    spinner.playState = 'paused';
+    wait(2_000);
+    expect(lines()[2]).toMatch(/^busy page: ended \{"forS":62,"why":"unfocused"/);
+    expect(vi.getTimerCount()).toBe(0);
+    has.mockRestore();
+    // @ts-expect-error: happy-dom has none of its own
+    delete document.getAnimations;
+  });
+
   it('keeps user content out: no text, paths, titles or foreign URLs, only code locations and class names', () => {
     document.title = 'feature/secret-branch — /home/ada/orbital';
     document.body.innerHTML = '<div class="commit-box"><textarea class="commit-msg spellcheck">Fix the secret thing</textarea></div><p>/home/ada/orbital</p>';

@@ -9,8 +9,7 @@
 .ctx-icon { flex: none; opacity: 0.85; }
 /* A held row (its action finding out whether to ask, e.g. an integrate's preview): a spinner in
    its icon's place, only while it waits. */
-.ctx-spin { animation: ctx-spin 1s linear infinite; }
-@keyframes ctx-spin { to { transform: rotate(360deg); } }
+.ctx-spin { animation: spinner-turns 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .ctx-spin { animation: none; } }
 .ctx-label { flex: 1; }
 .ctx-swatch { flex: none; width: 8px; height: 8px; border-radius: 50%; }

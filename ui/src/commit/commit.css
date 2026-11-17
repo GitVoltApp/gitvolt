@@ -51,8 +51,7 @@
 
 /* The commit box's own: full width, a little taller. */
 .commit-button { width: 100%; min-height: 30px; padding: 6px 12px; }
-.commit-button .spin { animation: commit-spin 1s linear infinite; }
-@keyframes commit-spin { to { transform: rotate(360deg); } }
+.commit-button .spin { animation: spinner-turns 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .commit-button .spin { animation: none; } }
 
 /* §13.2, ux round 1: an operation in progress, at the top of the commit box. */

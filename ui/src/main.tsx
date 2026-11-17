@@ -11,6 +11,7 @@ import { installEditorSettingsMigration } from './diff/editorSettings';
 import { installFontZoom } from './diff/fontZoom';
 import { registerEditorFont } from './theme/editorFont';
 import { bindFontsToSettings } from './theme/fonts';
+import { installWindowBlurredMark } from './ui/windowBlur';
 import { installZoom } from './ui/zoom';
 import { applyPageZoom } from './demo/pageZoom';
 
@@ -34,6 +35,8 @@ bindThemeToSettings();
 // The UI and reading fonts (the UI font's mirror until the settings load, as the theme's).
 bindFontsToSettings();
 installEditorSettingsMigration();
+// In the background, a forge pipeline's spinner stops (forge/mr.css).
+installWindowBlurredMark();
 // The editors' bundled font (JetBrains Mono), for Monaco and the rendered Markdown's code alike.
 registerEditorFont();
 
