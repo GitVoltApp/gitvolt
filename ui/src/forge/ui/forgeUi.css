@@ -125,5 +125,5 @@ button.card-btn.approve:hover:not(:disabled) { background: color-mix(in srgb, va
 button.card-btn.changes:hover:not(:disabled), button.card-btn.changes[aria-expanded="true"] { background: color-mix(in srgb, var(--orange) 16%, var(--control-bg)); border-color: color-mix(in srgb, var(--orange) 50%, transparent); color: var(--orange); }
 /* Approved by you: pressed, in green. */
 button.card-btn.approve[data-on] { opacity: 1; background: color-mix(in srgb, var(--green) 24%, var(--control-bg)); border-color: color-mix(in srgb, var(--green) 60%, transparent); box-shadow: inset 0 1px 2px var(--shadow-popup); }
-button.card-btn .spin { animation: mr-spin 1s linear infinite; }
+button.card-btn .spin { animation: spinner-turns 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) { button.card-btn .spin { animation: none; } }

@@ -97,6 +97,12 @@ plus the e2e specs for the areas you changed.
     frame. The update pill's endless `box-shadow` glow cost about 130 ms of main-thread time per
     second at 60 Hz (twice that at 120 Hz), with the app otherwise idle; a spinner costs about 3.
     `ui/src/theme/animations.css.test.ts` fails on an infinite animation of anything else.
+  - A spinner uses the shared `spinner-turns` keyframes (`animation: spinner-turns 60s linear
+    infinite`, sixty turns an iteration). Every iteration fires `animationiteration`, which React
+    listens for, and Chromium then runs main-thread frames around it: a turn per iteration cost
+    about 5 of them a second, however compositor-only the turn.
+  - A spinner for work outside GitVolt (a forge pipeline) pauses while the window is in the
+    background: `[data-window-blurred] … { animation-play-state: paused; }` (`ui/src/ui/windowBlur.ts`).
   - A decorative effect (a glow, a pulse) plays a few times, then stops.
   - A `requestAnimationFrame` or `setInterval` loop stops when there's nothing left to follow:
     one that waits on animations ignores the ones that never end (`settling` in

@@ -8,7 +8,7 @@ import { openMenuAt } from '../menu/menuStore';
 import { pressOpener } from '../menu/pressDrag';
 import type { MenuRow } from '../menu/types';
 import { HoverTooltip } from '../ui/HoverTooltip';
-import { chipText, IDLE, isIdle, loadQueue, useQueue } from './store';
+import { chipText, chipTitle, IDLE, isIdle, loadQueue, useQueue } from './store';
 import './queue.css';
 
 const quiet = (p: Promise<unknown>) => { void p.catch((e: unknown) => console.warn('[gitvolt] queue', e)); };
@@ -46,7 +46,7 @@ export function QueueChip() {
   const latest = () => rows(repo, useQueue.getState().byRepo[repo] ?? IDLE);
   const text = chipText(q);
   return (
-    <HoverTooltip content="The action queue: what runs now and what's next">
+    <HoverTooltip content={chipTitle(q)}>
       <button type="button" className={`sb-item sb-button sb-queue${q.stopped ? ' stopped' : ''}`} aria-label={text} aria-haspopup="menu" {...pressOpener((el) => openMenuAt(el, latest(), undefined, latest, 'Action queue'))}>
         {text}
       </button>

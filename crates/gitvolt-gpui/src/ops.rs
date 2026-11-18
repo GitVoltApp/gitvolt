@@ -210,17 +210,30 @@ impl Ops {
     }
 }
 
-/// `Running: push dev · 2 queued`, or `Stopped: push dev failed · 2 not run`.
+/// `Running: push dev`; with others waiting it names them (`Push dev · Rebase and 2 more waiting`);
+/// after a failure `Stopped: push dev failed · 2 not run`.
 pub fn chip_text(q: &QueueStatePayload) -> String {
     let n = q.queued.len();
     if let Some(s) = &q.stopped {
         return format!("Stopped: {} failed · {n} not run", s.label);
     }
-    match &q.running {
-        None => format!("{n} queued"),
-        Some(r) if n > 0 => format!("Running: {} · {n} queued", r.label),
-        Some(r) => format!("Running: {}", r.label),
+    let waiting = q.queued.first().map(|f| format!("{}{} waiting", cap(&f.label), if n > 1 { format!(" and {} more", n - 1) } else { String::new() }));
+    match (&q.running, waiting) {
+        (None, w) => w.unwrap_or_default(),
+        (Some(r), Some(w)) => format!("{} · {w}", cap(&r.label)),
+        (Some(r), None) => format!("Running: {}", r.label),
     }
+}
+
+/// The chip's tooltip: with several waiting, every one in order.
+pub fn chip_title(q: &QueueStatePayload) -> String {
+    let base = "The action queue: what runs now and what's next";
+    if q.queued.len() > 1 { format!("{base}. Waiting: {}", q.queued.iter().map(|i| i.label.as_str()).collect::<Vec<_>>().join(", ")) } else { base.into() }
+}
+
+fn cap(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
 
 pub fn queue_idle(q: Option<&QueueStatePayload>) -> bool {
@@ -313,9 +326,15 @@ mod tests {
     }
 
     #[test]
-    fn the_queue_chip_says_what_runs_and_what_stopped() {
+    fn the_queue_chip_says_what_runs_what_waits_and_what_stopped() {
         let item = |label: &str| QueueItem { id: 1, label: label.into(), kind: OpKind::Push, op: 1 };
-        assert_eq!(chip_text(&QueueStatePayload { running: Some(item("push dev")), queued: vec![item("a"), item("b")], stopped: None }), "Running: push dev · 2 queued");
+        let q = |running: Option<QueueItem>, queued: Vec<QueueItem>| QueueStatePayload { running, queued, stopped: None };
+        assert_eq!(chip_text(&q(Some(item("push dev")), vec![item("b"), item("c")])), "Push dev · B and 1 more waiting");
+        assert_eq!(chip_text(&q(Some(item("push dev")), vec![item("rebase")])), "Push dev · Rebase waiting");
+        assert_eq!(chip_text(&q(Some(item("push dev")), vec![])), "Running: push dev");
+        assert_eq!(chip_text(&q(None, vec![item("b")])), "B waiting");
+        assert_eq!(chip_title(&q(None, vec![item("b")])), "The action queue: what runs now and what's next");
+        assert_eq!(chip_title(&q(Some(item("push dev")), vec![item("b"), item("c")])), "The action queue: what runs now and what's next. Waiting: b, c");
         assert_eq!(chip_text(&QueueStatePayload { running: None, queued: vec![item("a")], stopped: Some(QueueStop { label: "push dev".into(), message: "m".into() }) }), "Stopped: push dev failed · 1 not run");
         assert!(queue_idle(Some(&QueueStatePayload::default())));
     }

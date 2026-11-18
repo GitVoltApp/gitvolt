@@ -16,6 +16,7 @@ const { useRuntime } = await import('./runtime');
 const { useAppState, DEFAULT_SETTINGS } = await import('./state');
 const { useOps } = await import('./ops');
 const { LONG_TOAST_MS, useToast } = await import('../ui/toastStore');
+const { useQueue } = await import('../queue/store');
 
 const repo = { id: 4, path: '/r', name: 'r', worktree: '/r' };
 const rt = () => useRuntime.getState().tabs.t!;
@@ -26,6 +27,7 @@ beforeEach(() => {
   useRuntime.getState().patch('t', { repo, status: 'ready' });
   useOps.setState({ ops: {}, prompts: [], errors: [], unread: 0 });
   useToast.setState({ message: null, action: null });
+  useQueue.setState({ byRepo: {} });
   useAppState.setState({ settings: { ...DEFAULT_SETTINGS, fetchIntervalSecs: 60 } });
 });
 
@@ -208,6 +210,28 @@ describe('useFetchScheduler', () => {
     expect(api.fetch).toHaveBeenCalledTimes(2);
     await act(() => vi.advanceTimersByTimeAsync(60_000));
     expect(api.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("a background fetch a user's op cancelled runs again once the repo's queue is idle", async () => {
+    api.fetch.mockResolvedValueOnce({ status: 'skipped', reason: 'busy' });
+    render(<Scheduled repoId={4} />);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(api.fetch).toHaveBeenCalledTimes(1);
+    const item = { id: 1, label: 'rebase main onto feature/x', kind: 'rebase' as const, op: 9 };
+    act(() => useQueue.getState().set(4, { running: item, queued: [], stopped: null }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(api.fetch).toHaveBeenCalledTimes(1);
+    act(() => useQueue.getState().set(4, { running: null, queued: [], stopped: null }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(api.fetch).toHaveBeenCalledTimes(2);
+    expect(api.fetch).toHaveBeenLastCalledWith(4, true);
+    // Another repo's queue going idle, or this one's with nothing owed: nothing.
+    act(() => useQueue.getState().set(5, { running: item, queued: [], stopped: null }));
+    act(() => useQueue.getState().set(5, { running: null, queued: [], stopped: null }));
+    act(() => useQueue.getState().set(4, { running: item, queued: [], stopped: null }));
+    act(() => useQueue.getState().set(4, { running: null, queued: [], stopped: null }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(api.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('does nothing without a repo, or with the interval off', async () => {

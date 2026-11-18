@@ -476,7 +476,7 @@ pub fn merge_box(this: &mut GitVolt, tab: u32, kind: ForgeKind, listed: &ForgeMr
         MergeTone::Wait => theme::orange(),
         MergeTone::Bad => theme::red(),
     };
-    let dot_icon: AnyElement = if mr.state == MrState::Merging { crate::commit_box::spinner("mr-merge-spin", 13., tone_color).into_any_element() } else { icon(glyph, 13., tone_color).into_any_element() };
+    let dot_icon: AnyElement = if mr.state == MrState::Merging { crate::ui::spin::forge_spinner("loader-circle", 13., tone_color).into_any_element() } else { icon(glyph, 13., tone_color).into_any_element() };
     let label = match busy {
         Some(MergeMode::Merge) => "Merging…",
         Some(MergeMode::Auto) => "Setting…",

@@ -15,7 +15,7 @@ test.describe('action queue (spec #2 §3.6)', () => {
     const first = testWrite(request, repo, sleep('push dev', 1500));
     await expect(chip(page)).toHaveText('Running: push dev');
     const second = testWrite(request, repo, sleep('commit "x"', 100));
-    await expect(chip(page)).toHaveText('Running: push dev · 1 queued', { timeout: 1000 });
+    await expect(chip(page)).toHaveText('Push dev · Commit "x" waiting', { timeout: 1000 });
     await chip(page).click();
     await page.getByRole('menuitem', { name: 'Remove commit "x"' }).click();
     expect((await second).err?.kind).toBe('Cancelled');
@@ -25,7 +25,7 @@ test.describe('action queue (spec #2 §3.6)', () => {
     const failing = testWrite(request, repo, sleep('push dev', 800, true));
     await expect(chip(page)).toHaveText('Running: push dev');
     const b = testWrite(request, repo, sleep('b', 50));
-    await expect(chip(page)).toContainText('1 queued');
+    await expect(chip(page)).toContainText('B waiting');
     expect((await failing).err?.message).toBe('push dev failed');
     await expect(chip(page)).toHaveText('Stopped: push dev failed · 1 not run');
     await chip(page).click();

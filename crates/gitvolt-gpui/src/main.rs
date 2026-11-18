@@ -374,7 +374,7 @@ fn main() {
                 bench::start(view.clone(), window, cx);
             }
             bench::start_debug_pipe(view.clone(), window, cx);
-            let layer = ui::spin::SpinLayer::new(cx);
+            let layer = ui::spin::SpinLayer::new(window, cx);
             cx.new(|_| Root { app: view, layer })
         });
         if let Err(e) = result {

@@ -398,6 +398,14 @@ impl GitVolt {
                 if done || reason == Some("authRequired") {
                     self.failing_fetch.remove(&repo);
                 }
+                // Skipped while the queue was busy (a user's change cancelled it): owed once the queue is idle.
+                if background && full {
+                    if reason == Some("busy") {
+                        self.fetch_owed = Some(repo);
+                    } else if self.fetch_owed == Some(repo) {
+                        self.fetch_owed = None;
+                    }
+                }
                 if done {
                     stamp(self);
                     if let Some(t) = self.tabs.iter_mut().find(|t| t.id == repo)

@@ -4,7 +4,7 @@
 
 use crate::app::{GitVolt, Tab, icon};
 use crate::commit_box::spinner;
-use crate::ops::{ActivityEntry, chip_text, queue_idle, rebase_status};
+use crate::ops::{ActivityEntry, chip_text, chip_title, queue_idle, rebase_status};
 use crate::theme;
 use crate::ui::arm::{self, ArmRequest, Origin};
 use crate::ui::banner::{Banner, BannerAction};
@@ -306,6 +306,7 @@ impl GitVolt {
         // Dropping the old task ends its loop.
         if secs == 0 {
             self.fetch_schedule = None;
+            self.fetch_owed = None;
             return;
         }
         let interval = Duration::from_secs(secs as u64);
@@ -333,6 +334,18 @@ impl GitVolt {
     pub fn fetch_on_focus(&mut self, cx: &mut Context<Self>) {
         if std::mem::take(&mut self.fetch_missed) {
             self.fetch_if_due(cx);
+        }
+    }
+
+    /// `repo`'s queue went idle: the background fetch it skipped runs now, on the tab still shown; a minimized window
+    /// asks when it's back.
+    pub fn fetch_on_idle(&mut self, repo: u32, cx: &mut Context<Self>) {
+        let Some(tab) = self.fetch_owed.filter(|t| crate::app::core_repo(*t) == repo) else { return };
+        self.fetch_owed = None;
+        if self.window_hidden {
+            self.fetch_missed = true;
+        } else if self.tabs.get(self.active).is_some_and(|t| t.id == tab) {
+            self.run_fetch(tab, true, None, cx);
         }
     }
 
@@ -660,7 +673,7 @@ pub fn status_items(v: &GitVolt, cx: &mut Context<GitVolt>) -> Vec<AnyElement> {
         let stopped = q.stopped.is_some();
         out.push(
             tip(
-                "The action queue: what runs now and what's next",
+                chip_title(q),
                 crate::ui::anchor(
                     "queue-chip",
                     div()
@@ -1008,6 +1021,31 @@ mod tests {
     use gitvolt_core::journal::Banner as JBanner;
     use std::prelude::v1::test;
     use std::time::Instant;
+
+    #[gpui::test]
+    fn a_background_fetch_the_busy_queue_skipped_runs_once_it_is_idle(cx: &mut gpui::TestAppContext) {
+        use gitvolt_core::events::AppEvent;
+        use gitvolt_core::write::types::QueueItem;
+        let (window, mut cx, _rt) = crate::app::tests::with_rows(cx, 0);
+        let fetches = |v: &GitVolt| v.sent.borrow().iter().filter(|b| b.to_string().contains("\"fetch\"")).count();
+        let queue = |running: bool| AppEvent::QueueChanged { repo: crate::app::core_repo(1), running: running.then(|| QueueItem { id: 1, label: "rebase".into(), kind: OpKind::Rebase, op: 9 }), queued: Vec::new(), stopped: None };
+        window
+            .update(&mut cx, |v, _, cx| {
+                v.on_event(queue(true), cx);
+                v.fetched(1, true, None, "fetch|bg:".into(), Vec::new(), Ok(json!({ "status": "skipped", "reason": "busy" })), cx);
+                assert_eq!(v.fetch_owed, Some(1));
+                assert_eq!(fetches(v), 0, "nothing while the rebase runs");
+                v.on_event(queue(false), cx);
+                assert_eq!(fetches(v), 1, "the queue's idle: it runs now");
+                assert_eq!(v.fetch_owed, None);
+                // A queue going idle again owes nothing more.
+                v.end_once(1, "fetch|bg:");
+                v.on_event(queue(true), cx);
+                v.on_event(queue(false), cx);
+                assert_eq!(fetches(v), 1);
+            })
+            .unwrap();
+    }
 
     fn entry(op: u64, background: bool, outcome: OpOutcome) -> ActivityEntry {
         ActivityEntry { op, kind: OpKind::Fetch, label: "fixture".into(), background, duration_ms: 5, outcome, message: None, command: Some("git fetch".into()), output: Vec::new(), remote: Vec::new() }

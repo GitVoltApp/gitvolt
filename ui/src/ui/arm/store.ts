@@ -109,8 +109,22 @@ export const isArmedOrigin = (o: Origin): boolean => useArm.getState().armed?.or
 /** `el` is the armed control. */
 export const isArmedEl = (el: Element | null): boolean => !!el && useArm.getState().armed?.origin?.el === el;
 
-/** `holdOrigin` for the armed store: the release closes the menu unless the row armed. */
-export const holdOrigin = (): (() => void) => holdOriginOf(isArmedOrigin);
+/** The menu row whose action holds its menu open (`holdOrigin`: an integrate's preview, a write's
+ * first answer): the row shows it's working, and a pick on it runs nothing more. */
+export const useHeld = create<{ el: HTMLElement | null }>(() => ({ el: null }));
+
+/** `holdOrigin` for the armed store: the release closes the menu unless the row armed. While
+ * held, the row is `useHeld`'s. */
+export function holdOrigin(): () => void {
+  const o = currentOrigin();
+  const release = holdOriginOf(isArmedOrigin);
+  if (!o?.menu) return release;
+  useHeld.setState({ el: o.el });
+  return () => {
+    release();
+    if (o.holds === 0 && useHeld.getState().el === o.el) useHeld.setState({ el: null });
+  };
+}
 
 /**
  * The settle guard (fix round 1): a confirm must be a new gesture, started after the control

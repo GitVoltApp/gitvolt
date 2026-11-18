@@ -7,6 +7,10 @@
 .ctx-row[data-active="true"] { background: var(--selected-row); color: var(--text-selected); }
 .ctx-row[aria-disabled="true"] { color: var(--text-disabled); }
 .ctx-icon { flex: none; opacity: 0.85; }
+/* A held row (its action finding out whether to ask, e.g. an integrate's preview): a spinner in
+   its icon's place, only while it waits. */
+.ctx-spin { animation: spinner-turns 60s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .ctx-spin { animation: none; } }
 .ctx-label { flex: 1; }
 .ctx-swatch { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 .ctx-shortcut { color: var(--text-secondary); font-size: 11px; margin-left: 16px; }

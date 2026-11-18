@@ -47,6 +47,37 @@ check "Resume ran what was left" "len(d['toast'] or '') >= 0"
 shot left-resume
 stop_app
 
+echo "a menu row whose write waits holds: a spinner in its icon's place, a second click runs nothing, and the queue chip names what waits"
+H=$(small_repo held)
+# The ssh it runs waits until the step lets it go (a minute at most), then serves a local bare copy: a fetch that runs as long as the step wants.
+rm -f "$WORK/flows/held.go"; rm -rf "$WORK/flows/held-origin.git"
+printf '#!/bin/sh\ni=0; while [ ! -e "%s" ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i + 1)); done\nexec git-upload-pack "%s"\n' "$WORK/flows/held.go" "$WORK/flows/held-origin.git" >"$WORK/flows/hang-ssh.sh"; chmod +x "$WORK/flows/hang-ssh.sh"
+g "$H" remote add origin ssh://git@forge.example.com/held.git; g "$H" config core.sshCommand "$WORK/flows/hang-ssh.sh"
+# Not probed with -G first (git's ssh variant detection): the one ssh is the fetch's.
+g "$H" config ssh.variant simple
+g "$H" switch -q -c side; echo "side" >>"$H/README.md"; g "$H" commit -qam 'Side work'; g "$H" switch -q main
+git clone -q --bare "$H" "$WORK/flows/held-origin.git"
+clean_app
+up "$H"; until_q "d['rows'] and d['rows'] >= 7" 5; pause 0.5
+clickon tb-sync; pause 0.3
+until_q "d['running']" 5
+clickon "side:refs/heads/side" right; pause 0.3
+pick Delete; pause 0.6
+q "[(r['label'], r['held'], r['armed']) for r in d['menuRows']][:6]"
+check "the row holds, the menu open" "any(r['label'] == 'Delete' and r['held'] for r in d['menuRows'])"
+q "d['queueChip']"
+check "the chip names the fetch and what waits" "d['queueChip'][0].startswith('Fetch') and d['queueChip'][0].endswith(' waiting') and ' · ' in d['queueChip'][0]"
+shot left-held
+pick Delete; pause 0.4
+check "a second click runs nothing more: still held, one waiting" "any(r['label'] == 'Delete' and r['held'] for r in d['menuRows']) and ' and ' not in d['queueChip'][0]"
+touch "$WORK/flows/held.go"
+until_q "any(r['label'] == 'Delete' and r['armed'] for r in d['menuRows'])" 8
+check "the fetch done, the delete asks: the row arms in its menu" "any(r['label'] == 'Delete' and r['armed'] and not r['held'] for r in d['menuRows'])"
+shot left-held-armed
+pause 0.6; pick Delete; pause 0.8
+check "and the second click deletes it" "'side:refs/heads/side' not in d['anchors']"
+stop_app
+
 echo "the update dialog's Restart asks about unsaved edits, and the dialog stays if that's cancelled"
 U=$(small_repo upd)
 clean_app
@@ -149,6 +180,26 @@ key Escape; pause 0.4
 
 echo "auto-merge"
 clickon "side:mr:12"; pause 1.5
+echo "a running pipeline's spinner stands still while the window is in the background"
+main_cpu() { python3 - "$APP_PID" "$1" <<'PY'
+import sys, time
+pid, secs = sys.argv[1], float(sys.argv[2])
+read = lambda: sum(int(x) for x in open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()[11:13])
+a = read(); time.sleep(secs); print(round((read() - a) / secs, 1))
+PY
+}
+ri move 1 500; pause 0.5
+FRONT=$(main_cpu 4); echo "in front, the pipeline turning: $FRONT % of a core"
+xmessage -geometry +700+400 "elsewhere" & XM=$!
+until_q "not d['window']['active']" 5
+pause 1.5
+BACK=$(main_cpu 4); echo "in the background: $BACK % of a core"
+check_sh "in the background it costs nothing ($BACK, in front $FRONT)" "python3 -c 'import sys; sys.exit(0 if $BACK < 0.5 and $BACK < $FRONT else 1)'"
+kill $XM 2>/dev/null; wait $XM 2>/dev/null
+until_q "d['window']['active']" 5 || { clickxy 800 12; until_q "d['window']['active']" 3; }
+pause 0.3
+AGAIN=$(main_cpu 3); echo "in front again: $AGAIN % of a core"
+check_sh "and turns again in front ($AGAIN)" "python3 -c 'import sys; sys.exit(0 if $AGAIN > $BACK else 1)'"
 clickon mr-approve; pause 1
 shot left-mr
 clickon mr-merge-act; pause 0.4; shot left-auto-armed

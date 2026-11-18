@@ -1,7 +1,7 @@
-import { Check, ChevronRight } from 'lucide-react';
+import { Check, ChevronRight, LoaderCircle } from 'lucide-react';
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { OVERLAY_ATTR, runFromMenu } from '../ui/arm/origin';
-import { confirmable, confirmableKey, confirmArmed, consumeDisarmClick, disarm, isArmedOrigin, setArmOption, useArm } from '../ui/arm/store';
+import { confirmable, confirmableKey, confirmArmed, consumeDisarmClick, disarm, isArmedOrigin, setArmOption, useArm, useHeld } from '../ui/arm/store';
 import { registerKeys } from '../ui/keyRouter';
 import { hideTooltip, showTooltip } from '../ui/tooltipStore';
 import { pressedAnchor, runMenuRowHook, useMenu } from './menuStore';
@@ -86,6 +86,14 @@ const viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
 /** A first guess at a submenu's box; corrected from its measured size before paint. */
 const subPlace = (anchor: Anchor, rows: MenuRow[]) => placeSubmenu(anchor, { w: SUB_W, h: rows.length * ROW_H + PAD }, viewport());
 
+/** Whether `el` is the row `id` of level `depth`. */
+const isRow = (el: HTMLElement, depth: number, id: string) => el.dataset.rowId === id && el.closest<HTMLElement>('.ctx-level')?.dataset.depth === String(depth);
+
+/** Whether `rows` (or a submenu's) still offer the enabled action `id`. */
+function stillOffered(rows: MenuRow[], id: string): boolean {
+  return rows.some((r) => (r.kind === 'action' && r.id === id && !r.disabledReason) || (r.kind === 'submenu' && stillOffered(r.rows, id)));
+}
+
 /** The levels for refreshed `rows`: each level keeps its active row (by id; a submenu whose
  * row is gone, e.g. "Looking for editors…", starts on its `initial` row again) and each open
  * submenu stays open while its row is still a submenu. */
@@ -140,6 +148,7 @@ export function ContextMenu() {
   const initialRow = useMenu((s) => s.initialRow);
   const label = useMenu((s) => s.label);
   const armed = useArm((s) => (s.armed?.mode === 'inline' ? s.armed : null));
+  const held = useHeld((s) => s.el);
   const uid = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [levels, setLevels] = useState<Level[]>([]);
@@ -180,15 +189,24 @@ export function ContextMenu() {
 
   useLayoutEffect(() => {
     const el = rootRef.current;
+    const a = useArm.getState().armed;
+    const armedId = a?.mode === 'inline' ? a.origin?.el.dataset.rowId : undefined;
     if (!rows || !el) {
+      if (a?.mode === 'inline') disarm();
       placedSeq.current = -1;
       setLevels([]);
       return;
     }
     if (placedSeq.current === seq) {
+      // Rebuilt in place (the openers or the remotes arriving, which every opening reloads): the
+      // armed row stays armed while it's still there and enabled. Disarming on any rebuild dropped
+      // the arm when the openers answered late (a busy core), and the click meant to confirm ran
+      // the row again.
+      if (a?.mode === 'inline' && !(armedId && stillOffered(rows, armedId))) disarm();
       setLevels((ls) => remap(ls, rows));
       return;
     }
+    if (a?.mode === 'inline') disarm();
     placedSeq.current = seq;
     const focused = document.activeElement;
     if (!(focused instanceof HTMLElement && el.contains(focused))) returnTo.current = focused instanceof HTMLElement ? focused : null;
@@ -220,9 +238,9 @@ export function ContextMenu() {
   // An armed row's label grows past the menu's edge: its tooltip would sit under it.
   useEffect(() => { if (armed) hideTooltip(); }, [armed]);
 
-  // An armed row disarms once its menu closes or another opens (spec §ui confirms).
-  // Its rows rebuilt (a refresh: what the row would act on may have changed) disarm it too.
-  useEffect(() => () => { if (useArm.getState().armed?.mode === 'inline') disarm(); }, [seq, rows]);
+  // An armed row disarms once its menu closes or another opens (spec §ui confirms); a rebuild in
+  // place, only when it drops or greys the row (the layout effect above).
+  useEffect(() => () => { if (useArm.getState().armed?.mode === 'inline') disarm(); }, []);
 
   // The latest key handler, for the window listener below.
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -321,6 +339,9 @@ export function ContextMenu() {
       if (ev instanceof KeyboardEvent ? confirmableKey(ev, a) : confirmable(ev, a)) confirmArmed();
       return;
     }
+    // Its action is still finding out whether to ask (a preview): already running, so a pick
+    // meanwhile runs nothing; the row arms, or the menu closes, once the answer comes.
+    if (el && useHeld.getState().el === el) return;
     if (!el) {
       dismiss(true);
       runMenuRowHook(id, label, run);
@@ -424,7 +445,7 @@ export function ContextMenu() {
     const row = lv.rows[lv.active];
     // The armed row's option: ↓ reaches it and ↑ goes back without disarming; Enter/Space on it
     // toggles it. The armed row's own Enter is still the second pick.
-    const opt = armed?.req.option && armed.origin?.el.id === rowId(depth, lv.active);
+    const opt = armed?.req.option && !!armed.origin && !!row && row.kind !== 'separator' && isRow(armed.origin.el, depth, row.id);
     if (opt && !e.repeat) {
       if (!onOption && e.key === 'ArrowDown') return setOnOption(true);
       if (onOption && e.key === 'ArrowUp') return setOnOption(false);
@@ -527,7 +548,10 @@ export function ContextMenu() {
         const active = i === lv.active;
         const disabled = r.kind === 'action' && !!r.disabledReason;
         const expanded = r.kind === 'submenu' && levels[depth + 1]?.parent === i;
-        const armedHere = !!armed && armed.origin?.el.id === rowId(depth, i);
+        // By the row's own id and level, not its element id (its index: a rebuild that adds rows
+        // above it moves it, and the element's id is only updated after this render).
+        const armedHere = !!armed?.origin && isRow(armed.origin.el, depth, r.id);
+        const heldHere = !armedHere && !!held && held.isConnected && isRow(held, depth, r.id);
         const option = armedHere ? armed!.req.option : undefined;
         return (
           <Fragment key={r.id}>
@@ -538,6 +562,7 @@ export function ContextMenu() {
             data-index={i}
             data-active={active}
             aria-disabled={disabled || undefined}
+            aria-busy={heldHere || undefined}
             aria-haspopup={r.kind === 'submenu' ? 'menu' : undefined}
             aria-expanded={r.kind === 'submenu' ? expanded : undefined}
             aria-owns={expanded ? levelId(depth + 1) : undefined}
@@ -556,7 +581,8 @@ export function ContextMenu() {
               else openSub(depth, i, e.currentTarget);
             }}
           >
-            <Icon size={14} className="ctx-icon" aria-hidden />
+            {/* Held (its action finding out whether to ask): a spinner in the icon's place. */}
+            {heldHere ? <LoaderCircle size={14} className="ctx-icon ctx-spin" aria-hidden /> : <Icon size={14} className="ctx-icon" aria-hidden />}
             {r.kind === 'action' && r.swatch && <span className="ctx-swatch" style={{ background: r.swatch }} aria-hidden />}
             <span className="ctx-label">{r.label}</span>
             {r.kind === 'action' && r.shortcut && <span className="ctx-shortcut">{displayChord(r.shortcut)}</span>}

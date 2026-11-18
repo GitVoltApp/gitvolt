@@ -8,13 +8,14 @@ import { centerViewOf } from '../repo/centerView';
 /**
  * The busy-page detector: when the page keeps the main thread busy with nothing to show for it
  * (a `requestAnimationFrame` loop that never stops, long animation frames back to back, an endless
- * CSS animation that restyles every frame), one warning line goes to the local log file with what
+ * CSS animation that restyles every frame, any endless one still running a minute after the window
+ * lost the focus), one warning line goes to the local log file with what
  * was running and from where. A profiler can't be attached to a release build; this is the
  * evidence for the next time it happens.
  *
  * It costs nothing while the page is idle: no timer or loop of its own. It counts rAF requests as
  * they're made, and Chromium tells it about long animation frames and animation iterations. The
- * one timer, which waits for an episode to end, exists only during one.
+ * timers wait for an episode to end, during one, and for a minute after the window loses the focus.
  */
 export interface BusyThresholds {
   /** How long a source must stay busy before it's reported. */
@@ -29,6 +30,10 @@ export interface BusyThresholds {
   loafGapMs: number;
   /** CSS animations: a pause longer than this between two iterations ends a run. */
   iterGapMs: number;
+  /** An endless animation still running this long after the window lost the focus, whatever it
+   * animates: a spinner the compositor turns makes no long frames, yet keeps the renderer drawing
+   * (and, with an iteration a second, the main thread too) for as long as the window stays behind. */
+  unfocusedMs: number;
   /** An episode ends when its sources have been quiet this long. */
   quietMs: number;
   /** At most one report per this long; a busy page still going after it is reported again. */
@@ -48,12 +53,13 @@ export const BUSY_THRESHOLDS: BusyThresholds = {
   loafShare: 0.5,
   loafGapMs: 1_000,
   iterGapMs: 5_000,
+  unfocusedMs: 60_000,
   quietMs: 2_000,
   reportEveryMs: 5 * 60_000,
   sampleEvery: 16,
 };
 
-type Why = 'raf' | 'loaf' | 'css';
+type Why = 'raf' | 'loaf' | 'css' | 'unfocused';
 type Log = (level: 'warn', message: string, stack: string | null) => Promise<unknown>;
 
 export interface BusyPageDetector {
@@ -155,6 +161,7 @@ const animatedProps = (a: Animation): string[] => {
 const endless = (a: Animation) => a.effect?.getComputedTiming().endTime === Infinity;
 /** Running endless animations of something other than transform or opacity: these restyle on the main thread every frame. */
 const costly = (a: Animation) => a.playState === 'running' && endless(a) && animatedProps(a).some((p) => !COMPOSITED.has(p));
+const spinning = (a: Animation) => a.playState === 'running' && endless(a);
 const allAnimations = (): Animation[] => (typeof document.getAnimations === 'function' ? document.getAnimations() : []);
 
 function describeAnimation(a: Animation) {
@@ -200,6 +207,8 @@ export function installBusyPageDetector(opts: Options = {}): BusyPageDetector {
   let lastReport = -Infinity;
   let episode: { start: number; why: Why; raf: number; loafMs: number } | null = null;
   let endTimer: ReturnType<typeof setTimeout> | null = null;
+  let blurTimer: ReturnType<typeof setTimeout> | null = null;
+  let blurredAt = -Infinity;
 
   const resetRuns = (t: number) => {
     raf.start = t;
@@ -246,7 +255,9 @@ export function installBusyPageDetector(opts: Options = {}): BusyPageDetector {
     void log('warn', hint, null).catch(() => {});
   };
 
-  const quiet = (t: number) => t - raf.last >= th.quietMs && t - loaf.last >= th.quietMs && (episode?.why !== 'css' || !allAnimations().some(costly));
+  const quiet = (t: number) => t - raf.last >= th.quietMs && t - loaf.last >= th.quietMs
+    && (episode?.why !== 'css' || !allAnimations().some(costly))
+    && (episode?.why !== 'unfocused' || document.hasFocus() || !allAnimations().some(spinning));
 
   const checkEnd = () => {
     endTimer = null;
@@ -256,7 +267,7 @@ export function installBusyPageDetector(opts: Options = {}): BusyPageDetector {
       endTimer = setTimeout(checkEnd, th.quietMs);
       return;
     }
-    const end = episode.why === 'css' ? t : Math.max(raf.last, loaf.last, episode.start);
+    const end = episode.why === 'css' || episode.why === 'unfocused' ? t : Math.max(raf.last, loaf.last, episode.start);
     const line = { forS: Math.round((end - episode.start) / 100) / 10, why: episode.why, rafRequests: episode.raf, loafMs: Math.round(episode.loafMs), focus: document.hasFocus(), visibility: document.visibilityState };
     void log('warn', `busy page: ended ${JSON.stringify(line)}`, null).catch(() => {});
     episode = null;
@@ -319,6 +330,21 @@ export function installBusyPageDetector(opts: Options = {}): BusyPageDetector {
     if (allAnimations().some(costly)) trigger('css', css.start, t);
   };
 
+  // Once per blur (the WM's bounce on a click refocuses within ms, and clears it). Hidden, the page
+  // draws nothing.
+  const onBlur = () => {
+    if (blurTimer) return;
+    blurredAt = now();
+    blurTimer = setTimeout(() => {
+      blurTimer = null;
+      if (!episode && !document.hasFocus() && !document.hidden && allAnimations().some(spinning)) trigger('unfocused', blurredAt, now());
+    }, th.unfocusedMs);
+  };
+  const onFocus = () => {
+    if (blurTimer) clearTimeout(blurTimer);
+    blurTimer = null;
+  };
+
   const onError = (e: ErrorEvent) => {
     if (/ResizeObserver loop/.test(e.message ?? '')) resizeLoops++;
   };
@@ -346,6 +372,8 @@ export function installBusyPageDetector(opts: Options = {}): BusyPageDetector {
   }
   document.addEventListener('animationiteration', onIteration, true);
   win.addEventListener('error', onError);
+  win.addEventListener('blur', onBlur);
+  win.addEventListener('focus', onFocus);
 
   return {
     configure: (patch) => Object.assign(th, patch),
@@ -354,7 +382,10 @@ export function installBusyPageDetector(opts: Options = {}): BusyPageDetector {
       observer?.disconnect();
       document.removeEventListener('animationiteration', onIteration, true);
       win.removeEventListener('error', onError);
+      win.removeEventListener('blur', onBlur);
+      win.removeEventListener('focus', onFocus);
       if (endTimer) clearTimeout(endTimer);
+      if (blurTimer) clearTimeout(blurTimer);
     },
   };
 }

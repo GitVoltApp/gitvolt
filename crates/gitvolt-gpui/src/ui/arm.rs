@@ -172,6 +172,9 @@ pub fn hold_row(cx: &mut App) -> Option<u64> {
 
 /// The hold's over: the menu closes unless the row armed meanwhile.
 pub fn release_row(hold: Option<u64>, window: &mut Window, cx: &mut App) {
+    if let Some(seq) = hold {
+        super::menu::unhold(seq, cx);
+    }
     if hold.is_some() && Ui::get(cx).menu.as_ref().map(|m| m.seq) == hold && !armed_on_row(cx) {
         super::menu::close(window, cx);
     }

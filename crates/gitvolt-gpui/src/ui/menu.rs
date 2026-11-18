@@ -375,6 +375,9 @@ pub struct MenuState {
     on_option: bool,
     /// The row that's armed: (depth, index).
     armed_row: Option<(usize, usize)>,
+    /// The row whose action holds the menu open while it finds out whether to ask (`arm::hold_row`): it shows a
+    /// spinner in its icon's place, and a pick on it runs nothing more.
+    held_row: Option<(usize, usize)>,
     viewport: Size<Pixels>,
     blur_pending: bool,
 }
@@ -483,6 +486,7 @@ fn open(rows: Vec<MenuRow>, at: (f32, f32), anchor: Option<SharedString>, o: Ope
         over_variant: None,
         on_option: false,
         armed_row: None,
+        held_row: None,
         viewport,
         blur_pending: false,
     });
@@ -590,9 +594,6 @@ pub fn refresh(window: &mut Window, cx: &mut App) {
     if rows.is_empty() {
         return;
     }
-    if arm::armed_on_row(cx) {
-        arm::disarm(window, cx);
-    }
     let (root_w, root_h) = level_size(&rows, ROOT_MIN_W, cx);
     let viewport = window.viewport_size();
     let (vw, vh) = (viewport.width.as_f32(), viewport.height.as_f32());
@@ -623,10 +624,34 @@ pub fn refresh(window: &mut Window, cx: &mut App) {
         initial = i.clone();
         cur = rows.clone();
     }
+    // The armed and held rows by their id and level, not their index, which a rebuild may move: the armed row stays
+    // armed while it's still offered and enabled. Disarming on any rebuild let a late answer drop the arm, and the
+    // click meant to confirm ran the row again.
+    let find = |at: Option<(usize, usize)>| {
+        let (d, i) = at?;
+        let id = old.get(d)?.rows.get(i)?.id()?;
+        let lv = out.get(d)?;
+        lv.rows.iter().position(|r| r.id() == Some(id) && r.enabled()).map(|i| (d, i))
+    };
+    let (armed, held) = Ui::get(cx).menu.as_ref().map_or((None, None), |m| (m.armed_row, m.held_row));
+    let (armed, held) = (find(armed), find(held));
+    if armed.is_none() && arm::armed_on_row(cx) {
+        arm::disarm(window, cx);
+    }
     if let Some(m) = Ui::get_mut(cx).menu.as_mut() {
         m.levels = out;
+        m.armed_row = armed;
+        m.held_row = held;
     }
     cx.refresh_windows();
+}
+
+/// The hold of menu `seq` is over: its row no longer shows it's working.
+pub(super) fn unhold(seq: u64, cx: &mut App) {
+    if let Some(m) = Ui::get_mut(cx).menu.as_mut().filter(|m| m.seq == seq && m.held_row.is_some()) {
+        m.held_row = None;
+        cx.refresh_windows();
+    }
 }
 
 /// A row's tooltip sits beside the menu, on the side away from its parent level.
@@ -951,6 +976,11 @@ fn activate_variant(depth: usize, index: usize, variant: usize, by_key: bool, wi
 fn pick(depth: usize, index: usize, run: Run, by_key: bool, window: &mut Window, cx: &mut App) {
     let Some(m) = Ui::get(cx).menu.as_ref() else { return };
     let seq = m.seq;
+    // Its action is still finding out whether to ask: it already runs, so a pick meanwhile runs nothing. The row arms,
+    // or the menu closes, once the answer comes.
+    if m.held_row == Some((depth, index)) {
+        return;
+    }
     if m.armed_row == Some((depth, index)) && arm::armed_on_row(cx) {
         if if by_key { arm::confirm_key(window, cx) } else { arm::confirm_click(window, cx) } {
             close(window, cx);
@@ -962,7 +992,11 @@ fn pick(depth: usize, index: usize, run: Run, by_key: bool, window: &mut Window,
     Ui::get_mut(cx).arm.running_row = false;
     let held = std::mem::take(&mut Ui::get_mut(cx).arm.held);
     if arm::armed_on_row(cx) || held {
-        with_menu(cx, |m| m.armed_row = Some((depth, index)));
+        let armed = arm::armed_on_row(cx);
+        with_menu(cx, |m| {
+            m.armed_row = Some((depth, index));
+            m.held_row = (held && !armed).then_some((depth, index));
+        });
         tooltip::hide(cx);
         cx.refresh_windows();
         return;
@@ -1194,6 +1228,7 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
                     let disabled = a.disabled.is_some();
                     let color = if let Some(t) = a.tint.filter(|_| !disabled) { t } else if disabled { theme::text_disabled() } else if a.radio == Some(true) { theme::green() } else if active { theme::text_selected() } else { theme::text_normal() };
                     let armed_here = armed.is_some() && m.armed_row == Some((depth, i));
+                    let held_here = !armed_here && m.held_row == Some((depth, i));
                     let over_variant = m.over_variant == Some((depth, i));
                     let mut row = row_base(active, disabled)
                         .text_color(color)
@@ -1201,6 +1236,8 @@ pub(super) fn element(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
                         .when(a.tint.is_none(), |d| {
                             d.child(match a.radio {
                                 Some(on) => radio_mark(on),
+                                // Held (its action finding out whether to ask): a spinner in the icon's place.
+                                None if held_here => super::spin::spinner("loader-circle", 14., Hsla { a: color.a * 0.85, ..color }).into_any_element(),
                                 None => match a.dot {
                                     // `profileDotIcon`: the colour in the icon's place, a ring round the current one.
                                     Some((c, current)) => div().flex().flex_none().size(px(14.)).items_center().justify_center().when(current, |d| d.child(div().flex().items_center().justify_center().size(px(13.)).rounded_full().border_1().border_color(color).child(div().size(px(7.)).rounded_full().bg(c)))).when(!current, |d| d.child(div().size(px(8.)).rounded_full().bg(c))).into_any_element(),
@@ -1336,7 +1373,8 @@ pub fn rows_at(cx: &App) -> Vec<serde_json::Value> {
                     right -= w;
                 }
             }
-            out.push(serde_json::json!({ "level": level, "label": label, "x": lv.left + 40., "y": y, "variants": variants }));
+            let (held, armed) = (menu.held_row == Some((level, i)), menu.armed_row == Some((level, i)) && arm::armed_on_row(cx));
+            out.push(serde_json::json!({ "level": level, "label": label, "x": lv.left + 40., "y": y, "variants": variants, "held": held, "armed": armed }));
         }
     }
     out
@@ -1506,15 +1544,67 @@ mod tests {
     fn a_held_row_keeps_its_menu_until_it_is_released(cx: &mut TestAppContext) {
         let (mut cx, _) = open_window(cx);
         let hold: Rc<std::cell::Cell<Option<u64>>> = Rc::default();
-        let h = hold.clone();
+        let runs: Rc<std::cell::Cell<u32>> = Rc::default();
+        let (h, n) = (hold.clone(), runs.clone());
         cx.update(|window, cx| {
-            open_context(vec![MenuRow::action("ask", "Ask", "check", "", move |_, cx| h.set(arm::hold_row(cx)))], point(px(100.), px(200.)), window, cx);
+            open_context(
+                vec![MenuRow::action("ask", "Ask", "check", "", move |_, cx| {
+                    n.set(n.get() + 1);
+                    h.set(arm::hold_row(cx));
+                })],
+                point(px(100.), px(200.)),
+                window,
+                cx,
+            );
         });
         cx.simulate_click(point(px(150.), px(row_y(0))), Modifiers::none());
         assert!(hold.get().is_some());
         assert_eq!(levels(&mut cx).len(), 1, "the action asks later");
+        assert_eq!(cx.update(|_, cx| Ui::get(cx).menu.as_ref().and_then(|m| m.held_row)), Some((0, 0)), "the row shows it's working");
+        cx.simulate_click(point(px(150.), px(row_y(0))), Modifiers::none());
+        cx.simulate_keystrokes("enter");
+        assert_eq!(runs.get(), 1, "a pick while it's held runs nothing");
         cx.update(|window, cx| arm::release_row(hold.get(), window, cx));
         assert!(levels(&mut cx).is_empty());
+    }
+
+    #[gpui::test]
+    fn an_armed_row_stays_armed_when_its_menu_rebuilds_in_place(cx: &mut TestAppContext) {
+        let (mut cx, _) = open_window(cx);
+        let extra = Rc::new(std::cell::Cell::new(false));
+        let confirmed: Rc<std::cell::Cell<u32>> = Rc::default();
+        let rows = {
+            let (extra, confirmed) = (extra.clone(), confirmed.clone());
+            move || {
+                let confirmed = confirmed.clone();
+                let mut rows = vec![MenuRow::action("go", "Go", "check", "", move |window, cx| {
+                    let confirmed = confirmed.clone();
+                    arm::request(arm::ArmRequest::danger("Really go", "Go", "Go"), arm::Origin::current(cx), move |a, _, _| {
+                        if a.ok {
+                            confirmed.set(confirmed.get() + 1);
+                        }
+                    }, window, cx);
+                })];
+                // What every opening loads late: a row above it moves its index.
+                if extra.get() {
+                    rows.insert(0, MenuRow::action("late", "Late", "check", "", |_, _| {}));
+                }
+                rows
+            }
+        };
+        let build = rows.clone();
+        cx.update(|window, cx| {
+            open(rows(), (100., 200.), None, OpenOptions { build: Some(Rc::new(move |_| build())), ..Default::default() }, None, window, cx);
+        });
+        cx.simulate_click(point(px(150.), px(row_y(0))), Modifiers::none());
+        assert!(cx.update(|_, cx| arm::armed_on_row(cx)), "the first click arms it");
+        extra.set(true);
+        cx.update(refresh);
+        assert!(cx.update(|_, cx| arm::armed_on_row(cx)), "still armed after the rebuild");
+        assert_eq!(cx.update(|_, cx| Ui::get(cx).menu.as_ref().and_then(|m| m.armed_row)), Some((0, 1)), "at its new place");
+        cx.update(|_, cx| arm::age_for_test(cx));
+        cx.simulate_click(point(px(150.), px(row_y(1))), Modifiers::none());
+        assert_eq!(confirmed.get(), 1, "the second click confirms it");
     }
 
     #[gpui::test]

@@ -235,8 +235,7 @@
 /* --- 2D T18: the branch a rebase is replaying, at HEAD's row (RefLabels.tsx RebasingChip). The
    checked-out chip's look with a dashed border and a spinner: HEAD is detached while it runs. --- */
 .ref-label.ref-rebasing { box-sizing: border-box; border: 1px dashed var(--lane-color); cursor: default; }
-.ref-rebasing .spin { flex: none; animation: ref-spin 1s linear infinite; }
-@keyframes ref-spin { to { transform: rotate(360deg); } }
+.ref-rebasing .spin { flex: none; animation: spinner-turns 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .ref-rebasing .spin { animation: none; } }
 /* --- end 2D T18 --- */
 /* Below the toolbar, and below an open flyout's title bar it would cover (--toast-below, Toast.tsx). */

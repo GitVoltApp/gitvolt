@@ -4,7 +4,18 @@
 `crates/gitvolt-gpui` draws GitVolt's main view natively from the same `gitvolt-core`. It reads, and writes
 through the same `Request`s as the web UI, so hooks, config, credentials and the journal behave the same.
 **The rewrite's goal is the current look, 1:1. The app is ported but for what "Not there yet" and "Differences from the web UI" name, the largest being sounds and films (no playback), and it has run on Linux only.**
-The branch is on GitVolt 1.6.2 and main at 78e6743 (sections below).
+The branch is on GitVolt 1.6.3 and main at de85bd2 (sections below).
+
+## GitVolt 1.6.3 and main (de85bd2)
+
+What changed beyond 78e6743, `git diff 78e6743..de85bd2`:
+
+- **Ported, a menu row still finding out whether to ask (`ui/menu.rs`, `ui/arm.rs`):** a row whose action holds its menu open (`arm::hold_row`: an integrate's preview, a write's first answer) shows a spinner in its icon's place, and a click or Enter on it runs nothing until `release_row`; it ran the action again before, as the web's did. A menu rebuilt in place (`menu::refresh`) keeps its armed and held rows by id and level, not index, and disarms only when the armed row is gone or greyed. Nothing here calls `menu::refresh` yet, so that half is for when something does; its test shows it.
+- **Ported, the owed background fetch (`feedback.rs`, `sync.rs`, `app.rs`):** a background fetch the core skipped as `busy` (a user's change cancels one) runs again once that repo's queue goes idle (`fetch_on_idle`), not an interval later; a minimized window asks when it's back.
+- **Ported, the queue chip names what's waiting (`ops.rs`):** `Fetch repo · Rebase waiting`, `… and 2 more waiting`; with several waiting, its tooltip lists them all.
+- **Ported, the forge's spinners stop in the background (`ui/spin.rs`):** a running pipeline's, a merging MR's and the merge dot's spinner (`forge_spinner`) stand still once the window has been in the background for a second, and turn again when it's back; with nothing else turning, the spin layer then asks for no frames. The web's other half, the spinners' shared 60-turn keyframes, is about Chromium's main-thread frames; the spin layer here draws its own frames already (`ui/spin.rs`'s header).
+- **Doesn't apply:** the busy-page log naming a long-running animation (there's no renderer here); the release and site commits.
+- **Checked (`leftovers`):** a fetch that hangs until the flow lets it go, then Delete on an unmerged branch: the row holds with a spinner and the chip says `Fetch held · Delete branch side waiting`; a second click runs nothing; once the fetch is done the row arms in its open menu, and its second click deletes the branch. A running pipeline's spinner took 4.8 % of a core in front, 0.2 % with another window in front, 4.7 % in front again.
 
 ## GitVolt 1.6.2 and main (78e6743)
 

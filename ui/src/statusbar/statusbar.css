@@ -11,6 +11,5 @@
 .sb-link { all: unset; margin-left: 6px; color: var(--blue); cursor: pointer; }
 .sb-link:hover { text-decoration: underline; }
 .sb-link:focus-visible { outline: 1px solid var(--blue); }
-.sb-spin { animation: sb-spin 1s linear infinite; }
-@keyframes sb-spin { to { transform: rotate(360deg); } }
+.sb-spin { animation: spinner-turns 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .sb-spin { animation: none; } }

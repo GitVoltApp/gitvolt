@@ -150,6 +150,12 @@ body { background: var(--app-bg0); color: var(--text-normal); font: 13px/1.4 var
     --motion-row-dim: 0s;
   }
 }
+/* Every spinner: `spinner-turns 60s linear infinite`, sixty turns an iteration (a turn a second).
+   The compositor turns it alone, but React listens for `animationiteration` at the root, and with a
+   listener Chromium runs main-thread frames (style, pre-paint, commit) around every iteration:
+   about 5 a second for a one-turn iteration, each costing as much as the page is big. One
+   iteration a minute leaves the main thread out of it (animations.css.test.ts). */
+@keyframes spinner-turns { to { transform: rotate(21600deg); } }
 
 /* ==== Lane V (feedback F22, F31): text selection and scrollbars. Keep this block separate. ==== */
 :root {

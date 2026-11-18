@@ -21,6 +21,28 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   "… is not a worktree of this repository": git names a submodule's git dir (`.git/modules/…`) as its main worktree,
   and GitVolt took that for its checkout. Its checkout is its `core.worktree`, and that's what opens now.
 
+## [1.6.3] - 2026-11-17
+
+### Fixed
+
+- **A second click on a menu row no longer runs it again instead of confirming.** While a row's
+  action is still finding out whether to ask (a merge or rebase checking for conflicts, slower
+  while a long fetch runs), the row shows a spinner and ignores further clicks; it arms or runs
+  once the answer comes. Before, nothing showed, and a second click started the action over and
+  armed it again, so the confirm seemed to ignore clicks until the fetch was done. An armed
+  row also stays armed when the menu fills in the editors or remotes it loads on every opening; a
+  late answer used to disarm it, and the click meant to confirm armed it again.
+- **A fetch your merge, rebase or other change cancelled runs again as soon as the change is done.**
+  A change you start still stops a background fetch at once; the fetch used to wait for its next
+  scheduled time (a minute or more). A fetch you started yourself isn't stopped: the change waits
+  its turn, and the status bar's queue says so (`Fetch repo · Rebase waiting`).
+- **A running pipeline's spinner no longer keeps the app busy in the background.** Spinners turn
+  without waking the page's main thread: each turn used to make Chromium redraw the page about
+  five times a second, for as long as a merge request's pipeline ran. A pipeline's or a forge
+  merge's spinner also stops while GitVolt's window is in the background, where the merge request
+  isn't refreshed anyway, and turns again when you come back. The busy-page log now names an
+  animation still running a minute after the window lost the focus.
+
 ## [1.6.2] - 2026-11-15
 
 ### Added
@@ -32,6 +54,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Changed
 
+- **The status bar's queue names what is waiting.** `Fetch repo · Rebase waiting`, or `Fetch repo ·
+  Rebase and 2 more waiting`, instead of `Running: fetch repo · 1 queued`; the tooltip lists them all.
 - **Updates take one click.** The update dialog's **Install and restart** downloads the package,
   checks it against the release's SHA256SUMS, installs it and restarts GitVolt, with no further
   click. Unsaved edits ask before the download starts, not at the end (edits made during it ask

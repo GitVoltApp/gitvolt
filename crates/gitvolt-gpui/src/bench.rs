@@ -469,6 +469,7 @@ impl GitVolt {
             "undo": journal.and_then(|j| j.undo.as_ref()).map(|u| u.label.clone()),
             "redo": journal.and_then(|j| j.redo.as_ref()).map(|u| u.label.clone()),
             "running": self.ops.ops.values().map(|o| o.label.clone()).collect::<Vec<_>>(),
+            "queueChip": self.tabs.get(self.active).and_then(|t| self.ops.queues.get(&crate::app::core_repo(t.id))).filter(|q| !crate::ops::queue_idle(Some(q))).map(|q| [crate::ops::chip_text(q), crate::ops::chip_title(q)]),
             "prompts": self.ops.prompts.iter().map(|p| p.text.clone()).collect::<Vec<_>>(),
             "activity": self.ops.activity.iter().take(5).map(|e| format!("{}: {:?}", e.label, e.outcome)).collect::<Vec<_>>(),
         })

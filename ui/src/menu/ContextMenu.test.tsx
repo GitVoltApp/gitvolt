@@ -755,11 +755,19 @@ describe('ContextMenu: an armed row (spec §ui confirms, board A)', () => {
     await vi.waitFor(() => expect(ran).toHaveBeenCalledOnce());
   });
 
-  it('a refresh of its rows (the plan may have changed) disarms the row', () => {
-    openArmed([action('delete', asking(() => {}))]);
+  it('a rebuild that drops or greys the armed row disarms it; another menu opening does too', () => {
+    openArmed([action('delete', asking(() => {})), action('other')]);
     fireEvent.click(screen.getByText('DELETE'));
     expect(useArm.getState().armed).not.toBeNull();
-    act(() => useMenu.setState({ rows: [action('delete', asking(() => {}))] }));
+    act(() => useMenu.setState({ rows: [action('delete', asking(() => {}), { disabledReason: 'Finish or abort the rebase first' }), action('other')] }));
+    expect(useArm.getState().armed).toBeNull();
+    act(() => useMenu.setState({ rows: [action('delete', asking(() => {})), action('other')] }));
+    fireEvent.click(screen.getByText('DELETE'));
+    act(() => useMenu.setState({ rows: [action('other')] }));
+    expect(useArm.getState().armed).toBeNull();
+    act(() => useMenu.setState({ rows: [action('delete', asking(() => {})), action('other')] }));
+    fireEvent.click(screen.getByText('DELETE'));
+    act(() => useMenu.getState().show([action('delete', asking(() => {}))], 10, 10));
     expect(useArm.getState().armed).toBeNull();
   });
 
@@ -852,6 +860,57 @@ describe('ContextMenu: an armed row (spec §ui confirms, board A)', () => {
     await act(async () => { finish(true); });
     expect(screen.getByRole('menuitem', { name: 'Click again to rebase onto main (2 commits)' })).toHaveAttribute('data-armed', 'positive');
     expect(screen.getByRole('menu')).toBeVisible();
+  });
+
+  // A slow preview (the core busy, a long fetch): the row said nothing, and a second click ran it
+  // again instead of waiting for the arm (the action log showed integrate.rebase twice).
+  it('a held row shows it is working and a pick on it meanwhile runs nothing; once armed, the next pick confirms', async () => {
+    let finish!: () => void;
+    const runs = vi.fn();
+    const ran = vi.fn();
+    openArmed([action('rebase', () => {
+      runs();
+      const release = holdOrigin();
+      void new Promise<void>((r) => { finish = r; }).then(() => {
+        const p = confirmAction({ title: 'Rebase?', body: 'b', confirmLabel: 'Rebase', arm: 'Click again to rebase onto main (conflicts in 1 file)', tone: 'warn' });
+        release();
+        void p.then((ok) => ok && ran());
+      });
+    }), action('other')]);
+    fireEvent.click(screen.getByText('REBASE'));
+    const row = screen.getByText('REBASE').closest('[role="menuitem"]')!;
+    expect(row).toHaveAttribute('aria-busy', 'true');
+    expect(row.querySelector('.ctx-spin')).not.toBeNull();
+    clock.settle();
+    press(row);
+    expect(runs).toHaveBeenCalledOnce();
+    await act(async () => { finish(); });
+    const armed = screen.getByRole('menuitem', { name: 'Click again to rebase onto main (conflicts in 1 file)' });
+    expect(armed).not.toHaveAttribute('aria-busy');
+    clock.settle();
+    press(armed);
+    await vi.waitFor(() => expect(ran).toHaveBeenCalledOnce());
+    expect(runs).toHaveBeenCalledOnce();
+    expect(screen.getByRole('menu', { hidden: true })).not.toBeVisible();
+  });
+
+  // Every opening reloads the openers (H32) and an open menu rebuilds when they arrive: a late
+  // answer dropped the armed row, so the next click ran it again instead of confirming.
+  it('a rebuild that keeps the armed row (openers or remotes arriving) keeps it armed; its second pick runs it once', async () => {
+    const ran = vi.fn();
+    const runs = vi.fn();
+    const rows = () => [action('open', () => {}), action('delete', () => { runs(); asking(ran)(); })];
+    openArmed(rows());
+    fireEvent.click(screen.getByText('DELETE'));
+    act(() => useMenu.setState({ rows: [action('open', () => {}), action('open2', () => {}), ...rows().slice(1)] }));
+    // The rows above it moved it down one: the armed label goes with it.
+    const armed = screen.getByRole('menuitem', { name: 'Click again to delete feature/x' });
+    expect(armed).toHaveAttribute('data-row-id', 'delete');
+    expect(screen.getByText('OPEN2').closest('[role="menuitem"]')).not.toHaveAttribute('data-armed');
+    clock.settle();
+    press(armed);
+    await vi.waitFor(() => expect(ran).toHaveBeenCalledOnce());
+    expect(runs).toHaveBeenCalledOnce();
   });
 });
 

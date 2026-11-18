@@ -41,8 +41,9 @@ pub fn state_glyph(s: MrState) -> &'static str {
     }
 }
 
+/// A merge runs on the forge: it stands still while the window is in the background.
 fn turning(name: &'static str, size: f32, color: Hsla, _key: impl Into<ElementId>) -> AnyElement {
-    crate::ui::spin::spinner(name, size, color).into_any_element()
+    crate::ui::spin::forge_spinner(name, size, color).into_any_element()
 }
 
 /// The badge's icon: one per state, coloured by it. A merge under way turns, for the moments it lasts.
@@ -60,7 +61,8 @@ pub fn state_icon_coloured(s: MrState, size: f32, color: Hsla) -> AnyElement {
     icon(state_glyph(s), size, color).into_any_element()
 }
 
-/// A running pipeline's icon turns: it's something working, not an idle animation.
+/// A running pipeline's icon turns: it's something working, not an idle animation. It runs on the forge, so it stands
+/// still while the window is in the background.
 pub fn pipeline_icon(p: &ForgePipeline, size: f32) -> AnyElement {
     let (glyph, color) = match p.status {
         PipelineStatus::Pending => ("circle-dashed", theme::yellow()),
@@ -71,7 +73,7 @@ pub fn pipeline_icon(p: &ForgePipeline, size: f32) -> AnyElement {
         PipelineStatus::Manual => ("hand", theme::text_secondary()),
     };
     if p.status == PipelineStatus::Running {
-        return crate::ui::spin::spinner(glyph, size, color).into_any_element();
+        return crate::ui::spin::forge_spinner(glyph, size, color).into_any_element();
     }
     icon(glyph, size, color).into_any_element()
 }
