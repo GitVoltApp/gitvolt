@@ -15,15 +15,28 @@ import type { DemoRepo } from './repo';
 
 const nonEmpty = (v: string | null) => (v === null || v === '' ? null : v);
 
-/** Where Push sends `branch` (§12.3): the push remote and the same name, else the upstream. */
+/** Where Push sends `branch` (§12.3): the push remote and the same name, else the upstream, else
+ *  the branch a remote has by the same name (`resolvePushTarget`). */
 export async function pushTarget(repo: DemoRepo, branch: string): Promise<{ remote: string; branch: string } | null> {
+  return (await resolvePushTarget(repo, branch))?.target ?? null;
+}
+
+/** The core's `resolve_push_target`: `pushTarget`, and whether it's implied (no upstream is
+ *  configured, so Push sets it): `origin`'s branch of the same name, else the only remote's. */
+export async function resolvePushTarget(repo: DemoRepo, branch: string): Promise<{ target: { remote: string; branch: string }; implied: boolean } | null> {
   const push = nonEmpty(await repo.config(`branch.${branch}.pushRemote`)) ?? nonEmpty(await repo.config('remote.pushDefault'));
-  if (push !== null) return { remote: push, branch };
+  if (push !== null) return { target: { remote: push, branch }, implied: false };
   const remote = nonEmpty(await repo.config(`branch.${branch}.remote`));
-  if (remote === null || remote === '.') return null;
+  if (remote === null) {
+    const refs = repo.refMap();
+    const has = (await repo.remotes()).map((r) => r.name).filter((r) => refs.has(`refs/remotes/${r}/${branch}`));
+    const pick = has.length === 1 ? has[0] : has.find((r) => r === 'origin');
+    return pick === undefined ? null : { target: { remote: pick, branch }, implied: true };
+  }
+  if (remote === '.') return null;
   const merge = nonEmpty(await repo.config(`branch.${branch}.merge`));
   if (merge === null) return null;
-  return { remote, branch: merge.startsWith('refs/heads/') ? merge.slice(11) : merge };
+  return { target: { remote, branch: merge.startsWith('refs/heads/') ? merge.slice(11) : merge }, implied: false };
 }
 
 /** `branch`'s upstream ref, remote and merge (git's `branch_get_upstream`, shelldata::upstream_ref). */

@@ -9,6 +9,7 @@ use crate::journal::UndoKind;
 use crate::write::remote_output::{self, RemoteSummary};
 use crate::write::types::{Expect, WriteResult};
 use crate::write::{run_write, WriteCx, WriteIntent};
+use gix::bstr::ByteSlice;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 // --- 2D T14: pull ---
@@ -60,14 +61,33 @@ fn config(repo: &gix::Repository, key: &str) -> Option<String> {
 }
 
 /// §12.3: with `branch.<b>.pushRemote` or `remote.pushDefault`, that remote and the same branch
-/// name (git's triangular setup); else the upstream; else none.
+/// name (git's triangular setup); else the upstream; else the branch a remote has by the same
+/// name (`implied_target`); else none.
 pub(crate) fn push_target(repo: &gix::Repository, branch: &str) -> Option<PushTarget> {
+    resolve_push_target(repo, branch).map(|(t, _)| t)
+}
+
+/// `push_target`, and whether it's implied: no upstream is configured, so Push sets it (`-u`).
+pub(crate) fn resolve_push_target(repo: &gix::Repository, branch: &str) -> Option<(PushTarget, bool)> {
     if let Some(remote) = config(repo, &format!("branch.{branch}.pushRemote")).or_else(|| config(repo, "remote.pushDefault")) {
-        return Some(PushTarget { remote, branch: branch.to_string() });
+        return Some((PushTarget { remote, branch: branch.to_string() }, false));
     }
-    let remote = config(repo, &format!("branch.{branch}.remote")).filter(|r| r != ".")?;
-    let merge = config(repo, &format!("branch.{branch}.merge"))?;
-    Some(PushTarget { remote, branch: merge.strip_prefix("refs/heads/").unwrap_or(&merge).to_string() })
+    let Some(remote) = config(repo, &format!("branch.{branch}.remote")) else { return implied_target(repo, branch).map(|t| (t, true)) };
+    let merge = config(repo, &format!("branch.{branch}.merge")).filter(|_| remote != ".")?;
+    Some((PushTarget { remote, branch: merge.strip_prefix("refs/heads/").unwrap_or(&merge).to_string() }, false))
+}
+
+/// A branch with no upstream that a remote has by the same name (pushed from a terminal without
+/// `-u`, which the graph shows as one chip): `origin`'s, else the only remote's. Two other
+/// remotes having it is a real choice, left to the "Push to" panel.
+fn implied_target(repo: &gix::Repository, branch: &str) -> Option<PushTarget> {
+    let has = |remote: &str| repo.try_find_reference(format!("refs/remotes/{remote}/{branch}").as_str()).ok().flatten().is_some();
+    let remotes: Vec<String> = repo.remote_names().into_iter().map(|n| n.to_str_lossy().into_owned()).filter(|r| has(r)).collect();
+    let remote = match remotes.as_slice() {
+        [one] => one.clone(),
+        many => many.iter().find(|r| *r == "origin")?.clone(),
+    };
+    Some(PushTarget { remote, branch: branch.to_string() })
 }
 
 pub(crate) struct PushIntent {
@@ -112,16 +132,18 @@ impl WriteIntent for PushIntent {
         let (data, common, explicit) = (cx.api.data_dir.clone(), cx.h.common_dir.clone(), self.lease.is_some());
         let (target, mark) = crate::api::blocking(move || {
             let repo = gix::open(&root).map_err(gix_err)?;
-            let Some(target) = given.or_else(|| push_target(&repo, &branch)) else { return Ok((None, None)) };
+            let Some(target) = given.map(|t| (t, false)).or_else(|| resolve_push_target(&repo, &branch)) else { return Ok((None, None)) };
             // §12.3: a branch GitVolt rewrote since its last push forces with the lease recorded
             // then, when a plain push would be rejected. An explicit force keeps its own lease.
-            let mark = if explicit { None } else { crate::write::rewrites::lease_for(&data, &common, &repo, &branch, &target)? };
+            let mark = if explicit { None } else { crate::write::rewrites::lease_for(&data, &common, &repo, &branch, &target.0)? };
             Ok::<_, GbError>((Some(target), mark))
         })
         .await?;
-        let target = target.ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, format!("{} has no upstream; set one from Push ▾", self.branch)))?;
+        let (target, implied) = target.ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, format!("{} has no upstream; set one from Push ▾", self.branch)))?;
+        // The remote's branch of the same name, with no upstream configured: it becomes the upstream.
+        let set_upstream = self.set_upstream || implied;
         let mut args = vec!["push".to_string(), "--progress".into()];
-        if self.set_upstream {
+        if set_upstream {
             args.push("-u".into());
         }
         // --- 3B T4: "Push tags with branches" (spec #3 §3.9) ---
@@ -141,7 +163,7 @@ impl WriteIntent for PushIntent {
         args.push(target.remote.clone());
         // The forced push sends the tip `lease_for` checked, not whatever the branch is by then.
         let src = match &mark {
-            Some((_, tip)) if !self.set_upstream => tip.to_string(),
+            Some((_, tip)) if !set_upstream => tip.to_string(),
             _ => format!("refs/heads/{}", self.branch),
         };
         args.push(format!("{src}:refs/heads/{}", target.branch));
@@ -150,7 +172,7 @@ impl WriteIntent for PushIntent {
         // §3.5: the transfer runs outside the write lock; `network` also captures server output.
         let res = cx.network(inv).await;
         cx.touch(ChangeKind::Refs);
-        if self.set_upstream {
+        if set_upstream {
             cx.touch(ChangeKind::Config);
         }
         let out = res.map_err(|mut e| {
@@ -1159,4 +1181,129 @@ mod tests {
         assert!(r.try_git_in(&origin, &["rev-parse", "--verify", "-q", "refs/tags/v-dev-2"]).is_err(), "off: the branch alone");
     }
     // --- end 3B T4 ---
+
+    // --- repeated rewrites, and a branch pushed without tracking ---
+    /// `main` moves on (`msg`), then `branch` is rebased onto it in GitVolt.
+    async fn rebase_again(api: &Api, id: u32, r: &TestRepo, branch: &str, msg: &str) {
+        r.switch("main");
+        r.commit(msg);
+        r.switch(branch);
+        let req = Request::Integrate { repo: id, worktree: wt(r.path()), kind: crate::write::integrate::IntegrateKind::Rebase, target: "main".into(), update_refs: None, expect: Default::default(), ff_only: None, confirm: Default::default() };
+        api.dispatch(req).await.unwrap();
+    }
+
+    /// The sidebar's push target for `branch`.
+    async fn push_target_shown(api: &Api, id: u32, branch: &str) -> serde_json::Value {
+        let s = api.dispatch(Request::Sidebar { repo: id }).await.unwrap();
+        s["locals"].as_array().unwrap().iter().find(|b| b["name"] == branch).unwrap()["pushTarget"].clone()
+    }
+
+    fn lease_args(api: &Api) -> Vec<String> {
+        api.cli.log().entries().into_iter().flat_map(|e| e.args).filter(|a| a.starts_with("--force-with-lease")).collect()
+    }
+
+    /// The report: rebased twice (and amended) with no push between, the branch keeps its
+    /// upstream, and Push forces with the lease from before the first rewrite, without asking.
+    #[tokio::test]
+    async fn the_upstream_survives_repeated_rewrites_and_push_forces_with_the_first_lease() {
+        let (r, api, _data, id, pushed) = rebased_dev().await;
+        let upstream = || (r.git(&["config", "branch.dev.remote"]), r.git(&["config", "branch.dev.merge"]));
+        let want = ("origin".to_string(), "refs/heads/dev".to_string());
+        assert_eq!(upstream(), want);
+        api.dispatch(Request::Fetch { repo: id, background: false, remote: None, mr_head: None }).await.unwrap();
+        rebase_again(&api, id, &r, "dev", "Main moves on again").await;
+        assert_eq!(upstream(), want, "the second rebase");
+        let amend = Request::Commit { repo: id, worktree: wt(r.path()), summary: "Dev work, reworded".into(), description: String::new(), amend: true, stage_all: false, expect: Default::default() };
+        api.dispatch(amend).await.unwrap();
+        assert_eq!(upstream(), want, "the amend");
+        assert_eq!(push_target_shown(&api, id, "dev").await, "origin/dev");
+        assert_eq!(rewritten(&api, id, "dev").await, "amend");
+        let res = api.dispatch(push(id, &r, "dev")).await.unwrap();
+        assert_eq!(res["outcome"]["forced"], "amend");
+        assert_eq!(origin(&r, "dev"), r.git(&["rev-parse", "dev"]));
+        assert_eq!(lease_args(&api), [format!("--force-with-lease=refs/heads/dev:{pushed}")]);
+        assert_eq!(upstream(), want);
+    }
+
+    /// The branch in the report had been pushed without `-u` (from a terminal): no upstream, but
+    /// origin has it by name, and the graph shows the two as one chip. Push goes there and tracks
+    /// it (never the "Push to" panel), and rebased twice since, it forces with the lease from
+    /// before the first rebase.
+    #[tokio::test]
+    async fn a_branch_pushed_without_tracking_pushes_to_its_namesake_and_tracks_it() {
+        let r = TestRepo::new();
+        fixtures::sync(&r);
+        r.switch_new("topic");
+        r.commit("Topic work");
+        r.git(&["push", "-q", "origin", "topic"]);
+        assert!(r.try_git(&["config", "branch.topic.merge"]).is_err());
+        let pushed = r.git(&["rev-parse", "topic"]);
+        let (api, _data) = api();
+        let id = open(&api, r.path()).await;
+        assert_eq!(push_target_shown(&api, id, "topic").await, "origin/topic");
+        rebase_again(&api, id, &r, "topic", "Main moves on").await;
+        rebase_again(&api, id, &r, "topic", "Main moves on again").await;
+        assert_eq!(rewritten(&api, id, "topic").await, "rebase");
+        let res = api.dispatch(push(id, &r, "topic")).await.unwrap();
+        assert_eq!(res["outcome"]["forced"], "rebase");
+        assert_eq!(origin(&r, "topic"), r.git(&["rev-parse", "topic"]));
+        assert_eq!(lease_args(&api), [format!("--force-with-lease=refs/heads/topic:{pushed}")]);
+        assert_eq!(r.git(&["rev-parse", "--abbrev-ref", "topic@{upstream}"]), "origin/topic", "it tracks it now");
+    }
+
+    /// Not provable: the remote has commits the branch never had. Fetched before the rebase, no
+    /// lease is recorded and Push is today's rejected push; pushed after it (not fetched), the
+    /// recorded lease is refused. Either way the remote keeps its commits and nothing is forced.
+    #[tokio::test]
+    async fn commits_on_the_namesake_the_branch_never_had_are_never_forced_away() {
+        for fetched in [true, false] {
+            let r = TestRepo::new();
+            fixtures::sync(&r);
+            r.switch_new("topic");
+            r.commit("Topic work");
+            r.git(&["push", "-q", "origin", "topic"]);
+            let (api, _data) = api();
+            let id = open(&api, r.path()).await;
+            if fetched {
+                r.push_from_clone("topic", "theirs.txt", "theirs\n", "Pushed meanwhile");
+                r.git(&["fetch", "-q", "origin"]);
+            }
+            rebase_again(&api, id, &r, "topic", "Main moves on").await;
+            rebase_again(&api, id, &r, "topic", "Main moves on again").await;
+            if !fetched {
+                r.push_from_clone("topic", "theirs.txt", "theirs\n", "Pushed meanwhile");
+            }
+            let theirs = origin(&r, "topic");
+            let mine = r.git(&["rev-parse", "topic"]);
+            let err = api.dispatch(push(id, &r, "topic")).await.unwrap_err();
+            assert_eq!((err.kind, err.message.as_str()), (GbErrorKind::NonFastForward, "origin/topic has commits topic doesn't have"), "fetched: {fetched}");
+            assert_eq!(origin(&r, "topic"), theirs, "the remote keeps its commits");
+            assert_eq!(r.git(&["rev-parse", "topic"]), mine, "the branch is untouched");
+            assert_eq!(lease_args(&api).len(), usize::from(!fetched), "a lease only when one was recorded");
+        }
+    }
+
+    #[test]
+    fn a_namesake_is_the_push_target_only_without_an_upstream_and_with_one_obvious_remote() {
+        let r = TestRepo::new();
+        fixtures::sync(&r);
+        r.switch_new("topic");
+        r.commit("Topic work");
+        let target = |r: &TestRepo| resolve_push_target(&gix::open(r.path()).unwrap(), "topic");
+        let on = |remote: &str| (PushTarget { remote: remote.into(), branch: "topic".into() }, true);
+        assert_eq!(target(&r), None, "no remote has it");
+        r.git(&["remote", "add", "fork", "../fork.git"]);
+        r.git(&["update-ref", "refs/remotes/fork/topic", "topic"]);
+        assert_eq!(target(&r), Some(on("fork")), "the only remote that has it");
+        r.git(&["remote", "add", "team", "../team.git"]);
+        r.git(&["update-ref", "refs/remotes/team/topic", "topic"]);
+        assert_eq!(target(&r), None, "two remotes: a real choice");
+        r.git(&["update-ref", "refs/remotes/origin/topic", "topic"]);
+        assert_eq!(target(&r), Some(on("origin")), "origin first");
+        r.git(&["config", "branch.topic.remote", "."]);
+        r.git(&["config", "branch.topic.merge", "refs/heads/main"]);
+        assert_eq!(target(&r), None, "a local upstream stays one");
+        r.git(&["config", "branch.topic.remote", "team"]);
+        assert_eq!(target(&r), Some((PushTarget { remote: "team".into(), branch: "main".into() }, false)), "the upstream wins");
+    }
 }

@@ -154,7 +154,7 @@ async function send(ctx: WriteCtx, b: LocalBranch, opts: SendOpts, origin: Origi
     onSuccess: (o) => {
       const dst = `${o.remote}/${o.dst}`;
       // A rewrite mark's lease held (spec #2 §12.3): say it was forced, and why.
-      const done = o.forced ? `Force-pushed ${o.branch} (with lease): it was ${REWROTE[o.forced]}` : `Pushed ${o.branch} to ${dst}`;
+      const done = o.forced ? `Force pushed ${o.branch} with lease (${REWROTE[o.forced]} locally)` : `Pushed ${o.branch} to ${dst}`;
       showServerResult(o.upToDate ? `${dst} is up to date` : done, `${done}; the server reported a problem`, o.server, o.op, afterPushActions(ctx.tabId, b, o.upToDate, o.remote));
       if (!o.upToDate) notifyBranchPushed(ctx.tabId);
     },

@@ -110,7 +110,23 @@ describe('push (spec #2 §12.3)', () => {
   it('a force-push with the rewrite lease toasts why', async () => {
     vi.spyOn(api, 'push').mockResolvedValue({ outcome: { op: 9, branch: 'feature/login', remote: 'origin', dst: 'feature/login', upToDate: false, server: { lines: 0, warning: null }, forced: 'rebase' }, journal: { undo: null, redo: null, undoBlocked: "Push can't be undone", redoBlocked: null, banners: [], paused: null }, staging: { undo: null, redo: null, off: null }, wip: null } as never);
     await pushBranch(ctx, { ...main, name: 'feature/login', fullName: 'refs/heads/feature/login', rewritten: { kind: 'rebase', remote: 'origin' } });
-    expect(useToast.getState().message).toBe('Force-pushed feature/login (with lease): it was rebased');
+    expect(useToast.getState().message).toBe('Force pushed feature/login with lease (rebased locally)');
+  });
+
+  it('a rebased branch with no upstream but a namesake on origin force-pushes there at once, never the "Push to" panel', async () => {
+    // The core's push target for a branch pushed without -u: origin's branch of the same name.
+    const loose = { ...main, upstream: null, pushTarget: 'origin/main', rewritten: { kind: 'rebase' as const, remote: 'origin' } };
+    const push = vi.spyOn(api, 'push').mockResolvedValue({ outcome: { op: 9, branch: 'main', remote: 'origin', dst: 'main', upToDate: false, server: { lines: 0, warning: null }, forced: 'rebase' }, journal: { undo: null, redo: null, undoBlocked: "Push can't be undone", redoBlocked: null, banners: [], paused: null }, staging: { undo: null, redo: null, off: null }, wip: null } as never);
+    target.mockClear();
+    ask.mockClear();
+    expect(pushTooltip(loose, 'main').tooltip).toBe('Push (force with lease: rebased, replaces 3 commits on origin)');
+    await pushBranch(ctx, loose);
+    expect(target).not.toHaveBeenCalled();
+    expect(ask).not.toHaveBeenCalled();
+    // No target or lease from the UI: the core resolves the target and the recorded lease.
+    expect(push.mock.calls[0][3]).not.toHaveProperty('target');
+    expect(push.mock.calls[0][3]).not.toHaveProperty('lease');
+    expect(useToast.getState().message).toBe('Force pushed main with lease (rebased locally)');
   });
 
   it('success toasts the target with the server output link', async () => {

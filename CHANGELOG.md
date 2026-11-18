@@ -11,6 +11,13 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   until quit, closed tabs included, a few MB each (its object store, status, graph and find
   caches); the last tab showing a repository now lets go of it, with its file watcher. Opening it
   again reads it afresh.
+- **Push no longer asks where to push a branch the remote already has by its name.** A branch
+  pushed without tracking it (from a terminal, without `-u`) shows as one chip with origin's
+  branch of the same name, so it looked tracked, but Push opened the "Push to" panel. Push now
+  sends it there and tracks it from then on. Rebased or amended since that push, however many
+  times, it force-pushes with lease at once ("Force pushed … with lease (rebased locally)"), as a
+  tracked branch does; when the remote may have commits you never fetched, Push still asks first.
+  The panel asks only when two remotes other than origin have the branch.
 
 ## [1.6.3] - 2026-11-17
 

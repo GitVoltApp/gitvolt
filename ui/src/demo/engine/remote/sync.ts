@@ -24,7 +24,7 @@ import type { DemoRepo } from '../repo';
 import { rebaseIntent } from '../seq/rebase';
 import { branchesElsewhere } from '../seq/range';
 import { leaseFor, pushed } from '../seq/rewrites';
-import { pushTarget } from '../sidebar';
+import { resolvePushTarget } from '../sidebar';
 import { remoteUrlError } from '../../../forge/remoteUrl';
 import { deleteRefFiles, isRemoteKey, nowSeconds, readLocalConfig, recordRemovedRemote, readRef, remoteNameError, removeConfigSection, runMerge, setConfigValues, updateRef, watchRefs, type OpHandle, type WriteIntent } from '../writeSeam';
 import { netOf, resolveRemote } from './network';
@@ -86,7 +86,10 @@ export function pushIntent(o: { branch: string; target?: PushTarget; setUpstream
     refs: () => [`refs/heads/${o.branch}`, ...(shown ? [`refs/remotes/${shown.remote}/${shown.branch}`] : [])],
     async run(cx) {
       const demo = cx.repo;
-      const target = o.target ?? (await pushTarget(demo, o.branch)) ?? fail('InvalidInput', `${o.branch} has no upstream; set one from Push ▾`);
+      const resolved = o.target ? { target: o.target, implied: false } : await resolvePushTarget(demo, o.branch);
+      const target = resolved?.target ?? fail('InvalidInput', `${o.branch} has no upstream; set one from Push ▾`);
+      // The remote's branch of the same name, with no upstream configured: it becomes the upstream.
+      const setUpstream = o.setUpstream || !!resolved?.implied;
       const dst = `refs/heads/${target.branch}`;
       const tracking = await trackingOf(demo, target.remote, dst);
       if (tracking !== null) watchRefs(cx, [[tracking, readRef(demo, tracking)]]);
@@ -97,7 +100,7 @@ export function pushIntent(o: { branch: string; target?: PushTarget; setUpstream
       const url = await urlOf(demo, target.remote);
       const local = readRef(demo, `refs/heads/${o.branch}`);
       // The forced push sends the tip `leaseFor` checked, not whatever the branch is by then.
-      const src = mark && !o.setUpstream ? mark.tip : (local ?? fail('Other', `src refspec refs/heads/${o.branch} does not match any`));
+      const src = mark && !setUpstream ? mark.tip : (local ?? fail('Other', `src refspec refs/heads/${o.branch} does not match any`));
       let sent: { branch: { old: string | null; upToDate: boolean }; tags: number; server: RemoteSummary };
       try {
         sent = await cx.network(async () => {
@@ -128,9 +131,9 @@ export function pushIntent(o: { branch: string; target?: PushTarget; setUpstream
         throw err;
       } finally {
         cx.touch('refs');
-        if (o.setUpstream) cx.touch('config');
+        if (setUpstream) cx.touch('config');
       }
-      if (o.setUpstream) {
+      if (setUpstream) {
         await setConfigValues(cx.read, `branch.${o.branch}.remote`, [target.remote]);
         await setConfigValues(cx.read, `branch.${o.branch}.merge`, [dst]);
       }
