@@ -1,5 +1,5 @@
 import { act, render } from '@testing-library/react';
-import { createRef } from 'react';
+import { Activity, createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { bandOverscan } from './band';
@@ -156,5 +156,34 @@ describe('GraphCanvas', () => {
       expect(canvas.style.top).toBe(`${5600 - 280}px`);
       done();
     });
+  });
+});
+
+describe('GraphCanvas in a hidden tab', () => {
+  const at = (mode: 'visible' | 'hidden', selected = -1) => (
+    <Activity mode={mode}>
+      <GraphCanvas rows={rows} width={100} height={44} left={0} metrics={metrics} labeledRows={new Set()} selected={selected} />
+    </Activity>
+  );
+
+  it('gives its backing store back while hidden and draws a fresh one when shown', () => {
+    setDevicePixelRatio(1);
+    const { getByTestId, rerender } = render(at('visible'));
+    const canvas = getByTestId('graph-canvas') as HTMLCanvasElement;
+    expect(canvas.width).toBe(100);
+    rerender(at('hidden'));
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
+    rerender(at('visible'));
+    expect(canvas.width).toBe(100);
+    expect(canvas.height).toBe(44 + 2 * bandOverscan(44, metrics.rowH, 1));
+  });
+
+  it('keeps its backing store across a redraw while shown (no reallocation per prop change)', () => {
+    setDevicePixelRatio(1);
+    const { rerender } = render(at('visible'));
+    const resized = vi.spyOn(HTMLCanvasElement.prototype, 'width', 'set');
+    rerender(at('visible', 0));
+    expect(resized).not.toHaveBeenCalled();
+    resized.mockRestore();
   });
 });

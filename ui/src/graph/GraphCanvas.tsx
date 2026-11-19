@@ -111,6 +111,18 @@ export const GraphCanvas = memo(function GraphCanvas({ rows, scroller, width, he
     syncBand(l, scroller, true);
   }, [rows, width, height, metrics, labeledRows, dpr, avatar, avatarVersion, clipped, scrollX, selected, alsoSelected, headRow, foldOpen, colors, fontFamily, scroller]);
 
+  // A hidden tab (<Activity> hides by cleaning up its effects) gives its backing store back: a
+  // few MB of GPU memory each, kept by every tab ever shown otherwise. Showing it again reruns
+  // the effect above, which sizes and draws a fresh band. No deps: a redraw doesn't reallocate.
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    const l = live.current;
+    return () => {
+      l.band = null;
+      if (canvas) canvas.width = canvas.height = 0;
+    };
+  }, []);
+
   // `data-strip`: no lane fits, the column is a strip of nodes (F11); for tests and e2e.
   const strip = graphLayout(width, metrics, clipped || scrollX > 0).strip;
   // `top` is the band's, set where it's drawn (never by React, so a re-render can't move it).
