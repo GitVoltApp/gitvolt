@@ -155,6 +155,8 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
     closeCenterView(tabId);
     closeFlyout(tabId); // 4B T6: and its flyout, with the focus it would return to
     dropForge(tabId); // 4B T9: and its forge state
+    // And its repository: the core drops a handle no tab holds (a lost release only keeps it).
+    api.releaseRepo(tabId).catch(() => {});
     if (!(tabId in get().tabs)) return;
     set((s) => {
       const tabs = { ...s.tabs };
@@ -171,6 +173,8 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
       get().patch(tabId, { status: 'loading', error: null });
       try {
         const repo = await api.openRepo(path);
+        // Held before any drop below can let go of it (a lost hold only keeps the handle).
+        await api.holdRepo(tabId, repo.id).catch(() => {});
         const app = useAppState.getState();
         // Closed meanwhile: nothing to show it in, and it wasn't really opened (no Recent entry).
         if (!tabOpen(tabId)) return get().drop(tabId);

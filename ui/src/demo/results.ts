@@ -98,6 +98,8 @@ export interface DemoResults {
   saveProfile: null;
   watchRepo: null;
   unwatchRepo: null;
+  holdRepo: null;
+  releaseRepo: null;
   unwatchAll: null;
   appInfo: AppInfoPayload;
   submodules: SubmoduleInfo[];

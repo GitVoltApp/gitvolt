@@ -12,6 +12,8 @@ const ids: Record<string, number> = { '/a': 1, '/b': 2 };
 const listeners = vi.hoisted(() => new Set<(ev: AppEvent) => void>());
 const api = vi.hoisted(() => ({
   openRepo: vi.fn(),
+  holdRepo: vi.fn(async () => null),
+  releaseRepo: vi.fn(async () => null),
   graph: vi.fn(),
   sidebar: vi.fn(async () => ({ locals: [], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} })),
   repoInfo: vi.fn(async () => ({ remotes: [], mainWorktree: null, commonDir: '/x/.git' })),
@@ -135,14 +137,16 @@ describe('AppShell: tabs inside <Activity> (spec §4.4, Review Focus 1)', () => 
     await waitFor(() => expect(useAppState.getState().profile.activeTab).toBeNull());
   });
 
-  it('a closed tab lets go of its runtime and view state', async () => {
+  it('a closed tab lets go of its runtime, view state and repository', async () => {
     render(<AppShell />);
     await screen.findByText('commit r1c1');
     expect(useTabViews.getState().views.a).toBeDefined();
+    expect(api.holdRepo).toHaveBeenCalledWith('a', 1);
     act(() => useAppState.getState().updateProfile((p) => ({ ...p, tabs: p.tabs.filter((t) => t.id !== 'a'), activeTab: 'b' })));
     await waitFor(() => expect(useRuntime.getState().tabs.a).toBeUndefined());
     expect(useTabViews.getState().views.a).toBeUndefined();
     await waitFor(() => expect(api.unwatchRepo).toHaveBeenCalledWith(1));
+    expect(api.releaseRepo).toHaveBeenCalledWith('a');
   });
 
   it('slots: the header in the shell, the toolbar in each repo tab, with its contexts', async () => {

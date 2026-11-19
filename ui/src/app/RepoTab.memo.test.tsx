@@ -9,6 +9,8 @@ const ids: Record<string, number> = { '/a': 1, '/b': 2, '/c': 3 };
 
 const api = vi.hoisted(() => ({
   openRepo: vi.fn(),
+  holdRepo: vi.fn(async () => null),
+  releaseRepo: vi.fn(async () => null),
   graph: vi.fn(),
   sidebar: vi.fn(async () => ({ locals: [], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} })),
   repoInfo: vi.fn(async () => ({ remotes: [], mainWorktree: null, commonDir: '/x/.git' })),

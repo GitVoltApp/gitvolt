@@ -76,5 +76,8 @@ export const repoHandlers = {
   takeOpenRequests: async () => [],
   // There's no log file to write to.
   logFrontend: async () => null,
+  // The demo keeps its repositories: holding one changes nothing.
+  holdRepo: async () => null,
+  releaseRepo: async () => null,
   setDebugLogging: async () => null,
 } satisfies Partial<HandlerTable>;

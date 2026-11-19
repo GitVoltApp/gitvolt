@@ -74,6 +74,8 @@ export const COVERAGE = {
   suggestReposFolder: 'canned',
   watchRepo: 'real',
   unwatchRepo: 'real',
+  holdRepo: 'canned',
+  releaseRepo: 'canned',
   unwatchAll: 'real',
   queueState: 'real',
   queueRemove: 'real',
