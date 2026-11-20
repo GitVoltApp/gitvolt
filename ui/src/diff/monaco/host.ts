@@ -1,7 +1,9 @@
 import type * as MonacoNs from 'monaco-editor/editor/editor.api';
 import { DEFAULT_DIFF_PREFS, type EditorDiffPrefs } from '../diffPrefs';
-import { diffEditorOptions, EDITOR_SCROLLBAR, editorDisplayOptions, editorFontFamily, editorSettingsChanged, fileViewOptions } from '../options';
+import { changedLineEstimate, diffAlgorithmFor, diffEditorOptions, EDITOR_SCROLLBAR, editorDisplayOptions, editorFontFamily, editorSettingsChanged, fileViewOptions } from '../options';
 import { enableDeletedLineCopy } from './deletedCopy';
+import { installPairAlgorithms, restartEditorWorker, setPairAlgorithm } from './diffWork';
+import { PairCache, pairChars, type ModelPair } from './modelCache';
 import { keepOriginalWrap } from './originalWrap';
 import { HexPanes, type HexView } from './hexPanes';
 import { FileMarginStrip, type FileMargin } from './fileMargin';
@@ -24,6 +26,9 @@ export interface DiffShowRequest {
   identity?: string; path: string; original: string; modified: string; language: string; prefs: EditorDiffPrefs; hunkZones?: HunkZoneRequest;
   /** Opens at this line, centred with the cursor on it, instead of at the first change. */
   line?: DiffLine;
+  /** The file list's added + deleted lines (numstat), for the diff's algorithm (`diffAlgorithmFor`);
+   * estimated from the texts when absent. */
+  changedLines?: number;
 }
 export type { LineGutterSpec };
 export type { FileMargin };
@@ -64,6 +69,11 @@ export interface MonacoHost {
    * editor) under the attaching view before that view's own `showDiff`. */
   attachDiff(el: HTMLElement, next?: DiffContent): void;
   detachDiff(el: HTMLElement): void;
+  /** The view showing the diff in `el` went away, hidden or unmounted (a closed panel, another
+   * tab): a show still in flight is dropped, and after `RELEASE_AFTER_MS` (at once for a large
+   * diff) the editor lets its models go, a small pair kept for a show of it again. Never an edited
+   * working copy's: its unsaved edits and undo history stay. An attach or a show calls it off. */
+  leaveDiff(el: HTMLElement): void;
   /** A kept (hidden, then shown again) panel's view: true when the diff editor is still in
    * `el`, so it needn't attach again. It hides a diff other than `next` until `showDiff` puts
    * `next` on screen, as `attachDiff` does. False (nothing done) when it's elsewhere. */
@@ -179,6 +189,21 @@ const HUNK_ZONE_ORDINAL = 10001;
 export const REVEAL_CONTEXT_LINES = 3;
 /** How long a diff may take to compute before it's shown anyway (without its decorations). */
 const DIFF_BACKSTOP_MS = 5000;
+/** A diff no longer wanted that has computed this long is cut short (`restartEditorWorker`), so
+ * the next one doesn't wait for it in the one worker. A quicker one is let finish: a new worker
+ * costs more than what's left of it. */
+const RESTART_AFTER_MS = 200;
+/** Recently shown diffs' models kept (`PairCache`): this many pairs, this many characters. A
+ * 30,000-line lock file's pair is ~2.8 M. */
+const CACHED_PAIRS = 4;
+const CACHED_CHARS = 6_000_000;
+/** A diff whose view has left (`leaveDiff`) lets its models go after this long (a reopen within
+ * it costs nothing), or at once above `RELEASE_AT_ONCE_CHARS`; the pairs kept then shrink to
+ * `IDLE_CACHED_CHARS`. A closed 50,000-line diff (3.7 M characters) held ~3 MB of the editor
+ * worker's heap and ~2 MB of the page's until another diff showed. */
+const RELEASE_AFTER_MS = 10_000;
+const RELEASE_AT_ONCE_CHARS = 1_000_000;
+const IDLE_CACHED_CHARS = 1_000_000;
 /** How long a prefs change keeps its anchor for relayouts that land later (word wrap's line
  * breaks), counted from the change or, when it recomputes the diff (Ignore whitespace), from the
  * recompute's result. */
@@ -196,6 +221,10 @@ const SCROLL_IMMEDIATE = 1;
 type Hold = ScrollAnchor | 'first' | Required<DiffLine>;
 
 type LineChange = MonacoNs.editor.ILineChange;
+type Pair = ModelPair<MonacoNs.editor.ITextModel>;
+/** A modified model as made: no edit to undo or redo (an original one is read-only). Only such a
+ * pair is kept for later: an edited one's text and undo history are the working copy's. */
+const unedited = (m: MonacoNs.editor.ITextModel) => !m.canUndo() && !m.canRedo();
 
 /** What the diff's editor is drawn with, as Monaco resolved it (e2e: `window.__gbEditor`). */
 export interface EditorProbe { fontFamily: string; fontSize: number; lineHeight: number; fontLigatures: string; renderWhitespace: string; minimap: boolean; tabSize: number | null }
@@ -288,10 +317,14 @@ class Host implements MonacoHost {
   private readonly fileEl = document.createElement('div');
   private diff: MonacoNs.editor.IStandaloneDiffEditor | null = null;
   private file: MonacoNs.editor.IStandaloneCodeEditor | null = null;
-  private diffModels: MonacoNs.editor.ITextModel[] = [];
-  /** The language `diffModels` were made in. */
-  private diffLanguage: string | null = null;
+  /** The models on screen, and what they were made for. */
+  private shownPair: Pair | null = null;
+  /** Recently shown pairs, kept for a show of the same texts again. */
+  private readonly cache = new PairCache<MonacoNs.editor.ITextModel>(CACHED_PAIRS, CACHED_CHARS);
   private diffView: MonacoNs.editor.IDiffEditorViewModel | null = null;
+  /** The view model last made, while its diff computes (`abandonCompute`). */
+  private computing: { view: MonacoNs.editor.IDiffEditorViewModel; started: number; done: boolean } | null = null;
+  private releaseTimer: ReturnType<typeof setTimeout> | undefined;
   /** The place a prefs change keeps while its relayouts may still land (a recompute, word wrap's
    * line breaks), until the user takes over by input. Scroll positions can't tell: Monaco moves
    * the view itself while it relayouts (recovering its viewport start, restoring its scroll
@@ -366,6 +399,7 @@ class Host implements MonacoHost {
 
   attachDiff(el: HTMLElement, next?: DiffContent): void {
     this.diffSeq++;
+    this.keepModels();
     this.hideDiff(!!this.diffShown && !!next && !sameDiff(this.diffShown, next));
     // A previous box never detached (a kept panel unmounted while hidden): stop observing it.
     if (this.diffBox && this.diffBox !== el) this.ro.unobserve(this.diffBox);
@@ -374,6 +408,7 @@ class Host implements MonacoHost {
     if (this.review) el.appendChild(this.review.layer);
     this.ro.observe(el);
     if (!this.diff) {
+      installPairAlgorithms();
       this.diff = monaco.editor.createDiffEditor(this.diffEl, { ...diffEditorOptions(this.prefs, this.menu === null, editorSettings()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
       openLinksInBrowser();
       // A plain DOM signal that a diff (or a prefs recompute) is done, for e2e waits.
@@ -416,6 +451,7 @@ class Host implements MonacoHost {
   keepDiff(el: HTMLElement, next: DiffContent): boolean {
     if (!this.diff || this.diffEl.parentElement !== el) return false;
     this.diffSeq++;
+    this.keepModels();
     this.hideDiff(!!this.diffShown && !!next && !sameDiff(this.diffShown, next));
     return true;
   }
@@ -428,10 +464,54 @@ class Host implements MonacoHost {
     if (this.review?.layer.parentElement === el) el.removeChild(this.review.layer);
   }
 
+  leaveDiff(el: HTMLElement): void {
+    if (this.diffBox !== el) return;
+    // Its show, if still on its way, is no longer wanted; nor its diff, if still computing.
+    this.diffSeq++;
+    this.abandonCompute();
+    this.keepModels();
+    const pair = this.shownPair;
+    if (!pair) return;
+    if (pairChars(pair) > RELEASE_AT_ONCE_CHARS) this.releaseModels();
+    else this.releaseTimer = setTimeout(() => this.releaseModels(), RELEASE_AFTER_MS);
+  }
+
+  /** Calls off a release `leaveDiff` scheduled. */
+  private keepModels(): void {
+    clearTimeout(this.releaseTimer);
+    this.releaseTimer = undefined;
+  }
+
+  /** The editor lets the shown diff's models go (`leaveDiff`), unless they hold a working copy's
+   * edits: a pair within `IDLE_CACHED_CHARS` is kept for a show of it again, and the pairs kept
+   * shrink to that. Monaco's own diff editor takes no model then: nothing else holds them. */
+  private releaseModels(): void {
+    this.keepModels();
+    const pair = this.shownPair;
+    const ed = this.diff;
+    if (!pair || !ed || !unedited(pair.modified)) return;
+    this.dropAnchor();
+    this.clearHunkZones();
+    this.hunkZones = null;
+    this.review?.clear();
+    ed.setModel(null);
+    this.diffView?.dispose();
+    this.diffView = null;
+    this.shownPair = null;
+    this.diffShown = null;
+    if (pairChars(pair) <= IDLE_CACHED_CHARS) this.cache.put(pair);
+    else {
+      pair.original.dispose();
+      pair.modified.dispose();
+    }
+    this.cache.trim(IDLE_CACHED_CHARS);
+  }
+
   /** A failed show un-hides the editor: the view's error UI (and its Retry) takes over. Not a
    * replaced one's: the editor is the newer show's then. */
   async showDiff(req: DiffShowRequest): Promise<void> {
     const seq = ++this.diffSeq;
+    this.keepModels();
     try {
       await this.presentDiff(req, seq);
     } catch (e) {
@@ -449,27 +529,43 @@ class Host implements MonacoHost {
     // The same file with the text its modified side holds, or held when it was saved (a save's
     // reload): that side keeps its model, so what's typed meanwhile, before the new pair is
     // computed or after the save, lands in it and stays (and so does the undo history).
-    const held = this.diffModels[1];
-    const keep = held && this.diffIdentity === req.identity && this.diffPath === req.path && this.diffLanguage === lang
-      && (ed.getModifiedEditor().getValue() === req.modified || (this.keptView?.diffPath === req.path && this.keptView.diffText === req.modified)) ? held : null;
+    const held = this.shownPair;
+    const keep = held && this.diffIdentity === req.identity && held.path === req.path && held.language === lang
+      && (held.modified.getValue() === req.modified || (this.keptView?.diffPath === req.path && this.keptView.diffText === req.modified)) ? held.modified : null;
     // A new file shows read-only until its view turns editing on again.
     if (!keep) this.setModifiedEditable(false);
     this.applyDiffPrefs(this.prefs);
-    const original = monaco.editor.createModel(req.original, lang);
-    const modified = keep ?? monaco.editor.createModel(req.modified, lang);
+    // Models made for these texts already: a pair kept from a recent show (a reopen), or the
+    // shown original (a show again: a tab switched back to, a save's reload). Monaco keeps the
+    // diffs it computed by model: an unchanged pair's comes back at once.
+    const cached = keep ? null : this.cache.take(req.path, lang, req.original, req.modified);
+    const heldOriginal = held && held.path === req.path && held.language === lang && held.originalText === req.original ? held.original : null;
+    const original = cached?.original ?? heldOriginal ?? monaco.editor.createModel(req.original, lang);
+    const modified = keep ?? cached?.modified ?? monaco.editor.createModel(req.modified, lang);
+    const pair: Pair = { path: req.path, language: lang, originalText: req.original, modifiedText: req.modified, original, modified };
+    // A large diff with many changes takes `legacy`: `advanced` would take seconds, or time out.
+    const changed = req.changedLines ?? changedLineEstimate(req.original, req.modified);
+    setPairAlgorithm(modified, diffAlgorithmFor(changed, original.getValueLength() + modified.getValueLength(), original.getLineCount() + modified.getLineCount()));
+    this.abandonCompute();
     // Off-screen: a view model computes its diff before it's attached, so the previous diff stays
     // on screen meanwhile, and the new one appears whole in one frame. Attaching an
     // uncomputed pair would draw the plain file first: no decorations, and in Hunk mode the whole
     // file for a frame before its regions collapse.
     const view = ed.createViewModel({ original, modified });
+    const computing = { view, started: performance.now(), done: false };
+    this.computing = computing;
     // The hunk rows come with the diff (fetched alongside it), so they're laid out in its frame.
     let zones: HunkZone[] = [];
     const zonesIn = req.hunkZones?.zones.then((z) => { zones = z; }, () => {});
-    await withBackstop(Promise.all([view.waitForDiff(), zonesIn]).then(() => {}), DIFF_BACKSTOP_MS);
+    // Resolves on the diff, or when `abandonCompute` disposes the view model.
+    const diffIn = view.waitForDiff().then(() => { computing.done = true; });
+    await withBackstop(Promise.all([diffIn, zonesIn]).then(() => {}), DIFF_BACKSTOP_MS);
     if (seq !== this.diffSeq) {
       view.dispose();
-      original.dispose();
-      if (modified !== keep) modified.dispose();
+      if (this.computing === computing) this.computing = null;
+      // Back to the cache as taken; what this show made goes. The shown pair's stay on screen.
+      if (cached) this.cache.put(cached);
+      else for (const m of [original, modified]) if (m !== held?.original && m !== held?.modified) m.dispose();
       return;
     }
     this.diffPath = req.path;
@@ -500,12 +596,35 @@ class Host implements MonacoHost {
     this.diffShown = { path: req.path, original: req.original, modified: req.modified };
     this.hideDiff(false);
     this.diffView?.dispose();
-    for (const m of this.diffModels) if (m !== keep) m.dispose();
+    if (held) this.letGo(held, pair);
     this.diffView = view;
-    this.diffModels = [original, modified];
-    this.diffLanguage = lang;
+    this.shownPair = pair;
     if (kept) ed.restoreViewState(kept);
     this.keptView = null;
+  }
+
+  /** The pair that was on screen, replaced by `next`: kept for a show of it again when it's whole
+   * and unedited, else its models `next` doesn't use are disposed. */
+  private letGo(pair: Pair, next: Pair | null): void {
+    const reused = next !== null && (pair.original === next.original || pair.modified === next.modified);
+    if (!reused && unedited(pair.modified)) return this.cache.put(pair);
+    for (const m of [pair.original, pair.modified]) if (m !== next?.original && m !== next?.modified) m.dispose();
+  }
+
+  /**
+   * A new diff is wanted: the one last asked for, if still computing, won't be shown. A superseded
+   * show's view model is disposed (its show wakes and lets its models go), and one shown before
+   * its diff came in (past `DIFF_BACKSTOP_MS`) stays on screen as it is. Monaco computes every
+   * diff to its end in the one editor worker, the next one queued behind it: after
+   * `RESTART_AFTER_MS`, the worker is restarted, so the new diff doesn't wait seconds for a lock
+   * file's no one will see.
+   */
+  private abandonCompute(): void {
+    const c = this.computing;
+    this.computing = null;
+    if (!c || c.done) return;
+    if (c.view !== this.diffView) c.view.dispose();
+    if (performance.now() - c.started >= RESTART_AFTER_MS) restartEditorWorker();
   }
 
   /** A new diff opens at its first change (`openTop`: centred, or at the top when it shows there
@@ -577,7 +696,7 @@ class Host implements MonacoHost {
     // scroll now, whatever Monaco scrolled meanwhile. The open's first change only while the view
     // is still on it: a move we saw no input for is the user's too.
     const held = this.anchor === 'first' && this.revealedChange() === null ? null : this.anchor;
-    const anchor = ed && this.diffModels.length ? (held ?? captureAnchor(ed, this.prefs.mode)) : null;
+    const anchor = ed && this.shownPair ? (held ?? captureAnchor(ed, this.prefs.mode)) : null;
     this.applyDiffPrefs(prefs);
     // The view keeps a line now, not a change (and a recompute renumbers them): the steps go by
     // the centre line again, even where the scroll happens to be the same. The open's first
@@ -634,7 +753,7 @@ class Host implements MonacoHost {
     // Editing stays as the view set it: a prefs change, or a save's reload, never makes the
     // working copy read-only under the user's typing.
     this.diff?.updateOptions({ ...diffEditorOptions(prefs, this.menu === null, editorSettings()), readOnly: this.diffEl.dataset.editable !== 'true' });
-    if (modeChanged && this.diffModels.length) {
+    if (modeChanged && this.shownPair) {
       this.layHunkZones();
       this.review?.shown(this.diffPath, prefs.mode);
     }
@@ -744,7 +863,7 @@ class Host implements MonacoHost {
       for (const type of ['pointerdown', 'wheel', 'keydown'] as const) review.layer.addEventListener(type, drop, { capture: true, passive: true });
       // A drag from a folded thread's icon picks lines, as one from the +.
       review.pressIcon = (side, line, click) => this.reviewGutter?.press(side, line, click) ?? false;
-      review.shown(this.diffModels.length ? this.diffPath : null, this.prefs.mode);
+      review.shown(this.shownPair ? this.diffPath : null, this.prefs.mode);
     }
     this.review.set(spec);
   }
@@ -779,7 +898,7 @@ class Host implements MonacoHost {
   diffLineText(side: 'original' | 'modified', start: number, end: number): string[] | null {
     const ed = this.diff;
     const model = (side === 'original' ? ed?.getOriginalEditor() : ed?.getModifiedEditor())?.getModel();
-    if (!model || !this.diffModels.length) return null;
+    if (!model || !this.shownPair) return null;
     const out: string[] = [];
     for (let n = Math.max(1, start); n <= Math.min(end, model.getLineCount()); n++) out.push(model.getLineContent(n));
     return out;
@@ -870,7 +989,7 @@ class Host implements MonacoHost {
 
   modifiedText(identity?: string): string | null {
     if (identity !== undefined && identity !== this.diffIdentity) return null;
-    return this.diff && this.diffEl.parentElement && this.diffModels.length ? this.diff.getModifiedEditor().getValue() : null;
+    return this.diff && this.diffEl.parentElement && this.shownPair ? this.diff.getModifiedEditor().getValue() : null;
   }
 
   setLineGutter(spec: LineGutterSpec | null): void {
@@ -938,7 +1057,7 @@ class Host implements MonacoHost {
 
   keepViewOnNextShow(): void {
     this.keptView = {
-      diffPath: this.diffPath, diff: this.diff?.saveViewState() ?? null, diffText: this.diffModels.length ? this.diff?.getModifiedEditor().getValue() ?? null : null,
+      diffPath: this.diffPath, diff: this.diff?.saveViewState() ?? null, diffText: this.shownPair ? this.diff?.getModifiedEditor().getValue() ?? null : null,
       filePath: this.filePath, file: this.file?.saveViewState() ?? null, fileText: this.fileModel ? this.file?.getValue() ?? null : null,
     };
     // A save that changed nothing shows nothing again: the kept place isn't held for a later show.

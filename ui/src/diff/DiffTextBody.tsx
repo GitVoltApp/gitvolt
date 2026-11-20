@@ -30,7 +30,9 @@ import type { DiffTarget } from '../repo/store';
  * Markdown file (`markdown`: its sides' commits), the app-wide `markdownView` shows the
  * rendered diff in the editor's place while Rendered. The editor stays attached, hidden: a
  * WIP file's unsaved edits stay in it (Ctrl+S saves them) and Rendered shows them; editing
- * happens in Source only. `after`: what follows the editor in Source only (a WIP diff's hunk
+ * happens in Source only. A file first shown Rendered (or changed while Rendered, without unsaved
+ * edits) isn't diffed in the editor until Source is picked (`TextDiff`'s `defer`), nor is a CSV's
+ * under its table. `after`: what follows the editor in Source only (a WIP diff's hunk
  * actions). Over 5 MB a side, a diff over 2 s, or one that gave up (its alignment ran out of time,
  * at any size), it's Source with "Too large to render", and the file stays in Source.
  * An HTML file (`markdown` holds its sides' commits too) shows its old and new pages side by side
@@ -38,7 +40,7 @@ import type { DiffTarget } from '../repo/store';
  * Open in browser. A CSV or TSV file (`table`) shows its table diff the same way, lined up by row;
  * over 50,000 rows a side it's Source with a note.
  */
-export function DiffTextBody({ identity, path, oldPath, original, modified, language, line, onShown, editable = false, onEdit, hunkZones, after, markdown, target = null, table = null }: {
+export function DiffTextBody({ identity, path, oldPath, original, modified, language, line, changedLines, onShown, editable = false, onEdit, hunkZones, after, markdown, target = null, table = null }: {
   identity: string;
   path: string;
   oldPath: string | null;
@@ -46,6 +48,8 @@ export function DiffTextBody({ identity, path, oldPath, original, modified, lang
   modified: string;
   language: string;
   line?: DiffLine;
+  /** The file list's added + deleted lines (`DiffTarget.changedLines`). */
+  changedLines?: number;
   onShown?: () => void;
   editable?: boolean;
   onEdit?: () => void;
@@ -158,7 +162,7 @@ export function DiffTextBody({ identity, path, oldPath, original, modified, lang
       {isMd && picked === 'rendered' && tooLarge && <div role="note" className="diff-banner">{TOO_LARGE_TO_RENDER}</div>}
       {tableDiff?.note && <div role="note" className="diff-banner">{tableDiff.note}</div>}
       <div className="file-source" hidden={away} data-font-zoom="">
-        <TextDiff identity={identity} path={path} original={original} modified={modified} language={language} line={line} onShown={onShown} editable={editable} onEdit={onEdit} hunkZones={hunkZones} />
+        <TextDiff identity={identity} path={path} original={original} modified={modified} language={language} line={line} changedLines={changedLines} onShown={onShown} editable={editable} onEdit={onEdit} hunkZones={hunkZones} defer={away && kept.current?.identity !== identity} />
       </div>
       {!away && after}
       {tableDiff?.diff && <CsvTableDiff key={identity} diff={tableDiff.diff} fontPx={fontPx} />}

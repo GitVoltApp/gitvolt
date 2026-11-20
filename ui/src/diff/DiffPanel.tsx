@@ -246,7 +246,7 @@ export function ImageBody({ target, contents: c, onSourceChange, onHex }: { targ
   const language = svg ? highlightLanguage(target.path, modified || original) : '';
   const source = !svg ? <HexBody target={target} contents={c} onLoaded={(h) => onHex?.(target.key, h)} /> : fileView
     ? <FileView path={target.path} text={c.new ? modified : original} language={language} />
-    : <TextDiff path={target.path} original={original} modified={modified} language={language} />;
+    : <TextDiff path={target.path} original={original} modified={modified} language={language} changedLines={target.changedLines} />;
   const old = fileView && c.new ? null : sources.old;
   const neu = fileView && !c.new ? null : sources.new;
   // One ImageDiff per file: every file opens at its own defaults (mode, zoom, Source off); only
@@ -325,7 +325,7 @@ function Body({ target, contents, forced, banner, onLoadAnyway, onShown, onSourc
         ? <FileBody identity={target.key} path={target.path} text={c.new ? modified : original} language={language} onShown={onShown} editable={editable} onEdit={onEdit} navKey={filePlaceKey({ selection }, target)} markdown={markdownOf(selection, target)} table={delimiterOf(target.path)} line={target.line} target={target} />
         : (
           <DiffTextBody
-            identity={target.key} path={target.path} oldPath={target.oldPath} original={original} modified={modified} language={language} line={target.line}
+            identity={target.key} path={target.path} oldPath={target.oldPath} original={original} modified={modified} language={language} line={target.line} changedLines={target.changedLines}
             onShown={onShown} editable={editable} onEdit={onEdit} hunkZones={hunks ? () => wipHunkZones(repoId, target) : undefined}
             // Hunk and line buttons on a WIP text diff (in Source only).
             // Review mode on an MR's Compare.

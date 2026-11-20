@@ -10,7 +10,7 @@ const wipHunks = vi.hoisted(() => vi.fn(async () => ({ base: { index: null, work
 vi.mock('../api/client', () => ({ api: { listOpeners: vi.fn(async () => []), wipHunks, lfsStatus: vi.fn(async () => ({ used: true, version: '3.8.0', installUrl: 'https://git-lfs.com', filter: true, patterns: [] })) }, errorMessage: (e: { message: string }) => e.message }));
 const host = vi.hoisted(() => ({
   attachDiff: vi.fn(), detachDiff: vi.fn(), showDiff: vi.fn(async () => {}), setDiffPrefs: vi.fn(), goToChange: vi.fn(),
-  attachFile: vi.fn(), detachFile: vi.fn(), showFile: vi.fn(async () => {}), setFileWordWrap: vi.fn(), focus: vi.fn(), setModifiedEditable: vi.fn(), onModifiedEdit: vi.fn(), modifiedText: vi.fn(() => null), setFileEditable: vi.fn(), onFileEdit: vi.fn(), fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(), keepDiff: vi.fn((_el: HTMLElement, _next: unknown) => false), keepFile: vi.fn((_el: HTMLElement, _next: unknown) => false),
+  attachFile: vi.fn(), detachFile: vi.fn(), showFile: vi.fn(async () => {}), setFileWordWrap: vi.fn(), focus: vi.fn(), setModifiedEditable: vi.fn(), onModifiedEdit: vi.fn(), modifiedText: vi.fn(() => null), setFileEditable: vi.fn(), onFileEdit: vi.fn(), fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(), leaveDiff: vi.fn(), keepDiff: vi.fn((_el: HTMLElement, _next: unknown) => false), keepFile: vi.fn((_el: HTMLElement, _next: unknown) => false),
   setContextMenuHandler: vi.fn(), layout: vi.fn(), setLineGutter: vi.fn(), onDiffSelection: vi.fn(),
 }));
 vi.mock('./monaco/load', () => ({ loadMonacoHost: async () => host }));
@@ -20,6 +20,7 @@ const { Lru } = await import('../data/lru');
 const { createRepoViewStore, RepoViewContext, targetFor, useRepoView } = await import('../repo/store');
 const { fakeServices } = await import('../repo/testServices');
 const { DiffPanel } = await import('./DiffPanel');
+const { DEFAULT_DIFF_PREFS, useDiffPrefs } = await import('./diffPrefs');
 
 const graph: GraphPayload = { rows: [], labels: [], maxLanes: 0, pinnedRefs: [], head: { branch: null, target: null, detached: false, unborn: true }, truncated: false, worktrees: [] };
 const blob = (text: string): BlobPayload => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'lf', text, base64: null, hash: null });
@@ -38,7 +39,8 @@ function renderPanel(contents: DiffContentsPayload) {
   return render(<RepoViewContext value={store}><Connected /></RepoViewContext>);
 }
 
-beforeEach(() => { wipHunks.mockClear(); host.showDiff.mockClear(); });
+// In Source: under its table (a CSV's default), the text diff and its hunk rows wait for Source.
+beforeEach(() => { wipHunks.mockClear(); host.showDiff.mockClear(); useDiffPrefs.setState({ prefs: { ...DEFAULT_DIFF_PREFS, tableView: 'source' } }); });
 afterEach(cleanup);
 
 describe('an LFS file\'s diff', () => {

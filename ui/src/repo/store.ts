@@ -47,6 +47,8 @@ export interface DiffTarget {
   /** Diff View opens at this line instead of the first change (a diff note's `file:line`). Each
    * open's own object: opening the same file at a line again goes there again. */
   line?: DiffLine;
+  /** The file list's added + deleted lines, when it has them: what the diff's algorithm goes by. */
+  changedLines?: number;
 }
 
 export interface FileSection { title: string | null; spec: DiffSpec; list: Loadable<FileListPayload> }
@@ -241,7 +243,9 @@ const IDLE = { status: 'idle' } as const;
 const indexGraph = (g: GraphPayload) => new Map(g.rows.map((r, i) => [r.id, i] as const));
 
 export function targetFor(f: FileChange, spec: DiffSpec): DiffTarget {
-  return { key: `${filesKey(spec)}|${f.path}`, path: f.path, oldPath: f.oldPath, status: f.status, old: f.old, new: f.new, view: 'diff' };
+  const t: DiffTarget = { key: `${filesKey(spec)}|${f.path}`, path: f.path, oldPath: f.oldPath, status: f.status, old: f.old, new: f.new, view: 'diff' };
+  if (f.additions !== null) t.changedLines = f.additions + (f.deletions ?? 0);
+  return t;
 }
 
 /** An unchanged file from "View all files": File View of `path` at `commit`. */

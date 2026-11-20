@@ -28,7 +28,7 @@ const host = vi.hoisted(() => {
   return {
   hexShow, hexView: vi.fn((_el: HTMLElement) => ({ show: hexShow, dispose: vi.fn() })),
   attachDiff: vi.fn(), detachDiff: vi.fn(), showDiff: vi.fn(async (_req: { path: string }) => {}), setDiffPrefs: vi.fn(), goToChange: vi.fn(),
-  attachFile: vi.fn(), detachFile: vi.fn(), showFile: vi.fn(async () => {}), setFileWordWrap: vi.fn(), focus: vi.fn(), setModifiedEditable: vi.fn(), onModifiedEdit: vi.fn(), modifiedText: vi.fn(() => null), setFileEditable: vi.fn(), onFileEdit: vi.fn(), fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(), fileScrollTop: vi.fn(() => null), setFileScrollTop: vi.fn(), keepDiff: vi.fn((_el: HTMLElement, _next: unknown) => false), keepFile: vi.fn((_el: HTMLElement, _next: unknown) => false),
+  attachFile: vi.fn(), detachFile: vi.fn(), showFile: vi.fn(async () => {}), setFileWordWrap: vi.fn(), focus: vi.fn(), setModifiedEditable: vi.fn(), onModifiedEdit: vi.fn(), modifiedText: vi.fn(() => null), setFileEditable: vi.fn(), onFileEdit: vi.fn(), fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(), fileScrollTop: vi.fn(() => null), setFileScrollTop: vi.fn(), leaveDiff: vi.fn(), keepDiff: vi.fn((_el: HTMLElement, _next: unknown) => false), keepFile: vi.fn((_el: HTMLElement, _next: unknown) => false),
   setContextMenuHandler: vi.fn(), layout: vi.fn(),
   };
 });

@@ -12,7 +12,7 @@ import { fakeServices } from '../repo/testServices';
 // The panel's store reads are memo-safe: it re-renders only when what it shows changes, not on
 // every change of the panel's file sections (a WIP list re-read, a new selection's lists).
 const host = vi.hoisted(() => ({
-  attachDiff: vi.fn(), detachDiff: vi.fn(), keepDiff: vi.fn(() => false), showDiff: vi.fn(async () => {}), setDiffPrefs: vi.fn(), goToChange: vi.fn(),
+  attachDiff: vi.fn(), detachDiff: vi.fn(), leaveDiff: vi.fn(), keepDiff: vi.fn(() => false), showDiff: vi.fn(async () => {}), setDiffPrefs: vi.fn(), goToChange: vi.fn(),
   attachFile: vi.fn(), detachFile: vi.fn(), keepFile: vi.fn(() => false), showFile: vi.fn(async () => {}), setFileWordWrap: vi.fn(), focus: vi.fn(), setModifiedEditable: vi.fn(), onModifiedEdit: vi.fn(), modifiedText: vi.fn(() => null), setFileEditable: vi.fn(), onFileEdit: vi.fn(), fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(),
   setContextMenuHandler: vi.fn(), layout: vi.fn(), releaseDetached: vi.fn(),
 }));

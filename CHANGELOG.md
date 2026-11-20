@@ -77,6 +77,27 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   (Widevine, text-to-speech, suggestion models and the like, about 60 MB) and a Chromium log
   grown over 1 MB. The check is one listing of the folder; the current profile is kept, and a
   log line says how much was freed when something was.
+- **A Markdown file's rendered diff, or a CSV file's table, no longer builds the source diff
+  behind it (performance).** The text diff hidden under it was computed and highlighted all the
+  same, both sides of the file; it's now built the first time you switch to Source. Unsaved edits
+  to a working-tree file are kept as before.
+- **A closed diff gives its memory back (performance).** The editor kept a closed diff's two
+  sides until another diff was opened: for a 50,000-line file, 3 MB of the editor's background
+  worker's memory and 2 MB of the window's. A diff over a million characters now lets
+  them go as soon as it's closed (or its tab is left), a smaller one after 10 seconds; up to a
+  million characters of recent diffs stay, so reopening one is still instant. Unsaved edits to a
+  working-tree file always stay, with their undo history.
+- **A diff with thousands of changed lines opens three to five times sooner, and opens again at
+  once (performance).** Monaco's finer diff algorithm (the one that finds moved code) took 5 s on
+  a 30,000-line lock file with 6,000 changed lines (now 1.5 s, and 0.3 s to open it again), and
+  near its 5 s limit it gives up and shows the whole file as one change; a reformatted 8,000-line
+  file took 0.9 s (now 0.2 s). Once a diff's changed lines hold
+  more than about 80,000 characters (some 2,500 lines of code), it's now computed with Monaco's
+  older algorithm, a tenth of the time or less, without moved-code detection; smaller diffs are
+  computed as before. The last four diffs' models are kept (up to 6 million characters), so
+  reopening a file or switching back to a tab shows its diff without computing it again. And a
+  diff you've moved on from while it computes is cut short: a small file opened while the lock
+  file still computed took 2.6 s to show, now under 0.1 s.
 - **The background fetch connects to each remote once, not twice (performance).** After every
   fetch, GitVolt asked each remote for its whole tag list (`git ls-remote --tags`), for the tag
   chips' pushed-or-not icons: a second connection, SSH handshake and credential helper run per

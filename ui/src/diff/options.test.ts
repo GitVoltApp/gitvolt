@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  clampEditorFont, clampLineHeight, clampTabSize, DEFAULT_EDITOR_FONT_FAMILY, DEFAULT_EDITOR_SETTINGS, diffEditorOptions, EDITOR_SCROLLBAR, editorDisplayOptions, editorFontFamily, editorSettingsChanged, fileViewOptions,
+  changedLineEstimate, clampEditorFont, clampLineHeight, clampTabSize, DEFAULT_EDITOR_FONT_FAMILY, diffAlgorithmFor, DEFAULT_EDITOR_SETTINGS, diffEditorOptions, EDITOR_SCROLLBAR, editorDisplayOptions, editorFontFamily, editorSettingsChanged, fileViewOptions,
   HUNK_REGIONS, INLINE_BREAKPOINT_PX, modelTabOptions, renderWhitespaceOf,
 } from './options';
 
@@ -44,6 +44,31 @@ describe('Monaco options', () => {
     expect(EDITOR_SCROLLBAR).toEqual({ verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false });
     expect(diffEditorOptions({ mode: 'inline', ignoreWhitespace: false, wordWrap: false }, true).scrollbar).toEqual(EDITOR_SCROLLBAR);
     expect(fileViewOptions(false, true).scrollbar).toEqual(EDITOR_SCROLLBAR);
+  });
+});
+
+describe("a diff's algorithm", () => {
+  it('is legacy once the changed lines hold more than 80,000 characters (their count times the mean line length)', () => {
+    // A 30,000-line lock file, 12,000 changed lines of ~47 characters: advanced timed out at 5 s.
+    expect(diffAlgorithmFor(12_000, 2_820_000, 60_000)).toBe('legacy');
+    // 1,800 of a lock file's lines (advanced ~1 s, legacy 53 ms).
+    expect(diffAlgorithmFor(1_800, 2_820_000, 60_000)).toBe('legacy');
+    // A typical 10,000-line file with 400 changed lines of 32 (advanced 35 ms).
+    expect(diffAlgorithmFor(400, 640_000, 20_000)).toBe('advanced');
+    expect(diffAlgorithmFor(2_500, 640_000, 20_000)).toBe('advanced');
+    expect(diffAlgorithmFor(2_501, 640_000, 20_000)).toBe('legacy');
+    expect(diffAlgorithmFor(0, 0, 0)).toBe('advanced');
+  });
+
+  it('estimates the changed lines without a numstat: those only one side has, as a multiset; 0 for short texts', () => {
+    const lines = (n: number, tag = '') => Array.from({ length: n }, (_, i) => `line ${i}${tag} of a file long enough to estimate`).join('\n');
+    const a = lines(3000);
+    expect(changedLineEstimate(a, a)).toBe(0);
+    expect(changedLineEstimate(a, lines(3000, '!'))).toBe(6000);
+    expect(changedLineEstimate(a, a.replace('line 7 ', 'line seven '))).toBe(2);
+    // Moved lines count as unchanged (a numstat counts them twice).
+    expect(changedLineEstimate(a, a.split('\n').reverse().join('\n'))).toBe(0);
+    expect(changedLineEstimate('a\nb\n', 'c\nd\n')).toBe(0);
   });
 });
 

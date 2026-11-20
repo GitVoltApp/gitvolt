@@ -16,7 +16,7 @@ const host = vi.hoisted(() => {
     box: null as HTMLElement | null,
     attachDiff: vi.fn((el: HTMLElement) => { h.box = el; }),
     detachDiff: vi.fn((el: HTMLElement) => { if (h.box === el) h.box = null; }),
-    keepDiff: vi.fn((el: HTMLElement, _next: unknown) => el === h.box),
+    leaveDiff: vi.fn(), keepDiff: vi.fn((el: HTMLElement, _next: unknown) => el === h.box),
     showDiff: vi.fn(async (_req: { path: string; modified: string }) => {}),
     setDiffPrefs: vi.fn(), goToChange: vi.fn(),
     attachFile: vi.fn(), detachFile: vi.fn(), keepFile: vi.fn(() => false), showFile: vi.fn(async () => {}), setFileWordWrap: vi.fn(), focus: vi.fn(), setModifiedEditable: vi.fn(), onModifiedEdit: vi.fn(), modifiedText: vi.fn(() => null), setFileEditable: vi.fn(), onFileEdit: vi.fn(), fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(),

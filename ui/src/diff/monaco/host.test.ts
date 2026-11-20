@@ -16,6 +16,8 @@ vi.mock('./setup', () => {
     lineChanges: null as unknown,
     diffs: [] as ReturnType<typeof diffEditor>[],
     files: [] as ReturnType<typeof codeEditor>[],
+    // Every model's text as made, in order.
+    models: [] as string[],
   };
   const apply = (theme?: string) => {
     if (theme) state.applied = state.defined.has(theme) ? theme : 'vs';
@@ -179,9 +181,10 @@ vi.mock('./setup', () => {
         return vm;
       }),
       // Attaching a model reports its diff, as Monaco's onDidUpdateDiff does.
-      setModel: vi.fn((vm: { model: { original: { getLineCount(): number }; modified: { getLineCount(): number } } }) => {
-        original.model = vm.model.original;
-        modified.model = vm.model.modified;
+      setModel: vi.fn((vm: { model: { original: { getLineCount(): number }; modified: { getLineCount(): number } } } | null) => {
+        original.model = vm?.model.original ?? null;
+        modified.model = vm?.model.modified ?? null;
+        if (!vm) return;
         original.renderedSinceModel = false;
         modified.renderedSinceModel = false;
         // A new model starts at the top, as in Monaco.
@@ -216,7 +219,12 @@ vi.mock('./setup', () => {
     // Not Monaco's real value (8), so a hard-coded one would fail.
     MouseTargetType: { GUTTER_VIEW_ZONE: 105, CONTENT_TEXT: 106, CONTENT_VIEW_ZONE: 108 },
     EditorOption: { lineHeight: 75 },
-    createModel: (text: string, language: string) => ({ text, language, dispose: vi.fn(), getLineContent: (n: number) => text.split('\n')[n - 1], getLineMaxColumn: (n: number) => (text.split('\n')[n - 1] ?? '').length + 1, getLineCount: () => text.split('\n').length }),
+    // `text` is what it holds now (a test types by setting it): an edit to undo once it differs from `made`.
+    createModel: (text: string, language: string) => {
+      state.models.push(text);
+      const m = { text, made: text, language, dispose: vi.fn(), getValue: () => m.text, getValueLength: () => m.text.length, canUndo: () => m.text !== m.made, canRedo: () => false, getLineContent: (n: number) => m.text.split('\n')[n - 1], getLineMaxColumn: (n: number) => (m.text.split('\n')[n - 1] ?? '').length + 1, getLineCount: () => m.text.split('\n').length };
+      return m;
+    },
   });
   const monaco = {
     editor: editor(),
@@ -226,11 +234,20 @@ vi.mock('./setup', () => {
     KeyCode: { ContextMenu: 58, F10: 68 },
   };
   const reset = () => {
-    Object.assign(state, { defined: new Set(['vs', 'vs-dark', 'hc-black']), applied: 'vs', themeAtCreate: [], diffAutoUpdate: true, lineChanges: null, diffs: [], files: [] });
+    Object.assign(state, { defined: new Set(['vs', 'vs-dark', 'hc-black']), applied: 'vs', themeAtCreate: [], diffAutoUpdate: true, lineChanges: null, diffs: [], files: [], models: [] });
     monaco.editor = editor();
   };
   return { monaco, state, reset, openLinksInBrowser: () => {}, followEditorSettings: () => {}, loadEditorFont: async () => {} };
 });
+
+// Monaco's diff internals (diffWork.ts has its own test against the real Monaco): what the host
+// asks of them.
+const work = vi.hoisted(() => ({ algorithms: new Map<unknown, string>(), restarts: 0 }));
+vi.mock('./diffWork', () => ({
+  installPairAlgorithms: () => {},
+  setPairAlgorithm: (modified: unknown, algorithm: string) => void work.algorithms.set(modified, algorithm),
+  restartEditorWorker: () => { work.restarts++; return true; },
+}));
 
 // A grammar load the test can hold open (`gate.wait`), to reorder prefs changes around it.
 const gate = vi.hoisted(() => ({ wait: null as Promise<void> | null }));
@@ -248,7 +265,8 @@ const copyText = vi.hoisted(() => vi.fn(async (_text: string) => {}));
 vi.mock('../../api/transport', () => ({ copyText }));
 
 interface FakeCodeEditor { setPosition: ReturnType<typeof vi.fn>; setSelection: ReturnType<typeof vi.fn>; apiZones: Map<string, { after: number; height: number; ordinal?: number; domNode: HTMLElement; renderedFirst: boolean }>; isHidden(n: number): boolean; collecting: boolean; pendingScroll: boolean; scrollListeners: ((e: unknown) => void)[]; getContentHeight(): number; getBottomForLineNumber(n: number): number; getTopForPosition(n: number): number; getVisibleRanges(): { startLineNumber: number; endLineNumber: number }[]; zones: { after: number; height: number }[]; hidden: [number, number][]; heights: Record<number, number>; sizeListeners: ((e: unknown) => void)[]; scrollTop: number; inputs: ((e: unknown) => void)[]; getTopForLineNumber(n: number, includeViewZones?: boolean): number; getScrollHeight(): number; menus: ((e: unknown) => void)[]; mouseUps: ((e: unknown) => void)[]; focus: ReturnType<typeof vi.fn>; hasTextFocus: ReturnType<typeof vi.fn>; getPosition: ReturnType<typeof vi.fn>; findRun: ReturnType<typeof vi.fn>; updateOptions: ReturnType<typeof vi.fn>; setModel: ReturnType<typeof vi.fn>; setScrollTop: ReturnType<typeof vi.fn>; render: ReturnType<typeof vi.fn>; layoutListeners: Set<(e: unknown) => void> }
-interface FakeViewModel { model: { original: { text: string; dispose: ReturnType<typeof vi.fn> }; modified: { text: string; dispose: ReturnType<typeof vi.fn> } }; computed: boolean; dispose: ReturnType<typeof vi.fn>; finish(): void }
+interface FakeModel { text: string; dispose: ReturnType<typeof vi.fn> }
+interface FakeViewModel { model: { original: FakeModel; modified: FakeModel }; computed: boolean; dispose: ReturnType<typeof vi.fn>; finish(): void }
 interface FakeState {
   defined: Set<string>;
   applied: string;
@@ -265,6 +283,7 @@ interface FakeState {
     restoreViewState: ReturnType<typeof vi.fn>;
   }[];
   files: FakeCodeEditor[];
+  models: string[];
 }
 
 async function fresh(): Promise<{ host: MonacoHost; state: FakeState }> {
@@ -288,6 +307,8 @@ beforeAll(async () => { await fresh(); }, 60_000);
 beforeEach(() => {
   vi.useRealTimers();
   gate.wait = null;
+  work.algorithms.clear();
+  work.restarts = 0;
 });
 afterEach(() => vi.useRealTimers());
 
@@ -498,10 +519,11 @@ describe('MonacoHost', () => {
       expect(side.render).toHaveBeenLastCalledWith(true);
       expect(side.render.mock.invocationCallOrder.at(-1)).toBeGreaterThan(ed.setModel.mock.invocationCallOrder.at(-1)!);
     }
-    // The previous view model and its models are released after the swap.
+    // The previous view model is released after the swap; its models are kept for a show of
+    // them again (the model cache below).
     expect(first.dispose).toHaveBeenCalled();
-    expect(first.model.original.dispose).toHaveBeenCalled();
-    expect(first.model.modified.dispose).toHaveBeenCalled();
+    expect(first.model.original.dispose).not.toHaveBeenCalled();
+    expect(first.model.modified.dispose).not.toHaveBeenCalled();
     expect(next.dispose).not.toHaveBeenCalled();
   });
 
@@ -1645,5 +1667,240 @@ describe('MonacoHost', () => {
         expect(centre(m), 'Inline -> Split').toBe(o.getTopForLineNumber(63) + 9);
       }
     });
+  });
+});
+
+describe('large diffs: the algorithm, a superseded diff, the model cache', () => {
+  const vms = (state: FakeState) => state.diffs[0].createViewModel.mock.results.map((r) => r.value);
+
+  it('a diff with many changed characters takes the legacy algorithm, by the numstat, else an estimate from the texts', async () => {
+    const { host, state } = await fresh();
+    host.attachDiff(document.createElement('div'));
+    // 200 lines a side, ~11 characters each: 80,000 characters changed is ~7,000 lines.
+    await host.showDiff({ ...diffReq('few.txt'), changedLines: 400 });
+    await host.showDiff({ ...diffReq('many.txt'), changedLines: 8000 });
+    const [few, many] = vms(state);
+    expect(work.algorithms.get(few.model.modified)).toBe('advanced');
+    expect(work.algorithms.get(many.model.modified)).toBe('legacy');
+    // No numstat (a history row without its file list): the lines only one side has.
+    const lines = (tag: string) => Array.from({ length: 3000 }, (_, i) => `${tag} line ${i} of a long generated file`).join('\n');
+    await host.showDiff({ ...diffReq('estimated.txt'), original: lines('old'), modified: lines('new') });
+    await host.showDiff({ ...diffReq('estimated-few.txt'), original: lines('old'), modified: lines('old').replace('line 7 ', 'line seven ') });
+    const [, , estimated, estimatedFew] = vms(state);
+    expect(work.algorithms.get(estimated.model.modified)).toBe('legacy');
+    expect(work.algorithms.get(estimatedFew.model.modified)).toBe('advanced');
+  });
+
+  it('a show superseded while its diff computes is cut short: its view model goes, and past 200 ms the worker restarts', async () => {
+    const { host, state } = await fresh();
+    host.attachDiff(document.createElement('div'));
+    let now = 1000;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    try {
+      state.diffAutoUpdate = false;
+      // Superseded quickly: let finish, no restart (a new worker would cost more).
+      const quick = host.showDiff(diffReq('quick.txt'));
+      await vi.waitFor(() => expect(vms(state)).toHaveLength(1));
+      now += 50;
+      const slow = host.showDiff(diffReq('lock.json'));
+      await vi.waitFor(() => expect(vms(state)).toHaveLength(2));
+      const [q, s] = vms(state);
+      expect(q.dispose).toHaveBeenCalled();
+      expect(work.restarts).toBe(0);
+      q.finish();
+      await quick;
+      // Superseded after computing 2 s: the worker restarts before the next diff is asked for.
+      now += 2000;
+      state.diffAutoUpdate = true;
+      await host.showDiff(diffReq('small.txt'));
+      expect(s.dispose).toHaveBeenCalled();
+      expect(work.restarts).toBe(1);
+      s.finish();
+      await slow;
+      expect(state.diffs[0].setModel.mock.calls.map(([vm]) => vm)).toEqual([vms(state)[2]]);
+      // Its models were made for it: they go (a cached pair would go back to the cache).
+      expect(s.model.original.dispose).toHaveBeenCalled();
+      expect(s.model.modified.dispose).toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('a diff shown past the backstop, still computing, is cut short by the next one too, and stays on screen until it shows', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const { host, state } = await fresh();
+    host.attachDiff(document.createElement('div'));
+    state.diffAutoUpdate = false;
+    const slow = host.showDiff(diffReq('reorder.ts'));
+    await vi.advanceTimersByTimeAsync(5000);
+    await slow;
+    const [s] = vms(state);
+    expect(state.diffs[0].setModel).toHaveBeenLastCalledWith(s);
+    const next = host.showDiff(diffReq('small.txt'));
+    await vi.waitFor(() => expect(vms(state)).toHaveLength(2));
+    expect(work.restarts).toBe(1);
+    expect(s.dispose).not.toHaveBeenCalled();
+    vms(state)[1].finish();
+    await next;
+    expect(s.dispose).toHaveBeenCalled();
+  });
+
+  it('a diff shown again finds its models (and so Monaco its computed diff): a reopen, a tab switched back to', async () => {
+    const { host, state } = await fresh();
+    host.attachDiff(document.createElement('div'));
+    await host.showDiff(diffReq('a.txt'));
+    await host.showDiff(diffReq('b.txt'));
+    const made = state.models.length;
+    await host.showDiff(diffReq('a.txt'));
+    const [a, , again] = vms(state);
+    expect(state.models).toHaveLength(made);
+    expect(again.model.original).toBe(a.model.original);
+    expect(again.model.modified).toBe(a.model.modified);
+    // The same diff shown again (a tab switched back to): the shown models.
+    await host.showDiff(diffReq('a.txt'));
+    expect(vms(state)[3].model.original).toBe(a.model.original);
+    expect(vms(state)[3].model.modified).toBe(a.model.modified);
+    expect(state.models).toHaveLength(made);
+    // Other texts for the same file: a new modified model, the original kept.
+    await host.showDiff({ ...diffReq('a.txt'), modified: 'changed\n' });
+    expect(vms(state)[4].model.modified).not.toBe(a.model.modified);
+    expect(vms(state)[4].model.original).toBe(a.model.original);
+  });
+
+  it('the cache keeps the last 4 pairs within 6 M characters, oldest out first; an edited pair is never kept', async () => {
+    const { host, state } = await fresh();
+    host.attachDiff(document.createElement('div'));
+    for (const p of ['1.txt', '2.txt', '3.txt', '4.txt', '5.txt', '6.txt']) await host.showDiff(diffReq(p));
+    const [one, two, three] = vms(state);
+    // 6.txt shown, 2-5 kept: 1 went.
+    expect(one.model.original.dispose).toHaveBeenCalled();
+    expect(one.model.modified.dispose).toHaveBeenCalled();
+    expect(two.model.modified.dispose).not.toHaveBeenCalled();
+    // Two pairs of 3.5 M characters: the second one in lets the first go (and older ones), so
+    // what's kept fits in 6 M.
+    const big = (c: string) => ({ ...diffReq(`big-${c}.txt`), original: c.repeat(1_750_000), modified: 'm'.repeat(1_750_000) });
+    await host.showDiff(big('a'));
+    await host.showDiff(diffReq('7.txt'));
+    const [bigA] = vms(state).filter((v) => v.model.original.text.length > 1e6);
+    expect(bigA.model.modified.dispose).not.toHaveBeenCalled();
+    expect(two.model.modified.dispose).toHaveBeenCalled();
+    expect(three.model.modified.dispose).toHaveBeenCalled();
+    await host.showDiff(big('b'));
+    await host.showDiff(diffReq('7.txt'));
+    const [, bigB] = vms(state).filter((v) => v.model.original.text.length > 1e6);
+    expect(bigA.model.modified.dispose).toHaveBeenCalled();
+    expect(bigB.model.modified.dispose).not.toHaveBeenCalled();
+    // Over 6 M alone: never kept.
+    const huge = { ...diffReq('huge.txt'), original: 'o'.repeat(3_500_000), modified: 'm'.repeat(3_500_000) };
+    await host.showDiff(huge);
+    await host.showDiff(diffReq('8.txt'));
+    const hugeVm = vms(state).find((v) => v.model.original.text.length > 3e6)!;
+    expect(hugeVm.model.modified.dispose).toHaveBeenCalled();
+    // An edited working copy isn't kept for later: its text and undo history were the view's.
+    host.setModifiedEditable(true);
+    const eight = vms(state).at(-1)!;
+    eight.model.modified.text = 'typed\n';
+    await host.showDiff(diffReq('9.txt'));
+    expect(eight.model.modified.dispose).toHaveBeenCalled();
+    expect(eight.model.original.dispose).toHaveBeenCalled();
+    const made = state.models.length;
+    await host.showDiff(diffReq('8.txt'));
+    expect(state.models).toHaveLength(made + 2);
+  });
+});
+
+describe('a closed diff lets its models go', () => {
+  const vms = (state: FakeState) => state.diffs[0].createViewModel.mock.results.map((r) => r.value);
+
+  it('10 s after its view leaves (a panel closed, a tab hidden), or at once over 1 M characters; kept within 1 M for a reopen', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { host, state } = await fresh();
+    const box = document.createElement('div');
+    host.attachDiff(box);
+    await host.showDiff(diffReq('a.txt'));
+    const ed = state.diffs[0];
+    const [a] = vms(state);
+    host.leaveDiff(box);
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(ed.setModel).toHaveBeenCalledTimes(1);
+    // Back within the grace period: nothing goes.
+    expect(host.keepDiff(box, diffReq('a.txt'))).toBe(true);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(ed.setModel).toHaveBeenCalledTimes(1);
+    host.leaveDiff(box);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(ed.setModel).toHaveBeenLastCalledWith(null);
+    expect(a.dispose).toHaveBeenCalled();
+    expect(host.modifiedText()).toBeNull();
+    // Small: kept, so showing it again needs no new models (nor a new diff).
+    expect(a.model.modified.dispose).not.toHaveBeenCalled();
+    const made = state.models.length;
+    host.keepDiff(box, diffReq('a.txt'));
+    await host.showDiff(diffReq('a.txt'));
+    expect(state.models).toHaveLength(made);
+    expect(vms(state).at(-1)!.model.modified).toBe(a.model.modified);
+    // Over 1 M characters: at once, and not kept.
+    const big = { ...diffReq('big.txt'), original: 'o'.repeat(600_000), modified: 'm'.repeat(600_000) };
+    await host.showDiff(big);
+    const bigVm = vms(state).at(-1)!;
+    host.leaveDiff(box);
+    expect(ed.setModel).toHaveBeenLastCalledWith(null);
+    expect(bigVm.model.original.dispose).toHaveBeenCalled();
+    expect(bigVm.model.modified.dispose).toHaveBeenCalled();
+    // What else was kept fits in 1 M once the view leaves: a.txt's small pair stays.
+    expect(a.model.modified.dispose).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('the kept models shrink to 1 M characters once the view leaves, oldest out first', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { host, state } = await fresh();
+    const box = document.createElement('div');
+    host.attachDiff(box);
+    const mid = (p: string) => ({ ...diffReq(p), original: 'o'.repeat(300_000), modified: 'm'.repeat(300_000) });
+    for (const p of ['1.txt', '2.txt', '3.txt']) await host.showDiff(mid(p));
+    await host.showDiff(diffReq('small.txt'));
+    const [one, two, three] = vms(state);
+    host.leaveDiff(box);
+    await vi.advanceTimersByTimeAsync(10_000);
+    // 1.8 M kept + the small pair: 1 out, then 2; 3 and small.txt (~0.6 M) stay.
+    expect(one.model.modified.dispose).toHaveBeenCalled();
+    expect(two.model.modified.dispose).toHaveBeenCalled();
+    expect(three.model.modified.dispose).not.toHaveBeenCalled();
+  });
+
+  it("never an edited working copy's: its unsaved edits and undo history stay in the editor", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { host, state } = await fresh();
+    const box = document.createElement('div');
+    host.attachDiff(box);
+    await host.showDiff({ ...diffReq('big.txt'), original: 'o'.repeat(600_000), modified: 'm'.repeat(600_000) });
+    host.setModifiedEditable(true);
+    const [vm] = vms(state);
+    vm.model.modified.text = 'typed\n';
+    host.leaveDiff(box);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(state.diffs[0].setModel).toHaveBeenCalledTimes(1);
+    expect(vm.model.modified.dispose).not.toHaveBeenCalled();
+    expect(host.modifiedText()).toBe('typed\n');
+  });
+
+  it('a show still computing when its view leaves is dropped, and its diff cut short', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const { host, state } = await fresh();
+    const box = document.createElement('div');
+    host.attachDiff(box);
+    await host.showDiff(diffReq('a.txt'));
+    state.diffAutoUpdate = false;
+    const slow = host.showDiff(diffReq('lock.json'));
+    await vi.advanceTimersByTimeAsync(1000);
+    const [, s] = vms(state);
+    host.leaveDiff(box);
+    expect(s.dispose).toHaveBeenCalled();
+    expect(work.restarts).toBe(1);
+    s.finish();
+    await slow;
+    expect(state.diffs[0].setModel).not.toHaveBeenCalledWith(s);
+    expect(s.model.modified.dispose).toHaveBeenCalled();
   });
 });

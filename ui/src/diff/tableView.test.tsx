@@ -21,7 +21,7 @@ const host = vi.hoisted(() => ({
   attachDiff: vi.fn(), detachDiff: vi.fn(), showDiff: vi.fn(async () => {}), setDiffPrefs: vi.fn(), goToChange: vi.fn(),
   attachFile: vi.fn(), detachFile: vi.fn(), showFile: vi.fn(async () => {}), setFileWordWrap: vi.fn(), focus: vi.fn(),
   setModifiedEditable: vi.fn(), onModifiedEdit: vi.fn(), modifiedText: vi.fn(() => null), setFileEditable: vi.fn(), onFileEdit: vi.fn(),
-  fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(), keepDiff: vi.fn(() => false), keepFile: vi.fn(() => false),
+  fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(), leaveDiff: vi.fn(), keepDiff: vi.fn(() => false), keepFile: vi.fn(() => false),
   setContextMenuHandler: vi.fn(), layout: vi.fn(), releaseDetached: vi.fn(), setLineGutter: vi.fn(), onDiffSelection: vi.fn(),
   fileScrollTop: vi.fn(() => 0), setFileScrollTop: vi.fn(), fileViewState: vi.fn(() => null), restoreFileViewState: vi.fn(),
 }));

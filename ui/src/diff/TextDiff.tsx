@@ -74,9 +74,10 @@ export function useOnShown(onShown: (() => void) | undefined, error: string | nu
  * Runs `show` on the host when `host` or any of `deps` changes, and again on `retry`. Once it
  * resolves, `onShown` (through `shown`) and the perf mark; if it rejects, `failed` holds the
  * message and `onShown` fires too, so the panel's header doesn't wait on a file that won't show.
- * A run a newer one replaced reports nothing.
+ * A run a newer one replaced reports nothing. `deferred`: another view is on screen in the
+ * editor's place; nothing is shown, and `onShown` fires at once.
  */
-export function useShow(host: MonacoHost | null, show: (h: MonacoHost) => Promise<void>, deps: unknown[], shown: RefObject<(() => void) | undefined>) {
+export function useShow(host: MonacoHost | null, show: (h: MonacoHost) => Promise<void>, deps: unknown[], shown: RefObject<(() => void) | undefined>, deferred = false) {
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState<string | null>(null);
   const latest = useRef(show);
@@ -90,6 +91,15 @@ export function useShow(host: MonacoHost | null, show: (h: MonacoHost) => Promis
     // load's update leaves open past a paint): calling that one would report the next content
     // as on screen while this one is.
     const report = shown.current;
+    if (deferred) {
+      // Out of the effect, as `useOnShown`'s: the callback may flush a render.
+      queueMicrotask(() => {
+        if (!live) return;
+        perf.done('diff');
+        report?.();
+      });
+      return () => { live = false; };
+    }
     latest.current(host).then(
       () => {
         perf.done('diff');
@@ -102,7 +112,7 @@ export function useShow(host: MonacoHost | null, show: (h: MonacoHost) => Promis
       },
     );
     return () => { live = false; };
-  }, [host, attempt, shown, ...deps]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [host, attempt, shown, deferred, ...deps]); // eslint-disable-line react-hooks/exhaustive-deps
   return { failed, retry: () => setAttempt((n) => n + 1) };
 }
 
@@ -127,8 +137,11 @@ export const SHOW_ERROR_TITLE = "Couldn't show this file";
  * effect, which runs before the passive effect that shows the texts: `showDiff` shows nothing
  * unless `attachDiff` has run. `onShown` fires once the diff is on screen (see `useOnShown`).
  * `hunkZones`: a WIP diff's hunk header rows, asked for with each show (`wipHunkZones`).
+ * `defer`: another view is in its place (a Markdown file's rendered diff, a CSV's table), so the
+ * diff isn't built (two models, a computed diff, both sides tokenized) until it's wanted: `onShown`
+ * fires at once, and the show comes with the switch to Source. What's shown already stays as it is.
  */
-export function TextDiff({ path, original, modified, language, line, onShown, editable = false, onEdit, identity, hunkZones }: { identity?: string; path: string; original: string; modified: string; language: string; line?: DiffLine; onShown?: () => void; editable?: boolean; onEdit?: () => void; hunkZones?: () => HunkZoneRequest | undefined }) {
+export function TextDiff({ path, original, modified, language, line, changedLines, onShown, editable = false, onEdit, identity, hunkZones, defer = false }: { identity?: string; path: string; original: string; modified: string; language: string; line?: DiffLine; changedLines?: number; onShown?: () => void; editable?: boolean; onEdit?: () => void; hunkZones?: () => HunkZoneRequest | undefined; defer?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const { host, error, retry } = useMonacoHost();
   const prefs = useDiffPrefs((s) => s.prefs);
@@ -141,7 +154,12 @@ export function TextDiff({ path, original, modified, language, line, onShown, ed
     const el = ref.current;
     if (!host || !el) return;
     if (!host.keepDiff(el, content.current)) host.attachDiff(el, content.current);
-    return keepWhileHidden(el, () => host.detachDiff(el));
+    const detach = keepWhileHidden(el, () => host.detachDiff(el));
+    // Hidden or gone: the diff's models are let go after a while (`leaveDiff`).
+    return () => {
+      host.leaveDiff(el);
+      detach();
+    };
   }, [host]);
   // The working-tree side is editable. A show starts read-only, so it's turned on
   // again once shown; the listener follows `editable` and the latest `onEdit`.
@@ -151,11 +169,20 @@ export function TextDiff({ path, original, modified, language, line, onShown, ed
     h.setModifiedEditable(edit.current.editable);
     h.onModifiedEdit(edit.current.editable ? () => edit.current.onEdit?.() : null);
   };
+  // The content last shown: a switch to the view in its place and back leaves it as it was.
+  const key = [identity, path, original, modified, language, line];
+  const shownFor = useRef<unknown[] | null>(null);
+  const deferred = defer && !(shownFor.current !== null && key.every((v, i) => v === shownFor.current![i]));
+  // Deferred, the editor holds another file's diff: let it go after a while, as a hidden view's.
+  useEffect(() => {
+    if (host && deferred && ref.current) host.leaveDiff(ref.current);
+  }, [host, deferred]);
   const show = useShow(host, async (h) => {
-    await h.showDiff({ identity, path, original, modified, language, prefs: useDiffPrefs.getState().prefs, hunkZones: hunkZones?.(), line });
+    shownFor.current = key;
+    await h.showDiff({ identity, path, original, modified, language, prefs: useDiffPrefs.getState().prefs, hunkZones: hunkZones?.(), line, changedLines });
     applyEditable(h);
     // `line` by identity: each open at a line is its own, so the same file opened at it again goes there again.
-  }, [identity, path, original, modified, language, line], shown);
+  }, key, shown, deferred);
   useEffect(() => {
     if (!host) return;
     applyEditable(host);

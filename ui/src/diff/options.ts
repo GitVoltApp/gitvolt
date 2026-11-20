@@ -128,6 +128,7 @@ export function diffEditorOptions(p: EditorDiffPrefs, contextMenu: boolean, s: E
     enableSplitViewResizing: true,
     useInlineViewWhenSpaceIsLimited: true,
     renderSideBySideInlineBreakpoint: INLINE_BREAKPOINT_PX,
+    // Each diff's own is picked by its size (`diffAlgorithmFor`, monaco/diffWork.ts); this is the default.
     diffAlgorithm: 'advanced' as const,
     experimental: { showMoves: true, showEmptyDecorations: true },
     folding: true,
@@ -137,6 +138,47 @@ export function diffEditorOptions(p: EditorDiffPrefs, contextMenu: boolean, s: E
     wordWrap: p.wordWrap ? ('on' as const) : ('off' as const),
     diffWordWrap: 'inherit' as const,
   };
+}
+
+/** Monaco's diff algorithms: `advanced` finds moved code and finer changes inside lines; `legacy`
+ * is the older one, without moves. */
+export type DiffAlgorithm = 'advanced' | 'legacy';
+
+/**
+ * Above this many characters on changed lines, a diff is computed with `legacy`. The advanced
+ * algorithm's time climbs steeply with the changed text (its inner-line refinement above all):
+ * measured in Node on the same algorithms, ms advanced / legacy, by changed lines (numstat's
+ * added + deleted) × mean line length:
+ * - 10k-line file, 400 changed lines × 32 chars (13k): 35 / 9; 20k-line, 1,000 × 32 (32k): 107 / 23;
+ * - 20k-line, 2,000 × 32 (64k): 130 / 36; a lock file, 600 × 47 (28k): 331 / 16;
+ * - a lock file, 1,800 × 47 (85k): 967 / 53; 20k-line, 4,000 × 32 (128k): 379 / 135;
+ * - an 8k-line reformat, 10,000 × 32 (320k): 492 / 7; 20k lines in swapped pairs, 7,500 × 32: 1,098 / 256;
+ * - a 30k-line lock file, 12,000 × 47 (560k): 5,263 (its 5 s timeout: one whole-file change) / 706.
+ * So about 2,500 changed lines of ordinary code, fewer of a lock file's long hashes.
+ */
+export const LEGACY_DIFF_CHANGED_CHARS = 80_000;
+
+/** The algorithm for a diff of `chars` characters in `lines` lines (both sides), `changed` of
+ * them changed (numstat's added + deleted; `changedLineEstimate` when there's none). */
+export function diffAlgorithmFor(changed: number, chars: number, lines: number): DiffAlgorithm {
+  return changed * (chars / Math.max(1, lines)) > LEGACY_DIFF_CHANGED_CHARS ? 'legacy' : 'advanced';
+}
+
+/** Lines only one side has, counted as a multiset (a moved line counts as unchanged, as git's
+ * numstat wouldn't): the changed lines when there's no numstat (a history row without its file
+ * list). 0 for texts too short to need `legacy` whatever changed. */
+export function changedLineEstimate(a: string, b: string): number {
+  if (a.length + b.length <= LEGACY_DIFF_CHANGED_CHARS) return 0;
+  const counts = new Map<string, number>();
+  for (const line of a.split('\n')) counts.set(line, (counts.get(line) ?? 0) + 1);
+  let changed = 0;
+  for (const line of b.split('\n')) {
+    const n = counts.get(line);
+    if (n) counts.set(line, n - 1);
+    else changed++;
+  }
+  for (const n of counts.values()) changed += n;
+  return changed;
 }
 
 /** Options for File View's read-only editor. */

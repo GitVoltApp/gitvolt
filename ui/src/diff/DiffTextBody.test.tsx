@@ -21,7 +21,7 @@ const host = vi.hoisted(() => ({
   attachDiff: vi.fn(), detachDiff: vi.fn(), showDiff: vi.fn(async () => {}), setDiffPrefs: vi.fn(), goToChange: vi.fn(),
   attachFile: vi.fn(), detachFile: vi.fn(), showFile: vi.fn(async () => {}), setFileWordWrap: vi.fn(), focus: vi.fn(),
   setModifiedEditable: vi.fn(), onModifiedEdit: vi.fn(), modifiedText: vi.fn((_identity?: string): string | null => null), setFileEditable: vi.fn(), onFileEdit: vi.fn(),
-  fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(), keepDiff: vi.fn(() => false), keepFile: vi.fn(() => false),
+  fileText: vi.fn(() => null), keepViewOnNextShow: vi.fn(), leaveDiff: vi.fn(), keepDiff: vi.fn(() => false), keepFile: vi.fn(() => false),
   setContextMenuHandler: vi.fn(), layout: vi.fn(), releaseDetached: vi.fn(), setLineGutter: vi.fn(), onDiffSelection: vi.fn(),
   fileScrollTop: vi.fn(() => 0), setFileScrollTop: vi.fn(), fileViewState: vi.fn(() => null), restoreFileViewState: vi.fn(),
 }));
@@ -100,7 +100,7 @@ describe('the rendered Markdown diff in Diff View (5C)', () => {
     expect(md).toHaveAttribute('data-old-path', 'docs/old-guide.md');
     expect(screen.getByRole('toolbar', { name: 'Diff options' })).toContainElement(toggle());
     expect(within(toggle()!).getByRole('button', { name: 'Rendered' })).toHaveAttribute('aria-pressed', 'true');
-    await waitFor(() => expect(host.showDiff).toHaveBeenCalled());
+    expect(host.attachDiff).toHaveBeenCalled();
     expect(screen.getByTestId('text-diff')).not.toBeVisible();
     expect(host.detachDiff).not.toHaveBeenCalled();
     expect(button('Hunk')).toHaveAttribute('aria-disabled', 'true');
@@ -333,6 +333,30 @@ describe('DiffTextBody', () => {
     rerender(<RepoViewContext value={store}><DiffTextBody identity="c" {...props} path="c.md" line={{ side: 'modified', line: 30 }} /></RepoViewContext>);
     expect(opens.line).toHaveBeenCalledTimes(2);
     expect(opens.hold).toHaveBeenCalledTimes(3);
+  });
+
+  it("the source diff isn't built behind the rendered one: shown on the first switch to Source, not again on the way back; onShown at once", async () => {
+    const store = createRepoViewStore(1, '/r', graph, fakeServices());
+    const onShown = vi.fn();
+    const props = { path: 'a.md', oldPath: null, original: 'a\n', modified: 'b\n', language: 'markdown', markdown: { old: P, new: C }, onShown };
+    const { rerender } = render(<RepoViewContext value={store}><DiffTextBody identity="a" {...props} /></RepoViewContext>);
+    await screen.findByTestId('md-diff');
+    // The panel's header doesn't wait for a diff no one sees.
+    await waitFor(() => expect(onShown).toHaveBeenCalled());
+    expect(host.attachDiff).toHaveBeenCalled();
+    expect(host.showDiff).not.toHaveBeenCalled();
+    // The file changes while Rendered: still nothing to build.
+    rerender(<RepoViewContext value={store}><DiffTextBody identity="a" {...props} modified={'b, edited\n'} /></RepoViewContext>);
+    await act(async () => {});
+    expect(host.showDiff).not.toHaveBeenCalled();
+    act(() => useDiffPrefs.getState().set({ markdownView: 'source' }));
+    await waitFor(() => expect(host.showDiff).toHaveBeenCalledTimes(1));
+    expect(host.showDiff).toHaveBeenLastCalledWith(expect.objectContaining({ path: 'a.md', modified: 'b, edited\n' }));
+    // Rendered and back: the diff shown stays as it was (its scroll, its cursor).
+    act(() => useDiffPrefs.getState().set({ markdownView: 'rendered' }));
+    act(() => useDiffPrefs.getState().set({ markdownView: 'source' }));
+    await act(async () => {});
+    expect(host.showDiff).toHaveBeenCalledTimes(1);
   });
 
   it("Rendered hides what follows the editor (a WIP diff's hunk actions); Source shows it again", async () => {
