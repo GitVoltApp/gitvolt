@@ -248,6 +248,8 @@ vi.mock('./diffWork', () => ({
   setPairAlgorithm: (modified: unknown, algorithm: string) => void work.algorithms.set(modified, algorithm),
   restartEditorWorker: () => { work.restarts++; return true; },
 }));
+// Its lazy deleted-lines zones too (deletedZone.test.ts).
+vi.mock('./deletedZone', () => ({ installLazyDeletedZones: () => true }));
 
 // A grammar load the test can hold open (`gate.wait`), to reorder prefs changes around it.
 const gate = vi.hoisted(() => ({ wait: null as Promise<void> | null }));

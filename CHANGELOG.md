@@ -106,6 +106,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   reopening a file or switching back to a tab shows its diff without computing it again. And a
   diff you've moved on from while it computes is cut short: a small file opened while the lock
   file still computed took 2.6 s to show, now under 0.1 s.
+- **Large removals open at once in Inline and Hunk (performance).** The removed lines were all
+  drawn up front, every line and its − sign: a deleted 20,000-line file took 1.4 s to show, 3.5 s
+  of work in all and 240,000 page elements (now 0.2 s, under 0.1 s and 2,400); a 5,000-line block
+  removed from a 30,000-line file took 0.4 s (now 0.1 s). A removed block of 400 lines or more
+  now draws only the lines on and near the screen as you scroll; it looks, scrolls, copies and
+  takes comments as before. Split, and smaller blocks, are unchanged.
 - **The background fetch connects to each remote once, not twice (performance).** After every
   fetch, GitVolt asked each remote for its whole tag list (`git ls-remote --tags`), for the tag
   chips' pushed-or-not icons: a second connection, SSH handshake and credential helper run per

@@ -2,6 +2,7 @@ import type * as MonacoNs from 'monaco-editor/editor/editor.api';
 import { DEFAULT_DIFF_PREFS, type EditorDiffPrefs } from '../diffPrefs';
 import { changedLineEstimate, diffAlgorithmFor, diffEditorOptions, EDITOR_SCROLLBAR, editorDisplayOptions, editorFontFamily, editorSettingsChanged, fileViewOptions } from '../options';
 import { enableDeletedLineCopy } from './deletedCopy';
+import { installLazyDeletedZones } from './deletedZone';
 import { installPairAlgorithms, restartEditorWorker, setPairAlgorithm } from './diffWork';
 import { PairCache, pairChars, type ModelPair } from './modelCache';
 import { keepOriginalWrap } from './originalWrap';
@@ -409,6 +410,7 @@ class Host implements MonacoHost {
     this.ro.observe(el);
     if (!this.diff) {
       installPairAlgorithms();
+      installLazyDeletedZones();
       this.diff = monaco.editor.createDiffEditor(this.diffEl, { ...diffEditorOptions(this.prefs, this.menu === null, editorSettings()), theme: appEditorTheme(monaco), overflowWidgetsDomNode: overflowLayer() });
       openLinksInBrowser();
       // A plain DOM signal that a diff (or a prefs recompute) is done, for e2e waits.

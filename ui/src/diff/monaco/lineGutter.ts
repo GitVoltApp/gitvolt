@@ -1,5 +1,6 @@
 import type * as MonacoNs from 'monaco-editor/editor/editor.api';
 import { lineOfSegment, zoneChange } from './deletedCopy';
+import { lazyZoneRows } from './deletedRows';
 import { monaco } from './setup';
 
 type Side = 'original' | 'modified';
@@ -35,6 +36,12 @@ export function deletedLineAt(diff: MonacoNs.editor.IDiffEditor, ed: MonacoNs.ed
   if (!root || !zone || !change || !model) return null;
   const lh = ed.getOption(monaco.editor.EditorOption.lineHeight);
   const box = zone.getBoundingClientRect();
+  // A large block, drawn a chunk at a time (deletedZone.ts): its rows are known without its DOM.
+  const lazy = lazyZoneRows(zone);
+  if (lazy) {
+    const line = lazy.lineOfRow(Math.max(0, Math.floor((clientY - box.top) / lh)));
+    return { line: change.originalStartLineNumber + line, top: box.top - root.getBoundingClientRect().top + lazy.firstRowOf(line) * lh };
+  }
   const lines: string[] = [];
   for (let n = change.originalStartLineNumber; n <= change.originalEndLineNumber; n++) lines.push(model.getLineContent(n));
   const segments = [...zone.querySelectorAll('.view-line')].map((s) => s.textContent ?? '');

@@ -1,6 +1,7 @@
 import type * as MonacoNs from 'monaco-editor/editor/editor.api';
 import { copyText } from '../../api/transport';
 import { useToast } from '../../ui/toastStore';
+import { lazyZoneRows, rowOfElement } from './deletedRows';
 import { monaco } from './setup';
 
 const squash = (s: string) => s.replace(/\s+/g, '');
@@ -57,7 +58,13 @@ export function enableDeletedLineCopy(diff: MonacoNs.editor.IStandaloneDiffEdito
     const lines: string[] = [];
     for (let n = change.originalStartLineNumber; n <= change.originalEndLineNumber; n++) lines.push(model.getLineContent(n));
     let picked = lines;
-    if (!e.event.shiftKey) {
+    const lazy = lazyZoneRows(zone);
+    if (!e.event.shiftKey && lazy) {
+      // A large block, drawn a chunk at a time (deletedZone.ts): its rows are known without its DOM.
+      const row = rowOfElement(clicked);
+      if (row < 0) return;
+      picked = [lines[lazy.lineOfRow(row)]];
+    } else if (!e.event.shiftKey) {
       const segments = [...zone.querySelectorAll('.view-line')];
       const at = segments.findIndex((s) => s.contains(clicked));
       if (at < 0) return;

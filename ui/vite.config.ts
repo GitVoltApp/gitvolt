@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { changelog } from './build/changelog.ts';
 import { demoData } from './build/demoData.ts';
 import { licenseNotices } from './build/licenses.ts';
+import { monacoDeletedZones, monacoDeletedZonesDeps } from './build/monacoDeletedZones.ts';
 import { replacedGrammars } from './build/replacedGrammars.ts';
 import { bundledLanguagesInfo } from './src/diff/shikiLanguages.ts';
 import { demoCsp, e2eCsp } from './src/security/csp.ts';
@@ -70,7 +71,7 @@ export default defineConfig(({ mode }) => {
   const demo = mode === 'demo';
   return {
     base: demo ? './' : '/',
-    plugins: [react(), grammars(), notices.main, changelog(here('../CHANGELOG.md')), ...(demo ? [demoPolicy(), demoData(process.env.GITVOLT_DEMO_DATA ? resolve(here('..'), process.env.GITVOLT_DEMO_DATA) : here('../site/demo-data'), here('src/demo/wasm/THIRD-PARTY-NOTICES-wasm.txt'))] : [])],
+    plugins: [react(), grammars(), monacoDeletedZones(), notices.main, changelog(here('../CHANGELOG.md')), ...(demo ? [demoPolicy(), demoData(process.env.GITVOLT_DEMO_DATA ? resolve(here('..'), process.env.GITVOLT_DEMO_DATA) : here('../site/demo-data'), here('src/demo/wasm/THIRD-PARTY-NOTICES-wasm.txt'))] : [])],
     define: { 'import.meta.env.VITE_GITVOLT_VERSION': JSON.stringify(uiVersion) },
     // ES workers: the highlight worker (diff/highlight/) loads each grammar as its own chunk, as the
     // main build does; an IIFE worker inlines every dynamic import (all of Shiki's grammars).
@@ -95,6 +96,8 @@ export default defineConfig(({ mode }) => {
     // them at dev-server start, so the first diff doesn't trigger a re-optimize and page reload in
     // the middle of a Playwright test.
     optimizeDeps: {
+      // Monaco's deleted-lines zones, rewritten in the pre-bundle too (build/monacoDeletedZones.ts).
+      rolldownOptions: { plugins: [monacoDeletedZonesDeps()] },
       include: [
         'monaco-editor/editor/editor.api',
         'monaco-editor/features/register.all',

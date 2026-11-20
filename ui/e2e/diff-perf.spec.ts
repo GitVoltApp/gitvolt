@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from './test';
 import { fixtures, git, openUrl } from './fixtures';
@@ -12,6 +12,10 @@ import { fixtures, git, openUrl } from './fixtures';
  * click that opens a file, the ms until its lines are on screen: on the first open, on a reopen,
  * and for a small file opened 1.5 s after leaving the lock file (its diff may still be computing).
  * Then the page's JS heap (and the editor worker's) after the 50,000-line diff is closed with Esc.
+ * And large removals in Inline, where Monaco draws a change's old lines in a view zone: a deleted
+ * 20,000-line file, and a 5,000-line block removed from a 30,000-line file (that one in Split too,
+ * as a second file of the same shape): the ms until shown, the long tasks' total, the page's
+ * heap and DOM nodes with it on screen.
  */
 test.skip(!process.env.GITVOLT_PERF, 'the large-diff perf probe runs with GITVOLT_PERF=1');
 test.setTimeout(900_000);
@@ -56,19 +60,27 @@ function makeRepo(): string {
   const reformat = code('reformatHandler', 8000);
   const typical = code('typicalHandler', 10_000);
   const reorder = code('reorderHandler', 20_000);
+  const block = code('blockHandler', 30_000);
+  const blockSplit = code('splitHandler', 30_000);
   const big = Array.from({ length: 50_000 }, (_, i) => `bigLine ${String(i).padStart(6, '0')} lorem ipsum dolor sit`);
-  const files: Record<string, [string, string]> = {
+  const files: Record<string, [string, string | null]> = {
     'package-lock.json': [lockA, lockB],
     'reformat.ts': [text(reformat), text(reformat.map((l) => l.replace(/^( +)/, '$1$1')))],
     'typical.ts': [text(typical), text(typical.map((l, i) => (i % 50 === 3 ? `    if (key === 'typicalHandler changed ${i}') total -= ${i};` : l)))],
     'reorder.ts': [text(reorder), text(Array.from({ length: reorder.length / 16 }, (_, k) => [...reorder.slice(k * 16 + 8, k * 16 + 16), ...reorder.slice(k * 16, k * 16 + 8)]).flat())],
     'big.txt': [text(big), text(big.map((l, i) => (i % 5000 === 7 ? `${l} changed` : l)))],
     'small.ts': ['export const smallValue = 1;\n', 'export const smallValue = 2;\n'],
+    'deleted.ts': [text(code('deletedHandler', 20_000)), null],
+    'block.ts': [text(block), text([...block.slice(0, 12_000), ...block.slice(17_000)])],
+    'block-split.ts': [text(blockSplit), text([...blockSplit.slice(0, 12_000), ...blockSplit.slice(17_000)])],
   };
   for (const [path, [a]] of Object.entries(files)) writeFileSync(join(repo, path), a);
   git(repo, 'add', ...Object.keys(files));
   git(repo, 'commit', '-q', '-m', 'Add the big files');
-  for (const [path, [, b]] of Object.entries(files)) writeFileSync(join(repo, path), b);
+  for (const [path, [, b]] of Object.entries(files)) {
+    if (b === null) unlinkSync(join(repo, path));
+    else writeFileSync(join(repo, path), b);
+  }
   git(repo, 'commit', '-q', '-am', 'Change the big files');
   return repo;
 }
@@ -77,6 +89,7 @@ function makeRepo(): string {
 const MARK: Record<string, string> = {
   'package-lock.json': 'node_modules/pkg', 'reformat.ts': 'reformatHandler', 'typical.ts': 'typicalHandler',
   'reorder.ts': 'reorderHandler', 'big.txt': 'bigLine', 'small.ts': 'smallValue',
+  'deleted.ts': 'deletedHandler', 'block.ts': 'blockHandler', 'block-split.ts': 'splitHandler',
 };
 
 /** From the next pointerdown: the ms until the diff panel's editor shows `mark` (and isn't hidden). */
@@ -190,4 +203,39 @@ test('closed-diff heap probe', async ({ page, browser }) => {
   await page.waitForTimeout(13_000);
   const closed15s = { pageMB: await heap(), workersMB: await workerHeap() };
   log({ probe: 'heap (MB): before, big.txt shown, closed +2 s, closed +15 s', bigMs, baseline, shownBig, closed2s, closed15s });
+});
+
+test('large-removal probe: Inline, and Split for comparison', async ({ page }) => {
+  const { open } = await start(page);
+  await open('small.ts');
+  await page.waitForTimeout(1000);
+  const cdp = await page.context().newCDPSession(page);
+  const heap = async () => {
+    await cdp.send('HeapProfiler.collectGarbage');
+    return Math.round((await cdp.send('Runtime.getHeapUsage')).usedSize / 1e5) / 10;
+  };
+  // Long tasks (over 50 ms) from the click on: the main thread's busy time the open costs.
+  type Long = { longTasks: { start: number; duration: number }[] };
+  await page.evaluate(() => {
+    const w = window as unknown as Long;
+    w.longTasks = [];
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) w.longTasks.push({ start: e.startTime, duration: e.duration }); }).observe({ type: 'longtask' });
+  });
+  const measure = async (path: string, mode: string) => {
+    const baseline = await heap();
+    const clickedAt = await page.evaluate(() => performance.now());
+    const ms = await open(path);
+    await page.waitForTimeout(3000);
+    const longTaskMs = await page.evaluate((t0) => Math.round((window as unknown as Long).longTasks.filter((t) => t.start >= t0).reduce((a, t) => a + t.duration, 0)), clickedAt);
+    const shown = await heap();
+    const domNodes = await page.evaluate(() => document.getElementsByTagName('*').length);
+    log({ probe: `${path} (${mode})`, ms, longTaskMs, heapMB: { baseline, shown }, domNodes });
+    await open('small.ts');
+    await page.waitForTimeout(1500);
+  };
+  await measure('deleted.ts', 'Inline');
+  await measure('block.ts', 'Inline');
+  await page.locator('.diff-panel').getByRole('button', { name: 'Split' }).click();
+  await page.waitForTimeout(500);
+  await measure('block-split.ts', 'Split');
 });

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
-import { LineGutter, type LineGutterSpec } from './lineGutter';
+import { registerLazyZone, ZoneRows } from './deletedRows';
+import { deletedLineAt, LineGutter, type LineGutterSpec } from './lineGutter';
 
 vi.mock('./setup', () => ({
   monaco: {
@@ -92,5 +93,29 @@ describe("the gutter's line button", () => {
     expect(modified.widget().hidden).toBe(true);
     modified.fire('move', move(6, 9));
     expect(modified.widget().hidden).toBe(true);
+  });
+});
+
+describe('the old line under the pointer in a deleted-lines zone', () => {
+  it('in a large block drawn a chunk at a time: from its rows, with none of its lines drawn', () => {
+    // Old lines 10-609 deleted, after new line 4; the zone 100 px down the editor, its old line 11
+    // wrapping onto two rows.
+    const root = document.createElement('div');
+    root.innerHTML = '<div class="view-zones"><div class="line-delete" monaco-view-zone="z1"></div></div>';
+    const zone = root.querySelector<HTMLElement>('.line-delete')!;
+    vi.spyOn(zone, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 400, 601 * 19));
+    registerLazyZone(zone, new ZoneRows(Array.from({ length: 600 }, (_, i) => (i === 1 ? 2 : 1))));
+    const ed = Object.assign(fakeEditor(), { getDomNode: () => root });
+    const diff = {
+      getLineChanges: () => [{ originalStartLineNumber: 10, originalEndLineNumber: 609, modifiedStartLineNumber: 4, modifiedEndLineNumber: 0 }],
+      getOriginalEditor: () => ({ getModel: () => ({ getLineContent: () => 'old' }) }),
+    };
+    const at = (row: number) => deletedLineAt(diff as never, ed as never, 'z1', 4, 100 + row * 19 + 5);
+    expect(at(0)).toEqual({ line: 10, top: 100 });
+    // Both rows of line 11 give it, at its first row's top.
+    expect(at(1)).toEqual({ line: 11, top: 119 });
+    expect(at(2)).toEqual({ line: 11, top: 119 });
+    expect(at(3)).toEqual({ line: 12, top: 100 + 3 * 19 });
+    expect(at(600)).toEqual({ line: 609, top: 100 + 600 * 19 });
   });
 });
