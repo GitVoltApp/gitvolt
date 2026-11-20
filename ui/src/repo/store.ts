@@ -10,6 +10,7 @@ import type { FileChange } from '../api/gen/FileChange';
 import type { FileListPayload } from '../api/gen/FileListPayload';
 import type { GraphPayload } from '../api/gen/GraphPayload';
 import { keepEditorPlace } from '../diff/editorRelease';
+import { reuseUnchanged } from '../graph/reuse';
 import type { DiffLine } from '../diff/monaco/host';
 import { perf } from '../perf';
 import { contentKey, filesKey, isMutableKey, type RepoServices } from './services';
@@ -603,6 +604,8 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       set({ selection: { kind: 'multi', ids, anchor: anchorId }, picks, parent: 0, diff: null, details: IDLE, message: IDLE, sections: [] });
     }
 
+    /** The payload `setGraph` last took (the store keeps a copy holding the old rows it reuses). */
+    let lastGiven = graph;
     /** Set while a user-started write runs; see `watchHeadMove`. */
     let headWatch: { from: string | null; done: boolean; left: number } | null = null;
 
@@ -654,14 +657,17 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         if (get().filterKeep !== keep) rawSet({ filterKeep: keep });
       },
 
-      setGraph(next) {
+      setGraph(given) {
         const prev = get();
-        if (next === prev.graph) return;
+        if (given === prev.graph || given === lastGiven) return;
+        lastGiven = given;
+        // What didn't change keeps its objects: the memoized rows and the indexes skip it.
+        const next = reuseUnchanged(prev.graph, given);
         const tip = next.head.target;
         const moved = headWatch !== null && headWatch.done && tip !== null && tip !== headWatch.from;
         if (moved || (headWatch?.done && --headWatch.left <= 0)) headWatch = null;
         const reveal: Partial<RepoViewState> = moved ? { revealHead: { id: tip } } : {};
-        const indexById = indexGraph(next);
+        const indexById = next.rows === prev.graph.rows ? prev.indexById : indexGraph(next);
         const remap = (i: number | null) => (i === null ? null : indexById.get(prev.graph.rows[i]?.id ?? '') ?? null);
         let selection: Selection = prev.selection;
         if (selection.kind === 'commit' || selection.kind === 'collapsed') {

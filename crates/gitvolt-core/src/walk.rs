@@ -6,6 +6,11 @@ use crate::error::{gix_err, GbError};
 use crate::graph::{to_gix, to_oid};
 use crate::message_refs::parse_message_refs;
 pub use gitvolt_graph::{CommitMeta, Oid, WalkOptions, WalkResult};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Commits already read and decoded, by id. Commits are immutable, so an entry never goes stale.
+pub type CommitStore = HashMap<Oid, Arc<CommitMeta>>;
 
 fn load(repo: &gix::Repository, id: Oid) -> Result<Option<CommitMeta>, GbError> {
     let gid = to_gix(id);
@@ -32,6 +37,26 @@ fn load(repo: &gix::Repository, id: Oid) -> Result<Option<CommitMeta>, GbError> 
 
 pub fn walk(repo: &gix::Repository, tips: &[Oid], opts: &WalkOptions) -> Result<WalkResult, GbError> {
     gitvolt_graph::walk(tips, opts, |id| load(repo, id))
+}
+
+/// `walk`, reading each commit from `store` before the object database; and every commit this
+/// walk loaded (its window and the frontier below it), the next walk's store. A walk from tips
+/// that moved a little decodes only the commits that are new to it.
+pub fn walk_stored(repo: &gix::Repository, tips: &[Oid], opts: &WalkOptions, store: &CommitStore) -> Result<(WalkResult, CommitStore), GbError> {
+    let mut loaded = CommitStore::with_capacity(store.len().max(opts.limit));
+    let walked = gitvolt_graph::walk(tips, opts, |id| {
+        let c = match store.get(&id) {
+            Some(c) => c.clone(),
+            None => match load(repo, id)? {
+                Some(c) => Arc::new(c),
+                None => return Ok::<_, GbError>(None),
+            },
+        };
+        let meta = CommitMeta::clone(&c);
+        loaded.insert(id, c);
+        Ok(Some(meta))
+    })?;
+    Ok((walked, loaded))
 }
 
 /// `gitvolt_graph::walk_by_date` over this repository: the collection order find sizes windows by.
@@ -158,6 +183,28 @@ mod tests {
         assert_eq!(res.commits.len(), 2);
         assert_eq!(res.commits[1].parents.len(), 1, "missing parent id is kept");
         assert!(!res.commits.iter().any(|c| c.id == res.commits[1].parents[0]));
+    }
+
+    #[test]
+    fn walk_stored_reads_the_store_first_and_returns_what_it_loaded() {
+        let r = TestRepo::new();
+        for i in 0..5 {
+            r.commit(&format!("c{i}"));
+        }
+        let repo = gix::open(r.path()).unwrap();
+        let head = oid(&r.git(&["rev-parse", "HEAD"]));
+        let opts = WalkOptions { limit: 3, first_parent_only: HashSet::new() };
+        let (cold, store) = walk_stored(&repo, &[head], &opts, &CommitStore::new()).unwrap();
+        assert_eq!(cold.commits, walk(&repo, &[head], &opts).unwrap().commits);
+        // The window and the next commit below it.
+        assert_eq!(store.len(), 4);
+        // A stored commit is taken as stored (no object read): mark one to tell.
+        let mut marked = store.clone();
+        let mut c1 = CommitMeta::clone(&marked[&cold.commits[1].id]);
+        c1.summary = "from the store".into();
+        marked.insert(c1.id, Arc::new(c1));
+        let (warm, _) = walk_stored(&repo, &[head], &opts, &marked).unwrap();
+        assert_eq!(warm.commits.iter().map(|c| c.summary.as_str()).collect::<Vec<_>>(), ["c4", "from the store", "c2"]);
     }
 
     #[test]

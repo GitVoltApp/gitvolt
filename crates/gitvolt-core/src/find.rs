@@ -36,7 +36,7 @@ const OBJECT_CACHE_BYTES: usize = 32 * 1024 * 1024;
 /// message, and the path index once a path query has asked for it.
 pub struct FindSnapshot {
     pub ids: Arc<[ObjectId]>,
-    pub texts: Vec<String>,
+    pub texts: Vec<Arc<str>>,
     paths: OnceCell<Arc<PathIndex>>,
     /// The previous window's index (and its commits), reused by this one's build. Kept (cloned,
     /// not taken) while that build runs, so a refresh meanwhile seeds its own snapshot from it
@@ -53,8 +53,8 @@ struct Seed {
 impl FindSnapshot {
     /// `pairs`: each walked commit and its lowercased message (`build_graph_with_text`).
     /// `prev`: the snapshot this one replaces, whose path index (built, or still seeded) it reuses.
-    pub fn new(pairs: Vec<(ObjectId, String)>, prev: Option<&FindSnapshot>) -> Self {
-        let (ids, texts): (Vec<ObjectId>, Vec<String>) = pairs.into_iter().unzip();
+    pub fn new(pairs: crate::snapshot::WindowTexts, prev: Option<&FindSnapshot>) -> Self {
+        let (ids, texts): (Vec<ObjectId>, Vec<Arc<str>>) = pairs.into_iter().unzip();
         let seed = prev.and_then(|p| match p.paths.get() {
             Some(index) => Some(Seed { ids: p.ids.clone(), index: index.clone() }),
             None => p.seed.lock().expect("seed poisoned").clone(),

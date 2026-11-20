@@ -114,6 +114,25 @@ describe('GraphView virtual rows, controlled selection', () => {
   });
 });
 
+describe('GraphView virtual rows across a refresh (the store keeps unchanged rows, reuse.ts)', () => {
+  const fresh = (g: GraphPayload): GraphPayload => JSON.parse(JSON.stringify(g)) as GraphPayload;
+
+  it('an equal payload re-renders no row, and one changed row re-renders alone', () => {
+    const { rerender } = render(<RepoView repo={1} repoPath="/repo" graph={graph} services={fakeServices()} />);
+    const ids = () => screen.getAllByRole('row').map((r) => r.id);
+    const shown = ids();
+    let before = renders.n;
+    rerender(<RepoView repo={1} repoPath="/repo" graph={fresh(graph)} services={fakeServices()} />);
+    expect(renders.n - before).toBe(0);
+    const changed = fresh(graph);
+    changed.rows[2].summary = 'c2, reworded';
+    before = renders.n;
+    rerender(<RepoView repo={1} repoPath="/repo" graph={changed} services={fakeServices()} />);
+    expect(renders.n - before).toBe(1);
+    expect(ids()).toEqual(shown);
+  });
+});
+
 describe('GraphView virtual rows, hover-driven branch membership chip (F7)', () => {
   // A linear history under `main`: rows 1..3 aren't the tip, so hovering them shows the chip.
   const chained: GraphPayload = {

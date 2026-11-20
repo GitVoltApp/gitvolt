@@ -7,7 +7,7 @@ use crate::in_progress::InProgress;
 use crate::payload::{FileListPayload, GraphPayload};
 use crate::refs::{read_refs, RepoRefs};
 use crate::status::{parse_porcelain_v2, status_raw, summarize, WipCounts};
-use crate::walk::{walk, WalkOptions, WalkResult};
+use crate::walk::{walk_stored, CommitStore, WalkOptions, WalkResult};
 use crate::worktree::{list_worktrees, Worktree};
 use gitvolt_graph::{GraphInput, HeadIn, Oid, PresetPreview, RefIn, RefsIn, RevealPayload, StashIn, ViewSpec, WorktreeIn};
 use gix::ObjectId;
@@ -53,17 +53,28 @@ impl Default for BuildOptions {
 
 /// The last walk a handle made, reused while the tips, the window and the stash set are the same
 /// (spec #2 §11.2, Deviation 1): a switch of the active worktree re-lays out without walking.
+/// Any other walk reads its commits from `store` first, so a HEAD that moved decodes only what's new.
 pub struct WalkCache {
     key: (Vec<Oid>, usize, Vec<Oid>),
-    walked: Arc<WalkResult>,
+    walked: Arc<Walked>,
+    /// Every commit the last walk loaded, decoded (`walk_stored`): replaced by each walk's own, so
+    /// it holds one window and its frontier, never more.
+    store: Arc<CommitStore>,
     /// How many walks went through this slot (the tests count them per handle: a global
     /// counter would see the walks of tests running in parallel).
     walks: usize,
 }
 
+/// A walk, and what find searches of it: each commit's lowercased full message (`summary + "\n" +
+/// body`), aligned with `result.commits`.
+pub(crate) struct Walked {
+    pub result: WalkResult,
+    pub texts: Vec<Arc<str>>,
+}
+
 impl std::fmt::Debug for WalkCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WalkCache").field("tips", &self.key.0.len()).field("limit", &self.key.1).field("commits", &self.walked.commits.len()).finish()
+        f.debug_struct("WalkCache").field("tips", &self.key.0.len()).field("limit", &self.key.1).field("commits", &self.walked.result.commits.len()).field("stored", &self.store.len()).finish()
     }
 }
 
@@ -71,6 +82,12 @@ impl std::fmt::Debug for WalkCache {
 #[cfg(any(test, feature = "testing"))]
 pub fn walks(cache: &Mutex<Option<WalkCache>>) -> usize {
     cache.lock().ok().and_then(|c| c.as_ref().map(|w| w.walks)).unwrap_or(0)
+}
+
+/// How many decoded commits a handle's walk cache holds (tests).
+#[cfg(any(test, feature = "testing"))]
+pub fn stored_commits(cache: &Mutex<Option<WalkCache>>) -> usize {
+    cache.lock().ok().and_then(|c| c.as_ref().map(|w| w.store.len())).unwrap_or(0)
 }
 
 /// One worktree's status: counts for the WIP row, and a digest of the raw porcelain output so
@@ -291,9 +308,12 @@ pub async fn build_graph(repo: gix::ThreadSafeRepository, workdir: PathBuf, cli:
     Ok(build_graph_with_text(repo, workdir, cli, opts).await?.0)
 }
 
+/// Each walked commit and its lowercased full message, in walk order (find's, spec §8.7).
+pub type WindowTexts = Vec<(ObjectId, Arc<str>)>;
+
 /// Like `build_graph`, plus each walked commit's lowercased full message (`summary + "\n" +
 /// body`), in walk order, for find (spec §8.7).
-pub async fn build_graph_with_text(repo: gix::ThreadSafeRepository, workdir: PathBuf, cli: GitCli, opts: BuildOptions) -> Result<(GraphPayload, Vec<(ObjectId, String)>), GbError> {
+pub async fn build_graph_with_text(repo: gix::ThreadSafeRepository, workdir: PathBuf, cli: GitCli, opts: BuildOptions) -> Result<(GraphPayload, WindowTexts), GbError> {
     let worktrees = listed_worktrees(&workdir, &opts).await?;
     let wip = collect_wip(&cli, &worktrees, opts.wip_cache.as_deref(), opts.rescan).await;
     tokio::task::spawn_blocking(move || assemble(&repo.to_thread_local(), &worktrees, wip, &workdir, &opts))
@@ -327,7 +347,7 @@ async fn over_cached_graph<T: Send + 'static>(repo: gix::ThreadSafeRepository, w
     let wip = cached_wip(&worktrees, opts.wip_cache.as_deref());
     tokio::task::spawn_blocking(move || {
         let (input, walked) = graph_input(&repo.to_thread_local(), &worktrees, wip, &workdir, &opts)?;
-        Ok(f(&input, &walked))
+        Ok(f(&input, &walked.result))
     })
     .await
     .map_err(|e| GbError::other(format!("graph task failed: {e}")))?
@@ -439,17 +459,17 @@ async fn collect_wip(cli: &GitCli, worktrees: &[Worktree], cache: Option<&WipCac
     futures_util::future::join_all(jobs).await.into_iter().flatten().filter(|(i, c)| !c.is_empty() || crate::in_progress::mid_operation(&worktrees[*i].path)).collect()
 }
 
-fn assemble(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, WipCounts)>, workdir: &Path, opts: &BuildOptions) -> Result<(GraphPayload, Vec<(ObjectId, String)>), GbError> {
+fn assemble(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, WipCounts)>, workdir: &Path, opts: &BuildOptions) -> Result<(GraphPayload, WindowTexts), GbError> {
     let (input, walked) = graph_input(repo, worktrees, wip, workdir, opts)?;
     // Unit tests and the harness (and so the e2e suite) verify every graph they build (the
     // `testing` feature); a violation surfaces as an ordinary error, not a panic.
-    let payload = gitvolt_graph::assemble(&input, &walked).map_err(|e| GbError::other(format!("graph continuity violated: {e}")))?;
-    let texts = walked.commits.iter().map(|c| (to_gix(c.id), format!("{}\n{}", c.summary, c.body).to_lowercase())).collect();
+    let payload = gitvolt_graph::assemble(&input, &walked.result).map_err(|e| GbError::other(format!("graph continuity violated: {e}")))?;
+    let texts = walked.result.commits.iter().zip(&walked.texts).map(|(c, t)| (to_gix(c.id), t.clone())).collect();
     Ok((payload, texts))
 }
 
 /// The graph pipeline's input for this repository, and the walk (through the walk cache).
-fn graph_input(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, WipCounts)>, workdir: &Path, opts: &BuildOptions) -> Result<(GraphInput, Arc<WalkResult>), GbError> {
+fn graph_input(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, WipCounts)>, workdir: &Path, opts: &BuildOptions) -> Result<(GraphInput, Arc<Walked>), GbError> {
     let mut refs = refs_input(read_refs(repo)?);
     refs.remote_tags = remote_tags_input(&opts.remote_tags);
     let worktrees_in = worktrees_input(worktrees);
@@ -476,27 +496,42 @@ fn graph_input(repo: &gix::Repository, worktrees: &[Worktree], wip: Vec<(usize, 
 
 /// The walk from `tips`, served from the handle's walk cache when the tips, the window and the
 /// stash set are the ones it last walked (commits are immutable, so nothing else can differ).
-fn cached_walk(repo: &gix::Repository, tips: Vec<Oid>, stash_ids: &HashSet<Oid>, opts: &BuildOptions) -> Result<Arc<WalkResult>, GbError> {
+/// Otherwise walked anew over the cache's decoded commits, with the find texts of the commits
+/// the last walk had carried over.
+fn cached_walk(repo: &gix::Repository, tips: Vec<Oid>, stash_ids: &HashSet<Oid>, opts: &BuildOptions) -> Result<Arc<Walked>, GbError> {
     let mut first_parent: Vec<Oid> = stash_ids.iter().copied().collect();
     first_parent.sort();
     let key = (tips, opts.limit, first_parent);
-    let cached = opts.walk_cache.as_ref().and_then(|c| c.lock().ok()?.as_ref().filter(|w| w.key == key).map(|w| w.walked.clone()));
-    if let Some(w) = cached {
-        return Ok(w);
-    }
-    let w = Arc::new(walk(repo, &key.0, &WalkOptions { limit: opts.limit, first_parent_only: stash_ids.clone() })?);
+    let last = opts.walk_cache.as_ref().and_then(|c| c.lock().ok()?.as_ref().map(|w| (w.key == key, w.walked.clone(), w.store.clone())));
+    let (store, last) = match last {
+        Some((true, walked, _)) => return Ok(walked),
+        Some((false, walked, store)) => (store, Some(walked)),
+        None => (Arc::default(), None),
+    };
+    let (result, store) = walk_stored(repo, &key.0, &WalkOptions { limit: opts.limit, first_parent_only: stash_ids.clone() }, &store)?;
+    let texts = find_texts(&result, last.as_deref());
+    let w = Arc::new(Walked { result, texts });
     if let Some(c) = &opts.walk_cache
         && let Ok(mut slot) = c.lock()
     {
         let walks = slot.as_ref().map_or(0, |s| s.walks) + 1;
-        *slot = Some(WalkCache { key, walked: w.clone(), walks });
+        *slot = Some(WalkCache { key, walked: w.clone(), store: Arc::new(store), walks });
     }
     Ok(w)
+}
+
+/// Each walked commit's lowercased full message, taken from `last` for the commits it holds.
+fn find_texts(result: &WalkResult, last: Option<&Walked>) -> Vec<Arc<str>> {
+    let known: HashMap<Oid, &Arc<str>> = last.map(|l| l.result.commits.iter().map(|c| c.id).zip(&l.texts).collect()).unwrap_or_default();
+    result.commits.iter().map(|c| known.get(&c.id).map_or_else(|| format!("{}\n{}", c.summary, c.body).to_lowercase().into(), |t| Arc::clone(t))).collect()
 }
 
 fn canonical(p: &Path) -> PathBuf {
     crate::platform::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
+
+#[cfg(test)]
+mod reload_bench;
 
 #[cfg(test)]
 mod tests {
@@ -1334,6 +1369,64 @@ mod tests {
         let g = build(&r, BuildOptions { limit: 3, ..Default::default() }).await;
         assert!(g.truncated);
         assert_eq!(g.rows.iter().filter(|x| x.kind != NodeKind::Wip).count(), 3);
+    }
+
+    /// A rebase streamed commit by commit: each replayed commit lands on top and moves the detached
+    /// HEAD, the branch moves at the end. At every step, the graph and find texts built over the
+    /// walk cache's decoded commits are the ones a cold build makes, under every pin and view (the
+    /// `presets` fixture has a stash, a linked worktree and remotes), in a full and a cut window.
+    #[tokio::test]
+    async fn a_walk_over_the_commit_store_builds_what_a_cold_walk_does_at_every_rebase_step() {
+        let r = TestRepo::new();
+        fixtures::presets(&r);
+        let repo = gix::ThreadSafeRepository::open(r.path()).unwrap();
+        let wip = Arc::new(WipCache::default());
+        // Each pin without a view, and each view under the default pin.
+        let release = Some("refs/heads/release/1.2".to_string());
+        let shapes = [(None, false, None), (None, true, None), (release, false, None), (None, false, Some(mine_view())), (None, false, Some(all_collapsed_view())), (None, false, Some(fold_view()))];
+        let limits = [DEFAULT_COMMIT_LIMIT, 10];
+        let warm: Vec<Arc<Mutex<Option<WalkCache>>>> = limits.iter().map(|_| Arc::default()).collect();
+        let check = async |step: &str| {
+            for (limit, cache) in limits.iter().zip(&warm) {
+                for (pinned_ref, no_pin, view) in &shapes {
+                    let opts = |walk_cache| BuildOptions { limit: *limit, pinned_ref: pinned_ref.clone(), no_pin: *no_pin, view: view.clone(), wip_cache: Some(wip.clone()), walk_cache, ..Default::default() };
+                    let (g, texts) = build_graph_with_text(repo.clone(), r.path().to_path_buf(), cli(), opts(Some(cache.clone()))).await.unwrap();
+                    let (cold, cold_texts) = build_graph_with_text(repo.clone(), r.path().to_path_buf(), cli(), opts(None)).await.unwrap();
+                    let what = format!("{step}, limit {limit}, pin {pinned_ref:?}/{no_pin}, view {}", view.is_some());
+                    assert_eq!(serde_json::to_value(&g).unwrap(), serde_json::to_value(&cold).unwrap(), "{what}");
+                    assert_eq!(texts, cold_texts, "{what}");
+                }
+            }
+        };
+        check("before").await;
+        let replayed: Vec<String> = r.git(&["rev-list", "--reverse", "main..feature/payments"]).lines().map(String::from).collect();
+        r.git(&["switch", "-q", "--detach", "release/1.2"]);
+        check("detached").await;
+        for (i, c) in replayed.iter().enumerate() {
+            r.git(&["cherry-pick", "--allow-empty", c]);
+            check(&format!("step {i}")).await;
+        }
+        r.git(&["switch", "-q", "-C", "feature/payments"]);
+        check("branch moved").await;
+        assert!(walks(&warm[0]) > replayed.len(), "each step walked anew");
+        assert!(stored_commits(&warm[1]) <= 2 * limits[1], "{} stored for a window of {}", stored_commits(&warm[1]), limits[1]);
+    }
+
+    /// The store holds what the last walk loaded (its window and frontier), not every commit
+    /// ever walked: memory stays bounded however far HEAD moves.
+    #[tokio::test]
+    async fn the_commit_store_keeps_one_window_and_its_frontier() {
+        let r = TestRepo::new();
+        fixtures::long_history(&r);
+        let cache: Arc<Mutex<Option<WalkCache>>> = Arc::default();
+        let opts = || BuildOptions { limit: 10, walk_cache: Some(cache.clone()), wip_cache: Some(Arc::new(WipCache::default())), ..Default::default() };
+        for i in 0..25 {
+            r.commit(&format!("Step {i}"));
+            let g = build(&r, opts()).await;
+            assert_eq!(g.rows.iter().filter(|x| x.kind == NodeKind::Commit).count(), 10);
+            // A straight line: the window, and the next commit below it.
+            assert_eq!(stored_commits(&cache), 11, "step {i}");
+        }
     }
 
     #[tokio::test]

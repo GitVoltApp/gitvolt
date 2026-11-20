@@ -5,6 +5,13 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Changed
+
+- **The graph refreshes faster when a commit, checkout or rebase step moves HEAD.** GitVolt keeps
+  the commits it last read, so a refresh reads only the new ones instead of every commit in the
+  window again, and find keeps their searchable text too. The graph also keeps the rows that
+  didn't change, so a refresh that leaves them as they were redraws none of them.
+
 ### Fixed
 
 - **Closing a tab gives back its repository's memory.** The core kept every repository opened
