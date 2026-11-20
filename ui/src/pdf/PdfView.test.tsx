@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Activity } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { HIDDEN_HOLD_MS } from '../app/hiddenHold';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
 import { isHex, isMedia } from '../diff/DiffPanel';
 import { wantsHex } from '../diff/hexContents';
@@ -216,17 +217,37 @@ describe('PdfView', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('This PDF is password-protected');
   });
 
-  it("hidden, its pages give their canvases' backing stores back; shown again, they're drawn afresh", async () => {
-    const ui = (mode: 'visible' | 'hidden') => <Activity mode={mode}><PdfView old={null} new={pdf('pages:3')} /></Activity>;
+  it("hidden, it keeps its document and drawings for the hold; past it, its pages give their canvases' backing stores back and are drawn afresh when shown", async () => {
+    const { openPdf } = await import('./pdfjs');
+    const src = pdf('pages:3');
+    const ui = (mode: 'visible' | 'hidden') => <Activity mode={mode}><PdfView old={null} new={src} /></Activity>;
     const view = render(ui('visible'));
     const pane = screen.getByRole('document', { name: 'PDF' });
     const sizes = () => Array.from(pane.querySelectorAll('canvas'), (c) => [c.width, c.height]);
     await waitFor(() => expect(sizes()).toEqual([[612, 792], [612, 792]]));
-    const hidden = Array.from(pane.querySelectorAll('canvas'));
+    const opens = vi.mocked(openPdf).mock.calls.length;
+    const drawnBefore = renders.length;
+    const canvases = Array.from(pane.querySelectorAll('canvas'));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    onTestFinished(() => { vi.useRealTimers(); });
+    // A quick look at another tab and back: the same document, its pages not drawn again.
     view.rerender(ui('hidden'));
-    expect(hidden.map((c) => [c.width, c.height])).toEqual([[0, 0], [0, 0]]);
+    vi.advanceTimersByTime(HIDDEN_HOLD_MS - 1);
+    view.rerender(ui('visible'));
+    vi.advanceTimersByTime(HIDDEN_HOLD_MS);
+    expect(canvases.map((c) => [c.width, c.height])).toEqual([[612, 792], [612, 792]]);
+    expect(screen.queryByText('Loading…')).toBeNull();
+    // Left hidden past the hold: given back.
+    view.rerender(ui('hidden'));
+    vi.advanceTimersByTime(HIDDEN_HOLD_MS);
+    expect(canvases.map((c) => [c.width, c.height])).toEqual([[0, 0], [0, 0]]);
+    vi.useRealTimers();
+    await act(async () => {});
+    expect(vi.mocked(openPdf).mock.calls.length).toBe(opens);
+    expect(renders.length).toBe(drawnBefore);
     view.rerender(ui('visible'));
     await waitFor(() => expect(sizes()).toEqual([[612, 792], [612, 792]]));
+    expect(vi.mocked(openPdf).mock.calls.length).toBe(opens + 1);
   });
 
   it('a PDF no longer shown stops opening', async () => {

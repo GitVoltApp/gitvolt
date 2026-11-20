@@ -3,6 +3,7 @@ import { Activity } from 'react';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { BlobPayload } from '../api/gen/BlobPayload';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
+import { HIDDEN_HOLD_MS } from '../app/hiddenHold';
 import { useImageBackground } from './background';
 import { ImageDiff } from './ImageDiff';
 import { ZOOM_STEPS } from './zoom';
@@ -387,7 +388,7 @@ describe('ImageDiff', () => {
     expect(onSourceChange).toHaveBeenLastCalledWith(true);
   });
 
-  it("hidden on Difference, it gives the canvas's backing store back, and draws it again when shown", async () => {
+  it("hidden on Difference, it keeps its drawing for the hold, then gives the canvas's backing store back, and draws it again when shown", async () => {
     vi.stubGlobal('Image', FakeImage);
     const ui = (mode: 'visible' | 'hidden') => <Activity mode={mode}><ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} /></Activity>;
     const view = render(ui('visible'));
@@ -395,8 +396,19 @@ describe('ImageDiff', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Difference' }));
     const canvas = screen.getByTestId('image-difference') as HTMLCanvasElement;
     await waitFor(() => expect([canvas.width, canvas.height]).toEqual([6, 4]));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    onTestFinished(() => { vi.useRealTimers(); });
+    // A quick look at another tab and back: the drawing stays.
     view.rerender(ui('hidden'));
+    vi.advanceTimersByTime(HIDDEN_HOLD_MS - 1);
+    view.rerender(ui('visible'));
+    vi.advanceTimersByTime(HIDDEN_HOLD_MS);
+    expect([canvas.width, canvas.height]).toEqual([6, 4]);
+    // Left hidden past the hold: given back.
+    view.rerender(ui('hidden'));
+    vi.advanceTimersByTime(HIDDEN_HOLD_MS);
     expect([canvas.width, canvas.height]).toEqual([0, 0]);
+    vi.useRealTimers();
     view.rerender(ui('visible'));
     await waitFor(() => expect([canvas.width, canvas.height]).toEqual([6, 4]));
   });
