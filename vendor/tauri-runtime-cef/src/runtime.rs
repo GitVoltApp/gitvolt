@@ -499,6 +499,7 @@ pub struct Cef {
   sandbox: SandboxPolicy,
   downgrade: DowngradePolicy,
   bundled_dictionaries: Vec<PathBuf>,
+  remove_stale_data: bool,
   settings_callback: Option<Box<SettingsCallback>>,
   window_event_handler: Option<Arc<NativeWindowEventHandler>>,
 }
@@ -539,6 +540,7 @@ impl fmt::Debug for Cef {
       .field("sandbox", &self.sandbox)
       .field("downgrade", &self.downgrade)
       .field("bundled_dictionaries", &self.bundled_dictionaries)
+      .field("remove_stale_data", &self.remove_stale_data)
       .field("settings_callback", &self.settings_callback.is_some())
       .field("window_event_handler", &self.window_event_handler.is_some())
       .finish()
@@ -1068,6 +1070,21 @@ impl Cef {
   #[must_use]
   pub fn bundled_dictionary<P: Into<PathBuf>>(mut self, file: P) -> Self {
     self.bundled_dictionaries.push(file.into());
+    self
+  }
+
+  /// Removes, at every start, the Chromium data in [`Self::root_cache_path`] nothing reads
+  /// (GitVolt patch): the profiles of webview data directories other than the current one,
+  /// what the component updater downloaded before [`Self::component_updates`] turned it off,
+  /// and a log file over 1 MiB. Runs before CEF starts, and costs one listing of the root.
+  ///
+  /// The current profile is the one of Tauri's default webview data directory (the app's local
+  /// data directory on Linux and Windows, Chromium's `Default` elsewhere), so only an
+  /// application whose webviews keep that default should turn this on. Other profiles stay
+  /// until the current one exists.
+  #[must_use]
+  pub fn remove_stale_data(mut self) -> Self {
+    self.remove_stale_data = true;
     self
   }
 
@@ -2640,6 +2657,17 @@ impl<T: UserEvent> ApplicationHandler for WinitCefApp<T> {
   }
 }
 
+/// The data directory Tauri gives a webview that sets none (GitVolt patch): the app's local
+/// data directory on Linux and Windows, as `tauri::manager::webview` sets it, else none, and
+/// the webview is on Chromium's `Default` profile.
+fn default_data_directory(identifier: &str) -> Option<PathBuf> {
+  if cfg!(any(target_os = "linux", target_os = "windows")) {
+    dirs::data_local_dir().map(|dir| dir.join(identifier))
+  } else {
+    None
+  }
+}
+
 /// Picks the deep link URLs out of a process command line.
 ///
 /// An argument qualifies when it parses as a URL whose scheme is one of `schemes`,
@@ -3207,6 +3235,7 @@ impl<T: UserEvent> CefRuntime<T> {
       sandbox: sandbox_policy,
       downgrade: downgrade_policy,
       bundled_dictionaries,
+      remove_stale_data,
       settings_callback,
       window_event_handler,
       // Already applied, above, before the first CEF call.
@@ -3413,6 +3442,14 @@ impl<T: UserEvent> CefRuntime<T> {
     // becomes of such a profile, is the `downgrade` module; it must run before the first
     // CEF call that opens anything in the directory, which is `cef::initialize` below.
     crate::downgrade::prepare_root_cache_path(&cache_path, downgrade_policy);
+    // GitVolt patch: after the downgrade handling, which may leave an empty root, and before
+    // `cef::initialize` opens anything in it.
+    if remove_stale_data {
+      let current_profile = default_data_directory(&runtime_args.identifier).map(|dir| {
+        crate::cef_impl::request_context::request_context_cache_path(&cache_path, &dir)
+      });
+      crate::stale_data::tidy(&cache_path, current_profile.as_deref());
+    }
     // GitVolt patch: after the downgrade handling above (which may move the profile aside)
     // and before `cef::initialize`, which starts the spell checker.
     for dictionary in &bundled_dictionaries {
@@ -4033,6 +4070,21 @@ mod configuration_tests {
       ]
     );
     assert!(format!("{cef:?}").contains("en-US-10-1.bdic"));
+  }
+
+  #[test]
+  fn stale_data_removal_is_opt_in_and_keeps_the_default_profile() {
+    // GitVolt patch (stale_data.rs): off unless asked for.
+    assert!(!Cef::default().remove_stale_data);
+    assert!(Cef::default().remove_stale_data().remove_stale_data);
+    // The profile kept is the one of the data directory Tauri gives a webview by default.
+    let dir = default_data_directory("com.example.app");
+    if cfg!(any(target_os = "linux", target_os = "windows")) {
+      let dir = dir.expect("a local data directory");
+      assert_eq!(dir, dirs::data_local_dir().unwrap().join("com.example.app"));
+    } else {
+      assert_eq!(dir, None);
+    }
   }
 
   #[test]

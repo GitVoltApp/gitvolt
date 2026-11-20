@@ -310,6 +310,11 @@ says.
   the headers through the C API instead of iterating a `CefStringMultimap`. No other change in
   this file.
 
+- `src/stale_data.rs` (new; stale Chromium data, below), `src/lib.rs` (`mod stale_data;`),
+  `src/runtime.rs` (`Cef::remove_stale_data`, `default_data_directory`, the call before
+  `cef::initialize`) and `src/cef_impl/request_context.rs` (`request_context_cache_path`, the
+  path computation split out of `resolve_request_context_cache_path` without its logging).
+
 ## A window that draws its own title bar (Linux, X11)
 
 GitVolt draws its own title bar on Linux (`crates/gitvolt-app/src/chrome.rs`), with the window
@@ -760,6 +765,37 @@ dictionaries` (a missing, the same or a different dictionary; a missing bundled 
 
 No other files differ from the published 3.0.0-alpha.6 crate (its `Cargo.lock` is not vendored).
 
+## Stale Chromium data in the root cache path
+
+**Problem:** the root cache path keeps Chromium data nothing reads, and nobody ever looks: the
+`Profile-<hash>` directory of a webview data directory the app no longer uses (92 MB on one
+upgraded install), the components the updater downloaded before `--disable-component-update`
+and the resolver lockdown (`WidevineCdm`, `WasmTtsEngine`, `OnDeviceHeadSuggestModel`,
+`CertificateRevocation`, `ActorSafetyLists`, `hyphen-data`, `ZxcvbnData`, `OptimizationHints`;
+about 60 MB), and the log files Chromium appends to on every run (`cef.log`,
+`chrome_debug.log`).
+
+**Fix:** `Cef::remove_stale_data()` (opt-in) has the runtime tidy the root at every start, right
+after `prepare_root_cache_path` and before the dictionaries and `cef::initialize`
+(`src/stale_data.rs`, new): those component directories, other profiles and a log over 1 MiB go
+whenever they appear. It costs one listing of the root, a stat for the current profile and one
+per log file (well under a millisecond, tested); only what is removed is measured, and one info
+line gives the bytes freed, only when something was. The profile kept is the one
+`request_context_cache_path` (`src/cef_impl/request_context.rs`: the path computation of
+`resolve_request_context_cache_path`, split out without its logging) gives the data directory
+Tauri sets on a webview by default (`default_data_directory` in `src/runtime.rs`: the app's local
+data directory on Linux and Windows, else `Default`). Only those names directly under the root
+are removed, never a symbolic link or `Default`, and other profiles only once the current one
+exists. Inside the current profile nothing is trimmed: Chromium caps its disk caches (HTTP, code,
+GPU) itself, empties `blob_storage` at startup, and the rest (`Local Storage`, `Session Storage`,
+`DIPS`) holds only what the app's one origin keeps.
+
+Files: `src/stale_data.rs` (new), `src/lib.rs` (`mod stale_data;`), `src/runtime.rs` (the
+`remove_stale_data` field, its `Debug` entry, the builder method, `default_data_directory`, the
+call), `src/cef_impl/request_context.rs` (`request_context_cache_path`). Tests: `cargo test -p
+tauri-runtime-cef --lib stale_data`, `cache_path_tests::the_profile_of_a_data_directory` and
+`configuration_tests::stale_data_removal_is_opt_in_and_keeps_the_default_profile`.
+
 ## A resolver-blocking `--host-resolver-rules` isn't warned about
 
 `switches.rs`' `warn_about_dangerous_switches` warned on every launch that
@@ -843,7 +879,8 @@ drives it over CDP.
   `windows_sandbox_unavailable()` false, as before.
 - **The rest is platform-neutral** and runs on macOS as on Linux: the command block list and the
   context menu names (same IDC table), the key-log diagnostic, the dictionaries, the resolver
-  rules switch, the component updater switch.
+  rules switch, the component updater switch, the stale data removal (there the kept profile
+  is `Default`).
 - **The reserved-chord table is Ctrl-based** (`keyboard.rs`, `gitvolt_passes_to_page`). On
   macOS Chrome's reserved shortcuts are Cmd ones (Cmd+W, Cmd+Q…), so the table matches nothing
   that Chrome would reserve there; the Cmd shortcuts and the menu bar are separate work.

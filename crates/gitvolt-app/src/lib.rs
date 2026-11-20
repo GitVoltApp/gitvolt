@@ -251,6 +251,9 @@ fn cef_runtime() -> Cef {
     let cef = Cef::default()
         .profile_preference("settings.a11y.caretbrowsing.enabled", false)
         .component_updates(false)
+        // At every start, the Chromium data nothing reads: the profiles of data folders the app
+        // no longer uses, components downloaded before the lockdown below, an oversized log.
+        .remove_stale_data()
         // No Chromium requests to Google services (PRIVACY.md, "The embedded Chromium", lists
         // what an idle run sent before these). The webview only loads the app's own bundle and
         // never navigates, so none of them takes anything it uses.
@@ -265,6 +268,9 @@ fn cef_runtime() -> Cef {
             // The Translate ranker's model download (www.gstatic.com).
             "TranslateRankerQuery",
             "TranslateRankerEnforcement",
+            // The spare renderer Chromium keeps warm for the next site (76 MB RSS). The one
+            // window never navigates, so it is never used.
+            "SpareRendererForSitePerProcess",
         ])
         // Chromium itself resolves no host name but `localhost` (the dev server), so whatever
         // else it would fetch on its own fails before any DNS query or connection: the spelling
@@ -719,6 +725,20 @@ mod tests {
         for feature in ["NetworkTimeServiceQuerying", "TranslateRankerQuery", "TranslateRankerEnforcement"] {
             assert!(cef.contains(&format!("\"{feature}\"")), "{feature} in {cef}");
         }
+    }
+
+    /// No spare renderer is kept warm for a navigation the one window never makes.
+    #[test]
+    fn chromium_keeps_no_spare_renderer() {
+        let cef = format!("{:?}", cef_runtime());
+        assert!(cef.contains("\"SpareRendererForSitePerProcess\""), "{cef}");
+    }
+
+    /// The Chromium cache folder loses, at every start, the data nothing reads.
+    #[test]
+    fn stale_chromium_data_is_removed() {
+        let cef = format!("{:?}", cef_runtime());
+        assert!(cef.contains("remove_stale_data: true"), "{cef}");
     }
 
     /// A debug build opens the DevTools protocol only on a valid port named by

@@ -34,6 +34,9 @@ mod runtime;
 // `SandboxPolicy` itself is public API and lives in `runtime`; this module holds the
 // decision behind it.
 mod sandbox;
+/// GitVolt patch: the one-time removal of Chromium data older versions left in the root cache
+/// path.
+mod stale_data;
 #[cfg(windows)]
 pub use sandbox::set_windows_sandbox_info;
 /// Helpers for the Chromium command line the runtime hands to CEF.

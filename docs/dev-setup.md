@@ -224,6 +224,10 @@ A few things that matter while developing:
 - **One instance per config dir.** `just dev` or `just run-app` with your own config while an
   installed GitVolt runs only focuses that one and exits. Point `XDG_CONFIG_HOME`,
   `XDG_CACHE_HOME` and `XDG_DATA_HOME` at throwaway dirs, or set `GITVOLT_MULTI_INSTANCE=1`.
+- **Chromium feature flags go in code.** `--disable-features=` and `--enable-features=` on the
+  command line are dropped (the runtime keeps only CEF's own list and the app's), so try a feature
+  through `Cef::disable_features` / `Cef::enable_features` in `cef_runtime()`
+  (`crates/gitvolt-app/src/lib.rs`).
 - **Open Repository** (Ctrl+O, or the automatic tab of an empty profile): Recent (pinned first,
   filterable), "Your repos" (a scan of the profile's default repos folder; a banner offers to set
   one), **Open folder…** and Clone. Any folder inside a repository opens that repository; a linked

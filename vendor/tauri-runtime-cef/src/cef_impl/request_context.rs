@@ -57,35 +57,55 @@ pub(crate) fn apply_theme_scheme(request_context: Option<&RequestContext>, theme
 ///   `data_directory` values produce distinct profiles, and the same value
 ///   maps to the same on-disk profile across runs.
 fn resolve_request_context_cache_path(global_cache_path: &Path, data_directory: &Path) -> PathBuf {
+  let path = request_context_cache_path(global_cache_path, data_directory);
   if data_directory.is_absolute() {
-    if data_directory.starts_with(global_cache_path) {
-      return data_directory.to_path_buf();
-    } else {
+    if !data_directory.starts_with(global_cache_path) {
       log::warn!(
         "data directory is not a child of the global cache path, we will derive a profile hash from it"
       );
+    }
+  } else if data_directory
+    .components()
+    .any(|component| matches!(component, Component::ParentDir))
+  {
+    log::warn!(
+      "data directory is a relative path with parent components, we will derive a profile hash from it"
+    );
+  }
+  if let Some(suffix) = path
+    .strip_prefix(global_cache_path)
+    .ok()
+    .and_then(|name| name.to_str())
+    .and_then(|name| name.strip_prefix("Profile-"))
+    .filter(|_| !path.starts_with(data_directory) && !path.ends_with(data_directory))
+  {
+    log::info!(
+      "derived profile hash from data directory: {suffix}, cache path: {}",
+      path.display()
+    );
+  }
+  path
+}
+
+/// [`resolve_request_context_cache_path`] without its logging (GitVolt patch: the runtime
+/// also asks before `cef::initialize`, to know which profile is current; `crate::stale_data`).
+pub(crate) fn request_context_cache_path(global_cache_path: &Path, data_directory: &Path) -> PathBuf {
+  if data_directory.is_absolute() {
+    if data_directory.starts_with(global_cache_path) {
+      return data_directory.to_path_buf();
     }
   } else if !data_directory
     .components()
     .any(|component| matches!(component, Component::ParentDir))
   {
     return global_cache_path.join(data_directory);
-  } else {
-    log::warn!(
-      "data directory is a relative path with parent components, we will derive a profile hash from it"
-    );
   }
 
   let mut hasher = Sha256::new();
   hasher.update(data_directory.as_os_str().as_encoded_bytes());
   let hash = hasher.finalize();
   let suffix = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&hash[..16]);
-  let path = global_cache_path.join(format!("Profile-{suffix}"));
-  log::info!(
-    "derived profile hash from data directory: {suffix}, cache path: {}",
-    path.display()
-  );
-  path
+  global_cache_path.join(format!("Profile-{suffix}"))
 }
 
 /// The profile directory a [`WebviewAttributes::data_store_identifier`] maps to, named by
@@ -420,5 +440,38 @@ mod data_store_tests {
       data_store_directory_name(&[0; 16]),
       data_store_directory_name(&[1; 16])
     );
+  }
+}
+
+#[cfg(test)]
+mod cache_path_tests {
+  use super::{request_context_cache_path, resolve_request_context_cache_path};
+  use std::path::{Path, PathBuf};
+
+  /// GitVolt patch: the profile the runtime keeps before `cef::initialize` (`crate::stale_data`)
+  /// is the one a webview gets: a data directory under the root is used as is, a relative one is
+  /// joined, and any other is named by its hash.
+  #[test]
+  fn the_profile_of_a_data_directory() {
+    let root = Path::new("/cache/app/cef");
+    for (data_directory, profile) in [
+      ("/cache/app/cef/mine", "/cache/app/cef/mine"),
+      ("mine", "/cache/app/cef/mine"),
+      (
+        "/home/ada/.local/share/com.example.app",
+        "/cache/app/cef/Profile-l_C758WFtHyzKWRcckL7VA",
+      ),
+      ("../outside", "/cache/app/cef/Profile-YsodksSj_ESl-jDR3cWTvg"),
+    ] {
+      let data_directory = Path::new(data_directory);
+      assert_eq!(
+        request_context_cache_path(root, data_directory),
+        PathBuf::from(profile)
+      );
+      assert_eq!(
+        resolve_request_context_cache_path(root, data_directory),
+        PathBuf::from(profile)
+      );
+    }
   }
 }

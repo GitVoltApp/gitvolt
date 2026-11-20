@@ -69,6 +69,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   runtime instead of a thread of its own; a lock file's own events (`git status` takes and drops
   `index.lock` on every run) are dropped before they reach the watch loop. macOS and Windows
   never reported reads.
+- **One Chromium process less (memory).** Chromium kept a spare renderer warm for a page the
+  window never opens: 76 MB of resident memory, now gone, with startup unchanged.
+- **Chromium's cache folder no longer keeps data nothing reads (disk).** At every start, before
+  the window opens, GitVolt deletes from it the profiles of data folders it no longer uses (90 MB
+  on one upgraded install), the components Chromium downloaded before its network was cut off
+  (Widevine, text-to-speech, suggestion models and the like, about 60 MB) and a Chromium log
+  grown over 1 MB. The check is one listing of the folder; the current profile is kept, and a
+  log line says how much was freed when something was.
 - **The background fetch connects to each remote once, not twice (performance).** After every
   fetch, GitVolt asked each remote for its whole tag list (`git ls-remote --tags`), for the tag
   chips' pushed-or-not icons: a second connection, SSH handshake and credential helper run per
