@@ -39,6 +39,11 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   times, it force-pushes with lease at once ("Force pushed … with lease (rebased locally)"), as a
   tracked branch does; when the remote may have commits you never fetched, Push still asks first.
   The panel asks only when two remotes other than origin have the branch.
+- **Typing right after Ctrl+S in a diff no longer loses keys.** The file's reload after a save
+  made the editor read-only for a moment ("Cannot edit in read-only editor") and could put the
+  saved text back over what you typed meanwhile. The editor now keeps its text, cursor and undo
+  history through the reload. Switching Inline, Split or Hunk, or a diff option, while editing no
+  longer makes the file read-only either.
 
 ## [1.6.3] - 2026-11-17
 

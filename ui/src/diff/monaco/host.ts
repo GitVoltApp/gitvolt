@@ -290,6 +290,8 @@ class Host implements MonacoHost {
   private diff: MonacoNs.editor.IStandaloneDiffEditor | null = null;
   private file: MonacoNs.editor.IStandaloneCodeEditor | null = null;
   private diffModels: MonacoNs.editor.ITextModel[] = [];
+  /** The language `diffModels` were made in. */
+  private diffLanguage: string | null = null;
   private diffView: MonacoNs.editor.IDiffEditorViewModel | null = null;
   /** The place a prefs change keeps while its relayouts may still land (a recompute, word wrap's
    * line breaks), until the user takes over by input. Scroll positions can't tell: Monaco moves
@@ -347,7 +349,8 @@ class Host implements MonacoHost {
   private fileEditSub: { dispose(): void } | null = null;
   /** The hex view on screen, if any (`hexView`). */
   private hex: HexPanes | null = null;
-  private keptView: { diffPath: string; diff: MonacoNs.editor.IDiffEditorViewState | null; filePath: string; file: MonacoNs.editor.ICodeEditorViewState | null } | null = null;
+  /** A save's place, and the text each editor held then (the text its reload brings back). */
+  private keptView: { diffPath: string; diff: MonacoNs.editor.IDiffEditorViewState | null; diffText: string | null; filePath: string; file: MonacoNs.editor.ICodeEditorViewState | null; fileText: string | null } | null = null;
 
   constructor() {
     this.diffEl.className = 'monaco-host';
@@ -444,10 +447,17 @@ class Host implements MonacoHost {
     const ed = this.diff;
     if (seq !== this.diffSeq || !ed) return;
     this.dropAnchor();
-    this.setModifiedEditable(false);
+    // The same file with the text its modified side holds, or held when it was saved (a save's
+    // reload): that side keeps its model, so what's typed meanwhile, before the new pair is
+    // computed or after the save, lands in it and stays (and so does the undo history).
+    const held = this.diffModels[1];
+    const keep = held && this.diffIdentity === req.identity && this.diffPath === req.path && this.diffLanguage === lang
+      && (ed.getModifiedEditor().getValue() === req.modified || (this.keptView?.diffPath === req.path && this.keptView.diffText === req.modified)) ? held : null;
+    // A new file shows read-only until its view turns editing on again.
+    if (!keep) this.setModifiedEditable(false);
     this.applyDiffPrefs(this.prefs);
     const original = monaco.editor.createModel(req.original, lang);
-    const modified = monaco.editor.createModel(req.modified, lang);
+    const modified = keep ?? monaco.editor.createModel(req.modified, lang);
     // Off-screen: a view model computes its diff before it's attached, so the previous diff stays
     // on screen meanwhile, and the new one appears whole in one frame (F24, F27). Attaching an
     // uncomputed pair would draw the plain file first: no decorations, and in Hunk mode the whole
@@ -460,7 +470,7 @@ class Host implements MonacoHost {
     if (seq !== this.diffSeq) {
       view.dispose();
       original.dispose();
-      modified.dispose();
+      if (modified !== keep) modified.dispose();
       return;
     }
     this.diffPath = req.path;
@@ -476,9 +486,11 @@ class Host implements MonacoHost {
     this.layHunkZones();
     // Review mode's cards, in this frame too.
     this.review?.shown(req.path, this.prefs.mode);
-    // A save's reload keeps its place (below); any other show opens at the first change, before
-    // the next frame renders, so the diff shows up already there.
-    const kept = this.keptView?.diff && this.keptView.diffPath === req.path ? this.keptView.diff : null;
+    // A save's reload keeps its place (below): the saved one, or where typing since has moved it.
+    // Any other show opens at the first change, before the next frame renders, so the diff shows
+    // up already there.
+    const saved = this.keptView?.diff && this.keptView.diffPath === req.path ? this.keptView.diff : null;
+    const kept = saved && keep && ed.getModifiedEditor().getValue() !== req.modified ? ed.saveViewState() : saved;
     this.revealed = null;
     if (!kept && req.line) this.openAtLine(ed, req.line);
     else if (!kept) this.openAtFirstChange(ed);
@@ -489,9 +501,10 @@ class Host implements MonacoHost {
     this.diffShown = { path: req.path, original: req.original, modified: req.modified };
     this.hideDiff(false);
     this.diffView?.dispose();
-    for (const m of this.diffModels) m.dispose();
+    for (const m of this.diffModels) if (m !== keep) m.dispose();
     this.diffView = view;
     this.diffModels = [original, modified];
+    this.diffLanguage = lang;
     if (kept) ed.restoreViewState(kept);
     this.keptView = null;
   }
@@ -619,7 +632,9 @@ class Host implements MonacoHost {
   private applyDiffPrefs(prefs: EditorDiffPrefs): void {
     const modeChanged = prefs.mode !== this.prefs.mode;
     this.prefs = prefs;
-    this.diff?.updateOptions(diffEditorOptions(prefs, this.menu === null, editorSettings()));
+    // Editing stays as the view set it: a prefs change, or a save's reload, never makes the
+    // working copy read-only under the user's typing.
+    this.diff?.updateOptions({ ...diffEditorOptions(prefs, this.menu === null, editorSettings()), readOnly: this.diffEl.dataset.editable !== 'true' });
     if (modeChanged && this.diffModels.length) {
       this.layHunkZones();
       this.review?.shown(this.diffPath, prefs.mode);
@@ -831,8 +846,11 @@ class Host implements MonacoHost {
     this.fileIdentity = req.identity;
     this.setFileEditable(false);
     ed.updateOptions({ ...fileViewOptions(this.fileWrap, this.menu === null, editorSettings()), ...this.margin?.options() });
-    // The same content we already show (a save's reload): keep the model, so Monaco's undo stack survives.
-    const same = this.fileModel && this.filePathShown === req.path && ed.getValue() === req.text && ed.getModel() === this.fileModel;
+    // The same content we already show, or showed when it was saved (a save's reload): keep the
+    // model, so Monaco's undo stack, and what was typed since the save, survive.
+    const saved = this.keptView?.filePath === req.path ? this.keptView : null;
+    const typedSince = ed.getValue() !== req.text;
+    const same = this.fileModel && this.filePathShown === req.path && (!typedSince || saved?.fileText === req.text) && ed.getModel() === this.fileModel;
     const model = same ? this.fileModel! : monaco.editor.createModel(req.text, lang);
     if (!same) ed.setModel(model);
     this.filePathShown = req.path;
@@ -840,7 +858,8 @@ class Host implements MonacoHost {
     setHidden(this.fileEl, false);
     if (this.fileModel !== model) this.fileModel?.dispose();
     this.fileModel = model;
-    if (this.keptView?.file && this.keptView.filePath === req.path) ed.restoreViewState(this.keptView.file);
+    // Typing since the save has moved the place on from the saved one.
+    if (saved?.file && !(same && typedSince)) ed.restoreViewState(saved.file);
     this.keptView = null;
   }
 
@@ -919,7 +938,10 @@ class Host implements MonacoHost {
   }
 
   keepViewOnNextShow(): void {
-    this.keptView = { diffPath: this.diffPath, diff: this.diff?.saveViewState() ?? null, filePath: this.filePath, file: this.file?.saveViewState() ?? null };
+    this.keptView = {
+      diffPath: this.diffPath, diff: this.diff?.saveViewState() ?? null, diffText: this.diffModels.length ? this.diff?.getModifiedEditor().getValue() ?? null : null,
+      filePath: this.filePath, file: this.file?.saveViewState() ?? null, fileText: this.fileModel ? this.file?.getValue() ?? null : null,
+    };
     // A save that changed nothing shows nothing again: the kept place isn't held for a later show.
     clearTimeout(this.keptTimer);
     this.keptTimer = setTimeout(() => { this.keptView = null; }, KEPT_VIEW_MS);

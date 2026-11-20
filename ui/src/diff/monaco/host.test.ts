@@ -150,6 +150,8 @@ vi.mock('./setup', () => {
       getPosition: vi.fn((): { lineNumber: number; column: number } | null => ({ lineNumber: 7, column: 1 })),
       getDomNode: vi.fn(() => domNode),
       getScrolledVisiblePosition: vi.fn((): { top: number; left: number; height: number } | null => ({ top: 30, left: 5, height: 19 })),
+      saveViewState: vi.fn(() => ({ file: true })),
+      restoreViewState: vi.fn(),
     };
     return ed;
   }
@@ -706,6 +708,22 @@ describe('MonacoHost', () => {
     expect(state.files[0].setModel).toHaveBeenCalledTimes(2);
   });
 
+  it("showFile of the text a save wrote keeps the model, and what was typed after the save", async () => {
+    const { host, state } = await fresh();
+    host.attachFile(document.createElement('div'));
+    const req = { path: 'a.txt', text: 'one\n', language: 'plaintext', wordWrap: false };
+    await host.showFile(req);
+    const f = state.files[0] as unknown as { model: { text: string }; setModel: ReturnType<typeof vi.fn>; restoreViewState: ReturnType<typeof vi.fn> };
+    f.model.text = 'saved\n';
+    host.keepViewOnNextShow();
+    f.model.text = 'saved\nmore';
+    await host.showFile({ ...req, text: 'saved\n' });
+    expect(f.setModel).toHaveBeenCalledTimes(1);
+    expect(host.fileText()).toBe('saved\nmore');
+    // Its place is where the typing left it, not the save's.
+    expect(f.restoreViewState).not.toHaveBeenCalled();
+  });
+
   it('re-attached for another file, File View hides the one it still holds until the new one is shown (H6)', async () => {
     const { host } = await fresh();
     const first = document.createElement('div');
@@ -895,6 +913,42 @@ describe('MonacoHost', () => {
     m.sizeListeners.forEach((l) => l({}));
     await new Promise<void>((r) => setTimeout(r, 0));
     expect(m.scrollTop).toBe(0);
+  });
+
+  it("a save's reload keeps the modified side's model: what's typed after the save, or while the pair computes, stays, and it never goes read-only", async () => {
+    const { host, state } = await fresh();
+    host.attachDiff(document.createElement('div'));
+    const d = state.diffs[0];
+    await host.showDiff(diffReq('a.txt'));
+    host.setModifiedEditable(true);
+    const held = d.createViewModel.mock.results[0].value.model.modified;
+    // Typed and saved; typed on after the save, before its reload shows.
+    held.text = 'saved\n';
+    host.keepViewOnNextShow();
+    held.text = 'saved\nmore';
+    d.updateOptions.mockClear();
+    d.modified.updateOptions.mockClear();
+    state.diffAutoUpdate = false;
+    const shown = host.showDiff({ ...diffReq('a.txt'), modified: 'saved\n' });
+    await new Promise<void>((r) => setTimeout(r, 0));
+    const readOnly = expect.objectContaining({ readOnly: true });
+    expect(d.updateOptions).not.toHaveBeenCalledWith(readOnly);
+    expect(d.modified.updateOptions).not.toHaveBeenCalledWith(readOnly);
+    const vm = d.createViewModel.mock.results[1].value;
+    vm.finish();
+    await shown;
+    expect(vm.model.modified).toBe(held);
+    expect(held.dispose).not.toHaveBeenCalled();
+    expect(host.modifiedText()).toBe('saved\nmore');
+    // Nor does a prefs change.
+    host.setDiffPrefs({ ...prefs, mode: 'split' });
+    expect(d.updateOptions).not.toHaveBeenCalledWith(readOnly);
+    // Text the editor never held (a change on disk, a Reload) replaces it, read-only meanwhile.
+    state.diffAutoUpdate = true;
+    await host.showDiff({ ...diffReq('a.txt'), modified: 'changed outside\n' });
+    expect(d.modified.updateOptions).toHaveBeenCalledWith({ readOnly: true });
+    expect(held.dispose).toHaveBeenCalled();
+    expect(host.modifiedText()).toBe('changed outside\n');
   });
 
   it("a diff opened at a line (a note's file:line) centres that line, not the first change, the cursor on it in its side; held through relayouts", async () => {
