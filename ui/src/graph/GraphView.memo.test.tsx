@@ -131,6 +131,31 @@ describe('GraphView virtual rows across a refresh (the store keeps unchanged row
     expect(renders.n - before).toBe(1);
     expect(ids()).toEqual(shown);
   });
+
+  it('a commit on top renders the new row and the rows that changed; the rest only move', () => {
+    // A line of 20 commits, `main` on the tip, `feat` and a tag further down.
+    const chain = (n: number, first: number) => Array.from({ length: n }, (_, k) => ({ ...row(first - k), parents: first - k > 0 ? [row(first - k - 1).id] : [], segments: [k === 0 ? 1 << 20 : 2 << 20] }));
+    const labels = (top: number) => [
+      { row: 0, name: 'main', local: 'refs/heads/main', remotes: [], tag: false, isHead: true, worktree: null, checkedOut: null },
+      { row: top + 5, name: 'feat', local: 'refs/heads/feat', remotes: [], tag: false, isHead: false, worktree: null, checkedOut: null },
+      { row: top + 9, name: 'v1', local: null, remotes: [], tag: true, isHead: false, worktree: null, checkedOut: null },
+    ];
+    const before: GraphPayload = { ...graph, rows: chain(20, 19), labels: labels(0) };
+    const { rerender } = render(<RepoView repo={1} repoPath="/repo" graph={before} services={fakeServices()} />);
+    const shown = screen.getAllByRole('row').length;
+    expect(shown).toBe(20);
+    const tops = () => screen.getAllByRole('row').map((r) => [r.id, r.style.top]);
+    const old = new Map(tops().map(([id, top]) => [id, top]));
+    const after: GraphPayload = fresh({ ...before, rows: chain(21, 20), labels: labels(1) });
+    const n = renders.n;
+    rerender(<RepoView repo={1} repoPath="/repo" graph={after} services={fakeServices()} />);
+    // The new commit, and the old tip: a line now comes into it from above, and `main` left it.
+    expect(renders.n - n).toBe(2);
+    expect(renders.n - n).toBeLessThan(shown);
+    // Every other row is where its commit moved to: one row down.
+    const rowH = parseFloat(old.get(`graph-row-${row(1).id}`)!) - parseFloat(old.get(`graph-row-${row(2).id}`)!);
+    for (const [id, top] of tops()) if (old.has(id)) expect(parseFloat(top)).toBe(parseFloat(old.get(id)!) + rowH);
+  });
 });
 
 describe('GraphView virtual rows, hover-driven branch membership chip', () => {

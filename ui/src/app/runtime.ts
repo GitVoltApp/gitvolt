@@ -18,6 +18,7 @@ import { noteViewport, unloadDue, type OlderState } from '../graph/olderWindow';
 import { basename, setTabRepo, tabForPath, touchRecent } from './tabs';
 import { viewSpecFor } from '../presets/store';
 import { holdRepo, releaseRepo } from './watch';
+import { graphOfReply, type VersionedGraph } from '../graph/delta';
 
 /** One tab's loaded repo (not persisted: the profile holds only the tab's path). */
 export interface TabRuntime {
@@ -77,6 +78,21 @@ function sideRead<T>(what: string, p: Promise<T>): Promise<T | undefined> {
   });
 }
 
+/** Per tab: the graph payload the core last sent and its version, the `since` of the next read
+ * (graph/delta.ts). Kept apart from the runtime's `graph`, which a worktree switch rewrites
+ * locally. */
+const held = new Map<string, VersionedGraph>();
+
+/** The tab's graph, as only what changed since the payload it holds when the core still has it. */
+async function readGraph(tabId: string, ...[repo, limit, extra]: Parameters<typeof api.graph>): Promise<GraphPayload> {
+  const base = held.get(tabId);
+  let got = graphOfReply(await api.graph(repo, limit, { ...extra, since: base?.version ?? 0 }), base);
+  // A delta from a version this tab no longer holds (a read raced another): the whole graph.
+  got ??= graphOfReply(await api.graph(repo, limit, { ...extra, since: 0 }), undefined)!;
+  held.set(tabId, got);
+  return got.graph;
+}
+
 /** The graph's error for an active worktree that was removed (or never was one of the repository's). */
 const GONE = 'is not a worktree of this repository';
 
@@ -98,7 +114,7 @@ async function load(tabId: string, rescan: boolean, side: boolean): Promise<void
     const [graph, sidebar, info] = await Promise.all([
       // `rescan` only when asked: a watched repo's status cache is kept fresh. `active`:
       // the tab's worktree is laid out as the open one.
-      api.graph(repo.id, rt.limit ?? settings.commitLimit, { ...(rescan ? { pin, rescan } : { pin }), ...(worktree ? { active: worktree } : {}), ...(view ? { view } : {}) }),
+      readGraph(tabId, repo.id, rt.limit ?? settings.commitLimit, { ...(rescan ? { pin, rescan } : { pin }), ...(worktree ? { active: worktree } : {}), ...(view ? { view } : {}) }),
       // A worktree/index-only change can't alter refs, stashes or config: keep what's shown.
       side ? sideRead('sidebar', api.sidebar(repo.id)) : Promise.resolve(undefined),
       side ? sideRead('repo info', api.repoInfo(repo.id)) : Promise.resolve(undefined),
@@ -152,6 +168,7 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
   drop(tabId) {
     releaseCompareRef(tabId); // the MR/PR head its Compare fetched
     dropOlder(tabId);
+    held.delete(tabId);
     dropTabView(tabId);
     // A closed tab's center view (File History, the rebase editor) goes with it.
     closeCenterView(tabId);

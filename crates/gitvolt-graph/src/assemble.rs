@@ -202,7 +202,7 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
     // Unit tests and the harness (and so the e2e suite, including the opt-in real-repo spec)
     // verify every graph they build; a violation surfaces as an ordinary error, not a panic.
     #[cfg(any(test, feature = "testing"))]
-    crate::check_continuity(&lay, &nodes)?;
+    crate::check::checked(&lay, &nodes)?;
 
     let main_path = worktrees.iter().find(|w| w.is_main).map(|w| w.path.clone());
     let rows = entries

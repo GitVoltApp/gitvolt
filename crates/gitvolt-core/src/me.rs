@@ -112,7 +112,7 @@ mod tests {
         let repo = api.open_repo(&r.path().display().to_string()).await.unwrap().id;
         let show = |matcher| Rule { action: PresetAction::Show, matcher };
         let view = ViewSpec { rules: vec![show(Matcher::Trunk), show(Matcher::CheckedOut), show(Matcher::CommitsBy { author: Author::Me })], otherwise: PresetAction::Hide, ..Default::default() };
-        let json = api.dispatch(Request::Graph { repo, limit: None, pin: None, rescan: None, active: None, view: Some(view) }).await.unwrap();
+        let json = api.dispatch(Request::Graph { repo, limit: None, pin: None, rescan: None, active: None, view: Some(view), since: None }).await.unwrap();
         let view: ViewPayload = serde_json::from_value(json["view"].clone()).unwrap();
         let state = |name: &str| view.branches.iter().find(|b| b.name == name).unwrap_or_else(|| panic!("no {name} in {:?}", view.branches)).state;
         assert_eq!(state("mine/dock-panel"), BranchState::Shown);

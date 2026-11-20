@@ -8,30 +8,46 @@ import { branchMembership, labelsByRow, type BranchMembership } from './membersh
 // own arrays, so a new payload gets new indexes and an unchanged array keeps its old ones.
 
 const byRowCache = new WeakMap<readonly RefLabel[], Map<number, RefLabel[]>>();
-/** A refreshed payload's labels → the labels it replaced (`reuseUnchanged`). */
-const predecessors = new WeakMap<readonly RefLabel[], readonly RefLabel[]>();
+/** A refreshed payload's labels → the labels it replaced, and both payloads' rows (`reuseUnchanged`). */
+const predecessors = new WeakMap<readonly RefLabel[], { prev: readonly RefLabel[]; rows: readonly RowPayload[]; prevRows: readonly RowPayload[] }>();
 
-/** `next` replaces `prev` (a refresh of the same graph): `labelsByRowOf(next)` keeps the lists of
- * `prev`'s rows whose labels are the same objects, so those memoized rows needn't re-render. */
-export function labelsFollow(next: readonly RefLabel[], prev: readonly RefLabel[]): void {
+/** `next` replaces `prev` (a refresh of the same graph, `rows` replacing `prevRows`):
+ * `labelsByRowOf(next)` keeps the list of `prev`'s whose commit has the same labels, wherever its
+ * row went (a commit on top moves every row down one), so those memoized rows needn't re-render.
+ * Such a list's labels keep their old `row`: a list is found by its row, never by `label.row`. */
+export function labelsFollow(next: readonly RefLabel[], prev: readonly RefLabel[], rows: readonly RowPayload[], prevRows: readonly RowPayload[]): void {
   if (next === prev) return;
-  predecessors.set(next, prev);
+  predecessors.set(next, { prev, rows, prevRows });
   // One generation back only: a chain of predecessors would keep every old payload's labels alive.
   predecessors.delete(prev);
 }
+
+/** The same label, on whichever row: all but `row` equal (a label is plain JSON). */
+const sameLabel = (a: RefLabel, b: RefLabel) => a === b || JSON.stringify({ ...a, row: 0 }) === JSON.stringify({ ...b, row: 0 });
 
 /** `labelsByRow(labels)`, once per labels array. */
 export function labelsByRowOf(labels: RefLabel[]): Map<number, RefLabel[]> {
   let m = byRowCache.get(labels);
   if (!m) {
     m = labelsByRow(labels);
-    const prev = predecessors.get(labels);
+    const p = predecessors.get(labels);
     predecessors.delete(labels);
-    const before = prev && byRowCache.get(prev);
-    if (before) {
+    const before = p && byRowCache.get(p.prev);
+    if (p && before) {
+      // Each labeled commit's old row, by id.
+      const want = new Map<string, number>();
+      for (const row of m.keys()) {
+        const id = p.rows[row]?.id;
+        if (id !== undefined) want.set(id, row);
+      }
+      const oldRow = new Map<number, number>();
+      for (let i = 0; i < p.prevRows.length && oldRow.size < want.size; i++) {
+        const row = want.get(p.prevRows[i].id);
+        if (row !== undefined) oldRow.set(row, i);
+      }
       for (const [row, list] of m) {
-        const old = before.get(row);
-        if (old && old.length === list.length && old.every((l, i) => l === list[i])) m.set(row, old);
+        const old = before.get(oldRow.get(row) ?? -1);
+        if (old && old.length === list.length && old.every((l, i) => sameLabel(l, list[i]))) m.set(row, old);
       }
     }
     byRowCache.set(labels, m);

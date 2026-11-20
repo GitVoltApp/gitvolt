@@ -13,6 +13,24 @@ fn off_node(s: &Segment, l: u16) -> bool {
     s.dotted && s.from_lane == s.to_lane && s.from_lane != l && s.half != Half::Full
 }
 
+thread_local! {
+    static SKIP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// `f` with `assemble`'s continuity check off on this thread: a timing of the layout as the app
+/// runs it (the check costs about as much as the rest of `assemble` on a 2000-row window).
+pub fn without_continuity_check<T>(f: impl FnOnce() -> T) -> T {
+    let was = SKIP.replace(true);
+    let out = f();
+    SKIP.set(was);
+    out
+}
+
+/// `assemble`'s check, unless `without_continuity_check` turned it off.
+pub(crate) fn checked(layout: &Layout, nodes: &[LayoutNode]) -> Result<(), String> {
+    if SKIP.get() { Ok(()) } else { check_continuity(layout, nodes) }
+}
+
 /// Checks that `layout`'s segments form unbroken lines from top to bottom.
 ///
 /// Returns `Err` naming the row, lane and rule that failed on the first violation found.

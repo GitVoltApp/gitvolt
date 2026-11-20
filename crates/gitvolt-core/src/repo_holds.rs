@@ -138,6 +138,7 @@ impl Api {
             wip: Arc::new(crate::snapshot::WipCache::watched_only()),
             snapshot: Mutex::new(None),
             walk: Arc::default(),
+            graphs: Arc::default(),
             me_email: Mutex::default(),
             config,
         });

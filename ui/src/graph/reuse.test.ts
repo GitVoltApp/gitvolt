@@ -66,4 +66,14 @@ describe('reuseUnchanged: a refresh keeps the objects of what it left alone', ()
     expect(after.get(1)).not.toBe(before.get(1));
     expect(after.get(1)?.map((l) => l.name)).toEqual(['old', 'new']);
   });
+
+  it('a commit on top: a label list moved down with its commit is kept, so its row needn\'t render again', () => {
+    const before = labelsByRowOf(prev.labels);
+    const fresh = payload([row('c', ['b']), ...clone(prev.rows)], [label(0, 'main', true), label(2, 'old')]);
+    const after = labelsByRowOf(reuseUnchanged(prev, fresh).labels);
+    expect(after.get(2)).toBe(before.get(1));
+    // `main` moved to another commit: its list is new.
+    expect(after.get(0)).not.toBe(before.get(0));
+    expect(after.get(0)?.map((l) => l.name)).toEqual(['main']);
+  });
 });

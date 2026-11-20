@@ -20,14 +20,21 @@ pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn
     let mut labels = Vec::new();
     let mut merged: HashSet<&str> = HashSet::new();
     let shown = |r: &&RefIn| !hidden.contains(r.full_name.as_str());
+    // The remote branches at each commit, in the refs' order: a local branch's counterparts are
+    // among its commit's (one lookup per branch, not a scan of every ref).
+    let mut remotes_at: HashMap<Oid, Vec<(&RefIn, &String)>> = HashMap::new();
+    for rr in refs.refs.iter().filter(shown) {
+        if let RefKind::Remote { remote } = &rr.kind {
+            remotes_at.entry(rr.target).or_default().push((rr, remote));
+        }
+    }
     for local in refs.refs.iter().filter(|r| r.kind == RefKind::Local).filter(shown) {
         let Some(row) = row_of(&local.target) else { continue };
         let mut remotes = Vec::new();
-        for rr in refs.refs.iter().filter(shown) {
-            let RefKind::Remote { remote } = &rr.kind else { continue };
+        for &(rr, remote) in remotes_at.get(&local.target).map_or(&[][..], Vec::as_slice) {
             let branch_part = &rr.short_name[remote.len() + 1..];
             let is_counterpart = branch_part == local.short_name || local.upstream.as_deref() == Some(rr.full_name.as_str());
-            if rr.target == local.target && is_counterpart {
+            if is_counterpart {
                 remotes.push(RemoteRefLabel { full_name: rr.full_name.clone(), remote: remote.clone(), host: host_name(remote), host_kind: host(remote) });
                 merged.insert(rr.full_name.as_str());
             }

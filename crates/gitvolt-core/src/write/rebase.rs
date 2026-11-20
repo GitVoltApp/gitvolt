@@ -10,10 +10,11 @@
 //!
 //! The UI follows each pick through the tap, not the watcher: the watcher's git-dir watch isn't
 //! recursive, so `rebase-merge/msgnum` rewrites never fire, and the write's watcher hold mutes
-//! the rest. Every tick carries the latest step (`opProgress.step`), and a tick on which HEAD
-//! moved sends `refsUpdated`, so the graph shows the new commits.
+//! the rest. Every tick carries the latest step (`opProgress.step`), and the tap polls HEAD's
+//! file every 40 ms while git runs, sending `refsUpdated` when it moved, so the graph shows each
+//! pick's commit as it lands.
 
-use crate::api::{blocking, Api, RepoHandle};
+use crate::api::{blocking, Api};
 use crate::error::{gix_err, short_ref, GbError, GbErrorKind};
 use crate::events::{AppEvent, ChangeKind, OpKind};
 use crate::git::GitInvocation;
@@ -27,23 +28,38 @@ use crate::write::{is_ancestor, run_write, Pause, Plan, Pre, WriteCx, WriteInten
 use gix::ObjectId;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::sync::Arc;
 use ts_rs::TS;
 
-/// The tick's graph update: when HEAD moved since the last tick, every tab of the
-/// repository reloads its graph (`refsUpdated`), so the new commits appear and the rebasing chip
-/// moves. gix only: no locks, no git process.
-fn head_ticker(api: &Api, h: &Arc<RepoHandle>, root: &Path, head: Option<String>) -> impl FnMut() + Send + 'static {
-    let (bus, ids, root) = (api.bus.clone(), api.repo_writes(h).ids(), root.to_path_buf());
+/// The HEAD poll (`progress::HEAD_POLL`, while git runs): when HEAD moved since the last poll,
+/// every tab of the repository reloads its graph (`refsUpdated`), so each pick's commit appears
+/// and the rebasing chip moves. A read of HEAD's file (and a loose branch ref): no repository
+/// open, lock or git process per poll.
+fn head_ticker(bus: crate::events::EventBus, ids: Vec<u32>, root: &Path, head: Option<String>) -> impl FnMut() + Send + 'static {
+    let dirs = gix::open(root).ok().map(|r| (r.git_dir().to_path_buf(), r.common_dir().to_path_buf()));
+    let root = root.to_path_buf();
     let mut last = head;
     move || {
-        let now = head_oid(&root);
+        let now = match &dirs {
+            Some((git_dir, common)) => read_head(git_dir, common).or_else(|| head_oid(&root)),
+            None => head_oid(&root),
+        };
         if now != last {
             last = now;
             for id in &ids {
                 bus.emit(AppEvent::RefsUpdated { repo: *id });
             }
         }
+    }
+}
+
+/// HEAD's commit from its file: detached (as through a rebase) it's the oid itself, on a
+/// branch the branch's loose ref. `None` for anything else (a packed ref): ask gix.
+fn read_head(git_dir: &Path, common: &Path) -> Option<String> {
+    let hex = |s: &str| Some(s.trim().to_string()).filter(|s| s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit()));
+    let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
+    match head.trim().strip_prefix("ref: ") {
+        Some(name) => hex(&std::fs::read_to_string(common.join(name)).ok()?),
+        None => hex(&head),
     }
 }
 
@@ -85,13 +101,13 @@ pub(crate) async fn run_rebase_stop(cx: &mut WriteCx<'_>, args: Vec<String>, tar
         },
         None => gix::open(cx.root).ok().and_then(|r| r.rev_parse_single(target).ok().map(|t| t.detach())),
     };
-    let ticker = head_ticker(cx.api, cx.h, cx.root, head_before.clone());
+    let ticker = head_ticker(cx.api.bus.clone(), cx.api.repo_writes(cx.h).ids(), cx.root, head_before.clone());
     // The branch the status bar names: HEAD's, or (a Continue, HEAD detached) the one being rebased.
     let branch = cx.before.head.branch.clone().or_else(|| match crate::in_progress::read(cx.root).ok().flatten() {
         Some(InProgress::Rebase { head_name, .. }) => Some(head_name.strip_prefix("refs/heads/").unwrap_or(&head_name).to_string()),
         _ => None,
     });
-    let tap = progress::tap(cx.api.bus.clone(), cx.op.id, "Rebasing", branch, cx.output(), progress::TICK, ticker);
+    let tap = progress::tap(cx.api.bus.clone(), cx.op.id, "Rebasing", branch, cx.output(), progress::HEAD_POLL, ticker);
     let inv = cx.git_to(args, tap.tx.clone()).envs(envs);
     let res = cx.run_git(inv).await;
     let last = tap.finish().await;
@@ -1194,8 +1210,9 @@ mod tests {
     /// The watcher can't see a pick (`msgnum` sits in `rebase-merge/`),
     /// so the tap carries each one. With picks slower than a tick, every step arrives, and so
     /// does a graph reload per pick. Each pick's commit waits (its `prepare-commit-msg` hook)
-    /// until its step's reload has arrived, so a tick never lands mid-pick, however loaded the
-    /// machine.
+    /// until its step and the reload of the HEAD before it (the checkout of `main`, then each
+    /// pick's commit) have arrived, whichever first, so a poll never lands mid-pick, however
+    /// loaded the machine.
     #[tokio::test(flavor = "multi_thread")]
     async fn each_pick_reaches_the_ui_as_a_step_and_a_graph_reload() {
         let r = TestRepo::new();
@@ -1208,20 +1225,19 @@ mod tests {
         let id = open(&api, r.path()).await;
         let mut rx = api.subscribe();
         // The write's own refresh (`repoChanged`, then `refsUpdated`) comes after the run.
-        let (mut steps, mut reloads, mut announced, mut step) = (Vec::new(), 0, false, None);
-        let mut seen = |ev: AppEvent| match ev {
-            AppEvent::OpProgress { step: Some(s), .. } => {
-                steps.push((s.n, s.m));
-                step = Some(s.n);
+        let (mut steps, mut reloads, mut announced, mut released) = (Vec::new(), 0, false, 0);
+        let mut seen = |ev: AppEvent| {
+            match ev {
+                AppEvent::OpProgress { step: Some(s), .. } => steps.push((s.n, s.m)),
+                AppEvent::RefsUpdated { .. } if !announced => reloads += 1,
+                AppEvent::RepoChanged { .. } => announced = true,
+                _ => {}
             }
-            AppEvent::RefsUpdated { .. } if !announced => {
-                reloads += 1;
-                if let Some(n) = step.take() {
-                    std::fs::write(gate.path().join(format!("go-{n}")), "").unwrap();
-                }
+            let step = steps.last().map_or(0, |s| s.0);
+            while released < step.min(reloads) {
+                released += 1;
+                std::fs::write(gate.path().join(format!("go-{released}")), "").unwrap();
             }
-            AppEvent::RepoChanged { .. } => announced = true,
-            _ => {}
         };
         let run = rebase(&api, id, r.path(), "main", Some(false));
         tokio::pin!(run);
@@ -1242,6 +1258,42 @@ mod tests {
         assert_eq!(res["outcome"], serde_json::json!({"status": "done", "commits": 3, "fastForward": false}));
         assert_eq!(steps, vec![(1, 3), (2, 3), (3, 3)]);
         assert!(reloads >= 3, "a graph reload per pick, before the end's: {reloads}");
+    }
+
+    /// The HEAD poll's `refsUpdated` comes only when HEAD moved: a detached HEAD (as during a
+    /// rebase) and a branch's, in the main worktree and a linked one.
+    #[test]
+    fn the_head_poll_announces_only_a_head_that_moved() {
+        let r = TestRepo::new();
+        r.commit("one");
+        let bus = crate::events::EventBus::new();
+        let mut rx = bus.subscribe();
+        let mut moved = |poll: &mut dyn FnMut()| {
+            poll();
+            let mut n = 0;
+            while let Ok(ev) = rx.try_recv() {
+                assert!(matches!(ev, AppEvent::RefsUpdated { repo: 7 }), "{ev:?}");
+                n += 1;
+            }
+            n
+        };
+        let mut poll = head_ticker(bus.clone(), vec![7], r.path(), Some(r.git(&["rev-parse", "HEAD"])));
+        assert_eq!(moved(&mut poll), 0);
+        r.commit("two");
+        assert_eq!((moved(&mut poll), moved(&mut poll)), (1, 0), "on the branch");
+        r.git(&["checkout", "-q", "--detach", "HEAD~1"]);
+        assert_eq!((moved(&mut poll), moved(&mut poll)), (1, 0), "detached");
+        r.git(&["commit", "-q", "--allow-empty", "-m", "picked"]);
+        assert_eq!(moved(&mut poll), 1, "a commit on the detached HEAD");
+        // A linked worktree's HEAD is its own.
+        let wt = tempfile::tempdir().unwrap();
+        let path = wt.path().join("linked");
+        r.git(&["worktree", "add", "-q", "--detach", &path.display().to_string(), "main"]);
+        let mut linked = head_ticker(bus.clone(), vec![7], &path, Some(r.git(&["rev-parse", "main"])));
+        assert_eq!(moved(&mut linked), 0);
+        r.git_in(&path, &["commit", "-q", "--allow-empty", "-m", "there"]);
+        assert_eq!(moved(&mut linked), 1);
+        assert_eq!(moved(&mut poll), 0, "the main worktree's HEAD didn't move");
     }
 
     #[tokio::test]

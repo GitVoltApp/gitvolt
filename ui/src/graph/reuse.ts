@@ -66,6 +66,6 @@ const labelKey = (l: RefLabel) => `${l.row}\u0000${l.tag ? 't' : 'b'}\u0000${l.n
 export function reuseUnchanged(prev: GraphPayload, next: GraphPayload): GraphPayload {
   const rows = keep<RowPayload>(prev.rows, next.rows, (r) => r.id, sameRow);
   const labels = keep<RefLabel>(prev.labels, next.labels, labelKey);
-  labelsFollow(labels, prev.labels);
+  labelsFollow(labels, prev.labels, rows, prev.rows);
   return rows === next.rows && labels === next.labels ? next : { ...next, rows, labels };
 }

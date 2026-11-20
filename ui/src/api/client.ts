@@ -10,6 +10,7 @@ import type { FontFamily } from './gen/FontFamily';
 import type { GitflowConfig } from './gen/GitflowConfig';
 import type { GitflowFinishOutcome } from './gen/GitflowFinishOutcome';
 import type { GraphPayload } from './gen/GraphPayload';
+import type { GraphReply } from './gen/GraphReply';
 import type { HexDumpPayload } from './gen/HexDumpPayload';
 import type { HistoryHit } from './gen/HistoryHit';
 import type { LocateResult } from './gen/LocateResult';
@@ -162,6 +163,9 @@ export function onEvent(h: EventHandler): () => void {
   return () => { handlers.delete(h); };
 }
 
+/** A `graph` read's options; see `api.graph`. */
+export interface GraphExtra { pin?: PinSetting; rescan?: boolean; active?: string; view?: ViewSpec; since?: number }
+
 /** One request, typed by the generated `Request`; `T` is its response. */
 const call = <T>(req: Request) => t().call(req) as Promise<T>;
 
@@ -175,9 +179,11 @@ export const api = {
   openRepo: (path: string) => t().call({ method: 'openRepo', params: { path } }) as Promise<RepoSummary>,
   /** `extra`: the pinned trunk, `rescan` to re-read the WIP status, the tab's
    * `active` worktree, laid out as the open one, and the branch preset's `view`
-   * (none under All). */
-  graph: (repo: number, limit: number | null = null, extra: { pin?: PinSetting; rescan?: boolean; active?: string; view?: ViewSpec } = {}) =>
-    call<GraphPayload>({ method: 'graph', params: { repo, limit, ...extra } }),
+   * (none under All). With `since`, the graph version the tab holds (0: none), the reply is a
+   * `GraphReply`, only what changed since when the core still has that version (graph/delta.ts);
+   * a backend that ignores it (the website demo) sends the plain payload. */
+  graph: <E extends GraphExtra>(repo: number, limit: number | null = null, extra: E = {} as E) =>
+    call<E extends { since: number } ? GraphReply | GraphPayload : GraphPayload>({ method: 'graph', params: { repo, limit, ...extra } }),
   // --- branch presets ---
   /** The reveal panel's rows for `key` (`branch:<name>` or `fold:<merge sha>`), laid out as the
    * `graph` with the same window, pin and worktree; `null` for a stale key. */

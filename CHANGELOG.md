@@ -48,6 +48,16 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   the commits it last read, so a refresh reads only the new ones instead of every commit in the
   window again, and find keeps their searchable text too. The graph also keeps the rows that
   didn't change, so a refresh that leaves them as they were redraws none of them.
+- **A rebase shows each commit in the graph as it lands.** GitVolt checks HEAD every 40 ms while
+  git rebases (it was every 100 ms, and only when git's step counter moved), reading HEAD's file
+  rather than opening the repository, and reloads the graph only when HEAD moved: on a big
+  repository, a 20-commit rebase showed 9 of its commits on their own before, every one now.
+- **A graph refresh sends only what changed (performance).** GitVolt remembers the last graphs it
+  sent, and a refresh sends the new and changed rows instead of the whole graph: after a commit,
+  6 KB instead of 825 KB on a 2,000-commit window. A new commit on top redraws that row and the
+  rows whose lines changed; the others only move down.
+- **Laying the graph out takes a third of the time (performance):** commit ids are spelled out
+  several times faster, and branch chips find their remote branches without a scan of every ref.
 - **Merges, rebases and other changes do less work after they run (performance).** On a big
   repository (50,000 files):
   - Every change re-reads the file lists with `git diff` only for the side `git status` shows

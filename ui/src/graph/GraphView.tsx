@@ -218,26 +218,25 @@ const EDITOR_MIN_W = 200;
  * widths, label lists and membership objects, stable callbacks), so scrolling re-renders only
  * the view (as rows enter or leave the screen), not every row; a hover re-renders only the rows whose membership
  * chip appears or goes, and a branch focus only the rows whose `dimmed` changes.
+ * Its position (`index`, `start`) is the row element's alone: its cells (`RowCells`) are memoized
+ * apart, so a refresh that shifts the rows (a commit on top) moves them without rendering them.
  * Settings › Theme's live preview draws its rows with it too (theme/editor/LivePreview.tsx).
  */
-export const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor, badges, domId }: GraphRowProps) {
+export const GraphRow = memo(function GraphRow({ index, start, onSelect, onHover, onContextMenu, onWipContextMenu, onRowDoubleClick, domId, ...cells }: GraphRowProps) {
+  const { row, rowH, dpr, labels, context = false } = cells;
   const isWip = row.kind === 'wip';
   // A collapsed branch's ⋮ row: no commit behind it, so no menu, double-click or copy.
   const collapsed = row.kind === 'collapsed';
-  // A column at its minimum collapses its cells too: icon-only chips, the avatar only.
-  const authorAvatar = isCollapsed('author', cols.author);
-  // The row-dim mechanism's classes, on the text cells only (never the chips or the graph): the
-  // shared motion class plus the level's own colour class.
-  const dim = dimmed ? ` ${ROW_DIM_CLASS} ${rowDimKindClass(dimmed)}` : '';
-  // The chip-to-node connector's line, on the device pixel rows the canvas strokes it on:
-  // the checked-out branch's is a graph line, 2 px.
+  // The chip-to-node connector's line, on the device pixel rows the canvas strokes it on (the
+  // checked-out branch's is a graph line, 2 px), from the row's top: the same for most rows, so
+  // the cells needn't render again when the row moves.
   const line = labels.length > 0 ? connectorLine(start, rowH, labels[0].isHead ? LINE_W : 1, dpr) : null;
   return (
     <div
       id={domId ?? graphRowId(row.id)}
       role="row"
       aria-rowindex={index + 1}
-      aria-selected={selected}
+      aria-selected={cells.selected}
       aria-label={collapsed && row.collapsed ? collapsedTexts(row.collapsed).label : undefined}
       className={context ? 'graph-row is-context' : 'graph-row'}
       // `top`, not `transform: translateY`: a transform would make each row its own
@@ -254,6 +253,29 @@ export const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH
       onContextMenu={collapsed ? undefined : (e) => (isWip ? onWipContextMenu : onContextMenu)?.(e, row)}
       onDoubleClick={onRowDoubleClick && !collapsed ? () => onRowDoubleClick(row) : undefined}
     >
+      <RowCells {...cells} lineTop={line ? line.top - start : null} lineH={line?.height ?? 0} />
+    </div>
+  );
+});
+
+type RowCellsProps = Omit<GraphRowProps, 'index' | 'start' | 'onSelect' | 'onHover' | 'onContextMenu' | 'onWipContextMenu' | 'onRowDoubleClick' | 'domId'> & {
+  /** The connector's line from the row's top (`connectorLine`), or null without one. */
+  lineTop: number | null;
+  lineH: number;
+};
+
+/** A row's cells: everything but where the row is. `selected` and `context` re-render them as
+ * before (the row element shows both). */
+const RowCells = memo(function RowCells({ row, repoId, cols, labels, membership, messages, onCopySha, dimmed, onBranchHover, onLabelContextMenu, onLabelDoubleClick, rebasing = null, editor, badges, lineTop, lineH }: RowCellsProps) {
+  const isWip = row.kind === 'wip';
+  const collapsed = row.kind === 'collapsed';
+  // A column at its minimum collapses its cells too: icon-only chips, the avatar only.
+  const authorAvatar = isCollapsed('author', cols.author);
+  // The row-dim mechanism's classes, on the text cells only (never the chips or the graph): the
+  // shared motion class plus the level's own colour class.
+  const dim = dimmed ? ` ${ROW_DIM_CLASS} ${rowDimKindClass(dimmed)}` : '';
+  return (
+    <>
       {/* A hidden column has width 0 and no cell. */}
       {cols.labels > 0 && (
         <span role="gridcell" data-col="labels" className="col-labels" style={{ width: cols.labels }} onMouseDown={onLabelsMouseDown}>
@@ -270,7 +292,7 @@ export const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH
             onBranchHover={onBranchHover}
             compact={isCollapsed('labels', cols.labels)}
             width={cols.labels}
-            line={line && { top: line.top - start, height: line.height }}
+            line={lineTop === null ? null : { top: lineTop, height: lineH }}
             rebasing={rebasing}
             sha={row.id}
             onContextMenu={onLabelContextMenu && ((label, e) => onLabelContextMenu(e, row, label))}
@@ -301,7 +323,7 @@ export const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH
       {/* The empty space past the last column (W.2): takes the row's highlights to the panel's right
           edge. Not a gridcell: a click selects the row through the row's own handler. */}
       <span aria-hidden="true" data-col="filler" className="col-filler" />
-    </div>
+    </>
   );
 });
 

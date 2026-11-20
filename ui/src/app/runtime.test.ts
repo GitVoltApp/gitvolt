@@ -85,6 +85,52 @@ describe('runtime', () => {
     expect(api.repoInfo).toHaveBeenCalledTimes(1);
   });
 
+  it('a read names the version the tab holds, and a delta changes the graph it holds', async () => {
+    gate = false;
+    const versions = [3, 4];
+    const sent: (number | undefined)[] = [];
+    api.graph.mockImplementation(async (_repo: number, _limit: number, extra: { since?: number }) => {
+      sent.push(extra.since);
+      const version = versions.shift()!;
+      if (version === 3) return { kind: 'full', version, graph: payload(['b', 'a']) };
+      return { kind: 'delta', version, since: 3, rows: 3, splices: [{ at: 0, remove: 0, insert: payload(['c']).rows }], patched: [], rest: payload() };
+    });
+    useRuntime.setState({ tabs: { v: ready() } });
+    await useRuntime.getState().refresh('v');
+    const first = useRuntime.getState().tabs.v.graph!;
+    await useRuntime.getState().refresh('v');
+    const next = useRuntime.getState().tabs.v.graph!;
+    expect(sent).toEqual([0, 3]);
+    expect(next.rows.map((r) => r.id)).toEqual(['c', 'b', 'a']);
+    expect(next.rows[1]).toBe(first.rows[0]);
+    // A closed tab's version goes with it: a tab opened under its id starts over.
+    useRuntime.getState().drop('v');
+    useRuntime.setState({ tabs: { v: ready() } });
+    api.graph.mockImplementation(async (_repo: number, _limit: number, extra: { since?: number }) => {
+      sent.push(extra.since);
+      return payload(['a']);
+    });
+    await useRuntime.getState().refresh('v');
+    expect(sent.at(-1)).toBe(0);
+    // A plain payload (the website demo's) is held with no version.
+    await useRuntime.getState().refresh('v');
+    expect(sent.at(-1)).toBe(0);
+  });
+
+  it('a delta that doesn\'t fit what the tab holds reads the whole graph again', async () => {
+    gate = false;
+    const sent: (number | undefined)[] = [];
+    api.graph.mockImplementation(async (_repo: number, _limit: number, extra: { since?: number }) => {
+      sent.push(extra.since);
+      if (extra.since === 0 && sent.length > 1) return { kind: 'full', version: 9, graph: payload(['z']) };
+      return { kind: 'delta', version: 8, since: 5, rows: 1, splices: [], patched: [], rest: payload() };
+    });
+    useRuntime.setState({ tabs: { w: ready() } });
+    await useRuntime.getState().refresh('w');
+    expect(sent).toEqual([0, 0]);
+    expect(useRuntime.getState().tabs.w.graph!.rows.map((r) => r.id)).toEqual(['z']);
+  });
+
   it('the runtime sends no view under All', async () => {
     gate = false;
     useAppState.setState({ profile: { ...EMPTY_PROFILE, repos: {} } });

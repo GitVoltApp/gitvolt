@@ -7,6 +7,7 @@ mod ascii;
 mod assemble;
 #[cfg(any(test, feature = "testing"))]
 mod check;
+mod delta;
 mod input;
 mod labels;
 pub mod layout;
@@ -24,7 +25,8 @@ mod walk;
 pub use ascii::{render_ascii, AsciiRow};
 pub use assemble::{assemble, build, build_hidden_owner, build_preview, build_reveal, graph_tips, walk_order};
 #[cfg(any(test, feature = "testing"))]
-pub use check::check_continuity;
+pub use check::{check_continuity, without_continuity_check};
+pub use delta::{apply as apply_delta, diff as diff_payloads, GraphDelta, GraphFull, GraphReply, RowPatch, RowSplice};
 pub use input::{CommitIn, ForkFacts, GraphInput, GraphRequest, HeadIn, RefIn, RefKind, RefsIn, StashIn, WorktreeIn};
 pub use layout::{layout, GraphRow, Half, Layout, LayoutNode, LayoutState, NodeKind, Parent, Segment, LANE_COLORS};
 pub use message::split_message;

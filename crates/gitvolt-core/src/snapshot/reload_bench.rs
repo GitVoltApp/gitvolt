@@ -1,8 +1,9 @@
 //! A timing of one HEAD-only graph reload on a generated repository (20k commits, 50k files,
 //! window 2000), stage by stage. Ignored by default; in release mode:
 //! `cargo nextest run --release -p gitvolt-core --run-ignored only --no-capture reload_bench`.
-//! The test build's layout runs the continuity check (`gitvolt-graph/testing`), so `assemble` here
-//! is somewhat above the app's.
+//! The test build's layout runs the continuity check (`gitvolt-graph/testing`): `assemble` is
+//! timed without it, as the app runs it, and with it; `build_graph_with_text` here
+//! includes it. Also the delta a tab holding the last payload is sent instead (`GraphReply`).
 
 use super::*;
 use crate::log::CommandLog;
@@ -148,9 +149,9 @@ async fn reload_bench() {
 
     let mut times = Times::default();
     let t = Instant::now();
-    build_graph_with_text(ts.clone(), workdir.clone(), cli.clone(), opts.clone()).await.unwrap();
+    let (mut last, _) = build_graph_with_text(ts.clone(), workdir.clone(), cli.clone(), opts.clone()).await.unwrap();
     eprintln!("cold build: {:?}", t.elapsed());
-    let mut bytes = 0;
+    let (mut bytes, mut delta_bytes) = (0, 0);
     for i in 0..STEPS {
         // Stage by stage, as `build_graph_with_text` runs them.
         step(&r, 2 * i);
@@ -166,10 +167,10 @@ async fn reload_bench() {
         });
         refs.remote_tags = remote_tags_input(&opts.remote_tags);
         let stash_ids: HashSet<Oid> = refs.stashes.iter().map(|s| s.id).collect();
-        let last = opts.walk_cache.as_ref().unwrap().lock().unwrap().as_ref().map(|w| w.walked.clone());
+        let walk_last = opts.walk_cache.as_ref().unwrap().lock().unwrap().as_ref().map(|w| w.walked.clone());
         let walked = times.time("3 walk (with find texts)", || cached_walk(&repo, tips, &stash_ids, &opts).unwrap());
         // `cached_walk` made them: again, on their own.
-        times.time("5 find texts (inside 3)", || find_texts(&walked.result, last.as_deref()));
+        times.time("5 find texts (inside 3)", || find_texts(&walked.result, walk_last.as_deref()));
         let input = GraphInput {
             refs,
             worktrees: worktrees_input(&worktrees),
@@ -182,18 +183,105 @@ async fn reload_bench() {
             forks: opts.forks.clone(),
             view: None,
         };
-        let payload = times.time("4 assemble", || gitvolt_graph::assemble(&input, &walked.result).unwrap());
-        let json = times.time("6 json", || serde_json::to_vec(&payload).unwrap());
+        // The app's build has no continuity check; the tests' (and so `build_graph_with_text`
+        // here) runs it on every layout.
+        let payload = times.time("4 assemble", || gitvolt_graph::without_continuity_check(|| gitvolt_graph::assemble(&input, &walked.result).unwrap()));
+        times.time("4b assemble, with the tests' check", || gitvolt_graph::assemble(&input, &walked.result).unwrap());
+        let json = times.time("6 json (whole payload)", || serde_json::to_vec(&payload).unwrap());
         bytes = json.len();
+        // What a tab holding the last payload is sent instead: one commit on top.
+        let delta = times.time("8 delta diff", || gitvolt_graph::diff_payloads(&last, &payload, 1, 2));
+        let json = times.time("9 json (delta)", || serde_json::to_vec(&gitvolt_graph::GraphReply::Delta(delta)).unwrap());
+        delta_bytes = json.len();
         // And the whole of it, after another step.
         step(&r, 2 * i + 1);
         let t = Instant::now();
-        build_graph_with_text(ts.clone(), workdir.clone(), cli.clone(), opts.clone()).await.unwrap();
+        last = build_graph_with_text(ts.clone(), workdir.clone(), cli.clone(), opts.clone()).await.unwrap().0;
         times.0.entry("7 build_graph_with_text").or_default().push(t.elapsed());
     }
     eprintln!("\nHEAD-only reload, median of {STEPS} (window {DEFAULT_COMMIT_LIMIT}):");
     for stage in times.0.keys() {
-        eprintln!("  {stage:<26} {:>9.2} ms", times.median(stage).as_secs_f64() * 1e3);
+        eprintln!("  {stage:<34} {:>9.2} ms", times.median(stage).as_secs_f64() * 1e3);
     }
-    eprintln!("  payload                    {:>9.1} KB", bytes as f64 / 1024.0);
+    eprintln!("  payload (whole)                    {:>9.1} KB", bytes as f64 / 1024.0);
+    eprintln!("  payload (delta, a commit on top)   {:>9.1} KB", delta_bytes as f64 / 1024.0);
+}
+
+/// A 20-commit rebase on the generated repository, its graph followed as the UI follows it: on
+/// each `refsUpdated` one `graph` read naming the version held (a delta), none while one runs.
+/// Counts the picks the graph showed on their own (a distinct HEAD in a read during the run).
+/// `cargo nextest run --release -p gitvolt-core --run-ignored only --no-capture rebase_stream_bench`.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "a timing: run in release with --run-ignored only"]
+async fn rebase_stream_bench() {
+    use crate::api::{Api, Request};
+    use crate::events::AppEvent;
+    use crate::write::integrate::IntegrateKind;
+    const PICKS: usize = 20;
+    let r = TestRepo::new();
+    generate(&r);
+    // A branch of 20 commits off an older main, each adding a file of its own: no conflicts.
+    r.git(&["branch", "stream", "main~300"]);
+    r.git(&["checkout", "-q", "-f", "stream"]);
+    for i in 0..PICKS {
+        r.write(&format!("stream/s{i:02}.txt"), &format!("step {i}\n"));
+        r.git(&["add", "--", &format!("stream/s{i:02}.txt")]);
+        r.git(&["commit", "-q", "-m", &format!("Stream step {i}")]);
+    }
+    let data = tempfile::tempdir().unwrap();
+    let api = Api::new(GitCli::new(Arc::new(CommandLog::new(5000))).with_env(isolated_git_env()), None).with_data_dir(data.path().to_path_buf());
+    let path = canonical(r.path()).display().to_string();
+    let id = api.dispatch(Request::OpenRepo { path: path.clone() }).await.unwrap()["id"].as_u64().unwrap() as u32;
+    // Watched, as the active tab is: a graph read takes the watcher's status, no `git status`.
+    api.dispatch(Request::WatchRepo { repo: id }).await.unwrap();
+    let graph = |since: u32| Request::Graph { repo: id, limit: None, pin: None, rescan: None, active: None, view: None, since: Some(since) };
+    let first = api.dispatch(graph(0)).await.unwrap();
+    let mut version = first["version"].as_u64().unwrap() as u32;
+    let mut rx = api.subscribe();
+    let started = Instant::now();
+    let run = api.dispatch(Request::Integrate { repo: id, worktree: path, kind: IntegrateKind::Rebase, target: "main".into(), update_refs: Some(false), expect: Default::default(), ff_only: None, confirm: Default::default() });
+    tokio::pin!(run);
+    let (mut events, mut reads, mut deltas, mut bytes, mut read_ms) = (0, 0, 0, 0, Vec::new());
+    let mut heads: Vec<String> = vec![];
+    let res = loop {
+        let mut dirty = false;
+        tokio::select! {
+            res = &mut run => break res,
+            Ok(ev) = rx.recv() => if matches!(ev, AppEvent::RefsUpdated { .. }) {
+                events += 1;
+                dirty = true;
+            },
+        }
+        // Events that came meanwhile coalesce into this one read, as the UI's refresh does.
+        while let Ok(ev) = rx.try_recv() {
+            if matches!(ev, AppEvent::RefsUpdated { .. }) {
+                events += 1;
+                dirty = true;
+            }
+        }
+        if dirty {
+            let t = Instant::now();
+            let reply = api.dispatch(graph(version)).await.unwrap();
+            read_ms.push(t.elapsed().as_secs_f64() * 1e3);
+            reads += 1;
+            deltas += usize::from(reply["kind"] == "delta");
+            bytes += reply.to_string().len();
+            version = reply["version"].as_u64().unwrap() as u32;
+            let head = if reply["kind"] == "delta" { &reply["rest"]["head"]["target"] } else { &reply["graph"]["head"]["target"] };
+            if let Some(h) = head.as_str()
+                && heads.last().map(String::as_str) != Some(h)
+            {
+                heads.push(h.to_string());
+            }
+        }
+    };
+    let took = started.elapsed();
+    assert_eq!(res.unwrap()["outcome"]["status"], "done");
+    read_ms.sort_by(f64::total_cmp);
+    let median = read_ms.get(read_ms.len() / 2).copied().unwrap_or(0.0);
+    eprintln!(
+        "\n{PICKS}-commit rebase in {took:?}: {events} refsUpdated, {reads} graph reads ({deltas} deltas, {:.1} KB each on average, median {median:.1} ms), {} distinct HEADs shown during the run",
+        bytes as f64 / 1024.0 / reads.max(1) as f64,
+        heads.len()
+    );
 }

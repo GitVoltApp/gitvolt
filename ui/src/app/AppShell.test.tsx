@@ -139,7 +139,7 @@ describe('AppShell: tabs inside <Activity>', () => {
     expect(api.watchRepo).toHaveBeenCalledWith(1);
     const graphAt = api.graph.mock.invocationCallOrder.at(-1)!;
     expect(api.watchRepo.mock.invocationCallOrder[0]).toBeLessThan(graphAt);
-    expect(graphCalls(1).at(-1)?.[2]).toEqual({ pin: undefined, active: '/a' }); // the tab's worktree
+    expect(graphCalls(1).at(-1)?.[2]).toEqual({ pin: undefined, active: '/a', since: 0 }); // the tab's worktree; no version held (plain payloads)
     expect(api.openRepo).toHaveBeenCalledTimes(2);
   });
 

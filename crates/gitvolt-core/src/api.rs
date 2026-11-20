@@ -76,6 +76,12 @@ pub enum Request {
         #[serde(default)]
         #[ts(optional)]
         view: Option<gitvolt_graph::ViewSpec>,
+        /// The graph version the UI holds (0: none yet). Given, the reply is a
+        /// `gitvolt_graph::GraphReply`, only what changed since when the core still has that
+        /// version; absent, a plain `GraphPayload`.
+        #[serde(default)]
+        #[ts(optional)]
+        since: Option<u32>,
     },
     // --- branch presets ---
     /// The reveal panel's rows for a collapsed run or a folded merge (`key`, as `expanded` spells
@@ -1430,6 +1436,8 @@ pub(crate) struct RepoHandle {
     /// The last graph walk, reused while nothing it walked from moved: every
     /// tab on the repository shares it, whichever worktree it has active.
     pub(crate) walk: Arc<Mutex<Option<crate::snapshot::WalkCache>>>,
+    /// The last graph payloads by version, for the next read's delta.
+    pub(crate) graphs: Arc<crate::snapshot::GraphVersions>,
     /// The repository's `user.email` (`None`: unset) and the config it was read under
     /// (`Api::me_emails`).
     pub(crate) me_email: Mutex<Option<(crate::me::ConfigStamp, Option<String>)>>,
@@ -2409,7 +2417,7 @@ impl Api {
                 to_json(())
             }
             Request::OpenRepo { path } => to_json(self.open_repo(&path).await?),
-            Request::Graph { repo, limit, pin, rescan, active, view } => {
+            Request::Graph { repo, limit, pin, rescan, active, view, since } => {
                 let h = self.handle(repo)?;
                 let mut opts = self.build_options(&h, limit, pin, active, view).await?;
                 // The watcher keeps the worktree shown responsive (the others throttled).
@@ -2422,7 +2430,10 @@ impl Api {
                     let next = crate::find::FindSnapshot::new(texts, snapshot.as_deref());
                     *snapshot = Some(Arc::new(next));
                 }
-                to_json(payload)
+                match since {
+                    Some(since) => h.graphs.reply(payload, since).map_err(|e| GbError::other(format!("serialize: {e}"))),
+                    None => to_json(payload),
+                }
             }
             // --- branch presets ---
             Request::GraphReveal { repo, limit, pin, active, view, key, below } => {
@@ -3516,6 +3527,7 @@ impl Api {
             wip: old.wip.clone(),
             snapshot: Mutex::new(old.snapshot.lock().expect("snapshot poisoned").clone()),
             walk: old.walk.clone(),
+            graphs: old.graphs.clone(),
             me_email: Mutex::default(),
             config,
         });
@@ -3573,6 +3585,7 @@ impl Api {
                 wip: Arc::new(crate::snapshot::WipCache::watched_only()),
                 snapshot: Mutex::new(None),
                 walk: Arc::default(),
+                graphs: Arc::default(),
                 me_email: Mutex::default(),
                 config,
             });

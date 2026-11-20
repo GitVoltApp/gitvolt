@@ -709,7 +709,7 @@ pub(crate) mod tests {
         let (api, _data) = api();
         let id = open(&api, r.path()).await;
         // The tab's graph: the status read the handle keeps, as the watcher's in the app.
-        api.dispatch(Request::Graph { repo: id, limit: None, pin: None, rescan: Some(true), active: None, view: None }).await.unwrap();
+        api.dispatch(Request::Graph { repo: id, limit: None, pin: None, rescan: Some(true), active: None, view: None, since: None }).await.unwrap();
         let objects = || r.git(&["count-objects", "-v"]);
         let before = objects();
         let merges = || api.command_log().entries().iter().filter(|e| e.args.iter().any(|a| a == "merge-tree")).count();

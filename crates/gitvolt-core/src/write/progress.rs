@@ -1,7 +1,7 @@
 //! git never waits on the UI: `git.rs` drains stderr continuously into a channel, and this tap
 //! reads it. It keeps only the last `Rebasing (n/m)` and emits at most one `opProgress` per tick,
-//! so a fast rebase spins through at one update per ~100 ms. Nothing here sits between two of
-//! git's commits.
+//! so a fast rebase spins through at one update per ~100 ms, and runs its poll (the rebase's HEAD
+//! check) more often. Nothing here sits between two of git's commits.
 
 use crate::events::{AppEvent, EventBus, ProgressStep};
 use std::time::Duration;
@@ -10,6 +10,10 @@ use tokio::task::JoinHandle;
 
 /// The coalescing period: ≤ 10 `opProgress` a second.
 pub(crate) const TICK: Duration = Duration::from_millis(100);
+
+/// How often `on_poll` runs while git does (the rebase's HEAD check): denser than `TICK`, so
+/// picks a few tens of ms apart each show in the graph on their own.
+pub(crate) const HEAD_POLL: Duration = Duration::from_millis(40);
 
 /// git's `Rebasing (23/60)` (it rewrites the line with `\r`; the stream splits on it).
 pub(crate) fn parse_rebasing(line: &str) -> Option<(u32, u32)> {
@@ -33,19 +37,23 @@ impl ProgressTap {
     }
 }
 
-pub(crate) fn tap(bus: EventBus, op: u64, phase: &'static str, branch: Option<String>, out: mpsc::UnboundedSender<String>, every: Duration, mut on_tick: impl FnMut() + Send + 'static) -> ProgressTap {
+/// One `opProgress` per `TICK` at most; `on_poll` runs every `poll_every` until git is done, then
+/// once more: nothing once the write ends.
+pub(crate) fn tap(bus: EventBus, op: u64, phase: &'static str, branch: Option<String>, out: mpsc::UnboundedSender<String>, poll_every: Duration, mut on_poll: impl FnMut() + Send + 'static) -> ProgressTap {
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     let task = tokio::spawn(async move {
         let mut last: Option<(u32, u32)> = None;
         let mut sent: Option<(u32, u32)> = None;
-        let mut emit = |s: (u32, u32)| {
+        let emit = |s: (u32, u32)| {
             let percent = Some(((u64::from(s.0) * 100) / u64::from(s.1.max(1))).min(100) as u8);
             bus.emit(AppEvent::OpProgress { op, phase: phase.to_string(), percent, step: Some(ProgressStep { n: s.0, m: s.1, branch: branch.clone() }) });
-            on_tick();
         };
-        let mut tick = tokio::time::interval(every);
+        let mut tick = tokio::time::interval(TICK);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         tick.tick().await;
+        let mut poll = tokio::time::interval(poll_every);
+        poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        poll.tick().await;
         loop {
             tokio::select! {
                 line = rx.recv() => match line {
@@ -63,11 +71,13 @@ pub(crate) fn tap(bus: EventBus, op: u64, phase: &'static str, branch: Option<St
                         sent = last;
                     }
                 }
+                _ = poll.tick() => on_poll(),
             }
         }
         if last != sent && let Some(s) = last {
             emit(s);
         }
+        on_poll();
         last
     });
     ProgressTap { tx, task }
@@ -87,15 +97,16 @@ mod tests {
     }
 
     /// At most 10 `opProgress` a second, however fast git goes; the last step always lands;
-    /// every other line reaches Activity; `on_tick` follows each emitted step.
+    /// every other line reaches Activity; `on_poll` runs every `HEAD_POLL` whatever git prints,
+    /// and once more at the end.
     #[tokio::test(start_paused = true)]
     async fn sixty_steps_in_a_fifth_of_a_second_emit_a_handful() {
         let bus = EventBus::new();
         let mut rx = bus.subscribe();
         let (out, mut activity) = tokio::sync::mpsc::unbounded_channel();
-        let ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let t = ticks.clone();
-        let tap = tap(bus.clone(), 9, "Rebasing", None, out, TICK, move || {
+        let polls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let t = polls.clone();
+        let tap = tap(bus.clone(), 9, "Rebasing", None, out, HEAD_POLL, move || {
             t.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         });
         for n in 1..=60 {
@@ -114,7 +125,8 @@ mod tests {
         }
         assert!(steps.len() <= 3, "180 ms of steps → at most 2 ticks and the final one: {steps:?}");
         assert_eq!(steps.last(), Some(&(60, 60, Some(100))));
-        assert_eq!(ticks.load(std::sync::atomic::Ordering::SeqCst), steps.len());
+        let polls = polls.load(std::sync::atomic::Ordering::SeqCst);
+        assert!((4..=6).contains(&polls), "180 ms → a poll each 40 ms, and the last: {polls}");
         assert_eq!(activity.try_recv().unwrap(), "hint: a hook said hi");
         assert!(activity.try_recv().is_err(), "no Rebasing line reaches Activity");
     }

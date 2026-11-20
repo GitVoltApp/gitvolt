@@ -36,11 +36,16 @@ impl Oid {
 }
 
 impl fmt::Display for Oid {
+    /// 40 lowercase hex digits, in one write: a graph payload spells a few thousand ids (each
+    /// row's and its parents').
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for b in self.0 {
-            write!(f, "{b:02x}")?;
+        const DIGITS: &[u8; 16] = b"0123456789abcdef";
+        let mut hex = [0u8; 40];
+        for (i, b) in self.0.iter().enumerate() {
+            hex[2 * i] = DIGITS[usize::from(b >> 4)];
+            hex[2 * i + 1] = DIGITS[usize::from(b & 0xf)];
         }
-        Ok(())
+        f.write_str(std::str::from_utf8(&hex).expect("hex digits are ASCII"))
     }
 }
 

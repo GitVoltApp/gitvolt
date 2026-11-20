@@ -530,6 +530,9 @@ fn canonical(p: &Path) -> PathBuf {
     crate::platform::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
+mod versions;
+pub(crate) use versions::GraphVersions;
+
 #[cfg(test)]
 mod reload_bench;
 
