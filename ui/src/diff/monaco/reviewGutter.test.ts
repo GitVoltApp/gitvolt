@@ -160,7 +160,7 @@ describe("review mode's gutter", () => {
     const gutter = new ReviewGutter({ getOriginalEditor: () => original, getModifiedEditor: () => modified, getLineChanges: () => [{ originalStartLineNumber: 5, originalEndLineNumber: 6, modifiedStartLineNumber: 4, modifiedEndLineNumber: 0 }] } as never);
     const onPick = vi.fn();
     gutter.set({ old: new Set([5, 6]), new: new Set(), onPick });
-    const zone = { type: 5, detail: { viewZoneId: 'z1', afterLineNumber: 4 } };
+    const zone = { type: 5, detail: { viewZoneId: 'z1', afterLineNumber: 4, positionBefore: { lineNumber: 4 } } };
     modified.fire('move', { target: zone, event: { posy: 105 } });
     const btn = modified.widget();
     expect([btn.hidden, btn.style.top]).toEqual([false, '100px']);

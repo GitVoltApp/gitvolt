@@ -1,4 +1,5 @@
 import type * as MonacoNs from 'monaco-editor/editor/editor.api';
+import { zoneAfter } from './deletedCopy';
 import { deletedLineAt, gutterHit, type GutterLines, type Hit } from './lineGutter';
 import { monaco } from './setup';
 import { hideTooltip, showTooltip, useTooltip } from '../../ui/tooltipStore';
@@ -231,7 +232,7 @@ export class ReviewGutter {
     if (d.side === d.edSide) return t.position?.lineNumber ?? null;
     const T = monaco.editor.MouseTargetType;
     if (t.type !== T.GUTTER_VIEW_ZONE && t.type !== T.CONTENT_VIEW_ZONE) return null;
-    return deletedLineAt(this.diff, d.ed, t.detail.viewZoneId, t.detail.afterLineNumber, y)?.line ?? null;
+    return deletedLineAt(this.diff, d.ed, t.detail.viewZoneId, zoneAfter(t.detail), y)?.line ?? null;
   }
 
   /** The dragged lines, highlighted where their editor draws them (not inside a deleted-lines zone). */

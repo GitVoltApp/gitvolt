@@ -1,5 +1,5 @@
 import type * as MonacoNs from 'monaco-editor/editor/editor.api';
-import { lineOfSegment, zoneChange } from './deletedCopy';
+import { lineOfSegment, zoneAfter, zoneChange } from './deletedCopy';
 import { lazyZoneRows } from './deletedRows';
 import { monaco } from './setup';
 
@@ -67,7 +67,7 @@ export function gutterHit(diff: MonacoNs.editor.IDiffEditor, side: Side, ed: Mon
     return { side, line: n, top: ed.getTopForLineNumber(n) - ed.getScrollTop() };
   }
   if (side === 'modified' && (t.type === T.GUTTER_VIEW_ZONE || t.type === T.CONTENT_VIEW_ZONE)) {
-    const d = deletedLineAt(diff, ed, t.detail.viewZoneId, t.detail.afterLineNumber, e.event.posy);
+    const d = deletedLineAt(diff, ed, t.detail.viewZoneId, zoneAfter(t.detail), e.event.posy);
     return d && lines.old.has(d.line) ? { side: 'original', line: d.line, top: d.top } : null;
   }
   return null;

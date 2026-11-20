@@ -1,7 +1,7 @@
 import type * as MonacoNs from 'monaco-editor/editor/editor.api';
 import { DEFAULT_DIFF_PREFS, type EditorDiffPrefs } from '../diffPrefs';
 import { changedLineEstimate, diffAlgorithmFor, diffEditorOptions, EDITOR_SCROLLBAR, editorDisplayOptions, editorFontFamily, editorSettingsChanged, fileViewOptions } from '../options';
-import { enableDeletedLineCopy } from './deletedCopy';
+import { enableDeletedLineCopy, zoneAfter } from './deletedCopy';
 import { installLazyDeletedZones } from './deletedZone';
 import { installPairAlgorithms, restartEditorWorker, setPairAlgorithm } from './diffWork';
 import { PairCache, pairChars, type ModelPair } from './modelCache';
@@ -1190,7 +1190,7 @@ class Host implements MonacoHost {
       e.event.preventDefault();
       const t = e.target;
       const zone = side === 'modified' && this.diff && (t.type === monaco.editor.MouseTargetType.CONTENT_VIEW_ZONE || t.type === monaco.editor.MouseTargetType.GUTTER_VIEW_ZONE)
-        ? deletedLineAt(this.diff, ed, t.detail.viewZoneId, t.detail.afterLineNumber, e.event.posy)
+        ? deletedLineAt(this.diff, ed, t.detail.viewZoneId, zoneAfter(t.detail), e.event.posy)
         : null;
       this.openMenuAt(ed, side, t.position?.lineNumber ?? ed.getSelection()?.startLineNumber ?? 1, e.event.posx, e.event.posy, zone?.line);
     });

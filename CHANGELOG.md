@@ -258,6 +258,10 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   saved text back over what you typed meanwhile. The editor now keeps its text, cursor and undo
   history through the reload. Switching Inline, Split or Hunk, or a diff option, while editing no
   longer makes the file read-only either.
+- **A click on a deleted line copies it when the whole file was deleted, or the removal starts the
+  file.** Inline and Hunk did nothing there, for small and large files alike: Monaco reports the
+  deleted lines above line 1 as sitting after line 1, so the click matched no change. The line
+  button in the gutter and the context menu on those lines missed it too.
 
 ## [1.6.3] - 2026-11-17
 

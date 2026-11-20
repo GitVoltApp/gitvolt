@@ -23,6 +23,13 @@ export function lineOfSegment(segments: string[], lines: string[], at: number): 
   return lines.length - 1;
 }
 
+/**
+ * The model line a deleted-lines zone sits after, from a zone target's `detail`. Monaco reports a
+ * zone above line 1 (a change that starts the file, or deletes all of it) as after line 1, so the
+ * zone with nothing above it is after line 0.
+ */
+export const zoneAfter = (detail: { afterLineNumber: number; positionBefore: unknown }): number => (detail.positionBefore ? detail.afterLineNumber : 0);
+
 /** The change whose old lines a deleted-lines zone after modified line `after` shows: old lines
  * show after the line above the change; a pure deletion reports that line itself. */
 export function zoneChange(diff: MonacoNs.editor.IDiffEditor, after: number): MonacoNs.editor.ILineChange | undefined {
@@ -52,7 +59,7 @@ export function enableDeletedLineCopy(diff: MonacoNs.editor.IStandaloneDiffEdito
       const own = editor.getSelection();
       if (own && !own.isEmpty()) editor.setPosition({ lineNumber: own.selectionStartLineNumber, column: own.selectionStartColumn });
     } else if (sel && !sel.isCollapsed) return;
-    const change = zoneChange(diff, e.target.detail.afterLineNumber);
+    const change = zoneChange(diff, zoneAfter(e.target.detail));
     const model = diff.getOriginalEditor().getModel();
     if (!change || !model) return;
     const lines: string[] = [];

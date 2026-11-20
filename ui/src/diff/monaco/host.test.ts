@@ -1243,7 +1243,7 @@ describe('MonacoHost', () => {
       return [...z.querySelectorAll('.view-line span')];
     };
     const up = (element: Element, afterLineNumber: number, opts: { shiftKey?: boolean; type?: number; leftButton?: boolean } = {}) =>
-      state.diffs[0].modified.mouseUps[0]({ target: { type: opts.type ?? 108, element, detail: { afterLineNumber } }, event: { leftButton: opts.leftButton ?? true, shiftKey: !!opts.shiftKey } });
+      state.diffs[0].modified.mouseUps[0]({ target: { type: opts.type ?? 108, element, detail: { afterLineNumber, positionBefore: { lineNumber: afterLineNumber } } }, event: { leftButton: opts.leftButton ?? true, shiftKey: !!opts.shiftKey } });
     const block = zone(['long line', '    here', '', 'f3']);
     const copied = () => copyText.mock.calls.map(([t]) => t);
 
@@ -1279,6 +1279,38 @@ describe('MonacoHost', () => {
     up(block[0], 5);
     getSelection()!.removeAllRanges();
     expect(copyText).not.toHaveBeenCalled();
+  });
+
+  it('a click on deleted lines above line 1 copies them: a removal at the top, or the whole file', async () => {
+    const { host, state } = await fresh();
+    host.attachDiff(document.createElement('div'));
+    const lines = Array.from({ length: 450 }, (_, i) => `l${i + 1}`);
+    await host.showDiff({ path: 'f.txt', original: lines.join('\n') + '\n', modified: '', language: 'plaintext', prefs });
+    const up = (element: Element) =>
+      // Monaco reports a zone above line 1 as after line 1, with no position above it.
+      state.diffs[0].modified.mouseUps[0]({ target: { type: 108, element, detail: { afterLineNumber: 1, positionBefore: null } }, event: { leftButton: true, shiftKey: false } });
+    const small = (lines: string[]) => {
+      const z = document.createElement('div');
+      z.className = 'view-lines line-delete';
+      z.innerHTML = lines.map((t) => `<div class="view-line"><span>${t}</span></div>`).join('');
+      return [...z.querySelectorAll('.view-line span')];
+    };
+    copyText.mockClear();
+    // Lines 1-2 removed from the top of a file that stays: Monaco's change is [1,2] -> [0,0].
+    state.lineChanges = [{ originalStartLineNumber: 1, originalEndLineNumber: 2, modifiedStartLineNumber: 0, modifiedEndLineNumber: 0 }];
+    up(small(['l1', 'l2'])[1]);
+    // The whole file deleted: [1,3] -> [1,1], the new side's one empty line.
+    state.lineChanges = [{ originalStartLineNumber: 1, originalEndLineNumber: 3, modifiedStartLineNumber: 1, modifiedEndLineNumber: 1 }];
+    up(small(['l1', 'l2', 'l3'])[2]);
+    // A large file deleted, its zone drawn a chunk at a time (rows: one per line).
+    state.lineChanges = [{ originalStartLineNumber: 1, originalEndLineNumber: 450, modifiedStartLineNumber: 1, modifiedEndLineNumber: 1 }];
+    const big = document.createElement('div');
+    big.className = 'view-lines line-delete';
+    big.innerHTML = '<div data-first-row="300">' + lines.slice(300, 303).map((t) => `<div class="view-line"><span>${t}</span></div>`).join('') + '</div>';
+    const { registerLazyZone, ZoneRows } = await import('./deletedRows'); // after fresh()'s module reset: the copy code's instance
+    registerLazyZone(big, new ZoneRows(lines.map(() => 1)));
+    up(big.querySelectorAll('.view-line span')[1]);
+    expect(copyText.mock.calls.map(([t]) => t)).toEqual(['l2', 'l3', 'l302']);
   });
 
   describe('a mode or toggle change keeps the line at the viewport centre there', () => {
