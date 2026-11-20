@@ -71,6 +71,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   - The sidebar's Remote panel sorted by most recent builds in linear time (5,000 remote
     branches: 73 → 4 ms in our test), and dragging rows in the interactive rebase editor redraws
     only the rows that move.
+- **An idle GitVolt wakes the CPU far less (performance).** The browser engine's message loop
+  ran 30 times a second whether or not anything was happening; it now keeps that rate for about
+  a second after any work (input, a load, a reply from the core) and then backs off to once a
+  second. With a repository open and nothing happening, the app's main thread wakes about 6 times
+  a second instead of 33, and its CPU use drops from 0.8% to 0.2%. Input, tooltips, timers and
+  scrolling respond as before.
 
 ### Fixed
 

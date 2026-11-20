@@ -27,10 +27,15 @@
 //! nested modal loop winit cannot observe (window move/resize on Windows, menu
 //! and event tracking on macOS). On Linux/BSD the GLib source still dispatches
 //! inside nested GLib loops (e.g. GTK menus/dialogs) for the same reason.
+//!
+//! One departure from cefclient (GitVolt): its safety-net timer re-arms at
+//! 30 fps after every pass, forever, so an idle app woke ~30 times a second.
+//! Here it keeps that rate for about a second after CEF last asked for work,
+//! then backs off to once a second; see [`safety_net_delay`].
 
 use std::sync::{
   Arc, Mutex,
-  atomic::{AtomicBool, Ordering},
+  atomic::{AtomicBool, AtomicU32, Ordering},
 };
 
 #[cfg(any(
@@ -75,6 +80,33 @@ const K_TIMER_DELAY_PLACEHOLDER: i64 = i32::MAX as i64;
 // DoWork().
 const K_MAX_TIMER_DELAY: i64 = 1000 / 30; // 30fps
 
+// The safety net's delay once CEF has been quiet for a while.
+const K_IDLE_TIMER_DELAY: i64 = 1000;
+
+// Safety-net passes in a row, without a request from CEF, that keep the 30fps
+// delay before it starts backing off: about a second.
+const K_BUSY_PASSES: u32 = 30;
+
+/// The safety-net timer's delay after `quiet_passes` safety-net passes in a
+/// row without a request from CEF.
+///
+/// The safety net is there for delayed tasks that CEF never reports: a task
+/// posted with a delay while CEF runs its message loop work comes back as
+/// `MessagePump::Delegate::NextWorkInfo`, which CEF's `MessagePumpExternal`
+/// drops instead of calling `OnScheduleMessagePumpWork`, so such a task waits
+/// for the next pass (a native tooltip's 500 ms show delay is one: with a flat
+/// 1 s safety net, tooltips took 1.1-1.8 s to show). cefclient passes every
+/// 33 ms, forever. GitVolt keeps that for about a second after CEF's last
+/// request (input, IPC and loads all make one), which covers the short timers
+/// work starts, then doubles the delay up to a second, so an idle app wakes
+/// once a second instead of 30 times. A task due later than that may run up to
+/// a second late; page timers, animations and painting don't go through this
+/// pump at all (they run in the renderer and GPU processes).
+fn safety_net_delay(quiet_passes: u32) -> i64 {
+  let doublings = quiet_passes.saturating_sub(K_BUSY_PASSES).min(8);
+  (K_MAX_TIMER_DELAY << doublings).min(K_IDLE_TIMER_DELAY)
+}
+
 /// Handle to the external message pump. Cloning shares the same underlying
 /// state; the backing platform resources are released when the last clone drops.
 #[derive(Clone)]
@@ -87,6 +119,7 @@ impl CefExternalPump {
     let state = Arc::new_cyclic(|weak| PumpState {
       is_active: AtomicBool::new(false),
       reentrancy_detected: AtomicBool::new(false),
+      quiet_passes: AtomicU32::new(0),
       platform: Mutex::new(PlatformPump::new(weak.clone())),
     });
 
@@ -95,6 +128,7 @@ impl CefExternalPump {
 
   /// Called from CEF's `OnScheduleMessagePumpWork`. May run on any thread.
   pub(crate) fn on_schedule_message_pump_work(&self, delay_ms: i64) {
+    self.state.quiet_passes.store(0, Ordering::SeqCst);
     self.state.on_schedule_message_pump_work(delay_ms);
   }
 
@@ -109,6 +143,8 @@ impl CefExternalPump {
 struct PumpState {
   is_active: AtomicBool,
   reentrancy_detected: AtomicBool,
+  // Safety-net timers armed since CEF last called `OnScheduleMessagePumpWork`.
+  quiet_passes: AtomicU32,
   platform: Mutex<PlatformPump>,
 }
 
@@ -144,7 +180,9 @@ impl PumpState {
       self.do_work();
     } else if let Ok(mut platform) = self.platform.lock() {
       // Never wait longer than the maximum allowed time.
-      if delay_ms > K_MAX_TIMER_DELAY {
+      if delay_ms == K_TIMER_DELAY_PLACEHOLDER {
+        delay_ms = safety_net_delay(self.quiet_passes.fetch_add(1, Ordering::SeqCst));
+      } else if delay_ms > K_MAX_TIMER_DELAY {
         delay_ms = K_MAX_TIMER_DELAY;
       }
 
@@ -203,5 +241,36 @@ impl PumpState {
     // |reentrancy_detected_| may have changed due to re-entrant calls to this
     // method.
     self.reentrancy_detected.load(Ordering::SeqCst)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn the_safety_net_keeps_30fps_for_about_a_second_after_cef_asks_for_work() {
+    for quiet_passes in 0..=K_BUSY_PASSES {
+      assert_eq!(safety_net_delay(quiet_passes), K_MAX_TIMER_DELAY);
+    }
+    let busy_ms: i64 = (0..K_BUSY_PASSES).map(safety_net_delay).sum();
+    assert!((900..=1100).contains(&busy_ms), "{busy_ms}");
+  }
+
+  #[test]
+  fn then_backs_off_to_once_a_second() {
+    let delays: Vec<i64> = (K_BUSY_PASSES..K_BUSY_PASSES + 8)
+      .map(safety_net_delay)
+      .collect();
+    assert_eq!(delays, [33, 66, 132, 264, 528, 1000, 1000, 1000]);
+    assert_eq!(safety_net_delay(u32::MAX), K_IDLE_TIMER_DELAY);
+  }
+
+  #[test]
+  fn never_beyond_what_every_platform_timer_takes() {
+    for quiet_passes in [0, K_BUSY_PASSES, K_BUSY_PASSES + 64, u32::MAX] {
+      let delay = safety_net_delay(quiet_passes);
+      assert!(delay > 0 && delay < K_TIMER_DELAY_PLACEHOLDER, "{delay}");
+    }
   }
 }

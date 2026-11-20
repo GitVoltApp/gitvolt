@@ -87,6 +87,54 @@ scheduling). The user reviewed these numbers and accepted them for the CEF runti
 noting their laptop is thermally capped at 70°C so per-run CPU throughput isn't perfectly
 consistent.
 
+## The pump's safety net backs off when CEF is idle
+
+**Problem:** an idle GitVolt woke its browser process's main thread ~33 times a second. The
+external message pump (a port of cefclient's) re-arms a 33 ms "safety net" timer after every
+`cef::do_message_loop_work` pass, forever, so CEF is pumped 30 times a second whether or not
+anything is happening. The timer is there for a real gap: a task Chromium posts with a delay
+*while* CEF runs its work comes back to `MessagePumpExternal` as the `NextWorkInfo` of
+`Delegate::DoWork`, which it drops; it never reaches `OnScheduleMessagePumpWork`, so only the
+next pass runs it. With the safety net flat at 1 s instead, a native `title` tooltip (Chromium's
+500 ms show delay, started from a renderer IPC) took 1.1–1.8 s to show instead of 0.6 s.
+
+**Fix** (`src/external_message_pump/mod.rs`, shared by Linux, macOS and Windows; the platform
+timers only see a delay between 33 and 1,000 ms): every `OnScheduleMessagePumpWork` call from CEF
+resets a counter of safety-net timers armed since; the first 31 stay at cefclient's 33 ms (about
+a second, enough for the short timers work starts, like that tooltip), then the delay doubles
+(66, 132, 264, 528 ms) up to 1 s. CEF's own delayed requests are capped at 33 ms as upstream.
+Input, IPC replies, loads and anything another thread posts all arrive as requests, so they run
+at once and put the pump back to 30 per second. What can now run late is a task due more than
+about a second after CEF last asked for work, by up to a second. Page timers, animations,
+painting and scrolling don't depend on this pump: they run in the renderer and GPU processes.
+
+**Measured** (debug build, headless GNOME Shell + Xwayland container, one 4,000-commit repository
+open, 1300×800; context switches of the browser process's main thread from
+`/proc/<pid>/task/<pid>/status`, pump passes counted in the pump):
+
+| idle, nothing happening | before: main thread | after: main thread | browser CPU before → after |
+| --- | --- | --- | --- |
+| focused, 30 s | 35.7/s | 12.5/s ¹ | 1.33% → 0.43% |
+| unfocused, 30 s | 36.1/s | 7.0/s | 1.30% → 0.40% |
+| focused, 2 min | 32.7/s | 5.7/s | 0.83% → 0.23% |
+
+Pump passes went from 30/s to 1/s between CEF requests. An idle browser still asks for work now
+and then (Chromium's `CpuHealthTracker` / `system_cpu` probe and idle polling run every 15 s), and
+each request buys a second at 30 per second, so the 2 min average is ~3 passes/s; with the safety
+net flat at 1 s (no busy second) the main thread sat at 2.4/s, the floor from GLib, X11 and
+D-Bus. ¹ Includes the start of the run, right after the soak probe's DevTools connection.
+
+**Soak** (same container, before → after, each probe after ≥ 4 s idle so the pump had backed
+off): `invoke()` round trip 4.4 → 2.3 ms for the first, median 3.1 → 1.6 ms over 20; fetch from
+the app's scheme 9.5 → 6.7 ms median; `setTimeout(5000)` and `(250)` 0.3–0.4 ms late in both;
+key presses 69–82 → 50–54 ms injection-to-`keydown` (most of it `docker exec`); wheel
+scrolling 123 → 78 ms to the first `wheel`, and the graph scrolled; a context menu 103 → 50 ms
+to `contextmenu`, and it opened; a window resize 141 → 108 ms to `resize`; `requestAnimationFrame`
+at 60 fps right after idle; native tooltips 0.60–0.61 → 0.58–0.72 s; typing 15 characters into
+a textarea after idle, all there. A CSS spinner plus a focused textarea's blinking caret ran at
+60 fps while the browser main thread stayed at 7.7 wakeups/s (the renderer and GPU processes
+did the work).
+
 ## Chrome accelerators left live upstream (F7 caret browsing and the rest)
 
 **Problem:** GitVolt runs Chrome style (CEF's default on Linux), and a Chrome style browser keeps
@@ -131,7 +179,9 @@ says.
   (the runtime's own pump `GSource`, wakeup pipe, timer bookkeeping) is unmodified upstream code.
 - `src/external_message_pump/mod.rs`: added a `pub(crate) use` re-export of both functions above
   from the `linux` submodule (`pub(crate) use linux::{neutralize_chromium_glib_work_source,
-  next_default_context_source_id};`), so `runtime.rs` can call them. No other change in this file.
+  next_default_context_source_id};`), so `runtime.rs` can call them; and the safety-net timer's
+  back-off (`safety_net_delay`, the `quiet_passes` counter, and its use in `on_schedule_work`; see
+  "The pump's safety net backs off when CEF is idle" above).
 - `src/runtime.rs`: two call sites added around the Linux/BSD `cef::initialize` call —
   `glib_source_id_before_cef` is captured immediately before `cef::initialize`, and
   `neutralize_chromium_glib_work_source(glib_source_id_before_cef)` is called once the CEF
