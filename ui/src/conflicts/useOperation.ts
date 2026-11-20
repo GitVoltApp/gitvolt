@@ -4,7 +4,7 @@ import { journalKey, useJournal } from '../undo/store';
 import { inProgressOf, operationView, type OperationView } from './inProgress';
 import { branchIn, nameAtIn, sidesIn, type ConflictSides } from './sides';
 
-/** The worktree's operation in progress as the commit panel shows it (§13.2), or `null`. */
+/** The worktree's operation in progress as the commit panel shows it, or `null`. */
 export function useOperation(repoId: number, worktree: string): OperationView | null {
   const graph = useRepoView((s) => s.graph);
   const paused = useJournal((s) => (worktree ? s.states[journalKey(repoId, worktree)]?.paused ?? null : null));
@@ -16,7 +16,7 @@ export function useOperation(repoId: number, worktree: string): OperationView | 
   }, [graph, paused, worktree]);
 }
 
-/** The names of the worktree's conflict sides (UX round 2, `conflictSides`), as the merge
+/** The names of the worktree's conflict sides (`conflictSides`), as the merge
  * tool's pane titles name them. */
 export function useConflictSides(worktree: string): ConflictSides {
   const graph = useRepoView((s) => s.graph);

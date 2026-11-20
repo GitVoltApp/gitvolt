@@ -56,7 +56,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe('the diff toolbar\'s "Open in…" (H9, J1)', () => {
+describe('the diff toolbar\'s "Open in…"', () => {
   it('sits at the toolbar\'s far left, not in the header, and opens the shown version at its first change', async () => {
     renderPanel({ kind: 'commit', id: 'c'.repeat(40), parent: 0 });
     const main = await screen.findByRole('button', { name: 'Open in VS Code' });

@@ -46,7 +46,7 @@ describe('defaultOpener and worktreeOf', () => {
     expect(defaultOpener(OPENERS.filter((o) => o.id !== 'vscode'), null)?.id).toBe('jetbrains-phpstorm');
     expect(defaultOpener([OPENERS[2]], null)?.id).toBe('file-manager');
     expect(defaultOpener([], null)).toBeNull();
-    // H32: "Other…" is the default only when it was the last used.
+    // "Other…" is the default only when it was the last used.
     expect(defaultOpener([OPENERS[3], OPENERS[2]], null)?.id).toBe('file-manager');
     expect(defaultOpener([OPENERS[3]], null)?.id).toBe('other');
     expect(defaultOpener(OPENERS, 'other')?.id).toBe('other');
@@ -59,7 +59,7 @@ describe('defaultOpener and worktreeOf', () => {
   });
 });
 
-describe('openVersion and listWorktree (fix rounds 1, 2)', () => {
+describe('openVersion and listWorktree', () => {
   it('outside a worktree: the version shown, the new side, else (deleted) the old', () => {
     const old = { kind: 'object', oid: 'a'.repeat(40) } as const;
     expect(openVersion(commitTarget, null)).toEqual({ source: commitTarget.new, fallback: null });
@@ -102,7 +102,7 @@ describe('OpenInButton', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(toggle);
     const menu = screen.getByTestId('context-menu');
-    // Named for what it is (1B's popup was too), not the shared menu's generic "Context menu".
+    // Named for what it is, not the shared menu's generic "Context menu".
     expect(screen.getByRole('menu', { name: 'Open in' })).toBe(menu);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     const items = screen.getAllByRole('menuitem');
@@ -164,9 +164,9 @@ describe('OpenInButton', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
-  // K1: a scroll doesn't close the shared context menu (menu/ContextMenu.tsx), so the dropdown
+  // A scroll doesn't close the shared context menu (menu/ContextMenu.tsx), so the dropdown
   // keeps that guarantee too now that it's the same menu.
-  it('a scroll does not close the dropdown; the wheel outside it is swallowed only while it is open (K1)', async () => {
+  it('a scroll does not close the dropdown; the wheel outside it is swallowed only while it is open', async () => {
     renderButton();
     const toggle = await screen.findByRole('button', { name: 'More ways to open' });
     fireEvent.click(toggle);
@@ -190,7 +190,7 @@ describe('OpenInButton', () => {
     document.body.removeEventListener('wheel', behind);
   });
 
-  it('a resize closes the dropdown and restores focus to its toggle (I2)', async () => {
+  it('a resize closes the dropdown and restores focus to its toggle', async () => {
     renderButton();
     const toggle = await screen.findByRole('button', { name: 'More ways to open' });
     act(() => toggle.focus());
@@ -201,7 +201,7 @@ describe('OpenInButton', () => {
     expect(toggle).toHaveFocus();
   });
 
-  it('a staged WIP file opens its working-tree file in the list\'s worktree, and Show in Files uses it too (fix round 2)', async () => {
+  it('a staged WIP file opens its working-tree file in the list\'s worktree, and Show in Files uses it too', async () => {
     const staged = { ...commitTarget, key: `${filesKey({ kind: 'wip', worktree: '/wt/linked', staged: true })}|src/app.php` };
     renderButton(staged, 4);
     fireEvent.click(await screen.findByRole('button', { name: 'Open in VS Code' }));
@@ -218,7 +218,7 @@ describe('OpenInButton', () => {
     await waitFor(() => expect(useToast.getState().message).toBe('src/app.php isn\'t in the working tree'));
   });
 
-  it('opening the dropdown re-detects, so an editor installed since shows up live, with no close/reopen (H32; fix round 1, item 2)', async () => {
+  it('opening the dropdown re-detects, so an editor installed since shows up live, with no close/reopen', async () => {
     renderButton();
     const toggle = await screen.findByRole('button', { name: 'More ways to open' });
     expect(listOpeners).toHaveBeenCalledTimes(1);
@@ -233,7 +233,7 @@ describe('OpenInButton', () => {
     await waitFor(() => expect(openIn).toHaveBeenCalledExactlyOnceWith(7, { worktree: '/repo', path: 'src/app.php', line: null, opener: 'other', source: { kind: 'object', oid: 'b'.repeat(40) }, fallback: null }));
   });
 
-  it('a press on the toggle while its dropdown is open closes it, instead of reopening it (fix round 1, item 3)', async () => {
+  it('a press on the toggle while its dropdown is open closes it, instead of reopening it', async () => {
     renderButton();
     const toggle = await screen.findByRole('button', { name: 'More ways to open' });
     fireEvent.click(toggle);

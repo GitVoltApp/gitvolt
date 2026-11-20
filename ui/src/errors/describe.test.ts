@@ -8,7 +8,7 @@ const deps = () => ({ openDetails: vi.fn(), copy: vi.fn(() => Promise.resolve())
 const ids = (e: GbError, ctx = {}) => actionsFor(e, ctx, deps()).map((a) => a.id);
 const full = { retry: vi.fn(), refresh: vi.fn(), removeRecent: vi.fn() };
 
-describe('per-kind error actions (spec §16.1)', () => {
+describe('per-kind error actions', () => {
   it.each<[GbErrorKind, string[]]>([
     ['AuthFailed', ['retry', 'details']],
     ['NonFastForward', ['refresh', 'details']],
@@ -51,7 +51,7 @@ describe('per-kind error actions (spec §16.1)', () => {
     expect(d.copy).toHaveBeenCalledWith('Something went wrong\nm-Other\nfatal: x');
   });
 
-  it('never notifies for Cancelled, uses the spec wording for RefMoved, and offers no lock removal without the lock\'s detail', () => {
+  it('never notifies for Cancelled, uses its own wording for RefMoved, and offers no lock removal without the lock\'s detail', () => {
     expect(describeError(err('Cancelled'))).toBeNull();
     expect(describeError(err('RefMoved'))!.message).toBe('Branch changed outside GitVolt — refresh and retry');
     const locked = describeError(err('IndexLocked'))!;
@@ -78,11 +78,9 @@ describe('per-kind error actions (spec §16.1)', () => {
   });
 });
 
-// --- 4A T1 ---
 it('names a rate limit and an unreachable forge, and offers Retry for the network', () => {
   expect(describeError({ kind: 'RateLimited', message: 'gitlab.example.com rate limit reached: try again in 2 min', commandId: null, stderr: null })).toEqual({ title: 'Rate limited', message: 'gitlab.example.com rate limit reached: try again in 2 min' });
   expect(describeError({ kind: 'Network', message: "Couldn't reach gitlab.example.com: timed out", commandId: null, stderr: null })?.title).toBe("Couldn't reach the server");
   const retry = vi.fn();
   expect(actionsFor({ kind: 'Network', message: 'x', commandId: null, stderr: null }, { retry }, { openDetails: vi.fn(), copy: vi.fn() }).map((a) => a.id)).toEqual(['retry']);
 });
-// --- end 4A T1 ---

@@ -5,6 +5,6 @@ import type { RemoteBranch } from "./RemoteBranch";
 export type RemoteGroup = { name: string, host: string | null, hostKind: HostKind, branches: Array<RemoteBranch>, 
 /**
  * The branch `refs/remotes/<name>/HEAD` names (`refs/remotes/origin/main`), when set: the
- * stack base (spec #3 §3.11).
+ * stack base.
  */
 defaultBranch?: string, };

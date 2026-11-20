@@ -1,7 +1,7 @@
 import { expect, test, type Page } from './test';
 import { fixtures, openUrl } from './fixtures';
 
-// The context menus' latency budgets (spec §7, §17.3), apart from the functional specs so a
+// The context menus' latency budgets, apart from the functional specs so a
 // loaded machine can't fail those. The menu records its own open-to-first-paint time in
 // `window.__gbMenuLatency`; these tests read it. Because load only ever makes a timing slower,
 // each bound is checked against the best of several samples: a regression slows every sample,

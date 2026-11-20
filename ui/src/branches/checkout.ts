@@ -18,7 +18,7 @@ import { predictedHeadOf, withHeadMove, type HeadMove } from '../pending/head';
 import { endPending, startPending } from '../pending/store';
 import { runWrite, type WriteCtx } from '../write/client';
 
-/** "feature/x is checked out in ../shop-feature-x." [Switch to it] [Open in a new tab] (§9.3). */
+/** "feature/x is checked out in ../shop-feature-x." [Switch to it] [Open in a new tab]. */
 function offerWorktree(ctx: WriteCtx, err: GbError): boolean {
   const d = err.detail;
   if (d?.kind !== 'checkedOutElsewhere') return false;
@@ -76,13 +76,13 @@ function headMoveOf(tabId: string, target: CheckoutTarget, expect: Expect): Head
   return { branch: name, sha: ff ? expect.refs[remoteRef] ?? undefined : local.target };
 }
 
-/** One checkout (§9.3); the backend resolves the case when it runs. Diverged asks Reset/Cancel.
+/** One checkout; the backend resolves the case when it runs. Diverged asks Reset/Cancel.
  * A repository in the way ("<path> is a repository in the way of the checkout: move it first") is
  * a plain refusal: the error toast shows it, with no Retry and nothing to force. Resolves to
  * whether HEAD landed: false when the write failed, was refused or the user said no. */
 export async function checkout(at: WriteCtx, target: CheckoutTarget, expected: Expect, onDiverged?: 'reset', origin: Origin | null = currentOrigin()): Promise<boolean> {
   const { ctx, expect } = intoItsWorktree(at, target, expected);
-  // `origin`: where it started; the question comes after the backend's answer (spec §ui confirms).
+  // `origin`: where it started; the question comes after the backend's answer.
   // The ref the user acted on shows the spinner while the write runs (a remote one for a new local).
   const ref = target.kind === 'branch' ? `refs/heads/${target.name}` : target.kind === 'remote' ? `refs/remotes/${target.remote}/${target.branch}` : null;
   if (ref) startPending(ctx.tabId, ref, 'checkout');
@@ -130,7 +130,7 @@ const headOf = (tabId: string) => predictedHeadOf(tabId).sha;
 const isHead = (tabId: string, name: string) => predictedHeadOf(tabId).branch === name;
 const shortLocal = (full: string) => full.replace(/^refs\/heads\//, '');
 
-/** A branch chip's double-click (§9.3): its local branch, else its remote one. Tags aren't branches. */
+/** A branch chip's double-click: its local branch, else its remote one. Tags aren't branches. */
 export function checkoutLabel(store: RepoViewStore, row: RowPayload, label: RefLabel): boolean {
   const tabId = tabIdOf(store);
   const ctx = tabId ? ctxOf(tabId) : null;
@@ -152,7 +152,7 @@ export function checkoutLabel(store: RepoViewStore, row: RowPayload, label: RefL
   return true;
 }
 
-/** A sidebar branch row's double-click (§19 item 6). */
+/** A sidebar branch row's double-click. */
 export function checkoutSideItem({ tabId }: SidebarCtx, item: SideItem): void {
   const ctx = ctxOf(tabId);
   if (!ctx || !item.target) return;

@@ -12,14 +12,14 @@ import './menus';
 import { registerKeyHints } from '../shortcuts/hints';
 
 // Lazy: the view pulls in File View (Monaco) and Shiki's language registry, which stay out of
-// the startup chunk (spec §10.3 of #1; `npm run build` checks it).
+// the startup chunk (`npm run build` checks it).
 const FileHistory = lazy(() => import('./FileHistory').then((m) => ({ default: m.FileHistory })));
-// Its sticky mode (UX) lasts as long as it's open.
+// Its sticky mode lasts as long as it's open.
 const offView = registerCenterView<FileHistoryArgs>(FILE_HISTORY, FileHistory, { onClose: (tabId) => tabStore(tabId)?.getState().setStickyHistory(null) });
 import.meta.hot?.dispose(offView);
 
 /**
- * UX, sticky File History: a file opened while it's open (the right panel's click, Up/Down, Enter,
+ * Sticky File History: a file opened while it's open (the right panel's click, Up/Down, Enter,
  * the step after a stage, the palette) opens in it too, from where the toolbar's buttons would
  * start it, Blame on or off as it was left. The same history already open just comes back on top.
  * A file with none (new in the working tree) shows as usual, its Diff View over File History,
@@ -40,7 +40,7 @@ function followFile(store: RepoViewStore, target: DiffTarget): void {
 const offOpener = registerStickyOpener(followFile);
 import.meta.hot?.dispose(offOpener);
 
-// Spec #5 §3.4: File History is a navigation place; it's left in the mode its Blame toggle was in.
+// File History is a navigation place; it's left in the mode its Blame toggle was in.
 const offPlace = registerPlaceKind('history', {
   capture: (tabId, p) => {
     const mode = tabStore(tabId)?.getState().stickyHistory;

@@ -38,14 +38,14 @@ pub struct RemoteSummary {
     pub warning: Option<String>,
 }
 
-/// §12.4's failure words, matched case-insensitively as whole words: not when joined to a
+/// The failure words, matched case-insensitively as whole words: not when joined to a
 /// neighbouring identifier character (`-`, `_`, `/`, `.` or an alphanumeric), so `error-log-charts`
 /// or `fix_conflict_ui` don't count. A word may take a suffix of letters (`failed`, `rejected`,
 /// `aborting`), but `fail-fast` is an identifier. Multi-word phrases match as written.
 const WARNINGS: [&str; 10] = ["error", "fatal", "fail", "reject", "denied", "conflict", "could not", "cannot", "abort", "warning"];
 /// Forge lines followed by their URL line.
 const LINK_INTROS: [&str; 3] = ["To create a merge request for ", "View merge request for ", "Create a pull request for "];
-/// git's own pack messages from the remote side (Deviation 6).
+/// git's own pack messages from the remote side.
 const METERS: [&str; 7] = ["Enumerating objects:", "Counting objects:", "Compressing objects:", "Finding sources:", "Resolving deltas:", "Writing objects:", "Total "];
 
 /// git's own echoes (a hook printing a pull or reset's output): never a failure, whatever the
@@ -111,7 +111,7 @@ pub fn summarize(lines: &[RemoteLine]) -> RemoteSummary {
     }
 }
 
-/// A failure's Details (§12.4): the `remote:` lines (a hook's rejection reasons) first, then
+/// A failure's Details: the `remote:` lines (a hook's rejection reasons) first, then
 /// git's own (`error:`, `hint:`), each in order.
 pub fn details_first(stderr: &str) -> String {
     let stderr = crate::git::collapse_progress(stderr);
@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(details_first(stderr), "remote: Branch main is protected\nremote: Ask a maintainer\nTo /tmp/origin.git\n ! [remote rejected] main -> main (pre-receive hook declined)\nerror: failed to push some refs to '/tmp/origin.git'");
     }
 
-    /// A rejecting `pre-receive` (spec #2 §17.1): its lines are captured and lead the Details,
+    /// A rejecting `pre-receive`: its lines are captured and lead the Details,
     /// in the error and in the command log; the toast's summary counts them.
     #[tokio::test]
     async fn a_rejected_push_puts_the_servers_reasons_first() {

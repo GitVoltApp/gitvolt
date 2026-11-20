@@ -1,7 +1,7 @@
 import type { MenuRow } from '../menu/types';
 import type { EditorContextMenuEvent } from './monaco/host';
 
-// The open WIP diff's staging rows at the top of the editor's context menu (spec #2 §7.3): the
+// The open WIP diff's staging rows at the top of the editor's context menu: the
 // shown diff's `HunkActions` provides them while it's mounted. A plain module, so the menu code
 // reaches it without pulling the diff's chunk in.
 type Provider = (e: EditorContextMenuEvent) => MenuRow[];

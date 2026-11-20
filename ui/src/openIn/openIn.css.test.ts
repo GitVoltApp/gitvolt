@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'openIn.css'), 'utf8');
 const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 
-describe('openIn.css motion (J19)', () => {
+describe('openIn.css motion', () => {
   it('the split button (main + caret) fades hover background/colour at the fast token', () => {
     expect(rule('.open-in-main, .open-in-toggle')).toMatch(/transition:\s*background-color var\(--motion-fast\), color var\(--motion-fast\)/);
   });

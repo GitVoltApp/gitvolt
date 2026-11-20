@@ -7,8 +7,8 @@ import { runMenuRow } from './actionLog';
 import { toastActionError } from './errorToast';
 import { PerfOverlay } from './PerfOverlay';
 
-/** Help → Debug… (R9: the Activity modal on its Commands tab; Help → Activity log stays), the perf
- * overlay, and the context menu's row-run hook feeding the action log (R11). */
+/** Help → Debug… (the Activity modal on its Commands tab; Help → Activity log stays), the perf
+ * overlay, and the context menu's row-run hook feeding the action log. */
 const offs = [
   registerActions([
     { id: 'help.debug', label: 'Debug…', group: 'Help', icon: Bug, tooltip: 'The git commands GitVolt ran, the actions you ran, diagnostics and the perf overlay', run: () => openDebug('commands') },

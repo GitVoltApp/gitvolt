@@ -6,7 +6,7 @@ const totals = (files: FileListPayload['files']): FileListPayload => ({
   deleted: files.reduce((n, f) => n + (f.deletions ?? 0), 0),
 });
 
-/** §7.1: conflicted files (status `U`) go in Conflicted, and in neither of the other sections.
+/** Conflicted files (status `U`) go in Conflicted, and in neither of the other sections.
  * A list with none keeps its own totals; one that loses some is recounted. */
 export function splitConflicted(unstaged: FileListPayload, staged: FileListPayload): { conflicted: FileListPayload; unstaged: FileListPayload; staged: FileListPayload } {
   const isU = (f: { status: string }) => f.status === 'U';

@@ -33,7 +33,7 @@ function store() {
   return s;
 }
 
-describe('the selection menu (spec #3 §4.3)', () => {
+describe('the selection menu', () => {
   it('a right-click inside a selection of two or more commits builds the selection kind, with every selected commit', () => {
     const seen: SelectionTarget[] = [];
     offs.push(registerMenu<SelectionTarget, MenuEnv>({ id: 'test.selection', kind: 'selection', group: 'commit', order: 0, rows: (t) => { seen.push(t); return [action('test.selected')]; } }));
@@ -50,7 +50,7 @@ describe('the selection menu (spec #3 §4.3)', () => {
   });
 
   it("with no selection row to offer, the row's own menu", () => {
-    // A builder is registered (as 3B's and 3C's will be), but the selection builds no rows.
+    // A builder is registered (as the real ones are), but the selection builds no rows.
     offs.push(registerMenu<SelectionTarget, MenuEnv>({ id: 'test.selection', kind: 'selection', group: 'commit', order: 0, rows: () => [action('test.selected')] }));
     noSelectionRows.on = true;
     const s = store();
@@ -60,7 +60,7 @@ describe('the selection menu (spec #3 §4.3)', () => {
     expect(rows).not.toContain('test.selected');
   });
 
-  it('groups: squash (3C), commit (3B), rebase (3C), a separator between them', () => {
+  it('groups: squash, commit, rebase, a separator between them', () => {
     offs.push(
       registerMenu<SelectionTarget, MenuEnv>({ id: 't.rebase', kind: 'selection', group: 'rebase', order: 0, rows: () => [action('rebase')] }),
       registerMenu<SelectionTarget, MenuEnv>({ id: 't.commit', kind: 'selection', group: 'commit', order: 0, rows: () => [action('pick')] }),

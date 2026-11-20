@@ -28,8 +28,8 @@ pub fn redact(s: &str) -> String {
     AUTH_HEADER.replace_all(&s, "${1}***").into_owned()
 }
 
-// --- 4A T1: secrets ---
-/// A token in memory (spec #4 §6). It deserializes from a plain JSON string, but never
+// --- secrets ---
+/// A token in memory. It deserializes from a plain JSON string, but never
 /// serializes, displays or debug-prints its value. `expose` is for the places that must have it:
 /// the `Authorization` header and the token store.
 #[derive(Clone, PartialEq, Eq, serde::Deserialize)]
@@ -60,7 +60,6 @@ impl std::fmt::Debug for Secret {
         f.write_str("Secret(***)")
     }
 }
-// --- end 4A T1 ---
 
 #[cfg(test)]
 mod tests {
@@ -72,7 +71,7 @@ mod tests {
         assert_eq!(redact("http://user@h/x"), "http://***@h/x");
     }
 
-    /// K96 review: a password in the userinfo of any URL scheme, not just http(s). A user name
+    /// A password in the userinfo of any URL scheme, not just http(s). A user name
     /// alone (`ssh://git@host`) isn't secret there and stays readable.
     #[test]
     fn removes_passwords_from_any_url_scheme() {
@@ -127,7 +126,6 @@ mod tests {
         assert_eq!(redact("https://github.com/o/r/blob/main/a@b.txt"), "https://github.com/o/r/blob/main/a@b.txt");
         assert_eq!(redact("commit -m hello"), "commit -m hello");
     }
-    // --- 4A T1 ---
     #[test]
     fn a_secret_never_shows_its_value() {
         let s: super::Secret = serde_json::from_str("\"  glpat-FAKE-test-token\\n\"").unwrap();
@@ -136,5 +134,4 @@ mod tests {
         assert_eq!(s.trimmed().expose(), "glpat-FAKE-test-token");
         assert!(super::Secret::new(" \n").trimmed().is_empty());
     }
-    // --- end 4A T1 ---
 }

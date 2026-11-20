@@ -3,12 +3,12 @@ import type { PausedKind } from "./PausedKind";
 
 export type IntegrateOutcome = { "status": "done", commits: number, fastForward: boolean, 
 /**
- * 3C fix round 1 (R1): it completed, but something after it didn't (a chip marked
+ * It completed, but something after it didn't (a chip marked
  * delete that moved meanwhile is kept): the toast says so.
  */
 warning?: string, 
 /**
- * 3C final fix (M4): a reword of an older commit (spec #3 §3.6): the reworded commit's
+ * A reword of an older commit: the reworded commit's
  * new oid, for the details panel to select.
  */
 rewritten?: string, } | { "status": "upToDate", 
@@ -17,16 +17,16 @@ rewritten?: string, } | { "status": "upToDate",
  */
 warning?: string, } | { "status": "stopped", kind: PausedKind, files: number, 
 /**
- * 3C final fix (M1, M2): something GitVolt meant to do at the stop didn't happen (a
+ * Something GitVolt meant to do at the stop didn't happen (a
  * commit-msg hook refused a new message): the toast says so.
  */
 warning?: string, } | { "status": "aborted", 
 /**
- * 3C fix round 1 (I2): the work done at an interactive rebase's stop, kept as a stash
+ * The work done at an interactive rebase's stop, kept as a stash
  * (its oid) before the abort reset it: "Your work from the stop is in a stash".
  */
 stash?: string, 
 /**
- * Fix round 2: the branch the commits made at the stop were kept on.
+ * The branch the commits made at the stop were kept on.
  */
 branch?: string, };

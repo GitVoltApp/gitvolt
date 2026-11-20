@@ -13,14 +13,14 @@
  *    before the conflict (a side's first line where the conflict starts it) ends in a bare LF: an
  *    empty side, or a line without a newline, doesn't decide.
  * Where it can differ: git's merge diffs with the histogram algorithm (`merge-file` with Myers), and
- * 1b's `diffLines` lacks git's indent heuristic and may keep other copies of repeated lines, so a
+ * `diffLines` lacks git's indent heuristic and may keep other copies of repeated lines, so a
  * conflict's extent can differ where edits sit among repeated lines.
  */
 import { diffLines, splitLines } from '../read/lineDiff';
 import { sideText, type SideEdit } from '../read/merge3';
 
 export type MergeStyle = 'merge' | 'diff3';
-/** Lines keep their terminators (1b's `splitLines`). A `merge`-style conflict's `base` is empty (git
+/** Lines keep their terminators (`splitLines`). A `merge`-style conflict's `base` is empty (git
  *  shows none); `crlf`: its markers end in CRLF. */
 export type Chunk = { kind: 'common'; lines: string[] } | { kind: 'conflict'; base: string[]; ours: string[]; theirs: string[]; crlf: boolean };
 export interface MergeLabels {

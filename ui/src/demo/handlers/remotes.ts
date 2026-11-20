@@ -1,4 +1,4 @@
-// Fetch, pull, push, tag pushes and remotes (plan 4).
+// Fetch, pull, push, tag pushes and remotes.
 import type { FetchOutcome } from '../../api/gen/FetchOutcome';
 import type { GbError } from '../../api/gen/GbError';
 import type { MrHead } from '../../api/gen/MrHead';

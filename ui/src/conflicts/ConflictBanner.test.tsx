@@ -31,7 +31,7 @@ async function show(tab = 't') {
   return render(<ConflictBanner tab={{ id: tab } as never} />);
 }
 
-describe('the operation watcher (ux round 1: no window-wide bar)', () => {
+describe('the operation watcher (no window-wide bar)', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -44,7 +44,7 @@ describe('the operation watcher (ux round 1: no window-wide bar)', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('adds MERGE_MSG to the WIP draft once per merge (§8.2)', async () => {
+  it('adds MERGE_MSG to the WIP draft once per merge', async () => {
     h.inProgress = merge(1);
     await show();
     await waitFor(() => expect(readWipDraft('/r', '/r')).toEqual({ summary: 'Mine', description: "Merge branch 'feature/x'" }));

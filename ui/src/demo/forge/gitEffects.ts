@@ -1,4 +1,4 @@
-// The fake GitLab acting on the in-memory origin (plan 4, Decisions): a merge GitLab records
+// The fake GitLab acting on the in-memory origin: a merge GitLab records
 // becomes a real merge (or squash) commit on the origin's target branch; GitLab's Rebase replays
 // the source branch onto its target there; a push to a branch with an open MR moves the MR's head
 // and runs its pipeline, and the server says GitLab's merge-request lines. The harness's fake forge

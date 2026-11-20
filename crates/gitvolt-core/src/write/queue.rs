@@ -1,4 +1,4 @@
-//! The action queue (spec #2 §3.6) and the write lock (§3.5).
+//! The action queue and the write lock.
 //!
 //! One per repository, keyed by its canonical common dir, and shared by every tab and worktree
 //! of it, since refs and stashes are shared. User writes run one at a time, in click order: an
@@ -15,9 +15,9 @@ use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tokio_util::sync::CancellationToken;
 
-/// A repository's write lock and action queue (spec #2 §3.5, §3.6).
+/// A repository's write lock and action queue.
 ///
-/// For the pipeline built on this (T9):
+/// For the pipeline built on this:
 /// - under the lock, a write that holds the watcher (`RepoWatcher::hold`) calls `absorb` as late
 ///   as possible, after its last git command, and always refreshes after the write, whatever
 ///   the outcome;
@@ -26,10 +26,10 @@ use tokio_util::sync::CancellationToken;
 ///   write in flight).
 pub(crate) struct RepoWrites {
     /// Taken by every write for its local phases (a network transfer runs outside it). An
-    /// `Arc`, so a write can release it mid-run and take it again (`WriteCx::unlock`, 2D T1).
+    /// `Arc`, so a write can release it mid-run and take it again (`WriteCx::unlock`).
     pub(crate) lock: Arc<tokio::sync::Mutex<()>>,
     pub(crate) queue: WriteQueue,
-    /// The open repo ids sharing this common dir (one per tab's worktree, Deviation 4).
+    /// The open repo ids sharing this common dir (one per tab's worktree).
     ids: Arc<Mutex<BTreeSet<u32>>>,
     /// Writes waiting in `acquire` for `lock`.
     waiting: std::sync::atomic::AtomicUsize,
@@ -139,7 +139,7 @@ impl Ticket<'_> {
 /// The running item's turn. `finish` it; a dropped unfinished slot counts as a failure.
 pub(crate) struct Slot<'q> {
     q: &'q WriteQueue,
-    #[allow(dead_code)] // nothing reads it yet (2B: the queue ops)
+    #[allow(dead_code)] // nothing reads it yet (the queue ops)
     pub(crate) id: u64,
     seq: u64,
     done: bool,
@@ -179,7 +179,7 @@ impl WriteQueue {
             let id = g.next;
             g.queued.push_back(Item { id, label: label.to_string(), kind, op });
             if let Some(bg) = &g.background {
-                // Fetch is idempotent; the next interval retries it (§3.6).
+                // Fetch is idempotent; the next interval retries it.
                 bg.cancel();
             }
             (id, g.finished)
@@ -280,7 +280,7 @@ impl Drop for Ticket<'_> {
 
 impl Slot<'_> {
     /// `expect` carried forward by the moves the items ahead of this one made since it was
-    /// enqueued (§3.6). An expected oid an earlier item moved from becomes the oid it moved to;
+    /// enqueued. An expected oid an earlier item moved from becomes the oid it moved to;
     /// anything else is an outside change, so preflight says `RefMoved`.
     pub(crate) fn carry(&self, expect: &Expect) -> Expect {
         let g = self.q.lock();

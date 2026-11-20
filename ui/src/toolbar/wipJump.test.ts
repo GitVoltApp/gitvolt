@@ -87,7 +87,7 @@ describe('the WIP button (jump to the working directory changes)', () => {
 
   it('switches at once when the WIP lists are already held', async () => {
     const store = setup([change('old.txt')]);
-    // The tab's watch is up: the open worktree's lists are loaded ahead and held (K44).
+    // The tab's watch is up: the open worktree's lists are loaded ahead and held.
     store.getState().setWatched(true);
     await flush();
     openOld(store, change('old.txt'));

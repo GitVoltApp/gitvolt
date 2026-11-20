@@ -1,5 +1,5 @@
-// Plan 4's handler groups, spread last into HANDLERS (index.ts). Each task adds its group here and
-// takes its methods out of PENDING (coverage.ts).
+// The rebase, pick, remote and forge handler groups, spread last into HANDLERS (index.ts). A group
+// added here takes its methods out of PENDING (coverage.ts).
 import type { HandlerTable } from '../transport';
 import { forgeReadHandlers } from './forgeReads';
 import { forgeWriteHandlers } from './forgeWrites';

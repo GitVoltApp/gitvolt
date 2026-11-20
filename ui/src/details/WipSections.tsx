@@ -21,23 +21,18 @@ import { useRepoView } from '../repo/store';
 import { openContextMenu } from '../menu/menuStore';
 import type { MenuRow } from '../menu/types';
 import { discardScopeOf, sectionRows, type DiscardAllScope } from '../stage/menuRows';
-// --- 2D T15 ---
 import { markResolved } from '../conflicts/resolve';
-// --- end 2D T15 ---
-// --- 2D T20 ---
 import { isMergeDirty, MERGE_SAVE_FIRST, useMergeDirty } from '../conflicts/mergeDrafts';
 import { ClearableInput } from '../ui/ClearableInput';
 import { HoverTooltip } from '../ui/HoverTooltip';
-// --- end 2D T20 ---
 
 type Which = 'conflicted' | 'unstaged' | 'staged';
 
-// --- 2D T15 ---
-/** A Conflicted file row's hover action (spec #2 §13.3): Mark resolved, the file as it is (asks
+/** A Conflicted file row's hover action: Mark resolved, the file as it is (asks
  * first while conflict markers remain). */
 function ConflictRowActions({ ctx, path }: { ctx: WriteCtx; path: string }) {
   const committing = useCommitting(ctx.repoId, ctx.worktree);
-  // 2D T20: the merge tool's unsaved work on this file would be replaced (2B's SAVE_FIRST).
+  // The merge tool's unsaved work on this file would be replaced.
   const merging = useMergeDirty(ctx.tabId, ctx.worktree, path);
   const tip = committing ? COMMIT_QUEUED : merging ? MERGE_SAVE_FIRST : `Mark ${path} resolved`;
   return (
@@ -46,10 +41,9 @@ function ConflictRowActions({ ctx, path }: { ctx: WriteCtx; path: string }) {
     </span>
   );
 }
-// --- end 2D T15 ---
 
-/** The section header's buttons (spec #2 §7.1): Unstaged has Stage all and Discard unstaged,
- * Staged has Unstage all, Conflicted none (Mark resolved is 2D's). A press doesn't toggle the
+/** The section header's buttons: Unstaged has Stage all and Discard unstaged,
+ * Staged has Unstage all, Conflicted none. A press doesn't toggle the
  * section. While files are conflicted, Stage all names the other unstaged paths: `git add -A`
  * would mark every conflict resolved. */
 function HeadActions({ ctx, which, files, guardConflicts }: { ctx: WriteCtx; which: Which; files: FileChange[]; guardConflicts: boolean }) {
@@ -85,7 +79,7 @@ function WipSection({ section, which, collapsed, onToggle, sizeRef, basis, listR
   const label = section.title ?? which;
   const list = section.list;
   const full = list.status === 'ready' ? list.data : null;
-  // UX round 4 R.2: the header's filter narrows every list; counts read "n of m" meanwhile.
+  // The header's filter narrows every list; counts read "n of m" meanwhile.
   const { tabId } = useRepoContext();
   const query = useWipFilter((s) => { const f = wipFilterOf(s.byTab, tabId); return f.open ? f.text.trim().toLowerCase() : ''; });
   const ready = useMemo(() => (full && query ? { ...full, files: full.files.filter((f) => matchesFilter(f.path, query)) } : full), [full, query]);
@@ -107,13 +101,13 @@ function WipSection({ section, which, collapsed, onToggle, sizeRef, basis, listR
   menuRef.current = () => (ctx && ready && which !== 'conflicted' ? sectionRows(ctx, which, ready.files, { guardConflicts, all: discardScope() }) : []);
   const menuRows = useCallback(() => menuRef.current(), []);
   let body: ReactNode = null;
-  // UX G.2: View all files on the Unstaged list: the worktree's tracked files around its changes
+  // View all files on the Unstaged list: the worktree's tracked files around its changes
   // (untracked files are among them already), each opening its working-tree file in File View.
   const allFilesWorktree = which === 'unstaged' && section.spec.kind === 'wip' ? section.spec.worktree : null;
   // The +/− line totals sit on the list's tool line, opposite Collapse all / Sort by status, so the
-  // header keeps only the change-type counts next to the title (ux round 3: one kind of number
-  // per line). Like the per-type counts (K47), a zero side isn't shown, and an empty section shows
-  // no totals (K86).
+  // header keeps only the change-type counts next to the title (one kind of number
+  // per line). Like the per-type counts, a zero side isn't shown, and an empty section shows
+  // no totals.
   const totals = ready && (ready.added > 0 || ready.deleted > 0) ? (
     <span className="file-totals" data-testid={`${which}-totals`}>
       {ready.added > 0 && <span className="added">+{ready.added}</span>}
@@ -148,7 +142,7 @@ function WipSection({ section, which, collapsed, onToggle, sizeRef, basis, listR
 }
 
 /**
- * The WIP row's two file lists (spec §8.6, K36): one shared Path/Tree toggle on top, then
+ * The WIP row's two file lists: one shared Path/Tree toggle on top, then
  * "Unstaged (n)" and "Staged (n)", each collapsible in place from its header. While
  * both are expanded, a drag handle (the details split's, rAF-coalesced) sets the split; a
  * collapsed section shrinks to its header and the other takes the space. The ratio and the
@@ -177,7 +171,7 @@ export function WipSections({ sections }: { sections: FileSection[] }) {
   const update = (next: WipPanelPrefs) => { setPrefs(next); saveWipPanel(next); };
   const toggle = (which: Which) => update({ ...prefs, collapsed: { ...prefs.collapsed, [which]: !prefs.collapsed[which] } });
   const [rawUnstaged, rawStaged] = sections;
-  // Conflicted files (status U) leave both lists for their own section (§7.1), once both are in.
+  // Conflicted files (status U) leave both lists for their own section, once both are in.
   const split = rawUnstaged.list.status === 'ready' && rawStaged.list.status === 'ready' ? splitConflicted(rawUnstaged.list.data, rawStaged.list.data) : null;
   const unstaged: FileSection = split ? { ...rawUnstaged, list: { status: 'ready', data: split.unstaged } } : rawUnstaged;
   const staged: FileSection = split ? { ...rawStaged, list: { status: 'ready', data: split.staged } } : rawStaged;
@@ -213,7 +207,7 @@ export function WipSections({ sections }: { sections: FileSection[] }) {
   return (
     <div className="wip-sections">
       <div className="wip-view-bar">
-        {/* UX G.2: here rather than in a list's tool line, so a clean worktree (an Edit stop with
+        {/* Here rather than in a list's tool line, so a clean worktree (an Edit stop with
             nothing changed yet) has it too. It shows the tracked files in the Unstaged list. */}
         <HoverTooltip content="Every tracked file of the working tree, not only the changed ones"><button type="button" className="toolbar-button icon-lead wip-all-files" aria-pressed={wipAllFiles} onClick={() => setListPrefs({ wipAllFiles: !wipAllFiles })}><FolderOpen size={12} aria-hidden /><span className="tb-label">View all files</span></button></HoverTooltip>
         <PathTreeToggle />

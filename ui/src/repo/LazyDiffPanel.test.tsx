@@ -78,7 +78,7 @@ describe('LazyDiffPanel', () => {
     expect(document.activeElement).toBe(region);
   });
 
-  it('a conflicted WIP file opens the merge tool in place of the diff (spec #2 §13.3)', async () => {
+  it('a conflicted WIP file opens the merge tool in place of the diff', async () => {
     const Panel = ({ target: t }: { target: DiffTarget }) => <div data-testid="panel">{t.path}</div>;
     const Merge = ({ target: t }: { target: DiffTarget }) => <div data-testid="merge">{t.path}</div>;
     const load = vi.fn(async () => ({ default: Panel }));

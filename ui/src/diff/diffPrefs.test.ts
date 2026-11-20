@@ -49,7 +49,7 @@ describe('diff prefs', () => {
     expect(useDiffPrefs.getState().prefs).toEqual({ mode: 'inline', ignoreWhitespace: false, wordWrap: true, markdownView: 'rendered', htmlView: 'source', tableView: 'rendered', historyView: 'file' });
   });
 
-  it('markdownView (spec #5 §3.3): Rendered by default, kept app-wide; anything else stored reads as the default', async () => {
+  it('markdownView: Rendered by default, kept app-wide; anything else stored reads as the default', async () => {
     const { parseDiffPrefs, useDiffPrefs } = await fresh();
     expect(parseDiffPrefs({ markdownView: 'source' })?.markdownView).toBe('source');
     expect(parseDiffPrefs({ markdownView: 'wysiwyg' })?.markdownView).toBe('rendered');

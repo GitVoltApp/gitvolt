@@ -5,11 +5,11 @@ import { useToast, type ToastAction } from '../ui/toastStore';
 const CONTEXT_ACTIONS: ReadonlySet<ErrorAction['id']> = new Set(['retry', 'refresh', 'remove-recent', 'remove-lock']);
 
 /**
- * A user's action failed (R12): the existing toast, for `LONG_TOAST_MS`, with `describeError`'s
+ * A user's action failed: the existing toast, for `LONG_TOAST_MS`, with `describeError`'s
  * text and two links: Retry/Refresh/Remove from recent when `ctx` offers the kind's one, else Copy
  * error; then Details, which opens the Debug modal's Commands tab at the failed git command, or
  * its Actions tab when no command is linked. A cancel says nothing. Background errors don't come
- * here: they stay in the bell (K30).
+ * here: they stay in the bell.
  */
 export function toastActionError(e: unknown, ctx: ErrorContext = {}): void {
   const err = toGbError(e);

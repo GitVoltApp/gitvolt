@@ -6,7 +6,7 @@ import { blockCommenter, setBlockCommenter, withBlockComment } from './blockComm
 
 const action = (when: boolean, keysBy?: string): Action => ({ id: 'x', label: 'Comment', group: 'View', icon: CircleHelp, tooltip: 'Comment on the line', when: () => when, run: vi.fn(), ...(keysBy ? { keysBy } : {}) });
 
-describe('the comment key over a rendered diff (spec 2026-10-08 §3)', () => {
+describe('the comment key over a rendered diff', () => {
   it("runs the rendered diff's commenter while one is set, else the action's own", () => {
     const a = action(false);
     const wrapped = withBlockComment(a);
@@ -49,7 +49,7 @@ describe('the comment key over a rendered diff (spec 2026-10-08 §3)', () => {
   });
 });
 
-describe("Plan 2's comment action", () => {
+describe("the rendered diff's comment action", () => {
   it('review.comment runs the rendered diff\'s commenter while one is set', async () => {
     await import('../../app/features');
     const { getAction } = await import('../../app/actions');

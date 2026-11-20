@@ -1,4 +1,4 @@
-/* Write / Preview (spec #5 §3.2), one editor box: the tabs (and a toolbar) in its header, the
+/* Write / Preview, one editor box: the tabs (and a toolbar) in its header, the
    textarea, a hint footer. The preview lies over the textarea, which keeps the size. */
 .md-field { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--wip-input-border); border-radius: 6px; background: var(--wip-input-bg); overflow: hidden; transition: border-color var(--motion-fast), box-shadow var(--motion-fast); }
 .md-field:focus-within { border-color: var(--blue); box-shadow: 0 0 0 2px var(--focus-outline); }

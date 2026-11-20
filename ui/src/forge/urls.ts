@@ -1,14 +1,14 @@
 import type { HostKind } from '../api/gen/HostKind';
 import type { RemotePayload } from '../api/gen/RemotePayload';
 
-/** A remote resolved down to what forge URLs need (spec §14.4). */
+/** A remote resolved down to what forge URLs need. */
 export interface ProjectRemote {
   host: string;
   path: string;
   hostKind: HostKind;
 }
 
-/** The profile's host → forge type overrides (spec §14.4, `Profile.hostOverrides`). */
+/** The profile's host → forge type overrides (`Profile.hostOverrides`). */
 export type HostOverrides = { [host in string]?: HostKind };
 
 /** A host's forge type: the profile's override for that host (hosts compare case-insensitively),
@@ -19,7 +19,7 @@ export function effectiveKind(host: string | null | undefined, detected: HostKin
 }
 
 /** The remote that forge links point at: the first with a parsed host and path. Remotes arrive
- * `origin` first (spec §14.4). `overrides` are the profile's host-type overrides. */
+ * `origin` first. `overrides` are the profile's host-type overrides. */
 export function projectRemote(remotes: RemotePayload[], overrides: HostOverrides = {}): ProjectRemote | null {
   const r = remotes.find((x) => x.host && x.path);
   return r ? { host: r.host!, path: r.path!, hostKind: effectiveKind(r.host, r.hostKind, overrides) } : null;
@@ -39,7 +39,7 @@ function baseUrl(r: ProjectRemote, project?: string | null): string {
 /** A full commit SHA (SHA-1 or SHA-256), not a branch name. */
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 
-/** A file's blob URL, with an optional line anchor (spec §14.4). GitLab and GitHub differ in both
+/** A file's blob URL, with an optional line anchor. GitLab and GitHub differ in both
  * the path shape and the anchor: GitLab's range anchor has one `L`, GitHub's has two. Forgejo
  * anchors like GitHub, but its path names the ref's type (`ref` is a branch or a full SHA). */
 export function fileUrl(r: ProjectRemote, ref: string, file: string, lines?: { a: number; b: number }): string | null {
@@ -76,7 +76,7 @@ export function commitUrl(r: ProjectRemote, sha: string): string | null {
 }
 
 /** GitLab merge requests; GitHub and Forgejo pull requests (GitHub redirects `/pull/n` to the
- * issue when `n` is one). No API call: plain URL templates (spec §14.4). `project` (a
+ * issue when `n` is one). No API call: plain URL templates. `project` (a
  * `group/sub/project` or `owner/repo` override) replaces `r.path` when it's non-null. */
 export function mergeRequestUrl(r: ProjectRemote, project: string | null, n: number): string | null {
   if (r.hostKind === 'generic') return null;

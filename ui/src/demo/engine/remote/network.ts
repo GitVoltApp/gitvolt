@@ -1,4 +1,4 @@
-// The demo's network (plan 4): a remote's URL reaches an in-memory git dir or nothing. A local
+// The demo's network: a remote's URL reaches an in-memory git dir or nothing. A local
 // path that is a git dir; the fake forge's project URL (https or ssh, `gitlab.example.com`) for a
 // bundle whose forge.json names that project; anything else is "Not in the demo", kind `Other` as
 // the core's failed fetch of a host it can't resolve. No request ever leaves the page.

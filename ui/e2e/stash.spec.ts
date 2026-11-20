@@ -6,7 +6,7 @@ const stashes = (repo: string) => git(repo, 'stash', 'list', '--format=%gs');
 const bar = (page: Page) => page.getByRole('toolbar', { name: 'Repository toolbar' });
 const wipBox = (page: Page) => grid(page).getByRole('row').first().getByRole('textbox');
 
-test.describe('stashes (spec #2 §10)', () => {
+test.describe('stashes', () => {
   // One repo and page for these (each was a test of its own, paying for a page load and a
   // fixture): the fixture's WIP stashed and back, then its own stash ("Experiment") applied,
   // deleted and back, popped last.
@@ -33,7 +33,7 @@ test.describe('stashes (spec #2 §10)', () => {
       await page.getByRole('menuitem', { name: 'Apply' }).click();
       await expect.poll(() => git(repo, 'status', '--porcelain')).toContain('file_0.txt');
       expect(stashes(repo)).toBe('On main: Experiment');
-      // What came back (UX round 2): the WIP row is selected and the restored file's diff is open.
+      // What came back: the WIP row is selected and the restored file's diff is open.
       await expect(page.getByTestId('diff-path')).toContainText('file_0.txt');
       await page.keyboard.press('Escape');
       await expect(grid(page).getByRole('row').first()).toHaveAttribute('aria-selected', 'true');

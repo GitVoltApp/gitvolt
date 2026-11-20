@@ -1,5 +1,5 @@
-//! MR/PR/issue references in commit messages (spec §9.2), parsed once at graph-assembly time
-//! into `RowPayload::mr_refs` so the commit menu (§7) can offer `Open !1187` rows without a
+//! MR/PR/issue references in commit messages, parsed once at graph-assembly time
+//! into `RowPayload::mr_refs` so the commit menu can offer `Open !1187` rows without a
 //! backend call.
 
 /// At most this many labels per commit, so a pathological message can't bloat the payload.
@@ -44,7 +44,7 @@ fn is_url_start(rest: &[u8]) -> bool {
 }
 
 fn is_word(c: char) -> bool {
-    // Unicode, not ASCII: the TS port (plan 1B Task 12) must match with `[\p{L}\p{N}_]` under the `u` flag.
+    // Unicode, not ASCII: the TS port must match with `[\p{L}\p{N}_]` under the `u` flag.
     c.is_alphanumeric() || c == '_'
 }
 

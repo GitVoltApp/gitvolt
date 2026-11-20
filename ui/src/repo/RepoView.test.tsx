@@ -55,7 +55,7 @@ function services(overrides: Partial<RepoServices> = {}): RepoServices {
 }
 
 /** Waits a frame: PanelResizer's drag writes the live width in a `requestAnimationFrame`,
- * coalescing however many `pointermove` events land within it (K26). */
+ * coalescing however many `pointermove` events land within it. */
 const nextFrame = () => act(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
 const EMPTY_LIST: FileListPayload = { files: [], added: 0, deleted: 0 };
@@ -90,7 +90,7 @@ describe('RepoView', () => {
     expect(screen.getAllByRole('row')[1]).toHaveAttribute('aria-selected', 'true');
   });
 
-  it("the store's filterKeep (plan 1C Find) dims every other row's text at the 'filter' level, through the shared row-dim", () => {
+  it("the store's filterKeep (Find) dims every other row's text at the 'filter' level, through the shared row-dim", () => {
     const store = createRepoViewStore(1, '/r', graph, services());
     render(<RepoView repo={1} repoPath="/r" graph={graph} store={store} />);
     const dimmed = () => screen.getAllByRole('row').map((r) => r.querySelector('[data-col="message"]')!.classList.contains('row-dim-filter'));
@@ -118,7 +118,7 @@ describe('RepoView', () => {
     const rows = screen.getAllByRole('row');
     fireEvent.mouseDown(rows[1]);
     fireEvent.mouseDown(rows[0], { ctrlKey: true });
-    // K15: both compared commits show as selected.
+    // Both compared commits show as selected.
     expect(screen.getAllByRole('row').map((r) => r.getAttribute('aria-selected'))).toEqual(['true', 'true']);
     fireEvent.keyDown(screen.getByRole('grid', { name: 'Commit graph' }), { key: 'Escape' });
     expect(screen.getAllByRole('row').map((r) => r.getAttribute('aria-selected'))).toEqual(['true', 'false']);
@@ -181,7 +181,7 @@ describe('RepoView', () => {
     expect(await screen.findByRole('complementary', { name: 'Working tree changes' })).toBeInTheDocument();
   });
 
-  it('Escape, in the grid or on the summary\'s ×, leaves a multi-selection for the anchor row (K27)', async () => {
+  it('Escape, in the grid or on the summary\'s ×, leaves a multi-selection for the anchor row', async () => {
     const C = 'c'.repeat(40);
     render(<RepoView repo={1} repoPath="/r" graph={{ ...graph, rows: [...graph.rows, row(C, 'Zeroth', [])] }} services={services()} />);
     const grid = screen.getByRole('grid', { name: 'Commit graph' });
@@ -225,7 +225,7 @@ describe('RepoView', () => {
       return { grid, stale, release: () => act(async () => release()) };
     }
 
-    it('→ (J2: opens the new first file) lands on the files zone, then the new list once it swaps in', async () => {
+    it('→ (opens the new first file) lands on the files zone, then the new list once it swaps in', async () => {
       const { grid, stale, release } = await pendingB();
       // Keys on the stale list open nothing.
       fireEvent.keyDown(stale, { key: 'ArrowDown' });
@@ -264,8 +264,7 @@ describe('RepoView', () => {
     });
   });
 
-  // Feedback F12 replaces the old stand-in (the graph row's summary while the message loads):
-  // the panel appears with everything loaded, and keeps the previous commit, whole, meanwhile.
+  // The panel appears with everything loaded, and keeps the previous commit, whole, meanwhile.
   it('the panel appears once the commit\'s content has loaded, and keeps it (busy) while the next one loads', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => { release = r; });
@@ -437,7 +436,7 @@ describe('RepoView', () => {
     expect(useToast.getState().message).toBe('Copy failed');
   });
 
-  it('J2: → in the graph opens the first file as the list displays it and focuses the list; with none, it stays', async () => {
+  it('→ in the graph opens the first file as the list displays it and focuses the list; with none, it stays', async () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'status', allFiles: false });
     const f = (path: string, status: string) => ({ path, oldPath: null, status, additions: 1, deletions: 0, old: { kind: 'object' as const, oid: B }, new: { kind: 'object' as const, oid: A }, submodule: false });
     const list: FileListPayload = { files: [f('a.txt', 'M'), f('z.txt', 'A')], added: 2, deleted: 0 };
@@ -486,7 +485,7 @@ describe('RepoView', () => {
 
   it('Ctrl+W closes the open file from the file list (as Escape does); with none open, the tab', async () => {
     const list: FileListPayload = { files: [{ path: 'a.txt', oldPath: null, status: 'M', additions: 1, deletions: 0, old: { kind: 'absent' }, new: { kind: 'absent' }, submodule: false }], added: 1, deleted: 0 };
-    // Ctrl+W is the app's shortcut (plan 1C), acting on the active tab's store.
+    // Ctrl+W is the app's shortcut, acting on the active tab's store.
     const store = activeTabWith(createRepoViewStore(1, '/r', graph, services({ files: new Loader(async () => list, new Lru(10)) })));
     offKeys = installShortcuts();
     render(<RepoView repo={1} repoPath="/r" graph={graph} store={store} />);
@@ -551,7 +550,7 @@ describe('RepoView', () => {
     expect(screen.queryByRole('region', { name: 'Diff' })).toBeNull();
   });
 
-  describe('J4: Esc closes the open file wherever the focus is', () => {
+  describe('Esc closes the open file wherever the focus is', () => {
     const list: FileListPayload = { files: [{ path: 'a.txt', oldPath: null, status: 'M', additions: 1, deletions: 0, old: { kind: 'absent' }, new: { kind: 'absent' }, submodule: false }], added: 1, deleted: 0 };
     async function openA() {
       const view = render(<RepoView repo={1} repoPath="/r" graph={graph} services={services({ files: new Loader(async () => list, new Lru(10)) })} />);
@@ -644,7 +643,7 @@ describe('RepoView', () => {
       find.remove();
     });
 
-    it("an app text box keeps its Esc (plan 1C's search box); a shown HoverTooltip is dismissed first", async () => {
+    it("an app text box keeps its Esc (the search box); a shown HoverTooltip is dismissed first", async () => {
       await openA();
       const search = Object.assign(document.createElement('input'), { type: 'search' });
       document.body.append(search);
@@ -691,7 +690,7 @@ describe('RepoView', () => {
     expect(screen.getAllByRole('row')[0]).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('K44: a watched tab renders the WIP row\'s held lists in the same render as the click, with no request', async () => {
+  it('a watched tab renders the WIP row\'s held lists in the same render as the click, with no request', async () => {
     const wipRow: RowPayload = { ...row('wip:/r', 'Uncommitted changes', []), kind: 'wip', wip: { worktreePath: '/r', worktreeName: null, modified: 1, added: 0, deleted: 0, renamed: 0, conflicted: 0 } };
     const g: GraphPayload = { ...graph, rows: [wipRow, ...graph.rows] };
     const file = (path: string): FileListPayload => ({ files: [{ path, oldPath: null, status: 'M', additions: 1, deletions: 0, old: { kind: 'object', oid: B }, new: { kind: 'worktree', worktree: '/r' }, submodule: false }], added: 1, deleted: 0, version: 'v1' });

@@ -1,4 +1,4 @@
-// Shiki's language registry is part of the lazy diff chunk, not the startup chunk (spec §10.3):
+// Shiki's language registry is part of the lazy diff chunk, not the startup chunk:
 // only modules reached from diff/monaco/load.ts or a React.lazy diff panel may import this file.
 // `npm run build` fails if Shiki's registry shows up in the entry chunk (scripts/check-entry-chunk.mjs).
 // The registry is GitVolt's copy, without the grammars dropped for their licenses: a file in one
@@ -37,7 +37,7 @@ const SHEBANGS = table({
   python: 'python', python3: 'python', php: 'php', ruby: 'ruby', perl: 'perl', tclsh: 'tcl',
 });
 
-/** Spec §10.3: by extension or file name (Shiki's registry plus the tables above), then by
+/** By extension or file name (Shiki's registry plus the tables above), then by
  * shebang, then plain text. */
 export function detectLanguage(path: string, firstLine = ''): string {
   const name = path.slice(path.lastIndexOf('/') + 1).toLowerCase();

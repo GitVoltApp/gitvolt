@@ -6,7 +6,7 @@ import { useToast } from '../ui/toastStore';
 import { runWrite, type WriteCtx } from '../write/client';
 import { revealRestored, stashPaths } from './reveal';
 
-/** A full stash of `ctx.worktree` (spec #2 §10): the WIP draft is its message (§8.2), cleared
+/** A full stash of `ctx.worktree`: the WIP draft is its message, cleared
  * after a stash that happened. An empty draft sends '' and the backend names it from the branch.
  * Autostash, apply and pop never touch the draft. */
 export async function stashPushFor(ctx: WriteCtx): Promise<void> {
@@ -17,7 +17,7 @@ export async function stashPushFor(ctx: WriteCtx): Promise<void> {
   if (out?.status === 'stashed') clearWipDraft(repoPath, ctx.worktree);
 }
 
-/** Apply or Pop (spec #2 §10), by the stash's oid. "Apply without restoring what was staged?" is
+/** Apply or Pop, by the stash's oid. "Apply without restoring what was staged?" is
  * runWrite's question; a refused answer resends with `withoutIndex`. */
 export async function applyStash(ctx: WriteCtx, oid: string, pop: boolean): Promise<void> {
   // Asked first: a Pop deletes the stash (its commit's list stays readable, but not from the graph).
@@ -26,7 +26,7 @@ export async function applyStash(ctx: WriteCtx, oid: string, pop: boolean): Prom
   if (out?.status === 'conflicts') {
     useToast.getState().show(`The stash conflicts in ${out.files} ${out.files === 1 ? 'file' : 'files'}; resolve them in Conflicted. The stash is kept.`, { error: true });
   }
-  // What came back (UX round 2): the WIP row, and the first restored file's diff unless it
+  // What came back: the WIP row, and the first restored file's diff unless it
   // conflicted (the WIP's Conflicted list is where to go then).
   if (out) await revealRestored(ctx.tabId, ctx.worktree, paths, out.status === 'applied');
 }
@@ -39,7 +39,7 @@ export async function applyKeptStash(ctx: WriteCtx, entry: number, oid: string |
   if (applied) await revealRestored(ctx.tabId, ctx.worktree, paths);
 }
 
-/** Delete (spec #2 §10): it arms in place first (spec §ui confirms; undoable all the same). */
+/** Delete: it arms in place first (undoable all the same). */
 export async function dropStash(ctx: WriteCtx, oid: string): Promise<void> {
   const name = useRuntime.getState().tabs[ctx.tabId]?.sidebar?.stashes.find((s) => s.id === oid)?.message;
   const arm = name ? `Click again to delete the stash "${name}"` : 'Click again to delete the stash';

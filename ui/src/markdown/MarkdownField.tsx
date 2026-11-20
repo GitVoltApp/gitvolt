@@ -35,7 +35,7 @@ export interface MarkdownFieldProps {
 type Mode = 'write' | 'preview';
 const isToggle = (e: KeyboardEvent<HTMLElement>) => (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p';
 
-/** A textarea with Write and Preview tabs (spec §3.2), in one editor box: the tabs and an
+/** A textarea with Write and Preview tabs, in one editor box: the tabs and an
  * optional toolbar in its header, a "Markdown supported" footer, and a focus ring around the
  * whole box. Preview renders the text (debounced by 150 ms) with the same context and rules, over
  * the textarea, which stays mounted and keeps its size, value and caret. Ctrl+Shift+P switches

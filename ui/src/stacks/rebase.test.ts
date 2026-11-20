@@ -29,7 +29,7 @@ const plan = (over: Partial<RebasePlanPayload> = {}): RebasePlanPayload => ({
 /** feature/a's commit is already in origin/main under another id. */
 const aInBase = () => plan({ rows: [row('c1'), row('b1'), row('a1', true)] });
 
-describe('stackPlan (spec #3 §3.11)', () => {
+describe('stackPlan', () => {
   it("every row picks; a chip per lower member at its row; git moves the top; the plan's tips expected", () => {
     expect(stackPlan(stack, plan())).toEqual({
       branch: 'feature/c', base: 'refs/remotes/origin/main',
@@ -39,18 +39,18 @@ describe('stackPlan (spec #3 §3.11)', () => {
     });
   });
 
-  it("the base ref's expected tip is the plan's (unpeeled: an annotated tag's own object), never the base's peeled oid (3C F3)", () => {
+  it("the base ref's expected tip is the plan's (unpeeled: an annotated tag's own object), never the base's peeled oid", () => {
     const tagged = plan({ base: 'refs/tags/v1', baseOid: 'peeled', expect: { ...plan().expect, 'refs/tags/v1': 'tagobj' } });
     expect(stackPlan({ ...stack, base: 'refs/tags/v1' }, tagged).expect['refs/tags/v1']).toBe('tagobj');
   });
 
-  it('a member already in the base: its row drops, as git would, and its chip stays (Review Focus 1)', () => {
+  it('a member already in the base: its row drops, as git would, and its chip stays', () => {
     const p = stackPlan(stack, aInBase());
     expect(p.rows.map((r) => r.action)).toEqual(['pick', 'pick', 'drop']);
     expect(p.chips).toEqual([{ branch: 'feature/a', at: { kind: 'stay' } }, { branch: 'feature/b', at: { kind: 'row', oid: 'b1' } }]);
   });
 
-  it("a branch in range that isn't a member stays (Ruling 4)", () => {
+  it("a branch in range that isn't a member stays", () => {
     const p = stackPlan(stack, plan({ chips: [...plan().chips, { branch: 'main', at: 'a1', locked: null }] }));
     expect(p.chips).toEqual([
       { branch: 'feature/a', at: { kind: 'row', oid: 'a1' } },
@@ -61,7 +61,7 @@ describe('stackPlan (spec #3 §3.11)', () => {
 });
 
 describe('rebaseConfirm', () => {
-  it('counts the branches; predicted conflicts warn; staying and left-behind branches are named (Review Focus 1, 5)', () => {
+  it('counts the branches; predicted conflicts warn; staying and left-behind branches are named', () => {
     const req = stackPlan(stack, plan());
     expect(rebaseConfirm(stack, req, 0)).toEqual({ arm: 'Click again to rebase 3 branches onto origin/main', caption: undefined, tone: 'positive' });
     expect(rebaseConfirm(stack, req, 2)).toEqual({ arm: 'Click again to rebase 3 branches onto origin/main (conflicts at 2 commits)', caption: '2 commits will conflict.', tone: 'warn' });
@@ -88,7 +88,7 @@ describe('rebaseConfirm: non-member chips', () => {
   });
 });
 
-describe('rebaseStackRow (spec #3 §4.3)', () => {
+describe('rebaseStackRow', () => {
   const t = (name: string) => ({ sha: 's', mrRefs: [], isWip: false, isStash: false, branch: { name, local: `refs/heads/${name}`, remotes: [] } });
   const lb = (name: string, target: string, worktree: string | null = null) => ({ name, fullName: `refs/heads/${name}`, target, worktree });
   const sidebar = (locals = [lb('feature/a', 'a1'), lb('feature/b', 'b1'), lb('feature/c', 'c1')]) => ({ locals, remotes: [{ name: 'origin', branches: [{ fullName: 'refs/remotes/origin/main', target: 'm' }] }] });
@@ -110,7 +110,7 @@ describe('rebaseStackRow (spec #3 §4.3)', () => {
     expect(rebaseStackRow(t('feature/b'), env({ isAncestor: (a: string, b: string) => a === 'm' && b === 'a1' }), run)).toEqual([]);
   });
 
-  it('greyed during another operation, while a member is checked out in another worktree (Review Focus 2), or while HEAD is not the top (Ruling 11)', () => {
+  it('greyed during another operation, while a member is checked out in another worktree, or while HEAD is not the top', () => {
     expect(rebaseStackRow(t('feature/a'), env({ inProgress: 'merge' }), run)[0]).toMatchObject({ disabledReason: 'Finish or abort the merge first' });
     const away = env({ sidebar: sidebar([lb('feature/a', 'a1'), lb('feature/b', 'b1', '/wt/b'), lb('feature/c', 'c1')]) });
     expect(rebaseStackRow(t('feature/a'), away, run)[0]).toMatchObject({ disabledReason: 'feature/b is checked out in /wt/b' });
@@ -190,8 +190,7 @@ describe('rebaseStack', () => {
   });
 });
 
-// --- 4D T6 ---
-describe('Rebase stack after the bottom merged (4D, Ruling 9)', () => {
+describe('Rebase stack after the bottom merged', () => {
   const above: Stack = { branches: ['feature/b', 'feature/c'], base: 'refs/remotes/origin/main', leftBehind: [] };
   const drop = { from: ['a1'], branch: 'feature/a' };
   beforeEach(() => { vi.restoreAllMocks(); confirm.mockReset(); useToast.getState().dismiss(); });
@@ -268,4 +267,3 @@ describe('Rebase stack after the bottom merged (4D, Ruling 9)', () => {
     expect(await rebaseStack(ctx, local, { drop: null, origin: null })).toEqual({ status: 'upToDate' });
   });
 });
-// --- end 4D T6 ---

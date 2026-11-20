@@ -1,6 +1,6 @@
-//! Undo and redo (spec #2 §5.3, §5.4).
+//! Undo and redo.
 //!
-//! Undo and redo are themselves writes (§3.2): locked, queued, with events. The undone entry
+//! Undo and redo are themselves writes: locked, queued, with events. The undone entry
 //! moves to the redo stack, and a redo moves it back. Redo replays the recorded forward effect
 //! (the CAS, the `after` snapshot, the switch); it never re-runs the original command, so no hook
 //! or signer runs again.
@@ -27,15 +27,14 @@ pub(crate) enum Direction {
 #[serde(tag = "status", rename_all = "camelCase", rename_all_fields = "camelCase")]
 #[ts(export)]
 pub enum UndoOutcome {
-    /// Done: the toast says "Undid <label>", plus " (<note>)" when the entry has one (§5.5;
-    /// the note: 2C T1).
+    /// Done: the toast says "Undid <label>", plus " (<note>)" when the entry has one).
     Done {
         label: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         note: Option<String>,
     },
-    /// A ref moved since the operation (§5.4): nothing changed. The UI asks, then sends again
+    /// A ref moved since the operation: nothing changed. The UI asks, then sends again
     /// with `confirm` (each ref at the `actual` it showed).
     Moved { label: String, refs: Vec<MovedRef> },
 }
@@ -54,7 +53,7 @@ pub struct MovedRef {
     /// Commits made since (`expected..actual`) that the move drops from it.
     pub dropped: u32,
     /// The undo leaves it where it is (`target` = `actual`): a snapshot restore over a moved
-    /// HEAD restores the files over it (2B final I1). For HEAD, `expected`/`actual` are
+    /// HEAD restores the files over it. For HEAD, `expected`/`actual` are
     /// `refs/heads/<branch>` when the branch changed, else commit ids.
     pub stays: bool,
 }
@@ -63,24 +62,17 @@ pub(crate) struct UndoIntent {
     pub(crate) dir: Direction,
     pub(crate) entry: JournalEntry,
     pub(crate) confirm: BTreeMap<String, Option<String>>,
-    /// The clean-restore warning (§6.2) was confirmed.
+    /// The clean-restore warning was confirmed.
     pub(crate) autostash_ok: bool,
-    // --- 2C T7 ---
-    /// "Apply without restoring what was staged?" was confirmed (a stash's apply, 2C T7 M2).
+    /// "Apply without restoring what was staged?" was confirmed (a stash's apply).
     pub(crate) without_index: bool,
-    // --- end 2C T7 ---
-    // --- 3B T2 ---
     /// "Undo the stopped cherry-pick?" was confirmed: its changes are discarded.
     pub(crate) confirm_discard: bool,
-    // --- end 3B T2 ---
-    // --- UX Y ---
     /// An older entry, undone from the Undo dropdown out of order (`journal::history`): it needs
     /// no Redo; its undo is a new entry that takes its place in the stack.
     pub(crate) out_of_order: bool,
-    // --- end UX Y ---
 }
 
-// --- 3B T2 fix round 1 (D) ---
 /// `snap` over `paths` alone (a stopped pick's attempted commits' paths): what its Undo restores.
 fn only(snap: &crate::journal::Snapshot, paths: &[String]) -> crate::journal::Snapshot {
     let keep = |p: &String| paths.contains(p);
@@ -91,16 +83,13 @@ fn only(snap: &crate::journal::Snapshot, paths: &[String]) -> crate::journal::Sn
         modes: snap.modes.iter().filter(|(p, _)| keep(p)).map(|(p, m)| (p.clone(), *m)).collect(),
     }
 }
-// --- end 3B T2 fix round 1 ---
 
 impl UndoIntent {
-    // --- 3B T2 ---
     /// The undo of a "without committing" pick that stopped on conflicts: `cherry-pick` or
     /// `revert`. It discards P, unmerged paths included, after its own question.
     fn stopped_pick(&self) -> Option<&crate::journal::StoppedPick> {
         self.entry.stopped_pick.as_ref().filter(|_| self.dir == Direction::Undo && self.entry.undo == UndoKind::Restore)
     }
-    // --- end 3B T2 ---
 
     fn verb(&self) -> &'static str {
         match self.dir {
@@ -142,32 +131,31 @@ impl UndoIntent {
         }
     }
 
-    // --- 2C T6: reset kinds ---
-    /// A reset of a detached HEAD: its undo and redo move HEAD itself (Deviation 3).
+    // --- reset kinds ---
+    /// A reset of a detached HEAD: its undo and redo move HEAD itself.
     fn detached_reset(&self) -> bool {
         matches!(self.entry.undo, UndoKind::ResetSoft | UndoKind::ResetMixed | UndoKind::ResetHard) && self.entry.head_before.branch.is_none()
     }
-    // --- end 2C T6 ---
 
     /// A Switch whose HEAD was moved since (an outside `git switch`) asks first, like a moved
-    /// ref (§5.4, review m9); "Undo anyway" carries HEAD as the prompt showed it. So does a
-    /// detached HEAD's commit (MoveHead, 2B Deviation 9), but only while HEAD is still detached:
+    /// ref; "Undo anyway" carries HEAD as the prompt showed it. So does a
+    /// detached HEAD's commit (MoveHead), but only while HEAD is still detached:
     /// on a branch now, moving HEAD alone would leave that branch's index and worktree under
     /// another commit, so it's refused with no override. (The prompt's `dropped` is counted in
-    /// `run`.) A detached reset moves HEAD itself too, and is checked as MoveHead (2C T6).
+    /// `run`.) A detached reset moves HEAD itself too, and is checked as MoveHead.
     fn head_moved(&self, now: &HeadState) -> Result<Option<MovedRef>, GbError> {
-        // --- 2B T4: a snapshot restore over a moved HEAD asks too (review M1) ---
+        // --- a snapshot restore over a moved HEAD asks too ---
         // A discard's or a pop's snapshot was taken against HEAD as it was: restored over another
         // commit, its index entries read as a staged reversal of what was committed since. It
         // asks, never refuses ("Undo anyway" is sometimes exactly what's wanted).
         let snapshot_restore = self.entry.undo == UndoKind::Restore || (self.entry.undo == UndoKind::Stash && self.snapshot().is_some());
         if snapshot_restore {
-            // UX Y: out of order, the plan checked HEAD path by path (`out_of_order_check`).
+            // Out of order, the plan checked HEAD path by path (`out_of_order_check`).
             if self.out_of_order {
                 return Ok(None);
             }
             // HEAD's commit (a commit on the branch moves it), or its branch. Restore never moves
-            // HEAD: it stays where it is now, and the files are restored over it (2B final I1).
+            // HEAD: it stays where it is now, and the files are restored over it.
             // A branch switch is shown by branch, so the prompt never reads "at X, not X".
             let (from, _) = self.head_ends();
             if from.oid == now.oid && from.branch == now.branch {
@@ -180,8 +168,7 @@ impl UndoIntent {
                 None => Ok(Some(MovedRef { name: "HEAD".into(), expected: want, target: have.clone(), actual: have, dropped: 0, stays: true })),
             };
         }
-        // --- end 2B T4 ---
-        // --- 2C T6: a detached reset's HEAD ---
+        // --- a detached reset's HEAD ---
         let moves_head = self.entry.undo == UndoKind::MoveHead || self.detached_reset();
         if self.entry.undo != UndoKind::Switch && !moves_head {
             return Ok(None);
@@ -192,7 +179,7 @@ impl UndoIntent {
             return Ok(None);
         }
         if moves_head && let Some(branch) = &now.branch {
-            // Retrying can't help; switching back to the detached commit does (2B final I2).
+            // Retrying can't help; switching back to the detached commit does.
             let back = from.oid.as_deref().map_or("the detached commit", |o| &o[..o.len().min(7)]);
             let verb = match self.dir {
                 Direction::Undo => "undo",
@@ -200,7 +187,6 @@ impl UndoIntent {
             };
             return Err(GbError::new(GbErrorKind::InvalidInput, format!("HEAD is on {branch} now: switch back to {back} to {verb} {}", self.entry.label)));
         }
-        // --- end 2C T6 ---
         match self.confirm.get("HEAD") {
             Some(shown) if *shown == have => Ok(None),
             Some(_) => Err(GbError::ref_moved("HEAD")),
@@ -209,7 +195,7 @@ impl UndoIntent {
     }
 
     /// `run` will change nothing: the entry is no longer on top or has expired (stale), a ref
-    /// or HEAD moved and isn't confirmed (it asks, §5.4), or the snapshot is gone. Nothing is
+    /// or HEAD moved and isn't confirmed (it asks), or the snapshot is gone. Nothing is
     /// autostashed for it.
     fn changes_nothing(&self, api: &Api, root: &std::path::Path, head: &HeadState) -> Result<bool, GbError> {
         let mut j = api.journal(root)?.load()?;
@@ -238,7 +224,7 @@ impl UndoIntent {
         format!("gitvolt: {} {}", self.verb(), self.entry.label)
     }
 
-    /// "Stage all & commit" (§5.3, Deviation 8): the two-way read-tree's (from, to). Undo goes
+    /// "Stage all & commit": the two-way read-tree's (from, to). Undo goes
     /// from the op's index (the commit's tree, or `index_after`) to `index_before`, the
     /// pre-commit split; redo goes back. `None` unless HEAD is where this step starts: on another
     /// branch, or moved since ("Undo anyway"), the index isn't this op's, and the undo is a plain
@@ -265,8 +251,8 @@ impl UndoIntent {
         Ok(())
     }
 
-    /// MoveHead (Deviation 9): `update-ref --no-deref HEAD <to> <old>`, `old` being where the
-    /// op left HEAD, or the value "Undo anyway" was shown (§5.4: the CAS runs against it).
+    /// MoveHead: `update-ref --no-deref HEAD <to> <old>`, `old` being where the
+    /// op left HEAD, or the value "Undo anyway" was shown (the CAS runs against it).
     async fn move_head(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {
         let (from, to) = self.head_ends();
         let old = match self.confirm.get("HEAD") {
@@ -280,7 +266,7 @@ impl UndoIntent {
         Ok(())
     }
 
-    /// Rewind (§5.3): a two-way `read-tree -m -u <from> <to>` carries local changes and refuses
+    /// Rewind: a two-way `read-tree -m -u <from> <to>` carries local changes and refuses
     /// on overlap; then the CAS. If the CAS fails, the reverse read-tree runs and it's RefMoved.
     async fn rewind(&self, cx: &mut WriteCx<'_>, moves: &[RefMove]) -> Result<(), GbError> {
         let checked = cx.before.head.branch.as_ref().map(|b| format!("refs/heads/{b}"));
@@ -288,7 +274,7 @@ impl UndoIntent {
         let Some((from, to)) = tree else { return cx.cas(moves, &self.reflog()).await };
         refresh_index(cx).await;
         let inv = cx.git(["read-tree", "-m", "-u", from.as_str(), to.as_str()]);
-        // --- 2C T5: the put-back after an interrupted move (review I1) ---
+        // --- the put-back after an interrupted move ---
         // A read-tree that failed or was cancelled part-way puts back what it rewrote, so step 8
         // restores the autostash onto the tree as it was; the reverse one is a repair step (the
         // op's Cancel doesn't stop it, a Stop does).
@@ -307,12 +293,11 @@ impl UndoIntent {
             }
             return Err(e);
         }
-        // --- end 2C T5 ---
         Ok(())
     }
 
-    /// Switch (§5.3): `git switch` back, then the CAS of the refs it created or moved; redo
-    /// moves them first, then switches (Deviation 9, 2C T1).
+    /// Switch: `git switch` back, then the CAS of the refs it created or moved; redo
+    /// moves them first, then switches.
     async fn switch(&self, cx: &mut WriteCx<'_>, moves: &[RefMove]) -> Result<(), GbError> {
         let head = match self.dir {
             Direction::Undo => &self.entry.head_before,
@@ -328,7 +313,7 @@ impl UndoIntent {
             (None, Some(oid)) => vec!["switch".into(), "--detach".into(), oid.clone()],
             (None, None) => return Err(GbError::other("nothing to switch to")),
         };
-        // --- 2C T1: the Switch redo order ---
+        // --- the Switch redo order ---
         // The branch HEAD is on now moves once the switch has left it (undo: the branch a
         // checkout created or fast-forwarded; redo: a finished git flow branch, deleted). Every
         // other ref moves first, so the branch the switch lands on is already where it belongs
@@ -344,13 +329,12 @@ impl UndoIntent {
             // back, each a CAS on the value just set, as `rewind` reverses its read-tree. Not
             // when HEAD did land (a post-checkout hook's failure): the branch is checked out.
             let landed = gix::open(cx.root).ok().and_then(|r| crate::write::head_state(&r).ok()).is_some_and(|now| now.branch.is_some() && now.branch == head.branch);
-            // --- 2C T5: the put-back after an interrupted move (review I1) ---
+            // --- the put-back after an interrupted move ---
             // The paths a failed or cancelled switch rewrote go back first (a no-op when HEAD
             // moved), so step 8 restores the autostash onto the tree as it was.
             if let Some(to) = head.oid.clone() {
                 e = crate::write::checkout::put_back(cx, &to, e).await;
             }
-            // --- end 2C T5 ---
             if !first.is_empty() && !landed && !cx.repair_stopped() {
                 let back: Vec<RefMove> = first.iter().map(|m| RefMove { name: m.name.clone(), old: m.new.clone(), new: m.old.clone() }).collect();
                 if let Err(b) = cx.cas(&back, &self.reflog()).await {
@@ -365,16 +349,15 @@ impl UndoIntent {
         if !after.is_empty() {
             cx.cas(&after, &self.reflog()).await?;
         }
-        // --- end 2C T1 ---
         Ok(())
     }
 }
 
-/// `update-index -q --refresh` before a `read-tree -m -u` (2A final I2): read-tree checks each
+/// `update-index -q --refresh` before a `read-tree -m -u`: read-tree checks each
 /// path it touches by stat, so a file saved with the same bytes (an editor, a formatter, a
 /// `touch`) would be "not uptodate" and block the Rewind. GitVolt's reads never refresh the
 /// index. Its exit status says only that some files differ, which read-tree then judges.
-/// (2C T6: the hard reset's undo reuses it.)
+/// (the hard reset's undo reuses it.)
 pub(crate) async fn refresh_index(cx: &mut WriteCx<'_>) {
     let inv = cx.git(["update-index", "-q", "--refresh"]);
     let _ = cx.run_git(inv).await;
@@ -408,7 +391,7 @@ impl WriteIntent for UndoIntent {
         format!("{} {}", self.verb(), self.entry.label)
     }
 
-    /// Not an entry of its own: it moves one between the stacks (§5.4). UX Y: an out-of-order
+    /// Not an entry of its own: it moves one between the stacks. An out-of-order
     /// undo is one (its `before` is the entry's `after`, and the reverse), so it can be undone.
     fn undo(&self) -> Option<UndoKind> {
         self.out_of_order.then_some(self.entry.undo)
@@ -427,11 +410,11 @@ impl WriteIntent for UndoIntent {
         crate::write::types::Confirm { autostash: self.autostash_ok }
     }
 
-    /// §6.1: Switch and Rewind autostash on overlap with the commit they move the worktree to;
+    /// Switch and Rewind autostash on overlap with the commit they move the worktree to;
     /// Restore on `dirty ∩ P`.
     async fn plan(&self, pre: &crate::write::Pre<'_>) -> Result<crate::write::Plan, GbError> {
         use crate::journal::autostash::{AutostashRule, AutostashSpec};
-        // UX Y: every refusal of an out-of-order undo comes here, before anything is written.
+        // Every refusal of an out-of-order undo comes here, before anything is written.
         if self.out_of_order {
             self.out_of_order_check(pre).await?;
         }
@@ -442,21 +425,18 @@ impl WriteIntent for UndoIntent {
             return Ok(crate::write::Plan::default());
         }
         let to_oid = |oid: &Option<String>| oid.as_deref().and_then(|o| gix::ObjectId::from_hex(o.as_bytes()).ok());
-        // --- 2C T6: repositories in the way ---
+        // --- repositories in the way ---
         // A switch or rewind (`read-tree -m -u`) that writes a file where a submodule or an
-        // embedded repository sits deletes it whole: refused (2C T6 review C3).
-        // The check also says what the move sweeps away with a directory (safety review M1,
-        // M2): the autostash rule, or the hard undo's paths, carry it.
+        // embedded repository sits deletes it whole: refused.
+        // The check also says what the move sweeps away with a directory: the autostash rule, or the hard undo's paths, carry it.
         let in_the_way = async |to: Option<gix::ObjectId>| -> Result<crate::write::precheck::MoveCheck, GbError> {
             match (to_oid(&pre.before.head.oid), to) {
                 (Some(from), Some(to)) => crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, from, to, self.verb()).await,
                 _ => Ok(Default::default()),
             }
         };
-        // --- end 2C T6 ---
-        // --- 2C repo-safety ---
         // A restore that writes a file of the snapshot where the disk has a directory now
-        // deletes the directory whole (re-review 3 C5): a repository in it is refused, and the
+        // deletes the directory whole: a repository in it is refused, and the
         // untracked files in it join `dirty ∩ P`, so they're autostashed after the question.
         // What the direction's other snapshot holds is the operation's own doing (a file it
         // deleted where a folder goes back, or the reverse): not in the way, carried by it.
@@ -467,14 +447,13 @@ impl WriteIntent for UndoIntent {
                 None => Ok(d.untracked.into_iter().filter(|p| !self.left().is_some_and(|l| l.paths.contains(p))).collect()),
             }
         };
-        // --- end 2C repo-safety ---
         let spec = match self.entry.undo {
             UndoKind::Switch => {
                 let head = match self.dir {
                     Direction::Undo => &self.entry.head_before,
                     Direction::Redo => &self.entry.head_after,
                 };
-                let (rule, moved) = in_the_way(to_oid(&head.oid)).await?.into_rule(AutostashRule::Overlap); // 2C T6, repo-safety
+                let (rule, moved) = in_the_way(to_oid(&head.oid)).await?.into_rule(AutostashRule::Overlap);
                 Some(AutostashSpec { rule, target: to_oid(&head.oid), op: self.label(), target_name: head.branch.clone().or_else(|| head.oid.clone()), moved })
             }
             UndoKind::Rewind => {
@@ -482,7 +461,7 @@ impl WriteIntent for UndoIntent {
                 let mv = self.entry.refs.iter().find(|m| Some(&m.name) == checked.as_ref());
                 match mv {
                     Some(m) => {
-                        let (rule, moved) = in_the_way(to_oid(self.ends(m).1)).await?.into_rule(AutostashRule::Overlap); // 2C T6, repo-safety
+                        let (rule, moved) = in_the_way(to_oid(self.ends(m).1)).await?.into_rule(AutostashRule::Overlap);
                         Some(AutostashSpec { rule, target: to_oid(self.ends(m).1), op: self.label(), target_name: pre.before.head.branch.clone(), moved })
                     }
                     None => None,
@@ -491,68 +470,65 @@ impl WriteIntent for UndoIntent {
             // `dirty ∩ P`, dirty meaning changed since the operation (or its undo) left P:
             // the restore overwrites only P, and P as that snapshot holds it loses nothing.
             UndoKind::Restore => match self.snapshot() {
-                // --- 3B T2: a stopped pick asks, and its changes (P) aren't autostashed ---
+                // --- a stopped pick asks, and its changes (P) aren't autostashed ---
                 Some(s) if self.stopped_pick().is_some() => {
                     let stopped = self.stopped_pick().cloned().unwrap_or_default();
                     let op = stopped.op.as_str();
                     if !self.confirm_discard {
                         return Err(GbError::new(GbErrorKind::Conflict, format!("Undo the stopped {op}? Its changes are discarded, including anything you resolved since.")).with_detail(crate::error::ErrorDetail::UndoStoppedPick { op: op.into(), arm: format!("Click again to undo: discards the stopped {op}'s changes").into() }));
                     }
-                    // Only the attempted commits' paths are restored (fix round 1, D): the rest of
+                    // Only the attempted commits' paths are restored (D): the rest of
                     // P belongs to commits that never ran, so whatever is there now is the user's,
                     // and it's left alone. What's in the way is still stashed (a repository
                     // refuses; untracked files where a file goes back).
                     let paths = restore_in_the_way(&only(s, &stopped.paths)).await?;
                     (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()), moved: None })
                 }
-                // --- end 3B T2 ---
                 Some(s) => {
-                    // 3B T2 fix round 1 (G): a conflicted path of P can't be stashed or restored
+                    // A conflicted path of P can't be stashed or restored
                     // over (only a stopped pick's Undo does that): refused in words up front.
                     let unmerged = crate::write::precheck::dirty(&pre.api.cli, pre.root).await?.unmerged;
                     if let Some(p) = unmerged.iter().find(|p| s.paths.contains(*p)) {
                         return Err(GbError::new(GbErrorKind::InProgress, format!("{p} has merge conflicts: resolve conflicts first")));
                     }
-                    // UX Y: out of order, a change to P is refused (`out_of_order_check`, and again
+                    // Out of order, a change to P is refused (`out_of_order_check`, and again
                     // just before the restore), never stashed: only what's in the way is.
                     let mut paths = match self.left() {
                         _ if self.out_of_order => Vec::new(),
                         Some(left) => crate::write::precheck::changed_since(&pre.api.cli, pre.root, left).await?,
                         None => s.paths.clone(),
                     };
-                    paths.extend(restore_in_the_way(s).await?); // 2C repo-safety
+                    paths.extend(restore_in_the_way(s).await?);
                     (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()), moved: None })
                 }
                 None => None,
             },
             UndoKind::MoveRefs | UndoKind::MoveHead | UndoKind::Barrier | UndoKind::Rename => None,
-            // --- 2C T6: reset kinds ---
+            // --- reset kinds ---
             // Undo of a hard reset rewinds the worktree and restores `before` over P: the paths
             // either touches that changed since (`dirty ∩ P`, P ∪ the tree diff). Only when the
             // reset's branch is checked out here; elsewhere `run` refuses.
             UndoKind::ResetHard if self.dir == Direction::Undo && pre.before.head.branch == self.entry.head_before.branch => {
                 let mut paths: Vec<String> = self.entry.before.as_ref().map(|s| s.paths.clone()).unwrap_or_default();
                 if let (Some(old), Some(new)) = (to_oid(&self.entry.head_before.oid), to_oid(&pre.before.head.oid)) {
-                    // The rewind to `old` mustn't delete a repository (review C3); what it
-                    // sweeps away with a directory is stashed too (safety review M1, M2).
+                    // The rewind to `old` mustn't delete a repository; what it
+                    // sweeps away with a directory is stashed too.
                     let check = in_the_way(Some(old)).await?;
                     paths.extend(check.swept);
                     paths.extend(check.ignored);
                     let repo = gix::open(pre.root).map_err(gix_err)?;
                     paths.extend(crate::write::precheck::tree_diff_paths(&repo, new, old)?);
                 }
-                // --- 2C repo-safety ---
                 if let Some(b) = &self.entry.before {
                     paths.extend(restore_in_the_way(b).await?);
                 }
-                // --- end 2C repo-safety ---
                 paths.sort();
                 paths.dedup();
                 (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()), moved: None })
             }
             // Undo of a mixed reset reads the index back over P ∪ the tree diff: the entries
             // staged there since the reset (`dirty ∩ P` on the index side) are autostashed, which
-            // asks (§6.1), with or without a `before`.
+            // asks, with or without a `before`.
             UndoKind::ResetMixed if self.dir == Direction::Undo && pre.before.head.branch == self.entry.head_before.branch => match (&pre.before.head.oid, &self.entry.head_before.oid) {
                 (Some(now), Some(old)) => {
                     let paths = crate::write::reset::staged_since(pre.root, now, old, self.entry.before.as_ref())?;
@@ -561,14 +537,12 @@ impl WriteIntent for UndoIntent {
                 _ => None,
             },
             UndoKind::ResetSoft | UndoKind::ResetMixed | UndoKind::ResetHard => None,
-            // --- end 2C T6 ---
-            // --- 2C T7: stashes ---
+            // --- stashes ---
             // A pop's undo restores `before` over P, like Restore: what changed since the pop
             // left P (its `after`) is autostashed. A conflicting pop has no `after`: as Restore
-            // without one, every path of P that's dirty now asks first (review I2), and nothing
+            // without one, every path of P that's dirty now asks first, and nothing
             // is restored over unmerged paths.
             UndoKind::Stash => match (self.dir, &self.entry.before, &self.entry.after) {
-                // --- 2C repo-safety (safety review C1, C2) ---
                 // The undo of a push applies the stash; its redo pushes again; the redo of a pop
                 // applies the dropped stash: each a move over the worktree, checked first.
                 (Direction::Undo, None, _) => {
@@ -585,7 +559,6 @@ impl WriteIntent for UndoIntent {
                     }
                     None
                 }
-                // --- end 2C repo-safety ---
                 (Direction::Undo, Some(s), left) => {
                     let mut paths = match left {
                         Some(left) => crate::write::precheck::changed_since(&pre.api.cli, pre.root, left).await?,
@@ -596,13 +569,12 @@ impl WriteIntent for UndoIntent {
                             s.paths.clone()
                         }
                     };
-                    paths.extend(restore_in_the_way(s).await?); // 2C repo-safety
+                    paths.extend(restore_in_the_way(s).await?);
                     (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()), moved: None })
                 }
             },
-            // --- end 2C T7 ---
         };
-        // UX Y review 2: an out-of-order restore's entry snapshots P first, as any destructive
+        // An out-of-order restore's entry snapshots P first, as any destructive
         // write does: its `before` is its own objects.
         let snapshot = match (&self.entry.before, &self.entry.after) {
             (Some(b), Some(a)) if self.out_of_order && self.entry.undo == UndoKind::Restore => {
@@ -618,8 +590,8 @@ impl WriteIntent for UndoIntent {
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<UndoOutcome, GbError> {
         let store = cx.api.journal(cx.root)?;
         let (id, now) = (self.entry.id, cx.api.now());
-        // Expiry is checked before every undo (§5.1); this entry must still be on top.
-        // UX Y: out of order, it must still be independent of everything after it (its own new
+        // Expiry is checked before every undo; this entry must still be on top.
+        // Out of order, it must still be independent of everything after it (its own new
         // entry, written ahead, aside), and unchanged.
         let own = cx.entry().map(|(_, own)| own);
         let top = store.update(|j| {
@@ -652,7 +624,7 @@ impl WriteIntent for UndoIntent {
             })?;
             return Err(GbError::new(GbErrorKind::NotFound, format!("Undo information for {} is missing: git has garbage-collected it.", self.entry.label)));
         }
-        // §5.4: a ref that isn't where the operation left it asks first.
+        // A ref that isn't where the operation left it asks first.
         let current: Vec<Option<String>> = {
             let repo = gix::open(cx.root).map_err(gix_err)?;
             self.entry.refs.iter().map(|m| read_ref(&repo, &m.name)).collect::<Result<_, _>>()?
@@ -680,22 +652,22 @@ impl WriteIntent for UndoIntent {
             moves.push(RefMove { name: m.name.clone(), old: now, new: to.clone() });
         }
         if let Some(mut m) = self.head_moved(&cx.before.head)? {
-            // 2C T6: a detached reset's prompt counts what it drops, as MoveHead's.
+            // A detached reset's prompt counts what it drops, as MoveHead's.
             if self.entry.undo == UndoKind::MoveHead || self.detached_reset() {
                 m.dropped = dropped(cx.api, cx.root, &m.expected, &m.actual).await;
             }
             moved.push(m);
         }
         if !moved.is_empty() {
-            // UX Y: out of order, nothing is undone "anyway" (the plan refused already).
+            // Out of order, nothing is undone "anyway" (the plan refused already).
             if self.out_of_order {
                 return Err(GbError::stale(format!("{} moved since {}; it can't be undone out of order", short_ref(&moved[0].name), self.entry.label)));
             }
             return Ok(UndoOutcome::Moved { label: self.entry.label.clone(), refs: moved });
         }
-        // UX Y: the new entry's `before` is its own snapshot of P, taken at step 4 (the plan's), so
-        // a crash leaves a Restore banner. Review 5: P is checked again just before the restore
-        // (an editor's autosave since the plan is refused, with nothing changed); review 1: from
+        // The new entry's `before` is its own snapshot of P, taken at step 4 (the plan's), so
+        // a crash leaves a Restore banner. P is checked again just before the restore
+        // (an editor's autosave since the plan is refused, with nothing changed): from
         // there on the worktree may change, so a failure or a Stop keeps the entry.
         if self.out_of_order && self.entry.undo == UndoKind::Restore {
             if let Some(after) = &self.entry.after
@@ -718,9 +690,7 @@ impl WriteIntent for UndoIntent {
             UndoKind::MoveHead => Box::pin(self.move_head(cx)).await,
             UndoKind::Rewind => Box::pin(self.rewind(cx, &moves)).await,
             UndoKind::Switch => Box::pin(self.switch(cx, &moves)).await,
-            // --- 2C T3 ---
             UndoKind::Rename => Box::pin(crate::write::branch::undo_rename(cx, &self.entry, self.dir == Direction::Undo)).await,
-            // --- end 2C T3 ---
             UndoKind::Restore => match snap {
                 Some(snap) => match Box::pin(snapshot::restore_with(&cx.snapshots(), &self.stopped_pick().map_or_else(|| snap.clone(), |st| only(snap, &st.paths)), self.stopped_pick().is_some())).await {
                     Ok(()) => {
@@ -733,12 +703,10 @@ impl WriteIntent for UndoIntent {
                 None => Err(GbError::other("nothing to restore")),
             },
             UndoKind::Barrier => Err(GbError::new(GbErrorKind::InvalidInput, "Push can't be undone")),
-            // --- 2C T7: stashes ---
+            // --- stashes ---
             UndoKind::Stash => Box::pin(crate::write::stash::undo_stash(cx, &self.entry, self.dir == Direction::Undo, &self.entry.label, self.without_index)).await,
-            // --- end 2C T7 ---
-            // --- 2C T6: reset kinds ---
+            // --- reset kinds ---
             UndoKind::ResetSoft | UndoKind::ResetMixed | UndoKind::ResetHard => crate::write::reset::undo_reset(cx, &self.entry, &moves, self.dir == Direction::Undo, &self.reflog()).await,
-            // --- end 2C T6 ---
         };
         if let Err(e) = moved_refs {
             if let Some((from, to)) = &index
@@ -748,8 +716,8 @@ impl WriteIntent for UndoIntent {
             }
             return Err(e);
         }
-        // --- 2C T1: config replay, the note ---
-        // Every kind replays the entry's `branch.<name>.*` changes (Deviation 10).
+        // --- config replay, the note ---
+        // Every kind replays the entry's `branch.<name>.*` changes.
         if self.out_of_order {
             let back = self.entry.config.iter().map(|c| crate::journal::ConfigChange { key: c.key.clone(), old: c.new.clone(), new: c.old.clone() }).collect();
             cx.record_config(back)?;
@@ -758,9 +726,9 @@ impl WriteIntent for UndoIntent {
         if let Some(removed) = &self.entry.removed_remote {
             crate::write::remotes::replay_symrefs(cx, removed, self.dir == Direction::Undo).await?;
         }
-        // UX Y: the undone entry leaves the stack (no Redo); its undo's entry takes its place, so
+        // The undone entry leaves the stack (no Redo); its undo's entry takes its place, so
         // the entries after it stay Undo's, in order. The Redo stack stays when every redo entry
-        // is independent of it (review 7). That entry's `after` is a fresh snapshot of P (review
+        // is independent of it. That entry's `after` is a fresh snapshot of P (review
         // 2: its objects are its own, with its own lifetime).
         if self.out_of_order {
             cx.keep_redo = store.update(|j| {
@@ -781,7 +749,7 @@ impl WriteIntent for UndoIntent {
             }
             return Ok(UndoOutcome::Done { label: self.entry.label.clone(), note: self.entry.note.clone() });
         }
-        // 3B T2 fix round 1 (F): an undone stopped pick has no `after` to redo to: it goes.
+        // An undone stopped pick has no `after` to redo to: it goes.
         let gone = self.stopped_pick().is_some();
         store.update(|j| {
             j.shift(id, self.dir == Direction::Undo);
@@ -790,12 +758,11 @@ impl WriteIntent for UndoIntent {
             }
         })?;
         Ok(UndoOutcome::Done { label: self.entry.label.clone(), note: self.entry.note.clone() })
-        // --- end 2C T1 ---
     }
 }
 
 /// `Undo` / `Redo`: the entry the toolbar showed must still be the top one.
-#[allow(clippy::too_many_arguments)] // 2C T7: `without_index`
+#[allow(clippy::too_many_arguments)] // `without_index`
 pub(crate) async fn undo_or_redo(api: &Api, repo: u32, worktree: &str, dir: Direction, entry: u64, confirm: BTreeMap<String, Option<String>>, autostash_ok: bool, without_index: bool, confirm_discard: bool) -> Result<WriteResult<UndoOutcome>, GbError> {
     let h = api.handle(repo)?;
     let root = api.worktree_dir(&h, worktree).await?;
@@ -815,7 +782,7 @@ pub(crate) async fn undo_or_redo(api: &Api, repo: u32, worktree: &str, dir: Dire
     done
 }
 
-// --- UX Y: out-of-order undo ---
+// --- out-of-order undo ---
 /// Why an out-of-order undo is refused: the history changed (Stale), or a later action depends
 /// on it (the dropdown's reason).
 fn dependent(why: String) -> GbError {
@@ -910,7 +877,7 @@ impl UndoIntent {
     }
 }
 
-/// The Undo dropdown's rows (UX Y): undoes `entry` out of order, when it's independent of every
+/// The Undo dropdown's rows: undoes `entry` out of order, when it's independent of every
 /// later entry. The newest one is the toolbar's own Undo.
 pub(crate) async fn undo_out_of_order(api: &Api, repo: u32, worktree: &str, entry: u64, autostash_ok: bool) -> Result<WriteResult<UndoOutcome>, GbError> {
     let h = api.handle(repo)?;
@@ -922,7 +889,6 @@ pub(crate) async fn undo_out_of_order(api: &Api, repo: u32, worktree: &str, entr
     let found = journal.out_of_order(entry, None).map_err(dependent)?.clone();
     run_write(api, repo, worktree, Expect::default(), UndoIntent { dir: Direction::Undo, entry: found, confirm: BTreeMap::new(), autostash_ok, without_index: false, confirm_discard: false, out_of_order: true }).await
 }
-// --- end UX Y ---
 
 #[cfg(test)]
 mod tests {
@@ -1004,7 +970,7 @@ mod tests {
         v["outcome"]["status"] == "done"
     }
 
-    /// §17.1: after undo, everything equals its value before the op; after redo, after it.
+    /// After undo, everything equals its value before the op; after redo, after it.
     async fn round_trip(api: &Api, id: u32, r: &TestRepo, expect: Expect, intent: TestIntent) {
         let before = RepoState::capture(r);
         let entry = op(api, id, r, expect, intent).await;
@@ -1028,7 +994,7 @@ mod tests {
         round_trip(&api, id, &r, expect_ref("refs/heads/x", Some(&c2)), TestIntent::MoveRef { name: "refs/heads/x".into(), to: None }).await;
     }
 
-    /// §5.3 Commit: the changes come back staged; redo replays the ref move, so no hook runs again.
+    /// Commit: the changes come back staged; redo replays the ref move, so no hook runs again.
     #[tokio::test]
     async fn a_commit_round_trips_and_redo_runs_no_hook() {
         let data = tempfile::tempdir().unwrap();
@@ -1071,7 +1037,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("file_0.txt")).unwrap(), "local change\n");
     }
 
-    /// 2A final I2: a file the fast-forward changed, saved since with the same bytes (only its
+    /// A file the fast-forward changed, saved since with the same bytes (only its
     /// stat changed), doesn't block the undo, nor the redo after it.
     #[tokio::test]
     async fn a_stat_only_change_doesnt_block_a_rewind() {
@@ -1097,8 +1063,8 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("file_0.txt")).unwrap(), "changed on ahead\n");
     }
 
-    /// §6.1: an undo whose Rewind overlaps local changes autostashes them; one predicted to
-    /// conflict asks first (§6.2), then keeps the stash with a banner.
+    /// An undo whose Rewind overlaps local changes autostashes them; one predicted to
+    /// conflict asks first, then keeps the stash with a banner.
     #[tokio::test]
     async fn a_rewind_over_overlapping_changes_autostashes_them() {
         let data = tempfile::tempdir().unwrap();
@@ -1119,8 +1085,8 @@ mod tests {
         assert_eq!(res["journal"]["banners"][0]["kind"], "autostashConflicts");
     }
 
-    /// §6.1 Restore: a file of P changed since the discard is autostashed, after the warning,
-    /// and only that path (review I6): an unrelated change keeps its bytes and mtime. git won't
+    /// Restore: a file of P changed since the discard is autostashed, after the warning,
+    /// and only that path: an unrelated change keeps its bytes and mtime. git won't
     /// apply the stash over the restored file, so it's kept, with its banner.
     #[tokio::test]
     async fn undoing_a_discard_autostashes_what_changed_since() {
@@ -1146,7 +1112,7 @@ mod tests {
         assert_eq!((mtime("file_1.txt"), mtime("untracked.txt")), (m1, m2), "unrelated files untouched");
     }
 
-    /// 2A final I3: a discarded directory is snapshotted file by file, so a file edited inside
+    /// A discarded directory is snapshotted file by file, so a file edited inside
     /// it after the discard is autostashed (and kept) by the undo, never overwritten.
     #[tokio::test]
     async fn undoing_a_directory_discard_stashes_a_file_edited_inside_it() {
@@ -1170,7 +1136,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("dir/sub/b.txt")).unwrap(), "untracked b\n");
     }
 
-    /// Review m1: a mode change made since counts as a change.
+    /// A mode change made since counts as a change.
     #[cfg(unix)] // permission bits (Windows has none; git keeps the executable bit in the index)
     #[tokio::test]
     async fn a_mode_change_since_a_discard_asks_first() {
@@ -1185,7 +1151,7 @@ mod tests {
         assert_eq!(err.kind, GbErrorKind::Conflict);
     }
 
-    /// Review I7: with `eol=crlf`, the worktree's CRLF bytes are what the snapshot holds once
+    /// With `eol=crlf`, the worktree's CRLF bytes are what the snapshot holds once
     /// cleaned: redo redoes the discard, with no autostash.
     #[tokio::test]
     async fn a_crlf_discard_round_trips() {
@@ -1203,7 +1169,7 @@ mod tests {
         assert_eq!(r.git(&["stash", "list"]), "");
     }
 
-    /// Review I1: an undo's own autostash is kept beside an older kept stash; both banners show.
+    /// An undo's own autostash is kept beside an older kept stash; both banners show.
     #[tokio::test]
     async fn an_undo_autostash_beside_another_kept_stash_keeps_both_banners() {
         let data = tempfile::tempdir().unwrap();
@@ -1223,7 +1189,7 @@ mod tests {
         assert_eq!(r.git(&["stash", "list", "--format=%gs"]).lines().count(), 2);
     }
 
-    /// Review I2: undoing the op shifts it to redo, and a new op clears redo: the banner stays.
+    /// Undoing the op shifts it to redo, and a new op clears redo: the banner stays.
     #[tokio::test]
     async fn a_kept_banner_survives_an_undo_and_a_new_op() {
         let data = tempfile::tempdir().unwrap();
@@ -1242,7 +1208,7 @@ mod tests {
         assert_eq!(state["banners"][0]["kind"], "autostashRefused");
     }
 
-    /// Review m13: a Switch undo whose overlap restores cleanly.
+    /// A Switch undo whose overlap restores cleanly.
     #[tokio::test]
     async fn a_switch_undo_autostashes_on_overlap() {
         let data = tempfile::tempdir().unwrap();
@@ -1263,7 +1229,7 @@ mod tests {
         assert_eq!(r.git(&["stash", "list"]), "");
     }
 
-    /// Review m9: HEAD switched outside GitVolt since: undoing the checkout asks first.
+    /// HEAD switched outside GitVolt since: undoing the checkout asks first.
     #[tokio::test]
     async fn a_switch_undo_after_an_outside_switch_asks() {
         let data = tempfile::tempdir().unwrap();
@@ -1282,7 +1248,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "--abbrev-ref", "HEAD"]), "main");
     }
 
-    /// Review n5: an ignored file the Restore would overwrite (the discard deleted it; it was
+    /// An ignored file the Restore would overwrite (the discard deleted it; it was
     /// made again and ignored since) is stashed first, after the warning.
     #[tokio::test]
     async fn an_ignored_file_a_restore_overwrites_is_stashed_first() {
@@ -1302,7 +1268,7 @@ mod tests {
         assert_eq!(r.git(&["show", "stash@{0}^3:new.txt"]), "made again, then ignored", "the ignored file is in the stash");
     }
 
-    /// Review m8: an undo of an entry that expired while it waited stashes nothing.
+    /// An undo of an entry that expired while it waited stashes nothing.
     #[tokio::test]
     async fn an_expired_undo_stashes_nothing() {
         let data = tempfile::tempdir().unwrap();
@@ -1334,7 +1300,7 @@ mod tests {
         round_trip(&api, id, &r, Expect::default(), TestIntent::Switch { branch: "side".into(), confirm: Default::default(), create: false }).await;
     }
 
-    /// §5.4: a branch that moved since asks first; "Undo anyway" uses the value it showed.
+    /// A branch that moved since asks first; "Undo anyway" uses the value it showed.
     #[tokio::test]
     async fn an_outside_move_asks_then_undo_anyway_uses_the_value_shown() {
         let data = tempfile::tempdir().unwrap();
@@ -1429,7 +1395,7 @@ mod tests {
         assert!(journal(&api, id, &r).await["redo"].is_null());
     }
 
-    /// §5.1: expiry is checked at load and before every undo (an injected clock).
+    /// Expiry is checked at load and before every undo (an injected clock).
     #[tokio::test]
     async fn an_expired_snapshot_entry_is_gone() {
         let data = tempfile::tempdir().unwrap();
@@ -1460,7 +1426,7 @@ mod tests {
         assert!(done(&undo(&second, id, &r, entry, None).await.unwrap()));
     }
 
-    // --- 2C T1: config replay, the Switch redo order, the note ---
+    // --- config replay, the Switch redo order, the note ---
     #[tokio::test(flavor = "multi_thread")]
     async fn undo_and_redo_replay_branch_config() {
         let env = crate::testing::write::WriteEnv::new();
@@ -1492,7 +1458,7 @@ mod tests {
         assert_eq!(RepoState::capture(&r), after, "created first, then switched to");
     }
 
-    /// Review M2: a redo whose switch then fails puts the branch it created back (deletes it),
+    /// A redo whose switch then fails puts the branch it created back (deletes it),
     /// so nothing is left half-redone.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_redo_whose_switch_fails_deletes_the_branch_it_created() {
@@ -1522,7 +1488,6 @@ mod tests {
         let out = undo(&env.api, id, &r, entry, None).await.unwrap();
         assert_eq!(out["outcome"], serde_json::json!({"status": "done", "label": "set branch.main.remote", "note": "origin/x stays deleted"}));
     }
-    // --- end 2C T1 ---
 
     #[tokio::test]
     async fn an_undo_of_an_entry_that_isnt_on_top_is_stale() {
@@ -1534,8 +1499,7 @@ mod tests {
         assert_eq!((err.kind, err.message.as_str()), (GbErrorKind::Stale, "The undo history changed; refreshed"));
     }
 
-    // --- 2C repo-safety ---
-    /// 2B T4 re-review N5: a repository standing at a discarded path refuses the undo in words
+    /// A repository standing at a discarded path refuses the undo in words
     /// (not as an autostash conflict), before anything runs.
     #[tokio::test]
     async fn undoing_a_discard_over_a_repository_at_the_path_is_refused_in_words() {
@@ -1559,7 +1523,7 @@ mod tests {
         api.dispatch(Request::Undo { repo: id, worktree: wt(r), entry, confirm: None, confirm_autostash: Some(true), without_index: None, confirm_discard: None }).await.unwrap()
     }
 
-    /// Safety review I1: a discarded folder's undo writes `notes/a.txt` back, and `checkout-index
+    /// A discarded folder's undo writes `notes/a.txt` back, and `checkout-index
     /// -f` would unlink the untracked file `notes` made since: it asks, then stashes it.
     #[tokio::test]
     async fn undoing_a_folder_discard_asks_about_a_file_now_standing_at_its_path() {
@@ -1580,7 +1544,7 @@ mod tests {
         assert_eq!(r.git(&["show", "stash@{0}^3:notes"]), "my new notes, never committed", "the file is in the stash");
     }
 
-    /// Safety review I2: the file `notes` goes back where a folder now holds a staged file with
+    /// The file `notes` goes back where a folder now holds a staged file with
     /// an unstaged edit (`AM`). The restore would remove the folder and leave `AD` behind: it
     /// asks, then stashes the entry, both halves.
     #[tokio::test]
@@ -1605,9 +1569,8 @@ mod tests {
         assert_eq!(r.git(&["show", "stash@{0}^2:notes/a.txt"]), "staged", "the staged half");
         assert_eq!(r.git(&["show", "stash@{0}:notes/a.txt"]), "staged\nunstaged edit", "the unstaged half");
     }
-    // --- end 2C repo-safety ---
 
-    // --- UX Y: out-of-order undo ---
+    // --- out-of-order undo ---
     async fn undo_entry(api: &Api, id: u32, r: &TestRepo, entry: u64) -> Result<serde_json::Value, GbError> {
         api.dispatch(Request::UndoEntry { repo: id, worktree: wt(r), entry, confirm_autostash: None }).await
     }
@@ -1812,7 +1775,7 @@ mod tests {
         assert_eq!(RepoState::capture(&r), state, "nothing changed");
     }
 
-    /// Review 2: the new entry snapshots P itself, before and after the restore: its objects are
+    /// The new entry snapshots P itself, before and after the restore: its objects are
     /// its own, so a 13-day-old target gives an entry that lives its full 14 days.
     #[tokio::test]
     async fn the_undos_entry_has_its_own_snapshots_and_a_full_term() {
@@ -1847,7 +1810,7 @@ mod tests {
         assert_eq!(rows, vec![y]);
     }
 
-    /// Review 1: the restore fails between its worktree step and its index step (a smudge filter
+    /// The restore fails between its worktree step and its index step (a smudge filter
     /// takes the index lock): the worktree changed, so the new entry stays, undoable, with its
     /// `before`; the undone entry is still there.
     #[tokio::test]
@@ -1878,7 +1841,7 @@ mod tests {
         assert_eq!(j.undo_top().map(|e| e.id), Some(n.id), "Undo puts P back");
     }
 
-    /// Review 1: a Stop while the autostash is restored, after the restore ran: the write fails,
+    /// A Stop while the autostash is restored, after the restore ran: the write fails,
     /// and the new entry (in the undone one's place) stays.
     #[cfg(unix)] // the filter reads its parent's command line (/proc, or ps on macOS)
     #[tokio::test]
@@ -1926,7 +1889,7 @@ mod tests {
         assert!(r.git(&["stash", "list", "--format=%gs"]).contains("autostash before undo discard notes"), "the stash is kept");
     }
 
-    /// Review 5: a change to P between the plan's check and the restore (an editor's autosave)
+    /// A change to P between the plan's check and the restore (an editor's autosave)
     /// is refused just before the restore, with nothing changed.
     #[tokio::test]
     async fn a_change_after_the_plan_is_refused_before_the_restore() {
@@ -1961,7 +1924,7 @@ mod tests {
         assert_eq!(r.git(&["stash", "list"]), "");
     }
 
-    /// Review 7: A, B, C, Undo C, then A from the dropdown: C's Redo stays (independent).
+    /// A, B, C, Undo C, then A from the dropdown: C's Redo stays (independent).
     #[tokio::test]
     async fn an_out_of_order_undo_keeps_an_independent_redo() {
         let data = tempfile::tempdir().unwrap();
@@ -1981,5 +1944,4 @@ mod tests {
         assert!(!r.path().join("new.txt").exists(), "C redone");
         assert_eq!(read(&r, "file_0.txt"), "dirty file_0.txt\n");
     }
-    // --- end UX Y ---
 }

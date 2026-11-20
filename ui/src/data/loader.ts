@@ -13,11 +13,11 @@ export class DroppedError extends Error {
 interface Job<V> { key: string; priority: Priority; resolve: (v: V) => void; reject: (e: unknown) => void }
 
 /**
- * Keyed, cached, de-duplicated async loads with a concurrency limit (spec §11.1 prefetching).
+ * Keyed, cached, de-duplicated async loads with a concurrency limit (prefetching).
  * `get` jumps the queue, and `prefetch` replaces the pending prefetch queue, so prefetches the
  * user has moved past are dropped before they're sent. Failed loads are never cached.
  *
- * In-flight reads aren't cancelled (plan 1B deviation 2): a started load always completes and
+ * In-flight reads aren't cancelled: a started load always completes and
  * is cached; callers ignore results for selections they've left (the store's sequence number).
  *
  * The fetcher runs synchronously inside `get`/`prefetch` whenever a slot is free, so a request

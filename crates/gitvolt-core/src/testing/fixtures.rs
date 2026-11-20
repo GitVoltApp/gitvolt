@@ -280,7 +280,7 @@ pub fn tiny_png(width: u32, height: u32, rgba: [u8; 4]) -> Vec<u8> {
 /// `commit_against_worktree_mixes_index_and_worktree_sides` in `diff.rs`).
 const GUIDE_PADDING: &str = "Step five.\nStep six.\nStep seven.\nStep eight.\nStep nine.\nStep ten.\n";
 
-/// Plan 1B's reference repo; the full layout is in the plan's Task 1 Interfaces block. Newest
+/// The reference repo. Newest
 /// first: a dirty WIP, then "Merge branch 'feature/x'", then "Rename guide and update assets"
 /// (Grace, committed by Ada, with co-authors and MR refs), then "Add feature file" (feature/x),
 /// then "Initial commit". Remote `origin` (a GitLab URL) is never fetched.
@@ -324,7 +324,7 @@ pub fn details(r: &TestRepo) {
     r.write("notes.txt", "untracked notes\n");
 }
 
-/// Long files edited well below the first screen (plan 1B feedback lane V's e2e). "Edit far
+/// Long files edited well below the first screen (for the e2e). "Edit far
 /// down" changes line 120, deletes lines 150-152 and inserts a line after line 180 of the
 /// 200-line `long.txt`; in the 200-line `mixed.txt` (whose unchanged line 20 is long enough to
 /// wrap) it deletes lines 50-52 (50 and 51 are long enough to wrap), re-indents 120-127 and
@@ -376,7 +376,7 @@ pub fn diff_view(r: &TestRepo) {
     r.commit_all_as("Edit far down", "Grace Hopper", "grace@example.com");
 }
 
-/// A `dev` trunk whose merge is newer than the branches forked under it (K79, the merge
+/// A `dev` trunk whose merge is newer than the branches forked under it (the merge
 /// lock). Newest first, with the lanes the layout gives them:
 ///   WIP (main worktree, dirty)         lane 0, dashed down to "Initial commit"
 ///   spike:       "Spike: streaming"    lane 1
@@ -386,7 +386,7 @@ pub fn diff_view(r: &TestRepo) {
 ///   feature/retry:  "Retry policy"     lane 1, curving right into "Config loader"
 ///   dev:         "Config loader"       lane 2 (locked by the merge)
 ///   main:        "Initial commit"      lane 0
-/// No remote, so nothing is pinned. Before K79 "Parser" and "Config loader" took the left-most
+/// No remote, so nothing is pinned. Without the lock "Parser" and "Config loader" took the left-most
 /// lane waiting for them (1), so every merge-in curve came from the right.
 pub fn merge_lock(r: &TestRepo) {
     cached!(r, merge_lock);
@@ -408,7 +408,7 @@ pub fn merge_lock(r: &TestRepo) {
     r.write("file_0.txt", "main change\n");
 }
 
-/// 60 linear commits ("Commit 00" … "Commit 59"): enough rows for the graph to scroll (plan 1B's
+/// 60 linear commits ("Commit 00" … "Commit 59"): enough rows for the graph to scroll (the
 /// "Esc keeps the scroll position" e2e).
 pub fn long_history(r: &TestRepo) {
     cached!(r, long_history);
@@ -417,7 +417,7 @@ pub fn long_history(r: &TestRepo) {
     }
 }
 
-/// The WIP panel's working set (2B e2e), with a repo-local identity so the app can commit:
+/// The WIP panel's working set, with a repo-local identity so the app can commit:
 /// - `src/app.txt` (40 lines): three unstaged hunks, at lines 5, 20 and 35;
 /// - `notes.txt` (40 lines): line 3 staged, line 30 unstaged (partially staged);
 /// - `gone.txt`: deleted, unstaged;
@@ -470,7 +470,7 @@ pub fn wip_crlf(r: &TestRepo) {
     r.write("raw.txt", &lines("\r\n", true));
 }
 
-/// File History and Blame (spec #3 §3.10, e2e flow 5). `story.txt` (8 lines) is started by Ada,
+/// File History and Blame (e2e flow 5). `story.txt` (8 lines) is started by Ada,
 /// its middle rewritten by Grace, moved under `src/` (line 6 changed) by Lars, and its opening
 /// sharpened by Ada; one unrelated commit sits in between. Blame at HEAD has six groups:
 /// [1 Sharpen] [2 Start] [3-4 Middle] [5 Start] [6 Move] [7-8 Start].
@@ -515,7 +515,7 @@ pub fn wip_conflict(r: &TestRepo) {
 }
 
 /// The origin's `post-receive` for `sync`: GitLab's merge-request boilerplate, a deploy line, and
-/// for `dev` a failure-looking line (the user's integration-rebase script, spec #2 §12.4).
+/// for `dev` a failure-looking line (the user's integration-rebase script).
 const SYNC_POST_RECEIVE: &str = r#"#!/bin/sh
 while read old new ref; do
   branch=${ref#refs/heads/}
@@ -528,7 +528,7 @@ while read old new ref; do
 done
 "#;
 
-/// Fetch, pull and push (spec #2 §12; `sync.spec`). See `Interfaces` in plan 2D Task 3.
+/// Fetch, pull and push (`sync.spec`).
 pub fn sync(r: &TestRepo) {
     cached!(r, sync);
     r.commit_as("Initial commit", "Ada Lovelace", "ada@example.com");
@@ -564,7 +564,7 @@ fn numbered(edits: &[(usize, &str)]) -> String {
         .collect()
 }
 
-/// Conflicts (spec #2 §13; `conflicts.spec`). See `Interfaces` in plan 2D Task 3.
+/// Conflicts (`conflicts.spec`).
 pub fn conflicts(r: &TestRepo) {
     cached!(r, conflicts);
     r.write("a.txt", &numbered(&[]));
@@ -589,7 +589,7 @@ pub fn conflicts(r: &TestRepo) {
     r.git(&["commit", "-q", "-am", "Main edits"]);
 }
 
-/// A three-branch stack (spec #2 §13.1): feature/a → b → c on main, main then moves.
+/// A three-branch stack: feature/a → b → c on main, main then moves.
 pub fn stack(r: &TestRepo) {
     cached!(r, stack);
     r.commit("Base");
@@ -604,7 +604,7 @@ pub fn stack(r: &TestRepo) {
     r.switch("feature/c");
 }
 
-/// 60 one-file commits on `topic`, which `main` moved past: the rebase speed budget (§13.4, §16).
+/// 60 one-file commits on `topic`, which `main` moved past: the rebase speed budget.
 pub fn rebase60(r: &TestRepo) {
     cached!(r, rebase60);
     r.commit("Base");
@@ -621,8 +621,8 @@ pub fn rebase60(r: &TestRepo) {
     r.switch("topic");
 }
 
-// --- 2C T10: the worktrees fixture ---
-/// A history shaped like a busy product repo, for the worktree-switch budget (spec #2 §16):
+// --- the worktrees fixture ---
+/// A history shaped like a busy product repo, for the worktree-switch budget:
 /// 300 commits over six branches merged back into main, an origin, and three worktrees (main
 /// and two linked), each dirty so each has a WIP row.
 pub fn worktrees(r: &TestRepo) {
@@ -650,10 +650,9 @@ pub fn worktrees(r: &TestRepo) {
     }
     r.write("file_1.txt", "main change\n");
 }
-// --- end 2C T10 ---
 
-// --- 3C T1: the interactive rebase's fixture ---
-/// Spec #3 §7: `feature/a` → `feature/b` → `feature/c`, stacked on `main`. `main..feature/c` holds
+// --- the interactive rebase's fixture ---
+/// `feature/a` → `feature/b` → `feature/c`, stacked on `main`. `main..feature/c` holds
 /// 8 commits and one merge (`side`, merged into feature/b, then deleted). `C1` rewrites the line
 /// `A2` added to `notes.txt`, so C1 moved below A2 conflicts. `B2` adds two files (Split's e2e).
 /// main moved on. HEAD: feature/c.
@@ -688,7 +687,6 @@ pub fn irebase(r: &TestRepo) {
     r.git(&["commit", "-q", "-m", "Main moves"]);
     r.switch("feature/c");
 }
-// --- end 3C T1 ---
 
 /// The playground's `rebase-lab`: `lab` is six commits on `main`, which then edited the line `L2`
 /// rewrote, so an interactive rebase onto main predicts a conflict on `L2`. `L4` edits the line
@@ -757,7 +755,6 @@ mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), " M auto.txt\n M raw.txt", "a CRLF-only difference isn't a change");
     }
 
-    // --- 2C T10 ---
     #[test]
     fn worktrees_has_three_dirty_worktrees_over_a_merged_history() {
         let r = TestRepo::new();
@@ -771,7 +768,6 @@ mod tests {
         }
         assert!(!r.git(&["status", "--porcelain"]).is_empty());
     }
-    // --- end 2C T10 ---
 
     #[test]
     fn sync_has_a_behind_main_a_diverged_branch_and_a_talking_origin() {

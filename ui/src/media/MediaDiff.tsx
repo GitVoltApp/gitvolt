@@ -161,7 +161,7 @@ export function MediaDiff({ old, new: neu, single = null, source, onSourceChange
     onSourceChange?.(on);
   };
   // Gone (another file, File View): the hex view is off, so the panel's text tools go too, as for
-  // an image's (H26).
+  // an image's.
   const reportSource = useRef(onSourceChange);
   reportSource.current = onSourceChange;
   const sourceNow = useRef(showSource);

@@ -10,7 +10,7 @@ import './arm.css';
 const ARM_DESC_ID = 'gb-armed-desc';
 
 /** A window blur disarms only once the window stays unfocused this long: under GNOME every press
- * in the window bounces its focus (the context menu's K24, `BLUR_SETTLE_MS`). */
+ * in the window bounces its focus (as with the context menu, `BLUR_SETTLE_MS`). */
 const BLUR_SETTLE_MS = 150;
 
 interface Box { left: number; top: number; width: number; height: number; right: number; bottom: number }
@@ -38,7 +38,7 @@ function geometry(el: HTMLElement, needed: number): { box: Box; grow: 'left' | '
   return { box: boxOf(base), grow, maxWidth, cover: !!coverEl, wrap };
 }
 
-/** The armed control's icon, when it's an icon button: the pill keeps it (board B). */
+/** The armed control's icon, when it's an icon button: the pill keeps it. */
 function iconOf(el: HTMLElement): string | null {
   if (el.textContent?.trim()) return null;
   return el.querySelector('svg')?.outerHTML ?? null;
@@ -120,8 +120,8 @@ function Overlay({ a }: { a: Armed & { origin: NonNullable<Armed['origin']> } })
 }
 
 /**
- * The armed control's overlay (mode `inplace`) and the disarm rules for every mode (spec §ui
- * confirms): a press anywhere else, Esc, focus moving elsewhere, the window losing focus, the
+ * The armed control's overlay (mode `inplace`) and the disarm rules for every mode:
+ * a press anywhere else, Esc, focus moving elsewhere, the window losing focus, the
  * tab changing. There is no timer. Also the live region that announces "Click again to …".
  * Mount once (AppShell).
  */
@@ -131,7 +131,7 @@ export function ArmLayer() {
   const mode = armed?.mode ?? null;
   useEffect(() => {
     if (id === null) return;
-    // UX R1 C.2: where focus was when it armed. Under GNOME every press makes the window lose
+    // Where focus was when it armed. Under GNOME every press makes the window lose
     // focus and get it back a few ms later (windowBlur.ts), and the browser gives it back to that
     // element: a focusin there before the confirm press's click. That's focus returning, not
     // moving elsewhere; disarming on it ate the confirm (the click then re-armed the control).

@@ -16,7 +16,7 @@ import { perf } from '../perf';
 import { contentKey, filesKey, isMutableKey, type RepoServices } from './services';
 import { wipKey } from './wipLists';
 
-/** Keyboard focus areas (spec §11.1). `sidebar` is registered by plan 1C. */
+/** Keyboard focus areas. `sidebar` is registered by the app. */
 export type FocusZone = 'sidebar' | 'graph' | 'files' | 'diff';
 
 export type Loadable<T> = { status: 'idle' } | { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; message: string };
@@ -30,11 +30,11 @@ export type Selection =
   /** A collapsed branch's ⋮ row (branch presets): it takes the keyboard cursor, but it's no
    * commit, so nothing loads and the panel shows nothing. `id` is the row's (`collapsed:<branch>@<newest sha>`). */
   | { kind: 'collapsed'; index: number; id: string }
-  /** Three or more rows (K27): their ids, top row (newest) first, and the id of the row a Shift
-   * range starts from (spec #3 §4.3). No diff, no file lists. */
+  /** Three or more rows: their ids, top row (newest) first, and the id of the row a Shift
+   * range starts from. No diff, no file lists. */
   | { kind: 'multi'; ids: readonly string[]; anchor: string };
 
-/** What the center panel shows (spec §10.1). `key` is stable for the same file in the same diff. */
+/** What the center panel shows. `key` is stable for the same file in the same diff. */
 export interface DiffTarget {
   key: string;
   path: string;
@@ -51,7 +51,7 @@ export interface DiffTarget {
 
 export interface FileSection { title: string | null; spec: DiffSpec; list: Loadable<FileListPayload> }
 
-/** What the right panel shows: one selection with everything loaded for it (feedback F12). */
+/** What the right panel shows: one selection with everything loaded for it. */
 export interface PanelContent {
   selection: Exclude<Selection, { kind: 'none' }>;
   parent: number;
@@ -60,7 +60,7 @@ export interface PanelContent {
   sections: FileSection[];
 }
 /**
- * The selected rows of a compare or a multi-selection (spec §9.4, K27), as row indexes. Empty
+ * The selected rows of a compare or a multi-selection, as row indexes. Empty
  * for a single selection (its row is the selection's `index`). All of them show as selected.
  */
 export interface Picks {
@@ -74,7 +74,7 @@ export interface Picks {
   cursor: number | null;
 }
 
-/** Row-click modifiers: `ctrl` toggles the row in or out, `shift` selects a range (K27). */
+/** Row-click modifiers: `ctrl` toggles the row in or out, `shift` selects a range. */
 export interface SelectMods { ctrl?: boolean; shift?: boolean }
 
 /** A selection by row id, with the merge parent shown and the open file (`snapshotSelection`):
@@ -97,17 +97,17 @@ export interface RepoViewState {
   /** A compare's or multi-selection's rows; empty for a single selection. */
   picks: Picks;
   parent: number;
-  /** The selected commit's header (§9.1); `idle` unless a single commit is selected. */
+  /** The selected commit's header; `idle` unless a single commit is selected. */
   details: Loadable<CommitDetailsPayload>;
   /**
-   * The selected commit's full message (§9.2), from `services.messages` (the `commitMessage`
+   * The selected commit's full message, from `services.messages` (the `commitMessage`
    * cache the graph tooltip shares): `CommitDetailsPayload` carries no message. `idle` unless a
    * single commit is selected.
    */
   message: Loadable<CommitMessage>;
   sections: FileSection[];
   /**
-   * What the right panel shows (feedback F12, stale-while-loading): the selection's content
+   * What the right panel shows (stale-while-loading): the selection's content
    * once its details, message (a single commit) and every file list have settled (loaded or
    * failed), else the previous selection's, unchanged, so the panel swaps in one render with no
    * empty or partial frame. `null` while nothing is selected, and until the first selection's
@@ -126,12 +126,12 @@ export interface RepoViewState {
   focusRequest: number;
   /**
    * The file list (its `filesKey`) the keyboard cursor was last put in. With no diff open, only
-   * that list shows its cursor row, so a WIP's two lists never both show one (fix round 1).
+   * that list shows its cursor row, so a WIP's two lists never both show one.
    */
   fileListCursor: string | null;
   setFileListCursor(key: string): void;
   /**
-   * Plan 1C Find (Ctrl+F, spec §8.7): the commit ids that match, or `null` for no search. While
+   * Find (Ctrl+F): the commit ids that match, or `null` for no search. While
    * set, the graph dims every other row's text at the row-dim mechanism's `'filter'` level
    * (rowDim.ts). By id, so a refresh that moves the rows keeps dimming the same commits.
    */
@@ -150,13 +150,13 @@ export interface RepoViewState {
   /** The tip to bring into view: a new object per HEAD move, so the same commit twice still scrolls. */
   revealHead: { id: string } | null;
   /**
-   * The tab's watch is up (`true`, once `watchRepo` returned) or stopped (K44): while it's up,
+   * The tab's watch is up (`true`, once `watchRepo` returned) or stopped: while it's up,
    * the WIP rows' lists are held in memory (`services.wip`) and loaded ahead, so selecting a WIP
    * row renders them at once. Stopped, they're dropped and read on selection again.
    */
   setWatched(on: boolean): void;
   /**
-   * Spec §9.4, K27. A plain click selects the row alone. A Ctrl+click adds the row to the
+   * A plain click selects the row alone. A Ctrl+click adds the row to the
    * selection, or removes it if it's selected (never the only one). Shift+click selects the
    * rows from the anchor to this one; with Ctrl too, it adds them. Two rows are a compare, the
    * first picked as FROM; three or more, a multi-selection.
@@ -170,7 +170,7 @@ export interface RepoViewState {
    * graph"). A commit that is a row is selected as one.
    */
   selectRevealed(id: string): void;
-  /** The selection as it is now, by row id (UX R2.2). */
+  /** The selection as it is now, by row id. */
   snapshotSelection(): SelectionSnapshot;
   /** Selects `snap`'s rows again, those still in the graph; none left, nothing is selected. With
    * every row back, its merge parent and open file come back too. */
@@ -195,15 +195,15 @@ export interface RepoViewState {
   /** Closes the diff, focusing `zone` instead of the graph (the file list's toggle, H5b). */
   closeDiffTo(zone: FocusZone): void;
   setFocus(zone: FocusZone): void;
-  /** Spec #2 §7.5: asked before the open file is left (`openFile`, `closeDiff`, `closeDiffTo`,
+  /** Asked before the open file is left (`openFile`, `closeDiff`, `closeDiffTo`,
    * `selectRow`). It returns `true` when it took over: it calls `go` itself, or never. */
   setLeaveGuard(guard: ((go: () => void) => boolean) | null): void;
   /** Runs `go` once leaving the open file is settled: at once, or after the leave guard's prompt
-   * (never, if it's cancelled). For what opens a file another way: spec #5's Back/Forward and
+   * (never, if it's cancelled). For what opens a file another way: Back/Forward and
    * Markdown links ask once, not once per step. */
   leaveThen(go: () => void): void;
   /**
-   * File History's sticky mode, this tab's (UX: sticky history): set while File History is open
+   * File History's sticky mode, this tab's: set while File History is open
    * (`history/open.ts`), and cleared when it closes. Meanwhile a file opened from the right panel
    * (a click, Up/Down, Enter, the step after a stage) opens in File History too, Blame or not as
    * this says (`registerStickyOpener`). `null`: files open as usual.
@@ -244,12 +244,12 @@ export function targetFor(f: FileChange, spec: DiffSpec): DiffTarget {
   return { key: `${filesKey(spec)}|${f.path}`, path: f.path, oldPath: f.oldPath, status: f.status, old: f.old, new: f.new, view: 'diff' };
 }
 
-/** An unchanged file from "View all files": File View of `path` at `commit` (spec §9.3). */
+/** An unchanged file from "View all files": File View of `path` at `commit`. */
 export function fileViewTarget(path: string, commit: string, spec: DiffSpec): DiffTarget {
   return { key: `${filesKey(spec)}|all|${path}`, path, oldPath: null, status: '', old: { kind: 'absent' }, new: { kind: 'atCommit', commit }, view: 'file' };
 }
 
-/** UX G.2: a tracked, unchanged file from the WIP row's "View all files": File View of the
+/** A tracked, unchanged file from the WIP row's "View all files": File View of the
  * working-tree file itself, so it's editable (`isEditableTarget`). */
 export function worktreeViewTarget(path: string, worktree: string, spec: DiffSpec): DiffTarget {
   return { key: `${filesKey(spec)}|all|${path}`, path, oldPath: null, status: '', old: { kind: 'absent' }, new: { kind: 'worktree', worktree }, view: 'file' };
@@ -275,7 +275,7 @@ export function selectedIndex(s: RepoViewState): number {
   }
 }
 
-/** One selected commit (spec #3 §4.3): what the selection's menu and 3C's editor preset use. */
+/** One selected commit: what the selection's menu and the rebase editor preset use. */
 export interface CommitRef { oid: string; summary: string; merge: boolean }
 
 /** The selected commits in graph order (newest first): a single commit, a compare's two, a
@@ -291,7 +291,7 @@ export function selectedCommits(s: Pick<RepoViewState, 'selection' | 'picks' | '
 }
 
 /** Whether commit `id`'s row is part of a selection holding two or more commits: a right-click
- * there opens the selection's menu (spec #3 §4.3). */
+ * there opens the selection's menu. */
 export function inCommitSelection(s: Pick<RepoViewState, 'selection' | 'picks' | 'graph' | 'indexById'>, id: string): boolean {
   const i = s.indexById.get(id);
   const k = s.selection.kind;
@@ -300,7 +300,7 @@ export function inCommitSelection(s: Pick<RepoViewState, 'selection' | 'picks' |
 }
 
 /** The open worktree (the tab's own, dirty or not), spelled as its WIP row's `worktreePath`:
- * what "Compare with working tree" targets, never just the first WIP row (K37). */
+ * what "Compare with working tree" targets, never just the first WIP row. */
 export function openWorktree(s: Pick<RepoViewState, 'graph' | 'repoPath'>): string {
   return s.graph.openWorktree ?? s.repoPath;
 }
@@ -311,13 +311,13 @@ export function openWipIndex(s: Pick<RepoViewState, 'graph' | 'repoPath'>): numb
   return s.graph.rows.findIndex((r) => r.kind === 'wip' && r.wip?.worktreePath === open);
 }
 
-/** The selected rows, in pick order: a single selection's one row, or the picks (K27). */
+/** The selected rows, in pick order: a single selection's one row, or the picks. */
 function pickedRows(s: RepoViewState): readonly number[] {
   if (s.selection.kind === 'commit' || s.selection.kind === 'wip') return s.selection.index >= 0 ? [s.selection.index] : [];
   return s.picks.rows;
 }
 
-/** Where a Shift range starts (K27): a single selection's row (a ⋮ row's too), else the picks'
+/** Where a Shift range starts: a single selection's row (a ⋮ row's too), else the picks'
  * anchor. */
 function anchorOf(s: RepoViewState): number | null {
   if (s.selection.kind === 'commit' || s.selection.kind === 'wip' || s.selection.kind === 'collapsed') return s.selection.index >= 0 ? s.selection.index : null;
@@ -385,10 +385,10 @@ function panelFor(s: RepoViewState): Pick<RepoViewState, 'panel' | 'panelPending
   return { panel: { selection, parent, details, message, sections }, panelPending: false };
 }
 
-/** Where a section's list comes from: WIP lists are held apart (K44). */
+/** Where a section's list comes from: WIP lists are held apart. */
 const sourceFor = (services: RepoServices, spec: DiffSpec): Source<FileListPayload> => (spec.kind === 'wip' ? services.wip : services.files);
 
-/** The open worktree, when it has a WIP row: the one whose lists K44 loads ahead. Another
+/** The open worktree, when it has a WIP row: the one whose lists are loaded ahead. Another
  * worktree's are read when its WIP row is selected (the backend keeps only its counts current,
  * so reading them ahead on every change would cost a status and numstat each time). */
 function openWip(g: GraphPayload, repoPath: string): string[] {
@@ -428,7 +428,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       );
     }
 
-    /** Loads the selection's file lists; `refresh` (the selected WIP's lists changed, K44)
+    /** Loads the selection's file lists; `refresh` (the selected WIP's lists changed)
      * keeps the lists shown until the new ones arrive. */
     function loadSections(specs: { title: string | null; spec: DiffSpec }[], mySeq: number, refresh = false) {
       const myLoad = ++sectionsSeq;
@@ -438,7 +438,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       }, mySeq, refresh));
     }
 
-    // A watched worktree's WIP lists changed (K44): the open worktree's load again ahead, and
+    // A watched worktree's WIP lists changed: the open worktree's load again ahead, and
     // the panel refreshes if it's that WIP row's.
     services.wip.subscribe((worktrees) => {
       services.wip.prefetch(openWip(get().graph, repoPath).filter((w) => worktrees.has(w)));
@@ -576,7 +576,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
     }
 
     /**
-     * Selects `rows` (pick order) with `anchor` and `cursor` (K27). One row is a single
+     * Selects `rows` (pick order) with `anchor` and `cursor`. One row is a single
      * selection. Two are a compare, the first as FROM: a commit with a WIP row compares it with
      * that working tree; two WIP rows can't be compared, so the cursor's is selected alone.
      * Three or more are a multi-selection, with nothing to load.
@@ -704,7 +704,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         if (selection.kind === 'none' && prev.selection.kind !== 'none') return clearSelection({ graph: next, indexById, ...reveal });
         set({ graph: next, indexById, selection, picks, ...reveal });
         services.wip.prefetch(openWip(next, repoPath));
-        // Picked rows gone (K27): select those left anew, so two left are a compare and one a
+        // Picked rows gone: select those left anew, so two left are a compare and one a
         // single selection. The anchor and cursor, if gone, move to the row picked last.
         if (picks.rows.length < p.rows.length) {
           const last = picks.rows[picks.rows.length - 1];
@@ -830,7 +830,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
       openFile(target, neighbours = []) {
         perf.start('diff');
         set({ diff: target });
-        // Worktree-side contents are never cached (plan 1B deviation 9): prefetching one would
+        // Worktree-side contents are never cached: prefetching one would
         // be a read whose result is thrown away.
         services.contents.prefetch(neighbours.map((n) => contentKey(contentsRequest(n))).filter((k) => !isMutableKey(k)));
         if (get().stickyHistory) stickyOpener?.(storeApi, target);
@@ -842,7 +842,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         const mySeq = seq;
         const step = (i: number): void => {
           // The sections as they are now (same selection: `mySeq`): a list may have arrived, or
-          // been refreshed (K44), since the previous step.
+          // been refreshed, since the previous step.
           const section = get().sections[i];
           if (mySeq !== seq || !section) return;
           const use = (list: FileListPayload) => {
@@ -883,7 +883,7 @@ export function createRepoViewStore(repo: number, repoPath: string, graph: Graph
         if (!leaveGuard?.(go)) go();
       },
     };
-    // Spec #2 §7.5: leaving the open file asks the guard first.
+    // Leaving the open file asks the guard first.
     return {
       ...state,
       // Opening the file already open (a re-click) leaves nothing behind.

@@ -1,5 +1,5 @@
-//! GitLab REST v4 (spec #4 §3.1): identity, projects, settings, forks, avatars. 4B–4D add the
-//! merge request methods to this impl, in their marked blocks.
+//! GitLab REST v4: identity, projects, settings, forks, avatars. The
+//! merge request methods are in this impl, in their marked blocks.
 
 use crate::avatar_cache::{image_at, payload_of, DiskAvatarCache, Lookup};
 use crate::endpoints::HostEndpoints;
@@ -17,10 +17,8 @@ use std::sync::{Arc, Mutex};
 pub const FORKS_PER_PAGE: u32 = 100;
 pub const FORK_PAGES: usize = 3;
 
-// --- 4C T3 ---
 pub const USERS_PER_PAGE: u32 = 20;
 pub const LABELS_PER_PAGE: u32 = 50;
-// --- end 4C T3 ---
 
 /// A list GitLab answered without an ETag: its body, the project's mark then, and whether
 /// every page was read.
@@ -34,14 +32,12 @@ pub struct GitLabProvider {
     gql: HttpClient,
     gql_url: String,
     avatars: Option<Arc<DiskAvatarCache>>,
-    // --- 4B T2 ---
     /// The token's user, once asked (Mine, Review requested).
     me: Mutex<Option<ForgeUser>>,
     /// Project id → path: an MR names its source project by id only.
     paths: Mutex<HashMap<u64, String>>,
     /// Project id → label name → `#rrggbb`, from `/projects/:id/labels` (`fill_label_colors`).
     label_colors: Mutex<HashMap<u64, HashMap<String, String>>>,
-    // --- end 4B T2 ---
     /// The list's pipelines by head commit (`pipelines`): asked only for new or running heads.
     pipelines: crate::pipelines::PipelineCache,
     /// A GitLab that answers lists without an ETag (no 304s): each list's last body by path,
@@ -73,10 +69,10 @@ impl GitLabProvider {
         let gql_url = format!("{}/graphql", api.strip_suffix("/v4").unwrap_or(api));
         let gql = HttpClient::new(ClientConfig { host: host.into(), api_base: gql_url.clone(), token: Some(token.clone()), headers: Vec::new(), timeout: crate::http::REQUEST_TIMEOUT });
         let http = HttpClient::new(ClientConfig { host: host.into(), api_base: api.into(), token: Some(token), headers: Vec::new(), timeout: crate::http::REQUEST_TIMEOUT });
-        Self { host: host.into(), web: endpoints.web.trim_end_matches('/').into(), http, gql, gql_url, avatars, me: Mutex::new(None), paths: Mutex::default(), label_colors: Mutex::default(), pipelines: Default::default(), unconditional: Mutex::default(), unchanged: Mutex::default(), marks: Mutex::default(), learned: Mutex::default(), names: KnownNames::default(), names_asked: Mutex::default(), name_turn: tokio::sync::Mutex::new(()) } // 4B T2: me, paths
+        Self { host: host.into(), web: endpoints.web.trim_end_matches('/').into(), http, gql, gql_url, avatars, me: Mutex::new(None), paths: Mutex::default(), label_colors: Mutex::default(), pipelines: Default::default(), unconditional: Mutex::default(), unchanged: Mutex::default(), marks: Mutex::default(), learned: Mutex::default(), names: KnownNames::default(), names_asked: Mutex::default(), name_turn: tokio::sync::Mutex::new(()) } // Me, paths
     }
 
-    /// The account's client, for 4B–4D's requests.
+    /// The account's client, for the forge requests.
     pub fn http(&self) -> &HttpClient {
         &self.http
     }
@@ -165,18 +161,18 @@ pub mod json {
         ForgeProjectSettings { merge_methods: vec![method], squash, delete_source_branch: v["remove_source_branch_after_merge"].as_bool().unwrap_or(false) }
     }
 
-    /// What `/personal_access_tokens/self` says about writing: the `api` scope (spec #4 §2).
+    /// What `/personal_access_tokens/self` says about writing: the `api` scope.
     pub fn token_write(v: &Value) -> WriteAccess {
         let has_api = v["scopes"].as_array().is_some_and(|a| a.iter().any(|s| s.as_str() == Some("api")));
         if has_api { WriteAccess::Yes } else { WriteAccess::No { missing: "api".into() } }
     }
-    // --- 4B T2: merge requests ---
+    // --- merge requests ---
     use std::collections::HashMap;
 
     /// The prefixes GitLab reads as "draft" (and the older "WIP"), any case.
     const DRAFT_PREFIXES: [&str; 6] = ["draft:", "[draft]", "(draft)", "draft -", "wip:", "[wip]"];
 
-    /// The title without its draft prefix: the state says Draft (Review Focus 5).
+    /// The title without its draft prefix: the state says Draft.
     pub fn strip_draft(title: &str) -> &str {
         let t = title.trim_start();
         let lower = t.to_ascii_lowercase();
@@ -394,7 +390,6 @@ pub mod json {
     }
     // --- end branch update ---
 
-    // --- MR round 2 ---
     /// The project's people limits from GraphQL's `allowsMultipleReviewers` /
     /// `allowsMultipleAssignees` (on any of its MRs): false is one. No MR, or a server without
     /// the fields (an error), says nothing: no limit.
@@ -415,7 +410,6 @@ pub mod json {
     pub fn mutation_ok(answer: &Value, name: &str) -> bool {
         answer["errors"].as_array().is_none_or(|e| e.is_empty()) && answer["data"][name].is_object() && answer["data"][name]["errors"].as_array().is_none_or(|e| e.is_empty())
     }
-    // --- end MR round 2 ---
 
     fn position(v: &Value) -> Option<DiffPosition> {
         let path = text(&v["new_path"]).or_else(|| text(&v["old_path"]))?;
@@ -568,13 +562,11 @@ pub mod json {
             None => mrs.into_iter().max_by_key(|m| m.updated_at),
         }
     }
-    // --- end 4B T2 ---
-    // --- 4C T3 ---
     pub fn label(v: &Value) -> Option<ForgeLabel> {
         Some(ForgeLabel { name: v["name"].as_str()?.to_string(), color: text(&v["color"]), description: text(&v["description"]) })
     }
 
-    /// Ruling 9: GitLab's draft is the title prefix, which every version honours.
+    /// GitLab's draft is the title prefix, which every version honours.
     pub fn draft_title(title: &str, draft: bool) -> String {
         let t = title.trim();
         let lower = t.to_lowercase();
@@ -631,7 +623,6 @@ pub mod json {
             auto_merge: None,
         })
     }
-    // --- end 4C T3 ---
     // --- review comments ---
     use gitvolt_core::forge::review::{commentable_lines, line_code};
 
@@ -698,7 +689,7 @@ pub mod json {
     // --- end review comments ---
 }
 
-// --- 4B T2: merge requests (reads) ---
+// --- merge requests (reads) ---
 pub const MR_PER_PAGE: u32 = 100;
 /// The badges' open list reads at most this many pages.
 pub const OPEN_PAGES: usize = 5;
@@ -981,7 +972,6 @@ impl GitLabProvider {
         Ok(format!("{}/draft_notes/{id}", Self::mr_url(project, number)))
     }
 }
-// --- end 4B T2 ---
 
 // --- commit-author avatars by name ---
 /// A name search asks for this many users: an exact match ranks among the first.
@@ -1026,7 +1016,7 @@ impl GitLabProvider {
 }
 // --- end commit-author avatars by name ---
 
-// --- 4B T3: merge requests (writes) ---
+// --- merge requests (writes) ---
 /// GitLab's refusals of a merge, said plainly: another head sha (409), or it can't merge now
 /// (405/406: not open, not approved, a draft, conflicts…).
 pub fn merge_refused(number: u64, e: GbError) -> GbError {
@@ -1121,13 +1111,12 @@ impl GitLabProvider {
         self.http.get(&Self::mr_url(project, number)).await?.json(&self.host)
     }
 
-    // --- MR round 2 ---
     /// One GraphQL request (`/api/graphql`); the answer, `errors` and all.
     async fn graphql(&self, query: &str, variables: Value) -> Result<Value, GbError> {
         self.gql.send_json(Method::Post, &self.gql_url, &json!({ "query": query, "variables": variables })).await?.json(&self.host)
     }
 
-    /// GitLab's request changes, step by step (its REST API has no review state, ruling 6): the
+    /// GitLab's request changes, step by step (its REST API has no review state): the
     /// summary note when there is one, then the user's approval withdrawn (not approved, a 404,
     /// is fine), then with `set_state` the reviewer state set to requested changes (GraphQL's
     /// `mergeRequestRequestChanges`; a server without it, or one that refuses it, leaves it at
@@ -1152,7 +1141,6 @@ impl GitLabProvider {
         }
         Ok(())
     }
-    // --- end MR round 2 ---
 
     // --- comment actions ---
     /// Each note's award emoji, from `NOTE_AWARDS_QUERY` (one request per 100 notes, not one per
@@ -1196,14 +1184,11 @@ pub const NOTE_AWARDS_QUERY: &str = "query($path: ID!, $iid: String!, $after: St
 pub const AWARD_PAGES: usize = 3;
 // --- end comment actions ---
 
-// --- MR round 2 ---
 /// The project's people limits, from any one of its MRs (the flags are the namespace's tier's).
 pub const PEOPLE_LIMITS_QUERY: &str = "query($path: ID!) { project(fullPath: $path) { mergeRequests(first: 1) { nodes { allowsMultipleReviewers allowsMultipleAssignees } } } }";
 /// Sets the token's user's reviewer state to requested changes (GitLab 17.x; older servers
 /// don't know the mutation).
 pub const REQUEST_CHANGES_MUTATION: &str = "mutation($path: ID!, $iid: String!) { mergeRequestRequestChanges(input: {projectPath: $path, iid: $iid}) { errors } }";
-// --- end MR round 2 ---
-// --- end 4B T3 ---
 
 impl ForgeProvider for GitLabProvider {
     fn kind(&self) -> ForgeKind {
@@ -1250,7 +1235,7 @@ impl ForgeProvider for GitLabProvider {
         Box::pin(async move {
             let user = self.current_user().await?;
             // GitLab ≥ 15.5 describes the token itself. An older one (404), or a token that isn't
-            // a personal one (401), can't say: accepted, and a write says so later (4B).
+            // a personal one (401), can't say: accepted, and a write says so later.
             let write = match self.http.get("/personal_access_tokens/self").await {
                 Ok(r) => json::token_write(&r.json(&self.host)?),
                 Err(e) if matches!(e.kind, GbErrorKind::NotFound | GbErrorKind::AuthFailed) => WriteAccess::Unknown,
@@ -1307,7 +1292,7 @@ impl ForgeProvider for GitLabProvider {
         Some(Box::pin(async move { image_at(&self.http, self.avatars.as_deref(), &url, &self.web).await }))
     }
 
-    // --- 5A T2: Markdown images ---
+    // --- Markdown images ---
     /// The account's own host: an upload through the API, anything else as it is; the token goes
     /// with both (the web host is the API host), never elsewhere.
     fn image<'a>(&'a self, project: &'a ForgeProject, url: &'a str) -> Option<ForgeFuture<'a, ForgeImage>> {
@@ -1324,7 +1309,6 @@ impl ForgeProvider for GitLabProvider {
             crate::images::fetch_video(&self.http, &route, &self.web, &allowed).await
         }))
     }
-    // --- end 5A T2 ---
 
     fn avatar_for_email<'a>(&'a self, email: &'a str) -> ForgeFuture<'a, Option<AvatarPayload>> {
         Box::pin(async move {
@@ -1406,8 +1390,7 @@ impl ForgeProvider for GitLabProvider {
     }
     // --- end commit-author avatars by name ---
 
-    // --- 4B: merge requests ---
-    // --- 4B T2: reads ---
+        // --- reads ---
     fn open_mrs<'a>(&'a self, project: &'a ForgeProject, filter: MrFilter) -> ForgeFuture<'a, Fresh<Vec<ForgeMr>>> {
         Box::pin(self.list_open(project, filter, true))
     }
@@ -1416,7 +1399,6 @@ impl ForgeProvider for GitLabProvider {
         Box::pin(self.list_open(project, filter, false))
     }
 
-    // --- 4D T4 ---
     fn open_mrs_targeting<'a>(&'a self, project: &'a ForgeProject, branch: &'a str) -> ForgeFuture<'a, Fresh<Vec<ForgeMr>>> {
         Box::pin(async move {
             let path = format!("/projects/{}/merge_requests?state=opened&target_branch={}&per_page=100&with_labels_details=true", project.id, encode_component(branch));
@@ -1425,7 +1407,6 @@ impl ForgeProvider for GitLabProvider {
             Ok(Self::fresh(self.mrs_of(project, &list, &HashMap::new()).await, &r))
         })
     }
-    // --- end 4D T4 ---
 
     fn mr_for_branch<'a>(&'a self, project: &'a ForgeProject, source: &'a SourceRef) -> ForgeFuture<'a, Fresh<Option<ForgeMr>>> {
         Box::pin(async move {
@@ -1480,8 +1461,7 @@ impl ForgeProvider for GitLabProvider {
             Ok(Fresh::new(ds, unix_now()))
         })
     }
-    // --- end 4B T2 ---
-    // --- 4B T3: writes ---
+    // --- writes ---
     fn reply<'a>(&'a self, project: &'a ForgeProject, number: u64, note: &'a NewNote) -> ForgeFuture<'a, ForgeNote> {
         Box::pin(async move {
             let url = Self::mr_url(project, number);
@@ -1501,13 +1481,12 @@ impl ForgeProvider for GitLabProvider {
         })
     }
 
-    /// GitLab's REST API has no review state (ruling 6): the comment, then the user's approval
+    /// GitLab's REST API has no review state: the comment, then the user's approval
     /// withdrawn. Not approved (a 404) is fine.
     fn request_changes<'a>(&'a self, project: &'a ForgeProject, number: u64, body: &'a str) -> ForgeFuture<'a, ()> {
         Box::pin(async move { self.request_changes_steps(project, number, body, false, &mut SubmitOutcome::default()).await })
     }
 
-    // --- MR round 2 ---
     /// Request changes is `request_changes` (the comment, the approval withdrawn), then the
     /// reviewer state set to requested changes (GraphQL's `mergeRequestRequestChanges`); a
     /// server without it (or one that refuses it) leaves it at that: the outcome says so.
@@ -1541,7 +1520,6 @@ impl ForgeProvider for GitLabProvider {
             }
         })
     }
-    // --- end MR round 2 ---
 
     // --- comment actions ---
     /// The note's award emoji, read first (GitLab refuses a second of the same, and removing
@@ -1659,7 +1637,7 @@ impl ForgeProvider for GitLabProvider {
     }
     // --- end branch update ---
 
-    /// A draft keeps its prefix: a new title for it is sent as `Draft: <title>` (Review Focus 5).
+    /// A draft keeps its prefix: a new title for it is sent as `Draft: <title>`.
     fn edit<'a>(&'a self, project: &'a ForgeProject, number: u64, edit: &'a MrEdit) -> ForgeFuture<'a, ForgeMr> {
         Box::pin(async move {
             let people = [&edit.reviewers, &edit.assignees].iter().any(|c| c.as_ref().is_some_and(|c| !c.is_empty()));
@@ -1686,7 +1664,7 @@ impl ForgeProvider for GitLabProvider {
             let v: Value = r.json(&self.host)?;
             for ((field, role, change), sent) in [("reviewers", "a reviewer", &edit.reviewers), ("assignees", "an assignee", &edit.assignees)].into_iter().zip(sent) {
                 let dropped = json::not_added(&v, field, change.as_ref().map_or(&[][..], |c| &c.add));
-                // --- MR round 2: the post-write check: GitLab Free kept only the first. A
+                // --- the post-write check: GitLab Free kept only the first. A
                 // non-member is dropped the same way: one who is a member was dropped by the limit. ---
                 if !dropped.is_empty()
                     && let Some(kept) = json::kept_only(&v, field, sent)
@@ -1695,7 +1673,6 @@ impl ForgeProvider for GitLabProvider {
                     let noun = if field == "reviewers" { "reviewer" } else { "assignee" };
                     return Err(GbError::new(GbErrorKind::InvalidInput, format!("GitLab kept only {}: this project allows one {noun}", kept.name)).with_detail(ErrorDetail::PeopleLimit { role: field.into() }));
                 }
-                // --- end MR round 2 ---
                 if !dropped.is_empty() {
                     let who = dropped.iter().map(|id| format!("user {id}")).collect::<Vec<_>>().join(", ");
                     return Err(GbError::new(GbErrorKind::InvalidInput, format!("GitLab didn't add {who} as {role}: are they a member of {}?", project.path)));
@@ -1715,8 +1692,6 @@ impl ForgeProvider for GitLabProvider {
             self.mr_from(project, &r.json(&self.host)?).await
         })
     }
-    // --- end 4B T3 ---
-    // --- end 4B ---
     // --- review comments ---
     fn review_diff<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, ReviewDiff> {
         Box::pin(async move {
@@ -1839,11 +1814,10 @@ impl ForgeProvider for GitLabProvider {
         })
     }
     // --- end review comments ---
-    // --- 4C ---
-    // --- 4C T3: create, people, labels, templates ---
+    // --- create, people, labels, templates ---
     fn create_mr<'a>(&'a self, project: &'a ForgeProject, req: &'a CreateMr) -> ForgeFuture<'a, CreateOutcome> {
         Box::pin(async move {
-            // GitLab creates in the source project; a fork's MR names its target (ruling 3).
+            // GitLab creates in the source project; a fork's MR names its target.
             let source_id = if req.source.project == project.path { project.id } else { self.project(&req.source.project).await?.value.id };
             let body = json::create_body(req, source_id, project.id);
             let r = self.http.send_json(Method::Post, &format!("/projects/{source_id}/merge_requests"), &body).await?;
@@ -1877,7 +1851,7 @@ impl ForgeProvider for GitLabProvider {
             let tree = format!("/projects/{}/repository/tree?path={}&ref={at}&per_page=100", project.id, encode_component(GITLAB_TEMPLATE_DIR));
             let entries: Vec<Value> = match self.http.get(&tree).await {
                 Ok(r) => r.json(&self.host)?,
-                // No such directory on that branch: no templates (a final answer, ruling 7).
+                // No such directory on that branch: no templates (a final answer).
                 Err(e) if e.kind == GbErrorKind::NotFound => return Ok(Vec::new()),
                 Err(e) => return Err(e),
             };
@@ -1902,18 +1876,14 @@ impl ForgeProvider for GitLabProvider {
             Ok(sort_templates(out))
         })
     }
-    // --- end 4C T3 ---
-    // --- end 4C ---
-    // --- 4D ---
-    // --- 4D: stacks ---
-    /// Points the MR at `target_branch` (spec #4 §4 "4D"): `PUT …/merge_requests/:iid`.
+    // --- stacks ---
+    /// Points the MR at `target_branch`: `PUT …/merge_requests/:iid`.
     fn retarget<'a>(&'a self, project: &'a ForgeProject, number: u64, target_branch: &'a str) -> ForgeFuture<'a, ForgeMr> {
         Box::pin(async move {
             let r = self.http.send_json(Method::Put, &Self::mr_url(project, number), &serde_json::json!({ "target_branch": target_branch })).await?;
             self.mr_from(project, &r.json(&self.host)?).await
         })
     }
-    // --- end 4D ---
 }
 
 #[cfg(test)]
@@ -2056,8 +2026,6 @@ mod tests {
         assert_eq!(json::pick_for_branch(vec![v(1, "merged", "2026-10-04T00:00:00Z"), v(3, "closed", "2026-10-05T00:00:00Z")]).unwrap().number, 3);
         assert!(json::pick_for_branch(vec![]).is_none());
     }
-    // --- end 4B T2 ---
-    // --- 4C T3 ---
     #[test]
     fn a_draft_is_a_title_prefix_never_doubled() {
         assert_eq!(json::draft_title("Add login", true), "Draft: Add login");
@@ -2093,7 +2061,6 @@ mod tests {
         assert_eq!(mr.review.decision, ReviewDecision::None);
         assert_eq!(json::label(&json!({"name": "bug", "color": "#d9534f", "description": ""})), Some(ForgeLabel { name: "bug".into(), color: Some("#d9534f".into()), description: None }));
     }
-    // --- end 4C T3 ---
 
     #[test]
     fn a_people_change_is_sent_as_the_whole_lists() {
@@ -2137,7 +2104,6 @@ mod tests {
         assert!(super::merge_body(&MergeOptions::default(), false).is_empty());
     }
 
-    // --- MR round 2 ---
     #[test]
     fn the_people_flags_read_as_limits() {
         let flags = |r: bool, a: bool| json!({"data": {"project": {"mergeRequests": {"nodes": [{"allowsMultipleReviewers": r, "allowsMultipleAssignees": a}]}}}});
@@ -2168,7 +2134,6 @@ mod tests {
         let d = json::detail(&v, "group/project", "group/project", None).unwrap();
         assert_eq!((d.base_sha.as_deref(), d.subscribed), (Some("abc"), Some(true)));
     }
-    // --- end MR round 2 ---
 
     #[test]
     fn a_merged_mr_landed_as_its_merge_commit_else_its_squash_commit() {

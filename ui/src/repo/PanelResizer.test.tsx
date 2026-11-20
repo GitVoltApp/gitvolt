@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PanelResizer } from './PanelResizer';
 
 /** Waits a frame: the live width is written in a `requestAnimationFrame`, coalescing however
- * many `pointermove` events land within it (K26). */
+ * many `pointermove` events land within it. */
 const nextFrame = () => act(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
 describe('PanelResizer', () => {
@@ -74,7 +74,7 @@ describe('PanelResizer', () => {
   });
 });
 
-describe('PanelResizer double-click (K73)', () => {
+describe('PanelResizer double-click', () => {
   it('resets to the default width, with no drag left running', () => {
     const onChange = vi.fn();
     render(<PanelResizer width={600} min={100} max={800} defaultWidth={400} onChange={onChange} panelRef={createRef<HTMLDivElement>()} />);

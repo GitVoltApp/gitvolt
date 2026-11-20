@@ -40,7 +40,7 @@ const PERSIST_MS = 300;
 type Loaded = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; file: ConflictFilePayload | null };
 
 /**
- * §13.3's merge tool: Current | Incoming side by side, the output below.
+ * The merge tool: Current | Incoming side by side, the output below.
  * - The panes show each side's whole file, its regions tinted. In the gutter: the hunk column
  *   (tinted along each region, its checkbox on the first line) and each conflicting line's take
  *   (+) / drop (−) button (Space on the pane's cursor line does the same). A header checkbox takes
@@ -48,7 +48,7 @@ type Loaded = { status: 'loading' } | { status: 'error'; message: string } | { s
  * - A tick rebuilds only its region in the output (an undoable edit that takes the ticks back
  *   too); hand edits elsewhere stay.
  * - The work (ticks and output) is kept per (tab, path) in `mergeDrafts`, across a hidden tab,
- *   another file and a reload; leaving it unsaved asks (2B T11's guards).
+ *   another file and a reload; leaving it unsaved asks.
  * - Ctrl+S or the button saves and marks the file resolved (`saveMerge`). It opens at the first
  *   region still to resolve; F7 / Shift+F7 and the arrows step the regions.
  * - A conflict that isn't text on both sides gets the buttons instead (`NonTextConflict`).
@@ -176,7 +176,7 @@ export function MergeTool({ ctx, path, onResolved, initial }: { ctx: WriteCtx; p
     });
     e.onCursor(setCursor);
     // The first time the file opens (or after a reload: a draft's), at the first conflict still to
-    // resolve (nothing ticked or typed), as F7 goes to one, leaving the focus where it is (the file
+    // resolve (nothing ticked or typed), as F7 does, leaving the focus where it is (the file
     // list, say). Rebuilt (a hidden tab shown again, another file and back): where the reader was.
     const view = views.get(key);
     if (view) e.restoreView(view);
@@ -200,7 +200,7 @@ export function MergeTool({ ctx, path, onResolved, initial }: { ctx: WriteCtx; p
     return () => {
       clearTimeout(timer);
       // Going out of view (a hidden tab, another file): the work stays in the draft.
-      persist(); // N1: a first edit still waiting on its debounce is kept too
+      persist(); // A first edit still waiting on its debounce is kept too
       if (done.current) views.delete(key);
       else views.set(key, e.viewState());
       offLive();
@@ -216,7 +216,7 @@ export function MergeTool({ ctx, path, onResolved, initial }: { ctx: WriteCtx; p
   };
 
   const save = async () => {
-    // M7: one save at a time, its question included.
+    // One save at a time, its question included.
     if (!file || !eds.current || inFlight.current) return;
     inFlight.current = true;
     setSaving(true);
@@ -235,7 +235,7 @@ export function MergeTool({ ctx, path, onResolved, initial }: { ctx: WriteCtx; p
     if (e && r) e.reveal(r.id);
   };
 
-  // App-wide while the tool is shown (as the diff's change keys, J14): ahead of Monaco, whose F7
+  // App-wide while the tool is shown (as the diff's change keys): ahead of Monaco, whose F7
   // is its own and which has no Ctrl+S.
   useKeys('app', (e) => {
     // Ctrl+S arrives prevented already: the menu layer stops the browser's own Save page on it
@@ -272,12 +272,12 @@ export function MergeTool({ ctx, path, onResolved, initial }: { ctx: WriteCtx; p
   if (!file) return <div className="merge-message">{path} isn't conflicted any more.</div>;
   if (!textual) return <NonTextConflict ctx={ctx} file={file} onResolved={onResolved} onStale={(m) => { toast(m); reload(); }} />;
   const box = (side: Side) => {
-    // M5: a side with no lines in any region has nothing to take.
+    // A side with no lines in any region has nothing to take.
     const has = sideHasLines(file.segments, side);
     const s = sideState(file.segments, picks, side);
     return <SideCheck side={side} label="Take all from this side" disabled={!has} state={has ? s : 'none'} onToggle={() => take(side, s !== 'all')} />;
   };
-  // N6: no file to write over (conflictFile found none): saving can only be Stale.
+  // No file to write over (conflictFile found none): saving can only be Stale.
   const deleted = file.base === null;
   const copyOutput = () => {
     const text = eds.current?.output.getValue();
@@ -315,7 +315,7 @@ export function MergeTool({ ctx, path, onResolved, initial }: { ctx: WriteCtx; p
             <HoverTooltip content="Previous conflict (Shift+F7)"><button type="button" className="icon-button" aria-label="Previous conflict" onClick={() => step(-1)}><ChevronUp size={14} /></button></HoverTooltip>
             <HoverTooltip content="Next conflict (F7)"><button type="button" className="icon-button" aria-label="Next conflict" onClick={() => step(1)}><ChevronDown size={14} /></button></HoverTooltip>
           </div>
-          {/* Saved with conflicts left, it arms in place (spec §ui confirms, board D). */}
+          {/* Saved with conflicts left, it arms in place. */}
           <div className="merge-output-end" data-arm-grow="left">
             <HoverTooltip content={deleted ? `${path} was deleted on disk` : `Save (${displayChord('Mod+S')})`}><button type="button" className="merge-save" aria-disabled={deleted || undefined} disabled={saving} onClick={() => { if (!deleted) void save(); }}>Save and mark resolved</button></HoverTooltip>
           </div>
@@ -364,10 +364,10 @@ export function useShownConflict(ctx: WriteCtx | null, path: string): ShownConfl
   return shown;
 }
 
-/** The center panel for a conflicted WIP file (spec #2 §13.3), in place of the diff: the
+/** The center panel for a conflicted WIP file, in place of the diff: the
  * header (path, ×) and the merge tool. It's the `diff` focus zone, as the diff panel is. A save
  * that resolves the file moves to the next conflicted file, or closes (`leaveResolved`); leaving
- * unsaved work asks first (2B T11's leave guard). */
+ * unsaved work asks first. */
 export function MergeToolPanel({ target }: { target: DiffTarget }) {
   const { tabId } = useRepoContext();
   const closeDiff = useRepoView((s) => s.closeDiff);

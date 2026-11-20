@@ -21,7 +21,7 @@ const SubmitPopover = lazy(() => import('./SubmitPopover'));
 export interface ChipView { name: string; value: string; tooltip: string; problem: string | null }
 
 /**
- * The chip's words (spec 2026-10-08 §4, §7): "Reviewing !12 · 3 pending" ("review pending" for
+ * The chip's words: "Reviewing !12 · 3 pending" ("review pending" for
  * GitHub's pending review with no comment yet). It says when the MR merged or closed under the
  * review, or when the review can't be read (a lost permission is the refresh's error), and the
  * menu still offers Submit and Discard then.
@@ -49,11 +49,11 @@ async function reopenReview(tabId: string, kind: ForgeKind, number: number): Pro
 }
 
 /**
- * The top bar's review chip (spec 2026-10-08 §4), right of the branch name, while the tab's
+ * The top bar's review chip, right of the branch name, while the tab's
  * review session has drafts or a pending GitHub review. A click goes back to the MR's view and
  * Compare; its caret's menu submits the review (Submit review…, also Mod+Alt+R: the composer,
  * under the chip) or discards it (the row arms in place first). The composer, once open, stays
- * while it's needed even if the review ends under it (§7: the forge took the comments but
+ * while it's needed even if the review ends under it (the forge took the comments but
  * refused the event).
  */
 export function ReviewChip() {

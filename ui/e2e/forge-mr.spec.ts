@@ -12,7 +12,7 @@ async function pointAt(page: Page, el: Locator, click = false) {
   else await page.mouse.move(x, y);
 }
 
-test.describe('merge requests (spec #4 §7, 4B)', () => {
+test.describe('merge requests', () => {
   test('Forgejo: the PR list, its view and threads, an approval and a merge that deletes the branch', async ({ page, request }) => {
     // The sync fixture's local `dev` tracks origin/dev: the fake Forgejo's #12 is from `dev`.
     const repo = freshFixture('sync');
@@ -185,7 +185,6 @@ test.describe('merge requests (spec #4 §7, 4B)', () => {
       await expect(view).not.toContainText('Dev work, renamed');
     });
 
-    // --- MR round 2 ---
     const mrs = (seed: Awaited<ReturnType<typeof forgeSeed>>) => (seed.gitlab as unknown as { mergeRequests: Array<Record<string, unknown>> }).mergeRequests;
     const reopen = async () => {
       await page.keyboard.press('Escape');
@@ -218,7 +217,7 @@ test.describe('merge requests (spec #4 §7, 4B)', () => {
       await expect(bar.getByRole('list', { name: 'Commits' })).toHaveCount(0);
     });
 
-    await test.step("review mode: a line's + opens a comment, Add to review shows it Pending, Delete arms first (spec 2026-10-08 §2)", async () => {
+    await test.step("review mode: a line's + opens a comment, Add to review shows it Pending, Delete arms first", async () => {
       const base = git(repo, 'merge-base', 'origin/main', 'origin/dev');
       const head = git(repo, 'rev-parse', 'origin/dev');
       const file = git(repo, 'diff', '--numstat', base, head).split('\n').map((l) => l.split('\t')).find(([added]) => Number(added) > 0)![2]!;
@@ -329,13 +328,12 @@ test.describe('merge requests (spec #4 §7, 4B)', () => {
       await expect(viewer).toBeHidden();
       await expect(view).toBeVisible();
     });
-    // --- end MR round 2 ---
 
     // A comment's reactions, edit and delete, and a thread's Reply and resolve (rolled up, its
     // system note in it): NoteActions.test.tsx, ReplyBox.test.tsx and MrView.test.tsx in the UI,
     // forge_comment_actions.rs against the fake forge.
 
-    // --- review comments (plan 3): the rendered diff, the file list's badge, the chip ---
+    // --- review comments: the rendered diff, the file list's badge, the chip ---
     await test.step('a block comment in the rendered diff: the badge and the chip count it, Submit review… sends it', async () => {
       // !12 now brings a Markdown file too: a commit on origin/dev, its diff added to the Compare
       // step's seed.

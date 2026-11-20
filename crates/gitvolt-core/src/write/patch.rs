@@ -1,4 +1,4 @@
-//! The patch builder (spec #2 §7.3): from git's diff of one file and the user's selection, the
+//! The patch builder: from git's diff of one file and the user's selection, the
 //! patch `git apply` takes. Pure: no git, no I/O. The UI sends line numbers, never patch text.
 
 use serde::{Deserialize, Serialize};
@@ -271,7 +271,7 @@ fn bare(text: &[u8]) -> &[u8] {
     t.strip_suffix(b"\r").unwrap_or(t)
 }
 
-/// Deviation 13: a line without a newline must be the last line of its side, or the patch is
+/// A line without a newline must be the last line of its side, or the patch is
 /// invalid. When a picked line or one turned into context breaks that, the selection grows
 /// until it holds (picks only grow, so this ends):
 /// - an unpicked no-newline line that would become context with a line after it on its side is
@@ -325,7 +325,7 @@ fn without_mode_change(header: &[Vec<u8>]) -> Vec<Vec<u8>> {
 }
 
 /// `--- /dev/null` / `+++ /dev/null` and the new/deleted-file mode lines no longer hold once a
-/// changed line became context: both sides then have content (Deviation 13's sibling). Any other
+/// changed line became context: both sides then have content. Any other
 /// header (a modification, a rename) is kept as is.
 fn modification_header(header: &[Vec<u8>]) -> Vec<u8> {
     if !header.iter().any(|l| l.as_slice() == b"--- /dev/null\n" || l.as_slice() == b"+++ /dev/null\n") {
@@ -441,7 +441,7 @@ pub(crate) fn selected_lines(diff: &[u8], sel: &StageSelection, dir: Dir) -> (u3
     (hunks, lines)
 }
 
-/// "a hunk", "2 hunks", "1 line", "3 lines" (§7.6 and §5.5 labels).
+/// "a hunk", "2 hunks", "1 line", "3 lines".
 pub(crate) fn selection_label(diff: &[u8], sel: &StageSelection, dir: Dir) -> String {
     let (hunks, lines) = selected_lines(diff, sel, dir);
     match sel {
@@ -493,7 +493,7 @@ mod tests {
         assert!(out.contains("@@ -17,8 +17,7 @@\n q\n r\n s\n-t\n-u\n+TU\n v\n w\n x\n"), "{out}");
     }
 
-    /// §7.3 forward (stage): an unselected `-` becomes context, an unselected `+` is dropped.
+    /// Forward (stage): an unselected `-` becomes context, an unselected `+` is dropped.
     #[test]
     fn forward_keeps_unpicked_deletions_as_context_and_drops_unpicked_additions() {
         let out = text(partial_patch(TWO.as_bytes(), &lines(&[(20, 20)], &[]), Dir::Forward));
@@ -501,7 +501,7 @@ mod tests {
         assert!(!out.contains("@@ -1,"), "a hunk with nothing picked is dropped: {out}");
     }
 
-    /// §7.3 reverse (unstage, discard; applied with -R): an unselected `+` becomes context, an
+    /// Reverse (unstage, discard; applied with -R): an unselected `+` becomes context, an
     /// unselected `-` is dropped.
     #[test]
     fn reverse_keeps_unpicked_additions_as_context_and_drops_unpicked_deletions() {
@@ -518,7 +518,7 @@ mod tests {
     #[test]
     fn the_no_newline_marker_stays_with_its_line() {
         let diff = "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,2 +1,3 @@\n a\n-b\n\\ No newline at end of file\n+b\n+c\n\\ No newline at end of file\n";
-        // Stage only "+b": "-b" (no newline) is then picked too (Deviation 13), and "+c" dropped.
+        // Stage only "+b": "-b" (no newline) is then picked too, and "+c" dropped.
         let out = text(partial_patch(diff.as_bytes(), &lines(&[], &[(2, 2)]), Dir::Forward));
         assert_eq!(out, "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,2 +1,2 @@\n a\n-b\n\\ No newline at end of file\n+b\n");
         // Stage both: the markers ride along.
@@ -526,7 +526,7 @@ mod tests {
         assert!(out.ends_with("-b\n\\ No newline at end of file\n+b\n+c\n\\ No newline at end of file\n"), "{out}");
     }
 
-    /// Deviation 13's example: `-b⏎̸ +c⏎̸`, staging only `+c`, stages the pair.
+    /// Example: `-b⏎̸ +c⏎̸`, staging only `+c`, stages the pair.
     #[test]
     fn the_no_newline_tie_stages_the_pair() {
         let diff = "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,2 +1,2 @@\n a\n-b\n\\ No newline at end of file\n+c\n\\ No newline at end of file\n";
@@ -553,8 +553,8 @@ mod tests {
         assert!(out.ends_with("@@ -1,2 +1,3 @@\n a\n b\n+c\n"), "{out}");
     }
 
-    /// Unstaging part of a newly added file: the patch can't stay a "new file" (Deviation 13's
-    /// sibling): its header becomes a modification of the remaining lines.
+    /// Unstaging part of a newly added file: the patch can't stay a "new file":
+    /// its header becomes a modification of the remaining lines.
     #[test]
     fn a_partial_reverse_of_a_new_file_becomes_a_modification() {
         let diff = "diff --git a/n b/n\nnew file mode 100644\nindex 0000000..3333333\n--- /dev/null\n+++ b/n\n@@ -0,0 +1,3 @@\n+one\n+two\n+three\n";
@@ -649,7 +649,7 @@ mod tests {
         assert_eq!(label(TWO.as_bytes(), &lines(&[(3, 3)], &[])), "1 line");
     }
 
-    /// Review I1: a hunk or line never carries the file's mode change; a new file keeps its mode.
+    /// A hunk or line never carries the file's mode change; a new file keeps its mode.
     #[test]
     fn a_mode_change_never_rides_along() {
         let diff = "diff --git a/m b/m\nold mode 100644\nnew mode 100755\nindex 1111111..2222222\n--- a/m\n+++ b/m\n@@ -1,3 +1,3 @@\n 1\n-2\n+TWO\n 3\n";
@@ -663,7 +663,7 @@ mod tests {
         assert!(parse(only.as_bytes()).mode_only() && partial_patch(only.as_bytes(), &StageSelection::Hunks { hunks: vec![0] }, Dir::Forward).is_none());
     }
 
-    /// Review I2: a second section (a typechange's add after its delete) is header, not content.
+    /// A second section (a typechange's add after its delete) is header, not content.
     #[test]
     fn a_second_section_is_never_read_as_lines() {
         let diff = "diff --git a/f b/f\ndeleted file mode 100644\nindex 1111111..0000000\n--- a/f\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-one\n-two\n\
@@ -690,7 +690,7 @@ diff --git a/f b/f\nnew file mode 120000\nindex 0000000..2222222\n--- /dev/null\
         assert_eq!(parse(TWO.as_bytes()).refusal(), None);
     }
 
-    /// Review m1: the count is taken after the no-newline tie.
+    /// The count is taken after the no-newline tie.
     #[test]
     fn labels_count_the_lines_the_tie_adds() {
         let diff = "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,2 +1,3 @@\n a\n-b\n\\ No newline at end of file\n+b\n+c\n";

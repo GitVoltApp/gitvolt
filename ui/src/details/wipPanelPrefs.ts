@@ -1,5 +1,5 @@
 /**
- * The WIP panel's layout (K36): the Unstaged section's share of the two lists' height while both
+ * The WIP panel's layout: the Unstaged section's share of the two lists' height while both
  * are expanded, and which sections are collapsed. One localStorage key, every access in
  * try/catch (storage may be unavailable); Path/Tree is not here, it's the file list's own pref.
  */

@@ -106,7 +106,7 @@ export function forgePageOf(kind: ForgeKind, rest: string): ForgePage | null {
   return null;
 }
 
-/** This project's MR/PR or commit page, as an in-app target (ruling 13). */
+/** This project's MR/PR or commit page, as an in-app target. */
 function forgeTarget(env: LinkEnv, url: string): LinkTarget | null {
   const { kind, project: p } = env;
   if (!kind || !p || !url.toLowerCase().startsWith(`${p.webUrl.toLowerCase()}/`)) return null;
@@ -143,7 +143,7 @@ export function targetOfHref(env: LinkEnv, ctx: MarkdownContext, href: string): 
   return { kind: 'file', path, commit: ctx.kind === 'file' ? ctx.commit : 'worktree', anchor: hash < 0 ? null : decode(href.slice(hash + 1)) || null };
 }
 
-/** `a`'s target (spec §4.1's table). `_text` is the link's text: the menu's Copy text uses it. */
+/** `a`'s target. `_text` is the link's text: the menu's Copy text uses it. */
 export const resolveLink = (ctx: MarkdownContext, href: string, _text: string): LinkTarget => targetOfHref(linkEnvOf(ctx), ctx, href);
 export const resolveReference = (ctx: MarkdownContext, node: MdReferenceNode): LinkTarget => targetOfReference(linkEnvOf(ctx), node);
 
@@ -160,7 +160,7 @@ export function browserUrlFor(ctx: MarkdownContext, target: LinkTarget): string 
   }
 }
 
-/** The hover tooltip: the full target first (spec §4.1). */
+/** The hover tooltip: the full target first. */
 export function linkTooltip(ctx: MarkdownContext, target: LinkTarget): string | null {
   switch (target.kind) {
     case 'mr': return `Open ${mrRef(forgeOf(ctx.tabId).kind ?? 'gitlab', target.number)} in GitVolt`;

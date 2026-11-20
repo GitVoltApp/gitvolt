@@ -5,7 +5,7 @@ import './filesFilter.css';
 import { ClearableInput } from '../ui/ClearableInput';
 
 /**
- * "View all files"' filter row (feedback K18-K20): a compact path-substring filter, its clear
+ * "View all files"' filter row: a compact path-substring filter, its clear
  * button, and prev/next changed-file jumps. Sits between the toolbar and the list (`FileList`),
  * shown only while "View all files" is on; the filter itself is never persisted.
  *

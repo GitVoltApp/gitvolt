@@ -20,7 +20,7 @@ function advance(repo: string, branch: string): void {
   git(repo, 'fetch', '-q', 'origin');
 }
 
-test.describe('checkout (spec #2 §9.3)', () => {
+test.describe('checkout', () => {
   test('double-clicking a branch chip checks it out within 300 ms; undo switches back', { tag: '@budget' }, async ({ page }) => {
     const repo = freshFixture('basic');
     git(repo, 'stash', 'push', '-q', '-u', '-m', 'park the fixture changes');
@@ -112,7 +112,7 @@ test.describe('checkout (spec #2 §9.3)', () => {
   });
 });
 
-test.describe('reset (spec #2 §9.4)', () => {
+test.describe('reset', () => {
   test('Soft and Mixed never ask; Hard asks only when dirty and says it can be undone; each undoes', async ({ page }) => {
     const repo = freshFixture('basic');
     const tip = git(repo, 'rev-parse', 'main');

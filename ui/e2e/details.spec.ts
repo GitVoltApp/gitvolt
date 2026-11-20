@@ -33,7 +33,7 @@ test.describe('commit details', () => {
       await panel.getByTestId('author').getByText('Grace Hopper').hover();
       await expect(page.getByRole('tooltip')).toHaveText('Grace Hopper <grace@example.com>');
     });
-    await test.step('the header: signature icon left, SHA centred, parents right; the commit date first (F15, F16)', async () => {
+    await test.step('the header: signature icon left, SHA centred, parents right; the commit date first', async () => {
       const panel = page.getByRole('complementary', { name: 'Commit details' });
       const [sig, sha, parents, row] = await Promise.all([
         panel.getByTestId('signature-badge').boundingBox(),
@@ -41,7 +41,7 @@ test.describe('commit details', () => {
         panel.locator('.parents').boundingBox(),
         panel.locator('.commit-ids').boundingBox(),
       ]);
-      // The row spans the panel (K5), its content inset by the panel's 12 px padding.
+      // The row spans the panel, its content inset by the panel's 12 px padding.
       const pad = 12;
       expect(sig!.x - (row!.x + pad)).toBeLessThan(2);
       expect(Math.abs(sha!.x + sha!.width / 2 - (row!.x + row!.width / 2))).toBeLessThan(2);
@@ -52,7 +52,7 @@ test.describe('commit details', () => {
       // The fixture commits have one timestamp for author and committer: one date, no "authored".
       await expect(panel.getByTestId('commit-date')).toHaveText(/^\d{4}-\d{2}-\d{2} @ \d{1,2}:\d{2} [AP]M$/);
     });
-    await test.step('H11: commit:/parent: labels, white hashes, the icon centred on the digits, an instant parent tooltip, the message box', async () => {
+    await test.step('commit:/parent: labels, white hashes, the icon centred on the digits, an instant parent tooltip, the message box', async () => {
       const panel = page.getByRole('complementary', { name: 'Commit details' });
       const sha = panel.getByTestId('details-sha');
       const parent = panel.getByTestId('parent-sha');
@@ -62,14 +62,14 @@ test.describe('commit details', () => {
       await expect(parent).toHaveCSS('color', 'rgb(255, 255, 255)');
       const label = panel.locator('.commit-id .id-label');
       await expect(label).toHaveCSS('color', 'rgba(255, 255, 255, 0.6)');
-      // J8: the labels in the UI font, the hashes in monospace, at the same size.
+      // The labels in the UI font, the hashes in monospace, at the same size.
       const bodyFont = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
       for (const l of [label, panel.locator('.parents .id-label')]) await expect(l).toHaveCSS('font-family', bodyFont);
       expect(await sha.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/monospace/);
       await expect(label).toHaveCSS('font-size', await sha.evaluate((el) => getComputedStyle(el).fontSize));
       await expect(sha).toHaveCSS('cursor', 'pointer');
       await expect(parent).toHaveCSS('cursor', 'pointer');
-      // J8: the labels and the hashes share a baseline, at every zoom.
+      // The labels and the hashes share a baseline, at every zoom.
       const baselines = () => page.evaluate(() => [...document.querySelectorAll('.commit-ids .id-label, .commit-ids .sha')].map((el) => {
         const probe = document.createElement('span');
         probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
@@ -118,7 +118,7 @@ test.describe('commit details', () => {
       await expect(page.getByRole('status')).toHaveText('Copied');
       await expect(page.getByRole('grid', { name: 'Commit graph' })).toBeVisible();
     });
-    await test.step('J4: Esc closes the open file from the details header, the message and the diff toolbar', async () => {
+    await test.step('Esc closes the open file from the details header, the message and the diff toolbar', async () => {
       const row = page.getByRole('row').filter({ hasText: 'Rename guide and update assets' });
       await row.click();
       const panel = page.getByRole('complementary', { name: 'Commit details' });
@@ -145,7 +145,7 @@ test.describe('commit details', () => {
         await expect(page.getByRole('grid', { name: 'Commit graph' })).toBeFocused();
       }
     });
-    await test.step('K5/K6: the details header\'s divider lines up with the open file\'s bar, for a commit and a compare', async () => {
+    await test.step('the details header\'s divider lines up with the open file\'s bar, for a commit and a compare', async () => {
       const rename = page.getByRole('row').filter({ hasText: 'Rename guide and update assets' });
       const panel = page.getByRole('complementary', { name: /Commit details|Compare/ });
       const diffBar = page.getByRole('region', { name: 'Diff' }).locator('.diff-header');
@@ -153,7 +153,7 @@ test.describe('commit details', () => {
         await page.getByRole('option').first().click();
         await expect(diffBar).toBeVisible();
         const [d, b] = await Promise.all([diffBar.boundingBox(), panel.locator(bar).boundingBox()]);
-        // The density's height (standard: 37 px, 20% over 1B's 30 + 1), divider included (K6).
+        // The density's height (standard: 37 px, 20% over the earlier 30 + 1), divider included.
         expect(d!.height, bar).toBe(37);
         expect([b!.y, b!.height], bar).toEqual([d!.y, d!.height]);
         const border = (sel: string) => page.locator(sel).first().evaluate((e) => { const c = getComputedStyle(e); return `${c.borderBottomWidth} ${c.borderBottomStyle} ${c.borderBottomColor}`; });
@@ -193,7 +193,7 @@ test.describe('commit details', () => {
       await expect(page.getByTestId('details-summary')).toHaveText('Add feature file');
       await expect(page.getByRole('row').filter({ hasText: 'Add feature file' })).toHaveAttribute('aria-selected', 'true');
     });
-    await test.step('H5: every clickable element in the panel shows a pointer cursor', async () => {
+    await test.step('every clickable element in the panel shows a pointer cursor', async () => {
       for (const [commit, tree] of [['Rename guide and update assets', true], ["Merge branch 'feature/x'", false]] as const) {
         await page.getByRole('row').filter({ hasText: commit }).click();
         const panel = page.getByRole('complementary', { name: 'Commit details' });
@@ -208,7 +208,7 @@ test.describe('commit details', () => {
         expect(cursors.filter(([, cursor]) => cursor !== 'pointer')).toEqual([]);
       }
     });
-    await test.step('double-clicking the panel resizer restores the default width (K73)', async () => {
+    await test.step('double-clicking the panel resizer restores the default width', async () => {
       await page.getByRole('row').filter({ hasText: 'Rename guide and update assets' }).click();
       const panel = page.getByRole('complementary', { name: 'Commit details' });
       const sep = page.getByRole('separator', { name: 'Resize details panel' });
@@ -231,7 +231,7 @@ test.describe('commit details', () => {
       expect(await panel.locator('.file-toolbar .tb-label').first().evaluate((e) => e.getBoundingClientRect().width)).toBeLessThanOrEqual(1);
       await sep.dblclick();
     });
-    await test.step('the header stays put, only the message scrolls, and the split resizes (F13)', async () => {
+    await test.step('the header stays put, only the message scrolls, and the split resizes', async () => {
       // Tall enough that the default 25 % top clears the header's minimum (`splitBounds`) under the
       // shell's toolbar and status bar.
       await page.setViewportSize({ width: 1280, height: 900 });
@@ -267,10 +267,10 @@ test.describe('commit details', () => {
   });
 
   // Measured on the painted pixels, at the zooms CEF's page zoom renders like (the device scale):
-  // the shield's ink centre against the hash digits'. Before J8 the icon was 1.5 device px low
+  // the shield's ink centre against the hash digits'. The icon used to be 1.5 device px low
   // at 150% and 200%; rounding leaves at most 1 device px, and never low. Checked at those two
   // scales, where it showed (each scale is a context of its own, with a cold bundle).
-  test('J8: the signature icon is centred on the hash digits\' ink at 150% and 200%, never below it', async ({ browser, browserName }) => {
+  test('the signature icon is centred on the hash digits\' ink at 150% and 200%, never below it', async ({ browser, browserName }) => {
     test.skip(browserName !== 'chromium', 'the CEF runtime is Chromium');
     for (const dsf of [1.5, 2]) {
       const context = await browser.newContext({ deviceScaleFactor: dsf, baseURL: test.info().project.use.baseURL });
@@ -308,7 +308,7 @@ test.describe('commit details', () => {
   });
 });
 
-// Feedback F12: the panel swaps to the next commit in one render, once its details, message and
+// The panel swaps to the next commit in one render, once its details, message and
 // file list are all in. A MutationObserver records the panel after every DOM change; each
 // recorded state must be one commit's complete content: never empty, never a mix of two commits.
 test('switching commits never renders an empty or partial panel; Esc and ← return to the graph unchanged', async ({ page }) => {

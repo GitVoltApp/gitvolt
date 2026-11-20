@@ -24,7 +24,7 @@ export const graphHandlers = {
   graph: async ({ repo, limit, pin, active, view }, ctx) => {
     const demo = ctx.repos.get(repo);
     const g = await demo.graph(await graphOptions(ctx, repo, { limit, pin, active, view }));
-    // Find searches the commits this graph walked, as the core's FindSnapshot (plan 1b's find.ts):
+    // Find searches the commits this graph walked, as the core's FindSnapshot (find.ts):
     // under a view, the ones it hides, collapses or folds too.
     setFindWindow(ctx, repo, view ? await demo.walkOrder(limit ?? DEFAULT_COMMIT_LIMIT) : g.rows.filter((r) => r.kind !== 'wip').map((r) => r.id));
     return g;

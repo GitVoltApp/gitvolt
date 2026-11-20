@@ -27,7 +27,7 @@ beforeEach(() => {
   useRuntime.setState({ tabs: { t: { repo: { id: 4 } } as never } });
 });
 
-describe('MdLink (spec #5 §4.1)', () => {
+describe('MdLink', () => {
   it('opens the browser on a plain click, with the URL in an instant tooltip and no href to navigate', async () => {
     render(<MdLink ctx={ctx} href="https://example.org/a">site</MdLink>);
     const link = screen.getByRole('link', { name: 'site' });

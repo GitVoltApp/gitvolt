@@ -13,7 +13,6 @@ import { useForge } from '../mrStore';
 import { changeableThread, foldKey, notePermalink, setFold, useThreadFolds } from './noteActionsStore';
 import { linkMenu, linkMenuAt, NoteActions, NoteEditor, ReactionPills, ResolveButton } from './NoteActions';
 import { RelTime } from './RelTime';
-// --- 5A T10 ---
 import { signedAttachments } from '../../markdown/attachments';
 import { Markdown } from '../../markdown/lazy';
 import { MR_BODY_MAX_BYTES } from '../../markdown/limits';
@@ -21,7 +20,6 @@ import { whenIdle } from '../../markdown/idle';
 import { PlainBody } from '../../markdown/PlainBody';
 import { MdSuggestionApply, MdSuggestionBase, replacedLines, snippetBase } from '../../markdown/suggestion';
 import { applyControl } from '../review/ApplySuggestionButton';
-// --- end 5A T10 ---
 import { PendingMark } from '../../pending/PendingMark';
 import { openInBrowser } from './MrHeader';
 import { noteWhere } from './noteLine';
@@ -127,7 +125,7 @@ const Note = memo(function Note({ tabId, kind, mr, d, n, first, deferred, where,
         {editing
           ? <NoteEditor tabId={tabId} kind={kind} number={mr.number} d={d} n={n} onDone={() => setEditing(false)} />
           : (
-            // --- 5A T10: rendered Markdown (spec #5 §2: every comment) ---
+            // --- rendered Markdown (every comment) ---
             <div className="mr-note-body">
               <MdSuggestionApply value={apply}>
                 {deferred ? <PlainBody text={text} className="md" /> : <Markdown text={text} flavor={kind} context={context} maxBytes={MR_BODY_MAX_BYTES} />}
@@ -241,9 +239,8 @@ export const Discussion = memo(function Discussion({ tabId, kind, mr, d, rendere
       {open && rest.map((n) => (n.system
         ? <ThreadEvent key={n.id} n={n} webUrl={mr.webUrl} />
         : <Note key={n.id} tabId={tabId} kind={kind} mr={mr} d={d} n={n} first={false} deferred={replies.indexOf(n) + 1 >= rendered} />))}
-      {/* --- 4B T13: reply in this thread --- */}
+      {/* --- reply in this thread --- */}
       {open && <ThreadReply tabId={tabId} kind={kind} number={mr.number} d={d} />}
-      {/* --- end 4B T13 --- */}
     </article>
   );
 });
@@ -286,7 +283,7 @@ function parseOnce(n: ForgeNote, url: string): SystemNote {
 
 type Tab = 'activity' | 'comments' | 'diff';
 
-/** The activity area (spec #4 §2): tabs Activity / Comments / Diff notes over a vertical timeline
+/** The activity area: tabs Activity / Comments / Diff notes over a vertical timeline
  * of forge events and comment-thread cards. */
 export function Thread({ tabId, kind, mr, discussions, reviews = [] }: { tabId: string; kind: ForgeKind; mr: ForgeMr; discussions: ForgeDiscussion[] | null; reviews?: ForgeReview[] }) {
   const [tab, setTab] = useState<Tab>('activity');

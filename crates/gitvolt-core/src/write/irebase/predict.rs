@@ -1,8 +1,8 @@
-//! Conflict prediction (spec #3 §3.2): each planned row, in replay order, is merged onto the
+//! Conflict prediction: each planned row, in replay order, is merged onto the
 //! previous simulated result with `git merge-tree --write-tree --merge-base=<parent>`. Nothing
 //! touches the working tree, the index or the refs. The trees and step commits go to a throwaway
 //! object directory with the repository's objects as its alternate, so the repository's own
-//! store is never written either (Ruling 5). It's only a hint: a real conflict always pauses.
+//! store is never written either. It's only a hint: a real conflict always pauses.
 
 use super::types::{RebaseRow, RebaseRowAction};
 use crate::api::{blocking, Api};
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use ts_rs::TS;
 
-/// Spec #3 §3.2: off above this many rows.
+/// Off above this many rows.
 pub const LIMIT: usize = 300;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(res["outcome"]["status"], "stopped", "the rebase stops on a conflict: {res}");
     }
 
-    /// §7: prediction against a real run. C1 below A2 conflicts in notes.txt; the real rebase
+    /// Prediction against a real run. C1 below A2 conflicts in notes.txt; the real rebase
     /// stops at the same commit, on the same file.
     #[tokio::test]
     async fn prediction_matches_a_real_run() {

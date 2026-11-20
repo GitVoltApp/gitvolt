@@ -4,16 +4,16 @@ import { useMenu } from '../menu/menuStore';
 import { useToast } from '../ui/toastStore';
 import type { ActivityEntry } from './ops';
 
-/** The Debug modal's tabs (R9): the activity log, the backend's git command log and request log,
+/** The Debug modal's tabs: the activity log, the backend's git command log and request log,
  * the action log. */
 export type DebugView = 'activity' | 'commands' | 'requests' | 'actions';
 
 interface ActivityUi {
   open: boolean;
   view: DebugView;
-  /** The command the Commands tab scrolls to and highlights (an error toast's Details, R10). */
+  /** The command the Commands tab scrolls to and highlights (an error toast's Details). */
   focusCommandId: number | null;
-  /** The op whose Activity entry is scrolled to, its server output expanded (spec #2 §12.4). */
+  /** The op whose Activity entry is scrolled to, its server output expanded. */
   focusOp: number | null;
   /** The perf overlay (fps and backend call timings) is shown; it outlives the modal. */
   perfOverlay: boolean;
@@ -24,9 +24,9 @@ interface ActivityUi {
   togglePerfOverlay(): void;
 }
 
-/** The activity log (K30, K96, K101): every finished operation, background ones included. It
+/** The activity log: every finished operation, background ones included. It
  * is a modal panel (`ActivityModal`), opened from the bell, Help → Activity log and the failed-fetch
- * toast. 1D (R9) makes it the one Debug modal: Activity | Commands | Actions. */
+ * toast. It is the one Debug modal: Activity | Commands | Actions. */
 export const useActivityUi = create<ActivityUi>((set) => ({
   open: false,
   view: 'activity',
@@ -50,7 +50,7 @@ export function openActivityLog(): void {
   openDebug('activity');
 }
 
-/** Opens the activity log at op `op`'s entry, its server output expanded (spec #2 §12.4). */
+/** Opens the activity log at op `op`'s entry, its server output expanded. */
 export function openActivityEntry(op: number): void {
   useMenu.getState().close();
   useActivityUi.setState({ open: true, view: 'activity', focusCommandId: null, focusOp: op });

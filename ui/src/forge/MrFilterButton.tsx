@@ -18,7 +18,7 @@ const OPTIONS: ReadonlyArray<readonly [MrFilter, string, string]> = [
   ['all', 'All', 'Show every open one'],
 ];
 
-/** The section header's filter (spec #4 §2: Mine / Review requested / All), kept per repository. */
+/** The section header's filter (Mine / Review requested / All), kept per repository. */
 export function MrFilterButton({ tabId, path }: { tabId: string; path: string }) {
   const filter = useTabForgeField(tabId, 'filter');
   const kind = useTabForgeField(tabId, 'kind');

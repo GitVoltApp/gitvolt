@@ -14,7 +14,7 @@ function emptyText(kind: ForgeKind, v: SectionView): string {
   return `No open ${mrSectionLabel(kind).toLowerCase()}`;
 }
 
-/** The sidebar's "Merge requests" / "Pull requests" panel (spec #4 §2 "MR/PR list"): the
+/** The sidebar's "Merge requests" / "Pull requests" panel: the
  * repository's open ones for the filter, newest activity first. Only with a forge target. */
 export function mrSection(v: SectionView): Section | null {
   const kind = v.kind;

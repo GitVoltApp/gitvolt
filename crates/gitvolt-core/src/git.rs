@@ -72,31 +72,29 @@ pub struct GitInvocation {
     stdout_limit: Option<u64>,
 }
 
-/// How long a cancelled or timed-out write has to exit after SIGTERM before SIGKILL (spec #2 §3.3).
+/// How long a cancelled or timed-out write has to exit after SIGTERM before SIGKILL.
 pub const WRITE_TERM_GRACE: Duration = Duration::from_secs(2);
 
 impl GitInvocation {
-    /// A write (spec #2 §3.3): no `GIT_OPTIONAL_LOCKS=0` (git's normal locks), never an editor
+    /// A write: no `GIT_OPTIONAL_LOCKS=0` (git's normal locks), never an editor
     /// (`GIT_EDITOR=true`, `GIT_MERGE_AUTOEDIT=no`), and a cancel that lets git clean up its
-    /// `.lock` files first. Only `crate::write` can make the token (Deviation 1).
+    /// `.lock` files first. Only `crate::write` can make the token.
     pub(crate) fn write<I, S>(proof: &crate::write::WriteToken, cwd: impl Into<PathBuf>, args: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<OsString>,
     {
-        // --- 2C repo-safety ---
         // `submodule.recurse=false`: with the user's `submodule.recurse=true`, a `reset --hard`,
         // a `restore` or a `switch` would run inside every submodule too, discarding its
-        // uncommitted work, which no snapshot carries (safety review I3). GitVolt never recurses
+        // uncommitted work, which no snapshot carries. GitVolt never recurses
         // on a write that moves the worktree; a read is unaffected.
-        // --- end 2C repo-safety ---
         Self::writer(proof, cwd, &["-c", "submodule.recurse=false"], args)
     }
 
     /// A network write (a push, a remote branch delete, a pull's fetch): `write` without the
     /// `submodule.recurse=false` pin. That pin also overrides `push.recurseSubmodules`, which
     /// defaults to `submodule.recurse`, and would silently drop the user's own push guard
-    /// (`check`, `on-demand`) (2C final I4). None of these touch the worktree.
+    /// (`check`, `on-demand`). None of these touch the worktree.
     pub(crate) fn network_write<I, S>(proof: &crate::write::WriteToken, cwd: impl Into<PathBuf>, args: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -117,7 +115,7 @@ impl GitInvocation {
             .env("GIT_EDITOR", "true")
             .env("GIT_SEQUENCE_EDITOR", "true")
             .env("GIT_MERGE_AUTOEDIT", "no")
-            // UX F: a signing commit (`commit.gpgsign`) asks gpg-agent for the key's passphrase,
+            // A signing commit (`commit.gpgsign`) asks gpg-agent for the key's passphrase,
             // and the agent shows its pinentry on the terminal gpg names in `GPG_TTY` (else the
             // one the agent was started from). A TTY pinentry there waits on a terminal nobody
             // looks at, forever. `/dev/null` is no terminal: a TTY pinentry fails at once with
@@ -209,7 +207,7 @@ impl GitInvocation {
         self
     }
 
-    /// Runs git in a new session (`setsid`), with no controlling terminal (network ops, K96):
+    /// Runs git in a new session (`setsid`), with no controlling terminal (network ops):
     /// ssh, a credential helper or git itself then can't open `/dev/tty` to prompt, so a prompt
     /// either reaches askpass or fails at once. Without this, an app started from a shell leaves
     /// its terminal to them, and a read from it (by a background process group) stops the
@@ -252,7 +250,7 @@ impl GitCli {
         self
     }
 
-    /// The login-shell environment (spec §5.3). It replaces the inherited process env for every
+    /// The login-shell environment. It replaces the inherited process env for every
     /// git command (`env_clear` first); commands that start before the capture is done wait for
     /// it (bounded by its timeout). `PRIVATE_ENV` removal and the hook still apply over it.
     pub fn with_shell_env(mut self, env: Arc<ShellEnv>) -> Self {
@@ -273,7 +271,7 @@ impl GitCli {
         }
     }
 
-    /// The profile's extra gitconfig (spec §14.2), passed as `-c include.path=<p>` to every
+    /// The profile's extra gitconfig, passed as `-c include.path=<p>` to every
     /// command. Shared by every clone of this runner.
     pub fn set_include_path(&self, path: Option<PathBuf>) {
         *self.include.write().unwrap_or_else(|e| e.into_inner()) = path;
@@ -344,7 +342,7 @@ impl GitCli {
                 .env("GIT_TERMINAL_PROMPT", "0")
                 .env("LC_ALL", "C");
             if !inv.write {
-                // Reads only (the never-write invariant, core §5.2): this disables *optional* locks
+                // Reads only (the never-write invariant): this disables *optional* locks
                 // (the stat refresh `git status` writes back into `.git/index`). Writes
                 // (`GitInvocation::write`) take git's normal locks.
                 cmd.env("GIT_OPTIONAL_LOCKS", "0");
@@ -562,7 +560,7 @@ impl Drop for DropStop {
 }
 
 /// Stops a cancelled or timed-out command's process group. A read is killed at once; a write
-/// gets SIGTERM, so git removes its `.lock` files, then SIGKILL after `grace` (spec #2 §3.3).
+/// gets SIGTERM, so git removes its `.lock` files, then SIGKILL after `grace`.
 async fn stop_group(group: &Group, child: &mut tokio::process::Child, grace: Option<Duration>) {
     if let Some(grace) = grace {
         group.terminate();
@@ -705,7 +703,7 @@ fn is_rebase_step(l: &str) -> bool {
     l.strip_prefix("Rebasing (").and_then(|r| r.strip_suffix(')')).and_then(|r| r.split_once('/')).is_some_and(|(n, m)| n.parse::<u32>().is_ok() && m.parse::<u32>().is_ok())
 }
 
-/// UX F: a commit whose signer failed. git says `gpg failed to sign the data:`, then the
+/// A commit whose signer failed. git says `gpg failed to sign the data:`, then the
 /// signer's own lines: the message is both, with the signer's last line (its reason) and without
 /// gpg's `[GNUPG:]` status lines. `None`: not a signing failure.
 pub(crate) fn signing_failure(stderr: &str) -> Option<String> {
@@ -728,7 +726,7 @@ pub fn parse_version(s: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, patch))
 }
 
-/// `v` against the minimum (spec #3 §5: 2.40, for `update-ref` todo lines and `merge-tree
+/// `v` against the minimum (2.40, for `update-ref` todo lines and `merge-tree
 /// --write-tree --merge-base`): `GitTooOld` below it, which the UI's blocking screen shows.
 pub fn require_min(v: (u32, u32, u32)) -> Result<(u32, u32, u32), GbError> {
     if v < MIN_GIT {
@@ -737,7 +735,7 @@ pub fn require_min(v: (u32, u32, u32)) -> Result<(u32, u32, u32), GbError> {
     Ok(v)
 }
 
-/// An `index.lock` failure's lock file and its mtime now, for Remove stale lock (spec #2 §14).
+/// An `index.lock` failure's lock file and its mtime now, for Remove stale lock.
 /// The parse relies on English stderr: every run sets `LC_ALL=C`.
 /// Other locks (`HEAD.lock`, a ref's) get no detail: only the index lock is offered.
 fn index_lock_detail(stderr: &str) -> Option<crate::error::ErrorDetail> {
@@ -840,7 +838,7 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout), "restored|unset");
     }
 
-    /// I2: `CHROME_DEVEL_SANDBOX` and `GITVOLT_OPEN` (`openers::PRIVATE_ENV`) are GitVolt's own,
+    /// `CHROME_DEVEL_SANDBOX` and `GITVOLT_OPEN` (`openers::PRIVATE_ENV`) are GitVolt's own,
     /// never git's to inherit — the same guarantee `openers::launch_command` gives every opener,
     /// chooser and URL-open launch. `GitCli::run` is the other place a child process starts, so
     /// it must strip them too, even with no command hook installed (the app always installs one,
@@ -868,7 +866,7 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout), "0 C 0");
     }
 
-    /// K96: a failed `fetch --all --progress` starts with progress ("Fetching origin", `\r`-joined
+    /// A failed `fetch --all --progress` starts with progress ("Fetching origin", `\r`-joined
     /// percentages): the message is git's (or ssh's) first real line, never a progress one.
     #[test]
     fn the_message_skips_progress_lines() {
@@ -911,7 +909,7 @@ mod tests {
         assert_eq!(first_message_line("error: 5677 bytes of body are still expected\n").as_deref(), Some("5677 bytes of body are still expected"), "a count that's a message");
     }
 
-    /// UX F: a signer's failure names gpg's reason, without its status lines.
+    /// A signer's failure names gpg's reason, without its status lines.
     #[test]
     fn a_signing_failure_says_why() {
         let gpg = "Rebasing (1/2)\rerror: gpg failed to sign the data:\ngpg: skipped \"ABC\": No secret key\n[GNUPG:] INV_SGNR 9 ABC\ngpg: signing failed: No secret key\n\nerror: failed to write commit object\nhint: Could not execute the todo command\n";
@@ -920,7 +918,7 @@ mod tests {
         assert_eq!(signing_failure("error: boom\n"), None);
     }
 
-    /// K96: a network command has no controlling terminal: ssh (or a credential helper) can't
+    /// A network command has no controlling terminal: ssh (or a credential helper) can't
     /// open `/dev/tty`, so it can't stop on a terminal read and hang the op when GitVolt was
     /// started from a shell. With a terminal (a run from a shell) that takes its own session;
     /// without one (CI, the Dock) its own group. Cancel still kills the whole group.
@@ -986,7 +984,7 @@ mod tests {
         assert!(err.message.contains("timed out"), "{}", err.message);
     }
 
-    /// K96 review: a failing command's message (what the toast shows), its stderr and its log entry
+    /// A failing command's message (what the toast shows), its stderr and its log entry
     /// never carry a URL's password, whatever the scheme.
     #[tokio::test]
     async fn a_failures_message_stderr_and_log_are_redacted() {
@@ -1042,7 +1040,7 @@ mod tests {
         assert_eq!(parse_version("nonsense"), None);
     }
 
-    /// Spec #3 §5, §7: the startup check refuses git older than 2.40 (the old minimum, 2.30,
+    /// The startup check refuses git older than 2.40 (the old minimum, 2.30,
     /// included) with `GitTooOld`, whose message the blocking screen shows.
     #[test]
     fn refuses_git_older_than_2_40() {
@@ -1150,7 +1148,7 @@ mod tests {
 
     /// Precedence, lowest to highest: the captured shell env (which replaces the process env),
     /// `with_env`, the invocation's own `envs`, the runner's fixed variables, then `PRIVATE_ENV`
-    /// removal, then the app's hook (1B, I2): the hook still runs after `env_clear`.
+    /// removal, then the app's hook (the hook still runs after `env_clear`.
     #[tokio::test]
     async fn env_precedence_with_a_captured_shell_env_ends_with_private_env_removal_and_the_hook() {
         let r = TestRepo::new();
@@ -1246,7 +1244,7 @@ mod tests {
         assert_eq!(*cli.child_env().await.unwrap(), vars);
     }
 
-    /// Spec #2 §3.3: a write takes git's normal locks and never waits on an editor; a read keeps
+    /// A write takes git's normal locks and never waits on an editor; a read keeps
     /// the never-write `GIT_OPTIONAL_LOCKS=0`.
     #[tokio::test]
     async fn a_write_takes_normal_locks_and_never_waits_on_an_editor() {
@@ -1271,7 +1269,7 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ce013625030ba8dba906f756967f9e9ca394464a");
     }
 
-    /// A cancelled write gets SIGTERM first, so git can remove its own `.lock` files (§3.3).
+    /// A cancelled write gets SIGTERM first, so git can remove its own `.lock` files.
     /// Unix only, like the next two: Windows has no SIGTERM (a stop kills the job at once).
     #[cfg(unix)]
     #[tokio::test]
@@ -1352,7 +1350,7 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "true");
     }
 
-    /// Spec #2 §14: an IndexLocked failure carries the lock and its mtime, for Remove stale lock.
+    /// An IndexLocked failure carries the lock and its mtime, for Remove stale lock.
     #[tokio::test]
     async fn an_index_lock_failure_names_the_lock_and_its_mtime() {
         let r = TestRepo::new();

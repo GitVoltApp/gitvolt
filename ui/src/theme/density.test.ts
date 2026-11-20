@@ -2,13 +2,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_DENSITY, DENSITIES, DENSITY_METRICS, DENSITY_STORAGE_KEY, densityCssVars, densityPersistence, parseDensity, useDensity } from './density';
 
-describe('density presets (feedback H1)', () => {
+describe('density presets', () => {
   it('three presets, standard the default', () => {
     expect(DENSITIES).toEqual(['compact', 'standard', 'comfortable']);
     expect(DEFAULT_DENSITY).toBe('standard');
   });
 
-  it('compact keeps the 1A/1B metrics; standard is the measured target at the same zoom', () => {
+  it('compact keeps the original metrics; standard is the measured target at the same zoom', () => {
     expect(DENSITY_METRICS.compact).toMatchObject({ rowH: 25, laneW: 16, chipH: 17, cellPadX: 6, fileRowH: 24 });
     // The target at 120%: 33.5 px row pitch, 26.5 px chips and bands, 26.7 px lane pitch -> / 1.2.
     expect(DENSITY_METRICS.standard).toMatchObject({ rowH: 28, laneW: 22, chipH: 22 });
@@ -40,8 +40,8 @@ describe('density presets (feedback H1)', () => {
     });
   });
 
-  it('K6: the panels\' top bar (the open file\'s path/encoding/×, the details header\'s hashes) is 20% taller than 1B\'s 30 px at standard; compact keeps 1B\'s', () => {
-    // Outer heights, 1 px bottom border included: 1B's bar was 30 px plus its border.
+  it('the panels\' top bar (the open file\'s path/encoding/×, the details header\'s hashes) is 20% taller than the earlier 30 px at standard; compact keeps it', () => {
+    // Outer heights, 1 px bottom border included: the earlier bar was 30 px plus its border.
     expect(DENSITY_METRICS.compact.panelBarH).toBe(31);
     expect(DENSITY_METRICS.standard.panelBarH).toBe(30 * 1.2 + 1);
     expect(DENSITY_METRICS.comfortable.panelBarH).toBeGreaterThan(DENSITY_METRICS.standard.panelBarH);

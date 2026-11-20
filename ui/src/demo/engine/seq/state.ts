@@ -1,4 +1,4 @@
-// The sequencer's state (plan 4): one JSON file beside the worktree's own git dir, never git's
+// The sequencer's state: one JSON file beside the worktree's own git dir, never git's
 // `rebase-merge/` or `sequencer/` (nothing in the demo reads those), and what the UI reads of it:
 // the `InProgress` the core makes of git's files (in_progress.rs `read`), field for field.
 import type { InProgress } from '../../../api/gen/InProgress';
@@ -45,7 +45,7 @@ export interface Stop {
    *  file lists under `# Conflicts:` however many are resolved since. */
   conflicts?: string[];
   /** An interactive rebase's stop: what the step left there (a staged path's index, a conflicted
-   *  path's worktree file, as `<kind> <oid>` or null), which its Abort doesn't keep (UX N). */
+   *  path's worktree file, as `<kind> <oid>` or null), which its Abort doesn't keep. */
   left?: [string, string | null][];
 }
 
@@ -103,7 +103,7 @@ export async function clearSeq(read: ReadRepo, gitdir: string): Promise<void> {
 
 export const inProgressWord = (k: SeqKind): 'rebase' | 'cherry-pick' | 'revert' => (k === 'rebase' ? 'rebase' : k === 'cherryPick' ? 'cherry-pick' : 'revert');
 
-/** §8.2: `\r\n` and `\r` become `\n`. */
+/** `\r\n` and `\r` become `\n`. */
 const normalise = (m: string) => m.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
 /** The core's `todo::merged`: each message's CRLFs made LFs and its end trimmed (Rust's

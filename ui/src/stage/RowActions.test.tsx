@@ -23,14 +23,14 @@ beforeEach(() => {
   confirm.mockClear();
 });
 
-describe('row actions (spec #2 §7.1)', () => {
+describe('row actions', () => {
   it('an unstaged row stages its file; a folder row stages every file under it', () => {
     render(<RowActions ctx={ctx} which="unstaged" files={[f('src/a.txt'), f('src/b.txt')]} name="src" />);
     fireEvent.click(screen.getByRole('button', { name: 'Stage src' }));
     expect(stage).toHaveBeenCalledWith(ctx, ['src/a.txt', 'src/b.txt']);
   });
 
-  it('an unstaged row\'s Discard arms in place, then discards (board C); a submodule row has no Discard', async () => {
+  it('an unstaged row\'s Discard arms in place, then discards; a submodule row has no Discard', async () => {
     render(<RowActions ctx={ctx} which="unstaged" files={[f('a.txt')]} name="a.txt" />);
     fireEvent.click(screen.getByRole('button', { name: 'Discard a.txt' }));
     expect(confirm.mock.calls[0][0]).toMatchObject({ arm: 'Click again to discard a.txt', danger: true });
@@ -61,7 +61,7 @@ describe('row actions (spec #2 §7.1)', () => {
     expect(unstage).toHaveBeenCalledWith(ctx, [rename]);
   });
 
-  it('is disabled while a commit for the worktree is queued or running ("Commit queued", §3.6)', async () => {
+  it('is disabled while a commit for the worktree is queued or running ("Commit queued")', async () => {
     useStaging.getState().setCommitting(1, '/r', true);
     render(<RowActions ctx={ctx} which="unstaged" files={[f('a.txt')]} name="a.txt" />);
     const b = screen.getByRole('button', { name: 'Stage a.txt' });

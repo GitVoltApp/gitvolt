@@ -1,8 +1,8 @@
-// Discards (write/discard.rs, spec #2 §7.2–§7.4): every one snapshots first and records an `after`
+// Discards (write/discard.rs): every one snapshots first and records an `after`
 // snapshot of the same paths, so Undo restores `before` and Redo `after`. What git does for each
 // scope (`clean -f`, `restore --worktree`, `restore --source=HEAD --staged --worktree`, a reverse
 // apply onto the file), done on the demo's files. An untracked folder holding a repository of its
-// own never shows in the demo's status (1b's `untrackedFiles` skips it), so the core's "separate Git
+// own never shows in the demo's status (`untrackedFiles` skips it), so the core's "separate Git
 // repository" refusals for untracked rows have nothing to refuse here.
 import type { DiscardScope } from '../../api/gen/DiscardScope';
 import type { StageSelection } from '../../api/gen/StageSelection';
@@ -46,7 +46,7 @@ const unstaged = (e: StatusEntry) => e.kind === 'untracked' || e.worktree !== '.
 
 const kindAt = (wt: WriteWt, p: string) => kind(wt, `${wt.root}/${p}`);
 
-/** M3: a tracked folder replaced by a symbolic link; git refuses the path, so it's refused here first. */
+/** A tracked folder replaced by a symbolic link; git refuses the path, so it's refused here first. */
 function refuseSymlinkedFolders(wt: WriteWt, restore: string[]): void {
   for (const r of restore) {
     const parts = r.split('/');
@@ -125,7 +125,7 @@ async function targetsOf(wt: WriteWt, scope: DiscardScope): Promise<Targets> {
     // The snapshot can't carry a conflicted path, and Discard all can't leave one.
     const conflicted = entries.find((e) => e.kind === 'unmerged');
     if (conflicted) fail('InProgress', `${conflicted.path} has merge conflicts: resolve conflicts first`);
-    // UX R1 C.2: never more than the user confirmed.
+    // Never more than the user confirmed.
     if (scope.confirmed) {
       const ok = new Set(scope.confirmed.map((p) => p.replace(/\/+$/, '')));
       const outside = entries.flatMap((e) => [e.path, ...(e.origPath ? [e.origPath] : [])]).find((p) => !ok.has(p));
@@ -143,7 +143,7 @@ async function targetsOf(wt: WriteWt, scope: DiscardScope): Promise<Targets> {
   // The file is rewritten in place: nothing else is in the way.
   if (scope.kind === 'patch') return t;
   const head = readHead(wt).oid;
-  // HEAD's gitlink back at a path (M2): git re-adds the index entry and never touches the folder.
+  // HEAD's gitlink back at a path: git re-adds the index entry and never touches the folder.
   if (scope.kind === 'all' && head) {
     const files = await listFiles(wt.repo, head);
     linkTargets = new Set(t.restore.filter((p) => files.get(p)?.mode === MODE_GITLINK));
@@ -162,7 +162,7 @@ async function targetsOf(wt: WriteWt, scope: DiscardScope): Promise<Targets> {
 }
 
 /** `discard a.php`, `discard 3 files`, `discard a hunk in a.php`, `discard 3 lines in a.php`,
- *  `discard unstaged changes`, `discard all changes` (§5.5). `what`: a patch's selection label. */
+ *  `discard unstaged changes`, `discard all changes`. `what`: a patch's selection label. */
 function labelOf(scope: DiscardScope, t: Targets, what: string | null): string {
   switch (scope.kind) {
     case 'paths':
@@ -188,7 +188,7 @@ async function discardDiff(wt: WriteWt, path: string, base: WipBase): Promise<Di
   }
 }
 
-/** Deviation 6: an untracked file's picked new lines cut out of its bytes (it has no index version to
+/** An untracked file's picked new lines cut out of its bytes (it has no index version to
  *  reverse-apply against). */
 function dropNewLines(text: string, hunks: DiffHunk[], sel: StageSelection): string {
   const hunk = hunks[0] ?? nothingSelected();
@@ -198,7 +198,7 @@ function dropNewLines(text: string, hunks: DiffHunk[], sel: StageSelection): str
   return splitLines(text).filter((_, i) => !picked.has(i + 1)).join('');
 }
 
-/** §7.3 "Discard lines or hunk": the selection reverse-applied to the worktree file, its mode kept;
+/** Discard lines or hunk: the selection reverse-applied to the worktree file, its mode kept;
  *  the index is never touched. */
 async function discardPatch(cx: WriteCx, path: string, sel: StageSelection, base: WipBase, untracked: boolean): Promise<void> {
   const hunks = await discardDiff(cx.wt, path, base);
@@ -229,14 +229,14 @@ async function discardPatch(cx: WriteCx, path: string, sel: StageSelection, base
 
 function discard(scope: DiscardScope, label: string): WriteIntent<null> {
   let targets: Targets | null = null;
-  // M6: counted again under the lock, by `plan`, so the journal's label says what was done.
+  // Counted again under the lock, by `plan`, so the journal's label says what was done.
   let current = label;
   return {
     kind: 'discard',
     label: () => current,
     class: 'immediate',
     undo: () => 'restore',
-    // §13.2: per-file discards run in the conflict state; Unstaged and All don't.
+    // Per-file discards run in the conflict state; Unstaged and All don't.
     allowedInProgress: scope.kind === 'paths' || scope.kind === 'patch',
     // Only Discard all rewrites the index; the others leave the staging log valid.
     staging: scope.kind === 'all' ? 'clear' : 'keep',

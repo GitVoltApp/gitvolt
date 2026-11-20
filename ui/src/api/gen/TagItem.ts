@@ -3,6 +3,6 @@ import type { TagAnnotation } from "./TagAnnotation";
 
 export type TagItem = { name: string, fullName: string, target: string, time: number, 
 /**
- * An annotated tag's message and tagger (UX round 3, M.2); absent on a lightweight tag.
+ * An annotated tag's message and tagger; absent on a lightweight tag.
  */
 annotation?: TagAnnotation, };

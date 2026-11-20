@@ -19,7 +19,7 @@ const sidebar = (locals: LocalBranch[]) => ({ locals, remotes: [{ name: 'origin'
 const setSidebar = (locals: LocalBranch[]) => useRuntime.setState({ tabs: { t: { repo: { id: 1 }, sidebar: sidebar(locals) } } } as never);
 const err = (kind: string, message: string) => ({ kind, message, commandId: 9, stderr: null });
 
-describe('pushStack (spec #3 §3.11)', () => {
+describe('pushStack', () => {
   beforeEach(() => { vi.restoreAllMocks(); useToast.getState().dismiss(); });
 
   it("pushes bottom first: an up-to-date member is skipped; a new one is published to the base's remote and tracked", async () => {
@@ -33,7 +33,7 @@ describe('pushStack (spec #3 §3.11)', () => {
     expect(useToast.getState().message).toBe('Pushed feature/b and feature/c (force with lease: feature/b; new on origin: feature/c)');
   });
 
-  it("a refused member stops the sequence; the toast says which pushed and which didn't (Review Focus 4)", async () => {
+  it("a refused member stops the sequence; the toast says which pushed and which didn't", async () => {
     setSidebar([lb('feature/a'), lb('feature/b'), lb('feature/c')]);
     const push = vi.spyOn(api, 'push').mockResolvedValueOnce(pushed('feature/a') as never).mockRejectedValueOnce(err('NonFastForward', "origin/feature/b has commits feature/b doesn't have"));
     await pushStack(ctx, stack);
@@ -44,15 +44,13 @@ describe('pushStack (spec #3 §3.11)', () => {
     expect(t.actions.map((a) => a.label)).toEqual(['Push feature/b…', 'Details']);
   });
 
-  // --- 4D T6 ---
-  it('returns its report, so a caller can chain on it (4D)', async () => {
+  it('returns its report, so a caller can chain on it', async () => {
     setSidebar([lb('feature/a', { ahead: 0 }), lb('feature/b'), lb('feature/c', { ahead: 0 })]);
     vi.spyOn(api, 'push').mockResolvedValueOnce(pushed('feature/b') as never);
     const r = await pushStack(ctx, stack);
     expect(r.failed).toBeNull();
     expect(r.steps.map((s) => [s.name, s.result])).toEqual([['feature/a', 'upToDate'], ['feature/b', 'pushed'], ['feature/c', 'upToDate']]);
   });
-  // --- end 4D T6 ---
 });
 
 describe('pushStack: warnings and lease rejections', () => {
@@ -88,7 +86,7 @@ describe('pushSummary', () => {
   });
 });
 
-describe('pushStackRow (spec #3 §4.3)', () => {
+describe('pushStackRow', () => {
   const t = (name: string) => ({ sha: 's', mrRefs: [], isWip: false, isStash: false, branch: { name, local: `refs/heads/${name}`, remotes: [] } });
   const env = (locals: LocalBranch[], over: object = {}) => ({ stackOf: (b: string) => (stack.branches.includes(b) ? stack : null), sidebar: sidebar(locals), worktreeShown: (p: string) => `../${p.split('/').pop()}`, ...over }) as never;
   const all = [lb('feature/a'), lb('feature/b', { rewritten: { kind: 'rebase', remote: 'origin' }, pushBehind: 1 }), lb('feature/c')];
@@ -106,7 +104,7 @@ describe('pushStackRow (spec #3 §4.3)', () => {
     expect(pushStackRow(t('feature/a'), env(all, { inProgress: 'rebase' }), run)[0]).toMatchObject({ disabledReason: 'Finish or abort the rebase first' });
   });
 
-  it('greyed while a member is checked out in another worktree (§5, Review Focus 2)', () => {
+  it('greyed while a member is checked out in another worktree', () => {
     const away = [lb('feature/a'), lb('feature/b', { worktree: '/w/shop-b' }), lb('feature/c')];
     expect(pushStackRow(t('feature/c'), env(away), run)[0]).toMatchObject({ disabledReason: 'feature/b is checked out in ../shop-b' });
   });

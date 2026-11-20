@@ -1,10 +1,10 @@
-//! The forge hub (spec #4 §3.2, §3.3):
+//! The forge hub:
 //! - the active profile's accounts;
 //! - a provider per account, built from the token store on first use and kept until the account
 //!   changes;
 //! - each account's last known status.
 //!
-//! 4A T6 adds the remote → project mapping and forge avatars.
+//! It also holds the remote → project mapping and forge avatars.
 
 use crate::error::{ErrorDetail, GbError, GbErrorKind};
 use crate::forge::accounts::{check_kind_host, normalize_host, AccountStatus, ForgeAccount, ForgeAccountView};
@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// GitLab's version is read again once it's this old (spec #4 §3.2: "refreshed daily").
+/// GitLab's version is read again once it's this old ("refreshed daily").
 pub const VERSION_MAX_AGE_SECS: i64 = 24 * 3600;
 
 /// A token read that failed, kept for the account record it was read for (`added_at`,
@@ -39,10 +39,8 @@ pub struct ForgeHub {
     failed: Mutex<HashMap<AccountKey, FailedRead>>,
     /// Unix milliseconds (`journal::Clock`).
     clock: Clock,
-    // --- 4A T6 ---
-    /// Projects by cache key, until a refresh or the account changes (spec #4 §3.3).
+    /// Projects by cache key, until a refresh or the account changes.
     projects: Mutex<HashMap<crate::forge::cache::CacheKey, crate::forge::ForgeProject>>,
-    // --- end 4A T6 ---
     /// A move to the keyring failed this run: no other account tries until the next (one
     /// unlock prompt, one warning). Cleared on `reset`.
     keyring_away: AtomicBool,
@@ -63,9 +61,7 @@ impl ForgeHub {
             locks: Mutex::default(),
             failed: Mutex::default(),
             clock: clock.clone(),
-            // --- 4A T6 ---
             projects: Mutex::default(),
-            // --- end 4A T6 ---
             keyring_away: AtomicBool::new(false),
             cache: crate::forge::cache::ForgeCache::new(clock.clone()),
             restored: Mutex::default(),
@@ -112,7 +108,7 @@ impl ForgeHub {
             .collect()
     }
 
-    /// Checks `token` against `host` and keeps it (spec #4 §3.2): the token's user, its write
+    /// Checks `token` against `host` and keeps it: the token's user, its write
     /// scope, GitLab's version. `account` replaces that account's token; without it, a token for
     /// the same user replaces theirs, and a different user adds another account on the host.
     pub async fn add_account(&self, store: &Arc<SettingsStore>, host: &str, kind: ForgeKind, token: Secret, account: Option<String>) -> Result<ForgeAccountView, GbError> {
@@ -191,7 +187,7 @@ impl ForgeHub {
         Ok(())
     }
 
-    /// A deleted profile's tokens (spec #4 §6: no secret outlives its account). Best effort.
+    /// A deleted profile's tokens (no secret outlives its account). Best effort.
     pub async fn forget_profile(&self, profile: &Profile) {
         for a in &profile.forge_accounts {
             let key = Self::key_for(&profile.id, a);
@@ -262,7 +258,7 @@ impl ForgeHub {
         error
     }
 
-    /// A token kept in the file goes to the system keyring once it's there (spec #4 §2: the
+    /// A token kept in the file goes to the system keyring once it's there (the
     /// file is the fallback, and Settings says a restart secures it). A failure keeps the file,
     /// and no account tries again this run.
     async fn move_to_keyring(&self, store: &Arc<SettingsStore>, key: &AccountKey, account: ForgeAccount) -> ForgeAccount {
@@ -334,9 +330,7 @@ impl ForgeHub {
         self.status.lock().expect("status poisoned").clear();
         self.failed.lock().expect("failed poisoned").clear();
         self.keyring_away.store(false, Ordering::SeqCst);
-        // --- 4A T6 ---
         self.projects.lock().expect("projects poisoned").clear();
-        // --- end 4A T6 ---
         self.cache.clear();
         self.restored.lock().expect("restored poisoned").clear();
     }
@@ -350,9 +344,7 @@ impl ForgeHub {
         self.providers.lock().expect("providers poisoned").remove(key);
         self.status.lock().expect("status poisoned").remove(key);
         self.failed.lock().expect("failed poisoned").remove(key);
-        // --- 4A T6 ---
         self.projects.lock().expect("projects poisoned").retain(|k, _| !crate::forge::cache::of_account(k, key));
-        // --- end 4A T6 ---
         self.cache.drop_account(key);
         self.restored.lock().expect("restored poisoned").retain(|k| !crate::forge::cache::of_account(k, key));
     }
@@ -367,7 +359,7 @@ fn gone_account(host: &str) -> GbError {
     GbError::new(GbErrorKind::NotFound, format!("That account on {host} was removed: Settings › Accounts shows the ones left"))
 }
 
-// --- 4A T6: remotes → projects (spec #4 §3.3), forks, settings, avatars ---
+// --- remotes → projects, forks, settings, avatars ---
 use crate::avatar::AvatarPayload;
 use crate::forge::{ForgeProject, ForgeProjectSettings, ForkPage};
 use crate::payload::RemotePayload;
@@ -409,7 +401,7 @@ impl RepoProjects {
     }
 }
 
-/// Spec #4 §3.3: the repo's target remote. The user's choice (`preferred`, when that remote
+/// The repo's target remote. The user's choice (`preferred`, when that remote
 /// exists) first. Else `origin` when mapped (unless it's a fork of another remote's project:
 /// then that remote); else the remote hosting the parent of a mapped fork (the fork layout: a
 /// contributor's fork is mapped, `origin` isn't); else `origin` when it's on a forge host with an
@@ -440,7 +432,7 @@ pub fn target_remote(list: &[RemoteProject], preferred: Option<&str>) -> Option<
     mapped.first().map(|r| r.remote.clone())
 }
 
-/// The accounts' host a remote's host maps to (spec #4 §3.3). The host itself first: an https
+/// The accounts' host a remote's host maps to. The host itself first: an https
 /// remote keeps a non-default port (`h:8443`, `remotes::forge_host`). A host without a port (an
 /// SSH remote, whose port says nothing about the web's) also maps to the one host of that name
 /// with accounts, whatever its port, however many accounts it has. Two such hosts (`h:8443`,
@@ -500,7 +492,7 @@ impl ForgeHub {
         Ok(Some((provider, project)))
     }
 
-    /// Every remote with its project (spec #4 §3.3). `refresh` asks the forge again (a cheap
+    /// Every remote with its project. `refresh` asks the forge again (a cheap
     /// conditional request); otherwise a project seen this session answers from memory.
     pub async fn repo_projects(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], refresh: bool) -> RepoProjects {
         let accounts = store.active_profile().forge_accounts;
@@ -561,7 +553,7 @@ impl ForgeHub {
         out
     }
 
-    /// `remote`'s project and the provider to ask about it (4B's door to MRs).
+    /// `remote`'s project and the provider to ask about it (the door to MRs).
     pub async fn project_for_remote(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], remote: &str) -> Result<(AccountKey, Arc<dyn ForgeProvider>, ForgeProject), GbError> {
         let r = remotes.iter().find(|r| r.name == remote).ok_or_else(|| GbError::new(GbErrorKind::NotFound, format!("No remote {remote}")))?;
         let (Some(host), Some(path)) = (&r.host, &r.path) else {
@@ -575,7 +567,7 @@ impl ForgeHub {
     }
 
     /// The SSH clone URL the forge gives for an https remote `url`'s project (a credential
-    /// prompt's "Use SSH instead", spec §5.4): it knows a self-hosted instance's SSH host and
+    /// prompt's "Use SSH instead"): it knows a self-hosted instance's SSH host and
     /// port. `None` without an account for the host, or when the lookup fails.
     pub async fn ssh_clone_url(&self, store: &Arc<SettingsStore>, url: &str) -> Option<String> {
         let host = crate::remotes::forge_host(url)?;
@@ -740,18 +732,15 @@ impl ForgeHub {
         None
     }
 }
-// --- end 4A T6 ---
 
-// --- 5A T1 ---
 impl ForgeHub {
     /// The connector (a clicked Markdown image, `image.rs`).
     pub(crate) fn connector(&self) -> &Arc<dyn ForgeConnector> {
         &self.connector
     }
 }
-// --- end 5A T1 ---
 
-// --- 4C T5: the Create flyout (spec #4 §4 "4C") ---
+// --- the Create flyout ---
 /// What the Create flyout asks about (`forgeCreateContext`).
 pub struct CreateAsk<'a> {
     /// The remote whose project the MR/PR goes to.
@@ -765,8 +754,8 @@ pub struct CreateAsk<'a> {
 
 impl ForgeHub {
     /// The target project and its settings, the source project, the target branch's templates
-    /// (the forge's; the local copy's only when the forge can't be asked, ruling 7), and the
-    /// branch's first commit since its target (ruling 5).
+    /// (the forge's; the local copy's only when the forge can't be asked), and the
+    /// branch's first commit since its target.
     pub async fn create_context(&self, store: &Arc<SettingsStore>, cli: &crate::git::GitCli, root: &std::path::Path, remotes: &[RemotePayload], ask: CreateAsk<'_>) -> Result<crate::forge::create::CreateContext, GbError> {
         use crate::forge::create::{first_commit, local_templates, CreateContext};
         let source = remotes.iter().find(|r| r.name == ask.source_remote).ok_or_else(|| GbError::new(GbErrorKind::NotFound, format!("No remote {}", ask.source_remote)))?;
@@ -814,7 +803,7 @@ impl ForgeHub {
         result
     }
 
-    /// Creates in `remote`'s project (spec #4 §3.5). No optimistic state: the outcome is the forge's.
+    /// Creates in `remote`'s project. No optimistic state: the outcome is the forge's.
     pub async fn create_mr(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], remote: &str, req: &crate::forge::CreateMr) -> Result<crate::forge::CreateOutcome, GbError> {
         let (key, provider, project) = self.project_for_remote(store, remotes, remote).await?;
         let result = provider.create_mr(&project, req).await;
@@ -832,7 +821,6 @@ impl ForgeHub {
         result
     }
 }
-// --- end 4C T5 ---
 
 #[cfg(test)]
 mod tests {
@@ -1058,7 +1046,6 @@ mod tests {
         assert_eq!(conn.by_token.lock().unwrap()[TOKEN].calls().iter().filter(|c| *c == "version").count(), versions, "fresh: not asked again");
     }
 
-    // --- 4A T6 ---
     use crate::forge::{ForgeProject, ForgeProjectSettings, MergeMethod, SquashOption};
     use crate::payload::RemotePayload;
     use crate::remotes::HostKind;
@@ -1256,9 +1243,7 @@ mod tests {
         let gh = [remote("origin", Some("github.com"), Some("o/r"))];
         assert_eq!(hub.forks(&store, &gh, "origin").await.unwrap_err().message, "No account for github.com: add one in Settings › Accounts");
     }
-    // --- end 4A T6 ---
 
-    // --- 4A final review ---
     use crate::avatar::AvatarPayload as Avatar;
     use crate::forge::{ForgeFuture, ForgeUser, Fresh, RateLimitState, TokenCheck};
     use std::sync::atomic::AtomicUsize;
@@ -1637,5 +1622,4 @@ mod tests {
         let rp = fresh.repo_projects(&store, &remotes, false).await;
         assert_eq!(rp.remotes[0].error.as_deref(), Some("Not found on gitlab.example.com"), "Default's cached project isn't Work's");
     }
-    // --- end 4A final review ---
 }

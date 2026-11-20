@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { GraphPayload } from '../api/gen/GraphPayload';
 
 vi.mock('../api/transport', () => ({ copyText: vi.fn(async () => {}), inTauri: () => false }));
-// The avatar-only author cell renders 1B's Avatar; stubbed here (no avatar store traffic).
+// The avatar-only author cell renders the Avatar; stubbed here (no avatar store traffic).
 vi.mock('../avatars/Avatar', () => ({ Avatar: ({ name }: { name: string }) => <span data-testid="avatar" data-name={name} /> }));
 
 import { useMenu } from '../menu/menuStore';
@@ -47,7 +47,7 @@ beforeEach(() => {
 });
 afterEach(() => act(() => useMenu.getState().close()));
 
-describe('collapsed columns (spec §8.4)', () => {
+describe('collapsed columns', () => {
   it('a column at its minimum shows an icon in its header (the title in its tooltip); SHA keeps its text', () => {
     prefs({ labels: COLUMN_MIN.labels, author: COLUMN_MIN.author, graph: COLUMN_MIN.graph });
     render(<GraphView graph={graph} repoId="/r" />);
@@ -87,7 +87,7 @@ describe('collapsed columns (spec §8.4)', () => {
   });
 });
 
-describe('hidden columns (spec §8.4)', () => {
+describe('hidden columns', () => {
   it('the header menu hides and shows every column but Graph and Message', () => {
     render(<GraphView graph={graph} repoId="/r" />);
     fireEvent.contextMenu(document.querySelector('.graph-header')!, { clientX: 10, clientY: 10 });
@@ -132,7 +132,7 @@ describe('hidden columns (spec §8.4)', () => {
   });
 });
 
-describe('the Graph column narrowed below its lanes (F11)', () => {
+describe('the Graph column narrowed below its lanes', () => {
   it('gets its own lane scrollbar over the lane area; scrolling it shifts the lanes', () => {
     prefs({ graph: 120 });
     render(<GraphView graph={graph} repoId="/r" />);

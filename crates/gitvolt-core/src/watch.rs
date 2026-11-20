@@ -1,9 +1,9 @@
-//! Active-tab file watcher (spec §4.4). inotify via `notify`; events are classified into change
+//! Active-tab file watcher. inotify via `notify`; events are classified into change
 //! kinds, debounced (150 ms, at most 1 s while events keep coming), and worktree-level changes are
 //! confirmed with a status digest, so ignored-file churn and GitVolt's own reads never reach the
 //! UI.
 //!
-//! Deviation (spec §4.4): instead of one recursive watch per worktree, this watches every tracked
+//! Instead of one recursive watch per worktree, this watches every tracked
 //! directory non-recursively (from the worktree's index), plus every directory holding an
 //! untracked, non-ignored file (from the last status), `.git` and `.git/worktrees` (flat),
 //! `.git/refs` (recursive) and each linked worktree's gitdir. Ignored trees like `node_modules`
@@ -93,11 +93,10 @@ pub fn classify(path: &Path, common_dir: &Path, worktrees: &[WatchedWorktree]) -
                 match file {
                     "HEAD" => c(ChangeKind::Head, owner),
                     "index" => c(ChangeKind::Index, owner),
-                    f if is_state_file(f) => c(ChangeKind::State, owner), // 2D-T6
+                    f if is_state_file(f) => c(ChangeKind::State, owner),
                     _ => None,
                 }
             }
-            // 2D-T6
             r if is_state_file(r) => c(ChangeKind::State, by_git_dir(common_dir)),
             _ => None,
         };
@@ -111,7 +110,7 @@ pub fn classify(path: &Path, common_dir: &Path, worktrees: &[WatchedWorktree]) -
 }
 
 
-/// A file whose presence is a worktree's in-progress state (spec #2 §13.2).
+/// A file whose presence is a worktree's in-progress state.
 fn is_state_file(rel: &str) -> bool {
     matches!(rel, "MERGE_HEAD" | "CHERRY_PICK_HEAD" | "REVERT_HEAD" | "REBASE_HEAD") || ["rebase-merge", "rebase-apply"].iter().any(|d| rel == *d || rel.starts_with(&format!("{d}/")))
 }
@@ -210,7 +209,7 @@ struct GitState {
     stash: u64,
     config: u64,
     heads: u64,
-    state: u64, // 2D-T6
+    state: u64,
 }
 
 fn hash_file(h: &mut impl Hasher, path: &Path) {
@@ -251,7 +250,6 @@ fn git_state(common_dir: &Path, worktrees: &[WatchedWorktree]) -> GitState {
         }),
         config: digest(&|h| hash_file(h, &common_dir.join("config"))),
         heads: digest(&|h| worktrees.iter().for_each(|w| hash_file(h, &w.git_dir.join("HEAD")))),
-        // 2D-T6 begin
         state: digest(&|h| {
             for w in worktrees {
                 for f in ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD", "rebase-merge/head-name", "rebase-merge/msgnum", "rebase-apply/next"] {
@@ -259,7 +257,6 @@ fn git_state(common_dir: &Path, worktrees: &[WatchedWorktree]) -> GitState {
                 }
             }
         }),
-        // 2D-T6 end
     }
 }
 
@@ -288,7 +285,7 @@ impl Default for Tuning {
     }
 }
 
-/// Reads a watched worktree's status and WIP file lists and keeps them (K44): a `fileList` for a
+/// Reads a watched worktree's status and WIP file lists and keeps them: a `fileList` for a
 /// covered worktree whose lists aren't kept yet (they're computed lazily: `ready` never waits
 /// for numstat). Stamped before the status read, so it never replaces newer lists.
 pub(crate) async fn read_and_keep_lists(handle: &gix::ThreadSafeRepository, cli: &GitCli, wip: &WipCache, root: &Path) -> Result<WipLists, GbError> {
@@ -419,7 +416,7 @@ fn relevant(kind: &EventKind) -> bool {
 #[derive(Clone)]
 pub struct WatchSpec {
     pub repo: u32,
-    /// The repository, for the WIP file lists the watcher keeps (K44).
+    /// The repository, for the WIP file lists the watcher keeps.
     pub handle: gix::ThreadSafeRepository,
     /// Where `git worktree list` runs when the worktrees change.
     pub workdir: PathBuf,
@@ -543,7 +540,7 @@ struct Shared {
     degraded: AtomicBool,
     /// How many inotify watches are in place.
     watches: AtomicUsize,
-    /// `WatchHold`s alive (writes running): events are gathered, not reported (spec #2 §3.2).
+    /// `WatchHold`s alive (writes running): events are gathered, not reported.
     holds: AtomicUsize,
     released: tokio::sync::Notify,
     /// What the last write left for the loop to take as its own baseline.
@@ -558,7 +555,7 @@ struct Absorbed {
     git: Option<GitState>,
 }
 
-/// A write in progress (spec #2 §3.2 step 10, §13.4). While one lives, the watcher reports
+/// A write in progress. While one lives, the watcher reports
 /// nothing. On release, what it gathered meanwhile is judged against what the write absorbed,
 /// so only changes the write didn't make (and didn't report itself) reach the UI.
 pub(crate) struct WatchHold {
@@ -1056,7 +1053,7 @@ impl Loop {
     }
 
     /// Runs status for the worktrees `roots`, refreshing the cache and the untracked-directory
-    /// watches, and their WIP file lists (K44) where they may have changed: none kept yet, the
+    /// watches, and their WIP file lists where they may have changed: none kept yet, the
     /// status changed, a path status lists was written (`touched`), or `relist` (an overflow).
     /// The `first` pass computes no lists (`ready` doesn't wait for numstat; the first read
     /// does, `read_and_keep_lists`). Lists are kept for the shown worktree, and for another one
@@ -1184,7 +1181,7 @@ impl Loop {
 
     /// Covers the current worktrees in the status cache, or withdraws coverage while degraded
     /// (or stopped). Becoming degraded reports every worktree changed, so the UI drops the WIP
-    /// lists it held (K44): changes may now go unseen.
+    /// lists it held: changes may now go unseen.
     fn update_trust(&mut self) {
         let degraded = self.watches.full || self.truncated;
         self.shared.degraded.store(degraded, Ordering::SeqCst);
@@ -1237,7 +1234,7 @@ impl Api {
         .map_err(|e| GbError::other(format!("watcher setup failed: {e}")))?
     }
 
-    /// Starts watching `id` (the active tab's repo, spec §4.4); if it's already watched, waits
+    /// Starts watching `id` (the active tab's repo); if it's already watched, waits
     /// for that watch to be ready. The watcher is registered before its setup, so an
     /// `unwatchRepo` arriving meanwhile (requests run concurrently) stops it rather than being
     /// overtaken by it. Returns once the first pass is done.
@@ -1346,14 +1343,12 @@ mod tests {
         assert_eq!(k("/r/.git/refs/stash"), Some((ChangeKind::Stash, None)));
         assert_eq!(k("/r/.git/logs/refs/stash"), Some((ChangeKind::Stash, None)));
         assert_eq!(k("/r/.git/config"), Some((ChangeKind::Config, None)));
-        // 2D-T6 begin
         assert_eq!(k("/r/.git/MERGE_HEAD"), Some((ChangeKind::State, Some(0))));
         assert_eq!(k("/r/.git/rebase-merge"), Some((ChangeKind::State, Some(0))));
         assert_eq!(k("/r/.git/rebase-merge/msgnum"), Some((ChangeKind::State, Some(0))));
         assert_eq!(k("/r/.git/worktrees/hotfix/CHERRY_PICK_HEAD"), Some((ChangeKind::State, Some(1))));
         assert_eq!(k("/r/.git/worktrees/hotfix/rebase-apply/next"), Some((ChangeKind::State, Some(1))));
         assert_eq!(k("/r/.git/MERGE_MSG"), None, "the message alone isn't a state change");
-        // 2D-T6 end
         assert_eq!(k("/r/.git/worktrees/hotfix/HEAD"), Some((ChangeKind::Head, Some(1))));
         assert_eq!(k("/r/.git/worktrees/hotfix/index"), Some((ChangeKind::Index, Some(1))));
         assert_eq!(k("/r/.git/index.lock"), None);
@@ -1631,7 +1626,7 @@ mod tests {
     }
 
     /// The status cache is trusted only while a watcher keeps it fresh: an unwatched repo's graph
-    /// always re-reads status (1B's no-stale-WIP behaviour), a watched one's reflects the change
+    /// always re-reads status, a watched one's reflects the change
     /// the watcher saw.
     #[tokio::test(flavor = "multi_thread")]
     async fn graph_reuses_status_only_while_watched() {
@@ -1727,7 +1722,7 @@ mod tests {
         assert_eq!(worktrees, vec![canonical(r.path())]);
     }
 
-    /// Spec #2 §3.2 step 10: the write refreshed the cache itself, so the watcher's own pass
+    /// The write refreshed the cache itself, so the watcher's own pass
     /// afterwards finds nothing new.
     #[tokio::test(flavor = "multi_thread")]
     async fn what_a_write_absorbed_is_never_reported() {
@@ -1801,7 +1796,7 @@ mod tests {
     }
 
     /// Dropping an older stash (`stash@{1}`) rewrites only `logs/refs/stash`, and `refs/stash`
-    /// stays put: the flat watch on `logs/refs` is what reports it (1C review M1).
+    /// stays put: the flat watch on `logs/refs` is what reports it.
     #[tokio::test(flavor = "multi_thread")]
     async fn dropping_an_older_stash_is_reported() {
         let r = TestRepo::new();
@@ -2066,7 +2061,7 @@ mod tests {
         .expect("a repoChanged naming the worktree")
     }
 
-    /// K44: once watched, the WIP lists come from the watcher's cache (no git process, and a
+    /// Once watched, the WIP lists come from the watcher's cache (no git process, and a
     /// version the UI may hold), and are recomputed when the worktree changes: the event carries
     /// the new version, the next read has it and the new file, and the index is never written.
     #[tokio::test(flavor = "multi_thread")]

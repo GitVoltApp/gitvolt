@@ -12,7 +12,7 @@ import './mr.css';
 
 export interface ChipMr { mr: ForgeMr; via: string; kind: ForgeKind }
 
-/** A chip's MR/PR, and the ref it was found through (its icon's place, ruling 1). */
+/** A chip's MR/PR, and the ref it was found through (its icon's place). */
 export function useChipMr(tabId: string, label: Pick<RefLabel, 'local' | 'remotes'>): ChipMr | null {
   const [mr, via, kind] = useForge(useShallow((s) => {
     const f = s.byTab[tabId];
@@ -32,7 +32,7 @@ function useUpstreamMr(tabId: string, upstream: string | null): [ForgeMr | null,
 }
 
 /**
- * The badge (spec #4 §2): just a state-coloured icon. A click opens the MR/PR view and does
+ * The badge: just a state-coloured icon. A click opens the MR/PR view and does
  * nothing else (the row isn't selected, a double-click doesn't check out). With `tip`, hovering
  * shows its card; the sidebar's rows put the card in their own hover card instead.
  */

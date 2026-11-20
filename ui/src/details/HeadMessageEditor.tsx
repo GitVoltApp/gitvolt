@@ -8,10 +8,10 @@ import { toastRebaseOutcome } from '../irebase/outcome';
 import { runWrite, type WriteCtx } from '../write/client';
 
 /**
- * Spec #2 §8.3: HEAD's message as the commit box's two fields, in place, with Save
+ * HEAD's message as the commit box's two fields, in place, with Save
  * (Ctrl+Enter) and Cancel (Esc). It runs `git commit --amend --only -F -`: the message only, so
  * staged changes stay out of it. It's journaled as an amend, and Undo brings the old commit back.
- * 3C T13: `older`, the commit edited isn't HEAD (spec #3 §3.6): Save rewords it in place, an
+ * `older`, the commit edited isn't HEAD: Save rewords it in place, an
  * interactive rebase; `older.head` is HEAD's oid for the CAS, `older.pushed` the upstream that
  * already has it (the force-push note, when HEAD's own check doesn't say so).
  */
@@ -24,7 +24,7 @@ export function HeadMessageEditor({ ctx, head, older, message, onDone }: { ctx: 
     api.headOnUpstream(ctx.repoId, ctx.worktree).then((u) => { if (live) setUpstream(u); }, () => {});
     return () => { live = false; };
   }, [ctx.repoId, ctx.worktree]);
-  // 3C T13 fix 1 (M3): the follow-ups run in runWrite's onSuccess, so an error toast's Retry that
+  // The follow-ups run in runWrite's onSuccess, so an error toast's Retry that
   // succeeds runs them too; that Retry reads HEAD as it is then, not as this render saw it.
   const latest = useRef({ head, older });
   latest.current = { head, older };
@@ -33,20 +33,19 @@ export function HeadMessageEditor({ ctx, head, older, message, onDone }: { ctx: 
     const message = draftMessage(value);
     setBusy(true);
     try {
-      // --- 3C T13: an older commit, through runWrite's clean-restore question (as Start's) ---
+      // --- an older commit, through runWrite's clean-restore question (as Start's) ---
       if (older) {
         await runWrite(ctx, (_confirmed, asked) => api.rewordCommit(ctx.repoId, ctx.worktree, head, message, { head: latest.current.older?.head ?? older.head, refs: {} }, asked.autostash), {
           onSuccess: async (out) => {
             onDone();
             toastRebaseOutcome(out);
             await useRuntime.getState().refresh(ctx.tabId, { graphOnly: true });
-            // 3C final fix M4: the reworded commit, not its old (now unreachable) oid.
+            // The reworded commit, not its old (now unreachable) oid.
             if (out.status === 'done' && out.rewritten) selectCommit(ctx.tabId, out.rewritten);
           },
         });
         return;
       }
-      // --- end 3C T13 ---
       await runWrite(ctx, () => api.editHeadMessage(ctx.repoId, ctx.worktree, message, { head: latest.current.head, refs: {} }), {
         onSuccess: async (out) => {
           onDone();

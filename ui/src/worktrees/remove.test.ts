@@ -9,7 +9,7 @@ import { removeWorktree, removeWorktreeAndBranch } from './remove';
 const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 const res = (outcome: unknown) => ({ outcome, journal: { undo: null, redo: null, undoBlocked: null, redoBlocked: null, banners: [] }, staging: { undo: null, redo: null, off: null }, wip: null });
 
-describe('Remove worktree (spec #2 §11.1)', () => {
+describe('Remove worktree', () => {
   beforeEach(() => vi.restoreAllMocks());
   it('always confirms, and asks again before forcing', async () => {
     const ask = vi.spyOn(confirm, 'confirmAction').mockResolvedValue(true);
@@ -20,7 +20,7 @@ describe('Remove worktree (spec #2 §11.1)', () => {
     expect(ask.mock.calls[1][0].body).toBe("../r-x has changes that aren't committed. They're lost: this can't be undone.");
     expect(rm).toHaveBeenLastCalledWith(1, '/r', '/r-x', true);
   });
-  it('a tab whose active worktree it is moves to the main worktree first (Review Focus 5)', async () => {
+  it('a tab whose active worktree it is moves to the main worktree first', async () => {
     vi.spyOn(confirm, 'confirmAction').mockResolvedValue(true);
     vi.spyOn(api, 'worktreeRemove').mockResolvedValue(res({ status: 'removed' }) as never);
     const sw = vi.spyOn(active, 'setActiveWorktree').mockImplementation(() => {});

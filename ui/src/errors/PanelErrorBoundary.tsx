@@ -16,7 +16,7 @@ interface Props {
 interface State { error: Error | null; generation: number }
 
 /** A panel that throws while rendering shows a compact fallback with Retry instead of taking the
- * app down (spec §16.1); the crash is logged through the frontend log (T7). Retry remounts it. */
+ * app down; the crash is logged through the frontend log. Retry remounts it. */
 export class PanelErrorBoundary extends Component<Props, State> {
   state: State = { error: null, generation: 0 };
 

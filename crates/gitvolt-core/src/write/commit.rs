@@ -1,4 +1,4 @@
-//! Commit (spec #2 §8): the commit box's Commit, "Stage all & commit" and Amend, and the details
+//! Commit: the commit box's Commit, "Stage all & commit" and Amend, and the details
 //! panel's edit of the HEAD message. `git commit -F -`: git applies `commit.cleanup`, the hooks
 //! and signing; hook output streams to Activity, a failing hook is `HookFailed`.
 
@@ -19,12 +19,12 @@ use ts_rs::TS;
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct CommitOutcome {
-    /// The new HEAD (the graph selects it, §8.1).
+    /// The new HEAD (the graph selects it).
     pub oid: String,
 }
 
-/// §8.1: the summary, plus a blank line and the description when there is one. The UI has already
-/// normalised the draft (§8.2); git's `whitespace` cleanup does the rest.
+/// The summary, plus a blank line and the description when there is one. The UI has already
+/// normalised the draft; git's `whitespace` cleanup does the rest.
 pub(crate) fn message(summary: &str, description: &str) -> String {
     if description.trim().is_empty() { summary.to_string() } else { format!("{summary}\n\n{description}") }
 }
@@ -37,7 +37,7 @@ fn head_oid(root: &Path) -> Result<String, GbError> {
     Ok(gix::open(root).map_err(gix_err)?.head_id().map_err(gix_err)?.to_string())
 }
 
-/// MoveRefs on a branch; MoveHead on a detached HEAD (Deviation 9). Decided in `plan`, which runs
+/// MoveRefs on a branch; MoveHead on a detached HEAD. Decided in `plan`, which runs
 /// before the journal entry is written.
 fn undo_for(detached: &OnceLock<bool>) -> Option<UndoKind> {
     Some(if detached.get() == Some(&true) { UndoKind::MoveHead } else { UndoKind::MoveRefs })
@@ -53,7 +53,7 @@ pub(crate) struct Commit {
     pub amend: bool,
     pub stage_all: bool,
     detached: OnceLock<bool>,
-    /// 3C T5 (Ruling 9): made at an interactive rebase's Edit stop. It's part of the paused
+    /// Made at an interactive rebase's Edit stop. It's part of the paused
     /// rebase there, not an entry of its own. Decided in `plan`, before the entry is written.
     paused: OnceLock<bool>,
 }
@@ -76,10 +76,10 @@ fn record(cx: &WriteCx<'_>, set: impl FnOnce(&mut crate::journal::JournalEntry))
 }
 
 impl Commit {
-    /// "Stage all & commit" (§8.1): the index as a tree into the entry (`index_before`, §5.3),
+    /// "Stage all & commit": the index as a tree into the entry (`index_before`),
     /// then `git add -A`. Returns the index's trees before and after.
     ///
-    /// Known gap (review m4): `write-tree` leaves intent-to-add (`git add -N`) entries out, so
+    /// Known gap: `write-tree` leaves intent-to-add (`git add -N`) entries out, so
     /// after an undo such a path is untracked again rather than intent-to-add; its file is kept.
     async fn stage_everything(&self, cx: &mut WriteCx<'_>) -> Result<(String, String), GbError> {
         let before = write_tree(cx).await?;
@@ -91,7 +91,7 @@ impl Commit {
         Ok((before, write_tree(cx).await?))
     }
 
-    /// Deviation 8: the pre-commit index back after a failed "Stage all & commit". A two-way
+    /// The pre-commit index back after a failed "Stage all & commit". A two-way
     /// `read-tree -m -i <after> <before>` changes only what `add -A` staged, and refuses rather
     /// than overwrite an entry a hook changed since; `-i`: the worktree isn't compared or touched.
     /// If it can't, the entry is kept (`partial`, with `index_after`) so Undo can still do it.
@@ -108,8 +108,8 @@ impl Commit {
     }
 }
 
-/// "Resolve 2 conflicted files first" (§8.1's disabled reason).
-/// UX L: Amend at the "about to commit" Edit stop before any piece is committed.
+/// "Resolve 2 conflicted files first" (the disabled reason).
+/// Amend at the "about to commit" Edit stop before any piece is committed.
 pub(crate) const AMEND_AT_EDIT_STOP: &str = "Nothing to amend yet: this commit's changes are staged. Commit them, or Continue.";
 
 fn resolve_first(n: usize) -> GbError {
@@ -133,13 +133,13 @@ impl WriteIntent for Commit {
     fn runs_hooks(&self) -> bool {
         true
     }
-    /// In a merge, Commit makes the merge commit (§13.2); at an interactive rebase's Edit stop it
-    /// commits there (3C T5); any other operation refuses it in `plan`.
+    /// In a merge, Commit makes the merge commit; at an interactive rebase's Edit stop it
+    /// commits there; any other operation refuses it in `plan`.
     fn allowed_in_progress(&self) -> bool {
         true
     }
     async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
-        // --- 3C T5: an Edit stop takes commits (its pieces, UX L) ---
+        // --- an Edit stop takes commits (its pieces) ---
         let (edit_stop, edit_base) = match pre.before.in_progress {
             Some("rebase") => match crate::in_progress::read(pre.root)? {
                 Some(crate::in_progress::InProgress::Rebase { edit_stop: Some(_), conflicted: 0, edit_base, .. }) => (true, edit_base),
@@ -147,12 +147,12 @@ impl WriteIntent for Commit {
             },
             _ => (false, None),
         };
-        // UX L (fix round 1): at the "about to commit" stop, HEAD is the commit's parent: an amend
+        // At the "about to commit" stop, HEAD is the commit's parent: an amend
         // would fold the commit into it.
         if self.amend && edit_base.is_some() && pre.before.head.oid == edit_base {
             return Err(GbError::new(GbErrorKind::InvalidInput, AMEND_AT_EDIT_STOP));
         }
-        // Fix round 1 (M4): only GitVolt's own interactive rebase, whose pause records the commits
+        // Only GitVolt's own interactive rebase, whose pause records the commits
         // made there; one started in a terminal is finished there.
         if edit_stop && !crate::write::irebase::split::gitvolt_owns_the_pause(pre)? {
             return Err(GbError::new(GbErrorKind::InvalidInput, crate::write::irebase::split::NOT_OURS));
@@ -165,7 +165,6 @@ impl WriteIntent for Commit {
             return Err(GbError::in_progress(what));
         }
         let _ = self.paused.set(at_edit_stop);
-        // --- end 3C T5 ---
         if self.summary.trim().is_empty() {
             return Err(GbError::new(GbErrorKind::InvalidInput, "Write a commit summary"));
         }
@@ -201,7 +200,7 @@ impl WriteIntent for Commit {
         }
         let inv = cx.git(args).stdin(message(&self.summary, &self.description).into_bytes());
         if let Err(e) = cx.run_git(inv).await {
-            // Deviation 8: a failed "Stage all & commit" leaves nothing staged that wasn't.
+            // A failed "Stage all & commit" leaves nothing staged that wasn't.
             if let Some((before, after)) = &trees {
                 self.read_back(cx, before, after).await;
             }
@@ -209,8 +208,8 @@ impl WriteIntent for Commit {
         }
         cx.touch(ChangeKind::Index);
         let oid = head_oid(cx.root)?;
-        // 3C T5: a commit at an Edit stop is the paused rebase's own.
-        // Fix round 1 (M3): the commit exists whatever happens to the record: a failure here is a
+        // A commit at an Edit stop is the paused rebase's own.
+        // The commit exists whatever happens to the record: a failure here is a
         // warning, never a failed commit.
         if self.paused.get() == Some(&true)
             && let Err(e) = crate::write::irebase::split::record_made(cx, &oid)
@@ -221,7 +220,7 @@ impl WriteIntent for Commit {
     }
 }
 
-/// §8.3: `git commit --amend --only -F -` amends only the message; staged changes stay staged.
+/// `git commit --amend --only -F -` amends only the message; staged changes stay staged.
 /// `--allow-empty` lets an empty commit's message be edited too. Journaled as an amend.
 pub(crate) struct EditHeadMessage {
     pub message: String,
@@ -271,7 +270,7 @@ pub(crate) async fn edit_head_message(api: &Api, repo: u32, worktree: &str, mess
     run_write(api, repo, worktree, expect, EditHeadMessage { message, detached: OnceLock::new() }).await
 }
 
-/// The pencil's note (§8.3): the upstream's short name when HEAD is reachable from it (gix
+/// The pencil's note: the upstream's short name when HEAD is reachable from it (gix
 /// `merge_base`), else `None`. A read.
 pub(crate) async fn head_on_upstream(root: &Path) -> Result<Option<String>, GbError> {
     let root = root.to_path_buf();
@@ -296,7 +295,7 @@ pub struct CommitIdentity {
     pub email: String,
 }
 
-/// Who a commit in `root` is made as (ux round 1): `git var GIT_AUTHOR_IDENT`, so git's own
+/// Who a commit in `root` is made as: `git var GIT_AUTHOR_IDENT`, so git's own
 /// resolution (the `GIT_AUTHOR_*` environment, then `user.*` config with its usual precedence and
 /// includes, then the auto-detected name and email). A read: nothing is written. `None`: git has
 /// no identity it would commit with.
@@ -364,7 +363,7 @@ mod tests {
         assert_eq!(r.git(&["log", "-1", "--format=%B"]), "Fix x");
     }
 
-    /// §5.3: "Stage all & commit" undoes to the pre-commit split.
+    /// "Stage all & commit" undoes to the pre-commit split.
     #[tokio::test]
     async fn stage_all_and_commit_round_trips_the_split() {
         let data = tempfile::tempdir().unwrap();
@@ -394,7 +393,7 @@ mod tests {
         let before = RepoState::capture(&r);
         let err = commit(&api, id, &r, "Nope", false, true).await.unwrap_err();
         assert_eq!(err.kind, GbErrorKind::HookFailed);
-        assert_eq!(RepoState::capture(&r), before, "Deviation 8: nothing staged that wasn't");
+        assert_eq!(RepoState::capture(&r), before, "nothing staged that wasn't");
         let j = call(&api, "journalState", json!({ "repo": id, "worktree": wt(r.path()) })).await.unwrap();
         assert!(j["undo"].is_null(), "{j}");
     }
@@ -418,7 +417,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--cached", "--name-only"]), "a.txt", "the amended-in change is staged again");
     }
 
-    /// §8.3: `--only` amends only the message; what's staged stays staged.
+    /// `--only` amends only the message; what's staged stays staged.
     #[tokio::test]
     async fn edit_head_message_amends_only_the_message() {
         let data = tempfile::tempdir().unwrap();
@@ -448,7 +447,6 @@ mod tests {
         assert_eq!(err.kind, GbErrorKind::RefMoved);
     }
 
-    /// Deviation 9.
     #[tokio::test]
     async fn a_detached_head_commit_undoes_with_move_head() {
         let data = tempfile::tempdir().unwrap();
@@ -500,9 +498,9 @@ mod tests {
         assert!(r.git(&["log", "-1", "--format=%B"]).ends_with("Signed-off-by: Hook <hook@example.com>"));
     }
 
-    /// §17.1 signing: commit, amend and a message edit are signed by git; GitVolt's own commits
+    /// Signing: commit, amend and a message edit are signed by git; GitVolt's own commits
     /// (snapshots) never call the signer.
-    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (signing isn't supported on Windows yet)
     #[tokio::test]
     async fn commits_and_amends_are_signed_and_snapshots_never_are() {
         let data = tempfile::tempdir().unwrap();
@@ -526,7 +524,7 @@ mod tests {
         assert_eq!(r.sign_count(), 3, "snapshots never sign");
     }
 
-    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (signing isn't supported on Windows yet)
     #[tokio::test]
     async fn gpg_signs_commits() {
         let data = tempfile::tempdir().unwrap();
@@ -540,7 +538,6 @@ mod tests {
         assert!(matches!(r.git(&["log", "-1", "--format=%G?"]).as_str(), "G" | "U"));
     }
 
-    /// Review Focus 3.
     #[tokio::test]
     async fn a_commit_in_a_linked_worktree_commits_only_its_index() {
         let data = tempfile::tempdir().unwrap();
@@ -563,7 +560,7 @@ mod tests {
         assert!(main_j["undo"].is_null() && side_j["undo"]["label"] == "commit \"Side work\"", "{main_j} {side_j}");
     }
 
-    /// Review Focus 5: `-F` uses git's `whitespace` cleanup, so `#` lines and inner blank lines stay.
+    /// `-F` uses git's `whitespace` cleanup, so `#` lines and inner blank lines stay.
     #[tokio::test]
     async fn hash_lines_and_inner_blank_lines_are_committed_verbatim() {
         let data = tempfile::tempdir().unwrap();
@@ -596,7 +593,7 @@ mod tests {
         assert_eq!(err.kind, GbErrorKind::InProgress);
     }
 
-    /// §13.2: in a merge, Commit makes the merge commit.
+    /// In a merge, Commit makes the merge commit.
     #[tokio::test]
     async fn a_commit_in_a_merge_makes_the_merge_commit() {
         let data = tempfile::tempdir().unwrap();
@@ -610,7 +607,7 @@ mod tests {
         assert_eq!(r.git(&["rev-list", "--parents", "-n", "1", "HEAD"]).split(' ').count(), 3, "two parents");
     }
 
-    /// Ux round 1: the identity is git's own (the test env sets `GIT_AUTHOR_*`).
+    /// The identity is git's own (the test env sets `GIT_AUTHOR_*`).
     #[tokio::test]
     async fn commit_identity_is_what_git_would_commit_as() {
         let data = tempfile::tempdir().unwrap();
@@ -660,7 +657,7 @@ mod tests {
         assert!(off.is_null());
     }
 
-    /// Review m5: a branch tracking a local branch gets its short name too.
+    /// A branch tracking a local branch gets its short name too.
     #[tokio::test]
     async fn head_on_upstream_shortens_a_local_upstream() {
         let data = tempfile::tempdir().unwrap();
@@ -687,7 +684,7 @@ mod tests {
         (api, id, parent)
     }
 
-    /// Review I1, scenario A: what was staged after the commit survives its undo.
+    /// What was staged after the commit survives its undo.
     #[tokio::test]
     async fn undoing_a_stage_all_commit_keeps_what_was_staged_since() {
         let data = tempfile::tempdir().unwrap();
@@ -705,7 +702,7 @@ mod tests {
         assert_eq!(r.git(&["ls-files", "--others", "--exclude-standard"]), "c.txt");
     }
 
-    /// Review I1: a path of the commit staged again since makes the undo refuse, changing nothing.
+    /// A path of the commit staged again since makes the undo refuse, changing nothing.
     #[tokio::test]
     async fn undoing_a_stage_all_commit_refuses_over_a_restaged_path() {
         let data = tempfile::tempdir().unwrap();
@@ -721,7 +718,7 @@ mod tests {
         assert_eq!(j["undo"], top, "still undoable once that's sorted out");
     }
 
-    /// Review I1, scenario B: the undo never writes main's index into another branch's checkout.
+    /// The undo never writes main's index into another branch's checkout.
     #[tokio::test]
     async fn an_undo_after_an_outside_switch_leaves_that_checkout_alone() {
         let data = tempfile::tempdir().unwrap();
@@ -755,7 +752,7 @@ mod tests {
         assert_eq!(j["undo"]["label"], "commit \"Nope\"", "{j}");
     }
 
-    /// Review I2: a detached HEAD moved since asks, with the commits it drops; "Undo anyway"
+    /// A detached HEAD moved since asks, with the commits it drops; "Undo anyway"
     /// runs against the HEAD it showed and lands on the commit's parent.
     #[tokio::test]
     async fn a_moved_detached_head_asks_then_undo_anyway_lands_on_the_parent() {
@@ -780,7 +777,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "--symbolic-full-name", "HEAD"]), "HEAD", "still detached");
     }
 
-    /// Review I2: once HEAD is on a branch, a detached commit's undo is refused, no override.
+    /// Once HEAD is on a branch, a detached commit's undo is refused, no override.
     #[tokio::test]
     async fn a_detached_commit_undo_refuses_once_head_is_on_a_branch() {
         let data = tempfile::tempdir().unwrap();
@@ -795,7 +792,7 @@ mod tests {
         r.git(&["switch", "-q", "main"]);
         let main = r.git(&["rev-parse", "main"]);
         let err = journal_step(&api, id, r.path(), "undo").await.unwrap_err();
-        // 2B final I2: the refusal says what works, not "refresh and retry".
+        // The refusal says what works, not "refresh and retry".
         assert_eq!((err.kind, err.message.as_str()), (GbErrorKind::InvalidInput, format!("HEAD is on main now: switch back to {} to undo commit \"Detached\"", &made[..7]).as_str()));
         assert_eq!((r.git(&["rev-parse", "--symbolic-full-name", "HEAD"]), r.git(&["rev-parse", "HEAD"])), ("refs/heads/main".to_string(), main));
         // Switching back to it makes the same entry undoable.

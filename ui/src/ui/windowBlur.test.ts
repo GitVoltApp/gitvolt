@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BLURRED_AFTER_MS, installWindowBlurredMark, isWindowBlur, refocusWhenWindowReturns } from './windowBlur';
 
-describe('windowBlur (K41)', () => {
+describe('windowBlur', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('a blur while the document has no focus is the window losing it; with focus, a real move', () => {

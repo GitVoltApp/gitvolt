@@ -1,7 +1,7 @@
 import { freshFixture, git, openUrl, originGit } from './fixtures';
 import { expect, test, confirmArmed, armedOverlay } from './test';
 
-test.describe('push (spec #2 §12.3, §12.4)', () => {
+test.describe('push', () => {
   // One repo and page for these (each was a test of its own, paying for a page load and a
   // fixture): main's rejected push, then dev's, then feature/new's first, each branch checked out
   // from outside (the watcher brings the switch in).
@@ -15,7 +15,7 @@ test.describe('push (spec #2 §12.3, §12.4)', () => {
       await push.click();
       const choice = page.getByRole('alertdialog');
       await expect(choice).toContainText("origin/main has 1 commit main doesn't have");
-      // The safe choice first, and focused (board G).
+      // The safe choice first, and focused.
       await expect(choice.getByRole('button', { name: 'Pull' })).toBeFocused();
       await confirmArmed(choice.getByRole('button', { name: 'Force push…' }));
       await confirmArmed(armedOverlay(page, 'Click again to force push: replaces 1 commit'));
@@ -52,8 +52,7 @@ test.describe('push (spec #2 §12.3, §12.4)', () => {
   });
 });
 
-// --- 2D T19 ---
-test.describe('fetch and pull, and the push upstream (spec #2 §12.1-§12.3)', () => {
+test.describe('fetch and pull, and the push upstream', () => {
   // One repo and page for both (each was a test of its own, paying for a page load): the pull
   // first, on main's own upstream, then Push ▾ moves that upstream.
   test('the default picker sets the default without running and Pull fast-forwards; Push ▾ changes the upstream without pushing', async ({ page }) => {
@@ -78,7 +77,7 @@ test.describe('fetch and pull, and the push upstream (spec #2 §12.1-§12.3)', (
     await test.step('Push ▾ changes the upstream without pushing', async () => {
       await page.getByRole('button', { name: 'Push options' }).click();
       await page.getByRole('menuitem', { name: 'Other branch…' }).click();
-      // "Other branch…" is the RefPicker (spec #2 §12.3): a combobox over the remote branches.
+      // "Other branch…" is the RefPicker: a combobox over the remote branches.
       const before = originGit(repo, 'rev-parse', 'main');
       await expect(page.getByRole('combobox', { name: 'Upstream of main' })).toBeVisible();
       await page.getByRole('listbox', { name: 'Upstream of main' }).getByRole('option', { name: 'origin/dev' }).click();
@@ -101,4 +100,3 @@ test.describe('fetch and pull, and the push upstream (spec #2 §12.1-§12.3)', (
     expect(git(repo, 'rev-list', '--count', 'origin/diverged..diverged')).toBe('1');
   });
 });
-// --- end 2D T19 ---

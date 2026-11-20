@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 /**
- * Spec #5 §3.4: one navigation history per repository tab, a list of places (at most
+ * One navigation history per repository tab, a list of places (at most
  * MAX_PLACES) and a cursor. Mouse back/forward, Alt+←/→ and the palette's Go back / Go forward
  * step through it (`input.ts`). Each place kind registers how to save its scroll and how to show
  * it again (`mrPlaces.ts`, `repoPlaces.ts`); a place that can't be shown any more is dropped and
@@ -128,7 +128,7 @@ const bump = (tabId: string) => {
   return n;
 };
 
-/** An arrival (spec #5 §3.4): the place being left saves its scroll first. */
+/** An arrival: the place being left saves its scroll first. */
 export function recordPlace(tabId: string, place: Place, how: 'push' | 'replace' = 'push'): void {
   const h = historyOf(tabId);
   const cur = h.places[h.cursor];

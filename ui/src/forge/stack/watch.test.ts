@@ -28,7 +28,7 @@ const tab = (head: string, locals = ['feature/a', 'feature/b']) => useRuntime.ge
   sidebar: { locals: locals.map(lb), remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} },
 } as never);
 
-describe('the after-merge prompt (Ruling 11)', () => {
+describe('the after-merge prompt', () => {
   beforeEach(() => {
     resetPrompted();
     retargetAndRebase.mockReset();

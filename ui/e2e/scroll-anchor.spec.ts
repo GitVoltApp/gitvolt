@@ -1,7 +1,7 @@
 import { freshFixture, git, openUrl } from './fixtures';
 import { expect, test, type Page } from './test';
 
-// K78: a refresh (a watcher refresh, a background fetch) keeps the same commits at the same
+// A refresh (a watcher refresh, a background fetch) keeps the same commits at the same
 // screen position, except at the very top, which stays the top so new commits show.
 
 const grid = (page: Page) => page.getByRole('grid', { name: 'Commit graph' });
@@ -33,7 +33,7 @@ async function commitElsewhere(page: Page, repo: string, count: number) {
   await page.waitForTimeout(300);
 }
 
-test.describe('scroll position across a refresh (K78)', () => {
+test.describe('scroll position across a refresh', () => {
   // One repo and page for both (each was a test of its own, paying for a page load and a fixture):
   // every step's checks are relative to where it starts, and each adds its own commits. The top
   // first, while each new commit's message is still unique. Mid-history with no selection, or one

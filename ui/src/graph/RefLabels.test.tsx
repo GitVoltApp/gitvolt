@@ -21,7 +21,7 @@ const remoteOnly = (branch: string, ...remotes: string[]): RefLabel => ({
 const LONG = 'feature/a-very-long-branch-name-that-the-chip-truncates';
 
 describe('RefLabels', () => {
-  it('draws the rebased branch with a spinner at HEAD, even with no label of its own (2D T18)', () => {
+  it('draws the rebased branch with a spinner at HEAD, even with no label of its own', () => {
     const { rerender } = render(<RefLabels labels={[]} color={0} rebasing="main" />);
     expect(screen.getByLabelText('main (rebasing)')).toHaveClass('ref-rebasing');
     const other = remoteOnly('topic', 'origin');
@@ -31,7 +31,7 @@ describe('RefLabels', () => {
     expect(screen.queryByLabelText('main (rebasing)')).toBeNull();
   });
 
-  it('the rebasing chip expands on hover to its full name like the other chips, with its tooltip (UX round 2)', () => {
+  it('the rebasing chip expands on hover to its full name like the other chips, with its tooltip', () => {
     render(<RefLabels labels={[]} color={0} rebasing={LONG} width={60} />);
     const chip = screen.getByLabelText(`${LONG} (rebasing)`);
     expect(chip.querySelector('.ref-label-full')).toBeNull();
@@ -42,7 +42,7 @@ describe('RefLabels', () => {
     expect(chip.querySelector('.ref-label-full')).toBeNull();
   });
 
-  it('a detached HEAD beside other chips is icon-only, named by its tooltip, and expands to "HEAD" on hover (UX round 2)', () => {
+  it('a detached HEAD beside other chips is icon-only, named by its tooltip, and expands to "HEAD" on hover', () => {
     const detached: RefLabel = { row: 0, name: 'HEAD', local: null, tag: false, isHead: true, worktree: null, checkedOut: null, remotes: [] };
     const main: RefLabel = { row: 0, name: 'main', local: 'refs/heads/main', tag: false, isHead: false, worktree: null, checkedOut: null, remotes: [] };
     const { container, rerender } = render(<RefLabels labels={[detached, main]} color={0} rebasing="feature/x" width={300} sha={'c'.repeat(40)} />);
@@ -60,7 +60,7 @@ describe('RefLabels', () => {
     expect(alone).toHaveTextContent('HEAD');
   });
 
-  it("marks the checked-out branch's chip, its bigger check and its connector (J21); other rows' aren't", () => {
+  it("marks the checked-out branch's chip, its bigger check and its connector; other rows' aren't", () => {
     const head: RefLabel = { row: 0, name: 'main', local: 'refs/heads/main', tag: false, isHead: true, worktree: null, checkedOut: null, remotes: [] };
     const { container, rerender } = render(<RefLabels labels={[head, remoteOnly('topic', 'origin')]} color={0} membership={{ name: 'x', color: 1, ref: 'refs/heads/x' }} />);
     const labels = container.querySelector('.ref-labels')!;
@@ -90,12 +90,12 @@ describe('RefLabels', () => {
   /** A source icon's hover target in the expanded (hovered) copy, the one the pointer can reach. */
   const fullIcon = (container: HTMLElement, aria: string) => container.querySelector('.ref-label-full')!.querySelector(`[aria-label="${aria}"]`)!.closest('.ref-icon')!;
 
-  it('shows a remote-only label by its branch part; its remote icon\'s (instant) tooltip reads `origin → <branch> (Remote)` (H12)', () => {
+  it('shows a remote-only label by its branch part; its remote icon\'s (instant) tooltip reads `origin → <branch> (Remote)`', () => {
     const { container } = render(<RefLabels labels={[remoteOnly('p/janderson/foo', 'origin')]} color={0} />);
     const chip = screen.getByText('p/janderson/foo').closest('.ref-label')!;
     expect(chip).not.toHaveAttribute('title');
     fireEvent.mouseEnter(chip);
-    // The name itself has no tooltip (F9).
+    // The name itself has no tooltip.
     expect(screen.queryByRole('tooltip')).toBeNull();
     fireEvent.mouseEnter(fullIcon(container, 'remote origin'));
     const tip = screen.getByRole('tooltip');
@@ -133,7 +133,7 @@ describe('RefLabels', () => {
     expect(screen.getByRole('tooltip').textContent).toBe('origin → feature/foo (Remote)');
   });
 
-  it('the resting chip\'s icons show their tooltip too, at once: the pointer can land on one before the expanded copy covers it (H12)', () => {
+  it('the resting chip\'s icons show their tooltip too, at once: the pointer can land on one before the expanded copy covers it', () => {
     const label: RefLabel = { row: 0, name: 'foo', local: 'refs/heads/foo', tag: false, isHead: false, worktree: null, checkedOut: null, remotes: [] };
     const { container } = render(<RefLabels labels={[label]} color={0} />);
     fireEvent.mouseEnter(container.querySelector('.ref-labels > .ref-label > .ref-icon')!);
@@ -156,7 +156,7 @@ describe('RefLabels', () => {
     expect(container.querySelector('.ref-label-full')).toBeNull();
   });
 
-  describe('the hover stack (K77)', () => {
+  describe('the hover stack', () => {
     const three = [remoteOnly('main', 'origin'), remoteOnly('foo', 'origin', 'upstream'), remoteOnly(LONG, 'fork')];
     const rows = (c: HTMLElement) => [...c.querySelectorAll('.ref-stack > .ref-stack-row')];
 
@@ -215,7 +215,7 @@ describe('RefLabels', () => {
     });
   });
 
-  it('a membership chip goes after the real chips and the +N badge, before the connector, without changing them (F7)', () => {
+  it('a membership chip goes after the real chips and the +N badge, before the connector, without changing them', () => {
     const tagOnly: RefLabel = { row: 0, name: 'v1', local: null, remotes: [], tag: true, isHead: false, worktree: null, checkedOut: null };
     const membership = { name: 'main', color: 2, ref: 'refs/heads/main' };
     const { container } = render(<RefLabels labels={[tagOnly, remoteOnly('x', 'origin')]} color={0} membership={membership} />);
@@ -228,7 +228,7 @@ describe('RefLabels', () => {
     expect(slot.querySelector('.ref-label-dim')).toHaveTextContent('main');
   });
 
-  it('the membership chip expands like the others while hovered: an untruncated copy over it, gone on leaving (J6)', () => {
+  it('the membership chip expands like the others while hovered: an untruncated copy over it, gone on leaving', () => {
     const tagOnly: RefLabel = { row: 0, name: 'v1', local: null, remotes: [], tag: true, isHead: false, worktree: null, checkedOut: null };
     const membership = { name: LONG, color: 1, ref: `refs/heads/${LONG}` };
     // Alone on its row, and after a real chip (in the slot).
@@ -241,7 +241,7 @@ describe('RefLabels', () => {
       expect(full).toHaveTextContent(LONG);
       expect(full).toHaveAttribute('aria-hidden', 'true');
       expect(full!.querySelector('.ref-name-full')).not.toBeNull();
-      // Still no tooltip on the name (F9).
+      // Still no tooltip on the name.
       expect(screen.queryByRole('tooltip')).toBeNull();
       fireEvent.mouseLeave(dim);
       expect(container.querySelector('.ref-label-full')).toBeNull();
@@ -298,7 +298,7 @@ describe('RefLabels and the theme', () => {
   });
 });
 
-describe('RefLabels, several labels (K104)', () => {
+describe('RefLabels, several labels', () => {
   const local = (name: string, isHead = false): RefLabel => ({ row: 0, name, local: `refs/heads/${name}`, tag: false, isHead, worktree: null, checkedOut: null, remotes: [] });
   const labels = [local('dev', true), local('prod'), local('staging')];
 
@@ -319,7 +319,7 @@ describe('RefLabels, several labels (K104)', () => {
     expect(more).toHaveClass('ref-more-head');
   });
 
-  it('warns, first in the chip, when the upstream has another branch name; its own instant tooltip (UX round 3, M.1)', () => {
+  it('warns, first in the chip, when the upstream has another branch name; its own instant tooltip', () => {
     const tip = "Tracks origin/feature/b, not a branch named feature/a. That's often a mistake.";
     const { container, rerender } = render(<RefLabels labels={[{ ...local('feature/a'), upstreamMismatch: 'origin/feature/b' }]} color={0} />);
     const chip = container.querySelector('.ref-labels > .ref-label')!;
@@ -332,7 +332,7 @@ describe('RefLabels, several labels (K104)', () => {
     expect(container.querySelector('.upstream-warn')).toBeNull();
   });
 
-  it("marks an annotated tag and shows its message, tagger and date; a lightweight tag's names its commit (UX round 3, M.2)", () => {
+  it("marks an annotated tag and shows its message, tagger and date; a lightweight tag's names its commit", () => {
     const tag = (annotation?: RefLabel['annotation']): RefLabel => ({ row: 0, name: 'v1.0', local: null, tag: true, isHead: false, worktree: null, checkedOut: null, remotes: [], ...(annotation && { annotation }) });
     const { container, rerender } = render(<RefLabels labels={[tag({ message: 'Release 1.0\n\nNotes', truncated: true, tagger: 'Ada', time: 1_700_000_000 })]} color={0} sha={'abcdef1234'.padEnd(40, '0')} />);
     expect(screen.getByLabelText('annotated tag')).toBeInTheDocument();

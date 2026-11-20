@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 describe('ImageDiff', () => {
-  it('an added or deleted image shows only its own side, labelled, with no compare modes (H25)', async () => {
+  it('an added or deleted image shows only its own side, labelled, with no compare modes', async () => {
     vi.stubGlobal('Image', FakeImage);
     const { unmount } = render(<ImageDiff old={null} new={{ url: 'blob:760x119', size: 70 }} single="added" />);
     await waitFor(() => expect(screen.getByTestId('image-meta')).toHaveTextContent(/^760×119 · 70 B \(added\)$/));
@@ -62,7 +62,7 @@ describe('ImageDiff', () => {
     changed.unmount();
   });
 
-  it('double-clicking the swipe handle puts it back at 50% (K73)', () => {
+  it('double-clicking the swipe handle puts it back at 50%', () => {
     render(<ImageDiff old={{ url: 'blob:old', size: 60 }} new={{ url: 'blob:new', size: 70 }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Swipe' }));
     const s = screen.getByRole('slider', { name: 'Swipe position' });
@@ -99,7 +99,7 @@ describe('ImageDiff', () => {
     expect(screen.getByTestId('zoom-label')).toHaveTextContent('400%');
   });
 
-  it("opens at 100%; the slider's minimum is the ladder's own first rung, not Fit (H23, K12)", async () => {
+  it("opens at 100%; the slider's minimum is the ladder's own first rung, not Fit", async () => {
     vi.stubGlobal('Image', FakeImage);
     render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
     await waitFor(() => expect(screen.getByTestId('image-dims')).toHaveTextContent('4×4 → 6×4'));
@@ -108,13 +108,13 @@ describe('ImageDiff', () => {
     expect(screen.getByTestId('zoom-label')).toHaveTextContent('10%');
   });
 
-  it('Fit is a dedicated button (K12), the zoom % is editable (K13), and the slider double-click resets to 100% (K14)', async () => {
+  it('Fit is a dedicated button, the zoom % is editable, and the slider double-click resets to 100%', async () => {
     vi.stubGlobal('Image', FakeImage);
     render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
     await waitFor(() => expect(screen.getByTestId('image-dims')).toHaveTextContent('4×4 → 6×4'));
     fireEvent.change(screen.getByRole('slider', { name: 'Zoom' }), { target: { value: stepOf(4) } });
     expect(screen.getByTestId('zoom-label')).toHaveTextContent('400%');
-    // K13: click to edit, Enter applies (clamped to the zoom range).
+    // Click to edit, Enter applies (clamped to the zoom range).
     fireEvent.click(screen.getByTestId('zoom-label'));
     const input = screen.getByTestId('zoom-input');
     expect(input).toHaveValue('400');
@@ -138,10 +138,10 @@ describe('ImageDiff', () => {
     fireEvent.change(screen.getByTestId('zoom-input'), { target: { value: '50' } });
     fireEvent.blur(screen.getByTestId('zoom-input'));
     expect(screen.getByTestId('zoom-label')).toHaveTextContent('50%');
-    // K14: double-click the slider resets to 100%.
+    // Double-click the slider resets to 100%.
     fireEvent.doubleClick(screen.getByRole('slider', { name: 'Zoom' }));
     expect(screen.getByTestId('zoom-label')).toHaveTextContent('100%');
-    // K12: Fit is a button, always present, distinct from the slider/value. jsdom has no real
+    // Fit is a button, always present, distinct from the slider/value. jsdom has no real
     // layout (the box measures 0), so `fitScale` degrades to 1×; the real percentage is an e2e
     // concern (image.spec.ts) — this just proves the wiring runs without throwing.
     expect(screen.getByRole('button', { name: 'Fit' })).toBeInTheDocument();
@@ -149,7 +149,7 @@ describe('ImageDiff', () => {
     expect(screen.getByTestId('zoom-label')).toHaveTextContent('100%');
   });
 
-  it('Ctrl+wheel zooms along the fine ladder, is prevented, accumulates small deltas and ignores deltaY 0 (H24)', async () => {
+  it('Ctrl+wheel zooms along the fine ladder, is prevented, accumulates small deltas and ignores deltaY 0', async () => {
     vi.stubGlobal('Image', FakeImage);
     const { container, unmount } = render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
     await waitFor(() => expect(screen.getByTestId('image-dims')).toHaveTextContent('4×4 → 6×4'));
@@ -171,7 +171,7 @@ describe('ImageDiff', () => {
     expect(wheel(stage, -100).defaultPrevented).toBe(false);
   });
 
-  it('the swipe handle and the onion opacity start at 50% each time their mode is entered, and the handle stays keyboard-operable (H28, H29)', () => {
+  it('the swipe handle and the onion opacity start at 50% each time their mode is entered, and the handle stays keyboard-operable', () => {
     render(<ImageDiff old={{ url: 'blob:old', size: 60 }} new={{ url: 'blob:new', size: 70 }} />);
     const handle = () => screen.getByRole('slider', { name: 'Swipe position' });
     fireEvent.click(screen.getByRole('button', { name: 'Swipe' }));
@@ -187,7 +187,7 @@ describe('ImageDiff', () => {
     expect(screen.getByRole('slider', { name: 'Opacity' })).toHaveValue('50');
   });
 
-  it('a mouse-down anywhere on the image in Swipe mode jumps the handle to the pointer and keeps dragging it (K8)', () => {
+  it('a mouse-down anywhere on the image in Swipe mode jumps the handle to the pointer and keeps dragging it', () => {
     const { container } = render(<ImageDiff old={{ url: 'blob:old', size: 60 }} new={{ url: 'blob:new', size: 70 }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Swipe' }));
     const handle = () => screen.getByRole('slider', { name: 'Swipe position' });
@@ -206,7 +206,7 @@ describe('ImageDiff', () => {
     expect(handle()).toHaveAttribute('aria-valuenow', '20');
   });
 
-  it('shows subtle, non-interactive Old/New labels in side-by-side, swipe and onion skin, never for a single added/deleted image (K9)', () => {
+  it('shows subtle, non-interactive Old/New labels in side-by-side, swipe and onion skin, never for a single added/deleted image', () => {
     vi.stubGlobal('Image', FakeImage);
     const { container, rerender } = render(<ImageDiff old={{ url: 'blob:old', size: 60 }} new={{ url: 'blob:new', size: 70 }} />);
     // pointer-events: none is asserted from the stylesheet itself (image.css.test.ts): jsdom
@@ -218,19 +218,19 @@ describe('ImageDiff', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Onion skin' }));
     expect(labels().map((l) => l.textContent)).toEqual(['Old', 'New']);
     fireEvent.click(screen.getByRole('button', { name: 'Difference' }));
-    // No Old/New chips in Difference (K9 doesn't list it) — only K10's Amplify label, which shares
+    // No Old/New chips in Difference (it has no such toggle), only the Amplify label, which shares
     // the same subtle-chip class.
     expect(labels().map((l) => l.textContent)).toEqual(['Amplify']);
-    // A single added/deleted image (H25) never gets a label: nothing to compare against.
+    // A single added/deleted image never gets a label: nothing to compare against.
     rerender(<ImageDiff old={null} new={{ url: 'blob:new', size: 70 }} single="added" />);
     expect(container.querySelectorAll('.image-label')).toHaveLength(0);
   });
 
-  it('side-by-side gets a divider between the two halves only when both images exist (K21)', () => {
+  it('side-by-side gets a divider between the two halves only when both images exist', () => {
     vi.stubGlobal('Image', FakeImage);
     const { container, rerender } = render(<ImageDiff old={{ url: 'blob:old', size: 60 }} new={{ url: 'blob:new', size: 70 }} />);
     expect(container.querySelectorAll('.side-divider')).toHaveLength(1);
-    // A single added/deleted image (H25) has only one half: no divider to draw.
+    // A single added/deleted image has only one half: no divider to draw.
     rerender(<ImageDiff old={null} new={{ url: 'blob:new', size: 70 }} single="added" />);
     expect(container.querySelectorAll('.side-divider')).toHaveLength(0);
   });
@@ -238,7 +238,7 @@ describe('ImageDiff', () => {
   /** Waits a frame — long enough for a `requestAnimationFrame`-coalesced repaint to run. */
   const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
-  it("Difference mode's Amplify slider is the TRUE multiplier, defaults to 4× (the old fixed brighten's look), ranges 1×–16×, and repaints without reloading the images (K10)", async () => {
+  it("Difference mode's Amplify slider is the TRUE multiplier, defaults to 4× (the old fixed brighten's look), ranges 1×–16×, and repaints without reloading the images", async () => {
     vi.stubGlobal('Image', FakeImage);
     const draw = vi.spyOn(await import('./difference'), 'drawDifference');
     render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
@@ -254,14 +254,14 @@ describe('ImageDiff', () => {
     const calls = draw.mock.calls.length;
     fireEvent.change(amplify(), { target: { value: '8' } });
     expect(screen.getByTestId('amplify-value')).toHaveTextContent('8×');
-    // Coalesced to the next animation frame (fix round 1): not drawn synchronously on `change`.
+    // Coalesced to the next animation frame: not drawn synchronously on `change`.
     expect(draw.mock.calls.length).toBe(calls);
     await nextFrame();
     expect(draw.mock.calls.length).toBe(calls + 1);
     expect(draw.mock.calls.at(-1)![5]).toBe(8);
   });
 
-  it('several rapid Amplify changes coalesce into a single repaint per animation frame, using the latest value (fix round 1)', async () => {
+  it('several rapid Amplify changes coalesce into a single repaint per animation frame, using the latest value', async () => {
     vi.stubGlobal('Image', FakeImage);
     const draw = vi.spyOn(await import('./difference'), 'drawDifference');
     render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
@@ -279,7 +279,7 @@ describe('ImageDiff', () => {
     expect(draw.mock.calls.at(-1)![5]).toBe(16);
   });
 
-  it('background toggles at the far right: checkerboard by default, black, white, grey; remembered (H30)', async () => {
+  it('background toggles at the far right: checkerboard by default, black, white, grey; remembered', async () => {
     vi.stubGlobal('Image', FakeImage);
     const { container } = render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
     await waitFor(() => expect(screen.getByTestId('image-dims')).toHaveTextContent('4×4 → 6×4'));
@@ -288,7 +288,7 @@ describe('ImageDiff', () => {
     const names = ['Checkerboard background', 'Black background', 'White background', 'Grey background'];
     expect([...group.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(names);
     expect(screen.getByRole('button', { name: 'Checkerboard background' })).toHaveAttribute('aria-pressed', 'true');
-    // The pick is behind the image only (J11): the frames at its bounds, not the viewports.
+    // The pick is behind the image only: the frames at its bounds, not the viewports.
     const viewports = () => [...container.querySelectorAll('.image-frame')].map((v) => v.className);
     expect(viewports()).toHaveLength(2);
     expect(viewports().every((c) => c.includes('bg-checker'))).toBe(true);
@@ -309,7 +309,7 @@ describe('ImageDiff', () => {
     expect(viewports()).toEqual([expect.stringContaining('bg-black')]);
   });
 
-  it("frames each image's own bounds: the background inside, a border, the viewport neutral outside (J11)", async () => {
+  it("frames each image's own bounds: the background inside, a border, the viewport neutral outside", async () => {
     vi.stubGlobal('Image', FakeImage);
     useImageBackground.setState({ background: 'white' });
     const { container } = render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
@@ -338,7 +338,7 @@ describe('ImageDiff', () => {
     expect(frames()[0].nextElementSibling).toBe(screen.getByTestId('image-difference'));
   });
 
-  it("the checkerboard toggle's icon is our own SVG, a 3×3 board of big squares filling its box (J12)", () => {
+  it("the checkerboard toggle's icon is our own SVG, a 3×3 board of big squares filling its box", () => {
     render(<ImageDiff old={{ url: 'blob:old', size: 60 }} new={{ url: 'blob:new', size: 70 }} />);
     const svg = screen.getByRole('button', { name: 'Checkerboard background' }).querySelector('svg')!;
     expect(svg).not.toBeNull();
@@ -353,7 +353,7 @@ describe('ImageDiff', () => {
     expect([board.getAttribute('width'), board.getAttribute('height')]).toEqual([String(w), String(h)]);
   });
 
-  it('keeps the images hidden until every side is decoded and placed: never a frame at the top left (J13)', async () => {
+  it('keeps the images hidden until every side is decoded and placed: never a frame at the top left', async () => {
     vi.stubGlobal('Image', FakeImage);
     const { container } = render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
     const layers = () => [...container.querySelectorAll<HTMLElement>('img.image-layer')];
@@ -374,7 +374,7 @@ describe('ImageDiff', () => {
     expect([...failed.container.querySelectorAll<HTMLElement>('img.image-layer')].map((l) => l.style.visibility)).toEqual(['']);
   });
 
-  it('hidden with the kept diff panel and shown again, it reports its Source state again (J16, H26)', () => {
+  it('hidden with the kept diff panel and shown again, it reports its Source state again', () => {
     const onSourceChange = vi.fn();
     const ui = (mode: 'visible' | 'hidden') => <Activity mode={mode}><ImageDiff old={{ url: 'blob:old', size: 60 }} new={{ url: 'blob:new', size: 70 }} source={<div>svg source</div>} onSourceChange={onSourceChange} /></Activity>;
     const view = render(ui('visible'));

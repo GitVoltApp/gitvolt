@@ -45,7 +45,7 @@ export function ReplyBox({ tabId, number, discussion, toggle, onDone }: { tabId:
   };
   return (
     <form className="mr-reply" aria-label={action} onSubmit={(e) => { e.preventDefault(); void send(); }}>
-      {/* --- 5A T9: Write / Preview --- */}
+      {/* --- Write / Preview --- */}
       <MarkdownField
         label={discussion ? 'Reply' : 'Write a comment'}
         placeholder={discussion ? 'Write a reply' : 'Write a comment'}
@@ -60,7 +60,6 @@ export function ReplyBox({ tabId, number, discussion, toggle, onDone }: { tabId:
           }
         }}
       />
-      {/* --- end 5A T9 --- */}
       <div className="mr-form-row">
         {onDone && <button type="button" className="mr-button" onClick={onDone}>Cancel</button>}
         {discussion && toggle && <button type="button" className="mr-button" disabled={!ready} onClick={() => void send(true)}>{busy === 'toggle' ? 'Sending…' : `Reply and ${toggle}`}</button>}

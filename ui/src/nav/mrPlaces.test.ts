@@ -26,7 +26,7 @@ beforeEach(() => {
   poll.openMrView.mockImplementation((tabId: string, n: number) => openFlyout(tabId, MR_FLYOUT, { number: n }));
 });
 
-describe('MR/PR places (spec #5 §3.4)', () => {
+describe('MR/PR places', () => {
   it('Back to an MR/PR reopens its view, at the scroll it was left at', async () => {
     recordPlace('t', mr(12));
     noteScroll('t', 'mr', 'mr:12', 420);

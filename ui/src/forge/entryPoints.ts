@@ -19,7 +19,7 @@ export function mrsForBranches(f: TabForge, branches: BranchRef[]): ForgeMr[] {
   return [...out.values()];
 }
 
-/** "Open MR !12" (spec #4 §4 "4B": branch menus, and the branch's last commit), before the
+/** "Open MR !12" (branch menus, and the branch's last commit), before the
  * message's own `Open !n` rows, which open the browser. */
 const offMenu = registerMenu<CommitTarget, MenuEnv>({
   id: 'commit.forge.openMr',

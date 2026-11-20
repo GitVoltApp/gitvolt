@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TooltipHost } from './TooltipHost';
 import { hideTooltip, showTooltip } from './tooltipStore';
 
-describe('TooltipHost (the shared imperative tooltip, plan 1C Task 10)', () => {
+describe('TooltipHost (the shared imperative tooltip)', () => {
   afterEach(() => { act(() => hideTooltip()); vi.useRealTimers(); });
 
   it('shows immediately by default and hides on hideTooltip', () => {

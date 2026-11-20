@@ -31,7 +31,7 @@ declare global {
 export type Done = string | { sel: string; text?: string; gone?: boolean };
 
 /**
- * §16's write budgets run "from the click to the updated panel": clicks `target`, then answers the
+ * The write budgets run "from the click to the updated panel": clicks `target`, then answers the
  * milliseconds from that click event to the first frame drawn once `done` holds. Timed in the
  * page, so neither Playwright's actionability checks before the click nor its polling after it
  * count.

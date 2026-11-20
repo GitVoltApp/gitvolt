@@ -19,7 +19,7 @@ export function partsText(parts: CreatePart[]): string {
 
 export const failureText = (failed: PartFailure[]): string => failed.map((f) => `couldn't add ${PART[f.part]}: ${f.message.replace(/\.+$/, '')}`).join('; ');
 
-/** The outcome toast (spec #4 §3.5): "Created !12", or "PR #45 created; couldn't add reviewers:
+/** The outcome toast: "Created !12", or "PR #45 created; couldn't add reviewers:
  * <reason>" as a sticky warning with Retry for the failed parts. */
 export function showCreated(c: Created, failed: PartFailure[]): void {
   const ref = mrRef(c.kind, c.number);

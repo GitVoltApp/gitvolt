@@ -25,7 +25,7 @@ beforeEach(() => {
   useRuntime.setState({ tabs: { t: { repo: { id: 4 } } as never } });
 });
 
-describe('MdImage (spec #5 §4.2)', () => {
+describe('MdImage', () => {
   it('loads a forge image through the core, reserving its box meanwhile', async () => {
     let answer: (v: unknown) => void = () => {};
     api.forgeImage.mockReturnValue(new Promise((r) => { answer = r; }));
@@ -96,7 +96,7 @@ describe('MdImage (spec #5 §4.2)', () => {
     expect(poll.refreshMr).toHaveBeenCalledTimes(2);
   });
 
-  it('a repo image goes to 5B’s loader in File View with a repo-root-relative path, else shows its alt text', async () => {
+  it('a repo image goes to the loader in File View with a repo-root-relative path, else shows its alt text', async () => {
     const file = { kind: 'file', tabId: 't', commit: 'c0ffee1', path: 'docs/README.md' } as const;
     const { container, unmount } = render(<MdImage ctx={file} src="img/a.png" alt="local" />);
     await waitFor(() => expect(container.querySelector('.md-img-broken')).not.toBeNull());

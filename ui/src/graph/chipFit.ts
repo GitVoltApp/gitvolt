@@ -13,7 +13,7 @@ export const CHIP_SPACING = 4;
 export const CONNECTOR_MIN = 8;
 const ICON = 14;
 const HEAD_CHECK = 16;
-/** The upstream-name warning (UX round 3, M.1: UpstreamWarning.tsx), at the chip's 12 px. */
+/** The upstream-name warning (M.1: UpstreamWarning.tsx), at the chip's 12 px. */
 const WARN = 12;
 
 const widthCache = new Map<string, number>();

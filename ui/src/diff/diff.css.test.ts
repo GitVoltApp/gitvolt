@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'diff.css'), 'utf8');
 const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 
-describe('diff.css bars (K32-K34)', () => {
+describe('diff.css bars', () => {
   it("the file name bar is --file-bar-bg and the File/Diff View bar the app background, not the action bar's", () => {
     expect(rule('.diff-header')).toMatch(/background:\s*var\(--file-bar-bg\)/);
     expect(rule('.diff-toolbar')).toMatch(/background:\s*var\(--app-bg0\)/);
@@ -23,7 +23,7 @@ describe('diff.css file colours', () => {
   });
 });
 
-describe('diff.css motion (J19)', () => {
+describe('diff.css motion', () => {
   it('the diff-toolbar segmented buttons (File/Diff View, Hunk/Inline/Split) fade colour fast and pressed background at the base token', () => {
     expect(rule('.diff-toolbar .segmented > button')).toMatch(/transition:\s*color var\(--motion-fast\), background-color var\(--motion-base\)/);
   });
@@ -38,7 +38,7 @@ describe('diff.css motion (J19)', () => {
   });
 });
 
-describe('diff.css hunk refusal note (2B final I4)', () => {
+describe('diff.css hunk refusal note', () => {
   it('is a banner in normal flow above the editor, never an overlay on its last lines', () => {
     const r = rule('.hunk-refused');
     expect(r).toMatch(/order:\s*-1/);
@@ -49,7 +49,7 @@ describe('diff.css hunk refusal note (2B final I4)', () => {
   });
 });
 
-describe('diff.css: File View Markdown (spec #5 §3.3)', () => {
+describe('diff.css: File View Markdown', () => {
   it('the rendered pane scrolls on its own, reserves its scrollbar (no shift), and uses theme tokens only', () => {
     const pane = rule('.md-rendered');
     expect(pane).toMatch(/overflow:\s*auto/);

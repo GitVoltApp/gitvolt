@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use tracing_subscriber::EnvFilter;
 
 fn main() {
-    // First: when git runs this binary as GIT_ASKPASS (spec §5.4), it only asks the running
+    // First: when git runs this binary as GIT_ASKPASS, it only asks the running
     // harness over its socket and exits, before any runtime or logging starts.
     if let Some(code) = gitvolt_core::askpass::run_client_from_env() {
         std::process::exit(code);

@@ -15,7 +15,7 @@ describe('the parse worker (5C diffs)', () => {
     expect(sent[0]).toMatchObject({ id: 1, last: true });
   });
 
-  it("replies too large when the diff's time budget runs out (R14)", async () => {
+  it("replies too large when the diff's time budget runs out", async () => {
     let t = 1_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => (t += 1000));
     await handle({ data: { id: 2, kind: 'diff', old: 'Run it once.\n', text: 'Run it twice.\n', flavor: 'github' } });

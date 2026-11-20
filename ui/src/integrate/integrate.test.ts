@@ -11,7 +11,7 @@ const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 const ok = (outcome: unknown) => ({ outcome, journal: { undo: null, redo: null, undoBlocked: null, redoBlocked: null, banners: [], paused: null }, staging: { undo: null, redo: null, off: null }, wip: null });
 const preview = (p: Partial<{ ahead: number; conflicts: string[]; stacked: Array<{ name: string; worktree: string | null }>; merged: boolean; lossyMerge: string | null }>) => ({ ahead: 1, behind: 1, merged: false, conflicts: [], stacked: [], updateRefsDefault: true, lossyMerge: null, ...p });
 
-describe('integrate (spec #2 §13.1)', () => {
+describe('integrate', () => {
   beforeEach(() => { vi.restoreAllMocks(); ask.mockReset(); confirm.mockReset(); });
 
   it('offers ff, merge and rebase on another branch, greyed during a rebase', () => {
@@ -74,7 +74,7 @@ describe('integrate (spec #2 §13.1)', () => {
     expect(send.mock.calls[0][4]).toMatchObject({ ffOnly: true });
   });
 
-  it('a rebase with a stack arms the row with the checkbox under it, and sends its answer explicitly (UX round 3)', async () => {
+  it('a rebase with a stack arms the row with the checkbox under it, and sends its answer explicitly', async () => {
     vi.spyOn(api, 'integratePreview').mockResolvedValue(preview({ stacked: [{ name: 'feature/a', worktree: null }, { name: 'feature/b', worktree: '/r-b' }] }));
     const send = vi.spyOn(api, 'integrate').mockResolvedValue(ok({ status: 'done', commits: 3, fastForward: false }) as never);
     confirm.mockResolvedValue({ ok: true, checked: false });
@@ -90,7 +90,7 @@ describe('integrate (spec #2 §13.1)', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it('a rebase that stops without a conflict says why (UX F: the signer failed)', async () => {
+  it('a rebase that stops without a conflict says why (the signer failed)', async () => {
     vi.spyOn(api, 'integratePreview').mockResolvedValue(preview({}));
     const why = 'The rebase stopped: gpg failed to sign the data: gpg: signing failed: No pinentry';
     vi.spyOn(api, 'integrate').mockResolvedValue(ok({ status: 'stopped', kind: 'rebase', files: 0, warning: why }) as never);
@@ -100,7 +100,7 @@ describe('integrate (spec #2 §13.1)', () => {
     expect(useToast.getState()).toMatchObject({ message: why, tone: 'warning' });
   });
 
-  it('a merge without conflicts runs at once; with conflicts the clicked row arms first (board A)', async () => {
+  it('a merge without conflicts runs at once; with conflicts the clicked row arms first', async () => {
     vi.spyOn(api, 'integratePreview').mockResolvedValueOnce(preview({})).mockResolvedValueOnce(preview({ conflicts: ['a.txt', 'b.txt'] })).mockResolvedValueOnce(preview({ ahead: 2, conflicts: ['a.txt'] }));
     vi.spyOn(api, 'integrate').mockResolvedValue(ok({ status: 'done', commits: 2, fastForward: false }) as never);
     await startIntegrate(ctx, 'merge', 'clean', 'main');

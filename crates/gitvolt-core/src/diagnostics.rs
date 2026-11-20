@@ -1,4 +1,4 @@
-//! "Copy diagnostics" (spec §16.2): versions, OS, CEF/Chromium, git and the settings with
+//! "Copy diagnostics": versions, OS, CEF/Chromium, git and the settings with
 //! secrets removed and `$HOME` shown as `~`.
 
 use crate::redact::redact;
@@ -87,7 +87,7 @@ fn macos_description(plist: &str) -> Option<String> {
     Some(format!("macOS {version} ({build}, {})", std::env::consts::ARCH))
 }
 
-/// The session type, noting that the CEF runtime always draws through X11 (spec §4.1).
+/// The session type, noting that the CEF runtime always draws through X11.
 pub fn session_description() -> String {
     match std::env::var("XDG_SESSION_TYPE").as_deref() {
         Ok("wayland") => "wayland (window via XWayland)".into(),

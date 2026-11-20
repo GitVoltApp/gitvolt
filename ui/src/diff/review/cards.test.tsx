@@ -56,7 +56,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe('a thread under its line (spec 2026-10-08 §2)', () => {
+describe('a thread under its line', () => {
   it("is the MR view's thread: Reply and Resolve; no file:line, it's at its line", () => {
     render(<ThreadCard tabId="t" thread={thread(false)} outdated={false} />);
     expect(screen.getByRole('article', { name: 'Thread by Grace Hopper' })).toBeInTheDocument();

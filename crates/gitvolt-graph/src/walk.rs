@@ -54,7 +54,7 @@ pub fn walk<E>(tips: &[Oid], opts: &WalkOptions, load: impl FnMut(Oid) -> Result
 /// The commits `walk` collects, in the order it collects them (newest committer date first),
 /// before the topological fix-up; and whether more were left. A walk with a smaller `limit`
 /// collects a prefix of this order, so a commit at position `i` here is in every window of
-/// `limit > i` (find's outside-window hashes, spec §8.7).
+/// `limit > i` (find's outside-window hashes).
 pub fn walk_by_date<E>(tips: &[Oid], opts: &WalkOptions, mut load: impl FnMut(Oid) -> Result<Option<CommitMeta>, E>) -> Result<(Vec<CommitMeta>, bool), E> {
     let mut heap: BinaryHeap<(i64, Reverse<u64>, Oid)> = BinaryHeap::new();
     let mut loaded: HashMap<Oid, CommitMeta> = HashMap::new();

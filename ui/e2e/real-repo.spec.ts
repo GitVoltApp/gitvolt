@@ -159,9 +159,9 @@ test.describe('real repository (opt-in)', () => {
     const diffs = [...warm].sort((x, y) => x - y);
     console.log(`[real-repo] details ready ms: ${details.join(', ')} (median ${median(details)})`);
     console.log(`[real-repo] diff ready ms: cold ${cold} ms (loads Monaco + Shiki); warm ${diffs.join(', ')} (median ${median(diffs)})`);
-    // Spec §17.3 budgets (50 ms / 100 ms) are for the packaged app; this run is a debug harness
+    // The budgets (50 ms / 100 ms) are for the packaged app; this run is a debug harness
     // and the Vite dev server. The soft checks catch order-of-magnitude regressions; the real
-    // budgets aren't measured yet (1D's bench is minimal, spec §17.3).
+    // budgets aren't measured yet (the bench is minimal).
     expect.soft(median(details)).toBeLessThan(150);
     expect.soft(median(diffs)).toBeLessThan(400);
 

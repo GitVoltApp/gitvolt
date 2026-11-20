@@ -16,7 +16,7 @@ import './review.css';
 const sending = (): boolean => document.querySelector('.review-submit form[aria-busy="true"]') !== null;
 
 /**
- * Submit review… (spec 2026-10-08 §4): the MR/PR view's review composer, under the top bar's
+ * Submit review…: the MR/PR view's review composer, under the top bar's
  * chip (a real choice: Comment, Approve or Request changes). Above it, the pending comments on no
  * line of the diff (no position, an older head's line that's gone, a reply made on the web): the
  * review sends them too, so they're listed here, to read, edit or delete. Esc, Cancel or a press

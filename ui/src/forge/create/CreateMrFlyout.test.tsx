@@ -64,7 +64,7 @@ beforeEach(() => {
 });
 
 const closed = vi.fn();
-/** What 4B's host does: mounts the flyout with its props and unmounts it when `close` is called. */
+/** What the flyout's host does: mounts the flyout with its props and unmounts it when `close` is called. */
 function Host() {
   const [open, setOpen] = useState(true);
   return open ? <CreateMrFlyout tabId="t1" props={{ branch: 'feature/login' }} close={() => { closed(); setOpen(false); }} /> : null;
@@ -88,7 +88,7 @@ function addTo(noun: string, label: string) {
   return screen.getByLabelText(label);
 }
 
-describe('the Create flyout (spec #4 §4 "4C")', () => {
+describe('the Create flyout', () => {
   it('prefills from the first commit and the default template, and saves nothing until edited', async () => {
     await show();
     expect(api.forgeCreateContext).toHaveBeenCalledWith(7, 'origin', 'origin', 'feature/login', 'main');
@@ -346,7 +346,6 @@ describe('the Create flyout (spec #4 §4 "4C")', () => {
     await waitFor(() => expect(api.forgeCreateMr).toHaveBeenCalledWith(7, 'origin', expect.objectContaining({ reviewers: [5], assignees: [9] })));
   });
 
-  // --- MR round 2 ---
   it('a project that allows one reviewer: once picked, + is Replace, and the next pick replaces them', async () => {
     const grace = { id: 5, username: 'grace', name: 'Grace Hopper', avatarUrl: null, webUrl: '', email: null };
     const ada = { id: 9, username: 'ada', name: 'Ada Lovelace', avatarUrl: null, webUrl: '', email: null };
@@ -368,7 +367,6 @@ describe('the Create flyout (spec #4 §4 "4C")', () => {
     fireEvent.click(createButton());
     await waitFor(() => expect(api.forgeCreateMr).toHaveBeenCalledWith(7, 'origin', expect.objectContaining({ reviewers: [9] })));
   });
-  // --- end MR round 2 ---
 
   it('× on a chip removes it from the draft', async () => {
     writeMrDraft('/r/shop', 'feature/login', {

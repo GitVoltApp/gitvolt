@@ -12,7 +12,7 @@ import { loadedHost } from './TextDiff';
 import { loadMonacoHost } from './monaco/load';
 import { wipSideOf } from './wipHunks';
 
-/** Hunk and line buttons while the working copy has unsaved edits (spec #2 §7.5). */
+/** Hunk and line buttons while the working copy has unsaved edits. */
 export const SAVE_FIRST = 'Save first';
 
 export interface WorkingCopy {
@@ -43,7 +43,7 @@ export const useIsDirty = (tabId: string) => useWorkingCopy((s) => !!s.copies[ta
 const conflicted = (t: DiffTarget) => t.status === 'U' || t.status === 'X';
 
 /**
- * UX round 2 G.2: File View of a WIP file, unstaged or staged, shows (and edits) its
+ * File View of a WIP file, unstaged or staged, shows (and edits) its
  * working-tree file. A staged file's target loads the working tree as its new side, its staged
  * version as the old one: File View shows that one, read-only, if the file is gone from the
  * working tree. Every other target (a Diff View, a commit's file, a deletion, a conflict) is
@@ -55,7 +55,7 @@ export function worktreeFileTarget(t: DiffTarget): DiffTarget {
   return side ? { ...t, old: t.new, new: { kind: 'worktree', worktree: side.worktree } } : t;
 }
 
-/** §7.5: a WIP diff (or File View of a WIP file, `worktreeFileTarget`) whose new side is the
+/** A WIP diff (or File View of a WIP file, `worktreeFileTarget`) whose new side is the
  * working-tree file, as loaded text: binary, the large-file prompt, image diffs, deletions and
  * conflicted files stay read-only, and so does a file shown in its clean form (`filtered`: a
  * clean filter or `ident` made that text, which isn't the file's). */
@@ -94,7 +94,7 @@ export const markDirty = (tabId: string) => patch(tabId, { dirty: true });
 export const forgetCopy = (tabId: string) => useWorkingCopy.setState((s) => ({ copies: { ...s.copies, [tabId]: undefined } }));
 
 /**
- * Save (Ctrl+S, §7.5): `writeWorktreeFile` behind the loaded base. Then the fresh lists apply, the base
+ * Save (Ctrl+S): `writeWorktreeFile` behind the loaded base. Then the fresh lists apply, the base
  * becomes the written bytes' hash, and the file reloads with its cursor and scroll kept.
  * A `Stale` save keeps the text and asks [Reload] [Overwrite]; any other failure toasts.
  */
@@ -102,7 +102,7 @@ export async function saveWorkingCopy(tabId: string): Promise<'saved' | 'kept' |
   const wc = useWorkingCopy.getState().copies[tabId];
   if (!wc) return 'failed';
   // Nothing unsaved (Ctrl+S on a clean copy): no write, so no new inode, mtime or Activity row
-  // to wake the user's watchers (2B final I3). The Save button is disabled for the same reason.
+  // to wake the user's watchers. The Save button is disabled for the same reason.
   if (!wc.dirty) return 'saved';
   const host = await loadMonacoHost();
   const text = editorText(host, wc);
@@ -149,7 +149,7 @@ export async function saveWorkingCopy(tabId: string): Promise<'saved' | 'kept' |
   return send(wc.base);
 }
 
-// --- 2D T20: other unsaved work (the merge tool's) joins the same three guards ---
+// --- other unsaved work (the merge tool's) joins the same three guards ---
 /** Unsaved work outside the working copy: what the guards ask about, and how to settle it. */
 export interface UnsavedWork {
   path: string;
@@ -193,20 +193,17 @@ async function askUnsaved(w: UnsavedWork, canSave: boolean): Promise<'saved' | '
   }
   return 'kept';
 }
-// --- end 2D T20 ---
 
-/** §7.5: leaving the file with unsaved edits (Esc, ↑/↓, ×, another row) asks [Save]
+/** Leaving the file with unsaved edits (Esc, ↑/↓, ×, another row) asks [Save]
  * [Discard edits] [Cancel]. Returns the guard's removal. */
 export function installLeaveGuard(tabId: string, store: RepoViewStore): () => void {
   store.getState().setLeaveGuard((go) => {
     const wc = useWorkingCopy.getState().copies[tabId];
     if (!wc?.dirty) {
-      // --- 2D T20 ---
       const other = firstUnsaved((s) => s.shown(tabId));
       if (!other) return false;
       void askUnsaved(other, true).then((pick) => { if (pick === 'saved' || pick === 'discarded') go(); });
       return true;
-      // --- end 2D T20 ---
     }
     void chooseAction({ title: `Save your changes to ${wc.path}?`, choices: [{ id: 'save', label: 'Save' }, { id: 'discard', label: 'Discard edits', danger: true }] }).then(async (pick) => {
       if (pick === 'save' && (await saveWorkingCopy(tabId)) === 'saved') go();
@@ -225,12 +222,10 @@ export function installLeaveGuard(tabId: string, store: RepoViewStore): () => vo
 export function guardTabClose(ids: string[], go: () => void): void {
   const dirty = ids.find((id) => useWorkingCopy.getState().copies[id]?.dirty);
   if (!dirty) {
-    // --- 2D T20 ---
     const other = ids.map((id) => firstUnsaved((s) => s.any(id))).find((w) => w !== null);
     if (!other) return go();
     void askUnsaved(other, true).then((pick) => { if (pick === 'saved' || pick === 'discarded') guardTabClose(ids, go); });
     return;
-    // --- end 2D T20 ---
   }
   const wc = useWorkingCopy.getState().copies[dirty]!;
   // Save only when it can succeed: the editor is showing this tab's file right now.
@@ -243,7 +238,7 @@ export function guardTabClose(ids: string[], go: () => void): void {
   });
 }
 
-const anyDirty = () => Object.values(useWorkingCopy.getState().copies).some((c) => c?.dirty) || [...unsavedSources].some((s) => s.anyAtAll()); // 2D T20: + other unsaved work
+const anyDirty = () => Object.values(useWorkingCopy.getState().copies).some((c) => c?.dirty) || [...unsavedSources].some((s) => s.anyAtAll()); // + other unsaved work
 /** Every unsaved piece of work, by what identifies it (a tab's file; another source's own keys):
  * to tell work that came later from work the user already agreed to discard. */
 export function unsavedKeys(): Set<string> {

@@ -2,6 +2,6 @@
 
 /**
  * A force push's lease: the remote-tracking oid the user saw (`None`: it must not exist). Never
- * carried forward by the queue (§3.6).
+ * carried forward by the queue.
  */
 export type Lease = { oid: string | null, };

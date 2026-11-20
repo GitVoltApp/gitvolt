@@ -1,7 +1,7 @@
 import type { DiffLine } from '../../diff/monaco/host';
 import { shownItem, toMonacoSide, type PlacedItem, type Placement } from './model';
 
-/** A file's badge in the diff panel's file list (spec 2026-10-08 §5): its threads and drafts, how
+/** A file's badge in the diff panel's file list: its threads and drafts, how
  * many threads are unresolved, and where its clicks open the file (`stops`, in turn; `sig`: what
  * they are, so a change starts the turn over). */
 export interface FileBadge { count: number; threads: number; drafts: number; unresolved: number; stops: Placement[]; sig: string }

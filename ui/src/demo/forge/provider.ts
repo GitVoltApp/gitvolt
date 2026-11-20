@@ -577,7 +577,7 @@ export class DemoGitLab {
   }
   // --- end merging ---
 
-  // --- creating (gitlab.rs, 4C T3) ---
+  // --- creating (gitlab.rs) ---
   /** `create_mr`: GitLab creates in the source project; a fork's MR names its target. `headSha`: the
    * source branch's tip, when the caller found it on the origin. */
   createMr(p: ForgeProject, req: CreateMr, headSha: string | null = null): CreateOutcome {

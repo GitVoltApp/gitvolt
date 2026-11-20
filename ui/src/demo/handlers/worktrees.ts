@@ -1,4 +1,4 @@
-// Worktrees (write/worktree.rs, spec #2 §11.1): add and remove, neither journaled, and the folder
+// Worktrees (write/worktree.rs): add and remove, neither journaled, and the folder
 // the create dialog proposes.
 import type { WorktreeAdded } from '../../api/gen/WorktreeAdded';
 import type { WorktreeBranch } from '../../api/gen/WorktreeBranch';

@@ -30,12 +30,12 @@ export interface TabRuntime {
   lastFetchAt: number;
   /** Status-bar warning after a background fetch was skipped for credentials. */
   fetchSkipped: string | null;
-  /** UX round 4, T.1: remotes whose last fetch failed (by name), with a short reason and when;
+  /** Remotes whose last fetch failed (by name), with a short reason and when;
    * in memory only, cleared by the next successful fetch. */
   remoteFetchErrors?: Record<string, { reason: string; at: number }>;
   /** Commit window override (find: a hash deeper than the default window); null = setting. */
   limit: number | null;
-  /** The tab's active worktree (spec #2 §11.2), canonical as the backend spells it; null until
+  /** The tab's active worktree, canonical as the backend spells it; null until
    * the repo is open. `repo` is the repository's handle, shared by every tab on it. */
   worktree: string | null;
 }
@@ -48,7 +48,7 @@ export const worktreeOf = (rt: Pick<TabRuntime, 'repo' | 'worktree'> | undefined
 interface RuntimeState {
   tabs: Record<string, TabRuntime>;
   patch(tabId: string, patch: Partial<TabRuntime>): void;
-  /** Forgets a closed tab: its runtime and its 1B view state. */
+  /** Forgets a closed tab: its runtime and its view state. */
   drop(tabId: string): void;
   open(tabId: string, path: string): Promise<void>;
   /** `graphOnly` skips the sidebar and repo-info reads (a worktree/index-only change). */
@@ -95,8 +95,8 @@ async function load(tabId: string, rescan: boolean, side: boolean): Promise<void
   };
   try {
     const [graph, sidebar, info] = await Promise.all([
-      // `rescan` only when asked: a watched repo's status cache is kept fresh (W2-B). `active`:
-      // the tab's worktree is laid out as the open one (spec #2 §11.2).
+      // `rescan` only when asked: a watched repo's status cache is kept fresh. `active`:
+      // the tab's worktree is laid out as the open one.
       api.graph(repo.id, rt.limit ?? settings.commitLimit, { ...(rescan ? { pin, rescan } : { pin }), ...(worktree ? { active: worktree } : {}), ...(view ? { view } : {}) }),
       // A worktree/index-only change can't alter refs, stashes or config: keep what's shown.
       side ? sideRead('sidebar', api.sidebar(repo.id)) : Promise.resolve(undefined),
@@ -109,14 +109,14 @@ async function load(tabId: string, rescan: boolean, side: boolean): Promise<void
       return;
     }
     feedTabView(tabId, repo, graph);
-    // §8.2: drafts of worktrees that no longer exist go when the worktree list loads.
+    // Drafts of worktrees that no longer exist go when the worktree list loads.
     if (sidebar?.worktrees.length) pruneWipDrafts(repo.path, sidebar.worktrees.map((w) => w.path));
     // The graph was laid out for `worktree` by the backend; the sidebar is the handle's (read
     // once for every tab), so its current branch and worktree are marked for this tab here.
     useRuntime.getState().patch(tabId, { graph, status: 'ready', error: null, ...(sidebar && { sidebar: withActiveSidebar(sidebar, worktree ?? repo.path) }), ...(info && { info }) });
   } catch (e) {
     if (!current()) return;
-    // Review Focus 5: the active worktree is gone (removed elsewhere, or by this app): the tab
+    // The active worktree is gone (removed elsewhere, or by this app): the tab
     // falls back to the repository's main one, in the runtime and in the saved tab.
     if (worktree && worktree !== repo.path && errorMessage(e).endsWith(GONE)) {
       useRuntime.getState().patch(tabId, { worktree: repo.path });
@@ -129,7 +129,7 @@ async function load(tabId: string, rescan: boolean, side: boolean): Promise<void
 }
 
 /**
- * Before 2C a linked worktree's tab was its own repository: its per-repo settings (pin, columns,
+ * Before worktrees had their own tabs, a linked worktree's tab was its own repository: its per-repo settings (pin, columns,
  * sidebar sort and sections, editor) and its WIP drafts were keyed by the worktree's path. They
  * are the repository's now, keyed by `repoPath`. A linked entry moves across when the repository
  * has none yet, and its unsent drafts are re-keyed, so nothing the user set or typed is lost.
@@ -152,10 +152,10 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
     releaseCompareRef(tabId); // the MR/PR head its Compare fetched
     dropOlder(tabId);
     dropTabView(tabId);
-    // Spec #3: a closed tab's center view (File History, the rebase editor) goes with it.
+    // A closed tab's center view (File History, the rebase editor) goes with it.
     closeCenterView(tabId);
-    closeFlyout(tabId); // 4B T6: and its flyout, with the focus it would return to
-    dropForge(tabId); // 4B T9: and its forge state
+    closeFlyout(tabId); // And its flyout, with the focus it would return to
+    dropForge(tabId); // And its forge state
     // And its repository: the core drops a handle no tab holds (a lost release only keeps it).
     api.releaseRepo(tabId).catch(() => {});
     if (!(tabId in get().tabs)) return;
@@ -179,8 +179,8 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
         const app = useAppState.getState();
         // Closed meanwhile: nothing to show it in, and it wasn't really opened (no Recent entry).
         if (!tabOpen(tabId)) return get().drop(tabId);
-        // A tab is `(repository, worktree)` (spec #2 §11.2): it keeps its saved worktree, else
-        // the one opened (a tab saved before 2C on a linked worktree migrates here). Recent
+        // A tab is `(repository, worktree)`: it keeps its saved worktree, else
+        // the one opened (a tab saved before worktrees on a linked worktree migrates here). Recent
         // remembers the worktree the tab shows, by its folder name as before.
         const saved = app.profile.tabs.find((t) => t.id === tabId)?.worktree ?? null;
         const worktree = saved ?? repo.worktree;

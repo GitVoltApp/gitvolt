@@ -4,7 +4,7 @@ import type { SkipReason } from "./SkipReason";
 
 export type FetchOutcome = { "status": "done", changed: boolean, 
 /**
- * Its `remote:` lines, counted for the toast (spec #2 §12.4).
+ * Its `remote:` lines, counted for the toast.
  */
 server: RemoteSummary, 
 /**

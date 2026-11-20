@@ -4,7 +4,7 @@ import { armedOverlay, confirmArmed } from './armed';
 import { fixtures, openUrl } from './fixtures';
 import { expect, test } from './test';
 
-// Themes (spec §12.1, plan 1D Task 2): applying one, switching from the palette and Settings, lane
+// Themes: applying one, switching from the palette and Settings, lane
 // overrides; the editor follows the app theme; the screenshot matrix of every theme (Chromium).
 test.use({ timezoneId: 'UTC' });
 
@@ -125,7 +125,7 @@ test('themes: Default Dark by default; a lane edit makes a custom theme; ?theme=
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'solarized-light');
     await expect(page.locator('body')).toHaveCSS('background-color', rgb(THEMES['solarized-light'].colors['app-bg0']));
     await expect.poll(() => canvasHash(page)).not.toBe(before);
-    // Saved (the backend's settings), and mirrored for the first paint (R3).
+    // Saved (the backend's settings), and mirrored for the first paint.
     await expect.poll(() => page.evaluate(() => localStorage.getItem('gitvolt.theme.v1'))).toBe(JSON.stringify({ id: 'solarized-light', kind: 'light', bg: THEMES['solarized-light'].colors['app-bg0'] }));
     await page.reload();
     await expect(grid(page)).toBeVisible();
@@ -170,8 +170,8 @@ async function openDiff(page: Page) {
   await expect(diffRegion(page).locator('.editor.modified .line-insert').first()).toBeVisible({ timeout: 15_000 });
 }
 // One page, one editor: the font steps use the diff the theme step opened.
-test('the open editor: a theme switch repaints it without re-creating it (R6); Settings > Diffs and editors resizes it live, clamped to 8-32, and sets its font and tab width', async ({ page }) => {
-  await test.step("switching theme repaints the open editor in the new theme's background, without re-creating it (R6)", async () => {
+test('the open editor: a theme switch repaints it without re-creating it; Settings > Diffs and editors resizes it live, clamped to 8-32, and sets its font and tab width', async ({ page }) => {
+  await test.step("switching theme repaints the open editor in the new theme's background, without re-creating it", async () => {
     await page.goto(openUrl(fixtures.details));
     await openDiff(page);
     const host = diffRegion(page).locator('.monaco-host').first();
@@ -260,7 +260,7 @@ test('the open editor: a theme switch repaints it without re-creating it (R6); S
 
 test.describe('theme screenshots', () => {
   // Pixel baselines: opt-in (`just e2e-shots`), recorded on one machine; fonts and antialiasing
-  // elsewhere would fail the gate (W2-A review).
+  // elsewhere would fail the gate.
   test.skip(!process.env.GITVOLT_E2E_SHOTS, 'pixel baselines run with GITVOLT_E2E_SHOTS=1 (just e2e-shots)');
   test.skip(({ browserName }) => browserName !== 'chromium', 'screenshot baselines are Chromium-only');
   for (const id of THEME_IDS) {

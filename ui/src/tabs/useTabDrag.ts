@@ -349,7 +349,7 @@ const transformSlides = (el: Element): Animation[] =>
   typeof el.getAnimations === 'function' ? el.getAnimations().filter((a) => (a as CSSTransition).transitionProperty === 'transform') : [];
 
 /**
- * Pointer-driven reordering of the tab strip (spec §6.2, no DnD library): a tab, or a group by its
+ * Pointer-driven reordering of the tab strip (no DnD library): a tab, or a group by its
  * chip. Past a 4 px threshold the pressed unit follows the pointer and the other items slide to
  * show where a release puts it. A release slides it into that slot (onto a tab's middle: beside
  * it, making a group) and then commits the move, a new group's chip growing in; Esc slides

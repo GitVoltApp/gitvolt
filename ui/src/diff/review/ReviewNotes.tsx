@@ -7,7 +7,7 @@ import { staleNote, updatingNote } from './ReviewMode';
 import './review.css';
 
 /**
- * Review mode's notes over a diff (spec 2026-10-08 §2, §7), in Source (`ActiveReview`) and in
+ * Review mode's notes over a diff, in Source (`ActiveReview`) and in
  * Rendered (`RenderedReviewNote`): the Compare went stale, the forge is still catching up with a
  * push, it sent no diff for the file, or the MR's diff couldn't be read.
  */

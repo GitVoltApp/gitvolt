@@ -3,7 +3,7 @@ import type { CommitMessage } from './gen/CommitMessage';
 /**
  * Full commit messages, loaded on demand (`commitMessage` request) and kept in a small LRU keyed
  * by commit id. The graph payload carries only each row's summary and body's first line; the
- * full-message tooltip (§8.4) and, from plan 1B, the details panel read full messages through
+ * full-message tooltip and the details panel read full messages through
  * this cache. Concurrent requests for the same id share one load; failures aren't cached.
  */
 export interface CommitMessageCache {

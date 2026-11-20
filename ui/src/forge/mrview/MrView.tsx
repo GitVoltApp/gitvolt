@@ -8,15 +8,11 @@ import type { ForgeMrDetail } from '../../api/gen/ForgeMrDetail';
 import { FlyoutFrame } from '../../ui/flyout/FlyoutFrame';
 import type { FlyoutProps } from '../../ui/flyout/flyout';
 import { HoverTooltip } from '../../ui/HoverTooltip';
-// --- 5B T3 ---
 import { placeKey } from '../../nav/history';
 import { useScrollPlace } from '../../nav/scroll';
-// --- end 5B T3 ---
-// --- 5A T10 ---
 import { signedAttachments } from '../../markdown/attachments';
 import { Markdown } from '../../markdown/lazy';
 import { MR_BODY_MAX_BYTES } from '../../markdown/limits';
-// --- end 5A T10 ---
 import { ForgeStaleNote } from '../ForgeStale';
 import { EmojiText } from '../emoji';
 import { mrName, mrRef } from '../labels';
@@ -28,24 +24,22 @@ import { MrHeader, openInBrowser } from './MrHeader';
 import { CheckoutButton } from './CheckoutButton';
 import { MergeBox } from './MergeBox';
 import { Thread } from './Thread';
-// --- 4B T13 ---
 import { MrForms, ReviewButtons, StatusActions, useMrActions } from './MrActions';
 import { ReplyBox } from './ReplyBox';
 import { StackPanel } from '../stack/StackPanel';
-// --- end 4B T13 ---
 import { resumeReview } from '../review/session';
 import './mrview.css';
 
 /**
- * The MR/PR view (spec #4 §4 "4B"), in the tab's left flyout: header, description, discussion;
- * 4B T13 adds reply, approve / request changes, edit and draft ⇄ ready, 4B T14 merge and check
+ * The MR/PR view, in the tab's left flyout: header, description, discussion;
+ * it also does reply, approve / request changes, edit, draft ⇄ ready, merge and check
  * out. It shows what's loaded (the list's or a badge's MR) at once, loads the rest, and keeps it
  * fresh through the poller (`openMr`).
  */
 const REFRESH_GRACE_MS = 120;
 
 /** The header (Check out, Edit and ⋯ on the status line; Approve and Review… in the APPROVALS
- * box), then, in Edit, the form alone; otherwise the stack (4D), the Review form, the merge box,
+ * box), then, in Edit, the form alone; otherwise the stack, the Review form, the merge box,
  * the description and the discussion. Edit hides the rest (`hidden`, still mounted: the loaded
  * threads and commits stay, and leaving Edit returns to the same scroll). */
 function MrBody({ tabId, kind, mr, detail, discussions, description, context }: { tabId: string; kind: ForgeKind; mr: ForgeMr; detail: ForgeMrDetail | null; discussions: ForgeDiscussion[] | null; description: string; context: { kind: 'forge'; tabId: string } }) {
@@ -72,29 +66,23 @@ function MrBody({ tabId, kind, mr, detail, discussions, description, context }: 
         review={<ReviewButtons kind={kind} mr={mr} actions={actions} />}
         editLabels={actions.live ? () => actions.setMode('edit', 'labels') : undefined}
       />
-      {/* --- 4D: the stack --- */}
       <div className="mr-rest" hidden={editing}><StackPanel tabId={tabId} mr={mr} /></div>
-      {/* --- end 4D --- */}
-      {/* --- 4B T13: the actions' forms --- */}
+      {/* --- the actions' forms --- */}
       <MrForms tabId={tabId} kind={kind} mr={mr} detail={detail} actions={actions} />
-      {/* --- end 4B T13 --- */}
       <div className="mr-rest" hidden={editing}>
-        {/* --- 4B T14: merge and check out --- */}
+        {/* --- merge and check out --- */}
         <MergeBox key={mr.number} tabId={tabId} kind={kind} mr={mr} detail={detail} />
-        {/* --- end 4B T14 --- */}
         <section className="mr-description" aria-label="Description">
-          {/* --- 5A T10: rendered Markdown (spec #5 §1), plain over 1 MB --- */}
+          {/* --- rendered Markdown, plain over 1 MB --- */}
           {detail
             ? (detail.description.trim()
               ? <Markdown text={description} flavor={kind} context={context} maxBytes={MR_BODY_MAX_BYTES} />
               : <span className="mr-dim">No description</span>)
             : <span className="mr-dim">Loading…</span>}
-          {/* --- end 5A T10 --- */}
         </section>
         <Thread tabId={tabId} kind={kind} mr={mr} discussions={discussions} reviews={detail?.mr.review.reviews} />
-        {/* --- 4B T13: new comment --- */}
+        {/* --- new comment --- */}
         <div className="mr-new-comment"><ReplyBox tabId={tabId} number={mr.number} discussion={null} /></div>
-        {/* --- end 4B T13 --- */}
       </div>
     </div>
   );
@@ -124,10 +112,10 @@ export function MrView({ tabId, props, close }: FlyoutProps<MrViewArgs>) {
   useLend('mr.openInBrowser', tabId, mr ? () => openInBrowser(mr.webUrl) : null);
   useLend('mr.refresh', tabId, () => { void refreshMrNow(tabId, number); });
   const error = detailErrors[number];
-  // --- 5A final review: the description's text and context keep their identity across renders ---
+  // --- the description's text and context keep their identity across renders ---
   const description = useMemo(() => (detail ? signedAttachments(detail.description, detail.bodyHtml ?? null) : ''), [detail]);
   const context = useMemo(() => ({ kind: 'forge', tabId }) as const, [tabId]);
-  // --- 5B T3: Back/Forward come back to where this view was scrolled (spec #5 §3.4) ---
+  // --- Back/Forward come back to where this view was scrolled ---
   const probe = useRef<HTMLSpanElement>(null);
   useScrollPlace({
     tabId,
@@ -138,7 +126,6 @@ export function MrView({ tabId, props, close }: FlyoutProps<MrViewArgs>) {
     ready: !!detail && discussions[number] !== undefined,
     view: null,
   });
-  // --- end 5B T3 ---
   return (
     <FlyoutFrame
       label={label}

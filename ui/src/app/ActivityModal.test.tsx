@@ -21,7 +21,7 @@ const finish = (op: number, label: string, interactive: boolean, outcome: 'ok' |
   act(() => useOps.getState().apply({ type: 'opFinished', op, kind: 'fetch', repo: 1, outcome, message, command }));
 };
 
-describe('ActivityModal (K101)', () => {
+describe('ActivityModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useOps.setState({ ops: {}, prompts: [], errors: [], unread: 0, activity: [] });
@@ -88,7 +88,7 @@ describe('ActivityModal (K101)', () => {
     expect(copyText.mock.calls[0][0].match(/background/g)).toHaveLength(3);
   });
 
-  it('R9: one modal, named Activity, with Activity | Commands | Actions tabs', async () => {
+  it('one modal, named Activity, with Activity | Commands | Actions tabs', async () => {
     render(<ActivityModal />);
     act(() => openDebug('commands', 5));
     const dialog = screen.getByRole('dialog', { name: 'Activity' });

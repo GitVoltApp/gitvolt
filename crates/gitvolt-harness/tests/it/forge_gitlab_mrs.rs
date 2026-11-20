@@ -1,4 +1,4 @@
-//! The GitLab provider's merge requests against the fake forge (spec #4 §7): no real forge, ever.
+//! The GitLab provider's merge requests against the fake forge: no real forge, ever.
 
 use gitvolt_core::error::GbErrorKind;
 use gitvolt_core::forge::*;
@@ -212,7 +212,6 @@ async fn a_branch_with_a_hash_is_encoded() {
     assert!(f.requests().iter().any(|r| r.query.contains("source_branch=fix%231")));
 }
 
-// --- 4B T3 ---
 fn seeded(f: &FakeForge, iid: u64) -> gitlab_mrs::FakeMergeRequest {
     f.current_seed().gitlab.merge_requests.into_iter().find(|m| m.iid == iid).unwrap()
 }
@@ -343,9 +342,7 @@ async fn draft_and_ready_round_trip_through_the_title() {
     assert_eq!((ready.state, ready.title.as_str()), (MrState::Open, "Dev work"));
     assert_eq!(seeded(&f, 12).title, "Dev work");
 }
-// --- end 4B T3 ---
 
-// --- 4B final fix ---
 #[tokio::test(flavor = "multi_thread")]
 async fn a_detail_whose_optional_approvals_alone_change_is_not_modified_no_more() {
     let f = FakeForge::start().await;
@@ -372,7 +369,6 @@ async fn the_light_list_reads_no_pipelines() {
     assert!(!p.open_mrs_light(&g, MrFilter::All).await.unwrap().value.is_empty());
     assert!(!f.requests().iter().any(|r| r.path.ends_with("/pipelines")));
 }
-// --- end 4B final fix ---
 
 #[tokio::test(flavor = "multi_thread")]
 async fn label_colours_come_with_the_list_and_for_a_detail_from_the_projects_labels_once() {
@@ -502,7 +498,6 @@ async fn a_merge_leaves_the_messages_to_gitlab() {
 }
 // --- end auto-merge ---
 
-// --- MR round 2 ---
 fn single_people(f: &FakeForge, single: bool, old: bool) {
     let mut seed = f.current_seed();
     seed.gitlab.projects.iter_mut().find(|p| p.path == "group/project").unwrap().single_people = single;
@@ -592,7 +587,6 @@ async fn notifications_and_the_base_come_with_the_detail() {
     assert!(!p.set_subscribed(&g, 12, false).await.unwrap());
     assert!(seeded(&f, 12).subscribers.is_empty());
 }
-// --- end MR round 2 ---
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_refresh_asks_the_forge_again_within_the_fresh_window() {

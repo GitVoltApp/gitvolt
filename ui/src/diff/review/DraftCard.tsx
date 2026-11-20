@@ -17,7 +17,7 @@ import { ReviewNewText } from './newText';
 import './review.css';
 
 /**
- * One of the user's pending comments under its line (spec 2026-10-08 §2): a Pending mark (and
+ * One of the user's pending comments under its line: a Pending mark (and
  * Outdated, at an older head), its text, Edit (the Markdown composer; Mod+Enter saves, Esc leaves)
  * and Delete, which arms in place first. A refused write keeps what's there and says why. The
  * edit closing hands the keyboard to Edit; the card deleted, to `onGone` (the diff).

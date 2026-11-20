@@ -40,7 +40,7 @@ type Press = { button: number; ctrlKey: boolean; metaKey: boolean; shiftKey: boo
  * A local branch chip dragged onto another. Pointer events, as the editor's chip drag
  * (`startChipDrag`): CEF never delivers native drag events inside the page. Unlike it, the press
  * is left alone, so it still selects the row, and a press with a modifier stays a selection
- * gesture (K27). Past DRAG_THRESHOLD it's a drag, and a release over another local branch chip
+ * gesture. Past DRAG_THRESHOLD it's a drag, and a release over another local branch chip
  * drops `from` on it. Esc, a cancel or the window losing focus (a release after switching apps
  * never comes here) end it with nothing dropped. Held near the scroller's top or bottom edge, it
  * scrolls the graph, so a branch far away can be reached.

@@ -15,10 +15,10 @@ const TRANSFERS: ReadonlySet<OpKind> = new Set<OpKind>(['fetch', 'clone']);
  * nothing to reload. A write ends with `repoChanged` (`refs` among its kinds when a ref moved),
  * then `refsUpdated` for the same moves, then `opFinished`: one load covers all three.
  * - `repoChanged`: the graph; the sidebar and repo info too when refs, HEAD, stashes, config or
- *   submodules changed (a worktree/index change can't alter them, 1C review M5).
+ *   submodules changed (a worktree/index change can't alter them).
  * - `refsUpdated` right after a write's `repoChanged` with `refs`: that one's load already reads
  *   the moved refs. Anything else for the repo in between, and it reloads as usual.
- * - `refsUpdated` during a rebase's steps: the graph alone (2D T18); the sidebar and repo info
+ * - `refsUpdated` during a rebase's steps: the graph alone; the sidebar and repo info
  *   are owed until a full load starts.
  * - `opFinished` of a rebase or pull: the full load, only if one is still owed.
  */

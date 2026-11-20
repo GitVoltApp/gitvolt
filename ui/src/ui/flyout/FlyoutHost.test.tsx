@@ -48,7 +48,7 @@ afterEach(() => {
   closeCenterView('t');
 });
 
-describe('FlyoutHost (spec #4 §5)', () => {
+describe('FlyoutHost', () => {
   it('shows the open flyout with its props, focuses its heading, and × closes it back to the opener', () => {
     show();
     const opener = screen.getByRole('button', { name: 'Opener' });

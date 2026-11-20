@@ -1,5 +1,5 @@
-//! Add a remote (spec #4 §4 "4A": the Remote panel's +, a fork in a click). `git remote add`
-//! writes only the repository's config, and isn't journaled (spec #2 §5.3 "Not journaled"):
+//! Add a remote (the Remote panel's +, a fork in a click). `git remote add`
+//! writes only the repository's config, and isn't journaled:
 //! Undo would be a Remove remote. The fetch that follows is its own request (`fetch` with
 //! `remote`), so a failed fetch leaves the remote added and says why.
 //!
@@ -9,7 +9,7 @@
 //! tracking it, `remote.pushDefault`: the entry's `config`, in the file's order) and its
 //! symbolic refs (`RemovedRemote`). Undo puts them back; redo removes them again.
 //!
-//! Use SSH instead (a credential prompt's offer, spec §5.4) and Switch back to HTTPS:
+//! Use SSH instead (a credential prompt's offer) and Switch back to HTTPS:
 //! `git remote set-url`. Config only, as Add remote: not journaled; Switch back is the way back.
 
 use crate::error::{gix_err, GbError, GbErrorKind};

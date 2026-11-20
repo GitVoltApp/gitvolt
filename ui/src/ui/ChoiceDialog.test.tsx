@@ -4,12 +4,12 @@ import { ArmLayer } from './arm/ArmLayer';
 import { armClock, press, pressEnter } from './arm/armTesting';
 import { askChoice, ChoiceDialog } from './ChoiceDialog';
 
-describe('askChoice (spec #2 §12.2, §13.1)', () => {
+describe('askChoice', () => {
   let clock: ReturnType<typeof armClock>;
   beforeEach(() => { clock = armClock(); });
   afterEach(() => clock.restore());
 
-  it('compact (UX round 3): one row, a quiet Cancel left-most, the risky choice, the safe one right-most; Details is a link in the body', async () => {
+  it('compact: one row, a quiet Cancel left-most, the risky choice, the safe one right-most; Details is a link in the body', async () => {
     render(<ChoiceDialog />);
     const p = askChoice({ title: "origin/main has 1 commit main doesn't have", body: 'Pull them in first, or overwrite them.', choices: [{ id: 'pull', label: 'Pull', primary: true }, { id: 'force', label: 'Force push…', danger: true }, { id: 'details', label: 'Details', quiet: true }] });
     const dialog = await screen.findByRole('alertdialog');
@@ -45,7 +45,7 @@ describe('askChoice (spec #2 §12.2, §13.1)', () => {
     await expect(p).resolves.toEqual({ choice: null });
   });
 
-  it('a risky choice arms in place before it goes (board G)', async () => {
+  it('a risky choice arms in place before it goes', async () => {
     render(<><ChoiceDialog /><ArmLayer /></>);
     const rects = vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(function (this: HTMLElement) {
       return (this.isConnected ? [new DOMRect(0, 0, 10, 10)] : []) as unknown as DOMRectList;

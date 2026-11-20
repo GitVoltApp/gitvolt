@@ -13,7 +13,7 @@ const ok = { outcome: null, journal: { undo: null, redo: null, undoBlocked: null
 const discardEdits = { kind: 'Conflict', message: 'Discard your edits to a.txt?', commandId: null, stderr: null, detail: { kind: 'discardEdits', path: 'a.txt' } };
 const markersRemain = { kind: 'Conflict', message: 'a.txt still has conflict markers', commandId: null, stderr: null, detail: { kind: 'markersRemain', path: 'a.txt' } };
 
-describe('resolving conflicted files (spec #2 §13.3)', () => {
+describe('resolving conflicted files', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.mocked(confirmAction).mockClear();

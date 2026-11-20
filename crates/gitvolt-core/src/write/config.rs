@@ -1,4 +1,4 @@
-//! A branch's `branch.<name>.*` config (spec #2 §5.3, §19 item 15): read before and after a
+//! A branch's `branch.<name>.*` config: read before and after a
 //! branch operation, recorded in the journal entry as `ConfigChange`s, and replayed by undo and
 //! redo. GitVolt writes only the repository's own config, and only for the branch the user acted on.
 
@@ -11,13 +11,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// Full key (`branch.feature/x.remote`) → its values, in config order.
-#[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))] // first readers: the test intents; 2C T3, T4
+#[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))] // first readers: the test intents
 pub(crate) type BranchConfig = BTreeMap<String, Vec<String>>;
 
 /// `git config --null --get-regexp` records (`key\nvalue\0`) for exactly `branch.<name>.<var>`.
 /// The section and the variable are lowercase in git's output; the name keeps its case. A key
 /// with a dot after the name's prefix belongs to a longer branch name.
-#[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))] // first readers: the test intents; 2C T3, T4
+#[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))] // first readers: the test intents
 pub(crate) fn parse_branch_config(raw: &[u8], name: &str) -> BranchConfig {
     let prefix = format!("branch.{name}.");
     let mut map = BranchConfig::new();
@@ -36,7 +36,7 @@ pub(crate) fn parse_branch_config(raw: &[u8], name: &str) -> BranchConfig {
 }
 
 /// The repository's own `branch.<name>.*` (a read, with the never-write environment).
-#[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))] // first readers: the test intents; 2C T3, T4
+#[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))] // first readers: the test intents
 pub(crate) async fn branch_config(cli: &GitCli, root: &Path, name: &str) -> Result<BranchConfig, GbError> {
     let inv = GitInvocation::new(root, ["config", "--local", "--null", "--get-regexp", r"^branch\."]);
     match cli.run(inv).await {
@@ -65,7 +65,7 @@ fn write_rank(key: &str) -> u8 {
 }
 
 /// Every key whose values differ, in git's order (`remote`, `merge`, then the rest by key).
-#[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))] // first readers: the test intents; 2C T3, T4
+#[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))] // first readers: the test intents
 pub(crate) fn changes(before: &BranchConfig, after: &BranchConfig) -> Vec<ConfigChange> {
     let keys: BTreeSet<&String> = before.keys().chain(after.keys()).collect();
     let mut keys: Vec<&String> = keys.into_iter().collect();
@@ -109,7 +109,7 @@ mod tests {
         pairs.iter().flat_map(|(k, v)| format!("{k}\n{v}\0").into_bytes()).collect()
     }
 
-    /// Review Focus 2: a dotted name's keys aren't split at its dots.
+    /// A dotted name's keys aren't split at its dots.
     #[test]
     fn parse_branch_config_keeps_dotted_names() {
         let raw = rec(&[
@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(changes(&after, &BranchConfig::new()).len(), 2, "a removed section: every key goes");
     }
 
-    /// Review I1: only git's quiet exit means "no keys"; a cancelled or timed-out run (no
+    /// Only git's quiet exit means "no keys"; a cancelled or timed-out run (no
     /// stderr) isn't an empty config, or undo would unset every key the branch has.
     #[test]
     fn only_a_quiet_exit_means_no_keys() {

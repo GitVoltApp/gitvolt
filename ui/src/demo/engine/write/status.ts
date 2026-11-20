@@ -1,6 +1,6 @@
 // `git status --porcelain=v2` as the core reads it (status.rs, precheck::dirty): each changed path's
 // index letter (HEAD → index) and worktree letter (index → worktree), staged renames paired, conflicts
-// with git's two letters, untracked files last (ignored ones never). Built on 1b's WIP reading: the
+// with git's two letters, untracked files last (ignored ones never). Built on the read engine's WIP reading: the
 // worktree's own HEAD tree and index, and git's stat check before a file is hashed.
 import type { WipCounts } from '../../gen/WipCounts';
 import { compareBytewise } from '../read/bytes';

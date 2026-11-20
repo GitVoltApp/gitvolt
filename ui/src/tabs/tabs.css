@@ -1,6 +1,6 @@
-/* The tab bar (spec §6.2) and the modal dialogs it owns (About, New/Rename profile). J19/J20/F5:
-   the motion tokens, no text selection, pointer cursors. */
-/* Darker than the action bar below (K65), so the selected tab (the action bar's colour) reads as
+/* The tab bar and the modal dialogs it owns (About, New/Rename profile): the
+   motion tokens, no text selection, pointer cursors. */
+/* Darker than the action bar below, so the selected tab (the action bar's colour) reads as
    its tab. The bar draws its own bottom edge as a background line rather than a border, so the
    selected tab's background covers it: no line between the selected tab and the action bar. */
 .tab-bar { display: flex; align-items: stretch; height: 34px; background: linear-gradient(to top, var(--section-border) 1px, transparent 1px), var(--tab-bar-bg); flex: none; user-select: none; }
@@ -30,11 +30,11 @@
    with it, back to the chip) and expanding grows it back. */
 .tab.tab-hidden { width: 0; min-width: 0; padding-left: 0; padding-right: 0; border-right-width: 0; opacity: 0; }
 .tab[aria-selected="true"] { background: var(--action-bar-bg); color: var(--text-selected); }
-/* K71: borders only between two unselected tabs; the selected tab's colour is its edge. Kept
+/* Borders only between two unselected tabs; the selected tab's colour is its edge. Kept
    transparent (not removed) so widths don't shift as the selection moves. */
 .tab[aria-selected="true"], .tab:has(+ .tab[aria-selected="true"]) { border-right-color: transparent; }
 .tab:not([aria-selected="true"]):hover { background: var(--hover-row); box-shadow: inset 0 -1px var(--section-border); }
-/* Live reordering (spec §6.2): while a tab is dragged the others slide aside (150 ms ease-out) to
+/* Live reordering: while a tab is dragged the others slide aside (150 ms ease-out) to
    show the order a release gives, leaving the landing slot empty; a release slides the dragged
    tab into it, Esc slides everything back. The transitions exist only while `.reordering` is on,
    so the commit (new DOM order, transforms dropped in one render) doesn't animate. */

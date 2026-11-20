@@ -32,7 +32,7 @@ const a: AfterMerge = { merged, next: mr(2, 'feature/b', 'feature/a'), target: '
 const report = (failed: unknown = null, warnings: string[] = []) => ({ steps: [], failed, rest: [], remote: 'origin', warnings });
 const setRemoteMain = (has: boolean) => useRuntime.getState().patch('t', { repo: { id: 1 }, sidebar: { locals: [], remotes: [{ name: 'origin', host: null, hostKind: 'gitlab', branches: has ? [{ fullName: 'refs/remotes/origin/main' }] : [] }], worktrees: [], stashes: [], tags: [], submodules: {} } } as never);
 
-describe('the after-merge labels and refusals (Rulings 8, 10)', () => {
+describe('the after-merge labels and refusals', () => {
   it('says what one click does', () => {
     expect(afterMergeLabel(a, 'gitlab')).toBe('Retarget !2 and rebase the stack');
     expect(afterMergeLabel({ ...a, retarget: false }, 'github')).toBe('Rebase the stack without the merged #1');
@@ -54,7 +54,7 @@ describe('the after-merge labels and refusals (Rulings 8, 10)', () => {
   });
 });
 
-describe('retargetAndRebase (spec #4 §4 4D)', () => {
+describe('retargetAndRebase', () => {
   beforeEach(() => { vi.restoreAllMocks(); rebaseStack.mockReset(); pushStack.mockReset(); useToast.getState().dismiss(); setRemoteMain(true);
     // The refresh after a rebase reads the graph and sidebar: nothing here reaches a real backend.
     vi.spyOn(api, 'graph').mockRejectedValue(new Error('unmocked graph'));
@@ -107,7 +107,6 @@ describe('retargetAndRebase (spec #4 §4 4D)', () => {
     expect(pushStack).not.toHaveBeenCalled();
   });
 
-  /** Review Focus 4. */
   it('a failed retarget changes nothing local and says why', async () => {
     vi.spyOn(api, 'forgeRetarget').mockRejectedValue({ kind: 'RateLimited', message: 'gitlab.example.com rate limit reached: try again in 2 min', commandId: null, stderr: null });
     const fetch = vi.spyOn(api, 'fetch');

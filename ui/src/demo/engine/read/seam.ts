@@ -19,7 +19,7 @@ export interface ReadStat {
   isSymbolicLink(): boolean;
 }
 
-/** The part of 1a's `MemFs` promise API the read layer uses. */
+/** The part of `MemFs` promise API the read layer uses. */
 export interface ReadFs {
   promises: {
     readFile(path: string): Promise<Uint8Array>;
@@ -30,7 +30,7 @@ export interface ReadFs {
 }
 
 /** One repository as the read layer sees it: its main worktree, its common git dir, caches of immutable
- *  things (parsed trees and commits, keyed by id), and the 1a `DemoRepo` behind it (null for a
+ *  things (parsed trees and commits, keyed by id), and the `DemoRepo` behind it (null for a
  *  submodule's checkout, which has none). */
 export interface ReadRepo {
   readonly name: string;

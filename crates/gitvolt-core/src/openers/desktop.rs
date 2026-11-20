@@ -1,4 +1,4 @@
-//! Editors from XDG desktop entries (feedback H32): every `applications/` directory of
+//! Editors from XDG desktop entries: every `applications/` directory of
 //! `$XDG_DATA_HOME` and `$XDG_DATA_DIRS` (Flatpak's and Snap's exports are among them), filtered
 //! to text editors and IDEs.
 
@@ -143,7 +143,7 @@ fn jetbrains_key(product: &str) -> Option<&'static str> {
     JETBRAINS.iter().find(|(k, _)| *k == p).map(|(k, _)| *k)
 }
 
-/// The known editors (H32), from their desktop ids across packagings: distro and upstream
+/// The known editors, from their desktop ids across packagings: distro and upstream
 /// (`code`), Flatpak (`com.visualstudio.code`), Snap (`code_code`), JetBrains Toolbox
 /// (`jetbrains-phpstorm-<hash>`). Their id, name and (for the IDEs whose CLI takes one) line form.
 fn known(stem: &str) -> Option<(String, &'static str, Option<LineArgs>)> {
@@ -184,7 +184,7 @@ fn runnable(env: &DetectEnv, e: &Entry) -> Option<(PathBuf, Vec<ExecArg>)> {
 }
 
 /// Flatpak exports wrap a forwarded field code in `@@ … @@` (a plain path, from `%f`/`%F`) or
-/// `@@u … @@` (a URI, from `%u`/`%U`): see the module docs and minor #4. Turns the `ExecArg::File`
+/// `@@u … @@` (a URI, from `%u`/`%U`): see the module docs. Turns the `ExecArg::File`
 /// inside an `@@u … @@` span into `ExecArg::FileUri`; a plain `@@ … @@` span is untouched.
 fn mark_flatpak_uri_forwarding(args: Vec<ExecArg>) -> Vec<ExecArg> {
     let marker = |a: &ExecArg, s: &str| matches!(a, ExecArg::Literal(x) if x.to_string_lossy() == s);
@@ -230,8 +230,8 @@ pub(super) fn editors(env: &DetectEnv) -> Vec<Opener> {
         }
         // Flatpak's `@@`/`@@u` file forwarding only passes real paths or URIs: no `path:line` or
         // flags inside it, so a Flatpak IDE opens the file without the line. `@@u … @@` (a URI
-        // code forwarded) additionally needs the file itself as a `file://` URI, not a path
-        // (minor #4): the document portal that exports it into the sandbox takes a URI.
+        // code forwarded) additionally needs the file itself as a `file://` URI, not a path:
+        // the document portal that exports it into the sandbox takes a URI.
         let args = mark_flatpak_uri_forwarding(args);
         let forwards = args.iter().any(|a| matches!(a, ExecArg::Literal(s) if s.to_string_lossy().starts_with("@@")));
         let style = match line.filter(|_| !forwards) {
@@ -376,7 +376,7 @@ mod tests {
         assert_eq!(found[0].name, "IntelliJ IDEA");
         let c = found[0].command(Path::new("/w/a.kt"), Some(5));
         assert_eq!(c.program, t.root.join("usr/bin/flatpak"));
-        // Minor #4: the `@@u … @@`-wrapped file goes in as a `file://` URI, not a bare path, so
+        // The `@@u … @@`-wrapped file goes in as a `file://` URI, not a bare path, so
         // the document portal can export it into the sandbox.
         assert_eq!(args(&c), ["run", "--command=idea", "com.jetbrains.IntelliJ-IDEA-Ultimate", "@@u", "file:///w/a.kt", "@@"]);
     }

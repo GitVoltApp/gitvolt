@@ -42,7 +42,7 @@ import type { WorktreeBranch } from "./WorktreeBranch";
 
 export type Request = { "method": "openRepo", "params": { path: string, } } | { "method": "logFrontend", "params": { level: FrontendLevel, message: string, stack: string | null, } } | { "method": "setDebugLogging", "params": { debug: boolean, } } | { "method": "logsDir" } | { "method": "diagnostics", "params": { ui: UiDiagnostics, } } | { "method": "openLogsFolder" } | { "method": "graph", "params": { repo: number, limit: number | null, pin?: PinSetting, rescan?: boolean, 
 /**
- * The tab's active worktree (spec #2 §11.2): laid out as the open one. Absent: the
+ * The tab's active worktree: laid out as the open one. Absent: the
  * handle's own (the main worktree).
  */
 active?: string, 
@@ -65,7 +65,7 @@ mrHead?: MrHead, } } | { "method": "dropCompareRefs", "params": { repo: number, 
  */
 confirm?: boolean, } } | { "method": "submoduleSync", "params": { repo: number, worktree: string, } } | { "method": "submoduleAdd", "params": { repo: number, worktree: string, url: string, path?: string, branch?: string, } } | { "method": "submoduleRemove", "params": { repo: number, worktree: string, path: string, } } | { "method": "clone", "params": { url: string, dest: string, } } | { "method": "repoInfo", "params": { repo: number, } } | { "method": "sidebar", "params": { repo: number, } } | { "method": "lastPush", "params": { repo: number, remoteRef: string, } } | { "method": "appInfo" } | { "method": "pickFolder", "params": { start: string | null, } } | { "method": "saveExport", "params": { suggestedName: string, contents: string, } } | { "method": "scanRepos", "params": { root: string, refresh: boolean, } } | { "method": "scanFolders", "params": { roots: Array<string>, refresh: boolean, } } | { "method": "suggestReposFolder" } | { "method": "watchRepo", "params": { repo: number, } } | { "method": "unwatchRepo", "params": { repo: number, } } | { "method": "unwatchAll" } | { "method": "holdRepo", "params": { holder: string, repo: number, } } | { "method": "releaseRepo", "params": { holder: string, } } | { "method": "releaseAll" } | { "method": "queueState", "params": { repo: number, } } | { "method": "queueRemove", "params": { repo: number, id: number, } } | { "method": "queueResume", "params": { repo: number, } } | { "method": "queueClear", "params": { repo: number, } } | { "method": "findText", "params": { repo: number, query: string, } } | { "method": "findPaths", "params": { repo: number, query: string, } } | { "method": "locateCommit", "params": { repo: number, sha: string, } } | { "method": "searchHistory", "params": { repo: number, query: string, } } | { "method": "undo", "params": { repo: number, worktree: string, entry: number, confirm?: Record<string, string | null>, 
 /**
- * The clean-restore warning (§6.2) was confirmed (2A T11).
+ * The clean-restore warning was confirmed.
  */
 confirmAutostash?: boolean, 
 /**
@@ -78,7 +78,7 @@ withoutIndex?: boolean,
  */
 confirmDiscard?: boolean, } } | { "method": "redo", "params": { repo: number, worktree: string, entry: number, 
 /**
- * The clean-restore warning (§6.2) was confirmed (2A T11).
+ * The clean-restore warning was confirmed.
  */
 confirmAutostash?: boolean, 
 /**
@@ -86,11 +86,11 @@ confirmAutostash?: boolean,
  */
 withoutIndex?: boolean, } } | { "method": "undoEntry", "params": { repo: number, worktree: string, entry: number, 
 /**
- * The clean-restore warning (§6.2) was confirmed.
+ * The clean-restore warning was confirmed.
  */
 confirmAutostash?: boolean, } } | { "method": "journalHistory", "params": { repo: number, worktree: string, } } | { "method": "journalState", "params": { repo: number, worktree: string, } } | { "method": "applyKeptStash", "params": { repo: number, worktree: string, entry: number, withoutIndex?: boolean, 
 /**
- * A recovery Restore's clean-restore warning (§6.2) was confirmed.
+ * A recovery Restore's clean-restore warning was confirmed.
  */
 confirmAutostash?: boolean, } } | { "method": "dismissBanner", "params": { repo: number, worktree: string, entry: number, dropStash?: boolean, } } | { "method": "settlePaused", "params": { repo: number, worktree: string, } } | { "method": "conflictFile", "params": { repo: number, worktree: string, path: string, } } | { "method": "resolveFile", "params": { repo: number, worktree: string, path: string, resolution: Resolution, base?: string, confirmMarkers?: boolean, confirmDiscard?: boolean, } } | { "method": "markResolved", "params": { repo: number, worktree: string, paths: Array<string>, confirmMarkers?: boolean, } } | { "method": "testWrite", "params": { repo: number, worktree: string, expect: Expect, intent: TestIntent, } } | { "method": "removeIndexLock", "params": { repo: number, path: string, mtimeMs: number, 
 /**

@@ -4,7 +4,7 @@ import type { Panel } from './model';
 import { SectionIcon } from './SectionIcon';
 import { displayChord } from '../ui/platformKeys';
 
-/** Spec §6.4 narrow mode: a vertical strip, a (>) button on top that expands the sidebar, then
+/** Narrow mode: a vertical strip, a (>) button on top that expands the sidebar, then
  * one icon per panel with its (filtered) count below it. Clicking an icon expands the sidebar
  * with that panel open. */
 export function NarrowStrip({ panels, onExpand, onPick }: { panels: Panel[]; onExpand(): void; onPick(sectionId: string): void }) {

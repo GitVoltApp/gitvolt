@@ -2,8 +2,8 @@ import { api, onEvent } from '../api/client';
 import type { LastPushPayload } from '../api/gen/LastPushPayload';
 
 /**
- * Per-repo `lastPush` cache for the sidebar hover card (fix round 1, item 7). The card shows
- * instantly (amendment 3), so a fast sweep across many branch rows must not fire one backend
+ * Per-repo `lastPush` cache for the sidebar hover card. The card shows
+ * instantly, so a fast sweep across many branch rows must not fire one backend
  * request per row: keyed by repo + remote ref, concurrent or repeat callers for the same key
  * share one promise (in-flight dedupe, and the resolved value afterwards). A failed load isn't
  * cached, so the next hover retries it.

@@ -6,10 +6,8 @@ import { useRuntime } from '../app/runtime';
 import { useDiffOpen, useFocusZone } from '../app/seams1b';
 import { EMPTY_REPO_SETTINGS, useAppState } from '../app/state';
 import { leaveFileView, useCenterViewSidebar } from '../repo/centerView';
-// --- 4B T11 ---
 import { mrSection, refreshMrList, withMrSection } from '../forge/mrSection';
 import { forgeOf, patchForge, useTabForgeField } from '../forge/mrStore';
-// --- end 4B T11 ---
 import { PresetButton } from '../presets/PresetButton';
 import { useCurrentPreset } from '../presets/store';
 import { ClearableInput } from '../ui/ClearableInput';
@@ -30,20 +28,20 @@ const MIN_W = 160;
 const MAX_W = 480;
 
 /**
- * The left sidebar (spec §6.4): stacked panels (Local, Remote, Worktrees, Stashes, Tags, and
+ * The left sidebar: stacked panels (Local, Remote, Worktrees, Stashes, Tags, and
  * Submodules when the active worktree has any), each
  * with its own header and virtualized body, sharing the column's height; dividers between
  * expanded panels resize them. One filter box filters every panel; a (<) button beside it
  * switches to the narrow icon strip. Panel collapse is per repo (`RepoSettings.collapsed`), sort
  * per panel per repo (`sidebarSort`); panel heights, the width and the narrow flag are per
  * profile. Narrow mode shows when the profile's own toggle (Ctrl+B) is set, or while the tab's
- * diff takeover is open (spec §6.4, §10.1) — the user is looking at a file, not the branch list,
+ * diff takeover is open — the user is looking at a file, not the branch list,
  * so the sidebar steps out of the way without losing its state. A file view on top (File History,
- * Blame) narrows it too, and a click on the strip leaves the view for the graph (UX R2.3); the
- * rebase editor takes its place altogether while it's open (UX R2.1: nothing here may navigate
+ * Blame) narrows it too, and a click on the strip leaves the view for the graph; the
+ * rebase editor takes its place altogether while it's open (nothing here may navigate
  * away from a plan).
  *
- * The hover card shows immediately on hover (no delay, the user's ruling): only its "Last push"
+ * The hover card shows immediately on hover (no delay): only its "Last push"
  * line waits on the backend, with its own loading placeholder.
  */
 export function Sidebar() {
@@ -69,7 +67,7 @@ export function Sidebar() {
   const scrollTo = useRef<string | null>(null);
   const narrow = manualNarrow || diffOpen || viewSidebar === 'narrow';
 
-  // --- 4B T11: the MR/PR section (spec #4 §2), after Remote, with the repository's filter ---
+  // --- the MR/PR section, after Remote, with the repository's filter ---
   const forgeKind = useTabForgeField(tabId, 'kind');
   const forgeList = useTabForgeField(tabId, 'list');
   const forgeFilter = useTabForgeField(tabId, 'filter');
@@ -81,12 +79,11 @@ export function Sidebar() {
     patchForge(tabId, { filter: savedFilter });
     void refreshMrList(tabId);
   }, [tabId, savedFilter]);
-  // --- end 4B T11 ---
 
   const presetId = useCurrentPreset(tabId).current.preset.id;
   const picks = rs.branchPicks?.[presetId];
   const base = useMemo(() => (payload ? sectionsOf(payload, view, picks, worktree) : null), [payload, view, picks, worktree]);
-  const sections = useMemo(() => (base ? withMrSection(base, mrs) : []), [base, mrs]); // 4B T11: a poll rebuilds only the MR/PR section
+  const sections = useMemo(() => (base ? withMrSection(base, mrs) : []), [base, mrs]); // A poll rebuilds only the MR/PR section
   const collapsed = useMemo(() => new Set(rs.collapsed), [rs.collapsed]);
   const panels = useMemo(() => buildPanels(sections, { filter, sort: rs.sidebarSort, collapsed }), [sections, filter, rs.sidebarSort, collapsed]);
   const specs = useMemo(() => panels.map((p) => ({ id: p.section.id, collapsed: p.collapsed, weight: weights[p.section.id] })), [panels, weights]);
@@ -132,7 +129,7 @@ export function Sidebar() {
       return { ...p, sidebarPanels: next };
     });
 
-  // A double-click on one divider resets just that divider (K73 fix): its two panels share their
+  // A double-click on one divider resets just that divider: its two panels share their
   // combined height evenly again, the others keep theirs.
   const resetPair = (i: number, j: number) => {
     const total = heights[i] + heights[j];

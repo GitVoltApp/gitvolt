@@ -3,11 +3,11 @@ import type { FileChange } from "./FileChange";
 
 export type FileListPayload = { files: Array<FileChange>, 
 /**
- * Line totals over the text files (spec §9.3 header).
+ * Line totals over the text files.
  */
 added: number, deleted: number, 
 /**
- * A WIP list kept by the active tab's watcher (K44): the version of that worktree's lists,
+ * A WIP list kept by the active tab's watcher: the version of that worktree's lists,
  * which a `repoChanged` naming the worktree replaces. The UI may hold such a list until
  * then. Absent for every other list, and for WIP lists read without a trusted watcher.
  */

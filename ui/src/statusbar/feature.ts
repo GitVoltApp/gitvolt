@@ -5,8 +5,8 @@ import { registerActions } from '../app/actions';
 import { registerAppSlot } from '../app/slots';
 import { StatusBar } from './StatusBar';
 
-/** The status bar (spec §6.5), in the app's `statusBar` slot, below the tabs; and Help → Activity
- * log (K96), which opens from its bell. */
+/** The status bar, in the app's `statusBar` slot, below the tabs; and Help → Activity
+ * log, which opens from its bell. */
 const offs = [
   registerAppSlot('statusBar', 'status-bar', StatusBar),
   registerAppSlot('overlay', 'activity.modal', ActivityModal),

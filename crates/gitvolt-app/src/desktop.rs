@@ -1,6 +1,6 @@
 //! The process-wide Linux desktop setup GitVolt needs before GTK starts: how the window is named
-//! to the desktop (dock icon, H13) and how the input method hands keys to the embedded browser
-//! (Ctrl+C, zoom and the other chords, H19/H2). Elsewhere (Windows) most of it is unused.
+//! to the desktop (dock icon) and how the input method hands keys to the embedded browser
+//! (Ctrl+C, zoom and the other chords). Elsewhere (Windows) most of it is unused.
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
 use std::ffi::OsString;
@@ -24,7 +24,7 @@ pub const APPLICATION_NAME: &str = "GitVolt";
 /// re-emitted key never reaches it: in an editable field (Monaco's input) Ctrl+C, Ctrl+X,
 /// Ctrl+V, Ctrl+A, Ctrl+= / Ctrl+- / Ctrl+0 and every other chord the engine passes on are
 /// dropped before the page, or CEF's `on_pre_key_event`, sees them. This was suspected as the
-/// cause of dropped keys (see the lane V2 report), but that theory didn't hold up: the real
+/// cause of dropped keys, but that theory didn't hold up: the real
 /// cause was mutter's `WM_TAKE_FOCUS` stealing X focus into GDK's focus window, fixed in
 /// `vendor/tauri-runtime-cef/src/platform/linux/focus.rs`. Sync mode adds per-keystroke IPC
 /// latency and changes IME behaviour for users of real input methods, so it's left off by

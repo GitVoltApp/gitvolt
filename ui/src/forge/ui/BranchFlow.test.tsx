@@ -43,7 +43,6 @@ describe('BranchFlow', () => {
     expect(within(bar).queryAllByRole('button')).toEqual([]);
   });
 
-  // --- MR round 2: Compare ---
   it("Compare sits at the bar's right end, past a divider, and its click doesn't toggle the list", () => {
     const run = vi.fn();
     const { rerender } = render(<BranchFlow from={{ branch: 'dev', sub: 'o' }} into={{ branch: 'main', sub: 'o' }} stats={ready([{ sha: 'a1f3c9e00', summary: 'One' }])} compare={{ run, busy: false }} />);
@@ -64,7 +63,6 @@ describe('BranchFlow', () => {
     fireEvent.click(busy);
     expect(run).toHaveBeenCalledTimes(1);
   });
-  // --- end MR round 2 ---
 
   it('says Counting… while it loads, a fallback count or the note when the repository lacks the commits', () => {
     const { rerender } = render(flow({ status: 'loading' }));

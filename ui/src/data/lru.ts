@@ -1,4 +1,4 @@
-/** A least-recently-used cache bounded by entry count and, optionally, total size (spec §4.4). */
+/** A least-recently-used cache bounded by entry count and, optionally, total size. */
 export class Lru<K, V> {
   readonly maxEntries: number;
   readonly maxBytes: number;

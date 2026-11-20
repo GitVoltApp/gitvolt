@@ -20,7 +20,7 @@ const chain = () => graph(
   [local(0, 'feature/c'), local(1, 'feature/b'), local(2, 'feature/a'), remote(3, 'origin', 'main'), local(4, 'main')],
 );
 
-describe('detectStacks (spec #3 §3.11)', () => {
+describe('detectStacks', () => {
   it('a chain of local branches above the base, bottom → top', () => {
     expect(detectStacks(chain(), BASE)).toEqual([{ branches: ['feature/a', 'feature/b', 'feature/c'], base: BASE, leftBehind: [] }]);
   });
@@ -73,7 +73,7 @@ describe('detectStacks (spec #3 §3.11)', () => {
     expect(paths(detectStacks(g, BASE))).toEqual([['feature/b', 'feature/c']]);
   });
 
-  it("never makes the base's own local branch a member, even ahead of it (Review Focus 3)", () => {
+  it("never makes the base's own local branch a member, even ahead of it", () => {
     const g = graph([['f1', ['m2']], ['m2', ['m1']], ['m1', []]], [local(0, 'feature/x'), local(1, 'main'), remote(2, 'origin', 'main')]);
     expect(detectStacks(g, BASE)).toEqual([]);
     const local3 = graph([['f2', ['f1']], ['f1', ['m2']], ['m2', ['m1']], ['m1', []]], [local(0, 'feature/y'), local(1, 'feature/x'), local(2, 'main'), remote(3, 'origin', 'main')]);

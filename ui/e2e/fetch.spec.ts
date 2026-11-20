@@ -26,7 +26,7 @@ function pushFromElsewhere(repo: string, message: string, branch = 'from-e2e') {
   git(other, 'push', '-q', 'origin', branch);
 }
 
-/** `scripts/fake-ssh` (K96): an ssh stand-in that fails like a dead agent, asks a key passphrase
+/** `scripts/fake-ssh`: an ssh stand-in that fails like a dead agent, asks a key passphrase
  * through askpass, or hangs. */
 const FAKE_SSH = join(import.meta.dirname, '..', '..', 'scripts', 'fake-ssh');
 
@@ -37,7 +37,7 @@ function sshOrigin(repo: string, mode: string) {
   git(repo, 'config', 'ssh.variant', 'simple');
 }
 
-/** What the shown diff panel paints, as one string (diff.spec's `paintedNow`, K7): its path, then
+/** What the shown diff panel paints, as one string (diff.spec's `paintedNow`): its path, then
  * every visible text of its body. Runs in the page. */
 function paintedNow(): string {
   const shown = (el: Element) => el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
@@ -58,7 +58,7 @@ function paintedNow(): string {
 // and StatusBar.test.tsx; fake-ssh's dead agent, passphrase and hang the core's netops.rs and the
 // harness's askpass.rs.
 test.describe('fetch', () => {
-  // The Fetch dropdown is the default picker now (spec #2 §12.1): picking runs nothing, so the
+  // The Fetch dropdown is the default picker now: picking runs nothing, so the
   // palette's "Fetch all" (`repo.fetch`) is the other way to fetch.
   test('a user fetch brings in new remote branches; Fetch all, from the palette, fetches too', async ({ page }) => {
     const repo = freshFixture('basic');
@@ -96,7 +96,7 @@ test.describe('fetch', () => {
     });
   });
 
-  // UX round 4, T.1: only the failing remote's sidebar row warns, until a fetch of it works.
+  // Only the failing remote's sidebar row warns, until a fetch of it works.
   test('a remote whose fetch failed shows a warning on its sidebar row until the next good fetch', async ({ page }) => {
     const repo = freshFixture('basic');
     const origin = join(dirname(repo), 'origin.git');
@@ -160,7 +160,7 @@ test.describe('fetch', () => {
       const dialog = authDialog(page);
       await expect(dialog).toContainText(`Username for '${harnessHttp}'`);
       await expect(statusBar(page)).toContainText('Waiting for authentication…');
-      // K30: the user's fetch shows on its button, never as "Fetching…" in the status bar.
+      // The user's fetch shows on its button, never as "Fetching…" in the status bar.
       await expect(fetchButton(page)).toHaveAttribute('aria-busy', 'true');
       await expect(statusBar(page)).not.toContainText('Fetching');
       await expect(dialog.getByLabel('Answer')).toBeFocused();
@@ -174,7 +174,7 @@ test.describe('fetch', () => {
     });
   });
 
-  test("a failing user fetch shows git's message in a toast that links to the activity log (K96)", async ({ page }) => {
+  test("a failing user fetch shows git's message in a toast that links to the activity log", async ({ page }) => {
     const repo = freshFixture('basic');
     sshOrigin(repo, '--dead-agent');
     await page.goto(openUrl(repo));
@@ -194,7 +194,7 @@ test.describe('fetch', () => {
     await expect(fetchButton(page)).toBeEnabled();
   });
 
-  // An ssh key passphrase through the modal (K96), here arriving while the palette is open.
+  // An ssh key passphrase through the modal, here arriving while the palette is open.
   test('a passphrase prompt that arrives while the palette is open is on top, focused, and owns Enter (I1)', async ({ page }) => {
     const repo = freshFixture('basic');
     pushFromElsewhere(repo, 'Fetched under the palette');
@@ -222,7 +222,7 @@ test.describe('fetch', () => {
     await expect(page.getByRole('search', { name: 'Find in graph' })).toHaveCount(0);
   });
 
-  test('a background fetch runs on its own and shows nowhere but the activity log (K30)', async ({ page }) => {
+  test('a background fetch runs on its own and shows nowhere but the activity log', async ({ page }) => {
     const repo = freshFixture('basic');
     await page.goto(openUrl(repo));
     await expect(graph(page)).toBeVisible();
@@ -249,7 +249,7 @@ test.describe('fetch', () => {
     expect(activity[0].durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  test('a fetch that moves refs while a diff is open neither closes it nor flashes it (K7)', async ({ page }) => {
+  test('a fetch that moves refs while a diff is open neither closes it nor flashes it', async ({ page }) => {
     // The first diff of a run also loads (and, under the dev server, compiles) Monaco's chunk.
     test.setTimeout(60_000);
     const repo = freshFixture('basic');

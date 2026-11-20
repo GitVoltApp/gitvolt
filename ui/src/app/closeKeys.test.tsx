@@ -17,7 +17,7 @@ const active = () => useAppState.getState().profile.activeTab;
 /** fireEvent's result: false when the key's default was prevented (it was taken). */
 const press = (init: KeyboardEventInit, on: Element = document.body) => fireEvent.keyDown(on, init);
 
-describe('the app\'s shortcuts through the key router (ruling R6)', () => {
+describe('the app\'s shortcuts through the key router', () => {
   let off: () => void;
   beforeEach(() => { off = installShortcuts(); });
   afterEach(() => off());
@@ -44,7 +44,7 @@ describe('the app\'s shortcuts through the key router (ruling R6)', () => {
     expect(store.getState().diff).toBeNull();
   });
 
-  it('works while typing in a text box (spec §11.1: Ctrl chords do)', () => {
+  it('works while typing in a text box (Ctrl chords do)', () => {
     const store = activeTabWith();
     act(() => store.getState().openFile(target));
     const input = document.body.appendChild(document.createElement('input'));

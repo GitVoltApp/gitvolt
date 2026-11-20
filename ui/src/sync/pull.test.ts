@@ -13,7 +13,7 @@ const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 const journal = { undo: null, redo: null, undoBlocked: null, redoBlocked: null, banners: [], paused: null };
 const result = (result: unknown) => ({ outcome: { op: 3, branch: 'main', upstream: 'origin/main', server: { lines: 0, warning: null }, result }, journal, staging: { undo: null, redo: null, off: null }, wip: null });
 
-describe('the Fetch/Pull button (spec #2 §12.1)', () => {
+describe('the Fetch/Pull button', () => {
   it('its caption and tooltip follow the default', () => {
     expect(syncView('fetchAll', main, 'main')).toEqual({ label: 'Fetch', tooltip: 'Fetch every remote', disabled: false });
     expect(syncView('pullFfOnly', main, 'main')).toEqual({ label: 'Pull', tooltip: 'Pull origin/main into main (fast-forward only)', disabled: false });
@@ -24,7 +24,7 @@ describe('the Fetch/Pull button (spec #2 §12.1)', () => {
   });
 });
 
-describe('pull (spec #2 §12.2)', () => {
+describe('pull', () => {
   beforeEach(() => { vi.restoreAllMocks(); ask.mockReset(); useToast.getState().dismiss(); });
 
   it('says what it did', async () => {

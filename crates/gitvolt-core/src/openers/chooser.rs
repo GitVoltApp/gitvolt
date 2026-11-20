@@ -1,4 +1,4 @@
-//! "Other…" (feedback H32): the system's Open With chooser for one file. On Linux it's
+//! "Other…": the system's Open With chooser for one file. On Linux it's
 //! xdg-desktop-portal's `org.freedesktop.portal.OpenURI.OpenFile` with `ask: true`, which takes
 //! the file as a read-only descriptor; without the portal, `xdg-open` (logged). On Windows it's
 //! the shell's own Open With dialog (`win32.rs`). On macOS it's an `NSOpenPanel` of apps, then
@@ -19,14 +19,14 @@ pub enum PortalError {
     Failed(String),
     /// The bus connection itself is gone (broken pipe, reset, not connected, …). Classified from
     /// the underlying I/O error's *kind* (`linux::classify_zbus_error`), not by matching the
-    /// error's message text (fix round 1, item 6: a stringly-typed `is_disconnect` heuristic could
+    /// error's message text (a stringly-typed `is_disconnect` heuristic could
     /// miss a real disconnect, or match an unrelated message that happens to contain the same
     /// words). Handled the same as `Failed` by `open_with` (a fallback is safe), but also tells
     /// `forget_on_disconnect` to drop the cached connection.
     Disconnected(String),
     /// It didn't answer within the timeout. The request may still be pending — a slow portal can
     /// still pop its dialog after this returns — so falling back here risks a second, competing
-    /// open of the same file (deferred Rust minor #3). The caller logs and gives up instead.
+    /// open of the same file. The caller logs and gives up instead.
     TimedOut,
 }
 
@@ -41,8 +41,8 @@ impl std::fmt::Display for PortalError {
 
 /// Asks `portal` to show the chooser for `file`. A definite failure (no portal, no session bus, or
 /// the connection dropping out) logs why and runs `fallback` instead; a timeout logs and does
-/// nothing further, since the portal may still open its dialog on its own (minor #3: falling back
-/// here risked a double open).
+/// nothing further, since the portal may still open its dialog on its own (falling back
+/// here would risk a double open).
 pub fn open_with(file: &Path, portal: impl FnOnce(&Path) -> Result<(), PortalError>, fallback: impl FnOnce(&Path) -> Result<(), GbError>) -> Result<(), GbError> {
     match portal(file) {
         Ok(()) => Ok(()),
@@ -71,7 +71,7 @@ pub(crate) fn shared<T: Clone + Send + 'static>(slot: &std::sync::Mutex<Option<T
     }
     let v = with_timeout(make, timeout)?;
     let mut held = slot.lock().unwrap_or_else(|p| p.into_inner());
-    // Fix round 1, item 5: another caller may have connected and stored its own value first,
+    // Another caller may have connected and stored its own value first,
     // while we were still connecting outside the lock. Use that one instead of overwriting it
     // with ours, so every caller ends up sharing exactly one connection (ours is simply dropped).
     if let Some(existing) = held.as_ref() {
@@ -82,9 +82,9 @@ pub(crate) fn shared<T: Clone + Send + 'static>(slot: &std::sync::Mutex<Option<T
 }
 
 /// A connect that times out never reached the portal at all — no dialog could possibly be in
-/// flight — so, unlike a timed-out call (`open_with`'s minor #3 rule), it's safe, and more useful,
+/// flight — so, unlike a timed-out call (`open_with`'s rule), it's safe, and more useful,
 /// to treat it as an ordinary failure: the caller falls back to `xdg-open` instead of silently
-/// doing nothing (fix round 1, item 3).
+/// doing nothing.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) fn connect_timeout_is_a_failure<T>(r: Result<T, PortalError>) -> Result<T, PortalError> {
     r.map_err(|e| match e {
@@ -94,7 +94,7 @@ pub(crate) fn connect_timeout_is_a_failure<T>(r: Result<T, PortalError>) -> Resu
 }
 
 /// Drops a cached connection once a call on it reports the connection itself is gone, so the next
-/// call reconnects instead of reusing a dead one forever (minor #2's second half: a connection
+/// call reconnects instead of reusing a dead one forever (a connection
 /// that outlives the bus session, e.g. after a logout/login, used to be kept and fail every time).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) fn forget_on_disconnect<T>(slot: &std::sync::Mutex<Option<T>>, why: &PortalError) {
@@ -153,7 +153,7 @@ pub(crate) mod linux {
 
     /// The session bus, connected once and kept for the process lifetime: xdg-desktop-portal
     /// cancels a caller's pending requests (the open chooser dialog) when its connection goes
-    /// away (fix round 2). Shared with `folder_picker`: both are xdg-desktop-portal interfaces on
+    /// away. Shared with `folder_picker`: both are xdg-desktop-portal interfaces on
     /// the same bus, so there's no reason to hold two connections.
     static BUS: std::sync::Mutex<Option<zbus::blocking::Connection>> = std::sync::Mutex::new(None);
 
@@ -162,11 +162,11 @@ pub(crate) mod linux {
     pub(crate) const CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
     /// The shared session-bus connection, connecting within `CALL_TIMEOUT` if there isn't one
-    /// cached yet (minor #2). Used by every portal interface in `openers/` (the Open With chooser
+    /// cached yet. Used by every portal interface in `openers/` (the Open With chooser
     /// here, the folder picker), so a hung bus blocks at most one such connect, not each caller
     /// separately, and a later disconnect is dropped from the cache by whoever notices it
     /// (`super::forget_on_disconnect`) rather than kept forever. A connect timeout is treated as
-    /// an ordinary failure (fix round 1, item 3), not `PortalError::TimedOut`: no request has been
+    /// an ordinary failure, not `PortalError::TimedOut`: no request has been
     /// made yet, so there's no in-flight dialog a fallback could race.
     pub(crate) fn shared_bus() -> Result<zbus::blocking::Connection, PortalError> {
         super::connect_timeout_is_a_failure(super::shared(&BUS, || zbus::blocking::Connection::session().map_err(classify_zbus_error), CALL_TIMEOUT))
@@ -176,7 +176,7 @@ pub(crate) mod linux {
         super::forget_on_disconnect(&BUS, why);
     }
 
-    /// Classifies a `zbus::Error` by its underlying I/O error *kind* (fix round 1, item 6), not by
+    /// Classifies a `zbus::Error` by its underlying I/O error *kind*, not by
     /// matching its message text: `Disconnected` for the kinds a severed connection actually
     /// produces, `Failed` for everything else (a missing service, a malformed call, …).
     pub(crate) fn classify_zbus_error(e: zbus::Error) -> PortalError {
@@ -231,8 +231,8 @@ mod tests {
     use std::sync::atomic::{AtomicI32, Ordering};
     use std::sync::Arc;
 
-    /// Fix round 2: the portal cancels a caller's requests when its bus connection goes away,
-    /// so the connection is made once and kept for the process lifetime. Minor #2: a failed
+    /// The portal cancels a caller's requests when its bus connection goes away,
+    /// so the connection is made once and kept for the process lifetime. A failed
     /// connect is retried, never cached.
     #[test]
     fn the_bus_connection_is_made_once_and_kept_and_a_failed_one_is_retried() {
@@ -252,7 +252,7 @@ mod tests {
         assert_eq!(made.load(Ordering::SeqCst), 2);
     }
 
-    /// Fix round 1, item 5: two callers finding the slot empty both connect outside the lock; the
+    /// Two callers finding the slot empty both connect outside the lock; the
     /// one that stores first must win, and the other's freshly-made value is simply dropped rather
     /// than overwriting it. Simulated (without real threads) by having `make` itself populate the
     /// slot as a side effect, standing in for "another thread finished connecting first".
@@ -267,8 +267,8 @@ mod tests {
         assert_eq!(*SLOT.lock().unwrap(), Some(99), "our own freshly-made value (1) must not overwrite it");
     }
 
-    /// Minor #2: the cache is dropped once a call reports the connection is gone, so the very
-    /// next use reconnects instead of failing forever on a dead handle. Fix round 1, item 6: this
+    /// The cache is dropped once a call reports the connection is gone, so the very
+    /// next use reconnects instead of failing forever on a dead handle. This
     /// now keys off the typed `Disconnected` variant, not a message-text heuristic.
     #[test]
     fn a_disconnected_error_drops_the_cached_value_but_an_ordinary_failure_does_not() {
@@ -283,7 +283,7 @@ mod tests {
         assert_eq!(*slot.lock().unwrap(), Some(7), "a timeout isn't a disconnect: the connection may still be fine");
     }
 
-    /// Fix round 1, item 3: a connect timeout has no in-flight request to race, so it's treated as
+    /// A connect timeout has no in-flight request to race, so it's treated as
     /// an ordinary failure (the caller falls back), never as `TimedOut` (which would do nothing).
     #[test]
     fn a_connect_timeout_becomes_an_ordinary_failure() {
@@ -307,7 +307,7 @@ mod tests {
         assert_eq!(slow, Err(PortalError::TimedOut));
     }
 
-    /// Fix round 1, item 6: classification goes by the I/O error's kind, not its message text.
+    /// Classification goes by the I/O error's kind, not its message text.
     #[cfg(target_os = "linux")]
     #[test]
     fn classify_zbus_error_keys_off_the_io_error_kind() {
@@ -348,7 +348,7 @@ mod tests {
         assert!(fell_back.into_inner());
     }
 
-    /// Minor #3: a portal that's still thinking (it may pop its dialog any moment) must not also
+    /// A portal that's still thinking (it may pop its dialog any moment) must not also
     /// get xdg-open running on the same file.
     #[test]
     fn a_timed_out_portal_call_never_falls_back() {

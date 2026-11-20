@@ -1,5 +1,5 @@
-//! Forge avatars on disk, one directory per forge host, in the Gravatar cache's format (core spec
-//! §14.3): `<dir>/<sha256(email)>.<ext>` plus `index.json`. Found avatars stay 7 days and "none"
+//! Forge avatars on disk, one directory per forge host, in the Gravatar cache's format:
+//! `<dir>/<sha256(email)>.<ext>` plus `index.json`. Found avatars stay 7 days and "none"
 //! answers 1 day. Network errors are never cached (the caller doesn't store them).
 
 use crate::gravatar::{email_key, ensure_private_dir, image_ext, now, payload, write_atomic, FOUND_TTL_SECS, MISSING_TTL_SECS};
@@ -15,13 +15,11 @@ use std::sync::Mutex;
 pub const MAX_ENTRIES: usize = 2000;
 const EXTS: [&str; 4] = ["png", "gif", "webp", "jpg"];
 
-// --- 5A T3 ---
 /// sha256 of `s` exactly as given (no trimming, no case folding), as hex.
 pub fn exact_key(s: &str) -> String {
     use sha2::{Digest, Sha256};
     Sha256::digest(s.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }
-// --- end 5A T3 ---
 
 fn valid_key(k: &str) -> bool {
     k.len() == 64 && k.bytes().all(|b| b.is_ascii_hexdigit())
@@ -132,7 +130,7 @@ impl DiskAvatarCache {
         self.lookup_hashed(&email_key(email))
     }
 
-    // --- 5A T3: Markdown images keep their case ---
+    // --- Markdown images keep their case ---
     /// `lookup` by an exact key (`exact_key`): a Markdown image's URL, whose path and query can
     /// differ only in case (base64, case-sensitive hosts). Avatars keep `lookup`'s folded key.
     pub fn lookup_exact(&self, key: &str) -> Lookup {
@@ -146,7 +144,6 @@ impl DiskAvatarCache {
     pub fn store_missing_exact(&self, key: &str) {
         self.remember(&exact_key(key), None);
     }
-    // --- end 5A T3 ---
 
     fn lookup_hashed(&self, key: &str) -> Lookup {
         let Some(entry) = self.with_index(|i| i.get(key).cloned()) else { return Lookup::Unknown };
@@ -260,7 +257,6 @@ mod tests {
         assert_eq!(cache.with_index(|i| i.len()), 1);
     }
 
-    // --- 5A T3 ---
     #[test]
     fn image_keys_keep_their_case_and_avatar_keys_still_fold_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -277,7 +273,6 @@ mod tests {
         cache.store_found("Ada@Example.com", "image/png", b"\x89PNGx").unwrap();
         assert!(matches!(cache.lookup("ada@example.com"), Lookup::Found(_)), "avatar keys are unchanged");
     }
-    // --- end 5A T3 ---
 
     #[test]
     fn payload_of_takes_images_only() {

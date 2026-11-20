@@ -31,7 +31,7 @@ export function refEntries(tabId: string): PaletteEntry[] {
 
 const fileCache = new Map<string, Promise<string[]>>();
 
-/** Every file at HEAD (1B's tree listing, `services.treeFiles`), cached per repo and HEAD (spec §11.2). */
+/** Every file at HEAD (the tree listing, `services.treeFiles`), cached per repo and HEAD. */
 export async function fileEntries(tabId: string): Promise<PaletteEntry[]> {
   const rt = useRuntime.getState().tabs[tabId];
   const head = rt?.graph?.head.target;

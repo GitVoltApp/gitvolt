@@ -20,7 +20,7 @@
 .sb-row { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 6px; padding: 0 8px; white-space: nowrap; cursor: default; box-sizing: border-box; user-select: none; }
 .sb-row:hover { background: var(--hover-row); }
 .sb-list:focus .sb-row[data-active="true"] { outline: 1px solid var(--blue); outline-offset: -1px; }
-/* The row a context menu is open for (UX round 2: a right-click never moves the active row). */
+/* The row a context menu is open for (a right-click never moves the active row). */
 .sb-row[data-context="true"] { outline: 1px solid var(--blue); outline-offset: -1px; }
 .sb-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sb-pipeline { flex: none; display: inline-flex; }
@@ -52,7 +52,7 @@
 .sn-item svg { color: var(--sidebar-icon); }
 .sn-item:hover svg { color: var(--text-normal); }
 .co-check { margin: 0 -1px; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 15px; height: 15px; border-radius: 3px; background: var(--checked-out); color: var(--text-on-accent); }
-/* Ahead/behind (K67): the counts with real arrow icons; the text glyphs were too small to read. */
+/* Ahead/behind: the counts with real arrow icons; the text glyphs were too small to read. */
 .sb-ab { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
 .sb-ab > span { display: inline-flex; align-items: center; gap: 1px; }
 .sb-sort, .sb-head-action { width: 18px; height: 18px; }

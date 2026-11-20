@@ -39,7 +39,7 @@ function resolve(t: CommitTarget, env: MenuEnv): { plan: DeletePlan; localWhy: s
   return { plan: { branch: local?.name ?? b.name, local: local ? { oid: local.target } : null, remote, unpushed }, localWhy, remoteWhy: remote ? null : 'No remote branch' };
 }
 
-/** `Delete | Local | Remote | Both |` (§9.2): the clicked control decides; no checkbox dialog. */
+/** `Delete | Local | Remote | Both |`: the clicked control decides; no checkbox dialog. */
 export function deleteRow(t: CommitTarget, env: MenuEnv): MenuRow | null {
   const r = resolve(t, env);
   if (!r || !env.write) return null;
@@ -70,7 +70,7 @@ export function deleteRow(t: CommitTarget, env: MenuEnv): MenuRow | null {
 
 const commitsWord = (n: number) => `${n} ${n === 1 ? 'commit' : 'commits'}`;
 
-/** The confirmation (§9.2) and the write. Both asks once: the remote deletion can't be undone,
+/** The confirmation and the write. Both asks once: the remote deletion can't be undone,
  * and the unmerged count (when known) is in the same dialog, so it sends `force` after the
  * answer. A local-only delete that comes back `unmerged` (nothing ran) asks, then forces. */
 export async function deleteBranch(ctx: WriteCtx, plan: DeletePlan, force = false, origin: Origin | null = currentOrigin()): Promise<void> {
@@ -89,7 +89,7 @@ export async function deleteBranch(ctx: WriteCtx, plan: DeletePlan, force = fals
   }
   const expect = { head: null, refs: plan.local ? { [`refs/heads/${plan.branch}`]: plan.local.oid } : {} };
   // A local delete may come back `unmerged`: the menu it came from stays open meanwhile, so that
-  // question arms the clicked row in place (board A) instead of falling back to a popover.
+  // question arms the clicked row in place instead of falling back to a popover.
   const release = force ? () => {} : holdOrigin();
   const refs = [...(plan.local ? [`refs/heads/${plan.branch}`] : []), ...(plan.remote ? [`refs/remotes/${plan.remote.remote}/${plan.remote.branch}`] : [])];
   const out = await withPending(ctx.tabId, refs, 'delete', () => runWrite(ctx, () => api.deleteBranch(ctx.repoId, ctx.worktree, { branch: plan.branch, local: !!plan.local, remote: plan.remote, force, expect }), { origin }))

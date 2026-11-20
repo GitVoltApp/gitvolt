@@ -59,7 +59,7 @@ beforeEach(() => {
 });
 
 describe('DetailsPanel', () => {
-  it('the Edit message pencil shows for the HEAD commit only, and not mid merge or rebase (spec #2 §8.3)', async () => {
+  it('the Edit message pencil shows for the HEAD commit only, and not mid merge or rebase', async () => {
     const store = createRepoViewStore(1, '/r', graph, loadedServices());
     renderPanel(store);
     await act(async () => store.getState().selectRow(1));
@@ -73,7 +73,7 @@ describe('DetailsPanel', () => {
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
   });
 
-  it('the pencil shows on an older commit of HEAD\'s branch too, not on its first commit nor mid rebase (spec #3 §3.6)', async () => {
+  it('the pencil shows on an older commit of HEAD\'s branch too, not on its first commit nor mid rebase', async () => {
     const C = 'c'.repeat(40);
     const chain: GraphPayload = { ...graph, rows: [wipRow, { ...commit(A, 'Second'), parents: [B] }, { ...commit(B, 'First'), parents: [C] }, commit(C, 'Root')] };
     const store = createRepoViewStore(1, '/r', chain, loadedServices());
@@ -89,7 +89,7 @@ describe('DetailsPanel', () => {
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
   });
 
-  it('no pencil on a merge, a commit not under HEAD, or a trunk commit below the fork (3C T13 fix 1 I1, M7)', async () => {
+  it('no pencil on a merge, a commit not under HEAD, or a trunk commit below the fork', async () => {
     const [X, S, N, M, R] = ['1', '2', '3', '4', '5'].map((c) => c.repeat(40));
     // feature (HEAD): A ← X (merge of S) ← M (main's tip) ← R; S on feature; N on another branch.
     const rows = [wipRow, { ...commit(A, 'Tip'), parents: [X] }, { ...commit(N, 'Elsewhere'), parents: [M] }, { ...commit(X, 'Merge'), parents: [M, S] }, { ...commit(S, 'Side'), parents: [M] }, { ...commit(M, 'Trunk'), parents: [R] }, commit(R, 'Root')];
@@ -114,7 +114,7 @@ describe('DetailsPanel', () => {
     expect(await pencilAt(5, 'Trunk')).toBeNull();
   });
 
-  it('a Ctrl+click on a second commit shows the compare header at once, no hint step (K15); a plain click leaves it', async () => {
+  it('a Ctrl+click on a second commit shows the compare header at once, no hint step; a plain click leaves it', async () => {
     const store = createRepoViewStore(1, '/r', graph, loadedServices());
     renderPanel(store);
     await act(async () => store.getState().selectRow(2));
@@ -130,7 +130,7 @@ describe('DetailsPanel', () => {
     expect(screen.getByTestId('details-summary')).toHaveTextContent('First');
   });
 
-  // Feedback F12: no flicker. The old commit's content stays until the new commit's details,
+  // No flicker. The old commit's content stays until the new commit's details,
   // message and file list have all arrived; then the new one replaces it in one render.
   it('switching commits keeps the old content, whole, until all three loads resolve, then swaps in one render', async () => {
     const rec = recordingServices();
@@ -196,7 +196,7 @@ describe('DetailsPanel', () => {
     expect(message.scrollTop).toBe(0);
   });
 
-  it('the WIP row shows its header and its Unstaged and Staged lists, re-read on every selection (deviation 9)', async () => {
+  it('the WIP row shows its header and its Unstaged and Staged lists, re-read on every selection', async () => {
     let reads = 0;
     api.fileList.mockImplementation(async (_repo: number, spec: DiffSpec) => {
       if (spec.kind !== 'wip') return never();
@@ -226,7 +226,7 @@ describe('DetailsPanel', () => {
     expect(api.fileList.mock.calls.filter(([, spec]) => (spec as DiffSpec).kind === 'wip')).toHaveLength(4);
   });
 
-  // Feedback F13: the header is fixed, only the message scrolls, and a draggable split sits
+  // The header is fixed, only the message scrolls, and a draggable split sits
   // between the header+message and the file list (25 / 75 by default, persisted).
   describe('split', () => {
     let height: PropertyDescriptor | undefined;
@@ -243,7 +243,7 @@ describe('DetailsPanel', () => {
     });
 
     /** Waits a frame: the split's drag writes the live flexBasis in a `requestAnimationFrame`,
-     * coalescing however many `pointermove` events land within it (K26). */
+     * coalescing however many `pointermove` events land within it. */
     const nextFrame = () => act(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
     async function shown() {

@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fixtures, freshFixture, git, openUrl } from './fixtures';
 
-// Diff prefs persist in localStorage (plan 1B amendment 3). Every test starts from the defaults
+// Diff prefs persist in localStorage. Every test starts from the defaults
 // (Inline, no toggles): the key is cleared on the test's first page load only, so a reload inside
 // a test keeps what it picked.
 const DIFF_PREFS_KEY = 'gitvolt.diffPrefs.v1';
@@ -37,13 +37,13 @@ async function sampleFrames(page: Page): Promise<() => Promise<Frame[]>> {
     w.sampled = [];
     w.stopSampling = false;
     const sample = (phase: Frame['phase']) => {
-      // The one on screen: a closed diff's panel is kept, hidden (J16).
+      // The one on screen: a closed diff's panel is kept, hidden.
       const panel = [...document.querySelectorAll('.diff-panel')].find((p) => p.getClientRects().length > 0);
       w.sampled.push({
         path: panel?.querySelector('[data-testid="diff-path"]')?.textContent ?? null,
         lines: [...(panel?.querySelectorAll('.editor.modified .margin-view-overlays .line-numbers') ?? [])].map((e) => e.textContent?.trim() ?? ''),
         busy: !!panel && (panel.getAttribute('aria-busy') === 'true' || !!panel.querySelector('[aria-busy="true"]')),
-        // The editor is painted (the host hides one still holding another view's diff, H6).
+        // The editor is painted (the host hides one still holding another view's diff).
         visible: !!panel?.querySelector('.monaco-host') && getComputedStyle(panel.querySelector('.monaco-host')!).visibility !== 'hidden',
         phase,
       });
@@ -68,7 +68,7 @@ async function sampleFrames(page: Page): Promise<() => Promise<Frame[]>> {
   };
 }
 
-/** What the diff panel on screen actually paints (K7), as one string: `panel:<header path>` when
+/** What the diff panel on screen actually paints, as one string: `panel:<header path>` when
  * a panel is shown, then every text of its body and `img:W×H` (natural size) for every image layer that
  * `checkVisibility` counts as painted (laid out, `visibility: visible`, no ancestor at opacity 0).
  * Runs in the page; `painted(page)` evaluates it once. */
@@ -246,7 +246,7 @@ test.describe('diff viewer controls', () => {
   });
 
   test("the toolbar's layout at every width, a rename's header, and the focus a toolbar click leaves", async ({ page }) => {
-    await test.step("a rename's header: the common base, old ⇒ new with only the new name bright; a stacked tooltip (H21)", async () => {
+    await test.step("a rename's header: the common base, old ⇒ new with only the new name bright; a stacked tooltip", async () => {
       await open(page, 'docs/manual.txt');
       const path = diff(page).getByTestId('diff-path');
       await expect(path).toHaveText('docs/guide.txt ⇒ manual.txt');
@@ -262,7 +262,7 @@ test.describe('diff viewer controls', () => {
       expect(Math.abs(arrow!.x + arrow!.width / 2 - (box!.x + box!.width / 2))).toBeLessThanOrEqual(1);
     });
 
-    await test.step('toolbar (H9): File/Diff centred; Blame | History, prev/next, the modes, then the toggles at the far right', async () => {
+    await test.step('toolbar: File/Diff centred; Blame | History, prev/next, the modes, then the toggles at the far right', async () => {
       // Centring needs a ~930 px centre panel with #3's Blame | History (narrower, File/Diff moves
       // left of centre: the next step): 1400 px less the 400 px details panel.
       await page.setViewportSize({ width: 1400, height: 720 });
@@ -300,7 +300,7 @@ test.describe('diff viewer controls', () => {
         await open(page, 'src/app.php');
         const d = diff(page);
         const bar = (await d.getByRole('toolbar', { name: 'Diff options' }).boundingBox())!;
-        // Open in… (J1) is on the bar too, at its far left.
+        // Open in… is on the bar too, at its far left.
         await expect(d.getByRole('toolbar', { name: 'Diff options' }).getByRole('group', { name: 'Open in' })).toBeVisible();
         const boxes = await Promise.all([
           d.getByRole('toolbar', { name: 'Diff options' }).getByRole('group', { name: 'Open in' }),
@@ -404,13 +404,13 @@ test.describe('diff viewer controls', () => {
     });
   });
 
-  // K7: what the panel paints while it switches files is only ever the file its header names.
-  test('K7: a held editor takes no click or focus; switching, closing and reopening files never paints a stale file, text or image', async ({ page }) => {
+  // What the panel paints while it switches files is only ever the file its header names.
+  test('a held editor takes no click or focus; switching, closing and reopening files never paints a stale file, text or image', async ({ page }) => {
     test.setTimeout(60_000);
-    // Fix round 1: while hidden (another file computing), the held editor can't be clicked or
+    // While hidden (another file computing), the held editor can't be clicked or
     // focused, though Monaco forces its inner editors visible; shown, it's the editor again. First:
     // it holds the page's first load of the PHP grammar.
-    await test.step('K7: the hidden held editor takes no click and no focus; shown, it takes both', async () => {
+    await test.step('the hidden held editor takes no click and no focus; shown, it takes both', async () => {
       // A certain hidden gap: the held editor stays hidden until app.php is presented, and that
       // first waits for its PHP grammar, a chunk of its own (the dev server's pre-bundled module, or
       // the production build's asset). Hold it ~400 ms.
@@ -453,12 +453,12 @@ test.describe('diff viewer controls', () => {
       // The PHP grammar is loaded now: the steps below run unheld.
       await page.unroute(/\/(\.vite\/deps|assets)\/php-[^/]*\.js/);
     });
-    // K7: open a file, ×, open another: the kept panel's editor still holds the first file until the
+    // Open a file, ×, open another: the kept panel's editor still holds the first file until the
     // second is presented. The host's `visibility: hidden` didn't hide it: Monaco's diff editor sets
     // `visibility: visible` on its two inner editors, which a descendant's own value wins over. This
     // samples what is actually painted (`checkVisibility`: laid out, visible, no ancestor at
     // opacity 0), text and images, in every frame from the click on.
-    await test.step('K7: a file, ×, then another: the first is never painted again (text and image pairs)', async () => {
+    await test.step('a file, ×, then another: the first is never painted again (text and image pairs)', async () => {
       // Text to text, text to image, image to image. A text marker is one token: a highlighted
       // line paints a text node per token.
       for (const [first, second, stale, fresh] of [
@@ -484,9 +484,9 @@ test.describe('diff viewer controls', () => {
       }
     });
 
-    // K7 via the editor's older content: the image in between leaves the editor holding ws.txt,
+    // Via the editor's older content: the image in between leaves the editor holding ws.txt,
     // which must stay unpainted when app.php reopens the text diff.
-    await test.step('K7: a text file, an image, ×, then another text file: the first text file is never painted', async () => {
+    await test.step('a text file, an image, ×, then another text file: the first text file is never painted', async () => {
       await open(page, 'ws.txt');
       await expect.poll(() => painted(page), { timeout: 15_000 }).toContain('fn main() {');
       await open(page, 'logo.png');
@@ -499,7 +499,7 @@ test.describe('diff viewer controls', () => {
       expect(frames.filter((f) => f.includes('fn main() {') || f.includes('img:'))).toEqual([]);
     });
 
-    await test.step('K7: reopening the same file is instant: it is painted in the first frame after the click', async () => {
+    await test.step('reopening the same file is instant: it is painted in the first frame after the click', async () => {
       await open(page, 'ws.txt');
       await expect.poll(() => painted(page), { timeout: 15_000 }).toContain('fn main() {');
       await diff(page).getByRole('button', { name: 'Close diff' }).click();
@@ -510,10 +510,10 @@ test.describe('diff viewer controls', () => {
       expect(frames[0]).toContain('fn main() {');
     });
 
-    // K7, the direct switch (lane V's report): ↑/↓ from file to file, through a large file's
+    // The direct switch: ↑/↓ from file to file, through a large file's
     // message, a binary, images and text. Every painted frame shows one file, the header's: the
     // header waits for the editor only while the editor still shows the header's file.
-    await test.step('K7: stepping through every file with ↑/↓, each painted frame shows only the file its header names', async () => {
+    await test.step('stepping through every file with ↑/↓, each painted frame shows only the file its header names', async () => {
       const MARKS: Record<string, string[]> = {
         'big.txt': ['Large file'], 'crlf.txt': ['second', 'Only line endings changed'], 'data.bin': ['BIN...'], 'ünï.txt': ['unicode path'],
         'manual.txt': ['revised'], 'icon.svg': ['img:16×16'], 'logo.png': ['img:6×4', 'img:4×4'], 'old.txt': ['to be deleted'], 'app.php': ['filler11'], 'ws.txt': ['fn main() {'],
@@ -578,7 +578,7 @@ test.describe('diff viewer controls', () => {
       }
     });
 
-    // H6: close the file, select another commit, open a file there (Split): the one editor is shared,
+    // Close the file, select another commit, open a file there (Split): the one editor is shared,
     // and it still holds the first commit's diff. It must never be painted under the new header.
     await test.step("reopening after a close shows only the new commit's file, never the previous one for a frame (Split)", async () => {
       const d = diff(page);
@@ -600,12 +600,12 @@ test.describe('diff viewer controls', () => {
     });
   });
 
-  test('the keyboard in the diff: F7/Shift+F7 and Shift+↑/↓ step the changes, Shift+↓ in the editor selects, Esc closes the file (J4, J14)', async ({ page }) => {
+  test('the keyboard in the diff: F7/Shift+F7 and Shift+↑/↓ step the changes, Shift+↓ in the editor selects, Esc closes the file', async ({ page }) => {
     test.setTimeout(60_000);
     const d = diff(page);
     const active = d.locator('.editor.modified .active-line-number');
 
-    await test.step('right after a file is clicked, with the file list focused, F7 and Shift+↑/↓ step the changes; plain ↓ still switches files (J14)', async () => {
+    await test.step('right after a file is clicked, with the file list focused, F7 and Shift+↑/↓ step the changes; plain ↓ still switches files', async () => {
       await open(page, 'src/app.php');
       await computed(page);
       const list = page.getByRole('listbox', { name: 'Changed files' });
@@ -631,7 +631,7 @@ test.describe('diff viewer controls', () => {
       await expect(d).toHaveCount(0);
     });
 
-    await test.step('Shift+↓ inside the editor extends its selection, not a change step (J14)', async () => {
+    await test.step('Shift+↓ inside the editor extends its selection, not a change step', async () => {
       await open(page, 'src/app.php');
       await computed(page);
       await d.locator('.editor.modified .view-line').filter({ hasText: 'final class Card' }).click();
@@ -645,7 +645,7 @@ test.describe('diff viewer controls', () => {
       await expect(d).toHaveCount(0);
     });
 
-    await test.step('Esc closes the file even from inside the editor with a selection; an open find widget closes first; from the file list it closes the file (J4)', async () => {
+    await test.step('Esc closes the file even from inside the editor with a selection; an open find widget closes first; from the file list it closes the file', async () => {
       await open(page, 'src/app.php');
       await computed(page);
       // A selection in the editor: Monaco's own Esc (cancelSelection) would take the key.
@@ -659,7 +659,7 @@ test.describe('diff viewer controls', () => {
       await page.keyboard.press('Escape');
       await expect(find).toHaveCount(0);
       await expect(d).toBeVisible();
-      // The shared context menu replaces Monaco's own once a diff has opened (plan 1C Task 15):
+      // The shared context menu replaces Monaco's own once a diff has opened:
       // Esc closes the menu, not the file.
       await d.locator('.editor.modified .view-line').filter({ hasText: 'final class Card' }).click({ button: 'right' });
       const menu = page.getByTestId('context-menu');
@@ -672,7 +672,7 @@ test.describe('diff viewer controls', () => {
       await page.keyboard.press('Escape');
       await expect(d).toHaveCount(0);
       await expect(page.getByRole('grid', { name: 'Commit graph' })).toBeVisible();
-      // J4: with the find widget still open, Esc from the file list closes the file, and the graph
+      // With the find widget still open, Esc from the file list closes the file, and the graph
       // has the keyboard.
       await open(page, 'src/app.php');
       await d.locator('.editor.modified .view-line').filter({ hasText: 'final class Card' }).click();
@@ -708,7 +708,7 @@ test.describe('diff viewer controls', () => {
     });
   });
 
-  test('closing and reopening a file wakes the kept panel fast: the reopen is well under the cold open (J16)', { tag: '@budget' }, async ({ page }) => {
+  test('closing and reopening a file wakes the kept panel fast: the reopen is well under the cold open', { tag: '@budget' }, async ({ page }) => {
     const ready: number[] = [];
     page.on('console', (m) => {
       const t = /\[gitvolt\] diff ready in (\d+) ms/.exec(m.text());
@@ -719,7 +719,7 @@ test.describe('diff viewer controls', () => {
     await computed(page);
     await expect.poll(() => ready.length).toBe(1);
     for (let i = 0; i < 3; i++) {
-      // The open file's row toggles it closed (H5b), and again open.
+      // The open file's row toggles it closed, and again open.
       await fileRow(page, 'src/app.php').click();
       await expect(d).toHaveCount(0);
       await expect(page.getByRole('grid', { name: 'Commit graph' })).toBeVisible();
@@ -728,7 +728,7 @@ test.describe('diff viewer controls', () => {
       await expect(d.locator('.editor.modified .line-insert').first()).toBeVisible();
     }
     const [cold, ...reopens] = ready;
-    // Before J16 a reopen remounted the panel and its lazy chunk suspended: React holds a
+    // A reopen used to remount the panel and its lazy chunk suspended: React holds a
     // revealed Suspense boundary back ~300 ms. Now it's the diff's own present, tens of ms.
     if (budgetApplies()) for (const t of reopens) expect(t, `cold ${cold} ms, reopens ${reopens.join(', ')} ms`).toBeLessThan(Math.min(cold / 3, 200));
   });

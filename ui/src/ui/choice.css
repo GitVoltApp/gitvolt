@@ -6,7 +6,7 @@
 .modal-actions button.positive:hover:not(:disabled) { color: var(--text-on-accent); background: var(--green); }
 .modal-actions button.danger { color: var(--text-selected); }
 .modal-actions button:focus-visible, .modal-actions button:focus { outline: 2px solid var(--text-selected); outline-offset: 2px; }
-/* The anchored popovers (spec §ui confirms, boards G and H): round-1 button language, the safe
+/* The anchored popovers (boards G and H): round-1 button language, the safe
    choice a solid green, a risky one red outlined (it arms in place before it goes). */
 .arm-popover .modal-actions button { padding: 4px 12px; }
 .arm-popover .modal-actions button.primary.positive { color: var(--text-on-accent); background: var(--stats-added); border-color: var(--green); }

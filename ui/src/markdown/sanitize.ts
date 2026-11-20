@@ -8,11 +8,11 @@ const nameOf = (a: Attrs[number]) => (Array.isArray(a) ? a[0] : a);
 const without = (list: Attrs | undefined, drop: readonly string[]): Attrs => (list ?? []).filter((a) => !drop.includes(String(nameOf(a))));
 const base = defaultSchema.attributes ?? {};
 
-/** GitHub's schema (hast-util-sanitize's default) with spec §6's changes: no class but
+/** GitHub's schema (hast-util-sanitize's default) with changes: no class but
  * `language-*` on code, no accesskey/tabindex/style or form attributes, `id`/`name` prefixed `user-content-`, links
  * `http(s)`/`mailto`/relative, images also `data:` (narrowed to raster images by
  * `rehypeSafeUrls`), and these stripped with their contents. `data-gb-ref` on `span` carries a
- * reference through, `data-gb-fm` on `table` front matter, and `data-gb-diff`, `data-gb-lines`, `data-gb-words` and `data-gb-note` (5C) a diff mark, and `data-gb-src` (review comments) a block's source
+ * reference through, `data-gb-fm` on `table` front matter, and `data-gb-diff`, `data-gb-lines`, `data-gb-words` and `data-gb-note` a diff mark, and `data-gb-src` (review comments) a block's source
  * lines (render.tsx checks their nonce). */
 export const MD_SCHEMA: Schema = {
   ...defaultSchema,
@@ -24,10 +24,10 @@ export const MD_SCHEMA: Schema = {
     // Review comments: a rendered diff's block carries its source lines (`data-gb-src`); the
     // overrides check its nonce.
     ...Object.fromEntries(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre', 'hr'].map((t) => [t, [...without(base[t], ['className']), 'dataGbSrc']])),
-    // A `:` only in GitLab's suggestion fence (`suggestion:-1+0`, spec 2026-10-08).
+    // A `:` only in GitLab's suggestion fence (`suggestion:-1+0`).
     code: [['className', /^language-(?:[\w+#.-]+|suggestion:-\d+\+\d+)$/], 'dataGbLines', 'dataGbWords'],
     source: ['srcSet', 'media', 'type'],
-    // `data-gb-*` carry a reference or (5C) a diff mark through; the overrides check their nonce.
+    // `data-gb-*` carry a reference or a diff mark through; the overrides check their nonce.
     span: ['dataGbRef', 'dataGbDiff'],
     div: [...without(base.div, ['className']), 'dataGbDiff', 'dataGbNote', 'dataGbSrc'],
     li: [...without(base.li, ['className']), 'dataGbDiff', 'value', 'dataGbSrc'],
@@ -86,7 +86,7 @@ type Parent = HastRoot | Element;
 
 /** After the sanitizer: an `input` stays only where GFM puts a task-list checkbox, the first
  * element of a list item or of its first paragraph (the schema turns any `input` into a disabled
- * checkbox; a hand-written one elsewhere is dropped, spec §6). */
+ * checkbox; a hand-written one elsewhere is dropped). */
 export function rehypeTaskInputsOnly() {
   const prune = (node: Parent, inItem: boolean) => {
     const firstElement = node.children.find((c) => c.type === 'element');

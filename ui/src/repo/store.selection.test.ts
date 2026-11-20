@@ -6,7 +6,7 @@ import { filesKey } from './services';
 import { createRepoViewStore, fileViewTarget, inCommitSelection, selectedCommits, selectedIndex, targetFor, type RepoViewStore } from './store';
 import { recordingServices as fakeServices } from './testServices';
 
-// K27 (spec §9.4): the graph's selection. Click order sets a compare's direction; Ctrl+click
+// The graph's selection. Click order sets a compare's direction; Ctrl+click
 // toggles rows in and out with no limit; Shift+click selects a contiguous range from the anchor.
 
 const [A, B, C, D, E] = ['a', 'b', 'c', 'd', 'e'].map((c) => c.repeat(40));
@@ -31,7 +31,7 @@ function setup(g: GraphPayload = graph) {
 }
 const picks = (s: RepoViewStore) => s.getState().picks;
 
-describe('selection: click order (K27)', () => {
+describe('selection: click order', () => {
   it('a click then a Ctrl+click compares the first (FROM) with the second (TO), in click order', () => {
     const { st, click, s } = setup();
     click(1);
@@ -154,7 +154,7 @@ describe('selection: click order (K27)', () => {
   });
 });
 
-describe('selection: multi-select (K27)', () => {
+describe('selection: multi-select', () => {
   it('a third Ctrl+click makes a multi-selection: ids newest first, no file lists, no details', () => {
     const { st, click, s } = setup();
     click(3);
@@ -221,7 +221,7 @@ describe('selection: multi-select (K27)', () => {
   });
 });
 
-describe('selection: Shift ranges (K27)', () => {
+describe('selection: Shift ranges', () => {
   it('Shift+click selects the rows from the anchor to the clicked row, inclusive', () => {
     const { st, click, s } = setup();
     click(1);
@@ -291,7 +291,7 @@ describe('selection: Shift ranges (K27)', () => {
   });
 });
 
-describe('selection: leaving and refreshing (K27)', () => {
+describe('selection: leaving and refreshing', () => {
   it('exitCompare from a compare returns to the anchor (the row Ctrl+clicked last)', () => {
     const { st, click, s } = setup();
     click(3);
@@ -385,7 +385,7 @@ describe('selection: leaving and refreshing (K27)', () => {
   });
 });
 
-describe('the multi-selection names its anchor (spec #3 §4.3, the 3B/3C contract)', () => {
+describe('the multi-selection names its anchor', () => {
   it('a Shift range: the row it started from; Ctrl+clicks: the row clicked last', () => {
     const { st, click } = setup();
     click(1);
@@ -402,7 +402,7 @@ describe('the multi-selection names its anchor (spec #3 §4.3, the 3B/3C contrac
     for (const i of [1, 2, 3, 4]) click(i, { ctrl: i !== 1 });
     st().setGraph({ ...graph, rows: graph.rows.filter((r) => r.id !== A) });
     expect(st().selection).toEqual({ kind: 'multi', ids: [B, C, D], anchor: D });
-    // Two left: a compare, in pick order (K27).
+    // Two left: a compare, in pick order.
     st().setGraph({ ...graph, rows: graph.rows.filter((r) => r.id !== A && r.id !== D) });
     expect(st().selection).toMatchObject({ kind: 'compare', from: B, to: C });
   });
@@ -416,7 +416,7 @@ describe('the multi-selection names its anchor (spec #3 §4.3, the 3B/3C contrac
   });
 });
 
-describe('selectedCommits and inCommitSelection (spec #3 §4.3)', () => {
+describe('selectedCommits and inCommitSelection', () => {
   const M = 'f'.repeat(40);
   const S = '5'.repeat(40);
   const g2: GraphPayload = { ...graph, rows: [wipRow('/r'), row(A), { ...row(M), kind: 'merge', parents: [A, B] }, row(B), { ...row(S), kind: 'stash' }, row(C)] };

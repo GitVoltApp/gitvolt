@@ -1,6 +1,6 @@
 // Merge and merge abort (write/integrate.rs): `git merge --no-edit <target>` as the demo does it
-// (`runMerge`), a merge commit as the visitor or a stop on conflicts that pauses its journal entry
-// (§13.2), and `git merge --abort`. A rebase goes to plan 4's `rebaseIntegrate`.
+// (`runMerge`), a merge commit as the visitor or a stop on conflicts that pauses its journal entry,
+// and `git merge --abort`. A rebase goes to the sequencer's `rebaseIntegrate`.
 import type { IntegrateOutcome } from '../../api/gen/IntegrateOutcome';
 import type { HandlerTable } from '../transport';
 import { gitFailure } from '../engine/errors';

@@ -4,7 +4,7 @@ import type { ForgeMr } from '../api/gen/ForgeMr';
 import type { MenuEnv, MrTarget } from '../menu/menuEnv';
 import type { MenuRow } from '../menu/types';
 
-// Menus are built synchronously from memory (spec §7): a builder that touched the backend would
+// Menus are built synchronously from memory: a builder that touched the backend would
 // hit this proxy and throw.
 vi.mock('../api/client', () => ({ api: new Proxy({}, { get() { throw new Error('menu builders must never call the backend'); } }), errorMessage: String }));
 const checkout = vi.hoisted(() => ({ checkoutMr: vi.fn(async () => {}), checkoutMrInWorktree: vi.fn(async () => {}) }));

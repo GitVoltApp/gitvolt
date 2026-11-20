@@ -9,7 +9,7 @@ import { comboOf } from './shortcuts';
 import { resolveChord } from '../ui/platformKeys';
 
 /**
- * The open dialogs, oldest first. Only the topmost one acts on keys (one owner per key, R6): an
+ * The open dialogs, oldest first. Only the topmost one acts on keys (one owner per key): an
  * auth prompt that opens over Settings or the Palette takes Esc, Enter and Tab alone, and the
  * dialog under it stays open, inert, and gets its keys back once the prompt is gone. The token is
  * any stable object of the dialog (its root ref).
@@ -45,7 +45,7 @@ function submitOnModEnter(e: KeyboardEvent): boolean {
 
 /**
  * A modal dialog (About, the profile dialog) claims every key while it's open, in the key
- * router's `menu` layer (ruling R6, preflight T12): registering there means no lower layer
+ * router's `menu` layer: registering there means no lower layer
  * (tooltip/overlay/app) ever sees the key, so no app shortcut (Ctrl+W, Ctrl+Tab, …) acts on the
  * tab behind it while the dialog is up. Claiming only stops propagation to those layers; it
  * doesn't call `preventDefault` for anything but Escape and a wrapping Tab, so typing in the
@@ -58,14 +58,14 @@ function submitOnModEnter(e: KeyboardEvent): boolean {
  * and Tab; returning true takes it (its default prevented).
  *
  * Returns the ref the dialog's own root element (the one with `role="dialog"`) must attach, so
- * `useFocusTrap` (fix round 1: focus trapping + returning focus to the opener) can find its
+ * `useFocusTrap` (focus trapping + returning focus to the opener) can find its
  * focusable children.
  */
 export function useModalKeys<T extends HTMLElement>(open: boolean, close: () => void, toggleCombo?: string, onKey?: (e: KeyboardEvent) => boolean): RefObject<T | null> {
   const { ref, onTab } = useFocusTrap<T>(open);
   // The latest `close`, so the registration below runs once per opening: a dialog that passes an
   // inline `close` and re-renders (the Activity log on every op) must not re-push itself above a
-  // prompt that opened later (final re-review N1).
+  // prompt that opened later.
   const closeRef = useRef(close);
   closeRef.current = close;
   const keyRef = useRef(onKey);
@@ -78,7 +78,7 @@ export function useModalKeys<T extends HTMLElement>(open: boolean, close: () => 
       if (!isTopModal(ref)) return;
       // A dropdown (ui/Select) opened from the dialog owns the keys: Esc closes it, not the dialog.
       if (useMenu.getState().rows) return;
-      // Esc disarms an armed control inside the dialog (spec §ui confirms); the dialog stays.
+      // Esc disarms an armed control inside the dialog; the dialog stays.
       if (escapeDisarms(e)) return 'handled';
       if (keyRef.current?.(e)) {
         e.preventDefault();

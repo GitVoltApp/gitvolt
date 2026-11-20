@@ -27,16 +27,14 @@ import { PathTooltip } from './RenamePaths';
 import { PathTreeToggle } from './PathTreeToggle';
 import { StatusIcon } from './StatusIcon';
 import { LfsMark } from '../lfs/LfsMark';
-// --- UX round 3 O.1 ---
 import { createFileCtx, createFileRow, useCreateFileInput } from './createFile';
 import { CreateFileInput } from './CreateFileInput';
 import { tabIdOf } from '../app/tabStores';
 import type { MenuRow } from '../menu/types';
-// --- end UX round 3 O.1 ---
 import { submoduleStateText } from '../submodules/labels';
 import './files.css';
 
-/** A file-list row's height, CSS px: the density preset's (feedback H1; `--file-row-h` on :root
+/** A file-list row's height, CSS px: the density preset's (`--file-row-h` on :root
  * carries the same value). */
 export const useFileRowH = () => useDensity((s) => DENSITY_METRICS[s.density].fileRowH);
 
@@ -44,7 +42,7 @@ export const useFileRowH = () => useDensity((s) => DENSITY_METRICS[s.density].fi
 /** `useTreePaths`' prefix for a worktree's tracked files. */
 const WORKTREE_SOURCE = 'wt:';
 
-/** `commit`: a commit's tree, or (UX G.2) `wt:<path>`, a worktree's tracked files, read again
+/** `commit`: a commit's tree, or `wt:<path>`, a worktree's tracked files, read again
  * whenever `refresh` changes (the WIP list moved) while the previous ones stay shown. */
 function useTreePaths(commit: string | null, refresh?: unknown) {
   const services = useRepoView((s) => s.services);
@@ -74,7 +72,7 @@ function useTreePaths(commit: string | null, refresh?: unknown) {
 const stats = (c: FileChange | null) => (!c ? '' : c.additions === null ? 'binary' : `+${c.additions} −${c.deletions ?? 0}`);
 
 /** `text`, with its first case-insensitive match of `query` wrapped for highlighting (feedback
- * K18: "if cheap" — one match, in the text actually shown; no cross-row or cross-segment work). */
+ * "if cheap" — one match, in the text actually shown; no cross-row or cross-segment work). */
 function highlightMatch(text: string, query: string): ReactNode {
   if (!query) return text;
   const i = text.toLowerCase().indexOf(query);
@@ -96,7 +94,7 @@ const COUNT_KINDS = ['modified', 'added', 'deleted', 'renamed', 'conflicted'] as
 /** "2 modified · 1 renamed": the non-zero counts, in the header's order. */
 export const countsText = (c: StatusCounts, sep = ' · ') => COUNT_KINDS.filter((k) => c[k] > 0).map((k) => `${c[k]} ${k}`).join(sep);
 
-/** Coloured status icons with their numbers, non-zero kinds only (feedback F19/F20). Named as
+/** Coloured status icons with their numbers, non-zero kinds only. Named as
  * one image ("2 modified · 1 renamed"); the icons themselves are decorative. */
 export function StatusCountsView({ counts, testId, size }: { counts: StatusCounts; testId: string; size: number }) {
   const text = countsText(counts);
@@ -115,20 +113,20 @@ export function StatusCountsView({ counts, testId, size }: { counts: StatusCount
 interface RowProps { /** The scope fill of the row (file colours), or null. */ tint: string | null; id: string; index: number; row: FileRow; mode: FileListMode; active: boolean; /** Its context menu is open (the outline; a right-click never selects). */ context: boolean; top: number; height: number; filterQuery: string; onPress: (e: MouseEvent, row: FileRow, index: number) => void; onMenu: (e: MouseEvent, row: FileRow) => void; renderActions?: (row: FileRow) => ReactNode }
 
 /** The role of a row: tree mode is a `tree` of `treeitem`s (`aria-level`, folders `aria-expanded`),
- * path mode a flat `listbox` of `option`s (review M8). */
+ * path mode a flat `listbox` of `option`s. */
 const rowRole = (mode: FileListMode) => (mode === 'tree' ? 'treeitem' : 'option');
 
 /** The file list a row is in: its tooltip opens left of it, over the center panel, so it never
- * covers the rows above or below (feedback J18). */
+ * covers the rows above or below. */
 const fileListOf = (row: HTMLElement) => row.closest('.file-list');
 
-/** A conflicted row's tooltip line: the conflict with its sides named (UX round 2). */
+/** A conflicted row's tooltip line: the conflict with its sides named. */
 function ConflictTip({ kind, worktree }: { kind: ConflictKind; worktree: string }) {
   return <div className="conflict-tip">{conflictSentence(kind, useConflictSides(worktree))}</div>;
 }
 
 /** A folder row, or a file row with its full path in an instant hover tooltip, left of the list (a rename: old,
- * ↓, new; feedback H22). A renamed file shows its new name (tree) or new path (path view); the
+ * ↓, new). A renamed file shows its new name (tree) or new path (path view); the
  * old one is in the tooltip and the diff header. */
 const Row = memo(function Row({ tint, id, index, row, mode, active, context, top, height, filterQuery, onPress, onMenu, renderActions }: RowProps) {
   const style = { top, height, paddingLeft: rowIndent(row.depth), gap: TREE.gap, ...(tint ? { '--row-tint': tint } : null) } as CSSProperties;
@@ -220,20 +218,20 @@ function activeRowId(rows: FileRow[], cursor: Cursor | null, open: { key: string
 interface Cursor { id: string; diffKey: string | null }
 
 /**
- * A virtualized file list (spec §9.3): header counts, Path/Tree, View all files, sort, and rows
+ * A virtualized file list: header counts, Path/Tree, View all files, sort, and rows
  * that open their diff on click or on Up/Down (no separate Enter step). Opening a file prefetches
  * its neighbours' contents; the prefetch queue is replaced on every move, so files the user has
- * moved past are dropped before they're requested (plan 1B deviation 2).
+ * moved past are dropped before they're requested.
  *
  * The listbox carries `data-open-file` when it holds the open file and `data-empty` when it has
- * no rows, so the files zone can focus the right list (WIP has two). `sharedMode` (WIP, K36):
+ * no rows, so the files zone can focus the right list (WIP has two). `sharedMode` (WIP):
  * Path/Tree is the panel's one shared toggle, and the counts and totals are on its section header.
  */
-/** What a WIP panel asks of a list (K36): whether it has files, and to take the keyboard at its
+/** What a WIP panel asks of a list: whether it has files, and to take the keyboard at its
  * first or last file (opening it), when up/down crosses over from the other list. */
 export interface FileListHandle { hasFiles(): boolean; enter(edge: 'first' | 'last'): void }
 
-export function FileList({ list, spec, label, allFilesCommit: commitOf = null, allFilesWorktree = null, sharedMode = false, onLeave, renderActions, toolEnd, canCreate = true, listMenu, ref }: { /** UX round 3 O.1: Create file… on the list's empty space (false: the WIP's Staged and Conflicted lists). */ canCreate?: boolean; /** Rows the list's empty space offers before Create file… (a WIP section's). */ listMenu?: () => MenuRow[]; renderActions?: (row: FileRow) => ReactNode; /** `sharedMode`: shown at the right end of the tool line (WIP: the section's +/− totals). */ toolEnd?: ReactNode; list: FileListPayload; spec: DiffSpec; label: string; allFilesCommit?: string | null; /** UX G.2: the WIP row's View all files, of this worktree's tracked files. */ allFilesWorktree?: string | null; sharedMode?: boolean; onLeave?: (dir: 1 | -1) => boolean; ref?: Ref<FileListHandle> }) {
+export function FileList({ list, spec, label, allFilesCommit: commitOf = null, allFilesWorktree = null, sharedMode = false, onLeave, renderActions, toolEnd, canCreate = true, listMenu, ref }: { /** Create file… on the list's empty space (false: the WIP's Staged and Conflicted lists). */ canCreate?: boolean; /** Rows the list's empty space offers before Create file… (a WIP section's). */ listMenu?: () => MenuRow[]; renderActions?: (row: FileRow) => ReactNode; /** `sharedMode`: shown at the right end of the tool line (WIP: the section's +/− totals). */ toolEnd?: ReactNode; list: FileListPayload; spec: DiffSpec; label: string; allFilesCommit?: string | null; /** The WIP row's View all files, of this worktree's tracked files. */ allFilesWorktree?: string | null; sharedMode?: boolean; onLeave?: (dir: 1 | -1) => boolean; ref?: Ref<FileListHandle> }) {
   const store = useRepoViewStore();
   const repoPath = useRepoView((s) => s.repoPath);
   const openFile = useRepoView((s) => s.openFile);
@@ -242,28 +240,28 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
   const openKey = useRepoView((s) => s.diff?.key ?? null);
   const openPath = useRepoView((s) => s.diff?.path ?? null);
   const { mode, sort, allFiles: commitAllFiles, wipAllFiles, set: setPrefs } = useFileListPrefs();
-  // UX G.2: the WIP row's View all files lists the worktree's tracked files, on its own toggle.
+  // The WIP row's View all files lists the worktree's tracked files, on its own toggle.
   const allFilesWanted = allFilesWorktree ? wipAllFiles : commitOf ? commitAllFiles : false;
   const allFilesCommit = commitOf ?? (allFilesWorktree ? `${WORKTREE_SOURCE}${allFilesWorktree}` : null);
   const toggleAllFiles = () => setPrefs(allFilesWorktree ? { wipAllFiles: !wipAllFiles } : { allFiles: !commitAllFiles });
   const [cursor, setCursor] = useState<Cursor | null>(null);
-  // "View all files"' filter (feedback K18-K20): transient, never persisted, and only shown (or
+  // "View all files"' filter: transient, never persisted, and only shown (or
   // applied) while View all files is on — cleared when it's turned off.
   const [filterText, setFilterText] = useState('');
   useEffect(() => { if (!allFilesWanted) setFilterText(''); }, [allFilesWanted]);
-  // The file menu's openers and remotes, loaded ahead so it opens fully drawn (spec §7).
+  // The file menu's openers and remotes, loaded ahead so it opens fully drawn.
   const services = useRepoView((s) => s.services);
   const graph = useRepoView((s) => s.graph);
   useEffect(() => warmFileMenu(services, graph), [services, graph]);
   const tree = useTreePaths(allFilesWanted ? allFilesCommit : null, allFilesWorktree ? list : undefined);
   const paths = tree.paths;
-  // The layout switches only once the full tree is here (K54): until then the previous list stays
+  // The layout switches only once the full tree is here: until then the previous list stays
   // as it was, under a thin progress line, so there's never a half-switched list. A failed load
   // is settled too (its error row shows). Turning it off is instant.
   const allFilesLoading = allFilesWanted && !!allFilesCommit && paths === null && tree.error === null;
   const allFiles = allFilesWanted && !allFilesLoading;
   const slow = useLateFlag(allFilesLoading, BUSY_DELAY_MS, allFilesCommit ?? '');
-  // UX round 4 R.2: the WIP's lists take the header's one filter; no box of their own.
+  // The WIP's lists take the header's one filter; no box of their own.
   const wipQuery = useWipFilter((s) => { const f = wipFilterOf(s.byTab, tabIdOf(store)); return f.open ? f.text.trim().toLowerCase() : ''; });
   const filterQuery = allFiles ? (sharedMode ? wipQuery : filterText.trim().toLowerCase()) : '';
   const unchanged = useMemo(() => (allFiles && allFilesCommit && paths ? { commit: allFilesCommit, paths, worktree: allFilesWorktree ?? undefined } : null), [allFiles, allFilesCommit, paths, allFilesWorktree]);
@@ -280,7 +278,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
   const [collapsed, setCollapsed] = useFolderCollapse(repoPath, folders, colours.startsCollapsed);
   const rowsFor = useCallback((c: ReadonlySet<string>) => buildRows({ files: filteredFiles, spec, unchanged: filteredUnchanged, mode, sort, collapsed: c }), [filteredFiles, spec, filteredUnchanged, mode, sort]);
   const rows = useMemo(() => rowsFor(collapsed), [rowsFor, collapsed]);
-  // The rows with every directory expanded: ↑/↓ walk the files in this order (UX round 2), so a
+  // The rows with every directory expanded: ↑/↓ walk the files in this order, so a
   // collapsed directory's files are reachable from the keyboard. Built on the first use only.
   const fullRows = useRef<{ of: typeof rowsFor; rows: FileRow[] } | null>(null);
   const allRows = () => {
@@ -307,7 +305,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
   const counts = countByStatus(list.files);
   const items = v.getVirtualItems();
   const activeIndex = rows.findIndex((r) => r.id === activeId);
-  // A file opened from outside the list (the next one after a stage, UX): scrolled into view, a
+  // A file opened from outside the list (the next one after a stage): scrolled into view, a
   // no-op when it already is (a click or ↑/↓ moved it there).
   useLayoutEffect(() => {
     if (activeIndex >= 0 && own) v.scrollToIndex(activeIndex, { align: 'auto' });
@@ -338,7 +336,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     for (let j = from; j >= 0 && j < rows.length; j += step) if (rows[j].kind === 'file') return j;
     return fallback ? fileAt(from, fallback) : -1;
   };
-  /** `j`, or `wrap()`'s result when `j` is -1 (feedback K4: ↑/↓ wrap at the list's ends). */
+  /** `j`, or `wrap()`'s result when `j` is -1 (↑/↓ wrap at the list's ends). */
   const orWrap = (j: number, wrap: () => number): number => (j === -1 ? wrap() : j);
   /** Puts the cursor on file row `j`, scrolls to it and opens it; nothing if there's none, or
    * it's the open file already. */
@@ -349,7 +347,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     v.scrollToIndex(j, { align: 'auto' });
     open(j);
   };
-  /** ↑/↓'s move (UX round 2): onto `to`'s file, first expanding the collapsed directories that
+  /** ↑/↓'s move: onto `to`'s file, first expanding the collapsed directories that
    * hide it, as a click on their chevrons would; the scroll waits for the expanded rows. */
   const stepTo = (to: NonNullable<ReturnType<typeof stepFile>>) => {
     if (to.expand.length === 0) return moveToFile(rows.findIndex((r) => r.id === to.row.id));
@@ -393,7 +391,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
    * expanded order. */
   const stepFrom = (id: string | null, step: 1 | -1) => stepFile(allRows(), collapsed, id, step);
   /** The first file row with changes from `from` (inclusive) stepping by `step`. -1 when there's
-   * none (feedback K19: "Previous/Next changed file" skips unchanged rows). */
+   * none ("Previous/Next changed file" skips unchanged rows). */
   const changedFileAt = (from: number, step: 1 | -1): number => {
     for (let j = from; j >= 0 && j < rows.length; j += step) {
       const r = rows[j];
@@ -401,13 +399,13 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     }
     return -1;
   };
-  /** "Previous changed file" / "Next changed file" (K19): from the active row, or an end when
+  /** "Previous changed file" / "Next changed file": from the active row, or an end when
    * there's none; wraps around. */
   const jumpChanged = (step: 1 | -1) => {
     const from = activeIndex >= 0 ? activeIndex + step : (step === 1 ? 0 : rows.length - 1);
     moveToFile(orWrap(changedFileAt(from, step), () => changedFileAt(step === 1 ? 0 : rows.length - 1, step)));
   };
-  // Feedback K20: clearing the filter re-centres the selected row, once the wider, unfiltered
+  // Clearing the filter re-centres the selected row, once the wider, unfiltered
   // rows it scrolls against are the ones laid out (the effect below, keyed on `rows`/`activeIndex`
   // so it fires after that recompute, not on the click itself).
   const centerOnClear = useRef(false);
@@ -420,7 +418,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     centerOnClear.current = false;
     if (activeIndex >= 0) v.scrollToIndex(activeIndex, { align: 'center' });
   }, [rows, activeIndex, v]);
-  // Feedback H5b: the open file's row closes it (a toggle). The row keeps the cursor, with no
+  // The open file's row closes it (a toggle). The row keeps the cursor, with no
   // diff, so Enter/Space opens it again; the keyboard stays in the list.
   const toggleFile = (row: Extract<FileRow, { kind: 'file' }>, index: number) => {
     if (row.target.key === openKey) {
@@ -432,7 +430,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
       open(index);
     }
   };
-  // The file or folder menu (spec §7) for `row`. A folder's Open in ▸ Files opens a path in it:
+  // The file or folder menu for `row`. A folder's Open in ▸ Files opens a path in it:
   // its first file listed.
   const rowMenuFor = (row: FileRow) => {
     if (row.kind === 'file') return fileMenu(store, spec, row.target, row.change !== null);
@@ -443,7 +441,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     // Stage / Discard take the files its hover buttons do (`filesUnder`): the list's, under it.
     return folderMenu(store, spec, row.path, child, conflicted, list.files.filter((f) => f.path.startsWith(inside)));
   };
-  // UX round 3 O.1 (follow-up): Create file… ends every row's menu too, so a list its rows fill
+  // Create file… ends every row's menu too, so a list its rows fill
   // (no empty space to right-click) still offers it; its input opens at the top of this list.
   const menuFor = (row: FileRow) => {
     const build = rowMenuFor(row);
@@ -468,11 +466,11 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     });
 
   // The rows' handlers are the same functions on every render (they reach the latest closure
-  // through a ref), so a row re-renders only when its own props change (review M2).
+  // through a ref), so a row re-renders only when its own props change.
   const latest = useRef({ toggleFile, place, toggle, menuFor });
   useLayoutEffect(() => { latest.current = { toggleFile, place, toggle, menuFor }; });
   const onRowPress = useCallback((e: MouseEvent, row: FileRow, index: number) => {
-    // Every press toggles (K2, K3), the second of a quick pair too: the browser counts
+    // Every press toggles, the second of a quick pair too: the browser counts
     // it as a double-click (`detail` 2), but to the user it's just another click.
     if (e.button !== 0) return;
     const l = latest.current;
@@ -481,10 +479,9 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     l.toggle(row.path);
   }, []);
   // A right-click never moves the selection (`onRowPress` ignores it): the row gets the context
-  // outline while its menu is open instead (UX round 2).
+  // outline while its menu is open instead.
   const [contextRow, openContextFor] = useContextTarget<string>();
   const onRowMenu = useCallback((e: MouseEvent, row: FileRow) => openContextFor(row.id, () => openContextMenu(e, latest.current.menuFor(row))), [openContextFor]);
-  // --- UX round 3 O.1 ---
   // A right-click on the list's empty space (a row's own menu stops the event first): Create
   // file…, whose name input opens at the top of this list.
   const listKey = `${filesKey(spec)}|${label}`;
@@ -499,7 +496,6 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
   const creating = useCreateFileInput((s) => s.open !== null && s.open.listKey === listKey && s.open.tabId === tabIdOf(store));
   const prefill = useCreateFileInput((s) => s.open?.prefill);
   const createWhere = creating ? createFileCtx(store) : null;
-  // --- end UX round 3 O.1 ---
 
   useImperativeHandle(ref, () => ({
     hasFiles: () => allRows().some((r) => r.kind === 'file'),
@@ -512,9 +508,9 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.altKey || e.metaKey) return;
-    // A stale list (the next selection is loading, feedback F12) opens nothing; the keys it
+    // A stale list (the next selection is loading) opens nothing; the keys it
     // would have handled are still swallowed, or the list would scroll natively and carry that
-    // offset into the swapped-in list (review M12).
+    // offset into the swapped-in list.
     const pending = store.getState().panelPending;
     if (pending) {
       if (HANDLED_KEYS.has(e.key) || (e.key === 'F10' && e.shiftKey)) e.preventDefault();
@@ -534,14 +530,14 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
     }
     const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 240) / rowH) - 1);
     const last = rows.length - 1;
-    // Feedback J3: the moves land on file rows only (folder rows are skipped), and open them.
-    // Feedback K4: ↓ past the last file wraps to the first, ↑ past the first wraps to the last.
-    // UX round 2: ↑/↓ go file to file as if every directory were expanded, expanding the
+    // The moves land on file rows only (folder rows are skipped), and open them.
+    // ↓ past the last file wraps to the first, ↑ past the first wraps to the last.
+    // ↑/↓ go file to file as if every directory were expanded, expanding the
     // collapsed ones they walk into (↓ lands on the first file inside, ↑ on the last).
     switch (e.key) {
       // Every key handled here is in HANDLED_KEYS (above): add new ones to both, or a pending list
       // would scroll on them.
-      // `onLeave` (WIP, K36): past the list's end, the other expanded list takes over (and wraps
+      // `onLeave` (WIP): past the list's end, the other expanded list takes over (and wraps
       // the sequence as a whole); with none to take it, this list wraps on its own.
       case 'ArrowDown':
       case 'ArrowUp': {
@@ -556,7 +552,7 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
       case 'PageUp': { const t = Math.max(0, i - page); moveToFile(fileAt(t, -1, 1)); break; }
       case 'Home': moveToFile(fileAt(0, 1)); break;
       case 'End': moveToFile(fileAt(last, -1)); break;
-      // Feedback J2: ← collapses an expanded folder; anywhere else it closes the diff and goes
+      // ← collapses an expanded folder; anywhere else it closes the diff and goes
       // back to the graph (the selection stays). → expands a collapsed folder, moves into an
       // expanded one (its first child), or opens the file (nothing if it's already open).
       case 'ArrowLeft':
@@ -620,12 +616,12 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
       ))}
       {!sharedMode && <>
       {/* Justified: the mode's action on the left, Path/Tree in the centre, View all files on
-          the right (feedback F18). */}
+          the right. */}
       <div className="file-toolbar" role="toolbar" aria-label="File list options" aria-busy={allFilesLoading || undefined}>
         <div className="file-toolbar-start">
           {mode === 'tree' ? (
             // One smart button: expands everything unless everything already is (then collapses).
-            // `icon-lead` (feedback H17): the chevrons' ink starts ~3 px into their box, so the
+            // `icon-lead`: the chevrons' ink starts ~3 px into their box, so the
             // left padding is trimmed to match the text's right padding.
             <HoverTooltip content={allExpanded ? 'Collapse every folder' : 'Expand every folder'}>
               <button type="button" className="toolbar-button icon-lead" disabled={folders.length === 0} onClick={() => setCollapsed(allExpanded ? new Set(folders) : new Set())}>

@@ -31,7 +31,7 @@ function rootDeclarations(): Record<string, string> {
 const luminance = (hex: string) => contrastRatio(hex, '#000000') * 0.05 - 0.05;
 
 describe('themes', () => {
-  it('has exactly the ten built-in themes of spec §12.1, in menu order', () => {
+  it('has exactly the ten built-in themes in menu order', () => {
     expect(THEME_IDS).toEqual(['default-dark', 'light', 'monokai', 'darcula', 'dracula', 'one-dark', 'solarized-dark', 'solarized-light', 'github-dark', 'nord']);
     for (const id of THEME_IDS) expect(THEMES[id].id).toBe(id);
     expect(DEFAULT_THEME_ID).toBe('default-dark');
@@ -39,7 +39,7 @@ describe('themes', () => {
     expect(isThemeId('solarized')).toBe(false);
   });
 
-  it('pairs each theme with the editor theme named in spec §12.1 (GitHub Dark: github-dark-default, R5)', () => {
+  it('pairs each theme with the editor theme (GitHub Dark: github-dark-default)', () => {
     const pairs = Object.fromEntries(THEME_IDS.map((id) => [id, THEMES[id].editorTheme]));
     expect(pairs).toEqual({
       'default-dark': 'dark-plus', light: 'light-plus', monokai: 'monokai', darcula: 'darcula', dracula: 'dracula',
@@ -158,13 +158,13 @@ describe('themes', () => {
     for (const k of ['status-added', 'status-modified', 'status-deleted', 'status-renamed', 'status-conflicted'] as const) {
       expect(contrastRatio(t.colors[k], t.colors['panel-bg0']), k).toBeGreaterThanOrEqual(3);
     }
-    // Default Dark keeps white initials on every lane, its 1.6:1 yellow included (1C).
+    // Default Dark keeps white initials on every lane, its 1.6:1 yellowincluded.
     if (id === 'default-dark') return;
     const r = resolveColors(t);
     r.graph.forEach((g, i) => expect(contrastRatio(r.laneText[i], g), `initials on lane ${i} ${g}`).toBeGreaterThanOrEqual(3));
   });
 
-  it("Default Dark is exactly 1C's dark theme, every token (tokens.css at 5b5fa4e, the user's K32-K65 samples)", () => {
+  it("Default Dark is exactly the original dark theme, every token (tokens.css at 5b5fa4e)", () => {
     // One literal copy of the whole theme, so no edit to themes.ts or tokens.css can drift the
     // hand-tuned look, and no token can go unpinned. The literals the CSS used to hard-code are here too.
     expect(THEMES['default-dark']).toEqual({

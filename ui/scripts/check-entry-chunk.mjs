@@ -1,4 +1,4 @@
-// Spec §10.3: Monaco, Shiki's grammars and registry, and the Oniguruma WASM load on the first
+// Monaco, Shiki's grammars and registry, and the Oniguruma WASM load on the first
 // diff, never at startup; so do an MR's Compare and review mode (review comments, 2026-10-08). Run after `vite build` (it's part of `npm run build`): fails if any
 // of them reached a chunk the app shell loads eagerly, i.e. the entry script in dist/index.html
 // and every chunk it modulepreloads.
@@ -18,10 +18,10 @@ const MARKERS = [
   'createDiffEditor', // monaco-editor/editor/editor.api (a namespace property key)
   'ShikiError', // shiki/core
   'AGFzbQ', // shiki/wasm: the Oniguruma WASM inlined as base64 ("\0asm" magic)
-  'tableDelimiter', // micromark's GFM table tokens (remark-gfm): the Markdown renderer stays lazy (spec #5 §3.1)
+  'tableDelimiter', // micromark's GFM table tokens (remark-gfm): the Markdown renderer stays lazy
   'dataFootnoteBackref', // hast-util-sanitize's default schema (rehype-sanitize), minified
-  'No diagram type detected matching given configuration', // mermaid's core (detectType's error): Mermaid loads on the first diagram (spec #5 §3.1)
-  'u{C0}-', // jsdiff's word tokenizer (the rendered Markdown diff, 5C): lazy
+  'No diagram type detected matching given configuration', // mermaid's core (detectType's error): Mermaid loads on the first diagram
+  'u{C0}-', // jsdiff's word tokenizer (the rendered Markdown diff): lazy
   "couldn't be fetched from", // an MR's Compare (forge/mrview/compare.ts): loads with the MR view, or on the review chip's click
   'has new commits since this compare', // review mode (diff/review/ReviewMode.tsx), which Compare brings: with the diff panel
   'Setting up fake worker failed', // pdf.js (pdf/pdfjs.ts): loads on the first PDF shown
@@ -45,7 +45,7 @@ for (const file of eager) {
   const found = MARKERS.filter((m) => code.includes(m));
   if (found.length) {
     failed = true;
-    console.error(`check-entry-chunk: ${file} is loaded at startup but contains ${found.join(', ')}; Monaco, Shiki, the Markdown renderer, Mermaid, Compare, review mode and pdf.js must stay in lazy chunks (spec §10.3, spec #5 §3.1).`);
+    console.error(`check-entry-chunk: ${file} is loaded at startup but contains ${found.join(', ')}; Monaco, Shiki, the Markdown renderer, Mermaid, Compare, review mode and pdf.js must stay in lazy chunks.`);
   }
 }
 if (failed) process.exit(1);

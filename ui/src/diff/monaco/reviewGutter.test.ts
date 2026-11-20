@@ -56,7 +56,7 @@ function setup() {
   return { gutter, original, modified, onPick };
 }
 
-describe("review mode's gutter (spec 2026-10-08 §2)", () => {
+describe("review mode's gutter", () => {
   it('disposed (no review), its + and its listeners leave the editors', () => {
     const { gutter, original, modified } = setup();
     expect(modified.listeners()).toBe(4);

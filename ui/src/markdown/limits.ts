@@ -1,10 +1,10 @@
-/** Bodies up to this many characters (or already parsed) render in the first paint (ruling 2). */
+/** Bodies up to this many characters (or already parsed) render in the first paint. */
 export const SYNC_PARSE_CHARS = 16_384;
-/** Above this many characters, a "Rendering…" line holds the place while it parses (spec §3.1). */
+/** Above this many characters, a "Rendering…" line holds the place while it parses. */
 export const RENDERING_NOTE_CHARS = 500_000;
-/** `MarkdownProps.maxBytes`'s default (spec §3.1: File View's 5 MB). */
+/** `MarkdownProps.maxBytes`'s default (File View's 5 MB). */
 export const DEFAULT_MAX_BYTES = 5_000_000;
-/** The MR/PR view keeps plain text for bodies over 1 MB (spec §3.1). */
+/** The MR/PR view keeps plain text for bodies over 1 MB. */
 export const MR_BODY_MAX_BYTES = 1_000_000;
 
 /** UTF-8 sizes of the recent texts whose length couldn't tell (a poll re-renders the same bodies). */

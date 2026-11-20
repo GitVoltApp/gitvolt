@@ -36,17 +36,17 @@ interface Props {
   avatar?: (email: string) => ImageBitmap | null;
   /** Bumped when a new avatar arrives, to redraw with it. */
   avatarVersion?: number;
-  /** The lanes need more width than the column has: the collapse zone and packed nodes (F2, F11). */
+  /** The lanes need more width than the column has: the collapse zone and packed nodes. */
   clipped?: boolean;
   /** The lane scroll, CSS px (the Graph column's own scrollbar). */
   scrollX?: number;
   /** The canvas element's id (the lane scrollbar's `aria-controls`). */
   id?: string;
-  /** The selected row, drawn with a brighter band (H14); -1 or omitted: none. */
+  /** The selected row, drawn with a brighter band; -1 or omitted: none. */
   selected?: number;
-  /** More selected rows (a compare's or multi-selection's, K27), drawn the same. */
+  /** More selected rows (a compare's or multi-selection's), drawn the same. */
   alsoSelected?: ReadonlySet<number>;
-  /** The checked-out branch's row, whose connector is a graph line (J21); -1 or omitted: none. */
+  /** The checked-out branch's row, whose connector is a graph line; -1 or omitted: none. */
   headRow?: number;
   /** A fold's reveal panel is open (draw.ts `foldOpen`). Keep it stable. */
   foldOpen?: { row: number; lane: number };
@@ -94,7 +94,7 @@ export const GraphCanvas = memo(function GraphCanvas({ rows, scroller, width, he
     l.paint = (band) => {
       // Sized to its backing store exactly (whole device px), so it's never resampled on screen:
       // a fraction of a pixel's stretch would blur its lines off the rows draw.ts snaps them to,
-      // and off the DOM connectors they continue (K57). The band's top is on the device grid.
+      // and off the DOM connectors they continue. The band's top is on the device grid.
       const bw = Math.round(width * dpr), bh = Math.round(band.height * dpr);
       if (canvas.width !== bw) canvas.width = bw;
       if (canvas.height !== bh) canvas.height = bh;
@@ -127,7 +127,7 @@ export const GraphCanvas = memo(function GraphCanvas({ rows, scroller, width, he
     };
   }, []);
 
-  // `data-strip`: no lane fits, the column is a strip of nodes (F11); for tests and e2e.
+  // `data-strip`: no lane fits, the column is a strip of nodes; for tests and e2e.
   const strip = graphLayout(width, metrics, clipped || scrollX > 0).strip;
   // `top` is the band's, set where it's drawn (never by React, so a re-render can't move it).
   return <canvas ref={canvasRef} id={id} className="graph-canvas" data-testid="graph-canvas" data-clipped={clipped} data-strip={strip} style={{ left, width: Math.round(width * dpr) / dpr, height: Math.round(bandH * dpr) / dpr }} />;

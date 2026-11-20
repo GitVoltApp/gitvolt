@@ -100,14 +100,13 @@ export function git(at: string | { cwd: string; input: string }, ...args: string
   }).trim();
 }
 
-/** `POST /test/write` (spec #2 §18 2A): a test-only write intent on a fixture repo, through the
+/** `POST /test/write`: a test-only write intent on a fixture repo, through the
  * real pipeline. The harness refuses any repo that isn't a marked fixture under its root. */
 export async function testWrite(request: APIRequestContext, path: string, intent: TestIntent, extra: { worktree?: string; expect?: Expect } = {}): Promise<{ ok?: unknown; err?: GbError }> {
   const res = await request.post(`${harnessHttp}/test/write`, { data: { path, intent, ...extra } });
   return (await res.json()) as { ok?: unknown; err?: GbError };
 }
 
-// --- 2D T17 ---
 /** Runs in the sync fixture's origin (`<fixture root>/origin.git`, next to the working copy). */
 export const originGit = (repo: string, ...args: string[]): string => git(join(dirname(repo), 'origin.git'), ...args);
 
@@ -120,9 +119,7 @@ export function writeHook(repo: string, name: string, script: string): void {
 
 /** Creates an empty file (a hook's go signal). */
 export const touch = (path: string): void => writeFileSync(path, '');
-// --- end 2D T17 ---
 
-// --- 4A T14 ---
 /** The harness's fake forge (crates/gitvolt-harness/src/fake_forge): GitLab's token for Ada in its
  * default seed (`GITLAB_TOKEN`). Tests reach the fake only through the harness port. */
 export const E2E_GITLAB_TOKEN = 'glpat-FAKE-e2e-ada';
@@ -135,10 +132,8 @@ export async function setForgeSeed(request: APIRequestContext, seed: ForgeSeed):
   const res = await request.post(`${harnessHttp}/test/forge/seed`, { data: seed });
   if (!res.ok()) throw new Error(`forge seed refused: ${res.status()} ${await res.text()}`);
 }
-// --- end 4A T14 ---
 
-// --- 4B T16 ---
-/** The app's own addForgeAccount, through the harness (4A's spec covers the Settings form). */
+/** The app's own addForgeAccount, through the harness (the Settings form has its own spec). */
 export async function addForgeAccount(request: APIRequestContext, host: string, kind: 'gitlab' | 'github' | 'forgejo', token: string): Promise<void> {
   const res = await request.post(`${harnessHttp}/test/forge/account`, { data: { host, kind, token } });
   const body = (await res.json()) as { ok?: unknown; err?: { message: string } };
@@ -148,9 +143,7 @@ export async function addForgeAccount(request: APIRequestContext, host: string, 
 export async function forgeRequests(request: APIRequestContext): Promise<Array<{ forge: string; method: string; path: string; query: string; authorized: boolean }>> {
   return (await (await request.get(`${harnessHttp}/test/forge/requests`)).json()) as Array<{ forge: string; method: string; path: string; query: string; authorized: boolean }>;
 }
-// --- end 4B T16 ---
 
-// --- 4C T10 ---
 /** The fake forge's GitHub token for octocat (`GITHUB_TOKEN` in the harness's default seed). */
 export const E2E_GITHUB_TOKEN = 'ghp_FAKE-e2e-octocat';
 /** The fake Forgejo's token for ada (`FORGEJO_TOKEN` in the harness's default seed). */
@@ -160,4 +153,3 @@ export async function forgeScript(request: APIRequestContext, s: { forge: 'gitla
   const res = await request.post(`${harnessHttp}/test/forge/script`, { data: { headers: [], body: null, ...s } });
   if (!res.ok()) throw new Error(`forge script refused: ${res.status()}`);
 }
-// --- end 4C T10 ---

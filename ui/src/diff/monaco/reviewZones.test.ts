@@ -77,7 +77,7 @@ function setup(changes: Change[] = []) {
 }
 const afters = (ed: ReturnType<typeof fakeEditor>) => [...ed.zones.values()].map((z) => z.afterLineNumber);
 
-describe('where a card goes (spec 2026-10-08 §2)', () => {
+describe('where a card goes', () => {
   // Old 1-4 = new 1-4; old 5-6 deleted; old 7-10 = new 5-8; new 9-11 inserted after old 10;
   // old 11-19 = new 12-20; old 20-21 replaced by new 21; old 22 = new 22.
   const changes = [ch(5, 6, 4, 0), ch(10, 0, 9, 11), ch(20, 21, 21, 21)];

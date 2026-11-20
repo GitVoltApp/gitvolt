@@ -33,7 +33,7 @@ describe('inlineDiff (5C: diffWordsWithSpace)', () => {
     expect(wd('See [the guide](a.md) now.', 'See [the new guide](a.md) now.')).toBe('See [the ](a.md){+[new ](a.md)+}[guide](a.md) now.');
   });
 
-  it('treats inline code and images as whole tokens: a changed image shows old next to new (R7)', () => {
+  it('treats inline code and images as whole tokens: a changed image shows old next to new', () => {
     expect(wd('See ![diagram](img/old.png) and `a()`.', 'See ![diagram](img/new.png) and `a()`.')).toBe('See [-![diagram](img/old.png)-]{+![diagram](img/new.png)+} and `a()`.');
   });
 
@@ -41,7 +41,7 @@ describe('inlineDiff (5C: diffWordsWithSpace)', () => {
     expect(wd('one two', 'one  two')).toBe('one  two');
   });
 
-  it('word-diffs the text around inline HTML; an element (open tag to close tag) is one token (R13)', () => {
+  it('word-diffs the text around inline HTML; an element (open tag to close tag) is one token', () => {
     expect(wd('Press <kbd>Ctrl</kbd> to open the old menu.', 'Press <kbd>Ctrl</kbd> to open the new menu.')).toBe('Press <kbd>Ctrl</kbd> to open the [-old-]{+new+} menu.');
     expect(wd('a <kbd>b</kbd> c', 'a <kbd>x</kbd> c')).toBe('a [-<kbd>b</kbd>-]{+<kbd>x</kbd>+} c');
     expect(wd('Line one<br>then two.', 'Line one<br>then three.')).toBe('Line one<br>then [-two-]{+three+}.');
@@ -58,7 +58,7 @@ describe('inlineDiff (5C: diffWordsWithSpace)', () => {
   });
 });
 
-describe('codeLines (R10)', () => {
+describe('codeLines', () => {
   it("marks the changed words of each paired removed/added line (Monaco's inline diff): ranges per line", () => {
     const r = codeLines('const port = 8080;\nlisten(port);', 'const port = 9090;\nlisten(port);');
     expect(r.marks).toBe('-+ ');

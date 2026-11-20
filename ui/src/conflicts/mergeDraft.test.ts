@@ -8,7 +8,7 @@ vi.mock('../ui/ConfirmDialog', () => ({ confirmAction: confirm }));
 
 const MSG = "Merge branch 'feature/x'\n\n# Conflicts:\n#\ta.txt\n";
 
-describe('the WIP draft when a merge stops (spec #2 §8.2)', () => {
+describe('the WIP draft when a merge stops', () => {
   it('keeps the summary and puts MERGE_MSG below the description', () => {
     expect(mergeDraft({ summary: 'Fix login', description: 'Because.' }, MSG)).toEqual({ summary: 'Fix login', description: "Because.\n\nMerge branch 'feature/x'" });
   });

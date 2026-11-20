@@ -1,6 +1,6 @@
-//! Where forge tokens live (spec #4 §2 "Token storage"):
+//! Where forge tokens live:
 //! - the system Secret Service (libsecret's D-Bus API, through `keyring`), service `gitvolt`,
-//!   account `<profile-id>/<host>` (core spec §14.3);
+//!   account `<profile-id>/<host>`;
 //! - when there's none, `~/.local/share/gitvolt/forge-tokens`: file 0600, directory 0700, always
 //!   written through a 0600 temp file and a rename. Settings › Accounts warns about these.
 //!

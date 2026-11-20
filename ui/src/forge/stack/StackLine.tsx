@@ -19,7 +19,7 @@ export function useStackInputs(tabId: string): unknown[] {
   return [byRef, history, upstreams, project, remote, kind, sidebar?.locals, sidebar?.remotes, graph];
 }
 
-/** The chain through `mr` (Ruling 13), re-read when 4B's forge store or the tab's branches change. */
+/** The chain through `mr`, re-read when the forge store or the tab's branches change. */
 export function useMrChain(tabId: string, mr: ForgeMr): { chain: MrChain | null; target: ForgeTarget | null } {
   const inputs = useStackInputs(tabId);
   return useMemo(() => {
@@ -31,7 +31,7 @@ export function useMrChain(tabId: string, mr: ForgeMr): { chain: MrChain | null;
   }, [tabId, mr, ...inputs]);
 }
 
-/** The hover card's stack line (spec #4 §4 4D: badges show the stack): `Stack 2 of 3 (below: !1, above: !3)`. */
+/** The hover card's stack line (badges show the stack): `Stack 2 of 3 (below: !1, above: !3)`. */
 export function StackLine({ tabId, mr }: { tabId: string; mr: ForgeMr }) {
   const { chain, target } = useMrChain(tabId, mr);
   if (!chain || !target) return null;

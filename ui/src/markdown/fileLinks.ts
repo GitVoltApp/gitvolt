@@ -9,13 +9,13 @@ import { registerFileLinkHandler } from './actions';
 import { registerRepoImageLoader } from './MdImage';
 import type { FileMarkdownContext } from './types';
 
-// 5B T6. Not in `fileContext.ts`: 5A's `links.ts` and `images.ts` import `resolveRepoPath` from
+// Not in `fileContext.ts`: `links.ts` and `images.ts` import `resolveRepoPath` from
 // there, so registering from that module would close an import cycle (actions → links →
 // fileContext → actions) and run `registerFileLinkHandler` before `actions.ts` had initialized.
 // Paths arrive repo-root-relative and already decoded (`resolveRepoPath`): never decode here.
 
 /**
- * A relative link's plain click in File View (spec #5 §4.1): that file in File View at the same
+ * A relative link's plain click in File View: that file in File View at the same
  * commit, as a new navigation place, scrolled to its `#heading` if it has one; a missing file
  * says so ("<path> isn't in <sha>"). A link to this same file's heading scrolls the shown view.
  */
@@ -63,7 +63,7 @@ export function releaseRepoImage(url: string): void {
 }
 
 /**
- * Spec #5 §4.2: a relative image in File View, read from the repository at that commit (or the
+ * A relative image in File View, read from the repository at that commit (or the
  * working tree) through the request the image diff uses, as an object URL. An SVG becomes an
  * `image/svg+xml` blob shown by `<img>`, never inlined. `null`: not an image, missing, or over
  * the size cap (the renderer shows the alt text). Images at a commit are read once; the working

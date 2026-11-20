@@ -27,14 +27,14 @@ const openTabRows = (id: string, path: string, env: MenuEnv): MenuRow[] => {
   })];
 };
 
-/** The sidebar worktree row (spec #2 §11.2, §14): Switch to, Open in a new tab. Remove is below. */
+/** The sidebar worktree row: Switch to, Open in a new tab. Remove is below. */
 const sidebarRows: MenuContribution<SidebarTarget, MenuEnv> = {
   id: 'sidebar.worktree', kind: 'sidebar', group: 'worktree', order: 0,
   when: (t) => t.what === 'worktree',
   rows: (t, env) => (t.what === 'worktree' ? [...switchRows('sidebar.worktree.switch', 'Switch to', t.path, env), ...openTabRows('sidebar.worktree.openTab', t.path, env)] : []),
 };
 
-/** A WIP row (§14): Switch to this worktree and Open in a new tab, neither on the active one's;
+/** A WIP row: Switch to this worktree and Open in a new tab, neither on the active one's;
  * Remove is below. */
 const wipRows: MenuContribution<WipTarget, MenuEnv> = {
   id: 'wip.worktree', kind: 'wip', group: 'worktree', order: 0,
@@ -43,7 +43,6 @@ const wipRows: MenuContribution<WipTarget, MenuEnv> = {
 
 export const offWorktreeMenus: Array<() => void> = [registerMenu(sidebarRows), registerMenu(wipRows)];
 
-// --- 2C T14 ---
 /** Its local branch, with the tip a delete expects (from the sidebar): none when detached. */
 const branchOf = (name: string | null, env: MenuEnv) => {
   const l = name ? env.sidebar?.locals.find((b) => b.name === name.replace(/^refs\/heads\//, '')) : undefined;
@@ -101,7 +100,7 @@ const branchRemoveRows: MenuContribution<CommitTarget, MenuEnv> = {
   },
 };
 
-/** Create worktree from ▸ (core §7 Branch group): each branch at the commit that no worktree
+/** Create worktree from ▸ (Branch group): each branch at the commit that no worktree
  * has, a remote-only one (a new tracking branch), then a new branch here. */
 const createRows: MenuContribution<CommitTarget, MenuEnv> = {
   id: 'branch.createWorktree', kind: 'commit', group: 'branch', order: 10,
@@ -127,4 +126,3 @@ const createRows: MenuContribution<CommitTarget, MenuEnv> = {
 };
 
 offWorktreeMenus.push(registerMenu(sidebarRemoveRows), registerMenu(wipRemoveRows), registerMenu(branchRemoveRows), registerMenu(createRows));
-// --- end 2C T14 ---

@@ -15,7 +15,7 @@ const target = { kind: 'remote' as const, remote: 'origin', branch: 'feature/x' 
 const expectNone = { head: null, refs: {} };
 const diverged = { status: 'diverged', local: 'feature/x', remote: 'origin/feature/x', ahead: 2, behind: 3, localOid: 'l1', remoteOid: 'r1' };
 
-describe('checkout (spec #2 §9.3)', () => {
+describe('checkout', () => {
   beforeEach(() => vi.restoreAllMocks());
   it('asks on divergence and resets on Reset, pinning both refs to the oids shown', async () => {
     const call = vi.spyOn(api, 'checkout')
@@ -110,7 +110,7 @@ describe('checkout (spec #2 §9.3)', () => {
   });
 });
 
-describe('reset (spec #2 §9.4)', () => {
+describe('reset', () => {
   beforeEach(() => vi.restoreAllMocks());
   it('a hard reset over changes asks, then resends with discard', async () => {
     const call = vi.spyOn(api, 'reset')

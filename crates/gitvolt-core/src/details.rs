@@ -1,5 +1,5 @@
-//! Commit details for the right panel (spec §9.1), and the parsed remotes that forge links are
-//! built from (§14.4, no network). The message itself (§9.2) is `commit::read_commit_message`.
+//! Commit details for the right panel, and the parsed remotes that forge links are
+//! built from (no network). The message itself is `commit::read_commit_message`.
 
 use crate::commit::{parse_commit, Signature};
 use crate::error::{gix_err, GbError, GbErrorKind};
@@ -17,7 +17,7 @@ use ts_rs::TS;
 static CO_AUTHOR: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?im)^[ \t]*co-authored-by:[ \t]*(.*?)[ \t]*<([^<>\s]+)>[ \t]*$").expect("valid regex"));
 
-/// `Co-authored-by: Name <email>` trailers, case-insensitive, deduplicated by email (spec §9.1).
+/// `Co-authored-by: Name <email>` trailers, case-insensitive, deduplicated by email.
 pub fn co_authors(message: &str) -> Vec<CoAuthor> {
     let mut seen = HashSet::new();
     CO_AUTHOR
@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(list[1], RemotePayload { name: "backup".into(), host: None, path: None, host_kind: HostKind::Generic, main: false, account: None });
     }
 
-    /// Deferred Rust minor #13: a remote configured through an `insteadOf` alias still gets a
+    /// A remote configured through an `insteadOf` alias still gets a
     /// parsed host and forge links, since `remotes()` now goes through `remote_url` (gix's
     /// rewrite-aware lookup) instead of reading `remote.<name>.url` out of the config raw.
     #[test]

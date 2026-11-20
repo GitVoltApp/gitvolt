@@ -23,7 +23,7 @@ function mount(owns: (e: KeyboardEvent) => boolean) {
   return { store, button: view.getByRole('button'), view };
 }
 
-describe('useAppEscape (J4)', () => {
+describe('useAppEscape', () => {
   it('leaves Esc to editable text of the app (isContentEditable, any spelling), not Monaco', () => {
     const { store, view } = mount(() => false);
     act(() => store.getState().openFile(target));
@@ -83,7 +83,7 @@ describe('useAppEscape (J4)', () => {
   });
 });
 
-describe('Ctrl+W (I1), the app\'s shortcut since plan 1C', () => {
+describe('Ctrl+W, the app\'s shortcut', () => {
   it('is no longer the view\'s: useAppEscape leaves it alone', () => {
     const { store, view } = mount(() => false);
     act(() => store.getState().openFile(target));

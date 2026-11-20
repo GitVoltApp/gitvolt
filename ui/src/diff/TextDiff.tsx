@@ -85,7 +85,7 @@ export function useShow(host: MonacoHost | null, show: (h: MonacoHost) => Promis
     if (!host) return;
     let live = true;
     setFailed(null);
-    // The callback of the render that asked for this show (K7). `shown.current` is already the
+    // The callback of the render that asked for this show. `shown.current` is already the
     // next render's while that render's effects are pending (the window after its commit, which a
     // load's update leaves open past a paint): calling that one would report the next content
     // as on screen while this one is.
@@ -107,7 +107,7 @@ export function useShow(host: MonacoHost | null, show: (h: MonacoHost) => Promis
 }
 
 /**
- * The attach effect's cleanup (J16). A closed diff's panel is kept, hidden, by `<Activity>`, which
+ * The attach effect's cleanup. A closed diff's panel is kept, hidden, by `<Activity>`, which
  * runs this cleanup too but leaves the box in the document: the editor stays in it, so showing the
  * panel again only `keep`s it. Unmounted while shown, the box is gone by the next microtask:
  * `detach`. Unmounted while hidden, this has already run (at the hide) and React doesn't run it
@@ -123,7 +123,7 @@ export const keepWhileHidden = (el: HTMLElement, detach: () => void) => () =>
 export const SHOW_ERROR_TITLE = "Couldn't show this file";
 
 /**
- * A text diff in the app's one diff editor (spec §4.4). The editor is attached in a layout
+ * A text diff in the app's one diff editor. The editor is attached in a layout
  * effect, which runs before the passive effect that shows the texts: `showDiff` shows nothing
  * unless `attachDiff` has run. `onShown` fires once the diff is on screen (see `useOnShown`).
  * `hunkZones`: a WIP diff's hunk header rows, asked for with each show (`wipHunkZones`).
@@ -133,8 +133,8 @@ export function TextDiff({ path, original, modified, language, line, onShown, ed
   const { host, error, retry } = useMonacoHost();
   const prefs = useDiffPrefs((s) => s.prefs);
   const shown = useOnShown(onShown, error);
-  // What this view will show, so the shared editor hides another view's diff it may still hold
-  // (H6). Read at attach time only: later props go through `showDiff`, which swaps in place.
+  // What this view will show, so the shared editor hides another view's diff it may still hold.
+  // Read at attach time only: later props go through `showDiff`, which swaps in place.
   const content = useRef({ path, original, modified });
   content.current = { path, original, modified };
   useLayoutEffect(() => {
@@ -143,7 +143,7 @@ export function TextDiff({ path, original, modified, language, line, onShown, ed
     if (!host.keepDiff(el, content.current)) host.attachDiff(el, content.current);
     return keepWhileHidden(el, () => host.detachDiff(el));
   }, [host]);
-  // Spec #2 §7.5: the working-tree side is editable. A show starts read-only, so it's turned on
+  // The working-tree side is editable. A show starts read-only, so it's turned on
   // again once shown; the listener follows `editable` and the latest `onEdit`.
   const edit = useRef({ editable, onEdit });
   edit.current = { editable, onEdit };

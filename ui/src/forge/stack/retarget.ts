@@ -27,7 +27,7 @@ export function afterMergeLabel(a: AfterMerge, kind: ForgeKind): string {
   return a.retarget ? `Retarget ${mrRef(kind, a.next.number)} and rebase the stack` : `Rebase the stack without the merged ${mrRef(kind, a.merged.number)}`;
 }
 
-/** Why it can't run now, as #3's Rebase stack says it (Ruling 10: 3C rebases the checked-out branch). */
+/** Why it can't run now, as Rebase stack says it (it rebases the checked-out branch). */
 export function afterMergeBlocked(a: AfterMerge, env: { headBranch: string | null; inProgress?: string | null; locals: readonly LocalBranch[]; worktreeShown(path: string): string }): string | undefined {
   if (env.inProgress) return `Finish or abort the ${env.inProgress} first`;
   const away = a.branches.map((n) => env.locals.find((b) => b.name === n)).find((b) => b?.worktree);
@@ -44,8 +44,8 @@ export function rebaseBase(tabId: string, remote: string, branch: string): strin
 }
 
 /**
- * "Retarget the next MR and rebase the stack" (spec #4 §4 4D, Ruling 8):
- * 1. retarget `next` through the API first (research §6: GitHub can close a PR whose base branch
+ * "Retarget the next MR and rebase the stack":
+ * 1. retarget `next` through the API first (GitHub can close a PR whose base branch
  *    goes), unless the forge already did;
  * 2. fetch the target remote, when the stack goes onto a remote-tracking ref;
  * 3. #3's Rebase stack, dropping the merged commits (its confirm is the only one);

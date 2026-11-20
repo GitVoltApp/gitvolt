@@ -3,7 +3,7 @@ import type { GbError } from '../api/gen/GbError';
 import { useGitCheck } from './gitCheck';
 import './errors.css';
 
-/** The blocking screen (spec §5.5): nothing works without git 2.40 or newer, or without git at all. */
+/** The blocking screen: nothing works without git 2.40 or newer, or without git at all. */
 export function GitTooOldScreen({ error }: { error: GbError }) {
   const [busy, setBusy] = useState(false);
   const missing = error.kind !== 'GitTooOld';

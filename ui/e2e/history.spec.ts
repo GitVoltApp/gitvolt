@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { freshFixture, git, openUrl } from './fixtures';
 
-// Spec #3 §7 e2e flow 5: File History plus Blame, over the `file_history` fixture (plan 3A T2).
+// File History plus Blame, over the `file_history` fixture.
 const graphRow = (page: Page, text: string) => page.getByRole('grid', { name: 'Commit graph' }).getByRole('row').filter({ hasText: text });
 const fileRow = (page: Page, path: string) => page.getByRole('listbox', { name: 'Changed files' }).getByRole('option').and(page.locator(`[data-path="${path}"]`));
 const action = (menu: Locator, label: string) => menu.locator('[data-depth="0"] > [role="menuitem"]').filter({ has: menu.page().locator('.ctx-label').getByText(label, { exact: true }) });
@@ -34,7 +34,7 @@ test('File History and Blame: following the rename, Blame groups, Esc; the gutte
     const diff = page.getByRole('region', { name: 'Diff' });
     await expect(diff).toBeVisible();
 
-    // The diff toolbar's History (spec #3 §4.2).
+    // The diff toolbar's History.
     await diff.getByRole('toolbar', { name: 'Diff options' }).getByRole('button', { name: 'History', exact: true }).click();
     const view = page.getByRole('region', { name: 'File history' });
     await expect(view.getByRole('heading')).toHaveText('File History: src/story.txt');
@@ -90,7 +90,7 @@ test('File History and Blame: following the rename, Blame groups, Esc; the gutte
     await expect(view).toHaveCount(0);
     await expect(graphRow(page, 'Start the story')).toHaveAttribute('aria-selected', 'true');
   });
-  // UX round 1 B.1–B.3: Blame sits over the editor; the gutter is left of the line numbers, on the code's line box.
+  // Blame sits over the editor; the gutter is left of the line numbers, on the code's line box.
   await test.step('the blame gutter sits left of the line numbers, its text on the code\'s line box', async () => {
     await graphRow(page, 'Sharpen the opening').click();
     await fileRow(page, 'src/story.txt').click({ button: 'right' });
@@ -130,7 +130,7 @@ test('File History and Blame: following the rename, Blame groups, Esc; the gutte
     expect(Math.abs(number.y + number.height / 2 - (code.y + code.height / 2))).toBeLessThanOrEqual(1);
     if (process.env.GITVOLT_BLAME_SHOT) await view.screenshot({ path: process.env.GITVOLT_BLAME_SHOT });
   });
-  // UX J: a short hash copies the full one (the row stays unselected); the list column resizes, the bar following.
+  // A short hash copies the full one (the row stays unselected); the list column resizes, the bar following.
   await test.step('clicking a hash copies it without selecting the row; the list resizes with the header', async () => {
     // The Blame view closed first: it covers the graph.
     await page.keyboard.press('Escape');
@@ -202,7 +202,7 @@ test('File History and Blame: following the rename, Blame groups, Esc; the gutte
     await expect(md.locator('p del')).toContainText('once');
     await expect(md.locator('p ins')).toContainText('twice');
   });
-  // UX: File History is sticky. While it's open, a file picked in the right panel opens in it too.
+  // File History is sticky. While it's open, a file picked in the right panel opens in it too.
   await test.step('sticky: another file picked in Blame opens in Blame; once closed, a file opens its diff', async () => {
     const view = page.getByRole('region', { name: 'File history' });
     await page.keyboard.press('Escape');

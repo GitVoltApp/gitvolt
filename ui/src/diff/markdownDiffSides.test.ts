@@ -18,7 +18,7 @@ const state = (selection: Selection, parent = 0) => ({
 const target = (old: BlobSource): DiffTarget => ({ key: 'k', path: 'guide.md', oldPath: null, status: 'M', old, new: { kind: 'object', oid: 'e'.repeat(40) }, view: 'diff' });
 const blob: BlobSource = { kind: 'object', oid: '1'.repeat(40) };
 
-describe('oldCommitOf (5C, R9)', () => {
+describe('oldCommitOf (5C)', () => {
   it.each([
     ['a commit: its shown parent', state({ kind: 'commit', index: 1, id: C }), P0],
     ['a merge with parent 2 shown', state({ kind: 'commit', index: 1, id: C }, 1), P1],

@@ -1,6 +1,6 @@
 import { contrastRatio } from './contrast';
 /**
- * The ten built-in themes (spec §12.1): pure data. A theme sets every colour custom property in
+ * The ten built-in themes: pure data. A theme sets every colour custom property in
  * COLOR_TOKENS on :root, plus the ten graph lanes (`--graph-0..9`); non-colour tokens (fonts,
  * motion, density metrics) stay in tokens.css and density.ts. `tokens.css` carries Default Dark
  * as the first-paint values, and themes.test.ts holds the two to each other.
@@ -13,14 +13,14 @@ export const isThemeId = (v: unknown): v is ThemeId => typeof v === 'string' && 
 /** The tokens each theme states outright. */
 export const CORE_TOKENS = [
   // Surfaces: the graph and editor area, the sidebar, popups and dialogs, the status bar, and
-  // the three bar greys (K32-K34, K65).
+  // the three bar greys.
   'app-bg0', 'panel-bg0', 'panel-bg1', 'toolbar-bg0', 'action-bar-bg', 'tab-bar-bg', 'file-bar-bg',
   // Text: selected (the brightest), normal, secondary, disabled; and text on a saturated fill
   // (the blue buttons, the bell's badge, the checked-out check box, avatar initials).
   'text-selected', 'text-normal', 'text-secondary', 'text-disabled', 'text-on-accent',
   'stats-added', 'stats-deleted',
   'red', 'orange', 'yellow', 'green', 'blue', 'link',
-  // K55 sidebar counts; K35 the checked-out row and its check box; F22 DOM text selection.
+  // Sidebar counts; the checked-out row and its check box; DOM text selection.
   'count-blue', 'checked-out-row', 'checked-out', 'selection-bg',
   'conflict-ours', 'conflict-theirs', 'conflict-base',
   // The WIP row's summary box (graph.css).
@@ -30,13 +30,13 @@ export const CORE_TOKENS = [
 /** The tokens `derive` computes from the core ones; a theme may still override any of them. */
 export const DERIVED_TOKENS = [
   'hover-row', 'selected-row', 'section-border', 'focus-outline',
-  // graph/rowDim.ts's two levels; K62 sidebar icons.
+  // graph/rowDim.ts's two levels; sidebar icons.
   'text-row-dimmed', 'text-row-dimmed-branch', 'sidebar-icon', 'avatar-backdrop',
-  // +/− totals (AA on panel-bg0) and the file-status colours (lane D).
+  // +/− totals (AA on panel-bg0) and the file-status colours.
   'stats-added-bright', 'stats-deleted-bright',
   'status-added', 'status-modified', 'status-deleted', 'status-renamed', 'status-conflicted',
   'scroll-thumb-bg', 'scroll-thumb-hover-bg',
-  // Quiet button fills, J11's image frame, shadows and the modal backdrop.
+  // Quiet button fills, the image frame, shadows and the modal backdrop.
   'control-bg', 'control-hover-bg', 'image-frame-border',
   'shadow-modal', 'shadow-popup', 'shadow-tooltip', 'backdrop',
   // The canvas: a commit node's fill and initials, and the collapse zone's shade (draw.ts).
@@ -83,7 +83,7 @@ export interface ThemeDef {
   base?: ThemeId;
   label: string;
   kind: 'dark' | 'light';
-  /** Shiki theme loaded into the highlighter and handed to Monaco by name (spec §12.1). */
+  /** Shiki theme loaded into the highlighter and handed to Monaco by name. */
   editorTheme: string;
   colors: Record<ColorToken, string>;
   /** Lane colors 0–9. The user can override them per theme in Settings. */
@@ -93,8 +93,8 @@ export interface ThemeDef {
   laneText?: string;
 }
 
-/** The Shiki themes §12.1 pairs that @shikijs/themes 4.5.0 ships. Darcula isn't among them (darcula.ts);
- * GitHub Dark uses the modern `github-dark-default` palette (amendment 3, ruling R5). */
+/** The Shiki themes the editor pairs that @shikijs/themes 4.5.0 ships. Darcula isn't among them (darcula.ts);
+ * GitHub Dark uses the modern `github-dark-default` palette. */
 export const SHIKI_BUNDLED_THEMES = ['dark-plus', 'light-plus', 'monokai', 'dracula', 'one-dark-pro', 'solarized-dark', 'solarized-light', 'github-dark-default', 'nord'] as const;
 
 /** `#rrggbb` at alpha `a`, written the way tokens.css writes it. */
@@ -153,7 +153,7 @@ function alpha(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
-/** The diff's colours (F30, H8): the theme's green and red at fixed alphas. Changed
+/** The diff's colours: the theme's green and red at fixed alphas. Changed
  * text gets its red at 20%, whole lines 15%; green is toned down further, as a whole added block
  * carries both the line and the char insert (10% and 12% composite to ~21% for an added block).
  * The hatching is Monaco's default `diffEditor.diagonalFill`. */
@@ -247,7 +247,7 @@ function theme(id: ThemeId, label: string, kind: 'dark' | 'light', editorTheme: 
 }
 
 export const THEMES: Record<ThemeId, ThemeDef> = {
-  // Default Dark, with the user-sampled 1C values (K32-K65): exactly today's tokens.css, every
+  // Default Dark, with the sampled values: exactly today's tokens.css, every
   // token spelled out. The lanes are also the app icon's palette.
   'default-dark': {
     id: 'default-dark', label: 'Default Dark', kind: 'dark', editorTheme: 'dark-plus',
@@ -282,7 +282,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       'review-pending': '#ecb91c', 'review-pending-bg': 'rgba(236, 185, 28, 0.14)',
     },
     graph: ['#15a0bf', '#0669f7', '#8e00c2', '#c517b6', '#d90171', '#cd0101', '#f25d2e', '#f2ca33', '#7bd938', '#2ece9d'],
-    // White initials on every lane, its yellow included (1C's look, kept as is).
+    // White initials on every lane, its yellow included (kept as is).
     laneText: '#ffffff',
   },
   light: theme('light', 'Light', 'light', 'light-plus', {

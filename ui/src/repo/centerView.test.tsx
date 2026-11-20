@@ -29,7 +29,7 @@ const onClose = vi.fn();
 registerCenterView('closer', Probe, { onClose });
 afterEach(() => { closeCenterView('t1'); closeCenterView('t2'); });
 
-describe('the center view (spec #3 §4.1, §4.2: a view in the graph\'s place)', () => {
+describe('the center view (a view in the graph\'s place)', () => {
   it('opens a registered view per tab, replaces it, and closes it', () => {
     render(<><CenterViewHost tabId="t1" /><CenterViewHost tabId="t2" /></>);
     act(() => openCenterView('t1', 'probe', { title: 'One' }));
@@ -163,7 +163,7 @@ describe('the center view (spec #3 §4.1, §4.2: a view in the graph\'s place)',
     quiet.mockRestore();
   });
 
-  it('UX R2: a view that drives the selection puts the graph\'s back when it closes (or another view replaces it)', () => {
+  it('a view that drives the selection puts the graph\'s back when it closes (or another view replaces it)', () => {
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     useTabViews.setState({ views: { t1: { repo: 1, services: fakeServices(), store } } });
     const spec = { kind: 'commit', id: A, parent: 0 } as const;
@@ -193,7 +193,7 @@ describe('the center view (spec #3 §4.1, §4.2: a view in the graph\'s place)',
     useTabViews.setState({ views: {} });
   });
 
-  it('UX R2.2: a file opened from the details panel under the view closes with it; a selection rewritten since goes with the next graph', () => {
+  it('a file opened from the details panel under the view closes with it; a selection rewritten since goes with the next graph', () => {
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     useTabViews.setState({ views: { t1: { repo: 1, services: fakeServices(), store } } });
     act(() => store.getState().selectRow(1));
@@ -212,7 +212,7 @@ describe('the center view (spec #3 §4.1, §4.2: a view in the graph\'s place)',
     useTabViews.setState({ views: {} });
   });
 
-  it('UX R2.1/R2.3: the rebase editor hides the sidebar while open; a file view on top narrows it, and leaveFileView closes it and its file', () => {
+  it('the rebase editor hides the sidebar while open; a file view on top narrows it, and leaveFileView closes it and its file', () => {
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     useTabViews.setState({ views: { t1: { repo: 1, services: fakeServices(), store } } });
     const file = fileViewTarget('src/a.txt', A, { kind: 'commit', id: A, parent: 0 });

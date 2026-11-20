@@ -1,6 +1,6 @@
 import type { BlameHunk } from '../api/gen/BlameHunk';
 
-/** Consecutive lines last changed by one commit (spec #3 §3.10): one row of the gutter. */
+/** Consecutive lines last changed by one commit: one row of the gutter. */
 export interface BlameGroup { sha: string; start: number; lines: number }
 
 /** git's porcelain hunks, merged where one commit's lines run on, in line order. */

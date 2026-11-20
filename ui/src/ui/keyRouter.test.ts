@@ -86,7 +86,7 @@ describe('keyRouter: one dispatcher, fixed layer precedence', () => {
     expect(app).toHaveBeenCalledTimes(1);
   });
 
-  it('the zoom keys (Ctrl+=/-/0, H2) reach the app layer even while a menu is shown, or a menu-layer handler claims every other key (ContextMenu\'s own catch-all)', () => {
+  it('the zoom keys (Ctrl+=/-/0) reach the app layer even while a menu is shown, or a menu-layer handler claims every other key (ContextMenu\'s own catch-all)', () => {
     const app = vi.fn(() => 'handled' as const);
     reg('app', app);
     // A menu-layer handler that, like ContextMenu.tsx, claims every key while open.

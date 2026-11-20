@@ -82,7 +82,7 @@ describe('bindThemeToSettings', () => {
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
   });
 
-  it('paints the mirrored theme before the settings load, and keeps it while they load (R3: no dark flash)', () => {
+  it('paints the mirrored theme before the settings load, and keeps it while they load (no dark flash)', () => {
     localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ id: mine.id, kind: 'dark', bg: '#202020', custom: mine }));
     unbind = bindThemeToSettings();
     // Not loaded yet: DEFAULT_SETTINGS (Default Dark) must not be applied over the mirror.

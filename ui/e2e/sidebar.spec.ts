@@ -38,7 +38,7 @@ test.describe('sidebar', () => {
       // Each panel scrolls on its own: the Tags header is on screen without scrolling past Local.
       await expect(panel(page, 'Tags')).toBeInViewport();
     });
-    await test.step('tree rows have no carets; icons align by depth (K61)', async () => {
+    await test.step('tree rows have no carets; icons align by depth', async () => {
       const local = panel(page, 'Local');
       await expect(local.locator('.sb-folder').first()).toBeVisible();
       // Only the section header keeps its chevron.
@@ -77,15 +77,15 @@ test.describe('sidebar', () => {
       await page.keyboard.press('Escape');
       await expect(count(page, 'Local')).toHaveText('3');
     });
-    // Plan 1C Task 15b: the sidebar item context menus (spec §7's target table): read-only rows over
+    // The sidebar item context menus: read-only rows over
     // the shared menu system.
     await test.step('item menus: a branch, the branch label menu, every row with an instant tooltip; Show in graph selects its tip; the current branch compares with the working tree, not HEAD', async () => {
       await item(page, 'Local', 'hotfix').click({ button: 'right' });
       await expect(menu(page)).toBeVisible();
-      // Spec #2 §14: the Sync, Commit (Reset), Integrate, Branch and Manage groups come first. Only
-      // what can apply (UX round 1): hotfix has no upstream (no Pull), is checked out in wt-hotfix
+      // The Sync, Commit (Reset), Integrate, Branch and Manage groups come first. Only
+      // what can apply: hotfix has no upstream (no Pull), is checked out in wt-hotfix
       // (no Fast-forward) and isn't on a remote: Delete shows, disabled, with the reason, and Delete
-      // with its worktree (#9) beside it. Spec #3 §4.3:
+      // with its worktree (#9) beside it.
       // Cherry-pick and Create tag here; no Revert or Interactive rebase after this commit (hotfix's tip
       // isn't on main), no Interactive rebase main onto hotfix (main is in its history).
       expect(await labels(page)).toEqual([
@@ -122,7 +122,7 @@ test.describe('sidebar', () => {
       await copied(page, `origin/${name}`);
       await page.keyboard.press('Escape');
       await panel(page, 'Remote').getByRole('treeitem').first().click({ button: 'right' });
-      // Spec #3 §3.9: a remote's menu gains Push all tags, first.
+      // A remote's menu gains Push all tags, first.
       expect(await labels(page)).toEqual(['Push all tags to origin', 'Copy remote name', 'Copy URL', 'Remove remote…']);
       await action(page, 'Copy remote name').click();
       await copied(page, 'origin');
@@ -133,7 +133,7 @@ test.describe('sidebar', () => {
       expect(await labels(page)).toContain('Copy tag name');
       await page.keyboard.press('Escape');
       await panel(page, 'Stashes').getByRole('treeitem').first().click({ button: 'right' });
-      // Spec #2 §10: Apply, Pop, Delete, then the Copy rows.
+      // Apply, Pop, Delete, then the Copy rows.
       expect(await labels(page)).toEqual(['Apply', 'Pop', 'Delete', 'Copy SHA', 'Copy message', 'Show in graph']);
       await page.keyboard.press('Escape');
       await panel(page, 'Worktrees').getByRole('treeitem').nth(1).click({ button: 'right' });
@@ -169,7 +169,7 @@ test.describe('sidebar', () => {
       await expect(row).not.toHaveClass(/is-hidden/);
       await expect(commit).toBeVisible();
     });
-    // K56: the sidebar never grows its own scrollbar; only the panel bodies scroll. The harness has
+    // The sidebar never grows its own scrollbar; only the panel bodies scroll. The harness has
     // no webview zoom, so CSS zoom on the root stands in (it gives the same fractional layout).
     await test.step('the sidebar does not overflow at zoom 100%, 120% and 125%, 900, 600 and 400 px tall', async () => {
       for (const z of [1, 1.2, 1.25]) {
@@ -218,7 +218,7 @@ test.describe('sidebar', () => {
       await page.getByRole('complementary', { name: 'Sidebar (collapsed)' }).getByRole('button', { name: 'Stashes (1)' }).click();
       await expect(panel(page, 'Stashes').getByRole('tree')).toBeVisible();
     });
-    await test.step('collapsed panel headers are separated by 1px borders; counts are bold light blue (K55)', async () => {
+    await test.step('collapsed panel headers are separated by 1px borders; counts are bold light blue', async () => {
       for (const n of ['Stashes', 'Tags']) if ((await panel(page, n).getByRole('tree').count()) > 0) await panel(page, n).getByRole('button', { name: n, exact: true }).click();
       await expect(panel(page, 'Tags').getByRole('tree')).toHaveCount(0);
       await expect(panel(page, 'Tags')).toHaveCSS('border-top-width', '1px');
@@ -234,7 +234,7 @@ test.describe('sidebar', () => {
     });
     await test.step('the sidebar narrows while a diff is open', async () => {
       await page.getByRole('row').filter({ hasText: 'Fix typo' }).click();
-      await page.keyboard.press('Enter'); // spec §11.1: Enter on the graph opens the first changed file's diff
+      await page.keyboard.press('Enter'); // Enter on the graph opens the first changed file's diff
       await expect(page.getByRole('complementary', { name: 'Sidebar (collapsed)' })).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(sidebar(page)).toBeVisible();

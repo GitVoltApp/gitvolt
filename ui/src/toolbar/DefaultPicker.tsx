@@ -3,7 +3,7 @@ import { usePressDrag } from '../menu/pressDrag';
 import { pointInRect, swallowGestureClick } from '../ui/swallowClick';
 import type { ToolbarPicker } from './registry';
 
-/** The caret's default picker (spec #2 §12.1), anchored under the caret. ↑/↓ move, Enter or a
+/** The caret's default picker, anchored under the caret. ↑/↓ move, Enter or a
  * click picks (and closes), Esc or a click outside closes. Its keys are its own while it's
  * focused (a modal-like popover; the key router leaves a focused menu alone). */
 export function DefaultPicker({ picker, anchor, onClose }: { picker: ToolbarPicker; anchor: Element; onClose: () => void }) {

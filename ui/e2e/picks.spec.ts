@@ -2,7 +2,7 @@ import { freshFixture, git, openUrl } from './fixtures';
 import { armedOverlay, expect, test } from './test';
 import { fileRow } from './wip';
 
-test.describe('cherry-pick (spec #3 §3.7, §7 e2e flow 4)', () => {
+test.describe('cherry-pick', () => {
   test('a conflicting cherry-pick stops into the merge tool; Continue commits it; one Undo takes it back', async ({ page }) => {
     // HEAD is main; feature/x's "Feature edits" conflicts with main in a.txt (text), gone.txt
     // (deleted on main) and logo.bin (binary).
@@ -30,19 +30,19 @@ test.describe('cherry-pick (spec #3 §3.7, §7 e2e flow 4)', () => {
     await expect.poll(() => git(repo, 'diff', '--name-only', '--diff-filter=U')).toBe('');
     await page.getByTestId('commit-box').getByRole('button', { name: 'Continue cherry-pick' }).click();
     await expect(status).toBeHidden();
-    // UX R1 C.3: the right-clicked row's context outline went with its menu (the merge tool hid
+    // The right-clicked row's context outline went with its menu (the merge tool hid
     // the graph meanwhile).
     if (!(await graph.isVisible())) await page.keyboard.press('Escape');
     await expect(graph).toBeVisible();
     await expect(graph.locator('.graph-row.is-context')).toHaveCount(0);
     expect(git(repo, 'log', '-1', '--format=%s')).toBe('Feature edits');
     expect(git(repo, 'rev-parse', 'HEAD~1')).toBe(before);
-    // One Undo takes the whole cherry-pick back (spec #3 §5).
+    // One Undo takes the whole cherry-pick back.
     await page.getByRole('toolbar', { name: 'Repository toolbar' }).getByRole('button', { name: 'Undo', exact: true }).click();
     await expect.poll(() => git(repo, 'rev-parse', 'main')).toBe(before);
   });
 
-  // UX R1 C.1, C.2: without committing, the staged changes are shown at once (the WIP row
+  // Without committing, the staged changes are shown at once (the WIP row
   // selected, no file opened (H.1)); Discard all then takes the
   // added file at the first confirm, at a human pace, even with GNOME's focus bounce: every press
   // makes the window lose focus and get it back a few ms later, back on the focused element

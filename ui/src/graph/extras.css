@@ -1,4 +1,4 @@
-/* Plan 1C graph extras (spec §8.3, §8.4). */
+/* Graph extras. */
 
 /* A collapsed column's header icon (HeaderCell): the header's own dimmed colour. */
 .col-icon { display: inline-flex; align-items: center; color: var(--text-secondary); }

@@ -7,7 +7,7 @@ import { hideBranch, hideFolder, hideTag, hideTagFolder, showBranch, showFolder,
 /** What a branch chip or sidebar row is, for hiding: its refs (the menus' `BranchRef`). */
 export interface BranchLike { local: string | null; remotes: ReadonlyArray<{ fullName: string; remote: string }> }
 
-/** The branch unit's name (Rulings 1): the short branch name, remote prefix stripped. A tag or a
+/** The branch unit's name: the short branch name, remote prefix stripped. A tag or a
  * detached HEAD has none. */
 export function unitNameOf(b: BranchLike): string | null {
   if (b.local) return b.local.replace(/^refs\/heads\//, '');

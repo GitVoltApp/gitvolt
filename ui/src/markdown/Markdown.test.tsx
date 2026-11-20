@@ -9,8 +9,8 @@ const ctx = { kind: 'forge', tabId: 't' } as const;
 beforeAll(async () => { await loadEmoji(); });
 beforeEach(() => clearParseCache());
 
-describe('<Markdown> (spec #5 §3.1)', () => {
-  it("renders a review comment's suggestion, the lines it replaces unknown, as the lines it puts in: GitHub's fence, and GitLab's with its line offsets (spec 2026-10-08)", () => {
+describe('<Markdown>', () => {
+  it("renders a review comment's suggestion, the lines it replaces unknown, as the lines it puts in: GitHub's fence, and GitLab's with its line offsets", () => {
     for (const [flavor, fence] of [['github', 'suggestion'], ['gitlab', 'suggestion:-1+0']] as const) {
       const { container, unmount } = render(<Markdown flavor={flavor} context={ctx} text={`Try this:\n\n\`\`\`${fence}\nconst a = 2;\nconst b = 3;\n\`\`\``} />);
       const box = container.querySelector('.md-suggestion');
@@ -53,7 +53,7 @@ describe('<Markdown> (spec #5 §3.1)', () => {
     });
   });
 
-  it('renders an empty suggestion as removing the lines: no added line, a note (spec 2026-10-08)', () => {
+  it('renders an empty suggestion as removing the lines: no added line, a note', () => {
     const { container } = render(<Markdown flavor="github" context={ctx} text={'```suggestion\n```'} />);
     const box = container.querySelector('.md-suggestion');
     expect(box?.querySelectorAll('.md-code-line')).toHaveLength(0);

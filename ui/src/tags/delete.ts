@@ -6,7 +6,7 @@ import { runWrite, type WriteCtx } from '../write/client';
 
 export interface TagDeletePlan { tag: string; local: boolean; remote: string | null }
 
-/** `Delete | Local | Remote | Both |` (spec #3 §3.9). Local goes at once (Undo brings it back);
+/** `Delete | Local | Remote | Both |`. Local goes at once (Undo brings it back);
  * a remote delete is a push that can't be undone, so the clicked control arms in place first. */
 export async function deleteTag(ctx: WriteCtx, plan: TagDeletePlan, origin: Origin | null = currentOrigin()): Promise<void> {
   const { tag, local, remote } = plan;

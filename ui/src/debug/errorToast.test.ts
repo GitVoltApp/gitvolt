@@ -13,7 +13,7 @@ const gb = (kind: string, commandId: number | null = null, message = 'm') => ({ 
 const labels = () => [useToast.getState().action, ...useToast.getState().actions].filter(Boolean).map((a) => a!.label);
 const click = (label: string) => act(() => [...useToast.getState().actions].find((a) => a.label === label)!.run());
 
-describe('failed user action → the toast (R12)', () => {
+describe('failed user action → the toast', () => {
   beforeEach(() => {
     vi.useRealTimers();
     copyText.mockClear();

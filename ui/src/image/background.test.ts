@@ -14,7 +14,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe('image background (H30)', () => {
+describe('image background', () => {
   it('checkerboard by default; black, white and mid-grey too; the pick is remembered app-wide', async () => {
     const { IMAGE_BACKGROUNDS, useImageBackground } = await fresh();
     expect(IMAGE_BACKGROUNDS.map((b) => b.id)).toEqual(['checker', 'black', 'white', 'grey']);

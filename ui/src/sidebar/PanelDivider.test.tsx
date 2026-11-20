@@ -60,7 +60,7 @@ describe('PanelDivider', () => {
   });
 });
 
-describe('PanelDivider double-click (K73)', () => {
+describe('PanelDivider double-click', () => {
   it('asks to reset the layout, without committing a drag', () => {
     const onReset = vi.fn();
     const onCommit = vi.fn();

@@ -1,28 +1,28 @@
-//! Checkout (spec #2 §9.3). The case is resolved when the op runs (§3.6), in `plan`:
+//! Checkout. The case is resolved when the op runs, in `plan`:
 //!
 //! | target | local `<name>` | action |
 //! |---|---|---|
-//! | branch | here already | nothing (Deviation 12) |
+//! | branch | here already | nothing |
 //! | branch | elsewhere | refused: CheckedOutElsewhere |
 //! | branch | — | `git switch --no-guess <name>` |
 //! | remote | none | `git switch --no-guess --track -c <name> <remote>/<name>` |
 //! | remote | elsewhere | refused: CheckedOutElsewhere (whatever the ancestry) |
-//! | remote | here, equal or ahead | nothing (Deviation 12) |
+//! | remote | here, equal or ahead | nothing |
 //! | remote | equal or ahead | `git switch --no-guess <name>` |
 //! | remote | behind, not checked out | CAS fast-forward, then switch |
 //! | remote | behind, checked out here | `git merge --ff-only --no-autostash <remote>/<name>` (Rewind) |
 //! | remote | diverged | `Diverged` (nothing runs, the oids shown come back); with `on_diverged: reset` (pinned to them by `expect`), a CAS move then a switch, or here a `read-tree -m -u` then the CAS (Rewind) |
 //! | detached | — | `git switch --detach <oid>` (hex only, resolved to a commit) |
 //!
-//! Each autostashes per §6.1 (overlap with the commit the worktree moves to); the pipeline
+//! Each autostashes (overlap with the commit the worktree moves to); the pipeline
 //! restores it with `--index` whatever the run did (step 8), so a failed checkout never strands
 //! the user's changes. A step that fails or is cancelled with HEAD where it was puts the paths it
-//! touches back first (`put_back`, review I1), so the restore lands on the tree the user left.
+//! touches back first (`put_back`), so the restore lands on the tree the user left.
 //! A remote-tracking start is spelled as its full ref (`refs/remotes/<remote>/<name>`), so a tag
 //! or local branch named `<remote>/<name>` can't win.
 //!
 //! Reset-here's `read-tree -m -u` runs no `post-checkout` hook and doesn't recurse into
-//! submodules (review M9), as undo's Rewind; `git reset --keep` without recursion is the same.
+//! submodules, as undo's Rewind; `git reset --keep` without recursion is the same.
 
 use crate::api::blocking;
 use crate::error::{gix_err, GbError, GbErrorKind};
@@ -45,7 +45,7 @@ use ts_rs::TS;
 #[ts(export)]
 pub enum CheckoutTarget {
     Branch { name: String },
-    /// `remote` and `branch` are separate: a remote's name may hold `/` (Review Focus 3).
+    /// `remote` and `branch` are separate: a remote's name may hold `/`.
     Remote {
         remote: String,
         branch: String,
@@ -73,7 +73,7 @@ pub enum CheckoutOutcome {
     /// Nothing changed. The UI asks "<local> and <remote> have diverged (2 ahead, 3 behind)."
     /// [Reset <local> to <remote>] [Cancel], and Reset sends again with `on_diverged: reset` and
     /// `expect.refs` = { `refs/heads/<local>`: `localOid`, `refs/remotes/<remote>`: `remoteOid` }
-    /// (review M2): a commit or fetch since the dialog is RefMoved, never a bigger reset.
+    /// A commit or fetch since the dialog is RefMoved, never a bigger reset.
     Diverged { local: String, remote: String, ahead: u32, behind: u32, local_oid: String, remote_oid: String },
 }
 
@@ -105,7 +105,7 @@ impl Checkout {
         self.case.get().ok_or_else(|| GbError::other("checkout ran without a plan"))
     }
 
-    /// What the target is called: a detached one by its resolved commit once `plan` ran (M4).
+    /// What the target is called: a detached one by its resolved commit once `plan` ran.
     fn target_name(&self) -> String {
         match (&self.target, self.case.get()) {
             (CheckoutTarget::Detached { .. }, Some(Case::Detach { oid })) => short(oid).to_string(),
@@ -120,7 +120,7 @@ fn heads(name: &str) -> String {
     format!("refs/heads/{name}")
 }
 
-/// The first seven characters (review M3: never a byte slice, whatever the request holds).
+/// The first seven characters (never a byte slice, whatever the request holds).
 fn short(oid: &str) -> &str {
     oid.char_indices().nth(7).map_or(oid, |(i, _)| &oid[..i])
 }
@@ -145,7 +145,7 @@ async fn elsewhere(pre: &Pre<'_>, full: &str) -> Result<Option<String>, GbError>
         .map(|w| display_worktree(&main, &w.path)))
 }
 
-/// A detached target as a full commit oid. Only hex is accepted (review M4: not a ref name,
+/// A detached target as a full commit oid. Only hex is accepted (not a ref name,
 /// which would resolve gix's way and label the entry with it), and anything that isn't a commit
 /// is NotFound before anything runs.
 async fn commit_oid(pre: &Pre<'_>, given: &str) -> Result<String, GbError> {
@@ -208,7 +208,7 @@ async fn in_config_order(cx: &WriteCx<'_>, changes: &mut [crate::journal::Config
     changes.sort_by_key(|c| names.iter().position(|n| *n == c.key.as_bytes()).unwrap_or(usize::MAX));
 }
 
-/// `update-index -q --refresh` before a `read-tree -m -u` (2A final I2): a file saved with the
+/// `update-index -q --refresh` before a `read-tree -m -u`: a file saved with the
 /// same bytes would otherwise be "not uptodate" and block it. `repair`: a repair step
 /// (`run_repair`: the op's Cancel doesn't stop it, a Stop does).
 async fn refresh_index(cx: &mut WriteCx<'_>, repair: bool) {
@@ -223,7 +223,7 @@ async fn refresh_index(cx: &mut WriteCx<'_>, repair: bool) {
     cx.touch(ChangeKind::Index);
 }
 
-// --- the put-back after an interrupted move (review I1) ---
+// --- the put-back after an interrupted move ---
 /// A tree or index entry: its blob and its kind (mode).
 type Entry = (ObjectId, EntryKind);
 
@@ -239,7 +239,7 @@ struct Touched {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Found {
     /// Nothing there, or a parent that's now a file (ENOTDIR: a folder the target replaced by a
-    /// file, re-review M3).
+    /// file).
     Missing,
     Blob(Entry),
     /// A directory: put back only once it's gone (the removals below may empty it).
@@ -248,17 +248,17 @@ enum Found {
     Unknown,
 }
 
-/// Review I1. A local step that moves the worktree to `to` (`git switch`, `merge --ff-only`,
+/// A local step that moves the worktree to `to` (`git switch`, `merge --ff-only`,
 /// `read-tree -m -u`) failed or was cancelled with HEAD where preflight saw it: git may have
 /// rewritten some of the paths the move touches, and even the index, before it stopped. None of
-/// those paths held the user's changes (dirty ∩ touched was autostashed, §6.1), so each one whose
+/// those paths held the user's changes (dirty ∩ touched was autostashed), so each one whose
 /// index entry and file are still as HEAD or `to` has them goes back to HEAD's (content and
 /// mode); a path holding anything else is left alone. It runs before step 8 restores the
 /// autostash, as repair steps (`run_repair`: a Stop ends them).
 ///
 /// Returns the error the write reports: `failure` itself when everything went back. Otherwise
 /// the entry is kept (`partial`), and the error (no longer a quiet Cancelled) names the paths
-/// left as the step wrote them (re-review M1) in its message and Details; after a Stop, the
+/// left as the step wrote them in its message and Details; after a Stop, the
 /// entry is also blocked with the reason, since undoing it would act on a half-switched tree.
 pub(crate) async fn put_back(cx: &mut WriteCx<'_>, to: &str, failure: GbError) -> GbError {
     let what = if failure.kind == GbErrorKind::Cancelled { "cancelled" } else { "failed" };
@@ -348,7 +348,7 @@ async fn put_back_inner(cx: &mut WriteCx<'_>, to: &str) -> Result<Vec<String>, G
             Found::Blob(e) => ours(Some(e)),
             Found::Unknown => false,
         };
-        // A file removed below must not sit under a symlink the step left (re-review N3).
+        // A file removed below must not sit under a symlink the step left.
         let linked = leading_symlink(cx.root, &row.path);
         if !ours(row.index) || !file_ok || linked {
             tracing::warn!(target: "gitvolt_core::write", "{} changed during the failed move: left as it is", row.path);
@@ -521,7 +521,7 @@ impl WriteIntent for Checkout {
                             (ahead, behind) => match self.on_diverged {
                                 None => Case::Diverged { name: lname.clone(), remote: shown_remote, ahead, behind, local_oid: local, remote_oid: to },
                                 Some(OnDiverged::Reset) => {
-                                    // Review M2: the Reset is the one the dialog showed. Preflight
+                                    // The Reset is the one the dialog showed. Preflight
                                     // compared `expect` with the refs (RefMoved when they moved).
                                     if !pre.expect.refs.contains_key(&heads(lname)) || !pre.expect.refs.contains_key(&remote_ref) {
                                         return Err(GbError::new(GbErrorKind::InvalidInput, format!("Reset {lname} needs the commits the question showed")));
@@ -535,25 +535,22 @@ impl WriteIntent for Checkout {
             }
             CheckoutTarget::Detached { oid } => Case::Detach { oid: commit_oid(pre, oid).await? },
         };
-        // §6.1: autostash on overlap with the commit the worktree moves to.
+        // Autostash on overlap with the commit the worktree moves to.
         let moves_to = match &case {
             Case::Noop { .. } | Case::Diverged { .. } => None,
             Case::Switch { to, .. } | Case::Track { to, .. } | Case::MergeFfOnly { to, .. } | Case::FastForward { to, .. } | Case::Reset { to, .. } => Some(to.clone()),
             Case::Detach { oid } => Some(oid.clone()),
         };
-        // --- 2C repo-safety ---
         // Every case that moves the worktree (`git switch`, `--track`, `--detach`, `merge
         // --ff-only`, Reset-here's `read-tree -m -u`, and the switch after a CAS) is a two-way
         // move from HEAD's tree to `to`'s: one that writes a file where a populated submodule or
         // an embedded clone sits deletes it whole, and a clean one isn't dirty, so the autostash
-        // never sees it. Refused before anything runs (2C T6 re-review 3, C1 and C2).
-        // The same check says what the move sweeps away with a directory (safety review M1,
-        // M2): the autostash rule carries it.
+        // never sees it. Refused before anything runs.
+        // The same check says what the move sweeps away with a directory: the autostash rule carries it.
         let (mut rule, mut moved) = (AutostashRule::Overlap, None);
         if let (Some(from), Some(to)) = (pre.before.head.oid.as_deref().and_then(oid_of), moves_to.as_deref().and_then(oid_of)) {
             (rule, moved) = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, from, to, "checkout").await?.into_rule(rule);
         }
-        // --- end 2C repo-safety ---
         let _ = self.case.set(case);
         let autostash = moves_to.and_then(|t| oid_of(&t)).map(|t| AutostashSpec { rule, target: Some(t), op: self.label(), target_name: Some(self.target_name()), moved });
         Ok(Plan { autostash, ..Plan::default() })
@@ -583,7 +580,7 @@ impl WriteIntent for Checkout {
                         in_config_order(cx, &mut changes).await;
                         cx.record_config(changes)?;
                     }
-                    // Review M8: unknown, so the entry can't undo it faithfully: kept, and blocked
+                    // Unknown, so the entry can't undo it faithfully: kept, and blocked
                     // with the reason (undo would delete the branch and leave its config).
                     Err(e) => {
                         tracing::warn!(target: "gitvolt_core::write", "reading branch.{name}.* after the checkout: {e}");
@@ -604,7 +601,7 @@ impl WriteIntent for Checkout {
             }
             Case::MergeFfOnly { remote, remote_ref, to } => {
                 cx.set_undo(UndoKind::Rewind)?;
-                // Review M5: git never makes its own stash behind ours (`merge.autoStash`), and
+                // Git never makes its own stash behind ours (`merge.autoStash`), and
                 // the reflog reads `merge <remote>/<b>: Fast-forward`, as the FastForward case's.
                 let inv = cx.git(["merge", "--ff-only", "--no-autostash", "-q", remote_ref.as_str()]).env("GIT_REFLOG_ACTION", format!("merge {remote}"));
                 let res = cx.run_git(inv).await;
@@ -616,7 +613,7 @@ impl WriteIntent for Checkout {
                 let moved = RefMove { name: heads(&name), old: Some(from.clone()), new: Some(to.clone()) };
                 let message = format!("gitvolt: reset {name} to {}", short(&to));
                 if here {
-                    // Rewind-style (§9.3): the two-way read-tree carries local changes and refuses
+                    // Rewind-style: the two-way read-tree carries local changes and refuses
                     // on overlap; then the CAS; a failed CAS reverses the read-tree.
                     cx.set_undo(UndoKind::Rewind)?;
                     refresh_index(cx, false).await;
@@ -712,7 +709,7 @@ mod tests {
         assert_eq!(&RepoState::capture(r), after, "redo");
     }
 
-    /// The Reset answer to a Diverged outcome, as the UI sends it: pinned to the oids shown (M2).
+    /// The Reset answer to a Diverged outcome, as the UI sends it: pinned to the oids shown.
     fn reset_resend(id: u32, r: &TestRepo, out: &serde_json::Value) -> serde_json::Value {
         let o = &out["outcome"];
         let (local, remote) = (o["local"].as_str().unwrap(), o["remote"].as_str().unwrap());
@@ -747,10 +744,10 @@ mod tests {
         let id = open(&env.api, &r).await;
         send(&env.api, checkout(id, &r, json!({"kind": "branch", "name": "main"}))).await.unwrap();
         let s = send(&env.api, json!({"method": "journalState", "params": {"repo": id, "worktree": wt(&r)}})).await.unwrap();
-        assert!(s["undo"].is_null(), "Deviation 12: no entry");
+        assert!(s["undo"].is_null(), "no entry");
     }
 
-    /// §17.1: a fully staged, b partly staged (line 1 staged, line 5 not), c untracked. The
+    /// A fully staged, b partly staged (line 1 staged, line 5 not), c untracked. The
     /// checkout overlaps a and b (feature/x changes their line 9), so they're autostashed, and the
     /// `--index` restore brings the same split back.
     #[tokio::test(flavor = "multi_thread")]
@@ -872,7 +869,6 @@ mod tests {
         }
     }
 
-    /// Review Focus 4.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_branch_checked_out_in_another_worktree_is_refused_with_where() {
         let env = WriteEnv::new();
@@ -890,7 +886,6 @@ mod tests {
         assert_eq!(RepoState::capture(&r), before);
     }
 
-    /// Review Focus 3.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_remote_named_with_a_slash_checks_out() {
         let env = WriteEnv::new();
@@ -922,7 +917,7 @@ mod tests {
         assert_eq!(e.kind, GbErrorKind::InProgress);
     }
 
-    /// §6.2: changes that would conflict with the target ask first, with nothing changed (the
+    /// Changes that would conflict with the target ask first, with nothing changed (the
     /// staged and unstaged split included), and nothing is left in the stash list.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_conflicting_autostash_asks_first_and_changes_nothing() {
@@ -967,7 +962,6 @@ mod tests {
         assert_eq!(e.kind, GbErrorKind::NotFound);
     }
 
-    // --- fix round 1 ---
 
     async fn journal_state(env: &WriteEnv, id: u32, r: &TestRepo) -> serde_json::Value {
         send(&env.api, json!({"method": "journalState", "params": {"repo": id, "worktree": wt(r)}})).await.unwrap()
@@ -1046,9 +1040,9 @@ mod tests {
         tokio::task::spawn_blocking(move || std::fs::OpenOptions::new().write(true).open(gate)).await.unwrap().unwrap()
     }
 
-    /// Review I1: a Cancel while `git switch` rewrites the files leaves the tree as the user left
+    /// A Cancel while `git switch` rewrites the files leaves the tree as the user left
     /// it: the files git had switched go back to HEAD's (the mode-only `b.sh` too, and `d/b.txt`
-    /// under the file `d` that replaced its folder: re-review M3), then the autostash (the change
+    /// under the file `d` that replaced its folder), then the autostash (the change
     /// the target touches) comes back, and the change it doesn't touch was never moved. No entry.
     #[cfg(unix)] // a FIFO (mkfifo) gates the filter
     #[tokio::test(flavor = "multi_thread")]
@@ -1078,7 +1072,7 @@ mod tests {
         assert!(journal_state(&env, id, &r).await["undo"].is_null(), "nothing changed: no entry");
     }
 
-    /// 2C final I2: create branch + Check out cancelled mid-switch puts the tree back the same
+    /// Create branch + Check out cancelled mid-switch puts the tree back the same
     /// way: HEAD stays on main and the files, the user's changes included, are as they were.
     #[cfg(unix)] // a FIFO (mkfifo) gates the filter
     #[tokio::test(flavor = "multi_thread")]
@@ -1109,7 +1103,7 @@ mod tests {
         assert_eq!((&after.head, &after.index, &after.files, &after.modes, &after.untracked, &after.stashes), (&before.head, &before.index, &before.files, &before.modes, &before.untracked, &before.stashes), "the tree the user left, their changes included");
     }
 
-    /// Re-review I1: a smudge filter that hangs while the files go back doesn't hold the write:
+    /// A smudge filter that hangs while the files go back doesn't hold the write:
     /// a Stop ends the repair ("Restoring files…" is announced), the error says so, and the entry
     /// is kept, blocked with the reason.
     #[cfg(unix)] // a FIFO (mkfifo) gates the filter
@@ -1158,7 +1152,7 @@ mod tests {
     }
 
 
-    /// Review M7: the switch after a fast-forward or a Reset of a branch not checked out fails
+    /// The switch after a fast-forward or a Reset of a branch not checked out fails
     /// (it can't take the index lock): the ref goes back, and nothing is left changed.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_switch_that_fails_after_the_ref_moved_puts_the_ref_back() {
@@ -1190,7 +1184,7 @@ mod tests {
         }
     }
 
-    /// Review M7: Reset-here's ref update fails after its read-tree (the ref is locked): the
+    /// Reset-here's ref update fails after its read-tree (the ref is locked): the
     /// reverse read-tree puts the worktree back.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_reset_here_whose_ref_update_fails_reads_the_tree_back() {
@@ -1212,7 +1206,7 @@ mod tests {
         assert!(journal_state(&env, id, &r).await["undo"].is_null());
     }
 
-    /// Review M2: Reset answers the question shown. Without the oids it's refused; after a commit
+    /// Reset answers the question shown. Without the oids it's refused; after a commit
     /// since the dialog it's RefMoved, and nothing changes.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_reset_is_pinned_to_the_diverged_oids_shown() {
@@ -1235,7 +1229,7 @@ mod tests {
         assert_eq!(RepoState::capture(&r), before);
     }
 
-    /// Review M3, M4: a detached target is hex only (a ref name or non-ASCII text is refused, never
+    /// A detached target is hex only (a ref name or non-ASCII text is refused, never
     /// a panic), and the entry is labelled with the resolved commit.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_detached_target_is_hex_and_labelled_by_the_resolved_commit() {
@@ -1253,7 +1247,7 @@ mod tests {
         assert_eq!(journal_state(&env, id, &r).await["undo"]["label"], format!("checkout {}", &x[..7]));
     }
 
-    /// Review M5: `merge --ff-only` never autostashes on its own (`merge.autoStash`): a change it
+    /// `merge --ff-only` never autostashes on its own (`merge.autoStash`): a change it
     /// doesn't touch isn't rewritten (its mtime stays), and the reflog reads as the FF case's.
     #[tokio::test(flavor = "multi_thread")]
     async fn the_ff_only_merge_never_autostashes_and_logs_the_remote_name() {
@@ -1272,7 +1266,7 @@ mod tests {
         assert_eq!(r.git(&["reflog", "-1", "--format=%gs", "refs/heads/feature/x"]), "merge origin/feature/x: Fast-forward");
     }
 
-    // --- 2C repo-safety (2C T6 re-review 3's checkout follow-up) ---
+    // --- Repo safety: submodules and folders ---
 
     /// A repository to clone from, with one commit.
     fn upstream() -> TestRepo {
@@ -1297,7 +1291,7 @@ mod tests {
         r.git_in(&sm, &["switch", "-q", "main"]);
     }
 
-    /// C1: on `b`, whose gitlink `sm` is a clean populated clone, switching to `a` (the file
+    /// On `b`, whose gitlink `sm` is a clean populated clone, switching to `a` (the file
     /// `sm`) would delete the clone whole, with no autostash to see it: refused, nothing changed.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_switch_never_deletes_a_clean_submodule_where_the_target_has_a_file() {
@@ -1326,7 +1320,7 @@ mod tests {
         assert_eq!(r.git_in(&r.path().join("sm"), &["rev-parse", "--verify", "feat"]).len(), 40, "the local-only branch is still there");
     }
 
-    /// C2: `merge --ff-only` to origin/main, which turned the gitlink `lib/sm` into the file
+    /// `merge --ff-only` to origin/main, which turned the gitlink `lib/sm` into the file
     /// `lib`, over the populated clone: refused the same way.
     #[tokio::test(flavor = "multi_thread")]
     async fn an_ff_only_merge_never_deletes_a_submodule_under_a_replaced_directory() {
@@ -1363,9 +1357,9 @@ mod tests {
         assert!(r.path().join("lib/sm/.git").is_dir());
     }
 
-    // --- 2C repo-safety, round 5 (the safety review) ---
+    // --- Repo safety: more cases ---
 
-    /// C1 (S6b): the checkout's whole-worktree autostash (an edit overlapping the target, no
+    /// The checkout's whole-worktree autostash (an edit overlapping the target, no
     /// conflict, so no question) would `stash push -u`, whose `reset --hard` writes HEAD's file
     /// `sm` over the clone staged there: refused before anything runs.
     #[tokio::test(flavor = "multi_thread")]
@@ -1412,7 +1406,7 @@ mod tests {
         r
     }
 
-    /// M1 (S1c): git drops a clean staged-new file under a folder the target replaces by a file,
+    /// git drops a clean staged-new file under a folder the target replaces by a file,
     /// with no refusal (its path isn't in the tree diff). It counts as touched: the clean-restore
     /// warning asks (it can't come back under the file), then the autostash takes it, and it
     /// survives in the kept stash.
@@ -1433,7 +1427,7 @@ mod tests {
         assert_eq!(r.git(&["show", "stash@{0}^2:vendor/new.txt"]), "staged");
     }
 
-    /// M2 (S5): `git switch` deletes the ignored files under a folder the target replaces by a
+    /// `git switch` deletes the ignored files under a folder the target replaces by a
     /// file. They go in the autostash (`--all`, naming its paths), where they survive.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_checkout_stashes_the_ignored_files_under_a_folder_the_target_replaces() {

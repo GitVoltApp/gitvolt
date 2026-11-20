@@ -1,5 +1,5 @@
 // What an Abort of GitVolt's interactive rebase keeps of the work done at its stops (the core's
-// write/irebase/split.rs `keep_work`, UX N: only what can't be had again): the commits holding new
+// write/irebase/split.rs `keep_work`: only what can't be had again): the commits holding new
 // work on `<branch>-rebase-work`, the index's and the worktree's new content in a stash, with the
 // "work from the stop" banner. What the step left at its stop (`noteStop`: a merge result git
 // staged, a conflicted file's markers) is git's, never kept while it's still exactly that.
@@ -54,7 +54,7 @@ async function worktreeStates(cx: WriteCx, paths: Set<string>, index: Map<string
   return out;
 }
 
-/** UX N (the core's `note_stop`): at a stop the step just made, what it left there: a staged path's
+/** The core's `note_stop`: at a stop the step just made, what it left there: a staged path's
  *  index, a conflicted path's worktree file. */
 export async function noteStop(cx: WriteCx): Promise<[string, State][]> {
   const staged = new Set<string>();

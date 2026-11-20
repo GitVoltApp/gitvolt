@@ -1,4 +1,4 @@
-//! The single-instance guard (R19) across real processes: a later launch exits 0 after
+//! The single-instance guard across real processes: a later launch exits 0 after
 //! forwarding, and a killed instance's leftover socket is taken over. The "other process" is
 //! this test binary re-run as `helper` (ignored, so it never runs on its own), always against
 //! temp runtime and config dirs: never the user's own instance.

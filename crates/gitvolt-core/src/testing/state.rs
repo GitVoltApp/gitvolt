@@ -1,4 +1,4 @@
-//! A repository's whole observable state, for the undo round trips (spec #2 §17.1): after an
+//! A repository's whole observable state, for the undo round trips: after an
 //! undo it must equal its value before the operation, and after a redo its value after.
 
 use super::{isolated_git_env, TestRepo};
@@ -15,7 +15,7 @@ pub struct RepoState {
     pub index: String,
     /// Every worktree file's bytes (`.git` excluded).
     pub files: BTreeMap<String, Vec<u8>>,
-    /// Every worktree file's mode bits (2C T6: an exec-bit change must round-trip too).
+    /// Every worktree file's mode bits (an exec-bit change must round-trip too).
     pub modes: BTreeMap<String, u32>,
     pub untracked: String,
     pub stashes: String,
@@ -45,7 +45,7 @@ impl RepoState {
     }
 
     pub fn capture_at(r: &TestRepo, wt: &Path) -> Self {
-        // 2B T4: an unborn HEAD is `refs/heads/main ` (no oid), and a missing index the empty one.
+        // An unborn HEAD is `refs/heads/main ` (no oid), and a missing index the empty one.
         let name = r.try_git_in(wt, &["symbolic-ref", "-q", "HEAD"]).unwrap_or_else(|_| "HEAD".into());
         let head = format!("{name} {}", r.try_git_in(wt, &["rev-parse", "-q", "--verify", "HEAD"]).unwrap_or_default());
         let index_file = wt.join(r.git_in(wt, &["rev-parse", "--git-path", "index"]));

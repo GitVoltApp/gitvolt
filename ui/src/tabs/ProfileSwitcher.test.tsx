@@ -6,7 +6,7 @@ import { useMenu } from '../menu/menuStore';
 import { mouseDown, mouseUp } from '../menu/pressTesting';
 import { profileDotIcon, ProfileSwitcher } from './ProfileSwitcher';
 
-describe('profile menu icons (K69)', () => {
+describe('profile menu icons', () => {
   it('each profile row shows its colour as a dot; the current one has a ring', () => {
     const Other = profileDotIcon('#2ece9d', false);
     const Current = profileDotIcon('#d90171', true);

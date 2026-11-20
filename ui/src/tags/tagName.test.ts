@@ -4,7 +4,7 @@ import { tagCreateError, tagNameError } from './tagName';
 
 afterEach(() => useRuntime.setState({ tabs: {} }));
 
-describe('tag names (spec #3 §3.9)', () => {
+describe('tag names', () => {
   it("git's ref-name rules, said of a tag (the core's tag_name_error, word for word)", () => {
     expect(tagNameError('')).toBe('Enter a tag name');
     expect(tagNameError('a..b')).toBe("A tag name can't contain ..");

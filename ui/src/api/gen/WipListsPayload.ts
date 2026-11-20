@@ -3,6 +3,6 @@ import type { FileListPayload } from "./FileListPayload";
 
 /**
  * The worktree's fresh WIP lists, as `fileList` would answer them, with the version the
- * write's `repoChanged` carries (K44).
+ * write's `repoChanged` carries.
  */
 export type WipListsPayload = { worktree: string, version: string, staged: FileListPayload, unstaged: FileListPayload, };

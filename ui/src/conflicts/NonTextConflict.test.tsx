@@ -8,7 +8,7 @@ vi.mock('./resolve', () => ({ resolveFile: (...a: unknown[]) => resolve(...a) })
 const file = (kind: string) => ({ path: 'gone.txt', kind, text: false, segments: [], current: null, incoming: null, labels: { current: 'main', incoming: 'feature/x' }, encoding: 'UTF-8', eol: 'lf', base: 'x' }) as never;
 const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 
-describe('non-text conflicts (spec #2 §13.3)', () => {
+describe('non-text conflicts', () => {
   beforeEach(() => {
     resolve.mockReset();
     resolve.mockImplementation(async () => true);
@@ -39,7 +39,7 @@ describe('non-text conflicts (spec #2 §13.3)', () => {
     expect(onResolved).not.toHaveBeenCalled();
   });
 
-  it('one send at a time: the buttons wait for the answer (M11)', async () => {
+  it('one send at a time: the buttons wait for the answer', async () => {
     let answer: (ok: boolean) => void = () => {};
     resolve.mockImplementationOnce(() => new Promise<boolean>((r) => { answer = r; }));
     render(<NonTextConflict ctx={ctx} file={file('bothModified')} />);

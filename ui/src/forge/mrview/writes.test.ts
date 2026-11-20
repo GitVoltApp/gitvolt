@@ -17,7 +17,7 @@ beforeEach(() => {
   useToast.getState().dismiss();
 });
 
-describe('forge writes from the MR/PR view (spec #4 §3.5, §6)', () => {
+describe('forge writes from the MR/PR view', () => {
   it('a write that works asks the poller to poll at once', async () => {
     const out = await forgeWrite('t', "Couldn't approve !12", async (repo) => repo * 2);
     expect(out).toEqual({ value: 8 });

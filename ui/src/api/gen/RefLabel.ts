@@ -11,11 +11,11 @@ export type RefLabel = { row: number, name: string, local: string | null, remote
 checkedOut: string | null, 
 /**
  * A local branch whose upstream has another branch name (`feature/a` tracking
- * `origin/feature/b`): that upstream's short name, for the chip's warning (UX round 3, M.1).
+ * `origin/feature/b`): that upstream's short name, for the chip's warning.
  */
 upstreamMismatch?: string, 
 /**
- * An annotated tag's message and tagger (UX round 3, M.2); absent on a lightweight tag.
+ * An annotated tag's message and tagger; absent on a lightweight tag.
  */
 annotation?: TagAnnotation, 
 /**

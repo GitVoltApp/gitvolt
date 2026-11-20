@@ -66,9 +66,8 @@ export function EditMr({ tabId, mr, detail, onDone, focus = 'title' }: { tabId: 
   return (
     <form ref={form} className="mr-edit" aria-label="Edit" onSubmit={(e) => { e.preventDefault(); if (changed && title.trim() && !busy) void save(); }}>
       <label className="mr-edit-field"><span>Title</span><input className="mr-edit-title" aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
-      {/* --- 5A T9: Write / Preview --- */}
+      {/* --- Write / Preview --- */}
       <div className="mr-edit-field"><span>Description</span><MarkdownField label="Description" rows={10} value={description} disabled={!detail} onChange={setDescription} flavor={kind ?? 'gitlab'} context={{ kind: 'forge', tabId }} /></div>
-      {/* --- end 5A T9 --- */}
       <MrPeople
         tabId={tabId}
         kind={kind ?? 'gitlab'}

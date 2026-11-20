@@ -6,7 +6,7 @@ import type { RemoteLine } from '../../../api/gen/RemoteLine';
 import type { RemoteSummary } from '../../../api/gen/RemoteSummary';
 import { redact } from '../remotes';
 
-/** §12.4's failure words, matched case-insensitively anywhere in the line. */
+/** The failure words, matched case-insensitively anywhere in the line. */
 const WARNINGS = ['error', 'fatal', 'fail', 'reject', 'denied', 'conflict', 'could not', 'cannot', 'abort', 'warning'];
 /** Forge lines followed by their URL line. */
 const LINK_INTROS = ['To create a merge request for ', 'View merge request for ', 'Create a pull request for '];

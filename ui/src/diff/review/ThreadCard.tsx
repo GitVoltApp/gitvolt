@@ -14,7 +14,7 @@ import { cardKey, setCardOpen, useReviewUi } from './store';
 import './review.css';
 
 /**
- * A published thread under its line (spec 2026-10-08 §2): the MR view's thread (Reply, Reply and
+ * A published thread under its line: the MR view's thread (Reply, Reply and
  * resolve, Resolve, reactions) under a header that folds it to one line (who, the first line,
  * how many replies). A resolved thread starts folded; the user's choice is kept for the session.
  * Folding with the keyboard in it hands the keyboard to the toggle.

@@ -333,7 +333,7 @@ impl Default for TestRepo {
     }
 }
 
-/// Written into a fixture's root directory. The harness's write guard (spec #2 §17.2) allows
+/// Written into a fixture's root directory. The harness's write guard allows
 /// writes only to repositories inside a marked directory, and `gitvolt-harness fixture` clears
 /// only a marked directory.
 pub const FIXTURE_MARKER: &str = ".gitvolt-fixture";
@@ -349,7 +349,7 @@ impl TestRepo {
     }
 
     /// A hook in the bare origin (`add_origin`): a server-side script (`pre-receive`,
-    /// `post-receive`) whose output reaches the pusher as `remote:` lines (spec #2 §12.4).
+    /// `post-receive`) whose output reaches the pusher as `remote:` lines.
     pub fn origin_hook(&self, name: &str, script: &str) -> &Self {
         let p = self.root.join("origin.git/hooks").join(name);
         std::fs::create_dir_all(p.parent().expect("hooks dir")).expect("create hooks dir");
@@ -385,7 +385,7 @@ impl TestRepo {
         self.git_in(&dir, &["push", "-q", "origin", branch]);
     }
 
-    /// SSH commit signing (spec #2 §17.1), in this repo's own config: a throwaway ed25519 key
+    /// SSH commit signing, in this repo's own config: a throwaway ed25519 key
     /// (`ssh-keygen -N ''`), `gpg.format=ssh`, `commit.gpgsign=true`, `user.signingkey`, an
     /// allowed-signers file, and `gpg.ssh.program` = a wrapper that counts each `-Y sign` in
     /// `<root>/sign-count`, then runs `ssh-keygen`. `false` (with the reason printed) when this
@@ -417,7 +417,7 @@ impl TestRepo {
         true
     }
 
-    /// GPG commit signing (spec #2 §17.1): a fresh key in a throwaway GnuPG home (ultimately
+    /// GPG commit signing: a fresh key in a throwaway GnuPG home (ultimately
     /// trusted there), `gpg.format=openpgp`, `user.signingkey`, `commit.gpgsign=true` and
     /// `gpg.program` = the home's wrapper, in this repo's own config. `None`, with the reason
     /// printed, when this machine can't make a key. Keep the home alive for the test.
@@ -446,7 +446,7 @@ impl TestRepo {
         std::fs::read_to_string(self.root.join("sign-count")).map(|s| s.lines().count()).unwrap_or(0)
     }
 
-    /// Marks this repo's root as a fixture (the harness write guard, spec #2 §17.2).
+    /// Marks this repo's root as a fixture (the harness write guard).
     pub fn mark_fixture(&self) -> &Self {
         std::fs::write(self.root.join(FIXTURE_MARKER), "").expect("write fixture marker");
         self
@@ -551,7 +551,7 @@ mod tests {
         assert!(marker.exists());
     }
 
-    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (not yet on Windows)
     #[test]
     fn signing_ssh_signs_only_commits_that_ask_and_counts_them() {
         let r = TestRepo::new();

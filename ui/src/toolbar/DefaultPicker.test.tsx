@@ -9,7 +9,7 @@ const options = [
   { value: 'pullRebase', label: 'Pull (rebase)' },
 ];
 
-describe('the default picker (spec #2 §12.1)', () => {
+describe('the default picker', () => {
   it('shows the heading and radio rows; a pick sets the default and closes without running', () => {
     const set = vi.fn();
     const close = vi.fn();

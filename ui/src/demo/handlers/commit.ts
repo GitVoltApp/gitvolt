@@ -1,7 +1,7 @@
-// Commit, Stage all & commit, Amend and the HEAD message's edit (write/commit.rs, spec #2 §8): what
+// Commit, Stage all & commit, Amend and the HEAD message's edit (write/commit.rs): what
 // `git commit -q -F -` (`--amend`, `--amend --only --allow-empty`) does, as the visitor at the demo's
 // clock, with git's `whitespace` cleanup of the message. Journaled as MoveRefs, or MoveHead on a
-// detached HEAD (Deviation 9). No hooks or signing in the demo.
+// detached HEAD. No hooks or signing in the demo.
 import type { CommitOutcome } from '../../api/gen/CommitOutcome';
 import type { HandlerTable } from '../transport';
 import { readCommit } from '../engine/read/commitText';
@@ -19,7 +19,7 @@ import { runWrite, type WriteCx, type WriteIntent } from '../engine/write/run';
 import { statusEntries } from '../engine/write/status';
 import { addAll } from './stage';
 
-/** §8.1: the summary, plus a blank line and the description when there is one. */
+/** The summary, plus a blank line and the description when there is one. */
 export const commitMessageOf = (summary: string, description: string): string => (description.trim() === '' ? summary : `${summary}\n\n${description}`);
 
 const firstLine = (message: string) => (message.split('\n')[0] ?? '').replace(/\r$/, '');
@@ -31,7 +31,7 @@ export function advanceHead(cx: WriteCx, from: string | null, to: string): void 
   else setHead(cx.wt, { oid: to });
 }
 
-/** UX L: Amend at the "about to commit" Edit stop before any piece is committed (the core's). */
+/** Amend at the "about to commit" Edit stop before any piece is committed (the core's). */
 export const AMEND_AT_EDIT_STOP = "Nothing to amend yet: this commit's changes are staged. Commit them, or Continue.";
 /** An Edit stop of a rebase GitVolt's interactive rebase doesn't own (the core's `NOT_OURS`). */
 const NOT_OURS = 'Finish this rebase where you started it.';
@@ -45,12 +45,12 @@ function commit(summary: string, description: string, amend: boolean, stageAll: 
     label: () => `${amend ? 'amend' : 'commit'} "${summary}"`,
     undo: () => (paused ? null : detached ? 'moveHead' : 'moveRefs'),
     rewrite: () => (amend ? 'amend' : null),
-    // In a merge, Commit makes the merge commit (§13.2); at an interactive rebase's Edit stop it
-    // commits there (3C T5); `plan` refuses any other operation.
+    // In a merge, Commit makes the merge commit; at an interactive rebase's Edit stop it
+    // commits there; `plan` refuses any other operation.
     allowedInProgress: true,
     plan: async (pre) => {
       const ip = pre.before.inProgress;
-      // 3C T5: an Edit stop (no conflict left) takes commits, its pieces (UX L).
+      // An Edit stop (no conflict left) takes commits, its pieces.
       const st = ip === 'rebase' ? readInProgress(pre.wt.fs, pre.wt.gitdir) : null;
       const editStop = st?.kind === 'rebase' && st.editStop !== null && st.conflicted === 0;
       const editBase = editStop && st?.kind === 'rebase' ? st.editBase : null;
@@ -98,7 +98,7 @@ function commit(summary: string, description: string, amend: boolean, stageAll: 
       if (mergeHeads.length > 0) clearMergeState(wt);
       cx.touch('index');
       cx.command('commit', '-q', '-F', '-', ...(amend ? ['--amend'] : []));
-      // 3C T5: a commit at an Edit stop is the paused rebase's own (settle counts it, an Abort keeps it).
+      // A commit at an Edit stop is the paused rebase's own (settle counts it, an Abort keeps it).
       const session = paused ? cx.journal.paused()?.paused?.irebase : null;
       if (session) {
         session.made.push(oid);

@@ -41,7 +41,7 @@ beforeEach(() => {
   api.forgeReviewDiff.mockResolvedValue(diff());
 });
 
-describe('the review session (spec §1)', () => {
+describe('the review session', () => {
   it('Compare starts it; it reads the drafts each refresh and the diff once per head', async () => {
     await startReview('t', 'gitlab', 12, COMPARE);
     const s = forgeOf('t').review!;
@@ -193,7 +193,7 @@ describe('the review session (spec §1)', () => {
   });
 });
 
-describe('a review left pending outside the session (fix round 1)', () => {
+describe('a review left pending outside the session', () => {
   const noCompare = () => graph.store.setState({ selection: { kind: 'commit' } });
 
   it("GitLab's drafts on the MR opened start a session without a Compare, so the chip and the composer see them", async () => {

@@ -1,4 +1,4 @@
-// The per-repository write queue and lock (write/queue.rs, spec #2 §3.6): queued writes run one at a
+// The per-repository write queue and lock (write/queue.rs): queued writes run one at a
 // time in click order, and each change is announced (`queueChanged`); immediate writes (stage,
 // discards, saves) take the lock directly. A failure stops the items queued behind it until Resume
 // or Clear. The moves each item made carry the `expect` of the items behind it forward. A background
@@ -53,7 +53,7 @@ export class WriteQueue {
   enqueue(label: string, kind: OpKind, op: number): QueueTicket {
     const id = ++this.next;
     this.queued.push({ id, label, kind, op });
-    // Fetch is idempotent; the next interval retries it (§3.6).
+    // Fetch is idempotent; the next interval retries it.
     this.background?.();
     this.changed();
     return { id, seq: this.finished };

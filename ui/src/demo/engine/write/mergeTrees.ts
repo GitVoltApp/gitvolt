@@ -1,7 +1,7 @@
 /**
  * merge-ort's result for `theirs` into `ours` from `base`, as observed from `git merge` and
  * `git merge-tree --write-tree` (never from git's source). Each base path either side changed is
- * settled from both changes, renames paired by 1b's `sideOf`; paths only theirs added are added (a
+ * settled from both changes, renames paired by `sideOf`; paths only theirs added are added (a
  * content merge from nothing where ours has a file there). Then, as git leaves them:
  * - a file renamed to two names: the base's stage at its old path (no file there), each name
  *   holding the content merged from all three (markers included) as its side's stage;

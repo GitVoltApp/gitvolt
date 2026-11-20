@@ -1,5 +1,5 @@
-//! The interactive rebase (spec #3 §3.1–§3.6): the range read, the todo, the intent, the Edit stop
-//! (UX L), the Abort's kept work, the older-commit reword and conflict prediction.
+//! The interactive rebase: the range read, the todo, the intent, the Edit stop,
+//! the Abort's kept work, the older-commit reword and conflict prediction.
 
 pub mod edit;
 pub mod plan;

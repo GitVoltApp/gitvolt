@@ -1,6 +1,6 @@
 #!/bin/sh
 # fake-ssh: stands in for ssh (a repo's core.sshCommand) to try GitVolt's askpass and fetch-error
-# handling without real keys, an ssh agent or an sshd (K96). It serves the bare repo named by the
+# handling without real keys, an ssh agent or an sshd. It serves the bare repo named by the
 # URL's path with the local git-upload-pack: ssh://fake/<absolute path to a bare repo>.
 #
 #   fake-ssh --passphrase <p>   asks for a key passphrase the way OpenSSH decides (SSH_ASKPASS,

@@ -33,7 +33,7 @@ const toRanges = (lines: number[]): LineRange[] =>
     return out;
   }, []);
 
-/** §7.3: only changed lines count, on the side the selection is in. */
+/** Only changed lines count, on the side the selection is in. */
 export function selectedChanges(hunks: Hunk[], sel: LineSpan): { old: LineRange[]; new: LineRange[]; count: number } {
   const lines = hunks.flatMap((h) => (sel.side === 'original' ? h.del : h.add)).filter((n) => n >= sel.start && n <= sel.end);
   const ranges = toRanges(lines);
@@ -64,7 +64,7 @@ export function atCursor(hunks: Hunk[], sel: LineSpan | null, cursor: { side: Si
 const oneLine = (side: Side, line: number): StageSelection => ({ kind: 'lines', old: side === 'original' ? [{ start: line, end: line }] : [], new: side === 'modified' ? [{ start: line, end: line }] : [] });
 
 /**
- * The editor menu's staging rows (§7.3): for the changed lines the selection covers (else
+ * The editor menu's staging rows: for the changed lines the selection covers (else
  * the clicked line), Stage / Discard (unstaged) or Unstage "this line" / "these lines"; then the
  * clicked line's hunk. `span` is the lines on their side; `hunk` the hunk's index, or -1.
  */
@@ -127,13 +127,13 @@ export function HunkButtons({ staged, canDiscard, reason, onStage, onDiscard }: 
 }
 
 /**
- * The staging controls of a WIP text diff (§7.3), over the hunks the diff was shown with
+ * The staging controls of a WIP text diff, over the hunks the diff was shown with
  * (`wipHunkZones`, from the backend, never from Monaco):
  * - Hunk mode: a header row above each hunk, `@@ … @@` with its buttons, laid out with the diff;
  * - every mode: the gutter's + / − on the hovered changed line, and the editor menu's rows for the
  *   selected (or clicked) lines and the clicked line's hunk;
  * - a selection covering changed lines: the line action bar.
- * Disabled while the working copy is unsaved ("Save first", §7.5) and while a commit for the
+ * Disabled while the working copy is unsaved ("Save first") and while a commit for the
  * worktree is queued. A file whose hunks and lines can't be staged shows why, and no buttons.
  */
 export function HunkActions({ target }: { target: DiffTarget }) {

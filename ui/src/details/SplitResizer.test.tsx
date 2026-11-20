@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SplitResizer } from './SplitResizer';
 
 /** Waits a frame: the live ratio is written to `flexBasis` in a `requestAnimationFrame`,
- * coalescing however many `pointermove` events land within it (K26). */
+ * coalescing however many `pointermove` events land within it. */
 const nextFrame = () => act(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
 describe('SplitResizer', () => {
@@ -60,7 +60,7 @@ describe('SplitResizer', () => {
   });
 });
 
-describe('SplitResizer double-click (K73)', () => {
+describe('SplitResizer double-click', () => {
   it('resets to the default ratio and persists it', () => {
     const onChange = vi.fn();
     const onCommit = vi.fn();

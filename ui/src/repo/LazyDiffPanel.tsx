@@ -7,9 +7,9 @@ import { isWipKey } from './wipLists';
 type PanelModule = { default: ComponentType<{ target: DiffTarget; session?: number }> };
 
 // Lazy: the diff panel reaches Shiki's language registry and the Monaco loader, which must stay
-// out of the startup chunk (spec §10.3; `npm run build` checks it).
+// out of the startup chunk (`npm run build` checks it).
 const loadDiffPanel = (): Promise<PanelModule> => import('../diff/DiffPanel').then((m) => ({ default: m.DiffPanel }));
-// Spec #2 §13.3: a conflicted WIP file opens the merge tool in place of the diff (Monaco too).
+// A conflicted WIP file opens the merge tool in place of the diff (Monaco too).
 const loadMergeTool = (): Promise<PanelModule> => import('../conflicts/MergeTool').then((m) => ({ default: m.MergeToolPanel }));
 
 /** A conflicted file of a WIP row (status `U`): the merge tool's, not the diff's. */
@@ -57,8 +57,8 @@ function DiffError({ error, onRetry, onClose }: { error: unknown; onRetry: () =>
 /**
  * The diff panel, loaded on the first diff. While its chunk loads, the panel's empty frame
  * (`aria-busy`); if the load or the panel fails, the error with Retry (a fresh import: React.lazy
- * would replay the rejection) and Close. `session` goes to the panel (J16). A conflicted WIP
- * file gets the merge tool instead (spec #2 §13.3). `load` and `loadMerge` are test seams.
+ * would replay the rejection) and Close. `session` goes to the panel. A conflicted WIP
+ * file gets the merge tool instead. `load` and `loadMerge` are test seams.
  */
 export function LazyDiffPanel({ target, session, load = loadDiffPanel, loadMerge = loadMergeTool }: { target: DiffTarget; session?: number; load?: () => Promise<PanelModule>; loadMerge?: () => Promise<PanelModule> }) {
   const closeDiff = useRepoView((s) => s.closeDiff);

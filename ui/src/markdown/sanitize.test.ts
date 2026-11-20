@@ -34,7 +34,7 @@ const HOSTILE: Array<[string, string, (t: HastRoot) => void]> = [
   ['an input outside a task list', '<input type="text" value="x">\n\n- [x] done', (t) => expect(elements(t).filter((e) => e.tagName === 'input').map((e) => [e.properties.type, e.properties.disabled])).toEqual([['checkbox', true]])],
 ];
 
-describe('the sanitizer (spec #5 §6)', () => {
+describe('the sanitizer', () => {
   it.each(HOSTILE)('drops %s', (_name, md, check) => check(safe(md)));
 
   it('keeps the safe subset: details, kbd, sub/sup, br, picture/source with a checked srcset', () => {
@@ -54,7 +54,7 @@ describe('the sanitizer (spec #5 §6)', () => {
     expect(elements(t).filter((e) => e.tagName === 'li' || e.tagName === 'ul').map((e) => e.properties.className)).toEqual([undefined, undefined]);
   });
 
-  it("lets a `:` through in GitLab's suggestion fence only (spec 2026-10-08), not in any other language", () => {
+  it("lets a `:` through in GitLab's suggestion fence only, not in any other language", () => {
     const langs = (md: string) => elements(safe(md)).filter((e) => e.tagName === 'code').map((e) => e.properties.className);
     expect(langs('```suggestion:-1+0\nx\n```\n\n```suggestion\ny\n```')).toEqual([['language-suggestion:-1+0'], ['language-suggestion']]);
     expect(langs('```js:file.js\nx\n```\n\n```suggestion:x\ny\n```')).toEqual([[], []]);

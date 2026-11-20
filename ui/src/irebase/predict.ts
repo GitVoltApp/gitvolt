@@ -13,7 +13,7 @@ export function predictionView(p: Prediction): PredictionView {
 }
 
 /** Debounced (`delay` after the last change) and cancellable: only the newest answer counts. The
- * core stops a superseded run itself, at its next row (plan 3C T7). */
+ * core stops a superseded run itself, at its next row. */
 export function createPredictor(send: (rows: RebaseRow[]) => Promise<Prediction>, onResult: (v: PredictionView) => void, delay = 250) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let seq = 0;

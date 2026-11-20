@@ -21,7 +21,7 @@ vi.mock('../api/transport', () => ({ copyText, inTauri: () => false }));
 const selectCommit = vi.hoisted(() => vi.fn(() => true));
 vi.mock('../app/graphNav', () => ({ selectCommit }));
 vi.mock('../diff/FileView', () => ({ FileView: ({ path, text }: { path: string; text: string }) => <pre data-testid="file-view" data-path={path}>{text}</pre> }));
-// The hex panes (lane K), as stubs that say what they were given.
+// The hex panes as stubs that say what they were given.
 vi.mock('../diff/hex', async (orig) => ({
   ...(await orig<typeof import('../diff/hex')>()),
   HexView: ({ path, file, side }: { path: string; file: boolean; side?: { dump: string } | null }) => <pre data-testid="hex-view" data-path={path} data-mode={file ? 'file' : 'diff'}>{side?.dump}</pre>,
@@ -51,7 +51,7 @@ function view(close = vi.fn()) {
   return close;
 }
 
-describe('File History (spec #3 §4.2)', () => {
+describe('File History', () => {
   beforeEach(() => fileHistory.mockReset());
 
   it('lists the commits newest first, shows the selected one\'s file, and ends with "Added in" and "End of history"', async () => {
@@ -62,7 +62,7 @@ describe('File History (spec #3 §4.2)', () => {
     expect(options.map((o) => o.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
     expect(fileHistory).toHaveBeenCalledWith(1, '/r', 'src/story.txt', null, 0, 200);
     expect(await screen.findByTestId('file-view')).toHaveTextContent('src/story.txt at a1');
-    // "Added in" names the commit with a copyable hash, like the rows' (UX: the user's follow-up).
+    // "Added in" names the commit with a copyable hash, like the rows'.
     expect(screen.getByText(/^Added in/)).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /^Copy c3/ })).toHaveLength(2); // the row's and Added in's
     expect(screen.getByText('End of history')).toBeInTheDocument();
@@ -97,7 +97,7 @@ describe('File History (spec #3 §4.2)', () => {
     outside.remove();
   });
 
-  it('opened for a file picked while sticky (`follow`, UX), it leaves the keyboard in the file list it was picked in', async () => {
+  it('opened for a file picked while sticky (`follow`), it leaves the keyboard in the file list it was picked in', async () => {
     fileHistory.mockResolvedValue({ rows: [row('a1')], more: false });
     const store = createRepoViewStore(1, '/r', graph, fakeServices({ contents }));
     const files = document.createElement('div');
@@ -173,7 +173,7 @@ describe('File History (spec #3 §4.2)', () => {
     expect(selectCommit).toHaveBeenCalledWith('t1', 'c3', { focus: true });
   });
 
-  it('its Blame toggle sets the tab\'s sticky mode (UX): the next file opens as it was left', async () => {
+  it('its Blame toggle sets the tab\'s sticky mode: the next file opens as it was left', async () => {
     fileHistory.mockResolvedValue({ rows: [row('a1')], more: false });
     const store = createRepoViewStore(1, '/r', graph, fakeServices({ contents }));
     useTabViews.setState({ views: { t1: { repo: 1, services: store.getState().services, store } } });
@@ -200,7 +200,7 @@ describe('File History (spec #3 §4.2)', () => {
     expect(useToast.getState().message).toBe('Not in the loaded history');
   });
 
-  it('a binary shows File View\'s hex panes at the commit, not a placeholder, and its Blame toggle is disabled, in place (lane K)', async () => {
+  it('a binary shows File View\'s hex panes at the commit, not a placeholder, and its Blame toggle is disabled, in place', async () => {
     fileHistory.mockResolvedValue({ rows: [row('a1', 'M', 'data/blob.bin'), row('b2', 'M', 'data/pic.png'), row('c3', 'A')], more: false });
     const store = createRepoViewStore(1, '/r', graph, fakeServices({ contents }));
     // Opened as Blame (the diff toolbar's button): the binary still shows, with no blame over it.

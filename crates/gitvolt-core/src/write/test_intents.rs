@@ -1,5 +1,5 @@
-//! The test-only intent set (spec #2 §18 2A): every pipeline step, driven end to end before
-//! 2B–2D bring the user-facing writes. Compiled only for tests and the harness (the `testing`
+//! The test-only intent set: every pipeline step, driven end to end before
+//! the user-facing writes exist. Compiled only for tests and the harness (the `testing`
 //! feature); the app never accepts `testWrite`.
 
 use crate::api::Api;
@@ -29,19 +29,17 @@ pub enum TestIntent {
     Discard { paths: Vec<String> },
     /// `git merge --ff-only <target>` on the checked-out branch: Rewind undo.
     FastForward { target: String },
-    /// `git switch --no-guess <branch>`, autostashing on overlap (§6.1); with `create`,
-    /// `git switch --no-guess -c <branch>` (a ref the redo must create before switching,
-    /// Deviation 9). Switch undo.
+    /// `git switch --no-guess <branch>`, autostashing on overlap; with `create`,
+    /// `git switch --no-guess -c <branch>` (a ref the redo must create before switching).
+    /// Switch undo.
     Switch {
         branch: String,
         #[serde(default)]
         confirm: crate::write::types::Confirm,
-        // --- 2C T1 ---
-        /// Optional in TypeScript: 2A's specs send a switch without it.
+        /// Optional in TypeScript: some specs send a switch without it.
         #[serde(default)]
         #[ts(as = "Option<bool>", optional)]
         create: bool,
-        // --- end 2C T1 ---
     },
     /// A journal barrier, push's stand-in: nothing runs.
     Barrier { label: String },
@@ -53,7 +51,7 @@ pub enum TestIntent {
         #[serde(default)]
         fail: bool,
     },
-    // --- 2C T1: config replay ---
+    // --- config replay ---
     /// Sets (or unsets) `branch.<branch>.<key>`, recording the change, with an optional note:
     /// MoveRefs undo with no refs, so only the config replay undoes it.
     BranchConfig {
@@ -63,8 +61,7 @@ pub enum TestIntent {
         #[serde(default)]
         note: Option<String>,
     },
-    // --- end 2C T1 ---
-    // --- 2D T1 (2C T1's network step uses it too) ---
+    // --- Network stand-in ---
     /// A network stand-in: sends the Activity line "transferring", then waits `ms` (cancellable)
     /// with no write lock and no watcher hold: before the lock (`first`, pull's fetch) or
     /// mid-run (push's transfer).
@@ -75,14 +72,11 @@ pub enum TestIntent {
         #[serde(default)]
         first: bool,
     },
-    // --- end 2D T1 ---
-    // --- 2D T2 ---
-    /// `git merge --no-edit <target>`, autostashing any tracked change (§6.1); on conflicts it
-    /// pauses (§13.2): Rewind undo.
+    /// `git merge --no-edit <target>`, autostashing any tracked change; on conflicts it
+    /// pauses: Rewind undo.
     MergeStop { target: String },
-    /// `git commit -q -F -`, allowed mid-merge: the commit that completes one (2B's Commit).
+    /// `git commit -q -F -`, allowed mid-merge: the commit that completes one.
     CommitMerge { message: String },
-    // --- end 2D T2 ---
 }
 
 fn nul_list<'a>(paths: impl IntoIterator<Item = &'a String>) -> Vec<u8> {
@@ -329,7 +323,7 @@ impl WriteIntent for Sleep {
     }
 }
 
-// --- 2C T1: config replay ---
+// --- config replay ---
 struct BranchConfig {
     branch: String,
     key: String,
@@ -365,9 +359,7 @@ impl WriteIntent for BranchConfig {
         Ok(())
     }
 }
-// --- end 2C T1 ---
 
-// --- 2D T1 ---
 /// Waits `ms` unless the op is cancelled first.
 async fn wait_or_cancel(op: &crate::ops::OpEntry, ms: u64) -> Result<(), GbError> {
     tokio::select! {
@@ -411,9 +403,7 @@ impl WriteIntent for Transfer {
         waited
     }
 }
-// --- end 2D T1 ---
 
-// --- 2D T2 ---
 struct MergeStop {
     target: String,
 }
@@ -479,7 +469,6 @@ impl WriteIntent for CommitMerge {
         cx.run_git(inv).await.map(|_| ())
     }
 }
-// --- end 2D T2 ---
 
 fn json<T: Serialize>(r: WriteResult<T>) -> Result<serde_json::Value, GbError> {
     serde_json::to_value(r).map_err(|e| GbError::other(format!("serialize: {e}")))

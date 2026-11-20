@@ -8,7 +8,7 @@ import { deleteTag } from './delete';
 import { pushTags } from './push';
 import { tagOn } from './sources';
 
-/** The remote a tag's Delete ▸ Remote targets (Deviation 9): origin, else the first, of the
+/** The remote a tag's Delete ▸ Remote targets: origin, else the first, of the
  * remotes known to have the tag or not known either way. */
 const deleteRemote = (t: TagTarget, names: readonly string[]) => {
   const may = names.filter((r) => tagOn(t.remotes, r) !== 'missing');

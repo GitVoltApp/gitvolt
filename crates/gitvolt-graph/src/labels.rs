@@ -1,4 +1,4 @@
-//! The ref labels (chips) on the graph's rows (§8.5), moved from the core's snapshot.rs.
+//! The ref labels (chips) on the graph's rows, moved from the core's snapshot.rs.
 
 use crate::input::{HeadIn, RefIn, RefKind, RefsIn, WorktreeIn};
 use crate::payload::{HostKind, RefLabel, RemoteRefLabel, TagRemoteLabel, TagRemoteState};
@@ -47,7 +47,7 @@ pub(crate) fn build_labels(refs: &RefsIn, head: &HeadIn, worktrees: &[WorktreeIn
         });
     }
     // Remote-only refs: one label per (commit, branch name), so the same branch on several
-    // remotes at the same commit is ONE chip with one icon per remote (§8.5).
+    // remotes at the same commit is ONE chip with one icon per remote.
     let mut remote_only: HashMap<(Oid, &str), usize> = HashMap::new();
     for rr in refs.refs.iter().filter(shown) {
         let RefKind::Remote { remote } = &rr.kind else { continue };

@@ -18,8 +18,8 @@ import { useToast } from '../ui/toastStore';
 import { commitTargetOf, compare, primaryBranchOf, copyMessage, fileMenuEnv, fileTargetOf, folderTargetOf, labelMenu, monacoMenu, monacoTargetFor, monacoTargetOf, rootOfSpec, sidebarItemMenu, sidebarRemoteMenu, splitRemoteRef, upstreamOf, type FileTarget, type MenuEnv } from './menuEnv';
 import { buildMenu } from './registry';
 
-// `compare`/`copyMessage` reach the real clipboard (api/transport); fix round 1, item 7's unit
-// tests for them mock it, as DiffPanel.openIn.test.tsx and others do.
+// `compare`/`copyMessage` reach the real clipboard (api/transport);
+// the unit tests for them mock it, as DiffPanel.openIn.test.tsx and others do.
 const copyText = vi.hoisted(() => vi.fn(async (_text: string) => {}));
 vi.mock('../api/transport', () => ({ copyText }));
 
@@ -44,7 +44,7 @@ const labels = [
 ];
 const indexOf = (g: GraphPayload) => new Map(g.rows.map((r, i) => [r.id, i] as const));
 
-describe('upstreamOf (the file menu ⎇, spec §7)', () => {
+describe('upstreamOf (the file menu ⎇)', () => {
   const g = graphOf(labels);
   const up = (sha: string) => upstreamOf(g, indexOf(g), sha);
 
@@ -96,7 +96,7 @@ describe('fileTargetOf', () => {
     expect(fileTargetOf(store.getState(), wt, targetFor(change('x'), wt), true)).toMatchObject({ sha: null, root: '/wt/main' });
   });
 
-  it('K99: a commit that is a linked worktree\'s HEAD resolves against that worktree; other commits against the repo', () => {
+  it('a commit that is a linked worktree\'s HEAD resolves against that worktree; other commits against the repo', () => {
     const g2 = graphOf([...labels, label(3, 'agent', true, [], { worktree: '/wt/agent' })]);
     const st = createRepoViewStore(1, '/repo', g2, fakeServices());
     const at = (id: string) => ({ kind: 'commit' as const, id, parent: 0 });
@@ -114,7 +114,7 @@ describe('fileTargetOf', () => {
     expect(copyText).toHaveBeenCalledWith('/wt/agent/a.php');
   });
 
-  it("K99: a linked worktree's WIP row resolves against that worktree", () => {
+  it("a linked worktree's WIP row resolves against that worktree", () => {
     const spec = { kind: 'wip' as const, worktree: '/wt/other', staged: false };
     expect(folderTargetOf(store.getState(), spec, 'src', 'src/a.php')).toMatchObject({ root: '/wt/other' });
   });
@@ -125,7 +125,7 @@ describe('fileTargetOf', () => {
   });
 });
 
-describe('rootOfSpec (2C T2: one handle per repository)', () => {
+describe('rootOfSpec (one handle per repository)', () => {
   it("a commit's files open in the tab's open worktree, never the main one from a linked tab", () => {
     const store = createRepoViewStore(1, '/repo', { ...graphOf(labels), openWorktree: '/wt/linked' }, fakeServices());
     expect(rootOfSpec(store.getState(), { kind: 'commit', id: 'c2' } as never)).toBe('/wt/linked');
@@ -133,12 +133,12 @@ describe('rootOfSpec (2C T2: one handle per repository)', () => {
   });
 });
 
-// Fix round 1, item 7: direct unit tests for `compare` and `copyMessage` (the commit menu's
+// Direct unit tests for `compare` and `copyMessage` (the commit menu's
 // actions), not only through `fileMenuEnv`'s mocked `act`.
 describe('compare (the commit menu\'s Compare with HEAD / Compare with working tree)', () => {
   afterEach(() => copyText.mockClear());
 
-  it('two commits (Compare with HEAD): selects both, from → to; the anchor and the keyboard stay on `from` (K27)', () => {
+  it('two commits (Compare with HEAD): selects both, from → to; the anchor and the keyboard stay on `from`', () => {
     const store = createRepoViewStore(1, '/repo', graphOf(labels), fakeServices());
     compare(store, 'c1', 'c2');
     const s = store.getState();
@@ -157,7 +157,7 @@ describe('compare (the commit menu\'s Compare with HEAD / Compare with working t
     expect(s.picks.rows).toEqual([s.indexById.get('c0'), 0]);
   });
 
-  it("with the working tree: the open worktree even when it's clean and another worktree's WIP row is the only one (K37)", () => {
+  it("with the working tree: the open worktree even when it's clean and another worktree's WIP row is the only one", () => {
     const g = graphOf(labels);
     const linked = { ...g.rows[0], id: 'wip:/wt/linked', wip: { ...g.rows[0].wip!, worktreePath: '/wt/linked', worktreeName: 'linked' } };
     const store = createRepoViewStore(1, '/repo', { ...g, rows: [linked, ...g.rows.slice(1)], openWorktree: '/wt/main' }, fakeServices());
@@ -241,7 +241,7 @@ describe('monacoTargetOf (the Monaco menu\'s target)', () => {
   });
 });
 
-// 3A final review: a right-click in a center view's editor (File History's file) while the view
+// A right-click in a center view's editor (File History's file) while the view
 // is on top builds its menu from the view's file, never from the open file hidden under it.
 describe('monacoMenu with a center view on top', () => {
   registerCenterView('menu-probe', () => null);
@@ -281,7 +281,7 @@ describe('monacoMenu with a center view on top', () => {
   });
 });
 
-// Plan 1C Task 15b: the sidebar's configured upstream, and the sidebar item menus.
+// The sidebar's configured upstream, and the sidebar item menus.
 describe('upstreamOf with the sidebar (configured upstreams)', () => {
   const g = graphOf(labels);
   const local = (name: string, upstream: string | null, gone = false) => ({ name, fullName: `refs/heads/${name}`, target: 't', upstream, ahead: 0, behind: 0, gone, tipTime: 0, summary: '', author: '', isHead: false, worktree: null, checkedOut: null, pushTarget: null, pushBehind: null, rewritten: null });
@@ -396,8 +396,7 @@ describe('the sidebar item menus', () => {
   });
 });
 
-// --- 2C T9: the 2C menu env ---
-describe('the 2C menu env (spec #2 §9, §11.2)', () => {
+describe('the write and sidebar menu env', () => {
   afterEach(() => { useTabViews.setState({ views: {} }); useRuntime.setState({ tabs: {} }); });
 
   it('knows the write target, the labels at a commit and the active worktree', () => {
@@ -431,9 +430,7 @@ describe('the 2C menu env (spec #2 §9, §11.2)', () => {
     expect(commitTargetOf({ id: 's', kind: 'stash', mrRefs: [] } as unknown as RowPayload).isStash).toBe(true);
   });
 });
-// --- end 2C T9 ---
-// --- 3D T3 ---
-describe('stackOf (spec #3 §3.11)', () => {
+describe('stackOf', () => {
   it("finds the stack a branch is in, from the store's graph and the base", () => {
     const g: GraphPayload = {
       ...graphOf([]),
@@ -445,4 +442,3 @@ describe('stackOf (spec #3 §3.11)', () => {
     expect(env.stackOf?.('main')).toBeNull();
   });
 });
-// --- end 3D T3 ---

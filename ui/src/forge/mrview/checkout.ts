@@ -68,8 +68,7 @@ export type MrBranch =
   | { kind: 'remote'; remote: string; name: string; tip: string };
 
 /**
- * The shared first half of Check out (spec #4 §4 "4B"; §2 "Add <owner>'s fork and check out the
- * branch"), in place or in a new worktree: from a fork without a remote, 4A's `addForkRemote`
+ * The shared first half of Check out, in place or in a new worktree: from a fork without a remote, `addForkRemote`
  * adds and fetches it first; a local branch already tracking the source is the answer; else the
  * remote branch (fetching that remote first when it isn't there yet), under its own name, or
  * `<remote>-<branch>` when a local branch of that name tracks something else (that one is never

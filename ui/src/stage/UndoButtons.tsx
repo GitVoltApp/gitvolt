@@ -7,7 +7,7 @@ import { ActionIcon } from './RowActions';
 import { COMMIT_QUEUED, stagingKey, useCommitting, useStaging } from './store';
 import { displayChord } from '../ui/platformKeys';
 
-/** A button's tooltip and state (spec #2 §7.6). */
+/** A button's tooltip and state. */
 export function stagingView(s: StagingUndoState | undefined, which: 'undo' | 'redo', committing: boolean): { tooltip: string; disabled: boolean } {
   if (committing) return { tooltip: COMMIT_QUEUED, disabled: true };
   if (s?.off) return { tooltip: s.off, disabled: true };
@@ -17,7 +17,7 @@ export function stagingView(s: StagingUndoState | undefined, which: 'undo' | 're
 }
 
 /** Undo and Redo for the staging log, in the diff toolbar (WIP diffs) and the WIP file list's
- * header: the toolbar's Undo isn't in view there (§7.6). After one, the lists and the open
+ * header: the toolbar's Undo isn't in view there. After one, the lists and the open
  * diff refresh from the answer; there's no toast. */
 export function StagingUndoButtons({ ctx }: { ctx: WriteCtx }) {
   const s = useStaging((st) => st.states[stagingKey(ctx.repoId, ctx.worktree)]);

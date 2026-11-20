@@ -8,7 +8,7 @@ const ok = { outcome: null, journal: { undo: null, redo: null, undoBlocked: null
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('Delete | Local | Remote | Both | on a tag (spec #3 §3.9)', () => {
+describe('Delete | Local | Remote | Both | on a tag', () => {
   it('local goes at once (it can be undone)', async () => {
     const ask = vi.spyOn(confirm, 'confirmAction');
     const del = vi.spyOn(api, 'deleteTag').mockResolvedValue(ok);

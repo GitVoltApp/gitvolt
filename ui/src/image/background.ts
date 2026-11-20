@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 /**
- * What an image diff shows behind transparent pixels (H30): the checkerboard (default), black,
+ * What an image diff shows behind transparent pixels: the checkerboard (default), black,
  * white, or a mid-grey (#808080, where both light and dark artwork stay visible). The
  * difference view keeps its black canvas whatever the pick.
  */
@@ -16,7 +16,7 @@ export const IMAGE_BACKGROUND_STORAGE_KEY = 'gitvolt.imageBackground.v1';
 
 const isBackground = (v: unknown): v is ImageBackground => IMAGE_BACKGROUNDS.some((b) => b.id === v);
 
-/** THE persistence seam for the image background: localStorage until plan 1C's settings store.
+/** THE persistence seam for the image background: localStorage until the settings store.
  * Guarded: blocked or full storage keeps the pick for the window's life. */
 export const imageBackgroundPersistence = {
   load(): ImageBackground {

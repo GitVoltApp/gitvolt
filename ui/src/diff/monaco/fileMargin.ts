@@ -26,8 +26,8 @@ export interface FileMargin {
 }
 
 /**
- * A strip in File View's margin (spec #3 §3.10, the blame gutter), LEFT of the line numbers
- * (blame | numbers | code, UX round 1 B.2): Monaco only lays the glyph margin there, which is a
+ * A strip in File View's margin (the blame gutter), LEFT of the line numbers
+ * (blame | numbers | code): Monaco only lays the glyph margin there, which is a
  * line high, so the strip widens the line-number column instead (`lineNumbersMinChars`; Monaco
  * right-aligns the numbers in it) and an overlay widget covers that column's left part, up to the
  * widest number. The glyph margin is off meanwhile, so the strip starts at the editor's left

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatChange, renameHighlight, renameParts } from './renameParts';
 
-describe('renameHighlight (J15)', () => {
+describe('renameHighlight', () => {
   const split = (a: string, b: string) => {
     const r = renameHighlight(a, b);
     // Each side's three parts are its whole path.
@@ -66,7 +66,7 @@ describe('renameHighlight (J15)', () => {
   });
 });
 
-describe('renameParts (H21)', () => {
+describe('renameParts', () => {
   it('same directory: the common base, then only the file names', () => {
     expect(renameParts('admin/dist/assets/PriceRanges-Dspn_3uo.js', 'admin/dist/assets/PriceRanges-DYuKwOSt.js')).toEqual({
       common: 'admin/dist/assets/',

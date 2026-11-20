@@ -45,7 +45,7 @@ describe('Palette Enter', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('Shift+Enter runs an entry\'s alternative (checkout of an @ ref, spec #2 §19 item 14)', async () => {
+  it('Shift+Enter runs an entry\'s alternative (checkout of an @ ref)', async () => {
     render(<Palette />);
     act(() => usePalette.getState().show());
     const input = await screen.findByLabelText('Command palette query');

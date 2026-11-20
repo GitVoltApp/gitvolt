@@ -16,7 +16,7 @@ import { mrNoun } from '../labels';
 import { sourceRemote } from '../mrview/checkout';
 
 /**
- * Apply on a review comment's suggestion (spec 2026-10-08): the suggested lines go into the
+ * Apply on a review comment's suggestion: the suggested lines go into the
  * working copy, as an edit, never a commit or a forge call. Only where it lands as the forge
  * meant it: the MR's source branch checked out in the tab's worktree at the MR's head, and the
  * replaced lines still there, at their place (edits elsewhere in the file are fine).

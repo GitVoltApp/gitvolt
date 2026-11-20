@@ -10,14 +10,14 @@ import { isVideoSrc } from './videos';
 import { allowImage, imageAllowed, imageIdentity, loadForgeImage, refreshSignedImages, rememberShown, resolveImage, shownBefore } from './images';
 import type { FileMarkdownContext, MdImageProps } from './types';
 
-/** 5B's loader for relative images in File View: `path` is repo-root-relative; it answers an
+/** The loader for relative images in File View: `path` is repo-root-relative; it answers an
  * object URL, or null. */
 export type RepoImageLoader = (ctx: FileMarkdownContext, path: string, commit: string | 'worktree') => Promise<string | null>;
 let repoLoader: RepoImageLoader | null = null;
 /** Each URL the loader answered goes back once its `<img>` is gone (or arrived too late for one). */
 let repoRelease: ((url: string) => void) | null = null;
 
-/** 5B registers its loader (the 5A/5B contract puts this here), and how to give back a URL it
+/** Registers the loader, and how to give back a URL it
  * answered once no image shows it. Returns its removal. */
 export function registerRepoImageLoader(fn: RepoImageLoader, release?: (url: string) => void): () => void {
   repoLoader = fn;
@@ -36,9 +36,9 @@ type View = { kind: 'loading' } | { kind: 'shown'; url: string; id: string } | {
 const NOT_ALLOWED = "Not loaded: GitVolt doesn't load images from this address";
 const failed = (why: string): View => ({ kind: 'broken', why: `Couldn't load: ${why}` });
 
-/** An image (spec §4.2): the forge's own hosts load through the core; another host waits for
- * "Load image from <host>"; a relative one in File View is 5B's. No `<img>` here ever points at
- * the network: only `data:` or 5B's object URLs. The box keeps `width`/`height` reserved. A
+/** An image: the forge's own hosts load through the core; another host waits for
+ * "Load image from <host>"; a relative one in File View loads through the repo. No `<img>` here ever points at
+ * the network: only `data:` or object URLs. The box keeps `width`/`height` reserved. A
  * GitHub attachment whose signed URL changed (a poll) keeps showing until the new one loads. */
 export function MdImage(props: MdImageProps) {
   // GitLab renders an image link to a video file as a video.

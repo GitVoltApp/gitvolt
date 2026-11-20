@@ -19,7 +19,7 @@ function setup() {
 
 const U = wipKey('/r', false), S = wipKey('/r', true);
 
-describe('WipLists (K44)', () => {
+describe('WipLists', () => {
   it('keys lists the way the store does', () => {
     expect(U).toBe(filesKey({ kind: 'wip', worktree: '/r', staged: false }));
   });
@@ -141,7 +141,7 @@ describe('WipLists (K44)', () => {
     expect(reads).toHaveLength(11);
   });
 
-  it('holds a write\'s fresh lists at once, and keeps them through the event at the same version (spec #2 §3.1)', () => {
+  it('holds a write\'s fresh lists at once, and keeps them through the event at the same version', () => {
     const fetcher = vi.fn(async () => list('v0'));
     const wip = new WipLists(fetcher);
     wip.setWatched(true);

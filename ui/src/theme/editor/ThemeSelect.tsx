@@ -5,7 +5,7 @@ import { useEditedTheme } from './actions';
 
 const BUILT_IN_CHOICES = THEME_IDS.map((id) => [id, THEMES[id].label] as const);
 
-/** The theme as a dropdown (the app's own, never a native `<select>`, K92): the built-ins, then
+/** The theme as a dropdown (the app's own, never a native `<select>`): the built-ins, then
  * the custom themes. The theme's control in the settings search results; the page has the cards. */
 export function ThemeSelect() {
   const { def, customs } = useEditedTheme();

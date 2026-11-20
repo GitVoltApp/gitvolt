@@ -2,6 +2,6 @@
 import type { HostKind } from "./HostKind";
 
 /**
- * A remote's parsed URL (spec §14.4). The URL itself is never sent: it may carry a token.
+ * A remote's parsed URL. The URL itself is never sent: it may carry a token.
  */
 export type RemotePayload = { name: string, host: string | null, path: string | null, hostKind: HostKind, };

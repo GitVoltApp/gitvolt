@@ -4,7 +4,7 @@ import { isMac } from '../ui/platformKeys';
 import { navBack, navForward } from './history';
 import { installNavInput } from './input';
 
-/** Spec #5 §3.4, §5: Go back / Go forward, in the palette and the shortcuts panel. Usable in any
+/** Go back / Go forward, in the palette and the shortcuts panel. Usable in any
  * repository tab, so they always list; with nowhere to go they do nothing. Their `shortcuts` are
  * display names: `input.ts` handles the keys and buttons (the Ctrl dispatcher never matches them). */
 const inRepoTab = () => activeTab()?.kind === 'repo';

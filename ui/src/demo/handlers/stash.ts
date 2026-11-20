@@ -1,4 +1,4 @@
-// Stashes (write/stash.rs, spec #2 §10): identity is the stash commit's id, never a list position.
+// Stashes (write/stash.rs): identity is the stash commit's id, never a list position.
 // Push and pop and drop are journaled (UndoKind::Stash); apply isn't (the stash is kept).
 import type { GbError } from '../../api/gen/GbError';
 import type { StashApplyOutcome } from '../../api/gen/StashApplyOutcome';

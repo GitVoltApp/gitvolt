@@ -1,4 +1,4 @@
-//! Log files (spec §16.2): daily rotation, the newest 7 files kept, `info` by default and `debug`
+//! Log files: daily rotation, the newest 7 files kept, `info` by default and `debug`
 //! switchable at run time from Settings. Only GitVolt's own crates log below `warn`; dependencies
 //! (gix, tokio, the CEF runtime's `log` records) stay at `warn` so the file stays readable.
 //! Every byte written to a file passes through `redact` (defence in depth: no secret in a log).
@@ -210,10 +210,10 @@ pub fn init(dir: &Path, debug: bool, also_console: bool) -> Result<Logging, GbEr
 }
 
 /// Logs every panic with its location and a backtrace captured at the panic site, and prints a
-/// redacted line to stderr. `api::catch_panics` turns the unwinding request into a `GbError`
-/// (spec §16.1). The default hook prints the raw message to stderr, which a desktop launch sends
+/// redacted line to stderr. `api::catch_panics` turns the unwinding request into a `GbError`.
+/// The default hook prints the raw message to stderr, which a desktop launch sends
 /// to the journal, so it only runs in debug builds (tests rely on its output there); release
-/// builds print `panic_stderr_line` instead (1D final review I1).
+/// builds print `panic_stderr_line` instead.
 pub fn install_panic_hook() {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -251,7 +251,7 @@ pub enum FrontendLevel {
     Info,
 }
 
-/// A frontend error or notice, redacted and truncated like git stderr (spec §16.2).
+/// A frontend error or notice, redacted and truncated like git stderr.
 pub fn log_frontend(level: FrontendLevel, message: &str, stack: Option<&str>) {
     let message = redact(truncate_utf8(message, STDERR_LOG_LIMIT));
     let stack = stack.map(|s| redact(truncate_utf8(s, STDERR_LOG_LIMIT))).unwrap_or_default();
@@ -266,7 +266,7 @@ pub fn log_frontend(level: FrontendLevel, message: &str, stack: Option<&str>) {
 mod tests {
     use super::*;
 
-    /// What a release build prints to stderr for a panic is redacted (1D final review I1).
+    /// What a release build prints to stderr for a panic is redacted.
     #[test]
     fn the_release_panic_stderr_line_is_redacted() {
         let token = format!("glpat-{}", "d".repeat(24));

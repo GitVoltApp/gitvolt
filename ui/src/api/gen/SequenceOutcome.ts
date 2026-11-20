@@ -2,7 +2,7 @@
 
 export type SequenceOutcome = { "status": "done", commits: number, committed: boolean, } | { "status": "stopped", files: number, at: string | null, applied: number, committed: boolean, 
 /**
- * UX R1 C.1: a committing stop with no conflicts: git's error (the commit failed: a
+ * A committing stop with no conflicts: git's error (the commit failed: a
  * hook, the signer, an empty pick). The changes wait staged, paused.
  */
 error?: string, };

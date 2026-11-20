@@ -19,7 +19,7 @@ const { useToast } = await import('../ui/toastStore');
 
 beforeEach(() => { vi.clearAllMocks(); useToast.getState().dismiss(); });
 
-describe('MdCode (spec #5 §3.1)', () => {
+describe('MdCode', () => {
   it('highlights with Shiki in the fence’s language, keeping the text while it loads', async () => {
     shiki.highlightCode.mockResolvedValue({ lines: [[{ content: 'const', color: '#569cd6' }, { content: ' a = 1;' }]] });
     const { container } = render(<MdCode code="const a = 1;" lang="ts" />);
@@ -97,7 +97,7 @@ describe('MdCode (spec #5 §3.1)', () => {
     await waitFor(() => expect(useToast.getState().message).toBe('Copied'));
   });
 
-  it('marks a changed block’s lines (5C), and copies only the new ones', async () => {
+  it('marks a changed block’s lines, and copies only the new ones', async () => {
     shiki.highlightCode.mockResolvedValue(null);
     const { container } = render(<MdCode code={'a = 1\na = 2\nend'} lang="py" marks="-+ " />);
     const lines = [...container.querySelectorAll('.md-code-line')].map((l) => [l.textContent, l.className]);

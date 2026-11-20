@@ -5,7 +5,7 @@ vi.mock('../api/client', () => ({ api: { logFrontend }, errorMessage: (e: { mess
 
 const { ACTION_LOG_CAPACITY, actionLogText, runMenuRow, track, useActionLog } = await import('./actionLog');
 
-describe('action log (R11)', () => {
+describe('action log', () => {
   beforeEach(() => {
     useActionLog.getState().clear();
     logFrontend.mockClear();

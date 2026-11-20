@@ -15,7 +15,7 @@ import { sidesIn } from './sides';
 
 const row = (r: Omit<Extract<MenuRow, { kind: 'action' }>, 'kind'>): MenuRow => ({ kind: 'action', ...r });
 
-/** §7.1: on a conflicted WIP file, Take current / Take incoming / Mark resolved. The rows come
+/** On a conflicted WIP file, Take current / Take incoming / Mark resolved. The rows come
  * from the target alone (the menu stays synchronous); the write context is read on the click. */
 const off = registerMenu<FileTarget, MenuEnv>({
   id: 'file.conflict', kind: 'file', group: 'conflict', order: 0,
@@ -24,10 +24,10 @@ const off = registerMenu<FileTarget, MenuEnv>({
     const root = t.wip?.worktree ?? t.root;
     const tab = activeTab();
     const ctx = tab ? writeCtx(tab.id, root) : null;
-    // 2D T20: the merge tool's unsaved work on this file would be replaced; save it first.
+    // The merge tool's unsaved work on this file would be replaced; save it first.
     const queued = ctx && useStaging.getState().committing[stagingKey(ctx.repoId, ctx.worktree)] ? COMMIT_QUEUED
       : ctx && isMergeDirty(ctx.tabId, ctx.worktree, t.path) ? MERGE_SAVE_FIRST : undefined;
-    // UX round 2: the sides by name, as the merge tool's pane titles ("main (current)").
+    // The sides by name, as the merge tool's pane titles ("main (current)").
     const graph = tab ? tabStore(tab.id)?.getState().graph : undefined;
     const target = ctx ? useJournal.getState().states[journalKey(ctx.repoId, ctx.worktree)]?.paused?.target ?? null : null;
     const sides = graph ? sidesIn(graph, root, target) : { current: null, incoming: null };

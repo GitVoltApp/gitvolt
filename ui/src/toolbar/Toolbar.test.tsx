@@ -34,7 +34,7 @@ const branch = (name: string, target: string, over: Partial<LocalBranch> = {}): 
 const ctx = { tabId: 't', repoId: 4, path: '/r', worktree: '/r', info: null };
 const renderToolbar = () => render(<RepoContext value={ctx}><Toolbar /></RepoContext>);
 
-describe('Toolbar (spec §6.3)', () => {
+describe('Toolbar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useOps.setState({ ops: {}, prompts: [], errors: [], unread: 0 });
@@ -139,7 +139,7 @@ describe('Toolbar (spec §6.3)', () => {
     expect(screen.getByRole('button', { name: 'Fetch' })).toHaveAttribute('aria-busy', 'true');
   });
 
-  it('a background fetch leaves Fetch alone, until a user\'s Fetch waits on it (K30)', () => {
+  it('a background fetch leaves Fetch alone, until a user\'s Fetch waits on it', () => {
     renderToolbar();
     act(() => useOps.getState().apply({ type: 'opStarted', op: 3, kind: 'fetch', repo: 4, label: 'gitvolt', interactive: false }));
     expect(screen.getByRole('button', { name: 'Fetch' })).toBeEnabled();
@@ -210,14 +210,14 @@ describe('Toolbar (spec §6.3)', () => {
     renderToolbar();
     fireEvent.click(screen.getByRole('button', { name: 'Branch: main' }));
     const options = screen.getAllByRole('option');
-    // Alphabetical by default (K72).
+    // Alphabetical by default.
     expect(options.map((o) => o.textContent)).toEqual(['feature/login2↑ 1↓', 'main']);
     fireEvent.click(screen.getByText('feature/login'));
     expect(checkoutLocal).toHaveBeenCalledWith('t', 'feature/login');
     expect(screen.queryByRole('listbox')).toBeNull();
   });
 
-  it('shows a queued badge on a button whose op waits in the queue (spec #2 §3.6)', () => {
+  it('shows a queued badge on a button whose op waits in the queue', () => {
     const { useQueue } = useQueueModule;
     act(() => useQueue.getState().set(4, { running: { id: 1, label: 'commit', kind: 'commit', op: 9 }, queued: [{ id: 2, label: 'fetch r', kind: 'fetch', op: 10 }], stopped: null }));
     renderToolbar();

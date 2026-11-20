@@ -36,7 +36,7 @@ function fakeEditor() {
   return ed;
 }
 
-describe('the file editor\'s margin strip (spec #3 §3.10: the blame gutter)', () => {
+describe('the file editor\'s margin strip (the blame gutter)', () => {
   it('widens the line-number column, lays a node over its left part (left of the numbers), and reports the lines with the scroll applied', () => {
     const ed = fakeEditor();
     const strip = new FileMarginStrip(ed as never, () => font);
@@ -89,7 +89,6 @@ describe('the file editor\'s margin strip (spec #3 §3.10: the blame gutter)', (
     expect(ed.updateOptions).toHaveBeenLastCalledWith({ lineNumbersMinChars: Math.ceil((200 + NUMBER_GAP_PX) / 7) + 3 });
   });
 
-  /** Review Focus 3. */
   it('set(0) restores Monaco\'s own line-number column and glyph margin, and removes the node', () => {
     const ed = fakeEditor();
     const strip = new FileMarginStrip(ed as never, () => font);

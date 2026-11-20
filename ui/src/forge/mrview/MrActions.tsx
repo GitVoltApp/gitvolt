@@ -63,9 +63,9 @@ export function partialText(kind: ForgeKind, published: number, error: string): 
  * The review composer ("Review…", as GitHub's review dialog): Comment, Approve or Request
  * changes, and a message, optional to approve. The submit names the mode. One write (GitHub: one
  * review; GitLab: the note, the approval, the reviewer state). Ctrl+Enter submits. With a review
- * pending in the tab's session (spec 2026-10-08 §4), it sends the pending comments with it
+ * pending in the tab's session, it sends the pending comments with it
  * (`submitReview`), the message optional then; if the forge took the comments but refused the
- * event, it stays open, says what went through, and keeps the message for another try (§7).
+ * event, it stays open, says what went through, and keeps the message for another try.
  * The message is kept as a draft until it's sent (`drafts.ts`); Cancel drops it. The top bar's
  * Submit review… shows it too (`SubmitPopover`), and the MR view's pending review panel
  * (`PendingReview`), where it stays (`keep`): Cancel only clears the message there, and it takes
@@ -251,8 +251,8 @@ export function ReviewButtons({ kind, mr, actions: a }: { kind: ForgeKind; mr: F
   );
 }
 
-/** Check out (`children`), Edit and the ⋯ menu, at the right end of the status line (spec #4 §4
- * "4B"). Edit and draft ⇄ ready are for open and draft MRs/PRs only; Check out and Copy link stay
+/** Check out (`children`), Edit and the ⋯ menu, at the right end of the status line.
+ * Edit and draft ⇄ ready are for open and draft MRs/PRs only; Check out and Copy link stay
  * on a merged or closed one. */
 export function StatusActions({ actions: a, children }: { actions: MrActionsState; children?: ReactNode }) {
   const more = useRef<HTMLButtonElement>(null);

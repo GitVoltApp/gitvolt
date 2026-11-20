@@ -33,20 +33,20 @@ export interface DrawOptions {
   stripColor?: string;
   labeledRows: Set<number>;
   dpr: number;
-  /** A loaded avatar for an author, drawn inside the node instead of initials (spec §8.3). */
+  /** A loaded avatar for an author, drawn inside the node instead of initials. */
   avatar?: (email: string) => ImageBitmap | null;
-  /** The graph's lanes need more width than the column has (F2): the collapse zone shows, and
-   * the nodes of lanes that don't fit are packed into it (F11, graphLayout). */
+  /** The graph's lanes need more width than the column has: the collapse zone shows, and
+   * the nodes of lanes that don't fit are packed into it (graphLayout). */
   clipped?: boolean;
   /** The lane scroll (the Graph column's own horizontal scrollbar), CSS px: lanes shift left by
    * it, and the ones scrolled out are packed too. Implies clipping when above 0. */
   scrollX?: number;
-  /** The selected row's index: its band is drawn brighter (H14). */
+  /** The selected row's index: its band is drawn brighter. */
   selected?: number;
-  /** More selected rows (a compare's or multi-selection's, K27): the same brighter band. */
+  /** More selected rows (a compare's or multi-selection's): the same brighter band. */
   alsoSelected?: ReadonlySet<number>;
   /** The checked-out branch's row (HEAD's label): its label connector is a graph line, the
-   * lines' width in the full lane colour, not the quiet 1 px at 25% (J21). */
+   * lines' width in the full lane colour, not the quiet 1 px at 25%. */
   headRow?: number;
   /** A fold's reveal panel is open under merge row `row`, its branch lane `lane` running on up out
    * of the panel's top edge: the merge's tail curves into that lane already; a merge without one
@@ -54,21 +54,21 @@ export interface DrawOptions {
   foldOpen?: { row: number; lane: number };
 }
 
-/** Alpha of the per-row lane-color band (ruling R10). */
+/** Alpha of the per-row lane-color band. */
 export const BAND_ALPHA = 0.18;
-/** The selected row's band: brighter (H14; the selected band reads as its lane colour at ~52%
+/** The selected row's band: brighter (the selected band reads as its lane colour at ~52%
  * against ~11% for the others). */
 export const SELECTED_BAND_ALPHA = 0.5;
 /** Width, in CSS px, of the solid lane-colored rail at the graph column's right edge. */
 export const RAIL_W = 2;
-/** Alpha of the chip-to-node connector: 25% (feedback F8),
+/** Alpha of the chip-to-node connector: 25%,
  * so it reads quieter than the graph lines it crosses. `.ref-connector` in graph.css matches. */
 export const CONNECTOR_ALPHA = 0.25;
-/** The graph lines' width, in CSS px; also the checked-out branch's connector (J21). */
+/** The graph lines' width, in CSS px; also the checked-out branch's connector. */
 export const LINE_W = 2;
-/** A dashed (WIP) line's dash and gap, CSS px, before rounding to whole device px (K50). */
+/** A dashed (WIP) line's dash and gap, CSS px, before rounding to whole device px. */
 export const WIP_DASH = 3;
-/** The WIP node's dotted ring: its dash and gap, CSS px, before fitting the circumference (K50). */
+/** The WIP node's dotted ring: its dash and gap, CSS px, before fitting the circumference. */
 export const WIP_RING_DASH = 2;
 /** A collapsed branch's dotted lane: round dots a line wide, one every two line widths. */
 export const DOT_PATTERN = [0, 2 * LINE_W];
@@ -85,7 +85,7 @@ function strokeOf(seg: Seg, row: RowPayload): 'dashed' | 'dotted' | 'solid' {
 }
 
 /**
- * The collapse zone (spec §8.3, F11; ruling R11). While the lanes need more width than the
+ * The collapse zone. While the lanes need more width than the
  * Graph column has, its right edge becomes a zone one node wide where every commit whose lane doesn't fit is drawn,
  * packed into ONE column and dimmed; a gradient shade just left of it marks "hidden nodes go
  * here". Lines stop at the zone (clipped to the lane area); row bands and the rail run through it.
@@ -124,7 +124,7 @@ export interface GraphLayout {
   /** The packed column's centre x: mid-zone, left of the rail. */
   packedX: number;
   /** Not even lane 0's whole node fits (the column at or near its 48 px minimum, at every
-   * density): the graph is a strip of packed (dimmed) nodes, one per row, and nothing else (F11). */
+   * density): the graph is a strip of packed (dimmed) nodes, one per row, and nothing else. */
   strip: boolean;
 }
 
@@ -151,7 +151,7 @@ export type NodeGeometry = Pick<DrawOptions, 'width' | 'metrics' | 'clipped' | '
 /** A row's node x in its lane, or null when it's packed: its lane's centre is outside the lane
  * area (past the zone's edge, or scrolled out on the left). By the centre, the same test as the
  * lines' clip, so every line drawn still ends in a drawn node (a lane half under the shade keeps
- * its nodes; spec §8.3 "lines never break"). Per lane: a lane is shown or packed whole. */
+ * its nodes: lines never break). Per lane: a lane is shown or packed whole. */
 export function laneNodeX(o: NodeGeometry, row: RowPayload): number | null {
   const scrollX = o.scrollX ?? 0;
   const clipping = !!o.clipped || scrollX > 0;
@@ -189,7 +189,7 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
   ctx.setTransform(o.dpr, 0, 0, o.dpr, 0, 0);
   ctx.clearRect(0, 0, o.width, o.height);
   const { x: railX, w: railW } = railEdge(o.width, o.dpr);
-  // The band's and rail's vertical inset: the density's (H1), 2 px by default.
+  // The band's and rail's vertical inset: the density's, 2 px by default.
   const inset = m.bandInset ?? 2;
   // The scroll offset on the device grid: what the connectors and the dash phase are placed
   // against (pixels.ts).
@@ -224,9 +224,9 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
     if (o.labeledRows.has(i)) {
       // A whole number of device pixels thick, its top edge on a device pixel row: the same
       // line (connectorLine, content coordinates) the row's DOM connector covers, so the two
-      // halves meet on the same device rows at any dpr (zoom) and density (K57). Under
+      // halves meet on the same device rows at any dpr (zoom) and density. Under
       // `setTransform(dpr, ...)`, an odd device width is centred on a half device pixel.
-      // The checked-out branch's (J21): the graph lines' width, at full alpha.
+      // The checked-out branch's: the graph lines' width, at full alpha.
       const head = i === o.headRow;
       const line = connectorLine(i * m.rowH, m.rowH, head ? LINE_W : 1, o.dpr);
       ctx.lineWidth = line.height;
@@ -237,7 +237,7 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
       ctx.globalAlpha = head ? 1 : CONNECTOR_ALPHA;
       ctx.beginPath();
       ctx.moveTo(0, y);
-      // To the node; a packed one's left edge (the connector reaches it, spec §8.3).
+      // To the node; a packed one's left edge (the connector reaches it).
       ctx.lineTo(nx ?? packedAt - r, y);
       ctx.stroke();
       ctx.globalAlpha = 1;
@@ -257,7 +257,7 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
       ctx.clip();
       if (scrollX) ctx.translate(-scrollX, 0);
     }
-    // Dashed (WIP) lines (K50): butt caps, a dash and gap of whole device pixels, phased by the
+    // Dashed (WIP) lines: butt caps, a dash and gap of whole device pixels, phased by the
     // absolute content y (pixels.ts dashOffset), so the dashes run on unbroken from row to row.
     // Dotted (collapsed) lines likewise: round dots (DOT_PATTERN), phased the same way. A lane's
     // straight dashed or dotted pieces in consecutive rows are joined into one path (a run), so
@@ -347,7 +347,7 @@ export function drawGraph(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
     ctx.fillRect(area - SHADE_W, 0, SHADE_W, o.height);
   }
   if (clipping) {
-    // Every node that ran off its lane is dimmed (R11), the strip's too: there, every lane has.
+    // Every node that ran off its lane is dimmed, the strip's too: there, every lane has.
     ctx.globalAlpha = PACKED_ALPHA;
     for (let i = o.first; i < o.last; i++) {
       const row = o.rows[i];
@@ -419,7 +419,7 @@ function drawNode(ctx: CanvasRenderingContext2D, o: DrawOptions, row: RowPayload
   ctx.fill();
   ctx.strokeStyle = c;
   if (kind === 'wip') {
-    // The dotted ring (K50): butt caps (round ones would swell each dash over its gap) and a
+    // The dotted ring: butt caps (round ones would swell each dash over its gap) and a
     // dash that divides the circumference evenly, so every dash and gap is the same length,
     // with none cut short where the arc starts and ends.
     const d = ringDash(r, WIP_RING_DASH);

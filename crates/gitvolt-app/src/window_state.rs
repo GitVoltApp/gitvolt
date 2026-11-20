@@ -1,4 +1,4 @@
-//! K46: the main window reopens where it was — same monitor, position, size and maximized state.
+//! The main window reopens where it was — same monitor, position, size and maximized state.
 //!
 //! The geometry lives in `AppSettings::window` (logical pixels, see `WindowGeometry`). At
 //! startup [`placement`] checks it against the monitors present now and the window is built

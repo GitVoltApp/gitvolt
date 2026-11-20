@@ -107,10 +107,10 @@ preference `settings.a11y.caretbrowsing.enabled=false` as a backstop.
 **Reserved chords reach the page** (`src/cef_impl/client/keyboard.rs`): Ctrl+W, Ctrl+F4,
 Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+PgUp, Ctrl+PgDn and Ctrl+Shift+T are Chrome *reserved* keys,
 which Chrome runs before the page sees them, so blocking their command alone left them dead.
-GitVolt binds them: Ctrl+W closes the open file today (and a tab in plan 1C), and plan 1C binds
-the tab-switching ones and Ctrl+Shift+T. `on_pre_key_event` now answers them with
-`*is_keyboard_shortcut = 1; return 0` (the documented `OnPreKeyEvent` contract, research doc
-§2.3): CEF skips the reserved-key pre-processing and sends the event to the renderer; one the
+GitVolt binds them all: Ctrl+W closes the open file (or the tab); the others switch and reopen
+tabs. `on_pre_key_event` now answers them with
+`*is_keyboard_shortcut = 1; return 0` (the documented `OnPreKeyEvent` contract):
+CEF skips the reserved-key pre-processing and sends the event to the renderer; one the
 page leaves unhandled reaches the accelerator, whose command the tables above block. Exactly
 those chords: no Shift except on Tab and T, so Ctrl+Shift+W (close window) and Ctrl+Shift+PgUp /
 PgDn (move tab) keep Chrome's handling. And only for the app's own browser, identified as
@@ -142,10 +142,10 @@ says.
   the application has no logger installed (or filters this crate's logs out). It runs in the
   browser process only: helper processes return from `cef_entry_point` before reaching this
   code. Off by default; never read by `gitvolt-app` itself.
-  - Also (K31, unrelated to #3002): `configuration_tests` gains
+  - Also (unrelated to #3002): `configuration_tests` gains
     `disabling_component_updates_appends_the_switch`, covering the pre-existing, otherwise
     untested `Cef::component_updates` builder method. No production code in this file changed
-    for K31 — see "Chromium's component updater" below.
+    for it — see "Chromium's component updater" below.
 
 - `src/cef_impl/client/command.rs` (Chrome accelerators, above): added
   `GITVOLT_BLOCKED_COMMANDS` (always blocked: `IDC_CARET_BROWSING_TOGGLE`,
@@ -541,7 +541,7 @@ on its own D-Bus session and XDG dirs), with real compositor input through mutte
 **Known limits (one webview per window; revisit if that changes):**
 - The target is the *topmost* viewable browser, not the one clicked. With several webviews in one
   toplevel, a click on a lower one would still send the keys to the topmost. GitVolt has one:
-  1C's tabs are `<Activity>` panels inside the single page, not webviews. The fix, if it's ever
+  its tabs are `<Activity>` panels inside the single page, not webviews. The fix, if it's ever
   needed, is to prefer the child under the pointer (`XQueryPointer`), then the last focused.
 - `RevertToParent`: if the focused browser window is later unmapped or destroyed (a webview
   hidden or recreated), X focus reverts to the CEF host window, which neither GDK nor Chromium
@@ -651,7 +651,7 @@ the hover in all four of its cases.
 **Also:** a pointer leave is never sent while exiting (every browser is closing), nor to a browser
 past `on_before_close`.
 
-## Chromium's component updater (K31)
+## Chromium's component updater
 
 **Problem:** the browser process logged
 `third_party/puffin/src/puffpatch.cc:122 Failed to create a temporary file for

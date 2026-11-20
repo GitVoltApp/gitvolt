@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.mocked(toastActionError).mockClear();
 });
 
-describe('the editable working copy (spec #2 §7.5)', () => {
+describe('the editable working copy', () => {
   it('only the working-tree side of a WIP text diff is editable', () => {
     expect(isEditableTarget(wipTarget, contents('h0'))).toBe(true);
     expect(isEditableTarget({ ...wipTarget, new: { kind: 'object', oid: 'x' } }, contents('h0'))).toBe(false);
@@ -60,7 +60,7 @@ describe('the editable working copy (spec #2 §7.5)', () => {
     expect(host.keepViewOnNextShow).toHaveBeenCalled();
   });
 
-  it('2B final I3: saving a clean copy (Ctrl+S with no edits) writes nothing', async () => {
+  it('saving a clean copy (Ctrl+S with no edits) writes nothing', async () => {
     useWorkingCopy.setState((s) => ({ copies: { t: { ...s.copies.t!, dirty: false } } }));
     expect(await saveWorkingCopy('t')).toBe('saved');
     expect(writeWorktreeFile).not.toHaveBeenCalled();

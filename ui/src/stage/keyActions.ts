@@ -28,7 +28,7 @@ export function openWipFile(): OpenWip | null {
   return { ctx: { tabId: t.id, repoId: s.repo, worktree: side.worktree }, staged: side.staged, file: { path: d.path, oldPath: d.oldPath } };
 }
 
-/** The WIP panel's lists, Conflicted split off (§7.1). */
+/** The WIP panel's lists, Conflicted split off. */
 function wipLists() {
   const t = activeTab();
   const s = activeStore()?.getState();

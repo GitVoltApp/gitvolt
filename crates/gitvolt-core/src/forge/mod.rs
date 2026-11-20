@@ -1,30 +1,20 @@
-//! The forge layer's contract (spec #4 §3.1–§3.3). Core defines it and never depends on an HTTP
+//! The forge layer's contract. Core defines it and never depends on an HTTP
 //! client (as `avatar.rs`): the normalized types the UI sees, the `ForgeProvider` trait
 //! `gitvolt-forge` implements per forge kind, and the token store and connector the app injects.
 
 pub mod provider;
 pub mod types;
 pub mod version;
-// --- 4A T5 ---
 pub mod accounts;
 pub mod hub;
 #[cfg(test)]
 pub(crate) mod fake;
-// --- end 4A T5 ---
-// --- 4D T1 ---
 pub mod stack;
-// --- end 4D T1 ---
-// --- 4C T1 ---
 pub mod create;
-// --- end 4C T1 ---
-// --- 4B T1 ---
 pub mod mrs;
 pub mod cache;
-// --- end 4B T1 ---
-// --- 5A T1 ---
 pub mod image;
 pub use image::{image_host, ForgeImage};
-// --- end 5A T1 ---
 // --- review comments ---
 pub mod review;
 // --- end review comments ---
@@ -49,7 +39,7 @@ mod tests {
         }
     }
 
-    /// Implements only what 4A's providers must: the rest are the defaults.
+    /// Implements only what providers must: the rest are the defaults.
     struct Minimal;
     impl ForgeProvider for Minimal {
         fn kind(&self) -> ForgeKind { ForgeKind::GitLab }

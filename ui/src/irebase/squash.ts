@@ -9,7 +9,7 @@ import { fromPlan, problems, toRequest, type Preset } from './model';
 import { openRebaseEditor } from './open';
 
 /**
- * Multi-select Squash (spec #3 §2, §4.3). The selected commits (newest first) fold into the
+ * Multi-select Squash. The selected commits (newest first) fold into the
  * oldest, their messages merged, oldest first. Direct, it's one interactive rebase with no
  * editor; `interactive` opens the editor with that preset ("Squash interactively…"). Commits
  * between them keep their places. The squashed ones move next to the oldest, so a conflict pauses

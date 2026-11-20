@@ -116,7 +116,7 @@ export async function compareMr(tabId: string, kind: ForgeKind, mr: ForgeMr, det
   }
   if (!base) return failed(`The ${noun}'s base isn't in this repository: fetch first`);
   if ((await loadInGraph(tabId, repo, store, [base, head])) === 'missing' || !store.getState().compareCommits(base, head)) return failed(`The ${noun}'s base isn't in the graph's history`);
-  // Spec 2026-10-08 §1: the MR's Compare is where its review happens.
+  // The MR's Compare is where its review happens.
   void startReview(tabId, kind, mr.number, { from: base, to: head });
   // Its cards' code, so the first file opened in it doesn't wait for it.
   preloadReviewMode().catch(() => {});

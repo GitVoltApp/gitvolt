@@ -7,7 +7,7 @@ vi.mock('../api/client', () => ({ api: { queueState } }));
 
 const item = (id: number, label: string) => ({ id, label, kind: 'push' as const, op: id + 100 });
 
-describe('the action queue chip (spec #2 §3.6)', () => {
+describe('the action queue chip', () => {
   it('says what runs and how many wait, or what stopped and how many did not run', () => {
     expect(chipText({ running: item(1, 'push dev'), queued: [item(2, 'b'), item(3, 'c')], stopped: null })).toBe('Push dev · B and 1 more waiting');
     expect(chipText({ running: item(1, 'push dev'), queued: [], stopped: null })).toBe('Running: push dev');

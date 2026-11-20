@@ -1,7 +1,7 @@
 import { expect, test, type Page } from './test';
 import { fixtures, openUrl } from './fixtures';
 
-// Plan 1D lane W2-B (T8, T9 UI, R9-R11): the Activity modal is the one Debug modal, with
+// The Activity modal is the one Debug modal, with
 // Activity | Commands | Requests | Actions tabs and the diagnostics / logs folder / perf overlay header.
 
 const debugDialog = (page: Page) => page.getByRole('dialog', { name: 'Activity' });

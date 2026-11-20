@@ -1,4 +1,4 @@
-/* Rendered Markdown (spec #5 §3.1): GitHub-like typography on the theme's tokens. Full width in the
+/* Rendered Markdown: GitHub-like typography on the theme's tokens. Full width in the
    MR/PR flyout; File View and the diff cap its line (diff.css, --md-measure). Its prose is in the
    reading font (Settings › Appearance › Fonts: --reading-font, else the UI font) at the reading
    line height. File View's and the diff's panes size it at the reading size (--md-font-size, the
@@ -96,8 +96,8 @@
 .md-plain-chunk { content-visibility: auto; contain-intrinsic-size: auto 400px; }
 .md-rendering, .md-error { margin: 0; color: var(--text-secondary); font-size: 11px; }
 
-/* 5C: the rendered diff (R1). Markers sit in the left margin, absolutely positioned (nothing
-   shifts); words carry their change; a changed diagram shows old and new side by side (R11). */
+/* 5C: the rendered diff. Markers sit in the left margin, absolutely positioned (nothing
+   shifts); words carry their change; a changed diagram shows old and new side by side. */
 .md-diff-block { position: relative; }
 .md-diff-block::before { content: ""; position: absolute; top: 0; bottom: 0; left: -12px; width: 3px; border-radius: 2px; background: var(--md-diff-mark); }
 .md-diff-added { --md-diff-mark: var(--status-added); }
@@ -165,7 +165,7 @@
 .md-split-joined > .md-split-cell > :is(ul, ol, blockquote) { margin-bottom: 0; }
 .md-split-joined + .md-split-row > .md-split-cell > :is(ul, ol) > li:first-child { margin-top: 2px; }
 
-/* Review comments (spec 2026-10-08 §3): a code block's box (it carries the block's lines), and
+/* Review comments: a code block's box (it carries the block's lines), and
    what shows under a block (threads, drafts, a comment box). */
 .md .md-src-code { min-width: 0; max-width: 100%; margin: 0 0 10px; }
 /* The box keeps the block's bottom margin: the code block inside it adds none, unless a slot

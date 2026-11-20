@@ -8,13 +8,13 @@ import type { FileHistoryArgs } from './model';
 /** The center view's kind (`history/feature.ts` registers it). */
 export const FILE_HISTORY = 'fileHistory';
 
-/** Where a file's history starts (ruling 1): `rev` null is `worktree`'s HEAD (absent: the tab's
+/** Where a file's history starts: `rev` null is `worktree`'s HEAD (absent: the tab's
  * active worktree). */
 export interface HistoryStart { path: string; rev: string | null; worktree?: string }
 
-/** Opens File History in tab `tabId`'s center panel, with Blame on or off (spec #3 §4.2). It's a
- * navigation place (spec #5 §3.4), and the tab's files follow it while it's open: its sticky mode
- * (`RepoViewState.stickyHistory`, UX). */
+/** Opens File History in tab `tabId`'s center panel, with Blame on or off. It's a
+ * navigation place, and the tab's files follow it while it's open: its sticky mode
+ * (`RepoViewState.stickyHistory`). */
 export function openFileHistory(tabId: string, start: HistoryStart, blame: boolean, opts: { follow?: boolean } = {}): boolean {
   const ctx = writeCtx(tabId, start.worktree);
   if (!ctx) {

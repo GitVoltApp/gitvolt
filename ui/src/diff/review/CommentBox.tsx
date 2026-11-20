@@ -14,16 +14,16 @@ import { ReviewNewText } from './newText';
 import './review.css';
 
 export const NO_SUGGESTION = 'Suggestions are for the new side’s lines';
-/** Add to review's answer where drafts can't be kept (GitLab before 16.3; Plan 1's `canDraft`). */
+/** Add to review's answer where drafts can't be kept (GitLab before 16.3; `canDraft`). */
 export const NO_DRAFTS = 'This GitLab keeps no pending comments (16.3 or later does): use Comment now';
-/** A control as a key's origin: a confirm arms it in place (spec §ui confirms). */
+/** A control as a key's origin: a confirm arms it in place. */
 const keyOrigin = (el: HTMLElement): Origin => ({ el, rect: null, via: 'key', control: true, holds: 0 });
 
 /**
- * A new comment under lines of the MR's diff (spec 2026-10-08 §2): the Markdown composer (emoji and
+ * A new comment under lines of the MR's diff: the Markdown composer (emoji and
  * @ completion), then Cancel, Suggest change, Comment now and Add to review (the default, Mod+Enter).
  * The text is the MR view's reply draft for this anchor, so it outlives the box being laid out again.
- * A write the forge refuses keeps the text and shows the reason (§7). Cancel, or Esc in the field,
+ * A write the forge refuses keeps the text and shows the reason. Cancel, or Esc in the field,
  * arms first when there's text. `disabledReason`: why neither send can go now (a stale Compare).
  * `autoFocus` (default true): the field takes the keyboard when the box mounts; false for a box
  * laid out again (a tab shown again), which mustn't take it from where the user is.

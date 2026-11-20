@@ -7,7 +7,7 @@ import { detailOf, mrOf } from './testMrs';
 
 const forge = (over: Partial<TabForge> = {}): TabForge => ({ ...EMPTY_FORGE, kind: 'gitlab', ...over });
 
-describe('the forge store (spec #4 §4 "4B")', () => {
+describe('the forge store', () => {
   it("finds a chip's MR through its remote refs first, else its local branch's upstream", () => {
     const f = forge({ byRef: { 'refs/remotes/origin/dev': mrOf(12), 'refs/remotes/origin/old': mrOf(9) }, upstreams: { 'refs/heads/old': 'refs/remotes/origin/old' } });
     expect(mrForLabel(f, { local: 'refs/heads/dev', remotes: [{ fullName: 'refs/remotes/origin/dev' }] })).toEqual({ mr: mrOf(12), via: 'refs/remotes/origin/dev' });
@@ -41,14 +41,12 @@ describe('the forge store (spec #4 §4 "4B")', () => {
   });
 });
 
-// --- 4D T5 ---
 it('also asks about a branch pushed without an upstream, through its push target (the merged bottom of a stack)', () => {
   const b = (name: string, upstream: string | null, pushTarget: string | null) => ({ name, fullName: `refs/heads/${name}`, upstream, pushTarget, tipTime: 1, gone: false }) as LocalBranch;
   const { refs, upstreams } = upstreamRefsOf({ locals: [b('a', null, 'origin/a'), b('b', 'refs/remotes/origin/b', 'origin/other'), b('c', null, null)] } as SidebarPayload);
   expect(refs).toEqual(['refs/remotes/origin/a', 'refs/remotes/origin/b']);
   expect(upstreams).toEqual({ 'refs/heads/a': 'refs/remotes/origin/a', 'refs/heads/b': 'refs/remotes/origin/b' });
 });
-// --- end 4D T5 ---
 
 it("asks first about the targets of open MRs from local branches when no local branch has them (a stack's deleted merged bottom), within the lookup cap", () => {
   const b = (name: string, tipTime: number) => ({ name, fullName: `refs/heads/${name}`, upstream: `refs/remotes/origin/${name}`, pushTarget: null, tipTime, gone: false }) as LocalBranch;

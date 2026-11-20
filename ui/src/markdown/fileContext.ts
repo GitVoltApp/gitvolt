@@ -3,8 +3,8 @@
  * repository root (as on GitHub), `.` and empty segments dropped, `..` climbing. Each segment is
  * percent-decoded here, once, before `.` and `..` are handled: callers pass the href as written
  * and must not decode it themselves. `null` when it climbs above the root, names nothing, or has
- * a segment that doesn't decode or decodes to a `/`, `\` or NUL. Pure and dependency-free (5A/5B
- * contract). */
+ * a segment that doesn't decode or decodes to a `/`, `\` or NUL. Pure and
+ * dependency-free. */
 export function resolveRepoPath(fromFile: string, href: string): string | null {
   const path = href.split('?')[0];
   if (!path) return null;

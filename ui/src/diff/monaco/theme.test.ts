@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { EDITOR_COLORS, withEditorColors } from './theme';
 
-describe('editor background (K34)', () => {
+describe('editor background', () => {
   it("is the app's --app-bg0 (no reddish dark-plus #1e1e1e), gutter and minimap included", () => {
     const tokens = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'theme', 'tokens.css'), 'utf8');
     const appBg = tokens.match(/--app-bg0:\s*(#[0-9a-f]{6})/i)![1].toLowerCase();
@@ -27,8 +27,8 @@ describe('editor theme colours', () => {
     expect(EDITOR_COLORS['scrollbar.shadow']).toBe('#00000000');
   });
 
-  it("diff colours: brick red at 20% for changed text, 15% for whole lines; green toned down (H8)", () => {
-    // Red: #D9413D at 20% for changed text, line backgrounds faded a further 25%. Green (H8): a
+  it("diff colours: brick red at 20% for changed text, 15% for whole lines; green toned down", () => {
+    // Red: #D9413D at 20% for changed text, line backgrounds faded a further 25%. Green: a
     // whole added block stacks Monaco's line-insert and its whole-line char-insert, so 10% + 12%
     // composite to ~21% for the added block, instead of 32%.
     expect(EDITOR_COLORS['diffEditor.insertedTextBackground']).toBe('#5cb85c1f');

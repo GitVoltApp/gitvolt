@@ -5,7 +5,7 @@ import { operationView, withoutComments } from './inProgress';
 const merge = (message: string, conflicted: number): InProgress => ({ kind: 'merge', mergeHead: 'f'.repeat(40), message, conflicted });
 const rebase = (o: Partial<Extract<InProgress, { kind: 'rebase' }>> = {}): InProgress => ({ kind: 'rebase', onto: 'b'.repeat(40), headName: 'refs/heads/main', step: 2, total: 5, stoppedAt: 'a1b2c3d'.padEnd(40, '0'), editStop: null, editBase: null, editAdded: [], editChanged: false, editConflict: false, messageFailed: null, gitvolt: true, conflicted: 1, message: 'Fix x\n\n# Conflicts:\n#\tc.txt\n', ...o });
 
-describe('the commit panel\'s operation status (spec #2 §13.2, ux round 1)', () => {
+describe('the commit panel\'s operation status', () => {
   it('names the merge for the user, by short names', () => {
     const v = operationView(merge("Merge branch 'feature/x'\n", 2), { entry: 1, kind: 'merge', label: 'merge feature/x into main', target: 'feature/x', irebase: false }, 'refs/heads/main', () => null);
     expect(v).toMatchObject({ region: 'Merge in progress', title: 'Merging feature/x into main', hint: 'Resolve 2 conflicted files first', primary: 'Commit and merge', skip: false, message: '' });
@@ -51,7 +51,7 @@ describe('the commit panel\'s operation status (spec #2 §13.2, ux round 1)', ()
     expect(operationView(rebase(), null, null, () => null).editStop).toBeNull();
   });
 
-  it('GitVolt\'s Edit stop is "about to commit": its notice names the commit; the box\'s message is the stop\'s (UX L)', () => {
+  it('GitVolt\'s Edit stop is "about to commit": its notice names the commit; the box\'s message is the stop\'s', () => {
     const p = rebase({ conflicted: 0, editStop: 'a1b2c3d'.padEnd(40, '0'), editBase: 'e'.repeat(40), message: 'Fix x, reworded\n\nWhy.\n' });
     const v = operationView(p, null, null, () => null);
     expect(v).toMatchObject({ editBase: 'e'.repeat(40), caution: 'Amending in a terminal here would fold this commit into its parent.', detail: null, skip: false, primary: 'Continue rebase', message: 'Fix x, reworded\n\nWhy.\n' });
@@ -67,13 +67,13 @@ describe('the commit panel\'s operation status (spec #2 §13.2, ux round 1)', ()
     expect(operationView({ ...p, gitvolt: true } as InProgress, null, null, () => null).editElsewhere).toBe(false);
   });
 
-  it('an Edit row whose pick conflicted: resolved, its stop is the Edit\'s (3C final fix I1)', () => {
+  it('an Edit row whose pick conflicted: resolved, its stop is the Edit\'s', () => {
     const p = rebase({ editConflict: true, message: 'Fix x, edited\n' });
     expect(operationView(p, null, null, () => null)).toMatchObject({ hint: 'Resolve 1 conflicted file first', message: 'Fix x, edited\n' });
     expect(operationView({ ...p, conflicted: 0 } as InProgress, null, null, () => null).hint).toBe('This commit was set to Edit: make any other changes now, then Continue.');
   });
 
-  it('a new message a hook refused says so, and how to retry or keep the old one (3C final fix M1, M2, ruling)', () => {
+  it('a new message a hook refused says so, and how to retry or keep the old one', () => {
     const want = "The new message wasn't applied: Rejected: no BAD messages. Type it again to retry, or Continue to keep the old one.";
     expect(operationView(rebase({ conflicted: 0, stoppedAt: null, messageFailed: 'Rejected: no BAD messages.' }), null, null, () => null).hint).toBe(want);
     expect(operationView(rebase({ conflicted: 0, editStop: 'a1b2c3d'.padEnd(40, '0'), messageFailed: 'Rejected: no BAD messages.' }), null, null, () => null).hint).toBe(want);
@@ -87,7 +87,7 @@ describe('the commit panel\'s operation status (spec #2 §13.2, ux round 1)', ()
     expect(withoutComments('Fix\r\n\r\n# Conflicts:\r\n#\tc.txt\r\n')).toBe('Fix\n');
   });
 
-  it('keeps the message\'s own # lines (review 2)', () => {
+  it('keeps the message\'s own # lines', () => {
     const own = 'Fix #12\n\n#123 is the issue\n## Notes\nmore\n';
     expect(withoutComments(own)).toBe(own);
     expect(withoutComments(`${own}\n# Conflicts:\n#\tc.txt\n`)).toBe(own);

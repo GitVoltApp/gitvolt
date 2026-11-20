@@ -1,7 +1,7 @@
-// Objects between the demo's git dirs (plan 4): what fetch and push copy. A git dir with
+// Objects between the demo's git dirs: what fetch and push copy. A git dir with
 // `objects/info/alternates` borrows another's objects (Orbital's origin borrows the repo's, so the
 // bundle carries them once); isomorphic-git doesn't read alternates, so presence and reads try
-// each in turn. Reads and writes are 1b's and phase 3's, on a read view of each git dir.
+// each in turn. Reads and writes are the read and write engines', on a read view of each git dir.
 import * as git from 'isomorphic-git';
 import type { DemoContext } from '../../context';
 import { normalisePath, type FsPromises, type MemFs } from '../memfs';

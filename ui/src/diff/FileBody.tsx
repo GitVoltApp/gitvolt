@@ -14,7 +14,7 @@ import { HtmlPage } from './HtmlPage';
 import type { DiffTarget } from '../repo/store';
 import { useParseBudget } from './parseBudget';
 import { loadedHost } from './TextDiff';
-// --- 5B T6: relative links and images in File View's Markdown (registered with the renderer) ---
+// --- relative links and images in File View's Markdown (registered with the renderer) ---
 import '../markdown/fileLinks';
 import { MdFontPx } from '../markdown/fontPx';
 import { readingFontVar, useEditorCodeFont, useEditorFontPx, useReadingFontPx } from './fontZoom';
@@ -23,7 +23,6 @@ import { CsvTable } from '../table/CsvTable';
 import type { Delimiter } from '../table/csv';
 import { usePublishTableStatus } from '../table/tableStatus';
 import { fileTableOf } from '../table/limits';
-// --- end 5B T6 ---
 
 type ViewState = ReturnType<MonacoHost['fileViewState']>;
 
@@ -32,9 +31,9 @@ export const HTML_RENDERED_TIP = "A static preview: scripts don't run, and the k
 
 const VIEW_LABELS: Record<ViewKind, string> = { markdown: 'Markdown view', html: 'HTML view', table: 'Table view' };
 
-/** Spec #5 §3.3: `Source | Rendered`, in the diff toolbar for a Markdown (or HTML) file. The
+/** `Source | Rendered`, in the diff toolbar for a Markdown (or HTML) file. The
  * pick is the app-wide `markdownView` (`htmlView` for an HTML file; a just-created file shows Source on its own until this is
- * used: `markdownOverride.ts`). `forced`: why Rendered can't be picked (§3.1). `kind`: an HTML
+ * used: `markdownOverride.ts`). `forced`: why Rendered can't be picked. `kind`: an HTML
  * page's Rendered says what its static preview leaves out (`giveFocusBack`). A CSV or TSV file's
  * (`kind` table) is `Source | Table`, on its own app-wide pick (`tableView`). */
 export function MarkdownViewToggle({ path = null, forced = null, kind = 'markdown' }: { path?: string | null; forced?: string | null; kind?: ViewKind }) {
@@ -56,7 +55,7 @@ export function MarkdownViewToggle({ path = null, forced = null, kind = 'markdow
 /**
  * File View's text body: the shared editor (`FileView`), and for a Markdown file with a commit
  * to resolve its links against (`markdown`), the rendered view in its place while
- * `markdownView` is Rendered (spec #5 §3.3); for a CSV or TSV file (`table`), its table. The
+ * `markdownView` is Rendered; for a CSV or TSV file (`table`), its table. The
  * editor's box keeps its place in the tree, so
  * moving between a Markdown file and another never re-attaches the editor. Under Rendered it
  * stays attached, hidden: the working copy's unsaved edits stay in it (Ctrl+S saves them), and
@@ -92,7 +91,7 @@ export function FileBody({ identity, path, text, language, onShown, editable = f
   const kept = useRef<{ identity: string; view: ViewState; buffer: string | null } | null>(null);
   const shownText = kept.current?.identity === identity && kept.current.buffer !== null ? kept.current.buffer : text;
   const flavor = forgeOf(tabId).kind ?? 'github';
-  // §3.1: over 5 MB, or a parse over 2 s, File View shows Source with "Too large to render".
+  // Over 5 MB, or a parse over 2 s, File View shows Source with "Too large to render".
   const wantsRendered = markdown !== null && picked === 'rendered';
   const tooLarge = useTooLargeToRender(navKey, shownText);
   const rendered = wantsRendered && !tooLarge;
@@ -103,7 +102,7 @@ export function FileBody({ identity, path, text, language, onShown, editable = f
   const fileTable = useMemo(() => (table !== null && picked === 'rendered' ? fileTableOf(shownText, table, fontPx) : null), [table, picked, shownText, fontPx]);
   usePublishTableStatus(identity, fileTable ? fileTable.note : undefined);
   const away = rendered || !!fileTable?.table;
-  // §3.1: a long file is parsed once, off the main thread, timed once (`useParseBudget`).
+  // A long file is parsed once, off the main thread, timed once (`useParseBudget`).
   const key = renderKey(navKey, shownText);
   const html = isHtmlPath(path);
   const needsCheck = rendered && !html && shownText.length > PRECHECK_BYTES;

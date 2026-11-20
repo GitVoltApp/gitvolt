@@ -13,7 +13,7 @@ const store = {} as RepoViewStore;
 const row = { id: 'abc', kind: 'commit' } as RowPayload;
 const chip = (path: string): RefLabel => ({ row: 0, name: path.slice(1), local: null, remotes: [], tag: false, isHead: false, worktree: path, checkedOut: path });
 
-describe("a worktree's detached-HEAD chip (§11.2)", () => {
+describe("a worktree's detached-HEAD chip", () => {
   it('a double-click makes its worktree the active one', () => {
     expect(graphLabelDoubleClick(store, row, chip('/r-e'))).toBe(true);
     expect(setActiveWorktree).toHaveBeenLastCalledWith('t', '/r-e');

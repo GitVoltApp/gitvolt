@@ -3,7 +3,7 @@ import type { ChunkStream } from '../markdown/parseAsync';
 import { markSlow, PARSE_BUDGET_MS } from './markdownFiles';
 
 /**
- * Spec #5 §3.1, shared by File View and (5C, R14) Diff View: a long document's parse, or diff, is
+ * Shared by File View and Diff View: a long document's parse, or diff, is
  * timed once off the main thread before it renders. `open` loads the stream module and answers
  * the stream's maker, so the clock starts as the stream is posted. The renderer asks for the same
  * stream later, so nothing runs twice. One not done within PARSE_BUDGET_MS goes on the slow list

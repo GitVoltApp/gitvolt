@@ -2,7 +2,7 @@ import type { RefLabel } from '../api/gen/RefLabel';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { remoteShort } from './refNames';
 
-/** The branch a commit belongs to (feedback F7): shown as a dimmed chip on a hovered or selected
+/** The branch a commit belongs to: shown as a dimmed chip on a hovered or selected
  * row that isn't that branch's tip. `color` is the tip row's lane colour index; `ref` the full
  * ref (`refs/heads/main`, `refs/remotes/origin/main`). */
 export interface BranchMembership {
@@ -22,7 +22,7 @@ export function labelsByRow(labels: RefLabel[]): Map<number, RefLabel[]> {
   return m;
 }
 
-/** The branch refs a chip stands for (J22 branch-hover focus): its local branch and every
+/** The branch refs a chip stands for (the branch-hover focus): its local branch and every
  * remote-tracking one it carries. A tag or a detached HEAD stands for none. */
 export function chipRefs(label: RefLabel): string[] {
   if (label.tag) return [];
@@ -30,7 +30,7 @@ export function chipRefs(label: RefLabel): string[] {
 }
 
 /**
- * The rows "in" the branches `refs` (J22's branch-hover focus): the rows `branchMembership`
+ * The rows "in" the branches `refs` (the branch-hover focus): the rows `branchMembership`
  * claimed for any of them, plus their tips. Not all reachable history: a commit a higher-ranked
  * branch claimed (the trunk's, below a merge) isn't in. O(rows).
  */

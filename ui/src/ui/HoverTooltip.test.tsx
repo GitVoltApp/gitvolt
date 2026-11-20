@@ -10,7 +10,7 @@ describe('HoverTooltip', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  describe("placement 'left-of' (feedback J18)", () => {
+  describe("placement 'left-of'", () => {
     const rect = (left: number, top: number, width: number, height: number) => new DOMRect(left, top, width, height);
     /** A panel at x 600–1000, a 26 px row at y 300 inside it, and a 200×40 tooltip. */
     function hover(panelLeft = 600) {
@@ -369,7 +369,7 @@ describe('HoverTooltip with async content', () => {
   });
 });
 
-describe('placement near the window edge (K52)', () => {
+describe('placement near the window edge', () => {
   it('placeBelow shifts a wide tooltip left instead of shrinking it, and flips above at the bottom', async () => {
     const { placeBelow } = await import('./HoverTooltip');
     const size = { width: 300, height: 40 };

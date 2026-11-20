@@ -1,5 +1,5 @@
-//! GitHub pull requests in the fake forge (4B): the list (state, head), one PR, its reviews,
-//! review comments, conversation, a commit's check runs and statuses; 4B T5 adds the writes and
+//! GitHub pull requests in the fake forge: the list (state, head), one PR, its reviews,
+//! review comments, conversation, a commit's check runs and statuses, plus the writes and
 //! the GraphQL draft mutations. The PRs live in the seed (`GitHubSeed.pulls`). Like GitHub, a
 //! list's PRs have no `mergeable` (a single PR's GET has it).
 
@@ -132,12 +132,10 @@ pub struct FakePull {
     /// The commit title and message the merge asked for.
     pub merge_title: Option<String>,
     pub merge_message: Option<String>,
-    // --- MR round 2 ---
     /// `base.sha`; empty: none.
     pub base_sha: String,
     /// Logins subscribed to its notifications (`viewerSubscription` is the token user's).
     pub subscribers: Vec<String>,
-    // --- end MR round 2 ---
     // --- comment actions ---
     /// Review threads (by their first comment's id) resolved, and by whom (a login).
     pub resolved_threads: Vec<FakeResolvedThread>,
@@ -507,7 +505,7 @@ fn not_found() -> Reply {
     Reply::status(404, json!({ "message": "Not Found" }))
 }
 
-// --- 5A T3: GitHub's `full` media type and its signed images ---
+// --- GitHub's `full` media type and its signed images ---
 /// `body_html` as far as GitVolt reads it: each `…/user-attachments/assets/<uuid>` in `body`
 /// becomes a signed `private-user-images` URL (here `<base>/github-images/583231/<n>-<uuid>.png?jwt=<jwt>`),
 /// as a linked image, in document order.
@@ -556,9 +554,7 @@ pub(crate) fn image(st: &ForgeState, r: &FakeRequest) -> Reply {
         _ => Reply::status(403, json!({ "message": "Request has expired" })),
     }
 }
-// --- end 5A T3 ---
 
-// --- 4B T5 ---
 fn body_of(r: &FakeRequest) -> Value {
     serde_json::from_slice(r.body).unwrap_or(Value::Null)
 }
@@ -795,7 +791,7 @@ fn graphql(st: &mut ForgeState, r: &FakeRequest) -> Reply {
         return Reply::json(json!({ "data": { "repository": { "pullRequest": pr.map(|_| json!({ "reviewThreads": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": nodes } })) } } }));
     }
     // --- end comment actions ---
-    // --- MR round 2: notifications ---
+    // --- notifications ---
     let me = login(r);
     let state = |p: &FakePull| if p.subscribers.contains(&me) { "SUBSCRIBED" } else { "UNSUBSCRIBED" };
     if query.contains("updateSubscription") {
@@ -817,7 +813,6 @@ fn graphql(st: &mut ForgeState, r: &FakeRequest) -> Reply {
         let pr = st.seed.github.pulls.iter().find(|p| p.repo == repo && Some(p.number) == v["number"].as_u64());
         return Reply::json(json!({ "data": { "repository": { "pullRequest": pr.map(|p| json!({ "viewerSubscription": state(p) })) } } }));
     }
-    // --- end MR round 2 ---
     // --- auto-merge ---
     if query.contains("enablePullRequestAutoMerge") || query.contains("disablePullRequestAutoMerge") {
         return auto_merge(st, r, &b["variables"], query.contains("enablePullRequestAutoMerge"));
@@ -854,18 +849,16 @@ fn graphql(st: &mut ForgeState, r: &FakeRequest) -> Reply {
         None => Reply::json(json!({ "errors": [{ "message": format!("Could not resolve to a node with the global id of '{id}'") }] })),
     }
 }
-// --- end 4B T5 ---
 
-/// The pull request routes under `/repos/<o>/<r>/` (and `/graphql`, 4B T5); `None` for any other
-/// path (4A's `route` answers it). Only reached with a valid token.
+/// The pull request routes under `/repos/<o>/<r>/` (and `/graphql`); `None` for any other
+/// path (the base `route` answers it). Only reached with a valid token.
 pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
     let segs: Vec<&str> = r.segments.iter().map(String::as_str).collect();
     let base = r.base.to_string();
-    // --- 4B T5: graphql ---
+    // --- graphql ---
     if r.method == "POST" && segs.as_slice() == ["graphql"] {
         return Some(graphql(st, r));
     }
-    // --- end 4B T5 ---
     let ["repos", o, n, rest @ ..] = segs.as_slice() else {
         return None;
     };
@@ -894,9 +887,8 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
                 .pulls
                 .iter()
                 .filter(|p| p.repo == repo && (state == "all" || p.state == state))
-                // --- 4D T11: base ---
+                // --- base ---
                 .filter(|p| r.query.get("base").is_none_or(|b| *b == p.base_ref))
-                // --- end 4D T11 ---
                 .filter(|p| {
                     head.is_none_or(|h| {
                         *h == format!(
@@ -1015,7 +1007,7 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
             None => not_found(),
         },
         // --- end review comments ---
-        // --- 4B T5: writes ---
+        // --- writes ---
         // --- review comments: Comment now ---
         ("POST", ["pulls", num, "comments"]) => match index(st, num) {
             Some(i) => {
@@ -1132,11 +1124,10 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
                 if let Some(d) = b["body"].as_str() {
                     p.body = d.into();
                 }
-                // --- 4D T2: retarget ---
+                // --- retarget ---
                 if let Some(base) = b["base"].as_str() {
                     p.base_ref = base.into();
                 }
-                // --- end 4D T2 ---
                 p.updated_at = WRITE_TIME.into();
                 Reply::json(pull_json(st, &st.seed.github.pulls[i], &base, true))
             }
@@ -1150,8 +1141,7 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
             }
             None => not_found(),
         },
-        // --- end 4B T5 ---
-        // --- 4C T2: create and its follow-up calls, people, labels, contents ---
+        // --- create and its follow-up calls, people, labels, contents ---
         ("POST", ["pulls"]) => super::create::github_post_pull(st, r, &repo),
         ("POST" | "DELETE", ["pulls", num, "requested_reviewers"]) => super::create::github_reviewers(st, r, &repo, num),
         ("POST" | "DELETE", ["issues", num, "assignees"]) => super::create::github_assignees_change(st, r, &repo, num),
@@ -1159,13 +1149,10 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
         ("GET", ["assignees"]) => super::create::github_assignees(st, r, &repo),
         ("GET", ["labels"]) => super::create::github_labels(st, r, &repo),
         ("GET", ["contents", file @ ..]) => super::create::github_contents(st, &repo, &file.join("/")),
-        // --- end 4C T2 ---
         _ => return None,
     };
-    // --- 5A T3 ---
     if r.method == "GET" && r.accept.as_deref().is_some_and(|a| a.contains("full+json")) {
         return Some(with_body_html(reply, &base, &st.seed.github.image_jwt));
     }
-    // --- end 5A T3 ---
     Some(reply)
 }

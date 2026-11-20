@@ -5,7 +5,7 @@ import { splitConflicted } from './conflicted';
 const f = (path: string, status: string, extra: Partial<FileChange> = {}): FileChange => ({ path, oldPath: null, status, additions: 1, deletions: 1, old: { kind: 'absent' }, new: { kind: 'absent' }, submodule: false, ...extra });
 const list = (...files: FileChange[]) => ({ files, added: files.length, deleted: files.length });
 
-describe('the Conflicted section (spec #2 §7.1)', () => {
+describe('the Conflicted section', () => {
   it('takes the conflicted files out of both other lists, totals recounted', () => {
     const out = splitConflicted(list(f('c.txt', 'U', { conflict: 'bothModified' }), f('a.txt', 'M')), list(f('c.txt', 'U'), f('b.txt', 'A')));
     expect(out.conflicted.files.map((x) => x.path)).toEqual(['c.txt']);

@@ -18,21 +18,19 @@ pub enum GbErrorKind {
     GitTooOld,
     Io,
     Other,
-    /// a hook exited non-zero (trace2, spec #2 §3.3)
+    /// a hook exited non-zero (trace2)
     HookFailed,
     /// a merge, rebase, cherry-pick, revert or am blocks the intent
     InProgress,
     /// a file or the index changed since it was shown
     Stale,
-    // --- 4A T1 ---
-    /// A forge's rate limit: no request until `ErrorDetail::RateLimited.until` (spec #4 §3.1).
+    /// A forge's rate limit: no request until `ErrorDetail::RateLimited.until`.
     RateLimited,
     /// A forge (or any HTTP server) couldn't be reached: DNS, connect, TLS or a timeout.
     Network,
-    // --- end 4A T1 ---
 }
 
-/// What a write error needs beyond its kind (spec #2 §15). Tagged by `kind`, camelCase in TS.
+/// What a write error needs beyond its kind. Tagged by `kind`, camelCase in TS.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 #[ts(export)]
@@ -50,66 +48,55 @@ pub enum ErrorDetail {
         #[ts(type = "number")]
         dev: u64,
     },
-    /// The clean-restore warning (§6.2): restoring the autostash would conflict in `paths`.
+    /// The clean-restore warning: restoring the autostash would conflict in `paths`.
     AutostashConflict { paths: Vec<String>, target: String },
     /// `git stash apply --index` refused the index: ask "Apply without restoring what was staged?"
     ApplyWithoutIndex,
-    // --- 2C T1: error details ---
-    /// A checkout (or worktree add) of a branch another worktree has checked out (spec #2 §9.3):
+    // --- error details ---
+    /// A checkout (or worktree add) of a branch another worktree has checked out:
     /// the toast offers [Switch to it] [Open in a new tab]. `worktree` is as the UI shows it.
     /// (`Box<str>`, as `IndexLock.path`: `GbError` stays under clippy's `result_large_err`.)
     CheckedOutElsewhere { branch: Box<str>, worktree: Box<str> },
-    /// A hard reset over changes (§9.4): "Reset main to a1b2c3 and discard changes to 4 files?
+    /// A hard reset over changes: "Reset main to a1b2c3 and discard changes to 4 files?
     /// You can undo this." Confirmed by sending again with `discard`.
     ResetDiscards { branch: Box<str>, to: Box<str>, files: u32 },
-    // --- end 2C T1 ---
-    // --- 2D T15 ---
-    /// Mark resolved on a file that still has conflict markers (spec #2 §13.3): ask first, then
+    /// Mark resolved on a file that still has conflict markers: ask first, then
     /// send again with `confirmMarkers`.
     MarkersRemain { path: Box<str> },
     /// The same for several files marked resolved at once (`MarkResolved`): those that still have
     /// markers. Confirmed by sending again with `confirmMarkers`.
     MarkersRemainIn { paths: Vec<String> },
-    /// Take current / Take incoming over a file the user edited (review M4): "Discard your edits
+    /// Take current / Take incoming over a file the user edited: "Discard your edits
     /// to <path>?", then send again with `confirmDiscard`.
     DiscardEdits { path: Box<str> },
-    // --- end 2D T15 ---
-    // --- 3A T3 ---
-    /// Restore a file from a commit over the file's own changes (spec #3 §3.8): "Click again to
+    /// Restore a file from a commit over the file's own changes: "Click again to
     /// replace your changes to <path>", then send again with `confirm`.
     RestoreOverChanges { path: Box<str> },
-    // --- end 3A T3 ---
     /// Submodules: Update over submodules whose HEAD has commits on no branch (`commits` in all):
     /// the update checks out the recorded commit and leaves them behind, in the reflog only. The
     /// message asks; send again with `confirm`.
     SubmoduleOrphans { paths: Vec<String>, commits: u32 },
-    // --- 3B T2 ---
     /// Undo of a "without committing" pick that stopped on conflicts discards its changes, a
     /// resolution included: ask (`message`), arm in place with `arm`, then send again with
     /// `confirmDiscard`. `op`: `cherry-pick` or `revert`.
     UndoStoppedPick { op: Box<str>, arm: Box<str> },
-    // --- end 3B T2 ---
-    // --- 3C fix round 3 ---
     /// An interactive rebase's Abort failed part-way (git reset, then stopped): the work from
     /// the stop is kept, its commits on `branch`, its edits in the stash `stash`.
     AbortKeptWork { stash: Option<Box<str>>, branch: Option<Box<str>> },
-    // --- end 3C fix round 3 ---
     /// A `fetch --all` where some remotes failed: which, and a short plain reason each (never a
     /// URL with credentials). The sidebar's Remote rows warn on them until a fetch succeeds.
     FetchFailed { remotes: Vec<FailedRemote> },
-    // --- 4A T1 ---
     /// `RateLimited`: when the forge takes requests again (unix seconds).
     RateLimited {
         #[ts(type = "number")]
         until: i64,
     },
-    // --- end 4A T1 ---
     /// A people change the forge trimmed to one person (GitLab Free's one reviewer, one
     /// assignee): `role` is `reviewers` or `assignees`. The toast says the message alone, and the
     /// row picks by swapping from then on.
     PeopleLimit { role: Box<str> },
-    /// `Cancelled`: the user chose "Use SSH for <remote> instead" on the op's credential prompt
-    /// (spec §5.4). The UI switches each remote to its SSH URL, then runs the op again.
+    /// `Cancelled`: the user chose "Use SSH for <remote> instead" on the op's credential prompt.
+    /// The UI switches each remote to its SSH URL, then runs the op again.
     UseSsh { remotes: Vec<crate::askpass::SshOffer> },
 }
 
@@ -131,7 +118,7 @@ pub struct GbError {
     #[ts(type = "number | null")]
     pub command_id: Option<u64>,
     pub stderr: Option<String>,
-    /// Kind-specific data (spec #2 §15); absent for most errors.
+    /// Kind-specific data; absent for most errors.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub detail: Option<ErrorDetail>,
@@ -151,7 +138,7 @@ impl GbError {
         self
     }
 
-    /// A ref GitVolt expected at one value is elsewhere (spec #2 §4): the toast says "Branch
+    /// A ref GitVolt expected at one value is elsewhere: the toast says "Branch
     /// changed outside GitVolt — refresh and retry"; the message names the ref.
     pub fn ref_moved(name: &str) -> Self {
         Self::new(GbErrorKind::RefMoved, format!("{} changed outside GitVolt", short_ref(name)))
@@ -166,12 +153,11 @@ impl GbError {
         Self::new(GbErrorKind::Stale, message)
     }
 
-    // --- 2C T1: checked out elsewhere ---
+    // --- checked out elsewhere ---
     pub fn checked_out_elsewhere(branch: &str, shown: &str) -> Self {
         Self::new(GbErrorKind::InvalidInput, format!("{branch} is checked out in {shown}."))
             .with_detail(ErrorDetail::CheckedOutElsewhere { branch: branch.into(), worktree: shown.into() })
     }
-    // --- end 2C T1 ---
 }
 
 /// `refs/heads/x` → `x`, `refs/remotes/o/x` → `o/x`, `refs/tags/v` → `v`; anything else as is.
@@ -195,7 +181,7 @@ pub fn classify_stderr(stderr: &str) -> GbErrorKind {
     use GbErrorKind::*;
     const RULES: &[(GbErrorKind, &[&str])] = &[
         (IndexLocked, &[".lock': File exists"]),
-        // "stale info" is a force-with-lease rejection: the remote ref moved (spec #2 §15).
+        // "stale info" is a force-with-lease rejection: the remote ref moved.
         (RefMoved, &["but expected", "cannot lock ref", "(stale info)"]),
         (AuthFailed, &["Authentication failed", "could not read Username", "could not read Password", "Permission denied (publickey", "terminal prompts disabled", "HTTP Basic: Access denied"]),
         (NonFastForward, &["Not possible to fast-forward", "non-fast-forward", "Diverging branches can't be fast-forwarded", "(fetch first)", "is not fully merged"]),
@@ -290,7 +276,7 @@ mod tests {
         assert_eq!(short_ref("refs/tags/v1"), "v1");
     }
 
-    // --- 2C T1: error details ---
+    // --- error details ---
     #[test]
     fn the_2c_details_serialize_for_the_ui() {
         let e = GbError::checked_out_elsewhere("feature/x", "../shop-feature-x");
@@ -300,15 +286,11 @@ mod tests {
         let d = ErrorDetail::ResetDiscards { branch: "main".into(), to: "a1b2c3".into(), files: 4 };
         assert_eq!(serde_json::to_value(&d).unwrap(), serde_json::json!({"kind": "resetDiscards", "branch": "main", "to": "a1b2c3", "files": 4}));
     }
-    // --- end 2C T1 ---
-    // --- 3A T3 ---
     #[test]
     fn the_restore_detail_serializes_for_the_ui() {
         let d = ErrorDetail::RestoreOverChanges { path: "src/a b.txt".into() };
         assert_eq!(serde_json::to_value(&d).unwrap(), serde_json::json!({"kind": "restoreOverChanges", "path": "src/a b.txt"}));
     }
-    // --- end 3A T3 ---
-    // --- 4A T1 ---
     #[test]
     fn rate_limited_errors_carry_until_when() {
         let e = GbError::new(GbErrorKind::RateLimited, "x").with_detail(ErrorDetail::RateLimited { until: 1_791_115_200 });
@@ -317,5 +299,4 @@ mod tests {
         assert_eq!(v["detail"], serde_json::json!({"kind": "rateLimited", "until": 1_791_115_200i64}));
         assert_eq!(serde_json::to_value(GbErrorKind::Network).unwrap(), "Network");
     }
-    // --- end 4A T1 ---
 }

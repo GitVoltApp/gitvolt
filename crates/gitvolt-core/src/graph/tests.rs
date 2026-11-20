@@ -495,7 +495,7 @@ fn fuzz_random_dags_keep_every_line_continuous() {
     assert!(pairs > 100, "{pairs} diverged pairs");
 }
 
-// ---- K79: the column rule (home lane, lower-lane takeover, merge lock) ----
+// ---- the column rule (home lane, lower-lane takeover, merge lock) ----
 
 /// A commit lands in the lane of the first child that reached it, unless a later non-merge
 /// first-parent child in a lower lane takes it over: `a` (lane 1) reaches `p` first, then `b`
@@ -507,7 +507,7 @@ fn a_lower_non_merge_first_parent_child_takes_over_the_home() {
 }
 
 /// A merge never takes over a home: `f` (lane 1) reaches `t` first and the merge `m` (lane 0)
-/// later. Before K79 `t` took the left-most waiting lane (0); now it stays in lane 1 and the
+/// later. Before the merge lock `t` took the left-most waiting lane (0); now it stays in lane 1 and the
 /// merge's line curves in from the left.
 #[test]
 fn a_merge_never_takes_over_its_first_parent() {
@@ -519,7 +519,7 @@ fn a_merge_never_takes_over_its_first_parent() {
 }
 
 /// A merge locks its parents: `m` (lane 1) claims `t` first, so the later fork `f` in lane 0
-/// can't pull it left. This is the shape of the K79 screenshot: a trunk merge newer than the
+/// can't pull it left. This is the shape of the original bug screenshot: a trunk merge newer than the
 /// branches forked under it.
 #[test]
 fn a_merge_child_locks_the_home_against_a_lower_fork() {
@@ -563,7 +563,7 @@ fn a_newer_branch_takes_a_commit_back_from_a_stash() {
     assert_eq!(l.rows[5].lane, 1, "p lands in the branch's lane, not the stash's");
 }
 
-/// A WIP row never takes over another commit's home (spec §8.6): `x` (lane 1) reaches `p`
+/// A WIP row never takes over another commit's home: `x` (lane 1) reaches `p`
 /// first, the WIP docked on `p` sits in lane 0, and `p` stays in lane 1.
 #[test]
 fn a_wip_never_takes_over_a_home() {
@@ -852,8 +852,8 @@ fn wave_history(seed: u64, waves: usize) -> Vec<LayoutNode> {
         .collect()
 }
 
-/// K79's point: on a merge-heavy history the trunk keeps its lane, so fewer curves cross lanes,
-/// with no more lanes than before. The pre-K79 layout (left-most waiting lane) gave 8634
+/// The point of the merge lock: on a merge-heavy history the trunk keeps its lane, so fewer curves cross lanes,
+/// with no more lanes than before. The layout without it (left-most waiting lane) gave 8634
 /// crossings and 185 summed max lanes on the same 20 histories.
 #[test]
 fn wave_history_crossings_regression() {

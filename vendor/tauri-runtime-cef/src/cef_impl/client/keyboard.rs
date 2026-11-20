@@ -11,7 +11,7 @@ type CefOsEvent<'a> = *mut u8;
 #[cfg(windows)]
 type CefOsEvent<'a> = Option<&'a mut cef::sys::MSG>;
 
-/// GitVolt patch: the Chrome *reserved* chords GitVolt binds (plan 1C's tabs), which
+/// GitVolt patch: the Chrome *reserved* chords GitVolt binds, which
 /// must reach the page. Chrome runs reserved accelerators before the renderer, so
 /// without this the page never sees their keydown, even though `command.rs` blocks
 /// the command: Ctrl+W / Ctrl+F4 (close tab; closes the open file today), Ctrl+Tab /

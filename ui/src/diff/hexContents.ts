@@ -1,6 +1,6 @@
 // A binary's hex dumps load with its contents (the services' `contents` loader), so a binary is
 // ready to show in the same render as a text file is: the panel's editor stays mounted and keeps
-// the previous file until the dumps' diff is on screen (F24, K7). No React or Monaco here: the
+// the previous file until the dumps' diff is on screen. No React or Monaco here: the
 // services module is in the startup chunk.
 import { api, type ContentsRequest } from '../api/client';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';

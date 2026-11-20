@@ -1,4 +1,4 @@
-//! `forge.json` v1 (website demo plan 4): a fixture's fake GitLab, in the harness fake forge's own
+//! `forge.json` v1: a fixture's fake GitLab, in the harness fake forge's own
 //! seed format (`GitLabSeed`) without tokens. The website demo serves it in the page; `just
 //! demo-golden` seeds the harness's fake forge with it, and adds the visitor's account, to record
 //! the core's answers. Shared by Orbital and `forge_lab`.

@@ -2,7 +2,7 @@ import type { RowPayload } from '../api/gen/RowPayload';
 
 /**
  * Whether commit `a` is an ancestor of (or is) commit `b`, from the loaded graph rows alone (a
- * menu stays synchronous, spec #2 §14). Rows are in topological order, children before parents
+ * menu stays synchronous). Rows are in topological order, children before parents
  * (core walk.rs), so the walk from `b` down its parents never needs a row below `a`'s: O(rows)
  * at worst, and usually far less. `null`: unknown, `a` or `b` isn't loaded.
  */

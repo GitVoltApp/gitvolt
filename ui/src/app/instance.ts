@@ -29,7 +29,7 @@ async function openPending(): Promise<void> {
 }
 
 /**
- * The single-instance guard's UI side (1D R19): a second launch on this config dir hands its
+ * The single-instance guard's UI side: a second launch on this config dir hands its
  * launch path to this instance and exits; the backend queues it, emits `openRequested` and
  * brings the window to the front. On the event (once boot is done, so it lands after the
  * restored tabs) this takes the queue rather than trusting the event's path, so nothing opens

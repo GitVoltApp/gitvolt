@@ -15,7 +15,7 @@ const narrow = () => useAppState.getState().profile.sidebarNarrow;
 registerCenterView('a-plan', () => null, { sidebar: 'hide' });
 registerCenterView('a-file', () => null);
 
-describe('the sidebar actions around center views (UX R2)', () => {
+describe('the sidebar actions around center views', () => {
   beforeEach(() => {
     useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 't', kind: 'repo', path: '/r', alias: null }], activeTab: 't' } });
     useTabViews.setState({ views: { t: { repo: 4, services: fakeServices(), store: createRepoViewStore(4, '/r', EMPTY_GRAPH, fakeServices()) } } });

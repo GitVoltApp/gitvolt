@@ -46,7 +46,7 @@ function mount(g: GraphPayload) {
 
 const selectedSummary = () => screen.getAllByRole('row').filter((r) => r.getAttribute('aria-selected') === 'true').map((r) => r.textContent);
 
-describe('GraphView across refreshes (spec §4.4: keeps the selection and scroll)', () => {
+describe('GraphView across refreshes (keeps the selection and scroll)', () => {
   it('RepoView shows the store it is given', () => {
     const g = graphOf(names(5));
     const { store } = mount(g);
@@ -93,7 +93,7 @@ describe('GraphView across refreshes (spec §4.4: keeps the selection and scroll
     expect(selectedSummary()).toEqual([expect.stringContaining('c12')]);
   });
 
-  it('at the very top, rows arriving above stay in view: the scroll stays at 0, the selection follows its commit (K37)', () => {
+  it('at the very top, rows arriving above stay in view: the scroll stays at 0, the selection follows its commit', () => {
     const g = graphOf(names(100));
     const { store, grid, refresh } = mount(g);
     act(() => { store.getState().selectCommitById(row('c0').id); });

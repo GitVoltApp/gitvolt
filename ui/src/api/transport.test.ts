@@ -153,7 +153,7 @@ describe('copyText', () => {
     plugin.writeText.mockClear();
   });
 
-  // H19: the browser's own clipboard first, in the app too: it's the path right-click -> Copy
+  // The browser's own clipboard first, in the app too: it's the path right-click -> Copy
   // takes, which works in the real window. The Tauri plugin (arboard) only when it refuses.
   it("uses the browser's clipboard, in the app too", async () => {
     inApp();

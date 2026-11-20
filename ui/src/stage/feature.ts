@@ -6,9 +6,9 @@ import { stagingRedo, stagingUndo } from './actions';
 import { resolveChord } from '../ui/platformKeys';
 
 /**
- * Spec #2 §7.6: Ctrl+Z / Ctrl+Shift+Z with focus in the diff view or the WIP file list are
- * staging undo/redo (2A's `edit.undo` yields there, `ownsUndo`). A read-only Monaco counts as the
- * diff view. Editing the working copy (a focused, editable Monaco: `data-editable="true"`, T11)
+ * Ctrl+Z / Ctrl+Shift+Z with focus in the diff view or the WIP file list are
+ * staging undo/redo (`edit.undo` yields there, `ownsUndo`). A read-only Monaco counts as the
+ * diff view. Editing the working copy (a focused, editable Monaco: `data-editable="true"`)
  * keeps Monaco's own undo, and a text box keeps its own.
  */
 export function stagingKeyTarget(target: EventTarget | null): boolean {

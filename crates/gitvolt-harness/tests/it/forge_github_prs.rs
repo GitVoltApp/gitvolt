@@ -1,4 +1,4 @@
-//! The GitHub provider's pull requests against the fake forge (spec #4 §7).
+//! The GitHub provider's pull requests against the fake forge.
 
 use gitvolt_core::error::GbErrorKind;
 use gitvolt_core::forge::*;
@@ -272,7 +272,6 @@ async fn a_forbidden_checks_lookup_leaves_that_pr_without_a_pipeline() {
         .is_none());
 }
 
-// --- 4B T5 ---
 fn seeded(f: &FakeForge, number: u64) -> github_pulls::FakePull {
     f.current_seed().github.pulls.into_iter().find(|p| p.number == number).unwrap()
 }
@@ -413,9 +412,7 @@ async fn a_graphql_error_says_why() {
     assert_eq!((e.kind, e.message.as_str()), (GbErrorKind::InvalidInput, "GitHub: Resource not accessible by personal access token"));
     assert!(!seeded(&f, 3).draft);
 }
-// --- end 4B T5 ---
 
-// --- 4B final fix ---
 #[tokio::test(flavor = "multi_thread")]
 async fn a_detail_whose_checks_alone_change_is_not_modified_no_more() {
     let f = FakeForge::start().await;
@@ -443,7 +440,6 @@ async fn the_light_list_reads_no_checks() {
     assert!(list.iter().all(|m| m.pipeline.is_none()));
     assert!(!f.requests().iter().any(|r| r.path.ends_with("/check-runs") || r.path.ends_with("/status")));
 }
-// --- end 4B final fix ---
 
 // --- auto-merge ---
 /// #3 with its checks running (branch protection blocks it until they pass).
@@ -508,7 +504,6 @@ async fn a_merge_leaves_the_title_and_message_to_github() {
 }
 // --- end auto-merge ---
 
-// --- MR round 2 ---
 #[tokio::test(flavor = "multi_thread")]
 async fn the_review_composer_posts_one_review_with_its_event_and_message() {
     let f = FakeForge::start().await;
@@ -555,4 +550,3 @@ async fn notifications_are_read_once_per_change_and_toggled() {
     assert!(!p.set_subscribed(&w, 3, false).await.unwrap());
     assert!(seeded(&f, 3).subscribers.is_empty());
 }
-// --- end MR round 2 ---

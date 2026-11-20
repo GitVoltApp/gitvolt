@@ -6,8 +6,8 @@ import type { MdMermaidProps } from './types';
 
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e)).split('\n')[0].slice(0, 200);
 
-/** A ```mermaid block (spec §3.1): drawn lazily, strict, shown as an image of the sanitized SVG so
- * nothing in it can run or load (ruling 11). Until then the source shows; on an error it stays,
+/** A ```mermaid block: drawn lazily, strict, shown as an image of the sanitized SVG so
+ * nothing in it can run or load. Until then the source shows; on an error it stays,
  * with the error under it. */
 export function MdMermaid({ source }: MdMermaidProps) {
   const dark = useTheme((s) => s.def.kind === 'dark');

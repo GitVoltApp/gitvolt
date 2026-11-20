@@ -11,7 +11,7 @@
 //!   gitlink and its `.gitmodules` entry, and stages both. Git refuses a checkout with changes of
 //!   its own; its repository stays in `.git/modules`, commits included.
 //!
-//! None is journaled (spec #2 §5.3 "Not journaled"): they move no ref of the superproject, and
+//! None is journaled: they move no ref of the superproject, and
 //! what they change inside a submodule is that submodule's own. Add and Remove only stage
 //! (`.gitmodules` and the gitlink), which the changes list shows and Unstage takes back.
 

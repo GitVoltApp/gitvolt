@@ -30,7 +30,7 @@ class FakeWorker {
 
 afterEach(() => { vi.unstubAllGlobals(); resetChunkStreams(); FakeWorker.sent = []; FakeWorker.made = []; FakeWorker.fail = null; });
 
-describe('chunkStream (ruling 21)', () => {
+describe('chunkStream', () => {
   it('a file’s front matter: its own stream, asked of the worker, a table in the first chunk', async () => {
     const text = `---\nname: repo-tests\n---\n\n${big}`;
     const file = chunkStream(text, 'github', true);
@@ -113,7 +113,7 @@ describe('chunkStream (ruling 21)', () => {
   });
 });
 
-describe('diffChunkStream (5C)', () => {
+describe('diffChunkStream', () => {
   const edited = big.replace('Part 3', 'Part three');
 
   it('diffs two texts off the main thread, one stream per pair, with the change count on the first chunk', async () => {

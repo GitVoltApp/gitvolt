@@ -1,4 +1,4 @@
-//! Inline review comments (spec 2026-10-08 §6): the lines an MR's diff takes comments on, GitLab's
+//! Inline review comments: the lines an MR's diff takes comments on, GitLab's
 //! line codes, and the checks a comment's place passes before the forge is asked. The hub's
 //! review calls are in this file too (`impl ForgeHub`).
 
@@ -19,7 +19,7 @@ fn refuse(message: &str) -> GbError {
 
 /// The lines of one file's unified diff (from its first `@@`, as GitLab's `/diffs` and GitHub's
 /// `patch` send it) that take a review comment: every line of every hunk, in order. Both forges
-/// take comments only there (spec §6 "Forge rules").
+/// take comments only there.
 pub fn commentable_lines(diff: &str) -> Vec<ReviewLine> {
     crate::write::patch::parse(diff.as_bytes()).hunks.iter().flat_map(|h| h.numbered()).map(|(kind, old_line, new_line)| ReviewLine { kind, old_line, new_line }).collect()
 }

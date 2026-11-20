@@ -14,7 +14,7 @@ const { useDiffPrefs } = await import('../diff/diffPrefs');
 const { markdownViewOf, clearMarkdownOverride } = await import('../diff/markdownOverride');
 const ctx = { tabId: 't1', repoId: 3, worktree: '/r' };
 
-describe('createFile opens the new file to type into (UX round 3 O.1)', () => {
+describe('createFile opens the new file to type into', () => {
   beforeEach(() => { openFile.mockReset(); useDiffPrefs.getState().set({ markdownView: 'rendered', tableView: 'rendered' }); clearMarkdownOverride(); });
 
   it('a new Markdown file opens in Source, not an empty Rendered page over a hidden editor; only it', async () => {

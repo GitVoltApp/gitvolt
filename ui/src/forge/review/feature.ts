@@ -4,7 +4,7 @@ import { lentHandler } from '../../app/lent';
 import { registerToolbarChip } from '../../toolbar/registry';
 import { ReviewChip } from './ReviewChip';
 
-/** Review comments (spec 2026-10-08 §4): the top bar's chip, and its Submit review… from the
+/** Review comments: the top bar's chip, and its Submit review… from the
  * keyboard (the chip lends it while a review is pending). */
 const offs = [
   registerToolbarChip({ id: 'review.chip', order: 0, Component: ReviewChip }),

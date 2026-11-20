@@ -1,8 +1,8 @@
-// The sequencer's runner (plan 4): a rebase, cherry-pick or revert as steps applied one at a time,
-// with stops the commit panel's Continue, Skip and Abort settle. Built on phase 3's tree merge and
+// The sequencer's runner: a rebase, cherry-pick or revert as steps applied one at a time,
+// with stops the commit panel's Continue, Skip and Abort settle. Built on the write engine's tree merge and
 // checkout; git's own sequencer isn't used or translated (the clean-room rule): its observable
-// behaviour is, as the plan's Decisions describe it and as the git binary showed it (2.53, the
-// Task 4 ledger: messages, empty picks, a Continue's cleanup). The core's own Rust is ported where
+// behaviour is, as the git binary showed it (2.53: messages, empty picks, a Continue's
+// cleanup). The core's own Rust is ported where
 // it adds to git: the Edit stop's Continue (irebase/edit.rs `commit_at_stop`), the chips' moves
 // and deletes on the paused entry (irebase/run.rs `completed_step`, `delete_chips`).
 import { compareBytewise } from '../read/bytes';
@@ -40,7 +40,7 @@ export interface SeqStart {
    *  line that didn't start on a merge base where it was. */
   map?: Record<string, string>;
 }
-/** `warning`: a chip marked delete that was kept (it changed meanwhile), as the core's R1. */
+/** `warning`: a chip marked delete that was kept (it changed meanwhile), as the core does. */
 export type SeqEnd = { status: 'done'; head: string; moves: RefMove[]; warning?: string } | { status: 'stopped'; stop: Stop; files: number };
 export interface Aborted { stash: string | null; branch: string | null }
 
@@ -54,7 +54,7 @@ export const COMMIT_OR_DISCARD = 'Commit or discard your changes first';
 /** The core's `not_staged` (irebase/edit.rs). */
 export const notStaged = (file: string): string => `${file} from this commit isn't staged. Stage it, or discard it, then Continue.`;
 
-/** A commit's author line as stored, its time zone included (F3: phase 3's `rawAuthor`). */
+/** A commit's author line as stored, its time zone included (the write layer's `rawAuthor`). */
 export async function authorOf(read: ReadRepo, oid: string): Promise<string> {
   return rawAuthor(read, oid);
 }
@@ -142,7 +142,7 @@ async function quit(cx: WriteCx, s: SeqState, e: unknown): Promise<never> {
   throw { ...err, message: `${trimEndRust(err.message)} (${await applied(cx, s)} of ${total} applied, the rest weren't)` };
 }
 
-/** UX L: the Edit row's commit `made` on `base`, then HEAD back on `base` ("about to commit": its
+/** The Edit row's commit `made` on `base`, then HEAD back on `base` ("about to commit": its
  *  changes staged, the row's message in the box). */
 async function editStop(cx: WriteCx, s: SeqState, at: string, made: string, base: string, given: string | undefined): Promise<Stop> {
   const read = cx.read;
@@ -265,7 +265,7 @@ async function conflicted(cx: WriteCx): Promise<number> {
 }
 
 async function stopped(cx: WriteCx, s: SeqState, stop: Stop): Promise<SeqEnd> {
-  // UX N: what the step left at a stop it just made, which an interactive rebase's Abort doesn't
+  // What the step left at a stop it just made, which an interactive rebase's Abort doesn't
   // keep. A stop with the key of the last one noted (its last done line: a rescheduled step refused
   // again, a finish refused again) isn't one: the visitor's work there stays theirs (Before::made).
   if (isRebase(s) && s.interactive) {

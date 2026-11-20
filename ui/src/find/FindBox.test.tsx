@@ -115,7 +115,7 @@ describe('FindBox', () => {
     expect(document.activeElement).toBe(input());
   });
 
-  it("R7: with a file open, Ctrl+F goes to Monaco's find, not the graph's", async () => {
+  it("with a file open, Ctrl+F goes to Monaco's find, not the graph's", async () => {
     const store = setup();
     act(() => store.getState().openFile({ key: 'k', path: 'a.txt', oldPath: null, status: 'M', old: { kind: 'absent' }, new: { kind: 'absent' }, view: 'diff' }));
     act(() => void fireEvent.keyDown(document.body, { key: 'f', code: 'KeyF', ctrlKey: true }));

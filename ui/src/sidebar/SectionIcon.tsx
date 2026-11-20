@@ -8,13 +8,11 @@ export function SectionIcon({ section, size = 13 }: { section: Pick<Section, 'ki
     case 'local': return <Laptop size={size} />;
     case 'gitflow': return <Workflow size={size} />;
     case 'remote': return <Cloud size={size} />;
-    case 'worktrees': return <TreePine size={size} />; // K74: a (pine) tree
+    case 'worktrees': return <TreePine size={size} />; // a (pine) tree
     case 'stashes': return <StashIcon size={size} />;
     case 'submodules': return <Boxes size={size} />;
-    // --- 4B T11 ---
     case 'mrs':
       return <GitPullRequest size={size} />;
-    // --- end 4B T11 ---
     default: return <Tag size={size} />;
   }
 }

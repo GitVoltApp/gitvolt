@@ -24,7 +24,7 @@ export const preloadReviewMode = () => import('./ActiveReview');
 const ActiveReview = lazy(() => preloadReviewMode().then((m) => ({ default: m.ActiveReview })));
 
 /**
- * Review mode (spec 2026-10-08 §2), in a text diff's Source view: on while the open diff is the
+ * Review mode, in a text diff's Source view: on while the open diff is the
  * tab's review session's Compare, for a file of the MR (`reviewModeOf`).
  */
 export function ReviewMode({ target }: { target: DiffTarget }) {

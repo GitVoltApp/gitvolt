@@ -24,7 +24,7 @@ describe('a selection applied to one side', () => {
     expect(applySelection(splitLines(b), h, { kind: 'hunks', hunks: [] }, 'reverse')).toBeNull();
   });
 
-  it('a line appended after a no-newline end stages with that line (Review Focus 4)', () => {
+  it('a line appended after a no-newline end stages with that line', () => {
     const [a, b] = ['a\nb', 'a\nb\nc\n'];
     const h = hunks(a, b);
     // git shows `-b⏎̸ +b +c`; staging only `+c` (new line 3) takes the pair, keeping `b`.

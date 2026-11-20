@@ -1,4 +1,4 @@
-/* K101 + 1D R9: the Debug modal (the activity log, with its Commands and Actions tabs). The
+/* The Debug modal (the activity log, with its Commands and Actions tabs). The
  * entries' rows are DebugRow's (debug/debug.css). */
 .modal.activity-modal { width: 80vw; height: 80vh; max-width: none; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; }
 .activity-head { display: flex; align-items: center; gap: 8px; user-select: none; }

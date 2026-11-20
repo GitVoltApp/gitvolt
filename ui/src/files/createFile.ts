@@ -16,7 +16,7 @@ import { useToast } from '../ui/toastStore';
 import { runWrite, type WriteCtx } from '../write/client';
 
 /**
- * UX round 3 O.1: Create file…, from a file list's empty space (an inline name input at the top
+ * Create file…, from a file list's empty space (an inline name input at the top
  * of that list) or the palette (a dialog: a keyboard-started action). The core makes an empty
  * file, its folders too, journaled (Undo removes it); it then opens in File View, editable and
  * focused.
@@ -80,7 +80,7 @@ async function focusWhenShown(tabId: string, key: string): Promise<void> {
   }
 }
 
-/** Creates `path` in `ctx`'s worktree and opens it in File View, editable (UX G.2's working
+/** Creates `path` in `ctx`'s worktree and opens it in File View, editable (a working
  * copy). True once created; a refusal (it exists, …) is the write's toast and false. */
 export async function createFile(ctx: WriteCtx, path: string): Promise<boolean> {
   let res: WriteResult<SaveOutcome> | null = null;
@@ -97,7 +97,7 @@ export async function createFile(ctx: WriteCtx, path: string): Promise<boolean> 
   // Source only: Rendered or Table would show an empty page with the editor hidden under it. Only
   // this file shows Source; the app-wide pick stays as it is.
   if (viewKindOf(path) !== null) showSourceFor(path);
-  // Made to be typed into, in File View: File History stops being sticky (UX).
+  // Made to be typed into, in File View: File History stops being sticky.
   endStickyHistory(ctx.tabId);
   store.getState().openFile(target);
   void focusWhenShown(ctx.tabId, target.key);

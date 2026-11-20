@@ -4,7 +4,7 @@ import { ForgeAvatarStoreContext, createAvatarStore } from '../avatars/avatarSto
 import { MrCard } from './MrCard';
 import { detailOf, mrOf, user } from './testMrs';
 
-describe('MrCard (spec #4 §4 "4B": the hover card)', () => {
+describe('MrCard (the hover card)', () => {
   const mr = mrOf(12, { title: 'Dev work', pipeline: { status: 'success', webUrl: null }, conflicts: null });
 
   it('shows at once what the badge knows, and Loading… for what the detail adds', () => {

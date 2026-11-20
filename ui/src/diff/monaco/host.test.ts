@@ -30,7 +30,7 @@ vi.mock('./setup', () => {
     const menus: Listener[] = [];
     const mouseUps: Listener[] = [];
     const inputs: Listener[] = [];
-    // A real element so `getBoundingClientRect` (the keyboard menu's position, fix round 1) is a
+    // A real element so `getBoundingClientRect` (the keyboard menu's position) is a
     // normal DOM stub, not another fake to maintain.
     const domNode = document.createElement('div');
     vi.spyOn(domNode, 'getBoundingClientRect').mockReturnValue({ left: 100, top: 200, right: 0, bottom: 0, width: 0, height: 0, x: 100, y: 200, toJSON: () => ({}) });
@@ -136,14 +136,14 @@ vi.mock('./setup', () => {
       getOption: () => 19,
       focus: vi.fn(),
       hasTextFocus: vi.fn(() => false),
-      // Monaco's find widget (plan 1C R7): `getAction('actions.find').run()`.
+      // Monaco's find widget: `getAction('actions.find').run()`.
       findRun: vi.fn(async () => {}),
       getAction: vi.fn((id: string) => (id === 'actions.find' ? { run: ed.findRun } : null)),
       updateOptions: vi.fn(),
       setModel: vi.fn((m: never) => { ed.model = m; }),
       getValue: () => (ed.model as { text?: string } | null)?.text ?? '',
       layout: vi.fn(),
-      // Shift+F10 / the ContextMenu key (fix round 1, item 1): keyed by the keybinding number, as
+      // Shift+F10 / the ContextMenu key: keyed by the keybinding number, as
       // the real `addCommand` is (there is no separate "get the handler for this key" API).
       commands: new Map<number, () => void>(),
       addCommand: vi.fn((keybinding: number, handler: () => void) => { ed.commands.set(keybinding, handler); return 'cmd'; }),
@@ -221,7 +221,7 @@ vi.mock('./setup', () => {
   const monaco = {
     editor: editor(),
     languages: { getLanguages: () => [{ id: 'plaintext' }], register: vi.fn(), setTokensProvider: vi.fn() },
-    // The real numeric values (fix round 1, item 1): Shift+F10 / the ContextMenu key.
+    // The real numeric values: Shift+F10 / the ContextMenu key.
     KeyMod: { CtrlCmd: 2048, Shift: 1024, Alt: 512, WinCtrl: 256 },
     KeyCode: { ContextMenu: 58, F10: 68 },
   };
@@ -310,7 +310,7 @@ describe('MonacoHost', () => {
     expect(state.applied).toBe('dark-plus');
   });
 
-  it('routes right-clicks to the 1C handler with its own path per editor, and blocks the native menu', async () => {
+  it('routes right-clicks to the app handler with its own path per editor, and blocks the native menu', async () => {
     const { host, state } = await fresh();
     host.attachDiff(document.createElement('div'));
     host.attachFile(document.createElement('div'));
@@ -335,7 +335,7 @@ describe('MonacoHost', () => {
     expect(onFile.event.preventDefault).toHaveBeenCalled();
   });
 
-  it("Shift+F10 and the ContextMenu key open our menu at the cursor (fix round 1, item 1: onContextMenu is mouse-only)", async () => {
+  it("Shift+F10 and the ContextMenu key open our menu at the cursor (onContextMenu is mouse-only)", async () => {
     const { host, state } = await fresh();
     host.attachDiff(document.createElement('div'));
     await host.showDiff(diffReq('diffed.txt'));
@@ -505,7 +505,7 @@ describe('MonacoHost', () => {
     expect(next.dispose).not.toHaveBeenCalled();
   });
 
-  it("re-attached for another diff, the editor hides the one it still holds until the new one is on screen (H6)", async () => {
+  it("re-attached for another diff, the editor hides the one it still holds until the new one is on screen", async () => {
     const { host, state } = await fresh();
     const first = document.createElement('div');
     host.attachDiff(first);
@@ -533,10 +533,10 @@ describe('MonacoHost', () => {
     expect((third.firstElementChild as HTMLElement).style.visibility).toBe('');
   });
 
-  // K7: `visibility: hidden` alone didn't hide it. Monaco's diff editor sets `visibility: visible`
+  // `visibility: hidden` alone didn't hide it. Monaco's diff editor sets `visibility: visible`
   // on its two inner editors (tied to its accessible diff viewer), and a descendant's own value
   // wins over the inherited one: the old diff stayed painted. Opacity can't be undone below.
-  it("the held diff is hidden in a way Monaco's inner editors can't undo: opacity 0, until the next one is on screen (K7)", async () => {
+  it("the held diff is hidden in a way Monaco's inner editors can't undo: opacity 0, until the next one is on screen", async () => {
     const { host } = await fresh();
     const box = document.createElement('div');
     host.attachDiff(box);
@@ -563,7 +563,7 @@ describe('MonacoHost', () => {
     expect((fileBox.firstElementChild as HTMLElement).style.opacity).toBe('0');
   });
 
-  // Fix round 1: hidden, the held editor can't be clicked or focused (its inner editors' forced
+  // Hidden, the held editor can't be clicked or focused (its inner editors' forced
   // `visibility: visible` would allow both); focus inside it moves to the zone around it.
   it('hidden, the held editor is inert and takes no pointer; focus inside it moves to its zone; shown, both come back', async () => {
     const { host } = await fresh();
@@ -590,7 +590,7 @@ describe('MonacoHost', () => {
     zone.remove();
   });
 
-  it('a kept panel shown again keeps its editor: keepDiff/keepFile hide what it holds unless it is the next one (J16)', async () => {
+  it('a kept panel shown again keeps its editor: keepDiff/keepFile hide what it holds unless it is the next one', async () => {
     const { host, state } = await fresh();
     const box = document.createElement('div');
     host.attachDiff(box);
@@ -619,7 +619,7 @@ describe('MonacoHost', () => {
     expect(state.files).toHaveLength(1);
   });
 
-  it('a box that left the document with no detach (a kept panel unmounted while hidden, J16) is let go: by the next attach, or releaseDetached', async () => {
+  it('a box that left the document with no detach (a kept panel unmounted while hidden) is let go: by the next attach, or releaseDetached', async () => {
     const { host } = await fresh();
     const unobserve = vi.spyOn(ResizeObserver.prototype, 'unobserve');
     const box = () => document.body.appendChild(document.createElement('div'));
@@ -655,7 +655,7 @@ describe('MonacoHost', () => {
     }
   });
 
-  it('a hidden box (0×0: display none) is never laid out; a shown one is (J16)', async () => {
+  it('a hidden box (0×0: display none) is never laid out; a shown one is', async () => {
     const { host, state } = await fresh();
     const box = document.createElement('div');
     host.attachDiff(box);
@@ -724,7 +724,7 @@ describe('MonacoHost', () => {
     expect(f.restoreViewState).not.toHaveBeenCalled();
   });
 
-  it('re-attached for another file, File View hides the one it still holds until the new one is shown (H6)', async () => {
+  it('re-attached for another file, File View hides the one it still holds until the new one is shown', async () => {
     const { host } = await fresh();
     const first = document.createElement('div');
     host.attachFile(first);
@@ -743,7 +743,7 @@ describe('MonacoHost', () => {
     expect((third.firstElementChild as HTMLElement).style.visibility).toBe('');
   });
 
-  it('sticky scroll is off in both editors, and the editor settings apply in place (H7)', async () => {
+  it('sticky scroll is off in both editors, and the editor settings apply in place', async () => {
     const { host, state } = await fresh();
     host.attachDiff(document.createElement('div'));
     host.attachFile(document.createElement('div'));
@@ -781,11 +781,11 @@ describe('MonacoHost', () => {
     expect(stale.model.modified.dispose).toHaveBeenCalled();
   });
 
-  // K7 (↑/↓ through crlf.txt, data.bin, ünï.txt): crlf.txt's show still computing when its view
+  // ↑/↓ through crlf.txt, data.bin, ünï.txt): crlf.txt's show still computing when its view
   // went (a binary's message replaced it), ünï.txt's view attaches (hiding what the editor holds)
   // and its own show only starts a moment later, in a passive effect. crlf.txt's result landing in
   // between showed it, un-hidden, under ünï.txt's header.
-  it("an attach drops a show still in flight: the previous view's diff never lands, un-hidden, under the attaching one (K7)", async () => {
+  it("an attach drops a show still in flight: the previous view's diff never lands, un-hidden, under the attaching one", async () => {
     const { host, state } = await fresh();
     const first = document.createElement('div');
     host.attachDiff(first);
@@ -1082,7 +1082,7 @@ describe('MonacoHost', () => {
     expect(m.setPosition).toHaveBeenLastCalledWith({ lineNumber: 40, column: 1 });
   });
 
-  it("Hunk mode's header rows are laid out with the diff, before it renders; Inline and Split have none (spec #2 §7.3)", async () => {
+  it("Hunk mode's header rows are laid out with the diff, before it renders; Inline and Split have none", async () => {
     const { host, state } = await fresh();
     host.attachDiff(document.createElement('div'));
     const placed = vi.fn();
@@ -1115,7 +1115,7 @@ describe('MonacoHost', () => {
     expect(mod.apiZones.size).toBe(0);
   });
 
-  it('review cards (spec 2026-10-08 §2): laid with the diff before it renders, its own file only, in a layer beside the editor; Split moves an old-side card to the old editor', async () => {
+  it('review cards: laid with the diff before it renders, its own file only, in a layer beside the editor; Split moves an old-side card to the old editor', async () => {
     const { host, state } = await fresh();
     const box = document.createElement('div');
     host.attachDiff(box);
@@ -1165,7 +1165,7 @@ describe('MonacoHost', () => {
     host.setReviewZones(null);
   });
 
-  it('review cards hide and show with the diff they are over: re-attached for another diff, they wait for it too (H6)', async () => {
+  it('review cards hide and show with the diff they are over: re-attached for another diff, they wait for it too', async () => {
     const { host } = await fresh();
     const first = document.createElement('div');
     host.attachDiff(first);

@@ -3,7 +3,7 @@ import { tabStore } from '../../app/tabStores';
 import { forgeOf, forgeScratch, knownMr, patchForge, type ReviewSession } from '../mrStore';
 import { reviewAlive } from './model';
 
-/** A review session's upkeep (spec §1 "Lives"): created, patched, watched, ended. */
+/** A review session's upkeep: created, patched, watched, ended. */
 
 export function newSession(kind: ForgeKind, number: number, compare: { from: string; to: string } | null): ReviewSession {
   return { number, kind, compare, refs: null, files: {}, diffHead: null, drafts: [], pendingReview: null, canDraft: true, closed: false, error: null, loaded: false };
@@ -36,7 +36,7 @@ export function endReview(tabId: string): void {
 }
 
 /** Ends the session once nothing keeps it (`reviewAlive`); else notes its MR merged or closed
- * under pending drafts (the chip says so, Plan 3). */
+ * under pending drafts (the chip says so). */
 export function settleReview(tabId: string): void {
   const f = forgeOf(tabId);
   const s = f.review;

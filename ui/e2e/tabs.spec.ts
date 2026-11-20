@@ -15,7 +15,7 @@ test.describe('tabs', () => {
       await expect(page.getByRole('menuitem', { name: /Open repository…/ })).toContainText('Ctrl+O');
       // Quit isn't offered in the e2e harness (not running in Tauri): no placeholder UI.
       await expect(page.getByRole('menuitem', { name: 'Quit' })).toHaveCount(0);
-      // Esc closes the open submenu first, then the root menu (spec §7).
+      // Esc closes the open submenu first, then the root menu.
       await page.keyboard.press('Escape');
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('context-menu')).toBeHidden();
@@ -279,7 +279,7 @@ test.describe('tabs', () => {
     await expect(tabs).toHaveCount(3);
   });
 
-  // Spec §17.3: switching to a loaded tab paints its cached snapshot in < 50 ms. Measured from the
+  // Switching to a loaded tab paints its cached snapshot in < 50 ms. Measured from the
   // click to two animation frames later (the frame that paints it); a sample only counts if the
   // tab's graph rows are on screen by then. Load only ever slows a sample, so the bound is checked
   // against the best of several switches (as in menu-perf.spec.ts): a regression slows every one.

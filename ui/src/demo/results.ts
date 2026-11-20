@@ -1,5 +1,5 @@
 // What each demo handler answers: the generated payload types, as the core sends them. One key
-// per method with a handler; plans 1b and later add theirs.
+// per method with a handler.
 import type { CreateContext } from '../api/gen/CreateContext';
 import type { CreateOutcome } from '../api/gen/CreateOutcome';
 import type { ForgeLabel } from '../api/gen/ForgeLabel';

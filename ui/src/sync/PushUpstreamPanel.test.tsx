@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { armClock, press, pressEnter } from '../ui/arm/armTesting';
 import { askPushTarget, branchWidth, PushUpstreamPanel } from './PushUpstreamPanel';
 
-describe('the push-upstream panel (spec #2 §12.3, UX round 3)', () => {
+describe('the push-upstream panel', () => {
   let clock: ReturnType<typeof armClock>;
   beforeEach(() => { clock = armClock(); });
   afterEach(() => clock.restore());

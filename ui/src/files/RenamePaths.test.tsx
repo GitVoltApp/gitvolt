@@ -6,7 +6,7 @@ import { RenamePaths } from './RenamePaths';
 const marked = (line: Element) =>
   [...line.children].map((p) => (p.classList.contains('rename-common') ? `~${p.textContent}~` : p.classList.contains('rename-changed') ? `[${p.textContent}]` : `?${p.textContent}?`)).join('');
 
-describe('RenamePaths (J15)', () => {
+describe('RenamePaths', () => {
   it('dims what both paths share and highlights what changed, on both lines', () => {
     render(<RenamePaths oldPath="admin/dist/assets/PriceRanges-Dspn_3uo.js" path="admin/dist/assets/PriceRanges-DYuKwOSt.js" />);
     const [oldLine, arrow, newLine] = screen.getByTestId('rename-paths').children;

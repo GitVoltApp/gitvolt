@@ -1,6 +1,6 @@
 // The merge tool (write/conflict.rs): a conflicted file's stages as segments and panes (the core runs
 // `git merge-file --diff3`; here Task 13's merge in diff3 style builds the segments directly), and its
-// resolutions, each a staging step of its own (§7.6); a folder's Mark resolved is one step.
+// resolutions, each a staging step of its own; a folder's Mark resolved is one step.
 import type { ConflictFilePayload } from '../../api/gen/ConflictFilePayload';
 import type { ConflictKind } from '../../api/gen/ConflictKind';
 import type { ConflictLabels } from '../../api/gen/ConflictLabels';

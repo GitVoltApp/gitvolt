@@ -45,7 +45,7 @@ function ToolbarButtonView({ b, ctx }: { b: ToolbarButton; ctx: RepoCtx }) {
   const label = view?.label ?? b.label ?? a.label;
   const Icon = busy ? LoaderCircle : a.icon;
   const tip = view?.tooltip ?? tooltipOf(a);
-  // Off but hoverable (aria-disabled, not `disabled`): its tooltip says why (spec #2 §5.5).
+  // Off but hoverable (aria-disabled, not `disabled`): its tooltip says why.
   const off = view ? view.disabled : !usable(a);
   const button = (
     <HoverTooltip content={tip}>
@@ -80,7 +80,7 @@ function ToolbarButtonView({ b, ctx }: { b: ToolbarButton; ctx: RepoCtx }) {
 }
 
 /**
- * The repo tab's toolbar (spec §6.3), in the tab's `toolbar` slot. #1 shows only the controls that
+ * The repo tab's toolbar, in the tab's `toolbar` slot. #1 shows only the controls that
  * work: the repository, the branch picker and any chips (`registerToolbarChip`), then the
  * registered buttons (`registry.ts`): Fetch here; Search and Actions join from find's and the
  * palette's own modules.

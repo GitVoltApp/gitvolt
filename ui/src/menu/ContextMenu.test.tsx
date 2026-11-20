@@ -36,7 +36,7 @@ describe('ContextMenu', () => {
     expect(screen.getByRole('menu', { hidden: true })).not.toBeVisible();
   });
 
-  it('runs rows and variants through the row-run hook, with their id and label (R11)', () => {
+  it('runs rows and variants through the row-run hook, with their id and label', () => {
     const seen: string[] = [];
     const off = setMenuRowRunner((id, label, run) => { seen.push(`${id}:${label}`); run(); });
     const row = vi.fn();
@@ -117,7 +117,7 @@ describe('ContextMenu', () => {
     expect(menu.querySelector('[data-active="true"][data-variant-id]')).toBeNull();
   });
 
-  // K25: the inline variants (e.g. Copy path's Rel/Abs) are a gapless button group; moving the
+  // The inline variants (e.g. Copy path's Rel/Abs) are a gapless button group; moving the
   // pointer from one straight into its neighbour must swap the tooltip directly, never hiding it
   // and never showing the row's tooltip in between (the store update a render could batch away).
   it('moving between variant siblings swaps the tooltip directly, never hidden or showing the row tooltip in between', () => {
@@ -236,7 +236,7 @@ describe('ContextMenu', () => {
     const tick = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
     afterEach(() => vi.useRealTimers());
 
-    it("a pointerenter opens the submenu synchronously (K29): no timer runs; its row's tooltip goes at once", () => {
+    it("a pointerenter opens the submenu synchronously: no timer runs; its row's tooltip goes at once", () => {
       // Fake timers and no advance: if anything still depended on a timer, the submenu would stay closed.
       vi.useFakeTimers();
       open([more, action('b')]);
@@ -456,7 +456,7 @@ describe('ContextMenu', () => {
     expect(screen.getByRole('menu', { hidden: true })).not.toBeVisible();
   });
 
-  it('restores focus (I2) after a window blur or a resize, but leaves it alone after a press outside', () => {
+  it('restores focus after a window blur or a resize, but leaves it alone after a press outside', () => {
     render(<><button type="button">before</button><ContextMenu /><TooltipHost /></>);
     const before = screen.getByRole('button', { name: 'before' });
 
@@ -476,11 +476,11 @@ describe('ContextMenu', () => {
     expect(before).toHaveFocus();
   });
 
-  // K24: under GNOME (mutter on Xwayland), every button press in the window refocuses it
+  // Under GNOME (mutter on Xwayland), every button press in the window refocuses it
   // (WM_TAKE_FOCUS; vendor/tauri-runtime-cef/GITVOLT-PATCH.md), so the page gets a window blur and
   // then a focus a few ms after the right-click that opened the menu. Closing on that blur closed
   // every menu at once. Only a blur the window doesn't come back from closes it.
-  it('a window focus bounce (a press under the window manager) keeps it open (K24); a real blur closes it', () => {
+  it('a window focus bounce (a press under the window manager) keeps it open; a real blur closes it', () => {
     vi.useFakeTimers();
     try {
       const menu = open([action('a')]);
@@ -519,11 +519,11 @@ describe('ContextMenu', () => {
     }
   });
 
-  // K1: a scroll event is dispatched in the frame after the scroll, so the tail of one the user
+  // A scroll event is dispatched in the frame after the scroll, so the tail of one the user
   // started before the right-click (a wheel notch, a smooth or kinetic scroll, the app putting a
   // list back) arrived after the menu opened, and closed it at once. As a native menu does, it
   // stays open; and the wheel outside it moves nothing behind it while it's open.
-  it('a scroll does not close it (K1); the wheel outside it is swallowed while it is open', () => {
+  it('a scroll does not close it; the wheel outside it is swallowed while it is open', () => {
     const menu = open([action('a')]);
     const before = screen.getByRole('button', { name: 'before' });
     fireEvent.scroll(window);
@@ -690,7 +690,7 @@ describe('ContextMenu: the anchor toggles it', () => {
   });
 });
 
-describe('ContextMenu: an armed row (spec §ui confirms, board A)', () => {
+describe('ContextMenu: an armed row', () => {
   let clock: ReturnType<typeof armClock>;
   beforeEach(() => { clock = armClock(); });
   afterEach(() => { act(() => { disarm(); useMenu.getState().close(); }); clock.restore(); });
@@ -780,7 +780,7 @@ describe('ContextMenu: an armed row (spec §ui confirms, board A)', () => {
     expect(screen.getByRole('menu', { hidden: true })).not.toBeVisible();
   });
 
-  describe('with an option (UX round 3: a stack rebase)', () => {
+  describe('with an option (a stack rebase)', () => {
     const option = { label: 'Also move 2 stacked branches', detail: 'feature/a, feature/b', checked: true };
     const rebasing = (ran: (checked: boolean) => void) => () => {
       void confirmWith({ title: 'Rebase feature/c onto main?', confirmLabel: 'Rebase', arm: 'Click again to rebase feature/c onto main', option }).then((a) => { if (a.ok) ran(a.checked); });
@@ -894,7 +894,7 @@ describe('ContextMenu: an armed row (spec §ui confirms, board A)', () => {
     expect(screen.getByRole('menu', { hidden: true })).not.toBeVisible();
   });
 
-  // Every opening reloads the openers (H32) and an open menu rebuilds when they arrive: a late
+  // Every opening reloads the openers and an open menu rebuilds when they arrive: a late
   // answer dropped the armed row, so the next click ran it again instead of confirming.
   it('a rebuild that keeps the armed row (openers or remotes arriving) keeps it armed; its second pick runs it once', async () => {
     const ran = vi.fn();

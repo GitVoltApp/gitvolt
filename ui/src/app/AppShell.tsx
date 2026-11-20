@@ -20,7 +20,7 @@ import { useAppState } from './state';
 import { openBlankTab } from './tabs';
 import './shell.css';
 
-/** Closed tabs (and a previous profile's) let go of their runtime and 1B view state. */
+/** Closed tabs (and a previous profile's) let go of their runtime and view state. */
 function useDropClosedTabs() {
   const tabs = useAppState((s) => s.profile.tabs);
   useEffect(() => {
@@ -31,10 +31,10 @@ function useDropClosedTabs() {
 }
 
 /**
- * The app shell (spec §6): GitVolt's own title bar (Linux), the header slot (the tab bar), every
+ * The app shell: GitVolt's own title bar (Linux), the header slot (the tab bar), every
  * tab of the active profile inside `<Activity>` (only the active one visible; the hidden ones do
- * no work, spec §4.4), the status bar and overlay slots, and the app's one toast, context menu
- * and tooltip (spec §7).
+ * no work), the status bar and overlay slots, and the app's one toast, context menu
+ * and tooltip.
  */
 export function AppShell({ error = null }: { error?: string | null }) {
   useGlobalShortcuts();
@@ -53,7 +53,7 @@ export function AppShell({ error = null }: { error?: string | null }) {
   useEffect(() => {
     if (loaded && active !== activeTab) useAppState.getState().updateProfile((p) => ({ ...p, activeTab: active }));
   }, [loaded, active, activeTab]);
-  // No tab open: show the Open Repository screen (spec §13), once boot has opened any launch repos.
+  // No tab open: show the Open Repository screen, once boot has opened any launch repos.
   const booted = useAppState((s) => s.booted);
   useEffect(() => {
     if (booted && tabs.length === 0) useAppState.getState().updateProfile((p) => openBlankTab(p).profile);
@@ -75,7 +75,7 @@ export function AppShell({ error = null }: { error?: string | null }) {
       ) : (
         <>
           <AppSlot name="header" />
-          {/* Keyed by profile: switching profile swaps the whole tab set (spec §14.1). */}
+          {/* Keyed by profile: switching profile swaps the whole tab set. */}
           <div className="tab-stack" key={profileId}>
             {tabs.map((t) => (
               <Activity key={t.id} mode={t.id === active ? 'visible' : 'hidden'}>
@@ -92,10 +92,10 @@ export function AppShell({ error = null }: { error?: string | null }) {
       <Toast />
       {/* The image viewer: a Markdown image clicked, over everything but tooltips, confirms and toasts. */}
       <Lightbox />
-      {/* The one context menu and its tooltip (spec §7). */}
+      {/* The one context menu and its tooltip. */}
       <ContextMenu />
       <TooltipHost />
-      {/* Confirms (spec §ui confirms): the armed control's overlay, and the anchored popovers. */}
+      {/* Confirms: the armed control's overlay, and the anchored popovers. */}
       <ArmLayer />
       <ConfirmDialog />
       <PromptDialog />

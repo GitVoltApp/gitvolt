@@ -1,4 +1,4 @@
-//! Rewording an older commit in place (spec #3 §3.6): the details panel's "Edit message" on a
+//! Rewording an older commit in place: the details panel's "Edit message" on a
 //! commit of the current branch below HEAD. It runs a background interactive rebase from that
 //! commit's parent: every row stays Pick except that one, and `update-ref` lines move the
 //! stacked branches above it. A range with merges is refused: this path must never surprise.
@@ -64,14 +64,14 @@ pub(crate) async fn reword_commit(api: &Api, repo: u32, worktree: &str, oid: Str
     let h = api.handle(repo)?;
     let root = api.worktree_dir(&h, worktree).await?;
     // For the label and the range only: `plan` checks it's still HEAD's branch, under the lock.
-    // R2: a root commit has no parent to rebase from.
+    // A root commit has no parent to rebase from.
     let at = oid.clone();
     let (branch, root_commit, on_trunk) = blocking(move || {
         let repo = gix::open(&root).map_err(gix_err)?;
         let commit = gix::ObjectId::from_hex(at.as_bytes()).ok().and_then(|o| repo.find_commit(o).ok());
         let root_commit = commit.as_ref().is_some_and(|c| c.parent_ids().next().is_none());
         let branch = head_branch(&repo);
-        // Fix round 2 (T13 review): a commit the trunk has too, reworded from another branch,
+        // A commit the trunk has too, reworded from another branch,
         // would be copied into it as divergent history.
         let on_trunk = match (commit, trunk(&repo)) {
             (Some(c), Some((name, local, tip))) if branch.as_deref() != Some(local.as_str()) => {
@@ -109,7 +109,7 @@ mod tests {
         ["feature/a", "feature/b", "feature/c", "main"].iter().map(|b| r.git(&["rev-parse", b])).collect()
     }
 
-    /// §3.6: feature/a's commit, two branches below HEAD (feature/c), reworded; the stack above it
+    /// Feature/a's commit, two branches below HEAD (feature/c), reworded; the stack above it
     /// moves along; main stays; one Undo.
     #[tokio::test]
     async fn rewording_a_stacked_commit_moves_the_branches_above_it() {
@@ -123,7 +123,7 @@ mod tests {
         assert_eq!(res["outcome"]["status"], "done");
         assert_eq!(res["journal"]["undo"]["label"], "reword \"Work on A, reworded\"");
         assert_eq!(r.git(&["log", "-1", "--format=%B", "feature/a"]), "Work on A, reworded\n\nWhy.");
-        assert_eq!(res["outcome"]["rewritten"], r.git(&["rev-parse", "feature/a"]).as_str(), "3C final fix M4: the reworded commit's new oid");
+        assert_eq!(res["outcome"]["rewritten"], r.git(&["rev-parse", "feature/a"]).as_str(), "the reworded commit's new oid");
         assert!(r.try_git(&["merge-base", "--is-ancestor", "feature/a", "feature/b"]).is_ok());
         assert!(r.try_git(&["merge-base", "--is-ancestor", "feature/b", "feature/c"]).is_ok());
         assert_eq!(r.git(&["rev-parse", "main"]), before[3]);
@@ -168,7 +168,7 @@ mod tests {
         r
     }
 
-    /// Fix round 2 (T13 review): a trunk commit below the fork point is refused from a branch;
+    /// A trunk commit below the fork point is refused from a branch;
     /// the branch's own commit is reworded.
     #[tokio::test]
     async fn a_trunk_commit_below_the_fork_is_refused_and_the_branchs_own_is_allowed() {
@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(r.git(&["log", "-1", "--format=%s", "feature/x~1"]), "X1, reworded");
     }
 
-    /// Fix round 2: with HEAD on the trunk itself, its own commits reword in place; origin/HEAD
+    /// With HEAD on the trunk itself, its own commits reword in place; origin/HEAD
     /// names the trunk when it's set.
     #[tokio::test]
     async fn on_the_trunk_itself_its_commits_reword() {
@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(r.git(&["log", "-1", "--format=%s", "main~1"]), "Trunk work, reworded");
     }
 
-    /// Fix round 1 (R2): the root commit has no parent to rebase from: plain copy, no `<oid>^`.
+    /// The root commit has no parent to rebase from: plain copy, no `<oid>^`.
     #[tokio::test]
     async fn the_root_commit_is_refused_in_plain_words() {
         let data = tempfile::tempdir().unwrap();
@@ -218,7 +218,7 @@ mod tests {
         assert_eq!(stack_tips(&r), before);
     }
 
-    /// Controller ruling: a commit that isn't in the branch's history (main's, here) is refused,
+    /// A commit that isn't in the branch's history (main's, here) is refused,
     /// naming the branch.
     #[tokio::test]
     async fn a_commit_outside_the_branch_is_refused_naming_it() {

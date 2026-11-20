@@ -10,7 +10,7 @@ const MAX_NAME = 80;
 const isLane = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 const lanesOf = (v: unknown): string[] => (Array.isArray(v) && v.length === 10 && v.every(isLane) ? v.map((c) => c.toLowerCase()) : []);
 
-/** Only known tokens with a plain colour (Review Focus 1: nothing else may reach a custom property). */
+/** Only known tokens with a plain colour (nothing else may reach a custom property). */
 function coloursOf(v: unknown): Record<string, string> {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
   return Object.fromEntries(Object.entries(v).filter(([t, c]) => (COLOR_TOKENS as readonly string[]).includes(t) && isTokenColour(c)));

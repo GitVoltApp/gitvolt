@@ -8,7 +8,7 @@ import { targetFor, type DiffTarget } from '../repo/store';
 import { wipKey } from '../repo/wipLists';
 
 /**
- * Spec #2 §7.1 "The open diff follows the file", after a write's fresh lists are in:
+ * The open diff follows the file, after a write's fresh lists are in:
  * - a file still in the section it was opened from stays there, with its fresh sides (a partial stage);
  * - one that left it (a whole file staged or unstaged) reopens from the other section;
  * - one in neither (discarded) closes: `null`.

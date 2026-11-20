@@ -2,7 +2,7 @@ import { budgetApplies, expect, test, confirmArmed, armedOverlay } from './test'
 import { git } from './fixtures';
 import { fileRow, fileRowSelector, openWip, section, timedClick } from './wip';
 
-test.describe('WIP staging (spec #2 §7.1, §7.2)', () => {
+test.describe('WIP staging', () => {
   // One repo and page for these (each was a test of its own, paying for a page load), in an order
   // where each starts from what it needs: the reversible ones first, Stage all / Unstage all last.
   test('staging whole files: hover Stage and Unstage, the file menu, no revert arrow, the diff moves on, a tree folder, Stage all and Unstage all', async ({ page }) => {
@@ -76,7 +76,7 @@ test.describe('WIP staging (spec #2 §7.1, §7.2)', () => {
   // With "After staging a file, show the next one" off, the diff follows the file to Staged:
   // follow.test.ts (and the setting's storage fileListPrefs.test.ts).
 
-  test('budget (§16): stage a file < 100 ms, best of 3', { tag: '@budget' }, async ({ page }) => {
+  test('budget: stage a file < 100 ms, best of 3', { tag: '@budget' }, async ({ page }) => {
     await openWip(page);
     const runs: number[] = [];
     for (let i = 0; i < 3; i++) {
@@ -92,7 +92,7 @@ test.describe('WIP staging (spec #2 §7.1, §7.2)', () => {
   });
 });
 
-test.describe('Conflicted, discards and the file menu (spec #2 §7.1, §7.2)', () => {
+test.describe('Conflicted, discards and the file menu', () => {
   // One repo and page for both (each was a test of its own, paying for a page load).
   test('conflicted files come first, in their own section, with their kind; Stage all leaves them conflicted', async ({ page }) => {
     const repo = await openWip(page, 'wip_conflict');

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// Review M7: tooltips are the app's instant HoverTooltip, never the native `title` (whose OS
+// Tooltips are the app's instant HoverTooltip, never the native `title` (whose OS
 // delay breaks the app-wide "tooltips show immediately" rule). The resize handles' `title` is the
 // one known holdout (ColumnResizer, PanelResizer: they sit on a 4 px strip under the pointer).
 const FILES = [

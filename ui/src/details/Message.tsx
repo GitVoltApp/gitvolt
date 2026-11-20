@@ -8,10 +8,10 @@ import { useToast } from '../ui/toastStore';
 import { mergeRequestButtons, projectRemote, tokenizeMessage, type MessageToken, type ProjectRemote } from './messageLinks';
 import './header.css';
 
-/** The remote that message references point at (spec §14.4): the first with a parsed host.
+/** The remote that message references point at: the first with a parsed host.
  * `services.remotesSnapshot()` is the one cache of "this repo's remotes, loaded" (also read by
  * the file menu's env, `menu/menuEnv.ts`), so a remount (e.g. back from the WIP row) links the
- * message in its first render instead of re-rendering it once the remotes resolve (F12). */
+ * message in its first render instead of re-rendering it once the remotes resolve. */
 export function useProjectRemote(services: RepoServices): ProjectRemote | null {
   const overrides = useAppState((s) => s.profile.hostOverrides);
   const [state, setState] = useState<{ services: RepoServices; remote: ProjectRemote | null } | null>(null);
@@ -54,7 +54,7 @@ export function LinkedText({ tokens }: { tokens: MessageToken[] }) {
 }
 
 /**
- * The commit message (spec §9.2): the summary and body with URLs and MR/PR references
+ * The commit message: the summary and body with URLs and MR/PR references
  * linkified, then one `Open !n` button per distinct merge request, which opens it in the browser.
  */
 export function Message({ summary, body, remote }: { summary: string; body: string; remote: ProjectRemote | null }) {

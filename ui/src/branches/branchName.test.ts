@@ -8,7 +8,7 @@ const TABLE: Array<[string, boolean]> = [
   ['a//b', false], ['a.', false], ['.a', false], ['a/.b', false], ['a.lock', false], ['a/b.lock/c', false], ['head', true], ['x\u007fy', false],
 ];
 
-describe('branchNameError (spec #2 §9.1)', () => {
+describe('branchNameError', () => {
   it.each(TABLE)('%s valid=%s', (name, ok) => expect(branchNameError(name) === null).toBe(ok));
   it('names the reason', () => {
     expect(branchNameError('')).toBe('Enter a branch name');

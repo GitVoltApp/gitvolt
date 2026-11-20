@@ -1,4 +1,4 @@
-//! Opening links in the default browser (spec §14.4). The app injects the Tauri opener; the
+//! Opening links in the default browser. The app injects the Tauri opener; the
 //! harness injects a no-op.
 
 use crate::error::{GbError, GbErrorKind};

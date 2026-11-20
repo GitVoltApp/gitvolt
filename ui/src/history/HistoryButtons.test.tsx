@@ -24,7 +24,7 @@ function mount(status = 'M', spec: object = { kind: 'commit', id: A, parent: 0 }
   );
 }
 
-describe('the diff toolbar\'s Blame | History (spec #3 §4.2)', () => {
+describe('the diff toolbar\'s Blame | History', () => {
   it('opens File History for the open file at its commit, with or without Blame', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'History' }));

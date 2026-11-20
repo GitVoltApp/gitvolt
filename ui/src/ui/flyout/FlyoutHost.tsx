@@ -28,7 +28,7 @@ function useViewOnTop(tabId: string): boolean {
 }
 
 /**
- * The tab's open flyout (spec #4 §5), over the left of the tab's center: its left edge is the
+ * The tab's open flyout, over the left of the tab's center: its left edge is the
  * sidebar's right edge (or its narrow strip's). It stays over an open file, and hides while a
  * center view is on top (that view owns the center and its Esc). A dockable one left docked is a
  * pane instead, beside the graph (which shrinks to fit), while the center has room for both.

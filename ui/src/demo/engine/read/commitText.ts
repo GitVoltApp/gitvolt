@@ -25,7 +25,7 @@ export interface ParsedCommit {
   signed: boolean;
 }
 
-/** An author or committer line, decoded in the commit's `encoding`, read by 1a's `parseSignature`. */
+/** An author or committer line, decoded in the commit's `encoding`, read by `parseSignature`. */
 function signature(raw: Uint8Array, encoding: string | null): Person {
   return parseSignature(decodeWith(encoding, raw));
 }
@@ -90,7 +90,7 @@ export function coAuthors(message: string): CoAuthor[] {
 // git's whitespace in a message (checked on the binary): a form feed or vertical tab isn't.
 const BLANK = /^[ \t\n\r]*$/;
 
-/** git's `%s`, not 1a's `subject()` (the sidebar's): also skips leading blank lines and trims each line's trailing whitespace. */
+/** git's `%s`, not `subject()` (the sidebar's): also skips leading blank lines and trims each line's trailing whitespace. */
 export function gitSubject(rawMessage: string): string {
   const lines = rawMessage.split('\n');
   let i = 0;

@@ -22,7 +22,7 @@ function pane(rows: Array<[string | null, number]>, nested?: [number, string]) {
   return p;
 }
 
-describe('the rendered change stepper (5C, R3)', () => {
+describe('the rendered change stepper (5C)', () => {
   it('targets each marked element, never a mark inside another: a removed then added block is two stops', () => {
     const p = pane([[null, 0], ['added', 40], ['removed', 80], ['added', 120], [null, 200], ['pair', 300]], [5, 'removed']);
     expect(changeTargets(p).map((e) => e.getAttribute('data-diff-mark'))).toEqual(['added', 'removed', 'added', 'pair']);

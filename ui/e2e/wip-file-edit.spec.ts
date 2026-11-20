@@ -8,7 +8,7 @@ const fileView = (page: Page) => page.getByTestId('file-view').locator('.view-li
 const undoButton = (page: Page) => page.getByRole('toolbar', { name: 'Repository toolbar' }).getByRole('button', { name: 'Undo', exact: true });
 const notes = (repo: string) => readFileSync(join(repo, 'notes.txt'), 'utf8');
 
-test.describe('UX round 2 G: editing a working-tree file in File View', () => {
+test.describe('editing a working-tree file in File View', () => {
   // One repo and page for these (each was a test of its own, paying for a page load and Monaco's
   // start-up): each leaves notes.txt as it found it (undone, or saved back), and closes its file.
   test('a staged file in File View: Ctrl+S saves and Undo restores, saves in a row are one Undo step, Ctrl+Z after a save; a read-only editor\'s message', async ({ page }) => {
@@ -52,7 +52,7 @@ test.describe('UX round 2 G: editing a working-tree file in File View', () => {
       await undoButton(page).click();
       await expect.poll(() => notes(repo)).toBe(before);
     });
-    await test.step('UX5 V: Ctrl+Z after a save undoes the typed edit in the editor', async () => {
+    await test.step('Ctrl+Z after a save undoes the typed edit in the editor', async () => {
       // The file closed first (a click on its open row would close it, not open it).
       await page.getByRole('region', { name: 'Diff' }).getByRole('button', { name: 'Close diff' }).click();
       await expect(page.getByRole('region', { name: 'Diff' })).toHaveCount(0);

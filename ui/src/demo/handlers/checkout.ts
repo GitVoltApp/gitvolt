@@ -1,4 +1,4 @@
-// Checkout (write/checkout.rs, spec #2 §9.3): the case is settled in `plan` from what preflight read,
+// Checkout (write/checkout.rs): the case is settled in `plan` from what preflight read,
 // then the worktree moves (Task 10's two-way move, checked whole before anything is written) and
 // only then the refs and HEAD, so a refused checkout changes nothing.
 import type { CheckoutOutcome } from '../../api/gen/CheckoutOutcome';
@@ -81,7 +81,7 @@ async function settle(pre: Pre, target: CheckoutTarget, onDiverged: 'reset' | nu
   if (behind === 0) return here ? { kind: 'noop', name } : { kind: 'switch', name, to: local };
   if (ahead === 0) return here ? { kind: 'mergeFfOnly', to } : { kind: 'fastForward', name, from: local, to };
   if (onDiverged === null) return { kind: 'diverged', name, remote, ahead, behind, localOid: local, remoteOid: to };
-  // Review M2: the Reset is the one the question showed; preflight compared `expect` with the refs.
+  // The Reset is the one the question showed; preflight compared `expect` with the refs.
   const pinned = pre.expect.refs ?? {};
   if (!(heads(name) in pinned) || !(remoteRef in pinned)) fail('InvalidInput', `Reset ${name} needs the commits the question showed`);
   return { kind: 'reset', name, from: local, to, here };
@@ -103,7 +103,7 @@ function checkout(target: CheckoutTarget, onDiverged: 'reset' | null, confirmAut
     confirm: { autostash: confirmAutostash },
     plan: async (pre) => {
       settled = await settle(pre, target, onDiverged);
-      // §6.1: autostash on overlap with the commit the worktree moves to.
+      // Autostash on overlap with the commit the worktree moves to.
       const to = movesTo(settled);
       return to === null ? {} : { autostash: { rule: { kind: 'overlap' }, target: to, op: `checkout ${targetName()}`, targetName: targetName() } };
     },

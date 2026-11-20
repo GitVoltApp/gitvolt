@@ -23,7 +23,7 @@ const result = (outcome: string): WriteResult<string> => ({ outcome, journal, st
 const conflict: GbError = { kind: 'Conflict', message: 'Your changes conflict with feature/x', commandId: null, stderr: null, detail: { kind: 'autostashConflict', paths: ['a.php', 'b.php', 'c.php'], target: 'feature/x' } };
 const withoutIndex: GbError = { kind: 'Conflict', message: 'git couldn\'t restore what was staged', commandId: null, stderr: null, detail: { kind: 'applyWithoutIndex' } };
 
-describe('runWrite (spec #2 §3.1)', () => {
+describe('runWrite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     confirm.asked = [];
@@ -109,8 +109,8 @@ describe('runWrite (spec #2 §3.1)', () => {
   });
 });
 
-// --- 2C T9: the reset question and caller-handled failures ---
-describe('runWrite 2C (spec #2 §9.4)', () => {
+// --- the reset question and caller-handled failures ---
+describe('runWrite confirmations and failures', () => {
   beforeEach(() => {
     confirm.asked = [];
     confirm.answer = true;
@@ -136,7 +136,6 @@ describe('runWrite 2C (spec #2 §9.4)', () => {
     expect(vi.mocked(confirmAction).mock.calls[0][1]).toBeNull();
   });
 
-  // --- 3A T3 ---
   it('a restore over the file\'s own changes arms "Click again to replace your changes to <path>", then sends with the discard flag', async () => {
     const { confirmAction } = await import('../ui/ConfirmDialog');
     vi.mocked(confirmAction).mockClear();
@@ -152,8 +151,6 @@ describe('runWrite 2C (spec #2 §9.4)', () => {
     expect(vi.mocked(confirmAction).mock.calls.at(-1)![0]).toMatchObject({ arm: 'Click again to replace your changes to src/a.txt', tone: 'warn' });
     expect(asked).toEqual([false, true]);
   });
-  // --- end 3A T3 ---
-  // --- 3B T6 ---
   it("Undo of a stopped no-commit pick arms the core's own words, then sends with the discard flag", async () => {
     const { confirmAction } = await import('../ui/ConfirmDialog');
     vi.mocked(confirmAction).mockClear();
@@ -171,7 +168,6 @@ describe('runWrite 2C (spec #2 §9.4)', () => {
     expect(vi.mocked(confirmAction).mock.calls.at(-1)![0]).toMatchObject({ body: message, arm, caption: 'Its changes are discarded, including anything you resolved since.', danger: true });
     expect(asked).toEqual([false, true]);
   });
-  // --- end 3B T6 ---
   it('lets the caller handle a failure itself', async () => {
     const err: GbError = { kind: 'InvalidInput', message: 'x is checked out in ../r-x.', commandId: null, stderr: null, detail: { kind: 'checkedOutElsewhere', branch: 'x', worktree: '../r-x' } };
     const handle = vi.fn(() => true);
@@ -200,4 +196,3 @@ describe('runWrite 2C (spec #2 §9.4)', () => {
     log.mockRestore();
   });
 });
-// --- end 2C T9 ---

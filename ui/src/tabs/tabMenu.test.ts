@@ -30,7 +30,7 @@ describe('tab bar menu', () => {
 });
 
 describe('tab menu', () => {
-  it('has the spec §6.2 rows, each with an icon and a tooltip', () => {
+  it('has its rows, each with an icon and a tooltip', () => {
     const rows = buildMenu('tab', { tab: { id: 'a', kind: 'repo', path: '/r', alias: null }, index: 0 }, { tabCount: 2, closedCount: 0 });
     expect(labels(rows)).toEqual(['Rename…', '---', 'Add to new group', '---', 'Close', 'Close others', 'Close to the right', '---', 'Reopen closed tab', '---', 'Copy repo path', 'Open in file manager']);
     for (const r of rows) if (r.kind !== 'separator' && r.kind !== 'header') { expect(r.icon).toBeDefined(); expect(r.tooltip).toBeTruthy(); }

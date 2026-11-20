@@ -11,7 +11,7 @@ import { branchNameError } from './branchName';
 interface Req { ctx: WriteCtx; branch: string; anchor: DOMRect }
 const usePicker = create<{ req: Req | null }>(() => ({ req: null }));
 
-/** Set upstream (§9.1; 2D's Push ▾ "Change upstream" too): a remote branch, or None. */
+/** Set upstream (the Push ▾ "Change upstream" too): a remote branch, or None. */
 export function pickUpstream(ctx: WriteCtx, branch: string, anchor: DOMRect): void {
   usePicker.setState({ req: { ctx, branch, anchor } });
 }
@@ -19,7 +19,7 @@ export function pickUpstream(ctx: WriteCtx, branch: string, anchor: DOMRect): vo
 const NONE = '\u0000none';
 const NEW = '\u0000new';
 
-/** "A branch the next push creates" (§9.1): `<remote>/<name>`, split at the longest known remote
+/** "A branch the next push creates": `<remote>/<name>`, split at the longest known remote
  * (a remote's name may hold `/`). */
 async function askNew(req: Req, remotes: string[]): Promise<void> {
   const split = (v: string) => {

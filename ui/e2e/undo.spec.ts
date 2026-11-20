@@ -13,7 +13,7 @@ async function open(page: Page, repo: string) {
   await expect(graph(page)).toBeVisible();
 }
 
-test.describe('undo of a real commit (spec #2 §5.3, 2B)', () => {
+test.describe('undo of a real commit', () => {
   test('the toolbar undoes a commit from the commit box; its changes come back staged (< 150 ms)', { tag: '@budget' }, async ({ page }) => {
     const repo = freshFixture('wip_staging');
     await open(page, repo);
@@ -29,7 +29,7 @@ test.describe('undo of a real commit (spec #2 §5.3, 2B)', () => {
   });
 });
 
-test.describe('undo (spec #2 §5.5)', () => {
+test.describe('undo', () => {
   // One repo and page for these (each was a test of its own, paying for a page load), in an order
   // where each starts from what it needs (nothing to undo yet for the first).
   test('the toolbar undoes and redoes, the toast offers Redo; Ctrl+Z outside text fields; a push is a barrier', async ({ page, request }) => {
@@ -77,7 +77,7 @@ test.describe('undo (spec #2 §5.5)', () => {
     });
   });
 
-  test('undo of a commit lands within its budget (< 150 ms, best of 3, spec #2 §16)', { tag: '@budget' }, async ({ page, request }) => {
+  test('undo of a commit lands within its budget (< 150 ms, best of 3)', { tag: '@budget' }, async ({ page, request }) => {
     const repo = freshFixture('basic');
     await open(page, repo);
     const times: number[] = [];
@@ -101,7 +101,7 @@ test.describe('undo (spec #2 §5.5)', () => {
     if (budgetApplies()) expect(Math.min(...times)).toBeLessThan(150);
   });
 
-  test('a click while another op runs shows in the chip within a frame (spec #2 §16)', { tag: '@budget' }, async ({ page, request }) => {
+  test('a click while another op runs shows in the chip within a frame', { tag: '@budget' }, async ({ page, request }) => {
     const repo = freshFixture('basic');
     await open(page, repo);
     await testWrite(request, repo, commit('Queued undo'));
@@ -120,7 +120,7 @@ test.describe('undo (spec #2 §5.5)', () => {
       return performance.now() - t0;
     });
     console.log(`[budget] queued click to chip: ${ms.toFixed(1)} ms`);
-    // One frame after the queueChanged event; the harness round trip is a few ms (Deviation 13).
+    // One frame after the queueChanged event; the harness round trip is a few ms.
     if (budgetApplies()) expect(ms).toBeLessThan(50);
     await running;
   });
@@ -144,7 +144,7 @@ test.describe('undo (spec #2 §5.5)', () => {
   });
 });
 
-test.describe('undo of a discard (spec #2 §5.3, 2B)', () => {
+test.describe('undo of a discard', () => {
   test('the toolbar restores a discarded file and a Discard all', async ({ page }) => {
     const repo = freshFixture('wip_staging');
     await open(page, repo);
@@ -160,8 +160,8 @@ test.describe('undo of a discard (spec #2 §5.3, 2B)', () => {
   });
 });
 
-// --- UX Y: out-of-order undo from the Undo dropdown ---
-test.describe('the Undo dropdown (UX Y)', () => {
+// --- out-of-order undo from the Undo dropdown ---
+test.describe('the Undo dropdown', () => {
   test("Y.3: discard A, edit B, undo the discard from the dropdown: A is back, B stays, Undo is B's", async ({ page, request }) => {
     const repo = freshFixture('wip_staging');
     const a = join(repo, 'space name.txt');
@@ -203,4 +203,3 @@ test.describe('the Undo dropdown (UX Y)', () => {
     expect(readFileSync(a, 'utf8')).toBe(aBefore);
   });
 });
-// --- end UX Y ---

@@ -24,10 +24,7 @@ import { useHeaderActions, sidebarDoubleClick, type HeaderAction } from './itemA
 import { SectionIcon } from './SectionIcon';
 import { UpstreamWarning } from '../branches/UpstreamWarning';
 import { SUBMODULE_STATUS_TEXT } from '../submodules/labels';
-// --- 4B T10 ---
 import { LocalBranchBadge } from '../forge/MrBadge';
-// --- end 4B T10 ---
-// --- 4B T11 ---
 import { MrStateIcon, PipelineIcon } from '../forge/MrIcons';
 import { pipelineText } from '../forge/mrText';
 
@@ -40,7 +37,6 @@ import { RefreshButton } from '../forge/RefreshButton';
 import { RemoteLookupWarning, RemoteMainChip } from './RemoteForgeMarks';
 import { useForge, useTabForgeField } from '../forge/mrStore';
 import { altClickBranch, altClickFolder, altClickTag, cannotHide, toggleBranch, toggleFolder, toggleTag } from '../presets/altClick';
-// --- end 4B T11 ---
 
 const toggle = (list: string[], key: string) => (list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
 
@@ -57,7 +53,7 @@ export function ItemIcon({ item, tabId }: { item: SideItem; tabId: string }) {
   }
   if (item.kind === 'stash') return <StashIcon size={13} />;
   if (item.kind === 'submodule') return <Boxes size={13} />;
-  // UX round 3, M.2: an annotated tag's icon is filled, a lightweight one's outlined.
+  // An annotated tag's icon is filled, a lightweight one's outlined.
   return item.tag.annotation ? <Tag size={13} fill="currentColor" aria-label="annotated tag" /> : <Tag size={13} />;
 }
 
@@ -86,14 +82,13 @@ function HideSlot({ icon, hidden, name, toggle }: { icon: ReactNode; hidden: boo
 }
 
 /**
- * One stacked sidebar panel (spec §6.4): a header (chevron, icon, NAME, count, sort) and, when
+ * One stacked sidebar panel: a header (chevron, icon, NAME, count, sort) and, when
  * expanded, its own virtualized tree body with its own keyboard cursor. `height` comes from the
  * stack's layout; the divider (`children`) sits on its bottom edge. Collapse state and sort are
  * per repo (`RepoSettings.collapsed` / `sidebarSort`), as they were before panels.
  */
-// --- 2C T9: header actions ---
+// --- header actions ---
 const NO_ACTIONS: HeaderAction[] = [];
-// --- end 2C T9 ---
 
 export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, repoId, path, onPanelEl, onBodyEl, children }: {
   panel: Panel;
@@ -143,12 +138,11 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
   }, [openMr, rows]);
 
   const jump = (item: SideItem, focus = false) => {
-    // --- 4B T11: an MR/PR row opens its view ---
+    // --- an MR/PR row opens its view ---
     if (item.kind === 'mr') {
       openMrView(tabId, item.mr.number);
       return;
     }
-    // --- end 4B T11 ---
     // A submodule has no commit of this repository to go to: a click only selects it, Enter opens
     // it as its double-click does.
     if (item.kind === 'submodule') {
@@ -174,7 +168,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
     const r = rows[c];
     if (section.kind === 'mrs' && r?.type === 'item' && r.item.kind === 'mr' && c !== cursor) openMrView(tabId, r.item.mr.number, 'replace');
   };
-  /** The row's context menu (spec §7): a branch, tag, stash, worktree or MR/PR item, a remote's
+  /** The row's context menu: a branch, tag, stash, worktree or MR/PR item, a remote's
    * folder, or a branch folder. */
   const menuOf = (row: FlatRow | undefined) => {
     if (!row) return null;
@@ -196,7 +190,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
     if (it.presetState !== 'hidden' && cannotHide(view, it.name, headBranch, pinnedRefs)) return null;
     return () => toggleBranch(tabId, it.name);
   };
-  // A right-click never moves the active row (UX round 2): the row it was on gets the temporary
+  // A right-click never moves the active row: the row it was on gets the temporary
   // `data-context` outline while its menu is open instead.
   const [contextKey, openContextFor] = useContextTarget<string>();
   const onRowMenu = (e: MenuEventLike, row: FlatRow) => {
@@ -223,7 +217,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
         case 'End': moveTo(rows.length - 1); return true;
         case 'PageDown': moveTo(cursor + page); return true;
         case 'PageUp': moveTo(cursor - page); return true;
-        // Enter moves the keyboard to the graph with the selection (spec §11.1); the graph's own
+        // Enter moves the keyboard to the graph with the selection; the graph's own
         // Up/Down don't wrap, so the sidebar doesn't either (no spec call for it here).
         case 'Enter': case ' ': if (row) activate(row, true); return true;
         case 'ArrowLeft': return row ? setOpen(row, false) : false;
@@ -253,7 +247,7 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
           <span className="sb-label">{section.label}</span>
           <span className="sb-count" aria-label={`${section.label} count`}>{panel.matched}</span>
         </button>
-        {/* --- 2C T9: section header actions (the Worktrees header's +) --- */}
+        {/* --- section header actions (the Worktrees header's +) --- */}
         {headerActions.map((a) => (
           <HoverTooltip key={a.id} content={a.label}>
             <button type="button" className="icon-button sb-head-action" aria-label={a.label} onClick={(e) => { e.stopPropagation(); a.run({ tabId }); }}>
@@ -261,12 +255,10 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
             </button>
           </HoverTooltip>
         ))}
-        {/* --- end 2C T9 --- */}
-        {/* --- 4B T11: the MR/PR section's warning and filter --- */}
+        {/* --- the MR/PR section's warning and filter --- */}
         {section.kind === 'mrs' && <ForgeStaleIcon tabId={tabId} />}
         {section.kind === 'mrs' && <RefreshButton tabId={tabId} label={`Refresh ${section.label.toLowerCase()}`} className="icon-button sb-head-action" />}
         {section.kind === 'mrs' && <MrFilterButton tabId={tabId} path={path} />}
-        {/* --- end 4B T11 --- */}
         {section.nests && !collapsed && (
           <HoverTooltip content={panel.sort === 'tree' ? 'Sorted as a directory tree. Click: newest first' : 'Newest first. Click: directory tree'}>
             <button type="button" className="icon-button sb-sort" aria-label={sortLabel} onClick={() => updateRepo(path, (r) => ({ ...r, sidebarSort: { ...r.sidebarSort, [section.id]: panel.sort === 'tree' ? 'recent' : 'tree' } }))}>
@@ -341,18 +333,16 @@ export const SidebarPanel = memo(function SidebarPanel({ panel, height, tabId, r
                   {it.kind === 'local' || it.kind === 'remote' || it.kind === 'tag'
                     ? <HideSlot icon={<ItemIcon item={it} tabId={tabId} />} hidden={it.presetState === 'hidden'} name={row.item.kind === 'remote' ? `${row.item.remote}/${it.name}` : it.name} toggle={hideToggleOf(row)} />
                     : <ItemIcon item={it} tabId={tabId} />}
-                  {/* UX round 3, M.1: an upstream with another branch name, before the name. */}
+                  {/* An upstream with another branch name, before the name. */}
                   {it.kind === 'local' && it.branch.upstreamMismatch && <UpstreamWarning branch={it.name} upstream={it.branch.upstreamMismatch} size={13} />}
                   <span className="sb-label" title={it.kind === 'stash' ? `stash@{${it.stash.index}}` : undefined}>{it.kind === 'stash' ? <StashText label={row.label} /> : row.label}</span>
                   {it.presetState === 'folded' && <span className="sb-state">folded</span>}
                   {it.kind === 'submodule' && it.submodule.status !== 'current' && <span className="sb-state">{SUBMODULE_STATUS_TEXT[it.submodule.status]}</span>}
                   {it.kind === 'local' && (it.branch.ahead > 0 || it.branch.behind > 0) && <span className="sb-ab" aria-label={`${it.branch.ahead} ahead, ${it.branch.behind} behind`}><span>{it.branch.ahead}<ArrowUp size={12} strokeWidth={2.5} aria-hidden /></span><span>{it.branch.behind}<ArrowDown size={12} strokeWidth={2.5} aria-hidden /></span></span>}
-                  {/* --- 4B T10: the branch's MR/PR badge (spec #4 §5) --- */}
+                  {/* --- the branch's MR/PR badge --- */}
                   {it.kind === 'local' && <LocalBranchBadge tabId={tabId} upstream={it.branch.upstream} />}
-                  {/* --- end 4B T10 --- */}
-                  {/* --- 4B T11: an MR/PR row's pipeline, only when it needs a look (failed, running, pending); the hover card says the rest --- */}
+                  {/* --- an MR/PR row's pipeline, only when it needs a look (failed, running, pending); the hover card says the rest --- */}
                   {it.kind === 'mr' && it.mr.pipeline && NOTABLE_PIPELINE.has(it.mr.pipeline.status) && <span className="sb-pipeline" role="img" aria-label={pipelineText(it.forge, it.mr.pipeline)}><PipelineIcon pipeline={it.mr.pipeline} size={12} /></span>}
-                  {/* --- end 4B T11 --- */}
                   {/* Being merged (GitLab locks it for moments), or set to merge once its checks pass: subtle marks; the view says the rest. */}
                   {it.kind === 'mr' && it.mr.autoMerge && <span className="sb-automerge" role="img" aria-label="Set to auto-merge"><GitMerge size={12} aria-hidden /></span>}
                 </div>

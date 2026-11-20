@@ -5,7 +5,7 @@ import { registerToolbarButton } from '../toolbar/registry';
 import { Palette, usePalette } from './Palette';
 
 /**
- * The palette's registrations (ruling R10: its own module, imported from `app/features.ts`): the
+ * The palette's registrations (its own module, imported from `app/features.ts`): the
  * `edit.palette` action (Ctrl+P), the dialog in the overlay slot, and the toolbar's Actions
  * button (the toolbar renders buttons from the registry, so it needs no edit).
  */

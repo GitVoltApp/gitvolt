@@ -7,7 +7,7 @@ import { useToast } from '../ui/toastStore';
 import { chipChange, deleteChip, revertChip } from './model';
 import { editState, sessionOf } from './session';
 
-/** The rebase editor's chip menu target (UX R1.3): the chip's branch in tab `tabId`'s editor.
+/** The rebase editor's chip menu target: the chip's branch in tab `tabId`'s editor.
  * The rebased branch's chip and the base's are read-only: they only copy. */
 export interface ChipTarget { tabId: string; branch: string }
 

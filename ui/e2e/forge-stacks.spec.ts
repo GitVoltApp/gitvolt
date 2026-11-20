@@ -4,7 +4,7 @@ import { graphChip } from './chip';
 import { addForgeAccount, E2E_GITLAB_TOKEN, forgeSeed, freshFixture, git, openUrl, setForgeSeed } from './fixtures';
 import { confirmArmed, expect, test } from './test';
 
-/** 4B's GitLab seed items (A8): 4C's create arms add the MRs they create to the same list. */
+/** The GitLab seed items: the create arms add the MRs they create to the same list. */
 type Mr = Record<string, unknown> & { iid: number; sourceBranch: string; targetBranch: string; state: string; description: string };
 const mrs = async (request: APIRequestContext) => (await forgeSeed(request)).gitlab.mergeRequests as Mr[];
 const chipMenu = async (page: Page, name: string, item: string) => {
@@ -14,7 +14,7 @@ const chipMenu = async (page: Page, name: string, item: string) => {
   await page.getByRole('menuitem', { name: item, exact: true }).click();
 };
 
-test.describe('stacked MRs (spec #4 §4 4D, §7)', () => {
+test.describe('stacked MRs', () => {
   // The page's clock is installed (to skip the poller's focus gap): it belongs to the context.
   test.use({ isolatedContext: true });
 
@@ -29,7 +29,7 @@ test.describe('stacked MRs (spec #4 §4 4D, §7)', () => {
     git(repo, 'config', 'remote.origin.pushurl', bare);
     git(repo, 'push', '-q', '-u', 'origin', 'feature/a', 'feature/b', 'feature/c');
 
-    // Start without 4B's default MRs, so the created ones are !1, !2 and !3.
+    // Start without the default MRs, so the created ones are !1, !2 and !3.
     const empty = await forgeSeed(request);
     empty.gitlab.mergeRequests = [];
     await setForgeSeed(request, empty);
@@ -54,7 +54,7 @@ test.describe('stacked MRs (spec #4 §4 4D, §7)', () => {
     const seed = await forgeSeed(request);
     (seed.gitlab.mergeRequests as Mr[])[0].state = 'merged';
     await setForgeSeed(request, seed);
-    // A11: 4B's poller polls on focus, but not within 10 s of a full poll (the create just did
+    // The poller polls on focus, but not within 10 s of a full poll (the create just did
     // one): the clock jumps past that gap (FOCUS_GAP_MS) instead of the test waiting it out.
     await page.clock.fastForward(10_000);
     await expect(async () => {

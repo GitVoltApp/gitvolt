@@ -3,7 +3,7 @@ import { visit } from 'unist-util-visit';
 import { MD_BASE_FONT_PX } from './fontPx';
 
 /** Source characters per chunk: one chunk's hast, sanitizing and React render fit well inside a
- * 200 ms task (ruling 21). */
+ * 200 ms task. */
 export const CHUNK_CHARS = 8_192;
 
 declare module 'mdast' {

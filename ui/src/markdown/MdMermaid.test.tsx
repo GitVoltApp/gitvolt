@@ -10,7 +10,7 @@ const { MdMermaid } = await import('./MdMermaid');
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('MdMermaid (spec #5 §3.1)', () => {
+describe('MdMermaid', () => {
   it('draws the diagram lazily in strict mode, as an image of the sanitized SVG', async () => {
     mermaid.render.mockResolvedValue({ svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><script>alert(1)</script><g onclick="x"><text>Start</text></g></svg>' });
     const { container } = render(<MdMermaid source={'graph TD; A-->B'} />);

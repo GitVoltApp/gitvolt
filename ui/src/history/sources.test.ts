@@ -11,7 +11,7 @@ const target = (spec: object, over: Partial<DiffTarget> = {}, t: Partial<FileTar
   return { path: diff.path, root: '/r', sha: A, upstream: null, diff, changed: true, deleted: diff.new.kind === 'absent', list: (spec as { kind: FileTarget['list'] }).kind, wip: null, openIn: { worktree: '/r', path: diff.path, line: null, source: null, fallback: null }, ...t };
 };
 
-describe('where History starts and what Restore takes (rulings 1, 4)', () => {
+describe('where History starts and what Restore takes', () => {
   it('a commit\'s file: its history as of that commit; restore from it', () => {
     const t = target({ kind: 'commit', id: A, parent: 0 });
     expect(historyStart(t)).toEqual({ path: 'src/a.txt', rev: A });

@@ -15,7 +15,7 @@ export type MessageToken = { kind: 'text'; text: string } | { kind: 'link'; text
  * a pathological message can't blow up `referenceLabels`. */
 const MAX_MESSAGE_REFS = 20;
 
-/** A Unicode "word" character: letters, numbers or underscore (spec §9.2). Must use `\p{L}\p{N}`,
+/** A Unicode "word" character: letters, numbers or underscore. Must use `\p{L}\p{N}`,
  * not ASCII `\w`, to match the Rust parser's `char::is_alphanumeric`. */
 function isWordChar(c: string): boolean {
   return /^[\p{L}\p{N}_]$/u.test(c);
@@ -91,7 +91,7 @@ export function referenceLabels(message: string): string[] {
   return out;
 }
 
-/** Trailing punctuation excluded from a linked URL (spec §9.2): a run of these right before the
+/** Trailing punctuation excluded from a linked URL: a run of these right before the
  * end of the URL's whitespace-delimited span is not part of the link. */
 const TRAILING_PUNCTUATION = /[.,;:!?)\]]/;
 
@@ -103,7 +103,7 @@ function buildRefToken(label: string, sigil: '!' | '#', remote: ProjectRemote): 
     const url = remote.hostKind === 'gitlab' ? mergeRequestUrl(remote, project, n) : null;
     return url ? { kind: 'link', text: label, url, ref: { type: 'mr', project, number: n, label } } : null;
   }
-  // `#`: GitLab issues, GitHub and Forgejo pull requests (both get an "Open" button; spec §9.2).
+  // `#`: GitLab issues, GitHub and Forgejo pull requests (both get an "Open" button).
   // Forgejo numbers issues and PRs together and sends `/pulls/n` on to the issue when `n` is one.
   if (remote.hostKind === 'gitlab') {
     const url = issueUrl(remote, project, n);
@@ -119,13 +119,13 @@ function buildRefToken(label: string, sigil: '!' | '#', remote: ProjectRemote): 
 /** As `buildRefToken`, but taking a whole reference label (`referenceLabels`'/`RowPayload.mrRefs`'
  * shape, e.g. `"acme/shop!1187"`) rather than a pre-split sigil. `null` when the label has
  * neither `!` nor `#` (shouldn't happen for a real ref label). Used by the commit menu's `Open
- * <ref>` rows (plan 1C Task 15). */
+ * <ref>` rows. */
 export function refTokenFromLabel(label: string, remote: ProjectRemote): MessageToken | null {
   const idx = label.search(/[!#]/);
   return idx < 0 ? null : buildRefToken(label, label[idx] as '!' | '#', remote);
 }
 
-/** Splits a message into text and links (spec §9.2): URLs always link; `!`/`#` references link
+/** Splits a message into text and links: URLs always link; `!`/`#` references link
  * per host kind (GitLab: `!` MRs, `#` issues; GitHub, Forgejo: `#` PRs, `!` ignored; generic or no remote:
  * URLs only). Concatenating every token's text gives back the input exactly. */
 export function tokenizeMessage(text: string, remote: ProjectRemote | null): MessageToken[] {
@@ -173,7 +173,7 @@ export function tokenizeMessage(text: string, remote: ProjectRemote | null): Mes
   return out;
 }
 
-/** One `Open !1187` button per distinct MR/PR reference (spec §9.2). */
+/** One `Open !1187` button per distinct MR/PR reference. */
 export function mergeRequestButtons(tokens: MessageToken[]): { label: string; url: string }[] {
   const seen = new Set<string>();
   const out: { label: string; url: string }[] = [];

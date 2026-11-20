@@ -41,7 +41,7 @@ describe('refEntries', () => {
 });
 
 describe('fileEntries', () => {
-  it('Shift+Enter opens the file\'s history at HEAD (spec #3 §4.2: the palette)', async () => {
+  it('Shift+Enter opens the file\'s history at HEAD (the palette)', async () => {
     const head = 'h'.repeat(40);
     useRuntime.setState({ tabs: { t2: { repo: { id: 7 }, graph: { head: { target: head } } } as never } });
     const [entry] = await fileEntries('t2');

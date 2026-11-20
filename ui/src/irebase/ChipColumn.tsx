@@ -10,17 +10,17 @@ import { laneStyle, useChipColor } from './colors';
 import { addChip, chipRow, moveChip, rebasedRow, removeChip, type EditorChip, type EditorState, type Grouping } from './model';
 import { editState, sessionOf } from './session';
 
-/** A chip's tooltip: what it does. Its full name is its hover expansion (UX2 E.1). */
+/** A chip's tooltip: what it does. Its full name is its hover expansion. */
 const tip = (note: string): ReactNode => <div className="irebase-tip-note">{note}</div>;
 
-/** Right-click on a chip: the chip menu (UX R1.3). */
+/** Right-click on a chip: the chip menu. */
 const chipMenuRows = (tabId: string, branch: string) => buildMenu<ChipTarget, object>('chip', { tabId, branch }, {});
 const chipMenu = (tabId: string, branch: string) => (e: MouseEvent) => openContextMenu(e, () => chipMenuRows(tabId, branch));
 
 /** One chip of a row: a movable one (`chip`), or the read-only rebased branch's or base's. */
 export interface ChipItem { branch: string; kind: 'base' | 'rebased' | 'chip'; chip?: EditorChip; color: string | undefined }
 
-/* UX2 E.2: the chip column (editor.css --irebase-chips-w, 220 px) shows its chips at a readable
+/* The chip column (editor.css --irebase-chips-w, 220 px) shows its chips at a readable
    minimum (READABLE characters, ellipsized) or a "+N" pill for the rest. Estimates of the 12 px
    chip, on the generous side of the CSS (6ch + padding + ×), so a chip shown is never clipped. */
 export const READABLE = 6;
@@ -83,7 +83,7 @@ function FullChip({ tabId, item }: { tabId: string; item: ChipItem }) {
 }
 
 /** A chip in the column: its name (ellipsized), its ×; hovering the name expands it to its full
- * name in place, over its neighbours (UX2 E.1: an overlay, so the row never shifts). */
+ * name in place, over its neighbours (an overlay, so the row never shifts). */
 function Chip({ tabId, item }: { tabId: string; item: ChipItem }) {
   const c = item.chip;
   const free = !!c && !c.locked && !c.deleted;
@@ -180,12 +180,12 @@ function AddBranch({ tabId, row }: { tabId: string; row: string }) {
   );
 }
 
-/** The chips git leaves on `row` (spec #3 §4.1): the rebased branch's on the effective top row
- * (fixed, Ruling 7), and every chip whose landing row this is. On the base's row (read-only):
+/** The chips git leaves on `row`: the rebased branch's on the effective top row
+ * (fixed), and every chip whose landing row this is. On the base's row (read-only):
  * the base's own chips, and any chip that lands there because every row below it is dropped;
  * no "+". The "+" sits outside the clipped list, so a row of long names never hides it. The
  * chips share the list's width, each at least a readable sliver of its name and its ×; the ones
- * that don't fit go behind a "+N" pill (UX2 E.2), so every chip stays reachable by mouse. */
+ * that don't fit go behind a "+N" pill, so every chip stays reachable by mouse. */
 export function ChipColumn({ tabId, row, state, g }: { tabId: string; row: string; state: EditorState; g: Grouping }) {
   const base = row === state.base.oid;
   const color = useChipColor(tabId);

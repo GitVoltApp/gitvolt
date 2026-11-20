@@ -1,7 +1,7 @@
 import type { ForgeProject } from '../../api/gen/ForgeProject';
 import type { MrDraft } from './draft';
 
-/** Past this, a browser or the forge may refuse the link (ruling 14). */
+/** Past this, a browser or the forge may refuse the link. */
 export const MAX_URL_LENGTH = 8000;
 
 const segments = (s: string) => s.split('/').map(encodeURIComponent).join('/');
@@ -11,7 +11,7 @@ const DRAFT_MARK = /^\s*(draft:|\[draft\]|\(draft\))/i;
 const WIP_MARK = /^\s*(wip:|\[wip\])/i;
 
 /**
- * The forge's own new-MR/PR page, prefilled where its URL takes it (spec #4 §4 "4C"): GitLab the
+ * The forge's own new-MR/PR page, prefilled where its URL takes it: GitLab the
  * branches, title (a draft as its `Draft: ` prefix) and description, opened on the source project
  * for a fork; GitHub the compare range, title, body, labels and assignees; Forgejo the compare
  * range, title (a draft as its `WIP: ` prefix) and body. Reviewers, GitHub's draft and Forgejo's

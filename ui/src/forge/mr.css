@@ -1,4 +1,4 @@
-/* MR/PR states and pipelines (spec #4 §2 "Badge": a state-coloured icon). */
+/* MR/PR states and pipelines: a state-coloured icon. */
 .mr-state-icon { flex: none; }
 .mr-state-icon[data-state="open"] { color: var(--green); }
 .mr-state-icon[data-state="draft"] { color: var(--text-secondary); }
@@ -27,11 +27,11 @@
 [data-window-blurred] .mr-pipeline-icon.spin, [data-window-blurred] .mr-state-icon.spin { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .mr-pipeline-icon.spin, .mr-state-icon.spin { animation: none; } }
 
-/* 4B T9: stale data after a failed poll. */
+/* Stale data after a failed poll. */
 .forge-stale { display: inline-flex; color: var(--orange); }
 .forge-stale-note { margin: 0; font-size: 11px; color: var(--orange); }
 
-/* 4B T10: the badge (a chip's icon box, a Local row's end) and the sidebar hover card's block. */
+/* The badge (a chip's icon box, a Local row's end) and the sidebar hover card's block. */
 .mr-badge { cursor: pointer; }
 .sb-row .mr-badge { flex: none; margin-left: 4px; }
 .hc-mr { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--section-border); }

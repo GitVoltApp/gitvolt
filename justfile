@@ -106,7 +106,7 @@ test-demo: demo-wasm
 e2e-demo *args: demo-wasm
     cd ui && npx playwright test -c playwright.demo.config.ts {{args}}
 
-# The site's screenshots (site/shots/*.webp; spec §2 decision 6): headless Chromium on the demo
+# The site's screenshots (site/shots/*.webp): headless Chromium on the demo
 # build, on demand only (never in CI), each saved at 2x and 1x as WebP (Pillow). A scene whose demo
 # methods are still pending (ui/src/demo/coverage.ts) is skipped. Commit the result. Arguments go
 # to Playwright (`just site-shots -g image` retakes one).
@@ -248,7 +248,7 @@ package: package-deb
     wait "$rpm" || status=1
     exit "$status"
 
-# The .deb alone (AppImage is deferred), with the GTK 4 dependency fix (spec §18): the .deb's
+# The .deb alone (AppImage is deferred), with the GTK 4 dependency fix: the .deb's
 # control member is rewritten by scripts/fix-deb.sh and checked by scripts/check-deb.sh.
 # A local build skips what hasn't changed since the last one (the license notices, the UI build,
 # dpkg-shlibdeps) and compresses fast; GITVOLT_REBUILD=1 redoes everything, and a release build
@@ -343,7 +343,7 @@ run-app repo="":
 icons:
     python3 scripts/icons.py
 
-# A desktop entry for the unbundled release build (H13): the dock and the app grid then show
+# A desktop entry for the unbundled release build: the dock and the app grid then show
 # GitVolt's icon and match its window (StartupWMClass = the window's WM_CLASS, set in
 # crates/gitvolt-app/src/desktop.rs). Writes only under $XDG_DATA_HOME (default
 # ~/.local/share): applications/gitvolt.desktop and icons/hicolor/<size>/apps/gitvolt.png, plus
@@ -393,7 +393,7 @@ lint:
     cd ui && npx tsc --noEmit
     cd site && npx tsc --noEmit
 
-# A smoke check of the two §17.3 rows that need a live app (idle CPU, memory). Non-gating: it
+# A smoke check of the two performance budgets that need a live app (idle CPU, memory). Non-gating: it
 # prints numbers next to the budgets and never fails on them. Point GITVOLT_PID at the browser
 # process of a running instance (open the tabs you want measured first): the gitvolt process
 # without `--type=` (not `pgrep -nx`, which finds a renderer; docs/dev-setup.md has a
@@ -410,4 +410,4 @@ bench:
     echo "== memory (budget < 650 MB with 12 tabs open) =="
     scripts/measure-mem.sh || echo "(measure-mem failed)"
     echo
-    echo "Budgets: idle CPU < 1.5%, memory (12 tabs) < 650 MB (spec §17.3). Informational only."
+    echo "Budgets: idle CPU < 1.5%, memory (12 tabs) < 650 MB. Informational only."

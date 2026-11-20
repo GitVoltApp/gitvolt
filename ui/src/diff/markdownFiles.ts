@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { textKey } from '../util/textHash';
 import type { ViewPref } from './diffPrefs';
 
-/** Spec #5 §3.3: the extensions File View can show rendered. */
+/** The extensions File View can show rendered. */
 export const MARKDOWN_EXTENSIONS = ['md', 'markdown', 'mdx'] as const;
 
 /** Whether `path`'s file name ends in one of `list`'s extensions (any case). */
@@ -68,7 +68,7 @@ export function viewKindOf(path: string): ViewKind | null {
 export const viewKindOfTarget = (t: { path: string; oldPath: string | null }): ViewKind | null =>
   viewKindOf(t.path) ?? (t.oldPath !== null ? viewKindOf(t.oldPath) : null);
 
-/** Spec #5 §3.1: File View renders Markdown up to this many UTF-8 bytes; above, Source. */
+/** File View renders Markdown up to this many UTF-8 bytes; above, Source. */
 export const RENDER_MAX_BYTES = 5 * 1024 * 1024;
 /** A parse taking longer than this falls back to Source. */
 export const PARSE_BUDGET_MS = 2000;
@@ -96,11 +96,11 @@ export function useTooLargeToRender(navKey: string | null, text: string): boolea
   return big || slow;
 }
 
-/** 5C: a rendered diff's identity for the slow list: its file, and both sides' contents (a
+/** A rendered diff's identity for the slow list: its file, and both sides' contents (a
  * hash, `textKey`: an edit that keeps the length is checked again). */
 export const diffRenderKey = (targetKey: string, old: string, neu: string) => `diff:${targetKey}|${textKey(old)}|${textKey(neu)}`;
 
-/** 5C (R14): whether Diff View shows this Markdown diff as Source with "Too large to render": a
+/** Whether Diff View shows this Markdown diff as Source with "Too large to render": a
  * side over RENDER_MAX_BYTES, or a diff that took over PARSE_BUDGET_MS (or gave up) this session.
  * `key`: its `diffRenderKey`, worked out once per text. */
 export function useDiffTooLarge(targetKey: string, old: string, neu: string): { tooLarge: boolean; key: string } {

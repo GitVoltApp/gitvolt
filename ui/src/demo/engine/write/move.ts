@@ -84,7 +84,7 @@ export function ignoredPath(wt: WriteWt, path: string): Promise<boolean> {
 }
 
 /** Whether the worktree holds `e` at `path`: by the index entry's stat data where git would trust it
- *  (racy entries never are: Review Focus 2), else read and hashed. A gitlink: its folder isn't compared. */
+ *  (racy entries never are), else read and hashed. A gitlink: its folder isn't compared. */
 async function holds(wt: WriteWt, path: string, e: FileEntry, cur: IndexEntry | undefined, indexMs: number | null): Promise<boolean> {
   if (e.mode === MODE_GITLINK) return true;
   if (cur && same(asEntry(cur), e)) {

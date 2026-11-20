@@ -1,4 +1,4 @@
-// The write handlers (plan 3): each task adds its group here; spread into HANDLERS after the reads.
+// The write handlers: each feature adds its group here; spread into HANDLERS after the reads.
 import type { HandlerTable } from '../transport';
 import { branchHandlers } from './branches';
 import { commitHandlers } from './commit';

@@ -20,7 +20,7 @@ function setup(open: string, held: FileListPayload | undefined) {
   return { store, services };
 }
 
-describe('a resolved open file leaves the merge tool (UX round 2)', () => {
+describe('a resolved open file leaves the merge tool', () => {
   it('moves to the next conflicted file after it in the list', () => {
     const { store, services } = setup('b.txt', list(change('a.txt'), change('c.txt'), change('d.txt'), change('x.txt', 'M')));
     leaveResolved(store, services);

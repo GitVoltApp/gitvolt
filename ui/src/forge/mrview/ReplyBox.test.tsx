@@ -33,7 +33,7 @@ beforeEach(() => {
   useToast.getState().dismiss();
 });
 
-describe('replying in the MR/PR view (spec #4 §4 "4B")', () => {
+describe('replying in the MR/PR view', () => {
   it('a comment is sent, shown at once, and the box empties', async () => {
     api.forgeReply.mockResolvedValue(note('Thanks!'));
     render(<ReplyBox tabId="t" number={12} discussion={null} />);
@@ -158,7 +158,7 @@ describe('replying in the MR/PR view (spec #4 §4 "4B")', () => {
     });
   });
 
-  it('previews the comment rendered before sending (spec #5 §3.2)', () => {
+  it('previews the comment rendered before sending', () => {
     render(<ReplyBox tabId="t" number={12} discussion={null} />);
     fireEvent.change(screen.getByRole('textbox', { name: 'Write a comment' }), { target: { value: '**Looks** good' } });
     fireEvent.click(screen.getByRole('tab', { name: 'Preview' }));

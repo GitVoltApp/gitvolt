@@ -26,7 +26,7 @@ function fakeHost() {
   return { node, setFileMargin: vi.fn((w: number) => (w > 0 ? margin : null)) };
 }
 
-describe('the blame gutter (spec #3 §3.10, §4.2)', () => {
+describe('the blame gutter', () => {
   it('draws one row per line group in the strip, at its lines, with its commit', () => {
     const host = fakeHost();
     render(<BlameGutter host={host as never} blame={blame} onPick={vi.fn()} />);
@@ -39,7 +39,7 @@ describe('the blame gutter (spec #3 §3.10, §4.2)', () => {
     expect(groups.map((g) => g.dataset.line)).toEqual(['1', '3', '5']);
   });
 
-  it('rows take Monaco\'s line box and font size (UX B.3: one baseline with the code)', () => {
+  it('rows take Monaco\'s line box and font size (one baseline with the code)', () => {
     const host = fakeHost();
     render(<BlameGutter host={host as never} blame={blame} onPick={vi.fn()} />);
     const gutter = screen.getByTestId('blame-gutter');
@@ -67,7 +67,6 @@ describe('the blame gutter (spec #3 §3.10, §4.2)', () => {
     expect(onPick).toHaveBeenLastCalledWith(a, true);
   });
 
-  /** Review Focus 3. */
   it('unmounting the gutter gives the editor its margin back', () => {
     const host = fakeHost();
     const { unmount } = render(<BlameGutter host={host as never} blame={blame} onPick={vi.fn()} />);
@@ -75,7 +74,7 @@ describe('the blame gutter (spec #3 §3.10, §4.2)', () => {
     expect(host.setFileMargin).toHaveBeenLastCalledWith(0);
   });
 
-  /** Fix round 1: no layout shift while the next commit's blame loads. */
+  /** No layout shift while the next commit's blame loads. */
   it('switching to an uncached commit keeps the strip (empty, never the old rows); only turning Blame off gives it back', async () => {
     const host = fakeHost();
     monaco.host = host;

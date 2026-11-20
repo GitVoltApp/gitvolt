@@ -1,9 +1,9 @@
-//! Network operations (spec §13 clone, §15 fetch). Both run with no timeout, stream progress
+//! Network operations (clone, fetch). Both run with no timeout, stream progress
 //! as `opProgress`, can be cancelled (`cancelOp`: git is killed as a process group), and use
-//! askpass (spec §5.4). They run detached from any terminal (K96), so every prompt reaches
+//! askpass. They run detached from any terminal, so every prompt reaches
 //! askpass or fails at once: nothing waits on a tty.
 //!
-//! Amendment 2: fetch is allowed. It writes remote-tracking refs and objects, never the working
+//! Fetch is allowed. It writes remote-tracking refs and objects, never the working
 //! tree, the index, local branches or config; `--no-prune-tags` keeps a `fetch.pruneTags`
 //! config from deleting local tags behind the user's back.
 
@@ -58,7 +58,7 @@ pub enum SkipReason {
 pub enum FetchOutcome {
     Done {
         changed: bool,
-        /// Its `remote:` lines, counted for the toast (spec #2 §12.4).
+        /// Its `remote:` lines, counted for the toast.
         server: crate::write::remote_output::RemoteSummary,
         /// The op, so the toast's "Server output" link opens its Activity entry.
         #[ts(type = "number")]
@@ -144,7 +144,7 @@ fn forward_progress(bus: EventBus, op: OpId) -> (mpsc::UnboundedSender<String>, 
     forward_progress_to(bus, op, None)
 }
 
-// --- 2D T14: pull's fetch ---
+// --- pull's fetch ---
 /// `forward_progress`, also passing every line on to `also` (a write's Activity output).
 pub(crate) fn forward_progress_to(bus: EventBus, op: OpId, also: Option<mpsc::UnboundedSender<String>>) -> (mpsc::UnboundedSender<String>, tokio::task::JoinHandle<()>) {
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
@@ -166,7 +166,6 @@ pub(crate) fn forward_progress_to(bus: EventBus, op: OpId, also: Option<mpsc::Un
     });
     (tx, task)
 }
-// --- end 2D T14 ---
 
 fn is_empty_dir(p: &Path) -> bool {
     std::fs::read_dir(p).map(|mut d| d.next().is_none()).unwrap_or(false)
@@ -206,7 +205,7 @@ fn remove_failed_clone(dest: &Path, top: Option<&Path>) {
 }
 
 /// A clone or fetch whose credential prompt the user cancelled fails with an auth error; it's
-/// reported as cancelled. Only an auth error (2D T14 re-review m2): a later failure (a second key
+/// reported as cancelled. Only an auth error: a later failure (a second key
 /// authenticated, then the push was rejected) shows as itself. A prompt cancelled by "Use SSH
 /// instead" says which remotes to switch (`ErrorDetail::UseSsh`).
 pub(crate) fn user_cancelled(e: GbError, op: &OpEntry) -> GbError {
@@ -227,14 +226,14 @@ fn prompt_dismissed(e: &GbError, op: &OpEntry) -> bool {
 pub(crate) const NO_EXT: [&str; 2] = ["-c", "protocol.ext.allow=never"];
 
 
-/// The command as the activity log shows it (K101): `git` and its argv (no environment), through
+/// The command as the activity log shows it: `git` and its argv (no environment), through
 /// the redactor so a URL's credentials never reach the log.
 pub(crate) fn display_command(args: &[&str]) -> String {
     crate::redact::redact(&format!("git {}", args.join(" ")))
 }
 
 /// Notes on `op` the remotes it talks to (`names`, else every remote in `fetch --all`'s order),
-/// so a credential prompt can say which one it's about (spec §5.4). Only a user's op prompts.
+/// so a credential prompt can say which one it's about. Only a user's op prompts.
 pub(crate) fn note_op_remotes(op: &OpEntry, root: &Path, names: Option<&[String]>, direction: gix::remote::Direction) {
     if !op.interactive {
         return;
@@ -250,12 +249,12 @@ fn fetched(workdir: &Path, remote: Option<&String>) -> Vec<String> {
 }
 
 impl Api {
-    /// `git fetch --all` for repo `id` (spec §15), with git's own upkeep after it, as a plain `git fetch` (`git maintenance run --auto` repacks only when
-    /// git decides to; without it every fetch left one more pack behind; the user's call, 2026-10-05, over K28's
+    /// `git fetch --all` for repo `id`, with git's own upkeep after it, as a plain `git fetch` (`git maintenance run --auto` repacks only when
+    /// git decides to; without it every fetch left one more pack behind; the user's call, over the earlier
     /// hands-off rule). `background` fetches are GitVolt-started: they
     /// never prompt, and a credential prompt makes them `skipped: authRequired`.
     ///
-    /// Not behind the harness's write guard (§17.2), like a clone (2A final M2): neither touches
+    /// Not behind the harness's write guard, like a clone: neither touches
     /// the worktree, the index or a local branch (a fetch writes remote-tracking refs, a clone
     /// only a folder of its own), and the e2e specs open and clone repositories outside the
     /// marked fixture root.
@@ -300,16 +299,15 @@ impl Api {
         Ok(())
     }
 
-    /// `fetch`, of `remote` only when given (a remote just added, spec #4 §4 4A), else `--all`.
+    /// `fetch`, of `remote` only when given (a remote just added), else `--all`.
     pub(crate) async fn fetch_remote(&self, id: u32, background: bool, remote: Option<String>, mr_head: Option<crate::forge::MrHead>) -> Result<FetchOutcome, GbError> {
         let h = self.handle(id)?;
-        // MR round 2: an MR/PR's head is fetched from a named remote only.
+        // An MR/PR's head is fetched from a named remote only.
         let refspec = match (&remote, mr_head) {
             (Some(r), Some(m)) => Some(m.refspec(r)),
             (None, Some(_)) => return Err(GbError::new(GbErrorKind::InvalidInput, "Fetching a merge request's head needs its remote")),
             _ => None,
         };
-        // --- 4A T7 ---
         if let Some(r) = &remote {
             // A fresh read of the config: a remote added outside GitVolt counts too.
             let fresh = gix::open(&h.workdir).map_err(gix_err)?;
@@ -318,12 +316,11 @@ impl Api {
                 return Err(GbError::new(GbErrorKind::NotFound, format!("No remote {r}")));
             }
         }
-        // --- end 4A T7 ---
         let writes = self.repo_writes(&h);
         let op = self.ops.begin(OpKind::Fetch, Some(id), !background);
         note_op_remotes(&op, &h.workdir, remote.as_ref().map(std::slice::from_ref), gix::remote::Direction::Fetch);
-        // Spec #2 §3.6. A background fetch isn't a queue item: it runs only when the queue is
-        // idle, and a user op cancels it. A user's fetch is one (Deviation 8): it holds the
+        // A background fetch isn't a queue item: it runs only when the queue is
+        // idle, and a user op cancels it. A user's fetch is one: it holds the
         // running slot, never the write lock.
         let (_background, slot) = if background {
             match writes.queue.try_background(op.cancel.clone()) {
@@ -346,7 +343,7 @@ impl Api {
             // ran by hand (then `git merge FETCH_HEAD`) isn't replaced behind their back, and a
             // failed background fetch doesn't empty it (git ≥ 2.29; the minimum is 2.40).
             let fetch_head = background.then_some("--no-write-fetch-head");
-            // 4A T7: one remote (named last, after the options), or every remote.
+            // One remote (named last, after the options), or every remote.
             let target: Vec<&str> = match &remote { Some(r) => ["--end-of-options", r.as_str()].into_iter().chain(refspec.as_deref()).collect(), None => vec!["--all"] };
             let args: Vec<&str> = ["fetch", prune, "--no-prune-tags"].into_iter().chain(fetch_head).chain(["--progress"]).chain(target).collect();
             command = Some(display_command(&args));
@@ -357,7 +354,7 @@ impl Api {
                 .stream_stderr(tx)
                 .envs(self.net_env(op.id))
                 .env("GIT_NO_LAZY_FETCH", "0") // a network op may lazy-fetch (a clone's checkout needs it)
-                // Every queued user op cancels a background fetch (spec #2 §3.6): SIGTERM first,
+                // Every queued user op cancels a background fetch: SIGTERM first,
                 // so git drops its ref locks rather than leaving them for the next fetch.
                 .term_grace(crate::git::WRITE_TERM_GRACE);
             let mut out = self.cli.run(inv).await;
@@ -393,8 +390,8 @@ impl Api {
                 }
                 (OpOutcome::Ok, Ok(FetchOutcome::Done { changed, server, op: op.id }))
             }
-            // Cancelled by a user op (spec #2 §3.6): the next interval retries; nothing to show.
-            // Any other cancel of a background fetch (no UI offers one: it shows nowhere, K30)
+            // Cancelled by a user op: the next interval retries; nothing to show.
+            // Any other cancel of a background fetch (no UI offers one: it shows nowhere)
             // reports the same, since the token can't tell who cancelled it.
             Err(e) if background && e.kind == GbErrorKind::Cancelled && !op.prompt_cancelled() => (OpOutcome::Skipped, Ok(FetchOutcome::Skipped { reason: SkipReason::Busy })),
             Err(e) if e.kind == GbErrorKind::Cancelled || prompt_dismissed(&e, &op) => (OpOutcome::Cancelled, Err(user_cancelled(e, &op))),
@@ -415,7 +412,7 @@ impl Api {
         result
     }
 
-    /// `git clone` into `dest` (spec §13), then opens it. `dest` must be absolute and must not
+    /// `git clone` into `dest`, then opens it. `dest` must be absolute and must not
     /// exist, or be an empty directory. A failed or cancelled clone removes every folder it
     /// created (an existing empty one is emptied again, not removed).
     pub(crate) async fn clone_repo(&self, url: String, dest: String) -> Result<RepoSummary, GbError> {
@@ -503,7 +500,7 @@ mod tests {
         out
     }
 
-    /// 2D T14 re-review m2: a dismissed prompt makes only the auth failure a Cancel; a later
+    /// A dismissed prompt makes only the auth failure a Cancel; a later
     /// rejection (another key authenticated) shows as itself.
     #[test]
     fn only_an_auth_failure_after_a_dismissed_prompt_is_cancelled() {
@@ -516,7 +513,7 @@ mod tests {
         assert_eq!(user_cancelled(GbError::new(GbErrorKind::NonFastForward, "rejected"), &op).kind, GbErrorKind::NonFastForward);
         assert_eq!(user_cancelled(GbError::new(GbErrorKind::HookFailed, "pre-receive"), &op).kind, GbErrorKind::HookFailed);
         assert_eq!(user_cancelled(auth(), &op).detail, None, "a plain Cancel");
-        // "Use SSH instead" (spec §5.4): the Cancel says which remotes to switch, each once.
+        // "Use SSH instead": the Cancel says which remotes to switch, each once.
         let offer = crate::askpass::SshOffer { remote: "origin".into(), url: "git@gitlab.example.com:group/project.git".into() };
         op.note_ssh_switch(offer.clone());
         op.note_ssh_switch(offer.clone());
@@ -556,7 +553,6 @@ mod tests {
         assert!(parse_progress("fatal: unable to access 'x': 50% nonsense").is_none(), "not a progress phase");
     }
 
-    // --- MR round 2 ---
     #[tokio::test]
     async fn an_mr_head_is_fetched_into_a_ref_of_its_own_that_a_pruning_fetch_keeps() {
         use crate::forge::{ForgeKind, MrHead};
@@ -613,7 +609,6 @@ mod tests {
         assert!(refs.compare_heads.is_empty());
         assert!(refs.refs.iter().all(|x| !x.full_name.starts_with("refs/gitvolt/")));
     }
-    // --- end MR round 2 ---
 
     #[tokio::test]
     async fn fetch_reports_changes_and_emits_refs_updated_only_when_something_moved() {
@@ -639,7 +634,7 @@ mod tests {
         }
     }
 
-    /// Amendment 2: fetch writes remote-tracking refs and objects, never the working tree, the
+    /// Fetch writes remote-tracking refs and objects, never the working tree, the
     /// index, local branches or config.
     #[tokio::test]
     async fn fetch_never_touches_the_worktree_index_local_branches_or_config() {
@@ -709,7 +704,7 @@ mod tests {
         assert!(matches!(&e.detail, Some(crate::error::ErrorDetail::FetchFailed { remotes }) if remotes.len() == 1 && remotes[0].name == "gone"), "{e:?}");
     }
 
-    /// K30: `opStarted` says whether the op is the user's, so the UI can keep background ops out
+    /// `opStarted` says whether the op is the user's, so the UI can keep background ops out
     /// of sight (activity log only).
     #[tokio::test]
     async fn op_started_says_whether_the_op_is_interactive() {
@@ -740,7 +735,7 @@ mod tests {
         assert!(matches!(api.fetch(id, true).await.unwrap(), FetchOutcome::Done { .. }));
     }
 
-    /// Spec #2 §3.6: enqueuing a user op cancels a running background fetch, silently.
+    /// Enqueuing a user op cancels a running background fetch, silently.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_user_op_cancels_a_running_background_fetch() {
         let r = TestRepo::new();
@@ -776,7 +771,7 @@ mod tests {
         w.queue.turn(ticket).await.unwrap().finish(None, &[]);
     }
 
-    /// 2A final review I1: the cancel a user op sends a background fetch is a write's (SIGTERM,
+    /// The cancel a user op sends a background fetch is a write's (SIGTERM,
     /// then SIGKILL), so a fetch stopped inside its ref transaction leaves no `.lock` behind.
     #[cfg(unix)] // SIGTERM (Windows kills git, which can leave a .lock)
     #[tokio::test(flavor = "multi_thread")]
@@ -930,7 +925,7 @@ mod tests {
         assert!(retry.is_err(), "and fails the same way");
     }
 
-    /// `scripts/fake-ssh` (K96): an ssh stand-in that fails like a dead agent, asks a passphrase
+    /// `scripts/fake-ssh`: an ssh stand-in that fails like a dead agent, asks a passphrase
     /// through SSH_ASKPASS, or hangs.
     fn fake_ssh() -> String {
         crate::platform::fs::to_git_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../scripts/fake-ssh"))
@@ -950,7 +945,7 @@ mod tests {
         r.git(&["config", "ssh.variant", "simple"]);
     }
 
-    /// K96: what ssh gets from a fetch: our askpass for every prompt (`SSH_ASKPASS_REQUIRE=force`,
+    /// What ssh gets from a fetch: our askpass for every prompt (`SSH_ASKPASS_REQUIRE=force`,
     /// whatever DISPLAY says), git's askpass, git's own terminal prompt off, and no controlling
     /// terminal, so nothing can wait on a tty.
     #[tokio::test]
@@ -992,7 +987,7 @@ mod tests {
         }
     }
 
-    /// K96: a fetch whose ssh can't authenticate (the agent is gone) is an `AuthFailed` error
+    /// A fetch whose ssh can't authenticate (the agent is gone) is an `AuthFailed` error
     /// carrying ssh's own line, even with several remotes (git prints "Fetching <remote>" first),
     /// and its op finishes as failed with that message, for the activity log.
     #[tokio::test]
@@ -1012,7 +1007,7 @@ mod tests {
         assert_eq!(finished, Some((crate::events::OpOutcome::Failed, Some("fake: Permission denied (publickey).".into()))));
     }
 
-    /// K96 review: what a failed fetch carries to the toast (its error) and to the activity log
+    /// What a failed fetch carries to the toast (its error) and to the activity log
     /// (`opFinished`'s message) never has a URL's password, ssh included.
     #[tokio::test]
     async fn a_failed_fetchs_error_and_activity_message_are_redacted() {
@@ -1032,7 +1027,7 @@ mod tests {
         assert_eq!(messages, vec!["repository 'ssh://***@fake/x' not found".to_string()]);
     }
 
-    /// K101: a finished fetch carries the git command that ran, and a credentialed URL in a clone's is redacted.
+    /// A finished fetch carries the git command that ran, and a credentialed URL in a clone's is redacted.
     #[tokio::test]
     async fn an_op_records_its_command_redacted() {
         let r = TestRepo::new();
@@ -1051,7 +1046,7 @@ mod tests {
         assert!(c.starts_with("git clone") && !c.contains("hunter2"), "{c}");
     }
 
-    /// K96: a fetch stuck on a remote that never answers runs until cancelled, and a cancel
+    /// A fetch stuck on a remote that never answers runs until cancelled, and a cancel
     /// kills it (ssh included) at once.
     #[tokio::test]
     async fn a_stuck_fetch_is_cancelled() {
@@ -1186,7 +1181,7 @@ mod tests {
         assert!(!marker.exists(), "the ext:: command never ran");
     }
 
-    /// Spec #2 §12.4: a plain fetch's server lines are only git's pack meters: stored, not counted.
+    /// A plain fetch's server lines are only git's pack meters: stored, not counted.
     #[tokio::test]
     async fn a_plain_fetch_counts_no_server_output() {
         let r = TestRepo::new();
@@ -1359,7 +1354,7 @@ mod tests {
         .expect("the fetch reached the remote");
     }
 
-    /// A branch created from a menu while a fetch runs: a write the queue runs (spec #2 §3.6).
+    /// A branch created from a menu while a fetch runs: a write the queue runs.
     async fn create_branch(api: &Api, r: &TestRepo, id: u32, name: &str) -> Result<serde_json::Value, GbError> {
         let head = r.git(&["rev-parse", "HEAD"]);
         let params = serde_json::json!({"repo": id, "worktree": crate::write::test_support::wt(r.path()), "name": name, "start": head, "checkout": false});

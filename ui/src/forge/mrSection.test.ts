@@ -10,7 +10,7 @@ const { mrOf, projectOf } = await import('./testMrs');
 
 const list = (filter: 'all' | 'mine', mrs = [mrOf(12, { title: 'Dev work' })]) => ({ kind: 'gitlab' as const, remote: 'origin', project: projectOf(), filter, mrs, fetchedAt: 1, pollIntervalSecs: null });
 
-describe('the MR/PR section (spec #4 §2 "MR/PR list")', () => {
+describe('the MR/PR section', () => {
   it('exists only with a forge target, its rows named by reference and title', () => {
     expect(mrSection({ ...EMPTY_FORGE })).toBeNull();
     const s = mrSection({ ...EMPTY_FORGE, kind: 'gitlab', list: list('all') })!;

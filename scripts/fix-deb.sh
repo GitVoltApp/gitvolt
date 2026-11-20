@@ -2,7 +2,7 @@
 # Usage: scripts/fix-deb.sh <package.deb>
 #
 # The v3-alpha Tauri CLI always declares `Depends: libgtk-3-0` (tauri-cli 3.0.0-alpha.3 to alpha.5,
-# src/runtime/mod.rs:65-80), but the CEF runtime links GTK 4 (spec §18). This rewrites only the
+# src/runtime/mod.rs:65-80), but the CEF runtime links GTK 4. This rewrites only the
 # package's control member:
 #   Depends = what dpkg-shlibdeps finds for every shipped ELF file
 #           + tauri.conf.json's extra deps (libgtk-4-1, git), minus libgtk-3-0

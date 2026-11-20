@@ -1,5 +1,5 @@
 /**
- * The line "Open in…" opens a diffed file at (H9): the first line of `modified` that differs
+ * The line "Open in…" opens a diffed file at: the first line of `modified` that differs
  * from `original` (1-based), or `null` when they're the same. A change past `modified`'s end
  * (only lines removed at the end) gives its last line. A plain line compare, not Monaco's diff:
  * enough to land the editor on the first change.

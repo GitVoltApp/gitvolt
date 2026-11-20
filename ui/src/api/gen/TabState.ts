@@ -11,9 +11,9 @@ path: string | null,
  */
 alias: string | null, 
 /**
- * The tab's active worktree (spec #2 §11.2); `None`: the repository's main worktree. A
- * profile saved before 2C has none, and `path` may be a linked worktree's: opening the tab
+ * The tab's active worktree; `None`: the repository's main worktree. A
+ * profile saved before worktree tabs has none, and `path` may be a linked worktree's: opening the tab
  * rewrites it to the repository's path and this worktree. Optional in TypeScript too: a tab
- * made before 2C has none.
+ * made before then has none.
  */
 worktree?: string | null, };

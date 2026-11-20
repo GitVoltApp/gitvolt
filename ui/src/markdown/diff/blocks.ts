@@ -5,7 +5,7 @@ import { htmlDepth } from '../chunks';
 /**
  * One alignable unit of a flow (the document, a blockquote, a list item, or a list's items and a
  * table's rows): one block, or the run of blocks an HTML block holds open (`<details>` …
- * `</details>`), which renders whole or not at all (R13).
+ * `</details>`), which renders whole or not at all.
  */
 export interface Unit { nodes: RootContent[]; kind: string; key: string; text: string; chars: number }
 
@@ -28,13 +28,13 @@ export const CONTAIN_MIN_WORDS = 4;
 /** A block of at most this many words is short: too few for `similarity` or `containment` to
  * judge, so short blocks of one kind and level pair by `looselyAlike` instead. */
 export const SHORT_WORDS = 3;
-/** Longer blocks never word-diff: they show as removed and added (R14). */
+/** Longer blocks never word-diff: they show as removed and added. */
 export const WORD_DIFF_MAX_CHARS = 10_000;
-/** The whole rendered diff (alignment, pairing, word and line diffs) gives up after this long
- * (R14): the view falls back to Source. */
+/** The whole rendered diff (alignment, pairing, word and line diffs) gives up after this long:
+ * the view falls back to Source. */
 export const ALIGN_TIMEOUT_MS = 1_500;
 
-/** Thrown when the diff's one deadline has passed (R14). */
+/** Thrown when the diff's one deadline has passed. */
 export class GaveUp extends Error {
   constructor() { super('the rendered diff ran out of time'); }
 }
@@ -71,7 +71,7 @@ function canon(n: Nodes): unknown[] {
   return out;
 }
 
-/** The blocks' identity for alignment (R5): structure and text, without positions, heading ids
+/** The blocks' identity for alignment: structure and text, without positions, heading ids
  * (`data`), list tightness (`spread`) or whitespace that doesn't render; code keeps its
  * whitespace except at line ends. */
 export const blockKey = (nodes: readonly Nodes[]): string => JSON.stringify(nodes.map(canon));
@@ -206,7 +206,7 @@ function pairGap(old: readonly Unit[], neu: readonly Unit[], deadline: number): 
 
 /** Two flows lined up (spec: LCS on normalized block text, by Myers' diff over `blockKey`s), each
  * gap's units paired by `pairGap`. `null`: it ran past `deadline` (a `Date.now()` time: the
- * whole diff's one deadline, R14). */
+ * whole diff's one deadline). */
 export function alignUnits(old: readonly Unit[], neu: readonly Unit[], deadline = Date.now() + ALIGN_TIMEOUT_MS): Op[] | null {
   try {
     return align(old, neu, deadline);

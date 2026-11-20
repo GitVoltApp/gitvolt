@@ -7,7 +7,7 @@ export interface Rect { left: number; right: number; top: number; bottom: number
  * Top-left for a menu opened at (x, y): flipped left when it would leave the viewport's right
  * edge; too tall to fit below the pointer, it still opens downward but shifts up just enough, so
  * its first rows (the likeliest picks) stay by the pointer rather than at the far end of a menu
- * flipped above it. A menu dropped from a button (`anchor`, K70) flips by the button instead:
+ * flipped above it. A menu dropped from a button (`anchor`) flips by the button instead:
  * right-aligned to its right edge, or opening upward from its top, so it stays under/over the
  * button rather than mirroring around its left corner.
  */

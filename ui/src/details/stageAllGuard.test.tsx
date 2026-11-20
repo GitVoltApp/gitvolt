@@ -26,7 +26,7 @@ const show = (s: FileSection[]) => render(<RepoViewContext value={createRepoView
 
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
-describe('Stage all with conflicts (spec #2 §7.1)', () => {
+describe('Stage all with conflicts', () => {
   it('names the other unstaged paths while files are conflicted, so none is marked resolved', () => {
     show(sections(file('a.txt'), file('c.txt', { status: 'U', conflict: 'bothModified' })));
     fireEvent.click(screen.getByRole('button', { name: 'Stage all' }));

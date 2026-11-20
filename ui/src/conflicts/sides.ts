@@ -3,7 +3,7 @@ import type { GraphPayload } from '../api/gen/GraphPayload';
 import type { InProgress } from '../api/gen/InProgress';
 
 /**
- * UX round 2: conflicts are worded in the merge tool's own terms, current and incoming (named by
+ * Conflicts are worded in the merge tool's own terms, current and incoming (named by
  * branch when known, as its pane titles are), never git's "us" and "them".
  *
  * Git's "us" is the index's stage 2, HEAD: the commit being built on. That's the merge tool's

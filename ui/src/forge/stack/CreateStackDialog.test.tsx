@@ -17,7 +17,7 @@ const mr = (number: number, source: string, target: string, state: ForgeMr['stat
 });
 const stack = { branches: ['feature/a', 'feature/b'], base: 'refs/remotes/origin/main', leftBehind: [] };
 
-describe('Create stack MRs (spec #4 §4 4D)', () => {
+describe('Create stack MRs', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     createMr.mockReset();

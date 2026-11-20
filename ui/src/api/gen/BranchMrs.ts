@@ -9,7 +9,7 @@ export type BranchMrs = { kind: ForgeKind, remote: string,
 mrs: Array<RefMr>, 
 /**
  * Merged or closed MRs/PRs the lookups found whose ref moved on since (or whose tip isn't
- * known: its branch is gone here): no badge, but 4D's stack walk and after-merge flow read
+ * known: its branch is gone here): no badge, but the stack walk and after-merge flow read
  * them (a stack's merged bottom whose branch was deleted after the merge).
  */
 history: Array<RefMr>, fetchedAt: number, pollIntervalSecs: number | null, };

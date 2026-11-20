@@ -14,12 +14,12 @@ const BELL_ROWS = 20;
 const BELL_LABEL = 80;
 
 /** The bell's menu: "Updated to GitVolt …" after an update (it opens What's new), then the
- * background error history, newest first (spec §16.1). An error row copies its message; its
+ * background error history, newest first. An error row copies its message; its
  * tooltip has the time and the whole message. */
 function bellRows(): MenuRow[] {
   const { errors } = useOps.getState();
   const { notice } = useWhatsNew.getState();
-  // K96: the activity log (every finished fetch and clone, with git's message) is one step away.
+  // The activity log (every finished fetch and clone, with git's message) is one step away.
   const activity: MenuRow = { kind: 'action', id: 'bell.activity', label: 'Activity log…', icon: History, tooltip: 'Every finished fetch and clone, background ones included', run: openActivityLog };
   const updated: MenuRow[] = notice ? [{
     kind: 'action', id: 'bell.whatsNew', label: `Updated to GitVolt ${notice.version} — see what's new`, icon: Sparkles,

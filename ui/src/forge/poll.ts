@@ -31,7 +31,7 @@ const fetchIntervalMs = () => clampFetchInterval(useAppState.getState().settings
 
 const touch = (tabId: string, number: number) => forgeScratch.freshAt.set(`${tabId}:${number}`, Date.now());
 
-/** The visible MRs/PRs whose pipeline runs (spec #4 §3.4's fast poll): the open MR/PR's, and the
+/** The visible MRs/PRs whose pipeline runs (the fast poll): the open MR/PR's, and the
  * list's while the sidebar's MR/PR section is expanded (`listShown`), as `<number>:<head>`. A
  * pending one doesn't count. */
 export function runningShown(f: TabForge, listShown: boolean): string[] {
@@ -105,7 +105,7 @@ const failed = (tabId: string, number: number, e: unknown) => {
 const polling = new Map<string, Promise<PollOutcome>>();
 
 /**
- * One poll of a tab (spec #4 §3.4; `createForgePoller` decides when):
+ * One poll of a tab (`createForgePoller` decides when):
  * - except `fast`: the repo's target project (asked of the forges again on `activate`), the
  *   badges (`forgeBranchMrs` with the local branches' upstreams);
  * - always: the sidebar section's list, and the MR/PR open in the flyout;
@@ -267,7 +267,7 @@ export async function refreshMr(tabId: string, number: number): Promise<void> {
   }
 }
 
-/** The tab's review session, now (spec §1 "Refreshes"): the user's drafts every time, the diff's
+/** The tab's review session, now: the user's drafts every time, the diff's
  * refs and commentable lines once per set of refs (the author pushed, or the target branch
  * changed: read again). Never throws: a
  * failure is the session's `error`, what's shown stays (a diff that fails keeps the last refs and
@@ -364,8 +364,8 @@ export function loadMrDetail(tabId: string, number: number, maxAgeMs = DETAIL_MA
   return p;
 }
 
-/** The MR/PR view (spec #4 §4 "4B"): the tab's flyout. The view loads the MR/PR as it mounts.
- * Spec #5 §3.4: a navigation place, recorded first (the view being left saves its scroll);
+/** The MR/PR view: the tab's flyout. The view loads the MR/PR as it mounts.
+ * A navigation place, recorded first (the view being left saves its scroll);
  * `replace` (the sidebar list's arrow keys) swaps the current MR/PR place instead of adding one. */
 export function openMrView(tabId: string, number: number, how: 'push' | 'replace' = 'push'): void {
   // Already open on this MR: keep it as it is (opening it again would remount the view and load

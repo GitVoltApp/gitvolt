@@ -1,5 +1,5 @@
-//! The GitHub provider's create half against the fake forge (plan 4C): POST /pulls, then the
-//! follow-up calls, each failure explicit (spec #4 §3.5).
+//! The GitHub provider's create half against the fake forge: POST /pulls, then the
+//! follow-up calls, each failure explicit.
 
 use gitvolt_core::error::GbErrorKind;
 use gitvolt_core::forge::*;

@@ -1,5 +1,5 @@
 //! The whole forge stack through the harness's `Api`: real providers, the fake forge, a file
-//! token store in the harness's temp dir (spec #4 §7).
+//! token store in the harness's temp dir.
 
 use gitvolt_core::api::{Api, Request};
 use gitvolt_core::error::GbError;

@@ -18,7 +18,7 @@ beforeEach(() => {
   toast().dismiss();
 });
 
-describe('the create outcome (spec #4 §3.5)', () => {
+describe('the create outcome', () => {
   it('a clean create says so and links to it', () => {
     showCreated(c, []);
     expect(toast().message).toBe('Created #45');

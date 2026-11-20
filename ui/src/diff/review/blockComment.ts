@@ -1,8 +1,8 @@
 import type { Action } from '../../app/actions';
 
 /**
- * Review comments (spec 2026-10-08 §3): while a review's rendered Markdown diff shows, the
- * comment key (Plan 2's Mod+Alt+C) comments on a block there (`RenderedReview` sets it), not on
+ * Review comments: while a review's rendered Markdown diff shows, the
+ * comment key (Mod+Alt+C) comments on a block there (`RenderedReview` sets it), not on
  * the line of the editor Diff View keeps attached, hidden, underneath. One at a time, as
  * `setChangeStepper`: a view in a background tab has no effects, so it sets none.
  */

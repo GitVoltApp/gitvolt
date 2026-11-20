@@ -7,7 +7,7 @@ import { anchorNow } from './menus';
 const env = { write: { tabId: 't', repoId: 1, worktree: '/r' }, sidebar: { locals: [{ name: 'x', fullName: 'refs/heads/x', target: 'aaa', upstream: null, gone: false, checkedOut: null }], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} }, activeWorktree: '/r', worktreeShown: (p: string) => p, headBranch: 'main', headSha: 'zzz', labelsAt: () => [], inProgress: null } as unknown as MenuEnv;
 const ids = (t: CommitTarget) => buildMenu('commit', t, env).flatMap((r) => (r.kind === 'action' ? [r.id] : []));
 
-describe('branch rows (spec #2 §14)', () => {
+describe('branch rows', () => {
   it('a local branch label gets Create branch here, Set upstream, Rename and Delete', () => {
     const t: CommitTarget = { sha: 'aaa', mrRefs: [], isWip: false, isStash: false, branch: { name: 'x', local: 'refs/heads/x', remotes: [] } };
     expect(ids(t)).toEqual(expect.arrayContaining(['branch.createHere', 'branch.setUpstream', 'branch.rename', 'branch.delete']));

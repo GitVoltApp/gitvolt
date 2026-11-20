@@ -6,6 +6,6 @@ export type StackedBranch = {
  */
 name: string, 
 /**
- * Checked out in another worktree: git doesn't move it, and the dialog says so (§13.1).
+ * Checked out in another worktree: git doesn't move it, and the dialog says so.
  */
 worktree: string | null, };

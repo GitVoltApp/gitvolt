@@ -1,8 +1,8 @@
-/* The context menu (spec §7): one element, filled and placed on open. */
+/* The context menu: one element, filled and placed on open. */
 .ctx-menu { position: fixed; z-index: 900; min-width: 220px; padding: 4px 0; box-sizing: border-box; background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 6px; box-shadow: 0 6px 20px var(--shadow-popup); color: var(--text-normal); font-size: 13px; outline: none; user-select: none; }
 .ctx-menu[hidden] { display: none; }
 .ctx-level:not([data-depth="0"]) { position: fixed; z-index: 901; min-width: 200px; padding: 4px 0; box-sizing: border-box; background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 6px; box-shadow: 0 6px 20px var(--shadow-popup); }
-/* Hover/active background fades at the fast token (50ms ease-in, J19). */
+/* Hover/active background fades at the fast token (50ms ease-in). */
 .ctx-row { position: relative; display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px 0 10px; cursor: default; white-space: nowrap; transition: background-color var(--motion-fast); }
 .ctx-row[data-active="true"] { background: var(--selected-row); color: var(--text-selected); }
 .ctx-row[aria-disabled="true"] { color: var(--text-disabled); }
@@ -15,7 +15,7 @@
 .ctx-swatch { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 .ctx-shortcut { color: var(--text-secondary); font-size: 11px; margin-left: 16px; }
 .ctx-chevron { flex: none; color: var(--text-secondary); }
-/* K25: a real button group, no gap between siblings (a gap is dead space the pointer crosses,
+/* A real button group, no gap between siblings (a gap is dead space the pointer crosses,
    during which the tooltip briefly falls back to the row's — see ContextMenu.tsx's variant
    pointerLeave). The group is rounded as one; adjacent buttons share a 1px divider instead. */
 .ctx-variants { display: flex; margin-left: 12px; border-radius: 3px; overflow: hidden; }
@@ -27,13 +27,13 @@
 .ctx-header-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--section-border); }
 .ctx-header-detail { margin-left: auto; font-family: var(--font-mono, monospace); font-size: 11px; }
 .ctx-sep { height: 1px; margin: 4px 0; background: var(--section-border); }
-/* An armed row (spec §ui confirms, board A): its label swaps to what a second pick does, over the
+/* An armed row: its label swaps to what a second pick does, over the
    row's own space; tinted red or green with a border (the round-1 button language). */
 .ctx-armed-label { position: absolute; left: 2px; top: 1px; bottom: 1px; min-width: calc(100% - 4px); width: max-content; display: flex; align-items: center; gap: 8px; padding: 0 8px; box-sizing: border-box; border: 1px solid var(--arm); border-radius: 4px; background: color-mix(in srgb, var(--arm) 22%, var(--panel-bg1)); color: color-mix(in srgb, var(--arm) 35%, var(--text-selected)); font-weight: 600; white-space: nowrap; box-shadow: 0 2px 8px var(--shadow-popup); }
 .ctx-armed-label.tone-danger { --arm: var(--red); }
 .ctx-armed-label.tone-positive { --arm: var(--green); }
 .ctx-armed-label.tone-warn { --arm: var(--orange); }
-/* An armed row's option (board A, "Also move 2 stacked branches"): a checkbox row right under it.
+/* An armed row's option ("Also move 2 stacked branches"): a checkbox row right under it.
    It takes the menu's width without widening it (width 0, min-width 100%): a long list wraps. */
 .ctx-arm-option { display: flex; align-items: flex-start; gap: 8px; width: 0; min-width: 100%; box-sizing: border-box; padding: 4px 8px 5px 12px; cursor: default; white-space: normal; line-height: 1.35; color: var(--text-normal); }
 .ctx-arm-option:hover, .ctx-arm-option[data-active="true"] { background: var(--hover-row); color: var(--text-selected); }

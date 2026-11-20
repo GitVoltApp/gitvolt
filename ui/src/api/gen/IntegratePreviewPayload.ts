@@ -7,12 +7,12 @@ export type IntegratePreviewPayload = {
  */
 ahead: number, behind: number, 
 /**
- * The target is already in HEAD: "Merge Y into X" isn't offered (§13.1).
+ * The target is already in HEAD: "Merge Y into X" isn't offered.
  */
 merged: boolean, 
 /**
  * Paths a merge of HEAD and the target would conflict in (gix, in memory). For a rebase it's
- * the same three-way preview, an approximation (Deviation 9).
+ * the same three-way preview, an approximation.
  */
 conflicts: Array<string>, 
 /**
@@ -24,7 +24,7 @@ stacked: Array<StackedBranch>,
  */
 updateRefsDefault: boolean, 
 /**
- * Rebase only: why it would be refused, before the user presses Rebase (review N4): a merge
+ * Rebase only: why it would be refused, before the user presses Rebase: a merge
  * commit with changes of its own, which a rebase would drop.
  */
 lossyMerge: string | null, };

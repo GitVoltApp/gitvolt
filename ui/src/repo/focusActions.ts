@@ -17,7 +17,7 @@ const off = registerActions([
   {
     id: 'view.focusSidebar', label: 'Focus the sidebar', group: 'View', icon: PanelLeft, tooltip: 'Put the keyboard in the sidebar', shortcuts: [zoneKey(1)], menu: false,
     when: () => { const t = activeTab(); return !!store() && !!t && !sidebarHidden(t.id); },
-    // From its icon strip, or over a file view (UX R2.3), it expands first, as Filter sidebar does.
+    // From its icon strip, or over a file view, it expands first, as Filter sidebar does.
     run: () => {
       const t = activeTab();
       if (!t) return;

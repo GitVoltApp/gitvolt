@@ -28,7 +28,7 @@ const parseRaw = (rehypeRaw as unknown as () => (tree: HastRoot) => HastRoot)();
 const hasRaw = (nodes: readonly ElementContent[]): boolean =>
   nodes.some((n) => n.type === 'raw' || (n.type === 'element' && hasRaw(n.children)));
 
-/** A diff wrapper's content with its raw HTML parsed on its own (5C): a stray closing tag in it
+/** A diff wrapper's content with its raw HTML parsed on its own: a stray closing tag in it
  * (a removed block starting with `</div>`) can't close the wrapper, and the wrapper closes
  * whatever the HTML leaves open. */
 function isolated(children: ElementContent[]): ElementContent[] {
@@ -55,9 +55,9 @@ type State = Parameters<typeof defaultHandlers.code>[0];
 type ListParent = Parameters<typeof defaultHandlers.listItem>[2];
 type RowParent = Parameters<typeof defaultHandlers.tableRow>[2];
 
-/** mdast → sanitized hast (spec §3.1): raw HTML becomes real nodes (rehype-raw), headings get
+/** mdast → sanitized hast: raw HTML becomes real nodes (rehype-raw), headings get
  * ids, then rehype-sanitize (`MD_SCHEMA`), the data-URL pass and the task-input pass. A `reference`
- * node becomes a `span` carrying this call's nonce (ruling 3). A rendered diff's marks (5C, R17)
+ * node becomes a `span` carrying this call's nonce. A rendered diff's marks
  * become `data-gb-diff` / `data-gb-lines` / `data-gb-note` attributes carrying the same nonce: the document's own
  * HTML can't forge one. The input tree isn't changed. */
 export function toSafeHast(tree: Root): SafeHast {
@@ -70,7 +70,7 @@ export function toSafeHast(tree: Root): SafeHast {
   };
   const wrap = (tagName: 'div' | 'span', mark: string, state: State, node: DiffBlockNode | DiffPairNode | DiffInsNode | DiffDelNode | SplitCellNode): Element =>
     ({ type: 'element', tagName, properties: { dataGbDiff: tag(mark) }, children: isolated(state.all(node) as ElementContent[]) });
-  // Review comments (spec 2026-10-08 §3): a block's source lines (`gbSrc`) as `data-gb-src`,
+  // Review comments: a block's source lines (`gbSrc`) as `data-gb-src`,
   // carrying the nonce. In the split view a cell shows its own side's lines only (`column`).
   let column: 'old' | 'new' | null = null;
   const span = (r: readonly [number, number] | null) => (r ? `${r[0]}-${r[1]}` : '');
@@ -91,7 +91,7 @@ export function toSafeHast(tree: Root): SafeHast {
     diffPair: (state: State, node: DiffPairNode) => src(node, wrap('div', 'pair', state, node)),
     diffIns: (state: State, node: DiffInsNode) => wrap('span', 'ins', state, node),
     diffDel: (state: State, node: DiffDelNode) => wrap('span', 'del', state, node),
-    // The split view (5C): a row's cells, each one's HTML parsed on its own.
+    // The split view: a row's cells, each one's HTML parsed on its own.
     splitRow: (state: State, node: SplitRowNode): Element =>
       ({ type: 'element', tagName: 'div', properties: { dataGbDiff: tag(`row:${node.mark ?? 'same'}${node.joined ? ':joined' : ''}`) }, children: state.all(node) as ElementContent[] }),
     splitCell: (state: State, node: SplitCellNode) => {
@@ -163,19 +163,19 @@ const size = (v: unknown): number | undefined => {
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 
-/** 5C: a rendered diff's old side, which its removed parts (and in `split`, its whole left
+/** A rendered diff's old side, which its removed parts (and in `split`, its whole left
  * column) resolve against. `split`: show it side by side (`splitTree`). */
 export interface DiffRender { old: MarkdownContext; split?: boolean }
 
 const MARK_LABEL: Record<string, string> = { added: 'Added', removed: 'Removed', changed: 'Changed' };
 const isMark = (m: string) => Object.hasOwn(MARK_LABEL, m);
 const LINE_MARKS = /^[ +-]*$/;
-/** A review comment's suggestion fence (spec 2026-10-08): GitHub's `suggestion`, GitLab's
+/** A review comment's suggestion fence: GitHub's `suggestion`, GitLab's
  * `suggestion:-N+M` (the lines above and below the commented one it replaces). */
 const SUGGESTION_LANG = /^suggestion(?::-\d+\+\d+)?$/;
 const WORD_MARKS = /^[\d,;-]*$/;
 
-/** A link, image or reference inside a removed part resolves on the old side (R7, R9). */
+/** A link, image or reference inside a removed part resolves on the old side. */
 function SidedLink(p: MdLinkProps) {
   const over = useContext(MdContextOverride);
   return <MdLink {...p} ctx={over ?? p.ctx} />;
@@ -189,7 +189,7 @@ function SidedReference(p: MdReferenceProps) {
   return <MdReference {...p} ctx={over ?? p.ctx} />;
 }
 
-/** Review comments (spec 2026-10-08 §3): a block's source lines from its nonce-checked
+/** Review comments: a block's source lines from its nonce-checked
  * `data-gb-src` ("<id>:<new from-to>:<old from-to>", one side empty at most). */
 interface BlockSrc { id: number; new: string | null; old: string | null }
 const SRC = /^(\d+):(\d+-\d+)?:(\d+-\d+)?$/;
@@ -200,7 +200,7 @@ const slotOf = (s: BlockSrc | null): ReactNode => (s ? <BlockSlot id={s.id} side
 /** The block tags with no override of their own: they get one that carries the lines. */
 const SOURCED = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'hr'] as const;
 
-/** The element overrides (spec §3.1's table). With `diff` (5C), marks carrying `nonce` render as
+/** The element overrides (a table). With `diff`, marks carrying `nonce` render as
  * the diff's wrappers; without it, and for any other value, they're dropped. */
 export function componentsFor(ctx: MarkdownContext, refs: MdReferenceNode[], nonce: string, diff?: DiffRender): Components {
   const markOf = (v: unknown): string | null => (diff && typeof v === 'string' && v.startsWith(`${nonce}:`) ? v.slice(nonce.length + 1) : null);
@@ -311,7 +311,7 @@ export function componentsFor(ctx: MarkdownContext, refs: MdReferenceNode[], non
   };
 }
 
-/** The tree as React elements (never an HTML string). `diff` (5C): render its diff marks, with
+/** The tree as React elements (never an HTML string). `diff`: render its diff marks, with
  * removed parts resolving on `diff.old`; `diff.split`: side by side, in rows. */
 export function renderTree(tree: Root, ctx: MarkdownContext, diff?: DiffRender): ReactNode {
   const { hast, refs, nonce } = toSafeHast(diff?.split ? splitTree(tree) : tree);

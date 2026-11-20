@@ -1,4 +1,4 @@
-//! Branches (spec #2 §9.1): create (a gix CAS, the upstream per `branch.autoSetupMerge`, then an
+//! Branches: create (a gix CAS, the upstream per `branch.autoSetupMerge`, then an
 //! optional switch), rename (always `git branch -m`, which keeps the reflog and moves
 //! `branch.<name>`), and set upstream (not journaled).
 
@@ -23,7 +23,7 @@ fn parse_oid(oid: &str) -> Result<gix::ObjectId, GbError> {
 }
 
 /// `branch.autoSetupMerge` (a read): `true` or unset tracks remote-tracking starts, `always`
-/// local ones too, `false` never (§9.1).
+/// local ones too, `false` never.
 async fn upstream_for(cx: &WriteCx<'_>, start_ref: Option<&str>) -> Result<Option<String>, GbError> {
     let Some(start) = start_ref else { return Ok(None) };
     let out = cx.api.cli.run(GitInvocation::new(cx.root, ["config", "--get", "branch.autoSetupMerge"])).await;
@@ -55,7 +55,7 @@ impl WriteIntent for CreateBranch {
     fn label(&self) -> String {
         format!("create branch {}", self.name)
     }
-    /// Checked out: undo switches back, then deletes it (§5.3's checkout row).
+    /// Checked out: undo switches back, then deletes it.
     fn undo(&self) -> Option<UndoKind> {
         Some(if self.checkout { UndoKind::Switch } else { UndoKind::MoveRefs })
     }
@@ -85,17 +85,15 @@ impl WriteIntent for CreateBranch {
         if !repo.find_object(target).is_ok_and(|o| o.kind == gix::object::Kind::Commit) {
             return Err(GbError::new(GbErrorKind::InvalidInput, format!("{} isn't a commit in this repository", self.start)));
         }
-        // §6.1: a checkout that moves the worktree autostashes on overlap.
+        // A checkout that moves the worktree autostashes on overlap.
         let moves_tree = self.checkout && pre.before.head.oid.as_deref() != Some(self.start.as_str());
-        // --- 2C repo-safety ---
         // The `git switch` is a two-way move from HEAD to the start: one that writes a file where
-        // a populated submodule or an embedded clone sits deletes it whole (safety review 2 N1),
-        // refused first; the same check says what the move sweeps away (M1, M2).
+        // a populated submodule or an embedded clone sits deletes it whole,
+        // refused first; the same check says what the move sweeps away.
         let (mut rule, mut moved) = (AutostashRule::Overlap, None);
         if moves_tree && let Some(head) = pre.before.head.oid.as_deref().and_then(|h| gix::ObjectId::from_hex(h.as_bytes()).ok()) {
             (rule, moved) = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, head, target, "checkout").await?.into_rule(rule);
         }
-        // --- end 2C repo-safety ---
         let autostash = moves_tree.then(|| AutostashSpec { rule, target: Some(target), op: format!("checkout {}", self.name), target_name: Some(self.name.clone()), moved });
         Ok(Plan { autostash, ..Plan::default() })
     }
@@ -118,8 +116,8 @@ impl WriteIntent for CreateBranch {
             for k in [ChangeKind::Head, ChangeKind::Index, ChangeKind::Worktree] {
                 cx.touch(k);
             }
-            // A failed or cancelled switch puts back the files it rewrote, as a checkout's does
-            // (2C final I2), so the autostash comes back onto the tree the user left.
+            // A failed or cancelled switch puts back the files it rewrote, as a checkout's does,
+            // so the autostash comes back onto the tree the user left.
             crate::write::checkout::failed_move(cx, res, &self.start).await?;
         }
         Ok(())
@@ -206,7 +204,7 @@ impl WriteIntent for SetUpstream {
     fn label(&self) -> String {
         format!("set upstream of {}", self.branch)
     }
-    /// §5.3 "Not journaled".
+    /// Not journaled.
     fn undo(&self) -> Option<UndoKind> {
         None
     }
@@ -247,7 +245,7 @@ impl WriteIntent for SetUpstream {
             let inv = cx.git(["branch", &format!("--set-upstream-to={tracking}"), "--", self.branch.as_str()]);
             cx.run_git(inv).await?;
         } else {
-            // A branch the next push creates (§9.1).
+            // A branch the next push creates.
             let (remote_key, merge_key) = (format!("branch.{}.remote", self.branch), format!("branch.{}.merge", self.branch));
             let merge = format!("refs/heads/{}", up.branch);
             let inv = cx.git(["config", "--local", remote_key.as_str(), up.remote.as_str()]);
@@ -494,7 +492,6 @@ mod tests {
         assert!(r.try_git(&["config", "branch.feature/login.pushRemote"]).is_err());
     }
 
-    // --- 2C repo-safety (safety review 2 N1) ---
 
     /// A repository to clone from, with one commit.
     fn upstream() -> TestRepo {
@@ -523,7 +520,7 @@ mod tests {
         json!({"method": "createBranch", "params": {"repo": id, "worktree": wt(r), "name": name, "start": start, "checkout": true, "expect": {"refs": {format!("refs/heads/{name}"): null}}}})
     }
 
-    /// R5: on `b`, whose gitlink `sm` is a clean populated clone, creating `c` from `a` (the
+    /// On `b`, whose gitlink `sm` is a clean populated clone, creating `c` from `a` (the
     /// file `sm`) and checking it out would delete the clone whole: refused, nothing changed.
     #[tokio::test(flavor = "multi_thread")]
     async fn create_with_checkout_never_deletes_a_clean_submodule_where_the_start_has_a_file() {
@@ -552,7 +549,7 @@ mod tests {
         assert!(r.try_git(&["rev-parse", "--verify", "refs/heads/c"]).is_err(), "no branch was made");
     }
 
-    /// R5d: an ignored clone at `lib/inner`, where the start commit has the file `lib`: git
+    /// An ignored clone at `lib/inner`, where the start commit has the file `lib`: git
     /// would delete it without a word (ignored files are expendable to it): refused.
     #[tokio::test(flavor = "multi_thread")]
     async fn create_with_checkout_never_deletes_an_ignored_clone_under_a_folder_the_start_replaces() {
@@ -578,5 +575,4 @@ mod tests {
         assert_eq!(RepoState::capture(&r), shown);
         assert!(r.path().join("lib/inner/.git").is_dir());
     }
-    // --- end 2C repo-safety ---
 }

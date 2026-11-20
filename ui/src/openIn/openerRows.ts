@@ -7,7 +7,7 @@ import type { MenuRow } from '../menu/types';
 // Pure (no API client, no stores): what an "Open in…" entry looks like, shared by the diff
 // header's Open in button (OpenInMenu) and the file menu's Open in ▸ submenu.
 
-/** The last used, else VS Code (spec §14.5), else the first editor, else the file manager, else
+/** The last used, else VS Code, else the first editor, else the file manager, else
  * "Other…" (the default only once picked, or when nothing else is listed). Never the default
  * app: it stays a menu row, since what it does depends on the file. */
 export function defaultOpener(list: OpenerPayload[], last: string | null): OpenerPayload | null {
@@ -56,7 +56,7 @@ export const openerIcon = (o: OpenerPayload, path?: string): LucideIcon => {
 /** An opener's menu row id (`initial` of the submenu names the default this way). */
 export const openerRowId = (o: OpenerPayload) => `opener.${o.id}`;
 
-/** What the rows open. `copy`: a stored version (spec §14.5), which opens as the file itself when
+/** What the rows open. `copy`: a stored version, which opens as the file itself when
  * it hasn't changed since and as a read-only copy when it has, as the tooltips say. `folder`: a folder (only a file manager can show one). `submodule`: a submodule,
  * a folder too: no default app row. `path`: the file's path, which names the default app's row,
  * or disables it for a program. */

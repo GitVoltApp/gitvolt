@@ -9,7 +9,7 @@ export const wipKey = (worktree: string, staged: boolean) => JSON.stringify({ ki
 export const isWipKey = (key: string) => key.startsWith('{"kind":"wip"');
 
 /**
- * The WIP rows' file lists, held in memory while the tab is watched (K44), so selecting a WIP
+ * The WIP rows' file lists, held in memory while the tab is watched, so selecting a WIP
  * row renders at once with no request. The backend's watcher keeps each watched worktree's lists
  * current and stamps them with a `version`; a `repoChanged` naming a worktree carries its new
  * version, and drops what's held for it unless that's already the version held.
@@ -123,7 +123,7 @@ export class WipLists {
     if (hit.size > 0) for (const l of this.listeners) l(hit);
   }
 
-  /** A write's fresh lists (spec #2 §3.1): held at once, so the panel never waits on the
+  /** A write's fresh lists: held at once, so the panel never waits on the
    * watcher. The write's `repoChanged` at the same version then keeps them. Reads in flight
    * from before the write are too old to hold. */
   put(worktree: string, lists: { staged: FileListPayload; unstaged: FileListPayload; version: string }): void {

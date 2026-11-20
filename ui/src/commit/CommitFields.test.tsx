@@ -17,7 +17,7 @@ function Harness({ onSubmit = () => {}, initial = { summary: 'Fix x', descriptio
 const summary = () => screen.getByRole('textbox', { name: 'Commit summary' }) as HTMLInputElement;
 const description = () => screen.getByRole('textbox', { name: 'Commit description' }) as HTMLTextAreaElement;
 
-describe('the commit fields (spec #2 §8.1)', () => {
+describe('the commit fields', () => {
   it('spell-checks the message (the bundled en-US dictionary)', () => {
     render(<Harness />);
     expect([summary().getAttribute('spellcheck'), description().getAttribute('spellcheck')]).toEqual(['true', 'true']);

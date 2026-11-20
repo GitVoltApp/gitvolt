@@ -7,7 +7,7 @@ import type { ImageSource } from './sources';
 
 export type ImageSide = 'old' | 'new';
 
-/** The image context menu (K98). `sides`: the images on screen; `first`: the side right-clicked
+/** The image context menu. `sides`: the images on screen; `first`: the side right-clicked
  * (side-by-side) is listed first. One image alone is plain "Copy Image". */
 export function imageMenuRows(sides: { old: ImageSource | null; new: ImageSource | null }, first: ImageSide = 'old', copy: (s: ImageSource) => Promise<void> = copyImage): MenuRow[] {
   const toast = useToast.getState().show;

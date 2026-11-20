@@ -4,8 +4,8 @@ import { closeCreateFileInput, createFile, createFilePathError } from './createF
 import './createFile.css';
 
 /**
- * UX round 3 O.1: the inline "new file path" input at the top of a file list, as the branch
- * name's (UX round 1). Validated live; Enter creates (the input stays, with the name, if the core
+ * The inline "new file path" input at the top of a file list, as the branch
+ * name's. Validated live; Enter creates (the input stays, with the name, if the core
  * refuses it: it exists…), Esc cancels, and leaving it empty cancels too.
  */
 export function CreateFileInput({ ctx, prefill = '' }: { ctx: WriteCtx; prefill?: string }) {
@@ -14,7 +14,7 @@ export function CreateFileInput({ ctx, prefill = '' }: { ctx: WriteCtx; prefill?
   const error = value ? createFilePathError(value) : null;
   const noteId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  // UX round 4 R.1: a folder's prefill ("foo/") has the caret at its end.
+  // A folder's prefill ("foo/") has the caret at its end.
   useEffect(() => { const el = inputRef.current; if (el) el.setSelectionRange(el.value.length, el.value.length); }, []);
   const submit = async () => {
     if (busy || !value || createFilePathError(value)) return;

@@ -16,7 +16,7 @@ const graph = (): GraphPayload => ({
   worktrees: [wt('/r', 'refs/heads/main', 'aaa', true), wt('/r-x', 'refs/heads/x', 'bbb'), wt('/r-d', null, 'ccc')],
 } as unknown as GraphPayload);
 
-describe('withActive (spec #2 §11.2)', () => {
+describe('withActive', () => {
   it('moves the HEAD marker and the elsewhere chips to the active worktree', () => {
     const g = withActive(graph(), '/r-x');
     expect(g.head).toEqual({ branch: 'refs/heads/x', target: 'bbb', detached: false, unborn: false });

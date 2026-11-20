@@ -10,7 +10,7 @@ import type { ReviewLine } from '../../api/gen/ReviewLine';
 import type { ReviewSession } from '../mrStore';
 
 /**
- * Review comments (spec 2026-10-08 §1, §2): which lines of an MR's diff take a comment, where a
+ * Review comments: which lines of an MR's diff take a comment, where a
  * new comment goes, and where the MR's threads and the user's drafts sit. Pure.
  */
 
@@ -159,7 +159,7 @@ export function placeReview(s: ReviewSession, threads: readonly ForgeDiscussion[
 }
 
 /**
- * Whether a session stays (spec §1): until its first refresh answers, yes (unless it failed:
+ * Whether a session stays: until its first refresh answers, yes (unless it failed:
  * nothing is known to be pending then); while a review is pending (drafts, or GitHub's pending
  * review), yes; else not once its MR merged or closed, and otherwise while its Compare is shown.
  */

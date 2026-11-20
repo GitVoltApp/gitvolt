@@ -11,7 +11,7 @@ import type { LinkMenuTarget, LinkTarget, MarkdownContext, MdLinkProps } from '.
 /** The anchor's own attributes, kept on what renders: `<a name>` and footnote targets. */
 export type AnchorAttrs = Pick<MdLinkProps, 'id' | 'name' | 'aria-describedby'>;
 
-/** A link (or reference) as rendered: no `href` (nothing for the webview to navigate, ruling 12);
+/** A link (or reference) as rendered: no `href` (nothing for the webview to navigate);
  * a plain click goes where `target` says, Ctrl/Cmd+click to the browser, right-click the `link`
  * menu; the instant tooltip shows the target first. An inert target is plain text. */
 export function LinkView({ ctx, target, href, className, tooltip, anchor, children }: { ctx: MarkdownContext; target: LinkTarget; href: string; className?: string; tooltip?: TooltipContent; anchor?: AnchorAttrs; children: ReactNode }) {

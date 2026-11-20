@@ -5,7 +5,7 @@ import { currentOrigin, holdOrigin as holdOriginOf, OVERLAY_ATTR, setArmedInterc
 export type ArmTone = 'danger' | 'positive' | 'warn';
 
 /**
- * One confirmation (spec §ui confirms). `arm` is the armed control's label, what a second click
+ * One confirmation. `arm` is the armed control's label, what a second click
  * does ("Click again to discard 5 files"); `caption`, a reason shown under it. `title`, `body`
  * and `confirmLabel` are the popover's, used when there's no control to arm (a keyboard
  * shortcut, a control gone since the action started).
@@ -127,7 +127,7 @@ export function holdOrigin(): () => void {
 }
 
 /**
- * The settle guard (fix round 1): a confirm must be a new gesture, started after the control
+ * The settle guard: a confirm must be a new gesture, started after the control
  * armed and at least this long after it, so the second click of a double-click, a held Enter's
  * repeats, or a repeat click that lands as a late question arms never confirms. It's a minimum,
  * not a timer: the armed state never expires on its own.

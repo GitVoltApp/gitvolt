@@ -3,7 +3,7 @@ import type { ReviewAnchor } from '../../api/gen/ReviewAnchor';
 import { numberOf, sideOf } from '../../forge/review/model';
 
 /**
- * Review mode's own UI state (spec 2026-10-08 §2), for the session: the comment boxes open under
+ * Review mode's own UI state, for the session: the comment boxes open under
  * lines, by anchor, in Source and Rendered alike (their text lives in the MR view's reply drafts, so it survives the box being laid out
  * again), and the threads the user folded or unfolded.
  */

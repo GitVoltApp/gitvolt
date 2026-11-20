@@ -32,7 +32,7 @@ export type { ReviewGutterSpec } from './reviewGutter';
 /** Lines of one side of the diff (`start` to `end`, 1-based). */
 export interface DiffLines { side: 'original' | 'modified'; start: number; end: number }
 export type { HexShowRequest, HexView } from './hexPanes';
-/** A hunk's header row (spec #2 §7.3): after modified line `after` (0: above line 1). */
+/** A hunk's header row: after modified line `after` (0: above line 1). */
 export interface HunkZone { after: number }
 /** A WIP diff's hunk header rows, shown with the diff (Hunk mode only): `zones` is waited for with
  * the diff's own computation, so the rows are laid out in the frame the diff appears in and
@@ -48,7 +48,7 @@ export interface EditorContextMenuEvent {
   side: 'original' | 'modified' | 'file';
   line: number;
   selection: { startLine: number; endLine: number } | null;
-  /** The selected text, `''` when `selection` is null (plan 1C Task 15's Monaco `Copy` row). */
+  /** The selected text, `''` when `selection` is null (the Monaco `Copy` row). */
   selectionText: string;
   /** Inline and Hunk mode: the old-side line of the deleted-lines zone the click was on. */
   deletedLine?: number;
@@ -58,13 +58,13 @@ export interface EditorContextMenuEvent {
 
 export interface MonacoHost {
   /** `next`: the diff the attaching view will show. The one editor is shared, so it may still
-   * hold another view's diff (the panel closed, then another commit's file opened, H6); it's
+   * hold another view's diff (the panel closed, then another commit's file opened); it's
    * hidden until `showDiff` puts `next` on screen, so that one is never presented for a frame.
    * A show still in flight is the previous view's: dropped, so it can't land (and un-hide the
-   * editor) under the attaching view before that view's own `showDiff` (K7). */
+   * editor) under the attaching view before that view's own `showDiff`. */
   attachDiff(el: HTMLElement, next?: DiffContent): void;
   detachDiff(el: HTMLElement): void;
-  /** A kept (hidden, then shown again) panel's view (J16): true when the diff editor is still in
+  /** A kept (hidden, then shown again) panel's view: true when the diff editor is still in
    * `el`, so it needn't attach again. It hides a diff other than `next` until `showDiff` puts
    * `next` on screen, as `attachDiff` does. False (nothing done) when it's elsewhere. */
   keepDiff(el: HTMLElement, next: DiffContent): boolean;
@@ -95,28 +95,27 @@ export interface MonacoHost {
   showFile(req: FileShowRequest): Promise<void>;
   /** File View's word wrap, applied in place: the model (and so the scroll position) is kept. */
   setFileWordWrap(on: boolean): void;
-  /** File View's margin strip (spec #3 §3.10, the blame gutter): `width` px reserved left of the
+  /** File View's margin strip (the blame gutter): `width` px reserved left of the
    * line numbers (at most `maxShare` of the editor), with a node laid over it; 0 removes it. `null` for 0, or before the file editor exists. */
   setFileMargin(width: number, maxShare?: number): FileMargin | null;
   /** Puts the keyboard in the attached editor: the diff's modified side, else the file editor.
    * A no-op while neither is attached. */
   focus(): void;
-  /** Opens Monaco's find widget (Ctrl+F while a file is open, plan 1C ruling R7) in the attached
+  /** Opens Monaco's find widget (Ctrl+F while a file is open) in the attached
    * editor: the diff's side holding the keyboard (else its modified side), else the file editor.
    * A no-op while neither is attached. */
   openFind(): void;
-  /** Plan 1C seam: its context menu replaces Monaco's. `null` restores Monaco's own menu, which
-   * stays on in 1B (plan 1B deviation 1). */
+  /** A seam for the app's context menu, which replaces Monaco's. `null` restores Monaco's own menu. */
   setContextMenuHandler(handler: ((e: EditorContextMenuEvent) => void) | null): void;
   /** Lays the attached editors out in their boxes, except a hidden (0×0) one: a kept panel
-   * closed with `display: none` (J16) keeps its layout for when it shows again. */
+   * closed with `display: none` keeps its layout for when it shows again. */
   layout(): void;
   /** Detaches an editor whose box has left the document without a detach: a kept panel
-   * (J16) unmounted while hidden, whose attach cleanup already ran (and kept the editor) when it
+   *  unmounted while hidden, whose attach cleanup already ran (and kept the editor) when it
    * was hidden. The view calls it on unmount (`releaseDetachedEditors`); the next attach elsewhere
    * lets such a box go too. */
   releaseDetached(): void;
-  /** The diff's modified side is the working-tree file (spec #2 §7.5): editable. Its host element
+  /** The diff's modified side is the working-tree file: editable. Its host element
    * gets `data-editable="true"` (key routing: an editable Monaco keeps its own Ctrl+Z). */
   setModifiedEditable(on: boolean): void;
   /** The modified side's text as edited, or `null` with no diff shown. */
@@ -128,17 +127,17 @@ export interface MonacoHost {
   onFileEdit(cb: (() => void) | null): void;
   /** The next `showDiff`/`showFile` of the same path restores today's cursor and scroll (a save's reload). */
   keepViewOnNextShow(): void;
-  /** File View's scroll position; `null` with no file shown (spec #5 §3.4: a place's scroll). */
+  /** File View's scroll position; `null` with no file shown (a place's scroll). */
   fileScrollTop(): number | null;
-  /** Scrolls File View to `top`, at once (spec #5 §3.4: Back/Forward). */
+  /** Scrolls File View to `top`, at once (Back/Forward). */
   setFileScrollTop(top: number): void;
   /** File View at lines `line`–`end` (a pasted `path:12-20`): selected, the cursor on the
    * first, centred. Clamped to the file. */
   revealFileLines(line: number, end: number): void;
-  /** File View's cursor and scroll, to put back after the rendered Markdown view (spec #5 §3.3). */
+  /** File View's cursor and scroll, to put back after the rendered Markdown view. */
   fileViewState(): MonacoNs.editor.ICodeEditorViewState | null;
   restoreFileViewState(state: MonacoNs.editor.ICodeEditorViewState | null): void;
-  /** Spec #2 §7.3: the gutter's per-line stage/unstage button (`LineGutter`); `null` removes it. */
+  /** The gutter's per-line stage/unstage button (`LineGutter`); `null` removes it. */
   setLineGutter(spec: LineGutterSpec | null): void;
   /** Each selection in either editor (and again when it scrolls), as the lines it covers on that
    * side and where its last line is on screen; `null` when it's empty. `null` removes the listener. */
@@ -146,7 +145,7 @@ export interface MonacoHost {
   /** The diff editor's cursor: its line, on the side holding the keyboard, else the new side
    * (where Next/Previous change puts it). `null` while no diff is attached. */
   diffCursor(): { side: 'original' | 'modified'; line: number } | null;
-  /** Review mode's cards (spec 2026-10-08 §2): a view zone under each item's line, its card in a
+  /** Review mode's cards: a view zone under each item's line, its card in a
    * layer over the editor (`spec.placed` gets the cards' nodes). Laid with each show of
    * `spec.path` (before it renders), and again on a mode change or a recompute; `null` removes them. */
   setReviewZones(spec: ReviewZoneSpec | null): void;
@@ -160,7 +159,7 @@ export interface MonacoHost {
   /** Next: the first review card (thread or draft) starting below the view's centre; Previous:
    * the last one ending above it; centred. Wraps. Its key, or `null` with none. */
   goToReviewZone(direction: 'next' | 'previous'): string | null;
-  /** A binary's hex view (UX round 2, lane K) in `el`: editors of its own, hex | text per side,
+  /** A binary's hex view in `el`: editors of its own, hex | text per side,
    * until `dispose` (which the view calls when `el` goes). While it's on screen, Next/Previous
    * change, `focus` and `openFind` act on it, and the context menu is this host's. */
   hexView(el: HTMLElement): HexView;
@@ -168,7 +167,7 @@ export interface MonacoHost {
 
 type Side = EditorContextMenuEvent['side'];
 
-/** A non-empty selection in the diff (spec #2 §7.3): the 1-based lines it covers on `side`, and
+/** A non-empty selection in the diff: the 1-based lines it covers on `side`, and
  * where its last line is on screen. */
 export interface DiffSelection { side: 'original' | 'modified'; start: number; end: number; rect: { top: number; left: number; bottom: number } }
 /** The height of a hunk's header row. */
@@ -256,7 +255,7 @@ const editorSettings = () => useAppState.getState().settings;
 const sameDiff = (a: DiffContent, b: DiffContent) => a.path === b.path && a.original === b.original && a.modified === b.modified;
 const sameFile = (a: FileContent, b: FileContent) => a.path === b.path && a.text === b.text;
 
-/** Hides (or shows) an editor's element. `opacity` does the hiding (K7): Monaco's diff editor
+/** Hides (or shows) an editor's element. `opacity` does the hiding: Monaco's diff editor
  * sets `visibility: visible` on its two inner editors, which wins over a `visibility: hidden`
  * inherited from here, so that alone left the held diff painted. `visibility` stays too: it keeps
  * the element itself out of hit-testing and the accessibility tree.
@@ -282,7 +281,7 @@ function hideUnless<T>(el: HTMLElement, shown: T | null, next: T | undefined, sa
   setHidden(el, !!shown && !!next && !same(shown, next));
 }
 
-/** One diff editor and one file editor for the whole app (spec §4.4), re-parented into whichever
+/** One diff editor and one file editor for the whole app, re-parented into whichever
  * container attaches. */
 class Host implements MonacoHost {
   private readonly diffEl = document.createElement('div');
@@ -368,7 +367,7 @@ class Host implements MonacoHost {
   attachDiff(el: HTMLElement, next?: DiffContent): void {
     this.diffSeq++;
     this.hideDiff(!!this.diffShown && !!next && !sameDiff(this.diffShown, next));
-    // A previous box never detached (a kept panel unmounted while hidden, J16): stop observing it.
+    // A previous box never detached (a kept panel unmounted while hidden): stop observing it.
     if (this.diffBox && this.diffBox !== el) this.ro.unobserve(this.diffBox);
     this.diffBox = el;
     el.appendChild(this.diffEl);
@@ -459,7 +458,7 @@ class Host implements MonacoHost {
     const original = monaco.editor.createModel(req.original, lang);
     const modified = keep ?? monaco.editor.createModel(req.modified, lang);
     // Off-screen: a view model computes its diff before it's attached, so the previous diff stays
-    // on screen meanwhile, and the new one appears whole in one frame (F24, F27). Attaching an
+    // on screen meanwhile, and the new one appears whole in one frame. Attaching an
     // uncomputed pair would draw the plain file first: no decorations, and in Hunk mode the whole
     // file for a frame before its regions collapse.
     const view = ed.createViewModel({ original, modified });
@@ -1030,7 +1029,7 @@ class Host implements MonacoHost {
 
   /** Builds and shows the menu for `ed`/`side` at `(x, y)`, from the current selection (or the
    * cursor, keyboard-triggered). Shared by the mouse and keyboard paths. A no-op while no
-   * handler is set (fix round 1, item 1): with `contextmenu: false` (`setContextMenuHandler`),
+   * handler is set: with `contextmenu: false` (`setContextMenuHandler`),
    * Monaco's own `editor.action.showContextMenu` is inert too (it checks the same option), so
    * there is nothing to fall back to either way. */
   private openMenuAt(ed: MonacoNs.editor.IStandaloneCodeEditor, side: Side, line: number, x: number, y: number, deletedLine?: number): void {
@@ -1049,7 +1048,7 @@ class Host implements MonacoHost {
     });
   }
 
-  /** Shift+F10 / the ContextMenu key (fix round 1, item 1): `onContextMenu` is mouse-only, so a
+  /** Shift+F10 / the ContextMenu key: `onContextMenu` is mouse-only, so a
    * keyboard invocation never reaches it. Opens at the cursor's screen position
    * (`getScrolledVisiblePosition`, relative to the editor; the editor's own box origin makes it
    * a page position), just below the line, like a real context menu would. */

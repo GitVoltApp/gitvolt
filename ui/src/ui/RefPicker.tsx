@@ -20,7 +20,7 @@ interface Props {
   /** The element that opened it: a press on it doesn't count as "outside" (so its own click can
    * toggle the picker closed instead of closing and reopening it). */
   ignore?: Element | null;
-  /** An optional toggle right of the search box (K72: the branch picker's alphabetical/recent). */
+  /** An optional toggle right of the search box (the branch picker's alphabetical/recent). */
   toggle?: { icon: LucideIcon; label: string; onToggle(): void };
 }
 
@@ -39,13 +39,12 @@ export function closePickers(): void {
  * picks, Esc closes; a press outside closes it. Opened by a press, a release on an item picks it
  * (`pressDrag.ts`).
  *
- * While open it owns the keyboard, as a menu does: it's in the key router's `menu` layer (ruling
- * R6), so no key reaches the app behind it. Esc closes the picker and nothing else, never the open
- * file too (J4), and Ctrl+W or F7 do nothing behind it. Every other key goes on to the search box.
+ * While open it owns the keyboard, as a menu does: it's in the key router's `menu` layer, so no key reaches the app behind it. Esc closes the picker and nothing else, never the open
+ * file too, and Ctrl+W or F7 do nothing behind it. Every other key goes on to the search box.
  */
 export function RefPicker({ anchor, items, placeholder, onPick, onClose, ignore, toggle }: Props) {
   const [q, setQ] = useState('');
-  // The current item is active from the very first render (no effect after mount, K53): the
+  // The current item is active from the very first render (no effect after mount): the
   // cursor starts there, and a filter change re-aims it in the change handler itself.
   const [cursor, setCursor] = useState(() => Math.max(0, items.findIndex((i) => i.current)));
   const ref = useRef<HTMLDivElement>(null);
@@ -58,7 +57,7 @@ export function RefPicker({ anchor, items, placeholder, onPick, onClose, ignore,
     return needle ? items.filter((i) => i.label.toLowerCase().includes(needle)) : items;
   }, [items, q]);
   // A re-sort (the toggle) or new items: the cursor follows the current item again. Not on the
-  // first render — the cursor's initial state already aims there (K53).
+  // first render — the cursor's initial state already aims there.
   const lastItems = useRef(items);
   useLayoutEffect(() => {
     if (lastItems.current === items) return;

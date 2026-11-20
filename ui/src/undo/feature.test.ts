@@ -17,7 +17,7 @@ const top = { entry: 7, label: 'commit "Fix x"', kind: 'commit' as const };
 const state = (over = {}) => ({ undo: top, redo: null, undoBlocked: null, redoBlocked: 'Nothing to redo', banners: [], paused: null, ...over });
 const wrap = (outcome: unknown) => ({ outcome, journal: state({ undo: null, undoBlocked: 'Nothing to undo' }), staging: { undo: null, redo: null, off: null }, wip: null });
 
-describe('undo (spec #2 §5.4, §5.5)', () => {
+describe('undo', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     confirm.asked = [];
@@ -48,7 +48,7 @@ describe('undo (spec #2 §5.4, §5.5)', () => {
     off();
   });
 
-  // --- 2C T10: a linked worktree's journal, and the entry's note in the toast (spec #2 §9.2) ---
+  // --- a linked worktree's journal, and the entry's note in the toast ---
   it("undoes the active worktree's own entry, and the toast adds the entry's note", async () => {
     const linked = { tabId: 't', repoId: 4, worktree: '/r-x' };
     act(() => useJournal.getState().set(4, '/r-x', state({ undo: { entry: 4, label: 'delete branch x and origin/x', kind: 'branch' } })));
@@ -57,7 +57,6 @@ describe('undo (spec #2 §5.4, §5.5)', () => {
     expect(api.undo).toHaveBeenCalledWith(4, '/r-x', 4, undefined, false, false, false);
     expect(useToast.getState().message).toBe('Undid delete branch x and origin/x (origin/x stays deleted)');
   });
-  // --- end 2C T10 ---
 
   it('a branch that moved asks first, and Undo anyway sends the values it showed', async () => {
     const refs = [{ name: 'refs/heads/main', expected: '4d5e6f0000', actual: '1a2b3c0000', target: '7a8b9c0000', dropped: 2, stays: false }];
@@ -67,7 +66,6 @@ describe('undo (spec #2 §5.4, §5.5)', () => {
     expect(api.undo).toHaveBeenLastCalledWith(4, '/r', 7, { 'refs/heads/main': '1a2b3c0000' }, false, false, false);
   });
 
-  // --- 3B T6 ---
   it('a stopped no-commit pick asks first, then sends again with confirmDiscard', async () => {
     const message = 'Undo the stopped cherry-pick? Its changes are discarded, including anything you resolved since.';
     api.undo
@@ -77,7 +75,6 @@ describe('undo (spec #2 §5.4, §5.5)', () => {
     expect(confirm.asked[0].body).toBe(message);
     expect(api.undo).toHaveBeenLastCalledWith(4, '/r', 7, undefined, false, false, true);
   });
-  // --- end 3B T6 ---
 
   it('a second press while one is in flight sends nothing more', async () => {
     let answer!: (v: unknown) => void;
@@ -99,7 +96,7 @@ describe('undo (spec #2 §5.4, §5.5)', () => {
     expect(movedText('create branch x', [{ name: 'refs/heads/x', expected: 'aaaaaaa1', actual: 'bbbbbbb2', target: null, dropped: 1, stays: false }])).toBe('x moved since create branch x (it\'s at bbbbbbb, not aaaaaaa). Undoing deletes it and drops the 1 commit made since.');
   });
 
-  // 2B final I1: a snapshot restore leaves HEAD where it is, and a branch switch reads by branch.
+  // A snapshot restore leaves HEAD where it is, and a branch switch reads by branch.
   it('words a restore over a moved HEAD as HEAD staying, by commit or by branch', () => {
     expect(movedText('discard a.php', [{ name: 'HEAD', expected: 'aaaaaaa1', actual: 'bbbbbbb2', target: 'bbbbbbb2', dropped: 0, stays: true }])).toBe('HEAD moved since discard a.php (it\'s at bbbbbbb, not aaaaaaa). Undoing leaves HEAD there and restores the files over it.');
     expect(movedText('discard a.php', [{ name: 'HEAD', expected: 'refs/heads/main', actual: 'refs/heads/feature', target: 'refs/heads/feature', dropped: 0, stays: true }])).toBe('HEAD moved since discard a.php (it\'s on feature, not main). Undoing leaves HEAD there and restores the files over it.');
@@ -114,15 +111,15 @@ describe('undo (spec #2 §5.4, §5.5)', () => {
     expect(ownsUndo(el('<textarea></textarea>', 'textarea'))).toBe(true);
     expect(ownsUndo(el('<div class="monaco-editor"><span>x</span></div>', 'span'))).toBe(true);
     expect(ownsUndo(el('<div class="diff-panel"><button>b</button></div>', 'button'))).toBe(true);
-    // 2D T20: the merge tool's panel (its Save button, its headers) never runs the journal undo.
+    // The merge tool's panel (its Save button, its headers) never runs the journal undo.
     expect(ownsUndo(el('<section class="merge-panel"><button>Save</button></section>', 'button'))).toBe(true);
     expect(ownsUndo(el('<div class="details-panel"><header data-testid="wip-header"></header><div class="file-list"><span>f</span></div></div>', 'span'))).toBe(true);
     expect(ownsUndo(el('<div role="grid" tabindex="0"></div>', '[role="grid"]'))).toBe(false);
     expect(ownsUndo(el('<div class="details-panel"><div class="file-list"><span>f</span></div></div>', 'span'))).toBe(false);
   });
 
-  // --- UX Y: the Undo dropdown ---
-  describe('the dropdown (Y.1–Y.4)', () => {
+  // --- the Undo dropdown ---
+  describe('the dropdown', () => {
     const now = 1_000_000_000_000;
     const history = [
       { entry: 9, label: 'save b.txt', kind: 'save' as const, atMs: now - 60_000, touched: ['b.txt'], blocked: null },
@@ -175,7 +172,7 @@ describe('undo (spec #2 §5.4, §5.5)', () => {
       expect(rows[0]).toMatchObject({ label: 'commit "Fix x"' });
     });
 
-    it('a stale list whose entry moved since: the same "Undo anyway" question, then Undo with what it showed (review 8)', async () => {
+    it('a stale list whose entry moved since: the same "Undo anyway" question, then Undo with what it showed', async () => {
       const refs = [{ name: 'refs/heads/main', expected: '4d5e6f0000', actual: '1a2b3c0000', target: '7a8b9c0000', dropped: 2, stays: false }];
       api.undoEntry.mockResolvedValueOnce(wrap({ status: 'moved', label: 'discard a.txt', refs }));
       api.undo.mockResolvedValueOnce(wrap({ status: 'done', label: 'discard a.txt' }));
@@ -185,7 +182,7 @@ describe('undo (spec #2 §5.4, §5.5)', () => {
       expect(useToast.getState().action?.label).toBe('Redo');
     });
 
-    it('a question it brings is asked, then sent again confirmed (Y.4)', async () => {
+    it('a question it brings is asked, then sent again confirmed', async () => {
       api.undoEntry
         .mockRejectedValueOnce({ kind: 'Conflict', message: 'Your changes conflict with undo discard a.txt', commandId: null, stderr: null, detail: { kind: 'autostashConflict', paths: ['a.txt'], target: 'undo discard a.txt' } })
         .mockResolvedValueOnce(wrap({ status: 'done', label: 'discard a.txt' }));
@@ -194,5 +191,4 @@ describe('undo (spec #2 §5.4, §5.5)', () => {
       expect(api.undoEntry).toHaveBeenLastCalledWith(4, '/r', 8, true);
     });
   });
-  // --- end UX Y ---
 });

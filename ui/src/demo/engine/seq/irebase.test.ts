@@ -62,7 +62,7 @@ describe('interactiveRebase', () => {
     // F10: the stash is listed, with the core's kept record and its banner.
     const stash = (aborted.outcome as { stash: string }).stash;
     expect(ctx.writes.journal(t.dir).state(null).banners).toMatchObject([{ kind: 'abortedWork', stash, label: 'abort the rebase of lab', target: null }]);
-    // UX N: HEAD's tree (L4) with only what can't be had again: the stop's own changes (file_2.txt) aren't.
+    // HEAD's tree (L4) with only what can't be had again: the stop's own changes (file_2.txt) aren't.
     expect([...(await listFiles(t.repo, stash)).keys()]).toEqual(['extra.txt', 'file_1.txt', 'notes.txt']);
   });
 
@@ -102,7 +102,7 @@ async function planned(t: TestRepo, base: string, rowOf: (summary: string) => Om
 }
 
 describe('the interactive rebase\'s stops', () => {
-  it('takes commits at an Edit stop (F9); Continue then completes it, settled as one entry', async () => {
+  it('takes commits at an Edit stop; Continue then completes it, settled as one entry', async () => {
     const t = await makeTestRepo();
     const { r, commit, control, journal } = await editing(t, ['L5']);
     expect(r.outcome).toMatchObject({ status: 'stopped' });
@@ -133,7 +133,7 @@ describe('the interactive rebase\'s stops', () => {
     expect(journal()).toMatchObject({ paused: null, banners: [] });
   });
 
-  it("keeps nothing of a conflict stop left as git made it, and a hand resolution in a stash (UX N)", async () => {
+  it("keeps nothing of a conflict stop left as git made it, and a hand resolution in a stash", async () => {
     const t = await makeTestRepo();
     const { r, control } = await editing(t, [], 'main');
     expect(r.outcome).toEqual({ status: 'stopped', kind: 'rebase', files: 1 });
@@ -175,7 +175,7 @@ describe('the interactive rebase\'s stops', () => {
   });
 });
 
-describe('fix round 1', () => {
+describe('abort and stop cleanup', () => {
   it('an Abort over an untracked file in the way is refused as git refuses it; the stop\'s own file is cleared', async () => {
     const t = await makeTestRepo();
     const { before, control } = await editing(t, ['L5']);

@@ -29,17 +29,17 @@ import '../ui/keycaps.css';
 const short = (oid: string) => oid.slice(0, 7);
 const NO_STATE = { selected: [], base: { oid: '' } } as unknown as EditorState;
 const firstLine = (m: string) => m.split('\n')[0];
-/** Undo / Redo while a message editor is open: they'd drop its draft (UX R1.6 ruling). */
+/** Undo / Redo while a message editor is open: they'd drop its draft. */
 const FINISH_MESSAGE = 'Finish editing the message first';
-/** A control as a key's origin: the confirm arms it in place (spec §ui confirms). */
+/** A control as a key's origin: the confirm arms it in place. */
 const keyOrigin = (el: HTMLElement | null): Origin | null => (el ? { el, rect: null, via: 'key', control: true, holds: 0 } : null);
 
-/** The action dropdown's rows, each with its explanation (Q.2). */
+/** The action dropdown's rows, each with its explanation. */
 const ACTION_OPTIONS = ACTIONS.map((a) => [a, ACTION_LABEL[a], ACTION_TIP[a]] as const);
 
 const startEditing = (tabId: string, oid: string | null) => editSession(tabId, (s) => ({ ...s, editing: oid }));
 
-/** The dropdown's and the keys' way to set `oids`' action: Reword opens its message at once (Q.3),
+/** The dropdown's and the keys' way to set `oids`' action: Reword opens its message at once,
  * as does a Squash or Fixup of the bottom row that made it the Reword target; a refused one says why.
  * True when it applied and opened no message editor. */
 function applyAction(tabId: string, oids: readonly string[], action: RowAction, opens: string | null = oids.length === 1 ? oids[0] : null): boolean {
@@ -53,7 +53,7 @@ function applyAction(tabId: string, oids: readonly string[], action: RowAction, 
   return !open;
 }
 
-/** The keys (spec #3 §4.1), before the app's own: none of them while typing in the message editor. */
+/** The keys, before the app's own: none of them while typing in the message editor. */
 function useEditorKeys(tabId: string, root: React.RefObject<HTMLElement | null>, cancel: React.RefObject<HTMLButtonElement | null>) {
   useEffect(() => registerKeys('overlay', (e) => {
     const s = sessionOf(tabId);
@@ -63,7 +63,7 @@ function useEditorKeys(tabId: string, root: React.RefObject<HTMLElement | null>,
     if (t && t !== document.body && !root.current.contains(t)) return;
     const { state } = s;
     const one = state.selected.length === 1 ? state.selected[0] : null;
-    // Undo / Redo of the plan (UX R1.6); in the message editor, its own (the return above).
+    // Undo / Redo of the plan; in the message editor, its own (the return above).
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       if (e.shiftKey) redoPlan(tabId);
@@ -105,10 +105,10 @@ function useEditorKeys(tabId: string, root: React.RefObject<HTMLElement | null>,
 }
 
 /**
- * A row's message, edited in place (UX4 Q.4): at most the details panel's width, with Save
+ * A row's message, edited in place: at most the details panel's width, with Save
  * (Ctrl+Enter) and Cancel (Esc). Only Save writes the plan: closing any other way (Cancel, Esc,
  * another row's editor) leaves the previous message. It opens focused, the caret at the
- * summary's end (Q.3).
+ * summary's end.
  */
 function InlineMessage({ tabId, oid, text }: { tabId: string; oid: string; text: string }) {
   const [value, setValue] = useState<WipDraft>(() => splitMessage(text));
@@ -138,7 +138,7 @@ function InlineMessage({ tabId, oid, text }: { tabId: string; oid: string; text:
 
 function Row({ tabId, row, index, state, g, chips, conflict, editing, drag }: {
   tabId: string; row: EditorRow; index: number; state: EditorState; g: Grouping; conflict: string[] | undefined; editing: boolean; drag: ReturnType<typeof useRowDrag>;
-  /** The plan the chips show: during a row drag, the one it would make (R1.7). */
+  /** The plan the chips show: during a row drag, the one it would make. */
   chips: { state: EditorState; g: Grouping };
 }) {
   const into = g.into.get(row.oid);
@@ -167,7 +167,7 @@ function Row({ tabId, row, index, state, g, chips, conflict, editing, drag }: {
       <span className="irebase-handle" aria-hidden="true"><GripVertical size={14} /></span>
       {count !== null && <span className="irebase-drag-count" role="status">{count} commits</span>}
       <ChipColumn tabId={tabId} row={row.oid} state={chips.state} g={chips.g} />
-      {/* Q.1: the ⚠ just left of the action, in a slot of its own (nothing shifts when it shows). */}
+      {/* The ⚠ just left of the action, in a slot of its own (nothing shifts when it shows). */}
       <span className="irebase-conflict">
         {conflict && <HoverTooltip content={`Predicted conflict in ${conflict.join(', ')}`}><TriangleAlert size={13} aria-label="Predicted conflict" /></HoverTooltip>}
       </span>
@@ -193,7 +193,7 @@ function ChipGhost({ tabId }: { tabId: string }) {
   return createPortal(<span className="irebase-chip irebase-chip-ghost" style={{ ...laneStyle(color(drag.branch)), left: drag.x + 10, top: drag.y + 6 }} aria-hidden="true">{drag.branch}</span>, document.body);
 }
 
-/** The interactive rebase editor (spec #3 §4.1), in place of the graph (3A's center view). */
+/** The interactive rebase editor, in place of the graph. */
 /** The footer's key hints: [chord, label, dropped first on a narrow panel]. */
 const HINTS: [string | string[], string, boolean?][] = [
   ['P', 'Pick'], ['R', 'Reword'], ['S', 'Squash'], ['F', 'Fixup', true], ['D', 'Drop'], ['E', 'Edit', true],
@@ -247,7 +247,7 @@ export function RebaseEditor({ tabId }: CenterViewProps<object>) {
         {state.rows.map((r, i) => (
           <Row key={r.oid} tabId={tabId} row={r} index={i} state={state} g={g} chips={chips} conflict={prediction.byRow[r.oid]} editing={editing === r.oid} drag={drag} />
         ))}
-        {/* Not a row of the plan: a click shows the base in the details panel (UX R2.2). */}
+        {/* Not a row of the plan: a click shows the base in the details panel. */}
         <li className={`irebase-row irebase-base${baseShown ? ' is-selected' : ''}`} role="option" aria-selected={baseShown} onClick={() => inspectBase(tabId)}>
           <span className="irebase-handle" />
           <ChipColumn tabId={tabId} row={state.base.oid} state={chips.state} g={chips.g} />

@@ -32,7 +32,7 @@ vi.mock('./mdOpen', () => ({ holdFirstChange: opens.hold, holdLine: opens.line }
 vi.mock('../api/client', async (actual) => ({ ...(await actual<typeof import('../api/client')>()), api: { listOpeners: async () => [], openIn: async () => null } }));
 vi.mock('../markdown/fileLinks', () => ({}));
 // T5's renderer is tested by T5: here, what Diff View hands it.
-// A new side holding GIVE_UP stands for a diff that ran out of time (R14): it calls onTooLarge.
+// A new side holding GIVE_UP stands for a diff that ran out of time: it calls onTooLarge.
 const GIVE_UP = '<!-- give up -->';
 vi.mock('../markdown/lazy', async () => {
   const { useEffect } = await import('react');
@@ -112,7 +112,7 @@ describe('the rendered Markdown diff in Diff View (5C)', () => {
     expect(host.goToChange).not.toHaveBeenCalled();
   });
 
-  it('Source shows the text diff and its modes; the pick is the same app-wide one File View uses (R2)', async () => {
+  it('Source shows the text diff and its modes; the pick is the same app-wide one File View uses', async () => {
     renderPanel(targetFor(change('README.md', at(P), at(C)), spec), async () => contents(blob('# Q\n'), blob('# R\n')));
     await screen.findByTestId('md-diff');
     pick('Source');
@@ -124,7 +124,7 @@ describe('the rendered Markdown diff in Diff View (5C)', () => {
     await waitFor(() => expect(host.layout).toHaveBeenCalled());
   });
 
-  it('an added file renders against an empty old side; a deleted one against an empty new side, at the old commit (R6)', async () => {
+  it('an added file renders against an empty old side; a deleted one against an empty new side, at the old commit', async () => {
     renderPanel(targetFor(change('new.md', { kind: 'absent' }, at(C)), spec), async () => contents(null, blob('# A\n')));
     let md = await screen.findByTestId('md-diff');
     expect(md).toHaveAttribute('data-old', '');
@@ -136,7 +136,7 @@ describe('the rendered Markdown diff in Diff View (5C)', () => {
     expect(md).toHaveAttribute('data-commit', P);
   });
 
-  it("a just-created file's Source holds in Diff View until the toggle is used (R2, markdownOverride)", async () => {
+  it("a just-created file's Source holds in Diff View until the toggle is used (markdownOverride)", async () => {
     showSourceFor('new.md');
     renderPanel(targetFor(change('new.md', { kind: 'absent' }, at(C)), spec), async () => contents(null, blob('# A\n')));
     await waitFor(() => expect(host.showDiff).toHaveBeenCalled());
@@ -186,7 +186,7 @@ describe('the rendered Markdown diff in Diff View (5C)', () => {
     expect(screen.getByTestId('text-diff')).toBeVisible();
   });
 
-  it('the working copy: Rendered shows the unsaved buffer and keeps the editor attached (R8)', async () => {
+  it('the working copy: Rendered shows the unsaved buffer and keeps the editor attached', async () => {
     useDiffPrefs.getState().set({ markdownView: 'source' });
     const wip = { kind: 'wip' as const, worktree: '/r', staged: false };
     const target = targetFor(change('notes.md', { kind: 'object', oid: '1'.repeat(40) }, { kind: 'worktree', worktree: '/r' }), wip);
@@ -201,7 +201,7 @@ describe('the rendered Markdown diff in Diff View (5C)', () => {
     expect(host.detachDiff).not.toHaveBeenCalled();
   });
 
-  describe('too large to render (R14)', () => {
+  describe('too large to render', () => {
     beforeEach(() => { vi.spyOn(performance, 'now').mockImplementation(() => parse.now); });
 
     it('over 5 MB a side: Source, "Too large to render", and Rendered says why', async () => {

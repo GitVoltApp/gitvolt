@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 
-/** Spec §7. Every row carries a leading icon and a tooltip; variants may be icon-only. */
+/** Every row carries a leading icon and a tooltip; variants may be icon-only. */
 export interface Variant { id: string; label?: string; icon?: LucideIcon; tooltip: string; run: () => void; disabledReason?: string }
 
 export type MenuRow =

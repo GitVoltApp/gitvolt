@@ -1,7 +1,7 @@
-//! The forge layer's normalized types (spec #4 §3.1). The UI never branches on the forge kind,
+//! The forge layer's normalized types. The UI never branches on the forge kind,
 //! except for labels ("MR"/"PR", "!12"/"#12") and forge-only fields. Times are unix seconds.
-//! 4A fills the identity, project and token types. The merge request types are the contract
-//! 4B–4D implement (`provider.rs` declares the methods that return them).
+//! The merge request types are the contract the providers implement (`provider.rs` declares the
+//! methods that return them).
 
 use crate::remotes::HostKind;
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,7 @@ impl ForgeKind {
     }
 }
 
-/// Where an account's token is kept (spec #4 §2 "Token storage").
+/// Where an account's token is kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
@@ -130,7 +130,7 @@ pub enum SquashOption {
     Always,
 }
 
-/// What the Create and merge forms inherit from the project (spec #4 §2: "inherit the project's settings").
+/// What the Create and merge forms inherit from the project ("inherit the project's settings").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -141,7 +141,7 @@ pub struct ForgeProjectSettings {
     pub delete_source_branch: bool,
 }
 
-/// Whether a token may make changes (spec #4 §3.2). `Unknown`: the forge can't say (a GitHub
+/// Whether a token may make changes. `Unknown`: the forge can't say (a GitHub
 /// fine-grained token, an older GitLab).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
@@ -203,7 +203,7 @@ pub struct StoredResponse {
     pub poll_interval_secs: Option<u32>,
 }
 
-/// A value with what its request said about freshness (spec #4 §3.4): a 304 (`not_modified`), the
+/// A value with what its request said about freshness: a 304 (`not_modified`), the
 /// server's poll interval, and when it was read (for the UI's "last updated" note).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -227,10 +227,10 @@ impl<T> Fresh<T> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The merge request contract (4B–4D implement the provider methods that return these).
+// The merge request contract (the provider methods return these).
 // ---------------------------------------------------------------------------------------------
 
-/// The badge's state (spec #4 §2 "Badge"): a draft is an open MR/PR marked draft.
+/// The badge's state: a draft is an open MR/PR marked draft.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -338,7 +338,7 @@ pub struct ForgeMr {
     pub label_colors: std::collections::BTreeMap<String, String>,
     #[ts(type = "number")]
     pub updated_at: i64,
-    /// 4D: its description/body carries GitVolt's Stack table (`stack::MARK_START`): the stack
+    /// Its description/body carries GitVolt's Stack table (`stack::MARK_START`): the stack
     /// evidence the after-merge retarget needs (a forge write before any confirm).
     #[serde(default)]
     pub stacked: bool,
@@ -395,7 +395,7 @@ pub enum MergeStatus {
     Mergeable,
     /// The forge is still computing it.
     Checking,
-    /// Why Merge is disabled (spec #4 §2: "disabled with the reason").
+    /// Why Merge is disabled ("disabled with the reason").
     Blocked { reason: String },
 }
 
@@ -404,7 +404,7 @@ pub enum MergeStatus {
 #[ts(export)]
 pub struct ForgeMrDetail {
     pub mr: ForgeMr,
-    /// Plain text in phase 4 (spec #4 §2).
+    /// Plain text.
     pub description: String,
     pub reviewers: Vec<ForgeUser>,
     pub assignees: Vec<ForgeUser>,
@@ -422,13 +422,11 @@ pub struct ForgeMrDetail {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub subscribed: Option<bool>,
-    // --- 5A T1 ---
-    /// GitHub's rendered description (the `full` media type): its signed attachment URLs
-    /// (spec #5 §4.2). `None` for GitLab.
+    /// GitHub's rendered description (the `full` media type): its signed attachment URLs.
+    /// `None` for GitLab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub body_html: Option<String>,
-    // --- end 5A T1 ---
     // --- branch update ---
     /// The forge can bring the source branch up to date with its target (GitLab's Rebase,
     /// GitHub's Update branch): offered for an open MR the user may push to, behind or not (the
@@ -480,7 +478,7 @@ pub struct BranchUpdateOffer {
 }
 // --- end branch update ---
 
-/// Where a diff-line note sits (spec #4 §2: shown in the thread with `file:line` and a snippet).
+/// Where a diff-line note sits (shown in the thread with `file:line` and a snippet).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -522,12 +520,10 @@ pub struct ForgeNote {
     /// A forge-generated note ("added 2 commits").
     pub system: bool,
     pub position: Option<DiffPosition>,
-    // --- 5A T1 ---
     /// GitHub's rendered body (the `full` media type): its signed attachment URLs. `None` for GitLab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub body_html: Option<String>,
-    // --- end 5A T1 ---
     // --- comment actions ---
     /// Its emoji reactions, in the forge's order; none: not sent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -788,7 +784,7 @@ pub struct SubmitOutcome {
 }
 // --- end review comments ---
 
-/// The sidebar list's filter (spec #4 §2 "MR/PR list").
+/// The sidebar list's filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -975,7 +971,7 @@ pub struct CreateMr {
     pub delete_source_branch: Option<bool>,
 }
 
-/// The follow-up calls GitHub's create needs (spec #4 §3.5: partial failures are explicit).
+/// The follow-up calls GitHub's create needs (partial failures are explicit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -1046,7 +1042,6 @@ mod tests {
         assert!(serde_json::from_str::<ForgeMr>(old).unwrap().label_colors.is_empty());
     }
 
-    // --- 5A T1 ---
     #[test]
     fn body_html_is_sent_only_when_the_forge_gave_one() {
         let author = ForgeUser { id: 1, username: "ada".into(), name: "Ada".into(), avatar_url: None, web_url: "https://x/ada".into(), email: None, emails: vec![] };
@@ -1057,7 +1052,6 @@ mod tests {
         let back: ForgeNote = serde_json::from_value(serde_json::json!({"id": "1", "author": {"id": 1, "username": "ada", "name": "Ada", "avatarUrl": null, "webUrl": "https://x/ada", "email": null}, "body": "b", "createdAt": 0, "system": false, "position": null})).unwrap();
         assert_eq!(back.body_html, None);
     }
-    // --- end 5A T1 ---
 
     // --- comment actions ---
     #[test]

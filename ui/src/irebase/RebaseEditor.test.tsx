@@ -27,7 +27,7 @@ const move = (y: number) => act(() => { window.dispatchEvent(new MouseEvent('poi
 const up = (y: number) => act(() => { window.dispatchEvent(new MouseEvent('pointerup', { clientY: y })); });
 afterEach(() => setSession('t1', undefined));
 
-describe('the interactive rebase editor (spec #3 §4.1)', () => {
+describe('the interactive rebase editor', () => {
   it('shows the header, the rows newest first and the base as a read-only bottom row', () => {
     show({ merges: 2 });
     expect(screen.getByRole('heading', { name: 'Interactive Rebase' })).toBeTruthy();
@@ -134,7 +134,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     expect(sessionOf('t1')).toBeUndefined();
   });
 
-  it('a row drags from anywhere on it; a press without travel selects; its controls start no drag (UX R1.2)', () => {
+  it('a row drags from anywhere on it; a press without travel selects; its controls start no drag', () => {
     show();
     fireEvent.pointerDown(row('d').querySelector('.irebase-summary')!, { clientY: 0, pointerId: 1, button: 0 });
     move(2);
@@ -159,7 +159,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     expect(sessionOf('t1')!.state.selected).toEqual([oid('d')]);
   });
 
-  it('the rebased branch\'s chip stays on the top row while the top commit is dragged down (UX R1.7)', () => {
+  it('the rebased branch\'s chip stays on the top row while the top commit is dragged down', () => {
     show();
     // jsdom has no layout: every row is 0 px, so any travel lands the row last.
     fireEvent.pointerDown(row('e').querySelector('.irebase-summary')!, { clientY: 0, pointerId: 1, button: 0 });
@@ -172,7 +172,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     expect(row('d').querySelector('.irebase-chip.is-rebased')!.textContent).toBe('topic');
   });
 
-  it('Undo / Redo (buttons and Ctrl+Z / Ctrl+Shift+Z) step through plan changes, Reset included; the selection is no step (UX R1.6)', () => {
+  it('Undo / Redo (buttons and Ctrl+Z / Ctrl+Shift+Z) step through plan changes, Reset included; the selection is no step', () => {
     show();
     const undo = screen.getByRole('button', { name: 'Undo plan change' });
     const redo = screen.getByRole('button', { name: 'Redo plan change' });
@@ -240,7 +240,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     expect(undo.getAttribute('aria-disabled')).toBe('false');
   });
 
-  it('UX R2.2: the selected row shows in the details panel (the tab\'s selection); the base row shows the base', () => {
+  it('the selected row shows in the details panel (the tab\'s selection); the base row shows the base', () => {
     const grow = (c: string): RowPayload => ({ id: oid(c), kind: 'commit', lane: 0, color: 0, segments: [], summary: c, bodyFirstLine: '', authorName: 'Ada', authorEmail: 'ada@example.com', authorTime: 1, committerTime: 1, parents: [], mrRefs: [], wip: null });
     const graph: GraphPayload = { rows: ['e', 'd', 'c', 'b', 'a', '0'].map(grow), labels: [], maxLanes: 1, pinnedRefs: [], head: { branch: 'refs/heads/topic', target: oid('e'), detached: false, unborn: false }, truncated: false, worktrees: [] };
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
@@ -268,7 +268,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     useTabViews.setState({ views: {} });
   });
 
-  it('UX4 Q.1: the ⚠ sits just left of the action dropdown, in a slot every row has', () => {
+  it('the ⚠ sits just left of the action dropdown, in a slot every row has', () => {
     show();
     act(() => editSession('t1', (s) => ({ ...s, prediction: { status: 'ready', byRow: { [oid('c')]: ['notes.txt'] }, first: oid('c'), note: null } })));
     for (const c of ['c', 'd']) {
@@ -279,7 +279,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     expect(row('d').querySelector('.irebase-conflict')!.childElementCount).toBe(0);
   });
 
-  it('UX4 Q.2/Q.3: the open list explains each action; choosing Reword opens the row\'s message, focused, caret at its end', () => {
+  it('the open list explains each action; choosing Reword opens the row\'s message, focused, caret at its end', () => {
     show();
     fireEvent.click(row('c').querySelector('.irebase-action button')!);
     const rows = useMenu.getState().rows!;
@@ -297,7 +297,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     expect(summary.selectionEnd).toBe(summary.value.length);
   });
 
-  it('UX4 Q.3: the r key on one row opens its message too', () => {
+  it('the r key on one row opens its message too', () => {
     show();
     fireEvent.click(row('b'));
     key('r');
@@ -305,7 +305,7 @@ describe('the interactive rebase editor (spec #3 §4.1)', () => {
     expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Commit summary' }));
   });
 
-  it('UX4 Q.4: Save keeps the new message; Cancel and Esc close it with the previous one', () => {
+  it('Save keeps the new message; Cancel and Esc close it with the previous one', () => {
     show();
     const edited = () => sessionOf('t1')!.state.rows.find((r) => r.oid === oid('b'))!.edited;
     const button = (cls: string) => row('b').querySelector<HTMLElement>(`.irebase-message-actions .${cls}`)!;

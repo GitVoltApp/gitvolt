@@ -1,9 +1,9 @@
-//! Delete a branch (spec #2 §9.2): the clicked control decides local, remote or both.
+//! Delete a branch: the clicked control decides local, remote or both.
 //! - Local: merged into its upstream (else HEAD), or confirmed and forced; a gix CAS delete,
 //!   then `git config --remove-section branch.<name>`; journaled with the config.
 //! - Remote: `git push --force-with-lease=refs/heads/<b>:<oid shown> <remote> --delete
 //!   refs/heads/<b>`, a network op outside the write lock and a journal Barrier.
-//! - Both: one confirmation (the UI's), the remote first, then the local branch (Deviation 4).
+//! - Both: one confirmation (the UI's), the remote first, then the local branch.
 
 use crate::error::{gix_err, GbError, GbErrorKind};
 use crate::events::{ChangeKind, OpKind};
@@ -73,7 +73,7 @@ impl WriteIntent for DeleteBranch {
         }
     }
     /// A remote-only delete is a push: a Barrier. Otherwise the local part's MoveRefs (Both puts
-    /// its Barrier below, Deviation 4).
+    /// its Barrier below).
     fn undo(&self) -> Option<UndoKind> {
         Some(if self.local { UndoKind::MoveRefs } else { UndoKind::Barrier })
     }
@@ -101,7 +101,7 @@ impl WriteIntent for DeleteBranch {
         if pre.before.refs.get(&self.full()).cloned().flatten().is_none() {
             return Err(GbError::new(GbErrorKind::NotFound, "No local branch"));
         }
-        // Review Focus 1: never a branch some worktree has checked out.
+        // Never a branch some worktree has checked out.
         let worktrees = crate::worktree::list_worktrees(pre.root).await?;
         if let Some(w) = worktrees.iter().find(|w| w.branch.as_deref() == Some(self.full().as_str())) {
             let here = crate::platform::fs::canonicalize(&w.path).unwrap_or(w.path.clone()) == pre.root;
@@ -112,7 +112,7 @@ impl WriteIntent for DeleteBranch {
             return Err(GbError::checked_out_elsewhere(&self.branch, &display_worktree(&main, &w.path)));
         }
         if !self.force {
-            // Its upstream, unless that's being deleted too (Deviation 5); else HEAD.
+            // Its upstream, unless that's being deleted too; else HEAD.
             let upstream = format!("{}@{{upstream}}", self.branch);
             let up = match self.remote {
                 Some(_) => None,
@@ -170,7 +170,7 @@ impl DeleteBranch {
     }
 }
 
-/// A local branch's delete (spec #2 §9.2): the CAS, then its `branch.<name>` section. Returns
+/// A local branch's delete: the CAS, then its `branch.<name>` section. Returns
 /// the config changes for the caller's journal entry (a paused rebase records them on its own).
 pub(crate) async fn delete_local_branch(cx: &mut WriteCx<'_>, branch: &str, old: Option<String>) -> Result<Vec<crate::journal::ConfigChange>, GbError> {
     let full = format!("refs/heads/{branch}");
@@ -254,7 +254,6 @@ mod tests {
         assert_eq!((undone.refs, sorted(&undone.branch_config)), (before.refs, sorted(&before.branch_config)));
     }
 
-    /// Review Focus 2.
     #[tokio::test(flavor = "multi_thread")]
     async fn deleting_a_dotted_branch_restores_its_config_on_undo() {
         let env = WriteEnv::new();
@@ -288,7 +287,7 @@ mod tests {
         assert!(r.try_git(&["rev-parse", "--verify", "-q", "refs/heads/feature/x"]).is_err());
     }
 
-    /// Review Focus 1: gix's CAS would delete a checked-out branch; the intent refuses.
+    /// gix's CAS would delete a checked-out branch; the intent refuses.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_branch_checked_out_anywhere_is_never_deleted() {
         let env = WriteEnv::new();
@@ -325,7 +324,7 @@ mod tests {
         let r = repo();
         let id = open(&env.api, &r).await;
         let tip = oid(&r, "feature/x");
-        // Deviation 5: Both checks against HEAD, and x1 isn't in main: asked first, nothing runs.
+        // Both checks against HEAD, and x1 isn't in main: asked first, nothing runs.
         let out = send(&env.api, delete(id, &r, true, Some(("origin", "feature/x")), false)).await.unwrap();
         assert_eq!(out["outcome"], json!({"status": "unmerged", "branch": "feature/x", "into": "main", "commits": 1}));
         assert!(origin_has(&r, "feature/x"));
@@ -361,7 +360,6 @@ mod tests {
         assert!(origin_has(&r, "feature/x"));
     }
 
-    /// Review Focus 3.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_remote_named_with_a_slash_deletes_the_right_branch() {
         let env = WriteEnv::new();
@@ -378,7 +376,7 @@ mod tests {
         assert!(origin_has(&r, "feature/x"), "origin's is untouched");
     }
 
-    /// §15 "Partial failures say what did happen": a `pre-push` hook moves the local branch
+    /// A `pre-push` hook moves the local branch
     /// while the push runs, so its CAS fails after the remote is gone.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_local_failure_after_the_remote_delete_says_what_happened() {
@@ -411,7 +409,7 @@ mod tests {
         assert!(origin_has(&r, "feature/x"));
     }
 
-    /// §12.4: a rejecting hook's `remote:` lines reach Activity and lead the Details.
+    /// A rejecting hook's `remote:` lines reach Activity and lead the Details.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_rejected_remote_delete_shows_the_servers_lines() {
         let env = WriteEnv::new();

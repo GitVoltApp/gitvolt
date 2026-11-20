@@ -13,7 +13,7 @@ const { FileView } = await import('./FileView');
 const KEY = `file:${'a'.repeat(40)}:docs/a.md`;
 beforeEach(() => vi.clearAllMocks());
 
-describe('FileView and navigation places (spec #5 §3.4)', () => {
+describe('FileView and navigation places', () => {
   it("answers for its place's scroll from the editor, and scrolls back to a pending one after the show", async () => {
     setPendingScroll('', 'file', { key: KEY, view: 'source', top: 480, anchor: null });
     render(<FileView path="docs/a.md" text="# A\n" language="markdown" navKey={KEY} />);

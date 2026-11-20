@@ -1,6 +1,6 @@
 /**
- * The last opener used by "Open in…" (feedback H9), the default next time. The settings seam
- * until plan 1C's settings screen: localStorage, every access in try/catch (storage may be
+ * The last opener used by "Open in…", the default next time. The settings seam
+ * until a settings screen: localStorage, every access in try/catch (storage may be
  * unavailable), per browser profile.
  */
 export const OPEN_IN_KEY = 'gitvolt.openIn.v1';

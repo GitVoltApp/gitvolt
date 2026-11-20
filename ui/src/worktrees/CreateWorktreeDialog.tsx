@@ -36,7 +36,7 @@ function Form({ req }: { req: Req }) {
   const existing = req.branch?.kind === 'existing';
   const taken = !existing && !!rt?.sidebar?.locals.some((b) => b.name === name);
   const error = existing ? null : branchNameError(name) ?? (taken ? `A branch named ${name} already exists` : null);
-  // The folder follows the branch name until the user edits it (§11.1: dash-joined, -2 when taken).
+  // The folder follows the branch name until the user edits it (dash-joined, -2 when taken).
   useEffect(() => {
     if (edited || !rt?.repo || !name || branchNameError(name)) return;
     let live = true;

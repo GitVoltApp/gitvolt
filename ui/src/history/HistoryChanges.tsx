@@ -50,7 +50,7 @@ function useFileList(services: RepoServices, key: string | null): readonly FileC
  * Changes (the `File | Changes` switch's second view): the selected row's commit against the
  * previous version in the file's history (`changesTarget`), with Diff View's toolbar (`views` in
  * File View / Diff View's place) and body: the view modes, whitespace, wrap, Previous/Next change
- * and F7, a Markdown file's `Source | Rendered` (Rendered by default, 5C), the image diff and the
+ * and F7, a Markdown file's `Source | Rendered` (Rendered by default), the image diff and the
  * hex diff. The row's target keeps the shared editor from file to file, as in Diff View: while
  * the next one loads, the last one stays (`usePresented`).
  */

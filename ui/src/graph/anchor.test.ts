@@ -10,7 +10,7 @@ describe('anchoredScrollTop', () => {
   it('uses the density row height it is given', () => {
     expect(anchoredScrollTop(rows('a', 'b'), rows('x', 'a', 'b'), 'b', 10, 28)).toBe(38);
   });
-  it('at the very top, stays at the top: rows inserted above (a new row-0 WIP, K37) show', () => {
+  it('at the very top, stays at the top: rows inserted above (a new row-0 WIP) show', () => {
     expect(anchoredScrollTop(rows('a', 'b'), rows('x', 'a', 'b'), 'a', 0, 28)).toBe(0);
     expect(anchoredScrollTop(rows('a', 'b'), rows('x', 'y', 'a', 'b'), 'b', 0.5, 25)).toBe(0.5);
   });

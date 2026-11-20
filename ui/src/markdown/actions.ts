@@ -2,10 +2,8 @@ import { api, errorMessage } from '../api/client';
 import { tabStore } from '../app/tabStores';
 import { forgeOf, knownMr } from '../forge/mrStore';
 import { loadMrDetail, openMrView } from '../forge/poll';
-// --- 5B T6 ---
 import { recordPlace } from '../nav/history';
 import { scrollToAnchorWhenReady } from '../nav/scroll';
-// --- end 5B T6 ---
 import { useToast } from '../ui/toastStore';
 import { browserUrlFor } from './links';
 import type { FileMarkdownContext, LinkTarget, MarkdownContext } from './types';
@@ -13,7 +11,7 @@ import type { FileMarkdownContext, LinkTarget, MarkdownContext } from './types';
 export type FileLinkHandler = (ctx: FileMarkdownContext, path: string, anchor: string | null) => void;
 let fileLinkHandler: FileLinkHandler | null = null;
 
-/** 5B's File View opens relative links: `path` is already repo-root-relative (`resolveRepoPath`). Returns its removal. */
+/** File View opens relative links: `path` is already repo-root-relative (`resolveRepoPath`). Returns its removal. */
 export function registerFileLinkHandler(fn: FileLinkHandler): () => void {
   fileLinkHandler = fn;
   return () => { if (fileLinkHandler === fn) fileLinkHandler = null; };
@@ -56,7 +54,7 @@ function scrollToAnchor(id: string, origin?: Element): void {
   if (root && pane) scrollToAnchorWhenReady(pane, id, root);
 }
 
-/** A plain click on a link or reference (spec §4.1). Nothing here navigates the app's window. */
+/** A plain click on a link or reference. Nothing here navigates the app's window. */
 export async function openLinkTarget(ctx: MarkdownContext, target: LinkTarget, origin?: Element): Promise<void> {
   switch (target.kind) {
     case 'mr':
@@ -64,10 +62,9 @@ export async function openLinkTarget(ctx: MarkdownContext, target: LinkTarget, o
     case 'commit': {
       const store = tabStore(ctx.tabId);
       if (store?.getState().indexById.has(target.sha)) {
-        // --- 5B T6: a SHA-link jump is a navigation place (spec #5 §3.4), recorded before the jump so
+        // --- a SHA-link jump is a navigation place, recorded before the jump so
         // the view being left saves its scroll; a commit that isn't loaded opens on the forge instead ---
         recordPlace(ctx.tabId, { kind: 'commit', sha: target.sha });
-        // --- end 5B T6 ---
         // Loaded on use: the menu env pulls in most of the app, which the Markdown chunk needn't.
         const { fileMenuEnv } = await import('../menu/menuEnv');
         fileMenuEnv(store).act.showInGraph(target.sha);

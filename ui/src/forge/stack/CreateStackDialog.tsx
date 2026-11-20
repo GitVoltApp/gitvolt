@@ -18,7 +18,7 @@ import { ArrowGlyph } from '../../ui/ArrowGlyph';
 interface Req { tabId: string; stack: Stack }
 const useDialog = create<{ req: Req | null }>(() => ({ req: null }));
 
-/** "Create stack MRs…" (spec #4 §4 4D): a modal dialog (Ruling 6), not 4C's flyout. */
+/** "Create stack MRs…": a modal dialog, not a flyout. */
 export const openCreateStack = (tabId: string, stack: Stack) => useDialog.setState({ req: { tabId, stack } });
 
 export function CreateStackDialog() {

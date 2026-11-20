@@ -1,4 +1,4 @@
-// The UI's backend in the browser (website demo spec §4.1): each request runs its handler, typed
+// The UI's backend in the browser: each request runs its handler, typed
 // against the generated Request union (a method without a handler fails `tsc`), on the demo's
 // state. Replies and errors are copies, as if they had crossed a socket; errors are GbErrors.
 import type { Request } from '../api/gen/Request';

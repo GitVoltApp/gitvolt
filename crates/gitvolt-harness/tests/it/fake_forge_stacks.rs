@@ -1,4 +1,4 @@
-//! The fake forges' list filters 4D's stack code relies on (plan 4D T11).
+//! The fake forges' list filters the stack code relies on.
 
 use gitvolt_harness::fake_forge::*;
 use serde_json::Value;

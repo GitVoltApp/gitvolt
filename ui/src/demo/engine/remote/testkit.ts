@@ -1,4 +1,4 @@
-// Test-only: an origin beside a 1b test repository, as Orbital's: a bare git dir at
+// Test-only: an origin beside a read-engine test repository, as Orbital's: a bare git dir at
 // /demo/.origins/<name>.git borrowing the repo's objects, the repo's remote `origin` on it.
 import * as git from 'isomorphic-git';
 import type { TestRepo } from '../read/testkit';

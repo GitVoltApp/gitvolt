@@ -1,6 +1,6 @@
-// A worktree's index for writes: 1b's parser (full stat data and intent-to-add kept), written back
+// A worktree's index for writes: the read engine's parser (full stat data and intent-to-add kept), written back
 // sorted with every entry's stat data, so the next status trusts the files a write didn't touch
-// (1b's `statMatches`, and isomorphic-git's own check).
+// (`statMatches`, and isomorphic-git's own check).
 import * as git from 'isomorphic-git';
 import { compareBytewise } from '../read/bytes';
 import { readIndex, serializeIndex, type IndexEntry, type IndexStat, stamp, U32 } from '../read/indexFile';

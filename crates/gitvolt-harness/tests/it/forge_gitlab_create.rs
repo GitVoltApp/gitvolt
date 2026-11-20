@@ -1,4 +1,4 @@
-//! The GitLab provider's create half against the fake forge (plan 4C).
+//! The GitLab provider's create half against the fake forge.
 
 use gitvolt_core::error::GbErrorKind;
 use gitvolt_core::forge::*;

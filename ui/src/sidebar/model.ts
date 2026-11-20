@@ -1,7 +1,5 @@
-// --- 4B T11 ---
 import type { ForgeKind } from '../api/gen/ForgeKind';
 import type { ForgeMr } from '../api/gen/ForgeMr';
-// --- end 4B T11 ---
 import type { BranchPicks } from '../api/gen/BranchPicks';
 import type { BranchState } from '../api/gen/BranchState';
 import type { HostKind } from '../api/gen/HostKind';
@@ -25,9 +23,7 @@ export type SideItem =
   | (Base & { kind: 'stash'; stash: StashItem })
   | (Base & { kind: 'tag'; tag: TagItem })
   | (Base & { kind: 'submodule'; submodule: SubmoduleItem })
-  // --- 4B T11 ---
   | (Base & { kind: 'mr'; mr: ForgeMr; forge: ForgeKind });
-  // --- end 4B T11 ---
 
 export type SectionKind = 'local' | 'gitflow' | 'remote' | 'mrs' | 'worktrees' | 'stashes' | 'tags' | 'submodules';
 export interface Section {
@@ -37,7 +33,7 @@ export interface Section {
   picks?: BranchPicks;
 }
 
-/** The sidebar's panels, in fixed display order (spec §6.4): Git Flow once it's set up (its
+/** The sidebar's panels, in fixed display order: Git Flow once it's set up (its
  * feature, release and hotfix branches, a folder per prefix), Local, Remote (one top-level folder
  * per remote), Worktrees, Stashes, Tags, and Submodules in a worktree that has any (by path, flat,
  * as GitKraken lists them). `picks`: the open preset's, for its hidden folders; `worktree`: the
@@ -124,7 +120,7 @@ function hiddenCounts(s: Section): Map<string, { all: number; hidden: number }> 
 }
 
 /**
- * Builds the sidebar's panels (spec §6.4). A case-insensitive substring filter applies to every
+ * Builds the sidebar's panels. A case-insensitive substring filter applies to every
  * panel, keeping and forcing open the parent folders of any match (a panel's count is then the
  * match count; a panel with none shows 0 and an empty body). `tree` sort (the default) nests
  * items by `/` in their name, folders first, both sorted case-insensitively (remote branches
@@ -147,7 +143,7 @@ export function buildPanels(sections: Section[], o: RowOptions): Panel[] {
       return panel;
     }
     if (sort === 'recent' && s.kind === 'remote') {
-      // K76: still one group per remote (no `origin/` on its rows), flat inside, newest tip
+      // Still one group per remote (no `origin/` on its rows), flat inside, newest tip
       // first; the groups themselves ordered by their newest tip.
       const groups = new Map<string, SideItem[]>();
       for (const it of matched) if (it.kind === 'remote') groups.set(it.remote, [...(groups.get(it.remote) ?? []), it]);

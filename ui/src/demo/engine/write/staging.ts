@@ -1,4 +1,4 @@
-// The staging undo log (spec #2 §7.6; journal/staging.rs): stage and unstage are steps of their own
+// The staging undo log (journal/staging.rs): stage and unstage are steps of their own
 // undo stack (the last 100, per worktree, for the page's life), each the index before and after as
 // `write-tree` sees it plus the intent-to-add paths a tree can't carry; a conflict resolution is a
 // step too (journal/resolve_step.rs): its path's stages and file before and after.

@@ -3,7 +3,7 @@ import { errorMessage } from '../api/client';
 import type { FileHistoryPage } from '../api/gen/FileHistoryPage';
 import { initialHistory, stepSelection, withPage, type FileHistoryArgs, type HistoryState } from './model';
 
-/** The page size (spec #3 §3.10). */
+/** The page size. */
 export const HISTORY_PAGE = 200;
 /** How many more pages a blame click looks through for its commit. */
 export const SEEK_PAGES = 10;

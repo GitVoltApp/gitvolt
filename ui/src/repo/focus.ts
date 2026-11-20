@@ -2,10 +2,10 @@ import { useEffect, type RefObject } from 'react';
 import { useRepoView, useRepoViewStore, type FocusZone } from './store';
 
 /**
- * Focus areas (spec §11.1). The zone's element takes DOM focus on every focus request for its
+ * Focus areas. The zone's element takes DOM focus on every focus request for its
  * zone (`setFocus`, even when the store already names it), unless focus is already inside it.
  * `focusTarget` picks the child that should get focus: a selector, or a function of the zone's
- * element (the files zone picks the list holding the open file). Any focus inside the element moves the store's focus to it. Plan 1C's sidebar
+ * element (the files zone picks the list holding the open file). Any focus inside the element moves the store's focus to it. The sidebar
  * and palette use the same store action (`setFocus`).
  */
 export function useFocusZone(zone: FocusZone, ref: RefObject<HTMLElement | null>, focusTarget?: string | ((el: HTMLElement) => HTMLElement | null)) {

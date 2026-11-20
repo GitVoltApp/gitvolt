@@ -5,7 +5,7 @@ import { stackEnvOf } from './env';
 import { afterMergeRow, retargetAndRebase } from './retarget';
 import { startAfterMergeWatch } from './watch';
 
-/** After a stack's bottom merges (spec #4 §4 4D): the Integrate row (after Rebase stack, order 20) and the prompt. */
+/** After a stack's bottom merges: the Integrate row (after Rebase stack, order 20) and the prompt. */
 const offs = [
   registerMenu<CommitTarget, MenuEnv>({
     id: 'stack.forge.afterMerge', kind: 'commit', group: 'integrate', order: 25,

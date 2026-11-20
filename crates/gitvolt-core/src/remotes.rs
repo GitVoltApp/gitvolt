@@ -45,7 +45,7 @@ pub fn parse_remote_url(url: &str) -> Option<RemoteUrl> {
     Some(RemoteUrl { host: host_part.to_ascii_lowercase(), path })
 }
 
-/// The host a forge account for `url` is named by (spec #4 §3.3): `parse_remote_url`'s, plus an
+/// The host a forge account for `url` is named by: `parse_remote_url`'s, plus an
 /// http(s) URL's non-default port (`gitlab.example.com:8443`), since the web and API are there.
 /// An SSH or scp-style URL's port says nothing about the web's: it's dropped.
 pub fn forge_host(url: &str) -> Option<String> {
@@ -75,7 +75,7 @@ pub fn remote_url(repo: &gix::Repository, remote: &str, direction: Direction) ->
 }
 
 /// The scp-style SSH URL for an `https://[user@]host[:port]/path[.git]` remote (a credential
-/// prompt's "Use SSH instead", spec §5.4): `git@host:path.git`. The user and the port go (an
+/// prompt's "Use SSH instead"): `git@host:path.git`. The user and the port go (an
 /// https port says nothing about SSH's); the path stays, nested groups and all. `None` for
 /// anything else: another scheme, no path, a query or fragment.
 pub fn ssh_url_from_https(url: &str) -> Option<String> {
@@ -120,7 +120,7 @@ pub fn op_remotes(repo: &gix::Repository, names: &[String], direction: Direction
         .collect()
 }
 
-/// The forge a host runs, by its name; a profile's host overrides (spec §14.4) cover the rest.
+/// The forge a host runs, by its name; a profile's host overrides cover the rest.
 /// Forgejo's: Codeberg, and a label naming Forgejo or Gitea (whose API Forgejo keeps).
 pub fn host_kind(host: &str) -> HostKind {
     let host = host.to_ascii_lowercase();
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(host_kind("codeberg.example.com"), HostKind::Generic);
     }
 
-    /// Deferred Rust minor #13: a raw `remote.<name>.url` read skips `url.*.insteadOf`, so a
+    /// A raw `remote.<name>.url` read skips `url.*.insteadOf`, so a
     /// remote configured through a rewritten alias gets no forge links at all.
     #[test]
     fn remote_url_applies_instead_of_and_push_instead_of_rewrites() {

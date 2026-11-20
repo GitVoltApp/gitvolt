@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { diffRenderKey, isMarkdownPath, isMarkdownTarget, overRenderLimit, RENDER_MAX_BYTES, VIEW_PREFS, viewKindOf, viewKindOfTarget } from './markdownFiles';
 import { viewPrefOf } from './markdownOverride';
 
-describe('isMarkdownPath (spec #5 §3.3)', () => {
+describe('isMarkdownPath', () => {
   it.each([
     ['README.md', true], ['docs/Guide.MD', true], ['notes.markdown', true], ['page.mdx', true],
     ['a.txt', false], ['md', false], ['.md', false], ['docs.md/file.txt', false], ['x.mdown', false],
@@ -19,7 +19,7 @@ describe('isMarkdownTarget: a diff renders when either side is Markdown', () => 
   ])('%o → %s', (t, want) => expect(isMarkdownTarget(t)).toBe(want));
 });
 
-describe('overRenderLimit (spec #5 §3.1)', () => {
+describe('overRenderLimit', () => {
   it('counts UTF-8 bytes against 5 MB', () => {
     expect(overRenderLimit('a'.repeat(RENDER_MAX_BYTES))).toBe(false);
     expect(overRenderLimit('a'.repeat(RENDER_MAX_BYTES + 1))).toBe(true);
@@ -27,7 +27,7 @@ describe('overRenderLimit (spec #5 §3.1)', () => {
   });
 });
 
-describe('diffRenderKey (5C, R14)', () => {
+describe('diffRenderKey', () => {
   it('is keyed by content: an edit that keeps the length is a new key, so the budget is checked again', () => {
     expect(diffRenderKey('k', '# Old\n', 'Run it once.\n')).toBe(diffRenderKey('k', '# Old\n', 'Run it once.\n'));
     expect(diffRenderKey('k', '# Old\n', 'Run it once.\n')).not.toBe(diffRenderKey('k', '# Old\n', 'Run it ONCE.\n'));

@@ -1,8 +1,8 @@
 import type { FileHistoryPage } from '../api/gen/FileHistoryPage';
 import type { FileHistoryRow } from '../api/gen/FileHistoryRow';
 
-/** What File History opens on (spec #3 §4.2): `rev` null is the worktree's HEAD (ruling 1).
- * `follow`: opened for a file picked in the right panel while File History was sticky (UX): the
+/** What File History opens on: `rev` null is the worktree's HEAD.
+ * `follow`: opened for a file picked in the right panel while File History was sticky: the
  * keyboard stays in that file list, so ↑/↓ go on stepping through its files. */
 export interface FileHistoryArgs { repoId: number; worktree: string; path: string; rev: string | null; blame: boolean; follow?: boolean }
 
@@ -36,7 +36,7 @@ export function stepSelection(s: HistoryState, dir: 1 | -1): Partial<HistoryStat
 
 export const selectedRow = (s: HistoryState): FileHistoryRow | null => s.rows.find((r) => r.sha === s.selected) ?? null;
 
-/** The list's end (spec #3 §4.2: "Added in <sha>", then "End of history"), once the last page is
+/** The list's end ("Added in <sha>", then "End of history"), once the last page is
  * in; `addedIn` when the oldest row added the file. */
 export function historyEnd(s: HistoryState): { addedIn: string | null } | null {
   if (s.more || s.loading || s.error) return null;

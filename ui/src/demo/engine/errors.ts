@@ -32,7 +32,7 @@ export function gitFailure(message: string, stderr: string): GbError {
 
 export const NOT_IN_DEMO = 'Not in the demo: ';
 
-/** What a browser can't do (spec §4.3, the "Not in the demo" tier): the UI shows the message. */
+/** What a browser can't do (the "Not in the demo" tier): the UI shows the message. */
 export function notInDemo(what: string): never {
   throw gbError('Other', `${NOT_IN_DEMO}${what}`);
 }

@@ -12,7 +12,7 @@ import { MdContextOverride } from './sideContext';
 import { MdSuggestionApply, MdSuggestionBase, replacedLines, suggestedLines, suggestionStart } from './suggestion';
 import type { MdCodeProps } from './types';
 
-/** Longer blocks stay plain: one would hold up the highlight worker, and its spans the render (ruling 21). */
+/** Longer blocks stay plain: one would hold up the highlight worker, and its spans the render. */
 export const HIGHLIGHT_MAX_CHARS = 16_384;
 
 const style = (t: { color?: string; fontStyle?: number }): CSSProperties => ({
@@ -22,7 +22,7 @@ const style = (t: { color?: string; fontStyle?: number }): CSSProperties => ({
   textDecoration: t.fontStyle && t.fontStyle & 4 ? 'underline' : undefined,
 });
 
-/** A fenced code block (spec §3.1): Shiki in the loaded editor theme, once the block is near the
+/** A fenced code block: Shiki in the loaded editor theme, once the block is near the
  * viewport, through the time-sliced queue; plain for an unknown language or a very long block;
  * Copy on hover, over the block. The text is there from the first paint; highlighting only
  * colours it. */
@@ -37,7 +37,7 @@ function rangesOf(entry: string | undefined): [number, number][] {
   }).sort((a, b) => a[0] - b[0]);
 }
 
-/** A line's tokens with the characters in `ranges` wrapped in `cls` (5C: a changed line's changed
+/** A line's tokens with the characters in `ranges` wrapped in `cls` (a changed line's changed
  * words): each token is cut at the range edges and keeps its own colour. */
 function withWords(segs: readonly Token[], ranges: readonly [number, number][], cls: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -71,7 +71,7 @@ export function MdCode({ code, lang, marks, words, signs = false }: MdCodeProps)
     job.result.then((t) => { if (live) setTokens(t); }, () => {});
     return () => { live = false; job.cancel(); };
   }, [code, lang, theme, near]);
-  // A changed block (5C) copies its new code: the lines that aren't removed. In the split view's
+  // A changed block copies its new code: the lines that aren't removed. In the split view's
   // old column (the old side's context), it copies the old code: the lines that aren't added.
   const oldSide = useContext(MdContextOverride) !== null;
   const copied = marks === undefined ? code : code.split('\n').filter((_, i) => marks[i] !== (oldSide ? '+' : '-')).join('\n');
@@ -115,7 +115,7 @@ function useFileLanguage(path: string | null): string | null {
   return path !== null && lang?.path === path ? lang.lang : null;
 }
 
-/** A review comment's suggested change (spec 2026-10-08: GitHub's ```suggestion, GitLab's
+/** A review comment's suggested change (GitHub's ```suggestion, GitLab's
  * ```suggestion:-N+M), as the forges show it: a diff of the lines it replaces (`MdSuggestionBase`,
  * from whoever renders the note) and the lines it puts in: word marks in a changed pair, a -/+
  * sign on each changed line, highlighted in the commented file's language. With the replaced

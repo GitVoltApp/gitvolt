@@ -28,7 +28,7 @@ export function ReviewBadge({ badge, onOpen }: { badge: FileBadge; onOpen: () =>
   );
 }
 
-/** The file list's badges (spec 2026-10-08 §5) for a section showing the tab's review Compare:
+/** The file list's badges for a section showing the tab's review Compare:
  * its `renderActions`. Undefined for any other section, and while the Compare is stale. */
 export function useReviewRowBadge(tabId: string, spec: DiffSpec): ((row: FileRow) => ReactNode) | undefined {
   const s = useReview(tabId);

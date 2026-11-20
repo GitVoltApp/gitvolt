@@ -1,4 +1,4 @@
-// The answers the demo gives as fixed or plausible values (website demo spec §4.3, "canned"): the
+// The answers the demo gives as fixed or plausible values ("canned"): the
 // logs, the diagnostics text, the update state, the openers, the repositories under /demo, and
 // the editor template check.
 import type { OpenerPayload } from '../../api/gen/OpenerPayload';
@@ -106,7 +106,7 @@ export function checkEditorTemplate(template: string): void {
   if (program === undefined) fail('InvalidInput', 'empty editor command');
   const base = program.split(/[/\\]/).pop() ?? program;
   const shell = SHELL_PROGRAMS.includes(base) || base.startsWith('python');
-  // A placeholder is safe only as its own whole word that isn't code (the core's I1 rule).
+  // A placeholder is safe only as its own whole word that isn't code (as in the core).
   const codeArg = args.some((w) => hasPlaceholder(w) && !PLACEHOLDERS.includes(w)) || args.some((w, i) => i + 1 < args.length && isCodeFlag(w) && hasPlaceholder(args[i + 1]));
   if (shell && codeArg) {
     fail('InvalidInput', "a shell or interpreter's code argument can't contain {file}, {line} or {repo}: pass them as separate arguments after the code instead");

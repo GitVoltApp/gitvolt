@@ -23,7 +23,7 @@ function summary(root: Root): string[] {
   return out;
 }
 
-describe('diffMarkdown (5C)', () => {
+describe('diffMarkdown', () => {
   it('a changed heading and paragraph show their word changes in changed blocks', () => {
     const r = d('# Setup guide\n\nRun the tool once.\n', '# Install guide\n\nRun the tool twice.\n');
     expect(summary(r.root)).toEqual(['changed:heading', 'del:Setup', 'ins:Install', 'changed:paragraph', 'del:once', 'ins:twice']);
@@ -48,7 +48,7 @@ describe('diffMarkdown (5C)', () => {
     expect(r.root.children[0]!.type).toBe('list');
   });
 
-  it('an ordered list keeps its numbers: a removed item keeps its old one (R12)', () => {
+  it('an ordered list keeps its numbers: a removed item keeps its old one', () => {
     const list = d('1. alpha\n2. beta\n3. gamma\n', '1. alpha\n2. gamma\n').root.children[0] as List;
     expect(list.children.map((i) => [plainText(i), i.data?.gbDiff ?? null, i.data?.gbValue])).toEqual([['alpha', null, 1], ['beta', 'removed', 2], ['gamma', null, 2]]);
   });
@@ -62,7 +62,7 @@ describe('diffMarkdown (5C)', () => {
     ].join('\n');
     const newList = list('Log files', ' with Cancel').replace('Since 2B, the same panel is the', 'The same panel is also the').replace('and `/test/emit`', '`/test/emit` and `/test/write`');
 
-    it('with a placeholder tag (`<repo>`) in it: the words around it diff (R13)', () => {
+    it('with a placeholder tag (`<repo>`) in it: the words around it diff', () => {
       expect(summary(d(list('Log files (2B)', ''), newList).root)).toEqual([
         'item:changed:Event feed: every finished sync, newest first. SinceThe 2B, the same panel is also the Trace panel.', 'del:Since', 'ins:The', 'del:2B, the ', 'ins:also ',
         'item:changed:Log files (2B): ~/.cache/demoapp/logs/app.log (7 days). A sync still running shows "Syncing <repo>… N%" with Cancel.', 'del: (2B)', 'ins: with Cancel',
@@ -94,16 +94,16 @@ describe('diffMarkdown (5C)', () => {
     expect(summary(d('- [ ] run the tests\n', '- [x] run the tests\n').root)).toEqual(['item:changed:run the tests']);
   });
 
-  it('a changed code block merges its lines (R10)', () => {
+  it('a changed code block merges its lines', () => {
     expect(summary(d('```ts\nconst port = 8080;\n```\n', '```ts\nconst port = 9090;\n```\n').root)).toEqual(['changed:code', 'lines:-+']);
     expect((d('```ts\nconst port = 8080;\n```\n', '```ts\nconst port = 9090;\n```\n').root.children[0] as DiffBlockNode).children[0]!.data).toMatchObject({ gbWords: '13-17;13-17' });
   });
 
-  it('a changed diagram shows old and new side by side (R11)', () => {
+  it('a changed diagram shows old and new side by side', () => {
     expect(summary(d('```mermaid\ngraph TD\n  A-->B\n```\n', '```mermaid\ngraph TD\n  A-->C\n```\n').root)).toEqual(['pair', 'removed:code', 'added:code']);
   });
 
-  it('a changed table row diffs its cells; the header stays first (R12)', () => {
+  it('a changed table row diffs its cells; the header stays first', () => {
     const r = d('| Step | Time |\n|---|---|\n| build | 3 ms |\n', '| Step | Time |\n|---|---|\n| build | 5 ms |\n| test | 1 ms |\n');
     expect(summary(r.root)).toEqual(['row:changed', 'del:3', 'ins:5', 'row:added']);
     expect(plainText((r.root.children[0] as Table).children[0]!)).toBe('Step\nTime');
@@ -113,18 +113,18 @@ describe('diffMarkdown (5C)', () => {
     expect(summary(d('> One.\n>\n> Two cats.\n', '> One.\n>\n> Two dogs.\n').root)).toEqual(['changed:paragraph', 'del:cats', 'ins:dogs']);
   });
 
-  it('a whitespace-only change marks nothing (R5)', () => {
+  it('a whitespace-only change marks nothing', () => {
     const r = d('Some  text\nwrapped here.\n', 'Some text wrapped\nhere.\n');
     expect(summary(r.root)).toEqual([]);
     expect(r.changes).toBe(0);
   });
 
-  it('an added file is all added; a deleted one all removed (R6)', () => {
+  it('an added file is all added; a deleted one all removed', () => {
     expect(summary(d('', '# A\n\nB.\n').root)).toEqual(['added:heading', 'added:paragraph']);
     expect(summary(d('# A\n\nB.\n', '').root)).toEqual(['removed:heading', 'removed:paragraph']);
   });
 
-  it('keeps a <details> block whole: removed and added together (R13)', () => {
+  it('keeps a <details> block whole: removed and added together', () => {
     const r = d('<details>\n<summary>More</summary>\n\nOld text.\n\n</details>\n', '<details>\n<summary>More</summary>\n\nNew text.\n\n</details>\n');
     expect(summary(r.root)).toEqual(['removed:html,paragraph,html', 'added:html,paragraph,html']);
   });
@@ -282,7 +282,7 @@ describe('diffMarkdown (5C)', () => {
     });
   });
 
-  describe('one deadline for the whole diff (R14)', () => {
+  describe('one deadline for the whole diff', () => {
     afterEach(() => vi.restoreAllMocks());
     /** A clock that moves 1 ms on every read, so time spent is the number of reads. */
     const ticking = () => { let t = 1_000_000; vi.spyOn(Date, 'now').mockImplementation(() => t++); };
@@ -376,7 +376,7 @@ describe('diffMarkdown (5C)', () => {
   });
 });
 
-describe('source lines (review comments, spec 2026-10-08 §3)', () => {
+describe('source lines (review comments)', () => {
   /** Each top-level block's kind (a marked block's mark) and its lines on each side. */
   const lines = (root: Root) => root.children.filter((n) => n.type !== 'definition').map((n) => [n.type === 'diffBlock' ? n.mark : n.type, n.data?.gbSrc?.new ?? null, n.data?.gbSrc?.old ?? null]);
 

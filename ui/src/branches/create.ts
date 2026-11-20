@@ -22,7 +22,7 @@ const taken = (tabId: string, name: string) => !!useRuntime.getState().tabs[tabI
 export const branchCreateError = (tabId: string, v: string): string | null =>
   branchNameError(v) ?? (taken(tabId, v) ? `A branch named ${v} already exists` : null);
 
-/** The write (§9.1): a CAS create, the upstream per autoSetupMerge, and a switch to it when
+/** The write: a CAS create, the upstream per autoSetupMerge, and a switch to it when
  * `checkout` (the default: the backend's create-and-checkout path, with its checks). */
 export async function createBranch(ctx: WriteCtx, start: BranchStart, name: string, checkout = true): Promise<void> {
   const write = () => runWrite(ctx, (ok) => api.createBranch(ctx.repoId, ctx.worktree, { name, start: start.sha, startRef: start.ref, checkout, expect: { head: null, refs: { [`refs/heads/${name}`]: null } } }, ok));
@@ -46,7 +46,7 @@ const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()
 const INLINE_WAIT_MS = 500;
 
 /**
- * Create branch here and the toolbar Branch button (§9.1, UX round 1): an inline "enter
+ * Create branch here and the toolbar Branch button: an inline "enter
  * branch name" input in the commit's Branch/Tag cell. The row is selected first, which scrolls it
  * into view. Where there's no row to put it in (the commit isn't loaded, a file is open over the
  * graph, Branch/Tag is hidden, or the row didn't render), the dialog instead.

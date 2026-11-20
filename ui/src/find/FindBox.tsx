@@ -11,8 +11,7 @@ import './find.css';
 const plain = (e: KeyboardEvent) => !e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing;
 
 /**
- * The find box (spec §8.7; the user's J5: "a little search box top-right edge of the graph/table
- * view"): over the graph panel's top-right corner (RepoView's graph overlay, so it hides with the
+ * The find box: a little search box over the graph panel's top-right corner (RepoView's graph overlay, so it hides with the
  * graph while a file is open, and its keys and effects stop then too). A match counter, ↑ ↓ ×, a
  * spinner while the path search runs, and "Search older history" for commits outside the window.
  *

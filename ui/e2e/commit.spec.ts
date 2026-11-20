@@ -11,10 +11,10 @@ const box = (page: Page) => page.getByTestId('commit-box');
 const summary = (page: Page) => box(page).getByRole('textbox', { name: 'Commit summary' });
 const description = (page: Page) => box(page).getByRole('textbox', { name: 'Commit description' });
 const button = (page: Page) => box(page).locator('.commit-button');
-/** Amend ticks once HEAD's message has loaded (§8.1), so `check()`'s immediate re-read can miss it. */
+/** Amend ticks once HEAD's message has loaded, so `check()`'s immediate re-read can miss it. */
 const amend = (page: Page) => box(page).getByRole('checkbox', { name: 'Amend' });
 
-test.describe('the commit box (spec #2 §8.1, §8.2)', () => {
+test.describe('the commit box', () => {
   test('commits what is staged, clears the draft, selects the new commit (< 300 ms, best of 3)', { tag: '@budget' }, async ({ page }) => {
     const repo = await openWip(page);
     await expect(button(page)).toHaveText('Type a message to commit');
@@ -28,7 +28,7 @@ test.describe('the commit box (spec #2 §8.1, §8.2)', () => {
     expect(git(repo, 'log', '-1', '--format=%B')).toBe('Stage notes\n\nWhy: the fixture');
     await selectWip(page);
     await expect(summary(page)).toHaveValue('');
-    if (budgetApplies()) expect(ms, 'commit → graph').toBeLessThan(300); // §16; the wave pass reports the best of 3 runs
+    if (budgetApplies()) expect(ms, 'commit → graph').toBeLessThan(300); // the wave pass reports the best of 3 runs
   });
 
   // One page for these (each was a test of its own, paying for a page load): none commits, so
@@ -74,14 +74,14 @@ test.describe('the commit box (spec #2 §8.1, §8.2)', () => {
     await button(page).click();
     await expect(page.getByRole('grid', { name: 'Commit graph' }).getByText('Everything')).toBeVisible();
     expect(git(repo, 'status', '--porcelain')).toBe('');
-    // §8.1: the graph selects the new commit; a clean worktree has no WIP row, so no commit box.
+    // The graph selects the new commit; a clean worktree has no WIP row, so no commit box.
     await expect(page.getByRole('grid', { name: 'Commit graph' }).getByRole('row').filter({ hasText: 'Everything' })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('grid', { name: 'Commit graph' }).getByRole('row').filter({ hasText: '// WIP' })).toHaveCount(0);
     await expect(box(page)).toHaveCount(0);
   });
 });
 
-test.describe('edit the HEAD message (spec #2 §8.3)', () => {
+test.describe('edit the HEAD message', () => {
   // One repo and page (each was a test of its own): the reword undone, then HEAD pushed.
   test('the pencil amends only the message; staged changes stay staged; Undo restores it; a HEAD on its upstream says a force push will be needed', async ({ page }) => {
     const repo = await openWip(page);

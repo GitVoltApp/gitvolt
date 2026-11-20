@@ -2,7 +2,7 @@
 import type { BannerKind } from "./BannerKind";
 
 /**
- * One banner in the tab's `banner` slot (§6.4). The UI writes the copy from these fields.
+ * One banner in the tab's `banner` slot. The UI writes the copy from these fields.
  */
 export type Banner = { entry: number, kind: BannerKind, 
 /**

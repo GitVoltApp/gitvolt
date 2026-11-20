@@ -49,7 +49,7 @@ beforeEach(() => {
   api.forgeCancelAutoMerge.mockImplementation(async () => running());
 });
 
-describe('merging from the MR/PR view (spec #4 §2: forge options, disabled with the reason when blocked)', () => {
+describe('merging from the MR/PR view (forge options, disabled with the reason when blocked)', () => {
   it("GitLab: Delete source branch, then Squash commits, from the project's defaults; Merge arms, then merges with them and the head (the messages are GitLab's own)", async () => {
     show('gitlab');
     await loaded();
@@ -157,7 +157,6 @@ describe('merging from the MR/PR view (spec #4 §2: forge options, disabled with
     expect(api.forgeMerge).not.toHaveBeenCalled();
   });
 
-  // --- 4B final fix ---
   it("says why the merge options couldn't load, and asks again after the next poll", async () => {
     api.forgeProjectSettings.mockRejectedValueOnce({ message: 'gitlab.example.com refused: insufficient_scope' });
     show('gitlab');
@@ -185,7 +184,6 @@ describe('merging from the MR/PR view (spec #4 §2: forge options, disabled with
     await loaded();
     expect(screen.queryByRole('button', { name: 'Merge method' })).toBeNull();
   });
-  // --- end 4B final fix ---
 
   it('the status row: titles and tones for ready, blocked, scheduled, conflicts and checking', async () => {
     const ready = show('gitlab', detailOf({ ...mr, pipeline: { status: 'success', webUrl: null } }, { mergeStatus: { kind: 'mergeable' } }));

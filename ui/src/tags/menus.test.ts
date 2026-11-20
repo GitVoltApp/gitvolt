@@ -17,7 +17,7 @@ const ok = { outcome: { op: 7, remote: 'origin', tag: 'v1', upToDate: false, ser
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('tag rows (spec #3 §3.9, §4.3)', () => {
+describe('tag rows', () => {
   it('Create tag here: Lightweight | Annotated, on a commit (not a WIP row or a stash)', () => {
     const t: CommitTarget = { sha: A, mrRefs: [], isWip: false, isStash: false, branch: null };
     const row = find(buildMenu('commit', t, env([])), 'tag.createHere') as Action;

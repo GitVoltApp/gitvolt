@@ -5,7 +5,7 @@ import { copyAndSay, relativeTime, seconds } from '../app/activityLog';
 import { DebugCheck, DebugRow, type Pill } from './DebugRow';
 import { ClearableInput } from '../ui/ClearableInput';
 
-/** How often the open Commands tab re-reads the backend's ring (R10): no event, just a poll while shown. */
+/** How often the open Commands tab re-reads the backend's ring: no event, just a poll while shown. */
 export const COMMAND_POLL_MS = 1000;
 
 /** No exit code means git was killed (cancel, timeout) or never started: a failure too. */
@@ -80,7 +80,7 @@ export function commandText(e: CommandLogEntry, now = Date.now()): string {
 const sameRing = (a: CommandLogEntry[], b: CommandLogEntry[]) =>
   a.length === b.length && a[0]?.id === b[0]?.id && a[a.length - 1]?.id === b[b.length - 1]?.id;
 
-/** The Debug modal's Commands tab (R10, spec §5.2): every git command the backend ran (its ring
+/** The Debug modal's Commands tab: every git command the backend ran (its ring
  * of 1000), newest first, as a selectable timeline. `focusId` (an error's Details) is scrolled to
  * and highlighted. */
 export function CommandLogView({ focusId }: { focusId: number | null }) {

@@ -44,10 +44,10 @@ windows = "0.62"
 # Canonical paths without the `\\?\` prefix on Windows (git and users read them). In the tree.
 dunce = "1.0.5"
 ts-rs = "12.0.1"
-# Forge tokens in the Secret Service (spec #4 §2; core spec §14.3). v1 feature: zbus Secret Service on Linux.
+# Forge tokens in the Secret Service. v1 feature: zbus Secret Service on Linux.
 keyring = "4.2"
 tempfile = "3.27"
-# Retry-After as an HTTP date (forge HTTP, 4A T2). Already in the tree through hyper.
+# Retry-After as an HTTP date (forge HTTP). Already in the tree through hyper.
 httpdate = "1.0.3"
 encoding_rs = "0.8.42"
 base64 = "0.23.1"
@@ -60,7 +60,7 @@ tauri = { version = "=3.0.0-alpha.5", features = [] }
 tauri-build = { version = "=3.0.0-alpha.4", features = [] }
 tauri-runtime-cef = "=3.0.0-alpha.6"
 tauri-plugin-clipboard-manager = "=3.0.0-alpha.3"
-# Avatars and URL opening (plan 1B Task 5).
+# Avatars and URL opening.
 sha2 = "0.11.0"
 # The harness's generated showcase media (PNG, PDF and ICO streams). Already in the tree through
 # ureq; same version. The harness is never shipped.
@@ -73,12 +73,12 @@ glib = "0.22"
 # Already in the tree through gtk4; same version.
 gio = "0.22"
 # Pre-release: the only line compatible with tauri 3 alpha. Only its free function
-# `open_url` is used; the plugin isn't registered and there's no JS package (plan 1C does the same).
+# `open_url` is used; the plugin isn't registered and there's no JS package.
 tauri-plugin-opener = "=3.0.0-alpha.3"
-# "Other…" (feedback H32): the xdg-desktop-portal Open With chooser over D-Bus. Already in the
+# "Other…": the xdg-desktop-portal Open With chooser over D-Bus. Already in the
 # tree through tauri-plugin-opener; same version and features.
 zbus = "5.19"
-# The main window's X11 id, the folder-picker portal's parent (plan 1C, spec §13). Already in the
+# The main window's X11 id, the folder-picker portal's parent. Already in the
 # tree through tauri; same version.
 raw-window-handle = "0.6.2"
 # The main window's X11 opacity, to keep it see-through until it's placed (window_state.rs, `veil`),
@@ -86,7 +86,7 @@ raw-window-handle = "0.6.2"
 # tauri-runtime-cef; same versions and features.
 gdk4-x11 = { version = "0.11.5", features = ["xlib"] }
 x11-dl = "2.21"
-# The active-tab file watcher (plan 1C Task 6): inotify on Linux.
+# The active-tab file watcher: inotify on Linux.
 notify = "8.2.0"
 # The system's font families for the font pickers (gitvolt-core fonts.rs): reads the font files'
 # name tables, and on Linux fontconfig's configuration for the folders, without a C library.

@@ -7,7 +7,7 @@ vi.mock('./poll', () => poll);
 
 const { notifyForgeAccountsChanged, notifyForgeWrite, useForgePolling } = await import('./usePolling');
 
-describe('useForgePolling (spec #4 §3.4: the active tab only)', () => {
+describe('useForgePolling (the active tab only)', () => {
   it('polls the shown tab at once and after a write, and stops when it hides', async () => {
     const { unmount } = renderHook(() => useForgePolling('t', 4));
     await waitFor(() => expect(poll.pollForge).toHaveBeenCalledWith('t', 'activate'));

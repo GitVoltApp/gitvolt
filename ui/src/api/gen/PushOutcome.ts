@@ -8,6 +8,6 @@ export type PushOutcome = {
  */
 op: number, branch: string, remote: string, dst: string, upToDate: boolean, server: RemoteSummary, 
 /**
- * It force-pushed with a rewrite mark's lease, without asking (§12.3): what rewrote it.
+ * It force-pushed with a rewrite mark's lease, without asking: what rewrote it.
  */
 forced: RewriteKind | null, };

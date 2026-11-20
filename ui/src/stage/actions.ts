@@ -11,7 +11,7 @@ import { advanceFrom, followOpenFile } from './follow';
 import { discardingAny, stagingKey, useStaging } from './store';
 
 /** The WIP panel's write target: its tab, repo and the worktree of the WIP row it shows
- * (2B Deviation 17). `null` outside a WIP panel. */
+ * `null` outside a WIP panel. */
 export function useWipCtx(): WriteCtx | null {
   const { tabId } = useRepoContext();
   const repoId = useRepoView((s) => s.repo);
@@ -19,9 +19,9 @@ export function useWipCtx(): WriteCtx | null {
   return worktree === null ? null : { tabId, repoId, worktree };
 }
 
-/** One staging or discard write (TypeScript only asks, spec #2 §3.1): through `runWrite` (its
+/** One staging or discard write (TypeScript only asks): through `runWrite` (its
  * error toast, Retry, Refresh), then the open diff follows the file. `true` once it succeeded.
- * Refused while a commit for the worktree is queued or running (§3.6). */
+ * Refused while a commit for the worktree is queued or running. */
 export async function writeAndFollow(ctx: WriteCtx, send: () => Promise<WriteResult<unknown>>, advance = false): Promise<boolean> {
   if (useStaging.getState().committing[stagingKey(ctx.repoId, ctx.worktree)]) return false;
   // `advance` (a whole-file stage, unstage or discard): the open file's place in its list, before
@@ -53,14 +53,14 @@ export const pathsOf = (files: readonly Pick<FileChange, 'path' | 'oldPath'>[]) 
 
 export const stagePaths = (ctx: WriteCtx, paths: string[]) => writeAndFollow(ctx, () => api.stage(ctx.repoId, ctx.worktree, paths), true);
 
-/** Renames unstage with both paths (§7.2). */
+/** Renames unstage with both paths. */
 export const unstageFiles = (ctx: WriteCtx, files: FileChange[]) =>
   writeAndFollow(ctx, () => api.unstage(ctx.repoId, ctx.worktree, files.map((f) => f.path), files.flatMap((f) => (f.oldPath ? [f.oldPath] : []))), true);
 
 export const stageAll = (ctx: WriteCtx) => writeAndFollow(ctx, () => api.stageAll(ctx.repoId, ctx.worktree), true);
 export const unstageAll = (ctx: WriteCtx) => writeAndFollow(ctx, () => api.unstageAll(ctx.repoId, ctx.worktree), true);
 
-// --- 2B T9: discards (spec #2 §7.2, §7.4). Undoable from the toolbar; only Discard all asks. ---
+// --- discards. Undoable from the toolbar; only Discard all asks. ---
 /** A Discard of `paths`, once at a time: while one of them is being discarded (or the worktree's
  * Discard all or unstaged runs) another is a no-op, `false`. Sent again before the first was
  * answered, it found nothing left to discard and failed (the row's button and menu were still
@@ -92,7 +92,7 @@ export async function discardUnstaged(ctx: WriteCtx): Promise<boolean> {
 }
 
 /** `count`: the changed files the panel shows, for the armed label; `confirmed`: their paths (a
- * rename's both), sent so the backend never discards more than that (UX R1 C.2).
+ * rename's both), sent so the backend never discards more than that.
  * One at a time per worktree: a big repository's discard takes seconds, and a click meanwhile
  * (nothing seemed to happen) sent another one. */
 export async function discardAll(ctx: WriteCtx, count?: number, confirmed?: readonly string[]): Promise<boolean> {
@@ -108,9 +108,8 @@ export async function discardAll(ctx: WriteCtx, count?: number, confirmed?: read
     useStaging.getState().setDiscarding(ctx.repoId, ctx.worktree, false);
   }
 }
-// --- end 2B T9 ---
 
-// --- 2B T13: staging undo (spec #2 §7.6) ---
+// --- staging undo ---
 export const stagingUndo = (ctx: WriteCtx) => writeAndFollow(ctx, () => api.stagingUndo(ctx.repoId, ctx.worktree));
 export const stagingRedo = (ctx: WriteCtx) => writeAndFollow(ctx, () => api.stagingRedo(ctx.repoId, ctx.worktree));
 
@@ -123,9 +122,8 @@ export async function loadStaging(repo: number, worktree: string): Promise<void>
   }
 }
 
-// --- 2B T10: hunks and lines (spec #2 §7.3) ---
+// --- hunks and lines ---
 export const stagePatch = (ctx: WriteCtx, path: string, staged: boolean, selection: StageSelection, base: WipBase) =>
   writeAndFollow(ctx, () => api.stagePatch(ctx.repoId, ctx.worktree, { path, staged, selection, base }));
 export const discardPatch = (ctx: WriteCtx, path: string, selection: StageSelection, base: WipBase) =>
   discardOnce(ctx, [path], () => writeAndFollow(ctx, () => api.discard(ctx.repoId, ctx.worktree, { kind: 'patch', path, selection, base })));
-// --- end 2B T10 ---

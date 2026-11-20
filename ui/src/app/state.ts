@@ -13,7 +13,7 @@ import { normalizeGroups } from './tabGroups';
 /**
  * Mirrors `AppSettings::default()` (Rust); replaced by the backend's copy on load. View
  * preferences (zoom, density, diff mode, ignore whitespace, word wrap) aren't here: they stay in
- * localStorage behind 1B's seams, so they apply before the first paint (ruling R4).
+ * localStorage behind their own seams, so they apply before the first paint.
  */
 export const DEFAULT_SETTINGS: AppSettings = {
   version: 1, activeProfile: 'default', theme: 'default-dark', ...DEFAULT_EDITOR_SETTINGS, ...DEFAULT_FONT_SETTINGS,
@@ -64,7 +64,7 @@ interface AppState {
 // A profile from before tab groups gets none; groups that went stale (a tab gone) are fixed up.
 const fromState = (st: StatePayload) => ({ settings: st.settings, profile: normalizeGroups(st.profile), profiles: st.profiles });
 
-/** App settings and the active profile (spec §14.1), backed by the core's store. */
+/** App settings and the active profile, backed by the core's store. */
 export const useAppState = create<AppState>((set, get) => ({
   loaded: false,
   booted: false,

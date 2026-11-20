@@ -35,7 +35,7 @@ beforeEach(() => {
   useToast.getState().dismiss();
 });
 
-describe("a diff-line note's file:line (spec #4 §2: clicking opens that file's diff)", () => {
+describe("a diff-line note's file:line (clicking opens that file's diff)", () => {
   it("opens the file in the compare of the merge base and the MR's head", async () => {
     api.mergeBase.mockResolvedValue(B);
     await openNoteFile('t', 'gitlab', mr, at('README.md'));

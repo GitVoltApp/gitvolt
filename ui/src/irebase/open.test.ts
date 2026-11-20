@@ -12,7 +12,7 @@ vi.mock('../write/ctx', () => ({ writeCtx: (tabId: string) => ({ tabId, repoId: 
 beforeAll(() => { registerCenterView(REBASE_VIEW, () => null); });
 afterEach(() => { closeCenterView('t1'); setSession('t1', undefined); rebasePlan.mockReset(); });
 
-describe('openRebaseEditor (spec #3 §4.1; the contract entry point)', () => {
+describe('openRebaseEditor (the contract entry point)', () => {
   it('loads the plan, applies the preset and shows the editor in place of the graph', async () => {
     rebasePlan.mockResolvedValue(plan());
     expect(await openRebaseEditor('t1', { branch: 'topic', base: 'main', preset: { rows: { [oid('c')]: 'squash' } } })).toBe(true);

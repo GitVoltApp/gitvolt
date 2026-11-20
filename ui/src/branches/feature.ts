@@ -7,7 +7,7 @@ import { createBranchAt } from './create';
 import { offBranchMenus } from './menus';
 import { offUpstreamPicker } from './upstream';
 
-/** Branches (spec #2 §9): the toolbar Branch button, and the branch rows of the commit and
+/** Branches: the toolbar Branch button, and the branch rows of the commit and
  * branch-label menus. Checkout and reset register from their own modules. */
 const writeCtx = () => {
   const t = activeTab();

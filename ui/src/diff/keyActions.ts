@@ -80,7 +80,7 @@ const actions: Action[] = [
     when: changeKeysOn,
     run: () => import('./DiffToolbar').then((m) => m.goToChange('previous')),
   },
-  // Review comments (spec 2026-10-08 §2): review mode lends these (`diff/review/ReviewMode.tsx`).
+  // Review comments: review mode lends these (`diff/review/ReviewMode.tsx`).
   // Over a review's rendered Markdown diff it comments on a block (`RenderedReview`).
   withBlockComment({
     id: 'review.comment', label: 'Comment on the line or selection', group: 'View', section: 'Diff', icon: MessageSquarePlus, tooltip: "Comment on the cursor's line, or the selected lines, of the merge request's diff", shortcuts: ['Mod+Alt+C'], menu: false,

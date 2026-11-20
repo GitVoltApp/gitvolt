@@ -8,7 +8,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-/// The coalescing period: ≤ 10 `opProgress` a second (§16).
+/// The coalescing period: ≤ 10 `opProgress` a second.
 pub(crate) const TICK: Duration = Duration::from_millis(100);
 
 /// git's `Rebasing (23/60)` (it rewrites the line with `\r`; the stream splits on it).
@@ -86,7 +86,7 @@ mod tests {
         assert_eq!(parse_rebasing("Successfully rebased and updated refs/heads/main."), None);
     }
 
-    /// §16: at most 10 `opProgress` a second, however fast git goes; the last step always lands;
+    /// At most 10 `opProgress` a second, however fast git goes; the last step always lands;
     /// every other line reaches Activity; `on_tick` follows each emitted step.
     #[tokio::test(start_paused = true)]
     async fn sixty_steps_in_a_fifth_of_a_second_emit_a_handful() {

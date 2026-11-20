@@ -52,7 +52,7 @@ describe('TextDiff', () => {
     const { TextDiff, useDiffPrefs } = mod;
     const view = render(<TextDiff path="a.php" original="<?php 1" modified="<?php 2" language="php" />);
     await waitFor(() => expect(host.showDiff).toHaveBeenCalledWith(expect.objectContaining({ path: 'a.php', original: '<?php 1', modified: '<?php 2', language: 'php' })));
-    // With what it will show, so the shared editor can hide another view's diff meanwhile (H6).
+    // With what it will show, so the shared editor can hide another view's diff meanwhile.
     expect(host.attachDiff).toHaveBeenCalledWith(view.getByTestId('text-diff'), { path: 'a.php', original: '<?php 1', modified: '<?php 2' });
     // The shared editor must exist before anything is shown in it (MonacoHost's contract).
     expect(host.attachDiff.mock.invocationCallOrder[0]).toBeLessThan(host.showDiff.mock.invocationCallOrder[0]);
@@ -62,7 +62,7 @@ describe('TextDiff', () => {
     await waitFor(() => expect(host.detachDiff).toHaveBeenCalledWith(expect.any(HTMLElement)));
   });
 
-  it('hidden (a closed diff kept by <Activity>, J16), it keeps the editor attached; shown again, it keeps it, not attaching again', async () => {
+  it('hidden (a closed diff kept by <Activity>), it keeps the editor attached; shown again, it keeps it, not attaching again', async () => {
     const { TextDiff } = mod;
     // The host holds its editor in the box it was attached to.
     let box: HTMLElement | null = null;
@@ -86,7 +86,7 @@ describe('TextDiff', () => {
 });
 
 describe('useShow', () => {
-  // K7: stepping ↑/↓, a file's load lands and renders the next file: that render updates the
+  // Stepping ↑/↓, a file's load lands and renders the next file: that render updates the
   // `onShown` ref at once, but its effects (the next show, and this one's cleanup) wait past a
   // paint. The previous file's show finishing in that window reports *its* view as shown, not the
   // next file's: else the panel's header moved on over the previous file's lines.
@@ -119,7 +119,7 @@ describe('FileView', () => {
     await waitFor(() => expect(host.detachFile).toHaveBeenCalled());
   });
 
-  it('hidden and shown again (J16), it keeps the file editor attached', async () => {
+  it('hidden and shown again, it keeps the file editor attached', async () => {
     const { FileView } = mod;
     let box: HTMLElement | null = null;
     host.attachFile.mockImplementation((el: HTMLElement) => { box = el; });

@@ -46,7 +46,7 @@ function blameOn(path = 'a.txt', blame = true, target = inCommit(path)) {
   openFileHistory('t1', wip ? { path, rev: null, worktree: '/r' } : { path, rev: A }, blame);
 }
 
-describe('File History is sticky (UX: a file picked while it\'s open opens in it too)', () => {
+describe('File History is sticky (a file picked while it\'s open opens in it too)', () => {
   it('opening File History turns the tab\'s mode on: Blame, or History alone', () => {
     blameOn('a.txt', true);
     expect(t1.getState().stickyHistory).toEqual({ blame: true });

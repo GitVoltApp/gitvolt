@@ -1,5 +1,5 @@
 /**
- * A rename's paths for the diff header (H21): the directories both share, then
+ * A rename's paths for the diff header: the directories both share, then
  * `old ⇒ new` with what differs. Whole directories only: `src/app/` and `src/application/` share
  * `src/`. `newDir` + `newName` is the new path's rest, split so the header can highlight only the
  * new file name.
@@ -26,7 +26,7 @@ const isWord = (c: string | undefined) => c !== undefined && /[\p{L}\p{N}]/u.tes
 const splitsWord = (s: string[], i: number) => i > 0 && isWord(s[i - 1]) && isWord(s[i]);
 
 /**
- * What a rename changed, for its tooltip (feedback J15): each path split into the prefix and
+ * What a rename changed, for its tooltip: each path split into the prefix and
  * suffix both paths share (shown dimmed) and the part in between that changed. Character-level,
  * so the change can be a directory in the middle, a file name, part of one, or an extension; the
  * prefix and suffix never overlap in either path. Each changed part is widened to whole words

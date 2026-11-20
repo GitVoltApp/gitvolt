@@ -26,7 +26,7 @@ const pointAt = (el: Element | null) => { document.elementFromPoint = () => el; 
 const pointer = (type: string, x: number, y: number) => act(() => { window.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y })); });
 afterEach(() => { setSession('t1', undefined); useChipDrag.setState({ drag: null }); });
 
-describe('the chip column (spec #3 §4.1)', () => {
+describe('the chip column', () => {
   it('shows each chip on its row, the rebased branch on the top row', () => {
     show();
     expect(chipsOn('e')).toEqual(['topic']);
@@ -107,7 +107,7 @@ describe('the chip column (spec #3 §4.1)', () => {
     expect(chip('x').classList.contains('is-deleted')).toBe(false);
   });
 
-  it('two chips on one row are each deleted and restored on their own (UX R1.5)', () => {
+  it('two chips on one row are each deleted and restored on their own', () => {
     show();
     // A second free chip on x's row (b).
     fireEvent.click(row('b').querySelector('[aria-label="Add a branch here"]')!);
@@ -122,7 +122,7 @@ describe('the chip column (spec #3 §4.1)', () => {
     expect(wraps('b')).toEqual(['x']);
   });
 
-  it('a deleted chip folded onto another\'s row (squash into it) is restored on its own, and the other deleted (UX R1.5)', () => {
+  it('a deleted chip folded onto another\'s row (squash into it) is restored on its own, and the other deleted', () => {
     setSession('t1', { ctx, opened: { branch: 'topic', base: 'main' }, state: fromPlan(plan({ chips: [{ branch: 'x', at: oid('b'), locked: null }, { branch: 'w', at: oid('c'), locked: null }] })), prediction: NO_PREDICTION, moved: null, editing: null });
     render(<RebaseEditor tabId="t1" props={{}} close={() => {}} />);
     fireEvent.click(x('c', 'w'));
@@ -136,7 +136,7 @@ describe('the chip column (spec #3 §4.1)', () => {
     expect(wraps('b')).toEqual(['x (deleted)', 'w (deleted)']);
   });
 
-  it('a chip carries its full name in place, an overlay with its controls; the tooltip says what it does (UX2 E.1)', () => {
+  it('a chip carries its full name in place, an overlay with its controls; the tooltip says what it does', () => {
     show();
     const wrap = row('b').querySelector('.irebase-chip-wrap')!;
     fireEvent.mouseEnter(wrap);
@@ -158,7 +158,7 @@ describe('the chip column (spec #3 §4.1)', () => {
     expect(wrap.querySelector('.irebase-chip-expand')).toBeNull();
   });
 
-  it('chips that don\'t fit at a readable width go behind "+N"; its click offers each hidden chip\'s menu (UX2 E.2)', () => {
+  it('chips that don\'t fit at a readable width go behind "+N"; its click offers each hidden chip\'s menu', () => {
     const names = ['feature/one', 'feature/two', 'stack/three', 'stack/four'];
     setSession('t1', { ctx, opened: { branch: 'topic', base: 'main' }, state: fromPlan(plan({ chips: names.map((branch) => ({ branch, at: oid('b'), locked: null })), branches: ['main', 'topic', ...names] })), prediction: NO_PREDICTION, moved: null, editing: null });
     render(<RebaseEditor tabId="t1" props={{}} close={() => {}} />);
@@ -187,7 +187,7 @@ describe('the chip column (spec #3 §4.1)', () => {
     expect(screen.getByRole('button', { name: '1 more: stack/three' }).textContent).toBe('+1');
   });
 
-  it('a chip takes its branch\'s graph lane colour from when the editor opened; others the default (UX R1.8)', () => {
+  it('a chip takes its branch\'s graph lane colour from when the editor opened; others the default', () => {
     show({ x: 2, topic: 0 });
     const lane = (el: HTMLElement) => el.style.getPropertyValue('--chip-lane');
     expect(lane(chip('x'))).not.toBe('');
@@ -209,7 +209,7 @@ describe('the chip column (spec #3 §4.1)', () => {
   });
 });
 
-describe('the chip column\'s fit (UX2 E.2)', () => {
+describe('the chip column\'s fit', () => {
   const item = (branch: string, kind: ChipItem['kind'] = 'chip'): ChipItem => ({ branch, kind, color: undefined });
   it('shows every chip that fits at 6 characters; short names take their own width', () => {
     expect(chipsShown([item('topic', 'rebased'), item('feature/a')], LIST_W)).toBe(2);

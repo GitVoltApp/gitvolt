@@ -149,7 +149,7 @@ fn first_free(lanes: &[Option<Lane>], min: usize) -> usize {
 
 /// The layout's whole state between two rows: the lanes (each with the parent it waits for and,
 /// for that parent's home lane, its lock, stash flag and chain time). Laying rows out one chunk
-/// at a time from one `LayoutState` gives exactly the single pass (spec §8.2 "Continuation").
+/// at a time from one `LayoutState` gives exactly the single pass.
 pub struct LayoutState {
     lanes: Vec<Option<Lane>>,
     /// The pinned lanes (see `layout`): lane `k` is kept for its pinned chain through row
@@ -173,7 +173,7 @@ impl LayoutState {
     /// them keep their home, lock, stash flag and chain time, so the takeover and lock rules
     /// carry on across the boundary.
     ///
-    /// Test-only for now (1C review M9): its owner is the deferred "load more" plan, which will
+    /// Test-only for now: its owner is the deferred "load more", which will
     /// extend a built layout instead of rebuilding it; the code and its tests are kept for that.
     pub fn resolve_outside(&mut self, row_of: impl Fn(&Oid) -> Option<u32>) {
         for l in self.lanes.iter_mut().flatten() {
@@ -574,7 +574,7 @@ mod tests {
 
     #[test]
     fn a_stub_takes_the_first_lane_nothing_in_the_row_above_touches() {
-        // (h1) cargo and routes fork from station, as do the hidden branches: the stub comes in
+        // cargo and routes fork from station, as do the hidden branches: the stub comes in
         // from lane 3, right of both lines.
         let lay = lay_marks(&[side(&[3]), side(&[3]), on_trunk(&[3]), stubbed(on_trunk(&[4])), on_trunk(&[])]);
         assert_eq!(stubs(&lay), [(3, 3)]);
@@ -591,14 +591,14 @@ mod tests {
 
     #[test]
     fn stubs_on_adjacent_rows_alternate_lanes() {
-        // (h3) Hidden branches fork from two commits in a row.
+        // Hidden branches fork from two commits in a row.
         let lay = lay_marks(&[on_trunk(&[1]), stubbed(on_trunk(&[2])), stubbed(on_trunk(&[3])), on_trunk(&[])]);
         assert_eq!(stubs(&lay), [(1, 1), (2, 2)]);
     }
 
     #[test]
     fn a_stub_on_a_folded_merge_and_under_it_clear_its_tail() {
-        // (h4) A stub into the merge, its tail, and a stub into the commit under it.
+        // A stub into the merge, its tail, and a stub into the commit under it.
         let lay = lay_marks(&[on_trunk(&[1]), stubbed(fold(1, 2)), stubbed(on_trunk(&[3])), on_trunk(&[])]);
         assert_eq!((stubs(&lay), tails(&lay)), (vec![(1, 1), (2, 3)], vec![(1, 2)]));
     }

@@ -4037,7 +4037,7 @@ mod configuration_tests {
 
   #[test]
   fn disabling_component_updates_appends_the_switch() {
-    // K31: GitVolt is a git client with no route to `update.googleapis.com` that matters to
+    // GitVolt is a git client with no route to `update.googleapis.com` that matters to
     // it; left on, the component updater (cert revocation sets, the CT log list, download
     // file-type policies) tries to memory-map a temp file every run and, under a
     // restrictive sandbox, fails loudly (`puffin/src/puffpatch.cc`). The switch is only

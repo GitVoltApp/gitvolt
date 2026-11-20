@@ -23,7 +23,7 @@ const target = (over: Partial<FileTarget> = {}, absent = false): FileTarget => (
 });
 const rows = (t: FileTarget, e = env()) => buildMenu<FileTarget, MenuEnv>('file', t, e).filter((r): r is Action => r.kind === 'action' && ['file.fileHistory', 'file.blame', 'file.restore'].includes(r.id));
 
-describe('the file menu\'s history rows (spec #3 §4.2, §3.8)', () => {
+describe('the file menu\'s history rows', () => {
   it('a commit\'s file: Restore from this commit, File history, Blame', () => {
     const r = rows(target());
     expect(r.map((x) => x.label)).toEqual(['Restore from this commit', 'File history', 'Blame']);

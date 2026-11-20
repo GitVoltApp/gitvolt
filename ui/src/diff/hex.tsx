@@ -1,4 +1,4 @@
-// Binary files in a hex view (phase 3 UX round 2, lanes I and K): hex | text, each a read-only
+// Binary files in a hex view (lanes I and K): hex | text, each a read-only
 // Monaco editor of its own (monaco/hexPanes.ts), scrolled together. File View shows one side's
 // bytes; Diff View both sides' side by side, byte i against byte i, the changed bytes coloured in
 // both panes (an added or deleted file: its one side, all of it). The core makes the dumps
@@ -92,7 +92,7 @@ function loadHex(repo: number, target: DiffTarget): Promise<HexDumpPayload> {
 type HexState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; key: string; data: HexDumpPayload };
 
 /**
- * A binary's hex view (lane K): File View, `side`'s bytes; Diff View, both sides' (`hex`), side by
+ * A binary's hex view: File View, `side`'s bytes; Diff View, both sides' (`hex`), side by
  * side. Shown in the commit that renders it (a layout effect, painted in that task), so the
  * panel's header and this body switch together: the panel doesn't wait for it (`onShown` still
  * fires, once it's shown or the editor failed to load).

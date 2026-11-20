@@ -1,8 +1,8 @@
-//! Forge versions (spec #4 §3.2): GitLab's gates its native stacked merge requests.
+//! Forge versions: GitLab's gates its native stacked merge requests.
 
 use crate::forge::types::ForgeKind;
 
-/// GitLab's native stacked merge requests (spec #4 §2 "Stacks").
+/// GitLab's native stacked merge requests.
 pub const NATIVE_STACKS_GITLAB: (u32, u32) = (19, 1);
 
 /// `version` (`19.1.0-ee`, `20.0.0-pre`) is at least `major.minor`. Unreadable is no.

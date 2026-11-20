@@ -23,7 +23,7 @@ function open() {
 beforeAll(() => { registerCenterView(REBASE_VIEW, () => null); });
 afterEach(() => { closeCenterView('t1'); setSession('t1', undefined); vi.clearAllMocks(); });
 
-describe('Start, Cancel and Reload (spec #3 §4.1, §5)', () => {
+describe('Start, Cancel and Reload', () => {
   it('Start sends the plan, closes the editor at once and drops the session when it went through', async () => {
     open();
     editState('t1', (s) => setActions(s, [oid('d')], 'squash'));
@@ -41,14 +41,14 @@ describe('Start, Cancel and Reload (spec #3 §4.1, §5)', () => {
     expect(sessionOf('t1')).toBeUndefined();
   });
 
-  it('a finished rebase with a warning toasts as a warning, the warning under it (3C T13)', async () => {
+  it('a finished rebase with a warning toasts as a warning, the warning under it', async () => {
     open();
     interactiveRebase.mockResolvedValue(ok({ status: 'done', commits: 4, fastForward: false, warning: "feature/a wasn't deleted: it changed during the rebase" }));
     await startRebase('t1');
     expect(useToast.getState()).toMatchObject({ message: 'Rebased topic onto main', tone: 'warning', detail: "feature/a wasn't deleted: it changed during the rebase" });
   });
 
-  it('a stop whose new message a hook refused toasts the warning (3C final fix M1, M2)', async () => {
+  it('a stop whose new message a hook refused toasts the warning', async () => {
     open();
     const warning = "The new message wasn't applied: Rejected. Type it again to retry, or Continue to keep the old one.";
     interactiveRebase.mockResolvedValue(ok({ status: 'stopped', kind: 'rebase', files: 0, warning }));

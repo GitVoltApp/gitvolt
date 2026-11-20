@@ -1,9 +1,9 @@
-//! Discards (spec #2 §7.2, §7.3, §7.4). Every discard snapshots first (the pipeline's step 4,
+//! Discards. Every discard snapshots first (the pipeline's step 4,
 //! from the plan's paths) and records an `after` snapshot, so Undo restores `before` and Redo
-//! restores `after` (§5.3). Only Discard all confirms, in the UI; nothing here asks.
+//! restores `after`. Only Discard all confirms, in the UI; nothing here asks.
 //!
-//! What the snapshot holds is every file the discard removes or overwrites, all files (2A final
-//! review): the tracked paths git writes back, the untracked files it deletes, and the files
+//! What the snapshot holds is every file the discard removes or overwrites, all files:
+//! the tracked paths git writes back, the untracked files it deletes, and the files
 //! outside the index that writing a tracked path back removes. The last are collisions: a folder
 //! standing where a deleted file comes back (git removes it, ignored files and all), or a file or
 //! symlink standing where a folder must be. They're counted in the label and held in the
@@ -46,7 +46,7 @@ pub enum DiscardScope {
     Unstaged,
     /// Staged, unstaged and untracked: back to HEAD.
     All {
-        /// UX R1 C.2: the changed files the user confirmed (the panel's, a rename's both paths).
+        /// The changed files the user confirmed (the panel's, a rename's both paths).
         /// A changed file outside them refuses it as Stale, so a Discard all never takes more
         /// than was confirmed (one sent again while the first still ran, say). Absent: every
         /// changed file.
@@ -59,7 +59,7 @@ pub enum DiscardScope {
 /// `git clean`'s paths go on argv, so in chunks.
 const CLEAN_CHUNK: usize = 1000;
 
-/// What a discard acts on, every one a file path (2A final review: a directory is expanded to
+/// What a discard acts on, every one a file path (a directory is expanded to
 /// its files before the snapshot and the precheck see it).
 #[derive(Debug, Default, Clone)]
 struct Targets {
@@ -188,7 +188,7 @@ async fn targets_of(cli: &GitCli, root: &Path, scope: &DiscardScope, entries: &[
                     } else if let Some(e) = rows.iter().find(|e| submodule_row(e, links)) {
                         GbError::new(GbErrorKind::InvalidInput, format!("{} is a submodule: discard its changes inside it", e.path))
                     } else {
-                        // Gone, or only staged now: the list was drawn before (Review Focus 1).
+                        // Gone, or only staged now: the list was drawn before.
                         stale(p)
                     });
                 }
@@ -227,7 +227,7 @@ async fn targets_of(cli: &GitCli, root: &Path, scope: &DiscardScope, entries: &[
             if let Some(e) = entries.iter().find(|e| e.kind == EntryKind::Unmerged) {
                 return Err(GbError::new(GbErrorKind::InProgress, format!("{} has merge conflicts: resolve conflicts first", e.path)));
             }
-            // UX R1 C.2: never more than the user confirmed (a separate repository is never
+            // Never more than the user confirmed (a separate repository is never
             // deleted, so it isn't one of them).
             if let Some(confirmed) = confirmed {
                 let confirmed: BTreeSet<&str> = confirmed.iter().map(|p| p.trim_end_matches('/')).collect();
@@ -247,7 +247,7 @@ async fn targets_of(cli: &GitCli, root: &Path, scope: &DiscardScope, entries: &[
             // An untracked file at a rename's source (or over a staged deletion) is overwritten
             // with HEAD's: it's a tracked path of the snapshot (its index state comes back too).
             t.delete = untracked.iter().filter(|p| !restore.contains(**p)).map(|p| p.to_string()).collect();
-            // HEAD's gitlink back at a path (M2): git re-adds the index entry and never touches
+            // HEAD's gitlink back at a path: git re-adds the index entry and never touches
             // the folder.
             link_targets = restore.iter().filter(|p| links.head.contains(*p)).cloned().collect();
             t.restore = restore.into_iter().collect();
@@ -258,7 +258,7 @@ async fn targets_of(cli: &GitCli, root: &Path, scope: &DiscardScope, entries: &[
         // `rm --cached` writes no file, and only files are deleted after it: nothing is in the way.
         return Ok(t);
     }
-    // C1: writing a file (or a removal) where a repository stands would delete it, `.git` and
+    // Writing a file (or a removal) where a repository stands would delete it, `.git` and
     // all, and no snapshot carries one.
     for p in t.restore.iter().filter(|p| !link_targets.contains(*p)) {
         if precheck::repo_at(root, p) || links.index_at_or_under(p) {
@@ -271,7 +271,7 @@ async fn targets_of(cli: &GitCli, root: &Path, scope: &DiscardScope, entries: &[
     Ok(t)
 }
 
-/// M3: a tracked folder replaced by a symbolic link. git refuses the path ("beyond a symbolic
+/// A tracked folder replaced by a symbolic link. git refuses the path ("beyond a symbolic
 /// link"), so it's refused here first, in words; nothing outside the repository is touched.
 fn refuse_symlinked_folders(root: &Path, restore: &[String]) -> Result<(), GbError> {
     for r in restore {
@@ -351,7 +351,7 @@ fn nothing_selected() -> GbError {
 
 struct Discard {
     scope: DiscardScope,
-    /// M6: counted again under the lock, by `plan`, so the journal's label says what was done.
+    /// Counted again under the lock, by `plan`, so the journal's label says what was done.
     label: Mutex<String>,
     /// What `plan` found under the lock; `run` acts on it, within what the snapshot holds.
     targets: Mutex<Option<Targets>>,
@@ -398,8 +398,8 @@ impl Discard {
         cx.run_git(inv).await.map(drop)
     }
 
-    /// §7.3 "Discard lines or hunk", through a temp index so clean/smudge filters and CRLF
-    /// round-trip; the real index is never touched (Deviation 7: the temp index starts empty).
+    /// Discard lines or hunk, through a temp index so clean/smudge filters and CRLF
+    /// round-trip; the real index is never touched (the temp index starts empty).
     /// The file keeps its permissions exactly (`checkout-index` would take them from the temp
     /// entry, which `core.fileMode=false` makes 0644).
     async fn discard_patch(&self, cx: &mut WriteCx<'_>, path: &str, sel: &StageSelection, base: &WipBase, untracked: bool) -> Result<(), GbError> {
@@ -440,7 +440,7 @@ impl Discard {
     }
 }
 
-/// Deviation 6: an untracked file's picked lines are cut from its bytes (it has no index version
+/// An untracked file's picked lines are cut from its bytes (it has no index version
 /// to reverse-apply against); the caller writes them atomically, its mode kept.
 fn drop_new_lines(bytes: &[u8], diff: &[u8], sel: &StageSelection) -> Result<Vec<u8>, GbError> {
     let hunk = parse(diff).hunks.into_iter().next().ok_or_else(nothing_selected)?;
@@ -470,7 +470,7 @@ impl WriteIntent for Discard {
     fn undo(&self) -> Option<UndoKind> {
         Some(UndoKind::Restore)
     }
-    /// §13.2: per-file discards run in the conflict state; Unstaged and All don't ("Abort instead").
+    /// Per-file discards run in the conflict state; Unstaged and All don't ("Abort instead").
     fn allowed_in_progress(&self) -> bool {
         matches!(self.scope, DiscardScope::Paths { .. } | DiscardScope::Patch { .. })
     }
@@ -543,7 +543,7 @@ pub(crate) async fn discard(api: &Api, repo: u32, worktree: &str, scope: Discard
 }
 
 /// `discard a.php`, `discard 3 files`, `discard a hunk in a.php`, `discard 3 lines in a.php`,
-/// `discard unstaged changes`, `discard all changes` (§5.5). `diff`: a patch's checked diff.
+/// `discard unstaged changes`, `discard all changes`. `diff`: a patch's checked diff.
 fn label_of(scope: &DiscardScope, targets: &Targets, diff: Option<&[u8]>) -> String {
     match scope {
         DiscardScope::Paths { .. } => format!("discard {}", files_label(&targets.snapshot().0)),
@@ -594,7 +594,7 @@ mod tests {
         (RepoState::capture(r), modes(r))
     }
 
-    /// §17.1: after undo everything equals its value before; after redo, after. Modes too.
+    /// After undo everything equals its value before; after redo, after. Modes too.
     async fn round_trip(api: &Api, id: u32, r: &TestRepo, scope: Value, label: &str) {
         let before = state(r);
         let res = discard(api, id, r, scope).await.unwrap();
@@ -640,7 +640,7 @@ mod tests {
         assert_eq!(r.git(&["show", ":a.txt"]), "a staged");
     }
 
-    /// 2A final review: a folder row's directory is expanded to its files before the snapshot.
+    /// A folder row's directory is expanded to its files before the snapshot.
     #[tokio::test]
     async fn a_directory_is_discarded_as_its_files() {
         let data = tempfile::tempdir().unwrap();
@@ -693,7 +693,7 @@ mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "", "after redo: clean");
     }
 
-    /// UX R1 C.2: Discard all with the files the user confirmed. A changed file outside them
+    /// Discard all with the files the user confirmed. A changed file outside them
     /// refuses it, nothing touched; the same request sent again once it ran discards nothing.
     #[tokio::test]
     async fn discard_all_never_takes_more_than_was_confirmed() {
@@ -742,7 +742,7 @@ mod tests {
         let id = open(&api, &r).await;
         let err = discard(&api, id, &r, json!({ "kind": "all" })).await.unwrap_err();
         assert_eq!(err.kind, crate::error::GbErrorKind::InProgress);
-        // A per-file discard is allowed in the conflict state (§13.2).
+        // A per-file discard is allowed in the conflict state.
         discard(&api, id, &r, json!({ "kind": "paths", "paths": ["side.txt"] })).await.unwrap();
     }
 
@@ -799,7 +799,7 @@ mod tests {
         assert_eq!(std::fs::read(r.path().join("w.txt")).unwrap(), b"a\r\nb\r\nc\r\nd\r\n", "CRLF kept by the smudge");
     }
 
-    /// §17.1: discard-lines through a clean/smudge filter.
+    /// Discard-lines through a clean/smudge filter.
     #[tokio::test]
     async fn a_filtered_file_discards_lines_through_its_filter() {
         let data = tempfile::tempdir().unwrap();
@@ -835,7 +835,6 @@ mod tests {
         assert!(j["undo"].is_null(), "an unchanged failure leaves no entry: {j}");
     }
 
-    /// Review Focus 2.
     #[cfg(unix)] // file names Windows forbids (*, ?, :, newlines)
     #[tokio::test]
     async fn awkward_paths_discard_literally() {
@@ -854,7 +853,7 @@ mod tests {
         assert!(r.path().join("é.txt").exists() && r.path().join("*.txt").exists());
     }
 
-    /// §7.6 and §17.1: hunk and line staging round-trip through staging undo (T2 + T3).
+    /// Hunk and line staging round-trip through staging undo.
     #[tokio::test]
     async fn hunk_and_line_staging_round_trip_through_staging_undo() {
         let data = tempfile::tempdir().unwrap();
@@ -877,7 +876,7 @@ mod tests {
         }
     }
 
-    // --- Collisions, modes and what a snapshot can't carry (2C T6 review's lessons) ---
+    // --- Collisions, modes and what a snapshot can't carry ---
 
     /// A folder now stands where a tracked file was deleted: restoring the file removes the
     /// folder, ignored files and all. Every one is counted, snapshotted and comes back.
@@ -1021,7 +1020,7 @@ mod tests {
         assert_eq!((modes(&r)["secret.txt"], modes(&r)["tool.sh"], modes(&r)["a.txt"]), (0o100600, 0o100755, 0o100755), "full modes come back");
     }
 
-    /// I2: with `core.fileMode=false` git keeps no exec bit, but the snapshot's own record does.
+    /// With `core.fileMode=false` git keeps no exec bit, but the snapshot's own record does.
     #[cfg(unix)] // permission bits (Windows has none; git keeps the executable bit in the index)
     #[tokio::test]
     async fn modes_round_trip_without_core_filemode() {
@@ -1144,7 +1143,7 @@ mod tests {
         round_trip(&api, id, &r, json!({ "kind": "paths", "paths": ["build/t.txt"] }), "discard build/t.txt").await;
     }
 
-    // --- Fix round 1 (task-4-review.md) ---
+    // --- Refusals, submodules and undo guards ---
 
     /// A repository with one commit of `file` at `dir`, made with plain git.
     fn make_repo(dir: &std::path::Path, file: &str) {
@@ -1159,7 +1158,7 @@ mod tests {
         g(&["commit", "-q", "-m", "inner"]);
     }
 
-    /// C1 (probe p04b): a repository standing where a tracked file was deleted (` T d`), with a
+    /// A repository standing where a tracked file was deleted (` T d`), with a
     /// `.git` folder or a `.git` file, is never wiped: every scope refuses, nothing changes.
     #[tokio::test]
     async fn a_repository_where_a_deleted_file_was_is_refused() {
@@ -1192,7 +1191,7 @@ mod tests {
         }
     }
 
-    /// I1 (probes p20, p02): a dirty submodule beside an ordinary edit. Discard unstaged and all
+    /// A dirty submodule beside an ordinary edit. Discard unstaged and all
     /// run (no false "garbage-collected"), never touch inside the submodule, and round-trip.
     #[tokio::test]
     async fn a_dirty_submodule_beside_an_edit_discards_and_round_trips() {
@@ -1224,7 +1223,7 @@ mod tests {
         assert_eq!(err.message, "emb is a submodule: discard its changes inside it");
     }
 
-    /// M2 (probe p03): Discard all over a staged submodule deletion, its folder kept: the gitlink
+    /// Discard all over a staged submodule deletion, its folder kept: the gitlink
     /// comes back in the index, the folder is never touched.
     #[tokio::test]
     async fn discard_all_over_a_staged_submodule_deletion_round_trips() {
@@ -1243,7 +1242,7 @@ mod tests {
         assert_eq!(r.git(&["ls-files", "-s", "emb"]).split(' ').next(), Some("160000"), "the gitlink is back");
     }
 
-    /// M3 (probes p07, p19): a tracked folder replaced by a symlink is refused in words; the
+    /// A tracked folder replaced by a symlink is refused in words; the
     /// folder it points at is untouched.
     #[cfg(unix)] // symlinks (Windows: privileges, and core.symlinks=false there)
     #[tokio::test]
@@ -1273,7 +1272,7 @@ mod tests {
         }
     }
 
-    /// M1 (probe p12): HEAD moved outside since the discard. Undo asks (HEAD's moved-ref prompt)
+    /// HEAD moved outside since the discard. Undo asks (HEAD's moved-ref prompt)
     /// and changes nothing; "Undo anyway" with HEAD as shown restores the snapshot.
     #[tokio::test]
     async fn undo_after_head_moved_asks_then_undo_anyway_restores() {
@@ -1291,7 +1290,7 @@ mod tests {
         let asked = journal_step(&api, id, r.path(), "undo").await.unwrap();
         assert_eq!(asked["outcome"]["status"], "moved", "{asked}");
         assert_eq!((asked["outcome"]["refs"][0]["name"].as_str(), asked["outcome"]["refs"][0]["actual"].as_str()), (Some("HEAD"), Some(head.as_str())));
-        // 2B final I1: HEAD stays where it is; the prompt never says the undo moves it.
+        // HEAD stays where it is; the prompt never says the undo moves it.
         assert_eq!((asked["outcome"]["refs"][0]["target"].as_str(), asked["outcome"]["refs"][0]["stays"].as_bool()), (Some(head.as_str()), Some(true)));
         assert_eq!(RepoState::capture(&r), before, "asking changes nothing");
         let state = call(&api, "journalState", json!({ "repo": id, "worktree": wt(r.path()) })).await.unwrap();
@@ -1302,7 +1301,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "HEAD"]), head, "HEAD itself never moves");
     }
 
-    /// 2B final I1: a branch switch at the same commit is shown by branch (never "it's at X,
+    /// A branch switch at the same commit is shown by branch (never "it's at X,
     /// not X"), and "Undo anyway" with the branch as shown restores over it, HEAD unmoved.
     #[tokio::test]
     async fn undo_after_a_branch_switch_asks_by_branch() {
@@ -1327,7 +1326,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "--symbolic-full-name", "HEAD"]), "refs/heads/feature", "HEAD stays");
     }
 
-    /// M6: the label is counted under the lock, from what `plan` found.
+    /// The label is counted under the lock, from what `plan` found.
     #[tokio::test]
     async fn the_label_counts_what_plan_found() {
         use crate::write::WriteIntent;

@@ -23,12 +23,12 @@ pinnedRefs: Array<string>, head: HeadPayload, truncated: boolean,
  */
 openWorktree?: string, 
 /**
- * Every usable worktree of the repository (spec #2 §11.2).
+ * Every usable worktree of the repository.
  */
 worktrees: Array<GraphWorktree>, 
 /**
- * Each worktree's merge, rebase or other in-progress operation (spec #2 §13.2), keyed by its
- * path as its WIP row's `worktreePath` spells it (Deviation 1). Absent when none is mid-operation.
+ * Each worktree's merge, rebase or other in-progress operation, keyed by its
+ * path as its WIP row's `worktreePath` spells it. Absent when none is mid-operation.
  */
 inProgress?: { [key in string]: InProgress }, 
 /**

@@ -2,11 +2,11 @@ import { create } from 'zustand';
 import type { ForgeUser } from '../../api/gen/ForgeUser';
 
 /**
- * Resumable Create MR/PR drafts (spec #4 §2 "Create MR/PR"): one per repo + source branch, kept
+ * Resumable Create MR/PR drafts: one per repo + source branch, kept
  * across restarts until the MR/PR is created or the draft discarded. As the WIP drafts
  * (commit/draft.ts): one localStorage key, written after a short pause and at once on `pagehide`,
  * every storage access best-effort (blocked or full storage keeps drafts in memory). A draft
- * exists only once the user changed something (ruling 8): an untouched prefill is computed again
+ * exists only once the user changed something: an untouched prefill is computed again
  * on every open. Capped on write: at most `MAX_MR_DRAFTS`, none older than 90 days, the oldest
  * dropped first (each stored draft carries its `savedAt`).
  */

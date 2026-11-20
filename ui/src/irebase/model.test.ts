@@ -8,7 +8,7 @@ import { oid, plan } from './testPlan';
 const order = (s: EditorState) => s.rows.map((r) => r.summary).join('');
 const act = (s: EditorState, c: string, a: Parameters<typeof setActions>[2]) => setActions(s, [oid(c)], a);
 
-describe('the rebase editor model (spec #3 §4.1, §7)', () => {
+describe('the rebase editor model', () => {
   it('opens on the plan: every row Pick, nothing selected, not dirty', () => {
     const s = fromPlan(plan());
     expect(order(s)).toBe('EDCBA');
@@ -27,7 +27,7 @@ describe('the rebase editor model (spec #3 §4.1, §7)', () => {
     expect(dirty(moveRow(fromPlan(plan()), 0, 3))).toBe(true);
   });
 
-  it('a group drag lands the rows together, in their order, at a slot of the others; a scattered selection closes up (UX2 E.3)', () => {
+  it('a group drag lands the rows together, in their order, at a slot of the others; a scattered selection closes up', () => {
     const s = fromPlan(plan()); // EDCBA
     expect(order(moveRows(s, [oid('d'), oid('b')], 0))).toBe('DBECA');
     expect(order(moveRows(s, [oid('b'), oid('d')], 3))).toBe('ECADB'); // the rows' order, not the selection's
@@ -165,7 +165,7 @@ describe('the rebase editor model (spec #3 §4.1, §7)', () => {
     expect(order(applyPreset(fromPlan(plan()), { rows: { [oid('c')]: 'drop' } }))).toBe('EDCBA');
   });
 
-  it('the chip menu: deleteChip only strikes out (or drops an added chip); revertChip undoes the chip\'s change (UX R1.3)', () => {
+  it('the chip menu: deleteChip only strikes out (or drops an added chip); revertChip undoes the chip\'s change', () => {
     const s = fromPlan(plan());
     expect(chipChange(s.chips[0])).toBe('none');
     const del = deleteChip(s, 'x');

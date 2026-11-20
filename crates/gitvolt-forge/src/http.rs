@@ -1,4 +1,4 @@
-//! One HTTP client per forge account (spec #4 §3.1):
+//! One HTTP client per forge account:
 //! - bearer auth from the token store;
 //! - an ETag cache keyed by URL (`If-None-Match`; a 304 answers from it);
 //! - the forges' `Poll-Interval` / `X-Poll-Interval` hints;
@@ -209,21 +209,19 @@ pub fn body_message(body: &[u8]) -> Option<String> {
     let v: serde_json::Value = serde_json::from_slice(body).ok()?;
     let said = ["error_description", "message", "error"].iter().find_map(|k| match &v[*k] {
         serde_json::Value::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
-        // --- 4C T1: GitLab's validation messages come as a list of strings ---
+        // --- GitLab's validation messages come as a list of strings ---
         serde_json::Value::Array(a) if a.iter().all(|x| x.is_string()) => {
             let parts: Vec<&str> = a.iter().filter_map(|x| x.as_str()).map(str::trim).filter(|x| !x.is_empty()).collect();
             if parts.is_empty() { None } else { Some(parts.join("; ")) }
         }
-        // --- end 4C T1 ---
         serde_json::Value::Null => None,
         other if !other.is_string() => Some(other.to_string()),
         _ => None,
     })?;
-    // --- 4C T1: GitHub's "Validation Failed" says what failed in `errors[].message`, or in
+    // --- GitHub's "Validation Failed" says what failed in `errors[].message`, or in
     // `errors[]` itself as plain strings ("User can only have one pending review per pull request") ---
     let detail: Vec<&str> = v["errors"].as_array().map(|a| a.iter().filter_map(|e| e.as_str().or_else(|| e["message"].as_str())).map(str::trim).filter(|m| !m.is_empty()).collect()).unwrap_or_default();
     let said = if detail.is_empty() { said } else { format!("{said}: {}", detail.join("; ")) };
-    // --- end 4C T1 ---
     Some(redact(&said).chars().take(200).collect())
 }
 
@@ -316,7 +314,6 @@ struct Inner {
     link_rewrite: Option<LinkRewrite>,
 }
 
-// --- 5A T2 ---
 /// What `get_image_within` found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImageFetch {
@@ -333,7 +330,6 @@ pub enum ImageFetch {
     /// Larger than the size cap (`get_media_within`'s `limit`): not read past it.
     TooLarge,
 }
-// --- end 5A T2 ---
 
 #[derive(Clone)]
 pub struct HttpClient {
@@ -493,7 +489,6 @@ impl HttpClient {
         self.pages(path, max_pages, None).await
     }
 
-    // --- 5A T2 ---
     /// A conditional GET with its own `Accept` (GitHub's `full` media type adds `body_html`).
     pub async fn get_as(&self, path: &str, accept: &'static str) -> Result<HttpResponse, GbError> {
         self.request(Method::Get, path, None, Some(accept)).await
@@ -517,7 +512,7 @@ impl HttpClient {
         Ok(out)
     }
 
-    /// `get_image` for Markdown images (spec #5 §4.2): the token only under `own_origin` or the
+    /// `get_image` for Markdown images: the token only under `own_origin` or the
     /// API base; one redirect, followed only when `allowed` accepts its target (never https →
     /// http), else `Elsewhere(<host>)` without asking it; 401/403 are `Forbidden` (a signature
     /// that ran out), 404/410 `Missing`.
@@ -545,11 +540,10 @@ impl HttpClient {
                 if is_sign_in(&next) {
                     return Ok(ImageFetch::SignIn);
                 }
-                // --- 5A T3: https → http is "ask" too, never an error ---
+                // --- https → http is "ask" too, never an error ---
                 if !image_redirect_followed(&target, &next, allowed) {
                     return Ok(ImageFetch::Elsewhere(origin(&next).map(|(_, a)| a).unwrap_or_default()));
                 }
-                // --- end 5A T3 ---
                 target = next;
                 continue;
             }
@@ -562,7 +556,6 @@ impl HttpClient {
         }
         Err(GbError::other(format!("{} redirected an image too many times", self.host())))
     }
-    // --- end 5A T2 ---
 
     /// An image (`Ok(None)` for a 404), with the token only when `url` is under `own_origin` (a
     /// forge's web base) or the API base. Not ETag-cached: the avatar disk cache keeps what it needs.
@@ -914,7 +907,6 @@ fn is_redirect(status: u16) -> bool {
     matches!(status, 301 | 302 | 303 | 307 | 308)
 }
 
-// --- 5A T3 ---
 fn is_https(url: &str) -> bool {
     url.get(..8).is_some_and(|p| p.eq_ignore_ascii_case("https://"))
 }
@@ -939,7 +931,6 @@ fn is_sign_in(url: &str) -> bool {
     let path = path.split(['?', '#']).next().unwrap_or("").trim_end_matches('/').to_ascii_lowercase();
     path.ends_with("/users/sign_in") || path.ends_with("/login")
 }
-// --- end 5A T3 ---
 
 /// A request that failed, and whether no connection could be made at all.
 struct Failed {
@@ -1450,7 +1441,6 @@ mod tests {
         assert_eq!(status_error("h", 403, br#"{"message":"insufficient_scope"}"#).message, "h refused: insufficient_scope");
         assert_eq!(status_error("h", 502, b"").message, "h answered HTTP 502");
     }
-    // --- 4C T1 ---
     #[test]
     fn body_messages_join_gitlab_lists_and_githubs_validation_errors() {
         assert_eq!(
@@ -1470,8 +1460,6 @@ mod tests {
         );
         assert_eq!(status_error("gitlab.example.com", 409, br#"{"message": ["a", "b"]}"#).message, "gitlab.example.com: a; b");
     }
-    // --- end 4C T1 ---
-    // --- 5A T2 ---
     #[tokio::test]
     async fn get_as_sends_its_own_accept_and_keeps_its_own_etag_copy() {
         let s = TestServer::start(|n, head| {
@@ -1525,9 +1513,7 @@ mod tests {
         assert_eq!(direct, ImageFetch::Found { content_type: "image/png".into(), bytes: b"\x89PNGz".to_vec() });
         assert!(!other.heads.lock().unwrap()[0].contains("authorization"), "another origin never gets the token");
     }
-    // --- end 5A T2 ---
 
-    // --- 5A T3 ---
     #[test]
     fn an_image_redirect_to_plain_http_is_asked_like_one_off_the_allowlist() {
         let anywhere = |_: &str| true;
@@ -1538,5 +1524,4 @@ mod tests {
         assert!(image_redirect_followed("http://127.0.0.1:9/a.png", "http://127.0.0.1:9/b.png", &anywhere), "the harness's plain http");
         assert!(!image_redirect_followed("https://github.com/a.png", "https://cdn.example.org/a.png", &nowhere));
     }
-    // --- end 5A T3 ---
 }

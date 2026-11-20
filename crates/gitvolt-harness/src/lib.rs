@@ -132,12 +132,12 @@ pub fn with_fake_openers(api: Api, launches: Arc<Launches>) -> Api {
 
 #[derive(Debug, Default, Clone)]
 pub struct HarnessOptions {
-    /// Settings directory (used from Task 2). `None` means a fresh temp dir, never `~/.config`.
+    /// Settings directory. `None` means a fresh temp dir, never `~/.config`.
     pub config_dir: Option<PathBuf>,
     /// Binary git runs as GIT_ASKPASS. `None` means the harness binary (this one, or the one cargo
     /// built next to a test binary).
     pub askpass_exe: Option<PathBuf>,
-    /// Writes are allowed only to marked fixture repositories under this directory (spec #2 §17.2).
+    /// Writes are allowed only to marked fixture repositories under this directory.
     /// `None` = the system temp dir, where `just e2e`'s global setup and `freshFixture` build them.
     pub fixture_root: Option<PathBuf>,
     /// The website demo's parity recordings (`golden::record`): git commits as the visitor at a
@@ -145,7 +145,7 @@ pub struct HarnessOptions {
     pub golden: bool,
 }
 
-/// The harness's write guard (spec #2 §17.2): allowed only for a repository whose common dir sits
+/// The harness's write guard: allowed only for a repository whose common dir sits
 /// under `root` and inside a directory holding `FIXTURE_MARKER`, which only
 /// `gitvolt-harness fixture` and `TestRepo::mark_fixture` write. Paths are canonical, so a
 /// symlink out of the root doesn't count.
@@ -155,7 +155,7 @@ pub fn fixture_guard(root: PathBuf) -> WriteGuard {
         let refused = || GbError::new(GbErrorKind::InvalidInput, FIXTURE_ONLY);
         let dir = gitvolt_core::platform::fs::canonicalize(common_dir).map_err(|_| refused())?;
         // Strictly below the root: a stray marker in the root itself (e.g. /tmp) must not
-        // authorise every repository under it (T4 review).
+        // authorise every repository under it.
         let marked = dir.starts_with(&root) && dir.ancestors().take_while(|a| a.starts_with(&root) && *a != root.as_path()).any(|a| a.join(FIXTURE_MARKER).is_file());
         if marked {
             Ok(())
@@ -171,15 +171,11 @@ pub struct Harness {
     pub api: Arc<Api>,
     pub store: Arc<SettingsStore>,
     pub launches: Arc<Launches>,
-    // --- 4A T4 ---
-    /// The fake GitLab and GitHub (spec #4 §7); T10 points the providers at it.
+    /// The fake GitLab and GitHub; the providers are pointed at it.
     pub forge: Arc<fake_forge::FakeForge>,
-    // --- end 4A T4 ---
-    // --- 4A T10 ---
     /// Forge tokens: a file in the harness's temp dir, never the keyring (storage `file`).
     pub tokens: Arc<FileTokenStore>,
     tokens_path: std::path::PathBuf,
-    // --- end 4A T10 ---
     /// The settings directory when none was given; lives as long as the harness.
     _config_tmp: Option<tempfile::TempDir>,
     /// Old versions opened "in an editor" are copied here; lives as long as the harness.
@@ -232,7 +228,7 @@ fn fake_connector(forge: &fake_forge::FakeForge) -> Forge {
         (fake_forge::forgejo::FORGEJO_HOST.to_string(), HostEndpoints { api: forge.forgejo_api(), web: forge.forgejo_web(), avatars: None }),
     ]);
     Forge::new(ForgeConfig { overrides, only_overrides: true, avatar_dir: None })
-        // --- 5A T3: GitHub's Markdown image hosts are the fake's (no test reaches a real one) ---
+        // --- GitHub's Markdown image hosts are the fake's (no test reaches a real one) ---
         .with_image_bases(fake_forge::GITHUB_HOST, vec![forge.github_web(), forge.github_images(), forge.github_avatars()])
         // A test that reseeds the fake sees it at once (no `FRESH_SECS` answer from before).
         .with_change_counter(forge.change_counter())
@@ -279,11 +275,10 @@ impl Harness {
             std::fs::write(dot.join("HEAD"), "ref: refs/heads/bulk\n").expect("bulk HEAD");
         }
         let forge = fake_forge::FakeForge::start().await;
-        // --- 4A T10: the real providers, pointed at the fake forge; no other host is reachable ---
+        // --- the real providers, pointed at the fake forge; no other host is reachable ---
         let tokens_path = runtime_tmp.path().join("forge-tokens");
         let tokens = Arc::new(FileTokenStore::new(tokens_path.clone()));
         let connector = Arc::new(fake_connector(&forge));
-        // --- end 4A T10 ---
         let next_pick = picks.clone();
         // Updates: the fake GitHub's releases (none until a test seeds some), a .deb install,
         // downloads in the temp dir, and installs only recorded.
@@ -321,7 +316,7 @@ impl Harness {
             .with_write_guard(fixture_guard(opts.fixture_root.clone().unwrap_or_else(std::env::temp_dir)));
         let api = if opts.golden { api.with_clock(Arc::new(|| crate::golden::GOLDEN_NOW_MS)) } else { api };
         let api = Arc::new(with_fake_openers(api.with_font_source(Arc::new(fake_font_families)), launches.clone()));
-        // Askpass (spec §5.4), in the private temp dir: git runs `askpass_exe` (the harness binary
+        // Askpass, in the private temp dir: git runs `askpass_exe` (the harness binary
         // itself unless a test names one), which asks this server over its socket.
         let exe = opts.askpass_exe.unwrap_or_else(harness_exe);
         api.start_askpass(runtime_tmp.path(), exe).await.expect("askpass socket");
@@ -399,9 +394,7 @@ pub async fn serve(listener: tokio::net::TcpListener, harness: Harness) {
         .route("/test/forge/seed", get(test_forge_seed_get).post(test_forge_seed))
         .route("/test/forge/script", post(test_forge_script))
         .route("/test/forge/requests", get(test_forge_requests))
-        // --- 4B T16 ---
         .route("/test/forge/account", post(test_forge_account))
-        // --- end 4B T16 ---
         .with_state(Arc::new(harness));
     // Small frames go out at once (no Nagle wait for the previous frame's delayed ACK).
     let listener = listener.tap_io(|tcp| {
@@ -462,7 +455,7 @@ struct TestWriteBody {
     intent: gitvolt_core::write::test_intents::TestIntent,
 }
 
-// --- 4A T4: the fake forge's controls (Playwright scripts it through the harness port) ---
+// --- the fake forge's controls (Playwright scripts it through the harness port) ---
 async fn test_forge_seed_get(State(h): State<Arc<Harness>>, headers: HeaderMap) -> Response {
     if foreign_origin(&headers) {
         return StatusCode::FORBIDDEN.into_response();
@@ -494,9 +487,8 @@ async fn test_forge_requests(State(h): State<Arc<Harness>>, headers: HeaderMap) 
     }
     Json(h.forge.requests()).into_response()
 }
-// --- end 4A T4 ---
 
-/// `POST /test/write`: a test-only write intent (spec #2 §18 2A) on the repository at `path`
+/// `POST /test/write`: a test-only write intent on the repository at `path`
 /// (opened if it isn't), in `worktree` (default: `path`). Answers `{ok}` or `{err}` like the
 /// socket. The write guard applies: only marked fixtures under the fixture root.
 async fn test_write(State(h): State<Arc<Harness>>, headers: HeaderMap, Json(b): Json<TestWriteBody>) -> Response {
@@ -535,7 +527,7 @@ async fn test_emit(State(h): State<Arc<Harness>>, headers: HeaderMap, Json(ev): 
         return StatusCode::FORBIDDEN.into_response();
     }
     match ev {
-        // As the app's single-instance guard does it (R19): queued for `takeOpenRequests`, then announced.
+        // As the app's single-instance guard does it: queued for `takeOpenRequests`, then announced.
         AppEvent::OpenRequested { path } => h.api.request_open(path),
         ev => h.api.events().emit(ev),
     }
@@ -715,7 +707,7 @@ mod tests {
     }
 }
 
-// --- 4B T16: a forge account without the Settings form (4A's spec covers the form) ---
+// --- a forge account without the Settings form ---
 #[derive(serde::Deserialize)]
 struct TestForgeAccount {
     host: String,
@@ -739,4 +731,3 @@ async fn test_forge_account(State(h): State<Arc<Harness>>, headers: HeaderMap, J
         Err(e) => Json(serde_json::json!({ "err": e })).into_response(),
     }
 }
-// --- end 4B T16 ---

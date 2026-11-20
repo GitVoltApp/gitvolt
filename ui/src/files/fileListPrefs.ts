@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { FileOrder } from '../repo/store';
 import { displayTargets, type FileListMode, type FileSort } from './fileTree';
 
-/** What persists (feedback H31): Path/Tree and the sort. "View all files" is per-commit and
+/** What persists: Path/Tree and the sort. "View all files" is per-commit and
  * never stored. */
 /** `advanceAfterStage`: after a whole-file stage, unstage or discard of the open file, the diff
  * moves to the next file in the section it left. */
@@ -29,7 +29,7 @@ export function parseFileListPrefs(raw: unknown): StoredFileListPrefs | null {
 
 /**
  * THE persistence seam for the file list's view (like `diffPrefsPersistence`): localStorage until
- * plan 1C's settings store replaces it. Storage can be missing, blocked or full: every access is
+ * the settings store replaces it. Storage can be missing, blocked or full: every access is
  * guarded, and the prefs then last as long as the window.
  */
 export const fileListPrefsPersistence = {
@@ -50,7 +50,7 @@ export const fileListPrefsPersistence = {
   },
 };
 
-/** `wipAllFiles`: the WIP row's own View all files (UX G.2), apart from the commits' one.
+/** `wipAllFiles`: the WIP row's own View all files, apart from the commits' one.
  * `treeForSession`: Tree until Path/Tree is picked again, the stored Path/Tree untouched (a
  * pasted folder is shown in the tree, `goto/run.ts`). */
 interface FileListPrefs extends StoredFileListPrefs { allFiles: boolean; wipAllFiles: boolean; set(patch: Partial<Pick<FileListPrefs, 'mode' | 'sort' | 'advanceAfterStage' | 'allFiles' | 'wipAllFiles'>>): void; treeForSession(): void }
@@ -58,7 +58,7 @@ interface FileListPrefs extends StoredFileListPrefs { allFiles: boolean; wipAllF
 /** What's stored: its `mode` differs from the shown one while Tree is on for the session. */
 let stored: StoredFileListPrefs = fileListPrefsPersistence.load() ?? DEFAULT_FILE_LIST_PREFS;
 
-/** Path/Tree and sort are app-wide and remembered across restarts (H31); View all files carries
+/** Path/Tree and sort are app-wide and remembered across restarts; View all files carries
  * over from commit to commit for the session only. */
 export const useFileListPrefs = create<FileListPrefs>((set) => ({
   ...stored,

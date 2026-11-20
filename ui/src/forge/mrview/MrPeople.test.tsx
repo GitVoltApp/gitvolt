@@ -136,7 +136,6 @@ describe("the MR/PR view's reviewers and assignees", () => {
     expect(screen.queryByRole('button', { name: 'Remove Hubot' })).toBeNull();
   });
 
-  // --- MR round 2 ---
   it('a project that allows one reviewer: + is a swap, and the pick replaces the reviewer in one write', async () => {
     api.forgePeopleLimits.mockResolvedValue({ maxReviewers: 1, maxAssignees: 1 });
     show('gitlab', mr);
@@ -186,7 +185,6 @@ describe("the MR/PR view's reviewers and assignees", () => {
     fireEvent.click(pencil);
     expect(edit).toHaveBeenCalledTimes(1);
   });
-  // --- end MR round 2 ---
 
   it('is read-only on a merged or closed MR, and while the detail loads', () => {
     const merged = mrOf(12, { state: 'merged' });

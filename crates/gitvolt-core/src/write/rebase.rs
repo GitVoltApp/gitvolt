@@ -1,4 +1,4 @@
-//! Rebase (spec #2 §13.1, §13.4).
+//! Rebase.
 //!
 //! A long rebase must not crawl (no hooks wrapper through `core.hooksPath`, no store dispatch
 //! per commit, no stage-all autostash, no full reload under a spinner), so GitVolt runs one
@@ -30,7 +30,7 @@ use std::path::Path;
 use std::sync::Arc;
 use ts_rs::TS;
 
-/// The tick's graph update (§13.4): when HEAD moved since the last tick, every tab of the
+/// The tick's graph update: when HEAD moved since the last tick, every tab of the
 /// repository reloads its graph (`refsUpdated`), so the new commits appear and the rebasing chip
 /// moves. gix only: no locks, no git process.
 fn head_ticker(api: &Api, h: &Arc<RepoHandle>, root: &Path, head: Option<String>) -> impl FnMut() + Send + 'static {
@@ -60,21 +60,21 @@ fn oid(hex: &str) -> Option<ObjectId> {
 ///   0 from), it pauses: `cx.paused` names
 ///   `target` for the banner, and records the `onto` git stopped with, which settle judges
 ///   completion against.
-/// - A Cancel of a rebase it started aborts it (review M2): `rebase --abort` puts the branch
+/// - A Cancel of a rebase it started aborts it: `rebase --abort` puts the branch
 ///   back, and step 8 restores the autostash, so a Cancel leaves the repository as it was. A
 ///   Cancel of a Continue or Skip leaves the rebase paused where git stopped, as the banner then
 ///   shows (the user's resolutions aren't thrown away).
 /// - Done counts the commits from the history, not git's counter (which counts `update-ref`
-///   steps too, review M3): those the branch has beyond `onto`, or for a branch that was behind
-///   it, the ones it fast-forwarded by: one `rev-list --count` (review N5: the counter also
+///   steps too): those the branch has beyond `onto`, or for a branch that was behind
+///   it, the ones it fast-forwarded by: one `rev-list --count` (the counter also
 ///   counts dropped picks).
 ///
 /// `onto`: the target's oid, when the caller has it (the start resolved it in `plan`). `envs`:
-/// extra environment for git (3C: the interactive rebase's sequence editor). A stop that came
-/// with git failing (a conflict, a failed `exec`) leaves git's error in `failed` (3C final fix
-/// M2: a reword script's hook output).
+/// extra environment for git (the interactive rebase's sequence editor). A stop that came
+/// with git failing (a conflict, a failed `exec`) leaves git's error in `failed`
+/// (a reword script's hook output).
 pub(crate) async fn run_rebase_stop(cx: &mut WriteCx<'_>, args: Vec<String>, target: &str, onto: Option<ObjectId>, envs: Vec<(std::ffi::OsString, std::ffi::OsString)>, failed: &mut Option<GbError>) -> Result<IntegrateOutcome, GbError> {
-    // Preflight read both, under this lock: no git process, no repository open (review P1).
+    // Preflight read both, under this lock: no git process, no repository open.
     let head_before = cx.before.head.oid.clone();
     let resumed = cx.before.in_progress == Some("rebase");
     let onto = match onto {
@@ -98,9 +98,9 @@ pub(crate) async fn run_rebase_stop(cx: &mut WriteCx<'_>, args: Vec<String>, tar
     for k in [ChangeKind::Worktree, ChangeKind::Index, ChangeKind::Head, ChangeKind::Refs, ChangeKind::State] {
         cx.touch(k);
     }
-    // 3C T4: an `edit` stop (or a `break`) exits 0 with the rebase still in progress: it's a
+    // An `edit` stop (or a `break`) exits 0 with the rebase still in progress: it's a
     // pause, never a completion.
-    // M2: a state that can't be read after exit 0 isn't taken for a completion either.
+    // A state that can't be read after exit 0 isn't taken for a completion either.
     let stopped = match &res {
         Ok(_) => match crate::in_progress::read(cx.root) {
             Ok(Some(InProgress::Rebase { conflicted, onto, .. })) => Some((conflicted, onto)),
@@ -136,9 +136,9 @@ pub(crate) async fn run_rebase_stop(cx: &mut WriteCx<'_>, args: Vec<String>, tar
                 return Ok(IntegrateOutcome::UP_TO_DATE);
             }
             let (Some(new), Some(from)) = (new, ff.or(onto)) else { return Ok(IntegrateOutcome::done(0, false)) };
-            // Review N5: from the history, not git's counter, which also counts the picks it
+            // From the history, not git's counter, which also counts the picks it
             // dropped ("patch contents already upstream") and `update-ref` steps. One short
-            // read, where a walk here would cost a debug build ~10 ms (review P1).
+            // read, where a walk here would cost a debug build ~10 ms.
             let commits = crate::write::precheck::commits_not_in(&cx.api.cli, cx.root, &new.to_string(), &from.to_string()).await?;
             Ok(IntegrateOutcome::done(commits, ff.is_some()))
         }
@@ -150,7 +150,7 @@ pub(crate) async fn run_rebase_stop(cx: &mut WriteCx<'_>, args: Vec<String>, tar
                 let abort = GitInvocation::write(&cx.token, cx.root, ["rebase", "--abort"]).detach_terminal().stream_stderr(cx.output());
                 match cx.api.cli.run(abort).await {
                     Ok(_) => return Err(e),
-                    // Review N3: still in progress, so it pauses below: the autostash stays
+                    // Still in progress, so it pauses below: the autostash stays
                     // (never restored into a rebase), and the banner offers Continue and Abort.
                     Err(a) => e = GbError::new(a.kind, format!("Cancelled, but the rebase couldn't be aborted ({}): it's paused, so Continue or Abort it", a.message)),
                 }
@@ -162,7 +162,7 @@ pub(crate) async fn run_rebase_stop(cx: &mut WriteCx<'_>, args: Vec<String>, tar
                     if cancelled {
                         Err(e)
                     } else {
-                        // UX F: a stop with no conflict is git failing at something else (the
+                        // A stop with no conflict is git failing at something else (the
                         // signer, a hook, an `exec`): its message goes with the stop.
                         let warning = if conflicted == 0 { Some(stop_reason(cx, &e).await) } else { None };
                         *failed = Some(e);
@@ -175,7 +175,7 @@ pub(crate) async fn run_rebase_stop(cx: &mut WriteCx<'_>, args: Vec<String>, tar
     }
 }
 
-/// UX F: why a rebase stopped without a conflict, for the toast ("The rebase stopped: gpg
+/// Why a rebase stopped without a conflict, for the toast ("The rebase stopped: gpg
 /// failed to sign the data: …").
 /// git's refusal of unstaged changes goes to stdout: an exit status alone is named here.
 async fn stop_reason(cx: &WriteCx<'_>, e: &GbError) -> String {
@@ -189,7 +189,7 @@ async fn stop_reason(cx: &WriteCx<'_>, e: &GbError) -> String {
     format!("The rebase stopped: {said}")
 }
 
-/// UX F: a pick whose commit never happened, and that git's own `--continue` can't go on from
+/// A pick whose commit never happened, and that git's own `--continue` can't go on from
 /// ("you have staged changes": no stop, so no message to commit them with). Only in a rebase
 /// GitVolt started (its callers check): a terminal's rebase is git's alone. Two ways in, each
 /// recognised only by git's own evidence naming the commit:
@@ -475,7 +475,7 @@ async fn pick_result_staged(cx: &WriteCx<'_>, oid: &str) -> bool {
     cx.api.cli.run(GitInvocation::new(cx.root, ["diff", "--cached", "--name-only", "-z", &tree])).await.is_ok_and(|o| o.stdout.is_empty())
 }
 
-/// UX F: git keeps a rebase's signing from its start (`rebase-merge/gpg_sign_opt`, `-S` from
+/// Git keeps a rebase's signing from its start (`rebase-merge/gpg_sign_opt`, `-S` from
 /// `commit.gpgsign`), so turning signing off at a stop changed nothing. For a rebase GitVolt
 /// started (it never passes `-S` itself), a plain `-S` goes once `commit.gpgsign` is explicitly
 /// `false`. On with no file, git's sequencer reads `commit.gpgsign` itself.
@@ -486,7 +486,7 @@ async fn sign_as_configured(cx: &WriteCx<'_>) -> Result<(), GbError> {
     if std::fs::read_to_string(&opt).map(|s| s.trim() != "-S").unwrap_or(true) {
         return Ok(());
     }
-    // Only an explicit `false` (fix round 1): unset, or `true` from an include that doesn't match
+    // Only an explicit `false`: unset, or `true` from an include that doesn't match
     // on the rebase's detached HEAD (`includeIf "onbranch:…"`), keeps git's `-S`.
     let out = cx.api.cli.run(GitInvocation::new(cx.root, ["config", "--bool", "--get", "commit.gpgsign"]).ok_exit(1)).await?;
     if String::from_utf8_lossy(&out.stdout).trim() != "false" {
@@ -511,8 +511,8 @@ fn pre_rebase_refused(e: GbError) -> GbError {
     GbError { kind: GbErrorKind::HookFailed, message: first.unwrap_or_else(|| "pre-rebase hook failed".into()), detail: Some(crate::error::ErrorDetail::Hook { hook: "pre-rebase".into() }), ..e }
 }
 
-/// What `--update-refs` moves, read when the op runs (under the lock, review M5): the stacked
-/// branches, and the merged-in ones it would move too but mustn't (review I2). Neither holds a
+/// What `--update-refs` moves, read when the op runs (under the lock): the stacked
+/// branches, and the merged-in ones it would move too but mustn't. Neither holds a
 /// branch checked out in any worktree: git never moves those.
 async fn update_ref_sets(cx: &WriteCx<'_>, branch: &str, target: ObjectId) -> Result<(Vec<(String, ObjectId)>, Vec<(String, ObjectId)>), GbError> {
     let out: std::collections::HashSet<String> = crate::worktree::list_worktrees(cx.root).await?.into_iter().filter_map(|w| w.branch).collect();
@@ -528,7 +528,7 @@ async fn update_ref_sets(cx: &WriteCx<'_>, branch: &str, target: ObjectId) -> Re
 
 /// A stopped rebase won't move the merged-in branches at its end: they leave git's
 /// `rebase-merge/update-refs` (one `ref`, `before`, `after` line triple per ref, which git reads
-/// back when the rebase ends). Review N1: only a file of that exact shape (whole triples, a ref
+/// back when the rebase ends). Only a file of that exact shape (whole triples, a ref
 /// name then two hex oids) is edited. Anything else is left alone, and the Continue or Skip that
 /// ends the rebase moves the branches back instead (`PausedOp::put_back`, `put_back`).
 /// `false`: the file was left alone.
@@ -553,9 +553,9 @@ fn pruned_update_refs(text: &str, keep: &[(String, ObjectId)]) -> Option<String>
     shaped.then(|| lines.chunks(3).filter(|c| !keep.iter().any(|(n, _)| c[0] == n)).flat_map(|c| c.iter().map(|l| format!("{l}\n"))).collect())
 }
 
-/// The merged-in branches GitVolt's paused rebase couldn't prune from git's update list (N1),
+/// The merged-in branches GitVolt's paused rebase couldn't prune from git's update list,
 /// read under the lock from its paused entry (`PausedOp::put_back`). A rebase started outside
-/// GitVolt has no paused entry, so its `--update-refs` moves are the user's and stay (N6).
+/// GitVolt has no paused entry, so its `--update-refs` moves are the user's and stay.
 fn put_back_of_pause(cx: &WriteCx<'_>) -> Result<Vec<(String, ObjectId)>, GbError> {
     let journal = cx.api.journal(cx.root)?.load()?;
     let Some(op) = journal.paused().and_then(|e| e.paused.as_ref()).filter(|p| p.kind == PausedKind::Rebase) else { return Ok(Vec::new()) };
@@ -563,7 +563,7 @@ fn put_back_of_pause(cx: &WriteCx<'_>) -> Result<Vec<(String, ObjectId)>, GbErro
 }
 
 /// After a run that ended the rebase: a merged-in branch `--update-refs` moved into the rebased
-/// history goes back where it was. Review N2: if that CAS fails (it moved again meanwhile), the
+/// history goes back where it was. If that CAS fails (it moved again meanwhile), the
 /// move git made is recorded in the entry instead, so Undo puts it back.
 async fn put_back(cx: &mut WriteCx<'_>, keep: &[(String, ObjectId)]) -> Result<(), GbError> {
     if keep.is_empty() {
@@ -601,7 +601,7 @@ async fn where_now(cx: &WriteCx<'_>, refs: &[(String, ObjectId)]) -> Result<Vec<
     .await
 }
 
-/// What `plan` found, for `run` (review P1: one repository open and one `y..x` walk).
+/// What `plan` found, for `run` (one repository open and one `y..x` walk).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Planned {
     target: ObjectId,
@@ -614,7 +614,7 @@ pub(crate) struct Planned {
 pub(crate) struct RebaseIntent {
     pub target: String,
     pub update_refs: Option<bool>,
-    /// `git pull --rebase` semantics (§12.2).
+    /// `git pull --rebase` semantics.
     pub fork_point: bool,
     pub confirm: Confirm,
     pub label: BranchLabel,
@@ -648,7 +648,7 @@ impl WriteIntent for RebaseIntent {
     async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
         let branch = pre.before.head.branch.as_deref().ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, "Check out a branch to rebase it"))?;
         self.label.settle(branch);
-        // Review P1: one open and one `y..x` walk, shared with `run`; the merge check runs only
+        // One open and one `y..x` walk, shared with `run`; the merge check runs only
         // on merges that walk found.
         let repo = gix::open(pre.root).map_err(gix_err)?;
         let target = repo.rev_parse_single(self.target.as_str()).map_err(|e| GbError::new(GbErrorKind::NotFound, format!("{}: {e}", self.target)))?.detach();
@@ -656,21 +656,19 @@ impl WriteIntent for RebaseIntent {
             Some(tip) => merges_in(&pre.api.cli, pre.root, tip, target).await?,
             None => Vec::new(),
         };
-        // Review I2: `--rebase-merges` keeps merges, but remakes each from its parents.
+        // `--rebase-merges` keeps merges, but remakes each from its parents.
         if let Some(merge) = lossy_among(&repo, &merges)? {
             return Err(GbError::new(GbErrorKind::InvalidInput, lossy_message(branch, &merge, &self.target)));
         }
         let _ = self.planned.set(Planned { target, merges: !merges.is_empty(), update_refs_config: repo.config_snapshot().boolean("rebase.updateRefs") });
-        // --- 2C repo-safety ---
         // The rebase's first step checks the target out, a two-way move from HEAD: a file of
         // the target written where a populated submodule or an embedded clone sits deletes it
-        // whole (safety review 2 N2), refused first; the same check says what the move sweeps
-        // away (M1, M2).
+        // whole, refused first; the same check says what the move sweeps
+        // away.
         let (mut rule, mut moved) = (AutostashRule::Rebased, None);
         if let Some(tip) = pre.before.head.oid.as_deref().and_then(oid) {
             (rule, moved) = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, tip, target, "rebase").await?.into_rule(rule);
         }
-        // --- end 2C repo-safety ---
         Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(target), op: format!("rebase onto {}", self.target), target_name: Some(self.target.clone()), moved }), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<IntegrateOutcome, GbError> {
@@ -678,7 +676,7 @@ impl WriteIntent for RebaseIntent {
         let Planned { target, merges, update_refs_config } = *self.planned.get().ok_or_else(|| GbError::new(GbErrorKind::Other, "rebase ran without its plan"))?;
         let wanted = self.update_refs.or(update_refs_config).unwrap_or(false);
         let (stacked, keep) = if wanted { update_ref_sets(cx, &branch, target).await? } else { (Vec::new(), Vec::new()) };
-        // Merges stay merges (review I2); the update-refs flag is always explicit, so git's own
+        // Merges stay merges; the update-refs flag is always explicit, so git's own
         // `rebase.updateRefs` can't move a merged-in branch either.
         let mut args = vec!["rebase".to_string()];
         if merges {
@@ -689,7 +687,7 @@ impl WriteIntent for RebaseIntent {
             args.push("--fork-point".into());
         }
         args.push(self.target.clone());
-        // Review I1: the journal records HEAD's branch and these, as they are now, and no other.
+        // The journal records HEAD's branch and these, as they are now, and no other.
         let keep = if stacked.is_empty() { Vec::new() } else { keep };
         cx.watch_refs(stacked.iter().map(|(n, o)| (n.clone(), Some(o.to_string()))));
         let out = run_rebase(cx, args, &self.target, Some(target)).await?;
@@ -726,12 +724,12 @@ pub enum RebaseAction {
     Abort,
 }
 
-/// The commit panel's Continue, Skip and Abort (§13.2). Not journaled: the paused rebase's own
+/// The commit panel's Continue, Skip and Abort. Not journaled: the paused rebase's own
 /// entry settles in step 7b once the rebase is over.
 struct RebaseControl {
     action: RebaseAction,
     target: String,
-    /// Continue's message, as the commit panel shows it (ux round 1); `None`: git's own.
+    /// Continue's message, as the commit panel shows it; `None`: git's own.
     message: Option<String>,
 }
 
@@ -741,9 +739,9 @@ struct RebaseControl {
 /// the commit git made), git's Continue amends HEAD keeping its message, so the message is
 /// amended into HEAD here, but only while HEAD is still that commit (git's own check): a commit
 /// the user made, split or reworded there is left alone. With nothing staged it's the message
-/// alone (`--only`); with staged changes (3C final fix I2) they go in too, as Continue's own
+/// alone (`--only`); with staged changes they go in too, as Continue's own
 /// amend would have put them (then nothing's left staged, so git's Continue doesn't amend
-/// again). At the stop of a Reword row whose message a hook refused (3C final ruling), the same
+/// again). At the stop of a Reword row whose message a hook refused, the same
 /// amend applies a message typed there. An unchanged message touches nothing.
 async fn use_message(cx: &mut WriteCx<'_>, message: &str) -> Result<(), GbError> {
     let root = cx.root.to_path_buf();
@@ -757,9 +755,9 @@ async fn use_message(cx: &mut WriteCx<'_>, message: &str) -> Result<(), GbError>
     let text = format!("{}\n", message.trim_end());
     let same = |old: &str| old.replace("\r\n", "\n").trim_end() == text.trim_end();
     let merge = git_dir.join("rebase-merge");
-    // The commit to amend: an `edit` stop's (git's `amend`), or (3C final ruling) the commit a
+    // The commit to amend: an `edit` stop's (git's `amend`), or the commit a
     // Reword row's refused message was for, at that stop: git commits nothing there itself.
-    // A refused reword's amend is the message alone: staged changes stay staged (re-review).
+    // A refused reword's amend is the message alone: staged changes stay staged.
     let (amend, refused) = match std::fs::read_to_string(merge.join("amend")) {
         Ok(a) => (Some(a), false),
         Err(_) => (crate::in_progress::refused(&git_dir).map(|(oid, _)| oid), true),
@@ -819,35 +817,33 @@ impl WriteIntent for RebaseControl {
         if cx.before.in_progress != Some("rebase") {
             return Err(GbError::new(GbErrorKind::InvalidInput, "No rebase is in progress"));
         }
-        // --- 3C T4: GitVolt's interactive rebase ---
+        // --- GitVolt's interactive rebase ---
         // Its session (Edit messages, chip deletes), and its pins: git re-reads the saved todo
         // (`# dropped` lines included) with the comment char of this invocation.
         let session = crate::write::irebase::run::session_of_pause(cx)?;
         let pins: Vec<String> = if session.is_some() { crate::write::irebase::run::GIT_PINS.iter().map(|s| s.to_string()).collect() } else { Vec::new() };
-        // --- end 3C T4 ---
         match self.action {
             RebaseAction::Continue | RebaseAction::Skip => {
                 let mut step = if self.action == RebaseAction::Continue { "--continue" } else { "--skip" };
-                // Review N1: if the update list couldn't be pruned at GitVolt's pause, git moves
-                // the merged-in branches at the end; they go back here (only then, N6).
+                // If the update list couldn't be pruned at GitVolt's pause, git moves
+                // the merged-in branches at the end; they go back here (only then).
                 let keep = put_back_of_pause(cx)?;
-                // UX N: the stop this step starts at; a stop it makes has another key.
+                // The stop this step starts at; a stop it makes has another key.
                 let at = crate::write::irebase::split::stop_key(cx.root);
                 // The message the user typed in the box (the UI sends one only when edited).
                 let typed = self.message.as_deref().filter(|m| self.action == RebaseAction::Continue && !m.trim().is_empty());
-                // --- UX F: a stop where the commit failed (the signer) can go on ---
+                // --- a stop where the commit failed (the signer) can go on ---
                 let ours = !self.target.is_empty();
-                // --- UX L: GitVolt's Edit stop is "about to commit" ---
+                // --- GitVolt's Edit stop is "about to commit" ---
                 let staged_stop = if session.is_some() { crate::write::irebase::edit::staged_stop(cx).await? } else { None };
                 if staged_stop.is_some() && self.action == RebaseAction::Skip {
                     // git's `--skip` would reset the stop's changes away, the user's own with them.
                     return Err(GbError::new(GbErrorKind::InvalidInput, "Skip isn't offered at an Edit stop: discard its changes to leave the commit out, then Continue"));
                 }
-                // --- end UX L ---
                 if ours {
                     sign_as_configured(cx).await?;
                 }
-                // UX L: what's staged is committed first (the original's author kept), or HEAD goes
+                // What's staged is committed first (the original's author kept), or HEAD goes
                 // back to git's commit when nothing changed; then git goes on.
                 let at_edit = match &staged_stop {
                     Some(st) => Some(crate::write::irebase::edit::commit_at_stop(cx, st, typed).await?),
@@ -862,7 +858,6 @@ impl WriteIntent for RebaseControl {
                     RebaseAction::Skip if ours && skip_failed_commit(cx).await? => step = "--continue",
                     _ => {}
                 }
-                // --- end UX F ---
                 if let Some(m) = typed.filter(|_| repicked.is_none() && staged_stop.is_none()) {
                     use_message(cx, m).await?;
                 }
@@ -876,12 +871,12 @@ impl WriteIntent for RebaseControl {
                     Some(AtStop::Restored) if crate::write::irebase::edit::test_hook::cancels(cx.root) => Err(GbError::new(GbErrorKind::Cancelled, "Cancelled")),
                     _ => run_rebase_stop(cx, args.clone(), &self.target, None, Vec::new(), &mut failed).await,
                 };
-                // UX L: back on git's commit, and git didn't get past it (a cancel, a failure): the
+                // Back on git's commit, and git didn't get past it (a cancel, a failure): the
                 // stop is staged again.
                 if let (Some(st), Some(AtStop::Restored), Err(_) | Ok(IntegrateOutcome::Stopped { .. })) = (&staged_stop, at_edit, &first) {
                     restage(cx, st).await;
                 }
-                // --- UX F: the typed message reaches the re-picked commit ---
+                // --- the typed message reaches the re-picked commit ---
                 let out = match (&repicked, typed) {
                     (Some(r), Some(m)) => match first {
                         Ok(IntegrateOutcome::Stopped { kind, files, warning }) => match typed_message_at_stop(cx, m).await {
@@ -911,23 +906,21 @@ impl WriteIntent for RebaseControl {
                     },
                     _ => first,
                 }?;
-                // --- end UX F ---
                 if matches!(out, IntegrateOutcome::Done { .. }) {
                     put_back(cx, &keep).await?;
                 }
-                // --- 3C T4: an interactive rebase's deletes, or its next Edit message ---
+                // --- an interactive rebase's deletes, or its next Edit message ---
                 match &session {
                     Some(s) => crate::write::irebase::run::after_step(cx, s, out, failed.as_ref(), &at).await,
                     None => Ok(out),
                 }
-                // --- end 3C T4 ---
             }
             RebaseAction::Abort => {
                 use crate::write::irebase::split;
-                // 3C T5: a Split's pieces, never committed again, would stop the abort.
+                // A Split's pieces, never committed again, would stop the abort.
                 let gone = if session.is_some() { split::clear_leftovers(cx).await? } else { Vec::new() };
-                // 3C fix round 1 (I2): the work done at the stop goes into a kept stash first.
-                // Fix round 2: commits on a branch, edits in a stash, both before the abort.
+                // The work done at the stop goes into a kept stash first.
+                // Commits on a branch, edits in a stash, both before the abort.
                 let work = match &session {
                     Some(s) => match split::keep_work(cx, s).await {
                         Ok(w) => Some(w),
@@ -943,7 +936,7 @@ impl WriteIntent for RebaseControl {
                 let inv = cx.git(args);
                 let res = cx.run_git(inv).await;
                 if let Err(e) = res {
-                    // Fix round 3: roll back only an abort that reset nothing.
+                    // Roll back only an abort that reset nothing.
                     match &work {
                         Some(w) if !split::untouched(cx, w).await => {
                             split::finish_kept_work(cx, w, true).await;
@@ -965,7 +958,7 @@ impl WriteIntent for RebaseControl {
                     cx.touch(k);
                 }
                 Ok(match work {
-                    // UX N: a conflict stop's work is kept too, in the stash: nothing is counted
+                    // A conflict stop's work is kept too, in the stash: nothing is counted
                     // as discarded any more.
                     Some(w) => IntegrateOutcome::Aborted { stash: w.stash, branch: w.branch },
                     None => IntegrateOutcome::ABORTED,
@@ -1016,7 +1009,7 @@ mod tests {
         api.dispatch(Request::RebaseControl { repo: id, worktree: wt(r), action, message: None }).await.unwrap()
     }
 
-    /// Ux round 1: Continue commits the stopped pick with the commit panel's edited message.
+    /// Continue commits the stopped pick with the commit panel's edited message.
     #[tokio::test]
     async fn continue_uses_the_edited_message() {
         let r = rebase_conflict();
@@ -1046,7 +1039,7 @@ mod tests {
         assert_eq!(r.git(&["rev-list", "--count", "HEAD"]), "2");
     }
 
-    /// Review 1: at an `edit` stop where the user committed again (a split), HEAD isn't the
+    /// At an `edit` stop where the user committed again (a split), HEAD isn't the
     /// commit git stopped at: Continue amends nothing, whatever message it's sent.
     #[tokio::test]
     async fn an_edit_stop_where_head_moved_is_not_amended() {
@@ -1066,7 +1059,7 @@ mod tests {
         ["feature/a", "feature/b", "feature/c"].iter().map(|b| r.git(&["rev-parse", b])).collect()
     }
 
-    /// §13.1, §17.1 "Stacks": ticked, the three branches move; undo restores every ref.
+    /// Stacks: ticked, the three branches move; undo restores every ref.
     #[tokio::test]
     async fn a_stack_moves_together_and_undo_restores_every_ref() {
         let r = TestRepo::new();
@@ -1075,7 +1068,7 @@ mod tests {
         let (api, _data) = api();
         let id = open(&api, r.path()).await;
         let res = rebase(&api, id, r.path(), "main", Some(true)).await.unwrap();
-        // Review M3: the branch's 3 commits, not git's counter (which counts the update-ref steps).
+        // The branch's 3 commits, not git's counter (which counts the update-ref steps).
         assert_eq!(res["outcome"], serde_json::json!({"status": "done", "commits": 3, "fastForward": false}));
         let main = r.git(&["rev-parse", "main"]);
         for b in ["feature/a", "feature/b", "feature/c"] {
@@ -1120,7 +1113,7 @@ mod tests {
         r
     }
 
-    /// §13.2: stopped on conflicts, the rebase pauses with its autostash; Continue completes it,
+    /// Stopped on conflicts, the rebase pauses with its autostash; Continue completes it,
     /// the autostash comes back, and Undo is one "rebase" step.
     #[tokio::test]
     async fn a_stopped_rebase_continues_to_completion() {
@@ -1161,7 +1154,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "feature"]), r.git(&["rev-parse", "main"]), "the only commit was skipped");
     }
 
-    /// Re-review N1, false completion: aborted in a terminal, then reset to the target. The
+    /// False completion: aborted in a terminal, then reset to the target. The
     /// branch now holds the target, but the rebase didn't complete: the entry goes, the autostash
     /// comes back.
     #[tokio::test]
@@ -1179,7 +1172,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("d.txt")).unwrap(), "dirty\n");
     }
 
-    /// Re-review N1, false abort: the target moved during the pause (a fetch, another worktree).
+    /// False abort: the target moved during the pause (a fetch, another worktree).
     /// Continue still completes the rebase it paused, onto the commit it started with.
     #[tokio::test]
     async fn a_target_that_moves_during_the_pause_doesnt_turn_continue_into_an_abort() {
@@ -1198,7 +1191,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("d.txt")).unwrap(), "dirty\n");
     }
 
-    /// §13.4 and the T6 review: the watcher can't see a pick (`msgnum` sits in `rebase-merge/`),
+    /// The watcher can't see a pick (`msgnum` sits in `rebase-merge/`),
     /// so the tap carries each one. With picks slower than a tick, every step arrives, and so
     /// does a graph reload per pick. Each pick's commit waits (its `prepare-commit-msg` hook)
     /// until its step's reload has arrived, so a tick never lands mid-pick, however loaded the
@@ -1261,8 +1254,8 @@ mod tests {
         assert_eq!(rebase(&api, id, r.path(), "main", None).await.unwrap_err().kind, crate::error::GbErrorKind::InvalidInput);
     }
 
-    /// §17.1 "Signing": rebased commits come out signed by the user's own setup.
-    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+    /// Signing: rebased commits come out signed by the user's own setup.
+    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (signing isn't supported on Windows yet)
     #[tokio::test]
     async fn rebased_commits_are_signed() {
         let r = TestRepo::new();
@@ -1282,7 +1275,7 @@ mod tests {
         crate::journal::JournalStore::new(data, &git_dir, &crate::platform::fs::canonicalize(r.path()).unwrap()).load().unwrap()
     }
 
-    /// Review I1 (scenario s4): another worktree commits on its branch while the rebase is
+    /// Another worktree commits on its branch while the rebase is
     /// paused. The rebase's entry records only its own branch, and Undo leaves the other one be.
     #[tokio::test]
     async fn a_commit_in_another_worktree_during_the_pause_isnt_the_rebases() {
@@ -1337,7 +1330,7 @@ mod tests {
         r
     }
 
-    /// Review I2 (scenario s3): a merge with a change of its own can't be remade by git; the
+    /// A merge with a change of its own can't be remade by git; the
     /// rebase refuses before anything moves, so the merge's own file survives and `side` stays.
     #[tokio::test]
     async fn a_merge_with_changes_of_its_own_isnt_rebased_away() {
@@ -1353,7 +1346,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "side"]), side);
     }
 
-    /// Review I2: `--rebase-merges` keeps the merge; `stk` (stacked) moves, `side` (merged in)
+    /// `--rebase-merges` keeps the merge; `stk` (stacked) moves, `side` (merged in)
     /// isn't stacked and stays where it was, and the count is the branch's own commits.
     #[tokio::test]
     async fn merges_survive_and_a_merged_in_branch_isnt_moved() {
@@ -1375,7 +1368,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "stk"]), stk);
     }
 
-    /// Review I2 across a pause: the merged-in branch leaves git's own update list, so the
+    /// Across a pause: the merged-in branch leaves git's own update list, so the
     /// Continue that ends the rebase doesn't move it either.
     #[tokio::test]
     async fn a_paused_rebase_doesnt_move_a_merged_in_branch_at_its_end() {
@@ -1397,7 +1390,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "stk"]), r.git(&["rev-parse", "feature^1"]), "the stacked one moved");
     }
 
-    /// Review M1 (scenario s10): aborted outside, reset to the target, then new work: not the
+    /// Aborted outside, reset to the target, then new work: not the
     /// rebase's commits, so not a completion.
     #[tokio::test]
     async fn an_outside_abort_reset_and_new_commit_isnt_a_completion() {
@@ -1413,7 +1406,7 @@ mod tests {
         assert!(journal(data.path(), &r).undo.is_empty(), "not recorded as a rebase");
     }
 
-    /// Review M2: a Cancel aborts the rebase it started; the branch and the changes are back.
+    /// A Cancel aborts the rebase it started; the branch and the changes are back.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_cancelled_rebase_is_aborted_and_the_autostash_comes_back() {
         let r = TestRepo::new();
@@ -1443,7 +1436,7 @@ mod tests {
         assert!(j.undo.is_empty() && j.paused().is_none());
     }
 
-    /// Review M3 (scenario s8): a branch behind its target fast-forwards, and says so.
+    /// A branch behind its target fast-forwards, and says so.
     #[tokio::test]
     async fn a_branch_behind_its_target_fast_forwards() {
         let r = TestRepo::new();
@@ -1460,7 +1453,7 @@ mod tests {
         assert_eq!(rebase(&api, id, r.path(), "main", Some(false)).await.unwrap()["outcome"]["status"], "upToDate");
     }
 
-    /// Review M1': a conflicted Continue commits with `--cleanup=strip`, so a `#` line of the
+    /// A conflicted Continue commits with `--cleanup=strip`, so a `#` line of the
     /// message goes. It's still the rebase completing: Undo is one "rebase" step.
     #[tokio::test]
     async fn a_continue_that_strips_a_hash_line_still_completes() {
@@ -1487,7 +1480,7 @@ mod tests {
         assert_eq!(res["journal"]["undo"]["label"], "rebase feature onto main");
     }
 
-    /// Review N5: upstream already has one commit's change (with more of its own, so the
+    /// Upstream already has one commit's change (with more of its own, so the
     /// patch-ids differ). git drops that pick but still counts it; the outcome counts commits.
     #[tokio::test]
     async fn a_dropped_pick_isnt_counted() {
@@ -1513,7 +1506,7 @@ mod tests {
         assert_eq!(res["outcome"], serde_json::json!({"status": "done", "commits": 1, "fastForward": false}));
     }
 
-    /// Review N6: a rebase started in a terminal with `--update-refs` moves the branches the user
+    /// A rebase started in a terminal with `--update-refs` moves the branches the user
     /// asked git to move; GitVolt's Continue never moves them back.
     #[tokio::test]
     async fn continuing_an_outside_rebase_keeps_its_update_refs() {
@@ -1535,7 +1528,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "stk"]), r.git(&["rev-parse", "feature^1"]));
     }
 
-    /// Untraced (review P1), a refusing `pre-rebase` is still named.
+    /// Untraced, a refusing `pre-rebase` is still named.
     #[tokio::test]
     async fn a_refusing_pre_rebase_hook_is_named() {
         let r = TestRepo::new();
@@ -1548,7 +1541,7 @@ mod tests {
         assert_eq!(e.detail, Some(crate::error::ErrorDetail::Hook { hook: "pre-rebase".into() }));
     }
 
-    /// Review N1: only git's own shape of `rebase-merge/update-refs` is edited.
+    /// Only git's own shape of `rebase-merge/update-refs` is edited.
     #[test]
     fn the_update_list_is_pruned_only_in_gits_shape() {
         let (a, b) = ("1".repeat(40), "2".repeat(40));
@@ -1559,7 +1552,7 @@ mod tests {
         assert_eq!(pruned_update_refs(&format!("refs/heads/side {a} {b}\nx\ny\n"), &[side]), None, "not ref, oid, oid");
     }
 
-    /// Review N4: the preview names the merge a rebase would refuse, before Rebase is pressed.
+    /// The preview names the merge a rebase would refuse, before Rebase is pressed.
     #[tokio::test]
     async fn the_preview_flags_a_lossy_merge() {
         let r = merged_side(true);
@@ -1573,7 +1566,7 @@ mod tests {
         assert!(p["lossyMerge"].is_null());
     }
 
-    /// Review M5: the label names the branch the op finds when it runs.
+    /// The label names the branch the op finds when it runs.
     #[test]
     fn the_label_settles_on_the_branch_the_op_runs_on() {
         let l = BranchLabel::new(Some("feature".into()), |b| format!("rebase {b} onto main"));
@@ -1588,11 +1581,11 @@ mod tests {
         assert!(ok.success());
     }
 
-    /// §13.4, §16: a 60-commit rebase through `Integrate`, request to result, takes ≤ 1.5× bare
+    /// A 60-commit rebase through `Integrate`, request to result, takes ≤ 1.5× bare
     /// `git rebase` on a copy of the same fixture, best of 5 each. No hook wrapping, and at most
-    /// one progress event per ~100 ms. (wave test pass; `ulimit -v 4000000`, `timeout 300`.)
+    /// one progress event per ~100 ms. (Run alone, with `ulimit -v 4000000` and `timeout 300`.)
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore = "timing: run alone in the wave test pass (`cargo test -p gitvolt-core --lib -- --ignored a_60_commit`); next to the full suite GitVolt's extra processes lose to load"]
+    #[ignore = "timing: run alone (`cargo test -p gitvolt-core --lib -- --ignored a_60_commit`); next to the full suite GitVolt's extra processes lose to load"]
     async fn a_60_commit_rebase_runs_at_cli_speed() {
         let base = TestRepo::new();
         fixtures::rebase60(&base);
@@ -1632,7 +1625,7 @@ mod tests {
         assert!(gb_best.as_secs_f64() <= cli_best.as_secs_f64() * 1.5, "GitVolt {gb_best:?} vs bare git {cli_best:?}");
     }
 
-    /// 2D T14 re-review m1 (`AutostashRule::Rebased`): git checks out the target first, so an
+    /// `AutostashRule::Rebased`: git checks out the target first, so an
     /// untracked file where the local commits deleted a file the target still has is stashed,
     /// not left for git to refuse ("could not detach HEAD").
     #[tokio::test]
@@ -1658,8 +1651,7 @@ mod tests {
         assert!(r.git(&["ls-files", "x.txt"]).is_empty(), "still untracked");
     }
 
-    // --- 2C repo-safety (safety review 2 N2) ---
-    /// R7c: `up` replaced the clean populated gitlink `sm` by a file; the rebase's first step
+    /// `up` replaced the clean populated gitlink `sm` by a file; the rebase's first step
     /// checks `up` out, which would delete the clone whole: refused, nothing changed.
     #[tokio::test]
     async fn a_rebase_never_deletes_a_populated_submodule_the_target_replaces_by_a_file() {
@@ -1673,11 +1665,10 @@ mod tests {
         assert!(r.path().join("sm/.git").is_dir());
         assert_eq!(r.git(&["status", "--porcelain"]), "");
     }
-    // --- end 2C repo-safety ---
 }
 
 
-// --- UX F: commit signing at a rebase's commits ---
+// --- commit signing at a rebase's commits ---
 /// Signing the way the user's global config does it (`commit.gpgsign`, `gpg.program`), with a
 /// stand-in signer (never the user's own gpg): one that signs, one that fails, one that never
 /// returns (a TTY pinentry nobody sees).
@@ -1805,7 +1796,7 @@ mod signing_tests {
         let out = &cont(&api, id, r.path()).await.unwrap()["outcome"];
         assert_eq!(out["status"], "stopped", "{out}");
         assert!(out.get("warning").is_none(), "the Edit stop is a plain stop: {out}");
-        // UX L: "about to commit": HEAD on the commit's parent, its change staged.
+        // "about to commit": HEAD on the commit's parent, its change staged.
         assert_eq!(r.git(&["log", "-1", "--format=%s"]), "Work on feature/a");
         assert!(!r.git(&["diff", "--cached", "--name-only"]).is_empty());
         let out = &cont(&api, id, r.path()).await.unwrap()["outcome"];
@@ -1892,7 +1883,7 @@ mod signing_tests {
         call(api, "rebaseControl", json!({ "repo": id, "worktree": wt(dir), "action": "continue", "message": message })).await.unwrap()
     }
 
-    /// The coordinator's item 1: a message typed at a failed commit's stop reaches that commit
+    /// A message typed at a failed commit's stop reaches that commit
     /// (picked again, then amended at a stop of its own), and the rest of the rebase goes on.
     /// Typed while the signer still fails, the pick keeps its own command (no stray Edit stop).
     #[tokio::test]
@@ -1925,7 +1916,7 @@ mod signing_tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "");
     }
 
-    /// The coordinator's item 2: Skip at a failed commit's stop skips that commit (git's own
+    /// Skip at a failed commit's stop skips that commit (git's own
     /// `--skip` would pick it again), its staged result gone; the rest goes on.
     #[tokio::test]
     async fn skip_at_a_failed_commits_stop_skips_it() {
@@ -1944,7 +1935,6 @@ mod signing_tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "");
     }
 
-    // --- fix round 1 ---
     fn state(r: &TestRepo, name: &str) -> String {
         std::fs::read_to_string(r.path().join(".git/rebase-merge").join(name)).unwrap_or_default()
     }
@@ -2005,7 +1995,7 @@ mod signing_tests {
         assert_eq!(edit_rebase(&api, id, &r).await["outcome"]["status"], "stopped");
         let todo = r.path().join(".git/rebase-merge/git-rebase-todo");
         std::fs::write(&todo, format!("break\n{}", std::fs::read_to_string(&todo).unwrap())).unwrap();
-        // UX L: GitVolt's Continue at its Edit stop (git's own would refuse the staged change).
+        // GitVolt's Continue at its Edit stop (git's own would refuse the staged change).
         assert_eq!(cont(&api, id, r.path()).await.unwrap()["outcome"]["status"], "stopped");
         assert_eq!(last_command(&state(&r, "done")), Some("break"));
         let out = &call(&api, "rebaseControl", json!({ "repo": id, "worktree": wt(r.path()), "action": "skip" })).await.unwrap()["outcome"];
@@ -2178,7 +2168,6 @@ mod signing_tests {
         assert_eq!(super::as_edit("fixup abc1234 # A"), None);
         assert!(super::same_commit("abc1234", "abc1234ffff") && !super::same_commit("abc", "abc1234"));
     }
-    // --- end fix round 1 ---
 
     /// A plain commit (and an amend) whose signer fails names gpg's reason.
     #[tokio::test]
@@ -2198,4 +2187,3 @@ mod signing_tests {
         assert_eq!(r.git(&["log", "--format=%s"]), "base");
     }
 }
-// --- end UX F ---

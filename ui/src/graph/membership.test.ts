@@ -205,7 +205,7 @@ describe('branchMembership on real layouts', () => {
     'main behind origin/main, feature off origin/main': { F: null, O2: null, O1: 'origin/main', M: null, base: 'main' },
     // Diverged: main's M in lane 0, origin/main's O2, O1 in lane 1, feature off O2 in lane 2.
     'main diverged from origin/main, feature off origin/main': { F: null, M: null, O2: null, O1: 'origin/main', base: 'main' },
-    // The checked-out feature's WIP is row 0 above the newer main (K37): a WIP row has none.
+    // The checked-out feature's WIP is row 0 above the newer main: a WIP row has none.
     'dirty feature checked out, older than pinned main': { '// WIP': null, M: null, F: null, base: 'main' },
   };
 
@@ -223,7 +223,7 @@ describe('branchMembership on real layouts', () => {
   }
 });
 
-describe('branchRows (J22): the rows a hovered branch chip focuses', () => {
+describe('branchRows: the rows a hovered branch chip focuses', () => {
   const sorted = (set: ReadonlySet<number>) => [...set].sort((a, b) => a - b);
   // M merges feat (F2 <- F1) into main (M <- A <- B); feat's tip is F2.
   const r = rows(['M', 0, ['A', 'F2']], ['F2', 1, ['F1']], ['A', 0, ['B']], ['F1', 1, ['B']], ['B', 0, []]);

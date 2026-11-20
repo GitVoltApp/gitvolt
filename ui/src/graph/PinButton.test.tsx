@@ -33,7 +33,7 @@ const pinButton = () => screen.getByRole('button', { name: /Pinned trunk/ });
 beforeEach(() => refresh.mockClear());
 afterEach(() => useRuntime.setState({ tabs: {} }));
 
-describe('PinButton (spec §8.4, amendment 4)', () => {
+describe('PinButton', () => {
   it('shows the current trunk: the pinned pair, local first, or the one branch pinned alone', () => {
     setup(PAIR);
     expect(screen.getByRole('button', { name: 'Pinned trunk: main ↔ origin/main' })).toBeInTheDocument();
@@ -127,14 +127,14 @@ describe('PinButton (spec §8.4, amendment 4)', () => {
     expect(refresh).toHaveBeenCalledTimes(3);
   });
 
-  it('the picker opens under the button (K70)', () => {
+  it('the picker opens under the button', () => {
     setup(PAIR);
     vi.spyOn(pinButton(), 'getBoundingClientRect').mockReturnValue({ top: 20, bottom: 44, left: 10, right: 90, width: 80, height: 24, x: 10, y: 20, toJSON: () => ({}) });
     fireEvent.click(pinButton());
     expect(Number.parseFloat(document.querySelector<HTMLElement>('.picker')!.style.top)).toBeGreaterThanOrEqual(44);
   });
 
-  it('the button toggles its picker (K42)', () => {
+  it('the button toggles its picker', () => {
     setup(PAIR);
     fireEvent.click(pinButton());
     expect(screen.getByRole('listbox')).toBeInTheDocument();

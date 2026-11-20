@@ -58,7 +58,7 @@ function Form({ tabId }: { tabId: string }) {
   const nameError = remoteNameError(effName, names);
   const kind = parsed ? effectiveKind(parsed.host, detectHostKind(parsed.host), overrides) : null;
 
-  // The target project's forks (spec #4 §3.3), when the repo maps to a project through an account.
+  // The target project's forks, when the repo maps to a project through an account.
   useEffect(() => {
     if (repoId === undefined) return;
     let live = true;

@@ -17,7 +17,7 @@ import { registerToolbarButton } from './registry';
 import { Toolbar } from './Toolbar';
 import { jumpToWip, openWipCount, useWipButtonView } from './wipJump';
 
-/** The toolbar (spec §6.3) in each repo tab's `toolbar` slot, and its Fetch (spec §15). */
+/** The toolbar in each repo tab's `toolbar` slot, and its Fetch. */
 const repoTab = () => {
   const t = activeTab();
   return t?.kind === 'repo' && t.path ? t : null;
@@ -36,7 +36,7 @@ const offs = [
       },
     },
   ]),
-  // --- 2D T19: the Fetch/Pull split button; `repo.fetch` stays for the palette ---
+  // --- the Fetch/Pull split button; `repo.fetch` stays for the palette ---
   registerActions([{
     id: 'repo.syncDefault', label: 'Fetch', group: 'Repository', icon: ICONS.fetch, tooltip: 'Fetch every remote',
     when: () => !!repoTab(),
@@ -86,8 +86,7 @@ const offs = [
       return fetching || pulling;
     },
   }),
-  // --- end 2D T19 ---
-  // Search (spec §6.3) runs find's `edit.find` (W3-D: the graph's FindBox, or Monaco's find while
+  // Search runs find's `edit.find` (the graph's FindBox, or Monaco's find while
   // a diff is open). Until that action is registered, no button renders (no placeholder UI).
   registerToolbarButton({ action: 'edit.find', label: 'Search', placement: 'end', order: 20 }),
   // Left of Actions and Search: the active worktree's changes, a click away from anywhere.

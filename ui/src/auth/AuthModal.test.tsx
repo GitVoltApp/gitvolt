@@ -61,7 +61,7 @@ describe('AuthModal', () => {
     expect(screen.getByLabelText('Password')).toHaveValue('');
   });
 
-  it('owns the keyboard while open: the app layer behind it sees no key (ruling R6)', () => {
+  it('owns the keyboard while open: the app layer behind it sees no key', () => {
     const app = vi.fn(() => 'handled' as const);
     const off = registerKeys('app', app);
     render(<AuthModal />);

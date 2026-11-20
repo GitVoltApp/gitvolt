@@ -2,7 +2,7 @@ import { budgetApplies, expect, test } from './test';
 import { git } from './fixtures';
 import { fileRow, openWip, section } from './wip';
 
-test.describe('the staging undo log (spec #2 §7.6)', () => {
+test.describe('the staging undo log', () => {
   // One repo and page for both (each was a test of its own, paying for a page load): new.txt is
   // left staged by the first, as the second needs it.
   test('the file list header’s Undo and Redo, with tooltips; while editing the working copy, Ctrl+Z is Monaco’s own undo', async ({ page }) => {

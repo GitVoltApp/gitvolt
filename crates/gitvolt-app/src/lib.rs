@@ -57,11 +57,11 @@ const _: () = assert!(cfg!(debug_assertions) || !gitvolt_core::TESTING, "gitvolt
 /// The app's `Api`: links open in the default browser, "Open in…" launches the editors and file
 /// manager found on this machine (detached, argv only), and avatars come from Gravatar with a
 /// disk cache in `~/.cache/gitvolt/avatars` (none when there's no cache directory). Old versions
-/// opened in an editor are copied under `~/.cache/gitvolt/open` (spec §14.5).
+/// opened in an editor are copied under `~/.cache/gitvolt/open`.
 ///
 /// `child_env` adjusts every child it starts: git, each opener launch, the chooser's and the
 /// default app's `xdg-open` fallback (macOS: `open`) and the URL opener (`desktop::restore_child_env` in the app). An opener launch also
-/// gets the login shell's environment, when `cli` has one captured (spec §5.3).
+/// gets the login shell's environment, when `cli` has one captured.
 /// This build's version: a `just package` build's stamped one (`GITVOLT_BUILD_VERSION`,
 /// `0.2.0+202610072046.d1d4d7d`), else Cargo.toml's.
 const APP_VERSION: &str = match option_env!("GITVOLT_BUILD_VERSION") {
@@ -98,7 +98,7 @@ fn update_config(child_env: ChildEnvHook, quit: QuitSlot) -> gitvolt_core::updat
 
 fn build_api(cli: GitCli, launch: Option<String>, child_env: ChildEnvHook, quit: QuitSlot) -> Api {
     let shell_env = cli.shell_env().cloned();
-    // `system_url_opener` (I2) routes through the same argv-only, detached launch and
+    // `system_url_opener` routes through the same argv-only, detached launch and
     // `child_env` hook as an opener launch, so the browser gets the session's own
     // `GDK_BACKEND`/`IBUS_ENABLE_SYNC_MODE` back and never sees `CHROME_DEVEL_SANDBOX`.
     // `tauri_plugin_opener::open_url` (which bypasses that hook entirely) is only the fallback
@@ -124,12 +124,11 @@ fn build_api(cli: GitCli, launch: Option<String>, child_env: ChildEnvHook, quit:
         Some(cache) => api
             .with_open_cache(cache.join(gitvolt_core::paths::APP_DIR).join("open"))
             .with_avatars(Arc::new(Gravatar::new(cache.join(gitvolt_core::paths::APP_DIR).join("avatars"), DEFAULT_BASE_URL)) as Arc<dyn AvatarProvider>)
-            // --- 4A T10: forge accounts (spec #4 §3.2): the system keyring, else the 0600 file ---
+            // --- forge accounts: the system keyring, else the 0600 file ---
             .with_forge(
                 Arc::new(gitvolt_forge::connector::Forge::new(gitvolt_forge::connector::ForgeConfig { overrides: Default::default(), only_overrides: false, avatar_dir: Some(cache.join(gitvolt_core::paths::APP_DIR).join("forge-avatars")) })),
                 Arc::new(gitvolt_forge::tokens::SystemTokenStore::system(paths::data_dir().join("forge-tokens"))),
             ),
-            // --- end 4A T10 ---
         None => api.with_forge(
             Arc::new(gitvolt_forge::connector::Forge::new(gitvolt_forge::connector::ForgeConfig { overrides: Default::default(), only_overrides: false, avatar_dir: None })),
             Arc::new(gitvolt_forge::tokens::SystemTokenStore::system(paths::data_dir().join("forge-tokens"))),
@@ -139,7 +138,7 @@ fn build_api(cli: GitCli, launch: Option<String>, child_env: ChildEnvHook, quit:
 
 /// "Open in…"'s launcher: detached, argv only, with `child_env`'s environment (so an editor
 /// doesn't start under XWayland or with the app's IBus sync mode). With a captured login-shell
-/// environment (spec §5.3: `SSH_AUTH_SOCK`, `PATH` additions), the editor starts from that one
+/// environment (`SSH_AUTH_SOCK`, `PATH` additions), the editor starts from that one
 /// instead of the app's, and `child_env` still runs last. The API awaits the capture before an
 /// editor launch, so `captured()` has it by then (or it failed, and the app's own env is used).
 fn launcher(child_env: ChildEnvHook, shell_env: Option<Arc<ShellEnv>>) -> Launcher {
@@ -187,7 +186,7 @@ type ParentWindow = Arc<OnceLock<Box<dyn Fn() -> String + Send + Sync>>>;
 
 /// The process's early exits, in order (the CEF `--type=` helpers have already been sent away by
 /// `main`'s attribute): git or ssh running this binary as askpass (`askpass`, `Some(exit code)`)
-/// never reaches the single-instance check; then `claim` (R19): a later launch on the same
+/// never reaches the single-instance check; then `claim`: a later launch on the same
 /// config dir has forwarded its path and exits 0. `Ok`: run, as the guarded first instance
 /// (`Primary`), or unguarded (`GITVOLT_MULTI_INSTANCE`, or the guard couldn't be set up: the
 /// reason, logged once logging is up).
@@ -201,7 +200,7 @@ fn startup(askpass: impl FnOnce() -> Option<i32>, claim: impl FnOnce() -> Claim)
     }
 }
 
-/// A later launch's request (R19), after its path went to the UI (`openRequested`,
+/// A later launch's request, after its path went to the UI (`openRequested`,
 /// `ui/src/app/instance.ts`): the window comes back from the taskbar and to the front.
 /// `set_focus` asks the window manager the way a pager does (the CEF runtime's `activate`), which
 /// focus-stealing prevention lets through.
@@ -285,7 +284,7 @@ fn cef_runtime() -> Cef {
         Some(dictionary) => cef.bundled_dictionary(dictionary),
         None => cef,
     };
-    // Never run Chromium unsandboxed (spec §18). `Auto` drops the sandbox, with only a warning,
+    // Never run Chromium unsandboxed. `Auto` drops the sandbox, with only a warning,
     // in an AppImage on a system with neither the setuid helper nor unprivileged user
     // namespaces; `Required` refuses to start there instead. Windows sandboxes only under CEF's
     // bootstrap (`RunWinMain` below): a release build refuses to start without it, as the
@@ -327,9 +326,9 @@ fn dev_cdp_port(value: Option<&std::ffi::OsStr>) -> Option<u16> {
 #[tauri_runtime_cef::cef_entry_point]
 pub fn run() {
     // Very first (the attribute above has already sent CEF's own `--type=` helpers away): when
-    // git or ssh runs this binary as GIT_ASKPASS/SSH_ASKPASS (spec §5.4), it only asks the
+    // git or ssh runs this binary as GIT_ASKPASS/SSH_ASKPASS, it only asks the
     // running app over the askpass socket and exits. Git passes the prompt, never `--type=`.
-    // Then the single-instance guard (R19, keyed by the config dir): if GitVolt already runs on
+    // Then the single-instance guard (keyed by the config dir): if GitVolt already runs on
     // it, this launch hands it its path and exits 0, before any thread, GTK or CEF.
     let launch = std::env::args().nth(1).or_else(|| std::env::var("GITVOLT_OPEN").ok());
     let (instance, unguarded) = match startup(gitvolt_core::askpass::run_client_from_env, || instance::claim_from_env(launch.as_deref())) {
@@ -342,7 +341,7 @@ pub fn run() {
     // First, before any thread and before GTK: the window's desktop identity (dock icon) and
     // the input method's key handling (Ctrl+C and friends reach the page). See desktop.rs.
     desktop::init();
-    // Log files (spec §16.2): `~/.cache/gitvolt/logs`, daily, newest 7 kept; stderr too in debug builds.
+    // Log files: `~/.cache/gitvolt/logs`, daily, newest 7 kept; stderr too in debug builds.
     // A redacted copy on stdout in debug builds, and in any build run with RUST_LOG set.
     let console = cfg!(debug_assertions) || std::env::var_os("RUST_LOG").is_some_and(|v| !v.is_empty());
     let logging = gitvolt_core::logging::init(&gitvolt_core::logging::default_log_dir(), false, console);
@@ -362,17 +361,17 @@ pub fn run() {
     // Every child (git, the editors, the file manager, xdg-open) gets the session's own
     // IBUS_ENABLE_SYNC_MODE / GDK_BACKEND, not the app's (desktop.rs).
     let child_env: ChildEnvHook = Arc::new(desktop::restore_child_env);
-    // Spec §5.3: the login shell's environment, captured once (started in `setup`) through the
+    // The login shell's environment, captured once (started in `setup`) through the
     // same hook, so the shell sees the session's variables, not CEF's. Git commands that start
     // before it's done wait for it (bounded by the 5 s capture timeout); so do editor launches.
     let shell_env = ShellEnv::from_login_shell_with_hook(child_env.clone());
     let cli = GitCli::new(Arc::new(CommandLog::new(1000))).with_shell_env(shell_env.clone());
-    // Settings and profiles (spec §14.3): `~/.config/gitvolt`, written debounced and flushed
+    // Settings and profiles: `~/.config/gitvolt`, written debounced and flushed
     // once more on exit.
     let store = SettingsStore::open(paths::config_dir());
     let exit_store = store.clone();
-    // "Open Repository" (spec §13): the folder-picker portal, parented to the main window once
-    // it exists (R2: no picker on a portal-less desktop; the UI falls back to a typed path).
+    // "Open Repository": the folder-picker portal, parented to the main window once
+    // it exists (no picker on a portal-less desktop; the UI falls back to a typed path).
     let parent: ParentWindow = Arc::default();
     let quit: QuitSlot = Arc::default();
     let quit_slot = quit.clone();
@@ -403,7 +402,7 @@ pub fn run() {
         // vendored runtime (vendor/tauri-runtime-cef/GITVOLT-PATCH.md). Not `show_dialog=false`:
         // without the dialog, F7 would silently turn caret browsing on.
         //
-        // K31: GitVolt never ships or checks for Chromium's own components (cert revocation
+        // GitVolt never ships or checks for Chromium's own components (cert revocation
         // sets, CT log lists, download file-type policies) — it is a git client, not a browser,
         // and has no route to `update.googleapis.com` that matters to it. Left on, the updater
         // tries to memory-map a temp file every run and fails loudly under sandboxing
@@ -419,7 +418,7 @@ pub fn run() {
         // wry's is; `tauri.conf.json` sets `create: false` on the main window, and it's built
         // here from that same config (matches the CEF spike's `src-tauri/src/main.rs`).
         .setup(move |app| {
-            // Every backend event goes to the webview as `gb:event` (spec §4.3).
+            // Every backend event goes to the webview as `gb:event`.
             let handle = app.handle().clone();
             let mut events = forward.subscribe();
             tauri::async_runtime::spawn(async move {
@@ -435,7 +434,7 @@ pub fn run() {
                     }
                 }
             });
-            // Spec §5.4: the per-session askpass socket in $XDG_RUNTIME_DIR. Git runs this same
+            // The per-session askpass socket in $XDG_RUNTIME_DIR. Git runs this same
             // binary as askpass. Before the window exists, so no request can outrun it. Without
             // it the app still runs: a credential prompt then just fails (GIT_TERMINAL_PROMPT=0).
             let askpass = std::env::current_exe().and_then(|exe| Ok((paths::runtime_dir()?, exe)));
@@ -448,7 +447,7 @@ pub fn run() {
                 Err(e) => tracing::warn!("askpass unavailable: {e}; credential prompts will fail"),
             }
             let cfg = app.config().app.windows[0].clone();
-            // K46: the window opens where it was last (window_state.rs). The builder's position
+            // The window opens where it was last (window_state.rs). The builder's position
             // and size are applied before the window is first mapped, so it never shows at the
             // default place first; maximizing waits until it's on screen, on the right monitor.
             // A window manager that places it elsewhere anyway (mutter) is corrected once it's
@@ -549,7 +548,7 @@ pub fn run() {
                     }
                 });
             }
-            // R19: answer later launches now that there's a window to focus. One that came while
+            // Answer later launches now that there's a window to focus. One that came while
             // this instance was starting has been waiting in the socket, and is answered now
             // (and queued until the page takes it).
             if let Some(instance) = &instance {
@@ -579,7 +578,7 @@ pub fn run() {
             // The update check: shortly after startup, then daily (Settings › Updates).
             tauri::async_runtime::spawn(forward.update_checks());
             // Here, after the runtime's `set_var` (its SAFETY note: no other thread may read the
-            // environment before it): capture the login shell's environment (spec §5.3), detect
+            // environment before it): capture the login shell's environment, detect
             // the "Open in…" editors off the UI's path, so the first `listOpeners` answers from
             // the cache, and drop week-old copies of old versions.
             tauri::async_runtime::spawn(shell_env.clone().warm());
@@ -611,7 +610,7 @@ pub fn run() {
                 return;
             }
             // macOS hands folders to the app (running, or launching for them) as Apple Events,
-            // not arguments: each opens in a tab as a later launch's path does (R19), queued if
+            // not arguments: each opens in a tab as a later launch's path does, queued if
             // the page isn't listening yet.
             if let tauri::RunEvent::Opened { urls } = &event {
                 for folder in opened_folders(urls) {
@@ -675,7 +674,7 @@ mod tests {
     #[cfg(unix)]
     use std::ffi::OsString;
 
-    /// R19's order: an askpass invocation exits with the client's code and never reaches the
+    /// The order: an askpass invocation exits with the client's code and never reaches the
     /// instance check; a forwarding launch exits 0; unguarded (the escape hatch, or no guard
     /// possible) runs; the first instance runs guarded.
     #[test]
@@ -797,7 +796,7 @@ mod tests {
         assert!(opened_folders(&[]).is_empty());
     }
 
-    /// I2 regression: `OpenUrl` must go through `child_env`, the same hook an opener launch
+    /// Regression: `OpenUrl` must go through `child_env`, the same hook an opener launch
     /// uses — not bypass it via `tauri_plugin_opener::open_url`, which left the browser with the
     /// app's own `GDK_BACKEND=x11`/`IBUS_ENABLE_SYNC_MODE`. `build_api` prefers
     /// `system_url_opener` (routed through the hook) over that fallback whenever `xdg-open` is on
@@ -875,7 +874,7 @@ mod tests {
         assert_eq!(got, "wayland|unset");
     }
 
-    /// Spec §5.3: with a captured login-shell environment, an editor starts from it (the app's
+    /// With a captured login-shell environment, an editor starts from it (the app's
     /// own variables are gone), and the hook still runs last (the session's `GDK_BACKEND`).
     #[cfg(unix)] // /bin/sh as the launched program
     #[tokio::test]

@@ -6,7 +6,7 @@ import { useToast } from '../ui/toastStore';
 import { ImageDiff } from './ImageDiff';
 import { imageMenuRows } from './imageMenu';
 
-describe('image context menu (K98)', () => {
+describe('image context menu', () => {
   const O = { url: 'blob:old', size: 60 };
   const N = { url: 'blob:new', size: 70 };
   const labels = () => (useMenu.getState().rows ?? []).map((r) => (r.kind === 'action' ? r.label : ''));

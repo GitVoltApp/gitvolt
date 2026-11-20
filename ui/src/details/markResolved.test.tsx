@@ -25,7 +25,7 @@ const sections = (...unstaged: FileChange[]): FileSection[] => [
 
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
-describe('Mark resolved on a Conflicted row (spec #2 §13.3)', () => {
+describe('Mark resolved on a Conflicted row', () => {
   it('is the conflicted row\'s hover action; other rows have none', () => {
     render(<RepoViewContext value={createRepoViewStore(1, '/r', graph, fakeServices())}><WipSections sections={sections(file('a.txt'), file('src/c.txt', { status: 'U', conflict: 'bothModified' }))} /></RepoViewContext>);
     expect(screen.queryByRole('button', { name: 'Mark a.txt resolved' })).toBeNull();
@@ -33,7 +33,7 @@ describe('Mark resolved on a Conflicted row (spec #2 §13.3)', () => {
     expect(markResolved).toHaveBeenCalledWith({ tabId: 't', repoId: 1, worktree: '/r' }, 'src/c.txt');
   });
 
-  it('is greyed out while the merge tool holds unsaved work on the file (2D final I1)', () => {
+  it('is greyed out while the merge tool holds unsaved work on the file', () => {
     useMergeDrafts.setState({ drafts: { [draftKey('t', '/r', 'src/c.txt')]: { tabId: 't', repo: 1, worktree: '/r', path: 'src/c.txt', base: 'h', segments: [], eol: 'lf', picks: {}, text: 'x', spans: [], edited: [], typed: true } } });
     render(<RepoViewContext value={createRepoViewStore(1, '/r', graph, fakeServices())}><WipSections sections={sections(file('src/c.txt', { status: 'U', conflict: 'bothModified' }))} /></RepoViewContext>);
     const button = screen.getByRole('button', { name: 'Mark src/c.txt resolved' });

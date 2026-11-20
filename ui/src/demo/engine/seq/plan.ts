@@ -13,7 +13,7 @@ import { worktreeOf } from '../read/worktrees';
 import { samePatches } from './patchId';
 import { branchesElsewhere, branchSets, isAncestor, rangeCommits, shortRef } from './range';
 
-/** The editor's ceiling (the core's Ruling 11). */
+/** The editor's ceiling (the core's limit). */
 export const MAX_ROWS = 1000;
 
 export interface Range {

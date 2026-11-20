@@ -6,7 +6,7 @@ const STEP = 24;
 
 /**
  * The draggable divider at the bottom of an expanded panel: it trades height with the next
- * expanded panel below it. Same pattern as the panel resizers in `repo/` (K26): while dragging,
+ * expanded panel below it. Same pattern as the panel resizers in `repo/`: while dragging,
  * the two panels' heights are written straight to their elements, at most once per animation
  * frame, so the drag never re-renders the sidebar per pointer event; `onCommit` (which persists
  * and re-renders) runs once at the end. A key press is one discrete step, so it commits at once.

@@ -15,7 +15,7 @@ export function cancelWhenLeft(input: HTMLInputElement | null, onCancel: () => v
 }
 
 /**
- * The inline "enter branch name" input (UX round 1), in the commit row's Branch/Tag
+ * The inline "enter branch name" input, in the commit row's Branch/Tag
  * cell (graph/rowEditor.ts). Validated live: an invalid name gets a red border and its reason
  * below. Enter creates and checks out, Ctrl/Cmd+Enter only creates, Esc cancels; leaving it empty
  * cancels too, while a typed name stays to come back to. Leaving is `cancelWhenLeft`'s.

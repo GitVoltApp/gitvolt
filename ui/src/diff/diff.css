@@ -3,7 +3,7 @@
 .diff-header[data-scope]::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--scope-stripe); pointer-events: none; }
 /* A diff taking a moment to load or compute: a thin line sweeping along the header's bottom. */
 .diff-progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; pointer-events: none; }
-/* J19: colour/opacity only, never a layout property — the sweep is a `transform: translateX`
+/* Colour/opacity only, never a layout property — the sweep is a `transform: translateX`
    (compositor-only), not an animated `left` (see .panel-busy::after, repo.css, for the 433⅓% math). */
 .diff-progress::after { content: ""; position: absolute; top: 0; bottom: 0; left: -30%; width: 30%; background: var(--blue); animation: diff-progress 1.1s ease-in-out infinite; }
 @keyframes diff-progress { from { transform: translateX(0%); } to { transform: translateX(433.333%); } }
@@ -46,7 +46,7 @@
 .text-button { all: unset; cursor: pointer; padding: 3px 10px; border-radius: 4px; background: var(--blue); color: var(--text-on-accent); }
 .text-button:focus-visible { outline: 2px solid var(--text-selected); outline-offset: 1px; }
 /* The editor's scrollbars: the app's 10 px lane and grey thumb (tokens.css, F31; colours from the
-   editor theme, monaco/theme.ts), but square and flush in the lane (H18): the vertical one sits
+   editor theme, monaco/theme.ts), but square and flush in the lane: the vertical one sits
    right beside the minimap and the overview ruler, whose edges are square. Monaco's own slider
    already is; nothing here rounds or insets it. */
 /* A click on a deleted line (Inline, Hunk) copies it (monaco/deletedCopy.ts, F25). */
@@ -57,7 +57,7 @@
 .monaco-diff-editor .delete-sign, .monaco-editor .inline-deleted-margin-view-zone .delete-sign { color: var(--red); }
 .diff-dirty { color: var(--orange); margin-right: 4px; }
 
-/* Spec #2 §7.3: Hunk mode's hunk header rows, the gutter's line button, the line
+/* Hunk mode's hunk header rows, the gutter's line button, the line
    bar and the refusal note. A header row is a view zone laid out with the diff (its height never
    arrives later): `@@ … @@` on the left, its buttons on the right. */
 .hunk-row { display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 8px; box-sizing: border-box; background: var(--panel-bg1); border-top: 1px solid var(--section-border); border-bottom: 1px solid var(--section-border); user-select: none; }
@@ -85,7 +85,7 @@
 .line-stage-glyph:hover > span { filter: brightness(1.15); }
 .line-stage-glyph[aria-disabled="true"] { cursor: default; }
 .line-stage-glyph[aria-disabled="true"] > span { opacity: 0.45; filter: none; }
-/* Review comments (spec 2026-10-08 §2): the cards' layer over the editor (pointer events only on
+/* Review comments: the cards' layer over the editor (pointer events only on
    the cards themselves), the gutter's comment +, a thread's range and a drag's lines. */
 .review-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
 .review-card-host { position: absolute; left: 0; top: -100000px; box-sizing: border-box; padding-right: 8px; pointer-events: auto; }
@@ -100,10 +100,10 @@
 .line-action-bar { position: fixed; z-index: 20; display: flex; gap: 4px; padding: 3px; border-radius: 4px; background: var(--panel-bg1); box-shadow: 0 1px 4px var(--shadow-popup); }
 /* The refusal note is a banner in the body's flex column, above the editor (`order`: HunkActions
    renders after the editor, which must not remount): in normal flow, so the editor shrinks to fit
-   under it and none of its lines are covered (2B final I4). */
+   under it and none of its lines are covered. */
 .hunk-refused { order: -1; }
 
-/* Spec #5 §3.3: File View's text body (the editor's box fills it), hidden under the rendered view. */
+/* File View's text body (the editor's box fills it), hidden under the rendered view. */
 .file-source { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .file-source[hidden], .md-rendered[hidden] { display: none; }
 /* The rendered Markdown: read-only, scrolling on its own, in a centred reading column: 880 px, or

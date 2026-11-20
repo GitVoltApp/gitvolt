@@ -14,9 +14,9 @@ import { compareShown, endReview, newSession, patchReview, settleReview, watchCo
 import { placeReview, type ReviewPlacements } from './model';
 
 /**
- * The tab's review session (spec 2026-10-08 §1) and its writes (§6). A write that works updates
+ * The tab's review session and its writes. A write that works updates
  * the session at once, then reads the forge back; one the forge refuses changes nothing and
- * returns the reason, so the comment box keeps its text and says why (§7). No toast: the box is
+ * returns the reason, so the comment box keeps its text and says why. No toast: the box is
  * where the user is looking.
  */
 
@@ -159,7 +159,7 @@ export const useReviewMrHead = (tabId: string): string | null => useForge((st) =
   return f && n !== undefined ? (f.details[n]?.value?.mr.headSha ?? knownMr(f, n)?.headSha ?? null) : null;
 });
 
-/** Where the session's MR's threads and drafts sit, per file (Plan 2's view zones, Plan 3's badges). */
+/** Where the session's MR's threads and drafts sit, per file (the view zones, the badges). */
 export function useReviewPlacements(tabId: string): ReviewPlacements | null {
   const s = useReview(tabId);
   const threads = useForge((st) => (s ? st.byTab[tabId]?.discussions[s.number] : undefined));

@@ -20,7 +20,7 @@ const blocks = (md: string) => { clearParseCache(); return parseMarkdown(md, 'gi
 const root = (...children: RootContent[]): Root => ({ type: 'root', children });
 const show = (tree: Root, diff = true) => render(<div>{renderTree(tree, NEW, diff ? { old: OLD } : undefined)}</div>).container;
 
-describe('rendering a diff tree (5C)', () => {
+describe('rendering a diff tree', () => {
   it('a marked block is a labelled wrapper; a removed one resolves its links and images on the old side', () => {
     const [para] = blocks('See the [guide](other.md) and ![logo](logo.png).') as [Paragraph];
     show(root({ type: 'diffBlock', mark: 'removed', children: [para] }, { type: 'diffBlock', mark: 'added', children: [para] }, { type: 'diffBlock', mark: 'changed', children: [para] }));
@@ -49,7 +49,7 @@ describe('rendering a diff tree (5C)', () => {
     expect(c.querySelector('p')).toHaveTextContent('Run oncetwice.');
   });
 
-  it('an inline HTML element in changed words renders whole inside its <del> or <ins> (R13)', async () => {
+  it('an inline HTML element in changed words renders whole inside its <del> or <ins>', async () => {
     const { diffMarkdown } = await import('./diff/diffTree');
     clearParseCache();
     const c = show(diffMarkdown('Press <kbd>Ctrl</kbd> then <kbd>A</kbd> in the old menu.\n', 'Press <kbd>Ctrl</kbd> then <kbd>B</kbd> in the new menu.\n', 'github').root);
@@ -102,7 +102,7 @@ describe('rendering a diff tree (5C)', () => {
     expect(plain).toHaveTextContent('Hi.');
   });
 
-  it('a document inside a real diff still cannot forge a mark, a class, a label or line marks (R17)', () => {
+  it('a document inside a real diff still cannot forge a mark, a class, a label or line marks', () => {
     const hostile = blocks([
       '<div data-diff-mark="added" class="md-diff-block md-diff-added" role="group" aria-label="Added">p</div>',
       '<ul><li data-diff-mark="removed" class="md-diff-removed" data-gb-diff="ffffffffffffffff:removed">q</li></ul>',
@@ -128,7 +128,7 @@ describe('rendering a diff tree (5C)', () => {
   });
 });
 
-describe('source lines and slots (review comments, spec 2026-10-08 §3)', () => {
+describe('source lines and slots (review comments)', () => {
   const withLines = <T extends RootContent>(n: T, id: number, neu: [number, number] | null, old: [number, number] | null): T => ({ ...n, data: { ...n.data, gbSrc: { id, new: neu, old } } });
 
   it('a block carries its lines as data-src-* attributes, only in a rendered diff', () => {

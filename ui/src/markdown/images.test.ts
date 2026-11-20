@@ -11,7 +11,7 @@ const file = { kind: 'file', tabId: 't', commit: 'c0ffee1', path: 'docs/README.m
 
 beforeEach(() => { useForge.setState({ byTab: {} }); });
 
-describe('the image host policy (spec #5 §4.2)', () => {
+describe('the image host policy', () => {
   it('GitLab: the account host and project uploads load; other hosts wait for a click', () => {
     patchForge('t', { kind: 'gitlab', project: projectOf() });
     expect(resolveImage(forge, '/uploads/0123abcd0123abcd/shot.png')).toEqual({ kind: 'forge', url: 'https://gitlab.example.com/-/project/42/uploads/0123abcd0123abcd/shot.png' });

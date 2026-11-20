@@ -5,7 +5,7 @@ import { installZoom, nextZoom, parseZoom, setZoom, useZoom, ZOOM_STEPS, ZOOM_ST
 const key = (key: string, mods: Partial<KeyboardEventInit> = {}) => new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, cancelable: true, ...mods });
 
 describe('zoom steps', () => {
-  it('are the spec §12.2 steps', () => {
+  it('are the zoom steps', () => {
     expect(ZOOM_STEPS).toEqual([80, 90, 100, 110, 120, 130, 140, 150, 175, 200, 250, 300]);
   });
 

@@ -11,7 +11,7 @@ const segs: Segment[] = [
 const c0 = segs[1] as ConflictSegment;
 const c1 = segs[3] as ConflictSegment;
 
-describe('the merge tool model (spec #2 §13.3)', () => {
+describe('the merge tool model', () => {
   it('starts with nothing picked: every region is empty in the output', () => {
     const out = buildOutput(segs, emptyPicks(segs));
     expect(out.text).toBe('one\ntwo\nfour\nfive');
@@ -120,7 +120,7 @@ describe('the merge tool model (spec #2 §13.3)', () => {
     expect(nextRegion([], 3, 1)).toBeNull();
   });
 
-  it('keeps each line\'s own terminator; the file\'s EOL goes in only after a ticked last line that has none (the EOL ruling)', () => {
+  it('keeps each line\'s own terminator; the file\'s EOL goes in only after a ticked last line that has none', () => {
     const eof: Segment[] = [
       { kind: 'common', text: 'one\r\n' },
       { kind: 'conflict', id: 0, base: ['b'], current: ['cur\r\n', 'cur end'], incoming: ['inc end'] },
@@ -144,7 +144,7 @@ describe('the merge tool model (spec #2 §13.3)', () => {
     expect(sideHasLines([segs[3]], 'current')).toBe(false);
   });
 
-  it("a change is in a region when it touches its text or its start; typing at its end isn't (M1)", () => {
+  it("a change is in a region when it touches its text or its start; typing at its end isn't", () => {
     // Region [4, 6): "c\n" of "one\nc\ntwo\n".
     expect(changeHits(4, 0, 'x', 4, 6)).toBe(true);
     expect(changeHits(5, 0, 'x', 4, 6)).toBe(true);
@@ -154,7 +154,7 @@ describe('the merge tool model (spec #2 §13.3)', () => {
     // An empty region at 4: typing there fills it.
     expect(changeHits(4, 0, 'x', 4, 4)).toBe(true);
     expect(changeHits(4, 1, '', 4, 4)).toBe(false);
-    // N5: a region ending the file without a final newline ("c" of "one\nc"): typing after "c"
+    // A region ending the file without a final newline ("c" of "one\nc"): typing after "c"
     // is on its last line.
     expect(changeHits(5, 0, 'x', 4, 5, true)).toBe(true);
     expect(changeHits(5, 0, 'x', 4, 5)).toBe(false);

@@ -29,7 +29,7 @@ async function renderSelected(graph: GraphPayload, index: number, ...paths: stri
 }
 
 describe('WipHeader', () => {
-  it('reads "N file changes on [branch]" and Discard all (2B); the branch is the worktree label\'s', async () => {
+  it('reads "N file changes on [branch]" and Discard all; the branch is the worktree label\'s', async () => {
     const g = graphOf(wipRow({ worktreePath: '/r-hotfix', worktreeName: 'hotfix', modified: 2, added: 1, deleted: 3, renamed: 0, conflicted: 0 }));
     g.labels = [{ row: 1, name: 'hotfix-branch', local: 'hotfix-branch', remotes: [], tag: false, isHead: false, worktree: '/r-hotfix', checkedOut: null }];
     await renderSelected(g, 0, 'a.txt', 'b.txt');
@@ -37,7 +37,7 @@ describe('WipHeader', () => {
     expect(header).toHaveTextContent('2 file changes on hotfix-branch');
     expect(header.querySelector('.wip-branch')).toHaveTextContent('hotfix-branch');
     expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Discard all']);
-    // The open file's bar box (K5/K6); no separate "// WIP" title line (K36).
+    // The open file's bar box; no separate "// WIP" title line.
     expect(header).toHaveClass('panel-bar');
     expect(header).not.toHaveTextContent('// WIP');
   });
@@ -49,7 +49,7 @@ describe('WipHeader', () => {
     expect(screen.getByTestId('wip-header')).toHaveTextContent('1 file change on dev');
   });
 
-  it('Discard all is disabled mid-merge or rebase: "Abort instead" (spec #2 §7.2)', async () => {
+  it('Discard all is disabled mid-merge or rebase: "Abort instead"', async () => {
     const g = graphOf(wipRow({ worktreePath: '/r', worktreeName: null, modified: 1, added: 0, deleted: 0, renamed: 0, conflicted: 0 }));
     g.worktrees = [{ path: '/r', inProgress: 'merge' } as GraphPayload['worktrees'][number]];
     await renderSelected(g, 0, 'a.txt');
@@ -57,8 +57,8 @@ describe('WipHeader', () => {
   });
 });
 
-// UX R1 C.2: Discard all sends the files it confirms, and waits for its own answer.
-describe('WipHeader Discard all (UX R1 C.2)', () => {
+// Discard all sends the files it confirms, and waits for its own answer.
+describe('WipHeader Discard all', () => {
   const ctx = { tabId: 't', repoId: 1, path: '/r', worktree: '/r', info: null };
   it('sends the files the panel shows, a rename\'s both paths', async () => {
     const g = graphOf(wipRow({ worktreePath: '/r', worktreeName: null, modified: 1, added: 0, deleted: 0, renamed: 1, conflicted: 0 }));

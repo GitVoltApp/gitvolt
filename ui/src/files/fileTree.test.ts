@@ -54,7 +54,7 @@ describe('file tree', () => {
     expect(open.find((r) => r.kind === 'folder' && r.path === 'gen/deep')).toMatchObject({ lines: { added: 5, deleted: 0 } });
   });
 
-  it('a collapsed folder carries its subtree\'s change counts; an expanded one none (F20)', () => {
+  it('a collapsed folder carries its subtree\'s change counts; an expanded one none', () => {
     const files = [change('src/a.php'), change('src/lib/b.php', 'A'), change('src/lib/c.php', 'D'), change('src/n.php', 'R', 'src/o.php'), change('top.txt')];
     const unchanged = { commit: spec.id, paths: ['src/zz.php'] };
     const collapsed = buildRows({ files, spec, unchanged, mode: 'tree', sort: 'path', collapsed: new Set(['src']) });
@@ -67,7 +67,7 @@ describe('file tree', () => {
     expect(lib?.kind === 'folder' && lib.counts).toEqual({ modified: 0, added: 1, deleted: 1, renamed: 0, conflicted: 0 });
   });
 
-  it('↑/↓ step through collapsed directories, naming the ones to expand (UX round 2)', () => {
+  it('↑/↓ step through collapsed directories, naming the ones to expand', () => {
     // lib/ { one/ { p, q }, two/ { r, s } }, a.txt, z.txt
     const files = ['lib/one/p.txt', 'lib/one/q.txt', 'lib/two/r.txt', 'lib/two/s.txt', 'a.txt', 'z.txt'].map((p) => change(p));
     const full = buildRows({ files, spec, unchanged: null, mode: 'tree', sort: 'path', collapsed: NONE_COLLAPSED });
@@ -95,7 +95,7 @@ describe('file tree', () => {
     expect(step([], 'lib/one/p.txt', -1)).toBeNull();
   });
 
-  it('indents one level by exactly the chevron and its gap, so a file\'s icon starts under its folder\'s name (F17)', () => {
+  it('indents one level by exactly the chevron and its gap, so a file\'s icon starts under its folder\'s name', () => {
     // A folder row is [chevron][gap][name]; a file row is [status icon][gap][name]. Its child
     // row starts one indent further: that is the folder's name offset.
     const folderNameLeft = (depth: number) => rowIndent(depth) + TREE.chevron + TREE.gap;

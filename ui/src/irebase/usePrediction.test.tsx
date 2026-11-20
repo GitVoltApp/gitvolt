@@ -21,7 +21,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('usePrediction (spec #3 §3.2)', () => {
+describe('usePrediction', () => {
   it('predicts again when the base moves under the same rows (a Reload): the old marks go', async () => {
     setSession('t1', { ctx, opened: { branch: 'topic', base: 'main' }, state: fromPlan(plan()), prediction: NO_PREDICTION, moved: null, editing: null });
     predictRebase.mockResolvedValue({ rows: [{ oid: oid('c'), conflicts: ['x.txt'] }], off: null });

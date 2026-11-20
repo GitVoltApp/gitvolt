@@ -45,7 +45,7 @@ const ended = () => {
   expect(centerViewOf('t1')).toBeNull();
 };
 
-describe('what ends sticky File History: a file asked for in a view of its own (UX)', () => {
+describe('what ends sticky File History: a file asked for in a view of its own', () => {
   it('the toolbar\'s File View or Diff View, the pressed one too (a new file shown while sticky)', () => {
     store.getState().openFile(inWip('new.txt', 'A'));
     expect(store.getState().stickyHistory).toEqual({ blame: true });

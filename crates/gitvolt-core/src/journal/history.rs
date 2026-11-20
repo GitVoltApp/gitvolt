@@ -1,4 +1,4 @@
-//! UX Y: the Undo dropdown and out-of-order undo.
+//! The Undo dropdown and out-of-order undo.
 //!
 //! The dropdown lists the newest undoable entries. The newest is the toolbar's Undo; an older one
 //! can be undone on its own only when it's independent of every entry after it: nothing those
@@ -102,11 +102,11 @@ pub(crate) fn touched(e: &JournalEntry) -> Result<Touched<'_>, String> {
     Ok(t)
 }
 
-/// More paths than this aren't recorded (review 3): the entry then counts as touching every path.
+/// More paths than this aren't recorded: the entry then counts as touching every path.
 const TREE_PATHS_CAP: usize = 2_000;
 
 /// A tree diff's file paths into `set`; the walk stops as soon as it holds more than the cap
-/// (review 4: never read past it).
+/// (never read past it).
 struct CappedPaths<'s> {
     inner: gix::diff::tree::Recorder,
     set: &'s mut BTreeSet<String>,
@@ -209,7 +209,7 @@ async fn read_tree_paths(cli: &crate::git::GitCli, root: &std::path::Path, e: &J
 }
 
 /// The first path of `a` that overlaps one of `b` (the same file, or a folder holding the other),
-/// by lookups (review 3): itself, a range for what's under it, and each folder above it.
+/// by lookups: itself, a range for what's under it, and each folder above it.
 pub(crate) fn first_overlap<'a>(a: &BTreeSet<&'a str>, b: &BTreeSet<&str>) -> Option<&'a str> {
     use std::ops::Bound::{Excluded, Included};
     a.iter()
@@ -329,7 +329,7 @@ impl Journal {
         Ok(())
     }
 
-    /// Whether the Redo stack can stay through an out-of-order undo of `target` (review 7): every
+    /// Whether the Redo stack can stay through an out-of-order undo of `target`: every
     /// redo entry's touched set is known and independent of the target's.
     pub(crate) fn redo_survives(&self, target: &JournalEntry) -> bool {
         let Ok(mine) = touched(target) else { return false };
@@ -338,7 +338,7 @@ impl Journal {
 
     /// The dropdown: the newest done entries, newest first. The first is what Undo undoes
     /// (`undo_blocked` is its reason); `busy` blocks the rest too. Each entry's touched set is
-    /// worked out once (review 3).
+    /// worked out once.
     pub(crate) fn history(&self, busy: Option<&str>, undo_blocked: &Option<String>) -> Vec<HistoryRow> {
         let top = self.undo_top().map(|e| e.id);
         let rows: Vec<usize> = (0..self.undo.len()).rev().filter(|i| self.undo[*i].state == EntryState::Done).take(HISTORY_ROWS).collect();
@@ -471,7 +471,7 @@ mod tests {
         assert_eq!(j.out_of_order(a, None).unwrap_err(), "A later action changed the working tree (commit ?)");
     }
 
-    /// Review 3: two 2000-path entries are checked by lookups, not pair by pair: fast.
+    /// Two 2000-path entries are checked by lookups, not pair by pair: fast.
     #[test]
     fn two_2000_path_entries_check_fast() {
         let paths = |dir: &str| (0..2000).map(|i| format!("src/{dir}/{i:04}.rs")).collect::<Vec<_>>();

@@ -9,7 +9,7 @@ import { overflowLayer } from './overflow';
 import { monaco } from './setup';
 import { appEditorTheme } from './shiki';
 
-/** What the hex view shows (UX round 2, lane K): File View, one side's bytes; Diff View, both
+/** What the hex view shows: File View, one side's bytes; Diff View, both
  * sides' (one for an added or deleted file), byte i against byte i. */
 export interface HexShowRequest { path: string; file: boolean; old: HexSide | null; new: HexSide | null }
 

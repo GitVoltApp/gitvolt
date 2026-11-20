@@ -56,7 +56,7 @@ describe('GraphView', () => {
     for (const r of screen.getAllByRole('row')) expect(r).toHaveStyle({ height: '28px' });
   });
 
-  it('follows the density live: rows, their positions and the CSS variables on :root, where the details panel sees them too (H1)', () => {
+  it('follows the density live: rows, their positions and the CSS variables on :root, where the details panel sees them too', () => {
     render(<GraphView graph={graph} repoId="/repo" />);
     for (const d of DENSITIES) {
       act(() => useDensity.setState({ density: d }));
@@ -81,7 +81,7 @@ describe('GraphView', () => {
     expect(summary.nextSibling).toBe(body);
   });
 
-  it('controlled selection reports Ctrl+ and Shift+clicks; every selected row shows as selected, with no A/B marks (K27)', () => {
+  it('controlled selection reports Ctrl+ and Shift+clicks; every selected row shows as selected, with no A/B marks', () => {
     const onSelect = vi.fn();
     render(<GraphView graph={graph} repoId="/r" selected={1} alsoSelected={new Set([0, 1])} onSelect={onSelect} />);
     const rows = screen.getAllByRole('row');
@@ -97,7 +97,7 @@ describe('GraphView', () => {
     expect(rows[0]).not.toHaveTextContent(/^A/);
   });
 
-  it('only the primary button selects: a right or middle press never changes the selection (K27, UX round 2)', () => {
+  it('only the primary button selects: a right or middle press never changes the selection', () => {
     const onSelect = vi.fn();
     render(<GraphView graph={graph} repoId="/r" selected={0} alsoSelected={new Set([0])} onSelect={onSelect} />);
     const rows = screen.getAllByRole('row');
@@ -107,7 +107,7 @@ describe('GraphView', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('a right-click outlines its row while the menu it opened stays open, and never selects it (UX round 2)', () => {
+  it('a right-click outlines its row while the menu it opened stays open, and never selects it', () => {
     useMenu.getState().close();
     const onSelect = vi.fn();
     const onContextMenu = vi.fn((e: MenuEventLike) => openContextMenu(e, (): MenuRow[] => [{ kind: 'separator' }]));
@@ -127,7 +127,7 @@ describe('GraphView', () => {
     expect(document.querySelector('.is-context')).toBeNull();
   });
 
-  // UX R1 C.3: a pick that stops opens the merge tool over the graph (<Activity> hides it, its
+  // A pick that stops opens the merge tool over the graph (<Activity> hides it, its
   // effects go) while the menu closes: shown again, the row's outline is gone.
   it('the outline goes with its menu while <Activity> hides the graph', () => {
     useMenu.getState().close();
@@ -142,7 +142,7 @@ describe('GraphView', () => {
     expect(document.querySelector('.is-context')).toBeNull();
   });
 
-  it('Shift+↑/↓ extend the range: a Shift move from the keyboard position (K27)', () => {
+  it('Shift+↑/↓ extend the range: a Shift move from the keyboard position', () => {
     const onSelect = vi.fn();
     render(<GraphView graph={graph} repoId="/r" selected={0} onSelect={onSelect} />);
     const grid = screen.getByRole('grid', { name: 'Commit graph' });
@@ -160,7 +160,7 @@ describe('GraphView', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('in the Branch/Tag column only the chips select the row: empty space and the connector do nothing (F6)', () => {
+  it('in the Branch/Tag column only the chips select the row: empty space and the connector do nothing', () => {
     const onSelect = vi.fn();
     render(<GraphView graph={graph} repoId="/r" selected={-1} onSelect={onSelect} />);
     const rows = screen.getAllByRole('row');
@@ -179,7 +179,7 @@ describe('GraphView', () => {
     }
   });
 
-  it('a hovered or selected commit below its branch tip shows a dimmed chip naming the branch (F7), which selects its row like the others (J6)', () => {
+  it('a hovered or selected commit below its branch tip shows a dimmed chip naming the branch, which selects its row like the others', () => {
     const onSelect = vi.fn();
     const { rerender } = render(<GraphView graph={graph} repoId="/r" selected={-1} onSelect={onSelect} />);
     const rows = () => screen.getAllByRole('row');
@@ -187,7 +187,7 @@ describe('GraphView', () => {
     expect(dim(1)).toBeNull();
     fireEvent.mouseEnter(rows()[1]);
     expect(dim(1)).toHaveTextContent('main');
-    // A press on it selects the row, as on any chip (J6); it has no tooltip.
+    // A press on it selects the row, as on any chip; it has no tooltip.
     fireEvent.mouseDown(dim(1)!);
     expect(onSelect).toHaveBeenCalledWith(1, { ctrl: false, shift: false });
     fireEvent.mouseEnter(dim(1)!);
@@ -203,7 +203,7 @@ describe('GraphView', () => {
     expect(dim(1)).toHaveTextContent('main');
   });
 
-  it('keys the hovered membership chip by commit, so a refresh that shifts the rows keeps it on the same commit (F7)', () => {
+  it('keys the hovered membership chip by commit, so a refresh that shifts the rows keeps it on the same commit', () => {
     const { rerender } = render(<GraphView graph={graph} repoId="/r" />);
     fireEvent.mouseEnter(screen.getAllByRole('row')[1]);
     expect(screen.getAllByRole('row')[1].querySelector('.ref-label-dim')).toHaveTextContent('main');
@@ -217,7 +217,7 @@ describe('GraphView', () => {
     expect(rows[2].querySelector('.ref-label-dim')).toHaveTextContent('main');
   });
 
-  it('a row with chips that aren\'t its branch\'s tip (a tag) shows the dimmed chip after them (F7)', () => {
+  it('a row with chips that aren\'t its branch\'s tip (a tag) shows the dimmed chip after them', () => {
     const tagged: GraphPayload = { ...graph, labels: [...graph.labels, { row: 1, name: 'v1', local: null, remotes: [], tag: true, isHead: false, worktree: null, checkedOut: null }] };
     render(<GraphView graph={tagged} repoId="/r" />);
     const row = screen.getAllByRole('row')[1];
@@ -251,7 +251,7 @@ describe('GraphView', () => {
     expect(onKey).toHaveBeenCalledWith('Enter');
   });
 
-  it('Shift+F10 and the ContextMenu key open the commit menu at the selected row (fix round 1, item 4)', () => {
+  it('Shift+F10 and the ContextMenu key open the commit menu at the selected row', () => {
     const onContextMenu = vi.fn();
     render(<GraphView graph={graph} repoId="/r" selected={0} onContextMenu={onContextMenu} />);
     const grid = screen.getByRole('grid', { name: 'Commit graph' });
@@ -438,7 +438,7 @@ describe('GraphView columns', () => {
     render(<GraphView graph={graph} repoId="/repo" />);
     const seps = screen.getAllByRole('separator');
     expect(seps.map((s) => s.getAttribute('aria-label'))).toEqual(['Resize Branch / Tag column', 'Resize Graph column', 'Resize Commit message column', 'Resize Author column', 'Resize Date column', 'Resize SHA column']);
-    // Each sits in (and on the right edge of) the header cell of the column it resizes (F3).
+    // Each sits in (and on the right edge of) the header cell of the column it resizes.
     for (const [name, col] of [[/Branch/, 'labels'], [/Graph/, 'graph'], [/Commit message/, 'message'], [/Author/, 'author'], [/Date/, 'date'], [/SHA/, 'sha']] as const) {
       expect(separator(name).parentElement).toBe(header(col));
       expect(separator(name)).toHaveClass('end');
@@ -462,7 +462,7 @@ describe('GraphView columns', () => {
     expect(cell('labels')).toHaveStyle({ width: '216px' });
     expect(canvas).toHaveStyle({ left: '216px' });
 
-    // Graph starts at its lanes' width, its max (F2): ArrowRight stops there, ArrowLeft narrows.
+    // Graph starts at its lanes' width, its max: ArrowRight stops there, ArrowLeft narrows.
     fireEvent.keyDown(separator(/Graph/), { key: 'ArrowRight' });
     expect(canvas).toHaveStyle({ width: `${graphW}px` });
     fireEvent.keyDown(separator(/Graph/), { key: 'ArrowLeft' });
@@ -487,7 +487,7 @@ describe('GraphView columns', () => {
   // Heavy, not stuck: ~120 one-pixel drag steps, each re-rendering the view and reading widths
   // through several `getAllByRole('row')` queries (slow in jsdom). ~2 s alone; under a loaded
   // machine it crossed vitest's 5 s default, hence the explicit budget.
-  it('dragging each column\'s right-edge handle resizes that column, the handle staying under the pointer (F3)', () => {
+  it('dragging each column\'s right-edge handle resizes that column, the handle staying under the pointer', () => {
     render(<GraphView graph={graph} repoId="/repo" />);
     const right = (col: string) => leftOf(col) + cellW(col);
     for (const [name, col, dx] of [[/Branch/, 'labels', 12], [/Commit message/, 'message', -12], [/Author/, 'author', 12], [/Date/, 'date', 12], [/SHA/, 'sha', 12]] as const) {
@@ -725,7 +725,7 @@ describe('GraphView columns while Author/Date are squeezed (clientWidth 778)', (
   });
 });
 
-/** 40 lanes: every lane plus padding is 40 * 16 + 16 = 656 px, the Graph column's max (F2). */
+/** 40 lanes: every lane plus padding is 40 * 16 + 16 = 656 px, the Graph column's max. */
 const wideGraph: GraphPayload = { ...graph, maxLanes: 40 };
 
 describe('GraphView: Branch/Tag and Graph wider than columnMax after the window narrowed (clientWidth 1000)', () => {
@@ -749,7 +749,7 @@ describe('GraphView: Branch/Tag and Graph wider than columnMax after the window 
   }
 });
 
-describe('GraphView: the Graph column\'s max width and the overflow strip (F2)', () => {
+describe('GraphView: the Graph column\'s max width and the overflow strip', () => {
   beforeEach(() => useColumnPrefs.getState().reset());
   const canvas = () => screen.getByTestId('graph-canvas');
   const need = 40 * METRICS.laneW + 2 * METRICS.padX; // 902 at the default (standard) density

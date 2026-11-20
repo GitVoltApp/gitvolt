@@ -1,10 +1,10 @@
-//! Backend → frontend events (spec §4.3). One broadcast bus; `gitvolt-app` forwards it as the
+//! Backend → frontend events. One broadcast bus; `gitvolt-app` forwards it as the
 //! Tauri event `gb:event`, and `gitvolt-harness` forwards it on every WebSocket.
 //!
-//! Deviation (spec §4.3): `repoChanged` also carries `worktrees` (the canonical paths whose
+//! `repoChanged` also carries `worktrees` (the canonical paths whose
 //! status changed), and there are extra events: `opStarted` (an op's id and label),
 //! `authResolved` (closes the prompt), `opProgress`, which carries only the op id, and
-//! `openRequested` (a second launch's path, 1D R19).
+//! `openRequested` (a second launch's path).
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -25,7 +25,7 @@ pub enum ChangeKind {
     Head,
     Stash,
     Config,
-    /// A merge, rebase, cherry-pick or revert started or ended (spec #2 §3.5).
+    /// A merge, rebase, cherry-pick or revert started or ended.
     State,
     /// A worktree's submodules as the sidebar lists them: a gitlink in its index, its
     /// `.gitmodules`, or a submodule's checked-out commit (`submodules::Seen`).
@@ -38,7 +38,7 @@ pub enum ChangeKind {
 pub enum OpKind {
     Fetch,
     Clone,
-    // Writes (spec #2 §3.5).
+    // Writes.
     Commit,
     Checkout,
     Branch,
@@ -54,9 +54,9 @@ pub enum OpKind {
     Redo,
     Worktree,
     Resolve,
-    // Saving a working file (2B, Deviation 11).
+    // Saving a working file.
     Save,
-    // Restore a file from a commit (3A).
+    // Restore a file from a commit.
     Restore,
     // Git LFS: fetch, pull, a file's download, track and untrack.
     Lfs,
@@ -73,10 +73,8 @@ pub enum StashStep {
     Saving,
     /// `git stash apply` and its drop: "Restoring your changes…".
     Restoring,
-    // --- 2C T5 ---
     /// Putting back the files a failed or cancelled checkout rewrote: "Restoring files…".
     RestoringFiles,
-    // --- end 2C T5 ---
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -89,7 +87,7 @@ pub enum OpOutcome {
     Cancelled,
 }
 
-/// A rebase's place (spec #2 §13.4): step `n` of `m`.
+/// A rebase's place: step `n` of `m`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ProgressStep {
@@ -107,7 +105,7 @@ pub struct ProgressStep {
 pub enum AppEvent {
     /// Debounced file-system change in the watched (active) repo. `worktrees`: canonical paths
     /// whose status (or WIP file lists) actually changed. `versions`: for those of them whose WIP
-    /// lists the watcher keeps (K44), the lists' new version (`FileListPayload::version`).
+    /// lists the watcher keeps, the lists' new version (`FileListPayload::version`).
     RepoChanged {
         repo: u32,
         kinds: Vec<ChangeKind>,
@@ -126,7 +124,7 @@ pub enum AppEvent {
         /// Fetch: the repo name. Clone: the destination path.
         label: String,
         /// User-started (`true`) or GitVolt-started (`false`, the background fetch). The UI
-        /// shows a background op nowhere but its activity log (K30).
+        /// shows a background op nowhere but its activity log.
         interactive: bool,
     },
     OpProgress {
@@ -139,7 +137,7 @@ pub enum AppEvent {
         #[ts(optional)]
         step: Option<ProgressStep>,
     },
-    /// A push's or fetch's `remote:` lines (spec #2 §12.4), classified: the UI keeps them in
+    /// A push's or fetch's `remote:` lines, classified: the UI keeps them in
     /// that op's Activity entry, whole.
     OpRemote {
         #[ts(type = "number")]
@@ -154,17 +152,17 @@ pub enum AppEvent {
         outcome: OpOutcome,
         message: Option<String>,
         /// The git command that ran, argv joined for display and redacted (no environment, no
-        /// askpass secrets): the activity log shows it (K101).
+        /// askpass secrets): the activity log shows it.
         command: Option<String>,
     },
-    /// One redacted line of a write's hook or progress output (spec #2 §3.3): the UI appends it
+    /// One redacted line of a write's hook or progress output: the UI appends it
     /// to that op's Activity entry.
     OpOutput {
         #[ts(type = "number")]
         op: u64,
         line: String,
     },
-    /// A write's autostash step began (`step`), or ended (`None`) (spec #2 §6). Once a step has
+    /// A write's autostash step began (`step`), or ended (`None`). Once a step has
     /// run ~60 s, the slow-write status says "Saving your changes…" or "Restoring your
     /// changes…"; while one runs, the op's Cancel reads "Stop — your changes stay in stash
     /// <message>", and stops the step (a 15-minute limit stops it too).
@@ -175,16 +173,16 @@ pub enum AppEvent {
         message: String,
     },
     /// A worktree's undo journal changed (a write, an undo, a banner): Undo/Redo and the banners
-    /// follow (spec #2 §3.5).
+    /// follow.
     JournalChanged { repo: u32, worktree: String, state: crate::journal::JournalState },
-    /// The repository's action queue changed (spec #2 §3.6): the status-bar chip follows.
+    /// The repository's action queue changed: the status-bar chip follows.
     QueueChanged {
         repo: u32,
         running: Option<crate::write::types::QueueItem>,
         queued: Vec<crate::write::types::QueueItem>,
         stopped: Option<crate::write::types::QueueStop>,
     },
-    /// A credential prompt is waiting for the user (spec §5.4).
+    /// A credential prompt is waiting for the user.
     AuthWaiting {
         #[ts(type = "number")]
         prompt: u64,

@@ -2,7 +2,7 @@
 
 /**
  * A commit's complete message, fetched on demand (`Request::CommitMessage`) rather than carried
- * by every graph row: the full-message tooltip (§8.4) and the details panel (§9.2) use it.
+ * by every graph row: the full-message tooltip and the details panel use it.
  */
 export type CommitMessage = { id: string, 
 /**

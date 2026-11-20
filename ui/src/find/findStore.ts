@@ -7,7 +7,7 @@ import { beginOlder, useRuntime } from '../app/runtime';
 import { tabStore, tabView } from '../app/tabStores';
 
 /**
- * Find in the graph (Ctrl+F, spec §8.7), per tab. One query matches a commit's message
+ * Find in the graph (Ctrl+F), per tab. One query matches a commit's message
  * (case-insensitive substring), its SHA (a prefix, for 4+ hex characters) and, from 2
  * characters, the paths it touched (the backend's lazily built path index). The non-matches dim
  * through the shared row-dim (the tab store's `filterKeep`, rowDim.ts 'filter' level); nothing is
@@ -33,7 +33,7 @@ export interface FindState {
 }
 
 const CLOSED: FindState = { open: false, query: '', matches: [], rowIndexes: [], index: -1, pathPending: false, older: null, olderLoading: false, message: null, focusRequest: 0 };
-/** Spec §8.7 / plan constants. */
+/** Find timing and size limits. */
 export const DEBOUNCE_MS = 50;
 export const PATH_MIN_CHARS = 2;
 const FULL_HASH = /^([0-9a-f]{40}|[0-9a-f]{64})$/i;
@@ -67,7 +67,7 @@ export function openFind(tabId: string): void {
   patch(tabId, { open: true, focusRequest: cur.focusRequest + 1 });
 }
 
-/** Closes and clears (spec §8.7: "Esc closes and clears"): the dimming goes with the query. */
+/** Closes and clears ("Esc closes and clears"): the dimming goes with the query. */
 export function closeFind(tabId: string): void {
   cancelPending(tabId);
   typing.delete(tabId);
@@ -101,7 +101,7 @@ function show(tabId: string, { matches, rowIndexes }: { matches: string[]; rowIn
   if (select && index >= 0 && index !== keep) selectCommit(tabId, matches[index]);
 }
 
-/** Spec §8.7: message and SHA as you type (debounced 50 ms), paths once the index answers. */
+/** Message and SHA as you type (debounced 50 ms), paths once the index answers. */
 export function setFindQuery(tabId: string, query: string, debounceMs = DEBOUNCE_MS): Promise<void> {
   patch(tabId, { query, older: null, olderLoading: false, message: null });
   cancelPending(tabId);
@@ -148,7 +148,7 @@ async function run(tabId: string, q: string, seq: number, select: boolean): Prom
       if (!live()) return;
       show(tabId, ordered(tabId, [...text, ...paths]), select);
     }
-    // A full hash that isn't in the window (spec §8.7): load commits until it appears, up to 10k.
+    // A full hash that isn't in the window: load commits until it appears, up to 10k.
     // Even when other matches exist (a revert's message naming it): the commit itself is the
     // one asked for. Loaded, its own SHA would have matched.
     const sha = q.toLowerCase();
@@ -173,7 +173,7 @@ async function run(tabId: string, q: string, seq: number, select: boolean): Prom
   }
 }
 
-/** Loads a commit window of `limit` (the tab's override, spec §8.7); false if superseded. */
+/** Loads a commit window of `limit` (the tab's override); false if superseded. */
 async function deepen(tabId: string, limit: number, live: () => boolean = () => true): Promise<boolean> {
   beginOlder(tabId);
   useRuntime.getState().patch(tabId, { limit });
@@ -200,7 +200,7 @@ export function stepFind(tabId: string, delta: 1 | -1): void {
   else if (!selectCommit(tabId, s.matches[index])) void revealCommit(tabId, s.matches[index]);
 }
 
-/** Spec §8.7 "Search older history": commits outside the window. */
+/** Search older history: commits outside the window. */
 export async function searchOlder(tabId: string): Promise<void> {
   const repo = tabView(tabId)?.repo;
   const q = get(tabId).query.trim();

@@ -34,12 +34,12 @@ export function stashPaths(tabId: string, oid: string | null): Promise<ReadonlyS
 
 /**
  * After a stash Apply or Pop (the toolbar's Pop, the sidebar's and graph's Apply and Pop, a kept
- * stash's Apply; UX round 2): "now look at what came back". The worktree's WIP row is selected
+ * stash's Apply): "now look at what came back". The worktree's WIP row is selected
  * (the refreshed graph shows it once the watcher's refresh lands), and `open` also opens the diff
  * of the first file the stash brought back, in the WIP lists' displayed order (the first WIP file
  * when `paths` is unknown or matches none), with the keyboard in the file list.
  *
- * Ruling: the diff opens whatever was open before, even with several files restored: the user's
+ * The diff opens whatever was open before, even with several files restored: the user's
  * own words were "select the WIP and show the diff panel". A selection the user changes while
  * the WIP lists load wins: nothing is opened over it.
  */

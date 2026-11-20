@@ -81,13 +81,13 @@ describe('GraphView virtual rows, controlled selection', () => {
     before = renders.n;
     fireEvent.keyDown(grid, { key: 'ArrowUp' });
     expect(renders.n - before).toBe(2);
-    // Row 1 is selected: Ctrl+click row 3 selects it too (K15): rows 1 and 3 are both
+    // Row 1 is selected: Ctrl+click row 3 selects it too: rows 1 and 3 are both
     // selected, and only row 3 re-renders (row 1 stays selected).
     before = renders.n;
     fireEvent.mouseDown(screen.getAllByRole('row')[3], { ctrlKey: true });
     expect(screen.getAllByRole('row').map((r) => r.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false', 'true']);
     expect(renders.n - before).toBe(1);
-    // A third row, Ctrl+clicked (a multi-selection, K27): only it re-renders.
+    // A third row, Ctrl+clicked (a multi-selection): only it re-renders.
     before = renders.n;
     fireEvent.mouseDown(screen.getAllByRole('row')[0], { ctrlKey: true });
     expect(screen.getAllByRole('row').map((r) => r.getAttribute('aria-selected'))).toEqual(['true', 'true', 'false', 'true']);
@@ -133,7 +133,7 @@ describe('GraphView virtual rows across a refresh (the store keeps unchanged row
   });
 });
 
-describe('GraphView virtual rows, hover-driven branch membership chip (F7)', () => {
+describe('GraphView virtual rows, hover-driven branch membership chip', () => {
   // A linear history under `main`: rows 1..3 aren't the tip, so hovering them shows the chip.
   const chained: GraphPayload = {
     ...graph,
@@ -178,7 +178,7 @@ describe('GraphView virtual rows, hover-driven branch membership chip (F7)', () 
   });
 });
 
-describe('GraphView, hover crossings (F7)', () => {
+describe('GraphView, hover crossings', () => {
   it('moving the pointer over rows with no membership chip doesn\'t even re-render the view', () => {
     render(<GraphView graph={graph} repoId="/repo" />);
     const rows = screen.getAllByRole('row');

@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import type { RepoViewStore } from '../repo/store';
 import type { SectionKind, SideItem } from './model';
 
-/** Sidebar double-clicks by item kind (spec #2 §9.3: a branch row checks it out; §11.2: a
+/** Sidebar double-clicks by item kind (a branch row checks it out: a
  * worktree row becomes the active one), registered by the features that own them. */
 export interface SidebarCtx { tabId: string; store: RepoViewStore }
 const doubleClicks = new Map<SideItem['kind'], (ctx: SidebarCtx, item: SideItem) => void>();
@@ -20,7 +20,7 @@ export function sidebarDoubleClick(ctx: SidebarCtx, item: SideItem): boolean {
   return true;
 }
 
-/** A section header's icon buttons (the Worktrees header's +, spec #2 §11.1). */
+/** A section header's icon buttons (the Worktrees header's +). */
 export interface HeaderAction { id: string; icon: LucideIcon; label: string; run: (ctx: { tabId: string }) => void }
 export const useHeaderActions = create<{ bySection: Partial<Record<SectionKind, HeaderAction[]>> }>(() => ({ bySection: {} }));
 

@@ -1,6 +1,6 @@
 import type { ThemeRegistration } from 'shiki';
 
-/** JetBrains Darcula as a TextMate theme for Shiki/Monaco (spec §12.1: "custom Darcula JSON"). Shiki
+/** JetBrains Darcula as a TextMate theme for Shiki/Monaco ("custom Darcula JSON"). Shiki
  * doesn't ship one; the colours are IntelliJ's `Darcula.xml` scheme defaults. */
 export const darcula: ThemeRegistration = {
   name: 'darcula',

@@ -45,11 +45,11 @@ function pinPair(ref: string, sidebar: SidebarPayload | null | undefined): strin
 }
 
 /**
- * The Graph header's pin button (spec §8.4): shows the current trunk, a pair when a local branch
- * pins with the remote branch it tracks (`main ↔ origin/main`). Its picker (amendment 4) offers
+ * The Graph header's pin button: shows the current trunk, a pair when a local branch
+ * pins with the remote branch it tracks (`main ↔ origin/main`). Its picker offers
  * "Default" (detail: the pair it picked), "None" and every branch, so unpinning is always reversible.
  * Picking stores `RepoSettings.pin` and reloads the graph with it. Like the toolbar's branch
- * picker, the button toggles its own picker (K42) and the picker hangs below the button (K70).
+ * picker, the button toggles its own picker and the picker hangs below the button.
  */
 export function PinButton({ compact }: { compact: boolean }) {
   const { tabId, path } = useRepoContext();

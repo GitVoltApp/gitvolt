@@ -9,13 +9,13 @@ describe('image zoom', () => {
     expect([pixelated(1), pixelated(1.1), pixelated(2)]).toEqual([false, true, true]);
   });
 
-  it('a fine ladder of steps (H24), and 100% is where an image opens (H23)', () => {
-    // K12: Fit is a button now, not the slider's bottom stop — the ladder's own minimum (10%) is.
+  it('a fine ladder of steps, and 100% is where an image opens', () => {
+    // Fit is a button now, not the slider's bottom stop — the ladder's own minimum (10%) is.
     expect(ZOOM_STEPS.map(stepLabel)).toEqual(['10%', '25%', '33%', '50%', '67%', '75%', '90%', '100%', '110%', '125%', '150%', '175%', '200%', '250%', '300%', '400%', '500%', '600%', '800%', '1000%']);
     expect(ZOOM_STEPS[DEFAULT_STEP]).toBe(1);
   });
 
-  it('finds the rung closest to an arbitrary scale (K12/K13: Fit or a typed % rarely land on one)', () => {
+  it('finds the rung closest to an arbitrary scale (Fit or a typed % rarely land on one)', () => {
     const at = (s: number) => ZOOM_STEPS.indexOf(s as (typeof ZOOM_STEPS)[number]);
     expect(nearestStepIndex(1)).toBe(at(1));
     expect(nearestStepIndex(0.83)).toBe(at(0.9));
@@ -37,24 +37,24 @@ describe('image zoom', () => {
     expect(nextStepIndex(0.7, -1)).toBe(at(0.67));
   });
 
-  it('an image that fits on an axis stays centred there: no pan (H27)', () => {
+  it('an image that fits on an axis stays centred there: no pan', () => {
     // 100×50 at 1× in a 400×300 box fits both ways: any pan snaps back to the centre.
     expect(clampView({ scale: 1, x: 350, y: -40 }, 100, 50, 400, 300)).toEqual({ scale: 1, x: 150, y: 125 });
   });
 
-  it('an image larger than the box on an axis pans there, but never off-screen (H27)', () => {
+  it('an image larger than the box on an axis pans there, but never off-screen', () => {
     // 800×50 at 1× in a 400×300 box: x in [-400, 0]; y fits, so centred.
     expect(clampView({ scale: 1, x: 20, y: 0 }, 800, 50, 400, 300)).toEqual({ scale: 1, x: 0, y: 125 });
     expect(clampView({ scale: 1, x: -500, y: 0 }, 800, 50, 400, 300)).toEqual({ scale: 1, x: -400, y: 125 });
     expect(clampView({ scale: 1, x: -123, y: 0 }, 800, 50, 400, 300)).toEqual({ scale: 1, x: -123, y: 125 });
   });
 
-  it('an image opens at its top left where it overflows, centred where it fits (H23)', () => {
+  it('an image opens at its top left where it overflows, centred where it fits', () => {
     expect(startView(1, 800, 50, 400, 300)).toEqual({ scale: 1, x: 0, y: 125 });
     expect(startView(1, 100, 50, 400, 300)).toEqual({ scale: 1, x: 150, y: 125 });
   });
 
-  it('the swipe handle travels the whole image, 0% to 100%, and is kept only inside the viewport (J10)', () => {
+  it('the swipe handle travels the whole image, 0% to 100%, and is kept only inside the viewport', () => {
     // The image spans 100..300 px of a 400 px box: its own edges, no margin inside it.
     const view = { scale: 1, x: 100, y: 0 };
     expect(clampSwipe(390, view, 200, 400)).toBe(300);

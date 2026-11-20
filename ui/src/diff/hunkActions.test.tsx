@@ -29,7 +29,7 @@ describe('the hunk or lines at the cursor (Ctrl+Shift+D)', () => {
   });
 });
 
-describe('hunks and lines (spec #2 §7.3)', () => {
+describe('hunks and lines', () => {
   it('counts only the changed lines a selection covers, on its side', () => {
     expect(selectedChanges(hunks, { side: 'modified', start: 1, end: 30 })).toEqual({ old: [], new: [{ start: 5, end: 5 }, { start: 20, end: 21 }], count: 3 });
     expect(selectedChanges(hunks, { side: 'original', start: 18, end: 22 })).toEqual({ old: [{ start: 20, end: 20 }], new: [], count: 1 });

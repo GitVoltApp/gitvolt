@@ -3,7 +3,7 @@ import type { ResetMode } from '../api/gen/ResetMode';
 import { withHeadMove } from '../pending/head';
 import { runWrite, type WriteCtx } from '../write/client';
 
-/** Reset (§9.4). Soft and mixed never confirm; hard asks only when there's something to discard
+/** Reset. Soft and mixed never confirm; hard asks only when there's something to discard
  * ("Reset main to a1b2c3 and discard changes to N files? You can undo this."): the backend decides
  * under the lock, runWrite asks, then resends with `discard`. A repository in the way is a refusal,
  * shown by the error toast; it is never offered as something to force. */

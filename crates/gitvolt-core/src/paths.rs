@@ -1,4 +1,4 @@
-//! XDG locations (spec §14.3), through the `dirs` crate the app already uses for its caches:
+//! XDG locations, through the `dirs` crate the app already uses for its caches:
 //! relative XDG values are ignored, as the XDG spec requires. Without a home directory, the
 //! temp dir stands in so callers always get a path. On Windows `dirs` gives the Known Folders:
 //! config in `%APPDATA%` (roaming), cache and data in `%LOCALAPPDATA%` (this machine's: the
@@ -38,7 +38,7 @@ pub fn cache_base() -> Option<PathBuf> {
     base_in(dev_dirs(), "cache", dirs::cache_dir)
 }
 
-/// `~/.local/share/gitvolt` (`%LOCALAPPDATA%\gitvolt`; spec #2 §5.1): the undo journal and temp
+/// `~/.local/share/gitvolt` (`%LOCALAPPDATA%\gitvolt`): the undo journal and temp
 /// index files. Only `gitvolt-app` points the `Api` here; the harness and tests use a temp dir.
 pub fn data_dir() -> PathBuf {
     data_base().join(APP_DIR)

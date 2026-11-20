@@ -8,7 +8,7 @@ import { resetChunkStreams } from './parseAsync';
 const ctx = { kind: 'forge', tabId: 't' } as const;
 afterEach(() => { clearParseCache(); resetChunkStreams(); });
 
-describe('a long document (ruling 21)', () => {
+describe('a long document', () => {
   it('shows its text, then renders chunk by chunk, with heading ids unique across chunks', async () => {
     // Fake timers drive the idle callbacks (jsdom has no requestIdleCallback; `whenIdle` uses a
     // timer): one step parses (no Worker in jsdom), then each step renders one more chunk, with

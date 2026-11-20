@@ -1,8 +1,8 @@
-//! Data the shell renders besides the graph (spec §6.4 sidebar, §6.4 hover card, §14.4 remotes,
-//! §6.5 git version). All of it is cheap enough to refresh with every graph refresh.
+//! Data the shell renders besides the graph (the sidebar, the hover card, remotes,
+//! the git version). All of it is cheap enough to refresh with every graph refresh.
 //!
 //! Pure functions over an already-open repository and a `GitCli`: no dependency on `Api`, so
-//! they're unit-tested directly here. `W2-A` wires them into `Api::dispatch` (fields, `Request`
+//! they're unit-tested directly here. `Api::dispatch` wires them in (fields, `Request`
 //! variants, the `id -> RepoHandle` lookup) without needing anything from this module beyond what
 //! it exports.
 
@@ -38,7 +38,7 @@ pub struct RemoteInfo {
 #[ts(export)]
 pub struct RepoInfoPayload {
     pub remotes: Vec<RemoteInfo>,
-    /// Set when the open repo is a linked worktree: its main worktree (spec §13).
+    /// Set when the open repo is a linked worktree: its main worktree.
     pub main_worktree: Option<String>,
     pub common_dir: String,
     /// The worktrees (canonical paths) that use submodules, `submodules::support`: the UI offers
@@ -65,19 +65,18 @@ pub struct LocalBranch {
     pub is_head: bool,
     /// Checked out in another worktree (its path).
     pub worktree: Option<String>,
-    /// The worktree (any, the handle's own included) whose HEAD names it (spec #2 §11.2).
+    /// The worktree (any, the handle's own included) whose HEAD names it.
     pub checked_out: Option<String>,
-    // --- 2D T11: push target ---
-    /// Where Push sends it (spec #2 §12.3, `remote/branch`): the push remote, else the upstream.
+    // --- push target ---
+    /// Where Push sends it (`remote/branch`): the push remote, else the upstream.
     pub push_target: Option<String>,
     /// Commits on the push target that aren't in the branch (the force confirmation's count);
     /// `None` when that ref doesn't exist yet.
     pub push_behind: Option<u32>,
-    // --- end 2D T11 ---
-    /// GitVolt rewrote it since its last push (a live rewrite mark, §12.3): Push forces with
+    /// GitVolt rewrote it since its last push (a live rewrite mark): Push forces with
     /// the lease recorded then when `push_behind` > 0.
     pub rewritten: Option<crate::write::rewrites::Rewritten>,
-    /// The upstream's short name when its branch name differs from this one's (UX round 3, M.1).
+    /// The upstream's short name when its branch name differs from this one's.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub upstream_mismatch: Option<String>,
@@ -105,7 +104,7 @@ pub struct RemoteGroup {
     pub host_kind: HostKind,
     pub branches: Vec<RemoteBranch>,
     /// The branch `refs/remotes/<name>/HEAD` names (`refs/remotes/origin/main`), when set: the
-    /// stack base (spec #3 §3.11).
+    /// stack base.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub default_branch: Option<String>,
@@ -121,7 +120,7 @@ pub struct WorktreeItem {
     pub head: Option<String>,
     pub is_main: bool,
     pub is_current: bool,
-    /// `git worktree lock`ed: it can't be removed (spec #2 §11).
+    /// `git worktree lock`ed: it can't be removed.
     pub locked: bool,
 }
 
@@ -145,7 +144,7 @@ pub struct TagItem {
     pub target: String,
     #[ts(type = "number")]
     pub time: i64,
-    /// An annotated tag's message and tagger (UX round 3, M.2); absent on a lightweight tag.
+    /// An annotated tag's message and tagger; absent on a lightweight tag.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub annotation: Option<crate::payload::TagAnnotation>,
@@ -451,7 +450,7 @@ impl<'r> Ancestry<'r> {
 }
 
 /// Every branch, remote branch and tag that peels to a commit, sorted by name, with what the
-/// sidebar shows of it: `git for-each-ref` with `FIELDS`, without the process (spec §6.4).
+/// sidebar shows of it: `git for-each-ref` with `FIELDS`, without the process.
 pub(crate) fn ref_rows(repo: &gix::Repository) -> Result<Vec<RefRow>, GbError> {
     let config = fresh_config(repo);
     let mut ancestry = Ancestry::new(repo);
@@ -556,7 +555,7 @@ fn canonical(p: &Path) -> std::path::PathBuf {
     crate::platform::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
-/// The sidebar's branches, remotes, worktrees, stashes, tags and submodules (spec §6.4), for the
+/// The sidebar's branches, remotes, worktrees, stashes, tags and submodules, for the
 /// repository at `workdir`/`repo`. `repo` must be a handle already opened on `workdir`; this
 /// opens no other one in a repository without submodules. With them, it opens each submodule's
 /// checkout, and a linked worktree that has a `.gitmodules` (`submodules::sidebar_by_worktree`,
@@ -628,12 +627,11 @@ pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path, seen: &Ar
             s.tags.push(TagItem { name: name.into(), full_name: full.clone(), target, time: tip_time, annotation });
         }
     }
-    // --- 3D T1: each remote's default branch (`for-each-ref` sorts `HEAD` before the branches) ---
+    // --- each remote's default branch (`for-each-ref` sorts `HEAD` before the branches) ---
     for g in s.remotes.iter_mut() {
         g.default_branch = defaults.remove(&g.name);
     }
-    // --- end 3D T1 ---
-    // --- 2D T11: push targets (every remote branch is listed by now) ---
+    // --- push targets (every remote branch is listed by now) ---
     for b in s.locals.iter_mut() {
         let Some(t) = crate::write::sync::push_target(&local, &b.name) else { continue };
         let label = format!("{}/{}", t.remote, t.branch);
@@ -651,7 +649,6 @@ pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path, seen: &Ar
         };
         b.push_target = Some(label);
     }
-    // --- end 2D T11 ---
     s.worktrees = worktrees
         .iter()
         .filter(|w| !w.bare)
@@ -674,8 +671,8 @@ pub async fn sidebar(repo: &gix::ThreadSafeRepository, workdir: &Path, seen: &Ar
 }
 
 /// When the remote-tracking ref `remote_ref` (e.g. `refs/remotes/origin/main`) was last updated by
-/// a push, or (failing that) last seen by a fetch: "last pushed"/"last seen on remote" (spec
-/// §6.4's hover card). `None` when the ref has no reflog entry of either kind (or no reflog at
+/// a push, or (failing that) last seen by a fetch: "last pushed"/"last seen on remote" (the
+/// hover card). `None` when the ref has no reflog entry of either kind (or no reflog at
 /// all). `remote_ref` must be under `refs/remotes/`, checked here since it names a path under the
 /// repository's `logs/` directory.
 pub fn last_push(repo: &gix::ThreadSafeRepository, remote_ref: &str) -> Result<Option<LastPushPayload>, GbError> {
@@ -689,13 +686,13 @@ pub fn last_push(repo: &gix::ThreadSafeRepository, remote_ref: &str) -> Result<O
     Ok(find("update by push", LastPushKind::Push).or_else(|| find("fetch", LastPushKind::Fetch)).or_else(|| find("pull", LastPushKind::Fetch)))
 }
 
-/// Every remote with its redacted URL and parsed host (spec §14.4), and (for a linked worktree)
-/// the main worktree it belongs to (spec §13).
+/// Every remote with its redacted URL and parsed host, and (for a linked worktree)
+/// the main worktree it belongs to.
 pub async fn repo_info(repo: &gix::ThreadSafeRepository, workdir: &Path) -> Result<RepoInfoPayload, GbError> {
     let (remotes, common_dir, linked) = {
         let local = repo.to_thread_local();
         // Reuses `details::remotes()` (origin first, then alphabetical) rather than its own
-        // remote loop (drift ruling P16/T7): every remote list in the app orders the same way,
+        // remote loop: every remote list in the app orders the same way,
         // and the parsing logic lives in exactly one place.
         let remotes = crate::details::remotes(&local)
             .into_iter()
@@ -735,7 +732,7 @@ pub fn app_info_payload(git_version: (u32, u32, u32), app_version: &str, install
     }
 }
 
-/// The app's own version and git's, for the About screen (spec §6.5). Runs `git --version` fresh;
+/// The app's own version and git's, for the About screen. Runs `git --version` fresh;
 /// callers that already cache the version (as `Api` does, for the process lifetime) should build
 /// the payload from that cache with `app_info_payload` instead of calling this every time.
 pub async fn app_info(cli: &GitCli) -> Result<AppInfoPayload, GbError> {
@@ -954,7 +951,7 @@ mod tests {
         assert_eq!(s.remotes[0].name, "origin");
         let rnames: Vec<&str> = s.remotes[0].branches.iter().map(|b| b.name.as_str()).collect();
         assert_eq!(rnames, vec!["feature/login", "main"], "origin/HEAD (symbolic) is skipped");
-        // `fixtures::basic` set origin's HEAD to main (spec #3 §3.11's stack base).
+        // `fixtures::basic` set origin's HEAD to main (the stack base).
         assert_eq!(s.remotes[0].default_branch.as_deref(), Some("refs/remotes/origin/main"));
         assert_eq!(s.worktrees.len(), 2);
         assert!(s.worktrees[0].is_main && s.worktrees[0].is_current);
@@ -965,7 +962,7 @@ mod tests {
         assert_eq!(s.tags[0].name, "v1.0");
         assert_eq!(s.tags[0].target, r.git(&["rev-parse", "v1.0^{commit}"]), "annotated tags peel to their commit");
         assert!(s.tags[0].time > 0);
-        // UX round 3, M.2 / M.1: the annotated tag's message; no mismatch on same-name upstreams.
+        // The annotated tag's message; no mismatch on same-name upstreams.
         assert_eq!(s.tags[0].annotation.as_ref().map(|a| a.message.as_str()), Some("v1.0"));
         assert!(s.locals.iter().all(|b| b.upstream_mismatch.is_none()));
         r.git(&["tag", "light", "main"]);
@@ -1025,7 +1022,7 @@ mod tests {
         assert_eq!(info.main_worktree, None);
     }
 
-    /// Drift ruling P16/T7: `repoInfo.remotes` must build on `details::remotes()` (so `origin`
+    /// `repoInfo.remotes` must build on `details::remotes()` (so `origin`
     /// sorts first, matching every other remote list in the app) rather than its own remote loop.
     #[tokio::test]
     async fn repo_info_lists_origin_first_like_every_other_remote_list() {
@@ -1040,7 +1037,7 @@ mod tests {
         assert_eq!(info.remotes.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), vec!["origin", "aaa"]);
     }
 
-    /// Deferred Rust minor #13: a remote reached only through an `insteadOf` alias still gets a
+    /// A remote reached only through an `insteadOf` alias still gets a
     /// redacted URL and a parsed host.
     #[tokio::test]
     async fn repo_info_resolves_instead_of_aliases() {

@@ -50,7 +50,7 @@ const chip = (name: string) => screen.getByText(name, { selector: '.ref-name' })
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-describe('branch-hover focus (J22)', () => {
+describe('branch-hover focus', () => {
   it("after 500 ms on a branch chip, the text cells of every row outside that branch dim; leaving clears it at once", () => {
     render(<GraphView graph={graph} repoId="/repo" />);
     expect(dimmedRows()).toEqual([false, false, false, false, false]);
@@ -97,7 +97,7 @@ describe('branch-hover focus (J22)', () => {
     expect(snapshot().map((n, i) => n - focused[i])).toEqual([1, 0, 1, 0, 1]);
   });
 
-  it("an external RowDim (plan 1C's Ctrl+F) uses the same mechanism at the 'filter' level (the dimmer, 20%-white token), and a new predicate dimming the same rows at the same level re-renders nothing", () => {
+  it("an external RowDim (Ctrl+F) uses the same mechanism at the 'filter' level (the dimmer, 20%-white token), and a new predicate dimming the same rows at the same level re-renders nothing", () => {
     const { rerender } = render(<GraphView graph={graph} repoId="/repo" rowDim={dimAllBut(new Set([0, 2]), 'filter')} />);
     expect(dimmedRows()).toEqual([false, true, false, true, true]);
     expect(dimKinds()).toEqual([false, 'filter', false, 'filter', 'filter']);

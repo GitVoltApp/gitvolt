@@ -63,17 +63,17 @@ describe('tabs.css: the strip scrolls', () => {
   });
 });
 
-describe('tabs.css (K64)', () => {
+describe('tabs.css', () => {
   it('the selected tab shares the action bar\'s background, so it reads as the tab of the bar below', () => {
     expect(rule('.tab[aria-selected="true"]')).toMatch(/background:\s*var\(--action-bar-bg\)/);
   });
 
-  it('K71: no border on the selected tab or on its left neighbour, only between unselected tabs', () => {
+  it('no border on the selected tab or on its left neighbour, only between unselected tabs', () => {
     expect(rule('.tab[aria-selected="true"], .tab:has(+ .tab[aria-selected="true"])')).toMatch(/border-right-color:\s*transparent/);
     expect(rule('.tab')).toMatch(/border-right:\s*1px solid var\(--section-border\)/);
   });
 
-  it('K65: the bar is the darker --tab-bar-bg, and its bottom edge is a background line the selected tab covers (no border)', () => {
+  it('the bar is the darker --tab-bar-bg, and its bottom edge is a background line the selected tab covers (no border)', () => {
     const bar = rule('.tab-bar');
     expect(bar).toMatch(/var\(--tab-bar-bg\)/);
     expect(bar).toMatch(/linear-gradient\(to top, var\(--section-border\) 1px, transparent 1px\)/);

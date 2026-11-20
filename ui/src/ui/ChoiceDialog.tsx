@@ -8,7 +8,7 @@ import './choice.css';
 
 /** One answer of a choice. `danger`: it arms in place before it goes ("Click again to force
  * push"); `arm` is that label (default: "Click again to <label>"). */
-export interface Choice { id: string; label: string; primary?: boolean; danger?: boolean; arm?: string; /** Not a way forward (Details): a text link at the end of the body. */ quiet?: boolean; /** Greyed: the body says why (a refused rebase, 2D T18). */ disabled?: boolean }
+export interface Choice { id: string; label: string; primary?: boolean; danger?: boolean; arm?: string; /** Not a way forward (Details): a text link at the end of the body. */ quiet?: boolean; /** Greyed: the body says why (a refused rebase). */ disabled?: boolean }
 export interface ChoiceRequest {
   /** The situation, said once. */
   title: string;
@@ -25,7 +25,7 @@ const useChoiceStore = create<{ pending: Pending | null }>(() => ({ pending: nul
 let seq = 0;
 
 /**
- * A real choice, more than one way forward (spec §ui confirms, board G: push rejected, Rebase /
+ * A real choice, more than one way forward (push rejected, Rebase /
  * Merge, Save / Discard edits): a popover anchored where the action started (`origin`, default
  * the current one). `choices` go safe first: the safe one takes the focus (the `primary` one, else
  * the first enabled one), so Enter goes; a `danger` choice still arms in place. The buttons sit in

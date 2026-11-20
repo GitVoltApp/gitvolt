@@ -62,12 +62,12 @@ describe('sidebar model', () => {
     expect(view(panels)).toEqual(['[Local 3]', '  feature/', '  main', '[Remote 1 collapsed]', '[Worktrees 1]', '  r', '[Stashes 1]', '  On main: wip', '[Tags 1 collapsed]']);
   });
 
-  it('recent sort is flat and newest first; the remote keeps its group, rows unprefixed (K76)', () => {
+  it('recent sort is flat and newest first; the remote keeps its group, rows unprefixed', () => {
     const panels = buildPanels(sectionsOf(payload), opts({ sort: { local: 'recent', remote: 'recent' } }));
     expect(view(panels).slice(0, 7)).toEqual(['[Local 3]', '  feature/login', '  main', '  feature/pay/v2', '[Remote 1]', '  origin/', '    main']);
   });
 
-  it('K76: remote groups order by newest tip, branches inside newest first (ties by name), flat, no prefix', () => {
+  it('remote groups order by newest tip, branches inside newest first (ties by name), flat, no prefix', () => {
     const rb = (name: string, tipTime: number, remote: string) => ({ name, fullName: `refs/remotes/${remote}/${name}`, target: 'x'.repeat(40), tipTime, summary: '', author: '' });
     const p: SidebarPayload = { ...payload, remotes: [
       { name: 'origin', host: null, hostKind: 'generic', branches: [rb('old', 5, 'origin'), rb('b/deep', 10, 'origin'), rb('a', 10, 'origin')] },

@@ -3,7 +3,7 @@ import { createStackRow } from './create';
 import { offCreateStackDialog, openCreateStack } from './CreateStackDialog';
 import { branchMr, forgeTarget } from './deps';
 
-/** Create stack MRs/PRs (spec #4 §4 4D): the dialog, and its row in a stack member chip's Sync group (after Push stack, order 20). */
+/** Create stack MRs/PRs: the dialog, and its row in a stack member chip's Sync group (after Push stack, order 20). */
 const offs = [
   offCreateStackDialog,
   registerSyncRows(30, (t, env) => {

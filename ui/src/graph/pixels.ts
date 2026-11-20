@@ -37,7 +37,7 @@ export const devicePx = (css: number, dpr: number) => Math.max(1, Math.round(css
 export const snapScroll = (scrollTop: number, dpr: number) => Math.round(scrollTop * dpr) / dpr;
 
 /**
- * A row's chip-to-node connector (K57): `lineW` CSS px thick, centred on the row, its top edge on
+ * A row's chip-to-node connector: `lineW` CSS px thick, centred on the row, its top edge on
  * a device pixel row. Computed once, in content coordinates (the row's `top` in the scrolled
  * content, i.e. its index times the row height), for both halves: the DOM connector takes
  * `top - rowTop` and `height`, the canvas strokes at `centre` less the snapped scroll, so the
@@ -55,7 +55,7 @@ export function connectorLine(rowTop: number, rowH: number, lineW: number, dpr: 
 export const dashLength = (css: number, dpr: number) => devicePx(css, dpr) / dpr;
 
 /**
- * `lineDashOffset` for a dashed line that starts at content y `y` and runs down (K50): the
+ * `lineDashOffset` for a dashed line that starts at content y `y` and runs down: the
  * pattern's phase is the absolute content y, so every piece of a dashed lane (one path per row,
  * or a run of rows) continues the same dashes, and a dash boundary falls wherever
  * `y * dpr` is a multiple of the (whole device px) dash: on the device pixel grid, once the

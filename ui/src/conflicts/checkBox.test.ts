@@ -4,7 +4,7 @@ import { THEME_IDS, THEMES } from '../theme/themes';
 import { describe, expect, it, vi } from 'vitest';
 import { ariaChecked, createCheckBox } from './checkBox';
 
-describe("the merge tool's checkbox (UX round 2)", () => {
+describe("the merge tool's checkbox", () => {
   it('is a real checkbox: role, label, aria-checked true/false/mixed', () => {
     const onToggle = vi.fn();
     const box = createCheckBox('Take conflict 1 from Incoming', 'incoming', onToggle);

@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef } from 'react';
 export const HSCROLL_H = 10;
 
 /**
- * The Graph column's own horizontal scrollbar, for lanes wider than the column (spec §8.3):
+ * The Graph column's own horizontal scrollbar, for lanes wider than the column:
  * across the lane area at the column's bottom (the collapse zone keeps its packed column). A
  * native scroller over an empty `contentW`-wide child, so it looks and behaves like every other
  * scrollbar. Controlled: `scrollX` is written back to it, so a remount (the lanes fit again, then

@@ -15,7 +15,7 @@ function pullCtx() {
   return b?.upstream && !b.gone ? writeCtx(t.id) : null;
 }
 
-/** The Sync row's Pull (order 0, above Push) and Push's rejection toast [Pull] (spec #2 §12.2). */
+/** The Sync row's Pull (order 0, above Push) and Push's rejection toast [Pull]. */
 const offs = [
   // Ctrl+Shift+L, beside Fetch all's Ctrl+L: in the Pull button's mode, or fast-forward if
   // possible while the button fetches. In an editor, Monaco's (and VS Code's) Select all

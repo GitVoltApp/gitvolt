@@ -7,13 +7,13 @@ import { hasFileLinkHandler, openExternal, openLinkTarget } from './actions';
 import { browserUrlFor, linkTooltip } from './links';
 import type { LinkMenuTarget } from './types';
 
-// A link in rendered Markdown (the `link` kind, spec §4.1). Built from memory, as every menu.
+// A link in rendered Markdown (the `link` kind). Built from memory, as every menu.
 
 type Action = Extract<MenuRow, { kind: 'action' }>;
 const row = (r: Omit<Action, 'kind'>): MenuRow => ({ kind: 'action', ...r });
 const copy = (text: string) => { copyText(text).then(() => useToast.getState().show('Copied'), () => useToast.getState().show('Copy failed', { error: true })); };
 
-/** The target opens inside GitVolt: an MR/PR, a loaded commit, a file 5B shows. */
+/** The target opens inside GitVolt: an MR/PR, a loaded commit, a file File View shows. */
 function inApp(t: LinkMenuTarget): boolean {
   switch (t.target.kind) {
     case 'mr': return true;

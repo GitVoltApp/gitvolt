@@ -33,7 +33,7 @@ const press = (type: 'mousedown' | 'mouseup' | 'auxclick', button: number, targe
 const altKey = (key: string, init: KeyboardEventInit = {}, target: Element = document.body) =>
   target.dispatchEvent(new KeyboardEvent('keydown', { key, altKey: true, bubbles: true, cancelable: true, ...init }));
 
-describe('mouse back / forward (spec #5 §3.4)', () => {
+describe('mouse back / forward', () => {
   it('button 3 goes back and button 4 forward, in the active tab', () => {
     press('mouseup', 3);
     expect(hist.navBack).toHaveBeenCalledWith('t');

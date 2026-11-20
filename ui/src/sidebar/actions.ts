@@ -7,7 +7,7 @@ import { leaveFileView, sidebarHidden } from '../repo/centerView';
 import { Sidebar } from './Sidebar';
 import { focusSidebarFilter } from './sidebarNav';
 
-/** This feature's own module (ruling R10 / ping P23): the sidebar's actions and its tab slot,
+/** This feature's own module: the sidebar's actions and its tab slot,
  * registered here instead of in the shared `coreActions.ts`/`slots.tsx`, so no two features ever
  * edit the same file. `app/features.ts` imports this once. */
 const update = (fn: (p: Profile) => Profile) => useAppState.getState().updateProfile(fn);
@@ -15,7 +15,7 @@ const repoTab = () => {
   const t = activeTab();
   return t?.kind === 'repo' && t.path ? t : null;
 };
-/** A repo tab whose sidebar is there: under the rebase editor it's hidden (UX R2.1), and its
+/** A repo tab whose sidebar is there: under the rebase editor it's hidden, and its
  * actions stand aside rather than flip the stored setting unseen. */
 const sidebarTab = () => {
   const t = repoTab();
@@ -36,7 +36,7 @@ const offActions = registerActions([
   {
     id: 'view.toggleSidebar', label: 'Toggle sidebar', group: 'View', icon: PanelLeft, tooltip: 'Switch the sidebar between full and icon strip', shortcuts: ['Mod+B'],
     when: () => !!sidebarTab(),
-    // Over a file view, it's the strip's (>): leave the view, expanded (UX R2.3).
+    // Over a file view, it's the strip's (>): leave the view, expanded.
     run: () => {
       const t = repoTab();
       if (t && leaveFileView(t.id)) update((p) => ({ ...p, sidebarNarrow: false }));

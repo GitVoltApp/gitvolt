@@ -4,7 +4,7 @@ import { hasPrimaryMod } from './platformKeys';
 import { registerKeyHints } from '../shortcuts/hints';
 
 /**
- * App zoom (spec §12.2): Ctrl+= / Ctrl++ zoom in, Ctrl+- out, Ctrl+0 resets, through the stepped
+ * App zoom: Ctrl+= / Ctrl++ zoom in, Ctrl+- out, Ctrl+0 resets, through the stepped
  * levels below. The webview's own zoom does the scaling (`setZoom`, which CEF turns into
  * `SetZoomLevel`); Chrome's own zoom accelerators stay off (`zoom_hotkeys_enabled` is false in the
  * CEF runtime), so these keys are the app's alone.
@@ -12,7 +12,7 @@ import { registerKeyHints } from '../shortcuts/hints';
  * Chrome keeps a zoom level per origin in its profile. GitVolt's saved step is the source of
  * truth: it's re-applied at startup, 100% included.
  *
- * The saved step stays in localStorage (plan 1C ruling R4), so it applies before the first paint;
+ * The saved step stays in localStorage, so it applies before the first paint;
  * `useZoom` mirrors it for the status bar.
  */
 export const ZOOM_STEPS = [80, 90, 100, 110, 120, 130, 140, 150, 175, 200, 250, 300] as const;
@@ -84,8 +84,8 @@ export function applyWebviewZoom(pct: number): void {
 }
 
 /**
- * The current zoom step, for what shows it (the status bar, spec §6.5). The step itself still
- * lives in localStorage (ruling R4: it must apply before the first paint); this only mirrors it.
+ * The current zoom step, for what shows it (the status bar). The step itself still
+ * lives in localStorage (it must apply before the first paint); this only mirrors it.
  */
 export const useZoom = create<{ zoom: number }>(() => ({ zoom: load() }));
 
@@ -97,7 +97,7 @@ function show(pct: number) {
   applyZoom(pct);
 }
 
-/** Zooms to `pct` (one of `ZOOM_STEPS`) and saves it: the status bar's step list (spec §12.3). */
+/** Zooms to `pct` (one of `ZOOM_STEPS`) and saves it: the status bar's step list. */
 export function setZoom(pct: number): void {
   show(pct);
   save(pct);
@@ -106,7 +106,7 @@ export function setZoom(pct: number): void {
 /**
  * Installs the zoom keys and the Ctrl+wheel guard on `window`, and applies the saved step. The
  * keys are app actions in the key router (`keyRouter.ts`, capture phase), so the editor never
- * sees them, and (H2) they work even with a menu open: the router routes zoom past the menu
+ * sees them, and they work even with a menu open: the router routes zoom past the menu
  * layer, the one exception to "an open menu takes every key first". Ctrl+wheel (and a touchpad
  * pinch, which arrives as one) is cancelled so the webview never zooms itself; a component with
  * its own Ctrl+wheel (the image diff) still gets the event. Returns the uninstaller.

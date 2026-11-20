@@ -19,22 +19,19 @@ export interface WriteCtx { tabId: string; repoId: number; worktree: string }
 
 /** The questions a write's request has had answered "yes" (each is asked at most once). */
 export interface Confirmed {
-  /** The clean-restore warning (§6.2): `confirmAutostash`. */
+  /** The clean-restore warning: `confirmAutostash`. */
   autostash: boolean;
   /** "Apply without restoring what was staged?": `withoutIndex`. */
   withoutIndex: boolean;
-  // --- 2C T9: the reset question ---
-  /** "Reset main to a1b2c3 and discard changes to 4 files?" (spec #2 §9.4): `discard`. */
+  // --- the reset question ---
+  /** "Reset main to a1b2c3 and discard changes to 4 files?": `discard`. */
   discard: boolean;
-  // --- end 2C T9 ---
-  // --- 2D T15 ---
-  /** "Mark it resolved anyway?" (spec #2 §13.3): `confirmMarkers`. */
+  /** "Mark it resolved anyway?": `confirmMarkers`. */
   markers: boolean;
-  // --- end 2D T15 ---
 }
 const NONE: Confirmed = { autostash: false, withoutIndex: false, discard: false, markers: false };
 
-/** Applies a write's answer (spec #2 §3.1): the journal and the fresh WIP lists at once, so the
+/** Applies a write's answer: the journal and the fresh WIP lists at once, so the
  * UI never waits on the file watcher. */
 export function applyResult(ctx: WriteCtx, r: WriteResult<unknown>): void {
   useJournal.getState().set(ctx.repoId, ctx.worktree, r.journal);
@@ -54,13 +51,11 @@ function question(err: GbError, asked: Confirmed): { req: ConfirmRequest; flag: 
   if (d?.kind === 'applyWithoutIndex' && !asked.withoutIndex) {
     return { flag: 'withoutIndex', req: { title: 'Apply without restoring what was staged?', body: 'git couldn\'t restore what was staged: the changes go in unstaged.', confirmLabel: 'Apply', arm: 'Click again to apply it all unstaged', caption: 'git couldn\'t restore what was staged.', tone: 'warn' } };
   }
-  // --- 2C T9: the reset question ---
+  // --- the reset question ---
   if (d?.kind === 'resetDiscards' && !asked.discard) {
     const n = d.files;
     return { flag: 'discard', req: { title: 'Discard changes?', body: err.message, confirmLabel: 'Reset', arm: `Click again to reset ${d.branch} and discard changes to ${n} ${n === 1 ? 'file' : 'files'}`, caption: err.message, danger: true } };
   }
-  // --- end 2C T9 ---
-  // --- 2D T15 ---
   if (d?.kind === 'markersRemain' && !asked.markers) {
     return { flag: 'markers', req: { title: 'Conflict markers remain', body: `${d.path} still has conflict markers. Mark it resolved anyway?`, confirmLabel: 'Mark resolved', arm: 'Click again to mark it resolved with its conflict markers', caption: `${d.path} still has conflict markers.`, tone: 'warn' } };
   }
@@ -76,38 +71,33 @@ function question(err: GbError, asked: Confirmed): { req: ConfirmRequest; flag: 
   if (d?.kind === 'discardEdits' && !asked.discard) {
     return { flag: 'discard', req: { title: 'Discard your edits?', body: `The side you chose replaces ${d.path}, and Undo can't bring the edits back.`, confirmLabel: 'Discard edits', arm: `Click again to replace your edits to ${d.path}`, caption: "Undo can't bring the edits back.", danger: true } };
   }
-  // --- end 2D T15 ---
-  // --- 3A T3 ---
-  // Restore a file from a commit over its own changes (spec #3 §3.8): undoable, so a warning.
+  // Restore a file from a commit over its own changes: undoable, so a warning.
   if (d?.kind === 'restoreOverChanges' && !asked.discard) {
     return { flag: 'discard', req: { title: 'Replace your changes?', body: `${d.path} has changes of its own. Restoring replaces them; you can undo this.`, confirmLabel: 'Restore', arm: `Click again to replace your changes to ${d.path}`, caption: `${d.path} has changes of its own.`, tone: 'warn' } };
   }
-  // --- end 3A T3 ---
   // Submodules: Update over commits made on no branch in a submodule: they'd be left behind.
   if (d?.kind === 'submoduleOrphans' && !asked.discard) {
     const them = d.commits === 1 ? 'its commit' : `${d.commits} commits`;
     const arm = d.paths.length === 1 ? `Click again to update ${d.paths[0]}, leaving ${them} behind` : `Click again to update, leaving ${them} behind`;
     return { flag: 'discard', req: { title: 'Leave commits behind?', body: err.message, confirmLabel: 'Update', arm, caption: 'They stay only in the reflog.', danger: true } };
   }
-  // --- 3B T6 ---
   // Undo of a "without committing" pick stopped on conflicts discards its changes, a resolution
-  // included (3B T2): the core's own question and arm, then `confirmDiscard`.
+  // included: the core's own question and arm, then `confirmDiscard`.
   if (d?.kind === 'undoStoppedPick' && !asked.discard) {
     return { flag: 'discard', req: { title: `Undo the stopped ${d.op}?`, body: err.message, confirmLabel: 'Undo', arm: d.arm, caption: 'Its changes are discarded, including anything you resolved since.', danger: true } };
   }
-  // --- end 3B T6 ---
   return null;
 }
 
 /**
- * Sends one write (spec #2 §3.1: one request per operation; TypeScript only asks).
+ * Sends one write (one request per operation; TypeScript only asks).
  * - `send(confirmed, asked)` makes the request: `confirmed` is true once any question was
  *   answered yes, and `asked` says which.
- * - The clean-restore warning (§6.2) and "Apply without restoring what was staged?" are asked
+ * - The clean-restore warning and "Apply without restoring what was staged?" are asked
  *   here, and confirmed by sending again.
- * - "Use SSH for <remote> instead" on its credential prompt (spec §5.4): the remote is switched,
+ * - "Use SSH for <remote> instead" on its credential prompt: the remote is switched,
  *   then the same request is sent again; if that fails too, the toast offers Switch back to HTTPS.
- * - Any other failure goes through the error toast (R12) with Retry, Refresh and, for a held
+ * - Any other failure goes through the error toast with Retry, Refresh and, for a held
  *   index lock, Remove stale lock (`writeErrorContext`). A cancel says nothing.
  *
  * Resolves to the outcome, or `null` when it failed or the user said no.
@@ -116,7 +106,7 @@ function question(err: GbError, asked: Confirmed): { req: ConfirmRequest; flag: 
 export const MENU_HOLD_MS = 300;
 
 export async function runWrite<T>(ctx: WriteCtx, send: (confirmed: boolean, asked: Confirmed) => Promise<WriteResult<T>>, opts: { refresh?: () => void | Promise<void>; onSuccess?: (outcome: T) => void | Promise<void>; handle?: (err: GbError) => boolean; origin?: Origin | null } = {}): Promise<T | null> {
-  // Where the write started (spec §ui confirms): its questions arm that control, after the answer.
+  // Where the write started: its questions arm that control, after the answer.
   // A caller that awaited before writing passes the origin it captured (`null`: a popover).
   const origin = 'origin' in opts ? opts.origin ?? null : currentOrigin();
   // Started from a menu row: the menu stays open while the first answer comes, so a question it
@@ -150,10 +140,10 @@ export async function runWrite<T>(ctx: WriteCtx, send: (confirmed: boolean, aske
         release();
         return (await answer) ? attempt({ ...asked, [q.flag]: true }, switched) : null;
       }
-      // A Stale undo, redo or banner (2A final M1) changed nothing, so no journalChanged comes:
+      // A Stale undo, redo or banner changed nothing, so no journalChanged comes:
       // reload it, so the toast's "Refreshed" is true and the toolbar names the real top.
       if (err.kind === 'Stale') await loadJournal(ctx.repoId, ctx.worktree);
-      // --- 2C T9: caller-handled failures ---
+      // --- caller-handled failures ---
       // A caller that has its own answer for this failure (CheckedOutElsewhere's [Switch to it]).
       try {
         if (opts.handle?.(err)) return null;
@@ -162,7 +152,6 @@ export async function runWrite<T>(ctx: WriteCtx, send: (confirmed: boolean, aske
         useToast.getState().show(`Couldn't handle the failure: ${toGbError(he).message}`, { error: true });
         return null;
       }
-      // --- end 2C T9 ---
       if (switched.length) {
         toastAfterSwitch(ctx, switched, err);
         return null;

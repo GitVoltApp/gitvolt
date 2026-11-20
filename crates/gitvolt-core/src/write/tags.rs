@@ -1,8 +1,8 @@
-//! Tags (spec #3 §3.9).
+//! Tags.
 //! - Create: lightweight, a CAS of `refs/tags/<t>`; annotated, `git tag -a -F -` (it signs per
 //!   `tag.gpgSign`). Journaled (MoveRefs): Undo deletes it, Redo puts the same object back.
 //! - Delete: local, a CAS (MoveRefs); remote, `git push <remote> :refs/tags/<t>` (a Barrier);
-//!   Both: the remote first, then the local tag, as 2C's branch delete does.
+//!   Both: the remote first, then the local tag, as a branch delete does.
 //! - Push: one tag (`refs/tags/<t>:refs/tags/<t>`) or every tag (`--tags`) to a remote: a Barrier.
 //!   Never `--force`: a tag the remote has differently is refused.
 
@@ -316,7 +316,6 @@ mod tests {
         assert!(!has(&r, "v3"));
     }
 
-    /// Review Focus 2.
     #[tokio::test]
     async fn undoing_an_annotated_tag_delete_brings_back_its_message() {
         let data = tempfile::tempdir().unwrap();

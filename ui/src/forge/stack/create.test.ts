@@ -27,7 +27,7 @@ const stack: Stack = { branches: ['feature/a', 'feature/b', 'feature/c'], base: 
 const chip = (name: string) => ({ branch: { local: `refs/heads/${name}` } }) as never;
 const sidebar = (locals: LocalBranch[]) => ({ locals, remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} }) as never;
 
-describe('memberPlans and the submit label (Rulings 6, 7)', () => {
+describe('memberPlans and the submit label', () => {
   it('creates where there is none (or only a closed one), retargets a wrong target, keeps a right one, refuses a merged one', () => {
     const plans = memberPlans(view([
       member('feature/a', 'main', mr(1, 'feature/a', 'main')),
@@ -117,7 +117,7 @@ describe('createStackRow (the Sync group, after Push stack)', () => {
     expect(createStackRow(chip('feature/b'), env(pushed, { stackOf: () => null }), target, none, vi.fn())).toEqual([]);
   });
 
-  it('asks for a push first: a member ahead, rewritten, unpublished, or on another remote (Ruling 5)', () => {
+  it('asks for a push first: a member ahead, rewritten, unpublished, or on another remote', () => {
     const reason = (locals: LocalBranch[]) => (createStackRow(chip('feature/b'), env(locals), target, none, vi.fn())[0] as { disabledReason?: string }).disabledReason;
     expect(reason([lb('feature/a', { ahead: 1 }), lb('feature/b'), lb('feature/c')])).toBe('Push the stack first');
     expect(reason([lb('feature/a'), lb('feature/b', { pushTarget: null, upstream: null }), lb('feature/c')])).toBe('Push the stack first');

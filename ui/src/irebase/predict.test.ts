@@ -6,7 +6,7 @@ afterEach(() => vi.useRealTimers());
 
 const rows = (n: number) => [{ oid: String(n).repeat(40), action: 'pick' as const }];
 
-describe('conflict prediction in the editor (spec #3 §3.2)', () => {
+describe('conflict prediction in the editor', () => {
   it('debounces 250 ms after the last change and drops answers that a newer change overtook', async () => {
     const answers: Array<(p: { rows: { oid: string; conflicts: string[] }[]; off: string | null }) => void> = [];
     const send = vi.fn(() => new Promise<{ rows: { oid: string; conflicts: string[] }[]; off: string | null }>((res) => answers.push(res)));

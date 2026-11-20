@@ -15,7 +15,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe('file list prefs (feedback H31)', () => {
+describe('file list prefs', () => {
   it('Path/Tree and the sort survive a restart, under one versioned key; View all files does not', async () => {
     const first = await fresh();
     expect(first.useFileListPrefs.getState()).toMatchObject({ mode: 'tree', sort: 'path', allFiles: false });

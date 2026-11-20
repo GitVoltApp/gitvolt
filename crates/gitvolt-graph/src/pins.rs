@@ -1,4 +1,4 @@
-//! The pinned trunk (spec §8.2): which refs lead lanes 0 and 1, by default or by the pin setting,
+//! The pinned trunk: which refs lead lanes 0 and 1, by default or by the pin setting,
 //! and whether the repository is a fork (moved from the core's snapshot.rs).
 
 use crate::input::{ForkFacts, GraphInput, RefKind, RefsIn};

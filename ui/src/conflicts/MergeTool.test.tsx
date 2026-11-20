@@ -40,7 +40,7 @@ import { forgetMergeViews, MergeTool, SWITCH_WAIT_MS, useShownConflict } from '.
 import { draftKey, useMergeDrafts } from './mergeDrafts';
 import { useToast } from '../ui/toastStore';
 
-// Every conflict line carries its own terminator (the 2D EOL ruling).
+// Every conflict line carries its own terminator.
 const payload = {
   path: 'a.txt', kind: 'bothModified', text: true,
   segments: [{ kind: 'common', text: 'one\n' }, { kind: 'conflict', id: 0, base: ['b\n'], current: ['c\n'], incoming: ['i\n'] }, { kind: 'common', text: 'two\n' }],
@@ -50,14 +50,14 @@ const payload = {
 const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 const key = draftKey('t', '/r', 'a.txt');
 const takeAll = (i: 0 | 1) => screen.getAllByRole('checkbox', { name: 'Take all from this side' })[i];
-/** N4: the tool is up once its labels show and its editors exist (their effect may land later). */
+/** The tool is up once its labels show and its editors exist (their effect may land later). */
 const ready = async (n = 1) => {
   await screen.findByText('Current: main');
   await waitFor(() => expect(calls.create).toHaveBeenCalledTimes(n));
 };
 const loadPayload = (p: unknown = payload) => vi.spyOn(api, 'conflictFile').mockResolvedValue(p as never);
 
-describe('the merge tool (spec #2 §13.3)', () => {
+describe('the merge tool', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     for (const f of Object.values(calls)) f.mockClear();
@@ -107,7 +107,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
     expect(calls.setRegions).toHaveBeenLastCalledWith([{ id: 0, lines: ['c\n'] }], expect.anything(), expect.anything());
   });
 
-  it('says "them" for several empty conflicts (M6)', async () => {
+  it('says "them" for several empty conflicts', async () => {
     const two = { ...payload, segments: [...payload.segments, { kind: 'conflict', id: 1, base: [], current: ['x\n'], incoming: [] }] };
     loadPayload(two);
     confirm.mockResolvedValueOnce(false);
@@ -117,7 +117,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
     await waitFor(() => expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ body: '2 conflicts are still unresolved (nothing picked or typed): they will be saved empty.' })));
   });
 
-  it('Ctrl+S while the question is open does nothing more (M7)', async () => {
+  it('Ctrl+S while the question is open does nothing more', async () => {
     loadPayload();
     let answer: (ok: boolean) => void = () => {};
     confirm.mockImplementationOnce(() => new Promise<boolean>((r) => { answer = r; }));
@@ -144,7 +144,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it('F7, Shift+F7 and the arrows move between the regions; the count says where (M13)', async () => {
+  it('F7, Shift+F7 and the arrows move between the regions; the count says where', async () => {
     loadPayload();
     render(<MergeTool ctx={ctx} path="a.txt" />);
     await ready();
@@ -191,7 +191,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
     expect(calls.reveal).toHaveBeenCalledExactlyOnceWith(0, false);
   });
 
-  it('a hunk tick rebuilds that region; a second unticks it; Space ticks the pane cursor line (M2)', async () => {
+  it('a hunk tick rebuilds that region; a second unticks it; Space ticks the pane cursor line', async () => {
     loadPayload();
     render(<MergeTool ctx={ctx} path="a.txt" />);
     await ready();
@@ -206,7 +206,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
     expect(ev.defaultPrevented).toBe(true);
   });
 
-  it('Ctrl+Z back to a tick brings its ticks back (M8)', async () => {
+  it('Ctrl+Z back to a tick brings its ticks back', async () => {
     loadPayload();
     render(<MergeTool ctx={ctx} path="a.txt" />);
     await ready();
@@ -252,7 +252,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
     expect(takeAll(0)).not.toBeChecked();
   });
 
-  it('a failed load offers Retry (M10)', async () => {
+  it('a failed load offers Retry', async () => {
     const fetch = vi.spyOn(api, 'conflictFile').mockRejectedValueOnce({ message: 'boom' }).mockResolvedValueOnce(payload as never);
     render(<MergeTool ctx={ctx} path="a.txt" />);
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't read the conflict in a.txt: boom");
@@ -261,7 +261,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('a side with no lines anywhere has nothing to take (M5)', async () => {
+  it('a side with no lines anywhere has nothing to take', async () => {
     loadPayload({ ...payload, segments: [{ kind: 'conflict', id: 0, base: [], current: [], incoming: ['i\n'] }] });
     render(<MergeTool ctx={ctx} path="a.txt" />);
     await ready();
@@ -285,7 +285,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
     await waitFor(() => expect(resolve).toHaveBeenCalledWith(ctx, 'a.txt', { kind: 'current' }, 'h1', expect.any(Function)));
   });
 
-  it('a first hand edit typed just before the tab hides is kept, debounce or not (N1)', async () => {
+  it('a first hand edit typed just before the tab hides is kept, debounce or not', async () => {
     loadPayload();
     const view = render(<Activity mode="visible"><MergeTool ctx={ctx} path="a.txt" /></Activity>);
     await ready();
@@ -297,7 +297,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
     expect(useMergeDrafts.getState().drafts[key]).toMatchObject({ text: 'one\ntyped\ntwo\n', typed: true });
   });
 
-  it('a file deleted on disk says so, offers a copy of the output, and never saves (N6)', async () => {
+  it('a file deleted on disk says so, offers a copy of the output, and never saves', async () => {
     loadPayload({ ...payload, base: null });
     render(<MergeTool ctx={ctx} path="a.txt" />);
     await ready();
@@ -323,7 +323,7 @@ describe('the merge tool (spec #2 §13.3)', () => {
   });
 });
 
-describe('switching files without an empty frame (UX round 1)', () => {
+describe('switching files without an empty frame', () => {
   const nonText = { ...payload, path: 'gone.txt', kind: 'deletedByUs', text: false, segments: [], current: null, incoming: null };
 
   beforeEach(() => {

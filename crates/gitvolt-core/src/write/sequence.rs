@@ -1,10 +1,10 @@
-//! Cherry-pick and revert (spec #3 §3.7): git's own sequencer, one write each. A cherry-pick
+//! Cherry-pick and revert: git's own sequencer, one write each. A cherry-pick
 //! applies its commits oldest first, a revert newest first; the request's `oids` come newest
 //! first, as the graph lists them.
 //! - Committing: one `git cherry-pick <oids…>` / `git revert --no-edit <oids…>`, an AnyTracked
-//!   autostash, a Rewind undo. A stop (conflicts, a failing hook or signer, an empty pick) pauses
-//!   (2D T2): the commit panel's Continue, Skip and Abort (`PickControl`) settle it.
-//! - Without committing (T2): see `run_no_commit`.
+//!   autostash, a Rewind undo. A stop (conflicts, a failing hook or signer, an empty pick) pauses:
+//!   the commit panel's Continue, Skip and Abort (`PickControl`) settle it.
+//! - Without committing: see `run_no_commit`.
 
 use crate::api::{blocking, Api};
 use crate::error::{gix_err, GbError, GbErrorKind};
@@ -59,7 +59,7 @@ pub enum SequenceOutcome {
         at: Option<String>,
         applied: u32,
         committed: bool,
-        /// UX R1 C.1: a committing stop with no conflicts: git's error (the commit failed: a
+        /// A committing stop with no conflicts: git's error (the commit failed: a
         /// hook, the signer, an empty pick). The changes wait staged, paused.
         #[serde(skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
@@ -75,7 +75,7 @@ pub(crate) fn what(oids: &[String]) -> String {
     }
 }
 
-/// A commit this can apply: it exists, and isn't a merge (spec #3 §3.7, §8: "pick a parent" is
+/// A commit this can apply: it exists, and isn't a merge ("pick a parent" is
 /// out of scope).
 fn pickable(repo: &gix::Repository, hex: &str) -> Result<ObjectId, GbError> {
     let short: String = hex.chars().take(7).collect();
@@ -112,7 +112,7 @@ impl SequenceIntent {
     /// next write or the Undo. A conflict stops it with the conflicted files in the index (the
     /// Conflicted section, the merge tool); there's nothing to Continue.
     async fn run_no_commit(&self, cx: &mut WriteCx<'_>) -> Result<SequenceOutcome, GbError> {
-        // T2 fix round 1 (E): what's dirty outside P now, before any pick, is the user's.
+        // What's dirty outside P now, before any pick, is the user's.
         let before = crate::write::precheck::dirty(&cx.api.cli, cx.root).await?;
         let before_dirty: BTreeSet<String> = before.tracked.into_iter().chain(before.untracked).collect();
         let mut attempted = BTreeSet::new();
@@ -127,10 +127,10 @@ impl SequenceIntent {
                 cx.touch(k);
             }
             if let Err(e) = res {
-                // Fix round 2 (3): nothing here hides the error that stopped it.
+                // Nothing here hides the error that stopped it.
                 let files = crate::write::precheck::dirty(&cx.api.cli, cx.root).await.map_or(0, |d| d.conflicted);
                 if files == 0 {
-                    // 3B final fix (2): a failure without conflicts (a file in the way) changed
+                    // A failure without conflicts (a file in the way) changed
                     // nothing of its own. Before anything else changed, there's no entry; after
                     // an earlier commit went in (or should the failed step have left a change),
                     // the entry is a stopped one over what the run changed: its Undo discards
@@ -149,13 +149,13 @@ impl SequenceIntent {
                 // A conflict changed the index and the files: the entry stays, whatever follows.
                 cx.partial = true;
                 attempted.extend(paths);
-                // No `after` snapshot: an unmerged index can't be snapshotted (Deviation 6). The
-                // entry is marked first (fix rounds 1 H, 2), before anything that can fail: its
+                // No `after` snapshot: an unmerged index can't be snapshotted. The
+                // entry is marked first, before anything that can fail: its
                 // Undo asks, then discards what the run changed, unmerged paths included; the
                 // rest of P (commits never applied) is left alone (D).
                 let op = self.kind.git().to_string();
                 self.mark_stopped(cx, &op, &attempted);
-                // Fix round 2 (1): all of P was clean before the run, so what's dirty now and
+                // All of P was clean before the run, so what's dirty now and
                 // wasn't then is exactly what the run changed, a rename-followed change landing
                 // on a path of a commit that never ran included.
                 let changed = self.widen(cx, &before_dirty).await;
@@ -188,7 +188,7 @@ impl SequenceIntent {
         Ok(())
     }
 
-    /// The entry's `StoppedPick` marker, over `paths`. Best effort (fix round 2): a journal
+    /// The entry's `StoppedPick` marker, over `paths`. Best effort: a journal
     /// failure is logged, and the caller still quits what git left in progress.
     fn mark_stopped(&self, cx: &mut WriteCx<'_>, op: &str, paths: &BTreeSet<String>) {
         let stopped = crate::journal::StoppedPick { op: op.to_string(), paths: paths.iter().cloned().collect() };
@@ -197,12 +197,12 @@ impl SequenceIntent {
         }
     }
 
-    /// T2 fix round 1 (E): P follows the commits' own paths, but git follows renames on HEAD's
+    /// P follows the commits' own paths, but git follows renames on HEAD's
     /// side (a change to x.txt lands in y.txt, which HEAD renamed it to). Every path the run
     /// changed outside P (dirty now, and not before it) joins P: in the `before` snapshot (whose
     /// trees hold HEAD's state there, which it was in: git refuses to touch a dirty path) and in
     /// the `after` one. Returns every path the run changed (dirty now and not before), P's
-    /// included. Best effort (fix round 2): a failure is logged, and nothing is widened.
+    /// included. Best effort: a failure is logged, and nothing is widened.
     async fn widen(&self, cx: &mut WriteCx<'_>, before_dirty: &BTreeSet<String>) -> Vec<String> {
         let now = match crate::write::precheck::dirty(&cx.api.cli, cx.root).await {
             Ok(now) => now,
@@ -262,7 +262,7 @@ impl WriteIntent for SequenceIntent {
             })
         })?;
         self.label.settle(branch);
-        // Fix round 1: an unborn branch has no commit to pick onto (git would make a root commit
+        // An unborn branch has no commit to pick onto (git would make a root commit
         // of the pick, and Undo would have no tip to rewind to).
         if pre.before.head.oid.is_none() {
             return Err(refuse("Make a first commit first"));
@@ -291,7 +291,7 @@ impl WriteIntent for SequenceIntent {
             }
             return Ok(Plan { snapshot: Some((paths.into_iter().collect(), Vec::new())), ..Plan::default() });
         }
-        // Fix round 1: P is what the picks touch, so an untracked file there is stashed too.
+        // P is what the picks touch, so an untracked file there is stashed too.
         Ok(Plan { autostash: Some(AutostashSpec { rule: AutostashRule::Touching(paths.into_iter().collect()), target: None, op: self.label.get(), target_name: Some(what(&self.oids)), moved: None }), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<SequenceOutcome, GbError> {
@@ -302,7 +302,7 @@ impl WriteIntent for SequenceIntent {
     }
 }
 
-// --- 3B T1 fix round 1: the sequencer's leftover ---
+// --- the sequencer's leftover ---
 /// `.git/sequencer/` (the worktree's own git dir).
 pub(crate) async fn sequencer_dir(root: &std::path::Path) -> Result<std::path::PathBuf, GbError> {
     let root = root.to_path_buf();
@@ -313,7 +313,7 @@ pub(crate) async fn sequencer_dir(root: &std::path::Path) -> Result<std::path::P
 /// way, a failed checkout, a Cancel) leaves `.git/sequencer/` with nothing in progress: GitVolt
 /// can't see it, and every later cherry-pick or revert fails on it. `--quit` drops it and keeps
 /// the commits that went in. True when there was one and it went.
-/// Fix round 2: its own invocation, without the op's cancel token (after a Cancel it has fired,
+/// Its own invocation, without the op's cancel token (after a Cancel it has fired,
 /// as for the rebase's abort), and never an error of its own: a failure is logged, and the
 /// caller reports the error that stopped the sequence.
 pub(crate) async fn quit_leftover_sequencer(cx: &mut WriteCx<'_>, what: &str) -> bool {
@@ -337,7 +337,7 @@ pub(crate) async fn quit_leftover_sequencer(cx: &mut WriteCx<'_>, what: &str) ->
     }
 }
 
-/// 3B final fix (5): `.git/sequencer/todo` still lists commits, as after a `git commit` in a
+/// `.git/sequencer/todo` still lists commits, as after a `git commit` in a
 /// terminal that concluded one pick of a sequence: `git cherry-pick --continue` there goes on
 /// with the rest, so it isn't a leftover to drop.
 pub(crate) async fn sequencer_has_todo(root: &std::path::Path) -> bool {
@@ -360,7 +360,6 @@ async fn uncancellable<const N: usize>(cx: &mut WriteCx<'_>, args: [&str; N]) ->
     }
     res.map(|_| ())
 }
-// --- end 3B T1 fix round 1 ---
 
 /// One `git cherry-pick` / `git revert --no-edit` over `oids` (in the order git applies them).
 /// Stopped with the operation still in progress, it pauses with `what` as the banner's target.
@@ -379,8 +378,7 @@ async fn run_sequence(cx: &mut WriteCx<'_>, kind: SequenceKind, oids: &[String],
         cx.touch(k);
     }
     let cancelled = |e: &GbError, cx: &WriteCx<'_>| e.kind == GbErrorKind::Cancelled || cx.op.cancel.is_cancelled();
-    // --- 3B T1 fix round 2 (A) ---
-    // A Cancel aborts the sequence it started, as a cancelled rebase does (2D review M2): git was
+    // A Cancel aborts the sequence it started, as a cancelled rebase does: git was
     // killed mid-pick (CHERRY_PICK_HEAD after the commit, in a hook or the signer) or between
     // picks (the sequencer alone). `--abort` puts the branch back and drops both. Its own
     // invocation: the op's cancel token has fired. Should it fail, what's left pauses or quits
@@ -395,7 +393,7 @@ async fn run_sequence(cx: &mut WriteCx<'_>, kind: SequenceKind, oids: &[String],
                 // Killed after a commit, before git recorded it (in post-commit, say), git "won't
                 // rewind": it keeps the commits and CHERRY_PICK_HEAD. `--quit` drops that; what
                 // went in stays, and the entry's Undo takes it back. Should the quit fail, it's
-                // still in progress: it pauses below (fix round 2, 4).
+                // still in progress: it pauses below (4).
                 let dropped = if crate::in_progress::read(cx.root).ok().flatten().is_some() {
                     match uncancellable(cx, [kind.git(), "--quit"]).await {
                         Ok(()) => true,
@@ -419,7 +417,6 @@ async fn run_sequence(cx: &mut WriteCx<'_>, kind: SequenceKind, oids: &[String],
             Err(a) => tracing::warn!(target: "gitvolt_core::write", "aborting the cancelled {}: {a}", kind.git()),
         }
     }
-    // --- end 3B T1 fix round 2 ---
     match res {
         Ok(_) => Ok(SequenceOutcome::Done { commits: applied(cx, &old).await, committed: true }),
         Err(e) => match crate::in_progress::read(cx.root).ok().flatten() {
@@ -429,12 +426,12 @@ async fn run_sequence(cx: &mut WriteCx<'_>, kind: SequenceKind, oids: &[String],
                 if cancelled(&e, cx) {
                     return Err(e);
                 }
-                // UX R1 C.1: no conflicts, so the commit itself failed: its error goes with it.
+                // No conflicts, so the commit itself failed: its error goes with it.
                 let error = Some(e.message.trim().to_string()).filter(|m| conflicted == 0 && !m.is_empty());
                 Ok(SequenceOutcome::Stopped { files: conflicted, at: head, applied: applied(cx, &old).await, committed: true, error })
             }
             _ => {
-                // Fix round 1: failed part-way with nothing in progress. The commits that went in
+                // Failed part-way with nothing in progress. The commits that went in
                 // stay (the entry's Undo takes them back); the sequencer's leftover goes.
                 if !had_sequencer && quit_leftover_sequencer(cx, kind.git()).await {
                     let n = applied(cx, &old).await;
@@ -448,7 +445,7 @@ async fn run_sequence(cx: &mut WriteCx<'_>, kind: SequenceKind, oids: &[String],
     }
 }
 
-/// The commits HEAD gained since `old`. Fix round 1 (m3): counting never loses a pause or a
+/// The commits HEAD gained since `old`. Counting never loses a pause or a
 /// result; an unknown count reads 0.
 async fn applied(cx: &WriteCx<'_>, old: &str) -> u32 {
     match crate::write::precheck::commits_not_in(&cx.api.cli, cx.root, "HEAD", old).await {
@@ -460,7 +457,7 @@ async fn applied(cx: &WriteCx<'_>, old: &str) -> u32 {
     }
 }
 
-/// `CherryPick` / `Revert` (spec #3 §3.7). The label names HEAD's branch as seen now, and settles
+/// `CherryPick` / `Revert`. The label names HEAD's branch as seen now, and settles
 /// under the lock.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn sequence(api: &Api, repo: u32, worktree: &str, kind: SequenceKind, oids: Vec<String>, no_commit: bool, expect: Expect, confirm: Confirm) -> Result<WriteResult<SequenceOutcome>, GbError> {
@@ -597,7 +594,7 @@ mod tests {
         assert_eq!(e.kind, GbErrorKind::InProgress);
     }
 
-    /// Review Focus 1: the autostash waits through the pause; Continue lands the pick and gives
+    /// The autostash waits through the pause; Continue lands the pick and gives
     /// the changes back; Undo takes the pick back and leaves them alone.
     #[tokio::test]
     async fn a_paused_pick_keeps_the_autostash_until_continue() {
@@ -624,7 +621,6 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("a.txt")).unwrap(), "dirty\n");
     }
 
-    /// Review Focus 3.
     #[tokio::test]
     async fn a_pick_aborted_in_a_terminal_settles_and_restores_the_autostash() {
         let data = tempfile::tempdir().unwrap();
@@ -640,7 +636,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("a.txt")).unwrap(), "dirty\n");
     }
 
-    /// §7: a revert's conflict pauses as a revert; the commit panel's Abort ends it.
+    /// A revert's conflict pauses as a revert; the commit panel's Abort ends it.
     #[tokio::test]
     async fn a_revert_conflict_pauses_and_abort_drops_the_entry() {
         let data = tempfile::tempdir().unwrap();
@@ -664,7 +660,7 @@ mod tests {
         assert!(s["paused"].is_null() && s["undo"].is_null());
     }
 
-    /// Spec #3 §3.7's "without committing": the changes staged, HEAD where it was, one Undo.
+    /// "Without committing": the changes staged, HEAD where it was, one Undo.
     #[tokio::test]
     async fn without_committing_stages_the_changes_and_undo_restores() {
         let data = tempfile::tempdir().unwrap();
@@ -684,7 +680,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--cached", "--name-only"]), "f1.txt\nf2.txt\nf3.txt");
     }
 
-    /// UX R1 C.2: right after a no-commit pick that added a file (staged), Discard all removes
+    /// Right after a no-commit pick that added a file (staged), Discard all removes
     /// it at the first try, index and file both.
     #[tokio::test]
     async fn discard_all_right_after_a_no_commit_pick_removes_the_added_file() {
@@ -700,7 +696,7 @@ mod tests {
         assert!(!r.path().join("f1.txt").exists());
     }
 
-    /// UX R1 C.1: a normal pick commits at once; one whose commit fails (here the signer) stops
+    /// A normal pick commits at once; one whose commit fails (here the signer) stops
     /// paused, its changes staged, and says why (the toast names the commit error).
     #[tokio::test]
     async fn a_pick_whose_commit_fails_stops_with_the_error() {
@@ -721,7 +717,7 @@ mod tests {
         assert!(matches!(crate::in_progress::read(r.path()).unwrap(), Some(crate::in_progress::InProgress::CherryPick { .. })));
     }
 
-    /// Review Focus 4: `revert --no-commit` leaves REVERT_HEAD for a later `git commit`;
+    /// `revert --no-commit` leaves REVERT_HEAD for a later `git commit`;
     /// GitVolt's leaves nothing in progress, so the next write (Undo here) isn't refused.
     #[tokio::test]
     async fn a_revert_without_committing_leaves_nothing_in_progress() {
@@ -782,7 +778,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("c.txt")).unwrap(), "main\n");
         assert_eq!(r.git(&["stash", "list"]), "", "no autostash");
         let s = state(&api, id, &r).await;
-        assert!(s["redo"].is_null() && s["undo"].is_null(), "no dead Redo (fix round 1, F): {s}");
+        assert!(s["redo"].is_null() && s["undo"].is_null(), "no dead Redo: {s}");
     }
 
     /// Only a stopped pick's entry restores over unmerged paths: any other Restore entry (a
@@ -806,7 +802,6 @@ mod tests {
         assert_eq!(state(&api, id, &r).await["undo"]["entry"], entry, "still on the undo stack");
     }
 
-    // --- 3B T1 fix round 1 ---
 
     /// `two_sides`, plus "Add m" (m.txt) on top of feature. Returns (repo, "Fix x", "Add m").
     fn conflict_then_clean() -> (TestRepo, String, String) {
@@ -860,7 +855,7 @@ mod tests {
         assert!(res["journal"]["paused"].is_null() && res["journal"]["undo"].is_null());
     }
 
-    /// Finding 2a: an untracked file on a path a later pick adds is stashed, so git doesn't stop
+    /// An untracked file on a path a later pick adds is stashed, so git doesn't stop
     /// part-way on it.
     #[tokio::test]
     async fn an_untracked_file_where_a_pick_adds_one_is_stashed_first() {
@@ -875,7 +870,7 @@ mod tests {
         assert!(r.git(&["stash", "list", "--format=%gs"]).contains("autostash before cherry-pick 2 commits onto main"), "the file is kept in the stash");
     }
 
-    /// Finding 2b: a pick that fails part-way with nothing in progress (here a post-commit hook
+    /// A pick that fails part-way with nothing in progress (here a post-commit hook
     /// puts an untracked file where the second pick adds one) keeps what went in, drops git's
     /// sequencer, and says so; the next pick isn't blocked.
     #[tokio::test]
@@ -999,9 +994,7 @@ mod tests {
         journal_step(&api, id, r.path(), "undo").await.unwrap();
         assert_eq!(r.git(&["rev-parse", "main"]), before);
     }
-    // --- end 3B T1 fix round 1 ---
 
-    // --- 3B T1 fix round 2 ---
 
     /// Finding A: a Cancel mid-sequence (here while a post-commit hook sleeps) still drops git's
     /// sequencer: the quit doesn't run under the fired token.
@@ -1084,7 +1077,6 @@ mod tests {
         assert!(!sequencer(&r));
         assert!(r.git(&["stash", "list", "--format=%gs"]).contains("autostash before cherry-pick"), "the file is kept in the stash");
     }
-    // --- end 3B T1 fix round 2 ---
 
     /// A commit already in HEAD's history, whose revert came after it, picks again: it's back.
     #[tokio::test]
@@ -1105,7 +1097,6 @@ mod tests {
         assert_eq!(r.git(&["log", "-1", "--format=%s"]), "Add x");
     }
 
-    // --- 3B T2 fix round 1 ---
 
     /// Finding D: a stop on commit 2 of 3; the user then edits a file only commit 3 changes.
     /// The Undo discards what the attempted commits did, but that edit is the user's: it asks,
@@ -1180,7 +1171,7 @@ mod tests {
         assert!(std::fs::read_to_string(r.path().join("y.txt")).unwrap().starts_with("line one\n"));
     }
 
-    /// Fix round 2 (1): a rename-followed change of an applied commit that lands on a path of a
+    /// A rename-followed change of an applied commit that lands on a path of a
     /// commit that never ran (y.txt: HEAD renamed x.txt there, and a later commit adds it) is
     /// the run's own: the stopped Undo restores it.
     #[tokio::test]
@@ -1218,9 +1209,7 @@ mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "", "y.txt restored too");
         assert_eq!(std::fs::read_to_string(r.path().join("y.txt")).unwrap(), body);
     }
-    // --- end 3B T2 fix round 1 ---
 
-    // --- 3B final fixes ---
 
     /// Final fix 1: a revert's message rewritten at Continue (its "This reverts commit" line
     /// gone) still completes it: one Undo takes both reverts back.
@@ -1336,5 +1325,4 @@ mod tests {
         assert_eq!(r.git(&["log", "--format=%s", "-2"]), "Add m\nFix x");
         assert!(!sequencer(&r));
     }
-    // --- end 3B final fixes ---
 }

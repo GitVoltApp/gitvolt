@@ -4,7 +4,7 @@ import type { EditorDiffPrefs } from './diffPrefs';
 import { GENERIC_FAMILY, singleFamily, withFallbacks } from '../theme/fontStack';
 import { isMac } from '../ui/platformKeys';
 
-/** Hunk mode's collapsed unchanged regions (spec §10.2). */
+/** Hunk mode's collapsed unchanged regions. */
 export const HUNK_REGIONS = { enabled: true, contextLineCount: 3, minimumLineCount: 3, revealLineCount: 20 } as const;
 /** Split falls back to Inline only below this width. Monaco's own 900 px would flip it in a
  * normal window, because the center panel sits beside the details panel. */
@@ -17,7 +17,7 @@ export const clampEditorFont = (px: number): number => (Number.isFinite(px) ? Ma
 
 /** The app settings every editor is drawn with (Settings › Diffs and editors). */
 export type EditorSettings = Pick<AppSettings, 'editorFontSize' | 'editorFontFamily' | 'editorFontLigatures' | 'editorLineHeight' | 'editorTabSize' | 'editorWhitespace' | 'editorMinimap' | 'editorStickyScroll'>;
-/** `AppSettings::default()`'s. Sticky scroll is off (H7): Monaco's pops in after a file opens and
+/** `AppSettings::default()`'s. Sticky scroll is off: Monaco's pops in after a file opens and
  * is revealed, and with no language service its scopes come from indentation, so with PHP's
  * brace-on-next-line style the pinned line is the lone `{` under `function bar()`. */
 export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
@@ -87,7 +87,7 @@ export function editorDisplayOptions(s: EditorSettings) {
 export function modelTabOptions(guessed: { insertSpaces: boolean; indentSize: number }, tabSize: number): { tabSize: number; indentSize?: number } {
   return guessed.insertSpaces ? { tabSize: clampTabSize(tabSize), indentSize: guessed.indentSize } : { tabSize: clampTabSize(tabSize) };
 }
-/** The app's slim scrollbars (tokens.css; F31), in Monaco's own: 10 px, no shadow. Monaco draws
+/** The app's slim scrollbars (tokens.css), in Monaco's own: 10 px, no shadow. Monaco draws
  * no arrow buttons unless asked, and its colours come from the theme (monaco/theme.ts). */
 /** Unicode highlighting: invisible characters stay marked (a hidden bidi or zero-width character is
  * worth seeing in a diff), but "ambiguous" ones (box drawing, curly quotes, non-Latin letters) don't.
@@ -102,7 +102,7 @@ export const EDITOR_SCROLLBAR = { verticalScrollbarSize: 10, horizontalScrollbar
  * +/- indicators, moved-code detection, split resizing, code lens, folding.
  * Except the margin's revert arrow and the gutter menu that draws it in newer Monaco (the user's call: it discarded working-copy lines with no
  * tooltip; the hunk/line actions and Discard say what they do, and undo). The font, whitespace,
- * minimap and sticky scroll are the user's settings (`editorDisplayOptions`). The only fixed settings are the spec'd read-only and
+ * minimap and sticky scroll are the user's settings (`editorDisplayOptions`). The only fixed settings are the read-only and
  * no-language-service ones. It returns plain data (no Monaco import), so it's unit-testable.
  */
 export function diffEditorOptions(p: EditorDiffPrefs, contextMenu: boolean, s: EditorSettings = DEFAULT_EDITOR_SETTINGS) {
@@ -139,7 +139,7 @@ export function diffEditorOptions(p: EditorDiffPrefs, contextMenu: boolean, s: E
   };
 }
 
-/** Options for File View's read-only editor (spec §10.1). */
+/** Options for File View's read-only editor. */
 export function fileViewOptions(wordWrap: boolean, contextMenu: boolean, s: EditorSettings = DEFAULT_EDITOR_SETTINGS) {
   return {
     readOnly: true,

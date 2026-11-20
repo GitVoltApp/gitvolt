@@ -42,7 +42,7 @@ beforeEach(() => {
   useToast.getState().dismiss();
 });
 
-describe("checking out an MR/PR's branch (spec #4 §4 \"4B\")", () => {
+describe("checking out an MR/PR's branch", () => {
   it("selects the branch's tip in the graph once the checkout lands, without taking focus; a failed one leaves the selection", async () => {
     tab({ locals: [{ name: 'dev', upstream: 'refs/remotes/origin/dev', target: DEV }] });
     branches.checkoutLocal.mockImplementationOnce(async () => {
@@ -110,7 +110,6 @@ describe("checking out an MR/PR's branch (spec #4 §4 \"4B\")", () => {
     expect(branches.checkoutRemote).toHaveBeenCalledWith('t', 'origin', 'dev', DEV, 'origin-dev');
   });
 
-  // --- 4B final fix ---
   it("finds the source's remote with a port on its host and the path in another case", async () => {
     tab({ remotes: [group('origin', ['dev', DEV])] });
     const cur = useRuntime.getState().tabs.t as never as { info: { remotes: Array<{ host: string; path: string }> } };
@@ -129,7 +128,6 @@ describe("checking out an MR/PR's branch (spec #4 §4 \"4B\")", () => {
     }
     expect(api.forgeProjectByPath).not.toHaveBeenCalled();
   });
-  // --- end 4B final fix ---
 
   it('switches to <remote>-<branch> when it already tracks the source', async () => {
     tab({ locals: [{ name: 'dev', upstream: 'refs/remotes/other/dev' }, { name: 'origin-dev', upstream: 'refs/remotes/origin/dev' }], remotes: [group('origin', ['dev', DEV])] });

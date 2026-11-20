@@ -48,7 +48,7 @@ const GLYPH: Record<StatusKind, ReactNode> = {
 };
 
 /**
- * A file's change status as a small inline icon (feedback F17), shared by the file list and the
+ * A file's change status as a small inline icon, shared by the file list and the
  * diff view. `status` is a git letter (`A`, `M`, …) or a kind name. Named by its status unless
  * `decorative` (its container names it, e.g. the counts row).
  */

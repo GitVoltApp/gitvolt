@@ -6,7 +6,7 @@ import { expect, test } from './test';
 const settings = (page: Page) => page.getByRole('dialog', { name: 'Settings' });
 const remotePanel = (page: Page) => page.getByRole('complementary', { name: 'Sidebar', exact: true }).getByRole('region', { name: 'Remote', exact: true });
 
-test.describe('forge accounts and remotes (spec #4 §7, 4A)', () => {
+test.describe('forge accounts and remotes', () => {
   test('a GitLab account kept in the file (with its warning), then a fork added from the forks list and fetched', async ({ page, request }) => {
     const repo = freshFixture('sync');
     // Origin "on" the fake GitLab; alice's fork is the fixture's own bare origin, so its fetch is local.
@@ -43,7 +43,6 @@ test.describe('forge accounts and remotes (spec #4 §7, 4A)', () => {
     await expect(remotePanel(page).getByText('alice', { exact: true })).toBeVisible();
   });
 
-  // --- 4C T10 ---
   test('a pull request prefilled from the first commit; a refused reviewer is a partial failure, and Retry adds them', async ({ page, request }) => {
     const repo = freshFixture('sync');
     git(repo, 'remote', 'set-url', 'origin', 'https://github.com/octo-org/widget.git');
@@ -57,12 +56,12 @@ test.describe('forge accounts and remotes (spec #4 §7, 4A)', () => {
 
     await page.goto(openUrl(repo));
     await expect(page.getByRole('grid', { name: 'Commit graph' })).toBeVisible();
-    // The palette action needs the target project: 4B's poller has found it once the sidebar shows the section (4B ruling 12).
+    // The palette action needs the target project: the forge poller has found it once the sidebar shows the section.
     await expect(page.getByText('Pull requests', { exact: true })).toBeVisible();
     await page.keyboard.press('Control+p');
     await page.keyboard.type('>Create MR/PR');
     await page.keyboard.press('Enter');
-    // 4B's FlyoutFrame is a dialog named by its title.
+    // The FlyoutFrame is a dialog named by its title.
     const flyout = page.getByRole('dialog', { name: 'Create pull request' });
     await expect(flyout.getByLabel('Title', { exact: true })).toHaveValue('Add the widget');
     await expect(flyout.getByLabel('Description', { exact: true })).toHaveValue('It spins.');
@@ -94,5 +93,4 @@ test.describe('forge accounts and remotes (spec #4 §7, 4A)', () => {
     // assignee step on GitLab, MrPeople.test.tsx, and forge_github_prs.rs against the fake GitHub.
     expect(await page.content()).not.toContain(E2E_GITHUB_TOKEN);
   });
-  // --- end 4C T10 ---
 });

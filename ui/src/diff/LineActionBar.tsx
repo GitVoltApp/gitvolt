@@ -3,7 +3,7 @@ import { HoverTooltip } from '../ui/HoverTooltip';
 
 const lines = (n: number) => `${n} ${n === 1 ? 'line' : 'lines'}`;
 
-/** §7.3: beside a selection that covers changed lines, Stage / Discard N lines (unstaged), or
+/** Beside a selection that covers changed lines, Stage / Discard N lines (unstaged), or
  * Unstage N lines (staged). Each button's N is what its write takes (the no-newline tie
  * included). A press doesn't move the editor's selection. */
 export function LineActionBar({ rect, apply, discard, staged, canDiscard, reason, onApply, onDiscard }: {

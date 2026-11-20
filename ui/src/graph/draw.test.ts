@@ -61,7 +61,7 @@ describe('drawGraph', () => {
     const rows = [row(0, 'commit', []), row(1, 'commit', []), row(2, 'commit', [])];
     drawGraph(ctx, { rows, first: 0, last: 3, scrollTop: 0, width: 100, height: 66, metrics: { rowH: 22, laneW: 16, padX: 8 }, colors: ['#a', '#b', '#c'], nodeFill: '#000', labeledRows: new Set(), dpr: 1 });
     // Two fillRect per visible row: the lane-color band and the bright lane-colored rail edge.
-    // The graph fits (not clipped), so there's no overflow strip (F2).
+    // The graph fits (not clipped), so there's no overflow strip.
     expect(calls.filter((c) => c.startsWith('fillRect(')).length).toBe(6);
     // No row is labeled, so no connector line should be drawn.
     expect(calls.filter((c) => c.startsWith('moveTo(0,')).length).toBe(0);
@@ -69,7 +69,7 @@ describe('drawGraph', () => {
     expect(calls.findIndex((c) => c.startsWith('fillRect('))).toBeLessThan(calls.findIndex((c) => c.startsWith('arc(')));
   });
 
-  it('while the lanes fit, nothing is packed, clipped, shaded or dimmed (F2, R11)', () => {
+  it('while the lanes fit, nothing is packed, clipped, shaded or dimmed', () => {
     const { ctx, calls } = recorder();
     const rows = [row(0, 'commit', [1 << 20]), row(4, 'commit', [])];
     drawGraph(ctx, { rows, first: 0, last: 2, scrollTop: 0, width: 100, height: 44, metrics: { rowH: 22, laneW: 16, padX: 8 }, colors: ['#a'], nodeFill: '#000', labeledRows: new Set(), dpr: 1, clipped: false });
@@ -125,7 +125,7 @@ describe('drawGraph', () => {
     expect(calls).toContain(`fillRect(${149 / 1.5},2,2,18)`);
   });
 
-  it('insets the row band and the rail by the density\'s bandInset (H1: standard\'s bands are chip-high, 22 of 28 px)', () => {
+  it('insets the row band and the rail by the density\'s bandInset (standard\'s bands are chip-high, 22 of 28 px)', () => {
     const { ctx, calls } = recorder();
     const rows = [row(0, 'commit', []), row(1, 'commit', [])];
     drawGraph(ctx, { rows, first: 0, last: 2, scrollTop: 0, width: 100, height: 56, metrics: { rowH: 28, laneW: 22, padX: 11, bandInset: 3 }, colors: ['#a', '#b'], nodeFill: '#000', labeledRows: new Set(), dpr: 1 });
@@ -134,7 +134,7 @@ describe('drawGraph', () => {
     expect(calls).toContain('fillRect(98,31,2,22)');
   });
 
-  it('the selected row\'s band is brighter (H14); the others keep BAND_ALPHA', () => {
+  it('the selected row\'s band is brighter; the others keep BAND_ALPHA', () => {
     expect(SELECTED_BAND_ALPHA).toBeGreaterThan(2 * BAND_ALPHA);
     const { ctx, calls } = recorder();
     const rows = [row(0, 'commit', []), row(1, 'commit', []), row(0, 'commit', [])];
@@ -145,7 +145,7 @@ describe('drawGraph', () => {
     expect(alphaFor('fillRect(16,52,84,21)')).toBe(`globalAlpha=${BAND_ALPHA}`);
   });
 
-  it('every selected row gets the selected band (K15, K27)', () => {
+  it('every selected row gets the selected band', () => {
     const { ctx, calls } = recorder();
     const rows = [row(0, 'commit', []), row(1, 'commit', []), row(0, 'commit', [])];
     drawGraph(ctx, { rows, first: 0, last: 3, scrollTop: 0, width: 100, height: 75, metrics: { rowH: 25, laneW: 16, padX: 8 }, colors: ['#a', '#b'], nodeFill: '#000', labeledRows: new Set(), dpr: 1, selected: 1, alsoSelected: new Set([0, 2]) });
@@ -199,7 +199,7 @@ describe('drawGraph', () => {
     expect(calls3).toContain(`lineTo(16,${17 / 1.5})`);
   });
 
-  it('strokes the connector in the lane colour at 25% alpha, then restores full alpha (F8)', () => {
+  it('strokes the connector in the lane colour at 25% alpha, then restores full alpha', () => {
     const { ctx, calls } = recorder();
     const rows = [row(0, 'commit', []), row(1, 'commit', [1 << 20])];
     drawGraph(ctx, { rows, first: 0, last: 2, scrollTop: 0, width: 100, height: 44, metrics: { rowH: 22, laneW: 16, padX: 8 }, colors: ['#a', '#b'], nodeFill: '#000', labeledRows: new Set([1]), dpr: 1 });
@@ -215,7 +215,7 @@ describe('drawGraph', () => {
     expect(calls.slice(0, firstLine).findLast((c) => c.startsWith('globalAlpha='))).toBe('globalAlpha=1');
   });
 
-  it("the checked-out branch's connector (headRow) is the graph line's width and the full lane colour (J21)", () => {
+  it("the checked-out branch's connector (headRow) is the graph line's width and the full lane colour", () => {
     const rows = [row(0, 'commit', []), row(1, 'commit', [1 << 20])];
     for (const dpr of [1, 1.5, 2]) {
       const { ctx, calls } = recorder();
@@ -234,7 +234,7 @@ describe('drawGraph', () => {
     }
   });
 
-  it('places the connector against the device-snapped scroll, so it stays on the DOM half\'s device rows (K57)', () => {
+  it('places the connector against the device-snapped scroll, so it stays on the DOM half\'s device rows', () => {
     const rows = [row(0, 'commit', [])];
     const at = (scrollTop: number, dpr: number) => {
       const { ctx, calls } = recorder();
@@ -248,7 +248,7 @@ describe('drawGraph', () => {
     // 1.25 - 0.5) = 13 device px; less the one scrolled: 12, centre 12.5 device px.
     expect(at(0.8, 1.25)).toBe(`moveTo(0,${12.5 / 1.25})`);
   });
-  it('draws a dashed lane as one run with whole-device-px dashes phased by its content y, and the WIP ring evenly dotted (K50)', () => {
+  it('draws a dashed lane as one run with whole-device-px dashes phased by its content y, and the WIP ring evenly dotted', () => {
     const { ctx, calls } = recorder();
     const dashedBottom = 0 | (0 << 10) | (1 << 20) | (1 << 26);
     const dashedFull = 0 | (0 << 10) | (2 << 20) | (1 << 26);
@@ -424,7 +424,7 @@ describe('drawGraph', () => {
   });
 });
 
-describe('drawGraph: the collapse zone, packed nodes and the minimum-width strip (F11, R11)', () => {
+describe('drawGraph: the collapse zone, packed nodes and the minimum-width strip', () => {
   const m = { rowH: 25, laneW: 16, padX: 8 };
   // r = 9; the zone = 18 + 2 * 3 + 2 (rail) = 26 px; at width 80 the lane area is 54 px, and the
   // packed column's centre sits mid-zone left of the rail: 54 + (26 - 2) / 2 = 66.
@@ -508,7 +508,7 @@ describe('drawGraph: the collapse zone, packed nodes and the minimum-width strip
     expect(calls).toContain('fillRect(32,27,48,21)');
   });
 
-  it('at the minimum width: one column of coloured nodes, dimmed like any packed node, and the rail; no bands, lines or shade (F11)', () => {
+  it('at the minimum width: one column of coloured nodes, dimmed like any packed node, and the rail; no bands, lines or shade', () => {
     const { ctx, calls } = recorder();
     const rows = [row(0, 'commit', [1 << 20]), row(2, 'merge', [(2 << 10) | 2 | (2 << 20)]), row(1, 'stash', [])];
     drawGraph(ctx, { ...base, rows, last: 3, width: 48, height: 75, labeledRows: new Set([0]) });
@@ -517,7 +517,7 @@ describe('drawGraph: the collapse zone, packed nodes and the minimum-width strip
     const s = stashHalf({ rowH: 25, laneW: 16, padX: 8 });
     expect(calls).toContain(`rect(${23 - s},${62.5 - s},${2 * s},${2 * s})`);
     expect(calls).not.toContain(`globalAlpha=${BAND_ALPHA}`);
-    // Every lane has run off: every node is packed, so dimmed (R11).
+    // Every lane has run off: every node is packed, so dimmed.
     for (const [i, c] of calls.entries()) if (c.startsWith('arc(') || c.startsWith('rect(')) expect(alphaAt(calls, i), c).toBe(`globalAlpha=${PACKED_ALPHA}`);
     expect(calls.some((c) => c.startsWith('createLinearGradient('))).toBe(false);
     // The only line is the label connector, to the node's edge (the continuity rule): every other

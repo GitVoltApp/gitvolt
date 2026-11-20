@@ -3,7 +3,7 @@ import type { MergeMethod } from "./MergeMethod";
 import type { SquashOption } from "./SquashOption";
 
 /**
- * What the Create and merge forms inherit from the project (spec #4 §2: "inherit the project's settings").
+ * What the Create and merge forms inherit from the project ("inherit the project's settings").
  */
 export type ForgeProjectSettings = { mergeMethods: Array<MergeMethod>, squash: SquashOption, 
 /**

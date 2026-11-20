@@ -27,7 +27,7 @@ const stale = { kind: 'Stale', message: 'a.txt changed on disk', commandId: null
 const graph: GraphPayload = { rows: [], labels: [], maxLanes: 0, pinnedRefs: [], head: { branch: null, target: null, detached: false, unborn: true }, truncated: false, worktrees: [] };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-describe("the merge tool's kept work (spec #2 §13.3)", () => {
+describe("the merge tool's kept work", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     confirm.mockReset();
@@ -45,7 +45,7 @@ describe("the merge tool's kept work (spec #2 §13.3)", () => {
     expect(getDraft(key)).toBeUndefined();
   });
 
-  it('a Stale save offers Reload from disk and Overwrite; Overwrite resends with the fresh base (I1)', async () => {
+  it('a Stale save offers Reload from disk and Overwrite; Overwrite resends with the fresh base', async () => {
     useMergeDrafts.setState({ drafts: { [key]: draft() } });
     resolve.mockImplementationOnce(async (...a: unknown[]) => !(a[4] as (e: unknown) => boolean)(stale));
     choose.mockResolvedValueOnce('overwrite');
@@ -56,7 +56,7 @@ describe("the merge tool's kept work (spec #2 §13.3)", () => {
     expect(resolve).toHaveBeenLastCalledWith(expect.anything(), 'a.txt', { kind: 'text', text: 'one\nc\n' }, 'h2', expect.any(Function));
   });
 
-  it('Reload from disk keeps the ticks, drops the typed output, and rebuilds the shown tool (I1)', async () => {
+  it('Reload from disk keeps the ticks, drops the typed output, and rebuilds the shown tool', async () => {
     useMergeDrafts.setState({ drafts: { [key]: draft({ typed: true, edited: [0], text: 'typed\n' }) } });
     const reset = vi.fn();
     const off = registerLive(key, { tabId: 't', flush: () => {}, reset, done: () => {} });
@@ -110,7 +110,7 @@ describe("the merge tool's kept work (spec #2 §13.3)", () => {
     expect(choose).not.toHaveBeenCalled();
   });
 
-  it('Overwrite on a file deleted on disk says so and stops, rather than looping on Stale (N6)', async () => {
+  it('Overwrite on a file deleted on disk says so and stops, rather than looping on Stale', async () => {
     useMergeDrafts.setState({ drafts: { [key]: draft() } });
     const show = vi.spyOn(useToast.getState(), 'show');
     const reset = vi.fn();
@@ -125,7 +125,7 @@ describe("the merge tool's kept work (spec #2 §13.3)", () => {
     off();
   });
 
-  it('work on a file resolved elsewhere goes once the WIP list no longer has it conflicted (N2)', () => {
+  it('work on a file resolved elsewhere goes once the WIP list no longer has it conflicted', () => {
     useMergeDrafts.setState({ drafts: { [key]: draft(), [draftKey('t', '/r', 'b.txt')]: draft({ path: 'b.txt' }) } });
     const lists: Record<string, unknown> = { [wipKey('/r', false)]: { files: [{ path: 'b.txt', status: 'U' }, { path: 'a.txt', status: 'M' }] } };
     const services = { wip: { peek: (k: string) => lists[k] } } as never;
@@ -139,14 +139,14 @@ describe("the merge tool's kept work (spec #2 §13.3)", () => {
     expect(getDraft(draftKey('t', '/r', 'b.txt'))).toBeDefined();
   });
 
-  it("a closed tab's work goes (N2)", () => {
+  it("a closed tab's work goes", () => {
     useMergeDrafts.setState({ drafts: { [key]: draft(), [draftKey('u', '/r', 'a.txt')]: draft({ tabId: 'u' }) } });
     pruneClosedTabs(new Set(['u']));
     expect(getDraft(key)).toBeUndefined();
     expect(getDraft(draftKey('u', '/r', 'a.txt'))).toBeDefined();
   });
 
-  it('stores only the newest drafts, none too big; a failed store clears the old snapshot (N3)', () => {
+  it('stores only the newest drafts, none too big; a failed store clears the old snapshot', () => {
     const many = Object.fromEntries(Array.from({ length: STORED_DRAFTS + 5 }, (_, i) => [`k${i}`, draft({ at: i })]));
     const kept = storedDrafts({ ...many, huge: draft({ at: 999, text: 'x'.repeat(1_000_001) }) });
     expect(Object.keys(kept)).toHaveLength(STORED_DRAFTS);

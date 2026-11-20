@@ -1,5 +1,5 @@
 // Reached only through the lazily imported merge tool (repo/LazyDiffPanel.tsx): Monaco, Shiki
-// and the editor theme stay out of the startup chunk (spec §10.3), as the diff host's do.
+// and the editor theme stay out of the startup chunk, as the diff host's do.
 import type * as MonacoNs from 'monaco-editor/editor/editor.api';
 import type { ConflictFilePayload } from '../api/gen/ConflictFilePayload';
 import type { Pane } from '../api/gen/Pane';
@@ -29,7 +29,7 @@ export type MergeView = Array<MonacoNs.editor.ICodeEditorViewState | null>;
 /** Where the editors start: the ticks, and the output as it was left (else built from them). */
 export interface MergeStart { picks: Picks; output?: OutputState }
 
-/** The merge tool's three editors (spec #2 §13.3): Current and Incoming read-only, the output
+/** The merge tool's three editors: Current and Incoming read-only, the output
  * editable. Created on first use, disposed when the tool closes. */
 export interface MergeEditors {
   output: { getValue(): string };
@@ -312,7 +312,7 @@ export function createMergeEditors(host: { current: HTMLElement; incoming: HTMLE
   }
 
   // --- The output: one tracked range per region, its tints, and the hand edits ---
-  // M1: the end edge doesn't grow, so typing at column 1 of the line after a region stays out.
+  // The end edge doesn't grow, so typing at column 1 of the line after a region stays out.
   const stick = { stickiness: monaco.editor.TrackedRangeStickiness.GrowsOnlyWhenTypingBefore };
   let tracked = new Map<number, string>();
   const setSpans = (spans: Span[]) => {
@@ -345,7 +345,7 @@ export function createMergeEditors(host: { current: HTMLElement; incoming: HTMLE
   const tints = out.createDecorationsCollection();
   let ours = false;
   let lastSpans = spansNow();
-  // N5: the output's length, and whether it ends without a line break, as of the last change: a
+  // The output's length, and whether it ends without a line break, as of the last change: a
   // region that ends the file on an unterminated line takes typing at its end.
   let lastLen = outModel.getValueLength();
   let lastOpenEnd = outModel.getLineContent(outModel.getLineCount()) !== '';
@@ -363,7 +363,7 @@ export function createMergeEditors(host: { current: HTMLElement; incoming: HTMLE
       const lines = r.isEmpty() ? 0 : r.endLineNumber - r.startLineNumber + (r.endColumn > 1 ? 1 : 0);
       return [{ id, start: r.startLineNumber, lines }];
     });
-  /** M4: each line tinted by the side it came from; a hand-edited region in the base colour. */
+  /** Each line tinted by the side it came from; a hand-edited region in the base colour. */
   const paintOutput = () => {
     const decos: MonacoNs.editor.IModelDeltaDecoration[] = [];
     for (const r of regionsNow()) {
@@ -394,7 +394,7 @@ export function createMergeEditors(host: { current: HTMLElement; incoming: HTMLE
   };
   setChecks(lastPicks);
 
-  // M8: the ticks (and region places) each tick left, by the output's version, for Ctrl+Z.
+  // The ticks (and region places) each tick left, by the output's version, for Ctrl+Z.
   const history = new Map<number, { picks: Picks; spans: Span[]; edited: number[] }>();
   const edits: Array<() => void> = [];
   const restored: Array<(p: Picks) => void> = [];

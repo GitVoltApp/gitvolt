@@ -2,7 +2,7 @@ import { graphChip } from './chip';
 import { freshFixture, openUrl } from './fixtures';
 import { expect, test, type Page } from './test';
 
-/** The playground's rebase-lab (UX round 3, P): ⚠ on an interactive rebase onto main, and the two Squash rows on a multi-select. */
+/** The playground's rebase-lab: ⚠ on an interactive rebase onto main, and the two Squash rows on a multi-select. */
 const grid = (page: Page) => page.getByRole('grid', { name: 'Commit graph' });
 const row = (page: Page, subject: string) => grid(page).getByRole('row').filter({ hasText: subject });
 
@@ -32,7 +32,7 @@ test.describe('rebase-lab (playground)', () => {
       const l2 = editor.locator('[data-irebase-row]', { hasText: 'L2 Reword line two' });
       const warn = l2.locator('[aria-label="Predicted conflict"]');
       await expect(warn).toBeVisible({ timeout: 15_000 });
-      // UX4 Q.1: just left of the action dropdown, not at the row's far end.
+      // Just left of the action dropdown, not at the row's far end.
       const [w, a] = [(await warn.boundingBox())!, (await l2.locator('.irebase-action').boundingBox())!];
       expect(w.x + w.width).toBeLessThanOrEqual(a.x);
       expect(a.x - (w.x + w.width)).toBeLessThan(16);

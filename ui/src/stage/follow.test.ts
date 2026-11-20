@@ -17,7 +17,7 @@ const list = (...files: FileChange[]): FileListPayload => ({ files, added: 0, de
 const unstagedSpec = { kind: 'wip', worktree: WT, staged: false } as const;
 const stagedSpec = { kind: 'wip', worktree: WT, staged: true } as const;
 
-describe('the open diff follows the file (spec #2 §7.1)', () => {
+describe('the open diff follows the file', () => {
   it('a whole file staged reopens from Staged', () => {
     const open = targetFor(change('a.txt', 'i1'), unstagedSpec);
     const next = followTarget(open, WT, { unstaged: list(), staged: list(change('a.txt', 'h1')) });

@@ -76,7 +76,7 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('review mode in the source diff (spec 2026-10-08 §2)', () => {
+describe('review mode in the source diff', () => {
   it("the gutter's + goes on the lines that take a comment; a drag opens a box under the range's last line, Suggest change ready with its lines", async () => {
     render(<ActiveReview tabId="t" path="README.md" mode={ON} />);
     await waitFor(() => expect(host.setReviewGutter).toHaveBeenCalled());

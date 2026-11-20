@@ -1,11 +1,11 @@
-/** Pure layout for the sidebar's stacked panels (spec §6.4). Panels keep their fixed order; a
+/** Pure layout for the sidebar's stacked panels. Panels keep their fixed order; a
  * collapsed panel is just its header, in place; the expanded ones share the rest of the height. */
 export const HEADER_H = 26;
 export const ROW_H = 24;
 export const MIN_ROWS = 3;
 /** The least an expanded panel can be: its header plus about three rows. */
 export const MIN_PANEL_H = HEADER_H + MIN_ROWS * ROW_H;
-/** Tree rows (K61): no caret, so every row starts with a 13px icon slot; a depth step is the slot
+/** Tree rows: no caret, so every row starts with a 13px icon slot; a depth step is the slot
  * plus the 6px gap, which puts a child's icon exactly under its parent's name. */
 export const ICON_W = 13;
 export const ROW_GAP = 6;

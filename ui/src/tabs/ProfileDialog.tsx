@@ -11,7 +11,7 @@ export const useProfileDialog = create<{ mode: 'new' | 'rename' | null; open(mod
   close: () => set({ mode: null }),
 }));
 
-/** New profile… / Edit profile… (the profile switcher's menu), spec §14.1. */
+/** New profile… / Edit profile… (the profile switcher's menu). */
 export function ProfileDialog() {
   const mode = useProfileDialog((s) => s.mode);
   if (!mode) return null;

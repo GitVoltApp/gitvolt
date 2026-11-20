@@ -40,7 +40,7 @@ beforeEach(() => {
   useForge.setState({ byTab: {} });
 });
 
-describe('the sidebar MR/PR section (spec #4 §2, §5)', () => {
+describe('the sidebar MR/PR section', () => {
   it('is not there without a forge target', () => {
     show();
     expect(order()).toEqual(['Local', 'Remote', 'Worktrees', 'Stashes', 'Tags']);

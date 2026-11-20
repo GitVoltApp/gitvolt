@@ -136,7 +136,7 @@ describe('commit', () => {
     expect(['MERGE_HEAD', 'MERGE_MSG', 'SQUASH_MSG'].map((f) => t.memfs.existsSync(`${t.repo.gitdir}/${f}`))).toEqual([false, false, false]);
   });
 
-  it('a commit in a linked worktree commits only its index and journals there (Review Focus 1)', async () => {
+  it('a commit in a linked worktree commits only its index and journals there', async () => {
     const { t, base, ctx } = await repo();
     await t.branch('feature', base);
     const side = await addWorktree(t, 'side', 'feature');

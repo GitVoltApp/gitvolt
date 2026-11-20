@@ -1,8 +1,8 @@
 import { inTauri } from '../api/transport';
 import type { ImageSource } from './sources';
 
-/** The image as PNG bytes: drawn to a canvas at its natural size (an SVG at its intrinsic size,
- * K81), since clipboards generally want image/png whatever the file's own format. */
+/** The image as PNG bytes: drawn to a canvas at its natural size (an SVG at its intrinsic size),
+ * since clipboards generally want image/png whatever the file's own format. */
 export async function imagePng(src: ImageSource): Promise<Blob> {
   const img = new Image();
   img.src = src.url;
@@ -17,7 +17,7 @@ export async function imagePng(src: ImageSource): Promise<Blob> {
 }
 
 /** Puts the image on the system clipboard as PNG. The browser's own clipboard first (as `copyText`
- * does, H19); the app's clipboard plugin only when the browser refuses. */
+ * does); the app's clipboard plugin only when the browser refuses. */
 export async function copyImage(src: ImageSource): Promise<void> {
   const png = imagePng(src);
   try {

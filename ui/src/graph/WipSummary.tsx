@@ -4,14 +4,14 @@ import { StatusCountsView } from '../files/FileList';
 import { isEditableTarget } from '../ui/keys';
 import { flushDrafts, useWipDraft, WIP_DRAFT_COUNTER_FROM, WIP_DRAFT_WARN_FROM } from '../commit/draft';
 
-/** A press in the draft box bubbles to the row (K51), so it selects WIP like any press on the row
+/** A press in the draft box bubbles to the row, so it selects WIP like any press on the row
  * (plain, or with Ctrl/Shift as a row click); it is not a drag start, and the click that follows
  * toggles nothing. */
 const keepClick = (e: MouseEvent) => e.stopPropagation();
 
 /**
- * The inline draft summary (K48): a compact rounded text box, "// WIP" as its placeholder. Its text
- * is the WIP draft's summary, shared with the commit box (spec #2 §8.2; `commit/draft.ts`).
+ * The inline draft summary: a compact rounded text box, "// WIP" as its placeholder. Its text
+ * is the WIP draft's summary, shared with the commit box (`commit/draft.ts`).
  */
 function DraftInput({ repoId, worktreePath }: { repoId: string; worktreePath: string }) {
   const [draft, setDraft] = useWipDraft(repoId, worktreePath);

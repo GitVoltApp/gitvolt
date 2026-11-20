@@ -1,14 +1,14 @@
 /**
- * Plan 1C's dependency surface on plan 1B (details panel, diff takeover, focus zones): 1C
- * features import 1B from here, and tests `vi.mock` this file. Every seam acts on a tab's own
- * `RepoViewStore` and `RepoServices` (ruling R3, `tabStores.ts`), in 1B's `fileMenuEnv(store)`
- * style. The contracts were re-targeted at 1B's real code (preflight §2 T9):
- * - opening a file takes 1B's `DiffTarget` (its two `BlobSource`s), not a (sha, path) pair;
- * - commit messages are the per-repo `CommitMessageCache` (F1: details carry no message);
- * - the sidebar's focus zone is 1B's `useFocusZone('sidebar', ref)` hook, under the tab's
+ * The app's dependency surface on the repo view (details panel, diff takeover, focus zones):
+ * app features import the repo view from here, and tests `vi.mock` this file. Every seam acts on a tab's own
+ * `RepoViewStore` and `RepoServices` (`tabStores.ts`), in `fileMenuEnv(store)`
+ * style. The contracts:
+ * - opening a file takes a `DiffTarget` (its two `BlobSource`s), not a (sha, path) pair;
+ * - commit messages are the per-repo `CommitMessageCache` (details carry no message);
+ * - the sidebar's focus zone is the `useFocusZone('sidebar', ref)` hook, under the tab's
  *   `RepoViewContext` (RepoTab provides it);
  * - the diff editor's context menu is `MonacoHost.setContextMenuHandler` (`diff/monaco/host.ts`),
- *   installed by the menus lane (T15a) while its tab is active; there's no seam for it here.
+ *   installed by the menus while its tab is active; there's no seam for it here.
  */
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -23,7 +23,7 @@ export { fileViewTarget, RepoViewContext, targetFor, useRepoView, useRepoViewSto
 /** Stands in for a tab with no view yet (no graph loaded). */
 const NO_VIEW = createStore(() => ({ diff: null })) as unknown as RepoViewStore;
 
-/** True while the tab's center panel shows a file (1B's diff takeover, spec §10.1). */
+/** True while the tab's center panel shows a file (the diff takeover). */
 export function useDiffOpen(tabId: string): boolean {
   return useStore(useTabView(tabId)?.store ?? NO_VIEW, (s: RepoViewState) => s.diff !== null);
 }
@@ -37,13 +37,13 @@ export function openDiff(tabId: string, target: DiffTarget): boolean {
   return !!store;
 }
 
-/** File View of `path` as of commit `sha` (spec §10.1; "View all files", §9.3). */
+/** File View of `path` as of commit `sha` ("View all files"). */
 export function openFileView(tabId: string, sha: string, path: string): boolean {
   return openDiff(tabId, fileViewTarget(path, sha, { kind: 'commit', id: sha, parent: 0 }));
 }
 
 /**
- * Compare mode (spec §9.4): `from` → `to` (two commits, FROM then TO, K27), or a commit with a
+ * Compare mode: `from` → `to` (two commits, FROM then TO), or a commit with a
  * working tree (`'worktree'`: the tab's own). As a click then a Ctrl+click would. False when a
  * commit isn't in the loaded graph.
  */
@@ -76,7 +76,7 @@ export async function fetchCommitMessage(tabId: string, sha: string): Promise<st
   return m.body ? `${m.summary}\n\n${m.body}` : m.summary;
 }
 
-/** Every path at a commit ("View all files", spec §9.3; the palette, §11.2). */
+/** Every path at a commit ("View all files"; the palette). */
 export async function listTreeFiles(tabId: string, sha: string): Promise<string[]> {
   return servicesOf(tabId).treeFiles.get(sha);
 }

@@ -23,6 +23,6 @@ export interface DemoContext {
   notInDemo(what: string): never;
   /** Commits, stashes and the journal are stamped with it. */
   clock: DemoClock;
-  /** The journals, staging logs and queues (plan 3's writes). */
+  /** The journals, staging logs and queues of the demo's writes. */
   writes: DemoWrites;
 }

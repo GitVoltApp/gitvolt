@@ -33,8 +33,8 @@ function codeRanges(body: string): Array<[number, number]> {
 }
 
 /** `body` with each GitHub `user-attachments` URL replaced by its signed, time-limited
- * `private-user-images` URL from `bodyHtml` (the `full` media type, spec §4.2): by the asset id
- * the signed URL carries, else in document order (ruling 6). Only URLs the renderer loads or links
+ * `private-user-images` URL from `bodyHtml` (the `full` media type): by the asset id
+ * the signed URL carries, else in document order. Only URLs the renderer loads or links
  * change: never one inside code (a fenced block or an inline span), which shows as written.
  * Unchanged without a match. */
 export function signedAttachments(body: string, bodyHtml: string | null | undefined): string {

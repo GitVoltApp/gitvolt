@@ -449,7 +449,7 @@ export function cachedMrs(f: DemoForge, r: Remotes, refs: string[], repo: BadgeR
   return { kind: project.kind, remote, project, list: mrList, badges: badgeList, savedAt };
 }
 
-// --- creating (4C T5: hub.rs `create_context`, create.rs `first_commit`) ---
+// --- creating (hub.rs `create_context`, create.rs `first_commit`) ---
 /** The core's create.rs `split_message`. */
 export function splitMessage(message: string): [string, string] {
   const text = message.replace(/\r\n/g, '\n').replace(/\s+$/u, '');

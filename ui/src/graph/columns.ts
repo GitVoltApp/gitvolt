@@ -3,7 +3,7 @@ import { SHORT_SHA_LEN } from '../format/sha';
 import type { Metrics } from './geometry';
 
 /** The graph table's columns, left to right: Branch/Tag · Graph · Message · Author · Date · SHA.
- * Every column but the last has a drag handle on its RIGHT edge (feedback F3); SHA's right edge is
+ * Every column but the last has a drag handle on its RIGHT edge; SHA's right edge is
  * the table's end. */
 export type ResizableColumn = 'labels' | 'graph' | 'message' | 'author' | 'date' | 'sha';
 /** The columns with a stored preference (Message flexes: it takes what is left over). */
@@ -11,7 +11,7 @@ export type PrefColumn = 'labels' | 'graph' | 'author' | 'date' | 'sha';
 
 /** The SHA cell's monospace glyph (13 px ui-monospace, 1ch, measured in Chromium and WebKit) and
  * its 6 + 6 px padding (fixed at every density, graph.css): SHA ranges from the app-wide
- * SHORT_SHA_LEN hex characters (H15) to all 40. The cell shows whole characters only
+ * SHORT_SHA_LEN hex characters to all 40. The cell shows whole characters only
  * (graph.css), so a wider column reveals more of the hash. */
 const SHA_CH = 7.83;
 const SHA_PAD = 12;
@@ -21,8 +21,8 @@ const SHA_SLACK = 1;
 /** Minimum widths, CSS px (Task 15). Message's minimum is where the smart fit starts squeezing
  * Author and Date. */
 export const COLUMN_MIN = { labels: 80, graph: 48, author: 60, date: 90, message: 160, sha: Math.ceil(SHORT_SHA_LEN * SHA_CH + SHA_PAD) + SHA_SLACK } as const;
-/** SHA's default width, its minimum: exactly SHORT_SHA_LEN characters, like everywhere else
- * (H15); and its maximum (the full 40-character hash). */
+/** SHA's default width, its minimum: exactly SHORT_SHA_LEN characters, like everywhere else;
+ * and its maximum (the full 40-character hash). */
 export const SHA_W = COLUMN_MIN.sha;
 export const SHA_MAX = Math.ceil(40 * SHA_CH + SHA_PAD);
 /** The widest Message, Author and Date can be dragged. Their handles aren't limited by the window
@@ -39,14 +39,14 @@ export const DEFAULT_COLUMN_PREFS: ColumnPrefs = { labels: 200, graph: null, aut
 export interface ColumnWidths { labels: number; graph: number; message: number; author: number; date: number; sha: number; total: number }
 
 /** The width every lane of the graph needs, node padding included. Below it the graph is cut off
- * (the overflow strip shows, F2). */
+ * (the overflow strip shows). */
 export const lanesWidth = (maxLanes: number, m: Pick<Metrics, 'laneW' | 'padX'>) => maxLanes * m.laneW + 2 * m.padX;
 
 /**
- * The graph column's width before the user resizes it, and its MAX width (F2): every lane plus
+ * The graph column's width before the user resizes it, and its MAX width: every lane plus
  * padding, at least 64 px. Uncapped by the window, so no lane (and no commit on it) is ever
  * clipped at the default width; a table wider than the window scrolls horizontally. Narrowing
- * the column by hand can clip lanes (the overflow strip marks it; the collapse zone is F11).
+ * the column by hand can clip lanes (the overflow strip marks it; the collapse zone).
  */
 export const autoGraphWidth = (maxLanes: number, m: Pick<Metrics, 'laneW' | 'padX'>) =>
   Math.max(64, lanesWidth(maxLanes, m));
@@ -58,12 +58,12 @@ const MIN_TOTAL = COLUMN_MIN.labels + COLUMN_MIN.graph + COLUMN_MIN.message + CO
 export const columnMax = (col: 'labels' | 'graph', available: number) =>
   Math.max(COLUMN_MIN[col], available - (MIN_TOTAL - COLUMN_MIN[col]));
 
-/** The columns that can be hidden, per repo (spec §8.4: every one but Graph and Message). */
+/** The columns that can be hidden, per repo (every one but Graph and Message). */
 export type HideableColumn = 'labels' | 'author' | 'date' | 'sha';
 export const HIDEABLE_COLUMNS: readonly HideableColumn[] = ['labels', 'author', 'date', 'sha'];
 const NONE_HIDDEN: ReadonlySet<HideableColumn> = new Set();
 
-/** Spec §8.4: a column shrunk to its minimum shows an icon instead of its header text (and its
+/** A column shrunk to its minimum shows an icon instead of its header text (and its
  * cells collapse: icon-only chips, the avatar only). SHA is a preference column: never collapsed. */
 export function isCollapsed(col: 'labels' | 'graph' | 'message' | 'author' | 'date', width: number): boolean {
   return width <= COLUMN_MIN[col];
@@ -75,7 +75,7 @@ export const handleShown = (col: ResizableColumn, hidden: ReadonlySet<HideableCo
   !hidden.has(col as HideableColumn);
 
 /**
- * Smart fit (spec §8.4): turns preferred widths into the widths actually rendered for a table
+ * Smart fit: turns preferred widths into the widths actually rendered for a table
  * `available` px wide. Pure, whole pixels in and out.
  * 1. Branch/Tag, Graph and SHA always get their width (clamped to their minimums; SHA also to
  *    SHA_MAX).
@@ -87,7 +87,7 @@ export const handleShown = (col: ResizableColumn, hidden: ReadonlySet<HideableCo
  * 4. Once a filling Message is at its minimum, Author and Date shrink toward their minimums, each
  *    in proportion to its room above its minimum (so both reach their minimums together).
  * 5. Below the sum of the minimums, `total` exceeds `available` and the table scrolls.
- * `hidden` columns (spec §8.4) get width 0, give their space to Message and have no room to give
+ * `hidden` columns get width 0, give their space to Message and have no room to give
  * when squeezing.
  */
 export function allocateColumns(prefs: { labels: number; graph: number; author: number; date: number; sha?: number; message?: number | null }, available: number, hidden: ReadonlySet<HideableColumn> = NONE_HIDDEN): ColumnWidths {
@@ -128,7 +128,7 @@ type PrefsPatch = Partial<Record<PrefColumn, number>> & { message?: number | nul
 /**
  * The range a handle's column can be resized to from the rendered widths `w` (for aria-valuemin
  * and aria-valuemax): Branch/Tag and Graph up to columnMax (never below their current width, and
- * Graph never past `graphMax`, F2); SHA up to SHA_MAX; Message, Author and Date up to COLUMN_MAX
+ * Graph never past `graphMax`); SHA up to SHA_MAX; Message, Author and Date up to COLUMN_MAX
  * however narrow the window (the table scrolls), never limited by what a neighbour can give.
  */
 export function handleRange(col: ResizableColumn, w: ColumnWidths, available: number, graphMax = Infinity): { min: number; max: number } {
@@ -170,7 +170,7 @@ export function resizeColumn(col: ResizableColumn, start: ColumnWidths, dx: numb
 /**
  * THE persistence seam for column widths, keyed by repo (`repoId`: a stable per-repo key, the
  * repository's path today). The app points it at the per-repo settings (`RepoSettings.columns`,
- * app/columnsPersistence.ts; spec §8.4, "Widths are saved per repo"); until then it's
+ * app/columnsPersistence.ts); until then it's
  * session-only. `save` is called once per gesture that changed something (pointer up, key
  * press), never per pointer move.
  */
@@ -178,8 +178,8 @@ export interface ColumnPrefsPersistence { load(repoId: string): ColumnPrefs | nu
 export const columnPrefsPersistence: ColumnPrefsPersistence = { load: () => null, save: () => {} };
 
 /**
- * THE persistence seam for the hidden columns (spec §8.4, "all except Graph and Message can be
- * hidden"), keyed by repo like the widths. The app points it at the per-repo settings
+ * THE persistence seam for the hidden columns (all except Graph and Message can be
+ * hidden), keyed by repo like the widths. The app points it at the per-repo settings
  * (`RepoSettings.hiddenColumns`, app/columnsPersistence.ts); until then it's session-only. `save`
  * is called once per toggle. Unknown
  * names from storage are dropped on load.
@@ -196,12 +196,12 @@ interface Gesture { col: ResizableColumn; start: ColumnWidths; prefs: ColumnPref
 interface ColumnPrefsState {
   repoId: string | null;
   prefs: ColumnPrefs;
-  /** The repo's hidden columns (spec §8.4). */
+  /** The repo's hidden columns. */
   hidden: ReadonlySet<HideableColumn>;
   /** Switches to `repoId`'s saved widths and hidden columns (or the defaults). */
   loadFor(repoId: string): void;
   /** Starts a resize gesture on `col` from the widths currently rendered in an `available`-px
-   * table. `graphMax`: the widest the Graph column may get (every lane plus padding, F2). */
+   * table. `graphMax`: the widest the Graph column may get (every lane plus padding). */
   beginResize(col: ResizableColumn, start: ColumnWidths, available: number, graphMax?: number): void;
   /**
    * Moves the gesture's handle `dx` px from its start (resizeColumn). Nothing is written until
@@ -212,7 +212,7 @@ interface ColumnPrefsState {
   /** Ends the gesture: hands the prefs to the persistence seam if the gesture changed them. */
   endResize(): void;
   /** Sets a column's preferred width, clamped to its minimum and rounded to a whole pixel. */
-  /** Double-click on a handle (K73): that column back to its default (Graph: auto), persisted. */
+  /** Double-click on a handle: that column back to its default (Graph: auto), persisted. */
   resetWidth(col: ResizableColumn): void;
   setWidth(col: PrefColumn, width: number): void;
   /** Hides a shown column or shows a hidden one, and hands the new set to its seam. */
@@ -248,7 +248,7 @@ export const useColumnPrefs = create<ColumnPrefsState>((set, get) => ({
   endResize: () => {
     const g = gesture;
     gesture = null;
-    // A Graph gesture ending at its lanes' width stores "auto", so more lanes auto-fit again (F2).
+    // A Graph gesture ending at its lanes' width stores "auto", so more lanes auto-fit again.
     if (g?.changed && g.col === 'graph') {
       const w = get().prefs.graph;
       if (w !== null && w >= g.graphMax) set((s) => ({ prefs: { ...s.prefs, graph: null } }));

@@ -3,8 +3,8 @@ import {
   GitBranch, GitCommitHorizontal, GitCompare, GitGraph, GitPullRequest, Hash, LoaderCircle, MessageSquare, Pencil, RotateCcw, Settings, SquareArrowOutUpRight, SquareX, Tag, X,
 } from 'lucide-react';
 
-/** One icon per action type, shared by every menu (spec §7 "Icons"), so the same action always
- * looks the same. Later sub-projects add theirs here. */
+/** One icon per action type, shared by every menu, so the same action always
+ * looks the same. Features add theirs here. */
 export const ICONS = {
   /** The chosen main remote (checked) and the unchosen one. */
   check: Check,

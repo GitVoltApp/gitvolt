@@ -17,7 +17,7 @@ function Discard({ onRun, n = 5 }: { onRun: () => void; n?: number }) {
 // Visual only (aria-hidden): found by its class.
 const overlay = () => document.querySelector<HTMLElement>('.arm-overlay');
 
-describe('arm in place (spec §ui confirms)', () => {
+describe('arm in place', () => {
   let rects: ReturnType<typeof vi.spyOn>;
   let clock: ReturnType<typeof armClock>;
   beforeEach(() => {
@@ -81,7 +81,7 @@ describe('arm in place (spec §ui confirms)', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  // UX R1 C.2: under GNOME every press makes the window lose focus and get it back a few ms later
+  // Under GNOME every press makes the window lose focus and get it back a few ms later
   // (windowBlur.ts), and the browser gives it back to the element that had it: a focusin there,
   // before the confirm press's click. That's focus returning, not moving: it stays armed. Focus
   // moving to another element still disarms.
@@ -230,7 +230,7 @@ describe('arm in place (spec §ui confirms)', () => {
     expect(overlay()).not.toBeNull();
   });
 
-  it('an action started from the keyboard, with no control to arm, asks in a popover with key hints (board H)', async () => {
+  it('an action started from the keyboard, with no control to arm, asks in a popover with key hints', async () => {
     render(<><ArmLayer /><ConfirmDialog /></>);
     fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     let a!: Promise<boolean>;

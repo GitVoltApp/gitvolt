@@ -9,7 +9,7 @@ const pick: InProgress = { kind: 'cherryPick', head: C, message: '', conflicted:
 const revert: InProgress = { kind: 'revert', head: C, message: '', conflicted: 1 };
 const nameAt = (sha: string) => (sha === B ? 'main' : null);
 
-describe('conflict wording in current/incoming terms (UX round 2)', () => {
+describe('conflict wording in current/incoming terms', () => {
   it('never says us or them', () => {
     for (const text of Object.values(CONFLICT_LABEL)) expect(text).not.toMatch(/\b(us|them|ours|theirs)\b/);
     expect(CONFLICT_LABEL.deletedByUs).toBe('deleted in current');

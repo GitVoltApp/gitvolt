@@ -10,7 +10,7 @@ import { checkoutMr, checkoutMrInWorktree, checkoutState, sourceRemote, unreadab
 import { toggleMrDraft } from './mrview/writes';
 import { openMrView } from './poll';
 
-// A sidebar MR/PR row's menu (the `mr` kind). Built from memory like every menu (spec §7): the
+// A sidebar MR/PR row's menu (the `mr` kind). Built from memory like every menu: the
 // rows read the tab's stores; requests start only on a click.
 
 type Action = Extract<MenuRow, { kind: 'action' }>;

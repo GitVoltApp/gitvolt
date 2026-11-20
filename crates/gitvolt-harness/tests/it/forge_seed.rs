@@ -1,4 +1,4 @@
-//! `forge.json` v1 and the `forge_lab` fixture (website demo plan 4).
+//! `forge.json` v1 and the `forge_lab` fixture.
 
 use gitvolt_core::testing::{isolated_git_env, TestRepo};
 use gitvolt_harness::forge_seed;

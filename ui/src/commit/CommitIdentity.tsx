@@ -9,7 +9,7 @@ import { HoverTooltip } from '../ui/HoverTooltip';
 const known = new Map<string, CommitIdentity | null>();
 
 /**
- * Who the commit will be made as (ux round 1): git's own resolution (`commitIdentity`), asked
+ * Who the commit will be made as: git's own resolution (`commitIdentity`), asked
  * each time the box mounts, so a `git config` change shows the next time the WIP is selected.
  * With none, a warning in its place: git would refuse the commit.
  */

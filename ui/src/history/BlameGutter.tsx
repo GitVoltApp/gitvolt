@@ -18,7 +18,7 @@ import { useTheme } from '../theme/store';
 import { HoverTooltip } from '../ui/HoverTooltip';
 import { colorIndex, groupBlame, visibleGroups } from './blame';
 
-/** The strip's width (ruling 8; UX round 1: 200 px), at most BLAME_MARGIN_SHARE of the editor's,
+/** The strip's width (200 px), at most BLAME_MARGIN_SHARE of the editor's,
  * so the code keeps most of a narrow editor. */
 export const BLAME_MARGIN_PX = 200;
 export const BLAME_MARGIN_SHARE = 0.35;
@@ -26,7 +26,7 @@ const BLAME_CACHE = 32;
 const AVATAR_PX = 16;
 
 const loaders = new Map<string, Loader<BlamePayload>>();
-/** Blame per (rev, path), cached per repo and worktree (spec #3 §3.10). */
+/** Blame per (rev, path), cached per repo and worktree. */
 function blameLoader(repoId: number, worktree: string): Loader<BlamePayload> {
   const k = `${repoId}\0${worktree}`;
   let l = loaders.get(k);
@@ -78,7 +78,7 @@ export function BlameLayer({ repoId, worktree, row, onPick }: { repoId: number; 
 }
 
 /**
- * Blame (spec #3 §3.10, §4.2): per line group, a colour bar, the author's avatar, the summary and
+ * Blame: per line group, a colour bar, the author's avatar, the summary and
  * the date, in the file editor's margin strip left of the line numbers (`host.setFileMargin`), on
  * the code's line box, redrawn as it scrolls. A
  * click picks the group's commit (`onPick(sha, false)`); Alt+click picks it in the graph. The strip
@@ -98,7 +98,7 @@ export function BlameGutter({ host, blame, onPick }: { host: MonacoHost; blame: 
   const dateFormat = useAppState((s) => s.settings.dateFormat);
   if (!margin) return null;
   const { first, last } = margin.visibleLines();
-  // Monaco's own line box and font size (UX B.3): a group's first row is one code line high, its
+  // Monaco's own line box and font size: a group's first row is one code line high, its
   // text centred in it as the code's is, so blame text, avatar and code share a baseline.
   const { lineHeight, fontSize } = margin.metrics();
   return createPortal(

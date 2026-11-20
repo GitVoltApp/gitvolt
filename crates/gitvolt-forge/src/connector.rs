@@ -1,4 +1,4 @@
-//! The forge connector `Api::with_forge` takes (spec #4 §3.1): a provider for an account, at the
+//! The forge connector `Api::with_forge` takes: a provider for an account, at the
 //! endpoints its host has (the defaults, or the harness's fake forge).
 
 use crate::avatar_cache::DiskAvatarCache;
@@ -25,10 +25,8 @@ pub struct ForgeConfig {
 pub struct Forge {
     cfg: ForgeConfig,
     caches: Mutex<HashMap<String, Arc<DiskAvatarCache>>>,
-    // --- 5A T2 ---
     /// Host → GitHub's Markdown image bases, replacing the defaults (`with_image_bases`).
     image_bases: HashMap<String, Vec<String>>,
-    // --- end 5A T2 ---
     /// The harness's fake forge's change count (`HttpClient::with_change_counter`).
     changes: Option<crate::http::ChangeCounter>,
 }
@@ -44,13 +42,11 @@ impl Forge {
         self
     }
 
-    // --- 5A T2 ---
     /// GitHub's Markdown image bases for `host`, replacing the defaults (the harness: its fake's).
     pub fn with_image_bases(mut self, host: &str, bases: Vec<String>) -> Self {
         self.image_bases.insert(host.to_string(), bases);
         self
     }
-    // --- end 5A T2 ---
 
     /// One cache per host, shared by every provider for it (a re-added account keeps it).
     fn cache(&self, host: &str) -> Option<Arc<DiskAvatarCache>> {
@@ -97,7 +93,6 @@ impl ForgeConnector for Forge {
         })
     }
 
-    // --- 5A T2 ---
     fn public_image<'a>(&'a self, url: &'a str) -> ForgeFuture<'a, ForgeImage> {
         // The harness's fake forge is plain http; the app's never.
         Box::pin(crate::images::fetch_public(url, self.cfg.only_overrides))
@@ -118,7 +113,6 @@ impl ForgeConnector for Forge {
             tokio::task::spawn_blocking(move || crate::detect::detect(&base)).await.map_err(|e| GbError::other(format!("asking {host} which forge it runs failed: {e}")))
         })
     }
-    // --- end 5A T2 ---
 }
 
 #[cfg(test)]
@@ -140,7 +134,6 @@ mod tests {
         assert_eq!((p.kind(), p.host()), (ForgeKind::Forgejo, "forgejo.example.org"));
     }
 
-    // --- 5A T2 ---
     #[test]
     fn image_bases_replace_githubs_defaults_for_that_host() {
         use gitvolt_core::forge::ForgeProject;
@@ -152,7 +145,6 @@ mod tests {
         assert!(p.image(&project, "http://127.0.0.1:9/github-images/1/a.png?jwt=x").is_some());
         assert!(p.image(&project, "https://private-user-images.githubusercontent.com/1/a.png").is_none(), "the real host isn't reachable from the harness");
     }
-    // --- end 5A T2 ---
 
     /// One token in memory.
     struct OneToken;

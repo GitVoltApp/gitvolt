@@ -3,11 +3,11 @@
 .center-panel > .graph-panel { flex: 1; min-height: 0; }
 .center-panel > .diff-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .right-panel { position: relative; flex: none; min-width: 0; display: flex; flex-direction: column; background: var(--panel-bg0); border-left: 1px solid var(--section-border); overflow: hidden; }
-/* Feedback F12: while the next selection loads, the panel keeps the previous one (inert to the
+/* While the next selection loads, the panel keeps the previous one (inert to the
    pointer, so a stale row can't be opened) and, past ~150 ms, shows a thin progress line. */
 .right-panel[aria-busy="true"] > .details-panel { pointer-events: none; }
 .panel-busy { position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 2; overflow: hidden; pointer-events: none; opacity: 0; animation: panel-busy-show 0s linear 150ms forwards; }
-/* J19: colour/opacity only, never a layout property — the sweep is a `transform: translateX`
+/* Colour/opacity only, never a layout property — the sweep is a `transform: translateX`
    (compositor-only), not an animated `left`. Static `left: -30%` places the bar's rest position;
    the keyframes move it from there (0%) to `left: 100%`'s equivalent, 130% of the container
    (`.panel-busy`) expressed as %-of-own-width (the bar is 30% of the container): 130/30 = 433⅓%. */
@@ -17,7 +17,7 @@
 @media (prefers-reduced-motion: reduce) { .panel-busy::after { animation: none; left: 0; width: 100%; opacity: 0.6; } }
 .panel-resizer { flex: none; width: 4px; margin-left: -2px; margin-right: -2px; z-index: 1; cursor: col-resize; touch-action: none; }
 .panel-resizer:hover, .panel-resizer:focus-visible { background: var(--blue); outline: none; }
-/* No per-area focus visuals (feedback H4 overrides spec §11.1's focus outline): keyboard focus
+/* No per-area focus visuals (no focus outline): keyboard focus
    belongs to the app as a whole, and each selection stays its normal blue whichever area has DOM
    focus. The focus zones still route the arrow keys (focus.ts); nothing here is keyed on them. */
 /* The diff panel's own chunk failed (its diff.css may be missing too): message, Retry, Close. */

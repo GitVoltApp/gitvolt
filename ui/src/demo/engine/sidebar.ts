@@ -1,4 +1,4 @@
-// The sidebar's branches, remotes, worktrees, stashes, tags and submodules (spec §6.4), as
+// The sidebar's branches, remotes, worktrees, stashes, tags and submodules, as
 // shelldata::sidebar reads them.
 import type { LocalBranch } from '../../api/gen/LocalBranch';
 import type { SidebarPayload } from '../../api/gen/SidebarPayload';
@@ -15,7 +15,7 @@ import type { DemoRepo } from './repo';
 
 const nonEmpty = (v: string | null) => (v === null || v === '' ? null : v);
 
-/** Where Push sends `branch` (§12.3): the push remote and the same name, else the upstream, else
+/** Where Push sends `branch`: the push remote and the same name, else the upstream, else
  *  the branch a remote has by the same name (`resolvePushTarget`). */
 export async function pushTarget(repo: DemoRepo, branch: string): Promise<{ remote: string; branch: string } | null> {
   return (await resolvePushTarget(repo, branch))?.target ?? null;

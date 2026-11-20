@@ -1,4 +1,4 @@
-//! UX L: GitVolt's Edit stop is "about to commit". Right after git stops on the Edit row's commit,
+//! GitVolt's Edit stop is "about to commit". Right after git stops on the Edit row's commit,
 //! HEAD goes back to its parent (`reset --soft`), so the commit's changes are staged and its
 //! message is the commit box's. The user changes them, commits in pieces (Commit, at the stop) or
 //! not, and Continue commits what's staged (the original author kept), then goes on.
@@ -24,7 +24,7 @@ fn oid(hex: &str) -> Result<gix::ObjectId, GbError> {
     gix::ObjectId::from_hex(hex.trim().as_bytes()).map_err(gix_err)
 }
 
-/// L.1: git stopped right after the Edit row's commit (`made`, HEAD: nothing done there yet).
+/// git stopped right after the Edit row's commit (`made`, HEAD: nothing done there yet).
 /// HEAD goes back to its parent, a `reset --soft` (the index and the worktree stay as they are),
 /// and the note records the stop, with the message the box starts with: the Edit row's new one
 /// (`file`), the one this stop already had (it's staged again), or the commit's own. A root or
@@ -62,7 +62,7 @@ pub(crate) async fn stage_edit_stop(cx: &mut WriteCx<'_>, git_dir: &Path, at: &s
             return;
         }
     };
-    // The note first (fix round 1): a crash after it, before the reset, leaves HEAD on git's
+    // The note first: a crash after it, before the reset, leaves HEAD on git's
     // commit, which reads as git's own stop (`edit_base` needs HEAD off it) and Continues as one.
     let note = EditStaged { at: at.to_string(), amend: made.to_string(), base: base.clone(), added, message };
     if let Err(e) = write_edit_staged(git_dir, &note) {
@@ -96,7 +96,7 @@ pub(crate) fn not_staged(file: &str) -> String {
     format!("{file} from this commit isn't staged. Stage it, or discard it, then Continue.")
 }
 
-/// Fix round 1: a path of the stopped commit (`amend`) left untracked: in its tree, but neither in
+/// A path of the stopped commit (`amend`) left untracked: in its tree, but neither in
 /// the index nor in HEAD, and still on disk. Any other untracked file (`.env`, build output) is
 /// the user's, and never holds Continue up.
 async fn left_untracked(cx: &WriteCx<'_>, amend: &str) -> Result<Option<String>, GbError> {
@@ -142,7 +142,7 @@ pub(crate) enum AtStop {
     Nothing,
 }
 
-/// L.2: Continue at a soft-reset Edit stop, before git's own `--continue`. Refused while
+/// Continue at a soft-reset Edit stop, before git's own `--continue`. Refused while
 /// tracked changes are unstaged (git would refuse them too). Then:
 /// - nothing committed at the stop (HEAD on its base), the index the commit's own tree and the
 ///   message its own: HEAD goes back to git's commit (`Restored`), unchanged;
@@ -310,7 +310,7 @@ mod tests {
         r.git(&["show", "--format=%an <%ae> %ad%n%B", "--date=raw", rev])
     }
 
-    /// L.1, L.6: the stop is "about to commit": HEAD on the commit's parent, its changes staged,
+    /// The stop is "about to commit": HEAD on the commit's parent, its changes staged,
     /// nothing else; the stop's state names both. A plain Continue keeps the commit git made:
     /// identical but for its committer.
     #[tokio::test]
@@ -339,7 +339,7 @@ mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "");
     }
 
-    /// L.2: a change staged and a new message: Continue commits them as the original's author
+    /// A change staged and a new message: Continue commits them as the original's author
     /// (its date too), the committer now; one commit, as the plan had.
     #[tokio::test]
     async fn continue_commits_the_staged_change_as_the_original_author() {
@@ -360,7 +360,7 @@ mod tests {
         assert_eq!(r.git(&["rev-list", "--count", "main..topic"]), "2");
     }
 
-    /// L.1, L.2: an Edit row's new message is the box's at the stop (git's commit isn't amended
+    /// An Edit row's new message is the box's at the stop (git's commit isn't amended
     /// there); Continue without one commits with it.
     #[tokio::test]
     async fn the_rows_new_message_is_the_boxs_and_continue_commits_with_it() {
@@ -378,7 +378,7 @@ mod tests {
         assert_eq!(r.git(&["log", "-1", "--format=%an %ad", "--date=raw", "topic~1"]), "Grace Hopper 1600000000 +0200");
     }
 
-    /// L.2, L.4, L.6: split in pieces: one file unstaged, Commit (the rebase stays stopped), the
+    /// Split in pieces: one file unstaged, Commit (the rebase stays stopped), the
     /// rest staged again, and Continue with its message. One Undo restores the branch.
     #[tokio::test]
     async fn split_in_pieces_then_continue_and_one_undo() {
@@ -403,7 +403,7 @@ mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "");
     }
 
-    /// L.2: every change committed in pieces: Continue just goes on.
+    /// Every change committed in pieces: Continue just goes on.
     #[tokio::test]
     async fn all_committed_in_pieces_continue_just_goes_on() {
         let data = tempfile::tempdir().unwrap();
@@ -420,7 +420,7 @@ mod tests {
         assert_eq!(r.git(&["log", "--format=%s", "main..topic"]), "T2 After\nPiece B\nPiece A");
     }
 
-    /// L.2: changes left unstaged refuse Continue (git would too), and nothing changes. Skip,
+    /// Changes left unstaged refuse Continue (git would too), and nothing changes. Skip,
     /// which would reset the stop's changes away, isn't offered there.
     #[tokio::test]
     async fn unstaged_changes_refuse_continue_and_skip_is_refused() {
@@ -441,7 +441,7 @@ mod tests {
         assert_eq!((r.git(&["rev-parse", "HEAD"]), stop(&r).1), (head.clone(), Some(head)), "the same stop");
     }
 
-    /// L.4: a reload (a fresh Api on the same data) at the stop reads the same stop, the row's
+    /// A reload (a fresh Api on the same data) at the stop reads the same stop, the row's
     /// message in the box; Continue there finishes.
     #[tokio::test]
     async fn a_reload_at_the_stop_reads_the_same_stop() {
@@ -461,7 +461,7 @@ mod tests {
         assert_eq!(r.git(&["log", "-1", "--format=%s", "topic~1"]), "T1 Reworded");
     }
 
-    /// L.4: a rebase started in a terminal keeps git's own Edit stop: HEAD on the commit, no
+    /// A rebase started in a terminal keeps git's own Edit stop: HEAD on the commit, no
     /// note; GitVolt's Continue goes on with it as it is.
     #[tokio::test]
     async fn a_terminal_rebases_edit_stop_is_gits_own() {
@@ -506,7 +506,7 @@ mod tests {
 
     const REFUSE_BAD: &str = "#!/bin/sh\nif grep -q BAD \"$1\"; then echo 'Rejected: no BAD messages.' >&2; exit 1; fi\n";
 
-    /// Replaces 3C's M1 test (an amend refused at the stop): the stop amends nothing, so the
+    /// An amend refused at the stop: the stop amends nothing, so the
     /// row's new message is the box's. A commit-msg hook refusing it at Continue changes
     /// nothing, and says why; Continue with the old message keeps the commit; one Undo.
     #[tokio::test]
@@ -534,7 +534,6 @@ mod tests {
         assert_eq!(tips(&r), before);
     }
 
-    // --- fix round 1 ---
     /// (edit_added, edit_changed) of GitVolt's stop.
     fn added_changed(r: &TestRepo) -> (Vec<String>, bool) {
         match crate::in_progress::read(r.path()).unwrap() {
@@ -561,7 +560,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "topic~1"]), made);
     }
 
-    /// 2: Amend at the stop before any piece is committed would fold the commit into its parent:
+    /// Amend at the stop before any piece is committed would fold the commit into its parent:
     /// refused, in plain words. Once a piece is committed, it amends that piece.
     #[tokio::test]
     async fn amend_waits_for_a_piece() {
@@ -581,7 +580,7 @@ mod tests {
         assert_eq!(r.git(&["log", "-2", "--format=%s"]), "Piece A, amended\nMain moves");
     }
 
-    /// 3: a file of the commit left untracked holds Continue up, by name; an untracked file of
+    /// A file of the commit left untracked holds Continue up, by name; an untracked file of
     /// the user's own (`.env`) never does.
     #[tokio::test]
     async fn only_the_commits_own_untracked_files_hold_continue_up() {
@@ -603,7 +602,7 @@ mod tests {
         assert_eq!(r.git(&["show", "--name-only", "--format=", "topic~1"]), "a.txt\nb.txt");
     }
 
-    /// 7: a Continue cancelled after HEAD went back to git's commit, before git moved on (the
+    /// A Continue cancelled after HEAD went back to git's commit, before git moved on (the
     /// test hook stands for the cancel): the stop is staged again, and a Continue then finishes.
     #[tokio::test]
     async fn a_cancel_after_the_restore_stages_the_stop_again() {
@@ -623,7 +622,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "topic~1"]), made.unwrap());
     }
 
-    /// 5: a staged edit whose worktree file was put back is in the index alone: the stop's state
+    /// A staged edit whose worktree file was put back is in the index alone: the stop's state
     /// says it changed, and Abort keeps it, in the stash's index part.
     #[tokio::test]
     async fn abort_keeps_a_staged_edit_whose_file_was_put_back() {
@@ -641,5 +640,4 @@ mod tests {
         let stash = res["outcome"]["stash"].as_str().unwrap_or_else(|| panic!("a stash: {res}")).to_string();
         assert_eq!(r.git(&["show", &format!("{stash}^2:a.txt")]), "a, staged only");
     }
-    // --- end fix round 1 ---
 }

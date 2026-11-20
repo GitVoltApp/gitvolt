@@ -12,35 +12,33 @@ import { applyQueueEvent } from '../queue/store';
 import { applyJournalEvent } from '../undo/store';
 
 /** A running network op (fetch, clone), from `opStarted` until `opFinished`. `interactive`: the
- * user started it (a background fetch is `false` and shows nowhere but the activity log, K30).
+ * user started it (a background fetch is `false` and shows nowhere but the activity log).
  * `shown`: a user's Fetch found this background fetch already running and waits on it instead. */
 export interface OpInfo {
   op: number; kind: OpKind; repo: number | null; label: string; phase: string | null; percent: number | null;
   interactive: boolean; shown: boolean; startedAt: number;
-  /** A write's autostash step running now (`opStashStep`), since `at` (spec #2 §6). */
+  /** A write's autostash step running now (`opStashStep`), since `at`. */
   stash?: { step: StashStep; message: string; at: number } | null;
-  // --- 2D T18 ---
-  /** A rebase's place, `n` of `m` (spec #2 §13.4), from `opProgress.step`: kept until the next one. */
+  /** A rebase's place, `n` of `m`, from `opProgress.step`: kept until the next one. */
   step?: ProgressStep | null;
-  // --- end 2D T18 ---
 }
-/** An askpass prompt waiting for the user (spec §5.4), from `authWaiting` until `authResolved`. */
+/** An askpass prompt waiting for the user, from `authWaiting` until `authResolved`. */
 export interface AuthPrompt {
   prompt: number; op: number; repo: number | null; text: string; secret: boolean;
   /** An HTTPS prompt tied to one remote of its op: "Use SSH for <remote> instead". */
   ssh: SshOffer | null;
 }
-/** A background error, kept for the status bar's bell (spec §16.1). */
+/** A background error, kept for the status bar's bell. */
 export interface BgError { at: number; message: string }
-/** One finished network op, for the activity log (K30), which a future Activity panel and Help →
- * Debug (spec §16.2) read. `durationMs` runs from `opStarted` to `opFinished`. */
+/** One finished network op, for the activity log, which a future Activity panel and Help →
+ * Debug read. `durationMs` runs from `opStarted` to `opFinished`. */
 export interface ActivityEntry {
   at: number; op: number; kind: OpKind; label: string; background: boolean; durationMs: number; outcome: OpOutcome; message: string | null;
-  /** The git command that ran, redacted (K101). */
+  /** The git command that ran, redacted. */
   command: string | null;
-  /** The op's hook and progress output (opOutput), at most `OUTPUT_CAP` bytes (spec #2 §3.5). */
+  /** The op's hook and progress output (opOutput), at most `OUTPUT_CAP` bytes. */
   output: string[];
-  /** The server's `remote:` lines, whole (spec #2 §12.4). */
+  /** The server's `remote:` lines, whole. */
   remote: RemoteLine[];
 }
 export const OUTPUT_CAP = 64 * 1024;
@@ -149,7 +147,7 @@ export const useOps = create<OpsState>((set) => ({
           // A finished op's askpass child is gone, so a prompt of its that's still listed (its
           // `authResolved` lost to a reconnect) would never close.
           const prompts = s.prompts.some((p) => p.op === ev.op) ? s.prompts.filter((p) => p.op !== ev.op) : s.prompts;
-          // A successful stage or unstage appears only in the Commands tab (spec #2 §3.5).
+          // A successful stage or unstage appears only in the Commands tab.
           if (ev.kind === 'stage' && ev.outcome === 'ok') return { ops, prompts, outputs, remotes };
           return { ops, prompts, outputs, remotes, activity: [entry, ...s.activity].slice(0, MAX_ACTIVITY) };
         });

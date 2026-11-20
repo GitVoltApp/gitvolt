@@ -10,7 +10,7 @@ import type { MarkdownContext, MdReferenceProps } from './types';
 
 const users = new Map<string, Promise<ForgeUser | null>>();
 
-/** `@user`'s hover card: avatar and name from the forge user lookup (4C's `forgeSearchUsers`), once per session. */
+/** `@user`'s hover card: avatar and name from the forge user lookup (`forgeSearchUsers`), once per session. */
 export function userCard(ctx: MarkdownContext, username: string): Promise<ReactNode> {
   const repo = useRuntime.getState().tabs[ctx.tabId]?.repo?.id;
   const remote = forgeOf(ctx.tabId).remote;

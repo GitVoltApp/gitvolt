@@ -1,4 +1,4 @@
-//! Forge accounts (spec #4 §3.2): any number per host per profile, kept in the profile (never
+//! Forge accounts: any number per host per profile, kept in the profile (never
 //! the token: that's in the token store), with what the UI shows about each.
 
 use crate::error::{GbError, GbErrorKind};
@@ -23,7 +23,7 @@ pub struct ForgeAccount {
     /// The token's user when the account was added (avatar and name in Settings).
     pub user: ForgeUser,
     pub storage: TokenStorage,
-    /// GitLab's version (`19.1.0-ee`), read at add and once a day (spec #4 §3.2).
+    /// GitLab's version (`19.1.0-ee`), read at add and once a day.
     // `default`: a profile file from an older or newer GitVolt still loads.
     #[serde(default)]
     pub version: Option<String>,
@@ -128,7 +128,7 @@ pub fn normalize_host(input: &str) -> Result<String, GbError> {
     Ok(host)
 }
 
-/// GitHub accounts are github.com's (GitHub Enterprise Server is out of scope, spec #4 §9); GitLab
+/// GitHub accounts are github.com's (GitHub Enterprise Server is out of scope); GitLab
 /// and Forgejo accounts are on any host.
 pub fn check_kind_host(kind: ForgeKind, host: &str) -> Result<(), GbError> {
     if kind == ForgeKind::GitHub && host != "github.com" {
@@ -137,7 +137,7 @@ pub fn check_kind_host(kind: ForgeKind, host: &str) -> Result<(), GbError> {
     Ok(())
 }
 
-/// The forge's "new token" page, prefilled with the write scope GitVolt needs (spec #4 §2).
+/// The forge's "new token" page, prefilled with the write scope GitVolt needs.
 pub fn token_page_url(kind: ForgeKind, host: &str) -> String {
     token_page_url_for(kind, host, false)
 }

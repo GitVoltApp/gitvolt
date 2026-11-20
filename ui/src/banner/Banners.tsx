@@ -18,7 +18,7 @@ import './banner.css';
 const NONE: Banner[] = [];
 const capitalized = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Spec #2 §6.4 and §5.1's wording. */
+/** The banners' wording. */
 export function bannerText(b: Banner): string {
   switch (b.kind) {
     case 'autostashRefused':
@@ -32,7 +32,7 @@ export function bannerText(b: Banner): string {
     case 'abortedWork':
       return `Your edits from the stop are in stash "${b.stashMessage}": the rebase was aborted.${b.target ? ` Your commits from the stop are on ${b.target}.` : ''}`;
     case 'abortInterrupted':
-      // 3C final fix M6: the abort may have run before GitVolt stopped.
+      // The abort may have run before GitVolt stopped.
       return `GitVolt stopped before it could ${b.label}: the abort may not have run; your work is in the working tree or the stash "${b.stashMessage}"${b.target ? `, and your commits from the stop are on ${b.target}` : ''}.`;
     case 'recovery':
       return `GitVolt stopped during ${b.label}. Your changes are safe in ${b.snapshot ? 'a snapshot' : 'the autostash'}.`;
@@ -49,7 +49,7 @@ const BINARY_DROP = {
 };
 
 /** × on a recovery snapshot drops the only pointer to it (it's dangling, not in the graph, so
- * there is no Show): ask first (2A final M8). */
+ * there is no Show): ask first. */
 const dropSnapshot = (label: string) => ({
   title: 'Dismiss without restoring?',
   body: `The snapshot is the only copy of your changes from before ${label}. Once dismissed, GitVolt can't restore them.`,
@@ -60,7 +60,7 @@ const dropSnapshot = (label: string) => ({
 
 function Row({ b, w }: { b: Banner; w: WriteCtx }) {
   // Apply (a kept stash) or Restore (a recovery entry's snapshot); its questions are runWrite's.
-  // Then the WIP row and the first restored file's diff, as a stash Apply/Pop (UX round 2).
+  // Then the WIP row and the first restored file's diff, as a stash Apply/Pop.
   const apply = () => applyKeptStash(w, Number(b.entry), b.stash);
   const dismiss = async (dropStash: boolean) => {
     if (dropStash && b.binary && !(await confirmAction(BINARY_DROP))) return;
@@ -91,7 +91,7 @@ function Row({ b, w }: { b: Banner; w: WriteCtx }) {
   );
 }
 
-/** The tab's `banner` slot (spec #2 §3.7): autostash and crash-recovery notices from the
+/** The tab's `banner` slot: autostash and crash-recovery notices from the
  * worktree's journal (its kept stashes and recovery entries). It loads the journal when the tab
  * shows; events and write results keep it current. */
 export function Banners({ tab }: TabSlotProps) {

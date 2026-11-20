@@ -1,4 +1,4 @@
-//! The interactive rebase request's types (spec #3 §3.3; the cross-plan contract, Ruling 1).
+//! The interactive rebase request's types (the cross-plan contract).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -42,7 +42,7 @@ pub enum ChipAt {
     Delete,
     /// A new branch, created at this row.
     New(String),
-    /// 3D (Rebase stack): left where it is. No `update-ref` line, never moved or deleted, and
+    /// Rebase stack: left where it is. No `update-ref` line, never moved or deleted, and
     /// never a move in the journal. Any chip of the range may stay, locked or not.
     Stay,
 }

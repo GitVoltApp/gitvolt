@@ -1,4 +1,4 @@
-//! Autostash (spec #2 §6).
+//! Autostash.
 //!
 //! Autostash is automatic, when an operation needs a clean tree, and only on overlap: untouched
 //! files keep their mtimes, so editors and build watchers see nothing change. It's
@@ -22,62 +22,54 @@ use std::path::Path;
 use std::time::Duration;
 
 /// The hard limit on one autostash step (push, apply, drop): generous, since a whole-worktree
-/// `-u` stash can be slow, but a hung filter can't hold the queue forever (review N3).
+/// `-u` stash can be slow, but a hung filter can't hold the queue forever.
 pub(crate) const AUTOSTASH_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
-/// §6.1's table.
+/// When an autostash is taken, and which paths it covers.
 #[derive(Debug, Clone)]
 pub(crate) enum AutostashRule {
     /// Checkout, fast-forward, undo/redo Switch and Rewind: only when `dirty ∩ touched ≠ ∅`
     /// (git would refuse); otherwise git carries the changes.
     Overlap,
-    /// Merge, rebase, pull (2D): any tracked change, or `untracked ∩ touched`.
-    #[allow(dead_code)] // its 3B user (cherry-pick, revert) moved to `Touching` in T1 fix round 1
+    /// Merge, rebase, pull: any tracked change, or `untracked ∩ touched`.
+    #[allow(dead_code)] // its former user (cherry-pick, revert) moved to `Touching`
     AnyTracked,
-    // --- 2D T14: a merge's prediction ---
+    // --- a merge's prediction ---
     /// `AnyTracked` for a merge or rebase of `target` into HEAD: the worktree ends at their
     /// three-way merge, not at `target`, so `touched` and the prediction use that merge
     /// (`integrate::merge_result`). Diffing against `target` itself would flag every dirty file
     /// HEAD's side changed since the merge base.
     Merged,
     /// `Merged` for a rebase: git first checks out `target` itself, so an untracked file on a
-    /// path HEAD→`target` changes is stashed too (re-review m1: a path the local commits deleted
+    /// path HEAD→`target` changes is stashed too (a path the local commits deleted
     /// that the target still has), while the prediction stays on the merge.
     Rebased,
-    // --- end 2D T14 ---
     /// A snapshot restore over P (undo/redo of a discard or reset, a recovery's Restore):
-    /// `dirty ∩ P`, ignored paths of P included, and only those paths are stashed (review I6,
-    /// n5). The restore overwrites them, so the warning always asks first.
+    /// `dirty ∩ P`, ignored paths of P included, and only those paths are stashed. The restore overwrites them, so the warning always asks first.
     Paths(Vec<String>),
-    // --- 2C repo-safety ---
-    /// The base rule (Overlap, Merged or Rebased), where the move also sweeps a directory away
-    /// (safety review M1, M2): its index entries count as touched, and its ignored files go in
+    /// The base rule (Overlap, Merged or Rebased), where the move also sweeps a directory away:
+    /// its index entries count as touched, and its ignored files go in
     /// the stash too (`--all`, naming every path the stash takes, so nothing else ignored comes
     /// along). Built by `precheck::MoveCheck::rule_over`.
     With(Box<AutostashRule>, Swept),
-    // --- end 2C repo-safety ---
-    // --- 3B T1 fix ---
     /// `AnyTracked` where `touched` is given, not diffed against a target: the paths a
     /// cherry-pick's or revert's commits change. An untracked file there would stop git part-way
     /// ("would be overwritten"), so it's stashed too.
     Touching(Vec<String>),
-    // --- end 3B T1 fix ---
 }
 
-// --- 2C repo-safety ---
 /// What a move takes with a directory it replaces by a file (`precheck::MoveCheck`).
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Swept {
     pub swept: Vec<String>,
     pub ignored: Vec<String>,
 }
-// --- end 2C repo-safety ---
 
 /// What an intent asks for (`Plan::autostash`).
 #[derive(Debug, Clone)]
 pub(crate) struct AutostashSpec {
     pub rule: AutostashRule,
-    /// The commit (or tree, 2D T14) the worktree moves to (`touched` is HEAD's tree vs its tree).
+    /// The commit (or tree) the worktree moves to (`touched` is HEAD's tree vs its tree).
     pub target: Option<ObjectId>,
     /// The message's `<op> [<target>]`: "checkout feature/x", "undo commit \"x\"".
     pub op: String,
@@ -92,7 +84,7 @@ pub(crate) struct AutostashSpec {
 pub(crate) struct AutostashPlan {
     pub message: String,
     pub target: Option<String>,
-    /// Paths whose restore is predicted to conflict (§6.2): non-empty asks first.
+    /// Paths whose restore is predicted to conflict: non-empty asks first.
     pub conflicts: Vec<String>,
     /// Stash only these (`Paths`); `None`: the whole worktree.
     pub pathspec: Option<Vec<String>>,
@@ -102,7 +94,6 @@ pub(crate) struct AutostashPlan {
 
 pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpec) -> Result<Option<AutostashPlan>, GbError> {
     let dirty = precheck::dirty(&api.cli, root).await?;
-    // --- 2C repo-safety (safety review M1, M2) ---
     // What the move sweeps away with a directory (the caller's `precheck::MoveCheck`): index
     // entries there count as touched; ignored files there need the stash even on a clean tree.
     // `base` is the rule proper; `With` wraps it.
@@ -110,13 +101,11 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         AutostashRule::With(b, s) => ((**b).clone(), s.swept.clone(), s.ignored.clone()),
         r => (r.clone(), Vec::new(), Vec::new()),
     };
-    // --- end 2C repo-safety ---
-    // --- 2D T9 review P1: a clean worktree needs no stash, so no tree diff either ---
+    // --- a clean worktree needs no stash, so no tree diff either ---
     if !matches!(base, AutostashRule::Paths(_)) && dirty.tracked.is_empty() && dirty.untracked.is_empty() && ignored.is_empty() {
         return Ok(None);
     }
-    // --- end 2D T9 ---
-    // --- 2D T14: a merge's prediction runs against the merge (only now: the worktree is dirty) ---
+    // --- a merge's prediction runs against the merge (only now: the worktree is dirty) ---
     let target = match (&base, spec.target) {
         (AutostashRule::Merged | AutostashRule::Rebased, Some(t)) => {
             let head = gix::open(root).map_err(gix_err)?.head_id().ok().map(|h| h.detach());
@@ -127,7 +116,6 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         }
         (_, t) => t,
     };
-    // --- end 2D T14 ---
     let mut touched: BTreeSet<String> = match (&base, target) {
         (AutostashRule::Paths(p), _) | (AutostashRule::Touching(p), _) => p.iter().cloned().collect(),
         (_, Some(target)) => {
@@ -139,8 +127,7 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         }
         (_, None) => BTreeSet::new(),
     };
-    touched.extend(swept); // 2C repo-safety (M1)
-    // --- 3B T1 fix round 2 ---
+    touched.extend(swept);
     // `Touching`: an untracked path where a pick puts a directory (`d` against `d/x`), or under
     // a path where it puts a file (`d/y` against `d`), stops git as surely as one at the path.
     if matches!(base, AutostashRule::Touching(_)) {
@@ -151,8 +138,7 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         let more: Vec<String> = dirty.untracked.iter().filter(|u| !touched.contains(*u) && collide(u)).cloned().collect();
         touched.extend(more);
     }
-    // --- end 3B T1 fix round 2 ---
-    // --- 2D T14: a rebase checks out its target first ---
+    // --- a rebase checks out its target first ---
     let checkout_touched: BTreeSet<String> = match (&base, spec.target) {
         (AutostashRule::Rebased, Some(t)) => {
             let repo = gix::open(root).map_err(gix_err)?;
@@ -163,7 +149,6 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         }
         _ => BTreeSet::new(),
     };
-    // --- end 2D T14 ---
     let mut overlap: Vec<String> = dirty.tracked.iter().chain(&dirty.untracked).filter(|p| touched.contains(*p)).cloned().collect();
     let mut all = false;
     if let AutostashRule::Paths(p) = &base {
@@ -173,7 +158,7 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         overlap.sort();
         overlap.dedup();
     }
-    // 2C repo-safety: ignored files the move sweeps away need the stash whatever else is dirty.
+    // Ignored files the move sweeps away need the stash whatever else is dirty.
     let needed = match base {
         AutostashRule::Overlap | AutostashRule::Paths(_) | AutostashRule::With(..) => !overlap.is_empty() || !ignored.is_empty(),
         AutostashRule::AnyTracked | AutostashRule::Merged | AutostashRule::Rebased | AutostashRule::Touching(_) => !dirty.tracked.is_empty() || dirty.untracked.iter().any(|p| touched.contains(p) || checkout_touched.contains(p)) || !ignored.is_empty(),
@@ -186,13 +171,12 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         (_, Some(target)) => (precheck::predict_conflicts(&api.cli, root, tmp, target, &overlap).await?, None),
         (_, None) => (Vec::new(), None),
     };
-    // --- 2C repo-safety ---
     // C1: the stash's own `reset --hard` writes HEAD's file over a directory at a dirty tracked
     // path, deleting a repository in it: refused before anything runs.
     if let Some(p) = precheck::stash_push_in_the_way(&api.cli, root, &dirty.tracked, pathspec.as_deref()).await?.first() {
         return Err(precheck::repository_in_the_way(p, "stash"));
     }
-    // M2: ignored files the move would delete go in the stash with `--all`, which must then
+    // Ignored files the move would delete go in the stash with `--all`, which must then
     // name its paths: every dirty one (what the whole-worktree stash took), plus them.
     if pathspec.is_none() && !ignored.is_empty() {
         let mut paths: Vec<String> = dirty.tracked.iter().chain(&dirty.untracked).cloned().collect();
@@ -202,11 +186,10 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         pathspec = Some(paths);
         all = true;
     }
-    // --- end 2C repo-safety ---
     Ok(Some(AutostashPlan { message: format!("autostash before {}", spec.op), target: spec.target_name.clone(), conflicts, pathspec, all }))
 }
 
-/// `refs/stash` now: gix, else `git rev-parse` (review n1). An error means "unknown".
+/// `refs/stash` now: gix, else `git rev-parse`. An error means "unknown".
 pub(crate) async fn stash_oid(api: &Api, root: &Path) -> Result<Option<String>, GbError> {
     let read = gix::open(root).map_err(gix_err).and_then(|r| read_ref(&r, "refs/stash"));
     match read {
@@ -265,7 +248,7 @@ fn update_kept(api: &Api, root: &Path, id: u64, f: impl FnOnce(&mut KeptStash)) 
 
 /// Step 5. The record is written ahead (`Pending`, no oid), then `git stash push
 /// --include-untracked -m "autostash before <op>" [-- <paths>]` runs, and `refs/stash` is read
-/// again whatever git said (it stores the stash before it cleans the worktree, review I3).
+/// again whatever git said (it stores the stash before it cleans the worktree).
 /// Returns the stash git stored, if any, and whether the op may run.
 pub(crate) async fn save(cx: &mut WriteCx<'_>, plan: &AutostashPlan, label: &str) -> (Option<Stashed>, Result<(), GbError>) {
     if cx.op.cancel.is_cancelled() {
@@ -330,7 +313,7 @@ pub(crate) async fn save(cx: &mut WriteCx<'_>, plan: &AutostashPlan, label: &str
 }
 
 /// `git stash drop -q stash@{n}`, `n` found by oid in `git stash list` (a read) under the lock,
-/// and checked again just before the drop (the stack is shared: review n6). `true`: stopped.
+/// and checked again just before the drop (the stack is shared). `true`: stopped.
 pub(crate) async fn drop_by_oid(cx: &mut WriteCx<'_>, oid: &str, message: &str) -> Result<bool, GbError> {
     let list = cx.api.cli.run(GitInvocation::new(cx.root, ["stash", "list", "--format=%H"])).await?;
     let n = String::from_utf8_lossy(&list.stdout).lines().position(|l| l.trim() == oid).ok_or_else(|| GbError::new(GbErrorKind::NotFound, "That stash is gone"))?;
@@ -359,7 +342,7 @@ pub(crate) enum Applied {
     Refused { index: bool, message: String },
     /// Applied, with `files` conflicted files (`binary`: some are binary).
     Conflicts { files: u32, binary: bool },
-    /// The tracked changes applied, the untracked ones didn't come back (review N1).
+    /// The tracked changes applied, the untracked ones didn't come back.
     PartialRestore,
     /// A Stop (or the limit) interrupted the apply: partly restored.
     Stopped,
@@ -378,7 +361,7 @@ async fn binary_among(api: &Api, root: &Path, oid: &str, paths: &[String]) -> bo
     }
 }
 
-/// §6.3: `git stash apply [--index] <oid>`. Clean: dropped. Content conflicts: the files land in
+/// `git stash apply [--index] <oid>`. Clean: dropped. Content conflicts: the files land in
 /// Conflicted, and the stash is kept. git refused: nothing changed, kept.
 pub(crate) async fn restore(cx: &mut WriteCx<'_>, oid: &str, message: &str, with_index: bool) -> Result<Applied, GbError> {
     let mut args = vec!["stash", "apply"];
@@ -438,7 +421,7 @@ fn kept_reason(applied: &Applied) -> Option<KeptReason> {
     }
 }
 
-/// A Stop fails the write (the queue behind it stops; review N3), even after the restore.
+/// A Stop fails the write (the queue behind it stops), even after the restore.
 pub(crate) fn stop_error(applied: &Applied, message: &str) -> Option<GbError> {
     match applied {
         Applied::Stopped => Some(GbError::other(format!("Stopped restoring your changes; the stash \"{message}\" still has everything"))),
@@ -468,8 +451,8 @@ pub(crate) fn settle(api: &Api, root: &Path, st: &Stashed, applied: &Applied) {
     }
 }
 
-// --- 2D T2: the pause ---
-/// Step 8 for a paused op (§13.2): its autostash waits for the completion or the abort.
+// --- the pause ---
+/// Step 8 for a paused op: its autostash waits for the completion or the abort.
 pub(crate) fn keep_paused(api: &Api, root: &Path, st: &Stashed) {
     update_kept(api, root, st.id, |k| {
         k.reason = KeptReason::Paused;
@@ -497,10 +480,9 @@ pub(crate) async fn restore_paused(cx: &mut WriteCx<'_>, k: KeptStash) -> Option
     settle(cx.api, cx.root, &st, &applied);
     stop_error(&applied, &st.message)
 }
-// --- end 2D T2 ---
 
-/// A kept record a banner may act on: not one whose write is still running (review n2), nor a
-/// paused merge or rebase's (it waits for the op to end; 2D T2).
+/// A kept record a banner may act on: not one whose write is still running, nor a
+/// paused merge or rebase's (it waits for the op to end).
 fn actionable(k: &KeptStash) -> Result<String, GbError> {
     match (&k.oid, k.reason) {
         (_, KeptReason::Paused) => Err(GbError::new(GbErrorKind::InvalidInput, "That stash waits for the merge or rebase to finish")),
@@ -509,7 +491,7 @@ fn actionable(k: &KeptStash) -> Result<String, GbError> {
     }
 }
 
-/// A banner's Apply (a kept stash), or a recovery banner's Restore (its `before` snapshot) (§6.4, §5.1).
+/// A banner's Apply (a kept stash), or a recovery banner's Restore (its `before` snapshot).
 pub(crate) struct ApplyKept {
     pub entry: u64,
     pub label: String,
@@ -536,27 +518,23 @@ impl WriteIntent for ApplyKept {
     }
 
     /// A Restore overwrites P: what changed there since (edits after the restart) is
-    /// autostashed first, with the warning (review C1).
+    /// autostashed first, with the warning.
     async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
         let Some(snap) = &self.recovery else {
-            // --- 2C repo-safety ---
             // A kept stash's Apply: a file of the stash written over a repository (C2).
             if let Some(oid) = pre.api.journal(pre.root)?.load()?.kept_mut(self.entry).and_then(|k| k.oid.clone()) {
                 crate::write::stash::refuse_stash_apply_in_the_way(pre, &oid, "apply").await?;
             }
-            // --- end 2C repo-safety ---
             return Ok(Plan::default());
         };
         let mut changed = precheck::changed_since(&pre.api.cli, pre.root, snap).await?;
-        // --- 2C repo-safety ---
         // A directory now standing where a file of the snapshot goes back: a repository in it
-        // refuses, its untracked files are autostashed too (2C T6 re-review 3 C5).
+        // refuses, its untracked files are autostashed too.
         let dirs = snapshot::dirs_in_the_way(&pre.api.cli, pre.root, snap).await?;
         if let Some(p) = dirs.repos.first() {
             return Err(precheck::repository_in_the_way(p, "restore"));
         }
         changed.extend(dirs.untracked);
-        // --- end 2C repo-safety ---
         let spec = (!changed.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(changed), target: None, op: self.label(), target_name: Some(self.label.clone()), moved: None });
         Ok(Plan { autostash: spec, ..Plan::default() })
     }
@@ -620,7 +598,7 @@ impl WriteIntent for DropKept {
         let kept = store.load()?.kept_mut(self.entry).cloned().ok_or_else(|| GbError::stale("That notice is gone; refreshed"))?;
         let oid = actionable(&kept)?;
         // Only after content conflicts are its changes in the worktree: a refused, partial,
-        // stopped or interrupted stash holds the only copy of some (review m7, N1).
+        // stopped or interrupted stash holds the only copy of some.
         if !kept.reason.droppable() {
             return Err(GbError::new(GbErrorKind::InvalidInput, "Apply the stash first: it holds the only copy of some of those changes"));
         }
@@ -653,7 +631,7 @@ pub(crate) async fn apply_kept(api: &Api, repo: u32, worktree: &str, entry: u64,
     run_write(api, repo, worktree, Expect::default(), ApplyKept { entry, label, without_index, confirm_autostash, recovery }).await
 }
 
-/// `DismissBanner`: × keeps the stash (an explicit choice, §6.4); Drop stash drops it.
+/// `DismissBanner`: × keeps the stash (an explicit choice); Drop stash drops it.
 pub(crate) async fn dismiss(api: &Api, repo: u32, worktree: &str, entry: u64, drop_stash: bool) -> Result<JournalState, GbError> {
     if drop_stash {
         return Ok(run_write(api, repo, worktree, Expect::default(), DropKept { entry }).await?.journal);
@@ -728,7 +706,7 @@ mod tests {
         r.git(&["stash", "list", "--format=%gs"])
     }
 
-    /// §17.1: a fully staged, b partly staged (line 1 staged, line 12 not), c untracked, d dirty
+    /// A fully staged, b partly staged (line 1 staged, line 12 not), c untracked, d dirty
     /// where the target changed it too (the overlap). After the autostashed checkout, the
     /// staged/unstaged split is byte-identical.
     #[tokio::test]
@@ -831,7 +809,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--name-only", "--diff-filter=U"]), "d.txt");
     }
 
-    /// §6.1: no overlap, no autostash: an untouched file keeps its mtime.
+    /// No overlap, no autostash: an untouched file keeps its mtime.
     #[tokio::test]
     async fn no_overlap_means_no_autostash() {
         let data = tempfile::tempdir().unwrap();
@@ -846,7 +824,7 @@ mod tests {
         assert!(!ran.iter().any(|c| c.starts_with("stash")), "{ran:?}");
     }
 
-    /// §6.2: a restore that would conflict asks first, before anything runs.
+    /// A restore that would conflict asks first, before anything runs.
     #[tokio::test]
     async fn a_predicted_conflict_asks_first_and_changes_nothing() {
         let data = tempfile::tempdir().unwrap();
@@ -861,7 +839,7 @@ mod tests {
         assert_eq!(stashes(&r), "");
     }
 
-    /// §6.3–6.4: confirmed, the restore conflicts; the stash is kept, recorded, and the banner shows.
+    /// Confirmed, the restore conflicts; the stash is kept, recorded, and the banner shows.
     #[tokio::test]
     async fn a_conflicting_restore_keeps_the_stash_and_shows_the_banner() {
         let data = tempfile::tempdir().unwrap();
@@ -941,7 +919,7 @@ mod tests {
         assert_eq!(stashes(&r), "");
     }
 
-    /// Review m7: a refused stash was never applied; dropping it would lose the only copy.
+    /// A refused stash was never applied; dropping it would lose the only copy.
     #[tokio::test]
     async fn drop_stash_is_refused_for_a_stash_that_was_never_applied() {
         let data = tempfile::tempdir().unwrap();
@@ -958,7 +936,7 @@ mod tests {
         assert_eq!(stashes(&r), "On main: autostash before checkout other");
     }
 
-    /// Review C1: GitVolt stopped mid-discard; after the restart the file is edited; Restore
+    /// GitVolt stopped mid-discard; after the restart the file is edited; Restore
     /// asks first, autostashes the edit (only that path), then puts the snapshot back.
     #[tokio::test]
     async fn a_recovery_restore_keeps_edits_made_after_the_restart() {
@@ -991,7 +969,7 @@ mod tests {
         assert_eq!(banners[0]["kind"], "autostashRefused");
     }
 
-    /// Review I3: git stored the stash, then failed cleaning the worktree. The stash is
+    /// Git stored the stash, then failed cleaning the worktree. The stash is
     /// recorded, restored where it can be, and kept with a banner; the failed write leaves no
     /// journal entry (m10).
     #[cfg(unix)] // a read-only folder (Windows ignores the read-only bit on folders)
@@ -1018,7 +996,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("d.txt")).unwrap(), lines(20, &[(1, "mine")]));
     }
 
-    /// Review I4: a Cancel stops the checkout (its slow hook), never the restore.
+    /// A Cancel stops the checkout (its slow hook), never the restore.
     #[tokio::test]
     async fn a_cancel_during_the_op_still_restores_the_autostash() {
         let data = tempfile::tempdir().unwrap();
@@ -1047,7 +1025,7 @@ mod tests {
         assert!(state["banners"].as_array().unwrap().is_empty());
     }
 
-    /// Review m6/m13: the user's own stash on the stack is never the one dropped.
+    /// The user's own stash on the stack is never the one dropped.
     #[tokio::test]
     async fn an_unrelated_stash_is_never_dropped() {
         let data = tempfile::tempdir().unwrap();
@@ -1069,7 +1047,7 @@ mod tests {
         api.dispatch(Request::JournalState { repo: id, worktree: wt(r) }).await.unwrap()
     }
 
-    /// Review N1, on real git: the target adds a file that's untracked here. The tracked change
+    /// On real git: the target adds a file that's untracked here. The tracked change
     /// comes back, the untracked file can't: "partly restored", and Drop is refused.
     #[tokio::test]
     async fn a_partial_restore_keeps_the_stash_and_refuses_drop() {
@@ -1094,7 +1072,7 @@ mod tests {
         assert_eq!(r.git(&["show", "stash@{0}^3:u.txt"]), "untracked here", "the stash still has the only copy");
     }
 
-    /// Review N1: a binary conflict keeps only the current version in the worktree; the banner
+    /// A binary conflict keeps only the current version in the worktree; the banner
     /// says so, for the warning before Drop.
     #[tokio::test]
     async fn a_binary_conflict_is_flagged() {
@@ -1115,7 +1093,7 @@ mod tests {
         assert_eq!((b["kind"].as_str(), b["binary"].as_bool(), b["canDrop"].as_bool()), (Some("autostashConflicts"), Some(true), Some(true)), "{b}");
     }
 
-    /// Review N2: GitVolt died right after git stored the stash, before it heard back. The
+    /// GitVolt died right after git stored the stash, before it heard back. The
     /// record written ahead finds the stash by its message at the next start; one whose push
     /// stored nothing goes.
     #[tokio::test]
@@ -1163,7 +1141,7 @@ mod tests {
         r.git(&["config", "filter.slow.clean", "cat"]);
     }
 
-    /// Review N3: a Cancel while the push runs is a Stop: git's process group is stopped, the
+    /// A Cancel while the push runs is a Stop: git's process group is stopped, the
     /// stash git stored stays (`Stopped`), the op doesn't run, and nothing is restored.
     #[tokio::test]
     async fn a_stop_during_the_push_keeps_the_stash_and_skips_the_op() {
@@ -1197,7 +1175,7 @@ mod tests {
         assert_eq!((b[0]["kind"].as_str(), b[0]["canDrop"].as_bool()), (Some("autostashStopped"), Some(false)));
     }
 
-    /// Review N3: the limit stops a hung apply: kept as `Stopped` (partly restored), the write
+    /// The limit stops a hung apply: kept as `Stopped` (partly restored), the write
     /// fails, and Drop is refused.
     #[tokio::test]
     async fn the_limit_stops_a_hung_restore() {
@@ -1219,7 +1197,7 @@ mod tests {
         assert_eq!(api.dispatch(Request::DismissBanner { repo: id, worktree: wt(&r), entry, drop_stash: Some(true) }).await.unwrap_err().kind, GbErrorKind::InvalidInput);
     }
 
-    /// Review n2: a stash whose write is still running can't be applied or dismissed.
+    /// A stash whose write is still running can't be applied or dismissed.
     #[tokio::test]
     async fn a_running_writes_stash_is_left_alone() {
         let data = tempfile::tempdir().unwrap();
@@ -1238,7 +1216,7 @@ mod tests {
         assert_eq!(err.kind, GbErrorKind::InvalidInput);
     }
 
-    /// §17.1 hooks: post-checkout output streams to Activity.
+    /// Hooks: post-checkout output streams to Activity.
     #[tokio::test]
     async fn post_checkout_output_streams() {
         let data = tempfile::tempdir().unwrap();
@@ -1257,7 +1235,7 @@ mod tests {
         assert!(lines.contains(&"post-checkout ran".to_string()), "{lines:?}");
     }
 
-    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (not yet on Windows)
     #[tokio::test]
     async fn the_autostash_plumbing_never_signs() {
         let data = tempfile::tempdir().unwrap();

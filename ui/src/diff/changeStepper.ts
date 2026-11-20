@@ -7,7 +7,7 @@ export const STEP_MARGIN = 16;
 
 let stepper: ((dir: StepDir) => void) | null = null;
 
-/** 5C (R3): while a rendered Markdown diff shows, Previous/Next change and F7 step through its
+/** While a rendered Markdown diff shows, Previous/Next change and F7 step through its
  * changes instead of the (hidden) editor's. Returns its removal, which removes only this one. */
 export function setChangeStepper(fn: (dir: StepDir) => void): () => void {
   stepper = fn;

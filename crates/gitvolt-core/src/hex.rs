@@ -1,4 +1,4 @@
-//! Hex dumps of binary files, for File View and the hex diff (phase 3 UX round 2, lane I). Each
+//! Hex dumps of binary files, for File View and the hex diff. Each
 //! side's first `HEX_CAP` bytes are read, never the whole file: a working-tree file through
 //! `take`, a small blob from the object database, and a larger blob streamed by
 //! `git cat-file blob` with its stdout capped (gix has no streaming blob read).

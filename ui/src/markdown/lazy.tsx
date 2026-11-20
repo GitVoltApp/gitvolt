@@ -5,7 +5,7 @@ import type { MarkdownProps } from './types';
 
 type Impl = ComponentType<MarkdownProps>;
 
-/** `<Markdown>` from the chunk `load` brings (spec §3.1): the plain text stands in while it
+/** `<Markdown>` from the chunk `load` brings: the plain text stands in while it
  * loads. Once it has loaded (`preload`, or an earlier mount), a first mount renders the body at
  * once: React.lazy reads a synchronous thenable without suspending. Exported for tests. */
 export function lazyMarkdown(load: () => Promise<{ Markdown: Impl }>) {
@@ -51,6 +51,6 @@ export const preloadMarkdown = chunk.preload;
  * or `.md` file renders at once, without a plain-text flash. Never part of startup itself. */
 export const preloadMarkdownWhenIdle = chunk.preloadWhenIdle;
 
-/** 5C: the rendered Markdown diff, loaded with the Markdown chunk (it brings jsdiff); the caller's
+/** The rendered Markdown diff, loaded with the Markdown chunk (it brings jsdiff); the caller's
  * `Suspense` shows meanwhile. */
 export const MarkdownDiff = lazy(() => import('./diff/MarkdownDiff').then((m) => ({ default: m.MarkdownDiff })));

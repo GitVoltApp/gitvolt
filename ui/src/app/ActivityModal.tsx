@@ -16,9 +16,9 @@ import './activity.css';
 
 const TABS: Array<[DebugView, string]> = [['activity', 'Activity'], ['commands', 'Commands'], ['requests', 'Requests'], ['actions', 'Actions']];
 
-/** Stable (R25, the N1 lesson): the modal-keys registration never re-runs for a new `close`. */
+/** Stable: the modal-keys registration never re-runs for a new `close`. */
 const close = () => useActivityUi.getState().setOpen(false);
-/** A header button's work, recorded in the action log; a failure toasts like any action's (R12). */
+/** A header button's work, recorded in the action log; a failure toasts like any action's. */
 const run = (id: string, label: string, fn: () => unknown) => track(id, label, fn, (e) => toastActionError(e));
 
 /** DOM guard: the entry keeps every line, the section renders the first so many. */
@@ -26,7 +26,7 @@ const MAX_RENDERED = 2000;
 
 const URL = /(https?:\/\/[^\s]+)/g;
 
-/** A line with its URLs as links (spec #2 §12.4), opened through the backend's opener. */
+/** A line with its URLs as links, opened through the backend's opener. */
 function Linkified({ text }: { text: string }) {
   const parts = text.split(URL);
   return <>{parts.map((p, i) => (i % 2 === 1 ? <a key={i} href={p} onClick={(ev) => { ev.preventDefault(); void api.openUrl(p); }}>{p}</a> : p))}</>;
@@ -70,7 +70,7 @@ function ActivityDetail({ e, runs, focused }: { e: ActivityEntry; runs: Activity
   );
 }
 
-/** K101's timeline: every finished op, newest first. Quiet background ops are hidden by default,
+/** The timeline: every finished op, newest first. Quiet background ops are hidden by default,
  * and identical consecutive ones share a row (×N) when shown. */
 function ActivityView() {
   const activity = useOps((s) => s.activity);
@@ -117,7 +117,7 @@ function ActivityView() {
 }
 
 /**
- * K101 + 1D R9: the one Debug modal. Tabs: Activity (the activity log) | Commands (the backend's
+ * The one Debug modal. Tabs: Activity (the activity log) | Commands (the backend's
  * git commands) | Requests (the backend's API requests) | Actions (what the user ran). The header holds Copy diagnostics, Open logs folder
  * and the Perf overlay toggle. Debug info, so every tab is a selectable timeline with Copy all.
  */

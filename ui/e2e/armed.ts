@@ -2,7 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 
 // Shared by e2e/ and e2e-demo/ (test.ts pulls in the harness fixtures, which the demo suite has none of).
 
-/** An armed control's overlay (spec §ui confirms): visual only (aria-hidden), so found by its text. */
+/** An armed control's overlay: visual only (aria-hidden), so found by its text. */
 export const armedOverlay = (page: Page, text: string | RegExp) => page.locator('.arm-overlay', { hasText: text });
 
 /** The second click on an armed control: a fresh click once the pointer's settle guard

@@ -1,4 +1,4 @@
-//! Single-instance guard (1D ruling R19; the 1C final review's I2 follow-up: two instances on one
+//! Single-instance guard (two instances on one
 //! config dir would each write its settings over the other's).
 //!
 //! One GitVolt runs per config dir. The first to start holds an exclusive `flock` on

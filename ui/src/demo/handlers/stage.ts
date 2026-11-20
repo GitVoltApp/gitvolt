@@ -1,7 +1,7 @@
-// Stage and unstage whole files (write/stage.rs, spec #2 §7.2): immediate writes, each a staging
-// step (§7.6). What `git add -A -- <paths>`, `git restore --staged -- <paths>` (`rm --cached` while
+// Stage and unstage whole files (write/stage.rs): immediate writes, each a staging
+// step. What `git add -A -- <paths>`, `git restore --staged -- <paths>` (`rm --cached` while
 // HEAD is unborn), `git add -A` and `restore --staged :/` do, every path literal. Hunks and lines
-// (write/stage_patch.rs, §7.3): the selection applied to the index's text, as `git apply --cached
+// (write/stage_patch.rs): the selection applied to the index's text, as `git apply --cached
 // [-R]` of the core's partial patch leaves it.
 import type { StageSelection } from '../../api/gen/StageSelection';
 import type { WipBase } from '../../api/gen/WipBase';
@@ -21,7 +21,7 @@ import { statusEntries } from '../engine/write/status';
 
 export { NO_EXPECT };
 
-/** "a.php" or "3 files" (§5.5, §7.6). */
+/** "a.php" or "3 files". */
 export const filesLabel = (paths: string[]): string => (paths.length === 1 ? paths[0] : `${paths.length} files`);
 
 /** git's "pathspec did not match any files": the list was drawn before the file changed. */
@@ -135,7 +135,7 @@ function stagePatch(path: string, staged: boolean, selection: StageSelection, ba
     staging: 'step',
     run: async (cx) => {
       const wt = cx.wt;
-      // §7.3 step 1: under the lock, the diff again; a base that moved is Stale.
+      // Under the lock, the diff again; a base that moved is Stale.
       const d = await checkedDiff(wt, path, staged, base);
       const entries = await loadIndex(wt);
       const entry = stage0Of(entries).get(path) ?? null;
@@ -153,7 +153,7 @@ function stagePatch(path: string, staged: boolean, selection: StageSelection, ba
       let next: IndexEntry | null = null;
       if (!gone) {
         const oid = await writeBlobBytes(wt.repo, latin1Bytes(applied.lines.join('')));
-        // A hunk never carries the file's mode (patch.rs review I1): the entry keeps its own; a new
+        // A hunk never carries the file's mode (as in patch.rs): the entry keeps its own; a new
         // entry takes the side it comes from.
         const mode = entry?.mode ?? (staged ? head!.mode : file!.mode);
         const stat = file && file.oid === oid && file.mode === mode ? statOf(wt, path) : null;

@@ -92,7 +92,7 @@ describe('alignUnits (5C: LCS on normalized block text)', () => {
     expect(ops('Alpha beta gamma delta.', 'Completely different words here.')).toEqual(['removed', 'added']);
   });
 
-  it('shows a moved block as removed where it was and added where it is (R4)', () => {
+  it('shows a moved block as removed where it was and added where it is', () => {
     expect(ops('First one.\n\nSecond one.\n\nThird one.', 'Second one.\n\nThird one.\n\nFirst one.')).toEqual(['removed', 'same', 'same', 'added']);
   });
 
@@ -105,11 +105,11 @@ describe('alignUnits (5C: LCS on normalized block text)', () => {
     expect(ops('```mermaid\ngraph TD\n  A-->B\n```', '```mermaid\ngraph TD\n  A-->C\n```')).toEqual(['changed']);
   });
 
-  it('never pairs HTML blocks (R13)', () => {
+  it('never pairs HTML blocks', () => {
     expect(ops('<div>a</div>', '<div>b</div>')).toEqual(['removed', 'added']);
   });
 
-  it('an added file is all added, a deleted one all removed (R6)', () => {
+  it('an added file is all added, a deleted one all removed', () => {
     expect(ops('', '# A\n\nB.')).toEqual(['added', 'added']);
     expect(ops('# A\n\nB.', '')).toEqual(['removed', 'removed']);
   });

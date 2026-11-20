@@ -9,7 +9,7 @@ const { DEFAULT_SETTINGS, useAppState } = await import('../app/state');
 const { useSettingsUi } = await import('../settings/schema');
 const { THEME_IDS, THEMES } = await import('./themes');
 
-describe('theme actions (R4)', () => {
+describe('theme actions', () => {
   beforeEach(() => {
     useAppState.setState({ settings: DEFAULT_SETTINGS });
     useSettingsUi.setState({ open: false, focus: null, page: 'general' });

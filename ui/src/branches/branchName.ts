@@ -1,5 +1,5 @@
 /**
- * git's branch-name rules (spec #2 §9.1: validated live in the create and rename dialogs), word
+ * git's branch-name rules (validated live in the create and rename dialogs), word
  * for word the backend's `write::names::branch_name_error`. The backend checks again; this is
  * so the dialog can say why before anything is sent.
  */

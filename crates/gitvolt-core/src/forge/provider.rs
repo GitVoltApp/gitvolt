@@ -1,8 +1,8 @@
-//! What `gitvolt-forge` implements per forge kind (spec #4 §3.1), and what the app injects into
+//! What `gitvolt-forge` implements per forge kind, and what the app injects into
 //! `Api`: a connector that builds a provider for an account, and a token store.
 //!
-//! The methods 4B–4D use are declared here with default bodies that refuse, so each plan adds
-//! its own to the GitLab and GitHub impls without touching this trait.
+//! Methods only some forge impls have are declared here with default bodies that refuse, so each
+//! impl adds its own without touching this trait.
 
 use crate::avatar::AvatarPayload;
 use crate::error::{GbError, GbErrorKind};
@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 pub type ForgeFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, GbError>> + Send + 'a>>;
 
-/// A method this forge (or this plan) doesn't have yet.
+/// A method this forge (or this release) doesn't have yet.
 pub fn unsupported<'a, T: Send + 'a>(what: &'static str) -> ForgeFuture<'a, T> {
     Box::pin(async move { Err(GbError::new(GbErrorKind::InvalidInput, format!("{what} isn't supported by this forge yet"))) })
 }
@@ -116,10 +116,10 @@ pub fn is_forbidden(e: &GbError) -> bool {
     e.kind == GbErrorKind::AuthFailed && e.message.contains(FORBIDDEN_MARK)
 }
 
-/// The keyring's service name (core spec §14.3).
+/// The keyring's service name.
 pub const KEYRING_SERVICE: &str = "gitvolt";
 
-/// One account: a host in a profile, and which of the host's accounts (spec #4 §2). `id` is its
+/// One account: a host in a profile, and which of the host's accounts. `id` is its
 /// `ForgeAccount::id`: the host itself for the account the host had first, and
 /// `<host>#<user id>` for the others (empty also means the host).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -135,7 +135,7 @@ impl AccountKey {
         if self.id.is_empty() { &self.host } else { &self.id }
     }
 
-    /// The keyring's account name (core spec §14.3): `<profile-id>/<host>` for the account a host
+    /// The keyring's account name: `<profile-id>/<host>` for the account a host
     /// had first (the name 1.5.0 and before gave every account, so a downgrade still finds that
     /// token), `<profile-id>/<host>#<user id>` for the others.
     pub fn keyring_account(&self) -> String {
@@ -154,15 +154,15 @@ pub trait ForgeProvider: Send + Sync {
     /// limit still refuses the asks.
     fn expire_fresh(&self) {}
 
-    // Identity (4A).
-    /// The token's user, and whether the token may write (spec #4 §3.2).
+    // Identity.
+    /// The token's user, and whether the token may write.
     fn check_token(&self) -> ForgeFuture<'_, TokenCheck>;
     fn current_user(&self) -> ForgeFuture<'_, ForgeUser>;
     /// GitLab's version (`19.1.0-ee`); `None` where the forge has none (GitHub).
     fn version(&self) -> ForgeFuture<'_, Option<String>>;
 
-    // Projects (4A).
-    /// The project at `path` (`project_from_remote`, spec #4 §3.3).
+    // Projects.
+    /// The project at `path` (`project_from_remote`).
     fn project<'a>(&'a self, path: &'a str) -> ForgeFuture<'a, Fresh<ForgeProject>>;
     fn project_settings<'a>(&'a self, project: &'a ForgeProject) -> ForgeFuture<'a, ForgeProjectSettings>;
     /// The project's forks, newest activity first.
@@ -179,7 +179,7 @@ pub trait ForgeProvider: Send + Sync {
         })
     }
 
-    // Avatars (4A). `Ok(None)`: the forge has none for this email (Gravatar is next).
+    // Avatars. `Ok(None)`: the forge has none for this email (Gravatar is next).
     fn avatar_for_email<'a>(&'a self, email: &'a str) -> ForgeFuture<'a, Option<AvatarPayload>>;
     // --- GitHub commit-author avatars ---
     /// The last step for an email neither `avatar_for_email` nor Gravatar knows: the account
@@ -209,14 +209,13 @@ pub trait ForgeProvider: Send + Sync {
     fn avatar_at<'a>(&'a self, _url: &'a str) -> Option<ForgeFuture<'a, Option<AvatarPayload>>> {
         None
     }
-    // --- 5A T1: Markdown images ---
-    /// An image a Markdown body of `project` links (spec #5 §4.2), when `url` is on one of this
+    // --- Markdown images ---
+    /// An image a Markdown body of `project` links, when `url` is on one of this
     /// forge's own hosts; `None`, and no request, for any other address (the UI offers to load it
     /// on a click). The token goes only where `HttpClient::get_image_within` sends it.
     fn image<'a>(&'a self, _project: &'a ForgeProject, _url: &'a str) -> Option<ForgeFuture<'a, ForgeImage>> {
         None
     }
-    // --- end 5A T1 ---
     /// A video a Markdown body embeds, as `image` (the same hosts and token rules): `Found` with a
     /// `video/*` type, up to the video size cap.
     fn video<'a>(&'a self, _project: &'a ForgeProject, _url: &'a str) -> Option<ForgeFuture<'a, ForgeImage>> {
@@ -235,7 +234,7 @@ pub trait ForgeProvider: Send + Sync {
         RequestStats::default()
     }
 
-    // --- 4B: reads ---
+    // --- reads ---
     fn open_mrs<'a>(&'a self, _project: &'a ForgeProject, _filter: MrFilter) -> ForgeFuture<'a, Fresh<Vec<ForgeMr>>> {
         unsupported("Listing merge requests")
     }
@@ -244,7 +243,6 @@ pub trait ForgeProvider: Send + Sync {
     fn open_mrs_light<'a>(&'a self, project: &'a ForgeProject, filter: MrFilter) -> ForgeFuture<'a, Fresh<Vec<ForgeMr>>> {
         self.open_mrs(project, filter)
     }
-    // --- 4D T4 ---
     /// The open MRs/PRs whose target is `branch`, all of them (the merge guard must not miss one
     /// past the general list's first page). By default, `open_mrs_light` filtered.
     fn open_mrs_targeting<'a>(&'a self, project: &'a ForgeProject, branch: &'a str) -> ForgeFuture<'a, Fresh<Vec<ForgeMr>>> {
@@ -254,7 +252,6 @@ pub trait ForgeProvider: Send + Sync {
             Ok(r)
         })
     }
-    // --- end 4D T4 ---
     fn mr_for_branch<'a>(&'a self, _project: &'a ForgeProject, _source: &'a SourceRef) -> ForgeFuture<'a, Fresh<Option<ForgeMr>>> {
         unsupported("Finding a branch's merge request")
     }
@@ -264,7 +261,7 @@ pub trait ForgeProvider: Send + Sync {
     fn discussions<'a>(&'a self, _project: &'a ForgeProject, _number: u64) -> ForgeFuture<'a, Fresh<Vec<ForgeDiscussion>>> {
         unsupported("Reading discussions")
     }
-    // --- 4B: writes ---
+    // --- writes ---
     fn reply<'a>(&'a self, _project: &'a ForgeProject, _number: u64, _note: &'a NewNote) -> ForgeFuture<'a, ForgeNote> {
         unsupported("Replying")
     }
@@ -274,7 +271,7 @@ pub trait ForgeProvider: Send + Sync {
     fn request_changes<'a>(&'a self, _project: &'a ForgeProject, _number: u64, _body: &'a str) -> ForgeFuture<'a, ()> {
         unsupported("Requesting changes")
     }
-    // --- MR round 2: the review composer ---
+    // --- the review composer ---
     /// A review from the composer. By default: Comment is a note, Approve approves (then the
     /// note, if any), Request changes is `request_changes`. GitHub posts one review; GitLab
     /// sets the requested-changes reviewer state where it can.
@@ -290,7 +287,6 @@ pub trait ForgeProvider: Send + Sync {
     fn set_subscribed<'a>(&'a self, _project: &'a ForgeProject, _number: u64, _on: bool) -> ForgeFuture<'a, bool> {
         unsupported("Notifications")
     }
-    // --- end MR round 2 ---
     // --- comment actions ---
     /// Adds (`on`) or removes the token's user's `name` reaction on a note, if not so already;
     /// the note's reactions after.
@@ -338,7 +334,7 @@ pub trait ForgeProvider: Send + Sync {
     fn set_draft<'a>(&'a self, _project: &'a ForgeProject, _number: u64, _draft: bool) -> ForgeFuture<'a, ForgeMr> {
         unsupported("Changing draft status")
     }
-    // --- review comments (spec 2026-10-08 §6) ---
+    // --- review comments ---
     /// The MR's diff as the forge has it, with the lines each file takes comments on.
     fn review_diff<'a>(&'a self, _project: &'a ForgeProject, _number: u64) -> ForgeFuture<'a, ReviewDiff> {
         unsupported("Commenting on lines")
@@ -373,7 +369,6 @@ pub trait ForgeProvider: Send + Sync {
         unsupported("Commenting on lines")
     }
     // --- end review comments ---
-    // --- 4C ---
     fn create_mr<'a>(&'a self, _project: &'a ForgeProject, _req: &'a CreateMr) -> ForgeFuture<'a, CreateOutcome> {
         unsupported("Creating a merge request")
     }
@@ -386,14 +381,12 @@ pub trait ForgeProvider: Send + Sync {
     fn mr_templates<'a>(&'a self, _project: &'a ForgeProject, _branch: &'a str) -> ForgeFuture<'a, Vec<MrTemplate>> {
         unsupported("Reading templates")
     }
-    // --- 4C T1: an addition to 4A's trait, with a refusing default like the others ---
+    // --- an addition to the trait, with a refusing default like the others ---
     /// Adds the parts a create's follow-up calls couldn't (GitHub: reviewers, assignees and labels
-    /// on PR `number`), for the Retry of a partial failure (spec #4 §3.5). The parts still failing.
+    /// on PR `number`), for the Retry of a partial failure. The parts still failing.
     fn complete_create<'a>(&'a self, _project: &'a ForgeProject, _number: u64, _req: &'a CreateMr, _parts: &'a [CreatePart]) -> ForgeFuture<'a, Vec<PartFailure>> {
         unsupported("Adding reviewers, assignees and labels afterwards")
     }
-    // --- end 4C T1 ---
-    // --- 4D ---
     fn retarget<'a>(&'a self, _project: &'a ForgeProject, _number: u64, _target_branch: &'a str) -> ForgeFuture<'a, ForgeMr> {
         unsupported("Retargeting")
     }
@@ -422,7 +415,6 @@ pub async fn review_by_parts<P: ForgeProvider + ?Sized>(p: &P, project: &ForgePr
 pub trait ForgeConnector: Send + Sync {
     /// `Err(InvalidInput)` for a host this build won't talk to (the harness: any real forge).
     fn connect(&self, kind: ForgeKind, host: &str, token: Secret) -> Result<Arc<dyn ForgeProvider>, GbError>;
-    // --- 5A T1 ---
     /// An image the user chose to load ("Load image from <host>"): no token, https only, the
     /// image size cap. Needs no account.
     fn public_image<'a>(&'a self, _url: &'a str) -> ForgeFuture<'a, ForgeImage> {
@@ -432,7 +424,6 @@ pub trait ForgeConnector: Send + Sync {
     fn public_video<'a>(&'a self, _url: &'a str) -> ForgeFuture<'a, ForgeImage> {
         unsupported("Loading a video")
     }
-    // --- end 5A T1 ---
     /// Which forge `host` runs, asked without a token (a host whose name doesn't say). `None`:
     /// neither Forgejo nor GitLab answered as one, or this build asks no host.
     fn detect_host<'a>(&'a self, _host: &'a str) -> ForgeFuture<'a, Option<ForgeKind>> {
@@ -440,7 +431,7 @@ pub trait ForgeConnector: Send + Sync {
     }
 }
 
-/// Where tokens are kept (spec #4 §2). Every method blocks (Secret Service over D-Bus, file I/O):
+/// Where tokens are kept. Every method blocks (Secret Service over D-Bus, file I/O):
 /// call it from the blocking pool.
 pub trait TokenStore: Send + Sync {
     /// Stores `token` for `key`: in the system keyring, else in the owner-only file.

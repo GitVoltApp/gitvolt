@@ -1,7 +1,7 @@
 import { formatChange, renameHighlight, type HighlightParts } from './renameParts';
 import './renamePaths.css';
 
-/** One path of a rename: what both paths share dimmed, what changed highlighted (J15). Empty
+/** One path of a rename: what both paths share dimmed, what changed highlighted. Empty
  * parts render nothing. */
 function PathLine({ parts }: { parts: HighlightParts }) {
   const [pre, changed, suf] = parts;
@@ -15,9 +15,9 @@ function PathLine({ parts }: { parts: HighlightParts }) {
 }
 
 /**
- * A rename's paths for a tooltip (feedback H21, H22): three left-aligned lines, the old full
+ * A rename's paths for a tooltip: three left-aligned lines, the old full
  * path, a down arrow centred between them, the new full path. On both paths, the parts they share
- * are dimmed so only what changed stands out (J15, `renameHighlight`). An image converted to
+ * are dimmed so only what changed stands out (`renameHighlight`). An image converted to
  * another format says so under them ("Format changed: PNG → WebP"). Shared by the file list's
  * row tooltip and the diff header's.
  */

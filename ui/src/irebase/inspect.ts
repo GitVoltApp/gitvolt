@@ -7,7 +7,7 @@ import type { EditorState } from './model';
 import { editState, sessionOf, useRebaseSessions } from './session';
 
 /**
- * UX R2.2: the editor's selected row shows in the details panel (the tab's selection: the view
+ * The editor's selected row shows in the details panel (the tab's selection: the view
  * `drivesSelection`, so the graph's comes back when it closes), read-only, to see what a commit
  * holds while planning. The base row shows the base.
  */

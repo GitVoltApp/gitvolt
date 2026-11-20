@@ -149,7 +149,7 @@ export async function rewordCommit(ctx: DemoContext, p: { repo: number; worktree
   const here = await worktreeOf(read, p.worktree);
   // For the label and the range only: `plan` checks it's still HEAD's branch, under the lock.
   const commit = /^[0-9a-f]{40}$/.test(p.oid) ? await readCommit(read, p.oid).catch(() => null) : null;
-  // R2: a root commit has no parent to rebase from.
+  // A root commit has no parent to rebase from.
   if (commit !== null && commit.parents.length === 0) invalid("The first commit can't be reworded here. Use Interactive rebase.");
   const branch = here.branch?.replace(/^refs\/heads\//, '') ?? invalid('Check out a branch to reword its commits');
   // A commit the trunk has too, reworded from another branch, would be copied into it as divergent history.

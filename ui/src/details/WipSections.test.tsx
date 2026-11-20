@@ -29,8 +29,8 @@ beforeEach(() => {
   useFileListPrefs.setState({ mode: 'path', sort: 'path', allFiles: false });
 });
 
-describe('WipSections (K36)', () => {
-  it('Conflicted comes first with each file’s kind, and its files are in neither other list (spec #2 §7.1)', () => {
+describe('WipSections', () => {
+  it('Conflicted comes first with each file’s kind, and its files are in neither other list', () => {
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     const c = { ...file('c.txt'), status: 'U', conflict: 'bothModified' as const };
     const sections = [
@@ -44,14 +44,14 @@ describe('WipSections (K36)', () => {
     expect(screen.queryByRole('button', { name: /Stage c\.txt/ })).toBeNull();
   });
 
-  it('K86: no +0/−0 totals for an empty side; a one-sided change shows only that side', () => {
+  it('no +0/−0 totals for an empty side; a one-sided change shows only that side', () => {
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     const sections = [section('Unstaged', false), { ...section('Staged', true, 'a.txt'), list: { status: 'ready', data: { files: [file('a.txt')], added: 0, deleted: 3 } } } as FileSection];
     render(<RepoViewContext value={store}><WipSections sections={sections} /></RepoViewContext>);
     expect(screen.queryByTestId('unstaged-totals')).toBeNull();
     expect(screen.getByTestId('staged-totals')).toHaveTextContent(/^−3$/);
   });
-  it("UX G.2: View all files, on the bar even with nothing changed, adds the worktree's tracked files to Unstaged only", async () => {
+  it("View all files, on the bar even with nothing changed, adds the worktree's tracked files to Unstaged only", async () => {
     useFileListPrefs.setState({ wipAllFiles: false });
     const store = createRepoViewStore(1, '/r', graph, fakeServices({ worktreeFiles: new Loader(async () => ['lib/c.txt', 'tracked.txt'], new Lru(1), 1, () => false) }));
     render(<RepoViewContext value={store}><WipSections sections={[section('Unstaged', false), section('Staged', true, 'lib/c.txt')]} /></RepoViewContext>);
@@ -200,7 +200,7 @@ describe('WipSections (K36)', () => {
   });
 });
 
-describe('WipSections split double-click (K73)', () => {
+describe('WipSections split double-click', () => {
   it('resets the Unstaged/Staged split to 50% and persists it', () => {
     localStorage.setItem(WIP_PANEL.key, JSON.stringify({ ratio: 0.3, collapsed: { unstaged: false, staged: false } }));
     setup();

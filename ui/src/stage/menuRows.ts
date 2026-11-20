@@ -13,8 +13,8 @@ import { COMMIT_QUEUED, DISCARDING, stagingKey, useStaging } from './store';
 const row = (r: Omit<Extract<MenuRow, { kind: 'action' }>, 'kind'>): MenuRow => ({ kind: 'action', ...r });
 
 /** What a Discard all confirms: the changed files shown (`count`, each path once) and their
- * paths, a rename's both (UX R1 C.2). */
-export interface DiscardAllScope { count: number; confirmed?: string[]; /** A merge, rebase… in the worktree (§7.2: Abort instead). */ inProgress: boolean }
+ * paths, a rename's both. */
+export interface DiscardAllScope { count: number; confirmed?: string[]; /** A merge, rebase… in the worktree (Abort instead). */ inProgress: boolean }
 
 /** The scope of the lists shown, or `null` while none is loaded. */
 export function discardScopeOf(lists: readonly FileListPayload[]): Pick<DiscardAllScope, 'count' | 'confirmed'> | null {

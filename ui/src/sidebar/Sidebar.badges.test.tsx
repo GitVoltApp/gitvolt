@@ -33,7 +33,7 @@ beforeEach(() => {
   patchForge('t', { kind: 'gitlab', byRef: { 'refs/remotes/origin/dev': mrOf(12, { title: 'Dev work' }) } });
 });
 
-describe('the badge on Local rows (spec #4 §5)', () => {
+describe('the badge on Local rows', () => {
   it("shows on the branch whose upstream has an MR; a click opens it without jumping to the commit", () => {
     render(wrap(<Sidebar />));
     const row = screen.getByRole('treeitem', { name: 'dev' });

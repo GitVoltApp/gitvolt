@@ -75,7 +75,7 @@ describe('useTheme', () => {
   });
 });
 
-describe('the first-paint mirror (R3)', () => {
+describe('the first-paint mirror', () => {
   beforeEach(() => localStorage.clear());
 
   it('round-trips a built-in, with the kind and background index.html paints', () => {

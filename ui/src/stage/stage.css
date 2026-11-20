@@ -1,4 +1,4 @@
-/* Spec #2 §7.1: a row's actions show on hover and on the active row, at its right edge. */
+/* A row's actions show on hover and on the active row, at its right edge. */
 /* Overlaid at the row's right edge (the name truncates under it), so showing it never moves the text. */
 .row-actions { position: absolute; right: 8px; top: 0; bottom: 0; display: none; align-items: center; gap: 4px; padding-left: 6px; background: var(--panel-bg0); }
 .file-row:hover .row-actions, .file-row[aria-selected="true"] .row-actions { display: inline-flex; }
@@ -43,7 +43,7 @@
    the diff panel at its right edge, under the editor's overview ruler, where it couldn't be clicked. */
 .staging-undo { display: inline-flex; gap: 2px; }
 .wip-view-bar > .staging-undo { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
-/* UX G.2: the WIP's View all files, at the bar's left end (the shared Path/Tree toggle in the centre). */
+/* The WIP's View all files, at the bar's left end (the shared Path/Tree toggle in the centre). */
 .wip-all-files { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); }
 
 /* Header buttons: full label, then "Stage all" under 460px, then icon only under 340px. */

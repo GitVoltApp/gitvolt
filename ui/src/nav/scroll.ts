@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { BlockPos, PlaceView } from './history';
 
 /**
- * Scroll positions for navigation places (spec #5 §3.4): what a place was scrolled to when it
+ * Scroll positions for navigation places: what a place was scrolled to when it
  * was left, and where a restore asks its view to scroll once it shows. Views report through
  * `useScrollPlace` (a DOM pane) or `registerScrollSource` (Monaco, read live). A long rendered
  * Markdown document also reports its first visible block (`BlockPos`): its chunks not rendered

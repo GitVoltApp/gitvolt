@@ -1,4 +1,4 @@
-//! Changed-file lists (spec §9.3, §9.4, §8.6) from `git diff-tree` / `git diff` with
+//! Changed-file lists from `git diff-tree` / `git diff` with
 //! `-z --raw --numstat`. Each `FileChange` carries the exact blob source of both sides, so the
 //! diff viewer never re-derives them.
 
@@ -14,10 +14,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
-/// Above this size (either side), the diff viewer asks before loading (spec §10.2).
+/// Above this size (either side), the diff viewer asks before loading.
 pub const LARGE_FILE_BYTES: u64 = 2 * 1024 * 1024;
 /// The hard ceiling per side, even when the user chose "load anyway" (matches the UI's 64 MiB
-/// content cache, spec §4.4).
+/// content cache).
 pub const MAX_FORCED_BYTES: u64 = 64 * 1024 * 1024;
 /// Git's binary heuristic (xdiff's `buffer_is_binary`): a NUL in the first 8000 bytes.
 pub const BINARY_SNIFF_BYTES: usize = 8000;
@@ -29,11 +29,11 @@ pub const SUBMODULE_MODE: u32 = 0o160000;
 pub enum DiffSpec {
     /// A commit against one of its parents (0-based; ignored for a root commit).
     Commit { id: String, parent: u32 },
-    /// `from` → `to` (spec §9.4).
+    /// `from` → `to`.
     Compare { from: String, to: String },
-    /// A commit against a worktree's files ("Compare with working tree", spec §9.4).
+    /// A commit against a worktree's files ("Compare with working tree").
     Worktree { from: String, worktree: String },
-    /// A worktree's changes (spec §8.6): index vs HEAD, or worktree vs index plus untracked files.
+    /// A worktree's changes: index vs HEAD, or worktree vs index plus untracked files.
     Wip { worktree: String, staged: bool },
 }
 
@@ -258,7 +258,7 @@ fn diff_porcelain(extra: &[&str]) -> Vec<String> {
 }
 
 /// Drops the phantom `M` records `diff_porcelain` produces for a stat-dirty-but-content-identical
-/// path (see its doc comment and `C1` in the pre-review): git flags the path as changed purely
+/// path: git flags the path as changed purely
 /// because its stat info doesn't match the index, without ever reading it to check, so there's no
 /// numstat record for it. A real change — including one that also happens to be stat-dirty —
 /// always gets a numstat record (git has to read the file to diff it) and/or shows up in `git
@@ -326,7 +326,7 @@ fn count_lines(path: &Path) -> Option<u32> {
 
 /// The gix lookups (`to_changes`, dirty submodules) and untracked-file reads of a file list, on
 /// the blocking pool: with `--untracked-files=all` and a large un-ignored folder they're a lot
-/// of disk I/O (Rust minor #14).
+/// of disk I/O.
 async fn off_runtime<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, GbError> {
     tokio::task::spawn_blocking(f).await.map_err(|e| GbError::other(format!("file list task failed: {e}")))
 }
@@ -472,7 +472,7 @@ async fn wip_unstaged(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path,
 
 /// Both of a worktree's WIP lists, `(staged, unstaged)`, exactly as `file_list` gives them, from
 /// a status read already made (`entries`, the phantom filter's ground truth): what the watcher
-/// keeps for the active tab (K44). `reuse`: line counts already known for untracked files not
+/// keeps for the active tab. `reuse`: line counts already known for untracked files not
 /// written to since (by path). Read-only, like `file_list` (C1).
 /// Each diff runs only when `entries` lists a change on its side: a write that leaves the
 /// worktree clean (most do) costs no diff, and a dirty one only the side it touched.
@@ -890,7 +890,7 @@ mod tests {
         assert_eq!(list.added, 4, "the M record's counts must be totalled once, not twice");
     }
 
-    /// Spec #2 §7.1: conflicted rows say what kind of conflict they are.
+    /// Conflicted rows say what kind of conflict they are.
     #[tokio::test]
     async fn unmerged_wip_rows_carry_their_conflict_kind() {
         let r = TestRepo::new();

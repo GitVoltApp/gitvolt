@@ -1,5 +1,5 @@
 /**
- * Where an action came from (the confirm model, spec §ui confirms): the control the user clicked
+ * Where an action came from (the confirm model): the control the user clicked
  * (or pressed Enter/Space on), a context menu row, or the element that had focus when a keyboard
  * shortcut ran. A confirmation arms that control in place; with no control to arm (a shortcut, a
  * control that has gone since), it's a popover anchored where the action started.

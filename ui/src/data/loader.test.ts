@@ -93,7 +93,7 @@ describe('Loader', () => {
     expect(n).toBe(4);
   });
 
-  // Controller ruling F4: the fetcher runs synchronously inside `get`, so a request is on the
+  // The fetcher runs synchronously inside `get`, so a request is on the
   // wire before `get` returns, and a fetcher that throws synchronously rejects the load
   // (and frees its slot) instead of escaping from `get`.
   it('calls the fetcher synchronously and turns a synchronous throw into a rejection', async () => {

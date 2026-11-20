@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type DiffMode = 'hunk' | 'inline' | 'split';
-/** Spec #5 §3.3: how File View shows a Markdown file, app-wide. */
+/** How File View shows a Markdown file, app-wide. */
 export type MarkdownView = 'rendered' | 'source';
 /** The prefs holding a Source | Rendered pick: Markdown's, HTML's, and CSV and TSV files' (Table). */
 export type ViewPref = 'markdownView' | 'htmlView' | 'tableView';
@@ -10,7 +10,7 @@ export type HistoryView = 'file' | 'changes';
 export interface DiffPrefs { mode: DiffMode; ignoreWhitespace: boolean; wordWrap: boolean; markdownView: MarkdownView; htmlView: MarkdownView; tableView: MarkdownView; historyView: HistoryView }
 /** What the diff editor's options are built from (`diffEditorOptions`). */
 export type EditorDiffPrefs = Pick<DiffPrefs, 'mode' | 'ignoreWhitespace' | 'wordWrap'>;
-/** Inline by default (plan 1B amendment 3); Markdown rendered (spec #5 §3.3); HTML as source (its
+/** Inline by default; Markdown rendered; HTML as source (its
  * own pick: an HTML file is more often code to read than a page, and its preview is static); CSV
  * and TSV files as a table (their own pick); File History on the file (its first behaviour). The
  * user's last pick is remembered app-wide. */
@@ -38,8 +38,8 @@ export function parseDiffPrefs(raw: unknown): DiffPrefs | null {
 }
 
 /**
- * THE persistence seam for diff mode and toggles (spec §10.2: app-wide settings that persist).
- * Backed by localStorage until plan 1C replaces this one object with its settings store (its
+ * THE persistence seam for diff mode and toggles (app-wide settings that persist).
+ * Backed by localStorage until this one object is replaced by the settings store (its
  * `diffMode`, `ignoreWhitespace` and `wordWrap` fields). Storage can be missing, blocked or full:
  * every access is guarded, and the prefs then simply last as long as the window.
  */

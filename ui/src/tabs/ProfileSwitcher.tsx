@@ -10,7 +10,7 @@ import { HoverTooltip } from '../ui/HoverTooltip';
 import { ProfileDialog, useProfileDialog } from './ProfileDialog';
 
 /**
- * K69: each profile's row shows its colour, as a dot the size of a menu icon; the current one's
+ * Each profile's row shows its colour, as a dot the size of a menu icon; the current one's
  * dot has a ring (in place of the old check). One component per colour/state, kept, so the menu's
  * memoized rows don't remount their icon.
  */
@@ -54,7 +54,7 @@ function rows(): MenuRow[] {
             const name = profileLabel(p.name);
             return {
               kind: 'action', id: `profile.delete.${p.id}`, label: `${name}…`, icon: Trash2, tooltip: `Delete ${name} and its tabs`,
-              // K68: never in one click — the profile, its tabs and its recent list go.
+              // Never in one click — the profile, its tabs and its recent list go.
               run: () => {
                 void confirmAction({
                   title: `Delete the profile “${name}”?`,
@@ -71,7 +71,7 @@ function rows(): MenuRow[] {
   ];
 }
 
-/** Far right of the tab bar (spec §6.2), and its New/Edit/Delete dialog. A profile without a
+/** Far right of the tab bar, and its New/Edit/Delete dialog. A profile without a
  * name shows just its colour. */
 export function ProfileSwitcher() {
   const name = useAppState((s) => s.profile.name).trim();

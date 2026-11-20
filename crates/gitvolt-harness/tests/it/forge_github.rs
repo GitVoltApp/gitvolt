@@ -1,4 +1,4 @@
-//! The GitHub provider against the fake forge (spec #4 §7).
+//! The GitHub provider against the fake forge.
 
 use gitvolt_core::error::GbErrorKind;
 use gitvolt_core::forge::*;

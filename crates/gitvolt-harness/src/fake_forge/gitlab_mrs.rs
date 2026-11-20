@@ -1,5 +1,5 @@
-//! GitLab merge requests in the fake forge (4B): the list and its filters, one MR, its
-//! approvals, discussions and diffs, and the project's pipelines; 4B T3 adds the writes. The MRs
+//! GitLab merge requests in the fake forge: the list and its filters, one MR, its
+//! approvals, discussions and diffs, and the project's pipelines, plus the writes. The MRs
 //! live in the seed (`GitLabSeed.merge_requests`), so a write changes what the next read sees.
 //! Like GitLab, a list's MRs have no `head_pipeline` (a single MR's GET has it).
 
@@ -182,7 +182,6 @@ pub struct FakeMergeRequest {
     pub updated_at: String,
     pub discussions: Vec<FakeDiscussion>,
     pub diffs: Vec<FakeDiff>,
-    // --- MR round 2 ---
     /// `diff_refs.base_sha` (a single MR's GET); empty: none.
     pub base_sha: String,
     /// Usernames subscribed to its notifications (`subscribed` is the token user's).
@@ -193,7 +192,6 @@ pub struct FakeMergeRequest {
     /// Draft notes, each its author's own (only they see it).
     pub draft_notes: Vec<FakeDraftNote>,
     // --- end review comments ---
-    // --- end MR round 2 ---
     // --- branch update ---
     /// Commits the target has that the source branch doesn't (`diverged_commits_count`, asked
     /// with `include_diverged_commits_count`).
@@ -322,16 +320,13 @@ pub fn mr_json(st: &ForgeState, m: &FakeMergeRequest, base: &str, single: bool) 
     });
     if single {
         v["head_pipeline"] = m.pipeline.as_deref().map_or(Value::Null, |s| pipeline_json(m, s, base));
-        // --- MR round 2 ---
         if !m.base_sha.is_empty() {
             v["diff_refs"] = json!({ "base_sha": m.base_sha, "start_sha": m.base_sha, "head_sha": m.head_sha });
         }
-        // --- end MR round 2 ---
     }
     v
 }
 
-// --- MR round 2 ---
 /// A single MR's JSON for the token's user (`subscribed` is theirs).
 fn mr_json_for(st: &ForgeState, m: &FakeMergeRequest, r: &FakeRequest, base: &str) -> Value {
     let mut v = mr_json(st, m, base, true);
@@ -464,7 +459,6 @@ fn note_route(st: &mut ForgeState, r: &FakeRequest, i: usize, nid: &str, rest: &
     }
 }
 // --- end comment actions ---
-// --- end MR round 2 ---
 
 fn note_json(st: &ForgeState, n: &FakeNote, resolvable: bool, resolved: bool, base: &str) -> Value {
     json!({
@@ -514,9 +508,8 @@ fn query_matches(st: &ForgeState, m: &FakeMergeRequest, r: &FakeRequest) -> bool
         Some("assigned_to_me") => me.is_some_and(|u| m.assignees.iter().any(|a| a == u)),
         _ => true,
     };
-    // --- 4D T11: target_branch ---
+    // --- target_branch ---
     let branch_ok = branch_ok && q.get("target_branch").is_none_or(|b| *b == m.target_branch);
-    // --- end 4D T11 ---
     // `updated_after` includes its own time (RFC 3339 in UTC compares as text).
     let branch_ok = branch_ok && q.get("updated_after").is_none_or(|t| m.updated_at.as_str() >= t.as_str());
     let reviewer_ok = q.get("reviewer_id").is_none_or(|id| m.reviewers.iter().any(|u| person(st, u).id.to_string() == *id));
@@ -527,9 +520,8 @@ fn not_found() -> Reply {
     Reply::status(404, json!({ "message": "404 Not found" }))
 }
 
-/// The merge request routes under `/api/v4/projects/<id>/`; `None` for any other path (4A's
+/// The merge request routes under `/api/v4/projects/<id>/`; `None` for any other path (the base
 /// `route` answers it). Only reached with a valid token.
-// --- 4B T3 ---
 fn body_of(r: &FakeRequest) -> Value {
     serde_json::from_slice(r.body).unwrap_or(Value::Null)
 }
@@ -545,7 +537,6 @@ fn new_note(st: &ForgeState, r: &FakeRequest) -> Option<FakeNote> {
     let id = st.seed.gitlab.merge_requests.iter().flat_map(|m| m.discussions.iter()).flat_map(|d| d.notes.iter()).map(|n| n.id).max().unwrap_or(0).max(1000) + 1;
     Some(FakeNote { id, author, body, created_at: WRITE_TIME.into(), system: false, position: None, awards: vec![] })
 }
-// --- end 4B T3 ---
 
 pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
     let segs: Vec<&str> = r.segments.iter().map(String::as_str).collect();
@@ -614,7 +605,7 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
             Some(i) => Reply::page(st.seed.gitlab.merge_requests[i].diffs.iter().map(|d| json!({ "old_path": d.old_path, "new_path": d.new_path, "diff": d.diff, "new_file": false, "deleted_file": false, "renamed_file": d.old_path != d.new_path })).collect(), r, &here),
             None => not_found(),
         },
-        // --- 4B T3: writes ---
+        // --- writes ---
         ("POST", ["merge_requests", iid, "notes"]) => match index(st, iid) {
             Some(i) => {
                 let Some(note) = new_note(st, r) else { return Some(bad_request()) };
@@ -769,13 +760,12 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
                     Some(ids.iter().filter_map(|id| g.tokens.iter().map(|t| &t.user).chain(&g.users).chain(&g.members).find(|u| u.id == *id)).map(|u| u.username.clone()).collect())
                 };
                 let (mut reviewers, mut assignees) = (people("reviewer_ids"), people("assignee_ids"));
-                // --- MR round 2: GitLab Free keeps only the first id, silently ---
+                // --- GitLab Free keeps only the first id, silently ---
                 if find(&st.seed.gitlab.projects, &project).is_some_and(|p| p.single_people) {
                     for list in [&mut reviewers, &mut assignees].into_iter().flatten() {
                         list.truncate(1);
                     }
                 }
-                // --- end MR round 2 ---
                 let m = &mut st.seed.gitlab.merge_requests[i];
                 if let Some(list) = reviewers {
                     m.reviewers = list;
@@ -792,18 +782,16 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
                 if let Some(l) = b["labels"].as_str() {
                     m.labels = l.split(',').map(str::trim).filter(|x| !x.is_empty()).map(str::to_string).collect();
                 }
-                // --- 4D T2: retarget ---
+                // --- retarget ---
                 if let Some(t) = b["target_branch"].as_str() {
                     m.target_branch = t.into();
                 }
-                // --- end 4D T2 ---
                 m.updated_at = WRITE_TIME.into();
                 Reply::json(mr_json(st, &st.seed.gitlab.merge_requests[i], &base, true))
             }
             None => not_found(),
         },
-        // --- end 4B T3 ---
-        // --- MR round 2: one member (whoever a PUT can add), and notifications (304 when already so, as GitLab) ---
+        // --- one member (whoever a PUT can add), and notifications (304 when already so, as GitLab) ---
         ("GET", ["members", "all", uid]) => {
             let g = &st.seed.gitlab;
             match g.tokens.iter().map(|t| &t.user).chain(&g.users).chain(&g.members).find(|u| u.id.to_string() == *uid) {
@@ -823,15 +811,13 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
             }
             _ => not_found(),
         },
-        // --- end MR round 2 ---
-        // --- 4C T2: create, people, labels, templates ---
+        // --- create, people, labels, templates ---
         ("POST", ["merge_requests"]) => super::create::gitlab_post_mr(st, r, id),
         ("GET", ["members", "all"]) => super::create::gitlab_members(st, r, id),
         ("GET", ["labels"]) => super::create::gitlab_labels(st, r, id),
         ("GET", ["repository", "tree"]) => super::create::gitlab_tree(st, r, id),
         ("GET", ["repository", "files", file, "raw"]) => super::create::gitlab_raw(st, id, file),
-        // --- end 4C T2 ---
-        // --- 5A T3: project uploads through the API ---
+        // --- project uploads through the API ---
         ("GET", ["uploads", secret, file]) => {
             if st.seed.gitlab.no_uploads_api {
                 // Grape's answer to a route it doesn't have.
@@ -842,7 +828,6 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Option<Reply> {
                 Reply::status(404, json!({ "message": "404 Not Found" }))
             }
         }
-        // --- end 5A T3 ---
         // --- review comments: draft notes (the token user's own) and positioned threads ---
         ("GET", ["merge_requests", iid, "draft_notes"]) => match index(st, iid) {
             Some(i) => {

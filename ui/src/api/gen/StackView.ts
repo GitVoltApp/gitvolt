@@ -5,7 +5,7 @@ import type { StackMode } from "./StackMode";
 
 export type StackView = { 
 /**
- * The remote whose project the MRs/PRs live in (spec #4 §3.3's target).
+ * The remote whose project the MRs/PRs live in.
  */
 remote: string, 
 /**

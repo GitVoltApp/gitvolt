@@ -388,7 +388,7 @@ pub async fn record(root: &Path, name: &str, requests: &[Value], events: bool) -
     // The write guard wants the marked folder strictly below its root: the fixture folder's parent.
     let guard_root = root.parent().ok_or("the fixture folder has no parent")?.to_path_buf();
     let harness = Harness::new(HarnessOptions { fixture_root: Some(guard_root), golden: true, ..Default::default() }).await;
-    // Plan 4: a fixture with a forge.json gets its fake GitLab, and the visitor's account on it.
+    // A fixture with a forge.json gets its fake GitLab, and the visitor's account on it.
     let forge = crate::forge_seed::load(&root)?;
     if let Some(f) = &forge {
         let mut gitlab = f.gitlab.clone();

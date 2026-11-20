@@ -14,7 +14,7 @@ import { forgeOf } from '../mrStore';
 import { noteLine } from './noteLine';
 
 /**
- * A diff-line note's `file:line` (spec #4 §2: "clicking opens that file's diff"): the file in the
+ * A diff-line note's `file:line` ("clicking opens that file's diff"): the file in the
  * local compare of merge-base(the target branch's remote tip, the MR's head) → the MR's head, as
  * the MR's diff is, at the note's line or lines (`noteLine`). Both commits must be in the loaded graph (fetch, or check
  * out, first).
@@ -36,7 +36,7 @@ export async function openNoteFile(tabId: string, kind: ForgeKind, mr: ForgeMr, 
   const list = await store.getState().services.files.get(filesKey(spec)).catch(() => null);
   const i = list ? list.files.findIndex((f) => f.path === path || f.oldPath === path) : -1;
   if (!list || i < 0) return say(`${path} isn't changed in this ${noun} any more`);
-  // The note asks for that file's diff: File History stops being sticky (UX).
+  // The note asks for that file's diff: File History stops being sticky.
   endStickyHistory(tabId);
   const line = noteLine(pos);
   store.getState().openFile({ ...targetFor(list.files[i], spec), ...(line && { line }) }, list.files.slice(i + 1, i + 2).map((f) => targetFor(f, spec)));

@@ -2,42 +2,40 @@ import type { MenuRow } from './types';
 
 export type MenuKind = 'commit' | 'tag' | 'file' | 'folder' | 'monaco' | 'tab' | 'tabbar' | 'column' | 'sidebar' | 'wip' | 'selection' | 'chip' | 'mr' | 'link';
 
-/** Group order per menu. `commit` (branch label / commit) follows spec §7's target table. */
+/** Group order per menu. `commit` (branch label / commit) is its own order. */
 export const GROUP_ORDER: Record<MenuKind, readonly string[]> = {
   commit: ['sync', 'integrate', 'branch', 'commit', 'stash', 'forge', 'manage', 'copy', 'view'],
-  // Spec #3 §4.3: the tag's Push (3B) and Delete (3B), then 1B's rows. Ruling (fix round 1, item
-  // 5): spec §7 wins over 1B's own order here — Copy name, then Forge link.
+  // The tag's Push and Delete, then the shared rows. Copy name comes before Forge link.
   tag: ['sync', 'manage', 'copy', 'forge', 'view'],
-  // 3A: 'restore' (from a commit) after the WIP groups, 'history' (File history, Blame) last.
+  // 'restore' (from a commit) after the WIP groups, 'history' (File history, Blame) last.
   // A submodule's row: Open in a tab, Update this submodule ('submodule').
   file: ['stage', 'conflict', 'submodule', 'restore', 'colour', 'copy', 'forge', 'open', 'view', 'history'],
   // A WIP folder: Stage / Unstage / Discard its files ('stage', its hover buttons'); a folder in
-  // Conflicted: Mark its files resolved (2D's 'conflict').
+  // Conflicted: Mark its files resolved ('conflict').
   folder: ['stage', 'conflict', 'colour', 'copy', 'open'],
   monaco: ['copy', 'forge', 'open'],
   tab: ['edit', 'group', 'close', 'restore', 'repo'],
   // The tab bar's empty space: Reopen closed tab and Saved groups, then Open repository / Clone.
   tabbar: ['restore', 'open'],
   column: ['columns'],
-  // The sidebar's own items (remote, worktree, stash): 2C's worktree and stash rows first (spec
-  // #2 §10, §11), then the read-only rows and "Show in graph" (plan 1C Task 15b). A remote's
-  // "Push all tags" (3B) comes first.
+  // The sidebar's own items (remote, worktree, stash): the worktree and stash rows first,
+  // then the read-only rows and "Show in graph". A remote's
+  // "Push all tags" comes first.
   // A remote's "Remove remote…" ends its menu ('manage'). A submodule's: Open in a tab, Update
   // ('submodule'), then its copy and open rows, Remove submodule last ('manage').
   sidebar: ['sync', 'worktree', 'stash', 'submodule', 'copy', 'forge', 'open', 'view', 'manage'],
-  // A WIP row (spec #2 §14): Switch to this worktree, Open in a new tab, then Stash.
+  // A WIP row: Switch to this worktree, Open in a new tab, then Stash.
   wip: ['worktree', 'stash'],
-  // Two or more selected commits (spec #3 §4.3): 3C's Squash, 3B's Cherry-pick and Revert,
-  // 3C's "Interactive rebase from here".
+  // Two or more selected commits: Squash, Cherry-pick and Revert,
+  // "Interactive rebase from here".
   selection: ['squash', 'commit', 'rebase'],
-  // A branch chip in the interactive rebase editor (UX R1.3): Delete branch, Restore, then Copy.
+  // A branch chip in the interactive rebase editor: Delete branch, Restore, then Copy.
   chip: ['manage', 'copy'],
   // A sidebar MR/PR row: Open, Check out (here or in a new worktree), Show in graph, the copies
   // and the link, then the author's draft ⇄ ready.
   mr: ['open', 'checkout', 'view', 'copy', 'forge'],
-  // --- 5A T6: a link in rendered Markdown (spec #5 §4.1): Open in GitVolt / in browser, then the copies ---
+  // --- a link in rendered Markdown: Open in GitVolt / in browser, then the copies ---
   link: ['open', 'copy'],
-  // --- end 5A T6 ---
 };
 
 export interface MenuContribution<T, E> {
@@ -61,8 +59,8 @@ const contributions = new Map<string, AnyContribution>();
 const hotReloading = () => import.meta.env.DEV && import.meta.env.MODE !== 'test';
 
 /**
- * Adds rows to a menu. Call it from the module that ships the feature (spec §3: no row before its
- * sub-project ships), at import time. Returns an unregister function (tests). A second
+ * Adds rows to a menu. Call it from the module that ships the feature (no row before its
+ * feature ships), at import time. Returns an unregister function (tests). A second
  * registration of an id throws (two features claiming one row), except on the dev server, where
  * a hot-reloaded module's registration replaces its previous one.
  */
@@ -90,7 +88,7 @@ export function buildMenu<T, E>(kind: MenuKind, target: T, env: E): MenuRow[] {
   return out;
 }
 
-/** Label template: `{X}` = the HEAD branch, `{Y}` = the clicked branch (spec §7 examples). */
+/** Label template: `{X}` = the HEAD branch, `{Y}` = the clicked branch. */
 export function tmpl(label: string, vars: { X?: string | null; Y?: string | null }): string {
   return label.replaceAll('{X}', vars.X || 'HEAD').replaceAll('{Y}', vars.Y || 'this branch');
 }

@@ -56,7 +56,7 @@ describe('pushStash', () => {
     expect(await status(t)).toEqual(['.M b.txt', 'A. n.txt', '?? v.txt']);
   });
 
-  it('stashes and applies an awkward path (Review Focus 3)', async () => {
+  it('stashes and applies an awkward path', async () => {
     const { t, wt } = await repo();
     await t.write('dir with space/ünï.txt', 'x\n');
     await t.write('space name.txt', 'y\n');

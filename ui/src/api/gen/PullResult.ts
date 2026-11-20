@@ -3,6 +3,6 @@ import type { PausedKind } from "./PausedKind";
 
 export type PullResult = { "status": "upToDate", ahead: number, } | { "status": "fastForward", commits: number, } | { "status": "merged", commits: number, } | { "status": "rebased", commits: number, } | { "status": "diverged", ahead: number, behind: number, conflicts: number, } | { "status": "stopped", kind: PausedKind, files: number, 
 /**
- * UX F: a stop with no conflict: why git stopped (the signer, a hook).
+ * A stop with no conflict: why git stopped (the signer, a hook).
  */
 warning?: string, };

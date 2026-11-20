@@ -8,7 +8,7 @@ export function bareHost(input: string): string {
   return (rest.split(/[/?#]/)[0] ?? '').toLowerCase();
 }
 
-/** A host's forge type from its name: the Rust `host_kind` (core spec §14.4). The profile's
+/** A host's forge type from its name: the Rust `host_kind`. The profile's
  * override still wins (`effectiveKind`). */
 export function detectHostKind(host: string): HostKind {
   const h = host.toLowerCase();

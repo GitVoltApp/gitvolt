@@ -8,7 +8,7 @@ const b = (id: number, neu: [number, number] | null, old: [number, number] | nul
 
 afterEach(() => { document.body.innerHTML = ''; });
 
-describe('the rendered blocks (spec 2026-10-08 §3)', () => {
+describe('the rendered blocks', () => {
   it("reads the blocks and their lines in page order, leaving out what a review slot holds", () => {
     document.body.innerHTML = '<div id="p"><p data-src-id="1" data-src-new="1-2" data-src-old="1-1">a</p><div data-review-slot=""><p data-src-id="9" data-src-new="1-1">card</p></div><ul data-src-id="2" data-src-new="4-6"><li data-src-id="3" data-src-new="4-4">x</li></ul></div>';
     expect(scanBlocks(document.getElementById('p')!)).toEqual([b(1, [1, 2], [1, 1], 0), b(2, [4, 6], null, 1), b(3, [4, 4], null, 2)]);

@@ -104,7 +104,7 @@ describe('FetchScheduler', () => {
     s.stop();
   });
 
-  // Spec #2 §3.6: a user's op cancels a background fetch (it comes back skipped: busy); it runs
+  // A user's op cancels a background fetch (it comes back skipped: busy); it runs
   // again once the queue is idle, not an interval later. Owed only once: an idle queue with nothing
   // owed fetches nothing.
   it('a fetch skipped because the queue was busy runs again when the queue goes idle', async () => {

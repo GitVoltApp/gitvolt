@@ -1,4 +1,4 @@
-//! The range an interactive rebase replays (spec #3 §3.3, Ruling 6): its rows, newest first
+//! The range an interactive rebase replays: its rows, newest first
 //! (merges flattened away), its chips, and the tips the plan expects. A read: gix, `git log` and
 //! `git worktree list`.
 
@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use ts_rs::TS;
 
-/// Ruling 11: the editor's ceiling.
+/// The editor's ceiling.
 pub const MAX_ROWS: usize = 1000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -30,7 +30,7 @@ pub struct PlanRow {
     #[ts(type = "number")]
     pub author_time: i64,
     /// Already in the base under another id (`rev-list --cherry-mark`'s `=`): git's own todo
-    /// would leave it out. 3D's Rebase stack drops these rows; the editor shows them as is.
+    /// would leave it out. The Rebase stack drops these rows; the editor shows them as is.
     pub upstream: bool,
 }
 
@@ -75,7 +75,7 @@ pub(crate) struct RangeRow {
     pub oid: String,
     pub message: String,
     pub summary: String,
-    /// `%ae %at %s`: the reword script's check (Ruling 3).
+    /// `%ae %at %s`: the reword script's check.
     pub guard: String,
     pub author_name: String,
     pub author_email: String,
@@ -144,7 +144,7 @@ pub(crate) async fn read_range(cli: &GitCli, root: &Path, branch: &str, base: &s
         let base_summary = commit.message_raw_sloppy().lines().next().map(|l| l.to_str_lossy().to_string()).unwrap_or_default();
         let base = commit.id;
         // The ref's own value, unpeeled (an annotated tag: the tag object): what the write's ref
-        // check reads (3B T3), so the CAS compares like with like.
+        // check reads, so the CAS compares like with like.
         let (base_ref, base_ref_target) = match repo.find_reference(s.as_str()) {
             Ok(mut r) => {
                 let name = r.name().as_bstr().to_string();
@@ -194,7 +194,7 @@ pub(crate) async fn read_range(cli: &GitCli, root: &Path, branch: &str, base: &s
         .filter_map(|w| Some((short_ref(&w.branch?).to_string(), w.path.display().to_string())))
         .collect();
     // Chips: each branch with a tip in range sits on its row, or (a merge commit) on the newest
-    // row that's an ancestor of it (Ruling 6).
+    // row that's an ancestor of it.
     let (r, row_oids) = (root.to_path_buf(), rows.iter().map(|x| x.oid.clone()).collect::<Vec<_>>());
     let in_range: Vec<(String, ObjectId, bool)> = sets.stacked.iter().map(|(n, o)| (n.clone(), *o, false)).chain(sets.merged_in.iter().map(|(n, o)| (n.clone(), *o, true))).collect();
     let placed = blocking(move || {
@@ -315,7 +315,7 @@ mod tests {
     }
 
     /// A commit already in the base under another id (picked into main) stays a row, marked
-    /// `upstream`: git's own todo would leave it out, and 3D's Rebase stack drops it.
+    /// `upstream`: git's own todo would leave it out, and the Rebase stack drops it.
     #[tokio::test]
     async fn a_row_already_in_the_base_is_marked_upstream() {
         let data = tempfile::tempdir().unwrap();

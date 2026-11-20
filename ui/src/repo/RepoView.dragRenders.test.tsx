@@ -14,7 +14,7 @@ import { fakeServices } from './testServices';
 
 vi.mock('../api/transport', () => ({ copyText: vi.fn(async () => {}) }));
 
-// Counts renders of the two heavy children a right-panel drag (K26) must not re-render per
+// Counts renders of the two heavy children a right-panel drag must not re-render per
 // pointer event: the graph and the details panel. The graph stub exposes `onSelect` through a
 // button, so the real selection/store/panel-loading path still runs under test.
 const renders = vi.hoisted(() => ({ graph: 0, details: 0 }));
@@ -49,7 +49,7 @@ function services(): RepoServices {
   });
 }
 
-describe('RepoView drag performance (K26)', () => {
+describe('RepoView drag performance', () => {
   it('a right-panel drag causes zero graph/details re-renders until release, then exactly one', async () => {
     render(<RepoView repo={1} repoPath="/r" graph={graph} services={services()} />);
     fireEvent.click(screen.getByTestId('select-first'));

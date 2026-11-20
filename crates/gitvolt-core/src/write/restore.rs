@@ -1,6 +1,6 @@
-//! Restore a file from a commit (spec #3 §3.8): the file as it is in `sha`, written into the
+//! Restore a file from a commit: the file as it is in `sha`, written into the
 //! working tree unstaged (the index untouched); a path `sha` doesn't have is deleted instead
-//! ("Delete <path>"). Like a discard (#2 §5.3) it snapshots the path first and records an `after`
+//! ("Delete <path>"). Like a discard it snapshots the path first and records an `after`
 //! snapshot, so Undo and Redo restore either side, an untracked file's bytes included.
 
 use crate::api::Api;
@@ -76,7 +76,7 @@ pub(crate) fn untracked_of(root: &Path, path: &str) -> Result<Vec<String>, GbErr
     Ok(if tracked { Vec::new() } else { vec![path.to_string()] })
 }
 
-/// Ruling 3: the file's own changes a restore would replace (unstaged edits, a deletion, an
+/// The file's own changes a restore would replace (unstaged edits, a deletion, an
 /// untracked file). A staged-only change isn't one: the index keeps it.
 async fn has_changes(api: &Api, root: &Path, path: &str, untracked: bool) -> Result<bool, GbError> {
     if untracked {
@@ -140,7 +140,7 @@ impl WriteIntent for Restore {
                 }
             }
         }
-        // The same path; untracked now if it came back where the index has none (Review Focus 5).
+        // The same path; untracked now if it came back where the index has none.
         let untracked = untracked_of(cx.root, &self.path)?;
         cx.after = Some(snapshot::create(&cx.snapshots(), &self.label(), &snap.paths, &untracked).await?);
         cx.touch(ChangeKind::Worktree);
@@ -199,7 +199,7 @@ mod tests {
         assert_eq!(RepoState::capture(&r), after);
     }
 
-    /// Review Focus 2; spec #3 §3.8 "Click again to replace your changes to <path>".
+    /// "Click again to replace your changes to <path>".
     #[tokio::test]
     async fn restoring_over_local_changes_asks_then_undo_brings_them_back() {
         let data = tempfile::tempdir().unwrap();
@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(read(&r, "a.txt"), "a\n");
     }
 
-    /// Ruling 3: a staged-only change isn't asked about, and stays staged.
+    /// A staged-only change isn't asked about, and stays staged.
     #[tokio::test]
     async fn a_staged_only_change_is_not_asked_about_and_stays_staged() {
         let data = tempfile::tempdir().unwrap();
@@ -234,7 +234,7 @@ mod tests {
         assert_eq!(read(&r, "a.txt"), "a\n");
     }
 
-    /// Spec #3 §3.8: a file absent at that commit offers "Delete <path>".
+    /// A file absent at that commit offers "Delete <path>".
     #[tokio::test]
     async fn a_path_the_commit_lacks_is_deleted_and_undo_restores_it() {
         let data = tempfile::tempdir().unwrap();
@@ -269,7 +269,6 @@ mod tests {
         assert_eq!(read(&r, "n.txt"), "new\n");
     }
 
-    /// Review Focus 5.
     #[tokio::test]
     async fn a_file_gone_since_comes_back_and_undo_removes_it_again() {
         let data = tempfile::tempdir().unwrap();

@@ -7,7 +7,7 @@ import type { DiffBlockNode, DiffMark, SrcLines } from './nodes';
 import { codeLines, inlineDiff } from './words';
 
 export interface DiffResult { root: Root; changes: number; gaveUp: boolean }
-/** `deadline`: the whole diff's one deadline (a `Date.now()` time, R14), set as it starts.
+/** `deadline`: the whole diff's one deadline (a `Date.now()` time), set as it starts.
  * `refs`: the old side's link definitions whose URL or title changed, by identifier. */
 interface Ctx { changes: number; deadline: number; refs: ReadonlyMap<string, Definition>; /** The next source block's id. */ blocks: number }
 
@@ -68,7 +68,7 @@ function oldSide<T extends RootContent>(n: T, c: Ctx): T {
   return copy;
 }
 
-// --- review comments: source lines (spec 2026-10-08 §3) ---
+// --- review comments: source lines ---
 /** `nodes`' source lines, from the first one's start to the last one's end; null without positions. */
 function linesOf(nodes: readonly Nodes[] | null): [number, number] | null {
   const a = nodes?.[0]?.position?.start.line;
@@ -183,7 +183,7 @@ function changed(o: RootContent, n: RootContent, c: Ctx): RootContent[] {
   return replaced();
 }
 
-/** Two lists' items lined up in the new list (R12): kept items as they are, added and removed
+/** Two lists' items lined up in the new list: kept items as they are, added and removed
  * ones marked, a changed one with its content diffed. An ordered list's items carry their
  * numbers; a removed item keeps its old one and doesn't shift the others. */
 function diffList(o: List, n: List, c: Ctx): List {
@@ -251,7 +251,7 @@ function changedRow(a: TableRow | undefined, b: TableRow, c: Ctx): TableRow {
   return { ...b, children: cells, data: { ...b.data, gbDiff: 'changed' } };
 }
 
-/** Two tables of the same width (R12): the header row first (diffed cell by cell), then the body
+/** Two tables of the same width: the header row first (diffed cell by cell), then the body
  * rows lined up. */
 function diffTable(o: Table, n: Table, c: Ctx): Table | null {
   const [oh, ...ob] = o.children;
@@ -348,13 +348,13 @@ function charsOf(n: Nodes): number {
 }
 
 /**
- * The rendered diff's tree (5C): `old` and `neu` lined up block by block into ONE document the
+ * The rendered diff's tree: `old` and `neu` lined up block by block into ONE document the
  * renderer shows like any other. It holds the nodes `diffBlock`, `diffPair`, `diffIns` and
  * `diffDel`, and marks on list items, table rows and code lines (`nodes.ts`). Definitions come
  * from `diffDefinitions`. Each top-level node gets a position spanning its source length, so
  * `splitChunks` sizes the chunks as for any document. The input trees are never changed: shared
  * nodes are reused, and changed ones are copies. `gaveUp`: the diff ran past its one deadline,
- * `timeout` ms after it started (R14), anywhere: alignment, pairing, word or line diffs.
+ * `timeout` ms after it started, anywhere: alignment, pairing, word or line diffs.
  * `changes` counts each marked node once (a block, list item, table row or diagram pair); a
  * container holding marks counts nothing itself.
  */
@@ -382,8 +382,8 @@ export function diffTrees(old: Root, neu: Root, opts: { timeout?: number } = {})
   return { root: { type: 'root', children, data: { gbChanges: c.changes } }, changes: c.changes, gaveUp: false };
 }
 
-/** Both texts parsed (5A's cached parse, with their front matter: they're files) and diffed. An
- * added file is `old = ''`, a deleted one `neu = ''` (R6). */
+/** Both texts parsed (the cached parse, with their front matter: they're files) and diffed. An
+ * added file is `old = ''`, a deleted one `neu = ''`. */
 export function diffMarkdown(old: string, neu: string, flavor: MdFlavor): DiffResult {
   return diffTrees(parseMarkdown(old, flavor, true), parseMarkdown(neu, flavor, true));
 }

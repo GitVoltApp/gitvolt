@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'menu.css'), 'utf8');
 const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 
-describe('menu.css motion (J19 remainder)', () => {
+describe('menu.css motion', () => {
   it('a row fades its hover/active background at the fast token (50ms ease-in)', () => {
     expect(rule('.ctx-row')).toMatch(/transition:\s*background-color var\(--motion-fast\)/);
   });
@@ -17,7 +17,7 @@ describe('menu.css motion (J19 remainder)', () => {
   });
 });
 
-describe('inline variants are a gapless button group (K25)', () => {
+describe('inline variants are a gapless button group', () => {
   it('the group has no gap between its buttons', () => {
     expect(rule('.ctx-variants')).not.toMatch(/\bgap\s*:/);
   });

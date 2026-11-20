@@ -3,7 +3,7 @@ import { useAppState } from '../app/state';
 
 const MAX_PER_MINUTE = 20;
 
-/** window.onerror and unhandled rejections -> the backend log file (spec §16.2), rate-limited. */
+/** window.onerror and unhandled rejections -> the backend log file, rate-limited. */
 export function installFrontendErrorLogging(log: typeof api.logFrontend = api.logFrontend, now: () => number = Date.now): () => void {
   let windowStart = now();
   let sent = 0;

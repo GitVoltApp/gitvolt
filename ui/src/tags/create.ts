@@ -10,7 +10,7 @@ import { runWrite, type WriteCtx } from '../write/client';
 import { TagNameInput } from './TagNameInput';
 import { tagCreateError } from './tagName';
 
-/** The write (spec #3 §3.9): `message` null for a lightweight tag. Journaled: Undo removes it. */
+/** The write: `message` null for a lightweight tag. Journaled: Undo removes it. */
 export async function createTag(ctx: WriteCtx, sha: string, name: string, message: string | null): Promise<void> {
   await runWrite(ctx, () => api.createTag(ctx.repoId, ctx.worktree, { name, target: sha, message }), {
     onSuccess: () => useToast.getState().show(message === null ? `Created tag ${name}` : `Created annotated tag ${name}`),
@@ -28,7 +28,7 @@ async function createInDialog(ctx: WriteCtx, sha: string, annotated: boolean): P
 
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
-/** Create tag here (spec #3 §3.9): the inline input in the commit's Branch/Tag cell, the row
+/** Create tag here: the inline input in the commit's Branch/Tag cell, the row
  * selected first (it scrolls into view); the dialog where there's no row to put it in. */
 export async function createTagAt(ctx: WriteCtx, sha: string, annotated: boolean): Promise<void> {
   const store = tabStore(ctx.tabId);

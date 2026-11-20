@@ -1,4 +1,4 @@
-//! Markdown images (spec #5 §4.2): which addresses a forge serves itself (its allowlist), how they
+//! Markdown images: which addresses a forge serves itself (its allowlist), how they
 //! are fetched (the token only to the account's own API host, redirects re-checked, the image
 //! size cap and the disk cache), and a clicked image's token-less fetch.
 
@@ -300,7 +300,6 @@ mod tests {
         assert!(gitlab_route("http://gitlab.example.com/a.png", web, &p, api).is_none(), "the web host is https");
     }
 
-    // --- 5A T3 ---
     #[tokio::test]
     async fn two_image_urls_differing_only_in_case_are_two_cache_entries() {
         let s = TestServer::start(|n, _| match n {
@@ -319,7 +318,6 @@ mod tests {
         assert!(matches!(fetch(&http, Some(&cache), &upper, "", &anywhere).await.unwrap(), ForgeImage::Found { .. }), "still cached as found");
         assert_eq!(s.hits(), 2);
     }
-    // --- end 5A T3 ---
 
     /// A miss remembered by an older fetch (one that refused GitLab's octet-stream uploads) isn't
     /// served by a newer one: the cache key carries `IMAGE_CACHE_VERSION`.

@@ -1,4 +1,4 @@
-//! The commit graph's pure pipeline (website demo spec §4.2): from plain data (the walked commits,
+//! The commit graph's pure pipeline: from plain data (the walked commits,
 //! the refs, the worktrees and their WIP) to `GraphPayload`. No git access and no I/O: gitvolt-core
 //! feeds it what gix reads, and the website demo (through gitvolt-graph-wasm) what isomorphic-git
 //! reads, so both lay a repository out identically.

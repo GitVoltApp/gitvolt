@@ -10,7 +10,7 @@ import { ArrowGlyph } from '../ui/ArrowGlyph';
 import { branchesParts, pipelineText, reviewText } from './mrText';
 
 /**
- * The hover card's body (spec #4 §4 "4B"): state chip, number and title, the author, the branches, then
+ * The hover card's body: state chip, number and title, the author, the branches, then
  * only what needs a look: a pipeline, a review state, conflicts (never "No reviews yet" or "No
  * conflicts"). What the badge's data has shows at once; the rest waits for the detail.
  */

@@ -70,7 +70,7 @@ function shownValue(value: string | number | boolean): string {
   return shown === '' || /\s/.test(shown) ? `"${shown}"` : shown;
 }
 
-/** The Requests tab's entries, oldest first: 1a's records, without the logs' own traffic. Each
+/** The Requests tab's entries, oldest first: the recorded ones, without the logs' own traffic. Each
  * keeps the id it got when first listed. */
 export function requestEntries(): RequestLogEntry[] {
   const out: RequestLogEntry[] = [];
@@ -97,7 +97,7 @@ export function requestEntries(): RequestLogEntry[] {
   return out;
 }
 
-/** A git command a demo write stands for (plan 3's writes add theirs), for the Commands tab. */
+/** A git command a demo write stands for (each write adds its own), for the Commands tab. */
 export function recordCommand(args: string[], cwd: string, durationMs: number): void {
   commands.push({ id: nextCommand++, args: args.map((a) => redact(a)), cwd, startedMs: Date.now(), durationMs, exitCode: 0, ok: true, stderr: '' });
   if (commands.length > MAX) commands.shift();

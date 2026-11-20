@@ -12,9 +12,9 @@ import { learnLimit, type PeopleRole } from '../peopleLimits';
 import { notifyForgeWrite } from '../usePolling';
 
 /**
- * One forge write from the MR/PR view (spec #4 §3.5: a remote action, not journaled). It works:
+ * One forge write from the MR/PR view (a remote action, not journaled). It works:
  * the tab's poller polls at once, and the caller puts the answer in the store. It fails: a toast
- * says why (or `inPlace` does, where the action was), and nothing in the store changes (§6: no
+ * says why (or `inPlace` does, where the action was), and nothing in the store changes (no
  * optimistic UI).
  */
 export async function forgeWrite<T>(tabId: string, failure: string, send: (repo: number) => Promise<T>, inPlace?: (message: string) => void): Promise<{ value: T } | null> {
@@ -26,7 +26,7 @@ export async function forgeWrite<T>(tabId: string, failure: string, send: (repo:
     notifyForgeWrite(tabId);
     return { value };
   } catch (e) {
-    // MR round 2: the forge kept only one person: the message alone ("GitLab kept only Ada:
+    // The forge kept only one person: the message alone ("GitLab kept only Ada:
     // this project allows one reviewer"), and the row swaps from now on.
     const detail = (e as GbError | null)?.detail;
     if (detail?.kind === 'peopleLimit') {

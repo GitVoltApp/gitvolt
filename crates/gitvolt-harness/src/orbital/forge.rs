@@ -1,4 +1,4 @@
-//! Orbital's GitLab (website demo plan 4): `forge.json` v1 from the history's merge requests.
+//! Orbital's GitLab: `forge.json` v1 from the history's merge requests.
 //! Heads and bases come from the origin; the open ones get pipelines, approvals, reviewers and a
 //! few threads (diff notes where their line is in the MR's diff, else general notes).
 

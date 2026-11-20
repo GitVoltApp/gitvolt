@@ -1,4 +1,4 @@
-//! Branch names (spec #2 §9.1: "validated live with git's check-ref-format --branch rules").
+//! Branch names ("validated live with git's check-ref-format --branch rules").
 
 /// git's ref-name rules (`check-ref-format` on `refs/heads/<name>`), plus the two `--branch`
 /// adds: not `HEAD`, not starting with `-`. The reason, for the dialog. The explicit rules are
@@ -41,13 +41,11 @@ pub fn tag_name_error(name: &str) -> Option<String> {
     branch_name_error(name).map(|m| m.replace("branch", "tag"))
 }
 
-// --- 4A T7 ---
 /// A remote's name: git wants `refs/remotes/<name>/…` to be a valid ref, so a branch name's
 /// rules apply, said of a remote (`ui/src/forge/remoteUrl.ts`'s `remoteNameError` says the same).
 pub fn remote_name_error(name: &str) -> Option<String> {
     branch_name_error(name).map(|m| m.replace("branch", "remote"))
 }
-// --- end 4A T7 ---
 
 #[cfg(test)]
 mod tests {

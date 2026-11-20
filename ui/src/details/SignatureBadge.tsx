@@ -26,8 +26,8 @@ function card(title: string, s: SignaturePayload | null): ReactNode {
 }
 
 /**
- * The signature status (spec §9.1), as just an icon with a different drawing per status
- * (feedback F16); "Not signed" is a dim bare shield. An unsigned commit says so without asking
+ * The signature status, as just an icon with a different drawing per status;
+ * "Not signed" is a dim bare shield. An unsigned commit says so without asking
  * git; a signed one is verified when selected (the selection starts the check with the details
  * and prefetches the neighbours'; cached per commit id by `services.signature`). The box stays
  * empty for `CHECKING_DELAY_MS`, then shows a dim "checking" shield. The status, signer, key, fingerprint, trust and detail show in a hover

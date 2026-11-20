@@ -18,7 +18,7 @@ test.describe('compare two commits', () => {
       const initial = row(page, 'Initial commit'), rename = row(page, 'Rename guide and update assets');
       const a = (await initial.getByTestId('sha').textContent())!.slice(0, 6);
       const b = (await rename.getByTestId('sha').textContent())!.slice(0, 6);
-      // The newer first: it is FROM (K27). Only the second click needs Ctrl.
+      // The newer first: it is FROM. Only the second click needs Ctrl.
       await rename.click();
       await initial.click({ modifiers: ['Control'] });
       await expect(page.getByTestId('compare-header')).toHaveText(`Comparing ${b} → ${a}`);

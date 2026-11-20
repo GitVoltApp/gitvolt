@@ -76,7 +76,7 @@ pub(crate) struct Window<'a> {
     pub tag_hidden: &'a [bool],
 }
 
-/// Decides every commit's state (Ruling 2, 5, 6):
+/// Decides every commit's state:
 /// - Shown units (and the trunk), detached HEADs and commits no branch reaches (but those only
 ///   hidden tags keep) keep their commits visible, down through every parent but a trunk merge's
 ///   folded ones.

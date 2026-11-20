@@ -1,5 +1,5 @@
 /**
- * The forge poller's contract (spec #4 §3.4). 4B implements `ForgePoller`, one per active tab,
+ * The forge poller's contract. The implementation of `ForgePoller` is, one per active tab,
  * beside `FetchScheduler` (app/fetchSchedule.ts). It polls:
  * - when the tab becomes active (`activate`);
  * - on the fetch timer (`timer`), never more often than once a minute, and only while the
@@ -10,7 +10,7 @@
  * - while a visible MR/PR's pipeline runs (`fast`): after 20 s, then 40 s, 80 s, at most 2 min
  *   while the same pipeline keeps running; a new one starts again at 20 s.
  * Background tabs never poll. Requests are conditional (ETags), so an unchanged poll is nearly
- * free. A failed poll keeps the data shown, with its "last updated" note (spec #4 §6).
+ * free. A failed poll keeps the data shown, with its "last updated" note.
  */
 export const FAST_POLL_MS = 20_000;
 /** The fast poll's longest wait while the same pipeline keeps running. */
@@ -66,10 +66,10 @@ export function nextPollDelay(fetchIntervalMs: number, last: PollOutcome | null,
   return Math.max(base, last?.serverIntervalMs ?? 0);
 }
 
-// --- 4B T7: the poller ---
+// --- the poller ---
 /** A window focus polls again only once the last full poll is at least this old (or a tick was
  * skipped while the window was away). Shorter than MIN_POLL_MS: coming back from the forge's web
- * page (an MR merged there) shows it, as 4D's after-merge flow expects; it's one poll per return,
+ * page (an MR merged there) shows it, as the after-merge flow expects; it's one poll per return,
  * never a timer. */
 export const FOCUS_GAP_MS = 10_000;
 /** A backoff's wait grows by up to this share, at random: tabs and windows that failed together
@@ -91,7 +91,7 @@ const FULL: readonly PollReason[] = ['activate', 'timer', 'focus', 'write'];
 const stronger = (queued: PollReason | null, next: PollReason): PollReason => (queued === null || (queued === 'fast' && next !== 'fast') ? next : queued);
 
 /**
- * One tab's forge poller (spec #4 §3.4). RepoTab starts it while the tab shows and stops it when
+ * One tab's forge poller. RepoTab starts it while the tab shows and stops it when
  * it hides or closes, so a background tab never polls and showing one polls it at once:
  * - `start`: an `activate` poll, then timed ones;
  * - timed: `nextPollDelay` after each poll (the fetch interval, at least a minute; the fast poll's
@@ -208,4 +208,3 @@ export function createForgePoller(fetchIntervalMs: number, deps: ForgePollDeps):
     },
   };
 }
-// --- end 4B T7 ---

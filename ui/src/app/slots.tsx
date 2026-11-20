@@ -3,16 +3,16 @@ import { create } from 'zustand';
 import type { TabState } from '../api/gen/TabState';
 
 /**
- * The shell's named slots (ruling R10), so each later feature adds its component from its own
+ * The shell's named slots, so each later feature adds its component from its own
  * module instead of editing the layout files every lane shares:
  * - app slots, in `AppShell`: `header` (above the tabs: the tab bar), `statusBar` (below them),
  *   `overlay` (modals and dialogs: About, the profile dialog, the auth prompt, the palette);
  * - tab slots, given the tab: `toolbar` (a repo tab's top row), `banner` (between the toolbar and
- *   the panels: autostash, crash-recovery and conflict banners, spec #2 §3.7), `sidebar` (left of its center),
+ *   the panels: autostash, crash-recovery and conflict banners), `sidebar` (left of its center),
  *   both inside the tab's `RepoContext` and `RepoViewContext`; `graphOverlay` (floats over the
- *   graph panel, hidden with it while a file is open: the find box, spec §8.7); `openTab` (the
- *   whole page of an Open tab, spec §13); `centerOverlay` (over the whole center, the graph or an open
- *   file alike: the left flyout, spec #4 §5).
+ *   graph panel, hidden with it while a file is open: the find box); `openTab` (the
+ *   whole page of an Open tab); `centerOverlay` (over the whole center, the graph or an open
+ *   file alike: the left flyout).
  * An empty slot renders nothing (no placeholder UI). Register at import time; `app/features.ts`
  * imports every feature module once. Like `registerActions`, a registration throws on a duplicate
  * id, so a module that registers releases them on a dev-server hot update:

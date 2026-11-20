@@ -4,7 +4,7 @@ import type { SignatureKind } from '../api/gen/SignatureKind';
 /** A signature status, plus the badge's own states: checking, and a failed check. */
 export type SignatureIconKind = SignatureKind | 'loading' | 'error';
 
-// Our own drawings (feedback F16): a shield on a 16×16 grid
+// Our own drawings: a shield on a 16×16 grid
 // with one mark per status. Stroked in `currentColor`; the badge's CSS colours it.
 const SHIELD = 'M8 1.6 13.4 3.6V7.7c0 3.1-2.2 5.7-5.4 6.8C4.8 13.4 2.6 10.8 2.6 7.7V3.6Z';
 const MARK: Record<SignatureIconKind, ReactNode> = {

@@ -10,7 +10,7 @@ const { useToast } = await import('../ui/toastStore');
 
 const LOCK = { path: '/r/.git/index.lock', mtimeMs: 5, ino: 6, dev: 7 };
 
-describe('Remove stale lock (spec #2 §14)', () => {
+describe('Remove stale lock', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     confirm.asked = [];

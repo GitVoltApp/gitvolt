@@ -3,7 +3,7 @@ import { targetFor, type RepoViewStore } from '../repo/store';
 import { isWipKey, wipKey } from '../repo/wipLists';
 
 /**
- * UX round 2: the open file (merge tool) was resolved — here, from a row's menu, Mark resolved,
+ * The open file (merge tool) was resolved — here, from a row's menu, Mark resolved,
  * a non-text prompt's buttons, a save. Run on each WIP list update (a write's fresh lists are
  * held at once; a watcher's `repoChanged` drops them, so it acts once a list is held again).
  * The tool mustn't keep offering its buttons: it moves to the

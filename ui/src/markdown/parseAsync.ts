@@ -9,13 +9,13 @@ import { parseMarkdown } from './parse';
 import type { ParseReply, ParseRequest } from './parse.worker';
 import type { MdFlavor } from './types';
 
-/** A large document's chunks as they arrive (ruling 21). */
+/** A large document's chunks as they arrive. */
 export interface ChunkStream {
   readonly chunks: Root[];
   readonly done: boolean;
   readonly failed: boolean;
   /** Failed because only the main thread was left to parse it, and it's too long for that (the
-   * worker died), or (5C) a diff whose alignment gave up: the body shows as written, "Too large to
+   * worker died), or a diff whose alignment gave up: the body shows as written, "Too large to
    * render". */
   readonly tooLarge: boolean;
   /** Bumped on every change (a `useSyncExternalStore` snapshot). */
@@ -33,7 +33,7 @@ class Stream implements ChunkStream {
   readonly key: string;
   readonly text: string;
   readonly flavor: MdFlavor;
-  /** A diff's old text (5C); `null` for a plain parse. */
+  /** A diff's old text; `null` for a plain parse. */
   readonly old: string | null;
   /** A plain parse's front matter renders (`parseMarkdown`); a diff's always does (a file's). */
   readonly frontmatter: boolean;
@@ -60,7 +60,7 @@ class Stream implements ChunkStream {
   fail(tooLarge = false) { this.failed = true; this.tooLarge = tooLarge; this.done = true; this.changed(); }
 }
 
-/** A stream's chunks, worked out on the main thread: a parse, or (5C) a diff. `null`: the diff's
+/** A stream's chunks, worked out on the main thread: a parse, or a diff. `null`: the diff's
  * alignment gave up. */
 const chunksOf = (s: Stream): Root[] | null => (s.old === null ? splitChunks(parseMarkdown(s.text, s.flavor, s.frontmatter)) : diffChunks(s.old, s.text, s.flavor));
 const sourceChars = (s: Stream) => s.text.length + (s.old?.length ?? 0);
@@ -178,7 +178,7 @@ export function chunkStream(text: string, flavor: MdFlavor, frontmatter = false)
   return streamFor(key, () => new Stream(key, text, flavor, null, frontmatter));
 }
 
-/** 5C: the rendered diff of `old` → `neu` as chunks (the first carries `gbChanges`), aligned and
+/** The rendered diff of `old` → `neu` as chunks (the first carries `gbChanges`), aligned and
  * word-diffed off the main thread; one stream per pair, kept like a large document. A diff whose
  * alignment gave up fails as `tooLarge`. */
 export function diffChunkStream(old: string, neu: string, flavor: MdFlavor): ChunkStream {

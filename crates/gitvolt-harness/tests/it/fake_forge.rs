@@ -1,4 +1,4 @@
-//! The fake forge itself (spec #4 §7): what GitVolt's providers will meet in every forge test.
+//! The fake forge itself: what GitVolt's providers will meet in every forge test.
 
 use gitvolt_harness::fake_forge::*;
 use gitvolt_harness::Harness;

@@ -1,7 +1,6 @@
-//! Save a working file from the editable working copy (spec #2 §7.5, UX round 2 G.2): in the
+//! Save a working file from the editable working copy: in the
 //! file's loaded encoding, BOM and line endings, atomically (temp + rename in the same folder,
-//! mode kept), only if its bytes still hash to the base the editor loaded. Journaled (G.2
-//! reverses §7.5's "not journaled"): Undo puts the file back as it was before the save.
+//! mode kept), only if its bytes still hash to the base the editor loaded. Journaled: Undo puts the file back as it was before the save.
 
 use crate::api::Api;
 use crate::blob::{decode_blob, safe_join, working_tree_encoding, worktree_id};
@@ -81,12 +80,12 @@ struct Checked {
     bytes: Vec<u8>,
 }
 
-/// An edit of a working-tree file, saved (§7.5; UX round 2 G.2). Journaled: a `before` and an
-/// `after` snapshot of its one path, as a discard's (§5.3), so Undo puts the file back as it was
+/// An edit of a working-tree file, saved. Journaled: a `before` and an
+/// `after` snapshot of its one path, as a discard's, so Undo puts the file back as it was
 /// and Redo as saved.
 ///
-/// `suggestion`: a review comment's suggested change applied to the working copy (spec
-/// 2026-10-08): the same write, under its own label, and never merged into a save before or
+/// `suggestion`: a review comment's suggested change applied to the working copy:
+/// the same write, under its own label, and never merged into a save before or
 /// after it, so Undo takes back the suggestion alone.
 struct WriteWorktreeFile {
     path: String,
@@ -108,7 +107,7 @@ fn in_nested_repo(root: &Path, rel: &str) -> bool {
 }
 
 /// Whether the index tracks `path`. A conflicted entry is the merge tool's, and an intent-to-add
-/// one can't come back on Undo (as a discard's, §7.4): both refused.
+/// one can't come back on Undo (as a discard's): both refused.
 fn tracked(root: &Path, path: &str) -> Result<bool, GbError> {
     use gix::index::entry::Flags;
     let gix_err = |e: &dyn std::fmt::Display| GbError::other(e.to_string());
@@ -151,7 +150,7 @@ impl WriteIntent for WriteWorktreeFile {
     fn undo(&self) -> Option<UndoKind> {
         Some(UndoKind::Restore)
     }
-    /// An Edit stop (spec #3 §3.5) is where editing a file matters most.
+    /// An Edit stop is where editing a file matters most.
     fn allowed_in_progress(&self) -> bool {
         true
     }
@@ -221,8 +220,8 @@ pub(crate) async fn apply_suggestion(api: &Api, repo: u32, worktree: &str, path:
     run_write(api, repo, worktree, expect, WriteWorktreeFile { path, text, base, suggestion: true, checked: Default::default() }).await
 }
 
-// --- UX round 3 O.1: Create file ---
-/// A new, empty file in the worktree (UX round 3 O.1), with any folders its path names. Journaled
+// --- Create file ---
+/// A new, empty file in the worktree, with any folders its path names. Journaled
 /// as a restore of its path and the folders it made: Undo removes them, Redo makes them again.
 struct CreateWorktreeFile {
     path: String,
@@ -305,7 +304,6 @@ impl WriteIntent for CreateWorktreeFile {
 pub(crate) async fn create_worktree_file(api: &Api, repo: u32, worktree: &str, path: String) -> Result<WriteResult<SaveOutcome>, GbError> {
     run_write(api, repo, worktree, Expect::default(), CreateWorktreeFile { path }).await
 }
-// --- end UX round 3 O.1 ---
 
 #[cfg(test)]
 mod tests {
@@ -351,7 +349,7 @@ mod tests {
         assert_eq!(crate::platform::fs::mode(&std::fs::metadata(r.path().join("run.sh")).unwrap()) & 0o777, 0o755);
         assert_eq!(res["outcome"]["hash"], base(&r, "run.sh"));
         let unstaged: Vec<&str> = res["wip"]["unstaged"]["files"].as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
-        assert_eq!(unstaged, ["run.sh"], "the response's lists refresh the panel (§7.5)");
+        assert_eq!(unstaged, ["run.sh"], "the response's lists refresh the panel");
         assert_eq!(res["journal"]["undo"]["label"], "save run.sh", "a save is journaled (G.2)");
         let leftovers: Vec<_> = std::fs::read_dir(r.path()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with(".gitvolt-save")).collect();
         assert!(leftovers.is_empty());
@@ -391,7 +389,7 @@ mod tests {
         assert!(state["undo"]["entry"].is_null(), "a refused save leaves no journal entry: {state}");
     }
 
-    /// G.2: Undo puts the file back as it was before the save, Redo as saved; the index (a
+    /// Undo puts the file back as it was before the save, Redo as saved; the index (a
     /// staged half) is left as it was. An untracked file round-trips too.
     #[tokio::test]
     async fn undo_restores_the_file_and_redo_saves_it_again() {
@@ -421,7 +419,7 @@ mod tests {
         state["undo"]["entry"].as_u64()
     }
 
-    /// The coordinator's ruling: saves of one file in a row coalesce into the first's entry (its
+    /// Saves of one file in a row coalesce into the first's entry (its
     /// `before`, the last one's `after`). One Undo goes back to before the editing session; Redo
     /// to the last save. Anything changed in between (here, the file staged) starts a new entry.
     #[tokio::test]
@@ -456,7 +454,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("a.txt")).unwrap(), "three\n");
     }
 
-    /// A suggestion applied (spec 2026-10-08) is a save under its own label, never merged with a
+    /// A suggestion applied is a save under its own label, never merged with a
     /// save before or after it: Undo takes back the suggestion alone, then the save.
     #[tokio::test]
     async fn an_applied_suggestion_is_its_own_undo_step() {
@@ -589,12 +587,11 @@ mod tests {
         assert_eq!(err.kind, crate::error::GbErrorKind::Stale);
     }
 
-    // --- UX round 3 O.1 ---
     async fn create(api: &Api, id: u32, r: &TestRepo, path: &str) -> Result<Value, crate::error::GbError> {
         call(api, "createWorktreeFile", json!({ "repo": id, "worktree": wt(r.path()), "path": path })).await
     }
 
-    /// O.1: an empty file, its new folders made; Undo removes the file and the folders it made
+    /// An empty file, its new folders made; Undo removes the file and the folders it made
     /// (not one that was there), Redo makes them again.
     #[tokio::test]
     async fn a_created_file_and_its_new_folders_undo_and_redo() {
@@ -637,7 +634,7 @@ mod tests {
         assert!(!r.path().join("n").exists(), "second Undo: the create");
     }
 
-    /// O.1: refused before anything is written or journaled.
+    /// Refused before anything is written or journaled.
     #[cfg(unix)] // symlinks (Windows: privileges, and core.symlinks=false there)
     #[tokio::test]
     async fn create_refuses_existing_outside_and_git_paths() {
@@ -660,7 +657,6 @@ mod tests {
         let state = call(&api, "journalState", json!({ "repo": id, "worktree": wt(r.path()) })).await.unwrap();
         assert!(state["undo"]["entry"].is_null(), "a refused create leaves no journal entry: {state}");
     }
-    // --- end UX round 3 O.1 ---
 
     #[tokio::test]
     async fn a_latin1_file_round_trips() {

@@ -63,7 +63,7 @@ describe('runtime', () => {
     expect(useRuntime.getState().tabs.t.status).toBe('ready');
   });
 
-  it('graphOnly skips the sidebar and repo info; a coalesced full refresh wins (1C review M5)', async () => {
+  it('graphOnly skips the sidebar and repo info; a coalesced full refresh wins', async () => {
     gate = false;
     await useRuntime.getState().refresh('t');
     api.sidebar.mockClear();
@@ -126,14 +126,14 @@ describe('runtime', () => {
     // Equal, not the same object: setGraph keeps the rows that didn't change (repo/store.ts).
     expect(store.getState().graph).toEqual(nextGraph);
     expect(store.getState().graph!.rows.map((r) => r.id)).toEqual(['new', 'a', 'b']);
-    // setGraph remaps the selection by commit id (1B).
+    // setGraph remaps the selection by commit id.
     expect(store.getState().selection).toMatchObject({ kind: 'commit', id: 'b', index: 2 });
     useRuntime.getState().drop('t');
     expect(tabStore('t')).toBeUndefined();
     expect(useRuntime.getState().tabs.t).toBeUndefined();
   });
 
-  it('a closed tab\'s center view goes with it (spec #3)', () => {
+  it('a closed tab\'s center view goes with it', () => {
     openCenterView('t', 'runtimeProbe', {});
     openCenterView('u', 'runtimeProbe', {});
     useRuntime.getState().drop('t');
@@ -190,7 +190,7 @@ describe('runtime', () => {
     expect(useAppState.getState().profile.recent[0]).toMatchObject({ path: '/r', name: 'r' });
   });
 
-  describe('a tab is a repository and a worktree (spec #2 §11.2)', () => {
+  describe('a tab is a repository and a worktree', () => {
     const seedTab = (path: string, worktree?: string | null) => {
       useRuntime.setState({ tabs: {} });
       useAppState.setState({ profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 'w', kind: 'repo', path, alias: null, ...(worktree !== undefined && { worktree }) }], activeTab: 'w', recent: [] } });
@@ -219,11 +219,11 @@ describe('runtime', () => {
       await useRuntime.getState().open(tabId, '/r');
       expect(useRuntime.getState().tabs[tabId]?.worktree).toBe('/r-y');
       expect(graphCalls.at(-1)).toMatchObject({ active: '/r-y' });
-      // Recent names the worktree the tab shows, not the path it was opened with (review M6).
+      // Recent names the worktree the tab shows, not the path it was opened with.
       expect(useAppState.getState().profile.recent[0]).toMatchObject({ path: '/r-y', name: 'r-y' });
     });
 
-    it("migrating a linked tab keeps its per-repo settings and its unsent WIP drafts (review I1)", async () => {
+    it("migrating a linked tab keeps its per-repo settings and its unsent WIP drafts", async () => {
       gate = false;
       api.openRepo.mockReset();
       api.openRepo.mockResolvedValue({ id: 7, path: '/r', name: 'r', worktree: '/r-x' });
@@ -236,7 +236,7 @@ describe('runtime', () => {
       expect(readWipDraft('/r', '/r-x').summary).toBe('Unsent fix');
     });
 
-    // --- 2C T10: the active worktree in the runtime ---
+    // --- the active worktree in the runtime ---
     it('marks the sidebar for the active worktree after a load', async () => {
       gate = false;
       api.openRepo.mockReset();
@@ -249,7 +249,6 @@ describe('runtime', () => {
       expect(s.worktrees.map((w) => w.isCurrent)).toEqual([false, true]);
     });
 
-    /** Review Focus 5. */
     it('a_missing_active_worktree_falls_back_to_the_main_one', async () => {
       gate = false;
       api.openRepo.mockReset();
@@ -265,7 +264,6 @@ describe('runtime', () => {
       expect(useAppState.getState().profile.tabs.find((t) => t.id === tabId)?.worktree).toBe('/r');
       expect(api.graph).toHaveBeenLastCalledWith(7, expect.anything(), expect.objectContaining({ active: '/r' }));
     });
-    // --- end 2C T10 ---
 
     it("the repository's own settings win over a linked tab's old ones", () => {
       const own = { ...EMPTY_REPO_SETTINGS, pin: { kind: 'auto' as const } };

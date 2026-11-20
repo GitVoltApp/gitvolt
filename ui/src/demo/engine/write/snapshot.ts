@@ -1,4 +1,4 @@
-// Snapshots (spec #2 §5.2; journal/snapshot.rs), in memory: each path a destructive write touches,
+// Snapshots (journal/snapshot.rs), in memory: each path a destructive write touches,
 // its stage-0 entry and its file, so Undo restores `before` and Redo `after` byte for byte. The
 // core keeps them as dangling stash-shaped commits; the demo's journal lives in memory, so do they.
 import { gbError } from '../errors';

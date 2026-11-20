@@ -3,7 +3,7 @@ import { activeTab, registerActions } from '../app/actions';
 import { registerSidebarHeaderAction } from '../sidebar/itemActions';
 import { offAddRemoteDialog, openAddRemote } from './AddRemoteDialog';
 
-/** Add remote (spec #4 §5): the Remote panel's +, and the palette. */
+/** Add remote: the Remote panel's +, and the palette. */
 const offs = [
   offAddRemoteDialog,
   registerSidebarHeaderAction('remote', { id: 'remote.add', icon: Plus, label: 'Add remote', run: ({ tabId }) => openAddRemote(tabId) }),

@@ -1,4 +1,4 @@
-//! Askpass end to end (spec §5.4): real git, the harness binary as `GIT_ASKPASS`, and the
+//! Askpass end to end: real git, the harness binary as `GIT_ASKPASS`, and the
 //! harness's always-401 smart-HTTP route.
 
 use gitvolt_core::api::Api;
@@ -177,7 +177,7 @@ async fn a_clone_cancelled_at_its_prompt_leaves_nothing_behind() {
     assert!(tmp.path().is_dir());
 }
 
-/// K96: an ssh key passphrase reaches the modal (`authWaiting`, secret) even with no display
+/// An ssh key passphrase reaches the modal (`authWaiting`, secret) even with no display
 /// (`SSH_ASKPASS_REQUIRE=force`), through the real askpass binary, and the right answer lets the
 /// fetch through. `scripts/fake-ssh` asks the way OpenSSH decides, then serves the bare origin.
 #[tokio::test(flavor = "multi_thread")]
@@ -212,7 +212,7 @@ async fn an_ssh_passphrase_prompt_reaches_the_modal_without_a_display() {
         }
     });
     let out = api.dispatch(serde_json::from_value(serde_json::json!({"method": "fetch", "params": {"repo": opened["id"], "background": false}})).unwrap()).await.unwrap();
-    // 2D T4: a done fetch also carries its op id and the server output summary.
+    // A done fetch also carries its op id and the server output summary.
     assert_eq!((&out["status"], &out["changed"]), (&serde_json::json!("done"), &serde_json::json!(true)), "{out}");
     let (text, secret) = tokio::time::timeout(Duration::from_secs(5), asked).await.unwrap().unwrap();
     assert!(text.starts_with("Enter passphrase for key"), "{text}");

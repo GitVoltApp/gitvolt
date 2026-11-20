@@ -1,4 +1,4 @@
-/* The status bar (spec §6.5). It sits above the auth prompt's backdrop (auth.css, z-index 800),
+/* The status bar. It sits above the auth prompt's backdrop (auth.css, z-index 800),
    so "Waiting for authentication… Cancel" stays usable while the prompt is up. */
 .status-bar { position: relative; z-index: 810; display: flex; align-items: center; gap: 2px; height: 22px; padding: 0 6px; box-sizing: border-box; font-size: 11px; color: var(--text-secondary); background: var(--toolbar-bg0); border-top: 1px solid var(--section-border); flex: none; user-select: none; }
 .sb-item { all: unset; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; height: 100%; white-space: nowrap; }

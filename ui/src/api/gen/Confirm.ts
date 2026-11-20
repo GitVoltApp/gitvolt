@@ -5,6 +5,6 @@
  */
 export type Confirm = { 
 /**
- * The clean-restore warning (§6.2) was shown and the user chose Continue.
+ * The clean-restore warning was shown and the user chose Continue.
  */
 autostash: boolean, };

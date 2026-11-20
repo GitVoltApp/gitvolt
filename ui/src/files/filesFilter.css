@@ -1,4 +1,4 @@
-/* View all files' filter row (feedback K18-K20): the input (with its inline clear button at its
+/* View all files' filter row: the input (with its inline clear button at its
    right edge) then the prev/next changed-file buttons. */
 .files-filter { display: flex; align-items: center; gap: 4px; padding: 0 12px 6px; }
 .files-filter-box { position: relative; flex: 1; min-width: 0; display: flex; }
@@ -6,5 +6,5 @@
 .files-filter-input::placeholder { color: var(--text-disabled); }
 .files-filter-input:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
 .files-filter-step { display: flex; align-items: center; gap: 2px; flex: none; }
-/* The filter's matched substring, in a row's name or (path mode) its directory (feedback K18). */
+/* The filter's matched substring, in a row's name or (path mode) its directory. */
 .filter-match { background: color-mix(in srgb, var(--blue) 35%, transparent); color: inherit; border-radius: 2px; }

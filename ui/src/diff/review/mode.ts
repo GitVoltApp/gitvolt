@@ -9,7 +9,7 @@ import type { ReviewZoneItem } from '../monaco/reviewZones';
 import type { OpenBox } from './store';
 
 /**
- * Review mode in the source diff (spec 2026-10-08 §2). Pure.
+ * Review mode in the source diff. Pure.
  */
 
 /** Off, or on: `stale` when the session's diff refs aren't the Compare's head (its lines aren't the

@@ -1,5 +1,5 @@
 // A paused merge, rebase or pick settles once nothing is in progress any more (run_write's
-// settle_paused, §13.2): completed or aborted by the core's `completed` (write/mod.rs), its moves
+// settle_paused): completed or aborted by the core's `completed` (write/mod.rs), its moves
 // recorded either way. Steps 2b (it ended outside GitVolt) and 7b (this write started mid-operation:
 // Commit, Continue, Abort); its autostash is restored either way. Not here: the core's leftover
 // `.git/sequencer` quit (the demo's picks keep no git sequencer).

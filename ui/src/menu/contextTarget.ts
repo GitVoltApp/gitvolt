@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMenu } from './menuStore';
 
 /**
- * The row a context menu is open for (UX round 2): a right-click never changes a list's selection
+ * The row a context menu is open for: a right-click never changes a list's selection
  * (the graph, the sidebar, the file lists), so the row it was on gets a temporary "context"
  * outline instead, for as long as that menu stays open, as in VS Code.
  *
@@ -10,7 +10,7 @@ import { useMenu } from './menuStore';
  * screen, marks `key` until the menu closes or another menu replaces it. `key` is null while no
  * menu of this list's is open.
  *
- * UX R1 C.3: the watch on the menu is an effect, so it's checked again whenever the list shows:
+ * The watch on the menu is an effect, so it's checked again whenever the list shows:
  * a list `<Activity>` hid meanwhile (the graph under a pick's merge tool or diff) has no effects
  * while hidden, and its menu may have closed then.
  */

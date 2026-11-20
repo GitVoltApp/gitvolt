@@ -8,7 +8,7 @@ const ASIDE = 'gitvolt.mergeDraftAside.v1';
 const key = (repoPath: string, worktree: string) => `${repoPath}\u0000${worktree}`;
 const same = (a: Draft, b: Draft) => a.summary === b.summary && a.description === b.description;
 
-/** §8.2: MERGE_MSG (its `#` lines dropped) goes in the description, below any description there;
+/** MERGE_MSG (its `#` lines dropped) goes in the description, below any description there;
  * the summary is kept. An empty summary takes its first line. Nothing typed is ever dropped. */
 export function mergeDraft(d: Draft, mergeMsg: string): Draft {
   const text = mergeMsg.replace(/\r\n?/g, '\n').split('\n').filter((l) => !l.startsWith('#')).join('\n');
@@ -61,7 +61,7 @@ export function applyMergeDraft(repoPath: string, worktree: string, mergeMsg: st
   writeWipDraft(repoPath, worktree, applied);
 }
 
-/** Abort puts the draft back as it was (§8.2). If the user has since edited the merge message,
+/** Abort puts the draft back as it was. If the user has since edited the merge message,
  * it asks first, where the Abort started (`origin`; `null`: a popover), never at whatever was
  * clicked last. */
 export async function restoreDraftAfterAbort(repoPath: string, worktree: string, origin: Origin | null = null): Promise<void> {

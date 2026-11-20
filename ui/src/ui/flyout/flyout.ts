@@ -2,9 +2,9 @@ import { createContext, type ComponentType, type LazyExoticComponent } from 'rea
 import { create } from 'zustand';
 
 /**
- * The left flyout (spec #4 §5): one panel per repository tab, opening just right of the left
+ * The left flyout: one panel per repository tab, opening just right of the left
  * sidebar, over the graph (which stays usable beside it), width-limited and resizable within
- * bounds, closed by Esc or ×. The MR/PR view (4B) and Create MR/PR (4C) are flyouts: a feature
+ * bounds, closed by Esc or ×. The MR/PR view and Create MR/PR are flyouts: a feature
  * registers its component under a kind at import time, and anything opens it in a tab with props.
  * Opening another replaces the open one. `FlyoutFrame` is its frame; `FlyoutHost` (the tab slot
  * `centerOverlay`) places it and owns Esc, the resize handle and the focus. A `dockable` kind

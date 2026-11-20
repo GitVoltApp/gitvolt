@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { create } from 'zustand';
 
 /**
- * The WIP draft (spec #2 §8.2): one value per repo + worktree, shown in two places, the WIP row's
+ * The WIP draft: one value per repo + worktree, shown in two places, the WIP row's
  * summary box and the commit box. Typing in either updates both (this store). It's persisted
  * across restarts under one localStorage key, written debounced and flushed on `pagehide`. It
  * isn't per branch. Every storage access is best-effort: blocked storage keeps drafts in memory.
@@ -42,7 +42,7 @@ export function draftMessage(d: WipDraft): string {
   return d.description.trim() ? `${d.summary}\n\n${d.description}` : d.summary;
 }
 
-/** §8.2 "Merge stops on conflicts" (2D calls it): MERGE_MSG below any description, the summary
+/** A merge that stops on conflicts: MERGE_MSG below any description, the summary
  * kept; an empty summary takes MERGE_MSG's first line and the description the rest. */
 export function withMergeMessage(d: WipDraft, mergeMsg: string): WipDraft {
   const m = splitMessage(mergeMsg);
@@ -150,7 +150,7 @@ export function useWipDraft(repoPath: string, worktree: string): [WipDraft, (d: 
   return [draft, set];
 }
 
-/** 2C T2: a linked worktree's tab used to key its drafts by its own path; one handle per
+/** A linked worktree's tab used to key its drafts by its own path; one handle per
  * repository keys them by the repository's. Moves every `from` draft to `to`, worktree kept, so
  * an unsent message is never lost; a draft already under `to` wins, and the old one then stays
  * where it was. */
@@ -174,7 +174,7 @@ export function rekeyWipDrafts(from: string, to: string): void {
   flushDrafts();
 }
 
-/** §8.2: drafts whose worktree no longer exists go when the worktree list loads. */
+/** Drafts whose worktree no longer exists go when the worktree list loads. */
 export function pruneWipDrafts(repoPath: string, worktrees: readonly string[]): void {
   // Only a complete list prunes; the main worktree (the repo path) is never dropped.
   if (!worktrees.length) return;

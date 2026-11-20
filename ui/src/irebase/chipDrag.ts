@@ -52,7 +52,7 @@ const rowAt = (x: number, y: number): string | null =>
   (document.elementFromPoint?.(x, y)?.closest('[data-irebase-row]') as HTMLElement | null)?.dataset.oid ?? null;
 
 /**
- * A chip dragged to another row (spec #3 §4.1; UX R1.1). Pointer events, not HTML5 drag and
+ * A chip dragged to another row. Pointer events, not HTML5 drag and
  * drop: the packaged app's CEF never delivers native drag events for drags inside the page. The
  * press doesn't reach the row (its own drag); past DRAG_THRESHOLD it's a drag, and the release
  * over a commit row drops the branch there. Esc puts it back.
@@ -60,7 +60,7 @@ const rowAt = (x: number, y: number): string | null =>
 export function startChipDrag(e: ReactPointerEvent<HTMLElement>, branch: string, drop: (branch: string, row: string) => void): void {
   if (e.button !== 0) return;
   e.stopPropagation();
-  // No text selection, no native drag, from the press on (UX R1 review).
+  // No text selection, no native drag, from the press on.
   e.preventDefault();
   cancelChipDrag();
   const x0 = e.clientX;

@@ -16,7 +16,7 @@ export function newCustomThemeId(): string {
 }
 
 /** `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(r, g, b)` or `rgba(r, g, b, a)` in range; nothing else
- * (Review Focus 1: only these may reach a custom property). */
+ * (only these may reach a custom property). */
 export const isTokenColour = (v: unknown): v is string => isCssColour(v) && v === v.trim();
 
 /** A valid colour as opaque `#rrggbb` (its alpha dropped): what `derive`'s maths and the first-paint

@@ -4,11 +4,11 @@ import type { PausedInfo } from '../api/gen/PausedInfo';
 import { useOps } from '../app/ops';
 import { branchOf, mergedName } from './sides';
 
-/** The worktree's merge, rebase or other operation (spec #2 §13.2; plan 2D Deviation 1). */
+/** The worktree's merge, rebase or other operation. */
 export const inProgressOf = (graph: Pick<GraphPayload, 'inProgress'>, worktree: string): InProgress | null => graph.inProgress?.[worktree] ?? null;
 
 /** A merge, rebase or pull of this repo is running: its state is transient, the commit panel's
- * controls wait (Review Focus 1). */
+ * controls wait. */
 export const useIntegrating = (repoId: number): boolean =>
   useOps((s) => Object.values(s.ops).some((o) => o.repo === repoId && (o.kind === 'merge' || o.kind === 'rebase' || o.kind === 'pull')));
 
@@ -23,31 +23,31 @@ export function withoutComments(message: string): string {
 }
 
 /**
- * What the commit panel shows for an operation in progress (§13.2, ux round 1): the status block
+ * What the commit panel shows for an operation in progress: the status block
  * at the top of the commit box, and what its buttons say.
  */
 export interface OperationView {
   kind: InProgress['kind'];
   /** A rebase's stopped commit: its message prefills the box when git wrote none. */
   stoppedAt: string | null;
-  /** At an interactive rebase's Edit stop (spec #3 §3.5): the commit git made there; `null` otherwise. */
+  /** At an interactive rebase's Edit stop: the commit git made there; `null` otherwise. */
   editStop: string | null;
-  /** 3C T13 fix 1 (A1): an Edit stop of a rebase started outside GitVolt (in a terminal): the core
+  /** An Edit stop of a rebase started outside GitVolt (in a terminal): the core
    * refuses Commit there, so the box stays Continue's. */
   editElsewhere?: boolean;
-  /** UX L: GitVolt's Edit stop is "about to commit": HEAD went back to the commit's parent (this
+  /** GitVolt's Edit stop is "about to commit": HEAD went back to the commit's parent (this
    * oid), its changes staged, its message the box's. The box commits normally there (pieces), and
    * Continue commits what's staged, then goes on. `null`: git's own stop. */
   editBase?: string | null;
-  /** UX L, at that stop: the paths the commit adds (one left untracked holds Continue up), and
+  /** At that stop: the paths the commit adds (one left untracked holds Continue up), and
    * whether the index differs from the commit (an Abort keeps it). */
   editAdded?: string[];
   editChanged?: boolean;
-  /** UX N: GitVolt's own interactive rebase (fix round 1: its journal session, as the core
+  /** GitVolt's own interactive rebase (its journal session, as the core
    * decides): its Abort keeps the work done at the stop that can't be had again (changes made by
    * hand in a conflict resolution too). */
   keepsWork?: boolean;
-  /** UX L: a short line under the hint (amending in a terminal at the stop). */
+  /** A short line under the hint (amending in a terminal at the stop). */
   caution?: string | null;
   /** The status block's accessible name. */
   region: string;
@@ -64,14 +64,14 @@ export interface OperationView {
   /** Identifies one stop: the box's message is prefilled once per stop. */
   stop: string;
   /** The prefilled message (rebase, cherry-pick, revert; `#` lines dropped). A merge uses the
-   * WIP draft instead (§8.2), so it's empty there. */
+   * WIP draft instead, so it's empty there. */
   message: string;
 }
 
-/** UX L: the "about to commit" stop's caution: HEAD is the commit's parent there. */
+/** The "about to commit" stop's caution: HEAD is the commit's parent there. */
 export const AMEND_IN_TERMINAL = 'Amending in a terminal here would fold this commit into its parent.';
 
-/** "Resolve 2 conflicted files first" (§8.1's reason, here too). */
+/** "Resolve 2 conflicted files first". */
 export const resolveFirst = (n: number) => `Resolve ${files(n)} first`;
 
 export function operationView(p: InProgress, paused: PausedInfo | null, branch: string | null, subjectOf: (sha: string) => string | null, nameAt: (sha: string) => string | null = () => null): OperationView {
@@ -101,17 +101,16 @@ export function operationView(p: InProgress, paused: PausedInfo | null, branch: 
     case 'rebase': {
       // A rebase git started has only the onto oid: a branch there names it, as the user typed it.
       const onto = paused?.target ?? nameAt(p.onto) ?? short(p.onto);
-      // --- 3C T13: an Edit stop (its message is HEAD's: the commit's subject) ---
+      // --- an Edit stop (its message is HEAD's: the commit's subject) ---
       const edit = p.editStop && p.conflicted === 0 ? p.editStop : null;
       // `gitvolt`: GitVolt started this rebase (its interactive rebase), not a terminal.
       const elsewhere = !!edit && !p.gitvolt;
-      // --- end 3C T13 ---
-      // UX L: "about to commit" (GitVolt's own Edit stop, soft-reset there).
+      // "about to commit" (GitVolt's own Edit stop, soft-reset there).
       const base = edit && !elsewhere ? p.editBase : null;
       const subject = edit ? subjectOf(edit) ?? p.message.split('\n')[0] : '';
       const editing = `Editing ${short(edit ?? '')} ${subject}`.trimEnd();
-      // 3C final fixes: a new message a hook refused (M1, M2); an Edit row whose pick conflicted
-      // (I1: git won't stop for it again, so this stop is the Edit's).
+      // A new message a hook refused; an Edit row whose pick conflicted
+      // (git won't stop for it again, so this stop is the Edit's).
       const failed = p.messageFailed ? `The new message wasn't applied: ${p.messageFailed.replace(/\.+$/, '')}. Type it again to retry, or Continue to keep the old one.` : null;
       const stillPaused = p.editConflict ? 'This commit was set to Edit: make any other changes now, then Continue.' : 'No conflicted files left: it is paused. Continue to go on.';
       return {
@@ -126,7 +125,7 @@ export function operationView(p: InProgress, paused: PausedInfo | null, branch: 
         caution: base ? AMEND_IN_TERMINAL : null,
         region: 'Rebase in progress',
         title: `Rebasing ${branchOf(p.headName)} onto ${onto} (step ${p.step} of ${p.total})`,
-        // UX L (L.5): the "about to commit" stop's notice is the hint, on its own.
+        // The "about to commit" stop's notice is the hint, on its own.
         detail: base ? null : edit ? `Stopped to edit ${short(edit)} ${p.message.split('\n')[0]}`.trimEnd() : at(p.stoppedAt, 'Stopped at'),
         // No conflicted file left: still paused (a cancelled Continue, a killed run, a failing hook).
         hint: elsewhere ? 'Finish this rebase where you started it.'

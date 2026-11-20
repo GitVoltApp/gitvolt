@@ -2,7 +2,7 @@ import type { Profile } from '../api/gen/Profile';
 import type { TabState } from '../api/gen/TabState';
 import { basename } from './osPath';
 
-/** Pure helpers over a profile's tab set (spec §6.2) and recent repos (§13). */
+/** Pure helpers over a profile's tab set and recent repos. */
 
 export const MAX_CLOSED = 20;
 export const MAX_RECENT = 50;
@@ -13,7 +13,7 @@ export const newTabId = (): string =>
 export { basename };
 
 /** What a tab shows: the alias, else the repo's name (a linked worktree's folder name, as
- * before 2C shared one handle between them), else the folder name. */
+ * before worktrees shared one handle with their repo), else the folder name. */
 export function tabLabel(tab: TabState, repoName?: string | null): string {
   if (tab.alias) return tab.alias;
   if (tab.kind === 'open') return 'Open repository';
@@ -21,10 +21,10 @@ export function tabLabel(tab: TabState, repoName?: string | null): string {
   return repoName ?? (tab.path ? basename(tab.path) : 'Repository');
 }
 
-/** The worktree a tab shows: its active one, else (a tab saved before 2C, or not opened yet) its path. */
+/** The worktree a tab shows: its active one, else (a tab saved before worktrees, or not opened yet) its path. */
 export const tabWorktree = (t: TabState): string | null => t.worktree ?? t.path;
 
-/** A tab is one repository with an active worktree (spec #2 §11.2): `(path, worktree)`; a
+/** A tab is one repository with an active worktree: `(path, worktree)`; a
  * missing worktree is the repository's own path. */
 const sameTab = (t: TabState, path: string, worktree: string | null) => t.kind === 'repo' && t.path === path && tabWorktree(t) === (worktree ?? path);
 
@@ -60,7 +60,7 @@ export function openBlankTab(p: Profile, id = newTabId()): { profile: Profile; t
 }
 
 /** Points a tab at a repo and worktree (Open screen → repo, or canonicalizing a path: a tab
- * saved before 2C on a linked worktree becomes `(repository, that worktree)`). A duplicate of
+ * saved before worktrees on a linked worktree becomes `(repository, that worktree)`). A duplicate of
  * the same worktree collapses. */
 export function setTabRepo(p: Profile, id: string, path: string, worktree: string | null = null): Profile {
   const dup = p.tabs.find((t) => t.id !== id && sameTab(t, path, worktree));
@@ -140,7 +140,7 @@ export function cycleTab(p: Profile, delta: number): Profile {
   return { ...p, activeTab: shown[(((i + delta) % n) + n) % n].id };
 }
 
-/** Moves `path` to the top of the recent list (spec §13): pinned entries are all kept, the rest
+/** Moves `path` to the top of the recent list: pinned entries are all kept, the rest
  * capped so the list holds at most MAX_RECENT. */
 export function touchRecent(p: Profile, path: string, name: string, now = Math.floor(Date.now() / 1000)): Profile {
   const prev = p.recent.find((r) => r.path === path);

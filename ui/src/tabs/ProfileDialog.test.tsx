@@ -9,7 +9,7 @@ vi.mock('../api/transport', () => ({ copyText: vi.fn(async () => {}), inTauri: (
 
 const { useProfileDialog, ProfileDialog } = await import('./ProfileDialog');
 
-describe('ProfileDialog: focus trap (fix round 1)', () => {
+describe('ProfileDialog: focus trap', () => {
   afterEach(() => { useProfileDialog.setState({ mode: null }); });
 
   it('traps Tab/Shift+Tab inside the dialog and returns focus to the opener on close', () => {

@@ -46,7 +46,7 @@ const userOption = (u: ForgeUser): PickOption<ForgeUser> => ({ key: String(u.id)
 const labelOption = (l: ForgeLabel): PickOption<ForgeLabel> => ({ key: l.name, label: l.name, color: l.color, value: l });
 const userChip = (u: ForgeUser): PeopleChip => ({ key: String(u.id), label: u.name, user: u });
 
-/** The Create flyout (4B's host mounts it fresh for each open, with the branch as its props). */
+/** The Create flyout (the host mounts it fresh for each open, with the branch as its props). */
 export function CreateMrFlyout({ tabId, props: { branch }, close: closeFrame }: FlyoutProps<CreateMrArgs>) {
   const repoId = useRuntime((s) => s.tabs[tabId]?.repo?.id);
   const repoPath = useRuntime((s) => s.tabs[tabId]?.repo?.path);
@@ -58,7 +58,7 @@ export function CreateMrFlyout({ tabId, props: { branch }, close: closeFrame }: 
   const [route, setRoute] = useState<Route | null>(null);
   const [ctx, setCtx] = useState<CreateContext | null>(null);
   const [draft, setDraft] = useState<MrDraft | null>(null);
-  // MR round 2: a project that allows one reviewer or assignee (GitLab Free) swaps on a pick.
+  // A project that allows one reviewer or assignee (GitLab Free) swaps on a pick.
   const limits = usePeopleLimits(repoId, draft?.targetRemote);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +96,7 @@ export function CreateMrFlyout({ tabId, props: { branch }, close: closeFrame }: 
   };
 
   // Where it goes: a saved draft's route, else the branch's push remote → the repo's target
-  // project, onto the branch below in a stack or the project's default branch (rulings 3, 4).
+  // project, onto the branch below in a stack or the project's default branch.
   useEffect(() => {
     let live = true;
     const rt = useRuntime.getState().tabs[tabId];
@@ -119,7 +119,7 @@ export function CreateMrFlyout({ tabId, props: { branch }, close: closeFrame }: 
       const stack = rt.graph ? stackFor(stacksOf(rt.graph, stackBase(rt.graph, groups)), branch) : null;
       setRoute({ sourceRemote: pushed && mapped.includes(pushed.remote) ? pushed.remote : target.remote, targetRemote: target.remote, targetBranch: defaultTarget(branch, stack, locals, names, target.project.defaultBranch) });
     };
-    // The remotes with a project on the target's host (4A's request, cached in core).
+    // The remotes with a project on the target's host (cached in core).
     void api.forgeRepoProjects(repo.id, false).then((p) => mappedRemotes(p, target.project.host), () => [target.remote]).then(begin).catch((e) => { if (live) setProblem(errorMessage(e)); });
     return () => { live = false; };
   // Deliberately keyed on the tab and branch only: the route is chosen once per open.
@@ -358,7 +358,7 @@ export function CreateMrFlyout({ tabId, props: { branch }, close: closeFrame }: 
             <span className="create-mr-label">Title{fromFirstCommit && <span className="create-mr-label-hint">from the first commit</span>}</span>
             <input className="create-mr-title" aria-label="Title" value={draft.title} spellCheck autoComplete="off" autoFocus onChange={(e) => update({ ...draft, title: e.target.value })} onKeyDown={fieldKeys} onBlur={flushMrDrafts} />
           </label>
-          {/* --- 5A T9: Write / Preview --- */}
+          {/* --- Write / Preview --- */}
           <div className="create-mr-field">
             <span className="create-mr-label">Description{ctx.templatesLocal && <span className="create-mr-label-hint">Templates from the local copy of {draft.targetBranch}</span>}</span>
             <MarkdownField
@@ -374,7 +374,6 @@ export function CreateMrFlyout({ tabId, props: { branch }, close: closeFrame }: 
               toolbar={<Select aria-label="Template" value={draft.template ?? ''} options={templateOptions} shown={<><FileText size={13} aria-hidden /> Template: {templateName}</>} onChange={(v) => { void chooseTemplate(v); }} />}
             />
           </div>
-          {/* --- end 5A T9 --- */}
           <PeopleCard rows={people} disabled={busy} />
           {kind === 'gitlab' && (
             <div className="create-mr-field">

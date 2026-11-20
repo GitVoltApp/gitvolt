@@ -95,7 +95,7 @@ afterEach(() => {
   clock.restore();
 });
 
-describe("the MR/PR view's actions (spec #4 §4 \"4B\")", () => {
+describe("the MR/PR view's actions", () => {
   it('Approve arms in place first, then approves on the second click, says so, and has the poller reload', async () => {
     show();
     press(screen.getByRole('button', { name: 'Approve' }));
@@ -161,7 +161,7 @@ describe("the MR/PR view's actions (spec #4 §4 \"4B\")", () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('You approved !12');
   });
 
-  // --- MR round 2: the review composer ---
+  // --- the review composer ---
   const openReview = () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review…' }));
     expect(overlay(), 'a prompt: no arm').toBeNull();
@@ -334,7 +334,6 @@ describe("the MR/PR view's actions (spec #4 §4 \"4B\")", () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review…' }));
     expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('');
   });
-  // --- end MR round 2 ---
 
   it("Mark as ready / Mark as draft follow the state, and the server's answer is shown", async () => {
     api.forgeSetDraft.mockResolvedValueOnce(mrOf(12, { title: 'Dev work', state: 'open' }));
@@ -344,7 +343,7 @@ describe("the MR/PR view's actions (spec #4 §4 \"4B\")", () => {
     expect(api.forgeSetDraft).toHaveBeenCalledWith(4, 12, false);
   });
 
-  // --- MR round 2: notifications ---
+  // --- notifications ---
   /** `Actions`, fed from the store (the menu's row follows the detail's `subscribed`). */
   const showLive = (subscribed: boolean | undefined) => {
     patchForge('t', { details: { 12: { value: { ...detail, subscribed }, at: 1 } } });
@@ -381,7 +380,6 @@ describe("the MR/PR view's actions (spec #4 §4 \"4B\")", () => {
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(screen.queryByRole('menuitem', { name: /Subscribe/ })).toBeNull();
   });
-  // --- end MR round 2 ---
 
   it("Edit's description is a ten-row textarea", () => {
     show();
@@ -463,7 +461,7 @@ describe("the MR/PR view's actions (spec #4 §4 \"4B\")", () => {
   });
 });
 
-describe('your pending review in the MR/PR view (review comments round 2)', () => {
+describe('your pending review in the MR/PR view', () => {
   const at = (path: string, line: number) => ({ path, oldPath: null, line, oldLine: null, snippet: null, startLine: null, startOldLine: null });
   const DRAFTS: ReviewDraft[] = [
     { id: '7', body: 'Rename this\n\nIt reads better.', position: at('src/z.rs', 30), replyTo: null },

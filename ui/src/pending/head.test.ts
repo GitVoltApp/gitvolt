@@ -51,7 +51,7 @@ afterEach(() => {
   useRuntime.setState({ tabs: {} });
 });
 
-describe('HEAD as the queued writes leave it (spec #2 §3.6)', () => {
+describe('HEAD as the queued writes leave it', () => {
   it('checkout a, push a (running), checkout b (queued): menus, double-click and the toolbar act on b', async () => {
     const { store, graph } = setup();
     const push = held();

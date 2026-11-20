@@ -5,7 +5,7 @@ const grid = (page: Page) => page.getByRole('grid', { name: 'Commit graph' });
 const chip = (page: Page, name: string) => grid(page).locator('.ref-label', { hasText: name }).first();
 const menu = (page: Page) => page.getByRole('menu');
 
-test.describe('branches (spec #2 §9.1, §9.2)', () => {
+test.describe('branches', () => {
   // One repo and page for these (each was a test of its own, paying for a page load), in an order
   // where each starts from what it needs: nothing is left half-done, and the rename comes last.
   test('the inline name input: Esc or leaving cancels, an invalid name is refused, Enter creates and undo removes it; Set upstream; rename keeps the reflog; git flow set up, started and finished', async ({ page }) => {
@@ -46,7 +46,7 @@ test.describe('branches (spec #2 §9.1, §9.2)', () => {
     });
     await test.step('the toolbar Branch opens the inline name input on HEAD\'s row; Enter creates and checks out; undo removes it', async () => {
       await page.getByRole('button', { name: 'Branch', exact: true }).click();
-      // UX round 1: no dialog, an input in the Branch/Tag cell of HEAD's (selected) row.
+      // No dialog, an input in the Branch/Tag cell of HEAD's (selected) row.
       const input = grid(page).getByRole('textbox', { name: 'Branch name' });
       await expect(input).toBeFocused();
       await expect(input).toHaveAttribute('placeholder', 'enter branch name');
@@ -170,7 +170,7 @@ test.describe('branches (spec #2 §9.1, §9.2)', () => {
     await page.goto(openUrl(repo));
     await chip(page, 'feature/login').click({ button: 'right' });
     await menu(page).getByRole('menuitem', { name: 'Delete' }).locator('[data-variant-id="both"]').click();
-    // The row arms in place, its menu open (spec §ui confirms, board A); a second click runs it.
+    // The row arms in place, its menu open; a second click runs it.
     await confirmArmed(menu(page).getByRole('menuitem', { name: /^Click again to delete feature\/login and origin\/feature\/login/ }));
     // One confirmation only: no second (unmerged) dialog follows.
     await expect(page.getByRole('alertdialog')).toBeHidden();

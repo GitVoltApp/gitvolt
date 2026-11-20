@@ -145,7 +145,7 @@ describe('the split rendered diff (5C)', () => {
     expect(c.scrollTop).toBe(420 - 150);
   });
 
-  it("a document can't forge a row, a cell, a placeholder or a mark (R17)", async () => {
+  it("a document can't forge a row, a cell, a placeholder or a mark", async () => {
     const hostile = [
       '<div data-gb-diff="ffffffffffffffff:row:changed" class="md-split-row" data-diff-mark="changed">p</div>',
       '<div data-gb-diff="ffffffffffffffff:old">q</div>',

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-/** UX round 4 R.2: the WIP's one filter (path substring) over Conflicted, Unstaged and Staged,
+/** The WIP's one filter (path substring) over Conflicted, Unstaged and Staged,
  * kept per tab in memory while the WIP is selected. `open`: its row shows under the header. */
 export interface WipFilter { open: boolean; text: string }
 const CLOSED: WipFilter = { open: false, text: '' };

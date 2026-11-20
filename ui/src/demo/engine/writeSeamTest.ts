@@ -1,5 +1,5 @@
-// Test-only: a write context over a 1b test repository, as phase 3's tests make one (1b's `fakeCtx`
-// already runs at the parity clock with its own DemoWrites), with the demo's default settings and
+// Test-only: a write context over a read-engine test repository, as the write engine's tests make
+// one (the read tests' `fakeCtx` already runs at the parity clock with its own DemoWrites), with the demo's default settings and
 // its events collected.
 import type { AppEvent } from '../../api/gen/AppEvent';
 import type { DemoContext } from '../context';

@@ -60,7 +60,7 @@ const CLASSIC_HELP = 'Opens GitHub\'s classic token page with the repo and read:
 const FINE_GRAINED_REFUSED = 'forbids access via a fine-grained';
 
 
-/** Settings › Accounts (spec #4 §3.2): the active profile's forge accounts, any number per host. */
+/** Settings › Accounts: the active profile's forge accounts, any number per host. */
 export function AccountsSection() {
   const [accounts, setAccounts] = useState<ForgeAccountView[] | null>(null);
   const [error, setError] = useState<string | null>(null);

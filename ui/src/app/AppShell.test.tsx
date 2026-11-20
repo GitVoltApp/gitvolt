@@ -44,7 +44,7 @@ const emit = (ev: AppEvent) => act(() => { for (const h of [...listeners]) h(ev)
 const activate = (id: string) => act(() => useAppState.getState().updateProfile((p) => ({ ...p, activeTab: id })));
 const graphCalls = (repo: number) => api.graph.mock.calls.filter((c) => c[0] === repo);
 
-describe('AppShell: tabs inside <Activity> (spec §4.4, Review Focus 1)', () => {
+describe('AppShell: tabs inside <Activity>', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listeners.clear();
@@ -59,7 +59,7 @@ describe('AppShell: tabs inside <Activity> (spec §4.4, Review Focus 1)', () => 
   });
   afterEach(() => { document.title = ''; });
 
-  it('K44: the shown tab holds its WIP lists once watched, hands them repoChanged, and drops them when hidden', async () => {
+  it('the shown tab holds its WIP lists once watched, hands them repoChanged, and drops them when hidden', async () => {
     render(<AppShell />);
     expect(await screen.findByText('commit r1c1')).toBeInTheDocument();
     const wip = () => useTabViews.getState().views.a!.services.wip;
@@ -130,7 +130,7 @@ describe('AppShell: tabs inside <Activity> (spec §4.4, Review Focus 1)', () => 
     expect(screen.getByText('commit r1c1', { exact: true })).not.toBeVisible();
 
     // Back to a: the cached graph at once, then, once watched again, an in-place update: watch
-    // first, then a plain graph (the watcher's first pass refreshed the status cache, W2-B).
+    // first, then a plain graph (the watcher's first pass refreshed the status cache).
     const graphsBefore = graphCalls(1).length;
     api.watchRepo.mockClear();
     activate('a');
@@ -139,7 +139,7 @@ describe('AppShell: tabs inside <Activity> (spec §4.4, Review Focus 1)', () => 
     expect(api.watchRepo).toHaveBeenCalledWith(1);
     const graphAt = api.graph.mock.invocationCallOrder.at(-1)!;
     expect(api.watchRepo.mock.invocationCallOrder[0]).toBeLessThan(graphAt);
-    expect(graphCalls(1).at(-1)?.[2]).toEqual({ pin: undefined, active: '/a' }); // the tab's worktree (2C T2)
+    expect(graphCalls(1).at(-1)?.[2]).toEqual({ pin: undefined, active: '/a' }); // the tab's worktree
     expect(api.openRepo).toHaveBeenCalledTimes(2);
   });
 
@@ -179,7 +179,7 @@ describe('AppShell: tabs inside <Activity> (spec §4.4, Review Focus 1)', () => 
     expect(screen.queryByText('the header')).toBeNull();
   });
 
-  it('mounts the app\'s one context menu (R1): a menu opened anywhere shows', async () => {
+  it('mounts the app\'s one context menu: a menu opened anywhere shows', async () => {
     render(<AppShell />);
     await screen.findByText('commit r1c1');
     act(() => openMenuAt(document.body, [{ kind: 'action', id: 'x', label: 'Hello menu', icon: X, tooltip: 'A row', run: () => {} }]));

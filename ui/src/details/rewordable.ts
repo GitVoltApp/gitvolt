@@ -26,9 +26,9 @@ function trunkOf(g: RewordInput['graph'], remotes: readonly BaseRemote[]): strin
 }
 
 /**
- * 3C T13 (spec #3 §3.6): `id`, an older commit of HEAD's branch that "Edit message" rewords in
- * place; `null` when it isn't one. Not HEAD itself (that's 2D's amend), a merge (the brief's rule)
- * or the first commit (the core refuses it), and (fix 1 I1) not a commit the trunk has: rewording one
+ * `id`, an older commit of HEAD's branch that "Edit message" rewords in
+ * place; `null` when it isn't one. Not HEAD itself (that's an amend), a merge
+ * or the first commit (the core refuses it), and not a commit the trunk has: rewording one
  * would copy trunk history into the branch. On the trunk itself, any ancestor of HEAD goes.
  * The trunk is the core's (`trunkOf`), so the pencil shows where the core allows it. `pushed`: HEAD's
  * upstream, when it already has the commit (the force-push note).

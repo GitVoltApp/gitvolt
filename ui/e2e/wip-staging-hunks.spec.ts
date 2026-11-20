@@ -12,7 +12,7 @@ const gutterButton = (page: Page) => page.locator('.diff-panel .line-stage-glyph
 const mode = (page: Page, name: 'Hunk' | 'Inline' | 'Split') => page.getByRole('group', { name: 'View mode' }).getByRole('button', { name });
 /** A hunk zone's button. The zones are Monaco view zones, whose container Monaco marks aria-hidden. */
 const hunkButton = (zone: Locator, name: string) => zone.getByRole('button', { name, includeHidden: true });
-/** The file list header's staging Undo (§7.6). */
+/** The file list header's staging Undo. */
 const undoStaging = (page: Page) => page.locator('.wip-view-bar').getByRole('button', { name: 'Undo staging' }).click();
 const modified = (page: Page) => page.locator('.diff-panel .editor.modified');
 /** Runs `act` (a write), then waits for the diff to show again with the write's result. */
@@ -34,9 +34,9 @@ async function revealLine(page: Page, text: string): Promise<Locator> {
   return line;
 }
 
-test.describe('hunks and lines (spec #2 §7.3)', () => {
+test.describe('hunks and lines', () => {
   // One repo and page for these (each was a test of its own, paying for a page load and Monaco's
-  // start-up): each step's staging is undone after it (the file list's Undo staging, §7.6), and
+  // start-up): each step's staging is undone after it (the file list's Undo staging), and
   // its file closed, so the next starts from the fixture as a test of its own did.
   test('staging hunks and lines: Inline, Hunk mode\'s rows, a file\'s only hunk, a selection and a deleted line, unstaging and discarding a hunk, an autocrlf file', async ({ page, request }) => {
     const repo = await openWip(page);
@@ -184,7 +184,7 @@ test.describe('hunks and lines (spec #2 §7.3)', () => {
     await expect(hunkButton(zones(page).first(), 'Stage hunk')).toHaveAttribute('aria-disabled', 'true');
   });
 
-  test('budget (§16): stage a hunk < 100 ms, best of 3', { tag: '@budget' }, async ({ page }) => {
+  test('budget: stage a hunk < 100 ms, best of 3', { tag: '@budget' }, async ({ page }) => {
     await openWip(page);
     await fileRow(page, 'unstaged', 'src/app.txt').click();
     await mode(page, 'Hunk').click();

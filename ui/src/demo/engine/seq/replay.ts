@@ -1,5 +1,5 @@
 // One commit's change replayed onto another tree: the cherry-pick, rebase pick and revert of the
-// sequencer (plan 4). A pick merges (base: the commit's first parent, ours: the tree it goes onto,
+// sequencer. A pick merges (base: the commit's first parent, ours: the tree it goes onto,
 // theirs: the commit); a revert swaps base and theirs. Labels as git 2.53 writes them (checked
 // against the binary, Task 2 Step 1): the commit's message by its first non-blank line as it is, not
 // its `%s`. Not as git does: the id is always 7 digits (git lengthens it in a large repository).

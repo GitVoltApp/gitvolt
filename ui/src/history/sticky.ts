@@ -2,7 +2,7 @@ import { tabStore } from '../app/tabStores';
 import { closeCenterView } from '../repo/centerView';
 
 /**
- * UX: File History is sticky. While it's open in a tab (the tab store's `stickyHistory`), a file
+ * File History is sticky. While it's open in a tab (the tab store's `stickyHistory`), a file
  * chosen from the right panel opens in File History too (`history/follow.ts`). It ends when File
  * History closes (× / Esc, the sidebar's strip, another view in its place: `feature.ts`'s
  * `onClose`), and when a file is asked for in a view of its own, which this closes it for: the

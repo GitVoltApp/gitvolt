@@ -1,4 +1,4 @@
-// The undo/redo journal (spec #2 §5.1): the core's journal/mod.rs and journal/history.rs, in memory,
+// The undo/redo journal: the core's journal/mod.rs and journal/history.rs, in memory,
 // one per worktree for the page's life. Entries are written ahead (pending), then finalised (done)
 // or dropped when nothing changed; Undo and Redo move them between the stacks; kept stashes have
 // banners; a merge, rebase or pick stopped on conflicts waits as a paused entry. Not here (nothing in

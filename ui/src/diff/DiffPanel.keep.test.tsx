@@ -9,7 +9,7 @@ import type { FileListPayload } from '../api/gen/FileListPayload';
 import type { GraphPayload } from '../api/gen/GraphPayload';
 import type { RowPayload } from '../api/gen/RowPayload';
 
-// J16: a closed diff's panel is kept (hidden), with the shared editor still attached in it.
+// A closed diff's panel is kept (hidden), with the shared editor still attached in it.
 // The host remembers the box it was attached to, as the real one does.
 const host = vi.hoisted(() => {
   const h = {
@@ -72,7 +72,7 @@ const openRow = async (path: string) => {
 // Generous waits: a full run on a loaded machine is slow.
 const W = { timeout: 3000 };
 
-describe('a closed diff is kept, hidden (J16)', () => {
+describe('a closed diff is kept, hidden', () => {
   beforeEach(() => useFileListPrefs.setState({ mode: 'path' }));
 
   afterEach(() => vi.clearAllMocks());
@@ -149,7 +149,7 @@ describe('a closed diff is kept, hidden (J16)', () => {
     await openRow('a.txt');
     await waitFor(() => expect(host.showDiff).toHaveBeenCalledTimes(2), W);
     // And another file, after a close: the editor is told what comes next, so it can hide the
-    // closed file's diff until then (H6).
+    // closed file's diff until then.
     await act(async () => fireEvent.mouseDown(fileRow('a.txt'), { button: 0, detail: 1 }));
     await openRow('b.txt');
     await waitFor(() => expect(host.showDiff).toHaveBeenLastCalledWith(expect.objectContaining({ path: 'b.txt' })), W);
@@ -161,7 +161,7 @@ describe('a closed diff is kept, hidden (J16)', () => {
     await waitFor(() => expect(host.goToChange).toHaveBeenCalledWith('next'), W);
   });
 
-  it("reopened on another file, it never presents the closed file's header or body first (H6)", async () => {
+  it("reopened on another file, it never presents the closed file's header or body first", async () => {
     renderView();
     fireEvent.mouseDown(screen.getAllByRole('row')[0]);
     await screen.findByRole('listbox', { name: 'Changed files' }, W);

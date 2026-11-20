@@ -5,7 +5,7 @@ import { freshFixture, git, openUrl } from './fixtures';
 import { armedOverlay, confirmArmed, expect, test, type Locator, type Page } from './test';
 import { fileRow, section } from './wip';
 
-/** HEAD is feature/c; feature/a → b → c are stacked on main, which moved on (plan 3C T1). */
+/** HEAD is feature/c; feature/a → b → c are stacked on main, which moved on. */
 async function openEditor(page: Page): Promise<string> {
   const repo = freshFixture('irebase');
   await page.goto(openUrl(repo));
@@ -23,7 +23,7 @@ const reachable = (el: Locator) => el.evaluate((b) => {
 });
 const start = (page: Page) => page.getByTestId('irebase').getByRole('button', { name: 'Start Rebase' }).click();
 
-test.describe('interactive rebase (spec #3 §7)', () => {
+test.describe('interactive rebase', () => {
   test('flow 1: reorder, squash and Start', async ({ page }) => {
     const repo = await openEditor(page);
     await expect(page.getByTestId('irebase').getByRole('note')).toHaveText(/1 merge commit will be flattened into a straight line/);
@@ -39,7 +39,7 @@ test.describe('interactive rebase (spec #3 §7)', () => {
     expect(git(repo, 'rev-list', '--merges', 'main..feature/c')).toBe('');
   });
 
-  // UX L: GitVolt's Edit stop is "about to commit": the commit's changes staged, its message in the
+  // GitVolt's Edit stop is "about to commit": the commit's changes staged, its message in the
   // box. Splitting it is unstage some, Commit, commit the rest, Continue.
   test('flow 2: an Edit stop is about to commit: unstage part, Commit, commit the rest, Continue', async ({ page }) => {
     const repo = await openEditor(page);
@@ -81,7 +81,7 @@ test.describe('interactive rebase (spec #3 §7)', () => {
     await box.getByRole('button', { name: 'Continue rebase' }).click();
     await expect.poll(() => git(repo, 'log', '-1', '--format=%s', 'feature/b')).toBe('Lexer tests');
     expect(git(repo, 'log', '--format=%s', 'main..feature/c')).not.toContain('B2 Refine lexer');
-    // One Undo restores the original history (spec #3 §3.4), once the app has the rebase done:
+    // One Undo restores the original history, once the app has the rebase done:
     // git moves the branches before the write returns, and until it has, Undo is blocked ("Finish
     // or abort the rebase first") or names an older entry.
     const undo = page.getByRole('toolbar', { name: 'Repository toolbar' }).getByRole('button', { name: 'Undo', exact: true });
@@ -94,13 +94,13 @@ test.describe('interactive rebase (spec #3 §7)', () => {
     expect(git(repo, 'rev-parse', 'feature/c')).not.toBe(tip);
   });
 
-  // A plain Edit, then Continue, keeps the commit as it was but for its committer (UX L): the
+  // A plain Edit, then Continue, keeps the commit as it was but for its committer: the
   // core's write/irebase/edit.rs (the_stop_is_a_soft_reset_and_a_plain_continue_keeps_the_commit).
 
   test('flow 3: a stack chip dragged down a row moves its branch', async ({ page }) => {
     const repo = await openEditor(page);
     const b = git(repo, 'log', '-1', '--format=%s', 'feature/b');
-    // Pointer events only (UX R1.1): the packaged app's CEF delivers no HTML5 drag events.
+    // Pointer events only: the packaged app's CEF delivers no HTML5 drag events.
     await page.evaluate(() => { (window as unknown as { dragStarts: number }).dragStarts = 0; window.addEventListener('dragstart', () => { (window as unknown as { dragStarts: number }).dragStarts++; }, true); });
     const from = (await row(page, 'A3 Add tests').locator('.irebase-chip', { hasText: 'feature/a' }).boundingBox())!;
     const to = (await row(page, 'A2 Edit notes').locator('.irebase-summary').boundingBox())!;
@@ -118,7 +118,7 @@ test.describe('interactive rebase (spec #3 §7)', () => {
     expect(git(repo, 'log', '-1', '--format=%s', 'feature/b')).toBe(b);
   });
 
-  test('a selection dragged as a group lands together, in its order, closed up (UX2 E.3)', async ({ page }) => {
+  test('a selection dragged as a group lands together, in its order, closed up', async ({ page }) => {
     const repo = await openEditor(page);
     await page.evaluate(() => { (window as unknown as { dragStarts: number }).dragStarts = 0; window.addEventListener('dragstart', () => { (window as unknown as { dragStarts: number }).dragStarts++; }, true); });
     const order = () => page.getByTestId('irebase').locator('[data-irebase-row] .irebase-summary').allTextContents();
@@ -159,7 +159,7 @@ test.describe('interactive rebase (spec #3 §7)', () => {
   // the rebase, and each starts from a fresh plan (the editor cancelled and opened again).
   test('the editor\'s chips: a hover shows the full name, +N; chips sharing a row, × and the chip menu; Interactive rebase after this commit', async ({ page }) => {
     await openEditor(page);
-    await test.step('a chip\'s hover shows its full name in place, shifting nothing; chips that don\'t fit go behind +N (UX2 E.1, E.2)', async () => {
+    await test.step('a chip\'s hover shows its full name in place, shifting nothing; chips that don\'t fit go behind +N', async () => {
       const a3 = row(page, 'A3 Add tests');
       const add = async (name: string) => {
         await a3.hover();
@@ -219,7 +219,7 @@ test.describe('interactive rebase (spec #3 §7)', () => {
       await expect(a3.locator('.irebase-chip-more')).toHaveCount(0);
       await expect(shown).toHaveCount(2);
     });
-    await test.step('chips sharing a row: each × is reachable and its own; the chip menu deletes (armed) and restores (UX R1.3, R1.5)', async () => {
+    await test.step('chips sharing a row: each × is reachable and its own; the chip menu deletes (armed) and restores', async () => {
       // A fresh plan: the edited one discarded (Cancel arms in place), and the editor opened again
       // from main's chip.
       await page.getByTestId('irebase').getByRole('button', { name: 'Cancel' }).first().click();
@@ -267,9 +267,9 @@ test.describe('interactive rebase (spec #3 §7)', () => {
       await page.getByRole('menu').getByRole('menuitem', { name: 'Restore' }).click();
       await expect(deleted('feature/b')).not.toHaveClass(/is-deleted/);
     });
-    // The action dropdown's colours and tooltips, Reword's caret, Save and Cancel (UX4 Q.2–Q.4):
+    // The action dropdown's colours and tooltips, Reword's caret, Save and Cancel:
     // RebaseEditor.test.tsx. Here what takes a layout: their widths.
-    await test.step('"Interactive rebase after this commit": the clicked commit is the base (UX4 Q.5); the action dropdown and the message editor keep to their widths', async () => {
+    await test.step('"Interactive rebase after this commit": the clicked commit is the base; the action dropdown and the message editor keep to their widths', async () => {
       // The edited plan discarded (Cancel arms in place).
       const editor = page.getByTestId('irebase');
       await editor.getByRole('button', { name: 'Cancel' }).first().click();
@@ -296,7 +296,7 @@ test.describe('interactive rebase (spec #3 §7)', () => {
   });
 
 
-  // UX F (P0): the playground repos inherited `commit.gpgsign=true`. A signer that fails (here a
+  // The playground repos inherited `commit.gpgsign=true`. A signer that fails (here a
   // stand-in, in the fixture's own config) stops the rebase at its first pick: the stop says why,
   // a Continue while it still fails says it again, and once signing is off Continue goes on to
   // the Edit stop and then finishes.
@@ -329,7 +329,7 @@ test.describe('interactive rebase (spec #3 §7)', () => {
     expect(existsSync(join(repo, '.git', 'rebase-merge'))).toBe(true);
     git(repo, 'config', 'commit.gpgsign', 'false');
     await cont.click();
-    // UX L: the Edit stop is "about to commit" (HEAD on B2's parent, its changes staged); the box
+    // The Edit stop is "about to commit" (HEAD on B2's parent, its changes staged); the box
     // commits there, and Continue is under it.
     await expect(box.getByRole('region', { name: 'Rebase in progress' })).toContainText('its changes are staged');
     await expect.poll(() => git(repo, 'log', '-1', '--format=%s')).toBe('S1 Side work');

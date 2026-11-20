@@ -1,5 +1,5 @@
-//! A repository's merge requests (spec #4 §3.3, §4 "4B"). Every call goes to the project the
-//! repository's MRs/PRs target (4A's `RepoProjects.target`), through its account's provider, and
+//! A repository's merge requests. Every call goes to the project the
+//! repository's MRs/PRs target (`RepoProjects.target`), through its account's provider, and
 //! records what the answer says about the account (Settings › Accounts shows it):
 //! - `branch_mrs`, the badges: one list of open MRs/PRs, mapped to the remote-tracking refs of the
 //!   remotes their source projects are on, then a lookup in any state for each asked ref the list
@@ -9,7 +9,7 @@
 //!   only while that ref's tip is still its head (`BadgeRefs`); the others go to `history`;
 //! - `mr_list`, the sidebar section (Mine / Review requested / All);
 //! - `mr_detail`, `mr_discussions`, the hover card and the MR/PR view;
-//! - the writes (spec §3.5: remote actions, not journaled). Empty text is refused here, before
+//! - the writes (remote actions, not journaled). Empty text is refused here, before
 //!   the forge is asked.
 
 use crate::error::{ErrorDetail, GbError, GbErrorKind};
@@ -76,7 +76,7 @@ pub struct BranchMrs {
     /// The badges.
     pub mrs: Vec<RefMr>,
     /// Merged or closed MRs/PRs the lookups found whose ref moved on since (or whose tip isn't
-    /// known: its branch is gone here): no badge, but 4D's stack walk and after-merge flow read
+    /// known: its branch is gone here): no badge, but the stack walk and after-merge flow read
     /// them (a stack's merged bottom whose branch was deleted after the merge).
     pub history: Vec<RefMr>,
     #[ts(type = "number")]
@@ -110,7 +110,7 @@ pub struct BadgeRefs {
     /// A remote-tracking ref's current tip: its own commit, or when it's gone (its branch deleted
     /// after a merge), those of the local branches that track it or push to it.
     pub tips: HashMap<String, Vec<String>>,
-    /// The stack base (spec #3 §3.11), `refs/remotes/<remote>/<branch>`: never looked up in any state.
+    /// The stack base, `refs/remotes/<remote>/<branch>`: never looked up in any state.
     pub stack_base: Option<String>,
 }
 
@@ -497,7 +497,7 @@ impl ForgeHub {
         if r.is_ok() {
             self.wrote(&t);
         }
-        // --- MR round 2: the forge kept only one: so does the cached limit from now on ---
+        // --- the forge kept only one: so does the cached limit from now on ---
         if let Err(GbError { detail: Some(ErrorDetail::PeopleLimit { role }), .. }) = &r {
             let key = cache_key(&t.key, &t.project.path);
             let now = self.now();
@@ -508,11 +508,9 @@ impl ForgeHub {
             });
             self.cache.save(&key);
         }
-        // --- end MR round 2 ---
         r
     }
 
-    // --- MR round 2 ---
     /// A review from the composer, its message as `check_review_message` needs it.
     pub async fn review(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], number: u64, review: ReviewSubmit) -> Result<ReviewOutcome, GbError> {
         use crate::forge::review::check_review_message;
@@ -553,7 +551,6 @@ impl ForgeHub {
         self.record(&t.key, &r);
         r
     }
-    // --- end MR round 2 ---
 
     // --- comment actions ---
     /// Adds or removes the token's user's reaction on a note; the note's reactions after.
@@ -639,7 +636,6 @@ mod tests {
         (p, hub, store, remotes)
     }
 
-    // --- MR round 2 ---
     /// `setup`, with the clock at `now` and the cache in `dir`.
     async fn setup_at(now: i64, dir: &std::path::Path, limits: PeopleLimits) -> (Arc<FakeProvider>, ForgeHub, Arc<SettingsStore>, Vec<RemotePayload>) {
         let p = FakeProvider::new(ForgeKind::GitLab, HOST);
@@ -706,7 +702,6 @@ mod tests {
         assert_eq!(calls.iter().filter(|c| *c == "approve 12").count(), 2);
         assert!(calls.iter().any(|c| c == "reply 12 None Nice"), "{calls:?}");
     }
-    // --- end MR round 2 ---
 
     #[test]
     fn a_remote_ref_splits_on_the_longest_remote_name() {

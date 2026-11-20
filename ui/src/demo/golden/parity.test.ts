@@ -1,4 +1,4 @@
-// The demo backend against the real core (website demo spec §4.4): each fixture's bundle answers
+// The demo backend against the real core: each fixture's bundle answers
 // the requests recorded in golden/<fixture>/, and each answer must be the one the harness gave on
 // the same fixture (`just demo-golden`). A `<fixture>@<scenario>` is a write scenario: its answers
 // come with the events each request emitted, and the demo runs at the parity instant. Skipped

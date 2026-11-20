@@ -24,7 +24,7 @@ beforeEach(() => {
   patchForge('t', { kind: 'gitlab', remote: 'origin', project: projectOf() });
 });
 
-describe('a plain click (spec #5 §4.1)', () => {
+describe('a plain click', () => {
   it('opens a GitLab MR in-app', async () => {
     await openLinkTarget(forge, { kind: 'mr', number: 5, webUrl: 'https://gitlab.example.com/group/project/-/merge_requests/5' });
     expect(poll.openMrView).toHaveBeenCalledWith('t', 5);
@@ -64,7 +64,7 @@ describe('a plain click (spec #5 §4.1)', () => {
     expect(window.location.href).toBe(href);
   });
 
-  it('gives a file link to 5B’s handler in File View; the browser in a forge context', async () => {
+  it('gives a file link to the handler in File View; the browser in a forge context', async () => {
     const handler = vi.fn();
     const off = registerFileLinkHandler(handler);
     await openLinkTarget(file, { kind: 'file', path: 'CHANGES.md', commit: 'c0ffee1', anchor: 'v2' });

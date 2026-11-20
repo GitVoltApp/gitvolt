@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clampSplit, loadSplit, saveSplit, SPLIT, splitBounds } from './detailsSplit';
 
-describe('details split (feedback F13)', () => {
+describe('details split', () => {
   afterEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();

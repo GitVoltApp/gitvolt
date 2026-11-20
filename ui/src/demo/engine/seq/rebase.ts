@@ -158,7 +158,7 @@ export async function plainSteps(read: ReadRepo, tip: string, onto: string, stac
   return { steps, range, map };
 }
 
-/** A rebase's stop as its outcome. UX F: a stop with no conflict is a step git refused: its
+/** A rebase's stop as its outcome. A stop with no conflict is a step git refused: its
  *  message goes with the stop, as the core's warning. */
 export function stoppedOutcome(end: Extract<SeqEnd, { status: 'stopped' }>): IntegrateOutcome {
   const said = end.files === 0 && end.stop.error ? end.stop.error.trim().replace(/\.+$/, '') : null;
@@ -196,7 +196,7 @@ export function rebaseIntent(o: { target: string; updateRefs?: boolean; confirm:
       if (await isAncestor(cx.read, head, onto)) {
         const [, behind] = await relation(cx.read, head, onto);
         await checkoutTree(cx, await treeOf(cx.read, head), await treeOf(cx.read, onto));
-        // git sets ORIG_HEAD as it starts (HEAD's reflog isn't kept in the demo, as phase 3's).
+        // git sets ORIG_HEAD as it starts (HEAD's reflog isn't kept in the demo, as in the write engine).
         writeOrigHead(cx, head);
         await cx.cas([{ name: full, old: head, new: onto }], `rebase (finish): ${full} onto ${onto}`);
         return { status: 'done', commits: behind, fastForward: true };

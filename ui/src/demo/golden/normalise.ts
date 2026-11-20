@@ -17,8 +17,7 @@ async function digestLarge(v: unknown): Promise<unknown> {
   return out;
 }
 
-// HTTP timing and the harness's token file have no counterpart in the page (plan 4's forge
-// decision): where a forge answer holds them, by method (dot-separated paths, `[]` for each item of
+// HTTP timing and the harness's token file have no counterpart in the page: where a forge answer holds them, by method (dot-separated paths, `[]` for each item of
 // a list). The recorder masks the same fields as `<untimed>` (golden.rs `UNTIMED_FIELDS`: keep the
 // two tables alike); the demo's are masked the same here, so a field either side leaves out fails.
 export const UNTIMED: Record<string, string[]> = {

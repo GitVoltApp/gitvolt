@@ -1,7 +1,7 @@
 import { fixtures, git, harnessWs, openUrl } from './fixtures';
 import { expect, test, type Page } from './test';
 
-/** Plan 1C Task 17: find (Ctrl+F, spec §8.7; the user's J5). */
+/** Find (Ctrl+F). */
 
 const grid = (page: Page) => page.getByRole('grid', { name: 'Commit graph' });
 const row = (page: Page, text: string) => page.getByRole('row').filter({ hasText: text });
@@ -35,7 +35,7 @@ test.describe('find', () => {
   test('find in the graph: the Search tooltip, the box, stepping and wrapping, paths and SHAs; with a file open, the editor\'s own find', async ({ page }) => {
     await page.goto(openUrl(fixtures.basic));
     await expect(grid(page)).toBeVisible();
-    await test.step('the toolbar Search tooltip keeps its natural width at the right edge: no mid-word wrap, fully on screen (K52)', async () => {
+    await test.step('the toolbar Search tooltip keeps its natural width at the right edge: no mid-word wrap, fully on screen', async () => {
       await page.getByRole('button', { name: 'Search' }).hover();
       const tip = page.getByRole('tooltip');
       await expect(tip).toBeVisible();
@@ -74,7 +74,7 @@ test.describe('find', () => {
       await page.keyboard.press('Control+f');
       const box = page.getByRole('search', { name: 'Find in graph' });
       await expect(input(page)).toBeFocused();
-      // Top-right of the graph panel (J5): its right edge near the panel's, its top near the grid's.
+      // Top-right of the graph panel: its right edge near the panel's, its top near the grid's.
       const b = (await box.boundingBox())!;
       const panel = (await page.locator('.center-panel').boundingBox())!;
       expect(panel.x + panel.width - (b.x + b.width)).toBeLessThan(40);
@@ -97,7 +97,7 @@ test.describe('find', () => {
       await page.keyboard.press('Control+f');
       await expect(input(page)).toHaveValue('');
     });
-    await test.step('repeated Enter / Shift+Enter jumps move the selection and the counter every time (K40)', async () => {
+    await test.step('repeated Enter / Shift+Enter jumps move the selection and the counter every time', async () => {
       await grid(page).click({ position: { x: 300, y: 60 } });
       await page.keyboard.press('Control+f');
       await input(page).fill('e');
@@ -137,7 +137,7 @@ test.describe('find', () => {
       await page.keyboard.press('Escape');
       await expect(page.getByRole('search', { name: 'Find in graph' })).toHaveCount(0);
     });
-    await test.step('with a file open, Ctrl+F opens the editor\'s own find, not the graph\'s (R7)', async () => {
+    await test.step('with a file open, Ctrl+F opens the editor\'s own find, not the graph\'s', async () => {
       await row(page, 'Fix typo').click();
       await page.getByRole('listbox', { name: 'Changed files' }).getByRole('option').first().click();
       const diff = page.getByRole('region', { name: 'Diff' });

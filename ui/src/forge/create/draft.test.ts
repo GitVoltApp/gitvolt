@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe('Create MR/PR drafts (spec #4 §2: resumable per repo + source branch)', () => {
+describe('Create MR/PR drafts (resumable per repo + source branch)', () => {
   it('keeps one draft per repo and branch across a restart', () => {
     writeMrDraft('/r/shop', 'feature', d);
     writeMrDraft('/r/shop', 'other', { ...d, title: 'Other' });

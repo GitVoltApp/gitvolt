@@ -1,4 +1,4 @@
-//! MRs and PRs through the harness's `Api`: real providers, the fake forge (spec #4 §7).
+//! MRs and PRs through the harness's `Api`: real providers, the fake forge.
 
 use gitvolt_core::api::{Api, Request};
 use gitvolt_core::error::GbError;
@@ -39,7 +39,7 @@ async fn a_gitlab_repo_gets_badges_a_list_details_and_its_writes_answered() {
     let by: std::collections::BTreeMap<String, (u64, String)> = badges["mrs"].as_array().unwrap().iter().map(|b| (b["remoteRef"].as_str().unwrap().to_string(), (b["mr"]["number"].as_u64().unwrap(), b["mr"]["state"].as_str().unwrap().to_string()))).collect();
     assert_eq!(by["refs/remotes/origin/dev"], (12, "open".to_string()));
     // Looked up in any state: merged, and this repo has no `origin/feature/old` at its head (nor a
-    // branch tracking it), so no badge; 4D's stacks still read it.
+    // branch tracking it), so no badge; the stacks still read it.
     assert!(!by.contains_key("refs/remotes/origin/feature/old"), "{by:?}");
     let history: Vec<(&str, u64)> = badges["history"].as_array().unwrap().iter().map(|b| (b["remoteRef"].as_str().unwrap(), b["mr"]["number"].as_u64().unwrap())).collect();
     assert_eq!(history, [("refs/remotes/origin/feature/old", 9)]);
@@ -256,7 +256,6 @@ async fn a_github_pr_behind_its_base_is_updated_by_merge_or_rebase_through_the_a
 }
 // --- end branch update ---
 
-// --- 4B final fix ---
 #[tokio::test(flavor = "multi_thread")]
 async fn a_full_github_poll_reads_each_prs_checks_once() {
     let h = Harness::for_tests().await;
@@ -273,7 +272,6 @@ async fn a_full_github_poll_reads_each_prs_checks_once() {
     assert_eq!(checks(&h) - before, 0, "no request per PR: one GraphQL query for them all");
     assert_eq!(h.forge.requests().iter().filter(|q| q.path == "/graphql").count(), 1);
 }
-// --- end 4B final fix ---
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_add_account_helper_the_test_route_uses_adds_an_account() {

@@ -1,6 +1,6 @@
 /** A realistic Markdown document of about `bytes` bytes (ASCII): sections with a heading, prose
- * with links, references and inline styles, a task list, a table and a fenced code block. 5A's MR
- * view budget test and 5B's File View one share it. */
+ * with links, references and inline styles, a task list, a table and a fenced code block. The MR
+ * view budget test and the File View one share it. */
 export function bigMarkdown(bytes: number): string {
   const parts: string[] = [];
   let size = 0;

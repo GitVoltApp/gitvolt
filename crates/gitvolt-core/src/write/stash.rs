@@ -1,4 +1,4 @@
-//! Stashes (spec #2 §10). Identity is the stash commit's oid, never a list position:
+//! Stashes. Identity is the stash commit's oid, never a list position:
 //! `stash@{n}` is found by oid in `git stash list` (a read) under the lock, just before each
 //! command, and checked again (`rev-parse`) so a stack that shifted is never acted on blindly.
 //! - Push: `git stash push --include-untracked -m <message>`; journaled (undo applies it with
@@ -20,7 +20,7 @@ use serde::Serialize;
 use std::path::Path;
 use ts_rs::TS;
 
-/// `On main: Fix x` → `Fix x`; `WIP on main: 1a2b3c4 x` → `1a2b3c4 x` (Deviation 8).
+/// `On main: Fix x` → `Fix x`; `WIP on main: 1a2b3c4 x` → `1a2b3c4 x`.
 pub(crate) fn user_message(subject: &str) -> &str {
     for prefix in ["On ", "WIP on "] {
         if let Some(rest) = subject.strip_prefix(prefix)
@@ -55,7 +55,7 @@ async fn at(cli: &GitCli, root: &Path, n: usize) -> Option<String> {
 }
 
 /// `git stash drop stash@{n}`, once `stash@{n}` is checked to be `oid` just before. git's
-/// `Dropped stash@{n} (<oid>)` is checked after (review M1): another process's stash dropped
+/// `Dropped stash@{n} (<oid>)` is checked after: another process's stash dropped
 /// in between is stored back at once, and the drop refused. `cancellable: false`: the op's
 /// Cancel can't stop it midway (the multi-line push's drop/store pair).
 pub(crate) async fn drop_at(cx: &mut WriteCx<'_>, n: usize, oid: &str, cancellable: bool) -> Result<(), GbError> {
@@ -92,8 +92,8 @@ pub(crate) async fn drop_oid(cx: &mut WriteCx<'_>, oid: &str) -> Result<(), GbEr
     drop_at(cx, n, oid, true).await
 }
 
-/// A stash the user popped or dropped: a kept record for it (an autostash's banner, §6.4) would
-/// now offer Apply of a stash that's gone (2C final I1), so it goes too. Best effort: the
+/// A stash the user popped or dropped: a kept record for it (an autostash's banner) would
+/// now offer Apply of a stash that's gone, so it goes too. Best effort: the
 /// banner is also hidden at read time while its stash isn't listed (`Api::journal_state`).
 fn forget_kept(cx: &mut WriteCx<'_>, oid: &str) {
     match cx.api.journal(cx.root).and_then(|s| s.update(|j| j.forget_kept_stash(oid))) {
@@ -120,8 +120,7 @@ async fn names(cli: &GitCli, root: &Path, args: &[&str]) -> Result<Vec<String>, 
     Ok(out.stdout.split(|b| *b == 0).filter(|s| !s.is_empty()).map(|s| String::from_utf8_lossy(s).into_owned()).collect())
 }
 
-// --- 2C repo-safety ---
-/// Safety review C1: a whole-worktree `stash push -u` (the Stash button, the redo of one) is
+/// A whole-worktree `stash push -u` (the Stash button, the redo of one) is
 /// refused where HEAD's file would be written over a repository (`precheck::stash_push_in_the_way`).
 pub(crate) async fn refuse_stash_push_in_the_way(pre: &Pre<'_>, what: &str) -> Result<(), GbError> {
     let tracked = precheck::dirty(&pre.api.cli, pre.root).await?.tracked;
@@ -131,7 +130,7 @@ pub(crate) async fn refuse_stash_push_in_the_way(pre: &Pre<'_>, what: &str) -> R
     }
 }
 
-/// Safety review C2: an apply of `oid` (apply, pop, the undo of a push, the redo of a pop, a
+/// An apply of `oid` (apply, pop, the undo of a push, the redo of a pop, a
 /// kept stash's Apply) is refused where a file of the stash would be written over a repository
 /// (`precheck::stash_apply_in_the_way`).
 pub(crate) async fn refuse_stash_apply_in_the_way(pre: &Pre<'_>, oid: &str, what: &str) -> Result<(), GbError> {
@@ -140,7 +139,6 @@ pub(crate) async fn refuse_stash_apply_in_the_way(pre: &Pre<'_>, oid: &str, what
         None => Ok(()),
     }
 }
-// --- end 2C repo-safety ---
 
 /// The paths a stash's apply writes: its worktree and index changes, and its untracked files.
 async fn stash_paths(cli: &GitCli, root: &Path, oid: &str) -> Result<Vec<String>, GbError> {
@@ -171,7 +169,7 @@ pub(crate) struct StashPush {
 }
 
 impl StashPush {
-    /// Fills the empty message from HEAD (spec §10), read before the run.
+    /// Fills the empty message from HEAD, read before the run.
     pub(crate) fn new(message: String, branch: Option<&str>) -> Self {
         let message = if message.trim().is_empty() { format!("WIP on {}", branch.unwrap_or("(no branch)")) } else { message };
         Self { message }
@@ -179,7 +177,7 @@ impl StashPush {
 }
 
 /// `git stash push --include-untracked -m <message>`: the new stash's `(oid, subject)`, or
-/// `None` when git found nothing to stash. The caller records it before `relist` (review I1).
+/// `None` when git found nothing to stash. The caller records it before `relist`.
 async fn push(cx: &mut WriteCx<'_>, message: &str) -> Result<Option<(String, String)>, GbError> {
     let before = crate::journal::autostash::stash_oid(cx.api, cx.root).await?;
     let inv = cx.git(["stash", "push", "--include-untracked", "-m", message]);
@@ -286,17 +284,15 @@ impl WriteIntent for StashPush {
     fn undo(&self) -> Option<UndoKind> {
         Some(UndoKind::Stash)
     }
-    // --- 2C repo-safety ---
     /// `stash push -u` ends in a `reset --hard` that writes HEAD's file over a directory in its
-    /// place, deleting a repository in it whole (safety review C1): refused first.
+    /// place, deleting a repository in it whole: refused first.
     async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
         refuse_stash_push_in_the_way(pre, "stash").await?;
         Ok(Plan::default())
     }
-    // --- end 2C repo-safety ---
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<StashPushOutcome, GbError> {
         let Some((oid, subject)) = push(cx, &self.message).await? else { return Ok(StashPushOutcome::NothingToStash) };
-        // Written ahead of the relist's drop (review I1).
+        // Written ahead of the relist's drop.
         cx.record_stash(StashMove { oid: oid.clone(), message: subject.clone(), created: true, without_index: false })?;
         let now = relist(cx, &oid, &subject, &self.message, &self.label()).await;
         if now != subject {
@@ -373,7 +369,7 @@ impl WriteIntent for StashApply {
     }
     async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
         subject_of(&pre.api.cli, pre.root, &self.oid).await?;
-        refuse_stash_apply_in_the_way(pre, &self.oid, if self.pop { "pop" } else { "apply" }).await?; // 2C repo-safety (C2)
+        refuse_stash_apply_in_the_way(pre, &self.oid, if self.pop { "pop" } else { "apply" }).await?;
         if !self.pop {
             return Ok(Plan::default());
         }
@@ -386,14 +382,14 @@ impl WriteIntent for StashApply {
             Some(files) => Ok(StashApplyOutcome::Conflicts { files }),
             None => {
                 if self.pop {
-                    // Written ahead of the drop (review I1, M4).
+                    // Written ahead of the drop.
                     cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: self.without_index })?;
                     if let Err(e) = drop_oid(cx, &self.oid).await {
                         unrecord_if_listed(cx, &self.oid).await;
                         return Err(e);
                     }
                     forget_kept(cx, &self.oid);
-                    // The pop is done: a failed `after` only costs its undo (review M5).
+                    // The pop is done: a failed `after` only costs its undo.
                     match after_snapshot(cx, &self.label()).await {
                         Ok(after) => cx.after = Some(after),
                         Err(e) => {
@@ -408,7 +404,7 @@ impl WriteIntent for StashApply {
     }
 }
 
-/// Why a pop whose `after` snapshot failed can't be undone (review M5).
+/// Why a pop whose `after` snapshot failed can't be undone.
 const NO_AFTER: &str = "Can't be undone: GitVolt couldn't record what the pop left";
 
 /// What a clean pop left in its `before` snapshot's paths: an undo autostashes only what
@@ -435,7 +431,7 @@ impl WriteIntent for StashDrop {
         Some(UndoKind::Stash)
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {
-        // Written ahead of the drop (review M4): a crash between them leaves a banner.
+        // Written ahead of the drop: a crash between them leaves a banner.
         cx.record_stash(StashMove { oid: self.oid.clone(), message: self.subject.clone(), created: false, without_index: false })?;
         if let Err(e) = drop_oid(cx, &self.oid).await {
             if unrecord_if_listed(cx, &self.oid).await {
@@ -466,13 +462,13 @@ fn edit(cx: &mut WriteCx<'_>, id: u64, f: impl FnOnce(&mut JournalEntry)) -> Res
     })
 }
 
-/// `UndoKind::Stash` (§5.3's three stash rows), told apart by what the entry recorded:
+/// `UndoKind::Stash`, told apart by what the entry recorded:
 /// - created: undo applies it (`--index`) and drops it; redo pushes again (the new oid);
 /// - dropped, no `before`: undo stores it back; redo drops it;
 /// - `before` (a pop): undo restores `before`, then stores the stash back if the pop dropped
 ///   it; redo pops again, snapshotting first.
 ///
-/// `without_index`: "Apply without restoring what was staged?" was confirmed (review M2): the
+/// `without_index`: "Apply without restoring what was staged?" was confirmed: the
 /// push's undo and the pop's redo ask it as Apply does. A pop made without the index redoes
 /// without it.
 pub(crate) async fn undo_stash(cx: &mut WriteCx<'_>, entry: &JournalEntry, undo: bool, label: &str, without_index: bool) -> Result<(), GbError> {
@@ -491,7 +487,7 @@ pub(crate) async fn undo_stash(cx: &mut WriteCx<'_>, entry: &JournalEntry, undo:
                 let full = cx.api.cli.run(GitInvocation::new(cx.root, ["show", "-s", "--format=%B", m.oid.as_str()])).await.map(|o| String::from_utf8_lossy(&o.stdout).trim_end().to_string()).unwrap_or_else(|_| m.message.clone());
                 let message = user_message(&full).to_string();
                 let Some((oid, subject)) = push(cx, &message).await? else { return Err(GbError::new(GbErrorKind::InvalidInput, "Nothing to stash")) };
-                // Written ahead of the relist's drop (review I1).
+                // Written ahead of the relist's drop.
                 let new = |subject: String| StashMove { oid: oid.clone(), message: subject, created: true, without_index: false };
                 edit(cx, entry.id, |e| {
                     if let Some(s) = e.stashes.first_mut() {
@@ -511,7 +507,7 @@ pub(crate) async fn undo_stash(cx: &mut WriteCx<'_>, entry: &JournalEntry, undo:
         }
         (moved, Some(before)) => {
             if undo {
-                // The stash goes back first, beyond a Cancel (re-review M-a): a restore that
+                // The stash goes back first, beyond a Cancel: a restore that
                 // then fails or is cancelled leaves the changes in the stash, never in neither.
                 // Already listed (a retried undo): not stored twice.
                 if let Some(m) = &moved
@@ -563,7 +559,7 @@ pub(crate) async fn undo_stash(cx: &mut WriteCx<'_>, entry: &JournalEntry, undo:
     }
 }
 
-// --- The requests (spec #2 §10) ---
+// --- The requests ---
 
 /// The subject of `oid` in `worktree`'s list, read before the write (its label).
 async fn request_subject(api: &Api, repo: u32, worktree: &str, oid: &str) -> Result<String, GbError> {
@@ -800,7 +796,7 @@ mod tests {
         undo_redo(&env.api, id, &r, &before, |s| assert_eq!(s.stashes.lines().count(), 1)).await;
     }
 
-    /// 2C final I1: a kept autostash's banner goes when the user pops or drops that stash from
+    /// A kept autostash's banner goes when the user pops or drops that stash from
     /// the stash menus (the record too), and doesn't show while its stash isn't listed.
     #[tokio::test(flavor = "multi_thread")]
     async fn popping_or_dropping_a_kept_autostash_clears_its_banner() {
@@ -828,7 +824,6 @@ mod tests {
         }
     }
 
-    /// Review Focus 4.
     #[tokio::test(flavor = "multi_thread")]
     async fn an_outside_stash_between_showing_and_dropping_drops_the_right_one() {
         let env = WriteEnv::new();
@@ -847,7 +842,6 @@ mod tests {
         assert_eq!(RepoState::capture(&r), before);
     }
 
-    // --- Fix round 1 ---
 
     #[test]
     fn the_dropped_oid_is_read_from_gits_line() {
@@ -855,7 +849,7 @@ mod tests {
         assert_eq!(super::dropped_oid(""), None);
     }
 
-    /// Review I1: the drop/store pair of a multi-line push. A store that fails leaves the stash
+    /// The drop/store pair of a multi-line push. A store that fails leaves the stash
     /// out of the list: the push still succeeded, and the stash's banner shows at once.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_relist_whose_store_fails_keeps_the_push_and_raises_a_banner() {
@@ -882,7 +876,7 @@ mod tests {
         assert!(r.path().join("c.txt").exists());
     }
 
-    /// Review I1, M4: a stash op that stopped after recording its stash. A recorded stash that's
+    /// A stash op that stopped after recording its stash. A recorded stash that's
     /// no longer listed but still exists gets a Recovery banner at the next start; one still
     /// listed gets none.
     #[tokio::test(flavor = "multi_thread")]
@@ -925,7 +919,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--cached", "--name-only"]), "a.txt", "the lost stash came back");
     }
 
-    /// Review I2: a conflicting pop has no `after`. Its undo refuses while a path is unmerged,
+    /// A conflicting pop has no `after`. Its undo refuses while a path is unmerged,
     /// then asks before overwriting the user's resolution.
     #[tokio::test(flavor = "multi_thread")]
     async fn undoing_a_conflicting_pop_keeps_a_resolution_made_since() {
@@ -971,7 +965,7 @@ mod tests {
         r.git(&["commit", "-q", "-am", "four"]);
     }
 
-    /// Review M2: the undo of a push asks "Apply without restoring what was staged?" as Apply
+    /// The undo of a push asks "Apply without restoring what was staged?" as Apply
     /// does, and applies without the index once confirmed.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_pushs_undo_can_apply_without_the_index() {
@@ -989,7 +983,7 @@ mod tests {
         assert_eq!(r.git(&["stash", "list"]), "");
     }
 
-    /// Review M2: a pop made without the index redoes without it, without asking again.
+    /// A pop made without the index redoes without it, without asking again.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_pop_made_without_the_index_redoes_without_it() {
         let env = WriteEnv::new();
@@ -1011,9 +1005,8 @@ mod tests {
         assert_eq!(RepoState::capture(&r), after);
     }
 
-    // --- Fix round 2 ---
 
-    /// Re-review M-b: a crashed pop keeps its Restore banner, and its stash banner is raised
+    /// A crashed pop keeps its Restore banner, and its stash banner is raised
     /// once: dismissed, it doesn't come back at the next start.
     #[test]
     fn a_resolved_stash_banner_isnt_raised_again() {
@@ -1033,7 +1026,7 @@ mod tests {
         assert!(j.kept.is_empty(), "dismissed: not raised again");
     }
 
-    /// Re-review M-c: the redo of a multi-line push has no pending entry; its guard covers the
+    /// The redo of a multi-line push has no pending entry; its guard covers the
     /// drop/store pair. A refused store keeps the redo, records the new oid and shows its banner.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_redone_push_whose_relist_store_fails_raises_a_banner() {
@@ -1068,7 +1061,7 @@ mod tests {
         assert!(r.path().join("c.txt").exists());
     }
 
-    // --- 2C repo-safety (the safety review, C1 and C2) ---
+    // --- Repo safety ---
 
     /// A repository to clone from, with one commit.
     fn upstream() -> TestRepo {
@@ -1096,7 +1089,7 @@ mod tests {
         json!({"method": "stashPush", "params": {"repo": id, "worktree": wt(r), "message": message}})
     }
 
-    /// C1 (S6a): HEAD has the file `b.txt`; the user replaced it by a folder holding a clone.
+    /// HEAD has the file `b.txt`; the user replaced it by a folder holding a clone.
     /// `stash push -u` skips the clone, then its `reset --hard` writes the file over the folder,
     /// clone and all: refused, nothing changed.
     #[tokio::test(flavor = "multi_thread")]
@@ -1115,7 +1108,7 @@ mod tests {
         assert_eq!(r.git(&["stash", "list"]), "");
     }
 
-    /// C2 (S2a): HEAD has a populated gitlink `sm`; the stash replaced it by the file `sm`.
+    /// HEAD has a populated gitlink `sm`; the stash replaced it by the file `sm`.
     /// Popping it would write the file over the clone (a local-only commit inside): refused.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_pop_never_deletes_a_populated_submodule_where_the_stash_has_a_file() {
@@ -1145,7 +1138,7 @@ mod tests {
         assert!(r.path().join("sm/.git").is_dir());
     }
 
-    /// C2 (S2c): the stash turned the tracked folder `vendor/` into the file `vendor`; since the
+    /// The stash turned the tracked folder `vendor/` into the file `vendor`; since the
     /// push, an ignored clone sits at `vendor/lib`. Undoing the push (an apply) would delete it,
     /// ignored or not: refused, and the stash stays.
     #[tokio::test(flavor = "multi_thread")]

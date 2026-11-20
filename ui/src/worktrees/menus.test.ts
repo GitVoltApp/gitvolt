@@ -13,7 +13,7 @@ await import('./menus');
 const env = (activeWorktree: string) => ({ activeWorktree, mainWorktree: '/r', write: { tabId: 't', repoId: 1, worktree: activeWorktree }, worktreeShown: (p: string) => p.replace('/r-', '../r-') }) as unknown as MenuEnv;
 const ids = (rows: ReturnType<typeof buildMenu>) => rows.flatMap((r) => (r.kind === 'action' ? [r.id] : []));
 
-describe('worktree rows (spec #2 §14)', () => {
+describe('worktree rows', () => {
   it('a sidebar worktree row offers Switch to and Open in a new tab', () => {
     const t: SidebarTarget = { what: 'worktree', path: '/r-x', branch: 'x', head: 'b' };
     const rows = buildMenu('sidebar', t, env('/r'));

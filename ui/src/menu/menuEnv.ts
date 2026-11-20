@@ -44,15 +44,13 @@ import { refreshMenuOn } from './menuStore';
 import { buildMenu } from './registry';
 import type { MenuRow } from './types';
 
-// Plan 1C Task 15's `menuEnv`, pulled into 1B on the RepoView store: file and folder shipped in
-// 1B (fb3 lane M); commit, tag and Monaco are 1C's own (lane W2-D). 1C's version reads its app
-// state (`useRuntime`, `useAppState`, Task 9); this one reads the one RepoView store a tab's
-// graph, file lists and diff live in. Everything a builder sees is in memory (spec §7): no
+// The `menuEnv`, built on the RepoView store: it reads the one RepoView store a tab's
+// graph, file lists and diff live in. Everything a builder sees is in memory: no
 // backend call before a menu shows.
 
 export interface Upstream { remote: string; branch: string }
 
-/** A file-list row the file menu is for (spec §7 "File"). */
+/** A file-list row the file menu is for. */
 export interface FileTarget {
   /** Repository-relative (the new path of a rename). */
   path: string;
@@ -72,7 +70,7 @@ export interface FileTarget {
   list: DiffSpec['kind'];
   /** What Open in ▸ opens: the working-tree file in a worktree list, else the version shown. */
   openIn: OpenInTarget;
-  /** A WIP row's file (spec #2 §7.1): its worktree, its section and what the menu's Stage /
+  /** A WIP row's file: its worktree, its section and what the menu's Stage /
    * Unstage / Discard need (`submodule`: a submodule is discarded inside itself, so no Discard).
    * `null` for every other list. */
   wip: { worktree: string; staged: boolean; oldPath: string | null; status: string; submodule?: boolean } | null;
@@ -84,7 +82,7 @@ export interface MenuActions {
   openIn(opener: OpenerPayload, target: OpenInTarget): void;
   openDiff(target: DiffTarget): void;
   viewFile(target: DiffTarget): void;
-  /** Compares two commits (K15), or a commit with the working tree (plan 1C Task 15's commit
+  /** Compares two commits, or a commit with the working tree (the commit
    * menu "Compare with HEAD"/"Compare with working tree"). */
   compare(from: string, to: string | 'worktree'): void;
   /** Copies a commit's full message (summary + body), loading it first if it isn't cached. */
@@ -106,13 +104,12 @@ export interface MenuEnv {
   openers: { list: OpenerPayload[] | null; error: string | null; last: string | null };
   act: MenuActions;
   /** HEAD's branch (short name) and commit, for the commit menu's "Compare with HEAD" label and
-   * guard (spec §7 target table). `null` on an unborn or detached HEAD. */
+   * guard. `null` on an unborn or detached HEAD. */
   headBranch: string | null;
   headSha: string | null;
   /** Whether the commit is among the graph's loaded rows ("Show in graph" is greyed otherwise). */
   inGraph(sha: string): boolean;
-  // --- 2C T9: the 2C menu env ---
-  /** Where a write from this menu runs: the tab, its repo, its active worktree (spec #2 §11.2). */
+  /** Where a write from this menu runs: the tab, its repo, its active worktree. */
   write: WriteCtx | null;
   /** The tab's sidebar payload (upstreams, remote branches, worktrees, stashes), when loaded. */
   sidebar: SidebarPayload | null;
@@ -124,30 +121,23 @@ export interface MenuEnv {
   inProgress: string | null;
   /** `../shop-x`, as messages name a worktree. */
   worktreeShown(path: string): string;
-  // --- end 2C T9 ---
   /** The repository's canonical common git dir (File colours' key); null until its info loads. */
   commonDir?: string | null;
   /** Whether commit `a` is an ancestor of (or is) `b`, from the loaded rows (graph/ancestry.ts):
    * the menus hide what can't apply (a fast-forward of a branch that isn't behind). `null`, or
    * omitted: unknown, and the row shows, checked after the click. */
   isAncestor?(a: string, b: string): boolean | null;
-  // --- 3D T3 ---
-  /** The stack `branch` is in (spec #3 §3.11: the straight path through it), from the loaded
+  /** The stack `branch` is in (the straight path through it), from the loaded
    * graph and the stack base; `null`: not stacked. Omitted: unknown. */
   stackOf?(branch: string): Stack | null;
-  // --- end 3D T3 ---
-  // --- 3B T5 ---
   /** The loaded row of commit `sha`: its summary and whether it's a merge. `null`: not in the
    * loaded graph (rows that need it show, and the backend checks after the click). */
   commitInfo?(sha: string): { summary: string; merge: boolean } | null;
   /** The repository's remotes by name: the tab's repo info, else the sidebar's groups. */
   remoteNames?: string[];
-  // --- end 3B T5 ---
-  // --- 3B final fixes ---
   /** The active worktree's conflicted (unmerged) files, from its WIP row: 0 when none or not
    * loaded. A stop without committing leaves them with nothing in progress. */
   conflicted?: number;
-  // --- end 3B final fixes ---
 }
 
 /** A folder row the folder menu is for. */
@@ -164,29 +154,26 @@ export interface FolderTarget {
   wip: { worktree: string; conflicted: string[]; staged?: boolean; files?: FileChange[] } | null;
 }
 
-/** A commit's branch, as the graph knows it (spec §7 "Copy branch name", "Forge link"). */
+/** A commit's branch, as the graph knows it. */
 export interface BranchRef { name: string; local: string | null; remotes: Array<{ fullName: string; remote: string }> }
 
-/** A commit row, or a branch label chip on one (plan 1C Task 15, `commit` kind). `branch` is set
+/** A commit row, or a branch label chip on one (`commit` kind). `branch` is set
  * only when the menu opened on a branch label chip; a plain right-click on the row leaves it
- * `null` (spec §7: the row and its labels are separate targets). */
+ * `null` (the row and its labels are separate targets). */
 export interface CommitTarget {
   sha: string;
   /** MR/PR reference labels from the commit message, exactly as `RowPayload.mrRefs` has them
    * (`"!42"`, `"acme/shop!1187"`, `"#12"`): the commit menu's `Open <ref>` rows. */
   mrRefs: string[];
   isWip: boolean;
-  // --- 2C T9 ---
-  /** A stash node (spec #2 §10: Apply, Pop, Delete on the graph's stash nodes). */
+  /** A stash node (Apply, Pop, Delete on the graph's stash nodes). */
   isStash: boolean;
-  // --- end 2C T9 ---
   branch: BranchRef | null;
 }
 
-// --- 2C T9: the wip menu kind ---
-/** A WIP row (`wip` kind, spec #2 §14). */
+// --- the wip menu kind ---
+/** A WIP row (`wip` kind). */
 export interface WipTarget { worktree: string; name: string | null; active: boolean; /** What its Discard all confirms. */ discard?: DiscardAllScope }
-// --- end 2C T9 ---
 
 /** A tag label chip (`tag` kind). */
 export interface TagTarget {
@@ -205,7 +192,7 @@ export interface MonacoTarget {
   lines: [number, number];
   selectionText: string;
   upstream: Upstream | null;
-  /** What Open in ▸ opens: the same version the file list's row would (spec §14.5), at `lines[0]`. */
+  /** What Open in ▸ opens: the same version the file list's row would, at `lines[0]`. */
   openIn: OpenInTarget;
 }
 
@@ -262,7 +249,7 @@ export function warmCommitMenu(services: RepoServices): void {
 }
 
 /** After the menu has painted (the next frame, then a task): nothing reaches the backend before
- * a menu shows (spec §7). */
+ * a menu shows. */
 function afterPaint(fn: () => void): void {
   const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (f: () => void) => setTimeout(f, 16);
   raf(() => setTimeout(fn, 0));
@@ -271,8 +258,8 @@ function afterPaint(fn: () => void): void {
 const toast = (m: string) => useToast.getState().show(m);
 
 /** Copies a commit's full message, loading it first if it isn't cached (the commit menu's "Copy
- * message"; the graph payload carries only the summary and body's first line, §9.2). Exported
- * (fix round 1, item 7) for a direct unit test, alongside `compare`. */
+ * message"; the graph payload carries only the summary and body's first line). Exported
+ *  for a direct unit test, alongside `compare`. */
 export function copyMessage(store: RepoViewStore, sha: string): void {
   const cache = store.getState().services.messages;
   const format = (m: CommitMessage) => (m.body ? `${m.summary}\n\n${m.body}` : m.summary);
@@ -283,8 +270,8 @@ export function copyMessage(store: RepoViewStore, sha: string): void {
 
 /** "Compare with HEAD" / "Compare with working tree" (the commit menu's `view` group): drives
  * the right-clicked commit `from` is FROM, HEAD (or the working tree) TO, and the anchor and the
- * keyboard stay on `from` (K27), so Esc returns there and the graph doesn't jump to HEAD.
- * Exported (fix round 1, item 7) for a direct unit test. */
+ * keyboard stay on `from`, so Esc returns there and the graph doesn't jump to HEAD.
+ * Exported for a direct unit test. */
 export function compare(store: RepoViewStore, from: string, to: string | 'worktree'): void {
   const s = store.getState();
   if (to === 'worktree') {
@@ -294,26 +281,22 @@ export function compare(store: RepoViewStore, from: string, to: string | 'worktr
   s.compareCommits(from, to);
 }
 
-/** The menu env, from the store's current state: file and folder (1B), commit, tag and Monaco
- * (1C, Task 15). */
+/** The menu env, from the store's current state: file, folder, commit, tag and Monaco. */
 export function fileMenuEnv(store: RepoViewStore): MenuEnv {
   const s = store.getState();
   const remotes = s.services.remotesSnapshot() ?? [];
   const head = s.graph.head;
-  // --- 2C T9: the 2C menu env ---
   const tabId = tabIdOf(store);
   const rt = tabId ? useRuntime.getState().tabs[tabId] : undefined;
   const active = rt?.worktree ?? openWorktree(s);
   const main = s.graph.worktrees.find((w) => w.isMain)?.path ?? s.repoPath;
   const byRow = labelsByRowOf(s.graph.labels);
-  // --- end 2C T9 ---
-  // HEAD as the queued writes leave it (spec #2 §3.6): what's queued from this menu runs after them.
+  // HEAD as the queued writes leave it: what's queued from this menu runs after them.
   const now = { branch: head.branch?.replace(/^refs\/heads\//, '') ?? null, sha: head.target };
   const next = rt?.repo ? predictHead(rt.repo.id, active, now) : now;
   const moved = next.branch !== now.branch;
   const sidebar = sidebarFor(s.repo, active);
   return {
-    // --- 2C T9: the 2C menu env ---
     write: tabId && rt?.repo ? { tabId, repoId: rt.repo.id, worktree: active } : null,
     sidebar: sidebar && moved ? withHeadSidebar(sidebar, next.branch) : sidebar,
     labelsAt: (sha) => { const ls = byRow.get(s.indexById.get(sha) ?? -1) ?? []; return moved ? withHeadLabels(ls, next.branch) : ls; },
@@ -321,22 +304,15 @@ export function fileMenuEnv(store: RepoViewStore): MenuEnv {
     mainWorktree: main,
     inProgress: s.graph.worktrees.find((w) => w.path === active)?.inProgress ?? null,
     worktreeShown: (path) => worktreeDisplay(main, path),
-    // --- end 2C T9 ---
     commonDir: rt?.info?.commonDir ?? null,
     isAncestor: (a, b) => isAncestorIn(s.graph.rows, s.indexById, a, b),
-    // --- 3D T3 ---
     stackOf: (branch) => stackFor(stacksOf(s.graph, stackBase(s.graph, sidebar?.remotes ?? [])), branch, next.branch),
-    // --- end 3D T3 ---
-    // --- 3B T5 ---
     commitInfo: (sha) => {
       const r = s.graph.rows[s.indexById.get(sha) ?? -1];
       return r ? { summary: r.summary, merge: r.parents.length > 1 } : null;
     },
     remoteNames: rt?.info?.remotes.map((r) => r.name) ?? sidebar?.remotes.map((g) => g.name) ?? [],
-    // --- end 3B T5 ---
-    // --- 3B final fixes ---
     conflicted: s.graph.rows.find((r) => r.kind === 'wip' && r.wip?.worktreePath === active)?.wip?.conflicted ?? 0,
-    // --- end 3B final fixes ---
     forge: (remote) => {
       const r = projectRemote(remote === undefined ? remotes : remotes.filter((x) => x.name === remote), useAppState.getState().profile.hostOverrides);
       return r && r.hostKind !== 'generic' ? r : null;
@@ -358,7 +334,7 @@ export function fileMenuEnv(store: RepoViewStore): MenuEnv {
       copy: (text) => { copyText(text).then(() => toast('Copied'), () => toast('Copy failed')); },
       openUrl: (url) => { api.openUrl(url).catch((e: unknown) => toast(errorMessage(e))); },
       openIn: (o, t) => openWith(s.repo, o, t),
-      // View ▸ Diff / File name the view: File History stops being sticky (UX), as the toolbar's do.
+      // View ▸ Diff / File name the view: File History stops being sticky, as the toolbar's do.
       openDiff: (t) => { endStickyHistory(tabId); store.getState().openFile({ ...t, view: 'diff' }); },
       viewFile: (t) => { endStickyHistory(tabId); store.getState().openFile({ ...t, view: 'file' }); },
       compare: (from, to) => compare(store, from, to),
@@ -423,7 +399,7 @@ function configuredUpstream(sidebar: SidebarPayload | null, local: string): Upst
 }
 
 /**
- * The upstream of the branch `sha` is on (spec §7, the file menu's ⎇): the branches whose tip
+ * The upstream of the branch `sha` is on (the file menu's ⎇): the branches whose tip
  * it is (HEAD's first), else the branch it belongs to (the graph's first-parent membership,
  * F7). A local branch's is its configured upstream, from the sidebar (`sidebar`); a branch the
  * sidebar doesn't know (or no sidebar yet) is inferred as the same-named remote-tracking branch.
@@ -474,9 +450,9 @@ function commitsOf(s: RepoViewState, spec: DiffSpec, t: DiffTarget, deleted: boo
   }
 }
 
-/** K99: the folder a list's paths are relative to. A WIP/worktree list: that worktree. A commit
+/** The folder a list's paths are relative to. A WIP/worktree list: that worktree. A commit
  * that is a checked-out worktree's HEAD (its branch label says where): that worktree. Else the
- * tab's open (active) worktree, never the main one from a linked tab (spec #2 §11.2). */
+ * tab's open (active) worktree, never the main one from a linked tab. */
 export function rootOfSpec(s: RepoViewState, spec: DiffSpec): string {
   if (spec.kind === 'wip' || spec.kind === 'worktree') return spec.worktree;
   if (spec.kind === 'commit') {
@@ -511,7 +487,7 @@ export function fileTargetOf(s: RepoViewState, spec: DiffSpec, t: DiffTarget, ch
   };
 }
 
-/** Once the menu has painted: re-detect the openers (H32) and load the remotes if they never
+/** Once the menu has painted: re-detect the openers and load the remotes if they never
  * were. An open menu fills in when either arrives. */
 function afterOpening(store: RepoViewStore): void {
   afterPaint(() => {
@@ -547,7 +523,7 @@ export function primaryBranchOf(s: RepoViewState, row: RowPayload): BranchRef | 
   return l ? branchRefOf(l) : null;
 }
 
-/** A right-click on a graph row, or on a branch label chip (`branch` set): plan 1C Task 15. A row
+/** A right-click on a graph row, or on a branch label chip (`branch` set). A row
  * with a branch gets that branch's chip menu (its primary branch, `primaryBranchOf`), which has
  * every commit row too; one without, the commit menu. WIP rows get no commit menu
  * (`commitTargetOf`'s `isWip`; the builders gate on it too). */
@@ -556,8 +532,8 @@ export function commitMenu(store: RepoViewStore, row: RowPayload, branch: Branch
   return () => buildMenu<CommitTarget, MenuEnv>('commit', commitTargetOf(row, branch ?? primaryBranchOf(store.getState(), row)), fileMenuEnv(store));
 }
 
-// --- 3B T5: the selection's menu ---
-/** Two or more selected commits (spec #3 §4.3), newest first: the `selection` kind's target. */
+// --- the selection's menu ---
+/** Two or more selected commits, newest first: the `selection` kind's target. */
 export interface SelectionTarget { commits: CommitRef[] }
 
 /** A right-click on a graph row: inside a selection of two or more commits, the selection's menu
@@ -570,10 +546,9 @@ export function graphRowMenu(store: RepoViewStore, row: RowPayload): () => MenuR
     return rows.length > 0 ? rows : own();
   };
 }
-// --- end 3B T5 ---
 
-// --- 2C T9: the wip menu ---
-/** A right-click on a WIP row (spec #2 §14): the `wip` kind. */
+// --- the wip menu ---
+/** A right-click on a WIP row: the `wip` kind. */
 export function wipMenu(store: RepoViewStore, row: RowPayload): () => MenuRow[] {
   const wt = row.wip?.worktreePath ?? '';
   return () => {
@@ -586,7 +561,6 @@ export function wipMenu(store: RepoViewStore, row: RowPayload): () => MenuRow[] 
     return buildMenu<WipTarget, MenuEnv>('wip', { worktree: wt, name: row.wip?.worktreeName ?? null, active: wt === env.activeWorktree, discard }, env);
   };
 }
-// --- end 2C T9 ---
 
 /** A right-click on a tag label chip. */
 export function tagMenu(store: RepoViewStore, sha: string, label: RefLabel): () => MenuRow[] {
@@ -612,7 +586,7 @@ function worktreeMenu(store: RepoViewStore, path: string, head: string): () => M
 /** The Monaco context menu's target: the open diff's side `e` fired on, at the commit (or working
  * tree) that side shows. `null` while no diff is open (shouldn't happen: the handler is only
  * installed then) or the diff's list has no matching, loaded section (a stale event from an
- * editor mid-teardown). Exported (fix round 1, item 7) for a direct unit test. */
+ * editor mid-teardown). Exported for a direct unit test. */
 export function monacoTargetOf(s: RepoViewState, e: EditorContextMenuEvent): MonacoTarget | null {
   return s.diff ? monacoTargetFor(s, s.diff, e) : null;
 }
@@ -638,13 +612,13 @@ export function monacoTargetFor(s: RepoViewState, diff: DiffTarget, e: EditorCon
     lines,
     selectionText: e.selectionText,
     upstream: branch ? upstreamOf(s.graph, s.indexById, branch, sidebarFor(s.repo)) : null,
-    // The same version the file list's row would open (spec §14.5), at the clicked line.
+    // The same version the file list's row would open, at the clicked line.
     openIn: { worktree: root, path, line: lines[0], ...openVersion(diff, inWorktree) },
   };
 }
 
 /** The builder for `MonacoHost.setContextMenuHandler`'s callback (installed while a tab is
- * active, plan 1C Task 15). There's no DOM `contextmenu` event to build from (the editor's own
+ * active). There's no DOM `contextmenu` event to build from (the editor's own
  * was already suppressed by the host), so the caller shows the rows itself: `const build =
  * monacoMenu(store, e, tabId); const rows = build(); if (rows.length) useMenu.getState().show(rows, e.x,
  * e.y, performance.now(), build);`. */
@@ -652,20 +626,20 @@ export function monacoMenu(store: RepoViewStore, e: EditorContextMenuEvent, tabI
   afterOpening(store);
   return () => {
     // A center view on top in the tab (File History…): its own editor's file, never the one
-    // hidden under it, and no staging rows (spec #3 §4.2's file is read-only).
+    // hidden under it, and no staging rows (a file in that view is read-only).
     const s = store.getState();
     if (tabId !== null && centerViewOnTop(centerViewOf(tabId), s.diff)) {
       const file = centerViewEditorFile(tabId);
       return file ? buildMenu<MonacoTarget, MenuEnv>('monaco', monacoTargetFor(s, file.target, e, file.root), fileMenuEnv(store)) : [];
     }
     const t = monacoTargetOf(s, e);
-    // A WIP diff's Stage/Unstage/Discard rows first (spec #2 §7.3), then Copy and the rest.
+    // A WIP diff's Stage/Unstage/Discard rows first, then Copy and the rest.
     return joinGroups(stagingRows(e), t ? buildMenu<MonacoTarget, MenuEnv>('monaco', t, fileMenuEnv(store)) : []);
   };
 }
 
-// Plan 1C Task 15b: the sidebar's item menus (spec §7's target table: branch, remote branch,
-// remote, tag, stash, worktree). Read-only rows only; checkout, delete, push… are sub-project #2's.
+// The sidebar's item menus (branch, remote branch, remote, tag, stash, worktree). Read-only
+// rows only; checkout, delete, push… are the write features'.
 
 /** Joins row groups with a separator between the non-empty ones. */
 const joinGroups = (...groups: MenuRow[][]): MenuRow[] =>

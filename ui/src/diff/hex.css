@@ -4,7 +4,7 @@
 /* The UI font draws → small and low: an icon at text size instead, centred on the line. The glyph
    itself stays in the text, out of sight. */
 
-/* The hex view (lane K, monaco/hexPanes.ts): each side is [hex | text], every pane exactly as wide
+/* The hex view (monaco/hexPanes.ts): each side is [hex | text], every pane exactly as wide
    as its rows (`--hex-pane-w`, `--hex-text-w`, set from the editor font and the bytes per row,
    16 or 8, whichever fits). Diff View: old | new next to each other. Room left over is empty
    background after the last side. Too narrow even for 8 a row, the hex pane gives way. */

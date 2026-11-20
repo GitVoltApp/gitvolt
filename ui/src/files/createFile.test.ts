@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createFilePathError } from './createFile';
 
-describe('createFilePathError (UX round 3 O.1)', () => {
+describe('createFilePathError', () => {
   it('takes a relative path, new folders included', () => {
     for (const ok of ['a.txt', 'docs/new/notes.md', '.gitignore', '.github/workflows/ci.yml', 'my.git/x', 'a b/c d.txt']) expect(createFilePathError(ok), ok).toBeNull();
   });

@@ -24,7 +24,7 @@ beforeEach(() => {
   });
 });
 
-describe('writeAndFollow (spec #2 §7.1)', () => {
+describe('writeAndFollow', () => {
   it('follows after a write whose answer carries the fresh lists', async () => {
     expect(await writeAndFollow(ctx, async () => ({ wip: { worktree: '/r' } }) as never)).toBe(true);
     expect(follow).toHaveBeenCalledWith('t', '/r', null);
@@ -54,7 +54,7 @@ describe('discardAll', () => {
     expect(discard).not.toHaveBeenCalled();
   });
 
-  // UX R1 C.2: a slow Discard all (a big repository) showed nothing while it ran, so the user
+  // A slow Discard all (a big repository) showed nothing while it ran, so the user
   // clicked again; each click sent another one. Now it sends the files confirmed, and one at a
   // time: another click meanwhile does nothing, and the button says it's running.
   it('sends the files confirmed, and one at a time', async () => {

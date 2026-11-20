@@ -37,7 +37,7 @@ describe('layoutPanels', () => {
     expect(layoutPanels(500, [p('a', false, 1000), p('b', false, 1)])).toEqual([500 - MIN_PANEL_H, MIN_PANEL_H]);
   });
 
-  it('when even the minimums do not fit, the expanded panels shrink evenly so the stack still fits (K56)', () => {
+  it('when even the minimums do not fit, the expanded panels shrink evenly so the stack still fits', () => {
     const h = layoutPanels(200, [p('a'), p('b'), p('c', true)]);
     expect(h).toEqual([87, 87, HEADER_H]);
     expect(h.reduce((a, b) => a + b, 0)).toBe(200);
@@ -71,7 +71,7 @@ describe('resizePair', () => {
   });
 });
 
-describe('tree indent (K61)', () => {
+describe('tree indent', () => {
   it('a folder and a leaf at the same depth share the icon x; a child icon sits under its parent name', () => {
     expect(rowIndent(1)).toBe(ROW_PAD);
     const parentNameX = rowIndent(2 - 1) + ICON_W + ROW_GAP;

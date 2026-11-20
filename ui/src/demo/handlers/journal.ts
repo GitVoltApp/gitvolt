@@ -178,7 +178,7 @@ export const journalHandlers: Pick<
     actionable(k);
     return runWrite(ctx, repo, worktree, NO_EXPECT, applyKept(entry, k.label, withoutIndex === true));
   },
-  // × keeps the stash (an explicit choice, §6.4); Drop stash drops it.
+  // × keeps the stash (an explicit choice); Drop stash drops it.
   dismissBanner: async ({ repo, worktree, entry, dropStash: drop }, ctx) => {
     if (drop) return (await runWrite(ctx, repo, worktree, NO_EXPECT, dropKept(entry))).journal;
     const wt = await writeTarget(ctx, repo, worktree);

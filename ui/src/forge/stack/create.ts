@@ -13,7 +13,7 @@ import { mrNoun, mrRef } from '../labels';
 import { isOpenMr, type MrOf } from './chain';
 import { createMr, noteForgeWritten, type ForgeTarget } from './deps';
 
-/** What Create stack does for each member, bottom → top (Ruling 7). */
+/** What Create stack does for each member, bottom → top. */
 export type MemberPlan =
   | { kind: 'create'; branch: string; target: string; title: string; description: string }
   | { kind: 'retarget'; branch: string; target: string; mr: ForgeMr }
@@ -59,8 +59,8 @@ export interface CreateReport {
 }
 
 /**
- * Create stack (spec #4 §4 4D, Rulings 6–7): bottom first, each member's MR/PR retargeted or
- * created through 4C's `createMr`. The first failure stops the rest. Then, for a managed stack,
+ * Create stack: bottom first, each member's MR/PR retargeted or
+ * created through `createMr`. The first failure stops the rest. Then, for a managed stack,
  * one table sync over every member.
  */
 export async function runCreateStack(ctx: WriteCtx, target: ForgeTarget, view: StackView, plans: readonly MemberPlan[], titles: Record<string, string>, draft: boolean): Promise<CreateReport> {
@@ -108,9 +108,9 @@ export function createSummary(r: CreateReport, kind: ForgeKind): { message: stri
 }
 
 /**
- * "Create stack MRs…" / "Create stack PRs…" on a stack member's chip (spec #4 §4 4D), in the Sync
+ * "Create stack MRs…" / "Create stack PRs…" on a stack member's chip, in the Sync
  * group after Push stack. Hidden without a forge project or once every member has an open MR/PR
- * on the right target. Greyed while a member isn't pushed to the target remote (Ruling 5).
+ * on the right target. Greyed while a member isn't pushed to the target remote.
  */
 export function createStackRow(t: CommitTarget, env: Pick<MenuEnv, 'stackOf' | 'sidebar' | 'inProgress'>, target: ForgeTarget | null, mrOf: MrOf, open: (s: Stack) => void): MenuRow[] {
   const name = t.branch?.local?.replace(/^refs\/heads\//, '');

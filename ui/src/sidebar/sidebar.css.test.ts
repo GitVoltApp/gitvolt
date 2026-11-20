@@ -18,14 +18,14 @@ it('the checked-out row is green (a token), not the blue selection colour; the c
   expect(css).toMatch(/\.sb-list:focus \.sb-row\[data-active="true"\]\s*\{\s*outline:\s*1px solid var\(--blue\)/);
 });
 
-it('K55: counts are bold light blue (a token); K56: the stack never scrolls itself', () => {
+it('counts are bold light blue (a token): the stack never scrolls itself', () => {
   expect(tokens).toMatch(/--count-blue:\s*#6d9deb/);
   expect(css).toMatch(/\.sb-count\s*\{[^}]*font-weight:\s*700;[^}]*var\(--count-blue\)/);
   expect(css).toMatch(/\.sn-count\s*\{[^}]*font-weight:\s*700;[^}]*var\(--count-blue\)/);
   expect(css).toMatch(/\.sb-stack\s*\{[^}]*overflow:\s*hidden/);
 });
 
-it('K62: row and strip icons use the dimmer --sidebar-icon, brightening on hover or the cursor; brand marks, the check and an MR/PR state icon keep theirs', () => {
+it('row and strip icons use the dimmer --sidebar-icon, brightening on hover or the cursor; brand marks, the check and an MR/PR state icon keep theirs', () => {
   expect(tokens).toMatch(/--sidebar-icon:\s*rgba\(255, 255, 255, 0\.45\)/);
   expect(css).toMatch(/\.sb-row > svg:not\(\[data-host-kind\], \.mr-state-icon\)\s*\{[^}]*var\(--sidebar-icon\)/);
   expect(css).toMatch(/\.sb-row:hover > svg:not\(\[data-host-kind\], \.mr-state-icon\)[^{]*\{[^}]*var\(--text-normal\)/);

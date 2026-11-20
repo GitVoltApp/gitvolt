@@ -16,7 +16,7 @@ const graph: GraphPayload = {
   labels: [], maxLanes: 1, pinnedRefs: [], head: { branch: null, target: A, detached: false, unborn: false }, truncated: false, worktrees: [],
 };
 
-describe('MultiSummary (K27)', () => {
+describe('MultiSummary', () => {
   it('three or more selected rows: a count, then one row per commit (avatar, message, date), newest first; no diff, no file list', async () => {
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     // Picked in another order than the graph's.

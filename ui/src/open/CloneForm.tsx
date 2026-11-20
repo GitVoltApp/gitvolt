@@ -9,7 +9,7 @@ import { useAppState } from '../app/state';
 import { cloneDestProblem, cloneUrlProblem } from './cloneInput';
 import { repoNameFromUrl } from './repoName';
 
-/** Spec §13: the URL, a destination that follows it until edited, progress, Cancel, inline errors. */
+/** The URL, a destination that follows it until edited, progress, Cancel, inline errors. */
 export function CloneForm({ tabId, autoFocus }: { tabId: string; autoFocus: boolean }) {
   const reposFolder = useAppState((s) => s.profile.reposFolder);
   const [url, setUrl] = useState('');

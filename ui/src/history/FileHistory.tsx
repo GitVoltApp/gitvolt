@@ -53,7 +53,7 @@ function HistoryViewToggle({ view }: { view: HistoryView }) {
 }
 
 /**
- * File History (spec #3 §4.2), in the graph's place: the file's commits on the left (newest
+ * File History, in the graph's place: the file's commits on the left (newest
  * first, paged), the file at the selected commit on the right, read-only, or the changes that
  * commit made to it (`File | Changes`, a remembered pick). × or Esc (from
  * anywhere in the tab, unless a text box or one of Monaco's own overlays has it) closes it.
@@ -82,8 +82,8 @@ export function FileHistory({ tabId, props, close }: CenterViewProps<FileHistory
   const fileTarget = useMemo(() => (row ? rowTarget(row.path, row.sha) : null), [row]);
   const views = <HistoryViewToggle view={view} />;
   useCenterViewEditorFile(tabId, editorFile);
-  // Spec #3 §3.10: a blame group's commit opens in this list (pages load until it shows); Alt+click
-  // selects it in the graph instead, which the view closes to show (ruling 5).
+  // A blame group's commit opens in this list (pages load until it shows); Alt+click
+  // selects it in the graph instead, which the view closes to show.
   const onPick = useCallback((sha: string, inGraph: boolean) => {
     if (inGraph) {
       close();
@@ -93,7 +93,7 @@ export function FileHistory({ tabId, props, close }: CenterViewProps<FileHistory
     void store.getState().seek(sha).then((found) => { if (!found) useToast.getState().show(`${shortSha(sha)} isn't in this file's history`); });
   }, [close, store, tabId]);
   useEffect(() => { void store.getState().loadMore(); }, [store]);
-  // The tab's sticky mode (UX) follows the Blame toggle: the next file opens as this was left.
+  // The tab's sticky mode follows the Blame toggle: the next file opens as this was left.
   useEffect(() => store.subscribe((s, prev) => {
     const tab = tabStore(tabId)?.getState();
     if (s.blame !== prev.blame && tab?.stickyHistory) tab.setStickyHistory({ blame: s.blame });
@@ -110,7 +110,7 @@ export function FileHistory({ tabId, props, close }: CenterViewProps<FileHistory
   }), [close]);
   return (
     <section ref={ref} className="file-history" role="region" aria-label="File history" style={{ '--fh-list': `${clampListW(listW)}px` } as CSSProperties}>
-      {/* The bar has the body's columns: the title over the list, Blame over the editor (UX B.1). */}
+      {/* The bar has the body's columns: the title over the list, Blame over the editor. */}
       <header className="file-history-header">
         <h2 className="file-history-title">File History: <span className="file-history-path">{props.path}</span></h2>
         <div className="file-history-tools">
@@ -159,7 +159,7 @@ function HistoryList({ store, path, follow }: { store: StoreApi<HistoryStore>; p
   // focus in the file list, where ↓ would open the next file over the view), a menu or the
   // palette. Effects re-run when the view shows again (`<Activity>`), so a file peeked over it
   // closing hands the keyboard back here, not to the hidden graph. Except a file picked while
-  // sticky (`follow`, UX): the keyboard stays in the file list it was picked in, so ↑/↓ go on
+  // sticky (`follow`): the keyboard stays in the file list it was picked in, so ↑/↓ go on
   // stepping files.
   useEffect(() => {
     if (follow && document.activeElement?.closest('.file-list')) return;
@@ -217,8 +217,8 @@ function HistoryList({ store, path, follow }: { store: StoreApi<HistoryStore>; p
 const rowTarget = (path: string, sha: string): DiffTarget => fileViewTarget(path, sha, { kind: 'commit', id: sha, parent: 0 });
 
 /** The file at `row`'s commit, at that commit's path (a rename's old name below it). `children`
- * is laid over a shown text file (3A T5's blame gutter). A binary shows File View's hex panes
- * instead (lane K's), and a PDF its pages, with no `children`: blame has no lines there. `onBinary`: whether the shown
+ * is laid over a shown text file (the blame gutter). A binary shows File View's hex panes
+ * instead, and a PDF its pages, with no `children`: blame has no lines there. `onBinary`: whether the shown
  * file is one, once its contents are in (false again when none is shown). */
 export function FileAtCommit({ row, children, onBinary }: { row: FileHistoryRow; children?: ReactNode; onBinary?: (binary: boolean, lfs?: boolean) => void }) {
   if (row.status === 'D') return <div className="diff-message"><p>{row.path} was deleted in this commit</p></div>;

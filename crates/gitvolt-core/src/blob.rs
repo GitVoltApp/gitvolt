@@ -1,4 +1,4 @@
-//! File contents for the diff viewer (spec §10.2, §10.4). Each side's bytes come from the
+//! File contents for the diff viewer. Each side's bytes come from the
 //! object database, a commit's tree, a submodule pointer or a worktree file. They're decoded to
 //! text with the detected encoding, or kept as base64 for images and media (audio, video, fonts).
 
@@ -81,7 +81,7 @@ pub fn is_binary_head(head: &[u8], declared: Option<&str>) -> bool {
 }
 
 /// The blob id of these bytes, as `hash-object` gives it with no filters: the working
-/// copy's save base (spec #2 §7.5) and `WipBase.worktree` (§7.3).
+/// copy's save base and `WipBase.worktree`.
 pub fn worktree_id(bytes: &[u8]) -> String {
     gix::objs::compute_hash(gix::hash::Kind::Sha1, gix::objs::Kind::Blob, bytes).map(|id| id.to_string()).unwrap_or_default()
 }
@@ -187,7 +187,7 @@ pub fn check_relative(rel: &str) -> Result<(), GbError> {
 }
 
 /// The raw bytes of `path` on a repository side (a blob, or the file at a commit), as stored:
-/// what "Open in…" copies for an old version (spec §14.5). Over `limit` bytes it's refused
+/// what "Open in…" copies for an old version. Over `limit` bytes it's refused
 /// before anything is read.
 pub fn side_bytes(repo: &gix::Repository, path: &str, side: &Side, limit: u64) -> Result<Vec<u8>, GbError> {
     match side {
@@ -463,7 +463,7 @@ impl Resolved {
 }
 
 /// Reads `path` whole if it's at most `limit` bytes, `None` if it's longer (at most `limit + 1`
-/// bytes are read either way). Rust minor #5: a size check followed by an unbounded read lets a
+/// bytes are read either way): a size check followed by an unbounded read lets a
 /// file that grows in between through.
 pub(crate) fn read_bounded(path: &Path, limit: u64) -> std::io::Result<Option<Vec<u8>>> {
     use std::io::Read;
@@ -733,7 +733,7 @@ mod tests {
     fn at_commit_reads_the_tree_and_decodes_legacy_encodings() {
         let (r, repo) = setup();
         let head = oid(&r.git(&["rev-parse", "HEAD"]));
-        // "Open in…" copies (fix round 2): the bytes as stored, refused above the limit.
+        // "Open in…" copies: the bytes as stored, refused above the limit.
         assert_eq!(side_bytes(&repo, "latin1.txt", &Side::AtCommit(head), 64).unwrap(), b"caf\xe9 cr\xe8me br\xfbl\xe9e\n");
         let too_big = side_bytes(&repo, "latin1.txt", &Side::AtCommit(head), 8).unwrap_err();
         assert_eq!(too_big.kind, GbErrorKind::InvalidInput);
@@ -858,7 +858,7 @@ mod tests {
         assert_eq!(safe_join(&root, ".gitignore-like.txt").unwrap(), root.join(".gitignore-like.txt"), "only .git itself is special");
     }
 
-    /// Rust minor #5: the size check reads `metadata`, then the read happens; a file growing in
+    /// The size check reads `metadata`, then the read happens; a file growing in
     /// between (a log being written) must not get past the limit.
     #[test]
     fn worktree_reads_are_bounded_after_the_size_check() {
@@ -957,7 +957,7 @@ mod tests {
 
         /// A clean filter (`filter=`) runs as `git add` would run it. Its text isn't the file's
         /// any more, so the side is marked `filtered` (read-only).
-        #[cfg(unix)] // gix runs the filter driver without git's sh and sed on PATH (phase 2)
+        #[cfg(unix)] // gix runs the filter driver without git's sh and sed on PATH
         #[tokio::test]
         async fn a_clean_filter_runs_and_marks_the_side_filtered() {
             let r = repo();

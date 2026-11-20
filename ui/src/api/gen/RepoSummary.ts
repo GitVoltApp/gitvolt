@@ -3,6 +3,6 @@
 export type RepoSummary = { id: number, path: string, name: string, 
 /**
  * The canonical worktree the opened path is in. `path` is the repository's (its main
- * worktree), shared by every tab on it (spec #2 §11.2).
+ * worktree), shared by every tab on it.
  */
 worktree: string, };

@@ -23,7 +23,7 @@ const run = (label: string) => {
   act(() => { if (row?.kind === 'action') row.run(); });
 };
 
-describe('QueueChip (spec #2 §3.6)', () => {
+describe('QueueChip', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useMenu.getState().close();

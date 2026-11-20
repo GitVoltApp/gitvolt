@@ -32,7 +32,7 @@ import { SignatureBadge } from './SignatureBadge';
 import { SplitResizer } from './SplitResizer';
 import './details.css';
 
-/** A person's avatar and name; hovering shows their full `Name <email>` (feedback F14). */
+/** A person's avatar and name; hovering shows their full `Name <email>`. */
 function Person({ name, email, size }: { name: string; email: string; size: number }) {
   const { triggerProps, tooltip } = useHoverTooltip({ content: personLabel(name, email) });
   return (
@@ -45,7 +45,7 @@ function Person({ name, email, size }: { name: string; email: string; size: numb
 }
 
 /** A short hash button in the header's top row, with its action as an instant tooltip (and, for
- * keyboard users, as its description; feedback H11). */
+ * keyboard users, as its description). */
 function HashButton({ hash, testId, tip, onClick }: { hash: string; testId: string; tip: string; onClick: () => void }) {
   const { triggerProps, tooltip } = useHoverTooltip({ content: tip });
   return (
@@ -59,9 +59,9 @@ function HashButton({ hash, testId, tip, onClick }: { hash: string; testId: stri
 }
 
 /**
- * The commit header (spec §9.1). The top row is justified (feedback F16): the signature icon on
- * the left, `commit: <sha>` centred, `parent: <sha>` on the right (H11). Then the author with the committed date
- * (primary) and, only when it differs, the author date below it, dimmer (F15); a different
+ * The commit header. The top row is justified: the signature icon on
+ * the left, `commit: <sha>` centred, `parent: <sha>` on the right. Then the author with the committed date
+ * (primary) and, only when it differs, the author date below it, dimmer; a different
  * committer gets their own row, which carries the committed date; and co-authors.
  */
 function CommitHeader({ d }: { d: CommitDetailsPayload }) {
@@ -106,9 +106,9 @@ function CommitHeader({ d }: { d: CommitDetailsPayload }) {
 }
 
 /**
- * The selected commit: its header from `details`, its message (§9.2) from `message` (the shared
+ * The selected commit: its header from `details`, its message from `message` (the shared
  * `commitMessage` cache; `CommitDetailsPayload` has no message), linkified against the project
- * remote, with `Open !n` buttons. Rendered from the settled `panel` (feedback F12): both have
+ * remote, with `Open !n` buttons. Rendered from the settled `panel`: both have
  * arrived (or failed) by now, so there's no placeholder frame.
  */
 function CommitDetails({ panel, ratio, ref }: { panel: PanelContent; ratio: number; ref?: Ref<HTMLDivElement> }) {
@@ -118,10 +118,10 @@ function CommitDetails({ panel, ratio, ref }: { panel: PanelContent; ratio: numb
   const { tabId } = useRepoContext();
   const repoId = useRepoView((s) => s.repo);
   const worktree = useRepoView((s) => openWorktree(s));
-  // Spec #2 §8.3: the open worktree's HEAD; 2D hides the pencil mid merge or rebase (the backend refuses it).
+  // The open worktree's HEAD; the pencil is hidden mid merge or rebase (the backend refuses it).
   const canEdit = useRepoView((s) => selection.kind === 'commit' && s.graph.head.target === selection.id && !s.graph.inProgress?.[openWorktree(s)] && !s.graph.worktrees.find((w) => w.path === openWorktree(s))?.inProgress);
-  // --- 3C T13: an older commit of HEAD's branch (spec #3 §3.6): reworded in place (`rewordableOlder`
-  // says which). Worked out once per graph payload and selection (fix 1 M1), not per store update. ---
+  // --- an older commit of HEAD's branch: reworded in place (`rewordableOlder`
+  // says which). Worked out once per graph payload and selection, not per store update. ---
   const busy = useRepoView((s) => !!s.graph.inProgress?.[openWorktree(s)] || !!s.graph.worktrees.find((w) => w.path === openWorktree(s))?.inProgress);
   const graph = useRepoView((s) => s.graph);
   const indexById = useRepoView((s) => s.indexById);
@@ -132,7 +132,6 @@ function CommitDetails({ panel, ratio, ref }: { panel: PanelContent; ratio: numb
     [graph, indexById, sidebar, selectedId],
   );
   const older = busy ? null : olderFor;
-  // --- end 3C T13 ---
   const [editing, setEditing] = useState<string | null>(null); // the commit id being edited
   useEffect(() => { if (selection.kind !== 'commit' || selection.id !== editing) setEditing(null); }, [selection, editing]);
   const readyId = details.status === 'ready' && message.status === 'ready' ? details.data.id : null;
@@ -145,7 +144,7 @@ function CommitDetails({ panel, ratio, ref }: { panel: PanelContent; ratio: numb
   useLayoutEffect(() => {
     if (messageRef.current) messageRef.current.scrollTop = 0;
   }, [selectedId]);
-  // The header stays put; only the message scrolls (feedback F13). The section's height is the
+  // The header stays put; only the message scrolls. The section's height is the
   // split's share of the panel (its live drag writes flexBasis to this node directly: see
   // SplitResizer).
   return (
@@ -177,7 +176,7 @@ function CommitDetails({ panel, ratio, ref }: { panel: PanelContent; ratio: numb
 
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
 
-/** The merge parent picker (spec §9.3): `vs 1st parent | vs 2nd parent`. */
+/** The merge parent picker: `vs 1st parent | vs 2nd parent`. */
 function ParentPicker({ panel }: { panel: PanelContent }) {
   const setParent = useRepoView((s) => s.setParent);
   const { selection, details, parent } = panel;
@@ -196,7 +195,7 @@ const allFilesCommitFor = (spec: DiffSpec) => (spec.kind === 'commit' ? spec.id 
 
 function FileSectionView({ section }: { section: FileSection }) {
   const { tabId } = useRepoContext();
-  // Review comments (spec 2026-10-08 §5): the review Compare's files carry their threads' badges.
+  // Review comments: the review Compare's files carry their threads' badges.
   const badges = useReviewRowBadge(tabId, section.spec);
   const label = section.title ?? 'Changed files';
   const list = section.list;
@@ -212,7 +211,7 @@ function FileSectionView({ section }: { section: FileSection }) {
   );
 }
 
-/** A file list (a `listbox` in path mode, a `tree` in tree mode: review M8). */
+/** A file list (a `listbox` in path mode, a `tree` in tree mode). */
 const FILE_LIST = '.file-list-scroll';
 
 /** The list the files zone focuses: the one holding the open file, else the first with rows
@@ -224,8 +223,8 @@ function pickFileList(zone: HTMLElement): HTMLElement | null {
 }
 
 /**
- * The file lists (spec §9.3): the `files` focus zone. The panel mounts with its lists loaded
- * (feedback F12); a focus request made before that is applied when the zone mounts.
+ * The file lists: the `files` focus zone. The panel mounts with its lists loaded;
+ * a focus request made before that is applied when the zone mounts.
  *
  * While the next selection loads (`panelPending`), the lists shown are the previous
  * selection's, about to be replaced: a focus request lands on the zone itself, never in a stale
@@ -280,9 +279,9 @@ function usePanelSize(ref: RefObject<HTMLDivElement | null>, panel: PanelContent
 }
 
 /** The right panel: a commit's details, a compare's header, or the read-only WIP header, each
- * above the file lists, or a multi-selection's summary (spec §9). It renders the store's settled `panel` only (feedback F12):
+ * above the file lists, or a multi-selection's summary. It renders the store's settled `panel` only:
  * the previous selection's content stays, unchanged, until the new one's has all arrived. A
- * commit's header+message and its file list are split by a draggable, persisted divider (F13). */
+ * commit's header+message and its file list are split by a draggable, persisted divider. */
 export function DetailsPanel() {
   const panel = useRepoView((s) => s.panel);
   // The chosen ratio; what renders is it clamped to the measured bounds, so a taller header (a
@@ -307,7 +306,7 @@ export function DetailsPanel() {
       )}
       {(kind === 'compare' || kind === 'compareWorktree') && <CompareHeader />}
       {kind === 'wip' && <WipHeader />}
-      {/* A multi-selection (K27) has no diff, so no file lists. */}
+      {/* A multi-selection has no diff, so no file lists. */}
       {kind === 'multi' ? <MultiSummary /> : <FileSections panel={panel} />}
       {kind === 'wip' && <CommitBox />}
     </div>

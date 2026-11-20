@@ -14,7 +14,7 @@ vi.mock('../app/tabStores', () => ({
   }),
 }));
 
-describe('chip colours (UX R1.8)', () => {
+describe('chip colours', () => {
   it('snapshots each branch tip row\'s lane colour, local and remote; tags and other tabs give none', () => {
     expect(laneColors('t1')).toEqual({ topic: 0, main: 3, 'origin/main': 3 });
     expect(laneColors('t2')).toEqual({});

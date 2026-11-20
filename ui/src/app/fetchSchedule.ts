@@ -28,15 +28,15 @@ export interface FetchDeps {
 export const FETCH_SKIPPED_AUTH = 'Fetch skipped: authentication required';
 
 /**
- * Spec §15's timing rules, independent of React so they're unit-testable with fake timers:
+ * The timing rules, independent of React so they're unit-testable with fake timers:
  * - started (the tab became active): one fetch at once if the last one is older than the interval;
  * - then one every interval;
  * - a tick while the window is minimized is skipped, and replayed once when the window gets the
  *   focus back. CEF has no minimize event, so each tick asks (`isMinimized`), and the focus event
  *   is what tells the window is back. Visible but unfocused, the ticks go on;
  * - an interval of 0 (or less) is off;
- * - a fetch skipped because the queue was busy (a user's op cancels a background fetch, spec #2
- *   §3.6) is owed: it runs again once the queue is idle (`onIdle`), not an interval later.
+ * - a fetch skipped because the queue was busy (a user's op cancels a background fetch)
+ *   is owed: it runs again once the queue is idle (`onIdle`), not an interval later.
  */
 export class FetchScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -115,16 +115,16 @@ function failedRemotes(e: GbError | null, repoId: number): Record<string, { reas
 }
 
 /** Repos (by id) whose last fetch failed: a background failure reaches the bell only when it
- * starts, not on every tick of an outage (K30). */
+ * starts, not on every tick of an outage. */
 const failing = new Set<number>();
 
 /**
- * One fetch of the tab's repo (spec §15); `remote`: only that one (a remote just added). `background`: the scheduler's, which never prompts
- * (§5.4) and shows nothing while it runs or when it succeeds: it's only in the activity log (K30,
- * `useOps().activity`). A fetch that would need credentials comes back skipped and shows as a
+ * One fetch of the tab's repo; `remote`: only that one (a remote just added). `background`: the scheduler's, which never prompts
+ *  and shows nothing while it runs or when it succeeds: it's only in the activity log
+ * (`useOps().activity`). A fetch that would need credentials comes back skipped and shows as a
  * status-bar warning until a fetch succeeds. Errors: a background one goes to the bell's history
  * (once, when the failures start), a user's to a toast with git's message and an "Activity log"
- * link (§16.1, K96); a fetch that worked says nothing (7c303cc), a failure still toasts. A cancel is quiet. A user's fetch
+ * link; a fetch that worked says nothing (7c303cc), a failure still toasts. A cancel is quiet. A user's fetch
  * that finds a background one running waits on that one: the Fetch button shows it as busy. "Use SSH for <remote> instead"
  * on its credential prompt switches the remote, then fetches again (`sshSwitch.ts`).
  */
@@ -135,7 +135,7 @@ export async function runFetch(tabId: string, background: boolean, remote?: stri
 /** `runFetch`, resolving true when it was skipped because the queue was busy (the scheduler then
  * owes it, `onIdle`). */
 async function fetchOnce(tabId: string, background: boolean, remote?: string, mrHead?: MrHead): Promise<boolean> {
-  // A background fetch has its own key: it must not light the Fetch button (K30).
+  // A background fetch has its own key: it must not light the Fetch button.
   return !!await runOnce(tabId, 'fetch', `${background ? 'bg:' : ''}${remote ?? ''}${mrHead ? `:${mrHead.number}` : ''}`, () => fetchNow(tabId, background, remote, mrHead));
 }
 
@@ -157,8 +157,8 @@ async function fetchNow(tabId: string, background: boolean, remote?: string, mrH
     const out = await (remote === undefined ? api.fetch(repo.id, background) : mrHead ? api.fetch(repo.id, background, remote, mrHead) : api.fetch(repo.id, background, remote));
     if (out.status === 'done' || out.reason === 'authRequired') failing.delete(repo.id);
     if (out.status === 'done') {
-      // A fetch that worked says nothing (except a user's with server output, which links it, and a server warning, spec #2 §12.4), user-initiated or not: the button's spinner and the
-      // graph are enough, and a toast every time is noise (the user's call, after K96).
+      // A fetch that worked says nothing (except a user's with server output, which links it, and a server warning), user-initiated or not: the button's spinner and the
+      // graph are enough, and a toast every time is noise.
       if (remote === undefined) patch({ lastFetchAt: Date.now(), fetchSkipped: null, remoteFetchErrors: {} });
       else patch({ remoteFetchErrors: Object.fromEntries(Object.entries(errors()).filter(([name]) => name !== remote)) });
       if (!background && out.server.lines > 0) showServerResult(`Fetched ${repo.name}`, `Fetched ${repo.name}; the server reported a problem`, out.server, out.op);
@@ -193,7 +193,7 @@ async function fetchNow(tabId: string, background: boolean, remote?: string, mrH
     const text = kind === 'AuthFailed' ? `Authentication failed (${errorMessage(e)})` : errorMessage(e);
     const started = !failing.has(repo.id);
     failing.add(repo.id);
-    // K96: long enough to read git's message, with the activity log (which keeps it) a click away.
+    // Long enough to read git's message, with the activity log (which keeps it) a click away.
     if (!background && switched.length && ctx) toastAfterSwitch(ctx, switched, e as GbError, 'Fetch failed');
     else if (!background) useToast.getState().show(`Fetch failed: ${text}`, { error: true, action: { label: 'Activity log', run: openActivityLog } });
     else if (started) useOps.getState().pushError(`Fetch failed (${repo.name}): ${text}`);
@@ -203,8 +203,7 @@ async function fetchNow(tabId: string, background: boolean, remote?: string, mrH
 
 /**
  * The background fetch for one tab. RepoTab calls it, inside the tab's `<Activity>`: only the
- * shown tab's effect is live, so a hidden tab has no timer and does no work (spec §4.4, Review
- * Focus 1), and showing it again restarts the schedule (one fetch at once if it's due).
+ * shown tab's effect is live, so a hidden tab has no timer and does no work, and showing it again restarts the schedule (one fetch at once if it's due).
  */
 export function useFetchScheduler(tabId: string, repoId: number | undefined): void {
   const intervalMs = clampFetchInterval(useAppState((s) => s.settings.fetchIntervalSecs)) * 1000;

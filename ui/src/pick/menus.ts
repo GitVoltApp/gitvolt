@@ -10,8 +10,7 @@ import { startSequence } from './pick';
 type Env = Pick<MenuEnv, 'write' | 'headBranch' | 'headSha' | 'inProgress'> & Partial<Pick<MenuEnv, 'isAncestor' | 'conflicted'>>;
 
 /**
- * The Commit group's Cherry-pick and Revert for `commits` (newest first) (spec #3 §4.3). Hidden
- * (Deviation 5): any merge commit among them (§3.7); Revert when one is known not to be in HEAD's
+ * The Commit group's Cherry-pick and Revert for `commits` (newest first). Hidden: any merge commit among them; Revert when one is known not to be in HEAD's
  * history. Unknown ancestry shows the row. Greyed during another operation, over conflicted files
  * (a stop without committing leaves them with nothing in progress), or on a detached HEAD. A
  * selection's Cherry-pick leaves out the commits already in HEAD's history, unless every one is
@@ -30,7 +29,7 @@ export function pickRows(commits: readonly CommitRef[], env: Env): MenuRow[] {
     if (x) void startSequence(ctx, kind, cs, { noCommit, branch: x, head: env.headSha });
   };
   const rows: MenuRow[] = [];
-  // 3B final fix (3): what's already in HEAD's history isn't picked again, unless that's all of
+  // What's already in HEAD's history isn't picked again, unless that's all of
   // them: then the pick is on purpose (bringing back what a revert undid).
   const fresh = commits.filter((c) => inHead(c) !== true);
   const again = fresh.length === 0 && !commits.some((c) => c.oid === env.headSha);

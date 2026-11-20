@@ -6,7 +6,7 @@ import { decodeSegment, HALF_BOTTOM, HALF_FULL, HALF_TOP } from './segments';
 
 const pack = (from: number, to: number, half: number) => from | (to << 10) | (half << 20);
 
-describe('graph metrics derive from the density (feedback H1)', () => {
+describe('graph metrics derive from the density', () => {
   it('row height, lane width and band inset are the density\'s; METRICS is the default density\'s', () => {
     for (const d of DENSITIES) {
       const { rowH, laneW, bandInset } = DENSITY_METRICS[d];

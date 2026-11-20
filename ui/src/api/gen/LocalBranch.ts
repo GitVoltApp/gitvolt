@@ -11,11 +11,11 @@ gone: boolean, tipTime: number, summary: string, author: string, isHead: boolean
  */
 worktree: string | null, 
 /**
- * The worktree (any, the handle's own included) whose HEAD names it (spec #2 §11.2).
+ * The worktree (any, the handle's own included) whose HEAD names it.
  */
 checkedOut: string | null, 
 /**
- * Where Push sends it (spec #2 §12.3, `remote/branch`): the push remote, else the upstream.
+ * Where Push sends it (`remote/branch`): the push remote, else the upstream.
  */
 pushTarget: string | null, 
 /**
@@ -24,11 +24,11 @@ pushTarget: string | null,
  */
 pushBehind: number | null, 
 /**
- * GitVolt rewrote it since its last push (a live rewrite mark, §12.3): Push forces with
+ * GitVolt rewrote it since its last push (a live rewrite mark): Push forces with
  * the lease recorded then when `push_behind` > 0.
  */
 rewritten: Rewritten | null, 
 /**
- * The upstream's short name when its branch name differs from this one's (UX round 3, M.1).
+ * The upstream's short name when its branch name differs from this one's.
  */
 upstreamMismatch?: string, };

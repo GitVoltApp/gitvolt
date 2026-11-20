@@ -1,17 +1,17 @@
 import { create } from 'zustand';
 
 /**
- * Display density (feedback H1): three presets for the row height and cell paddings of the
+ * Display density: three presets for the row height and cell paddings of the
  * graph table, and the file list's row height (which the details panel adopts). The graph
  * canvas's metrics derive from these too (graph/metrics.ts), so node size, lane width and row
  * height scale together.
  *
- * - `compact`: the 1A/1B metrics.
- * - `standard` (the default): measured at 120% zoom (feedback H1): rows 33.5 px apart, chips
+ * - `compact`: the original metrics.
+ * - `standard` (the default): measured at 120% zoom: rows 33.5 px apart, chips
  *   and row bands 26.5 px tall and lanes 26.7 px apart, i.e. 28, 22 and 22 CSS px.
  * - `comfortable`: more padding than standard.
  *
- * No UI picks it yet: the app has no menu, and plan 1C's settings screen adds the setting. It's
+ * No UI picks it yet: the app has no menu, and a settings screen will add the setting. It's
  * persisted under DENSITY_STORAGE_KEY, through `densityPersistence` below.
  */
 export type Density = 'compact' | 'standard' | 'comfortable';
@@ -36,14 +36,14 @@ export interface DensityMetrics {
   /**
    * The panels' top bar, outer height (its 1 px bottom divider included): the open file's
    * header (path, encoding, ×) and the details panel's header bar (the signature and hashes, or
-   * the compare / WIP bar), whose dividers line up across the two panels (K5, K6).
+   * the compare / WIP bar), whose dividers line up across the two panels.
    */
   panelBarH: number;
 }
 
 export const DENSITY_METRICS: Readonly<Record<Density, DensityMetrics>> = {
   compact: { rowH: 25, laneW: 16, bandInset: 2, chipH: 17, cellPadX: 6, fileRowH: 24, panelBarH: 31 },
-  // K6: 1B's 30 px bar (plus its border), 20% taller.
+  // The earlier 30 px bar (plus its border), 20% taller.
   standard: { rowH: 28, laneW: 22, bandInset: 3, chipH: 22, cellPadX: 8, fileRowH: 26, panelBarH: 37 },
   comfortable: { rowH: 32, laneW: 24, bandInset: 4, chipH: 24, cellPadX: 10, fileRowH: 30, panelBarH: 41 },
 };
@@ -68,7 +68,7 @@ export const parseDensity = (raw: string | null): Density | null =>
 
 /**
  * THE persistence seam for the density: localStorage today (every access guarded, since it can
- * throw); plan 1C swaps this one object for its settings store (spec §15). Nothing else changes.
+ * throw); a settings store can replace this one object. Nothing else changes.
  */
 export interface DensityPersistence { load(): Density | null; save(d: Density): void }
 export const densityPersistence: DensityPersistence = {
@@ -90,7 +90,7 @@ export const densityPersistence: DensityPersistence = {
 
 interface DensityState {
   density: Density;
-  /** Sets and saves the density. Plan 1C's settings screen calls this. */
+  /** Sets and saves the density. The settings screen calls this. */
   setDensity(d: Density): void;
   /** Re-reads the saved density (tests; a settings import). */
   reload(): void;

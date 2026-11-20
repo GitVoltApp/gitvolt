@@ -12,7 +12,7 @@ export type ConflictFilePayload = { path: string, kind: ConflictKind,
  */
 text: boolean, segments: Array<Segment>, current: Pane | null, incoming: Pane | null, labels: ConflictLabels, 
 /**
- * The worktree file's, for the save (§7.5): `UTF-8`, `UTF-8 BOM`, …
+ * The worktree file's, for the save: `UTF-8`, `UTF-8 BOM`, …
  */
 encoding: string, eol: Eol, 
 /**

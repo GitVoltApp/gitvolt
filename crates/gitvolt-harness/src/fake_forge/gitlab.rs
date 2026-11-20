@@ -1,4 +1,4 @@
-//! GitLab REST v4, the subset GitVolt uses. 4A: user, token, version, projects, forks, avatars.
+//! GitLab REST v4, the subset GitVolt uses. User, token, version, projects, forks, avatars.
 
 use super::{FakeProject, FakeRequest, ForgeState, FakeUser, Reply, GITLAB_HOST};
 use serde_json::{json, Value};
@@ -33,20 +33,18 @@ pub fn project_json(p: &FakeProject, all: &[FakeProject], base: &str) -> Value {
 }
 
 pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Reply {
-    // --- 4B T2: merge requests and pipelines (gitlab_mrs.rs). They write the seed, so they're
-    // answered before the borrows below; without a token, 4A's arms answer 401. ---
+    // --- merge requests and pipelines (gitlab_mrs.rs). They write the seed, so they're
+    // answered before the borrows below; without a token, the arms below answer 401. ---
     if r.token.is_some()
         && let Some(reply) = super::gitlab_mrs::route(st, r)
     {
         let (remaining, reset) = st.rate_headers(2000);
         return reply.header("RateLimit-Limit", "2000").header("RateLimit-Remaining", &remaining).header("RateLimit-Reset", &reset);
     }
-    // --- end 4B T2 ---
-    // --- MR round 2: GraphQL ---
+    // --- GraphQL ---
     if r.method == "POST" && r.segments.iter().map(String::as_str).eq(["api", "graphql"]) {
         return if r.token.is_some() { super::gitlab_mrs::graphql(st, r) } else { Reply::status(401, json!({ "message": "401 Unauthorized" })) };
     }
-    // --- end MR round 2 ---
     let segs: Vec<&str> = r.segments.iter().map(String::as_str).collect();
     let projects = &st.seed.gitlab.projects;
     let reply = match (r.method, segs.as_slice()) {
@@ -103,7 +101,7 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Reply {
             }
             None => Reply::status(404, json!({ "message": "404 Project Not Found" })),
         },
-        // --- 4B: merge request routes go here ---
+        // --- merge request routes go here ---
         _ => Reply::status(404, json!({ "message": "404 Not Found" })),
     };
     let (remaining, reset) = st.rate_headers(2000);

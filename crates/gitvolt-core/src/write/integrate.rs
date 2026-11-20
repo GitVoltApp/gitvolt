@@ -1,4 +1,4 @@
-//! Merge, rebase and fast-forward (spec #2 §13.1): the Integrate request and what it answers.
+//! Merge, rebase and fast-forward: the Integrate request and what it answers.
 
 use crate::api::{blocking, Api};
 use crate::error::{gix_err, short_ref, GbError, GbErrorKind};
@@ -32,12 +32,12 @@ pub enum IntegrateOutcome {
     Done {
         commits: u32,
         fast_forward: bool,
-        /// 3C fix round 1 (R1): it completed, but something after it didn't (a chip marked
+        /// It completed, but something after it didn't (a chip marked
         /// delete that moved meanwhile is kept): the toast says so.
         #[serde(skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         warning: Option<String>,
-        /// 3C final fix (M4): a reword of an older commit (spec #3 §3.6): the reworded commit's
+        /// A reword of an older commit: the reworded commit's
         /// new oid, for the details panel to select.
         #[serde(skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
@@ -50,11 +50,11 @@ pub enum IntegrateOutcome {
         #[ts(optional)]
         warning: Option<String>,
     },
-    /// Stopped on conflicts (§13.2): the banner and the Conflicted section take over.
+    /// Stopped on conflicts: the banner and the Conflicted section take over.
     Stopped {
         kind: PausedKind,
         files: u32,
-        /// 3C final fix (M1, M2): something GitVolt meant to do at the stop didn't happen (a
+        /// Something GitVolt meant to do at the stop didn't happen (a
         /// commit-msg hook refused a new message): the toast says so.
         #[serde(skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
@@ -62,12 +62,12 @@ pub enum IntegrateOutcome {
     },
     /// Abort ran: the branch is back where it was.
     Aborted {
-        /// 3C fix round 1 (I2): the work done at an interactive rebase's stop, kept as a stash
+        /// The work done at an interactive rebase's stop, kept as a stash
         /// (its oid) before the abort reset it: "Your work from the stop is in a stash".
         #[serde(skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         stash: Option<String>,
-        /// Fix round 2: the branch the commits made at the stop were kept on.
+        /// The branch the commits made at the stop were kept on.
         #[serde(skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         branch: Option<String>,
@@ -88,7 +88,7 @@ impl IntegrateOutcome {
 pub struct StackedBranch {
     /// Short name (`feature/a`).
     pub name: String,
-    /// Checked out in another worktree: git doesn't move it, and the dialog says so (§13.1).
+    /// Checked out in another worktree: git doesn't move it, and the dialog says so.
     pub worktree: Option<String>,
 }
 
@@ -108,8 +108,7 @@ pub(crate) struct BranchSets {
     /// Tips on `x`'s first-parent chain: the stacked branches, which `--update-refs` moves along.
     pub stacked: Vec<(String, ObjectId)>,
     /// Tips reachable only through a merge's second or later parent: branches merged into `x`.
-    /// Never stacked: `--update-refs` would move them too, so the rebase keeps them in place
-    /// (2D T9 review I2).
+    /// Never stacked: `--update-refs` would move them too, so the rebase keeps them in place.
     pub merged_in: Vec<(String, ObjectId)>,
 }
 
@@ -146,9 +145,9 @@ pub(crate) fn branch_sets(repo: &gix::Repository, x: &str, y: ObjectId) -> Resul
     Ok(sets)
 }
 
-/// §13.1: the stacked branches, the local branches other than `x` whose tips are on `x`'s
+/// The stacked branches, the local branches other than `x` whose tips are on `x`'s
 /// first-parent chain in `y..x`: the ones `--update-refs` moves along. A branch merged into `x`
-/// isn't one (review I2). `elsewhere`: full branch name → the other worktree it's checked out in.
+/// isn't one. `elsewhere`: full branch name → the other worktree it's checked out in.
 pub(crate) fn stacked_branches(repo: &gix::Repository, x: &str, y: ObjectId, elsewhere: &HashMap<String, String>) -> Result<Vec<StackedBranch>, GbError> {
     let mut out: Vec<StackedBranch> = branch_sets(repo, x, y)?.stacked.into_iter().map(|(name, _)| StackedBranch { name: short_ref(&name).to_string(), worktree: elsewhere.get(&name).cloned() }).collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -158,7 +157,7 @@ pub(crate) fn stacked_branches(repo: &gix::Repository, x: &str, y: ObjectId, els
 /// The first merge commit in `y..x` that git can't recreate as it is, as `abc1234 Merge side`:
 /// its tree isn't the clean merge of its parents (a conflict resolution, or a change made in the
 /// merge itself). `--rebase-merges` remerges each one from its rewritten parents, so it would
-/// drop that change (review I2). In memory: nothing is written.
+/// drop that change. In memory: nothing is written.
 pub(crate) async fn lossy_merge(cli: &crate::git::GitCli, root: &std::path::Path, x_tip: ObjectId, y: ObjectId) -> Result<Option<String>, GbError> {
     let merges = merges_in(cli, root, x_tip, y).await?;
     let root = root.to_path_buf();
@@ -167,7 +166,7 @@ pub(crate) async fn lossy_merge(cli: &crate::git::GitCli, root: &std::path::Path
 
 /// The merge commits in `y..x`: one `rev-list --min-parents=2` (a read), which walks the range
 /// faster than anything here can, so a linear range (the usual rebase) costs one short git
-/// process and no more (review P1). Non-empty: the rebase needs `--rebase-merges` (a linear one
+/// process and no more. Non-empty: the rebase needs `--rebase-merges` (a linear one
 /// doesn't, and its counter stays the commits' own, with no `label`/`reset` steps).
 pub(crate) async fn merges_in(cli: &crate::git::GitCli, root: &std::path::Path, x_tip: ObjectId, y: ObjectId) -> Result<Vec<ObjectId>, GbError> {
     let (tip, not) = (x_tip.to_string(), format!("^{y}"));
@@ -198,12 +197,12 @@ pub(crate) fn lossy_among(repo: &gix::Repository, merges: &[ObjectId]) -> Result
     Ok(None)
 }
 
-/// The refusal for a lossy merge (review I2), shared by the rebase and the preview (N4).
+/// The refusal for a lossy merge, shared by the rebase and the preview.
 pub(crate) fn lossy_message(branch: &str, merge: &str, target: &str) -> String {
     format!("{branch} has a merge commit with changes of its own ({merge}); a rebase would drop them. Merge {} into {branch} instead", short_ref(target))
 }
 
-/// A label naming HEAD's branch, settled when the op runs (§3.6): a queued checkout ahead of it
+/// A label naming HEAD's branch, settled when the op runs: a queued checkout ahead of it
 /// changes which branch it acts on. Until then, the branch the request saw.
 pub(crate) struct BranchLabel {
     make: Box<dyn Fn(&str) -> String + Send + Sync>,
@@ -234,8 +233,8 @@ impl BranchLabel {
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn integrate(api: &Api, repo: u32, worktree: &str, kind: IntegrateKind, target: String, update_refs: Option<bool>, ff_only: Option<bool>, expect: Expect, confirm: Confirm) -> Result<WriteResult<IntegrateOutcome>, GbError> {
     // For the queue's label only: the branch, the label and the refs settle when the op runs,
-    // under the lock (review M5), and `run_write` checks the worktree. A guess needs no `worktree
-    // list` of its own (review P1).
+    // under the lock, and `run_write` checks the worktree. A guess needs no `worktree
+    // list` of its own.
     let root = std::path::PathBuf::from(worktree);
     let seen = blocking(move || Ok(gix::open(&root).ok().and_then(|r| head_branch(&r)))).await?;
     let short = short_ref(&target).to_string();
@@ -251,7 +250,7 @@ pub(crate) async fn integrate(api: &Api, repo: u32, worktree: &str, kind: Integr
     }
 }
 
-// --- 2D T10: merge, fast-forward, merge abort, the preview ---
+// --- merge, fast-forward, merge abort, the preview ---
 /// `(ahead, behind)`: commits in `a` not in `b`, and in `b` not in `a`.
 pub(crate) fn relation(repo: &gix::Repository, a: ObjectId, b: ObjectId) -> Result<(u32, u32), GbError> {
     let count = |from: ObjectId, hide: ObjectId| -> Result<u32, GbError> { Ok(repo.rev_walk([from]).with_hidden([hide]).all().map_err(gix_err)?.filter(Result::is_ok).count() as u32) };
@@ -287,15 +286,13 @@ impl WriteIntent for MergeIntent {
         self.label.settle(branch);
         let repo = gix::open(pre.root).map_err(gix_err)?;
         let target = repo.rev_parse_single(self.target.as_str()).map_err(|e| GbError::new(GbErrorKind::NotFound, format!("{}: {e}", self.target)))?.detach();
-        // --- 2C repo-safety ---
         // The merge checks its result out as a two-way move: a file of the target written where
-        // a populated submodule or an embedded clone sits deletes it whole (safety review 2 N2),
-        // refused first; the same check says what the move sweeps away (M1, M2).
+        // a populated submodule or an embedded clone sits deletes it whole,
+        // refused first; the same check says what the move sweeps away.
         let mut rule = AutostashRule::Merged;
         if let Some(head) = pre.before.head.oid.as_deref().and_then(|h| gix::ObjectId::from_hex(h.as_bytes()).ok()) {
             rule = crate::write::precheck::refuse_repos_in_the_way_of_merge(&pre.api.cli, pre.root, head, target, "merge").await?.rule_over(rule);
         }
-        // --- end 2C repo-safety ---
         Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(target), op: format!("merge {}", self.target), target_name: Some(self.target.clone()), moved: None }), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<IntegrateOutcome, GbError> {
@@ -303,7 +300,7 @@ impl WriteIntent for MergeIntent {
     }
 }
 
-/// `git merge --no-edit <target>` (§13.1; pull's merge, T14). Stopped on conflicts, it pauses
+/// `git merge --no-edit <target>` (pull's merge). Stopped on conflicts, it pauses
 /// with `label` as the banner's target, and `MERGE_HEAD` as the target's oid.
 pub(crate) async fn run_merge(cx: &mut WriteCx<'_>, target: &str, label: &str, ff_only: bool) -> Result<IntegrateOutcome, GbError> {
     let repo = gix::open(cx.root).map_err(gix_err)?;
@@ -360,7 +357,7 @@ impl WriteIntent for FastForwardIntent {
         let to = repo.rev_parse_single(self.to.as_str()).map_err(gix_err)?.detach();
         let old = cx.before.refs.get(&name).cloned().flatten().ok_or_else(|| GbError::new(GbErrorKind::NotFound, format!("{} doesn't exist", self.branch)))?;
         let old_id = ObjectId::from_hex(old.as_bytes()).map_err(gix_err)?;
-        // Review M6: already there.
+        // Already there.
         if old_id == to {
             return Ok(IntegrateOutcome::UP_TO_DATE);
         }
@@ -374,7 +371,7 @@ impl WriteIntent for FastForwardIntent {
     }
 }
 
-/// The commit panel's Abort merge (§13.2). Not journaled: step 7b drops the paused entry.
+/// The commit panel's Abort merge. Not journaled: step 7b drops the paused entry.
 pub(crate) struct MergeAbortIntent;
 
 impl WriteIntent for MergeAbortIntent {
@@ -411,23 +408,23 @@ pub struct IntegratePreviewPayload {
     /// HEAD's commits not in the target, and the target's not in HEAD.
     pub ahead: u32,
     pub behind: u32,
-    /// The target is already in HEAD: "Merge Y into X" isn't offered (§13.1).
+    /// The target is already in HEAD: "Merge Y into X" isn't offered.
     pub merged: bool,
     /// Paths a merge of HEAD and the target would conflict in (gix, in memory). For a rebase it's
-    /// the same three-way preview, an approximation (Deviation 9).
+    /// the same three-way preview, an approximation.
     pub conflicts: Vec<String>,
     /// Rebase only: the branches `--update-refs` would move.
     pub stacked: Vec<StackedBranch>,
     /// The checkbox's default: ticked unless `rebase.updateRefs=false`.
     pub update_refs_default: bool,
-    /// Rebase only: why it would be refused, before the user presses Rebase (review N4): a merge
+    /// Rebase only: why it would be refused, before the user presses Rebase: a merge
     /// commit with changes of its own, which a rebase would drop.
     pub lossy_merge: Option<String>,
 }
 
 /// The paths a merge of `ours` and `theirs` would leave unresolved, as git would. Objects go to
 /// memory only: nothing is written to the repository. Unrelated histories (no merge base)
-/// predict nothing (review M4). The preview uses `merge_tree` instead (faster on a big tree; a
+/// predict nothing. The preview uses `merge_tree` instead (faster on a big tree; a
 /// test checks the two agree).
 pub(crate) fn predicted_conflicts(repo: &gix::Repository, ours: ObjectId, theirs: ObjectId) -> Result<Vec<String>, GbError> {
     if !matches!(repo.merge_base(ours, theirs), Ok(Some(_))) {
@@ -471,10 +468,10 @@ pub(crate) async fn merge_tree(cli: &crate::git::GitCli, root: &std::path::Path,
     Ok(Some((tree, conflicts)))
 }
 
-// --- 2D T14: the autostash's target for a merge or rebase ---
+// --- the autostash's target for a merge or rebase ---
 /// The tree of the three-way merge of `ours` and `theirs` (`merge_tree`): what the worktree holds
-/// after the merge, and approximately after a rebase (Deviation 9). `AutostashRule::Merged`
-/// predicts against it (§6.2): against `theirs` itself, every dirty file `ours` changed since the
+/// after the merge, and approximately after a rebase. `AutostashRule::Merged`
+/// predicts against it: against `theirs` itself, every dirty file `ours` changed since the
 /// merge base would look like a conflict. Only the tree and its blobs are written, as loose
 /// objects with no ref and no commit: a merge then writes the same ones itself; a rebase's (and a
 /// cancelled pull's) stay unreferenced until gc prunes them. `None` when there's no merge base
@@ -482,9 +479,8 @@ pub(crate) async fn merge_tree(cli: &crate::git::GitCli, root: &std::path::Path,
 pub(crate) async fn merge_result(cli: &crate::git::GitCli, root: &std::path::Path, ours: ObjectId, theirs: ObjectId) -> Option<ObjectId> {
     merge_tree(cli, root, ours, theirs, None).await.ok().flatten().map(|(tree, _)| tree)
 }
-// --- end 2D T14 ---
 
-/// The preview's conflicts (§13.1): the merge of HEAD and the target, always in a quarantine. A
+/// The preview's conflicts: the merge of HEAD and the target, always in a quarantine. A
 /// read never writes to the repository, so the write's autostash plan merges again for itself.
 async fn preview_conflicts(api: &Api, root: &std::path::Path, head: ObjectId, y: ObjectId) -> Result<Vec<String>, GbError> {
     let scratch = crate::write::irebase::predict::Scratch::new(api)?;
@@ -523,7 +519,6 @@ pub(crate) async fn preview(api: &Api, repo: u32, worktree: &str, kind: Integrat
     }
     Ok(payload)
 }
-// --- end 2D T10 ---
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -630,13 +625,13 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["rev-parse", "feature/a"]), a);
         assert_eq!(api.dispatch(ff("feature/c", "main")).await.unwrap_err().kind, GbErrorKind::InvalidInput, "checked out here");
         assert_eq!(api.dispatch(ff("feature/b", "main")).await.unwrap_err().kind, GbErrorKind::NonFastForward, "has commits main doesn't");
-        // Review M6: already there.
+        // Already there.
         let res = api.dispatch(ff("feature/a", "feature/a")).await.unwrap();
         assert_eq!(res["outcome"]["status"], "upToDate");
         assert_eq!(r.git(&["rev-parse", "feature/a"]), a);
     }
 
-    /// Review M4 (scenario s9): an unrelated history has no merge base; the preview still
+    /// An unrelated history has no merge base; the preview still
     /// answers, with every commit counted and no conflicts predicted.
     #[tokio::test]
     async fn the_preview_of_an_unrelated_history_opens() {
@@ -654,7 +649,7 @@ pub(crate) mod tests {
         assert_eq!((p["ahead"].as_u64(), p["behind"].as_u64(), p["merged"].as_bool()), (Some(2), Some(1), Some(false)));
     }
 
-    /// §13.1's previews, read-only: relation, the gix conflict count, the stack, the default.
+    /// The previews, read-only: relation, the gix conflict count, the stack, the default.
     #[tokio::test]
     async fn the_preview_counts_conflicts_lists_the_stack_and_writes_nothing() {
         let r = TestRepo::new();
@@ -727,7 +722,7 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("wip.txt")).unwrap(), "local\n");
     }
 
-    /// 2D T14 re-review m3: `Merged` predicts against the merge. A dirty line next to a change
+    /// `Merged` predicts against the merge. A dirty line next to a change
     /// only the local side made isn't a conflict (it was, against the target itself); one next
     /// to the upstream's change is.
     #[tokio::test]
@@ -758,7 +753,6 @@ pub(crate) mod tests {
         assert_eq!(predict(AutostashRule::AnyTracked).await, vec!["local.txt".to_string(), "up.txt".to_string()], "against the target itself, the local side's neighbour looks like a conflict");
     }
 
-    // --- 2C repo-safety (safety review 2 N2) ---
 
     /// `git clone` of a one-commit repository at `at`, with a local-only branch (what the user
     /// would lose).
@@ -804,7 +798,7 @@ pub(crate) mod tests {
         (r, sub)
     }
 
-    /// R6c: `up` replaced the clean populated gitlink `sm` by a file; the merge's checkout
+    /// `up` replaced the clean populated gitlink `sm` by a file; the merge's checkout
     /// would delete the clone whole: refused, nothing changed.
     #[tokio::test]
     async fn a_merge_never_deletes_a_populated_submodule_the_target_replaces_by_a_file() {
@@ -819,7 +813,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "");
     }
 
-    /// R6d: the gitlink is dirty (` M sm`), and the user confirms the autostash: still refused,
+    /// The gitlink is dirty (` M sm`), and the user confirms the autostash: still refused,
     /// since the stash would hold only the gitlink and the merge would delete the clone.
     #[tokio::test]
     async fn a_merge_over_a_dirty_submodule_the_target_replaces_is_refused_even_when_confirmed() {
@@ -836,7 +830,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["stash", "list"]), "", "nothing was stashed");
     }
 
-    /// R8: an ignored clone at `lib/inner`, where `up` adds the file `lib`: git would delete it
+    /// An ignored clone at `lib/inner`, where `up` adds the file `lib`: git would delete it
     /// without a word: refused.
     #[tokio::test]
     async fn a_merge_never_deletes_an_ignored_clone_under_a_folder_the_target_replaces() {
@@ -861,5 +855,4 @@ pub(crate) mod tests {
         assert_eq!(e.message, "lib/inner is a repository in the way of the merge: move it first");
         assert!(r.path().join("lib/inner/.git").is_dir());
     }
-    // --- end 2C repo-safety ---
 }

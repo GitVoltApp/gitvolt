@@ -7,7 +7,7 @@ const el = (html: string, pick: string) => {
   return document.querySelector(pick);
 };
 
-describe('where Ctrl+Z is staging undo (spec #2 §7.6)', () => {
+describe('where Ctrl+Z is staging undo', () => {
   it('in the diff view and the WIP file list, a read-only Monaco included', () => {
     expect(stagingKeyTarget(el('<section class="diff-panel"><div class="monaco-editor"><textarea id="t"></textarea></div></section>', '#t'))).toBe(true);
     expect(stagingKeyTarget(el('<div class="wip-sections"><div class="file-list" tabindex="0" id="l"></div></div>', '#l'))).toBe(true);

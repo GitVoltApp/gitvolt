@@ -1,4 +1,4 @@
-//! Login-shell environment capture (spec §5.3). Apps started from the desktop menu miss what the
+//! Login-shell environment capture. Apps started from the desktop menu miss what the
 //! user's shell setup adds (`SSH_AUTH_SOCK`, `PATH` entries, ...). We run
 //! `$SHELL -l -i -c '<script>'` once, in the background, with a 5 s timeout, and use the result
 //! for every git command and every editor we launch. Output before a marker line is shell noise
@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(get(&vars, "GB_GONE").unwrap(), "unset");
     }
 
-    /// I2: GitVolt's own variables (`openers::PRIVATE_ENV`) never come back through the captured
+    /// GitVolt's own variables (`openers::PRIVATE_ENV`) never come back through the captured
     /// env, even if the user's shell setup exports them itself: the captured env is what editors
     /// start with, after `launch_command` has already stripped them.
     #[cfg(unix)] // a #!/bin/sh fake shell

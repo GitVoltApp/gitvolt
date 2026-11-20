@@ -49,7 +49,7 @@ import { dimAllBut, ROW_DIM_CLASS, rowDimKindClass, strongerDim, useBranchFocus,
 import './graph.css';
 import './extras.css';
 
-/** The full commit message tooltip's rest delay: the one deliberately delayed tooltip (§8.4). */
+/** The full commit message tooltip's rest delay: the one deliberately delayed tooltip. */
 export const MESSAGE_TOOLTIP_DELAY_MS = 500;
 
 const renderMessage = (m: CommitMessage) => (
@@ -63,12 +63,11 @@ const renderMessage = (m: CommitMessage) => (
  * The Message cell. Resting the pointer on it for MESSAGE_TOOLTIP_DELAY_MS shows the complete
  * message (summary plus full body, line breaks kept) in a tooltip just right of the cursor that
  * follows it. The tooltip never takes the pointer (`pointer-events: none`), so it's gone as soon
- * as the pointer leaves the cell, e.g. onto the next row (feedback F1). The graph payload
+ * as the pointer leaves the cell, e.g. onto the next row. The graph payload
  * doesn't carry full bodies: the message is loaded on demand through `messages` (the per-repo
  * `commitMessage` cache the details panel shares), with "Loading…" if that takes over ~100 ms.
  * Pointer-only: the grid keeps focus on its scroll container (rows are never focused
- * themselves), and keyboard users read the selected commit's full message in the details panel
- * (§9.2).
+ * themselves), and keyboard users read the selected commit's full message in the details panel.
  */
 function MessageCell({ row, repoId, width, messages, dim, badges }: { row: RowPayload; repoId: string; width: number; messages?: CommitMessageCache; dim: string; badges?: readonly string[] }) {
   const isWip = row.kind === 'wip';
@@ -126,24 +125,24 @@ const sameRowsOnScreen = (a: number, b: number, viewportH: number, rowH: number)
 /** Graph nodes draw from the shared avatar cache (keyed by email). Module-level, so stable. */
 const avatarBitmap = (email: string) => avatars.get(email)?.bitmap ?? null;
 
-/** Row-click modifiers (K27): `ctrl` (Ctrl or ⌘) toggles the row, `shift` selects a range. */
+/** Row-click modifiers: `ctrl` (Ctrl or ⌘) toggles the row, `shift` selects a range. */
 export type SelectMods = { ctrl: boolean; shift: boolean };
 
 const PLAIN: SelectMods = { ctrl: false, shift: false };
 const NO_SELECTED: ReadonlySet<number> = new Set();
 
-/** In the Branch/Tag cell only the chips (the membership chip too, J6) and the +N badge select
+/** In the Branch/Tag cell only the chips (the membership chip too) and the +N badge select
  * the row: a press on the empty space around them or on the connector stops here instead of
  * reaching the row (F6). */
 const onLabelsMouseDown = (e: MouseEvent<HTMLElement>) => {
   if (!(e.target instanceof Element && e.target.closest('.ref-label, .ref-more, .ref-stack'))) e.stopPropagation();
 };
 
-/** A row's DOM id (the keyboard commit-menu path, fix round 1, item 4: finding its element to
+/** A row's DOM id (the keyboard commit-menu path: finding its element to
  * open the menu at, as `FileList.tsx`'s `rowId` does for its own rows). */
 const graphRowId = (id: string) => `graph-row-${id}`;
 
-/** The Author cell at its minimum (spec §8.4): the author's avatar alone, named by an instant
+/** The Author cell at its minimum: the author's avatar alone, named by an instant
  * tooltip (and for assistive tech). It never asks for the image: the view's visible-rows request
  * (latest set wins on a fast scroll) already covers every commit row on screen. */
 function AuthorAvatar({ name, email }: { name: string; email: string }) {
@@ -163,11 +162,11 @@ interface GraphRowProps {
   repoId: string;
   index: number;
   start: number;
-  /** The density's row height (H1). */
+  /** The density's row height. */
   rowH: number;
-  /** The device pixel ratio (the app zoom included): the connector is snapped to it (K57). */
+  /** The device pixel ratio (the app zoom included): the connector is snapped to it. */
   dpr: number;
-  /** Selected: the keyboard's row, or any other row of a compare or multi-selection (K27). */
+  /** Selected: the keyboard's row, or any other row of a compare or multi-selection. */
   selected: boolean;
   cols: ColumnWidths;
   labels: RefLabel[];
@@ -180,28 +179,27 @@ interface GraphRowProps {
   /** Its text cells are dimmed, and at which level (the row-dim mechanism, rowDim.ts); `false`
    * for not dimmed. */
   dimmed: DimKind | false;
-  /** A branch chip on this row is entered (its refs) or left (null): J22's focus. */
+  /** A branch chip on this row is entered (its refs) or left (null): the branch-hover focus. */
   onBranchHover(refs: readonly string[] | null): void;
   /** A right-click anywhere on the row, or the keyboard (Shift+F10 / the ContextMenu key, on the
-   * selected row — fix round 1, item 4, `FileList.tsx`'s own pattern): plan 1C Task 15's commit
+   * selected row, as `FileList.tsx` does): the commit
    * menu. `MenuEventLike`, not a real `MouseEvent`, since the keyboard path has none. Omitted:
    * the native menu shows (no menu system installed yet). */
   onContextMenu?: (e: MenuEventLike, row: RowPayload) => void;
   /** A right-click on one of the row's branch/tag label chips (the commit or tag menu, with that
    * label's own target). */
   onLabelContextMenu?: (e: MouseEvent<HTMLElement>, row: RowPayload, label: RefLabel) => void;
-  // --- 2C T9: double-clicks and the WIP row's menu ---
-  /** A double-click on a label chip (a branch checks out, spec #2 §9.3) or on the row (another
-   * worktree's WIP row becomes the active one, §11.2). */
+  // --- double-clicks and the WIP row's menu ---
+  /** A double-click on a label chip (a branch checks out) or on the row (another
+   * worktree's WIP row becomes the active one). */
   onLabelDoubleClick?: (row: RowPayload, label: RefLabel) => void;
   onRowDoubleClick?: (row: RowPayload) => void;
   /** A right-click on a WIP row (the `wip` menu kind). */
   onWipContextMenu?: (e: MenuEventLike, row: RowPayload) => void;
-  // --- end 2C T9 ---
-  /** HEAD's row only: the branch being rebased (2D T18). */
+  /** HEAD's row only: the branch being rebased. */
   rebasing?: string | null;
   /** A context menu is open for this row (a right-click on it or one of its chips): the
-   * temporary "context" outline, which never changes the selection (UX round 2). */
+   * temporary "context" outline, which never changes the selection. */
   context?: boolean;
   /** This row's inline editor (rowEditor.ts), shown in its Branch/Tag cell over the chips. */
   editor?: RowEditor;
@@ -219,20 +217,20 @@ const EDITOR_MIN_W = 200;
  * One virtual row. Memoized: its props are all stable across scroll events (rows, memoized
  * widths, label lists and membership objects, stable callbacks), so scrolling re-renders only
  * the view (as rows enter or leave the screen), not every row; a hover re-renders only the rows whose membership
- * chip appears or goes, and a branch focus (J22) only the rows whose `dimmed` changes.
+ * chip appears or goes, and a branch focus only the rows whose `dimmed` changes.
  * Settings › Theme's live preview draws its rows with it too (theme/editor/LivePreview.tsx).
  */
 export const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH, dpr, selected, cols, labels, membership, messages, onSelect, onHover, onCopySha, dimmed, onBranchHover, onContextMenu, onLabelContextMenu, onLabelDoubleClick, onRowDoubleClick, onWipContextMenu, rebasing = null, context = false, editor, badges, domId }: GraphRowProps) {
   const isWip = row.kind === 'wip';
   // A collapsed branch's ⋮ row: no commit behind it, so no menu, double-click or copy.
   const collapsed = row.kind === 'collapsed';
-  // A column at its minimum collapses its cells too (spec §8.4): icon-only chips, the avatar only.
+  // A column at its minimum collapses its cells too: icon-only chips, the avatar only.
   const authorAvatar = isCollapsed('author', cols.author);
   // The row-dim mechanism's classes, on the text cells only (never the chips or the graph): the
   // shared motion class plus the level's own colour class.
   const dim = dimmed ? ` ${ROW_DIM_CLASS} ${rowDimKindClass(dimmed)}` : '';
-  // The chip-to-node connector's line, on the device pixel rows the canvas strokes it on (K57):
-  // the checked-out branch's is a graph line (J21), 2 px.
+  // The chip-to-node connector's line, on the device pixel rows the canvas strokes it on:
+  // the checked-out branch's is a graph line, 2 px.
   const line = labels.length > 0 ? connectorLine(start, rowH, labels[0].isHead ? LINE_W : 1, dpr) : null;
   return (
     <div
@@ -245,8 +243,8 @@ export const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH
       // `top`, not `transform: translateY`: a transform would make each row its own
       // stacking context and trap the hover-expanded label chip under the canvas.
       style={{ top: start, height: rowH }}
-      // Only the primary button selects, with its modifiers (K27). A right-click opens the row's
-      // menu without touching the selection or the details panel (UX round 2): the row shows the
+      // Only the primary button selects, with its modifiers. A right-click opens the row's
+      // menu without touching the selection or the details panel: the row shows the
       // `context` outline instead while its menu is open.
       onMouseDown={(e) => {
         if (e.button === 0) onSelect(index, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
@@ -256,7 +254,7 @@ export const GraphRow = memo(function GraphRow({ row, repoId, index, start, rowH
       onContextMenu={collapsed ? undefined : (e) => (isWip ? onWipContextMenu : onContextMenu)?.(e, row)}
       onDoubleClick={onRowDoubleClick && !collapsed ? () => onRowDoubleClick(row) : undefined}
     >
-      {/* A hidden column (spec §8.4) has width 0 and no cell. */}
+      {/* A hidden column has width 0 and no cell. */}
       {cols.labels > 0 && (
         <span role="gridcell" data-col="labels" className="col-labels" style={{ width: cols.labels }} onMouseDown={onLabelsMouseDown}>
           {editor && (
@@ -319,13 +317,12 @@ export interface GraphViewProps {
    * receives it, and rows are memoized.
    */
   messages?: CommitMessageCache;
-  /** Controlled selection (plan 1B). Omitted: GraphView keeps its own, as in 1A. */
+  /** Controlled selection. Omitted: GraphView keeps its own. */
   selected?: number;
   /** Called on a click (`ctrl`: Ctrl or ⌘ held; `shift`: Shift held) or a keyboard move (Shift+↑/↓:
    * `shift`). Keep it stable (rows are memoized). */
   onSelect?: (index: number, mods: SelectMods) => void;
-  /** More selected rows, shown like `selected`: a compare's or multi-selection's (spec §9.4,
-   * K27). `selected` is the keyboard's position. Omitted: none. */
+  /** More selected rows, shown like `selected`: a compare's or multi-selection's. `selected` is the keyboard's position. Omitted: none. */
   alsoSelected?: ReadonlySet<number>;
   /** Keys GraphView doesn't handle itself (→, Enter, …). Return true if handled. */
   onUnhandledKey?: (key: string) => boolean;
@@ -333,21 +330,19 @@ export interface GraphViewProps {
   gridRef?: RefObject<HTMLDivElement | null>;
   gridProps?: HTMLAttributes<HTMLDivElement>;
   /**
-   * Rows whose text cells to dim, from outside (plan 1C Task 17's Ctrl+F:
-   * `dimAllBut(matches, 'filter')`). Combined with the branch-hover focus (J22) row by row, at
+   * Rows whose text cells to dim, from outside (Ctrl+F:
+   * `dimAllBut(matches, 'filter')`). Combined with the branch-hover focus row by row, at
    * the stronger level (`strongerDim`, rowDim.ts).
    */
   rowDim?: RowDim | null;
-  /** Plan 1C Task 15's commit and label (branch/tag) context menus. Keep both stable (rows are
+  /** The commit and label (branch/tag) context menus. Keep both stable (rows are
    * memoized). */
   onContextMenu?: (e: MenuEventLike, row: RowPayload) => void;
   onLabelContextMenu?: (e: MouseEvent<HTMLElement>, row: RowPayload, label: RefLabel) => void;
-  // --- 2C T9 ---
   onLabelDoubleClick?: (row: RowPayload, label: RefLabel) => void;
   onRowDoubleClick?: (row: RowPayload) => void;
   onWipContextMenu?: (e: MenuEventLike, row: RowPayload) => void;
-  // --- end 2C T9 ---
-  /** The branch a rebase in the active worktree replays: drawn at HEAD's row (2D T18). */
+  /** The branch a rebase in the active worktree replays: drawn at HEAD's row. */
   rebasing?: string | null;
   /** An inline editor open on one row (rowEditor.ts): GraphView only places it. */
   rowEditor?: RowEditor | null;
@@ -364,8 +359,8 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   const commitLimit = useAppState((s) => s.settings.commitLimit);
   const ownRef = useRef<HTMLDivElement>(null);
   const scrollRef = gridRef ?? ownRef;
-  // The last scroll offset while visible: restored when <Activity> shows the graph again
-  // (spec §10.1). A hidden (display: none) element loses its scroll position.
+  // The last scroll offset while visible: restored when <Activity> shows the graph again.
+  // A hidden (display: none) element loses its scroll position.
   const lastScroll = useRef(0);
   // The scroll offset as of the last change of the rows on screen (the avatar window below). Not
   // every scroll event's: the canvas follows the scroll on its own (GraphCanvas, band.ts), so a
@@ -376,7 +371,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   const [viewportH, setViewportH] = useState(0);
   const [viewportW, setViewportW] = useState(0);
   const prefs = useColumnPrefs((s) => s.prefs);
-  // The repo's hidden columns (spec §8.4), toggled from the header's `column` menu.
+  // The repo's hidden columns, toggled from the header's `column` menu.
   const hidden = useColumnPrefs((s) => s.hidden);
   useLayoutEffect(() => useColumnPrefs.getState().loadFor(repoId), [repoId]);
   const [ownSelected, setOwnSelected] = useState(-1);
@@ -403,7 +398,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
     const ref = onLabelDrop && e.target instanceof Element ? dragBranchOf(e.target) : null;
     if (ref) startBranchDrag(e, ref, e.currentTarget, labelDrop);
   };
-  // Display density (H1): row geometry for the rows, the virtualizer and the canvas. The cell
+  // Display density: row geometry for the rows, the virtualizer and the canvas. The cell
   // paddings and chip height are CSS variables on :root (theme/density.ts, read by graph.css).
   const metrics = useGraphMetrics();
   const dpr = useDevicePixelRatio();
@@ -411,13 +406,13 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   // Shared with the file menu (graphIndex.ts): computed once per payload.
   const labelsByRow = useMemo(() => labelsByRowOf(graph.labels), [graph.labels]);
   const labeledRows = useMemo(() => new Set(labelsByRow.keys()), [labelsByRow]);
-  // The checked-out branch's row: HEAD's label sorts first on its row (J21).
+  // The checked-out branch's row: HEAD's label sorts first on its row.
   const headRow = useMemo(() => [...labelsByRow].find(([, ls]) => ls[0]?.isHead)?.[0] ?? -1, [labelsByRow]);
   // Once per graph (linear): the branch each non-tip commit belongs to (F7).
   const membership = useMemo(() => membershipOf(graph.rows, labelsByRow, graph.pinnedRefs), [graph.rows, labelsByRow, graph.pinnedRefs]);
   const membershipRef = useRef(membership);
   membershipRef.current = membership;
-  // J22: a branch chip hovered for 500 ms dims the text of every row outside that branch (its
+  // A branch chip hovered for 500 ms dims the text of every row outside that branch (its
   // membership claims and tip), at the 'branch' level (the row-dim mechanism, rowDim.ts).
   const { refs: focusRefs, onBranchHover } = useBranchFocus();
   const hoverDim = useMemo(() => (focusRefs ? dimAllBut(branchRows(membership, labelsByRow, focusRefs), 'branch') : null), [focusRefs, membership, labelsByRow]);
@@ -442,12 +437,12 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   // Rendered column widths: the user's preferences, fitted to the scroll viewport's width
   // (columns.ts allocateColumns). Header cells, row cells and the canvas all read these.
   // Memoized so the (memoized) rows see the same object until a width actually changes.
-  // The Graph column never gets wider than its lanes need (F2): the chosen width is kept, and
+  // The Graph column never gets wider than its lanes need: the chosen width is kept, and
   // only clamped while it exceeds the current graph's max (a refresh or load more changes it).
   const graphMax = autoGraphWidth(graph.maxLanes, metrics);
   const graphW = Math.min(prefs.graph ?? graphMax, graphMax);
   const cols = useMemo(() => allocateColumns({ ...prefs, graph: graphW }, viewportW, hidden), [prefs, graphW, viewportW, hidden]);
-  // Narrower than its lanes (F2): the collapse zone packs the lanes that don't fit (F11), and the
+  // Narrower than its lanes: the collapse zone packs the lanes that don't fit, and the
   // column gets its own lane scrollbar over the lane area, unless no lane fits at all (the strip).
   const lanesW = lanesWidth(graph.maxLanes, metrics);
   const clipped = cols.graph < lanesW;
@@ -605,10 +600,10 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   }, [graph.rows.length, v, onSelect]);
 
   // The selection index last scrolled to. Before the refresh anchor below, which runs first: a
-  // refresh moves the selected commit's index, and the selection effect must not scroll to it (K78).
+  // refresh moves the selected commit's index, and the selection effect must not scroll to it.
   const shownSelection = useRef(selected);
-  // A refresh (repo-changed / refs-updated, plan 1C) replaces the rows: what's on screen stays
-  // where it was (spec §4.4 "keeps the selection and scroll position"). The selected commit is
+  // A refresh (repo-changed / refs-updated) replaces the rows: what's on screen stays
+  // where it was. The selected commit is
   // the anchor while it's on screen, else the top row. The selection itself follows its commit
   // id (the store's `setGraph`; below for the uncontrolled one). Also runs when <Activity> shows
   // the graph again after a refresh while it was hidden, from the scroll the effect above
@@ -680,8 +675,8 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
     }
   }, [selected, v]);
 
-  // The commit menu from the keyboard (the menu key, Shift+F10), at the selected row (fix round
-  // 1, item 4; `FileList.tsx`'s own pattern). A `MenuEventLike`, not a real `MouseEvent`: there's
+  // The commit menu from the keyboard (the menu key, Shift+F10), at the selected row (as
+  // `FileList.tsx` does). A `MenuEventLike`, not a real `MouseEvent`: there's
   // no click to build one from, so `openContextMenu` gets a small stand-in with the row's own
   // rect instead of a pointer position.
   const onGraphKeyDown = (e: KeyboardEvent) => {
@@ -695,7 +690,7 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    // A WIP row's draft box (K48) owns its keys; the grid's shortcuts never see them.
+    // A WIP row's draft box owns its keys; the grid's shortcuts never see them.
     if (isEditableTarget(e.target)) return;
     if (onGraphKeyDown(e)) {
       e.preventDefault();
@@ -722,8 +717,8 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
       return;
     }
     if (e.key in moves) {
-      // Shift+↑/↓ extend the range from the anchor (K27). With a diff open the change keys
-      // (J14) take them first, app-wide, and the graph is hidden anyway.
+      // Shift+↑/↓ extend the range from the anchor. With a diff open the change keys
+      //  take them first, app-wide, and the graph is hidden anyway.
       const shift = e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp');
       if (shift && e.defaultPrevented) return;
       e.preventDefault();
@@ -782,12 +777,12 @@ export function GraphView({ graph, repoId, messages, selected: controlled, alsoS
     <div className="graph-panel">
       {/* Outside the scroll container (so it stays put vertically), and translated by the
           table's scrollLeft so it tracks horizontal scrolling. */}
-      {/* Right-click: the `column` menu, to hide or show columns (spec §8.4). */}
+      {/* Right-click: the `column` menu, to hide or show columns. */}
       <div className="graph-header" onContextMenu={onHeaderMenu} onKeyDown={onHeaderKeyDown}>
         <div className="graph-header-inner" style={{ width: Math.max(cols.total, viewportW), transform: `translateX(${-scrollLeft}px)` }}>
-          {/* Every handle is on the right edge of the column it resizes (F3); SHA's is the table's last edge.
+          {/* Every handle is on the right edge of the column it resizes; SHA's is the table's last edge.
               A hidden column has no header cell, and a handle whose trade partner is hidden goes
-              too (columns.ts handleShown). At its minimum a column's title is its icon (§8.4). */}
+              too (columns.ts handleShown). At its minimum a column's title is its icon. */}
           {cols.labels > 0 && <span data-col="labels" style={{ width: cols.labels }}><HeaderCell col="labels" width={cols.labels} title="BRANCH / TAG" name="Branch / Tag" icon={GitBranch} /><ColumnResizer col="labels" name="Branch / Tag" cols={cols} available={viewportW} /></span>}
           <span data-col="graph" style={{ width: cols.graph }}><HeaderCell col="graph" width={cols.graph} title="GRAPH" name="Graph" icon={GitGraph} /><PinButton compact={cols.graph < PIN_FULL_MIN} /><ColumnResizer col="graph" name="Graph" cols={cols} available={viewportW} graphMax={graphMax} /></span>
           <span data-col="message" style={{ width: cols.message }}><HeaderCell col="message" width={cols.message} title="COMMIT MESSAGE" name="Commit message" icon={MessageSquare} />{handleShown('message', hidden) && <ColumnResizer col="message" name="Commit message" cols={cols} available={viewportW} />}</span>

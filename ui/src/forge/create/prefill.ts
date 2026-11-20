@@ -10,20 +10,20 @@ import type { MrDraft } from './draft';
 /** Where the MR/PR goes from and to. */
 export type Route = Pick<MrDraft, 'sourceRemote' | 'targetRemote' | 'targetBranch'>;
 
-/** Ruling 6: the only template; with several, the one named Default; else none. */
+/** The only template; with several, the one named Default; else none. */
 export function defaultTemplate(templates: readonly MrTemplate[]): MrTemplate | null {
   if (templates.length === 1) return templates[0];
   return templates.find((t) => t.name.toLowerCase() === 'default') ?? null;
 }
 
-/** Ruling 5: the first commit's body, a blank line, then the template. */
+/** The first commit's body, a blank line, then the template. */
 export function joinDescription(body: string, template: MrTemplate | null): string {
   return [body.trim(), template?.body.trim() ?? ''].filter(Boolean).join('\n\n');
 }
 
 export interface Toggle { value: boolean; locked: boolean; caption: string | null }
 
-/** GitLab's squash, from the project (spec #4 §2; ruling 10). */
+/** GitLab's squash, from the project. */
 export function squashToggle(s: ForgeProjectSettings): Toggle {
   switch (s.squash) {
     case 'always': return { value: true, locked: true, caption: 'This project always squashes' };
@@ -58,7 +58,7 @@ export function unpushedCount(local: LocalBranch | undefined, remote: RemoteBran
   return local.upstream === remote.fullName ? local.ahead : null;
 }
 
-/** Ruling 4: the branch below in a #3 stack (as it's pushed), else the project's default branch. */
+/** The branch below in a #3 stack (as it's pushed), else the project's default branch. */
 export function defaultTarget(branch: string, stack: Stack | null, locals: readonly LocalBranch[], remotes: readonly string[], projectDefault: string | null): string {
   const i = stack ? stack.branches.indexOf(branch) : -1;
   if (stack && i > 0) {
@@ -89,7 +89,7 @@ export function withTemplate(d: MrDraft, ctx: CreateContext, tpl: MrTemplate | n
 }
 
 /** The forge-neutral request: ids for people, the trimmed title, GitLab's squash only while the
- * project leaves it open (ruling 10). */
+ * project leaves it open. */
 export function createRequest(d: MrDraft, ctx: CreateContext, sourceBranch: string): CreateMr {
   const gitlab = ctx.project.kind === 'gitlab';
   return {
@@ -99,7 +99,7 @@ export function createRequest(d: MrDraft, ctx: CreateContext, sourceBranch: stri
   };
 }
 
-/** Why Create is disabled, or `null` (ruling 13). */
+/** Why Create is disabled, or `null`. */
 export function createBlocked(a: { draft: MrDraft; sourceBranch: string; onRemote: boolean; sourceProject: string; targetProject: string }): string | null {
   if (!a.onRemote) return `Push ${a.sourceBranch} to ${a.draft.sourceRemote} first`;
   if (a.sourceProject === a.targetProject && a.sourceBranch === a.draft.targetBranch) return `${a.sourceBranch} can't target itself`;

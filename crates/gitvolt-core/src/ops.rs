@@ -2,7 +2,7 @@
 //!
 //! An op is registered for as long as its `OpGuard` lives. `cancelOp` cancels its token (git is
 //! then killed as a process group, `GitCli::run`), and askpass looks the op up by the id in its
-//! environment to decide whether a credential prompt may reach the user (spec §5.4).
+//! environment to decide whether a credential prompt may reach the user.
 
 use crate::askpass::SshOffer;
 use crate::events::OpKind;
@@ -22,11 +22,11 @@ pub struct OpEntry {
     pub interactive: bool,
     pub cancel: CancellationToken,
     /// Each `cancelOp` press, also once the op is cancelled: a write's autostash step, which a
-    /// Cancel of the op itself doesn't stop, takes a press during it as Stop (spec #2 §6).
+    /// Cancel of the op itself doesn't stop, takes a press during it as Stop.
     pub stop_requested: tokio::sync::Notify,
     auth_denied: AtomicBool,
     prompt_cancelled: AtomicBool,
-    /// The remotes it talks to, in the order it does (a credential prompt's remote, spec §5.4).
+    /// The remotes it talks to, in the order it does (a credential prompt's remote).
     remotes: Mutex<Vec<OpRemote>>,
     /// The remotes whose credential prompt the user turned into "Use SSH instead".
     ssh_switches: Mutex<Vec<SshOffer>>,

@@ -1,4 +1,4 @@
-//! The write pipeline end to end (spec #2 §3.2), through the test-only intents.
+//! The write pipeline end to end, through the test-only intents.
 
 use super::test_intents::{self, TestIntent};
 use super::types::Expect;
@@ -105,7 +105,7 @@ async fn a_journaled_write_records_what_moved_and_announces_it() {
         })
         .unwrap();
     assert!(changed.0.contains(&ChangeKind::Refs));
-    assert_eq!(changed.1.values().next(), Some(&version), "the event carries the lists' version (K44)");
+    assert_eq!(changed.1.values().next(), Some(&version), "the event carries the lists' version");
 }
 
 #[tokio::test]
@@ -189,7 +189,7 @@ async fn a_write_never_recovers_pending_entries() {
     assert!(j.recovery.is_empty());
 }
 
-#[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+#[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (signing isn't supported on Windows yet)
 #[tokio::test]
 async fn a_snapshot_or_a_ref_edit_never_signs_but_a_commit_does() {
     let (r, c1, _) = repo();
@@ -282,7 +282,7 @@ async fn an_immediate_write_skips_the_queue() {
     assert_eq!(started_labels(&drain(&mut seen)), ["sleep 1", "discard file_0.txt", "sleep 2"], "it waits only for the running item's local phase");
 }
 
-/// Spec §3.6: the queue's order is the click order, even when each write's own reads (its
+/// The queue's order is the click order, even when each write's own reads (its
 /// worktree check) finish in another order.
 #[tokio::test]
 async fn queued_writes_run_in_click_order() {
@@ -311,7 +311,7 @@ async fn a_test_write_needs_a_write_guard() {
     assert!(r.try_git(&["rev-parse", "--verify", "-q", "refs/heads/z"]).is_err(), "nothing moved");
 }
 
-/// §5.4: a merge or rebase in progress refuses a write before anything runs; a bisect doesn't.
+/// A merge or rebase in progress refuses a write before anything runs; a bisect doesn't.
 #[tokio::test]
 async fn a_merge_in_progress_refuses_a_write_but_a_bisect_doesnt() {
     let (r, c1, _) = repo();
@@ -346,7 +346,7 @@ fn restart(data: &Path) -> Api {
     Api::new(GitCli::new(Arc::new(CommandLog::new(10))).with_env(isolated_git_env()), None).with_data_dir(data.to_path_buf())
 }
 
-/// I2: the main worktree's journal is recovered even when a linked worktree opens first.
+/// The main worktree's journal is recovered even when a linked worktree opens first.
 #[tokio::test]
 async fn the_main_worktrees_journal_is_recovered_whichever_worktree_opens_first() {
     let r = TestRepo::new();
@@ -361,7 +361,7 @@ async fn the_main_worktrees_journal_is_recovered_whichever_worktree_opens_first(
     assert_eq!(state.banners.iter().map(|b| (b.kind, b.label.as_str())).collect::<Vec<_>>(), [(crate::journal::BannerKind::Recovery, "discard file_0.txt")]);
 }
 
-/// I4: recovery leaves a live owner's pending entry (another instance's write in flight) alone
+/// Recovery leaves a live owner's pending entry (another instance's write in flight) alone
 /// and takes a dead one's.
 #[tokio::test]
 async fn recovery_skips_a_live_owners_pending_entry() {
@@ -401,7 +401,6 @@ async fn the_watchers_echo_of_a_write_is_absorbed() {
     assert_eq!(changed, 1, "the write's own repoChanged, and no second one from the watcher");
 }
 
-/// Review Focus 1.
 #[tokio::test]
 async fn a_write_in_a_linked_worktree_uses_that_worktrees_journal_and_lists() {
     let r = TestRepo::new();
@@ -421,7 +420,7 @@ async fn a_write_in_a_linked_worktree_uses_that_worktrees_journal_and_lists() {
     assert!(journal(data.path(), &r).undo.is_empty(), "the main worktree's journal is untouched");
 }
 
-/// Review Focus 5, with T8 review 2's rule: a Cancel never stops the queue.
+/// A Cancel never stops the queue.
 #[tokio::test(flavor = "multi_thread")]
 async fn cancelling_a_write_mid_hook_leaves_no_lock_and_no_pending_entry() {
     let (r, _, _) = repo();
@@ -446,7 +445,7 @@ async fn cancelling_a_write_mid_hook_leaves_no_lock_and_no_pending_entry() {
     assert!(api.repo_writes(&api.handle(id).unwrap()).queue.state().stopped.is_none(), "a Cancel never stops the queue");
 }
 
-/// §17.1 queue: "commit then push pushes the new commit"; an outside move between items is RefMoved.
+/// Queue: "commit then push pushes the new commit"; an outside move between items is RefMoved.
 #[tokio::test]
 async fn expect_is_carried_forward_and_an_outside_move_between_items_is_ref_moved() {
     let (r, c1, c2) = repo();
@@ -493,7 +492,7 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Deviation 1: the token is the type-level guard; this pins where writes are built.
+/// The token is the type-level guard; this pins where writes are built.
 #[test]
 fn only_the_write_pipeline_and_the_journal_build_write_invocations() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -538,7 +537,7 @@ async fn hook_output_lines_are_redacted_before_they_are_emitted() {
     }
 }
 
-// --- 2D T1: network phases ---
+// --- network phases ---
 
 /// Waits for `line` in op `op`'s Activity output.
 async fn output_line(rx: &mut broadcast::Receiver<AppEvent>, op: u64, line: &str) {
@@ -556,7 +555,7 @@ async fn output_line(rx: &mut broadcast::Receiver<AppEvent>, op: u64, line: &str
     .unwrap_or_else(|_| panic!("never saw {line:?}"));
 }
 
-/// Spec #2 §3.5: a network transfer holds only the queue's running slot, never the write lock
+/// A network transfer holds only the queue's running slot, never the write lock
 /// or the watcher hold. A discard (immediate) runs during it, and the next queued item still
 /// waits for it. Both shapes: pull's fetch-first and push's mid-run transfer.
 #[tokio::test]
@@ -580,7 +579,6 @@ async fn a_transfer_holds_only_the_queue_slot() {
         assert_eq!(t.unwrap_err().kind, GbErrorKind::Cancelled);
         after.unwrap_or_else(|e| panic!("a Cancel of the running item never stops the queue: {e:?}"));
         assert_eq!(started_labels(&drain(&mut seen)), ["push x", "discard file_0.txt", "after"], "first: {first}");
-        // (2C T1's network-step test, merged in here.)
         assert!(w.lock.try_lock().is_ok(), "a cancelled transfer relocked, then released at the end (first: {first})");
     }
 }
@@ -597,12 +595,11 @@ async fn a_finished_transfer_relocks_before_verify() {
     let w = api.repo_writes(&api.handle(id).unwrap());
     assert!(w.lock.try_lock().is_ok(), "released at the end");
 }
-// --- end 2D T1 ---
 
-// --- 2D T2: the pause ---
+// --- the pause ---
 
 /// main and feature both change c.txt (a conflict); d.txt has an uncommitted change, which a
-/// merge autostashes (§6.1: any tracked change). Returns main's tip.
+/// merge autostashes (any tracked change). Returns main's tip.
 fn conflicting() -> (TestRepo, String) {
     let r = TestRepo::new();
     r.git(&["config", "user.name", "Ada Lovelace"]);
@@ -626,8 +623,8 @@ async fn settle(api: &Api, id: u32, wt: &Path) -> serde_json::Value {
     api.dispatch(Request::SettlePaused { repo: id, worktree: crate::platform::fs::canonicalize(wt).unwrap().display().to_string() }).await.unwrap()
 }
 
-/// §13.2: a merge that stops on conflicts keeps its entry and autostash waiting, and the Commit
-/// that completes it makes one undoable step (Deviation 3).
+/// A merge that stops on conflicts keeps its entry and autostash waiting, and the Commit
+/// that completes it makes one undoable step.
 #[tokio::test]
 async fn a_stopped_merge_waits_then_its_commit_completes_one_entry() {
     let (r, main_tip) = conflicting();
@@ -657,7 +654,7 @@ async fn a_stopped_merge_waits_then_its_commit_completes_one_entry() {
     assert_eq!(r.git(&["rev-list", "--count", "--merges", "HEAD"]), "1");
 }
 
-/// Review Focus 2: aborted in a terminal while paused, the next settle restores the autostash
+/// Aborted in a terminal while paused, the next settle restores the autostash
 /// and drops the entry (nothing moved).
 #[tokio::test]
 async fn an_outside_abort_settles_and_restores_the_autostash() {
@@ -675,7 +672,7 @@ async fn an_outside_abort_settles_and_restores_the_autostash() {
     assert!(j.kept.is_empty());
 }
 
-/// Review Focus 3: a restart while paused isn't a crash. The entry stays paused (no recovery
+/// A restart while paused isn't a crash. The entry stays paused (no recovery
 /// banner), and completion after the restart still restores the autostash.
 #[tokio::test]
 async fn a_paused_entry_survives_a_restart_and_completes() {
@@ -700,9 +697,9 @@ async fn a_paused_entry_survives_a_restart_and_completes() {
     assert_eq!(journal(data.path(), &r).undo[0].state, crate::journal::EntryState::Done);
 }
 
-/// Review I1: aborted outside GitVolt, the pause settles before the next write runs: that
+/// Aborted outside GitVolt, the pause settles before the next write runs: that
 /// write's own move isn't recorded on the merge entry, and the autostash comes back first.
-/// Review N3: that write then fails Stale (the worktree changed under what the user saw), and
+/// That write then fails Stale (the worktree changed under what the user saw), and
 /// its retry runs.
 #[tokio::test]
 async fn an_outside_abort_settles_before_the_next_write_runs() {
@@ -724,7 +721,7 @@ async fn an_outside_abort_settles_before_the_next_write_runs() {
     assert!(j.kept.is_empty());
 }
 
-/// Review I1: a new merge that stops after an outside abort settles the old pause first: one
+/// A new merge that stops after an outside abort settles the old pause first: one
 /// paused entry, one waiting autostash.
 #[tokio::test]
 async fn a_new_merge_after_an_outside_abort_settles_the_old_pause_first() {
@@ -747,7 +744,7 @@ async fn a_new_merge_after_an_outside_abort_settles_the_old_pause_first() {
     assert_eq!(r.git(&["stash", "list"]).lines().count(), 1);
 }
 
-/// Review M2: aborted, then committed in a terminal: not a completed merge, so the terminal
+/// Aborted, then committed in a terminal: not a completed merge, so the terminal
 /// commit isn't recorded as the merge's move (Undo would rewind it).
 #[tokio::test]
 async fn an_outside_abort_then_commit_is_not_recorded_as_the_merge() {
@@ -762,4 +759,3 @@ async fn an_outside_abort_then_commit_is_not_recorded_as_the_merge() {
     assert!(j.undo.is_empty(), "treated as an abort: {:?}", j.undo);
     assert_eq!(std::fs::read_to_string(r.path().join("d.txt")).unwrap(), "dirty\n");
 }
-// --- end 2D T2 ---

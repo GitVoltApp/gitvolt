@@ -1,8 +1,8 @@
-//! Read-only pre-checks (spec #2 §3.4, §6).
+//! Read-only pre-checks.
 //!
 //! Which paths an operation touches, which are dirty, and whether restoring an autostash would
 //! conflict. They never write to the repository: gix reads, `git status` with the never-write
-//! environment, and `git merge-file -p` on temp copies (Deviation 3).
+//! environment, and `git merge-file -p` on temp copies.
 
 use crate::error::{gix_err, GbError};
 use crate::git::{GitCli, GitInvocation};
@@ -20,7 +20,6 @@ pub(crate) fn tree_diff_paths(repo: &gix::Repository, from: ObjectId, to: Object
     Ok(tree_diff(repo, from, to)?.paths)
 }
 
-// --- 2C repo-safety ---
 /// A tree diff `from..to`: the paths, and what the two trees hold at them, from the diff's own
 /// records (no lookups), as bytes (a non-UTF-8 name must reach the disk check as it is).
 pub(crate) struct TreeDiff {
@@ -33,7 +32,7 @@ pub(crate) struct TreeDiff {
     pub from_gitlinks: BTreeSet<BString>,
 }
 
-/// `from` and `to` are each a commit or a tree (2D T14: a merge's predicted tree).
+/// `from` and `to` are each a commit or a tree (a merge's predicted tree).
 pub(crate) fn tree_diff(repo: &gix::Repository, from: ObjectId, to: ObjectId) -> Result<TreeDiff, GbError> {
     let tree = |c: ObjectId| -> Result<gix::Tree<'_>, GbError> { repo.find_object(c).map_err(gix_err)?.peel_to_tree().map_err(gix_err) };
     let (a, b) = (tree(from)?, tree(to)?);
@@ -61,7 +60,6 @@ pub(crate) fn tree_diff(repo: &gix::Repository, from: ObjectId, to: ObjectId) ->
     }
     Ok(diff)
 }
-// --- end 2C repo-safety ---
 
 #[derive(Debug, Default)]
 pub(crate) struct Dirty {
@@ -114,11 +112,11 @@ fn blob(repo: &gix::Repository, tree: Option<&gix::Tree<'_>>, path: &str) -> Opt
     Some(repo.find_object(entry.object_id()).ok()?.data.clone())
 }
 
-/// The paths of `paths` whose autostash restore onto `target` would conflict (§6.2): a three-way
+/// The paths of `paths` whose autostash restore onto `target` would conflict: a three-way
 /// merge of HEAD's version (base), the target's (ours) and the current bytes (theirs).
 pub(crate) async fn predict_conflicts(cli: &GitCli, root: &Path, tmp: &Path, target: ObjectId, paths: &[String]) -> Result<Vec<String>, GbError> {
     type Sides = (String, Option<Vec<u8>>, Option<Vec<u8>>);
-    // --- 2C T5: the staged side (review I2) ---
+    // --- the staged side ---
     let (sides, staged): (Vec<Sides>, Vec<String>) = {
         let repo = gix::open(root).map_err(gix_err)?;
         let head = repo.head_commit().ok().and_then(|c| c.tree().ok());
@@ -128,7 +126,6 @@ pub(crate) async fn predict_conflicts(cli: &GitCli, root: &Path, tmp: &Path, tar
         let staged = paths.iter().filter(|p| index.entry_by_path(p.as_str().into()).map(|e| e.id) != head_id(p)).cloned().collect();
         (paths.iter().map(|p| (p.clone(), blob(&repo, head.as_ref(), p), blob(&repo, Some(&theirs_tree), p))).collect(), staged)
     };
-    // --- end 2C T5 ---
     let dir = tempfile::Builder::new().prefix("predict-").tempdir_in(tmp)?;
     let mut out = Vec::new();
     for (path, base, ours) in sides {
@@ -152,18 +149,17 @@ pub(crate) async fn predict_conflicts(cli: &GitCli, root: &Path, tmp: &Path, tar
             out.push(path);
         }
     }
-    // --- 2C T5: the staged side (review I2) ---
+    // --- the staged side ---
     let pending: Vec<String> = staged.into_iter().filter(|p| !out.contains(p)).collect();
     let refused = index_refused(cli, root, dir.path(), target, &pending).await?;
     if !refused.is_empty() {
         out.extend(refused);
         out.sort_by_key(|p| paths.iter().position(|q| q == p));
     }
-    // --- end 2C T5 ---
     Ok(out)
 }
 
-// --- 2C T5: the staged side (review I2) ---
+// --- the staged side ---
 /// The staged paths whose index part `git stash apply --index` would refuse on `target`. git
 /// re-applies the stash's HEAD→index diff with `apply --cached`, which needs exact context (no
 /// three-way fallback): a staged edit near a line the target changes is refused even where the
@@ -176,7 +172,7 @@ async fn index_refused(cli: &GitCli, root: &Path, dir: &Path, target: ObjectId, 
     let index = dir.join("target-index");
     let target_hex = target.to_string();
     cli.run(GitInvocation::new(root, ["read-tree", target_hex.as_str()]).env("GIT_INDEX_FILE", &index)).await?;
-    // All of them in one check first; only a refusal is narrowed down path by path (re-review N2).
+    // All of them in one check first; only a refusal is narrowed down path by path.
     if apply_check(cli, root, &index, staged).await? {
         return Ok(Vec::new());
     }
@@ -190,7 +186,7 @@ async fn index_refused(cli: &GitCli, root: &Path, dir: &Path, target: ObjectId, 
 }
 
 /// Whether `paths`' HEAD→index patch applies to the index at `index`. The patch is the one
-/// stash builds (re-review M2): plumbing `diff-index`, which reads none of the porcelain `diff.*`
+/// stash builds: plumbing `diff-index`, which reads none of the porcelain `diff.*`
 /// config, with the context, algorithm, prefixes and submodule format pinned besides.
 async fn apply_check(cli: &GitCli, root: &Path, index: &Path, paths: &[String]) -> Result<bool, GbError> {
     let args = ["diff-index", "--cached", "-p", "--binary", "-U3", "--inter-hunk-context=0", "--diff-algorithm=myers", "--no-ext-diff", "--no-textconv", "--no-renames", "--submodule=short", "--src-prefix=a/", "--dst-prefix=b/", "HEAD", "--"].into_iter().map(String::from).chain(paths.iter().cloned());
@@ -201,10 +197,9 @@ async fn apply_check(cli: &GitCli, root: &Path, index: &Path, paths: &[String]) 
     let check = GitInvocation::new(root, ["apply", "--cached", "--check"]).env("GIT_INDEX_FILE", index).stdin(patch);
     Ok(cli.run(check).await.is_ok())
 }
-// --- end 2C T5 ---
 
 /// The ignored (untracked, excluded) ones among `paths`: a restore overwrites them too, and
-/// `stash -u` leaves them out (review n5).
+/// `stash -u` leaves them out.
 pub(crate) async fn ignored_among(cli: &GitCli, root: &Path, paths: &[String]) -> Result<Vec<String>, GbError> {
     if paths.is_empty() {
         return Ok(Vec::new());
@@ -214,7 +209,7 @@ pub(crate) async fn ignored_among(cli: &GitCli, root: &Path, paths: &[String]) -
     Ok(out.stdout.split(|b| *b == 0).filter(|s| !s.is_empty()).map(|s| String::from_utf8_lossy(s).into_owned()).collect())
 }
 
-// --- 2C T7: untracked among (moved from the test intents) ---
+// --- untracked among (moved from the test intents) ---
 /// The untracked (not ignored) ones among `paths`: a read, with the never-write environment.
 pub(crate) async fn untracked_among(cli: &GitCli, root: &Path, paths: &[String]) -> Result<Vec<String>, GbError> {
     if paths.is_empty() {
@@ -224,7 +219,6 @@ pub(crate) async fn untracked_among(cli: &GitCli, root: &Path, paths: &[String])
     let out = cli.run(GitInvocation::new(root, args).env("GIT_LITERAL_PATHSPECS", "1")).await?;
     Ok(out.stdout.split(|b| *b == 0).filter(|s| !s.is_empty()).map(|s| String::from_utf8_lossy(s).into_owned()).collect())
 }
-// --- end 2C T7 ---
 
 /// A worktree file as git would store it: its blob id through the clean filters, and its kind.
 type Stored = (ObjectId, gix::objs::tree::EntryKind);
@@ -299,16 +293,15 @@ pub(crate) async fn changed_since(cli: &GitCli, root: &Path, snap: &crate::journ
         .iter()
         .zip(wants)
         .zip(have_file)
-        // --- 2B T4: a gitlink is index-only (its worktree is another repository's) ---
+        // --- a gitlink is index-only (its worktree is another repository's) ---
         .filter(|((_, w), have)| w.index != w.have_index || (!matches!(w.file, Some((_, EntryKind::Commit))) && norm(w.file) != norm(*have)))
-        // --- end 2B T4 ---
         .map(|((p, _), _)| p.clone())
         .collect())
 }
 
-// --- 2C T1: ancestry counts and worktree display paths ---
-/// Commits in `a` not in `b`, and in `b` not in `a` (Deviation 11: one `rev-list` read).
-#[allow(dead_code)] // first reader: 2C T5 (diverged)
+// --- ancestry counts and worktree display paths ---
+/// Commits in `a` not in `b`, and in `b` not in `a` (one `rev-list` read).
+#[allow(dead_code)] // first reader: diverged
 pub(crate) async fn ahead_behind(cli: &GitCli, root: &Path, a: &str, b: &str) -> Result<(u32, u32), GbError> {
     let range = format!("{a}...{b}");
     let out = cli.run(GitInvocation::new(root, ["rev-list", "--left-right", "--count", range.as_str(), "--"])).await?;
@@ -318,49 +311,48 @@ pub(crate) async fn ahead_behind(cli: &GitCli, root: &Path, a: &str, b: &str) ->
 }
 
 /// Commits of `branch` that aren't in `into` (git's `branch -d` "not fully merged").
-#[allow(dead_code)] // first reader: 2C T4 (unmerged)
+#[allow(dead_code)] // first reader: unmerged
 pub(crate) async fn commits_not_in(cli: &GitCli, root: &Path, branch: &str, into: &str) -> Result<u32, GbError> {
     let range = format!("{into}..{branch}");
     let out = cli.run(GitInvocation::new(root, ["rev-list", "--count", range.as_str(), "--"])).await?;
     Ok(String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0))
 }
 
-/// How the UI names a worktree (spec #2 §9.3, §11.1): `../shop-feature-x` beside the main
+/// How the UI names a worktree: `../shop-feature-x` beside the main
 /// worktree, else its absolute path.
-#[allow(dead_code)] // first readers: 2C T5, T8
+#[allow(dead_code)]
 pub(crate) fn display_worktree(main_root: &Path, wt: &Path) -> String {
     match (main_root.parent(), wt.parent(), wt.file_name()) {
         (Some(a), Some(b), Some(name)) if a == b && main_root != wt => format!("../{}", name.to_string_lossy()),
         _ => wt.display().to_string(),
     }
 }
-// --- end 2C T1 ---
 
-// --- 2C T6: repositories in the way ---
-// (2C repo-safety: one check for every move of the working tree.)
+// --- repositories in the way ---
+// (One check for every move of the working tree.)
 //
 // Git writes a file of the target where the disk has a directory by removing the directory
 // whole, `.git` included (`remove_subtree` in `checkout_entry`; `checkout-index -f` too), and a
 // two-way merge takes a gitlink as always up to date: no question, and nothing a snapshot can
-// carry (2C T6 review C2, C3, C4, C5). A repository is in the way where the target holds a file
+// carry. A repository is in the way where the target holds a file
 // (a blob or a symlink; a gitlink only makes its directory, and a tree just descends into one) at
 // a path the disk has as a directory (no symlink followed on the way: git writes through none),
 // and that directory
 // - holds a `.git` entry at any depth, [`dot_git_within`]: a directory, a gitdir-link file or a
 //   symlink, valid or not (a broken gitfile, a damaged `.git` folder: git itself wouldn't list
-//   them, and would delete them; 2B T4 re-review N1);
+//   them, and would delete them);
 // - or holds a populated gitlink of the index or of `from`'s tree, at it or under it (an
 //   unpopulated one is an empty directory git just removes).
 //
-// A symlink at the path isn't a directory (2B T4 re-review N3): git replaces the link, and
+// A symlink at the path isn't a directory: git replaces the link, and
 // whatever it points at stays. [`others_under`] then lists what else such a directory holds
 // (the untracked files git deletes with it), a git read per such directory; nothing is paid
 // when no file of the target lands on a directory.
 //
 // Which paths to look at is the caller's: the tree diff for a two-way move (`git switch`,
 // `merge --ff-only`, `read-tree -m -u`), the tree diff ∪ the dirty tracked paths for `reset
-// --hard` (it works from the index: a staged gitlink where HEAD and the target agree, C4), a
-// snapshot's own paths for a restore (C5), and a discard's restored paths ([`repo_at`], 2B T4).
+// --hard` (it works from the index: a staged gitlink where HEAD and the target agree), a
+// snapshot's own paths for a restore, and a discard's restored paths ([`repo_at`]).
 
 /// The gitlinks of the index, as byte paths.
 pub(crate) fn index_gitlinks(index: &gix::index::File) -> BTreeSet<BString> {
@@ -424,8 +416,8 @@ pub(crate) fn dot_git_within(root: &Path, rel: &[u8]) -> Option<BString> {
     None
 }
 
-/// A repository stands at `path`, or inside it: the one-path form of [`repos_at`] for a discard
-/// (2B T4), whose writes are the worktree against the index, not a tree diff. Writing a file
+/// A repository stands at `path`, or inside it: the one-path form of [`repos_at`] for a discard,
+/// whose writes are the worktree against the index, not a tree diff. Writing a file
 /// there would delete it, its history and its uncommitted work, which no snapshot carries.
 pub(crate) fn repo_at(root: &Path, path: &str) -> bool {
     dir_on_disk(root, path.as_bytes()) && dot_git_within(root, path.as_bytes()).is_some()
@@ -443,7 +435,7 @@ pub(crate) struct InTheWay {
 
 impl InTheWay {
     /// The index entries at or under `dirs` (what a move removes with the directory: a staged-new
-    /// file, review M1; what a restore leaves broken, I2), lossy for a pathspec.
+    /// file; what a restore leaves broken), lossy for a pathspec.
     pub(crate) fn indexed_under(&self, index: &gix::index::File) -> Vec<String> {
         if self.dirs.is_empty() {
             return Vec::new();
@@ -529,9 +521,9 @@ pub(crate) struct MoveCheck {
     /// The repositories it would delete whole (see above), sorted: refused.
     pub repos: Vec<String>,
     /// The index entries under such a directory (a clean staged-new file): git removes them
-    /// with it, with no refusal (safety review M1). Touched, for the autostash.
+    /// with it, with no refusal. Touched, for the autostash.
     pub swept: Vec<String>,
-    /// The ignored files under such a directory: git deletes them without asking (M2). Only an
+    /// The ignored files under such a directory: git deletes them without asking. Only an
     /// `--all` stash carries them.
     pub ignored: Vec<String>,
     /// The tree diff the check scanned, for the autostash plan to reuse (`AutostashSpec::moved`).
@@ -579,7 +571,7 @@ pub(crate) async fn check_move(cli: &GitCli, root: &Path, from: ObjectId, to: Ob
     check_landing(cli, root, from, to, false).await
 }
 
-/// The check for a merge of `theirs` into `ours` (safety review 2 N2): the files that land are
+/// The check for a merge of `theirs` into `ours`: the files that land are
 /// the ones `theirs` changed since the merge base (a fast-forward is the two-way move itself),
 /// so the diff is `merge_base(ours, theirs)..theirs`. The merge's two-way checkout writes them
 /// over whatever stands at them. Without a merge base, `ours..theirs`.
@@ -620,7 +612,7 @@ pub(crate) fn files_in<'a>(tree: &gix::Tree<'_>, paths: impl IntoIterator<Item =
     Ok(out)
 }
 
-/// C1 of the safety review: `git stash push --include-untracked` ends in a `reset --hard`
+/// `git stash push --include-untracked` ends in a `reset --hard`
 /// that writes HEAD's file over a directory standing at a dirty tracked path, deleting a
 /// repository in it whole (a clone in place of the file, a staged clone at it, a `git init`
 /// in it). The check is HEAD's files among `tracked` (the dirty tracked paths), restricted to
@@ -643,7 +635,7 @@ pub(crate) async fn stash_push_in_the_way(cli: &GitCli, root: &Path, tracked: &B
     finish(cli, root, scan).await
 }
 
-/// C2 of the safety review: `git stash apply` checks its merge out as a two-way move from HEAD,
+/// `git stash apply` checks its merge out as a two-way move from HEAD,
 /// writing the stash's files over whatever stands at them (a populated gitlink HEAD has there,
 /// a directory with a `git init` or an ignored clone in it). The files are the ones the stash
 /// changed, against its base: W's, I's, and U's untracked ones. Sorted.
@@ -701,7 +693,6 @@ pub(crate) async fn refuse_repos_in_the_way_of_merge(cli: &GitCli, root: &Path, 
         None => Ok(check),
     }
 }
-// --- end 2C T6 ---
 
 #[cfg(test)]
 mod tests {
@@ -780,7 +771,7 @@ mod tests {
         assert_eq!(std::fs::read(r.path().join(".git/index")).unwrap(), before, "a prediction writes nothing");
     }
 
-    // --- 2C T5: the staged side (review I2) ---
+    // --- the staged side ---
     /// `stash apply --index` re-applies the staged diff with exact context: line 1 staged and the
     /// target changing line 3 is refused, though the worktree merge is clean.
     #[tokio::test]
@@ -807,7 +798,7 @@ mod tests {
         r.write("f.txt", &lines(20, Some((15, "mine"))));
         r.git(&["add", "f.txt"]);
         assert!(predict_conflicts(&cli(), r.path(), tmp.path(), other, &["f.txt".into()]).await.unwrap().is_empty(), "far: clean");
-        // Re-review M2: the user's diff config doesn't change the prediction. With 8 lines of
+        // The user's diff config doesn't change the prediction. With 8 lines of
         // context, line 9 staged would reach the target's line 3; stash's patch has 3, so it applies.
         r.git(&["config", "diff.context", "8"]);
         r.git(&["config", "diff.algorithm", "patience"]);
@@ -818,9 +809,8 @@ mod tests {
         r.git(&["add", "f.txt"]);
         assert_eq!(predict_conflicts(&cli(), r.path(), tmp.path(), other, &["f.txt".into()]).await.unwrap(), ["f.txt"], "within 3 lines: refused");
     }
-    // --- end 2C T5 ---
 
-    // --- 2C T1: ancestry counts and worktree display paths ---
+    // --- ancestry counts and worktree display paths ---
     #[tokio::test]
     async fn ahead_behind_and_commits_not_in_count_both_sides() {
         let r = crate::testing::TestRepo::new();
@@ -842,10 +832,8 @@ mod tests {
         assert_eq!(display_worktree(Path::new("/r/shop"), Path::new("/elsewhere/wt")), "/elsewhere/wt");
         assert_eq!(display_worktree(Path::new("/r/shop"), Path::new("/r/shop")), "/r/shop");
     }
-    // --- end 2C T1 ---
 
-    // --- 2C repo-safety ---
-    /// 2B T4 re-review N1 and N3: a `.git` of any kind, at any depth, valid or not, makes a
+    /// A `.git` of any kind, at any depth, valid or not, makes a
     /// directory in the way a repository; a symlink at the path, or on the way to it, doesn't.
     #[test]
     fn any_dot_git_at_any_depth_is_in_the_way_and_a_symlink_at_the_path_is_not() {
@@ -873,7 +861,7 @@ mod tests {
         let scan = check("d");
         assert!(scan.repos.is_empty() && scan.dirs == [BString::from("d")], "{scan:?}");
         assert!(!repo_at(r.path(), "d"));
-        // N3: a symlink at the path to a folder holding a repository: git replaces the link.
+        // A symlink at the path to a folder holding a repository: git replaces the link.
         // (Unix only: folder symlinks.)
         #[cfg(unix)]
         {
@@ -894,7 +882,7 @@ mod tests {
         }
     }
 
-    /// Safety review M4: a directory whose name isn't UTF-8 reaches the disk check as its bytes,
+    /// A directory whose name isn't UTF-8 reaches the disk check as its bytes,
     /// so a repository in it is found (a lossy name would have missed the path).
     #[cfg(all(unix, not(target_os = "macos")))] // non-UTF-8 file names: not on Windows, and APFS refuses them (EILSEQ)
     #[test]
@@ -910,6 +898,5 @@ mod tests {
         assert_eq!(scan.repos.into_iter().collect::<Vec<_>>(), ["d\u{FFFD}/sub"]);
         assert!(!dir_on_disk(r.path(), "d\u{FFFD}".as_bytes()), "the lossy name is another path");
     }
-    // --- end 2C repo-safety ---
 }
 

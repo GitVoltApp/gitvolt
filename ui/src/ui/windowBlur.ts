@@ -1,5 +1,5 @@
 /**
- * A blur that only means the WINDOW lost focus, not that the user moved on (K41/K24). Under
+ * A blur that only means the WINDOW lost focus, not that the user moved on. Under
  * GNOME, mutter answers every mouse press with WM_TAKE_FOCUS and GitVolt's CEF host refocuses
  * its browser (vendor/tauri-runtime-cef platform/linux/focus.rs), so the page sees a window blur
  * then a focus a few ms later — and the focused element gets a `blur` in between. An input that

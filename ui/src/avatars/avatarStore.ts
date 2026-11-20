@@ -225,7 +225,7 @@ export function createAvatarStore(fetchAvatar: (email: string, repo?: number, na
 
 /**
  * The app's avatars (details panel and graph nodes share them): Gravatar, fetched and
- * disk-cached by the backend (spec §14.3). Initials show until, or unless, one arrives.
+ * disk-cached by the backend. Initials show until, or unless, one arrives.
  */
 export const avatars = createAvatarStore((...ask) => api.avatar(...ask));
 

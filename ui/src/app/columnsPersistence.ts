@@ -4,7 +4,7 @@ import { useAppState } from './state';
 let installed = false;
 
 /**
- * Plugs the graph's per-repo column seams (spec §8.4) into the active profile: `repoId` is the
+ * Plugs the graph's per-repo column seams into the active profile: `repoId` is the
  * canonical repo path, and `repos[path]` keeps the widths (`columns`, SHA included) and the
  * hidden columns (`hiddenColumns`). Called once at startup. A profile switch drops the widths the
  * graph holds, so the next graph loads the new profile's.

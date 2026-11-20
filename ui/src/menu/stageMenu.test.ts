@@ -19,7 +19,7 @@ const target = (wip: FileTarget['wip']) => ({ path: 'a.txt', root: '/r', sha: nu
 const env = { openers: { list: [], error: null, last: null }, forge: () => null, act: {} } as unknown as MenuEnv;
 const labels = (t: FileTarget) => buildMenu('file', t, env).flatMap((r) => (r.kind === 'action' ? [r.label] : []));
 
-describe('the WIP file menu (spec #2 §7.1)', () => {
+describe('the WIP file menu', () => {
   it('an unstaged file: Stage and Discard changes first; a staged one: Unstage; elsewhere: neither', () => {
     expect(labels(target({ worktree: '/r', staged: false, oldPath: null, status: 'M' })).slice(0, 2)).toEqual(['Stage', 'Discard changes…']);
     expect(labels(target({ worktree: '/r', staged: true, oldPath: null, status: 'M' }))[0]).toBe('Unstage');

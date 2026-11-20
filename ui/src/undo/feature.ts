@@ -23,7 +23,7 @@ const shortRef = (name: string) => name.replace(/^refs\/(heads|remotes|tags)\//,
 const isRef = (v: string | null) => !!v && v.startsWith('refs/');
 const short = (v: string | null) => (!v ? 'nothing' : isRef(v) ? shortRef(v) : v.slice(0, 7));
 
-/** §5.4's prompt: "main moved since commit "Fix x" (it's at 1a2b3c, not 4d5e6f). Undoing moves
+/** The prompt: "main moved since commit "Fix x" (it's at 1a2b3c, not 4d5e6f). Undoing moves
  * it to 7a8b9c and drops the 2 commits made since." A snapshot restore never moves HEAD
  * (`stays`): "HEAD moved since discard a.php (it's on feature, not main). Undoing leaves HEAD
  * there and restores the files over it." */
@@ -38,19 +38,18 @@ export function movedText(label: string, refs: MovedRef[]): string {
     .join(' ');
 }
 
-/** Ctrl+Z belongs to whatever has its own undo (spec #2 §5.5, §7.6): a text input, a textarea,
+/** Ctrl+Z belongs to whatever has its own undo: a text input, a textarea,
  * an editable Monaco (any Monaco is in the diff or File view), the diff view, the WIP file list. */
 export function ownsUndo(target: EventTarget | null): boolean {
   const el = target instanceof Element ? target : null;
   if (!el) return false;
-  // 2D T20: the merge tool's panel too (its own undo is the output's).
+  // The merge tool's panel too (its own undo is the output's).
   if (el.closest('input, textarea, [contenteditable="true"], [contenteditable=""], .monaco-editor, .diff-panel, .merge-panel')) return true;
   const list = el.closest('.file-list');
   return !!list && !!list.closest('.details-panel')?.querySelector('[data-testid="wip-header"]');
 }
 
-// Keyed to the tab's active worktree: each worktree's journal is its own (T14 review M1, 2A
-// final M11; spec #2 §11.2).
+// Keyed to the tab's active worktree: each worktree's journal is its own.
 const target = (): WriteCtx | null => {
   const t = activeTab();
   const rt = activeRuntime();
@@ -60,9 +59,8 @@ const stateOf = (ctx: WriteCtx | null): JournalState | undefined => (ctx ? useJo
 
 /** Undoes `top` (the entry the toolbar showed); `confirm`: "Undo anyway" with the refs as shown. */
 async function undoEntry(ctx: WriteCtx, top: JournalTop, confirm?: Record<string, string | null>, origin: Origin | null = currentOrigin()): Promise<void> {
-  // --- 2C T7: withoutIndex (a stash's undo/redo) ---
+  // --- withoutIndex (a stash's undo/redo) ---
   const out = await runWrite(ctx, (_, asked) => api.undo(ctx.repoId, ctx.worktree, Number(top.entry), confirm, asked.autostash, asked.withoutIndex, asked.discard), { origin });
-  // --- end 2C T7 ---
   if (!out) return;
   if (out.status === 'moved') {
     const body = movedText(out.label, out.refs);
@@ -70,9 +68,8 @@ async function undoEntry(ctx: WriteCtx, top: JournalTop, confirm?: Record<string
     if (ok) await undoEntry(ctx, top, Object.fromEntries(out.refs.map((r) => [r.name, r.actual])), origin);
     return;
   }
-  // --- 2C T10: the entry's own note (spec #2 §9.2) ---
+  // --- the entry's own note ---
   const note = out.note ? ` (${out.note})` : '';
-  // --- end 2C T10 ---
   afterRemotesChanged(out.label);
   const stays = top.kind === 'pull' ? ' (the fetched remote branches stay)' : '';
   useToast.getState().show(`Undid ${out.label}${note || stays}`, { action: { label: 'Redo', run: () => { void redo(ctx); } } });
@@ -98,7 +95,7 @@ async function once(ctx: WriteCtx, run: () => Promise<void>): Promise<void> {
   }
 }
 
-/** Toolbar Undo, Ctrl+Z and the palette's "Undo …" (spec #2 §5.5). */
+/** Toolbar Undo, Ctrl+Z and the palette's "Undo …". */
 export async function undo(ctx: WriteCtx, confirm?: Record<string, string | null>): Promise<void> {
   const s = stateOf(ctx);
   const top = s?.undo;
@@ -111,9 +108,8 @@ export async function redo(ctx: WriteCtx): Promise<void> {
   const top = s?.redo;
   if (!top || s.redoBlocked) return;
   await once(ctx, async () => {
-    // --- 2C T7: withoutIndex (a stash's undo/redo) ---
+    // --- withoutIndex (a stash's undo/redo) ---
     const out = await runWrite(ctx, (_, asked) => api.redo(ctx.repoId, ctx.worktree, Number(top.entry), asked.autostash, asked.withoutIndex));
-    // --- end 2C T7 ---
     if (out?.status === 'done') {
       afterRemotesChanged(out.label);
       useToast.getState().show(`Redid ${out.label}`);
@@ -121,7 +117,7 @@ export async function redo(ctx: WriteCtx): Promise<void> {
   });
 }
 
-// --- UX Y: the Undo dropdown ---
+// --- the Undo dropdown ---
 /** What a row's tooltip says it touched: "a.txt, src/b.ts and 3 more". */
 export function touchedText(touched: string[]): string {
   const shown = touched.slice(0, 3).join(', ');
@@ -130,13 +126,13 @@ export function touchedText(touched: string[]): string {
 
 /** An older dropdown row: undone out of order, as an entry of its own, with no Redo. A question
  * it brings (the clean-restore warning) arms its row in place: started from the row, `runWrite`
- * holds the menu open for the answer (spec §ui confirms, Y.4). */
+ * holds the menu open for the answer. */
 export async function undoFromHistory(ctx: WriteCtx, row: HistoryRow): Promise<void> {
   const origin = currentOrigin();
   await once(ctx, async () => {
     const out = await runWrite(ctx, (_, asked) => api.undoEntry(ctx.repoId, ctx.worktree, Number(row.entry), asked.autostash));
     if (!out) return;
-    // Review 8: the list was stale and the entry was the newest, undone as Undo does: a branch
+    // The list was stale and the entry was the newest, undone as Undo does: a branch
     // that moved since asks the same "Undo anyway" question, then Undo runs with what it showed.
     if (out.status === 'moved') {
       const body = movedText(out.label, out.refs);
@@ -152,7 +148,7 @@ export async function undoFromHistory(ctx: WriteCtx, row: HistoryRow): Promise<v
   });
 }
 
-/** The ▾ under Undo (Y.1): the newest undoable entries, newest first. The first is Undo itself;
+/** The ▾ under Undo: the newest undoable entries, newest first. The first is Undo itself;
  * an older one is listed disabled, with the reason, unless it's independent of every later one. */
 export function historyRows(loaded: HistoryRow[] | undefined, s: JournalState | undefined, ctx: WriteCtx, now = Date.now()): MenuRow[] {
   // Not loaded (the read failed): Undo's own row, from the journal state.
@@ -178,7 +174,7 @@ export function historyRows(loaded: HistoryRow[] | undefined, s: JournalState | 
   });
 }
 
-/** The dropdown's rows, read when it opens (review 3: the dependency check isn't part of every
+/** The dropdown's rows, read when it opens (the dependency check isn't part of every
  * journal state). Keyed as the journal store. */
 const loadedHistory = new Map<string, HistoryRow[]>();
 export async function loadHistory(repoId: number, worktree: string): Promise<void> {
@@ -191,7 +187,6 @@ export async function loadHistory(repoId: number, worktree: string): Promise<voi
   }
 }
 export const historyOf = (repoId: number, worktree: string) => loadedHistory.get(journalKey(repoId, worktree));
-// --- end UX Y ---
 
 const view =(which: 'undo' | 'redo') => ({ repoId, worktree }: RepoCtx): ButtonView => {
   const s = useJournal((st) => st.states[journalKey(repoId, worktree)]);
@@ -225,10 +220,10 @@ const actions: Action[] = [
 
 const offs = [
   registerActions(actions),
-  // Spec #2 §14: repo · branch picker · Undo · Redo · Fetch/Pull · …
+  // Repo · branch picker · Undo · Redo · Fetch/Pull · …
   registerToolbarButton({
     action: 'edit.undo', label: 'Undo', order: 1, useView: view('undo'), useQueued: ({ repoId }) => useQueuedKind(repoId, 'undo'),
-    // UX Y: the ▾ lists the recent entries, an older one undoable out of order.
+    // The ▾ lists the recent entries, an older one undoable out of order.
     prepareMenu: ({ repoId, worktree }) => loadHistory(repoId, worktree),
     menuRows: ({ tabId, repoId, worktree }) => historyRows(historyOf(repoId, worktree), stateOf({ tabId, repoId, worktree }), { tabId, repoId, worktree }),
   }),

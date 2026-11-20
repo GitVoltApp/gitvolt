@@ -3,7 +3,7 @@
 // two-way move), or Task 14's tree merge written into the worktree and the index, then a merge commit
 // as the visitor or a stop on conflicts with the merge files. Not here (nothing in the demo has
 // them): hooks, `merge.ff`, signing, rerere; a criss-cross history merges from one base, where git
-// merges the bases first. Merge, and plan 4's pull, run it.
+// merges the bases first. Merge and pull run it.
 import type { ChangeKind } from '../../../api/gen/ChangeKind';
 import type { IntegrateOutcome } from '../../../api/gen/IntegrateOutcome';
 import type { GbError } from '../../../api/gen/GbError';

@@ -3,7 +3,7 @@
 // steps (index part, untracked files, then the tree merge), side effects of a refusal included.
 // Not as git does: paths are literal (git's are pathspecs, globs included); the abbreviated id in
 // the messages is always 7 digits (git lengthens it in a large repository); the index part's hunks
-// come from 1b's Myers diff, so among repeated lines one may sit where git's wouldn't.
+// come from the read engine's Myers diff, so among repeated lines one may sit where git's wouldn't.
 import type { GbError } from '../../../api/gen/GbError';
 import { gbError, gitFailure } from '../errors';
 import { parentOf } from '../memfs';

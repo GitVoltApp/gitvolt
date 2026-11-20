@@ -1,4 +1,4 @@
-/* The merge tool (spec #2 §13.3): Current | Incoming over the output. Theme tokens only. */
+/* The merge tool: Current | Incoming over the output. Theme tokens only. */
 .merge-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; background: var(--app-bg0); }
 .merge-tool { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .merge-panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); flex: 1; min-height: 0; border-bottom: 1px solid var(--section-border); }

@@ -25,11 +25,11 @@ describe('graph.css label-connector contract', () => {
 
   it('gives the connector no leading margin, so it touches the preceding chip/badge', () => {
     const connectorRule = css.match(/\.ref-connector\s*\{([^}]*)\}/)?.[1] ?? '';
-    // Only a top margin: its line's place in the row (K57).
+    // Only a top margin: its line's place in the row.
     expect(connectorRule.replace(/margin-top:[^;]*;/, '')).not.toMatch(/margin/);
   });
 
-  it('places the connector at the row\'s line (K57): stretched labels, the top and height from --conn-top / --conn-h', () => {
+  it('places the connector at the row\'s line: stretched labels, the top and height from --conn-top / --conn-h', () => {
     const connectorRule = css.match(/\.ref-connector\s*\{([^}]*)\}/)?.[1] ?? '';
     expect(connectorRule).toMatch(/align-self:\s*flex-start/);
     expect(connectorRule).toMatch(/margin-top:\s*var\(--conn-top\)/);
@@ -42,7 +42,7 @@ describe('graph.css label-connector contract', () => {
   it('lets the ref chip shrink (and ellipsize) instead of overflowing the label column', () => {
     const refLabelRule = css.match(/\.ref-label\s*\{([^}]*)\}/)?.[1] ?? '';
     expect(refLabelRule).toMatch(/min-width:\s*0/);
-    // No cap of its own (K63): only the column's width truncates it.
+    // No cap of its own: only the column's width truncates it.
     expect(refLabelRule).not.toMatch(/max-width/);
     // `flex: none` (equivalently `flex-shrink: 0`) would defeat min-width: 0 by refusing to
     // shrink at all, so the chip must not fall back to it.
@@ -50,7 +50,7 @@ describe('graph.css label-connector contract', () => {
     expect(refLabelRule).not.toMatch(/flex-shrink:\s*0/);
   });
 
-  it('dims the DOM connector like the canvas part: lane colour at 25% (F8, draw.ts CONNECTOR_ALPHA)', () => {
+  it('dims the DOM connector like the canvas part: lane colour at 25% (draw.ts CONNECTOR_ALPHA)', () => {
     const connectorRule = css.match(/\.ref-connector\s*\{([^}]*)\}/)?.[1] ?? '';
     expect(connectorRule).toMatch(/background:\s*var\(--lane-color\)/);
     expect(connectorRule).toMatch(/opacity:\s*0?\.25\b/);
@@ -64,7 +64,7 @@ describe('graph.css label-connector contract', () => {
   });
 });
 
-describe("graph.css checked-out branch (J21)", () => {
+describe("graph.css checked-out branch", () => {
   const rule = (sel: RegExp) => css.match(new RegExp(`${sel.source}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
   it('its chip is always lit: the hovered/selected look, with no row condition', () => {
     const r = rule(/\n\.ref-label\.ref-label-head/);
@@ -120,7 +120,7 @@ describe('graph.css hover-expanded label chip', () => {
     expect(rule).toMatch(/z-index:\s*[1-9]/);
   });
 
-  it('takes the pointer, so the chip stays expanded over its revealed part (icons and their tooltips reachable, F4)', () => {
+  it('takes the pointer, so the chip stays expanded over its revealed part (icons and their tooltips reachable)', () => {
     // It's a DOM child of the chip: hovering it is still hovering the chip.
     expect(rule).not.toMatch(/pointer-events:\s*none/);
   });
@@ -141,14 +141,14 @@ describe('graph.css hover-expanded label chip', () => {
   });
 });
 
-describe('graph.css pointer cursors (F5)', () => {
+describe('graph.css pointer cursors', () => {
   const rule = (sel: string) => css.match(new RegExp(`(?:^|\\}|,)\\s*${sel.replace(/[.[\]()>*+?^$|]/g, (c) => `\\${c}`)}\\s*(?:,[^{]*)?\\{([^}]*)\\}`, 'm'))?.[1] ?? '';
 
   it('rows (and so the graph nodes and every row cell) are clickable: pointer', () => {
     expect(rule('.graph-row')).toMatch(/cursor:\s*pointer/);
   });
 
-  it('the Branch/Tag cell\'s empty space is not clickable (F6): default cursor; its chips are', () => {
+  it('the Branch/Tag cell\'s empty space is not clickable: default cursor; its chips are', () => {
     expect(rule('.graph-row > .col-labels')).toMatch(/cursor:\s*default/);
     // The whole cell, above and below the chip too, not just the chip's 17 px band.
     expect(rule('.graph-row > .col-labels')).toMatch(/align-self:\s*stretch/);
@@ -167,23 +167,23 @@ describe('graph.css pointer cursors (F5)', () => {
   });
 });
 
-describe('graph.css branch membership chip (F7)', () => {
+describe('graph.css branch membership chip', () => {
   const rule = css.match(/\.ref-label\.ref-label-dim\s*\{([^}]*)\}/)?.[1] ?? '';
 
   it('is the chip look at half opacity (0.5)', () => {
     expect(rule).toMatch(/opacity:\s*0?\.5\b/);
   });
 
-  it('takes the pointer like the other chips (J6): hover, expansion and the pointer cursor', () => {
+  it('takes the pointer like the other chips: hover, expansion and the pointer cursor', () => {
     expect(rule).not.toMatch(/pointer-events|cursor/);
   });
 
-  it('hovered, it brightens to the hovered chip look: full strength (J6)', () => {
+  it('hovered, it brightens to the hovered chip look: full strength', () => {
     expect(css).toMatch(/(?:^|\})\s*\.ref-label\.ref-label-dim:hover\s*\{[^}]*opacity:\s*1\b/m);
   });
 });
 
-describe('graph.css dimmed row text (F10)', () => {
+describe('graph.css dimmed row text', () => {
   const colorOf = (sel: string) => css.match(new RegExp(`(?:^|\\})\\s*${sel.replace(/[.[\]()>]/g, (c) => `\\${c}`)}\\s*\\{([^}]*)\\}`, 'm'))?.[1].match(/(?:^|;)\s*color:\s*([^;]+)/)?.[1].trim();
 
   it('author, date and SHA use the same single token as the rest of the commit message', () => {
@@ -202,7 +202,7 @@ describe('graph.css dimmed row text (F10)', () => {
   });
 });
 
-describe('graph.css membership chip after real chips (F7)', () => {
+describe('graph.css membership chip after real chips', () => {
   const slot = css.match(/\.ref-dim-slot\s*\{([^}]*)\}/)?.[1] ?? '';
 
   it('gives up its space before the real chip does (a huge flex-shrink), down to nothing', () => {
@@ -221,7 +221,7 @@ describe('graph.css membership chip after real chips (F7)', () => {
   it('draws the connector line through the space it leaves (same 25% lane colour as .ref-connector)', () => {
     const fill = css.match(/\.ref-dim-fill\s*\{([^}]*)\}/)?.[1] ?? '';
     expect(fill).toMatch(/flex:\s*1\s+0\s+0/);
-    // The line itself, on the connector's rows (K57).
+    // The line itself, on the connector's rows.
     const line = css.match(/\.ref-dim-fill::before\s*\{([^}]*)\}/)?.[1] ?? '';
     expect(line).toMatch(/color-mix\(in srgb,\s*var\(--lane-color\)\s*25%,\s*transparent\)/);
     expect(line).toMatch(/top:\s*calc\(var\(--conn-top\)/);
@@ -229,7 +229,7 @@ describe('graph.css membership chip after real chips (F7)', () => {
   });
 });
 
-describe('graph.css message tooltip cut (F1)', () => {
+describe('graph.css message tooltip cut', () => {
   it('hides the overflow (no dead scrollbar: it never takes the pointer) and fades out a clipped message', () => {
     expect(css.match(/\.hover-tooltip\.msg-tooltip\s*\{([^}]*)\}/)?.[1]).toMatch(/overflow:\s*hidden/);
     const fade = css.match(/\.hover-tooltip\.msg-tooltip\[data-clipped\]::after\s*\{([^}]*)\}/)?.[1] ?? '';
@@ -239,7 +239,7 @@ describe('graph.css message tooltip cut (F1)', () => {
   });
 });
 
-describe('graph.css density (H1)', () => {
+describe('graph.css density', () => {
   const body = (sel: string) => css.match(new RegExp(`(?:^|\\})\\s*${sel.replace(/[.[\]()>*+?^$|]/g, (c) => `\\${c}`)}\\s*\\{([^}]*)\\}`, 'm'))?.[1] ?? '';
 
   it('header and row cells pad by the density\'s --graph-cell-pad-x', () => {
@@ -260,7 +260,7 @@ describe('graph.css density (H1)', () => {
 /** A rule's body by its exact selector text (a selector list included). */
 const ruleBody = (sel: string) => css.match(new RegExp(`(?:^|\\})\\s*${sel.replace(/[.[\]()>*+?^$|]/g, (c) => `\\${c}`)}\\s*\\{([^}]*)\\}`, 'm'))?.[1] ?? '';
 
-describe('graph.css chips at rest (H3)', () => {
+describe('graph.css chips at rest', () => {
   it('rest subdued: lane colour at 25% (--graph-color-N-bg25), normal text', () => {
     const chip = ruleBody('.ref-label');
     expect(chip).toMatch(/--chip-mix:\s*25%/);
@@ -275,7 +275,7 @@ describe('graph.css chips at rest (H3)', () => {
   });
 });
 
-describe('graph.css text selection (J20)', () => {
+describe('graph.css text selection', () => {
   it('the whole graph panel (headers, rows, cells, chips, resizers) never selects text', () => {
     const panel = ruleBody('.graph-panel');
     expect(panel).toMatch(/(?:^|;)\s*user-select:\s*none/);
@@ -285,7 +285,7 @@ describe('graph.css text selection (J20)', () => {
   });
 });
 
-describe('graph.css selected and hovered rows (H14)', () => {
+describe('graph.css selected and hovered rows', () => {
   const TEXT = ':is([data-col="message"], [data-col="author"], [data-col="date"], [data-col="sha"], [data-col="filler"])';
 
   it('the row itself gets no background: the chip and graph columns never turn blue', () => {
@@ -301,18 +301,18 @@ describe('graph.css selected and hovered rows (H14)', () => {
     expect(cells).toMatch(/line-height:\s*var\(--graph-row-h\)/);
   });
 
-  it('no per-panel focus visuals (H4, the user\'s call: keyboard focus is the app\'s as a whole): nothing is styled by the focus zone', () => {
+  it('no per-panel focus visuals (the user\'s call: keyboard focus is the app\'s as a whole): nothing is styled by the focus zone', () => {
     expect(css).not.toMatch(/data-zone-focused|data-focus-zone/);
   });
 
-  it('author, date and SHA light up to the selected row\'s own white, like its summary (J7)', () => {
+  it('author, date and SHA light up to the selected row\'s own white, like its summary', () => {
     const lit = ruleBody('.graph-row[aria-selected="true"] > .col-author, .graph-row[aria-selected="true"] > .col-date, .graph-row[aria-selected="true"] > .col-sha .sha');
     expect(lit).toMatch(/color:\s*var\(--text-selected\)/);
     expect(ruleBody('.graph-row[aria-selected="true"]')).toMatch(/color:\s*var\(--text-selected\)/);
   });
 });
 
-describe('graph.css row text: the row-dim mechanism and its motion (J22)', () => {
+describe('graph.css row text: the row-dim mechanism and its motion', () => {
   const tokens = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../theme/tokens.css'), 'utf8');
   const TEXT = ':is([data-col="message"], [data-col="author"], [data-col="date"], [data-col="sha"])';
   const PARTS = ':is(.dim, .sha, .wip-tag, .wip-counts, .fold-count)';
@@ -330,7 +330,7 @@ describe('graph.css row text: the row-dim mechanism and its motion (J22)', () =>
     expect(css.indexOf('.row-dim')).toBeGreaterThan(css.indexOf('.graph-row[aria-selected="true"] > .col-sha .sha'));
   });
 
-  it("two dim levels (rowDim.ts DimKind), each its own colour: branch-hover (J22) lighter than filter/search", () => {
+  it("two dim levels (rowDim.ts DimKind), each its own colour: branch-hover lighter than filter/search", () => {
     const branch = ruleBody(`.graph-row > [data-col].row-dim-branch, .graph-row > [data-col].row-dim-branch ${PARTS}`);
     expect(branch).toMatch(/color:\s*var\(--text-row-dimmed-branch\)/);
     const filter = ruleBody(`.graph-row > [data-col].row-dim-filter, .graph-row > [data-col].row-dim-filter ${PARTS}`);
@@ -345,7 +345,7 @@ describe('graph.css row text: the row-dim mechanism and its motion (J22)', () =>
     for (const t of css.match(/transition:[^;}]*/g) ?? []) expect(t).toMatch(/^transition:\s*color /);
   });
 
-  it('the motion tokens: 200 ms and 500 ms, both 0 under prefers-reduced-motion (the one shared chrome+row override, J19)', () => {
+  it('the motion tokens: 200 ms and 500 ms, both 0 under prefers-reduced-motion (the one shared chrome+row override)', () => {
     expect(tokens).toMatch(/--motion-row-color:\s*200ms/);
     expect(tokens).toMatch(/--motion-row-dim:\s*500ms/);
     const reduced = /@media \(prefers-reduced-motion: reduce\)\s*\{\s*:root\s*\{([^}]*)\}/.exec(tokens)?.[1] ?? '';

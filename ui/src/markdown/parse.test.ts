@@ -3,7 +3,7 @@ import { clearParseCache, parseMarkdown, peekParsed } from './parse';
 
 beforeEach(() => clearParseCache());
 
-describe('parseMarkdown (spec #5 §3.1)', () => {
+describe('parseMarkdown', () => {
   it('gives the GFM tree, cached by flavor and text', () => {
     const a = parseMarkdown('| a |\n|---|\n| 1 |\n\n- [x] done\n\n~~old~~', 'github');
     expect(a.children.map((n) => n.type)).toEqual(['table', 'list', 'paragraph']);

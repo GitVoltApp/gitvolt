@@ -106,7 +106,7 @@ export interface OpenFileOptions {
 }
 
 /**
- * Opens `path` at `commit` in File View (spec #5 §3.4, §4.1). The file is read first: one that
+ * Opens `path` at `commit` in File View. The file is read first: one that
  * isn't there says so ("<path> isn't in <sha>") and nothing changes. Then, once leaving the
  * open file is settled (its unsaved edits, `leaveThen`): the place is recorded (`record`), the
  * commit or WIP row is selected if it isn't already, and the file opens, as its list row when
@@ -145,7 +145,7 @@ export async function openFileAt(tabId: string, path: string, commit: FileCommit
         st.selectCommitById(commit);
       }
     }
-    // A place in File View (a link's target, Back/Forward's): File History stops being sticky (UX).
+    // A place in File View (a link's target, Back/Forward's): File History stops being sticky.
     endStickyHistory(tabId);
     const now = v.store.getState();
     const target = listTarget(now, path) ?? probe;

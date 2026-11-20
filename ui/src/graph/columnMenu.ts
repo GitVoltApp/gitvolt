@@ -9,7 +9,7 @@ export interface ColumnTarget { hidden: ReadonlySet<HideableColumn>; toggle(col:
 /** The hideable columns, in table order, by the name the menu shows. */
 export const COLUMN_NAMES: ReadonlyArray<readonly [HideableColumn, string]> = [['labels', 'Branch / Tag'], ['author', 'Author'], ['date', 'Commit date / time'], ['sha', 'SHA']];
 
-// Spec §8.4: every column except Graph and Message can be hidden (per repo). Right-click the
+// Every column except Graph and Message can be hidden (per repo). Right-click the
 // graph table's header.
 registerMenu<ColumnTarget, object>({
   id: 'column.visibility',

@@ -1,4 +1,4 @@
-// Rebase handlers (plan 4): the interactive rebase's plan (the core's irebase/plan.rs), and the
+// Rebase handlers: the interactive rebase's plan (the core's irebase/plan.rs), and the
 // commit panel's Continue, Skip and Abort of a rebase (the core's write/rebase.rs `RebaseControl`),
 // the interactive rebase and the reword of an older commit (irebase/run.rs, reword.rs).
 import type { IntegrateOutcome } from '../../api/gen/IntegrateOutcome';

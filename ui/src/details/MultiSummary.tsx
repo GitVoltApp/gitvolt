@@ -39,13 +39,13 @@ function MultiRows({ ids }: { ids: readonly string[] }) {
 }
 
 /**
- * Spec §9.4, K27: three or more selected rows. The bar `N commits selected [×]`, in the commit
+ * Three or more selected rows. The bar `N commits selected [×]`, in the commit
  * header's bar box; then one row per commit (avatar, one-line message, date), newest first, as
  * the compare header shows its two. No diff and no file list; actions on the selection (cherry
  * pick, …) come in a later sub-project.
  */
 export function MultiSummary() {
-  // What the panel shows (feedback F12).
+  // What the panel shows.
   const selection = useRepoView((s) => s.panel?.selection);
   const exit = useRepoView((s) => s.exitCompare);
   const setFocus = useRepoView((s) => s.setFocus);

@@ -11,7 +11,7 @@ import { DEFAULT_THEME_ID, isThemeId, THEMES, type ThemeDef } from './themes';
  * Keeps the applied theme in step with the saved settings (`AppSettings.theme`, resolved against
  * `customThemes`). Call once, before the first render:
  *
- * - First paint: the localStorage mirror of the last saved theme (ruling R3), so a light-theme
+ * - First paint: the localStorage mirror of the last saved theme, so a light-theme
  *   user never sees Default Dark while the settings load. Until they have loaded, the store's
  *   placeholder `DEFAULT_SETTINGS` is ignored.
  * - The first loaded settings move any old lane overrides into custom themes (migrate.ts).

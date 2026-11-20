@@ -3,6 +3,6 @@ import type { Confirm } from "./Confirm";
 
 export type TestIntent = { "op": "moveRef", name: string, to: string | null, } | { "op": "commit", message: string, allowEmpty: boolean, } | { "op": "discard", paths: Array<string>, } | { "op": "fastForward", target: string, } | { "op": "switch", branch: string, confirm: Confirm, 
 /**
- * Optional in TypeScript: 2A's specs send a switch without it.
+ * Optional in TypeScript: some specs send a switch without it.
  */
 create?: boolean, } | { "op": "barrier", label: string, } | { "op": "sleep", label: string, ms: number, fail: boolean, } | { "op": "branchConfig", branch: string, key: string, value: string | null, note: string | null, } | { "op": "transfer", label: string, ms: number, first: boolean, } | { "op": "mergeStop", target: string, } | { "op": "commitMerge", message: string, };

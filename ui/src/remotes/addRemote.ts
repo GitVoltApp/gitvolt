@@ -8,7 +8,7 @@ import { runWrite } from '../write/client';
 import { writeCtx } from '../write/ctx';
 import { remoteIsProject } from './match';
 
-/** Adds `name` → `url`, says so, then fetches only that remote (spec #4 §4 4A). `true` once
+/** Adds `name` → `url`, says so, then fetches only that remote. `true` once
  * added; the fetch reports its own failure (and the remote stays). */
 export async function addRemoteAndFetch(tabId: string, name: string, url: string, done = `Added remote ${name}`): Promise<boolean> {
   const ctx = writeCtx(tabId);
@@ -22,7 +22,7 @@ export async function addRemoteAndFetch(tabId: string, name: string, url: string
 }
 
 /** `fork` as a remote named after its owner (`-2`… when taken), reached the way origin is, then
- * fetched: the forks list's Add, and 4B's "Add <owner>'s fork and check out the branch". A
+ * fetched: the forks list's Add, and "Add <owner>'s fork and check out the branch". A
  * remote already on that project is reused. Resolves the remote's name, or `null`. */
 export async function addForkRemote(tabId: string, fork: ForgeProject): Promise<string | null> {
   const remotes = useRuntime.getState().tabs[tabId]?.info?.remotes ?? [];

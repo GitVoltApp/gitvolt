@@ -3,7 +3,7 @@ const DROP = ['script', 'foreignObject', 'iframe', 'object', 'embed', 'audio', '
 const outside = (v: string) => !v.trim().startsWith('#');
 const cleanCss = (css: string) => css.replace(/@import[^;]*;?/gi, '').replace(/url\(\s*(['"]?)(?!#)[^)]*\1\s*\)/gi, 'none');
 
-/** Mermaid's SVG, sanitized again (spec §6): no script, foreignObject or embedded documents, no
+/** Mermaid's SVG, sanitized again: no script, foreignObject or embedded documents, no
  * event handler, no reference outside the document (`href`, `xlink:href`, CSS `url()`,
  * `@import`); links become their contents. Throws for anything that isn't an SVG. */
 export function cleanSvg(svg: string): string {

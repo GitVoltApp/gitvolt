@@ -18,7 +18,7 @@ export type AppEvent = { "type": "repoChanged", repo: number, kinds: Array<Chang
 label: string, 
 /**
  * User-started (`true`) or GitVolt-started (`false`, the background fetch). The UI
- * shows a background op nowhere but its activity log (K30).
+ * shows a background op nowhere but its activity log.
  */
 interactive: boolean, } | { "type": "opProgress", op: number, phase: string, percent: number | null, 
 /**
@@ -27,7 +27,7 @@ interactive: boolean, } | { "type": "opProgress", op: number, phase: string, per
 step?: ProgressStep, } | { "type": "opRemote", op: number, lines: Array<RemoteLine>, } | { "type": "opFinished", op: number, kind: OpKind, repo: number | null, outcome: OpOutcome, message: string | null, 
 /**
  * The git command that ran, argv joined for display and redacted (no environment, no
- * askpass secrets): the activity log shows it (K101).
+ * askpass secrets): the activity log shows it.
  */
 command: string | null, } | { "type": "opOutput", op: number, line: string, } | { "type": "opStashStep", op: number, step: StashStep | null, message: string, } | { "type": "journalChanged", repo: number, worktree: string, state: JournalState, } | { "type": "queueChanged", repo: number, running: QueueItem | null, queued: Array<QueueItem>, stopped: QueueStop | null, } | { "type": "authWaiting", prompt: number, op: number, repo: number | null, text: string, secret: boolean, 
 /**

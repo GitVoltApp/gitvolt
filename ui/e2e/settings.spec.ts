@@ -36,7 +36,7 @@ test.describe('settings', () => {
       await expect(dialog(page).getByLabel('Search settings')).toBeFocused();
       await closeSettings(page);
     });
-    await test.step('K102: the gear opens settings; K103: a label click leaves the dropdown closed and its background matches the inputs', async () => {
+    await test.step('the gear opens settings: a label click leaves the dropdown closed and its background matches the inputs', async () => {
       await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
       await expect(dialog(page)).toBeVisible();
       await nav(page, 'Graph').click();
@@ -47,7 +47,7 @@ test.describe('settings', () => {
       const select = await bg('button.select');
       expect(select).toBe(await bg('.setting-control input:not([type="checkbox"]):not([type="radio"])'));
     });
-    await test.step('K94: the close button is the shared icon button, not a bordered box', async () => {
+    await test.step('the close button is the shared icon button, not a bordered box', async () => {
       const close = dialog(page).getByRole('button', { name: 'Close settings' });
       await expect(close).toHaveClass(/icon-button/);
       await expect(close).toHaveCSS('border-top-width', '0px');
@@ -55,7 +55,7 @@ test.describe('settings', () => {
       await close.click();
       await expect(dialog(page)).toHaveCount(0);
     });
-    await test.step('K93: the pages are separate, the nav groups name the profile and repository, and the palette deep link opens the right page and focuses the setting', async () => {
+    await test.step('the pages are separate, the nav groups name the profile and repository, and the palette deep link opens the right page and focuses the setting', async () => {
       await openSettings(page);
       await nav(page, 'General').click();
       const pages = dialog(page).getByRole('navigation', { name: 'Settings pages' });
@@ -77,7 +77,7 @@ test.describe('settings', () => {
       await expect(dialog(page).getByRole('region', { name: 'Diffs and editors' })).toBeVisible();
       await expect(dialog(page).getByLabel('Sticky scroll', { exact: true })).toBeFocused();
     });
-    await test.step('K92: a dropdown opens on click and with the keyboard, changes its value, and Esc closes only the menu', async () => {
+    await test.step('a dropdown opens on click and with the keyboard, changes its value, and Esc closes only the menu', async () => {
       await closeSettings(page);
       await openSettings(page);
       await nav(page, 'Graph').click();

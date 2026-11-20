@@ -194,7 +194,7 @@ jobs:
               exit 1
             fi
             if grep -qi '^content-encoding:' "$work/bundle.headers"; then
-              echo "::warning::Pages compressed $file on the way out (spec §5.3 says it sends binaries as they are)"
+              echo "::warning::Pages compressed $file on the way out (it should send binaries as they are)"
             fi
           done < <(jq -r '.repos[] | "\(.file) \(.rev)"' "$work/manifest.json")
           code=$(curl -sS -o "$work/404.html" -w '%{http_code}' "${base}no-such-page-$GITHUB_RUN_ID/")

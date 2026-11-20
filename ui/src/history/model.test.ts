@@ -4,7 +4,7 @@ import { row } from './testRows';
 
 const args: FileHistoryArgs = { repoId: 1, worktree: '/r', path: 'src/story.txt', rev: null, blame: false };
 
-describe('the File History model (spec #3 §4.2)', () => {
+describe('the File History model', () => {
   it('appends pages, skips a row it already has, and selects the first row once', () => {
     let s = withPage(initialHistory(args), { rows: [row('a'), row('b')], more: true });
     expect(s.rows.map((r) => r.sha)).toEqual(['a', 'b']);

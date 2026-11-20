@@ -12,8 +12,8 @@ import { NO_PREDICTION, editSession, sessionOf, setSession } from './session';
 
 export const flattenWarning = (n: number) => `${n} merge ${n === 1 ? 'commit' : 'commits'} will be flattened into a straight line`;
 
-/** Start Rebase (spec #3 §4.1): back to the graph at once, where the commit panel shows the
- * progress or the stop. RefMoved brings the editor back with Reload (§5). */
+/** Start Rebase: back to the graph at once, where the commit panel shows the
+ * progress or the stop. RefMoved brings the editor back with Reload. */
 export async function startRebase(tabId: string): Promise<void> {
   const s = sessionOf(tabId);
   if (!s || problems(s.state).length > 0) return;
@@ -44,14 +44,14 @@ export async function startRebase(tabId: string): Promise<void> {
   }
   if (out !== null) setSession(tabId, undefined);
   else back();
-  // 3C T13: a finished rebase's warning (a chip that moved meanwhile, kept) toasts as one.
+  // A finished rebase's warning (a chip that moved meanwhile, kept) toasts as one.
   if (out?.status === 'done') toastRebaseOutcome(out, `Rebased ${state.branch} onto ${state.base.name}`);
   else if (out?.status === 'upToDate') toastRebaseOutcome(out, `${state.branch} is unchanged`);
-  // 3C final fix M1, M2: a stop whose new message a hook refused says so.
+  // A stop whose new message a hook refused says so.
   else toastRebaseOutcome(out);
 }
 
-/** Cancel and Esc (spec #3 §4.1): an edited plan arms in place first. */
+/** Cancel and Esc: an edited plan arms in place first. */
 export async function cancelRebase(tabId: string, origin: Origin | null = currentOrigin()): Promise<void> {
   const s = sessionOf(tabId);
   if (!s) return;
@@ -63,7 +63,7 @@ export async function cancelRebase(tabId: string, origin: Origin | null = curren
   setSession(tabId, undefined);
 }
 
-/** Reload (spec #3 §5): the new plan, keeping what it can of the edited one. */
+/** Reload: the new plan, keeping what it can of the edited one. */
 export async function reloadRebase(tabId: string): Promise<void> {
   const s = sessionOf(tabId);
   if (!s) return;

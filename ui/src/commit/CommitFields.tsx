@@ -9,11 +9,11 @@ import { registerKeyHints } from '../shortcuts/hints';
 const isSubmit = (e: KeyboardEvent) => e.key === 'Enter' && (e.ctrlKey || e.metaKey);
 
 /**
- * The summary line and the description below it (spec #2 §8.1), the WIP draft's two fields.
+ * The summary line and the description below it, the WIP draft's two fields.
  * - Enter or ↓ in the summary moves to the description (caret at its start).
  * - ↑ with the caret on the description's first line moves back (caret at the summary's end).
  * - Ctrl+Enter submits from either; Esc blurs, keeping the text (or `onEscape`, e.g. Cancel).
- * One text box (ux round 1): one border around both, the focus ring on it. The description
+ * One text box: one border around both, the focus ring on it. The description
  * shows 4 lines, grows to 8, then scrolls (CSS `field-sizing`).
  * Keys typed here never reach the page's own handlers (the same rule as the WIP row's box); the
  * app's Ctrl chords still come first (key router), and the app-wide Commit (Ctrl+Enter,

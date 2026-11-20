@@ -5,7 +5,7 @@ import { expect, test, type Page, confirmArmed } from './test';
 const isAncestor = (repo: string, a: string, b: string) => { try { git(repo, 'merge-base', '--is-ancestor', a, b); return true; } catch { return false; } };
 const labelMenu = async (page: Page, name: string, item: string) => {
   await graphChip(page, name).click({ button: 'right' });
-  // Exact: 3C's "Interactive rebase X onto Y" sits right under "Rebase X onto Y".
+  // Exact: "Interactive rebase X onto Y" sits right under "Rebase X onto Y".
   await page.getByRole('menuitem', { name: item, exact: true }).click();
 };
 /** Drags branch `from`'s chip onto branch `onto`'s with a real pointer. */
@@ -19,13 +19,13 @@ const dragChip = async (page: Page, from: string, onto: string) => {
   await page.mouse.up();
 };
 
-test.describe('integrate (spec #2 §13.1, §13.4)', () => {
+test.describe('integrate', () => {
   test('rebasing a stack moves the ticked stacked branches', async ({ page }) => {
     // HEAD is feature/c; feature/a and feature/b are the stack under it; main moved on.
     const repo = freshFixture('stack');
     await page.goto(openUrl(repo));
     await labelMenu(page, 'main', 'Rebase feature/c onto main');
-    // The row arms in place, the stack's checkbox right under it (UX round 3).
+    // The row arms in place, the stack's checkbox right under it.
     await expect(page.getByRole('menuitemcheckbox', { name: /Also move 2 stacked branches/ })).toHaveAttribute('aria-checked', 'true');
     await confirmArmed(page.getByRole('menuitem', { name: 'Click again to rebase feature/c onto main' }));
     await expect.poll(() => isAncestor(repo, 'main', 'feature/a')).toBe(true);

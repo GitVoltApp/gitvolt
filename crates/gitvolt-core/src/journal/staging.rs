@@ -1,7 +1,7 @@
-//! The staging undo log (spec #2 §7.6): stage and unstage get their own undo stack, separate from
+//! The staging undo log: stage and unstage get their own undo stack, separate from
 //! the journal, so a misstaged hunk can be undone without pushing real operations out of the
 //! journal's 50-entry window. Per worktree, the last 100 steps, in memory only: a restart clears it.
-//! A conflict resolution is a step too (ux round 2): its path's stages and file, byte for byte
+//! A conflict resolution is a step too: its path's stages and file, byte for byte
 //! (a folder's Mark resolved: each of its paths', in one step).
 
 use crate::api::Api;
@@ -24,11 +24,11 @@ pub const OUTSIDE: &str = "The index changed outside staging; staging history wa
 /// A resolution's undo after its merge or rebase stop ended (or HEAD moved).
 pub const RESOLVE_ENDED: &str = "The merge or rebase moved on since then; staging history was cleared.";
 
-/// One stage or unstage, or one resolution (§7.6).
+/// One stage or unstage, or one resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StagingStep {
     pub label: String,
-    /// HEAD when it ran (Deviation 3).
+    /// HEAD when it ran.
     pub head: Option<String>,
     pub change: Change,
 }
@@ -143,7 +143,7 @@ fn index_flags(root: &Path) -> Result<(bool, Vec<String>), GbError> {
 
 /// `git write-tree` (it writes only tree objects, dangling like snapshots) and the i-t-a paths.
 /// `None` while files are conflicted: `write-tree` refuses unmerged entries, so no step is
-/// recorded then (§7.6).
+/// recorded then.
 pub(crate) async fn capture(cx: &WriteCx<'_>) -> Result<Option<Captured>, GbError> {
     let (conflicted, ita) = index_flags(cx.root)?;
     if conflicted {
@@ -153,7 +153,7 @@ pub(crate) async fn capture(cx: &WriteCx<'_>) -> Result<Option<Captured>, GbErro
     Ok(Some(Captured { tree: String::from_utf8_lossy(&out.stdout).trim().to_string(), ita }))
 }
 
-/// After a write ran (§3.2 step 6): a `Step` is recorded, a `Clear` empties the log.
+/// After a write ran: a `Step` is recorded, a `Clear` empties the log.
 pub(crate) async fn after_run(cx: &WriteCx<'_>, effect: Staging, label: &str, before: Option<Captured>, ok: bool, head: &HeadState) {
     let root = cx.root.to_path_buf();
     match effect {
@@ -175,7 +175,7 @@ pub(crate) async fn after_run(cx: &WriteCx<'_>, effect: Staging, label: &str, be
     }
 }
 
-/// `WriteResult.staging` (§3.1). In a conflicted worktree only resolutions stay in the log (its
+/// `WriteResult.staging`. In a conflicted worktree only resolutions stay in the log (its
 /// stage steps are from before the conflict); with none, the buttons say why they're off.
 pub(crate) fn state(api: &Api, root: &Path, conflicted: bool) -> StagingUndoState {
     api.staging.with(root, |log| {
@@ -225,7 +225,7 @@ pub(crate) enum Dir {
     Redo,
 }
 
-/// Staging Undo / Redo (§7.6): `git write-tree` must still give the step's far side, then
+/// Staging Undo / Redo: `git write-tree` must still give the step's far side, then
 /// `git read-tree --reset <tree>` (like a one-tree `-m`, it keeps the stat info of unchanged entries, so the
 /// next status doesn't re-hash the repo; the working tree is never touched; plain `-m` refuses
 /// with "not uptodate" when a staged file differs from the index entry), then the i-t-a
@@ -238,7 +238,7 @@ struct StagingUndo {
 impl WriteIntent for StagingUndo {
     type Outcome = ();
     fn kind(&self) -> OpKind {
-        OpKind::Stage // Deviation 18: kept out of Activity with stage/unstage
+        OpKind::Stage // Kept out of Activity with stage/unstage
     }
     fn label(&self) -> String {
         match self.dir {
@@ -425,7 +425,7 @@ mod tests {
         call(api, method, json!({ "repo": id, "worktree": wt(r.path()) })).await
     }
 
-    /// §17.1: the index tree equals `before` after undo and `after` after redo; worktree bytes untouched.
+    /// The index tree equals `before` after undo and `after` after redo; worktree bytes untouched.
     #[tokio::test]
     async fn a_file_stage_round_trips() {
         let data = tempfile::tempdir().unwrap();
@@ -466,7 +466,7 @@ mod tests {
         assert_eq!(res["staging"]["redo"], "stage all");
     }
 
-    /// §7.6: intent-to-add entries aren't in trees; the step puts them back.
+    /// Intent-to-add entries aren't in trees; the step puts them back.
     #[tokio::test]
     async fn intent_to_add_paths_come_back() {
         let data = tempfile::tempdir().unwrap();
@@ -515,7 +515,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--cached", "--name-only"]), "a.txt\nb.txt", "nothing was read back");
     }
 
-    /// Review Focus 4: a commit in a terminal leaves the index tree as it was, but HEAD moved.
+    /// A commit in a terminal leaves the index tree as it was, but HEAD moved.
     #[tokio::test]
     async fn an_outside_commit_clears_the_staging_log() {
         let data = tempfile::tempdir().unwrap();
@@ -530,7 +530,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--cached"]), "", "the index wasn't touched");
     }
 
-    /// §7.6: commit and checkout clear the log (any write whose `staging()` is `Clear`).
+    /// Commit and checkout clear the log (any write whose `staging()` is `Clear`).
     #[tokio::test]
     async fn a_commit_and_a_checkout_clear_the_log() {
         let data = tempfile::tempdir().unwrap();
@@ -549,7 +549,7 @@ mod tests {
         assert!(res["staging"]["undo"].is_null(), "{res}");
     }
 
-    // --- ux round 2: resolutions are staging steps ---
+    // --- resolutions are staging steps ---
 
     /// `fixtures::conflicts` merged into main, stopped on a.txt (text), logo.bin (binary) and
     /// gone.txt (deleted on main, modified on feature/x).
@@ -749,7 +749,7 @@ mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "", "nothing was touched");
     }
 
-    /// Review 1: the file can't be written (a read-only folder): the undo fails before the index
+    /// The file can't be written (a read-only folder): the undo fails before the index
     /// is touched, both stay as they were, and the step stays for a retry.
     #[cfg(unix)] // permission bits (a read-only folder, an unreadable file)
     #[tokio::test]
@@ -767,7 +767,7 @@ mod tests {
         assert_eq!(path_state(&r, "a.txt"), conflicted);
     }
 
-    /// Review 1: the kept copy was pruned (`git gc --prune=now`): refused up front, nothing touched.
+    /// The kept copy was pruned (`git gc --prune=now`): refused up front, nothing touched.
     #[tokio::test]
     async fn a_pruned_copy_fails_before_anything_is_touched() {
         let (r, api, id, _data) = merging().await;
@@ -779,7 +779,7 @@ mod tests {
         assert_eq!(path_state(&r, "a.txt"), resolved);
     }
 
-    /// Review 3: a file that can't be kept (unreadable) is still resolved, just not undoable.
+    /// A file that can't be kept (unreadable) is still resolved, just not undoable.
     #[cfg(unix)] // permission bits (a read-only folder, an unreadable file)
     #[tokio::test]
     async fn a_resolution_goes_ahead_when_its_file_cant_be_kept() {
@@ -791,7 +791,7 @@ mod tests {
         assert!(!r.path().join("gone.txt").exists());
     }
 
-    /// Review 4: a symlink conflict: the link comes back (made under a temp name, renamed over).
+    /// A symlink conflict: the link comes back (made under a temp name, renamed over).
     #[cfg(unix)] // symlinks (Windows: privileges, and core.symlinks=false there)
     #[tokio::test]
     async fn a_symlink_resolution_is_undone() {
@@ -825,7 +825,7 @@ mod tests {
         assert!(leftovers.is_empty());
     }
 
-    /// Review 6: a folder on the way became a symlink: what's beyond it isn't the path, so the
+    /// A folder on the way became a symlink: what's beyond it isn't the path, so the
     /// redo (a removal) is refused and the file over there stays.
     #[cfg(unix)] // symlinks (Windows: privileges, and core.symlinks=false there)
     #[tokio::test]

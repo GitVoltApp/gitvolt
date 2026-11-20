@@ -1,4 +1,4 @@
-//! "Open Repository" and "your repos" (spec §13): the system folder picker. On Linux it's
+//! "Open Repository" and "your repos": the system folder picker. On Linux it's
 //! xdg-desktop-portal's `org.freedesktop.portal.FileChooser.OpenFile{directory: true}`, over the
 //! same session-bus connection the "Other…" chooser uses (`chooser::linux::shared_bus`). Unlike
 //! `OpenURI.OpenFile`, this call's result matters (the folder the user picked), so the request has
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Asks the folder-picker portal, starting in `start` when given. `None` means either the user
-/// cancelled, or (R2's ruling) the portal isn't available at all: a portal-less desktop simply
+/// cancelled, or the portal isn't available at all: a portal-less desktop simply
 /// has no picker, which the caller treats exactly like a cancel (falling back to a typed path).
 pub fn pick_folder(start: Option<&Path>, portal: impl FnOnce(Option<&Path>) -> Result<Option<PathBuf>, PortalError>) -> Option<PathBuf> {
     match portal(start) {
@@ -26,7 +26,7 @@ pub fn pick_folder(start: Option<&Path>, portal: impl FnOnce(Option<&Path>) -> R
 /// Picks one folder for the app to use.
 pub type FolderPicker = Arc<dyn Fn(Option<&Path>) -> Option<PathBuf> + Send + Sync>;
 
-/// This OS's folder picker, or `None` where there's none yet (spec §4). `parent_window` supplies
+/// This OS's folder picker, or `None` where there's none yet. `parent_window` supplies
 /// the dialog's parent, computed by the app from its own window fresh on every call, since the
 /// window may not exist yet the first time this is used: the portal's `parent_window` token
 /// (`x11:<xid>`) on Linux, `win32:<hwnd in hex>` on Windows (`win32_parent`), or `""` for none.
@@ -116,7 +116,7 @@ mod linux {
     /// the race of calling `OpenFile` and only then listening (xdg-desktop-portal's documented
     /// pattern). A portal that doesn't honour `handle_token` (or mangles it on a collision) can
     /// still return a different path in `OpenFile`'s own reply; `pick_once` re-subscribes on that
-    /// one when it happens (fix round 1, item 7).
+    /// one when it happens.
     fn request_path(bus: &zbus::blocking::Connection, token: &str) -> Result<String, PortalError> {
         let unique = bus.unique_name().ok_or_else(|| PortalError::Failed("no unique bus name yet".into()))?;
         let sender = unique.trim_start_matches(':').replace('.', "_");
@@ -170,7 +170,7 @@ mod linux {
             )
             .map_err(chooser_linux::classify_zbus_error)?;
 
-        // Fix round 1, item 7: an older or nonconforming portal may not honour `handle_token`,
+        // An older or nonconforming portal may not honour `handle_token`,
         // returning a different request path than the one we predicted and already subscribed to.
         // Re-matching here narrows, but can't fully close, the window between the portal choosing
         // that path and this resubscribing on it — a response emitted in between would still be

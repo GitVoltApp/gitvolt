@@ -3,7 +3,7 @@ import type { CoAuthor } from "./CoAuthor";
 import type { PersonPayload } from "./PersonPayload";
 
 /**
- * The right panel's commit header (spec §9.1). The message itself (§9.2) is not here: the panel
+ * The right panel's commit header. The message itself is not here: the panel
  * gets it from `Request::CommitMessage`, sharing the graph tooltip's cache.
  */
 export type CommitDetailsPayload = { id: string, parents: Array<string>, author: PersonPayload, committer: PersonPayload, coAuthors: Array<CoAuthor>, 

@@ -1,4 +1,4 @@
-//! A conflict resolution as a staging undo step (spec #2 §7.6, ux round 2): one path's index
+//! A conflict resolution as a staging undo step: one path's index
 //! entries (stages 1/2/3 before, stage 0 after) and its worktree file, byte for byte. The bytes
 //! are kept as blobs (`hash-object -w --no-filters`, dangling like snapshots), so the log stays
 //! small in memory and a restore writes exactly what was there, with no filter in between.

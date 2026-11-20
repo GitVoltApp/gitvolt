@@ -11,8 +11,8 @@ import type { RepoViewStore } from '../repo/store';
 import { resolveChord } from '../ui/platformKeys';
 
 /**
- * The one registry of app actions: the hamburger menu (spec §6.1), the global shortcuts (§11.1,
- * `shortcuts.ts`), toolbar buttons and the palette's `>` group (§11.2) all read it. Each feature
+ * The one registry of app actions: the hamburger menu, the global shortcuts
+ * (`shortcuts.ts`), toolbar buttons and the palette's `>` group all read it. Each feature
  * registers its own actions from its own module (`app/features.ts` imports them), so no two
  * features edit one list.
  */
@@ -39,13 +39,13 @@ export interface Action {
   /** Usable now (hidden from menus and the palette, and its shortcut passes through, when not). */
   when?: () => boolean;
   /** `false`: left out of the hamburger menu, still in the palette and on its shortcuts (the ten
-   * "Theme: <Name>" actions, which the menu reaches through one "Theme…" row; ruling R4). */
+   * "Theme: <Name>" actions, which the menu reaches through one "Theme…" row). */
   menu?: false;
   run: () => void | Promise<void>;
-  /** Its shortcut is left to the focused element when this says it has its own (spec #2 §5.5:
-   * Ctrl+Z in a text box, an editable Monaco, the diff view or the WIP file list). */
+  /** Its shortcut is left to the focused element when this says it has its own (Ctrl+Z in a text
+   * box, an editable Monaco, the diff view or the WIP file list). */
   yieldsTo?: (target: EventTarget | null) => boolean;
-  /** What a failure's toast may offer besides Copy and Details (R12): Retry, Refresh, Remove from recent. */
+  /** What a failure's toast may offer besides Copy and Details: Retry, Refresh, Remove from recent. */
   errorContext?: () => ErrorContext;
 }
 
@@ -87,8 +87,8 @@ const usable = (a: Action) => !a.when || a.when();
 export const availableActions = () => [...registry.values()].filter(usable);
 
 /** Runs `a` now, in the caller's task (a key press's effects land before the next paint), and
- * records it in the action log (R11). A failure is never thrown: it's logged, and shown in the
- * error toast with Copy/Retry and Details (R12; a cancel stays quiet). */
+ * records it in the action log. A failure is never thrown: it's logged, and shown in the
+ * error toast with Copy/Retry and Details (a cancel stays quiet). */
 export function invoke(a: Action, opts: { quiet?: boolean } = {}): void {
   track(a.id, a.label, a.run, (e) => {
     console.warn(`[gitvolt] action ${a.id} failed`, e);
@@ -116,7 +116,7 @@ export const activeRuntime = (): TabRuntime | null => {
   const t = activeTab();
   return t ? useRuntime.getState().tabs[t.id] ?? null : null;
 };
-/** The active tab's 1B view state (ruling R3), once its graph has loaded. */
+/** The active tab's view state, once its graph has loaded. */
 export const activeStore = (): RepoViewStore | null => {
   const t = activeTab();
   return t ? tabStore(t.id) ?? null : null;
@@ -132,14 +132,14 @@ const GROUPS: Array<{ group: ActionGroup; icon: LucideIcon; tooltip: string }> =
 
 const QUIT_ID = 'file.quit';
 
-/** The hamburger menu (spec §6.1): one submenu per group that has at least one usable action.
+/** The hamburger menu: one submenu per group that has at least one usable action.
  * When several usable actions share a combo (Ctrl+W: `file.closeFile` while a file is open, else
  * `file.closeTab`), only the one `actionForCombo` would actually run shows the badge — never
  * both, so the menu never claims two rows for the one press the user has bound. */
 export function hamburgerRows(): MenuRow[] {
   const all = availableActions();
   return GROUPS.flatMap(({ group, icon, tooltip }) => {
-    // Quit is always the last entry of File, after a separator (K95), wherever it registered.
+    // Quit is always the last entry of File, after a separator, wherever it registered.
     const inGroup = all.filter((a) => a.group === group && a.menu !== false);
     const ordered = [...inGroup.filter((a) => a.id !== QUIT_ID), ...inGroup.filter((a) => a.id === QUIT_ID)];
     const rows: MenuRow[] = ordered.flatMap((a, i): MenuRow[] => {

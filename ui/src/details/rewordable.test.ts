@@ -19,7 +19,7 @@ function input(head: { branch: string; target: string }, o: { labels?: RefLabel[
 }
 const feature = { branch: 'refs/heads/feature', target: 'f2' };
 
-describe('rewordableOlder (spec #3 §3.6; 3C T13 fix 1 I1)', () => {
+describe('rewordableOlder', () => {
   it('a commit of the branch, above the fork: yes, with HEAD for the CAS', () => {
     expect(rewordableOlder(input(feature), 'f1')).toEqual({ head: 'f2', pushed: null });
   });
@@ -50,7 +50,7 @@ describe('rewordableOlder (spec #3 §3.6; 3C T13 fix 1 I1)', () => {
     expect(rewordableOlder(input(feature, { labels: [label(0, 'refs/heads/feature')] }), 'm1')).toEqual({ head: 'f2', pushed: null });
   });
 
-  it('pushed: HEAD\'s upstream already has the commit (fix 1 M6)', () => {
+  it('pushed: HEAD\'s upstream already has the commit', () => {
     const labels = [label(0, 'refs/heads/feature'), label(1, null, 'refs/remotes/origin/feature'), label(2, 'refs/heads/main', 'refs/remotes/origin/main')];
     expect(rewordableOlder(input(feature, { labels, upstream: 'refs/remotes/origin/feature' }), 'f1')).toEqual({ head: 'f2', pushed: 'origin/feature' });
   });

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'image.css'), 'utf8');
 const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 
-describe('image.css motion (J19)', () => {
+describe('image.css motion', () => {
   it('the image toolbar segmented/toggle buttons fade colour fast and pressed background at the base token', () => {
     expect(rule('.image-toolbar .segmented > button, .image-toolbar .toggle')).toMatch(/transition:\s*color var\(--motion-fast\), background-color var\(--motion-base\)/);
   });
@@ -33,13 +33,13 @@ describe('image.css toolbar', () => {
   });
 });
 
-describe('image.css labels (K9)', () => {
+describe('image.css labels', () => {
   it("the Old/New (and Amplify) chips never block a drag or the swipe handle", () => {
     expect(rule('.image-label')).toMatch(/pointer-events:\s*none/);
   });
 });
 
-describe('image.css side-by-side divider (K21)', () => {
+describe('image.css side-by-side divider', () => {
   it('draws a 1 px line, off the existing border token, centred in the stage', () => {
     const r = rule('.side-divider');
     expect(r).toMatch(/width:\s*1px/);
@@ -57,7 +57,7 @@ describe('image.css side-by-side divider (K21)', () => {
   });
 });
 
-describe('image.css side-by-side labels (K22)', () => {
+describe('image.css side-by-side labels', () => {
   it('are bigger and centred horizontally, near the top, in side-by-side only', () => {
     const r = rule('.image-stage.mode-side .image-viewport > .image-label');
     expect(r).toMatch(/left:\s*50%/);
@@ -72,7 +72,7 @@ describe('image.css side-by-side labels (K22)', () => {
   });
 });
 
-describe('image.css fixed-width slider values (K23)', () => {
+describe('image.css fixed-width slider values', () => {
   it("the Amplify value reserves space for its widest reading (16×), tabular digits", () => {
     const r = rule('.amplify-value');
     expect(r).toMatch(/font-variant-numeric:\s*tabular-nums/);

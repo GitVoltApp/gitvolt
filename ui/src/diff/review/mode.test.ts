@@ -28,7 +28,7 @@ const thread = (id: string, system = false): ForgeDiscussion => ({ id, resolvabl
 const at = (side: 'old' | 'new', line: number, outdated = false): Placement => ({ path: 'README.md', side, line, startLine: null, outdated });
 const anchor: ReviewAnchor = { path: 'README.md', oldPath: 'README.md', start: ctx(1, 1), end: add(2, 3) };
 
-describe('review mode (spec 2026-10-08 §2)', () => {
+describe('review mode', () => {
   it("is on for the session's Compare, for a file of the MR, in Diff View", () => {
     expect(reviewModeOf(session(), COMPARE, target('README.md'))).toEqual({ on: true, stale: false, tooLarge: false, file: FILE });
     expect(reviewModeOf(null, COMPARE, target('README.md')).on).toBe(false);

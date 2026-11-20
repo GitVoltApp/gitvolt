@@ -39,7 +39,7 @@ export function defaultRemote(tabId: string): string {
 const REWROTE: Record<RewriteKind, string> = { rebase: 'rebased', amend: 'amended' };
 
 /** GitVolt rewrote the branch since its last push and a plain push would be rejected: Push
- * force-pushes with the lease recorded at the rewrite, without asking (spec #2 §12.3). The
+ * force-pushes with the lease recorded at the rewrite, without asking. The
  * verb, else null. */
 export function rewroteSincePush(b: LocalBranch): string | null {
   return b.rewritten && b.pushTarget && (b.pushBehind ?? 0) > 0 ? REWROTE[b.rewritten.kind] : null;
@@ -71,7 +71,7 @@ export function nothingToPush(b: LocalBranch): boolean {
   return !!b.pushTarget && up === b.pushTarget && !b.gone && b.ahead === 0 && !rewroteSincePush(b);
 }
 
-/** The force confirmation's body (spec #2 §12.3; the title asks "Force push main to
+/** The force confirmation's body (the title asks "Force push main to
  * origin/main?"): what the push replaces, counted from the snapshot. */
 export function forceText(b: LocalBranch): string {
   const n = b.pushBehind ?? 0;
@@ -87,7 +87,7 @@ export function forceArm(b: LocalBranch, target = b.pushTarget, behind = b.pushB
 }
 
 /** The remote-tracking oid the snapshot shows for `target` (`origin/main`, by default the
- * branch's push target): the lease (spec #2 §12.3). */
+ * branch's push target): the lease. */
 function leaseOf(tabId: string, b: LocalBranch, target = b.pushTarget): string | null {
   const groups = useRuntime.getState().tabs[tabId]?.sidebar?.remotes ?? [];
   for (const g of groups) {
@@ -97,26 +97,22 @@ function leaseOf(tabId: string, b: LocalBranch, target = b.pushTarget): string |
   return null;
 }
 
-/** T19 sets `pull` (the rejection toast's [Pull]), so this module doesn't import the pull feature. */
+/** The pull feature sets `pull` (the rejection toast's [Pull]), so this module doesn't import the pull feature. */
 export const pushHooks: {
   pull: ((ctx: WriteCtx, branch: string) => void) | null;
-  // --- 4C T9 ---
-  /** 4C sets it: the push toast's "Create MR" for a branch the push created on `remote`. */
+  /** Set by the MR feature: the push toast's "Create MR" for a branch the push created on `remote`. */
   afterNewBranch: ((tabId: string, branch: string, remote: string) => ToastAction | null) | null;
-  // --- end 4C T9 ---
 } = { pull: null, afterNewBranch: null };
 
-// --- 4C T9 ---
-/** The push toast's extra links (ruling 15): `afterNewBranch`'s, when this push created the
+/** The push toast's extra links: `afterNewBranch`'s, when this push created the
  * remote branch (no push target before it, or its remote ref didn't exist) and sent something. */
 export function afterPushActions(tabId: string, b: LocalBranch, upToDate: boolean, remote: string): ToastAction[] {
   const created = !b.pushTarget || b.pushBehind === null;
   const link = created && !upToDate ? pushHooks.afterNewBranch?.(tabId, b.name, remote) : null;
   return link ? [link] : [];
 }
-// --- end 4C T9 ---
 
-/** A rejected push is a real choice (spec §ui confirms, board G): a popover anchored at the Push
+/** A rejected push is a real choice: a popover anchored at the Push
  * that started it, "origin/main has 1 commit main doesn't have", with [Cancel] [Force push…]
  * [Pull]: the safe Pull right-most and focused, Force push (with lease) red, arming in place
  * before it goes; Details is a link in the body. */
@@ -153,7 +149,7 @@ async function send(ctx: WriteCtx, b: LocalBranch, opts: SendOpts, origin: Origi
   await runOnce(ctx.tabId, 'push', b.fullName, () => withPending(ctx.tabId, [b.fullName], 'push', () => runWrite(ctx, () => api.push(ctx.repoId, ctx.worktree, b.name, { ...opts, expect: { head: null, refs: { [b.fullName]: b.target } } }), {
     onSuccess: (o) => {
       const dst = `${o.remote}/${o.dst}`;
-      // A rewrite mark's lease held (spec #2 §12.3): say it was forced, and why.
+      // A rewrite mark's lease held: say it was forced, and why.
       const done = o.forced ? `Force pushed ${o.branch} with lease (${REWROTE[o.forced]} locally)` : `Pushed ${o.branch} to ${dst}`;
       showServerResult(o.upToDate ? `${dst} is up to date` : done, `${done}; the server reported a problem`, o.server, o.op, afterPushActions(ctx.tabId, b, o.upToDate, o.remote));
       if (!o.upToDate) notifyBranchPushed(ctx.tabId);

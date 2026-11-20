@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FAST_POLL_MAX_MS, FAST_POLL_MS, fastPollMs, MIN_POLL_MS, nextPollDelay } from './poller';
 
-describe('nextPollDelay (spec #4 §3.4)', () => {
+describe('nextPollDelay', () => {
   it('follows the fetch interval, never under a minute, and the fast poll while a pipeline runs', () => {
     expect(nextPollDelay(60_000, null)).toBe(60_000);
     expect(nextPollDelay(60_000, { runningPipeline: false, serverIntervalMs: null })).toBe(60_000);
@@ -27,7 +27,6 @@ describe('nextPollDelay (spec #4 §3.4)', () => {
   });
 });
 
-// --- 4B T7 ---
 import { backoffMs, createForgePoller, FOCUS_GAP_MS, MAX_BACKOFF_MS, type PollOutcome, type PollReason } from './poller';
 
 function harness(outcome: PollOutcome = { runningPipeline: false, serverIntervalMs: null }, minimized = false) {
@@ -46,7 +45,7 @@ function harness(outcome: PollOutcome = { runningPipeline: false, serverInterval
   return { reasons, state, deps };
 }
 
-describe('createForgePoller (spec #4 §3.4)', () => {
+describe('createForgePoller', () => {
   beforeEach(() => vi.useFakeTimers({ now: 1_000_000 }));
   afterEach(() => vi.useRealTimers());
 
@@ -195,7 +194,7 @@ describe('createForgePoller (spec #4 §3.4)', () => {
   });
 });
 
-describe('backoffMs (spec #4 §6: the poller backs off)', () => {
+describe('backoffMs (the poller backs off)', () => {
   it('backs off after failures, at most 15 minutes', () => {
     expect(backoffMs(60_000, 0)).toBe(0);
     expect(backoffMs(60_000, 1)).toBe(60_000);
@@ -241,4 +240,3 @@ describe('createForgePoller failures and restarts', () => {
     p.stop();
   });
 });
-// --- end 4B T7 ---

@@ -1,12 +1,12 @@
 .file-sections { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; -webkit-user-select: none; user-select: none; }
-/* Below the commit split (feedback F13), the file list keeps a usable height. */
+/* Below the commit split, the file list keeps a usable height. */
 .split-resizer + .file-sections { min-height: 160px; }
 .file-section { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .file-section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); margin: 8px 12px 0; }
 .file-section-status { padding: 6px 12px; color: var(--text-secondary); }
 .file-list { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .file-list-header { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; color: var(--text-secondary); }
-/* Justified three-part toolbar (feedback F18): start | centre | end. */
+/* Justified three-part toolbar: start | centre | end. */
 .file-toolbar { container-type: inline-size; position: relative; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; padding: 0 12px 6px; }
 .file-toolbar-start { justify-self: start; min-width: 0; }
 .file-toolbar-center { justify-self: center; }
@@ -16,7 +16,7 @@
 .toolbar-button { box-sizing: border-box; max-width: 100%; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--section-border); border-radius: 4px; }
 .toolbar-button:disabled { cursor: default; opacity: 0.5; }
 /* A leading lucide icon's ink starts ~3 px into its 12 px box: 5 px of padding puts the ink
-   8 px from the border, like the text's right side (feedback H17). */
+   8 px from the border, like the text's right side. */
 .toolbar-button.icon-lead { padding-left: 5px; }
 .segmented > button:hover, .toolbar-button:hover:not(:disabled) { color: var(--text-selected); }
 .segmented > button:focus-visible, .toolbar-button:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
@@ -30,14 +30,14 @@
 .file-row[aria-selected="true"] { background: var(--selected-row); color: var(--text-selected); }
 .file-row[data-tinted]:hover { background: linear-gradient(var(--hover-row), var(--hover-row)) var(--row-tint, transparent); }
 .file-row[data-tinted][aria-selected="true"] { background: linear-gradient(var(--selected-row), var(--selected-row)) var(--row-tint, transparent); }
-/* The row a context menu is open for (UX round 2: a right-click never selects). */
+/* The row a context menu is open for (a right-click never selects). */
 .file-row[data-context="true"] { outline: 1px solid var(--blue); outline-offset: -1px; }
 .file-row.unchanged .file-name { color: var(--text-secondary); }
 .file-dir { color: var(--text-disabled); overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
 .file-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .file-stats { margin-left: auto; visibility: hidden; font-size: 11px; }
 .file-row:hover .file-stats, .file-row[aria-selected="true"] .file-stats { visibility: visible; }
-/* Line totals, brighter than the graph's stats colours (feedback F19; AA on the panel). */
+/* Line totals, brighter than the graph's stats colours (AA on the panel). */
 .added { color: var(--stats-added-bright); }
 .deleted { color: var(--stats-deleted-bright); }
 .file-chevron { display: inline-grid; place-items: center; flex: none; }
@@ -45,14 +45,14 @@
 /* Coloured status icons with counts: the header row (F19) and collapsed folders (F20). */
 .status-counts { display: inline-flex; align-items: center; gap: 8px; }
 .status-count { display: inline-flex; align-items: center; gap: 3px; }
-/* Right after the folder's name (feedback H16), not at the right edge. */
+/* Right after the folder's name, not at the right edge. */
 .file-row .status-counts { flex: none; gap: 6px; font-size: 11px; color: var(--text-secondary); }
 .file-list-error { display: flex; align-items: center; gap: 8px; padding: 0 12px 6px; color: var(--text-secondary); }
-/* The panel ignores text selection (feedback J9: a double-click or a drag there selects nothing);
+/* The panel ignores text selection (a double-click or a drag there selects nothing);
    an error message (a list's, or "View all files"') can still be selected and copied. */
 .file-sections [role="alert"] { -webkit-user-select: text; user-select: text; }
 
-/* WIP (K36): a shared Path/Tree bar, then two collapsible sections split by a drag handle. */
+/* WIP: a shared Path/Tree bar, then two collapsible sections split by a drag handle. */
 .wip-sections { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .wip-view-bar { container-type: inline-size; flex: none; display: flex; justify-content: center; padding: 6px 12px; }
 .wip-section.sized { flex: 0 0 auto; }
@@ -72,14 +72,14 @@
 .wip-section-head .file-section-title { margin: 0; flex: none; }
 .wip-section-head .file-section-title button { all: unset; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .wip-section-head .file-section-title button:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
-/* K59: the per-type file counts sit right after the title (8px gap, from the head's gap); only the
+/* The per-type file counts sit right after the title (8px gap, from the head's gap); only the
    +/- line totals are pushed to the far end. Narrow, the totals (shrink 100) clip away first, then
    the counts; the title never shrinks. */
 .wip-section-summary { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
-/* The +/− totals moved to the list's tool line (ux round 3): the actions take the far end. */
+/* The +/− totals moved to the list's tool line: the actions take the far end. */
 /* One control height (--ctl-h) across a header: tools and actions, 6px apart. Totals push the group right. */
 .wip-section-head { --ctl-h: 24px; gap: 6px; }
-/* K60: with both sections open the drag handle's line is the one divider above Staged. */
+/* With both sections open the drag handle's line is the one divider above Staged. */
 .split-resizer + .wip-section > .wip-section-head { border-top: 0; }
 /* The WIP header bar: `N file changes on [branch]`. */
 .wip-header { justify-content: stretch; }
@@ -99,7 +99,7 @@
 .conflict-tip { margin-top: 3px; color: var(--status-conflicted); }
 /* WIP: the mode's tool (Collapse all / Sort by status) on a slim line above the list, left with its content. */
 /* Lined up with the rows: TREE.base (8px) on both sides; the tool's icon (4px inset) sits over a row's chevron. */
-.list-tool-line { flex: none; display: flex; align-items: center; padding: 2px 8px 4px 5px; } /* 5 + the button's 4 = the carets' 9px column (UX R.3) */
+.list-tool-line { flex: none; display: flex; align-items: center; padding: 2px 8px 4px 5px; } /* 5 + the button's 4 = the carets' 9px column */
 .wip-filter-row { flex: none; padding: 4px 8px; }
 .wip-filter-input { box-sizing: border-box; width: 100%; height: 24px; padding: 0 8px; font: inherit; font-size: 12px; color: var(--text-selected); background: var(--control-bg, transparent); border: 1px solid var(--section-border); border-radius: 4px; }
 .wip-filter-input:focus-visible { outline: 1px solid var(--blue); }

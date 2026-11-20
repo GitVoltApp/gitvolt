@@ -81,12 +81,12 @@ const BROWSER_ONLY_COMMANDS: &[&CStr] = &[
   resources::IDC_CONTENT_CONTEXT_SHARING_SUBMENU,
   resources::IDC_CONTENT_CONTEXT_GENERATE_QR_CODE,
   resources::IDC_ROUTE_MEDIA,
-  // GitVolt patch (H19): Chrome's text-fragment links. "Copy link to highlight" hands the user
+  // GitVolt patch: Chrome's text-fragment links. "Copy link to highlight" hands the user
   // a `http://tauri.localhost/#:~:text=…` URL, which means nothing outside the app window.
   resources::IDC_CONTENT_CONTEXT_COPYLINKTOTEXT,
   resources::IDC_CONTENT_CONTEXT_RESHARELINKTOTEXT,
   resources::IDC_CONTENT_CONTEXT_REMOVELINKTOTEXT,
-  // GitVolt patch (H19): Chrome's AI, reading and sharing services, which hand the page to
+  // GitVolt patch: Chrome's AI, reading and sharing services, which hand the page to
   // Google or to the user's other devices.
   resources::IDC_CONTENT_CONTEXT_GLIC,
   resources::IDC_CONTENT_CONTEXT_GLICSHAREIMAGE,
@@ -106,7 +106,7 @@ const BROWSER_ONLY_COMMANDS: &[&CStr] = &[
   resources::IDC_CONTENT_CONTEXT_SHARING_CLICK_TO_CALL_MULTIPLE_DEVICES,
   resources::IDC_CONTENT_CONTEXT_OPENLINK_ISOLATED,
   resources::IDC_CONTENT_CONTEXT_OPENLINKWITH,
-  // GitVolt patch (H19): password and address autofill; the app has no web forms.
+  // GitVolt patch: password and address autofill; the app has no web forms.
   resources::IDC_CONTENT_CONTEXT_SHOWALLSAVEDPASSWORDS,
   resources::IDC_CONTENT_CONTEXT_GENERATEPASSWORD,
   resources::IDC_CONTENT_CONTEXT_USE_PASSKEY_FROM_ANOTHER_DEVICE,
@@ -117,7 +117,7 @@ const BROWSER_ONLY_COMMANDS: &[&CStr] = &[
   resources::IDC_CONTENT_CONTEXT_AUTOFILL_FALLBACK_PASSWORDS_USE_PASSKEY_FROM_ANOTHER_DEVICE,
   resources::IDC_CONTENT_CONTEXT_AUTOFILL_FALLBACK_AT_MEMORY,
   resources::IDC_CONTENT_CONTEXT_PROTOCOL_HANDLER_SETTINGS,
-  // GitVolt patch (H19): an image's address is a `blob:` URL; Copy image stays.
+  // GitVolt patch: an image's address is a `blob:` URL; Copy image stays.
   resources::IDC_CONTENT_CONTEXT_COPYIMAGELOCATION,
   // GitVolt patch (spell check): "Use enhanced spell check" hands the text to Google's spelling
   // service, and "Language settings" opens a `chrome://settings` tab. The suggestions and
@@ -248,7 +248,7 @@ fn remove_recursive<M: MenuModelLike>(model: &M, command_id: c_int) -> bool {
 /// `remove_recursive` removed (the passwords or accessibility submenu, once its entries are all
 /// gone) would otherwise linger in the menu, open to nothing.
 ///
-/// Fix round 1, item 6: this is how the parent containers get removed. The autofill-fallback
+/// This is how the parent containers get removed. The autofill-fallback
 /// passwords and accessibility-labels submenus have no stable id of their own to target by —
 /// Chromium assigns them a plain runtime command id with no entry in this CEF build's name
 /// table (unlike, say, `IDC_CONTENT_CONTEXT_SHARING_SUBMENU`, checked against every resource
@@ -331,7 +331,7 @@ wrap_context_menu_handler! {
       // Removing a command this menu does not carry is a no-op, so the whole
       // policy can be applied to every menu without first asking `params` which
       // kind of menu it is. `remove_recursive` also reaches into submenus (GitVolt
-      // patch, deferred minor #15): some of these entries are nested one level
+      // patch): some of these entries are nested one level
       // down, where a plain `remove` would silently miss them.
       let command_ids = command_ids();
       for id in &command_ids.browser_only {
@@ -382,7 +382,7 @@ pub(crate) fn load_cef_for_tests() {
 mod tests {
   use super::*;
 
-  /// GitVolt patch (H19): what the app's text menu must not offer. "Copy link to highlight"
+  /// GitVolt patch: what the app's text menu must not offer. "Copy link to highlight"
   /// (a `#:~:text=` link to `tauri.localhost`) and its siblings, Chrome's AI / reading / sharing
   /// services, password and address autofill, and "copy image address" (a `blob:` URL).
   #[test]
@@ -460,7 +460,7 @@ mod tests {
     }
   }
 
-  // GitVolt patch, deferred minor #15 / fix round 1, item 6: `remove_recursive`,
+  // GitVolt patch: `remove_recursive`,
   // `remove_empty_submenus` and `remove_redundant_separators` are generic over `MenuModelLike`
   // precisely so they can be tested here, against this in-memory fake, instead of a real
   // `MenuModel` — `menu_model_create` returns `None` outside a running browser process
@@ -530,7 +530,7 @@ mod tests {
     }
   }
 
-  /// The exact shape minor #15 described: an id nested one level down, under a submenu with
+  /// An id nested one level down, under a submenu with
   /// other, unrelated real entries either side of it.
   fn passwords_menu() -> FakeMenu {
     FakeMenu::new(vec![
@@ -549,7 +549,7 @@ mod tests {
     let top = passwords_menu();
     let sub = top.submenu_at(1);
 
-    // A plain, non-recursive remove at the top level can't see it: this is the bug (minor #15).
+    // A plain, non-recursive remove at the top level can't see it: this is the bug.
     assert!(!top.remove_command(20));
     assert_eq!(sub.commands(), vec![Some(10), Some(20), Some(21)]);
 
@@ -576,7 +576,7 @@ mod tests {
     assert!(remove_recursive(&top, 20));
     assert!(remove_recursive(&top, 21));
     // Every real entry in the submenu is gone, but it's not yet "empty" by a raw count: two
-    // separators are still in it (this is item 6: `remove_empty_submenus` must sweep those with
+    // separators are still in it (`remove_empty_submenus` must sweep those with
     // `remove_redundant_separators` before deciding).
     let sub = top.submenu_at(1);
     assert_eq!(sub.item_count(), 2);

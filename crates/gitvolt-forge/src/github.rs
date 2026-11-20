@@ -1,7 +1,7 @@
-//! GitHub REST (spec #4 §3.1): identity, repositories, settings, forks, avatars. GitHub has no
+//! GitHub REST: identity, repositories, settings, forks, avatars. GitHub has no
 //! avatar-by-email API: an avatar comes from a noreply email's user id, or an email → avatar URL
 //! learned from API data (`learn_avatar`). Never a user search by email (30 a minute, public
-//! emails only). 4B–4D add the pull request methods, in their marked blocks.
+//! emails only). The pull request methods are in their marked blocks.
 
 use crate::avatar_cache::{image_at, payload_of, DiskAvatarCache, Lookup};
 use crate::known_names::{KnownNames, NameMatch};
@@ -17,10 +17,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 pub const GITHUB_HEADERS: [(&str, &str); 2] = [("Accept", "application/vnd.github+json"), ("X-GitHub-Api-Version", "2022-11-28")];
-// --- 5A T2 ---
 /// GitHub's `full` media type: bodies and comments carry `body_html` (with signed image URLs).
 pub const GITHUB_FULL: &str = "application/vnd.github.full+json";
-// --- end 5A T2 ---
 pub const FORKS_PER_PAGE: u32 = 100;
 pub const FORK_PAGES: usize = 3;
 // --- GitHub commit-author avatars ---
@@ -57,10 +55,8 @@ pub struct GitHubProvider {
     cache: Option<Arc<DiskAvatarCache>>,
     /// Lowercase email → avatar URL, from API data.
     learned: Mutex<HashMap<String, String>>,
-      // --- 4B T4 ---
       /// The token's user, once asked (Mine, Review requested).
       me: Mutex<Option<ForgeUser>>,
-      // --- end 4B T4 ---
     /// When asking who the user is last failed (`me_soft`: not asked again for `ME_RETRY`).
     me_failed: Mutex<Option<std::time::Instant>>,
     /// The list's checks by head commit (`pipelines`): asked only for new or running heads.
@@ -76,10 +72,8 @@ pub struct GitHubProvider {
     /// carry no display name).
     names: KnownNames,
     // --- end commit-author avatars by name ---
-    // --- 5A T2 ---
     /// The bases Markdown images load from without asking (`images::github_route`).
     image_bases: Vec<String>,
-    // --- end 5A T2 ---
     /// (repo, PR) → (its `updated_at` when asked, `viewerSubscription`): a detail poll asks
     /// GraphQL only when the PR changed.
     subscriptions: Mutex<Subscriptions>,
@@ -114,14 +108,12 @@ impl GitHubProvider {
         Self { host: host.into(), api_base: endpoints.api.trim_end_matches('/').into(), avatars_base, http, cache, learned: Mutex::default(), me: Mutex::new(None), me_failed: Mutex::new(None), checks: Default::default(), authors_asked: Mutex::default(), author_turn: tokio::sync::Mutex::new(()), names: KnownNames::default(), image_bases, subscriptions: Mutex::default(), reaction_lists: Mutex::default(), thread_ids: Mutex::default() }
     }
 
-    // --- 5A T2 ---
     /// The bases Markdown images load from without asking (`images::github_route`); the harness
     /// points them at its fake.
     pub fn with_image_bases(mut self, bases: Vec<String>) -> Self {
         self.image_bases = bases.into_iter().map(|b| b.trim_end_matches('/').to_string()).collect();
         self
     }
-    // --- end 5A T2 ---
 
     pub fn http(&self) -> &HttpClient {
         &self.http
@@ -169,7 +161,6 @@ pub mod json {
         v.as_str().filter(|s| !s.is_empty()).map(str::to_string)
     }
 
-    // --- MR round 2 ---
     /// `viewerSubscription`: SUBSCRIBED is on; UNSUBSCRIBED and IGNORED are off.
     pub fn subscribed(v: &Value) -> Option<bool> {
         match v.as_str()? {
@@ -195,7 +186,6 @@ pub mod json {
             ReviewEvent::RequestChanges => "REQUEST_CHANGES",
         }
     }
-    // --- end MR round 2 ---
 
     pub fn user(v: &Value) -> Option<ForgeUser> {
         let login = v["login"].as_str()?.to_string();
@@ -251,7 +241,7 @@ pub mod json {
     }
 
     /// A classic token's `X-OAuth-Scopes`: `repo` (or `public_repo`) writes. A fine-grained token
-    /// sends none: its permissions can't be read, so `Unknown` (spec #4 §3.2).
+    /// sends none: its permissions can't be read, so `Unknown`.
     pub fn token_write(scopes: Option<&str>) -> WriteAccess {
         match scopes {
             None => WriteAccess::Unknown,
@@ -259,7 +249,7 @@ pub mod json {
             Some(_) => WriteAccess::No { missing: "repo".into() },
         }
     }
-    // --- 4B T4: pull requests ---
+    // --- pull requests ---
     /// A branch's badge: its open (or draft) PR, else its most recently updated one.
     pub fn pick_for_branch(mrs: Vec<ForgeMr>) -> Option<ForgeMr> {
         match mrs.iter().position(|m| matches!(m.state, MrState::Open | MrState::Draft)) {
@@ -597,15 +587,13 @@ pub mod json {
         out.sort_by_key(|d| d.notes.first().map_or(0, |n| n.created_at));
         out
     }
-    // --- end 4B T4 ---
-    // --- 4C T4 ---
     /// A label; GitHub's colour has no `#`.
     pub fn label(v: &Value) -> Option<ForgeLabel> {
         let color = text(&v["color"]).map(|c| if c.starts_with('#') { c } else { format!("#{c}") });
         Some(ForgeLabel { name: v["name"].as_str()?.to_string(), color, description: text(&v["description"]) })
     }
 
-    /// The POST /pulls body. A branch from a fork is `owner:branch` (ruling 3). GitHub takes no
+    /// The POST /pulls body. A branch from a fork is `owner:branch`. GitHub takes no
     /// squash or delete-branch at create (those are merge-time).
     pub fn create_body(target: &str, req: &CreateMr) -> Value {
         let owner = req.source.project.split('/').next().unwrap_or("");
@@ -658,12 +646,11 @@ pub mod json {
         base64::engine::general_purpose::STANDARD.decode(raw).ok()
     }
 
-    /// The people search, done here (ruling 11): a case-insensitive part of the login or name.
+    /// The people search, done here: a case-insensitive part of the login or name.
     pub fn matches(u: &ForgeUser, query: &str) -> bool {
         let q = query.trim().to_lowercase();
         q.is_empty() || u.username.to_lowercase().contains(&q) || u.name.to_lowercase().contains(&q)
     }
-    // --- end 4C T4 ---
 
     // --- review comments ---
     use gitvolt_core::forge::review::commentable_lines;
@@ -839,7 +826,7 @@ impl ForgeProvider for GitHubProvider {
         Some(Box::pin(async move { image_at(&self.http, self.cache.as_deref(), &url, &self.api_base).await }))
     }
 
-    // --- 5A T2: Markdown images ---
+    // --- Markdown images ---
     /// GitHub's own image hosts (`image_bases`); never the token (it goes only to the API).
     fn image<'a>(&'a self, _project: &'a ForgeProject, url: &'a str) -> Option<ForgeFuture<'a, ForgeImage>> {
         let route = crate::images::github_route(url, &self.image_bases)?;
@@ -855,7 +842,6 @@ impl ForgeProvider for GitHubProvider {
             crate::images::fetch_video(&self.http, &route, &self.api_base, &allowed).await
         }))
     }
-    // --- end 5A T2 ---
 
     fn avatar_for_email<'a>(&'a self, email: &'a str) -> ForgeFuture<'a, Option<AvatarPayload>> {
         Box::pin(async move {
@@ -973,8 +959,7 @@ impl ForgeProvider for GitHubProvider {
     }
     // --- end commit-author avatars by name ---
 
-    // --- 4B: pull requests ---
-    // --- 4B T4: reads ---
+        // --- reads ---
     fn open_mrs<'a>(&'a self, project: &'a ForgeProject, filter: MrFilter) -> ForgeFuture<'a, Fresh<Vec<ForgeMr>>> {
         Box::pin(self.list_open(project, filter, true))
     }
@@ -983,7 +968,6 @@ impl ForgeProvider for GitHubProvider {
         Box::pin(self.list_open(project, filter, false))
     }
 
-    // --- 4D T4 ---
     fn open_mrs_targeting<'a>(&'a self, project: &'a ForgeProject, branch: &'a str) -> ForgeFuture<'a, Fresh<Vec<ForgeMr>>> {
         Box::pin(async move {
             let repo = Self::repo_url(&project.path)?;
@@ -992,7 +976,6 @@ impl ForgeProvider for GitHubProvider {
             Ok(Self::fresh(list.iter().filter_map(json::pr).collect(), &r))
         })
     }
-    // --- end 4D T4 ---
 
     fn mr_for_branch<'a>(&'a self, project: &'a ForgeProject, source: &'a SourceRef) -> ForgeFuture<'a, Fresh<Option<ForgeMr>>> {
         Box::pin(async move {
@@ -1059,8 +1042,7 @@ impl ForgeProvider for GitHubProvider {
             Ok(Fresh::new(ds, unix_now()))
         })
     }
-    // --- end 4B T4 ---
-    // --- 4B T5: writes ---
+    // --- writes ---
     /// A review thread (`thread-<root>`) gets a reply in it; anything else goes to the conversation.
     fn reply<'a>(&'a self, project: &'a ForgeProject, number: u64, note: &'a NewNote) -> ForgeFuture<'a, ForgeNote> {
         Box::pin(async move {
@@ -1159,7 +1141,6 @@ impl ForgeProvider for GitHubProvider {
         })
     }
 
-    // --- MR round 2 ---
     /// One review: `POST /pulls/{n}/reviews` with the event and its message.
     fn review<'a>(&'a self, project: &'a ForgeProject, number: u64, review: &'a ReviewSubmit) -> ForgeFuture<'a, ReviewOutcome> {
         Box::pin(async move {
@@ -1191,7 +1172,6 @@ impl ForgeProvider for GitHubProvider {
             Ok(now)
         })
     }
-    // --- end MR round 2 ---
 
     // --- review comments ---
     fn review_diff<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, ReviewDiff> {
@@ -1298,7 +1278,7 @@ impl ForgeProvider for GitHubProvider {
     // --- end review comments ---
 
     /// The method is chosen among the repository's; deleting the branch is the repository's own
-    /// setting (ruling 8), so `delete_source_branch` and `squash` are ignored.
+    /// setting, so `delete_source_branch` and `squash` are ignored.
     fn merge<'a>(&'a self, project: &'a ForgeProject, number: u64, opts: &'a MergeOptions) -> ForgeFuture<'a, ForgeMr> {
         Box::pin(async move {
             let body = merge_body(opts)?;
@@ -1395,7 +1375,7 @@ impl ForgeProvider for GitHubProvider {
         })
     }
 
-    /// REST can't change it: GraphQL's two mutations (ruling 7).
+    /// REST can't change it: GraphQL's two mutations.
     fn set_draft<'a>(&'a self, project: &'a ForgeProject, number: u64, draft: bool) -> ForgeFuture<'a, ForgeMr> {
         Box::pin(async move {
             let v = self.pull_json(project, number).await?;
@@ -1409,10 +1389,7 @@ impl ForgeProvider for GitHubProvider {
             self.pull(project, number).await
         })
     }
-    // --- end 4B T5 ---
-    // --- end 4B ---
-    // --- 4C ---
-    // --- 4C T4: create (POST /pulls, then the follow-up calls), people, labels, templates ---
+    // --- create (POST /pulls, then the follow-up calls), people, labels, templates ---
     fn create_mr<'a>(&'a self, project: &'a ForgeProject, req: &'a CreateMr) -> ForgeFuture<'a, CreateOutcome> {
         Box::pin(async move {
             let repo = Self::repo_url(&project.path)?;
@@ -1489,11 +1466,8 @@ impl ForgeProvider for GitHubProvider {
             Ok(sort_templates(out))
         })
     }
-    // --- end 4C T4 ---
-    // --- end 4C ---
-    // --- 4D ---
-    // --- 4D: stacks ---
-    /// Points the PR at `target_branch` (spec #4 §4 "4D"): `PATCH …/pulls/:n` with `base`.
+    // --- stacks ---
+    /// Points the PR at `target_branch`: `PATCH …/pulls/:n` with `base`.
     fn retarget<'a>(&'a self, project: &'a ForgeProject, number: u64, target_branch: &'a str) -> ForgeFuture<'a, ForgeMr> {
         Box::pin(async move {
             let path = format!("{}/pulls/{number}", Self::repo_url(&project.path)?);
@@ -1501,10 +1475,9 @@ impl ForgeProvider for GitHubProvider {
             json::pr(&r.json(&self.host)?).ok_or_else(|| unreadable(&self.host, "pull request"))
         })
     }
-    // --- end 4D ---
 }
 
-// --- 4B T4: pull requests (reads) ---
+// --- pull requests (reads) ---
 pub const PR_PER_PAGE: u32 = 100;
 /// How long a failed ask of who the user is stands before it's asked again (`me_soft`).
 pub const ME_RETRY: std::time::Duration = std::time::Duration::from_secs(600);
@@ -1783,9 +1756,8 @@ impl GitHubProvider {
         Ok((json::checks(&runs.json(&self.host)?, &statuses.json(&self.host)?, &format!("{}/commit/{sha}", project.web_url)), same))
     }
 }
-// --- end 4B T4 ---
 
-// --- 4B T5: pull requests (writes) ---
+// --- pull requests (writes) ---
 /// GitHub's refusals of a merge, said plainly: the head moved (409), or it can't merge now (405).
 pub fn merge_refused(number: u64, e: GbError) -> GbError {
     if e.message.contains("Head branch was modified") {
@@ -1880,7 +1852,7 @@ impl GitHubProvider {
     }
     // --- end auto-merge ---
 
-    // --- MR round 2: notifications ---
+    // --- notifications ---
     /// The token's user's subscription to PR `number` (GraphQL's `viewerSubscription`), asked
     /// again only once the PR's `stamp` (its `updated_at`) moved. Best effort: `None` if GitHub
     /// didn't say.
@@ -1898,7 +1870,6 @@ impl GitHubProvider {
         self.subscriptions.lock().expect("subscriptions poisoned").insert(key, (stamp.to_string(), on));
         on
     }
-    // --- end MR round 2 ---
 
     async fn pull_json(&self, project: &ForgeProject, number: u64) -> Result<Value, GbError> {
         self.http.get(&format!("{}/pulls/{number}", Self::repo_url(&project.path)?)).await?.json(&self.host)
@@ -1938,15 +1909,14 @@ impl GitHubProvider {
     }
 }
 // --- end review comments ---
-// --- end 4B T5 ---
 
-// --- 4C T4: the create's follow-up calls ---
+// --- the create's follow-up calls ---
 pub const PEOPLE_PAGES: usize = 3;
 pub const PEOPLE_SHOWN: usize = 20;
 pub const LABEL_PAGES: usize = 3;
 
 impl GitHubProvider {
-    /// The requested parts in order: reviewers, assignees, labels (ruling 12). A failed one is
+    /// The requested parts in order: reviewers, assignees, labels. A failed one is
     /// recorded and doesn't stop the next; an empty one is skipped.
     async fn follow_up(&self, project: &ForgeProject, number: u64, req: &CreateMr, parts: &[CreatePart]) -> Vec<PartFailure> {
         let mut failed = Vec::new();
@@ -2019,7 +1989,7 @@ impl GitHubProvider {
         Ok(())
     }
 
-    /// GitHub's reviewers and assignees are logins; `CreateMr` carries ids (ruling 11).
+    /// GitHub's reviewers and assignees are logins; `CreateMr` carries ids.
     /// `GET /user/{id}` is ETag-cached: a repeat is a 304.
     async fn logins(&self, ids: &[u64]) -> Result<Vec<String>, GbError> {
         let mut out = Vec::with_capacity(ids.len());
@@ -2048,7 +2018,6 @@ fn part_message(host: &str, e: &GbError) -> String {
 fn enc_path(path: &str) -> String {
     path.split('/').map(encode_component).collect::<Vec<_>>().join("/")
 }
-// --- end 4C T4 ---
 
 #[cfg(test)]
 mod tests {
@@ -2109,14 +2078,12 @@ mod tests {
         assert_eq!(noreply_id("octocat@users.noreply.github.com"), None, "the old login-only form has no id");
         assert_eq!(noreply_id("ada@example.com"), None);
     }
-    // --- 4B T4 ---
     use serde_json::Value;
 
     fn user_json(id: u64, login: &str) -> Value {
         json!({"id": id, "login": login})
     }
 
-    // --- 5A T2 ---
     #[test]
     fn notes_and_review_bodies_keep_githubs_body_html() {
         let html = "<p><img src=\"https://private-user-images.githubusercontent.com/1/2-u.png?jwt=a\"></p>";
@@ -2126,7 +2093,6 @@ mod tests {
         assert_eq!(json::discussions(&[], &[], &[r])[0].notes[0].body_html.as_deref(), Some("<p>b</p>"));
         assert_eq!(json::comment_note(&json!({"id": 1, "user": user_json(2, "monalisa"), "body": "x"})).unwrap().body_html, None, "the plain media type has none");
     }
-    // --- end 5A T2 ---
 
     #[test]
     fn normalizes_a_pull_request_and_its_states() {
@@ -2236,8 +2202,6 @@ mod tests {
         assert_eq!((p.line, p.old_line, p.start_line, p.start_old_line), (None, Some(4), None, Some(1)));
         assert_eq!(p.snippet.as_deref(), Some(" one\n-two\n-three\n-four"));
     }
-    // --- end 4B T4 ---
-    // --- 4C T4 ---
     fn create_req(source: &str) -> CreateMr {
         CreateMr {
             source: SourceRef { project: source.into(), branch: "feature".into() }, target_branch: "main".into(), title: " Add the widget ".into(),
@@ -2278,7 +2242,6 @@ mod tests {
         assert!(json::try_decode_content(&json!({"content": "!!!"})).is_none());
         assert_eq!(json::try_decode_content(&json!({"content": "SGk=", "encoding": "base64"})), Some(b"Hi".to_vec()));
     }
-    // --- end 4C T4 ---
 
     #[test]
     fn only_a_pending_review_request_can_be_withdrawn() {
@@ -2305,7 +2268,6 @@ mod tests {
         assert_eq!(pr(serde_json::Value::Null), None);
     }
 
-    // --- MR round 2 ---
     #[test]
     fn a_review_body_names_the_event_and_carries_a_message_only_when_there_is_one() {
         let r = |event, body: &str| json::review_body(&ReviewSubmit { event, body: body.into() });
@@ -2321,7 +2283,6 @@ mod tests {
         assert_eq!(json::subscribed(&json!("UNSUBSCRIBED")), Some(false));
         assert_eq!(json::subscribed(&serde_json::Value::Null), None);
     }
-    // --- end MR round 2 ---
 
     #[test]
     fn the_merge_body_leaves_the_message_to_github() {

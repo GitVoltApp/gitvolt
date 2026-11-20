@@ -112,7 +112,7 @@ describe('tab model edges', () => {
   });
 });
 
-describe('tabs of one repository on different worktrees (spec #2 §11.2)', () => {
+describe('tabs of one repository on different worktrees', () => {
   const base = (): Profile => ({ ...EMPTY_PROFILE, id: 'default', tabs: [], activeTab: null });
   it('opens a second tab for another worktree of the same repo, and focuses an existing one', () => {
     const a = openRepoTab(base(), '/r', '/r');
@@ -130,7 +130,7 @@ describe('tabs of one repository on different worktrees (spec #2 §11.2)', () =>
     const dup = openBlankTab(p);
     expect(setTabRepo(dup.profile, dup.tabId, '/r', '/r').tabs).toHaveLength(2);
   });
-  it("a tab saved before 2C (no worktree) is its path's, and opening it names the repository and worktree", () => {
+  it("a tab saved before worktrees (no worktree) is its path's, and opening it names the repository and worktree", () => {
     const old: Profile = { ...base(), tabs: [{ id: 'o', kind: 'repo', path: '/r-x', alias: null }], activeTab: 'o' };
     expect(openRepoTab(old, '/r-x').tabId).toBe('o');
     const p = setTabRepo(old, 'o', '/r', '/r-x');

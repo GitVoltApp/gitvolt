@@ -42,7 +42,7 @@ const onClose = vi.fn();
 const open = () => render(<SubmitPopover tabId="t" kind="gitlab" number={12} anchor={null} onClose={onClose} />);
 const listed = () => within(screen.getByRole('region', { name: 'Pending comments' }));
 
-describe('Submit review…: the pending comments on no line of the diff (spec 2026-10-08 §4)', () => {
+describe('Submit review…: the pending comments on no line of the diff', () => {
   it('lists them above the composer, the outdated one marked; the chip counts them with the placed one', async () => {
     open();
     expect(await listed().findByText('A reply made on the web')).toBeInTheDocument();

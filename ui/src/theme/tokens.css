@@ -3,11 +3,11 @@
   --panel-bg0: #262930;
   --panel-bg1: #30343c;
   --toolbar-bg0: #2a2e36;
-  /* K32-K34: the action bar (repo/branch/Fetch/Push) is the brightest bar, #33373f; the open
+  /* The action bar (repo/branch/Fetch/Push) is the brightest bar, #33373f; the open
      file's name bar is #272a31; the File View/Diff View bar and the code area are #1c1e23
      (= --app-bg0). Monaco's background is --app-bg0 too. */
   --action-bar-bg: #33373f;
-  --tab-bar-bg: #1f2228;           /* K65: darker than the action bar; the selected tab is --action-bar-bg */
+  --tab-bar-bg: #1f2228;           /* Darker than the action bar; the selected tab is --action-bar-bg */
   --file-bar-bg: #272a31;
   --text-selected: #ffffff;
   --text-normal: rgba(255, 255, 255, 0.75);
@@ -15,7 +15,7 @@
   --text-disabled: rgba(255, 255, 255, 0.4);
   /* The row-dim mechanism's two levels (graph/rowDim.ts): the 'filter' level (search/Ctrl+F) is
      below --text-disabled, so the already-dim author, date and SHA dim visibly too. The
-     'branch' level (J22's branch-hover focus) is lighter, since it marks rows merely outside
+     'branch' level (the branch-hover focus) is lighter, since it marks rows merely outside
      the focused branch, not filtered out. */
   --text-row-dimmed: rgba(255, 255, 255, 0.2);
   --text-row-dimmed-branch: rgba(255, 255, 255, 0.5);
@@ -25,17 +25,17 @@
   --stats-added: #347d39;
   --stats-deleted: #c93c37;
   --blue: #4d88ff;
-  /* K62: sidebar row and strip icons, dimmer than the item text so they don't read as text. */
+  /* Sidebar row and strip icons, dimmer than the item text so they don't read as text. */
   --sidebar-icon: rgba(255, 255, 255, 0.45);
   --avatar-backdrop: #e6e7ea;
-  /* K55: the sidebar section counts, in bold light blue. */
+  /* The sidebar section counts, in bold light blue. */
   --count-blue: #6d9deb;
   --green: #5cb85c;
   /* The checked-out branch / current worktree row in the sidebar, sampled from the reference
-     sidebar: a muted green row tint and the green of its check box (K35). */
+     sidebar: a muted green row tint and the green of its check box. */
   --checked-out-row: #37563e;
   --checked-out: #457c4a;
-  /* ---- Plan 1D themes. These and every colour token in this file are the first-paint values:
+  /* ---- Themes. These and every colour token in this file are the first-paint values:
      exactly THEMES['default-dark'] (theme/themes.ts; themes.test.ts enforces it). A theme switch
      overrides them as inline styles on <html> (theme/apply.ts). The ones below were literals in
      the component stylesheets, or are new with the theme set. ---- */
@@ -84,7 +84,7 @@
   --wip-input-bg: #16181c;
   --wip-input-border: #282a2d;
   --wip-input-placeholder: #6e6f71;
-  /* J11: the image's frame. --section-border is all but invisible against the neutral viewport. */
+  /* The image's frame. --section-border is all but invisible against the neutral viewport. */
   --image-frame-border: rgba(255, 255, 255, 0.22);
   /* The graph canvas (draw.ts): a commit node's fill and initials, the collapse zone's shade. */
   --node-fill: #1c1e23;
@@ -102,14 +102,13 @@
   --graph-7: #f2ca33;
   --graph-8: #7bd938;
   --graph-9: #2ece9d;
-  /* ---- end plan 1D themes ---- */
   --font-ui: system-ui, "Segoe UI", Ubuntu, Cantarell, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   --font-mono: ui-monospace, monospace;
   color-scheme: dark;
 }
 /* Motion tokens: a graph row's text colour eases in
    --motion-row-color (a selection moving, a dimmed row restored) and dims in --motion-row-dim.
-   Colour and opacity only, never layout. The motion lane (J19) adds the rest here. */
+   Colour and opacity only, never layout. The motion lane adds the rest here. */
 :root {
   --motion-row-color: 200ms;
   --motion-row-dim: 500ms;
@@ -125,13 +124,13 @@ body { background: var(--app-bg0); color: var(--text-normal); font: 13px/1.4 var
    before any diff has opened. */
 .icon-button { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 3px; color: var(--text-secondary); transition: background-color var(--motion-fast), color var(--motion-fast); }
 .icon-button:hover, .icon-button:focus-visible { background: var(--hover-row); color: var(--text-selected); }
-/* K5/K6: the panels' top bar box, shared by the open file's header (diff.css) and the details
+/* The panels' top bar box, shared by the open file's header (diff.css) and the details
    panel's header bar (the signature and hashes, the compare and WIP bars; details.css), so their
    1 px dividers line up across the two panels. Only this rule sets their height and divider;
    the height (divider included) is the density's (theme/density.ts). */
 .panel-bar { box-sizing: border-box; height: var(--panel-bar-h); border-bottom: 1px solid var(--section-border); flex: none; }
 
-/* ==== motion (J19). Opacity/colour/background-colour/border-colour/box-shadow only — never
+/* ==== motion. Opacity/colour/background-colour/border-colour/box-shadow only — never
    layout props, never `top`, never transforms on virtualized rows or the canvas. Two speeds,
    for secondary chrome (buttons, toolbar toggles, panel headers, tooltips); row
    hover/selection backgrounds stay instant, and row text-colour fades are the `--motion-row-*` tokens, not these. Kept as its own block so a later merge
@@ -140,7 +139,7 @@ body { background: var(--app-bg0); color: var(--text-normal); font: 13px/1.4 var
   --motion-fast: 50ms ease-in;   /* buttons, toolbar toggles, menu items, tabs */
   --motion-base: 150ms ease-in;  /* chips, resize handles, panel headers, tooltip fade-in */
 }
-/* ==== end motion (J19) block ==== */
+/* ==== end motion block ==== */
 /* One reduced-motion override for every motion token above, row-dim included: every value 0s. */
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -157,7 +156,7 @@ body { background: var(--app-bg0); color: var(--text-normal); font: 13px/1.4 var
    iteration a minute leaves the main thread out of it (animations.css.test.ts). */
 @keyframes spinner-turns { to { transform: rotate(21600deg); } }
 
-/* ==== Lane V (feedback F22, F31): text selection and scrollbars. Keep this block separate. ==== */
+/* ==== Text selection and scrollbars. Keep this block separate. ==== */
 :root {
   /* One selection colour for every DOM text selection, focused or not. Without it, Chromium
      paints its own highlight: the system colour, and a dark grey (reads as black) whenever it
@@ -176,8 +175,8 @@ body { background: var(--app-bg0); color: var(--text-normal); font: 13px/1.4 var
 ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 ::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb-bg); background-clip: padding-box; border: 2px solid transparent; border-radius: 10px; min-height: 24px; min-width: 24px; transition: background-color var(--motion-fast); }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover-bg); }
-/* ==== end lane V block ==== */
-/* ---- File-status colours (feedback lane D: F17/F19); the diff view reuses them through files/StatusIcon.tsx. ---- */
+/* ==== end text selection and scrollbars ==== */
+/* ---- File-status colours; the diff view reuses them through files/StatusIcon.tsx. ---- */
 :root {
   --status-added: #5cb85c;
   --status-modified: #de9b43;
@@ -188,7 +187,7 @@ body { background: var(--app-bg0); color: var(--text-normal); font: 13px/1.4 var
   --stats-added-bright: #5cb85c;
   --stats-deleted-bright: #f0625d;
 }
-/* ---- end lane D block ---- */
+/* ---- end file-status colours ---- */
 
 /* ---- Tab group colours (tabs/tabs.css; themes.ts sets each theme's, by its kind): readable on
    the tab bar, with the ink that reads on each. ---- */

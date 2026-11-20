@@ -36,17 +36,14 @@ pub(crate) struct FakeProvider {
     pub avatars: HashMap<String, AvatarPayload>,
     pub limited_until: Mutex<Option<i64>>,
     pub calls: Mutex<Vec<String>>,
-    // --- 4B T1 ---
     /// Every MR/PR of the fake project (open_mrs keeps the open and draft ones).
     pub mrs: Mutex<Vec<ForgeMr>>,
     pub details: Mutex<HashMap<u64, ForgeMrDetail>>,
     pub threads: Mutex<HashMap<u64, Vec<ForgeDiscussion>>>,
     /// `open_mrs` and `mr_for_branch` fail with this kind.
     pub mr_error: Mutex<Option<GbErrorKind>>,
-    // --- end 4B T1 ---
     /// `mr_for_branch` of these branches fails with its kind (one slow branch).
     pub lookup_errors: Mutex<HashMap<String, GbErrorKind>>,
-      // --- 4C T5 ---
       pub people: Vec<ForgeUser>,
       pub label_list: Vec<ForgeLabel>,
       /// `None`: asking for templates fails as an unreachable forge (the local fallback's case).
@@ -54,23 +51,18 @@ pub(crate) struct FakeProvider {
       /// What every create's follow-up calls report as failed (GitHub's partial failure).
       pub fail_parts: Mutex<Vec<PartFailure>>,
       pub created: Mutex<Vec<CreateMr>>,
-      // --- end 4C T5 ---
-      // --- 5A T1 ---
       /// URL → what `image` answers; any other URL isn't this forge's (`None`).
       pub images: Mutex<HashMap<String, ForgeImage>>,
       pub videos: Mutex<HashMap<String, ForgeImage>>,
-      // --- end 5A T1 ---
     // --- review comments ---
     /// MR → its diff (`review_diff`) and its pending drafts (`review_drafts`).
     pub review_diffs: Mutex<HashMap<u64, ReviewDiff>>,
     pub drafts: Mutex<HashMap<u64, Vec<ReviewDraft>>>,
     // --- end review comments ---
-    // --- MR round 2 ---
     /// What `people_limits` answers.
     pub limits: Mutex<PeopleLimits>,
     /// The next `edit` fails with this.
     pub edit_error: Mutex<Option<GbError>>,
-    // --- end MR round 2 ---
 }
 
 impl FakeProvider {
@@ -78,17 +70,11 @@ impl FakeProvider {
         Self {
             kind, host: host.into(), reject: false, user: user("Ada"), write: WriteAccess::Yes, version: Some("18.9.1-ee".into()),
             projects: Mutex::default(), forks: Vec::new(), settings: None, avatars: HashMap::new(), limited_until: Mutex::new(None), calls: Mutex::default(),
-            // --- 4B T1 ---
             mrs: Mutex::default(), details: Mutex::default(), threads: Mutex::default(), mr_error: Mutex::new(None),
-            // --- end 4B T1 ---
             lookup_errors: Mutex::default(),
-              // --- 4C T5 ---
               people: Vec::new(), label_list: Vec::new(), templates: Some(Vec::new()), fail_parts: Mutex::default(), created: Mutex::default(),
-              // --- end 4C T5 ---
-              // --- 5A T1 ---
               images: Mutex::default(),
               videos: Mutex::default(),
-              // --- end 5A T1 ---
             // --- review comments ---
             review_diffs: Mutex::default(), drafts: Mutex::default(),
             // --- end review comments ---
@@ -108,14 +94,12 @@ impl FakeProvider {
         if self.reject { Err(GbError::new(GbErrorKind::AuthFailed, format!("{} rejected the token: replace it in Settings › Accounts.", self.host))) } else { Ok(()) }
     }
 
-    // --- 4B T1 ---
     fn mr_failure(&self) -> Result<(), GbError> {
         match *self.mr_error.lock().unwrap() {
             Some(kind) => Err(GbError::new(kind, "fake failure")),
             None => Ok(()),
         }
     }
-    // --- end 4B T1 ---
 }
 
 impl ForgeProvider for FakeProvider {
@@ -184,7 +168,6 @@ impl ForgeProvider for FakeProvider {
         self.call(format!("avatar_at {url}"));
         Some(Box::pin(async move { Ok(self.avatars.get(&url).cloned()) }))
     }
-    // --- 4B T1 ---
     fn open_mrs<'a>(&'a self, project: &'a ForgeProject, filter: MrFilter) -> ForgeFuture<'a, Fresh<Vec<ForgeMr>>> {
         self.call(format!("open_mrs {} {filter:?}", project.path));
         Box::pin(async move {
@@ -275,8 +258,6 @@ impl ForgeProvider for FakeProvider {
         self.call(format!("set_draft {number} {draft}"));
         Box::pin(async move { self.change(number, |m| m.state = if draft { MrState::Draft } else { MrState::Open }) })
     }
-    // --- end 4B T1 ---
-      // --- 4C T5 ---
       fn create_mr<'a>(&'a self, project: &'a ForgeProject, req: &'a CreateMr) -> ForgeFuture<'a, CreateOutcome> {
           self.call(format!("create {} {}", project.path, req.source.branch));
           Box::pin(async move {
@@ -316,14 +297,11 @@ impl ForgeProvider for FakeProvider {
           self.call(format!("templates {branch}"));
           Box::pin(async move { self.templates.clone().ok_or_else(|| GbError::new(GbErrorKind::Network, format!("Couldn't reach {}: timed out", self.host))) })
       }
-      // --- end 4C T5 ---
-    // --- 5A T1 ---
     fn image<'a>(&'a self, _project: &'a ForgeProject, url: &'a str) -> Option<ForgeFuture<'a, ForgeImage>> {
         self.call(format!("image {url}"));
         let found = self.images.lock().unwrap().get(url).cloned()?;
         Some(Box::pin(async move { Ok(found) }))
     }
-    // --- end 5A T1 ---
     fn video<'a>(&'a self, _project: &'a ForgeProject, url: &'a str) -> Option<ForgeFuture<'a, ForgeImage>> {
         self.call(format!("video {url}"));
         let found = self.videos.lock().unwrap().get(url).cloned()?;
@@ -390,7 +368,6 @@ impl ForgeProvider for FakeProvider {
     // --- end review comments ---
 }
 
-// --- 4B T1 ---
 impl FakeProvider {
     fn change(&self, number: u64, f: impl FnOnce(&mut ForgeMr)) -> Result<ForgeMr, GbError> {
         let mut mrs = self.mrs.lock().unwrap();
@@ -410,7 +387,6 @@ pub(crate) fn mr(number: u64, source_project: &str, branch: &str, state: MrState
         conflicts: Some(false), labels: vec![], label_colors: Default::default(), updated_at: number as i64, stacked: false, auto_merge: None,
     }
 }
-// --- end 4B T1 ---
 
 // --- review comments ---
 /// The diff refs the fake answers: base `b…`, head `h…`.
@@ -425,11 +401,9 @@ pub(crate) fn fake_refs() -> DiffRefs {
 pub(crate) struct FakeConnector {
     pub by_token: Mutex<HashMap<String, Arc<FakeProvider>>>,
     pub connects: AtomicUsize,
-    // --- 5A T1 ---
     /// URL → what `public_image` answers (else a network error); every URL asked, in order.
     pub public: Mutex<HashMap<String, ForgeImage>>,
     pub public_calls: Mutex<Vec<String>>,
-    // --- end 5A T1 ---
 }
 
 impl FakeConnector {
@@ -455,7 +429,6 @@ impl ForgeConnector for FakeConnector {
             None => Arc::new(FakeProvider { reject: true, ..FakeProvider::new(kind, host) }),
         })
     }
-    // --- 5A T1 ---
     fn public_image<'a>(&'a self, url: &'a str) -> ForgeFuture<'a, ForgeImage> {
         self.public_calls.lock().unwrap().push(url.to_string());
         let found = self.public.lock().unwrap().get(url).cloned();
@@ -466,7 +439,6 @@ impl ForgeConnector for FakeConnector {
         let found = self.public.lock().unwrap().get(url).cloned();
         Box::pin(async move { found.ok_or_else(|| GbError::new(GbErrorKind::Network, "Couldn't reach the video host")) })
     }
-    // --- end 5A T1 ---
 }
 
 /// Tokens in memory. `put` answers `storage`.
@@ -500,8 +472,8 @@ impl TokenStore for MemTokens {
         Ok(())
     }
 }
-// --- 4D T3: a provider with merge requests, for the stack requests ---
-/// (4B's `fake::mr(number, source_project, branch, state)` is a different helper: this one has a target and a title.)
+// --- a provider with merge requests, for the stack requests ---
+/// (`fake::mr(number, source_project, branch, state)` is a different helper: this one has a target and a title.)
 pub(crate) fn stack_mr(number: u64, source: &str, target: &str, state: MrState, title: &str) -> ForgeMr {
     ForgeMr {
         number,
@@ -525,7 +497,7 @@ pub(crate) fn stack_mr(number: u64, source: &str, target: &str, state: MrState, 
     }
 }
 
-/// 4A's `FakeProvider` for identity and projects, plus merge requests with descriptions in
+/// The `FakeProvider` for identity and projects, plus merge requests with descriptions in
 /// memory. Every MR call is logged (`log`). `fail_edit` / `fail_retarget`: that MR's write fails.
 pub(crate) struct StackFake {
     pub base: FakeProvider,
@@ -534,12 +506,10 @@ pub(crate) struct StackFake {
     pub settings_delete: bool,
     pub fail_edit: Option<u64>,
     pub fail_retarget: Option<u64>,
-    // --- 4D T4 ---
     /// This MR's retarget fails when it points anywhere but `main` (a revert that fails).
     pub fail_back: Option<u64>,
     /// `project_settings` fails.
     pub fail_settings: bool,
-    // --- end 4D T4 ---
     pub log: Mutex<Vec<String>>,
 }
 
@@ -555,10 +525,8 @@ impl StackFake {
             settings_delete: false,
             fail_edit: None,
             fail_retarget: None,
-            // --- 4D T4 ---
             fail_back: None,
             fail_settings: false,
-            // --- end 4D T4 ---
             log: Mutex::default(),
         }
     }
@@ -609,15 +577,11 @@ impl ForgeProvider for StackFake {
     fn project_settings<'a>(&'a self, _project: &'a ForgeProject) -> ForgeFuture<'a, ForgeProjectSettings> {
         self.note("project_settings".into());
         let delete = self.settings_delete;
-        // --- 4D T4 ---
         let fail = self.fail_settings;
-        // --- end 4D T4 ---
         Box::pin(async move {
-            // --- 4D T4 ---
             if fail {
                 return Err(GbError::new(GbErrorKind::Network, "Can't reach gitlab.example.com"));
             }
-            // --- end 4D T4 ---
             Ok(ForgeProjectSettings { merge_methods: vec![MergeMethod::Merge], squash: SquashOption::DefaultOff, delete_source_branch: delete }) })
     }
     fn forks<'a>(&'a self, project: &'a ForgeProject) -> ForgeFuture<'a, Vec<ForgeProject>> {
@@ -631,13 +595,11 @@ impl ForgeProvider for StackFake {
         let open = self.mrs.lock().unwrap().iter().map(|(m, _)| m.clone()).filter(|m| matches!(m.state, MrState::Open | MrState::Draft)).collect();
         Box::pin(async move { Ok(Fresh::new(open, 1)) })
     }
-    // --- 4D T4 ---
     fn open_mrs_targeting<'a>(&'a self, _project: &'a ForgeProject, branch: &'a str) -> ForgeFuture<'a, Fresh<Vec<ForgeMr>>> {
         self.note(format!("open_mrs_targeting {branch}"));
         let open = self.mrs.lock().unwrap().iter().map(|(m, _)| m.clone()).filter(|m| matches!(m.state, MrState::Open | MrState::Draft) && m.target_branch == branch).collect();
         Box::pin(async move { Ok(Fresh::new(open, 1)) })
     }
-    // --- end 4D T4 ---
     fn mr_for_branch<'a>(&'a self, _project: &'a ForgeProject, source: &'a SourceRef) -> ForgeFuture<'a, Fresh<Option<ForgeMr>>> {
         self.note(format!("mr_for_branch {}", source.branch));
         let newest = self.mrs.lock().unwrap().iter().map(|(m, _)| m.clone()).filter(|m| m.source_branch == source.branch).max_by_key(|m| (matches!(m.state, MrState::Open | MrState::Draft), m.number));
@@ -671,11 +633,9 @@ impl ForgeProvider for StackFake {
             if self.fail_retarget == Some(number) {
                 return Err(GbError::other("gitlab.example.com refused the change (403)"));
             }
-            // --- 4D T4 ---
             if self.fail_back == Some(number) && target != "main" {
                 return Err(GbError::other("gitlab.example.com refused the change (403)"));
             }
-            // --- end 4D T4 ---
             let mut mrs = self.mrs.lock().unwrap();
             let (mr, _) = mrs.iter_mut().find(|(m, _)| m.number == number).ok_or_else(|| self.missing(number))?;
             mr.target_branch = target.to_string();
@@ -692,4 +652,3 @@ impl ForgeConnector for Solo {
         Ok(self.0.clone())
     }
 }
-// --- end 4D T3 ---

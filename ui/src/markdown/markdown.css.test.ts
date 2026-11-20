@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'markdown.css'), 'utf8');
 const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 
-describe('markdown.css (spec #5 §3.1)', () => {
+describe('markdown.css', () => {
   it('uses theme tokens only, and never transitions everything', () => {
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
     expect(css).not.toMatch(/transition:\s*all/);
@@ -58,7 +58,7 @@ describe('markdown.css (spec #5 §3.1)', () => {
     expect(rule('.md li:has(> input[type="checkbox"])')).toMatch(/list-style:\s*none/);
   });
 
-  it('marks diff blocks in the left margin without shifting the layout, and pairs diagrams (5C)', () => {
+  it('marks diff blocks in the left margin without shifting the layout, and pairs diagrams', () => {
     expect(rule('.md-diff-block::before')).toMatch(/position:\s*absolute/);
     expect(rule('.md li[data-diff-mark]::before')).toMatch(/position:\s*absolute/);
     expect(rule('.md .md-diff-del')).toMatch(/line-through/);
@@ -104,7 +104,7 @@ describe('markdown.css (spec #5 §3.1)', () => {
     expect(rule('.md li[data-diff-mark]::before')).not.toMatch(/left:/);
   });
 
-  it("review slots (spec 2026-10-08 §3): a pair's spans both columns; one in a changed block or item takes neither its tint nor its bar", () => {
+  it("review slots: a pair's spans both columns; one in a changed block or item takes neither its tint nor its bar", () => {
     expect(rule('.md-diff-pair > .md-block-slot')).toMatch(/grid-column:\s*1 \/ -1/);
     const inChange = rule('.md :is(.md-diff-block, li[data-diff-mark]) > .md-block-slot');
     expect(inChange).toMatch(/background:\s*var\(--app-bg0\)/);

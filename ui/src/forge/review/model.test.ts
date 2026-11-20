@@ -86,7 +86,7 @@ describe('placement', () => {
   });
 });
 
-describe('the session lifetime (spec §1)', () => {
+describe('the session lifetime', () => {
   it('lives while its Compare is shown or a review is pending, and not past a merge with nothing pending', () => {
     expect(reviewAlive(session({ loaded: false }), false, null)).toBe(true);
     // A first refresh that failed knows of nothing pending: it doesn't keep the session.

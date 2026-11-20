@@ -1,7 +1,7 @@
 import { DEFAULT_THEME_ID, THEMES, type ThemeDef } from '../../theme/themes';
 
 /**
- * GitVolt's colours on top of a Shiki editor theme, per app theme (plan 1D ruling R6). They go into
+ * GitVolt's colours on top of a Shiki editor theme, per app theme. They go into
  * the themes Shiki is created with, so every `shikiToMonaco` call (the first one, and one per newly
  * loaded grammar) defines each theme with them, before any editor exists (see `ensureTheme`).
  *
@@ -27,22 +27,22 @@ export function editorColors(def: ThemeDef): Record<string, string> {
   const bg = toHex(c['app-bg0']);
   const sel = toHex(c['selection-bg']);
   return {
-    // One selection colour, focused or not (F22): dark-plus sets the unfocused one to a near-black,
+    // One selection colour, focused or not: dark-plus sets the unfocused one to a near-black,
     // so a selection flipped colour as focus moved. Same as `--selection-bg`, the app's ::selection.
-    // K34: the editor's background is the app's --app-bg0, not the Shiki theme's
+    // The editor's background is the app's --app-bg0, not the Shiki theme's
     // own; the gutter and minimap follow it.
     'editor.background': bg,
     'editorGutter.background': bg,
     'minimap.background': bg,
     'editor.selectionBackground': sel,
     'editor.inactiveSelectionBackground': sel,
-    // Scrollbars (F31): a thumb only, as the app's (`--scroll-thumb-bg`, `--scroll-thumb-hover-bg`);
+    // Scrollbars: a thumb only, as the app's (`--scroll-thumb-bg`, `--scroll-thumb-hover-bg`);
     // no track, no shadow.
     'scrollbarSlider.background': toHex(c['scroll-thumb-bg']),
     'scrollbarSlider.hoverBackground': toHex(c['scroll-thumb-hover-bg']),
     'scrollbarSlider.activeBackground': toHex(c['scroll-thumb-hover-bg']),
     'scrollbar.shadow': '#00000000',
-    // Diff colours (F30, H8): the theme's diff tokens (themes.ts diffColors), which the hex view
+    // Diff colours: the theme's diff tokens (themes.ts diffColors), which the hex view
     // (hex.css) uses too.
     'diffEditor.insertedTextBackground': toHex(c['diff-inserted-text']),
     'diffEditor.removedTextBackground': toHex(c['diff-removed-text']),

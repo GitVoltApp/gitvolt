@@ -6,12 +6,12 @@ import { FindBox } from './FindBox';
 import { openFind } from './findStore';
 
 /**
- * Find's registrations (ruling R10: its own module, imported from `app/features.ts`): the
+ * Find's registrations (its own module, imported from `app/features.ts`): the
  * `edit.find` action (Ctrl+F, the hamburger's Edit menu, the toolbar's Search button) and the
  * FindBox in the graph panel's overlay slot.
  *
- * Ctrl+F (ruling R7): while a file is open (the graph is hidden under it, spec §10.1) it opens
- * Monaco's own find in that file's editor; otherwise the graph's find box (J5).
+ * Ctrl+F: while a file is open (the graph is hidden under it) it opens
+ * Monaco's own find in that file's editor; otherwise the graph's find box.
  */
 const offActions = registerActions([
   {

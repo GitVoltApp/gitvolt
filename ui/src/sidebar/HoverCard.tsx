@@ -7,14 +7,10 @@ import { getLastPush } from './lastPushCache';
 import type { SideItem } from './model';
 import { TagTip } from '../tags/TagTip';
 import { submoduleCardState } from '../submodules/labels';
-// --- 4B T10 ---
 import { useRepoContext } from '../app/repoContext';
 import { useTilde } from '../app/appInfo';
 import { BranchMrBlock } from '../forge/MrBadge';
-// --- end 4B T10 ---
-// --- 4B T11 ---
 import { MrCardLive } from '../forge/MrCardLive';
-// --- end 4B T11 ---
 
 /** The card's box: placed beside the row, kept inside the window (moved up to fit, `max-height` and
  * scrolling when taller than the window), and re-placed when its content grows (an MR's detail). */
@@ -26,11 +22,11 @@ export function CardShell({ label, top, left, children }: { label: string; top: 
 }
 
 /**
- * Spec §6.4 hover card: tip, author, date, ahead/behind, last push (or last seen on remote).
- * Shows immediately on hover, with no delay (the user's ruling, amendment 3); "Last push" is the
+ * Hover card: tip, author, date, ahead/behind, last push (or last seen on remote).
+ * Shows immediately on hover, with no delay; "Last push" is the
  * one part that waits on the backend, so it shows a loading placeholder until that answers.
  *
- * Fix round 1, item 7: a fast pointer sweep across many rows must not fire one `lastPush`
+ * A fast pointer sweep across many rows must not fire one `lastPush`
  * request per row. Two things do that: `lastPushCache` (per repo + remote ref, in-flight and
  * resolved-value dedupe), and the one frame of grace below — a row the pointer only swept past
  * has its `remoteRef` change (or unmounts) before that frame, so its request is never sent;
@@ -38,7 +34,7 @@ export function CardShell({ label, top, left, children }: { label: string; top: 
  * once; only the request itself waits.
  */
 export function HoverCard({ item, repoId, top, left }: { item: SideItem; repoId: number; top: number; left: number }) {
-  const { tabId } = useRepoContext(); // 4B T10
+  const { tabId } = useRepoContext();
   const tilde = useTilde();
   const [push, setPush] = useState<LastPushPayload | null | undefined>(undefined);
   const remoteRef = item.kind === 'local' ? item.branch.upstream : item.kind === 'remote' ? item.branch.fullName : null;
@@ -57,7 +53,7 @@ export function HoverCard({ item, repoId, top, left }: { item: SideItem; repoId:
       cancelAnimationFrame(raf);
     };
   }, [repoId, remoteRef]);
-  // --- 4B T11: an MR/PR row's card ---
+  // --- an MR/PR row's card ---
   if (item.kind === 'mr') {
     return (
       <CardShell label={`${item.name} details`} top={top} left={left}>
@@ -65,7 +61,6 @@ export function HoverCard({ item, repoId, top, left }: { item: SideItem; repoId:
       </CardShell>
     );
   }
-  // --- end 4B T11 ---
   const summary = item.kind === 'local' || item.kind === 'remote' ? item.branch.summary : item.kind === 'stash' ? item.stash.message : '';
   const author = item.kind === 'local' || item.kind === 'remote' ? item.branch.author : '';
   if (item.kind === 'worktree') {
@@ -94,7 +89,7 @@ export function HoverCard({ item, repoId, top, left }: { item: SideItem; repoId:
     );
   }
   if (item.kind === 'tag') {
-    // UX round 3, M.2: an annotated tag's message, tagger and date; a lightweight tag's commit.
+    // An annotated tag's message, tagger and date; a lightweight tag's commit.
     return (
       <CardShell label={`${item.name} details`} top={top} left={left}>
         <div className="hc-name">{item.name}</div>
@@ -115,9 +110,8 @@ export function HoverCard({ item, repoId, top, left }: { item: SideItem; repoId:
           {push === undefined ? 'Loading…' : push === null ? 'Never seen on the remote' : push.kind === 'push' ? `Last push: ${relativeTime(push.time)}` : `Last seen on remote: ${relativeTime(push.time)}`}
         </div>
       )}
-      {/* --- 4B T10: the branch's MR/PR --- */}
+      {/* --- the branch's MR/PR --- */}
       {item.kind === 'local' && <BranchMrBlock tabId={tabId} upstream={item.branch.upstream} />}
-      {/* --- end 4B T10 --- */}
     </CardShell>
   );
 }

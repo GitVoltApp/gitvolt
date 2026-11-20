@@ -9,7 +9,7 @@ const VALIDATE_DELAY_MS = 300;
 
 /**
  * The editor picker of the profile (and, with `inherit`, of one repository): "Last used" (or
- * "Same as the profile"), a detected editor, or a Custom command template (R5).
+ * "Same as the profile"), a detected editor, or a Custom command template.
  *
  * A template is checked by the backend with the same guard an open runs it through (a shell or
  * interpreter's code argument can't hold {file}, {line} or {repo}; the program must exist), and

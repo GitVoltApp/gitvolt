@@ -13,11 +13,11 @@ import { detachedWorktreeOf } from '../graph/worktreeLabel';
 import { openRepoTab, tabWorktree } from '../app/tabs';
 
 /**
- * The tab's active worktree (spec #2 §11.2): the one its HEAD marker, WIP panel, commit box,
+ * The tab's active worktree: the one its HEAD marker, WIP panel, commit box,
  * staging and Undo target. Switching changes only that: the graph, refs and every worktree's
  * status are shared and already loaded, so the markers are re-derived here from
  * `GraphPayload.worktrees` and the labels' `checkedOut`, with no request. Only the row-0 WIP
- * re-placement comes from the backend (Deviation 1).
+ * re-placement comes from the backend.
  */
 
 // labels.rs's order: HEAD's, the branches, other worktrees' detached HEADs, remote-only, tags.
@@ -99,7 +99,7 @@ export function setActiveWorktree(tabId: string, path: string): void {
   void useRuntime.getState().refresh(tabId, { graphOnly: true });
 }
 
-/** Open in a new tab (§11.2): the same repository handle, another active worktree. */
+/** Open in a new tab: the same repository handle, another active worktree. */
 export async function openWorktreeTab(tabId: string, path: string): Promise<void> {
   const rt = useRuntime.getState().tabs[tabId];
   if (!rt?.repo) return;

@@ -15,7 +15,7 @@ beforeEach(() => {
   useStaging.setState({ states: {}, committing: {} });
 });
 
-describe('staging Undo/Redo (spec #2 §7.6)', () => {
+describe('staging Undo/Redo', () => {
   it('tooltips name the step, or say why not', () => {
     expect(stagingView({ undo: 'stage a hunk in a.php', redo: null, off: null }, 'undo', false)).toEqual({ tooltip: 'Undo stage a hunk in a.php (Ctrl+Z)', disabled: false });
     expect(stagingView({ undo: null, redo: 'unstage 3 files', off: null }, 'redo', false)).toEqual({ tooltip: 'Redo unstage 3 files (Ctrl+Shift+Z)', disabled: false });
@@ -24,7 +24,7 @@ describe('staging Undo/Redo (spec #2 §7.6)', () => {
     expect(stagingView({ undo: 'x', redo: null, off: null }, 'undo', true)).toEqual({ tooltip: 'Commit queued', disabled: true });
   });
 
-  it('a conflict resolution is a step: its undo and redo are named for it (ux round 2)', () => {
+  it('a conflict resolution is a step: its undo and redo are named for it', () => {
     expect(stagingView({ undo: 'resolve a.txt', redo: null, off: null }, 'undo', false)).toEqual({ tooltip: 'Undo resolve a.txt (Ctrl+Z)', disabled: false });
     expect(stagingView({ undo: 'resolve a.txt with incoming', redo: null, off: null }, 'undo', false).tooltip).toBe('Undo resolve a.txt with incoming (Ctrl+Z)');
     expect(stagingView({ undo: null, redo: 'mark a.txt resolved', off: null }, 'redo', false).tooltip).toBe('Redo mark a.txt resolved (Ctrl+Shift+Z)');

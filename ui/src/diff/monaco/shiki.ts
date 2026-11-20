@@ -11,7 +11,7 @@ import type { Monaco } from './setup';
 export type { CodeTokens } from '../highlight/protocol';
 
 // Shiki's grammars and the Oniguruma WASM run in the highlight worker (diff/highlight/), started
-// with the first diff (spec §10.3). Every theme carries its GitVolt editor colours (theme.ts), and
+// with the first diff. Every theme carries its GitVolt editor colours (theme.ts), and
 // its token colours in the worker's numbering (`encodedTokensColors`), so the worker's tokens show
 // in Monaco as they are.
 let themed: Promise<void> | undefined;

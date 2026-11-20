@@ -47,7 +47,7 @@ const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.m
 const previewHeaders = (mode: string): Record<string, string> =>
   mode === 'e2e' ? { 'Content-Security-Policy': e2eCsp(JSON.parse(read('../crates/gitvolt-app/tauri.conf.json')), read('./index.html'), process.env.VITE_GITVOLT_HARNESS ?? 'ws://127.0.0.1:7433/ws') } : {};
 
-// The website demo (`vite build --mode demo`; website demo spec §4.1): demo.html alone, into
+// The website demo (`vite build --mode demo`): demo.html alone, into
 // site/dist/demo/ with relative URLs (the site serves it under its own path), its data from
 // GITVOLT_DEMO_DATA (relative to the repo root; default site/demo-data/), and the app's Content Security Policy as a <meta>
 // (GitHub Pages sends no headers). Every other mode builds as before; the version define is only
@@ -105,7 +105,7 @@ export default defineConfig(({ mode }) => {
         'shiki/themes/*.mjs', // the dev server's cache only: the build bundles just the themes editorThemes.ts names
         'shiki/wasm',
         '@shikijs/monaco',
-        // Markdown (5A): reached through the lazy renderer chunk
+        // Markdown: reached through the lazy renderer chunk
         'unified',
         'remark-parse',
         'remark-gfm',

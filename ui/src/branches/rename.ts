@@ -4,7 +4,7 @@ import { promptText } from '../ui/PromptDialog';
 import { runWrite, type WriteCtx } from '../write/client';
 import { branchNameError } from './branchName';
 
-/** Rename (§9.1): always `git branch -m`, behind the check that `name` is still at `oid` and the
+/** Rename: always `git branch -m`, behind the check that `name` is still at `oid` and the
  * new name is free. */
 export async function renameBranch(ctx: WriteCtx, name: string, oid: string): Promise<void> {
   const locals = useRuntime.getState().tabs[ctx.tabId]?.sidebar?.locals ?? [];

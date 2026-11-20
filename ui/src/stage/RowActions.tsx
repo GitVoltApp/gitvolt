@@ -49,11 +49,11 @@ export function ActionIcon({ label, tip, icon: Icon, disabled = false, pending =
   );
 }
 
-/** A WIP row's hover actions (spec #2 §7.1): unstaged rows Discard and Stage,
+/** A WIP row's hover actions: unstaged rows Discard and Stage,
  * staged rows Unstage. A folder row acts on every file under it. */
 export function RowActions({ ctx, which, files, name }: { ctx: WriteCtx; which: 'unstaged' | 'staged'; files: FileChange[]; name: string }) {
   const committing = useCommitting(ctx.repoId, ctx.worktree);
-  // A submodule's own changes are discarded inside it (T4): its row offers no Discard.
+  // A submodule's own changes are discarded inside it: its row offers no Discard.
   const discardable = discardableOf(files);
   // Its files are being discarded: the Discard shows it runs, and neither button sends another write.
   const discarding = useDiscardingAny(ctx.repoId, ctx.worktree, pathsOf(discardable)) && which === 'unstaged';
@@ -61,7 +61,7 @@ export function RowActions({ ctx, which, files, name }: { ctx: WriteCtx; which: 
   const ref = useRef<HTMLSpanElement>(null);
   useDisarmOnChange(ref, `${ctx.worktree}\0${files.map((f) => f.path).join('\0')}`);
   if (files.length === 0) return null;
-  // Discard arms in place, over the row's other actions (spec §ui confirms, board C).
+  // Discard arms in place, over the row's other actions.
   const discard = () => discardFiles(ctx, discardable, name);
   const tip = (t: string) => (committing ? COMMIT_QUEUED : discarding ? DISCARDING : t);
   return (

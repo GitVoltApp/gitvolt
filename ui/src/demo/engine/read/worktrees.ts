@@ -11,7 +11,7 @@ export interface DemoWorktree {
   branch: string | null;
 }
 
-/** 1a's `DemoRepo.worktrees()` (the core's `worktree list`, main first) without the bare and prunable
+/** `DemoRepo.worktrees()` (the core's `worktree list`, main first) without the bare and prunable
  *  ones, each with its git dir: a linked worktree's `.git` file names it. */
 export async function listWorktrees(repo: ReadRepo): Promise<DemoWorktree[]> {
   const out: DemoWorktree[] = [];

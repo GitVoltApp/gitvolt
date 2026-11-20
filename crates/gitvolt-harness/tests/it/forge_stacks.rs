@@ -1,5 +1,5 @@
-//! Stacks against the fake forge (spec #4 §7): the providers' retarget (4D T2), and the stack
-//! requests through the harness's Api (4D T10). No test reaches a real forge.
+//! Stacks against the fake forge: the providers' retarget, and the stack
+//! requests through the harness's Api. No test reaches a real forge.
 
 use gitvolt_core::error::GbErrorKind;
 use gitvolt_core::forge::*;
@@ -10,7 +10,7 @@ use gitvolt_forge::gitlab::GitLabProvider;
 use gitvolt_harness::fake_forge::*;
 use serde_json::{json, Value};
 
-/// Replaces one forge's merge requests in the seed (4B's seed fields, A8).
+/// Replaces one forge's merge requests in the seed (the seed fields).
 fn seed_mrs(f: &FakeForge, forge: &str, mrs: Value) {
     let mut seed = serde_json::to_value(f.current_seed()).unwrap();
     seed[forge][if forge == "gitlab" { "mergeRequests" } else { "pulls" }] = mrs;
@@ -38,7 +38,6 @@ fn github(f: &FakeForge) -> GitHubProvider {
     GitHubProvider::new(GITHUB_HOST, &HostEndpoints { api: f.github_api(), web: f.github_web(), avatars: Some(f.github_avatars()) }, Secret::new(GITHUB_TOKEN), None)
 }
 
-// --- 4D T2 ---
 #[tokio::test(flavor = "multi_thread")]
 async fn gitlab_retargets_with_a_put_of_target_branch() {
     let f = FakeForge::start().await;
@@ -68,9 +67,8 @@ async fn github_retargets_with_a_patch_of_base() {
     assert_eq!(patch.path, "/repos/octo-org/widget/pulls/2");
     assert_eq!(p.retarget(&repo, 99, "main").await.unwrap_err().kind, GbErrorKind::NotFound);
 }
-// --- end 4D T2 ---
 
-// --- 4D T10: the stack requests through the harness's Api ---
+// --- the stack requests through the harness's Api ---
 use gitvolt_core::api::{Api, Request};
 use gitvolt_core::error::GbError;
 use gitvolt_core::testing::TestRepo;
@@ -93,7 +91,7 @@ fn puts(f: &FakeForge) -> usize {
     f.requests().iter().filter(|r| r.method == "PUT" || r.method == "PATCH").count()
 }
 
-/// Review Focus 2, end to end: CRLF kept, the merged MR untouched, nothing resent.
+/// End to end: CRLF kept, the merged MR untouched, nothing resent.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_managed_gitlab_stack_gets_its_tables_once() {
     let h = Harness::for_tests().await;
@@ -140,4 +138,3 @@ async fn a_github_pr_is_retargeted_through_the_api() {
     let v = call(&h.api, json!({"method": "forgeStack", "params": {"repo": id, "branches": ["feature/b"], "base": "main", "baseRef": "refs/heads/main"}})).await.unwrap();
     assert_eq!((v["kind"].as_str(), v["mode"].as_str()), (Some("github"), Some("managed")));
 }
-// --- end 4D T10 ---

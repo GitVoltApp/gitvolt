@@ -25,7 +25,7 @@ export interface SelectProps<T extends string | number> {
 
 /**
  * A dropdown that is the app's own menu (`openMenuAt`), not a native `<select>`: the native popup
- * is a separate OS-level window that CEF on Linux dismisses at once (its focus bounce, K24), so it
+ * is a separate OS-level window that CEF on Linux dismisses at once (its focus bounce), so it
  * never stayed open. Enter / Space (the button's click) and ArrowDown / ArrowUp open it; the menu
  * takes the arrows, Enter and Esc, and gives focus back here.
  */

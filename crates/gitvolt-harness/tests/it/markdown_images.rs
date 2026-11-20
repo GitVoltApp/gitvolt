@@ -1,4 +1,4 @@
-//! Markdown images and GitHub's `body_html` against the fake forge (spec #5 §4.2, §7).
+//! Markdown images and GitHub's `body_html` against the fake forge.
 
 use gitvolt_core::forge::*;
 use gitvolt_core::redact::Secret;
@@ -138,7 +138,7 @@ async fn a_clicked_image_loads_without_a_token_and_only_the_harness_allows_http(
     assert_eq!(app.public_image(&format!("{}/u/1", f.github_avatars())).await.unwrap_err().message, "GitVolt loads images over https only");
 }
 
-// --- 5A T3: a redirect off the image hosts is "ask", not an error (T2's carry-over) ---
+// --- a redirect off the image hosts is "ask", not an error ---
 #[tokio::test(flavor = "multi_thread")]
 async fn an_image_redirected_off_githubs_hosts_asks_first_without_following() {
     let f = FakeForge::start().await;
@@ -170,4 +170,3 @@ async fn the_harness_connector_serves_githubs_markdown_images_from_the_fake() {
     assert!(matches!(p.image(&w, &signed(&f, "jwt-1")).unwrap().await.unwrap(), ForgeImage::Found { .. }));
     assert!(p.image(&w, "https://private-user-images.githubusercontent.com/1/a.png").is_none(), "the real hosts are replaced: no test reaches them");
 }
-// --- end 5A T3 ---

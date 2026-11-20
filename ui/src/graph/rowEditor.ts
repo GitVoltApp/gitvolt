@@ -4,8 +4,8 @@ import type { RepoViewStore } from '../repo/store';
 
 /**
  * An inline editor in a graph row's Branch/Tag cell, where the row's chips go (the
- * "enter branch name" input, UX round 1): a feature opens one (branches/inlineCreate.tsx) and renders
- * it; the graph only places it (ruling R10: the graph knows no feature). One at a time, app-wide:
+ * "enter branch name" input): a feature opens one (branches/inlineCreate.tsx) and renders
+ * it; the graph only places it (the graph knows no feature). One at a time, app-wide:
  * opening another replaces it.
  */
 export interface RowEditor {

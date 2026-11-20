@@ -59,7 +59,7 @@ beforeEach(() => {
   setup();
 });
 
-describe('File View places (spec #5 §3.4)', () => {
+describe('File View places', () => {
   it('opening a file in File View adds a place at its commit; Diff View and graph selection add none', async () => {
     store.getState().selectRow(1);
     await flush();
@@ -202,7 +202,7 @@ describe('File View places (spec #5 §3.4)', () => {
   });
 });
 
-describe('commit places (spec #5 §3.4)', () => {
+describe('commit places', () => {
   it('a commit that left the loaded history toasts and is skipped', async () => {
     const C = 'c'.repeat(40);
     recordPlace('t', { kind: 'commit', sha: A });

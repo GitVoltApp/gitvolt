@@ -10,7 +10,7 @@ import type { SyncButtonMode } from "./SyncButtonMode";
 
 export type AppSettings = { version: number, activeProfile: string, 
 /**
- * Theme id; plan 1D owns the list.
+ * Theme id.
  */
 theme: string, 
 /**
@@ -32,7 +32,7 @@ editorLineHeight: number,
  */
 editorTabSize: number, editorWhitespace: EditorWhitespace, editorMinimap: boolean, 
 /**
- * Off by default (H7): with no language service, the pinned line can be a lone `{`.
+ * Off by default: with no language service, the pinned line can be a lone `{`.
  */
 editorStickyScroll: boolean, 
 /**
@@ -72,21 +72,21 @@ commitLimit: number, dateFormat: DateFormat,
  */
 relativeDates: boolean, gravatar: boolean, 
 /**
- * Writes `debug`-level lines to the log file (spec §16.2).
+ * Writes `debug`-level lines to the log file.
  */
 debugLogging: boolean, 
 /**
- * The toolbar Fetch/Pull button's default operation (spec #2 §12.1).
+ * The toolbar Fetch/Pull button's default operation.
  */
 syncButton: SyncButtonMode, 
 /**
- * "Push tags with branches" (spec #3 §3.9): every push adds `--follow-tags`, sending the
+ * "Push tags with branches": every push adds `--follow-tags`, sending the
  * annotated tags on the pushed commits that the remote lacks. On by default (a release's
  * annotated tag goes out with its commit).
  */
 pushFollowTags: boolean, 
 /**
- * "Load avatars from your forge accounts" (spec #4 §2 "Avatars"): the forges first, then
+ * "Load avatars from your forge accounts": the forges first, then
  * Gravatar (its own setting), then initials.
  */
 forgeAvatars: boolean, 
@@ -123,7 +123,7 @@ updateArchMethod: ArchMethod | null,
  */
 lastRunVersion: string | null, 
 /**
- * Per-theme lane colour overrides (plan 1D): theme id → lane index → `#rrggbb`, or null for
+ * Per-theme lane colour overrides: theme id → lane index → `#rrggbb`, or null for
  * the theme's own colour. The UI validates the entries; an invalid one shows the theme's.
  */
 graphColorOverrides: Record<string, (string | null)[]>, 

@@ -12,7 +12,7 @@ const showsMr = (tabId: string, number: number) => {
 };
 
 /**
- * Spec #5 §3.4: an MR/PR view as a navigation place. Restoring reopens the view, scrolled where
+ * An MR/PR view as a navigation place. Restoring reopens the view, scrolled where
  * it was left. One that's gone (no forge target any more, or nothing known about it after a
  * fresh load) says "Couldn't load !12", closes, and is skipped.
  */

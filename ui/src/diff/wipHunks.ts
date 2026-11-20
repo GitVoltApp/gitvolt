@@ -23,7 +23,7 @@ export const zoneAfter = (start: number, lines: number) => (lines === 0 ? start 
 /** git's header for a hunk, `@@ -a,b +c,d @@`. */
 export const hunkHeader = (h: Hunk) => `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`;
 
-/** The hunks the shown WIP diff was laid out with (§7.3), and its header rows' DOM nodes (Hunk
+/** The hunks the shown WIP diff was laid out with, and its header rows' DOM nodes (Hunk
  * mode; `[]` otherwise). One editor shows one diff at a time, so there's one of these. */
 export interface ShownHunks { repoId: number; key: string; payload: HunksPayload | null; nodes: HTMLElement[] }
 export const useShownHunks = create<{ shown: ShownHunks | null }>(() => ({ shown: null }));
@@ -32,7 +32,7 @@ export const useShownHunks = create<{ shown: ShownHunks | null }>(() => ({ shown
 export const hunksOf = (p: HunksPayload | null): Hunk[] => (p && !p.binary && p.refused === null ? p.hunks : []);
 
 /**
- * The open WIP file's hunks from the backend (§7.3), read for each show of its diff and handed to
+ * The open WIP file's hunks from the backend, read for each show of its diff and handed to
  * the editor with it (`HunkZoneRequest`): the header rows are laid out in the frame the diff
  * appears in, and their buttons are rendered before that frame paints. A stage, a discard, a save
  * or the watcher changes the diff's texts, which shows it again, and so reads them again.

@@ -4,6 +4,6 @@ import type { GbErrorKind } from "./GbErrorKind";
 
 export type GbError = { kind: GbErrorKind, message: string, commandId: number | null, stderr: string | null, 
 /**
- * Kind-specific data (spec #2 §15); absent for most errors.
+ * Kind-specific data; absent for most errors.
  */
 detail?: ErrorDetail, };

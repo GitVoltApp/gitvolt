@@ -15,7 +15,7 @@ import { useMrChain, useStackInputs } from './StackLine';
 import './stack.css';
 
 /**
- * The MR/PR view's Stack panel (spec #4 §4 4D): the chain bottom to top, this one marked, the
+ * The MR/PR view's Stack panel: the chain bottom to top, this one marked, the
  * others opening their own view. After the bottom merged: the one-click retarget and rebase (its
  * Rebase stack confirm arms this button in place).
  */
@@ -35,7 +35,7 @@ export function StackPanel({ tabId, mr }: { tabId: string; mr: ForgeMr }) {
   // After a forge retarget (native GitLab, GitHub) the merged one is no longer below: the after-merge part still shows.
   if (!target || (!chain && !a)) return null;
   const kind = target.kind;
-  // The same worktree naming T8's menu env uses (worktreeDisplay against the main worktree).
+  // The same worktree naming the menu env uses (worktreeDisplay against the main worktree).
   const main = mainWorktreeOf(tabId) ?? repo?.path ?? '';
   const blocked = a && sb ? afterMergeBlocked(a, { headBranch, inProgress: inProgressOf(tabId), locals: sb.locals, worktreeShown: (p) => worktreeDisplay(main, p) }) : undefined;
   return (

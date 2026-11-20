@@ -16,7 +16,7 @@ const picker = (over: Partial<Parameters<typeof RefPicker>[0]> = {}) =>
 const input = () => screen.getByPlaceholderText('Find a branch');
 const selected = () => screen.getAllByRole('option').filter((o) => o.getAttribute('aria-selected') === 'true').map((o) => o.textContent);
 
-describe('RefPicker toggle (K72)', () => {
+describe('RefPicker toggle', () => {
   it('shows the toggle right of the search box; clicking it keeps the focus in the box', () => {
     const onToggle = vi.fn();
     picker({ toggle: { icon: Clock, label: 'Sorted A–Z: switch to most recent first', onToggle } });
@@ -74,7 +74,7 @@ describe('RefPicker', () => {
     expect(onPick).not.toHaveBeenCalled();
   });
 
-  it('owns the keyboard in the key router\'s menu layer: Esc closes it, and never reaches the app (J4)', () => {
+  it('owns the keyboard in the key router\'s menu layer: Esc closes it, and never reaches the app', () => {
     const onClose = vi.fn();
     const app = vi.fn(() => 'handled' as const);
     const off = registerKeys('app', app);
@@ -101,7 +101,7 @@ describe('RefPicker', () => {
     opener.remove();
   });
 
-  it('paints the current item active on the first commit, with no intermediate state (K53)', () => {
+  it('paints the current item active on the first commit, with no intermediate state', () => {
     const seen: (string | null)[][] = [];
     const scrolled: string[] = [];
     Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this.textContent ?? ''); };

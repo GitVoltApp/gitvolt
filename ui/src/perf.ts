@@ -1,6 +1,6 @@
 const started = new Map<string, number>();
 
-/** Interaction timings for the budgets in spec §17.3 (Task 14 reads these console lines). */
+/** Interaction timings for the budgets (read from these console lines). */
 export const perf = {
   start(name: string): void {
     started.set(name, performance.now());

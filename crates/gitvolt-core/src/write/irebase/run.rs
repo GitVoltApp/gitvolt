@@ -1,4 +1,4 @@
-//! The interactive rebase (spec #3 §3.1, §3.3, §3.4): one native `git rebase -i <base>` whose
+//! The interactive rebase: one native `git rebase -i <base>` whose
 //! todo is the plan, written verbatim by the sequence editor (`cp <todo>`). Messages go through
 //! guarded exec scripts, and chips through `update-ref` lines. Deleted chips go once it
 //! completes, in the same journal entry, so one Undo restores every ref it touched and the
@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-/// Review Focus 2: the user's rebase settings can't change the plan. The todo is verbatim, its
+/// The user's rebase settings can't change the plan. The todo is verbatim, its
 /// comments are `#`, and nothing is added, moved or abbreviated.
 #[rustfmt::skip]
 pub(crate) const GIT_PINS: [&str; 12] = [
@@ -36,7 +36,7 @@ pub(crate) const GIT_PINS: [&str; 12] = [
 pub(crate) enum Source {
     /// The editor's Start: its rows and chips.
     Plan { rows: Vec<RebaseRow>, chips: Vec<ChipPlan> },
-    /// "Edit message" on an older commit (spec #3 §3.6).
+    /// "Edit message" on an older commit.
     Reword { oid: String, message: String },
 }
 
@@ -49,7 +49,7 @@ pub(crate) struct Planned {
     pub watch: Vec<(String, Option<String>)>,
     /// Full ref → tip: deleted once the rebase completes.
     pub deletes: Vec<(String, String)>,
-    /// A reword of an older commit (M4): how many commits are above it, so the reworded one is
+    /// A reword of an older commit: how many commits are above it, so the reworded one is
     /// HEAD's first-parent ancestor that many back once it completes.
     pub reword_depth: Option<usize>,
 }
@@ -110,11 +110,11 @@ pub(crate) enum RecordIn {
     Paused,
 }
 
-/// Chips marked delete (§3.3): each through the normal branch delete, after the rebase
+/// Chips marked delete: each through the normal branch delete, after the rebase
 /// completed. Each delete is journaled as soon as it's done (its config changes; on the paused
 /// entry its ref move too), so one that fails later keeps the earlier ones undoable.
-/// - M5: a chip the user deleted meanwhile is skipped, and nothing is recorded for it.
-/// - R1: one that can't be deleted (it moved meanwhile) is kept, and the rebase still succeeds:
+/// - A chip the user deleted meanwhile is skipped, and nothing is recorded for it.
+/// - One that can't be deleted (it moved meanwhile) is kept, and the rebase still succeeds:
 ///   the returned warning names it.
 pub(crate) async fn delete_chips(cx: &mut WriteCx<'_>, deletes: &[(String, String)], into: RecordIn) -> Option<String> {
     let mut kept = Vec::new();
@@ -231,7 +231,7 @@ impl Planned {
 /// What a hook said, on one line: git's stderr without its own lines (progress, `Executing:`,
 /// the failed `exec`'s advice). `None`: it said nothing.
 pub(crate) fn hook_text(stderr: &str) -> Option<String> {
-    // UX F: a signer that failed (the amend signs) says so, not as a hook.
+    // A signer that failed (the amend signs) says so, not as a hook.
     if let Some(s) = crate::git::signing_failure(stderr) {
         return Some(s);
     }
@@ -242,25 +242,25 @@ pub(crate) fn hook_text(stderr: &str) -> Option<String> {
     (!said.is_empty()).then(|| said.join(" "))
 }
 
-/// "The new message wasn't applied: <why>. Type it again to retry, or Continue to keep the old one." (M1, M2)
+/// "The new message wasn't applied: <why>. Type it again to retry, or Continue to keep the old one."
 fn not_applied(why: &str) -> String {
     format!("The new message wasn't applied: {}. Type it again to retry, or Continue to keep the old one.", why.trim_end_matches('.'))
 }
 
-/// A stop of GitVolt's interactive rebase: what its plan asked of it (3C final fix: the stop's
+/// A stop of GitVolt's interactive rebase: what its plan asked of it (the stop's
 /// note, never fatal to the stop: a failure is logged, and its warning is the outcome's).
-/// - UX L: at an `edit` stop, while HEAD is still the commit git made (nothing done there yet),
+/// - At an `edit` stop, while HEAD is still the commit git made (nothing done there yet),
 ///   the stop becomes "about to commit" (`edit::stage_edit_stop`): HEAD on its parent, its changes
-///   staged, and the Edit row's new message (Ruling 4), once per stop, the box's.
-/// - At an Edit row's conflict (I1: git won't stop for the Edit again), its new message is git's
+///   staged, and the Edit row's new message, once per stop, the box's.
+/// - At an Edit row's conflict (git won't stop for the Edit again), its new message is git's
 ///   message file, which Continue commits with and the panel prefills; once per stop, never over
 ///   a message typed there since.
-/// - A reword script that failed (M2, `failed`: git's error): why, for the panel.
-/// - UX N: a stop this write's git step just made (`before.made`: its key isn't the one of the
+/// - A reword script that failed (`failed`: git's error): why, for the panel.
+/// - A stop this write's git step just made (`before.made`: its key isn't the one of the
 ///   stop the step started at; never when that's unknown) notes what git left there
 ///   (`split::note_stop`), for an Abort.
 ///
-/// The returned warning: the new message wasn't applied (M1, M2).
+/// The returned warning: the new message wasn't applied.
 pub(crate) async fn at_stop(cx: &mut WriteCx<'_>, s: &IrebaseState, failed: Option<&GbError>, before: &super::split::Before) -> Option<String> {
     use crate::in_progress::{last_done, stop_note, write_stop_note, InProgress, MESSAGE_APPLIED, MESSAGE_FAILED, REFUSED};
     let root = cx.root.to_path_buf();
@@ -286,9 +286,9 @@ pub(crate) async fn at_stop(cx: &mut WriteCx<'_>, s: &IrebaseState, failed: Opti
             tracing::warn!(target: "gitvolt_core::write", "noting the interactive rebase's stop ({name}): {e}");
         }
     };
-    // M2: one of this session's reword scripts failed (a commit-msg hook refused the message).
+    // One of this session's reword scripts failed (a commit-msg hook refused the message).
     // Only the exec's own failure: a later Continue that fails at the same stop (unstaged
-    // changes) isn't a refusal (re-review).
+    // changes) isn't a refusal.
     let fresh = stop_note(&git_dir, MESSAGE_FAILED, &at).is_none() && stop_note(&git_dir, MESSAGE_APPLIED, &at).is_none();
     if let Some(e) = failed.filter(|_| fresh && at.starts_with("exec sh ") && at.contains(".sh")) {
         let why = e.stderr.as_deref().and_then(hook_text).unwrap_or_else(|| "a hook refused it".to_string());
@@ -307,7 +307,7 @@ pub(crate) async fn at_stop(cx: &mut WriteCx<'_>, s: &IrebaseState, failed: Opti
     // The Edit row's new message, once per stop: never over a message typed there since.
     let file = if stop_note(&git_dir, MESSAGE_APPLIED, &at).is_some() { None } else { s.edit_messages.iter().find(|(oid, _)| is(oid)).map(|(_, f)| f.clone()) };
     match edit_stop {
-        // UX L: git's own Edit stop, nothing done there yet: "about to commit", the row's new
+        // Git's own Edit stop, nothing done there yet: "about to commit", the row's new
         // message in the box.
         Some(made) if made == head && matches!(at.split_whitespace().next(), Some("edit" | "e")) => {
             if file.is_some() {
@@ -322,7 +322,7 @@ pub(crate) async fn at_stop(cx: &mut WriteCx<'_>, s: &IrebaseState, failed: Opti
             let res = std::fs::copy(&file, &path);
             note(MESSAGE_APPLIED, "");
             let why = format!("{}: {}", path.display(), res.err()?);
-            // M1: the stop stands; the commit keeps git's message, and the panel says so.
+            // The stop stands; the commit keeps git's message, and the panel says so.
             tracing::warn!(target: "gitvolt_core::write", "applying an Edit row's new message: {why}");
             if let Ok(m) = std::fs::read_to_string(&file) {
                 note(REFUSED, &format!("{head}\n{m}"));
@@ -334,7 +334,7 @@ pub(crate) async fn at_stop(cx: &mut WriteCx<'_>, s: &IrebaseState, failed: Opti
     }
 }
 
-/// A message typed at a refused reword's stop was amended in (the 3C final ruling): the stop's
+/// A message typed at a refused reword's stop was amended in: the stop's
 /// refusal notes go, and `MESSAGE_APPLIED` keeps a later failure there from reading as one.
 pub(crate) fn refused_message_applied(git_dir: &Path) {
     use crate::in_progress::{last_done, write_stop_note, MESSAGE_APPLIED, MESSAGE_FAILED, REFUSED};
@@ -352,7 +352,7 @@ pub(crate) fn refused_message_applied(git_dir: &Path) {
     }
 }
 
-/// HEAD's first-parent ancestor `n` back (M4: the reworded commit); `None`, logged, if it can't
+/// HEAD's first-parent ancestor `n` back (the reworded commit); `None`, logged, if it can't
 /// be read: the reword itself completed.
 async fn first_parent_back(root: &Path, n: usize) -> Option<String> {
     let root = root.to_path_buf();
@@ -369,7 +369,7 @@ async fn first_parent_back(root: &Path, n: usize) -> Option<String> {
     res.inspect_err(|e| tracing::warn!(target: "gitvolt_core::write", "finding the reworded commit: {e}")).ok()
 }
 
-/// `InProgress::Rebase.gitvolt`: the session's mark in git's `rebase-merge/` (fix round 2).
+/// `InProgress::Rebase.gitvolt`: the session's mark in git's `rebase-merge/`.
 fn mark_gitvolt(root: &Path, dir: &Path) {
     let res = gix::open(root).map_err(|e| e.to_string()).and_then(|r| std::fs::write(r.git_dir().join(crate::in_progress::GITVOLT_MARKER), format!("{}\n", dir.display())).map_err(|e| e.to_string()));
     if let Err(e) = res {
@@ -385,8 +385,8 @@ pub(crate) fn session_of_pause(cx: &WriteCx<'_>) -> Result<Option<IrebaseState>,
 
 /// After a Continue or Skip of a paused interactive rebase (`RebaseControl`). Completed: the
 /// moves the todo's `update-ref` lines made, then the chips marked delete, all recorded on the
-/// paused entry as they happen (I1); a chip that couldn't be deleted is the outcome's warning
-/// (R1). Stopped again: the next stop's Edit message.
+/// paused entry as they happen; a chip that couldn't be deleted is the outcome's warning.
+/// Stopped again: the next stop's Edit message.
 pub(crate) async fn after_step(cx: &mut WriteCx<'_>, s: &IrebaseState, out: IntegrateOutcome, failed: Option<&GbError>, before: &super::split::Before) -> Result<IntegrateOutcome, GbError> {
     match out {
         IntegrateOutcome::Done { commits, fast_forward, rewritten, .. } => {
@@ -405,7 +405,7 @@ pub(crate) async fn after_step(cx: &mut WriteCx<'_>, s: &IrebaseState, out: Inte
     }
 }
 
-/// Fix round 2 (minor): the rebase completed, so nothing here fails it: a ref that can't be
+/// The rebase completed, so nothing here fails it: a ref that can't be
 /// read or a move the journal can't record is logged, and the outcome's warning says so.
 async fn completed_step(cx: &mut WriteCx<'_>, s: &IrebaseState) -> Option<String> {
     let mut warnings = Vec::new();
@@ -517,7 +517,7 @@ impl WriteIntent for IrebaseIntent {
         let todo = build(&TodoPlan { branch: self.branch.clone(), base: range.base.to_string(), rows: planned_rows, chips, tips: range.tips.clone(), locked: range.locked.clone(), dir: dir.clone() })?;
         let watch = todo.update_refs.iter().map(|b| (format!("refs/heads/{b}"), range.tips.get(b).cloned())).collect();
         let deletes = todo.deletes.iter().map(|b| (format!("refs/heads/{b}"), range.tips[b].clone())).collect();
-        // 2C repo-safety, as RebaseIntent's: the rebase checks the base out first.
+        // As RebaseIntent's: the rebase checks the base out first.
         let (rule, moved) = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, range.head, range.base, "rebase").await?.into_rule(AutostashRule::Rebased);
         // A reword's range has no merges (`rows_for` refuses them): every row is a first parent.
         let reword_depth = match &self.source {
@@ -525,7 +525,7 @@ impl WriteIntent for IrebaseIntent {
             Source::Plan { .. } => None,
         };
         let _ = self.planned.set(Planned { base: range.base, todo, dir, watch, deletes, reword_depth });
-        // A full ref (3D's `refs/remotes/origin/main`) reads short in the autostash copy.
+        // A full ref (`refs/remotes/origin/main`) reads short in the autostash copy.
         let shown = short_ref(&self.base).to_string();
         Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(range.base), op: format!("rebase onto {shown}"), target_name: Some(shown), moved }), ..Plan::default() })
     }
@@ -558,14 +558,14 @@ impl WriteIntent for IrebaseIntent {
                 let warning = delete_chips(cx, &p.deletes, RecordIn::Entry).await;
                 Ok(IntegrateOutcome::UpToDate { warning })
             }
-            // T4: the pause carries the session (its messages, its deletes) to Continue.
+            // The pause carries the session (its messages, its deletes) to Continue.
             Ok(IntegrateOutcome::Stopped { kind, files, warning: stopped }) => {
                 let state = p.state();
                 if let Some(pause) = cx.paused.as_mut() {
                     pause.irebase = Some(state.clone());
                 }
                 mark_gitvolt(cx.root, &p.dir);
-                // M1: the pause stands whatever happens to the stop's message.
+                // The pause stands whatever happens to the stop's message.
                 let warning = at_stop(cx, &state, failed.as_ref(), &super::split::Before::Start).await.or(stopped);
                 Ok(IntegrateOutcome::Stopped { kind, files, warning })
             }
@@ -652,7 +652,7 @@ pub(crate) mod tests {
         std::fs::read_dir(data.join("irebase")).map(|d| d.count()).unwrap_or(0)
     }
 
-    /// §3.3, §3.4: a reorder, a squash and a chip that follows its row into the squash group, in
+    /// A reorder, a squash and a chip that follows its row into the squash group, in
     /// one rebase; merges flattened; one Undo puts all three branches back.
     #[tokio::test]
     async fn reorder_squash_and_a_moved_chip_in_one_rebase_and_one_undo() {
@@ -678,7 +678,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["branch", "--show-current"]), "feature/c");
     }
 
-    /// Review Focus 3: a message with shell characters, and a data directory with a space; a new
+    /// A message with shell characters, and a data directory with a space; a new
     /// chip and a deleted one, both undone by the same Undo.
     #[tokio::test]
     async fn reword_with_quotes_and_a_new_and_a_deleted_chip() {
@@ -726,7 +726,7 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("lexer.txt")).unwrap(), "dirty\n");
     }
 
-    /// Review Focus 2: the user's rebase settings don't change the plan.
+    /// The user's rebase settings don't change the plan.
     #[tokio::test]
     async fn the_users_rebase_config_doesnt_change_the_plan() {
         let data = tempfile::tempdir().unwrap();
@@ -749,7 +749,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["log", "-1", "--format=%s", "feature/b"]), "B2 Refine lexer");
     }
 
-    /// Review Focus 5: a commit added in a terminal since the plan refuses the Start; nothing drops it.
+    /// A commit added in a terminal since the plan refuses the Start; nothing drops it.
     #[tokio::test]
     async fn a_moved_branch_refuses_with_ref_moved() {
         let data = tempfile::tempdir().unwrap();
@@ -781,7 +781,7 @@ pub(crate) mod tests {
         assert_eq!(tips(&r), before);
     }
 
-    /// §3.3 refusals: a chip checked out in another worktree can't move; on its own tip it stays.
+    /// Refusals: a chip checked out in another worktree can't move; on its own tip it stays.
     #[tokio::test]
     async fn a_chip_checked_out_elsewhere_stays_where_it_is() {
         let data = tempfile::tempdir().unwrap();
@@ -848,7 +848,7 @@ pub(crate) mod tests {
         assert_eq!(tips(&r), before);
     }
 
-    /// Ruling (3B T3 × 3C T1): an annotated tag as the base. `expect` holds the tag ref's own
+    /// An annotated tag as the base. `expect` holds the tag ref's own
     /// value (the tag object), which preflight's `read_ref` reads unpeeled, so the ref check
     /// passes and the rows replay onto the commit it peels to.
     #[tokio::test]
@@ -870,7 +870,7 @@ pub(crate) mod tests {
         assert_eq!(res["journal"]["undo"]["label"], "interactive rebase feature/c onto v1.0");
     }
 
-    /// Ruling F7: a full base ref (3D sends `refs/heads/main`) reads short in the label and the
+    /// A full base ref (the UI sends `refs/heads/main`) reads short in the label and the
     /// pause banner. C1 replayed before A2 conflicts on notes.txt.
     #[tokio::test]
     async fn a_full_base_ref_reads_short_in_the_pause_banner() {
@@ -887,7 +887,6 @@ pub(crate) mod tests {
         assert_eq!(res["journal"]["paused"]["label"], "interactive rebase feature/c onto main");
     }
 
-    // --- 3C T4 ---
     pub(crate) async fn control(api: &crate::api::Api, id: u32, r: &TestRepo, action: &str) -> Value {
         call(api, "rebaseControl", json!({ "repo": id, "worktree": wt(r.path()), "action": action })).await.unwrap()
     }
@@ -906,8 +905,8 @@ pub(crate) mod tests {
         r.try_git(&["config", &format!("branch.{b}.remote")]).ok()
     }
 
-    /// §3.3 Edit, UX L: the stop is "about to commit" (HEAD on the commit's parent, its changes
-    /// staged) with the row's new message in the box (Ruling 4); Continue commits it with that
+    /// Edit: the stop is "about to commit" (HEAD on the commit's parent, its changes
+    /// staged) with the row's new message in the box; Continue commits it with that
     /// message and finishes, and one Undo undoes it all.
     #[tokio::test]
     async fn an_edit_row_stops_with_its_new_message_and_continue_finishes() {
@@ -928,7 +927,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["diff", "--cached", "--name-only"]), "lexer.txt\nlexer_test.txt", "B2's changes staged");
         match in_progress(&r) {
             crate::in_progress::InProgress::Rebase { edit_stop, edit_base, message, conflicted, gitvolt, .. } => {
-                assert!(gitvolt, "GitVolt's own interactive rebase (fix round 2)");
+                assert!(gitvolt, "GitVolt's own interactive rebase");
                 let made = edit_stop.expect("git's amend file names the commit it made");
                 assert_eq!(r.git(&["log", "-1", "--format=%s", &made]), "B2 Refine lexer", "not amended at the stop");
                 assert_eq!(edit_base.as_deref(), Some(head.as_str()));
@@ -945,7 +944,7 @@ pub(crate) mod tests {
         assert_eq!(sessions_left(data.path()), 0);
     }
 
-    /// Review Focus 4: paused at an Edit stop with a chip delete and a new chip pending, GitVolt
+    /// Paused at an Edit stop with a chip delete and a new chip pending, GitVolt
     /// restarts (a fresh Api on the same data dir). Continue there completes the rebase and runs
     /// the delete, and one Undo restores all of it, the deleted chip's upstream config included.
     #[tokio::test]
@@ -985,7 +984,7 @@ pub(crate) mod tests {
         assert!(r.try_git(&["rev-parse", "--verify", "refs/heads/feature/new"]).is_err());
     }
 
-    /// Review Focus 1: C1 is reworded and moved below A2, where it conflicts. A Skip there must
+    /// C1 is reworded and moved below A2, where it conflicts. A Skip there must
     /// not reword A1, the commit HEAD is left on.
     #[tokio::test]
     async fn a_skipped_reword_leaves_the_previous_message() {
@@ -1006,7 +1005,7 @@ pub(crate) mod tests {
         assert!(!all.contains("C1, reworded"), "{all}");
     }
 
-    /// Abort restores everything, and deletes nothing (§3.4).
+    /// Abort restores everything, and deletes nothing.
     #[tokio::test]
     async fn abort_restores_everything_and_deletes_nothing() {
         let data = tempfile::tempdir().unwrap();
@@ -1029,7 +1028,7 @@ pub(crate) mod tests {
         assert_eq!(sessions_left(data.path()), 0, "the session goes with the abort");
     }
 
-    /// Controller ruling (T3 review): Continue, Skip and Abort run with the Start's pins, under
+    /// Continue, Skip and Abort run with the Start's pins, under
     /// the user's `core.commentChar=;` here. Git strips the todo's `# dropped` lines once the
     /// sequence editor returns, so a Continue past a dropped row finishes; and at a conflict stop
     /// git's message carries `# Conflicts:` lines, which a Continue under `;` would keep.
@@ -1087,9 +1086,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["rev-parse", "feature/a"]), a);
         assert_eq!(remote_of(&r, "feature/a").as_deref(), Some("origin"), "Undo restores the upstream too");
     }
-    // --- end 3C T4 ---
 
-    // --- 3C fix round 1 ---
     /// The stack fixture's plan from `main~1` (Base): every row already on its base, so git
     /// fast-forwards each pick and the branch's tip stays where it was.
     async fn base_plan(api: &crate::api::Api, id: u32, r: &TestRepo) -> Value {
@@ -1100,7 +1097,7 @@ pub(crate) mod tests {
         call(api, "interactiveRebase", json!({ "repo": id, "worktree": wt(r.path()), "branch": "feature/c", "base": "main~1", "expect": p["expect"], "rows": rows, "chips": chips })).await.unwrap()
     }
 
-    /// I1: an Edit row and a Continue that changes nothing leave the branch's tip where it was,
+    /// An Edit row and a Continue that changes nothing leave the branch's tip where it was,
     /// so settle's verdict is "not completed". The chip delete and the chip the todo created
     /// were still made, and the Undo restores both (the deleted branch's upstream too).
     #[tokio::test]
@@ -1130,7 +1127,7 @@ pub(crate) mod tests {
         assert!(r.try_git(&["rev-parse", "--verify", "refs/heads/feature/new"]).is_err(), "the created chip is gone");
     }
 
-    /// R1: a delete-marked chip that moved during the pause can't be deleted: the rebase still
+    /// A delete-marked chip that moved during the pause can't be deleted: the rebase still
     /// succeeds, the outcome's warning names it, and it stays where the user put it.
     #[tokio::test]
     async fn a_chip_that_moved_during_the_pause_is_kept_with_a_warning() {
@@ -1155,7 +1152,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["rev-parse", "feature/a"]), elsewhere, "the user's move isn't the rebase's to undo");
     }
 
-    /// M5: a delete-marked chip the user deleted during the pause is skipped, with no warning,
+    /// A delete-marked chip the user deleted during the pause is skipped, with no warning,
     /// and the Undo doesn't bring back what the rebase didn't delete.
     #[tokio::test]
     async fn a_chip_the_user_deleted_during_the_pause_is_skipped() {
@@ -1177,9 +1174,8 @@ pub(crate) mod tests {
         journal_step(&api, id, r.path(), "undo").await.unwrap();
         assert!(r.try_git(&["rev-parse", "--verify", "refs/heads/feature/a"]).is_err(), "the user's delete stays");
     }
-    // --- end 3C fix round 1 ---
 
-    // --- 3C fix round 2: ChipAt::Stay (3D's Rebase stack) ---
+    // --- ChipAt::Stay (the Rebase stack) ---
     /// A stack member already cherry-picked into the base (upstream by patch-id, not by
     /// ancestry) sent as Stay: it stays on its old commit, the others move, and the Undo leaves
     /// it alone too.
@@ -1236,7 +1232,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["log", "-1", "--format=%s", "feature/x~1"]), "Local main work, reworded");
     }
 
-    /// 3D review: a non-member checked out in another worktree is a locked chip; sent as Stay,
+    /// A non-member checked out in another worktree is a locked chip; sent as Stay,
     /// it passes (no "can't move") and stays.
     #[tokio::test]
     async fn a_locked_non_member_sent_as_stay_stays() {
@@ -1263,10 +1259,9 @@ pub(crate) mod tests {
         assert_eq!(res["outcome"]["status"], "done", "{res}");
         assert_eq!(r.git(&["rev-parse", "main"]), main, "main stays");
     }
-    // --- end 3C fix round 2 ---
 
-    // --- 3D T4: Rebase stack, composed from RebasePlan and InteractiveRebase ---
-    /// The plan Rebase stack sends. Its source is 3D's `stackPlan` (ui/src/stacks/rebase.ts), and
+    // --- Rebase stack, composed from RebasePlan and InteractiveRebase ---
+    /// The plan Rebase stack sends. Its source is `stackPlan` (ui/src/stacks/rebase.ts), and
     /// ui/src/stacks/rebase.test.ts is the real guard: these pin that composition over the core.
     /// Rows Pick, `upstream` rows Drop; every plan chip sent: a lower member whose tip row, or a
     /// row below it, is still replayed at its row, any other chip (a non-member included)
@@ -1294,8 +1289,8 @@ pub(crate) mod tests {
         call(api, "interactiveRebase", json!({"repo": id, "worktree": wt(r.path()), "branch": "feature/c", "base": "main", "expect": p["expect"], "rows": send, "chips": chips})).await.unwrap();
     }
 
-    /// Spec #3 §3.11 over §3.3's update-ref todo: "Rebase stack" is one InteractiveRebase of the
-    /// top. All three land on main in order; one Undo puts all three back (§3.4).
+    /// Over an update-ref todo, "Rebase stack" is one InteractiveRebase of the
+    /// top. All three land on main in order; one Undo puts all three back.
     #[tokio::test]
     async fn rebase_stack_moves_every_member_and_one_undo_restores_them() {
         let r = TestRepo::new();
@@ -1315,7 +1310,7 @@ pub(crate) mod tests {
         assert_eq!(after, before, "one undo restores every member");
     }
 
-    /// 3D Review Focus 1: feature/a's commit was picked into main (a rebase merge upstream). Its
+    /// Feature/a's commit was picked into main (a rebase merge upstream). Its
     /// row is dropped, as git's own todo would leave it out; feature/a's chip is sent as `stay`.
     #[tokio::test]
     async fn a_stack_member_already_in_the_base_stays_put() {
@@ -1334,9 +1329,7 @@ pub(crate) mod tests {
         assert_eq!(tip("feature/b^"), tip("main"));
         assert_eq!(tip("feature/c^"), tip("feature/b"));
     }
-    // --- end 3D T4 ---
 
-    // --- 3C final fixes ---
     async fn control_with(api: &crate::api::Api, id: u32, r: &TestRepo, action: &str, message: &str) -> Value {
         call(api, "rebaseControl", json!({ "repo": id, "worktree": wt(r.path()), "action": action, "message": message })).await.unwrap()
     }
@@ -1348,7 +1341,7 @@ pub(crate) mod tests {
         }
     }
 
-    /// I1: an Edit row with a new message whose pick conflicts (C1 moved onto A1). Git won't stop
+    /// An Edit row with a new message whose pick conflicts (C1 moved onto A1). Git won't stop
     /// for the Edit again, so the conflict stop is the Edit's: the new message is the one Continue
     /// commits with (and the panel's prefill), and a message typed there since isn't overwritten.
     #[tokio::test]
@@ -1376,7 +1369,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["log", "--format=%B", "--grep=^C1", "-1", "HEAD"]).trim_end(), "C1, edited at its conflict\n\nWhy.");
     }
 
-    /// I1, the message as the stop has it: resolve and Continue without touching the box.
+    /// The message as the stop has it: resolve and Continue without touching the box.
     #[tokio::test]
     async fn an_edit_rows_conflict_resolved_and_continued_commits_the_new_message() {
         let data = tempfile::tempdir().unwrap();
@@ -1395,7 +1388,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["log", "--format=%B", "--grep=^C1", "-1", "HEAD"]).trim_end(), "C1, edited at its conflict");
     }
 
-    /// I2: at an Edit stop, a staged fix and an edited message: Continue keeps both.
+    /// At an Edit stop, a staged fix and an edited message: Continue keeps both.
     #[tokio::test]
     async fn a_staged_fix_and_an_edited_message_at_an_edit_stop_both_reach_the_commit() {
         let data = tempfile::tempdir().unwrap();
@@ -1418,7 +1411,7 @@ pub(crate) mod tests {
 
     const REFUSE_BAD: &str = "#!/bin/sh\nif grep -q BAD \"$1\"; then echo 'Rejected: no BAD messages.' >&2; exit 1; fi\n";
 
-    /// M2: a Reword row's script stopped by a commit-msg hook: the stop's warning and note say the
+    /// A Reword row's script stopped by a commit-msg hook: the stop's warning and note say the
     /// new message wasn't applied, and why; Continue goes on with the old one.
     #[tokio::test]
     async fn a_reword_refused_by_a_hook_says_why() {
@@ -1441,7 +1434,7 @@ pub(crate) mod tests {
         assert_eq!(r.git(&["log", "-1", "--format=%s", "feature/c"]), "C2 Polish");
     }
 
-    /// The 3C final ruling: at a Reword row's refused stop the box prefills the refused message,
+    /// At a Reword row's refused stop the box prefills the refused message,
     /// and one the user types there and sends with Continue reaches the commit.
     #[tokio::test]
     async fn a_message_typed_at_a_refused_reword_stop_reaches_the_commit() {
@@ -1471,7 +1464,7 @@ pub(crate) mod tests {
         assert_eq!(start(api, id, r, &p, rows, stay(&p)).await.unwrap()["outcome"]["status"], "stopped");
     }
 
-    /// UX F fix round 1 (item 1): at a refused reword's stop (a failed `exec`, no failed pick),
+    /// At a refused reword's stop (a failed `exec`, no failed pick),
     /// a typed message amends the reworded commit, and no later pick is taken for a failed one
     /// (no stray Edit stop): the rebase finishes.
     #[tokio::test]
@@ -1488,7 +1481,7 @@ pub(crate) mod tests {
         assert_eq!(subjects(&r, "feature/b..feature/c"), ["C2 Polish", "C1 Edit notes again"], "the rest as it was");
     }
 
-    /// Re-review: at a refused reword's stop the typed message amends the message alone; staged
+    /// At a refused reword's stop the typed message amends the message alone; staged
     /// changes stay staged (git then pauses for them: no refusal is reported for that).
     #[tokio::test]
     async fn a_retried_reword_message_leaves_staged_changes_staged() {
@@ -1503,7 +1496,7 @@ pub(crate) mod tests {
         r.git(&["add", "fix.txt"]);
         let res = control_with(&api, id, &r, "continue", "B2 Retried").await;
         assert_eq!(res["outcome"]["status"], "stopped", "{res}");
-        // UX F: git's own reason for the pause, never the refusal's.
+        // Git's own reason for the pause, never the refusal's.
         let why = res["outcome"]["warning"].as_str().unwrap_or_default();
         assert!(why.starts_with("The rebase stopped: ") && why.contains("staged changes") && !why.contains("wasn't applied"), "not a refusal: {res}");
         assert_eq!(r.git(&["log", "-1", "--format=%s", "HEAD"]), "B2 Retried");
@@ -1512,8 +1505,8 @@ pub(crate) mod tests {
         assert_eq!(rebase_state(&r).1, None, "the refusal is gone with the retry");
     }
 
-    /// Re-review: a later Continue failing at the refused stop (unstaged changes) isn't reported
-    /// as the hook's refusal: the noted reason stays, and the warning is git's (UX F).
+    /// A later Continue failing at the refused stop (unstaged changes) isn't reported
+    /// as the hook's refusal: the noted reason stays, and the warning is git's.
     #[tokio::test]
     async fn a_later_failure_at_a_refused_stop_isnt_a_refusal() {
         let data = tempfile::tempdir().unwrap();
@@ -1525,10 +1518,9 @@ pub(crate) mod tests {
         r.write("lexer.txt", "unstaged\n");
         let res = control(&api, id, &r, "continue").await;
         assert_eq!(res["outcome"]["status"], "stopped", "{res}");
-        // UX F: git's own reason for the pause, never the refusal's.
+        // Git's own reason for the pause, never the refusal's.
         let why = res["outcome"]["warning"].as_str().unwrap_or_default();
         assert_eq!(why, "The rebase stopped: it can't go on with unstaged changes. Stage or discard them, then Continue", "{res}");
         assert_eq!(rebase_state(&r).1.as_deref(), Some("Rejected: no BAD messages."));
     }
-    // --- end 3C final fixes ---
 }

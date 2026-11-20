@@ -297,10 +297,10 @@ describe('resizing Branch/Tag and Graph wider than columnMax allows (narrow wind
   }
 });
 
-describe('the SHA column (F3 review, H15): a preference between SHORT_SHA_LEN (6) and 40 hex characters', () => {
+describe('the SHA column: a preference between SHORT_SHA_LEN (6) and 40 hex characters', () => {
   beforeEach(() => useColumnPrefs.getState().reset());
 
-  it('min fits the app-wide 6 hex characters with 1 px to spare (a slightly wider ch under CEF or zoom), max all 40 (13 px ui-monospace, 1ch = 7.83 px, plus 6 + 6 px padding); the default is the minimum, so it shows exactly 6 (H15)', () => {
+  it('min fits the app-wide 6 hex characters with 1 px to spare (a slightly wider ch under CEF or zoom), max all 40 (13 px ui-monospace, 1ch = 7.83 px, plus 6 + 6 px padding); the default is the minimum, so it shows exactly 6', () => {
     expect(COLUMN_MIN.sha).toBe(Math.ceil(6 * 7.83 + 12) + 1);
     expect(SHA_MAX).toBe(Math.ceil(40 * 7.83 + 12));
     expect(DEFAULT_COLUMN_PREFS.sha).toBe(SHA_W);
@@ -334,7 +334,7 @@ describe('the SHA column (F3 review, H15): a preference between SHORT_SHA_LEN (6
   });
 });
 
-describe('the Graph column is capped at what its lanes need (F2)', () => {
+describe('the Graph column is capped at what its lanes need', () => {
   beforeEach(() => useColumnPrefs.getState().reset());
   const m = { laneW: 16, padX: 8 };
 
@@ -422,7 +422,7 @@ describe('column prefs persistence seam', () => {
   });
 });
 
-describe('hidden and collapsed columns (T16a, spec §8.4)', () => {
+describe('hidden and collapsed columns (T16a)', () => {
   beforeEach(() => useColumnPrefs.getState().reset());
   afterEach(() => vi.restoreAllMocks());
 
@@ -489,7 +489,7 @@ describe('hidden and collapsed columns (T16a, spec §8.4)', () => {
   });
 });
 
-describe('resetWidth (K73)', () => {
+describe('resetWidth', () => {
   it('puts one column back to its default and persists; Graph goes back to auto, Message back to filling', () => {
     const save = vi.spyOn(columnPrefsPersistence, 'save');
     useColumnPrefs.setState({ repoId: '/r', prefs: { labels: 333, graph: 99, author: 222, date: 111, sha: SHA_W, message: null } });

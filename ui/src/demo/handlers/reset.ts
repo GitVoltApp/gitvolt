@@ -1,6 +1,6 @@
-// Reset (write/reset.rs, spec #2 §9.4): the branch (or a detached HEAD) moves; mixed and hard
+// Reset (write/reset.rs): the branch (or a detached HEAD) moves; mixed and hard
 // snapshot every changed tracked path first, hard also the files outside the index it deletes, and
-// asks first when there's anything to discard. Undo per §5.3. A folder in the way of a file holding a
+// asks first when there's anything to discard. A folder in the way of a file holding a
 // repository is refused, as the core's (the snapshot can't carry it, and git would delete it).
 import type { HandlerTable } from '../transport';
 import { gbError } from '../engine/errors';

@@ -26,7 +26,7 @@ function setTabs(ids: string[], active: string) {
   });
 }
 
-describe('TabBar: roving tabindex (spec §6.2)', () => {
+describe('TabBar: roving tabindex', () => {
   afterEach(() => { useAppState.setState({ profile: EMPTY_PROFILE }); });
 
   it('only the active tab sits in the page Tab order', () => {
@@ -126,7 +126,7 @@ describe('TabBar: rename field', () => {
   });
 });
 
-describe('TabBar: the settings gear (K102)', () => {
+describe('TabBar: the settings gear', () => {
   it('sits left of the profile button and runs the settings action', async () => {
     const { registerActions } = await import('../app/actions');
     const run = vi.fn();
@@ -141,7 +141,7 @@ describe('TabBar: the settings gear (K102)', () => {
   });
 });
 
-describe('TabBar: live drag reordering (spec §6.2)', () => {
+describe('TabBar: live drag reordering', () => {
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); useAppState.setState({ profile: EMPTY_PROFILE }); });
   // Three 100 px tabs at 0, 100, 200 in a 600 px strip (jsdom has no layout).
   const layout = () => {

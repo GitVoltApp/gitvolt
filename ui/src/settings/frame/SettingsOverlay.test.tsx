@@ -366,7 +366,7 @@ describe('SettingsOverlay', () => {
   });
 
   describe('dropdown', () => {
-    it('clicking the setting label does not open the dropdown (K103)', () => {
+    it('clicking the setting label does not open the dropdown', () => {
       const dialog = show('dateFormat');
       const btn = screen.getByRole('button', { name: 'Date format' });
       fireEvent.click(dialog.querySelector('#label-dateFormat')!);

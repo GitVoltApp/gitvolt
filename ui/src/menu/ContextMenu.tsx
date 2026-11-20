@@ -26,7 +26,7 @@ const ROW_H = 26;
 const PAD = 8;
 const SUB_W = 220;
 /** Submenus open at once, on the same pointerenter/pointermove that reaches their row: no
- * hover-intent timer (K29). The menu-aim below is for switching away from an open submenu,
+ * hover-intent timer. The menu-aim below is for switching away from an open submenu,
  * never for the first open. */
 /** Hover intent, menu-aim: with a submenu open, the pointer may cross the rows of its parent
  * level on a diagonal into it. A sibling row it reaches takes over only once the pointer stops
@@ -38,7 +38,7 @@ const SUB_W = 220;
 export const SUBMENU_GRACE_MS = 300;
 /** How many recent pointer positions the aim looks back over (the oldest is the move's start). */
 const AIM_TRAIL = 3;
-/** A window blur closes the menu only once the window has stayed unfocused this long (K24).
+/** A window blur closes the menu only once the window has stayed unfocused this long.
  * Under GNOME (mutter on Xwayland) every button press in the window refocuses it: the window
  * manager's `WM_TAKE_FOCUS`, which the CEF runtime answers by moving the X focus back to the
  * browser (vendor/tauri-runtime-cef/GITVOLT-PATCH.md). The page sees that as a window blur and,
@@ -118,10 +118,10 @@ export function remap(old: Level[], rows: MenuRow[]): Level[] {
 }
 
 /**
- * Spec §7: the one menu element, always in the page, filled and positioned on open (at the
+ * The one menu element, always in the page, filled and positioned on open (at the
  * pointer, flipped at the screen edges).
  * - Submenus open on →, Enter, a click, or a hover — all at once, synchronously, positioned
- *   before paint (K29). The menu-aim (SUBMENU_GRACE_MS) only delays switching away from an
+ *   before paint. The menu-aim (SUBMENU_GRACE_MS) only delays switching away from an
  *   already-open submenu, never the first open.
  * - Every row and variant shows its tooltip at once (`disabledReason` wins). A submenu row's
  *   own tooltip goes away while its submenu is open (it would cover it).
@@ -131,14 +131,14 @@ export function remap(old: Level[], rows: MenuRow[]): Level[] {
  *   closes (a submenu first), Tab closes.
  * - Escape, Tab and a pick give focus back to where it was; a press outside closes it and leaves
  *   focus alone (the press already moved it). A resize or the window losing focus for good (I2;
- *   `BLUR_SETTLE_MS`, K24) also give focus back, when it's still on the menu itself: those don't
+ *   `BLUR_SETTLE_MS`) also give focus back, when it's still on the menu itself: those don't
  *   move focus on their own, so without it the browser would drop it to `<body>` when the menu
  *   hides or unmounts.
- * - A scroll doesn't close it (K1), and the wheel outside it is swallowed while it's open, as
+ * - A scroll doesn't close it, and the wheel outside it is swallowed while it's open, as
  *   under a native menu: nothing behind it moves.
  * - Press-drag-release (`pressDrag.ts`): opened by a mouse press still held (a right press, an
  *   opener's press, a split button's hold), the release on a row picks it as a click would.
- * - Records `window.__gbMenuLatency` (spec §17.3).
+ * - Records `window.__gbMenuLatency`.
  */
 export function ContextMenu() {
   const rows = useMenu((s) => s.rows);
@@ -238,7 +238,7 @@ export function ContextMenu() {
   // An armed row's label grows past the menu's edge: its tooltip would sit under it.
   useEffect(() => { if (armed) hideTooltip(); }, [armed]);
 
-  // An armed row disarms once its menu closes or another opens (spec §ui confirms); a rebuild in
+  // An armed row disarms once its menu closes or another opens; a rebuild in
   // place, only when it drops or greys the row (the layout effect above).
   useEffect(() => () => { if (useArm.getState().armed?.mode === 'inline') disarm(); }, []);
 
@@ -248,13 +248,13 @@ export function ContextMenu() {
   useEffect(() => {
     if (!open) return;
     const inside = (t: EventTarget | null) => t instanceof Node && !!rootRef.current?.contains(t);
-    // I2: a resize or the window losing focus doesn't itself move focus, unlike a press (which
+    // A resize or the window losing focus doesn't itself move focus, unlike a press (which
     // focuses whatever it hit) — so restore it, but only when it's still on the menu (not, say, a
     // pick's own focus move already in flight).
     const stillFocused = () => !!rootRef.current && rootRef.current.contains(document.activeElement);
     const onDown = (e: PointerEvent) => { if (!inside(e.target)) { pressedAnchor(e.target); dismiss(false); } };
     const onAway = () => dismiss(stillFocused());
-    // K24: a window blur closes it only if the window stays unfocused (BLUR_SETTLE_MS): a press
+    // A window blur closes it only if the window stays unfocused (BLUR_SETTLE_MS): a press
     // under GNOME's window manager bounces the window focus (blur, then focus a few ms later).
     let blurTimer: ReturnType<typeof setTimeout> | undefined;
     const onBlur = () => {
@@ -262,7 +262,7 @@ export function ContextMenu() {
       blurTimer = setTimeout(onAway, BLUR_SETTLE_MS);
     };
     const onFocus = () => clearTimeout(blurTimer);
-    // K1: a scroll doesn't close it. The browser dispatches scroll events in the frame after the
+    // A scroll doesn't close it. The browser dispatches scroll events in the frame after the
     // scroll, so one the user started before the right-click (a wheel notch, the tail of a smooth
     // or kinetic scroll) landed after the menu opened and closed it at once. As a native menu, the
     // wheel outside it moves nothing behind it (nor zooms an image) while it's open.
@@ -288,7 +288,7 @@ export function ContextMenu() {
     };
     // Every key goes to the menu while it's open, wherever focus is: nothing behind it acts. It's
     // the key router's first layer (`ui/keyRouter.ts`), ahead of tooltips, editor overlays and
-    // the app's keys (Esc, F7, Shift+↑↓), whichever registered first. Zoom (Ctrl+=/-/0, H2) is the
+    // the app's keys (Esc, F7, Shift+↑↓), whichever registered first. Zoom (Ctrl+=/-/0) is the
     // one exception: the router routes it past this layer so it still works while the menu is open.
     const offKeys = registerKeys('menu', (e) => {
       keyHandler.current(e);
@@ -324,8 +324,8 @@ export function ContextMenu() {
     useMenu.getState().close();
   }
   /**
-   * Runs a pick with its row as the origin (spec §ui confirms): an action that asks arms the row
-   * in place and the menu stays open (board A); the armed row's own second pick confirms it.
+   * Runs a pick with its row as the origin: an action that asks arms the row
+   * in place and the menu stays open; the armed row's own second pick confirms it.
    * Otherwise the menu closes after the pick's synchronous part, as before (or once a held
    * origin is released: an integrate's preview).
    */
@@ -358,7 +358,7 @@ export function ContextMenu() {
     };
     runFromMenu(el, via, close, () => runMenuRowHook(id, label, run), isArmedOrigin);
   };
-  // Through the row-run hook (R11): the action log records each row run.
+  // Through the row-run hook: the action log records each row run.
   const runRow = (r: Action, el: HTMLElement | null, ev: Pick) => { if (!r.disabledReason) pick(el, ev, r.id, r.label, r.run); };
   const runVariant = (r: Action, v: Variant, el: HTMLElement | null, ev: Pick) => { if (!v.disabledReason) pick(el, ev, v.id, `${r.label}: ${v.label ?? v.tooltip}`, v.run); };
 
@@ -606,7 +606,7 @@ export function ContextMenu() {
                       onPointerLeave={(e) => {
                         e.stopPropagation();
                         setOverVariant(null);
-                        // K25: moving straight into a sibling in this group leaves the tooltip alone —
+                        // Moving straight into a sibling in this group leaves the tooltip alone —
                         // that sibling's own pointerEnter (above) swaps it to its tooltip directly. Only
                         // leaving the group altogether falls back to the row's tooltip, so the pointer
                         // never passes through it mid-group.
@@ -626,7 +626,7 @@ export function ContextMenu() {
                 })}
               </span>
             )}
-            {/* Armed (board A): the row's own space, over its label and variants; a longer label
+            {/* Armed: the row's own space, over its label and variants; a longer label
                 grows past the menu's edge rather than widening it. */}
             {armedHere && (
               <span className={`ctx-armed-label tone-${armed!.req.tone}`} aria-hidden>
@@ -635,7 +635,7 @@ export function ContextMenu() {
               </span>
             )}
           </div>
-          {/* The armed row's option (spec §ui confirms, board A): right under it, part of the
+          {/* The armed row's option: right under it, part of the
               armed state (a press on it doesn't disarm); the menu grows downward, nothing above
               moves. */}
           {option && (

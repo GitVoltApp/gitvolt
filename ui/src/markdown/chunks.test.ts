@@ -8,7 +8,7 @@ import { toSafeHast } from './render';
 const parse = (md: string) => { clearParseCache(); return parseMarkdown(md, 'github'); };
 const links = (t: HastRoot) => { const out: unknown[] = []; visit(t, 'element', (e: Element) => { if (e.tagName === 'a') out.push(e.properties.href); }); return out; };
 
-describe('splitChunks (ruling 21)', () => {
+describe('splitChunks', () => {
   it('cuts at top-level blocks of about the chunk size, keeping every block once, without positions', () => {
     const md = Array.from({ length: 40 }, (_, i) => `Paragraph ${i} ${'x'.repeat(500)}`).join('\n\n');
     const chunks = splitChunks(parse(md), 4_000);

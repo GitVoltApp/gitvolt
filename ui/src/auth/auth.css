@@ -1,4 +1,4 @@
-/* The askpass prompt (spec §5.4). The backdrop stops the pointer reaching the app behind it; the
+/* The askpass prompt. The backdrop stops the pointer reaching the app behind it; the
    status bar stays above it (statusbar.css), so its "Waiting for authentication… Cancel" works. */
 .modal-backdrop { position: fixed; inset: 0; z-index: 800; display: flex; align-items: center; justify-content: center; background: var(--backdrop); }
 .modal { display: flex; flex-direction: column; gap: 10px; width: 420px; max-width: calc(100vw - 32px); padding: 16px 18px; box-sizing: border-box; background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 8px; box-shadow: 0 10px 32px var(--shadow-modal); color: var(--text-normal); font-size: 13px; }

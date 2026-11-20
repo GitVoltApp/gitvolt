@@ -6,7 +6,7 @@ import type { MergeStatus } from "./MergeStatus";
 
 export type ForgeMrDetail = { mr: ForgeMr, 
 /**
- * Plain text in phase 4 (spec #4 §2).
+ * Plain text.
  */
 description: string, reviewers: Array<ForgeUser>, assignees: Array<ForgeUser>, mergeStatus: MergeStatus, squash: boolean | null, deleteSourceBranch: boolean | null, 
 /**
@@ -21,8 +21,8 @@ baseSha?: string,
  */
 subscribed?: boolean, 
 /**
- * GitHub's rendered description (the `full` media type): its signed attachment URLs
- * (spec #5 §4.2). `None` for GitLab.
+ * GitHub's rendered description (the `full` media type): its signed attachment URLs.
+ * `None` for GitLab.
  */
 bodyHtml?: string, 
 /**

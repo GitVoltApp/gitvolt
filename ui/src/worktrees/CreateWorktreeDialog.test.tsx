@@ -7,7 +7,7 @@ import { CreateWorktreeDialog, openCreateWorktree } from './CreateWorktreeDialog
 
 const res = (outcome: unknown) => ({ outcome, journal: { undo: null, redo: null, undoBlocked: null, redoBlocked: null, banners: [] }, staging: { undo: null, redo: null, off: null }, wip: null });
 
-describe('Create worktree (spec #2 §11.1)', () => {
+describe('Create worktree', () => {
   it('suggests the dash-joined folder, creates, and opens a new tab by default', async () => {
     useRuntime.getState().patch('t', { repo: { id: 1, path: '/r/shop', name: 'shop', worktree: '/r/shop' }, worktree: '/r/shop', sidebar: { locals: [], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} } as never });
     vi.spyOn(api, 'suggestWorktreePath').mockResolvedValue('/r/shop-feature-x');

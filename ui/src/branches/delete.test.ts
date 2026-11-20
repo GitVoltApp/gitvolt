@@ -13,13 +13,13 @@ const env = (locals: object[], remotes: Array<{ name: string; target: string }> 
 const target = (name: string, isLocal = true) => ({ sha: 'aaa', mrRefs: [], isWip: false, isStash: false, branch: { name, local: isLocal ? `refs/heads/${name}` : null, remotes: [] } });
 const variants = (row: ReturnType<typeof deleteRow>) => (row?.kind === 'action' ? Object.fromEntries((row.variants ?? []).map((v) => [v.id, v.disabledReason ?? null])) : {});
 
-describe('Delete | Local | Remote | Both | (spec #2 §9.2)', () => {
+describe('Delete | Local | Remote | Both |', () => {
   it('offers all three for a local branch with an upstream', () => {
     const row = deleteRow(target('feature/x'), env([local('feature/x')]));
     expect(row?.kind === 'action' && [row.disabledReason, row.defaultVariant]).toEqual([undefined, 'local']);
     expect(variants(row)).toEqual({ local: null, remote: null, both: null });
   });
-  it('omits what makes no sense, and shows what is blocked as disabled with its reason (spec #2 §9.2)', () => {
+  it('omits what makes no sense, and shows what is blocked as disabled with its reason', () => {
     expect(variants(deleteRow(target('solo'), env([local('solo', { upstream: null })], [])))).toEqual({ local: null });
     expect(variants(deleteRow(target('feature/x', false), env([])))).toEqual({ remote: null });
     // Checked out here: Local stays, disabled, with why; the label runs Remote.

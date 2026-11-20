@@ -11,7 +11,7 @@ import { ArrowGlyph } from '../ui/ArrowGlyph';
 /** Compare rows' avatar size: the co-author chips' scale, a notch under the author's. */
 const AVATAR_PX = 20;
 
-/** One compared or multi-selected commit (K17, K27): its author's avatar, its one-line summary
+/** One compared or multi-selected commit: its author's avatar, its one-line summary
  * (ellipsized; hovering shows it whole, with the author) and its committed date, from its graph
  * row. A commit outside the loaded graph shows its short SHA. */
 export function CompareCommit({ id, testId = 'compare-commit' }: { id: string; testId?: string }) {
@@ -49,12 +49,12 @@ export function CompareWorktree({ worktree, testId = 'compare-commit' }: { workt
 }
 
 /**
- * Spec §9.4: the bar `Comparing a1b2c3 → e4f5g6 [⇄] [×]`, FROM (the row picked first) then TO
- * (K27), in the commit header's bar box (K5/K6); then the two sides, one row each (K17). The swap
+ * The bar `Comparing a1b2c3 → e4f5g6 [⇄] [×]`, FROM (the row picked first) then TO,
+ * in the commit header's bar box; then the two sides, one row each. The swap
  * reverses them; a compare with the working tree has none (the working tree is always TO).
  */
 export function CompareHeader() {
-  // What the panel shows (feedback F12).
+  // What the panel shows.
   const selection = useRepoView((s) => s.panel?.selection);
   const exit = useRepoView((s) => s.exitCompare);
   const swap = useRepoView((s) => s.swapCompare);

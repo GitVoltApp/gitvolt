@@ -16,7 +16,7 @@ const row = (id: string): RowPayload => ({ id, kind: 'commit', lane: 0, color: 0
 beforeAll(async () => { await import('../menu/menuEnv'); });
 beforeEach(() => useNavHistory.setState({ byTab: {} }));
 
-it('a SHA-link jump to a loaded commit is a navigation place (spec #5 §3.4); one to the forge is not', async () => {
+it('a SHA-link jump to a loaded commit is a navigation place; one to the forge is not', async () => {
   const store = activeTabWith(createRepoViewStore(1, '/t', { ...EMPTY_GRAPH, rows: [row(A)] }, fakeServices()));
   await openLinkTarget({ kind: 'forge', tabId: 't' }, { kind: 'commit', sha: A, webUrl: null });
   expect(historyOf('t').places.map(placeKey)).toEqual([`commit:${A}`]);

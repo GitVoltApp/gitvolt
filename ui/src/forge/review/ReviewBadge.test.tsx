@@ -40,7 +40,7 @@ beforeEach(() => {
   });
 });
 
-describe("the file list's review badges (spec 2026-10-08 §5)", () => {
+describe("the file list's review badges", () => {
   it("a file with threads gets a badge, highlighted for its unresolved one; a click opens the file at that thread", () => {
     const store = show();
     const badge = screen.getByRole('button', { name: '2 threads, 1 unresolved' });

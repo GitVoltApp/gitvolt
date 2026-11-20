@@ -18,7 +18,7 @@ import { LfsNotice } from '../lfs/LfsNotice';
 import './statusbar.css';
 import { displayChord, resolveChord } from '../ui/platformKeys';
 
-/** Spec §12.3: the zoom steps, the current one first in focus. */
+/** The zoom steps, the current one first in focus. */
 function zoomRows(current: number): MenuRow[] {
   return ZOOM_STEPS.map((z) => ({
     kind: 'action', id: `zoom.${z}`, label: `${z}%`, icon: z === current ? Check : ZoomIn,
@@ -27,17 +27,17 @@ function zoomRows(current: number): MenuRow[] {
 }
 
 /** The running network op the bar shows: the first clone (rarely more than one runs). A fetch
- * shows here only when it's the user's and slow (below); a background one is only logged (K30). */
+ * shows here only when it's the user's and slow (below); a background one is only logged. */
 const firstOp = (ops: ReturnType<typeof useOps.getState>['ops']) => Object.values(ops).find((o) => o.kind === 'clone');
 /** The user's running fetch (or the background one a user's Fetch waits on). */
 const userFetch = (ops: ReturnType<typeof useOps.getState>['ops']) => Object.values(ops).find((o) => o.kind === 'fetch' && (o.interactive || o.shown));
 
-/** A user's running write (spec #2 §3.3): the bar shows it after `SLOW_FETCH_MS`, with Cancel. */
+/** A user's running write: the bar shows it after `SLOW_FETCH_MS`, with Cancel. */
 const userWrite = (ops: ReturnType<typeof useOps.getState>['ops']) => Object.values(ops).find((o) => o.interactive && o.kind !== 'fetch' && o.kind !== 'clone');
 const capitalized = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** How long a user's fetch runs on its button alone (K30) before the bar shows its progress and a
- * Cancel (K96: a stuck remote can be stopped). Most fetches are done well before. */
+/** How long a user's fetch runs on its button alone before the bar shows its progress and a
+ * Cancel (a stuck remote can be stopped). Most fetches are done well before. */
 export const SLOW_FETCH_MS = 2000;
 
 /** `op`, once it has run `SLOW_FETCH_MS`; else `undefined`. */
@@ -53,7 +53,7 @@ function useSlow(op: OpInfo | undefined): OpInfo | undefined {
   return op && op.op === slowId ? op : undefined;
 }
 
-/** How long an autostash step runs before the slow-write status names it (spec #2 §6: a big
+/** How long an autostash step runs before the slow-write status names it (a big
  * worktree's stash, or a slow clean/smudge filter). */
 export const SLOW_STASH_MS = 60_000;
 const STEP_TEXT = { saving: 'Saving your changes…', restoring: 'Restoring your changes…', restoringFiles: 'Restoring files…' } as const;
@@ -68,15 +68,14 @@ function useWriteText(op: OpInfo | undefined): string | undefined {
     return () => clearTimeout(t);
   }, [at]);
   if (!op) return undefined;
-  // --- 2D T18: a rebase's counter, from its first step (Deviation 11) ---
+  // --- a rebase's counter, from its first step ---
   const rebasing = rebaseStatus(op);
   if (rebasing && !(op.stash && op.stash.at === slowAt)) return rebasing;
-  // --- end 2D T18 ---
   return op.stash && op.stash.at === slowAt ? STEP_TEXT[op.stash.step] : op.kind === 'commit' ? 'Committing…' : `${capitalized(op.label)}…`;
 }
 
 /**
- * The status bar (spec §6.5), in the app's `statusBar` slot: zoom, a running clone or a slow fetch
+ * The status bar, in the app's `statusBar` slot: zoom, a running clone or a slow fetch
  * of the user's (or the auth prompt one waits on) with Cancel, the active tab's fetch-skipped
  * warning, the update pill (`updates/`), the Keyboard Shortcuts button, git's version and GitVolt's. (The notification bell is in the tab bar.)
  */
@@ -88,7 +87,7 @@ export function StatusBar() {
   const fetching = useSlow(useOps((s) => userFetch(s.ops)));
   const write = useOps((s) => userWrite(s.ops));
   const slowWrite = useSlow(write);
-  // A rebase with a step shows at once (2D T18); other writes wait out SLOW_FETCH_MS.
+  // A rebase with a step shows at once; other writes wait out SLOW_FETCH_MS.
   const writing = write && rebaseStatus(write) ? write : slowWrite;
   const writeText = useWriteText(writing);
   const prompt = useOps((s) => s.prompts[0]);
@@ -127,7 +126,7 @@ export function StatusBar() {
           <LoaderCircle size={12} className="sb-spin" aria-hidden />
           {writeText}
           {/* During an autostash step, Cancel is a Stop: git's step is stopped, and the
-              changes stay in the stash, whose banner then offers Apply (spec #2 §6). */}
+              changes stay in the stash, whose banner then offers Apply. */}
           <button type="button" className="sb-link" onClick={() => cancel(writing.op)}>
             {writing.stash ? `Stop — your changes stay in stash ${writing.stash.message}` : 'Cancel'}
           </button>

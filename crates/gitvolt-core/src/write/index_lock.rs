@@ -1,6 +1,6 @@
-//! Remove stale lock (spec #2 §14).
+//! Remove stale lock.
 //!
-//! An immediate write (Deviation 9): under the repository's write lock and the write guard, it
+//! An immediate write: under the repository's write lock and the write guard, it
 //! unlinks a worktree's `index.lock` only if it's still the file the error saw (same mtime,
 //! inode and device) and no git process is running in the repository.
 

@@ -12,17 +12,17 @@ import { Lru } from '../data/lru';
 import { hexSize, loadContents } from '../diff/hexContents';
 import { WipLists } from './wipLists';
 
-/** The diff contents cache: 64 entries or 64 MiB (spec §4.4). */
+/** The diff contents cache: 64 entries or 64 MiB. */
 export const CONTENT_CACHE_ENTRIES = 64;
 export const CONTENT_CACHE_BYTES = 64 * 1024 * 1024;
 
 /** One repository's backend reads, each cached per repo (one instance per open repo). */
 export interface RepoServices {
-  /** The details header (§9.1). Keyed by commit id. */
+  /** The details header. Keyed by commit id. */
   details: Loader<CommitDetailsPayload>;
   /** Keyed by `filesKey(spec)`. WIP lists are read through `wip`. */
   files: Loader<FileListPayload>;
-  /** The WIP rows' lists (keyed by `filesKey(spec)` too), held while the tab is watched (K44). */
+  /** The WIP rows' lists (keyed by `filesKey(spec)` too), held while the tab is watched. */
   wip: WipLists;
   /** Keyed by `contentKey(request)`. */
   contents: Loader<DiffContentsPayload>;
@@ -30,13 +30,13 @@ export interface RepoServices {
   /** The app's avatars: the selection asks for the people the graph doesn't draw (a different
    * committer, co-authors) as soon as their emails are known. */
   avatars: { request(email: string, name?: string): void; prefetchOne(email: string, name?: string): void };
-  /** "View all files" (§9.3). Keyed by commit id. */
+  /** "View all files". Keyed by commit id. */
   treeFiles: Loader<string[]>;
-  /** UX G.2: the WIP row's View all files. Keyed by worktree; never cached (the index moves). */
+  /** The WIP row's View all files. Keyed by worktree; never cached (the index moves). */
   worktreeFiles: Loader<string[]>;
   /**
    * Full commit messages (`commitMessage`), shared by the graph's full-message tooltip and the
-   * details panel's message (§9.2), so either one warms the other.
+   * details panel's message, so either one warms the other.
    */
   messages: CommitMessageCache;
   /** Loaded once per repo (a failed load is retried on the next call). */
@@ -51,8 +51,8 @@ export interface RepoServices {
 export const filesKey = (spec: DiffSpec) => JSON.stringify(spec);
 export const contentKey = (r: ContentsRequest) => JSON.stringify({ path: r.path, old: r.old, new: r.new, force: r.force, ...(r.oldPath ? { oldPath: r.oldPath } : {}) });
 
-/** WIP and worktree reads change under us, so the `Loader`s never cache them (plan 1B deviation
- * 9); WIP lists are held by `WipLists` instead, only while a watcher keeps them current (K44).
+/** WIP and worktree reads change under us, so the `Loader`s never cache them;
+ * WIP lists are held by `WipLists` instead, only while a watcher keeps them current.
  * Object-id-addressed contents are immutable. */
 export const isMutableKey = (key: string) => key.includes('"kind":"worktree"') || key.includes('"kind":"wip"');
 

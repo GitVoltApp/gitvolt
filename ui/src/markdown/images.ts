@@ -7,7 +7,7 @@ import { refreshMr } from '../forge/poll';
 import { resolveRepoPath } from './fileContext';
 import type { ImageSource, MarkdownContext } from './types';
 
-/** GitHub's image hosts besides github.com (spec §4.2; the core's allowlist decides for real). */
+/** GitHub's image hosts besides github.com (the core's allowlist decides for real). */
 export const GITHUB_IMAGE_HOSTS: ReadonlySet<string> = new Set(['user-images.githubusercontent.com', 'private-user-images.githubusercontent.com', 'raw.githubusercontent.com', 'avatars.githubusercontent.com']);
 const DATA_IMAGE = /^data:image\/(png|gif|jpeg|webp);base64,[a-z0-9+/=\s]+$/i;
 
@@ -22,7 +22,7 @@ export function forgeImageHost(kind: ForgeKind | null, project: Pick<ForgeProjec
   return kind === 'github' && GITHUB_IMAGE_HOSTS.has(u.host);
 }
 
-/** Where an image comes from (spec §4.2). */
+/** Where an image comes from. */
 export function resolveImage(ctx: MarkdownContext, src: string): ImageSource {
   const s = src.trim();
   if (!s) return { kind: 'none' };
@@ -43,7 +43,7 @@ export function resolveImage(ctx: MarkdownContext, src: string): ImageSource {
     return u.protocol === 'https:' ? { kind: 'remote', url: u.href, host: u.host } : { kind: 'none' };
   }
   if (ctx.kind === 'file') {
-    // Against the document (the 5A/5B contract), repo-root-relative; above the root, nothing.
+    // Against the document repo-root-relative; above the root, nothing.
     // `resolveRepoPath` gets the src as written, less its `#fragment`: it decodes percent-escapes
     // itself (never decode before or after it).
     const hash = src.indexOf('#');
@@ -80,7 +80,7 @@ export function loadForgeImage(repo: number, url: string, userAllowed: boolean):
 export const allowImage = (url: string): void => { allowed.add(url); };
 export const imageAllowed = (url: string): boolean => allowed.has(url);
 
-/** A signed attachment URL ran out: the open MR/PR's bodies again (fresh signatures), at most once a minute per tab (ruling 7). */
+/** A signed attachment URL ran out: the open MR/PR's bodies again (fresh signatures), at most once a minute per tab. */
 export function refreshSignedImages(ctx: MarkdownContext, now = Date.now()): void {
   if (ctx.kind !== 'forge') return;
   const n = forgeOf(ctx.tabId).openMr;

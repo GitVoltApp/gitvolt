@@ -27,7 +27,7 @@ export interface FocusTrap<T extends HTMLElement> {
  * back to whatever had it before once `active` goes false or the component unmounts.
  *
  * Generic — it doesn't know about the app's key router. A caller that owns every keydown while
- * active (a modal that claims the key router's `menu` layer, ruling R6: `app/modalKeys.ts`'s
+ * active (a modal that claims the key router's `menu` layer: `app/modalKeys.ts`'s
  * `useModalKeys`) calls `onTab` from its own handler. A second, independent `keydown` listener
  * added here on the DOM directly would never run: the router's capture-phase claim on `window`
  * already stops the event from reaching anything registered lower, including a listener on this

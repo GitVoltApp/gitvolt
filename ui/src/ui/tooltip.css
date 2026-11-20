@@ -15,13 +15,13 @@
   line-height: 1.4;
   white-space: pre-wrap;
   /* break-word, not anywhere: `anywhere` shrinks the min-content width, which lets a fixed box
-     squeeze to a word per line near the window edge (K52). Words never break unless longer
+     squeeze to a word per line near the window edge. Words never break unless longer
      than the box. */
   overflow-wrap: break-word;
   word-break: normal;
   box-shadow: 0 2px 8px var(--shadow-tooltip);
   pointer-events: none;
-  /* motion (J19): a short fade-in only. `delayMs` (the "show immediately" rule) is unaffected: this only fades
+  /* Motion: a short fade-in only. `delayMs` (the "show immediately" rule) is unaffected: this only fades
      the opacity of an already-mounted tooltip via `@starting-style`, it never delays showing it.
      There's no fade-out: the tooltip unmounts synchronously on hide (HoverTooltip.tsx), so
      nothing is left mounted for an exit transition to animate. */

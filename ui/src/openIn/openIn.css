@@ -1,6 +1,6 @@
-/* "Open in…" (feedback H9): the split button for the diff header. Its dropdown, and the file
+/* "Open in…": the split button for the diff header. Its dropdown, and the file
    list's right-click, both use the shared context menu (ui/src/menu), with the same opener rows
-   (plan 1C Task 15, Amendment 11: converted from this file's own popup). */
+   (converted from this file's own popup). */
 .open-in-button { display: inline-flex; align-items: stretch; height: 22px; border: 1px solid var(--section-border); border-radius: 4px; overflow: hidden; flex: none; }
 .open-in-main, .open-in-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); white-space: nowrap; transition: background-color var(--motion-fast), color var(--motion-fast); }
 .open-in-main { padding: 0 8px 0 6px; }

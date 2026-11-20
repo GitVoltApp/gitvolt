@@ -1,4 +1,4 @@
-//! Rewrite marks (spec #2 §12.3, ux round 2): a GitVolt write that rewrote a branch its push
+//! Rewrite marks: a GitVolt write that rewrote a branch its push
 //! target has (a rebase, an amend, Edit HEAD message) records the remote-tracking oid it
 //! rewrote away from. A later Push that would be rejected force-pushes with that oid as the
 //! lease, without asking: it overwrites only what the user had when they rewrote.
@@ -173,7 +173,7 @@ fn all_mine(repo: &gix::Repository, me: &str, lease: gix::ObjectId, old: gix::Ob
 /// remote-tracking ref the rewrite left behind, and drops each moved branch's mark that no longer
 /// applies.
 ///
-/// A mark is recorded only when (review round 1):
+/// A mark is recorded only when:
 /// - the remote-tracking ref was part of the branch before the rewrite (an ancestor of its old
 ///   tip): commits on the remote the user never had are never leased away;
 /// - every commit it replaces, on the remote or locally, has the user's author email;
@@ -304,7 +304,7 @@ mod tests {
     use super::*;
     use crate::testing::{fixtures, TestRepo};
 
-    /// Review round 2: an identity with an empty email never matches commits whose author email
+    /// An identity with an empty email never matches commits whose author email
     /// is empty, so they're never forced away silently.
     #[test]
     fn an_empty_identity_email_records_no_mark() {

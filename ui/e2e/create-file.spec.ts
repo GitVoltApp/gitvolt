@@ -18,7 +18,7 @@ async function editAndSave(page: Page, repo: string, path: string): Promise<void
   await expect.poll(() => readFileSync(join(repo, path), 'utf8')).toBe('hello');
 }
 
-test.describe('UX round 3 O.1: Create file…', () => {
+test.describe('Create file…', () => {
   // One repo and page for these (each was a test of its own, paying for a page load and Monaco's
   // start-up): each creates its own file; the one that undoes its create and save comes last.
   test('Create file… from a file row\'s menu, from the palette, and from the Unstaged list\'s empty space (undone)', async ({ page }) => {

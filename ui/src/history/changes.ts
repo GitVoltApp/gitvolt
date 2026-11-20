@@ -7,7 +7,7 @@ import { filesKey } from '../repo/services';
 import { targetFor, type DiffTarget } from '../repo/store';
 
 /** File History's Changes: the diff a row's commit made to the file, and the commits its
- * Markdown sides resolve links against (5C, R9). */
+ * Markdown sides resolve links against. */
 export type ChangesTarget = DiffTarget & { sides: DiffSides };
 
 /** The row's commit against its first parent, as Diff View shows a commit (a merge included). */

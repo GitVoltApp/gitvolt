@@ -5,8 +5,8 @@ import type { MenuRow } from '../menu/types';
 type Rows = (t: CommitTarget, env: MenuEnv) => MenuRow[];
 const builders: Array<{ order: number; rows: Rows }> = [];
 
-/** Adds rows to the commit/branch menu's Sync group (core §7), lower `order` first: Pull (T19,
- * order 0), then Push (T17, order 10). 2C's Set upstream row is its own registration in the
+/** Adds rows to the commit/branch menu's Sync group, lower `order` first: Pull (order 0),
+ * then Push (order 10). The Set upstream row is its own registration in the
  * same group. Returns its removal. */
 export function registerSyncRows(order: number, rows: Rows): () => void {
   const b = { order, rows };

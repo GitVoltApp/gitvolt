@@ -2,7 +2,7 @@ import type { AppSettings } from '../api/gen/AppSettings';
 import { useAppState } from '../app/state';
 
 /**
- * Sticky scroll (H7) was the one editor setting kept in localStorage, under this key; it's an app
+ * Sticky scroll was the one editor setting kept in localStorage, under this key; it's an app
  * setting now (`editorStickyScroll`, options.ts). The first loaded settings take the old value
  * over, once, and the key goes.
  */

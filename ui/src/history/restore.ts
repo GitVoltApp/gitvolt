@@ -4,7 +4,7 @@ import { useToast } from '../ui/toastStore';
 import { runWrite, type WriteCtx } from '../write/client';
 
 /**
- * Restore a file from a commit (spec #3 §3.8): `path` as in `sha` into the working tree,
+ * Restore a file from a commit: `path` as in `sha` into the working tree,
  * unstaged and undoable; `absent` (the commit has no such file) deletes it instead. Over the
  * file's own changes the backend asks, and `runWrite` arms the clicked row in place ("Click again
  * to replace your changes to <path>"); the answer is sent as `confirm`. `true` once it's done.

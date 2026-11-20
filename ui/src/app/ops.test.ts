@@ -36,7 +36,7 @@ describe('ops store', () => {
     expect(useOps.getState().prompts).toEqual([]);
   });
 
-  it('logs every finished op to the activity log, background ones too, with its duration (K30)', () => {
+  it('logs every finished op to the activity log, background ones too, with its duration', () => {
     vi.useFakeTimers();
     try {
       const { apply } = useOps.getState();
@@ -78,7 +78,7 @@ describe('ops store', () => {
   });
 });
 
-describe('write op output (spec #2 §3.5)', () => {
+describe('write op output', () => {
   it('collects opOutput lines into the finished op\'s Activity entry, capped at 64 KB', () => {
     useOps.setState({ ops: {}, prompts: [], errors: [], unread: 0, activity: [], outputs: {} });
     const s = useOps.getState();
@@ -103,7 +103,7 @@ describe('write op output (spec #2 §3.5)', () => {
     expect(lines[lines.length - 1]).toBe('… output truncated at 64 KB');
   });
 
-  it('gives stage/unstage no Activity entry (Commands only, spec #2 §3.5)', () => {
+  it('gives stage/unstage no Activity entry (Commands only)', () => {
     useOps.setState({ ops: {}, prompts: [], errors: [], unread: 0, activity: [], outputs: {} });
     const s = useOps.getState();
     s.apply({ type: 'opStarted', op: 3, kind: 'stage', repo: 1, label: 'stage a.php', interactive: true });
@@ -119,7 +119,7 @@ describe('write op output (spec #2 §3.5)', () => {
     expect(useOps.getState().activity).toHaveLength(1);
   });
 
-  it("keeps an op's server lines in its Activity entry (spec #2 §12.4)", () => {
+  it("keeps an op's server lines in its Activity entry", () => {
     const s = useOps.getState();
     s.apply({ type: 'opStarted', op: 41, kind: 'push', repo: 1, label: 'push dev to origin/dev', interactive: true });
     s.apply({ type: 'opRemote', op: 41, lines: [{ text: 'Deployed preview for dev', kind: 'info' }] });

@@ -1,4 +1,4 @@
-// The hex view's model (UX round 2, lane K): a binary's bytes as rows of 16 (8 when the view is
+// The hex view's model: a binary's bytes as rows of 16 (8 when the view is
 // narrow), shown in two Monaco editors side by side, the hex (bytes only, its offsets in the
 // line-number gutter) and the text (the printable characters). Plain data, no Monaco: the editors
 // (monaco/hexPanes.ts) and the tests share it. `per`: the bytes per row.

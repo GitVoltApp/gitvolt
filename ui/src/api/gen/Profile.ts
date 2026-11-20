@@ -31,11 +31,11 @@ recent: Array<RecentRepo>, reposFolder: string | null,
  */
 reposFolders: Array<string> | null, editor: EditorChoice | null, 
 /**
- * Added to every git command as `-c include.path=<path>` (spec §14.2).
+ * Added to every git command as `-c include.path=<path>`.
  */
 extraGitconfig: string | null, 
 /**
- * Host → forge type override (spec §14.4).
+ * Host → forge type override.
  */
 hostOverrides: { [key in string]: HostKind }, sidebarWidth: number, sidebarNarrow: boolean, 
 /**
@@ -47,7 +47,7 @@ sidebarPanels: { [key in string]: number },
  */
 rightPanelWidth: number | null, 
 /**
- * The left flyout's width (spec #4 §5); `None` is the UI's default.
+ * The left flyout's width; `None` is the UI's default.
  */
 flyoutWidth: number | null, 
 /**
@@ -55,6 +55,6 @@ flyoutWidth: number | null,
  */
 repos: { [key in string]: RepoSettings }, 
 /**
- * File colours (spec 2026-10-22): each repository's scopes, in order, keyed by its canonical common git dir.
+ * File colours: each repository's scopes, in order, keyed by its canonical common git dir.
  */
 fileColours: { [key in string]: Array<FileScope> }, };

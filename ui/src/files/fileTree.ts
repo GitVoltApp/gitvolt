@@ -6,7 +6,7 @@ import { statusKind } from './StatusIcon';
 export type FileListMode = 'path' | 'tree';
 export type FileSort = 'path' | 'status';
 
-/** "View all files"' filter (feedback K18): `query` (already trimmed and lowercased) is a
+/** "View all files"' filter: `query` (already trimmed and lowercased) is a
  * path substring, case-insensitive; empty matches everything. */
 export const matchesFilter = (path: string, query: string) => query === '' || path.toLowerCase().includes(query);
 
@@ -15,12 +15,12 @@ export type StatusCounts = { modified: number; added: number; deleted: number; r
 
 /** A tree row's horizontal layout, in px: `[chevron | status icon][gap][name]`, indented by
  * `rowIndent(depth)`. One level is exactly a chevron plus its gap, so a file's icon starts where
- * its folder's name does (feedback F17). */
+ * its folder's name does. */
 export const TREE = { base: 8, chevron: 14, icon: 14, gap: 6 } as const;
 export const rowIndent = (depth: number) => TREE.base + depth * (TREE.chevron + TREE.gap);
 
 export type FileRow =
-  /** `counts`: the subtree's changes, for a collapsed folder only (feedback F20). `lines`: the
+  /** `counts`: the subtree's changes, for a collapsed folder only. `lines`: the
    * subtree's line totals, shown on hover like a file's; null when no changed file below has any
    * (only binaries, or nothing changed). */
   | { kind: 'folder'; id: string; depth: number; name: string; path: string; expanded: boolean; counts: StatusCounts | null; lines: LineTotals | null }
@@ -36,7 +36,7 @@ const basename = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 const dirname = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
 
 /** Folders first, then files, alphabetically. A folder whose only child is a folder merges into
- * one row (`src/Framework/Orm`, spec §9.3). */
+ * one row (`src/Framework/Orm`). */
 export function buildTree<T extends { path: string }>(items: T[]): TreeNode<T>[] {
   const root: TreeNode<T> = { name: '', path: '', children: [], item: null };
   const folders = new Map<string, TreeNode<T>>([['', root]]);
@@ -75,7 +75,7 @@ export function flattenTree<T>(nodes: TreeNode<T>[], collapsed: ReadonlySet<stri
   return out;
 }
 
-/** "View all files": every path in `commit`'s tree, or (UX G.2, the WIP row) every tracked file
+/** "View all files": every path in `commit`'s tree, or (the WIP row) every tracked file
  * of `worktree`, whose rows open the working-tree file in File View. */
 export interface Unchanged { commit: string; paths: string[]; worktree?: string }
 
@@ -164,7 +164,7 @@ export function allFolderPaths(files: FileChange[], unchanged: Unchanged | null)
     .map(({ node }) => node.path);
 }
 
-/** Header counts (spec §9.3), by `statusKind`: M and T are "modified", A and C "added", U and X
+/** Header counts, by `statusKind`: M and T are "modified", A and C "added", U and X
  * "conflicted". */
 export function countByStatus(files: FileChange[]): StatusCounts {
   const c: StatusCounts = { modified: 0, added: 0, deleted: 0, renamed: 0, conflicted: 0 };
@@ -173,7 +173,7 @@ export function countByStatus(files: FileChange[]): StatusCounts {
 }
 
 /**
- * ↑/↓ walk into collapsed directories (UX round 2): the file `step` away from row `fromId`, in
+ * ↑/↓ walk into collapsed directories: the file `step` away from row `fromId`, in
  * the order the files would show with every directory expanded, and the collapsed directories
  * to expand to show it (outermost first; empty when it's visible already). `full` is the rows
  * built with nothing collapsed; `collapsed` the list's real collapsed set. ↓ from a collapsed

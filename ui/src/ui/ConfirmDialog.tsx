@@ -7,7 +7,7 @@ import { askChoice } from './ChoiceDialog';
 import './choice.css';
 
 /**
- * A confirmation for a destructive or hard-to-undo action (spec §ui confirms). The control the
+ * A confirmation for a destructive or hard-to-undo action. The control the
  * action started from arms in place and says what a second click does (`arm`: "Click again to
  * delete origin/x"); `caption`, a reason shown under it. With no control to arm (a keyboard
  * shortcut, a control gone since), it's a popover anchored there with `title`, `body` and
@@ -48,14 +48,14 @@ export function confirmWith(req: ConfirmRequest, origin: Origin | null = current
   return armWith({ arm: req.arm, tone, caption: req.caption, title: req.title, body: req.body ?? '', confirmLabel: req.confirmLabel, option: req.option }, origin);
 }
 
-/** A question with several answers besides Cancel (spec #2 §7.5: [Save] [Discard edits]
+/** A question with several answers besides Cancel ([Save] [Discard edits]
  * [Cancel]; [Reload] [Overwrite]): the anchored choice popover (`askChoice`). Resolves the
  * picked choice's id, or `null` for Cancel, Esc, a click outside or a newer question. */
 export function chooseAction(req: ChoiceRequest, origin: Origin | null = currentOrigin()): Promise<string | null> {
   return askChoice({ title: req.title, body: req.body, choices: req.choices.map((c, i) => ({ ...c, primary: i === 0 && !c.danger })) }, origin).then((r) => r.choice);
 }
 
-/** The popover for a confirmation with no control to arm (board H). */
+/** The popover for a confirmation with no control to arm. */
 export function ConfirmDialog() {
   const armed = useArm((s) => s.armed);
   if (!armed || armed.mode !== 'popover') return null;

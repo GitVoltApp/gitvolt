@@ -12,12 +12,12 @@ import type { ReviewDraft } from '../api/gen/ReviewDraft';
 import type { SidebarPayload } from '../api/gen/SidebarPayload';
 import type { CommentableFile } from './review/model';
 
-/** The MR/PR view's flyout kind (T12 registers it) and its props. */
+/** The MR/PR view's flyout kind and its props. */
 export const MR_FLYOUT = 'mr';
 export interface MrViewArgs { number: number }
 
 // --- review comments ---
-/** A tab's review of one MR/PR (spec 2026-10-08 §1): what its Compare's diff needs to take and
+/** A tab's review of one MR/PR: what its Compare's diff needs to take and
  * show comments. Compare starts it (`startReview`), the poll refreshes it (`refreshReview`), and
  * it ends once neither its Compare nor a pending draft keeps it (`settleReview`). */
 export interface ReviewSession {
@@ -45,14 +45,14 @@ export interface ReviewSession {
 }
 // --- end review comments ---
 
-/** One tab's forge state (spec #4 §4 "4B"), kept in memory: the poller fills it. */
+/** One tab's forge state, kept in memory: the poller fills it. */
 export interface TabForge {
   /** The kind of the account behind the repo's target project; null: no MR/PR UI for this repo. */
   kind: ForgeKind | null;
   /** The target remote and its project. */
   remote: string | null;
   project: ForgeProject | null;
-  /** The remotes with a project on the target's host (4C: the push toast's Create link). */
+  /** The remotes with a project on the target's host (the push toast's Create link). */
   mapped: string[];
   /** The remote the repo's MRs/PRs target (the user's choice or the automatic pick), even when its project couldn't be loaded. */
   target: string | null;
@@ -69,11 +69,11 @@ export interface TabForge {
   accountId: string | null;
   /** Remote-tracking ref (`refs/remotes/origin/dev`) → its MR/PR: the badges. */
   byRef: Record<string, ForgeMr>;
-  /** Remote-tracking ref → a merged or closed MR/PR that badges nothing (its branch moved on, or its tip is unknown here): 4D's stack walk and after-merge flow read it (`branchMrs` in `stack/deps.ts`). */
+  /** Remote-tracking ref → a merged or closed MR/PR that badges nothing (its branch moved on, or its tip is unknown here): the stack walk and after-merge flow read it (`branchMrs` in `stack/deps.ts`). */
   history: Record<string, ForgeMr>;
   /** Local branch ref → its upstream ref, as the badges were read. */
   upstreams: Record<string, string>;
-  /** The sidebar section's filter (T11 keeps it per repository). */
+  /** The sidebar section's filter (kept per repository). */
   filter: MrFilter;
   /** The sidebar section's list. */
   list: MrList | null;
@@ -84,7 +84,7 @@ export interface TabForge {
   openMr: number | null;
   /** ms epoch of the last poll that worked. */
   updatedAt: number | null;
-  /** The last poll's failure. The data above stays (spec #4 §6). */
+  /** The last poll's failure. The data above stays. */
   error: string | null;
   /** ms epoch: the account's rate limit is spent until then (the stale note says so). */
   limitedUntil: number | null;
@@ -172,14 +172,13 @@ export function knownMr(f: Pick<TabForge, 'details' | 'list' | 'byRef'>, n: numb
 }
 
 /** The local branches' upstreams (gone ones too: a merged MR's branch), newest tip first: what
- * the badges look up. 4D: first, the target branches of open MRs/PRs from local branches that
+ * the badges look up. First, the target branches of open MRs/PRs from local branches that
  * have no local branch (`forge`, the last poll's answer): a stack's merged bottom whose branch was
  * deleted after the merge is still found, within the core's lookup cap. */
 export function upstreamRefsOf(sidebar: SidebarPayload | null, forge: Pick<TabForge, 'byRef' | 'upstreams' | 'remote' | 'project'> | null = null): { refs: string[]; upstreams: Record<string, string> } {
-  // --- 4D T5: a branch pushed to its push target without an upstream is asked about too ---
+  // --- a branch pushed to its push target without an upstream is asked about too ---
   const asked = (l: LocalBranch): string | null => l.upstream ?? (l.pushTarget ? `refs/remotes/${l.pushTarget}` : null);
   const locals = (sidebar?.locals ?? []).flatMap((l) => { const ref = asked(l); return ref ? [{ l, ref }] : []; }).sort((a, b) => b.l.tipTime - a.l.tipTime);
-  // --- end 4D T5 ---
   const targets: string[] = [];
   if (forge?.remote) {
     const names = new Set((sidebar?.locals ?? []).map((l) => l.name));

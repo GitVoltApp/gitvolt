@@ -24,7 +24,7 @@ afterEach(() => {
   useRowEditors.setState({ store: null, editor: null });
 });
 
-describe('Create tag here: inline in the graph row (spec #3 §3.9)', () => {
+describe('Create tag here: inline in the graph row', () => {
   beforeEach(() => {
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     useTabViews.setState({ views: { t: { repo: 1, services: fakeServices(), store } as never } });

@@ -82,7 +82,7 @@ describe('GraphCanvas', () => {
     expect(queries).toContain('(resolution: 2dppx)');
   });
 
-  it('redraws with the selected row\'s brighter band when the selection moves (H14)', () => {
+  it('redraws with the selected row\'s brighter band when the selection moves', () => {
     const alphas: unknown[] = [];
     const ctx = new Proxy({} as Record<string, unknown>, {
       get: (t, k: string) => (k in t ? t[k] : () => {}),

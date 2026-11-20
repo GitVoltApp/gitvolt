@@ -3,7 +3,7 @@ import type { FailedRemote } from "./FailedRemote";
 import type { SshOffer } from "./SshOffer";
 
 /**
- * What a write error needs beyond its kind (spec #2 §15). Tagged by `kind`, camelCase in TS.
+ * What a write error needs beyond its kind. Tagged by `kind`, camelCase in TS.
  */
 export type ErrorDetail = { "kind": "hook", hook: string, } | { "kind": "indexLock", path: string, mtimeMs: number, 
 /**

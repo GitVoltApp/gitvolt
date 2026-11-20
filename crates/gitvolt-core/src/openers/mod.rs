@@ -1,4 +1,4 @@
-//! "Open in…" (spec §14.5, feedback H9): the external editors and the file manager found on
+//! "Open in…": the external editors and the file manager found on
 //! this machine, and the argv that opens a working-tree file (at a line) in one of them.
 //!
 //! Security: only programs found here are ever run (the UI names an opener by its `id`, never a
@@ -7,7 +7,7 @@
 //! Launching goes through an injected `Launcher`: the app spawns (`spawn_detached`), the harness
 //! records the call, and tests never start a real application.
 //!
-//! Detection (feedback H32) is per OS behind `detect_system`: on Linux, every XDG desktop entry
+//! Detection is per OS behind `detect_system`: on Linux, every XDG desktop entry
 //! that is a text editor or IDE (`desktop.rs`), supplemented by JetBrains Toolbox scripts and
 //! `PATH`, plus the file manager; "Other…" is the system's Open With chooser (`chooser.rs`), and
 //! "Open in default app" the file's own handler (`default_app.rs`, every OS). On
@@ -58,7 +58,7 @@ pub const CHOOSER_ID: &str = "other";
 /// The id of "Open in default app", listed when the API has a `DefaultApp`.
 pub const DEFAULT_APP_ID: &str = "default-app";
 
-/// The opener id that means "the custom editor command" (R5: the profile's, or the repo's own,
+/// The opener id that means "the custom editor command" (the profile's, or the repo's own,
 /// `EditorChoice::Custom`), built per open by `template_opener`. Never a detected opener's id.
 pub const CUSTOM_ID: &str = "custom";
 
@@ -78,13 +78,13 @@ pub enum ExecArg {
     Literal(OsString),
     File,
     /// The file, as a `file://` URI rather than a plain path: Flatpak's `@@u … @@` forwarding
-    /// marks the wrapped field code this way (deferred Rust minor #4). Without it, a sandboxed
+    /// marks the wrapped field code this way. Without it, a sandboxed
     /// app that can't see the host path at all (no `--filesystem=home`) gets a path the document
     /// portal never exported, and can't open it.
     FileUri,
 }
 
-/// How a known IDE's CLI takes a line (only these get one; spec §14.5).
+/// How a known IDE's CLI takes a line (only these get one).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineArgs {
     /// VS Code, VSCodium: `-g <file>:<line>`.
@@ -195,7 +195,7 @@ impl Opener {
                     (Some(LineArgs::NotepadPlusPlus), Some(n)) => args.extend([os(&format!("-n{n}")), file.clone()]),
                     _ => args.push(file.clone()),
                 },
-                // Flatpak's `@@u … @@` forwarding (minor #4): no line form, and never a bare path.
+                // Flatpak's `@@u … @@` forwarding: no line form, and never a bare path.
                 ExecArg::FileUri => args.push(to_file_uri(&file)),
             }
         }
@@ -348,8 +348,8 @@ fn tokenize_template(template: &str) -> Result<Vec<String>, GbError> {
     Ok(out)
 }
 
-/// Substitutes `{file}`, `{line}` and `{repo}` in `word` in one left-to-right pass (fix round 1,
-/// item 4): each placeholder is replaced as it's found in the *original* word, and the cursor
+/// Substitutes `{file}`, `{line}` and `{repo}` in `word` in one left-to-right pass:
+/// each placeholder is replaced as it's found in the *original* word, and the cursor
 /// moves past the inserted text without ever re-scanning it. Chained `.replace()` calls don't have
 /// this property — replacing `{file}` first, then `{repo}`, would re-scan the just-inserted file
 /// text and (wrongly) substitute a `{repo}` that happened to appear inside the file's own name.
@@ -371,7 +371,7 @@ fn substitute_template_word(word: &str, file: &str, line: &str, repo: &str) -> S
     out
 }
 
-/// Builds the custom editor opener (R5: the settings' "Custom" editor choice) for one repository.
+/// Builds the custom editor opener (the settings' "Custom" editor choice) for one repository.
 /// `template`'s first word is the program (resolved exactly as a detected editor's `TryExec` is:
 /// an absolute, executable path, or a bare name on `env`'s `PATH`); the rest keeps its
 /// placeholders for `Opener::command` to fill in per open. `repo` is baked in now because
@@ -453,7 +453,7 @@ fn is_code_flag(word: &str) -> bool {
     }
 }
 
-/// I1's rule (desktop entries), adapted to the custom template, for a program that runs code
+/// The desktop entries' rule, adapted to the custom template, for a program that runs code
 /// (`SHELL_PROGRAMS`): a placeholder is safe only as its own whole word that isn't code. It's
 /// refused when it's embedded in a larger word (`"vim {file}"`, `-c{file}`, `--eval={file}`), or
 /// when it's the word right after a code flag (`-c {file}`, `-lc {file}`, `--command {file}`),
@@ -577,7 +577,7 @@ const JETBRAINS: &[(&str, &str)] = &[
     ("dataspell", "DataSpell"),
 ];
 
-/// The editors listed first, in this order (H32); then the rest alphabetically.
+/// The editors listed first, in this order; then the rest alphabetically.
 const KNOWN_ORDER: &[&str] = &["vscode", "vscodium", "jetbrains-", "sublime", "zed", "kate", "gedit", "gnome-text-editor"];
 
 fn rank(o: &Opener) -> (usize, usize, String) {
@@ -624,7 +624,7 @@ pub fn detect(env: &DetectEnv) -> Vec<Opener> {
     found
 }
 
-/// This OS's openers (the seam other OSes plug into; spec §4). Linux: XDG desktop entries,
+/// This OS's openers (the seam other OSes plug into). Linux: XDG desktop entries,
 /// Toolbox scripts and `PATH`. Windows: `PATH`, install folders, the Toolbox, File Explorer.
 /// macOS: `PATH`, app bundles, the Toolbox, Finder.
 pub fn detect_system() -> Vec<Opener> {
@@ -638,11 +638,11 @@ pub fn detect_system() -> Vec<Opener> {
     return Vec::new();
 }
 
-/// This OS's URL opener (spec §14.4: links in the default browser), or `None` where there's none
-/// yet (spec §4). `hook` adjusts the launch's environment exactly as an opener's or the chooser's
+/// This OS's URL opener (links in the default browser), or `None` where there's none
+/// yet. `hook` adjusts the launch's environment exactly as an opener's or the chooser's
 /// fallback does (`ChildEnvHook`): without it, the browser would inherit whatever the app's own
 /// runtime set for itself (`GDK_BACKEND=x11`, `IBUS_ENABLE_SYNC_MODE=1`), on top of
-/// `CHROME_DEVEL_SANDBOX`, which `launch_command` always strips (`I2`). The caller
+/// `CHROME_DEVEL_SANDBOX`, which `launch_command` always strips. The caller
 /// (`links::validate_web_url`, run before the API ever calls the opener) has already checked
 /// `url` starts with `http(s)://` (no userinfo) or `mailto:` (one plausible address), so it can
 /// never be read as an `xdg-open` option.
@@ -771,9 +771,9 @@ fn at_line(file: &OsStr, n: u32) -> OsString {
     s
 }
 
-/// `file://` plus a percent-encoded path (minor #4): what Flatpak's `@@u … @@` forwarding needs,
+/// `file://` plus a percent-encoded path: what Flatpak's `@@u … @@` forwarding needs,
 /// since the document portal (which exports the file into the sandbox) takes a URI, not a path.
-/// On unix this operates on the path's raw bytes (fix round 1, item 9), so a non-UTF-8 name's
+/// On unix this operates on the path's raw bytes, so a non-UTF-8 name's
 /// exact bytes reach the URI instead of a lossy `to_string_lossy()` replacement pointing at the
 /// wrong path.
 #[cfg(unix)]
@@ -790,7 +790,7 @@ fn to_file_uri(file: &OsStr) -> OsString {
     percent_encode_file_uri(file.to_string_lossy().as_bytes())
 }
 
-/// `file://` plus `bytes`, percent-encoded exactly (fix round 1, item 9): operating on the raw
+/// `file://` plus `bytes`, percent-encoded exactly: operating on the raw
 /// bytes, not a lossy UTF-8 string, so a non-UTF-8 file name's exact bytes reach the URI instead
 /// of the U+FFFD replacement character silently pointing at the wrong path.
 fn percent_encode_file_uri(bytes: &[u8]) -> OsString {
@@ -848,7 +848,7 @@ pub(super) mod tests {
         assert_eq!(args(&files.command(Path::new("/repo/src"), Some(3))), ["--new-window", "/repo/src"]);
     }
 
-    /// Minor #4: a `FileUri` field code becomes a percent-encoded `file://` URI, not a path.
+    /// A `FileUri` field code becomes a percent-encoded `file://` URI, not a path.
     #[test]
     fn file_uri_args_are_percent_encoded_uris() {
         let flatpak = Opener::new(
@@ -861,7 +861,7 @@ pub(super) mod tests {
         assert_eq!(args(&flatpak.command(Path::new("/repo/src/a b.php"), Some(5))), ["run", "--command=idea", "@@u", "file:///repo/src/a%20b.php", "@@"], "no line form for a URI code either");
     }
 
-    /// Fix round 1, item 9: a non-UTF-8 file name's exact bytes must reach the URI, not the
+    /// A non-UTF-8 file name's exact bytes must reach the URI, not the
     /// U+FFFD replacement `to_string_lossy()` would substitute (which would point at the wrong
     /// path entirely).
     #[cfg(unix)] // non-UTF-8 file names exist only on Unix
@@ -888,7 +888,7 @@ pub(super) mod tests {
         assert_eq!(args(&o.command(Path::new("/w/a b.php"), None)).last().unwrap(), "/w/a b.php:1");
     }
 
-    /// Minor #4 (fix round 1, item 4): chained `.replace()` calls re-scan already-substituted
+    /// Chained `.replace()` calls re-scan already-substituted
     /// text, so a file whose name literally contains `{repo}` would get double-substituted. One
     /// left-to-right pass must never look at text it just inserted.
     #[test]
@@ -912,7 +912,7 @@ pub(super) mod tests {
         assert_eq!(err.kind, GbErrorKind::InvalidInput);
     }
 
-    /// I1's rule, applied to the custom template: a placeholder can never sit inside a shell's
+    /// The shell-program rule, applied to the custom template: a placeholder can never sit inside a shell's
     /// `-c` script, whole-word or embedded, since that argument is parsed as shell code.
     #[test]
     fn a_shell_c_script_holding_a_placeholder_is_rejected() {
@@ -1044,7 +1044,7 @@ pub(super) mod tests {
         assert_eq!(parse_exec("%f"), None);
     }
 
-    /// I1 regression: an `Exec` line that wraps the opened file in a shell (a common way to set
+    /// An `Exec` line that wraps the opened file in a shell (a common way to set
     /// environment variables for an editor) must never be offered, since the field code isn't
     /// its own argument and splicing it in would let the opened file run as a shell command.
     #[test]
@@ -1110,13 +1110,13 @@ pub(super) mod tests {
         assert_eq!(args(&found[0].command(Path::new("/r"), None)), ["/r"]);
     }
 
-    /// I2: no `xdg-open` on `PATH` means no URL opener, same as the file-manager fallback.
+    /// No `xdg-open` on `PATH` means no URL opener, same as the file-manager fallback.
     #[test]
     fn no_url_opener_without_xdg_open() {
         assert!(url_opener_using(&[], Arc::new(|_| {})).is_none());
     }
 
-    /// I2 regression: opening a URL must go through the same argv-only, detached launch and
+    /// Opening a URL must go through the same argv-only, detached launch and
     /// `ChildEnvHook` as an opener or the chooser's `xdg-open` fallback — not bypass it the way
     /// `tauri_plugin_opener::open_url` used to, leaking `GDK_BACKEND=x11`,
     /// `IBUS_ENABLE_SYNC_MODE` and `CHROME_DEVEL_SANDBOX` into the browser.
@@ -1156,7 +1156,7 @@ pub(super) mod tests {
         }
     }
 
-    /// Fix round 1: a launched app's environment goes through the app's hook (which restores
+    /// A launched app's environment goes through the app's hook (which restores
     /// what the CEF runtime changed, e.g. `GDK_BACKEND`), after GitVolt's own are removed.
     #[test]
     fn the_launch_command_is_argv_only_and_its_environment_goes_through_the_hook() {

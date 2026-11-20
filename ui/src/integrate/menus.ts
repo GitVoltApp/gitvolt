@@ -2,7 +2,7 @@ import { registerMenu } from '../menu/registry';
 import type { CommitTarget, MenuEnv } from '../menu/menuEnv';
 import { fastForward, integrateRows, startIntegrate } from './integrate';
 
-/** The Integrate group of a branch label's menu (spec #2 §13.1). Rows come from the snapshot: the
+/** The Integrate group of a branch label's menu. Rows come from the snapshot: the
  * busy state is the active worktree's `inProgress`, already in the graph. */
 export const offIntegrateMenu = registerMenu<CommitTarget, MenuEnv>({
   id: 'commit.integrate', kind: 'commit', group: 'integrate', order: 0,

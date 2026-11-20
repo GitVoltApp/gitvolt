@@ -7,6 +7,6 @@ export type PlanRow = { oid: string, summary: string,
 message: string, authorName: string, authorEmail: string, authorTime: number, 
 /**
  * Already in the base under another id (`rev-list --cherry-mark`'s `=`): git's own todo
- * would leave it out. 3D's Rebase stack drops these rows; the editor shows them as is.
+ * would leave it out. The Rebase stack drops these rows; the editor shows them as is.
  */
 upstream: boolean, };

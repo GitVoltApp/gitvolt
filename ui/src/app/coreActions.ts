@@ -12,7 +12,7 @@ import { activateTab, closeTab, cycleTab, openBlankTab, reopenClosed } from './t
 import { isMac } from '../ui/platformKeys';
 
 /**
- * The shell's own actions: tabs (spec §6.2) and the current repo. Features register theirs in
+ * The shell's own actions: tabs and the current repo. Features register theirs in
  * their own modules (fetch, clone, find, the sidebar, settings, the palette), imported from
  * `features.ts`. The tab bar's own feature module (`tabs/features.ts`) registers the `header`
  * and `overlay` slots and the tab context menu; its actions live here.
@@ -32,8 +32,7 @@ export function reopenLastClosed(): void {
 
 /**
  * Shows `worktree`'s own folder in the file manager (the tab menu's "Open in file manager", and
- * `repo.openFolder`). There's no dedicated "open the repo root" request yet (preflight T8's
- * still-1C list), so this goes through the same `openIn` the file list uses: `path` only has to
+ * `repo.openFolder`). There's no dedicated "open the repo root" request yet, so this goes through the same `openIn` the file list uses: `path` only has to
  * be a syntactically valid single relative segment, since the core's `folder_target` (api.rs)
  * finds the containing folder by popping one segment off `worktree.join(path)` — which, for any
  * single segment, lands back on `worktree` itself.
@@ -56,7 +55,7 @@ const off = registerActions([
       useOpenUi.getState().requestClone(tabId);
     },
   },
-  // Ctrl+W (ruling R6, the user's words: "close tab aka close repo, or close file like ESC if a
+  // Ctrl+W (the user's words: "close tab aka close repo, or close file like ESC if a
   // file is open"): with a file open it closes that file, else the tab — one or the other per
   // press, never both. Registered first, so it takes the chord while a file is open.
   {
@@ -122,7 +121,7 @@ const off = registerActions([
     id: 'repo.openFolder', label: 'Open in file manager', group: 'Repository', icon: FolderOpen, tooltip: "Open the tab's worktree directory in the file manager",
     when: () => !!activeRuntime()?.repo,
     run: () => {
-      // The tab's active worktree, not the repository's main one (spec #2 §11.2).
+      // The tab's active worktree, not the repository's main one.
       const rt = activeRuntime();
       if (rt?.repo) openRepoFolder(rt.repo.id, rt.worktree ?? rt.repo.path);
     },

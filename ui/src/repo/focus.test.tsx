@@ -30,8 +30,8 @@ describe('focus zones', () => {
     expect(store.getState().focus).toBe('graph');
   });
 
-  // Review fix 2: the store's focus can be stale (it follows DOM focus-in only), so a request for
-  // the zone it already names (plan 1C's palette "focus graph") must still move DOM focus.
+  // The store's focus can be stale (it follows DOM focus-in only), so a request for
+  // the zone it already names (the palette's "focus graph") must still move DOM focus.
   it('setFocus re-focuses a zone whose store focus is stale', () => {
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     render(<RepoViewContext value={store}><Zone zone="graph" /><button type="button">outside</button></RepoViewContext>);

@@ -18,12 +18,12 @@ const files = (n: number) => `${n} file${n === 1 ? '' : 's'}`;
 export interface IntegrateRun { ff(y: string): void; go(kind: IntegrateKind, y: string, ffOnly?: boolean): void }
 
 /**
- * The Integrate group for a branch label chip `Y`, with HEAD on `X` (spec #2 §13.1): Fast-forward Y
+ * The Integrate group for a branch label chip `Y`, with HEAD on `X`: Fast-forward Y
  * to X (Y local), Merge Y into X, Rebase X onto Y. Only what can apply shows: from the loaded
  * rows, a `Y` already in `X`'s history gets only the fast-forward (merging it or rebasing onto
  * it is a no-op), and any other `Y` only the merge and the rebase (it isn't behind `X`); a `Y`
  * checked out in a worktree can't be fast-forwarded. When the rows can't tell (a commit not
- * loaded), all three show and the backend checks after the click (§14: menus stay synchronous).
+ * loaded), all three show and the backend checks after the click (menus stay synchronous).
  * Greyed with `busy` during another merge or rebase, or on a detached HEAD.
  */
 export function integrateRows(t: CommitTarget, env: Pick<MenuEnv, 'headBranch'> & Partial<Pick<MenuEnv, 'headSha' | 'isAncestor' | 'sidebar'>>, busy: string | null, run: IntegrateRun = { ff: () => {}, go: () => {} }): MenuRow[] {
@@ -53,7 +53,7 @@ export function integrateRows(t: CommitTarget, env: Pick<MenuEnv, 'headBranch'> 
 function toastOutcome(o: IntegrateOutcome, kind: IntegrateKind, target: string, x: string): void {
   const show = (m: string) => useToast.getState().show(m);
   if (o.status === 'upToDate') return show(kind === 'merge' ? `${target} is already merged into ${x}` : `${x} is up to date`);
-  // Stopped: the banner takes over (§13.2); UX F: one without a conflict says why (the signer).
+  // Stopped: the banner takes over: one without a conflict says why (the signer).
   if (o.status === 'stopped') return toastRebaseOutcome(o);
   if (o.status !== 'done') return; // aborted: nothing to say
   if (o.fastForward) return show(`Fast-forwarded ${x} to ${target}`);
@@ -62,9 +62,9 @@ function toastOutcome(o: IntegrateOutcome, kind: IntegrateKind, target: string, 
 
 /** Merge or rebase: the preview first; it asks only for predicted conflicts, a stack (rebase) or
  * a refused rebase. Predicted conflicts or a stack arm the clicked row in place, its menu held
- * open while the preview runs (spec §ui confirms, board A); a stack's "Also move N stacked
+ * open while the preview runs; a stack's "Also move N stacked
  * branches" is a checkbox right under the armed row (with no row to arm, the board-H popover
- * carries it). A refused rebase says why: the anchored popover (board G). */
+ * carries it). A refused rebase says why: the anchored popover. */
 export async function startIntegrate(ctx: WriteCtx, kind: IntegrateKind, target: string, x: string, ffOnly = false): Promise<void> {
   const origin = currentOrigin();
   const release = holdOrigin();

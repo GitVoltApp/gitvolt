@@ -16,7 +16,7 @@ const issueOrMr = (refKind: 'issue' | 'mr'): ReplaceFunction => (value: string, 
   return n > 0 && Number.isSafeInteger(n) ? node(refKind, value, { project: project ?? null, number: n }) : false;
 };
 
-/** 7–40 hex digits with a letter and a digit, or 40 digits (spec §3.1). */
+/** 7–40 hex digits with a letter and a digit, or 40 digits. */
 const sha: ReplaceFunction = (value: string) => ((/[a-f]/.test(value) && /\d/.test(value)) || value.length === 40 ? node('commit', value, { sha: value }) : false);
 const mention: ReplaceFunction = (value: string, user: string) => node('mention', value, { user });
 

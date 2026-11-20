@@ -1,11 +1,11 @@
 import { expect, test, type Locator, type Page } from './test';
 import { fixtures, openUrl } from './fixtures';
 
-// Plan 1C Task 15 (lane W2-D): the commit, branch/tag label and Monaco context menus, over 1B's
+// The commit, branch/tag label and Monaco context menus, over the
 // menu system (ui/src/menu). The file and folder menus already have their own e2e coverage in
-// files.spec.ts; this file covers the kinds 1C added.
+// files.spec.ts; this file covers the kinds added later.
 //
-// `api.openUrl` can't be observed here (the harness's is "a URL opener that only logs", plan 1B's
+// `api.openUrl` can't be observed here (the harness's is "a URL opener that only logs", the
 // convention: link buttons are checked by their own attribute instead, e2e/details.spec.ts's
 // `data-url` on the message's "Open !N" buttons). The context menu's rows have no such attribute,
 // so the forge tests below stick to what's independently verifiable: the row's presence, its
@@ -14,7 +14,7 @@ import { fixtures, openUrl } from './fixtures';
 const row = (page: Page, text: string) => page.getByRole('row').filter({ hasText: text });
 /** The copy succeeded (its "Copied" toast, on every browser) and put `text` on the clipboard:
  * that's read back on Chromium only, the one project granted clipboard-read (playwright.config.ts;
- * headless WebKit refuses `readText`), as the 1B specs do (e2e/diff.spec.ts, details.spec.ts). */
+ * headless WebKit refuses `readText`), as other specs do (e2e/diff.spec.ts, details.spec.ts). */
 async function copied(page: Page, text: string) {
   await expect(page.getByRole('status')).toHaveText('Copied');
   if (test.info().project.name === 'chromium') await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(text);
@@ -43,7 +43,7 @@ async function labelMenu(page: Page, rowText: string) {
   return menu;
 }
 
-test.describe('the commit and label context menus (spec §7 target table)', () => {
+test.describe('the commit and label context menus', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(openUrl(fixtures.basic));
     await expect(page.getByRole('grid', { name: 'Commit graph' })).toBeVisible();
@@ -53,8 +53,8 @@ test.describe('the commit and label context menus (spec §7 target table)', () =
   test('the WIP row, a plain commit, a branch label chip and a tag label chip each get their own menu', async ({ page }) => {
     await test.step('the WIP row gets its own menu, not the commit menu', async () => {
       // Two worktrees are dirty (the main one and wt-hotfix, fixtures.rs); the first WIP row is the
-      // active one's. Spec #2 §14: a WIP row's menu is Switch to this worktree and Open in a new tab
-      // (2C), neither on the active one's, then Stash; none of the commit menu's rows.
+      // active one's. A WIP row's menu is Switch to this worktree and Open in a new tab,
+      // neither on the active one's, then Stash; none of the commit menu's rows.
       await page.getByRole('row').filter({ hasText: '// WIP' }).first().locator('[data-col="message"]').click({ button: 'right' });
       const menu = page.getByTestId('context-menu');
       await expect(menu).toBeVisible();
@@ -68,9 +68,9 @@ test.describe('the commit and label context menus (spec §7 target table)', () =
     });
     await test.step('a plain commit: Reset early, the 2C Branch rows, then Copy SHA, Copy message, Compare with working tree; no forge rows; under budget', async () => {
       const menu = await commitMenu(page, 'Fix typo');
-      // Spec #2 §14: 2C's Commit-group Reset row (placed early, right after the sync rows) and its
-      // Branch group (Checkout ▸, Create worktree from ▸, Create branch here) sit above 1C's rows.
-      // Spec #3 §4.3: the Commit group gains Revert, Create tag here, Interactive rebase after this commit and Drop commit
+      // The Commit-group Reset row (placed early, right after the sync rows) and the
+      // Branch group (Checkout ▸, Create worktree from ▸, Create branch here) sit above the other rows.
+      // The Commit group gains Revert, Create tag here, Interactive rebase after this commit and Drop commit
       // (Cherry-pick too, though Fix typo is already on main).
       await expect(menu.locator('[data-depth="0"] > [role="menuitem"] .ctx-label')).toHaveText(['Reset main to this commit', 'Checkout', 'Create worktree from', 'Create branch here', 'Cherry-pick onto main', 'Revert this commit', 'Create tag here', 'Interactive rebase after this commit', 'Drop commit', 'Copy SHA', 'Copy message', 'Compare with working tree']);
       // The latency budgets (cold tripwire, warm median) live in menu-perf.spec.ts, so a loaded
@@ -91,9 +91,9 @@ test.describe('the commit and label context menus (spec §7 target table)', () =
     });
     await test.step("a branch label chip: Copy branch name (Local, Remote), Compare with HEAD names both branches; main's own chip compares with the working tree; a local-only branch has no Remote", async () => {
       const menu = await labelMenu(page, 'Login validation');
-      // Spec #2 §14: 2D's Sync and Integrate groups, 2C's Reset, Branch and Manage rows, then 1C's.
-      // UX round 1: only what can apply. feature/login is merged into main (behind it): only the
-      // fast-forward, no merge or rebase; nothing to push. Spec #3 §4.3: the interactive rebase
+      // The Sync and Integrate groups, the Reset, Branch and Manage rows, then the others.
+      // Only what can apply. feature/login is merged into main (behind it): only the
+      // fast-forward, no merge or rebase; nothing to push. The interactive rebase
       // still applies (main's commits above feature/login), and the Commit group gains Revert,
       // Create tag here and Interactive rebase after this commit (Cherry-pick too, though it's on main).
       const expected = [
@@ -142,7 +142,7 @@ test.describe('the commit and label context menus (spec §7 target table)', () =
     });
     await test.step('a tag label chip: Push (v1.0 is local only), Delete, Copy tag name, Hide tag; no forge on a generic remote', async () => {
       const menu = await labelMenu(page, 'Add readme');
-      // Spec #3 §3.9: a tag's menu gains Push <t> to <remote> and Delete.
+      // A tag's menu gains Push <t> to <remote> and Delete.
       await expect(rowLabels(menu)).resolves.toEqual(['Push v1.0 to origin', 'Delete', 'Copy tag name', 'Hide tag']);
       await action(menu, 'Copy tag name').click();
       await copied(page, 'v1.0');
@@ -160,7 +160,7 @@ test.describe('forge rows (a GitLab remote, fixtures.details) and the Monaco con
   test("a commit's forge rows; the Monaco context menu replaces Monaco's own, with Copy, Copy location, Forge link and Open in", async ({ page }) => {
     await test.step("MR references in the message get one Open row each, the issue reference none; Forge link on a plain commit: no known branch, so the label copies the permalink and there's no ⎇", async () => {
       const menu = await commitMenu(page, 'Rename guide and update assets');
-      // Spec #3 §4.3's Commit group (Revert, Create tag here, Interactive rebase after this commit, Drop commit) sits above the Forge rows.
+      // The Commit group (Revert, Create tag here, Interactive rebase after this commit, Drop commit) sits above the Forge rows.
       await expect(rowLabels(menu)).resolves.toEqual(['Reset main to this commit', 'Checkout', 'Create worktree from', 'Create branch here', 'Cherry-pick onto main', 'Revert this commit', 'Create tag here', 'Interactive rebase after this commit', 'Drop commit', 'Open !42', 'Open group/sub/project!7', 'Copy SHA', 'Copy message', 'Forge link', 'Compare with working tree']);
       await expect(menu.getByRole('menuitem', { name: 'Open #12' })).toHaveCount(0);
       const forge = action(menu, 'Forge link');
@@ -169,7 +169,7 @@ test.describe('forge rows (a GitLab remote, fixtures.details) and the Monaco con
       await forge.click();
       await copied(page, `https://gitlab.example.com/group/project/-/commit/${sha}`);
     });
-    await test.step("replaces Monaco's own once a diff is open, and offers Copy, Copy location, Forge link and Open in; a selection makes Copy and Copy location active; a multi-line selection's location is its range (fix round 1, item 7)", async () => {
+    await test.step("replaces Monaco's own once a diff is open, and offers Copy, Copy location, Forge link and Open in; a selection makes Copy and Copy location active; a multi-line selection's location is its range", async () => {
       await row(page, 'Rename guide and update assets').click();
       await page.getByRole('listbox', { name: 'Changed files' }).getByRole('option').and(page.locator('[data-path="src/app.php"]')).click();
       const d = page.getByRole('region', { name: 'Diff' });
@@ -180,7 +180,7 @@ test.describe('forge rows (a GitLab remote, fixtures.details) and the Monaco con
       await line.click({ button: 'right' });
       const menu = page.getByTestId('context-menu');
       await expect(menu).toBeVisible();
-      // Monaco's own menu (on by default, plan 1B deviation 1) is gone.
+      // Monaco's own menu (on by default) is gone.
       await expect(page.locator('.context-view .monaco-menu')).toHaveCount(0);
       await expect(rowLabels(menu)).resolves.toEqual(['Copy', 'Copy location', 'Forge link', 'Open in']);
       await expect(action(menu, 'Copy')).toHaveAttribute('aria-disabled', 'true');

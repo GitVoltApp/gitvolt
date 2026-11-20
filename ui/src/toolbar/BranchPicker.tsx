@@ -10,7 +10,7 @@ import { RefPicker, type PickItem } from '../ui/RefPicker';
 
 const NO_BRANCHES: never[] = [];
 
-/** K72: the picker's order, alphabetical (the default) or most recent tip first; remembered. */
+/** The picker's order, alphabetical (the default) or most recent tip first; remembered. */
 type Order = 'alpha' | 'recent';
 const ORDER_KEY = 'gitvolt.branchPickerOrder.v1';
 function loadOrder(): Order {
@@ -29,7 +29,7 @@ function saveOrder(o: Order): void {
 }
 const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' });
 
-/** Spec §6.3: the current branch, and a searchable list of the local branches. Picking one checks it out (spec #2 §19 item 5). */
+/** The current branch, and a searchable list of the local branches. Picking one checks it out. */
 export function BranchPicker() {
   const { tabId } = useRepoContext();
   const head = useRuntime((s) => s.tabs[tabId]?.graph?.head);

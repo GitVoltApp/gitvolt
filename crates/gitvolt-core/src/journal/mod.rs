@@ -1,12 +1,12 @@
-//! The undo/redo journal (spec #2 §5.1).
+//! The undo/redo journal.
 //! One journal per worktree, in GitVolt's data dir, never in `.git`:
 //! `<data>/journal/<first 16 hex of sha256(canonical worktree git dir)>.json`, 0600 in a 0700
-//! directory. It's written atomically (temp + rename), under an `flock` on a sibling `.lock` file
-//! (Deviation 5), so a `GITVOLT_MULTI_INSTANCE` second instance can't interleave. It records only
-//! GitVolt's own operations; CAS (spec §4) protects them from outside changes.
+//! directory. It's written atomically (temp + rename), under an `flock` on a sibling `.lock` file,
+//! so a `GITVOLT_MULTI_INSTANCE` second instance can't interleave. It records only
+//! GitVolt's own operations; CAS protects them from outside changes.
 
 pub(crate) mod autostash;
-pub mod history; // UX Y
+pub mod history;
 pub(crate) mod resolve_step;
 pub(crate) mod snapshot;
 pub(crate) mod staging;
@@ -25,7 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ts_rs::TS;
 
 /// 2: kept stashes moved from the entries (`autostash`) to `Journal::kept` (v1 files migrate).
-/// 3 (2D T2): `EntryState::Paused`, `JournalEntry.paused`, `KeptReason::Paused`; v2 files load
+/// 3: `EntryState::Paused`, `JournalEntry.paused`, `KeptReason::Paused`; v2 files load
 /// unchanged.
 pub const JOURNAL_VERSION: u32 = 3;
 /// The last 50 operations are kept (and at most 50 redo entries).
@@ -47,7 +47,7 @@ pub struct HeadState {
     pub oid: Option<String>,
 }
 
-/// One ref's move as observed (§3.2 step 7), or as a CAS request (`write::refs::cas`: `old` is
+/// One ref's move as observed, or as a CAS request (`write::refs::cas`: `old` is
 /// what it must be now). `old: None` = didn't exist; `new: None` = deleted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,7 +57,7 @@ pub struct RefMove {
     pub new: Option<String>,
 }
 
-/// A `branch.<name>.*` key's values before and after (2C writes these).
+/// A `branch.<name>.*` key's values before and after.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigChange {
@@ -67,20 +67,19 @@ pub struct ConfigChange {
 }
 
 /// A dangling stash-shaped commit W (index I and untracked U are its parents 2 and 3) for the
-/// path set `paths`, `untracked` being the ones captured in U (§5.2).
+/// path set `paths`, `untracked` being the ones captured in U.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub commit: String,
     pub paths: Vec<String>,
     pub untracked: Vec<String>,
-    // --- 2B T4: permission bits ---
+    // --- permission bits ---
     /// Each regular file's permission bits when it was taken (`mode & 0o7777`), re-applied after
     /// a restore's checkout: git keeps only the exec bit, and none under `core.fileMode=false`.
     /// Empty in journals written before it.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub modes: std::collections::BTreeMap<String, u32>,
-    // --- end 2B T4 ---
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,15 +89,14 @@ pub struct StashMove {
     pub message: String,
     /// `true`: the op created it; `false`: the op dropped it.
     pub created: bool,
-    // --- 2C T7: a pop made without the index ---
+    // --- a pop made without the index ---
     /// A pop applied without `--index` (after "Apply without restoring what was staged?"): its
     /// redo applies without it too.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub without_index: bool,
-    // --- end 2C T7 ---
 }
 
-/// Why a stash is kept (§6.3–6.4, §5.1).
+/// Why a stash is kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum KeptReason {
@@ -121,16 +119,16 @@ pub enum KeptReason {
     Stopped { phase: StashPhase },
     /// GitVolt stopped between the stash and its restore (found at load).
     Interrupted,
-    /// 2D T2: the autostash of a paused merge or rebase (§13.2): it waits for completion or
+    /// The autostash of a paused merge or rebase: it waits for completion or
     /// abort, with no banner of its own (the conflict banner covers it), across restarts.
     Paused,
-    /// 3C fix round 1 (I2): the work done at an interactive rebase's stop (edits, commits made
+    /// The work done at an interactive rebase's stop (edits, commits made
     /// there), saved before its Abort reset it. The stash is the only copy: Drop is refused.
     AbortedWork,
-    /// Fix round 2: the stash an interactive rebase's Abort listed before running (no banner
+    /// The stash an interactive rebase's Abort listed before running (no banner
     /// while its owner runs, as `Pending`).
     AbortRunning,
-    /// Fix round 2: GitVolt stopped during that Abort (`AbortRunning` found at load): the
+    /// GitVolt stopped during that Abort (`AbortRunning` found at load): the
     /// abort may not have run, and the work may still be in the worktree.
     AbortInterrupted,
 }
@@ -158,7 +156,7 @@ pub enum StashPhase {
 pub struct KeptStash {
     /// The banner's id (the journal's id space).
     pub id: u64,
-    /// `None` while its push runs: the record is written ahead (review N2), and recovery finds
+    /// `None` while its push runs: the record is written ahead, and recovery finds
     /// the stash by its exact message among those newer than `stash_before`.
     pub oid: Option<String>,
     /// `refs/stash` before the push.
@@ -181,22 +179,21 @@ pub struct KeptStash {
 pub enum EntryState {
     Pending,
     Done,
-    /// 2D T2: a merge or rebase stopped on conflicts (§13.2): it waits for Commit, Continue or
+    /// A merge or rebase stopped on conflicts: it waits for Commit, Continue or
     /// Abort, across restarts (it isn't a crash). Step 7b settles it.
     Paused,
 }
 
-// --- 2D T2: the pause ---
+// --- the pause ---
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub enum PausedKind {
     Merge,
     Rebase,
-    // --- 3B T1: GitVolt's own cherry-pick or revert, stopped (spec #3 §3.7) ---
+    // --- GitVolt's own cherry-pick or revert, stopped ---
     CherryPick,
     Revert,
-    // --- end 3B T1 ---
 }
 
 /// What a paused entry waits with.
@@ -211,34 +208,28 @@ pub struct PausedOp {
     pub refs_before: std::collections::BTreeMap<String, Option<String>>,
     /// Its autostash (`Journal::kept` id), restored at completion or abort.
     pub autostash: Option<u64>,
-    // --- 2D T9: the target's oid ---
+    // --- the target's oid ---
     /// What `target` was at pause time (a rebase's `onto`, a merge's `MERGE_HEAD`): settle
-    /// judges completion against it, never against the target ref as it is then (re-review N1).
-    /// `None` in entries paused before 2D T9: the ref is resolved at settle time.
+    /// judges completion against it, never against the target ref as it is then.
+    /// `None` in entries paused before the target was recorded: the ref is resolved at settle time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_oid: Option<String>,
     /// Merged-in branches (full name, oid before) that git's update list couldn't be pruned of
-    /// at the pause (review N1): the Continue or Skip that ends GitVolt's rebase moves them
-    /// back. Only GitVolt's own rebase has a paused entry, so one started outside never does
-    /// (review N6).
+    /// at the pause: the Continue or Skip that ends GitVolt's rebase moves them
+    /// back. Only GitVolt's own rebase has a paused entry, so one started outside never does.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub put_back: Vec<(String, String)>,
-    // --- 3B T1 fix: the picked commits ---
+    // --- the picked commits ---
     /// A cherry-pick's or revert's commits (full oids): settle counts it completed only when
     /// every commit the branch gained is one of theirs, never someone else's work.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub picked: Vec<String>,
-    // --- end 3B T1 fix ---
-    // --- end 2D T9 ---
-    // --- 3C T4 ---
     /// An interactive rebase's session (`None` for every other pause).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub irebase: Option<IrebaseState>,
-    // --- end 3C T4 ---
 }
 
-// --- 3C T4 ---
-/// An interactive rebase's session, carried by its pause (spec #3 §3.4) to the Continue that
+/// An interactive rebase's session, carried by its pause to the Continue that
 /// ends it, in this process or a later one.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -251,20 +242,19 @@ pub struct IrebaseState {
     /// Edit rows' new messages: the row's original oid → its message file.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub edit_messages: std::collections::BTreeMap<String, String>,
-    /// 3C T5: commits GitVolt made at an Edit stop (its pieces, and UX L: Continue's commit there; full oids). Newly authored,
+    /// Commits GitVolt made at an Edit stop (its pieces, and Continue's commit there; full oids). Newly authored,
     /// unlike every replayed commit: completion counts them as the rebase's own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub made: Vec<String>,
-    /// Fix round 1 (I1): the branches the todo's `update-ref` lines move or create (full name,
+    /// The branches the todo's `update-ref` lines move or create (full name,
     /// value at the Start; `None`: created).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub update_refs: Vec<(String, Option<String>)>,
-    /// Fix round 1 (I1): the moves a Continue made once git completed (chip deletes, `update-ref`
+    /// The moves a Continue made once git completed (chip deletes, `update-ref`
     /// moves), recorded as they happened: settle keeps them in either verdict.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub moved: Vec<RefMove>,
 }
-// --- end 3C T4 ---
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -275,13 +265,12 @@ pub struct PausedInfo {
     pub kind: PausedKind,
     pub label: String,
     pub target: String,
-    /// UX N fix round 1: GitVolt's interactive rebase (the pause carries its session): its Abort
+    /// GitVolt's interactive rebase (the pause carries its session): its Abort
     /// keeps the work done at the stop.
     pub irebase: bool,
 }
-// --- end 2D T2 ---
 
-/// How an entry is undone (§5.3). `Stash` arrives with 2C (Deviation 10).
+/// How an entry is undone. `Stash` is for stash undo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UndoKind {
@@ -290,26 +279,22 @@ pub enum UndoKind {
     Switch,
     Restore,
     Barrier,
-    /// A detached HEAD's commit (2B Deviation 9): `update-ref --no-deref HEAD`.
+    /// A detached HEAD's commit: `update-ref --no-deref HEAD`.
     MoveHead,
-    // --- 2C T3 ---
-    /// `git branch -m` back, or again (Deviation 3: a CAS pair would drop the reflog).
+    /// `git branch -m` back, or again (a CAS pair would drop the reflog).
     Rename,
-    // --- end 2C T3 ---
-    // --- 2C T7: stashes ---
-    /// Stash create, drop and pop (§5.3), told apart by the entry's `stashes` and `before`.
+    // --- stashes ---
+    /// Stash create, drop and pop, told apart by the entry's `stashes` and `before`.
     Stash,
-    // --- end 2C T7 ---
-    // --- 2C T6: reset kinds ---
-    /// A reset's undo, by mode (§5.3, Deviation 3).
+    // --- reset kinds ---
+    /// A reset's undo, by mode.
     ResetSoft,
     ResetMixed,
     ResetHard,
-    // --- end 2C T6 ---
 }
 
 /// Why an entry can't be undone when the write ran but its verify step couldn't read what it
-/// changed (2A final M5): the entry stays, so the undo stack never skips past it, but no new
+/// changed: the entry stays, so the undo stack never skips past it, but no new
 /// value is guessed.
 pub const UNVERIFIED: &str = "Can't be undone: GitVolt couldn't read what it changed";
 
@@ -331,10 +316,10 @@ pub struct JournalEntry {
     pub after: Option<Snapshot>,
     #[serde(default)]
     pub stashes: Vec<StashMove>,
-    /// The pre-op index tree ("Stage all & commit", 2B).
+    /// The pre-op index tree ("Stage all & commit").
     pub index_before: Option<String>,
     /// The post-op index tree, when it isn't `head_after`'s tree: a "Stage all & commit" whose
-    /// commit failed and whose index couldn't be put back (2B T5 m3).
+    /// commit failed and whose index couldn't be put back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index_after: Option<String>,
     pub undo: UndoKind,
@@ -345,30 +330,26 @@ pub struct JournalEntry {
     /// alone (another instance's write in flight). `None` (older files): any recovery takes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<Owner>,
-    /// 2D T2: set while `state` is `Paused`.
+    /// Set while `state` is `Paused`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<PausedOp>,
-    // --- 2C T1: entry note ---
-    /// What Undo's toast adds after the label: "origin/feature/x stays deleted" (spec #2 §9.2,
-    /// "Delete Both": undo restores the local branch only).
+    // --- entry note ---
+    /// What Undo's toast adds after the label: "origin/feature/x stays deleted" ("Delete Both": undo restores the local branch only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
-    // --- end 2C T1 ---
-    // --- 3B T2: a stopped "without committing" pick ---
+    // --- a stopped "without committing" pick ---
     /// A cherry-pick or revert "without committing" that stopped on conflicts: what git calls it
     /// (`cherry-pick`, `revert`). Its Undo discards P, unmerged paths included, after a question,
     /// with no autostash; it has no `after` snapshot (an unmerged index can't be snapshotted).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stopped_pick: Option<StoppedPick>,
-    // --- end 3B T2 ---
-    // --- UX Y: out-of-order undo ---
+    // --- out-of-order undo ---
     /// The paths whose HEAD tree entry, index entry or stash the write changed (a commit's or a
     /// checkout's tree diff, the index paths "Stage all & commit" consumed, a stash's files),
     /// recorded when it finished: what the dropdown's dependency check holds it touched. `None`
     /// on an entry that moved HEAD or a stash: not recorded, so it counts as touching every path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree_paths: Option<Vec<String>>,
-    // --- end UX Y ---
     /// A removed remote (`removeRemote`): what its `refs` and `config` don't hold. Undo
     /// recreates its symbolic refs; redo deletes them again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -385,7 +366,6 @@ pub struct RemovedRemote {
     pub symrefs: Vec<(String, String)>,
 }
 
-// --- 3B T2 ---
 /// A "without committing" pick that stopped on conflicts (`JournalEntry::stopped_pick`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -393,11 +373,10 @@ pub struct StoppedPick {
     /// What git calls it: `cherry-pick` or `revert`.
     pub op: String,
     /// The paths the commits it applied, and the one it stopped on, changed (with the paths the
-    /// run changed outside P, fix round 1): the pick's own, discarded without a stash. The rest
+    /// run changed outside P): the pick's own, discarded without a stash. The rest
     /// of P, commits that never ran, keeps the usual autostash rule.
     pub paths: Vec<String>,
 }
-// --- end 3B T2 ---
 
 /// A GitVolt instance that writes journals: the process (pid and start time, so a reused pid
 /// isn't taken for it) and the `Api` in it. It's alive while it holds the exclusive `flock` on
@@ -447,7 +426,7 @@ impl OwnerLock {
         crate::paths::private_dir(&data_dir.join("owners"))?;
         // Another instance's `sweep` may unlink the file between our open and our flock (it was
         // still unlocked then): the lock would then be on a file no one can find, and this
-        // instance would look dead (2A final M3). Locked, the path must still be our file.
+        // instance would look dead. Locked, the path must still be our file.
         let path = owner.file(data_dir);
         loop {
             let lock = private_file(std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false)).open(&path)?;
@@ -493,7 +472,7 @@ impl JournalEntry {
         self.before.is_some() || self.after.is_some()
     }}
 
-/// What `run_write` knows when it writes an entry ahead (§3.2 step 3).
+/// What `run_write` knows when it writes an entry ahead.
 pub struct NewEntry {
     pub label: String,
     pub kind: OpKind,
@@ -514,7 +493,7 @@ pub struct Journal {
     /// The last is what Redo redoes.
     #[serde(default)]
     pub redo: Vec<JournalEntry>,
-    /// Entries found pending at load (Deviation 6), until their banner is acted on.
+    /// Entries found pending at load, until their banner is acted on.
     #[serde(default)]
     pub recovery: Vec<JournalEntry>,
     /// Stashes GitVolt made and still keeps (their banners).
@@ -537,11 +516,11 @@ pub struct JournalTop {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub enum BannerKind {
-    /// GitVolt stopped mid-operation (§5.1).
+    /// GitVolt stopped mid-operation.
     Recovery,
-    /// The autostash wasn't restored: git refused (§6.4).
+    /// The autostash wasn't restored: git refused.
     AutostashRefused,
-    /// The autostash was applied with conflicts; the stash is kept (§6.4).
+    /// The autostash was applied with conflicts; the stash is kept.
     AutostashConflicts,
     /// "Partly restored; the stash still has everything" (Apply / Show, no Drop): its untracked
     /// files didn't come back, or a Stop interrupted the restore.
@@ -549,15 +528,15 @@ pub enum BannerKind {
     /// A Stop interrupted saving the changes: the operation didn't run, and the changes are in
     /// the stash (Apply / Show, no Drop).
     AutostashStopped,
-    /// 3C fix round 1 (I2): an interactive rebase's Abort kept the work from its stop in the
+    /// An interactive rebase's Abort kept the work from its stop in the
     /// stash (Apply / Show, no Drop).
     AbortedWork,
-    /// Fix round 2: GitVolt stopped during that Abort: the work is still in the worktree if the
+    /// GitVolt stopped during that Abort: the work is still in the worktree if the
     /// abort didn't run, and in the stash either way.
     AbortInterrupted,
 }
 
-/// One banner in the tab's `banner` slot (§6.4). The UI writes the copy from these fields.
+/// One banner in the tab's `banner` slot. The UI writes the copy from these fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -581,7 +560,7 @@ pub struct Banner {
     pub binary: bool,
 }
 
-/// What Undo/Redo and the banners show (§5.5); every write returns it (`WriteResult.journal`).
+/// What Undo/Redo and the banners show; every write returns it (`WriteResult.journal`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -592,7 +571,7 @@ pub struct JournalState {
     pub undo_blocked: Option<String>,
     pub redo_blocked: Option<String>,
     pub banners: Vec<Banner>,
-    /// 2D T2: the worktree's paused merge or rebase, if any.
+    /// The worktree's paused merge or rebase, if any.
     pub paused: Option<PausedInfo>,
 }
 
@@ -628,13 +607,13 @@ impl Journal {
             owner: None,
             paused: None,
             note: None,
-            stopped_pick: None, // 3B T2
-            tree_paths: None,   // UX Y
+            stopped_pick: None,
+            tree_paths: None,
             removed_remote: None,
         }
     }
 
-    /// Write-ahead (§3.2 step 3): a pending entry, newest. Returns its id.
+    /// Write-ahead: a pending entry, newest. Returns its id.
     pub fn begin(&mut self, e: NewEntry, now: i64) -> u64 {
         let id = self.next_id.max(1);
         self.next_id = id + 1;
@@ -642,14 +621,14 @@ impl Journal {
         id
     }
 
-    // --- 2D T2: the pause ---
+    // --- the pause ---
     /// The worktree's paused merge or rebase, if any. There's at most one: every other write is
     /// refused while it lasts.
     pub fn paused(&self) -> Option<&JournalEntry> {
         self.undo.iter().rev().find(|e| e.state == EntryState::Paused)
     }
 
-    /// §13.2: the paused op completed (`moves`) or was aborted (none): done, or dropped when
+    /// The paused op completed (`moves`) or was aborted (none): done, or dropped when
     /// nothing changed. `true` when kept.
     pub fn settle(&mut self, id: u64, head_after: HeadState, moves: Vec<RefMove>) -> bool {
         let Some(e) = self.undo.iter_mut().find(|e| e.id == id && e.state == EntryState::Paused) else { return false };
@@ -659,10 +638,9 @@ impl Journal {
         e.state = EntryState::Pending;
         self.finalize(id)
     }
-    // --- end 2D T2 ---
 
-    // --- 2C T1: a barrier below an entry ---
-    /// A done Barrier just below the pending entry `id` (spec #2 §9.2, Deviation 4: "Delete
+    // --- a barrier below an entry ---
+    /// A done Barrier just below the pending entry `id` ("Delete
     /// Both" pushes the remote delete, which can't be undone, under the local delete's own entry).
     /// A push is a new operation, so redo clears. `None` when `id` isn't on the undo stack.
     pub fn barrier_before(&mut self, id: u64, label: String, kind: OpKind, head: HeadState, now: i64) -> Option<u64> {
@@ -675,7 +653,6 @@ impl Journal {
         self.redo.clear();
         Some(bid)
     }
-    // --- end 2C T1 ---
 
     /// Records a stash a write just made (`Pending`, owned) or keeps (its reason). Its id.
     pub fn keep(&mut self, mut k: KeptStash) -> u64 {
@@ -691,7 +668,7 @@ impl Journal {
     }
 
     /// The stash `oid` left the list (popped or dropped from the stash menus): its kept record,
-    /// the banner, goes with it (2C final I1). An in-flight autostash's (Pending, Paused) stays:
+    /// the banner, goes with it. An in-flight autostash's (Pending, Paused) stays:
     /// its op restores it, and says so if it's gone. `true` when one went.
     pub fn forget_kept_stash(&mut self, oid: &str) -> bool {
         let n = self.kept.len();
@@ -703,14 +680,14 @@ impl Journal {
         self.undo.iter_mut().chain(self.redo.iter_mut()).chain(self.recovery.iter_mut()).find(|e| e.id == id)
     }
 
-    /// §3.2 step 9: done, or dropped if nothing changed. A kept entry is a new operation: redo
+    /// Done, or dropped if nothing changed. A kept entry is a new operation: redo
     /// clears and the 50-entry cap applies. `true` when kept.
     pub fn finalize(&mut self, id: u64) -> bool {
         self.finalize_with(id, false)
     }
 
     /// `finalize`; `keep_redo`: an out-of-order undo whose Redo stack is independent of it
-    /// (UX Y review 7) leaves Redo as it is.
+    /// leaves Redo as it is.
     pub fn finalize_with(&mut self, id: u64, keep_redo: bool) -> bool {
         let Some(i) = self.undo.iter().position(|e| e.id == id) else { return false };
         if !self.undo[i].changed() {
@@ -725,7 +702,7 @@ impl Journal {
         true
     }
 
-    // --- UX G.2: coalesced saves ---
+    // --- coalesced saves ---
     /// The done entry just below the pending entry `id`, if any: what a coalescing save merges
     /// into.
     pub fn below(&self, id: u64) -> Option<&JournalEntry> {
@@ -751,7 +728,6 @@ impl Journal {
         self.redo.clear();
         true
     }
-    // --- end UX G.2 ---
 
     pub fn drop_entry(&mut self, id: u64) {
         self.undo.retain(|e| e.id != id);
@@ -778,7 +754,7 @@ impl Journal {
     pub fn recover_unless(&mut self, alive: impl Fn(&Owner) -> bool) {
         let (crashed, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.undo).into_iter().partition(|e| e.state == EntryState::Pending && !e.owner.as_ref().is_some_and(&alive));
         self.undo = kept;
-        // 2C T7: a stash op's entry records its stash ahead: it waits for `resolve_stash_moves`.
+        // A stash op's entry records its stash ahead: it waits for `resolve_stash_moves`.
         self.recovery.extend(crashed.into_iter().filter(|e| e.holds_objects() || !e.stashes.is_empty()));
         // A stash made by a write that never restored it: its banner shows now.
         for k in &mut self.kept {
@@ -791,7 +767,7 @@ impl Journal {
                 k.owner = None;
             }
         }
-        // 2D T2: a paused op's stash whose entry is gone (settled, then GitVolt stopped before
+        // A paused op's stash whose entry is gone (settled, then GitVolt stopped before
         // the restore): its banner shows, so it's never silently kept.
         let waiting: Vec<u64> = self.undo.iter().filter(|e| e.state == EntryState::Paused).filter_map(|e| e.paused.as_ref()?.autostash).collect();
         for k in &mut self.kept {
@@ -802,7 +778,7 @@ impl Journal {
         }
     }
 
-    /// Recovery of records written ahead of a push that never reported back (review N2):
+    /// Recovery of records written ahead of a push that never reported back:
     /// `stashes` is the stash list, newest first, as (oid, subject `On <branch>: <message>`).
     /// The match is the newest one, newer than `stash_before`, whose message is exactly the
     /// record's; none means git stored nothing, and the record goes.
@@ -825,8 +801,8 @@ impl Journal {
         });
     }
 
-    // --- 2C T7: a stash op that stopped midway ---
-    /// Recovered stash ops (I1, M4): a recorded stash that's no longer listed (`listed`: the
+    // --- a stash op that stopped midway ---
+    /// Recovered stash ops a recorded stash that's no longer listed (`listed`: the
     /// stash list, newest first, `(oid, subject)`) but whose commit `exists` gets a Recovery
     /// banner with Apply, so it's never silently left dangling. Those entries then keep only
     /// their snapshot's Restore banner, if they have one, and no longer list their stashes.
@@ -853,7 +829,7 @@ impl Journal {
         }
         self.recovery.retain(|e| e.stashes.is_empty() || e.holds_objects());
         // Resolved: the banners above are the stash's own from now on, so the next start doesn't
-        // raise them again (re-review M-b). The entry keeps its snapshot's Restore.
+        // raise them again. The entry keeps its snapshot's Restore.
         for e in &mut self.recovery {
             e.stashes.clear();
         }
@@ -861,9 +837,8 @@ impl Journal {
             self.keep(k);
         }
     }
-    // --- end 2C T7 ---
 
-    /// §5.1: an entry whose snapshot or autostash is older than 14 days goes, with every older
+    /// An entry whose snapshot or autostash is older than 14 days goes, with every older
     /// one (undo and redo are linear). Returns the dropped labels.
     pub fn expire(&mut self, now: i64) -> Vec<String> {
         let cutoff = now - SNAPSHOT_TTL_MS;
@@ -887,7 +862,7 @@ impl Journal {
         self.redo.last()
     }
 
-    /// After an undo (`to_redo`) or a redo, the entry changes stacks (§5.4). Each stack keeps 50.
+    /// After an undo (`to_redo`) or a redo, the entry changes stacks. Each stack keeps 50.
     pub fn shift(&mut self, id: u64, to_redo: bool) {
         let (from, to) = if to_redo { (&mut self.undo, &mut self.redo) } else { (&mut self.redo, &mut self.undo) };
         if let Some(i) = from.iter().position(|e| e.id == id) {
@@ -945,8 +920,8 @@ impl Journal {
     }
 }
 
-// --- 2D T2: a paused entry outlives the cap, expiry and drop_through ---
-/// Removes `stack[..end]`, except paused entries (their autostash waits on them, §13.2), which
+// --- a paused entry outlives the cap, expiry and drop_through ---
+/// Removes `stack[..end]`, except paused entries (their autostash waits on them), which
 /// stay where they were. The removed ones, oldest first.
 fn drain_unpaused(stack: &mut Vec<JournalEntry>, end: usize) -> Vec<JournalEntry> {
     let rest = stack.split_off(end);
@@ -965,7 +940,6 @@ fn cap(stack: &mut Vec<JournalEntry>) {
         }
     }
 }
-// --- end 2D T2 ---
 
 /// One worktree's journal file.
 pub struct JournalStore {
@@ -997,7 +971,7 @@ impl JournalStore {
     }
 
     /// Runs `f` on the journal under the lock, and writes it back atomically only if `f` changed it
-    /// (or the file is an older version: 2D T2).
+    /// (or the file is an older version).
     pub fn update<T>(&self, f: impl FnOnce(&mut Journal) -> T) -> Result<T, GbError> {
         let _lock = self.locked()?;
         let (mut j, older) = self.read_versioned()?;
@@ -1010,7 +984,7 @@ impl JournalStore {
         Ok(out)
     }
 
-    /// The 0700 directories, then an exclusive `flock` on `<hash>.lock` (Deviation 5).
+    /// The 0700 directories, then an exclusive `flock` on `<hash>.lock`.
     fn locked(&self) -> Result<std::fs::File, GbError> {
         let data = self.dir.parent().ok_or_else(|| GbError::other("journal dir has no parent"))?;
         if let Some(parent) = data.parent() {
@@ -1048,7 +1022,7 @@ impl JournalStore {
         }
         match serde_json::from_value::<Journal>(value) {
             Ok(mut j) => {
-                // 2D T2: v2 (2A) has the same shape; it's written back as the current version.
+                // v2 has the same shape; it's written back as the current version.
                 j.version = JOURNAL_VERSION;
                 Ok((j, version < u64::from(JOURNAL_VERSION)))
             }
@@ -1191,7 +1165,7 @@ mod tests {
         assert!(j.finalize(barrier), "a barrier is kept though nothing local changed");
     }
 
-    /// 2A final M5: a write whose verify step failed is kept, flagged, and blocks undo.
+    /// A write whose verify step failed is kept, flagged, and blocks undo.
     #[test]
     fn an_unverified_entry_is_kept_and_blocks_undo() {
         let mut j = Journal::empty("/r");
@@ -1248,7 +1222,7 @@ mod tests {
         let bare = j.begin(new_entry("commit \"y\"", UndoKind::MoveRefs), 2);
         j.recover();
         assert!(j.undo.is_empty(), "pending entries leave the undo stack");
-        assert_eq!(j.recovery.len(), 1, "only one with something to restore stays (Deviation 6)");
+        assert_eq!(j.recovery.len(), 1, "only one with something to restore stays");
         let b = &j.state(None).banners[0];
         assert_eq!((b.kind, b.entry, b.label.as_str(), b.snapshot), (BannerKind::Recovery, id, "discard a.php", true));
         assert!(j.entry_mut(bare).is_none());
@@ -1276,7 +1250,7 @@ mod tests {
         KeptStash { id: 0, oid: Some(oid.into()), stash_before: None, message: format!("autostash before checkout {oid}"), label: format!("checkout {oid}"), target: Some("feature/x".into()), reason, created_ms: 1, owner: None }
     }
 
-    /// Review n3/n4: a v1 file's per-entry autostash becomes a kept record (its banner stays).
+    /// A v1 file's per-entry autostash becomes a kept record (its banner stays).
     #[test]
     fn a_v1_journal_migrates_its_autostashes() {
         let data = tempfile::tempdir().unwrap();
@@ -1293,7 +1267,7 @@ mod tests {
         assert_eq!((b[0].kind, b[0].stash.as_deref(), b[0].entry), (BannerKind::AutostashRefused, Some("s1"), 3));
     }
 
-    /// Review N2: a record written ahead of a push that never reported back.
+    /// A record written ahead of a push that never reported back.
     #[test]
     fn an_unrecorded_push_is_found_by_its_message_or_dropped() {
         let mut j = Journal::empty("/r");
@@ -1310,7 +1284,7 @@ mod tests {
         assert!(j.kept_mut(gone).is_none());
     }
 
-    /// 3C fix round 2: an interactive rebase's Abort that never reported back. No banner while
+    /// An interactive rebase's Abort that never reported back. No banner while
     /// its owner runs; found at load, its own banner (the abort may not have run).
     #[test]
     fn an_abort_that_never_reported_back_gets_its_own_banner() {
@@ -1336,7 +1310,7 @@ mod tests {
         assert!(j.state(None).banners.is_empty(), "a running write's stash has no banner");
     }
 
-    /// Review I2: undo, redo, the caps, expiry and drop_through never take a kept stash away.
+    /// Undo, redo, the caps, expiry and drop_through never take a kept stash away.
     #[test]
     fn stack_maintenance_never_drops_a_kept_stash() {
         let mut j = Journal::empty("/r");
@@ -1353,7 +1327,7 @@ mod tests {
         assert_eq!(j.state(None).banners.len(), 1);
     }
 
-    /// Review I5: a stash whose write died before restoring it raises the recovery banner.
+    /// A stash whose write died before restoring it raises the recovery banner.
     #[test]
     fn an_unrestored_stash_at_load_becomes_a_recovery_banner() {
         let mut j = Journal::empty("/r");
@@ -1367,7 +1341,6 @@ mod tests {
         assert_eq!((b.kind, b.entry, b.stash.as_deref()), (BannerKind::Recovery, id, Some("s")));
     }
 
-    /// Review Focus 4.
     #[test]
     fn a_corrupt_or_newer_journal_is_set_aside() {
         let data = tempfile::tempdir().unwrap();
@@ -1416,8 +1389,7 @@ mod tests {
         assert!(j.redo.is_empty(), "a redo doesn't clear what's left to redo, but this was the only one");
     }
 
-    // --- 2D T2 ---
-    /// A v2 journal (2A's) loads unchanged and is written back as v3.
+    /// A v2 journal loads unchanged and is written back as v3.
     #[test]
     fn a_v2_journal_loads_and_is_rewritten_as_v3() {
         let data = tempfile::tempdir().unwrap();
@@ -1439,7 +1411,7 @@ mod tests {
         (id, stash)
     }
 
-    /// Review I2: the cap, expiry and drop_through never take a paused entry (its autostash
+    /// The cap, expiry and drop_through never take a paused entry (its autostash
     /// would be left with no banner and no way back).
     #[test]
     fn a_paused_entry_outlives_the_cap_expiry_and_drop_through() {
@@ -1462,7 +1434,7 @@ mod tests {
         assert_eq!(j.undo.iter().map(|e| e.id).collect::<Vec<_>>(), [id], "drop_through skips it");
     }
 
-    /// Review I2: a paused stash whose entry is gone gets its banner at load.
+    /// A paused stash whose entry is gone gets its banner at load.
     #[test]
     fn an_orphaned_paused_stash_gets_a_banner_at_load() {
         let mut j = Journal::empty("/r");
@@ -1474,7 +1446,6 @@ mod tests {
         let b = &j.state(None).banners[0];
         assert_eq!((b.kind, b.entry), (BannerKind::Recovery, stash));
     }
-    // --- end 2D T2 ---
 
     #[test]
     fn journal_changed_serializes() {
@@ -1484,7 +1455,7 @@ mod tests {
         assert_eq!(v["state"]["undoBlocked"], "Nothing to undo");
     }
 
-    // --- 2C T1: notes and barriers below ---
+    // --- notes and barriers below ---
     #[test]
     fn a_barrier_below_sits_under_the_pending_entry_and_clears_redo() {
         let mut j = Journal::empty("/r");
@@ -1515,5 +1486,4 @@ mod tests {
         let old: Journal = serde_json::from_value(v).unwrap();
         assert_eq!(old.undo[0].note, None);
     }
-    // --- end 2C T1 ---
 }

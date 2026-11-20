@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ColumnResizer } from './ColumnResizer';
 import { allocateColumns, DEFAULT_COLUMN_PREFS, useColumnPrefs } from './columns';
 
-describe('ColumnResizer double-click (K73)', () => {
+describe('ColumnResizer double-click', () => {
   it('resets that column to its default width and leaves no drag running', () => {
     useColumnPrefs.setState({ repoId: null, prefs: { ...DEFAULT_COLUMN_PREFS, labels: 320, author: 90 } });
     const cols = allocateColumns({ ...DEFAULT_COLUMN_PREFS, graph: 64, labels: 320, author: 90 }, 1600);

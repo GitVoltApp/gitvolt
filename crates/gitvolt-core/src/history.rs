@@ -1,4 +1,4 @@
-//! File History and Blame (spec #3 §3.10): read-only `git log --follow` and `git blame`. Neither
+//! File History and Blame: read-only `git log --follow` and `git blame`. Neither
 //! writes to the repository (the never-write audit dispatches both).
 
 use crate::api::Api;
@@ -78,9 +78,9 @@ fn option_like(rev: &str) -> GbError {
     GbError::new(GbErrorKind::InvalidInput, format!("not a revision: {rev}"))
 }
 
-/// One page of `path`'s history from `rev` (the worktree's HEAD when `None`), newest first
-/// (spec #3 §3.10). `-M` so a user's `diff.renames=false` can't hide the rename the paths follow;
-/// literal pathspecs so `[`, `*` or `:` in a name are just characters (Review Focus 4).
+/// One page of `path`'s history from `rev` (the worktree's HEAD when `None`), newest first.
+/// `-M` so a user's `diff.renames=false` can't hide the rename the paths follow;
+/// literal pathspecs so `[`, `*` or `:` in a name are just characters.
 pub(crate) async fn file_history(api: &Api, repo: u32, worktree: &str, path: String, rev: Option<String>, skip: u32, limit: u32) -> Result<FileHistoryPage, GbError> {
     check_relative(&path)?;
     let rev = rev.unwrap_or_else(|| "HEAD".into());
@@ -91,7 +91,7 @@ pub(crate) async fn file_history(api: &Api, repo: u32, worktree: &str, path: Str
     let skip = skip as usize;
     let h = api.handle(repo)?;
     let root = api.worktree_dir(&h, worktree).await?;
-    // Ruling 2: `--skip` loses `--follow`'s rename, so ask for the rows up to this page's end and
+    // `--skip` loses `--follow`'s rename, so ask for the rows up to this page's end and
     // one more (it says whether there's more), and cut the page here.
     let n = format!("-n{}", skip + limit + 1);
     let args = ["log", "--no-show-signature", "--follow", "-M", "--name-status", "-z", LOG_FORMAT, n.as_str(), "--end-of-options", rev.as_str(), "--", path.as_str()];
@@ -137,7 +137,7 @@ pub(crate) fn parse_follow_log(out: &[u8], path: &str) -> Vec<FileHistoryRow> {
     rows
 }
 
-/// `path` at `rev`, line by line (spec #3 §3.10). The UI caches it per (rev, path).
+/// `path` at `rev`, line by line. The UI caches it per (rev, path).
 pub(crate) async fn blame(api: &Api, repo: u32, worktree: &str, rev: String, path: String) -> Result<BlamePayload, GbError> {
     check_relative(&path)?;
     if rev.starts_with('-') {
@@ -225,7 +225,7 @@ mod tests {
         assert_eq!(p["more"], false);
     }
 
-    /// Ruling 2: git's `--skip` drops `--follow`'s rename; pages are cut here instead.
+    /// Git's `--skip` drops `--follow`'s rename; pages are cut here instead.
     #[tokio::test]
     async fn pages_cross_the_rename_and_say_when_theres_more() {
         let r = TestRepo::new();
@@ -255,7 +255,7 @@ mod tests {
         assert_eq!(col(&p, "summary"), ["Add the middle", "Start the story"]);
     }
 
-    /// Review Focus 4: `[draft]` is a glob class that would also match `notes d.txt`.
+    /// `[draft]` is a glob class that would also match `notes d.txt`.
     #[tokio::test]
     async fn a_path_with_glob_characters_is_taken_literally() {
         let r = TestRepo::new();
@@ -286,7 +286,7 @@ mod tests {
         assert_eq!(e.kind, crate::error::GbErrorKind::InvalidInput);
     }
 
-    /// Spec #3 §3.10: each line group carries its commit; hunks are in file order.
+    /// Each line group carries its commit; hunks are in file order.
     #[tokio::test]
     async fn blame_groups_lines_by_commit_with_their_authors() {
         let r = TestRepo::new();
@@ -306,7 +306,7 @@ mod tests {
         assert!(start["time"].as_i64().unwrap() > 0);
     }
 
-    /// Review Focus 1: an older commit is blamed at its own path.
+    /// An older commit is blamed at its own path.
     #[tokio::test]
     async fn blame_at_an_older_commit_reads_its_path() {
         let r = TestRepo::new();

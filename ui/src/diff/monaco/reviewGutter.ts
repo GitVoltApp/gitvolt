@@ -14,7 +14,7 @@ export const NO_COMMENT_TIP_DELAY_MS = 500;
 export const NO_COMMENT_CLASS = 'review-no-comment';
 type Editor = MonacoNs.editor.ICodeEditor;
 
-/** Review mode's gutter (spec 2026-10-08 §2): the lines that take a comment, and what a click or
+/** Review mode's gutter: the lines that take a comment, and what a click or
  * a drag picks. */
 export interface ReviewGutterSpec extends GutterLines {
   /** Lines `from` to `to` of `side`, in the order dragged (`from === to`: a click). */
@@ -28,7 +28,7 @@ export interface ReviewGutterSpec extends GutterLines {
 interface Drag { side: Side; ed: Editor; edSide: Side; from: number; to: number; click?: () => void; fixed?: boolean }
 
 /**
- * The comment "+" (spec 2026-10-08 §2): a square in the glyph margin on the hovered line that
+ * The comment "+": a square in the glyph margin on the hovered line that
  * takes a comment, as the staging gutter's (`LineGutter`): an overlay widget, so it comes and goes
  * without moving anything. A click picks its line; a drag from it picks the lines it goes over, on
  * its side only, highlighted as it goes; Esc drops the drag.

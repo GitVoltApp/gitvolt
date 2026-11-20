@@ -2,6 +2,6 @@
 
 export type CommitOutcome = { 
 /**
- * The new HEAD (the graph selects it, §8.1).
+ * The new HEAD (the graph selects it).
  */
 oid: string, };

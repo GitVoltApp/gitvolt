@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { registerKeys } from '../ui/keyRouter';
 import { DRAG_THRESHOLD, swallowNextClick, swallowReleaseClick } from './chipDrag';
 
-/* A drag moves a group (UX2 E.3): the pressed row, or every selected row when the pressed one is
+/* A drag moves a group: the pressed row, or every selected row when the pressed one is
    selected. The group is a block of its rows, in their order; the others are the list without
    it. Indices are the list's; `group` is sorted. Heights only: the rows are contiguous. */
 
@@ -47,9 +47,8 @@ interface Drag { from: number; group: number[]; oids: string[]; to: number; dy: 
  * message editor, a chip's × and "+", the new branch input). A free chip starts its own drag. */
 const OWN_PRESS = 'button, input, textarea, select, a, [contenteditable="true"], .irebase-action, .irebase-message-editor, .irebase-chip-input, .irebase-chip-more, .irebase-chips-all';
 
-/** Rows reordered by a drag from anywhere on them (spec #3 §4.1, the tab drag of #2 UX round 2;
- * UX R1.2), the handle being only its affordance. A press without DRAG_THRESHOLD of travel is a
- * click (it selects). A press on a selected row drags the whole selection (UX2 E.3): it lands
+/** Rows reordered by a drag from anywhere on them (like the tab drag), the handle being only its affordance. A press without DRAG_THRESHOLD of travel is a
+ * click (it selects). A press on a selected row drags the whole selection: it lands
  * together, in its order. `list`: the `<ol>` whose `[data-irebase-row]` children are the rows. */
 export function useRowDrag(list: React.RefObject<HTMLElement | null>, onMove: (oids: string[], to: number) => void) {
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -121,7 +120,7 @@ export function useRowDrag(list: React.RefObject<HTMLElement | null>, onMove: (o
     const s = slotShifts(heights, group, drag.to)[i];
     return s ? { transform: `translateY(${s}px)` } : undefined;
   };
-  /** The move the drag would make (R1.7: the chips show where they'd end), null while none. */
+  /** The move the drag would make (the chips show where they'd end), null while none. */
   const preview = drag ? { oids: drag.oids, to: drag.to } : null;
   /** The pressed row's drag badge: how many rows it carries (null: one, or not that row). */
   const count = (i: number): number | null => (drag && drag.from === i && drag.group.length > 1 ? drag.group.length : null);

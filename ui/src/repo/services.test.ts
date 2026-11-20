@@ -28,7 +28,7 @@ beforeEach(() => {
 });
 
 describe('repo services', () => {
-  it('caches commit file lists but never WIP or worktree ones (deviation 9)', async () => {
+  it('caches commit file lists but never WIP or worktree ones', async () => {
     const s = createServices(7);
     const commit = filesKey({ kind: 'commit', id: A, parent: 0 });
     const wip = filesKey({ kind: 'wip', worktree: '/r', staged: false });
@@ -67,7 +67,7 @@ describe('repo services', () => {
     expect(contentSize({ old: null, new: null, tooLarge: true, eolOnly: false, image: false })).toBe(0);
   });
 
-  it('builds the shared message cache on commitMessage (ruling F1)', async () => {
+  it('builds the shared message cache on commitMessage', async () => {
     const s = createServices(7);
     const [m1, m2] = await Promise.all([s.messages.get(A), s.messages.get(A)]);
     expect(m1).toEqual({ id: A, summary: 's', body: '' });

@@ -25,7 +25,7 @@ interface Props<T> {
 }
 
 /**
- * Chips and a search box (spec #4 §4 "4C": reviewers, assignees and labels with a debounced
+ * Chips and a search box: reviewers, assignees and labels with a debounced
  * search). Only the newest query's answer shows: a slower answer to an older one is dropped, and
  * typing hides the last answer until the new one comes, so Enter never picks from a stale list.
  * ↑/↓ move, Enter picks, Backspace in an empty box removes the last chip. Keys typed here never

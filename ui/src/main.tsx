@@ -15,7 +15,7 @@ import { installWindowBlurredMark } from './ui/windowBlur';
 import { installZoom } from './ui/zoom';
 import { applyPageZoom } from './demo/pageZoom';
 
-// First, before anything else can throw: uncaught errors reach the backend log file (spec §16.2).
+// First, before anything else can throw: uncaught errors reach the backend log file.
 installFrontendErrorLogging();
 bindDebugLogging();
 // A page that keeps the main thread busy for nothing writes what ran to the log file. Not in the
@@ -25,8 +25,8 @@ if (import.meta.env.MODE !== 'demo') {
   if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') window.__gbBusy = busy;
 }
 
-// Before the first render: the saved zoom applies from the start (spec §12.2), and so does the
-// last saved theme (its localStorage mirror, R3) until the settings load and take over. The
+// Before the first render: the saved zoom applies from the start, and so does the
+// last saved theme (its localStorage mirror) until the settings load and take over. The
 // website demo has no webview to zoom: it zooms the page itself (demo/pageZoom.ts).
 installZoom(import.meta.env.MODE === 'demo' ? applyPageZoom : undefined);
 // Over a file's or a diff's body, the zoom keys and Ctrl+wheel size its text instead.

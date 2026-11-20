@@ -12,7 +12,7 @@ export const useAbout = create<{ open: boolean; setOpen(v: boolean): void }>((se
 // The licenses page loads on first use: none of it is in the startup bundle.
 const Licenses = lazy(() => import('./Licenses'));
 
-/** Help > About GitVolt (spec §6.1): the app version and the git version in use, Check for
+/** Help > About GitVolt: the app version and the git version in use, Check for
  *  updates, and the open source licenses (the notices the build ships, docs/licensing.md). */
 export function About() {
   const open = useAbout((s) => s.open);

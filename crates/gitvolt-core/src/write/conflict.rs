@@ -1,11 +1,11 @@
-//! The merge tool's data (spec #2 §13.3), read-only. Index stages 1/2/3 are merged with
-//! `git merge-file --diff3` on temp copies (Deviation 2: git's own xdiff, as 2A's autostash
+//! The merge tool's data, read-only. Index stages 1/2/3 are merged with
+//! `git merge-file --diff3` on temp copies (git's own xdiff, as the autostash
 //! prediction does; nothing is written to the repository). The markers carry a per-call nonce at
 //! size 48, so file content can't be mistaken for one. The two panes are the full stage-2 and
 //! stage-3 texts; each region's place in them comes from a line diff of "every region taken from
 //! that side" against the side's text (the region's lines are verbatim in it).
 //!
-//! Line endings (T7 review): every line keeps its own terminator in the region data. A
+//! Line endings: every line keeps its own terminator in the region data. A
 //! `Conflict` line is `"text\n"`, `"text\r\n"`, or `"text"` for a last line with no newline; the
 //! merged output is the plain concatenation of common text and ticked lines.
 
@@ -70,7 +70,7 @@ pub struct ConflictFilePayload {
     pub current: Option<Pane>,
     pub incoming: Option<Pane>,
     pub labels: ConflictLabels,
-    /// The worktree file's, for the save (§7.5): `UTF-8`, `UTF-8 BOM`, …
+    /// The worktree file's, for the save: `UTF-8`, `UTF-8 BOM`, …
     pub encoding: String,
     pub eol: Eol,
     /// The worktree file's hash (`ResolveFile`'s `base`); `None` when there's no file.
@@ -158,7 +158,7 @@ fn line_count(text: &str) -> u32 {
     text.matches('\n').count() as u32 + u32::from(!text.is_empty() && !text.ends_with('\n'))
 }
 
-/// Each region's place in one side's full text (Deviation 2).
+/// Each region's place in one side's full text.
 fn pane(segs: &[Segment], current: bool, full: &str) -> Pane {
     use gix::diff::blob::{Algorithm, Diff, InternedInput};
     let mut view = String::new();
@@ -211,12 +211,12 @@ fn pane(segs: &[Segment], current: bool, full: &str) -> Pane {
     Pane { text: full.to_string(), regions }
 }
 
-/// The worktree bytes' hash, as 2B's `WipBase.worktree` spells it.
+/// The worktree bytes' hash, as `WipBase.worktree` spells it.
 pub(crate) fn file_hash(bytes: &[u8]) -> String {
     worktree_id(bytes)
 }
 
-/// The labels (§13.3): a GitVolt-started op's own target name first, then git's files.
+/// The labels: a GitVolt-started op's own target name first, then git's files.
 fn labels(repo: &gix::Repository, state: Option<&crate::in_progress::InProgress>, paused_target: Option<String>) -> ConflictLabels {
     use crate::in_progress::InProgress;
     let short = |oid: &str| oid.get(..7).unwrap_or(oid).to_string();
@@ -236,8 +236,7 @@ fn labels(repo: &gix::Repository, state: Option<&crate::in_progress::InProgress>
             let replayed = stopped_at.as_deref().map(|s| format!("{} {}", short(s), subject(s)).trim_end().to_string()).unwrap_or_default();
             ConflictLabels { current: paused_target.unwrap_or_else(|| short(onto)), incoming: replayed }
         }
-        // --- 3B T6 ---
-        // A cherry-pick or revert (spec #3 §3.7): Current is HEAD's branch, Incoming the commit
+        // A cherry-pick or revert: Current is HEAD's branch, Incoming the commit
         // picked, or for a revert that commit's parent side (git's own marker words).
         Some(InProgress::CherryPick { head, .. } | InProgress::Revert { head, .. }) => {
             let current = repo.head_name().ok().flatten().map(|n| n.shorten().to_string()).unwrap_or_else(|| "HEAD".into());
@@ -249,7 +248,6 @@ fn labels(repo: &gix::Repository, state: Option<&crate::in_progress::InProgress>
             };
             ConflictLabels { current, incoming }
         }
-        // --- end 3B T6 ---
         _ => ConflictLabels { current: "Current".into(), incoming: "Incoming".into() },
     }
 }
@@ -335,14 +333,14 @@ pub(crate) async fn conflict_file(api: &Api, repo: u32, worktree: &str, path: St
     Ok(Some(ConflictFilePayload { path, kind, text: true, segments, current, incoming, labels, encoding, eol, base: base_hash }))
 }
 
-// --- 2D T15: resolving a conflicted file ---
+// --- resolving a conflicted file ---
 
-/// How one conflicted file is resolved (spec #2 §13.3).
+/// How one conflicted file is resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 #[ts(export)]
 pub enum Resolution {
-    /// The merge tool's output, each line with its own terminator (the EOL ruling), written as
+    /// The merge tool's output, each line with its own terminator, written as
     /// sent. One exception: in a file whose lines all end in CRLF, a bare `\n` becomes `\r\n`
     /// (an `autocrlf` or `eol=crlf` worktree, where the stages, hence the regions, are LF).
     Text { text: String },
@@ -491,7 +489,7 @@ async fn git_conflicted_id(cx: &WriteCx<'_>, stages: &Stages, text: Option<&str>
     Ok(Some(worktree_id(&std::fs::read(&names[0])?)))
 }
 
-/// Whether taking a side or deleting would throw away the user's own edits (the M4 ruling):
+/// Whether taking a side or deleting would throw away the user's own edits:
 /// the file isn't byte for byte what git left (compared in the index's form, so `autocrlf` and
 /// `working-tree-encoding` don't count), or that can't be told, or it changed since the caller
 /// read it (`base`, the merge tool's). No file: nothing to lose.
@@ -512,7 +510,7 @@ async fn hand_edited(cx: &WriteCx<'_>, path: &str, stages: &Stages, base: Option
     Ok(String::from_utf8_lossy(&out.stdout).trim() != expected)
 }
 
-/// The merge tool's save (§7.5 rules, as `WriteWorktreeFile`'s): a regular, writable, text file, only
+/// The merge tool's save (the rules of `WriteWorktreeFile`): a regular, writable, text file, only
 /// over the bytes `conflictFile` hashed (`Stale` otherwise), in the file's encoding and BOM,
 /// atomically. Lines as `Resolution::Text` says.
 async fn write_text(cx: &WriteCx<'_>, path: &str, text: &str, base: Option<&str>) -> Result<(), GbError> {
@@ -540,7 +538,7 @@ async fn write_text(cx: &WriteCx<'_>, path: &str, text: &str, base: Option<&str>
     write_atomic(&file, &encode(text, &loaded.encoding, eol, bom)?)
 }
 
-/// C1: a checkout or a removal where a repository stands would delete it, `.git` and all.
+/// A checkout or a removal where a repository stands would delete it, `.git` and all.
 fn refuse_repo_in_the_way(root: &std::path::Path, path: &str) -> Result<(), GbError> {
     if crate::write::precheck::repo_at(root, path) {
         return Err(GbError::new(GbErrorKind::InvalidInput, format!("{path} is a repository in the way: move it first")));
@@ -548,7 +546,7 @@ fn refuse_repo_in_the_way(root: &std::path::Path, path: &str) -> Result<(), GbEr
     Ok(())
 }
 
-/// A submodule side taken (review M-b) while the submodule is checked out at another commit: a
+/// A submodule side taken while the submodule is checked out at another commit: a
 /// stage-all would stage that commit back. The UI warns; GitVolt never moves the submodule.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -582,14 +580,14 @@ impl WriteIntent for ResolveIntent {
     fn class(&self) -> WriteClass {
         WriteClass::Immediate
     }
-    /// Not journaled (§5.3): the merge's Abort undoes it.
+    /// Not journaled: the merge's Abort undoes it.
     fn undo(&self) -> Option<UndoKind> {
         None
     }
     fn allowed_in_progress(&self) -> bool {
         true
     }
-    /// A resolution is a staging undo step (ux round 2), recorded by `run` itself.
+    /// A resolution is a staging undo step, recorded by `run` itself.
     fn staging(&self) -> Staging {
         Staging::Own
     }
@@ -648,7 +646,7 @@ impl ResolveIntent {
             Resolution::Current | Resolution::Incoming => {
                 let (stage, flag) = if self.resolution == Resolution::Current { (2, "--ours") } else { (3, "--theirs") };
                 match &stages[stage - 1] {
-                    // Review I2: the side's commit, staged as is (initialized or not).
+                    // The side's commit, staged as is (initialized or not).
                     Some(side) if side.gitlink => {
                         let inv = literal(cx.git(["update-index", "--cacheinfo", "160000", side.oid.as_str(), p]));
                         cx.run_git(inv).await?;
@@ -672,7 +670,7 @@ impl ResolveIntent {
                             let inv = add(cx);
                             cx.run_git(inv).await?;
                         } else {
-                            // Review Focus 5: that side deleted the file.
+                            // That side deleted the file.
                             let inv = rm(cx);
                             cx.run_git(inv).await?;
                         }
@@ -684,7 +682,7 @@ impl ResolveIntent {
                     unlink(cx)
                 } else {
                     refuse_repo_in_the_way(root, p)?;
-                    // Review M-e: a Delete loses hand edits as surely as a Take.
+                    // A Delete loses hand edits as surely as a Take.
                     self.ask_before_discarding(cx, stages).await?;
                     rm(cx)
                 };
@@ -713,7 +711,6 @@ impl ResolveIntent {
         Ok(())
     }
 }
-// --- end 2D T15 ---
 
 /// Mark resolved on several files at once (a folder's in the Conflicted section): each as it is,
 /// as `Resolution::AsIs` does one. The markers are checked across them all before anything is
@@ -756,7 +753,7 @@ impl WriteIntent for MarkResolvedIntent {
     fn class(&self) -> WriteClass {
         WriteClass::Immediate
     }
-    /// Not journaled (§5.3), as `ResolveIntent`: the merge's Abort undoes it.
+    /// Not journaled, as `ResolveIntent`: the merge's Abort undoes it.
     fn undo(&self) -> Option<UndoKind> {
         None
     }
@@ -879,7 +876,7 @@ mod tests {
         assert!(file(&api, id, &r, "clean.txt").await.is_null(), "not conflicted");
     }
 
-    /// §13.3: in a rebase, Current is what it's rebased onto and Incoming the commit being
+    /// In a rebase, Current is what it's rebased onto and Incoming the commit being
     /// replayed. Started outside GitVolt, the onto side has no name: its short oid.
     #[tokio::test]
     async fn rebase_labels_are_named_for_the_user() {
@@ -890,8 +887,7 @@ mod tests {
         assert_eq!(f["labels"], serde_json::json!({"current": onto, "incoming": format!("{replayed} Feature edits")}));
     }
 
-    // --- 3B T6 ---
-    /// Spec #3 §3.7: a stopped cherry-pick's Current is HEAD's branch and Incoming the commit being
+    /// A stopped cherry-pick's Current is HEAD's branch and Incoming the commit being
     /// picked; a revert's Incoming is that commit's parent side, as git's markers say it.
     #[tokio::test]
     async fn pick_and_revert_labels_are_named_for_the_user() {
@@ -911,7 +907,6 @@ mod tests {
         let f = file(&api, id, &r, "a.txt").await;
         assert_eq!(f["labels"], serde_json::json!({"current": "main", "incoming": format!("parent of {reverted} Main edits")}));
     }
-    // --- end 3B T6 ---
 
     #[test]
     fn markers_parse_into_segments_with_the_nonce() {
@@ -927,7 +922,7 @@ mod tests {
         );
     }
 
-    /// The T7 review's convention: CRLF and a missing final newline survive in the region data,
+    /// CRLF and a missing final newline survive in the region data,
     /// and the pane regions still map (the lines are verbatim in the side's text).
     #[tokio::test]
     async fn crlf_and_a_missing_final_newline_stay_in_the_region_lines() {
@@ -1128,7 +1123,6 @@ mod tests {
         assert_eq!(regions(&f, "incoming")[29], (29, 2951, 1));
     }
 
-    // --- 2D T15 ---
     async fn resolve_in(api: &Api, id: u32, wt: &std::path::Path, path: &str, resolution: Resolution, confirm_markers: bool, confirm_discard: bool) -> Result<serde_json::Value, GbError> {
         let worktree = crate::platform::fs::canonicalize(wt).unwrap().display().to_string();
         let f = api.dispatch(Request::ConflictFile { repo: id, worktree: worktree.clone(), path: path.into() }).await.unwrap();
@@ -1144,7 +1138,7 @@ mod tests {
         r.git(&["diff", "--name-only", "--diff-filter=U"]).lines().map(str::to_string).collect()
     }
 
-    /// §13.3: each resolution leaves Conflicted; then the merge's Commit makes one Undo step.
+    /// Each resolution leaves Conflicted; then the merge's Commit makes one Undo step.
     #[tokio::test]
     async fn every_resolution_then_commit_completes_the_merge() {
         let (r, api, id, _data) = setup(false).await;
@@ -1160,7 +1154,7 @@ mod tests {
         assert_eq!(r.git(&["rev-list", "--count", "--merges", "-1", "HEAD"]), "1");
     }
 
-    /// Review Focus 5: taking the side that deleted the file deletes it.
+    /// Taking the side that deleted the file deletes it.
     #[tokio::test]
     async fn taking_the_deleted_side_removes_the_file() {
         let (r, api, id, _data) = setup(false).await;
@@ -1178,7 +1172,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--cached", "--name-only", "--", "gone.txt"]), "gone.txt");
     }
 
-    /// Review I1: a second Take (a double send, a stale row) is Stale; it never removes the file.
+    /// A second Take (a double send, a stale row) is Stale; it never removes the file.
     #[tokio::test]
     async fn a_resolved_path_is_not_resolved_again() {
         let (r, api, id, _data) = setup(false).await;
@@ -1202,7 +1196,7 @@ mod tests {
         assert!(!unmerged(&r).contains(&"a.txt".to_string()));
     }
 
-    /// Review M3: the path's `conflict-marker-size` is the one checked.
+    /// The path's `conflict-marker-size` is the one checked.
     #[tokio::test]
     async fn mark_resolved_knows_a_configured_marker_size() {
         let r = TestRepo::new();
@@ -1215,7 +1209,7 @@ mod tests {
         assert!(matches!(err.detail, Some(crate::error::ErrorDetail::MarkersRemain { .. })), "{err:?}");
     }
 
-    /// Review Focus 4: a CRLF worktree file (`core.autocrlf=true`) is written back with CRLF.
+    /// A CRLF worktree file (`core.autocrlf=true`) is written back with CRLF.
     #[tokio::test]
     async fn a_text_resolution_keeps_the_files_crlf() {
         let r = TestRepo::new();
@@ -1228,7 +1222,7 @@ mod tests {
         assert_eq!(std::fs::read(r.path().join("a.txt")).unwrap(), b"one\r\ntwo\r\n");
     }
 
-    /// The EOL ruling: outside a CRLF file the lines go out as sent, each with its own
+    /// Outside a CRLF file the lines go out as sent, each with its own
     /// terminator, a last line without a newline included.
     #[tokio::test]
     async fn a_text_resolution_writes_the_lines_as_sent() {
@@ -1245,7 +1239,7 @@ mod tests {
         assert!(unmerged(&r).contains(&"a.txt".to_string()), "nothing written");
     }
 
-    /// Review M1, M2: a binary or read-only file on disk isn't written as text.
+    /// A binary or read-only file on disk isn't written as text.
     #[tokio::test]
     async fn a_text_resolution_refuses_a_binary_or_read_only_file() {
         let (r, api, id, _data) = setup(false).await;
@@ -1259,7 +1253,7 @@ mod tests {
         assert_eq!(std::fs::read(r.path().join("a.txt")).unwrap(), b"text\n");
     }
 
-    /// C1: a checkout or a removal never deletes a repository standing at the path.
+    /// A checkout or a removal never deletes a repository standing at the path.
     #[tokio::test]
     async fn a_repository_in_the_way_is_never_removed() {
         let (r, api, id, _data) = setup(false).await;
@@ -1273,7 +1267,7 @@ mod tests {
         }
     }
 
-    /// Review C1: the path is literal. `[id].tsx` is one file, never the glob matching `i.tsx`
+    /// The path is literal. `[id].tsx` is one file, never the glob matching `i.tsx`
     /// and `d.tsx`.
     #[tokio::test]
     async fn a_glob_like_path_touches_only_itself() {
@@ -1317,7 +1311,7 @@ mod tests {
         clean(&r);
     }
 
-    /// Review M4: taking a side over the user's own edits asks first.
+    /// Taking a side over the user's own edits asks first.
     #[tokio::test]
     async fn taking_a_side_over_hand_edits_asks_first() {
         let (r, api, id, _data) = setup(false).await;
@@ -1335,7 +1329,7 @@ mod tests {
         assert!(matches!(err.detail, Some(crate::error::ErrorDetail::DiscardEdits { .. })), "{err:?}");
     }
 
-    /// The M4 ruling (re-review I-a): one hunk merged by hand, the other still marked up, is an
+    /// One hunk merged by hand, the other still marked up, is an
     /// edit; Take and Delete ask.
     #[tokio::test]
     async fn a_partly_edited_file_with_markers_left_asks() {
@@ -1398,7 +1392,7 @@ mod tests {
         [a, b, c]
     }
 
-    /// Review I2: a submodule conflict stages the chosen side's commit, initialized or not, and
+    /// A submodule conflict stages the chosen side's commit, initialized or not, and
     /// its checked-out folder is the thing resolved, not a repository in the way.
     #[tokio::test]
     async fn taking_a_side_of_a_submodule_conflict_stages_its_commit() {
@@ -1420,7 +1414,7 @@ mod tests {
         assert!(r.path().join("sub/.git/HEAD").exists());
     }
 
-    /// Review M-b: a checked-out submodule at another commit is reported, and left where it is.
+    /// A checked-out submodule at another commit is reported, and left where it is.
     #[tokio::test]
     async fn taking_a_submodule_side_reports_a_checkout_elsewhere() {
         let r = TestRepo::new();
@@ -1451,7 +1445,7 @@ mod tests {
         assert!(r.path().join("sub/.git/HEAD").exists());
     }
 
-    /// Review M5: a linked worktree's conflict is resolved in its own index and files.
+    /// A linked worktree's conflict is resolved in its own index and files.
     #[tokio::test]
     async fn a_linked_worktrees_conflict_is_resolved_there() {
         let r = TestRepo::new();
@@ -1469,7 +1463,7 @@ mod tests {
         assert!(!std::fs::read_to_string(r.path().join("a.txt")).unwrap().contains("incoming"));
     }
 
-    /// Review M5: rename/rename (1 to 2) leaves three paths; taking current keeps its name.
+    /// Rename/rename (1 to 2) leaves three paths; taking current keeps its name.
     #[tokio::test]
     async fn rename_rename_resolves_path_by_path() {
         let r = TestRepo::new();
@@ -1512,5 +1506,4 @@ mod tests {
         assert_eq!(serde_json::to_value(Resolution::AsIs).unwrap(), serde_json::json!({"kind": "asIs"}));
         assert_eq!(serde_json::from_value::<Resolution>(serde_json::json!({"kind": "text", "text": "x"})).unwrap(), Resolution::Text { text: "x".into() });
     }
-    // --- end 2D T15 ---
 }

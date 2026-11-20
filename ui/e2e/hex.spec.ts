@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { freshFixture, git, openUrl } from './fixtures';
 
-// UX round 2, lane K: a binary's hex view. Per side, a hex pane (bytes only, offsets in its
+// A binary's hex view. Per side, a hex pane (bytes only, offsets in its
 // gutter) and a text pane, each a read-only Monaco editor, scrolled together. The `details`
 // fixture's commit changes data.bin from "BIN\0\1\2old" to "BIN\0\1\2new!" (fixtures.rs).
 const COMMIT = 'Rename guide and update assets';

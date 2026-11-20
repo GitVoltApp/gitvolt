@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { WriteCtx } from '../write/client';
 import { samePlan, type EditorChip, type EditorRow, type EditorState, type Preset } from './model';
 
-/** Conflict prediction as the editor shows it (spec #3 §3.2). */
+/** Conflict prediction as the editor shows it. */
 export interface PredictionView {
   status: 'idle' | 'pending' | 'ready' | 'off' | 'failed';
   /** Each conflicting row's paths. */
@@ -17,7 +17,7 @@ export const NO_PREDICTION: PredictionView = { status: 'idle', byRow: {}, first:
 export interface OpenRebase { branch: string; base: string; preset?: Preset }
 
 /** One tab's interactive rebase editor. It outlives the view: Start closes the view, and a RefMoved
- * answer brings it back with the plan as it was (spec #3 §5's Reload). */
+ * answer brings it back with the plan as it was (Reload). */
 export interface RebaseSession {
   ctx: WriteCtx;
   opened: OpenRebase;

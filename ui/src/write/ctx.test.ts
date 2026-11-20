@@ -10,7 +10,7 @@ describe('writeCtx', () => {
     expect(writeCtx('none')).toBeNull();
   });
 
-  it("a linked worktree's tab writes to its active worktree, not the repository's main one (2C T2)", () => {
+  it("a linked worktree's tab writes to its active worktree, not the repository's main one", () => {
     useRuntime.setState({ tabs: { t: { repo: { id: 4, path: '/r', name: 'r', worktree: '/r-x' }, worktree: '/r-x' } } } as never);
     expect(writeCtx('t')).toEqual({ tabId: 't', repoId: 4, worktree: '/r-x' });
     expect(writeCtx('t', '/r')).toEqual({ tabId: 't', repoId: 4, worktree: '/r' });

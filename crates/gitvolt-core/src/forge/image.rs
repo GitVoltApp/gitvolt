@@ -1,4 +1,4 @@
-//! An image a rendered Markdown body links, as the core fetched it (spec #5 §4.2). The forge's own
+//! An image a rendered Markdown body links, as the core fetched it. The forge's own
 //! hosts load through the target project's provider (its allowlist, the token only to the
 //! account's own API host); anything else is the user's choice ("Load image from <host>") and
 //! goes through the connector's token-less client.

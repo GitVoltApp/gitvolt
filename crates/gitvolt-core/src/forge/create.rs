@@ -1,4 +1,4 @@
-//! The Create flyout's local half (spec #4 §4 "4C"): the branch's first commit since its target
+//! The Create flyout's local half: the branch's first commit since its target
 //! (the title and description prefill), the template files as the local copy of the target branch
 //! has them (used when the forge can't be asked), and the template rules both providers share.
 //! Reads only: `git rev-parse`, `rev-list`, `log`, `ls-tree`, `cat-file`.
@@ -35,7 +35,7 @@ pub const MAX_TEMPLATE_BYTES: usize = 64 * 1024;
 /// The most of a commit message or a tree listing read here (a giant one can't stall the flyout).
 const MAX_READ_BYTES: u64 = 64 * 1024;
 
-/// The prefill (ruling 5): the oldest non-merge commit on the branch's first-parent line since
+/// The prefill: the oldest non-merge commit on the branch's first-parent line since
 /// the target.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -142,7 +142,7 @@ async fn first_existing(cli: &GitCli, root: &Path, revs: &[String]) -> Result<Op
     Ok(None)
 }
 
-/// `branch`'s first commit since the first of `bases` that exists (ruling 5).
+/// `branch`'s first commit since the first of `bases` that exists.
 pub async fn first_commit(cli: &GitCli, root: &Path, branch: &str, bases: &[String]) -> Result<Option<FirstCommit>, GbError> {
     let Some(base) = first_existing(cli, root, bases).await? else { return Ok(None) };
     let span = format!("{base}..refs/heads/{branch}");
@@ -162,7 +162,7 @@ pub async fn first_commit(cli: &GitCli, root: &Path, branch: &str, bases: &[Stri
     Ok(Some(FirstCommit { summary, body, count }))
 }
 
-/// `kind`'s templates in the first of `revs` that exists (ruling 7: the local copy of the
+/// `kind`'s templates in the first of `revs` that exists (the local copy of the
 /// target branch, never the working directory).
 pub async fn local_templates(cli: &GitCli, root: &Path, kind: ForgeKind, revs: &[String]) -> Result<Vec<MrTemplate>, GbError> {
     let Some(rev) = first_existing(cli, root, revs).await? else { return Ok(Vec::new()) };

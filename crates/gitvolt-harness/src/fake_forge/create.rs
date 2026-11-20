@@ -1,8 +1,8 @@
-//! The fake forge's create half (plan 4C): GitLab's one-POST merge request; GitHub's pull request
+//! The fake forge's create half: GitLab's one-POST merge request; GitHub's pull request
 //! and its follow-up calls (requested reviewers, assignees, labels); the people and labels the
 //! pickers search; the template files both forges serve. What's created lands in the seed's
-//! `created`, so tests read it back with `current_seed()`, and is mirrored into 4B's lists
-//! (`merge_requests`, `pulls`), so 4B's routes (list, view, edit, the badges) and 4D's stack
+//! `created`, so tests read it back with `current_seed()`, and is mirrored into the lists
+//! (`merge_requests`, `pulls`), so the list routes (list, view, edit, the badges) and the stack
 //! requests find it.
 
 use super::gitlab_mrs::FakeMergeRequest;
@@ -129,7 +129,7 @@ pub(crate) fn gitlab_post_mr(st: &mut ForgeState, r: &FakeRequest, id: &str) -> 
         "has_conflicts": false, "updated_at": NOW,
     });
     st.seed.gitlab.created.push(mr.clone());
-    // --- the same MR in 4B's list, as 4B's GitLab routes keep it (a draft is its title's prefix) ---
+    // --- the same MR in the list, as the GitLab routes keep it (a draft is its title's prefix) ---
     let usernames = |key: &str| -> Vec<String> {
         let ids: Vec<u64> = b[key].as_array().map(|a| a.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
         st.seed.gitlab.members.iter().filter(|m| ids.contains(&m.id)).map(|u| u.username.clone()).collect()
@@ -199,7 +199,7 @@ fn pull_mut<'a>(st: &'a mut ForgeState, path: &str, n: &str) -> Option<&'a mut V
     st.seed.github.created.iter_mut().find(|p| p["base"]["repo"]["full_name"] == path && p["number"] == n)
 }
 
-/// The follow-up calls change the PR in 4B's list too.
+/// The follow-up calls change the PR in the list too.
 fn mirror_pull(st: &mut ForgeState, path: &str, n: &str, change: impl FnOnce(&mut FakePull)) {
     let Ok(n) = n.parse::<u64>() else { return };
     if let Some(p) = st.seed.github.pulls.iter_mut().find(|p| p.repo == path && p.number == n) {
@@ -237,7 +237,7 @@ pub(crate) fn github_post_pull(st: &mut ForgeState, r: &FakeRequest, path: &str)
         "labels": [], "requested_reviewers": [], "assignees": [], "mergeable": null, "updated_at": NOW,
     });
     st.seed.github.created.push(pr.clone());
-    // --- the same PR in 4B's list, as 4B's GitHub routes keep it ---
+    // --- the same PR in the list, as the GitHub routes keep it ---
     st.seed.github.pulls.push(FakePull {
         number, repo: path.to_string(), head_repo: if head_owner == owner { String::new() } else { head_repo.clone() }, head_ref: head_ref.into(), base_ref: base.into(),
         title: title.into(), body: b["body"].as_str().unwrap_or_default().into(), state: "open".into(), draft: b["draft"].as_bool().unwrap_or(false),
@@ -247,7 +247,7 @@ pub(crate) fn github_post_pull(st: &mut ForgeState, r: &FakeRequest, path: &str)
     Reply::status(201, pr)
 }
 
-/// A pull request's row in 4B's list (a created one is mirrored there): where people live.
+/// A pull request's row in the list (a created one is mirrored there): where people live.
 fn pull_at(st: &ForgeState, path: &str, n: &str) -> Option<usize> {
     st.seed.github.pulls.iter().position(|p| p.repo == path && p.number.to_string() == n)
 }

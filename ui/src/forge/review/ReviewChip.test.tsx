@@ -45,7 +45,7 @@ beforeEach(() => {
   patchForge('t', { kind: 'gitlab', details: { 12: { value: detailOf(mrOf(12)), at: 1 } } });
 });
 
-describe("what the chip says (spec 2026-10-08 §4, §7)", () => {
+describe("what the chip says", () => {
   it('names the MR/PR and counts the pending comments', () => {
     expect(chipView('gitlab', session({ drafts: [draft('1'), draft('2'), draft('3')] }) as never, mrOf(12)).name).toBe('Reviewing !12 · 3 pending');
   });
@@ -109,7 +109,7 @@ describe('the chip', () => {
   });
 });
 
-describe('Submit review… (spec 2026-10-08 §4)', () => {
+describe('Submit review…', () => {
   it('the menu row, or Mod+Alt+R, opens the composer under the chip; its Cancel closes it', async () => {
     patchForge('t', { review: session({ drafts: [draft('1')] }) as never });
     renderChip();

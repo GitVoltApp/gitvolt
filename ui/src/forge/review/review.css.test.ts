@@ -11,7 +11,7 @@ const ruleIn = (sheet: string, selector: string) => sheet.match(new RegExp(`(?:^
 const rule = (selector: string) => ruleIn(css, selector);
 const background = (body: string) => /background:\s*([^;]+);/.exec(body)?.[1]?.trim();
 
-describe("review.css: the file list's badge (spec 2026-10-08 §5)", () => {
+describe("review.css: the file list's badge", () => {
   it("stays visible on a hovered or selected row: its resting background isn't the row's", () => {
     const badge = background(rule('.review-badge'));
     expect(badge).toBeTruthy();
@@ -20,7 +20,7 @@ describe("review.css: the file list's badge (spec 2026-10-08 §5)", () => {
   });
 });
 
-describe('review.css: the chip in a narrow top bar (spec 2026-10-08 §4)', () => {
+describe('review.css: the chip in a narrow top bar', () => {
   it('shrinks, its value truncating with an ellipsis, while the Review options caret keeps its size', () => {
     expect(rule('.tb-review')).toMatch(/flex:\s*0 1 auto/);
     expect(rule('.tb-review')).toMatch(/min-width:\s*0/);
@@ -33,7 +33,7 @@ describe('review.css: the chip in a narrow top bar (spec 2026-10-08 §4)', () =>
   });
 });
 
-describe("review.css: the chip stands out from the branch picker (review comments round 2)", () => {
+describe("review.css: the chip stands out from the branch picker", () => {
   /** Every rule for `selector`, as one body. */
   const all = (selector: string) => [...css.matchAll(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`, 'g'))].map((m) => m[1]).join(';');
   it('is a yellow-tinted pill as tall as the bar\'s buttons, its caption, value and icon in the readable yellow', () => {

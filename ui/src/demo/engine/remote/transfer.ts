@@ -1,4 +1,4 @@
-// Fetch and push between the demo's git dirs (plan 4), written from git's documented behaviour
+// Fetch and push between the demo's git dirs, written from git's documented behaviour
 // (refspecs, `--prune`, tag following, `--force-with-lease`) and checked against the binary.
 import * as git from 'isomorphic-git';
 import type { DemoContext } from '../../context';

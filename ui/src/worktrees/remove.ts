@@ -9,7 +9,7 @@ import { closeTab, tabWorktree } from '../app/tabs';
 import { mainWorktreeOf, setActiveWorktree } from './active';
 import { worktreeDisplay } from './paths';
 
-/** Remove (§11.1): always confirmed (it isn't undoable); a dirty worktree asks once more before
+/** Remove: always confirmed (it isn't undoable); a dirty worktree asks once more before
  * `--force`. Every tab whose active worktree it is moves to the main worktree first. Resolves
  * the tab a write that follows it runs in (ctx's, or the twin on main when ctx's was closed), or
  * `null` when nothing was removed (cancelled, or failed). `ask`: the first confirm, for a caller
@@ -22,7 +22,7 @@ export async function removeWorktree(ctx: WriteCtx, path: string, branch: string
   if (!(await confirmAction(ask?.(shown) ?? { title: `Remove worktree ${shown}?`, body: `Its directory is deleted; ${stays}.`, confirmLabel: 'Remove', arm: `Click again to remove ${shown}: its directory is deleted`, danger: true }, origin))) return null;
   const at = { ...ctx, worktree: main };
   const onIt = () => useAppState.getState().profile.tabs.filter((t) => t.kind === 'repo' && useRuntime.getState().tabs[t.id]?.repo?.id === ctx.repoId && useRuntime.getState().tabs[t.id]?.worktree === path).map((t) => t.id);
-  // A tab on the removed worktree moves to main first (§11.1). Where another tab already shows
+  // A tab on the removed worktree moves to main first. Where another tab already shows
   // main, that tab is a twin: the removed one is closed after the removal instead (and a write
   // that follows runs in the twin).
   let moved: string[] = [];

@@ -37,7 +37,7 @@ beforeEach(() => {
   patchForge('t', { kind: 'gitlab', remote: 'origin', details: { 12: { value: detail, at: 1 } }, discussions: { 12: threads } });
 });
 
-describe('the MR/PR view (spec #4 §4 "4B")', () => {
+describe('the MR/PR view', () => {
   it('only the Review… button carries a caret: the people + buttons and the Labels pencil have none', () => {
     show();
     const summary = within(screen.getByRole('dialog', { name: 'Merge request !12' })).getByRole('region', { name: 'Summary' });
@@ -45,7 +45,7 @@ describe('the MR/PR view (spec #4 §4 "4B")', () => {
     expect(carets).toEqual(['Review…']);
   });
 
-  it('renders the description as Markdown, with its references (spec #5 §1)', async () => {
+  it('renders the description as Markdown, with its references', async () => {
     // A reference links only with a project to resolve it against (inert without one).
     patchForge('t', { project: projectOf(), details: { 12: { value: { ...detail, description: '## What / why\n\nFollows !5.' }, at: 1 } } });
     show();
@@ -419,8 +419,7 @@ describe('the MR/PR view (spec #4 §4 "4B")', () => {
   });
 });
 
-// --- 5B T3 ---
-describe('navigation history (spec #5 §3.4)', () => {
+describe('navigation history', () => {
   it('comes back to where the view was scrolled, and notes its scroll for the next step', async () => {
     const { scrollOf, setPendingScroll } = await import('../../nav/scroll');
     setPendingScroll('t', 'mr', { key: 'mr:12', view: null, top: 300, anchor: null });
@@ -478,4 +477,3 @@ describe('navigation history (spec #5 §3.4)', () => {
     });
   });
 });
-// --- end 5B T3 ---

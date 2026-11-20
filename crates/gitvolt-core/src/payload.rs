@@ -7,7 +7,7 @@ use ts_rs::TS;
 pub use gitvolt_graph::{ForkDetection, ForkPayload, GraphPayload, GraphWorktree, HeadPayload, RefLabel, RemoteRefLabel, RowPayload, TagAnnotation, WipPayload};
 
 /// A commit's complete message, fetched on demand (`Request::CommitMessage`) rather than carried
-/// by every graph row: the full-message tooltip (§8.4) and the details panel (§9.2) use it.
+/// by every graph row: the full-message tooltip and the details panel use it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -27,7 +27,7 @@ pub struct RepoSummary {
     pub path: String,
     pub name: String,
     /// The canonical worktree the opened path is in. `path` is the repository's (its main
-    /// worktree), shared by every tab on it (spec #2 §11.2).
+    /// worktree), shared by every tab on it.
     pub worktree: String,
 }
 
@@ -49,7 +49,7 @@ pub struct CoAuthor {
     pub email: String,
 }
 
-/// The right panel's commit header (spec §9.1). The message itself (§9.2) is not here: the panel
+/// The right panel's commit header. The message itself is not here: the panel
 /// gets it from `Request::CommitMessage`, sharing the graph tooltip's cache.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -64,7 +64,7 @@ pub struct CommitDetailsPayload {
     pub signed: bool,
 }
 
-/// A remote's parsed URL (spec §14.4). The URL itself is never sent: it may carry a token.
+/// A remote's parsed URL. The URL itself is never sent: it may carry a token.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -84,7 +84,7 @@ pub struct RemotePayload {
     pub account: Option<String>,
 }
 
-/// Where one side of a file diff comes from (spec §10.2). The file list builds these and the
+/// Where one side of a file diff comes from. The file list builds these and the
 /// diff viewer sends them back unchanged (`diffContents`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -95,13 +95,13 @@ pub enum BlobSource {
     Object { oid: String },
     /// A gitlink; shown as `Subproject commit <oid>`, like git.
     Submodule { oid: String },
-    /// The file at `commit` (File View of an unchanged file, spec §9.3).
+    /// The file at `commit` (File View of an unchanged file).
     AtCommit { commit: String },
     /// The file in a worktree (WIP and compare-with-working-tree).
     Worktree { worktree: String },
 }
 
-/// An unmerged path's conflict (spec #2 §7.1), from `git status`'s two-letter code.
+/// An unmerged path's conflict, from `git status`'s two-letter code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -178,10 +178,10 @@ pub struct SubmoduleState {
 #[ts(export)]
 pub struct FileListPayload {
     pub files: Vec<FileChange>,
-    /// Line totals over the text files (spec §9.3 header).
+    /// Line totals over the text files.
     pub added: u32,
     pub deleted: u32,
-    /// A WIP list kept by the active tab's watcher (K44): the version of that worktree's lists,
+    /// A WIP list kept by the active tab's watcher: the version of that worktree's lists,
     /// which a `repoChanged` naming the worktree replaces. The UI may hold such a list until
     /// then. Absent for every other list, and for WIP lists read without a trusted watcher.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -189,7 +189,7 @@ pub struct FileListPayload {
     pub version: Option<String>,
 }
 
-/// The signature badge (spec §9.1).
+/// The signature badge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -237,9 +237,9 @@ pub struct BlobPayload {
     pub eol: Eol,
     /// Decoded text; `None` for binary files and for sides held back by the large-file prompt.
     pub text: Option<String>,
-    /// Raw bytes, base64, for binary images (spec §10.4), media (audio, video, fonts) and PDFs only.
+    /// Raw bytes, base64, for binary images, media (audio, video, fonts) and PDFs only.
     pub base64: Option<String>,
-    /// The loaded bytes' `worktree_id` (2B Deviation 12): the save base of a working-tree side.
+    /// The loaded bytes' `worktree_id`: the save base of a working-tree side.
     /// `None` when the side wasn't loaded (too large).
     pub hash: Option<String>,
     /// A working-tree side whose `text` is its clean form, as git compares it, and that form
@@ -264,7 +264,7 @@ pub struct DiffContentsPayload {
     /// A side is over 2 MiB and `force` was false: show "Large file — load anyway?". Even with
     /// `force`, a side over 64 MiB (`MAX_FORCED_BYTES`) stays `too_large`: that size is never loaded.
     pub too_large: bool,
-    /// Only the line endings changed (spec §10.2 banner).
+    /// Only the line endings changed.
     pub eol_only: bool,
     /// The path has a raster-image extension (the UI shows the image diff).
     pub image: bool,

@@ -1,6 +1,6 @@
 import { inTauri } from '../api/transport';
 
-/** Window state the background-fetch scheduler needs (spec §15): the app's window in Tauri, the
+/** Window state the background-fetch scheduler needs: the app's window in Tauri, the
  * page in the harness browser. */
 export interface Platform {
   isMinimized(): Promise<boolean>;

@@ -32,7 +32,7 @@ function setup(services: RepoServices = fakeServices({ treeFiles: new Loader(asy
   return store;
 }
 
-/** The rows and the list, whatever their roles: tree mode is a `tree` of `treeitem`s (M8), path mode a `listbox` of `option`s. */
+/** The rows and the list, whatever their roles: tree mode is a `tree` of `treeitem`s, path mode a `listbox` of `option`s. */
 const rowEls = () => [...document.querySelectorAll<HTMLElement>('[role="option"], [role="treeitem"]')];
 const listEl = () => document.querySelector<HTMLElement>('.file-list-scroll')!;
 
@@ -42,17 +42,17 @@ describe('FileList', () => {
   it('shows counts, renames, binary stats, and opens files with Up/Down', () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
     const store = setup();
-    // F19: coloured status icons with their numbers, named for assistive tech.
+    // Coloured status icons with their numbers, named for assistive tech.
     const counts = screen.getByTestId('file-counts');
     expect(counts).toHaveAccessibleName('2 modified · 1 renamed');
     expect([...counts.querySelectorAll('svg')].map((i) => i.dataset.status)).toEqual(['modified', 'renamed']);
     expect(counts).toHaveTextContent(/^21$/);
     expect(screen.getByTestId('file-totals')).toHaveTextContent('+4 −2');
     const rows = rowEls();
-    // H22: a rename shows its new path; the old one is in the row's tooltip.
+    // A rename shows its new path; the old one is in the row's tooltip.
     expect(rows[0]).toHaveTextContent('docs/manual.txt');
     expect(rows[0]).not.toHaveTextContent('guide');
-    // F17: an icon per status, no A/M/D letter.
+    // An icon per status, no A/M/D letter.
     expect(within(rows[0]).getByRole('img', { name: 'Renamed' }).tagName.toLowerCase()).toBe('svg');
     expect(within(rows[2]).getByRole('img', { name: 'Modified' })).toHaveAttribute('data-status', 'modified');
     expect(within(rows[2]).queryByText('M')).toBeNull();
@@ -108,7 +108,7 @@ describe('FileList', () => {
     expect(rowEls()).toHaveLength(4);
   });
 
-  it("UX G.2: the WIP list's View all files lists the worktree's tracked files, on its own toggle; one opens its working-tree file", async () => {
+  it("the WIP list's View all files lists the worktree's tracked files, on its own toggle; one opens its working-tree file", async () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: true, wipAllFiles: false });
     const worktreeFiles = vi.fn(async (_wt: string) => ['src/app.php', 'tracked.txt']);
     const store = createRepoViewStore(1, '/r', graph, fakeServices({ worktreeFiles: new Loader(worktreeFiles, new Lru(1), 1, () => false) }));
@@ -137,7 +137,7 @@ describe('FileList', () => {
     expect(rec.calls).toEqual([key('docs/manual.txt'), key('src/app.php')]);
   });
 
-  it("rows are the density preset's height, following a change (H1)", () => {
+  it("rows are the density preset's height, following a change", () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
     setup();
     for (const d of DENSITIES) {
@@ -145,12 +145,12 @@ describe('FileList', () => {
       const h = DENSITY_METRICS[d].fileRowH;
       expect(rowEls()[2], d).toHaveStyle({ height: `${h}px`, top: `${2 * h}px` });
     }
-    // The default, standard, is taller than 1B's fixed 24 px; compact keeps it.
+    // The default, standard, is taller than the earlier fixed 24 px; compact keeps it.
     expect(DENSITY_METRICS[DEFAULT_DENSITY].fileRowH).toBe(26);
     expect(DENSITY_METRICS.compact.fileRowH).toBe(24);
   });
 
-  it('J2: → opens the active file (nothing if it is open); ← closes the diff and returns to the graph', () => {
+  it('→ opens the active file (nothing if it is open); ← closes the diff and returns to the graph', () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
     const store = setup();
     const rows = () => rowEls();
@@ -179,7 +179,7 @@ describe('FileList', () => {
     expect(store.getState().focus).toBe('graph');
   });
 
-  it('J2: ← on an expanded folder collapses it and → on a collapsed one expands it; ← on any other row closes the diff', () => {
+  it('← on an expanded folder collapses it and → on a collapsed one expands it; ← on any other row closes the diff', () => {
     useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
     const store = setup();
     const box = listEl();
@@ -212,7 +212,7 @@ describe('FileList', () => {
     expect(opt('docs')).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('J3: Up/Down, Home/End and PgUp/PgDn move between files only, skipping folder rows, and open each', () => {
+  it('Up/Down, Home/End and PgUp/PgDn move between files only, skipping folder rows, and open each', () => {
     useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
     const store = setup();
     const box = listEl();
@@ -228,9 +228,9 @@ describe('FileList', () => {
     expect(opt('src/app.php')).toHaveAttribute('aria-selected', 'true');
     key('ArrowDown');
     expect(open()).toBe('logo.png');
-    key('ArrowDown'); // K4: the last file wraps to the first
+    key('ArrowDown'); // The last file wraps to the first
     expect(open()).toBe('docs/manual.txt');
-    key('ArrowUp'); // K4: the first file wraps to the last
+    key('ArrowUp'); // The first file wraps to the last
     expect(open()).toBe('logo.png');
     key('ArrowUp');
     expect(open()).toBe('src/app.php');
@@ -254,7 +254,7 @@ describe('FileList', () => {
     fireEvent.mouseDown(opt('src'));
     key('ArrowUp');
     expect(open()).toBe('docs/manual.txt');
-    // src/ is collapsed now: Down walks into it (UX round 2), expanding it, onto its first file.
+    // src/ is collapsed now: Down walks into it, expanding it, onto its first file.
     expect(opt('src')).toHaveAttribute('aria-expanded', 'false');
     key('ArrowDown');
     expect(open()).toBe('src/app.php');
@@ -262,7 +262,7 @@ describe('FileList', () => {
     expect(opt('src/app.php')).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('UX round 2: Up/Down walk into nested collapsed directories, expanding them, in both directions', () => {
+  it('Up/Down walk into nested collapsed directories, expanding them, in both directions', () => {
     useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     const files = ['lib/one/p.txt', 'lib/one/q.txt', 'lib/two/r.txt', 'lib/two/s.txt', 'a.txt', 'z.txt'].map((p) => change(p));
@@ -302,7 +302,7 @@ describe('FileList', () => {
     expect(shown()).toHaveLength(9);
   });
 
-  it('J3: PgUp/PgDn step a page of rows and land on a file, never a folder', () => {
+  it('PgUp/PgDn step a page of rows and land on a file, never a folder', () => {
     useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
     // Folders a/ … f/ with one file each: rows alternate folder, file.
     const many = { files: 'abcdef'.split('').map((d) => change(`${d}/x.txt`)), added: 6, deleted: 0 };
@@ -383,7 +383,7 @@ describe('FileList', () => {
     expect(new Set(rowEls().map((o) => o.id)).size).toBe(3);
   });
 
-  describe('View all files loading (K54)', () => {
+  describe('View all files loading', () => {
     const gates = new Map<string, (paths: string[]) => void>();
     const deferred = () => fakeServices({ treeFiles: new Loader((c: string) => new Promise<string[]>((r) => { gates.set(c, r); }), new Lru(4)) });
     const filter = () => screen.queryByRole('textbox', { name: 'Filter files' });
@@ -442,7 +442,7 @@ describe('FileList', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('tree mode: no folder icons, and each file\'s icon starts where its folder\'s name does (F17)', () => {
+  it('tree mode: no folder icons, and each file\'s icon starts where its folder\'s name does', () => {
     useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
     setup();
     const opt = (path: string) => rowEls().find((r) => r.dataset.path === path)!;
@@ -453,7 +453,7 @@ describe('FileList', () => {
     expect(opt('logo.png')).toHaveStyle({ paddingLeft: `${rowIndent(0)}px` });
   });
 
-  it('a collapsed folder shows its change counts; an expanded one doesn\'t (F20)', () => {
+  it('a collapsed folder shows its change counts; an expanded one doesn\'t', () => {
     useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
     setup();
     const opt = (path: string) => rowEls().find((r) => r.dataset.path === path)!;
@@ -475,7 +475,7 @@ describe('FileList', () => {
     expect(stats!.textContent).toBe(file!.textContent);
   });
 
-  it('the toolbar: one smart Expand/Collapse button on the left, Path/Tree in the centre, View all files on the right (F18)', () => {
+  it('the toolbar: one smart Expand/Collapse button on the left, Path/Tree in the centre, View all files on the right', () => {
     useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
     setup();
     const toolbar = screen.getByRole('toolbar', { name: 'File list options' });
@@ -542,9 +542,9 @@ describe('FileList', () => {
     expect(store.getState().diff?.path).toBe('src/app.php');
   });
 
-  // K2, K3: the browser counts quick presses as one multi-click (`detail` 2, 3, …, within the
+  // The browser counts quick presses as one multi-click (`detail` 2, 3, …, within the
   // OS double-click time). Every one of them is a toggle: none is dropped as a "double-click".
-  it('every press toggles, however quick: a file opens and closes, a folder collapses and expands (K2, K3)', () => {
+  it('every press toggles, however quick: a file opens and closes, a folder collapses and expands', () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
     const store = setup();
     const row = () => rowEls()[2];
@@ -567,7 +567,7 @@ describe('FileList', () => {
     expect(docs()).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('with two lists (WIP), only the list that closed its file keeps a highlighted row (fix round 1)', () => {
+  it('with two lists (WIP), only the list that closed its file keeps a highlighted row', () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     const wip = (staged: boolean) => ({ kind: 'wip' as const, worktree: '/r', staged });
@@ -600,7 +600,7 @@ describe('FileList', () => {
     expect(docs()).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('a renamed file shows only its new name in the tree (H22)', () => {
+  it('a renamed file shows only its new name in the tree', () => {
     useFileListPrefs.getState().set({ mode: 'tree', sort: 'path', allFiles: false });
     setup();
     const renamed = rowEls().find((r) => r.dataset.path === 'docs/manual.txt')!;
@@ -609,7 +609,7 @@ describe('FileList', () => {
     expect(renamed).not.toHaveTextContent('guide');
   });
 
-  it('every row shows its full path on hover, a rename as old, ↓, new (H22)', () => {
+  it('every row shows its full path on hover, a rename as old, ↓, new', () => {
     for (const mode of ['path', 'tree'] as const) {
       useFileListPrefs.getState().set({ mode, sort: 'path', allFiles: true });
       setup();
@@ -642,7 +642,7 @@ describe('FileList', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  it('K4: ↓ wraps from the last file to the first, and ↑ from the first to the last, in path mode too', () => {
+  it('↓ wraps from the last file to the first, and ↑ from the first to the last, in path mode too', () => {
     useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
     const store = setup();
     const box = listEl();
@@ -656,7 +656,7 @@ describe('FileList', () => {
     expect(open()).toBe('src/app.php'); // wraps back to the last
   });
 
-  describe('K18-K20: the "View all files" filter', () => {
+  describe('the "View all files" filter', () => {
     function setupAllFiles() {
       useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: true });
       return setup();
@@ -720,10 +720,10 @@ describe('FileList', () => {
       fireEvent.click(clear);
       expect(filter).toHaveValue('');
       expect(rowEls()).toHaveLength(4);
-      expect(scrollTo).toHaveBeenCalled(); // K20: centres the still-selected row
+      expect(scrollTo).toHaveBeenCalled(); // Centres the still-selected row
     });
 
-    it('K19: Previous/Next changed file jump to and open the nearest changed file, skipping unchanged rows, and wrap', async () => {
+    it('Previous/Next changed file jump to and open the nearest changed file, skipping unchanged rows, and wrap', async () => {
       const store = setupAllFiles();
       await screen.findByText('zzz.txt'); // docs/manual.txt, logo.png, src/app.php (changed), zzz.txt (unchanged)
       const prev = screen.getByRole('button', { name: 'Previous changed file' });
@@ -741,7 +741,7 @@ describe('FileList', () => {
       expect(store.getState().diff?.path).toBe('src/app.php');
     });
 
-    it('K19: Previous/Next are disabled with no changed file visible', async () => {
+    it('Previous/Next are disabled with no changed file visible', async () => {
       setupAllFiles();
       await screen.findByText('zzz.txt');
       fireEvent.change(screen.getByLabelText('Filter files'), { target: { value: 'zzz' } });

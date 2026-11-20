@@ -41,7 +41,7 @@ export function RenderedReviewNote({ tabId, path }: { tabId: string; path: strin
 interface PlusAt { top: number; left: number; target: BlockTarget }
 
 /**
- * The rendered Markdown diff in review mode (spec 2026-10-08 §3), around `MarkdownDiff` in Diff
+ * The rendered Markdown diff in review mode, around `MarkdownDiff` in Diff
  * View's `pane`. While the diff is the tab's review Compare: each block shows the threads and
  * drafts on its lines under it (the innermost block holding a thread's last line,
  * `assignItems`); a "+" left of a hovered block that touches the MR's diff opens a comment box

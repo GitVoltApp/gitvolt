@@ -1,5 +1,5 @@
-//! "Your repos" (spec §13): repositories in a folder the user picks, two levels deep. Pure and
-//! synchronous; the caller (`W2-A`'s `api.rs`) runs it on the blocking pool and caches it per root.
+//! "Your repos": repositories in a folder the user picks, two levels deep. Pure and
+//! synchronous; the caller (`api.rs`) runs it on the blocking pool and caches it per root.
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};

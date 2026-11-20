@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { closeFlyout, CENTER_KEEP, FLYOUT_W, flyoutOf, flyoutWidth, openFlyout, registerFlyout } from './flyout';
 
-describe('flyoutWidth (spec #4 §5: about 560 px, resizable within bounds)', () => {
+describe('flyoutWidth (about 560 px, resizable within bounds)', () => {
   it('is the default or the preferred width, within bounds', () => {
     expect(flyoutWidth(null, 1200)).toBe(FLYOUT_W.default);
     expect(flyoutWidth(400, 1200)).toBe(400);

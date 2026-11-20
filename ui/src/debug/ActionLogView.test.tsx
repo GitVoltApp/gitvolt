@@ -13,7 +13,7 @@ beforeEach(() => {
   copyText.mockClear();
 });
 
-it('lists actions newest first, live, with failures filterable and copyable (R11)', async () => {
+it('lists actions newest first, live, with failures filterable and copyable', async () => {
   const rec = (id: string, label: string, ok: boolean, error: string | null = null, source: 'action' | 'menu' = 'action') =>
     useActionLog.getState().record({ at: Date.now(), id, label, ok, ms: 4, error, source });
   rec('view.zoomIn', 'Zoom in', true);

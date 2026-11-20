@@ -49,7 +49,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe('pollForge (spec #4 §3.4)', () => {
+describe('pollForge', () => {
   it('a full poll maps the badges, the list and the open MR, and says a pipeline runs', async () => {
     patchForge('t', { openMr: 12 });
     const out = await pollForge('t', 'timer');
@@ -309,7 +309,6 @@ describe('opening and loading an MR/PR', () => {
   });
 });
 
-// --- 4B final fix ---
 const deferred = <T,>() => {
   let resolve!: (v: T) => void;
   const promise = new Promise<T>((r) => (resolve = r));
@@ -381,7 +380,7 @@ describe('polls and what changes meanwhile', () => {
   });
 });
 
-describe('fastPollWanted (spec #4 §3.4: a visible running pipeline)', () => {
+describe('fastPollWanted (a visible running pipeline)', () => {
   const pipe = (status: 'running' | 'pending' | 'success') => ({ pipeline: { status, webUrl: null } });
   const list = (mrs: ReturnType<typeof mrOf>[]) => listOf('all', mrs) as never;
   it('counts a running list row only while the section is expanded', () => {
@@ -409,7 +408,6 @@ describe('fastPollWanted (spec #4 §3.4: a visible running pipeline)', () => {
     expect((await pollForge('t', 'timer')).runningPipeline).toBe(true);
   });
 });
-// --- end 4B final fix ---
 
 describe('the refresh buttons', () => {
   it("an MR/PR's refresh makes the core forget its kept answers first, then reads the detail and discussion", async () => {

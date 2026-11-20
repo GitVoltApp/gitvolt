@@ -1,9 +1,9 @@
-//! Reset (spec #2 §9.4): `git reset --soft|--mixed|--hard <oid>` after the preflight check; git
+//! Reset: `git reset --soft|--mixed|--hard <oid>` after the preflight check; git
 //! moves the branch (or a detached HEAD). Mixed and hard snapshot every changed tracked path
 //! first; hard also snapshots every untracked or ignored file git would delete in the way of
 //! the target's files (other untracked files are left alone by git and the snapshot). Hard asks
 //! first when there's anything to discard, and refuses when a repository (a submodule, an
-//! embedded clone) is in the way: no snapshot can carry one. Undo per §5.3:
+//! embedded clone) is in the way: no snapshot can carry one. Undo:
 //! - soft: the branch (or HEAD) back;
 //! - mixed: the two-way `git read-tree -m -i <now> <old>`, the index part of `before`, then
 //!   back (P's entries staged since the reset are autostashed first, which asks);
@@ -84,19 +84,19 @@ async fn at_risk(api: &crate::api::Api, root: &Path, mode: ResetMode, to: &str) 
 
 /// The files outside the index (untracked or ignored) that `git reset --hard <to>` deletes:
 /// git writes every target file that differs from HEAD or from the worktree, and replaces
-/// whatever is in its way without asking (review C1):
+/// whatever is in its way without asking:
 /// - a file at the path itself;
 /// - a directory at the path: every file under it that isn't in the index;
 /// - a file at one of its leading directories (the target has `e/f`, the disk a file `e`).
 ///
-/// A path already in `tracked` isn't one of them (review I2): the tracked snapshot carries it,
+/// A path already in `tracked` isn't one of them: the tracked snapshot carries it,
 /// a staged deletion included.
 ///
 /// A repository in the way (a submodule, an embedded clone) is refused: git deletes it whole
-/// and no snapshot can carry it (review C2, [`precheck::repos_at`]). The reset works from the
+/// and no snapshot can carry it ([`precheck::repos_at`]). The reset works from the
 /// index, so the check runs over the candidates, `tree_diff(HEAD, to) ∪ tracked`, not the tree
 /// diff alone: a staged gitlink at a path where HEAD and the target hold the same blob is in
-/// its way too (re-review 3 C4).
+/// its way too.
 async fn overwritten(cli: &crate::git::GitCli, root: &Path, to: &str, tracked: &BTreeSet<String>) -> Result<Vec<String>, GbError> {
     let (root_buf, to, written) = (root.to_path_buf(), to.to_string(), tracked.clone());
     let (mut files, dirs) = blocking(move || {
@@ -107,7 +107,6 @@ async fn overwritten(cli: &crate::git::GitCli, root: &Path, to: &str, tracked: &
         let target = repo.find_commit(to).map_err(gix_err)?.tree().map_err(gix_err)?;
         let index = repo.index_or_empty().map_err(gix_err)?;
         let indexed: BTreeSet<String> = index.entries().iter().map(|e| e.path(&index).to_str_lossy().into_owned()).collect();
-        // --- 2C repo-safety ---
         let diff = precheck::tree_diff(&repo, head.detach(), to)?;
         let gitlinks = precheck::gitlinks(&index, &diff);
         // The target's files: the diff's own, plus the dirty paths outside it that it holds as
@@ -116,15 +115,14 @@ async fn overwritten(cli: &crate::git::GitCli, root: &Path, to: &str, tracked: &
         files.extend(precheck::files_in(&target, written.iter().filter(|p| !diff.paths.contains(*p)))?);
         let mut candidates = diff.paths;
         candidates.extend(written);
-        // The directories in the way of a target file (a gitlink only makes its directory,
-        // review M6; an unpopulated gitlink's empty directory lists nothing, M8) come from the
+        // The directories in the way of a target file (a gitlink only makes its directory;
+        // an unpopulated gitlink's empty directory lists nothing) come from the
         // same scan; a nested repository in one is refused below, from the `ls-files` read.
         let scan = precheck::repos_at(&root, &gitlinks, files.iter().map(|p| p.as_bstr()));
         if let Some(p) = scan.repos.first() {
             return Err(precheck::repository_in_the_way(p, "reset"));
         }
         let (mut files, dirs) = (BTreeSet::new(), scan.dirs);
-        // --- end 2C repo-safety ---
         for p in candidates {
             if target.lookup_entry_by_path(p.as_str()).map_err(gix_err)?.filter(|e| !e.mode().is_tree()).is_none() {
                 continue;
@@ -172,7 +170,7 @@ async fn overwritten(cli: &crate::git::GitCli, root: &Path, to: &str, tracked: &
 /// What the mixed reset's undo would lose or be refused over: the paths of P ∪ the tree diff
 /// `now..old` staged since the reset (an index entry no longer `now`'s tree entry). P's would be
 /// overwritten from `before`; the diff's make the two-way read-tree refuse ("would be
-/// overwritten by merge", review I3). They're autostashed first, which asks (§6.1, review I1).
+/// overwritten by merge"). They're autostashed first, which asks.
 pub(crate) fn staged_since(root: &Path, now: &str, old: &str, before: Option<&crate::journal::Snapshot>) -> Result<Vec<String>, GbError> {
     let repo = gix::open(root).map_err(gix_err)?;
     let (now, old) = (gix::ObjectId::from_hex(now.as_bytes()).map_err(gix_err)?, gix::ObjectId::from_hex(old.as_bytes()).map_err(gix_err)?);
@@ -215,7 +213,7 @@ impl WriteIntent for Reset {
         Some(self.mode.undo_kind())
     }
 
-    /// Under the lock (Deviation 6): a hard reset over changes asks first, from what's dirty now.
+    /// Under the lock: a hard reset over changes asks first, from what's dirty now.
     async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
         if self.to.len() < 40 || gix::ObjectId::from_hex(self.to.as_bytes()).is_err() {
             return Err(GbError::new(GbErrorKind::InvalidInput, format!("not an object id: {}", self.to)));
@@ -262,7 +260,7 @@ fn ends(entry: &JournalEntry) -> Result<(String, String), GbError> {
 }
 
 /// Moves the reset's branch by CAS (`moves`, from the moved-ref check), or a detached HEAD
-/// itself (Deviation 3) from `from`, where HEAD is now.
+/// itself from `from`, where HEAD is now.
 async fn move_head(cx: &mut WriteCx<'_>, entry: &JournalEntry, moves: &[RefMove], from: &str, to: &str, message: &str) -> Result<(), GbError> {
     if entry.head_before.branch.is_some() {
         cx.cas(moves, message).await
@@ -273,7 +271,7 @@ async fn move_head(cx: &mut WriteCx<'_>, entry: &JournalEntry, moves: &[RefMove]
     }
 }
 
-/// The reset kinds' undo and redo (§5.3). `moves` are the moved-ref check's CAS requests for
+/// The reset kinds' undo and redo. `moves` are the moved-ref check's CAS requests for
 /// this direction; `undo` is the direction.
 ///
 /// Anything beyond a soft undo acts on this worktree's HEAD, index and files, so it needs the
@@ -291,7 +289,7 @@ pub(crate) async fn undo_reset(cx: &mut WriteCx<'_>, entry: &JournalEntry, moves
     // Where HEAD is now: the reset's result, or the value "Undo anyway" was shown.
     let now = cx.before.head.oid.clone().unwrap_or_else(|| new.clone());
     if !undo {
-        // Redo re-runs the reset behind the CAS check (§5.3), with a fresh `before` for mixed
+        // Redo re-runs the reset behind the CAS check, with a fresh `before` for mixed
         // and hard, which the next undo restores.
         if mode != ResetMode::Soft {
             let (tracked, overwritten) = at_risk(cx.api, cx.root, mode, &new).await?;
@@ -313,7 +311,7 @@ pub(crate) async fn undo_reset(cx: &mut WriteCx<'_>, entry: &JournalEntry, moves
         ResetMode::Soft => move_head(cx, entry, moves, &now, &old, message).await,
         ResetMode::Mixed => {
             // The index first, so a refusal changes nothing; if a later step fails, it's read
-            // back. A two-way read (as "Stage all & commit"'s undo, review I1): only entries
+            // back. A two-way read (as "Stage all & commit"'s undo): only entries
             // still as `now` has them change, so what was staged since stays staged, and an entry
             // changed both ways refuses. `-i`: the worktree isn't compared or touched. P's
             // entries staged since were autostashed by `plan` (they'd be overwritten next).
@@ -339,8 +337,8 @@ pub(crate) async fn undo_reset(cx: &mut WriteCx<'_>, entry: &JournalEntry, moves
             res
         }
         ResetMode::Hard => {
-            // Rewind, then Restore `before`. The restore's read-only checks run first (review
-            // M1); if the restore still fails after the move, the move and the rewind go back.
+            // Rewind, then Restore `before`. The restore's read-only checks run first;
+            // if the restore still fails after the move, the move and the rewind go back.
             if let Some(b) = &entry.before {
                 snapshot::check_restore(cx.root, b)?;
             }
@@ -546,7 +544,7 @@ mod tests {
         assert_eq!(RepoState::capture(&r), before);
     }
 
-    // --- Review round 1 ---
+    // --- Directories, files and modes in the way ---
 
     async fn undo_top(api: &crate::api::Api, id: u32, r: &TestRepo, confirm: bool) -> Result<serde_json::Value, crate::error::GbError> {
         let s = send(api, json!({"method": "journalState", "params": {"repo": id, "worktree": wt(r)}})).await.unwrap();
@@ -605,7 +603,7 @@ mod tests {
         std::fs::read_to_string(r.path().join(p)).unwrap()
     }
 
-    /// C1 (a): an untracked directory, with an ignored file and a nested one, where the target
+    /// An untracked directory, with an ignored file and a nested one, where the target
     /// has a file.
     #[tokio::test(flavor = "multi_thread")]
     async fn hard_asks_and_restores_a_directory_where_the_target_has_a_file() {
@@ -617,7 +615,7 @@ mod tests {
         hard_round_trip(&r, 3, |r| assert_eq!((read(r, "d/inner.txt"), read(r, "d/sub/deep.txt"), read(r, "d/keep.log")), ("precious\n".into(), "deep\n".into(), "ignored\n".into()))).await;
     }
 
-    /// C1 (b): an untracked file where the target has a directory.
+    /// An untracked file where the target has a directory.
     #[tokio::test(flavor = "multi_thread")]
     async fn hard_asks_and_restores_a_file_where_the_target_has_a_directory() {
         let r = two_commits(&[("e/f", "ef\n"), ("x", "x\n")], |r| r.git(&["rm", "-q", "-r", "e"]));
@@ -625,7 +623,7 @@ mod tests {
         hard_round_trip(&r, 1, |r| assert_eq!(read(r, "e"), "precious\n")).await;
     }
 
-    /// C1 (c): a tracked file deleted and replaced by an untracked directory.
+    /// A tracked file deleted and replaced by an untracked directory.
     #[tokio::test(flavor = "multi_thread")]
     async fn hard_asks_and_restores_a_directory_in_place_of_a_tracked_file() {
         let r = two_commits(&[("t", "t1\n"), ("x", "x\n")], |r| {
@@ -637,7 +635,7 @@ mod tests {
         hard_round_trip(&r, 2, |r| assert_eq!(read(r, "t/inner"), "precious\n")).await;
     }
 
-    /// I2: a `git rm --cached` file is one file, and undo brings back the staged deletion and
+    /// A `git rm --cached` file is one file, and undo brings back the staged deletion and
     /// the untracked file.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_staged_deletion_kept_on_disk_counts_once_and_comes_back_staged() {
@@ -670,7 +668,7 @@ mod tests {
         hard_round_trip(&r, 1, |r| assert_eq!(crate::platform::fs::mode(&std::fs::metadata(r.path().join("a.txt")).unwrap()) & 0o111, 0o111)).await;
     }
 
-    /// I1: what was staged after a mixed reset, outside P, stays staged through its undo.
+    /// What was staged after a mixed reset, outside P, stays staged through its undo.
     #[tokio::test(flavor = "multi_thread")]
     async fn mixed_undo_keeps_what_was_staged_since_the_reset() {
         let env = WriteEnv::new();
@@ -686,7 +684,7 @@ mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "M  a.txt\n M b.txt\nA  n.txt\n?? u.txt");
     }
 
-    /// I1: a path of P staged since the reset would lose that staging: undo asks first, and
+    /// A path of P staged since the reset would lose that staging: undo asks first, and
     /// when confirmed autostashes it, so nothing is lost.
     #[tokio::test(flavor = "multi_thread")]
     async fn mixed_undo_asks_before_overwriting_a_path_staged_since() {
@@ -729,7 +727,7 @@ mod tests {
         assert_eq!(r.git(&["show", "stash@{0}:b.txt"]), "edited since");
     }
 
-    // --- Review round 2 ---
+    // --- Embedded repositories and gitlinks ---
 
     /// A repository to clone from, with one commit.
     fn upstream() -> TestRepo {
@@ -753,7 +751,7 @@ mod tests {
         r.git_in(&sm, &["commit", "-q", "-m", "local-only"]);
     }
 
-    /// C2: a clean embedded repository (a gitlink in the index) where the target has a file:
+    /// A clean embedded repository (a gitlink in the index) where the target has a file:
     /// git would delete it whole, `.git` and a local-only commit included. Refused, discard or
     /// not, with nothing changed and no "You can undo this".
     #[tokio::test(flavor = "multi_thread")]
@@ -780,7 +778,7 @@ mod tests {
         assert!(r.path().join("sm/.git").is_dir());
     }
 
-    /// C2: a submodule under a directory the target has as a file goes with it: refused too.
+    /// A submodule under a directory the target has as a file goes with it: refused too.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_hard_reset_never_deletes_a_submodule_under_a_replaced_directory() {
         let sub = upstream();
@@ -797,7 +795,7 @@ mod tests {
         assert!(r.path().join("lib/sm/.git").is_dir());
     }
 
-    /// M6: the target adds a gitlink where an untracked clone sits: git only makes the
+    /// The target adds a gitlink where an untracked clone sits: git only makes the
     /// directory, so nothing is asked or refused, and the clone's files stay.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_target_gitlink_over_an_untracked_clone_is_not_refused() {
@@ -819,7 +817,7 @@ mod tests {
         assert!(r.path().join("sm/.git").is_dir());
     }
 
-    /// I3: splitting a commit from a clean tree: mixed reset, then a file the reset commit
+    /// Splitting a commit from a clean tree: mixed reset, then a file the reset commit
     /// changed is staged again. Undo asks first (no raw "would be overwritten"); confirmed, it
     /// autostashes and goes back, losing nothing.
     #[tokio::test(flavor = "multi_thread")]
@@ -849,7 +847,7 @@ mod tests {
         assert_eq!(r.git(&["show", "stash@{0}^2:c.txt"]), "a\nb\nSTAGED");
     }
 
-    /// M7: a hard undo whose restore fails after the move puts the ref and the rewind back:
+    /// A hard undo whose restore fails after the move puts the ref and the rewind back:
     /// the repository is as the reset left it, and the entry can still be undone.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_hard_undo_whose_restore_fails_rolls_back() {
@@ -880,7 +878,7 @@ mod tests {
         assert_eq!(read(&r, "dir/f.txt"), "f dirty\n");
     }
 
-    // --- Review round 3 ---
+    // --- Rolled-back restores and unpopulated gitlinks ---
 
     fn rm_rf(r: &TestRepo, p: &str) {
         std::fs::remove_dir_all(r.path().join(p)).unwrap();
@@ -901,7 +899,7 @@ mod tests {
         r
     }
 
-    /// C3: the hard reset's undo would rewind `sm` from a gitlink to a file, deleting the clone
+    /// The hard reset's undo would rewind `sm` from a gitlink to a file, deleting the clone
     /// put there since (and its local-only commit): refused, nothing changed.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_hard_undo_never_deletes_a_repository_put_in_place_of_a_file() {
@@ -921,7 +919,7 @@ mod tests {
         assert!(r.path().join("sm/.git").is_dir());
     }
 
-    /// M8: an unpopulated gitlink (an empty directory) is no repository: the undo puts the file
+    /// An unpopulated gitlink (an empty directory) is no repository: the undo puts the file
     /// back over it.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_hard_undo_over_an_unpopulated_gitlink_goes_through() {
@@ -936,7 +934,7 @@ mod tests {
         assert_eq!(RepoState::capture(&r), before);
     }
 
-    /// M8: forward, an unpopulated submodule where the target has a file isn't refused.
+    /// Forward, an unpopulated submodule where the target has a file isn't refused.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_hard_reset_over_an_unpopulated_gitlink_goes_through() {
         let sub = upstream();
@@ -952,7 +950,7 @@ mod tests {
         assert_eq!(read(&r, "sm"), "f\n");
     }
 
-    /// C3, Switch: undoing a checkout onto the branch with the file `sm` would delete the clone
+    /// Switch: undoing a checkout onto the branch with the file `sm` would delete the clone
     /// put at the gitlink since: refused.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_switch_undo_never_deletes_a_repository() {
@@ -980,7 +978,7 @@ mod tests {
         assert!(r.path().join("sm/.git").is_dir());
     }
 
-    /// C3, Rewind: undoing a fast-forward that turned the file `sm` into a gitlink, with a clone
+    /// Rewind: undoing a fast-forward that turned the file `sm` into a gitlink, with a clone
     /// there since: refused.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_rewind_undo_never_deletes_a_repository() {
@@ -1008,9 +1006,9 @@ mod tests {
         assert!(r.path().join("sm/.git").is_dir());
     }
 
-    // --- Review round 4 (repo-safety) ---
+    // --- Staged clones ---
 
-    /// C4 (R1): HEAD and the target hold the same blob `sm`; the index has a staged clone there.
+    /// HEAD and the target hold the same blob `sm`; the index has a staged clone there.
     /// `reset --hard` works from the index and would delete it: refused, discard or not.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_hard_reset_never_deletes_a_staged_clone_where_the_trees_agree() {
@@ -1035,7 +1033,7 @@ mod tests {
         assert!(r.path().join("sm/.git").is_dir());
     }
 
-    /// C4 (R1b): the same, nested: both trees hold the blob `lib`; the index has a staged clone
+    /// The same, nested: both trees hold the blob `lib`; the index has a staged clone
     /// at `lib/sm`.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_hard_reset_never_deletes_a_staged_clone_under_an_unchanged_file() {
@@ -1057,7 +1055,7 @@ mod tests {
         assert!(r.path().join("lib/sm/.git").is_dir());
     }
 
-    /// C5's repository: `one` has `vendor/x`, HEAD doesn't; an untracked file `vendor` is
+    /// The repository: `one` has `vendor/x`, HEAD doesn't; an untracked file `vendor` is
     /// snapshotted by the reset, which makes `vendor/`. A clone made at `vendor/lib` since would
     /// go with the directory when the undo's restore writes the file back: refused, nothing
     /// changed.
@@ -1085,7 +1083,7 @@ mod tests {
         assert!(r.path().join("vendor/lib/.git").is_dir());
     }
 
-    /// C5's untracked files: a plain file made in that directory since is asked about, then
+    /// The untracked files: a plain file made in that directory since is asked about, then
     /// autostashed; the snapshot's file comes back and the stash keeps the new one.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_hard_undo_asks_before_deleting_untracked_files_in_a_restored_files_directory() {
@@ -1105,7 +1103,7 @@ mod tests {
         assert_eq!(r.git(&["show", "stash@{0}^3:vendor/notes.txt"]), "precious");
     }
 
-    /// Safety review I3: with the user's `submodule.recurse=true`, git's `reset --hard` and
+    /// With the user's `submodule.recurse=true`, git's `reset --hard` and
     /// `restore` would run inside the submodule too and discard its uncommitted work, which the
     /// snapshot (a gitlink) can't bring back. GitVolt's writes never recurse.
     #[tokio::test(flavor = "multi_thread")]
@@ -1129,10 +1127,10 @@ mod tests {
         std::fs::write(sm.join("s.txt"), "WIP in submodule\n").unwrap();
         let env = WriteEnv::new();
         let id = open(&env.api, &r).await;
-        // S3a: the reset moves the submodule's commit.
+        // The reset moves the submodule's commit.
         send(&env.api, reset(id, &r, "hard", true)).await.unwrap();
         assert_eq!(read(&r, "sm/s.txt"), "WIP in submodule\n", "the hard reset didn't recurse");
-        // S3e: Discard all beside a dirty submodule.
+        // Discard all beside a dirty submodule.
         r.write("x", "x edited\n");
         send(&env.api, json!({"method": "discard", "params": {"repo": id, "worktree": wt(&r), "scope": {"kind": "all"}}})).await.unwrap();
         assert_eq!(read(&r, "x"), "x\n");

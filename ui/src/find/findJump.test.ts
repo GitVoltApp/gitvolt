@@ -30,7 +30,7 @@ beforeEach(async () => {
   await setFindQuery('t', 'x', 0);
 });
 
-describe('find jumps on a 40k-row graph (K40)', () => {
+describe('find jumps on a 40k-row graph', () => {
   it('next/prev never scan the rows or the matches, and wrap around', () => {
     const rows = tabStore('t')!.getState().graph.rows;
     const spies = [vi.spyOn(rows, 'findIndex'), vi.spyOn(rows, 'indexOf'), vi.spyOn(rows, 'filter'), vi.spyOn(state().matches, 'indexOf'), vi.spyOn(state().matches, 'findIndex')];

@@ -1,4 +1,4 @@
-//! Stage or unstage hunks and lines of one file (spec #2 §7.3): `git apply --cached --recount`
+//! Stage or unstage hunks and lines of one file: `git apply --cached --recount`
 //! of the patch builder's output, after the base check under the lock.
 
 use crate::api::{blocking, Api};
@@ -75,7 +75,7 @@ impl WriteIntent for StagePatch {
         Staging::Step
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {
-        // §7.3 step 1: under the lock, the diff again; a base that moved is Stale.
+        // Under the lock, the diff again; a base that moved is Stale.
         let diff = checked_diff(cx.api, cx.root, &self.path, self.staged, &self.base).await?;
         let patch = partial_patch(&diff, &self.selection, dir(self.staged)).ok_or_else(|| {
             let parsed = parse(&diff);
@@ -107,8 +107,7 @@ pub(crate) async fn stage_patch(api: &Api, repo: u32, worktree: &str, path: Stri
     run_write(api, repo, worktree, Expect::default(), StagePatch { path, staged, selection, base, what }).await
 }
 
-// --- 2B T10 ---
-/// The line bar's counts (spec #2 §7.3): the changed lines a selection stages (or unstages, when
+/// The line bar's counts: the changed lines a selection stages (or unstages, when
 /// `staged`) and the ones a discard takes, each after the no-newline tie in its own direction.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
@@ -122,7 +121,6 @@ pub(crate) async fn selection_lines(cli: &crate::git::GitCli, root: &std::path::
     let diff = wip_diff(cli, root, path, staged).await?.map_err(refused)?;
     Ok(SelectionLines { apply: selected_lines(&diff, selection, dir(staged)).1, discard: selected_lines(&diff, selection, Dir::Reverse).1 })
 }
-// --- end 2B T10 ---
 
 #[cfg(test)]
 mod tests {
@@ -160,7 +158,7 @@ mod tests {
         out.stdout
     }
 
-    /// The label (§7.6): 2B T2 reports it as `staging.undo`; here it's the intent's own.
+    /// The label: the pipeline reports it as `staging.undo`; here it's the intent's own.
     #[test]
     fn labels_name_the_side_the_count_and_the_file() {
         let sel = crate::write::patch::StageSelection::Hunks { hunks: vec![1] };
@@ -196,7 +194,7 @@ mod tests {
         assert!(!index.contains("L20 changed"), "{index}");
     }
 
-    /// 2B T10: the line bar's counts come from the same code the write uses.
+    /// The line bar's counts come from the same code the write uses.
     #[tokio::test]
     async fn selection_lines_counts_what_a_write_would_take() {
         let r = file_repo();
@@ -403,7 +401,7 @@ mod tests {
         let id = open(&api, &r).await;
         patch(&api, id, &r, "e.txt", false, json!({ "kind": "lines", "old": [], "new": [{ "start": 2, "end": 2 }] })).await.unwrap();
         assert_eq!(r.git(&["diff", "--cached", "--stat"]).lines().count(), 2, "{}", r.git(&["diff", "--cached"]));
-        assert_eq!(r.git(&["diff"]), "", "the -b/+c pair was staged together (Deviation 13)");
+        assert_eq!(r.git(&["diff"]), "", "the -b/+c pair was staged together");
     }
 
     /// Lines appended to a file without a final newline: staging only the last keeps the line
@@ -420,7 +418,7 @@ mod tests {
         let id = open(&api, &r).await;
         let res = patch(&api, id, &r, "e.txt", false, json!({ "kind": "lines", "old": [], "new": [{ "start": 4, "end": 4 }] })).await.unwrap();
         assert_eq!(index_bytes(&r, "e.txt"), b"a\nb\nd\n");
-        // Review m1: the label counts what the tie really staged ("-b", "+b", "+d").
+        // The label counts what the tie really staged ("-b", "+b", "+d").
         assert_eq!(res["staging"]["undo"], "stage 3 lines in e.txt");
         // Unstaging the "-b" side alone takes the lines after it with it: back to HEAD.
         let res = patch(&api, id, &r, "e.txt", true, json!({ "kind": "lines", "old": [{ "start": 2, "end": 2 }], "new": [] })).await.unwrap();
@@ -434,7 +432,7 @@ mod tests {
         r.git(&["ls-files", "-s", "--", path]).split(' ').next().unwrap_or_default().to_string()
     }
 
-    /// Review I1: a mode change is the file's, never a hunk's. Staging one hunk leaves a pending
+    /// A mode change is the file's, never a hunk's. Staging one hunk leaves a pending
     /// `chmod +x` unstaged; unstaging one leaves a staged mode staged.
     #[cfg(unix)] // permission bits (Windows has none; git keeps the executable bit in the index)
     #[tokio::test]
@@ -467,7 +465,7 @@ mod tests {
         assert_eq!((err.kind, err.message.as_str()), (crate::error::GbErrorKind::InvalidInput, "Only the file's mode changed: stage the whole file"));
     }
 
-    /// Review I2's repro: `path=d` must never stage d/b's hunk into d/a.
+    /// Repro: `path=d` must never stage d/b's hunk into d/a.
     #[tokio::test]
     async fn a_folder_path_stages_nothing() {
         let data = tempfile::tempdir().unwrap();
@@ -485,7 +483,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--cached"]), "");
     }
 
-    /// Review I3's repro: a `-` line of a retargeted symlink would stage an empty target.
+    /// Repro: a `-` line of a retargeted symlink would stage an empty target.
     #[cfg(unix)] // symlinks (Windows: privileges, and core.symlinks=false there)
     #[tokio::test]
     async fn a_symlink_line_selection_is_refused() {
@@ -503,7 +501,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--cached"]), "");
     }
 
-    /// Review m3: a binary file names why.
+    /// A binary file names why.
     #[tokio::test]
     async fn a_binary_file_is_refused_by_name() {
         let data = tempfile::tempdir().unwrap();
@@ -543,7 +541,7 @@ mod tests {
         assert_eq!(r.git(&["diff", "--cached"]), "");
     }
 
-    /// UX report: staging the only hunk of `basic`'s file_1.txt moves it to Staged and out of
+    /// Staging the only hunk of `basic`'s file_1.txt moves it to Staged and out of
     /// Unstaged, in the write's own lists and in a fresh read.
     #[tokio::test]
     async fn staging_the_only_hunk_leaves_nothing_unstaged() {

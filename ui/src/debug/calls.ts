@@ -1,4 +1,4 @@
-/** One backend call as the transport saw it (the perf overlay's list, spec §16.2). */
+/** One backend call as the transport saw it (the perf overlay's list). */
 export interface CallSample { method: string; ms: number; ok: boolean; at: number }
 export const CALL_CAPACITY = 50;
 

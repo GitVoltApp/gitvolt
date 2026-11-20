@@ -1,5 +1,5 @@
 /**
- * The tab bar feature (ruling R10): the `header` app slot (the tab bar itself) and the `overlay`
+ * The tab bar feature: the `header` app slot (the tab bar itself) and the `overlay`
  * slot's About dialog (the profile dialog renders from `ProfileSwitcher` directly, since it's
  * always mounted alongside it). Importing this module is what registers the tab context menu
  * (`tabMenu.ts`, imported for its side effect through `TabBar.tsx`).

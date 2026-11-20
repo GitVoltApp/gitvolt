@@ -6,7 +6,7 @@ import type { Request } from './gen/Request';
 export type EventHandler = (ev: AppEvent) => void;
 export interface Transport {
   call(req: Request): Promise<unknown>;
-  /** Backend events (spec §4.3). Returns an unsubscribe function. */
+  /** Backend events. Returns an unsubscribe function. */
   subscribe(h: EventHandler): () => void;
 }
 
@@ -127,7 +127,7 @@ export function createTransport(onClosed?: () => void): Transport {
 }
 
 /**
- * Puts `text` on the system clipboard. The browser's own clipboard first, in the app too (H19):
+ * Puts `text` on the system clipboard. The browser's own clipboard first, in the app too:
  * it's the path the embedded browser's right-click -> Copy takes, which reaches other apps in the
  * real window. The app's clipboard plugin (arboard, an X11 client of its own) only when the
  * browser refuses (no user activation, the window not focused).

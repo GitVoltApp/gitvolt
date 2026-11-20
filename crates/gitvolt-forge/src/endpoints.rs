@@ -1,5 +1,5 @@
-//! Where an account's API, web pages and avatars are (spec #4 §3.1). The harness replaces them
-//! per host with its fake forge's (`ForgeConfig.overrides`, T10).
+//! Where an account's API, web pages and avatars are. The harness replaces them
+//! per host with its fake forge's (`ForgeConfig.overrides`).
 
 use gitvolt_core::forge::ForgeKind;
 

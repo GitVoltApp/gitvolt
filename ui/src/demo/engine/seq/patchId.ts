@@ -6,7 +6,7 @@
 // space and a path included. Line numbers, hunk headers and boundaries, an unchanged file mode and
 // `\ No newline at end of file` don't count; a file's path, its creation or deletion and a mode
 // change do. A binary file (or a gitlink) counts by its blob ids. Where it can differ: hunks come
-// from 1b's line diff (no indent heuristic, and past its MAX_EDIT_LENGTH of 4,000 edits every
+// from the read engine's line diff (no indent heuristic, and past its MAX_EDIT_LENGTH of 4,000 edits every
 // remaining line counts as changed), so a slider may sit elsewhere than git's and change the context
 // lines; `.gitattributes` isn't read.
 import { blobId, isBinaryHead, latin1, utf8Bytes } from '../read/bytes';

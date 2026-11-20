@@ -1,5 +1,5 @@
-//! gix `Repository::state()` for one worktree, plus what the banner (§13.2) and the merge tool's
-//! labels (§13.3) need, read from that worktree's git dir. Read-only.
+//! gix `Repository::state()` for one worktree, plus what the banner and the merge tool's
+//! labels need, read from that worktree's git dir. Read-only.
 
 use crate::error::{gix_err, GbError};
 use serde::Serialize;
@@ -13,7 +13,7 @@ fn unmerged_paths(repo: &gix::Repository) -> u32 {
     paths.len() as u32
 }
 
-/// `\r\n` and `\r` become `\n` (§8.2).
+/// `\r\n` and `\r` become `\n`.
 fn normalise(s: &str) -> String {
     s.replace("\r\n", "\n").replace('\r', "\n")
 }
@@ -21,7 +21,7 @@ fn normalise(s: &str) -> String {
 /// The worktree's git dir is mid-merge, -rebase, -cherry-pick or -revert (or `am`), as `read`
 /// (gix) sees it: `sequencer/` alone doesn't count, since nothing here acts on it. A few stats,
 /// no repository open. Its WIP row shows even when it's clean, so the commit panel's Continue
-/// and Abort are always reachable (ux round 1).
+/// and Abort are always reachable.
 pub fn mid_operation(worktree: &Path) -> bool {
     let dot = worktree.join(".git");
     let git_dir = if dot.is_dir() {
@@ -34,11 +34,11 @@ pub fn mid_operation(worktree: &Path) -> bool {
     ["MERGE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD", "REVERT_HEAD"].iter().any(|n| git_dir.join(n).exists())
 }
 
-/// 3C fix round 2: GitVolt's interactive rebase marks its `rebase-merge/` (the session's
+/// GitVolt's interactive rebase marks its `rebase-merge/` (the session's
 /// directory in it), so the mark goes with git's own state when the rebase ends.
 pub(crate) const GITVOLT_MARKER: &str = "rebase-merge/gitvolt-irebase";
 
-/// 3C final fix: notes on one stop of GitVolt's interactive rebase, in git's `rebase-merge/` (so
+/// Notes on one stop of GitVolt's interactive rebase, in git's `rebase-merge/` (so
 /// they go with it). Each is `<the stop's done line>\n<text>`: a note of an earlier stop doesn't
 /// match the current one. `MESSAGE_APPLIED`: the stop's new message was handled (never twice,
 /// over a message the user typed since); `MESSAGE_FAILED`: it couldn't be applied, and why.
@@ -48,14 +48,14 @@ pub(crate) const MESSAGE_FAILED: &str = "rebase-merge/gitvolt-message-failed";
 /// `<oid>\n<message>`. The panel prefills it, and a Continue with a message typed there amends
 /// that commit (only while HEAD is still it).
 pub(crate) const REFUSED: &str = "rebase-merge/gitvolt-refused";
-/// UX L: this Edit stop is (being) soft-reset, "about to commit": an `EditStaged`, as JSON. It's
+/// This Edit stop is (being) soft-reset, "about to commit": an `EditStaged`, as JSON. It's
 /// written before the reset, so a note with HEAD still on `amend` is a reset that didn't happen.
 pub(crate) const EDIT_STAGED: &str = "rebase-merge/gitvolt-edit-staged";
-/// UX N: what git itself left at a stop it just made (its merge result staged, a conflicted file's
+/// What git itself left at a stop it just made (its merge result staged, a conflicted file's
 /// markers): JSON, path → content. An Abort doesn't keep what's still exactly that.
 pub(crate) const STOP_CONTENT: &str = "rebase-merge/gitvolt-stop-content";
 
-/// UX L: an `EDIT_STAGED` note.
+/// An `EDIT_STAGED` note.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub(crate) struct EditStaged {
     /// The stop's key (`last_done`).
@@ -89,7 +89,7 @@ pub(crate) fn write_edit_staged(git_dir: &Path, s: &EditStaged) -> std::io::Resu
     std::fs::write(git_dir.join(EDIT_STAGED), serde_json::to_vec(s).map_err(std::io::Error::other)?)
 }
 
-/// UX L: the index holds something other than the stop's commit (`amend`'s tree): changes made
+/// The index holds something other than the stop's commit (`amend`'s tree): changes made
 /// at the stop, or some of its own left out. Unreadable counts as changed.
 fn index_differs(repo: &gix::Repository, amend: &str) -> bool {
     let read = || -> Option<bool> {
@@ -153,7 +153,7 @@ pub fn read(root: &Path) -> Result<Option<InProgress>, GbError> {
             // An `edit` stop (`amend` names the commit git made): Continue keeps HEAD's message
             // (whether the user reworded it there or not), so that's the one to show.
             let edit_stop = if merge { f("amend") } else { None };
-            // UX L: GitVolt's Edit stop, soft-reset: the box starts with the note's message.
+            // GitVolt's Edit stop, soft-reset: the box starts with the note's message.
             // Only once HEAD left git's commit: a note with HEAD still on it is a reset that
             // didn't happen (git's own stop).
             // HEAD is read once, before the note: the stop's reset (`stage_edit_stop`) writes the
@@ -174,7 +174,7 @@ pub fn read(root: &Path) -> Result<Option<InProgress>, GbError> {
             let last = if merge { last_done(&git_dir) } else { None };
             let edit_conflict = edit_stop.is_none() && last.as_deref().is_some_and(|l| matches!(l.split_whitespace().next(), Some("edit" | "e")));
             let message_failed = last.as_deref().and_then(|at| stop_note(&git_dir, MESSAGE_FAILED, at));
-            // The refused message prefills the box (the 3C final ruling): retrying is one edit.
+            // The refused message prefills the box: retrying is one edit.
             let message = match message_failed.as_ref().and_then(|_| refused(&git_dir)) {
                 Some((_, refused)) => refused,
                 None => message,
@@ -294,7 +294,7 @@ mod tests {
         }
     }
 
-    /// UX L (the flaky e2e "flow 2b"): GitVolt's Edit stop moves HEAD off git's commit (the note
+    /// GitVolt's Edit stop moves HEAD off git's commit (the note
     /// first, then `reset --soft`) while the watcher may be reading the stop. A read that saw
     /// HEAD on git's commit, then took the message from HEAD again after the reset, showed the
     /// parent's message, and the box kept it for the whole stop. HEAD is read once.

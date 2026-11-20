@@ -1,5 +1,5 @@
 // Test-only: repositories for the read layer's unit tests, built with isomorphic-git on a MemFs and
-// opened with 1a's DemoRepo.open, as the demo opens a bundle's files.
+// opened with DemoRepo.open, as the demo opens a bundle's files.
 import { fixedClock, PARITY_MS } from '../clock';
 import * as git from 'isomorphic-git';
 import type { DemoContext } from '../../context';
@@ -115,7 +115,7 @@ export async function setIndex(t: TestRepo, entries: IndexEntry[], gitdir = t.re
   t.memfs.writeFileSync(`${gitdir}/index`, await serializeIndex(entries));
 }
 
-/** `git worktree add` at `/demo/.extra/<repo>/wt-<name>` (where 1a's packer puts a fixture's linked
+/** `git worktree add` at `/demo/.extra/<repo>/wt-<name>` (where the packer puts a fixture's linked
  *  worktree), by hand: the files, the index, and git's bookkeeping. */
 export async function addWorktree(t: TestRepo, name: string, branch: string): Promise<string> {
   const path = `/demo/.extra/${t.repo.name}/wt-${name}`;
@@ -157,7 +157,7 @@ export async function writeNested(t: TestRepo, path: string, name: string, files
 }
 
 /** A stash-shaped commit of the worktree (HEAD and the index as parents) on `refs/stash`, with the
- *  reflog line git writes (1a reads the stash list from it); the worktree is left as it is. */
+ *  reflog line git writes (the repo reads the stash list from it); the worktree is left as it is. */
 export async function stash(t: TestRepo, message: string): Promise<string> {
   const fs = t.memfs;
   const dir = t.dir;

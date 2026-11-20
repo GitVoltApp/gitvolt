@@ -5,16 +5,16 @@ import type { RebaseRowAction } from '../api/gen/RebaseRowAction';
 import { branchNameError } from '../branches/branchName';
 
 /**
- * The interactive rebase editor's state (spec #3 §4.1): rows newest first, as the graph shows
+ * The interactive rebase editor's state: rows newest first, as the graph shows
  * them, with their actions and edited messages; the branch chips; the selection; and the opening
- * plan, for Reset. Pure. Its rules are the core's `todo::build` rules (plan 3C T2), so what the
+ * plan, for Reset. Pure. Its rules are the core's `todo::build` rules, so what the
  * editor shows is what the rebase does.
  */
 export type RowAction = RebaseRowAction;
 export const ACTIONS: readonly RowAction[] = ['pick', 'reword', 'squash', 'fixup', 'drop', 'edit'];
 export const ACTION_KEYS: Readonly<Record<string, RowAction>> = { p: 'pick', r: 'reword', s: 'squash', f: 'fixup', d: 'drop', e: 'edit' };
 export const ACTION_LABEL: Readonly<Record<RowAction, string>> = { pick: 'Pick', reword: 'Reword', squash: 'Squash', fixup: 'Fixup', drop: 'Drop', edit: 'Edit' };
-/** UX4 Q.2: each action's explanation, on the closed dropdown and on its row in the open list. */
+/** Each action's explanation, on the closed dropdown and on its row in the open list. */
 export const ACTION_TIP: Readonly<Record<RowAction, string>> = {
   pick: 'Keep this commit as is.',
   reword: 'Keep the changes, edit the message.',
@@ -127,7 +127,7 @@ export function grouping(rows: readonly EditorRow[]): Grouping {
   return { into, folded };
 }
 
-/** The core's `merged` (plan 3C T2): non-empty messages, trimmed, blank-line separated, `\n` at the end. */
+/** The core's `merged`: non-empty messages, trimmed, blank-line separated, `\n` at the end. */
 export function mergedMessage(messages: readonly string[]): string {
   return `${messages.map(norm).filter(Boolean).join('\n\n')}\n`;
 }
@@ -156,7 +156,7 @@ export function chipRow(s: EditorState, at: string, g: Grouping = grouping(s.row
   return s.base.oid;
 }
 
-/** The rebased branch's row (spec #3 §2): the effective top. `null`: every row dropped. */
+/** The rebased branch's row: the effective top. `null`: every row dropped. */
 export function rebasedRow(s: EditorState, g: Grouping = grouping(s.rows)): string | null {
   const top = s.rows.find((r) => r.action !== 'drop');
   return top ? g.into.get(top.oid) ?? top.oid : null;
@@ -219,7 +219,7 @@ export function moveRow(s: EditorState, from: number, to: number): EditorState {
   return withRows(s, rows);
 }
 
-/** A group drag (UX2 E.3): the rows `oids`, in their order, land together at slot `to` of the
+/** A group drag: the rows `oids`, in their order, land together at slot `to` of the
  * rows left without them (0: the top); a scattered selection closes up. */
 export function moveRows(s: EditorState, oids: readonly string[], to: number): EditorState {
   const set = new Set(oids);
@@ -299,7 +299,7 @@ export const dirty = (s: EditorState): boolean => shape(s.rows, s.chips) !== sha
 export const samePlan = (a: { rows: readonly EditorRow[]; chips: readonly EditorChip[] }, b: { rows: readonly EditorRow[]; chips: readonly EditorChip[] }): boolean =>
   (a.rows === b.rows && a.chips === b.chips) || shape(a.rows, a.chips) === shape(b.rows, b.chips);
 
-/** What keeps Start disabled, first one shown (the core refuses the same, plan 3C T2). */
+/** What keeps Start disabled, first one shown (the core refuses the same). */
 export function problems(s: EditorState, g: Grouping = grouping(s.rows)): string[] {
   const out: string[] = [];
   if (s.rows.every((r) => r.action === 'drop')) out.push('Every commit is dropped: keep at least one, or cancel the rebase');
@@ -331,7 +331,7 @@ export function toRequest(s: EditorState): { rows: RebaseRow[]; chips: ChipPlan[
 }
 
 /**
- * "Reload" after RefMoved (spec #3 §5): the new plan, keeping what it can of `old`.
+ * "Reload" after RefMoved: the new plan, keeping what it can of `old`.
  * - Each commit still there keeps its action and message.
  * - The commits of both keep `old`'s order among themselves; new ones stay where the plan has them.
  * - Chips keep their moves and deletes, and added ones stay, where their rows still exist.

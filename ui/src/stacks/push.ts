@@ -17,7 +17,7 @@ import { joinNames } from './text';
 import { notifyBranchPushed } from '../forge/usePolling';
 
 export interface PushStep { name: string; result: 'pushed' | 'forced' | 'published' | 'upToDate' }
-export interface StackPushReport { steps: PushStep[]; failed: { name: string; error: GbError } | null; rest: string[]; remote: string; /** The servers' warnings, as pushed (4D's after-merge toast keeps them). */ warnings: string[] }
+export interface StackPushReport { steps: PushStep[]; failed: { name: string; error: GbError } | null; rest: string[]; remote: string; /** The servers' warnings, as pushed (the after-merge toast keeps them). */ warnings: string[] }
 
 /** The one toast for a Push stack: which pushed, how, and where it stopped. */
 export function pushSummary(r: StackPushReport): { message: string; detail?: string; error: boolean } {
@@ -43,10 +43,10 @@ export function publishRemote(tabId: string, base: string): string {
 }
 
 /**
- * Push stack (spec #3 §3.11): #2's Push for each member, bottom first. The core's push decision
+ * Push stack: #2's Push for each member, bottom first. The core's push decision
  * applies per branch: a live rewrite mark forces with its recorded lease; a member with no push
  * target is published and tracked. Members with nothing to push are skipped. The first failure
- * stops the sequence, and one toast says which pushed and which didn't. Resolves the report (4D chains on it).
+ * stops the sequence, and one toast says which pushed and which didn't. Resolves the report (the after-merge flow chains on it).
  */
 export async function pushStack(ctx: WriteCtx, stack: Stack): Promise<StackPushReport> {
   const origin = currentOrigin();
@@ -77,7 +77,7 @@ export async function pushStack(ctx: WriteCtx, stack: Stack): Promise<StackPushR
   const actions: ToastAction[] = [];
   if (failed && failed.error.kind !== 'Cancelled') {
     const b = branchOf(ctx.tabId, failed.name);
-    // The single-branch push, with its own Pull / Force push choice (spec #2 §12.3).
+    // The single-branch push, with its own Pull / Force push choice.
     if (b && (failed.error.kind === 'NonFastForward' || failed.error.kind === 'RefMoved')) actions.push({ label: `Push ${failed.name}…`, run: () => { void pushBranch(ctx, b); } });
     if (failed.error.commandId !== null) actions.push({ label: 'Details', run: () => openDebug('commands', failed.error.commandId) });
   }
@@ -87,9 +87,9 @@ export async function pushStack(ctx: WriteCtx, stack: Stack): Promise<StackPushR
 }
 
 /**
- * "Push stack" on a stack member's chip (spec #3 §4.3), in the Sync group after Push. Shown when
+ * "Push stack" on a stack member's chip, in the Sync group after Push. Shown when
  * the branch is stacked, the repository has a remote and a member has something to push. Greyed
- * while a member is checked out in another worktree (§5: stack pushes never act on those).
+ * while a member is checked out in another worktree (stack pushes never act on those).
  */
 export function pushStackRow(t: CommitTarget, env: Pick<MenuEnv, 'stackOf' | 'sidebar' | 'worktreeShown'> & Partial<Pick<MenuEnv, 'inProgress'>>, run: (s: Stack) => void): MenuRow[] {
   const name = t.branch?.local?.replace(/^refs\/heads\//, '');

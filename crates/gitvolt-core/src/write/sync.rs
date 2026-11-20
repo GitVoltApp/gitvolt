@@ -1,5 +1,5 @@
-//! Push (spec #2 §12.3) and pull (§12.2). The push transfer holds only the queue's running slot
-//! (§3.5): `WriteCx::network` drops the write lock around `git push`. Pull's fetch runs before
+//! Push and pull. The push transfer holds only the queue's running slot:
+//! `WriteCx::network` drops the write lock around `git push`. Pull's fetch runs before
 //! the lock (`transfer_first`), so it never runs with an autostash out.
 
 use crate::api::Api;
@@ -12,7 +12,7 @@ use crate::write::{run_write, WriteCx, WriteIntent};
 use gix::bstr::ByteSlice;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-// --- 2D T14: pull ---
+// --- pull ---
 use crate::journal::autostash::{AutostashRule, AutostashSpec};
 use crate::journal::{PausedKind, RefMove};
 use crate::write::integrate::{self, BranchLabel, IntegrateOutcome};
@@ -21,7 +21,6 @@ use crate::write::refs::read_ref;
 use crate::write::types::Confirm;
 use crate::write::{NetCx, Plan, Pre};
 use std::sync::{Mutex, OnceLock};
-// --- end 2D T14 ---
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +31,7 @@ pub struct PushTarget {
 }
 
 /// A force push's lease: the remote-tracking oid the user saw (`None`: it must not exist). Never
-/// carried forward by the queue (§3.6).
+/// carried forward by the queue.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -52,7 +51,7 @@ pub struct PushOutcome {
     pub dst: String,
     pub up_to_date: bool,
     pub server: RemoteSummary,
-    /// It force-pushed with a rewrite mark's lease, without asking (§12.3): what rewrote it.
+    /// It force-pushed with a rewrite mark's lease, without asking: what rewrote it.
     pub forced: Option<crate::write::rewrites::RewriteKind>,
 }
 
@@ -60,7 +59,7 @@ fn config(repo: &gix::Repository, key: &str) -> Option<String> {
     repo.config_snapshot().string(key).map(|v| v.to_string()).filter(|v| !v.is_empty())
 }
 
-/// §12.3: with `branch.<b>.pushRemote` or `remote.pushDefault`, that remote and the same branch
+/// With `branch.<b>.pushRemote` or `remote.pushDefault`, that remote and the same branch
 /// name (git's triangular setup); else the upstream; else the branch a remote has by the same
 /// name (`implied_target`); else none.
 pub(crate) fn push_target(repo: &gix::Repository, branch: &str) -> Option<PushTarget> {
@@ -92,13 +91,13 @@ fn implied_target(repo: &gix::Repository, branch: &str) -> Option<PushTarget> {
 
 pub(crate) struct PushIntent {
     pub branch: String,
-    /// The no-upstream dialog's choice; `None`: resolve when it runs (§3.6).
+    /// The no-upstream dialog's choice; `None`: resolve when it runs.
     pub target: Option<PushTarget>,
     pub set_upstream: bool,
     pub lease: Option<Lease>,
     /// For the label: the target as resolved at the click.
     pub shown: Option<PushTarget>,
-    /// The worktree, so `refs()` resolves the target at run time, under the lock (§3.6).
+    /// The worktree, so `refs()` resolves the target at run time, under the lock.
     pub root: std::path::PathBuf,
 }
 
@@ -133,7 +132,7 @@ impl WriteIntent for PushIntent {
         let (target, mark) = crate::api::blocking(move || {
             let repo = gix::open(&root).map_err(gix_err)?;
             let Some(target) = given.map(|t| (t, false)).or_else(|| resolve_push_target(&repo, &branch)) else { return Ok((None, None)) };
-            // §12.3: a branch GitVolt rewrote since its last push forces with the lease recorded
+            // A branch GitVolt rewrote since its last push forces with the lease recorded
             // then, when a plain push would be rejected. An explicit force keeps its own lease.
             let mark = if explicit { None } else { crate::write::rewrites::lease_for(&data, &common, &repo, &branch, &target.0)? };
             Ok::<_, GbError>((Some(target), mark))
@@ -146,11 +145,10 @@ impl WriteIntent for PushIntent {
         if set_upstream {
             args.push("-u".into());
         }
-        // --- 3B T4: "Push tags with branches" (spec #3 §3.9) ---
+        // --- "Push tags with branches" ---
         if cx.api.store.state().settings.push_follow_tags {
             args.push("--follow-tags".into());
         }
-        // --- end 3B T4 ---
         if let Some(lease) = &self.lease {
             args.push(format!("--force-with-lease=refs/heads/{}:{}", target.branch, lease.oid.clone().unwrap_or_default()));
         }
@@ -169,7 +167,7 @@ impl WriteIntent for PushIntent {
         args.push(format!("{src}:refs/heads/{}", target.branch));
         cx.note_remote(&target.remote, gix::remote::Direction::Push);
         let inv = cx.net_git(args);
-        // §3.5: the transfer runs outside the write lock; `network` also captures server output.
+        // The transfer runs outside the write lock; `network` also captures server output.
         let res = cx.network(inv).await;
         cx.touch(ChangeKind::Refs);
         if set_upstream {
@@ -183,7 +181,7 @@ impl WriteIntent for PushIntent {
             if mark.is_some() && e.kind == GbErrorKind::RefMoved && stale {
                 e.kind = GbErrorKind::NonFastForward;
             }
-            // The spec's words for a rejected non-fast-forward push (§12.3).
+            // The words for a rejected non-fast-forward push.
             if e.kind == GbErrorKind::NonFastForward {
                 e.message = format!("{}/{} has commits {} doesn't have", target.remote, target.branch, self.branch);
             }
@@ -210,7 +208,7 @@ pub(crate) async fn push(api: &Api, repo: u32, worktree: &str, branch: String, t
     run_write(api, repo, worktree, expect, PushIntent { branch, target, set_upstream, lease, shown, root: wroot }).await
 }
 
-// --- 2D T14: pull ---
+// --- pull ---
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -229,12 +227,12 @@ pub enum PullResult {
     FastForward { commits: u32 },
     Merged { commits: u32 },
     Rebased { commits: u32 },
-    /// FfOnly only: the diverged dialog (§12.2). `conflicts`: a merge's predicted count.
+    /// FfOnly only: the diverged dialog. `conflicts`: a merge's predicted count.
     Diverged { ahead: u32, behind: u32, conflicts: u32 },
     Stopped {
         kind: PausedKind,
         files: u32,
-        /// UX F: a stop with no conflict: why git stopped (the signer, a hook).
+        /// A stop with no conflict: why git stopped (the signer, a hook).
         #[serde(skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         warning: Option<String>,
@@ -257,7 +255,7 @@ pub struct PullOutcome {
 /// What `plan` found under the lock, after the fetch, for `run`.
 #[derive(Debug, Clone, Copy)]
 struct PullPlan {
-    /// The branch is HEAD's when the op runs (§3.6: a queued checkout ahead may change that).
+    /// The branch is HEAD's when the op runs (a queued checkout ahead may change that).
     checked_out: bool,
     local: gix::ObjectId,
     upstream: gix::ObjectId,
@@ -277,7 +275,7 @@ pub(crate) struct PullIntent {
     /// At the click: the branch was HEAD's (the undo kind until `plan` settles it).
     pub checked_out: bool,
     planned: OnceLock<PullPlan>,
-    /// The diverged Rebase: T9's engine (`--fork-point`, the lossy-merge refusal, stacks).
+    /// The diverged Rebase: the rebase intent's engine (`--fork-point`, the lossy-merge refusal, stacks).
     rebase: RebaseIntent,
     server: Mutex<RemoteSummary>,
 }
@@ -310,7 +308,7 @@ async fn checked_out_elsewhere(root: &std::path::Path, branch: &str) -> Result<O
         .map(|w| w.path))
 }
 
-/// Deviation 13: a branch that isn't checked out only fast-forwards.
+/// A branch that isn't checked out only fast-forwards.
 fn check_out_first(branch: &str) -> GbError {
     GbError::new(GbErrorKind::InvalidInput, format!("Check out {branch} first"))
 }
@@ -335,7 +333,7 @@ impl WriteIntent for PullIntent {
         true
     }
     fn traces_hooks(&self) -> bool {
-        // As T9's rebase (review P1): a rebase writes no trace2 events.
+        // As in the rebase intent: a rebase writes no trace2 events.
         self.mode != PullMode::Rebase
     }
     fn refs(&self) -> Vec<String> {
@@ -346,11 +344,11 @@ impl WriteIntent for PullIntent {
     fn confirm(&self) -> Confirm {
         self.confirm
     }
-    /// 1. Fetch the upstream's remote only (§12.2), holding only the queue slot: it runs before
+    /// 1. Fetch the upstream's remote only, holding only the queue slot: it runs before
     ///    the lock, so never with an autostash out.
     ///    Its progress is `opProgress`, as a fetch's. When it moved refs, every tab of the repo
     ///    hears `refsUpdated` now: the write's own announce lists only the local refs it moved, and
-    ///    its watcher absorb takes the fetched refs as the new baseline (review I1).
+    ///    its watcher absorb takes the fetched refs as the new baseline.
     async fn transfer_first(&self, net: &mut NetCx<'_>) -> Result<(), GbError> {
         let before = crate::netops::ref_state_async(net.h.repo.clone()).await?;
         let prune = if net.api.store.state().settings.prune { "--prune" } else { "--no-prune" };
@@ -372,7 +370,7 @@ impl WriteIntent for PullIntent {
         // A cancelled credential prompt is a Cancel, as for a fetch.
         res.map(|_| ()).map_err(|e| crate::netops::user_cancelled(e, net.op))
     }
-    /// 2. The relation (gix, under the lock), then §6.1's autostash: a fast-forward only on
+    /// 2. The relation (gix, under the lock), then the autostash: a fast-forward only on
     ///    overlap; a merge or rebase on any tracked change; up to date, or diverged and FfOnly,
     ///    none.
     async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
@@ -399,13 +397,11 @@ impl WriteIntent for PullIntent {
         if !checked_out || behind == 0 {
             return Ok(Plan::default());
         }
-        // --- 2C repo-safety ---
         // Each way the pull moves the worktree (the fast-forward, the merge's checkout, the
         // rebase's checkout of the upstream) is a two-way move that deletes a populated submodule
-        // or an embedded clone whole where it writes a file (safety review 2 N2): refused first;
-        // the check also says what the move sweeps away (M1, M2), carried by the rule.
+        // or an embedded clone whole where it writes a file: refused first;
+        // the check also says what the move sweeps away, carried by the rule.
         use crate::write::precheck::{refuse_repos_in_the_way, refuse_repos_in_the_way_of_merge};
-        // --- end 2C repo-safety ---
         match (ahead, self.mode) {
             (0, _) => {
                 let rule = refuse_repos_in_the_way(&pre.api.cli, pre.root, local, upstream, "pull").await?.into_rule(AutostashRule::Overlap);
@@ -419,7 +415,7 @@ impl WriteIntent for PullIntent {
                 Ok(Plan { autostash: Some(self.autostash(rule, upstream)), ..Plan::default() })
             }
             (_, PullMode::Rebase) => {
-                // T9's checks (the lossy-merge refusal, `--rebase-merges`, the repository in the
+                // The rebase intent's checks (the lossy-merge refusal, `--rebase-merges`, the repository in the
                 // way of the upstream's checkout), with pull's stash.
                 let mut plan = self.rebase.plan(pre).await?;
                 let rule = refuse_repos_in_the_way(&pre.api.cli, pre.root, local, upstream, "pull").await?.into_rule(AutostashRule::Rebased);
@@ -428,12 +424,12 @@ impl WriteIntent for PullIntent {
             }
         }
     }
-    /// 3. The integrate step, by §12.2's table.
+    /// 3. The integrate step, by the mode and the relation.
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<PullOutcome, GbError> {
         let PullPlan { checked_out, local, upstream, ahead, behind } = *self.planned.get().ok_or_else(|| GbError::new(GbErrorKind::Other, "pull ran without its plan"))?;
         let result = match (ahead, behind) {
             (_, 0) => PullResult::UpToDate { ahead },
-            // Deviation 13: the Sync row on a branch that isn't checked out: a CAS.
+            // The Sync row on a branch that isn't checked out: a CAS.
             (0, _) if !checked_out => {
                 let msg = format!("pull {}: Fast-forward", self.upstream);
                 cx.cas(&[RefMove { name: self.local(), old: Some(local.to_string()), new: Some(upstream.to_string()) }], &msg).await?;
@@ -479,8 +475,8 @@ impl WriteIntent for PullIntent {
     }
 }
 
-/// Pull (§12.2): `branch` (default HEAD's) from its upstream. Refused before anything runs when
-/// there is none, and (Deviation 13) when a branch that isn't checked out would need more than a
+/// Pull: `branch` (default HEAD's) from its upstream. Refused before anything runs when
+/// there is none, and when a branch that isn't checked out would need more than a
 /// fast-forward, or is checked out in another worktree.
 pub(crate) async fn pull(api: &Api, repo: u32, worktree: &str, branch: Option<String>, mode: PullMode, expect: Expect, confirm: Confirm) -> Result<WriteResult<PullOutcome>, GbError> {
     let h = api.handle(repo)?;
@@ -488,7 +484,7 @@ pub(crate) async fn pull(api: &Api, repo: u32, worktree: &str, branch: Option<St
     let r = root.clone();
     let (head, branch, upstream) = crate::api::blocking(move || {
         let g = gix::open(&r).map_err(gix_err)?;
-        // Review M2: preflight refuses this too, but only after the fetch (a network round trip,
+        // Preflight refuses this too, but only after the fetch (a network round trip,
         // perhaps a credential prompt).
         if let Some(what) = g.state().and_then(crate::write::in_progress_name) {
             return Err(GbError::in_progress(what));
@@ -513,7 +509,6 @@ pub(crate) async fn pull(api: &Api, repo: u32, worktree: &str, branch: Option<St
     let short = merge.strip_prefix("refs/heads/").unwrap_or(&merge).to_string();
     run_write(api, repo, worktree, expect, PullIntent::new(branch, mode, remote, &short, confirm, checked_out)).await
 }
-// --- end 2D T14 ---
 
 #[cfg(test)]
 mod tests {
@@ -543,7 +538,7 @@ mod tests {
         Request::Push { repo: id, worktree: wt(r.path()), branch: branch.into(), target: None, set_upstream: None, lease: None, expect: Default::default() }
     }
 
-    /// §12.3, §12.4: the push reaches its upstream; the server's lines are counted; it's a
+    /// The push reaches its upstream; the server's lines are counted; it's a
     /// barrier ("Push can't be undone").
     #[tokio::test]
     async fn a_push_reaches_its_upstream_with_server_output_and_is_a_barrier() {
@@ -560,7 +555,7 @@ mod tests {
         assert_eq!(res["journal"]["undoBlocked"], "Push can't be undone");
     }
 
-    /// 2C final I4: the worktree writes' `submodule.recurse=false` pin stays off the push, so
+    /// The worktree writes' `submodule.recurse=false` pin stays off the push, so
     /// the user's `push.recurseSubmodules=check` still refuses a push whose submodule commit
     /// isn't on any of the submodule's remotes, as plain `git push` does.
     #[tokio::test]
@@ -614,7 +609,7 @@ mod tests {
         assert_eq!((err.kind, err.message.as_str()), (GbErrorKind::InvalidInput, "feature/new has no upstream; set one from Push ▾"));
     }
 
-    /// §12.3 triangular: `remote.pushDefault` names the remote; the branch keeps its name.
+    /// Triangular: `remote.pushDefault` names the remote; the branch keeps its name.
     #[test]
     fn the_target_follows_push_remote_settings() {
         let r = TestRepo::new();
@@ -630,7 +625,7 @@ mod tests {
         assert_eq!(push_target(&gix::open(r.path()).unwrap(), "dev"), Some(PushTarget { remote: "mine".into(), branch: "dev".into() }));
     }
 
-    /// §12.3, §17.1 ref safety: behind → NonFastForward; a force with the lease shown works; one
+    /// Ref safety: behind → NonFastForward; a force with the lease shown works; one
     /// whose lease went stale (someone pushed since) is RefMoved, and the remote is untouched.
     #[tokio::test]
     async fn force_with_lease_uses_the_oid_shown() {
@@ -680,7 +675,7 @@ mod tests {
         assert_eq!(err.kind, GbErrorKind::HookFailed);
     }
 
-    /// §3.5 with a real push: a discard runs while the push waits in its `pre-push` hook.
+    /// With a real push: a discard runs while the push waits in its `pre-push` hook.
     #[tokio::test]
     async fn a_discard_runs_during_a_push() {
         let r = TestRepo::new();
@@ -702,7 +697,7 @@ mod tests {
         assert_eq!(r.git(&["rev-parse", "origin/dev"]), r.git(&["rev-parse", "dev"]));
     }
 
-    // --- ux round 2: rewrite marks (§12.3) ---
+    // --- rewrite marks ---
     /// `dev` (pushed, tracking origin/dev) rebased in GitVolt onto a new local `main` commit.
     async fn rebased_dev() -> (TestRepo, Api, tempfile::TempDir, u32, String) {
         let r = TestRepo::new();
@@ -781,7 +776,7 @@ mod tests {
         assert_eq!(origin(&r, "dev"), r.git(&["rev-parse", "dev"]));
     }
 
-    /// Review round 1 (a): a reset never forces silently, so the confirmation shows what it loses.
+    /// A reset never forces silently, so the confirmation shows what it loses.
     #[tokio::test]
     async fn a_reset_of_a_pushed_branch_records_no_mark() {
         let r = TestRepo::new();
@@ -797,7 +792,7 @@ mod tests {
         assert_eq!(origin(&r, "dev"), pushed);
     }
 
-    /// Review round 1 (b): a rebase that replaces a colleague's commit asks as today.
+    /// A rebase that replaces a colleague's commit asks as today.
     #[tokio::test]
     async fn a_rebase_over_a_colleagues_commit_records_no_mark() {
         let r = TestRepo::new();
@@ -817,7 +812,7 @@ mod tests {
         assert_eq!(api.dispatch(push(id, &r, "shared")).await.unwrap_err().kind, GbErrorKind::NonFastForward);
     }
 
-    /// Review round 1 (c): the remote's default branch never force-pushes silently, own commits
+    /// The remote's default branch never force-pushes silently, own commits
     /// or not; with no `refs/remotes/<r>/HEAD`, main, master and trunk count as default.
     #[tokio::test]
     async fn a_rebase_of_the_default_branch_records_no_mark() {
@@ -844,7 +839,7 @@ mod tests {
         assert!(crate::write::rewrites::is_default_branch(&repo, "origin", "trunk") && !crate::write::rewrites::is_default_branch(&repo, "origin", "side"));
     }
 
-    /// Review round 1 (low 3): after a fetch moved the remote-tracking ref off the lease, the
+    /// After a fetch moved the remote-tracking ref off the lease, the
     /// sidebar doesn't promise a force (the push would be refused).
     #[tokio::test]
     async fn the_sidebar_drops_the_promise_when_the_tracking_ref_left_the_lease() {
@@ -854,7 +849,7 @@ mod tests {
         assert_eq!(rewritten(&api, id, "dev").await, serde_json::Value::Null);
     }
 
-    /// Review round 1 (low 5): a mark the sidebar sees dead is dropped, so it can't come back.
+    /// A mark the sidebar sees dead is dropped, so it can't come back.
     #[tokio::test]
     async fn a_dead_mark_doesnt_come_back() {
         let (r, api, data, id, _) = rebased_dev().await;
@@ -921,14 +916,13 @@ mod tests {
         assert_ne!(r.git(&["rev-parse", "diverged"]), before, "it was rebased");
         assert_eq!(rewritten(&api, id, "diverged").await, serde_json::Value::Null);
     }
-    // --- end ux round 2 ---
 
-    // --- 2D T14: pull ---
+    // --- pull ---
     fn pull(id: u32, r: &TestRepo, branch: Option<&str>, mode: PullMode) -> Request {
         Request::Pull { repo: id, worktree: wt(r.path()), branch: branch.map(str::to_string), mode, expect: Default::default(), confirm: Default::default() }
     }
 
-    /// §12.2: fast-forward; undo rewinds main and keeps the fetched origin/main.
+    /// Fast-forward; undo rewinds main and keeps the fetched origin/main.
     #[tokio::test]
     async fn a_fast_forward_pull_and_its_undo() {
         let r = TestRepo::new();
@@ -947,7 +941,7 @@ mod tests {
         assert_ne!(r.git(&["rev-parse", "origin/main"]), before, "the fetched remote branch stays");
     }
 
-    /// §12.2's table, diverged: FfOnly asks (nothing changes locally); FfOrMerge merges;
+    /// Diverged: FfOnly asks (nothing changes locally); FfOrMerge merges;
     /// Rebase rebases (`--fork-point`).
     #[tokio::test]
     async fn a_diverged_pull_by_mode() {
@@ -991,7 +985,7 @@ mod tests {
         assert_eq!(api.dispatch(pull(id, &r, None, PullMode::FfOnly)).await.unwrap()["outcome"]["result"], serde_json::json!({"status": "upToDate", "ahead": 1}));
     }
 
-    /// Deviation 13: the Sync row on a branch that isn't checked out: ff-only, as a CAS.
+    /// The Sync row on a branch that isn't checked out: ff-only, as a CAS.
     #[tokio::test]
     async fn pulling_a_branch_that_isnt_checked_out() {
         let r = TestRepo::new();
@@ -1007,7 +1001,7 @@ mod tests {
         assert_eq!((err.kind, err.message.as_str()), (GbErrorKind::InvalidInput, "Check out diverged first"));
     }
 
-    /// §17.1: a pull that autostashes keeps the staged/unstaged split byte for byte.
+    /// A pull that autostashes keeps the staged/unstaged split byte for byte.
     #[tokio::test]
     async fn an_autostashed_pull_keeps_the_staged_split() {
         let r = TestRepo::new();
@@ -1027,7 +1021,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("c.txt")).unwrap(), "untracked\n");
     }
 
-    /// §13.2: a conflicted pull stops and waits, its banner naming the upstream as shown.
+    /// A conflicted pull stops and waits, its banner naming the upstream as shown.
     #[tokio::test]
     async fn a_conflicted_pull_pauses_on_the_upstream() {
         for (mode, kind) in [(PullMode::FfOrMerge, "merge"), (PullMode::Rebase, "rebase")] {
@@ -1048,7 +1042,7 @@ mod tests {
         }
     }
 
-    /// Review I1: a pull that moves no local branch still announces the refs its fetch moved.
+    /// A pull that moves no local branch still announces the refs its fetch moved.
     #[tokio::test]
     async fn a_pull_announces_the_fetched_refs_even_when_nothing_local_moves() {
         let r = TestRepo::new();
@@ -1076,7 +1070,7 @@ mod tests {
         (r.git(&["diff", "--cached"]), r.git(&["diff"]))
     }
 
-    /// Review M6: a rebase-mode pull over a dirty worktree rebases, then restores the split.
+    /// A rebase-mode pull over a dirty worktree rebases, then restores the split.
     #[tokio::test]
     async fn a_rebase_pull_over_a_dirty_worktree_keeps_the_split() {
         let r = TestRepo::new();
@@ -1090,7 +1084,7 @@ mod tests {
         assert_eq!((r.git(&["diff", "--cached"]), r.git(&["diff"])), split);
     }
 
-    /// Review M6: a pull's autostash waits through the pause, then comes back with the split.
+    /// A pull's autostash waits through the pause, then comes back with the split.
     #[tokio::test]
     async fn a_paused_pulls_autostash_comes_back_with_the_split() {
         let r = TestRepo::new();
@@ -1109,7 +1103,7 @@ mod tests {
         assert_eq!((r.git(&["diff", "--cached"]), r.git(&["diff"])), split);
     }
 
-    /// Review M6: undo of a branch that isn't checked out (MoveRefs) puts it back.
+    /// Undo of a branch that isn't checked out (MoveRefs) puts it back.
     #[tokio::test]
     async fn undo_of_a_pull_of_a_branch_that_isnt_checked_out() {
         let r = TestRepo::new();
@@ -1126,7 +1120,7 @@ mod tests {
         assert_eq!(r.git(&["branch", "--show-current"]), "dev");
     }
 
-    /// Review M2: a paused merge refuses a pull before its fetch.
+    /// A paused merge refuses a pull before its fetch.
     #[tokio::test]
     async fn a_pull_during_a_merge_is_refused_before_the_fetch() {
         let r = TestRepo::new();
@@ -1155,10 +1149,8 @@ mod tests {
         let err = api.dispatch(pull(id, &r, None, PullMode::FfOnly)).await.unwrap_err();
         assert_eq!(err.message, "feature/new has no upstream; set one from Push ▾");
     }
-    // --- end 2D T14 ---
 
-    // --- 3B T4 ---
-    /// Spec #3 §3.9: "Push tags with branches" (`--follow-tags`), on by default: an annotated tag
+    /// "Push tags with branches" (`--follow-tags`), on by default: an annotated tag
     /// on the pushed commits goes along, and stays behind when it's off.
     #[tokio::test]
     async fn follow_tags_sends_the_branchs_annotated_tags_unless_turned_off() {
@@ -1180,7 +1172,6 @@ mod tests {
         api.dispatch(push(id, &r, "dev")).await.unwrap();
         assert!(r.try_git_in(&origin, &["rev-parse", "--verify", "-q", "refs/tags/v-dev-2"]).is_err(), "off: the branch alone");
     }
-    // --- end 3B T4 ---
 
     // --- repeated rewrites, and a branch pushed without tracking ---
     /// `main` moves on (`msg`), then `branch` is rebased onto it in GitVolt.

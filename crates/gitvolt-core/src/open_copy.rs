@@ -1,4 +1,4 @@
-//! "Open in…" for a file at an old commit (spec §14.5): that version is written to
+//! "Open in…" for a file at an old commit: that version is written to
 //! `<cache>/<short sha>/<its path>` (the app's cache is `$XDG_CACHE_HOME/gitvolt/open`), read-only,
 //! keeping its file name so the editor highlights it; copies older than a week are removed at
 //! startup.
@@ -89,7 +89,7 @@ fn write_read_only(dest: &Path, bytes: &[u8]) -> Result<(), GbError> {
     Ok(())
 }
 
-/// Monotonic within this process: paired with the pid (fix round 1, item 8), every call gets a
+/// Monotonic within this process: paired with the pid, every call gets a
 /// temp name no other call — concurrent, or from a past run under the same pid — could have used,
 /// without needing wall-clock time at all.
 fn next_seq() -> u64 {
@@ -99,7 +99,7 @@ fn next_seq() -> u64 {
 
 /// A new file (the path must not already exist) that is read-only from the moment it exists (0444
 /// on unix, the read-only attribute elsewhere): no window in which another process could open it
-/// for writing. If the write itself fails partway (fix round 1, item 8), the half-written file is
+/// for writing. If the write itself fails partway, the half-written file is
 /// removed rather than left behind: `create_new` failing (the path already existed) means nothing
 /// was created here, so nothing needs cleaning up either way.
 #[cfg(unix)]
@@ -159,7 +159,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let p = write_copy(tmp.path(), "0123456789ab", "src/deep/app.php", b"<?php\n").unwrap();
         assert_eq!(p, crate::platform::fs::canonicalize(tmp.path()).unwrap().join("0123456789ab/src/deep/app.php"));
-        // Fix round 2: every folder of a copy is private to the user.
+        // Every folder of a copy is private to the user.
         for dir in ["0123456789ab", "0123456789ab/src", "0123456789ab/src/deep"] {
             assert_eq!(mode(&tmp.path().join(dir)), 0o700, "{dir}");
         }
@@ -172,7 +172,7 @@ mod tests {
         assert_eq!(crate::platform::fs::mode(&std::fs::metadata(&p).unwrap()) & 0o777, 0o444);
     }
 
-    /// Minor #7: two (here, many) concurrent opens of the same old file used to race
+    /// Two (here, many) concurrent opens of the same old file used to race
     /// `remove_file` against `create_new`, with the loser failing `AlreadyExists`. Writing to a
     /// unique temp name and renaming over the destination means every writer succeeds.
     #[test]
@@ -198,7 +198,7 @@ mod tests {
         assert_eq!(left, vec![std::ffi::OsString::from("app.php")]);
     }
 
-    /// Fix round 1, item 8: a write failure partway through must not leave a half-written file
+    /// A write failure partway through must not leave a half-written file
     /// at `dest`. `write_all_or_remove` is tested directly with an always-failing writer, since a
     /// real full-disk or permission-revoked-mid-write condition isn't reliably forceable in a
     /// fast, portable unit test.

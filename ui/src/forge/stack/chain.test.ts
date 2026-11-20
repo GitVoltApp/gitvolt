@@ -23,7 +23,7 @@ const envOf = (o: { mrs: ForgeMr[]; locals: string[]; stack?: Stack | null; tips
   tipOf: (b) => o.tips?.[b] ?? null,
 });
 
-describe('mrChain (spec #4 §4 4D: position and neighbours)', () => {
+describe('mrChain (position and neighbours)', () => {
   const a = mr(1, 'feature/a', 'main');
   const b = mr(2, 'feature/b', 'feature/a');
   const c = mr(3, 'feature/c', 'feature/b');
@@ -67,7 +67,7 @@ describe('mrChain (spec #4 §4 4D: position and neighbours)', () => {
   });
 });
 
-describe('afterMerge (spec #4 §4 4D: the bottom merged)', () => {
+describe('afterMerge (the bottom merged)', () => {
   const merged = mr(1, 'feature/a', 'main', 'merged');
   const b = mr(2, 'feature/b', 'feature/a');
   const c = mr(3, 'feature/c', 'feature/b');
@@ -115,7 +115,7 @@ describe('afterMerge (spec #4 §4 4D: the bottom merged)', () => {
   });
 });
 
-/** C1: a long-lived branch's merged MR is no merged stack bottom. */
+/** A long-lived branch's merged MR is no merged stack bottom. */
 describe('long-lived branches (real-world layouts)', () => {
   it('environment branches: main → production merged, features on main: no prompt, no chain', () => {
     const release = plain(10, 'main', 'production', 'merged');

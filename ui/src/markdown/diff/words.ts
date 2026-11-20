@@ -22,7 +22,7 @@ function tagDepth(value: string): number {
 }
 
 /** A token of a word diff: one node, or a run of inline HTML from an opening tag to the tag that
- * closes it (R13: open and close tags stay together), with what's between them. */
+ * closes it (open and close tags stay together), with what's between them. */
 type Item = PhrasingContent | PhrasingContent[];
 
 /** A list's nodes as a word diff walks them (`Item`). A tag nothing closes (`<repo>` written as a
@@ -105,9 +105,9 @@ function slice(nodes: readonly PhrasingContent[], start: number, end: number): P
 /**
  * A changed block's inline content with its word-level changes (spec: `diffWordsWithSpace`):
  * common words from the new side, removed ones from the old side in `diffDel`, added ones in
- * `diffIns`, each keeping its formatting. A whitespace-only change marks nothing (R5). Inline HTML
+ * `diffIns`, each keeping its formatting. A whitespace-only change marks nothing. Inline HTML
  * changes whole (`items`): an element in a `diffDel`/`diffIns` renders on its own. `null`: the
- * block can't be word-diffed (`flatten`), or a side is over WORD_DIFF_MAX_CHARS (R14). Throws
+ * block can't be word-diffed (`flatten`), or a side is over WORD_DIFF_MAX_CHARS. Throws
  * `GaveUp` past `deadline` (the whole diff's).
  */
 export function inlineDiff(old: readonly PhrasingContent[], neu: readonly PhrasingContent[], deadline = Infinity): PhrasingContent[] | null {
@@ -183,7 +183,7 @@ function lineWords(a: string, b: string, deadline: number): { old: string; neu: 
 }
 
 /** A changed code block's lines, old and new merged in order (`diffLines`), with one mark per
- * line: ' ' kept, '-' removed, '+' added (R10). Line endings are LF first: CRLF never shows as a
+ * line: ' ' kept, '-' removed, '+' added. Line endings are LF first: CRLF never shows as a
  * change, nor reaches the rendered code. `words`: within each removed run and the added run right
  * after it, a paired line's changed words (`pairLines`, `lineWords`); one `;`-separated entry per
  * merged line, empty for a line without any; absent when no line has any. Throws `GaveUp` past

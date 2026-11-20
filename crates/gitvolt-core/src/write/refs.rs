@@ -18,14 +18,14 @@ pub(crate) enum Backend {
 }
 
 /// The ref's object id, `None` when it doesn't exist. A symbolic ref is followed; an annotated
-/// tag's ref gives its tag object, not the commit it peels to (3B T3: a tag's CAS and its Undo
+/// tag's ref gives its tag object, not the commit it peels to (a tag's CAS and its Undo
 /// keep the tag object).
 pub(crate) fn read_ref(repo: &gix::Repository, name: &str) -> Result<Option<String>, GbError> {
     let found = repo.try_find_reference(name).map_err(gix_err)?;
     Ok(found.and_then(|mut r| r.follow_to_object().ok().map(|id| id.detach().to_string())))
 }
 
-/// Why the CLI must make the edit (spec #2 §3.4), or `None` when gix can.
+/// Why the CLI must make the edit, or `None` when gix can.
 pub(crate) fn fallback_reason(ref_storage: Option<&str>, has_tx_hook: bool, has_identity: bool) -> Option<&'static str> {
     if ref_storage.is_some_and(|s| s.eq_ignore_ascii_case("reftable")) {
         return Some("the reftable backend");
@@ -113,7 +113,7 @@ fn ref_locked(e: &gix::Error) -> bool {
     !GIX_MISMATCH.iter().any(|n| all.contains(n)) && all.to_ascii_lowercase().contains("lock")
 }
 
-/// A held ref lock isn't `IndexLocked` (2A final M7): that toast names `.git/index.lock`, and
+/// A held ref lock isn't `IndexLocked`: that toast names `.git/index.lock`, and
 /// Remove stale lock handles only that one.
 fn classify_gix(e: &gix::Error) -> GbError {
     let shown = e.to_string();
@@ -206,13 +206,12 @@ pub(crate) async fn cas_with(backend: Backend, cli: &GitCli, token: &WriteToken,
     res.map_err(|e| if e.kind == GbErrorKind::RefMoved { moved(repo, moves).unwrap_or(e) } else { e })
 }
 
-// --- 2C T6: a detached HEAD's CAS ---
-/// A detached HEAD's own CAS (Deviation 3): `refs/`-only `cas` refuses HEAD, and gix would
+// --- a detached HEAD's CAS ---
+/// A detached HEAD's own CAS: `refs/`-only `cas` refuses HEAD, and gix would
 /// replace a symbolic HEAD with an oid. `--no-deref` updates HEAD itself, only if it's `old`.
 pub(crate) async fn cas_detached_head(cli: &GitCli, token: &WriteToken, root: &Path, old: &str, new: &str, message: &str) -> Result<(), GbError> {
     cli.run(GitInvocation::write(token, root, ["update-ref", "--no-deref", "-m", message, "HEAD", new, old])).await.map(drop)
 }
-// --- end 2C T6 ---
 
 #[cfg(test)]
 mod tests {
@@ -333,13 +332,13 @@ mod tests {
             let err = cas_with(backend, &cli(), &t, &repo, r.path(), &[mv("refs/heads/x", Some(&c1), Some(&c2))], "m").await.unwrap_err();
             assert_ne!(err.kind, GbErrorKind::RefMoved, "{backend:?}: {err:?}");
             if matches!(backend, Backend::Gix) {
-                assert_eq!(err.kind, GbErrorKind::Other, "a ref lock isn't index.lock (2A final M7): {err:?}");
+                assert_eq!(err.kind, GbErrorKind::Other, "a ref lock isn't index.lock: {err:?}");
             }
             assert_eq!(at(&r, "refs/heads/x").as_deref(), Some(c1.as_str()));
         }
     }
 
-    /// 3B T3 (Deviation 8): an annotated tag's ref names its tag object. A CAS or an Undo of it
+    /// An annotated tag's ref names its tag object. A CAS or an Undo of it
     /// must keep that object, never the commit it peels to.
     #[test]
     fn read_ref_keeps_an_annotated_tags_own_object() {

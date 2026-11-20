@@ -12,11 +12,11 @@ encoding: string, eol: Eol,
  */
 text: string | null, 
 /**
- * Raw bytes, base64, for binary images (spec §10.4), media (audio, video, fonts) and PDFs only.
+ * Raw bytes, base64, for binary images, media (audio, video, fonts) and PDFs only.
  */
 base64: string | null, 
 /**
- * The loaded bytes' `worktree_id` (2B Deviation 12): the save base of a working-tree side.
+ * The loaded bytes' `worktree_id`: the save base of a working-tree side.
  * `None` when the side wasn't loaded (too large).
  */
 hash: string | null, 

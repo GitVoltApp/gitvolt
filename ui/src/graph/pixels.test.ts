@@ -5,7 +5,7 @@ import { DENSITY_METRICS, DENSITIES } from '../theme/density';
 const DPRS = [1, 1.1, 1.2, 1.25, 1.5, 2, 2.4];
 const whole = (x: number) => Math.abs(x - Math.round(x)) < 1e-6;
 
-describe('dashLength (K50)', () => {
+describe('dashLength', () => {
   it('is a whole number of device px, at least one, at every dpr', () => {
     for (const dpr of DPRS) {
       const d = dashLength(3, dpr);
@@ -17,7 +17,7 @@ describe('dashLength (K50)', () => {
   });
 });
 
-describe('dashOffset (K50)', () => {
+describe('dashOffset', () => {
   /** Where along the absolute content y a path starting at `y0` with `dashOffset(y0)` is in its
    * pattern at `y`: the canvas's phase is the offset plus the distance travelled. */
   const phaseAt = (y0: number, y: number, dash: number) => (dashOffset(y0, dash) + (y - y0)) % (2 * dash);
@@ -64,7 +64,7 @@ describe('dashOffset (K50)', () => {
   });
 });
 
-describe('connectorLine (K57)', () => {
+describe('connectorLine', () => {
   it('covers whole device px rows, as many as its width asks, centred on the row to within half a device px', () => {
     for (const dpr of DPRS) {
       for (const d of DENSITIES) {
@@ -93,7 +93,7 @@ describe('connectorLine (K57)', () => {
   });
 });
 
-describe('ringDash (K50)', () => {
+describe('ringDash', () => {
   it('divides the circumference into a whole number of dash+gap pairs near the target', () => {
     for (const r of [9, 10.08, 11.52, 7.3]) {
       const d = ringDash(r, 2);

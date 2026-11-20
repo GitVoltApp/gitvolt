@@ -21,7 +21,7 @@ export const openInBrowser = (url: string) => {
 
 const fromFork = (mr: ForgeMr) => mr.sourceProject !== '' && mr.sourceProject !== mr.targetProject;
 
-/** The view's header (spec #4 §4 "4B"): the status line (the state pill, the author, when, and
+/** The view's header: the status line (the state pill, the author, when, and
  * `actions` at its right end), where it goes (the branch card: source → target, what it brings,
  * its commits jumping to the graph), a strip of three facts (pipeline, approvals or reviews with
  * `review`'s buttons top right, conflicts; both gone while `editing`, when the Edit form has the

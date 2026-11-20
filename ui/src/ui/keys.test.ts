@@ -18,7 +18,7 @@ describe('matchesLetter', () => {
   });
 });
 
-// Ctrl+W itself (formerly `isCloseFileKey`) is a shortcut of the app's since plan 1C:
+// Ctrl+W itself (formerly `isCloseFileKey`) is a shortcut of the app's:
 // app/shortcuts.test.ts names it, app/closeKeys.test.tsx dispatches it.
 describe('letterOf', () => {
   it('reads the layout\'s letter, else the key position, else nothing', () => {

@@ -1,4 +1,4 @@
-// The read handlers: commit details, file lists, diffs, blame, find, … Plan 1b fills this; it's
+// The read handlers: commit details, file lists, diffs, blame, find, …; it's
 // spread into HANDLERS after every other group.
 import type { HandlerTable } from '../transport';
 import { avatarHandlers } from './avatars';

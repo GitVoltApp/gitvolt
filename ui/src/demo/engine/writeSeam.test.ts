@@ -56,7 +56,7 @@ describe('the phase-3 seam', () => {
     expect(new TextDecoder().decode(r.files.get('a.txt')!.bytes)).toContain('<<<<<<< HEAD\nmain\n=======\nside\n>>>>>>> side\n');
   });
 
-  it("runs this plan's intent through phase 3's pipeline, with its views", async () => {
+  it("runs this plan's intent through the write engine's pipeline, with its views", async () => {
     const t = await makeTestRepo();
     await t.write('a.txt', 'one\n');
     const head = await t.commit('Base');

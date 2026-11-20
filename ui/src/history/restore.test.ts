@@ -11,7 +11,7 @@ const { restoreFile } = await import('./restore');
 const ctx = { tabId: 't1', repoId: 3, worktree: '/r' };
 const sha = 'abcdef0123456789abcdef0123456789abcdef01';
 
-describe('restoreFile (spec #3 §3.8)', () => {
+describe('restoreFile', () => {
   beforeEach(() => { restoreFileApi.mockReset(); show.mockReset(); });
 
   it('sends the restore with the answered discard flag as confirm, then toasts what it did', async () => {

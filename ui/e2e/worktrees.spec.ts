@@ -10,7 +10,7 @@ const sidebarRow = (page: Page, name: string) => page.getByRole('tree', { name: 
 const repoButton = (page: Page) => page.getByTestId('tb-repo').filter({ visible: true });
 const headChip = (page: Page) => grid(page).locator('.ref-label-head').first();
 
-test.describe('the active worktree (spec #2 §11.2)', () => {
+test.describe('the active worktree', () => {
   test('double-clicking a worktree row switches in place, under 50 ms, with no reload', { tag: '@budget' }, async ({ page }) => {
     const repo = freshFixture('worktrees');
     await page.goto(openUrl(repo));
@@ -24,7 +24,7 @@ test.describe('the active worktree (spec #2 §11.2)', () => {
         el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
         await new Promise<void>((done, fail) => {
           const deadline = performance.now() + 5000;
-          // The markers (§11.2): the toolbar's branch picker and the sidebar's current worktree.
+          // The markers: the toolbar's branch picker and the sidebar's current worktree.
           // wt-one's HEAD chip sits far down the graph, unrendered; the row-0 WIP re-placement is
           // the graph-only relayout that follows (checked below), not part of the budget.
           const updated = () =>
@@ -99,8 +99,7 @@ test.describe('the active worktree (spec #2 §11.2)', () => {
   });
 });
 
-// --- 2C T14 ---
-test.describe('worktree create and remove (spec #2 §11.1)', () => {
+test.describe('worktree create and remove', () => {
   test('the Worktrees header + creates a dash-joined folder and opens it in a new tab', async ({ page }) => {
     const repo = freshFixture('basic');
     await page.goto(openUrl(repo));
@@ -120,7 +119,7 @@ test.describe('worktree create and remove (spec #2 §11.1)', () => {
     await page.goto(openUrl(repo));
     await page.getByRole('treeitem', { name: 'wt-hotfix' }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Remove worktree' }).locator('[data-variant-id="worktree"]').click();
-    // The row arms in place (board A); once the menu is gone, the dirty question is a popover there.
+    // The row arms in place; once the menu is gone, the dirty question is a popover there.
     await confirmArmed(page.getByRole('menuitem', { name: 'Click again to remove ../wt-hotfix: its directory is deleted' }));
     await expect(page.getByRole('alertdialog')).toContainText("has changes that aren't committed");
     await confirmArmed(page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }));
@@ -155,4 +154,3 @@ test.describe('worktree create and remove (spec #2 §11.1)', () => {
     });
   });
 });
-// --- end 2C T14 ---

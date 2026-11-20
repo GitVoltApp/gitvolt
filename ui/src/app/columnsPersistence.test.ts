@@ -6,7 +6,7 @@ const { columnPrefsPersistence, useColumnPrefs } = await import('../graph/column
 const { installColumnPersistence } = await import('./columnsPersistence');
 const { EMPTY_PROFILE, EMPTY_REPO_SETTINGS, useAppState } = await import('./state');
 
-describe('column persistence (spec §8.4)', () => {
+describe('column persistence', () => {
   beforeEach(() => {
     installColumnPersistence();
     useColumnPrefs.getState().reset();

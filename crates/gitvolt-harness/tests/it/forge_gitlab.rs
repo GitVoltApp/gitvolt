@@ -1,4 +1,4 @@
-//! The GitLab provider against the fake forge (spec #4 §7): no real forge, ever.
+//! The GitLab provider against the fake forge: no real forge, ever.
 
 use gitvolt_core::error::GbErrorKind;
 use gitvolt_core::forge::*;

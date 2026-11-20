@@ -1,10 +1,9 @@
 /**
- * The merge tool's model (spec #2 §13.3), pure. The output is the merged text: the common parts
+ * The merge tool's model, pure. The output is the merged text: the common parts
  * as they are, each conflict region filled with its ticked lines: the side ticked first, then
- * the other, each side's lines in file order (`Pick.first`). The tool starts with nothing ticked
- * (plan 2D Deviation 14).
+ * the other, each side's lines in file order (`Pick.first`). The tool starts with nothing ticked.
  *
- * Line endings (the 2D EOL ruling): every conflict line carries its own terminator, `\n`,
+ * Line endings (`Pick.first`): every conflict line carries its own terminator, `\n`,
  * `\r\n`, or none on a file's last line, so the output is the lines joined as they are. The
  * file's EOL goes in only after a ticked line without one that another ticked line follows.
  */
@@ -145,13 +144,13 @@ export function nextRegion(rs: OutRegion[], line: number, dir: 1 | -1): OutRegio
 /**
  * Whether a change at `offset` (replacing `length` characters with `text`), in the output as it
  * was before it, is inside the region `[a, b]`. Typing at the region's end, column 1 of the line
- * after it, isn't (review M1); typing at its start, or into an empty region, is. `openEnd`: the
- * region ends the file on an unterminated line, so typing at `b` is on its last line (N5).
+ * after it, isn't; typing at its start, or into an empty region, is. `openEnd`: the
+ * region ends the file on an unterminated line, so typing at `b` is on its last line.
  */
 export function changeHits(offset: number, length: number, text: string, a: number, b: number, openEnd = false): boolean {
   if (length > 0 && offset < b && offset + length > a) return true;
   if (offset > a && offset < b) return true;
-  // N5: a region ending the file on a line with no break: its end is still its last line.
+  // A region ending the file on a line with no break: its end is still its last line.
   if (openEnd && offset === b && text.length > 0) return true;
   return offset === a && text.length > 0;
 }

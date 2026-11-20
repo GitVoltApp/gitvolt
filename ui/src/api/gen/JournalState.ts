@@ -4,7 +4,7 @@ import type { JournalTop } from "./JournalTop";
 import type { PausedInfo } from "./PausedInfo";
 
 /**
- * What Undo/Redo and the banners show (§5.5); every write returns it (`WriteResult.journal`).
+ * What Undo/Redo and the banners show; every write returns it (`WriteResult.journal`).
  */
 export type JournalState = { undo: JournalTop | null, redo: JournalTop | null, 
 /**
@@ -12,6 +12,6 @@ export type JournalState = { undo: JournalTop | null, redo: JournalTop | null,
  */
 undoBlocked: string | null, redoBlocked: string | null, banners: Array<Banner>, 
 /**
- * 2D T2: the worktree's paused merge or rebase, if any.
+ * The worktree's paused merge or rebase, if any.
  */
 paused: PausedInfo | null, };

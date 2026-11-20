@@ -17,7 +17,7 @@ segments: Array<number>, summary: string, bodyFirstLine: string, authorName: str
 committerTime: number, parents: Array<string>, 
 /**
  * MR/PR/issue references in the summary and body, as written (`!42`, `group/project!7`,
- * `#12`, `owner/repo#3`), first occurrence first, at most 20 (`message_refs`, §9.2). The
+ * `#12`, `owner/repo#3`), first occurrence first, at most 20 (`message_refs`). The
  * host decides what each means. Empty on WIP rows.
  */
 mrRefs: Array<string>, wip: WipPayload | null, 

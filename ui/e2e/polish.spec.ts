@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from './test';
 import { fixtures, openUrl } from './fixtures';
 
-// Global polish (user feedback F22, F31): one text-selection colour, Ctrl+C outside the editor,
+// Global polish one text-selection colour, Ctrl+C outside the editor,
 // and slim scrollbars (no arrow buttons, no track, a grey thumb), the editor's included.
 const COMMIT = 'Rename guide and update assets';
 const SELECTION_BG = 'rgb(38, 79, 120)'; // --selection-bg, #264f78: Monaco's own selection blue
@@ -30,7 +30,7 @@ async function dragSelect(page: Page, el: import('@playwright/test').Locator) {
   await page.mouse.up();
 }
 
-test('the diff header filename selects in the one selection colour, and Ctrl+C copies it; in the editor, Ctrl+C copies its selection, Ctrl+A then Ctrl+C the whole side (H19)', async ({ page, browserName }) => {
+test('the diff header filename selects in the one selection colour, and Ctrl+C copies it; in the editor, Ctrl+C copies its selection, Ctrl+A then Ctrl+C the whole side', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'clipboard permissions are granted on Chromium only');
   await openAppPhp(page);
   const name = diff(page).getByTestId('diff-path').locator('strong');
@@ -46,11 +46,11 @@ test('the diff header filename selects in the one selection colour, and Ctrl+C c
   });
   await page.keyboard.press('Control+c');
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('app.php');
-  // Left to the browser's own copy (H19): the same path as right-click -> Copy, which works in the
+  // Left to the browser's own copy: the same path as right-click -> Copy, which works in the
   // real window. The app doesn't take the key and route it through the Tauri clipboard plugin.
   expect(await page.evaluate(() => (window as unknown as { copyKeys: boolean[] }).copyKeys)).toEqual([false]);
 
-  // In the editor (H19): Ctrl+C copies its selection, Ctrl+A then Ctrl+C the whole side. (The same
+  // In the editor: Ctrl+C copies its selection, Ctrl+A then Ctrl+C the whole side. (The same
   // page and diff: this was a test of its own, paying for both.)
   await page.evaluate(() => navigator.clipboard.writeText('before'));
   const word = diff(page).locator('.editor.modified .view-line').filter({ hasText: 'function' }).first().getByText('function', { exact: true }).first();
@@ -88,7 +88,7 @@ test('scrollbars are slim with a grey thumb only, in the app and in the editor (
   const bar = diff(page).locator('.editor.modified .monaco-scrollable-element > .scrollbar.vertical').first();
   expect(await bar.evaluate((el) => el.getBoundingClientRect().width)).toBe(10);
   expect(await bar.locator('.slider').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(THUMB);
-  // Square-ended and flush in its lane (H18, 20.png), so it lines up with the minimap beside it.
+  // Square-ended and flush in its lane (20.png), so it lines up with the minimap beside it.
   const slider = bar.locator('.slider');
   expect(await slider.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('0px');
   const [b, s] = [await bar.boundingBox(), await slider.boundingBox()];

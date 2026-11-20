@@ -1,4 +1,4 @@
-/* Review comments (spec 2026-10-08 §4, §5): the top bar's chip, its Submit review… popover, and
+/* Review comments: the top bar's chip, its Submit review… popover, and
    the file list's badges. */
 .tb-review { flex: 0 1 auto; min-width: 0; }
 /* A narrow bar: the value truncates first; the caret stays whole. */

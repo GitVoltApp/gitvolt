@@ -1,4 +1,4 @@
-//! Helpers for the 2C write tests: an `Api` with a private data dir, a repository opened in it,
+//! Helpers for the write tests: an `Api` with a private data dir, a repository opened in it,
 //! and a request sent the way the UI sends it (JSON, through `dispatch`), so every test also
 //! checks the request's serde shape.
 

@@ -14,15 +14,15 @@ import { CREATE_MR_FLYOUT, openCreateMr, type CreateMrArgs } from './store';
 const CreateMrFlyout = lazy(() => import('./CreateMrFlyout').then((m) => ({ default: m.CreateMrFlyout })));
 
 /**
- * The Create MR/PR entry points (spec #4 §4 "4C", §5): branch menus (graph chips and sidebar
+ * The Create MR/PR entry points: branch menus (graph chips and sidebar
  * Local rows), the palette (Ctrl+P), and the push toast's link for a branch the push created. All
- * read the tab's target project from 4B's forge store (`forgeOf`, filled by its poller) and open
- * the flyout 4B's host draws.
+ * read the tab's target project from the forge store (`forgeOf`, filled by its poller) and open
+ * the flyout the host draws.
  */
 
 /** The repo's target, when `branch` may get an MR/PR there: not the target's default branch, and
- * no open one already from it (that branch gets 4B's "Open MR/PR" row instead). The branch's own
- * MR/PR is 4B's mapping (its remote refs, else its upstream): another project's branch of the same
+ * no open one already from it (that branch gets the "Open MR/PR" row instead). The branch's own
+ * MR/PR is the forge store's mapping (its remote refs, else its upstream): another project's branch of the same
  * name (a fork's `patch-1`) doesn't count. An unpushed branch qualifies: the flyout offers the push. */
 export function createTarget(tabId: string, branch: string | null, remotes: ReadonlyArray<{ fullName: string }> = []): { remote: string; project: ForgeProject } | null {
   const f = forgeOf(tabId);

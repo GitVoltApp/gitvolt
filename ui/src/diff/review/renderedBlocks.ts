@@ -7,7 +7,7 @@ import type { DiffLine } from '../monaco/host';
 import type { OpenBox } from './store';
 
 /**
- * Review comments in the rendered Markdown diff (spec 2026-10-08 §3): its blocks as the renderer
+ * Review comments in the rendered Markdown diff: its blocks as the renderer
  * marks them (`data-src-id`, `data-src-new`, `data-src-old`: markdown/render.tsx), where a line
  * sits among them, and where the pane scrolls to show one.
  */

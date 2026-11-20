@@ -1,4 +1,4 @@
-//! The fake forge's create half (plan 4C): what the providers' create, people, labels and
+//! The fake forge's create half: what the providers' create, people, labels and
 //! template calls meet in every test.
 
 use gitvolt_harness::fake_forge::*;
@@ -32,7 +32,7 @@ async fn gitlab_creates_once_per_open_branch_and_needs_the_api_scope() {
     assert_eq!((mr["reviewers"][0]["username"].as_str(), mr["assignees"][0]["username"].as_str()), (Some("grace"), Some("ada")));
     assert_eq!(mr["labels"], json!(["bug", "feature"]));
     assert_eq!(f.current_seed().gitlab.created.len(), 1);
-    assert_eq!(f.current_seed().gitlab.merge_requests.iter().filter(|m| m.iid == 1 && m.title == "Draft: Add login" && m.reviewers == ["grace"]).count(), 1, "4B's list has it too");
+    assert_eq!(f.current_seed().gitlab.merge_requests.iter().filter(|m| m.iid == 1 && m.title == "Draft: Add login" && m.reviewers == ["grace"]).count(), 1, "the MR/PR list has it too");
     let (status, again) = send(url.clone(), GITLAB_TOKEN, Some(body.clone())).await;
     assert_eq!((status, again["message"][0].as_str()), (409, Some("Another open merge request already exists for this source branch: !1")));
     assert_eq!(send(url, GITLAB_READONLY_TOKEN, Some(body)).await.0, 403);
@@ -72,7 +72,7 @@ async fn github_creates_then_takes_reviewers_assignees_and_labels() {
     assert_eq!(send(format!("{repo}/issues/1/labels"), GITHUB_TOKEN, Some(json!({"labels": ["bug"]}))).await.0, 200);
     let created = &f.current_seed().github.created[0];
     assert_eq!((created["requested_reviewers"][0]["login"].as_str(), created["assignees"][0]["login"].as_str(), created["labels"][0]["name"].as_str()), (Some("hubot"), Some("octocat"), Some("bug")));
-    let listed = f.current_seed().github.pulls.into_iter().find(|p| p.number == 1).expect("4B's list has it too");
+    let listed = f.current_seed().github.pulls.into_iter().find(|p| p.number == 1).expect("the MR/PR list has it too");
     assert_eq!((listed.requested_reviewers, listed.assignees, listed.labels), (vec!["hubot".to_string()], vec!["octocat".to_string()], vec!["bug".to_string()]));
     assert_eq!(send(format!("{}/user/3", f.github_api()), GITHUB_TOKEN, None).await.1["login"], "hubot");
 }

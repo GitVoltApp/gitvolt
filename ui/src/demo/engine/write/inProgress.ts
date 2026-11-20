@@ -53,7 +53,7 @@ function text(fs: MemFs, path: string): string | null {
   }
 }
 
-/** A message file, line endings normalised (§8.2); empty when there's none. */
+/** A message file, line endings normalised; empty when there's none. */
 function message(fs: MemFs, path: string): string {
   try {
     return (fs.readFileSync(path, 'utf8') as string).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -107,7 +107,7 @@ function stopNote(fs: MemFs, gitdir: string, name: string, at: string): string |
 
 /** `headMessage`: the HEAD commit's raw message, which an edit stop (`rebase-merge/amend`) shows; the caller reads it (`showsHeadMessage`). */
 export function readInProgress(fs: MemFs, gitdir: string, headMessage: string | null = null): InProgress | null {
-  // The demo's sequencer (plan 4) first: its rebase, pick or revert reads as the core reads git's.
+  // The demo's sequencer first: its rebase, pick or revert reads as the core reads git's.
   const seq = seqInProgress(fs, gitdir, headMessage);
   if (seq) return seq;
   const s = state(fs, gitdir);
@@ -124,7 +124,7 @@ export function readInProgress(fs: MemFs, gitdir: string, headMessage: string | 
     case 'am':
       return { kind: 'other', what: 'am' };
     case 'rebase': {
-      // Plan 4 (the rebase plan) fills GitVolt's own Edit-stop notes; git's files are read here.
+      // The sequencer fills GitVolt's own Edit-stop notes; git's files are read here.
       const merge = isDir(fs, gitdir, 'rebase-merge');
       const dir = `${gitdir}/${merge ? 'rebase-merge' : 'rebase-apply'}`;
       const num = (f: string) => Number(text(fs, `${dir}/${f}`) ?? 0) || 0;

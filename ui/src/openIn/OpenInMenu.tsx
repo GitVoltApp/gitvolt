@@ -8,8 +8,7 @@ import { isSubmodule, openerIcon, openerRowId, openInSubmenuRows } from './opene
 import { defaultOpener, listWorktree, openerLabel, openersSnapshot, openVersion, refreshOpeners, subscribeOpeners, useOpenIn, useOpeners, worktreeOf } from './openers';
 import './openIn.css';
 
-// Rebuilds an open Open-in dropdown when the openers change (fix round 1, item 2: an R1
-// regression of H32 — this module doesn't import menu/menuEnv.ts, which has its own copy of this
+// Rebuilds an open Open-in dropdown when the openers change (this module doesn't import menu/menuEnv.ts, which has its own copy of this
 // subscription for the file menu's Open in ▸ submenu, so it needs its own). Harmless if both are
 // loaded: `refresh()` is a no-op unless this dropdown is the open menu.
 const offOpeners = refreshMenuOn(subscribeOpeners);
@@ -23,7 +22,7 @@ export function OpenerIcon({ opener, path, size = 14 }: { opener: OpenerPayload;
 }
 
 /**
- * "Open in <default>" plus a dropdown of every opener (feedback H9), for the diff header's
+ * "Open in <default>" plus a dropdown of every opener, for the diff header's
  * `leading` slot. Opens `target`'s file at `line`, as the file list does: in a WIP (staged too)
  * or compare-with-working-tree list, the working-tree file of that list's `worktree` (given, or
  * read from the target's key); elsewhere the version shown, in the repo's worktree. "Show in
@@ -31,7 +30,7 @@ export function OpenerIcon({ opener, path, size = 14 }: { opener: OpenerPayload;
  * list's menu), else VS Code. Renders nothing until the openers have loaded, or when none were
  * found.
  *
- * Plan 1C Task 15 (Amendment 11): the dropdown is the shared context menu (`openMenuAt` +
+ * The dropdown is the shared context menu (`openMenuAt` +
  * `openInSubmenuRows`, the same rows the file menu's Open in ▸ submenu builds), not a bespoke
  * popup — `ContextMenu` already does its positioning, focus and keyboard handling. `expanded` is
  * tracked locally (the menu store is one singleton shared by every menu, so it can't say *this*
@@ -39,7 +38,7 @@ export function OpenerIcon({ opener, path, size = 14 }: { opener: OpenerPayload;
  */
 export function OpenInButton({ target, line = null, worktree: given }: { target: DiffTarget; line?: number | null; worktree?: string | null }) {
   const openers = useOpeners();
-  // The tab's open (active) worktree: a file opens in the checkout the tab shows (spec #2 §11.2).
+  // The tab's open (active) worktree: a file opens in the checkout the tab shows.
   const openTree = useRepoView(openWorktree);
   const { last, open } = useOpenIn();
   const [expanded, setExpanded] = useState(false);

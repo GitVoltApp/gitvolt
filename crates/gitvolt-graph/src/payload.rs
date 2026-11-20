@@ -28,15 +28,13 @@ pub struct GraphPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub open_worktree: Option<String>,
-    /// Every usable worktree of the repository (spec #2 §11.2).
+    /// Every usable worktree of the repository.
     pub worktrees: Vec<GraphWorktree>,
-    // 2D-T6 begin
-    /// Each worktree's merge, rebase or other in-progress operation (spec #2 §13.2), keyed by its
-    /// path as its WIP row's `worktreePath` spells it (Deviation 1). Absent when none is mid-operation.
+    /// Each worktree's merge, rebase or other in-progress operation, keyed by its
+    /// path as its WIP row's `worktreePath` spells it. Absent when none is mid-operation.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     #[ts(optional, as = "Option<std::collections::BTreeMap<String, crate::InProgress>>")]
     pub in_progress: std::collections::BTreeMap<String, InProgress>,
-    // 2D-T6 end
     /// The repository is a fork (`snapshot::fork_of`): which remote is your fork, which the
     /// original project, and how that was told. Absent otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -86,7 +84,7 @@ pub enum ForkDetection {
     UpstreamRemote,
 }
 
-/// One usable worktree as the graph sees it (spec #2 §11.2): the UI moves the HEAD marker and
+/// One usable worktree as the graph sees it: the UI moves the HEAD marker and
 /// the "checked out elsewhere" chips to the tab's active worktree from these, with no request.
 #[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -127,7 +125,7 @@ pub struct RowPayload {
     pub committer_time: i64,
     pub parents: Vec<String>,
     /// MR/PR/issue references in the summary and body, as written (`!42`, `group/project!7`,
-    /// `#12`, `owner/repo#3`), first occurrence first, at most 20 (`message_refs`, §9.2). The
+    /// `#12`, `owner/repo#3`), first occurrence first, at most 20 (`message_refs`). The
     /// host decides what each means. Empty on WIP rows.
     pub mr_refs: Vec<String>,
     pub wip: Option<WipPayload>,
@@ -187,11 +185,11 @@ pub struct RefLabel {
     /// detached-HEAD chip (no local, remote or tag), that worktree.
     pub checked_out: Option<String>,
     /// A local branch whose upstream has another branch name (`feature/a` tracking
-    /// `origin/feature/b`): that upstream's short name, for the chip's warning (UX round 3, M.1).
+    /// `origin/feature/b`): that upstream's short name, for the chip's warning.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub upstream_mismatch: Option<String>,
-    /// An annotated tag's message and tagger (UX round 3, M.2); absent on a lightweight tag.
+    /// An annotated tag's message and tagger; absent on a lightweight tag.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub annotation: Option<TagAnnotation>,
@@ -230,8 +228,7 @@ pub enum TagRemoteState {
     Missing,
 }
 
-/// An annotated tag's message and tagger, for the tag chip's and the sidebar row's tooltip (UX
-/// round 3, M.2). Read in process with the refs, cached by tag object (`refs::read_tag`).
+/// An annotated tag's message and tagger, for the tag chip's and the sidebar row's tooltip. Read in process with the refs, cached by tag object (`refs::read_tag`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -333,7 +330,7 @@ impl RowPayload {
     }
 }
 
-// `Deserialize` and `Ord`: the profile's host-type overrides are a map keyed by host (§14.4).
+// `Deserialize` and `Ord`: the profile's host-type overrides are a map keyed by host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
@@ -348,7 +345,7 @@ pub enum HostKind {
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 #[ts(export)]
 pub enum InProgress {
-    /// `MERGE_HEAD` exists. `message`: `MERGE_MSG`, line endings normalised (§8.2).
+    /// `MERGE_HEAD` exists. `message`: `MERGE_MSG`, line endings normalised.
     Merge { merge_head: String, message: String, conflicted: u32 },
     /// `rebase-merge/` (or `rebase-apply/`). `onto` and `stopped_at` are oids; `head_name` is the
     /// branch being rebased (`refs/heads/main`). `message`: what Continue commits the stopped
@@ -360,29 +357,27 @@ pub enum InProgress {
         step: u32,
         total: u32,
         stopped_at: Option<String>,
-        // --- 3C T4 ---
         /// At an `edit` stop: the commit git made there (`rebase-merge/amend`). `None` at a
         /// conflict, or a stop of another kind.
         edit_stop: Option<String>,
-        // --- end 3C T4 ---
-        /// UX L: GitVolt's Edit stop is "about to commit": right after git stopped, HEAD was
+        /// GitVolt's Edit stop is "about to commit": right after git stopped, HEAD was
         /// soft-reset to the edited commit's parent (this oid), so its changes are staged and its
         /// message (`message`) is the commit box's. `None`: git's own stop (HEAD on `edit_stop`),
         /// as a terminal's rebase has it.
         edit_base: Option<String>,
-        /// UX L, with `edit_base`: the paths the stopped commit adds. One left untracked is a
+        /// With `edit_base`: the paths the stopped commit adds. One left untracked is a
         /// piece of it not staged yet: Continue waits for it (any other untracked file doesn't).
         edit_added: Vec<String>,
-        /// UX L, with `edit_base`: the index isn't the stopped commit's tree (changed, or some of
+        /// With `edit_base`: the index isn't the stopped commit's tree (changed, or some of
         /// it unstaged): an Abort keeps it.
         edit_changed: bool,
-        /// 3C final fix (I1): the stopped pick is an `edit` line that stopped before git made its
+        /// The stopped pick is an `edit` line that stopped before git made its
         /// commit (a conflict): git won't stop again once it's resolved, so this stop is the Edit's.
         edit_conflict: bool,
-        /// 3C final fix (M1, M2): GitVolt couldn't apply this stop's new message (a commit-msg
+        /// GitVolt couldn't apply this stop's new message (a commit-msg
         /// hook refused it): why. HEAD keeps the old one.
         message_failed: Option<String>,
-        /// 3C fix round 2: GitVolt's own interactive rebase (its session is there): Commit at
+        /// GitVolt's own interactive rebase (its session is there): Commit at
         /// its Edit stops is GitVolt's. `false` for one started in a terminal.
         gitvolt: bool,
         conflicted: u32,

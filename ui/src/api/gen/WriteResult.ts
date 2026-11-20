@@ -4,7 +4,7 @@ import type { StagingUndoState } from "./StagingUndoState";
 import type { WipListsPayload } from "./WipListsPayload";
 
 /**
- * Every write's answer (spec #2 §3.1): the UI applies `journal`, `staging` and `wip` at once, so
+ * Every write's answer: the UI applies `journal`, `staging` and `wip` at once, so
  * it never waits on the file watcher.
  */
 export type WriteResult<T> = { outcome: T, journal: JournalState, staging: StagingUndoState, wip: WipListsPayload | null, };

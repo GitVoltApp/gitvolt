@@ -13,7 +13,7 @@ import './queue.css';
 
 const quiet = (p: Promise<unknown>) => { void p.catch((e: unknown) => console.warn('[gitvolt] queue', e)); };
 
-/** The chip's list (spec #2 §3.6): the running item with Cancel, each queued item with ×, and
+/** The chip's list: the running item with Cancel, each queued item with ×, and
  * Resume / Clear after a stop. */
 function rows(repo: number, q: QueueStatePayload): MenuRow[] {
   const out: MenuRow[] = [];
@@ -34,7 +34,7 @@ function rows(repo: number, q: QueueStatePayload): MenuRow[] {
   return out;
 }
 
-/** The status bar's queue chip (spec #2 §3.6), for the active tab's repository; hidden when idle. */
+/** The status bar's queue chip, for the active tab's repository; hidden when idle. */
 export function QueueChip() {
   const activeTab = useAppState((s) => s.profile.activeTab);
   const repo = useRuntime((s) => (activeTab ? s.tabs[activeTab]?.repo?.id : undefined));

@@ -20,7 +20,7 @@ export async function holdRepo(tabId: string, repo: number): Promise<void> {
 
 /**
  * The backend outlives a webview reload: forget what the previous page watched and held, before
- * this one watches its active tab (spec §4.4) and its tabs hold their repositories again.
+ * this one watches its active tab and its tabs hold their repositories again.
  */
 export async function forgetPreviousPage(): Promise<void> {
   await api.unwatchAll().catch((e: unknown) => console.warn('[gitvolt] unwatchAll failed', errorMessage(e)));
@@ -28,12 +28,12 @@ export async function forgetPreviousPage(): Promise<void> {
 }
 
 /**
- * Watch or unwatch a repo (spec §4.4: only the active tab is watched). Calls for one repo are
+ * Watch or unwatch a repo (only the active tab is watched). Calls for one repo are
  * applied one at a time and coalesce to the latest wish, so an effect's quick
  * mount → unmount → mount (StrictMode, fast tab switching) can't end with the repo unwatched.
  * Resolves once the repo's latest wish has been applied (a failure is logged, not thrown): a tab
  * refreshes after its `watchRepo` returns, since the watcher's first pass has then refreshed the
- * backend's status cache (W2-B: watch, then a plain `graph`). A watch for tab `holder` holds the
+ * backend's status cache (watch, then a plain `graph`). A watch for tab `holder` holds the
  * repo first: the core watches only a repo some tab holds.
  */
 export function setWatched(repo: number, on: boolean, holder?: string): Promise<void> {

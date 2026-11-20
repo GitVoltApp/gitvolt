@@ -10,7 +10,7 @@ export const FORWARD_BUTTON = 4;
 const isShown = (el: Element) => el.getClientRects().length > 0;
 
 /**
- * Spec #5 §3.4: Back/Forward don't apply in a text field or a Monaco editor (they use the keys
+ * Back/Forward don't apply in a text field or a Monaco editor (they use the keys
  * themselves), nor while a menu or a dialog is open. The left flyout (the MR/PR view) is a
  * non-modal panel beside the graph, where Back/Forward matter most: it doesn't count.
  */

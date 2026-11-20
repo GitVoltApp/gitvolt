@@ -5,7 +5,7 @@ import { shortSha } from '../format/sha';
 import './tags.css';
 
 /**
- * A tag's tooltip (UX round 3, M.2), on its graph chip and in its sidebar hover card: an annotated
+ * A tag's tooltip, on its graph chip and in its sidebar hover card: an annotated
  * tag's message (its first lines, from the refs payload: no request per hover), then its tagger
  * and date; a lightweight tag's "Lightweight tag" and the commit it names.
  */

@@ -42,7 +42,7 @@ describe('stage and unstage', () => {
     expect((await loadIndex(mainWt(t.repo))).filter((e) => e.path === 'a.txt').map((e) => [e.stage, e.oid])).toEqual([[0, a.oid]]);
   });
 
-  it('stages and unstages whole files, awkward paths literally (Review Focus 3)', async () => {
+  it('stages and unstages whole files, awkward paths literally', async () => {
     const { t, ctx } = await repo();
     const r = await stageHandlers.stage({ repo: 1, worktree: t.dir, paths: ['a.txt', 'gone.txt', 'space name.txt', 'dir with space/ünï.txt', 'new'] }, ctx);
     expect(r.staging.undo).toBe('stage 5 files');
@@ -69,7 +69,7 @@ describe('stage and unstage', () => {
     expect(await staged(t)).toEqual([]);
   });
 
-  it('a same-size edit right after a stage stays unstaged (Review Focus 2)', async () => {
+  it('a same-size edit right after a stage stays unstaged', async () => {
     const { t, ctx } = await repo();
     await stageHandlers.stage({ repo: 1, worktree: t.dir, paths: ['a.txt'] }, ctx);
     expect(await unstaged(t)).not.toContain('M a.txt');

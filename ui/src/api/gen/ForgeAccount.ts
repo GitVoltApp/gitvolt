@@ -18,6 +18,6 @@ id: string, host: string, kind: ForgeKind,
  */
 user: ForgeUser, storage: TokenStorage, 
 /**
- * GitLab's version (`19.1.0-ee`), read at add and once a day (spec #4 §3.2).
+ * GitLab's version (`19.1.0-ee`), read at add and once a day.
  */
 version: string | null, versionCheckedAt: number, addedAt: number, };

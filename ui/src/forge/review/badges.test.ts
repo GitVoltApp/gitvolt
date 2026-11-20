@@ -7,7 +7,7 @@ const note = (system: boolean) => ({ id: 'n', author: { id: 1, username: 'grace'
 const thread = (id: string, line: number, resolved = false, system = false): PlacedItem => ({ kind: 'thread', thread: { id, notes: [note(system)], resolvable: true, resolved }, at: at(line) });
 const draft = (id: string, line: number): PlacedItem => ({ kind: 'draft', draft: { id, body: id, position: null, replyTo: null }, at: at(line) });
 
-describe("a file's review badge (spec 2026-10-08 §5)", () => {
+describe("a file's review badge", () => {
   it('counts threads and drafts; its clicks go to the unresolved threads first, then the rest, each in line order', () => {
     const b = fileBadge([thread('a', 2, true), draft('d', 3), thread('b', 9), thread('c', 12)])!;
     expect(b).toMatchObject({ count: 4, threads: 3, drafts: 1, unresolved: 2 });

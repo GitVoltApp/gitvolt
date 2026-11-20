@@ -5,8 +5,8 @@ import { GRAPH_METRICS, METRICS } from '../src/graph/metrics';
 import { DENSITIES, DENSITY_STORAGE_KEY } from '../src/theme/density';
 import { fixtures, openUrl } from './fixtures';
 
-/** Plan 1C Task 16a: the collapse zone and lane scrollbar (spec §8.3, F11, R11), collapsed and
- * hidden columns (§8.4). Session-only: persisting hidden columns and widths is Task 16b. */
+/** The collapse zone and lane scrollbar, collapsed and
+ * hidden columns. Session-only: hidden columns and widths aren't persisted. */
 
 const open = async (page: Page, path = fixtures.basic) => {
   await page.goto(openUrl(path));
@@ -97,7 +97,7 @@ test.describe('graph extras', () => {
       await expect(page.getByRole('tooltip')).toHaveText(name!);
     });
     await test.step('right-clicking the header hides and shows columns', async () => {
-      // A commit row: a WIP row's message spans Author and Date (K100).
+      // A commit row: a WIP row's message spans Author and Date.
       const commitRow = page.locator('[role="row"]:not(:has(.wip-summary))').first();
       await page.locator('.graph-header').click({ button: 'right' });
       await page.getByRole('menuitem', { name: 'Hide Author' }).click();

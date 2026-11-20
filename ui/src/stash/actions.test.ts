@@ -12,7 +12,7 @@ import { applyStash, dropStash, stashPushFor } from './actions';
 const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 const res = (outcome: unknown) => ({ outcome, journal: { undo: null, redo: null, undoBlocked: null, redoBlocked: null, banners: [] }, staging: { undo: null, redo: null, off: null }, wip: null });
 
-describe('stashes (spec #2 §10, §8.2)', () => {
+describe('stashes', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useRuntime.setState({ tabs: { t: { ...useRuntime.getState().tabs.t, repo: { id: 1, path: '/r' } } } } as never);

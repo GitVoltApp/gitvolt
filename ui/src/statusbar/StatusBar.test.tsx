@@ -19,7 +19,7 @@ const { setZoom, useZoom } = await import('../ui/zoom');
 
 const bar = () => screen.getByRole('contentinfo');
 
-describe('StatusBar (spec §6.5)', () => {
+describe('StatusBar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useOps.setState({ ops: {}, prompts: [], errors: [], unread: 0, activity: [] });
@@ -29,7 +29,7 @@ describe('StatusBar (spec §6.5)', () => {
     useZoom.setState({ zoom: 100 });
   });
 
-  it('shows the zoom, and its button opens the step list, starting on the current step (spec §12.3)', async () => {
+  it('shows the zoom, and its button opens the step list, starting on the current step', async () => {
     render(<StatusBar />);
     act(() => setZoom(150));
     const zoom = screen.getByRole('button', { name: 'Zoom 150%' });
@@ -62,7 +62,7 @@ describe('StatusBar (spec §6.5)', () => {
     expect(api.cancelOp).toHaveBeenCalledWith(3);
   });
 
-  it('never shows a background fetch, nor a quick fetch of the user\'s (K30)', () => {
+  it('never shows a background fetch, nor a quick fetch of the user\'s', () => {
     vi.useFakeTimers();
     try {
       render(<StatusBar />);
@@ -84,7 +84,7 @@ describe('StatusBar (spec §6.5)', () => {
     }
   });
 
-  it('a slow fetch of the user\'s shows its progress, with Cancel (K96: a stuck one can be stopped)', () => {
+  it('a slow fetch of the user\'s shows its progress, with Cancel (a stuck one can be stopped)', () => {
     vi.useFakeTimers();
     try {
       render(<StatusBar />);
@@ -131,7 +131,7 @@ describe('StatusBar (spec §6.5)', () => {
     expect(useShortcutsUi.getState().open).toBe(true);
   });
 
-  it('shows a write still running after 2 s, with Cancel (spec #2 §3.3)', async () => {
+  it('shows a write still running after 2 s, with Cancel', async () => {
     vi.useFakeTimers();
     try {
       render(<StatusBar />);
@@ -146,7 +146,7 @@ describe('StatusBar (spec §6.5)', () => {
     }
   });
 
-  it('a slow autostash step says so, and its Stop leaves the changes in the stash (spec #2 §6)', async () => {
+  it('a slow autostash step says so, and its Stop leaves the changes in the stash', async () => {
     vi.useFakeTimers();
     try {
       render(<StatusBar />);

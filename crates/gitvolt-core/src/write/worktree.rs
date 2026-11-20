@@ -1,4 +1,4 @@
-//! Worktrees (spec #2 §11.1): add and remove, neither journaled. The suggested folder is
+//! Worktrees: add and remove, neither journaled. The suggested folder is
 //! `<main worktree's parent>/<repo>-<branch>`, every `/` turned into `-` (never nested
 //! folders), then `-2`, `-3`… when taken.
 
@@ -220,7 +220,7 @@ mod tests {
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
-    /// Review Focus 2; spec §17.1 "Worktree paths".
+    /// Suggested paths: slashes dashed, collisions numbered.
     #[test]
     fn suggested_paths_dash_slashes_and_number_collisions() {
         let main = Path::new("/r/shop");
@@ -264,7 +264,7 @@ mod tests {
         assert!(s["undo"].is_null(), "worktree operations aren't journaled");
     }
 
-    /// 2C final I3: the remote form starts from `refs/remotes/<remote>/<branch>`, never a DWIM
+    /// The remote form starts from `refs/remotes/<remote>/<branch>`, never a DWIM
     /// name: a local branch spelled `origin/remote-only` (which DWIM picks first) changes
     /// neither the start nor the upstream.
     #[tokio::test(flavor = "multi_thread")]

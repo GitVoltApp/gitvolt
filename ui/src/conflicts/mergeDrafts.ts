@@ -14,11 +14,9 @@ import { anyPicked, buildOutput, eolText, unpickedCount, type Picks, type Segmen
 import { resolveFile } from './resolve';
 
 /**
- * The merge tool's unsaved work, per (tab, worktree, path) (spec #2 §13.3: "Hand edits anywhere
- * are kept until the region they're in is rebuilt"), as 2B keeps a working copy's draft: it
+ * The merge tool's unsaved work, per (tab, worktree, path), as a working copy's draft is kept: it
  * outlives the editors (a hidden tab disposes them, another file replaces them) and a reload
- * (sessionStorage). The leave, tab-close and window-close guards ask about it (2B T11's
- * [Save] [Discard edits] [Cancel]).
+ * (sessionStorage). The leave, tab-close and window-close guards ask about it ([Save] [Discard edits] [Cancel]).
  */
 
 /** A region's place in the output, as character offsets. */
@@ -42,7 +40,7 @@ export interface MergeDraft {
   edited: number[];
   /** Typed in (anywhere) since it was built. */
   typed: boolean;
-  /** When it was last written (ms): the newest are the ones stored (N3). */
+  /** When it was last written (ms): the newest are the ones stored. */
   at?: number;
 }
 
@@ -59,7 +57,7 @@ function loadStored(): Record<string, MergeDraft> {
 }
 
 export const useMergeDrafts = create<{ drafts: Record<string, MergeDraft> }>(() => ({ drafts: loadStored() }));
-/** At most this many drafts are stored, the newest (N3); the rest stay in memory only. */
+/** At most this many drafts are stored, the newest; the rest stay in memory only. */
 export const STORED_DRAFTS = 20;
 /** A draft bigger than this (its JSON, in UTF-16 units) stays in memory only. */
 export const STORED_DRAFT_MAX = 1_000_000;
@@ -122,7 +120,7 @@ export function registerLive(key: string, tool: LiveTool): () => void {
 }
 
 /** A Conflicted row's Take current / Take incoming / Mark resolved while the merge tool holds
- * unsaved work on that file (2B's `SAVE_FIRST` for the working copy): they'd replace it. */
+ * unsaved work on that file (as `SAVE_FIRST` for the working copy): they'd replace it. */
 export const MERGE_SAVE_FIRST = 'Save the merge first';
 
 /** Whether the merge tool holds unsaved work on (tab, worktree, path); a shown tool writes its
@@ -156,7 +154,7 @@ const saving = new Set<string>();
 /**
  * Saves the work and marks the file resolved (`ResolveFile` Text with the draft's base). It asks
  * first when a region has nothing picked and no hand edit. A Stale save asks [Reload from disk]
- * [Overwrite] (2B's `saveWorkingCopy`): Reload rebuilds from the file as it is now; Overwrite
+ * [Overwrite] (as `saveWorkingCopy`): Reload rebuilds from the file as it is now; Overwrite
  * re-reads only the base and sends the same text. True once resolved (the draft is gone then).
  */
 export async function saveMerge(key: string, confirmed = false): Promise<boolean> {
@@ -176,7 +174,7 @@ export async function saveMerge(key: string, confirmed = false): Promise<boolean
       if (!(await confirmAction({ title: 'Mark resolved with unresolved conflicts?', body, confirmLabel: 'Mark resolved anyway', arm, caption: body, tone: 'warn' }))) return false;
     }
     // Monaco holds one line ending per model: an output nobody typed in goes out as built, so a
-    // mixed-EOL file keeps each line's own (the 2D EOL ruling).
+    // mixed-EOL file keeps each line's own (`Pick.first`).
     const built = buildOutput(d.segments, d.picks, eolText(d.eol)).text;
     const text = d.text === null || lf(d.text) === lf(built) ? built : d.text;
     const ctx = { tabId: d.tabId, repoId: d.repo, worktree: d.worktree };
@@ -215,7 +213,7 @@ export async function saveMerge(key: string, confirmed = false): Promise<boolean
     return false;
   }
   if (now.base === null) {
-    // N6 (2B's `saveWorkingCopy`): no file to write over; the tool says so and offers a copy.
+    // As `saveWorkingCopy`: no file to write over; the tool says so and offers a copy.
     toast(`${d.path} was deleted on disk`);
     patchDraft(key, { base: null });
     live.get(key)?.reset();
@@ -225,7 +223,7 @@ export async function saveMerge(key: string, confirmed = false): Promise<boolean
   return saveMerge(key, true);
 }
 
-// --- N2: work whose file was resolved elsewhere (a row's Take, Mark resolved, `git add`, Abort),
+// --- Work whose file was resolved elsewhere (a row's Take, Mark resolved, `git add`, Abort),
 // or whose tab is gone, is dropped, so no guard asks about it ---
 
 /** Drops `key`'s draft; a shown tool re-reads its conflict (it says the file isn't conflicted). */
@@ -265,7 +263,6 @@ const offTabs = useAppState.subscribe((s, prev) => {
   pruneClosedTabs(new Set(s.profile.tabs.map((t) => t.id)));
 });
 import.meta.hot?.dispose(() => { offViews(); offTabs(); });
-// --- end N2 ---
 
 const MERGE_BODY = 'Your merge of this file isn\'t saved yet.';
 const workOf = (key: string, d: MergeDraft): UnsavedWork => ({

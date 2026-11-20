@@ -73,7 +73,7 @@ describe('runWrite', () => {
     expect((await runWrite(ctx, 1, t.dir, NO, moveMain(two, base, { allowedInProgress: true }))).outcome).toBe('moved');
   });
 
-  it('queued writes run in click order and announce the queue (Review Focus 5)', async () => {
+  it('queued writes run in click order and announce the queue', async () => {
     const { t, base, two, ctx } = await setup();
     const order: string[] = [];
     let open!: () => void;

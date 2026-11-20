@@ -2,6 +2,6 @@
 
 export type WorktreeItem = { path: string, name: string, branch: string | null, head: string | null, isMain: boolean, isCurrent: boolean, 
 /**
- * `git worktree lock`ed: it can't be removed (spec #2 §11).
+ * `git worktree lock`ed: it can't be removed.
  */
 locked: boolean, };

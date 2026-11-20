@@ -1,4 +1,4 @@
-//! Commit signature status through the user's own gpg/ssh configuration (spec §5.1, §9.1).
+//! Commit signature status through the user's own gpg/ssh configuration.
 
 use crate::error::GbError;
 use crate::git::{GitCli, GitInvocation};
@@ -406,10 +406,10 @@ mod tests {
         assert_eq!(parse_signature_status(b"N\0\0\0\0undefined\n", "", false).kind, SignatureKind::Unsigned);
     }
 
-    /// Spec §17.1: signature status with a test GPG key. One commit signed by a throwaway key is
+    /// Signature status with a test GPG key. One commit signed by a throwaway key is
     /// read three ways: by the keyring that made it (the key is ultimately trusted: verified), by
     /// one that holds only its public half (untrusted: unverified) and by an empty one (unknown).
-    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (not yet on Windows)
     #[tokio::test]
     async fn gpg_signatures_are_verified_by_git() {
         if let Some(reason) = crate::testing::gpg_signing_unavailable() {
@@ -458,7 +458,7 @@ mod tests {
     /// F11: the throwaway repo's own config carries `gpg.format`/`user.signingkey`, never
     /// `-c user.signingkey=...` on the command line, and the user's global git config is never
     /// touched (`isolated_git_env` already points `GIT_CONFIG_GLOBAL` at `/dev/null`).
-    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (not yet on Windows)
     #[tokio::test]
     async fn ssh_signatures_are_verified_by_git() {
         if let Some(reason) = crate::testing::ssh_signing_unavailable() {
@@ -565,7 +565,7 @@ mod tests {
     /// The direct `gpg --verify` gives git's verdict, signer, key, fingerprint and trust: a good
     /// signature (ultimate trust), an untrusted key, an unknown key, a tampered payload, an expired
     /// key. And it is one gpg run, not git.
-    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (not yet on Windows)
     #[tokio::test]
     async fn direct_gpg_verification_matches_git() {
         if let Some(reason) = crate::testing::gpg_signing_unavailable() {
@@ -681,7 +681,7 @@ mod tests {
 
     /// A gpg that hangs is given up on after the timeout: "gpg didn't answer", an unknown key
     /// (asked again later), and never a second try through git (which would hang on it too).
-    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (Windows signing is phase 2)
+    #[cfg(unix)] // signing: the test's gpg/ssh-keygen wrappers are sh scripts (not yet on Windows)
     #[tokio::test]
     async fn a_hanging_gpg_gives_up_without_asking_git() {
         let r = TestRepo::new();

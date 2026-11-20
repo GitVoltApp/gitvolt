@@ -75,7 +75,7 @@ describe('runFetch', () => {
     expect(rt().remoteFetchErrors?.carol?.reason).toBe('authentication failed');
   });
 
-  it('a user fetch with server output links it; a background one toasts only a warning (spec #2 §12.4)', async () => {
+  it('a user fetch with server output links it; a background one toasts only a warning', async () => {
     api.fetch.mockResolvedValueOnce({ status: 'done', changed: true, server: { lines: 1, warning: null }, op: 4 });
     await runFetch('t', false);
     expect(useToast.getState().actions.map((a) => a.label)).toEqual(['Server output (1 line)']);
@@ -96,7 +96,7 @@ describe('runFetch', () => {
     }
   });
 
-  it("a user fetch's failure toast stays to be read and links to the activity log (K96)", async () => {
+  it("a user fetch's failure toast stays to be read and links to the activity log", async () => {
     vi.useFakeTimers();
     try {
       api.fetch.mockRejectedValueOnce({ kind: 'AuthFailed', message: 'git@h: Permission denied (publickey).' });
@@ -151,7 +151,7 @@ describe('runFetch', () => {
     expect(useToast.getState().message).toBe('A fetch is already running');
   });
 
-  it('a user fetch that finds a background one running waits on it: the button shows it (K30)', async () => {
+  it('a user fetch that finds a background one running waits on it: the button shows it', async () => {
     useOps.getState().apply({ type: 'opStarted', op: 7, kind: 'fetch', repo: 4, label: 'r', interactive: false });
     expect(useOps.getState().ops[7].shown).toBe(false);
     api.fetch.mockResolvedValue({ status: 'skipped', reason: 'busy' });
@@ -160,7 +160,7 @@ describe('runFetch', () => {
     expect(useToast.getState().message).toBeNull();
   });
 
-  it('an outage reaches the bell once, not on every background tick (K30)', async () => {
+  it('an outage reaches the bell once, not on every background tick', async () => {
     api.fetch.mockResolvedValueOnce({ status: 'done', changed: false, server: { lines: 0, warning: null }, op: 1 });
     await runFetch('t', true);
     for (let i = 0; i < 3; i++) {
@@ -194,7 +194,7 @@ describe('useFetchScheduler', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it('runs only while its tab is visible: a hidden <Activity> has no timer (spec §4.4)', async () => {
+  it('runs only while its tab is visible: a hidden <Activity> has no timer', async () => {
     const { rerender } = render(<Activity mode="visible"><Scheduled repoId={4} /></Activity>);
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(api.fetch).toHaveBeenCalledTimes(1);

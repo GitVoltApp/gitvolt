@@ -48,7 +48,7 @@ describe('action registry', () => {
     warn.mockRestore();
   });
 
-  it('every run goes to the action log; a failure toasts with its context action and Details (R11, R12)', async () => {
+  it('every run goes to the action log; a failure toasts with its context action and Details', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { useActionLog } = await import('../debug/actionLog');
     const { useToast } = await import('../ui/toastStore');
@@ -111,7 +111,7 @@ describe('action registry', () => {
     expect(run).toHaveBeenCalledOnce();
   });
 
-  it('hamburger: Quit is the last entry of File, after a separator, even when registered before others (K95)', () => {
+  it('hamburger: Quit is the last entry of File, after a separator, even when registered before others', () => {
     offs.push(registerActions([
       { id: 'file.quit', label: 'Quit', group: 'File', icon: Info, tooltip: 'Quit', run: () => {} },
       { id: 'f.settings', label: 'Settings', group: 'File', icon: FolderOpen, tooltip: 'Settings', run: () => {} },

@@ -4,7 +4,7 @@ import { armClock, press, pressEnter } from './arm/armTesting';
 import type { ArmAnswer } from './arm/store';
 import { ConfirmDialog, confirmAction, confirmWith } from './ConfirmDialog';
 
-describe('ConfirmDialog: the popover with no control to arm (K68, spec §ui confirms board H)', () => {
+describe('ConfirmDialog: the popover with no control to arm', () => {
   let clock: ReturnType<typeof armClock>;
   beforeEach(() => { clock = armClock(); });
   afterEach(() => clock.restore());
@@ -41,7 +41,7 @@ describe('ConfirmDialog: the popover with no control to arm (K68, spec §ui conf
     await expect(a).resolves.toBe(true);
   });
 
-  it('compact (UX round 3): one right-aligned row, a quiet Cancel then the answer; the title alone when there is no body; an option is a checkbox that answers with its value', async () => {
+  it('compact: one right-aligned row, a quiet Cancel then the answer; the title alone when there is no body; an option is a checkbox that answers with its value', async () => {
     render(<ConfirmDialog />);
     let a!: Promise<ArmAnswer>;
     act(() => { a = confirmWith({ title: 'Rebase feature/c onto main?', confirmLabel: 'Rebase', arm: 'Click again to rebase feature/c onto main', option: { label: 'Also move 2 stacked branches', detail: 'feature/a, feature/b', checked: true } }, null); });

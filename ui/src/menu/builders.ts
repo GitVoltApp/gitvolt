@@ -16,9 +16,8 @@ import type { CommitTarget, FileTarget, FolderTarget, MenuEnv, MonacoTarget, Sid
 import { registerMenu, tmpl } from './registry';
 import type { MenuRow, Variant } from './types';
 
-// Pure: rows are built only from the target and the in-memory env (spec §7). Never call the API
-// client here; builders.test.ts proves it with a throwing mock. Plan 1C Task 15 adds the
-// commit, tag and Monaco contributions to this module; 1B ships the file menu only.
+// Pure: rows are built only from the target and the in-memory env. Never call the API
+// client here; builders.test.ts proves it with a throwing mock.
 
 type Action = Extract<MenuRow, { kind: 'action' }>;
 const row = (r: Omit<Action, 'kind'>): MenuRow => ({ kind: 'action', ...r });
@@ -36,10 +35,10 @@ function copyPath(id: string, path: string, root: string, env: MenuEnv): MenuRow
   });
 }
 
-// --- 2B T9: a WIP file's Stage / Unstage and Discard changes (spec #2 §7.1) ---
+// --- a WIP file's Stage / Unstage and Discard changes ---
 registerMenu<FileTarget, MenuEnv>({
   id: 'file.stage', kind: 'file', group: 'stage', order: 0,
-  // A conflicted file's rows (Take current / incoming, Mark resolved) are 2D's.
+  // A conflicted file's rows (Take current / incoming, Mark resolved) are the conflict feature's.
   when: (t) => !!t.wip && t.wip.status !== 'U',
   rows: (t) => {
     const wip = t.wip!;
@@ -66,7 +65,7 @@ registerMenu<FileTarget, MenuEnv>({
 
 /** A WIP folder (tree mode): its hover buttons' Stage / Discard (Unstaged) or Unstage (Staged),
  * on the changed files the list shows under it. Discard arms in place, as the button does, and
- * takes its untracked files too. Conflicted files are Mark resolved's (2D). */
+ * takes its untracked files too. Conflicted files are Mark resolved's. */
 registerMenu<FolderTarget, MenuEnv>({
   id: 'folder.stage', kind: 'folder', group: 'stage', order: 0,
   rows: (t) => {
@@ -95,12 +94,11 @@ registerMenu<WipTarget, MenuEnv>({
   when: (_t, env) => !!env.write,
   rows: (t, env) => (env.write ? [discardAllRow({ ...env.write, worktree: t.worktree }, t.discard ?? { count: 0, inProgress: false })] : []),
 });
-// --- end 2B T9 ---
 
 registerMenu<FileTarget, MenuEnv>({ id: 'file.copy', kind: 'file', group: 'copy', order: 0, rows: (t, env) => [copyPath('file.copyPath', t.path, t.root, env)] });
 
 /**
- * `Forge link | ⎇ | ◉ | Open |` (spec §7: the label copies the URL, an Open variant opens it).
+ * `Forge link | ⎇ | ◉ | Open |` (the label copies the URL, an Open variant opens it).
  * ⎇ copies the file on the selected commit's branch upstream, ◉ a permalink pinned to the
  * commit; the label copies (and Open opens) the branch link when there is one, else the
  * permalink.
@@ -158,7 +156,7 @@ function viewTooltip(t: FileTarget): string {
 
 registerMenu<FileTarget, MenuEnv>({
   id: 'file.view', kind: 'file', group: 'view', order: 0,
-  // One row, `View | Diff | File |` (K58): the label opens the diff (the default; the file when
+  // One row, `View | Diff | File |`: the label opens the diff (the default; the file when
   // it's unchanged, which has no diff), Diff and File are the variants.
   rows: (t, env) => {
     const diffReason = t.changed ? undefined : 'Unchanged in this commit';
@@ -184,11 +182,11 @@ registerMenu<FolderTarget, MenuEnv>({
   },
 });
 
-// Plan 1C Task 15 (lane W2-D): the commit, tag and Monaco kinds, registered next to 1B's file and
-// folder rows above, with new ids (a duplicate id throws at import, preflight.md T15). Still
+// The commit, tag and Monaco kinds, registered next to the file and
+// folder rows above, with new ids (a duplicate id throws at import). Still
 // pure: no API client import (builders.test.ts's throwing proxy covers these too).
 
-/** A commit target's branch, as its remote-tracking ref (origin first, spec §7's `⎇`/forge rows). */
+/** A commit target's branch, as its remote-tracking ref (origin first, for the `⎇`/forge rows). */
 const remoteBranch = (b: CommitTarget['branch']) => {
   const r = b?.remotes.find((x) => x.remote === 'origin') ?? b?.remotes[0];
   return r ? { remote: r.remote, name: r.fullName.slice(`refs/remotes/${r.remote}/`.length) } : null;
@@ -196,8 +194,7 @@ const remoteBranch = (b: CommitTarget['branch']) => {
 
 /**
  * `Forge link | ⎇ | ◉ | Open |` for a target whose commit permalink is always known (a real
- * commit, unlike a file that might not be committed yet): the M report's shape (item 10, spec
- * §7's Amendment 6) — the label copies the branch link when there is one, else the permalink; ⎇
+ * commit, unlike a file that might not be committed yet): the label copies the branch link when there is one, else the permalink; ⎇
  * and ◉ copy each explicitly; Open opens the default in the browser.
  */
 function commitForgeRow(id: string, name: string, branch: { url: string | null }, commitLink: string, env: MenuEnv): MenuRow {
@@ -216,8 +213,8 @@ function simpleForgeRow(id: string, url: string, what: string, env: MenuEnv): Me
   return row({ id, label: 'Forge link', icon: ICONS.forge, tooltip: `Copy ${what}`, run: () => env.act.copy(url), variants: [{ id: 'open', icon: ICONS.browser, tooltip: `Open ${what} in the browser`, run: () => env.act.openUrl(url) }] });
 }
 
-/** One `Open <ref>` row per distinct MR/PR reference in the commit message (spec §7's target
- * table; issues get no button, M report deviation 9's `ForgeRef.type`). */
+/** One `Open <ref>` row per distinct MR/PR reference in the commit message (issues get no
+ * button, by `ForgeRef.type`). */
 registerMenu<CommitTarget, MenuEnv>({
   id: 'commit.forge.refs', kind: 'commit', group: 'forge', order: 0,
   when: (t) => !t.isWip,
@@ -236,8 +233,8 @@ registerMenu<CommitTarget, MenuEnv>({
 });
 
 /** `Copy branch name | Local | Remote |` · `Copy SHA | Short | Full |` · `Copy message` ·
- * `Forge link | ⎇ | ◉ | Open |`, one group (spec §7's target table puts the commit's Forge link
- * in the copy group, unlike the file menu's own `forge` group). */
+ * `Forge link | ⎇ | ◉ | Open |`, one group (the commit's Forge link
+ * is in the copy group, unlike the file menu's own `forge` group). */
 registerMenu<CommitTarget, MenuEnv>({
   id: 'commit.copy', kind: 'commit', group: 'copy', order: 0,
   when: (t) => !t.isWip,
@@ -285,7 +282,7 @@ registerMenu<CommitTarget, MenuEnv>({
     : [row({ id: 'commit.compareWorktree', label: 'Compare with working tree', icon: ICONS.compare, tooltip: 'Compare this commit with the files on disk', run: () => env.act.compare(t.sha, 'worktree') })],
 });
 
-/** `Forge link` · `Copy tag name` (spec §7's tag row; 1B's `GROUP_ORDER.tag` puts forge first). */
+/** `Forge link` · `Copy tag name` (`GROUP_ORDER.tag` puts forge after copy). */
 registerMenu<TagTarget, MenuEnv>({
   id: 'tag.forge', kind: 'tag', group: 'forge', order: 0,
   rows: (t, env) => {
@@ -347,9 +344,9 @@ registerMenu<MonacoTarget, MenuEnv>({
   },
 });
 
-// Plan 1C Task 15b: the sidebar's own rows (remote, worktree, stash), and the "Show in graph" row
+// The sidebar's own rows (remote, worktree, stash), and the "Show in graph" row
 // that ends every sidebar item's menu. A branch or tag item gets its `commit`/`tag` menu first
-// (`sidebarItemMenu`). Read-only: checkout, delete, push… are sub-project #2's.
+// (`sidebarItemMenu`). Read-only: checkout, delete, push… are the write features'.
 
 /** `Copy SHA | Short | Full |`. */
 const copySha = (id: string, sha: string, env: MenuEnv): MenuRow => row({

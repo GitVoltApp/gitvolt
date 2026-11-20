@@ -1,11 +1,11 @@
 .details-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 /* A size container: a short panel compacts the commit box (commit.css). */
 .details-panel { container: details / size; }
-/* Feedback F13: the top section (header + message) takes the split's share (inline
+/* The top section (header + message) takes the split's share (inline
    flex-basis); the header is fixed and only the message scrolls. */
 .commit-details { display: flex; flex-direction: column; flex-grow: 0; flex-shrink: 0; min-height: 72px; overflow: hidden; box-sizing: border-box; padding: 0 12px 0; }
 .commit-message { flex: 1 1 auto; min-height: 0; overflow: auto; padding-bottom: 8px; }
-/* Feedback H11: the message in a darker box. */
+/* The message in a darker box. */
 .commit-message.message-box { background: var(--app-bg0); border-radius: 4px; padding: 6px 10px 8px; margin-bottom: 8px; }
 .message-box > .details-summary:first-child { margin-top: 0; }
 .split-resizer { flex: none; height: 5px; margin: -2px 0; position: relative; z-index: 1; cursor: row-resize; touch-action: none; }
@@ -13,15 +13,15 @@
 .split-resizer:hover::before, .split-resizer:focus-visible::before { top: 1px; height: 3px; background: var(--blue); }
 .split-resizer:focus-visible { outline: none; }
 .commit-header { flex: none; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
-/* Justified three-part top row (feedback F16): signature icon | SHA | parent(s). A `.panel-bar`
-   (K5/K6): the open file's bar box, its divider spanning the panel, lined up with that bar's. */
+/* Justified three-part top row: signature icon | SHA | parent(s). A `.panel-bar`:
+   the open file's bar box, its divider spanning the panel, lined up with that bar's. */
 .commit-ids { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: baseline; align-content: center; margin: 0 -12px; padding: 0 12px; color: var(--text-secondary); }
-/* Feedback J8: the three parts are lines of text on one shared baseline (grid baseline alignment),
+/* The three parts are lines of text on one shared baseline (grid baseline alignment),
    so the labels (UI font) and the hashes (monospace) line up whatever their fonts. Each is trimmed
    to the hashes' cap height and baseline (`text-box`), the digits' ink, and the trimmed row is
    centred (`align-content`). The icon sits in its own line on that same baseline, centred on the
-   cap height: centred on the text itself, not on a line box whose descender space sits below it
-   (H11), and snapped with the text at any zoom. */
+   cap height: centred on the text itself, not on a line box whose descender space sits below it,
+   and snapped with the text at any zoom. */
 .commit-ids > * { display: block; white-space: nowrap; font-family: ui-monospace, monospace; text-box: trim-both cap alphabetic; }
 .commit-ids-start { justify-self: start; }
 .commit-ids-start > .sig-badge { display: inline-block; vertical-align: calc(0.5cap - var(--sig-badge-size) / 2); }
@@ -29,11 +29,11 @@
 .commit-ids > .commit-id { justify-self: center; }
 .parents { justify-self: end; }
 .parents .sha + .sha { margin-left: 6px; }
-/* `commit:` / `parent:` (H11, J8): dimmed, in the UI font at the hash's size; the hashes are white
+/* `commit:` / `parent:`: dimmed, in the UI font at the hash's size; the hashes are white
    monospace. */
 .id-label { color: var(--text-secondary); font-family: var(--font-ui); }
 .commit-ids .sha { color: var(--text-selected); }
-/* Fixed row heights (the avatar's box), so a swap doesn't reflow (feedback F12). */
+/* Fixed row heights (the avatar's box), so a swap doesn't reflow. */
 .person { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 32px; }
 .person-id { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .person-name { color: var(--text-selected); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -44,7 +44,7 @@
 .details-body { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-normal); }
 .details-error { padding: 4px 0; color: var(--text-secondary); }
 .wip-header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; padding: 0 12px; }
-/* Compare (spec §9.4, K17, K27): the `Comparing … → … ⇄ ×` bar, then one row per side, FROM first. */
+/* Compare: the `Comparing … → … ⇄ ×` bar, then one row per side, FROM first. */
 /* Two dividers, not a duplicate: .compare-bar's own (from .panel-bar) closes the `Comparing …` bar,
    and .compare-header's closes the two-commit summary rows below it (.compare-commits sits between them). */
 .compare-header { flex: none; display: flex; flex-direction: column; padding: 0 12px 6px; border-bottom: 1px solid var(--section-border); }
@@ -56,7 +56,7 @@
 .compare-commit { display: flex; align-items: center; gap: 8px; min-width: 0; height: 28px; }
 .compare-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-selected); }
 .compare-date { flex: none; color: var(--text-normal); font-size: 12px; }
-/* A multi-selection (spec §9.4, K27): the `N commits selected ×` bar, then one row per commit
+/* A multi-selection: the `N commits selected ×` bar, then one row per commit
    (the compare rows' look), virtualized (MultiSummary.tsx: 30 px rows), scrolling within the panel. */
 .multi-summary { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .multi-bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 12px; }

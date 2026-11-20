@@ -9,9 +9,9 @@ import { closePickers } from '../ui/RefPicker';
 import './auth.css';
 
 /**
- * Spec §5.4: git's (or ssh's) credential prompt, one at a time; the credential helper decides
+ * Git's (or ssh's) credential prompt, one at a time; the credential helper decides
  * whether anything is remembered. Only user-started ops ever get here: GitVolt's own background
- * fetches never prompt (their askpass calls are refused, Review Focus 3). An HTTPS prompt tied to
+ * fetches never prompt (their askpass calls are refused). An HTTPS prompt tied to
  * one remote of its op also offers that remote's SSH URL: choosing it cancels the prompt, and the
  * op's caller switches the remote and runs the op again (`sshSwitch.ts`).
  */
@@ -52,7 +52,7 @@ function AuthForm({ prompt }: { prompt: AuthPrompt }) {
     void api.authUseSsh(prompt.prompt).catch(gone);
   };
 
-  // While open it owns the keyboard (ruling R6): it's in the key router's `menu` layer, so no key
+  // While open it owns the keyboard: it's in the key router's `menu` layer, so no key
   // reaches the app behind it (Esc never also closes the open file, Ctrl+W never closes the tab).
   // Esc cancels the prompt; Tab stays inside it; every other key goes on to the field and buttons.
   const keys = useRef<(e: KeyboardEvent) => 'handled' | 'native'>(() => 'native');

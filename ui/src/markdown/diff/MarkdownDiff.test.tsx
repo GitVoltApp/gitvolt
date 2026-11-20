@@ -20,7 +20,7 @@ const v2 = '# Install guide\n\nRun the tool twice.\n\n- install\n- verify\n\n```
 
 afterEach(() => { resetChunkStreams(); clearParseCache(); });
 
-describe('<MarkdownDiff> (5C)', () => {
+describe('<MarkdownDiff>', () => {
   it('renders a small diff in the first paint: words, an added item, code lines, diagrams side by side', async () => {
     const { container } = render(<MarkdownDiff old={v1} new={v2} flavor="github" context={NEW} oldContext={OLD} />);
     expect(container.firstElementChild).toHaveClass('md', 'md-diff');
@@ -98,7 +98,7 @@ describe('<MarkdownDiff> (5C)', () => {
 
     it("a link definition's changed URL marks its uses: the old link removed, the new one added", () => {
       const c = show('See [the docs][d].\n\n[d]: https://docs.example/old\n', 'See [the docs][d].\n\n[d]: https://docs.example/new\n');
-      // Links render without href (ruling 12): their targets are checked in diffTree.test.
+      // Links render without href: their targets are checked in diffTree.test.
       expect(c.querySelector('del a.md-link')).toHaveTextContent('the docs');
       expect(c.querySelector('ins a.md-link')).toHaveTextContent('the docs');
     });
@@ -116,7 +116,7 @@ describe('<MarkdownDiff> (5C)', () => {
     expect([...container.querySelectorAll('p')].filter((p) => p.textContent === 'Old stuff' && !removed.contains(p))).toHaveLength(0);
   });
 
-  it('Previous/Next change stop at each counted change (R3)', async () => {
+  it('Previous/Next change stop at each counted change', async () => {
     const { changeTargets } = await import('../../diff/changeStepper');
     const { diffMarkdown } = await import('./diffTree');
     const old = `${v1}\n| a | b |\n|---|---|\n| 1 | 2 |\n\nText.[^1]\n\n[^1]: The old note.\n\n<div>\nOld HTML.\n</div>\n`;
@@ -127,12 +127,12 @@ describe('<MarkdownDiff> (5C)', () => {
     expect(changeTargets(container as HTMLElement)).toHaveLength(changes);
   });
 
-  it('an added file renders all added (R6)', () => {
+  it('an added file renders all added', () => {
     render(<MarkdownDiff old="" new={'# A\n\nB.\n'} flavor="github" context={NEW} oldContext={OLD} />);
     expect(screen.getAllByRole('group', { name: 'Added' })).toHaveLength(2);
   });
 
-  it("a large diff streams in chunks through 5A's progressive renderer", async () => {
+  it("a large diff streams in chunks through the progressive renderer", async () => {
     const big = Array.from({ length: 30 }, (_, i) => `## Part ${i}\n\n${'word '.repeat(400)}`).join('\n\n');
     const { container } = render(<MarkdownDiff old={big} new={big.replace('Part 3', 'Part three')} flavor="github" context={NEW} oldContext={OLD} />);
     // The main-thread diff of two 60 K texts, then one chunk per idle callback: ~0.3 s alone, over
@@ -162,7 +162,7 @@ describe('<MarkdownDiff> (5C)', () => {
     expect(estimate(chunks[1]!)).toBe(Math.max(40, Math.round(Number(chunks[1]!.dataset.chars) * px)));
   });
 
-  describe('a diff that runs out of time (R14)', () => {
+  describe('a diff that runs out of time', () => {
     afterEach(() => vi.restoreAllMocks());
     /** A clock that moves 1 s on every read: any diff runs past its deadline. */
     const slowClock = () => { let t = 1_000_000; vi.spyOn(Date, 'now').mockImplementation(() => (t += 1000)); };

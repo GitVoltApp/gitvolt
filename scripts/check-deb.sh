@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: scripts/check-deb.sh <package.deb> — the shippable-package checks of spec §18.
+# Usage: scripts/check-deb.sh <package.deb> — the shippable-package checks.
 # Needs dpkg-deb, python3, appstreamcli (appstream) and desktop-file-validate (desktop-file-utils).
 set -euo pipefail
 deb=${1:?usage: check-deb.sh <package.deb>}

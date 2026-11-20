@@ -16,10 +16,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  *   `--motion-row-dim`, theme/tokens.css) but colours each kind differently.
  *
  * Sources, and their level:
- * - `'branch'`: J22's branch-hover focus, inside GraphView (`useBranchFocus` below): hovering a
+ * - `'branch'`: the branch-hover focus, inside GraphView (`useBranchFocus` below): hovering a
  *   branch chip for `BRANCH_FOCUS_DELAY_MS` dims every row not in that branch (`branchRows`,
  *   membership.ts), at `--text-row-dimmed-branch` (50% white).
- * - `'filter'`: Plan 1C Task 17's Ctrl+F commit search: `GraphView`'s `rowDim` prop
+ * - `'filter'`: the Ctrl+F commit search: `GraphView`'s `rowDim` prop
  *   (`dimAllBut(matchingRows, 'filter')`, which RepoView builds from the store's `filterKeep`).
  *   Dims at `--text-row-dimmed` (20% white).
  *
@@ -63,11 +63,11 @@ export function rowDimKindClass(kind: DimKind): string {
   return `${ROW_DIM_CLASS}-${kind}`;
 }
 
-/** How long the pointer must rest on a branch chip before its branch is focused (J22). */
+/** How long the pointer must rest on a branch chip before its branch is focused. */
 export const BRANCH_FOCUS_DELAY_MS = 500;
 
 /**
- * J22's branch-hover focus: `onBranchHover(refs)` when the pointer enters a branch chip (the
+ * The branch-hover focus: `onBranchHover(refs)` when the pointer enters a branch chip (the
  * refs it stands for, `chipRefs`), `onBranchHover(null)` when it leaves. `refs` is the focused
  * branch once the pointer has rested `BRANCH_FOCUS_DELAY_MS` on the same chip; leaving clears it
  * at once (and cancels a pending focus). `onBranchHover` is stable.

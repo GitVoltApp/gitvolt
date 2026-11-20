@@ -4,7 +4,7 @@ import type { RefLabel } from '../api/gen/RefLabel';
 import type { RowPayload } from '../api/gen/RowPayload';
 
 /**
- * A stack (spec #3 §3.11): local branches B1 → … → Bn, each tip an ancestor of the next on its
+ * A stack: local branches B1 → … → Bn, each tip an ancestor of the next on its
  * first-parent line, B1 ahead of `base`. Pure data from the graph, so #4's forge stacks can reuse
  * it.
  */
@@ -42,9 +42,9 @@ export function findBase(labels: readonly RefLabel[], base: string): { row: numb
  * pass marks the base's ancestry and one reverse pass finds each row's nearest member below it.
  *
  * - Members are local branches whose tip isn't in the base's history; a branch named like the
- *   base's own branch (`main` for `origin/main`) never is one (Ruling 4).
+ *   base's own branch (`main` for `origin/main`) never is one.
  * - A member's parent is the nearest member down its first-parent line, before the base's
- *   history; branches on one commit chain by name (Ruling 3).
+ *   history; branches on one commit chain by name.
  * - A tree with a single member isn't a stack.
  */
 export function detectStacks(graph: Graph, base: string): Stack[] {
@@ -140,7 +140,7 @@ export function stackFor(stacks: readonly Stack[], branch: string, headBranch: s
 export interface BaseRemote { name: string; defaultBranch?: string | null }
 
 /**
- * The stack base (spec #3 §3.11), among the refs the graph has loaded: a remote's default branch
+ * The stack base, among the refs the graph has loaded: a remote's default branch
  * (`refs/remotes/<r>/HEAD`), origin first; else `<remote>/main|master|trunk`; else a local
  * main/master/trunk. Remote names also come from the graph's labels, for before the sidebar loads.
  */

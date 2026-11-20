@@ -1,7 +1,7 @@
 import { expect, test } from './test';
 import { fixtures, openUrl } from './fixtures';
 
-// App zoom (spec §12.2). The browser harness has no Tauri webview to zoom, so `setZoom` is a no-op
+// App zoom. The browser harness has no Tauri webview to zoom, so `setZoom` is a no-op
 // here; `html[data-zoom]` is the step the app would apply. Each test starts at the default: the
 // saved step is cleared on the test's first page load only, so a reload keeps it.
 const ZOOM_KEY = 'gitvolt.zoom.v1';

@@ -4,7 +4,7 @@ import type { WipBase } from "./WipBase";
 
 export type DiscardScope = { "kind": "paths", paths: Array<string>, } | { "kind": "patch", path: string, selection: StageSelection, base: WipBase, } | { "kind": "unstaged" } | { "kind": "all", 
 /**
- * UX R1 C.2: the changed files the user confirmed (the panel's, a rename's both paths).
+ * The changed files the user confirmed (the panel's, a rename's both paths).
  * A changed file outside them refuses it as Stale, so a Discard all never takes more
  * than was confirmed (one sent again while the first still ran, say). Absent: every
  * changed file.

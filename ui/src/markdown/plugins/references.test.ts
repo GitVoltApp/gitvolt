@@ -14,7 +14,7 @@ const refs = (md: string, flavor: MdFlavor = 'gitlab') => {
 };
 const ref = (refKind: MdReferenceNode['refKind'], value: string, over: Partial<MdReferenceNode> = {}) => ({ refKind, project: null, number: null, sha: null, user: null, value, ...over });
 
-describe('the references plugin (spec #5 §3.1)', () => {
+describe('the references plugin', () => {
   it('finds #n and project#n, and GitLab’s !n and group/project!n in the gitlab flavor only', () => {
     expect(refs('Fixes #12, see group/sub/project#3 and !45 or group/project!7.')).toEqual([
       ref('issue', '#12', { number: 12 }),

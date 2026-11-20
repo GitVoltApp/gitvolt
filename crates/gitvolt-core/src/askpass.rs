@@ -1,4 +1,4 @@
-//! Askpass (spec §5.4). Git and ssh run the GitVolt binary itself as `GIT_ASKPASS`/`SSH_ASKPASS`
+//! Askpass. Git and ssh run the GitVolt binary itself as `GIT_ASKPASS`/`SSH_ASKPASS`
 //! with the prompt as its argument. In that mode (`run_client_from_env`) the process connects to
 //! the running app's per-session Unix socket (path and a random token in its environment), asks,
 //! and prints the answer on stdout. The app shows a modal for interactive ops; GitVolt-started
@@ -56,7 +56,7 @@ struct ServerReply {
     cancel: bool,
 }
 
-/// "Use SSH for `remote` instead" (spec §5.4): the remote a credential prompt is about, and the
+/// "Use SSH for `remote` instead": the remote a credential prompt is about, and the
 /// SSH URL it would get.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -219,7 +219,7 @@ impl AskpassServer {
             ("SSH_ASKPASS".into(), self.exe.clone().into_os_string()),
             // "force" (OpenSSH 8.4+): every ssh prompt (passphrase, host key, PIN) comes here,
             // display or not. "prefer" only uses askpass when DISPLAY/WAYLAND_DISPLAY is set and
-            // otherwise reads the terminal (K96).
+            // otherwise reads the terminal.
             ("SSH_ASKPASS_REQUIRE".into(), "force".into()),
             (ENV_SOCKET.into(), self.path.clone().into_os_string()),
             (ENV_TOKEN.into(), self.token.clone().into()),
@@ -491,7 +491,7 @@ mod tests {
         let get = |k: &str| env.iter().find(|(a, _)| a == k).map(|(_, v)| v.to_string_lossy().into_owned());
         assert_eq!(get("GIT_ASKPASS").as_deref(), Some("/bin/false"));
         assert_eq!(get("SSH_ASKPASS").as_deref(), Some("/bin/false"));
-        // K96: "force", not "prefer": with "prefer", ssh uses askpass only when DISPLAY (or
+        // "force", not "prefer": with "prefer", ssh uses askpass only when DISPLAY (or
         // WAYLAND_DISPLAY) is set, and otherwise reads the terminal.
         assert_eq!(get("SSH_ASKPASS_REQUIRE").as_deref(), Some("force"));
         assert_eq!(get(ENV_SOCKET).as_deref(), Some(s.socket_path().to_str().unwrap()));

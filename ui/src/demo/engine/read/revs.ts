@@ -6,7 +6,7 @@ import { demoOf, fail, ig, isNotFound, type ReadRepo } from './seam';
 import { worktreeOf } from './worktrees';
 
 /** The full ref a name means to git (itself, `refs/<n>`, `refs/tags/<n>`, `refs/heads/<n>`,
- *  `refs/remotes/<n>`, `refs/remotes/<n>/HEAD`, the first that exists), through 1a's refs; null
+ *  `refs/remotes/<n>`, `refs/remotes/<n>/HEAD`, the first that exists), through the repo's refs; null
  *  when there's none. */
 export function dwimRefName(repo: ReadRepo, name: string): string | null {
   const demo = demoOf(repo);
@@ -81,7 +81,7 @@ export async function revParse(repo: ReadRepo, spec: string, root?: string): Pro
   return c;
 }
 
-/** Every commit reachable from `tip` (1a's `reach`, after reading any commit its store lacks). */
+/** Every commit reachable from `tip` (`reach`, after reading any commit its store lacks). */
 export async function ancestors(repo: ReadRepo, tip: string): Promise<Set<string>> {
   const demo = demoOf(repo);
   await demo.addCommits([tip]);
@@ -100,7 +100,7 @@ export function shortOid(oid: string): string {
   return bytes.length <= 7 || (bytes[7] & 0xc0) === 0x80 ? oid : new TextDecoder().decode(bytes.slice(0, 7));
 }
 
-/** The core's `relation`: commits reachable from `a` and not `b`, and the reverse (1a's `aheadBehind`). */
+/** The core's `relation`: commits reachable from `a` and not `b`, and the reverse (`aheadBehind`). */
 export async function relation(repo: ReadRepo, a: string, b: string): Promise<[number, number]> {
   const demo = demoOf(repo);
   await demo.addCommits([a, b]);
@@ -120,7 +120,7 @@ export async function mergeBasesOf(repo: ReadRepo, a: string, b: string): Promis
   }
 }
 
-/** 1a's ref files under `prefix` (byte order, loose over packed), each resolved through symbolic refs. */
+/** The repo's ref files under `prefix` (byte order, loose over packed), each resolved through symbolic refs. */
 export async function refsUnder(repo: ReadRepo, prefix: 'refs/heads' | 'refs/remotes' | 'refs/tags'): Promise<{ name: string; oid: string }[]> {
   const demo = demoOf(repo);
   const files = demo.refFiles();
@@ -146,7 +146,7 @@ export async function configBool(repo: ReadRepo, key: string): Promise<boolean |
   return undefined;
 }
 
-/** `git stash list`'s commits, newest first (1a's `stashes()`, from the stash's reflog). */
+/** `git stash list`'s commits, newest first (`stashes()`, from the stash's reflog). */
 export async function stashIds(repo: ReadRepo): Promise<string[]> {
   return demoOf(repo).stashes().map((s) => s.id);
 }

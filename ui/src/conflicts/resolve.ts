@@ -12,13 +12,13 @@ export function submoduleBehindMessage(b: SubmoduleBehind): string {
   return `Submodule ${b.path} is still checked out at ${shortSha(b.head)}: update it to ${shortSha(b.taken)} before committing`;
 }
 
-/** One resolution of a conflicted file (spec #2 §13.3): an immediate write. Its answer's WIP
- * lists move the file out of Conflicted; a failure toasts (R12), unless `handle` takes it. `true`
+/** One resolution of a conflicted file: an immediate write. Its answer's WIP
+ * lists move the file out of Conflicted; a failure toasts, unless `handle` takes it. `true`
  * once it succeeded. */
 export async function resolveFile(ctx: WriteCtx, path: string, resolution: Resolution, base?: string, handle?: (err: GbError) => boolean): Promise<boolean> {
   let done = false;
   await runWrite(ctx, (_, asked) => api.resolveFile(ctx.repoId, ctx.worktree, path, resolution, base, asked.markers, asked.discard), {
-    // 2D T20: the merge tool answers a Stale save itself ([Reload from disk] [Overwrite]).
+    // The merge tool answers a Stale save itself ([Reload from disk] [Overwrite]).
     handle,
     onSuccess: (behind) => {
       done = true;

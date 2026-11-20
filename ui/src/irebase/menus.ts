@@ -12,8 +12,8 @@ import { currentOrigin } from '../ui/arm/origin';
 import { dropCommit, squashSelection } from './squash';
 
 /*
- * The interactive rebase's entry points (spec #3 §4.3). Impossible rows are hidden, busy ones
- * greyed with 2D's Integrate reason:
+ * The interactive rebase's entry points. Impossible rows are hidden, busy ones
+ * greyed with the Integrate reason:
  * - While an operation is in progress, rows show greyed with "Finish or abort the <op> first",
  *   on a detached HEAD too (a rebase detaches it). Otherwise every row is hidden on a detached
  *   HEAD: an interactive rebase rewrites HEAD's branch, and there is none.
@@ -55,7 +55,7 @@ export function ontoRows(t: CommitTarget, env: MenuEnv): MenuRow[] {
   }];
 }
 
-/** "Interactive rebase after this commit" (UX4 Q.5): the clicked commit is the
+/** "Interactive rebase after this commit": the clicked commit is the
  * base, its descendants on HEAD's branch the rows. Hidden at HEAD (nothing to rebase) and off
  * HEAD's history; a merge or a root is a base like any other. */
 export function fromHereRows(t: CommitTarget, env: MenuEnv): MenuRow[] {
@@ -152,7 +152,7 @@ export function opOf(tabId: string): string | null {
 /** Whether the palette offers "Interactive rebase…": HEAD on a branch, or an operation to finish. */
 export const paletteUsable = (tabId: string): boolean => !!headOf(tabId) || !!opOf(tabId);
 
-/** The palette's "Interactive rebase…" (Ruling 12): HEAD's branch onto its upstream; with none,
+/** The palette's "Interactive rebase…": HEAD's branch onto its upstream; with none,
  * a toast says where to start it. During an operation, a toast says to finish it first. */
 export function paletteRebase(tabId: string): void {
   const op = opOf(tabId);

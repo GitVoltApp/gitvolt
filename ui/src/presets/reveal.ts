@@ -18,7 +18,7 @@ export function viewRequest(tabId: string): { repo: number; limit: number; extra
 }
 
 /**
- * Selects commit `sha` in the tab's graph, also when the branch preset hides it (Review Focus 1):
+ * Selects commit `sha` in the tab's graph, also when the branch preset hides it:
  * the collapsed run, folded merge or hidden branch that holds it is expanded for the session
  * (until the tab switches presets), and once the graph has reloaded, its row is selected. False
  * when it isn't in the loaded window at all: the caller's own "not loaded" path runs (it may

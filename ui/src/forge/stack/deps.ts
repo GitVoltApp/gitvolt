@@ -11,13 +11,13 @@ export { noteForgeWritten };
 import { notifyForgeWrite } from '../usePolling';
 
 /**
- * 4D's only imports from 4B and 4C (plan 4D, "Interfaces used from 4B and 4C" A1–A4). Everything
+ * The stack code's only imports from the MR/PR store, poller and create flow. Everything
  * else in `forge/stack/` imports them from here, so a renamed name is a change to this file only.
  */
-export { useForge, useTabForge, useTabForgeField } from '../mrStore'; // A1: 4B's zustand store (`byTab`)
-export { openMrView } from '../poll'; // A2 (4B): (tabId, number) => void
+export { useForge, useTabForge, useTabForgeField } from '../mrStore'; // the zustand store (`byTab`)
+export { openMrView } from '../poll'; // (tabId, number) => void
 
-/** The tab's target project (A4): 4B's `forgeOf`, once its poller found an account for it. */
+/** The tab's target project: `forgeOf`, once its poller found an account for it. */
 export interface ForgeTarget { remote: string; kind: ForgeKind; project: ForgeProject }
 export function forgeTarget(tabId: string): ForgeTarget | null {
   const { remote, kind, project } = forgeOf(tabId);
@@ -25,8 +25,8 @@ export function forgeTarget(tabId: string): ForgeTarget | null {
 }
 
 /**
- * A branch's newest MR/PR in the target project, any state (A1): through the branch's remote
- * refs (4B's open list) or its local branch's upstream (4B's any-state lookups).
+ * A branch's newest MR/PR in the target project, any state: through the branch's remote
+ * refs (the open list) or its local branch's upstream (the any-state lookups).
  */
 export function branchMr(tabId: string, branch: string): ForgeMr | null {
   return branchMrs(tabId)(branch);
@@ -56,7 +56,7 @@ export function branchMrs(tabId: string): (branch: string) => ForgeMr | null {
   };
 }
 
-/** Create one MR/PR (A3: 4C's `forgeCreateMr`); the poller polls at once, as after 4C's own create. */
+/** Create one MR/PR (`forgeCreateMr`); the poller polls at once, as after the Create flyout's own create. */
 export type MrDraft = { remote: string } & CreateMr;
 export async function createMr(ctx: WriteCtx, { remote, ...req }: MrDraft): Promise<CreateOutcome> {
   const out = await api.forgeCreateMr(ctx.repoId, remote, req);

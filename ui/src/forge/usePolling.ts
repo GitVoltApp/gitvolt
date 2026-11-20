@@ -10,7 +10,7 @@ import { createForgePoller, type ForgePoller } from './poller';
 const pollers = new Map<string, ForgePoller>();
 
 /**
- * The forge poller of one tab (spec #4 §3.4). RepoTab calls it inside the tab's `<Activity>`, as
+ * The forge poller of one tab. RepoTab calls it inside the tab's `<Activity>`, as
  * `useFetchScheduler`: only the shown tab's effect is live, so a background tab never polls, and
  * showing it again polls at once.
  */
@@ -35,7 +35,7 @@ export function useForgePolling(tabId: string, repoId: number | undefined): void
   }, [tabId, repoId, intervalMs]);
 }
 
-/** After a GitVolt forge write (spec #4 §3.4): the tab's poller polls at once. */
+/** After a GitVolt forge write: the tab's poller polls at once. */
 export function notifyForgeWrite(tabId: string): void {
   pollers.get(tabId)?.afterWrite();
 }
@@ -56,7 +56,7 @@ export function notifyBranchPushed(tabId: string): void {
 
 export { notifyForgeAccountsChanged };
 
-/** After an account was added or removed (spec #4 §3.4): every live poller polls at once, asking the forges again, and a tab's next activation does too. */
+/** After an account was added or removed: every live poller polls at once, asking the forges again, and a tab's next activation does too. */
 onForgeAccountsChanged(() => {
   forgeScratch.activatedAt.clear();
   for (const [tabId, p] of pollers) {

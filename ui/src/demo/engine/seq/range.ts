@@ -1,5 +1,5 @@
-// The range a rebase works on (plan 4): base..tip in git's topo order, ancestry, and the local
-// branches in it (the core's integrate.rs `branch_sets`; 1b's `stackedBranches` reads its stacked
+// The range a rebase works on: base..tip in git's topo order, ancestry, and the local
+// branches in it (the core's integrate.rs `branch_sets`; `stackedBranches` reads its stacked
 // set).
 import { compareBytewise } from '../read/bytes';
 import { readCommit } from '../read/commitText';

@@ -8,7 +8,7 @@ const store = {} as RepoViewStore;
 const row = { id: 'abc', kind: 'commit' } as RowPayload;
 const label = { name: 'main', local: 'refs/heads/main' } as RefLabel;
 
-describe('graph double-clicks (spec #2 §9.3, §11.2)', () => {
+describe('graph double-clicks', () => {
   it('runs the first handler that takes it', () => {
     const a = vi.fn(() => false);
     const b = vi.fn(() => true);

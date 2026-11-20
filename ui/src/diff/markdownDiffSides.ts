@@ -2,7 +2,7 @@ import type { BlobSource } from '../api/gen/BlobSource';
 import type { FileCommit } from '../nav/history';
 import type { DiffTarget, RepoViewState } from '../repo/store';
 
-/** 5C (R9): the commits a Markdown diff's two sides resolve their relative links and images
+/** The commits a Markdown diff's two sides resolve their relative links and images
  * against; `null` where a side has none (an added or deleted file) or it isn't known. */
 export interface DiffSides { old: FileCommit | null; new: FileCommit | null }
 
@@ -12,8 +12,8 @@ const ofSource = (b: BlobSource): FileCommit | null | undefined =>
   b.kind === 'atCommit' ? b.commit : b.kind === 'worktree' ? 'worktree' : b.kind === 'absent' ? null : undefined;
 
 /**
- * The old side's commit (R9): a commit's shown parent, a compare's FROM, a WIP row's worktree HEAD
- * (its row's only parent; the index has no commit of its own, R8). `null`: no old side, or not
+ * The old side's commit: a commit's shown parent, a compare's FROM, a WIP row's worktree HEAD
+ * (its row's only parent; the index has no commit of its own). `null`: no old side, or not
  * known (a multi-selection).
  */
 export function oldCommitOf(s: Pick<RepoViewState, 'selection' | 'parent' | 'graph' | 'indexById'>, t: DiffTarget): FileCommit | null {

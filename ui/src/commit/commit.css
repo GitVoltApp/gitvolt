@@ -1,7 +1,7 @@
-/* Spec #2 §8.1: the commit box sits at the bottom of the WIP panel, at a fixed height. */
+/* The commit box sits at the bottom of the WIP panel, at a fixed height. */
 .commit-box { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-top: 1px solid var(--section-border); background: var(--panel-bg1); }
 
-/* Ux round 1: the summary and the description read as ONE text box: one border,
+/* The summary and the description read as ONE text box: one border,
    one background, no line between them, and the focus ring on the box, not on either field. */
 .commit-fields { display: flex; flex-direction: column; border: 1px solid var(--wip-input-border); border-radius: 6px; background: var(--wip-input-bg); transition: border-color var(--motion-fast), box-shadow var(--motion-fast); }
 .commit-fields:focus-within { border-color: var(--focus-outline); box-shadow: 0 0 0 1px var(--focus-outline); }
@@ -34,7 +34,7 @@
 .commit-identity-email { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .commit-identity.warn { color: var(--orange); }
 
-/* Ux round 1 buttons. Positive (commit, continue, save): a deep green (the added-lines
+/* Buttons. Positive (commit, continue, save): a deep green (the added-lines
    green, ~5:1 under white text; 4.6:1 on hover), white text; disabled,
    a green tint with light green text, readable (>= 4.5:1 on its fill), not just faded. */
 .commit-positive, .commit-neutral, .commit-danger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; padding: 4px 12px; border: 1px solid transparent; border-radius: 4px; font: inherit; cursor: pointer; user-select: none; transition: background-color var(--motion-fast), border-color var(--motion-fast); }
@@ -54,7 +54,7 @@
 .commit-button .spin { animation: spinner-turns 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .commit-button .spin { animation: none; } }
 
-/* §13.2, ux round 1: an operation in progress, at the top of the commit box. */
+/* An operation in progress, at the top of the commit box. */
 .commit-op { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-left: 3px solid var(--orange); border-radius: 4px; background: var(--panel-bg0); font-size: 12px; }
 .commit-op-title { color: var(--text-normal); font-weight: 600; }
 .commit-op-detail { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -68,7 +68,7 @@
 .commit-notice-action { all: unset; display: inline-flex; align-items: center; gap: 4px; color: var(--blue); cursor: pointer; }
 .commit-notice-action:focus-visible { outline: 1px solid var(--blue); }
 .commit-notice-action:hover { text-decoration: underline; }
-/* UX F: a write past 30 s says so, with Cancel. */
+/* A write past 30 s says so, with Cancel. */
 .commit-still { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
 .commit-still-cancel { all: unset; margin-left: auto; color: var(--blue); cursor: pointer; }
 .commit-still-cancel:focus-visible { outline: 1px solid var(--blue); }

@@ -4,7 +4,7 @@ import { rebaseStatus, rebasingChip } from './rebasing';
 
 const op = (kind: string, label: string, step: { n: number; m: number; branch?: string } | null) => ({ op: 1, kind, repo: 1, label, phase: null, percent: null, interactive: true, shown: false, startedAt: 0, step }) as never;
 
-describe('rebase progress (spec #2 §13.4)', () => {
+describe('rebase progress', () => {
   beforeEach(() => useOps.setState({ ops: {} }));
 
   it('reads Rebasing main (23/60)… from the op', () => {

@@ -27,9 +27,9 @@ pub struct BuildOptions {
     pub no_pin: bool,
     /// Reuse (and refresh) per-worktree status from here; `None` always runs status.
     pub wip_cache: Option<Arc<WipCache>>,
-    /// Run status for every worktree even when cached (tab activation, spec §4.4).
+    /// Run status for every worktree even when cached (tab activation).
     pub rescan: bool,
-    /// The worktree laid out as the open one: its HEAD, its WIP at row 0 (spec #2 §11.2).
+    /// The worktree laid out as the open one: its HEAD, its WIP at row 0.
     /// `None`: the `workdir` the graph is built in.
     pub active: Option<PathBuf>,
     /// The handle's walk cache.
@@ -51,8 +51,8 @@ impl Default for BuildOptions {
     }
 }
 
-/// The last walk a handle made, reused while the tips, the window and the stash set are the same
-/// (spec #2 §11.2, Deviation 1): a switch of the active worktree re-lays out without walking.
+/// The last walk a handle made, reused while the tips, the window and the stash set are the same:
+/// a switch of the active worktree re-lays out without walking.
 /// Any other walk reads its commits from `store` first, so a HEAD that moved decodes only what's new.
 pub struct WalkCache {
     key: (Vec<Oid>, usize, Vec<Oid>),
@@ -107,7 +107,7 @@ impl WipEntry {
 }
 
 /// Last known status per worktree, keyed by canonical path. A graph build reads it (unless
-/// rescanning); the active tab's watcher keeps it fresh (spec §4.4, §8.6).
+/// rescanning); the active tab's watcher keeps it fresh.
 ///
 /// Two writers (graph builds and the watcher) put into it, so every put carries the `stamp` taken
 /// before its status read: a read that started earlier never replaces one that started later.
@@ -122,7 +122,7 @@ pub struct WipCache {
     list_reads: Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
 }
 
-/// One worktree's WIP file lists, computed by the active tab's watcher (K44) from the status
+/// One worktree's WIP file lists, computed by the active tab's watcher from the status
 /// read whose digest is `digest`, so selecting the WIP row needs no git process.
 #[derive(Debug, Clone)]
 pub struct WipLists {
@@ -308,11 +308,11 @@ pub async fn build_graph(repo: gix::ThreadSafeRepository, workdir: PathBuf, cli:
     Ok(build_graph_with_text(repo, workdir, cli, opts).await?.0)
 }
 
-/// Each walked commit and its lowercased full message, in walk order (find's, spec §8.7).
+/// Each walked commit and its lowercased full message, in walk order (find's).
 pub type WindowTexts = Vec<(ObjectId, Arc<str>)>;
 
 /// Like `build_graph`, plus each walked commit's lowercased full message (`summary + "\n" +
-/// body`), in walk order, for find (spec §8.7).
+/// body`), in walk order, for find.
 pub async fn build_graph_with_text(repo: gix::ThreadSafeRepository, workdir: PathBuf, cli: GitCli, opts: BuildOptions) -> Result<(GraphPayload, WindowTexts), GbError> {
     let worktrees = listed_worktrees(&workdir, &opts).await?;
     let wip = collect_wip(&cli, &worktrees, opts.wip_cache.as_deref(), opts.rescan).await;
@@ -455,7 +455,7 @@ async fn collect_wip(cli: &GitCli, worktrees: &[Worktree], cache: Option<&WipCac
         }
     });
     // A clean worktree has no WIP row, unless it's mid-operation: the row's commit panel holds the
-    // operation's Continue and Abort (ux round 1).
+    // operation's Continue and Abort.
     futures_util::future::join_all(jobs).await.into_iter().flatten().filter(|(i, c)| !c.is_empty() || crate::in_progress::mid_operation(&worktrees[*i].path)).collect()
 }
 
@@ -632,7 +632,7 @@ mod tests {
 
     /// A watched-only cache (a repo handle's) reuses an entry only for a worktree its watcher
     /// covers, and only while that watcher's coverage stands.
-    /// K44: kept lists stand in for a `fileList` only while covered and computed from the status
+    /// Kept lists stand in for a `fileList` only while covered and computed from the status
     /// held now; uncovering drops them.
     #[test]
     fn kept_wip_lists_are_fresh_only_while_covered_and_current() {
@@ -1326,7 +1326,7 @@ mod tests {
         assert_eq!(usize::from(g.max_lanes), fixtures::WIDE_BRANCHES + 1, "the trunk keeps lane 0");
     }
 
-    /// K79: the dev merge is newer than the branches forked under it, so it locks its parents in
+    /// The dev merge is newer than the branches forked under it, so it locks its parents in
     /// its own lanes and the later forks curve in from the left (the column rule).
     #[tokio::test]
     async fn merge_lock_fixture_keeps_the_trunk_lane() {
@@ -1793,8 +1793,8 @@ mod tests {
         assert!(!g.rows.is_empty());
     }
 
-    /// Real layouts for the UI's branch-membership tests (`ui/src/graph/membership.test.ts`,
-    /// feedback F7). Each case builds a repo and runs the actual `build_graph`, so `default_pair`
+    /// Real layouts for the UI's branch-membership tests (`ui/src/graph/membership.test.ts`).
+    /// Each case builds a repo and runs the actual `build_graph`, so `default_pair`
     /// pinning and `layout.rs` lane assignment are the real ones, then reduces the payload to rows
     /// keyed by commit summary, plus the labels. Pinned in `testdata/graph-membership.json`;
     /// regenerate with `GITVOLT_UPDATE_TESTDATA=1 cargo test -p gitvolt-core membership_vectors`.
@@ -2010,7 +2010,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), json, "testdata/graph-membership.json is stale: regenerate it (see this test's doc comment)");
     }
 
-    /// Spec #2 §13.2, Deviation 1: every worktree's state, keyed as its WIP row spells it.
+    /// Every worktree's state, keyed as its WIP row spells it.
     #[tokio::test]
     async fn the_graph_carries_each_worktrees_in_progress_state() {
         let r = TestRepo::new();
@@ -2030,7 +2030,7 @@ mod tests {
         assert_eq!(Some(path.as_str()), g.open_worktree.as_deref());
         assert!(matches!(state, crate::in_progress::InProgress::Merge { conflicted: 1, .. }));
         // Resolved and staged as HEAD's content: the worktree is clean, but still mid-merge, so
-        // its WIP row (and the commit panel's Commit and Abort) stays (ux round 1).
+        // its WIP row (and the commit panel's Commit and Abort) stays.
         r.git(&["checkout", "--ours", "c.txt"]);
         r.git(&["add", "c.txt"]);
         assert_eq!(r.git(&["status", "--porcelain"]), "");

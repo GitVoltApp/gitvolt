@@ -1,5 +1,5 @@
-// The scripted teammate (spec §4.2): Orbital's origin holds a commit its `main` doesn't have yet
-// (plan 2: `refs/demo/teammate`). It lands on the origin's `main` a short while into the visit, or
+// The scripted teammate: Orbital's origin holds a commit its `main` doesn't have yet
+// (`refs/demo/teammate`). It lands on the origin's `main` a short while into the visit, or
 // just before the visitor's first fetch, pull or push of that origin, so Fetch has something to
 // bring in. Never an overwrite of a moved `main`: once the visitor moved `main` elsewhere, the teammate gives up.
 // Only a ref moves (the commit's objects are already in the origin), so a fetch's closure read can

@@ -19,7 +19,7 @@ const graphOf = (rows: RowPayload[]): GraphPayload => ({ rows, labels: [], maxLa
 const file = (path: string): FileChange => ({ path, oldPath: null, status: 'M', additions: 1, deletions: 0, old: { kind: 'absent' }, new: { kind: 'worktree', worktree: '/r' }, submodule: false });
 const list = (...paths: string[]): FileListPayload => ({ files: paths.map(file), added: 0, deleted: 0 });
 
-/** Lists by spec: the stash commit holds b.txt; the WIP's unstaged list a.txt and b.txt. */
+/** The lists: the stash commit holds b.txt; the WIP's unstaged list a.txt and b.txt. */
 function setup(): RepoViewStore {
   useFileListPrefs.getState().set({ mode: 'path', sort: 'path', allFiles: false });
   const lists = (spec: DiffSpec): FileListPayload => (spec.kind === 'commit' ? list('b.txt') : spec.kind === 'wip' && !spec.staged ? list('a.txt', 'b.txt') : list());
@@ -34,7 +34,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('revealRestored (UX round 2: after a stash Apply/Pop)', () => {
+describe('revealRestored (after a stash Apply/Pop)', () => {
   it('selects the WIP row once the refreshed graph shows it, and opens the first file the stash brought back', async () => {
     const store = setup();
     store.getState().selectRow(0);

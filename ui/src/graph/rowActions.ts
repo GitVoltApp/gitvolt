@@ -3,9 +3,9 @@ import type { RowPayload } from '../api/gen/RowPayload';
 import type { RepoViewStore } from '../repo/store';
 
 /**
- * Double-clicks in the graph (spec #2 §9.3: a branch chip checks it out; §11.2: another
+ * Double-clicks in the graph (a branch chip checks it out: another
  * worktree's WIP row becomes the active one), registered by the features that own them so the
- * graph knows none of them (ruling R10). The first handler that returns `true` took it.
+ * graph knows none of them. The first handler that returns `true` took it.
  */
 export interface GraphDoubleClick {
   label?: (store: RepoViewStore, row: RowPayload, label: RefLabel) => boolean;

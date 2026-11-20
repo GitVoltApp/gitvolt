@@ -46,10 +46,8 @@ import type { QueueStatePayload } from './gen/QueueStatePayload';
 import type { JournalState } from './gen/JournalState';
 import type { HistoryRow } from './gen/HistoryRow';
 import type { IntegrateOutcome } from './gen/IntegrateOutcome';
-// --- 2D T19 ---
 import type { PullMode } from './gen/PullMode';
 import type { PullOutcome } from './gen/PullOutcome';
-// --- end 2D T19 ---
 import type { RebaseAction } from './gen/RebaseAction';
 import type { PickOutcome } from './gen/PickOutcome';
 import type { CommitIdentity } from './gen/CommitIdentity';
@@ -61,12 +59,10 @@ import type { RebasePlanPayload } from './gen/RebasePlanPayload';
 import type { RebaseRow } from './gen/RebaseRow';
 import type { ChipPlan } from './gen/ChipPlan';
 import type { Prediction } from './gen/Prediction';
-// --- 2C T12 ---
 import type { CheckoutOutcome } from './gen/CheckoutOutcome';
 import type { CheckoutTarget } from './gen/CheckoutTarget';
 import type { OnDiverged } from './gen/OnDiverged';
 import type { ResetMode } from './gen/ResetMode';
-// --- end 2C T12 ---
 import type { IntegrateKind } from './gen/IntegrateKind';
 import type { IntegratePreviewPayload } from './gen/IntegratePreviewPayload';
 import type { WriteResult } from './gen/WriteResult';
@@ -75,56 +71,36 @@ import type { LfsTransferOutcome } from './gen/LfsTransferOutcome';
 import type { StashApplyOutcome } from './gen/StashApplyOutcome';
 import type { StashPushOutcome } from './gen/StashPushOutcome';
 import type { StagingUndoState } from './gen/StagingUndoState';
-// --- 2B T3 ---
 import type { HunksPayload } from './gen/HunksPayload';
 import type { StageSelection } from './gen/StageSelection';
 import type { WipBase } from './gen/WipBase';
-// --- end 2B T3 ---
-// --- 2B T4 ---
 import type { DiscardScope } from './gen/DiscardScope';
-// --- end 2B T4 ---
-// --- 2B T10 ---
 import type { SelectionLines } from './gen/SelectionLines';
-// --- end 2B T10 ---
 import type { SidebarPayload } from './gen/SidebarPayload';
 import type { StatePayload } from './gen/StatePayload';
-// --- 2C T14 ---
 import type { WorktreeAdded } from './gen/WorktreeAdded';
 import type { WorktreeBranch } from './gen/WorktreeBranch';
 import type { WorktreeRemoveOutcome } from './gen/WorktreeRemoveOutcome';
-// --- end 2C T14 ---
-// --- 2C T11 ---
 import type { UpstreamTarget } from './gen/UpstreamTarget';
 import type { RemoteBranchRef } from './gen/RemoteBranchRef';
 import type { DeleteOutcome } from './gen/DeleteOutcome';
-// --- end 2C T11 ---
-// --- 2D T15 ---
 import type { Resolution } from './gen/Resolution';
 import type { SubmoduleBehind } from './gen/SubmoduleBehind';
-// --- end 2D T15 ---
 import { createTransport, deliver, type EventHandler, type Transport } from './transport';
-// --- 2D T17 ---
 import type { Lease } from './gen/Lease';
 import type { PushOutcome } from './gen/PushOutcome';
 import type { PushTarget } from './gen/PushTarget';
-// --- end 2D T17 ---
-// --- 2D T20 ---
 import type { ConflictFilePayload } from './gen/ConflictFilePayload';
 import type { BlamePayload } from './gen/BlamePayload';
 import type { FileHistoryPage } from './gen/FileHistoryPage';
 import type { TagPushOutcome } from './gen/TagPushOutcome';
-// --- 4A T11 ---
 import type { ForgeAccountView } from './gen/ForgeAccountView';
 import type { ForgeKind } from './gen/ForgeKind';
 import type { HostKind } from './gen/HostKind';
-// --- end 4A T11 ---
-// --- 4A T12 ---
 import type { ForgeProject } from './gen/ForgeProject';
 import type { ForkPage } from './gen/ForkPage';
 import type { ForgeProjectSettings } from './gen/ForgeProjectSettings';
 import type { RepoProjects } from './gen/RepoProjects';
-// --- end 4A T12 ---
-// --- 4B T1 ---
 import type { BranchMrs } from './gen/BranchMrs';
 import type { CachedMrs } from './gen/CachedMrs';
 import type { ForgeDiscussion } from './gen/ForgeDiscussion';
@@ -144,7 +120,6 @@ import type { ReviewOutcome } from './gen/ReviewOutcome';
 import type { ReviewSubmit } from './gen/ReviewSubmit';
 import type { MrFilter } from './gen/MrFilter';
 import type { MrList } from './gen/MrList';
-// --- 4C T5 ---
 import type { CreateContext } from './gen/CreateContext';
 import type { CreateMr } from './gen/CreateMr';
 import type { CreateOutcome } from './gen/CreateOutcome';
@@ -152,15 +127,9 @@ import type { CreatePart } from './gen/CreatePart';
 import type { ForgeLabel } from './gen/ForgeLabel';
 import type { ForgeUser } from './gen/ForgeUser';
 import type { PartFailure } from './gen/PartFailure';
-// --- end 4C T5 ---
-// --- 4D T3 ---
 import type { StackSync } from './gen/StackSync';
 import type { StackView } from './gen/StackView';
-// --- end 4D T3 ---
-// --- end 4B T1 ---
-// --- 5A T1 ---
 import type { ForgeImage } from './gen/ForgeImage';
-// --- end 5A T1 ---
 // --- review comments ---
 import type { NewReviewComment } from './gen/NewReviewComment';
 import type { ReviewDiff } from './gen/ReviewDiff';
@@ -168,7 +137,6 @@ import type { ReviewDraft } from './gen/ReviewDraft';
 import type { ReviewDrafts } from './gen/ReviewDrafts';
 import type { SubmitOutcome } from './gen/SubmitOutcome';
 // --- end review comments ---
-// --- end 2D T20 ---
 
 const handlers = new Set<EventHandler>();
 let transport: Transport | undefined;
@@ -187,7 +155,7 @@ const t = (): Transport => {
   return transport;
 };
 
-/** Subscribe to backend events (spec §4.3). Survives transport reconnects. */
+/** Subscribe to backend events. Survives transport reconnects. */
 export function onEvent(h: EventHandler): () => void {
   handlers.add(h);
   t();
@@ -205,8 +173,8 @@ export interface OpenInRequest { worktree: string; path: string; line: number | 
 
 export const api = {
   openRepo: (path: string) => t().call({ method: 'openRepo', params: { path } }) as Promise<RepoSummary>,
-  /** `extra`: the pinned trunk (spec §8.2), `rescan` to re-read the WIP status, the tab's
-   * `active` worktree (spec #2 §11.2), laid out as the open one, and the branch preset's `view`
+  /** `extra`: the pinned trunk, `rescan` to re-read the WIP status, the tab's
+   * `active` worktree, laid out as the open one, and the branch preset's `view`
    * (none under All). */
   graph: (repo: number, limit: number | null = null, extra: { pin?: PinSetting; rescan?: boolean; active?: string; view?: ViewSpec } = {}) =>
     call<GraphPayload>({ method: 'graph', params: { repo, limit, ...extra } }),
@@ -231,7 +199,7 @@ export const api = {
   takeOpenRequests: () => call<string[]>({ method: 'takeOpenRequests' }),
   /** One commit's full message (summary + body), loaded on demand: see `commitMessages.ts`. */
   commitMessage: (repo: number, id: string) => t().call({ method: 'commitMessage', params: { repo, id } }) as Promise<CommitMessage>,
-  /** The details panel's header (§9.1); the message comes from `commitMessage`. */
+  /** The details panel's header; the message comes from `commitMessage`. */
   commitDetails: (repo: number, id: string) => t().call({ method: 'commitDetails', params: { repo, id } }) as Promise<CommitDetailsPayload>,
   remotes: (repo: number) => t().call({ method: 'remotes', params: { repo } }) as Promise<RemotePayload[]>,
   fileList: (repo: number, spec: DiffSpec) => t().call({ method: 'fileList', params: { repo, spec } }) as Promise<FileListPayload>,
@@ -239,7 +207,7 @@ export const api = {
   /** Both sides of a binary file as hex dumps, each capped (`HexDumpPayload.cap`). */
   hexDump: (repo: number, r: Omit<ContentsRequest, 'force'>) => t().call({ method: 'hexDump', params: { repo, path: r.path, old: r.old, new: r.new } }) as Promise<HexDumpPayload>,
   treeFiles: (repo: number, id: string) => t().call({ method: 'treeFiles', params: { repo, id } }) as Promise<string[]>,
-  /** UX G.2: the worktree's tracked files (the WIP row's View all files). */
+  /** The worktree's tracked files (the WIP row's View all files). */
   worktreeFiles: (repo: number, worktree: string) => t().call({ method: 'worktreeFiles', params: { repo, worktree } }) as Promise<string[]>,
   /** What `path` is in the worktree (a file or a folder, tracked or not), from its metadata; null: nothing there. */
   worktreePathKind: (repo: number, worktree: string, path: string) => t().call({ method: 'worktreePathKind', params: { repo, worktree, path } }) as Promise<PathKind | null>,
@@ -253,10 +221,8 @@ export const api = {
     t().call({ method: 'avatar', params: { email, ...(repo === undefined ? {} : { repo }), ...(name ? { name } : {}) } }) as Promise<AvatarPayload | null>,
   /** A forge user's or project owner's picture by the `avatarUrl` the forge gave; `null` when there's none or the address isn't an account's (see `ForgeHub::avatar_at`). */
   forgeAvatarImage: (url: string) => t().call({ method: 'forgeAvatarImage', params: { url } }) as Promise<AvatarPayload | null>,
-  // --- 5A T1 ---
-  /** An image in a rendered Markdown body (spec #5 §4.2): the forge's own hosts load (`found`); anything else answers `ask` until `userAllowed` (the user's click). */
+  /** An image in a rendered Markdown body: the forge's own hosts load (`found`); anything else answers `ask` until `userAllowed` (the user's click). */
   forgeImage: (repo: number, url: string, userAllowed: boolean) => t().call({ method: 'forgeImage', params: { repo, url, userAllowed } }) as Promise<ForgeImage>,
-  // --- end 5A T1 ---
   /** A video a rendered Markdown body embeds, by `forgeImage`'s rules: `found` has a `video/*` type. */
   forgeVideo: (repo: number, url: string, userAllowed: boolean) => t().call({ method: 'forgeVideo', params: { repo, url, userAllowed } }) as Promise<ForgeImage>,
   /** That video saved to the app's cache and opened with the system's default app. */
@@ -264,20 +230,20 @@ export const api = {
   openUrl: (url: string) => t().call({ method: 'openUrl', params: { url } }) as Promise<null>,
   /** The installed font families, sorted (listed once per session; `refresh` lists them again). */
   fontFamilies: (refresh = false) => t().call({ method: 'fontFamilies', params: { refresh } }) as Promise<FontFamily[]>,
-  /** The external editors and the file manager found on this machine (spec §14.5). */
+  /** The external editors and the file manager found on this machine. */
   /** `repo`: the list as that repository sees it (its Custom editor, if its setting is one). */
   listOpeners: (repo?: number) => t().call(repo === undefined ? { method: 'listOpeners' } : { method: 'listOpenersFor', params: { repo } }) as Promise<OpenerPayload[]>,
   /** Checks a custom editor template; rejects with the guard's message when it would be refused. */
   validateEditorTemplate: (template: string) => t().call({ method: 'validateEditorTemplate', params: { template } }) as Promise<null>,
   openIn: (repo: number, r: OpenInRequest) => t().call({ method: 'openIn', params: { repo, worktree: r.worktree, path: r.path, line: r.line, opener: r.opener, source: r.source, fallback: r.fallback } }) as Promise<null>,
-  // Plan 1C: settings and profiles (spec §14.1).
+  // Settings and profiles.
   loadState: () => call<StatePayload>({ method: 'loadState' }),
   saveSettings: (settings: AppSettings) => call<null>({ method: 'saveSettings', params: { settings } }),
   saveProfile: (profile: Profile) => call<null>({ method: 'saveProfile', params: { profile } }),
   createProfile: (name: string, color: string) => call<ProfileMeta>({ method: 'createProfile', params: { name, color } }),
   switchProfile: (id: string) => call<StatePayload>({ method: 'switchProfile', params: { id } }),
   deleteProfile: (id: string) => call<ProfileMeta[]>({ method: 'deleteProfile', params: { id } }),
-  /** Starts the file watcher for the active tab's repo (spec §4.4); idempotent. */
+  /** Starts the file watcher for the active tab's repo; idempotent. */
   watchRepo: (repo: number) => t().call({ method: 'watchRepo', params: { repo } }) as Promise<null>,
   unwatchRepo: (repo: number) => t().call({ method: 'unwatchRepo', params: { repo } }) as Promise<null>,
   /** Tab `holder` shows `repo`; the core drops a handle no tab holds. */
@@ -306,15 +272,14 @@ export const api = {
   scanRepos: (root: string, refresh: boolean) => call<ScannedRepo[]>({ method: 'scanRepos', params: { root, refresh } }),
   /** The repos in every folder, scanned in parallel, merged and de-duplicated ("Your repos"). */
   scanFolders: (roots: string[], refresh: boolean) => call<ScannedRepo[]>({ method: 'scanFolders', params: { roots, refresh } }),
-  /** Clones `url` into the absolute `dest` (spec §13); the op's label is `dest`. */
+  /** Clones `url` into the absolute `dest`; the op's label is `dest`. */
   clone: (url: string, dest: string) => call<RepoSummary>({ method: 'clone', params: { url, dest } }),
   suggestReposFolder: () => call<string | null>({ method: 'suggestReposFolder' }),
-  /** `git fetch --all` (spec §15), or one `remote` (a remote just added, spec #4). `background`: GitVolt's own timer, which never prompts. */
+  /** `git fetch --all`, or one `remote` (a remote just added). `background`: GitVolt's own timer, which never prompts. */
   fetch: (repo: number, background: boolean, remote?: string, mrHead?: MrHead) => call<FetchOutcome>({ method: 'fetch', params: remote === undefined ? { repo, background } : mrHead ? { repo, background, remote, mrHead } : { repo, background, remote } }),
   /** Deletes the MR/PR heads Compare fetched (`refs/gitvolt/compare/*`): their Compare ended. */
   dropCompareRefs: (repo: number) => call<null>({ method: 'dropCompareRefs', params: { repo } }),
-  // --- 4A T12 ---
-  /** Every remote with its forge project, and the remote MRs/PRs target (spec #4 §3.3). */
+  /** Every remote with its forge project, and the remote MRs/PRs target. */
   forgeRepoProjects: (repo: number, refresh = false) => call<RepoProjects>({ method: 'forgeRepoProjects', params: { repo, refresh } }),
   forgeProjectSettings: (repo: number, remote: string) => call<ForgeProjectSettings>({ method: 'forgeProjectSettings', params: { repo, remote } }),
   /** One page of `remote`'s project's forks, newest first. */
@@ -339,59 +304,54 @@ export const api = {
     call<WriteResult<SubmoduleOutcome>>({ method: 'submoduleAdd', params: { repo, worktree, url, ...(path && { path }), ...(branch && { branch }) } }),
   /** `git rm -- <path>` of a submodule (not journaled): its checkout, gitlink and `.gitmodules` entry, staged. */
   submoduleRemove: (repo: number, worktree: string, path: string) => call<WriteResult<SubmoduleOutcome>>({ method: 'submoduleRemove', params: { repo, worktree, path } }),
-  // --- end 4A T12 ---
-  /** The action queue (spec #2 §3.6). */
+  /** The action queue. */
   queueState: (repo: number) => call<QueueStatePayload>({ method: 'queueState', params: { repo } }),
   queueRemove: (repo: number, id: number) => call<boolean>({ method: 'queueRemove', params: { repo, id } }),
   queueResume: (repo: number) => call<null>({ method: 'queueResume', params: { repo } }),
   queueClear: (repo: number) => call<null>({ method: 'queueClear', params: { repo } }),
   /** Ends a running network op (its git process group); it finishes as `cancelled`. */
   cancelOp: (op: number) => call<null>({ method: 'cancelOp', params: { op } }),
-  /** The answer to an askpass prompt (spec §5.4); `null` cancels it. */
+  /** The answer to an askpass prompt; `null` cancels it. */
   authAnswer: (prompt: number, answer: string | null) => call<null>({ method: 'authAnswer', params: { prompt, answer } }),
   /** "Use SSH for <remote> instead" on a prompt that offers it: cancels it; its op fails with `useSsh`. */
   authUseSsh: (prompt: number) => call<null>({ method: 'authUseSsh', params: { prompt } }),
-  // Plan 1C Task 17: find (spec §8.7), over the last `graph` window.
+  // Find, over the last `graph` window.
   findText: (repo: number, query: string) => call<string[]>({ method: 'findText', params: { repo, query } }),
   findPaths: (repo: number, query: string) => call<string[]>({ method: 'findPaths', params: { repo, query } }),
   locateCommit: (repo: number, sha: string) => call<LocateResult>({ method: 'locateCommit', params: { repo, sha } }),
   searchHistory: (repo: number, query: string) => call<HistoryHit[]>({ method: 'searchHistory', params: { repo, query } }),
-  // Plan 1D Task 7/9: log files, frontend errors, diagnostics.
+  // Log files, frontend errors, diagnostics.
   logFrontend: (level: FrontendLevel, message: string, stack: string | null) => call<null>({ method: 'logFrontend', params: { level, message, stack } }),
   setDebugLogging: (debug: boolean) => call<null>({ method: 'setDebugLogging', params: { debug } }),
   /** The log directory, or `null` where there is no file logging (the harness). */
   logsDir: () => call<string | null>({ method: 'logsDir' }),
   diagnostics: (ui: UiDiagnostics) => call<string>({ method: 'diagnostics', params: { ui } }),
   openLogsFolder: () => call<null>({ method: 'openLogsFolder' }),
-  // Plan 2A: the write foundation (spec #2 §3–§6).
-  /** Remove stale lock (spec #2 §14): only if `path`'s mtime is still `mtimeMs`. */
+  // The write foundation.
+  /** Remove stale lock: only if `path`'s mtime is still `mtimeMs`. */
   removeIndexLock: (repo: number, lock: { path: string; mtimeMs: number; ino: number; dev: number }) => call<null>({ method: 'removeIndexLock', params: { repo, ...lock } }),
   journalState: (repo: number, worktree: string) => call<JournalState>({ method: 'journalState', params: { repo, worktree } }),
-  /** Undo `entry`, the toolbar's (spec #2 §5.4); `confirm`: "Undo anyway", the refs as the prompt
-   * showed them; `confirmAutostash`: the clean-restore warning (§6.2) was confirmed. */
-  // --- 2C T7: `withoutIndex`, "Apply without restoring what was staged?" (a stash's undo/redo) ---
-  // 3B T6: `confirmDiscard`, "Undo the stopped cherry-pick?" (`undoStoppedPick`) was confirmed.
+  /** Undo `entry`, the toolbar's; `confirm`: "Undo anyway", the refs as the prompt
+   * showed them; `confirmAutostash`: the clean-restore warning was confirmed. */
+  // --- `withoutIndex`, "Apply without restoring what was staged?" (a stash's undo/redo) ---
+  // `confirmDiscard`, "Undo the stopped cherry-pick?" (`undoStoppedPick`) was confirmed.
   undo: (repo: number, worktree: string, entry: number, confirm: Record<string, string | null> | undefined, confirmAutostash: boolean, withoutIndex = false, confirmDiscard = false) =>
     call<WriteResult<UndoOutcome>>({ method: 'undo', params: { repo, worktree, entry, ...(confirm && { confirm }), confirmAutostash, ...(withoutIndex && { withoutIndex }), ...(confirmDiscard && { confirmDiscard }) } }),
   redo: (repo: number, worktree: string, entry: number, confirmAutostash: boolean, withoutIndex = false) =>
     call<WriteResult<UndoOutcome>>({ method: 'redo', params: { repo, worktree, entry, confirmAutostash, ...(withoutIndex && { withoutIndex }) } }),
-  // --- end 2C T7 ---
-  // --- UX Y ---
   /** The Undo dropdown's row `entry` (`JournalState.history`): an older one is undone out of
    * order, as an entry of its own, when it's independent of every later one. */
   undoEntry: (repo: number, worktree: string, entry: number, confirmAutostash: boolean) =>
     call<WriteResult<UndoOutcome>>({ method: 'undoEntry', params: { repo, worktree, entry, confirmAutostash } }),
   /** The Undo dropdown's rows, read when it opens. */
   journalHistory: (repo: number, worktree: string) => call<HistoryRow[]>({ method: 'journalHistory', params: { repo, worktree } }),
-  // --- end UX Y ---
-  /** A banner's Apply / Restore (spec #2 §6.4); `withoutIndex` after "Apply without restoring
+  /** A banner's Apply / Restore; `withoutIndex` after "Apply without restoring
    * what was staged?"; `confirmAutostash`: a Restore's clean-restore warning was confirmed. */
   applyKeptStash: (repo: number, worktree: string, entry: number, withoutIndex: boolean, confirmAutostash: boolean) =>
     call<WriteResult<null>>({ method: 'applyKeptStash', params: { repo, worktree, entry, withoutIndex, confirmAutostash } }),
   /** A banner's × (`dropStash: false`, the stash stays) or Drop stash. */
   dismissBanner: (repo: number, worktree: string, entry: number, dropStash: boolean) => call<JournalState>({ method: 'dismissBanner', params: { repo, worktree, entry, dropStash } }),
-  // --- 2B T6 ---
-  /** Plan 2B T6, UX round 2 G.2: save the editable working copy (spec #2 §7.5). Journaled: Undo
+  /** Save the editable working copy. Journaled: Undo
    * puts the file back as it was. */
   writeWorktreeFile: (repo: number, worktree: string, path: string, text: string, base: string) =>
     call<WriteResult<SaveOutcome>>({ method: 'writeWorktreeFile', params: { repo, worktree, path, text, base } }),
@@ -400,79 +360,62 @@ export const api = {
    * MR's head, as checked. */
   applySuggestion: (repo: number, worktree: string, path: string, text: string, base: string, expect: Expect) =>
     call<WriteResult<SaveOutcome>>({ method: 'applySuggestion', params: { repo, worktree, path, text, base, expect } }),
-  /** UX round 3 O.1: a new, empty file (its folders made); journaled, so Undo removes it. */
+  /** A new, empty file (its folders made); journaled, so Undo removes it. */
   createWorktreeFile: (repo: number, worktree: string, path: string) =>
     call<WriteResult<SaveOutcome>>({ method: 'createWorktreeFile', params: { repo, worktree, path } }),
-  // --- end 2B T6 ---
-  // Plan 2B T1: stage and unstage (spec #2 §7.2). Immediate writes; not journaled.
+  // Stage and unstage. Immediate writes; not journaled.
   stage: (repo: number, worktree: string, paths: string[]) => call<WriteResult<null>>({ method: 'stage', params: { repo, worktree, paths } }),
   /** `oldPaths`: a rename's sources, unstaged with it. */
   unstage: (repo: number, worktree: string, paths: string[], oldPaths: string[] = []) => call<WriteResult<null>>({ method: 'unstage', params: { repo, worktree, paths, oldPaths } }),
   stageAll: (repo: number, worktree: string) => call<WriteResult<null>>({ method: 'stageAll', params: { repo, worktree } }),
   unstageAll: (repo: number, worktree: string) => call<WriteResult<null>>({ method: 'unstageAll', params: { repo, worktree } }),
-  // --- 2B T2 ---
-  // Plan 2B T2: the staging undo log (spec #2 §7.6).
+  // The staging undo log.
   stagingUndo: (repo: number, worktree: string) => call<WriteResult<null>>({ method: 'stagingUndo', params: { repo, worktree } }),
   stagingRedo: (repo: number, worktree: string) => call<WriteResult<null>>({ method: 'stagingRedo', params: { repo, worktree } }),
   stagingState: (repo: number, worktree: string) => call<StagingUndoState>({ method: 'stagingState', params: { repo, worktree } }),
-  // --- end 2B T2 ---
-  // Plan 2B T5: commit (spec #2 §8). Queued; hooks and signing are git's.
+  // Commit. Queued; hooks and signing are git's.
   commit: (repo: number, worktree: string, r: { summary: string; description: string; amend: boolean; stageAll: boolean; expect: Expect }) =>
     call<WriteResult<CommitOutcome>>({ method: 'commit', params: { repo, worktree, ...r } }),
   editHeadMessage: (repo: number, worktree: string, message: string, expect: Expect) => call<WriteResult<CommitOutcome>>({ method: 'editHeadMessage', params: { repo, worktree, message, expect } }),
   /** The upstream's short name when HEAD is on it (the pencil's force-push note), else null. */
   headOnUpstream: (repo: number, worktree: string) => call<string | null>({ method: 'headOnUpstream', params: { repo, worktree } }),
-  // --- end Plan 2B T5 ---
-  // --- 2B T3 ---
-  // Plan 2B T3: hunks and lines (spec #2 §7.3).
+  // Hunks and lines.
   wipHunks: (repo: number, worktree: string, path: string, staged: boolean) => call<HunksPayload>({ method: 'wipHunks', params: { repo, worktree, path, staged } }),
   stagePatch: (repo: number, worktree: string, r: { path: string; staged: boolean; selection: StageSelection; base: WipBase }) =>
     call<WriteResult<null>>({ method: 'stagePatch', params: { repo, worktree, ...r } }),
-  // --- end 2B T3 ---
-  // --- 2B T4 ---
-  // Plan 2B T4: discards (spec #2 §7.2–§7.4). Journaled; Undo restores the snapshot.
+  // Discards. Journaled; Undo restores the snapshot.
   discard: (repo: number, worktree: string, scope: DiscardScope) => call<WriteResult<null>>({ method: 'discard', params: { repo, worktree, scope } }),
-  // --- end 2B T4 ---
-  // --- 2B T10 ---
-  /** The line bar's counts (spec #2 §7.3), after the no-newline tie; read-only. */
+  /** The line bar's counts, after the no-newline tie; read-only. */
   selectionLines: (repo: number, worktree: string, path: string, staged: boolean, selection: StageSelection) =>
     call<SelectionLines>({ method: 'selectionLines', params: { repo, worktree, path, staged, selection } }),
-  // --- end 2B T10 ---
-  // --- 2C T14: worktrees ---
+  // --- worktrees ---
   worktreeAdd: (repo: number, worktree: string, path: string, branch: WorktreeBranch) => call<WriteResult<WorktreeAdded>>({ method: 'worktreeAdd', params: { repo, worktree, path, branch } }),
   worktreeRemove: (repo: number, worktree: string, path: string, force: boolean) => call<WriteResult<WorktreeRemoveOutcome>>({ method: 'worktreeRemove', params: { repo, worktree, path, force } }),
-  /** The create dialog's default folder (spec #2 §11.1). */
+  /** The create dialog's default folder. */
   suggestWorktreePath: (repo: number, branch: string) => call<string>({ method: 'suggestWorktreePath', params: { repo, branch } }),
-  // --- end 2C T14 ---
-  // --- 2C T11: branches ---
-  /** Create branch here / the toolbar Branch (spec #2 §9.1). */
+  // --- branches ---
+  /** Create branch here / the toolbar Branch. */
   createBranch: (repo: number, worktree: string, b: { name: string; start: string; startRef: string | null; checkout: boolean; expect: Expect }, confirmAutostash: boolean) =>
     call<WriteResult<null>>({ method: 'createBranch', params: { repo, worktree, name: b.name, start: b.start, startRef: b.startRef ?? undefined, checkout: b.checkout, expect: b.expect, confirmAutostash } }),
   renameBranch: (repo: number, worktree: string, from: string, to: string, expect: Expect) => call<WriteResult<null>>({ method: 'renameBranch', params: { repo, worktree, from, to, expect } }),
   setUpstream: (repo: number, worktree: string, branch: string, upstream: UpstreamTarget | null) => call<WriteResult<null>>({ method: 'setUpstream', params: { repo, worktree, branch, upstream } }),
-  /** `Delete | Local | Remote | Both |` (spec #2 §9.2). */
+  /** `Delete | Local | Remote | Both |`. */
   deleteBranch: (repo: number, worktree: string, d: { branch: string; local: boolean; remote: RemoteBranchRef | null; force: boolean; expect: Expect }) =>
     call<WriteResult<DeleteOutcome>>({ method: 'deleteBranch', params: { repo, worktree, ...d } }),
-  // --- end 2C T11 ---
-  // --- 2C T13 ---
-  /** Stash (spec #2 §10): `message` is the WIP draft, '' for the branch-based name. */
+  /** Stash: `message` is the WIP draft, '' for the branch-based name. */
   stashPush: (repo: number, worktree: string, message: string) => call<WriteResult<StashPushOutcome>>({ method: 'stashPush', params: { repo, worktree, message } }),
   stashApply: (repo: number, worktree: string, oid: string, pop: boolean, withoutIndex: boolean) =>
     call<WriteResult<StashApplyOutcome>>({ method: 'stashApply', params: { repo, worktree, oid, pop, withoutIndex } }),
   stashDrop: (repo: number, worktree: string, oid: string) => call<WriteResult<null>>({ method: 'stashDrop', params: { repo, worktree, oid } }),
-  // --- end 2C T13 ---
-  // --- 2D T15 ---
-  /** Resolve a conflicted file (spec #2 §13.3). `base`: `conflictFile`'s hash, for a text save. */
+  /** Resolve a conflicted file. `base`: `conflictFile`'s hash, for a text save. */
   resolveFile: (repo: number, worktree: string, path: string, resolution: Resolution, base: string | undefined, confirmMarkers: boolean, confirmDiscard: boolean) =>
     call<WriteResult<SubmoduleBehind | null>>({ method: 'resolveFile', params: { repo, worktree, path, resolution, base, confirmMarkers, confirmDiscard } }),
   /** Mark several conflicted files resolved as they are, at once (a folder's Mark resolved). */
   markResolved: (repo: number, worktree: string, paths: string[], confirmMarkers: boolean) =>
     call<WriteResult<null>>({ method: 'markResolved', params: { repo, worktree, paths, confirmMarkers } }),
-  // --- end 2D T15 ---
-  // --- 2D T16 ---
   /** Continue, skip or abort a paused rebase. `message`: Continue commits the stopped pick with it. */
   rebaseControl: (repo: number, worktree: string, action: RebaseAction, message?: string) => call<WriteResult<IntegrateOutcome>>({ method: 'rebaseControl', params: { repo, worktree, action, message } }),
-  /** The same for a cherry-pick or revert in progress (ux round 1). */
+  /** The same for a cherry-pick or revert in progress. */
   pickControl: (repo: number, worktree: string, action: RebaseAction, message?: string) => call<WriteResult<PickOutcome>>({ method: 'pickControl', params: { repo, worktree, action, message } }),
   /** Who a commit in `worktree` is made as (git's resolution); `null`: git has no identity. */
   gitIdentity: (repo: number | null, worktree: string | null) => call<GitIdentityInfo>({ method: 'gitIdentity', params: { repo, worktree } }),
@@ -480,48 +423,33 @@ export const api = {
   mergeAbort: (repo: number, worktree: string) => call<WriteResult<IntegrateOutcome>>({ method: 'mergeAbort', params: { repo, worktree } }),
   /** A paused merge or rebase ended outside GitVolt: close its journal entry. */
   settlePaused: (repo: number, worktree: string) => call<WriteResult<null>>({ method: 'settlePaused', params: { repo, worktree } }),
-  // --- end 2D T16 ---
-  // --- 2D T17 ---
-  /** Push `branch` (spec #2 §12.3): `target` + `setUpstream` for a branch with no upstream; `lease` forces. */
+  /** Push `branch`: `target` + `setUpstream` for a branch with no upstream; `lease` forces. */
   push: (repo: number, worktree: string, branch: string, opts: { target?: PushTarget; setUpstream?: boolean; lease?: Lease; expect?: Expect } = {}) =>
     call<WriteResult<PushOutcome>>({ method: 'push', params: { repo, worktree, branch, ...opts, expect: opts.expect ?? { head: null, refs: {} } } }),
-  // --- end 2D T17 ---
-  // --- 2D T18 ---
-  /** Merge or rebase HEAD's branch with `target` (spec #2 §13.1). `updateRefs` is explicit for a rebase. */
+  /** Merge or rebase HEAD's branch with `target`. `updateRefs` is explicit for a rebase. */
   integrate: (repo: number, worktree: string, kind: IntegrateKind, target: string, opts: { updateRefs?: boolean; ffOnly?: boolean; confirmAutostash?: boolean; expect?: Expect } = {}) =>
     call<WriteResult<IntegrateOutcome>>({ method: 'integrate', params: { repo, worktree, kind, target, updateRefs: opts.updateRefs, ffOnly: opts.ffOnly, expect: opts.expect ?? NO_EXPECT, confirm: { autostash: opts.confirmAutostash ?? false } } }),
   integratePreview: (repo: number, worktree: string, kind: IntegrateKind, target: string) => call<IntegratePreviewPayload>({ method: 'integratePreview', params: { repo, worktree, kind, target } }),
   fastForward: (repo: number, worktree: string, branch: string, to: string) => call<WriteResult<IntegrateOutcome>>({ method: 'fastForward', params: { repo, worktree, branch, to, expect: NO_EXPECT } }),
-  // --- end 2D T18 ---
-  // --- 2D T19 ---
-  /** Pull (spec #2 §12.2); `branch` defaults to HEAD's. */
+  /** Pull; `branch` defaults to HEAD's. */
   pull: (repo: number, worktree: string, mode: PullMode, opts: { branch?: string; confirmAutostash?: boolean } = {}) =>
     call<WriteResult<PullOutcome>>({ method: 'pull', params: { repo, worktree, mode, branch: opts.branch, expect: NO_EXPECT, confirm: { autostash: opts.confirmAutostash ?? false } } }),
-  // --- end 2D T19 ---
-  // --- 2C T12 ---
-  /** Checkout (spec #2 §9.3); `onDiverged: 'reset'` after the diverged dialog's Reset. */
+  /** Checkout; `onDiverged: 'reset'` after the diverged dialog's Reset. */
   checkout: (repo: number, worktree: string, target: CheckoutTarget, expect: Expect, confirmAutostash: boolean, onDiverged?: OnDiverged) =>
     call<WriteResult<CheckoutOutcome>>({ method: 'checkout', params: { repo, worktree, target, expect, confirmAutostash, ...(onDiverged && { onDiverged }) } }),
-  /** Reset X to this commit (spec #2 §9.4); `discard` after "discard changes to N files?". */
+  /** Reset X to this commit; `discard` after "discard changes to N files?". */
   reset: (repo: number, worktree: string, to: string, mode: ResetMode, expect: Expect, discard: boolean) =>
     call<WriteResult<null>>({ method: 'reset', params: { repo, worktree, to, mode, expect, discard } }),
-  // --- end 2C T12 ---
-  // --- 2D T20 ---
-  /** The merge tool's data for one conflicted file (spec #2 §13.3); `null` once it isn't conflicted. */
+  /** The merge tool's data for one conflicted file; `null` once it isn't conflicted. */
   conflictFile: (repo: number, worktree: string, path: string) => call<ConflictFilePayload | null>({ method: 'conflictFile', params: { repo, worktree, path } }),
-  // --- end 2D T20 ---
-  // --- 3A T2 ---
-  /** One page of `path`'s history from `rev` (null: the worktree's HEAD), newest first (spec #3 §3.10). */
+  /** One page of `path`'s history from `rev` (null: the worktree's HEAD), newest first. */
   fileHistory: (repo: number, worktree: string, path: string, rev: string | null, skip: number, limit: number) =>
     call<FileHistoryPage>({ method: 'fileHistory', params: { repo, worktree, path, rev: rev ?? undefined, skip, limit } }),
-  /** `path` at `rev`, line by line (spec #3 §3.10). */
+  /** `path` at `rev`, line by line. */
   blame: (repo: number, worktree: string, rev: string, path: string) => call<BlamePayload>({ method: 'blame', params: { repo, worktree, rev, path } }),
-  // --- end 3A T2 ---
-  // --- 3A T3 ---
-  /** Restore `path` as in `sha` into the working tree, unstaged (spec #3 §3.8); `confirm` after "replace your changes?". */
+  /** Restore `path` as in `sha` into the working tree, unstaged; `confirm` after "replace your changes?". */
   restoreFile: (repo: number, worktree: string, sha: string, path: string, confirm: boolean) =>
     call<WriteResult<null>>({ method: 'restoreFile', params: { repo, worktree, sha, path, confirm } }),
-  // --- end 3A T3 ---
   // --- Git LFS (lfs/) ---
   /** Whether the repository uses LFS, and git-lfs's version (null: not installed). */
   /** `recheck`: read git-lfs's version again (else the session's). */
@@ -537,8 +465,8 @@ export const api = {
   lfsTrack: (repo: number, worktree: string, pattern: string) => call<WriteResult<null>>({ method: 'lfsTrack', params: { repo, worktree, pattern } }),
   lfsUntrack: (repo: number, worktree: string, pattern: string) => call<WriteResult<null>>({ method: 'lfsUntrack', params: { repo, worktree, pattern } }),
   // --- end Git LFS ---
-  // --- 3B T7: tags ---
-  /** Create tag here (spec #3 §3.9): `message` null for a lightweight tag. */
+  // --- tags ---
+  /** Create tag here: `message` null for a lightweight tag. */
   createTag: (repo: number, worktree: string, t: { name: string; target: string; message: string | null }) =>
     call<WriteResult<null>>({ method: 'createTag', params: { repo, worktree, name: t.name, target: t.target, message: t.message ?? undefined } }),
   // --- Git flow ---
@@ -557,18 +485,13 @@ export const api = {
   /** Push one tag, or every tag (`tag` null), to `remote`. */
   pushTags: (repo: number, worktree: string, remote: string, tag: string | null) =>
     call<WriteResult<TagPushOutcome>>({ method: 'pushTags', params: { repo, worktree, remote, tag: tag ?? undefined } }),
-  // --- end 3B T7 ---
-  // --- 3C T9 ---
-  /** The interactive rebase editor's plan (spec #3 §3.3): `branch`'s commits since `base`, its chips, the tips it expects. */
+  /** The interactive rebase editor's plan: `branch`'s commits since `base`, its chips, the tips it expects. */
   rebasePlan: (repo: number, worktree: string, branch: string, base: string) => call<RebasePlanPayload>({ method: 'rebasePlan', params: { repo, worktree, branch, base } }),
-  // --- end 3C T9 ---
-  // --- 3C T10 ---
-  /** Start the interactive rebase (spec #3 §3.3): rows newest first; `expect` from the plan. */
+  /** Start the interactive rebase: rows newest first; `expect` from the plan. */
   interactiveRebase: (repo: number, worktree: string, req: { branch: string; base: string; expect: Record<string, string>; rows: RebaseRow[]; chips: ChipPlan[]; confirmAutostash?: boolean }) =>
     call<WriteResult<IntegrateOutcome>>({ method: 'interactiveRebase', params: { repo, worktree, branch: req.branch, base: req.base, expect: req.expect, rows: req.rows, chips: req.chips, confirm: { autostash: req.confirmAutostash ?? false } } }),
-  /** Conflict prediction for a plan (spec #3 §3.2; a read). */
+  /** Conflict prediction for a plan (a read). */
   predictRebase: (repo: number, worktree: string, base: string, rows: RebaseRow[]) => call<Prediction>({ method: 'predictRebase', params: { repo, worktree, base, rows } }),
-  // --- 4A T11 ---
   /** The active profile's forge accounts and their last known status (no network). */
   forgeAccounts: () => call<ForgeAccountView[]>({ method: 'forgeAccounts' }),
   /** Checks the token against the host and keeps it (system keyring, else the 0600 file). `account`
@@ -580,23 +503,17 @@ export const api = {
   forgeTokenPage: (host: string, kind: ForgeKind, classic?: boolean) => call<string>({ method: 'forgeTokenPage', params: { host, kind, classic: classic ?? false } }),
   /** The forge `host` runs: by its name, else asked without a token; `generic` when neither says. */
   detectForge: (host: string) => call<HostKind>({ method: 'detectForge', params: { host } }),
-  // --- end 4A T11 ---
-  // --- end 3C T10 ---
-  // --- 3C T13 ---
-  /** Reword an older commit of HEAD's branch in place (spec #3 §3.6); `confirmAutostash` after the clean-restore question. */
+  /** Reword an older commit of HEAD's branch in place; `confirmAutostash` after the clean-restore question. */
   rewordCommit: (repo: number, worktree: string, oid: string, message: string, expect: Expect, confirmAutostash = false) =>
     call<WriteResult<IntegrateOutcome>>({ method: 'rewordCommit', params: { repo, worktree, oid, message, expect, confirm: { autostash: confirmAutostash } } }),
-  // --- end 3C T13 ---
-  // --- 3B T6: cherry-pick and revert ---
-  /** Cherry-pick `oids` (newest first, as the graph lists them) onto HEAD's branch, oldest first (spec #3 §3.7). */
+  // --- cherry-pick and revert ---
+  /** Cherry-pick `oids` (newest first, as the graph lists them) onto HEAD's branch, oldest first. */
   cherryPick: (repo: number, worktree: string, oids: string[], opts: { noCommit: boolean; confirmAutostash?: boolean; expect?: Expect }) =>
     call<WriteResult<SequenceOutcome>>({ method: 'cherryPick', params: { repo, worktree, oids, noCommit: opts.noCommit, expect: opts.expect ?? NO_EXPECT, confirm: { autostash: opts.confirmAutostash ?? false } } }),
   /** Revert `oids` (newest first) on HEAD's branch, newest first. */
   revert: (repo: number, worktree: string, oids: string[], opts: { noCommit: boolean; confirmAutostash?: boolean; expect?: Expect }) =>
     call<WriteResult<SequenceOutcome>>({ method: 'revert', params: { repo, worktree, oids, noCommit: opts.noCommit, expect: opts.expect ?? NO_EXPECT, confirm: { autostash: opts.confirmAutostash ?? false } } }),
-  // --- end 3B T6 ---
-  // --- 4B T1 ---
-  /** The repo's open MRs/PRs for the sidebar section (spec #4 §4 "4B"). */
+  /** The repo's open MRs/PRs for the sidebar section. */
   forgeMrList: (repo: number, filter: MrFilter) => call<MrList>({ method: 'forgeMrList', params: { repo, filter } }),
   /** The badges: `refs` are the local branches' upstreams, newest tip first. */
   forgeBranchMrs: (repo: number, refs: string[]) => call<BranchMrs>({ method: 'forgeBranchMrs', params: { repo, refs } }),
@@ -622,7 +539,7 @@ export const api = {
   forgeDeleteNote: (repo: number, number: number, note: NoteRef) => call<null>({ method: 'forgeDeleteNote', params: { repo, number, note } }),
   forgeResolve: (repo: number, number: number, discussion: string, resolved: boolean) => call<ThreadState>({ method: 'forgeResolve', params: { repo, number, discussion, resolved } }),
   // --- end comment actions ---
-  // --- review comments (spec 2026-10-08 §6) ---
+  // --- review comments ---
   /** The MR/PR's diff as the forge has it, with each file's commentable lines. */
   forgeReviewDiff: (repo: number, number: number) => call<ReviewDiff>({ method: 'forgeReviewDiff', params: { repo, number } }),
   /** The user's pending review: its drafts and the diff refs. */
@@ -645,8 +562,7 @@ export const api = {
   forgeSetDraft: (repo: number, number: number, draft: boolean) => call<ForgeMr>({ method: 'forgeSetDraft', params: { repo, number, draft } }),
   /** The common ancestor of two commits; null when the repo lacks one of them. */
   mergeBase: (repo: number, a: string, b: string) => call<string | null>({ method: 'mergeBase', params: { repo, a, b } }),
-  // --- end 4B T1 ---
-  // --- 4C T5: the Create flyout (spec #4 §4 "4C") ---
+  // --- the Create flyout ---
   forgeCreateContext: (repo: number, remote: string, sourceRemote: string, branch: string, target: string) =>
     call<CreateContext>({ method: 'forgeCreateContext', params: { repo, remote, sourceRemote, branch, target } }),
   forgeSearchUsers: (repo: number, remote: string, query: string) => call<ForgeUser[]>({ method: 'forgeSearchUsers', params: { repo, remote, query } }),
@@ -654,20 +570,15 @@ export const api = {
   forgeCreateMr: (repo: number, remote: string, req: CreateMr) => call<CreateOutcome>({ method: 'forgeCreateMr', params: { repo, remote, req } }),
   forgeCompleteCreate: (repo: number, remote: string, number: number, req: CreateMr, parts: CreatePart[]) =>
     call<PartFailure[]>({ method: 'forgeCompleteCreate', params: { repo, remote, number, req, parts } }),
-  // --- end 4C T5 ---
-  // --- 4D T3 ---
-  /** A stack's MRs/PRs (spec #4 §4 "4D"): `branches` bottom → top, `base` the forge branch the bottom targets, `baseRef` the local ref it sits on. */
+  /** A stack's MRs/PRs: `branches` bottom → top, `base` the forge branch the bottom targets, `baseRef` the local ref it sits on. */
   forgeStack: (repo: number, branches: string[], base: string, baseRef: string) => call<StackView>({ method: 'forgeStack', params: { repo, branches, base, baseRef } }),
   /** Rewrites the Stack table in each open MR/PR (managed stacks only). */
   forgeSyncStack: (repo: number, branches: string[], base: string) => call<StackSync>({ method: 'forgeSyncStack', params: { repo, branches, base } }),
   forgeRetarget: (repo: number, number: number, target: string) => call<ForgeMr>({ method: 'forgeRetarget', params: { repo, number, target } }),
-  // --- end 4D T3 ---
 };
 
-// --- 2D T18 ---
 /** `Expect` with nothing to check (the backend's own default). */
 const NO_EXPECT: Expect = { head: null, refs: {} };
-// --- end 2D T18 ---
 
 export function errorMessage(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);

@@ -10,7 +10,7 @@ type Editor = MonacoNs.editor.ICodeEditor;
 interface Whitespace { id: string; afterLineNumber: number; height: number }
 type LineChange = Pick<MonacoNs.editor.ILineChange, 'originalStartLineNumber' | 'originalEndLineNumber' | 'modifiedStartLineNumber' | 'modifiedEndLineNumber'>;
 
-/** A card under a line of the shown diff (spec 2026-10-08 §2): its key, the side and line it sits
+/** A card under a line of the shown diff: its key, the side and line it sits
  * under (old-side numbers on `original`), a range's first line (softly highlighted; null for one
  * line), and whether Next / Previous thread stop at it. `icon`: folded (a collapsed thread): no
  * zone, but an icon in the glyph margin at the line its card would go under. */
@@ -119,7 +119,7 @@ interface Card {
 }
 
 /**
- * Review mode's cards (spec 2026-10-08 §2). Each takes its space among the lines as a view zone (an
+ * Review mode's cards. Each takes its space among the lines as a view zone (an
  * empty spacer that reports its top), and the card itself sits in `layer`, over the editor and
  * beside it in the view's box rather than inside Monaco's element: Monaco's key handling (on its
  * container) never sees what's typed in a card, and a mode change moves only the spacer, never the

@@ -12,6 +12,6 @@ targetBranch: string,
  */
 mr: ForgeMr | null, 
 /**
- * Set when it has no MR/PR, or only a closed one (Ruling 7).
+ * Set when it has no MR/PR, or only a closed one.
  */
 prefill: MrPrefill | null, };

@@ -4,14 +4,14 @@ import { commitButton } from './CommitBox';
 
 const base = { staged: 0, unstaged: 0, conflicted: 0, amend: false, inMerge: false, summary: 'Fix x' };
 
-describe('the commit button (spec #2 §8.1)', () => {
+describe('the commit button', () => {
   it('names what it does', () => {
     expect(commitButton({ ...base, staged: 1 }).label).toBe('Commit changes to 1 file');
     expect(commitButton({ ...base, staged: 3, unstaged: 2 }).label).toBe('Commit changes to 3 files');
     expect(commitButton({ ...base, unstaged: 2 })).toMatchObject({ label: 'Stage all & commit', stageAll: true });
     expect(commitButton({ ...base, amend: true })).toMatchObject({ label: 'Amend previous commit', disabled: false, stageAll: false });
     expect(commitButton({ ...base, inMerge: true, staged: 1 }).label).toBe('Commit and merge');
-    // Ux round 1: the label while the summary is empty.
+    // The label while the summary is empty.
     expect(commitButton({ ...base, staged: 1, summary: ' ' }).label).toBe('Type a message to commit');
     expect(commitButton({ ...base, unstaged: 2, summary: '' })).toMatchObject({ label: 'Type a message to commit', stageAll: true, disabled: true });
   });

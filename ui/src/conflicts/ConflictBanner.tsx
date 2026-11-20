@@ -10,18 +10,18 @@ import { runWrite, type WriteCtx } from '../write/client';
 import { inProgressOf, operationView, useIntegrating } from './inProgress';
 import { applyMergeDraft, settleDraftAside } from './mergeDraft';
 
-/** Journal entries already settled (Deviation 4): once per paused entry. */
+/** Journal entries already settled: once per paused entry. */
 const settled = new Set<string>();
-/** Stops already shown: the WIP is selected once per stop (ux round 1). */
+/** Stops already shown: the WIP is selected once per stop. */
 const shown = new Set<string>();
 
 /**
- * §13.2's watcher, in the tab's `banner` slot, while the active worktree is mid-operation. It
+ * The conflict watcher, in the tab's `banner` slot, while the active worktree is mid-operation. It
  * draws nothing: the operation's status and its Continue, Skip and Abort live in the commit
- * panel (ux round 1: a window-wide bar pushed the whole interface down). It
+ * panel (a window-wide bar pushed the whole interface down). It
  * - once per stop, selects the WIP row (so that panel shows) and opens its first conflicted file;
  * - settles a paused entry whose operation ended outside GitVolt;
- * - adds MERGE_MSG to the WIP draft once per merge (§8.2).
+ * - adds MERGE_MSG to the WIP draft once per merge.
  * It waits while a merge, rebase or pull op of the repo runs (those states are transient).
  */
 export function ConflictBanner({ tab }: TabSlotProps) {
@@ -41,7 +41,7 @@ export function ConflictBanner({ tab }: TabSlotProps) {
   const wipId = graph.rows.find((r) => r.wip?.worktreePath === worktree)?.id ?? null;
   const onWip = useRepoView((s) => s.selection?.kind === 'wip' && s.selection.worktree === worktree);
 
-  // Deviation 4: the operation ended outside GitVolt while its journal entry is paused → settle
+  // The operation ended outside GitVolt while its journal entry is paused → settle
   // once per entry (it restores the autostash).
   useEffect(() => {
     if (!ctx || busy || !none || !paused) return;
@@ -54,7 +54,7 @@ export function ConflictBanner({ tab }: TabSlotProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoId, worktree, busy, none, paused]);
 
-  // §8.2: a stopped merge adds MERGE_MSG to the WIP draft, once per merge; a merge that ended
+  // A stopped merge adds MERGE_MSG to the WIP draft, once per merge; a merge that ended
   // some other way gives the old draft back, unless the message was edited or sent.
   useEffect(() => {
     if (!worktree || busy || !rt?.repo) return;
@@ -63,7 +63,7 @@ export function ConflictBanner({ tab }: TabSlotProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoPath, worktree, busy, mergeHead, none]);
 
-  // A new stop selects the WIP row, whose commit panel holds the operation (ux round 1), and
+  // A new stop selects the WIP row, whose commit panel holds the operation, and
   // shows its panel (H.1: no file is opened; the user picks one from the Conflicted list).
   useEffect(() => {
     if (!stop || busy || !wipId || !worktree) return;

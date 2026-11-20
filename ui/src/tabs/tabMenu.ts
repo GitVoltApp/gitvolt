@@ -37,7 +37,7 @@ type ActionRow = Extract<MenuRow, { kind: 'action' }>;
 const row = (id: string, label: string, icon: LucideIcon, tooltip: string, run: () => void, extra: Partial<ActionRow> = {}): MenuRow =>
   ({ kind: 'action', id, label, icon, tooltip, run, ...extra });
 
-// The tab context menu (spec §6.2): Rename, Close / Close others / Close to the right, Reopen
+// The tab context menu: Rename, Close / Close others / Close to the right, Reopen
 // closed tab, and (repo tabs only) Copy repo path / Open in file manager. `GROUP_ORDER.tab`
 // (menu/registry.ts) is ['edit', 'close', 'restore', 'repo'].
 
@@ -95,7 +95,7 @@ registerMenu<TabTarget, TabEnv>({
       }),
       row(
         'tab.openFolder', 'Open in file manager', ICONS.reveal, "Open the tab's worktree directory in the file manager",
-        // The tab's active worktree, not the repository's main one (spec #2 §11.2).
+        // The tab's active worktree, not the repository's main one.
         () => { if (repo) openRepoFolder(repo.id, worktreeOf(rt) ?? repo.path); },
         repo ? {} : { disabledReason: 'Still loading' },
       ),

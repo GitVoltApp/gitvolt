@@ -1,6 +1,6 @@
 import { openFlyout } from '../../ui/flyout/flyout';
 
-/** The Create flyout's key in 4B's flyout registry (T9 registers it) and its props. */
+/** The Create flyout's key in the flyout registry and its props. */
 export const CREATE_MR_FLYOUT = 'createMr';
 export interface CreateMrArgs { branch: string }
 

@@ -9,25 +9,24 @@ import './tooltip.css';
 export const isDismissKey = (e: KeyboardEvent) => e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing;
 
 /**
- * The hover tooltip that wraps a trigger (plan 1C Task 10's tooltip primitive, pulled into 1B:
- * this is its `<Tooltip text delay?>`). Anything that needs an instant (or deliberately delayed)
+ * The hover tooltip that wraps a trigger (the tooltip primitive, `<Tooltip text delay?>`). Anything that needs an instant (or deliberately delayed)
  * tooltip uses this instead of the native `title`, whose OS delay breaks the app-wide "tooltips
  * show immediately" rule. Controls built from data (the context menu) use the imperative
  * `showTooltip` and the one `<TooltipHost />` instead (`tooltipStore.ts`), with the same look
  * and placement (`placeBelow`).
  *
  * - `delayMs` defaults to 0 (show immediately). The one deliberate exception is the graph's
- *   full commit-message tooltip (~500 ms, spec §8.4).
+ *   full commit-message tooltip (~500 ms).
  * - `interactive`: the pointer may move from the trigger into the tooltip (e.g. to scroll a
  *   long message) without closing it. Otherwise the tooltip ignores the pointer entirely.
  * - `placement`: `'below'` (default) puts it under the trigger, flipped above if it doesn't
  *   fit. `'pointer'` puts it POINTER_GAP px right of the cursor (flipped to its left if it
  *   doesn't fit), at the cursor's height, and follows the pointer while shown. Never
  *   interactive: it's meant to sit next to the pointer without ever catching it (the graph's
- *   message tooltip, feedback F1). `'left-of'` puts it left of the element `leftOf` returns for
+ *   message tooltip). `'left-of'` puts it left of the element `leftOf` returns for
  *   the trigger (a panel), its right edge LEFT_OF_GAP px before that element's left edge, centred
  *   on the trigger's height: over the area beside the panel, so it never covers the rows above or
- *   below the hovered one (the file list, feedback J18). Without room there, it goes below.
+ *   below the hovered one (the file list). Without room there, it goes below.
  * - `content` may be a function, called once the delay has elapsed. It can return the content
  *   (e.g. from a cache) or a promise of it: if that takes over `loadingDelayMs` (~100 ms),
  *   `loadingContent` ("Loading…") shows meanwhile. A load that resolves after the pointer left
@@ -83,7 +82,7 @@ type Size = { width: number; height: number };
 /** The tooltip's size at its natural width. A fixed box shrinks to fit the room between its
  * `left` and the window's right edge, so a tooltip first laid out near that edge wraps one word
  * per line; parking it at the origin first gives it the room its `max-width` allows, and the
- * placement then shifts it, never shrinks it (K52). */
+ * placement then shifts it, never shrinks it. */
 export function measureNatural(el: HTMLElement): Size {
   el.style.left = '0px';
   el.style.top = '0px';
@@ -107,7 +106,7 @@ export function placeBelow(anchor: Anchor, size: Size, gap = GAP) {
 }
 
 /**
- * The one placement for every card and tooltip (K52 and the hover cards): kept inside the window.
+ * The one placement for every card and tooltip (and the hover cards): kept inside the window.
  * `below` (default): under the anchor when it fits, else above it, else (taller than both) at the
  * top margin with `maxHeight` set to the window's height minus margins, for the caller to scroll.
  * `top`: beside the anchor with its top edge on the anchor's, moved up just enough to fit.

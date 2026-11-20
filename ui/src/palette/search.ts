@@ -36,7 +36,7 @@ function groupsOf(entries: PaletteEntry[]): Map<PaletteGroup, PaletteEntry[]> {
   return g;
 }
 
-/** Spec §11.2: fuzzy search, ranked by group, then score. Pass the same `entries` array while it
+/** Fuzzy search, ranked by group, then score. Pass the same `entries` array while it
  * is unchanged, so its targets stay prepared. */
 export function searchPalette(query: string, entries: PaletteEntry[], perGroup = 8): PaletteEntry[] {
   const { group, text } = parseQuery(query);

@@ -7,7 +7,7 @@ import { THEME_STORAGE_KEY, writeThemeMirror } from './apply';
 import { customThemeDef } from './custom';
 import { THEMES } from './themes';
 
-// index.html's inline `theme-first-paint` script (review I1): it must paint the mirrored theme's
+// index.html's inline `theme-first-paint` script: it must paint the mirrored theme's
 // background and colour scheme synchronously, before any stylesheet or module script.
 const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'index.html'), 'utf8');
 const script = html.match(/<script id="theme-first-paint">([\s\S]*?)<\/script>/)?.[1] ?? '';

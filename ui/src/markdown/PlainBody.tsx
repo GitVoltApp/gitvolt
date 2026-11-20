@@ -1,7 +1,7 @@
 const CHUNK = 16_384;
 
 /** A body as written (pre-wrap): too large to render, failed, or not parsed yet. A long one is cut
- * at line ends into chunks the browser skips laying out off-screen (ruling 16). */
+ * at line ends into chunks the browser skips laying out off-screen. */
 export function PlainBody({ text, className }: { text: string; className: string }) {
   if (text.length <= CHUNK * 4) return <div className={`${className} md-plain`}>{text}</div>;
   const parts: string[] = [];

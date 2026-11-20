@@ -1,4 +1,4 @@
-/** Multiplies RGB so small differences become visible, and forces every pixel opaque (spec §10.4). */
+/** Multiplies RGB so small differences become visible, and forces every pixel opaque. */
 export function brighten(data: Uint8ClampedArray, factor = 4): void {
   for (let i = 0; i < data.length; i += 4) {
     data[i] *= factor;
@@ -9,7 +9,7 @@ export function brighten(data: Uint8ClampedArray, factor = 4): void {
 }
 
 /** Draws |a − b| (the canvas `difference` blend) on a black background, then brightens it by
- * `amplify` — the TRUE multiplier (K10 fix round 1): 1× is the raw, unamplified difference, and
+ * `amplify` — the TRUE multiplier: 1× is the raw, unamplified difference, and
  * the 1×–16× Amplify slider multiplies it up from there so near-identical images show where they
  * differ. The default is 4×, matching the look of the old fixed ×4 brighten. Re-run whenever
  * `amplify` changes (cheap: two small `drawImage` calls), independent of the transform that

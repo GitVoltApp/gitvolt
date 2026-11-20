@@ -10,7 +10,7 @@ beforeEach(() => {
   reloadDrafts();
 });
 
-describe('the WIP draft (spec #2 §8.2)', () => {
+describe('the WIP draft', () => {
   it('normalises CRLF and a leading blank description (it would show as two blank lines)', () => {
     expect(normalizeDraft({ summary: 'Fix\r', description: '\r\n\r\nBody\r\nline 2\rline 3' })).toEqual({ summary: 'Fix\n', description: 'Body\nline 2\nline 3' });
     expect(splitMessage('Fix x\r\n\r\nWhy:\r\nbecause\r\n')).toEqual({ summary: 'Fix x', description: 'Why:\nbecause' });
@@ -117,7 +117,7 @@ describe('the WIP draft (spec #2 §8.2)', () => {
   });
 });
 
-describe('rekeyWipDrafts (2C T2: one handle per repository)', () => {
+describe('rekeyWipDrafts (one handle per repository)', () => {
   it("moves a linked worktree tab's drafts to the repository's key, never over one already there", () => {
     writeWipDraft('/r-x', '/r-x', { summary: 'Unsent fix', description: 'body' });
     writeWipDraft('/r-x', '/r', { summary: 'old main draft', description: '' });

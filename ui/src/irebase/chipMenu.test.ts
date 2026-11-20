@@ -18,7 +18,7 @@ const chip = (branch: string) => sessionOf('t1')!.state.chips.find((c) => c.bran
 const flush = () => new Promise((r) => setTimeout(r, 0));
 afterEach(() => { setSession('t1', undefined); confirm.mockClear(); });
 
-describe('the editor chip menu (UX R1.3)', () => {
+describe('the editor chip menu', () => {
   it('Delete branch arms in place, then strikes the chip out; Restore brings it back', async () => {
     show();
     expect(rows('x').map((r) => r.label)).toEqual(['Delete branch']);

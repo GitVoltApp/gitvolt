@@ -29,7 +29,7 @@ export function useEscapeOwner(owns: EscapeOwner) {
 const isPlainEscape = (e: KeyboardEvent) => e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.isComposing;
 const within = (t: Element | null, selector: string) => t?.closest(selector) != null;
 
-/** A text box of the app's own (plan 1C's search box, …, or any editable text:
+/** A text box of the app's own (the search box, …, or any editable text:
  * `isContentEditable`), whose Esc is its own. Monaco's input textarea isn't one: its Esc goes
  * through the editor's owner. */
 const isTextInput = (t: Element | null) => isEditableTarget(t) && !within(t, '.monaco-editor, .monaco-host');
@@ -38,14 +38,13 @@ const isTextInput = (t: Element | null) => isEditableTarget(t) && !within(t, '.m
 const ownsEscape = (t: Element | null) => isTextInput(t) || within(t, '[data-owns-escape]');
 
 /**
- * The view's Esc (spec §11.1, feedback J4), from wherever the focus is: the file list, the diff,
+ * The view's Esc, from wherever the focus is: the file list, the diff,
  * the details header, the message, the graph, or nothing (`<body>`, after a click on a blank
  * area). With a file open it closes it, back to the graph with the selection kept; in the file
- * list it returns to the graph; otherwise it leaves a compare or multi-selection (K27).
+ * list it returns to the graph; otherwise it leaves a compare or multi-selection.
  *
- * Ctrl+W isn't here: since plan 1C it's the app's one binding (`app/coreActions.ts`, through the
- * same router's `app` layer), which closes the open file if there is one, else the tab (ruling R6:
- * never both on one press). Like Esc it works from anywhere, and an open editor overlay never
+ * Ctrl+W isn't here: it's the app's one binding (`app/coreActions.ts`, through the
+ * same router's `app` layer), which closes the open file if there is one, else the tab (never both on one press). Like Esc it works from anywhere, and an open editor overlay never
  * claims it (the `overlay` layer below only asks the owners for a *plain* Esc).
  *
  * It goes through the key router (`ui/keyRouter.ts`), ahead of every handler in the page
@@ -61,10 +60,10 @@ const ownsEscape = (t: Element | null) => isTextInput(t) || within(t, '[data-own
  *   `defaultPrevented` before it got here — the router runs in
  *   the window's capture phase, ahead of the page's own handlers, so only a higher router layer
  *   (menu, tooltip, overlay) could have claimed it first.
- * Neither acts while `root` (the view) isn't shown: plan 1C keeps hidden tabs' views mounted in
+ * Neither acts while `root` (the view) isn't shown: the app keeps hidden tabs' views mounted in
  * `<Activity>`. When the action runs, the key goes no further, from wherever the keydown's target
- * is — including `<body>`, after a click on non-focusable content (I1). While a center view is
- * on top in the tab (spec #3: `centerViewOnTop`, so also over the file it was opened over), Esc
+ * is — including `<body>`, after a click on non-focusable content. While a center view is
+ * on top in the tab (`centerViewOnTop`, so also over the file it was opened over), Esc
  * is the view's: neither handler acts. A file opened over the view closes as it does over the
  * graph, back to the view.
  */

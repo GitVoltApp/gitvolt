@@ -9,7 +9,7 @@ export const lockLabel = (path: string): string => {
   return at >= 0 ? path.slice(at + 1) : 'index.lock';
 };
 
-/** Remove stale lock (spec #2 §14). Asks first; the backend unlinks the lock only if it's still
+/** Remove stale lock. Asks first; the backend unlinks the lock only if it's still
  * the file the error saw and no git process runs in the repository. A failure (it changed since:
  * `Stale`; a live process: `IndexLocked`) reaches the caller's toast. */
 export async function removeStaleLock(repo: number, lock: IndexLockId): Promise<void> {

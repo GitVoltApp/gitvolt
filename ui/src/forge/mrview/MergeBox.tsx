@@ -52,7 +52,7 @@ export const UPDATE_LABELS: Record<ForgeKind, Partial<Record<BranchUpdate, { lab
 /** A row kept in the layout but not shown (visibility, not display: its space stays). */
 const reserved = (hidden: boolean) => (hidden ? { style: { visibility: 'hidden' as const }, 'aria-hidden': true } : {});
 
-/** Why Merge is disabled (spec #4 §2: "disabled with the reason when blocked"); null: it isn't. */
+/** Why Merge is disabled ("disabled with the reason when blocked"); null: it isn't. */
 export function mergeBlock(kind: ForgeKind, detail: ForgeMrDetail | null): string | null {
   if (!detail) return 'Loading…';
   const s = detail.mergeStatus;
@@ -67,14 +67,14 @@ const HARD_BLOCK = /conflict|draft|closed|merged already|being merged|isn't open
 type Mode = 'merge' | 'auto' | 'cancel' | 'none';
 
 /**
- * Merge (spec #4 §2, ruling 8), and auto-merge as GitLab's widget has it: while the checks run the
+ * Merge, and auto-merge as GitLab's widget has it: while the checks run the
  * button sets it to merge once they pass; once set, who set it and Cancel auto-merge. GitLab merges
  * with the project's method; squash follows the project (hidden for Never, locked on for Always)
  * and the MR's own choice; delete-source-branch defaults to the MR's, else the project's. GitHub's
  * and Forgejo's method is one of the repository's (the button's dropdown); their branch deletion
  * is the repository's setting. The commit messages are the forge's own (its templates). Each click
  * arms in place; a merge sends the head sha the view loaded, so a moved
- * head is refused (Review Focus 3). No optimistic UI: the store changes only with the answer.
+ * head is refused. No optimistic UI: the store changes only with the answer.
  */
 export function MergeBox({ tabId, kind, mr: listed, detail }: { tabId: string; kind: ForgeKind; mr: ForgeMr; detail: ForgeMrDetail | null }) {
   const mr = detail?.mr ?? listed;

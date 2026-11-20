@@ -47,11 +47,11 @@ export function setWindowTheme(kind: ThemeDef['kind']): void {
 }
 
 /**
- * The first-paint mirror (ruling R3): the saved theme, kept in localStorage so it applies before
- * the backend's settings arrive, the way zoom and density do (1C R4). `AppSettings.theme` stays the
+ * The first-paint mirror: the saved theme, kept in localStorage so it applies before
+ * the backend's settings arrive, the way zoom and density do. `AppSettings.theme` stays the
  * source of truth; this only shadows it. It also carries the theme's `kind` and `app-bg0` (`bg`)
  * for index.html's inline script, which paints them before any CSS or module script runs (no dark
- * flash for a light theme, review I1); and a custom theme itself, so it resolves before the
+ * flash for a light theme); and a custom theme itself, so it resolves before the
  * settings load. `graph` is a built-in's lane overrides, as mirrors written before custom themes
  * carry them (read only: the settings' migration replaces them with a custom theme).
  */

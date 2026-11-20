@@ -27,7 +27,7 @@ export const applyControl = (target: SuggestionTarget) => function render(p: Sug
 };
 
 /**
- * A suggestion's Apply (spec 2026-10-08): enabled only with the MR's source branch checked out at
+ * A suggestion's Apply: enabled only with the MR's source branch checked out at
  * its head and the replaced lines unchanged in the working copy; otherwise disabled, its tooltip
  * saying why. The working-copy file is read again at each new generation of the worktree's files
  * (`workingFiles`), one read for all the buttons on it.

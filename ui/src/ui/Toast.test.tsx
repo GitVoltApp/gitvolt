@@ -48,7 +48,7 @@ describe('Toast', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('shows `actions` in order after `action`, and any of them dismisses it (R12)', () => {
+  it('shows `actions` in order after `action`, and any of them dismisses it', () => {
     const a = vi.fn();
     const b = vi.fn();
     render(<Toast />);

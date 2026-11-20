@@ -10,7 +10,7 @@ import { historyStart, restoreSource } from './sources';
 
 const row = (r: Omit<Extract<MenuRow, { kind: 'action' }>, 'kind'>): MenuRow => ({ kind: 'action', ...r });
 
-/** "File history" and "Blame" (spec #3 §4.2) on every file row that has a history. */
+/** "File history" and "Blame" on every file row that has a history. */
 const offHistory = registerMenu<FileTarget, MenuEnv>({
   id: 'file.history', kind: 'file', group: 'history', order: 0,
   rows: (t) => {
@@ -24,7 +24,7 @@ const offHistory = registerMenu<FileTarget, MenuEnv>({
   },
 });
 
-/** Restore file from a commit (spec #3 §3.8): into the active worktree, unstaged, undoable. Hidden
+/** Restore file from a commit: into the active worktree, unstaged, undoable. Hidden
  * with no write target and mid-operation (the write refuses then). Over the file's own changes,
  * the clicked row arms in place (`restoreFile` → `runWrite`). */
 const offRestore = registerMenu<FileTarget, MenuEnv>({

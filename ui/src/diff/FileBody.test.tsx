@@ -30,14 +30,14 @@ const host = vi.hoisted(() => ({
 vi.mock('./monaco/load', () => ({ loadMonacoHost: async () => host }));
 const hexDump = vi.hoisted(() => vi.fn(async () => ({ old: null, new: { size: 4, shown: 4, dump: '00\n' }, cap: 262144 })));
 vi.mock('../api/client', async (actual) => ({ ...(await actual<typeof import('../api/client')>()), api: { listOpeners: async () => [], openIn: async () => null, hexDump } }));
-// 5A's renderer is tested by 5A: here, what File View hands it.
+// The Markdown renderer has its own tests: here, what File View hands it.
 vi.mock('../markdown/fileLinks', () => ({}));
 vi.mock('../markdown/lazy', () => ({
   Markdown: ({ text, context }: { text: string; context: { commit: string; path: string } }) => <div data-testid="md" data-commit={context.commit} data-path={context.path} data-font-px={useContext(MdFontPx)}>{text}</div>,
   MarkdownDiff: () => <div data-testid="md-diff" />,
 }));
 
-// 5A's chunk stream, timed by File View: each stream "takes" `parse.cost` ms of the mocked clock
+// The Markdown chunk stream, timed by File View: each stream "takes" `parse.cost` ms of the mocked clock
 // and finishes on a later tick (like the worker's reply).
 // `cost: Infinity`: it never finishes; `tooLarge`: it fails as too large (the worker died).
 const parse = vi.hoisted(() => ({ cost: 0, now: 0, calls: 0, tooLarge: false }));
@@ -78,7 +78,7 @@ beforeEach(() => {
   useDiffPrefs.setState({ prefs: DEFAULT_DIFF_PREFS });
 });
 
-describe('File View of a Markdown file (spec #5 §3.3)', () => {
+describe('File View of a Markdown file', () => {
   it('is Rendered by default, with the toggle in the diff toolbar, and the editor kept (hidden) under it', async () => {
     renderPanel(fileViewTarget('docs/guide.md', C, spec), async () => contents(blob('# Guide\n')));
     const md = await screen.findByTestId('md');
@@ -175,7 +175,7 @@ describe('File View of a Markdown file (spec #5 §3.3)', () => {
     expect(host.focus).not.toHaveBeenCalled();
   });
 
-  it('Back to a Rendered place scrolls the rendered view where it was (spec #5 §3.4)', async () => {
+  it('Back to a Rendered place scrolls the rendered view where it was', async () => {
     setPendingScroll('', 'file', { key: `file:${C}:README.md`, view: 'rendered', top: 500, anchor: null });
     renderPanel(fileViewTarget('README.md', C, spec), async () => contents(blob('# Readme\n')));
     await screen.findByTestId('md');
@@ -185,7 +185,6 @@ describe('File View of a Markdown file (spec #5 §3.3)', () => {
   });
 });
 
-// --- 5B T7 ---
 describe('File View of an HTML file', () => {
   const PAGE = '<!doctype html><html><head><script src="https://cdn.example.test/lib.js"></script></head><body><h1>Page</h1></body></html>';
   const frame = () => screen.getByTestId('html-file').querySelector('iframe');
@@ -235,7 +234,7 @@ describe('File View of an HTML file', () => {
   });
 });
 
-describe('too large to render (spec #5 §3.1)', () => {
+describe('too large to render', () => {
   beforeEach(() => {
     Object.assign(parse, { cost: 0, now: 0, calls: 0, tooLarge: false });
     useSlowMarkdown.setState({ slow: {} });
@@ -293,4 +292,3 @@ describe('too large to render (spec #5 §3.1)', () => {
     expect(parse.calls).toBe(1);
   });
 });
-// --- end 5B T7 ---

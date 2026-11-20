@@ -22,7 +22,7 @@ const CTX: CreateContext = {
 };
 const route = { sourceRemote: 'origin', targetRemote: 'origin', targetBranch: 'main' };
 
-describe('prefill rules (spec #4 §2 "Create MR/PR", rulings 4–6, 10)', () => {
+describe('prefill rules', () => {
   it('the default template is the only one, else the one named Default, else none', () => {
     expect(defaultTemplate([tpl('Bug')])?.name).toBe('Bug');
     expect(defaultTemplate([tpl('Bug'), tpl('default')])?.name).toBe('default');

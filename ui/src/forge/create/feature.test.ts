@@ -32,7 +32,7 @@ const rowOf = (name: string) => buildMenu('commit', target(name), env).find((r) 
 
 beforeEach(() => { head.branch = 'feature/login'; });
 
-describe('Create MR/PR entry points (spec #4 §4 "4C")', () => {
+describe('Create MR/PR entry points', () => {
   it("branch menus name the forge's noun for a branch that isn't the default, and open the flyout", () => {
     seed();
     const row = rowOf('feature/login');
@@ -51,7 +51,7 @@ describe('Create MR/PR entry points (spec #4 §4 "4C")', () => {
     expect(pushHooks.afterNewBranch!('t1', 'feature/login', 'origin')).toBeNull();
   });
 
-  it('a branch that already has an open MR gets no Create row (4B offers Open instead); a merged one does', () => {
+  it('a branch that already has an open MR gets no Create row (the Open row is offered instead); a merged one does', () => {
     seed();
     const mr = { number: 5, state: 'open', sourceBranch: 'feature/login' } as never;
     patchForge('t1', { byRef: { 'refs/remotes/origin/feature/login': mr }, upstreams: { 'refs/heads/feature/login': 'refs/remotes/origin/feature/login' } });

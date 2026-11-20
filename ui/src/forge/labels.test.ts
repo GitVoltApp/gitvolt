@@ -12,8 +12,6 @@ describe('forge labels: the only place the UI branches on the forge', () => {
   });
 });
 
-// --- 4C T6 ---
 it('names the whole noun for menus and buttons', () => {
   expect([mrLongNoun('gitlab'), mrLongNoun('github')]).toEqual(['merge request', 'pull request']);
 });
-// --- end 4C T6 ---

@@ -14,7 +14,7 @@ async function openWip(page: Page): Promise<string> {
 }
 const unstagedRow = (page: Page, name: string) => page.getByRole('listbox', { name: 'Unstaged' }).getByRole('option').filter({ hasText: name });
 
-test.describe('the editable working copy (spec #2 §7.5)', () => {
+test.describe('the editable working copy', () => {
   // One repo and page for these (each was a test of its own, paying for a page load and Monaco's
   // start-up): the edits left unsaved are discarded, so the save after starts from the file as it
   // was; the stale save last.
@@ -30,7 +30,7 @@ test.describe('the editable working copy (spec #2 §7.5)', () => {
       await page.getByRole('button', { name: 'Cancel' }).click();
       await expect(page.getByTestId('diff-path')).toContainText('space name.txt');
       await unstagedRow(page, 'new.txt').click();
-      // A risky choice arms in place inside the popover (board G).
+      // A risky choice arms in place inside the popover.
       await confirmArmed(page.getByRole('button', { name: 'Discard edits' }));
       await confirmArmed(armedOverlay(page, 'Click again to discard edits'));
       await expect(page.getByTestId('diff-path')).toContainText('new.txt');

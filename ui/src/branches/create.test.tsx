@@ -23,7 +23,7 @@ afterEach(() => {
   useRowEditors.setState({ store: null, editor: null });
 });
 
-describe('Create branch: the dialog, where the graph has no row for it (spec #2 §9.1)', () => {
+describe('Create branch: the dialog, where the graph has no row for it', () => {
   it('checks out by default, and sends what the box says', async () => {
     const ask = vi.spyOn(prompt, 'promptText');
     const create = vi.spyOn(api, 'createBranch').mockResolvedValue(ok as never);
@@ -44,7 +44,7 @@ describe('Create branch: the dialog, where the graph has no row for it (spec #2 
   });
 });
 
-describe('Create branch: inline in the graph row (UX round 1)', () => {
+describe('Create branch: inline in the graph row', () => {
   let store: ReturnType<typeof createRepoViewStore>;
   beforeEach(() => {
     store = createRepoViewStore(1, '/r', graph, fakeServices());

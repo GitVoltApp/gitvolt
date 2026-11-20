@@ -4,7 +4,7 @@ import { branchMembership, labelsByRow, type BranchMembership } from './membersh
 
 // The graph's per-payload indexes, computed once per payload and shared: GraphView renders
 // from them, and the file menu (menu/menuEnv.ts) reads them on a right-click, so the menu
-// never pays for them on its first opening (spec §7 latency budget). Keyed by the payload's
+// never pays for them on its first opening. Keyed by the payload's
 // own arrays, so a new payload gets new indexes and an unchanged array keeps its old ones.
 
 const byRowCache = new WeakMap<readonly RefLabel[], Map<number, RefLabel[]>>();

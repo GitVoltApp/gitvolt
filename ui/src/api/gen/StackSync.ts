@@ -2,6 +2,6 @@
 import type { StackEditFailure } from "./StackEditFailure";
 
 /**
- * What a table sync did, per MR/PR number (spec #4 §3.5: partial failures are explicit).
+ * What a table sync did, per MR/PR number (partial failures are explicit).
  */
 export type StackSync = { edited: Array<number>, unchanged: Array<number>, failed: Array<StackEditFailure>, };

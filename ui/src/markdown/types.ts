@@ -1,7 +1,7 @@
 import type { Literal } from 'mdast';
 import type { ReactNode } from 'react';
 
-// --- the shared contract with plan 5B (verbatim) ---
+// --- the shared contract with the file-view loader ---
 export type MdFlavor = 'github' | 'gitlab' | 'forgejo';
 
 export type MarkdownContext =
@@ -17,11 +17,11 @@ export interface MarkdownProps {
   className?: string;
 }
 
-/** What a link does on a plain click (spec §4.1). */
+/** What a link does on a plain click. */
 export type LinkTarget =
   | { kind: 'mr'; number: number; webUrl: string }           // in-app MR/PR view
   | { kind: 'commit'; sha: string; webUrl: string | null }    // select in graph; webUrl when not local
-  | { kind: 'file'; path: string; commit: string | 'worktree'; anchor: string | null } // 5B handles it
+  | { kind: 'file'; path: string; commit: string | 'worktree'; anchor: string | null } // File View handles it
   | { kind: 'anchor'; id: string }                            // scroll within the document
   | { kind: 'external'; url: string }                         // browser
   | { kind: 'inert' };
@@ -29,7 +29,7 @@ export type LinkTarget =
 export type ImageSource =
   | { kind: 'forge'; url: string }        // auto-load through core `forgeImage { repo, url }`
   | { kind: 'remote'; url: string; host: string } // click-to-load
-  | { kind: 'repo'; path: string; commit: string | 'worktree' } // 5B's loader
+  | { kind: 'repo'; path: string; commit: string | 'worktree' } // the loader
   | { kind: 'data'; url: string }         // data:image/(png|gif|jpeg|webp)
   | { kind: 'none' };
 
@@ -38,7 +38,7 @@ export interface LinkMenuTarget { ctx: MarkdownContext; target: LinkTarget; href
 
 export type FileMarkdownContext = Extract<MarkdownContext, { kind: 'file' }>;
 
-/** A reference the `references` plugin found (spec §3.1). */
+/** A reference the `references` plugin found. */
 export interface MdReferenceNode extends Literal {
   type: 'reference';
   /** `issue`: `#n` (on GitHub, a PR or an issue); `mr`: GitLab's `!n`. */
@@ -63,8 +63,8 @@ declare module 'mdast' {
 export interface MdLinkProps { ctx: MarkdownContext; href: string; id?: string; name?: string; 'aria-describedby'?: string; children?: ReactNode }
 export interface MdReferenceProps { ctx: MarkdownContext; node: MdReferenceNode }
 export interface MdImageProps { ctx: MarkdownContext; src: string; alt: string; width?: number; height?: number }
-/** `marks` (5C, R10): a changed block's merged lines, one of ' ' (kept), '-' (removed), '+' (added) per line. */
-/** `words` (5C): a changed block's changed words per line, one `;`-separated entry per line of
+/** `marks`: a changed block's merged lines, one of ' ' (kept), '-' (removed), '+' (added) per line. */
+/** `words`: a changed block's changed words per line, one `;`-separated entry per line of
  * `start-end` character ranges, `,` between them (diff/words.ts `codeLines`). */
 /** `signs`: a -/+ column on the marked lines (a suggestion's diff), so it reads as one without
  * the colours. */

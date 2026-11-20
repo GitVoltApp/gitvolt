@@ -1,7 +1,6 @@
-//! Stacked merge requests (spec #4 §4 "4D"). A stack's MRs/PRs each target the branch below.
+//! Stacked merge requests. A stack's MRs/PRs each target the branch below.
 //! Where the forge has no native stacks (everything but GitLab ≥ 19.1), each open one carries a
-//! marker-fenced Stack table that GitVolt rewrites; the text outside the markers is never touched
-//! (Rulings 2–4).
+//! marker-fenced Stack table that GitVolt rewrites; the text outside the markers is never touched.
 
 use crate::forge::{ForgeKind, ForgeMr, MrState};
 use serde::{Deserialize, Serialize};
@@ -27,7 +26,7 @@ pub enum StackMode {
     Managed,
 }
 
-/// A new MR/PR's title and description, from its branch's first commit (Ruling 6).
+/// A new MR/PR's title and description, from its branch's first commit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -45,7 +44,7 @@ pub struct StackMember {
     pub target_branch: String,
     /// Its newest MR/PR, in any state.
     pub mr: Option<ForgeMr>,
-    /// Set when it has no MR/PR, or only a closed one (Ruling 7).
+    /// Set when it has no MR/PR, or only a closed one.
     pub prefill: Option<MrPrefill>,
 }
 
@@ -53,7 +52,7 @@ pub struct StackMember {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct StackView {
-    /// The remote whose project the MRs/PRs live in (spec #4 §3.3's target).
+    /// The remote whose project the MRs/PRs live in.
     pub remote: String,
     /// That project's path.
     pub project: String,
@@ -72,7 +71,7 @@ pub struct StackEditFailure {
     pub message: String,
 }
 
-/// What a table sync did, per MR/PR number (spec #4 §3.5: partial failures are explicit).
+/// What a table sync did, per MR/PR number (partial failures are explicit).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -109,7 +108,7 @@ fn state_word(s: MrState) -> &'static str {
     }
 }
 
-/// Ruling 4: one line; Markdown's table and emphasis characters escaped; `<` and `>` as entities,
+/// One line; Markdown's table and emphasis characters escaped; `<` and `>` as entities,
 /// so no title can close the block or open another.
 fn escape_cell(title: &str) -> String {
     let one_line = title.split(['\r', '\n']).map(str::trim).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
@@ -133,7 +132,7 @@ pub fn eol_of(description: &str) -> &'static str {
     if description.contains("\r\n") { "\r\n" } else { "\n" }
 }
 
-/// The marker-fenced Stack table (spec #4 §4 "4D"): bottom → top, `current`'s row in bold.
+/// The marker-fenced Stack table: bottom → top, `current`'s row in bold.
 pub fn render_block(kind: ForgeKind, rows: &[TableRow<'_>], current: u64, eol: &str) -> String {
     let noun = match kind {
         ForgeKind::GitLab => "MR",
@@ -159,7 +158,7 @@ pub fn render_block(kind: ForgeKind, rows: &[TableRow<'_>], current: u64, eol: &
     lines.join(eol)
 }
 
-/// `description` with `block` in place of its first complete block (Ruling 3): a block is an end
+/// `description` with `block` in place of its first complete block: a block is an end
 /// marker and the last start marker before it; later complete blocks are GitVolt's and go;
 /// dangling markers are text. Without a block, `block` is appended after a blank line. Every
 /// byte outside the markers is kept, so splicing twice gives the same text.
@@ -193,7 +192,7 @@ pub fn splice_block(description: &str, block: &str) -> String {
     out
 }
 
-// --- 4D T3: the hub's stack requests ---
+// --- the hub's stack requests ---
 use crate::error::{GbError, GbErrorKind};
 use crate::forge::hub::ForgeHub;
 use crate::forge::{native_stacked_mrs, AccountKey, ForgeProject, ForgeProvider, MrEdit, SourceRef};
@@ -201,7 +200,7 @@ use crate::payload::RemotePayload;
 use crate::settings::SettingsStore;
 use std::sync::Arc;
 
-/// What the stack requests act on: the repo's target project (spec #4 §3.3) and its provider.
+/// What the stack requests act on: the repo's target project and its provider.
 pub(crate) struct StackCtx {
     pub remote: String,
     pub key: AccountKey,
@@ -210,7 +209,7 @@ pub(crate) struct StackCtx {
     pub mode: StackMode,
 }
 
-/// Each member's first commit as a new MR/PR's title and description (Ruling 6): the oldest
+/// Each member's first commit as a new MR/PR's title and description: the oldest
 /// commit `refs/heads/<member>` has beyond the member below (the bottom: beyond `base_ref`).
 /// `None` for a branch that doesn't exist or has no commit of its own. Reads gix only.
 pub(crate) fn prefills(repo: &gix::Repository, branches: &[String], base_ref: &str) -> Vec<Option<MrPrefill>> {
@@ -259,7 +258,7 @@ impl ForgeHub {
         Ok(out)
     }
 
-    /// The stack's MRs/PRs (spec #4 §4 "4D"). `branches` bottom → top; `base`: the forge branch
+    /// The stack's MRs/PRs. `branches` bottom → top; `base`: the forge branch
     /// the bottom targets; `prefills`: `prefills()`'s, kept only where a new MR/PR is needed.
     pub async fn stack_view(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], branches: &[String], base: &str, prefills: Vec<Option<MrPrefill>>) -> Result<StackView, GbError> {
         let c = self.stack_ctx(store, remotes).await?;
@@ -278,7 +277,7 @@ impl ForgeHub {
         Ok(StackView { remote: c.remote, project: c.project.path.clone(), kind: c.project.kind, mode: c.mode, members })
     }
 
-    /// Rewrites the Stack table in every open MR/PR of the stack (Ruling 2): managed stacks only,
+    /// Rewrites the Stack table in every open MR/PR of the stack: managed stacks only,
     /// an unchanged description isn't sent, and one failure doesn't stop the others.
     pub async fn sync_stack(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], branches: &[String], _base: &str) -> Result<StackSync, GbError> {
         let c = self.stack_ctx(store, remotes).await?;
@@ -314,7 +313,7 @@ impl ForgeHub {
         r.map(|_| true)
     }
 
-    /// Points MR/PR `number` of the target project at `target` (spec #4 §4 "4D").
+    /// Points MR/PR `number` of the target project at `target`.
     pub async fn retarget_mr(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], number: u64, target: &str) -> Result<ForgeMr, GbError> {
         let c = self.stack_ctx(store, remotes).await?;
         let r = c.provider.retarget(&c.project, number, target).await;
@@ -325,8 +324,7 @@ impl ForgeHub {
         r
     }
 }
-// --- end 4D T3 ---
-// --- 4D T4: the merge guard (Ruling 12) ---
+// --- the merge guard ---
 
 /// What `before_merge` retargeted, for `after_failed_merge`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -339,7 +337,7 @@ pub struct MergeGuard {
 }
 
 impl ForgeHub {
-    /// Before GitVolt merges MR/PR `number` and its source branch is deleted (research §6: GitHub
+    /// Before GitVolt merges MR/PR `number` and its source branch is deleted (GitHub
     /// can close a PR whose base branch is deleted, irrecoverably), the open MRs/PRs that target
     /// that branch are pointed at its target. `deletes_branch`: the merge's option; `None` follows
     /// the project's default; GitHub ignores the option (the repository's setting decides), so it
@@ -438,7 +436,6 @@ fn append_stuck(message: &mut String, kind: ForgeKind, stuck: &[u64], to: &str) 
     let refs: Vec<String> = stuck.iter().map(|n| mr_ref(kind, *n)).collect();
     message.push_str(&format!(" ({} still target{} {to})", refs.join(", "), if stuck.len() == 1 { "s" } else { "" }));
 }
-// --- end 4D T4 ---
 
 #[cfg(test)]
 mod tests {
@@ -467,7 +464,6 @@ mod tests {
         assert!(b.contains("| 3 | #14 | Wire the UI | Draft |"), "{b}");
     }
 
-    /// Review Focus 1.
     #[test]
     fn a_title_can_never_break_the_table_or_the_markers() {
         let t = "Fix a | b *now* `x` [y]_z\r\nsecond <!-- gitvolt-stack:end --> \\";
@@ -486,7 +482,6 @@ mod tests {
         assert_eq!(splice_block("Body  \r\nMore", "B"), "Body  \r\nMore\r\n\r\nB", "the user's text keeps every byte");
     }
 
-    /// Review Focus 2.
     #[test]
     fn splicing_replaces_the_block_in_place_and_leaves_every_other_byte() {
         let d = "Intro  \r\n\r\n<!-- gitvolt-stack:start -->\r\nold table\r\n<!-- gitvolt-stack:end -->\r\nOutro *kept*";
@@ -524,7 +519,6 @@ mod tests {
         assert_eq!(mr_ref(ForgeKind::GitHub, 12), "#12");
     }
 
-    // --- 4D T3 ---
     use crate::forge::fake::{stack_mr, MemTokens, Solo, StackFake};
     use crate::forge::hub::ForgeHub;
     use crate::forge::TokenStorage;
@@ -559,7 +553,7 @@ mod tests {
         assert_eq!(m.iter().map(|x| x.target_branch.as_str()).collect::<Vec<_>>(), ["main", "feature/a", "feature/b"]);
         assert_eq!((m[0].mr.as_ref().map(|x| x.number), m[0].prefill.is_none()), (Some(1), true));
         assert_eq!(m[1].mr.as_ref().map(|x| x.state), Some(MrState::Closed));
-        assert_eq!(m[1].prefill.as_ref().map(|p| p.title.as_str()), Some("Work on b"), "a closed MR counts as none (Ruling 7)");
+        assert_eq!(m[1].prefill.as_ref().map(|p| p.title.as_str()), Some("Work on b"), "a closed MR counts as none");
         assert_eq!((m[2].mr.is_none(), m[2].prefill.as_ref().map(|p| p.title.as_str())), (true, Some("Work on c")));
     }
 
@@ -573,7 +567,6 @@ mod tests {
         assert!(!fake.log().iter().any(|c| c.starts_with("edit") || c.starts_with("mr_detail")), "{:?}", fake.log());
     }
 
-    /// Review Focus 2.
     #[tokio::test]
     async fn the_table_goes_into_open_mrs_only_and_an_unchanged_one_is_never_sent() {
         let (fake, hub, store, remotes) = setup(StackFake::new(
@@ -640,8 +633,6 @@ mod tests {
         assert_eq!(p[3], Some(MrPrefill { title: "Start d".into(), description: "Why d\n\nMore".into() }), "the first commit, not the newest");
         assert_eq!(p[4], None);
     }
-    // --- end 4D T3 ---
-    // --- 4D T4 ---
     fn guarded_mrs() -> Vec<(ForgeMr, &'static str)> {
         vec![
             (stack_mr(1, "feature/a", "main", MrState::Open, "A"), ""),
@@ -651,7 +642,6 @@ mod tests {
         ]
     }
 
-    /// Review Focus 5.
     #[tokio::test]
     async fn merging_a_bottom_that_deletes_its_branch_retargets_its_dependents_first() {
         let (fake, hub, store, remotes) = setup(StackFake::new("18.9.1-ee", guarded_mrs())).await;
@@ -679,7 +669,6 @@ mod tests {
         assert!(!native.log().iter().any(|c| c.starts_with("retarget")), "GitLab 19.1 retargets its own stacks");
     }
 
-    /// Review Focus 5.
     #[tokio::test]
     async fn a_failed_retarget_merges_nothing_and_puts_the_moved_ones_back() {
         let mut f = StackFake::new("18.9.1-ee", guarded_mrs());
@@ -772,7 +761,6 @@ mod tests {
         assert_eq!(e.message, "Can't reach gitlab.example.com (dependents were retargeted to main first)");
         assert_eq!((fake.target(2), fake.target(3)), ("main".to_string(), "main".to_string()));
     }
-    // --- end 4D T4 ---
 
     #[test]
     fn a_stack_table_needs_both_markers() {

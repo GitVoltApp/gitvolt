@@ -3,7 +3,7 @@ import { HoverTooltip } from '../ui/HoverTooltip';
 import { isCollapsed } from './columns';
 
 /**
- * A graph table header's title (spec §8.4). At its column's minimum width it's the column's icon
+ * A graph table header's title. At its column's minimum width it's the column's icon
  * instead, with the column's name in an instant tooltip and as its accessible name. SHA isn't a
  * collapsible column: it always shows its text (a plain `.col-title`).
  */

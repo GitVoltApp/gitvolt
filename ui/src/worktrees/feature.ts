@@ -22,7 +22,7 @@ function switchToChip(store: RepoViewStore, _row: RowPayload, label: RefLabel): 
   return true;
 }
 
-/** The active worktree's entry points (spec #2 §11.2): double-click a sidebar worktree row or
+/** The active worktree's entry points: double-click a sidebar worktree row or
  * another worktree's WIP row or detached-HEAD chip, their menus, the toolbar repo button's list, the palette. */
 const offs = [
   ...offWorktreeMenus,

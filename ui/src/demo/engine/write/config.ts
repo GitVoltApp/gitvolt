@@ -1,5 +1,5 @@
 // The repository's own config file, edited line by line as `git config` and `git branch` edit it,
-// for the keys GitVolt writes: `branch.<name>.<var>` (write/config.rs) and, from plan 4 on,
+// for the keys GitVolt writes: `branch.<name>.<var>` (write/config.rs),
 // `remote.<name>.<var>` and `remote.pushdefault` (write/remotes.rs). A section header is
 // `[section "<subsection>"]` (or `[section]`); a key line `\t<var> = <value>`. A full key is
 // `section.subsection.var` as `git config --list` gives it: the section and the variable

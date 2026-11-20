@@ -4,7 +4,7 @@ import type { DiffTarget } from '../repo/store';
 import { shortSha } from '../format/sha';
 import type { MenuRow } from './types';
 
-// Menus are built synchronously from memory (spec §7): a builder that touched the backend would
+// Menus are built synchronously from memory: a builder that touched the backend would
 // hit this proxy and throw.
 vi.mock('../api/client', () => ({ api: new Proxy({}, { get() { throw new Error('menu builders must never call the backend'); } }) }));
 
@@ -37,7 +37,7 @@ const find = (rows: MenuRow[], label: string) => rows.find((r) => r.kind !== 'se
 const variant = (r: Action, id: string) => r.variants!.find((v) => v.id === id)!;
 const file = (t: FileTarget, env: MenuEnv) => buildMenu<FileTarget, MenuEnv>('file', t, env);
 
-describe('the file menu (spec §7; plan 1C Task 15, file kind)', () => {
+describe('the file menu (file kind)', () => {
   it('rows in group order; every row, variant and submenu row has an icon and a tooltip', () => {
     const rows = file(target(), envOf());
     expect(labels(rows)).toEqual(['Copy path', '---', 'Forge link', '---', 'Open in', '---', 'View']);
@@ -151,7 +151,7 @@ describe('the file menu (spec §7; plan 1C Task 15, file kind)', () => {
     expect(labels(none.rows)).toEqual(['No editor or file manager found']);
   });
 
-  it('View is one row: the label and Diff open the diff, File opens the whole file (K58)', () => {
+  it('View is one row: the label and Diff open the diff, File opens the whole file', () => {
     const env = envOf();
     const view = find(file(target(), env), 'View');
     expect(view.variants?.map((v) => [v.id, v.label])).toEqual([['diff', 'Diff'], ['file', 'File']]);
@@ -196,7 +196,7 @@ describe('the file menu (spec §7; plan 1C Task 15, file kind)', () => {
   });
 });
 
-// Plan 1C Task 15 (lane W2-D): the commit, tag and Monaco kinds. `builders never touch the
+// The commit, tag and Monaco kinds. `builders never touch the
 // backend` above already covers every kind through the throwing `api` proxy; these pin the rows.
 
 const branch = (name: string, local: string | null, ...remotes: Array<{ remote: string; branch: string }>): CommitTarget['branch'] => ({
@@ -205,7 +205,7 @@ const branch = (name: string, local: string | null, ...remotes: Array<{ remote: 
 const commitTarget = (over: Partial<CommitTarget> = {}): CommitTarget => ({ sha, mrRefs: [], isWip: false, isStash: false, branch: null, ...over });
 const commit = (t: CommitTarget, env: MenuEnv) => buildMenu<CommitTarget, MenuEnv>('commit', t, env);
 
-describe('the commit menu (spec §7 target table; plan 1C Task 15, commit kind)', () => {
+describe('the commit menu', () => {
   it('a branch tip: forge refs, then copy (branch name, SHA, message, Forge link), then view; every row has an icon and a tooltip', () => {
     const t = commitTarget({ mrRefs: ['acme/shop!1187', '#3'], branch: branch('feature/x', 'refs/heads/feature/x', { remote: 'origin', branch: 'feature/x' }) });
     const rows = commit(t, envOf());
@@ -310,7 +310,7 @@ describe('the commit menu (spec §7 target table; plan 1C Task 15, commit kind)'
 
 const tagTarget = (over: Partial<TagTarget> = {}): TagTarget => ({ name: 'v1.0', fullName: 'refs/tags/v1.0', sha, ...over });
 
-describe('the tag menu (fix round 1, item 5: spec §7 ruling — copy, then forge)', () => {
+describe('the tag menu (copy, then forge)', () => {
   it('Copy tag name, then Forge link; no forge row without a forge', () => {
     const env = envOf();
     const rows = buildMenu<TagTarget, MenuEnv>('tag', tagTarget(), env);
@@ -331,7 +331,7 @@ const monacoTarget = (over: Partial<MonacoTarget> = {}): MonacoTarget => ({
 });
 const monaco = (t: MonacoTarget, env: MenuEnv) => buildMenu<MonacoTarget, MenuEnv>('monaco', t, env);
 
-describe('the Monaco menu (1B GROUP_ORDER.monaco: copy, forge, open)', () => {
+describe('the Monaco menu (GROUP_ORDER.monaco: copy, forge, open)', () => {
   it('rows in order; Copy is disabled with nothing selected', () => {
     const rows = monaco(monacoTarget(), envOf());
     expect(labels(rows)).toEqual(['Copy', 'Copy location', '---', 'Forge link', '---', 'Open in']);
@@ -371,7 +371,7 @@ describe('the Monaco menu (1B GROUP_ORDER.monaco: copy, forge, open)', () => {
   });
 });
 
-describe('the sidebar menus (plan 1C Task 15b)', () => {
+describe('the sidebar menus', () => {
   const side = (t: SidebarTarget, env: MenuEnv) => buildMenu<SidebarTarget, MenuEnv>('sidebar', t, env);
   const everyRow = (rows: MenuRow[]): Array<Exclude<MenuRow, { kind: 'separator' | 'header' }>> => rows.flatMap((r) => (r.kind === 'separator' || r.kind === 'header' ? [] : r.kind === 'submenu' ? [r, ...everyRow(r.rows)] : [r]));
   const remoteUrl = 'ssh://gitlab.example.com/acme/shop.git';

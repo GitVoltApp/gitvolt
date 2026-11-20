@@ -1,4 +1,4 @@
-/* --image-frame-border (J11) is a theme token: the theme's --section-border (8% white) is all but
+/* --image-frame-border is a theme token: the theme's --section-border (8% white) is all but
    invisible against the neutral viewport, so the frame uses a stronger white. */
 .image-diff { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 /* One row, never wrapped: when it runs short the size info (.image-meta) truncates first. */
@@ -9,27 +9,27 @@
 .image-toolbar button[aria-pressed="true"] { background: var(--selected-row); color: var(--text-selected); }
 .image-toolbar button:disabled { opacity: 0.4; cursor: default; }
 .image-zoom { display: inline-flex; align-items: center; gap: 6px; }
-/* K12/K13: the Fit button and the clickable zoom value share the toolbar's button look. */
+/* The Fit button and the clickable zoom value share the toolbar's button look. */
 .image-toolbar .zoom-fit, .image-toolbar .zoom-value { all: unset; cursor: pointer; padding: 2px 8px; border-radius: 4px; color: var(--text-secondary); transition: color var(--motion-fast), background-color var(--motion-base); }
-/* K23: same fixed-width fix as the Amplify value — zoom runs 10%-1000%, so its digit count changes
+/* Same fixed-width fix as the Amplify value — zoom runs 10%-1000%, so its digit count changes
    too (e.g. 99% → 100%), which would otherwise shove the meta/background controls after it. */
 .image-toolbar .zoom-value { font-variant-numeric: tabular-nums; min-width: 5ch; text-align: center; }
 .image-toolbar .zoom-fit:hover, .image-toolbar .zoom-value:hover { background: var(--hover-row); color: var(--text-selected); }
 .zoom-input { width: 3.4em; text-align: center; font: inherit; color: var(--text-selected); background: var(--app-bg0); border: 1px solid var(--section-border); border-radius: 4px; padding: 1px 4px; }
 .meta-sep { margin: 0 3px; color: var(--text-secondary); }
 .image-stage { position: relative; display: flex; gap: 2px; flex: 1; min-height: 0; user-select: none; -webkit-user-select: none; }
-/* K21: a 1 px divider between the two halves in side-by-side. An absolutely positioned overlay
+/* A 1 px divider between the two halves in side-by-side. An absolutely positioned overlay
    (not a border/margin) sitting in the gap, so it never nudges the flex split between the two
    equally flex:1 viewports (the existing border token, same as the toolbar's own borders). The
-   markup only renders it when both images exist, so a single-image pane (H25) never grows one. */
+   markup only renders it when both images exist, so a single-image pane never grows one. */
 .side-divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; margin-left: -0.5px; background: var(--section-border); pointer-events: none; }
 .image-source { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .image-viewport { position: relative; flex: 1; min-width: 0; overflow: hidden; cursor: grab; touch-action: none; background: var(--app-bg0); }
-/* J11: the image's bounds on screen. The background pick is drawn here only, behind the image,
+/* The image's bounds on screen. The background pick is drawn here only, behind the image,
    and a 1 px border (outside the bounds, never over a pixel) shows where the image ends. */
 .image-frame { position: absolute; left: 0; top: 0; transform-origin: 0 0; box-shadow: 0 0 0 1px var(--image-frame-border); pointer-events: none; }
 .image-viewport:active { cursor: grabbing; }
-/* The background behind transparent pixels (H30; background.ts): image frames and their toolbar swatches. */
+/* The background behind transparent pixels (background.ts): image frames and their toolbar swatches. */
 .bg-checker { /* theme-ok: the transparency checkerboard is the same in every theme */ background-color: #2a2a2a; /* theme-ok */ background-image: linear-gradient(45deg, #3a3a3a 25%, transparent 25%, transparent 75%, #3a3a3a 75%), linear-gradient(45deg, #3a3a3a 25%, transparent 25%, transparent 75%, #3a3a3a 75%); background-size: 16px 16px; background-position: 0 0, 8px 8px; }
 .bg-black { /* theme-ok: a fixed backdrop the user picks */ background: #000; }
 .bg-white { /* theme-ok */ background: #fff; }
@@ -37,12 +37,12 @@
 .image-backgrounds { display: flex; gap: 2px; margin-left: auto; }
 .image-backgrounds .icon-button[aria-pressed="true"] { background: var(--selected-row); }
 .bg-swatch { display: block; width: 12px; height: 12px; border-radius: 2px; /* theme-ok: the swatches show fixed backdrops */ box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.35); }
-/* The checkerboard toggle's own SVG (J12): big 4 px cells, a 3×3 board; clipped to the swatch's
+/* The checkerboard toggle's own SVG: big 4 px cells, a 3×3 board; clipped to the swatch's
    rounded box, with the same edge as the flat swatches. */
 .checker-icon { overflow: hidden; box-shadow: none; /* theme-ok */ outline: 1px solid rgb(255 255 255 / 0.35); outline-offset: -1px; }
 .checker-icon .checker-dark { /* theme-ok */ fill: #4a4a4a; }
 .checker-icon .checker-light { /* theme-ok */ fill: #cfcfcf; }
-/* K11: a bit more room between the zoom slider and the meta block (dims/size). */
+/* A bit more room between the zoom slider and the meta block (dims/size). */
 .image-meta { white-space: nowrap; margin-left: 6px; }
 .image-toolbar > .image-meta { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .image-layer { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; user-select: none; }
@@ -50,7 +50,7 @@
 .swipe-divider { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--blue); cursor: ew-resize; outline: none; }
 /* A wider grab area than the 3 px line, so a grab near it doesn't miss onto the image. */
 .swipe-divider::before { content: ""; position: absolute; top: 0; bottom: 0; left: -6px; right: -6px; }
-/* K9: the Old/New (and onion's opacity) end labels live in one bottom-centred, flex control, the
+/* The Old/New (and onion's opacity) end labels live in one bottom-centred, flex control, the
    opacity slider between them; the same shape as difference's Amplify control below. */
 .onion-control, .difference-amplify { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; }
 .onion-control { width: 40%; }
@@ -61,18 +61,18 @@
 .image-toolbar .segmented > button:focus-visible, .image-toolbar .zoom-fit:focus-visible, .image-toolbar .zoom-value:focus-visible { border-radius: 2px; }
 .swipe-divider:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; border-radius: 2px; }
 .image-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); pointer-events: none; }
-/* K9: subtle Old/New chips — never in the way of a drag or the swipe handle. */
+/* Subtle Old/New chips — never in the way of a drag or the swipe handle. */
 .image-label { pointer-events: none; font-size: 10px; line-height: 1.5; letter-spacing: 0.03em; text-transform: uppercase; /* theme-ok: a chip over the image itself, light on dark in every theme */ color: rgba(255, 255, 255, 0.85); }
 .image-viewport > .image-label { position: absolute; bottom: 6px; /* theme-ok */ background: rgba(0, 0, 0, 0.55); padding: 1px 6px; border-radius: 3px; }
 .image-viewport > .image-label.label-bl { left: 6px; }
 .image-viewport > .image-label.label-br { right: 6px; }
-/* K22: side-by-side's own Old/New chips are bigger and centred horizontally in each half, near the
+/* Side-by-side's own Old/New chips are bigger and centred horizontally in each half, near the
    top (swipe's bottom corner chips above are unchanged — that position is still right for swipe;
    onion shares no part of this selector). */
 .image-stage.mode-side .image-viewport > .image-label { top: 8px; bottom: auto; left: 50%; right: auto; transform: translateX(-50%); font-size: 13px; padding: 2px 8px; }
 .onion-label { flex: none; color: var(--text-secondary); }
 /* Match sizes: a quieter, lower-case note after the old side's chip text. */
 .match-note { margin-left: 6px; text-transform: none; letter-spacing: 0; opacity: 0.75; }
-/* K23: a fixed width (sized for "16×", the widest value) so the slider doesn't shift when the
+/* A fixed width (sized for "16×", the widest value) so the slider doesn't shift when the
    digit count changes (e.g. 9× → 10×). */
 .amplify-value { flex: none; color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 3ch; }

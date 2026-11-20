@@ -12,7 +12,7 @@ export interface ProjectSettingsState {
   error: string | null;
 }
 
-/** The target project's merge settings (4A's `forgeProjectSettings`), asked once per repository
+/** The target project's merge settings (`forgeProjectSettings`), asked once per repository
  * and remote for the session; a failure is kept, and asked again after the next poll. */
 export function useProjectSettings(tabId: string, remote: string | null): ProjectSettingsState {
   const repo = useRuntime((s) => s.tabs[tabId]?.repo?.id);

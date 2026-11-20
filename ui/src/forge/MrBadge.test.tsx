@@ -22,7 +22,7 @@ beforeEach(() => {
   useForge.setState({ byTab: {} });
 });
 
-describe('the MR/PR badge on a branch chip (spec #4 §2 "Badge", §5)', () => {
+describe('the MR/PR badge on a branch chip', () => {
   it("is its own icon after the local and remote ones, which stay (where the branch is still reads)", () => {
     const { container } = show(dev);
     expect(icons(container)).toBe(2);

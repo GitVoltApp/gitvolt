@@ -15,7 +15,7 @@ describe('comboOf', () => {
     expect(comboOf(ev({ key: ',', code: 'Comma', ctrlKey: true }))).toBe('Ctrl+,');
     expect(comboOf(ev({ key: '!', code: 'Digit1', ctrlKey: true, shiftKey: true }))).toBe('Ctrl+Shift+1');
   });
-  it('letters follow the layout, like 1B\'s matchesLetter: by character, else by key position', () => {
+  it('letters follow the layout, like matchesLetter: by character, else by key position', () => {
     expect(comboOf(ev({ key: 'w', code: 'Comma', ctrlKey: true }))).toBe('Ctrl+W'); // Dvorak W
     expect(comboOf(ev({ key: 'z', code: 'KeyW', ctrlKey: true }))).toBe('Ctrl+Z'); // AZERTY
     expect(comboOf(ev({ key: 'ц', code: 'KeyW', ctrlKey: true }))).toBe('Ctrl+W'); // Russian
@@ -58,7 +58,7 @@ describe('comboOf', () => {
   });
 });
 
-describe('shortcutKeys and yieldsTo (spec #2 §5.5)', () => {
+describe('shortcutKeys and yieldsTo', () => {
   it('leaves a combo to the focused element its action yields to', async () => {
     const { registerActions } = await import('./actions');
     const { shortcutKeys } = await import('./shortcuts');

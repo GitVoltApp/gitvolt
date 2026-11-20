@@ -1,4 +1,4 @@
-/* The MR/PR view (spec #4 §4 "4B"), its actions (4B T13) and merge box (4B T14). */
+/* The MR/PR view, its actions and merge box. */
 .mr-header, .mr-description, .mr-merge { display: flex; flex-direction: column; gap: 4px; }
 /* Flex and grid items default to their content's width: a wide code block in a body would widen
    the whole panel. These let them shrink, so the block scrolls inside itself instead. */
@@ -23,10 +23,10 @@
 .mr-button.primary { background: var(--button-primary); border-color: var(--button-primary); color: var(--text-on-accent); }
 .mr-form-row { display: flex; justify-content: flex-end; gap: 6px; }
 .mr-check, .mr-field { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-/* Reserved rows (4B final fix): a GitHub method select and its plain line take the same height. */
+/* Reserved rows: a GitHub method select and its plain line take the same height. */
 .mr-merge-row { min-height: 22px; }
 
-/* --- 4B T13: forms and buttons (button.mr-button outranks details/header.css's `all: unset` .mr-button) --- */
+/* --- forms and buttons (button.mr-button outranks details/header.css's `all: unset` .mr-button) --- */
 .mr-reply, .mr-edit { display: flex; flex-direction: column; gap: 6px; }
 .mr-edit { gap: 10px; }
 /* Edit's title, as Create's: the larger text of the most important field. */
@@ -40,7 +40,6 @@ button.mr-button:hover:not(:disabled) { background: var(--control-hover-bg); }
 button.mr-button:disabled { color: var(--text-disabled); cursor: default; }
 button.mr-button.primary { background: var(--button-primary); border-color: var(--button-primary); color: var(--text-on-accent); }
 button.mr-button:focus-visible { outline: 1px solid var(--focus-outline); outline-offset: 1px; }
-/* --- end 4B T13 --- */
 
 /* --- MR view redesign: header, actions, merge box, activity timeline, thread cards --- */
 .mr-header { gap: 8px; }
@@ -220,11 +219,10 @@ button.mr-button.mr-merge-go.cancel { color: var(--text-normal); }
 .mr-thread-foot .mr-reply { align-self: stretch; }
 .mr-new-comment { padding: 10px 12px; border: 1px solid var(--section-border); border-radius: 8px; background: var(--panel-bg1); }
 
-/* --- 5A T9: Edit's description as a Write/Preview field --- */
+/* --- Edit's description as a Write/Preview field --- */
 .mr-edit-field { display: flex; flex-direction: column; gap: 4px; }
 .mr-edit-field > span { font-size: 11.5px; font-weight: 600; color: var(--text-secondary); }
 .mr-edit .md-field textarea, .mr-reply .md-field textarea { width: 100%; box-sizing: border-box; }
-/* --- end 5A T9 --- */
 
 /* The status line's actions (Check out, Edit, ⋯) at its right end, and the APPROVALS box's review
    buttons (Approve, Review…) at its top right, in space it keeps for them: no shift. When the line
@@ -234,7 +232,7 @@ button.mr-button.mr-merge-go.cancel { color: var(--text-normal); }
 .mr-review-buttons { display: flex; gap: 4px; }
 .mr-form-note { margin: 0; font-size: 11px; color: var(--text-secondary); }
 
-/* --- MR round 2: the review composer: Comment / Approve / Request changes, as a segmented control --- */
+/* --- the review composer: Comment / Approve / Request changes, as a segmented control --- */
 .mr-review-modes { display: inline-flex; align-self: flex-start; border: 1px solid var(--section-border); border-radius: 6px; overflow: hidden; background: var(--control-bg); }
 .mr-review-mode { position: relative; display: inline-flex; align-items: center; padding: 3px 10px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
 .mr-review-mode + .mr-review-mode { border-left: 1px solid var(--section-border); }
@@ -257,7 +255,7 @@ button.mr-button.primary.warn { background: var(--button-warn); border-color: va
 .mr-edit-actions { position: sticky; bottom: -12px; z-index: 2; gap: 8px; margin-top: 6px; padding: 10px 0 12px; background: var(--panel-bg1); }
 .mr-edit-actions button.mr-button { padding: 5px 14px; font-size: inherit; }
 
-/* --- Review comments round 2: the review composer's foot, the pending review panel, its pill --- */
+/* --- the review composer's foot, the pending review panel, its pill --- */
 /* The buttons first in the DOM, drawn on the right just under the message; the notes take the
    rest of the row on the left, and wrap under the buttons when there's no room beside them. */
 .mr-review-foot { display: flex; flex-direction: row-reverse; flex-wrap: wrap; align-items: flex-start; gap: 4px 12px; }

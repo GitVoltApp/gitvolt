@@ -1,4 +1,4 @@
-/* No text selection anywhere in the table (J20): headers, rows, cells, chips, resizers. A
+/* No text selection anywhere in the table: headers, rows, cells, chips, resizers. A
    double-click or a drag selects rows, not text; copying is the explicit actions' job (the SHA
    button). Inherited by everything inside; nothing re-enables it. */
 .graph-panel { display: flex; flex-direction: column; height: 100%; -webkit-user-select: none; user-select: none; }
@@ -21,13 +21,13 @@
 /* Clicking anywhere on a row selects it (the graph node included), so rows use the pointer
    cursor (F5), except the Branch/Tag cell's empty space (F6, below). */
 .graph-row { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; white-space: nowrap; cursor: pointer; }
-/* Cell paddings and chip heights come from the display density (H1): theme/density.ts keeps
+/* Cell paddings and chip heights come from the display density: theme/density.ts keeps
    --graph-cell-pad-x, --graph-chip-h and --graph-row-h on :root. */
 .graph-row > span { overflow: hidden; text-overflow: ellipsis; padding: 0 var(--graph-cell-pad-x); box-sizing: border-box; flex: none; }
 /* SHA's padding is fixed at every density: its width limits (columns.ts SHA_PAD) count on it. */
 .graph-row > .col-sha, .graph-header-inner > [data-col="sha"] { padding: 0 6px; }
 .graph-row[aria-selected="true"] { color: var(--text-selected); }
-/* Hover and selection paint only the text columns (H14): the Branch/Tag
+/* Hover and selection paint only the text columns: the Branch/Tag
    and Graph columns keep their own look (the canvas brightens the selected row's band instead,
    draw.ts). The text cells are stretched to the full row height, their text centred by the line
    height, so the four backgrounds read as one full-height band. */
@@ -36,7 +36,7 @@
 .graph-row > :is([data-col="message"], [data-col="author"], [data-col="date"], [data-col="sha"], [data-col="filler"]) { align-self: stretch; line-height: var(--graph-row-h); }
 .graph-row:hover > :is([data-col="message"], [data-col="author"], [data-col="date"], [data-col="sha"], [data-col="filler"]) { background: var(--hover-row); }
 .graph-row[aria-selected="true"] > :is([data-col="message"], [data-col="author"], [data-col="date"], [data-col="sha"], [data-col="filler"]) { background: var(--selected-row); }
-/* The row a context menu is open for (UX round 2): a right-click doesn't select, so the row gets
+/* The row a context menu is open for: a right-click doesn't select, so the row gets
    this temporary outline instead, across the whole row and above the canvas (z-index 2: under
    the hover-expanded chips and the inline editor), never taking the pointer. */
 .graph-row.is-context::after { content: ""; position: absolute; inset: 0; outline: 1px solid var(--blue); outline-offset: -1px; pointer-events: none; z-index: 2; }
@@ -51,10 +51,10 @@
 .fold-count { display: inline-block; margin-left: 6px; padding: 0 5px; border: 1px solid var(--section-border); border-radius: 3px; font-size: 10px; line-height: 14px; vertical-align: 1px; color: var(--text-secondary); }
 .wip-tag { color: var(--text-secondary); font-style: italic; }
 .wip-counts { color: var(--text-secondary); }
-/* K47/K48: the WIP row's message cell is a flex line: the draft box (italic placeholder, like the
+/* The WIP row's message cell is a flex line: the draft box (italic placeholder, like the
    old "// WIP" tag) takes the room, the worktree name and the per-type counts sit at the right. */
 .wip-summary { display: flex; align-items: center; height: var(--graph-row-h); gap: 8px; min-width: 0; }
-/* The WIP box (K51 round 2): darker than the row, a faint 1px edge, ~116px wide at
+/* The WIP box: darker than the row, a faint 1px edge, ~116px wide at
    rest; it grows with what's typed (field-sizing), up to the cell. */
 .wip-draft { flex: 0 1 auto; min-width: 116px; display: flex; align-items: center; gap: 6px; }
 .wip-input { all: unset; box-sizing: border-box; flex: 0 1 auto; field-sizing: content; width: auto; min-width: 116px; max-width: 100%; height: calc(var(--graph-row-h) - 6px); padding: 0 8px; font: inherit; color: var(--text-normal); background: var(--wip-input-bg); border: 1px solid var(--wip-input-border); border-radius: 4px; text-overflow: ellipsis; cursor: text; }
@@ -63,7 +63,7 @@
 .wip-counter { flex: none; font-size: 11px; color: var(--text-secondary); }
 .wip-counter.warn { color: var(--orange); }
 .wip-summary .wip-counts { flex: none; }
-/* K100: the worktree name gives way first (an ellipsis); the draft box keeps its 116px minimum and the counts follow. */
+/* The worktree name gives way first (an ellipsis); the draft box keeps its 116px minimum and the counts follow. */
 .wip-worktree { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wip-summary .status-counts { gap: 8px; font-size: 11px; }
 /* The accessible/searchable "// WIP" name of the row; the placeholder is what's seen. */
@@ -76,7 +76,7 @@
 .col-author { color: var(--text-disabled); }
 .col-date { color: var(--text-disabled); }
 .col-sha .sha { color: var(--text-disabled); }
-/* On the selected row they light up to the row's own white, like its summary (H14, J7). --text-normal (75%) over the blue band read as barely brighter than 40% on
+/* On the selected row they light up to the row's own white, like its summary. --text-normal (75%) over the blue band read as barely brighter than 40% on
    the bare panel, next to a white summary. */
 .graph-row[aria-selected="true"] > .col-author, .graph-row[aria-selected="true"] > .col-date, .graph-row[aria-selected="true"] > .col-sha .sha { color: var(--text-selected); }
 /* The SHA button holds the whole hash; the column (SHORT_SHA_LEN = 6 to 40 characters wide, columns.ts) shows
@@ -91,11 +91,11 @@
    or the canvas; the durations are the motion tokens (theme/tokens.css), 0 under
    prefers-reduced-motion. */
 .graph-row > :is([data-col="message"], [data-col="author"], [data-col="date"], [data-col="sha"]), .graph-row > [data-col] :is(.dim, .sha, .wip-tag, .wip-counts, .fold-count) { transition: color var(--motion-row-color) ease-in; }
-/* The row-dim mechanism (rowDim.ts: J22's branch-hover focus, plan 1C's Ctrl+F): a dimmed row's
+/* The row-dim mechanism (rowDim.ts: the branch-hover focus, Ctrl+F): a dimmed row's
    text cells take a dimmed colour, the selected row's white included (this comes after it, at
    the same specificity for the SHA). Dimming eases out over --motion-row-dim (0.5 s ease-out,
    no delay: the 500 ms hover timer is the delay); restoring takes the base rule's --motion-row-color. The colour itself depends
-   on the level (rowDimKindClass): branch-hover (J22) is lighter than a filter/search dim. */
+   on the level (rowDimKindClass): branch-hover is lighter than a filter/search dim. */
 .graph-row > [data-col].row-dim, .graph-row > [data-col].row-dim :is(.dim, .sha, .wip-tag, .wip-counts, .fold-count) { transition: color var(--motion-row-dim) ease-out; }
 .graph-row > [data-col].row-dim-branch, .graph-row > [data-col].row-dim-branch :is(.dim, .sha, .wip-tag, .wip-counts, .fold-count) { color: var(--text-row-dimmed-branch); }
 .graph-row > [data-col].row-dim-filter, .graph-row > [data-col].row-dim-filter :is(.dim, .sha, .wip-tag, .wip-counts, .fold-count) { color: var(--text-row-dimmed); }
@@ -116,14 +116,14 @@
    it above the canvas; out of the flow, so the chips and the connector never move. */
 .row-editor { position: absolute; z-index: 4; left: 4px; top: 0; bottom: 0; display: flex; align-items: center; cursor: default; }
 /* Stretched to the full row height, so the connector's line (--conn-top, from the row's top) is
-   placed from the row's top. --conn-top and --conn-h come inline from the row (K57: the device
+   placed from the row's top. --conn-top and --conn-h come inline from the row (the device
    pixel rows the canvas half is drawn on, pixels.ts connectorLine); these are the fallbacks. */
 .ref-labels { display: flex; flex: 1; align-items: center; align-self: stretch; min-width: 0; max-width: 100%; --conn-h: 1px; --conn-top: calc((var(--graph-row-h) - var(--conn-h)) / 2); }
 .ref-labels-head { --conn-h: 2px; }
 /* min-width: 0 (overriding the flex default of `auto`, which would floor the item at its
    content's width) lets a long ref name shrink and ellipsize instead of overflowing
    `.col-labels` and pushing the connector out of view; the browser default `flex-shrink: 1`
-   (no longer overridden to 0) is what lets it actually give up that space. No max-width (K63):
+   (no longer overridden to 0) is what lets it actually give up that space. No max-width:
    a chip takes the room its name needs, and only a column too narrow for it ellipsizes it, so
    widening Branch/Tag shows a long name whole. */
 .ref-label { display: inline-flex; gap: 3px; align-items: center; padding: 0 5px; height: var(--graph-chip-h); border-radius: 3px; --chip-mix: 25%; background: color-mix(in srgb, var(--lane-color) var(--chip-mix), transparent); color: var(--text-normal); min-width: 0; cursor: pointer; }
@@ -132,9 +132,9 @@
    whole while the name ellipsizes, a step quieter than it. */
 .ref-detached { flex: none; white-space: nowrap; opacity: 0.75; }
 /* Chips rest subdued, the lane colour at 25% (--graph-color-N-bg25), and light up
-   to 45% with white text while their row is hovered or selected (H3). */
+   to 45% with white text while their row is hovered or selected. */
 .graph-row:hover .ref-label, .graph-row[aria-selected="true"] .ref-label { --chip-mix: 45%; color: var(--text-selected); }
-/* The checked-out branch's chip (J21) is always lit, whatever the row's hover or selection: the
+/* The checked-out branch's chip is always lit, whatever the row's hover or selection: the
    look the others take only while their row is hovered or selected. */
 .ref-label.ref-label-head { --chip-mix: 45%; color: var(--text-selected); }
 /* Its check is ~1.4x the chip's other 12 px icons (17 px at the standard 22 px
@@ -143,7 +143,7 @@
 .ref-icon { display: inline-flex; flex: none; }
 /* A tag the remote has at another commit (RefLabels.tsx TagSources): the app's warning colour. */
 .ref-icon-other { color: var(--orange); }
-/* A remote icon's tooltip (H12, RefLabels.tsx RemoteTip): the remote's name stands out in the
+/* A remote icon's tooltip (RefLabels.tsx RemoteTip): the remote's name stands out in the
    tooltip's normal colour, the branch is dimmed. */
 .ref-tip-branch { color: var(--text-secondary); }
 /* Hovering the first chip floats an untruncated copy exactly over it (RefLabels.tsx). It's
@@ -157,7 +157,7 @@
    its source icons' tooltips; it collapses when the pointer leaves the copy's bounds. */
 .ref-label.ref-label-full { position: absolute; z-index: 3; margin-left: -5px; max-width: none; width: max-content; background: color-mix(in srgb, var(--lane-color) 45%, var(--panel-bg0)); box-shadow: 0 1px 4px var(--shadow-popup); }
 .ref-name-full { white-space: nowrap; }
-/* The label stack (K77, RefLabels.tsx LabelStack): a row with several labels floats one full chip
+/* The label stack (RefLabels.tsx LabelStack): a row with several labels floats one full chip
    per label over the rows below, no gaps, all as wide as the widest (grid). Positioned like the
    single copy (containing block: the row; left/top set on mount). The first (HEAD) row is the lit
    chip, the others the dimmer lane tint; all opaque. */
@@ -174,7 +174,7 @@
 .branch-drag-ghost { position: fixed; z-index: 1000; pointer-events: none; --chip-mix: 45%; background: color-mix(in srgb, var(--lane-color) 45%, var(--panel-bg0)); color: var(--text-selected); white-space: nowrap; box-shadow: 0 1px 4px var(--shadow-popup); }
 /* The dimmed branch-membership chip (F7): half opacity, over
    the same chip look (always the lit one: it only shows on a hovered or selected row). It takes
-   the pointer like any chip (J6): hovered, it's at full strength, i.e. the hovered chip look, and
+   the pointer like any chip: hovered, it's at full strength, i.e. the hovered chip look, and
    floats its untruncated copy (RefLabels.tsx); a press selects the row. Its opacity is 1 whenever
    the copy exists (the copy is its DOM child, so hovering the copy hovers it), so it's no stacking
    context then and the copy's z-index lifts it above the canvas like the first chip's. */
@@ -194,11 +194,11 @@
 /* Only the count is small: the stack it floats is its DOM child and keeps the chips' size. */
 .ref-more-count { font-size: 11px; }
 .ref-more { margin-left: 4px; padding: 0 4px; border-radius: 3px; --chip-mix: 25%; background: color-mix(in srgb, var(--lane-color) var(--chip-mix), transparent); color: var(--text-normal); flex: none; cursor: pointer; }
-/* K104: the badge is a chip in the lane colour, as lit as the checked-out chip when the row's first
+/* The badge is a chip in the lane colour, as lit as the checked-out chip when the row's first
    chip is the active branch, otherwise dimmed like the other chips. */
 .graph-row:hover .ref-more, .graph-row[aria-selected="true"] .ref-more { --chip-mix: 45%; color: var(--text-selected); }
 .ref-more.ref-more-head { --chip-mix: 45%; color: var(--text-selected); }
-/* Chips after the first (K104): a 4 px gap. */
+/* Chips after the first: a 4 px gap. */
 .ref-label.ref-label-next { margin-left: 4px; }
 /* Continues the label connector drawn on the canvas (see draw.ts) from the chip to the canvas
    edge. No gap in .ref-labels and no margin here: it must touch the chip (or the "+N" badge)
@@ -208,7 +208,7 @@
    at 25% (F8), exactly like the canvas part (draw.ts CONNECTOR_ALPHA),
    so the two still read as one line. */
 .ref-connector { flex: 1 0 8px; align-self: flex-start; margin-top: var(--conn-top); height: var(--conn-h); background: var(--lane-color); opacity: 0.25; }
-/* The checked-out branch's connector (J21) is a graph line: 2 px, the full lane colour, as the
+/* The checked-out branch's connector is a graph line: 2 px, the full lane colour, as the
    canvas part (draw.ts `headRow`); the dimmed chip's slot filler carries the same line. */
 .ref-labels-head > .ref-connector { opacity: 1; }
 .ref-labels-head .ref-dim-fill::before { background: var(--lane-color); }
@@ -232,12 +232,11 @@
 .toast-action:focus-visible { outline: 1px solid var(--blue); }
 .center-message { display: grid; place-items: center; height: 100%; color: var(--text-secondary); }
 
-/* --- 2D T18: the branch a rebase is replaying, at HEAD's row (RefLabels.tsx RebasingChip). The
+/* --- The branch a rebase is replaying, at HEAD's row (RefLabels.tsx RebasingChip). The
    checked-out chip's look with a dashed border and a spinner: HEAD is detached while it runs. --- */
 .ref-label.ref-rebasing { box-sizing: border-box; border: 1px dashed var(--lane-color); cursor: default; }
 .ref-rebasing .spin { flex: none; animation: spinner-turns 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .ref-rebasing .spin { animation: none; } }
-/* --- end 2D T18 --- */
 /* Below the toolbar, and below an open flyout's title bar it would cover (--toast-below, Toast.tsx). */
 .toast-top { bottom: auto; top: max(96px, var(--toast-below, 0px)); animation: gb-toast-in 140ms ease-out; }
 @keyframes gb-toast-in { from { opacity: 0; margin-top: -8px; } to { opacity: 1; margin-top: 0; } }

@@ -1,5 +1,5 @@
 // Reached only through RepoView's React.lazy import: this module pulls in Shiki's language
-// registry (language.ts) and the Monaco loader, which stay out of the startup chunk (spec §10.3).
+// registry (language.ts) and the Monaco loader, which stay out of the startup chunk.
 import { X } from 'lucide-react';
 import { BUSY_DELAY_MS, useLateFlag } from '../util/lateFlag';
 import { matcherFor } from '../fileColours/match';
@@ -91,15 +91,15 @@ export function useContents(services: RepoServices, target: DiffTarget, force: b
  * the panel says "Loading…". Long enough to cover a normal load, so the switch is one render. */
 export const STALE_MS = 300;
 
-/** What the panel presents, in which `session` (J16: one per open of the kept panel). */
+/** What the panel presents, in which `session` (one per open of the kept panel). */
 export interface Presented { target: DiffTarget; contents: Loadable<DiffContentsPayload>; session: number }
 
 /**
  * What the panel presents: `target` and its contents once they're ready and, while they load,
- * the last ready file, for up to `STALE_MS` (F24). Header, toolbar and body all follow it, so a
+ * the last ready file, for up to `STALE_MS`. Header, toolbar and body all follow it, so a
  * switch replaces the whole panel in one render instead of flashing "Loading…" (which also
  * detached the editor). Errors and ready contents present at once. Only a file of the same
- * `session` stays: one from before a close is never presented after the reopen (J16, H6).
+ * `session` stays: one from before a close is never presented after the reopen.
  */
 export function usePresented(target: DiffTarget, contents: Loadable<DiffContentsPayload>, session = 0): Presented {
   const last = useRef<Presented | null>(null);
@@ -120,7 +120,7 @@ export function usePresented(target: DiffTarget, contents: Loadable<DiffContents
 
 export { BUSY_DELAY_MS };
 
-/** The path: its directories dim and the file name highlighted. A rename (H21):
+/** The path: its directories dim and the file name highlighted. A rename:
  * the directories both paths share, then `old ⇒ new` with only the new file name highlighted;
  * its tooltip is the file list's (`RenamePaths`: old path, ↓, new path). */
 function DiffPath({ target }: { target: DiffTarget }) {
@@ -150,16 +150,16 @@ function DiffPath({ target }: { target: DiffTarget }) {
   );
 }
 
-/** The path, its change kind and encoding, and ×. "Open in…" is on the toolbar below (J1). */
+/** The path, its change kind and encoding, and ×. "Open in…" is on the toolbar below. */
 export function DiffHeader({ target, encoding, note, onClose, busy = false, dirty = false, onSave }: { target: DiffTarget; encoding: string; note?: ReactNode; onClose: () => void; busy?: boolean; dirty?: boolean; onSave?: () => void }) {
   const { scopes } = useRepoScopes();
   const scope = scopes.length ? scopes[matcherFor(scopes).scopeOf(target.path)] : undefined;
   const stripe = scope ? tintHex(scope.tint) : null;
   return (
-    // `.panel-bar` (tokens.css): the details header's bar box, so their dividers line up (K5).
+    // `.panel-bar` (tokens.css): the details header's bar box, so their dividers line up.
     // A file colours scope's own colour shows as a stripe on the left edge (a fill would vanish on the bar).
     <header className="diff-header panel-bar" data-scope={stripe ? scope!.id : undefined} style={stripe ? ({ '--scope-stripe': stripe } as CSSProperties) : undefined}>
-      {/* F21: the change-kind icon, before the path. Empty for an unchanged File View file
+      {/* The change-kind icon, before the path. Empty for an unchanged File View file
           (fileViewTarget's status is ''), which has nothing to show an icon for: a same-width
           spacer (FileList.tsx's pattern) keeps the path from shifting as files are stepped
           through. */}
@@ -230,7 +230,7 @@ const markdownOf = (selection: Selection, t: DiffTarget): { commit: FileCommit }
 export const isHex = (target: DiffTarget, c: DiffContentsPayload) => showable(c) && !isImage(target, c) && !isMedia(target, c) && !isPdf(c) && !!(c.old?.binary || c.new?.binary);
 
 /**
- * The image diff (spec §10.4). `contents` is the loader's cached object, so its identity holds
+ * The image diff. `contents` is the loader's cached object, so its identity holds
  * across re-renders and `useImageSources` builds the object URLs once per file.
  * File View shows the image at that revision only: the new side, or the old one if it was deleted.
  * An SVG's Source toggle shows its text: the diff, or the file in File View. A raster image's
@@ -269,11 +269,11 @@ export function MediaBody({ target, contents: c, onSourceChange, onHex }: { targ
 }
 
 /** `banner`: whether the line-endings banner may show. Not while the header (and so the editor)
- * still shows the previous file: it's this file's (K7). */
+ * still shows the previous file: it's this file's. */
 function Body({ target, contents, forced, banner, onLoadAnyway, onShown, onSourceChange, onHex, editable = false, onEdit, draft }: { target: DiffTarget; contents: Loadable<DiffContentsPayload>; forced: boolean; banner: boolean; onLoadAnyway: () => void; onShown: () => void; onSourceChange?: (on: boolean) => void; onHex?: (key: string, hex: HexDumpPayload) => void; editable?: boolean; onEdit?: () => void; draft?: string }) {
   const { repoId } = useRepoContext();
   const selection = useRepoView((s) => s.selection);
-  // 5C: a Markdown (or HTML) file's diff, and the commit its old side's links and images resolve against (R9).
+  // A Markdown (or HTML) file's diff, and the commit its old side's links and images resolve against.
   const mdDiff = target.view === 'diff' && isRenderedTarget(target);
   const oldSide = useRepoView((s) => (mdDiff ? oldCommitOf(s, target) : null));
   if (contents.status === 'error') return <div role="alert" className="diff-message">{contents.message}</div>;
@@ -327,8 +327,8 @@ function Body({ target, contents, forced, banner, onLoadAnyway, onShown, onSourc
           <DiffTextBody
             identity={target.key} path={target.path} oldPath={target.oldPath} original={original} modified={modified} language={language} line={target.line}
             onShown={onShown} editable={editable} onEdit={onEdit} hunkZones={hunks ? () => wipHunkZones(repoId, target) : undefined}
-            // Spec #2 §7.3: hunk and line buttons on a WIP text diff (in Source only, R8); spec
-            // 2026-10-08 §2: review mode on an MR's Compare.
+            // Hunk and line buttons on a WIP text diff (in Source only).
+            // Review mode on an MR's Compare.
             after={wip ? (hunks ? <HunkActions target={target} /> : null) : <ReviewMode target={target} />}
             markdown={mdDiff ? { old: oldSide, new: fileCommitOf({ selection }, target) } : null}
             target={target}
@@ -340,7 +340,7 @@ function Body({ target, contents, forced, banner, onLoadAnyway, onShown, onSourc
 }
 
 /** Monaco's own overlays that Esc closes, while one is open: the find widget, the F1 command
- * palette, the accessible diff viewer, the context menu (on in 1B), a hover, the suggest and
+ * palette, the accessible diff viewer, the context menu, a hover, the suggest and
  * parameter-hint widgets. */
 const ESCAPE_OWNERS = [
   '.find-widget.visible',
@@ -376,13 +376,13 @@ const focusEditor = (el: HTMLElement): HTMLElement => {
 const OWNS_CLICKS = 'button, a, input, select, textarea, [role="toolbar"], [role="slider"], .monaco-host, .review-layer, .hex-view, .md-rendered, .html-rendered, .ruler-strip, .csv-table';
 
 /**
- * The center-panel takeover (spec §10.1). The graph stays mounted, hidden, underneath.
+ * The center-panel takeover. The graph stays mounted, hidden, underneath.
  * `target` comes from the parent's `diff` selector, so it's never null while this renders.
  *
  * F7 / Shift+F7 and Shift+↑/↓ step the changes app-wide while a text diff is shown
- * (`useChangeKeys`, J14), before Monaco sees them: Monaco binds F7 to its accessible diff viewer,
- * which stays reachable from its F1 palette (plan 1B deviation 7). Esc closes the file from
- * anywhere, the editor included (F26, J4), through the app's handler on window (`useAppEscape`),
+ * (`useChangeKeys`), before Monaco sees them: Monaco binds F7 to its accessible diff viewer,
+ * which stays reachable from its F1 palette. Esc closes the file from
+ * anywhere, the editor included, through the app's handler on window (`useAppEscape`),
  * which sees it before Monaco would spend it on cancelling a selection; the panel only registers
  * Monaco's overlays (find, the command palette, the context menu, hovers, …) as owners that close
  * on Esc first (`editorOwnsEscape`). Ctrl+W always closes the file (the app's shortcut,
@@ -420,7 +420,7 @@ export function DiffPanel({ target, session = 0 }: { target: DiffTarget; session
   const body = usePresented(loadTarget, live, session);
   const forced = forcedFor(body.target);
   const bodyCopy = useWorkingCopy((s) => (s.copies[tabId]?.key === body.target.key ? s.copies[tabId] : undefined));
-  // Spec #2 §7.5: the working-tree side of a WIP file is editable; tracked per presented file and
+  // The working-tree side of a WIP file is editable; tracked per presented file and
   // reload (a save or Reload gives a new payload, and so a new base).
   const bodyData = body.contents.status === 'ready' ? body.contents.data : null;
   const editable = isEditableTarget(body.target, bodyData);
@@ -440,7 +440,7 @@ export function DiffPanel({ target, session = 0 }: { target: DiffTarget; session
     return 'handled';
   }), [tabId]);
   // The header and toolbar follow the body, but an editor body only once the host has shown it:
-  // the diff (or file) computes off-screen, and all of it switches in the same frame (F24).
+  // the diff (or file) computes off-screen, and all of it switches in the same frame.
   // `flushSync`, so that render commits in the task that swapped the editor, before a paint.
   const bodyId = `${body.target.key}|${body.target.view}`;
   const [editorShown, setEditorShown] = useState<string | null>(null);
@@ -451,8 +451,8 @@ export function DiffPanel({ target, session = 0 }: { target: DiffTarget; session
   const busy = useLateFlag(pending, BUSY_DELAY_MS, `${target.key}|${bodyId}`);
   // Only a switch to another file waits: the same file (its first load, File/Diff View, "Load
   // anyway") has nothing else on screen to be out of step with.
-  // A reopen (another session, J16) starts over: the closed file's header is never shown.
-  // And it waits only while the same editor still shows the header's file (K7): from a message
+  // A reopen (another session) starts over: the closed file's header is never shown.
+  // And it waits only while the same editor still shows the header's file: from a message
   // (a large file, a binary, an image, a failed load) or across Diff/File View, the body has
   // already moved on, so the header goes with it rather than naming a file no longer shown.
   const header = useRef(body);
@@ -464,15 +464,15 @@ export function DiffPanel({ target, session = 0 }: { target: DiffTarget; session
   const copy = useWorkingCopy((s) => s.copies[tabId]);
   const shownCopy = copy?.key === shown.key ? copy : undefined;
   // Splits both full texts, so it is worked out once per loaded payload (the loader's cached
-  // object), not on each of a file switch's several renders (review M1).
+  // object), not on each of a file switch's several renders.
   const loaded = contents.status === 'ready' ? contents.data : null;
   const selection = useRepoView((s) => s.selection);
-  // Spec #5 §3.3: the toggle for a Markdown file's text in File View (not a large-file prompt, a
-  // hex view or an image); §3.1: it says why Rendered can't be picked for a file too large.
+  // The toggle for a Markdown file's text in File View (not a large-file prompt, a
+  // hex view or an image): it says why Rendered can't be picked for a file too large.
   const tooLarge = useTooLargeToRender(filePlaceKey({ selection }, shown), loaded?.new?.text ?? loaded?.old?.text ?? '');
   const textBody = !!loaded && showable(loaded) && !isImage(shown, loaded) && !isMedia(shown, loaded) && !isPdf(loaded) && !isHex(shown, loaded);
-  // 5C: the same toggle for a Markdown file's text diff (R2); while Rendered, the toolbar's text-diff
-  // tools say why they're off (R3). An HTML file's the same, its pages side by side (`pageDiff`).
+  // The same toggle for a Markdown file's text diff; while Rendered, the toolbar's text-diff
+  // tools say why they're off. An HTML file's the same, its pages side by side (`pageDiff`).
   const mdDiff = shown.view === 'diff' && textBody && isRenderedTarget(shown);
   const diffTooLarge = useDiffTooLarge(shown.key, mdDiff ? loaded?.old?.text ?? '' : '', mdDiff ? loaded?.new?.text ?? '' : '').tooLarge;
   const mdPicked = useMarkdownView(mdDiff ? shown.path : null);
@@ -486,7 +486,7 @@ export function DiffPanel({ target, session = 0 }: { target: DiffTarget; session
     : mdDiff ? <MarkdownViewToggle path={shown.path} kind={renderedKindOf(shown) ?? undefined} forced={diffTooLarge ? TOO_LARGE_TO_RENDER : null} /> : table.toggle;
   const openLine = useMemo(() => openInLine(loaded), [loaded]);
   // An SVG's Source toggle, or an image's, media's or a PDF's Hex, per file: its text or hex diff
-  // gets the text-diff controls (H26).
+  // gets the text-diff controls.
   const [sourceOf, setSourceOf] = useState<string | null>(null);
   const imageDiff = contents.status === 'ready' && isImage(shown, contents.data) && showable(contents.data);
   const mediaDiff = contents.status === 'ready' && showable(contents.data) && isMedia(shown, contents.data);
@@ -504,9 +504,9 @@ export function DiffPanel({ target, session = 0 }: { target: DiffTarget; session
   // An unchanged file from "View all files" has nothing to diff against.
   const canDiff = !(shown.status === '' && shown.old.kind === 'absent');
   // Esc is the app's (`useAppEscape`, on window, ahead of Monaco); an open editor overlay claims
-  // it first, but only for a key pressed in the panel or in the overlay itself (feedback J4).
+  // it first, but only for a key pressed in the panel or in the overlay itself.
   useEscapeOwner(useCallback((e: globalThis.KeyboardEvent) => e.composedPath().some((n) => n === ref.current || (n instanceof Element && n.matches(ESCAPE_OWNER_AREAS))) && editorOwnsEscape(), []));
-  // Ctrl+W (I1) always closes, editor overlay or not: it's the app's shortcut, in the key
+  // Ctrl+W always closes, editor overlay or not: it's the app's shortcut, in the key
   // router's `app` layer, which runs ahead of this component's own handlers and stops the event.
   // ← goes back to the file list (the mirror of → there), unless the editor or a control in the
   // zone uses the key: a CSV file's table, while it's scrolled right (← scrolls it back first).

@@ -27,7 +27,7 @@ const sel: SelectionTarget = { commits: [{ oid: 'c2', summary: 'two', merge: fal
 
 beforeEach(() => { open.mockClear(); squash.mockClear(); drop.mockClear(); confirm.mockClear(); wts.list = []; });
 
-describe('interactive rebase menu rows (spec #3 §4.3)', () => {
+describe('interactive rebase menu rows', () => {
   it('a branch chip: "Interactive rebase X onto Y", greyed while busy, hidden when there is nothing to rebase', () => {
     const [row] = act(ontoRows(label('main'), env({ isAncestor: () => false })));
     expect(row.label).toBe('Interactive rebase topic onto main');
@@ -46,7 +46,7 @@ describe('interactive rebase menu rows (spec #3 §4.3)', () => {
     expect(open).toHaveBeenCalledWith('t1', { branch: 'topic', base: 'origin/main' });
   });
 
-  it('a commit: "Interactive rebase after this commit" onto it (UX4 Q.5); hidden at HEAD and off HEAD\'s branch', () => {
+  it('a commit: "Interactive rebase after this commit" onto it; hidden at HEAD and off HEAD\'s branch', () => {
     const [row] = act(fromHereRows(commit('c1'), env()));
     expect(row.label).toBe('Interactive rebase after this commit');
     row.run();
@@ -102,7 +102,7 @@ describe('interactive rebase menu rows (spec #3 §4.3)', () => {
   });
 });
 
-describe('the palette\'s "Interactive rebase…" (Ruling 12)', () => {
+describe('the palette\'s "Interactive rebase…"', () => {
   it('no upstream: a toast says where to start it', () => {
     head.branch = 'refs/heads/topic';
     locals.list = [{ name: 'topic', upstream: null, gone: false }];

@@ -9,7 +9,7 @@ import { conflictSentence } from './sides';
 const named = (label: string, generic: string) => (label && label !== generic ? label : null);
 
 /**
- * Binary, delete/modify, add/add binary, mode and submodule conflicts (§13.3): buttons, never an
+ * Binary, delete/modify, add/add binary, mode and submodule conflicts: buttons, never an
  * editor. Each sends `conflictFile`'s `base` too (the file as it was read). One send at a time
  * (the buttons are disabled meanwhile). A Stale answer (resolved elsewhere since) goes to
  * `onStale`, which re-reads the conflict, rather than to a Retry that can't work.

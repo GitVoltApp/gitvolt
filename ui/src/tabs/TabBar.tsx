@@ -64,7 +64,7 @@ function RenameInput({ tab }: { tab: TabState }) {
       }}
       onBlur={(e) => {
         // The window losing focus (the WM's focus bounce on every press under GNOME) isn't a click
-        // outside: keep editing, caret back once the window returns (K41).
+        // outside: keep editing, caret back once the window returns.
         if (isWindowBlur()) return refocusWhenWindowReturns(e.currentTarget, () => !done.current);
         commit(e.currentTarget.value);
       }}
@@ -163,7 +163,7 @@ function groupPlan(p: Profile, id: string, update: (fn: (p: Profile) => Profile)
   };
 }
 
-/** Spec §6.2: hamburger, the Open Repository folder icon, tabs (drag, rename, middle-click,
+/** Hamburger, the Open Repository folder icon, tabs (drag, rename, middle-click,
  * right-click menu) and their groups (chips), the profile switcher. The app shell's `header`
  * slot. Under GitVolt's own title bar, ☰ is up there instead, and the strip's empty space moves
  * the window too. In compact mode (`useCompactTitleBar`) it is the title bar, the same on every
@@ -198,7 +198,7 @@ export function TabBar() {
   const items = useMemo(() => stripItems(profile, true), [tabs, tabGroups, active]);
   useStripScroll(tablistRef, active, tabGroups.map((g) => (g.collapsed ? '' : g.id)).join(), !!drag);
 
-  /** Roving tabindex (spec §6.2): ArrowLeft/Right/Home/End move DOM focus among the tabs and the
+  /** Roving tabindex: ArrowLeft/Right/Home/End move DOM focus among the tabs and the
    * group chips (wrapping), without changing which one is active; Enter/Space activates the
    * focused tab. Ctrl+Tab/Ctrl+Shift+Tab/Ctrl+PageUp/PageDown (global, `coreActions.ts`) are
    * unaffected: they aren't claimed here. */

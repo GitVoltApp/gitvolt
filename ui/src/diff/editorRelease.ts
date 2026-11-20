@@ -3,7 +3,7 @@
  * for what the view's own code can't reach. Kept free of imports, so the startup chunk stays
  * small; both are no-ops until the editor has loaded.
  *
- * One case its attach cleanups can't cover (J16): a kept diff panel that unmounts while hidden.
+ * One case its attach cleanups can't cover: a kept diff panel that unmounts while hidden.
  * Hiding ran the cleanup, which kept the editor because its box was still in the document; React
  * runs no cleanup again on the later unmount. The view calls `releaseDetachedEditors` when it
  * unmounts, and the host lets go of any box that has left the document (`releaseDetached`).

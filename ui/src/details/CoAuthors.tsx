@@ -3,7 +3,7 @@ import { Avatar } from '../avatars/Avatar';
 import { useHoverTooltip } from '../ui/HoverTooltip';
 import './header.css';
 
-/** "Name <email>" (feedback F14); the name alone when there is no email. */
+/** "Name <email>"; the name alone when there is no email. */
 export const personLabel = (name: string, email: string) => (email ? `${name} <${email}>` : name);
 
 function CoAuthorChip({ c }: { c: CoAuthor }) {
@@ -18,7 +18,7 @@ function CoAuthorChip({ c }: { c: CoAuthor }) {
   );
 }
 
-/** The commit's `Co-authored-by:` trailers (spec §9.1), one chip each. */
+/** The commit's `Co-authored-by:` trailers, one chip each. */
 export function CoAuthors({ coAuthors }: { coAuthors: CoAuthor[] }) {
   if (coAuthors.length === 0) return null;
   return (

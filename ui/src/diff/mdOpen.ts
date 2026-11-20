@@ -75,7 +75,7 @@ function holdAt(pane: HTMLElement, where: (pane: HTMLElement) => number | null):
  * relayouts. Returns its stop. */
 export const holdFirstChange = (pane: HTMLElement): (() => void) => holdAt(pane, firstChangeTop);
 
-/** Review comments (spec 2026-10-08 §3): opens `pane`'s rendered diff at the block holding line
+/** Review comments: opens `pane`'s rendered diff at the block holding line
  * `at` (a note's `file:line`, a file badge's thread), held as the first change is: a block in a
  * chunk that renders later is waited for. Returns its stop. */
 export const holdLine = (pane: HTMLElement, at: DiffLine): (() => void) => holdAt(pane, (p) => blockTop(p, at));

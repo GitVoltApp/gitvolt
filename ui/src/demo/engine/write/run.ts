@@ -33,14 +33,14 @@ import { captureIndex, sameCapture, stagingStateOf, type IndexCapture, type Stag
 import { wipLists } from './wipLists';
 
 export type WriteClass = 'queued' | 'immediate';
-/** How a write touches the staging undo log (§7.6): one step; leaves it; moves steps itself; clears it. */
+/** How a write touches the staging undo log: one step; leaves it; moves steps itself; clears it. */
 export type StagingEffect = 'step' | 'keep' | 'own' | 'clear';
 
 /** What a write needs before it runs, from its read-only `plan`. */
 export interface Plan {
-  /** Snapshot these first (§5.2): the paths, and the untracked ones the write deletes. */
+  /** Snapshot these first: the paths, and the untracked ones the write deletes. */
   snapshot?: { paths: string[]; untracked: string[] };
-  /** §6.1: autostash on overlap with what the worktree moves to. */
+  /** Autostash on overlap with what the worktree moves to. */
   autostash?: AutostashSpec;
 }
 
@@ -59,7 +59,7 @@ export interface Pre {
   before: Before;
 }
 
-/** A merge, rebase or pick stopped on conflicts: its entry waits (§13.2). */
+/** A merge, rebase or pick stopped on conflicts: its entry waits. */
 export interface Pause {
   kind: PausedKind;
   /** What it integrates, as the user named it. */
@@ -87,7 +87,7 @@ export interface WriteIntent<O> {
   confirm?: Confirm;
   /** Default `clear`. */
   staging?: StagingEffect;
-  /** A save of the same file just below takes this one's `after` (UX G.2). */
+  /** A save of the same file just below takes this one's `after`. */
   coalesces?: boolean;
   /** What it rewrote when it succeeds without pausing (an amend, a rebase): the rewrite marks. */
   rewrite?(): RewriteKind | null;
@@ -187,7 +187,7 @@ export class WriteCx {
     this.kinds.add(k);
   }
 
-  /** A ref CAS (§4); verify records what really moved. */
+  /** A ref CAS; verify records what really moved. */
   cas(moves: RefMove[]): void {
     for (const m of moves) if (!this.touched.has(m.name)) this.touched.set(m.name, m.old);
     casRefs(this.wt.demo, moves);
@@ -247,7 +247,7 @@ export const NO_EXPECT: Expect = { head: null, refs: {} };
 /** `ChangeKind`'s declaration order (the core's `BTreeSet<ChangeKind>`). */
 export const KIND_ORDER: ChangeKind[] = ['worktree', 'index', 'refs', 'head', 'stash', 'config', 'state', 'submodules'];
 
-/** §3.2 step 2. */
+/** The preflight checks. */
 function preflight(wt: WriteWt, expect: Expect, extra: string[], allowedInProgress: boolean): Before {
   const inProgress = inProgressName(wt.fs, wt.gitdir);
   if (inProgress !== null && !allowedInProgress) throw gbError('InProgress', `A ${inProgress} is in progress`);
@@ -311,7 +311,7 @@ async function treePathsOrNull(wt: WriteWt, e: JournalEntry): Promise<string[] |
   }
 }
 
-/** §7.6: record the step, or clear the log for a write that moved HEAD or rewrote the index. */
+/** Record the step, or clear the log for a write that moved HEAD or rewrote the index. */
 function afterRun(log: StagingLog, effect: StagingEffect, label: string, before: IndexCapture | null, after: IndexCapture | null, ok: boolean, head: string | null): void {
   if (effect === 'step' && ok) {
     if (before && after) {
@@ -385,7 +385,7 @@ async function steps<O>(ctx: DemoContext, repoId: number, wt: WriteWt, expect: E
   } catch (e) {
     return early(e);
   }
-  // §6.1–6.2, before anything is written: the autostash plan, and the clean-restore question.
+  // Before anything is written: the autostash plan, and the clean-restore question.
   let stashPlan: AutostashPlan | null;
   try {
     stashPlan = plan.autostash ? await planAutostash(wt, plan.autostash) : null;
@@ -471,15 +471,15 @@ async function steps<O>(ctx: DemoContext, repoId: number, wt: WriteWt, expect: E
       e.headAfter = headAfter;
       e.refs = moves;
       e.after = afterSnap;
-      // UX Y: what a commit, checkout or stash changed beyond its snapshots (the dropdown's check).
+      // What a commit, checkout or stash changed beyond its snapshots (the dropdown's check).
       if (!sameHead(headAfter, before.head) || intent.undo() === 'stash') e.treePaths = await treePathsOrNull(wt, e);
-      // UX G.2: a save on top of a save of the same file, with nothing changed in between, merges.
+      // A save on top of a save of the same file, with nothing changed in between, merges.
       const prev = intent.coalesces && cx.snapshot && afterSnap ? journal.below(id) : null;
       const into = prev && prev.label === intent.label() && prev.kind === intent.kind && prev.undo === 'restore' && prev.blocked === null && sameHead(prev.headAfter, headAfter) && prev.after && sameSnapshot(prev.after, cx.snapshot!) ? prev.id : null;
       journalChanged = (into !== null ? journal.coalesce(id, into) : journal.finalize(id, cx.keepRedo)) || journalChanged;
     }
   }
-  // §12.3: a rewrite of a pushed branch records its lease; any move drops a mark it ended.
+  // A rewrite of a pushed branch records its lease; any move drops a mark it ended.
   const rewrite = result.ok && cx.paused === null ? (intent.rewrite?.() ?? null) : null;
   await recordRewrite(ctx, wt, rewrite, moves);
   // New commits join the graph's store.

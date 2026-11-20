@@ -10,7 +10,7 @@ import { resetTo } from './reset';
 
 const busy = (env: MenuEnv) => (env.inProgress ? `Finish or abort the ${env.inProgress} first` : undefined);
 
-/** Checkout ▸ (spec #2 §9.3): the branches at that commit, then `Detached HEAD at a1b2c3`. */
+/** Checkout ▸: the branches at that commit, then `Detached HEAD at a1b2c3`. */
 function checkoutRows(t: CommitTarget, env: MenuEnv): MenuRow[] {
   const ctx = env.write!;
   const expect = (ref: string) => ({ head: env.headSha, refs: { [ref]: t.sha } });

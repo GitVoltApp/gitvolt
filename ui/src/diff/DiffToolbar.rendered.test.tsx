@@ -17,7 +17,7 @@ const bar = (rendered: boolean) => render(<RepoViewContext value={createRepoView
 
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); useDiffPrefs.setState({ prefs: DEFAULT_DIFF_PREFS }); });
 
-describe('the diff toolbar while the rendered Markdown diff shows (5C, R3)', () => {
+describe('the diff toolbar while the rendered Markdown diff shows (5C)', () => {
   it('keeps Hunk, whitespace and wrap in place, off, each saying why', () => {
     bar(true);
     expect(button('Hunk')).toHaveAttribute('aria-disabled', 'true');

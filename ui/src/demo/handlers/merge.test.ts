@@ -250,7 +250,7 @@ describe('merge', () => {
     ]);
   });
 
-  it('autostashes a staged change around the merge, and routes a rebase to plan 4', async () => {
+  it('autostashes a staged change around the merge, and routes a rebase to the rebase handlers', async () => {
     const { t, ctx, wt } = await repo(false);
     await t.write('c.txt', 'staged\n');
     await stageHandlers.stage({ repo: 1, worktree: t.dir, paths: ['c.txt'] }, ctx);

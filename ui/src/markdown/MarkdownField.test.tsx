@@ -21,7 +21,7 @@ function Field({ initial = '', onKeyDown }: { initial?: string; onKeyDown?: (e: 
   return <><MarkdownField label="Write a comment" value={v} onChange={setV} flavor="gitlab" context={ctx} onKeyDown={onKeyDown} /><button type="button" onClick={() => setV('## Changed')}>change</button></>;
 }
 
-describe('MarkdownField (spec #5 §3.2)', () => {
+describe('MarkdownField', () => {
   it('previews the text rendered, and keeps the textarea (and its size) under the preview', () => {
     render(<Field initial={'## Hi\n\nthere'} />);
     const box = screen.getByRole('textbox', { name: 'Write a comment' });

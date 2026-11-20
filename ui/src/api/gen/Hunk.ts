@@ -2,7 +2,7 @@
 
 export type Hunk = { oldStart: number, oldLines: number, newStart: number, newLines: number, 
 /**
- * The old-side numbers of its `-` lines (Deviation 2).
+ * The old-side numbers of its `-` lines.
  */
 del: Array<number>, 
 /**

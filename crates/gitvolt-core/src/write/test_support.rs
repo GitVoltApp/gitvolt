@@ -1,5 +1,4 @@
-//! Shared helpers for 2B's write tests. Tasks 1, 5 and 6 each create this file with exactly this
-//! content (plan 2B, W1), so their merges take one copy.
+//! Shared helpers for the write tests.
 
 use crate::api::{Api, Request};
 use crate::error::GbError;

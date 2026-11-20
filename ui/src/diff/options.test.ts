@@ -7,7 +7,7 @@ import {
 const D = DEFAULT_EDITOR_SETTINGS;
 
 describe('Monaco options', () => {
-  it('keeps every diff feature on but sticky scroll, which is off by default (H7)', () => {
+  it('keeps every diff feature on but sticky scroll, which is off by default', () => {
     const o = diffEditorOptions({ mode: 'split', ignoreWhitespace: false, wordWrap: false }, true);
     expect(o.minimap).toEqual({ enabled: true });
     expect([o.renderOverviewRuler, o.renderIndicators, o.enableSplitViewResizing, o.useInlineViewWhenSpaceIsLimited, o.diffCodeLens, o.folding]).toEqual([true, true, true, true, true, true]);
@@ -32,7 +32,7 @@ describe('Monaco options', () => {
     expect(fileViewOptions(true, true)).toMatchObject({ readOnly: true, wordWrap: 'on', minimap: { enabled: true }, contextmenu: true });
   });
 
-  it('sticky scroll follows its setting in both editors (H7)', () => {
+  it('sticky scroll follows its setting in both editors', () => {
     const p = { mode: 'inline', ignoreWhitespace: false, wordWrap: false } as const;
     expect(diffEditorOptions(p, true, { ...D, editorStickyScroll: true }).stickyScroll).toEqual({ enabled: true });
     expect(diffEditorOptions(p, true, D).stickyScroll).toEqual({ enabled: false });

@@ -1,5 +1,5 @@
-//! A cherry-pick or revert in progress (ux round 1): the commit panel's Continue, Skip and Abort
-//! for one started outside GitVolt. Not journaled, like the rebase's controls (§13.2).
+//! A cherry-pick or revert in progress: the commit panel's Continue, Skip and Abort
+//! for one started outside GitVolt. Not journaled, like the rebase's controls.
 //! - Continue: `git cherry-pick --continue` (or `revert`). git commits with `MERGE_MSG`, so the
 //!   panel's edited message goes there first.
 //! - Skip, Abort: `--skip`, `--abort`.
@@ -92,7 +92,6 @@ impl WriteIntent for PickControl {
             Ok(_) => Ok(PickOutcome::Done),
             Err(e) => match crate::in_progress::read(cx.root).ok().flatten() {
                 Some(InProgress::CherryPick { conflicted, .. } | InProgress::Revert { conflicted, .. }) if conflicted > 0 && self.action != RebaseAction::Abort => Ok(PickOutcome::Stopped { files: conflicted }),
-                // --- 3B T1 fix round 1 ---
                 // A Continue or Skip that failed on the next commit with nothing in progress (an
                 // untracked file in the way) leaves `.git/sequencer/`: dropped, the commits stay.
                 None if self.action != RebaseAction::Abort && crate::write::sequence::quit_leftover_sequencer(cx, self.what).await => {
@@ -100,7 +99,6 @@ impl WriteIntent for PickControl {
                     e.message = format!("{} (the rest of the {} wasn't applied)", e.message.trim_end(), self.what);
                     Err(e)
                 }
-                // --- end 3B T1 fix round 1 ---
                 _ => Err(e),
             },
         }

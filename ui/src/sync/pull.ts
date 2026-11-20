@@ -21,7 +21,7 @@ const files = (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`;
 /** The upstream as the user reads it (`origin/main`): the snapshot spells it as the full ref. */
 const upstreamOf = (b: LocalBranch): string | null => b.upstream?.replace(/^refs\/remotes\//, '') ?? null;
 
-/** The Fetch/Pull button's caption, tooltip and whether it's disabled (spec #2 §12.1). */
+/** The Fetch/Pull button's caption, tooltip and whether it's disabled. */
 export function syncView(mode: SyncButtonMode, b: LocalBranch | undefined, head: string | null): { label: string; tooltip: string; disabled: boolean } {
   if (mode === 'fetchAll') return { label: 'Fetch', tooltip: 'Fetch every remote', disabled: false };
   if (!b || !head) return { label: 'Pull', tooltip: 'HEAD is detached', disabled: true };
@@ -42,7 +42,7 @@ async function done(ctx: WriteCtx, o: PullOutcome, origin: Origin | null): Promi
     case 'rebased':
       return say(`Pulled ${commits(r.commits)} into ${o.branch} (rebase)`);
     case 'stopped':
-      // The banner (§13.2); UX F: a stop without a conflict says why (the signer).
+      // The banner: a stop without a conflict says why (the signer).
       if (r.warning) useToast.getState().show(r.warning, { tone: 'warning' });
       return;
     case 'diverged': {
@@ -66,16 +66,16 @@ async function done(ctx: WriteCtx, o: PullOutcome, origin: Origin | null): Promi
   }
 }
 
-/** Pull `branch` (the checked-out one by default) in `mode` (spec #2 §12.2). */
+/** Pull `branch` (the checked-out one by default) in `mode`. */
 export async function pull(ctx: WriteCtx, mode: PullMode, branch?: string): Promise<void> {
-  // Where it started: a diverged pull asks there, after the fetch (spec §ui confirms).
+  // Where it started: a diverged pull asks there, after the fetch.
   const origin = currentOrigin();
   const name = branch ?? headBranchOf(ctx.tabId);
   const out = await runOnce(ctx.tabId, 'pull', name ?? '', () => withPending(ctx.tabId, name ? [`refs/heads/${name}`] : [], 'pull', () => runWrite(ctx, (_, asked) => api.pull(ctx.repoId, ctx.worktree, mode, { branch, confirmAutostash: asked.autostash }))));
   if (out) await done(ctx, out, origin);
 }
 
-/** The Sync group's `Pull | ff-only | rebase | merge |` (§12.2): the label click is ff-only. Not
+/** The Sync group's `Pull | ff-only | rebase | merge |`: the label click is ff-only. Not
  * offered without an upstream to pull from (none, or gone); rebase and merge only for the
  * checked-out branch (another is fast-forwarded in place). */
 export function pullRow(b: LocalBranch, run: (mode: PullMode) => void): MenuRow | null {

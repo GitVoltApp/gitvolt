@@ -1,8 +1,8 @@
-// Undo and redo (journal/undo.rs, spec #2 §5.3–§5.4, UX Y): writes of their own that move an entry
+// Undo and redo (journal/undo.rs): writes of their own that move an entry
 // between the stacks, replaying the recorded effect (a CAS, a snapshot, a switch), never the
 // command. An out-of-order undo is an entry of its own, in the undone one's place. Not here: the
 // core's repository-in-the-way checks and `restore_in_the_way`'s untracked files (no fixture has a
-// nested repository where a restore writes) and removed remotes (plan 4).
+// nested repository where a restore writes) and removed remotes.
 import type { MovedRef } from '../../api/gen/MovedRef';
 import type { UndoOutcome } from '../../api/gen/UndoOutcome';
 import type { HandlerTable } from '../transport';
@@ -164,7 +164,7 @@ async function outOfOrderCheck(pre: Pre, a: Ask): Promise<void> {
   }
 }
 
-/** §6.1: Switch and Rewind autostash on overlap with the commit they move to; a snapshot restore
+/** Switch and Rewind autostash on overlap with the commit they move to; a snapshot restore
  *  and a reset's undo on the paths they overwrite that changed since. */
 async function planOf(pre: Pre, a: Ask): Promise<{ autostash?: AutostashSpec; snapshot?: { paths: string[]; untracked: string[] } }> {
   if (a.outOfOrder) await outOfOrderCheck(pre, a);
@@ -354,7 +354,7 @@ function undoIntent(a: Ask): WriteIntent<UndoOutcome> {
       if (e.undo === 'barrier') fail('InvalidInput', "Push can't be undone");
       if (e.blocked !== null) fail('InvalidInput', e.blocked);
       if (e.removedRemote) checkRemovedRemote(cx.wt.demo, e.removedRemote, e.config, a.dir === 'undo');
-      // §5.4: a ref that isn't where the operation left it asks first.
+      // A ref that isn't where the operation left it asks first.
       const moves: RefMove[] = [];
       const moved: MovedRef[] = [];
       for (const m of e.refs) {
@@ -404,7 +404,7 @@ function undoIntent(a: Ask): WriteIntent<UndoOutcome> {
         if (index) await twoWayIndex(cx.wt, index[1], index[0]).catch(() => undefined);
         throw err;
       }
-      // Every kind replays the entry's `branch.<name>.*` changes (Deviation 10).
+      // Every kind replays the entry's `branch.<name>.*` changes.
       if (e.config.length > 0) {
         if (a.outOfOrder) cx.recordConfig(e.config.map((c): ConfigChange => ({ key: c.key, old: c.new, new: c.old })));
         applyConfigChanges(cx.wt.demo, e.config, a.dir === 'undo');

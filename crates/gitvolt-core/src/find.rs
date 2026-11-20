@@ -1,4 +1,4 @@
-//! Find in the graph (spec §8.7): message and SHA over the loaded window (in memory), path
+//! Find in the graph: message and SHA over the loaded window (in memory), path
 //! search through a lazily built path index (each commit's tree diffed against its first parent,
 //! rename detection off), hashes outside the window (`locateCommit`), and "Search older history".
 //!
@@ -21,11 +21,11 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::OnceCell;
 use ts_rs::TS;
 
-/// How deep `locateCommit` walks for a hash outside the window (spec §8.7).
+/// How deep `locateCommit` walks for a hash outside the window.
 pub const LOCATE_LIMIT: usize = 10_000;
 /// The most "Search older history" lists.
 const HISTORY_MAX: usize = 200;
-/// The shortest query the path index answers (spec §8.7).
+/// The shortest query the path index answers.
 pub const PATH_MIN_CHARS: usize = 2;
 /// The shortest hex query matched as a SHA prefix.
 const SHA_MIN_CHARS: usize = 4;
@@ -355,7 +355,7 @@ impl Api {
         .map_err(|e| GbError::other(format!("locate failed: {e}")))?
     }
 
-    /// "Search older history" (spec §8.7): commits outside the window whose message contains
+    /// "Search older history": commits outside the window whose message contains
     /// `query` (fixed string, case-insensitive) or that touched a path containing it, newest first.
     pub(crate) async fn search_history(&self, id: u32, query: &str) -> Result<Vec<HistoryHit>, GbError> {
         let q = query.trim();
@@ -364,7 +364,7 @@ impl Api {
         }
         let h = self.handle(id)?;
         let s = self.find_snapshot(id)?;
-        // The graph's own history (spec §8.2): branches, remotes, tags, HEAD, every worktree's
+        // The graph's own history: branches, remotes, tags, HEAD, every worktree's
         // HEAD and the stashes, never `--all` (notes, `refs/original`, other namespaces). A stash's
         // index and untracked-files commits aren't graph rows (only its first parent is followed),
         // so they're dropped from the results.

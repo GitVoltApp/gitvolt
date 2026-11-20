@@ -9,7 +9,7 @@ import { inProgressOf, stackEnvOf } from './env';
 import { worktreeDisplay } from '../../worktrees/paths';
 import { afterMergeBlocked, retargetAndRebase } from './retarget';
 
-/** `${repoId}:${merged number}`: prompted this session (Ruling 11). */
+/** `${repoId}:${merged number}`: prompted this session. */
 const prompted = new Set<string>();
 export const resetPrompted = (): void => prompted.clear();
 
@@ -40,7 +40,7 @@ function rerun(tabId: string, mergedNumber: number): void {
 }
 
 /**
- * The prompt after a stack's bottom MR/PR merges (spec #4 §4 4D): a sticky toast, once per
+ * The prompt after a stack's bottom MR/PR merges: a sticky toast, once per
  * merged MR/PR per session, one at a time. Its action runs the flow when the top is checked out;
  * otherwise it says to check it out (the menu row and the MR/PR view stay as entry points).
  */
@@ -65,7 +65,7 @@ export function promptFor(tabId: string): void {
 }
 
 /**
- * Reacts to 4B's forge store (its poller's updates) for the active tab: only when that tab's
+ * Reacts to the forge store (its poller's updates) for the active tab: only when that tab's
  * badges (`byRef`, `history`, `upstreams`) or list changed, or the store changed with another tab active
  * than last time (a merge seen while the tab was in the background). Returns the stop.
  */

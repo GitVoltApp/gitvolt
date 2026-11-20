@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'tokens.css'), 'utf8');
 const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 
-describe('tokens.css motion (J19)', () => {
+describe('tokens.css motion', () => {
   it('defines the two chrome-tier motion tokens', () => {
     expect(css).toMatch(/--motion-fast:\s*50ms ease-in/);
     expect(css).toMatch(/--motion-base:\s*150ms ease-in/);
@@ -24,7 +24,7 @@ describe('tokens.css motion (J19)', () => {
   });
 
   it('the motion block is kept separate from the other token blocks', () => {
-    expect(css).toMatch(/\/\* ==== motion \(J19\)[\s\S]*==== end motion \(J19\) block ==== \*\//);
+    expect(css).toMatch(/\/\* ==== motion\.[\s\S]*==== end motion block ==== \*\//);
   });
 
   it('.icon-button fades its hover background/colour at the fast token, not layout props', () => {
@@ -41,7 +41,7 @@ describe('tokens.css motion (J19)', () => {
   });
 });
 
-describe('tokens.css bar colours (K32-K34)', () => {
+describe('tokens.css bar colours', () => {
   const token = (name: string) => css.match(new RegExp(`${name}:\\s*(#[0-9a-f]{6})`, 'i'))?.[1].toLowerCase() ?? '';
   const lum = (hex: string) => {
     const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -60,7 +60,7 @@ describe('tokens.css bar colours (K32-K34)', () => {
   });
 });
 
-describe('tokens.css panel bar (K5, K6)', () => {
+describe('tokens.css panel bar', () => {
   it('one shared bar box: the density\'s height, border included, and a 1 px divider in the border colour', () => {
     const bar = rule('.panel-bar');
     expect(bar).toMatch(/box-sizing:\s*border-box/);

@@ -156,7 +156,7 @@ pub(crate) fn remote_for(rest: &str, remotes: &[String]) -> Option<String> {
         .cloned()
 }
 
-/// How many lines of an annotated tag's message the tooltips get (UX round 3, M.2).
+/// How many lines of an annotated tag's message the tooltips get.
 pub const TAG_MESSAGE_LINES: usize = 10;
 /// And at most this many characters of them.
 const TAG_MESSAGE_CHARS: usize = 2000;
@@ -244,7 +244,7 @@ fn upstream_mismatch(config: &gix::config::File, branch: &str) -> Option<String>
 
 /// The upstream's short name (`origin/feature/b`) when its branch name (`merge`, with or without
 /// `refs/heads/`) isn't `branch`'s own (`feature/a`): often a mistake, which the branch's chip
-/// and sidebar row warn about (UX round 3, M.1). `None` when the names match, or without a remote
+/// and sidebar row warn about. `None` when the names match, or without a remote
 /// upstream (no `remote`, or `.`: a local branch).
 pub fn mismatched_upstream(branch: &str, remote: &str, merge: &str) -> Option<String> {
     let name = merge.strip_prefix("refs/heads/").unwrap_or(merge);
@@ -338,7 +338,7 @@ mod tests {
         assert_eq!(refs.remote_hosts.get("gl"), Some(&HostKind::GitLab));
     }
 
-    /// UX round 3, M.1: a local branch tracking another branch name is flagged; one tracking its
+    /// A local branch tracking another branch name is flagged; one tracking its
     /// namesake, one without an upstream and one tracking a local branch aren't.
     #[test]
     fn flags_an_upstream_with_another_branch_name() {
@@ -376,7 +376,7 @@ mod tests {
         assert_eq!(mismatched_upstream("main", "", ""), None, "no upstream");
     }
 
-    /// UX round 3, M.2: an annotated tag carries its message's first lines and its tagger; a
+    /// An annotated tag carries its message's first lines and its tagger; a
     /// lightweight one carries nothing; a tag of a tree is still left out.
     #[test]
     fn annotated_tags_carry_their_message() {

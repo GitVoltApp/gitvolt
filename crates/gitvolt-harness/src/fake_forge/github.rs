@@ -1,4 +1,4 @@
-//! GitHub REST, the subset GitVolt uses. 4A: user (with classic scopes), repos, forks, avatars.
+//! GitHub REST, the subset GitVolt uses. User (with classic scopes), repos, forks, avatars.
 
 use super::{FakeProject, FakeRequest, FakeUser, ForgeState, Reply, GITHUB_HOST};
 use std::collections::BTreeMap;
@@ -30,7 +30,7 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Reply {
     if let Some(reply) = super::releases::api(st, r) {
         return reply;
     }
-    // --- 4B T4: pull requests (github_pulls.rs), before the borrows below; without a token, 4A's
+    // --- pull requests (github_pulls.rs), before the borrows below; without a token, the
     // first arm answers 401. ---
     if r.token.is_some()
         && let Some(reply) = super::github_pulls::route(st, r)
@@ -39,7 +39,6 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Reply {
         let resource = if r.path == "/graphql" { "graphql" } else { "core" };
         return reply.header("x-ratelimit-limit", "5000").header("x-ratelimit-remaining", &remaining).header("x-ratelimit-reset", &reset).header("x-ratelimit-resource", resource);
     }
-    // --- end 4B T4 ---
     let segs: Vec<&str> = r.segments.iter().map(String::as_str).collect();
     let repos = &st.seed.github.repos;
     let reply = match (r.method, segs.as_slice()) {
@@ -62,10 +61,9 @@ pub(crate) fn route(st: &mut ForgeState, r: &FakeRequest) -> Reply {
             let items = forks.iter().map(|f| { let mut v = repo_json(f, r.base); v.as_object_mut().map(|o| o.remove("parent")); v }).collect();
             Reply::page(items, r, &format!("{}/github{}", r.base, r.path))
         }
-        // --- 4B: pull request routes go here ---
-        // --- 4C T2: a user by id (avatars of reviewers and assignees) ---
+        // --- pull request routes go here ---
+        // --- a user by id (avatars of reviewers and assignees) ---
         ("GET", ["user", id]) => super::create::github_user(st, r, id),
-        // --- end 4C T2 ---
         // --- GitHub commit-author avatars ---
         ("GET", ["repos", o, n, "commits"]) if repos.iter().any(|p| p.path == format!("{o}/{n}")) => commits_by_author(&st.seed.github.commit_authors, r),
         // --- end GitHub commit-author avatars ---

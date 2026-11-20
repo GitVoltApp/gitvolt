@@ -5,7 +5,7 @@ import { tagNameError } from './tagName';
 
 afterEach(cleanup);
 
-describe('the inline tag input (spec #3 §3.9)', () => {
+describe('the inline tag input', () => {
   it('lightweight: Enter creates; an invalid name says why and Enter does nothing', () => {
     const submit = vi.fn();
     render(<TagNameInput annotated={false} validate={tagNameError} onSubmit={submit} onCancel={() => {}} />);

@@ -1,4 +1,4 @@
-/* The confirm model (spec §ui confirms): an armed control, drawn over its own space (and over
+/* The confirm model: an armed control, drawn over its own space (and over
    its neighbours when the label is longer), so nothing moves. Above dialogs, menus (900) and the
    tooltips (1000): a tooltip left by the control it started from doesn't cover it. */
 .tone-danger { --arm: var(--red); }
@@ -15,7 +15,7 @@
   cursor: pointer; user-select: none;
 }
 .arm-overlay:hover { background: color-mix(in srgb, var(--arm) 32%, var(--panel-bg0)); }
-/* A full-width button (board D): the label centred across what it covers. */
+/* A full-width button: the label centred across what it covers. */
 .arm-overlay.arm-cover { justify-content: center; }
 /* A small card's cover (data-arm-wrap): its own box, the label wrapping inside it. */
 .arm-overlay.arm-wrap { white-space: normal; line-height: 1.3; text-align: center; }
@@ -23,7 +23,7 @@
 .arm-icon { display: inline-flex; }
 .arm-icon svg { width: 13px; height: 13px; }
 
-/* The reason under an armed toolbar button (board E). */
+/* The reason under an armed toolbar button. */
 .arm-caption {
   position: fixed; z-index: 1010; max-width: 320px; padding: 6px 10px; box-sizing: border-box;
   background: var(--panel-bg1); border: 1px solid var(--section-border); border-radius: 6px; box-shadow: 0 6px 20px var(--shadow-popup);

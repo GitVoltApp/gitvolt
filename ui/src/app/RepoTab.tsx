@@ -16,15 +16,14 @@ import { setWatched } from './watch';
 
 /**
  * One repository tab. Rendered inside `<Activity>`: every effect below runs only while the tab
- * is visible, so an inactive tab has no watcher, no event subscription and no timers (spec §4.4,
- * Review Focus 1); its DOM, its 1B view state (selection, open file) and scroll survive.
+ * is visible, so an inactive tab has no watcher, no event subscription and no timers; its DOM, its view state (selection, open file) and scroll survive.
  * While shown it:
  * - loads its repo on first show (restored tabs load lazily);
- * - runs the background fetch timer (spec §15; `fetchSchedule.ts`);
- * - watches its repo, and once re-shown and watched, updates in place (spec §4.4 "Activating a
- *   tab"); refreshes on `repoChanged` / `refsUpdated` for it;
- * - while watched, holds its WIP rows' file lists in memory, kept current by `repoChanged` (K44);
- * - provides `RepoContext`, and the tab's `RepoViewStore` as 1B's `RepoViewContext`, to its slots.
+ * - runs the background fetch timer (`fetchSchedule.ts`);
+ * - watches its repo, and once re-shown and watched, updates in place;
+ *   refreshes on `repoChanged` / `refsUpdated` for it;
+ * - while watched, holds its WIP rows' file lists in memory, kept current by `repoChanged`;
+ * - provides `RepoContext`, and the tab's `RepoViewStore` as `RepoViewContext`, to its slots.
  *
  * Memoized: the profile's tab objects are stable across a switch (only `activeTab` changes), and so
  * is everything RepoView gets (the tab's graph, services and store), so a switch re-renders only
@@ -44,8 +43,8 @@ export const RepoTab = memo(function RepoTab({ tab }: { tab: TabState }) {
   }, [tab.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Watch while shown. Re-shown with a graph already loaded, it's shown at once, then updated
-  // in place once the watch is on (spec §4.4 "Activating a tab"): the watcher's first pass has
-  // refreshed the backend's status cache by then, so a plain `graph` is current (W2-B; an
+  // in place once the watch is on: the watcher's first pass has
+  // refreshed the backend's status cache by then, so a plain `graph` is current (an
   // unwatched repo's graph always re-reads status). A first open doesn't wait: its graph is read
   // unwatched, and the watcher reports anything that changed between the two.
   useEffect(() => {
@@ -61,7 +60,7 @@ export const RepoTab = memo(function RepoTab({ tab }: { tab: TabState }) {
     };
   }, [repoId, tab.id, refresh]);
 
-  // K44: the view holds its WIP rows' lists while the watch is up (the coalesced `setWatched`
+  // The view holds its WIP rows' lists while the watch is up (the coalesced `setWatched`
   // resolves once it is), and drops them as soon as it's hidden.
   const store = view?.store;
   useEffect(() => {
@@ -87,13 +86,12 @@ export const RepoTab = memo(function RepoTab({ tab }: { tab: TabState }) {
     });
   }, [repoId, tab.id, refresh]);
 
-  // Background fetch (spec §15): this tab's timer lives only while it's shown.
+  // Background fetch: this tab's timer lives only while it's shown.
   useFetchScheduler(tab.id, repoId);
-  // --- 4B T9: the forge poller (spec #4 §3.4), live only while the tab shows ---
+  // --- the forge poller, live only while the tab shows ---
   useForgePolling(tab.id, repoId);
-  // --- end 4B T9 ---
 
-  // The window title follows the active tab (1A's e2e checks `GitVolt — repo`). A linked
+  // The window title follows the active tab (the e2e checks `GitVolt — repo`). A linked
   // worktree's tab is titled by its folder, as its label is (`tabLabel`, without the alias).
   const repoName = rt?.repo?.name;
   const title = repoName ? tabLabel({ ...tab, alias: null, path: rt?.repo?.path ?? tab.path, worktree: rt?.worktree ?? tab.worktree }, repoName) : null;
@@ -121,9 +119,8 @@ export const RepoTab = memo(function RepoTab({ tab }: { tab: TabState }) {
               {graph.rows.length === 0 && graph.head.unborn
                 ? <div className="center-message">No commits yet</div>
                 : <RepoView key={repo.id} repo={repo.id} repoPath={repo.path} graph={graph} services={view.services} store={view.store} graphOverlay={<TabSlot name="graphOverlay" tab={tab} />} />}
-              {/* --- 4B T6: the left flyout (spec #4 §5) --- */}
+              {/* --- the left flyout --- */}
               <TabSlot name="centerOverlay" tab={tab} />
-              {/* --- end 4B T6 --- */}
             </div>
           </div>
         </div>

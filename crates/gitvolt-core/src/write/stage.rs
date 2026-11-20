@@ -1,5 +1,5 @@
-//! Stage and unstage whole files (spec #2 §7.2): immediate writes (§3.6) that the staging undo
-//! log records (§7.6). Paths go to git on stdin, NUL-separated and literal, never on argv.
+//! Stage and unstage whole files: immediate writes that the staging undo
+//! log records. Paths go to git on stdin, NUL-separated and literal, never on argv.
 
 use crate::api::Api;
 use crate::error::{gix_err, GbError, GbErrorKind};
@@ -25,7 +25,7 @@ pub(crate) fn unborn(root: &Path) -> Result<bool, GbError> {
     Ok(repo.head().map_err(gix_err)?.is_unborn())
 }
 
-/// "a.php" or "3 files", for labels (§5.5, §7.6).
+/// "a.php" or "3 files", for labels.
 pub(crate) fn files_label(paths: &[String]) -> String {
     match paths {
         [one] => one.clone(),
@@ -34,7 +34,7 @@ pub(crate) fn files_label(paths: &[String]) -> String {
 }
 
 /// git's "pathspec 'x' did not match any files": the list was drawn before the file changed
-/// (Review Focus 1). That's `Stale`, which the toast answers with Refresh.
+/// That's `Stale`, which the toast answers with Refresh.
 pub(crate) fn stale_paths(paths: &[String]) -> impl Fn(GbError) -> GbError + '_ {
     move |e| {
         let text = e.stderr.as_deref().unwrap_or(&e.message);
@@ -65,7 +65,7 @@ impl Which {
 pub(crate) struct StagePaths {
     pub which: Which,
     pub paths: Vec<String>,
-    /// A rename's sources: unstaged with it, not counted in the label (Deviation 5).
+    /// A rename's sources: unstaged with it, not counted in the label.
     pub old_paths: Vec<String>,
 }
 
@@ -193,7 +193,7 @@ mod tests {
         let id = open(&api, &r).await;
         let res = stage(&api, id, &r, &["a.txt", "new.txt", "b.txt"]).await.unwrap();
         assert_eq!(cached_names(&r), "M\ta.txt\nD\tb.txt\nA\tnew.txt");
-        // The answer carries the fresh lists (§3.1) and no journal entry (§5.3 "Not journaled").
+        // The answer carries the fresh lists and no journal entry.
         let staged: Vec<&str> = res["wip"]["staged"]["files"].as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
         assert_eq!(staged, ["a.txt", "b.txt", "new.txt"]);
         assert!(res["journal"]["undo"].is_null(), "{res}");
@@ -250,7 +250,7 @@ mod tests {
         assert_eq!(cached_names(&r), "");
     }
 
-    /// §7.2: an unborn HEAD unstages with `rm --cached` (`-f`: Deviation 4), never touching the file.
+    /// An unborn HEAD unstages with `rm --cached` (with `-f`), never touching the file.
     #[tokio::test]
     async fn unborn_unstage_removes_from_the_index_only() {
         let data = tempfile::tempdir().unwrap();
@@ -271,7 +271,6 @@ mod tests {
         call(&api, "unstageAll", json!({ "repo": id, "worktree": wt(r.path()) })).await.unwrap();
     }
 
-    /// Review Focus 1.
     #[tokio::test]
     async fn staging_a_path_that_no_longer_exists_is_stale() {
         let data = tempfile::tempdir().unwrap();
@@ -284,7 +283,7 @@ mod tests {
         assert_eq!(halves(&r), (String::new(), String::new()));
     }
 
-    /// Review Focus 2: pathspecs are literal, so a glob never widens.
+    /// Pathspecs are literal, so a glob never widens.
     #[cfg(unix)] // file names Windows forbids (*, ?, :, newlines)
     #[tokio::test]
     async fn awkward_paths_stage_and_unstage_literally() {
@@ -309,7 +308,7 @@ mod tests {
         assert_eq!(cached_names(&r), "");
     }
 
-    /// §13.2: staging runs while a merge is stopped on conflicts.
+    /// Staging runs while a merge is stopped on conflicts.
     #[tokio::test]
     async fn stage_runs_during_a_merge() {
         let data = tempfile::tempdir().unwrap();

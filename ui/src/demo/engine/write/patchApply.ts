@@ -1,6 +1,6 @@
-// A hunk or line selection applied to one side of a WIP diff (spec #2 §7.3): the bytes `git apply
+// A hunk or line selection applied to one side of a WIP diff: the bytes `git apply
 // --cached [-R]` of the core's partial patch (write/patch.rs) leaves, computed on the lines. The side
-// the patch applies to keeps every line but the picked changes, which are taken; 1b's `hunkPicks`
+// the patch applies to keeps every line but the picked changes, which are taken; `hunkPicks`
 // (the no-newline tie) keeps a line without a newline from being glued to the next.
 import type { StageSelection } from '../../../api/gen/StageSelection';
 import type { WipBase } from '../../../api/gen/WipBase';

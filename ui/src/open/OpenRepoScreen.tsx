@@ -132,7 +132,7 @@ function YourRepos({ folders, onOpen }: { folders: string[]; onOpen(path: string
     </ul>
   );
   const scanning = repos === null || shown === null;
-  // A "Clone from forge" entry would sit next to the + (K90, needs forge tokens).
+  // A "Clone from forge" entry would sit next to the + (needs forge tokens).
   return (
     <section className="open-section open-yours" aria-labelledby="open-yours">
       <h2 id="open-yours">Your repos
@@ -174,7 +174,7 @@ function YourRepos({ folders, onOpen }: { folders: string[]; onOpen(path: string
   );
 }
 
-/** Spec §13, shown in an Open tab (folder icon, Ctrl+O, or when no tab is open). */
+/** The open-repo screen, shown in an Open tab (folder icon, Ctrl+O, or when no tab is open). */
 export function OpenRepoScreen({ tab }: { tab: TabState }) {
   const recent = useAppState((s) => s.profile.recent);
   const reposFolder = useAppState((s) => s.profile.reposFolder);

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'tooltip.css'), 'utf8');
 const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 
-describe('tooltip.css motion (J19)', () => {
+describe('tooltip.css motion', () => {
   it('fades opacity in at the base token, and only opacity', () => {
     const tooltip = rule('.hover-tooltip');
     expect(tooltip).toMatch(/transition:\s*opacity var\(--motion-base\)/);

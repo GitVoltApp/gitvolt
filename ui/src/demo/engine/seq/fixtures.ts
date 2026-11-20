@@ -1,5 +1,5 @@
 // Test-only: the core's rebase fixtures (crates/gitvolt-core/src/testing/fixtures.rs: rebase_lab,
-// irebase, stack) on 1b's in-memory test repository. Same shapes and subjects; the file names of
+// irebase, stack) on the read engine's in-memory test repository. Same shapes and subjects; the file names of
 // the core's `r.commit(msg)` are this kit's own.
 import { readCommit } from '../read/commitText';
 import { revParse } from '../read/revs';

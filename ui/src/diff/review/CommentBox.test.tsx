@@ -47,7 +47,7 @@ function renderBox(over: { disabledReason?: string } = {}) {
   return { onDone, onCancel, field: screen.getByRole('textbox', { name: 'Comment' }) };
 }
 
-describe('the comment box (spec 2026-10-08 §2)', () => {
+describe('the comment box', () => {
   it('Add to review is the default (Mod+Enter): the draft goes in, the box closes and its text goes', async () => {
     session.addToReview.mockResolvedValue({ ok: true, value: { id: '5' } });
     const { field, onDone } = renderBox();

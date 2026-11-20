@@ -18,7 +18,7 @@ const forge: MarkdownContext = { kind: 'forge', tabId: 't' };
 const file: MarkdownContext = { kind: 'file', tabId: 't', commit: 'c0ffee1', path: 'docs/README.md' };
 const ref = (refKind: MdReferenceNode['refKind'], value: string, over: Partial<MdReferenceNode> = {}): MdReferenceNode => ({ type: 'reference', refKind, project: null, number: null, sha: null, user: null, value, ...over });
 
-describe('where a reference goes (spec #5 §4.1)', () => {
+describe('where a reference goes', () => {
   it('GitLab: !n in this project opens in-app; another project’s and #n issues open in the browser', () => {
     expect(targetOfReference(gl, ref('mr', '!12', { number: 12 }))).toEqual({ kind: 'mr', number: 12, webUrl: 'https://gitlab.example.com/group/project/-/merge_requests/12' });
     expect(targetOfReference(gl, ref('mr', 'Group/Project!12', { project: 'Group/Project', number: 12 }))).toMatchObject({ kind: 'mr', number: 12 });
@@ -53,7 +53,7 @@ describe('where a reference goes (spec #5 §4.1)', () => {
   });
 });
 
-describe('where a link goes (spec #5 §4.1)', () => {
+describe('where a link goes', () => {
   it('#heading scrolls to its user-content id', () => {
     expect(targetOfHref(gl, forge, '#install-it')).toEqual({ kind: 'anchor', id: 'user-content-install-it' });
     expect(targetOfHref(gl, forge, '#user-content-fn-1')).toEqual({ kind: 'anchor', id: 'user-content-fn-1' });

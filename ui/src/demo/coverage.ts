@@ -1,4 +1,4 @@
-// Every backend method's place in the demo (website demo spec §4.3): `real` (stateful, as the
+// Every backend method's place in the demo: `real` (stateful, as the
 // core), `canned` (a plausible fixed answer) or `notInDemo` (says so, changes nothing). Typed
 // against the generated Request union: a new backend method can't ship without a decision here.
 import type { Method } from './transport';

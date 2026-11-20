@@ -6,7 +6,7 @@ import './feature';
 const env = { write: { tabId: 't', repoId: 1, worktree: '/r' } } as unknown as MenuEnv;
 const ids = (rows: ReturnType<typeof buildMenu>) => rows.flatMap((r) => (r.kind === 'action' ? [r.id] : []));
 
-describe('stash rows (spec #2 §10)', () => {
+describe('stash rows', () => {
   it('a sidebar stash row and a graph stash node get Apply, Pop, Delete', () => {
     const row: SidebarTarget = { what: 'stash', sha: 'oid', message: 'On main: x' };
     expect(ids(buildMenu('sidebar', row, env))).toEqual(expect.arrayContaining(['stash.apply', 'stash.pop', 'stash.drop']));

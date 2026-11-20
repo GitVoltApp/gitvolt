@@ -96,7 +96,7 @@ function within(rows: Row[], shell: (children: RootContent[]) => RootContent): R
   }));
 }
 
-/** A changed list: a row per marked item, and one per run of unmarked ones (R12's item alignment). */
+/** A changed list: a row per marked item, and one per run of unmarked ones (item alignment). */
 function listRows(list: List): Row[] {
   const rows: Row[] = [];
   let run: ListItem[] = [];
@@ -127,7 +127,7 @@ function nodeRows(n: RootContent): Row[] {
 }
 
 /** A merged flow's rows, one per aligned unit. A run an HTML block holds open is one row: it
- * renders whole (R13). */
+ * renders whole. */
 function flowRows(flow: readonly RootContent[]): Row[] {
   const rows: Row[] = [];
   for (let i = 0; i < flow.length; i++) {

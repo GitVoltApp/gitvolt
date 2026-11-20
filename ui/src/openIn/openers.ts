@@ -12,14 +12,14 @@ import { configuredOpenerId } from './configuredOpener';
 import { loadLastOpener, saveLastOpener } from './openInPrefs';
 
 /** What "Open in…" opens: `path` in `worktree` (one of the repo's), at a 1-based `line`, in
- * the version `source` (a stored one opens as a read-only copy; spec §14.5), or `fallback` when
+ * the version `source` (a stored one opens as a read-only copy), or `fallback` when
  * `source` is the working-tree file and it's gone. */
 export interface OpenInTarget { worktree: string; path: string; line: number | null; source: BlobSource | null; fallback: BlobSource | null }
 
 /**
  * The machine's openers, shared by every "Open in…" control: `list` is the last one loaded
  * (`null` before the first), `error` the last load's failure. Loaded on first use and again each
- * time a menu opens (H32; the backend caches its detection briefly), so an editor installed
+ * time a menu opens (the backend caches its detection briefly), so an editor installed
  * since shows up. A failed load keeps the last list and is retried on the next opening.
  */
 const useOpenersStore = create<{ list: OpenerPayload[] | null; error: string | null }>(() => ({ list: null, error: null }));
@@ -90,7 +90,7 @@ export function subscribeOpeners(fn: () => void): () => void {
 const stored = (b: BlobSource) => b.kind === 'object' || b.kind === 'atCommit';
 
 /**
- * The version "Open in…" opens (fix rounds 1, 2). In a worktree list (WIP unstaged or staged,
+ * The version "Open in…" opens. In a worktree list (WIP unstaged or staged,
  * compare with the working tree): the working-tree file itself, which is what gets edited;
  * if it's gone from the working tree, the list's stored version (the index).
  * Elsewhere: the version shown, the new side, or a deleted file's old side.
@@ -103,7 +103,7 @@ export function openVersion(t: DiffTarget, worktree: string | null): { source: B
 /** The `DiffSpec` a list-item key starts with (`filesKey(spec)`, the spec's JSON, followed by
  * `|`): tried at each `}|` boundary, since a worktree path inside the spec can itself contain
  * `}|`. `null` if none parses (a malformed key). Shared by `listWorktree` and the Monaco menu's
- * `menuEnv.monacoTargetOf` (plan 1C Task 15), which both need the list a diff target came from. */
+ * `menuEnv.monacoTargetOf`, which both need the list a diff target came from. */
 export function parseListSpec(key: string): DiffSpec | null {
   for (let i = key.indexOf('}|'); i >= 0; i = key.indexOf('}|', i + 1)) {
     try {

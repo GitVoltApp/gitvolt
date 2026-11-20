@@ -37,7 +37,7 @@ export const isIdle = (q: QueueStatePayload | undefined) => !q || (!q.running &&
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Spec #2 §3.6: `Running: push dev`; with others waiting it names them (`Push dev · Rebase and 2 more
+/** `Running: push dev`; with others waiting it names them (`Push dev · Rebase and 2 more
  * waiting`); after a failure `Stopped: push dev failed · 2 not run`. */
 export function chipText(q: QueueStatePayload): string {
   const n = q.queued.length;
@@ -53,5 +53,5 @@ export function chipTitle(q: QueueStatePayload): string {
   return q.queued.length > 1 ? `${base}. Waiting: ${q.queued.map((i) => i.label).join(', ')}` : base;
 }
 
-/** An op of `kind` waits in `repo`'s queue: its button shows the queued badge (§3.6). */
+/** An op of `kind` waits in `repo`'s queue: its button shows the queued badge. */
 export const useQueuedKind = (repo: number, kind: OpKind) => useQueue((s) => (s.byRepo[repo]?.queued ?? []).some((i) => i.kind === kind));

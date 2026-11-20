@@ -1,6 +1,6 @@
 // Branches and tags (write/branch.rs, write/branch_delete.rs, integrate.rs's FastForwardIntent,
 // write/tags.rs): refs moved by CAS, `branch.<name>.*` edited as git edits it, journaled as the core
-// journals them. The remote legs of a delete are a push (plan 4's engine/remote/sync.ts).
+// journals them. The remote legs of a delete are a push (engine/remote/sync.ts).
 import type { DeleteOutcome } from '../../api/gen/DeleteOutcome';
 import type { IntegrateOutcome } from '../../api/gen/IntegrateOutcome';
 import type { RemoteBranchRef } from '../../api/gen/RemoteBranchRef';
@@ -78,7 +78,7 @@ function createBranch(name: string, start: string, startRef: string | null, chec
       if (why) fail('InvalidInput', why);
       if (pre.before.refs.get(heads(name))) fail('InvalidInput', `A branch named ${name} already exists`);
       await commitId(pre, start);
-      // §6.1: a checkout that moves the worktree autostashes on overlap.
+      // A checkout that moves the worktree autostashes on overlap.
       const moves = checkout && pre.before.head.oid !== start.toLowerCase();
       return moves ? { autostash: { rule: { kind: 'overlap' }, target: start.toLowerCase(), op: `checkout ${name}`, targetName: name } } : {};
     },
@@ -172,7 +172,7 @@ function setUpstream(branch: string, upstream: { remote: string; branch: string 
         cx.command('branch', '--unset-upstream', '--', branch);
         return null;
       }
-      // An existing tracking ref, or a branch the next push creates (§9.1): the same two keys.
+      // An existing tracking ref, or a branch the next push creates: the same two keys.
       setConfigValues(demo, `branch.${branch}.remote`, [upstream.remote]);
       setConfigValues(demo, `branch.${branch}.merge`, [`refs/heads/${upstream.branch}`]);
       cx.command('branch', `--set-upstream-to=refs/remotes/${upstream.remote}/${upstream.branch}`, '--', branch);

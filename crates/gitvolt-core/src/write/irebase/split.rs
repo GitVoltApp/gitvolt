@@ -1,6 +1,6 @@
-//! The work done at an Edit stop of GitVolt's interactive rebase: the commits made there (spec #3
-//! §3.5; UX L: the stop is "about to commit", so splitting is unstage some, Commit, commit the
-//! rest), and what an Abort keeps of it. It's part of the paused rebase (Ruling 9): not journaled.
+//! The work done at an Edit stop of GitVolt's interactive rebase: the commits made there
+//! (the stop is "about to commit", so splitting is unstage some, Commit, commit the
+//! rest), and what an Abort keeps of it. It's part of the paused rebase: not journaled.
 
 use crate::api::blocking;
 use crate::error::{gix_err, GbError, GbErrorKind};
@@ -13,7 +13,7 @@ use std::path::Path;
 use crate::status::EntryKind;
 use crate::write::{is_ancestor, Pre, WriteCx};
 
-/// Fix round 1 (M4): an Edit stop of a rebase started outside GitVolt.
+/// An Edit stop of a rebase started outside GitVolt.
 pub(crate) const NOT_OURS: &str = "Finish this rebase where you started it.";
 
 /// The worktree's paused entry is GitVolt's interactive rebase (it carries the session).
@@ -22,7 +22,7 @@ pub(crate) fn gitvolt_owns_the_pause(pre: &Pre<'_>) -> Result<bool, GbError> {
     Ok(journal.paused().and_then(|e| e.paused.as_ref()).is_some_and(|p| p.irebase.is_some()))
 }
 
-/// A commit made at an Edit stop (its pieces, through `Commit`; UX L: Continue's) goes on the paused entry, so
+/// A commit made at an Edit stop (its pieces, through `Commit`: Continue's) goes on the paused entry, so
 /// the settle that ends the rebase counts it as the rebase's own (it's newly authored, unlike
 /// every replayed commit) rather than as someone else's work.
 pub(crate) fn record_made(cx: &WriteCx<'_>, oid: &str) -> Result<(), GbError> {
@@ -60,7 +60,7 @@ pub(crate) async fn clear_leftovers(cx: &WriteCx<'_>) -> Result<Vec<Leftover>, G
         let Ok(orig) = gix::ObjectId::from_hex(orig.trim().as_bytes()) else { return Ok(Vec::new()) };
         let tree = repo.find_commit(orig).map_err(gix_err)?.tree().map_err(gix_err)?;
         let mut gone = Vec::new();
-        // M1: an error part-way puts back what already went.
+        // An error part-way puts back what already went.
         let each = |path: String, gone: &mut Vec<Leftover>| -> Result<(), GbError> {
             let Some(entry) = tree.lookup_entry_by_path(path.as_str()).map_err(gix_err)? else { return Ok(()) };
             if !(entry.mode().is_blob() || entry.mode().is_executable()) {
@@ -89,7 +89,7 @@ pub(crate) async fn clear_leftovers(cx: &WriteCx<'_>) -> Result<Vec<Leftover>, G
     .await
 }
 
-/// What an Abort keeps of the work done at the stop (fix round 2, I2; UX N: only what's worth
+/// What an Abort keeps of the work done at the stop (only what's worth
 /// keeping): commits on a branch, the worktree's edits in a stash, and the journal's kept-stash
 /// record for that stash.
 pub(crate) struct KeptWork {
@@ -102,13 +102,13 @@ pub(crate) struct KeptWork {
     /// The worktree's status before the abort (`--porcelain=v2`, with index oids): an abort
     /// that failed after resetting files changed it.
     status: Vec<u8>,
-    /// UX N: the changed paths' worktree content before the abort, for the same check.
+    /// The changed paths' worktree content before the abort, for the same check.
     worktree: Option<BTreeMap<String, State>>,
-    /// Fix round 1: the whole-worktree stash's tree (`keep_whole`), for the same check.
+    /// The whole-worktree stash's tree (`keep_whole`), for the same check.
     tree: Option<String>,
 }
 
-/// UX N: a path's content in a tree or an index: its kind (`kind_of`) and object; `None`: absent.
+/// A path's content in a tree or an index: its kind (`kind_of`) and object; `None`: absent.
 type State = Option<(u8, gix::ObjectId)>;
 
 /// A mode as git keeps it: a file (0), an executable (1), a link (2), a submodule (3), a tree (4).
@@ -215,7 +215,7 @@ async fn index_sides(cx: &WriteCx<'_>, paths: &BTreeSet<String>, temp: Option<&P
 }
 
 /// The worktree's side of `paths`, as `git add` would store it (filters, links, the executable
-/// bit), through a temp index copied from the real one, as `git stash` does (fix round 1: so
+/// bit), through a temp index copied from the real one, as `git stash` does (so
 /// `core.fileMode=false` and `core.symlinks=false` keep the index's modes): the real one isn't
 /// touched. A directory is a submodule: its commit is the index's (`index`).
 async fn worktree_states(cx: &WriteCx<'_>, paths: &BTreeSet<String>, index: &BTreeMap<String, Side>) -> Result<BTreeMap<String, State>, GbError> {
@@ -246,8 +246,8 @@ async fn worktree_states(cx: &WriteCx<'_>, paths: &BTreeSet<String>, index: &BTr
     Ok(out)
 }
 
-/// `base`'s tree with `entries` set (`None`: removed), through a temp index. `--replace` (fix
-/// round 1; `--index-info` implies it, said explicitly): a file where `base` has a directory (or
+/// `base`'s tree with `entries` set (`None`: removed), through a temp index. `--replace`
+/// (`--index-info` implies it, said explicitly): a file where `base` has a directory (or
 /// the reverse) replaces it.
 async fn tree_with<'a>(cx: &WriteCx<'_>, base: &str, entries: impl IntoIterator<Item = (&'a String, State)>) -> Result<String, GbError> {
     let dir = tempfile::Builder::new().prefix("abort-").tempdir_in(&cx.tmp)?;
@@ -278,13 +278,13 @@ async fn commit_tree(cx: &WriteCx<'_>, tree: &str, parents: &[&str], message: &s
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// UX N: where a git step of the rebase started, for `note_stop`.
+/// Where a git step of the rebase started, for `note_stop`.
 pub(crate) enum Before {
     /// The rebase's Start: any stop is one git just made.
     Start,
     /// A stop (its key, `last_done`): a stop with another key is one git just made.
     At(String),
-    /// Unreadable (fix round 1): no stop is taken for git's own.
+    /// Unreadable: no stop is taken for git's own.
     Unknown,
 }
 
@@ -298,7 +298,7 @@ impl Before {
     }
 }
 
-/// UX N: the current stop's key.
+/// The current stop's key.
 pub(crate) fn stop_key(root: &Path) -> Before {
     match gix::open(root).ok().and_then(|r| crate::in_progress::last_done(r.git_dir())) {
         Some(k) => Before::At(k),
@@ -306,7 +306,7 @@ pub(crate) fn stop_key(root: &Path) -> Before {
     }
 }
 
-/// UX N: at a stop git just made, what it left there (its merge result in the index, a
+/// At a stop git just made, what it left there (its merge result in the index, a
 /// conflicted file's markers): content that's git's, never the user's, which an Abort doesn't
 /// keep while it's still exactly that. Only the index of a staged path (git leaves its worktree
 /// file the same) and the worktree file of a conflicted one. A failure is logged: the Abort then
@@ -340,7 +340,7 @@ pub(crate) async fn note_stop(cx: &WriteCx<'_>, git_dir: &Path, at: &str) {
         Ok(Some(serde_json::to_string(&out).map_err(|e| GbError::other(e.to_string()))?))
     };
     let res = match content.await {
-        // Fix round 1: nothing to record; an older stop's note goes.
+        // Nothing to record; an older stop's note goes.
         Ok(None) => match std::fs::remove_file(git_dir.join(crate::in_progress::STOP_CONTENT)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
             _ => Ok(()),
@@ -380,7 +380,7 @@ struct Commit {
     parent: Option<String>,
 }
 
-/// UX N: what an Abort's work is judged against.
+/// What an Abort's work is judged against.
 struct Sources {
     /// Trees a path's content can be had from again: orig-head, the stopped commit (git's and
     /// the original), HEAD, and the autostash the rebase holds (each of its trees).
@@ -388,7 +388,7 @@ struct Sources {
     /// The commits made at the stops (by GitVolt's Commit, or in a terminal): not replays. Each
     /// with whether its message is none of the original picks'.
     made: Vec<(Commit, bool)>,
-    /// Fix round 1: the replays of the original picks (a conflict resolved by hand at an earlier
+    /// The replays of the original picks (a conflict resolved by hand at an earlier
     /// stop is in one), each with the picks it may replay (by author and time).
     replays: Vec<(Commit, Vec<Commit>)>,
     /// The trees of orig-head's history (the rebased range, its parents, `onto`) and of the
@@ -414,9 +414,9 @@ fn sources(repo: &gix::Repository, head: Option<&str>, edit_stop: Option<&str>, 
         s.fallback = Some(head.is_some());
         return Ok(s);
     };
-    // Fix round 3: at an Edit stop, a commit off the stop's commit is made there too (a terminal
+    // At an Edit stop, a commit off the stop's commit is made there too (a terminal
     // amend or `commit -C` keeps author and time, so it reads as a replay), unless HEAD is only
-    // below it (UX L: on its parent, the "about to commit" stop).
+    // below it (on its parent, the "about to commit" stop).
     let off_stop = |c: gix::ObjectId| stop.is_some_and(|st| !is_ancestor(repo, c, st));
     let author = |c: &gix::Commit<'_>| -> Result<(Vec<u8>, String), GbError> {
         let a = c.author().map_err(gix_err)?;
@@ -476,12 +476,12 @@ async fn not_in(cx: &WriteCx<'_>, trees: &BTreeSet<gix::ObjectId>, changes: Vec<
     .await
 }
 
-/// UX N: the commits beyond `onto` hold new work, so HEAD goes on the work branch:
+/// The commits beyond `onto` hold new work, so HEAD goes on the work branch:
 /// - a commit made at a stop whose message differs from every original pick's (a split piece's
 ///   own, a reword typed at the stop: the user's typing), or that introduces content found
 ///   nowhere in orig-head's history (the picks, their parents, `onto`) or the stopped commit. A
 ///   re-commit of a pick's own content, whole or in part, under that pick's message isn't kept;
-/// - fix round 1: a replay with such content that git's own merge of its pick onto the replay's
+/// - A replay with such content that git's own merge of its pick onto the replay's
 ///   parent doesn't have either (a conflict resolved by hand at an earlier stop; a clean merge
 ///   with `onto`'s changes, or a side taken whole, is git's).
 async fn new_work_in_commits(cx: &WriteCx<'_>, src: &Sources) -> Result<bool, GbError> {
@@ -517,9 +517,9 @@ async fn new_work_in_commits(cx: &WriteCx<'_>, src: &Sources) -> Result<bool, Gb
     Ok(false)
 }
 
-/// Before an Abort of GitVolt's interactive rebase (I2, fix round 2): `rebase --abort` resets the
+/// Before an Abort of GitVolt's interactive rebase: `rebase --abort` resets the
 /// worktree, index and HEAD to where the rebase started. What was done at the stop is kept first,
-/// each kind by what fits it, and (UX N) only what can't be had again (`Sources`):
+/// each kind by what fits it, and only what can't be had again (`Sources`):
 /// - commits holding new work (`new_work_in_commits`): a real branch at HEAD,
 ///   `<branch>-rebase-work` (`-2`, `-3`… when taken). GitVolt never deletes it: it isn't in an
 ///   undoable entry (the abort has none, and the paused entry's settle doesn't record it).
@@ -528,8 +528,8 @@ async fn new_work_in_commits(cx: &WriteCx<'_>, src: &Sources) -> Result<bool, Gb
 ///   autostash, or what git itself left at the stop (`note_stop`). Listed before the abort, so
 ///   it's reachable.
 ///
-/// Nothing worth keeping: no branch, no stash, no banner. Fix round 1: a changed path that isn't
-/// UTF-8 can't be judged path by path, so everything is kept, as before UX N: HEAD on the branch
+/// Nothing worth keeping: no branch, no stash, no banner. A changed path that isn't
+/// UTF-8 can't be judged path by path, so everything is kept: HEAD on the branch
 /// (when it has commits beyond `onto`) and the whole worktree in the stash. Undone by
 /// `finish_kept_work` if the abort fails.
 pub(crate) async fn keep_work(cx: &mut WriteCx<'_>, s: &crate::journal::IrebaseState) -> Result<KeptWork, GbError> {
@@ -555,7 +555,7 @@ pub(crate) async fn keep_work(cx: &mut WriteCx<'_>, s: &crate::journal::IrebaseS
     if let (true, Some(head)) = (keep, w.head.clone()) {
         w.branch = Some(work_branch(cx, &short, &head).await?);
     }
-    // Edits. 3C final fix (M5): a failure here takes the work branch back, as the later ones do.
+    // Edits. A failure here takes the work branch back, as the later ones do.
     let res = if whole { keep_whole(cx, &mut w, &short).await } else { keep_edits(cx, &mut w, &src, &short).await };
     if let Err(e) = res {
         finish_kept_work(cx, &w, false).await;
@@ -564,7 +564,7 @@ pub(crate) async fn keep_work(cx: &mut WriteCx<'_>, s: &crate::journal::IrebaseS
     Ok(w)
 }
 
-/// Fix round 1: every tracked path of a `--porcelain=v2 -z` status is UTF-8 (`keep_edits` reads
+/// Every tracked path of a `--porcelain=v2 -z` status is UTF-8 (`keep_edits` reads
 /// them as strings).
 fn tracked_paths_utf8(raw: &[u8]) -> bool {
     let mut it = raw.split(|b| *b == 0);
@@ -581,8 +581,8 @@ fn tracked_paths_utf8(raw: &[u8]) -> bool {
     true
 }
 
-/// Fix round 1: the whole worktree's tracked edits in the stash (`git stash create`, as before
-/// UX N); an unmerged index refuses it, and so the Abort.
+/// The whole worktree's tracked edits in the stash (`git stash create`);
+/// an unmerged index refuses it, and so the Abort.
 async fn keep_whole(cx: &mut WriteCx<'_>, w: &mut KeptWork, short: &str) -> Result<(), GbError> {
     let message = format!("GitVolt: work from the aborted rebase of {short}");
     let out = cx.run_git(cx.git_stash(["stash", "create", message.as_str()])).await?;
@@ -647,7 +647,7 @@ async fn store_kept(cx: &mut WriteCx<'_>, w: &mut KeptWork, short: &str, created
         stash_before: None,
         message: message.clone(),
         label: format!("abort the rebase of {short}"),
-        // Fix round 3: the branch the commits went on, for the banner.
+        // The branch the commits went on, for the banner.
         target: w.branch.clone(),
         reason: crate::journal::KeptReason::AbortRunning,
         created_ms: cx.api.now(),
@@ -663,7 +663,7 @@ async fn store_kept(cx: &mut WriteCx<'_>, w: &mut KeptWork, short: &str, created
 }
 
 /// `<branch>-rebase-work` at `head` (`-2`, `-3`… when that name, or one below it, is taken: a
-/// failed create tries the next one, fix round 3).
+/// failed create tries the next one).
 async fn work_branch(cx: &mut WriteCx<'_>, short: &str, head: &str) -> Result<String, GbError> {
     let mut last = None;
     for n in 1..=20 {
@@ -720,8 +720,8 @@ pub(crate) async fn finish_kept_work(cx: &mut WriteCx<'_>, w: &KeptWork, ok: boo
     cx.journal_changed = true;
 }
 
-/// Fix round 3: an abort that failed reset nothing only if the rebase is still in progress,
-/// HEAD is still where it was at the stop, and the worktree is as it was (its status, and UX N:
+/// An abort that failed reset nothing only if the rebase is still in progress,
+/// HEAD is still where it was at the stop, and the worktree is as it was (its status and
 /// the changed paths' content). Otherwise git got part-way: the work's stash and branch stay,
 /// and the error says where they are. Anything unreadable counts as touched.
 pub(crate) async fn untouched(cx: &WriteCx<'_>, w: &KeptWork) -> bool {
@@ -745,7 +745,7 @@ pub(crate) async fn untouched(cx: &WriteCx<'_>, w: &KeptWork) -> bool {
     worktree_states(cx, &paths, &index).await.ok().as_ref() == Some(before)
 }
 
-/// Where a part-way abort left the work (fix round 3).
+/// Where a part-way abort left the work.
 pub(crate) fn kept_error(e: GbError, w: &KeptWork) -> GbError {
     let mut kept = Vec::new();
     if let Some(b) = &w.branch {
@@ -790,7 +790,7 @@ mod tests {
         assert_eq!(start(api, id, r, &p, rows, stay(&p)).await.unwrap()["outcome"]["status"], "stopped");
     }
 
-    /// UX L: the stop's changes, staged there, all unstaged (what 3C's Split left).
+    /// The stop's changes, staged there, all unstaged (what a Split leaves).
     fn unstage_all(r: &TestRepo) {
         r.git(&["reset", "-q"]);
     }
@@ -799,7 +799,7 @@ mod tests {
         call(api, "commit", json!({ "repo": id, "worktree": wt(r.path()), "summary": summary, "expect": {} })).await.unwrap()
     }
 
-    /// §3.5, §7 (e2e 2's core), UX L: B2's changes staged at the stop, unstaged, committed again
+    /// B2's changes staged at the stop, unstaged, committed again
     /// in two pieces, Continue; feature/b follows the last piece, and one Undo restores the
     /// original history.
     #[tokio::test]
@@ -836,7 +836,7 @@ mod tests {
         r.try_git(&["rev-parse", "--verify", "-q", &format!("refs/heads/{name}")]).ok()
     }
 
-    /// Fix round 2 (test 3), UX L: the stop's changes unstaged, then Abort with nothing new:
+    /// The stop's changes unstaged, then Abort with nothing new:
     /// nothing is kept.
     #[tokio::test]
     async fn unstaged_then_abort_restores_the_commit() {
@@ -855,7 +855,7 @@ mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "");
     }
 
-    /// Fix round 2 (test 3), UX L: C1's change to a tracked file, unstaged at its stop, is in the
+    /// C1's change to a tracked file, unstaged at its stop, is in the
     /// worktree, exactly the stopped commit's content: no stash, no branch.
     #[tokio::test]
     async fn a_tracked_change_unstaged_then_abort_keeps_nothing() {
@@ -877,7 +877,7 @@ mod tests {
         assert_eq!(tips(&r), before);
     }
 
-    /// Fix round 2 (test 4): an abort git refuses (an edited, untracked piece) resets
+    /// An abort git refuses (an edited, untracked piece) resets
     /// nothing, so what was kept for it goes again: the stash entry and the work branch.
     #[tokio::test]
     async fn abort_never_removes_an_edited_piece() {
@@ -903,7 +903,7 @@ mod tests {
         assert_eq!(state["banners"], json!([]), "{state}");
     }
 
-    /// Fix round 2 (test 1): the stop's changes unstaged, one piece committed (UX N: B2's content,
+    /// The stop's changes unstaged, one piece committed (B2's content,
     /// but a message of its own: new work), edited again, Abort. The piece is on
     /// `feature/c-rebase-work`, the edit in a kept stash; the branches are restored. Applying
     /// the stash brings the edit back and leaves the work branch alone.
@@ -936,8 +936,8 @@ mod tests {
         assert_eq!(branch_at(&r, "feature/c-rebase-work").as_deref(), Some(piece.as_str()), "Apply leaves the branch");
     }
 
-    /// Fix round 2 (test 2): a commit made at an earlier Edit stop, then a conflict stop, then
-    /// Abort: the commit is on the work branch. UX N: the conflicted file, as git left it, isn't
+    /// A commit made at an earlier Edit stop, then a conflict stop, then
+    /// Abort: the commit is on the work branch. The conflicted file, as git left it, isn't
     /// work: no stash, and nothing counted as discarded.
     #[tokio::test]
     async fn a_conflict_stop_abort_keeps_the_earlier_stops_commit_on_a_branch() {
@@ -963,7 +963,7 @@ mod tests {
         assert_eq!(tips(&r), before);
     }
 
-    /// Fix round 3 (1): an amend made in a terminal at the Edit stop keeps author and time, so
+    /// An amend made in a terminal at the Edit stop keeps author and time, so
     /// it reads as a replay; HEAD off the stop's commit keeps it on the work branch all the same.
     #[tokio::test]
     async fn a_terminal_amend_at_the_stop_is_kept_on_the_work_branch() {
@@ -983,7 +983,7 @@ mod tests {
         assert_eq!(tips(&r), before);
     }
 
-    /// Fix round 3 (2): an abort that fails after git reset the worktree (here `HEAD.lock` is
+    /// An abort that fails after git reset the worktree (here `HEAD.lock` is
     /// held, so git can't move HEAD back) keeps the stash and the work branch, and the error
     /// says where they are.
     #[tokio::test]
@@ -1012,7 +1012,7 @@ mod tests {
         assert_eq!(r.git(&["show", &format!("{stash}:lexer.txt")]), "lexer, edited at the stop");
     }
 
-    /// Fix round 3 (minor): a ref below the work branch's name (`…-rebase-work/x`) takes the
+    /// A ref below the work branch's name (`…-rebase-work/x`) takes the
     /// next suffix rather than refusing the Abort; the kept stash's banner names the branch.
     #[tokio::test]
     async fn a_taken_work_branch_name_takes_the_next_suffix() {
@@ -1032,7 +1032,7 @@ mod tests {
         assert_eq!(res["journal"]["banners"][0]["target"], "feature/c-rebase-work-2");
     }
 
-    /// Fix round 1 (M4): an Edit stop of a rebase started in a terminal takes no commit from
+    /// An Edit stop of a rebase started in a terminal takes no commit from
     /// GitVolt.
     #[tokio::test]
     async fn a_terminal_rebases_edit_stop_is_finished_there() {
@@ -1049,7 +1049,7 @@ mod tests {
         assert_eq!(e.message, "Finish this rebase where you started it.");
     }
 
-    /// UX L (L.4): the stop's commit, staged there, changed and staged again, then Abort: the
+    /// The stop's commit, staged there, changed and staged again, then Abort: the
     /// change is kept in a stash; nothing was committed, so no branch.
     #[tokio::test]
     async fn a_staged_change_at_the_stop_is_kept_by_abort() {
@@ -1069,7 +1069,7 @@ mod tests {
         assert_eq!(tips(&r), before);
     }
 
-    /// A conflict stop still refuses a commit (2D's rule): only an Edit stop takes one.
+    /// A conflict stop still refuses a commit: only an Edit stop takes one.
     #[tokio::test]
     async fn a_commit_is_refused_at_a_conflict_stop() {
         let data = tempfile::tempdir().unwrap();
@@ -1086,7 +1086,7 @@ mod tests {
         assert!(e.message.contains("rebase"), "{}", e.message);
     }
 
-    // --- UX N: Abort keeps only what's worth keeping ---
+    // --- Abort keeps only what's worth keeping ---
     async fn fresh() -> (tempfile::TempDir, TestRepo, crate::api::Api, u32) {
         let data = tempfile::tempdir().unwrap();
         let r = TestRepo::new();
@@ -1121,7 +1121,7 @@ mod tests {
         r.git(&["show", &format!("{stash}:{path}")])
     }
 
-    /// N.1 (1): a fresh Edit stop, nothing done there.
+    /// A fresh Edit stop, nothing done there.
     #[tokio::test]
     async fn abort_at_an_untouched_edit_stop_keeps_nothing() {
         let (_d, r, api, id) = fresh().await;
@@ -1132,7 +1132,7 @@ mod tests {
         assert_eq!(r.git(&["status", "--porcelain"]), "");
     }
 
-    /// N.1 (2), coordinator's ruling: pieces that commit the stop's own changes again (one, both,
+    /// Pieces that commit the stop's own changes again (one, both,
     /// one with the rest staged) under messages of their own are the user's: they're on the work
     /// branch. What's left of the commit isn't stashed.
     #[tokio::test]
@@ -1165,7 +1165,7 @@ mod tests {
         }
     }
 
-    /// N.2, coordinator's ruling: the stopped commit's content committed again with its own
+    /// The stopped commit's content committed again with its own
     /// message (whole, or a piece of it) is an original pick redone: nothing is kept.
     #[tokio::test]
     async fn the_stopped_commit_recommitted_with_its_message_is_not_kept() {
@@ -1184,7 +1184,7 @@ mod tests {
         }
     }
 
-    /// N.1 (3): a conflict stop with nothing resolved: git's own markers aren't work, so no
+    /// A conflict stop with nothing resolved: git's own markers aren't work, so no
     /// stash and no "discarded" count (here, and at a conflict a Continue reached).
     #[tokio::test]
     async fn abort_at_an_unresolved_conflict_keeps_nothing() {
@@ -1203,8 +1203,8 @@ mod tests {
         kept_nothing(&r, &res, &before, "after a Continue");
     }
 
-    /// N.1 (4), N.2: a conflict resolved with the stopped commit's own side is in that commit:
-    /// not kept. One resolved by hand is, staged or not (fix round 3 lost the unstaged one).
+    /// A conflict resolved with the stopped commit's own side is in that commit:
+    /// not kept. One resolved by hand is, staged or not.
     #[tokio::test]
     async fn only_a_resolution_of_the_users_own_is_kept() {
         let (_d, r, api, id) = fresh().await;
@@ -1229,7 +1229,7 @@ mod tests {
         }
     }
 
-    /// N.3: a resolution left after a Continue git refused (the file still conflicted) isn't
+    /// A resolution left after a Continue git refused (the file still conflicted) isn't
     /// taken for git's own content: that stop's note is the one git made.
     #[tokio::test]
     async fn a_resolution_after_a_refused_continue_is_kept() {
@@ -1242,7 +1242,7 @@ mod tests {
         assert_eq!(stashed(&r, &res, "notes.txt"), "one\n<<<<<<< half done");
     }
 
-    /// N.1 (5): an untouched autostash is only restored, at an Edit stop and a conflict stop;
+    /// An untouched autostash is only restored, at an Edit stop and a conflict stop;
     /// content at the stop that's the autostash's own isn't kept twice.
     #[tokio::test]
     async fn an_untouched_autostash_is_only_restored() {
@@ -1261,7 +1261,7 @@ mod tests {
             assert_eq!(std::fs::read_to_string(r.path().join("lexer.txt")).unwrap(), "dirty before the rebase\n");
         }
     }
-    /// Fix round 1 (1): a conflict resolved by hand at an earlier stop is in a replay; the
+    /// A conflict resolved by hand at an earlier stop is in a replay; the
     /// later stop's resolution (ours) isn't work. HEAD goes on the work branch all the same.
     #[tokio::test]
     async fn an_earlier_stops_hand_resolution_is_kept_on_the_work_branch() {
@@ -1281,7 +1281,7 @@ mod tests {
         assert_eq!(tips(&r), before);
     }
 
-    /// Fix round 1 (1): replays git merged cleanly with `onto`'s own change to the same file are
+    /// Replays git merged cleanly with `onto`'s own change to the same file are
     /// git's: nothing is kept.
     #[tokio::test]
     async fn a_clean_merge_with_ontos_changes_is_not_kept() {
@@ -1296,7 +1296,7 @@ mod tests {
         kept_nothing(&r, &res, &before, "a clean merge");
     }
 
-    /// Fix round 1 (3): a changed path that isn't UTF-8 keeps everything, as before UX N.
+    /// A changed path that isn't UTF-8 keeps everything.
     #[cfg(all(unix, not(target_os = "macos")))] // non-UTF-8 file names: not on Windows, and APFS refuses them (EILSEQ)
     #[tokio::test]
     async fn a_non_utf8_path_keeps_everything() {
@@ -1312,7 +1312,7 @@ mod tests {
         assert_eq!(res["outcome"]["branch"], "feature/c-rebase-work", "{res}");
     }
 
-    /// Fix round 1 (4): with `core.fileMode=false`, an executable file whose bit the filesystem
+    /// With `core.fileMode=false`, an executable file whose bit the filesystem
     /// lost reads with the index's mode, as `git stash` reads it: nothing new.
     #[tokio::test]
     async fn file_mode_false_doesnt_flip_a_mode_into_work() {
@@ -1334,7 +1334,7 @@ mod tests {
         kept_nothing(&r, &res, &before, "fileMode false");
     }
 
-    /// Fix round 1 (7): a file where HEAD has a directory goes into the stash (`--replace`), and
+    /// A file where HEAD has a directory goes into the stash (`--replace`), and
     /// the Abort runs.
     #[tokio::test]
     async fn a_directory_replaced_by_a_file_is_kept() {
@@ -1352,7 +1352,7 @@ mod tests {
         assert_eq!(stashed(&r, &res, "d"), "now a file");
     }
 
-    /// Fix round 1 (5): a stop with nothing to note clears an earlier stop's note.
+    /// A stop with nothing to note clears an earlier stop's note.
     #[tokio::test]
     async fn a_stop_with_nothing_to_note_clears_the_last_note() {
         let (_d, r, api, id) = fresh().await;
@@ -1373,5 +1373,4 @@ mod tests {
         assert_eq!(out["outcome"]["status"], "stopped", "B1's Edit stop");
         assert!(!note.exists(), "B1's stop is git's commit, nothing to note");
     }
-    // --- end UX N ---
 }

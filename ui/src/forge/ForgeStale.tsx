@@ -7,7 +7,7 @@ import { useTabForge, type TabForge } from './mrStore';
 // just the one.
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).replace(/\.$/, '');
 
-/** "Couldn't refresh: <reason>. Last updated 2 minutes ago" (spec #4 §6: stale data stays,
+/** "Couldn't refresh: <reason>. Last updated 2 minutes ago" (stale data stays,
  * with a note), "Rate limited until 14:05. …" while the account's budget is spent, or "Updated
  * 2 hours ago" while what's shown is the last session's (until the first poll answers); null
  * when the last poll worked. */

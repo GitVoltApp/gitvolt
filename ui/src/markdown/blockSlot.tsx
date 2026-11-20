@@ -3,7 +3,7 @@ import { createContext, useContext, type ReactNode } from 'react';
 /** Which sides' lines a rendered block shows (a split view's column shows one side's). */
 export interface SrcSides { new: boolean; old: boolean }
 
-/** What shows under a rendered diff's block (review comments, spec 2026-10-08 §3): its threads,
+/** What shows under a rendered diff's block (review comments): its threads,
  * drafts and comment boxes. Diff View provides it while the diff is a review's (`RenderedReview`);
  * elsewhere there's none, and blocks show nothing more. */
 export interface BlockSlots { render(id: number, sides: SrcSides): ReactNode }

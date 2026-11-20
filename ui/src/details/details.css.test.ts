@@ -8,15 +8,15 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'details.css'), 'utf8');
 const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 
-describe('details.css (feedback H11)', () => {
-  it('the header hashes are white and their labels dimmed, in the UI font (J8)', () => {
+describe('details.css', () => {
+  it('the header hashes are white and their labels dimmed, in the UI font', () => {
     expect(rule('.commit-ids .sha')).toMatch(/color:\s*var\(--text-selected\)/);
     const label = rule('.id-label');
     expect(label).toMatch(/color:\s*var\(--text-secondary\)/);
     expect(label).toMatch(/font-family:\s*var\(--font-ui\)/);
   });
 
-  it('J8: label and hash share one line (one baseline), trimmed to the hash\'s cap height and baseline, so the icon centres on the text, not on a line box', () => {
+  it('label and hash share one line (one baseline), trimmed to the hash\'s cap height and baseline, so the icon centres on the text, not on a line box', () => {
     const parts = rule('.commit-ids > *');
     expect(parts).toMatch(/display:\s*block/);
     expect(parts).toMatch(/font-family:\s*ui-monospace, monospace/);
@@ -41,7 +41,7 @@ describe('details.css (feedback H11)', () => {
   });
 });
 
-describe('details.css header bars (K5, K6)', () => {
+describe('details.css header bars', () => {
   const diff = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'diff', 'diff.css'), 'utf8');
   const diffRule = (selector: string) => diff.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
 
@@ -62,7 +62,7 @@ describe('details.css header bars (K5, K6)', () => {
   });
 });
 
-describe('details.css motion (J19)', () => {
+describe('details.css motion', () => {
   it('the split-resizer hover reveal fades its background at the fast token, not its top/height', () => {
     const before = rule('.split-resizer::before');
     expect(before).toMatch(/transition:\s*background-color var\(--motion-fast\)/);

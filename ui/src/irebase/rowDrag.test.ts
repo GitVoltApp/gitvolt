@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { groupTarget, slotShifts } from './rowDrag';
 
-describe('the rows\' drag (the tab drag\'s math, vertical; spec #3 §4.1)', () => {
+describe('the rows\' drag (the tab drag\'s math, vertical)', () => {
   const heights = [30, 30, 60, 30]; // the third row is a fold target with its merged editor open (60 px)
   it('passes a row once the dragged row\'s leading edge crosses its midpoint', () => {
     expect(groupTarget(heights, [0], 0, 14)).toBe(0);
@@ -16,7 +16,7 @@ describe('the rows\' drag (the tab drag\'s math, vertical; spec #3 §4.1)', () =
   });
 });
 
-describe('a group drag (UX2 E.3)', () => {
+describe('a group drag', () => {
   const h = [30, 30, 30, 30, 30, 30];
   it('a contiguous group stays put until its block crosses a neighbour\'s midpoint, from whichever row is pressed', () => {
     expect(groupTarget(h, [1, 2], 1, 0)).toBe(1);

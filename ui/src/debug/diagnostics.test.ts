@@ -12,7 +12,7 @@ const { useToast } = await import('../ui/toastStore');
 
 beforeEach(() => vi.clearAllMocks());
 
-it('asks the backend for the text with the UI facts, copies it and says so (T9, R24)', async () => {
+it('asks the backend for the text with the UI facts, copies it and says so (T9)', async () => {
   await copyDiagnostics();
   expect(diagnostics).toHaveBeenCalledWith({ userAgent: navigator.userAgent, settings: useAppState.getState().settings });
   expect(copyText).toHaveBeenCalledWith('GitVolt 0.1.0\n');

@@ -48,7 +48,7 @@ describe('Sidebar panels', () => {
     expect(within(panel('Stashes')).getByLabelText('Stashes count')).toHaveTextContent('0');
   });
 
-  it("warns on a local row whose upstream has another name, before the name; marks an annotated tag's icon (UX round 3, M.1/M.2)", () => {
+  it("warns on a local row whose upstream has another name, before the name; marks an annotated tag's icon (M.1/M.2)", () => {
     const s = useRuntime.getState().tabs.t.sidebar!;
     useRuntime.getState().patch('t', {
       sidebar: {
@@ -190,7 +190,7 @@ describe('Sidebar panels', () => {
     });
   });
 
-  it('ahead/behind shows each count with a 12px arrow icon, labelled for screen readers (K67)', () => {
+  it('ahead/behind shows each count with a 12px arrow icon, labelled for screen readers', () => {
     const s = useRuntime.getState().tabs.t.sidebar!;
     useRuntime.getState().patch('t', { sidebar: { ...s, locals: [{ ...branch('hotfix'), upstream: 'refs/remotes/origin/hotfix', ahead: 10, behind: 11 }] } });
     renderIt();
@@ -257,7 +257,7 @@ describe('Sidebar panels', () => {
     expect(within(panel('Local')).getByLabelText('current branch')).toHaveClass('co-check');
   });
 
-  it('worktree rows: a house for the main checkout, a pine tree for linked ones; hover shows path, branch, sha (K75)', () => {
+  it('worktree rows: a house for the main checkout, a pine tree for linked ones; hover shows path, branch, sha', () => {
     renderIt();
     const wt = within(panel('Worktrees'));
     const main = wt.getByRole('treeitem', { name: 'r' });
@@ -287,7 +287,7 @@ describe('Sidebar panels', () => {
     expect(within(panel('Tags')).getByRole('tree')).toBeInTheDocument();
   });
 
-  it('UX R2.1/R2.3: hidden while the rebase editor is open; a file view on top narrows it, and the strip leaves the view for the graph, expanded', () => {
+  it('hidden while the rebase editor is open; a file view on top narrows it, and the strip leaves the view for the graph, expanded', () => {
     const offs = [registerCenterView('t-plan', () => null, { sidebar: 'hide' }), registerCenterView('t-file', () => null)];
     const store = createRepoViewStore(4, '/r', EMPTY_GRAPH, fakeServices());
     useTabViews.setState({ views: { t: { repo: 4, services: fakeServices(), store } } });
@@ -314,7 +314,7 @@ describe('Sidebar panels', () => {
     for (const off of offs) off();
   });
 
-  it('double-clicking the sidebar edge restores the default width; a panel divider evens out just its two panels (K73)', () => {
+  it('double-clicking the sidebar edge restores the default width; a panel divider evens out just its two panels', () => {
     useAppState.setState({ profile: { ...profile(), sidebarWidth: 400, sidebarPanels: { local: 300, remote: 100, worktrees: 120, stashes: 40, tags: 40 } } });
     renderIt();
     fireEvent.doubleClick(screen.getByRole('separator', { name: 'Resize sidebar' }));
@@ -328,7 +328,7 @@ describe('Sidebar panels', () => {
   });
 });
 
-describe('Sidebar item menus (plan 1C Task 15b)', () => {
+describe('Sidebar item menus', () => {
   const rowsOpen = () => useMenu.getState().rows?.map((r) => (r.kind === 'separator' ? '---' : r.label)) ?? null;
   beforeEach(() => {
     useAppState.setState({ loaded: true, profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 't', kind: 'repo', path: '/r', alias: null }], activeTab: 't' } });
@@ -362,7 +362,7 @@ describe('Sidebar item menus (plan 1C Task 15b)', () => {
     expect(rowsOpen()).toContain('Open in file manager');
   });
 
-  it('a right-click outlines its row while the menu is open and never moves the active row (UX round 2)', () => {
+  it('a right-click outlines its row while the menu is open and never moves the active row', () => {
     renderIt();
     const items = () => within(panel('Local')).getAllByRole('treeitem');
     const activeAt = () => items().findIndex((r) => r.dataset.active === 'true');

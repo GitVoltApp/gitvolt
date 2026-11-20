@@ -5,12 +5,12 @@ import { createServices, type RepoServices } from '../repo/services';
 import { createRepoViewStore, type RepoViewStore } from '../repo/store';
 
 /**
- * Each repo tab's 1B view state (ruling R3): its `RepoViewStore` (selection, details panel, open
+ * Each repo tab's view state: its `RepoViewStore` (selection, details panel, open
  * diff, focus) and `RepoServices` (the per-repo caches), by tab id. The tab's runtime makes them
  * on its first graph and feeds them every refresh; they go with the tab (`useRuntime.drop`), so a
- * hidden tab keeps its selection and open file. Everything in 1C that acts on a tab's view (the
+ * hidden tab keeps its selection and open file. Everything that acts on a tab's view (the
  * seams, graph navigation, Ctrl+W, menus, find, the sidebar's focus zone, the palette) goes
- * through the tab's store, the way 1B's file menu does (`fileMenuEnv(store)`).
+ * through the tab's store, the way the file menu does (`fileMenuEnv(store)`).
  */
 export interface TabView { repo: number; services: RepoServices; store: RepoViewStore }
 
@@ -29,7 +29,7 @@ export function tabIdOf(store: RepoViewStore): string | null {
 export const useTabView = (tabId: string): TabView | undefined => useTabViews((s) => s.views[tabId]);
 
 /** Makes the tab's view for `repo` on its first graph (or after the tab moved to another repo),
- * else hands it the new graph (1B's `setGraph` keeps the selection by commit id). */
+ * else hands it the new graph (`setGraph` keeps the selection by commit id). */
 export function feedTabView(tabId: string, repo: RepoSummary, graph: GraphPayload): RepoViewStore {
   const cur = tabView(tabId);
   if (cur && cur.repo === repo.id) {

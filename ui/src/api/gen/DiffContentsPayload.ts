@@ -8,7 +8,7 @@ export type DiffContentsPayload = { old: BlobPayload | null, new: BlobPayload | 
  */
 tooLarge: boolean, 
 /**
- * Only the line endings changed (spec §10.2 banner).
+ * Only the line endings changed.
  */
 eolOnly: boolean, 
 /**

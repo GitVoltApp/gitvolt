@@ -6,7 +6,7 @@ import { zoomDirection } from './zoom';
  * handlers (Monaco, the lists, …) goes through it, in a fixed order of layers:
  *
  * 1. `menu`: an open menu. The context menu (`ContextMenu`) takes every key, wherever the focus
- *    is (plan 1C Task 15, Amendment 11: the diff toolbar's Open in… dropdown is this same menu
+ *    is (the diff toolbar's Open in… dropdown is this same menu
  *    now, not a dropdown of its own). Any other shown `[role="menu"]`, or a key pressed inside
  *    one, keeps the key for that menu's own handler (built in below).
  * 2. `tooltip`: a shown tooltip (`HoverTooltip`, `TooltipHost`): Esc dismisses it (WCAG 1.4.13).
@@ -15,7 +15,7 @@ import { zoomDirection } from './zoom';
  * 4. `app`: the app's actions: Esc closes the file or leaves compare mode (`useAppEscape`),
  *    F7 / Shift+F7 / Shift+↑↓ step the changes (`useChangeKeys`), Ctrl+= / - / 0 zoom.
  *
- * Zoom (H2) is the one exception to "the menu layer sees it first": it skips the menu layer
+ * Zoom is the one exception to "the menu layer sees it first": it skips the menu layer
  * entirely, so it works whatever has focus, a shown menu included (`dispatch`, below).
  *
  * The first layer where a handler claims the key decides it; no lower layer sees it. Within a
@@ -30,7 +30,7 @@ import { zoomDirection } from './zoom';
  *   find widget). No lower layer sees it, but the event carries on to its target.
  * - nothing: not its key.
  *
- * Plan 1C's Ctrl+F search box, tab keys, … register here too, in the layer they belong to.
+ * The Ctrl+F search box, tab keys, … register here too, in the layer they belong to.
  */
 export type KeyLayer = 'menu' | 'tooltip' | 'overlay' | 'app';
 export const KEY_LAYERS: readonly KeyLayer[] = ['menu', 'tooltip', 'overlay', 'app'];
@@ -60,7 +60,7 @@ function claimIn(layer: KeyLayer, e: KeyboardEvent): KeyClaim | null {
 
 function dispatch(e: KeyboardEvent) {
   for (const layer of KEY_LAYERS) {
-    // H2: zoom (Ctrl+=/-/0) works whatever has focus, an open menu included — it skips the menu
+    // Zoom (Ctrl+=/-/0) works whatever has focus, an open menu included — it skips the menu
     // layer entirely (both the built-in `shownMenuKeepsKeys` catch-all and a menu's own handler,
     // e.g. ContextMenu's, which otherwise claims every key while open) and falls through to the
     // app layer's zoom handler below.

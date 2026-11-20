@@ -18,7 +18,7 @@ const ok = { outcome: { status: 'done', commits: 1, committed: true }, journal: 
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('Cherry-pick and Revert rows (spec #3 §4.3)', () => {
+describe('Cherry-pick and Revert rows', () => {
   it('one commit off HEAD: Cherry-pick onto main with No commit; no Revert', () => {
     const rows = pickRows([c(A)], env());
     expect(labels(rows)).toEqual(['Cherry-pick onto main']);
@@ -39,7 +39,7 @@ describe('Cherry-pick and Revert rows (spec #3 §4.3)', () => {
   it('a selection names its count', () => {
     expect(labels(pickRows([c(A), c(B)], env({ isAncestor: () => null })))).toEqual(['Cherry-pick 2 commits onto main', 'Revert 2 commits']);
   });
-  it('a selection holding a merge commit offers no cherry-pick or revert (Review Focus 5)', () => {
+  it('a selection holding a merge commit offers no cherry-pick or revert', () => {
     expect(pickRows([c(A), c(B, true)], env({ isAncestor: () => null }))).toEqual([]);
   });
   it('greys during another operation and on a detached HEAD', () => {

@@ -7,7 +7,7 @@ const label = (name: string, local: boolean, isHead = false) => ({ row: 0, name,
 const env = (over: object = {}) => ({ write: { tabId: 't', repoId: 1, worktree: '/r' }, headBranch: 'main', headSha: 'zzz', inProgress: null, activeWorktree: '/r', labelsAt: () => [label('main', true, true), label('feature/x', true), label('only-remote', false)], ...over }) as unknown as MenuEnv;
 const t: CommitTarget = { sha: 'aaaaaaa1', mrRefs: [], isWip: false, isStash: false, branch: null };
 
-describe('Checkout ▸ and Reset (spec #2 §9.3, §9.4)', () => {
+describe('Checkout ▸ and Reset', () => {
   it('Checkout ▸ lists the branches at the commit (not the checked-out one), then the detached HEAD', () => {
     const sub = buildMenu('commit', t, env()).find((r) => r.kind === 'submenu' && r.id === 'branch.checkout');
     expect(sub?.kind === 'submenu' && sub.rows.map((r) => (r.kind === 'action' ? [r.label, r.disabledReason ?? null] : r.kind))).toEqual([

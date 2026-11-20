@@ -7,7 +7,7 @@ import { listWorktrees } from '../read/worktrees';
 import type { WriteWt } from './seam';
 
 /** `../<name>` for a worktree beside the main one, else its absolute path. A fixture's extra
- *  folders (`/demo/.extra/<repo>/<piece>`, 1a's layout) sat beside its main worktree in the
+ *  folders (`/demo/.extra/<repo>/<piece>`, the bundle's layout) sat beside its main worktree in the
  *  fixture folder the core recorded, so they show as `../<piece>` too, as the core shows them. */
 export function displayWorktree(main: string, path: string): string {
   const name = path.slice(path.lastIndexOf('/') + 1);

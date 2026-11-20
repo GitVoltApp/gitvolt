@@ -1,7 +1,7 @@
 import type { GbError } from '../api/gen/GbError';
 import type { GbErrorKind } from '../api/gen/GbErrorKind';
 
-/** Pure error model (spec §16.1): what an error says and which actions it offers. The toast (R12) renders it. */
+/** Pure error model: what an error says and which actions it offers. The toast renders it. */
 
 export const isGbError = (e: unknown): e is GbError =>
   !!e && typeof e === 'object' && 'kind' in e && typeof (e as { message?: unknown }).message === 'string';
@@ -15,7 +15,7 @@ export interface ErrorContext {
   retry?: () => void | Promise<void>;
   refresh?: () => void | Promise<void>;
   removeRecent?: () => void | Promise<void>;
-  /** Remove stale lock (spec #2 §14): asks, then removes the lock the error saw. */
+  /** Remove stale lock: asks, then removes the lock the error saw. */
   removeLock?: (lock: IndexLockId) => void | Promise<void>;
 }
 export interface ErrorAction { id: 'retry' | 'refresh' | 'remove-recent' | 'remove-lock' | 'copy' | 'details'; label: string; run(): void | Promise<void> }
@@ -36,10 +36,8 @@ const TITLES: Record<Exclude<GbErrorKind, 'Cancelled'>, string> = {
   HookFailed: 'A hook failed',
   InProgress: 'Operation in progress',
   Stale: 'Changed since it was shown',
-  // --- 4A T1 ---
   RateLimited: 'Rate limited',
   Network: "Couldn't reach the server",
-  // --- end 4A T1 ---
 };
 
 /** Title and message for a notification, or null for errors that never notify (Cancelled). */
@@ -48,7 +46,7 @@ export function describeError(err: GbError): { title: string; message: string } 
   const title = TITLES[err.kind];
   if (err.kind === 'RefMoved') return { title, message: 'Branch changed outside GitVolt — refresh and retry' };
   if (err.kind === 'IndexLocked') {
-    // Spec #2 §14: Remove stale lock arrives with the lock's detail; without it, the hand-made way.
+    // Remove stale lock arrives with the lock's detail; without it, the hand-made way.
     return err.detail?.kind === 'indexLock'
       ? { title, message: `${err.message}\nAnother git program may be running.` }
       : { title, message: `${err.message}\nAnother git process may be running. If none is, remove .git/index.lock yourself.` };
@@ -57,13 +55,11 @@ export function describeError(err: GbError): { title: string; message: string } 
     const hook = err.detail?.kind === 'hook' ? err.detail.hook : null;
     return { title: hook ? `${hook} hook failed` : title, message: err.message };
   }
-  // Spec #2 §15: the message is the title ("A rebase is in progress", "a.php changed since it was shown").
+  // The message is the title ("A rebase is in progress", "a.php changed since it was shown").
   if (err.kind === 'InProgress') return { title: err.message, message: 'Finish or abort it first' };
   if (err.kind === 'Stale') return { title: err.message, message: 'Refreshed: try again' };
-  // --- 2C T12 ---
   // "<path> is a repository in the way of the checkout: move it first": a refusal, readable as one.
   if (err.kind === 'InvalidInput' && /is a repository in the way of the /.test(err.message)) return { title: 'A repository is in the way', message: err.message.replace(/^(.*?) is a repository in the way of the (\w+): move it first$/, '$1 can\'t be replaced during the $2: move it first') };
-  // --- end 2C T12 ---
   return { title, message: err.message };
 }
 
@@ -74,7 +70,7 @@ const SLOTS: Record<GbErrorKind, Slot[]> = {
   HookFailed: ['retry'], InProgress: [], Stale: ['refresh'], RateLimited: [], Network: ['retry'],
 };
 
-/** Suggested actions for one error (spec §16.1): the kind's slots the context can fill, then Details if a command is linked. */
+/** Suggested actions for one error: the kind's slots the context can fill, then Details if a command is linked. */
 export function actionsFor(err: GbError, ctx: ErrorContext, deps: ErrorDeps): ErrorAction[] {
   const out: ErrorAction[] = [];
   if (err.kind === 'Cancelled') return out;

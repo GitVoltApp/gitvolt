@@ -4,7 +4,7 @@ import { monaco } from './setup';
 
 type Side = 'original' | 'modified';
 
-/** What the gutter's line button acts on (spec #2 §7.3): the changed lines of git's hunks, by
+/** What the gutter's line button acts on: the changed lines of git's hunks, by
  * side (`old`: `-` lines, `new`: `+` lines), staged (−, unstage) or not (+, stage). `disabled`:
  * why it can't act now (unsaved edits, a queued commit), shown as its tooltip. */
 export interface LineGutterSpec {
@@ -67,7 +67,7 @@ export function gutterHit(diff: MonacoNs.editor.IDiffEditor, side: Side, ed: Mon
 }
 
 /**
- * The per-line button (spec #2 §7.3): a small square in the glyph margin, left of the
+ * The per-line button: a small square in the glyph margin, left of the
  * line numbers, on the changed line under the pointer: + stages that line, − unstages it. The
  * glyph margin is always there (Monaco reserves it), and the button is an overlay widget placed
  * over it, so it appears and goes without moving anything. In Inline and Hunk mode an old line

@@ -1,4 +1,4 @@
-// Phase 4's one door into phase 3's write layer (plan 4, "Built on phase 3"): phase 3's functions,
+// The sequencer's one door into the write layer: its functions,
 // re-exported or adapted to the shapes the sequencer, the remotes and the forge use. A phase-3
 // rename or reshape changes this file only.
 import type { ChangeKind } from '../../api/gen/ChangeKind';
@@ -83,10 +83,10 @@ export interface Pause {
 export interface WriteCx extends Pre {
   op: number;
   opHandle: OpHandle;
-  /** Phase 3's CAS; branch reflogs aren't written (phase 3's decision), so `reflog` goes unused. */
+  /** The write engine's CAS; branch reflogs aren't written, so `reflog` goes unused. */
   cas(moves: RefMove[], reflog: string): Promise<void>;
   touch(kind: ChangeKind): void;
-  /** Read, it's a fresh copy of phase 3's: assign a whole new value to change it. */
+  /** Read, it's a fresh copy of the write engine's: assign a whole new value to change it. */
   paused: Pause | null;
   recordConfig(c: ConfigChange[]): void;
   /** `f` with the write lock released (a push's transfer): only the queue's running slot is held,
@@ -114,7 +114,7 @@ export interface WriteIntent<T> {
   plan?(pre: Pre): Promise<Plan>;
   run(cx: WriteCx): Promise<T>;
 }
-/** Phase 3's tree merge as this plan reads it: the tree when clean, the index (stages included) and
+/** The write engine's tree merge as the sequencer reads it: the tree when clean, the index (stages included) and
  *  each worktree file the merge writes (null: removed). */
 export interface MergeResult {
   raw: TreeMerge;
@@ -129,7 +129,7 @@ export { NO_EXPECT };
 export { EMPTY_TREE, writeTreeOf } from './write/objects';
 export const nowSeconds = (ctx: DemoContext): number => Math.floor(ctx.clock.nowMs() / 1000);
 
-/** Each view keeps the phase-3 object it shows, out of sight of the plan's code. */
+/** Each view keeps the write-engine object it shows, out of sight of the sequencer's code. */
 const RAW = Symbol('phase 3');
 type Viewed = { [RAW]: Pre3 | WriteCx3 };
 const raw = (v: Pre): Pre3 | WriteCx3 => (v as Pre & Viewed)[RAW];
@@ -274,7 +274,7 @@ export function writeCommitObject(read: ReadRepo, c: { tree: string; parents: st
 }
 
 /** A ref's CAS (`next` null deletes); a tracking ref also gets its reflog line, as the visitor at
- *  `now` (1b's `lastPush` reads them). */
+ *  `now` (`lastPush` reads them). */
 export async function updateRef(read: ReadRepo, _gitdir: string, name: string, old: string | null, next: string | null, reflog: string, now: number): Promise<void> {
   const demo = demoOf(read);
   casRefs(demo, [{ name, old, new: next }]);
@@ -300,7 +300,7 @@ export async function writeTreeFromIndex(read: ReadRepo, gitdir: string): Promis
   return writeIndexTree(read, await readIndexEntries(read, gitdir));
 }
 
-/** Phase 3's three-way tree merge (no base: two additions from the empty tree), the conflict
+/** The write engine's three-way tree merge (no base: two additions from the empty tree), the conflict
  *  markers' length from `.gitattributes` as a merge's (a view with no repository handle: 7). `labels.base` isn't shown: the merge style
  *  is git's default. */
 export async function mergeTrees(read: ReadRepo, m: { base: string | null; ours: string; theirs: string; labels: { ours: string; theirs: string; base: string } }): Promise<MergeResult> {
@@ -379,7 +379,7 @@ export function beginOp(ctx: DemoContext): OpHandle {
 
 /** `f` in the repository's queue: it waits its turn (a Cancel meanwhile takes it out), runs, and
  *  finishes the item with its failure; the op ends with it. It holds the running slot, never the
- *  write lock (the core's user fetch, Deviation 8): immediate writes go on meanwhile. */
+ *  write lock (the core's user fetch): immediate writes go on meanwhile. */
 export async function withQueueSlot<T>(ctx: DemoContext, repo: number, label: string, kind: OpKind, op: number, f: () => Promise<T>): Promise<T> {
   try {
     const q = ctx.writes.queue(repo, ctx.emit);

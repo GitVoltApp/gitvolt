@@ -7,7 +7,7 @@ import { useToast } from '../ui/toastStore';
 import { runWrite, type WriteCtx } from '../write/client';
 
 /**
- * "Use SSH for <remote> instead" on an HTTPS credential prompt (spec §5.4). The backend cancels
+ * "Use SSH for <remote> instead" on an HTTPS credential prompt. The backend cancels
  * the prompt and the op fails as Cancelled with `useSsh`; its caller (`runWrite`, the fetch)
  * switches each remote here, then sends the same request again, through the queue. If that run
  * fails too, the toast says the remote was switched and offers Switch back to HTTPS, which puts

@@ -4,10 +4,10 @@ import type { MrState } from '../../api/gen/MrState';
 import type { Stack } from '../../stacks/detect';
 import { mrRef } from '../labels';
 
-/** A branch's newest MR/PR in the tab's target project, any state (`branchMrs` in `deps.ts`, over 4B's `mrForLabel`). */
+/** A branch's newest MR/PR in the tab's target project, any state (`branchMrs` in `deps.ts`, over `mrForLabel`). */
 export type MrOf = (branch: string) => ForgeMr | null;
 
-/** GitLab's native stacks hold at most 20; a longer walk is a loop (Ruling 13). */
+/** GitLab's native stacks hold at most 20; a longer walk is a loop. */
 export const MAX_CHAIN = 20;
 
 export const MR_STATE_WORDS: Record<MrState, string> = { open: 'Open', draft: 'Draft', merged: 'Merged', merging: 'Merging', closed: 'Closed' };
@@ -61,7 +61,7 @@ export function stackEdge(below: ForgeMr, above: ForgeMr, env: StackEnv, member:
 export const stackedEdge = (below: ForgeMr, above: ForgeMr): boolean => below.stacked || above.stacked;
 
 /**
- * The stack through `mr` (spec #4 §4 4D: badges and the MR/PR view show the stack; Ruling 13),
+ * The stack through `mr` (badges and the MR/PR view show the stack),
  * each step a `stackEdge` (shape only: a display, no action follows it; a long-lived branch can read as a stack, and any retarget still needs `stackedEdge`):
  * - down: the MR/PR of each target branch, merged ones included, until the default or the base
  *   branch; a walk that doesn't end on one (an environment or release branch) isn't a stack;
@@ -124,12 +124,12 @@ export interface AfterMerge {
   retarget: boolean;
   /** The local branches to rebase, bottom (`next`'s) → top. */
   branches: string[];
-  /** Drop points, best first: the merged MR's head (exactly what merged), then the merged branch's local tip (the forge rewrote it). Rows at or below the first one found are dropped (Ruling 9). */
+  /** Drop points, best first: the merged MR's head (exactly what merged), then the merged branch's local tip (the forge rewrote it). Rows at or below the first one found are dropped. */
   dropFrom: string[];
 }
 
 /**
- * After the stack `branch` is in had its bottom merged (spec #4 §4 4D, Rulings 8–9), each pair a
+ * After the stack `branch` is in had its bottom merged, each pair a
  * `stackEdge` (a long-lived branch's merged MR, `main → production` or `develop → main`, is none):
  * - an open member's MR/PR targets a merged MR/PR's source branch: retarget, then rebase what's above.
  *   The retarget is a forge write before any confirm, so it also needs stack evidence (`stackedEdge`);
@@ -137,7 +137,7 @@ export interface AfterMerge {
  *   retargeted it already: GitHub from its UI, GitLab's native stacks): rebase only, confirmed and
  *   undoable, so the shape is enough.
  * `null` when neither. It cannot tell a squash-merged bottom that is still local and already handled
- * (the next MR targets the merged one's target and nothing needs rebasing): T8 must dedupe by `merged.number`.
+ * (the next MR targets the merged one's target and nothing needs rebasing): the caller must dedupe by `merged.number`.
  */
 export function afterMerge(branch: string, env: StackEnv): AfterMerge | null {
   const stack = env.stackOf(branch);

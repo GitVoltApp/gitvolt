@@ -1,22 +1,16 @@
-//! A fake GitLab, GitHub and Forgejo for tests (spec #4 §7): the REST subset GitVolt's providers use,
+//! A fake GitLab, GitHub and Forgejo for tests: the REST subset GitVolt's providers use,
 //! answered from a seed, with ETags (a 304 on a match), each forge's rate-limit headers, one-shot
 //! scripted answers (429s, 500s, poll intervals), and a log of requests that records whether a
 //! valid token came, never the token. It runs on its own ephemeral port, so harnesses in several
-//! worktrees never collide. 4B–4D add their routes as match arms in `gitlab::route` and
-//! `github::route`, and their seed fields with `#[serde(default)]`.
+//! worktrees never collide. The MR and PR routes are match arms in `gitlab::route` and
+//! `github::route`, and their seed fields use `#[serde(default)]`.
 
 pub mod forgejo;
 pub mod github;
-// --- 4C T2 ---
 pub mod create;
-// --- end 4C T2 ---
-// --- 4B T4 ---
 pub mod github_pulls;
-// --- end 4B T4 ---
 pub mod gitlab;
-// --- 4B T2 ---
 pub mod gitlab_mrs;
-// --- end 4B T2 ---
 pub mod releases;
 
 use axum::body::Bytes;
@@ -53,10 +47,8 @@ pub fn upload_bytes(file: &str) -> &'static [u8] {
 }
 /// A project upload (`shot.png`): a real 120×80 PNG, so the e2e can check it decodes and shows.
 pub const FAKE_UPLOAD_PNG: &[u8] = b"\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52\x00\x00\x00\x78\x00\x00\x00\x50\x08\x02\x00\x00\x00\x5d\xf9\x26\xde\x00\x00\x00\x82\x49\x44\x41\x54\x78\xda\xed\xd0\x31\x0d\x00\x00\x08\x03\xb0\xf9\xc2\x1d\xa2\xb9\x71\x41\x38\x9a\x54\x41\x53\x3d\x1c\x88\x02\xd1\xa2\x11\x2d\x5a\xb4\x05\xd1\xa2\x11\x2d\x5a\xb4\x05\xd1\xa2\x11\x2d\x5a\x34\xa2\x45\x23\x5a\xb4\x68\x44\x8b\x46\xb4\x68\xd1\x88\x16\x8d\x68\xd1\xa2\x11\x2d\x1a\xd1\xa2\x45\x23\x5a\x34\xa2\x45\x8b\x46\xb4\x68\x44\x8b\x16\x8d\x68\xd1\x88\x16\x2d\x1a\xd1\xa2\x11\x2d\x5a\x34\xa2\x45\x23\x5a\xb4\x68\x44\x8b\x46\xb4\x68\xd1\x88\x16\x8d\x68\xd1\xa2\x11\x2d\x1a\xd1\xa2\x45\x23\x5a\x34\xa2\xff\x58\xa4\xba\xbc\x32\xe5\x57\xae\x37\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82";
-// --- 5A T3 ---
 /// The secret of the default seed's GitLab upload, `group/project/<it>/shot.png`.
 pub const UPLOAD_SECRET: &str = "0123456789abcdef0123456789abcdef";
-// --- end 5A T3 ---
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -98,7 +90,6 @@ pub struct FakeProject {
     pub single_people: bool,
 }
 
-// --- 4C T2 ---
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FakeLabel {
@@ -107,7 +98,6 @@ pub struct FakeLabel {
     pub color: String,
     pub description: Option<String>,
 }
-// --- end 4C T2 ---
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -117,14 +107,11 @@ pub struct GitLabSeed {
     pub projects: Vec<FakeProject>,
     /// Lowercase email → the `avatar_url` `/avatar` answers.
     pub avatars: BTreeMap<String, String>,
-    // --- 4B: merge request seed fields go here ---
-    // --- 4B T2 ---
+    // --- merge request seed fields go here ---
     /// Merge requests of the seed's projects (`gitlab_mrs.rs`).
     pub merge_requests: Vec<gitlab_mrs::FakeMergeRequest>,
     /// Users who appear in merge requests without a token of their own.
     pub users: Vec<FakeUser>,
-    // --- end 4B T2 ---
-    // --- 4C T2 ---
     /// `/members/all`: who can review or be assigned.
     pub members: Vec<FakeUser>,
     pub labels: Vec<FakeLabel>,
@@ -132,22 +119,17 @@ pub struct GitLabSeed {
     pub files: BTreeMap<String, BTreeMap<String, String>>,
     /// Merge requests created through the API, as GitLab answered them.
     pub created: Vec<Value>,
-    // --- end 4C T2 ---
-    // --- 5A T3 ---
     /// Project uploads, "<project path>/<secret>/<file>": PNGs, which the API sends as GitLab
     /// does (an `application/octet-stream` attachment) and the web address as `image/png`.
     pub uploads: Vec<String>,
-    // --- end 5A T3 ---
     /// A GitLab before 17.4: no `GET /projects/:id/uploads/:secret/:filename`.
     pub no_uploads_api: bool,
     /// Uploads need a signed-in session (a private project): their web address redirects to the
     /// sign-in page, token or not.
     pub private_uploads: bool,
-    // --- MR round 2 ---
     /// An older GitLab: GraphQL has neither `allowsMultipleReviewers` / `allowsMultipleAssignees`
     /// nor `mergeRequestRequestChanges`.
     pub old_graphql: bool,
-    // --- end MR round 2 ---
     // --- review comments ---
     /// A GitLab before 16.3: a draft note's `position` is ignored (it becomes a general draft).
     pub drafts_drop_position: bool,
@@ -159,30 +141,24 @@ pub struct GitLabSeed {
 pub struct GitHubSeed {
     pub tokens: Vec<FakeToken>,
     pub repos: Vec<FakeProject>,
-    // --- 4B: pull request seed fields go here ---
-      // --- 4B T4 ---
+    // --- pull request seed fields go here ---
       /// Pull requests of the seed's repositories (`github_pulls.rs`).
       pub pulls: Vec<github_pulls::FakePull>,
       /// Users who appear in pull requests without a token of their own.
       pub users: Vec<FakeUser>,
-      // --- end 4B T4 ---
-      // --- 4C T2 ---
       /// `/assignees`: who can be assigned or asked to review.
       pub assignees: Vec<FakeUser>,
       pub labels: Vec<FakeLabel>,
       pub files: BTreeMap<String, BTreeMap<String, String>>,
       /// Pull requests created through the API, with their reviewers, assignees and labels.
       pub created: Vec<Value>,
-      // --- end 4C T2 ---
     // --- GitHub commit-author avatars ---
     /// Lowercase commit-author email → the account GitHub linked it to (`None`: commits with no
     /// linked account). `/commits?author=` answers one commit for a listed email, none otherwise.
     pub commit_authors: BTreeMap<String, Option<FakeUser>>,
     // --- end GitHub commit-author avatars ---
-    // --- 5A T3 ---
     /// The one valid signature of the fake's signed image URLs (any other is expired: 403).
     pub image_jwt: String,
-    // --- end 5A T3 ---
     /// GitVolt's own releases (the update check): none by default.
     pub releases: Vec<releases::FakeRelease>,
     /// A release download waits this long between 64 KiB chunks (a test sees it downloading).
@@ -264,9 +240,7 @@ pub struct FakeRequest<'a> {
     pub token: Option<FakeToken>,
     pub body: &'a [u8],
     pub base: &'a str,
-    // --- 5A T3 ---
     pub accept: Option<String>,
-    // --- end 5A T3 ---
 }
 
 pub struct Reply {
@@ -412,22 +386,16 @@ pub fn default_seed(base: &str) -> ForgeSeed {
                 project(78, "ada/project", Some("group/project"), "2026-09-01"),
             ],
             avatars: BTreeMap::from([("ada@example.com".to_string(), format!("{base}/gitlab/uploads/ada.png")), ("grace@example.com".to_string(), "https://secure.gravatar.com/avatar/0123".to_string())]),
-            // --- 4B T2 ---
             merge_requests: gitlab_mrs::default_mrs(),
             users: gitlab_mrs::default_users(),
-            // --- end 4B T2 ---
-            // --- 4C T2 ---
             members: create::seed_gitlab_members(base),
             labels: create::seed_gitlab_labels(),
             files: BTreeMap::new(),
             created: Vec::new(),
-            // --- end 4C T2 ---
-            // --- 5A T3 ---
             uploads: ["shot.png", "clip.webm", "screen.mp4", "screen-hevc.mp4"].map(|f| format!("group/project/{UPLOAD_SECRET}/{f}")).to_vec(),
             no_uploads_api: false,
             private_uploads: false,
             old_graphql: false,
-            // --- end 5A T3 ---
             drafts_drop_position: false,
         },
         github: GitHubSeed {
@@ -437,22 +405,16 @@ pub fn default_seed(base: &str) -> ForgeSeed {
                 FakeToken { token: GITHUB_READONLY_TOKEN.into(), user: octocat, scopes: vec!["read:user".into()], fine_grained: false },
             ],
             repos: vec![project(501, "octo-org/widget", None, "2026-10-04"), project(502, "octocat/widget", Some("octo-org/widget"), "2026-10-02")],
-              // --- 4B T4 ---
               pulls: github_pulls::default_pulls(),
               users: github_pulls::default_users(),
-              // --- end 4B T4 ---
-              // --- 4C T2 ---
               assignees: create::seed_github_assignees(base),
               labels: create::seed_github_labels(),
               files: BTreeMap::new(),
               created: Vec::new(),
-              // --- end 4C T2 ---
             // --- GitHub commit-author avatars ---
             commit_authors: github::seed_commit_authors(base),
             // --- end GitHub commit-author avatars ---
-            // --- 5A T3 ---
             image_jwt: "jwt-1".into(),
-            // --- end 5A T3 ---
             releases: Vec::new(),
             download_chunk_delay_ms: 0,
           },
@@ -511,12 +473,10 @@ impl FakeForge {
     pub fn github_avatars(&self) -> String {
         format!("{}/github-avatars", self.base)
     }
-    // --- 5A T3 ---
     /// GitHub's signed `private-user-images` stand-in.
     pub fn github_images(&self) -> String {
         format!("{}/github-images", self.base)
     }
-    // --- end 5A T3 ---
     /// GitHub's release downloads (`<it>/GitVoltApp/gitvolt/releases/download/<tag>/<name>`).
     pub fn github_releases(&self) -> String {
         format!("{}/github-releases", self.base)
@@ -651,7 +611,6 @@ async fn handle(State(s): State<Shared>, method: Method, uri: Uri, headers: Head
     } else if let Some(r) = path.strip_prefix("/github-objects") {
         ("github-objects", r)
     } else if let Some(r) = path.strip_prefix("/github-images") {
-        // --- 5A T3 ---
         ("github-images", r)
     } else if let Some(r) = path.strip_prefix("/github") {
         ("github", r)
@@ -698,7 +657,6 @@ async fn handle(State(s): State<Shared>, method: Method, uri: Uri, headers: Head
         "gitlab" => gitlab::route(&mut st, &req),
         "github" => github::route(&mut st, &req),
         "forgejo" => forgejo::route(&mut st, &req),
-        // --- 5A T3 ---
         "github-images" => github_pulls::image(&st, &req),
         "github-releases" => releases::download(&req),
         _ => github::avatar(&req),

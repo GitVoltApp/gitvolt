@@ -6,7 +6,7 @@ import { useSettingsUi } from './schema';
 import './pages';
 
 /**
- * Settings' registrations (ruling R10: its own module, imported from `app/features.ts`): the
+ * Settings' registrations (its own module, imported from `app/features.ts`): the
  * `file.settings` action (Ctrl+, and the hamburger's File menu), the overlay in the overlay slot,
  * and its pages (`./pages`). The palette's `#` group opens it on one setting with
  * `useSettingsUi.show(id)`.

@@ -1,4 +1,4 @@
-//! The interactive rebase's todo (spec #3 §3.3), built from the editor's plan. Pure: no git and no
+//! The interactive rebase's todo, built from the editor's plan. Pure: no git and no
 //! files. The intent writes `Todo::files` and the todo into the session directory.
 
 use super::types::{ChipAt, ChipPlan, RebaseRowAction as A};
@@ -15,7 +15,7 @@ pub(crate) struct PlannedRow {
     pub message: Option<String>,
     /// The commit's own message (`%B`).
     pub original: String,
-    /// The commit's `%ae %at %s`. The reword script checks HEAD against it (Ruling 3).
+    /// The commit's `%ae %at %s`. The reword script checks HEAD against it.
     pub guard: String,
 }
 
@@ -42,7 +42,7 @@ pub(crate) struct Todo {
     pub text: String,
     /// Written before git runs: (path, contents).
     pub files: Vec<(PathBuf, String)>,
-    /// Edit rows' new messages: original oid → message file, applied at that stop (T4).
+    /// Edit rows' new messages: original oid → message file, applied at that stop.
     pub edit_messages: BTreeMap<String, PathBuf>,
     /// Branches (short) git moves or creates with `update-ref` lines, in todo order.
     pub update_refs: Vec<String>,
@@ -72,14 +72,14 @@ pub(crate) fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
-/// A squash group's default message: the messages, oldest first, separated by blank lines
-/// (spec #3 §3.3). The UI's `mergedMessage` (T8) is the same function.
+/// A squash group's default message: the messages, oldest first, separated by blank lines.
+/// The UI's `mergedMessage` is the same function.
 pub(crate) fn merged(messages: &[&str]) -> String {
     let parts: Vec<String> = messages.iter().map(|m| norm(m)).filter(|m| !m.is_empty()).collect();
     format!("{}\n", parts.join("\n\n"))
 }
 
-/// The reword's exec script (Ruling 3): the amend runs only while HEAD is still the target. A
+/// The reword's exec script: the amend runs only while HEAD is still the target. A
 /// Skip at the target leaves HEAD on the commit before it, which keeps its message.
 fn reword_script(oid: &str, guard: &str, msg: &Path) -> String {
     format!(
@@ -170,7 +170,7 @@ pub(crate) fn build(plan: &TodoPlan) -> Result<Todo, GbError> {
             return Err(invalid(format!("{} is the rebased branch: it stays on the top commit", c.branch)));
         }
         let tip = plan.tips.get(&c.branch);
-        // 3D's Stay: the branch stays where it is, locked or not: no line, never moved.
+        // Stay: the branch stays where it is, locked or not: no line, never moved.
         if c.at == ChipAt::Stay {
             if tip.is_none() {
                 return Err(invalid(format!("{} doesn't exist", c.branch)));
@@ -423,7 +423,7 @@ mod tests {
         assert!(err(vec![chip("b", ChipAt::Row(oid('b'))), chip("b", ChipAt::Delete)], &[]).unwrap_err().contains("two chips"));
     }
 
-    /// 3D's Stay: no line, no delete, locked or not; a branch that doesn't exist is refused.
+    /// Stay: no line, no delete, locked or not; a branch that doesn't exist is refused.
     #[test]
     fn a_stay_chip_gets_no_line() {
         let rows = || vec![row('c', A::Pick), row('b', A::Pick), row('a', A::Pick)];
@@ -459,7 +459,7 @@ mod tests {
         assert_eq!(short(&oid('a')), "aaaaaaa");
     }
 
-    /// Review Focus 3: a guard with a quote, and paths with a space and a quote.
+    /// A guard with a quote, and paths with a space and a quote.
     #[test]
     fn quoting_survives_quotes_and_spaces() {
         assert_eq!(sh_quote("it's a $(x) `y`"), r#"'it'\''s a $(x) `y`'"#);

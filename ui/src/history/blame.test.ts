@@ -3,7 +3,7 @@ import { colorIndex, groupBlame, visibleGroups } from './blame';
 
 const a = 'a'.repeat(40), b = 'b'.repeat(40);
 
-describe('the blame gutter grouping (spec #3 §3.10, §7)', () => {
+describe('the blame gutter grouping', () => {
   it('merges adjacent hunks of one commit into a group, in line order', () => {
     const groups = groupBlame([{ sha: b, start: 4, lines: 1 }, { sha: a, start: 1, lines: 2 }, { sha: a, start: 3, lines: 1 }, { sha: a, start: 5, lines: 3 }]);
     expect(groups).toEqual([{ sha: a, start: 1, lines: 3 }, { sha: b, start: 4, lines: 1 }, { sha: a, start: 5, lines: 3 }]);

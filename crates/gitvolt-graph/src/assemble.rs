@@ -83,7 +83,7 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
         })
         .collect();
     // Lane 0 is the trunk's whenever a pinned ref resolves, even if this window was cut above its
-    // tip: the window then lays out exactly as the prefix of a longer one (spec §8.2).
+    // tip: the window then lays out exactly as the prefix of a longer one.
     let reserve_trunk = !pair.is_empty();
     // Don't report a pinned name whose target isn't actually in the walked window (an invalid
     // override, or a ref whose commit got truncated out): that would show a name with nothing
@@ -92,7 +92,7 @@ pub(crate) fn assemble_with(input: &GraphInput, walked: &WalkResult, decide: imp
     let pinned_refs: Vec<String> = pair.iter().map(|(n, _)| n.clone()).collect();
     let (pinned, pinned_tips) = pinned_chains(commits, &index, &pair.iter().map(|&(_, i)| i).collect::<Vec<_>>());
 
-    // WIP placement (spec §8.6): the open worktree's WIP is "now", row 0, whatever the dates of
+    // WIP placement: the open worktree's WIP is "now", row 0, whatever the dates of
     // the commits below it; every other worktree's WIP docks directly above its HEAD commit,
     // several on one commit stacked by worktree name. A worktree on a branch the preset hides has
     // none: it goes with the branch (the sidebar still lists the worktree).

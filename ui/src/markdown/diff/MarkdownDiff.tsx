@@ -11,20 +11,20 @@ import '../markdown.css';
 
 
 export interface MarkdownDiffProps {
-  /** The old text; `''` for an added file (R6). */
+  /** The old text; `''` for an added file. */
   old: string;
   /** The new text; `''` for a deleted file. */
   new: string;
   flavor: MdFlavor;
   /** The new side: what everything but removed parts resolves against. */
   context: FileMarkdownContext;
-  /** The old side (R9): its commit and path. */
+  /** The old side: its commit and path. */
   oldContext: FileMarkdownContext;
   /** Side by side: the old version on the left, the new on the right, in aligned rows
    * (`splitTree`). Otherwise one column. */
   split?: boolean;
   className?: string;
-  /** R14: the diff gave up (its alignment ran out of time, or the main thread was left with a
+  /** The diff gave up (its alignment ran out of time, or the main thread was left with a
    * text too long for it). Diff View falls back to Source with "Too large to render"; meanwhile
    * the pane shows nothing. Without it, the new text shows as written with that note. */
   onTooLarge?: () => void;
@@ -41,7 +41,7 @@ function TooLarge({ text, className }: { text: string; className: string }) {
   return <><PlainBody text={text} className={className} /><p className="md-error">Too large to render</p></>;
 }
 
-/** A large diff: aligned in the worker, rendered chunk by chunk (5A's `StreamBody`). */
+/** A large diff: aligned in the worker, rendered chunk by chunk (`StreamBody`). */
 function Streamed({ old, neu, flavor, context, oldContext, split, className, onTooLarge }: Inner) {
   const stream = useMemo(() => diffChunkStream(old, neu, flavor), [old, neu, flavor]);
   useSyncExternalStore(stream.subscribe, () => stream.version);
@@ -74,12 +74,12 @@ function Rendered({ old, neu, flavor, context, oldContext, split, className, onT
 }
 
 /**
- * The rendered Markdown diff (5C, R1): `old` and `new` lined up block by block in one column, with
+ * The rendered Markdown diff: `old` and `new` lined up block by block in one column, with
  * the changes marked; or with `split`, side by side in aligned rows (one scroll, no syncing).
- * Switching between them re-renders, without diffing again. It renders through 5A's pipeline (sanitized, React elements, never an HTML
+ * Switching between them re-renders, without diffing again. It renders through the Markdown pipeline (sanitized, React elements, never an HTML
  * string). A small diff renders in the first paint; a large one in the worker, progressively. A
- * failure shows the new text with "Couldn't render" (5A's boundary). Size limits are the caller's
- * (R14: `DiffTextBody`), told of a diff that gave up through `onTooLarge`.
+ * failure shows the new text with "Couldn't render" (the error boundary). Size limits are the caller's
+ * (`DiffTextBody`), told of a diff that gave up through `onTooLarge`.
  */
 export function MarkdownDiff({ old, new: neu, flavor, context, oldContext, split = false, className, onTooLarge }: MarkdownDiffProps): JSX.Element {
   const base = split ? 'md md-diff md-diff-split' : 'md md-diff';

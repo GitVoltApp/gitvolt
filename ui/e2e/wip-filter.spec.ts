@@ -1,7 +1,7 @@
 import { expect, test } from './test';
 import { fileRow, openWip, section } from './wip';
 
-test.describe('UX round 4 R: WIP file lists', () => {
+test.describe('WIP file lists', () => {
   // One repo and page for these (each was a test of its own, paying for a page load and a
   // fixture); none writes.
   test('the header filter narrows Unstaged and Staged at once; Create file… on a folder row prefills "folder/"; Collapse all\'s icon lines up with the section carets', async ({ page }) => {

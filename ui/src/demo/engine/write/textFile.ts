@@ -1,5 +1,5 @@
 // Saving text into a worktree file as the core does (write/files.rs `encode`, `write_atomic`, and the
-// §7.5 checks every save shares): in the file's loaded encoding, BOM and line endings, only over the
+// checks every save shares): in the file's loaded encoding, BOM and line endings, only over the
 // bytes the editor loaded. The browser has no encoder for legacy multi-byte encodings (Shift_JIS,
 // GBK, …): those refuse as text the encoding can't hold; single-byte ones encode through a table
 // built from TextDecoder.

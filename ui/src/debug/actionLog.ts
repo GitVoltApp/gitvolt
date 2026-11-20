@@ -3,7 +3,7 @@ import { api, errorMessage } from '../api/client';
 import { relativeTime, seconds } from '../app/activityLog';
 
 /**
- * The action log (R11, spec §16.2): every action the user ran — through the hamburger, the
+ * The action log: every action the user ran — through the hamburger, the
  * palette, a shortcut or the toolbar (`invoke`) — and every context-menu row (`runMenuRow`, the
  * menu's row-run hook). In memory only, newest last, capped; each one also goes to the log file.
  */

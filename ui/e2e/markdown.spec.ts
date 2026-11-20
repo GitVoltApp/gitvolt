@@ -46,7 +46,7 @@ async function openWithDescription(page: Page, request: Parameters<typeof forgeS
   return badge;
 }
 
-test.describe('rendered Markdown in the MR/PR view (spec #5 §7)', () => {
+test.describe('rendered Markdown in the MR/PR view', () => {
   // One MR and page for these (each was a test of its own, paying for a fixture, a page load and
   // the MR's): a description with an upload and a reference, then a long body; a long code line in
   // a comment; a long title.
@@ -130,7 +130,7 @@ test.describe('rendered Markdown in the MR/PR view (spec #5 §7)', () => {
   });
 });
 
-// --- 5B: File View and navigation ---
+// --- File View and navigation ---
 
 /** A fresh `sync` fixture whose origin is the fake GitLab, with one more commit on main adding
  * `files` (no harness fixture: the files are this spec's own). */
@@ -153,7 +153,7 @@ async function openInFileView(page: Page, summary: string, path: string) {
   await page.getByRole('button', { name: 'File View' }).click();
 }
 
-test.describe('Markdown and navigation history (spec #5 §7, 5B)', () => {
+test.describe('Markdown and navigation history', () => {
   test('a reference opens the other MR, mouse back returns; a relative link opens the other file, Alt+← returns', async ({ page, request }) => {
     const repo = docsRepo({
       'README.md': '# Readme\n\nSee the [guide](docs/guide.md).\n',
@@ -212,7 +212,7 @@ test.describe('Markdown and navigation history (spec #5 §7, 5B)', () => {
     // The big file's diff first, settled, so only File View's work is measured.
     await page.locator('[role="option"][data-path="big.md"]').click();
     await expect(page.getByTestId('diff-path')).toContainText('big.md');
-    // 5C: Diff View now renders big.md's diff (all added) or falls back to Source: let it
+    // Diff View now renders big.md's diff (all added) or falls back to Source: let it
     // settle, so only File View's work is measured.
     const diff = page.getByTestId('markdown-diff');
     const settled = diff.getByRole('heading', { name: 'Section 1', exact: true }).or(page.getByRole('note').filter({ hasText: 'Too large to render' }));
@@ -234,9 +234,9 @@ test.describe('Markdown and navigation history (spec #5 §7, 5B)', () => {
   });
 });
 
-// --- 5C: the rendered Markdown diff ---
+// --- the rendered Markdown diff ---
 
-test.describe('the rendered Markdown diff (5C)', () => {
+test.describe('the rendered Markdown diff', () => {
   test('a commit that edits a .md shows its changes rendered: heading and words, an added item, code lines, diagrams side by side', async ({ page }) => {
     const v1 = '# Setup guide\n\nRun the tool once to warm the cache.\n\n- install\n- configure\n\n```ts\nconst port = 8080;\n```\n\n```mermaid\ngraph TD\n  A-->B\n```\n'
       // An unchanged appendix: the pane scrolls, for the overview ruler.
@@ -257,7 +257,7 @@ test.describe('the rendered Markdown diff (5C)', () => {
     await page.getByRole('row').filter({ hasText: 'Edit guide' }).first().click();
     await page.locator('[role="option"][data-path="guide.md"]').click();
 
-    // Rendered by default (R2): one column with the changes marked.
+    // Rendered by default: one column with the changes marked.
     const md = page.getByTestId('markdown-diff');
     await expect(page.getByRole('group', { name: 'Markdown view' }).getByRole('button', { name: 'Rendered' })).toHaveAttribute('aria-pressed', 'true');
     const heading = md.getByRole('heading', { level: 1 });

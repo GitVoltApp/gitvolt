@@ -76,7 +76,7 @@ describe('an auth prompt that opens over another dialog', () => {
     expect(useAbout.getState().open).toBe(false);
   });
 
-  it('a dialog that re-renders with a new inline close stays under the prompt (final re-review N1)', () => {
+  it('a dialog that re-renders with a new inline close stays under the prompt', () => {
     const closed = vi.fn();
     function Busy({ tick }: { tick: number }) {
       const ref = useModalKeys<HTMLDivElement>(true, () => closed(tick));

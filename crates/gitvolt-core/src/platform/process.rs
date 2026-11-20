@@ -144,7 +144,7 @@ mod imp {
         path.is_file() && nix::unistd::access(path, nix::unistd::AccessFlags::X_OK).is_ok()
     }
 
-    /// The leader's pid, which is the group's id. Accepted risk (1C review M7): if the leader was
+    /// The leader's pid, which is the group's id. Accepted risk: if the leader was
     /// already reaped, its pid could in theory be reused and `killpg` would hit a stranger's
     /// group. The window is tiny (we kill on timeout/cancel while the child is still ours,
     /// before `wait` reaps it, and a zombie leader keeps its pid and group alive), so no extra

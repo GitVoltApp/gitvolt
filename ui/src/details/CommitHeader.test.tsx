@@ -47,7 +47,7 @@ describe('commit header', () => {
     expect(screen.getByTestId('signature-badge')).toHaveAttribute('data-kind', 'unsigned');
   });
 
-  it('K5: the signature and hashes row is the open file\'s bar box, its divider below it', async () => {
+  it('the signature and hashes row is the open file\'s bar box, its divider below it', async () => {
     renderView();
     const ids = (await screen.findByTestId('details-sha')).closest('.commit-ids');
     expect(ids).toHaveClass('panel-bar');
@@ -73,7 +73,7 @@ describe('commit header', () => {
     expect(screen.getByRole('button', { name: 'Open !42' })).toBeInTheDocument();
   });
 
-  it('hovering the author or the committer shows their full "Name <email>" (F14)', async () => {
+  it('hovering the author or the committer shows their full "Name <email>"', async () => {
     renderView();
     const author = await screen.findByTestId('author');
     const name = within(author).getByText('Grace Hopper');
@@ -86,9 +86,9 @@ describe('commit header', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent(/^Ada Lovelace <ada@example\.com>$/);
   });
 
-  // F15, with the review fix: the committed date is primary and first; when the committer is a
+  // The committed date is primary and first; when the committer is a
   // different person it sits on their row, so it can't be read as the author's.
-  it('same person: the committed date first, the author date below it, dimmer, only when it differs (F15)', async () => {
+  it('same person: the committed date first, the author date below it, dimmer, only when it differs', async () => {
     const same = { ...details, committer: { ...details.author, time: details.author.time + 60 } };
     renderView(same);
     const author = await screen.findByTestId('author');
@@ -101,7 +101,7 @@ describe('commit header', () => {
     expect(screen.queryByTestId('committer')).toBeNull();
   });
 
-  it('shows one date when the author and commit dates are the same (F15)', async () => {
+  it('shows one date when the author and commit dates are the same', async () => {
     renderView({ ...details, committer: { ...details.author } });
     const author = await screen.findByTestId('author');
     expect(within(author).getByTestId('commit-date')).toHaveTextContent(formatDate(details.author.time));
@@ -124,10 +124,10 @@ describe('commit header', () => {
     expect(within(screen.getByTestId('author')).queryByTestId('author-date')).toBeNull();
   });
 
-  it('the top row is signature icon, SHA, parents: a justified three-part row (F16)', async () => {
+  it('the top row is signature icon, SHA, parents: a justified three-part row', async () => {
     renderView();
     const sha = await screen.findByTestId('details-sha');
-    const row = sha.parentElement!.parentElement!; // .commit-id, in the row (H11)
+    const row = sha.parentElement!.parentElement!; // .commit-id, in the row
     expect(row).toHaveClass('commit-ids');
     expect([...row.children].map((c) => c.className)).toEqual(['commit-ids-start', 'commit-id', 'parents']);
     const badge = within(row.children[0] as HTMLElement).getByTestId('signature-badge');
@@ -137,7 +137,7 @@ describe('commit header', () => {
     expect(within(row.children[2] as HTMLElement).getByTestId('parent-sha')).toHaveTextContent(B.slice(0, 6));
   });
 
-  it('labels the hashes "commit:" and "parent:" (H11)', async () => {
+  it('labels the hashes "commit:" and "parent:"', async () => {
     renderView();
     const sha = await screen.findByTestId('details-sha');
     const id = sha.parentElement!;
@@ -153,7 +153,7 @@ describe('commit header', () => {
     expect(screen.getAllByTestId('parent-sha')[0].parentElement!.querySelector('.id-label')).toHaveTextContent(/^parents:$/);
   });
 
-  it('the parent hash says "Go to parent commit" at once, and the SHA "Copy full SHA" (H11)', async () => {
+  it('the parent hash says "Go to parent commit" at once, and the SHA "Copy full SHA"', async () => {
     renderView();
     const parent = await screen.findByTestId('parent-sha');
     expect(parent).not.toHaveAttribute('title');
@@ -169,7 +169,7 @@ describe('commit header', () => {
     expect(sha).toHaveAccessibleDescription('Copy full SHA');
   });
 
-  it('the message sits in its own darker box (H11)', async () => {
+  it('the message sits in its own darker box', async () => {
     renderView();
     await screen.findByTestId('details-sha');
     expect(screen.getByTestId('commit-message')).toHaveClass('message-box');

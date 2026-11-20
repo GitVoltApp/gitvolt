@@ -22,7 +22,7 @@ type Row = { kind: string; id: string; disabledReason?: string; run: () => void 
 const rows = () => buildMenu('file', target as never, {} as never).filter((r) => r.kind === 'action') as unknown as Row[];
 const conflictRows = () => rows().filter((r) => ['file.takeCurrent', 'file.takeIncoming', 'file.markResolved'].includes(r.id));
 
-describe("a Conflicted row's resolutions while the merge tool holds work (2D final I1)", () => {
+describe("a Conflicted row's resolutions while the merge tool holds work", () => {
   beforeEach(() => {
     resolveFile.mockClear();
     markResolved.mockClear();

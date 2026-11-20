@@ -12,7 +12,7 @@ const { CommandLogView, commandLine, filterCommands, isReadCommand, subcommandOf
 const e = (id: number, args: string[], exitCode: number | null, stderr = ''): CommandLogEntry => ({ id, args, cwd: '/r', startedMs: 1_767_225_600_000 + id, durationMs: id, exitCode, ok: exitCode === 0, stderr });
 const entries = [e(1, ['status'], 0), e(2, ['fetch', '--all'], 128, 'fatal: Authentication failed'), e(3, ['log', '--format=%H %s'], 0)];
 
-describe('the Commands tab (R10)', () => {
+describe('the Commands tab', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     commandLog.mockReset();

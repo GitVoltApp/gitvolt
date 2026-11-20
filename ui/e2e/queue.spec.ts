@@ -7,7 +7,7 @@ const sleep = (label: string, ms: number, fail = false) => ({ op: 'sleep' as con
 // The queue's own rules (click order, remove, cancel, resume, clear, the fixture-only guard) are
 // the core's tests (write/queue.rs, api.rs), and the chip's menu is QueueChip.test.tsx: here, one
 // pass over the wiring between them (the queueChanged event, a menu row's request).
-test.describe('action queue (spec #2 §3.6)', () => {
+test.describe('action queue', () => {
   test('the chip shows what runs and what waits; Remove takes a queued item out; a failure stops the rest until Resume', async ({ page, request }) => {
     const repo = freshFixture('basic');
     await page.goto(openUrl(repo));
@@ -35,8 +35,7 @@ test.describe('action queue (spec #2 §3.6)', () => {
   });
 });
 
-// --- 2D T17 ---
-test('a push in flight is not queued again: the Push button is busy and takes no second click (spec #2 §3.6)', async ({ page }) => {
+test('a push in flight is not queued again: the Push button is busy and takes no second click', async ({ page }) => {
   const repo = freshFixture('sync');
   git(repo, 'switch', '-q', 'dev');
   git(repo, 'commit', '-q', '--allow-empty', '-m', 'dev more');
@@ -54,4 +53,3 @@ test('a push in flight is not queued again: the Push button is busy and takes no
   await expect(push).not.toHaveAttribute('aria-busy', 'true');
   expect(originGit(repo, 'rev-parse', 'dev')).toBe(git(repo, 'rev-parse', 'dev'));
 });
-// --- end 2D T17 ---

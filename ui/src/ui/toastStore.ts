@@ -4,7 +4,7 @@ import { create } from 'zustand';
 export interface ToastAction { label: string; run(): void }
 export interface ToastOptions {
   action?: ToastAction;
-  /** More links, after `action` (R12: a failed action's Retry/Copy and Details). */
+  /** More links, after `action` (a failed action's Retry/Copy and Details). */
   actions?: ToastAction[];
   /** Stays until dismissed (with a ×), no timer. */
   sticky?: boolean;

@@ -39,7 +39,7 @@ export class Boundary extends Component<{ text: string; className: string; child
 
 const oldKey = (old: MarkdownContext | undefined) => (old ? contextKey(old) : '');
 
-/** A small or cached body, rendered whole in the first paint. `old` (5C): a rendered diff's old
+/** A small or cached body, rendered whole in the first paint. `old`: a rendered diff's old
  * side, which its removed parts resolve against; `split`: the diff side by side. */
 export function Whole({ tree, context, old, split = false, className }: { tree: Root; context: MarkdownContext; old?: MarkdownContext; split?: boolean; className: string }) {
   const ctxKey = contextKey(context);
@@ -64,9 +64,9 @@ const Chunk = memo(function Chunk({ tree, context, old, split = false, pxPerChar
   return <div className="md-chunk" data-chars={chars} style={{ containIntrinsicSize: `auto ${height}px` }}>{body}</div>;
 }, (a, b) => a.tree === b.tree && contextKey(a.context) === contextKey(b.context) && oldKey(a.old) === oldKey(b.old) && a.split === b.split && a.pxPerChar === b.pxPerChar);
 
-/** A large body (ruling 21) as `stream` brings it: one more chunk per idle callback. Its text (or
+/** A large body as `stream` brings it: one more chunk per idle callback. Its text (or
  * "Rendering…") holds the place until the first chunk; "Rendering…" follows the last rendered
- * chunk until the end. Shared by `<Markdown>` and (5C) `<MarkdownDiff>`. */
+ * chunk until the end. Shared by `<Markdown>` and `<MarkdownDiff>`. */
 export function StreamBody({ stream, text, context, old, split, className }: { stream: ChunkStream; text: string; context: MarkdownContext; old?: MarkdownContext; split?: boolean; className: string }) {
   useSyncExternalStore(stream.subscribe, () => stream.version);
   const [count, setCount] = useState(0);
@@ -123,7 +123,7 @@ function Rendered({ text, flavor, context, className }: { text: string; flavor: 
   return <Progressive key={`${flavor}\0${fm ? 1 : 0}\0${text}`} text={text} flavor={flavor} context={context} className={className} />;
 }
 
-/** Rendered Markdown (spec §3.1): plain text over `maxBytes`; a body that fails shows as plain
+/** Rendered Markdown: plain text over `maxBytes`; a body that fails shows as plain
  * text with "Couldn't render", alone. */
 export function Markdown({ text, flavor, context, maxBytes = DEFAULT_MAX_BYTES, className }: MarkdownProps): JSX.Element {
   const cls = className ? `md ${className}` : 'md';

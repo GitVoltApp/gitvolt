@@ -30,7 +30,7 @@ function Overlay() {
   );
 }
 
-/** The perf overlay (the Debug modal's toggle, spec §16.2): fps over the last 500 ms and the last
+/** The perf overlay (the Debug modal's toggle): fps over the last 500 ms and the last
  * 50 backend calls with their times. Clicks pass through it, except its Close (top right). Mounted only while it's on, so the
  * frame loop costs nothing otherwise. */
 export function PerfOverlay() {

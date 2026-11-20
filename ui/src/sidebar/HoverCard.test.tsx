@@ -24,7 +24,7 @@ const branch = (name: string): SideItem => ({
 /** Two rAFs: the hover card's own one-frame delay, then one more so its `.then` has run. */
 const nextFrame = () => act(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
-describe('HoverCard lastPush request coalescing (fix round 1, item 7)', () => {
+describe('HoverCard lastPush request coalescing', () => {
   it('hovering the same branch twice makes one request', async () => {
     const { unmount } = render(<HoverCard item={branch('main')} repoId={1} top={0} left={0} />);
     await nextFrame();
@@ -47,7 +47,7 @@ describe('HoverCard lastPush request coalescing (fix round 1, item 7)', () => {
   });
 });
 
-describe('HoverCard on a tag (UX round 3, M.2)', () => {
+describe('HoverCard on a tag', () => {
   const tag = (annotation?: TagItem['annotation']): SideItem => ({
     key: 'refs/tags/v1.0', kind: 'tag', name: 'v1.0', target: 'f'.repeat(40), time: 10,
     tag: { name: 'v1.0', fullName: 'refs/tags/v1.0', target: 'f'.repeat(40), time: 10, ...(annotation && { annotation }) },

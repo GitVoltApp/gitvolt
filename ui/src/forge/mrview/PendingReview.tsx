@@ -17,7 +17,7 @@ import { openNoteFile } from './openNote';
 const excerpt = (body: string): string => body.split('\n').map((l) => l.trim()).find((l) => l !== '') ?? '';
 
 /**
- * Your pending review (spec 2026-10-08 §4), in the MR/PR view under its header while the tab's
+ * Your pending review, in the MR/PR view under its header while the tab's
  * review session has one on this MR/PR (`session`): a box with what's pending, open without
  * Review…. Each pending comment on a line of the diff is one row, its `file:line` opening the file
  * at that line (as a thread's does); those on no line of the diff are cards to read, edit or

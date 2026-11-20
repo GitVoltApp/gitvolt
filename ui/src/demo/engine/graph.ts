@@ -5,7 +5,7 @@ import { gunzipIfNeeded } from './bundle';
 import { gbError } from './errors';
 import type { GraphFactory } from './layout';
 
-// Gzipped at build time: GitHub Pages doesn't compress .wasm (spec §5.3).
+// Gzipped at build time: GitHub Pages doesn't compress .wasm.
 const WASM_URL = new URL('../wasm/gitvolt_graph_wasm_bg.wasm.gz', import.meta.url);
 
 /** `bytes`: the .wasm (tests read it from disk); fetched next to this module otherwise. */

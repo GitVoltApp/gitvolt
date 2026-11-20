@@ -26,7 +26,7 @@ describe('mergeTexts', () => {
     expect(merge('a\nk1\nm\nk2\nd\n', 'A\nk1\nM\nk2\nD\n', 'X\nk1\nM\nk2\nY\n', 'diff3')).toEqual({ text: '<<<<<<< ours\nA\n||||||| base\na\n=======\nX\n>>>>>>> theirs\nk1\nM\nk2\n<<<<<<< ours\nD\n||||||| base\nd\n=======\nY\n>>>>>>> theirs\n', conflicts: 2 });
   });
 
-  it("a side's last line without a newline ends before the marker (Review Focus 4)", () => {
+  it("a side's last line without a newline ends before the marker", () => {
     expect(merge('1\n2', '1\nO', '1\nT')).toEqual({ text: '1\n<<<<<<< ours\nO\n=======\nT\n>>>>>>> theirs\n', conflicts: 1 });
     expect(merge('1\n2\n', '1\n2', '1\n2\n3\n').conflicts).toBe(1);
   });

@@ -1,4 +1,4 @@
-//! Every file in a commit's tree ("View all files", spec §9.3; the palette's `/` files, §11.2).
+//! Every file in a commit's tree ("View all files"; the palette's `/` files).
 
 use crate::details::read_commit;
 use crate::error::{gix_err, GbError};
@@ -20,7 +20,7 @@ pub fn tree_files(repo: &gix::Repository, commit: ObjectId) -> Result<Vec<String
     Ok(paths)
 }
 
-/// UX G.2: the worktree's tracked files ("View all files" on the WIP row): its index's paths,
+/// The worktree's tracked files ("View all files" on the WIP row): its index's paths,
 /// sorted bytewise, each once (a conflicted path's stages are one), submodules left out (there's
 /// no file to show). Untracked files are the WIP sections' own.
 pub fn worktree_files(root: &std::path::Path) -> Result<Vec<String>, GbError> {

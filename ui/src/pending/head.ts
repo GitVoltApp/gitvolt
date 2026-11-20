@@ -18,7 +18,7 @@ interface HeadMoves {
 }
 
 /**
- * The action queue runs writes in click order (spec #2 §3.6), and the graph shows HEAD only once
+ * The action queue runs writes in click order, and the graph shows HEAD only once
  * they ran. What the user queues next is for HEAD as every write before it leaves it: the menus,
  * double-click, the toolbar's Push and Pull and the palette read `predictedHeadOf`, which folds
  * each queued or running checkout and reset into the graph's HEAD. Writes whose result isn't known

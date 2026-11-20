@@ -9,11 +9,11 @@ export const COMMIT_QUEUED = 'Commit queued';
 export const DISCARDING = 'Discarding…';
 
 interface StagingStore {
-  /** The staging undo log's state (spec #2 §7.6), from every write's answer (`applyResult`). */
+  /** The staging undo log's state, from every write's answer (`applyResult`). */
   states: Record<string, StagingUndoState>;
-  /** A commit for the worktree is queued or running: staging and discards wait (§3.6). */
+  /** A commit for the worktree is queued or running: staging and discards wait. */
   committing: Record<string, boolean>;
-  /** UX R1 C.2: a Discard all of the worktree is running: another waits for its answer. */
+  /** A Discard all of the worktree is running: another waits for its answer. */
   discarding: Record<string, boolean>;
   /** The paths a file, folder or hunk Discard of the worktree is running on. Another Discard of
    * any of them waits for its answer: sent meanwhile, it found nothing left and failed. */

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GraphPayload } from '../../api/gen/GraphPayload';
 import type { ReviewAnchor } from '../../api/gen/ReviewAnchor';
 
-// Plan 2's cards and box: here, where they show and what they're given.
+// The review cards and comment box: here, where they show and what they're given.
 vi.mock('./ThreadCard', () => ({ ThreadCard: ({ thread, outdated }: { thread: { id: string }; outdated: boolean }) => <div data-testid="card">{thread.id}{outdated ? ' (outdated)' : ''}</div> }));
 vi.mock('./DraftCard', () => ({ DraftCard: ({ draft }: { draft: { id: string } }) => <div data-testid="card">{draft.id}</div> }));
 vi.mock('./CommentBox', () => ({
@@ -94,7 +94,7 @@ beforeEach(() => {
   review();
 });
 
-describe('the rendered diff in review mode (spec 2026-10-08 §3)', () => {
+describe('the rendered diff in review mode', () => {
   it('shows each thread and draft under the block holding its line', async () => {
     show();
     await screen.findAllByTestId('card');

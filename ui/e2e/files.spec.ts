@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import { fixtures, harnessHttp, openUrl } from './fixtures';
 
-// Diff prefs persist in localStorage (plan 1B amendment 3). Every test starts with an empty
+// Diff prefs persist in localStorage. Every test starts with an empty
 // localStorage (e2e/test.ts), so from the default (Inline).
 
 async function selectRow(page: Page, text: string) {
@@ -25,7 +25,7 @@ test.describe('file list and diff takeover', () => {
   // start-up); they run in an order where each starts from what it needs: the commit selected
   // once, the list mode and View all files left as the step before set them unless a step says.
   test('Path mode: the header and its counts, row tooltips and their placement, row height; a merge picks its parent', async ({ page }) => {
-    await test.step('the header counts changes; a rename shows its new path, the old one on hover (H22)', async () => {
+    await test.step('the header counts changes; a rename shows its new path, the old one on hover', async () => {
       await selectRow(page, 'Rename guide and update assets');
       await expect(page.getByTestId('file-counts')).toHaveAccessibleName('6 modified · 2 added · 1 deleted · 1 renamed');
       await expect(page.getByTestId('file-totals')).toContainText('+');
@@ -36,7 +36,7 @@ test.describe('file list and diff takeover', () => {
       await expect(fileRow(page, 'logo.png').locator('.file-stats')).toHaveText('binary');
       await expect(page.getByRole('tooltip')).toHaveText('logo.png');
     });
-    await test.step('J15: a rename\'s tooltip dims the parts both paths share', async () => {
+    await test.step('a rename\'s tooltip dims the parts both paths share', async () => {
       await fileRow(page, 'docs/manual.txt').hover();
       const lines = page.getByRole('tooltip').getByTestId('rename-paths').locator(':scope > *');
       await expect(lines).toHaveText(['docs/guide.txt', '↓', 'docs/manual.txt']);
@@ -47,7 +47,7 @@ test.describe('file list and diff takeover', () => {
         await expect(lines.nth(i).locator('.rename-common').first()).toHaveCSS('color', 'rgba(255, 255, 255, 0.6)');
       }
     });
-    await test.step('J18: a row\'s tooltip opens left of the file list, centred on the row, clear of the rows around it', async () => {
+    await test.step('a row\'s tooltip opens left of the file list, centred on the row, clear of the rows around it', async () => {
       const list = (await page.locator('.file-list').boundingBox())!;
       for (const path of ['docs/manual.txt', 'logo.png']) {
         const row = fileRow(page, path);
@@ -70,7 +70,7 @@ test.describe('file list and diff takeover', () => {
       await expect(page.getByTestId('file-totals').locator('.added')).toHaveCSS('color', 'rgb(92, 184, 92)');
       await expect(fileRow(page, 'src/app.php').getByRole('img', { name: 'Modified' })).toBeVisible();
     });
-    await test.step("file rows are the density preset's height (--file-row-h, H1)", async () => {
+    await test.step("file rows are the density preset's height (--file-row-h)", async () => {
       const rowH = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--file-row-h'));
       expect(rowH).toBe('26px');
       const rows = page.getByRole('listbox', { name: 'Changed files' }).getByRole('option');
@@ -85,7 +85,7 @@ test.describe('file list and diff takeover', () => {
       await page.getByRole('button', { name: 'vs 2nd parent' }).click();
       await expect(page.getByTestId('file-counts')).toHaveAccessibleName('6 modified · 2 added · 1 deleted · 1 renamed');
     });
-    await test.step('J18: in a window too narrow for it on the left, a row\'s tooltip goes below the row', async () => {
+    await test.step('in a window too narrow for it on the left, a row\'s tooltip goes below the row', async () => {
       await selectRow(page, 'Rename guide and update assets');
       // The details panel keeps its 280 px minimum: 80 px are left of it, too few for the tooltip.
       // The sidebar goes to its 40 px icon strip (Ctrl+B) so that's the center's room, not its own.
@@ -104,7 +104,7 @@ test.describe('file list and diff takeover', () => {
   });
 
   test('Tree mode: tooltips, no text selection, the smart Expand/Collapse button, folder counts, quick clicks, opening and closing, the arrows', async ({ page }) => {
-    await test.step('tree mode shows a rename by its new name; every row\'s tooltip has its full path, a rename old ↓ new (H22)', async () => {
+    await test.step('tree mode shows a rename by its new name; every row\'s tooltip has its full path, a rename old ↓ new', async () => {
       await selectRow(page, 'Rename guide and update assets');
       await listMode(page, 'Tree').click();
       const renamed = fileRow(page, 'docs/manual.txt');
@@ -145,7 +145,7 @@ test.describe('file list and diff takeover', () => {
       await page.evaluate(() => window.__gb!.setFileScopes([]));
       await expect(docs).not.toHaveAttribute('data-tinted');
     });
-    await test.step('J9: a double-click or a drag in the file panel selects no text; tooltips still show', async () => {
+    await test.step('a double-click or a drag in the file panel selects no text; tooltips still show', async () => {
       await listMode(page, 'Tree').click();
       const selection = () => page.evaluate(() => window.getSelection()?.toString() ?? '');
       for (const el of [fileRow(page, 'src/app.php').locator('.file-name'), fileRow(page, 'docs').locator('.file-name'), page.getByTestId('file-totals')]) {
@@ -176,7 +176,7 @@ test.describe('file list and diff takeover', () => {
       expect(smart!.x).toBeLessThan(tree!.x);
       expect(Math.abs(tree!.x + tree!.width / 2 - (bar!.x + bar!.width / 2))).toBeLessThan(2);
       expect(all!.x + all!.width).toBeGreaterThan(bar!.x + bar!.width - 16);
-      // Alignment (F17), measured: the file's icon starts where its folder's name starts.
+      // Alignment, measured: the file's icon starts where its folder's name starts.
       const folderName = await fileRow(page, 'docs').locator('.file-name').boundingBox();
       const icon = await fileRow(page, 'docs/manual.txt').locator('svg.status-icon').boundingBox();
       expect(Math.abs(icon!.x - folderName!.x)).toBeLessThan(0.5);
@@ -200,7 +200,7 @@ test.describe('file list and diff takeover', () => {
       await expect(fileRow(page, 'docs')).toHaveAttribute('aria-expanded', 'true');
       await expect(fileRow(page, 'docs/manual.txt')).toBeVisible();
     });
-    await test.step('a collapsed folder\'s counts follow its name; Expand/Collapse\'s icon ink sits 8 px in (H16, H17)', async () => {
+    await test.step('a collapsed folder\'s counts follow its name; Expand/Collapse\'s icon ink sits 8 px in', async () => {
       await listMode(page, 'Tree').click();
       await fileRow(page, 'docs').click();
       const [name, counts, row] = await Promise.all([
@@ -210,7 +210,7 @@ test.describe('file list and diff takeover', () => {
       ]);
       expect(counts!.x - (name!.x + name!.width)).toBeCloseTo(6, 0);
       expect(row!.x + row!.width - (counts!.x + counts!.width)).toBeGreaterThan(40);
-      // H17: the chevrons' ink (not their box) is as far from the border as the text is from the
+      // The chevrons' ink (not their box) is as far from the border as the text is from the
       // other side.
       const button = page.getByRole('toolbar', { name: 'File list options' }).getByRole('button', { name: 'Expand all' });
       const gaps = await button.evaluate((b) => {
@@ -225,7 +225,7 @@ test.describe('file list and diff takeover', () => {
       // The path boxes exclude the 1 px stroke's outer half.
       expect(Math.abs(gaps.left - 0.5 - gaps.right)).toBeLessThan(1);
     });
-    await test.step('K2, K3: quick clicks each count, the second of a double-click too (a file opens and closes, a folder toggles back)', async () => {
+    await test.step('quick clicks each count, the second of a double-click too (a file opens and closes, a folder toggles back)', async () => {
       // Every folder expanded, as a first switch to Tree shows them.
       await page.getByRole('toolbar', { name: 'File list options' }).getByRole('button', { name: 'Expand all' }).click();
       await expect(page.getByRole('toolbar', { name: 'File list options' }).getByRole('button', { name: 'Collapse all' })).toBeVisible();
@@ -246,7 +246,7 @@ test.describe('file list and diff takeover', () => {
       await expect(docs).toHaveAttribute('aria-expanded', 'false');
       await expect(fileRow(page, 'docs/manual.txt')).toHaveCount(0);
     });
-    await test.step('rows and folders show a pointer cursor; clicking the open file closes it (H5, H5b)', async () => {
+    await test.step('rows and folders show a pointer cursor; clicking the open file closes it', async () => {
       await expect(fileRow(page, 'src/app.php')).toHaveCSS('cursor', 'pointer');
       await listMode(page, 'Tree').click();
       await expect(fileRow(page, 'docs')).toHaveCSS('cursor', 'pointer');
@@ -277,7 +277,7 @@ test.describe('file list and diff takeover', () => {
       await expect(fileRow(page, 'src/app.php')).toHaveAttribute('aria-selected', 'false');
       await expect(page.getByRole('tree', { name: 'Changed files' })).toBeFocused();
     });
-    await test.step('J2, J3: the arrows walk the files from the graph and back, skipping folder rows (Tree mode)', async () => {
+    await test.step('the arrows walk the files from the graph and back, skipping folder rows (Tree mode)', async () => {
       // The open file closed first (its diff hides the graph and its rows).
       await page.getByRole('region', { name: 'Diff' }).getByRole('button', { name: 'Close diff' }).click();
       await expect(page.getByRole('region', { name: 'Diff' })).toHaveCount(0);
@@ -306,7 +306,7 @@ test.describe('file list and diff takeover', () => {
       for (const f of files.slice(1)) {
         await page.keyboard.press('ArrowDown');
         await expect(fileRow(page, f)).toHaveAttribute('aria-selected', 'true');
-        // The header follows once the editor shows the file (F24): allow for a slow diff.
+        // The header follows once the editor shows the file: allow for a slow diff.
         await expect(path).toContainText(f.split('/').pop()!, { timeout: 15_000 });
       }
       await page.keyboard.press('Home');
@@ -336,12 +336,12 @@ test.describe('file list and diff takeover', () => {
       await fileRow(page, 'utf16.txt').click();
       await expect(page.getByTestId('diff-encoding')).toHaveText('UTF-16LE');
     });
-    await test.step('K4: ↓ on the last file wraps to the first, and ↑ on the first wraps to the last, in View all files', async () => {
+    await test.step('↓ on the last file wraps to the first, and ↑ on the first wraps to the last, in View all files', async () => {
       await expect(page.getByRole('option')).toHaveCount(12);
       const list = page.getByRole('listbox', { name: 'Changed files' });
       await list.focus();
       // Path order: big.txt … ws.txt (last). The row's own selected state (not the diff panel's
-      // breadcrumb, which a separate, pre-existing kept-panel bug — K7, Lane R's — can leave
+      // breadcrumb, which a separate, pre-existing kept-panel bug can leave
       // showing a stale path when a file already open elsewhere in this sequence reopens) is what
       // this checks: the file list's own navigation and highlight.
       await page.keyboard.press('End');
@@ -351,14 +351,14 @@ test.describe('file list and diff takeover', () => {
       await page.keyboard.press('ArrowUp');
       await expect(fileRow(page, 'ws.txt')).toHaveAttribute('aria-selected', 'true'); // wraps back to the last
     });
-    await test.step('K19: Previous/Next changed file jump to the nearest changed file, skipping unchanged rows, and wrap', async () => {
+    await test.step('Previous/Next changed file jump to the nearest changed file, skipping unchanged rows, and wrap', async () => {
       await expect(page.getByRole('option')).toHaveCount(12);
       const next = page.getByRole('button', { name: 'Next changed file' });
       const prev = page.getByRole('button', { name: 'Previous changed file' });
       const selected = () => page.getByRole('option', { selected: true });
       // Path order: … icon.svg, latin1.txt (unchanged), logo.png, … : Next from icon.svg skips it.
       // Checked via the row's own selected state, not the diff panel's breadcrumb: a separate,
-      // pre-existing kept-panel bug (K7, Lane R's) can leave that showing a stale path when a file
+      // pre-existing kept-panel bug can leave that showing a stale path when a file
       // already open earlier in this sequence reopens; the file list's own state is unaffected.
       await fileRow(page, 'icon.svg').click();
       await next.click();
@@ -372,7 +372,7 @@ test.describe('file list and diff takeover', () => {
       await prev.click();
       await expect(selected()).toHaveAttribute('data-path', 'ws.txt');
     });
-    await test.step('K1: a right-click always opens the file menu: just after a wheel scroll, again and again, on other rows, over a tooltip', async () => {
+    await test.step('a right-click always opens the file menu: just after a wheel scroll, again and again, on other rows, over a tooltip', async () => {
       // The open file closed first (its diff hides the graph and its rows).
       await page.getByRole('region', { name: 'Diff' }).getByRole('button', { name: 'Close diff' }).click();
       await expect(page.getByRole('region', { name: 'Diff' })).toHaveCount(0);
@@ -437,7 +437,7 @@ test.describe('file list and diff takeover', () => {
       await page.keyboard.press('Escape');
       await expect(menu).toBeHidden();
     });
-    await test.step('K18-K20: the View all files filter narrows and highlights, its X re-centres the selection, and Esc clears it first', async () => {
+    await test.step('the View all files filter narrows and highlights, its X re-centres the selection, and Esc clears it first', async () => {
       // The pointer off the list first: a row's tooltip would take the first Esc (the key router's
       // tooltip layer). The status bar's empty middle has none.
       const off = (await page.locator('.sb-spacer').boundingBox())!;
@@ -475,14 +475,14 @@ test.describe('file list and diff takeover', () => {
       expect(centring.target).toBeGreaterThan(0);
       expect(centring.off).toBeLessThan(centring.rowH);
       // Esc with nothing to clear, focus still in the (empty) filter: the app's Esc as usual
-      // (K18-K20's text-input rule), closing the open file — not a no-op, as a plain text input's
+      // (the text-input rule), closing the open file — not a no-op, as a plain text input's
       // Esc otherwise would be.
       await expect(page.getByRole('region', { name: 'Diff' })).toBeVisible();
       await filter.focus();
       await page.keyboard.press('Escape');
       await expect(page.getByRole('region', { name: 'Diff' })).toHaveCount(0);
     });
-    // What a reload remembers (Path/Tree and the sort, not View all files, H31): fileListPrefs.test.ts.
+    // What a reload remembers (Path/Tree and the sort, not View all files): fileListPrefs.test.ts.
   });
 
   test('opening files: the Shiki-highlighted Inline diff, the file menu and Open in, the toolbar Open in for a WIP file, Enter and → from the graph', async ({ page, request, browserName }) => {
@@ -535,7 +535,7 @@ test.describe('file list and diff takeover', () => {
       await page.mouse.move(v.x + v.width - 10, v.y + v.height / 2);
       await expect(sub).toHaveCount(0);
     });
-    await test.step('right-click a file: the file menu copies its paths; Open in ▸ launches the picked opener (spec §7, H9)', async () => {
+    await test.step('right-click a file: the file menu copies its paths; Open in ▸ launches the picked opener', async () => {
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('context-menu')).toBeHidden();
       const launches = async () => (await (await request.get(`${harnessHttp}/launches`)).json()) as { program: string; args: string[] }[];
@@ -551,7 +551,7 @@ test.describe('file list and diff takeover', () => {
       const menu = page.getByTestId('context-menu');
       await expect(menu).toBeVisible();
       // At the pointer: its top-left there, or, when it wouldn't fit below, shifted up just enough
-      // (its bottom 4 px off the window's), so its first rows stay by the pointer. 3A's rows make
+      // (its bottom 4 px off the window's), so its first rows stay by the pointer. Its rows make
       // it too tall to fit under this row at 720 px.
       const m = (await menu.boundingBox())!;
       const vh = page.viewportSize()!.height;
@@ -564,7 +564,7 @@ test.describe('file list and diff takeover', () => {
       const opened = await page.evaluate(() => window.__gbMenuLatency!);
       expect(opened).toBeGreaterThanOrEqual(0);
       expect(opened).toBeLessThan(2000);
-      // 3A (spec #3 §3.8, §4.2): Restore from this commit first, File history and Blame, then Create file… (UX round 3 O.1).
+      // Restore from this commit first, File history and Blame, then Create file….
       await expect(menu.locator('[data-depth="0"] > [role="menuitem"] .ctx-label')).toHaveText(['Restore from this commit', 'Colour *.php files…', 'Colour folder src/…', 'Copy path', 'Forge link', 'Open in', 'View', 'File history', 'Blame', 'Create file…']);
       await expect(page.getByRole('region', { name: 'Diff' })).toHaveCount(0);
       // Every row's tooltip shows at once.
@@ -587,14 +587,14 @@ test.describe('file list and diff takeover', () => {
       await page.keyboard.press('Enter');
       await expect(menu).toBeHidden();
       await expect.poll(async () => (await launches()).length).toBe(before + 1);
-      // A commit's file opens as a read-only copy of that version (spec §14.5), under its path.
+      // A commit's file opens as a read-only copy of that version, under its path.
       const phpstorm = (await launches()).at(-1)!;
       expect(phpstorm.program).toBe('/fake/bin/phpstorm');
       const file = phpstorm.args[0];
       expect(file).toMatch(/\/[0-9a-f]{12}\/src\/app\.php$/);
       expect(statSync(file).mode & 0o777).toBe(0o444);
       expect(readFileSync(file, 'utf8')).toBe(execFileSync('git', ['-C', fixtures.details, 'show', 'HEAD^1:src/app.php'], { encoding: 'utf8' }));
-      // The last opener remembered, Show in Files and Other… (H32): FileList.menu.test.tsx and
+      // The last opener remembered, Show in Files and Other…: FileList.menu.test.tsx and
       // builders.test.ts, the launches themselves the core's openers tests.
       // Escape closes the menu and gives the list its focus back.
       await row.click({ button: 'right' });
@@ -610,7 +610,7 @@ test.describe('file list and diff takeover', () => {
       await sub.getByRole('menuitem', { name: 'Open in VS Code' }).click();
       await expect.poll(async () => (await launches()).length).toBe(before + 2);
       expect((await launches()).at(-1)).toEqual({ program: '/fake/bin/code', args: [`${fixtures.details}/notes.txt`] });
-      // View (K58) opens the diff in the center; its File variant opens the whole file.
+      // View opens the diff in the center; its File variant opens the whole file.
       await unstaged.getByRole('option').and(page.locator('[data-path="docs/manual.txt"]')).click({ button: 'right' });
       await menu.getByRole('menuitem', { name: 'View' }).click();
       await expect(page.getByRole('region', { name: 'Diff' }).getByTestId('diff-path')).toContainText('manual.txt');
@@ -619,7 +619,7 @@ test.describe('file list and diff takeover', () => {
       await menu.locator('.ctx-variant[data-variant-id="file"]').click();
       await expect(page.getByTestId('file-view')).toBeVisible();
     });
-    await test.step("the diff toolbar's Open in…, at its far left, opens the working-tree file at the first change (H9, J1)", async () => {
+    await test.step("the diff toolbar's Open in…, at its far left, opens the working-tree file at the first change", async () => {
       // The open file closed first (its diff hides the graph and its rows).
       await page.getByRole('region', { name: 'Diff' }).getByRole('button', { name: 'Close diff' }).click();
       await expect(page.getByRole('region', { name: 'Diff' })).toHaveCount(0);
@@ -638,7 +638,7 @@ test.describe('file list and diff takeover', () => {
       expect(g!.x + g!.width).toBeLessThan(views!.x);
       await expect(group.getByRole('button', { name: 'Open in VS Code' })).toBeVisible();
       await group.getByRole('button', { name: 'More ways to open' }).click();
-      // The dropdown is the shared context menu (Amendment 11), not a bespoke popup.
+      // The dropdown is the shared context menu, not a bespoke popup.
       await expect(page.getByTestId('context-menu')).toBeVisible();
       await page.getByRole('menu', { name: 'Open in' }).getByRole('menuitem', { name: 'Open in PhpStorm' }).click();
       await expect.poll(async () => (await launches()).length).toBe(before + 1);
@@ -650,7 +650,7 @@ test.describe('file list and diff takeover', () => {
       await expect(group.getByRole('button', { name: 'Open in PhpStorm' })).toBeVisible();
       await expect(page.getByRole('region', { name: 'Diff' })).toBeVisible();
     });
-    await test.step('× closes the diff; Enter in the graph opens the first file, and so does → (J2)', async () => {
+    await test.step('× closes the diff; Enter in the graph opens the first file, and so does →', async () => {
       // The open file closed first (its diff hides the graph and its rows).
       await page.getByRole('region', { name: 'Diff' }).getByRole('button', { name: 'Close diff' }).click();
       await expect(page.getByRole('region', { name: 'Diff' })).toHaveCount(0);

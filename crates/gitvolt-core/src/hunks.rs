@@ -1,4 +1,4 @@
-//! A WIP file's hunks, from git (spec #2 §7.3): the hunk and line buttons sit at what gets
+//! A WIP file's hunks, from git: the hunk and line buttons sit at what gets
 //! applied, never at Monaco's own diff. Read-only, with the never-write environment.
 
 use crate::blob::{check_relative, safe_join, worktree_id};
@@ -16,7 +16,7 @@ pub struct Hunk {
     pub old_lines: u32,
     pub new_start: u32,
     pub new_lines: u32,
-    /// The old-side numbers of its `-` lines (Deviation 2).
+    /// The old-side numbers of its `-` lines.
     pub del: Vec<u32>,
     /// The new-side numbers of its `+` lines.
     pub add: Vec<u32>,
@@ -259,7 +259,7 @@ mod tests {
         assert_eq!(h.refused.as_deref(), Some(crate::write::patch::BINARY));
     }
 
-    /// Review I2: a folder's diff has one section per file; its hunks are never offered.
+    /// A folder's diff has one section per file; its hunks are never offered.
     #[tokio::test]
     async fn a_folder_path_is_refused() {
         let r = repo();
@@ -279,7 +279,7 @@ mod tests {
         assert_eq!(wip_hunks(&cli(), r.path(), "nowhere.txt", false).await.unwrap_err().kind, GbErrorKind::NotFound);
     }
 
-    /// Review I2: a file replaced by a symlink is a delete section and an add section.
+    /// A file replaced by a symlink is a delete section and an add section.
     #[cfg(unix)] // symlinks (Windows: privileges, and core.symlinks=false there)
     #[tokio::test]
     async fn a_typechange_is_refused() {
@@ -297,7 +297,7 @@ mod tests {
         assert_eq!((h.hunks.len(), h.refused.as_deref()), (0, typechange), "{h:?}");
     }
 
-    /// Review I3: a symlink's target and a submodule's commit are whole-file changes only.
+    /// A symlink's target and a submodule's commit are whole-file changes only.
     #[cfg(unix)] // symlinks (Windows: privileges, and core.symlinks=false there)
     #[tokio::test]
     async fn symlinks_and_submodules_are_refused() {
@@ -357,7 +357,7 @@ mod tests {
         }
     }
 
-    /// Review m6: past the cap, no diff is read and no hunks are offered.
+    /// Past the cap, no diff is read and no hunks are offered.
     #[tokio::test]
     async fn a_file_past_the_cap_is_too_large() {
         let r = repo();
@@ -366,7 +366,7 @@ mod tests {
         assert_eq!((h.hunks.len(), h.refused.as_deref()), (0, Some(TOO_LARGE)));
     }
 
-    /// Review m2: exit 1 is also how `--no-index` fails; that's an error, not an empty diff.
+    /// Exit 1 is also how `--no-index` fails; that's an error, not an empty diff.
     #[tokio::test]
     async fn a_no_index_failure_is_an_error() {
         let r = repo();

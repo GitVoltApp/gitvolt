@@ -6,7 +6,7 @@ const B = '1b2c3d4e-0000-4000-8000-00000000000b';
 const att = (u: string) => `https://github.com/user-attachments/assets/${u}`;
 const signed = (n: number, u: string) => `https://private-user-images.githubusercontent.com/583231/${n}-${u}.png?jwt=eyJ.x.y`;
 
-describe('GitHub’s signed attachment URLs (spec #5 §4.2)', () => {
+describe('GitHub’s signed attachment URLs', () => {
   it('maps each attachment to the signed URL carrying its id', () => {
     const body = `![a](${att(A)})\n\n![b](${att(B)})\n\nagain ![a](${att(A)})`;
     const html = `<p><a href="${signed(2, B)}"><img src="${signed(2, B)}"></a><a href="${signed(1, A)}"><img src="${signed(1, A)}"></a></p>`;

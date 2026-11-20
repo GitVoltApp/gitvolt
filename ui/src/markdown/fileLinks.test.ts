@@ -59,7 +59,7 @@ beforeEach(() => {
 
 const ctx = (path = 'README.md') => ({ kind: 'file' as const, tabId: 't', commit: A, path });
 
-describe('relative links (spec #5 §4.1)', () => {
+describe('relative links', () => {
   it('are registered with the renderer', () => {
     expect(registeredLinks).toEqual([openFileLink]);
     expect(registeredImages).toEqual([loadRepoImage]);
@@ -104,7 +104,7 @@ describe('relative links (spec #5 §4.1)', () => {
   });
 });
 
-describe('relative images (spec #5 §4.2)', () => {
+describe('relative images', () => {
   it('read a raster image at the commit once, as an object URL', async () => {
     expect(await loadRepoImage(ctx(), 'docs/img/logo.png', A)).toBe('blob:1');
     expect(await loadRepoImage(ctx(), 'docs/img/logo.png', A)).toBe('blob:1');

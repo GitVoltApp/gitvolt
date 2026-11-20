@@ -1,4 +1,4 @@
-// The methods a browser can't run (spec §4.3): each says what the visitor tried, and changes
+// The methods a browser can't run: each says what the visitor tried, and changes
 // nothing.
 import type { NotInDemoMethod } from '../coverage';
 import { notInDemo } from '../engine/errors';

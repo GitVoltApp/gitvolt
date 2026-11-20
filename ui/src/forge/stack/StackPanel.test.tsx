@@ -44,7 +44,7 @@ const tab = (head: string, inProgress: string | null = null) => useRuntime.getSt
   sidebar: { locals: [lb('feature/a'), lb('feature/b'), lb('feature/c')], remotes: [], worktrees: [], stashes: [], tags: [], submodules: {} },
 } as never);
 
-describe('the stack in the hover card and the MR/PR view (spec #4 §4 4D)', () => {
+describe('the stack in the hover card and the MR/PR view', () => {
   beforeEach(() => {
     openMrView.mockReset();
     stk.s = null;

@@ -24,7 +24,7 @@ export function useCommitJump(tabId: string): CommitJump {
     inGraph: (sha) => index.has(sha),
     open: (sha) => {
       if (!index.has(sha)) return;
-      // Recorded before the jump, so the view being left saves its scroll (as a SHA link does, 5B).
+      // Recorded before the jump, so the view being left saves its scroll (as a SHA link does).
       recordPlace(tabId, { kind: 'commit', sha });
       selectCommit(tabId, sha, { focus: true });
     },

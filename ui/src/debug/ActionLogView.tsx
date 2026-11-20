@@ -3,7 +3,7 @@ import { copyAndSay } from '../app/activityLog';
 import { actionEntryText, actionLogText, useActionLog } from './actionLog';
 import { DebugCheck, DebugRow } from './DebugRow';
 
-/** The Debug modal's Actions tab (R11): what the user ran, newest first, one row each; a failure's
+/** The Debug modal's Actions tab: what the user ran, newest first, one row each; a failure's
  * error is its expanded part, open by default. */
 export function ActionLogView() {
   const entries = useActionLog((s) => s.entries);

@@ -19,7 +19,7 @@ const useSsh = (remotes: SshOffer[]): GbError => ({ kind: 'Cancelled', message: 
 const denied: GbError = { kind: 'AuthFailed', message: 'git@gitlab.example.com: Permission denied (publickey).', commandId: 7, stderr: null };
 const pushed = { outcome: 'pushed', journal: {}, staging: {}, wip: null };
 
-describe('Use SSH instead (spec §5.4)', () => {
+describe('Use SSH instead', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     toasted.calls = [];

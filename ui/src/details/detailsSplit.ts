@@ -1,5 +1,5 @@
 /**
- * The details panel's split between the header+message and the file list (feedback F13): the
+ * The details panel's split between the header+message and the file list: the
  * top section's share of the panel's height.
  *
  * - `default`: about 25 % top, 75 % file list; `min`/`max` bound the ratio itself.

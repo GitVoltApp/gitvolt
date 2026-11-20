@@ -4,7 +4,7 @@ import type { RepoCtx } from '../app/repoContext';
 import type { MenuRow } from '../menu/types';
 
 /**
- * A toolbar button, by action id (ruling R10): the action (`registerActions`) gives it its icon,
+ * A toolbar button, by action id: the action (`registerActions`) gives it its icon,
  * tooltip, shortcut and what it runs, so each feature adds its button from its own module (Search
  * with find, Actions with the palette) and nobody edits `Toolbar.tsx`. A button whose action isn't
  * registered doesn't render (no placeholder UI).
@@ -12,7 +12,7 @@ import type { MenuRow } from '../menu/types';
 export type ToolbarPlacement = 'center' | 'end';
 
 /** What a button shows for its tab right now, when that's more than its action says: the
- * undo tooltip and its disabled reason (spec #2 §5.5). */
+ * undo tooltip and its disabled reason. */
 export interface ButtonView {
   /** The action's (with its shortcut) when left out. */
   tooltip?: string;
@@ -25,7 +25,7 @@ export interface ButtonView {
   pressed?: boolean;
 }
 
-/** A split button's default picker (spec #2 §12.1): a heading over radio rows. Picking sets the
+/** A split button's default picker: a heading over radio rows. Picking sets the
  * default and closes; it runs nothing. */
 export interface ToolbarPicker {
   title: string;
@@ -53,11 +53,11 @@ export interface ToolbarButton {
   /** The caret's rows, built from the snapshot when it opens (Push's upstream rows). */
   menuRows?: (ctx: RepoCtx) => MenuRow[];
   /** Awaited before the caret's menu opens (`menuRows` then reads what it loaded): the Undo
-   * dropdown's rows come from their own read, not from every journal state (UX Y review 3). */
+   * dropdown's rows come from their own read, not from every journal state. */
   prepareMenu?: (ctx: RepoCtx) => Promise<void>;
   /** A hook: true while what the button starts is running for this tab (a spinner; disabled). */
   useBusy?: (ctx: RepoCtx) => boolean;
-  /** A hook: an op this button starts waits in the queue (spec #2 §3.6): a small badge. */
+  /** A hook: an op this button starts waits in the queue: a small badge. */
   useQueued?: (ctx: RepoCtx) => boolean;
   /** A hook: the button's tooltip and whether it's disabled, for this tab (`null`: the action's).
    * A disabled view stays hoverable, so its reason shows. */

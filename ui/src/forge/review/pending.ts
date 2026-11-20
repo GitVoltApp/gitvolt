@@ -6,7 +6,7 @@ import { mrRef } from '../labels';
 import type { ReviewSession } from '../mrStore';
 import { discardReview } from './session';
 
-/** A review is pending in the session (spec 2026-10-08 §4): drafts, or GitHub's pending review. */
+/** A review is pending in the session: drafts, or GitHub's pending review. */
 export const isPending = (s: ReviewSession | null): s is ReviewSession => !!s && (s.drafts.length > 0 || s.pendingReview !== null);
 
 /** "3 pending", or "review pending" (GitHub's pending review with no comment yet): the top bar's

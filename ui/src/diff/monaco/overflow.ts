@@ -1,5 +1,5 @@
 /**
- * UX round 2 G.1: the one layer, on `<body>`, where every editor's overflowing widgets draw:
+ * The one layer, on `<body>`, where every editor's overflowing widgets draw:
  * hovers, the "Cannot edit in read-only editor" message, the suggest list. Inside the editor
  * they're clipped by its box (`.text-diff`'s `overflow: hidden`), so a message above line 1 hid
  * under the file bar; and `position: fixed` alone isn't enough, since the diff panel is a size

@@ -10,7 +10,7 @@ vi.mock('../api/client', () => ({ api, errorMessage: (e: unknown) => (e instance
 const { About, useAbout } = await import('./About');
 const { useUpdates, resetUpdatesForTest } = await import('../updates/store');
 
-describe('About: focus trap (fix round 1)', () => {
+describe('About: focus trap', () => {
   afterEach(() => { useAbout.setState({ open: false }); });
 
   it('focuses Close on open, and returns focus to the opener on close (toggled, not remounted)', () => {

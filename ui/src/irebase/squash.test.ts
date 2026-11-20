@@ -17,7 +17,7 @@ vi.mock('../ui/ConfirmDialog', async (orig) => ({ ...(await orig<typeof import('
 const ok = { outcome: { status: 'done', commits: 3, fastForward: false }, journal: { undo: null, redo: null }, staging: {}, wip: null };
 afterEach(() => { vi.clearAllMocks(); setOrigin(null); });
 
-describe('multi-select Squash (spec #3 §2)', () => {
+describe('multi-select Squash', () => {
   it('runs directly: the selection gathered above the oldest, squashed into it, messages merged oldest first', async () => {
     rebasePlan.mockResolvedValue(plan({ chips: [] }));
     interactiveRebase.mockResolvedValue(ok);

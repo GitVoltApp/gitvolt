@@ -25,14 +25,14 @@ import { usePublishTableStatus } from '../table/tableStatus';
 import type { DiffTarget } from '../repo/store';
 
 /**
- * Diff View's text body (5C). Every text diff sits in the same box (`.file-source`, as File View's
+ * Diff View's text body. Every text diff sits in the same box (`.file-source`, as File View's
  * `FileBody`), so moving between a Markdown file and another never re-attaches the editor. For a
- * Markdown file (`markdown`: its sides' commits), the app-wide `markdownView` (R2) shows the
- * rendered diff in the editor's place while Rendered. The editor stays attached, hidden (R8): a
+ * Markdown file (`markdown`: its sides' commits), the app-wide `markdownView` shows the
+ * rendered diff in the editor's place while Rendered. The editor stays attached, hidden: a
  * WIP file's unsaved edits stay in it (Ctrl+S saves them) and Rendered shows them; editing
  * happens in Source only. `after`: what follows the editor in Source only (a WIP diff's hunk
  * actions). Over 5 MB a side, a diff over 2 s, or one that gave up (its alignment ran out of time,
- * at any size), it's Source with "Too large to render" (R14), and the file stays in Source.
+ * at any size), it's Source with "Too large to render", and the file stays in Source.
  * An HTML file (`markdown` holds its sides' commits too) shows its old and new pages side by side
  * (`HtmlDiff`), static and sandboxed; `target`: the diff shown, for which sides it has and its
  * Open in browser. A CSV or TSV file (`table`) shows its table diff the same way, lined up by row;
@@ -111,11 +111,11 @@ export function DiffTextBody({ identity, path, oldPath, original, modified, lang
   }, [away]);
   const pane = useRef<HTMLDivElement>(null);
   // The pane as state too: `RenderedReview` inside it reads it in its own effects, which run
-  // before a parent's ref is set (review comments, spec 2026-10-08 §3).
+  // before a parent's ref is set (review comments).
   const [paneEl, setPaneEl] = useState<HTMLDivElement | null>(null);
   const paneRef = useCallback((el: HTMLDivElement | null) => { pane.current = el; setPaneEl(el); }, []);
   // Another file's diff starts at its top: the pane stays mounted from file to file. The rendered
-  // diff isn't a navigation place (R15), so no back/forward scroll restore relies on it; the same
+  // diff isn't a navigation place, so no back/forward scroll restore relies on it; the same
   // file shown again (a refresh, an edit) keeps its place.
   const paneFile = useRef(identity);
   useLayoutEffect(() => {
@@ -137,9 +137,9 @@ export function DiffTextBody({ identity, path, oldPath, original, modified, lang
     if (!pane.current) return;
     return line ? holdLine(pane.current, line) : holdFirstChange(pane.current);
   }, [rendered, html, identity, line]);
-  // R3: Previous/Next change (and F7) step through the rendered changes.
+  // Previous/Next change (and F7) step through the rendered changes.
   useEffect(() => (rendered && !html ? setChangeStepper((dir) => { if (pane.current) stepChange(pane.current, dir); }) : undefined), [rendered, html]);
-  // The diff mode applies (5C): Split shows it side by side, unless the pane is too narrow.
+  // The diff mode applies: Split shows it side by side, unless the pane is too narrow.
   const splitPicked = useDiffPrefs((s) => s.prefs.mode === 'split');
   const fontPx = useEditorFontPx();
   const readingPx = useReadingFontPx();

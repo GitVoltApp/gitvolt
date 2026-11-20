@@ -15,7 +15,7 @@ vi.mock('./PushUpstreamPanel', () => ({ askPushTarget: () => target() }));
 const main: LocalBranch = { name: 'main', fullName: 'refs/heads/main', target: 'a'.repeat(40), upstream: 'origin/main', ahead: 1, behind: 0, gone: false, tipTime: 0, summary: '', author: '', isHead: true, worktree: null, checkedOut: null, pushTarget: 'origin/main', pushBehind: 3, rewritten: null };
 const ctx = { tabId: 't', repoId: 1, worktree: '/r' };
 
-describe('push (spec #2 §12.3)', () => {
+describe('push', () => {
   beforeEach(() => { vi.restoreAllMocks(); useToast.getState().dismiss(); });
 
   it('the tooltip names the target', () => {
@@ -44,7 +44,7 @@ describe('push (spec #2 §12.3)', () => {
     expect(pushTooltip({ ...main, pushTarget: null }, 'main', 'up').tooltip).toBe('Push main to up and track it');
   });
 
-  it('a rejection is a choice: Pull first, then Force push, which arms (board G)', async () => {
+  it('a rejection is a choice: Pull first, then Force push, which arms', async () => {
     pushHooks.pull = vi.fn();
     vi.spyOn(api, 'push').mockRejectedValue({ kind: 'NonFastForward', message: 'rejected', commandId: 4, stderr: null });
     ask.mockResolvedValueOnce({ choice: 'pull' });
@@ -93,7 +93,7 @@ describe('push (spec #2 §12.3)', () => {
     useRuntime.setState({ tabs: {} } as never);
   });
 
-  it('a branch rewritten since its last push says Push forces with the lease (spec #2 §12.3)', () => {
+  it('a branch rewritten since its last push says Push forces with the lease', () => {
     const rebased = { ...main, rewritten: { kind: 'rebase' as const, remote: 'origin' } };
     expect(pushTooltip(rebased, 'main').tooltip).toBe('Push (force with lease: rebased, replaces 3 commits on origin)');
     expect(pushLabel({ ...main, rewritten: { kind: 'amend', remote: 'origin' }, pushBehind: 1 })).toBe('Push (force with lease: amended, replaces 1 commit on origin)');
@@ -137,7 +137,6 @@ describe('push (spec #2 §12.3)', () => {
   });
 });
 
-// --- 4C T9 ---
 it("a push that created the remote branch adds the hook's link; a later push doesn't", () => {
   const link = { label: 'Create MR', run: vi.fn() };
   pushHooks.afterNewBranch = vi.fn(() => link);
@@ -149,4 +148,3 @@ it("a push that created the remote branch adds the hook's link; a later push doe
   pushHooks.afterNewBranch = null;
   expect(afterPushActions('t', { ...main, pushTarget: null }, false, 'origin')).toEqual([]);
 });
-// --- end 4C T9 ---

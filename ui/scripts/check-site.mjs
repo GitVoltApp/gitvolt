@@ -16,7 +16,7 @@
 //   the rev of its bytes (ui/build/demoDataRev.ts), the manifest's own rev is compiled into the
 //   demo's code, and the WebAssembly has a hashed name.
 // - <img> outside the demo has a width and height (no layout shift).
-// - Sizes: the bundles (spec §4.5), the demo's code at gzip size (Pages gzips text), binaries Pages
+// - Sizes: the bundles, the demo's code at gzip size (Pages gzips text), binaries Pages
 //   sends uncompressed, each image, and the site outside the demo.
 // - No text file holds the build machine's checkout path.
 //
@@ -33,14 +33,14 @@ import { gzipSync } from 'node:zlib';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const BUDGETS = {
-  bundles: 15_000_000, // all the demo's data bundles (spec §4.5)
-  demoCode: 9_100_000, // the demo's code at gzip size: the app's UI (6.1 MB, measured 2026-10-13) + 3 MB (spec §4.5)
+  bundles: 15_000_000, // all the demo's data bundles
+  demoCode: 9_100_000, // the demo's code at gzip size: the app's UI (6.1 MB, measured 2026-10-13) + 3 MB
   rawBinaries: 1_000_000, // binaries Pages sends as they are (pdf.js's WebAssembly, Monaco's icon font)
   image: 500_000, // each image outside the demo
   site: 10_000_000, // everything outside the demo
 };
 
-// What Pages gzips on the fly (spec §5.3, checked 2026-10-12); everything else goes as it is.
+// What Pages gzips on the fly (checked 2026-10-12); everything else goes as it is.
 const TEXT = new Set(['.html', '.css', '.js', '.mjs', '.json', '.svg', '.txt', '.xml', '.webmanifest']);
 const IMAGES = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.svg', '.ico']);
 // Elements and the attributes through which they load something.

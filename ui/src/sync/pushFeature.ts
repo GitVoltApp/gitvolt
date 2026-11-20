@@ -18,7 +18,7 @@ import { branchOf, defaultRemote, forcePush, headBranchOf, nothingToPush, pushBr
 import { PushUpstreamPanel } from './PushUpstreamPanel';
 
 
-/** The Push ▾ rows (spec #2 §12.3), built from the snapshot when the caret opens. */
+/** The Push ▾ rows, built from the snapshot when the caret opens. */
 function pushMenuRows({ tabId }: RepoCtx): MenuRow[] {
   const ctx = writeCtx(tabId);
   const b = branchOf(tabId, headBranchOf(tabId));

@@ -1,6 +1,6 @@
-// The autostash (journal/autostash.rs, spec #2 §6): only on overlap, `stash push -u`, restored with
+// The autostash (journal/autostash.rs): only on overlap, `stash push -u`, restored with
 // `apply --index`, never without a banner. No Stop or Interrupted reasons: nothing can stop a demo
-// write midway, and nothing survives a reload. Not here: the 2C `With` rule (what a move sweeps away
+// write midway, and nothing survives a reload. Not here: the `With` rule (what a move sweeps away
 // with a folder), since the demo's moves refuse a folder in the way of a file rather than sweep it.
 import { compareBytewise, isBinaryHead, latin1 } from '../read/bytes';
 import { mergeBaseOf } from '../read/revs';
@@ -16,7 +16,7 @@ import type { WriteWt } from './seam';
 import { applyStash, binaryAmong, dropStash, patchEntry, pushInTheWay, pushStash, repositoryInTheWay, stashList } from './stash';
 import { dirty } from './status';
 
-/** §6.1's table (`AutostashRule`): `overlap` checkout, fast-forward, Switch and Rewind (only when a
+/** The autostash table (`AutostashRule`): `overlap` checkout, fast-forward, Switch and Rewind (only when a
  *  dirty path is touched); `anyTracked` any tracked change, or an untracked one touched; `merged` that
  *  for a merge of the target into HEAD (touched against their merge); `rebased` that for a rebase
  *  (git checks the target out first, so an untracked path HEAD→target changes counts too);
@@ -41,7 +41,7 @@ export interface AutostashSpec {
 export interface AutostashPlan {
   message: string;
   target: string | null;
-  /** Paths whose restore is predicted to conflict (§6.2): non-empty asks first. */
+  /** Paths whose restore is predicted to conflict: non-empty asks first. */
   conflicts: string[];
   /** Only these (`paths`); null: the whole worktree. */
   pathspec: string[] | null;
@@ -166,7 +166,7 @@ export async function saveAutostash(cx: WriteCx, plan: AutostashPlan, label: str
   return { id, oid: s.oid, message: plan.message, label, target: plan.target };
 }
 
-/** §6.3: `git stash apply [--index] <oid>`. Clean: dropped. Content conflicts: the files land in
+/** `git stash apply [--index] <oid>`. Clean: dropped. Content conflicts: the files land in
  *  Conflicted, and the stash is kept. git refused: nothing changed, kept. An untracked file of the
  *  stash in the way is checked first, whatever else happened: the stash holds its only copy. */
 export async function restoreAutostash(cx: WriteCx, oid: string, message: string, withIndex: boolean): Promise<Applied> {
@@ -234,7 +234,7 @@ export function settleAutostash(cx: WriteCx, st: Stashed, a: Applied): void {
   else j.keep({ oid: st.oid, message: st.message, label: st.label, target: st.target, reason, createdMs: cx.ctx.clock.nowMs() });
 }
 
-/** Step 8 for a merge stopped on conflicts: its autostash waits for Commit or Abort (§13.2). */
+/** Step 8 for a merge stopped on conflicts: its autostash waits for Commit or Abort. */
 export function keepPaused(cx: WriteCx, st: Stashed): void {
   const k = cx.journal.keptById(st.id);
   if (k) k.reason = { status: 'paused' };

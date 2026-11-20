@@ -1,8 +1,8 @@
-//! Gravatar avatars with a disk cache (spec §14.3): `<dir>/<sha256(email)>.<ext>` plus
+//! Gravatar avatars with a disk cache: `<dir>/<sha256(email)>.<ext>` plus
 //! `<dir>/index.json` recording when each key was fetched. Found avatars stay fresh for 7 days,
 //! "not found" answers for 1 day. Network errors are never cached.
 //!
-//! Privacy (plan 1B amendment 6): a request carries only the SHA-256 key in its URL and the
+//! Privacy: a request carries only the SHA-256 key in its URL and the
 //! generic `USER_AGENT`; never the email itself.
 //!
 //! The same cache, in `<dir>/github/`, serves GitHub's public picture for the user id of a
@@ -26,13 +26,13 @@ pub const MISSING_TTL_SECS: i64 = 24 * 3600;
 pub const DEFAULT_BASE_URL: &str = "https://gravatar.com/avatar";
 /// GitHub's avatar host: `/u/<id>` is a user's picture, public and without an account.
 pub const GITHUB_AVATARS_URL: &str = "https://avatars.githubusercontent.com";
-/// Generic on purpose (amendment 6): identifies the app and version, nothing about the user.
+/// Generic on purpose: identifies the app and version, nothing about the user.
 pub const USER_AGENT: &str = concat!("GitVolt/", env!("CARGO_PKG_VERSION"));
 const MAX_AVATAR_BYTES: u64 = 1024 * 1024;
 const PARALLEL_REQUESTS: usize = 4;
-/// Index entries older than this are dropped (with their image) when the index loads (minor #9).
+/// Index entries older than this are dropped (with their image) when the index loads.
 pub const PRUNE_AFTER_SECS: i64 = 30 * 24 * 3600;
-/// After a connect or timeout error, no further requests for this long (minor #8): a dropped
+/// After a connect or timeout error, no further requests for this long: a dropped
 /// network would otherwise make each of the graph's avatars wait the full timeout in turn.
 pub const NETWORK_BACKOFF: Duration = Duration::from_secs(3 * 60);
 
@@ -96,8 +96,8 @@ pub(crate) fn image_ext(content_type: &str, bytes: &[u8]) -> Option<&'static str
     }
 }
 
-/// Creates the cache directory (and parents) owner-only, and tightens one that already exists
-/// (minor #9): the index lists which hashed authors the user browsed.
+/// Creates the cache directory (and parents) owner-only, and tightens one that already exists:
+/// the index lists which hashed authors the user browsed.
 pub(crate) fn ensure_private_dir(dir: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
@@ -137,7 +137,7 @@ pub struct GravatarCache {
     base_url: String,
     agent: ureq::Agent,
     index: Mutex<Option<HashMap<String, IndexEntry>>>,
-    /// While set and in the future, network requests are skipped (minor #8).
+    /// While set and in the future, network requests are skipped.
     backoff_until: Mutex<Option<Instant>>,
     backoff: Duration,
 }
@@ -307,7 +307,7 @@ impl Gravatar {
 }
 
 impl AvatarProvider for Gravatar {
-    /// The "Gravatar on/off" setting (spec §14.1).
+    /// The "Gravatar on/off" setting.
     fn set_enabled(&self, on: bool) {
         self.enabled.store(on, Ordering::Relaxed);
     }
@@ -372,7 +372,7 @@ mod tests {
             }
             head.push_str(&header);
         }
-        // Amendment 6: a generic User-Agent, never anything personal. A failed assertion drops
+        // A generic User-Agent, never anything personal. A failed assertion drops
         // the connection, so the client side of the test fails too.
         assert_eq!(agent.as_deref(), Some(EXPECTED_UA), "{head}");
         assert!(!head.contains('@'), "no email in the request: {head}");
@@ -457,7 +457,7 @@ mod tests {
         assert!(!dir.path().join("index.json").exists());
     }
 
-    /// Amendment 6 (F10): the only identifying data sent is the SHA-256 key in the URL, and the
+    /// The only identifying data sent is the SHA-256 key in the URL, and the
     /// User-Agent is the generic `GitVolt/<version>`.
     #[test]
     fn sends_only_the_hash_and_a_generic_user_agent() {

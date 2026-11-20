@@ -6,8 +6,8 @@ import { PanelErrorBoundary } from '../errors/PanelErrorBoundary';
 import type { DiffTarget, RepoViewStore, SelectionSnapshot } from './store';
 
 /**
- * Views that take the graph's place in a tab's center panel (spec #3 §4.2 File History; §4.1's
- * interactive rebase editor, plan 3C, registers the same way). A feature registers its view at
+ * Views that take the graph's place in a tab's center panel (File History; the
+ * interactive rebase editor registers the same way). A feature registers its view at
  * import time; anything opens it in a tab with props. The later of a view and a file is on top
  * (`centerViewOnTop`): a view opened over a file (the diff toolbar's History) hides it, kept
  * underneath (× / Esc returns to it), and a file opened over a view hides the view. While the
@@ -18,7 +18,7 @@ export interface CenterViewProps<P> { tabId: string; props: P; close(): void }
 type View<P> = ComponentType<CenterViewProps<P>> | LazyExoticComponent<ComponentType<CenterViewProps<P>>>;
 
 /**
- * How a view sits in the tab's layout (UX round 1, R2):
+ * How a view sits in the tab's layout:
  * - `sidebar`: `'narrow'` (the default: a file view, File History / Blame) narrows the left
  *   sidebar to its strip while the view is on top, and a click on the strip closes the view
  *   (`leaveFileView`); `'hide'` (the rebase editor) takes the sidebar's place too, for as long
@@ -146,7 +146,7 @@ export function useCenterViewSidebar(tabId: string): 'narrow' | 'hide' | null {
 /** Whether the tab's view hides the left sidebar now (outside React): its actions stand aside. */
 export const sidebarHidden = (tabId: string): boolean => sidebarFor(centerViewOf(tabId), tabStore(tabId)?.getState().diff ?? null) === 'hide';
 
-/** UX R2.3: a click on the left sidebar's strip (its (>) or a panel's icon)
+/** A click on the left sidebar's strip (its (>) or a panel's icon)
  * while a file view is on top closes the view, and the file it was opened over, so the sidebar
  * can expand. False when no file view was on top. */
 export function leaveFileView(tabId: string): boolean {

@@ -1,7 +1,7 @@
 import type { ForgeProject } from '../api/gen/ForgeProject';
 import { branchNameError } from '../branches/branchName';
 
-/** A remote URL's host and project path: the Rust `parse_remote_url` (core spec §14.4), line for
+/** A remote URL's host and project path: the Rust `parse_remote_url`, line for
  * line. `https://`, `ssh://` and scp-style `git@host:path`; `null` for a local path or `file://`. */
 export function parseRemoteUrl(url: string): { host: string; path: string } | null {
   const u = url.trim();

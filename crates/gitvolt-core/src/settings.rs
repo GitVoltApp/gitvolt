@@ -1,14 +1,14 @@
-//! App-wide settings and per-profile state (spec §14.1, §14.3): JSON files under the config
+//! App-wide settings and per-profile state: JSON files under the config
 //! dir, written atomically (temp file, fsync, rename), debounced 500 ms, each with a schema
 //! version. An unreadable or newer-version file is set aside (renamed), never overwritten.
 //!
 //! View preferences that must apply before the first paint (zoom, density, diff mode and its
 //! toggles, the last opener, file-list prefs, the details split) stay in the UI's localStorage
-//! behind 1B's seams (ruling R4), so `AppSettings` has no fields for them. The editors' display
+//! behind seams, so `AppSettings` has no fields for them. The editors' display
 //! settings (font, tab width, whitespace, minimap, sticky scroll) are here: no editor shows before
 //! the settings load. The UI moved sticky scroll here from its localStorage once.
 //!
-//! Deviation (spec §14.1/§14.4): host-type overrides are per profile, keyed by host.
+//! Host-type overrides are per profile, keyed by host.
 
 use crate::error::{GbError, GbErrorKind};
 use crate::random::random_hex;
@@ -56,7 +56,7 @@ pub enum DateFormat {
     Mdy12h,
 }
 
-/// What the toolbar's Fetch/Pull button runs (spec #2 §12.1). Fetch All by default: the least
+/// What the toolbar's Fetch/Pull button runs. Fetch All by default: the least
 /// surprising. Within pull, ff-only is the preferred mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -88,7 +88,7 @@ pub enum EditorWhitespace {
 pub struct AppSettings {
     pub version: u32,
     pub active_profile: String,
-    /// Theme id; plan 1D owns the list.
+    /// Theme id.
     pub theme: String,
     /// The editors' text size in px (Settings › Diffs and editors; the UI clamps it to 8-32).
     pub editor_font_size: u16,
@@ -103,7 +103,7 @@ pub struct AppSettings {
     pub editor_tab_size: u16,
     pub editor_whitespace: EditorWhitespace,
     pub editor_minimap: bool,
-    /// Off by default (H7): with no language service, the pinned line can be a lone `{`.
+    /// Off by default: with no language service, the pinned line can be a lone `{`.
     pub editor_sticky_scroll: bool,
     /// Rendered Markdown's prose (Settings › Appearance › Fonts): one family's name (the UI adds the
     /// UI font's stack after it) or a CSS font-family list; empty: the UI font.
@@ -128,19 +128,17 @@ pub struct AppSettings {
     /// Show dates as "5 minutes ago"; the exact format shows on hover.
     pub relative_dates: bool,
     pub gravatar: bool,
-    /// Writes `debug`-level lines to the log file (spec §16.2).
+    /// Writes `debug`-level lines to the log file.
     pub debug_logging: bool,
-    /// The toolbar Fetch/Pull button's default operation (spec #2 §12.1).
+    /// The toolbar Fetch/Pull button's default operation.
     pub sync_button: SyncButtonMode,
-    /// "Push tags with branches" (spec #3 §3.9): every push adds `--follow-tags`, sending the
+    /// "Push tags with branches": every push adds `--follow-tags`, sending the
     /// annotated tags on the pushed commits that the remote lacks. On by default (a release's
     /// annotated tag goes out with its commit).
     pub push_follow_tags: bool,
-    // --- 4A T6 ---
-    /// "Load avatars from your forge accounts" (spec #4 §2 "Avatars"): the forges first, then
+    /// "Load avatars from your forge accounts": the forges first, then
     /// Gravatar (its own setting), then initials.
     pub forge_avatars: bool,
-    // --- end 4A T6 ---
     /// "Check for updates automatically": the GitHub releases, at startup and once a day.
     pub update_check: bool,
     /// "Include pre-releases" in the update check (a pre-release build always sees them).
@@ -161,13 +159,13 @@ pub struct AppSettings {
     /// startup puts "Updated to GitVolt …" in the notification bell. `None` until a version that
     /// knows this setting ran (a first install, or settings from before it).
     pub last_run_version: Option<String>,
-    /// Per-theme lane colour overrides (plan 1D): theme id → lane index → `#rrggbb`, or null for
+    /// Per-theme lane colour overrides: theme id → lane index → `#rrggbb`, or null for
     /// the theme's own colour. The UI validates the entries; an invalid one shows the theme's.
     #[ts(type = "Record<string, (string | null)[]>")]
     pub graph_color_overrides: BTreeMap<String, Vec<Option<String>>>,
     /// The themes the user made; the UI moves `graph_color_overrides` into these once.
     pub custom_themes: Vec<CustomTheme>,
-    /// The main window's last normal geometry (K46). Owned by the app shell, not the UI: it's
+    /// The main window's last normal geometry. Owned by the app shell, not the UI: it's
     /// left out of the TypeScript bindings, and `save_settings` keeps the store's own value
     /// whatever the UI sends back. Absent in files written before it existed.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -291,7 +289,7 @@ impl Default for AppSettings {
 pub enum TabKind {
     #[default]
     Repo,
-    /// The Open Repository screen (spec §13).
+    /// The Open Repository screen.
     Open,
 }
 
@@ -305,10 +303,10 @@ pub struct TabState {
     pub path: Option<String>,
     /// Display alias (tab "Rename").
     pub alias: Option<String>,
-    /// The tab's active worktree (spec #2 §11.2); `None`: the repository's main worktree. A
-    /// profile saved before 2C has none, and `path` may be a linked worktree's: opening the tab
+    /// The tab's active worktree; `None`: the repository's main worktree. A
+    /// profile saved before worktree tabs has none, and `path` may be a linked worktree's: opening the tab
     /// rewrites it to the repository's path and this worktree. Optional in TypeScript too: a tab
-    /// made before 2C has none.
+    /// made before then has none.
     #[ts(optional = nullable)]
     pub worktree: Option<String>,
 }
@@ -372,7 +370,7 @@ pub struct RecentRepo {
     pub opened_at: i64,
 }
 
-/// The default external editor (spec §14.5, ruling R5): one of 1B's openers, by the id
+/// The default external editor: one of the openers, by the id
 /// `listOpeners` gives it (`vscode`, `jetbrains-phpstorm`, …), or a custom command.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -383,7 +381,7 @@ pub enum EditorChoice {
     Custom { template: String },
 }
 
-/// Pinned trunk per repo (spec §8.2). Absent means `auto` (the default trunk).
+/// Pinned trunk per repo. Absent means `auto` (the default trunk).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[ts(export)]
@@ -430,10 +428,8 @@ pub struct RepoSettings {
     pub collapsed: Vec<String>,
     /// Overrides the profile's editor for this repo.
     pub editor: Option<EditorChoice>,
-    // --- 4B T11 ---
-    /// The sidebar MR/PR section's filter (spec #4 §2 "MR/PR list"); `None` is All.
+    /// The sidebar MR/PR section's filter; `None` is All.
     pub mr_filter: Option<crate::forge::MrFilter>,
-    // --- end 4B T11 ---
     /// The remote whose forge project the repo's MRs/PRs target; `None` picks automatically.
     pub forge_target_remote: Option<String>,
     /// The forge account (its `ForgeAccount::id`, which names its host) this repository's remotes
@@ -470,7 +466,7 @@ pub struct RepoSettings {
     // --- end branch presets ---
 }
 
-/// One file-colours scope (spec 2026-10-22): ordered glob patterns that share a tint.
+/// One file-colours scope ordered glob patterns that share a tint.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export)]
@@ -505,9 +501,9 @@ pub struct Profile {
     /// The folders "Your repos" scans, merged. `None` = never set (see `migrate_repos_folders`).
     pub repos_folders: Option<Vec<String>>,
     pub editor: Option<EditorChoice>,
-    /// Added to every git command as `-c include.path=<path>` (spec §14.2).
+    /// Added to every git command as `-c include.path=<path>`.
     pub extra_gitconfig: Option<String>,
-    /// Host → forge type override (spec §14.4).
+    /// Host → forge type override.
     pub host_overrides: BTreeMap<String, HostKind>,
     pub sidebar_width: u32,
     pub sidebar_narrow: bool,
@@ -515,21 +511,17 @@ pub struct Profile {
     pub sidebar_panels: BTreeMap<String, u32>,
     /// The details panel's width; `None` is the UI's default.
     pub right_panel_width: Option<u32>,
-    // --- 4B T6 ---
-    /// The left flyout's width (spec #4 §5); `None` is the UI's default.
+    /// The left flyout's width; `None` is the UI's default.
     pub flyout_width: Option<u32>,
-    // --- end 4B T6 ---
     /// Keyed by canonical repo path.
     pub repos: BTreeMap<String, RepoSettings>,
-    /// File colours (spec 2026-10-22): each repository's scopes, in order, keyed by its canonical common git dir.
+    /// File colours: each repository's scopes, in order, keyed by its canonical common git dir.
     pub file_colours: BTreeMap<String, Vec<FileScope>>,
-    // --- 4A T5 ---
-    /// Forge accounts (spec #4 §3.2): host, kind, user, where the token is (never the token).
+    /// Forge accounts: host, kind, user, where the token is (never the token).
     /// Owned by the store (`set_forge_accounts`): left out of the TypeScript bindings, and
     /// `save_profile` keeps the store's copy whatever the UI sends, as `AppSettings.window`.
     #[ts(skip)]
     pub forge_accounts: Vec<crate::forge::accounts::ForgeAccount>,
-    // --- end 4A T5 ---
 }
 
 impl Default for Profile {
@@ -554,9 +546,7 @@ impl Default for Profile {
             sidebar_narrow: false,
             sidebar_panels: BTreeMap::new(),
             right_panel_width: None,
-            // --- 4B T6 ---
             flyout_width: None,
-            // --- end 4B T6 ---
             repos: BTreeMap::new(),
             file_colours: BTreeMap::new(),
             forge_accounts: Vec::new(),
@@ -839,12 +829,12 @@ impl SettingsStore {
         self.schedule();
     }
 
-    /// The main window's last saved geometry (K46).
+    /// The main window's last saved geometry.
     pub fn window(&self) -> Option<WindowGeometry> {
         self.lock().settings.window.clone()
     }
 
-    /// The main window's geometry (K46), saved debounced like any other change. An unchanged
+    /// The main window's geometry, saved debounced like any other change. An unchanged
     /// value doesn't dirty the file.
     pub fn save_window(self: &Arc<Self>, window: WindowGeometry) {
         {
@@ -865,9 +855,8 @@ impl SettingsStore {
             if !g.profiles.contains_key(&profile.id) {
                 return Err(GbError::new(GbErrorKind::InvalidInput, format!("unknown profile {}", profile.id)));
             }
-            // --- 4A T5: the store's accounts, not the UI's copy ---
+            // --- the store's accounts, not the UI's copy ---
             profile.forge_accounts = g.profiles.get(&profile.id).map(|p| p.forge_accounts.clone()).unwrap_or_default();
-            // --- end 4A T5 ---
             g.dirty_profiles.insert(profile.id.clone());
             g.profiles.insert(profile.id.clone(), profile);
         }
@@ -923,7 +912,7 @@ impl SettingsStore {
         Ok(left)
     }
 
-    // --- 4A T5: forge accounts ---
+    // --- forge accounts ---
     /// One profile by id (its accounts, to delete their tokens with it).
     pub fn profile(&self, id: &str) -> Option<Profile> {
         self.lock().profiles.get(id).cloned()
@@ -951,7 +940,6 @@ impl SettingsStore {
         self.schedule();
         Ok(r)
     }
-    // --- end 4A T5 ---
 
     /// Failed flushes in a row; 0 once one succeeds.
     pub fn save_failures(&self) -> u32 {
@@ -1211,7 +1199,7 @@ mod tests {
         }
     }
 
-    /// K46: a settings file from before the window field loads with none, and writes none back.
+    /// A settings file from before the window field loads with none, and writes none back.
     #[test]
     fn an_old_settings_file_without_the_window_loads() {
         let old = r#"{"version":2,"activeProfile":"default","theme":"default-dark","editorFontSize":13,"fetchIntervalSecs":60,"prune":true,"commitLimit":2000,"dateFormat":"ymd12h","gravatar":true}"#;
@@ -1512,7 +1500,7 @@ mod tests {
     fn missing_fields_take_defaults_and_unknown_fields_are_ignored() {
         let dir = tempfile::tempdir().unwrap();
         // `zoom` and `diffMode` are unknown here: those view preferences stay in the UI's
-        // localStorage (ruling R4).
+        // localStorage.
         std::fs::write(dir.path().join("settings.json"), br#"{"version": 1, "commitLimit": 500, "zoom": 150, "someFutureField": true}"#).unwrap();
         let st = SettingsStore::open(dir.path()).state();
         assert_eq!(st.settings.commit_limit, 500);
@@ -1740,7 +1728,7 @@ mod tests {
         assert_eq!(serde_json::to_value(PinSetting::Off).unwrap(), serde_json::json!({"kind": "off"}));
         assert_eq!(serde_json::to_value(DateFormat::Ymd24h).unwrap(), "ymd24h");
         assert_eq!(serde_json::to_value(DateFormat::DmyDot24h).unwrap(), "dmydot24h");
-        // The editor setting is a 1B opener id (from `listOpeners`) or a custom template (R5).
+        // The editor setting is an opener id (from `listOpeners`) or a custom template.
         assert_eq!(serde_json::to_value(EditorChoice::Opener { id: "jetbrains-phpstorm".into() }).unwrap(), serde_json::json!({"kind": "opener", "id": "jetbrains-phpstorm"}));
         assert_eq!(
             serde_json::to_value(EditorChoice::Custom { template: "subl {file}:{line}".into() }).unwrap(),
@@ -1748,7 +1736,7 @@ mod tests {
         );
     }
 
-    /// Spec #2 §12.1: the Fetch/Pull button's default is Fetch All; files without it load so.
+    /// The Fetch/Pull button's default is Fetch All; files without it load so.
     #[test]
     fn the_sync_button_defaults_to_fetch_all() {
         assert_eq!(AppSettings::default().sync_button, SyncButtonMode::FetchAll);

@@ -1,4 +1,4 @@
-//! `forge_lab` (website demo plan 4): a small repository whose origin is a project on the fake
+//! `forge_lab`: a small repository whose origin is a project on the fake
 //! GitLab (`orbital/forge-lab`), with a merge request of every kind, for the demo forge's golden
 //! scenarios. Orbital's 2,000 commits stay out of the parity suite.
 

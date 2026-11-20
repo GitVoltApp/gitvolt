@@ -14,7 +14,7 @@ const stop = (repo: string, ...args: string[]) => {
 
 // The commit box's own rules at a stop (what each button says and when it waits, Abort's arming,
 // Skip's gate) are CommitBox.op.test.tsx; here, git's real stops.
-test.describe('conflicts (spec #2 §13.2)', () => {
+test.describe('conflicts', () => {
   // One repo and page for both (each was a test of its own, paying for a page load and a fixture).
   test('a rebase stopped by git: its message in the box, Continue waits, Skip; Continue rebase commits the stopped pick with the message as edited', async ({ page }) => {
     const repo = freshFixture('conflicts');
@@ -36,14 +36,13 @@ test.describe('conflicts (spec #2 §13.2)', () => {
     expect(git(repo, 'log', '-1', '--format=%s')).toBe('Feature edits, resolved');
   });
 
-  // --- 2D T20 ---
   // One repo and page (the merge stop was a test of its own, paying for a page load and a
   // fixture): the stop, the merge tool, then Abort, which ends the merge even once resolved.
   test('a stopped merge shows in the commit panel, Commit and merge waits for its conflicts; the merge tool resolves a text conflict by ticks and a hand edit, non-text ones by buttons; Abort ends it', async ({ page }) => {
     const repo = freshFixture('conflicts');
     stop(repo, 'merge', '--no-edit', 'feature/x');
     await page.goto(openUrl(repo));
-    // Ux round 1: no window-wide bar; the WIP is selected and its commit panel holds the merge.
+    // No window-wide bar; the WIP is selected and its commit panel holds the merge.
     const status = page.getByRole('region', { name: 'Merge in progress' });
     await expect(status).toContainText('Merging feature/x into main');
     await expect(status).toContainText('Resolve 3 conflicted files first');
@@ -116,7 +115,7 @@ test.describe('conflicts (spec #2 §13.2)', () => {
     expect(text).toContain('current fifteen');
     expect(text).not.toContain('incoming three');
     expect(text).toContain('hand edit');
-    // UX round 2: a resolved file moves the tool to the next conflicted one (gone.txt, then
+    // A resolved file moves the tool to the next conflicted one (gone.txt, then
     // logo.bin), and closes it once none is left.
     await expect(tool.getByText('Deleted in main (current), modified in feature/x (incoming)')).toBeVisible();
     await tool.getByRole('button', { name: 'Delete file' }).click();
@@ -126,7 +125,7 @@ test.describe('conflicts (spec #2 §13.2)', () => {
     await expect.poll(() => git(repo, 'diff', '--name-only', '--diff-filter=U')).toBe('');
     await expect(tool).toBeHidden();
     await expect(box.getByRole('button', { name: 'Commit and merge' })).not.toHaveAttribute('aria-disabled', 'true');
-    // Abort arms in place (spec §ui confirms, board D), saying what it undoes (a.txt and logo.bin:
+    // Abort arms in place, saying what it undoes (a.txt and logo.bin:
     // gone.txt was resolved by deleting it); the second click runs it.
     await box.getByRole('button', { name: 'Abort merge' }).click();
     await confirmArmed(armedOverlay(page, 'Click again to abort: undoes 2 files resolved'));
@@ -180,5 +179,4 @@ test.describe('conflicts (spec #2 §13.2)', () => {
       expect(git(repo, 'show', ':0:gen/one.ts')).toBe("export const one = 'regenerated';");
     });
   });
-  // --- end 2D T20 ---
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { firstChangedLine } from './firstChange';
 
-describe('firstChangedLine (H9: the diff header opens at the first change)', () => {
+describe('firstChangedLine (the diff header opens at the first change)', () => {
   it('the first line of the new side that differs', () => {
     expect(firstChangedLine('a\nb\nc\n', 'a\nB\nc\n')).toBe(2);
     expect(firstChangedLine('a\nb\n', 'a\nb\nc\n')).toBe(3);

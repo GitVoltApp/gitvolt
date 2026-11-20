@@ -22,7 +22,7 @@ const input = (i = 0) => screen.getAllByPlaceholderText('// WIP')[i] as HTMLInpu
 beforeEach(() => { flushDrafts(); localStorage.clear(); reloadDrafts(); vi.useFakeTimers(); });
 afterEach(() => vi.useRealTimers());
 
-describe('WIP row counts (K47)', () => {
+describe('WIP row counts', () => {
   it('shows each non-zero type with its status icon, and nothing for zero types', () => {
     render(<GraphView graph={payload(wipRow('/r', null, { modified: 3, added: 2, renamed: 1 }))} repoId="/r" />);
     const counts = screen.getByTestId('wip-counts');
@@ -41,7 +41,7 @@ describe('WIP row counts (K47)', () => {
   });
 });
 
-describe('WIP row draft summary (K48)', () => {
+describe('WIP row draft summary', () => {
   it('stores the typed draft (debounced) and reloads it per repo and worktree', () => {
     const g = payload(wipRow('/r', null, { modified: 1 }), wipRow('/r-wt', 'wt', { added: 1 }));
     const { unmount } = render(<GraphView graph={g} repoId="/r" />);

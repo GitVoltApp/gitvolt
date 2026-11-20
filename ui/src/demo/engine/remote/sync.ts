@@ -93,7 +93,7 @@ export function pushIntent(o: { branch: string; target?: PushTarget; setUpstream
       const dst = `refs/heads/${target.branch}`;
       const tracking = await trackingOf(demo, target.remote, dst);
       if (tracking !== null) watchRefs(cx, [[tracking, readRef(demo, tracking)]]);
-      // §12.3: a branch GitVolt rewrote since its last push forces with the lease recorded then,
+      // A branch GitVolt rewrote since its last push forces with the lease recorded then,
       // when a plain push would be refused. An explicit force keeps its own lease.
       const mark = o.lease !== undefined ? null : await leaseFor(cx.read, o.branch, target);
       const lease = o.lease !== undefined ? o.lease.oid : mark ? mark.mark.leaseOid : undefined;
@@ -278,7 +278,7 @@ export function pullIntent(o: { branch: string; remote: string; merge: string; m
       const [ahead, behind] = await relation(pre.read, mine, theirs);
       planned = { checkedOut, local: mine, theirs, ahead, behind };
       if (!checkedOut || behind === 0) return {};
-      // §6.1: a fast-forward autostashes on overlap only; a merge or rebase on any tracked change.
+      // A fast-forward autostashes on overlap only; a merge or rebase on any tracked change.
       if (ahead === 0) return { autostash: autostash('overlap', theirs) };
       if (o.mode === 'ffOnly') return {};
       if (o.mode === 'ffOrMerge') return { autostash: autostash('merged', theirs) };
@@ -290,7 +290,7 @@ export function pullIntent(o: { branch: string; remote: string; merge: string; m
       let result: PullResult;
       if (behind === 0) result = { status: 'upToDate', ahead };
       else if (ahead === 0 && !checkedOut) {
-        // Deviation 13: the Sync row on a branch that isn't checked out: a CAS.
+        // The Sync row on a branch that isn't checked out: a CAS.
         await cx.cas([{ name: local, old: mine, new: theirs }], `pull ${upstream}: Fast-forward`);
         cx.touch('refs');
         result = { status: 'fastForward', commits: behind };

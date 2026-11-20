@@ -63,11 +63,11 @@ afterEach(async () => {
   cleanup();
 });
 
-/** The rows and the list, whatever their roles: tree mode is a `tree` of `treeitem`s (M8), path mode a `listbox` of `option`s. */
+/** The rows and the list, whatever their roles: tree mode is a `tree` of `treeitem`s, path mode a `listbox` of `option`s. */
 const rowEls = () => [...document.querySelectorAll<HTMLElement>('[role="option"], [role="treeitem"]')];
 const listEl = () => document.querySelector<HTMLElement>('.file-list-scroll')!;
 
-describe('the file row context menu (spec §7 file menu)', () => {
+describe('the file row context menu', () => {
   it('right-click opens the shared menu at the pointer, without opening the file', async () => {
     const store = setup();
     await act(async () => {});
@@ -75,12 +75,12 @@ describe('the file row context menu (spec §7 file menu)', () => {
     expect(menu()).toBeVisible();
     expect(useMenu.getState()).toMatchObject({ x: 30, y: 40 });
     expect(store.getState().diff).toBeNull();
-    // Not selected: the row only shows the context outline while its menu is open (UX round 2).
+    // Not selected: the row only shows the context outline while its menu is open.
     expect(row('src/app.php')).toHaveAttribute('data-context', 'true');
     expect(row('src/app.php')).toHaveAttribute('aria-selected', 'false');
     // No forge row: the repo has no GitLab/GitHub remote.
     expect(topLabels()).toEqual(['Copy path', 'Open in', 'View', 'Create file…']);
-    // H32: every opening re-detects (the backend caches briefly).
+    // Every opening re-detects (the backend caches briefly).
     await waitFor(() => expect(listOpeners).toHaveBeenCalledTimes(2));
   });
 
@@ -126,7 +126,7 @@ describe('the file row context menu (spec §7 file menu)', () => {
     expect(menu().querySelector('[data-depth="1"] [data-active="true"]')).toHaveAttribute('data-row-id', 'opener.file-manager');
   });
 
-  it('a staged WIP file opens its working-tree file, the index blob as the fallback (fix round 2)', async () => {
+  it('a staged WIP file opens its working-tree file, the index blob as the fallback', async () => {
     setup({ kind: 'wip', worktree: '/wt/feature', staged: true });
     await act(async () => {});
     fireEvent.contextMenu(row('src/app.php'));
@@ -148,7 +148,7 @@ describe('the file row context menu (spec §7 file menu)', () => {
     await waitFor(() => expect(openIn).toHaveBeenCalledExactlyOnceWith(3, { worktree: '/wt/feature', path: 'README.md', line: null, opener: 'vscode', source: { kind: 'worktree', worktree: '/wt/feature' }, fallback: { kind: 'object', oid: 'b'.repeat(40) } }));
   });
 
-  it('View: the label opens the diff, the File variant the whole file (K58)', async () => {
+  it('View: the label opens the diff, the File variant the whole file', async () => {
     const store = setup();
     await act(async () => {});
     const variant = (id: string) => menu().querySelector(`[data-depth="0"] .ctx-variant[data-variant-id="${id}"]`)!;
@@ -225,7 +225,7 @@ describe('the file row context menu (spec §7 file menu)', () => {
     await waitFor(() => expect(listOpeners).toHaveBeenCalledTimes(before + 1));
   });
 
-  it('a right-click before the openers load opens the menu at once, then fills the submenu (fix round 1)', async () => {
+  it('a right-click before the openers load opens the menu at once, then fills the submenu', async () => {
     let answer: (l: OpenerPayload[]) => void = () => {};
     listOpeners.mockReset().mockImplementation(() => new Promise((r) => { answer = r; }));
     setup();

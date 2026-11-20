@@ -4,7 +4,7 @@ import type { SubmoduleSupport } from "./SubmoduleSupport";
 
 export type RepoInfoPayload = { remotes: Array<RemoteInfo>, 
 /**
- * Set when the open repo is a linked worktree: its main worktree (spec §13).
+ * Set when the open repo is a linked worktree: its main worktree.
  */
 mainWorktree: string | null, commonDir: string, 
 /**

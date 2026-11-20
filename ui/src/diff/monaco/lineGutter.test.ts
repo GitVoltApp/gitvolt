@@ -35,7 +35,7 @@ function fakeEditor() {
 
 const move = (type: number, lineNumber: number) => ({ target: { type, position: { lineNumber } }, event: { posy: 0 } });
 
-describe("the gutter's line button (spec #2 §7.3)", () => {
+describe("the gutter's line button", () => {
   function setup(spec: Partial<LineGutterSpec> = {}) {
     const original = fakeEditor();
     const modified = fakeEditor();

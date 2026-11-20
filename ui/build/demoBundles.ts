@@ -1,6 +1,6 @@
 // `just demo-data`: builds each showcase repository with the harness, rewrites the build's
 // absolute paths to the demo's (/demo/<name>, /demo/.origins/<name>.git,
-// /demo/.extra/<name>/<piece>), packs it with plan 1a's pack-demo.mjs into
+// /demo/.extra/<name>/<piece>), packs it with pack-demo.mjs into
 // site/demo-data/<name>.gbdemo, checks the bundle, and writes manifest.json. A repo whose content
 // digest hasn't changed keeps its committed bundle, so a re-run changes nothing. Fails over the
 // 15 MB budget.

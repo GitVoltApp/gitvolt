@@ -10,14 +10,14 @@ import { laneColors } from './colors';
 import { dirty, fromPlan } from './model';
 import { NO_PREDICTION, sessionOf, setSession, type OpenRebase } from './session';
 
-/** The center view's kind (spec #3 §4.1: the editor replaces the graph area). `feature.ts` registers it. */
+/** The center view's kind (the editor replaces the graph area). `feature.ts` registers it. */
 export const REBASE_VIEW = 'irebase';
 
 /**
  * Opens the interactive rebase editor in tab `tabId`: `branch` (checked out in the tab's active
  * worktree) onto `base`, rows preset as `preset` says. It's the contract's entry point (the
  * branch chip menu, "Interactive rebase after this commit", "Squash interactively…", the palette, and
- * 3D's "Rebase stack"). False when it didn't open (a toast says why).
+ * "Rebase stack"). False when it didn't open (a toast says why).
  *
  * The tab's open session is never silently replaced. While Start's write runs, the tab is only
  * focused (another target also gets a toast to wait). An edited plan comes back as it is: for the

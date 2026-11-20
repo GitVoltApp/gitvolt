@@ -84,7 +84,7 @@ describe('repo view store', () => {
     expect(calls.some((c) => c.includes('wip'))).toBe(false);
   });
 
-  // Controller ruling F1: the message isn't in `CommitDetailsPayload`; it comes from the
+  // The message isn't in `CommitDetailsPayload`; it comes from the
   // per-repo `commitMessage` cache the graph tooltip shares (`services.messages`).
   it('selecting a commit loads its full message from the shared message cache, latest wins', async () => {
     const { services, calls, resolve } = fakeServices();
@@ -159,7 +159,7 @@ describe('repo view store', () => {
     expect(s.getState().selectCommitById('f'.repeat(40))).toBe(false);
   });
 
-  // Review fix 1: the parent picker renders from the row's parents, so it can be used before
+  // The parent picker renders from the row's parents, so it can be used before
   // the details arrive; the pending details and message must still land.
   it('setParent while details and the message are pending still resolves both', async () => {
     const { services, calls, resolve } = fakeServices();
@@ -239,7 +239,7 @@ describe('repo view store', () => {
     expect(calls.filter((c) => c.startsWith('contents '))).toEqual([expect.stringContaining('"path":"c.txt"')]);
   });
 
-  // Feedback F12: the right panel swaps in one render, once everything for the new selection
+  // The right panel swaps in one render, once everything for the new selection
   // has arrived; until then it keeps the previous selection's content (stale-while-loading).
   describe('panel (stale-while-loading)', () => {
     const filesOf = (id: string, parent = 0) => `files {"kind":"commit","id":"${id}","parent":${parent}}`;
@@ -350,7 +350,7 @@ describe('repo view store', () => {
   });
 });
 
-describe('WIP lists held while watched (K44)', () => {
+describe('WIP lists held while watched', () => {
   const U = 'files {"kind":"wip","worktree":"/r","staged":false}';
   const S = 'files {"kind":"wip","worktree":"/r","staged":true}';
   const lists = (version: string | undefined, path: string) => ({ files: [change(path, 'M')], added: 1, deleted: 0, ...(version ? { version } : {}) });
@@ -490,7 +490,7 @@ describe('WIP lists held while watched (K44)', () => {
     expect(wip.peek(U.slice('files '.length))?.version).toBe('v3');
   });
 
-  it('a leave guard that takes over holds the open file until it calls go (spec #2 §7.5)', () => {
+  it('a leave guard that takes over holds the open file until it calls go', () => {
     const { services } = fakeServices();
     const s = createRepoViewStore(1, '/r', graph, services);
     const target = targetFor(change('a.txt', 'M'), { kind: 'commit', id: A, parent: 0 });

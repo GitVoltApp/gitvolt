@@ -18,7 +18,7 @@ export function laneColors(tabId: string): Record<string, number> {
   return out;
 }
 
-/** A chip's colour (R1.8): its branch's graph lane colour when the editor opened, in the current
+/** A chip's colour: its branch's graph lane colour when the editor opened, in the current
  * theme; `undefined`: the default chip colour (a branch not in the graph, or added here). */
 export function useChipColor(tabId: string): (branch: string) => string | undefined {
   const colors = useRebaseSessions((x) => x.sessions[tabId]?.colors);

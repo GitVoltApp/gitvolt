@@ -56,7 +56,7 @@ function renderPanel(target: DiffTarget, load: (key: string) => Promise<DiffCont
   // Re-render with the store's target, so File/Diff View switches reach the panel as in RepoView.
   const Connected = () => {
     const diff = useRepoView((s) => s.diff);
-    useAppEscape(store); // RepoView's app-wide Esc (J4), which closes the file
+    useAppEscape(store); // RepoView's app-wide Esc, which closes the file
     return diff && <DiffPanel target={diff} />;
   };
   const view = render(<RepoViewContext value={store}><Connected /></RepoViewContext>);
@@ -112,7 +112,7 @@ describe('DiffPanel', () => {
     expect(icon).toHaveAttribute('aria-label', label);
   });
 
-  it('an unchanged file in File View shows a spacer, not an icon, so the path lines up (F21)', async () => {
+  it('an unchanged file in File View shows a spacer, not an icon, so the path lines up', async () => {
     renderPanel(fileViewTarget('a.txt', spec.id, spec), async () => contents(null, blob('a\n')));
     const path = await screen.findByTestId('diff-path');
     const spacer = path.previousElementSibling;
@@ -174,11 +174,11 @@ describe('DiffPanel', () => {
     host.showDiff.mockImplementation(async () => {});
   });
 
-  // K7 (lane V's report): the header waits for the editor only while the editor is what still
+  // The header waits for the editor only while the editor is what still
   // shows the header's file. From a message (a large file, a binary, an image, a failed load) or
   // across Diff/File View, the body has already moved on: the header goes with it at once,
   // instead of naming the previous file over the next one's (hidden, still loading) editor.
-  it('switching from a file the editor does not show, the header follows the body at once (K7)', async () => {
+  it('switching from a file the editor does not show, the header follows the body at once', async () => {
     const big = targetFor(change('big.txt'), spec);
     const b = targetFor(change('b.txt'), spec);
     const c = targetFor(change('c.txt'), spec);
@@ -200,7 +200,7 @@ describe('DiffPanel', () => {
     host.showFile.mockImplementation(async () => {});
   });
 
-  it("the next file's line-endings banner waits with the header, over the previous file's diff (K7)", async () => {
+  it("the next file's line-endings banner waits with the header, over the previous file's diff", async () => {
     const a = targetFor(change('a.txt'), spec);
     const crlf = targetFor(change('crlf.txt'), spec);
     let release!: () => void;
@@ -418,7 +418,7 @@ describe('DiffPanel', () => {
     await waitFor(() => expect(host.goToChange.mock.calls).toEqual([['next'], ['previous']]));
   });
 
-  describe('change keys, app-wide (J14)', () => {
+  describe('change keys, app-wide', () => {
     /** An element outside the panel (the file list, the graph, …) with the keyboard. */
     const outside = (html = '<button type="button">file row</button>') => {
       const host = document.createElement('div');
@@ -518,11 +518,11 @@ describe('DiffPanel', () => {
     expect(JSON.parse(localStorage.getItem(DIFF_PREFS_STORAGE_KEY)!)).toEqual({ mode: 'split', ignoreWhitespace: true, wordWrap: true, markdownView: 'rendered', htmlView: 'source', tableView: 'rendered', historyView: 'file' });
     fireEvent.click(button('Hunk'));
     expect(useDiffPrefs.getState().prefs.mode).toBe('hunk');
-    // No placeholder UI (plan 1B global constraints); Blame | History are #3's real buttons.
+    // No placeholder UI; Blame | History are real buttons.
     expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull();
   });
 
-  it("the toolbar layout (H9): File/Diff View centred; then Blame | History, prev/next, the modes and the toggles on the right", async () => {
+  it("the toolbar layout: File/Diff View centred; then Blame | History, prev/next, the modes and the toggles on the right", async () => {
     renderPanel(targetFor(change('a.txt'), spec), text);
     await waitFor(() => expect(host.showDiff).toHaveBeenCalled());
     const bar = screen.getByRole('toolbar', { name: 'Diff options' });
@@ -540,7 +540,7 @@ describe('DiffPanel', () => {
     }
   });
 
-  it("the toolbar's leading slot sits at its far left, before File/Diff View; the header has none (J1: Open in…)", () => {
+  it("the toolbar's leading slot sits at its far left, before File/Diff View; the header has none (Open in…)", () => {
     const target = targetFor(change('src/app.php'), spec);
     const store = createRepoViewStore(1, '/r', graph, fakeServices());
     const inStore = (ui: ReactNode) => render(<RepoViewContext value={store}>{ui}</RepoViewContext>);
@@ -555,11 +555,11 @@ describe('DiffPanel', () => {
     expect(screen.getAllByRole('toolbar', { name: 'Diff options' })[1].firstElementChild).toContainElement(button('Open image'));
     render(<DiffHeader target={target} encoding="" onClose={() => {}} />);
     expect(document.querySelector('.diff-header-leading')).toBeNull();
-    // K5/K6: the details header's bar box (tokens.css), so their dividers line up.
+    // The details header's bar box (tokens.css), so their dividers line up.
     expect(document.querySelector('.diff-header')).toHaveClass('panel-bar');
   });
 
-  it('a rename shows the common base, then old ⇒ new with only the new name highlighted; the tooltip stacks both paths (H21)', () => {
+  it('a rename shows the common base, then old ⇒ new with only the new name highlighted; the tooltip stacks both paths', () => {
     const target = { ...targetFor({ ...change('docs/manual.txt', 'R'), oldPath: 'docs/guide.txt' }, spec) };
     render(<DiffHeader target={target} encoding="" onClose={() => {}} />);
     const path = screen.getByTestId('diff-path');
@@ -648,18 +648,18 @@ describe('DiffPanel', () => {
     const svg = (body: string): BlobPayload => sized({ text: `<svg>${body}</svg>\n` });
     const layers = () => [...document.querySelectorAll<HTMLImageElement>('img.image-layer')].map((i) => i.alt);
 
-    it('a raster image shows the image diff, not a binary summary; no text-diff controls, and F7 stays off (H26)', async () => {
+    it('a raster image shows the image diff, not a binary summary; no text-diff controls, and F7 stays off', async () => {
       renderPanel(targetFor(change('logo.png'), spec), async () => contents(png(90), png(100), { image: true }));
       expect(await screen.findByRole('toolbar', { name: 'Image diff options' })).toBeInTheDocument();
       await waitFor(() => expect(layers()).toEqual(['before', 'after']));
       expect(screen.getByTestId('image-size')).toHaveTextContent('90 B → 100 B');
       expect(screen.queryByTestId('binary-summary')).toBeNull();
       expect(screen.queryByTestId('text-diff')).toBeNull();
-      // Prev/next, the modes and the toggles don't apply to an image (H26); File/Diff View does.
+      // Prev/next, the modes and the toggles don't apply to an image; File/Diff View does.
       for (const name of ['Previous change', 'Next change', 'Hunk', 'Inline', 'Split', 'Ignore whitespace', 'Word wrap']) expect(screen.queryByRole('button', { name })).toBeNull();
       expect(button('File View')).toBeInTheDocument();
       expect(fireEvent.keyDown(screen.getByRole('region', { name: 'Diff' }), { key: 'F7' })).toBe(true);
-      // Nor Shift+↑/↓ (J14), from anywhere.
+      // Nor Shift+↑/↓, from anywhere.
       expect(fireEvent.keyDown(document.body, { key: 'ArrowDown', shiftKey: true })).toBe(true);
       expect(fireEvent.keyDown(document.body, { key: 'F7' })).toBe(true);
       await Promise.resolve();
@@ -682,7 +682,7 @@ describe('DiffPanel', () => {
       expect(revoke.mock.calls.map(([u]) => u).sort()).toEqual(['blob:img-1', 'blob:img-2']);
     });
 
-    it("an SVG shows as images, and its Source toggle shows the text diff, with the text diff's controls (H26)", async () => {
+    it("an SVG shows as images, and its Source toggle shows the text diff, with the text diff's controls", async () => {
       renderPanel(targetFor(change('icon.svg'), spec), async () => contents(svg('<rect/>'), svg('<circle/>')));
       await waitFor(() => expect(layers()).toEqual(['before', 'after']));
       expect(screen.queryByTestId('text-diff')).toBeNull();
@@ -700,7 +700,7 @@ describe('DiffPanel', () => {
       expect(screen.queryByRole('button', { name: 'Hunk' })).toBeNull();
     });
 
-    it("SVG A with Source on, then file B, then back to A: A opens as an image, with no text tools (H26)", async () => {
+    it("SVG A with Source on, then file B, then back to A: A opens as an image, with no text tools", async () => {
       const a = targetFor(change('a.svg'), spec);
       const b = targetFor(change('b.svg'), spec);
       const { store } = renderPanel(a, async () => contents(svg('<rect/>'), svg('<circle/>')));
@@ -725,7 +725,7 @@ describe('DiffPanel', () => {
       await waitFor(() => expect(layers()).toHaveLength(2));
       fireEvent.click(button('File View'));
       await waitFor(() => expect(layers()).toEqual(['after']));
-      // One revision: just its own size, unlabelled (H25).
+      // One revision: just its own size, unlabelled.
       expect(screen.getByTestId('image-meta')).not.toHaveTextContent(/—|→|added|deleted/);
       fireEvent.click(button('Source'));
       expect(await screen.findByTestId('file-view')).toBeInTheDocument();
@@ -761,7 +761,7 @@ describe('DiffPanel', () => {
       expect(screen.getByTestId('hex-capped')).toHaveTextContent('Showing the first 256 KB of 293 KB');
     });
 
-    it('an added image in Diff View is labelled "(added)", with no compare modes (H25)', async () => {
+    it('an added image in Diff View is labelled "(added)", with no compare modes', async () => {
       renderPanel(targetFor(change('new.png', 'A'), spec), async () => contents(null, png(100), { image: true }));
       await waitFor(() => expect(layers()).toEqual(['after']));
       expect(screen.getByTestId('image-meta')).toHaveTextContent(/100 B \(added\)$/);
@@ -865,7 +865,7 @@ describe('DiffPanel', () => {
       el.appendChild(inner);
     });
     const { store } = renderPanel(targetFor(change('a.txt'), spec), text);
-    // Ctrl+W is the app's shortcut (plan 1C), acting on the active tab's store: this one.
+    // Ctrl+W is the app's shortcut, acting on the active tab's store: this one.
     const offKeys = installShortcuts();
     activeTabWith(store);
     await waitFor(() => expect(inner).toBeDefined());

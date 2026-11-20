@@ -26,7 +26,7 @@ collapsed: Array<string>,
  */
 editor: EditorChoice | null, 
 /**
- * The sidebar MR/PR section's filter (spec #4 §2 "MR/PR list"); `None` is All.
+ * The sidebar MR/PR section's filter; `None` is All.
  */
 mrFilter: MrFilter | null, 
 /**

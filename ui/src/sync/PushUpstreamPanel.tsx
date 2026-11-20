@@ -21,7 +21,7 @@ const useAsk = create<{ req: Req | null }>(() => ({ req: null }));
 export const branchWidth = (text: string): string => `${Math.max(text.length, 1) + 3}ch`;
 
 /**
- * Asks where a branch with no upstream goes (spec #2 §12.3): a panel dropped from where the push
+ * Asks where a branch with no upstream goes: a panel dropped from where the push
  * started (`origin`: the Push button, the menu row's place), in the anchored-popover family
  * (boards E, G). `null` on Cancel, Esc, a press outside or a newer ask.
  */
