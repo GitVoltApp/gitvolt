@@ -4,6 +4,7 @@ import { api, errorMessage } from '../api/client';
 import type { BlamePayload } from '../api/gen/BlamePayload';
 import type { FileHistoryRow } from '../api/gen/FileHistoryRow';
 import { Avatar } from '../avatars/Avatar';
+import { onRepoClosed } from '../app/closedTabs';
 import { Loader } from '../data/loader';
 import { Lru } from '../data/lru';
 import type { FileMargin, MonacoHost } from '../diff/monaco/host';
@@ -39,6 +40,7 @@ function blameLoader(repoId: number, worktree: string): Loader<BlamePayload> {
   }
   return l;
 }
+onRepoClosed((repoId) => { for (const k of loaders.keys()) if (k.startsWith(`${repoId}\0`)) loaders.delete(k); });
 
 export function useBlame(repoId: number, worktree: string, rev: string, path: string): Loadable<BlamePayload> {
   const loader = blameLoader(repoId, worktree);

@@ -1,6 +1,6 @@
 
 import { ChevronLeft } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRepoContext } from '../app/repoContext';
 import { useRuntime } from '../app/runtime';
 import { useDiffOpen, useFocusZone } from '../app/seams1b';
@@ -12,7 +12,7 @@ import { PresetButton } from '../presets/PresetButton';
 import { useCurrentPreset } from '../presets/store';
 import { ClearableInput } from '../ui/ClearableInput';
 import { HoverTooltip } from '../ui/HoverTooltip';
-import { onResetDoubleClick } from '../ui/resetHandle';
+import { PanelResizer } from '../repo/PanelResizer';
 import { dividerTargets, layoutPanels } from './layout';
 import { buildPanels, sectionKey, sectionsOf } from './model';
 import { NarrowStrip } from './NarrowStrip';
@@ -144,17 +144,9 @@ export function Sidebar() {
     updateProfile((p) => ({ ...p, sidebarNarrow: false }));
   };
 
-  const resetWidth = () => updateProfile((p) => ({ ...p, sidebarWidth: DEFAULT_SIDEBAR_W }));
-
-  const startResize = (e: ReactPointerEvent) => {
-    e.preventDefault();
-    const x0 = e.clientX;
-    const w0 = width;
-    const move = (ev: PointerEvent) => updateProfile((p) => ({ ...p, sidebarWidth: Math.max(MIN_W, Math.min(MAX_W, Math.round(w0 + ev.clientX - x0))) }));
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
+  // The edge's drag writes the width straight to the aside and commits it once, on release (as the
+  // right panel's): a profile write per pointer move re-rendered everything that reads the profile.
+  const setWidth = (w: number) => updateProfile((p) => ({ ...p, sidebarWidth: w }));
 
   if (viewSidebar === 'hide') return null;
   const expand = () => {
@@ -202,7 +194,7 @@ export function Sidebar() {
           );
         })}
       </div>
-      <div className="sb-resize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabIndex={0} onPointerDown={startResize} onKeyDown={(e) => { if (e.key === 'Enter') resetWidth(); }} {...onResetDoubleClick(resetWidth)} />
+      <PanelResizer className="sb-resize" label="Resize sidebar" grows="right" width={width} min={MIN_W} max={MAX_W} defaultWidth={DEFAULT_SIDEBAR_W} onChange={setWidth} panelRef={asideRef} />
     </aside>
   );
 }

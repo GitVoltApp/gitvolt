@@ -13,6 +13,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 const flush = () => new Promise((r) => setTimeout(r, 0));
+/** A scheduler the test runs by hand: `frame()` runs what's waiting for the next frame. */
+function frames() {
+  const waiting: Array<() => void> = [];
+  return { schedule: (run: () => void) => { waiting.push(run); }, frame: () => { for (const run of waiting.splice(0)) run(); } };
+}
 const png: AvatarPayload = { mime: 'image/png', base64: btoa('png') };
 
 /** A fetcher whose calls the test settles one by one. */
@@ -45,6 +50,31 @@ describe('avatar store', () => {
     avatars.requestVisible(['ada@example.com', 'nobody@example.com']);
     expect(fetch).toHaveBeenCalledTimes(2);
     unsubscribe();
+  });
+
+  it('avatars arriving in one frame notify once, in that frame: the graph renders once, not once per picture', async () => {
+    const { fetch, settle } = manual();
+    const { schedule, frame } = frames();
+    const avatars = createAvatarStore(fetch, { schedule });
+    const seen = vi.fn();
+    avatars.subscribe(seen);
+    const emails = Array.from({ length: 30 }, (_, i) => `dev${i}@example.com`);
+    avatars.requestVisible(emails);
+    await flush();
+    for (const e of emails.slice(0, 4)) { settle(e); await flush(); } // each its own task
+    expect(avatars.get(emails[0])).not.toBeNull(); // readable at once
+    expect(seen).not.toHaveBeenCalled();
+    frame();
+    expect(seen).toHaveBeenCalledOnce();
+    expect(avatars.version()).toBe(1);
+    frame();
+    expect(seen).toHaveBeenCalledOnce(); // nothing new: no notification
+    settle(emails[4]);
+    await flush();
+    frame();
+    expect(seen).toHaveBeenCalledTimes(2);
+    avatars.reset(); // the setting changed: at once
+    expect(seen).toHaveBeenCalledTimes(3);
   });
 
   it('passes the asking tab\'s repo to the fetch (its GitHub project is the last place looked), none outside a tab', async () => {
@@ -234,7 +264,7 @@ describe('avatar store', () => {
     expect(AVATAR_CACHE_ENTRIES).toBe(512);
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ close: vi.fn() })));
     const fetch = vi.fn(async () => png);
-    const avatars = createAvatarStore(fetch, { capacity: 2 });
+    const avatars = createAvatarStore(fetch, { capacity: 2, schedule: (run) => run() });
     const seen = vi.fn();
     avatars.subscribe(seen);
     for (const e of ['a@x', 'b@x']) avatars.request(e);

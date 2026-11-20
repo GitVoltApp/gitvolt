@@ -4,6 +4,9 @@ import { ForgeAvatarStoreContext, createAvatarStore } from '../avatars/avatarSto
 import { MrCard } from './MrCard';
 import { detailOf, mrOf, user } from './testMrs';
 
+/** Arrivals notify at once here (the app waits a frame, to notify once per frame). */
+const now = (run: () => void) => run();
+
 describe('MrCard (the hover card)', () => {
   const mr = mrOf(12, { title: 'Dev work', pipeline: { status: 'success', webUrl: null }, conflicts: null });
 
@@ -36,7 +39,7 @@ describe('MrCard (the hover card)', () => {
     URL.revokeObjectURL = vi.fn();
     const url = 'https://gitlab.example.com/uploads/-/system/user/avatar/1/grace.png';
     const fetch = vi.fn(async () => ({ mime: 'image/png', base64: btoa('png') }));
-    const store = createAvatarStore(fetch, { keyOf: (u) => u.trim() });
+    const store = createAvatarStore(fetch, { keyOf: (u) => u.trim(), schedule: now });
     const withPic = mrOf(12, { author: { ...user('Grace Hopper'), avatarUrl: url } });
     render(<ForgeAvatarStoreContext value={store}><MrCard kind="gitlab" mr={withPic} detail={null} /></ForgeAvatarStoreContext>);
     const avatar = screen.getByTestId('avatar');

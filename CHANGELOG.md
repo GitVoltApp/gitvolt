@@ -29,6 +29,21 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   graph's and status's first reads; a tab sends the core one "hold this repository" request
   instead of two; and the app's version info is asked for once at startup, not two or three
   times.
+- **Dragging the sidebar's edge no longer re-renders the app on every pointer move.** The drag
+  saved the width to the profile at each move, so everything that reads the profile (the tab bar,
+  the sidebar's panels, the graph) rendered again each time. The sidebar now follows the pointer
+  directly and saves its width once, on release, as the details panel's edge does. Its edge also
+  takes ←/→ (16 px a step), and Home/End for the narrowest and widest.
+- **The tab bar renders only when what it shows changes.** It rendered again on every change to
+  any tab's state (each status refresh, in every tab) and on every profile write, and each time
+  measured its group lines and made a new resize observer. It now follows only the tabs, their
+  groups and their names, and measures the lines when the strip's items change, resize or move.
+- **Authors' pictures arriving render the graph once per frame, not once per picture.** Each
+  picture lands on its own, and the graph rendered again for every one as a history opened.
+- **Closing a tab also frees what the window kept for it.** A closed tab's find and branch-panel
+  state, and, once no tab shows its repository, that repository's blames, the command palette's
+  list of its files (about 9 MB for 50,000 files) and the MR/PR pickers' answers, stayed until
+  quit.
 - **The graph refreshes faster when a commit, checkout or rebase step moves HEAD.** GitVolt keeps
   the commits it last read, so a refresh reads only the new ones instead of every commit in the
   window again, and find keeps their searchable text too. The graph also keeps the rows that

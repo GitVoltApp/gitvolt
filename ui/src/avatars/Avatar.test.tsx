@@ -14,6 +14,9 @@ import type { ForgeUser } from '../api/gen/ForgeUser';
 import { Avatar, ForgeAvatar } from './Avatar';
 import { AvatarStoreContext, ForgeAvatarStoreContext, createAvatarStore } from './avatarStore';
 
+/** Arrivals notify at once here (the app waits a frame, to notify once per frame). */
+const now = (run: () => void) => run();
+
 let objectUrls = 0;
 beforeAll(() => {
   // Unique, as the browser's are: an image known to have loaded is known by its URL.
@@ -28,6 +31,7 @@ describe('Avatar', () => {
     expect(el).toHaveTextContent('AL');
     expect(GRAPH_COLORS.map((c) => c.toLowerCase())).toContain(rgbToHex(el.style.background));
     await act(async () => {});
+    await act(() => new Promise<void>((r) => requestAnimationFrame(() => r()))); // the app's store notifies in the next frame
     // It waits, unseen, over the initials until the browser has loaded it.
     const img = el.querySelector('img')!;
     expect(img.getAttribute('src')).toMatch(/^blob:ada-/);
@@ -69,8 +73,8 @@ describe('ForgeAvatar (the MR/PR view, the hover card)', () => {
   it("fetches the forge's avatar URL as given (case kept), and the email's only without one", async () => {
     const byUrl = vi.fn(async () => ({ mime: 'image/png', base64: btoa('png') }));
     const byEmail = vi.fn(async () => null);
-    const urls = createAvatarStore(byUrl, { keyOf: (u) => u.trim() });
-    const emails = createAvatarStore(byEmail);
+    const urls = createAvatarStore(byUrl, { keyOf: (u) => u.trim(), schedule: now });
+    const emails = createAvatarStore(byEmail, { schedule: now });
     const url = 'https://avatars.githubusercontent.com/u/583231?v=4&X=Y';
     const octocat: ForgeUser = { id: 1, username: 'octocat', name: 'The Octocat', avatarUrl: url, webUrl: '', email: 'Octo@Example.com', emails: [] };
     const wrap = (u: ForgeUser) => (
@@ -89,7 +93,7 @@ describe('ForgeAvatar (the MR/PR view, the hover card)', () => {
 
   it('asks for nothing without a URL or an email', async () => {
     const fetch = vi.fn(async () => null);
-    render(<ForgeAvatarStoreContext value={createAvatarStore(fetch)}><ForgeAvatar user={{ id: 1, username: 'g', name: 'Grace Hopper', avatarUrl: null, webUrl: '', email: null, emails: [] }} size={20} /></ForgeAvatarStoreContext>);
+    render(<ForgeAvatarStoreContext value={createAvatarStore(fetch, { schedule: now })}><ForgeAvatar user={{ id: 1, username: 'g', name: 'Grace Hopper', avatarUrl: null, webUrl: '', email: null, emails: [] }} size={20} /></ForgeAvatarStoreContext>);
     await act(async () => {});
     expect(fetch).not.toHaveBeenCalled();
     expect(avatar).not.toHaveBeenCalledWith('');
@@ -97,7 +101,7 @@ describe('ForgeAvatar (the MR/PR view, the hover card)', () => {
 
   it("an avatar URL whose image fails to load shows the initials, not an <img> (no broken-image icon)", async () => {
     // The fake forge's truncated PNG: it arrives, but the browser can't decode it.
-    const urls = createAvatarStore(vi.fn(async () => ({ mime: 'image/png', base64: btoa('\x89PNG\r\n\x1a\nfake') })), { keyOf: (u) => u.trim() });
+    const urls = createAvatarStore(vi.fn(async () => ({ mime: 'image/png', base64: btoa('\x89PNG\r\n\x1a\nfake') })), { keyOf: (u) => u.trim(), schedule: now });
     const ada: ForgeUser = { id: 7, username: 'ada', name: 'Ada Lovelace', avatarUrl: 'https://gitlab.example.com/uploads/ada.png', webUrl: '', email: null, emails: [] };
     render(<ForgeAvatarStoreContext value={urls}><ForgeAvatar user={ada} size={18} /></ForgeAvatarStoreContext>);
     const el = screen.getByTestId('avatar');
@@ -115,7 +119,7 @@ describe('ForgeAvatar (the MR/PR view, the hover card)', () => {
 describe('Avatar for an image already loaded elsewhere (the graph, then the details header)', () => {
   it('renders the <img> on its first render, with no initials frame', async () => {
     const fetch = vi.fn(async () => ({ mime: 'image/png', base64: btoa('png') }));
-    const store = createAvatarStore(fetch);
+    const store = createAvatarStore(fetch, { schedule: now });
     const wrap = (size: number) => <AvatarStoreContext value={store}><Avatar name="Ada Lovelace" email="ada@seen" size={size} /></AvatarStoreContext>;
     const first = render(wrap(16));
     await act(async () => {});
@@ -139,7 +143,7 @@ describe('Avatar for an image already loaded elsewhere (the graph, then the deta
     const had = proto.decode;
     proto.decode = decode;
     try {
-      const store = createAvatarStore(vi.fn(async () => ({ mime: 'image/png', base64: btoa('png') })));
+      const store = createAvatarStore(vi.fn(async () => ({ mime: 'image/png', base64: btoa('png') })), { schedule: now });
       render(<AvatarStoreContext value={store}><Avatar name="Ada Lovelace" email="ada@decoded" /></AvatarStoreContext>);
       await act(async () => {});
       await act(async () => {});
@@ -154,7 +158,7 @@ describe('Avatar for an image already loaded elsewhere (the graph, then the deta
 
   it('two surfaces at different sizes share one entry and one request', async () => {
     const fetch = vi.fn(async () => ({ mime: 'image/png', base64: btoa('png') }));
-    const store = createAvatarStore(fetch);
+    const store = createAvatarStore(fetch, { schedule: now });
     render(
       <AvatarStoreContext value={store}>
         <Avatar name="Ada Lovelace" email="Ada@Shared" size={16} />
@@ -172,7 +176,7 @@ describe('Avatar for an image already loaded elsewhere (the graph, then the deta
 describe('Avatar with a bounded cache', () => {
   it('re-requests its image after the cache evicted it', async () => {
     const fetch = vi.fn(async () => ({ mime: 'image/png', base64: btoa('png') }));
-    const store = createAvatarStore(fetch, { capacity: 1 });
+    const store = createAvatarStore(fetch, { capacity: 1, schedule: now });
     render(<AvatarStoreContext value={store}><Avatar name="Ada Lovelace" email="ada@x" /></AvatarStoreContext>);
     await act(async () => {});
     expect(screen.getByTestId('avatar').querySelector('img')).not.toBeNull();
@@ -192,7 +196,7 @@ function rgbToHex(rgb: string): string {
 describe('Avatar that never asks (request={false})', () => {
   it('shows what the cache has, and picks up an image someone else requested, without asking itself', async () => {
     const fetch = vi.fn(async () => ({ mime: 'image/png', base64: btoa('png') }));
-    const store = createAvatarStore(fetch);
+    const store = createAvatarStore(fetch, { schedule: now });
     render(<AvatarStoreContext value={store}><Avatar name="Ada Lovelace" email="ada@y" request={false} /></AvatarStoreContext>);
     await act(async () => {});
     expect(fetch).not.toHaveBeenCalled();

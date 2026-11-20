@@ -12,6 +12,7 @@ import { dropForge } from '../forge/mrStore';
 import { releaseCompareRef } from '../forge/mrview/compareRef';
 import { closeFlyout } from '../ui/flyout/flyout';
 import { dropTabView, feedTabView } from './tabStores';
+import { cleanClosedTab } from './closedTabs';
 import { withActiveSidebar } from '../worktrees/active';
 import { noteViewport, unloadDue, type OlderState } from '../graph/olderWindow';
 import { basename, setTabRepo, tabForPath, touchRecent } from './tabs';
@@ -156,6 +157,7 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
     closeCenterView(tabId);
     closeFlyout(tabId); // And its flyout, with the focus it would return to
     dropForge(tabId); // And its forge state
+    cleanClosedTab(tabId, get().tabs); // And what other modules cache for it, or for its repository
     releaseRepo(tabId); // And its repository: the core drops a handle no tab holds
     if (!(tabId in get().tabs)) return;
     set((s) => {

@@ -5,6 +5,7 @@ import type { TabState } from '../api/gen/TabState';
 import { runAction } from '../app/actions';
 import { useRuntime } from '../app/runtime';
 import { useAppState } from '../app/state';
+import { useShallow } from 'zustand/react/shallow';
 import { guardTabClose } from '../diff/workingCopy';
 import { groupById, groupOf, groupOnto, moveGroup, placeTab, stripItems, toggleGroupCollapsed, type Place, type StripItem } from '../app/tabGroups';
 import { activateTab, closeTab, renameTab, tabLabel } from '../app/tabs';
@@ -181,11 +182,14 @@ export function TabBar() {
   const maximized = useWindowChrome((s) => s.maximized);
   const platform = chrome?.platform ?? 'linux';
   const winButtons = compact && chrome ? buttonSets(chrome.platform, chrome.layout) : null;
-  const profile = useAppState((s) => s.profile);
-  const { tabs, activeTab: active, tabGroups } = profile;
-  const closedCount = profile.closedTabs.length;
-  const lastClosed = profile.closedTabs.at(-1) ?? null;
-  const runtimes = useRuntime((s) => s.tabs);
+  // Only what the strip shows: a profile write elsewhere (a panel's width) or a runtime patch (a
+  // fetch, a status) doesn't render it again.
+  const tabs = useAppState((s) => s.profile.tabs);
+  const active = useAppState((s) => s.profile.activeTab);
+  const tabGroups = useAppState((s) => s.profile.tabGroups);
+  const closedCount = useAppState((s) => s.profile.closedTabs.length);
+  const lastClosed = useAppState((s) => s.profile.closedTabs.at(-1) ?? null);
+  const repoNames = useRuntime(useShallow((s) => tabs.map((t) => s.tabs[t.id]?.repo?.name)));
   const renaming = useTabUi((s) => s.renaming);
   const menuGroup = useGroupUi((s) => (s.menu ? tabGroups.find((g) => g.id === s.menu) ?? null : null));
   const list = useGroupUi((s) => s.list);
@@ -194,8 +198,9 @@ export function TabBar() {
   const { drag, onPointerDown, consumeClick, itemStyle, slotWindow } = useTabDrag();
   const tablistRef = useRef<HTMLDivElement>(null);
   // A collapsed group's tabs stay laid out at no width, so collapsing and expanding animate.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- the strip depends on these three only
-  const items = useMemo(() => stripItems(profile, true), [tabs, tabGroups, active]);
+  const items = useMemo(() => stripItems({ tabs, tabGroups, activeTab: active }, true), [tabs, tabGroups, active]);
+  // Changes whenever the strip's items do: the group lines measure them again.
+  const layout = useMemo(() => items.map((i) => (i.kind === 'tab' && i.hidden ? `~${itemKey(i)}` : itemKey(i))).join(' '), [items]);
   useStripScroll(tablistRef, active, tabGroups.map((g) => (g.collapsed ? '' : g.id)).join(), !!drag);
 
   /** Roving tabindex: ArrowLeft/Right/Home/End move DOM focus among the tabs and the
@@ -284,11 +289,11 @@ export function TabBar() {
             );
           }
           const t = item.tab;
-          const label = tabLabel(t, runtimes[t.id]?.repo?.name);
+          const index = tabs.indexOf(t);
+          const label = tabLabel(t, repoNames[index]);
           // The group border a drag previews ("sticky") on the dragged tab and the tab it would be
           // dropped onto, through the slide that settles it; else the tab's own group's.
           const color = drag && (dragged(key) || drag.onto === key) ? drag.color : item.group?.color ?? null;
-          const index = tabs.indexOf(t);
           const { hidden } = item;
           return (
             <div
@@ -335,7 +340,7 @@ export function TabBar() {
             </div>
           );
         })}
-        <GroupLines strip={tablistRef} specs={lineSpecs} moving={!!drag} slotWindow={slotWindow} />
+        <GroupLines strip={tablistRef} specs={lineSpecs} moving={!!drag} slotWindow={slotWindow} layout={layout} />
       </div>
       {menuGroup && <GroupMenu key={menuGroup.id} group={menuGroup} />}
       {listGroup && !drag && <GroupTabList key={listGroup.id} group={listGroup} focus={list!.focus} />}

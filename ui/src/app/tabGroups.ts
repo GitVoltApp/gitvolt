@@ -20,9 +20,12 @@ export const newGroupId = (): string => `g${newTabId()}`;
 /** Where a tab or a group goes: right before or right after a tab. */
 export type Place = { before: string } | { after: string };
 
-const groups = (p: Profile): TabGroup[] => p.tabGroups ?? [];
+/** What the strip is made of: a profile, or just these fields of one. */
+type Strip = Pick<Profile, 'tabs' | 'tabGroups' | 'activeTab'>;
 
-export const groupOf = (p: Profile, tabId: string): TabGroup | undefined => groups(p).find((g) => g.tabs.includes(tabId));
+const groups = (p: Pick<Profile, 'tabGroups'>): TabGroup[] => p.tabGroups ?? [];
+
+export const groupOf = (p: Pick<Profile, 'tabGroups'>, tabId: string): TabGroup | undefined => groups(p).find((g) => g.tabs.includes(tabId));
 export const groupById = (p: Profile, id: string): TabGroup | undefined => groups(p).find((g) => g.id === id);
 
 export function nextGroupColor(p: Profile): GroupColor {
@@ -31,7 +34,7 @@ export function nextGroupColor(p: Profile): GroupColor {
 }
 
 /** A tab the strip doesn't show: in a collapsed group, and not the active tab. */
-export function isTabHidden(p: Profile, tabId: string): boolean {
+export function isTabHidden(p: Strip, tabId: string): boolean {
   return tabId !== p.activeTab && !!groupOf(p, tabId)?.collapsed;
 }
 
@@ -40,7 +43,7 @@ export type StripItem = { kind: 'chip'; group: TabGroup } | { kind: 'tab'; tab: 
 /** What the strip shows, in order: each group's chip before its first tab, then the tabs that
  * aren't hidden (`withHidden`: the hidden ones too, flagged, which the strip keeps laid out at
  * no width so collapsing and expanding can animate). */
-export function stripItems(p: Profile, withHidden = false): StripItem[] {
+export function stripItems(p: Strip, withHidden = false): StripItem[] {
   const out: StripItem[] = [];
   for (const t of p.tabs) {
     const g = groupOf(p, t.id);

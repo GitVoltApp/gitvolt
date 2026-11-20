@@ -4,6 +4,7 @@ import type { HistoryHit } from '../api/gen/HistoryHit';
 import { selectCommit } from '../app/graphNav';
 import { revealCommit } from '../presets/reveal';
 import { beginOlder, useRuntime } from '../app/runtime';
+import { onTabClosed } from '../app/closedTabs';
 import { tabStore, tabView } from '../app/tabStores';
 
 /**
@@ -60,6 +61,19 @@ const bump = (tabId: string) => {
   seqs.set(tabId, seq);
   return seq;
 };
+
+// A closed tab's find goes with it: its query, its matches, and a search still running.
+onTabClosed((tabId) => {
+  cancelPending(tabId);
+  typing.delete(tabId);
+  seqs.delete(tabId);
+  if (!(tabId in useFind.getState().byTab)) return;
+  useFind.setState((s) => {
+    const byTab = { ...s.byTab };
+    delete byTab[tabId];
+    return { byTab };
+  });
+});
 
 /** Opens the tab's find box (or, already open, focuses it again). */
 export function openFind(tabId: string): void {

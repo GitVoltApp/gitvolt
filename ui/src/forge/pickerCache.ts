@@ -1,3 +1,4 @@
+import { onRepoClosed } from '../app/closedTabs';
 import { onForgeAccountsChanged } from './accountsBus';
 
 /**
@@ -19,6 +20,10 @@ export function clearPickerCache(): void {
   epoch++;
 }
 onForgeAccountsChanged(clearPickerCache);
+// The last tab showing a repository closed: its answers go (an answer still on its way is not kept).
+onRepoClosed((repo) => {
+  for (const m of [store, inflight]) for (const k of m.keys()) if (k.startsWith(`${repo}\u0000`)) m.delete(k);
+});
 
 const keyOf = (repo: number, remote: string, kind: string, query: string) => `${repo}\u0000${remote}\u0000${kind}\u0000${query}`;
 const norm = (q: string) => q.trim();
@@ -34,7 +39,7 @@ function loadRaw<T>(key: string, fetch: () => Promise<T[]>): Promise<T[]> {
   if (running) return running as Promise<T[]>;
   const mine = epoch;
   const p: Promise<T[]> = fetch().then((v) => {
-    if (mine === epoch) store.set(key, { at: Date.now(), value: v });
+    if (mine === epoch && inflight.get(key) === p) store.set(key, { at: Date.now(), value: v });
     return v;
   }).finally(() => { if (inflight.get(key) === p) inflight.delete(key); });
   inflight.set(key, p);

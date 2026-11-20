@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from '../../api/client';
 import type { RevealPayload } from '../../api/gen/RevealPayload';
 import type { RowPayload } from '../../api/gen/RowPayload';
+import { onTabClosed } from '../../app/closedTabs';
 import { viewRequest } from '../../presets/reveal';
 
 /** The reveal panel open in a tab: the ⋮ row's or folded merge's key ("branch:<name>@<newest
@@ -35,15 +36,26 @@ export function closeReveal(tabId: string): void {
 /** The reveal key a graph row opens a panel for, if any: a ⋮ row's or a folded merge's. */
 export const revealKeyOf = (row: RowPayload | undefined): string | null => row?.collapsed?.key ?? row?.fold?.key ?? null;
 
-// Bumped by every new graph payload: a fetch started for an older one is dropped.
-const generation = new Map<string, number>();
+// Fetches running, by tab and cache key: one gone from here (a new graph payload, the tab
+// closed) is dropped when it answers.
 const inflight = new Map<string, Promise<RevealPayload | null>>();
+const dropInflight = (tabId: string) => { for (const k of [...inflight.keys()]) if (k.startsWith(`${tabId}\n`)) inflight.delete(k); };
+
+// A closed tab's panel, its cached rows and its running fetches go with it.
+onTabClosed((tabId) => {
+  dropInflight(tabId);
+  if (!(tabId in useReveal.getState().tabs)) return;
+  useReveal.setState((s) => {
+    const tabs = { ...s.tabs };
+    delete tabs[tabId];
+    return { tabs };
+  });
+});
 
 /** A new graph payload: cached panels go, and an open panel follows its row, or closes when the
  * row is gone. */
 export function revealGraphChanged(tabId: string, rows: readonly RowPayload[]): void {
-  generation.set(tabId, (generation.get(tabId) ?? 0) + 1);
-  for (const k of [...inflight.keys()]) if (k.startsWith(`${tabId}\n`)) inflight.delete(k);
+  dropInflight(tabId);
   const t = useReveal.getState().tabs[tabId];
   if (!t) return;
   const open = t.open;
@@ -62,11 +74,10 @@ export function fetchReveal(tabId: string, key: string, below: boolean): Promise
   if (running) return running;
   const req = viewRequest(tabId);
   if (!req) return Promise.resolve(null);
-  const gen = generation.get(tabId) ?? 0;
-  const run = api.graphReveal(req.repo, req.limit, req.extra, req.view, key, below)
+  const run: Promise<RevealPayload | null> = api.graphReveal(req.repo, req.limit, req.extra, req.view, key, below)
     .catch(() => null)
     .then((payload) => {
-      if ((generation.get(tabId) ?? 0) !== gen) return payload;
+      if (inflight.get(id) !== run) return payload;
       inflight.delete(id);
       const cache = new Map(tabReveal(tabId).cache);
       cache.set(ck, payload);

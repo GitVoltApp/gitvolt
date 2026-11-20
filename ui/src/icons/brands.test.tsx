@@ -4,6 +4,9 @@ import { ForgeAvatarStoreContext, createAvatarStore } from '../avatars/avatarSto
 import { patchForge, useForge } from '../forge/mrStore';
 import { ForgeMark, RemoteIcon } from './brands';
 
+/** Arrivals notify at once here (the app waits a frame, to notify once per frame). */
+const now = (run: () => void) => run();
+
 const ALICE = 'https://gitlab.example.com/uploads/-/system/user/avatar/7/alice.png';
 
 beforeAll(() => {
@@ -18,7 +21,7 @@ describe("RemoteIcon: a user's fork shows its owner's picture", () => {
     useForge.setState({ byTab: {} });
     patchForge('t', { ownerAvatars: { alice: ALICE } });
     fetch = vi.fn(async (url: string) => (url === ALICE ? { mime: 'image/png', base64: btoa('png') } : null));
-    store = createAvatarStore(fetch, { keyOf: (u) => u.trim() });
+    store = createAvatarStore(fetch, { keyOf: (u) => u.trim(), schedule: now });
   });
   const show = (remote: string, tabId: string | null = 't') =>
     render(<ForgeAvatarStoreContext value={store}><RemoteIcon kind="gitlab" host="gitlab.example.com" remote={remote} size={12} tabId={tabId ?? undefined} /></ForgeAvatarStoreContext>);

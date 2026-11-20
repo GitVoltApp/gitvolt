@@ -1,4 +1,5 @@
 import { availableActions, invoke } from '../app/actions';
+import { onRepoClosed } from '../app/closedTabs';
 import { selectCommit } from '../app/graphNav';
 import { openPathInTab, useRuntime } from '../app/runtime';
 import { listTreeFiles, openFileView } from '../app/seams1b';
@@ -30,6 +31,7 @@ export function refEntries(tabId: string): PaletteEntry[] {
 }
 
 const fileCache = new Map<string, Promise<string[]>>();
+onRepoClosed((repoId) => { for (const k of fileCache.keys()) if (k.startsWith(`${repoId}:`)) fileCache.delete(k); });
 
 /** Every file at HEAD (the tree listing, `services.treeFiles`), cached per repo and HEAD. */
 export async function fileEntries(tabId: string): Promise<PaletteEntry[]> {

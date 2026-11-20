@@ -102,6 +102,33 @@ describe('the group chip', () => {
     expect(lines.every((l) => l.getAttribute('aria-hidden') === 'true')).toBe(true);
   });
 
+  it('the strip renders and measures its lines again only when what it shows changes, not on every status or profile write', async () => {
+    const { useRuntime } = await import('../app/runtime');
+    setTabs(['a', 'b', 'c', 'd'], 'a', [group('g1', ['b', 'c'], { color: 'green' })]);
+    let observers = 0;
+    const RO = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class extends RO { constructor(cb: ResizeObserverCallback) { super(cb); observers++; } };
+    render(<TabBar />);
+    layout();
+    const measured = vi.mocked(HTMLElement.prototype.getBoundingClientRect);
+    const line = screen.getByRole('tablist').querySelector<HTMLElement>('.tg-line')!;
+    expect(observers).toBe(1);
+    measured.mockClear();
+    act(() => useRuntime.getState().patch('b', { status: 'ready', error: null }));
+    act(() => useAppState.getState().updateProfile((p) => ({ ...p, sidebarWidth: 300 })));
+    expect(measured).not.toHaveBeenCalled();
+    // A repository's name arriving relabels its tab; the strip changing (a tab closed) moves the line.
+    act(() => useRuntime.getState().patch('b', { repo: { id: 1, path: '/b', name: 'backend', worktree: '/b' } as never }));
+    expect(screen.getAllByRole('tab')[1]).toHaveTextContent('backend');
+    act(() => useAppState.getState().updateProfile((p) => ({ ...p, tabs: p.tabs.filter((t) => t.id !== 'a'), activeTab: 'b' })));
+    // The chip (20 px) now first, then b and c (100 px each): the line from the chip through c.
+    expect(line.style.transform).toBe('translateX(0px)');
+    expect(line.style.width).toBe('220px');
+    expect(observers).toBe(1);
+    act(() => useRuntime.setState({ tabs: {} }));
+    globalThis.ResizeObserver = RO;
+  });
+
   it('keyboard: arrows reach the chip, Enter and Space toggle it', () => {
     setTabs(['a', 'b'], 'a', [group('g1', ['b'], { name: 'Web' })]);
     render(<TabBar />);

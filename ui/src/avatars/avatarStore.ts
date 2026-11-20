@@ -33,7 +33,7 @@ export interface AvatarStore {
    * person's name (the rows' authors), by the email as given.
    */
   requestVisible(emails: string[], repo?: number, names?: ReadonlyMap<string, string>): void;
-  /** Called after an avatar arrives (and after any it evicted). */
+  /** Called once in the frame after avatars arrive (and after any they evicted); at once on `reset`. */
   subscribe(listener: () => void): () => void;
   /** Bumped by every such change. */
   version(): number;
@@ -97,12 +97,20 @@ function release(img: AvatarImage) {
   URL.revokeObjectURL(img.url);
 }
 
+/** The next frame (a timer where there are no frames). */
+const nextFrame = (run: () => void): void => {
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+  else setTimeout(run, 16);
+};
+
 /**
  * Avatars keyed by trimmed, lowercased email, fetched at most 4 at a time through `fetchAvatar`
  * (the backend call: the UI never contacts an avatar host itself). An email is fetched once
  * unless its request was dropped or its image evicted; "no avatar" is remembered for the session.
+ * Arrivals notify subscribers once per frame (`schedule`): each lands in a task of its own, and
+ * the graph rendered again for every one.
  */
-export function createAvatarStore(fetchAvatar: (email: string, repo?: number, name?: string) => Promise<AvatarPayload | null>, { concurrency = 4, capacity = AVATAR_CACHE_ENTRIES, keyOf = avatarKey } = {}): AvatarStore {
+export function createAvatarStore(fetchAvatar: (email: string, repo?: number, name?: string) => Promise<AvatarPayload | null>, { concurrency = 4, capacity = AVATAR_CACHE_ENTRIES, keyOf = avatarKey, schedule = nextFrame } = {}): AvatarStore {
   /** Loaded images, least recently used first. */
   const images = new Map<string, AvatarImage>();
   /** Queued or in flight, with the load that settles it. */
@@ -131,9 +139,16 @@ export function createAvatarStore(fetchAvatar: (email: string, repo?: number, na
     return p ? decode(p) : null;
   }, new Lru(1), concurrency, () => false, URGENT_SLOTS);
 
-  const notify = () => {
+  let queued = false;
+  const notifyNow = () => {
+    queued = false;
     version++;
     for (const l of listeners) l();
+  };
+  const notify = () => {
+    if (queued) return;
+    queued = true;
+    schedule(() => { if (queued) notifyNow(); });
   };
   const known = (key: string, repo: number | undefined) => images.has(key) || none.has(noneKey(key, repo));
   // Follows the loader's promise for `key`. Keyed by identity: a dropped job's rejection lands a
@@ -218,7 +233,7 @@ export function createAvatarStore(fetchAvatar: (email: string, repo?: number, na
       images.clear();
       none.clear();
       epoch++;
-      notify();
+      notifyNow();
     },
   };
 }

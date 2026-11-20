@@ -141,26 +141,57 @@ export function settling(root: Pick<Element, 'getAnimations'>): boolean {
 
 /**
  * Each group's top line, one element over its whole span, above the tabs and their separators: so
- * it's one unbroken stroke. Measured from the strip's items as drawn (after each render, and every
- * frame while anything in the strip moves: a drag, a drop's slide, a group collapsing or
- * expanding), so it grows and shrinks, and slides, with them. A dragged tab joining a group eases
- * into its line, and out of it as it leaves; the lifted tab covers the other lines, and its own
- * group's line shows over it (`.tg-over`, fading with its share).
+ * it's one unbroken stroke. Measured from the strip's items as drawn (when the lines, the drag or
+ * the strip's items change, when the strip or an item resizes, and every frame while anything in
+ * the strip moves: a drag, a drop's slide, a group collapsing or expanding), so it grows and
+ * shrinks, and slides, with them. A dragged tab joining a group eases into its line, and out of it
+ * as it leaves; the lifted tab covers the other lines, and its own group's line shows over it
+ * (`.tg-over`, fading with its share). A render that changes none of that (a repository's status,
+ * a profile write elsewhere) measures nothing.
  */
-export function GroupLines({ strip, specs, moving, slotWindow }: {
+export function GroupLines({ strip, specs, moving, slotWindow, layout = '' }: {
   strip: RefObject<HTMLElement | null>;
   specs: LineSpec[];
   /** A drag is on: keep measuring. */
   moving: boolean;
   slotWindow(key: string): SlotWindow | null;
+  /** Changes whenever the strip's items do (added, removed, moved, hidden). */
+  layout?: string;
 }) {
   const refs = useRef(new Map<string, HTMLDivElement>());
   const overs = useRef(new Map<string, HTMLDivElement>());
   const ghosts = useRef(new Map<string, Ghost>());
   const members = useRef(new Map<string, string[]>());
+  /** The latest render's `slotWindow` (it reads the drag's live slot windows). */
+  const slots = useRef(slotWindow);
+  /** Places the lines, and keeps following them while the strip moves (the latest specs'). */
+  const tick = useRef<() => void>(() => {});
+  const frame = useRef(0);
+  /** What follows the strip, for its life: one observer (the strip or one of its items resized)
+   * and the motion listener. */
+  const follow = useRef<{ root: HTMLElement; ro: ResizeObserver | null; kick(): void } | null>(null);
+  const specKey = JSON.stringify(specs);
+  useLayoutEffect(() => { slots.current = slotWindow; });
+  const unfollow = () => {
+    cancelAnimationFrame(frame.current);
+    frame.current = 0;
+    const f = follow.current;
+    follow.current = null;
+    f?.root.removeEventListener(STRIP_MOTION, f.kick);
+    f?.ro?.disconnect();
+  };
+  useLayoutEffect(() => unfollow, []);
+
   useLayoutEffect(() => {
-    const root = strip.current;
+    // The strip's ref is attached after this effect on its first render: the lines' parent is it.
+    const root = strip.current ?? refs.current.values().next().value?.parentElement ?? null;
     if (!root) return;
+    if (follow.current?.root !== root) {
+      unfollow();
+      const kick = () => { if (!frame.current) tick.current(); };
+      root.addEventListener(STRIP_MOTION, kick);
+      follow.current = { root, kick, ro: typeof ResizeObserver === 'function' ? new ResizeObserver(kick) : null };
+    }
     const ms = reducedMotion() ? 0 : GHOST_MS;
     const now0 = performance.now();
     for (const id of [...ghosts.current.keys()]) if (!specs.some((s) => s.id === id)) ghosts.current.delete(id);
@@ -172,7 +203,7 @@ export function GroupLines({ strip, specs, moving, slotWindow }: {
     }
     const tabBox = (id: string): Span | null => {
       const el = root.querySelector(`.tab[data-tab-id="${CSS.escape(id)}"]`);
-      return el && visiblePart(span(el), slotWindow(`tab:${id}`));
+      return el && visiblePart(span(el), slots.current(`tab:${id}`));
     };
     /** Places every line; true while a ghost is still easing. */
     const placeAll = (): boolean => {
@@ -199,23 +230,23 @@ export function GroupLines({ strip, specs, moving, slotWindow }: {
       }
       return easing;
     };
-    let frame = 0;
-    const tick = () => {
+    tick.current = () => {
       const easing = placeAll();
       const busy = moving || easing || settling(root);
-      frame = busy ? requestAnimationFrame(tick) : 0;
+      frame.current = busy ? requestAnimationFrame(() => tick.current()) : 0;
     };
-    tick();
-    const kick = () => { if (!frame) tick(); };
-    root.addEventListener(STRIP_MOTION, kick);
-    const resized = typeof ResizeObserver === 'function' ? new ResizeObserver(() => placeAll()) : null;
-    resized?.observe(root);
-    return () => {
-      cancelAnimationFrame(frame);
-      root.removeEventListener(STRIP_MOTION, kick);
-      resized?.disconnect();
-    };
-  });
+    cancelAnimationFrame(frame.current);
+    frame.current = 0;
+    tick.current();
+    // The strip's items as they are now: a label that grows, or a group collapsing, moves the lines.
+    const ro = follow.current.ro;
+    if (ro) {
+      ro.disconnect();
+      ro.observe(root);
+      for (const el of root.children) if (!el.classList.contains('tg-line') && !el.classList.contains('tg-over')) ro.observe(el);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `specs` by content (specKey), `slotWindow` through `slots`
+  }, [strip, specKey, moving, layout]);
   const keep = (m: Map<string, HTMLDivElement>, id: string) => (el: HTMLDivElement | null) => {
     if (el) m.set(id, el);
     else m.delete(id);

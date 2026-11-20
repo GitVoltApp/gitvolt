@@ -315,6 +315,27 @@ describe('Sidebar panels', () => {
     for (const off of offs) off();
   });
 
+  it("dragging the edge resizes the sidebar live and writes the profile once, on release; arrow keys step it", async () => {
+    renderIt();
+    const aside = screen.getByRole('complementary', { name: 'Sidebar' });
+    const edge = screen.getByRole('separator', { name: 'Resize sidebar' });
+    let writes = 0;
+    const off = useAppState.subscribe((s, prev) => { if (s.profile !== prev.profile) writes++; });
+    fireEvent.pointerDown(edge, { clientX: 240, pointerId: 1, button: 0 });
+    for (let x = 250; x <= 400; x += 10) fireEvent.pointerMove(edge, { clientX: x, pointerId: 1 });
+    await act(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+    // Every profile reader re-rendered on each move when the drag wrote the profile.
+    expect(writes).toBe(0);
+    expect(aside).toHaveStyle({ width: '400px' });
+    fireEvent.pointerUp(edge, { clientX: 400, pointerId: 1 });
+    expect(writes).toBe(1);
+    expect(profile().sidebarWidth).toBe(400);
+    fireEvent.keyDown(edge, { key: 'ArrowLeft' });
+    expect(profile().sidebarWidth).toBe(384);
+    expect(aside).toHaveStyle({ width: '384px' });
+    off();
+  });
+
   it('double-clicking the sidebar edge restores the default width; a panel divider evens out just its two panels', () => {
     useAppState.setState({ profile: { ...profile(), sidebarWidth: 400, sidebarPanels: { local: 300, remote: 100, worktrees: 120, stashes: 40, tags: 40 } } });
     renderIt();
