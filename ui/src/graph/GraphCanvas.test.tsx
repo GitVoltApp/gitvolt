@@ -1,6 +1,6 @@
 import { act, render } from '@testing-library/react';
 import { Activity, createRef } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { RowPayload } from '../api/gen/RowPayload';
 import { bandOverscan } from './band';
 import { SELECTED_BAND_ALPHA } from './draw';
@@ -182,8 +182,8 @@ describe('GraphCanvas in a hidden tab', () => {
     setDevicePixelRatio(1);
     const { rerender } = render(at('visible'));
     const resized = vi.spyOn(HTMLCanvasElement.prototype, 'width', 'set');
+    onTestFinished(() => resized.mockRestore());
     rerender(at('visible', 0));
     expect(resized).not.toHaveBeenCalled();
-    resized.mockRestore();
   });
 });

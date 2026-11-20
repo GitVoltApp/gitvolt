@@ -112,8 +112,12 @@ export const GraphCanvas = memo(function GraphCanvas({ rows, scroller, width, he
   }, [rows, width, height, metrics, labeledRows, dpr, avatar, avatarVersion, clipped, scrollX, selected, alsoSelected, headRow, foldOpen, colors, fontFamily, scroller]);
 
   // A hidden tab (<Activity> hides by cleaning up its effects) gives its backing store back: a
-  // few MB of GPU memory each, kept by every tab ever shown otherwise. Showing it again reruns
-  // the effect above, which sizes and draws a fresh band. No deps: a redraw doesn't reallocate.
+  // few MB of GPU memory each, kept by every tab ever shown otherwise. Shown again, the effect
+  // above runs before React re-attaches an owner's scroller ref, so with a scroller it draws
+  // nothing: the owner's own layout effect must call `sync()` (GraphView's scroll restore,
+  // RevealPanel's), which sizes and draws a fresh band before the first paint — without it the
+  // canvas stays blank. With no scroller, the effect above draws it. Empty deps: a redraw
+  // doesn't reallocate.
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     const l = live.current;

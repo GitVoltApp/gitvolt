@@ -643,9 +643,14 @@ describe('GraphView columns: aria, persistence, canvas clip', () => {
     const band = `${Math.floor(3000 / METRICS.rowH) * METRICS.rowH - Math.ceil(300 / METRICS.rowH) * METRICS.rowH}px`;
     expect(canvas.style.top).toBe(band);
     rerender(view('hidden'));
+    // Hidden, it gives its backing store back (#29).
+    expect((canvas as HTMLCanvasElement).width).toBe(0);
     rerender(view('visible'));
     expect(grid.scrollTop).toBe(3000);
     expect(canvas.style.top).toBe(band);
+    // GraphView's own sync() sized and drew a fresh band: without it the canvas stays blank.
+    expect((canvas as HTMLCanvasElement).width).toBeGreaterThan(0);
+    expect((canvas as HTMLCanvasElement).height).toBeGreaterThan(0);
   });
 });
 
