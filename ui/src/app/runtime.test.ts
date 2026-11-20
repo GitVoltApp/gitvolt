@@ -118,12 +118,14 @@ describe('runtime', () => {
     nextGraph = payload(['a', 'b']);
     await useRuntime.getState().refresh('t');
     const store = tabStore('t')!;
-    expect(store.getState().graph).toBe(nextGraph);
+    expect(store.getState().graph).toEqual(nextGraph);
     expect(store.getState().selectCommitById('b')).toBe(true);
     nextGraph = payload(['new', 'a', 'b']);
     await useRuntime.getState().refresh('t');
     expect(tabStore('t')).toBe(store);
-    expect(store.getState().graph).toBe(nextGraph);
+    // Equal, not the same object: setGraph keeps the rows that didn't change (repo/store.ts).
+    expect(store.getState().graph).toEqual(nextGraph);
+    expect(store.getState().graph!.rows.map((r) => r.id)).toEqual(['new', 'a', 'b']);
     // setGraph remaps the selection by commit id (1B).
     expect(store.getState().selection).toMatchObject({ kind: 'commit', id: 'b', index: 2 });
     useRuntime.getState().drop('t');
