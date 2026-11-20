@@ -282,6 +282,7 @@ export const api = {
   unwatchRepo: (repo: number) => t().call({ method: 'unwatchRepo', params: { repo } }) as Promise<null>,
   /** Tab `holder` shows `repo`; the core drops a handle no tab holds. */
   holdRepo: (holder: string, repo: number) => t().call({ method: 'holdRepo', params: { holder, repo } }) as Promise<null>,
+  /** Tab `holder` closed: the last tab to let go of its repo drops the core's handle (and its watcher). */
   releaseRepo: (holder: string) => t().call({ method: 'releaseRepo', params: { holder } }) as Promise<null>,
   /** Stops every watcher: the startup reset, so none outlive a reload. */
   unwatchAll: () => t().call({ method: 'unwatchAll' }) as Promise<null>,

@@ -1246,6 +1246,13 @@ impl Api {
         let (pending, handles) = RepoWatcher::pending(h.wip.clone());
         let (serial, stop, mut ready) = (pending.shared.serial, pending.stop.clone(), pending.ready.clone());
         let existing = {
+            // Only the handle `repos` keeps: one let go (a late request's revive, nobody holding
+            // it) would be watched until quit, feeding a cache its next open doesn't have
+            // (`repo_holds.rs`). Under `repos`, so a let-go can't land between check and insert.
+            let repos = self.repos.lock().expect("repos poisoned");
+            if !repos.get(&id).is_some_and(|kept| Arc::ptr_eq(&kept.wip, &h.wip)) {
+                return Ok(());
+            }
             let mut watchers = self.watchers.lock().expect("watchers poisoned");
             match watchers.get(&id) {
                 Some(w) => Some(w.ready.clone()),
@@ -2089,6 +2096,43 @@ mod tests {
         assert_eq!(paths(&unstaged), vec!["brand-new.txt", "file_1.txt"]);
         assert_eq!(unstaged["version"], v2.as_str());
         assert_eq!(index_state(&r), index, "the watcher's lists never write the index (C1)");
+    }
+
+    /// A repository a tab let go of, opened again under its id (`repo_holds.rs`), is watched
+    /// afresh: a late `watchRepo` from the closed tab left no watcher to stand in for the new
+    /// handle's, so its WIP lists are the watcher's again and its graph shows the change.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_repository_opened_again_after_it_was_let_go_is_watched_afresh() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let api = api();
+        let open = serde_json::json!({"method": "openRepo", "params": {"path": r.path()}});
+        let id = call(&api, open.clone()).await["id"].as_u64().unwrap() as u32;
+        let graph = serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}});
+        let watch = serde_json::json!({"method": "watchRepo", "params": {"repo": id}});
+        call(&api, serde_json::json!({"method": "holdRepo", "params": {"holder": "t1", "repo": id}})).await;
+        call(&api, graph.clone()).await;
+        call(&api, watch.clone()).await;
+        call(&api, serde_json::json!({"method": "releaseRepo", "params": {"holder": "t1"}})).await;
+        call(&api, watch.clone()).await; // late, from the closed tab
+        assert!(api.watched_repos().is_empty());
+
+        assert_eq!(call(&api, open).await["id"].as_u64(), Some(id as u64), "the same id");
+        call(&api, serde_json::json!({"method": "holdRepo", "params": {"holder": "t2", "repo": id}})).await;
+        assert_eq!(main_added(&call(&api, graph.clone()).await), 0);
+        call(&api, watch).await;
+        assert!(api.status_is_watched(id));
+        let wt = canonical(r.path());
+        let mut rx = api.subscribe();
+        r.write("after.txt", "x\n");
+        change_naming(&mut rx, &wt).await;
+        file_list(&api, id, &wt, false).await;
+        let before = last_git(&api);
+        let unstaged = file_list(&api, id, &wt, false).await;
+        assert_eq!(last_git(&api), before, "served from the watcher's lists");
+        assert!(unstaged.get("version").is_some(), "kept by this handle's watcher");
+        assert_eq!(paths(&unstaged), vec!["after.txt", "file_1.txt"]);
+        assert_eq!(main_added(&call(&api, graph).await), 1, "the graph shows it");
     }
 
     /// Writing again to a file that's already modified leaves status alone but changes its line

@@ -3759,6 +3759,8 @@ impl Api {
                 config,
             });
             repos.insert(id, h.clone());
+            // A watcher left for a reused id feeds the cache of a handle let go (none should be).
+            self.unwatch_repo(id);
             self.holds.opened(id, &h);
             self.writes_for(&common_dir).add_id(id);
             (id, h)

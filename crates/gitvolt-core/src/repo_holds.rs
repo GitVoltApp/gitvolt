@@ -13,6 +13,10 @@
 //!   tab holds it (a tab whose open raced another's close), else only for that request (a
 //!   Compare's cleanup after its tab closed), so handles nobody holds don't pile up again. A
 //!   write still running keeps the handle it took (an `Arc`) to the end.
+//!
+//! A watcher feeds the `WipCache` of the handle it was started for, so one runs only for a
+//! handle in `Api::repos` (`watch_repo`) and goes with it. Lock order: `repos`, then `holds`,
+//! then `watchers`.
 
 use crate::api::{Api, RepoHandle, config_stamp, open_options};
 use crate::error::GbError;
@@ -35,13 +39,25 @@ struct Inner {
     holders: HashMap<String, u32>,
 }
 
+/// Tests: runs in `revive` between its open and its insert.
+#[cfg(test)]
+type DuringOpen = Box<dyn FnOnce(&Api) + Send>;
+
 /// The session's repositories and who holds them (`Api::holds`).
 #[derive(Default)]
-pub(crate) struct RepoHolds(Mutex<Inner>);
+pub(crate) struct RepoHolds {
+    inner: Mutex<Inner>,
+    #[cfg(test)]
+    during_open: Mutex<Option<DuringOpen>>,
+}
 
 impl RepoHolds {
     fn inner(&self) -> MutexGuard<'_, Inner> {
-        self.0.lock().unwrap_or_else(|e| e.into_inner())
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn held(&self, id: u32) -> bool {
+        self.inner().holders.values().any(|&r| r == id)
     }
 
     /// The id the repository at `common_dir` had earlier this session.
@@ -76,20 +92,28 @@ impl Api {
     }
 
     fn let_go_unless_held(&self, id: Option<u32>) {
-        let Some(id) = id.filter(|id| !self.holds.inner().holders.values().any(|v| v == id)) else { return };
-        self.unwatch_repo(id);
-        let h = self.repos.lock().expect("repos poisoned").remove(&id);
-        // Dropped here, outside the lock: a big repository's caches take a moment to free.
-        drop(h);
+        let Some(id) = id else { return };
+        // Checked under `repos`: a revive or a watch can't slip in between the check and the drop.
+        let (h, w) = {
+            let mut repos = self.repos.lock().expect("repos poisoned");
+            if self.holds.held(id) {
+                return;
+            }
+            (repos.remove(&id), self.watchers.lock().expect("watchers poisoned").remove(&id))
+        };
+        drop(w);
+        // Outside the locks, and off the async worker: a big repository's caches take a moment
+        // to free (when nothing else still has the handle).
+        match (h, tokio::runtime::Handle::try_current()) {
+            (Some(h), Ok(rt)) => drop(rt.spawn_blocking(move || drop(h))),
+            (h, _) => drop(h),
+        }
     }
 
     /// `id`, let go earlier this session, opened again (`lookup` calls it on a miss): the same
     /// workdir, fresh caches. `None` for an id this session never opened.
     pub(crate) fn revive(&self, id: u32) -> Option<Result<Arc<RepoHandle>, GbError>> {
-        let (k, held) = {
-            let inner = self.holds.inner();
-            (inner.known.get(&id).cloned()?, inner.holders.values().any(|&r| r == id))
-        };
+        let k = self.holds.inner().known.get(&id).cloned()?;
         // Before the open, as `open_repo`: a config change made while it reads still shows.
         let config = config_stamp(&k.common_dir);
         let repo = match gix::ThreadSafeRepository::open_opts(&k.workdir, open_options()) {
@@ -107,12 +131,23 @@ impl Api {
             me_email: Mutex::default(),
             config,
         });
-        if !held {
-            return Some(Ok(fresh));
+        #[cfg(test)]
+        if let Some(f) = self.holds.during_open.lock().unwrap().take() {
+            f(self);
         }
-        // Another request may have revived it meanwhile: one handle, theirs.
+        // Whether a tab holds it is read only now, under `repos`: one may have let go during the
+        // open (it found nothing to drop), and the handle would stay for nobody.
         let mut repos = self.repos.lock().expect("repos poisoned");
-        Some(Ok(repos.entry(id).or_insert(fresh).clone()))
+        // Another request may have revived it meanwhile: one handle, theirs.
+        if let Some(h) = repos.get(&id) {
+            return Some(Ok(h.clone()));
+        }
+        if self.holds.held(id) {
+            repos.insert(id, fresh.clone());
+            // A watcher left for the id feeds another handle's cache (none should be).
+            self.unwatch_repo(id);
+        }
+        Some(Ok(fresh))
     }
 }
 
@@ -191,6 +226,38 @@ mod tests {
         assert!(is_open(&api, ib));
         release(&api, "nobody").await; // a tab that held nothing
         assert!(is_open(&api, ib));
+    }
+
+    /// A tab letting go while a request reopens its repository (`revive`'s open is slow): the
+    /// handle isn't kept for nobody.
+    #[tokio::test]
+    async fn a_tab_letting_go_during_a_revive_leaves_no_handle() {
+        let r = repo();
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, r.path()).await;
+        hold(&api, "t1", id).await;
+        release(&api, "t1").await;
+        hold(&api, "t2", id).await; // a tab whose open raced the close: the next request revives it
+        *api.holds.during_open.lock().unwrap() = Some(Box::new(|api: &Api| api.release_repo("t2")));
+        call(&api, "queueState", json!({ "repo": id })).await.unwrap();
+        assert!(api.holds.during_open.lock().unwrap().is_none(), "the tab let go during the open");
+        assert!(!is_open(&api, id), "nobody holds it any more");
+    }
+
+    /// A late `watchRepo` from a tab that closed (an unheld revive) starts nothing: nothing would
+    /// stop it, and it would feed a cache the next open of the repository doesn't have.
+    #[tokio::test]
+    async fn a_watch_for_a_repository_let_go_starts_no_watcher() {
+        let r = repo();
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, r.path()).await;
+        hold(&api, "t1", id).await;
+        release(&api, "t1").await;
+        call(&api, "watchRepo", json!({ "repo": id })).await.unwrap();
+        assert!(api.watched_repos().is_empty());
+        assert!(!is_open(&api, id));
     }
 
     #[tokio::test]
