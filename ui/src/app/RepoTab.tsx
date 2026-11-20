@@ -51,7 +51,7 @@ export const RepoTab = memo(function RepoTab({ tab }: { tab: TabState }) {
     if (repoId === undefined) return;
     let shown = true;
     const reshown = !!useRuntime.getState().tabs[tab.id]?.graph;
-    void setWatched(repoId, true).then(() => {
+    void setWatched(repoId, true, tab.id).then(() => {
       if (shown && reshown) void refresh(tab.id);
     });
     return () => {
@@ -66,14 +66,14 @@ export const RepoTab = memo(function RepoTab({ tab }: { tab: TabState }) {
   useEffect(() => {
     if (repoId === undefined || !store) return;
     let live = true;
-    void setWatched(repoId, true).then(() => {
+    void setWatched(repoId, true, tab.id).then(() => {
       if (live) store.getState().setWatched(true);
     });
     return () => {
       live = false;
       store.getState().setWatched(false);
     };
-  }, [repoId, store]);
+  }, [repoId, store, tab.id]);
 
   useEffect(() => {
     if (repoId === undefined) return;

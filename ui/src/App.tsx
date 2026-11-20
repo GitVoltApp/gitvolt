@@ -5,6 +5,7 @@ import { installColumnPersistence } from './app/columnsPersistence';
 import { installOpenRequests, openPendingRequests } from './app/instance';
 import { type ActivityEntry, useOps } from './app/ops';
 import { openPathInTab } from './app/runtime';
+import { forgetPreviousPage } from './app/watch';
 import { useGitCheck } from './errors/gitCheck';
 import { commonDirOfTab, setScopes, type FileScope } from './fileColours/store';
 import { flushSaves, useAppState } from './app/state';
@@ -33,9 +34,7 @@ function boot(): Promise<void> {
     // compiled out of the release bundle.
     if (import.meta.env.DEV || import.meta.env.MODE === 'e2e') window.__gb = { flush: flushSaves, setSettings: (patch) => useAppState.getState().setSettings(patch), activity: () => useOps.getState().activity, setFileScopes: (scopes) => { const dir = commonDirOfTab(useAppState.getState().profile.activeTab); if (dir) setScopes(dir, scopes); } };
     window.addEventListener('pagehide', () => { void flushSaves(); });
-    // The backend outlives a webview reload: forget what the previous page watched, before this
-    // one watches its active tab (spec §4.4: only the active tab is watched).
-    await api.unwatchAll().catch((e: unknown) => console.warn('[gitvolt] unwatchAll failed', errorMessage(e)));
+    await forgetPreviousPage();
     await useAppState.getState().load();
     // git too old or missing blocks the app (spec §5.5): the shell shows that screen, and no repo opens.
     await useGitCheck.getState().check();

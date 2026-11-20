@@ -280,6 +280,12 @@ export const api = {
   /** Starts the file watcher for the active tab's repo (spec §4.4); idempotent. */
   watchRepo: (repo: number) => t().call({ method: 'watchRepo', params: { repo } }) as Promise<null>,
   unwatchRepo: (repo: number) => t().call({ method: 'unwatchRepo', params: { repo } }) as Promise<null>,
+  /** Tab `holder` shows `repo`; the core drops a handle no tab holds. */
+  holdRepo: (holder: string, repo: number) => t().call({ method: 'holdRepo', params: { holder, repo } }) as Promise<null>,
+  /** Tab `holder` closed: the last tab to let go of its repo drops the core's handle (and its watcher). */
+  releaseRepo: (holder: string) => t().call({ method: 'releaseRepo', params: { holder } }) as Promise<null>,
+  /** Every tab lets go: the startup reset, so a reload's tabs hold their repos afresh. */
+  releaseAll: () => t().call({ method: 'releaseAll' }) as Promise<null>,
   /** Stops every watcher: the startup reset, so none outlive a reload. */
   unwatchAll: () => t().call({ method: 'unwatchAll' }) as Promise<null>,
   repoInfo: (repo: number) => call<RepoInfoPayload>({ method: 'repoInfo', params: { repo } }),

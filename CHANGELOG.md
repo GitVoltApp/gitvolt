@@ -5,6 +5,13 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+### Fixed
+
+- **Closing a tab gives back its repository's memory.** The core kept every repository opened
+  until quit, closed tabs included, a few MB each (its object store, status, graph and find
+  caches); the last tab showing a repository now lets go of it, with its file watcher. Opening it
+  again reads it afresh.
+
 ## [1.6.3] - 2026-11-17
 
 ### Fixed

@@ -354,6 +354,13 @@ pub enum Request {
     UnwatchRepo { repo: u32 },
     /// Stops every watcher (the UI's startup reset: none survive a reload); `null`.
     UnwatchAll,
+    /// Tab `holder` shows repository `repo` (and no other); `null`. A handle no tab holds goes
+    /// (`repo_holds.rs`).
+    HoldRepo { holder: String, repo: u32 },
+    /// Tab `holder` closed: the last tab holding its repository lets go of it; `null`.
+    ReleaseRepo { holder: String },
+    /// Every tab lets go (the UI's startup reset: a reload's tabs hold theirs again); `null`.
+    ReleaseAll,
     /// The action queue (spec #2 §3.6): `QueueStatePayload`.
     QueueState { repo: u32 },
     /// A queued item's ×: `true` if it was still queued.
@@ -1506,6 +1513,9 @@ impl Request {
             | Request::WatchRepo { .. }
             | Request::UnwatchRepo { .. }
             | Request::UnwatchAll
+            | Request::HoldRepo { .. }
+            | Request::ReleaseRepo { .. }
+            | Request::ReleaseAll
             | Request::FindText { .. }
             | Request::FindPaths { .. }
             | Request::LocateCommit { .. }
@@ -1652,6 +1662,8 @@ pub struct Api {
     pub(crate) scans: Mutex<HashMap<String, Vec<ScannedRepo>>>,
     /// The live file watchers by repo id: only the active tab's (spec §4.4).
     pub(crate) watchers: Mutex<HashMap<u32, crate::watch::RepoWatcher>>,
+    /// The session's repositories, their ids and the tabs holding them (`repo_holds.rs`).
+    pub(crate) holds: crate::repo_holds::RepoHolds,
     /// The file-logging handle (`None` in the harness and in tests).
     pub(crate) log: Option<crate::logging::LogHandle>,
     /// The runtime versions shown in diagnostics.
@@ -1871,6 +1883,7 @@ impl Api {
             home: crate::paths::home_dir(),
             scans: Mutex::new(HashMap::new()),
             watchers: Mutex::new(HashMap::new()),
+            holds: Default::default(),
             log: None,
             runtime_info: "harness".into(),
             open_requests: Mutex::new(Vec::new()),
@@ -3242,6 +3255,18 @@ impl Api {
                 self.unwatch_all();
                 to_json(())
             }
+            Request::HoldRepo { holder, repo } => {
+                self.hold_repo(holder, repo);
+                to_json(())
+            }
+            Request::ReleaseRepo { holder } => {
+                self.release_repo(&holder);
+                to_json(())
+            }
+            Request::ReleaseAll => {
+                self.release_all();
+                to_json(())
+            }
             Request::QueueState { repo } => to_json(self.repo_writes(&*self.handle(repo)?).queue.state()),
             Request::QueueRemove { repo, id } => to_json(self.repo_writes(&*self.handle(repo)?).queue.remove(id)),
             Request::QueueResume { repo } => {
@@ -3662,16 +3687,16 @@ impl Api {
     // --- end 4A T7 ---
 
     fn lookup(&self, id: u32) -> Result<Arc<RepoHandle>, GbError> {
-        self.repos
-            .lock()
-            .expect("repos poisoned")
-            .get(&id)
-            .cloned()
-            .ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, format!("no open repository with id {id}")))
+        let open = self.repos.lock().expect("repos poisoned").get(&id).cloned();
+        // An id no tab holds any more opens again (`repo_holds.rs`).
+        open.map(Ok)
+            .or_else(|| self.revive(id))
+            .unwrap_or_else(|| Err(GbError::new(GbErrorKind::InvalidInput, format!("no open repository with id {id}"))))
     }
 
-    /// `old`, reopened: it replaces `old` unless the repository was closed meanwhile.
-    fn reopen(&self, id: u32, old: &RepoHandle) -> Result<Arc<RepoHandle>, GbError> {
+    /// `old`, reopened: it replaces `old` unless the repository was let go meanwhile (or let go
+    /// and opened again: the newer handle, with its own caches, stays).
+    pub(crate) fn reopen(&self, id: u32, old: &RepoHandle) -> Result<Arc<RepoHandle>, GbError> {
         // Before the open, so a change made while it reads the config still shows next time.
         let config = config_stamp(&old.common_dir);
         let repo = gix::ThreadSafeRepository::open_opts(&old.workdir, open_options()).map_err(crate::error::gix_err)?;
@@ -3687,7 +3712,9 @@ impl Api {
             config,
         });
         let mut repos = self.repos.lock().expect("repos poisoned");
-        if let Some(slot) = repos.get_mut(&id) {
+        if let Some(slot) = repos.get_mut(&id)
+            && Arc::ptr_eq(&slot.wip, &old.wip)
+        {
             *slot = fresh.clone();
         }
         Ok(fresh)
@@ -3728,7 +3755,8 @@ impl Api {
             if let Some((id, h)) = open(&repos) {
                 return Ok(summary(id, &h));
             }
-            let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+            // One id per repository for the session, let go or not (`repo_holds.rs`).
+            let id = self.holds.id_for(&common_dir).unwrap_or_else(|| self.next_id.fetch_add(1, Ordering::Relaxed));
             let h = Arc::new(RepoHandle {
                 repo,
                 workdir,
@@ -3741,6 +3769,9 @@ impl Api {
                 config,
             });
             repos.insert(id, h.clone());
+            // A watcher left for a reused id feeds the cache of a handle let go (none should be).
+            self.unwatch_repo(id);
+            self.holds.opened(id, &h);
             self.writes_for(&common_dir).add_id(id);
             (id, h)
         };
@@ -5613,6 +5644,10 @@ mod tests {
             // --- 3C T7 ---
             json!({"method": "predictRebase", "params": {"repo": id, "worktree": wt, "base": "v1.0", "rows": [{"oid": login, "action": "pick"}]}}),
             // --- end 3C T7 ---
+            // Last: letting go drops the handle, and the find samples need its snapshot.
+            json!({"method": "holdRepo", "params": {"holder": "sample", "repo": id}}),
+            json!({"method": "releaseRepo", "params": {"holder": "sample"}}),
+            json!({"method": "releaseAll"}),
         ]
     }
 

@@ -42,6 +42,7 @@ pub mod reflog;
 pub mod refs;
 pub mod remote_tags;
 pub mod remotes;
+pub mod repo_holds;
 pub mod scan;
 pub mod settings;
 pub mod shelldata;

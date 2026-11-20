@@ -15,6 +15,8 @@ const api = vi.hoisted(() => ({
   sidebar: vi.fn(),
   repoInfo: vi.fn(),
   openRepo: vi.fn(),
+  holdRepo: vi.fn(async () => null),
+  releaseRepo: vi.fn(async () => null),
   saveProfile: vi.fn(async () => null),
   // What a selection loads (the store's details panel reads).
   commitDetails: vi.fn(async () => new Promise(() => {})),
@@ -149,13 +151,31 @@ describe('runtime', () => {
       // The tab closes (AppShell drops its runtime), then the open settles.
       useAppState.setState({ profile: { ...useAppState.getState().profile, tabs: [], activeTab: null } });
       useRuntime.getState().drop('o');
+      api.holdRepo.mockClear();
+      api.releaseRepo.mockClear();
       answer();
       await opening;
+      // Opened after its tab closed: held, then let go again (the core keeps nothing for it).
+      if (!fails) expect(api.holdRepo.mock.invocationCallOrder[0]).toBeLessThan(api.releaseRepo.mock.invocationCallOrder.at(-1)!);
+      expect(api.releaseRepo).toHaveBeenLastCalledWith('o');
       expect(useRuntime.getState().tabs.o).toBeUndefined();
       expect(useAppState.getState().profile.recent).toEqual([]);
       expect(useAppState.getState().profile.tabs).toEqual([]);
       api.openRepo.mockReset();
     }
+  });
+
+  it('open holds the repository before anything can drop the tab, and drop lets go', async () => {
+    gate = false;
+    api.holdRepo.mockClear();
+    useRuntime.setState({ tabs: {} });
+    useAppState.setState({ profile: { ...EMPTY_PROFILE, id: 'default', tabs: [{ id: 'h', kind: 'repo', path: '/r', alias: null }], activeTab: 'h' } });
+    api.openRepo.mockImplementation(async () => ({ id: 7, path: '/r', name: 'r', worktree: '/r' }));
+    await useRuntime.getState().open('h', '/r');
+    expect(api.holdRepo.mock.calls).toEqual([['h', 7]]);
+    useRuntime.getState().drop('h');
+    expect(api.releaseRepo).toHaveBeenLastCalledWith('h');
+    api.openRepo.mockReset();
   });
 
   it('open: concurrent calls for one tab share one openRepo', async () => {

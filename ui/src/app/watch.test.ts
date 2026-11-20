@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const calls: string[] = [];
-vi.mock('../api/client', () => ({
-  api: {
-    watchRepo: vi.fn(async (r: number) => { await new Promise((res) => setTimeout(res, 5)); calls.push(`watch ${r}`); }),
-    unwatchRepo: vi.fn(async (r: number) => { await new Promise((res) => setTimeout(res, 5)); calls.push(`unwatch ${r}`); }),
-  },
+const api = vi.hoisted(() => ({
+  watchRepo: vi.fn(async (r: number) => { await new Promise((res) => setTimeout(res, 5)); calls.push(`watch ${r}`); }),
+  unwatchRepo: vi.fn(async (r: number) => { await new Promise((res) => setTimeout(res, 5)); calls.push(`unwatch ${r}`); }),
+  holdRepo: vi.fn(async (t: string, r: number) => { calls.push(`hold ${t} ${r}`); }),
+  unwatchAll: vi.fn(async () => { calls.push('unwatchAll'); }),
+  releaseAll: vi.fn(async () => { calls.push('releaseAll'); }),
 }));
+vi.mock('../api/client', () => ({ api, errorMessage: (e: unknown) => String(e) }));
 
-const { setWatched } = await import('./watch');
+const { setWatched, holdRepo, forgetPreviousPage } = await import('./watch');
 
 describe('setWatched', () => {
   beforeEach(() => { calls.length = 0; });
@@ -36,6 +38,33 @@ describe('setWatched', () => {
     expect(second).toBe(first);
     await second;
     expect(calls).toEqual(['watch 5', 'unwatch 5']);
+  });
+
+  it("a tab's watch holds the repo first (the core watches only a held repo), on every showing", async () => {
+    await setWatched(6, true, 'tab');
+    await setWatched(6, false);
+    await setWatched(6, true, 'tab');
+    expect(calls).toEqual(['hold tab 6', 'watch 6', 'unwatch 6', 'hold tab 6', 'watch 6']);
+  });
+
+  it('a failed hold is retried once, then logged', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    api.holdRepo.mockClear();
+    api.holdRepo.mockRejectedValueOnce(new Error('busy'));
+    await holdRepo('t', 1);
+    expect(api.holdRepo).toHaveBeenCalledTimes(2);
+    expect(warn).not.toHaveBeenCalled();
+    api.holdRepo.mockClear();
+    api.holdRepo.mockRejectedValueOnce(new Error('busy')).mockRejectedValueOnce(new Error('gone'));
+    await holdRepo('t', 1);
+    expect(api.holdRepo).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith('[gitvolt] holdRepo failed', 'Error: gone');
+    warn.mockRestore();
+  });
+
+  it("a reloaded page forgets the previous page's watches and holds", async () => {
+    await forgetPreviousPage();
+    expect(calls).toEqual(['unwatchAll', 'releaseAll']);
   });
 
   it('a tab switch (unwatch one repo, watch another) reaches both', async () => {
