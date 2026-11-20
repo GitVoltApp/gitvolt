@@ -5,6 +5,8 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-20
+
 ### Changed
 
 - **An idle GitVolt barely wakes the CPU (performance).** Chromium's message loop backs off to
