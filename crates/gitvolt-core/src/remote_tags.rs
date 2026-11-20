@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
@@ -66,10 +66,12 @@ const VERSION: u32 = 1;
 /// How old a remote's list may get before a background fetch that changed nothing lists it again.
 pub(crate) const STALE_AFTER: Duration = Duration::from_secs(15 * 60);
 
-/// Every repository's known remote tags this session (`Api::remote_tags`).
+/// The known remote tags of every open repository (`Api::remote_tags`): a repository let go
+/// drops its own (`forget`), read back from its file when it opens again. Shared, not copied, by
+/// each graph build that reads them.
 #[derive(Default)]
 pub(crate) struct RemoteTags {
-    repos: Mutex<HashMap<PathBuf, Known>>,
+    repos: Mutex<HashMap<PathBuf, Arc<Known>>>,
     /// When each (common dir, remote) was last listed this session.
     listed: Mutex<HashMap<(PathBuf, String), Instant>>,
 }
@@ -94,27 +96,40 @@ fn save(data_dir: &Path, path: &Path, known: &Known) -> Result<(), crate::error:
 }
 
 impl RemoteTags {
-    fn with<T>(&self, data_dir: &Path, common_dir: &Path, f: impl FnOnce(&mut Known) -> T) -> (T, bool) {
-        let mut repos = self.repos.lock().unwrap_or_else(|e| e.into_inner());
-        let path = file_of(data_dir, common_dir);
-        let known = repos.entry(common_dir.to_path_buf()).or_insert_with(|| load(&path));
-        let before = known.clone();
-        let out = f(known);
-        let changed = *known != before;
-        if changed && let Err(e) = save(data_dir, &path, known) {
-            tracing::warn!("couldn't save the remotes' tags to {}: {}", path.display(), e.message);
-        }
-        (out, changed)
-    }
-
     /// The repository's known remote tags (read from its file the first time).
-    pub(crate) fn get(&self, data_dir: &Path, common_dir: &Path) -> Known {
-        self.with(data_dir, common_dir, |k| k.clone()).0
+    pub(crate) fn get(&self, data_dir: &Path, common_dir: &Path) -> Arc<Known> {
+        let mut repos = self.repos.lock().unwrap_or_else(|e| e.into_inner());
+        repos.entry(common_dir.to_path_buf()).or_insert_with(|| Arc::new(load(&file_of(data_dir, common_dir)))).clone()
     }
 
     /// Runs `f` on them, saving them if it changed them: whether it did.
     pub(crate) fn update(&self, data_dir: &Path, common_dir: &Path, f: impl FnOnce(&mut Known)) -> bool {
-        self.with(data_dir, common_dir, f).1
+        let mut repos = self.repos.lock().unwrap_or_else(|e| e.into_inner());
+        let path = file_of(data_dir, common_dir);
+        let known = repos.entry(common_dir.to_path_buf()).or_insert_with(|| Arc::new(load(&path)));
+        let mut next = Known::clone(known);
+        f(&mut next);
+        let changed = next != **known;
+        if changed {
+            if let Err(e) = save(data_dir, &path, &next) {
+                tracing::warn!("couldn't save the remotes' tags to {}: {}", path.display(), e.message);
+            }
+            *known = Arc::new(next);
+        }
+        changed
+    }
+
+    /// The repository was let go: its tags leave memory (its file keeps them). When it was
+    /// listed stays, so opening it again doesn't list every remote at once.
+    pub(crate) fn forget(&self, common_dir: &Path) {
+        let gone = self.repos.lock().unwrap_or_else(|e| e.into_inner()).remove(common_dir);
+        drop(gone);
+    }
+
+    /// How many repositories' tags are in memory.
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.repos.lock().unwrap().len()
     }
 
     /// Notes `remote`'s list as listed at `at`.
@@ -171,7 +186,7 @@ pub(crate) fn local_tags(root: &Path, only: Option<&str>) -> Vec<(String, String
 
 impl Api {
     /// Repository `h`'s known remote tags, for the graph (`BuildOptions::remote_tags`).
-    pub(crate) fn known_remote_tags(&self, h: &RepoHandle) -> Known {
+    pub(crate) fn known_remote_tags(&self, h: &RepoHandle) -> Arc<Known> {
         self.remote_tags.get(&self.data_dir, &h.common_dir)
     }
 

@@ -15,8 +15,9 @@
 //!   write still running keeps the handle it took (an `Arc`) to the end.
 //!
 //! A watcher feeds the `WipCache` of the handle it was started for, so one runs only for a
-//! handle in `Api::repos` (`watch_repo`) and goes with it. Lock order: `repos`, then `holds`,
-//! then `watchers`.
+//! handle in `Api::repos` (`watch_repo`) and goes with it. So do the repository's idle write
+//! queue and its remote tags, with its last handle. Lock order: `repos`, then `holds`, then
+//! `watchers`; `repos`, then `write_locks`.
 
 use crate::api::{Api, RepoHandle, config_stamp, open_options};
 use crate::error::GbError;
@@ -104,14 +105,29 @@ impl Api {
     fn let_go_unless_held(&self, id: Option<u32>) {
         let Some(id) = id else { return };
         // Checked under `repos`: a revive or a watch can't slip in between the check and the drop.
-        let (h, w) = {
+        let (h, w, writes, tags) = {
             let mut repos = self.repos.lock().expect("repos poisoned");
             if self.holds.held(id) {
                 return;
             }
-            (repos.remove(&id), self.watchers.lock().expect("watchers poisoned").remove(&id))
+            let h = repos.remove(&id);
+            let w = self.watchers.lock().expect("watchers poisoned").remove(&id);
+            // The last handle of its repository: its idle write queue goes too. Under `repos`
+            // (then `write_locks`, as `open_repo`), so a reopen can't add its id to the queue
+            // this drops; only taken out here, dropped below.
+            let last = h.as_ref().filter(|h| !repos.values().any(|o| o.common_dir == h.common_dir));
+            let writes = last.and_then(|h| {
+                let mut map = self.write_locks.lock().expect("write locks poisoned");
+                map.get(&h.common_dir).is_some_and(crate::write::queue::RepoWrites::idle).then(|| map.remove(&h.common_dir)).flatten()
+            });
+            let tags = last.map(|h| h.common_dir.clone());
+            (h, w, writes, tags)
         };
-        drop(w);
+        drop((w, writes));
+        // Its remote tags too (their file keeps them): a reopen racing this only reads it back.
+        if let Some(common_dir) = tags {
+            self.remote_tags.forget(&common_dir);
+        }
         // Outside the locks, and off the async worker: a big repository's caches take a moment
         // to free (when nothing else still has the handle).
         match (h, tokio::runtime::Handle::try_current()) {
@@ -158,6 +174,8 @@ impl Api {
         }
         if self.holds.held(id) {
             repos.insert(id, fresh.clone());
+            // Its write queue may have gone with the handle let go: the new one announces to it.
+            self.writes_for(&fresh.common_dir).add_id(id);
             // A watcher left for the id feeds another handle's cache (none should be).
             self.unwatch_repo(id);
         }
@@ -334,6 +352,38 @@ mod tests {
         assert_eq!(open(&api, a.path()).await, ia);
         hold(&api, "t1", ia).await;
         assert!(is_open(&api, ia));
+    }
+
+    /// Letting go of a repository frees its remote tags and its idle write queue; one still in
+    /// use stays. Back (reopened, or revived for a tab), its queue announces to its id again.
+    #[tokio::test]
+    async fn letting_go_frees_the_repository_s_tags_and_idle_write_queue() {
+        let r = repo();
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, r.path()).await;
+        hold(&api, "t1", id).await;
+        let cd = api.handle(id).unwrap().common_dir.clone();
+        let _ = api.known_remote_tags(&api.handle(id).unwrap());
+        assert!(api.write_locks.lock().unwrap().contains_key(&cd) && api.remote_tags.len() == 1);
+        release(&api, "t1").await;
+        assert!(!api.write_locks.lock().unwrap().contains_key(&cd), "idle: gone");
+        assert_eq!(api.remote_tags.len(), 0);
+        // Reopened: a queue that announces to the id.
+        assert_eq!(open(&api, r.path()).await, id);
+        hold(&api, "t1", id).await;
+        assert_eq!(api.writes_for(&cd).ids(), [id]);
+        // A queue someone still holds (a write running) stays.
+        let running = api.writes_for(&cd);
+        release(&api, "t1").await;
+        assert!(Arc::ptr_eq(&api.writes_for(&cd), &running), "in use: kept");
+        drop(running);
+        // A tab holding the id again, then a request: the revived handle's queue knows the id.
+        api.write_locks.lock().unwrap().clear();
+        hold(&api, "t2", id).await;
+        api.handle(id).unwrap();
+        assert!(is_open(&api, id));
+        assert_eq!(api.writes_for(&cd).ids(), [id]);
     }
 
     #[tokio::test]

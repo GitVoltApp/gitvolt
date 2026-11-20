@@ -13,6 +13,16 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   remote's default branch; git flow's master; main, master or trunk), then the development branch
   (git flow's develop; develop or dev); the rest keeps its alphabetical order. Recent sort is
   unchanged.
+- **A fetch's progress reaches the window at most ten times a second (performance).** Each
+  percent step of each phase went to the UI as its own update, a few hundred for a fetch that
+  takes under a second, and a pull also sent every progress line to its Activity output. Updates
+  now go at most every 100 ms, plus each phase's final state; Activity keeps the same last line
+  per phase. Under a backlog the core drops progress and output lines first, so an operation's
+  start and end always arrive (before, a long burst could push them out and leave an operation
+  showing as running).
+- **Closing a repository's last tab frees its remote tags and its write queue.** Both stayed in
+  memory for the rest of the session; the tags come back from disk when it opens again. Staging
+  undo history is kept only for worktrees that have some, for the 32 used most recently.
 - **The background fetch connects to each remote once, not twice (performance).** After every
   fetch, GitVolt asked each remote for its whole tag list (`git ls-remote --tags`), for the tag
   chips' pushed-or-not icons: a second connection, SSH handshake and credential helper run per

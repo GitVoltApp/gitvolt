@@ -108,14 +108,44 @@ impl StagingLog {
     }
 }
 
-/// Every worktree's log, by canonical worktree path (`Api.staging`).
+/// The most worktrees with a staging log: past it, the one used least recently loses its log.
+pub const STAGING_LOGS_CAP: usize = 32;
+
+/// Every worktree's log, by canonical worktree path (`Api.staging`): only those with something
+/// to undo or redo, at most `STAGING_LOGS_CAP` of them, so a session's worth of worktrees
+/// doesn't keep one each.
 #[derive(Debug, Default)]
-pub(crate) struct StagingLogs(Mutex<HashMap<PathBuf, StagingLog>>);
+pub(crate) struct StagingLogs(Mutex<Logs>);
+
+#[derive(Debug, Default)]
+struct Logs {
+    /// Each log, with when it was last used (`clock`).
+    logs: HashMap<PathBuf, (StagingLog, u64)>,
+    clock: u64,
+}
 
 impl StagingLogs {
     pub(crate) fn with<T>(&self, root: &Path, f: impl FnOnce(&mut StagingLog) -> T) -> T {
         let mut all = self.0.lock().expect("staging logs poisoned");
-        f(all.entry(root.to_path_buf()).or_default())
+        all.clock += 1;
+        let now = all.clock;
+        let (log, used) = all.logs.entry(root.to_path_buf()).or_default();
+        *used = now;
+        let out = f(log);
+        if log.undo.is_empty() && log.redo.is_empty() {
+            all.logs.remove(root);
+        } else if all.logs.len() > STAGING_LOGS_CAP
+            && let Some(oldest) = all.logs.iter().min_by_key(|(_, (_, used))| *used).map(|(p, _)| p.clone())
+        {
+            all.logs.remove(&oldest);
+        }
+        out
+    }
+
+    /// How many worktrees have a log.
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.0.lock().unwrap().logs.len()
     }
 }
 
@@ -415,6 +445,28 @@ mod tests {
         log.record(step("unstage a.txt", 200));
         assert!(log.redo.is_empty());
         assert_eq!(log.state(Some(CONFLICTED_OFF)), crate::write::types::StagingUndoState { undo: None, redo: None, off: Some(CONFLICTED_OFF.into()) });
+    }
+
+    /// A worktree only looked at keeps no log, and past the cap the least recently used goes.
+    #[test]
+    fn only_worktrees_with_history_keep_a_log_and_at_most_the_cap() {
+        let logs = StagingLogs::default();
+        let root = |n: usize| PathBuf::from(format!("/wt/{n}"));
+        logs.with(&root(0), |l| l.state(None));
+        assert_eq!(logs.len(), 0, "nothing to undo: no log");
+        for n in 0..=STAGING_LOGS_CAP {
+            logs.with(&root(n), |l| l.record(step("stage a.txt", n)));
+            if n == 5 {
+                // Worktree 0 used again: it's not the least recent any more.
+                logs.with(&root(0), |l| l.undo.len());
+            }
+        }
+        assert_eq!(logs.len(), STAGING_LOGS_CAP);
+        assert_eq!(logs.with(&root(0), |l| l.undo.len()), 1, "used recently: kept");
+        assert_eq!(logs.with(&root(1), |l| l.undo.len()), 0, "the least recently used went");
+        // Emptied (its undo cleared): gone.
+        logs.with(&root(2), StagingLog::clear);
+        assert_eq!(logs.len(), STAGING_LOGS_CAP - 1);
     }
 
     async fn req(api: &Api, method: &str, id: u32, r: &TestRepo) -> Result<Value, crate::error::GbError> {

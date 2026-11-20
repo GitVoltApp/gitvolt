@@ -12,8 +12,13 @@ use ts_rs::TS;
 
 /// The Tauri event name every `AppEvent` is emitted under (`TAURI_EVENT` in `ui/src/api/transport.ts`).
 pub const TAURI_EVENT: &str = "gb:event";
-/// A receiver more than this many events behind skips ahead (and logs a warning).
+/// A receiver more than this many events behind skips ahead (and logs a warning): it loses the
+/// oldest, whatever they are.
 const CAPACITY: usize = 256;
+/// From this many events not yet read by the slowest receiver, the bus sheds the stream events
+/// (`AppEvent::sheddable`), so a burst of them can't push an `opStarted` or `opFinished` out of
+/// the channel: those only go when this many other events pile up behind them.
+const SHED_AT: usize = CAPACITY / 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
@@ -206,6 +211,15 @@ pub enum AppEvent {
     UpdateChanged { state: crate::updates::UpdateState },
 }
 
+impl AppEvent {
+    /// A stream event: an op's progress (the next one supersedes it) or a line of its output.
+    /// Losing one costs a frame of a progress bar or a line of Activity, where losing an
+    /// `opStarted`, `opFinished` or a refresh would leave the UI wrong.
+    fn sheddable(&self) -> bool {
+        matches!(self, AppEvent::OpProgress { .. } | AppEvent::OpOutput { .. })
+    }
+}
+
 #[derive(Clone)]
 pub struct EventBus {
     tx: broadcast::Sender<AppEvent>,
@@ -217,8 +231,14 @@ impl EventBus {
         Self { tx }
     }
 
-    /// Never blocks and never fails: with no subscribers the event is dropped.
+    /// Never blocks and never fails: with no subscribers the event is dropped, and so is a
+    /// sheddable one while a receiver is `SHED_AT` behind. (Two emitters racing past the check
+    /// overshoot it by one each, far from `CAPACITY`.)
     pub fn emit(&self, ev: AppEvent) {
+        if ev.sheddable() && self.tx.len() >= SHED_AT {
+            tracing::debug!("event bus backed up: an op's progress or output line dropped");
+            return;
+        }
         let _ = self.tx.send(ev);
     }
 
@@ -245,6 +265,37 @@ mod tests {
         bus.emit(AppEvent::RefsUpdated { repo: 3 });
         assert_eq!(a.recv().await.unwrap(), AppEvent::RefsUpdated { repo: 3 });
         assert_eq!(b.recv().await.unwrap(), AppEvent::RefsUpdated { repo: 3 });
+    }
+
+    /// A receiver that falls behind during a burst of progress and output still gets the op's
+    /// start and end: the burst is shed, they aren't.
+    #[test]
+    fn a_progress_burst_never_pushes_out_an_ops_start_or_end() {
+        let bus = EventBus::new();
+        let mut rx = bus.subscribe();
+        let started = AppEvent::OpStarted { op: 1, kind: OpKind::Fetch, repo: Some(1), label: "r".into(), interactive: true };
+        let finished = AppEvent::OpFinished { op: 1, kind: OpKind::Fetch, repo: Some(1), outcome: OpOutcome::Ok, message: None, command: None };
+        bus.emit(started.clone());
+        for i in 0..10_000u32 {
+            bus.emit(AppEvent::OpProgress { op: 1, phase: "Receiving objects".into(), percent: Some((i % 101) as u8), step: None });
+            bus.emit(AppEvent::OpOutput { op: 1, line: format!("line {i}") });
+        }
+        bus.emit(AppEvent::RefsUpdated { repo: 1 });
+        bus.emit(finished.clone());
+        let mut got = Vec::new();
+        loop {
+            match rx.try_recv() {
+                Ok(ev) => got.push(ev),
+                Err(broadcast::error::TryRecvError::Empty) => break,
+                Err(e) => panic!("{e:?}"),
+            }
+        }
+        assert_eq!(got.first(), Some(&started));
+        assert_eq!(&got[got.len() - 2..], [AppEvent::RefsUpdated { repo: 1 }, finished]);
+        assert_eq!(got.len(), SHED_AT + 2, "the stream filled half the channel, then was shed");
+        // Read up, the stream flows again.
+        bus.emit(AppEvent::OpOutput { op: 1, line: "after".into() });
+        assert_eq!(rx.try_recv().unwrap(), AppEvent::OpOutput { op: 1, line: "after".into() });
     }
 
     #[test]

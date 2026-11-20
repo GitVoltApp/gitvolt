@@ -79,6 +79,13 @@ impl RepoWrites {
     pub(crate) fn ids(&self) -> Vec<u32> {
         self.ids.lock().unwrap_or_else(|e| e.into_inner()).iter().copied().collect()
     }
+
+    /// Nothing runs, waits, is queued or stopped, and nobody holds the lock: `this` (the map's
+    /// own `Arc`) can go, and a fresh one later is the same as keeping it.
+    pub(crate) fn idle(this: &Arc<Self>) -> bool {
+        let s = this.queue.state();
+        Arc::strong_count(this) == 1 && Arc::strong_count(&this.lock) == 1 && s.running.is_none() && s.queued.is_empty() && s.stopped.is_none()
+    }
 }
 
 type OnChange = Box<dyn Fn(&QueueStatePayload) + Send + Sync>;

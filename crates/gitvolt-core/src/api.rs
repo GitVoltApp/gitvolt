@@ -1565,7 +1565,8 @@ pub struct Api {
     /// Asked before every write; `None` (the app) allows all.
     pub(crate) write_guard: Option<WriteGuard>,
     /// Each repository's write lock and action queue, by canonical common dir: shared by every
-    /// handle (worktree tab) of it.
+    /// handle (worktree tab) of it. An idle one goes when its repository is let go
+    /// (`repo_holds.rs`).
     pub(crate) write_locks: Mutex<HashMap<PathBuf, Arc<crate::write::queue::RepoWrites>>>,
     /// Each repository's remotes' tags, as the last fetch listed them (`remote_tags.rs`).
     pub(crate) remote_tags: crate::remote_tags::RemoteTags,
@@ -3612,7 +3613,7 @@ impl Api {
         self.writes_for(&h.common_dir)
     }
 
-    fn writes_for(&self, common_dir: &Path) -> Arc<crate::write::queue::RepoWrites> {
+    pub(crate) fn writes_for(&self, common_dir: &Path) -> Arc<crate::write::queue::RepoWrites> {
         let mut map = self.write_locks.lock().expect("write locks poisoned");
         map.entry(common_dir.to_path_buf())
             .or_insert_with(|| {

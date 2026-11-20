@@ -138,31 +138,126 @@ pub(crate) async fn ref_state_async(repo: gix::ThreadSafeRepository) -> Result<B
     tokio::task::spawn_blocking(move || ref_state(&repo)).await.map_err(|e| GbError::other(format!("ref snapshot failed: {e}")))?
 }
 
-/// Forwards progress lines as `opProgress` events, only when the phase or percent changes,
-/// until the sender is dropped.
+/// Forwards progress lines as `opProgress` events until the sender is dropped: at most one per
+/// `progress::TICK`, plus each phase's last state when the next one starts, and the last at the
+/// end. Each event replaces the UI's ops store, and a fast fetch steps through a few hundred
+/// percents in well under a second.
 fn forward_progress(bus: EventBus, op: OpId) -> (mpsc::UnboundedSender<String>, tokio::task::JoinHandle<()>) {
     forward_progress_to(bus, op, None)
 }
 
-// --- pull's fetch ---
-/// `forward_progress`, also passing every line on to `also` (a write's Activity output).
-pub(crate) fn forward_progress_to(bus: EventBus, op: OpId, also: Option<mpsc::UnboundedSender<String>>) -> (mpsc::UnboundedSender<String>, tokio::task::JoinHandle<()>) {
-    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-    let task = tokio::spawn(async move {
-        let mut last: Option<(String, Option<u8>)> = None;
-        while let Some(line) = rx.recv().await {
-            let progress = parse_progress(&line);
-            if let Some(out) = &also {
-                let _ = out.send(line);
+/// A progress line's phase as Activity collapses them (`appendCapped` in `ui/src/app/ops.ts`,
+/// `^(.*?):\s+\d{1,3}% \(`, so `remote: ` stays in the phase): a run of one phase's lines shows
+/// as its last.
+fn collapsed_phase(line: &str) -> Option<&str> {
+    line.match_indices(':').find_map(|(at, _)| {
+        let after = &line[at + 1..];
+        let rest = after.trim_start();
+        let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+        (rest.len() < after.len() && (1..=3).contains(&digits) && rest[digits..].starts_with("% (")).then(|| &line[..at])
+    })
+}
+
+/// `forward_progress_to`'s state: what's due at the next tick.
+struct Thinned {
+    bus: EventBus,
+    op: OpId,
+    also: Option<mpsc::UnboundedSender<String>>,
+    /// The last progress sent, and the newest one not sent yet.
+    sent: Option<Progress>,
+    pending: Option<Progress>,
+    /// The newest output line of a run of one phase's progress, not sent yet.
+    held: Option<String>,
+    last_flush: Option<tokio::time::Instant>,
+}
+
+impl Thinned {
+    fn emit(&mut self, p: Progress) {
+        self.bus.emit(AppEvent::OpProgress { op: self.op, phase: p.phase.clone(), percent: p.percent, step: None });
+        self.sent = Some(p);
+    }
+
+    fn send(&self, line: String) {
+        if let Some(out) = &self.also {
+            let _ = out.send(line);
+        }
+    }
+
+    fn flush(&mut self) {
+        if let Some(p) = self.pending.take() {
+            self.emit(p);
+        }
+        if let Some(l) = self.held.take() {
+            self.send(l);
+        }
+        self.last_flush = Some(tokio::time::Instant::now());
+    }
+
+    /// When the held state must go out; `None`: nothing held.
+    fn due(&self) -> Option<tokio::time::Instant> {
+        if self.pending.is_none() && self.held.is_none() {
+            return None;
+        }
+        Some(self.last_flush.map_or_else(tokio::time::Instant::now, |at| at + crate::write::progress::TICK))
+    }
+
+    fn line(&mut self, line: String) {
+        if let Some(p) = parse_progress(&line)
+            && self.pending.as_ref().or(self.sent.as_ref()) != Some(&p)
+        {
+            // A new phase: the last one's final state goes first.
+            if let Some(prev) = self.pending.take_if(|prev| prev.phase != p.phase) {
+                self.emit(prev);
             }
-            if let Some(p) = progress {
-                let key = (p.phase.clone(), p.percent);
-                if last.as_ref() != Some(&key) {
-                    bus.emit(AppEvent::OpProgress { op, phase: p.phase, percent: p.percent, step: None });
-                    last = Some(key);
+            self.pending = Some(p);
+        }
+        if self.also.is_some() {
+            match collapsed_phase(&line) {
+                Some(phase) if self.held.as_deref().and_then(collapsed_phase) == Some(phase) => self.held = Some(line),
+                Some(_) => {
+                    if let Some(l) = self.held.replace(line) {
+                        self.send(l);
+                    }
+                }
+                None => {
+                    if let Some(l) = self.held.take() {
+                        self.send(l);
+                    }
+                    self.send(line);
                 }
             }
         }
+        if self.due().is_some_and(|at| at <= tokio::time::Instant::now()) {
+            self.flush();
+        }
+    }
+}
+
+// --- pull's fetch ---
+/// `forward_progress`, also passing the lines on to `also` (a write's Activity output). Its
+/// progress lines are thinned like the events: a run of one phase's lines sends one at most every
+/// `TICK`, and always its last, the one Activity keeps; any other line goes at once, in order.
+pub(crate) fn forward_progress_to(bus: EventBus, op: OpId, also: Option<mpsc::UnboundedSender<String>>) -> (mpsc::UnboundedSender<String>, tokio::task::JoinHandle<()>) {
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+    let task = tokio::spawn(async move {
+        let mut t = Thinned { bus, op, also, sent: None, pending: None, held: None, last_flush: None };
+        loop {
+            let line = match t.due() {
+                Some(due) => tokio::select! {
+                    l = rx.recv() => l,
+                    () = tokio::time::sleep_until(due) => {
+                        t.flush();
+                        continue;
+                    }
+                },
+                None => rx.recv().await,
+            };
+            match line {
+                Some(l) => t.line(l),
+                None => break,
+            }
+        }
+        t.flush();
     });
     (tx, task)
 }
@@ -555,6 +650,93 @@ mod tests {
         assert!(parse_progress("From /tmp/origin").is_none());
         assert!(parse_progress(" * [new branch]      x -> origin/x").is_none());
         assert!(parse_progress("fatal: unable to access 'x': 50% nonsense").is_none(), "not a progress phase");
+    }
+
+    #[test]
+    fn collapsed_phase_matches_activitys() {
+        assert_eq!(collapsed_phase("Receiving objects:  45% (450/1000), 1.20 MiB"), Some("Receiving objects"));
+        assert_eq!(collapsed_phase("remote: Counting objects: 100% (5/5), done."), Some("remote: Counting objects"));
+        assert_eq!(collapsed_phase("remote: Enumerating objects: 5, done."), None);
+        assert_eq!(collapsed_phase("Receiving objects:45% (4/9)"), None, "no space after the colon");
+        assert_eq!(collapsed_phase("Fetching origin"), None);
+    }
+
+    fn progress_lines(phase: &str) -> Vec<String> {
+        (0..=100).map(|p| format!("{phase}: {p:>3}% ({p}/100)")).collect()
+    }
+
+    /// Activity's collapse (`appendCapped`): a line of the same phase as the last replaces it.
+    fn collapse(lines: &[String]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for l in lines {
+            match (out.last(), collapsed_phase(l)) {
+                (Some(last), Some(p)) if collapsed_phase(last) == Some(p) => *out.last_mut().unwrap() = l.clone(),
+                _ => out.push(l.clone()),
+            }
+        }
+        out
+    }
+
+    /// A fast fetch's few hundred progress lines arrive at once: the UI gets the first, each
+    /// phase's last, and Activity's output collapses to what every line would have given.
+    #[tokio::test(start_paused = true)]
+    async fn a_burst_of_progress_sends_each_phases_last_state() {
+        let bus = EventBus::new();
+        let mut rx = bus.subscribe();
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel();
+        let (tx, task) = forward_progress_to(bus, 7, Some(out_tx));
+        let mut lines = progress_lines("remote: Counting objects");
+        lines.extend(progress_lines("Receiving objects"));
+        lines.extend(["From /tmp/origin".to_string(), " * [new branch]      x -> origin/x".to_string()]);
+        for l in &lines {
+            tx.send(l.clone()).unwrap();
+        }
+        drop(tx);
+        task.await.unwrap();
+        let events: Vec<_> = drain(&mut rx).into_iter().map(|e| match e {
+            AppEvent::OpProgress { op: 7, phase, percent, .. } => (phase, percent),
+            e => panic!("{e:?}"),
+        }).collect();
+        assert_eq!(events, [("Counting objects".to_string(), Some(0)), ("Counting objects".to_string(), Some(100)), ("Receiving objects".to_string(), Some(100))]);
+        let mut sent = Vec::new();
+        while let Ok(l) = out_rx.try_recv() {
+            sent.push(l);
+        }
+        assert_eq!(sent.len(), 5, "{sent:?}");
+        assert_eq!(collapse(&sent), collapse(&lines));
+    }
+
+    /// Updates spread over time: one per tick, and one still held goes out at the tick without
+    /// waiting for the next line.
+    #[tokio::test(start_paused = true)]
+    async fn progress_goes_out_at_most_once_a_tick() {
+        let bus = EventBus::new();
+        let mut rx = bus.subscribe();
+        let (tx, task) = forward_progress(bus, 7);
+        let percents = |rx: &mut tokio::sync::broadcast::Receiver<AppEvent>| drain(rx).into_iter().map(|e| match e {
+            AppEvent::OpProgress { percent, .. } => percent.unwrap(),
+            e => panic!("{e:?}"),
+        }).collect::<Vec<_>>();
+        let lines = progress_lines("Receiving objects");
+        tx.send(lines[0].clone()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        assert_eq!(percents(&mut rx), [0]);
+        for l in &lines[1..=5] {
+            tx.send(l.clone()).unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(percents(&mut rx), Vec::<u8>::new(), "within the tick");
+        tokio::time::sleep(crate::write::progress::TICK).await;
+        assert_eq!(percents(&mut rx), [5], "the held one, at the tick");
+        tokio::time::sleep(crate::write::progress::TICK).await;
+        tx.send(lines[6].clone()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        assert_eq!(percents(&mut rx), [6], "a tick since the last: at once");
+        // The same percent again (git repeats one as its count moves) is nothing new.
+        tx.send(lines[6].clone()).unwrap();
+        drop(tx);
+        task.await.unwrap();
+        assert_eq!(percents(&mut rx), Vec::<u8>::new());
     }
 
     #[tokio::test]

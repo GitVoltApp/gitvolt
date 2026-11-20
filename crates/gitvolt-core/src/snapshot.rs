@@ -40,7 +40,7 @@ pub struct BuildOptions {
     /// The branch preset to apply (`GraphInput::view`); `None` (All): the plain graph.
     pub view: Option<ViewSpec>,
     /// Each remote's tags as the last fetch listed them (`remote_tags.rs`): the tag chips' sources.
-    pub remote_tags: crate::remote_tags::Known,
+    pub remote_tags: std::sync::Arc<crate::remote_tags::Known>,
 }
 
 pub use gitvolt_graph::ForkFacts;
