@@ -7,261 +7,77 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Changed
 
-- **File History's later pages and Blame on long files load faster (performance).** Each
-  "Load more" ran `git log --follow` again from the newest commit down to the page asked for,
-  so the 10th page re-walked 1,800 rows (about 5× the first page's time); an open history now
-  keeps one walk going and reads each page from where the last ended, and stops it when the
-  history closes or after a minute unused. Blame reads `git blame --incremental`, which names
-  each group of lines once, instead of `--porcelain`, which repeats every line's text: about
-  11 KB instead of 4.5 MB for a 50,000-line file.
-- **File History stays quick with thousands of commits loaded (performance).** Its commit list
-  drew every loaded row and drew them all again on each change: with 2,000 rows, each ↑/↓
-  took about 73 ms (26 ms with 200), each "Load more" up to 190 ms, and the rows held about
-  26 MB. The list now draws only the rows on screen and a few around them, and a step redraws
-  the two rows whose selection changed.
-- **Scrolling a file with Blame on is as smooth as without it (performance).** The blame gutter
-  drew its rows again on every scroll event, which kept the main thread about 60% busy while
-  scrolling. It now lays out a screen's worth of rows above and below the view once, moves them
-  with the code, and draws again only when the scroll leaves them.
-- **The first diff of a session opens as fast as the next ones (performance).** The editor
-  (Monaco), its syntax highlighter and their workers loaded only when the first diff opened,
-  which took about half a second against 50 ms for any diff after it, and the merge tool's
-  first open about as long. They now load once, in an idle moment after the first list of files
-  shows.
-- **Opening a file no longer pulls in a heavy neighbour (performance).** To make ↑/↓ instant,
-  opening a file also fetches the files on either side of it, whatever their size: a 10 KB
-  file's open could pull a 1 MB neighbour, and a PDF's 6 MB. Images, PDFs, audio, video,
-  fonts, other binaries and changes of more than 2,000 lines are no longer fetched ahead, nor is
-  any preview's image, PDF or media over 256 KB in all; they load when you step to them.
-- **Images, PDFs, audio, video and fonts in a diff load as raw bytes (performance).** Their bytes
-  reached the window as base64 text inside the diff's JSON, a third larger, then were decoded
-  again in the page: a 5 MB PNG was a 13 MB reply that took about 120 ms of script and held the
-  window for one 90 ms task. The core now sends each side's bytes as they are, beside a small JSON
-  reply, and the diff cache keeps them as bytes: an added 5 MB PNG now shows about 0.15 s after
-  the click instead of 0.7 s, and a 10 MB PDF no longer holds the window for 50 to 80 ms at a
-  time. "Large file — load anyway?" now waits until such a
-  file is over 16 MB, instead of 2 MB; text files keep the 2 MB prompt.
-- **The sidebar lists main and develop first.** Folders and branches sort as one alphabetical list,
-  so folders such as `backup/`, `ci/` or `dependabot/` could push the branches you use most far down
-  Local and each remote. In tree sort, each level now starts with the production branch (the
-  remote's default branch; git flow's master; main, master or trunk), then the development branch
-  (git flow's develop; develop or dev); the rest keeps its alphabetical order. Recent sort is
-  unchanged.
-- **A fetch's progress reaches the window at most ten times a second (performance).** Each
-  percent step of each phase went to the UI as its own update, a few hundred for a fetch that
-  takes under a second, and a pull also sent every progress line to its Activity output. Updates
-  now go at most every 100 ms, plus each phase's final state; Activity keeps the same last line
-  per phase. Under a backlog the core drops progress and output lines first, so an operation's
-  start and end always arrive (before, a long burst could push them out and leave an operation
-  showing as running).
-- **Closing a repository's last tab frees its remote tags and its write queue.** Both stayed in
-  memory for the rest of the session; the tags come back from disk when it opens again. Staging
-  undo history is kept only for worktrees that have some, for the 32 used most recently.
-- **An open MR/PR asks the forge less every minute (performance).** With its view open, a quiet
-  minute cost GitHub 9 requests (11 in a review) and GitLab 6 (8): the PR's reviews were read
-  twice in two representations (three times in a review, and the PR or MR itself twice), and the
-  review threads (GitHub) or the comments' award emoji (GitLab) were asked by GraphQL every poll,
-  though no REST answer had changed; GitLab also asked the project's labels again whenever an MR
-  named one the project doesn't list. Now a quiet minute is GitHub 7 (7) and GitLab 4 (5), all
-  revalidations (304s): the reviews and the PR are read once, the threads and awards are asked
-  again only when the comments changed, after a write, or every 5 minutes (a thread resolved or
-  an award given on the forge changes no comment), and labels the project doesn't have are asked
-  for again after 30 minutes.
-- **A hover card reads only what it shows (performance).** It loaded the MR/PR's whole detail:
-  GitHub 5 requests (with the checks and a GraphQL query for your subscription), GitLab 3 (with
-  the project's labels). It now reads the MR/PR and its review: 2 requests, the pipeline from
-  the list's.
-- **A list over a megabyte is revalidated, not read again (performance).** An answer over 1 MB
-  (40 MRs with long descriptions) wasn't kept for its ETag, so every poll read it whole, twice
-  (the badges and the list), and the next launch had none to revalidate. Answers up to 8 MB are
-  kept now; a project's cache file may hold 16 MB, and gives up other answers before its open
-  list's.
-- **Avatar lookups no longer push the polls' answers out of the cache (performance).** Looking up
-  hundreds of commit authors (GitLab's avatar by email and user search, GitHub's commits by
-  author) filled the 256-entry ETag cache, so the next poll read every list again in full. Those
-  lookups keep their answers in the avatar cache and aren't kept twice.
-- **GraphQL queries no longer end the 5-second window in which a read answers from memory.**
-  Only a write (and a GraphQL mutation) does.
-- **GitHub's checks of a PR without any back off (performance).** A head with no checks was asked
-  again every 2 minutes, and one with finished checks every 10, each time with one GraphQL query
-  for every open PR. Now a head without checks waits 2, 4, 8, 16, then 30 minutes; finished
-  checks are asked again when the PR changes, or after 30 minutes (a re-run changes nothing
-  else). GitLab's and Forgejo's pipelines follow the same rule.
-- **A poll that changed nothing writes nothing to the MR/PR cache.** Each poll copied the kept
-  answers and serialized the project's cache file twice, to find it unchanged. A poll answered
-  all by 304s now skips both (the file is renewed once a day).
-- **A long session's forge memory stays bounded.** The reactions, review threads,
-  subscriptions, label colours and learned avatars each provider keeps now hold at most 2,000
-  entries, dropping the oldest.
-- **Reading files in a repository no longer wakes GitVolt's file watcher (Linux, performance).**
-  The watcher's inotify library subscribes to every file *open*, with no way to turn it off, so
-  each read in a watched folder woke it for an event it then dropped: every background fetch and
-  the ref reads around it (about 740 wakeups a minute on a repository with 120 branches and
-  tags, making it an idle app's busiest thread), and about 200 a second while a terminal ran
-  `git status` in a loop. On Linux the watcher now uses inotify directly and asks only for
-  writes, creates, deletes, renames and mode changes, and reads its events on the app's async
-  runtime instead of a thread of its own; a lock file's own events (`git status` takes and drops
-  `index.lock` on every run) are dropped before they reach the watch loop. macOS and Windows
-  never reported reads.
-- **One Chromium process less (memory).** Chromium kept a spare renderer warm for a page the
-  window never opens: 76 MB of resident memory, now gone, with startup unchanged.
-- **Chromium's cache folder no longer keeps data nothing reads (disk).** At every start, before
-  the window opens, GitVolt deletes from it the profiles of data folders it no longer uses (90 MB
-  on one upgraded install), the components Chromium downloaded before its network was cut off
-  (Widevine, text-to-speech, suggestion models and the like, about 60 MB) and a Chromium log
-  grown over 1 MB. The check is one listing of the folder; the current profile is kept, and a
-  log line says how much was freed when something was.
-- **A Markdown file's rendered diff, or a CSV file's table, no longer builds the source diff
-  behind it (performance).** The text diff hidden under it was computed and highlighted all the
-  same, both sides of the file; it's now built the first time you switch to Source. Unsaved edits
-  to a working-tree file are kept as before.
-- **A closed diff gives its memory back (performance).** The editor kept a closed diff's two
-  sides until another diff was opened: for a 50,000-line file, 3 MB of the editor's background
-  worker's memory and 2 MB of the window's. A diff over a million characters now lets
-  them go as soon as it's closed (or its tab is left), a smaller one after 10 seconds; up to a
-  million characters of recent diffs stay, so reopening one is still instant. Unsaved edits to a
-  working-tree file always stay, with their undo history.
-- **A diff with thousands of changed lines opens three to five times sooner, and opens again at
-  once (performance).** Monaco's finer diff algorithm (the one that finds moved code) took 5 s on
-  a 30,000-line lock file with 6,000 changed lines (now 1.5 s, and 0.3 s to open it again), and
-  near its 5 s limit it gives up and shows the whole file as one change; a reformatted 8,000-line
-  file took 0.9 s (now 0.2 s). Once a diff's changed lines hold
-  more than about 80,000 characters (some 2,500 lines of code), it's now computed with Monaco's
-  older algorithm, a tenth of the time or less, without moved-code detection; smaller diffs are
-  computed as before. The last four diffs' models are kept (up to 6 million characters), so
-  reopening a file or switching back to a tab shows its diff without computing it again. And a
-  diff you've moved on from while it computes is cut short: a small file opened while the lock
-  file still computed took 2.6 s to show, now under 0.1 s.
-- **Large removals open at once in Inline and Hunk (performance).** The removed lines were all
-  drawn up front, every line and its − sign: a deleted 20,000-line file took 1.4 s to show, 3.5 s
-  of work in all and 240,000 page elements (now 0.2 s, under 0.1 s and 2,400); a 5,000-line block
-  removed from a 30,000-line file took 0.4 s (now 0.1 s). A removed block of 400 lines or more
-  now draws only the lines on and near the screen as you scroll; it looks, scrolls, copies and
-  takes comments as before. Split, and smaller blocks, are unchanged.
-- **Videos in a rendered Markdown file decode a little sooner (performance).** Their bytes
-  arrive as base64, and a JavaScript loop took about 19 ms to decode 5 MB; the engine's own
-  decoder (`Uint8Array.fromBase64`) takes about 5 ms, where it has one.
-- **The background fetch connects to each remote once, not twice (performance).** After every
-  fetch, GitVolt asked each remote for its whole tag list (`git ls-remote --tags`), for the tag
-  chips' pushed-or-not icons: a second connection, SSH handshake and credential helper run per
-  remote every minute, even when nothing changed. A background fetch that changed nothing now
-  asks only when the list is 15 minutes old; your own fetch or pull still asks every time. A tag
-  deleted or moved on the remote can show for up to 15 minutes later.
-- **Repositories open sooner after launch (performance).** GitVolt reads your login shell's
-  environment (`SSH_AUTH_SOCK`, `PATH` additions) before its first git command, and started the
-  shell only once the window was up, so the first repository waited for it (about 0.4 s for a
-  plain bash setup, often more for zsh with plugins). The shell now starts first thing, while
-  the window starts.
-- **Opening a repository asks for less at once (performance).** Its first background fetch waits
-  until the graph has loaded and three seconds have passed, rather than running beside the
-  graph's and status's first reads; a tab sends the core one "hold this repository" request
-  instead of two; and the app's version info is asked for once at startup, not two or three
-  times.
-- **Dragging the sidebar's edge no longer re-renders the app on every pointer move.** The drag
-  saved the width to the profile at each move, so everything that reads the profile (the tab bar,
-  the sidebar's panels, the graph) rendered again each time. The sidebar now follows the pointer
-  directly and saves its width once, on release, as the details panel's edge does. Its edge also
-  takes ←/→ (16 px a step), and Home/End for the narrowest and widest.
-- **The tab bar renders only when what it shows changes.** It rendered again on every change to
-  any tab's state (each status refresh, in every tab) and on every profile write, and each time
-  measured its group lines and made a new resize observer. It now follows only the tabs, their
-  groups and their names, and measures the lines when the strip's items change, resize or move.
-- **Authors' pictures arriving render the graph once per frame, not once per picture.** Each
-  picture lands on its own, and the graph rendered again for every one as a history opened.
-- **Closing a tab also frees what the window kept for it.** A closed tab's find and branch-panel
-  state, and, once no tab shows its repository, that repository's blames, the command palette's
-  list of its files (about 9 MB for 50,000 files) and the MR/PR pickers' answers, stayed until
-  quit.
-- **The graph refreshes faster when a commit, checkout or rebase step moves HEAD.** GitVolt keeps
-  the commits it last read, so a refresh reads only the new ones instead of every commit in the
-  window again, and find keeps their searchable text too. The graph also keeps the rows that
-  didn't change, so a refresh that leaves them as they were redraws none of them.
-- **A rebase shows each commit in the graph as it lands.** GitVolt checks HEAD every 40 ms while
-  git rebases (it was every 100 ms, and only when git's step counter moved), reading HEAD's file
-  rather than opening the repository, and reloads the graph only when HEAD moved: on a big
-  repository, a 20-commit rebase showed 9 of its commits on their own before, every one now.
-- **A graph refresh sends only what changed (performance).** GitVolt remembers the last graphs it
-  sent, and a refresh sends the new and changed rows instead of the whole graph: after a commit,
-  6 KB instead of 825 KB on a 2,000-commit window. A new commit on top redraws that row and the
-  rows whose lines changed; the others only move down.
-- **Laying the graph out takes a third of the time (performance):** commit ids are spelled out
-  several times faster, and branch chips find their remote branches without a scan of every ref.
-- **Merges, rebases and other changes do less work after they run (performance).** On a big
-  repository (50,000 files):
-  - Every change re-reads the file lists with `git diff` only for the side `git status` shows
-    changes on: none at all when nothing is staged or changed, which saves 40–120 ms per change.
-  - A change that moves a branch reloads the graph, sidebar and repository info once, not twice;
-    a rebase's end no longer adds a third load.
-  - The rebase and merge dialogs predict conflicts with git's own merge (`git merge-tree`, in a
-    throwaway object folder, so the repository is never written), about four times faster than
-    before. A rebase or merge with local changes checks them against git's merge the same way.
-  - With local changes, a rebase, merge or checkout compares the two commits' files once instead
-    of twice, and restoring your changes runs one `git status` fewer.
-- **The pickers, filters and rebase editor keep up with big repositories (performance).** With
-  1,250 branches:
-  - A refresh or tab switch no longer rebuilds the Pin and branch pickers' lists while they're
-    closed (20–24 ms each time); a branch's Pin tooltip is worked out when it shows.
-  - The branch, Pin and Set upstream pickers draw only the rows in view, and moving the
-    highlight redraws two rows instead of all of them: opening the Pin picker took 200 ms and
-    nearly doubled the page's elements, and each hover or key took 70–140 ms.
-  - Typing in the sidebar's filter or the "View all files" filter shows each key at once; the
-    list catches up when the app is free, as in the command palette.
-  - The sidebar's Remote panel sorted by most recent builds in linear time (5,000 remote
-    branches: 73 → 4 ms in our test), and dragging rows in the interactive rebase editor redraws
-    only the rows that move.
-- **An idle GitVolt wakes the CPU far less (performance).** The browser engine's message loop
-  ran 30 times a second whether or not anything was happening; it now keeps that rate for about
-  a second after any work (input, a load, a reply from the core) and then backs off to once a
-  second. With a repository open and nothing happening, the app's main thread wakes about 6 times
-  a second instead of 33, and its CPU use drops from 0.8% to 0.2%. Input, tooltips, timers and
-  scrolling respond as before.
-- **Saves stay fast after a clone, a big checkout or a tool that touches every file
-  (performance).** GitVolt's reads now refresh the index as `git status` does in a terminal, so
-  git stops re-reading files whose dates changed but whose content didn't, and the changed-file
-  list diffs only the files `git status` found changed. On a 20,000-file repository, a save in a
-  fresh clone went from 190 ms of `git status` and 220 ms of `git diff` to 30 ms and 5 ms, and
-  with every file touched, from 220 ms and 670 ms each time to one 180 ms status, then 26 ms and
-  5 ms. A read changes nothing else, and leaves the index alone while one of GitVolt's own changes
-  or a rebase runs.
-- **Opening a repository or switching to its tab runs `git status` once, not three times
-  (performance).** The tab's file watch starts first, the graph waits for its first status
-  instead of running its own beside it, and the first changed-file list is computed from that
-  same status. Reads of a worktree's status at the same time share one `git status`.
-- **Pushes, new branches and tags run no `git status` afterwards, and staging one fewer
-  (performance).** A change that can't touch your files (push, a branch or tag created without
-  checking it out, renaming, upstreams, remotes, a pull with nothing to merge) no longer re-reads
-  them, and the file watch no longer re-reads what a change's own final `git status` already saw:
-  on the 20,000-file repository, staging runs 1 status instead of 2, push and creating a branch
-  none instead of 1, and a commit 2 instead of 3.
+- **An idle GitVolt barely wakes the CPU (performance).** Chromium's message loop backs off to
+  once a second when nothing happens (33 wakeups a second → 6, CPU 0.8% → 0.2%), and on Linux,
+  reading files in a repository no longer wakes the file watcher.
+- **Graph refreshes send only what changed (performance).** After a commit, 6 KB instead of
+  825 KB on a 2,000-commit window. A HEAD move reads only the new commits, unchanged rows aren't
+  redrawn, and laying the graph out takes a third of the time.
+- **A rebase shows each commit in the graph as it lands.**
+- **Fewer `git status` runs (performance).**
+  - Reads refresh the index as `git status` does in a terminal. Saves stay fast after a clone or
+    anything that touches every file: on a 20,000-file repository, 26 ms instead of 220 ms.
+  - Opening a repository or switching to its tab runs status once instead of three times.
+  - Push and new branches or tags run none, staging runs one and a commit two.
+- **Merges, rebases and checkouts do less work after they run (performance).** One reload instead
+  of two or three, and conflict prediction with `git merge-tree`, about four times faster.
+- **Large diffs open sooner (performance).**
+  - Diffs with thousands of changed lines use Monaco's faster legacy algorithm (a 30,000-line
+    lock file: 5 s → 1.5 s), and the last four diffs open again at once.
+  - A diff you've moved on from stops computing.
+  - Large removals in Inline and Hunk draw only the lines near the screen (a deleted 20,000-line
+    file: 1.4 s → 0.2 s).
+  - The first diff of a session opens as fast as the next ones.
+  - Markdown and CSV previews build the source diff only when you switch to Source.
+- **Images, PDFs and media load as raw bytes (performance).** A 5 MB PNG shows in 0.15 s instead
+  of 0.7 s, and these files now ask before loading only from 16 MB (text files stay at 2 MB).
+- **Opening a file no longer prefetches a heavy neighbour (performance).** Images, PDFs, media,
+  binaries and changes over 2,000 lines load when you step to them.
+- **File History and Blame keep up with long histories (performance).**
+  - File History draws only the rows on screen: ↑/↓ with 2,000 rows takes 17 ms instead of 73 ms.
+  - "Load more" continues one git walk instead of starting over.
+  - Blame reads `--incremental` (11 KB of git output instead of 4.5 MB for a 50,000-line file),
+    and its gutter no longer redraws on every scroll.
+- **Pickers and filters keep up with big repositories (performance).** The branch, Pin and Set
+  upstream pickers are built when opened and draw only the rows in view. The sidebar and file
+  filters show each key at once.
+- **Less re-rendering (performance).**
+  - Dragging the sidebar's edge saves its width once, on release. The edge also takes ←/→ and
+    Home/End.
+  - The tab bar renders only when its tabs change.
+  - Arriving avatars redraw the graph once per frame.
+- **Fewer forge requests (performance).**
+  - A quiet minute with an MR/PR open: GitHub 9 → 7 requests, GitLab 6 → 4, all 304s.
+  - Hover cards make 2 requests instead of 3–5.
+  - Lists up to 8 MB are revalidated rather than downloaded again.
+  - PRs without checks back off up to 30 minutes.
+- **The background fetch connects to each remote once (performance).** Remote tags are listed
+  again only when 15 minutes old, or on your own fetch or pull.
+- **Fetch progress reaches the window at most ten times a second.** An operation's start and end
+  are never dropped.
+- **Repositories open sooner after launch.** The login shell starts first, and the first
+  background fetch waits for the graph.
+- **Less memory and disk.**
+  - One Chromium process less (76 MB).
+  - Stale Chromium profiles, components and logs are deleted at start (about 150 MB on an
+    upgraded install).
+  - Closed diffs and closed tabs free what they held.
+  - The forge caches stay bounded.
+- **The sidebar lists main and develop first.** In tree sort, each level starts with the
+  production branch, then the development branch.
 
 ### Fixed
 
-- **Closing a tab gives back its repository's memory.** The core kept every repository opened
-  until quit, closed tabs included, a few MB each (its object store, status, graph and find
-  caches); the last tab showing a repository now lets go of it, with its file watcher. Opening it
-  again reads it afresh.
-- **Less memory with many tabs.** A hidden tab gives its graph canvas's memory back (a few MB
-  each on a HiDPI screen; with 50 tabs, 333 MB → 161 MB) and redraws it before it shows again
-  (#29). So do an image diff's Difference view (the images' full size, 4 bytes a pixel) and a
-  PDF's drawn pages and open document (several MB a page on a HiDPI screen), once the tab has
-  been hidden for 30 seconds: flipping between tabs to compare keeps them as they were, and a tab
-  shown after longer draws them again (#32).
-- **Push no longer asks where to push a branch the remote already has by its name.** A branch
-  pushed without tracking it (from a terminal, without `-u`) shows as one chip with origin's
-  branch of the same name, so it looked tracked, but Push opened the "Push to" panel. Push now
-  sends it there and tracks it from then on. Rebased or amended since that push, however many
-  times, it force-pushes with lease at once ("Force pushed … with lease (rebased locally)"), as a
-  tracked branch does; when the remote may have commits you never fetched, Push still asks first.
-  The panel asks only when two remotes other than origin have the branch.
-- **Typing right after Ctrl+S in a diff no longer loses keys.** The file's reload after a save
-  made the editor read-only for a moment ("Cannot edit in read-only editor") and could put the
-  saved text back over what you typed meanwhile. The editor now keeps its text, cursor and undo
-  history through the reload. Switching Inline, Split or Hunk, or a diff option, while editing no
-  longer makes the file read-only either.
-- **A click on a deleted line copies it when the whole file was deleted, or the removal starts the
-  file.** Inline and Hunk did nothing there, for small and large files alike: Monaco reports the
-  deleted lines above line 1 as sitting after line 1, so the click matched no change. The line
-  button in the gutter and the context menu on those lines missed it too.
+- **Closing a tab gives back its repository's memory.** The last tab showing a repository lets go
+  of it, and of its file watcher.
+- **Less memory with many tabs.** A hidden tab gives back its graph canvas (with 50 tabs,
+  333 MB → 161 MB) (#29). After 30 seconds hidden, it also gives back its image Difference canvas
+  and its open PDF, so flipping between tabs keeps them as they were (#32).
+- **Push no longer asks where to push a branch the remote already has by its name.** It pushes
+  there and tracks it, and once the branch is rebased, it force-pushes with lease.
+- **Typing right after Ctrl+S in a diff no longer loses keys.**
+- **Clicking a deleted line copies it** when the whole file was deleted, or the removal starts at
+  the top of the file.
 
 ## [1.6.3] - 2026-11-17
 
