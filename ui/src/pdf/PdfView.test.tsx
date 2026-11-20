@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { Activity } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
 import { isHex, isMedia } from '../diff/DiffPanel';
@@ -28,8 +29,11 @@ vi.mock('./pdfjs', async (actual) => {
         pages,
         page: async (n) => ({
           size: { w: 612, h: n === tall ? 1000 : 792 },
-          render: () => {
+          // Sizes the canvas to the page, as pdf.js does.
+          render: (canvas, scale) => {
             renders.push(n);
+            canvas.width = Math.round(612 * scale);
+            canvas.height = Math.round((n === tall ? 1000 : 792) * scale);
             return { promise: Promise.resolve(), cancel: () => {} };
           },
           // Appends its text later, as pdf.js's layer does (at once, or when a test holds it
@@ -210,6 +214,19 @@ describe('PdfView', () => {
     unmount();
     render(<PdfView old={null} new={pdf('error:This PDF is password-protected')} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('This PDF is password-protected');
+  });
+
+  it("hidden, its pages give their canvases' backing stores back; shown again, they're drawn afresh", async () => {
+    const ui = (mode: 'visible' | 'hidden') => <Activity mode={mode}><PdfView old={null} new={pdf('pages:3')} /></Activity>;
+    const view = render(ui('visible'));
+    const pane = screen.getByRole('document', { name: 'PDF' });
+    const sizes = () => Array.from(pane.querySelectorAll('canvas'), (c) => [c.width, c.height]);
+    await waitFor(() => expect(sizes()).toEqual([[612, 792], [612, 792]]));
+    const hidden = Array.from(pane.querySelectorAll('canvas'));
+    view.rerender(ui('hidden'));
+    expect(hidden.map((c) => [c.width, c.height])).toEqual([[0, 0], [0, 0]]);
+    view.rerender(ui('visible'));
+    await waitFor(() => expect(sizes()).toEqual([[612, 792], [612, 792]]));
   });
 
   it('a PDF no longer shown stops opening', async () => {

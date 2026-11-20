@@ -387,6 +387,35 @@ describe('ImageDiff', () => {
     expect(onSourceChange).toHaveBeenLastCalledWith(true);
   });
 
+  it("hidden on Difference, it gives the canvas's backing store back, and draws it again when shown", async () => {
+    vi.stubGlobal('Image', FakeImage);
+    const ui = (mode: 'visible' | 'hidden') => <Activity mode={mode}><ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} /></Activity>;
+    const view = render(ui('visible'));
+    await waitFor(() => expect(screen.getByTestId('image-dims')).toHaveTextContent('4×4 → 6×4'));
+    fireEvent.click(screen.getByRole('button', { name: 'Difference' }));
+    const canvas = screen.getByTestId('image-difference') as HTMLCanvasElement;
+    await waitFor(() => expect([canvas.width, canvas.height]).toEqual([6, 4]));
+    view.rerender(ui('hidden'));
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
+    view.rerender(ui('visible'));
+    await waitFor(() => expect([canvas.width, canvas.height]).toEqual([6, 4]));
+  });
+
+  it("an Amplify repaint while shown doesn't give the backing store back in between", async () => {
+    vi.stubGlobal('Image', FakeImage);
+    render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
+    await waitFor(() => expect(screen.getByTestId('image-dims')).toHaveTextContent('4×4 → 6×4'));
+    fireEvent.click(screen.getByRole('button', { name: 'Difference' }));
+    const canvas = screen.getByTestId('image-difference') as HTMLCanvasElement;
+    await waitFor(() => expect(canvas.width).toBe(6));
+    const sizes: number[] = [];
+    const set = vi.spyOn(HTMLCanvasElement.prototype, 'width', 'set').mockImplementation(function (this: HTMLCanvasElement, v: number) { sizes.push(v); });
+    onTestFinished(() => set.mockRestore());
+    fireEvent.change(screen.getByRole('slider', { name: 'Amplify' }), { target: { value: '8' } });
+    await nextFrame();
+    expect(sizes).toEqual([6]);
+  });
+
   it('shows a message in place of an image that fails to decode', async () => {
     vi.stubGlobal('Image', FakeImage);
     const { container } = render(<ImageDiff old={{ url: 'blob:broken', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);

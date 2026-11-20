@@ -313,6 +313,17 @@ export function ImageDiff({ old, new: neu, source, sourceLabel = 'Source', onSou
     return () => cancelAnimationFrame(raf);
   }, [amplify, activeMode, contentW, contentH, oldImg.dim, newImg.dim, oldRect]);
 
+  // A hidden tab (<Activity> hides by cleaning up its effects) gives the Difference canvas's
+  // backing store back: the images' full size at 4 bytes a pixel (48 MB for a 4000×3000
+  // screenshot), kept by every tab left on a Difference otherwise. Shown again, the effects above
+  // run again and draw it afresh. Keyed on the mode alone: Amplify's redraws don't reallocate.
+  useLayoutEffect(() => {
+    const canvas = activeMode === 'difference' ? canvasRef.current : null;
+    return () => {
+      if (canvas) canvas.width = canvas.height = 0;
+    };
+  }, [activeMode]);
+
   // Until every side has decoded (or failed), there's no size to place the images by, and a
   // later side's size moves the view again: they'd paint at the top left, then jump. Hidden until
   // then; the render that learns the last size places them in a layout effect, before a paint.

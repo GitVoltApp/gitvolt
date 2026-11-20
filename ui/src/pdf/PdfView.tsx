@@ -90,6 +90,16 @@ const Page = memo(function Page({ doc, n, size, scale, top }: { doc: PdfDoc; n: 
       t.replaceChildren();
     };
   }, [doc, n, scale]);
+  // A hidden tab (<Activity> hides by cleaning up its effects) gives the page's backing store
+  // back: a few MB a page at a high-DPI zoom, kept by every tab left on a PDF otherwise. Shown
+  // again, the PDF opens again and its pages draw afresh. Empty deps: a zoom's redraw keeps the
+  // old drawing up until the new one lands.
+  useLayoutEffect(() => {
+    const c = canvas.current;
+    return () => {
+      if (c) c.width = c.height = 0;
+    };
+  }, []);
   const w = Math.round(size.w * scale);
   const h = Math.round(size.h * scale);
   return (
