@@ -19,7 +19,6 @@
     "eolOnly": false,
     "image": false,
     "new": {
-      "base64": null,
       "binary": true,
       "encoding": "",
       "eol": "none",
@@ -28,7 +27,6 @@
       "text": null
     },
     "old": {
-      "base64": null,
       "binary": true,
       "encoding": "",
       "eol": "none",

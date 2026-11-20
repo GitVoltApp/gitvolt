@@ -7,6 +7,14 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Changed
 
+- **Images, PDFs, audio, video and fonts in a diff load as raw bytes (performance).** Their bytes
+  reached the window as base64 text inside the diff's JSON, a third larger, then were decoded
+  again in the page: a 5 MB PNG was a 13 MB reply that took about 120 ms of script and held the
+  window for one 90 ms task. The core now sends each side's bytes as they are, beside a small JSON
+  reply, and the diff cache keeps them as bytes: an added 5 MB PNG now shows about 0.15 s after
+  the click instead of 0.7 s, and a 10 MB PDF no longer holds the window for 50 to 80 ms at a
+  time. "Large file — load anyway?" now waits until such a
+  file is over 16 MB, instead of 2 MB; text files keep the 2 MB prompt.
 - **The sidebar lists main and develop first.** Folders and branches sort as one alphabetical list,
   so folders such as `backup/`, `ci/` or `dependabot/` could push the branches you use most far down
   Local and each remote. In tree sort, each level now starts with the production branch (the

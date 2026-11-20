@@ -18,7 +18,6 @@
     "eolOnly": false,
     "image": false,
     "new": {
-      "base64": null,
       "binary": false,
       "encoding": "ISO-8859-1",
       "eol": "lf",

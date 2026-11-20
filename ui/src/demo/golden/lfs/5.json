@@ -20,7 +20,6 @@
     "image": false,
     "lfs": true,
     "new": {
-      "base64": null,
       "binary": false,
       "encoding": "",
       "eol": "none",
@@ -35,7 +34,6 @@
       "text": null
     },
     "old": {
-      "base64": null,
       "binary": false,
       "encoding": "",
       "eol": "none",

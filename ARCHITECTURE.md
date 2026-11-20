@@ -160,6 +160,13 @@ adding a method means adding a variant and a match arm in `Api::dispatch`. The U
 `ui/src/api/transport.ts` (Tauri `invoke` in the app, a WebSocket to the harness elsewhere) and
 `ui/src/api/client.ts` (typed wrappers).
 
+One request answers with bytes instead of JSON: `blobBytes`, a file side's bytes as they are, for
+the sides `diffContents` marks `raw` (images, PDFs, audio, video, fonts). `Api::call` returns it as
+`Reply::Bytes`; the app sends it as a raw IPC response (an `ArrayBuffer` in the page, over the same
+`ipc:` scheme), the harness as a binary WebSocket frame, and the website demo as a `Uint8Array`.
+The contents cache (`diff/hexContents.ts`) keeps those bytes beside the side's metadata and counts
+them to the byte.
+
 The TypeScript types for every request, payload and event are generated from the Rust types with
 ts-rs into `ui/src/api/gen/`, which is committed. After
 changing a type that crosses the boundary, run `just gen-types` and commit the result.
@@ -588,7 +595,8 @@ Tests live in three layers. Use the cheapest one that proves the behavior.
 sides of a shared rule can't drift.
 
 **The harness.** `gitvolt-harness serve [--port N] [--config-dir DIR]` serves `Api::dispatch`
-over a WebSocket (`/ws`: `{id, req}` in, `{id, ok|err}` and `{event}` out), so the UI runs in an
+over a WebSocket (`/ws`: `{id, req}` in, `{id, ok|err}` and `{event}` out as text frames; a
+`blobBytes` reply as a binary frame, the request's id as a little-endian u32, then the bytes), so the UI runs in an
 ordinary browser. It uses a throwaway config dir (never `~/.config/gitvolt`), a temp home and
 runtime dir, an isolated git environment and no avatar provider. It starts with background fetch
 off, records "Open in…" launches instead of running them, and refuses writes to any repository

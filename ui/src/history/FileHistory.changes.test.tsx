@@ -45,11 +45,11 @@ const { FileHistory } = await import('./FileHistory');
 const graph = { rows: [], labels: [], maxLanes: 0, pinnedRefs: [], head: { branch: null, target: null, detached: false, unborn: true }, truncated: false, worktrees: [] } as unknown as GraphPayload;
 const P0 = 'p0';
 const side = (path: string, s: BlobSource) => (s.kind === 'atCommit' ? `${path}@${s.commit}` : s.kind === 'object' ? `${path}#${s.oid}` : null);
-const blob = (text: string) => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'lf', text, base64: null, hash: null });
+const blob = (text: string) => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'lf', text, hash: null });
 const contents = new Loader(async (k: string) => {
   const { path, old, new: neu } = JSON.parse(k) as { path: string; old: BlobSource; new: BlobSource };
   if (path.endsWith('.bin')) {
-    const bin = { size: 4, binary: true, encoding: null, eol: null, text: null, base64: null, hash: null };
+    const bin = { size: 4, binary: true, encoding: null, eol: null, text: null, hash: null };
     return { old: bin, new: bin, tooLarge: false, eolOnly: false, image: false, hex: { old: { dump: 'o', size: 4, cap: null }, new: { dump: 'n', size: 4, cap: null } } } as unknown as DiffContentsPayload;
   }
   const o = side(path, old);

@@ -6,8 +6,8 @@ import { wantsHex } from '../diff/hexContents';
 import { ZOOM_STEPS } from '../image/zoom';
 import { columnHeight, pageTops, syncedScrollTop } from './layout';
 import { isPdf } from './kind';
-import type { PdfDoc } from './pdfjs';
-import { decode, PdfView } from './PdfView';
+import { openPdf, type PdfDoc } from './pdfjs';
+import { PdfView } from './PdfView';
 
 // jsdom has no canvas and no pdf.js worker: a stand-in document whose bytes say how many pages it
 // has ("pages:3"), or why it can't be opened ("error:…").
@@ -57,7 +57,7 @@ vi.mock('./pdfjs', async (actual) => {
   };
 });
 
-const pdf = (text: string, size = 4096) => ({ base64: btoa(text), size });
+const pdf = (text: string, size = 4096) => ({ bytes: new TextEncoder().encode(text), size });
 const stepOf = (s: (typeof ZOOM_STEPS)[number]) => String(ZOOM_STEPS.indexOf(s));
 const pages = (pane: HTMLElement) => Array.from(pane.querySelectorAll<HTMLElement>('.pdf-page'));
 
@@ -235,31 +235,24 @@ describe('PdfView', () => {
   });
 });
 
-describe('decode', () => {
-  it('reads base64 natively where the engine can, else through atob, to the same bytes', () => {
-    const b64 = btoa('%PDF-1.7\n\u00e2\u00e3');
-    const expected = Uint8Array.from('%PDF-1.7\n\u00e2\u00e3', (c) => c.charCodeAt(0));
-    const native = vi.fn((_s: string) => expected);
-    vi.stubGlobal('Uint8Array', Object.assign(class extends Uint8Array {}, { fromBase64: native }));
-    try {
-      expect(decode(b64)).toBe(expected);
-      expect(native).toHaveBeenCalledWith(b64);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-    vi.stubGlobal('Uint8Array', Object.assign(class extends Uint8Array {}, { fromBase64: undefined }));
-    try {
-      expect(Array.from(decode(b64))).toEqual(Array.from(expected));
-    } finally {
-      vi.unstubAllGlobals();
-    }
+describe('the bytes', () => {
+  it('pdf.js gets a copy (it takes over what it is given): the cached bytes stay whole for the next open', async () => {
+    const src = pdf('pages:1');
+    const { unmount } = render(<PdfView old={null} new={src} />);
+    await waitFor(() => expect(screen.getByTestId('pdf-pages')).toHaveTextContent('1 page'));
+    const given = vi.mocked(openPdf).mock.calls.at(-1)![0];
+    expect(given.buffer).not.toBe(src.bytes.buffer);
+    expect(new TextDecoder().decode(given)).toBe('pages:1');
+    unmount();
+    structuredClone(given, { transfer: [given.buffer as ArrayBuffer] });
+    expect(new TextDecoder().decode(src.bytes)).toBe('pages:1');
   });
 });
 
 describe('a PDF in the diff panel', () => {
   const contents = (over: Partial<DiffContentsPayload>): DiffContentsPayload => ({
     old: null,
-    new: { size: 9, binary: true, encoding: '', eol: 'none', text: null, base64: btoa('%PDF-1.4'), hash: null },
+    new: { size: 9, binary: true, encoding: '', eol: 'none', text: null, raw: true, hash: null },
     tooLarge: false, eolOnly: false, image: false, ...over,
   });
   const target = { path: 'docs/survey.pdf' } as Parameters<typeof isHex>[0];
@@ -274,8 +267,8 @@ describe('a PDF in the diff panel', () => {
     expect(isHex(target, contents({}))).toBe(true);
   });
 
-  it('a side without its bytes (a Git LFS pointer named .pdf) isn\'t shown as pages; a PDF is never media', () => {
-    const pointer = { size: 120, binary: false, encoding: 'UTF-8', eol: 'lf' as const, text: 'version https://git-lfs.github.com/spec/v1\n', base64: null, hash: null };
+  it('a side not read raw (a Git LFS pointer named .pdf) isn\'t shown as pages; a PDF is never media', () => {
+    const pointer = { size: 120, binary: false, encoding: 'UTF-8', eol: 'lf' as const, text: 'version https://git-lfs.github.com/spec/v1\n', hash: null };
     expect(isPdf(contents({ pdf: true, new: pointer }))).toBe(false);
     expect(isPdf(contents({ pdf: true, old: pointer }))).toBe(false);
     expect(isPdf(contents({ pdf: true, new: null }))).toBe(false);

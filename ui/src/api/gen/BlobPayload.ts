@@ -12,9 +12,10 @@ encoding: string, eol: Eol,
  */
 text: string | null, 
 /**
- * Raw bytes, base64, for binary images, media (audio, video, fonts) and PDFs only.
+ * A binary image's, media file's (audio, video, font) or PDF's side, whose bytes the UI
+ * reads raw, with `blobBytes`, to show it. Absent otherwise.
  */
-base64: string | null, 
+raw?: boolean, 
 /**
  * The loaded bytes' `worktree_id`: the save base of a working-tree side.
  * `None` when the side wasn't loaded (too large).

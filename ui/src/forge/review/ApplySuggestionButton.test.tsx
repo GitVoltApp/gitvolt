@@ -25,7 +25,7 @@ function tab(branch: string) {
   const store = createStore(() => ({ repoPath: '/r', watchHeadMove() {}, headWriteDone() {}, endHeadWatch() {}, graph: { openWorktree: '/r', head: { branch, target: HEAD, detached: false, unborn: false }, worktrees: [] } }));
   useTabViews.setState({ views: { t: { repo: 4, services: { wip }, store } as never } });
 }
-const file = (text: string) => ({ old: null, new: { size: text.length, binary: false, encoding: 'UTF-8', eol: 'Lf', text, base64: null, hash: 'h1' }, tooLarge: false, eolOnly: false, image: false });
+const file = (text: string) => ({ old: null, new: { size: text.length, binary: false, encoding: 'UTF-8', eol: 'Lf', text, hash: 'h1' }, tooLarge: false, eolOnly: false, image: false });
 const result = { outcome: { hash: 'h2' }, journal: { undo: { entry: 3, label: 'apply the suggestion to src/cart.ts', kind: 'save' }, redo: null, undoBlocked: null, redoBlocked: null, banners: [], paused: null }, staging: { undo: null, redo: null }, wip: null };
 
 /** A comment on line 2 of src/cart.ts, as a card in the diff renders its suggestion. */

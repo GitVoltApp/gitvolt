@@ -15,7 +15,7 @@ import { confirmDiscardUnsaved, guardTabClose, isEditableTarget, registerUnsaved
 import { toastActionError } from '../debug/errorToast';
 
 const wipTarget = { key: '{"kind":"wip","worktree":"/r","staged":false}|a.txt', path: 'a.txt', oldPath: null, status: 'M', old: { kind: 'object', oid: 'i' }, new: { kind: 'worktree', worktree: '/r' }, view: 'diff' } as const;
-const contents = (hash: string | null, binary = false): DiffContentsPayload => ({ old: null, new: { size: 6, binary, encoding: 'UTF-8', eol: 'lf', text: 'a\n', base64: null, hash }, tooLarge: false, eolOnly: false, image: false });
+const contents = (hash: string | null, binary = false): DiffContentsPayload => ({ old: null, new: { size: 6, binary, encoding: 'UTF-8', eol: 'lf', text: 'a\n', hash }, tooLarge: false, eolOnly: false, image: false });
 const ok = (hash: string) => ({ outcome: { hash }, journal: { undo: null, redo: null, undoBlocked: null, redoBlocked: null, banners: [] }, staging: { undo: null, redo: null, off: null }, wip: null });
 
 beforeEach(() => {

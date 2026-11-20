@@ -9,6 +9,8 @@ export { compareBytes as compareBytewise } from '../refs';
 export const BINARY_SNIFF_BYTES = 8000;
 /** Above this size (either side), the diff viewer asks before loading (the core's `LARGE_FILE_BYTES`). */
 export const LARGE_FILE_BYTES = 2 * 1024 * 1024;
+/** The same for a side read raw: an image, a PDF, media (`LARGE_PREVIEW_BYTES`). */
+export const LARGE_PREVIEW_BYTES = 16 * 1024 * 1024;
 /** The hard ceiling per side, even after "Load anyway" (`MAX_FORCED_BYTES`). */
 export const MAX_FORCED_BYTES = 64 * 1024 * 1024;
 

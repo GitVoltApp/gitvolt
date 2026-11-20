@@ -1,6 +1,7 @@
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { Activity } from 'react';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import type { BlobPayload } from '../api/gen/BlobPayload';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
 import { useImageBackground } from './background';
 import { ImageDiff } from './ImageDiff';
@@ -399,11 +400,11 @@ describe('ImageDiff', () => {
     expect(fireEvent.contextMenu(container.querySelector('.image-stage img')!)).toBe(false);
   });
 
-  it('builds blobs from base64 bytes or SVG text', async () => {
-    const png = blobFor({ size: 3, binary: true, encoding: '', eol: 'none', text: null, base64: btoa('\x89PN'), hash: null }, 'image/png')!;
+  it('builds blobs from a raw side\'s bytes or SVG text', async () => {
+    const png = blobFor({ size: 3, binary: true, encoding: '', eol: 'none', text: null, raw: true, hash: null, bytes: new Uint8Array([0x89, 0x50, 0x4e]) } as BlobPayload, 'image/png')!;
     expect([png.type, png.size]).toEqual(['image/png', 3]);
     expect([...new Uint8Array(await png.arrayBuffer())]).toEqual([0x89, 0x50, 0x4e]);
-    const svg = blobFor({ size: 5, binary: false, encoding: 'UTF-8', eol: 'none', text: '<svg/>', base64: null, hash: null }, 'image/svg+xml')!;
+    const svg = blobFor({ size: 5, binary: false, encoding: 'UTF-8', eol: 'none', text: '<svg/>', hash: null }, 'image/svg+xml')!;
     expect(await svg.text()).toBe('<svg/>');
     expect(blobFor(null, 'image/png')).toBeNull();
   });
@@ -420,7 +421,7 @@ describe('ImageDiff', () => {
       URL.createObjectURL = saved.create;
       URL.revokeObjectURL = saved.revoke;
     });
-    const side = (text: string) => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'none' as const, text, base64: null, hash: null });
+    const side = (text: string) => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'none' as const, text, hash: null });
     const contents = (a: string, b: string): DiffContentsPayload => ({ old: side(a), new: side(b), tooLarge: false, eolOnly: false, image: false });
     const { result, rerender, unmount } = renderHook(({ c }) => useImageSources(c, 'icon.svg'), { initialProps: { c: contents('<svg/>', '<svg />') } });
     expect(result.current).toEqual({ old: { url: 'blob:u1', size: 6, intrinsic: null }, new: { url: 'blob:u2', size: 7, intrinsic: null } });

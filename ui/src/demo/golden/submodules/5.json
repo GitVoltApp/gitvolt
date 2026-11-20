@@ -19,7 +19,6 @@
     "eolOnly": false,
     "image": false,
     "new": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",
@@ -28,7 +27,6 @@
       "text": "Subproject commit e8caaef9c52b38e66ba229ce4089957669feb150\nSend snapshots at 20 Hz\n"
     },
     "old": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",

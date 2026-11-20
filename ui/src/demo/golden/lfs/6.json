@@ -20,7 +20,6 @@
     "image": true,
     "lfs": true,
     "new": {
-      "base64": "sha256:998b42177c1bb57a878e15abe132e76e2d8754f77b201d740bae83b044e14725:18348",
       "binary": true,
       "encoding": "",
       "eol": "none",
@@ -32,11 +31,11 @@
         "pointer": "version https://git-lfs.github.com/spec/v1\noid sha256:c3cfcd981d5396c33beeb11cfd1343b7f4e01fef3330835b5f5337d30fa7750e\nsize 13760\n",
         "size": 13760
       },
+      "raw": true,
       "size": 13760,
       "text": null
     },
     "old": {
-      "base64": "sha256:6b1c5f0e8848151755b789ad12005ba54454230f7af172ce1d495c95dd6e6285:20124",
       "binary": true,
       "encoding": "",
       "eol": "none",
@@ -47,6 +46,7 @@
         "pointer": "version https://git-lfs.github.com/spec/v1\noid sha256:16c90cf857ba454f5122b6de2abd4ddf42d99e96b0bbdcffaa59b2c1fa98b665\nsize 15091\n",
         "size": 15091
       },
+      "raw": true,
       "size": 15091,
       "text": null
     },

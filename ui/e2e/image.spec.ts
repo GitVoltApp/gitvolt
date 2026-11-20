@@ -396,6 +396,9 @@ test.describe('image diff', () => {
     git(repo, 'add', 'viewbox.svg', 'shot.png');
     git(repo, 'commit', '-m', 'Add viewbox svg, resize shot');
     await page.setViewportSize({ width: 1100, height: 520 }); // small enough that 512×512 needs Fit < 100%
+    // A preview's bytes come from the harness as binary frames (the request's id, then the bytes).
+    const binaryFrames: number[] = [];
+    page.on('websocket', (ws) => ws.on('framereceived', ({ payload }) => { if (typeof payload !== 'string') binaryFrames.push(payload.length); }));
     await page.goto(openUrl(repo));
     await page.getByRole('row').filter({ hasText: 'Add viewbox svg' }).click();
     await open(page, 'viewbox.svg');
@@ -455,6 +458,7 @@ test.describe('image diff', () => {
       await fileRow(page, 'survey.pdf').click();
       await expect(d.getByTestId('diff-path')).toContainText('survey.pdf');
       await expect(d.getByTestId('pdf-meta')).toHaveText(/^Page 1 · 1 page · \d+ B \(added\)$/);
+      expect(binaryFrames, 'the PDF came as its bytes, not as base64 in JSON').toContain(4 + surveyPdf().length);
       await expect(d.locator('.pdf-page .textLayer')).toContainText('Lighthouse Survey', { timeout: 15_000 });
       // The canvas has the page's pixels: the red square, not just white paper.
       await expect.poll(() => d.locator('.pdf-page canvas').evaluate((c: HTMLCanvasElement) => {

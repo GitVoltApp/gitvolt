@@ -28,10 +28,13 @@ const A = 'a'.repeat(40);
 const specA = { kind: 'commit', id: A, parent: 0 } as const;
 const row = (id: string): RowPayload => ({ id, kind: 'commit', lane: 0, color: 0, segments: [], summary: 'Docs', bodyFirstLine: '', authorName: 'Ada', authorEmail: 'ada@example.com', authorTime: 0, committerTime: 0, parents: [], mrRefs: [], wip: null }) as RowPayload;
 const change = (path: string): FileChange => ({ path, oldPath: null, status: 'M', additions: 1, deletions: 0, old: { kind: 'object', oid: '1'.repeat(40) }, new: { kind: 'object', oid: '2'.repeat(40) }, submodule: false });
-const side = (p: Partial<NonNullable<DiffContentsPayload['new']>>) => ({ size: 10, binary: false, encoding: 'UTF-8', eol: 'lf' as const, text: null, base64: null, hash: null, ...p });
+const side = (p: Partial<NonNullable<DiffContentsPayload['new']>>) => ({ size: 10, binary: false, encoding: 'UTF-8', eol: 'lf' as const, text: null, hash: null, ...p });
 const payload = (path: string): DiffContentsPayload => {
   const base = { old: null, tooLarge: false, eolOnly: false, image: false };
-  if (path.endsWith('logo.png')) return { ...base, image: true, new: side({ binary: true, encoding: '', base64: 'iVBORw0KGgo=' }) };
+  if (path.endsWith('logo.png')) {
+    const png = { ...side({ binary: true, encoding: '', raw: true }), bytes: Uint8Array.from(atob('iVBORw0KGgo='), (c) => c.charCodeAt(0)) };
+    return { ...base, image: true, new: png };
+  }
   if (path.endsWith('diagram.svg')) return { ...base, new: side({ text: '<svg xmlns="http://www.w3.org/2000/svg"/>' }) };
   if (path.endsWith('big.png')) return { ...base, image: true, tooLarge: true, new: side({ binary: true, encoding: '' }) };
   return { ...base, new: side({ text: `# ${path}\n` }) };

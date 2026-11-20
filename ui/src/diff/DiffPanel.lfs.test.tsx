@@ -23,7 +23,7 @@ const { DiffPanel } = await import('./DiffPanel');
 const { DEFAULT_DIFF_PREFS, useDiffPrefs } = await import('./diffPrefs');
 
 const graph: GraphPayload = { rows: [], labels: [], maxLanes: 0, pinnedRefs: [], head: { branch: null, target: null, detached: false, unborn: true }, truncated: false, worktrees: [] };
-const blob = (text: string): BlobPayload => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'lf', text, base64: null, hash: null });
+const blob = (text: string): BlobPayload => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'lf', text, hash: null });
 const change: FileChange = { path: 'data.csv', oldPath: null, status: 'M', additions: 1, deletions: 1, old: { kind: 'object', oid: 'a'.repeat(40) }, new: { kind: 'worktree', worktree: '/repo' }, submodule: false };
 const wip: DiffSpec = { kind: 'wip', worktree: '/repo', staged: false };
 
@@ -59,7 +59,7 @@ describe('an LFS file\'s diff', () => {
   it('the "not downloaded" placeholder isn\'t a text diff: no editor, no change stepping', async () => {
     const oid = 'c'.repeat(64);
     const lfs = { oid, size: 2048, downloaded: false, pointer: `version https://git-lfs.github.com/spec/v1\noid sha256:${oid}\nsize 2048\n` };
-    const missing = { size: 2048, binary: false, encoding: '', eol: 'none' as const, text: null, base64: null, hash: null, lfs };
+    const missing = { size: 2048, binary: false, encoding: '', eol: 'none' as const, text: null, hash: null, lfs };
     const { findByTestId, getByRole } = renderPanel({ old: blob('a\n'), new: missing, tooLarge: false, eolOnly: false, image: false, lfs: true });
     expect(await findByTestId('lfs-placeholder')).toHaveTextContent('LFS file (2.0 KB), not downloaded');
     expect(getByRole('button', { name: 'Next change' })).toBeDisabled();

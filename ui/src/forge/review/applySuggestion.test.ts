@@ -30,7 +30,7 @@ function tab(branch: string | null, head: string | null, locals: Array<{ name: s
 }
 
 const result = (entry: number) => ({ outcome: { hash: 'h2' }, journal: { undo: { entry, label: 'apply the suggestion to src/cart.ts', kind: 'save' }, redo: null, undoBlocked: null, redoBlocked: null, banners: [], paused: null }, staging: { undo: null, redo: null }, wip: null });
-const file = (text: string) => ({ old: null, new: { size: text.length, binary: false, encoding: 'UTF-8', eol: 'Lf', text, base64: null, hash: 'h1' }, tooLarge: false, eolOnly: false, image: false });
+const file = (text: string) => ({ old: null, new: { size: text.length, binary: false, encoding: 'UTF-8', eol: 'Lf', text, hash: 'h1' }, tooLarge: false, eolOnly: false, image: false });
 
 beforeEach(() => {
   vi.clearAllMocks();

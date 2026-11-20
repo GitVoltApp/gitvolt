@@ -19,7 +19,6 @@
     "eolOnly": false,
     "image": false,
     "new": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",
@@ -28,7 +27,6 @@
       "text": "Guide\n\nStep one.\nStep two, revised.\nStep three.\nStep five.\nStep six.\nStep seven.\nStep eight.\nStep nine.\nStep ten.\nStep four (unstaged).\n"
     },
     "old": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",

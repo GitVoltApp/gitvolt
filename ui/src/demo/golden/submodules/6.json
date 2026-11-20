@@ -19,7 +19,6 @@
     "eolOnly": false,
     "image": false,
     "new": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",
@@ -28,7 +27,6 @@
       "text": "Subproject commit dae6936ebbbb9e086d5e79d66ee85dc664b9892a\n"
     },
     "old": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",

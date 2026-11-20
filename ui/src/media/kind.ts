@@ -36,11 +36,11 @@ const extOf = (path: string) => {
 export const mediaOf = (path: string): { kind: MediaKind; mime: string } | null => MEDIA[extOf(path)] ?? null;
 
 
-/** The core sent the bytes to play or preview: a media path (`media`), loaded, and each side
- * there is binary with its bytes. A text side (a Git LFS pointer) leaves the diff to the text or
- * hex view. */
+/** The core read the sides to play or preview raw: a media path (`media`), loaded, and each side
+ * there binary and `raw`. A text side (a Git LFS pointer) leaves the diff to the text or hex
+ * view. */
 export const showsMedia = (c: DiffContentsPayload): boolean =>
-  !!c.media && !c.tooLarge && !!(c.old || c.new) && [c.old, c.new].every((s) => !s || (s.binary && s.base64 !== null));
+  !!c.media && !c.tooLarge && !!(c.old || c.new) && [c.old, c.new].every((s) => !s || (s.binary && !!s.raw));
 
 /** The most the core loads to play (its `MAX_FORCED_BYTES`, diff.rs): a side past it shows as a
  * capped hex dump. */

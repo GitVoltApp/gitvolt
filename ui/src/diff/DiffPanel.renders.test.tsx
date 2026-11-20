@@ -36,7 +36,7 @@ const { DiffPanel } = await import('./DiffPanel');
 
 const graph: GraphPayload = { rows: [], labels: [], maxLanes: 0, pinnedRefs: [], head: { branch: null, target: null, detached: false, unborn: true }, truncated: false, worktrees: [] };
 const spec = { kind: 'commit' as const, id: 'c'.repeat(40), parent: 0 };
-const blob = (text: string): BlobPayload => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'lf', text, base64: null, hash: null });
+const blob = (text: string): BlobPayload => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'lf', text, hash: null });
 const change: FileChange = { path: 'a.txt', oldPath: null, status: 'M', additions: 1, deletions: 1, old: { kind: 'object', oid: 'a'.repeat(40) }, new: { kind: 'object', oid: 'b'.repeat(40) }, submodule: false };
 
 describe('DiffPanel store reads', () => {

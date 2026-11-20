@@ -87,7 +87,7 @@ import type { RemoteBranchRef } from './gen/RemoteBranchRef';
 import type { DeleteOutcome } from './gen/DeleteOutcome';
 import type { Resolution } from './gen/Resolution';
 import type { SubmoduleBehind } from './gen/SubmoduleBehind';
-import { createTransport, deliver, type EventHandler, type Transport } from './transport';
+import { asBytes, createTransport, deliver, type EventHandler, type Transport } from './transport';
 import type { Lease } from './gen/Lease';
 import type { PushOutcome } from './gen/PushOutcome';
 import type { PushTarget } from './gen/PushTarget';
@@ -210,6 +210,9 @@ export const api = {
   remotes: (repo: number) => t().call({ method: 'remotes', params: { repo } }) as Promise<RemotePayload[]>,
   fileList: (repo: number, spec: DiffSpec) => t().call({ method: 'fileList', params: { repo, spec } }) as Promise<FileListPayload>,
   diffContents: (repo: number, r: ContentsRequest) => t().call({ method: 'diffContents', params: { repo, path: r.path, old: r.old, new: r.new, force: r.force, ...(r.oldPath ? { oldPath: r.oldPath } : {}) } }) as Promise<DiffContentsPayload>,
+  /** One side's bytes as they are (a side `diffContents` marks `raw`: an image, a PDF, media),
+   * sent raw, not as JSON. */
+  blobBytes: (repo: number, path: string, side: BlobSource) => t().call({ method: 'blobBytes', params: { repo, path, side } }).then(asBytes),
   /** Both sides of a binary file as hex dumps, each capped (`HexDumpPayload.cap`). */
   hexDump: (repo: number, r: Omit<ContentsRequest, 'force'>) => t().call({ method: 'hexDump', params: { repo, path: r.path, old: r.old, new: r.new } }) as Promise<HexDumpPayload>,
   treeFiles: (repo: number, id: string) => t().call({ method: 'treeFiles', params: { repo, id } }) as Promise<string[]>,

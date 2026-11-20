@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { BlobPayload } from '../api/gen/BlobPayload';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
+import { bytesOf } from '../diff/hexContents';
 import { svgIntrinsicSize } from './svgSize';
 
 export interface ImageSource { url: string; size: number; /** An SVG's intrinsic size from its root, when it has one: a decoder reports 150×150 for a viewBox-only SVG. */ intrinsic?: { w: number; h: number } | null }
@@ -16,10 +17,11 @@ export function base64Bytes(base64: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-/** A side's bytes as a Blob: base64 for raster images, text for SVG. */
+/** A side's bytes as a Blob: its raw bytes for raster images, its text for SVG. */
 export function blobFor(b: BlobPayload | null, mime: string): Blob | null {
   if (!b) return null;
-  if (b.base64 !== null) return new Blob([base64Bytes(b.base64)], { type: mime });
+  const bytes = bytesOf(b);
+  if (bytes) return new Blob([bytes], { type: mime });
   if (b.text !== null) return new Blob([b.text], { type: mime });
   return null;
 }

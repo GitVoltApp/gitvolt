@@ -5,6 +5,8 @@ import type { Request } from './gen/Request';
 
 export type EventHandler = (ev: AppEvent) => void;
 export interface Transport {
+  /** A JSON reply, or, for a request whose reply is bytes (`blobBytes`), those bytes: an
+   * `ArrayBuffer` or a `Uint8Array` (`asBytes` takes either). */
   call(req: Request): Promise<unknown>;
   /** Backend events. Returns an unsubscribe function. */
   subscribe(h: EventHandler): () => void;
@@ -26,16 +28,37 @@ export function deliver(handlers: Iterable<EventHandler>, ev: AppEvent): void {
 
 interface Pending { resolve: (v: unknown) => void; reject: (e: unknown) => void }
 
-/** The harness socket: replies (`{id, ok|err}`, in any order) and event frames (`{event}`). */
+/** A bytes reply as a `Uint8Array`, without copying it: the app's IPC gives an `ArrayBuffer`, the
+ * harness socket and the website demo a `Uint8Array`. */
+export function asBytes(reply: unknown): Uint8Array<ArrayBuffer> {
+  if (reply instanceof ArrayBuffer) return new Uint8Array(reply);
+  if (reply instanceof Uint8Array && reply.buffer instanceof ArrayBuffer) return reply as Uint8Array<ArrayBuffer>;
+  // Tauri's fallback IPC (no custom scheme) hands raw bytes over as an array of numbers.
+  if (Array.isArray(reply)) return Uint8Array.from(reply as number[]);
+  throw new Error('expected bytes from the backend');
+}
+
+/** The harness socket: replies (`{id, ok|err}`, in any order) and event frames (`{event}`) as
+ * text, and a bytes reply (`blobBytes`) as a binary frame: the request's id (u32, little-endian),
+ * then the bytes. */
 export function wsTransport(url: string, socketFactory: (url: string) => WebSocket = (u) => new WebSocket(u), onClosed?: () => void): Transport {
   let nextId = 1;
   const pending = new Map<number, Pending>();
   const handlers = new Set<EventHandler>();
   const queue: string[] = [];
   const socket = socketFactory(url);
+  socket.binaryType = 'arraybuffer';
   const closeError: GbError = { kind: 'Io', message: 'harness connection closed', commandId: null, stderr: null };
   socket.onopen = () => { for (const m of queue.splice(0)) socket.send(m); };
   socket.onmessage = (e: MessageEvent) => {
+    if (e.data instanceof ArrayBuffer) {
+      if (e.data.byteLength < 4) return;
+      const id = new DataView(e.data).getUint32(0, true);
+      const p = pending.get(id);
+      pending.delete(id);
+      p?.resolve(new Uint8Array(e.data, 4));
+      return;
+    }
     try {
       const msg = JSON.parse(String(e.data)) as { id?: number; ok?: unknown; err?: unknown; event?: AppEvent };
       if (msg.event !== undefined) {

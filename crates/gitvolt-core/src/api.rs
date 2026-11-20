@@ -155,6 +155,10 @@ pub enum Request {
     /// Both sides of a binary file as hex dumps, each capped at `hex::HEX_CAP` bytes:
     /// `HexDumpPayload`.
     HexDump { repo: u32, path: String, old: BlobSource, new: BlobSource },
+    /// One side's bytes as they are, an LFS pointer's as its real file's, up to
+    /// `MAX_FORCED_BYTES`: the sides `diffContents` marks `raw` (images, PDFs, media). The reply
+    /// is the bytes themselves, not JSON (`Reply::Bytes`).
+    BlobBytes { repo: u32, path: String, side: BlobSource },
     /// Every file at a commit, sorted bytewise ("View all files"; the palette).
     TreeFiles { repo: u32, id: String },
     /// The worktree's tracked files, sorted bytewise ("View all files" on the WIP row).
@@ -1377,6 +1381,7 @@ impl Request {
             | Request::FileList { .. }
             | Request::DiffContents { .. }
             | Request::HexDump { .. }
+            | Request::BlobBytes { .. }
             | Request::TreeFiles { .. }
             | Request::WorktreeFiles { .. }
             | Request::WorktreePathKind { .. }
@@ -1505,6 +1510,14 @@ pub type WriteGuard = Arc<dyn Fn(&Path) -> Result<(), GbError> + Send + Sync>;
 
 /// The harness's refusal (verbatim).
 pub const FIXTURE_ONLY: &str = "writes are limited to fixture repositories";
+
+/// A request's reply: JSON, or a file's bytes as they are (`blobBytes`), which the app's IPC and
+/// the harness's socket send without encoding them.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Reply {
+    Json(serde_json::Value),
+    Bytes(Vec<u8>),
+}
 
 pub struct Api {
     pub(crate) cli: GitCli,
@@ -1724,9 +1737,9 @@ fn wire_method(variant: &str) -> String {
     chars.next().map(|c| c.to_lowercase().chain(chars).collect()).unwrap_or_default()
 }
 
-pub async fn catch_panics<F>(method: &str, fut: F) -> Result<serde_json::Value, GbError>
+pub async fn catch_panics<F, T>(method: &str, fut: F) -> Result<T, GbError>
 where
-    F: std::future::Future<Output = Result<serde_json::Value, GbError>>,
+    F: std::future::Future<Output = Result<T, GbError>>,
 {
     use futures_util::FutureExt;
     match std::panic::AssertUnwindSafe(fut).catch_unwind().await {
@@ -2327,9 +2340,17 @@ impl Api {
         self
     }
 
+    /// A JSON request's reply (`call`, for one whose reply is bytes, is refused).
+    pub async fn dispatch(&self, req: Request) -> Result<serde_json::Value, GbError> {
+        match self.call(req).await? {
+            Reply::Json(v) => Ok(v),
+            Reply::Bytes(_) => Err(GbError::new(GbErrorKind::InvalidInput, "this request's reply is bytes, not JSON")),
+        }
+    }
+
     /// Every request, with panics turned into `GbError::Other`; the panic hook
     /// (logging::install_panic_hook) has already logged it with a backtrace.
-    pub async fn dispatch(&self, req: Request) -> Result<serde_json::Value, GbError> {
+    pub async fn call(&self, req: Request) -> Result<Reply, GbError> {
         let debug = format!("{req:?}");
         let method = name_in(&debug);
         let write = req.is_write();
@@ -2340,7 +2361,7 @@ impl Api {
         let started_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
         // Boxed: `dispatch_inner` holds every request's future, so inline it would make each
         // caller's future (a Tauri command's, a test's) as large as the largest request's.
-        let (res, commands) = crate::log::with_command_scope(catch_panics(&method, Box::pin(self.dispatch_inner(req)))).await;
+        let (res, commands) = crate::log::with_command_scope(catch_panics(&method, Box::pin(self.call_inner(req)))).await;
         if record {
             self.record_request(&method, &debug, started, started_ms, &res, commands);
         }
@@ -2358,7 +2379,7 @@ impl Api {
 
     /// One request in the request log: its method, identifying params (`params_summary`: no
     /// token, body or content), timing, outcome and the git commands it ran.
-    fn record_request(&self, variant: &str, debug: &str, started: Instant, started_ms: i64, res: &Result<serde_json::Value, GbError>, commands: Vec<u64>) {
+    fn record_request(&self, variant: &str, debug: &str, started: Instant, started_ms: i64, res: &Result<Reply, GbError>, commands: Vec<u64>) {
         let err = res.as_ref().err();
         self.requests.push(crate::log::RequestLogEntry {
             id: self.requests.next_id(),
@@ -2388,8 +2409,21 @@ impl Api {
         }
     }
 
+    async fn call_inner(&self, req: Request) -> Result<Reply, GbError> {
+        match req {
+            Request::BlobBytes { repo, path, side } => {
+                let h = self.handle(repo)?;
+                let side = self.resolve_side(&h, &path, side).await?;
+                let repo = h.repo.clone();
+                blocking(move || crate::blob::raw_bytes(&repo.to_thread_local(), &path, &side, crate::diff::MAX_FORCED_BYTES)).await.map(Reply::Bytes)
+            }
+            req => self.dispatch_inner(req).await.map(Reply::Json),
+        }
+    }
+
     async fn dispatch_inner(&self, req: Request) -> Result<serde_json::Value, GbError> {
         match req {
+            Request::BlobBytes { .. } => unreachable!("answered by call_inner"),
             Request::LogFrontend { level, message, stack } => {
                 crate::logging::log_frontend(level, &message, stack.as_deref());
                 to_json(())
@@ -3771,7 +3805,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_panicking_request_becomes_an_error() {
-        let err = catch_panics("graph", async { panic!("boom") }).await.unwrap_err();
+        let err = catch_panics::<_, ()>("graph", async { panic!("boom") }).await.unwrap_err();
         assert_eq!(err.kind, GbErrorKind::Other);
         assert!(err.message.contains("graph") && err.message.contains("boom"), "{}", err.message);
     }
@@ -3779,7 +3813,7 @@ mod tests {
     #[tokio::test]
     async fn a_panic_message_is_redacted_before_it_reaches_the_ui() {
         let token = format!("glpat-{}", "d".repeat(24));
-        let err = catch_panics("fetch", async move { panic!("clone https://u:{token}@h.example.com/r.git failed") }).await.unwrap_err();
+        let err = catch_panics::<_, ()>("fetch", async move { panic!("clone https://u:{token}@h.example.com/r.git failed") }).await.unwrap_err();
         assert!(err.message.contains("h.example.com") && !err.message.contains("glpat-"), "{}", err.message);
     }
 
@@ -4380,6 +4414,46 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.kind, GbErrorKind::InvalidInput);
+    }
+
+    /// `blobBytes` answers with a side's bytes as they are (a stored blob, a working-tree file),
+    /// the sides `diffContents` marks `raw`, whose size it gives; `dispatch`, for JSON only, refuses it.
+    #[tokio::test]
+    async fn blob_bytes_are_each_sides_own_bytes() {
+        let r = TestRepo::new();
+        fixtures::details(&r);
+        let api = api();
+        let id = open(&api, &r).await;
+        let old = r.git(&["rev-parse", "HEAD^1^1:logo.png"]);
+        let wt = r.path().to_string_lossy().into_owned();
+        let (old_side, new_side) = (serde_json::json!({"kind": "object", "oid": old}), serde_json::json!({"kind": "worktree", "worktree": wt}));
+        let c = api
+            .dispatch(req(serde_json::json!({"method": "diffContents", "params": {"repo": id, "path": "logo.png", "old": old_side, "new": new_side, "force": false}})))
+            .await
+            .unwrap();
+        assert_eq!((&c["old"]["raw"], &c["new"]["raw"], c["old"].get("base64")), (&serde_json::json!(true), &serde_json::json!(true), None), "{c}");
+        let bytes = |side: &serde_json::Value| {
+            let api = &api;
+            let request = req(serde_json::json!({"method": "blobBytes", "params": {"repo": id, "path": "logo.png", "side": side}}));
+            async move {
+                match api.call(request).await.unwrap() {
+                    Reply::Bytes(b) => b,
+                    Reply::Json(v) => panic!("a JSON reply: {v}"),
+                }
+            }
+        };
+        let stored = gix::open(r.path()).unwrap().find_object(gix::ObjectId::from_hex(old.as_bytes()).unwrap()).unwrap().detach().data;
+        assert_eq!(bytes(&old_side).await, stored);
+        assert_eq!(bytes(&new_side).await, std::fs::read(r.path().join("logo.png")).unwrap());
+        assert_eq!(c["old"]["size"].as_u64(), Some(stored.len() as u64));
+        assert_eq!(&stored[..4], b"\x89PNG");
+        let refused = api.dispatch(req(serde_json::json!({"method": "blobBytes", "params": {"repo": id, "path": "logo.png", "side": old_side}}))).await.unwrap_err();
+        assert_eq!(refused.kind, GbErrorKind::InvalidInput);
+        let absent = api.call(req(serde_json::json!({"method": "blobBytes", "params": {"repo": id, "path": "logo.png", "side": {"kind": "absent"}}}))).await.unwrap_err();
+        assert_eq!(absent.kind, GbErrorKind::NotFound);
+        let escape = api.call(req(serde_json::json!({"method": "blobBytes", "params": {"repo": id, "path": "../outside.txt", "side": new_side}}))).await.unwrap_err();
+        assert_eq!(escape.kind, GbErrorKind::InvalidInput);
+        assert!(api.request_log().entries().iter().any(|e| e.method == "blobBytes" && e.error.is_none()), "recorded like any request");
     }
 
     #[tokio::test]
@@ -5385,6 +5459,7 @@ mod tests {
             json!({"method": "fileList", "params": {"repo": id, "spec": {"kind": "wip", "worktree": wt, "staged": true}}}),
             json!({"method": "diffContents", "params": {"repo": id, "path": "file_1.txt", "old": {"kind": "absent"}, "new": {"kind": "worktree", "worktree": wt}, "force": false}}),
             json!({"method": "hexDump", "params": {"repo": id, "path": "file_1.txt", "old": {"kind": "absent"}, "new": {"kind": "worktree", "worktree": wt}}}),
+            json!({"method": "blobBytes", "params": {"repo": id, "path": "file_1.txt", "side": {"kind": "worktree", "worktree": wt}}}),
             json!({"method": "treeFiles", "params": {"repo": id, "id": head}}),
             json!({"method": "worktreeFiles", "params": {"repo": id, "worktree": wt}}),
             json!({"method": "worktreePathKind", "params": {"repo": id, "worktree": wt, "path": "a.txt"}}),
@@ -5610,7 +5685,10 @@ mod tests {
         for sample in read_samples(id, &r) {
             let request: Request = serde_json::from_value(sample.clone()).unwrap_or_else(|e| panic!("{sample}: {e}"));
             assert!(!request.is_write(), "{sample}");
-            match api.dispatch(request).await {
+            match api.call(request).await.map(|r| match r {
+                Reply::Json(v) => v,
+                Reply::Bytes(_) => serde_json::Value::Null,
+            }) {
                 Err(e) => {
                     failed.insert(format!("{}: {}", sample["method"].as_str().unwrap(), e.message));
                 }

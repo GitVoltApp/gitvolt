@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { tabView } from '../app/tabStores';
 import type { BlobPayload } from '../api/gen/BlobPayload';
+import { bytesOf } from './hexContents';
 import { IMAGE_MIME } from '../image/sources';
 import { resolveRepoPath } from '../markdown/fileContext';
 import type { FileCommit } from '../nav/history';
@@ -22,9 +23,20 @@ const BATCH = 4;
 /** A side's bytes as a `data:` URL for `<img>`. */
 export function imageDataUrl(b: BlobPayload | null, mime: string): string | null {
   if (!b) return null;
-  if (b.base64 !== null) return `data:${mime};base64,${b.base64}`;
+  const bytes = bytesOf(b);
+  if (bytes) return `data:${mime};base64,${toBase64(bytes)}`;
   if (b.text !== null && mime === IMAGE_MIME.svg) return `data:${mime};charset=utf-8,${encodeURIComponent(b.text)}`;
   return null;
+}
+
+/** `bytes` as base64: natively (`Uint8Array.prototype.toBase64`, in Chromium since 140) where the
+ * engine has it, else through `btoa`, a chunk at a time. Exported for tests. */
+export function toBase64(bytes: Uint8Array): string {
+  const native = (bytes as unknown as { toBase64?: () => string }).toBase64;
+  if (native) return native.call(bytes);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 /** One repository file's contents (the diff contents request, so it's cached as File View's

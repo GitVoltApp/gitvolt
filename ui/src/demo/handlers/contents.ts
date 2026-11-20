@@ -3,7 +3,8 @@ import type { DiffContentsPayload } from '../../api/gen/DiffContentsPayload';
 import type { HexSide } from '../../api/gen/HexSide';
 import type { LfsSide } from '../../api/gen/LfsSide';
 import type { HandlerTable } from '../transport';
-import { base64, BINARY_SNIFF_BYTES, blobId, LARGE_FILE_BYTES, latin1, MAX_FORCED_BYTES } from '../engine/read/bytes';
+import { BINARY_SNIFF_BYTES, blobId, LARGE_FILE_BYTES, LARGE_PREVIEW_BYTES, latin1, MAX_FORCED_BYTES } from '../engine/read/bytes';
+import { gbError } from '../engine/errors';
 import { decodeBlob, eolOnlyChange, hexLines, isBinaryDeclared } from '../engine/read/decode';
 import { readRepoOf, type ReadRepo } from '../engine/read/seam';
 import { bytesOf, lfsSideOf, resolve, resolveSource, sizeOf, type Resolved, type Side } from '../engine/read/sides';
@@ -28,7 +29,9 @@ async function diffContents(repo: ReadRepo, path: string, oldPath: string | unde
   const newR = await resolve(repo, path, newSide);
   const oldSize = oldR ? await sizeOf(repo, oldR) : null;
   const newSize = newR ? await sizeOf(repo, newR) : null;
-  const limit = force ? MAX_FORCED_BYTES : LARGE_FILE_BYTES;
+  // A file shown from its raw bytes waits for "Load anyway" from a larger size than text; a side
+  // that turns out to be text is held to the text gate.
+  const limit = force ? MAX_FORCED_BYTES : isImagePath(path) || media || pdf ? LARGE_PREVIEW_BYTES : LARGE_FILE_BYTES;
   let tooLarge = [oldSize, newSize].some((s) => s !== null && s > limit);
   // undefined: not read (no side, or already too large); null: past the limit when read.
   const read = async (r: Resolved | null): Promise<Loaded | null | undefined> => (r && !tooLarge ? bytesOf(repo, r, limit) : undefined);
@@ -37,18 +40,19 @@ async function diffContents(repo: ReadRepo, path: string, oldPath: string | unde
   tooLarge ||= oldBytes === null || newBytes === null;
   const textSide = [oldBytes, newBytes].some((b) => b && !isBinaryDeclared(b.bytes, b.declared));
   const mediaBytes = media && !textSide;
+  const rawOf = (b: Loaded) => (isBinaryDeclared(b.bytes, b.declared) && (image || mediaBytes)) || (pdf && isPdfBytes(b.bytes));
+  tooLarge ||= !force && ([[oldBytes, oldSize], [newBytes, newSize]] as const).some(([b, size]) => !!b && size !== null && size > LARGE_FILE_BYTES && !rawOf(b));
   const load = async (bytes: Loaded | null | undefined, size: number | null, side: Side, lfs: LfsSide | null): Promise<BlobPayload | null> => {
     if (size === null) return null;
     const extra = { ...(lfs && side.kind === 'worktree' ? { filtered: true } : {}), ...(lfs ? { lfs } : {}) };
     if (lfs && !lfs.downloaded) {
-      return { size: lfs.size, binary: false, encoding: '', eol: 'none', text: null, base64: null, hash: bytes ? await blobId(bytes.bytes) : null, ...extra };
+      return { size: lfs.size, binary: false, encoding: '', eol: 'none', text: null, hash: bytes ? await blobId(bytes.bytes) : null, ...extra };
     }
     if (!bytes || tooLarge) {
-      return { size: bytes === null ? Math.max(size, limit + 1) : size, binary: false, encoding: '', eol: 'none', text: null, base64: null, hash: null, ...extra };
+      return { size: bytes === null ? Math.max(size, limit + 1) : size, binary: false, encoding: '', eol: 'none', text: null, hash: null, ...extra };
     }
     const d = decodeBlob(bytes.bytes, bytes.declared);
-    const withBytes = (d.binary && (image || mediaBytes)) || (pdf && isPdfBytes(bytes.bytes));
-    return { size, binary: d.binary, encoding: d.encoding, eol: d.eol, text: d.text, base64: withBytes ? base64(bytes.bytes) : null, hash: await blobId(bytes.bytes), ...extra };
+    return { size, binary: d.binary, encoding: d.encoding, eol: d.eol, text: d.text, ...(rawOf(bytes) ? { raw: true } : {}), hash: await blobId(bytes.bytes), ...extra };
   };
   const oldLfs = oldR ? lfsSideOf(oldR) : null;
   const newLfs = newR ? lfsSideOf(newR) : null;
@@ -88,7 +92,23 @@ async function hexSide(repo: ReadRepo, path: string, side: Side): Promise<HexSid
   return { size: bytes.length < HEX_CAP ? bytes.length : Math.max(size, HEX_CAP), shown: bytes.length, dump: hexLines(bytes) };
 }
 
-export const contentsHandlers: Pick<HandlerTable, 'diffContents' | 'hexDump'> = {
+/** `raw_bytes`: one side's bytes as they are, an LFS pointer's as its real file's. */
+async function rawBytes(repo: ReadRepo, path: string, side: Side): Promise<Uint8Array> {
+  const r = await resolve(repo, path, side);
+  if (!r) throw gbError('NotFound', `${path} has no file on that side`);
+  if (r.kind === 'lfsMissing') throw gbError('NotFound', `${path} is stored with Git LFS and isn't downloaded`);
+  const mib = (n: number) => Math.ceil(n / (1024 * 1024));
+  const size = await sizeOf(repo, r);
+  if (size > MAX_FORCED_BYTES) throw gbError('InvalidInput', `${path} is too large to read (${mib(size)} MiB; the limit is ${mib(MAX_FORCED_BYTES)} MiB)`);
+  const read = await bytesOf(repo, r, MAX_FORCED_BYTES);
+  if (!read) throw gbError('InvalidInput', `${path} is too large to read (the limit is ${mib(MAX_FORCED_BYTES)} MiB)`);
+  // Its own buffer: the reply is cloned as if it crossed a socket, and a view clones its whole
+  // buffer (a pack's, say).
+  const b = read.bytes;
+  return b.byteOffset === 0 && b.byteLength === b.buffer.byteLength ? b : new Uint8Array(b);
+}
+
+export const contentsHandlers: Pick<HandlerTable, 'diffContents' | 'hexDump' | 'blobBytes'> = {
   diffContents: async ({ repo: id, path, old, new: neu, force, oldPath }, ctx) => {
     const repo = readRepoOf(ctx, id);
     const oldSide = await resolveSource(repo, path, old);
@@ -100,5 +120,9 @@ export const contentsHandlers: Pick<HandlerTable, 'diffContents' | 'hexDump'> = 
     const oldSide = await resolveSource(repo, path, old);
     const newSide = await resolveSource(repo, path, neu);
     return { old: await hexSide(repo, path, oldSide), new: await hexSide(repo, path, newSide), cap: HEX_CAP };
+  },
+  blobBytes: async ({ repo: id, path, side }, ctx) => {
+    const repo = readRepoOf(ctx, id);
+    return rawBytes(repo, path, await resolveSource(repo, path, side));
   },
 };

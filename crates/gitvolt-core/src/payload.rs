@@ -237,8 +237,11 @@ pub struct BlobPayload {
     pub eol: Eol,
     /// Decoded text; `None` for binary files and for sides held back by the large-file prompt.
     pub text: Option<String>,
-    /// Raw bytes, base64, for binary images, media (audio, video, fonts) and PDFs only.
-    pub base64: Option<String>,
+    /// A binary image's, media file's (audio, video, font) or PDF's side, whose bytes the UI
+    /// reads raw, with `blobBytes`, to show it. Absent otherwise.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(optional, as = "Option<bool>")]
+    pub raw: bool,
     /// The loaded bytes' `worktree_id`: the save base of a working-tree side.
     /// `None` when the side wasn't loaded (too large).
     pub hash: Option<String>,
@@ -261,7 +264,8 @@ pub struct BlobPayload {
 pub struct DiffContentsPayload {
     pub old: Option<BlobPayload>,
     pub new: Option<BlobPayload>,
-    /// A side is over 2 MiB and `force` was false: show "Large file — load anyway?". Even with
+    /// `force` was false and a side is over 2 MiB (`LARGE_FILE_BYTES`), or over 16 MiB
+    /// (`LARGE_PREVIEW_BYTES`) for a side read `raw`: show "Large file — load anyway?". Even with
     /// `force`, a side over 64 MiB (`MAX_FORCED_BYTES`) stays `too_large`: that size is never loaded.
     pub too_large: bool,
     /// Only the line endings changed.
@@ -269,7 +273,7 @@ pub struct DiffContentsPayload {
     /// The path has a raster-image extension (the UI shows the image diff).
     pub image: bool,
     /// The path is a `.pdf`: each side that is one (its `%PDF-` header, not a Git LFS pointer)
-    /// carries its bytes, and the UI shows its pages. Absent otherwise.
+    /// is read `raw`, and the UI shows its pages. Absent otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(optional, as = "Option<bool>")]
     pub pdf: bool,
@@ -278,8 +282,8 @@ pub struct DiffContentsPayload {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[ts(optional, as = "Option<bool>")]
     pub lfs: bool,
-    /// The path has an audio, video or font extension: when every side is binary, they carry their
-    /// bytes, which the UI plays or previews. Like an image, it keeps the large-file gate, up to
+    /// The path has an audio, video or font extension: when every side is binary, they are read
+    /// `raw`, and the UI plays or previews them. Like an image, it keeps the large-file gate, up to
     /// `MAX_FORCED_BYTES`: past that it shows as a binary's capped hex dump. Absent otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(optional, as = "Option<bool>")]

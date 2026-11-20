@@ -19,20 +19,20 @@
     "eolOnly": false,
     "image": true,
     "new": {
-      "base64": "sha256:6b1c5f0e8848151755b789ad12005ba54454230f7af172ce1d495c95dd6e6285:20124",
       "binary": true,
       "encoding": "",
       "eol": "none",
       "hash": "6ef47d2a38d953220f5365ddb6a85a36f21a474a",
+      "raw": true,
       "size": 15091,
       "text": null
     },
     "old": {
-      "base64": "sha256:27078964c128ac59534b4c76ac9ebf3d75e04a072c215010ac20b273d44e6040:18260",
       "binary": true,
       "encoding": "",
       "eol": "none",
       "hash": "ed5178cf060c33fb386d6a6795804fc542d24a6d",
+      "raw": true,
       "size": 13694,
       "text": null
     },

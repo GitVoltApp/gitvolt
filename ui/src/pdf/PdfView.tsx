@@ -9,25 +9,14 @@ import { RulerFrame } from '../diff/RulerFrame';
 import '../image/image.css';
 import './pdf.css';
 
-/** One side's PDF: its bytes (base64, as the backend sends them) and its size on disk. */
-export interface PdfSource { base64: string; size: number }
+/** One side's PDF: its bytes (the contents cache's, never handed to pdf.js itself) and its size
+ * on disk. */
+export interface PdfSource { bytes: Uint8Array; size: number }
 
 type Loaded = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; doc: PdfDoc; sizes: PageSize[] };
 
 /** How many pages' sizes are read at a time, after the first page's. */
 const SIZE_BATCH = 64;
-
-/** The bytes of a side's base64: natively (`Uint8Array.fromBase64`, in Chromium since 140)
- * where the engine has it, else through `atob`. Run in the open's effect, never during a render.
- * Exported for tests. */
-export function decode(base64: string): Uint8Array {
-  const native = (Uint8Array as unknown as { fromBase64?: (s: string) => Uint8Array }).fromBase64;
-  if (native) return native(base64);
-  const bin = atob(base64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
 
 /** Opens `src`. The column has its full height at once: every page takes the first page's size
  * until its own is read, in batches (one render each), behind the first page's. */
@@ -43,7 +32,9 @@ function usePdf(src: PdfSource | null): Loaded | null {
     let opened: PdfDoc | null = null;
     // A slow open (a large PDF's parse) is stopped when the view moves on.
     const stop = new AbortController();
-    openPdf(decode(src.base64), stop.signal)
+    // A copy: pdf.js takes the array it's given over to its worker (detaching it), and the
+    // cached contents keep theirs for the next open.
+    openPdf(src.bytes.slice(), stop.signal)
       .then(async (doc) => {
         opened = doc;
         if (!live) return doc.destroy();

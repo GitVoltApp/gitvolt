@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { BlobPayload } from '../api/gen/BlobPayload';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
-import { base64Bytes } from '../image/sources';
+import { bytesOf } from '../diff/hexContents';
 import { videoCodec } from '../markdown/videos';
 import { mediaOf, type MediaKind } from './kind';
 
@@ -18,8 +18,8 @@ export function useMediaSources(c: DiffContentsPayload, path: string, oldPath: s
     const type = mediaOf(path);
     const oldType = (oldPath && mediaOf(oldPath)) || type;
     const make = (b: BlobPayload | null, t: typeof type): MediaSource | null => {
-      if (!b || b.base64 === null || !t) return null;
-      const bytes = base64Bytes(b.base64);
+      const bytes = bytesOf(b);
+      if (!b || !bytes || !t) return null;
       const side: MediaSource = { url: URL.createObjectURL(new Blob([bytes], { type: t.mime })), size: b.size, kind: t.kind, mime: t.mime };
       if (t.kind === 'font') side.bytes = bytes;
       if (t.kind === 'video') side.codec = videoCodec(bytes);

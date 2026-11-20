@@ -329,3 +329,38 @@ async fn watched_repos_are_listed_and_reset_unwatches_them() {
     call(&mut ws, 4, json!({"method": "unwatchRepo", "params": {"repo": repo}})).await;
     assert_eq!(http_get(addr, "/test/watched").await, "[]");
 }
+
+/// `blobBytes` answers with a binary frame: the request's id (u32, little-endian), then the
+/// side's bytes as they are; JSON requests on the same socket still get text frames. A bytes
+/// request without a numeric id is refused, in a text frame that carries its id back.
+#[tokio::test]
+async fn blob_bytes_come_back_in_a_binary_frame() {
+    let r = TestRepo::new();
+    fixtures::details(&r);
+    let (addr, _) = start().await;
+    let mut ws = connect(addr).await;
+    let repo = call(&mut ws, 1, json!({"method": "openRepo", "params": {"path": r.path()}})).await["ok"]["id"].clone();
+    let side = json!({"kind": "worktree", "worktree": r.path()});
+    let file = std::fs::read(r.path().join("logo.png")).unwrap();
+    send(&mut ws, json!({"id": 70000, "req": {"method": "blobBytes", "params": {"repo": repo, "path": "logo.png", "side": side}}})).await;
+    let frame = loop {
+        match ws.next().await.unwrap().unwrap() {
+            Message::Binary(b) => break b,
+            Message::Text(t) => assert!(serde_json::from_str::<Value>(&t).unwrap().get("event").is_some(), "{t}"),
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(&frame[..4], &70000u32.to_le_bytes());
+    assert_eq!(&frame[4..], &file[..]);
+    assert_eq!(&file[..4], b"\x89PNG");
+    let refused = call(&mut ws, 3, json!({"method": "blobBytes", "params": {"repo": repo, "path": "logo.png", "side": {"kind": "absent"}}})).await;
+    assert_eq!(refused["err"]["kind"], "NotFound", "an error is JSON, as any request's");
+    send(&mut ws, json!({"id": "x", "req": {"method": "blobBytes", "params": {"repo": repo, "path": "logo.png", "side": side}}})).await;
+    let reply = loop {
+        let v = next_json(&mut ws).await;
+        if v.get("event").is_none() {
+            break v;
+        }
+    };
+    assert_eq!((&reply["id"], &reply["err"]["kind"]), (&json!("x"), &json!("InvalidInput")), "{reply}");
+}

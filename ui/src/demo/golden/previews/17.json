@@ -19,7 +19,6 @@
     "eolOnly": false,
     "image": false,
     "new": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",
@@ -28,7 +27,6 @@
       "text": "---\ntitle: Flying the scout\ndate: 2026-07-18\nauthor: Noor Achterberg\ntags: [devlog, art, release]\ndraft: false\n---\n\n# Flying the scout\n\nThe scout finally has a flame, and 1.1 gives it a repaint. The hull is cleaner, the cockpit is brighter and the thruster has four frames instead of two.\n\n![The scout](../images/scout.png)\n\n| Ship | Hull | Cargo |\n|---|---|---|\n| Scout | 40 | 2 t |\n| Hauler | 120 | 24 t |\n| Interceptor | 60 | 1 t |\n\nNext up: the stations.\n"
     },
     "old": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",

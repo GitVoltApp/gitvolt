@@ -16,7 +16,7 @@ vi.mock('../api/client', () => ({ api }));
 
 const A = 'a'.repeat(40);
 const flush = () => new Promise((r) => setTimeout(r, 0));
-const blob = (b: Partial<BlobPayload>): BlobPayload => ({ size: 0, binary: false, encoding: 'UTF-8', eol: 'lf', text: null, base64: null, hash: null, ...b });
+const blob = (b: Partial<BlobPayload>): BlobPayload => ({ size: 0, binary: false, encoding: 'UTF-8', eol: 'lf', text: null, hash: null, ...b });
 const contents = (text: string): DiffContentsPayload => ({ old: null, new: blob({ text }), tooLarge: false, eolOnly: false, image: false });
 
 beforeEach(() => {
@@ -62,8 +62,12 @@ describe('repo services', () => {
     expect([CONTENT_CACHE_ENTRIES, CONTENT_CACHE_BYTES]).toEqual([64, 64 * 1024 * 1024]);
   });
 
-  it('sizes contents by their decoded text (UTF-16) and base64 bytes', () => {
-    expect(contentSize({ old: blob({ text: 'abc' }), new: blob({ base64: 'QUJD' }), tooLarge: false, eolOnly: false, image: true })).toBe(3 * 2 + 4);
+  it('sizes contents by their decoded text (UTF-16) and a raw side\'s bytes, to the byte', () => {
+    const png = { ...blob({ raw: true }), bytes: new Uint8Array(5 * 1024 * 1024) };
+    expect(contentSize({ old: blob({ text: 'abc' }), new: png, tooLarge: false, eolOnly: false, image: true })).toBe(3 * 2 + 5 * 1024 * 1024);
+    // A raw side's bytes are counted once, not as the size the core gave.
+    const small = { ...blob({ raw: true, size: 99 }), bytes: new Uint8Array(4) };
+    expect(contentSize({ old: small, new: null, tooLarge: false, eolOnly: false, image: true })).toBe(4);
     expect(contentSize({ old: null, new: null, tooLarge: true, eolOnly: false, image: false })).toBe(0);
   });
 

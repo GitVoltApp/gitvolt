@@ -1,13 +1,13 @@
 //! File contents for the diff viewer. Each side's bytes come from the
 //! object database, a commit's tree, a submodule pointer or a worktree file. They're decoded to
-//! text with the detected encoding, or kept as base64 for images and media (audio, video, fonts).
+//! text with the detected encoding, or, for images, PDFs and media (audio, video, fonts), marked
+//! `raw`: the UI reads those bytes as they are (`raw_bytes`).
 
 use crate::commit::decode_text;
-use crate::diff::{BINARY_SNIFF_BYTES, LARGE_FILE_BYTES, MAX_FORCED_BYTES};
+use crate::diff::{BINARY_SNIFF_BYTES, LARGE_FILE_BYTES, LARGE_PREVIEW_BYTES, MAX_FORCED_BYTES};
 use crate::error::{gix_err, GbError, GbErrorKind};
 use crate::git::{GitCli, GitInvocation};
 use crate::payload::{BlobPayload, DiffContentsPayload, Eol};
-use base64::Engine as _;
 use gix::bstr::ByteSlice;
 use gix::ObjectId;
 use std::path::{Component, Path, PathBuf};
@@ -194,17 +194,28 @@ pub fn side_bytes(repo: &gix::Repository, path: &str, side: &Side, limit: u64) -
         Side::Object(_) | Side::AtCommit(_) => {}
         _ => return Err(GbError::new(GbErrorKind::InvalidInput, format!("{path}: only a stored version can be copied"))),
     }
-    let resolved = resolve(repo, path, side)?.ok_or_else(|| not_found(format!("{path} has no stored version")))?;
+    read_side(repo, path, side, limit, "open")
+}
+
+/// The raw bytes of `path` on any side, an LFS pointer's as its real file's (`blobBytes`: the
+/// sides `diff_contents` marks `raw`, which the UI shows from their bytes). A working-tree
+/// file's are the file's own, before any clean conversion. Over `limit` bytes it's refused
+/// before anything is read.
+pub fn raw_bytes(repo: &gix::Repository, path: &str, side: &Side, limit: u64) -> Result<Vec<u8>, GbError> {
+    read_side(repo, path, side, limit, "read")
+}
+
+fn read_side(repo: &gix::Repository, path: &str, side: &Side, limit: u64, verb: &str) -> Result<Vec<u8>, GbError> {
+    let resolved = resolve(repo, path, side)?.ok_or_else(|| not_found(format!("{path} has no file on that side")))?;
     if let Resolved::LfsMissing { .. } = resolved {
         return Err(not_found(format!("{path} is stored with Git LFS and isn't downloaded")));
     }
     let size = resolved.size(repo)?;
-    if size > limit {
-        let mib = |n: u64| n.div_ceil(1024 * 1024);
-        return Err(GbError::new(GbErrorKind::InvalidInput, format!("{path} is too large to open ({} MiB; the limit is {} MiB)", mib(size), mib(limit))));
-    }
     let mib = |n: u64| n.div_ceil(1024 * 1024);
-    Ok(resolved.bytes(repo, limit)?.ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, format!("{path} is too large to open (the limit is {} MiB)", mib(limit))))?.0)
+    if size > limit {
+        return Err(GbError::new(GbErrorKind::InvalidInput, format!("{path} is too large to {verb} ({} MiB; the limit is {} MiB)", mib(size), mib(limit))));
+    }
+    Ok(resolved.bytes(repo, limit)?.ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, format!("{path} is too large to {verb} (the limit is {} MiB)", mib(limit))))?.0)
 }
 
 /// `git check-attr -z working-tree-encoding -- <path>` output: `path NUL attr NUL value NUL`.
@@ -501,7 +512,10 @@ pub fn diff_contents_renamed(repo: &gix::Repository, path: &str, old_path: Optio
     // checked out as a pointer then shows text that isn't the file's: read-only (`filtered`).
     let lfs_of = |side: &Side, r: &Option<Resolved>| r.as_ref().and_then(Resolved::lfs_side).map(|l| (l, matches!(side, Side::Worktree { .. })));
     let (old_lfs, new_lfs) = (lfs_of(old_side, &old), lfs_of(new_side, &new));
-    let limit = if force { MAX_FORCED_BYTES } else { LARGE_FILE_BYTES };
+    // A file shown from its raw bytes waits for "Load anyway" from a larger size than text does;
+    // its sides are read up to that size, then a side that turns out to be text is held to the
+    // text gate.
+    let limit = if force { MAX_FORCED_BYTES } else if is_image_path(path) || media || pdf { LARGE_PREVIEW_BYTES } else { LARGE_FILE_BYTES };
     let mut too_large = [old_size, new_size].into_iter().flatten().any(|s| s > limit);
     // Both sides' bytes first: a working-tree file that grew past `limit` since its size was
     // read makes the whole diff too large, like one that was already.
@@ -514,6 +528,12 @@ pub fn diff_contents_renamed(repo: &gix::Repository, path: &str, old_path: Optio
     // so no side's bytes are sent.
     let text_side = [&old_bytes, &new_bytes].into_iter().any(|b| matches!(b, Some(Some((bytes, declared))) if !is_binary_head(bytes, declared.as_deref())));
     let media_bytes = media && !text_side;
+    // A text side of an image or media file (a Git LFS pointer) stays text, without its bytes; a
+    // PDF side is read raw when it is one (its `%PDF-` header near the start), even written in
+    // plain ASCII.
+    let raw_of = |bytes: &[u8], declared: Option<&str>| (is_binary_head(bytes, declared) && (image || media_bytes)) || (pdf && is_pdf_bytes(bytes));
+    too_large |= !force
+        && [(&old_bytes, old_size), (&new_bytes, new_size)].into_iter().any(|(b, size)| matches!(b, Some(Some((bytes, declared))) if size > Some(LARGE_FILE_BYTES) && !raw_of(bytes, declared.as_deref())));
     let load = |bytes: Option<Option<Loaded>>, size: Option<u64>, clean: Option<(PathBuf, bool)>, lfs: Option<(crate::lfs::LfsSide, bool)>| -> Option<BlobPayload> {
         let size = size?;
         let (lfs, pointer_file) = match lfs {
@@ -525,21 +545,18 @@ pub fn diff_contents_renamed(repo: &gix::Repository, path: &str, old_path: Optio
                 Some(Some((raw, _))) => Some(worktree_id(raw)),
                 _ => None,
             };
-            return Some(BlobPayload { size: l.size, binary: false, encoding: String::new(), eol: Eol::None, text: None, base64: None, hash, filtered: pointer_file, lfs });
+            return Some(BlobPayload { size: l.size, binary: false, encoding: String::new(), eol: Eol::None, text: None, raw: false, hash, filtered: pointer_file, lfs });
         }
         let (bytes, declared) = match bytes {
             Some(Some(read)) if !too_large => read,
             // A grown file is at least one byte past the limit now.
             grown_or_skipped => {
                 let size = if matches!(grown_or_skipped, Some(None)) { size.max(limit + 1) } else { size };
-                return Some(BlobPayload { size, binary: false, encoding: String::new(), eol: Eol::None, text: None, base64: None, hash: None, filtered: pointer_file, lfs });
+                return Some(BlobPayload { size, binary: false, encoding: String::new(), eol: Eol::None, text: None, raw: false, hash: None, filtered: pointer_file, lfs });
             }
         };
         let d = decode_blob(&bytes, declared.as_deref());
-        // A text side of an image or media file (a Git LFS pointer) stays text, without its
-        // bytes; a PDF side carries them when it is one (its `%PDF-` header near the start), even
-        // written in plain ASCII.
-        let base64 = ((d.binary && (image || media_bytes)) || (pdf && is_pdf_bytes(&bytes))).then(|| base64::engine::general_purpose::STANDARD.encode(&bytes));
+        let raw = raw_of(&bytes, declared.as_deref());
         // The file's own encoding, line endings and hash (what a save keeps and checks), with the
         // text git compares.
         let (text, filtered) = match (d.text, clean) {
@@ -549,7 +566,7 @@ pub fn diff_contents_renamed(repo: &gix::Repository, path: &str, old_path: Optio
             }
             (text, _) => (text, false),
         };
-        Some(BlobPayload { size, binary: d.binary, encoding: d.encoding, eol: d.eol, text, base64, hash: Some(worktree_id(&bytes)), filtered: filtered || pointer_file, lfs })
+        Some(BlobPayload { size, binary: d.binary, encoding: d.encoding, eol: d.eol, text, raw, hash: Some(worktree_id(&bytes)), filtered: filtered || pointer_file, lfs })
     };
     let old = load(old_bytes, old_size, old_clean, old_lfs);
     let new = load(new_bytes, new_size, new_clean, new_lfs);
@@ -635,35 +652,35 @@ mod tests {
         let png = diff_contents(&repo, "logo.png", &object(&r, "HEAD^1^1:logo.png"), &object(&r, "HEAD^1:logo.png"), false).unwrap();
         assert!(png.image);
         let new = png.new.unwrap();
-        assert!(new.binary && new.text.is_none());
-        assert_eq!(&base64::engine::general_purpose::STANDARD.decode(new.base64.unwrap()).unwrap()[..4], b"\x89PNG");
+        assert!(new.binary && new.text.is_none() && new.raw);
+        assert_eq!(&raw_bytes(&repo, "logo.png", &object(&r, "HEAD^1:logo.png"), MAX_FORCED_BYTES).unwrap()[..4], b"\x89PNG");
 
         let bin = diff_contents(&repo, "data.bin", &object(&r, "HEAD^1^1:data.bin"), &object(&r, "HEAD^1:data.bin"), false).unwrap();
         let (old, new) = (bin.old.unwrap(), bin.new.unwrap());
-        assert!(old.binary && old.base64.is_none(), "only images carry bytes");
+        assert!(old.binary && !old.raw, "only images are read raw");
         assert_eq!((old.size, new.size), (9, 10));
     }
 
     /// A raster image converted to an SVG (a paired format change, diff.rs): the old side is a
-    /// raster image by its own path, so it carries its bytes for the image diff.
+    /// raster image by its own path, so it's read raw for the image diff.
     #[test]
     fn a_format_change_reads_the_old_side_by_its_own_path() {
         let (r, repo) = setup();
         let (png, svg) = (object(&r, "HEAD^1:logo.png"), object(&r, "HEAD^1:icon.svg"));
         let plain = diff_contents(&repo, "icon.svg", &png, &svg, false).unwrap();
-        assert!(!plain.image && plain.old.unwrap().base64.is_none());
+        assert!(!plain.image && !plain.old.unwrap().raw);
         let renamed = diff_contents_renamed(&repo, "icon.svg", Some("logo.png"), &png, &svg, false).unwrap();
         assert!(renamed.image);
-        assert_eq!(&base64::engine::general_purpose::STANDARD.decode(renamed.old.unwrap().base64.unwrap()).unwrap()[..4], b"\x89PNG");
+        assert!(renamed.old.unwrap().raw);
         assert!(renamed.new.unwrap().text.unwrap().contains("<svg"), "the SVG side stays text");
         let to_text = diff_contents_renamed(&repo, "notes.txt", Some("logo.png"), &png, &svg, false).unwrap();
         assert!(!to_text.image, "an image renamed to anything but an image type isn't an image diff");
     }
 
-    /// Audio, video and fonts carry a binary side's bytes for the player or font preview; a text
-    /// side (a Git LFS pointer) stays text, and the binary side against it sends no bytes.
+    /// Audio, video and fonts have a binary side read raw for the player or font preview; a text
+    /// side (a Git LFS pointer) stays text, and the binary side against it isn't read raw.
     #[test]
-    fn media_sides_carry_their_bytes() {
+    fn media_sides_are_read_raw() {
         let (r, repo) = setup();
         for path in ["a/clip.WEBM", "song.mp3", "tone.ogg", "Font.woff2", "x.ttf"] {
             assert!(is_media_path(path), "{path}");
@@ -674,45 +691,44 @@ mod tests {
         let bin = object(&r, "HEAD^1:data.bin");
         let font = diff_contents(&repo, "fonts/Sans.ttf", &Side::Absent, &bin, false).unwrap();
         assert!(font.media && !font.image);
-        assert_eq!(&base64::engine::general_purpose::STANDARD.decode(font.new.unwrap().base64.unwrap()).unwrap()[..4], b"BIN\0");
+        assert!(font.new.unwrap().raw);
+        assert_eq!(&raw_bytes(&repo, "fonts/Sans.ttf", &bin, MAX_FORCED_BYTES).unwrap()[..4], b"BIN\0");
         let pointer = object(&r, "HEAD^1:docs/manual.txt");
         let lfs = diff_contents(&repo, "song.mp3", &bin, &pointer, false).unwrap();
         let (old, new) = (lfs.old.unwrap(), lfs.new.unwrap());
-        assert!(lfs.media && old.binary && old.base64.is_none(), "nothing plays against a text side");
-        assert!(new.text.is_some() && new.base64.is_none(), "a text side has no bytes");
+        assert!(lfs.media && old.binary && !old.raw, "nothing plays against a text side");
+        assert!(new.text.is_some() && !new.raw, "a text side isn't read raw");
         let both = diff_contents(&repo, "song.mp3", &bin, &bin, false).unwrap();
-        assert!(both.old.unwrap().base64.is_some() && both.new.unwrap().base64.is_some());
+        assert!(both.old.unwrap().raw && both.new.unwrap().raw);
         let plain = diff_contents(&repo, "data.bin", &Side::Absent, &bin, false).unwrap();
-        assert!(!plain.media && plain.new.unwrap().base64.is_none());
+        assert!(!plain.media && !plain.new.unwrap().raw);
     }
 
-    /// A PDF's sides carry their bytes for the UI's page view, a plain-ASCII one too; a binary
-    /// with any other extension still carries none.
+    /// A PDF's sides are read raw for the UI's page view, a plain-ASCII one too; a binary with
+    /// any other extension isn't.
     #[test]
-    fn pdf_sides_carry_their_bytes() {
+    fn pdf_sides_are_read_raw() {
         let r = TestRepo::new();
         r.write_bytes("survey.pdf", b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n");
         r.write("plain.PDF", "%PDF-1.4\n1 0 obj\n<<>>\nendobj\n");
         r.git(&["add", "--", "survey.pdf", "plain.PDF"]);
         r.commit("Add the survey");
         let repo = gix::open(r.path()).unwrap();
-        let decode = |b: &BlobPayload| base64::engine::general_purpose::STANDARD.decode(b.base64.as_ref().unwrap()).unwrap();
         let added = diff_contents(&repo, "survey.pdf", &Side::Absent, &object(&r, "HEAD:survey.pdf"), false).unwrap();
-        assert!(added.pdf && !added.image);
-        assert_eq!(&decode(added.new.as_ref().unwrap())[..5], b"%PDF-");
+        assert!(added.pdf && !added.image && added.new.unwrap().raw);
         let plain = diff_contents(&repo, "plain.PDF", &Side::Absent, &object(&r, "HEAD:plain.PDF"), false).unwrap();
         let side = plain.new.unwrap();
-        assert!(plain.pdf && !side.binary, "sniffed as text");
-        assert_eq!(&decode(&side)[..5], b"%PDF-");
+        assert!(plain.pdf && !side.binary && side.raw, "sniffed as text, read raw");
+        assert_eq!(&raw_bytes(&repo, "plain.PDF", &object(&r, "HEAD:plain.PDF"), MAX_FORCED_BYTES).unwrap()[..5], b"%PDF-");
         let named = diff_contents(&repo, "survey.bin", &Side::Absent, &object(&r, "HEAD:survey.pdf"), false).unwrap();
-        assert!(!named.pdf && named.new.unwrap().base64.is_none());
+        assert!(!named.pdf && !named.new.unwrap().raw);
         // A Git LFS pointer named .pdf isn't one: it stays text, without bytes.
         r.write("big.pdf", "version https://git-lfs.github.com/spec/v1\noid sha256:4d7a\nsize 12345\n");
         r.git(&["add", "--", "big.pdf"]);
         r.commit("Add a pointer");
         let pointer = diff_contents(&repo, "big.pdf", &Side::Absent, &object(&r, "HEAD:big.pdf"), false).unwrap();
         let side = pointer.new.unwrap();
-        assert!(pointer.pdf && side.text.is_some() && side.base64.is_none());
+        assert!(pointer.pdf && side.text.is_some() && !side.raw);
     }
 
     #[test]
@@ -1068,13 +1084,14 @@ mod tests {
         let missing = diff_contents(&repo, "song.mp3", &Side::Absent, &stored, false).unwrap();
         let side = missing.new.unwrap();
         assert!(missing.media && missing.lfs);
-        assert_eq!((side.base64, side.text, side.lfs.map(|l| l.downloaded)), (None, None, Some(false)));
+        assert_eq!((side.raw, side.text, side.lfs.map(|l| l.downloaded)), (false, None, Some(false)));
+        assert_eq!(raw_bytes(&repo, "song.mp3", &stored, MAX_FORCED_BYTES).unwrap_err().kind, GbErrorKind::NotFound, "never the pointer as the file");
         let object = crate::lfs::object_path(&crate::lfs::storage_dir(&repo), OID);
         std::fs::create_dir_all(object.parent().unwrap()).unwrap();
         std::fs::write(&object, real).unwrap();
         let got = diff_contents(&repo, "song.mp3", &Side::Absent, &stored, false).unwrap().new.unwrap();
-        assert_eq!(base64::engine::general_purpose::STANDARD.decode(got.base64.unwrap()).unwrap(), real);
-        assert!(got.binary && got.lfs.unwrap().downloaded);
+        assert!(got.raw && got.binary && got.lfs.unwrap().downloaded);
+        assert_eq!(raw_bytes(&repo, "song.mp3", &stored, MAX_FORCED_BYTES).unwrap(), real);
     }
 
     /// LFS and PDFs: a downloaded LFS PDF is its real file (bytes, pages); one that isn't
@@ -1093,12 +1110,13 @@ mod tests {
         let missing = diff_contents(&repo, "survey.pdf", &Side::Absent, &stored, false).unwrap();
         assert!(missing.pdf && missing.lfs);
         let side = missing.new.unwrap();
-        assert_eq!((side.base64, side.text, side.lfs.map(|l| l.downloaded)), (None, None, Some(false)));
+        assert_eq!((side.raw, side.text, side.lfs.map(|l| l.downloaded)), (false, None, Some(false)));
         let object = crate::lfs::object_path(&crate::lfs::storage_dir(&repo), OID);
         std::fs::create_dir_all(object.parent().unwrap()).unwrap();
         std::fs::write(&object, real).unwrap();
         let got = diff_contents(&repo, "survey.pdf", &Side::Absent, &stored, false).unwrap().new.unwrap();
-        assert_eq!(base64::engine::general_purpose::STANDARD.decode(got.base64.unwrap()).unwrap(), real);
+        assert!(got.raw);
+        assert_eq!(raw_bytes(&repo, "survey.pdf", &stored, MAX_FORCED_BYTES).unwrap(), real);
     }
 
     /// Git LFS: a pointer blob (or a working-tree file checked out as one) reads as its real file
@@ -1152,6 +1170,37 @@ mod tests {
         assert!(c.too_large, "even `force` refuses a side over MAX_FORCED_BYTES");
         let side = c.new.unwrap();
         assert_eq!(side.size, MAX_FORCED_BYTES + 1);
-        assert!(side.text.is_none() && side.base64.is_none());
+        assert!(side.text.is_none() && !side.raw);
+    }
+
+    /// An image, PDF or media file waits for "Load anyway" from `LARGE_PREVIEW_BYTES`, a text
+    /// file from `LARGE_FILE_BYTES`; a text side of a preview type is held to the text gate.
+    #[test]
+    fn previews_have_a_larger_gate_than_text() {
+        let (r, repo) = setup();
+        let root = crate::platform::fs::canonicalize(r.path()).unwrap();
+        let wt = Side::Worktree { root, encoding: None, converts: false, lfs: false };
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        png.resize(LARGE_FILE_BYTES as usize + 1, 7);
+        r.write_bytes("shot.png", &png);
+        let c = diff_contents(&repo, "shot.png", &Side::Absent, &wt, false).unwrap();
+        let side = c.new.unwrap();
+        assert!(!c.too_large && side.raw && side.size == LARGE_FILE_BYTES + 1, "over the text gate, under the preview one");
+        assert_eq!(raw_bytes(&repo, "shot.png", &wt, MAX_FORCED_BYTES).unwrap(), png, "the file's bytes, as they are");
+        png.resize(LARGE_PREVIEW_BYTES as usize + 1, 7);
+        r.write_bytes("shot.png", &png);
+        let c = diff_contents(&repo, "shot.png", &Side::Absent, &wt, false).unwrap();
+        assert!(c.too_large && !c.new.unwrap().raw);
+        assert!(!diff_contents(&repo, "shot.png", &Side::Absent, &wt, true).unwrap().too_large, "Load anyway");
+        // A text file named .png (no NUL) shows as text, so the text gate holds it.
+        r.write("notes.png", &"x".repeat(LARGE_FILE_BYTES as usize + 1));
+        let c = diff_contents(&repo, "notes.png", &Side::Absent, &wt, false).unwrap();
+        assert!(c.too_large && c.new.as_ref().unwrap().text.is_none());
+        assert!(diff_contents(&repo, "notes.png", &Side::Absent, &wt, true).unwrap().new.unwrap().text.is_some());
+        // A text file keeps the text gate.
+        r.write("notes.txt", &"x".repeat(LARGE_FILE_BYTES as usize + 1));
+        assert!(diff_contents(&repo, "notes.txt", &Side::Absent, &wt, false).unwrap().too_large);
+        assert_eq!(raw_bytes(&repo, "missing.png", &wt, MAX_FORCED_BYTES).unwrap_err().kind, GbErrorKind::NotFound);
+        assert_eq!(raw_bytes(&repo, "shot.png", &wt, 1024).unwrap_err().kind, GbErrorKind::InvalidInput, "over the limit, refused before it's read");
     }
 }

@@ -116,6 +116,7 @@ export interface DemoResults {
   sidebar: SidebarPayload;
   diffContents: DiffContentsPayload;
   hexDump: HexDumpPayload;
+  blobBytes: Uint8Array;
   launchRepo: string | null;
   takeOpenRequests: string[];
   logFrontend: null;

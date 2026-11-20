@@ -4,7 +4,7 @@ import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
 import { wantsHex } from '../diff/hexContents';
 import { mediaOf, showsMedia } from './kind';
 
-const side = (o: Partial<BlobPayload>): BlobPayload => ({ size: 4, binary: true, encoding: '', eol: 'none', text: null, base64: 'AAEC', hash: 'h', ...o });
+const side = (o: Partial<BlobPayload>): BlobPayload => ({ size: 4, binary: true, encoding: '', eol: 'none', text: null, raw: true, hash: 'h', ...o });
 const contents = (o: Partial<DiffContentsPayload>): DiffContentsPayload => ({ old: side({}), new: side({}), tooLarge: false, eolOnly: false, image: false, media: true, ...o });
 
 describe('media kinds', () => {
@@ -23,9 +23,9 @@ describe('media kinds', () => {
     expect(showsMedia(contents({ media: undefined }))).toBe(false);
     expect(showsMedia(contents({ tooLarge: true }))).toBe(false);
     expect(showsMedia(contents({ old: null, new: null }))).toBe(false);
-    expect(showsMedia(contents({ new: side({ binary: false, base64: null, text: 'version https://git-lfs.example/spec/v1\n' }) }))).toBe(false);
+    expect(showsMedia(contents({ new: side({ binary: false, raw: false, text: 'version https://git-lfs.example/spec/v1\n' }) }))).toBe(false);
     // The hex dumps load with a binary's contents only when it isn't shown as media.
     expect(wantsHex(contents({}))).toBe(false);
-    expect(wantsHex(contents({ media: false, old: side({ base64: null }), new: side({ base64: null }) }))).toBe(true);
+    expect(wantsHex(contents({ media: false, old: side({ raw: false }), new: side({ raw: false }) }))).toBe(true);
   });
 });

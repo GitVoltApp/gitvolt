@@ -29,7 +29,7 @@ const graph: GraphPayload = { ...EMPTY_GRAPH, rows: [wipRow('/r'), row(A), row(B
 const change = (path: string): FileChange => ({ path, oldPath: null, status: 'M', additions: 1, deletions: 0, old: { kind: 'object', oid: '1'.repeat(40) }, new: { kind: 'object', oid: '2'.repeat(40) }, submodule: false });
 /** What each commit (and the working tree /r) holds. */
 const trees: Record<string, string[]> = { [A]: ['README.md', 'docs/guide.md'], [B]: ['README.md'], '/r': ['notes.md'] };
-const text = (t: string): DiffContentsPayload => ({ old: null, new: { size: t.length, binary: false, encoding: 'UTF-8', eol: 'lf', text: t, base64: null, hash: null }, tooLarge: false, eolOnly: false, image: false });
+const text = (t: string): DiffContentsPayload => ({ old: null, new: { size: t.length, binary: false, encoding: 'UTF-8', eol: 'lf', text: t, hash: null }, tooLarge: false, eolOnly: false, image: false });
 const specA = { kind: 'commit', id: A, parent: 0 } as const;
 const specB = { kind: 'commit', id: B, parent: 0 } as const;
 const flush = () => new Promise((r) => setTimeout(r, 0));

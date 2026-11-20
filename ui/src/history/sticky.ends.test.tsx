@@ -27,7 +27,7 @@ const graph: GraphPayload = { ...EMPTY_GRAPH, rows: [row(A)] };
 const change = (path: string, status = 'M'): FileChange => ({ path, oldPath: null, status, additions: 1, deletions: 0, old: { kind: 'object', oid: '1'.repeat(40) }, new: { kind: 'object', oid: '2'.repeat(40) }, submodule: false });
 const inCommit = (path: string): DiffTarget => targetFor(change(path), { kind: 'commit', id: A, parent: 0 });
 const inWip = (path: string, status = 'M'): DiffTarget => targetFor(change(path, status), { kind: 'wip', worktree: '/r', staged: false });
-const text = (t: string): DiffContentsPayload => ({ old: null, new: { size: t.length, binary: false, encoding: 'UTF-8', eol: 'lf', text: t, base64: null, hash: null }, tooLarge: false, eolOnly: false, image: false });
+const text = (t: string): DiffContentsPayload => ({ old: null, new: { size: t.length, binary: false, encoding: 'UTF-8', eol: 'lf', text: t, hash: null }, tooLarge: false, eolOnly: false, image: false });
 
 let store: RepoViewStore;
 beforeEach(() => {

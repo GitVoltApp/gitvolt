@@ -5,7 +5,7 @@ vi.mock('../../api/client', () => ({ api, errorMessage: String }));
 
 const { REREAD_MS, readAtGen, rereadNow, watchWorkingFiles, workingGen } = await import('./workingFiles');
 
-const file = (text: string) => ({ old: null, new: { size: text.length, binary: false, encoding: 'UTF-8', eol: 'Lf', text, base64: null, hash: `h:${text}` }, tooLarge: false, eolOnly: false, image: false });
+const file = (text: string) => ({ old: null, new: { size: text.length, binary: false, encoding: 'UTF-8', eol: 'Lf', text, hash: `h:${text}` }, tooLarge: false, eolOnly: false, image: false });
 let changed: (wts: ReadonlySet<string>) => void = () => {};
 const off = vi.fn();
 const wip = { subscribe: vi.fn((l: (wts: ReadonlySet<string>) => void) => { changed = l; return off; }) };

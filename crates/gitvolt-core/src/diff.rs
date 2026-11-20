@@ -17,6 +17,9 @@ use ts_rs::TS;
 
 /// Above this size (either side), the diff viewer asks before loading.
 pub const LARGE_FILE_BYTES: u64 = 2 * 1024 * 1024;
+/// The same for a side read raw (an image, a PDF, audio, video, a font): its bytes go to the UI
+/// as they are, never as text for the editor, so a larger one loads at once.
+pub const LARGE_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
 /// The hard ceiling per side, even when the user chose "load anyway" (matches the UI's 64 MiB
 /// content cache).
 pub const MAX_FORCED_BYTES: u64 = 64 * 1024 * 1024;

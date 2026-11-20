@@ -72,8 +72,8 @@ describe('the sandboxed page', () => {
     const { wrap } = setup(async (key) => {
       const { path } = JSON.parse(key) as { path: string };
       asked.push(path);
-      const blob = (b: Partial<BlobPayload>): BlobPayload => ({ size: 4, binary: false, encoding: 'UTF-8', eol: 'lf', text: null, base64: null, hash: 'h', ...b });
-      const neu = path === 'site/img/logo.png' ? blob({ binary: true, base64: 'iVBORw==' }) : path === 'site/css/site.css' ? blob({ text: 'h1 { color: teal }' }) : null;
+      const blob = (b: Partial<BlobPayload>): BlobPayload => ({ size: 4, binary: false, encoding: 'UTF-8', eol: 'lf', text: null, hash: 'h', ...b });
+      const neu = path === 'site/img/logo.png' ? { ...blob({ binary: true, raw: true }), bytes: Uint8Array.from(atob('iVBORw=='), (c) => c.charCodeAt(0)) } : path === 'site/css/site.css' ? blob({ text: 'h1 { color: teal }' }) : null;
       return { old: null, new: neu, tooLarge: false, eolOnly: false, image: false };
     });
     wrap(<HtmlPage text={'<link rel="stylesheet" href="css/site.css"><img src="img/logo.png"><img src="missing.png">'} source={{ tabId: 't1', commit: C, path: 'site/index.html' }} target={null} path="index.html" />);
@@ -182,11 +182,11 @@ describe('the page loads its files once', () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  const image = (base64: string): DiffContentsPayload => ({ old: null, new: { size: base64.length, binary: true, encoding: '', eol: 'lf', text: null, base64, hash: 'h' }, tooLarge: false, eolOnly: false, image: true });
+  const image = (bytes: Uint8Array): DiffContentsPayload => ({ old: null, new: { size: bytes.length, binary: true, encoding: '', eol: 'lf', text: null, raw: true, hash: 'h', bytes } as BlobPayload, tooLarge: false, eolOnly: false, image: true });
 
   it('inlines up to the byte budget: the rest are left out, and the bar says so', async () => {
-    // Three images of 3 MiB: two fit in 8 MiB, the third doesn't.
-    const big = 'A'.repeat(3 * 1024 * 1024);
+    // Three images of 3 MiB as base64: two fit in 8 MiB, the third doesn't.
+    const big = new Uint8Array((3 * 1024 * 1024 * 3) / 4);
     const { wrap } = setup(async () => image(big));
     wrap(<HtmlPage text={'<img src="a.png"><img src="b.png"><img src="c.png">'} source={{ tabId: 't1', commit: C, path: 'p.html' }} target={null} path="p.html" />);
     const frame = await screen.findByTitle('p.html');
@@ -196,7 +196,7 @@ describe('the page loads its files once', () => {
   });
 
   it(`inlines at most ${MAX_PAGE_ASSETS} files; the bar counts the rest`, async () => {
-    const load = vi.fn(async () => image('AAAA'));
+    const load = vi.fn(async () => image(new Uint8Array(3)));
     const { wrap } = setup(load);
     const imgs = Array.from({ length: MAX_PAGE_ASSETS + 3 }, (_, i) => `<img src="i${i}.png">`).join('');
     wrap(<HtmlPage text={imgs} source={{ tabId: 't1', commit: C, path: 'p.html' }} target={null} path="p.html" />);

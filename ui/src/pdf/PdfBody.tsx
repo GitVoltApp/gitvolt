@@ -3,10 +3,14 @@ import type { BlobPayload } from '../api/gen/BlobPayload';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
 import type { HexDumpPayload } from '../api/gen/HexDumpPayload';
 import { HexBody } from '../diff/hex';
+import { bytesOf } from '../diff/hexContents';
 import type { DiffTarget } from '../repo/store';
 import { PdfView, type PdfSource } from './PdfView';
 
-const sourceOf = (b: BlobPayload | null): PdfSource | null => (b?.base64 != null ? { base64: b.base64, size: b.size } : null);
+const sourceOf = (b: BlobPayload | null): PdfSource | null => {
+  const bytes = bytesOf(b);
+  return b && bytes ? { bytes, size: b.size } : null;
+};
 
 /**
  * A PDF's pages: File View shows the file at that revision (the new side, or the old one if it was

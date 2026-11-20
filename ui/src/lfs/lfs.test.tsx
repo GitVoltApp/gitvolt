@@ -53,7 +53,7 @@ function inTab(ui: React.ReactNode, repoId = 1) {
 }
 
 const side = (over: Partial<LfsSide> = {}): LfsSide => ({ oid: OID, size: 3355443, downloaded: false, pointer: `version https://git-lfs.github.com/spec/v1\noid sha256:${OID}\nsize 3355443\n`, ...over });
-const blob = (lfs?: LfsSide) => ({ size: lfs?.size ?? 10, binary: false, encoding: '', eol: 'none' as const, text: lfs && !lfs.downloaded ? null : 'x', base64: null, hash: null, ...(lfs ? { lfs } : {}) });
+const blob = (lfs?: LfsSide) => ({ size: lfs?.size ?? 10, binary: false, encoding: '', eol: 'none' as const, text: lfs && !lfs.downloaded ? null : 'x', hash: null, ...(lfs ? { lfs } : {}) });
 const contents = (old?: LfsSide, neu?: LfsSide): DiffContentsPayload => ({ old: blob(old), new: blob(neu), tooLarge: false, eolOnly: false, image: false });
 
 beforeEach(() => {

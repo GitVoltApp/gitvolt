@@ -1,5 +1,5 @@
 
-use gitvolt_core::api::{Api, Request};
+use gitvolt_core::api::{Api, Reply, Request};
 use gitvolt_core::avatar::AvatarProvider;
 use gitvolt_core::error::GbError;
 use gitvolt_core::events::TAURI_EVENT;
@@ -28,8 +28,17 @@ mod menu;
 mod window_state;
 
 #[tauri::command]
-async fn api(state: tauri::State<'_, Arc<Api>>, req: Request) -> Result<serde_json::Value, GbError> {
-    state.dispatch(req).await
+async fn api(state: tauri::State<'_, Arc<Api>>, req: Request) -> Result<tauri::ipc::Response, GbError> {
+    state.call(req).await.map(ipc_reply)
+}
+
+/// A reply as the IPC sends it over its `ipc:` scheme: JSON as JSON, bytes (`blobBytes`) as they
+/// are, which the page gets as an `ArrayBuffer`, never encoded into JSON.
+fn ipc_reply(reply: Reply) -> tauri::ipc::Response {
+    tauri::ipc::Response::new(match reply {
+        Reply::Json(v) => tauri::ipc::InvokeResponseBody::Json(v.to_string()),
+        Reply::Bytes(b) => tauri::ipc::InvokeResponseBody::Raw(b),
+    })
 }
 
 /// The title bar's requests the Tauri window API has no call for (chrome.rs): the window
@@ -683,6 +692,22 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use std::ffi::OsString;
+
+    /// The `api` command's replies: JSON as the JSON text the page parses, bytes untouched.
+    #[test]
+    fn ipc_replies_are_json_or_raw_bytes() {
+        use tauri::ipc::{InvokeResponseBody, IpcResponse};
+        let body = |r: Reply| ipc_reply(r).body().unwrap();
+        match body(Reply::Json(serde_json::json!({"size": 4, "raw": true}))) {
+            InvokeResponseBody::Json(text) => assert_eq!(serde_json::from_str::<serde_json::Value>(&text).unwrap(), serde_json::json!({"size": 4, "raw": true})),
+            InvokeResponseBody::Raw(_) => panic!("JSON sent as bytes"),
+        }
+        let png = b"\x89PNG\r\n\x1a\n\0\xff".to_vec();
+        match body(Reply::Bytes(png.clone())) {
+            InvokeResponseBody::Raw(bytes) => assert_eq!(bytes, png),
+            InvokeResponseBody::Json(text) => panic!("bytes sent as JSON: {text}"),
+        }
+    }
 
     /// The order: an askpass invocation exits with the client's code and never reaches the
     /// instance check; a forwarding launch exits 0; unguarded (the escape hatch, or no guard

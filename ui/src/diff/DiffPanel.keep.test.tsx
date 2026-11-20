@@ -52,7 +52,7 @@ const graph: GraphPayload = { rows: [row(A, 'Second', [B]), row(B, 'First', [])]
 const details = (id: string, parents: string[]): CommitDetailsPayload => ({ id, parents, coAuthors: [], signed: false, author: { name: 'Grace Hopper', email: 'grace@example.com', time: 1_767_225_600 }, committer: { name: 'Ada Lovelace', email: 'ada@example.com', time: 1_767_225_660 } });
 const file = (path: string) => ({ path, oldPath: null, status: 'M', additions: 1, deletions: 1, old: { kind: 'object' as const, oid: B }, new: { kind: 'object' as const, oid: A }, submodule: false });
 const list: FileListPayload = { files: [file('a.txt'), file('b.txt')], added: 2, deleted: 2 };
-const blob = (text: string): BlobPayload => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'lf', text, base64: null, hash: null });
+const blob = (text: string): BlobPayload => ({ size: text.length, binary: false, encoding: 'UTF-8', eol: 'lf', text, hash: null });
 
 function renderView() {
   const services = fakeServices({

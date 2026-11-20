@@ -9,7 +9,7 @@ import type { SignaturePayload } from '../api/gen/SignaturePayload';
 import { avatars } from '../avatars/avatarStore';
 import { Loader } from '../data/loader';
 import { Lru } from '../data/lru';
-import { hexSize, loadContents } from '../diff/hexContents';
+import { bytesOf, hexSize, loadContents } from '../diff/hexContents';
 import { WipLists } from './wipLists';
 
 /** The diff contents cache: 64 entries or 64 MiB. */
@@ -56,9 +56,10 @@ export const contentKey = (r: ContentsRequest) => JSON.stringify({ path: r.path,
  * Object-id-addressed contents are immutable. */
 export const isMutableKey = (key: string) => key.includes('"kind":"worktree"') || key.includes('"kind":"wip"');
 
-/** Approximate bytes held: decoded text as UTF-16, plus base64 image bytes and a binary's hex dumps. */
+/** Bytes held: decoded text as UTF-16, plus a raw side's bytes (images, PDFs, media) and a
+ * binary's hex dumps. */
 export const contentSize = (c: DiffContentsPayload) =>
-  [c.old, c.new].reduce((n, b) => n + (b ? (b.text?.length ?? 0) * 2 + (b.base64?.length ?? 0) : 0), 0) + hexSize(c);
+  [c.old, c.new].reduce((n, b) => n + (b ? (b.text?.length ?? 0) * 2 + (bytesOf(b)?.byteLength ?? 0) : 0), 0) + hexSize(c);
 
 export function createServices(repo: number): RepoServices {
   let remotes: Promise<RemotePayload[]> | undefined;

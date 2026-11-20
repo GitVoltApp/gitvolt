@@ -3,7 +3,8 @@ import type { BlobPayload } from "./BlobPayload";
 
 export type DiffContentsPayload = { old: BlobPayload | null, new: BlobPayload | null, 
 /**
- * A side is over 2 MiB and `force` was false: show "Large file — load anyway?". Even with
+ * `force` was false and a side is over 2 MiB (`LARGE_FILE_BYTES`), or over 16 MiB
+ * (`LARGE_PREVIEW_BYTES`) for a side read `raw`: show "Large file — load anyway?". Even with
  * `force`, a side over 64 MiB (`MAX_FORCED_BYTES`) stays `too_large`: that size is never loaded.
  */
 tooLarge: boolean, 
@@ -17,7 +18,7 @@ eolOnly: boolean,
 image: boolean, 
 /**
  * The path is a `.pdf`: each side that is one (its `%PDF-` header, not a Git LFS pointer)
- * carries its bytes, and the UI shows its pages. Absent otherwise.
+ * is read `raw`, and the UI shows its pages. Absent otherwise.
  */
 pdf?: boolean, 
 /**
@@ -26,8 +27,8 @@ pdf?: boolean,
  */
 lfs?: boolean, 
 /**
- * The path has an audio, video or font extension: when every side is binary, they carry their
- * bytes, which the UI plays or previews. Like an image, it keeps the large-file gate, up to
+ * The path has an audio, video or font extension: when every side is binary, they are read
+ * `raw`, and the UI plays or previews them. Like an image, it keeps the large-file gate, up to
  * `MAX_FORCED_BYTES`: past that it shows as a binary's capped hex dump. Absent otherwise.
  */
 media?: boolean, };

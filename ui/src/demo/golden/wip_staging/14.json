@@ -19,7 +19,6 @@
     "eolOnly": false,
     "image": false,
     "new": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",
@@ -28,7 +27,6 @@
       "text": "note 01\nnote 02\nnote 03 staged\nnote 04\nnote 05\nnote 06\nnote 07\nnote 08\nnote 09\nnote 10\nnote 11\nnote 12\nnote 13\nnote 14\nnote 15\nnote 16\nnote 17\nnote 18\nnote 19\nnote 20\nnote 21\nnote 22\nnote 23\nnote 24\nnote 25\nnote 26\nnote 27\nnote 28\nnote 29\nnote 30 unstaged\nnote 31\nnote 32\nnote 33\nnote 34\nnote 35\nnote 36\nnote 37\nnote 38\nnote 39\nnote 40\n"
     },
     "old": {
-      "base64": null,
       "binary": false,
       "encoding": "UTF-8",
       "eol": "lf",

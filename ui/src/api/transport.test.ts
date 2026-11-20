@@ -1,21 +1,52 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { copyText, createTransport, TAURI_EVENT, wsTransport } from './transport';
+import { asBytes, copyText, createTransport, TAURI_EVENT, wsTransport } from './transport';
 
 class FakeSocket {
   static last: FakeSocket;
   readyState = 0;
   sent: string[] = [];
   onopen: (() => void) | null = null;
-  onmessage: ((e: { data: string }) => void) | null = null;
+  binaryType = 'blob';
+  onmessage: ((e: { data: string | ArrayBuffer }) => void) | null = null;
   onclose: (() => void) | null = null;
   constructor() { FakeSocket.last = this; }
   send(s: string) { this.sent.push(s); }
   open() { this.readyState = 1; this.onopen?.(); }
   reply(obj: unknown) { this.onmessage?.({ data: JSON.stringify(obj) }); }
+  /** A bytes reply's binary frame: the id (u32, little-endian), then the bytes. */
+  replyBytes(id: number, bytes: number[]) {
+    const frame = new Uint8Array(4 + bytes.length);
+    new DataView(frame.buffer).setUint32(0, id, true);
+    frame.set(bytes, 4);
+    this.onmessage?.({ data: frame.buffer });
+  }
 }
 
 describe('wsTransport', () => {
+  it('a bytes reply arrives as a binary frame: its id, then the bytes, handed over without a copy', async () => {
+    const t = wsTransport('ws://x', () => new FakeSocket() as unknown as WebSocket);
+    const s = FakeSocket.last;
+    expect(s.binaryType).toBe('arraybuffer');
+    s.open();
+    const side = { kind: 'object', oid: 'a'.repeat(40) } as const;
+    const bytes = t.call({ method: 'blobBytes', params: { repo: 1, path: 'shot.png', side } });
+    const json = t.call({ method: 'launchRepo' });
+    s.replyBytes(70000, [0]); // no such call: dropped
+    s.reply({ id: 2, ok: null });
+    s.replyBytes(1, [0x89, 0x50, 0x4e, 0x47, 0]);
+    const got = asBytes(await bytes);
+    expect([...got]).toEqual([0x89, 0x50, 0x4e, 0x47, 0]);
+    expect(got.byteOffset).toBe(4);
+    await expect(json).resolves.toBeNull();
+  });
+  it('asBytes takes the IPC\'s ArrayBuffer, a Uint8Array, or the fallback IPC\'s number array', () => {
+    expect([...asBytes(new Uint8Array([1, 2]).buffer)]).toEqual([1, 2]);
+    const view = new Uint8Array([3, 4]);
+    expect(asBytes(view)).toBe(view);
+    expect([...asBytes([5, 6])]).toEqual([5, 6]);
+    expect(() => asBytes({ ok: 1 })).toThrow();
+  });
   it('queues until open, correlates replies by id, rejects errors', async () => {
     const t = wsTransport('ws://x', () => new FakeSocket() as unknown as WebSocket);
     const a = t.call({ method: 'launchRepo' });

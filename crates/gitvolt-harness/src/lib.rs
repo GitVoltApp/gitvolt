@@ -8,7 +8,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
-use gitvolt_core::api::{Api, Request, WriteGuard, FIXTURE_ONLY};
+use gitvolt_core::api::{Api, Reply, Request, WriteGuard, FIXTURE_ONLY};
 use gitvolt_core::error::{GbError, GbErrorKind};
 use gitvolt_core::events::AppEvent;
 use gitvolt_core::git::GitCli;
@@ -564,14 +564,14 @@ const SOCKET_QUEUE: usize = 256;
 /// all go to it through one bounded channel.
 async fn handle(socket: WebSocket, api: Arc<Api>) {
     let (mut sink, mut stream) = socket.split();
-    let (tx, mut rx) = mpsc::channel::<String>(SOCKET_QUEUE);
+    let (tx, mut rx) = mpsc::channel::<Message>(SOCKET_QUEUE);
     // Subscribed before the first request is read: any event emitted after a reply reaches us.
     let mut events = api.subscribe();
     let ev_tx = tx.clone();
     let forward = tokio::spawn(async move {
         loop {
             match events.recv().await {
-                Ok(ev) => match ev_tx.try_send(serde_json::json!({ "event": ev }).to_string()) {
+                Ok(ev) => match ev_tx.try_send(Message::Text(serde_json::json!({ "event": ev }).to_string().into())) {
                     Ok(()) => {}
                     Err(TrySendError::Full(_)) => tracing::warn!("harness socket is {SOCKET_QUEUE} frames behind; dropped an event"),
                     Err(TrySendError::Closed(_)) => break,
@@ -582,8 +582,8 @@ async fn handle(socket: WebSocket, api: Arc<Api>) {
         }
     });
     let writer = tokio::spawn(async move {
-        while let Some(text) = rx.recv().await {
-            if sink.send(Message::Text(text.into())).await.is_err() {
+        while let Some(frame) = rx.recv().await {
+            if sink.send(frame).await.is_err() {
                 break;
             }
         }
@@ -592,7 +592,7 @@ async fn handle(socket: WebSocket, api: Arc<Api>) {
         let Message::Text(text) = msg else { continue };
         let (api, tx, text) = (api.clone(), tx.clone(), text.to_string());
         tokio::spawn(async move {
-            let _ = tx.send(respond(&api, &text).await.to_string()).await;
+            let _ = tx.send(respond(&api, &text).await).await;
         });
     }
     forward.abort();
@@ -601,26 +601,46 @@ async fn handle(socket: WebSocket, api: Arc<Api>) {
 
 /// Parses the envelope as a bare JSON value first so a malformed or unknown
 /// `req` still carries back the caller's `id`, then decodes `req` into a
-/// `Request`.
-async fn respond(api: &Api, text: &str) -> serde_json::Value {
+/// `Request`. A JSON reply is a text frame, `{id, ok|err}`; a bytes reply (`blobBytes`) is a
+/// binary frame (`bytes_frame`).
+async fn respond(api: &Api, text: &str) -> Message {
     let value: serde_json::Value = match serde_json::from_str(text) {
         Ok(v) => v,
         Err(e) => return error_reply(serde_json::Value::Null, format!("invalid message: {e}")),
     };
     let id = value.get("id").cloned().unwrap_or(serde_json::Value::Null);
     let req = value.get("req").cloned().unwrap_or(serde_json::Value::Null);
-    match serde_json::from_value::<Request>(req) {
-        Ok(req) => match api.dispatch(req).await {
-            Ok(v) => serde_json::json!({"id": id, "ok": v}),
-            Err(e) => serde_json::json!({"id": id, "err": e}),
-        },
-        Err(e) => error_reply(id, format!("invalid request: {e}")),
+    let req = match serde_json::from_value::<Request>(req) {
+        Ok(req) => req,
+        Err(e) => return error_reply(id, format!("invalid request: {e}")),
+    };
+    // Checked first: the request's work would be wasted on a reply with no id to carry it.
+    let frame_id = id.as_u64().and_then(|n| u32::try_from(n).ok());
+    if matches!(req, Request::BlobBytes { .. }) && frame_id.is_none() {
+        return error_reply(id, "a bytes reply needs an id from 0 to 2^32 - 1".into());
+    }
+    match api.call(req).await {
+        Ok(Reply::Json(v)) => text_frame(serde_json::json!({"id": id, "ok": v})),
+        Ok(Reply::Bytes(bytes)) => bytes_frame(frame_id.unwrap_or_default(), &bytes),
+        Err(e) => text_frame(serde_json::json!({"id": id, "err": e})),
     }
 }
 
-fn error_reply(id: serde_json::Value, message: String) -> serde_json::Value {
+/// A bytes reply's binary frame: the request's id (`u32`, little-endian), then the bytes as they are.
+fn bytes_frame(id: u32, bytes: &[u8]) -> Message {
+    let mut frame = Vec::with_capacity(4 + bytes.len());
+    frame.extend_from_slice(&id.to_le_bytes());
+    frame.extend_from_slice(bytes);
+    Message::Binary(frame.into())
+}
+
+fn text_frame(v: serde_json::Value) -> Message {
+    Message::Text(v.to_string().into())
+}
+
+fn error_reply(id: serde_json::Value, message: String) -> Message {
     let err = GbError::new(GbErrorKind::InvalidInput, message);
-    serde_json::json!({"id": id, "err": err})
+    text_frame(serde_json::json!({"id": id, "err": err}))
 }
 
 #[cfg(test)]

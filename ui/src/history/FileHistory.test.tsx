@@ -32,14 +32,14 @@ vi.mock('../pdf/PdfView', () => ({ PdfView: ({ new: neu }: { new: { size: number
 const { FileHistory } = await import('./FileHistory');
 
 const graph = { rows: [], labels: [], maxLanes: 0, pinnedRefs: [], head: { branch: null, target: null, detached: false, unborn: true }, truncated: false, worktrees: [] } as unknown as GraphPayload;
-const text = (t: string): DiffContentsPayload => ({ old: null, new: { size: t.length, binary: false, encoding: 'UTF-8', eol: 'lf', text: t, base64: null, hash: null }, tooLarge: false, eolOnly: false, image: false } as unknown as DiffContentsPayload);
-const binarySide = { size: 4, binary: true, encoding: null, eol: null, text: null, base64: null, hash: null };
+const text = (t: string): DiffContentsPayload => ({ old: null, new: { size: t.length, binary: false, encoding: 'UTF-8', eol: 'lf', text: t, hash: null }, tooLarge: false, eolOnly: false, image: false } as unknown as DiffContentsPayload);
+const binarySide = { size: 4, binary: true, encoding: null, eol: null, text: null, hash: null };
 const contents = new Loader(async (k: string) => {
   const { path, new: side } = JSON.parse(k) as { path: string; new: { commit: string } };
   // A binary (its hex dumps load with it, hexContents.ts), and an image (they don't).
   if (path.endsWith('.bin')) return { old: null, new: binarySide, tooLarge: false, eolOnly: false, image: false, hex: { old: null, new: { dump: `${path} hex at ${side.commit}`, size: 4, cap: null } } } as unknown as DiffContentsPayload;
   // A PDF in plain ASCII: text, but shown as pages.
-  if (path.endsWith('.pdf')) return { old: null, new: { ...binarySide, binary: false, size: 9, text: '%PDF-1.4\n', base64: btoa('%PDF-1.4\n') }, tooLarge: false, eolOnly: false, image: false, pdf: true } as unknown as DiffContentsPayload;
+  if (path.endsWith('.pdf')) return { old: null, new: { ...binarySide, binary: false, size: 9, text: '%PDF-1.4\n', raw: true, bytes: new TextEncoder().encode('%PDF-1.4\n') }, tooLarge: false, eolOnly: false, image: false, pdf: true } as unknown as DiffContentsPayload;
   if (path.endsWith('.png')) return { old: null, new: binarySide, tooLarge: false, eolOnly: false, image: true } as unknown as DiffContentsPayload;
   return text(`${path} at ${side.commit}`);
 }, new Lru(10));

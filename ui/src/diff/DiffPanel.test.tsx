@@ -21,6 +21,7 @@ import { EMPTY_PROFILE, useAppState } from '../app/state';
 import { useTabViews } from '../app/tabStores';
 import { installShortcuts } from '../app/shortcuts';
 import { activeTabWith } from '../app/testShell';
+import type { RawBlob } from './hexContents';
 
 const host = vi.hoisted(() => {
   // A binary's hex view (hex.tsx's HexView): what it was asked to show.
@@ -42,8 +43,8 @@ vi.mock('../api/client', async (actual) => ({ ...(await actual<typeof import('..
 
 const graph: GraphPayload = { rows: [], labels: [], maxLanes: 0, pinnedRefs: [], head: { branch: null, target: null, detached: false, unborn: true }, truncated: false, worktrees: [] };
 const spec = { kind: 'commit' as const, id: 'c'.repeat(40), parent: 0 };
-const blob = (text: string | null, encoding = 'UTF-8', binary = false): BlobPayload => ({ size: text?.length ?? 8, binary, encoding, eol: 'lf', text, base64: null, hash: null });
-const sized = (p: Partial<BlobPayload>): BlobPayload => ({ size: 10, binary: false, encoding: 'UTF-8', eol: 'lf', text: 'x\n', base64: null, hash: null, ...p });
+const blob = (text: string | null, encoding = 'UTF-8', binary = false): BlobPayload => ({ size: text?.length ?? 8, binary, encoding, eol: 'lf', text, hash: null });
+const sized = (p: Partial<BlobPayload>): BlobPayload => ({ size: 10, binary: false, encoding: 'UTF-8', eol: 'lf', text: 'x\n', hash: null, ...p });
 const contents = (old: BlobPayload | null, next: BlobPayload | null, extra: Partial<DiffContentsPayload> = {}): DiffContentsPayload => ({ old, new: next, tooLarge: false, eolOnly: false, image: false, ...extra });
 const change = (path: string, status = 'M'): FileChange => ({ path, oldPath: null, status, additions: 1, deletions: 1, old: { kind: 'object', oid: 'a'.repeat(40) }, new: { kind: 'object', oid: 'b'.repeat(40) }, submodule: false });
 const text = async () => contents(blob('a\n'), blob('b\n'));
@@ -644,7 +645,7 @@ describe('DiffPanel', () => {
       URL.createObjectURL = saved.create;
       URL.revokeObjectURL = saved.revoke;
     });
-    const png = (size: number): BlobPayload => sized({ binary: true, encoding: '', text: null, base64: 'iVBORw==', size });
+    const png = (size: number): RawBlob => ({ ...sized({ binary: true, encoding: '', text: null, raw: true, size }), bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]) });
     const svg = (body: string): BlobPayload => sized({ text: `<svg>${body}</svg>\n` });
     const layers = () => [...document.querySelectorAll<HTMLImageElement>('img.image-layer')].map((i) => i.alt);
 
@@ -789,7 +790,7 @@ describe('DiffPanel', () => {
       URL.revokeObjectURL = saved.revoke;
       vi.restoreAllMocks();
     });
-    const bytes = (size: number): BlobPayload => sized({ binary: true, encoding: '', text: null, base64: 'AAEC', size });
+    const bytes = (size: number): RawBlob => ({ ...sized({ binary: true, encoding: '', text: null, raw: true, size }), bytes: new Uint8Array([0, 1, 2]) });
 
     it('audio plays on each side instead of a hex dump, with no text tools; its Hex toggle shows the hex diff with the diff controls', async () => {
       hexDump.mockResolvedValueOnce({ old: { size: 90, shown: 90, dump: 'old\n' }, new: { size: 100, shown: 100, dump: 'new\n' }, cap: 262144 });

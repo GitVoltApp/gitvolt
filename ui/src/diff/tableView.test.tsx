@@ -33,7 +33,7 @@ const graph: GraphPayload = { rows: [], labels: [], maxLanes: 0, pinnedRefs: [],
 const P = 'a'.repeat(40);
 const C = 'c'.repeat(40);
 const spec = { kind: 'commit' as const, id: C, parent: 0 };
-const blob = (text: string | null): BlobPayload => ({ size: text?.length ?? 8, binary: false, encoding: 'UTF-8', eol: 'lf', text, base64: null, hash: text === null ? null : 'h1' });
+const blob = (text: string | null): BlobPayload => ({ size: text?.length ?? 8, binary: false, encoding: 'UTF-8', eol: 'lf', text, hash: text === null ? null : 'h1' });
 const contents = (old: BlobPayload | null, neu: BlobPayload | null): DiffContentsPayload => ({ old, new: neu, tooLarge: false, eolOnly: false, image: false });
 const at = (commit: string): BlobSource => ({ kind: 'atCommit', commit });
 const change = (path: string) => ({ path, oldPath: null, status: 'M', additions: 1, deletions: 1, old: at(P), new: at(C), submodule: false });

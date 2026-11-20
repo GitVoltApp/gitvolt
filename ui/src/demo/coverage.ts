@@ -26,6 +26,7 @@ export const COVERAGE = {
   fileList: 'real',
   diffContents: 'real',
   hexDump: 'real',
+  blobBytes: 'real',
   treeFiles: 'real',
   worktreeFiles: 'real',
   worktreePathKind: 'real',

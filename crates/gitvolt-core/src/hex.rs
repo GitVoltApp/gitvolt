@@ -220,7 +220,7 @@ mod tests {
             ungate_binary(&repo, &cli(), r.path(), "huge.dat", &Side::Absent, &huge, &mut c).await.unwrap();
             assert!(!c.too_large, "force {force}");
             let side = c.new.unwrap();
-            assert!(side.binary && side.text.is_none() && side.base64.is_none());
+            assert!(side.binary && side.text.is_none() && !side.raw);
             assert_eq!(side.size, MAX_FORCED_BYTES + 1);
         }
         let dump = hex_dump(&repo, &cli(), r.path(), "huge.dat", Side::Absent, huge.clone(), HEX_CAP).await.unwrap().new.unwrap();
@@ -236,8 +236,13 @@ mod tests {
         let mut c = diff_contents(&local, "wt.bin", &wt, &Side::Absent, false).unwrap();
         ungate_binary(&repo, &cli(), r.path(), "wt.bin", &wt, &Side::Absent, &mut c).await.unwrap();
         assert!(!c.too_large && c.old.unwrap().binary);
-        // A large video keeps its prompt, as an image does: "Load anyway" brings its bytes to play.
+        // A video over the text gate plays at once; over the preview gate it keeps its prompt, as
+        // an image does: "Load anyway" brings its bytes to play.
         r.write_bytes("clip.mp4", &vec![0u8; 3 * 1024 * 1024]);
+        let clip = Side::Object(ObjectId::from_hex(r.git(&["hash-object", "-w", "clip.mp4"]).as_bytes()).unwrap());
+        let video = diff_contents(&local, "clip.mp4", &Side::Absent, &clip, false).unwrap();
+        assert!(video.media && !video.too_large && video.new.unwrap().raw);
+        r.write_bytes("clip.mp4", &vec![0u8; (crate::diff::LARGE_PREVIEW_BYTES + 1) as usize]);
         let clip = Side::Object(ObjectId::from_hex(r.git(&["hash-object", "-w", "clip.mp4"]).as_bytes()).unwrap());
         let mut video = diff_contents(&local, "clip.mp4", &Side::Absent, &clip, false).unwrap();
         ungate_binary(&repo, &cli(), r.path(), "clip.mp4", &Side::Absent, &clip, &mut video).await.unwrap();
