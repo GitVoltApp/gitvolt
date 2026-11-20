@@ -7,6 +7,12 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 
 ### Changed
 
+- **The sidebar lists main and develop first.** Folders and branches sort as one alphabetical list,
+  so folders such as `backup/`, `ci/` or `dependabot/` could push the branches you use most far down
+  Local and each remote. In tree sort, each level now starts with the production branch (the
+  remote's default branch; git flow's master; main, master or trunk), then the development branch
+  (git flow's develop; develop or dev); the rest keeps its alphabetical order. Recent sort is
+  unchanged.
 - **The graph refreshes faster when a commit, checkout or rebase step moves HEAD.** GitVolt keeps
   the commits it last read, so a refresh reads only the new ones instead of every commit in the
   window again, and find keeps their searchable text too. The graph also keeps the rows that

@@ -31,6 +31,37 @@ export interface Section {
   /** A branch panel's picks under the open preset (its folder picks), the Tags panel's tag picks
    * (`tagPicksOf`); absent without a view. */
   picks?: BranchPicks;
+  /** A branch panel's trunk branches, by key, and their ranks (`trunkRanker`): in `tree` sort,
+   * they lead their level, by rank. */
+  trunks?: Record<string, number>;
+}
+
+const PRODUCTION = ['main', 'master', 'trunk'];
+const DEVELOPMENT = ['develop', 'dev'];
+
+/**
+ * The trunk branches, which lead the Local and Remote panels' levels so that folders (`backup/`,
+ * `ci/`, `dependabot/`) don't push them down: 0, production (a remote's default branch, its HEAD's
+ * target; git flow's master; main, master, trunk), then 1, development (git flow's develop;
+ * develop, dev). A development name wins over the default branch: a git flow repository whose
+ * default is develop still lists main first. Full names only, so `backup/main` isn't one. A remote
+ * branch counts its own remote's default; a local one any remote's.
+ */
+function trunkRanker(p: Pick<SidebarPayload, 'remotes' | 'gitflow'>): (it: SideItem) => number | null {
+  const develop = new Set([...DEVELOPMENT, ...(p.gitflow ? [p.gitflow.develop] : [])]);
+  const production = new Set([...PRODUCTION, ...(p.gitflow ? [p.gitflow.master] : [])]);
+  const defaults = new Map<string, string>();
+  for (const g of p.remotes) {
+    const prefix = `refs/remotes/${g.name}/`;
+    if (g.defaultBranch?.startsWith(prefix)) defaults.set(g.name, g.defaultBranch.slice(prefix.length));
+  }
+  const anyDefault = new Set(defaults.values());
+  return (it) => {
+    if (it.kind !== 'local' && it.kind !== 'remote') return null;
+    if (develop.has(it.name)) return 1;
+    if (production.has(it.name)) return 0;
+    return (it.kind === 'remote' ? defaults.get(it.remote) === it.name : anyDefault.has(it.name)) ? 0 : null;
+  };
 }
 
 /** The sidebar's panels, in fixed display order: Git Flow once it's set up (its
@@ -56,6 +87,15 @@ export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null, picks?:
     items: subs.map((m): SideItem => ({ key: `submodule:${m.path}`, kind: 'submodule', name: m.path, target: null, time: 0, submodule: m })),
   }];
   const flow = p.gitflow;
+  const rank = trunkRanker(p);
+  const withTrunks = (items: SideItem[]) => {
+    const trunks: Record<string, number> = {};
+    for (const it of items) {
+      const r = rank(it);
+      if (r !== null) trunks[it.key] = r;
+    }
+    return { trunks, items };
+  };
   const gitflow: Section[] = flow ? [{
     id: 'gitflow', kind: 'gitflow', label: 'Git Flow', nests: true, ...branchPicks, empty: 'No feature, release or hotfix branches',
     // Keyed apart from the Local panel's rows of the same branches.
@@ -63,10 +103,10 @@ export function sectionsOf(p: SidebarPayload, view?: ViewPayload | null, picks?:
   }] : [];
   return [
     ...gitflow,
-    { id: 'local', kind: 'local', label: 'Local', nests: true, ...branchPicks, items: p.locals.map((b): SideItem => ({ key: b.fullName, kind: 'local', name: b.name, target: b.target, time: b.tipTime, branch: b, ...st(b.name) })) },
+    { id: 'local', kind: 'local', label: 'Local', nests: true, ...branchPicks, ...withTrunks(p.locals.map((b): SideItem => ({ key: b.fullName, kind: 'local', name: b.name, target: b.target, time: b.tipTime, branch: b, ...st(b.name) }))) },
     {
       id: 'remote', kind: 'remote', label: 'Remote', nests: true, hosts, hostNames, ...branchPicks,
-      items: p.remotes.flatMap((g) => g.branches.map((b): SideItem => ({ key: b.fullName, kind: 'remote', name: b.name, target: b.target, time: b.tipTime, remote: g.name, branch: b, ...st(b.name) }))),
+      ...withTrunks(p.remotes.flatMap((g) => g.branches.map((b): SideItem => ({ key: b.fullName, kind: 'remote', name: b.name, target: b.target, time: b.tipTime, remote: g.name, branch: b, ...st(b.name) })))),
     },
     { id: 'worktrees', kind: 'worktrees', label: 'Worktrees', nests: false, items: p.worktrees.map((w): SideItem => ({ key: `wt:${w.path}`, kind: 'worktree', name: w.name, target: w.head, time: 0, worktree: w })) },
     { id: 'stashes', kind: 'stashes', label: 'Stashes', nests: false, items: p.stashes.map((s): SideItem => ({ key: `stash:${s.index}`, kind: 'stash', name: s.message, target: s.id, time: s.time, stash: s })) },
@@ -123,8 +163,8 @@ function hiddenCounts(s: Section): Map<string, { all: number; hidden: number }> 
  * Builds the sidebar's panels. A case-insensitive substring filter applies to every
  * panel, keeping and forcing open the parent folders of any match (a panel's count is then the
  * match count; a panel with none shows 0 and an empty body). `tree` sort (the default) nests
- * items by `/` in their name, folders first, both sorted case-insensitively (remote branches
- * nest under a folder per remote); `recent` sort is flat, newest `time` first. Only nesting
+ * items by `/` in their name, each level the trunk branches first (`trunkRanker`), then folders
+ * and branches in one case-insensitive order (remote branches nest under a folder per remote); `recent` sort is flat, newest `time` first. Only nesting
  * panels (Local, Remote, Tags) sort. A collapsed panel (or folder, unless filtering forces it
  * open) contributes no rows below it.
  */
@@ -174,13 +214,14 @@ export function buildPanels(sections: Section[], o: RowOptions): Panel[] {
       n.items.push(it);
     }
     // One alphabetical list per level, folders and branches mixed (`backup/`,
-    // `dev`, `f/`), not folders first.
+    // `dev`, `f/`), not folders first; the trunk branches lead it.
     const walk = (n: Node, depth: number, prefix: string) => {
       const entries: ({ folder: string; child: Node } | { leaf: SideItem; name: string })[] = [
         ...[...n.folders].map(([folder, child]) => ({ folder, child })),
         ...n.items.map((leaf) => ({ leaf, name: leaf.name.split('/').pop()! })),
       ];
-      entries.sort((a, b) => byName('folder' in a ? a.folder : a.name, 'folder' in b ? b.folder : b.name));
+      const rank = (e: (typeof entries)[number]) => ('leaf' in e ? s.trunks?.[e.leaf.key] ?? Infinity : Infinity);
+      entries.sort((a, b) => (rank(a) - rank(b) || 0) || byName('folder' in a ? a.folder : a.name, 'folder' in b ? b.folder : b.name));
       for (const e of entries) {
         if ('leaf' in e) {
           out.push(item(e.leaf, depth, e.name));

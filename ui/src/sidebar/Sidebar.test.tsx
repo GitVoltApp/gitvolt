@@ -175,16 +175,17 @@ describe('Sidebar panels', () => {
       renderIt();
       const tree = within(panel('Local')).getByRole('tree');
       const items = within(panel('Local')).getAllByRole('treeitem');
-      // feature/, login, pay, hotfix, main: down to hotfix.
-      expect(items.map((r) => r.getAttribute('aria-label') ?? r.textContent)).toEqual(['feature', 'feature/login', 'feature/pay', 'hotfix', 'main']);
-      for (let i = 0; i < 3; i++) fireEvent.keyDown(tree, { key: 'ArrowDown' });
+      // main (a trunk branch, first), feature/, login, pay, hotfix: down to hotfix.
+      expect(items.map((r) => r.getAttribute('aria-label') ?? r.textContent)).toEqual(['main', 'feature', 'feature/login', 'feature/pay', 'hotfix']);
+      for (let i = 0; i < 4; i++) fireEvent.keyDown(tree, { key: 'ArrowDown' });
       act(() => { fireEvent.keyDown(tree, { key: 'h' }); });
       expect(picks()).toEqual({ shown: [], hidden: ['hotfix'] });
       fireEvent.keyDown(tree, { key: 'Home' });
+      fireEvent.keyDown(tree, { key: 'ArrowDown' });
       act(() => { fireEvent.keyDown(tree, { key: 'H' }); });
       expect(picks()).toEqual({ shown: [], hidden: ['hotfix', 'feature/'] });
       // With a modifier it isn't ours; on the checked-out branch it does nothing.
-      fireEvent.keyDown(tree, { key: 'End' });
+      fireEvent.keyDown(tree, { key: 'Home' });
       act(() => { fireEvent.keyDown(tree, { key: 'h' }); fireEvent.keyDown(tree, { key: 'h', ctrlKey: true }); });
       expect(picks()).toEqual({ shown: [], hidden: ['hotfix', 'feature/'] });
     });
