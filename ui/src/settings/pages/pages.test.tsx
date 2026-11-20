@@ -2,7 +2,9 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api/client', () => ({
-  api: { gitIdentity: vi.fn(async () => ({ identity: null, signing: null })), saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []), forgeRepoProjects: vi.fn(async () => ({ remotes: [], target: null, targetChosen: false })), listOpeners: vi.fn(async () => []), fontFamilies: vi.fn(async () => [{ name: 'Orbit Mono', monospace: true }, { name: 'Zeta Sans', monospace: false }]), openLogsFolder: vi.fn(async () => null) },
+  api: { gitIdentity: vi.fn(async () => ({ identity: null, signing: null })), saveSettings: vi.fn(async () => null), saveProfile: vi.fn(async () => null), forgeAccounts: vi.fn(async () => []), forgeRepoProjects: vi.fn(async () => ({ remotes: [], target: null, targetChosen: false })), listOpeners: vi.fn(async () => []), fontFamilies: vi.fn(async () => [{ name: 'Orbit Mono', monospace: true }, { name: 'Zeta Sans', monospace: false }]), openLogsFolder: vi.fn(async () => null),
+    // A commit-limit save refreshes the shown tab: its reads stay pending.
+    graph: vi.fn(() => new Promise(() => {})), sidebar: vi.fn(() => new Promise(() => {})), repoInfo: vi.fn(() => new Promise(() => {})) },
   errorMessage: String,
 }));
 const resetAvatars = vi.hoisted(() => vi.fn());

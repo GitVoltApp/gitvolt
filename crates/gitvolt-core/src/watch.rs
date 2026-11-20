@@ -1715,6 +1715,9 @@ mod tests {
         let r = TestRepo::new();
         fixtures::basic(&r);
         let (api, id, mut rx) = watched(&r).await;
+        // The watch's first status refreshes the index (a write, so a wakeup): let it land first.
+        assert!(next_change(&mut rx, Duration::from_millis(1500)).await.is_none());
+        let woken = wakeups(&api, id);
         let ran = last_git(&api);
         fn read_all(dir: &Path) {
             for e in std::fs::read_dir(dir).unwrap().flatten() {
@@ -1731,7 +1734,7 @@ mod tests {
             r.git(args);
         }
         assert!(next_change(&mut rx, Duration::from_millis(1500)).await.is_none(), "reads must not trigger events");
-        assert_eq!(wakeups(&api, id), 0, "reads must not even wake the watcher");
+        assert_eq!(wakeups(&api, id), woken, "reads must not even wake the watcher");
         assert_eq!(last_git(&api), ran, "no status run");
         r.write("file_0.txt", "changed\n");
         let (kinds, _) = next_change(&mut rx, Duration::from_secs(5)).await.expect("the write reported");

@@ -5,6 +5,8 @@ import { DEFAULT_SETTINGS, EMPTY_PROFILE } from '../../app/state';
 const api = vi.hoisted(() => ({
   forgeAccounts: vi.fn(async () => []), forgeRepoProjects: vi.fn(async () => ({ remotes: [], target: null, targetChosen: false })),
   saveSettings: vi.fn(async () => null),
+  // A commit-limit save refreshes the shown tab: its reads stay pending.
+  graph: vi.fn(() => new Promise(() => {})), sidebar: vi.fn(() => new Promise(() => {})), repoInfo: vi.fn(() => new Promise(() => {})),
   saveProfile: vi.fn(async () => null),
   pickFolder: vi.fn(async () => null),
   gitIdentity: vi.fn(async () => ({ identity: null, signing: null })),
