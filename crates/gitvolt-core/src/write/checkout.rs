@@ -549,13 +549,13 @@ impl WriteIntent for Checkout {
         // never sees it. Refused before anything runs (2C T6 re-review 3, C1 and C2).
         // The same check says what the move sweeps away with a directory (safety review M1,
         // M2): the autostash rule carries it.
-        let mut rule = AutostashRule::Overlap;
+        let (mut rule, mut moved) = (AutostashRule::Overlap, None);
         if let (Some(from), Some(to)) = (pre.before.head.oid.as_deref().and_then(oid_of), moves_to.as_deref().and_then(oid_of)) {
-            rule = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, from, to, "checkout").await?.rule();
+            (rule, moved) = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, from, to, "checkout").await?.into_rule(rule);
         }
         // --- end 2C repo-safety ---
         let _ = self.case.set(case);
-        let autostash = moves_to.and_then(|t| oid_of(&t)).map(|t| AutostashSpec { rule, target: Some(t), op: self.label(), target_name: Some(self.target_name()) });
+        let autostash = moves_to.and_then(|t| oid_of(&t)).map(|t| AutostashSpec { rule, target: Some(t), op: self.label(), target_name: Some(self.target_name()), moved });
         Ok(Plan { autostash, ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<CheckoutOutcome, GbError> {

@@ -296,7 +296,7 @@ impl WriteIntent for MergeIntent {
             rule = crate::write::precheck::refuse_repos_in_the_way_of_merge(&pre.api.cli, pre.root, head, target, "merge").await?.rule_over(rule);
         }
         // --- end 2C repo-safety ---
-        Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(target), op: format!("merge {}", self.target), target_name: Some(self.target.clone()) }), ..Plan::default() })
+        Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(target), op: format!("merge {}", self.target), target_name: Some(self.target.clone()), moved: None }), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<IntegrateOutcome, GbError> {
         run_merge(cx, &self.target, &self.target, self.ff_only).await
@@ -426,8 +426,9 @@ pub struct IntegratePreviewPayload {
 }
 
 /// The paths a merge of `ours` and `theirs` would leave unresolved, as git would. Objects go to
-/// memory only: the preview never writes to the repository. Unrelated histories (no merge base)
-/// predict nothing: the dialog still opens, with every commit counted (review M4).
+/// memory only: nothing is written to the repository. Unrelated histories (no merge base)
+/// predict nothing (review M4). The preview uses `merge_tree` instead (faster on a big tree; a
+/// test checks the two agree).
 pub(crate) fn predicted_conflicts(repo: &gix::Repository, ours: ObjectId, theirs: ObjectId) -> Result<Vec<String>, GbError> {
     if !matches!(repo.merge_base(ours, theirs), Ok(Some(_))) {
         return Ok(Vec::new());
@@ -442,21 +443,53 @@ pub(crate) fn predicted_conflicts(repo: &gix::Repository, ours: ObjectId, theirs
     Ok(paths)
 }
 
+/// `git merge-tree --write-tree` of `ours` and `theirs`, the merge git itself would make: the
+/// merged tree (a conflicted file holds its markers) and the paths it leaves conflicted, sorted.
+/// `quarantine`: an object directory the tree and its blobs go to instead, with the repository's
+/// store as its alternate (the preview's, `irebase::predict::Scratch`), so nothing is written to
+/// the repository. `None` when the histories are unrelated (no merge base): nothing to predict.
+pub(crate) async fn merge_tree(cli: &crate::git::GitCli, root: &std::path::Path, ours: ObjectId, theirs: ObjectId, quarantine: Option<&std::path::Path>) -> Result<Option<(ObjectId, Vec<String>)>, GbError> {
+    let (o, t) = (ours.to_string(), theirs.to_string());
+    let mut inv = crate::git::GitInvocation::new(root, ["merge-tree", "--write-tree", "-z", "--name-only", "--no-messages", o.as_str(), t.as_str()]).ok_exit(1);
+    if let Some(objects) = quarantine {
+        let r = root.to_path_buf();
+        let store = blocking(move || Ok(gix::open(&r).map_err(gix_err)?.common_dir().join("objects"))).await?;
+        inv = inv.env("GIT_OBJECT_DIRECTORY", objects).env("GIT_ALTERNATE_OBJECT_DIRECTORIES", store);
+    }
+    let out = match cli.run(inv).await {
+        Ok(out) => out,
+        // git's own message (every run is `LC_ALL=C`).
+        Err(e) if e.stderr.as_deref().is_some_and(|s| s.contains("unrelated histories")) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let mut fields = out.stdout.split(|b| *b == 0).filter(|f| !f.is_empty()).map(|f| String::from_utf8_lossy(f).into_owned());
+    let tree = fields.next().ok_or_else(|| GbError::other("merge-tree printed no tree"))?;
+    let tree = ObjectId::from_hex(tree.trim().as_bytes()).map_err(gix_err)?;
+    let mut conflicts: Vec<String> = fields.collect();
+    conflicts.sort();
+    conflicts.dedup();
+    Ok(Some((tree, conflicts)))
+}
+
 // --- 2D T14: the autostash's target for a merge or rebase ---
-/// The tree of the three-way merge of `ours` and `theirs`: what the worktree holds after the
-/// merge, and approximately after a rebase (Deviation 9). `AutostashRule::Merged` predicts
-/// against it (§6.2): against `theirs` itself, every dirty file `ours` changed since the merge
-/// base would look like a conflict. Only the tree and its blobs are written, as loose objects
-/// with no ref and no commit: a merge then writes the same ones itself; a rebase's (and a
+/// The tree of the three-way merge of `ours` and `theirs` (`merge_tree`): what the worktree holds
+/// after the merge, and approximately after a rebase (Deviation 9). `AutostashRule::Merged`
+/// predicts against it (§6.2): against `theirs` itself, every dirty file `ours` changed since the
+/// merge base would look like a conflict. Only the tree and its blobs are written, as loose
+/// objects with no ref and no commit: a merge then writes the same ones itself; a rebase's (and a
 /// cancelled pull's) stay unreferenced until gc prunes them. `None` when there's no merge base
 /// or the merge can't be computed.
-pub(crate) fn merge_result(repo: &gix::Repository, ours: ObjectId, theirs: ObjectId) -> Option<ObjectId> {
-    repo.merge_base(ours, theirs).ok()??;
-    let options = repo.tree_merge_options().ok()?;
-    let mut out = repo.merge_commits(ours, theirs, Default::default(), options.into()).ok()?;
-    out.tree_merge.tree.write().ok().map(|id| id.detach())
+pub(crate) async fn merge_result(cli: &crate::git::GitCli, root: &std::path::Path, ours: ObjectId, theirs: ObjectId) -> Option<ObjectId> {
+    merge_tree(cli, root, ours, theirs, None).await.ok().flatten().map(|(tree, _)| tree)
 }
 // --- end 2D T14 ---
+
+/// The preview's conflicts (§13.1): the merge of HEAD and the target, always in a quarantine. A
+/// read never writes to the repository, so the write's autostash plan merges again for itself.
+async fn preview_conflicts(api: &Api, root: &std::path::Path, head: ObjectId, y: ObjectId) -> Result<Vec<String>, GbError> {
+    let scratch = crate::write::irebase::predict::Scratch::new(api)?;
+    Ok(merge_tree(&api.cli, root, head, y, Some(&scratch.objects())).await?.map(|(_, c)| c).unwrap_or_default())
+}
 
 pub(crate) async fn preview(api: &Api, repo: u32, worktree: &str, kind: IntegrateKind, target: String) -> Result<IntegratePreviewPayload, GbError> {
     let h = api.handle(repo)?;
@@ -469,21 +502,23 @@ pub(crate) async fn preview(api: &Api, repo: u32, worktree: &str, kind: Integrat
         .filter_map(|w| Some((w.branch?, w.path.display().to_string())))
         .collect();
     let (rt, tn) = (root.clone(), target.clone());
-    let (mut payload, rebasing) = blocking(move || {
+    let (mut payload, head, y, rebasing) = blocking(move || {
         let r = gix::open(&rt).map_err(gix_err)?;
         let head = r.head_id().map_err(gix_err)?.detach();
         let y = r.rev_parse_single(tn.as_str()).map_err(|e| GbError::new(GbErrorKind::NotFound, format!("{tn}: {e}")))?.detach();
         let (ahead, behind) = relation(&r, head, y)?;
         let (stacked, rebasing) = match (kind, head_branch(&r)) {
-            (IntegrateKind::Rebase, Some(x)) => (stacked_branches(&r, &x, y, &elsewhere)?, Some((x, head, y))),
+            (IntegrateKind::Rebase, Some(x)) => (stacked_branches(&r, &x, y, &elsewhere)?, Some(x)),
             _ => (Vec::new(), None),
         };
         let update_refs_default = r.config_snapshot().boolean("rebase.updateRefs") != Some(false);
-        let conflicts = if behind == 0 { Vec::new() } else { predicted_conflicts(&r, head, y)? };
-        Ok((IntegratePreviewPayload { ahead, behind, merged: behind == 0, conflicts, stacked, update_refs_default, lossy_merge: None }, rebasing))
+        Ok((IntegratePreviewPayload { ahead, behind, merged: behind == 0, conflicts: Vec::new(), stacked, update_refs_default, lossy_merge: None }, head, y, rebasing))
     })
     .await?;
-    if let Some((x, head, y)) = rebasing {
+    if !payload.merged {
+        payload.conflicts = preview_conflicts(api, &root, head, y).await?;
+    }
+    if let Some(x) = rebasing {
         payload.lossy_merge = lossy_merge(&api.cli, &root, head, y).await?.map(|m| lossy_message(&x, &m, &target));
     }
     Ok(payload)
@@ -647,6 +682,51 @@ pub(crate) mod tests {
         assert_eq!(preview(&api, id, s.path(), IntegrateKind::Rebase, "main").await["updateRefsDefault"], false);
     }
 
+    /// `git merge-tree` in a quarantine predicts what gix's merge did, on a conflicting and on a
+    /// clean target, and writes nothing to the repository.
+    #[tokio::test]
+    async fn the_merge_tree_prediction_agrees_with_the_gix_merge() {
+        let r = TestRepo::new();
+        fixtures::conflicts(&r);
+        let (api, _data) = api();
+        let objects = || r.git(&["count-objects", "-v"]);
+        let before = objects();
+        let repo = gix::open(r.path()).unwrap();
+        let head = repo.head_id().unwrap().detach();
+        for (target, expected) in [("feature/x", vec!["a.txt", "gone.txt", "logo.bin"]), ("clean", vec![])] {
+            let theirs = repo.rev_parse_single(target).unwrap().detach();
+            let scratch = crate::write::irebase::predict::Scratch::new(&api).unwrap();
+            let (tree, git) = merge_tree(&api.cli, r.path(), head, theirs, Some(&scratch.objects())).await.unwrap().expect("related");
+            assert_eq!(git, expected, "{target}");
+            assert_eq!(predicted_conflicts(&repo, head, theirs).unwrap(), git, "{target}: as gix's");
+            assert!(!repo.has_object(tree), "{target}: the tree stayed in the quarantine");
+        }
+        assert_eq!(objects(), before, "the repository's store wasn't written");
+    }
+
+    /// A read writes nothing, a dirty worktree's preview included (the handle's status says so):
+    /// its merge stays in the quarantine, and the rebase's autostash plan merges for itself.
+    #[tokio::test]
+    async fn a_dirty_worktrees_preview_writes_nothing_to_the_store() {
+        let r = TestRepo::new();
+        fixtures::stack(&r);
+        r.write("wip.txt", "local\n");
+        let (api, _data) = api();
+        let id = open(&api, r.path()).await;
+        // The tab's graph: the status read the handle keeps, as the watcher's in the app.
+        api.dispatch(Request::Graph { repo: id, limit: None, pin: None, rescan: Some(true), active: None, view: None }).await.unwrap();
+        let objects = || r.git(&["count-objects", "-v"]);
+        let before = objects();
+        let merges = || api.command_log().entries().iter().filter(|e| e.args.iter().any(|a| a == "merge-tree")).count();
+        assert_eq!(preview(&api, id, r.path(), IntegrateKind::Rebase, "main").await["conflicts"], serde_json::json!([]));
+        assert_eq!(merges(), 1);
+        assert_eq!(objects(), before, "the preview wrote no object");
+        let go = Request::Integrate { repo: id, worktree: wt(r.path()), kind: IntegrateKind::Rebase, target: "main".into(), update_refs: Some(false), ff_only: None, expect: Default::default(), confirm: Default::default() };
+        assert_eq!(api.dispatch(go).await.unwrap()["outcome"]["status"], "done");
+        assert_eq!(merges(), 2, "the write's autostash plan merged for itself");
+        assert_eq!(std::fs::read_to_string(r.path().join("wip.txt")).unwrap(), "local\n");
+    }
+
     /// 2D T14 re-review m3: `Merged` predicts against the merge. A dirty line next to a change
     /// only the local side made isn't a conflict (it was, against the target itself); one next
     /// to the upstream's change is.
@@ -670,7 +750,7 @@ pub(crate) mod tests {
         let up = gix::ObjectId::from_hex(r.git(&["rev-parse", "up"]).as_bytes()).unwrap();
         let tmp = tempfile::tempdir().unwrap();
         let predict = |rule: AutostashRule| {
-            let spec = AutostashSpec { rule, target: Some(up), op: "merge up".into(), target_name: Some("up".into()) };
+            let spec = AutostashSpec { rule, target: Some(up), op: "merge up".into(), target_name: Some("up".into()), moved: None };
             let (api, root, tmp) = (&api, crate::platform::fs::canonicalize(r.path()).unwrap(), tmp.path().to_path_buf());
             async move { crate::journal::autostash::plan(api, &root, &tmp, &spec).await.unwrap().expect("a stash").conflicts }
         };

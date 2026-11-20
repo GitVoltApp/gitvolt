@@ -91,12 +91,12 @@ impl WriteIntent for CreateBranch {
         // The `git switch` is a two-way move from HEAD to the start: one that writes a file where
         // a populated submodule or an embedded clone sits deletes it whole (safety review 2 N1),
         // refused first; the same check says what the move sweeps away (M1, M2).
-        let mut rule = AutostashRule::Overlap;
+        let (mut rule, mut moved) = (AutostashRule::Overlap, None);
         if moves_tree && let Some(head) = pre.before.head.oid.as_deref().and_then(|h| gix::ObjectId::from_hex(h.as_bytes()).ok()) {
-            rule = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, head, target, "checkout").await?.rule();
+            (rule, moved) = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, head, target, "checkout").await?.into_rule(rule);
         }
         // --- end 2C repo-safety ---
-        let autostash = moves_tree.then(|| AutostashSpec { rule, target: Some(target), op: format!("checkout {}", self.name), target_name: Some(self.name.clone()) });
+        let autostash = moves_tree.then(|| AutostashSpec { rule, target: Some(target), op: format!("checkout {}", self.name), target_name: Some(self.name.clone()), moved });
         Ok(Plan { autostash, ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {

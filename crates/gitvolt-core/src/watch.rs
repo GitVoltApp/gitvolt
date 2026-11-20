@@ -2394,8 +2394,9 @@ mod tests {
         ui_refresh(&api, id, false).await;
         tokio::time::sleep(Duration::from_millis(400)).await;
         assert_eq!(ran_since(&api, m, "status", None), 1, "{:?}", ran_after(&api, m));
-        assert_eq!(ran_since(&api, m, "diff --numstat", None) + ran_since(&api, m, "diff --numstat --cached", None), 2, "{:?}", ran_after(&api, m));
-        assert_eq!(ran_after(&api, m).len(), 3, "nothing else: {:?}", ran_after(&api, m));
+        assert_eq!(ran_since(&api, m, "diff --numstat", None), 1, "{:?}", ran_after(&api, m));
+        assert_eq!(ran_since(&api, m, "diff --numstat --cached", None), 0, "nothing staged: no staged diff: {:?}", ran_after(&api, m));
+        assert_eq!(ran_after(&api, m).len(), 2, "nothing else: {:?}", ran_after(&api, m));
     }
 
     /// A file appended to every 200 ms (a growing log): after two quick runs, its status is

@@ -90,6 +90,22 @@ describe('AppShell: tabs inside <Activity> (spec §4.4, Review Focus 1)', () => 
     expect(graphCalls(1).length).toBeGreaterThan(graphs);
   });
 
+  it('a rebase\'s end (repoChanged, refsUpdated, opFinished) loads the graph, sidebar and info once', async () => {
+    render(<AppShell />);
+    expect(await screen.findByText('commit r1c1')).toBeInTheDocument();
+    await waitFor(() => expect(api.watchRepo).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(api.repoInfo).toHaveBeenCalled());
+    const [graphs, sidebars, infos] = [graphCalls(1).length, api.sidebar.mock.calls.length, api.repoInfo.mock.calls.length];
+    emit({ type: 'opStarted', op: 9, kind: 'rebase', repo: 1, label: 'rebase feature onto main', interactive: true });
+    emit({ type: 'repoChanged', repo: 1, kinds: ['refs', 'head', 'worktree', 'index'], worktrees: ['/a'], versions: {} });
+    emit({ type: 'refsUpdated', repo: 1 });
+    emit({ type: 'opFinished', op: 9, kind: 'rebase', repo: 1, outcome: 'ok', message: null, command: null });
+    await waitFor(() => expect(api.repoInfo.mock.calls.length).toBe(infos + 1));
+    await act(async () => { await useRuntime.getState().refresh('a', { graphOnly: true }); });
+    // The last line's own load aside: one of each.
+    expect([graphCalls(1).length - 1, api.sidebar.mock.calls.length, api.repoInfo.mock.calls.length]).toEqual([graphs + 1, sidebars + 1, infos + 1]);
+  });
+
   it('only the active tab loads, watches and listens; switching moves all three', async () => {
     render(<AppShell />);
     expect(await screen.findByText('commit r1c1')).toBeInTheDocument();

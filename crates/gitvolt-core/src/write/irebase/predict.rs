@@ -63,7 +63,24 @@ const PREFIX: &str = "predict-";
 const STALE: std::time::Duration = std::time::Duration::from_secs(3600);
 
 /// The scratch dir, removed on every exit path, a dropped future included.
-struct Scratch(PathBuf);
+pub(crate) struct Scratch(PathBuf);
+
+impl Scratch {
+    /// A new one under `<data>/tmp` (stale ones swept first), with its empty object directory:
+    /// a quarantine for git's writes ([`Scratch::objects`], the repository's store its alternate).
+    pub(crate) fn new(api: &Api) -> Result<Scratch, GbError> {
+        let tmp = api.tmp_dir()?;
+        sweep(&tmp);
+        let scratch = Scratch(tmp.join(format!("{PREFIX}{}", crate::random::random_hex(8))));
+        let objects = scratch.objects();
+        std::fs::create_dir_all(&objects).map_err(|e| GbError::new(GbErrorKind::Io, format!("{}: {e}", objects.display())))?;
+        Ok(scratch)
+    }
+
+    pub(crate) fn objects(&self) -> PathBuf {
+        self.0.join("objects")
+    }
+}
 
 impl Drop for Scratch {
     fn drop(&mut self) {

@@ -421,7 +421,8 @@ async fn wip_staged(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path) -
 async fn wip_unstaged(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path, entries: Vec<StatusEntry>, reuse: &HashMap<String, Option<u32>>) -> Result<Vec<FileChange>, GbError> {
     let name = wt.to_string_lossy().into_owned();
     let dirty = worktree_dirty_paths(&entries);
-    let raw = drop_phantom_stat_dirty(collapse_unmerged(run(cli, wt, diff_porcelain(&[])).await?), &dirty);
+    // Nothing tracked changed in the worktree: the diff could only list phantoms, so it's skipped.
+    let raw = if !entries.iter().any(|e| !matches!(e.kind, EntryKind::Untracked | EntryKind::Ignored) && e.worktree != '.') { Vec::new() } else { drop_phantom_stat_dirty(collapse_unmerged(run(cli, wt, diff_porcelain(&[])).await?), &dirty) };
     let conflicts: HashMap<String, crate::payload::ConflictKind> = entries
         .iter()
         .filter(|e| e.kind == EntryKind::Unmerged)
@@ -473,8 +474,14 @@ async fn wip_unstaged(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path,
 /// a status read already made (`entries`, the phantom filter's ground truth): what the watcher
 /// keeps for the active tab (K44). `reuse`: line counts already known for untracked files not
 /// written to since (by path). Read-only, like `file_list` (C1).
+/// Each diff runs only when `entries` lists a change on its side: a write that leaves the
+/// worktree clean (most do) costs no diff, and a dirty one only the side it touched.
 pub async fn wip_lists(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path, entries: Vec<StatusEntry>, reuse: &HashMap<String, Option<u32>>) -> Result<(FileListPayload, FileListPayload), GbError> {
-    let (staged, unstaged) = futures_util::future::join(wip_staged(repo, cli, wt), wip_unstaged(repo, cli, wt, entries, reuse)).await;
+    let any_staged = entries.iter().any(|e| !matches!(e.kind, EntryKind::Untracked | EntryKind::Ignored) && e.index != '.');
+    let staged = async {
+        if any_staged { wip_staged(repo, cli, wt).await } else { Ok(Vec::new()) }
+    };
+    let (staged, unstaged) = futures_util::future::join(staged, wip_unstaged(repo, cli, wt, entries, reuse)).await;
     Ok((totals(staged?), totals(unstaged?)))
 }
 
@@ -659,6 +666,33 @@ mod tests {
         let f = by_path(&unstaged);
         assert_eq!(f["notes.txt"].additions, Some(99), "reused, not re-read");
         assert_eq!(f["fresh.txt"].additions, Some(3), "counted");
+    }
+
+    /// A diff runs only for a side `git status` lists a change on, and the lists are what the
+    /// diffs give.
+    #[tokio::test]
+    async fn wip_lists_diff_only_the_sides_status_lists() {
+        let (r, repo) = setup();
+        let wt = crate::platform::fs::canonicalize(r.path()).unwrap();
+        r.git(&["add", "-A"]);
+        r.git(&["commit", "-q", "-m", "everything"]);
+        let log = Arc::new(CommandLog::new(100));
+        let cli = GitCli::new(log.clone()).with_env(isolated_git_env());
+        let diffs = |since: u64| log.entries().iter().filter(|e| e.id > since && e.args.iter().any(|a| a == "diff")).map(|e| e.args.contains(&"--cached".to_string())).collect::<Vec<_>>();
+        let lists = async |cli: &GitCli| {
+            let since = log.next_id();
+            let entries = status(cli, &wt).await.unwrap();
+            let (staged, unstaged) = wip_lists(&repo, cli, &wt, entries, &HashMap::new()).await.unwrap();
+            let names = |l: &FileListPayload| l.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>();
+            (names(&staged), names(&unstaged), diffs(since))
+        };
+        assert_eq!(lists(&cli).await, (vec![], vec![], vec![]), "clean: no diff");
+        r.write("u.txt", "untracked\n");
+        assert_eq!(lists(&cli).await, (vec![], vec!["u.txt".to_string()], vec![]), "untracked only: still no diff");
+        r.write("src/app.php", "changed\n");
+        assert_eq!(lists(&cli).await, (vec![], vec!["src/app.php".to_string(), "u.txt".to_string()], vec![false]), "the unstaged diff alone");
+        r.git(&["add", "src/app.php"]);
+        assert_eq!(lists(&cli).await, (vec!["src/app.php".to_string()], vec!["u.txt".to_string()], vec![true]), "the staged diff alone");
     }
 
     #[tokio::test]

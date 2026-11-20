@@ -264,7 +264,7 @@ impl WriteIntent for Switch {
         let name = format!("refs/heads/{}", self.branch);
         let target = crate::write::refs::read_ref(&gix::open(pre.root).map_err(crate::error::gix_err)?, &name)?.ok_or_else(|| GbError::new(GbErrorKind::NotFound, format!("no branch {}", self.branch)))?;
         let target = gix::ObjectId::from_hex(target.as_bytes()).map_err(crate::error::gix_err)?;
-        let spec = crate::journal::autostash::AutostashSpec { rule: crate::journal::autostash::AutostashRule::Overlap, target: Some(target), op: self.label(), target_name: Some(self.branch.clone()) };
+        let spec = crate::journal::autostash::AutostashSpec { rule: crate::journal::autostash::AutostashRule::Overlap, target: Some(target), op: self.label(), target_name: Some(self.branch.clone()), moved: None };
         Ok(Plan { autostash: Some(spec), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {
@@ -435,7 +435,7 @@ impl WriteIntent for MergeStop {
     async fn plan(&self, pre: &Pre<'_>) -> Result<Plan, GbError> {
         let repo = gix::open(pre.root).map_err(crate::error::gix_err)?;
         let target = repo.rev_parse_single(self.target.as_str()).map_err(crate::error::gix_err)?.detach();
-        let spec = crate::journal::autostash::AutostashSpec { rule: crate::journal::autostash::AutostashRule::AnyTracked, target: Some(target), op: format!("merge {}", self.target), target_name: Some(self.target.clone()) };
+        let spec = crate::journal::autostash::AutostashSpec { rule: crate::journal::autostash::AutostashRule::AnyTracked, target: Some(target), op: format!("merge {}", self.target), target_name: Some(self.target.clone()), moved: None };
         Ok(Plan { autostash: Some(spec), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<(), GbError> {

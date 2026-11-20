@@ -5623,7 +5623,8 @@ mod tests {
             json!({"method": "suggestWorktreePath", "params": {"repo": id, "branch": "feature/x"}}),
             // --- end 2C T8 ---
             // --- 2D T10: integrate ---
-            json!({"method": "integratePreview", "params": {"repo": id, "worktree": wt, "kind": "merge", "target": "feature/login"}}),
+            // `hotfix` is ahead of main, so the conflict prediction runs (in its quarantine).
+            json!({"method": "integratePreview", "params": {"repo": id, "worktree": wt, "kind": "merge", "target": "hotfix"}}),
             // --- end 2D T10 ---
             // --- 2D T12 ---
             json!({"method": "conflictFile", "params": {"repo": id, "worktree": wt, "path": "file_0.txt"}}),
@@ -5842,6 +5843,8 @@ mod tests {
                 // The prediction must really run merge-tree, or the object check below proves nothing.
                 Ok(v) if sample["method"] == "predictRebase" => assert!(v["off"].is_null(), "{v}"),
                 // --- end 3C T7 ---
+                // The preview's conflict prediction (merge-tree, quarantined) must run too.
+                Ok(v) if sample["method"] == "integratePreview" => assert!(v["behind"].as_u64() > Some(0), "{v}"),
                 Ok(_) => {}
             }
         }

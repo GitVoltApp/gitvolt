@@ -666,12 +666,12 @@ impl WriteIntent for RebaseIntent {
         // the target written where a populated submodule or an embedded clone sits deletes it
         // whole (safety review 2 N2), refused first; the same check says what the move sweeps
         // away (M1, M2).
-        let mut rule = AutostashRule::Rebased;
+        let (mut rule, mut moved) = (AutostashRule::Rebased, None);
         if let Some(tip) = pre.before.head.oid.as_deref().and_then(oid) {
-            rule = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, tip, target, "rebase").await?.rule_over(rule);
+            (rule, moved) = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, tip, target, "rebase").await?.into_rule(rule);
         }
         // --- end 2C repo-safety ---
-        Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(target), op: format!("rebase onto {}", self.target), target_name: Some(self.target.clone()) }), ..Plan::default() })
+        Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(target), op: format!("rebase onto {}", self.target), target_name: Some(self.target.clone()), moved }), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<IntegrateOutcome, GbError> {
         let branch = cx.before.head.branch.clone().ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, "Check out a branch to rebase it"))?;

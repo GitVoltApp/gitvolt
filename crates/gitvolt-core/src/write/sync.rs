@@ -294,8 +294,8 @@ impl PullIntent {
         format!("refs/heads/{}", self.branch)
     }
 
-    fn autostash(&self, rule: AutostashRule, upstream: gix::ObjectId) -> AutostashSpec {
-        AutostashSpec { rule, target: Some(upstream), op: format!("pull {}", self.upstream), target_name: Some(self.upstream.clone()) }
+    fn autostash(&self, (rule, moved): (AutostashRule, Option<crate::write::precheck::Moved>), upstream: gix::ObjectId) -> AutostashSpec {
+        AutostashSpec { rule, target: Some(upstream), op: format!("pull {}", self.upstream), target_name: Some(self.upstream.clone()), moved }
     }
 }
 
@@ -408,21 +408,21 @@ impl WriteIntent for PullIntent {
         // --- end 2C repo-safety ---
         match (ahead, self.mode) {
             (0, _) => {
-                let rule = refuse_repos_in_the_way(&pre.api.cli, pre.root, local, upstream, "pull").await?.rule();
+                let rule = refuse_repos_in_the_way(&pre.api.cli, pre.root, local, upstream, "pull").await?.into_rule(AutostashRule::Overlap);
                 Ok(Plan { autostash: Some(self.autostash(rule, upstream)), ..Plan::default() })
             }
             (_, PullMode::FfOnly) => Ok(Plan::default()),
             // `Merged`: the prediction runs against the merge, so a dirty file only the local
             // side changed isn't a predicted conflict.
             (_, PullMode::FfOrMerge) => {
-                let rule = refuse_repos_in_the_way_of_merge(&pre.api.cli, pre.root, local, upstream, "pull").await?.rule_over(AutostashRule::Merged);
+                let rule = refuse_repos_in_the_way_of_merge(&pre.api.cli, pre.root, local, upstream, "pull").await?.into_rule(AutostashRule::Merged);
                 Ok(Plan { autostash: Some(self.autostash(rule, upstream)), ..Plan::default() })
             }
             (_, PullMode::Rebase) => {
                 // T9's checks (the lossy-merge refusal, `--rebase-merges`, the repository in the
                 // way of the upstream's checkout), with pull's stash.
                 let mut plan = self.rebase.plan(pre).await?;
-                let rule = refuse_repos_in_the_way(&pre.api.cli, pre.root, local, upstream, "pull").await?.rule_over(AutostashRule::Rebased);
+                let rule = refuse_repos_in_the_way(&pre.api.cli, pre.root, local, upstream, "pull").await?.into_rule(AutostashRule::Rebased);
                 plan.autostash = Some(self.autostash(rule, upstream));
                 Ok(plan)
             }

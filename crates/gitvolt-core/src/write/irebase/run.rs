@@ -518,7 +518,7 @@ impl WriteIntent for IrebaseIntent {
         let watch = todo.update_refs.iter().map(|b| (format!("refs/heads/{b}"), range.tips.get(b).cloned())).collect();
         let deletes = todo.deletes.iter().map(|b| (format!("refs/heads/{b}"), range.tips[b].clone())).collect();
         // 2C repo-safety, as RebaseIntent's: the rebase checks the base out first.
-        let rule = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, range.head, range.base, "rebase").await?.rule_over(AutostashRule::Rebased);
+        let (rule, moved) = crate::write::precheck::refuse_repos_in_the_way(&pre.api.cli, pre.root, range.head, range.base, "rebase").await?.into_rule(AutostashRule::Rebased);
         // A reword's range has no merges (`rows_for` refuses them): every row is a first parent.
         let reword_depth = match &self.source {
             Source::Reword { oid, .. } => range.rows.iter().position(|r| &r.oid == oid),
@@ -527,7 +527,7 @@ impl WriteIntent for IrebaseIntent {
         let _ = self.planned.set(Planned { base: range.base, todo, dir, watch, deletes, reword_depth });
         // A full ref (3D's `refs/remotes/origin/main`) reads short in the autostash copy.
         let shown = short_ref(&self.base).to_string();
-        Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(range.base), op: format!("rebase onto {shown}"), target_name: Some(shown) }), ..Plan::default() })
+        Ok(Plan { autostash: Some(AutostashSpec { rule, target: Some(range.base), op: format!("rebase onto {shown}"), target_name: Some(shown), moved }), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<IntegrateOutcome, GbError> {
         let p = self.planned.get().ok_or_else(|| GbError::other("interactive rebase ran without its plan"))?;

@@ -11,6 +11,17 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   the commits it last read, so a refresh reads only the new ones instead of every commit in the
   window again, and find keeps their searchable text too. The graph also keeps the rows that
   didn't change, so a refresh that leaves them as they were redraws none of them.
+- **Merges, rebases and other changes do less work after they run (performance).** On a big
+  repository (50,000 files):
+  - Every change re-reads the file lists with `git diff` only for the side `git status` shows
+    changes on: none at all when nothing is staged or changed, which saves 40–120 ms per change.
+  - A change that moves a branch reloads the graph, sidebar and repository info once, not twice;
+    a rebase's end no longer adds a third load.
+  - The rebase and merge dialogs predict conflicts with git's own merge (`git merge-tree`, in a
+    throwaway object folder, so the repository is never written), about four times faster than
+    before. A rebase or merge with local changes checks them against git's merge the same way.
+  - With local changes, a rebase, merge or checkout compares the two commits' files once instead
+    of twice, and restoring your changes runs one `git status` fewer.
 
 ### Fixed
 

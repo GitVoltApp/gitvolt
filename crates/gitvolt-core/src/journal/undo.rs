@@ -474,16 +474,16 @@ impl WriteIntent for UndoIntent {
                     Direction::Undo => &self.entry.head_before,
                     Direction::Redo => &self.entry.head_after,
                 };
-                let rule = in_the_way(to_oid(&head.oid)).await?.rule(); // 2C T6, repo-safety
-                Some(AutostashSpec { rule, target: to_oid(&head.oid), op: self.label(), target_name: head.branch.clone().or_else(|| head.oid.clone()) })
+                let (rule, moved) = in_the_way(to_oid(&head.oid)).await?.into_rule(AutostashRule::Overlap); // 2C T6, repo-safety
+                Some(AutostashSpec { rule, target: to_oid(&head.oid), op: self.label(), target_name: head.branch.clone().or_else(|| head.oid.clone()), moved })
             }
             UndoKind::Rewind => {
                 let checked = pre.before.head.branch.as_ref().map(|b| format!("refs/heads/{b}"));
                 let mv = self.entry.refs.iter().find(|m| Some(&m.name) == checked.as_ref());
                 match mv {
                     Some(m) => {
-                        let rule = in_the_way(to_oid(self.ends(m).1)).await?.rule(); // 2C T6, repo-safety
-                        Some(AutostashSpec { rule, target: to_oid(self.ends(m).1), op: self.label(), target_name: pre.before.head.branch.clone() })
+                        let (rule, moved) = in_the_way(to_oid(self.ends(m).1)).await?.into_rule(AutostashRule::Overlap); // 2C T6, repo-safety
+                        Some(AutostashSpec { rule, target: to_oid(self.ends(m).1), op: self.label(), target_name: pre.before.head.branch.clone(), moved })
                     }
                     None => None,
                 }
@@ -503,7 +503,7 @@ impl WriteIntent for UndoIntent {
                     // and it's left alone. What's in the way is still stashed (a repository
                     // refuses; untracked files where a file goes back).
                     let paths = restore_in_the_way(&only(s, &stopped.paths)).await?;
-                    (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()) })
+                    (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()), moved: None })
                 }
                 // --- end 3B T2 ---
                 Some(s) => {
@@ -521,7 +521,7 @@ impl WriteIntent for UndoIntent {
                         None => s.paths.clone(),
                     };
                     paths.extend(restore_in_the_way(s).await?); // 2C repo-safety
-                    (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()) })
+                    (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()), moved: None })
                 }
                 None => None,
             },
@@ -548,7 +548,7 @@ impl WriteIntent for UndoIntent {
                 // --- end 2C repo-safety ---
                 paths.sort();
                 paths.dedup();
-                (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()) })
+                (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()), moved: None })
             }
             // Undo of a mixed reset reads the index back over P ∪ the tree diff: the entries
             // staged there since the reset (`dirty ∩ P` on the index side) are autostashed, which
@@ -556,7 +556,7 @@ impl WriteIntent for UndoIntent {
             UndoKind::ResetMixed if self.dir == Direction::Undo && pre.before.head.branch == self.entry.head_before.branch => match (&pre.before.head.oid, &self.entry.head_before.oid) {
                 (Some(now), Some(old)) => {
                     let paths = crate::write::reset::staged_since(pre.root, now, old, self.entry.before.as_ref())?;
-                    (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()) })
+                    (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()), moved: None })
                 }
                 _ => None,
             },
@@ -597,7 +597,7 @@ impl WriteIntent for UndoIntent {
                         }
                     };
                     paths.extend(restore_in_the_way(s).await?); // 2C repo-safety
-                    (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()) })
+                    (!paths.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(paths), target: None, op: self.label(), target_name: Some(self.label()), moved: None })
                 }
             },
             // --- end 2C T7 ---

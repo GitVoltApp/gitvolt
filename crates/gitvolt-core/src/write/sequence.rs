@@ -292,7 +292,7 @@ impl WriteIntent for SequenceIntent {
             return Ok(Plan { snapshot: Some((paths.into_iter().collect(), Vec::new())), ..Plan::default() });
         }
         // Fix round 1: P is what the picks touch, so an untracked file there is stashed too.
-        Ok(Plan { autostash: Some(AutostashSpec { rule: AutostashRule::Touching(paths.into_iter().collect()), target: None, op: self.label.get(), target_name: Some(what(&self.oids)) }), ..Plan::default() })
+        Ok(Plan { autostash: Some(AutostashSpec { rule: AutostashRule::Touching(paths.into_iter().collect()), target: None, op: self.label.get(), target_name: Some(what(&self.oids)), moved: None }), ..Plan::default() })
     }
     async fn run(&self, cx: &mut WriteCx<'_>) -> Result<SequenceOutcome, GbError> {
         if self.no_commit {

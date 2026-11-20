@@ -95,6 +95,17 @@ pub(crate) async fn dirty(cli: &GitCli, root: &Path) -> Result<Dirty, GbError> {
     Ok(d)
 }
 
+/// The unmerged paths of `root`'s index (each once, sorted): exactly the ones `git status` lists
+/// as unmerged (`Dirty::unmerged`), which it takes from the index too, without status's scan of
+/// the worktree.
+pub(crate) fn unmerged(root: &Path) -> Result<Vec<String>, GbError> {
+    let repo = gix::open(root).map_err(gix_err)?;
+    let index = repo.index_or_empty().map_err(gix_err)?;
+    let mut paths: Vec<String> = index.entries().iter().filter(|e| e.stage_raw() != 0).map(|e| e.path(&index).to_str_lossy().into_owned()).collect();
+    paths.dedup();
+    Ok(paths)
+}
+
 fn blob(repo: &gix::Repository, tree: Option<&gix::Tree<'_>>, path: &str) -> Option<Vec<u8>> {
     let entry = tree?.lookup_entry_by_path(path).ok()??;
     if entry.mode().is_tree() {
@@ -523,19 +534,42 @@ pub(crate) struct MoveCheck {
     /// The ignored files under such a directory: git deletes them without asking (M2). Only an
     /// `--all` stash carries them.
     pub ignored: Vec<String>,
+    /// The tree diff the check scanned, for the autostash plan to reuse (`AutostashSpec::moved`).
+    pub moved: Option<Moved>,
+}
+
+/// The paths that differ between `from` and `to` (commits or trees, as [`tree_diff_paths`]):
+/// a pure function of the two ids, so the same write's autostash plan takes them as they are
+/// when it diffs the same two (`journal::autostash::plan`).
+#[derive(Debug, Clone)]
+pub(crate) struct Moved {
+    pub from: ObjectId,
+    pub to: ObjectId,
+    pub paths: BTreeSet<String>,
+}
+
+impl Moved {
+    /// `tree_diff_paths(repo, from, to)`, from `known` when it's that diff.
+    pub(crate) fn paths(known: Option<&Moved>, repo: &gix::Repository, from: ObjectId, to: ObjectId) -> Result<BTreeSet<String>, GbError> {
+        match known {
+            Some(m) if m.from == from && m.to == to => Ok(m.paths.clone()),
+            _ => tree_diff_paths(repo, from, to),
+        }
+    }
 }
 
 impl MoveCheck {
+    /// [`Self::rule_over`], and the move's diff for the autostash plan.
+    pub(crate) fn into_rule(mut self, base: crate::journal::autostash::AutostashRule) -> (crate::journal::autostash::AutostashRule, Option<Moved>) {
+        let moved = self.moved.take();
+        (self.rule_over(base), moved)
+    }
+
     /// The autostash rule for the move: `base` (Overlap, Merged, Rebased), wrapped with what the
     /// move sweeps when it sweeps anything.
     pub(crate) fn rule_over(self, base: crate::journal::autostash::AutostashRule) -> crate::journal::autostash::AutostashRule {
         use crate::journal::autostash::{AutostashRule, Swept};
         if self.swept.is_empty() && self.ignored.is_empty() { base } else { AutostashRule::With(Box::new(base), Swept { swept: self.swept, ignored: self.ignored }) }
-    }
-
-    /// [`Self::rule_over`] Overlap: a checkout, a fast-forward, a Switch or Rewind undo.
-    pub(crate) fn rule(self) -> crate::journal::autostash::AutostashRule {
-        self.rule_over(crate::journal::autostash::AutostashRule::Overlap)
     }
 }
 
@@ -557,21 +591,21 @@ async fn check_landing(cli: &GitCli, root: &Path, from: ObjectId, to: ObjectId, 
     // Off the async stack (the gix objects are large; a deep write future overflowed a test
     // thread's), as the reset's scan.
     let root_buf = root.to_path_buf();
-    let (scan, swept) = crate::api::blocking(move || {
+    let (scan, swept, moved) = crate::api::blocking(move || {
         let repo = gix::open(&root_buf).map_err(gix_err)?;
         let from = if from_merge_base { repo.merge_base(from, to).ok().flatten().map(|id| id.detach()).unwrap_or(from) } else { from };
         let diff = tree_diff(&repo, from, to)?;
         let index = repo.index_or_empty().map_err(gix_err)?;
         let scan = scan_move(&root_buf, &index, &diff);
         let swept = scan.indexed_under(&index);
-        Ok((scan, swept))
+        Ok((scan, swept, Moved { from, to, paths: diff.paths }))
     })
     .await?;
     let (nested, files) = others_under(cli, root, &scan.dirs).await?;
     let ignored = ignored_among(cli, root, &files).await?;
     let mut repos = scan.repos;
     repos.extend(nested);
-    Ok(MoveCheck { repos: repos.into_iter().collect(), swept, ignored })
+    Ok(MoveCheck { repos: repos.into_iter().collect(), swept, ignored, moved: Some(moved) })
 }
 
 /// The paths of `tree` among `paths` that it holds as a blob or a symlink (for a path set that
@@ -716,6 +750,19 @@ mod tests {
         let d = dirty(&cli(), r.path()).await.unwrap();
         assert_eq!(d.tracked.into_iter().collect::<Vec<_>>(), ["f.txt"]);
         assert_eq!(d.untracked.into_iter().collect::<Vec<_>>(), ["u.txt"]);
+    }
+
+    /// The index's unmerged paths are exactly the ones `git status` lists (`dirty`).
+    #[tokio::test]
+    async fn unmerged_reads_what_status_lists_from_the_index() {
+        let r = TestRepo::new();
+        crate::testing::fixtures::conflicts(&r);
+        assert!(unmerged(r.path()).unwrap().is_empty());
+        assert!(r.try_git(&["merge", "-q", "feature/x"]).is_err(), "conflicts");
+        r.write("loose.txt", "untracked\n");
+        let from_status = dirty(&cli(), r.path()).await.unwrap();
+        assert_eq!(unmerged(r.path()).unwrap(), from_status.unmerged);
+        assert_eq!(from_status.unmerged, ["a.txt", "gone.txt", "logo.bin"]);
     }
 
     #[tokio::test]

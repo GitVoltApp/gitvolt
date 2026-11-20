@@ -9,6 +9,7 @@ import { useRuntime } from './runtime';
 import { tabLabel } from './tabs';
 import { RepoView, RepoViewContext } from './seams1b';
 import { useOps } from './ops';
+import { refreshGate } from './repoRefresh';
 import { TabSlot } from './slots';
 import { tabView, useTabView } from './tabStores';
 import { setWatched } from './watch';
@@ -77,18 +78,12 @@ export const RepoTab = memo(function RepoTab({ tab }: { tab: TabState }) {
 
   useEffect(() => {
     if (repoId === undefined) return;
+    // One load per write: its `repoChanged`, `refsUpdated` and `opFinished` (`repoRefresh.ts`).
+    const gate = refreshGate(repoId);
     return onEvent((ev) => {
       if (ev.type === 'repoChanged' && ev.repo === repoId) tabView(tab.id)?.services.wip.changed(ev.worktrees, ev.versions);
-      // --- 2D T18: a rebase's per-commit ticks reload the graph alone; the op's end does the full refresh once ---
-      if (ev.type === 'opFinished' && ev.repo === repoId && (ev.kind === 'rebase' || ev.kind === 'pull')) { void refresh(tab.id); return; }
-      // --- end 2D T18 ---
-      if (ev.type !== 'repoChanged' && ev.type !== 'refsUpdated') return;
-      if (ev.repo !== repoId) return;
-      if (ev.type === 'refsUpdated') void refresh(tab.id, Object.values(useOps.getState().ops).some((o) => o.repo === repoId && o.step) ? { graphOnly: true } : undefined);
-      // Only refs, HEAD, stashes, config and submodules show in the sidebar and repo info; a
-      // worktree/index change reloads the graph alone (1C review M5). The core says `submodules`
-      // only when what the Submodules panel lists changed (a gitlink, `.gitmodules`, a checkout).
-      else void refresh(tab.id, ev.kinds.some((k) => k === 'refs' || k === 'head' || k === 'stash' || k === 'config' || k === 'submodules') ? {} : { graphOnly: true });
+      const opts = gate(ev, Object.values(useOps.getState().ops));
+      if (opts) void refresh(tab.id, opts);
     });
   }, [repoId, tab.id, refresh]);
 

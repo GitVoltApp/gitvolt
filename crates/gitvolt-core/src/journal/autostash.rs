@@ -83,6 +83,9 @@ pub(crate) struct AutostashSpec {
     pub op: String,
     /// What the changes would conflict with, for the warning and the banner.
     pub target_name: Option<String>,
+    /// The tree diff the intent's move check already made (HEAD → `target`, in this write, under
+    /// its lock): `plan` reuses it instead of diffing again.
+    pub moved: Option<precheck::Moved>,
 }
 
 #[derive(Debug, Clone)]
@@ -116,12 +119,11 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
     // --- 2D T14: a merge's prediction runs against the merge (only now: the worktree is dirty) ---
     let target = match (&base, spec.target) {
         (AutostashRule::Merged | AutostashRule::Rebased, Some(t)) => {
-            let root = root.to_path_buf();
-            Some(crate::api::blocking(move || {
-                let repo = gix::open(&root).map_err(gix_err)?;
-                Ok(repo.head_id().ok().and_then(|h| crate::write::integrate::merge_result(&repo, h.detach(), t)).unwrap_or(t))
+            let head = gix::open(root).map_err(gix_err)?.head_id().ok().map(|h| h.detach());
+            Some(match head {
+                Some(h) => crate::write::integrate::merge_result(&api.cli, root, h, t).await.unwrap_or(t),
+                None => t,
             })
-            .await?)
         }
         (_, t) => t,
     };
@@ -131,7 +133,7 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         (_, Some(target)) => {
             let repo = gix::open(root).map_err(gix_err)?;
             match repo.head_id() {
-                Ok(head) => precheck::tree_diff_paths(&repo, head.detach(), target)?,
+                Ok(head) => precheck::Moved::paths(spec.moved.as_ref(), &repo, head.detach(), target)?,
                 Err(_) => BTreeSet::new(),
             }
         }
@@ -155,7 +157,7 @@ pub(crate) async fn plan(api: &Api, root: &Path, tmp: &Path, spec: &AutostashSpe
         (AutostashRule::Rebased, Some(t)) => {
             let repo = gix::open(root).map_err(gix_err)?;
             match repo.head_id() {
-                Ok(head) => precheck::tree_diff_paths(&repo, head.detach(), t)?,
+                Ok(head) => precheck::Moved::paths(spec.moved.as_ref(), &repo, head.detach(), t)?,
                 Err(_) => BTreeSet::new(),
             }
         }
@@ -385,8 +387,9 @@ pub(crate) async fn restore(cx: &mut WriteCx<'_>, oid: &str, message: &str, with
     }
     args.push(oid);
     // git prints a merge's CONFLICT lines on stdout, which a failure doesn't keep: conflicts are
-    // the unmerged paths the apply added.
-    let unmerged_before = precheck::dirty(&cx.api.cli, cx.root).await?.conflicted;
+    // the unmerged paths the apply added. Read from the index (as `git status` reads them), so
+    // the restore runs no status of its own: the write's own read of the lists follows.
+    let unmerged_before = precheck::unmerged(cx.root)?.len() as u32;
     let inv = cx.git_stash(args);
     let (res, stopped) = cx.run_stash_step(StashStep::Restoring, message, inv).await;
     for k in [ChangeKind::Worktree, ChangeKind::Index] {
@@ -415,10 +418,10 @@ pub(crate) async fn restore(cx: &mut WriteCx<'_>, oid: &str, message: &str, with
     if stderr.contains("could not restore untracked files") || stderr.contains("already exists, no checkout") {
         return Ok(Applied::PartialRestore);
     }
-    let after = precheck::dirty(&cx.api.cli, cx.root).await.ok();
-    let files = after.as_ref().map(|d| d.conflicted).unwrap_or(unmerged_before);
+    let after = precheck::unmerged(cx.root).ok();
+    let files = after.as_ref().map_or(unmerged_before, |u| u.len() as u32);
     if files > unmerged_before || stderr.contains("CONFLICT (") {
-        let unmerged = after.map(|d| d.unmerged).unwrap_or_default();
+        let unmerged = after.unwrap_or_default();
         return Ok(Applied::Conflicts { files, binary: binary_among(cx.api, cx.root, oid, &unmerged).await });
     }
     Ok(Applied::Refused { index: stderr.contains("Conflicts in index") || stderr.contains("without --index"), message: e.message })
@@ -554,7 +557,7 @@ impl WriteIntent for ApplyKept {
         }
         changed.extend(dirs.untracked);
         // --- end 2C repo-safety ---
-        let spec = (!changed.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(changed), target: None, op: self.label(), target_name: Some(self.label.clone()) });
+        let spec = (!changed.is_empty()).then(|| AutostashSpec { rule: AutostashRule::Paths(changed), target: None, op: self.label(), target_name: Some(self.label.clone()), moved: None });
         Ok(Plan { autostash: spec, ..Plan::default() })
     }
 
@@ -750,6 +753,82 @@ mod tests {
         assert_eq!(std::fs::read_to_string(r.path().join("d.txt")).unwrap(), lines(20, &[(1, "mine"), (20, "other")]), "merged onto the target");
         assert_eq!(stashes(&r), "", "a clean restore drops the stash");
         assert!(res["journal"]["banners"].as_array().unwrap().is_empty());
+    }
+
+    /// The plan takes the move check's diff when it's HEAD → its target (one diff per write), and
+    /// diffs itself otherwise.
+    #[tokio::test]
+    async fn the_plan_reuses_the_move_checks_diff_of_the_same_two_trees() {
+        let data = tempfile::tempdir().unwrap();
+        let r = repo();
+        r.write("b.txt", &lines(12, &[(3, "mine")]));
+        let api = api(data.path());
+        let oid = |rev: &str| gix::ObjectId::from_hex(r.git(&["rev-parse", rev]).as_bytes()).unwrap();
+        let (head, other) = (oid("HEAD"), oid("other"));
+        let root = crate::platform::fs::canonicalize(r.path()).unwrap();
+        // A made-up diff that says b.txt changes: only a reused one makes the overlap.
+        let plan = |from: gix::ObjectId| {
+            let moved = Some(precheck::Moved { from, to: other, paths: ["b.txt".to_string()].into() });
+            let spec = AutostashSpec { rule: AutostashRule::Overlap, target: Some(other), op: "checkout other".into(), target_name: Some("other".into()), moved };
+            let (api, root, tmp) = (&api, root.clone(), data.path().to_path_buf());
+            async move { plan(api, &root, &tmp, &spec).await.unwrap().is_some() }
+        };
+        assert!(plan(head).await, "HEAD → other: reused");
+        assert!(!plan(other).await, "another diff: diffed again, and b.txt isn't touched");
+    }
+
+    /// An autostashed rebase restores the staged/unstaged split and the untracked file exactly,
+    /// with no `git status` of the restore's own: the plan's and the lists' after the write.
+    #[tokio::test]
+    async fn an_autostashed_rebase_restores_everything_with_two_status_reads() {
+        let data = tempfile::tempdir().unwrap();
+        let r = repo();
+        r.write("e.txt", "local commit\n");
+        r.git(&["add", "e.txt"]);
+        r.git(&["commit", "-q", "-m", "local"]);
+        r.write("a.txt", "a staged\n");
+        r.git(&["add", "a.txt"]);
+        r.write("b.txt", &lines(12, &[(1, "b staged")]));
+        r.git(&["add", "b.txt"]);
+        r.write("b.txt", &lines(12, &[(1, "b staged"), (12, "b unstaged")]));
+        r.write("c.txt", "untracked\n");
+        let split = |r: &TestRepo| (r.git(&["diff", "--cached"]), r.git(&["diff"]));
+        let before = split(&r);
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        let from = api.command_log().next_id();
+        let go = Request::Integrate { repo: id, worktree: wt(&r), kind: crate::write::integrate::IntegrateKind::Rebase, target: "other".into(), update_refs: None, ff_only: None, expect: Expect::default(), confirm: Confirm { autostash: true } };
+        let res = api.dispatch(go).await.unwrap();
+        assert_eq!(res["outcome"]["status"], "done");
+        assert_eq!(r.git(&["log", "-1", "--format=%s", "HEAD~"]), "other edits d", "rebased");
+        assert_eq!(split(&r), before, "the staged/unstaged split comes back (--index)");
+        assert_eq!(std::fs::read_to_string(r.path().join("c.txt")).unwrap(), "untracked\n");
+        assert_eq!(stashes(&r), "", "a clean restore drops the stash");
+        assert!(res["journal"]["banners"].as_array().unwrap().is_empty());
+        let ran: Vec<String> = api.command_log().entries().iter().filter(|e| e.id > from).map(|e| e.args.join(" ")).collect();
+        assert!(ran.iter().any(|c| c.contains("stash apply --index")), "{ran:?}");
+        assert_eq!(ran.iter().filter(|c| c.starts_with("status")).count(), 2, "{ran:?}");
+    }
+
+    /// The same rebase, where the restore conflicts: the conflict is still found and reported
+    /// (from the index), and the stash is kept with its banner.
+    #[tokio::test]
+    async fn an_autostashed_rebase_whose_restore_conflicts_reports_it() {
+        let data = tempfile::tempdir().unwrap();
+        let r = repo();
+        r.write("e.txt", "local commit\n");
+        r.git(&["add", "e.txt"]);
+        r.git(&["commit", "-q", "-m", "local"]);
+        r.write("d.txt", &lines(20, &[(20, "mine")]));
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        let go = Request::Integrate { repo: id, worktree: wt(&r), kind: crate::write::integrate::IntegrateKind::Rebase, target: "other".into(), update_refs: None, ff_only: None, expect: Expect::default(), confirm: Confirm { autostash: true } };
+        let res = api.dispatch(go).await.unwrap();
+        assert_eq!(res["outcome"]["status"], "done");
+        assert_eq!(stashes(&r), "On main: autostash before rebase onto other", "kept");
+        let banner = &res["journal"]["banners"][0];
+        assert_eq!((banner["kind"].as_str(), banner["files"].as_u64()), (Some("autostashConflicts"), Some(1)));
+        assert_eq!(r.git(&["diff", "--name-only", "--diff-filter=U"]), "d.txt");
     }
 
     /// §6.1: no overlap, no autostash: an untouched file keeps its mtime.
