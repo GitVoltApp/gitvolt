@@ -13,6 +13,22 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   remote's default branch; git flow's master; main, master or trunk), then the development branch
   (git flow's develop; develop or dev); the rest keeps its alphabetical order. Recent sort is
   unchanged.
+- **The background fetch connects to each remote once, not twice (performance).** After every
+  fetch, GitVolt asked each remote for its whole tag list (`git ls-remote --tags`), for the tag
+  chips' pushed-or-not icons: a second connection, SSH handshake and credential helper run per
+  remote every minute, even when nothing changed. A background fetch that changed nothing now
+  asks only when the list is 15 minutes old; your own fetch or pull still asks every time. A tag
+  deleted or moved on the remote can show for up to 15 minutes later.
+- **Repositories open sooner after launch (performance).** GitVolt reads your login shell's
+  environment (`SSH_AUTH_SOCK`, `PATH` additions) before its first git command, and started the
+  shell only once the window was up, so the first repository waited for it (about 0.4 s for a
+  plain bash setup, often more for zsh with plugins). The shell now starts first thing, while
+  the window starts.
+- **Opening a repository asks for less at once (performance).** Its first background fetch waits
+  until the graph has loaded and three seconds have passed, rather than running beside the
+  graph's and status's first reads; a tab sends the core one "hold this repository" request
+  instead of two; and the app's version info is asked for once at startup, not two or three
+  times.
 - **The graph refreshes faster when a commit, checkout or rebase step moves HEAD.** GitVolt keeps
   the commits it last read, so a refresh reads only the new ones instead of every commit in the
   window again, and find keeps their searchable text too. The graph also keeps the rows that

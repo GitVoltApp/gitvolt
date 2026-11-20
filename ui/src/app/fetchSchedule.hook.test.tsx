@@ -11,7 +11,7 @@ vi.mock('../api/client', () => ({
 const platform = vi.hoisted(() => ({ isMinimized: vi.fn(async () => false), onFocusChanged: vi.fn(() => () => {}) }));
 vi.mock('./platform', () => ({ platform }));
 
-const { runFetch, useFetchScheduler } = await import('./fetchSchedule');
+const { FIRST_FETCH_SETTLE_MS, runFetch, useFetchScheduler } = await import('./fetchSchedule');
 const { useRuntime } = await import('./runtime');
 const { useAppState, DEFAULT_SETTINGS } = await import('./state');
 const { useOps } = await import('./ops');
@@ -196,7 +196,7 @@ describe('useFetchScheduler', () => {
 
   it('runs only while its tab is visible: a hidden <Activity> has no timer', async () => {
     const { rerender } = render(<Activity mode="visible"><Scheduled repoId={4} /></Activity>);
-    await act(() => vi.advanceTimersByTimeAsync(0));
+    await act(() => vi.advanceTimersByTimeAsync(FIRST_FETCH_SETTLE_MS));
     expect(api.fetch).toHaveBeenCalledTimes(1);
     expect(api.fetch).toHaveBeenLastCalledWith(4, true);
     expect(platform.onFocusChanged).toHaveBeenCalledTimes(1);
@@ -212,10 +212,22 @@ describe('useFetchScheduler', () => {
     expect(api.fetch).toHaveBeenCalledTimes(3);
   });
 
+  it("a just-opened tab's first fetch waits for its first graph, then a few seconds", async () => {
+    useRuntime.getState().patch('t', { status: 'loading' });
+    render(<Scheduled repoId={4} />);
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    expect(api.fetch).not.toHaveBeenCalled();
+    act(() => useRuntime.getState().patch('t', { status: 'ready' }));
+    await act(() => vi.advanceTimersByTimeAsync(FIRST_FETCH_SETTLE_MS - 1));
+    expect(api.fetch).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(api.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("a background fetch a user's op cancelled runs again once the repo's queue is idle", async () => {
     api.fetch.mockResolvedValueOnce({ status: 'skipped', reason: 'busy' });
     render(<Scheduled repoId={4} />);
-    await act(() => vi.advanceTimersByTimeAsync(0));
+    await act(() => vi.advanceTimersByTimeAsync(FIRST_FETCH_SETTLE_MS));
     expect(api.fetch).toHaveBeenCalledTimes(1);
     const item = { id: 1, label: 'rebase main onto feature/x', kind: 'rebase' as const, op: 9 };
     act(() => useQueue.getState().set(4, { running: item, queued: [], stopped: null }));

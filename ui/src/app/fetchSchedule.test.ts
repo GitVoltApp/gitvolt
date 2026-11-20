@@ -22,6 +22,45 @@ describe('FetchScheduler', () => {
     expect(deps.fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("a tab's first fetch waits until it has settled; a later activation's doesn't", async () => {
+    let settle: () => void = () => {};
+    const state = { last: 0 };
+    const deps = { now: () => Date.now(), lastFetchAt: () => state.last, isMinimized: vi.fn(async () => false), fetch: vi.fn(async () => { state.last = Date.now(); }), settled: vi.fn(() => new Promise<void>((r) => { settle = r; })) };
+    const s = new FetchScheduler(60_000, deps);
+    s.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(deps.fetch).not.toHaveBeenCalled();
+    settle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.fetch).toHaveBeenCalledTimes(1);
+    s.stop();
+    // Shown again after the interval: at once, without waiting.
+    await vi.advanceTimersByTimeAsync(60_000);
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.fetch).toHaveBeenCalledTimes(2);
+    expect(deps.settled).toHaveBeenCalledTimes(1);
+    s.stop();
+  });
+
+  it('settling after a stop, or after an interval tick already fetched, fetches nothing more', async () => {
+    let settle: () => void = () => {};
+    const state = { last: 0 };
+    const deps = { now: () => Date.now(), lastFetchAt: () => state.last, isMinimized: vi.fn(async () => false), fetch: vi.fn(async () => { state.last = Date.now(); }), settled: vi.fn((signal: AbortSignal) => new Promise<void>((r) => { settle = r; signal.addEventListener('abort', () => r()); })) };
+    const s = new FetchScheduler(60_000, deps);
+    s.start();
+    s.stop();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.fetch).not.toHaveBeenCalled();
+    s.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(deps.fetch).toHaveBeenCalledTimes(1);
+    settle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deps.fetch).toHaveBeenCalledTimes(1);
+    s.stop();
+  });
+
   it('does not fetch on activation when a fetch happened recently', async () => {
     const { s, deps } = make({ last: Date.now() - 10_000 });
     s.start();

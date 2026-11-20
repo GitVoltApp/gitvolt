@@ -16,7 +16,7 @@ import { withActiveSidebar } from '../worktrees/active';
 import { noteViewport, unloadDue, type OlderState } from '../graph/olderWindow';
 import { basename, setTabRepo, tabForPath, touchRecent } from './tabs';
 import { viewSpecFor } from '../presets/store';
-import { holdRepo } from './watch';
+import { holdRepo, releaseRepo } from './watch';
 
 /** One tab's loaded repo (not persisted: the profile holds only the tab's path). */
 export interface TabRuntime {
@@ -156,8 +156,7 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
     closeCenterView(tabId);
     closeFlyout(tabId); // And its flyout, with the focus it would return to
     dropForge(tabId); // And its forge state
-    // And its repository: the core drops a handle no tab holds (a lost release only keeps it).
-    api.releaseRepo(tabId).catch(() => {});
+    releaseRepo(tabId); // And its repository: the core drops a handle no tab holds
     if (!(tabId in get().tabs)) return;
     set((s) => {
       const tabs = { ...s.tabs };

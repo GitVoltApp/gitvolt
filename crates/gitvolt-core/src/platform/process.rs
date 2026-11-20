@@ -61,6 +61,12 @@ impl Group {
         Self(imp::Group::of(child))
     }
 
+    /// [`Self::of`] for a child started with `std::process` (the login shell, started before the
+    /// async runtime exists).
+    pub fn of_std(child: &std::process::Child) -> Self {
+        Self(imp::Group::of_std(child))
+    }
+
     /// Asks every process in it to stop (SIGTERM). Windows: kills them (see the module docs).
     pub fn terminate(&self) {
         self.0.terminate();
@@ -159,6 +165,10 @@ mod imp {
             Self { pid: child.id() }
         }
 
+        pub fn of_std(child: &std::process::Child) -> Self {
+            Self { pid: Some(child.id()) }
+        }
+
         fn signal(&self, signal: Signal) {
             if let Some(pid) = self.pid {
                 let _ = nix::sys::signal::killpg(nix::unistd::Pid::from_raw(pid as i32), signal);
@@ -207,6 +217,10 @@ mod imp {
     impl Group {
         pub fn of(child: &tokio::process::Child) -> Self {
             Self { job: child.raw_handle().and_then(job_for), pid: child.id() }
+        }
+
+        pub fn of_std(child: &std::process::Child) -> Self {
+            Self { job: job_for(child.as_raw_handle()), pid: Some(child.id()) }
         }
 
         pub fn terminate(&self) {

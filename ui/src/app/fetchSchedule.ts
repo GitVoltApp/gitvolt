@@ -23,13 +23,21 @@ export interface FetchDeps {
   isMinimized(): Promise<boolean>;
   /** True: skipped because the repo's queue was busy (a user's op cancelled it, or was running). */
   fetch(): Promise<boolean | void>;
+  /** Resolves once the tab has settled after opening (`useFetchScheduler`: its first graph, then
+   * a few seconds): a tab's first fetch waits for it. Never resolves once `signal` aborts. */
+  settled?(signal: AbortSignal): Promise<void>;
 }
+
+/** After a tab's first graph, how long its first background fetch waits: the open's own reads
+ * (status, sidebar, avatars) run first, not beside a fetch's network round trips. */
+export const FIRST_FETCH_SETTLE_MS = 3000;
 
 export const FETCH_SKIPPED_AUTH = 'Fetch skipped: authentication required';
 
 /**
  * The timing rules, independent of React so they're unit-testable with fake timers:
  * - started (the tab became active): one fetch at once if the last one is older than the interval;
+ *   a tab that never fetched (just opened) waits until it has settled (`settled`) first;
  * - then one every interval;
  * - a tick while the window is minimized is skipped, and replayed once when the window gets the
  *   focus back. CEF has no minimize event, so each tick asks (`isMinimized`), and the focus event
@@ -43,6 +51,7 @@ export class FetchScheduler {
   private missed = false;
   private owed = false;
   private running = false;
+  private settling: AbortController | null = null;
   private readonly intervalMs: number;
   private readonly deps: FetchDeps;
 
@@ -54,13 +63,27 @@ export class FetchScheduler {
   start(): void {
     if (this.intervalMs <= 0 || this.timer) return;
     this.timer = setInterval(() => { void this.tick(); }, this.intervalMs);
-    if (this.deps.now() - this.deps.lastFetchAt() >= this.intervalMs) void this.tick();
+    if (!this.due()) return;
+    if (this.deps.lastFetchAt() > 0 || !this.deps.settled) {
+      void this.tick();
+      return;
+    }
+    const settling = new AbortController();
+    this.settling = settling;
+    // Still due once settled: an interval tick may have fetched meanwhile (a slow first graph).
+    void this.deps.settled(settling.signal).then(() => { if (!settling.signal.aborted && this.due()) void this.tick(); });
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.missed = false;
+    this.settling?.abort();
+    this.settling = null;
+  }
+
+  private due(): boolean {
+    return this.deps.now() - this.deps.lastFetchAt() >= this.intervalMs;
   }
 
   async tick(): Promise<void> {
@@ -201,6 +224,25 @@ async function fetchNow(tabId: string, background: boolean, remote?: string, mrH
   }
 }
 
+/** Resolves `FIRST_FETCH_SETTLE_MS` after tab `tabId` has its first graph (or failed to load
+ * one); never once `signal` aborts. */
+function tabSettled(tabId: string, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const loaded = () => (useRuntime.getState().tabs[tabId]?.status ?? 'loading') !== 'loading';
+    const wait = () => {
+      off();
+      timer = setTimeout(resolve, FIRST_FETCH_SETTLE_MS);
+    };
+    const off = useRuntime.subscribe(() => { if (loaded()) wait(); });
+    signal.addEventListener('abort', () => {
+      off();
+      clearTimeout(timer);
+    }, { once: true });
+    if (loaded()) wait();
+  });
+}
+
 /**
  * The background fetch for one tab. RepoTab calls it, inside the tab's `<Activity>`: only the
  * shown tab's effect is live, so a hidden tab has no timer and does no work, and showing it again restarts the schedule (one fetch at once if it's due).
@@ -214,6 +256,7 @@ export function useFetchScheduler(tabId: string, repoId: number | undefined): vo
       lastFetchAt: () => useRuntime.getState().tabs[tabId]?.lastFetchAt ?? 0,
       isMinimized: () => platform.isMinimized().catch(() => false),
       fetch: () => fetchOnce(tabId, true),
+      settled: (signal) => tabSettled(tabId, signal),
     });
     s.start();
     const off = platform.onFocusChanged((f) => s.onFocus(f));

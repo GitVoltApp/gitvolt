@@ -341,6 +341,17 @@ pub fn run() {
     // First, before any thread and before GTK: the window's desktop identity (dock icon) and
     // the input method's key handling (Ctrl+C and friends reach the page). See desktop.rs.
     desktop::init();
+    // Every child (git, the editors, the file manager, xdg-open) gets the session's own
+    // IBUS_ENABLE_SYNC_MODE / GDK_BACKEND, not the app's (desktop.rs).
+    let child_env: ChildEnvHook = Arc::new(desktop::restore_child_env);
+    // The login shell's environment, captured once through the same hook, so the shell sees the
+    // session's variables, not CEF's. Its shell starts now, with the environment read here (no
+    // other thread yet, and before the runtime's `set_var`, its SAFETY note), so a slow shell
+    // setup runs while CEF and the window start; `warm` in `setup` collects it. Git commands
+    // that start before it's done wait for it (bounded by the 5 s capture timeout); so do
+    // editor launches.
+    let shell_env = ShellEnv::from_login_shell_with_hook(child_env.clone());
+    shell_env.start(std::env::vars_os().collect());
     // Log files: `~/.cache/gitvolt/logs`, daily, newest 7 kept; stderr too in debug builds.
     // A redacted copy on stdout in debug builds, and in any build run with RUST_LOG set.
     let console = cfg!(debug_assertions) || std::env::var_os("RUST_LOG").is_some_and(|v| !v.is_empty());
@@ -358,13 +369,6 @@ pub fn run() {
     if let Some(why) = unguarded {
         tracing::warn!("running without the single-instance guard: {why}");
     }
-    // Every child (git, the editors, the file manager, xdg-open) gets the session's own
-    // IBUS_ENABLE_SYNC_MODE / GDK_BACKEND, not the app's (desktop.rs).
-    let child_env: ChildEnvHook = Arc::new(desktop::restore_child_env);
-    // The login shell's environment, captured once (started in `setup`) through the
-    // same hook, so the shell sees the session's variables, not CEF's. Git commands that start
-    // before it's done wait for it (bounded by the 5 s capture timeout); so do editor launches.
-    let shell_env = ShellEnv::from_login_shell_with_hook(child_env.clone());
     let cli = GitCli::new(Arc::new(CommandLog::new(1000))).with_shell_env(shell_env.clone());
     // Settings and profiles: `~/.config/gitvolt`, written debounced and flushed
     // once more on exit.
@@ -578,9 +582,9 @@ pub fn run() {
             // The update check: shortly after startup, then daily (Settings › Updates).
             tauri::async_runtime::spawn(forward.update_checks());
             // Here, after the runtime's `set_var` (its SAFETY note: no other thread may read the
-            // environment before it): capture the login shell's environment, detect
-            // the "Open in…" editors off the UI's path, so the first `listOpeners` answers from
-            // the cache, and drop week-old copies of old versions.
+            // environment before it): collect the login shell's environment (its shell started
+            // at the top of `run`), detect the "Open in…" editors off the UI's path, so the first
+            // `listOpeners` answers from the cache, and drop week-old copies of old versions.
             tauri::async_runtime::spawn(shell_env.clone().warm());
             tauri::async_runtime::spawn(async move {
                 let _ = warm.dispatch(Request::ListOpeners).await;

@@ -9,6 +9,13 @@
 //! beside the rewrite marks, so a restart shows the last known state at once, as git keeps
 //! remote-tracking branches across one. It's a cache: a lost or corrupt file only means "unknown"
 //! until the next fetch.
+//!
+//! A background fetch that changed no ref lists a remote again only when its list is older than
+//! `STALE_AFTER` (or wasn't listed this session): a tag created on the remote arrives with the
+//! fetch (git follows tags to the commits it fetches), which changes a ref, so what can go
+//! unseen that long is a tag deleted or moved on the remote. The chips' source icons and the tag
+//! menu's push/delete entries show it a little late; a push or delete still asks the remote
+//! itself, so nothing acts on a stale list. A user's fetch or pull always lists.
 
 use crate::api::{Api, RepoHandle};
 use serde::{Deserialize, Serialize};
@@ -16,6 +23,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 /// One remote's tags: name → the commit it peels to (full hex).
@@ -55,10 +63,15 @@ struct File {
 
 const VERSION: u32 = 1;
 
+/// How old a remote's list may get before a background fetch that changed nothing lists it again.
+pub(crate) const STALE_AFTER: Duration = Duration::from_secs(15 * 60);
+
 /// Every repository's known remote tags this session (`Api::remote_tags`).
 #[derive(Default)]
 pub(crate) struct RemoteTags {
     repos: Mutex<HashMap<PathBuf, Known>>,
+    /// When each (common dir, remote) was last listed this session.
+    listed: Mutex<HashMap<(PathBuf, String), Instant>>,
 }
 
 fn file_of(data_dir: &Path, common_dir: &Path) -> PathBuf {
@@ -102,6 +115,28 @@ impl RemoteTags {
     /// Runs `f` on them, saving them if it changed them: whether it did.
     pub(crate) fn update(&self, data_dir: &Path, common_dir: &Path, f: impl FnOnce(&mut Known)) -> bool {
         self.with(data_dir, common_dir, f).1
+    }
+
+    /// Notes `remote`'s list as listed at `at`.
+    fn mark_listed(&self, common_dir: &Path, remote: &str, at: Instant) {
+        self.listed.lock().unwrap_or_else(|e| e.into_inner()).insert((common_dir.to_path_buf(), remote.to_string()), at);
+    }
+
+    /// Moves every remote's last listing `by` into the past.
+    #[cfg(test)]
+    fn age(&self, by: Duration) {
+        for at in self.listed.lock().unwrap().values_mut() {
+            *at = at.checked_sub(by).expect("an instant that far back");
+        }
+    }
+
+    /// Those of `remotes` not listed this session, or not since `STALE_AFTER` before `now`.
+    pub(crate) fn stale(&self, common_dir: &Path, remotes: Vec<String>, now: Instant) -> Vec<String> {
+        let listed = self.listed.lock().unwrap_or_else(|e| e.into_inner());
+        remotes
+            .into_iter()
+            .filter(|r| listed.get(&(common_dir.to_path_buf(), r.clone())).is_none_or(|at| now.saturating_duration_since(*at) >= STALE_AFTER))
+            .collect()
     }
 }
 
@@ -147,6 +182,9 @@ impl Api {
     /// failed listing keeps that remote's last known list, and is only logged: it never fails
     /// the fetch. Whether anything changed.
     pub(crate) async fn refresh_remote_tags(&self, h: &RepoHandle, repo: u32, remotes: &[String], cancel: &CancellationToken) -> bool {
+        if remotes.is_empty() {
+            return false;
+        }
         let quiet = self.ops.begin(crate::events::OpKind::Fetch, Some(repo), false);
         let mut listed = Vec::new();
         for remote in remotes {
@@ -156,7 +194,10 @@ impl Api {
             let args = crate::netops::NO_EXT.into_iter().chain(["ls-remote", "--tags", "--end-of-options", remote.as_str()]);
             let inv = crate::git::GitInvocation::new(&h.workdir, args).timeout(None).cancel(cancel.clone()).detach_terminal().envs(self.net_env(quiet.id));
             match self.cli.run(inv).await {
-                Ok(out) => listed.push((remote.clone(), parse_ls_remote(&String::from_utf8_lossy(&out.stdout)))),
+                Ok(out) => {
+                    self.remote_tags.mark_listed(&h.common_dir, remote, Instant::now());
+                    listed.push((remote.clone(), parse_ls_remote(&String::from_utf8_lossy(&out.stdout))));
+                }
                 Err(e) => tracing::warn!("couldn't list {remote}'s tags after a fetch: {}", crate::redact::redact(&e.message)),
             }
         }
@@ -279,6 +320,34 @@ mod tests {
         let again = crate::write::test_support::api(data.path());
         let id2 = open(&again, &r).await;
         assert_eq!(chips(&again, id2).await[0], same("v1"));
+    }
+
+    /// A background fetch lists the tags again only when it changed a ref or the list is old; a
+    /// user's fetch always does.
+    #[tokio::test]
+    async fn a_background_fetch_that_changed_nothing_lists_only_an_old_list() {
+        let data = tempfile::tempdir().unwrap();
+        let (r, one, _) = tagged();
+        let api = api(data.path());
+        let id = open(&api, &r).await;
+        let fetch = |background: bool| call(&api, "fetch", json!({ "repo": id, "background": background }));
+        fetch(true).await.unwrap();
+        assert_eq!(ls_remotes(&api), 1, "not listed yet this session");
+        fetch(true).await.unwrap();
+        assert_eq!(ls_remotes(&api), 1, "nothing changed: the list is fresh");
+        // Someone else pushes a branch: the fetch changes a ref.
+        r.git(&["push", "-q", r.root().join("origin.git").to_str().unwrap(), &format!("{one}:refs/heads/side")]);
+        fetch(true).await.unwrap();
+        assert_eq!(ls_remotes(&api), 2, "a ref changed");
+        fetch(true).await.unwrap();
+        assert_eq!(ls_remotes(&api), 2);
+        api.remote_tags.age(STALE_AFTER);
+        fetch(true).await.unwrap();
+        assert_eq!(ls_remotes(&api), 3, "an old list");
+        fetch(false).await.unwrap();
+        assert_eq!(ls_remotes(&api), 4, "the user's fetch");
+        let known = api.known_remote_tags(&api.handle(id).unwrap());
+        assert_eq!(known["origin"]["v4"], one);
     }
 
     /// The tag listing runs after the fetch; when it fails, the fetch still succeeds and the tags

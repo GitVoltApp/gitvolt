@@ -370,15 +370,19 @@ impl Api {
             Ok::<(bool, _), GbError>((ref_state_async(h.repo.clone()).await? != before, server))
         }
         .await;
+        // A background fetch that changed nothing lists only the remotes whose tag list is
+        // unknown or old (`remote_tags::STALE_AFTER`): not a second connection to every remote
+        // every interval.
+        let to_list = |remotes: Vec<String>, changed: bool| if background && !changed { self.remote_tags.stale(&h.common_dir, remotes, std::time::Instant::now()) } else { remotes };
         let tags_changed = match &res {
             // A Compare's MR head isn't a fetch of the remote.
             _ if mr_head.is_some() || op.auth_denied() => false,
-            Ok(_) => self.refresh_remote_tags(&h, id, &fetched(&h.workdir, remote.as_ref()), &op.cancel).await,
+            Ok((changed, _)) => self.refresh_remote_tags(&h, id, &to_list(fetched(&h.workdir, remote.as_ref()), *changed), &op.cancel).await,
             // `fetch --all` goes on past a remote it can't fetch: the others' tags are still listed.
             Err(e) if e.kind != GbErrorKind::Cancelled && remote.is_none() => {
                 let failed = e.stderr.as_deref().map(failed_remotes).unwrap_or_default();
                 let fetched: Vec<String> = fetched(&h.workdir, None).into_iter().filter(|r| !failed.iter().any(|f| &f.name == r)).collect();
-                !failed.is_empty() && self.refresh_remote_tags(&h, id, &fetched, &op.cancel).await
+                !failed.is_empty() && self.refresh_remote_tags(&h, id, &to_list(fetched, false), &op.cancel).await
             }
             Err(_) => false,
         };

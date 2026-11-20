@@ -5,17 +5,37 @@ const running = new Map<number, Promise<void>>();
 /** The tab that last asked to watch each repo: it holds the repo before each watch. */
 const holders = new Map<number, string>();
 
+/** Each tab's hold, sent or in flight: a tab's open and then its watch send one `holdRepo`. */
+const holds = new Map<string, { repo: number; done: Promise<void> }>();
+
 /**
  * Tab `tabId` holds `repo` in the core, which drops a handle no tab holds (and won't watch it).
- * Idempotent; retried once, then logged: a lost hold leaves the tab unwatched until it's shown
- * again, when its watch holds it again.
+ * Sent once per tab and repository (until `releaseRepo`): a second call waits on the first.
+ * Retried once, then logged: a lost hold is forgotten, so the tab's watch holds it again the next
+ * time it's shown.
  */
-export async function holdRepo(tabId: string, repo: number): Promise<void> {
-  try {
-    await api.holdRepo(tabId, repo);
-  } catch {
-    await api.holdRepo(tabId, repo).catch((e: unknown) => console.warn('[gitvolt] holdRepo failed', errorMessage(e)));
-  }
+export function holdRepo(tabId: string, repo: number): Promise<void> {
+  const held = holds.get(tabId);
+  if (held?.repo === repo) return held.done;
+  const done = (async () => {
+    try {
+      await api.holdRepo(tabId, repo);
+    } catch {
+      await api.holdRepo(tabId, repo).catch((e: unknown) => {
+        console.warn('[gitvolt] holdRepo failed', errorMessage(e));
+        if (holds.get(tabId)?.done === done) holds.delete(tabId);
+      });
+    }
+  })();
+  holds.set(tabId, { repo, done });
+  return done;
+}
+
+/** Tab `tabId` closed: the core lets go of its repository unless another tab holds it. A lost
+ * release only keeps the handle. */
+export function releaseRepo(tabId: string): void {
+  holds.delete(tabId);
+  api.releaseRepo(tabId).catch(() => {});
 }
 
 /**
@@ -23,6 +43,7 @@ export async function holdRepo(tabId: string, repo: number): Promise<void> {
  * this one watches its active tab and its tabs hold their repositories again.
  */
 export async function forgetPreviousPage(): Promise<void> {
+  holds.clear();
   await api.unwatchAll().catch((e: unknown) => console.warn('[gitvolt] unwatchAll failed', errorMessage(e)));
   await api.releaseAll().catch((e: unknown) => console.warn('[gitvolt] releaseAll failed', errorMessage(e)));
 }

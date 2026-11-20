@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../api/client';
+import { useAppInfo } from '../app/appInfo';
 import type { GbError } from '../api/gen/GbError';
 import { isGbError } from './describe';
 
@@ -13,7 +13,7 @@ export const useGitCheck = create<GitCheck>((set, get) => ({
   problem: null,
   async check() {
     try {
-      await api.appInfo();
+      await useAppInfo.getState().load(); // the boot's one appInfo, shared with the status bar's
       set({ problem: null });
     } catch (e) {
       if (isGbError(e) && (e.kind === 'GitTooOld' || gitNotFound(e))) set({ problem: e });
