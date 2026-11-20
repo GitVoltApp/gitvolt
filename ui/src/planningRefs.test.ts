@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -65,9 +66,20 @@ function files(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** The tracked files under ROOTS: what the repository publishes, not what's ignored locally
+ * (`docs/superpowers/` holds the local-only notes themselves). Null without git. */
+function tracked(): string[] | null {
+  try {
+    const out = execFileSync('git', ['ls-files', '-z', '--', ...ROOTS], { cwd: repo, encoding: 'utf8', maxBuffer: 64 << 20 });
+    return out.split('\0').filter((f) => f && SOURCE.test(f.split('/').pop()!) && !f.split('/').some((d) => SKIP_DIRS.has(d))).map((f) => join(repo, f));
+  } catch {
+    return null;
+  }
+}
+
 describe('planning references', () => {
   it('no comment or test title points at the local-only design notes', () => {
-    const all = [...ROOTS.flatMap((r) => files(join(repo, r))), ...ROOT_FILES.map((f) => join(repo, f))];
+    const all = [...tracked() ?? ROOTS.flatMap((r) => files(join(repo, r))), ...ROOT_FILES.map((f) => join(repo, f))];
     const hits: string[] = [];
     for (const path of all) {
       let text: string;
