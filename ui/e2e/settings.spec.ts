@@ -168,8 +168,11 @@ test.describe('settings', () => {
       await page.keyboard.press('Control+f');
       await expect(dialog(page).getByLabel('Search settings')).toBeFocused();
       await page.keyboard.type('avatar');
-      await expect(dialog(page).getByRole('heading', { name: '3 settings match "avatar"' })).toBeVisible();
+      // Graph's two avatar switches, the Accounts list and the repository's Forge account (the
+      // account its avatars come from), across all three scopes.
+      await expect(dialog(page).getByRole('heading', { name: '4 settings match "avatar"' })).toBeVisible();
       await expect(nav(page, 'Graph').locator('.settings-nav-count')).toHaveText('2');
+      await expect(nav(page, 'Repository').locator('.settings-nav-count')).toHaveText('1');
       await expect(nav(page, 'General')).toHaveAttribute('data-dim', 'true');
       const gravatar = dialog(page).getByLabel('From Gravatar');
       await expect(gravatar).toBeChecked();

@@ -10,13 +10,17 @@ const count = (page: Page) => page.getByRole('search', { name: 'Find in graph' }
 const filtered = (page: Page) => page.locator('.graph-row:has([data-col="message"].row-dim-filter)');
 const input = (page: Page) => page.getByRole('textbox', { name: 'Find commits' });
 
-/** Sets the commit window (the setting) through the harness's own API, before the app boots. */
-async function setCommitLimit(page: Page, limit: number) {
-  await page.goto('/?no-repo');
-  await page.evaluate(({ url, limit }) => new Promise<void>((resolve, reject) => {
-    const ws = new WebSocket(url);
+/**
+ * Sets the commit window (the setting) through the harness's own API, before any page boots: an
+ * app page open meanwhile would save its own copy of the settings over it (its first run stores
+ * the last-run version).
+ */
+function setCommitLimit(limit: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const ws = new WebSocket(harnessWs);
     const send = (id: number, req: object) => ws.send(JSON.stringify({ id, req }));
     ws.onopen = () => send(1, { method: 'loadState' });
+    ws.onerror = () => reject(new Error(`no harness at ${harnessWs}`));
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as { id?: number; ok?: { settings: object }; err?: unknown };
       if (m.err) return reject(new Error(JSON.stringify(m.err)));
@@ -26,7 +30,7 @@ async function setCommitLimit(page: Page, limit: number) {
         resolve();
       }
     };
-  }), { url: harnessWs, limit });
+  });
 }
 
 test.describe('find', () => {
@@ -177,7 +181,7 @@ test.describe('find', () => {
   });
 
   test('outside the window: a full hash loads a deeper window; "Search older history" lists older commits and reveals one', async ({ page }) => {
-    await setCommitLimit(page, 20);
+    await setCommitLimit(20);
     await page.goto(openUrl(fixtures.longHistory));
     await expect(grid(page)).toBeVisible();
     await expect(row(page, 'Commit 59')).toBeVisible();
