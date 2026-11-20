@@ -17,9 +17,9 @@ const view = (panels: Panel[]) => panels.flatMap((p) => [`[${p.section.label} ${
 const opts = (o: Partial<Parameters<typeof buildPanels>[1]> = {}) => ({ filter: '', sort: {}, collapsed: new Set<string>(), ...o });
 
 describe('sidebar model', () => {
-  it('builds one panel per section, in fixed order, nesting by "/", folders and branches in one alphabetical order', () => {
+  it('builds one panel per section, in fixed order, nesting by "/", the trunk branches first, then folders and branches in one alphabetical order', () => {
     expect(view(buildPanels(sectionsOf(payload), opts()))).toEqual([
-      '[Local 3]', '  feature/', '    login', '    pay/', '      v2', '  main',
+      '[Local 3]', '  main', '  feature/', '    login', '    pay/', '      v2',
       '[Remote 1]', '  origin/', '    main',
       '[Worktrees 1]', '  r',
       '[Stashes 1]', '  On main: wip',
@@ -41,9 +41,39 @@ describe('sidebar model', () => {
     expect(sectionsOf(payload).some((s) => s.id === 'gitflow')).toBe(false);
   });
 
-  it('a branch sorts among the folders by name: dev comes before the f/ folder', () => {
-    const mixed: SidebarPayload = { ...payload, locals: [branch('f/cart-stack', 1), branch('dev', 2), branch('backup/old', 3)] };
-    expect(view(buildPanels(sectionsOf(mixed), opts())).slice(0, 6)).toEqual(['[Local 3]', '  backup/', '    old', '  dev', '  f/', '    cart-stack']);
+  it('a branch sorts among the folders by name: docs comes before the f/ folder', () => {
+    const mixed: SidebarPayload = { ...payload, locals: [branch('f/cart-stack', 1), branch('docs', 2), branch('backup/old', 3)] };
+    expect(view(buildPanels(sectionsOf(mixed), opts())).slice(0, 6)).toEqual(['[Local 3]', '  backup/', '    old', '  docs', '  f/', '    cart-stack']);
+  });
+
+  it("the trunk branches lead their level: production (a remote's default, main, master, trunk), then development (develop, dev)", () => {
+    const remote = (r: string, name: string) => ({ name, fullName: `refs/remotes/${r}/${name}`, target: 'r'.repeat(40), tipTime: 1, summary: 's', author: 'a' });
+    const trunks: SidebarPayload = {
+      ...payload,
+      locals: ['backup/old', 'feature/login', 'dev', 'master', 'alpha', 'production'].map((n) => branch(n, 1)),
+      remotes: [
+        { name: 'fork', host: null, hostKind: 'github', branches: ['ci/table', 'develop', 'main', 'backup/main', 'production'].map((n) => remote('fork', n)) },
+        { name: 'origin', host: null, hostKind: 'github', defaultBranch: 'refs/remotes/origin/production', branches: ['a-fix', 'production', 'trunk'].map((n) => remote('origin', n)) },
+      ],
+    };
+    expect(view(buildPanels(sectionsOf(trunks), opts())).slice(0, 25)).toEqual([
+      // Local counts any remote's default branch; a remote only its own. `backup/main` isn't a trunk.
+      '[Local 6]', '  master', '  production', '  dev', '  alpha', '  backup/', '    old', '  feature/', '    login',
+      '[Remote 8]',
+      '  fork/', '    main', '    develop', '    backup/', '      main', '    ci/', '      table', '    production',
+      '  origin/', '    production', '    trunk', '    a-fix',
+      '[Worktrees 1]', '  r', '[Stashes 1]',
+    ]);
+    // Git flow's names count (its own panel, empty here, comes first); its develop comes after main even as the default branch.
+    const flow: SidebarPayload = {
+      ...payload,
+      locals: ['alpha', 'next', 'stable', 'main'].map((n) => branch(n, 1)),
+      remotes: [{ name: 'origin', host: null, hostKind: 'github', defaultBranch: 'refs/remotes/origin/next', branches: [] }],
+      gitflow: { master: 'stable', develop: 'next', feature: 'feature/', release: 'release/', hotfix: 'hotfix/', versionTag: 'v' },
+    };
+    expect(view(buildPanels(sectionsOf(flow), opts())).slice(1, 6)).toEqual(['[Local 4]', '  main', '  stable', '  next', '  alpha']);
+    // Recent sort keeps its own order.
+    expect(view(buildPanels(sectionsOf(payload), opts({ sort: { local: 'recent' } }))).slice(0, 4)).toEqual(['[Local 3]', '  feature/login', '  main', '  feature/pay/v2']);
   });
 
   it('the filter applies to every panel; counts are the matches, a panel with none shows 0', () => {
@@ -59,7 +89,7 @@ describe('sidebar model', () => {
 
   it('a collapsed panel keeps its count but has no rows; collapsed folders hide their contents', () => {
     const panels = buildPanels(sectionsOf(payload), opts({ collapsed: new Set([folderKey('local', 'feature'), sectionKey('tags'), sectionKey('remote')]) }));
-    expect(view(panels)).toEqual(['[Local 3]', '  feature/', '  main', '[Remote 1 collapsed]', '[Worktrees 1]', '  r', '[Stashes 1]', '  On main: wip', '[Tags 1 collapsed]']);
+    expect(view(panels)).toEqual(['[Local 3]', '  main', '  feature/', '[Remote 1 collapsed]', '[Worktrees 1]', '  r', '[Stashes 1]', '  On main: wip', '[Tags 1 collapsed]']);
   });
 
   it('recent sort is flat and newest first; the remote keeps its group, rows unprefixed', () => {
