@@ -9,6 +9,7 @@ use crate::error::{GbError, GbErrorKind};
 use crate::git::{GitCli, GitInvocation};
 use crate::payload::{BlobSource, FileChange, FileListPayload, SubmoduleState};
 use crate::status::{status, EntryKind, StatusEntry, SubmoduleFlags};
+use crate::write::queue::RefreshPermit;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -248,13 +249,74 @@ fn diff_tree(tail: &[String]) -> Vec<String> {
     ["diff-tree", "-r", "-M", "--no-ext-diff", "--no-textconv", "--no-abbrev", "-z", "--raw", "--numstat"].iter().map(|s| s.to_string()).chain(tail.iter().cloned()).collect()
 }
 
-/// Porcelain `git diff` (index/worktree comparisons). `-c diff.autoRefreshIndex=false` (passed as
-/// argv, not repo config, so it can never be overridden by the user's own config) stops git from
-/// silently rewriting `.git/index` to clear stat-dirty entries it finds identical (`C1`) — but it
-/// also makes git list every merely-stat-dirty path as a phantom `M` with no real content diff.
-/// Callers must run those results through `drop_phantom_stat_dirty`.
+/// Porcelain `git diff` (index/worktree comparisons) for a read without a refresh permit.
+/// `-c diff.autoRefreshIndex=false` (passed as argv, not repo config, so the user's own config
+/// can't override it) stops git from rewriting `.git/index` to clear stat-dirty entries it finds
+/// identical, which `git diff` does even with `GIT_OPTIONAL_LOCKS=0` — but it also makes git list
+/// every merely-stat-dirty path as a phantom `M` with no real content diff. Callers must run
+/// those results through `drop_phantom_stat_dirty`.
 fn diff_porcelain(extra: &[&str]) -> Vec<String> {
-    ["-c", "diff.autoRefreshIndex=false", "diff", "--no-ext-diff", "--no-textconv", "--no-abbrev", "-z", "--raw", "--numstat"].iter().chain(extra).map(|s| s.to_string()).collect()
+    ["-c", "diff.autoRefreshIndex=false"].iter().map(|s| s.to_string()).chain(diff_refreshing(extra)).collect()
+}
+
+/// Porcelain `git diff` as in a terminal: a stat-dirty but identical path is re-hashed and
+/// skipped, and the index refreshed for it. Only under a refresh permit (`GitInvocation::refresh_index`).
+fn diff_refreshing(extra: &[&str]) -> Vec<String> {
+    ["diff", "--no-ext-diff", "--no-textconv", "--no-abbrev", "-z", "--raw", "--numstat"].iter().chain(extra).map(|s| s.to_string()).collect()
+}
+
+/// Past this many bytes of paths, the unstaged diff covers the whole worktree rather than the
+/// paths status found changed: one command's argv holds at most `PATHSPEC_CHUNK` of them
+/// (Windows caps a command line at 32K), and a few commands are still cheaper than one that
+/// re-reads every stat-dirty file.
+const PATHSPEC_LIMIT: usize = 64 * 1024;
+const PATHSPEC_CHUNK: usize = 8 * 1024;
+
+/// `paths` in groups of at most `PATHSPEC_CHUNK` bytes, or `None` past `PATHSPEC_LIMIT` (the
+/// caller diffs everything).
+fn pathspec_chunks(paths: &[String]) -> Option<Vec<&[String]>> {
+    if paths.iter().map(|p| p.len() + 1).sum::<usize>() > PATHSPEC_LIMIT {
+        return None;
+    }
+    let mut chunks = Vec::new();
+    let (mut start, mut bytes) = (0, 0);
+    for (i, p) in paths.iter().enumerate() {
+        if bytes > 0 && bytes + p.len() + 1 > PATHSPEC_CHUNK {
+            chunks.push(&paths[start..i]);
+            (start, bytes) = (i, 0);
+        }
+        bytes += p.len() + 1;
+    }
+    if start < paths.len() {
+        chunks.push(&paths[start..]);
+    }
+    Some(chunks)
+}
+
+/// The worktree-vs-index diff of `paths` (literal pathspecs), chunked, or of the whole worktree
+/// when there are too many. Refreshing as a terminal's `git diff` does under `permit`.
+async fn unstaged_raw(cli: &GitCli, wt: &Path, paths: &[String], permit: Option<&RefreshPermit<'_>>) -> Result<Vec<RawChange>, GbError> {
+    let permit = permit.filter(|_| !crate::status::sequence_running(wt));
+    let args = |tail: &[String]| {
+        let head = if permit.is_some() { diff_refreshing(&[]) } else { diff_porcelain(&[]) };
+        head.into_iter().chain(tail.iter().cloned()).collect::<Vec<_>>()
+    };
+    let invocation = |tail: &[String]| {
+        let inv = GitInvocation::new(wt, args(tail)).env("GIT_LITERAL_PATHSPECS", "1");
+        match permit {
+            Some(p) => inv.refresh_index(p),
+            None => inv,
+        }
+    };
+    let Some(chunks) = pathspec_chunks(paths) else {
+        return parse_raw_numstat(&cli.run(invocation(&[])).await?.stdout);
+    };
+    let mut raw = Vec::new();
+    for chunk in chunks {
+        let tail: Vec<String> = std::iter::once("--".to_string()).chain(chunk.iter().cloned()).collect();
+        raw.extend(parse_raw_numstat(&cli.run(invocation(&tail)).await?.stdout)?);
+    }
+    Ok(raw)
 }
 
 /// Drops the phantom `M` records `diff_porcelain` produces for a stat-dirty-but-content-identical
@@ -273,8 +335,7 @@ fn drop_phantom_stat_dirty(raw: Vec<RawChange>, dirty: &HashSet<String>) -> Vec<
 }
 
 /// Every path `git status` considers not-clean: staged, unstaged, untracked or conflicted. Used
-/// as the ground truth for `drop_phantom_stat_dirty` (status does a real content comparison and,
-/// thanks to `GIT_OPTIONAL_LOCKS=0`, never writes back what it finds).
+/// as the ground truth for `drop_phantom_stat_dirty` (status does a real content comparison).
 fn dirty_paths(entries: &[StatusEntry]) -> HashSet<String> {
     entries.iter().filter(|e| e.kind != EntryKind::Ignored).map(|e| e.path.clone()).collect()
 }
@@ -417,12 +478,17 @@ async fn wip_staged(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path) -
 
 /// A worktree's unstaged changes (worktree vs index, minus stat-dirty phantoms) plus its
 /// untracked files, given that worktree's `git status` (`entries`). An untracked file in `reuse`
-/// takes that line count instead of being read.
-async fn wip_unstaged(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path, entries: Vec<StatusEntry>, reuse: &HashMap<String, Option<u32>>) -> Result<Vec<FileChange>, GbError> {
+/// takes that line count instead of being read. The diff covers only the tracked paths status
+/// found changed in the worktree: a worktree full of stat-dirty files (a fresh clone, a tool
+/// that touched them) costs what its real changes do.
+async fn wip_unstaged(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path, entries: Vec<StatusEntry>, reuse: &HashMap<String, Option<u32>>, permit: Option<&RefreshPermit<'_>>) -> Result<Vec<FileChange>, GbError> {
     let name = wt.to_string_lossy().into_owned();
     let dirty = worktree_dirty_paths(&entries);
+    let mut changed: Vec<String> = entries.iter().filter(|e| !matches!(e.kind, EntryKind::Untracked | EntryKind::Ignored) && e.worktree != '.').map(|e| e.path.clone()).collect();
+    changed.sort();
+    changed.dedup();
     // Nothing tracked changed in the worktree: the diff could only list phantoms, so it's skipped.
-    let raw = if !entries.iter().any(|e| !matches!(e.kind, EntryKind::Untracked | EntryKind::Ignored) && e.worktree != '.') { Vec::new() } else { drop_phantom_stat_dirty(collapse_unmerged(run(cli, wt, diff_porcelain(&[])).await?), &dirty) };
+    let raw = if changed.is_empty() { Vec::new() } else { drop_phantom_stat_dirty(collapse_unmerged(unstaged_raw(cli, wt, &changed, permit).await?), &dirty) };
     let conflicts: HashMap<String, crate::payload::ConflictKind> = entries
         .iter()
         .filter(|e| e.kind == EntryKind::Unmerged)
@@ -473,15 +539,16 @@ async fn wip_unstaged(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path,
 /// Both of a worktree's WIP lists, `(staged, unstaged)`, exactly as `file_list` gives them, from
 /// a status read already made (`entries`, the phantom filter's ground truth): what the watcher
 /// keeps for the active tab. `reuse`: line counts already known for untracked files not
-/// written to since (by path). Read-only, like `file_list` (C1).
+/// written to since (by path). With `permit`, the unstaged diff refreshes the index as in a
+/// terminal; without, it changes nothing, like `file_list`.
 /// Each diff runs only when `entries` lists a change on its side: a write that leaves the
 /// worktree clean (most do) costs no diff, and a dirty one only the side it touched.
-pub async fn wip_lists(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path, entries: Vec<StatusEntry>, reuse: &HashMap<String, Option<u32>>) -> Result<(FileListPayload, FileListPayload), GbError> {
+pub(crate) async fn wip_lists(repo: &gix::ThreadSafeRepository, cli: &GitCli, wt: &Path, entries: Vec<StatusEntry>, reuse: &HashMap<String, Option<u32>>, permit: Option<&RefreshPermit<'_>>) -> Result<(FileListPayload, FileListPayload), GbError> {
     let any_staged = entries.iter().any(|e| !matches!(e.kind, EntryKind::Untracked | EntryKind::Ignored) && e.index != '.');
     let staged = async {
         if any_staged { wip_staged(repo, cli, wt).await } else { Ok(Vec::new()) }
     };
-    let (staged, unstaged) = futures_util::future::join(staged, wip_unstaged(repo, cli, wt, entries, reuse)).await;
+    let (staged, unstaged) = futures_util::future::join(staged, wip_unstaged(repo, cli, wt, entries, reuse, permit)).await;
     Ok((totals(staged?), totals(unstaged?)))
 }
 
@@ -526,7 +593,7 @@ pub async fn file_list(repo: &gix::ThreadSafeRepository, cli: &GitCli, workdir: 
         DiffSpec::Wip { staged: true, .. } => wip_staged(repo, cli, resolved(worktree)?).await?,
         DiffSpec::Wip { staged: false, .. } => {
             let wt = resolved(worktree)?;
-            wip_unstaged(repo, cli, wt, status(cli, wt).await?, &HashMap::new()).await?
+            wip_unstaged(repo, cli, wt, status(cli, wt).await?, &HashMap::new(), None).await?
         }
     };
     Ok(totals(files))
@@ -662,7 +729,7 @@ mod tests {
         let wt = crate::platform::fs::canonicalize(r.path()).unwrap();
         let entries = status(&cli(), &wt).await.unwrap();
         let reuse = HashMap::from([("notes.txt".to_string(), Some(99))]);
-        let (_, unstaged) = wip_lists(&repo, &cli(), &wt, entries, &reuse).await.unwrap();
+        let (_, unstaged) = wip_lists(&repo, &cli(), &wt, entries, &reuse, None).await.unwrap();
         let f = by_path(&unstaged);
         assert_eq!(f["notes.txt"].additions, Some(99), "reused, not re-read");
         assert_eq!(f["fresh.txt"].additions, Some(3), "counted");
@@ -682,7 +749,7 @@ mod tests {
         let lists = async |cli: &GitCli| {
             let since = log.next_id();
             let entries = status(cli, &wt).await.unwrap();
-            let (staged, unstaged) = wip_lists(&repo, cli, &wt, entries, &HashMap::new()).await.unwrap();
+            let (staged, unstaged) = wip_lists(&repo, cli, &wt, entries, &HashMap::new(), None).await.unwrap();
             let names = |l: &FileListPayload| l.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>();
             (names(&staged), names(&unstaged), diffs(since))
         };
@@ -693,6 +760,51 @@ mod tests {
         assert_eq!(lists(&cli).await, (vec![], vec!["src/app.php".to_string(), "u.txt".to_string()], vec![false]), "the unstaged diff alone");
         r.git(&["add", "src/app.php"]);
         assert_eq!(lists(&cli).await, (vec!["src/app.php".to_string()], vec!["u.txt".to_string()], vec![true]), "the staged diff alone");
+    }
+
+    /// The unstaged diff names the tracked paths status found changed (literally: `*` is a file
+    /// name here), not the whole worktree, so the 200 stat-dirty files beside them aren't re-read;
+    /// and under a permit it refreshes like a terminal's `git diff`, listing no phantom.
+    #[tokio::test]
+    async fn the_unstaged_diff_covers_the_paths_status_found_changed() {
+        let r = TestRepo::new();
+        r.write("a.txt", "a\n");
+        r.write("*", "star\n");
+        for i in 0..200 {
+            r.write(&format!("many/f{i}.txt"), "same\n");
+        }
+        r.commit_all_as("c", "Ada Lovelace", "ada@example.com");
+        let repo = gix::ThreadSafeRepository::discover(r.path()).unwrap();
+        let wt = crate::platform::fs::canonicalize(r.path()).unwrap();
+        for i in 0..200 {
+            let f = std::fs::File::options().write(true).open(wt.join(format!("many/f{i}.txt"))).unwrap();
+            f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(300)).unwrap();
+        }
+        r.write("*", "changed\n");
+        let log = Arc::new(CommandLog::new(100));
+        let cli = GitCli::new(log.clone()).with_env(isolated_git_env());
+        let entries = status(&cli, &wt).await.unwrap();
+        let gate = Arc::default();
+        let permit = RefreshPermit::try_read(&gate).unwrap();
+        let since = log.next_id();
+        let (_, unstaged) = wip_lists(&repo, &cli, &wt, entries, &HashMap::new(), Some(&permit)).await.unwrap();
+        assert_eq!(unstaged.files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["*"]);
+        let diffs: Vec<Vec<String>> = log.entries().into_iter().filter(|e| e.id >= since).map(|e| e.args).collect();
+        assert_eq!(diffs.len(), 1, "{diffs:?}");
+        assert_eq!(diffs[0].iter().skip_while(|a| *a != "--").cloned().collect::<Vec<_>>(), ["--", "*"], "only the changed path");
+        assert!(!diffs[0].iter().any(|a| a.contains("autoRefreshIndex")), "a terminal's diff under a permit: {:?}", diffs[0]);
+        assert!(r.git(&["diff-files", "--name-only"]).lines().count() == 201, "the stat-dirty files weren't read: still stat-dirty, beside `*`");
+    }
+
+    #[test]
+    fn pathspecs_go_in_argv_sized_chunks_and_too_many_mean_the_whole_worktree() {
+        let paths: Vec<String> = (0..3000).map(|i| format!("dir/file-{i:05}.txt")).collect();
+        let chunks = pathspec_chunks(&paths).unwrap();
+        assert!(chunks.len() > 1 && chunks.iter().all(|c| c.iter().map(|p| p.len() + 1).sum::<usize>() <= PATHSPEC_CHUNK));
+        assert_eq!(chunks.concat(), paths, "every path, in order");
+        assert_eq!(pathspec_chunks(&paths[..1]).unwrap(), vec![&paths[..1]]);
+        let many: Vec<String> = (0..10_000).map(|i| format!("dir/file-{i:05}.txt")).collect();
+        assert!(pathspec_chunks(&many).is_none(), "past the limit: the whole worktree");
     }
 
     #[tokio::test]
@@ -718,10 +830,10 @@ mod tests {
         f.set_modified(modified + std::time::Duration::from_secs(120)).unwrap();
     }
 
-    /// C1 regression: a stat-dirty (mtime bumped) but content-identical file must not be listed
-    /// by either porcelain diff, and — the read-only guarantee — running them must never touch
-    /// `.git/index` (byte-for-byte, mtime included). Before the fix, plain `git diff` refreshed
-    /// the index for exactly this case (`diff.autoRefreshIndex` defaults to true).
+    /// A stat-dirty (mtime bumped) but content-identical file must not be listed by either
+    /// porcelain diff, and without a refresh permit, running them must never touch `.git/index`
+    /// (byte-for-byte, mtime included): plain `git diff` refreshes the index for exactly this
+    /// case (`diff.autoRefreshIndex` defaults to true), even with `GIT_OPTIONAL_LOCKS=0`.
     #[tokio::test]
     async fn stat_dirty_unchanged_file_is_not_listed_and_index_is_untouched() {
         let r = TestRepo::new();
@@ -772,7 +884,7 @@ mod tests {
         assert!(worktree_diff.files.iter().any(|f| f.path == "f.txt"), "a real change must still be listed (Worktree): {:?}", worktree_diff.files);
     }
 
-    /// C1 fix-round-1 regression: a binary's numstat is always `-\t-\tpath` (`has_numstat` is
+    /// A binary's numstat is always `-\t-\tpath` (`has_numstat` is
     /// true even when nothing changed), so a stat-dirty-but-byte-identical binary must still be
     /// dropped via the `dirty`/`git status` cross-check, not kept just because it has a numstat
     /// record. And, as ever, no write to `.git/index`.

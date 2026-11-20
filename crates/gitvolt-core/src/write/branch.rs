@@ -49,6 +49,9 @@ pub(crate) struct CreateBranch {
 
 impl WriteIntent for CreateBranch {
     type Outcome = ();
+    fn touches_worktree(&self) -> bool {
+        self.checkout
+    }
     fn kind(&self) -> OpKind {
         OpKind::Branch
     }
@@ -131,6 +134,9 @@ pub(crate) struct RenameBranch {
 
 impl WriteIntent for RenameBranch {
     type Outcome = ();
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         OpKind::Branch
     }
@@ -198,6 +204,9 @@ pub(crate) struct SetUpstream {
 
 impl WriteIntent for SetUpstream {
     type Outcome = ();
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         OpKind::Branch
     }

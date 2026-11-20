@@ -62,6 +62,8 @@ pub struct GitInvocation {
     detach: bool,
     /// Built by `GitInvocation::write`: git's normal locks (no `GIT_OPTIONAL_LOCKS=0`).
     write: bool,
+    /// A read that may refresh the index's stat info (`refresh_index`): git's optional locks.
+    refresh: bool,
     /// Fed to git's stdin, then closed; `None` = `/dev/null`.
     stdin: Option<Vec<u8>>,
     /// On cancel or timeout: SIGTERM, then SIGKILL after this (writes); `None` = SIGKILL at once.
@@ -138,6 +140,15 @@ impl GitInvocation {
         self.write
     }
 
+    /// A read that refreshes the index's stat info as it does in a terminal (`git status`
+    /// writes back what it re-hashed when it can take `index.lock` at once, and skips that
+    /// when it can't). Without it, a read runs with `GIT_OPTIONAL_LOCKS=0` and changes nothing.
+    /// The permit proves no GitVolt write runs meanwhile.
+    pub(crate) fn refresh_index(mut self, _permit: &crate::write::queue::RefreshPermit<'_>) -> Self {
+        self.refresh = true;
+        self
+    }
+
     /// A write's cancel for a command that isn't a write (a fetch, a clone): SIGTERM, then
     /// SIGKILL after `grace`, so git can remove the ref locks it holds (`refs/remotes/…lock`,
     /// `packed-refs.lock`). The environment stays a read's (`GIT_OPTIONAL_LOCKS=0`).
@@ -153,7 +164,7 @@ impl GitInvocation {
         I: IntoIterator<Item = S>,
         S: Into<OsString>,
     {
-        Self { cwd: cwd.into(), args: args.into_iter().map(Into::into).collect(), timeout: Some(LOCAL_TIMEOUT), cancel: None, envs: Vec::new(), stderr_lines: None, stdout_lines: false, detach: false, write: false, stdin: None, term_grace: None, ok_exit: Vec::new(), stdout_limit: None }
+        Self { cwd: cwd.into(), args: args.into_iter().map(Into::into).collect(), timeout: Some(LOCAL_TIMEOUT), cancel: None, envs: Vec::new(), stderr_lines: None, stdout_lines: false, detach: false, write: false, refresh: false, stdin: None, term_grace: None, ok_exit: Vec::new(), stdout_limit: None }
     }
 
     /// `None` = no timeout (network operations).
@@ -341,10 +352,10 @@ impl GitCli {
                 .envs(inv.envs.iter().map(|(k, v)| (k, v)))
                 .env("GIT_TERMINAL_PROMPT", "0")
                 .env("LC_ALL", "C");
-            if !inv.write {
-                // Reads only (the never-write invariant): this disables *optional* locks
-                // (the stat refresh `git status` writes back into `.git/index`). Writes
-                // (`GitInvocation::write`) take git's normal locks.
+            if !inv.write && !inv.refresh {
+                // A read without a refresh permit: no *optional* locks, so the stat refresh
+                // `git status` would write back into `.git/index` stays in memory. Writes and
+                // refreshing reads (`refresh_index`) take git's normal locks.
                 cmd.env("GIT_OPTIONAL_LOCKS", "0");
             } else {
                 // An inherited `GIT_OPTIONAL_LOCKS=0` (login-shell or process env) must not survive.
@@ -1245,7 +1256,7 @@ mod tests {
     }
 
     /// A write takes git's normal locks and never waits on an editor; a read keeps
-    /// the never-write `GIT_OPTIONAL_LOCKS=0`.
+    /// `GIT_OPTIONAL_LOCKS=0` unless it holds a refresh permit.
     #[tokio::test]
     async fn a_write_takes_normal_locks_and_never_waits_on_an_editor() {
         let r = TestRepo::new();
@@ -1258,6 +1269,11 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout), "unset|true|no");
         let read = cli().run(GitInvocation::new(r.path(), ["-c", alias, "env"])).await.unwrap();
         assert!(String::from_utf8_lossy(&read.stdout).starts_with("0|"), "reads keep GIT_OPTIONAL_LOCKS=0");
+        let gate = Arc::new(tokio::sync::RwLock::new(()));
+        let permit = crate::write::queue::RefreshPermit::try_read(&gate).unwrap();
+        let refreshing = inherited.run(GitInvocation::new(r.path(), ["-c", alias, "env"]).refresh_index(&permit)).await.unwrap();
+        assert!(String::from_utf8_lossy(&refreshing.stdout).starts_with("unset|"), "a refreshing read takes git's optional locks");
+        assert!(!GitInvocation::new(r.path(), ["status"]).refresh_index(&permit).is_write());
         assert!(GitInvocation::write(&WriteToken::for_tests(), r.path(), ["status"]).is_write());
         assert!(!GitInvocation::new(r.path(), ["status"]).is_write());
     }

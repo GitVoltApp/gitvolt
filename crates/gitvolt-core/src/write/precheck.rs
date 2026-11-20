@@ -1,8 +1,8 @@
 //! Read-only pre-checks.
 //!
 //! Which paths an operation touches, which are dirty, and whether restoring an autostash would
-//! conflict. They never write to the repository: gix reads, `git status` with the never-write
-//! environment, and `git merge-file -p` on temp copies.
+//! conflict. They never write to the repository: gix reads, `git status` with
+//! `GIT_OPTIONAL_LOCKS=0`, and `git merge-file -p` on temp copies.
 
 use crate::error::{gix_err, GbError};
 use crate::git::{GitCli, GitInvocation};
@@ -210,7 +210,7 @@ pub(crate) async fn ignored_among(cli: &GitCli, root: &Path, paths: &[String]) -
 }
 
 // --- untracked among (moved from the test intents) ---
-/// The untracked (not ignored) ones among `paths`: a read, with the never-write environment.
+/// The untracked (not ignored) ones among `paths`: a read, with `GIT_OPTIONAL_LOCKS=0`.
 pub(crate) async fn untracked_among(cli: &GitCli, root: &Path, paths: &[String]) -> Result<Vec<String>, GbError> {
     if paths.is_empty() {
         return Ok(Vec::new());

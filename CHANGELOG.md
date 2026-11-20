@@ -151,6 +151,24 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   second. With a repository open and nothing happening, the app's main thread wakes about 6 times
   a second instead of 33, and its CPU use drops from 0.8% to 0.2%. Input, tooltips, timers and
   scrolling respond as before.
+- **Saves stay fast after a clone, a big checkout or a tool that touches every file
+  (performance).** GitVolt's reads now refresh the index as `git status` does in a terminal, so
+  git stops re-reading files whose dates changed but whose content didn't, and the changed-file
+  list diffs only the files `git status` found changed. On a 20,000-file repository, a save in a
+  fresh clone went from 190 ms of `git status` and 220 ms of `git diff` to 30 ms and 5 ms, and
+  with every file touched, from 220 ms and 670 ms each time to one 180 ms status, then 26 ms and
+  5 ms. A read changes nothing else, and leaves the index alone while one of GitVolt's own changes
+  or a rebase runs.
+- **Opening a repository or switching to its tab runs `git status` once, not three times
+  (performance).** The tab's file watch starts first, the graph waits for its first status
+  instead of running its own beside it, and the first changed-file list is computed from that
+  same status. Reads of a worktree's status at the same time share one `git status`.
+- **Pushes, new branches and tags run no `git status` afterwards, and staging one fewer
+  (performance).** A change that can't touch your files (push, a branch or tag created without
+  checking it out, renaming, upstreams, remotes, a pull with nothing to merge) no longer re-reads
+  them, and the file watch no longer re-reads what a change's own final `git status` already saw:
+  on the 20,000-file repository, staging runs 1 status instead of 2, push and creating a branch
+  none instead of 1, and a commit 2 instead of 3.
 
 ### Fixed
 

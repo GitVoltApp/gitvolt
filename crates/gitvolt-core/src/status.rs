@@ -2,7 +2,12 @@
 
 use crate::error::GbError;
 use crate::git::{GitCli, GitInvocation};
-use std::path::Path;
+use crate::snapshot::WipCache;
+use crate::write::queue::RefreshPermit;
+use futures_util::future::{BoxFuture, FutureExt, Shared};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 pub use gitvolt_graph::WipCounts;
 
@@ -121,6 +126,119 @@ pub fn index_locked(worktree: &Path) -> bool {
     linked_git_dir(worktree).is_some_and(|g| g.join("index.lock").exists())
 }
 
+/// A digest of the entries of `worktree`'s index (path, blob, mode, stage and flags), without
+/// their stat info: what a refresh rewrites leaves it as it was, so an index change that keeps it
+/// can't change what status says. `None` when the index can't be read.
+pub(crate) fn index_digest(worktree: &Path) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    let git_dir = linked_git_dir(worktree).unwrap_or_else(|| worktree.join(".git"));
+    let index = gix::index::File::at(git_dir.join("index"), gix::hash::Kind::Sha1, false, Default::default()).ok()?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for e in index.entries() {
+        e.path(&index).hash(&mut h);
+        e.id.as_bytes().hash(&mut h);
+        (e.mode.bits(), e.flags.bits()).hash(&mut h);
+    }
+    Some(h.finish())
+}
+
+/// A terminal's multi-step command (a rebase, `git am`, a cherry-pick or revert of several
+/// commits) may be between two of its steps in this worktree: a refresh holding `index.lock`
+/// just then would make its next step fail, so reads leave the index alone meanwhile.
+pub(crate) fn sequence_running(worktree: &Path) -> bool {
+    let git_dir = linked_git_dir(worktree).unwrap_or_else(|| worktree.join(".git"));
+    ["rebase-merge", "rebase-apply", "sequencer"].iter().any(|d| git_dir.join(d).is_dir())
+}
+
+/// [`status_raw`], refreshing the index's stat info as `git status` does in a terminal while
+/// `permit` allows (and no multi-step command is under way there, `sequence_running`). A
+/// refresh that can't take `index.lock` at once is skipped by git, without an error.
+pub(crate) async fn status_raw_refreshing(cli: &GitCli, worktree: &Path, permit: Option<&RefreshPermit<'_>>) -> Result<Vec<u8>, GbError> {
+    let inv = GitInvocation::new(worktree, ["status", "--porcelain=v2", "-z", "--untracked-files=all"]);
+    let inv = match permit {
+        Some(p) if !sequence_running(worktree) => inv.refresh_index(p),
+        _ => inv,
+    };
+    Ok(cli.run(inv).await?.stdout)
+}
+
+/// A status read anyone may wait on (`WipCache::read_status`): the raw output, and the index's
+/// entries just before it (`index_digest`).
+pub(crate) type SharedRead = Shared<BoxFuture<'static, Result<(Arc<Vec<u8>>, Option<u64>), GbError>>>;
+
+/// The status read running per worktree, by its stamp (`WipCache::read_status`).
+#[derive(Default)]
+pub(crate) struct StatusReads(Mutex<HashMap<PathBuf, (u64, SharedRead)>>);
+
+impl std::fmt::Debug for StatusReads {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("StatusReads")
+    }
+}
+
+/// One `WipCache::read_status`.
+pub(crate) struct StatusRead {
+    /// The stamp taken when it started.
+    pub stamp: u64,
+    pub raw: Arc<Vec<u8>>,
+    /// The index's entries just before it started (`index_digest`).
+    pub index: Option<u64>,
+    /// What the cache held before it (or, for a caller that shared it, what the first of them
+    /// put).
+    pub before: Option<crate::snapshot::WipEntry>,
+}
+
+impl WipCache {
+    /// A refresh permit for this repository's reads, while no write runs (see `gated`).
+    pub(crate) fn refresh_permit(&self) -> Option<RefreshPermit<'static>> {
+        self.gate.as_ref().and_then(RefreshPermit::try_read)
+    }
+
+    /// The stamp of the last status read started: a read stamped above it starts later.
+    pub(crate) fn now(&self) -> u64 {
+        self.seq.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// `root`'s status for the cache's readers (graph builds, the watcher, a first `fileList`),
+    /// kept in the cache (`put_raw`); `refresh`: refreshing the index if it may. One read
+    /// serves everyone who asks while it runs, if it started after their `since` (a `now()`
+    /// taken when their question arose: what changed before then, it sees). Otherwise a new
+    /// one starts, for later callers to share.
+    pub(crate) async fn read_status(&self, cli: &GitCli, root: &Path, since: u64, refresh: bool) -> Result<StatusRead, GbError> {
+        let key = crate::platform::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        let (stamp, read) = {
+            let mut reads = self.reads.0.lock().expect("wip cache poisoned");
+            match reads.get(&key) {
+                Some((stamp, read)) if *stamp > since => (*stamp, read.clone()),
+                _ => {
+                    let stamp = self.stamp();
+                    let permit = if refresh { self.refresh_permit() } else { None };
+                    let (cli, root) = (cli.clone(), root.to_path_buf());
+                    let read = async move {
+                        let index = index_digest(&root);
+                        let raw = status_raw_refreshing(&cli, &root, permit.as_ref()).await?;
+                        Ok((Arc::new(raw), index))
+                    }
+                    .boxed()
+                    .shared();
+                    reads.insert(key.clone(), (stamp, read.clone()));
+                    (stamp, read)
+                }
+            }
+        };
+        let res = read.await;
+        {
+            let mut reads = self.reads.0.lock().expect("wip cache poisoned");
+            if reads.get(&key).is_some_and(|(s, _)| *s == stamp) {
+                reads.remove(&key);
+            }
+        }
+        let (raw, index) = res?;
+        let before = self.put_raw(root, stamp, raw.clone());
+        Ok(StatusRead { stamp, raw, index, before })
+    }
+}
+
 pub async fn status(cli: &GitCli, worktree: &Path) -> Result<Vec<StatusEntry>, GbError> {
     Ok(parse_porcelain_v2(&status_raw(cli, worktree).await?))
 }
@@ -224,11 +342,11 @@ mod tests {
     }
 
     /// A plain `git status` refreshes stat info and rewrites `.git/index` whenever it can take
-    /// the (optional) lock, even though nothing tracked actually changed. `GitCli::run` disables
-    /// optional locks (see git.rs), so `status()` here must leave the index file untouched byte
-    /// for byte, not just logically unchanged.
+    /// the (optional) lock, even though nothing tracked actually changed. A read without a
+    /// refresh permit runs with `GIT_OPTIONAL_LOCKS=0` (see git.rs), so `status()` here must
+    /// leave the index file untouched byte for byte, not just logically unchanged.
     #[tokio::test]
-    async fn status_does_not_rewrite_the_index() {
+    async fn status_without_a_permit_does_not_rewrite_the_index() {
         let r = TestRepo::new();
         r.commit("c");
         let index_path = r.path().join(".git/index");
@@ -249,6 +367,118 @@ mod tests {
         let after_mtime = std::fs::metadata(&index_path).unwrap().modified().unwrap();
         assert_eq!(before_bytes, after_bytes, ".git/index bytes must be unchanged by status()");
         assert_eq!(before_mtime, after_mtime, ".git/index mtime must be unchanged by status()");
+    }
+
+    /// Moves `file_0.txt`'s mtime back a few minutes, its content untouched: stat-dirty, and
+    /// clean again once a refresh records the new mtime (in the past, so never racy).
+    fn stat_dirty(r: &TestRepo) {
+        let f = std::fs::File::options().write(true).open(r.path().join("file_0.txt")).unwrap();
+        f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(300)).unwrap();
+    }
+
+    fn permit(gate: &Arc<tokio::sync::RwLock<()>>) -> crate::write::queue::RefreshPermit<'static> {
+        crate::write::queue::RefreshPermit::try_read(gate).unwrap()
+    }
+
+    /// With a permit, status writes back the stat info it re-hashed, as in a terminal: what git
+    /// compares by stat alone (`diff-files`) is clean afterwards. Only the stat info changes.
+    #[tokio::test]
+    async fn a_permitted_status_refreshes_the_index() {
+        let r = TestRepo::new();
+        r.commit("c");
+        stat_dirty(&r);
+        assert_eq!(r.git(&["diff-files", "--name-only"]), "file_0.txt", "stat-dirty");
+        let entries = r.git(&["ls-files", "-s"]);
+        let gate = Arc::default();
+        let raw = super::status_raw_refreshing(&cli(), r.path(), Some(&permit(&gate))).await.unwrap();
+        assert!(super::parse_porcelain_v2(&raw).is_empty(), "nothing changed");
+        assert_eq!(r.git(&["diff-files", "--name-only"]), "", "refreshed");
+        assert_eq!(r.git(&["ls-files", "-s"]), entries, "the entries are as they were");
+    }
+
+    /// `index.lock` held (a terminal's `git commit` part-way): git skips the refresh, and the
+    /// status still answers, without an error.
+    #[tokio::test]
+    async fn a_refresh_is_skipped_without_error_while_index_lock_is_held() {
+        let r = TestRepo::new();
+        r.commit("c");
+        stat_dirty(&r);
+        let lock = r.path().join(".git/index.lock");
+        std::fs::write(&lock, b"").unwrap();
+        let index = std::fs::read(r.path().join(".git/index")).unwrap();
+        let gate = Arc::default();
+        let raw = super::status_raw_refreshing(&cli(), r.path(), Some(&permit(&gate))).await.unwrap();
+        assert!(super::parse_porcelain_v2(&raw).is_empty());
+        assert_eq!(std::fs::read(r.path().join(".git/index")).unwrap(), index, "not refreshed");
+        assert!(lock.exists(), "the lock is its owner's");
+        std::fs::remove_file(&lock).unwrap();
+    }
+
+    /// No permit while a write holds the repository (it waits for a refresh already running),
+    /// and no refresh in a worktree mid-rebase, where a terminal's next step may need the lock.
+    #[tokio::test]
+    async fn no_refresh_while_a_write_runs_or_a_sequence_is_under_way() {
+        let writes = crate::write::queue::RepoWrites::new(|_, _| {});
+        let reading = crate::write::queue::RefreshPermit::try_read(&writes.refresh_gate);
+        assert!(reading.is_some());
+        let write = writes.acquire();
+        tokio::pin!(write);
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(50), &mut write).await.is_err(), "a write waits for a refresh running");
+        drop(reading);
+        let guard = write.await;
+        assert!(crate::write::queue::RefreshPermit::try_read(&writes.refresh_gate).is_none(), "none while a write runs");
+        drop(guard);
+        assert!(crate::write::queue::RefreshPermit::try_read(&writes.refresh_gate).is_some());
+
+        let r = TestRepo::new();
+        r.commit("c");
+        stat_dirty(&r);
+        std::fs::create_dir(r.path().join(".git/rebase-merge")).unwrap();
+        let index = std::fs::read(r.path().join(".git/index")).unwrap();
+        let gate = Arc::default();
+        super::status_raw_refreshing(&cli(), r.path(), Some(&permit(&gate))).await.unwrap();
+        assert_eq!(std::fs::read(r.path().join(".git/index")).unwrap(), index, "not refreshed mid-rebase");
+    }
+
+    /// A refresh leaves the entries' digest as it was; staging changes it.
+    #[tokio::test]
+    async fn the_index_digest_ignores_stat_info() {
+        let r = TestRepo::new();
+        r.commit("c");
+        let before = super::index_digest(r.path()).unwrap();
+        stat_dirty(&r);
+        let gate = Arc::default();
+        super::status_raw_refreshing(&cli(), r.path(), Some(&permit(&gate))).await.unwrap();
+        assert_eq!(super::index_digest(r.path()), Some(before), "refreshed: the same entries");
+        r.write("file_0.txt", "staged\n");
+        r.git(&["add", "file_0.txt"]);
+        assert_ne!(super::index_digest(r.path()), Some(before));
+    }
+
+    /// Reads of one worktree asked for at once share one `git status`; a read already running
+    /// that started before the caller's question doesn't serve it.
+    #[tokio::test]
+    async fn reads_of_a_worktree_share_a_status_started_late_enough() {
+        let r = TestRepo::new();
+        r.commit("c");
+        let log = Arc::new(CommandLog::new(100));
+        let cli = super::super::git::GitCli::new(log.clone()).with_env(isolated_git_env());
+        let statuses = || log.entries().iter().filter(|e| e.args.iter().any(|a| a == "status")).count();
+        let wip = crate::snapshot::WipCache::default();
+        let since = wip.now();
+        let (a, b) = futures_util::future::join(wip.read_status(&cli, r.path(), since, true), wip.read_status(&cli, r.path(), since, true)).await;
+        assert_eq!(a.unwrap().stamp, b.unwrap().stamp, "the same read");
+        assert_eq!(statuses(), 1);
+        let first = wip.read_status(&cli, r.path(), wip.now(), true);
+        let later = async {
+            tokio::task::yield_now().await;
+            // Asked after the first read started: whatever changed meanwhile must be seen.
+            wip.read_status(&cli, r.path(), wip.now(), true).await
+        };
+        let (a, b) = futures_util::future::join(first, later).await;
+        assert!(a.unwrap().stamp < b.unwrap().stamp, "a read of its own");
+        assert_eq!(statuses(), 3);
+        assert!(wip.get(r.path()).is_some(), "kept in the cache");
     }
 
     #[test]

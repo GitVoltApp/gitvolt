@@ -217,7 +217,8 @@ That is a trust boundary.
   - Read commands: `git worktree list` and `git status` as soon as the tab opens, then, as you
     browse, `git log`, `git diff`, `git show`, `git blame` and the like. git reads the repository's own `.git/config` for each of them, so a command it
     names can run: `core.fsmonitor` runs on `git status`, as it does in a terminal and in every
-    git client.
+    git client. Like a terminal's `git status`, these reads may rewrite `.git/index` with fresh
+    stat info (never its entries); nothing else in the repository changes.
   - A background fetch, unless it's Off (Settings › Fetch and push › **Background fetch interval: Off**).
     When the tab opens, GitVolt runs `git fetch --all` at once if the last fetch is older than the
     interval (always, the first time), then once per interval. `git fetch` runs the

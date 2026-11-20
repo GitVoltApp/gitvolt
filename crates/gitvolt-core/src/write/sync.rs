@@ -103,6 +103,9 @@ pub(crate) struct PushIntent {
 
 impl WriteIntent for PushIntent {
     type Outcome = PushOutcome;
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         OpKind::Push
     }
@@ -319,6 +322,10 @@ fn elsewhere_error(branch: &str, path: &std::path::Path) -> GbError {
 
 impl WriteIntent for PullIntent {
     type Outcome = PullOutcome;
+    /// Up to date, or another branch fast-forwarded: only refs moved.
+    fn touches_worktree(&self) -> bool {
+        self.planned.get().is_none_or(|p| p.checked_out && p.behind > 0)
+    }
     fn kind(&self) -> OpKind {
         OpKind::Pull
     }

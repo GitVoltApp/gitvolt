@@ -2430,6 +2430,11 @@ impl Api {
                 let mut opts = self.build_options(&h, limit, pin, active, view).await?;
                 // The watcher keeps the worktree shown responsive (the others throttled).
                 h.wip.set_active(opts.active.as_deref().unwrap_or(&h.workdir));
+                // A watch being set up (the tab just opened or shown again): its first status
+                // stands in for this build's.
+                if !rescan.unwrap_or(false) {
+                    self.watch_settled(repo).await;
+                }
                 opts.rescan = rescan.unwrap_or(false) || !self.status_is_watched(repo);
                 let (payload, texts) = build_graph_with_text(h.repo.clone(), h.workdir.clone(), self.cli.clone(), opts).await?;
                 {
@@ -3594,7 +3599,7 @@ impl Api {
                 workdir,
                 name,
                 common_dir: common_dir.clone(),
-                wip: Arc::new(crate::snapshot::WipCache::watched_only()),
+                wip: Arc::new(crate::snapshot::WipCache::watched_only().gated(self.writes_for(&common_dir).refresh_gate.clone())),
                 snapshot: Mutex::new(None),
                 walk: Arc::default(),
                 graphs: Arc::default(),
@@ -5238,10 +5243,18 @@ mod tests {
         drop((b, c));
     }
 
-    /// Every file under `.git` but objects (index bytes and mtime included): what a read must
-    /// never change.
-    fn repo_bytes(r: &TestRepo) -> Vec<(String, Vec<u8>, Option<std::time::SystemTime>)> {
-        fn walk(dir: &Path, base: &Path, out: &mut Vec<(String, Vec<u8>, Option<std::time::SystemTime>)>) {
+    /// Every file under `.git` but objects: what a read must never change. An index counts by
+    /// its entries (path, mode, blob, stage): a read may refresh its stat info, as git does.
+    fn repo_bytes(r: &TestRepo) -> Vec<(String, Vec<u8>)> {
+        fn index_entries(p: &Path) -> Vec<u8> {
+            let index = gix::index::File::at(p, gix::hash::Kind::Sha1, false, Default::default()).unwrap();
+            let mut out = Vec::new();
+            for e in index.entries() {
+                out.extend(format!("{:o} {} {} {}\n", e.mode.bits(), e.id, e.stage_raw(), e.path(&index)).into_bytes());
+            }
+            out
+        }
+        fn walk(dir: &Path, base: &Path, out: &mut Vec<(String, Vec<u8>)>) {
             let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.path()).collect();
             entries.sort();
             for p in entries {
@@ -5251,9 +5264,10 @@ mod tests {
                 }
                 if p.is_dir() {
                     walk(&p, base, out);
+                } else if rel == "index" || rel.ends_with("/index") {
+                    out.push((rel, index_entries(&p)));
                 } else {
-                    let mtime = (rel == "index" || rel.ends_with("/index")).then(|| std::fs::metadata(&p).unwrap().modified().unwrap());
-                    out.push((rel, std::fs::read(&p).unwrap(), mtime));
+                    out.push((rel, std::fs::read(&p).unwrap()));
                 }
             }
         }

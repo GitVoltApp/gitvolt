@@ -1,5 +1,5 @@
 //! File History and Blame: read-only `git log --follow` and `git blame`. Neither
-//! writes to the repository (the never-write audit dispatches both).
+//! writes to the repository (the API's read audit dispatches both).
 
 use crate::api::Api;
 use crate::blob::check_relative;

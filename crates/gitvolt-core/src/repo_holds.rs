@@ -146,12 +146,13 @@ impl Api {
             Ok(repo) => repo,
             Err(e) => return Some(Err(crate::error::gix_err(e))),
         };
+        let gate = self.writes_for(&k.common_dir).refresh_gate.clone();
         let fresh = Arc::new(RepoHandle {
             repo,
             workdir: k.workdir,
             name: k.name,
             common_dir: k.common_dir,
-            wip: Arc::new(crate::snapshot::WipCache::watched_only()),
+            wip: Arc::new(crate::snapshot::WipCache::watched_only().gated(gate)),
             snapshot: Mutex::new(None),
             walk: Arc::default(),
             graphs: Arc::default(),

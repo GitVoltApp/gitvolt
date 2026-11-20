@@ -29,6 +29,9 @@ pub(crate) struct CreateTag {
 
 impl WriteIntent for CreateTag {
     type Outcome = ();
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         OpKind::Branch
     }
@@ -87,6 +90,9 @@ pub(crate) struct DeleteTag {
 
 impl WriteIntent for DeleteTag {
     type Outcome = ();
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         if self.local { OpKind::Branch } else { OpKind::Push }
     }
@@ -181,6 +187,9 @@ pub(crate) struct PushTags {
 
 impl WriteIntent for PushTags {
     type Outcome = TagPushOutcome;
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         OpKind::Push
     }

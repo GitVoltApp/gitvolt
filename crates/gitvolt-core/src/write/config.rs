@@ -35,7 +35,7 @@ pub(crate) fn parse_branch_config(raw: &[u8], name: &str) -> BranchConfig {
     map
 }
 
-/// The repository's own `branch.<name>.*` (a read, with the never-write environment).
+/// The repository's own `branch.<name>.*` (a read, with `GIT_OPTIONAL_LOCKS=0`).
 #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))] // first readers: the test intents
 pub(crate) async fn branch_config(cli: &GitCli, root: &Path, name: &str) -> Result<BranchConfig, GbError> {
     let inv = GitInvocation::new(root, ["config", "--local", "--null", "--get-regexp", r"^branch\."]);

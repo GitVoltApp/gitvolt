@@ -28,11 +28,38 @@ pub(crate) struct RepoWrites {
     /// Taken by every write for its local phases (a network transfer runs outside it). An
     /// `Arc`, so a write can release it mid-run and take it again (`WriteCx::unlock`).
     pub(crate) lock: Arc<tokio::sync::Mutex<()>>,
+    /// Held exclusively with `lock` (`WriteGuard`), and shared by a read that refreshes the
+    /// index (`RefreshPermit`): the two never overlap.
+    pub(crate) refresh_gate: Arc<tokio::sync::RwLock<()>>,
     pub(crate) queue: WriteQueue,
     /// The open repo ids sharing this common dir (one per tab's worktree).
     ids: Arc<Mutex<BTreeSet<u32>>>,
     /// Writes waiting in `acquire` for `lock`.
     waiting: std::sync::atomic::AtomicUsize,
+}
+
+/// A write's hold on its repository (`RepoWrites::acquire`): the write lock, and the refresh
+/// gate, so no read refreshes the index while it runs.
+pub(crate) struct WriteGuard {
+    _gate: tokio::sync::OwnedRwLockWriteGuard<()>,
+    _lock: tokio::sync::OwnedMutexGuard<()>,
+}
+
+/// Lets a read refresh the index's stat info as the same git command does in a terminal (git's
+/// optional locks). A refresh holds `index.lock` for a moment, and a write's git command that
+/// finds it there fails ("Another git process seems to be running"), so a permit exists only
+/// while no GitVolt write runs: a read shares the refresh gate, or the write itself reads.
+pub(crate) enum RefreshPermit<'a> {
+    Read(#[allow(dead_code)] tokio::sync::OwnedRwLockReadGuard<()>),
+    Writer(#[allow(dead_code)] &'a WriteGuard),
+}
+
+impl RefreshPermit<'static> {
+    /// A permit while no write holds `gate` (none waits for it either); `None` otherwise: the
+    /// read then leaves the index alone, as with `GIT_OPTIONAL_LOCKS=0`.
+    pub(crate) fn try_read(gate: &Arc<tokio::sync::RwLock<()>>) -> Option<Self> {
+        gate.clone().try_read_owned().ok().map(RefreshPermit::Read)
+    }
 }
 
 /// Counts a waiter out of `RepoWrites::waiting` however its wait ends.
@@ -48,10 +75,13 @@ impl RepoWrites {
     /// Takes the write lock (FIFO), counted in `waiting` while it waits. The guard is owned: it
     /// lives in the write's `WriteCx`, which may drop it for a network transfer and take it
     /// again (`WriteCx::unlock`/`relock`/`network`).
-    pub(crate) async fn acquire(&self) -> tokio::sync::OwnedMutexGuard<()> {
+    pub(crate) async fn acquire(&self) -> WriteGuard {
         self.waiting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let _counted = Waiting(&self.waiting);
-        self.lock.clone().lock_owned().await
+        let lock = self.lock.clone().lock_owned().await;
+        // A read refreshing the index right now (a status, tens of milliseconds) ends first.
+        let gate = self.refresh_gate.clone().write_owned().await;
+        WriteGuard { _gate: gate, _lock: lock }
     }
 
     /// How many writes wait for the lock (tests wait on it instead of on the clock).
@@ -69,7 +99,7 @@ impl RepoWrites {
                 emit(*id, s);
             }
         }));
-        Self { lock: Arc::new(tokio::sync::Mutex::new(())), queue, ids, waiting: Default::default() }
+        Self { lock: Arc::new(tokio::sync::Mutex::new(())), refresh_gate: Arc::default(), queue, ids, waiting: Default::default() }
     }
 
     pub(crate) fn add_id(&self, id: u32) {

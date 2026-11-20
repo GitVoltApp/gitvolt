@@ -63,6 +63,16 @@ describe('setWatched', () => {
     expect(calls).toEqual(['hold o 9', 'release o', 'hold o 9', 'unwatchAll', 'releaseAll', 'hold o 9']);
   });
 
+  it('a watch the caller just held goes out at once, ahead of a request sent right after', async () => {
+    api.watchRepo.mockClear();
+    const run = setWatched(7, true, 'tab', true);
+    expect(api.watchRepo).toHaveBeenCalledWith(7);
+    await run;
+    await setWatched(7, false);
+    await setWatched(7, true, 'tab');
+    expect(calls).toEqual(['watch 7', 'unwatch 7', 'hold tab 7', 'watch 7']);
+  });
+
   it('a failed hold is retried once, then logged', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     api.holdRepo.mockClear();

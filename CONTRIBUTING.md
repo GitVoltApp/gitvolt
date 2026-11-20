@@ -89,7 +89,7 @@ plus the e2e specs for the areas you changed.
 - Every write to a repository goes through the write pipeline (`run_write`, see
   [ARCHITECTURE.md](ARCHITECTURE.md#writes)). A new write method is listed in `WRITE_METHODS` in
   `crates/gitvolt-core/src/api.rs`; a new read gets a sample in the API test that checks reads
-  never write.
+  never write (beyond refreshing the index's stat info, as git does).
 - An idle GitVolt uses no CPU, so animations are held to a budget:
   - An animation that never ends (`infinite`) is only for work in progress (a spinner while an
     operation runs), and animates only `transform` or `opacity`. The compositor runs those alone;

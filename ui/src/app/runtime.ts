@@ -17,7 +17,7 @@ import { withActiveSidebar } from '../worktrees/active';
 import { noteViewport, unloadDue, type OlderState } from '../graph/olderWindow';
 import { basename, setTabRepo, tabForPath, touchRecent } from './tabs';
 import { viewSpecFor } from '../presets/store';
-import { holdRepo, releaseRepo } from './watch';
+import { holdRepo, releaseRepo, setWatched } from './watch';
 import { graphOfReply, type VersionedGraph } from '../graph/delta';
 
 /** One tab's loaded repo (not persisted: the profile holds only the tab's path). */
@@ -211,7 +211,9 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
           return;
         }
         get().patch(tabId, { repo, worktree });
-        // Plain: an unwatched repo's graph re-reads status anyway (the watch comes from RepoTab).
+        // The shown tab's watch starts before its first graph, which then waits for the watch's
+        // first status instead of running its own (RepoTab keeps the watch, and drops it on hide).
+        if (useAppState.getState().profile.activeTab === tabId) void setWatched(repo.id, true, tabId, true);
         await get().refresh(tabId);
         requestAnimationFrame(() => console.info(`[gitvolt] graph ready in ${Math.round(performance.now() - t0)} ms (${get().tabs[tabId]?.graph?.rows.length ?? 0} rows)`));
       } catch (e) {

@@ -26,7 +26,8 @@ use crate::git::GitCli;
 use crate::payload::BlobSource;
 use crate::diff::wip_lists;
 use crate::snapshot::{WipCache, WipEntry, WipLists};
-use crate::status::{parse_porcelain_v2, status_raw, EntryKind};
+use crate::status::{parse_porcelain_v2, status_raw_refreshing, EntryKind};
+use crate::write::queue::RefreshPermit;
 use crate::worktree::{list_worktrees, Worktree};
 use notify::event::{AccessKind, AccessMode, CreateKind, EventKind, ModifyKind, RemoveKind, RenameMode};
 use notify::{RecursiveMode, Watcher};
@@ -296,15 +297,42 @@ impl Default for Tuning {
     }
 }
 
-/// Reads a watched worktree's status and WIP file lists and keeps them: a `fileList` for a
-/// covered worktree whose lists aren't kept yet (they're computed lazily: `ready` never waits
-/// for numstat). Stamped before the status read, so it never replaces newer lists.
+/// Computes a watched worktree's WIP file lists and keeps them: a `fileList` for a covered
+/// worktree whose lists aren't kept yet (they're computed lazily: `ready` never waits for
+/// numstat). From the status the watcher last read (its first pass, say), which is current
+/// while it covers the worktree, else from a status read now. Stamped as that read, so it
+/// never replaces newer lists.
 pub(crate) async fn read_and_keep_lists(handle: &gix::ThreadSafeRepository, cli: &GitCli, wip: &WipCache, root: &Path) -> Result<WipLists, GbError> {
+    let (stamp, raw) = match wip.kept_raw(root) {
+        Some(kept) => kept,
+        None => {
+            let read = wip.read_status(cli, root, wip.now(), true).await?;
+            (read.stamp, read.raw)
+        }
+    };
+    let permit = wip.refresh_permit();
+    keep_lists(handle, cli, wip, root, stamp, &raw, permit.as_ref()).await
+}
+
+/// `read_and_keep_lists` after a write, under its lock, from a status of its own: the write's
+/// own reads may refresh the index (nothing else of GitVolt's writes meanwhile). The status is
+/// handed back for the watcher to absorb (`WatchHold::absorb`).
+pub(crate) async fn keep_lists_after_write(handle: &gix::ThreadSafeRepository, cli: &GitCli, wip: &WipCache, root: &Path, write: &crate::write::queue::WriteGuard) -> Result<(WipLists, AbsorbedRead), GbError> {
+    let permit = RefreshPermit::Writer(write);
     let stamp = wip.stamp();
-    let raw = status_raw(cli, root).await?;
-    let entry = WipEntry::from_raw(&raw);
-    wip.put(root, stamp, entry);
-    let (staged, unstaged) = wip_lists(handle, cli, root, parse_porcelain_v2(&raw), &HashMap::new()).await?;
+    let started = Instant::now();
+    let index = crate::status::index_digest(root);
+    let raw = Arc::new(status_raw_refreshing(cli, root, Some(&permit)).await?);
+    wip.put_raw(root, stamp, raw.clone());
+    let lists = keep_lists(handle, cli, wip, root, stamp, &raw, Some(&permit)).await?;
+    let digest = lists.digest;
+    Ok((lists, AbsorbedRead { digest, raw, index, started }))
+}
+
+/// The lists from status `raw` (read under `stamp`), kept.
+async fn keep_lists(handle: &gix::ThreadSafeRepository, cli: &GitCli, wip: &WipCache, root: &Path, stamp: u64, raw: &[u8], permit: Option<&RefreshPermit<'_>>) -> Result<WipLists, GbError> {
+    let entry = WipEntry::from_raw(raw);
+    let (staged, unstaged) = wip_lists(handle, cli, root, parse_porcelain_v2(raw), &HashMap::new(), permit).await?;
     let lists = WipLists::new(stamp, entry.digest, staged, unstaged);
     wip.put_lists(root, lists.clone());
     Ok(lists)
@@ -466,6 +494,12 @@ struct Batch {
     vanished: Vec<PathBuf>,
     /// Roots whose HEAD or index changed: read at once, never throttled.
     urgent: BTreeSet<PathBuf>,
+    /// Roots whose HEAD changed.
+    heads: BTreeSet<PathBuf>,
+    /// Per worktree root: when its latest file change arrived.
+    arrived: HashMap<PathBuf, Instant>,
+    /// Per worktree root: when its latest HEAD or index change arrived.
+    indexed: HashMap<PathBuf, Instant>,
 }
 
 /// A worktree's file changes waiting for their turn (`Loop::schedule`).
@@ -488,7 +522,7 @@ impl Batch {
         self.kinds.is_empty() && !self.overflow && !self.topology && self.gone.is_empty() && self.vanished.is_empty()
     }
 
-    fn add(&mut self, ev: &notify::Event, spec: &WatchSpec) {
+    fn add(&mut self, ev: &notify::Event, at: Instant, spec: &WatchSpec) {
         if ev.need_rescan() {
             self.overflow = true;
             return;
@@ -525,8 +559,13 @@ impl Batch {
                 {
                     let root = &spec.worktrees[i].root;
                     self.status.insert(root.clone());
+                    let when = if c.kind == ChangeKind::Worktree { &mut self.arrived } else { &mut self.indexed };
+                    when.insert(root.clone(), at);
                     if c.kind != ChangeKind::Worktree {
                         self.urgent.insert(root.clone());
+                    }
+                    if c.kind == ChangeKind::Head {
+                        self.heads.insert(root.clone());
                     }
                     if c.kind == ChangeKind::Worktree
                         && let Ok(rel) = p.strip_prefix(root)
@@ -540,8 +579,10 @@ impl Batch {
 }
 
 /// Collects `first` and every event after it until `DEBOUNCE` passes quietly, or `MAX_WAIT`
-/// after `first`. `None` once stopped (or the watcher is gone).
-async fn gather(first: notify::Event, rx: &mut mpsc::UnboundedReceiver<notify::Event>, stop: &CancellationToken) -> Option<Vec<notify::Event>> {
+/// after `first`, each with when it arrived, leaving out those that are `own` when they arrive
+/// (an overflow the watcher's own status read caused, judged then, not once the batch is
+/// complete). `None` once stopped (or the watcher is gone).
+async fn gather(first: (notify::Event, Instant), rx: &mut mpsc::UnboundedReceiver<notify::Event>, stop: &CancellationToken, own: impl Fn(&notify::Event) -> bool) -> Option<Vec<(notify::Event, Instant)>> {
     let mut events = vec![first];
     let started = Instant::now();
     loop {
@@ -549,7 +590,12 @@ async fn gather(first: notify::Event, rx: &mut mpsc::UnboundedReceiver<notify::E
         tokio::select! {
             _ = stop.cancelled() => return None,
             _ = tokio::time::sleep_until(deadline) => return Some(events),
-            ev = rx.recv() => events.push(ev?),
+            ev = rx.recv() => {
+                let ev = ev?;
+                if !own(&ev) {
+                    events.push((ev, Instant::now()));
+                }
+            }
         }
     }
 }
@@ -572,8 +618,19 @@ struct Shared {
 
 #[derive(Default)]
 struct Absorbed {
-    digests: HashMap<PathBuf, u64>,
+    reads: HashMap<PathBuf, AbsorbedRead>,
     git: Option<GitState>,
+}
+
+/// A write's own status of a worktree, after its last git command.
+#[derive(Clone)]
+pub(crate) struct AbsorbedRead {
+    pub digest: u64,
+    pub raw: Arc<Vec<u8>>,
+    /// The index's entries just before it (`status::index_digest`).
+    pub index: Option<u64>,
+    /// When it started: it saw every change made before.
+    pub started: Instant,
 }
 
 /// A write in progress. While one lives, the watcher reports
@@ -584,9 +641,9 @@ pub(crate) struct WatchHold {
 }
 
 impl WatchHold {
-    /// `root`'s status digest after the write (from the write's own status read).
-    pub(crate) fn absorb(&self, root: PathBuf, digest: u64) {
-        self.shared.absorbed.lock().expect("absorbed poisoned").digests.insert(root, digest);
+    /// `root`'s status after the write (the write's own status read).
+    pub(crate) fn absorb(&self, root: PathBuf, read: AbsorbedRead) {
+        self.shared.absorbed.lock().expect("absorbed poisoned").reads.insert(root, read);
     }
 
     /// The refs/HEAD/stash/config snapshot as the write left it.
@@ -723,7 +780,9 @@ fn launch(spec: WatchSpec, cli: GitCli, wip: Arc<WipCache>, bus: EventBus, h: Ha
     h.shared.watches.store(watches.applied.len(), Ordering::SeqCst);
     *h.shared.layout.lock().expect("layout poisoned") = (spec.common_dir.clone(), spec.worktrees.clone());
     let git = git_state(&spec.common_dir, &spec.worktrees);
+    let armed = wip.now();
     let state = Loop {
+        armed,
         truncated: base.truncated,
         base,
         watches,
@@ -742,6 +801,7 @@ fn launch(spec: WatchSpec, cli: GitCli, wip: Arc<WipCache>, bus: EventBus, h: Ha
         trusted: false,
         deferred: HashMap::new(),
         runs: HashMap::new(),
+        indexes: HashMap::new(),
     };
     tokio::spawn(state.run(h.rx, h.ready));
     Ok(())
@@ -775,6 +835,12 @@ struct Loop {
     deferred: HashMap<PathBuf, Deferred>,
     /// Per worktree root: its last status read.
     runs: HashMap<PathBuf, LastRun>,
+    /// Per worktree root: its index's entries (`status::index_digest`) just before its last
+    /// status read.
+    indexes: HashMap<PathBuf, u64>,
+    /// `WipCache::now` once the watches were in place: a status read stamped later sees what
+    /// changed before the watch, so the first pass may share it.
+    armed: u64,
 }
 
 impl Loop {
@@ -809,22 +875,26 @@ impl Loop {
                 _ = turn => None,
                 ev = rx.recv() => match ev { Some(e) => Some(e), None => return },
             };
+            // Each with when it arrived.
             let mut events = Vec::new();
             if let Some(first) = first {
                 if self.own_overflow(&first) {
                     continue;
                 }
-                let Some(gathered) = gather(first, &mut rx, &self.stop).await else { return };
+                let Some(gathered) = gather((first, Instant::now()), &mut rx, &self.stop, |ev| self.own_overflow(ev)).await else { return };
                 events = gathered;
             }
             if !self.wait_released(&mut rx, &mut events).await {
                 return;
             }
+            // Before the batch is judged: a write's reads are this watcher's last ones now.
+            let absorbed = self.take_absorbed();
             let mut batch = Batch::default();
-            for ev in events.iter().filter(|ev| !self.own_overflow(ev)) {
-                batch.add(ev, &self.spec);
+            for (ev, at) in events.iter().filter(|(ev, _)| !self.own_overflow(ev)) {
+                batch.add(ev, *at, &self.spec);
             }
             let woke = !batch.is_empty();
+            self.drop_refresh_writes(&mut batch);
             self.schedule(&mut batch);
             if batch.is_empty() {
                 continue;
@@ -832,7 +902,7 @@ impl Loop {
             if woke {
                 self.shared.wakeups.fetch_add(1, Ordering::SeqCst);
             }
-            self.handle(batch).await;
+            self.handle(batch, absorbed).await;
             self.update_trust();
             self.quiet_until = Instant::now() + DEBOUNCE;
         }
@@ -866,6 +936,31 @@ impl Loop {
         let Some(last) = self.runs.get(root) else { return false };
         let held = self.deferred.get(root).map(|d| &d.touched);
         last.streak >= 1 && now.duration_since(last.at) < STREAM_WINDOW && !touched.is_empty() && touched.iter().all(|p| last.touched.contains(p) || held.is_some_and(|h| h.contains(p)))
+    }
+
+    /// An index change that left its entries as this watcher's last read found them is a
+    /// refresh's write (GitVolt's own reads refresh the index, as git does): it can't change
+    /// what status says, so it neither calls for a status nor hurries one.
+    fn drop_refresh_writes(&self, batch: &mut Batch) {
+        if batch.overflow {
+            return;
+        }
+        let indexed: Vec<PathBuf> = batch.urgent.difference(&batch.heads).cloned().collect();
+        let mut kept = false;
+        for root in indexed {
+            if self.indexes.get(&root).is_some_and(|d| crate::status::index_digest(&root) == Some(*d)) {
+                batch.urgent.remove(&root);
+                batch.indexed.remove(&root);
+                if !batch.touched.contains_key(&root) {
+                    batch.status.remove(&root);
+                }
+            } else {
+                kept = true;
+            }
+        }
+        if !kept && batch.heads.is_empty() {
+            batch.kinds.remove(&ChangeKind::Index);
+        }
     }
 
     /// Holds back file changes that needn't be read yet, and brings back those whose turn came.
@@ -929,14 +1024,16 @@ impl Loop {
         }
     }
 
-    /// While a write holds the watch, keeps gathering. `false` once stopped.
-    async fn wait_released(&self, rx: &mut mpsc::UnboundedReceiver<notify::Event>, events: &mut Vec<notify::Event>) -> bool {
+    /// While a write holds the watch, keeps gathering (each with when it arrived). `false` once
+    /// stopped.
+    async fn wait_released(&self, rx: &mut mpsc::UnboundedReceiver<notify::Event>, events: &mut Vec<(notify::Event, Instant)>) -> bool {
         while self.shared.holds.load(Ordering::SeqCst) > 0 {
             tokio::select! {
                 _ = self.stop.cancelled() => return false,
                 _ = self.shared.released.notified() => {}
                 ev = rx.recv() => match ev {
-                    Some(e) => events.push(e),
+                    Some(e) if self.own_overflow(&e) => {}
+                    Some(e) => events.push((e, Instant::now())),
                     None => return false,
                 },
             }
@@ -944,22 +1041,30 @@ impl Loop {
         true
     }
 
-    /// A finished write's digests become this watcher's own last reads, and its git snapshot the
-    /// baseline. `true` when the git snapshot was replaced.
-    fn take_absorbed(&mut self) -> bool {
+    /// A finished write's status reads become this watcher's own last reads, and its git
+    /// snapshot the baseline. Returns whether the git snapshot was replaced, and the reads.
+    fn take_absorbed(&mut self) -> (bool, HashMap<PathBuf, AbsorbedRead>) {
         let a = std::mem::take(&mut *self.shared.absorbed.lock().expect("absorbed poisoned"));
-        self.digests.extend(a.digests);
-        match a.git {
+        for (root, read) in &a.reads {
+            self.digests.insert(root.clone(), read.digest);
+            match read.index {
+                Some(d) => self.indexes.insert(root.clone(), d),
+                None => self.indexes.remove(root),
+            };
+        }
+        let rebased = match a.git {
             Some(g) => {
                 self.git = g;
                 true
             }
             None => false,
-        }
+        };
+        (rebased, a.reads)
     }
 
-    async fn handle(&mut self, batch: Batch) {
-        let rebased = self.take_absorbed();
+    /// `absorbed`: what `take_absorbed` found for it.
+    async fn handle(&mut self, batch: Batch, absorbed: (bool, HashMap<PathBuf, AbsorbedRead>)) {
+        let (rebased, reads) = absorbed;
         self.watches.forget(batch.gone.iter().chain(&batch.vanished));
         let mut kinds = batch.kinds;
         let mut status = batch.status;
@@ -987,6 +1092,17 @@ impl Loop {
         }
         // Gone worktrees (and any the re-listing couldn't drop) are never read.
         status.retain(|r| r.is_dir());
+        // A worktree a write read after every event here arrived: that read saw what they
+        // changed (its own echo, or an outside change it announced), so it stands in for the
+        // watcher's. An event after it started (an outside change meanwhile) gets a read.
+        if !batch.overflow {
+            for (root, read) in reads {
+                let last = batch.arrived.get(&root).max(batch.indexed.get(&root));
+                if last.is_some_and(|at| *at < read.started) && status.remove(&root) {
+                    self.untracked.insert(root.clone(), untracked_dirs(&root, &read.raw));
+                }
+            }
+        }
         self.note_runs(&status, &batch.touched);
         let mut changed = self.refresh_status(&status, false, &batch.touched, batch.overflow).await;
         let git_kinds = [ChangeKind::Refs, ChangeKind::Head, ChangeKind::Stash, ChangeKind::Config, ChangeKind::State];
@@ -1090,15 +1206,22 @@ impl Loop {
             self.spec.handle = fresh;
         }
         let active = self.active();
-        let (cli, wip, handle, fail, active) = (&self.cli, &self.wip, &self.spec.handle, &self.tuning.fail_lists, &active);
+        let (cli, wip, handle, fail, active, armed) = (&self.cli, &self.wip, &self.spec.handle, &self.tuning.fail_lists, &active, self.armed);
         let reads = roots.iter().filter(|root| still_a_worktree(root) && !crate::status::checkout_pending(root) && !crate::status::index_locked(root)).map(|root| async move {
-            let stamp = wip.stamp();
-            let res = status_raw(cli, root).await;
+            // Only a read that file changes (or the first pass, or lost events) called for
+            // refreshes the index: one an index change alone called for may be answering a
+            // refresh's own write (git rewrites the index while an entry is racily clean), and
+            // refreshing again would call for another.
+            let refresh = first || relist || touched.contains_key(root);
+            // The first pass shares a read that started once the watches were in place (a
+            // graph build's); a later one needs a read that starts after the events it handles.
+            let res = wip.read_status(cli, root, if first { armed } else { wip.now() }, refresh).await;
+            let permit = if refresh { wip.refresh_permit() } else { None };
             // `None`: not recomputed. `Some(Err)`: recomputing failed.
             let mut lists = None;
             // Stale lists of a worktree nobody reads: dropped, not recomputed.
             let mut unread = false;
-            if let Ok(raw) = &res
+            if let Ok(crate::status::StatusRead { stamp, raw, .. }) = &res
                 && !first
             {
                 let digest = WipEntry::from_raw(raw).digest;
@@ -1121,19 +1244,22 @@ impl Loop {
                     let res = if fail.as_ref().is_some_and(|f| f.load(Ordering::SeqCst)) {
                         Err(GbError::other("test: WIP lists fail"))
                     } else {
-                        wip_lists(handle, cli, root, entries, &reuse).await
+                        wip_lists(handle, cli, root, entries, &reuse, permit.as_ref()).await
                     };
-                    lists = Some(res.map(|(staged, unstaged)| (prev.map(|p| p.version), WipLists::new(stamp, digest, staged, unstaged))));
+                    lists = Some(res.map(|(staged, unstaged)| (prev.map(|p| p.version), WipLists::new(*stamp, digest, staged, unstaged))));
                 }
             }
-            (root, stamp, res, lists, unread)
+            (root, res, lists, unread)
         });
         let mut changed = BTreeSet::new();
-        for (root, stamp, res, lists, unread) in futures_util::future::join_all(reads).await {
+        for (root, res, lists, unread) in futures_util::future::join_all(reads).await {
             match res {
-                Ok(raw) => {
+                Ok(crate::status::StatusRead { raw, index, before, .. }) => {
+                    match index {
+                        Some(d) => self.indexes.insert(root.clone(), d),
+                        None => self.indexes.remove(root),
+                    };
                     let entry = WipEntry::from_raw(&raw);
-                    let before = self.wip.put(root, stamp, entry);
                     let differs = if first { before.is_some_and(|b| b.digest != entry.digest) } else { self.digests.get(root) != Some(&entry.digest) };
                     let relisted = match lists {
                         Some(Ok((prev, next))) => {
@@ -1307,6 +1433,17 @@ impl Api {
     pub(crate) fn unwatch_repo(&self, id: u32) {
         let w = self.watchers.lock().expect("watchers poisoned").remove(&id);
         drop(w);
+    }
+
+    /// Waits for `id`'s watch, while one is being set up, to finish its first pass: a graph
+    /// asked for meanwhile (a tab just opened or shown) reads the status cache that pass filled,
+    /// rather than running a status of its own beside the watch's.
+    pub(crate) async fn watch_settled(&self, id: u32) {
+        let ready = self.watchers.lock().expect("watchers poisoned").get(&id).map(|w| w.ready.clone());
+        if let Some(mut ready) = ready {
+            // Ends early (the sender is dropped) if it's unwatched or fails meanwhile.
+            let _ = ready.wait_for(|r| *r).await;
+        }
     }
 
     /// Whether `id`'s status cache is kept fresh by a ready, non-degraded watcher. Only then may
@@ -1527,6 +1664,8 @@ mod tests {
         assert!(wts.is_empty(), "{wts:?}");
     }
 
+    /// GitVolt's own status reads report nothing. One that refreshes the index rewrites it, but
+    /// its entries are as they were: the watcher runs no status for that.
     #[tokio::test(flavor = "multi_thread")]
     async fn own_status_reads_emit_nothing() {
         let r = TestRepo::new();
@@ -1535,12 +1674,13 @@ mod tests {
         for _ in 0..3 {
             call(&api, serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null, "rescan": true}})).await;
         }
+        let m = mark(&api);
         assert!(next_change(&mut rx, Duration::from_millis(1500)).await.is_none(), "GitVolt's own reads must not trigger events");
-        assert_eq!(wakeups(&api, id), 0, "GitVolt's own status reads must not even wake the watcher");
+        assert_eq!(ran_after(&api, m), Vec::<String>::new(), "GitVolt's own status reads must not make the watcher run git");
     }
 
-    /// The WIP panel's reads (`git diff` with `diff.autoRefreshIndex=false`, `check-attr`, the
-    /// worktree file itself) on a stat-dirty tree: no event either.
+    /// The WIP panel's reads (`git diff`, `check-attr`, the worktree file itself) on a
+    /// stat-dirty tree: no event either, and no git process of the watcher's.
     #[tokio::test(flavor = "multi_thread")]
     async fn own_diff_reads_emit_nothing() {
         let r = TestRepo::new();
@@ -1562,8 +1702,9 @@ mod tests {
             )
             .await;
         }
+        let m = mark(&api);
         assert!(next_change(&mut rx, Duration::from_millis(1500)).await.is_none(), "GitVolt's own diff reads must not trigger events");
-        assert_eq!(wakeups(&api, id), 0, "GitVolt's own diff reads must not even wake the watcher");
+        assert_eq!(ran_after(&api, m), Vec::<String>::new(), "GitVolt's own diff reads must not make the watcher run git");
     }
 
     /// Reads from outside (an editor, a build, git reading refs and objects): every file in the
@@ -1597,10 +1738,10 @@ mod tests {
         assert!(kinds.contains(&ChangeKind::Worktree), "{kinds:?}");
     }
 
-    /// The watcher's own status run (after a real change) must not wake it again: one change,
-    /// then silence, with no further batches.
+    /// The watcher's own status run (after a real change) must not start another: one change,
+    /// then silence. (Its refresh may rewrite the index, which may wake it, to no effect.)
     #[tokio::test(flavor = "multi_thread")]
-    async fn the_watchers_own_status_run_does_not_wake_it() {
+    async fn the_watchers_own_status_run_does_not_start_another() {
         let r = TestRepo::new();
         fixtures::basic(&r);
         let (api, id, mut rx) = watched(&r).await;
@@ -1608,8 +1749,10 @@ mod tests {
         next_change(&mut rx, Duration::from_secs(5)).await.expect("an event");
         let after = wakeups(&api, id);
         assert!(after >= 1, "the event came from a batch");
+        let m = mark(&api);
         assert!(next_change(&mut rx, Duration::from_millis(1500)).await.is_none());
-        assert_eq!(wakeups(&api, id), after, "no batch after the watcher's own status run");
+        assert_eq!(ran_after(&api, m), Vec::<String>::new(), "no git after the watcher's own status run");
+        assert!(wakeups(&api, id) <= after + 1, "at most its refresh's index write");
     }
 
     /// Files created later inside a new, untracked (not ignored) folder are seen: the folder is
@@ -1801,8 +1944,9 @@ mod tests {
         r.write("new.txt", "x\n");
         r.git(&["update-ref", "refs/heads/x", &c]);
         let root = crate::platform::fs::canonicalize(r.path()).unwrap();
-        let lists = read_and_keep_lists(&h.repo, &api.cli, &h.wip, &root).await.unwrap();
-        hold.absorb(root, lists.digest);
+        let write = api.repo_writes(&h).acquire().await;
+        let (_, read) = keep_lists_after_write(&h.repo, &api.cli, &h.wip, &root, &write).await.unwrap();
+        hold.absorb(root, read);
         hold.absorb_git();
         drop(hold);
         assert!(next_change(&mut rx, Duration::from_millis(900)).await.is_none(), "the write's own echo");
@@ -1817,14 +1961,67 @@ mod tests {
         let hold = with_watcher(&api, id, |w| w.hold());
         r.write("mine.txt", "x\n");
         let root = crate::platform::fs::canonicalize(r.path()).unwrap();
-        let lists = read_and_keep_lists(&h.repo, &api.cli, &h.wip, &root).await.unwrap();
-        hold.absorb(root, lists.digest);
+        let write = api.repo_writes(&h).acquire().await;
+        let (_, read) = keep_lists_after_write(&h.repo, &api.cli, &h.wip, &root, &write).await.unwrap();
+        hold.absorb(root, read);
         hold.absorb_git();
         r.write("theirs.txt", "y\n");
         r.git(&["update-ref", "refs/heads/outside", &c]);
         drop(hold);
         let (kinds, _) = next_change(&mut rx, Duration::from_secs(3)).await.expect("the outside change");
         assert!(kinds.contains(&ChangeKind::Worktree) && kinds.contains(&ChangeKind::Refs), "{kinds:?}");
+    }
+
+    /// What a write changed, seen by the watcher before the write's own status started, needs
+    /// no status of the watcher's: that read saw it.
+    #[cfg(target_os = "linux")] // exact git-run counts in a time window (inotify's timing)
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_writes_own_echo_runs_no_status() {
+        let r = TestRepo::new();
+        r.commit("c");
+        let (api, id, mut rx) = watched(&r).await;
+        let h = api.handle(id).unwrap();
+        let hold = with_watcher(&api, id, |w| w.hold());
+        r.write("new.txt", "x\n");
+        // Its event arrives while the write still runs.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let root = crate::platform::fs::canonicalize(r.path()).unwrap();
+        let write = api.repo_writes(&h).acquire().await;
+        let (_, read) = keep_lists_after_write(&h.repo, &api.cli, &h.wip, &root, &write).await.unwrap();
+        let m = mark(&api);
+        hold.absorb(root, read);
+        hold.absorb_git();
+        drop(write);
+        drop(hold);
+        assert!(next_change(&mut rx, Duration::from_millis(900)).await.is_none(), "the write's own echo");
+        assert_eq!(ran_since(&api, m, "status", None), 0, "{:?}", ran_after(&api, m));
+    }
+
+    /// A commit reads status twice (its plan, then the fresh lists), and the watcher none for
+    /// what it changed; creating a branch reads none and announces only refs.
+    #[cfg(target_os = "linux")] // exact git-run counts in a time window (inotify's timing)
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_commit_reads_status_twice_and_a_new_branch_never() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        r.write("file_1.txt", "changed\n");
+        let (api, id, mut rx) = watched(&r).await;
+        let wt = canonical(r.path());
+        call(&api, serde_json::json!({"method": "stage", "params": {"repo": id, "worktree": wt, "paths": ["file_1.txt"]}})).await;
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        let m = mark(&api);
+        call(&api, serde_json::json!({"method": "commit", "params": {"repo": id, "worktree": wt, "summary": "Saved"}})).await;
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert_eq!(ran_since(&api, m, "status", None), 2, "{:?}", ran_after(&api, m));
+        while rx.try_recv().is_ok() {}
+        let m = mark(&api);
+        let head = r.git(&["rev-parse", "HEAD"]);
+        call(&api, serde_json::json!({"method": "createBranch", "params": {"repo": id, "worktree": wt, "name": "side", "start": head, "checkout": false}})).await;
+        let (kinds, worktrees) = next_change(&mut rx, Duration::from_secs(2)).await.expect("the write's announce");
+        assert_eq!((kinds, worktrees), (vec![ChangeKind::Refs], vec![]), "refs only");
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        assert_eq!(ran_since(&api, m, "status", None), 0, "{:?}", ran_after(&api, m));
+        assert!(next_change(&mut rx, Duration::from_millis(300)).await.is_none(), "nothing from the watcher");
     }
 
     fn with_watcher<T>(api: &Api, id: u32, f: impl FnOnce(&RepoWatcher) -> T) -> T {
@@ -1849,7 +2046,8 @@ mod tests {
     }
 
     /// On a huge repo the watcher's own status reads can overflow the queue; those overflows are
-    /// its own doing and must not start another rescan (which would overflow again, forever).
+    /// its own doing and must not start another rescan (which would overflow again, forever),
+    /// even when they arrive with its refresh's index write.
     #[tokio::test(flavor = "multi_thread")]
     async fn overflows_from_its_own_status_reads_do_not_loop() {
         let r = TestRepo::new();
@@ -1858,8 +2056,10 @@ mod tests {
         r.write("brand-new.txt", "x\n");
         next_change(&mut rx, Duration::from_secs(5)).await.expect("an event");
         let after = wakeups(&api, id);
+        let m = mark(&api);
         assert!(next_change(&mut rx, Duration::from_millis(1500)).await.is_none());
-        assert_eq!(wakeups(&api, id), after, "the self-inflicted overflows were dropped");
+        assert_eq!(ran_after(&api, m), Vec::<String>::new(), "the self-inflicted overflows were dropped");
+        assert!(wakeups(&api, id) <= after + 1, "at most its refresh's index write");
     }
 
     /// Dropping an older stash (`stash@{1}`) rewrites only `logs/refs/stash`, and `refs/stash`
@@ -2082,7 +2282,7 @@ mod tests {
             }
         });
         let start = Instant::now();
-        let events = gather(notify::Event::new(EventKind::Any), &mut rx, &CancellationToken::new()).await.unwrap();
+        let events = gather((notify::Event::new(EventKind::Any), Instant::now()), &mut rx, &CancellationToken::new(), |_| false).await.unwrap();
         let took = start.elapsed();
         assert!(took >= MAX_WAIT && took < MAX_WAIT + Duration::from_millis(100), "{took:?}");
         assert!(events.len() >= 10, "{}", events.len());
@@ -2090,7 +2290,7 @@ mod tests {
         // A single event: the batch closes after one quiet debounce.
         let (tx, mut rx) = mpsc::unbounded_channel::<notify::Event>();
         let start = Instant::now();
-        gather(notify::Event::new(EventKind::Any), &mut rx, &CancellationToken::new()).await.unwrap();
+        gather((notify::Event::new(EventKind::Any), Instant::now()), &mut rx, &CancellationToken::new(), |_| false).await.unwrap();
         assert_eq!(start.elapsed(), DEBOUNCE);
         drop(tx);
     }
@@ -2108,10 +2308,10 @@ mod tests {
         api.cli.log().entries().last().map(|e| e.id)
     }
 
-    /// The index's bytes and mtime: what C1 says no read may change.
-    fn index_state(r: &TestRepo) -> (Vec<u8>, std::time::SystemTime) {
-        let p = r.path().join(".git/index");
-        (std::fs::read(&p).unwrap(), std::fs::metadata(&p).unwrap().modified().unwrap())
+    /// The index's entries (path, mode, blob, stage): what no read may change (a refresh
+    /// rewrites only their stat info).
+    fn index_state(r: &TestRepo) -> String {
+        r.git(&["ls-files", "-s"])
     }
 
     async fn change_naming(rx: &mut broadcast::Receiver<AppEvent>, wt: &str) -> std::collections::BTreeMap<String, String> {
@@ -2130,7 +2330,7 @@ mod tests {
 
     /// Once watched, the WIP lists come from the watcher's cache (no git process, and a
     /// version the UI may hold), and are recomputed when the worktree changes: the event carries
-    /// the new version, the next read has it and the new file, and the index is never written.
+    /// the new version, the next read has it and the new file, and the index's entries never change.
     #[tokio::test(flavor = "multi_thread")]
     async fn the_watcher_keeps_the_wip_lists_and_refreshes_them_on_change() {
         let r = TestRepo::new();
@@ -2158,7 +2358,7 @@ mod tests {
         assert_eq!(last_git(&api), before, "refreshed before the event: still no git process");
         assert_eq!(paths(&unstaged), vec!["brand-new.txt", "file_1.txt"]);
         assert_eq!(unstaged["version"], v2.as_str());
-        assert_eq!(index_state(&r), index, "the watcher's lists never write the index (C1)");
+        assert_eq!(index_state(&r), index, "the watcher's lists never change the index's entries");
     }
 
     /// A repository a tab let go of, opened again under its id (`repo_holds.rs`), is watched
@@ -2216,7 +2416,7 @@ mod tests {
     }
 
     /// A stat-dirty but unchanged tracked file (mtime bumped) while watched: no event, never
-    /// listed, and the index untouched (C1).
+    /// listed, and the index's entries untouched (only their stat info is refreshed).
     #[tokio::test(flavor = "multi_thread")]
     async fn a_stat_dirty_file_is_not_listed_by_the_kept_lists() {
         let r = TestRepo::new();
@@ -2461,6 +2661,75 @@ mod tests {
         assert_eq!(ran_after(&api, m).len(), 2, "nothing else: {:?}", ran_after(&api, m));
     }
 
+    /// Opening a repository runs one `git status` per worktree: the shown tab's watch starts
+    /// first, the graph waits for its first pass, and the first WIP lists come from the status
+    /// that pass kept.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn opening_a_repository_runs_one_status() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        r.write("file_1.txt", "changed\n");
+        let api = api();
+        let id = call(&api, serde_json::json!({"method": "openRepo", "params": {"path": r.path()}})).await["id"].as_u64().unwrap() as u32;
+        let m = mark(&api);
+        let watch = call(&api, serde_json::json!({"method": "watchRepo", "params": {"repo": id}}));
+        let graph = async {
+            while !api.watchers.lock().unwrap().contains_key(&id) {
+                tokio::task::yield_now().await;
+            }
+            call(&api, serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}})).await
+        };
+        let (_, g) = futures_util::future::join(watch, graph).await;
+        assert!(!g["rows"].as_array().unwrap().is_empty());
+        let wt = canonical(r.path());
+        let unstaged = file_list(&api, id, &wt, false).await;
+        assert_eq!(paths(&unstaged), ["file_1.txt"]);
+        let hotfix = r.root().join("wt-hotfix");
+        assert_eq!((ran_since(&api, m, "status", Some(r.path())), ran_since(&api, m, "status", Some(&hotfix))), (1, 1), "{:?}", ran_after(&api, m));
+    }
+
+    /// Showing a tab again (watch, graph, WIP lists) runs one `git status` per worktree, and
+    /// the lists' one numstat.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn showing_a_tab_again_runs_one_status() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        r.write("file_1.txt", "changed\n");
+        let (api, id, _rx) = watched(&r).await;
+        let wt = canonical(r.path());
+        file_list(&api, id, &wt, false).await;
+        call(&api, serde_json::json!({"method": "unwatchRepo", "params": {"repo": id}})).await;
+        let m = mark(&api);
+        call(&api, serde_json::json!({"method": "watchRepo", "params": {"repo": id}})).await;
+        call(&api, serde_json::json!({"method": "graph", "params": {"repo": id, "limit": null}})).await;
+        let (staged, unstaged) = futures_util::future::join(file_list(&api, id, &wt, true), file_list(&api, id, &wt, false)).await;
+        assert_eq!((paths(&staged), paths(&unstaged)), (vec![], vec!["file_1.txt".to_string()]));
+        assert!(unstaged["version"].is_string(), "kept lists, versioned");
+        let hotfix = r.root().join("wt-hotfix");
+        assert_eq!((ran_since(&api, m, "status", Some(r.path())), ran_since(&api, m, "status", Some(&hotfix))), (1, 1), "{:?}", ran_after(&api, m));
+        assert_eq!(ran_since(&api, m, "diff --numstat", None), 1, "{:?}", ran_after(&api, m));
+    }
+
+    /// A file dated in the future stays racily clean, so every refreshing status rewrites the
+    /// index. The watcher's status for that index change alone doesn't refresh: a save costs
+    /// two statuses, never a loop of them.
+    #[cfg(target_os = "linux")] // exact git-run counts in a time window (inotify's timing)
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_refreshs_own_index_write_never_loops() {
+        let r = TestRepo::new();
+        r.commit("a");
+        r.commit("b");
+        let f = std::fs::File::options().write(true).open(r.path().join("file_0.txt")).unwrap();
+        f.set_modified(std::time::SystemTime::now() + Duration::from_secs(86_400)).unwrap();
+        let (api, _id, _rx) = watched(&r).await;
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        let m = mark(&api);
+        r.write("file_1.txt", "saved\n");
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        let statuses = ran_since(&api, m, "status", None);
+        assert!((1..=2).contains(&statuses), "{:?}", ran_after(&api, m));
+    }
+
     /// A file appended to every 200 ms (a growing log): after two quick runs, its status is
     /// re-read at most every `STREAM_INTERVAL` while only it keeps changing, and once more when
     /// it stops, so the counts end right.
@@ -2607,7 +2876,8 @@ mod tests {
         assert_eq!(mark(&api), m, "{:?}", ran_after(&api, m));
     }
 
-    /// The UI reads both lists of a WIP row at once: one status and one pair of numstats.
+    /// The UI reads both lists of a WIP row at once: one computation (from the status the
+    /// watch kept), so one numstat and no status.
     #[cfg(target_os = "linux")] // exact git-run counts in a time window: inotify's timing (Windows' notifications and macOS's FSEvents batch changes differently)
     #[tokio::test(flavor = "multi_thread")]
     async fn concurrent_reads_of_a_worktrees_lists_share_one_computation() {
@@ -2617,7 +2887,7 @@ mod tests {
         let wt = canonical(r.path());
         let m = mark(&api);
         futures_util::future::join(file_list(&api, id, &wt, false), file_list(&api, id, &wt, true)).await;
-        assert_eq!(ran_since(&api, m, "status", None), 1, "{:?}", ran_after(&api, m));
+        assert_eq!(ran_since(&api, m, "status", None), 0, "the watch's first status serves: {:?}", ran_after(&api, m));
         assert_eq!(ran_since(&api, m, "diff --numstat", None), 1, "{:?}", ran_after(&api, m));
     }
 

@@ -45,8 +45,9 @@ export const RepoTab = memo(function RepoTab({ tab }: { tab: TabState }) {
   // Watch while shown. Re-shown with a graph already loaded, it's shown at once, then updated
   // in place once the watch is on: the watcher's first pass has
   // refreshed the backend's status cache by then, so a plain `graph` is current (an
-  // unwatched repo's graph always re-reads status). A first open doesn't wait: its graph is read
-  // unwatched, and the watcher reports anything that changed between the two.
+  // unwatched repo's graph always re-reads status). On a first open, `open` starts the watch
+  // ahead of its graph, and the core's graph waits for the watch's first status instead of
+  // reading its own.
   useEffect(() => {
     if (repoId === undefined) return;
     let shown = true;

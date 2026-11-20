@@ -115,11 +115,16 @@ impl WipEntry {
 /// `cover`s that worktree.
 #[derive(Debug, Default)]
 pub struct WipCache {
-    seq: AtomicU64,
+    pub(crate) seq: AtomicU64,
     inner: Mutex<WipInner>,
     /// Per worktree: held while its lists are computed on request, so two requests at once (the
     /// UI reads a WIP row's two lists together) share one computation.
     list_reads: Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
+    /// The repository's refresh gate (`RepoWrites::refresh_gate`): its status reads refresh the
+    /// index while no write runs (`refresh_permit`). `None`: they never do.
+    pub(crate) gate: Option<Arc<tokio::sync::RwLock<()>>>,
+    /// The status read running per worktree, for others to share (`read_status`).
+    pub(crate) reads: crate::status::StatusReads,
 }
 
 /// One worktree's WIP file lists, computed by the active tab's watcher from the status
@@ -155,6 +160,8 @@ impl WipLists {
 #[derive(Debug, Default)]
 struct WipInner {
     entries: HashMap<PathBuf, (u64, WipEntry)>,
+    /// The raw output of the read behind each entry, by its stamp (`kept_raw`).
+    raws: HashMap<PathBuf, (u64, Arc<Vec<u8>>)>,
     /// The watcher's WIP lists per covered worktree; dropped with the coverage.
     lists: HashMap<PathBuf, WipLists>,
     /// `None`: every entry is reusable. `Some`: only the covered worktrees', and whose watcher
@@ -171,6 +178,12 @@ impl WipCache {
     /// A cache whose entries are reused only for worktrees a watcher covers.
     pub fn watched_only() -> Self {
         Self { inner: Mutex::new(WipInner { coverage: Some((None, HashSet::new())), ..Default::default() }), ..Default::default() }
+    }
+
+    /// Its status reads refresh the index while no write holds `gate`.
+    pub fn gated(mut self, gate: Arc<tokio::sync::RwLock<()>>) -> Self {
+        self.gate = Some(gate);
+        self
     }
 
     /// The graph laid `path` out as the open worktree.
@@ -240,6 +253,31 @@ impl WipCache {
         }
     }
 
+    /// `put`, keeping the read's raw output too (`kept_raw`).
+    pub fn put_raw(&self, path: &Path, stamp: u64, raw: Arc<Vec<u8>>) -> Option<WipEntry> {
+        let entry = WipEntry::from_raw(&raw);
+        let key = Self::key(path);
+        let mut inner = self.lock();
+        match inner.entries.get(&key) {
+            Some(&(held, current)) if held > stamp => Some(current),
+            _ => {
+                inner.raws.insert(key.clone(), (stamp, raw));
+                inner.entries.insert(key, (stamp, entry)).map(|(_, e)| e)
+            }
+        }
+    }
+
+    /// The raw status behind a covered worktree's cached entry, and its stamp: as current as
+    /// the entry (its watcher reads again on any change), so lists may be computed from it.
+    pub fn kept_raw(&self, path: &Path) -> Option<(u64, Arc<Vec<u8>>)> {
+        let key = Self::key(path);
+        let inner = self.lock();
+        let covered = matches!(&inner.coverage, Some((Some(_), roots)) if roots.contains(&key));
+        let (stamp, raw) = inner.raws.get(&key)?;
+        let current = inner.entries.get(&key).is_some_and(|(held, _)| held == stamp);
+        (covered && current).then(|| (*stamp, raw.clone()))
+    }
+
     /// The watcher's lists for this worktree, whatever their status digest (the watcher compares
     /// versions with them).
     pub fn lists(&self, path: &Path) -> Option<WipLists> {
@@ -299,6 +337,7 @@ impl WipCache {
             *who = None;
             roots.clear();
             inner.lists.clear();
+            inner.raws.clear();
             inner.served.clear();
         }
     }
@@ -423,8 +462,10 @@ fn in_progress_of(worktrees: &[Worktree]) -> BTreeMap<String, InProgress> {
 
 /// (index into `worktrees`, counts) for every dirty, usable worktree. A worktree whose cached counts
 /// are `reusable` keeps them unless `rescan`; every status that does run refreshes the cache
-/// (stamped before the read, so an older read never replaces a newer one).
+/// (`WipCache::read_status`: stamped before the read, so an older read never replaces a newer one).
 async fn collect_wip(cli: &GitCli, worktrees: &[Worktree], cache: Option<&WipCache>, rescan: bool) -> Vec<(usize, WipCounts)> {
+    // A read already running that started after this build was asked for serves it too.
+    let since = cache.map(WipCache::now).unwrap_or(0);
     let jobs = worktrees.iter().enumerate().filter(|(_, w)| !w.bare && !w.prunable && w.path.is_dir()).map(|(i, w)| async move {
         // Still being checked out: no counts yet, and none cached (the watcher reads it once its index appears).
         if crate::status::checkout_pending(&w.path) {
@@ -439,15 +480,12 @@ async fn collect_wip(cli: &GitCli, worktrees: &[Worktree], cache: Option<&WipCac
         {
             return Some((i, e.counts));
         }
-        let stamp = cache.map(WipCache::stamp).unwrap_or(0);
-        match status_raw(cli, &w.path).await {
-            Ok(raw) => {
-                let entry = WipEntry::from_raw(&raw);
-                if let Some(c) = cache {
-                    c.put(&w.path, stamp, entry);
-                }
-                Some((i, entry.counts))
-            }
+        let read = match cache {
+            Some(c) => c.read_status(cli, &w.path, since, true).await.map(|r| r.raw),
+            None => status_raw(cli, &w.path).await.map(Arc::new),
+        };
+        match read {
+            Ok(raw) => Some((i, WipEntry::from_raw(&raw).counts)),
             Err(e) => {
                 tracing::warn!("status failed for worktree {}: {e}", w.path.display());
                 None

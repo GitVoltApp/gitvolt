@@ -1,5 +1,5 @@
 //! A WIP file's hunks, from git: the hunk and line buttons sit at what gets
-//! applied, never at Monaco's own diff. Read-only, with the never-write environment.
+//! applied, never at Monaco's own diff. Read-only (`GIT_OPTIONAL_LOCKS=0`).
 
 use crate::blob::{check_relative, safe_join, worktree_id};
 use crate::error::{gix_err, GbError, GbErrorKind};

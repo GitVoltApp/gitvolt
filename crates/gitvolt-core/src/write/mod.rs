@@ -192,6 +192,12 @@ pub(crate) trait WriteIntent: Send + Sync {
     fn traces_hooks(&self) -> bool {
         self.runs_hooks()
     }
+    /// It may have changed the worktree or the index (asked after `run`, when an intent knows
+    /// more). One that can't (a push, a branch or tag, a remote) gets no status read after it
+    /// and announces no `worktree`/`index` change: the watcher sees any made meanwhile.
+    fn touches_worktree(&self) -> bool {
+        true
+    }
     /// It may run during a merge or rebase (stage, discard per file, save, resolve).
     fn allowed_in_progress(&self) -> bool {
         false
@@ -279,7 +285,7 @@ pub(crate) struct WriteCx<'a> {
     autostashed: bool,
     writes: Arc<RepoWrites>,
     /// The write lock, while held (`unlock` drops it for a network transfer).
-    lock: Option<tokio::sync::OwnedMutexGuard<()>>,
+    lock: Option<crate::write::queue::WriteGuard>,
     /// The watcher holds, while held (a transfer releases them too).
     holds: Vec<crate::watch::WatchHold>,
     /// The run stopped on conflicts (a merge or rebase): steps 8 and 9 leave its
@@ -971,12 +977,12 @@ struct Ran<O> {
     journal_changed: bool,
     // The lock and holds come back, so an early failure keeps them until `run_write`
     // has read the lists.
-    lock: Option<tokio::sync::OwnedMutexGuard<()>>,
+    lock: Option<crate::write::queue::WriteGuard>,
     holds: Vec<crate::watch::WatchHold>,
 }
 
 impl<O> Ran<O> {
-    fn failed(e: GbError, lock: Option<tokio::sync::OwnedMutexGuard<()>>, holds: Vec<crate::watch::WatchHold>) -> Self {
+    fn failed(e: GbError, lock: Option<crate::write::queue::WriteGuard>, holds: Vec<crate::watch::WatchHold>) -> Self {
         Self { result: Err(e), moves: Vec::new(), head_before: HeadState::default(), head_after: HeadState::default(), kinds: BTreeSet::new(), journal_changed: false, lock, holds }
     }
 }
@@ -984,7 +990,7 @@ impl<O> Ran<O> {
 /// Steps 2–9, under the lock (a network transfer in `run` may release it; it's taken again
 /// before verify).
 #[allow(clippy::too_many_arguments)]
-async fn steps<I: WriteIntent>(api: &Api, h: &Arc<RepoHandle>, root: &Path, expect: &Expect, intent: &I, op: &OpEntry, out: mpsc::UnboundedSender<String>, writes: Arc<RepoWrites>, lock: tokio::sync::OwnedMutexGuard<()>, holds: Vec<crate::watch::WatchHold>) -> Ran<I::Outcome> {
+async fn steps<I: WriteIntent>(api: &Api, h: &Arc<RepoHandle>, root: &Path, expect: &Expect, intent: &I, op: &OpEntry, out: mpsc::UnboundedSender<String>, writes: Arc<RepoWrites>, lock: crate::write::queue::WriteGuard, holds: Vec<crate::watch::WatchHold>) -> Ran<I::Outcome> {
     // 2. Preflight (read-only).
     let before = match preflight(root, expect, intent.refs(), intent.allowed_in_progress()).await {
         Ok(b) => b,
@@ -1298,9 +1304,11 @@ async fn submodules_changed(api: &Api, h: &RepoHandle, root: &Path) -> bool {
 /// `repoChanged` with what the write touched (and the lists' version), and
 /// `refsUpdated` when a ref moved, to every tab of the repository. Always sent, whatever the
 /// outcome: it's the refresh after every write.
-fn announce<O>(api: &Api, writes: &RepoWrites, root: &Path, ran: &Ran<O>, version: Option<&str>, submodules: bool) {
+fn announce<O>(api: &Api, writes: &RepoWrites, root: &Path, ran: &Ran<O>, version: Option<&str>, submodules: bool, touched: bool) {
     let mut kinds = ran.kinds.clone();
-    kinds.extend([ChangeKind::Worktree, ChangeKind::Index]);
+    if touched {
+        kinds.extend([ChangeKind::Worktree, ChangeKind::Index]);
+    }
     if submodules {
         kinds.insert(ChangeKind::Submodules);
     }
@@ -1313,7 +1321,7 @@ fn announce<O>(api: &Api, writes: &RepoWrites, root: &Path, ran: &Ran<O>, versio
     let wt = root.display().to_string();
     let versions: BTreeMap<String, String> = version.map(|v| (wt.clone(), v.to_string())).into_iter().collect();
     for id in writes.ids() {
-        api.bus.emit(AppEvent::RepoChanged { repo: id, kinds: kinds.iter().copied().collect(), worktrees: vec![wt.clone()], versions: versions.clone() });
+        api.bus.emit(AppEvent::RepoChanged { repo: id, kinds: kinds.iter().copied().collect(), worktrees: if touched { vec![wt.clone()] } else { Vec::new() }, versions: versions.clone() });
         if !ran.moves.is_empty() {
             api.bus.emit(AppEvent::RefsUpdated { repo: id });
         }
@@ -1376,12 +1384,18 @@ async fn run_write_inner<I: WriteIntent>(api: &Api, repo: u32, worktree: &str, e
     }
     let _ = forward.await;
     // 10. The fresh lists, after the write's last git command; the watcher absorbs them (and
-    //     the refs as the write left them), so its own pass finds nothing new.
-    let lists = crate::watch::read_and_keep_lists(&h.repo, &api.cli, &h.wip, &root).await.ok();
-    let submodules = submodules_changed(api, &h, &root).await;
+    //     the refs as the write left them), so its own pass finds nothing new. A write that
+    //     can't change the worktree or index reads none: the lists the watcher keeps stand.
+    let touched = intent.touches_worktree();
+    let lists = match &ran.lock {
+        Some(guard) if touched => crate::watch::keep_lists_after_write(&h.repo, &api.cli, &h.wip, &root, guard).await.ok(),
+        _ => None,
+    };
+    let (lists, read) = lists.unzip();
+    let submodules = touched && submodules_changed(api, &h, &root).await;
     for hold in &ran.holds {
-        if let Some(l) = &lists {
-            hold.absorb(root.clone(), l.digest);
+        if let Some(read) = &read {
+            hold.absorb(root.clone(), read.clone());
         }
         hold.absorb_git();
     }
@@ -1396,7 +1410,7 @@ async fn run_write_inner<I: WriteIntent>(api: &Api, repo: u32, worktree: &str, e
         slot.finish(ran.result.as_ref().err(), &carried);
     }
     let wip = lists.map(|l| WipListsPayload { worktree: root.display().to_string(), version: l.version.clone(), staged: (*l.staged).clone(), unstaged: (*l.unstaged).clone() });
-    announce(api, &writes, &root, &ran, wip.as_ref().map(|w| w.version.as_str()), submodules);
+    announce(api, &writes, &root, &ran, wip.as_ref().map(|w| w.version.as_str()), submodules, touched);
     // A write that ran is never reported as failed because the journal couldn't be read after it
     // (the user might retry a commit): the state falls back to an empty one.
     let journal = match api.journal_state(&root) {
@@ -1419,7 +1433,11 @@ async fn run_write_inner<I: WriteIntent>(api: &Api, repo: u32, worktree: &str, e
         Err(e) => (OpOutcome::Failed, Some(e.message.clone())),
     };
     api.bus.emit(AppEvent::OpFinished { op: op.id, kind, repo: Some(repo), outcome, message, command: None });
-    let conflicted = wip.as_ref().is_some_and(|w| w.unstaged.files.iter().any(|f| f.status == "U"));
+    // Untouched: the lists the watcher keeps say it.
+    let conflicted = match &wip {
+        Some(w) => w.unstaged.files.iter().any(|f| f.status == "U"),
+        None => h.wip.lists(&root).is_some_and(|l| l.unstaged.files.iter().any(|f| f.status == "U")),
+    };
     let staging = crate::journal::staging::state(api, &root, conflicted);
     Ok(WriteResult { outcome: ran.result?, journal, staging, wip })
 }

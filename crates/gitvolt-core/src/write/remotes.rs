@@ -44,6 +44,9 @@ pub fn remote_url_error(url: &str) -> Option<&'static str> {
 
 impl WriteIntent for AddRemote {
     type Outcome = ();
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         OpKind::Branch
     }
@@ -113,6 +116,9 @@ impl SwitchRemoteUrl {
 
 impl WriteIntent for SwitchRemoteUrl {
     type Outcome = ();
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         OpKind::Branch
     }
@@ -266,6 +272,9 @@ fn tracking_refs(root: &Path) -> Result<TrackingRefs, GbError> {
 
 impl WriteIntent for RemoveRemote {
     type Outcome = ();
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         OpKind::Branch
     }

@@ -55,18 +55,21 @@ export async function forgetPreviousPage(): Promise<void> {
  * Resolves once the repo's latest wish has been applied (a failure is logged, not thrown): a tab
  * refreshes after its `watchRepo` returns, since the watcher's first pass has then refreshed the
  * backend's status cache (watch, then a plain `graph`). A watch for tab `holder` holds the
- * repo first: the core watches only a repo some tab holds.
+ * repo first: the core watches only a repo some tab holds. `held`: the caller has just held it,
+ * so `watchRepo` goes out at once (ahead of a request sent right after it).
  */
-export function setWatched(repo: number, on: boolean, holder?: string): Promise<void> {
+export function setWatched(repo: number, on: boolean, holder?: string, held = false): Promise<void> {
   desired.set(repo, on);
   if (on && holder) holders.set(repo, holder);
   const cur = running.get(repo);
   if (cur) return cur;
   const run = (async () => {
     let applied: boolean | undefined;
+    let skipHold = held;
     while (desired.get(repo) !== applied) {
       const want = desired.get(repo)!;
-      const holder = want ? holders.get(repo) : undefined;
+      const holder = want && !skipHold ? holders.get(repo) : undefined;
+      skipHold = false;
       if (holder) await holdRepo(holder, repo);
       try {
         await (want ? api.watchRepo(repo) : api.unwatchRepo(repo));

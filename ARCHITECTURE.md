@@ -189,12 +189,21 @@ commands for Help → Debug. Git runs with the user's login-shell environment (c
 startup, so `SSH_AUTH_SOCK` and `PATH` additions apply even when GitVolt starts from a desktop
 launcher). A profile's extra gitconfig is passed as `-c include.path=…`.
 
+A read may refresh the index, as the same command does in a terminal, and never changes anything
+else: `git status` (and the unstaged `git diff` after it) writes back the stat info it re-hashed,
+so a fresh clone or a tool that touched every file costs one slow status, not one per save. Only
+while no GitVolt write runs (the write holds the repository's refresh gate, `RefreshPermit` in
+`write/queue.rs`), and not while a rebase or cherry-pick sequence is under way: a refresh holds
+`index.lock` for a moment, and a git command that finds it there fails. git skips the refresh
+when it can't take the lock. Every other read runs with `GIT_OPTIONAL_LOCKS=0`.
+
 ### Writes
 
 Every write runs the git CLI, never gix, and every write goes through one function, `run_write`
 (`write/mod.rs`). A write is a `WriteIntent`; only the write module can mint the `WriteToken` that
 `GitInvocation::write` requires, so a read path can't build a write by accident. An API test
-(`WRITE_METHODS` in `api.rs`) checks that every method either is a declared write or never writes.
+(`WRITE_METHODS` in `api.rs`) checks that every method either is a declared write or never writes
+(an index refresh aside: the index's entries stay as they were).
 
 Why the CLI: GitVolt should behave exactly as `git` does in a terminal. Hooks (pre-commit,
 commit-msg, pre-push, …) run, every kind of config applies (includes, conditional includes,
@@ -386,9 +395,10 @@ file, non-recursively, plus `.git`, `.git/worktrees`, each linked worktree's git
 `.git/refs` recursively. Events are classified (worktree, index, refs, HEAD, stash, config,
 merge/rebase state), debounced (150 ms, at most 1 s while events keep coming), and a worktree change
 is confirmed against a digest of `git status`, so churn in ignored files and GitVolt's own reads
-never reach the UI. Past 20 000 directories, or at inotify's own limit, the watch is degraded: it
-still reports what it sees, but every graph build re-reads status. During a write, the watcher is
-held and the write announces its own changes.
+never reach the UI. An index rewrite that leaves its entries as the last status found them (a
+refresh's, GitVolt's or a terminal's) calls for no status at all. Past 20 000 directories, or at
+inotify's own limit, the watch is degraded: it still reports what it sees, but every graph build
+re-reads status. During a write, the watcher is held and the write announces its own changes.
 
 Inactive tabs aren't watched, and aren't even opened until first activated. Activating a tab
 re-reads status for every worktree.

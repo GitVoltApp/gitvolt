@@ -61,6 +61,9 @@ impl DeleteBranch {
 
 impl WriteIntent for DeleteBranch {
     type Outcome = DeleteOutcome;
+    fn touches_worktree(&self) -> bool {
+        false
+    }
     fn kind(&self) -> OpKind {
         if self.local { OpKind::Branch } else { OpKind::Push }
     }
