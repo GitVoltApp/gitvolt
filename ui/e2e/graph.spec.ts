@@ -1786,7 +1786,10 @@ test.describe('branch presets', () => {
     await test.step("a tag folder's eye in the sidebar hides its tags' labels, its commits staying for main; again, shows them", async () => {
       const chips = grid.locator('.ref-label').filter({ hasText: /^archive\// });
       await expect(chips).toHaveCount(2);
-      const folder = page.getByRole('complementary', { name: 'Sidebar', exact: true }).getByRole('region', { name: 'Tags', exact: true }).locator('.sb-folder').filter({ hasText: 'archive' });
+      const tags = page.getByRole('complementary', { name: 'Sidebar', exact: true }).getByRole('region', { name: 'Tags', exact: true });
+      // Tags start newest first, flat: the tree shows their folders.
+      await tags.getByRole('button', { name: 'Sort Tags: recent' }).click();
+      const folder = tags.locator('.sb-folder').filter({ hasText: 'archive' });
       await folder.hover();
       await folder.getByRole('button', { name: 'Hide archive/ from the graph' }).click();
       await expect(chips).toHaveCount(0);

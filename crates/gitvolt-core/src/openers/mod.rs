@@ -751,6 +751,24 @@ pub fn spawn_detached(cmd: &LaunchCommand) -> Result<(), GbError> {
 
 /// Starts `launch_command(cmd, hook)` detached, reaped by a thread so it never lingers as a
 /// zombie.
+/// "Open in…"'s launcher: detached, argv only, with `child_env`'s environment (so an editor
+/// doesn't start under XWayland or with the app's IBus sync mode). With a captured login-shell
+/// environment (spec §5.3: `SSH_AUTH_SOCK`, `PATH` additions), the editor starts from that one
+/// instead of the app's, and `child_env` still runs last. The API awaits the capture before an
+/// editor launch, so `captured()` has it by then (or it failed, and the app's own env is used).
+pub fn launcher(child_env: ChildEnvHook, shell_env: Option<Arc<crate::shellenv::ShellEnv>>) -> Launcher {
+    Arc::new(move |c: &LaunchCommand| {
+        let captured = shell_env.as_ref().and_then(|s| s.captured());
+        spawn_detached_with(c, &|cmd: &mut std::process::Command| {
+            // The capture already left GitVolt's own variables (`PRIVATE_ENV`) out.
+            if let Some(vars) = &captured {
+                cmd.env_clear().envs(vars.iter().map(|(k, v)| (k, v)));
+            }
+            child_env(cmd);
+        })
+    })
+}
+
 pub fn spawn_detached_with(cmd: &LaunchCommand, hook: &dyn Fn(&mut std::process::Command)) -> Result<(), GbError> {
     let mut c = launch_command(cmd, hook);
     let mut child = c.spawn().map_err(|e| GbError::new(GbErrorKind::Io, format!("couldn't start {}: {e}", cmd.program.display())))?;

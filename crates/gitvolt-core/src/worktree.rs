@@ -100,7 +100,26 @@ pub fn read_worktrees(repo: &gix::Repository) -> Result<Vec<Worktree>, GbError> 
     }
     linked.sort_by(|a, b| a.path.as_os_str().as_encoded_bytes().cmp(b.path.as_os_str().as_encoded_bytes()));
     list.extend(linked);
+    submodule_checkout(&mut list);
     Ok(list)
+}
+
+/// A submodule's git dir is the superproject's `.git/modules/<path>`, and git names that git dir itself as the main
+/// worktree (`get_main_worktree` strips only a `/.git`). Its checkout is `core.worktree`, relative to the git dir:
+/// that's the main worktree here, in both lists, or opening the submodule would take its git dir for its checkout.
+fn submodule_checkout(list: &mut [Worktree]) {
+    let Some(main) = list.first_mut().filter(|w| w.is_main && !w.bare) else { return };
+    let dir = &main.path;
+    // A git dir, not a checkout: no `.git` of its own, its objects and HEAD at the top.
+    if dir.join(".git").symlink_metadata().is_ok() || !dir.join("objects").is_dir() || !dir.join("HEAD").is_file() {
+        return;
+    }
+    let Some(config) = gix::config::File::from_path_no_includes(dir.join("config"), gix::config::Source::Local).ok() else { return };
+    let Some(checkout) = config.string("core.worktree").map(|v| v.to_string()) else { return };
+    let checkout = crate::platform::fs::from_git_path(&checkout);
+    if let Ok(path) = crate::platform::fs::canonicalize(dir.join(checkout)) {
+        main.path = path;
+    }
 }
 
 /// git's `strbuf_strip_suffix(path, "/.git")`.
@@ -154,7 +173,9 @@ fn head_of(repo: &gix::Repository, head_file: &Path) -> (Option<ObjectId>, Optio
 /// one read when a repository opens (git's ownership check, `safe.directory`, applies to it).
 pub(crate) async fn list_worktrees_cli(cli: &crate::git::GitCli, cwd: &Path) -> Result<Vec<Worktree>, GbError> {
     let out = cli.run(crate::git::GitInvocation::new(cwd, ["worktree", "list", "--porcelain", "-z"])).await?;
-    Ok(parse_worktree_list(&out.stdout))
+    let mut list = parse_worktree_list(&out.stdout);
+    submodule_checkout(&mut list);
+    Ok(list)
 }
 
 #[cfg(test)]
@@ -243,6 +264,21 @@ mod tests {
         assert!(by("zz-locked").locked && by("aa-locked-why").locked && by("gone").prunable);
         assert_eq!((by("bb-unborn").head, by("bb-unborn").branch.as_deref()), (None, Some("refs/heads/fresh")));
         assert_eq!(by("mm-detached").branch, None);
+    }
+
+    /// git lists a submodule's git dir (`.git/modules/…`) as its main worktree; both lists name its checkout,
+    /// `core.worktree`, instead.
+    #[tokio::test]
+    async fn a_submodules_main_worktree_is_its_checkout() {
+        let r = TestRepo::new();
+        fixtures::submodules(&r);
+        let sub = crate::platform::fs::canonicalize(r.path().join("vendor/parser")).unwrap();
+        for cwd in [sub.clone(), r.path().join(".git/modules/vendor/parser")] {
+            let ours = list_worktrees(&cwd).await.unwrap();
+            assert_eq!(ours[0].path, sub, "from {}", cwd.display());
+            assert!(ours[0].is_main && !ours[0].bare);
+            assert_eq!(ours, list_worktrees_cli(&cli(), &cwd).await.unwrap(), "from {}", cwd.display());
+        }
     }
 
     #[tokio::test]

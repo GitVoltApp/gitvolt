@@ -123,20 +123,23 @@ function hiddenCounts(s: Section): Map<string, { all: number; hidden: number }> 
   return out;
 }
 
+/** A panel's sort until the user picks one: Tags newest first (the latest release on top), the rest as a tree. */
+export const defaultSort = (kind: SectionKind): SortMode => (kind === 'tags' ? 'recent' : 'tree');
+
 /**
  * Builds the sidebar's panels (spec §6.4). A case-insensitive substring filter applies to every
  * panel, keeping and forcing open the parent folders of any match (a panel's count is then the
- * match count; a panel with none shows 0 and an empty body). `tree` sort (the default) nests
- * items by `/` in their name, folders first, both sorted case-insensitively (remote branches
- * nest under a folder per remote); `recent` sort is flat, newest `time` first. Only nesting
- * panels (Local, Remote, Tags) sort. A collapsed panel (or folder, unless filtering forces it
+ * match count; a panel with none shows 0 and an empty body). `tree` sort (the default, except
+ * for Tags) nests items by `/` in their name, folders first, both sorted case-insensitively
+ * (remote branches nest under a folder per remote); `recent` sort (the Tags default: the newest
+ * release first) is flat, newest `time` first. Only nesting panels (Local, Remote, Tags) sort. A collapsed panel (or folder, unless filtering forces it
  * open) contributes no rows below it.
  */
 export function buildPanels(sections: Section[], o: RowOptions): Panel[] {
   const q = o.filter.trim().toLowerCase();
   return sections.map((s): Panel => {
     const matched = q ? s.items.filter((i) => fullName(i).toLowerCase().includes(q)) : s.items;
-    const sort: SortMode = s.nests ? o.sort[s.id] ?? 'tree' : 'tree';
+    const sort: SortMode = s.nests ? o.sort[s.id] ?? defaultSort(s.kind) : 'tree';
     const collapsed = o.collapsed.has(sectionKey(s.id));
     const panel: Panel = { section: s, collapsed, matched: matched.length, total: s.items.length, sort, filtering: !!q, rows: [] };
     if (collapsed) return panel;

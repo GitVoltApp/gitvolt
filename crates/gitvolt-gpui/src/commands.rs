@@ -1,0 +1,562 @@
+//! The one table of the app's actions (`ui/src/app/actions.ts`, `coreActions.ts` and each feature's
+//! registrations): id, label, group, icon, tooltip, shortcuts, when it's usable and what it runs. The
+//! hamburger menu, the shortcuts, the toolbar and the palette's actions all read it; the Keyboard
+//! Shortcuts panel will too. A command with no `run` isn't ported yet: its menu rows stay, disabled.
+//!
+//! To add one: a row in `all()`. Shortcuts are named as the web UI names them, `Mod` for Ctrl (Cmd on
+//! macOS). The chords here go through `dispatch`; bare keys (arrows, Esc) stay GPUI bindings.
+
+use crate::app::GitVolt;
+use crate::ui::menu::{self, MenuRow};
+use crate::ui::toast;
+use gitvolt_core::api::Request;
+use gpui::*;
+use std::rc::Rc;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Group {
+    File,
+    Edit,
+    View,
+    Repository,
+    Help,
+}
+
+pub type Run = fn(&mut GitVolt, &mut Window, &mut Context<GitVolt>);
+pub type When = fn(&GitVolt, &App) -> bool;
+
+#[derive(Clone)]
+pub struct Command {
+    pub id: &'static str,
+    pub label: SharedString,
+    pub group: Group,
+    pub icon: &'static str,
+    pub tooltip: SharedString,
+    /// `Mod+Shift+T`; the first is what menus show.
+    pub shortcuts: Vec<String>,
+    pub when: Option<When>,
+    /// Left out of the hamburger, still in the palette and on its keys.
+    pub menu: bool,
+    /// Its keys are the field's while one has the keyboard (Ctrl+V).
+    pub yields_to_typing: bool,
+    pub run: Option<Run>,
+}
+
+impl Command {
+    fn new(id: &'static str, label: impl Into<SharedString>, group: Group, icon: &'static str, tooltip: impl Into<SharedString>, shortcuts: &[&str]) -> Self {
+        Self { id, label: label.into(), group, icon, tooltip: tooltip.into(), shortcuts: shortcuts.iter().map(|s| s.to_string()).collect(), when: None, menu: true, yields_to_typing: false, run: None }
+    }
+
+    fn when(mut self, when: When) -> Self {
+        self.when = Some(when);
+        self
+    }
+
+    fn run(mut self, run: Run) -> Self {
+        self.run = Some(run);
+        self
+    }
+
+    fn hidden(mut self) -> Self {
+        self.menu = false;
+        self
+    }
+
+    fn yields(mut self) -> Self {
+        self.yields_to_typing = true;
+        self
+    }
+
+    pub fn usable(&self, v: &GitVolt, cx: &App) -> bool {
+        self.run.is_some() && self.when.is_none_or(|w| w(v, cx))
+    }
+
+    /// The first chord, as menus show it.
+    pub fn chord(&self) -> Option<SharedString> {
+        self.shortcuts.first().map(|s| display_chord(s).into())
+    }
+
+    /// `tooltip (chord)`, as a toolbar button's.
+    pub fn full_tooltip(&self) -> SharedString {
+        match self.chord() {
+            Some(c) => format!("{} ({c})", self.tooltip).into(),
+            None => self.tooltip.clone(),
+        }
+    }
+}
+
+/// `Mod` for the platform's primary modifier.
+pub fn resolve_chord(chord: &str) -> String {
+    match chord.strip_prefix("Mod+") {
+        Some(rest) => format!("{}+{rest}", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }),
+        None => chord.to_string(),
+    }
+}
+
+/// A chord as menus and tooltips show it.
+pub fn display_chord(chord: &str) -> String {
+    resolve_chord(chord)
+}
+
+/// `comboOf`: the name a key press goes by; `None` for a bare key.
+pub fn combo_of(k: &Keystroke) -> Option<String> {
+    let m = &k.modifiers;
+    if m.platform && (m.control || !cfg!(target_os = "macos")) {
+        return None;
+    }
+    let primary = if m.platform { Some("Cmd") } else if m.control { Some("Ctrl") } else { None };
+    // A Shift+digit by the character it types on a US or a German keyboard: the web has the key's code, a platform here gives
+    // the character and takes the Shift away.
+    let shifted_digit = primary.and(match k.key.as_str() {
+        "!" => Some("1"),
+        "@" | "\"" => Some("2"),
+        "#" | "section" => Some("3"),
+        _ => None,
+    });
+    let key = match k.key.as_str() {
+        _ if shifted_digit.is_some() => shifted_digit.unwrap_or_default().to_string(),
+        "tab" => "Tab".to_string(),
+        "pageup" => "PageUp".to_string(),
+        "pagedown" => "PageDown".to_string(),
+        "enter" => "Enter".to_string(),
+        "space" => "Space".to_string(),
+        "up" => "Up".to_string(),
+        "down" => "Down".to_string(),
+        "left" => "Left".to_string(),
+        "right" => "Right".to_string(),
+        key if key.len() == 1 => key.to_uppercase(),
+        key if key.starts_with('f') && key[1..].parse::<u8>().is_ok() => key.to_uppercase(),
+        _ => return None,
+    };
+    if primary.is_none() {
+        let digit = key.len() == 1 && key.as_bytes()[0].is_ascii_digit();
+        let function = key.starts_with('F') && key.len() > 1;
+        if !function && !(m.alt && digit) && !(m.alt && key == "Space") {
+            return None;
+        }
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    parts.extend(primary);
+    if m.alt {
+        parts.push("Alt");
+    }
+    if m.shift || shifted_digit.is_some() {
+        parts.push("Shift");
+    }
+    parts.push(&key);
+    Some(parts.join("+"))
+}
+
+fn has_tab(v: &GitVolt, _: &App) -> bool {
+    !v.tabs.is_empty()
+}
+
+fn lfs_ready(v: &GitVolt, _: &App) -> bool {
+    v.tabs.get(v.active).and_then(|t| v.lfs.status.get(&t.id)).is_some_and(|s| s.used && s.version.is_some())
+}
+
+fn has_flow(v: &GitVolt, _: &App) -> bool {
+    v.tabs.get(v.active).is_some_and(|t| t.flow().is_some())
+}
+
+fn has_repo(v: &GitVolt, _: &App) -> bool {
+    v.tabs.get(v.active).is_some_and(|t| !t.is_open_tab())
+}
+
+fn many_tabs(v: &GitVolt, _: &App) -> bool {
+    v.tabs.len() > 1
+}
+
+fn file_open(v: &GitVolt, _: &App) -> bool {
+    v.tabs.get(v.active).is_some_and(|t| t.diff.is_some())
+}
+
+fn has_graph(v: &GitVolt, _: &App) -> bool {
+    v.tabs.get(v.active).and_then(|t| t.graph.as_ref()).is_some_and(|g| !g.rows.is_empty())
+}
+
+fn has_wip(v: &GitVolt, _: &App) -> bool {
+    v.tabs.get(v.active).and_then(|t| t.graph.as_ref()).is_some_and(|g| g.rows.first().is_some_and(|r| r.kind == gitvolt_graph::NodeKind::Wip))
+}
+
+/// Every action, in the order the web UI registers them.
+pub fn all() -> Vec<Command> {
+    use Group::*;
+    let mut out = vec![
+        Command::new("file.openRepo", "Open repository…", File, "folder-plus", "Open the Open Repository screen in a new tab", &["Mod+O"]).run(|v, _, cx| {
+            v.open_blank_tab(cx);
+        }),
+        Command::new("file.clone", "Clone repository…", File, "copy-plus", "Clone a repository into a new tab", &[]).run(|v, _, cx| v.open_clone_tab(cx)),
+        Command::new("file.closeFile", "Close file", File, "file-x", "Close the open file and go back to the graph", &["Mod+W"]).when(file_open).hidden().run(|v, _, cx| v.close_file_or_history(cx)),
+        Command::new("file.closeTab", "Close tab", File, "x", "Close the current tab", &["Mod+W"]).when(has_tab).run(|v, _, cx| v.close_tab(v.active, cx)),
+        Command::new("file.reopenTab", "Reopen closed tab", File, "rotate-ccw", "Reopen the most recently closed tab", &["Mod+Shift+T"]).when(|v, _| !v.closed_tabs.is_empty()).run(|v, _, cx| v.reopen_tab(cx)),
+        Command::new("file.settings", "Settings", File, "settings", "App, profile and repository settings", &["Mod+,"]).run(|v, window, cx| v.show_settings(None, window, cx)),
+        Command::new("file.quit", "Quit", File, "log-out", "Quit GitVolt", &[]).run(|this, _, cx| this.close_window(cx)),
+        Command::new("view.nextTab", "Next tab", View, "arrow-right-to-line", "Switch to the next tab", &["Ctrl+Tab", "Ctrl+PageDown"]).when(many_tabs).hidden().run(|v, _, cx| v.step_tab(1, cx)),
+        Command::new("view.prevTab", "Previous tab", View, "arrow-left-to-line", "Switch to the previous tab", &["Ctrl+Shift+Tab", "Ctrl+PageUp"]).when(many_tabs).hidden().run(|v, _, cx| v.step_tab(-1, cx)),
+    ];
+    macro_rules! tab_command {
+        ($id:literal, $n:literal) => {
+            Command::new($id, concat!("Go to tab ", $n), View, "arrow-right-to-line", concat!("Switch to tab ", $n), &[concat!("Mod+", $n)]).when(|v, _| v.tabs.len() >= $n).hidden().run(|v, _, cx| v.go_to_tab($n - 1, cx))
+        };
+    }
+    out.extend([tab_command!("view.tab1", 1), tab_command!("view.tab2", 2), tab_command!("view.tab3", 3), tab_command!("view.tab4", 4), tab_command!("view.tab5", 5), tab_command!("view.tab6", 6), tab_command!("view.tab7", 7), tab_command!("view.tab8", 8)]);
+    macro_rules! theme_command {
+        ($id:literal, $label:literal) => {
+            Command::new(concat!("view.theme.", $id), concat!("Theme: ", $label), View, "palette", concat!("Switch to the ", $label, " theme"), &[]).hidden().run(|v, _, cx| v.set_settings(|s| s["theme"] = $id.into(), cx))
+        };
+    }
+    out.extend([theme_command!("default-dark", "Default Dark"), theme_command!("light", "Light"), theme_command!("monokai", "Monokai"), theme_command!("darcula", "Darcula"), theme_command!("dracula", "Dracula"), theme_command!("one-dark", "One Dark"), theme_command!("solarized-dark", "Solarized Dark"), theme_command!("solarized-light", "Solarized Light"), theme_command!("github-dark", "GitHub Dark"), theme_command!("nord", "Nord")]);
+    out.extend([
+        Command::new("view.lastTab", "Go to the last tab", View, "arrow-right-to-line", "Switch to the last tab", &["Mod+9"]).when(many_tabs).hidden().run(|v, _, cx| v.go_to_tab(v.tabs.len() - 1, cx)),
+        Command::new("edit.undo", "Undo", Edit, "undo-2", "Undo the last action", &["Mod+Z"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some()) || v.staging_ctx().is_some() || v.tabs.get(v.active).and_then(|t| v.ops.journal(t.id, &t.worktree)).is_some_and(|s| s.undo.is_some() && s.undo_blocked.is_none())).run(|v, _, cx| {
+            if v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some()) {
+                v.rebase_undo(true, cx);
+            } else {
+                v.undo_key(false, cx);
+            }
+        }),
+        Command::new("edit.redo", "Redo", Edit, "redo-2", "Redo what was undone", &["Mod+Shift+Z"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some()) || v.staging_ctx().is_some() || v.tabs.get(v.active).and_then(|t| v.ops.journal(t.id, &t.worktree)).is_some_and(|s| s.redo.is_some() && s.redo_blocked.is_none())).run(|v, _, cx| {
+            if v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some()) {
+                v.rebase_undo(false, cx);
+            } else {
+                v.undo_key(true, cx);
+            }
+        }),
+        Command::new("edit.filterSidebar", "Filter sidebar", Edit, "list-filter", "Focus the sidebar filter", &["Mod+Alt+F"]).when(has_tab).run(|v, window, cx| v.focus_sidebar_filter(window, cx)),
+        Command::new("edit.find", "Find in graph", Edit, "search", "Find commits by message, SHA or path", &["Mod+F"]).when(|v, cx| has_graph(v, cx) && v.tabs.get(v.active).is_none_or(|t| t.merge_shown().is_none() && t.rebase_shown().is_none())).run(|v, window, cx| v.open_find(window, cx)),
+        Command::new("edit.palette", "Command palette", Edit, "command", "Search actions, branches, files, settings and tabs", &["Mod+P"]).run(|v, window, cx| v.open_palette("", window, cx)),
+        Command::new("edit.gotoClipboard", "Go to what's on the clipboard", Edit, "clipboard-paste", "Go to the commit, merge request, file or branch the clipboard names", &["Mod+V"]).when(has_tab).yields().run(|v, _, cx| v.go_to_clipboard(cx)),
+        Command::new("view.goToWip", "Go to working directory changes", View, "file-pen", "Show the working directory changes", &["Mod+Shift+G"]).when(has_wip).run(|v, _, cx| v.go_to_wip(cx)),
+        Command::new("view.toggleSidebar", "Toggle sidebar", View, "panel-left", "Switch the sidebar between full and icon strip", &["Mod+B"]).when(has_tab).run(|v, _, cx| v.toggle_sidebar(cx)),
+        Command::new("view.theme", "Theme…", View, "palette", "Choose the colour theme", &[]).run(|v, window, cx| v.show_settings(Some("theme"), window, cx)),
+        Command::new("nav.back", "Go back", View, "arrow-left", "Back to the previous MR/PR, file or commit you visited", &[]),
+        Command::new("nav.forward", "Go forward", View, "arrow-right", "Forward to the next MR/PR, file or commit you visited", &[]),
+        Command::new("presets.next", "Next branch preset", View, "git-fork", "Switch the graph to the next branch preset in the cycle", &["Mod+Alt+G"]).when(has_repo).run(|v, _, cx| v.cycle_preset(cx)),
+        Command::new("presets.choose", "Choose branch preset…", View, "git-fork", "List every branch preset, at the button beside the sidebar filter", &["Mod+Alt+Shift+G"]).when(has_repo).run(|v, window, cx| v.open_preset_menu(window, cx)),
+        Command::new("view.focusSidebar", "Focus the sidebar", View, "panel-left", "Put the keyboard in the sidebar", &["Alt+1"]).when(has_tab).hidden().run(|v, window, cx| v.focus_sidebar(window, cx)),
+        Command::new("view.focusGraph", "Focus the graph", View, "git-graph", "Put the keyboard in the graph (closing the open file, as Esc does)", &["Alt+2"]).when(has_tab).hidden().run(|v, window, cx| v.focus_graph(window, cx)),
+        Command::new("view.focusFiles", "Focus the file list", View, "list", "Put the keyboard in the file list", &["Alt+3"]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.files.is_some())).hidden().run(|v, window, cx| v.focus_files(window, cx)),
+        Command::new("diff.showHex", "Show hex", View, "type", "Switch a PDF, sound, film or font between its view and its hex", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.pdf.is_some() || d.media.is_some())).run(|v, _, cx| v.toggle_rich_hex(cx)),
+        Command::new("diff.nextChange", "Next change", View, "arrow-down", "Go to the next change in the diff", &["F7"]).when(file_open).hidden().run(|v, _, cx| v.step_change(true, cx)),
+        Command::new("diff.prevChange", "Previous change", View, "arrow-up", "Go to the previous change in the diff", &["Shift+F7"]).when(file_open).hidden().run(|v, _, cx| v.step_change(false, cx)),
+        Command::new("diff.nextFile", "Next file", View, "file-down", "Open the next file in the file list", &["F8"]).when(file_open).hidden().run(|v, _, cx| v.step_files(true, cx)),
+        Command::new("diff.prevFile", "Previous file", View, "file-up", "Open the previous file in the file list", &["Shift+F8"]).when(file_open).hidden().run(|v, _, cx| v.step_files(false, cx)),
+        Command::new("diff.mode.hunk", "Hunk diff view", View, "type", "Show the diff as Hunk", &["Mod+Shift+1"]).when(file_open).hidden().run(|v, _, cx| v.with_diff(cx, |d| d.set_mode(crate::diff::model::Mode::Hunk))),
+        Command::new("diff.mode.inline", "Inline diff view", View, "type", "Show the diff as Inline", &["Mod+Shift+2"]).when(file_open).hidden().run(|v, _, cx| v.with_diff(cx, |d| d.set_mode(crate::diff::model::Mode::Inline))),
+        Command::new("diff.mode.split", "Split diff view", View, "type", "Show the diff as Split", &["Mod+Shift+3"]).when(file_open).hidden().run(|v, _, cx| v.with_diff(cx, |d| d.set_mode(crate::diff::model::Mode::Split))),
+        Command::new("history.file", "File history of the open file", View, "history", "Show the commits that changed the open file", &["Mod+Shift+H"]).when(file_open).hidden().run(|v, _, cx| v.open_history(false, cx)),
+        Command::new("history.blame", "Blame the open file", View, "user", "Show who last changed each line of the open file", &["Mod+Shift+B"]).when(file_open).hidden().run(|v, _, cx| v.open_history(true, cx)),
+        Command::new("repo.copyPath", "Copy repository path", Repository, "copy", "Copy the current repository's directory path", &[]).when(has_tab).run(|v, _, cx| v.copy_repo_path(cx)),
+        Command::new("repo.openFolder", "Open in file manager", Repository, "folder-open", "Open the tab's worktree directory in the file manager", &[]).when(has_tab).run(|v, _, cx| v.open_repo_folder(cx)),
+        Command::new("repo.fetch", "Fetch all", Repository, "download", "Fetch every remote of the current repository", &["Mod+L"]).yields().when(has_tab).run(|v, _, cx| {
+            let repo = v.tabs[v.active].id;
+            v.run_fetch(repo, false, None, cx);
+        }),
+        Command::new("repo.syncDefault", "Fetch", Repository, "download", "Fetch every remote", &[]).when(has_tab).run(|v, _, cx| v.sync_default(cx)),
+        Command::new("worktree.switch", "Switch worktree…", Repository, "arrow-right-left", "Change the tab's active worktree", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.graph.as_ref()).is_some_and(|g| g.worktrees.len() > 1)).run(|v, window, cx| v.choose_worktree(window, cx)),
+        Command::new("branch.create", "Branch", Repository, "git-branch-plus", "Create a branch at HEAD", &["Mod+Shift+N"]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.head_sha().is_some())).run(|v, window, cx| {
+            let Some(tab) = v.tabs.get(v.active) else { return };
+            let (Some(sha), start) = (tab.head_sha(), tab.head_branch().map(|b| format!("refs/heads/{b}"))) else { return };
+            v.create_branch_at(sha, start, window, cx);
+        }),
+        Command::new("stash.push", "Stash", Repository, "archive", "Stash every change, named from the WIP message", &["Mod+Alt+S"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.graph.as_ref().is_some_and(|g| g.rows.iter().any(|r| r.worktree.as_deref() == Some(t.worktree.as_str()))))).run(|v, _, cx| {
+            let ctx = v.tabs[v.active].write_target();
+            v.stash_push(ctx, cx);
+        }),
+        Command::new("files.createFile", "Create file…", File, "file-plus", "Create an empty file in the working tree", &[]).run(|this, window, cx| this.open_create_file(window, cx)),
+        Command::new("stash.pop", "Pop", Repository, "archive-restore", "Apply the newest stash and delete it", &["Mod+Alt+P"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.sidebar["stashes"].as_array().is_some_and(|s| !s.is_empty()))).run(|v, _, cx| {
+            let tab = &v.tabs[v.active];
+            let (ctx, oid) = (tab.write_target(), tab.sidebar["stashes"][0]["id"].as_str().unwrap_or_default().to_string());
+            v.apply_stash(ctx, oid, true, cx);
+        }),
+        Command::new("sync.pull", "Pull", Repository, "arrow-down-to-line", "Pull the current branch's upstream", &["Mod+Shift+L"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.head_branch().and_then(|h| t.local_branch(&h)).is_some_and(|b| b.upstream.is_some() && !b.gone))).run(|v, _, cx| {
+            let ctx = v.tabs[v.active].write_target();
+            let mode = if v.sync_mode == crate::sync::SyncMode::FetchAll { "ffOrMerge" } else { v.sync_mode.pull_mode() };
+            v.pull(ctx, mode, None, crate::ui::arm::Origin::None, cx);
+        }),
+        Command::new("sync.push", "Push", Repository, "upload", "Push the current branch", &["Mod+Shift+K"]).yields().when(has_tab).run(|v, _, cx| v.push_head(crate::ui::arm::Origin::None, cx)),
+        Command::new("gitflow.init", "Set up git flow…", Repository, "workflow", "Choose git flow's branches and prefixes for this repository", &[]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| !t.is_open_tab() && t.flow().is_none())).run(|v, window, cx| v.open_gitflow_settings(window, cx)),
+        Command::new("gitflow.settings", "Git flow settings…", Repository, "settings-2", "Change git flow's branches and prefixes for this repository", &[]).when(has_flow).run(|v, window, cx| v.open_gitflow_settings(window, cx)),
+        Command::new("gitflow.start.feature", "Start feature…", Repository, "sparkles", "Start a git flow feature from the development branch", &[]).when(has_flow).run(|v, window, cx| v.open_gitflow_start("feature", window, cx)),
+        Command::new("gitflow.start.release", "Start release…", Repository, "rocket", "Start a git flow release from the development branch", &[]).when(has_flow).run(|v, window, cx| v.open_gitflow_start("release", window, cx)),
+        Command::new("gitflow.start.hotfix", "Start hotfix…", Repository, "wrench", "Start a git flow hotfix from the production branch", &[]).when(has_flow).run(|v, window, cx| v.open_gitflow_start("hotfix", window, cx)),
+        Command::new("gitflow.finish", "Finish the checked-out git flow branch…", Repository, "circle-check-big", "Finish the feature, release or hotfix that's checked out", &[]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.head_flow_branch().is_some())).run(|v, window, cx| {
+            if let Some(b) = v.tabs.get(v.active).and_then(crate::app::Tab::head_flow_branch) {
+                v.open_gitflow_finish(b, window, cx);
+            }
+        }),
+        Command::new("irebase.moveUp", "Move the selected commits up", Repository, "arrow-up", "Move the rebase plan's selected rows up a place", &["Mod+Up"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some())).hidden().run(|v, _, cx| v.with_rebase(cx, |s, _| s.edit(|st| crate::irebase::model::move_selected(st, false)))),
+        Command::new("irebase.moveDown", "Move the selected commits down", Repository, "arrow-down", "Move the rebase plan's selected rows down a place", &["Mod+Down"]).yields().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_shown().is_some())).hidden().run(|v, _, cx| v.with_rebase(cx, |s, _| s.edit(|st| crate::irebase::model::move_selected(st, true)))),
+        Command::new("irebase.start", "Start the interactive rebase", Repository, "list-ordered", "Run the plan in the rebase editor", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.rebase_shown()).is_some_and(|s| crate::irebase::model::problems(&s.state, &crate::irebase::model::grouping(&s.state.rows)).is_empty())).run(|v, _, cx| v.start_rebase(crate::ui::arm::Origin::control("rebase-start"), cx)),
+        Command::new("irebase.reset", "Reset the rebase plan", Repository, "rotate-ccw", "Put the plan back as it opened", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.rebase_shown()).is_some_and(|s| crate::irebase::model::dirty(&s.state))).run(|v, _, cx| v.with_rebase(cx, |s, _| s.edit(crate::irebase::model::reset))),
+        Command::new("merge.takeCurrent", "Take all from Current", Repository, "arrow-left-to-line", "In the merge tool: every conflict's lines from the current side", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.merge_shown()).is_some_and(|m| m.textual())).run(|v, _, cx| v.merge_take_all(crate::merge::model::Side::Current, cx)),
+        Command::new("merge.takeIncoming", "Take all from Incoming", Repository, "arrow-right-to-line", "In the merge tool: every conflict's lines from the incoming side", &[]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.merge_shown()).is_some_and(|m| m.textual())).run(|v, _, cx| v.merge_take_all(crate::merge::model::Side::Incoming, cx)),
+        Command::new("repo.interactiveRebase", "Interactive rebase…", Repository, "list-ordered", "Reorder, reword, squash or drop the current branch's commits on its upstream", &[]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.rebase_head().is_some() || t.rebase_op().is_some())).run(|v, _, cx| v.palette_rebase(cx)),
+        Command::new("file.create", "Create file…", Repository, "file-plus", "Create a new, empty file in the working tree (you can undo this)", &[]).when(has_repo).run(|v, window, cx| v.open_create_file(window, cx)),
+        Command::new("lfs.pull", "LFS: Pull", Repository, "cloud-download", "Download the Git LFS files of the checked-out commit and put them in the working tree (git lfs pull)", &[]).when(lfs_ready).run(|v, _, cx| v.lfs_transfer(true, cx)),
+        Command::new("lfs.fetch", "LFS: Fetch", Repository, "download", "Download the Git LFS files of the checked-out commit, leaving the working tree as it is (git lfs fetch)", &[]).when(lfs_ready).run(|v, _, cx| v.lfs_transfer(false, cx)),
+        Command::new("review.submit", "Submit the pending review…", Repository, "send", "Send your pending review comments as one review: Comment, Approve or Request changes", &["Mod+Alt+R"]).hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| crate::forge::review::is_pending(t.forge.review.as_ref()))).run(|v, _, cx| v.review_toggle_submit(cx)),
+        Command::new("review.comment", "Comment on the selected lines", Repository, "message-square", "Start a review comment on the lines selected in the diff", &["Mod+Alt+C"]).hidden().when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| d.review.is_some())).run(|v, _, cx| v.review_comment_key(cx)),
+        Command::new("review.nextThread", "Next review thread", Repository, "message-square", "Go to the next thread or pending comment in the file", &["F9"]).hidden().when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| !d.zones.is_empty())).run(|v, _, cx| v.review_step(true, cx)),
+        Command::new("review.prevThread", "Previous review thread", Repository, "message-square", "Go to the previous thread or pending comment in the file", &["Shift+F9"]).hidden().when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).is_some_and(|d| !d.zones.is_empty())).run(|v, _, cx| v.review_step(false, cx)),
+        Command::new("forge.createMr", "Create MR/PR…", Repository, "git-pull-request-create", "Create a merge request or pull request from the current branch", &[])
+            .when(|v, _| v.create_target(v.tabs.get(v.active).and_then(|t| t.head_branch()).as_deref(), None).is_some())
+            .run(|v, window, cx| {
+                if let Some(b) = v.tabs.get(v.active).and_then(|t| t.head_branch()) {
+                    v.forge_open_create(b, window, cx);
+                }
+            }),
+        Command::new("mr.approve", "Approve the MR/PR", Repository, "check", "Approve the open merge request or pull request", &["Mod+Shift+A"]).yields().hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.forge.open_mr.is_some())).run(|v, window, cx| v.mr_key("approve", window, cx)),
+        Command::new("mr.merge", "Merge the MR/PR", Repository, "git-merge", "Merge the open merge request or pull request", &["Mod+Shift+M"]).yields().hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.forge.lent_merge.is_some() && t.forge.open_mr.is_some())).run(|v, window, cx| v.mr_key("merge", window, cx)),
+        Command::new("mr.updateBranch", "Update the MR/PR's branch", Repository, "git-pull-request-arrow", "Rebase or update the open merge request's or pull request's branch with its target", &["Mod+Alt+U"]).yields().hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.forge.lent_update.is_some() && t.forge.open_mr.is_some())).run(|v, window, cx| v.mr_key("update", window, cx)),
+        Command::new("mr.openInBrowser", "Open the MR/PR in the browser", Repository, "external-link", "Open the open merge request or pull request on its forge", &["Mod+Shift+O"]).yields().hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.forge.open_mr.is_some())).run(|v, window, cx| v.mr_key("browser", window, cx)),
+        Command::new("mr.refresh", "Refresh the MR/PR", Repository, "refresh-cw", "Ask the forge for the open merge request or pull request again", &[]).hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.forge.open_mr.is_some())).run(|v, window, cx| v.mr_key("refresh", window, cx)),
+        Command::new("mr.refreshList", "Refresh the MR/PR list", Repository, "refresh-cw", "Ask the forge for the repository's merge requests or pull requests again", &[]).hidden().when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.forge.kind.is_some())).run(|v, _, cx| {
+            if let Some(tab) = v.tabs.get(v.active).map(|t| t.id) {
+                v.forge_refresh_list_now(tab, cx);
+            }
+        }),
+        Command::new("remote.add", "Add remote…", Repository, "plus", "Add a remote by URL, or one of the project's forks", &[]).when(has_repo).run(|v, window, cx| v.open_add_remote(window, cx)),
+        Command::new("submodule.update", "Submodules: Update", Repository, "folder-sync", "Check out each submodule at its recorded commit, cloning any not initialised yet (git submodule update --init --recursive)", &["Mod+Alt+B"]).when(|v, _| v.uses_submodules()).run(|v, _, cx| v.palette_submodule_update(cx)),
+        Command::new("submodule.sync", "Submodules: Sync URLs", Repository, "link-2", "Copy the submodules' URLs from .gitmodules into the config (git submodule sync --recursive)", &[]).when(|v, _| v.uses_submodules()).run(|v, _, cx| v.palette_submodule_sync(cx)),
+        Command::new("submodule.open", "Submodules: Open in a tab…", Repository, "boxes", "Choose a submodule to open as a repository tab", &["Mod+Alt+O"]).when(|v, _| v.uses_submodules()).run(|v, _, cx| v.palette_submodule_open(cx)),
+        Command::new("submodule.add", "Submodules: Add…", Repository, "plus", "Clone a repository into this one as a submodule (git submodule add)", &[]).when(has_repo).run(|v, window, cx| v.open_add_submodule(window, cx)),
+        Command::new("file.save", "Save", File, "save", "Save the working copy being edited", &["Mod+S"]).when(|v, _| v.tabs.get(v.active).is_some_and(|t| t.merge_shown().is_some_and(|m| m.textual() && m.base.is_some()) || t.diff.as_ref().is_some_and(|d| d.edit.is_some()))).hidden().run(|v, _, cx| {
+            if v.tabs.get(v.active).and_then(|t| t.merge_shown()).is_some() {
+                v.merge_save(false, cx);
+            } else {
+                v.save_working_copy(None, cx);
+            }
+        }),
+        Command::new("stage.file", "Stage file", Repository, "file-plus", "Stage the open file", &["Mod+Shift+S"]).when(|v, _| v.open_wip_file().is_some_and(|f| f.1 == Some(false))).hidden().run(|v, _, cx| v.stage_open_file(cx)),
+        Command::new("stage.unstageFile", "Unstage file", Repository, "file-minus", "Move the open file back to Unstaged", &["Mod+Shift+S"]).when(|v, _| v.open_wip_file().is_some_and(|f| f.1 == Some(true))).hidden().run(|v, _, cx| v.stage_open_file(cx)),
+        Command::new("stage.hunk", "Stage the hunk or lines at the cursor", Repository, "square-split-vertical", "The lines selected in the diff, else the hunk the cursor is in (F7 moves it to the next change)", &["Mod+Shift+D"]).when(|v, _| v.tabs.get(v.active).and_then(|t| t.diff.as_ref()).and_then(|d| d.hunks.as_ref()).is_some_and(|h| !h.hunks.is_empty())).hidden().run(|v, _, cx| v.stage_at_cursor(cx)),
+        Command::new("stage.all", "Stage all changes", Repository, "list-plus", "Stage every unstaged change", &[]).when(|v, _| v.wip_counts().is_some_and(|c| c.1 > 0)).hidden().run(|v, _, cx| {
+            if let Some(ctx) = v.panel_ctx() {
+                v.stage_all_guarded(&ctx, cx);
+            }
+        }),
+        Command::new("stage.unstageAll", "Unstage all changes", Repository, "list-minus", "Move every staged change back to Unstaged", &[]).when(|v, _| v.wip_counts().is_some_and(|c| c.0 > 0)).hidden().run(|v, _, cx| {
+            if let Some(ctx) = v.panel_ctx() {
+                v.unstage_all(&ctx, cx);
+            }
+        }),
+        Command::new("commit.commit", "Commit", Repository, "git-commit-horizontal", "Commit with the message in the commit box", &["Mod+Enter"]).when(|v, _| v.panel_ctx().is_some()).hidden().yields().run(|v, _, cx| v.commit_key(cx)),
+        Command::new("view.zoomIn", "Zoom in", View, "zoom-in", "Zoom the app in, or the open file's text", &["Mod+="]).hidden().run(|v, _, cx| v.zoom_key(1, cx)),
+        Command::new("view.zoomInPlus", "Zoom in", View, "zoom-in", "Zoom the app in, or the open file's text", &["Mod++"]).hidden().run(|v, _, cx| v.zoom_key(1, cx)),
+        Command::new("view.zoomOut", "Zoom out", View, "zoom-out", "Zoom the app out, or the open file's text", &["Mod+-"]).hidden().run(|v, _, cx| v.zoom_key(-1, cx)),
+        Command::new("view.zoomReset", "Reset zoom", View, "scaling", "Back to 100%, or the open file's own text size", &["Mod+0"]).hidden().run(|v, _, cx| v.zoom_key(0, cx)),
+        Command::new("help.about", "About GitVolt", Help, "info", "Version information", &[]).run(|v, window, cx| v.open_about(window, cx)),
+        Command::new("help.activityLog", "Activity log", Help, "history", "Every finished fetch and clone, with git's message", &[]).run(|v, window, cx| v.open_activity(None, window, cx)),
+        Command::new("help.debug", "Debug…", Help, "bug", "The git commands GitVolt ran, the actions you ran, diagnostics and the perf overlay", &[]).run(|v, window, cx| v.open_debug(None, window, cx)),
+        Command::new("help.shortcuts", "Keyboard shortcuts", Help, "keyboard", "Every keyboard shortcut, filterable", &["Mod+/"]).run(|v, window, cx| v.open_shortcuts(window, cx)),
+        Command::new("help.checkUpdates", "Check for updates", Help, "refresh-cw", "Ask GitHub for a newer GitVolt release (GitVolt's own; nothing about your repositories)", &[]).run(|v, window, cx| v.check_for_updates(window, cx)),
+        Command::new("help.whatsNew", "What's new", Help, "sparkles", "This version's changes, from the notes that come with GitVolt", &[]).run(|v, window, cx| v.show_whats_new_now(window, cx)),
+    ]);
+    out
+}
+
+thread_local! {
+    static TABLE: Rc<Vec<Command>> = Rc::new(all());
+}
+
+pub fn table() -> Rc<Vec<Command>> {
+    TABLE.with(Rc::clone)
+}
+
+pub fn get(id: &str) -> Option<Command> {
+    table().iter().find(|c| c.id == id).cloned()
+}
+
+/// Runs `id` if it's usable.
+pub fn invoke(id: &str, v: &mut GitVolt, window: &mut Window, cx: &mut Context<GitVolt>) -> bool {
+    let Some(c) = get(id).filter(|c| c.usable(v, cx)) else { return false };
+    v.log_action(c.id, &c.label);
+    if let Some(run) = c.run {
+        run(v, window, cx);
+    }
+    true
+}
+
+/// A row for a menu: its action through the view. Disabled while it isn't ported, or isn't usable.
+pub fn row(c: &Command, this: &WeakEntity<GitVolt>, usable: bool) -> MenuRow {
+    let (run, weak, id, label) = (c.run, this.clone(), c.id, c.label.clone());
+    let row = MenuRow::action(c.id, c.label.clone(), c.icon, c.tooltip.clone(), move |window, cx| {
+        if let Some(run) = run {
+            let (id, label) = (id, label.clone());
+            weak.update(cx, |v, cx| {
+                v.log_action(id, &label);
+                run(v, window, cx);
+            })
+            .ok();
+        }
+    });
+    let row = match c.chord() {
+        Some(chord) => row.shortcut(chord),
+        None => row,
+    };
+    if c.run.is_none() { row.disabled(menu::NOT_YET) } else if usable { row } else { row.disabled(c.tooltip.clone()) }
+}
+
+/// The app menu: File, Edit, View, Repository, Help; Quit last, after a separator.
+pub fn hamburger_rows(this: &WeakEntity<GitVolt>, v: &GitVolt, cx: &App) -> Vec<MenuRow> {
+    let list = table();
+    [
+        (Group::File, "File", "file-text", "Repositories, tabs and settings"),
+        (Group::Edit, "Edit", "pencil", "Find, filter and the command palette"),
+        (Group::View, "View", "layout-panel-left", "Tabs and panels"),
+        (Group::Repository, "Repository", "folder-git-2", "Actions on the current repository"),
+        (Group::Help, "Help", "circle-help", "About GitVolt"),
+    ]
+    .into_iter()
+    .map(|(group, label, icon, tooltip)| {
+        let mut rows = Vec::new();
+        for c in list.iter().filter(|c| c.group == group && c.menu && c.id != "file.quit") {
+            // What isn't usable now isn't listed, as in the web UI; what isn't ported stays, disabled.
+            if c.run.is_none() || c.usable(v, cx) {
+                rows.push(row(c, this, true));
+            }
+        }
+        if group == Group::File
+            && let Some(quit) = list.iter().find(|c| c.id == "file.quit")
+        {
+            rows.push(MenuRow::Separator);
+            rows.push(row(quit, this, true));
+        }
+        MenuRow::submenu(format!("menu.{label}"), label, icon, tooltip, rows)
+    })
+    .collect()
+}
+
+impl GitVolt {
+    /// The app layer of the key router: a chord that names a usable command runs it.
+    pub fn app_key(&mut self, k: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if k.key == "escape" && !k.modifiers.modified() && self.cancel_drag(cx) {
+            return true;
+        }
+        let Some(combo) = combo_of(k) else { return false };
+        // Settings owns the keys while it's open, not while it's the floating editor.
+        if self.settings_ui.open && !self.settings_ui.floating {
+            return self.settings_chord(&combo, window, cx);
+        }
+        let typing = crate::ui::input::is_typing(window);
+        let Some(c) = table().iter().find(|c| c.usable(self, cx) && c.shortcuts.iter().any(|s| resolve_chord(s) == combo)).cloned() else { return false };
+        if c.yields_to_typing && typing {
+            return false;
+        }
+        self.log_action(c.id, &c.label);
+        if let Some(run) = c.run {
+            run(self, window, cx);
+        }
+        true
+    }
+
+    /// Copies, and says so.
+    pub fn copy_text(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(ClipboardItem::new_string(text.into()));
+        toast::show("Copied to the clipboard", cx);
+    }
+
+    pub fn copy_repo_path(&mut self, cx: &mut Context<Self>) {
+        if let Some(path) = self.tabs.get(self.active).map(|t| t.worktree.clone()) {
+            self.copy_text(path, cx);
+        }
+    }
+
+    /// Opens the tab's worktree in the file manager.
+    pub fn open_repo_folder(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.tabs.get(self.active).map(|t| t.worktree.clone()) else { return };
+        self.open_folder(path, cx);
+    }
+
+    pub fn open_folder(&mut self, path: String, cx: &mut Context<Self>) {
+        if cfg!(test) {
+            return;
+        }
+        let Some(repo) = self.tabs.get(self.active).map(|t| t.id) else { return };
+        let api = self.api.clone();
+        // No request of its own: `OpenIn` finds the containing folder of `<path>/root`, `path` itself.
+        let done = self.rt.spawn(async move { api.dispatch(Request::OpenIn { repo: crate::app::core_repo(repo), worktree: path, path: "root".into(), line: None, opener: "file-manager".into(), source: None, fallback: None }).await });
+        cx.spawn(async move |this, cx| {
+            let failure = match done.await {
+                Ok(Ok(_)) => None,
+                Ok(Err(e)) => Some(e.message),
+                Err(e) => Some(e.to_string()),
+            };
+            if let Some(failure) = failure {
+                this.update(cx, |this, cx| this.show_toast(failure, cx)).ok();
+            }
+        })
+        .detach();
+    }
+
+    pub fn step_tab(&mut self, by: i64, cx: &mut Context<Self>) {
+        let n = self.tabs.len() as i64;
+        if n > 0 {
+            self.active = (self.active as i64 + by).rem_euclid(n) as usize;
+            self.save_tabs(cx);
+            cx.notify();
+        }
+    }
+
+    pub fn go_to_tab(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if ix < self.tabs.len() {
+            self.active = ix;
+            self.save_tabs(cx);
+            cx.notify();
+        }
+    }
+
+    pub fn close_file_or_history(&mut self, cx: &mut Context<Self>) {
+        if self.tabs.get(self.active).is_some_and(|t| t.history.is_some()) {
+            self.close_history(cx);
+        } else {
+            self.close_file(cx);
+        }
+    }
+
+    pub fn go_to_wip(&mut self, cx: &mut Context<Self>) {
+        self.select(0, cx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::prelude::v1::test;
+
+    fn key(s: &'static str) -> Keystroke {
+        Keystroke::parse(s).unwrap()
+    }
+
+    #[test]
+    fn a_key_goes_by_the_web_uis_name() {
+        assert_eq!(combo_of(&key("ctrl-shift-t")).as_deref(), Some("Ctrl+Shift+T"));
+        assert_eq!(combo_of(&key("ctrl-alt-f")).as_deref(), Some("Ctrl+Alt+F"));
+        assert_eq!(combo_of(&key("f7")).as_deref(), Some("F7"));
+        assert_eq!(combo_of(&key("shift-f8")).as_deref(), Some("Shift+F8"));
+        assert_eq!(combo_of(&key("alt-1")).as_deref(), Some("Alt+1"));
+        // Ctrl+Shift+digit as a platform gives it: the character, no Shift. US, then German.
+        let typed = |c: &str| Keystroke { modifiers: Modifiers::control(), key: c.into(), key_char: Some(c.into()) };
+        for (c, combo) in [("!", "Ctrl+Shift+1"), ("@", "Ctrl+Shift+2"), ("#", "Ctrl+Shift+3"), ("\"", "Ctrl+Shift+2"), ("section", "Ctrl+Shift+3")] {
+            assert_eq!(combo_of(&typed(c)).as_deref(), Some(combo));
+        }
+        assert_eq!(combo_of(&key("ctrl-tab")).as_deref(), Some("Ctrl+Tab"));
+        assert_eq!(combo_of(&key("ctrl-,")).as_deref(), Some("Ctrl+,"));
+        assert_eq!(combo_of(&key("a")), None);
+        assert_eq!(combo_of(&key("down")), None);
+        assert_eq!(combo_of(&key("alt-a")), None);
+    }
+
+    #[test]
+    fn every_id_is_unique_and_every_chord_resolves() {
+        let list = all();
+        let mut ids: Vec<&str> = list.iter().map(|c| c.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), list.len());
+        assert_eq!(resolve_chord("Mod+Shift+T"), "Ctrl+Shift+T");
+        assert_eq!(resolve_chord("Alt+1"), "Alt+1");
+    }
+}

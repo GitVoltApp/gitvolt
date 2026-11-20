@@ -399,6 +399,7 @@ pub async fn serve(listener: tokio::net::TcpListener, harness: Harness) {
         .route("/test/forge/seed", get(test_forge_seed_get).post(test_forge_seed))
         .route("/test/forge/script", post(test_forge_script))
         .route("/test/forge/requests", get(test_forge_requests))
+        .route("/test/forge/base", get(test_forge_base))
         // --- 4B T16 ---
         .route("/test/forge/account", post(test_forge_account))
         // --- end 4B T16 ---
@@ -463,6 +464,14 @@ struct TestWriteBody {
 }
 
 // --- 4A T4: the fake forge's controls (Playwright scripts it through the harness port) ---
+/// Where the fake forge listens: another client of it (the GPUI build's `GITVOLT_TEST_FORGE`) points its providers there.
+async fn test_forge_base(State(h): State<Arc<Harness>>, headers: HeaderMap) -> Response {
+    if foreign_origin(&headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    h.forge.base_url().to_string().into_response()
+}
+
 async fn test_forge_seed_get(State(h): State<Arc<Harness>>, headers: HeaderMap) -> Response {
     if foreign_origin(&headers) {
         return StatusCode::FORBIDDEN.into_response();
