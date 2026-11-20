@@ -1,4 +1,5 @@
 import { GitBranch, X } from 'lucide-react';
+import { useMemo } from 'react';
 import { create } from 'zustand';
 import { api } from '../api/client';
 import { registerAppSlot } from '../app/slots';
@@ -40,17 +41,22 @@ async function askNew(req: Req, remotes: string[]): Promise<void> {
 function UpstreamPicker() {
   const req = usePicker((s) => s.req);
   const sidebar = useRuntime((s) => (req ? s.tabs[req.ctx.tabId]?.sidebar : null));
+  const branch = req?.branch;
+  // Kept across renders: a new list resets the picker's cursor and drops its tooltip.
+  const items = useMemo<PickItem[]>(() => {
+    if (branch === undefined || !sidebar) return [];
+    const current = sidebar.locals.find((b) => b.name === branch)?.upstream ?? null;
+    return [
+      { id: NONE, label: 'None', icon: X, current: current === null, detail: 'Track nothing', tooltip: `${branch} tracks no remote branch` },
+      { id: NEW, label: 'A branch the next push creates…', icon: GitBranch, detail: 'Type its name', tooltip: "Name a remote branch that doesn't exist yet" },
+      // Same-named branches first, then the rest, by remote.
+      ...sidebar.remotes
+        .flatMap((g) => g.branches.map((b) => ({ id: `${g.name}\u0000${b.name}`, label: `${g.name}/${b.name}`, icon: GitBranch, current: current === b.fullName, tooltip: `Track ${g.name}/${b.name}`, sameName: b.name === branch })))
+        .sort((a, b) => Number(b.sameName) - Number(a.sameName))
+        .map(({ sameName: _same, ...item }) => item),
+    ];
+  }, [branch, sidebar]);
   if (!req || !sidebar) return null;
-  const current = sidebar.locals.find((b) => b.name === req.branch)?.upstream ?? null;
-  const items: PickItem[] = [
-    { id: NONE, label: 'None', icon: X, current: current === null, detail: 'Track nothing', tooltip: `${req.branch} tracks no remote branch` },
-    { id: NEW, label: 'A branch the next push creates…', icon: GitBranch, detail: 'Type its name', tooltip: "Name a remote branch that doesn't exist yet" },
-    // Same-named branches first, then the rest, by remote.
-    ...sidebar.remotes
-      .flatMap((g) => g.branches.map((b) => ({ id: `${g.name}\u0000${b.name}`, label: `${g.name}/${b.name}`, icon: GitBranch, current: current === b.fullName, tooltip: `Track ${g.name}/${b.name}`, sameName: b.name === req.branch })))
-      .sort((a, b) => Number(b.sameName) - Number(a.sameName))
-      .map(({ sameName: _same, ...item }) => item),
-  ];
   const close = () => usePicker.setState({ req: null });
   const pick = (item: PickItem) => {
     close();

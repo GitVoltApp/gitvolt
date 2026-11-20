@@ -168,3 +168,70 @@ describe('RefPicker: pressing its trigger again toggles it closed', () => {
     expect(other).toHaveBeenCalledOnce();
   });
 });
+
+describe('RefPicker with many items', () => {
+  const many = (n: number, current: number, extra: Partial<PickItem> = {}): PickItem[] =>
+    Array.from({ length: n }, (_, i) => ({ id: `b${i}`, label: `branch-${String(i).padStart(4, '0')}`, current: i === current, ...extra }));
+  const options = () => screen.getAllByRole('option');
+  const active = () => input().getAttribute('aria-activedescendant');
+
+  it('renders only the rows around the view, the current one among them on the first commit', () => {
+    picker({ items: many(1250, 1000) });
+    expect(options().length).toBeLessThan(80);
+    expect(selected()).toEqual(['branch-1000']);
+    expect(document.getElementById(active()!)?.textContent).toBe('branch-1000');
+  });
+
+  it('↑/↓ stop at both ends of the whole list, the active row always rendered', () => {
+    const { unmount } = picker({ items: many(1250, 1249) });
+    expect(selected()).toEqual(['branch-1249']);
+    fireEvent.keyDown(input(), { key: 'ArrowDown' });
+    expect(selected()).toEqual(['branch-1249']);
+    fireEvent.keyDown(input(), { key: 'ArrowUp' });
+    expect(selected()).toEqual(['branch-1248']);
+    expect(document.getElementById(active()!)?.textContent).toBe('branch-1248');
+    unmount();
+    picker({ items: many(1250, 0) });
+    fireEvent.keyDown(input(), { key: 'ArrowUp' });
+    expect(selected()).toEqual(['branch-0000']);
+    fireEvent.keyDown(input(), { key: 'ArrowDown' });
+    expect(selected()).toEqual(['branch-0001']);
+  });
+
+  it('the filter searches every item, not only the rendered ones; Enter picks the match', () => {
+    const onPick = vi.fn();
+    picker({ items: many(1250, 0), onPick });
+    fireEvent.change(input(), { target: { value: 'BRANCH-1234' } });
+    expect(options().map((o) => o.textContent)).toEqual(['branch-1234']);
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'b1234' }));
+  });
+
+  it('moving the active row re-renders the two rows it leaves and enters, not the list', () => {
+    let renders = 0;
+    const Counted = (() => { renders++; return null; }) as unknown as PickItem['icon'];
+    picker({ items: many(1250, 0, { icon: Counted }) });
+    renders = 0;
+    fireEvent.pointerEnter(options()[3]);
+    expect(selected()).toEqual(['branch-0003']);
+    expect(renders).toBe(2);
+    renders = 0;
+    fireEvent.keyDown(input(), { key: 'ArrowDown' });
+    expect(renders).toBe(2);
+  });
+
+  it('one tooltip for the list, each row\'s worked out only when it shows', () => {
+    const tips = Array.from({ length: 1250 }, (_, i) => vi.fn(() => `Tip ${i}`));
+    picker({ items: many(1250, 0).map((it, i) => ({ ...it, tooltip: tips[i] })) });
+    expect(tips.some((t) => t.mock.calls.length)).toBe(false);
+    fireEvent.mouseEnter(options()[2]);
+    expect(screen.getByRole('tooltip').textContent).toBe('Tip 2');
+    fireEvent.mouseLeave(options()[2]);
+    fireEvent.mouseEnter(options()[5]);
+    expect(screen.getAllByRole('tooltip').map((t) => t.textContent)).toEqual(['Tip 5']);
+    expect(tips.filter((t) => t.mock.calls.length).length).toBe(2);
+    // Filtering drops it: its row may be gone.
+    fireEvent.change(input(), { target: { value: '12' } });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+});

@@ -2,6 +2,7 @@ import { GitBranch, Pin, PinOff, RotateCcw } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { pressOpener } from '../menu/pressDrag';
 import type { ForkPayload } from '../api/gen/ForkPayload';
+import type { LocalBranch } from '../api/gen/LocalBranch';
 import type { PinSetting } from '../api/gen/PinSetting';
 import type { SidebarPayload } from '../api/gen/SidebarPayload';
 import { useRepoContext } from '../app/repoContext';
@@ -30,17 +31,32 @@ function defaultTip(fork: ForkPayload | undefined): string {
  * `upstream/main ↔ main` in a fork, or the one name. */
 const pairLabel = (refs: readonly string[]) => refs.map(short).join(' ↔ ');
 
+/** The sidebar's branches by full name, and the local branches by the upstream they track: a
+ * branch's `pinPair` without a scan of every branch. */
+interface PairIndex { locals: Map<string, LocalBranch>; remotes: Map<string, string>; tracking: Map<string, LocalBranch[]> }
+function pairIndex(sidebar: SidebarPayload | null | undefined): PairIndex {
+  const ix: PairIndex = { locals: new Map(), remotes: new Map(), tracking: new Map() };
+  for (const b of sidebar?.locals ?? []) {
+    ix.locals.set(b.fullName, b);
+    if (!b.upstream) continue;
+    const t = ix.tracking.get(b.upstream);
+    if (t) t.push(b);
+    else ix.tracking.set(b.upstream, [b]);
+  }
+  for (const g of sidebar?.remotes ?? []) for (const b of g.branches) ix.remotes.set(b.fullName, b.name);
+  return ix;
+}
+
 /**
  * The refs pinning `ref` pins, as the core pairs them (`snapshot::pin_pair`): a local branch with
  * its upstream, a remote branch with the local branch tracking it (the one named like it, else
  * the first by name); else `ref` alone.
  */
-function pinPair(ref: string, sidebar: SidebarPayload | null | undefined): string[] {
-  const locals = sidebar?.locals ?? [];
-  const local = locals.find((b) => b.fullName === ref);
+function pinPair(ref: string, ix: PairIndex): string[] {
+  const local = ix.locals.get(ref);
   if (local) return local.upstream && !local.gone ? [ref, local.upstream] : [ref];
-  const branch = sidebar?.remotes.flatMap((g) => g.branches).find((b) => b.fullName === ref)?.name;
-  const tracking = locals.filter((b) => b.upstream === ref).sort((a, b) => Number(a.name !== branch) - Number(b.name !== branch) || byName(a.name, b.name));
+  const branch = ix.remotes.get(ref);
+  const tracking = [...(ix.tracking.get(ref) ?? [])].sort((a, b) => Number(a.name !== branch) - Number(b.name !== branch) || byName(a.name, b.name));
   return tracking.length ? [tracking[0].fullName, ref] : [ref];
 }
 
@@ -62,9 +78,15 @@ export function PinButton({ compact }: { compact: boolean }) {
   const kind = setting?.kind ?? 'auto';
   const currentId = setting?.kind === 'ref' ? setting.name : kind === 'off' ? OFF : AUTO;
 
+  // Built only while the picker is open: a refresh (a new sidebar each time) costs nothing while
+  // it's closed. A branch's tooltip is worked out when it shows.
+  const open = anchor !== null;
   const items = useMemo<PickItem[]>(() => {
-    const tip = (ref: string) => {
-      const pair = pinPair(ref, sidebar);
+    if (!open) return [];
+    let ix: PairIndex | null = null;
+    const tip = (ref: string) => () => {
+      ix ??= pairIndex(sidebar);
+      const pair = pinPair(ref, ix);
       return pair.length > 1 ? `Pin ${pairLabel(pair)}: both stay at the left` : `Pin ${short(ref)} as the trunk`;
     };
     const branches: PickItem[] = [
@@ -76,7 +98,7 @@ export function PinButton({ compact }: { compact: boolean }) {
       { id: OFF, label: 'None', icon: PinOff, tooltip: 'No trunk: every branch lays out freely' },
       ...branches,
     ].map((i) => ({ ...i, current: i.id === currentId }));
-  }, [sidebar, kind, pinned, currentId, fork]);
+  }, [open, sidebar, kind, pinned, currentId, fork]);
 
   const close = useCallback(() => {
     setAnchor(null);

@@ -40,13 +40,16 @@ export function BranchPicker() {
   const button = useRef<HTMLButtonElement>(null);
   const label = head?.branch?.replace(/^refs\/heads\//, '') ?? (head?.target ? `HEAD (${head.target.slice(0, 7)})` : '—');
   const [order, setOrder] = useState<Order>(loadOrder);
+  // Built only while the picker is open: a refresh costs nothing while it's closed.
+  const open = anchor !== null;
   const items = useMemo<PickItem[]>(() => {
+    if (!open) return [];
     const sorted = [...locals].sort((a, b) => (order === 'recent' ? b.tipTime - a.tipTime || byName(a.name, b.name) : byName(a.name, b.name)));
     return sorted.map((b) => ({
       id: b.fullName, label: b.name, icon: b.name === current ? Check : GitBranch, current: b.name === current,
       detail: b.ahead || b.behind ? `${b.ahead}↑ ${b.behind}↓` : undefined,
     }));
-  }, [locals, order, current]);
+  }, [open, locals, order, current]);
   const toggle = {
     icon: order === 'alpha' ? ArrowDownAZ : Clock,
     label: order === 'alpha' ? 'Sorted A–Z: switch to most recent first' : 'Most recent first: switch to A–Z',

@@ -15,6 +15,13 @@ import { createRepoViewStore } from '../repo/store';
 import { fakeServices } from '../repo/testServices';
 
 vi.mock('./predict', async (orig) => ({ ...(await orig<typeof import('./predict')>()), usePrediction: () => {} }));
+// Counts the rows' renders (one avatar each).
+const avatars = vi.hoisted(() => ({ n: 0 }));
+vi.mock('../avatars/Avatar', async (orig) => {
+  const real = await orig<typeof import('../avatars/Avatar')>();
+  const { createElement } = await import('react');
+  return { ...real, Avatar: (p: Parameters<typeof real.Avatar>[0]) => { avatars.n++; return createElement(real.Avatar, p); } };
+});
 const ctx = { tabId: 't1', repoId: 1, worktree: '/r' };
 const show = (over = {}) => {
   setSession('t1', { ctx, opened: { branch: 'topic', base: 'main' }, state: fromPlan(plan(over)), prediction: NO_PREDICTION, moved: null, editing: null });
@@ -132,6 +139,26 @@ describe('the interactive rebase editor', () => {
     expect(sessionOf('t1')!.state.selected).toEqual([oid('b')]);
     key('Escape');
     expect(sessionOf('t1')).toBeUndefined();
+  });
+
+  it('a drag slides the rows to the live slot; a move within the slot redraws only the dragged row', () => {
+    show();
+    // Rows 30 px high: E (the top row) dragged 40 px down lands below D.
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 400, 30));
+    const transform = (c: string) => row(c).style.transform;
+    fireEvent.pointerDown(row('e').querySelector('.irebase-summary')!, { clientY: 0, pointerId: 1, button: 0 });
+    rect.mockRestore();
+    move(40);
+    const slid = [transform('e'), row('e').style.zIndex, transform('d'), transform('c')];
+    avatars.n = 0;
+    move(41);
+    const renders = avatars.n;
+    up(41);
+    fireEvent.click(row('e')); // the release's click, swallowed
+    expect(slid).toEqual(['translateY(40px)', '2', 'translateY(-30px)', '']);
+    expect(transform('e')).toBe('');
+    expect(renders).toBe(1);
+    expect(order()).toBe('DECBA');
   });
 
   it('a row drags from anywhere on it; a press without travel selects; its controls start no drag', () => {

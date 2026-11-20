@@ -1,14 +1,16 @@
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { LucideIcon } from 'lucide-react';
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { HoverTooltip } from './HoverTooltip';
+import { HoverTooltip, useHoverTooltip } from './HoverTooltip';
 import { useKeys } from './keyRouter';
 import { pointInRect, swallowGestureClick } from './swallowClick';
 import { usePressDrag } from '../menu/pressDrag';
 import './picker.css';
 import { ClearableInput } from './ClearableInput';
 
-export interface PickItem { id: string; label: string; detail?: string; icon?: LucideIcon; current?: boolean; tooltip?: string }
+/** `tooltip` may be a function: called when the row's tooltip shows, not for every row. */
+export interface PickItem { id: string; label: string; detail?: string; icon?: LucideIcon; current?: boolean; tooltip?: string | (() => string) }
 
 interface Props {
   /** The box it opens under (the button's `getBoundingClientRect()`). */
@@ -49,13 +51,29 @@ export function RefPicker({ anchor, items, placeholder, onPick, onClose, ignore,
   const [cursor, setCursor] = useState(() => Math.max(0, items.findIndex((i) => i.current)));
   const ref = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const uid = useId();
   // Opened by a press on its button: dragging onto an item and releasing picks it.
   usePressDrag(ref);
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return needle ? items.filter((i) => i.label.toLowerCase().includes(needle)) : items;
-  }, [items, q]);
+  const filter = useFilter(items);
+  const shown = filter(q);
+  // Only the rows in view are in the DOM (a picker may list thousands of branches). The first
+  // render already holds the rows around the current item, centred as the layout effect below
+  // then scrolls them.
+  const v = useVirtualizer({
+    count: shown.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => ROW_H,
+    overscan: 8,
+    initialRect: { width: WIDTH, height: LIST_H },
+    initialOffset: () => Math.max(0, cursor * ROW_H - (LIST_H - ROW_H) / 2),
+  });
+  // The hovered row's tooltip: one for the list, not one per row.
+  const tip = useRowTooltip(shown);
+  // Stable for the memoized rows, whatever the caller passes.
+  const pickRef = useRef(onPick);
+  pickRef.current = onPick;
+  const pick = useCallback((item: PickItem) => pickRef.current(item), []);
   // A re-sort (the toggle) or new items: the cursor follows the current item again. Not on the
   // first render — the cursor's initial state already aims there.
   const lastItems = useRef(items);
@@ -67,10 +85,14 @@ export function RefPicker({ anchor, items, placeholder, onPick, onClose, ignore,
   const placed = useRef(false);
   // Before paint, so the first frame already has the active row in view: centred on the first
   // placement, the nearest edge after (arrow keys).
+  // A row out of the rendered window (a re-sort or a filter re-aimed the cursor far away) isn't in
+  // the DOM yet: the virtualizer scrolls to it.
   useLayoutEffect(() => {
-    document.getElementById(`${uid}-${cursor}`)?.scrollIntoView?.({ block: placed.current ? 'nearest' : 'center' });
+    const row = document.getElementById(`${uid}-${cursor}`);
+    if (row) row.scrollIntoView?.({ block: placed.current ? 'nearest' : 'center' });
+    else if (cursor < v.options.count) v.scrollToIndex(cursor, { align: placed.current ? 'auto' : 'center' });
     placed.current = true;
-  }, [uid, cursor]);
+  }, [uid, cursor, v]);
   useEffect(() => {
     const entry = { close: onClose };
     openPickers.add(entry);
@@ -124,8 +146,8 @@ export function RefPicker({ anchor, items, placeholder, onPick, onClose, ignore,
         autoComplete="off"
         value={q}
         onChange={(e) => {
-          const needle = e.target.value.trim().toLowerCase();
-          const next = needle ? items.filter((i) => i.label.toLowerCase().includes(needle)) : items;
+          // The render that follows reuses this filtering (`useFilter`): once per key.
+          const next = filter(e.target.value);
           setQ(e.target.value);
           setCursor(Math.max(0, next.findIndex((i) => i.current)));
         }}
@@ -146,30 +168,102 @@ export function RefPicker({ anchor, items, placeholder, onPick, onClose, ignore,
         </HoverTooltip>
       )}
       </div>
-      <div className="picker-list" role="listbox" id={`${uid}-list`} aria-label={placeholder}>
-        {shown.map((item, i) => {
-          const Icon = item.icon;
-          const row = (
-            <div
-              key={item.id}
-              id={`${uid}-${i}`}
-              role="option"
-              aria-selected={i === cursor}
-              data-current={item.current || undefined}
-              className="picker-item"
-              onPointerEnter={() => setCursor(i)}
-              onClick={() => onPick(item)}
-            >
-              {Icon && <Icon size={13} aria-hidden />}
-              <span className="picker-label">{item.label}</span>
-              {item.detail && <span className="picker-detail">{item.detail}</span>}
-            </div>
-          );
-          return item.tooltip ? <HoverTooltip key={item.id} content={item.tooltip}>{row}</HoverTooltip> : row;
-        })}
+      <div ref={listRef} className="picker-list" role="listbox" id={`${uid}-list`} aria-label={placeholder}>
+        {shown.length > 0 && (
+          <div className="picker-rows" style={{ height: v.getTotalSize() }}>
+            {v.getVirtualItems().map(({ index, start }) => (
+              <PickRow key={shown[index].id} item={shown[index]} index={index} id={`${uid}-${index}`} selected={index === cursor} top={start} onEnter={setCursor} onPick={pick} tip={tip.handlers} />
+            ))}
+          </div>
+        )}
         {shown.length === 0 && <div className="picker-empty">No matches</div>}
       </div>
+      {tip.tooltip}
     </div>,
     document.body,
   );
 }
+
+const ROW_H = 24;
+/** The list's height when full (the picker's 360 px less its search box): the virtualizer's
+ * first guess, before it measures. */
+const LIST_H = 316;
+
+/** `items` narrowed to the labels holding `q` (case-insensitive), the last answer kept: the change
+ * handler and the render that follows it ask the same question once. */
+function useFilter(items: PickItem[]): (q: string) => PickItem[] {
+  const lower = useMemo(() => items.map((i) => i.label.toLowerCase()), [items]);
+  const last = useRef<{ lower: string[]; needle: string; out: PickItem[] } | null>(null);
+  return (q: string) => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return items;
+    const l = last.current;
+    if (l?.lower === lower && l.needle === needle) return l.out;
+    const out = items.filter((_, k) => lower[k].includes(needle));
+    last.current = { lower, needle, out };
+    return out;
+  };
+}
+
+type RowTip = {
+  enter(e: MouseEvent<HTMLElement>, item: PickItem): void;
+  over(e: MouseEvent<HTMLElement>, item: PickItem): void;
+  move(e: MouseEvent<HTMLElement>, item: PickItem): void;
+  leave(e: MouseEvent<HTMLElement>): void;
+};
+
+/** One `HoverTooltip` for every row (the same delay, Esc and placement under the row), its
+ * handlers stable so the memoized rows keep them. */
+function useRowTooltip(shown: PickItem[]) {
+  const hovered = useRef<PickItem | null>(null);
+  const { triggerProps, tooltip, hide } = useHoverTooltip({
+    content: () => {
+      const t = hovered.current?.tooltip;
+      return typeof t === 'function' ? t() : t;
+    },
+  });
+  const props = useRef(triggerProps);
+  props.current = triggerProps;
+  const handlers = useMemo<RowTip>(() => {
+    const enter = (e: MouseEvent<HTMLElement>, item: PickItem) => { hovered.current = item; props.current.onMouseEnter(e); };
+    return {
+      enter,
+      // A row that came under the pointer without a mouseenter (the one under it was filtered
+      // out): its first mouseover is its enter.
+      over: (e, item) => (hovered.current === item ? props.current.onMouseOver(e) : enter(e, item)),
+      move: (e, item) => { hovered.current = item; props.current.onMouseMove(e); },
+      leave: (e) => { hovered.current = null; props.current.onMouseLeave(e); },
+    };
+  }, []);
+  // A new list (a filter, a re-sort) drops the tooltip, as its row may be gone.
+  useEffect(() => { hide(); }, [shown, hide]);
+  return { handlers, tooltip };
+}
+
+/** A row, re-rendered only when its own props change: moving the cursor redraws two rows. */
+const PickRow = memo(function PickRow({ item, index, id, selected, top, onEnter, onPick, tip }: {
+  item: PickItem; index: number; id: string; selected: boolean; top: number; onEnter(i: number): void; onPick(item: PickItem): void; tip: RowTip;
+}) {
+  const Icon = item.icon;
+  const has = !!item.tooltip;
+  return (
+    <div
+      id={id}
+      role="option"
+      aria-selected={selected}
+      data-current={item.current || undefined}
+      className="picker-item"
+      style={{ transform: `translateY(${top}px)` }}
+      onPointerEnter={() => onEnter(index)}
+      onClick={() => onPick(item)}
+      onMouseEnter={has ? (e) => tip.enter(e, item) : undefined}
+      onMouseOver={has ? (e) => tip.over(e, item) : undefined}
+      onMouseMove={has ? (e) => tip.move(e, item) : undefined}
+      onMouseLeave={has ? (e) => tip.leave(e) : undefined}
+    >
+      {Icon && <Icon size={13} aria-hidden />}
+      <span className="picker-label">{item.label}</span>
+      {item.detail && <span className="picker-detail">{item.detail}</span>}
+    </div>
+  );
+});

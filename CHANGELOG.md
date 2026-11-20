@@ -59,6 +59,18 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
     before. A rebase or merge with local changes checks them against git's merge the same way.
   - With local changes, a rebase, merge or checkout compares the two commits' files once instead
     of twice, and restoring your changes runs one `git status` fewer.
+- **The pickers, filters and rebase editor keep up with big repositories (performance).** With
+  1,250 branches:
+  - A refresh or tab switch no longer rebuilds the Pin and branch pickers' lists while they're
+    closed (20–24 ms each time); a branch's Pin tooltip is worked out when it shows.
+  - The branch, Pin and Set upstream pickers draw only the rows in view, and moving the
+    highlight redraws two rows instead of all of them: opening the Pin picker took 200 ms and
+    nearly doubled the page's elements, and each hover or key took 70–140 ms.
+  - Typing in the sidebar's filter or the "View all files" filter shows each key at once; the
+    list catches up when the app is free, as in the command palette.
+  - The sidebar's Remote panel sorted by most recent builds in linear time (5,000 remote
+    branches: 73 → 4 ms in our test), and dragging rows in the interactive rebase editor redraws
+    only the rows that move.
 
 ### Fixed
 

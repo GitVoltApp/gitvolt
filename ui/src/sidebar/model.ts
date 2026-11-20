@@ -185,16 +185,20 @@ export function buildPanels(sections: Section[], o: RowOptions): Panel[] {
     if (sort === 'recent' && s.kind === 'remote') {
       // Still one group per remote (no `origin/` on its rows), flat inside, newest tip
       // first; the groups themselves ordered by their newest tip.
-      const groups = new Map<string, SideItem[]>();
-      for (const it of matched) if (it.kind === 'remote') groups.set(it.remote, [...(groups.get(it.remote) ?? []), it]);
-      const newest = (items: SideItem[]) => Math.max(...items.map((i) => i.time));
-      const ordered = [...groups].sort(([an, a], [bn, b]) => newest(b) - newest(a) || byName(an, bn));
-      for (const [remote, items] of ordered) {
+      const groups = new Map<string, { items: SideItem[]; newest: number }>();
+      for (const it of matched) {
+        if (it.kind !== 'remote') continue;
+        const g = groups.get(it.remote);
+        if (!g) groups.set(it.remote, { items: [it], newest: it.time });
+        else { g.items.push(it); g.newest = Math.max(g.newest, it.time); }
+      }
+      const ordered = [...groups].sort(([an, a], [bn, b]) => b.newest - a.newest || byName(an, bn));
+      for (const [remote, { items }] of ordered) {
         const key = folderKey(s.id, remote);
         const fc = !q && o.collapsed.has(key);
         out.push({ type: 'folder', key, name: remote, depth: 1, collapsed: fc, section: s, remote, hostKind: s.hosts?.[remote], host: s.hostNames?.[remote] });
         if (fc) continue;
-        for (const it of [...items].sort((a, b) => b.time - a.time || byName(a.name, b.name))) out.push(item(it, 2));
+        for (const it of items.sort((a, b) => b.time - a.time || byName(a.name, b.name))) out.push(item(it, 2));
       }
       return panel;
     }

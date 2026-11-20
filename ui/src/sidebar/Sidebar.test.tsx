@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { act } from 'react';
+import { act, Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LocalBranch } from '../api/gen/LocalBranch';
 
@@ -209,6 +209,19 @@ describe('Sidebar panels', () => {
     expect(within(panel('Remote')).getByLabelText('Remote count')).toHaveTextContent('1');
     expect(within(panel('Tags')).getByLabelText('Tags count')).toHaveTextContent('0');
     expect(within(panel('Tags')).getByText('No matches')).toBeInTheDocument();
+  });
+
+  it('a key shows in the filter box at once; the panels follow in a later render', () => {
+    const commits: string[] = [];
+    render(
+      <Profiler id="sb" onRender={() => commits.push(`${(screen.getByLabelText('Filter branches') as HTMLInputElement).value}:${within(panel('Local')).getByLabelText('Local count').textContent}`)}>
+        <RepoViewContext value={createRepoViewStore(4, '/r', EMPTY_GRAPH, fakeServices())}><RepoContext value={ctx}><Sidebar /></RepoContext></RepoViewContext>
+      </Profiler>,
+    );
+    commits.length = 0;
+    fireEvent.change(screen.getByLabelText('Filter branches'), { target: { value: 'hot' } });
+    expect(commits[0]).toBe('hot:3');
+    expect(commits.at(-1)).toBe('hot:1');
   });
 
   it('a collapsed panel shrinks to its header in place and keeps its count', () => {

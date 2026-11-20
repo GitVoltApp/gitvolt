@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GraphPayload } from '../api/gen/GraphPayload';
 import type { PinSetting } from '../api/gen/PinSetting';
@@ -132,6 +132,20 @@ describe('PinButton', () => {
     vi.spyOn(pinButton(), 'getBoundingClientRect').mockReturnValue({ top: 20, bottom: 44, left: 10, right: 90, width: 80, height: 24, x: 10, y: 20, toJSON: () => ({}) });
     fireEvent.click(pinButton());
     expect(Number.parseFloat(document.querySelector<HTMLElement>('.picker')!.style.top)).toBeGreaterThanOrEqual(44);
+  });
+
+  it('a refresh with the picker closed reads none of the branches; opening it lists them', () => {
+    setup(PAIR);
+    let reads = 0;
+    const counted = (sb: SidebarPayload) => Object.defineProperties({ ...sb }, {
+      locals: { get: () => { reads++; return sb.locals; } },
+      remotes: { get: () => { reads++; return sb.remotes; } },
+    }) as SidebarPayload;
+    for (let i = 0; i < 3; i++) act(() => useRuntime.setState((s) => ({ tabs: { t1: { ...s.tabs.t1, sidebar: counted(sidebar) } as never } })));
+    expect(reads).toBe(0);
+    fireEvent.click(pinButton());
+    expect(reads).toBeGreaterThan(0);
+    expect(screen.getByRole('option', { name: /^hotfix/ })).toBeInTheDocument();
   });
 
   it('the button toggles its picker', () => {

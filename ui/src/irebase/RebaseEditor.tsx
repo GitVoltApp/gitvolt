@@ -1,5 +1,5 @@
 import { ArrowDown, GripVertical, Redo2, TriangleAlert, Undo2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Avatar } from '../avatars/Avatar';
 import { CommitFields } from '../commit/CommitFields';
@@ -15,7 +15,7 @@ import {
   targetMessage, type EditorRow, type EditorState, type Grouping, type RowAction,
 } from './model';
 import { usePrediction } from './predict';
-import { useRowDrag } from './rowDrag';
+import { placeStyle, useRowDrag, type RowPlace } from './rowDrag';
 import { ChipColumn } from './ChipColumn';
 import { useChipDrag, useChipDragCleanup } from './chipDrag';
 import { laneStyle, useChipColor } from './colors';
@@ -136,16 +136,18 @@ function InlineMessage({ tabId, oid, text }: { tabId: string; oid: string; text:
   );
 }
 
-function Row({ tabId, row, index, state, g, chips, conflict, editing, drag }: {
-  tabId: string; row: EditorRow; index: number; state: EditorState; g: Grouping; conflict: string[] | undefined; editing: boolean; drag: ReturnType<typeof useRowDrag>;
+/** A row, re-rendered only when its own props change: a pointer move during a drag redraws the
+ * rows it moves, not all of them. */
+const Row = memo(function Row({ tabId, row, index, state, g, chips, conflict, editing, y, lift, count, onDragStart }: {
+  tabId: string; row: EditorRow; index: number; state: EditorState; g: Grouping; conflict: string[] | undefined; editing: boolean;
   /** The plan the chips show: during a row drag, the one it would make. */
   chips: { state: EditorState; g: Grouping };
+  y: number; lift: RowPlace['lift']; count: number | null; onDragStart: ReturnType<typeof useRowDrag>['onPointerDown'];
 }) {
   const into = g.into.get(row.oid);
   const selected = state.selected.includes(row.oid);
   const text = targetMessage(state, row.oid, g);
   const over = useChipDrag((x) => x.drag?.over === row.oid);
-  const count = drag.count(index);
   const choose = (a: RowAction) => {
     applyAction(tabId, targets, a, row.oid);
   };
@@ -159,8 +161,8 @@ function Row({ tabId, row, index, state, g, chips, conflict, editing, drag }: {
       role="option"
       aria-selected={selected}
       className={['irebase-row', `is-${row.action}`, into ? 'is-folded' : '', selected ? 'is-selected' : '', over ? 'chip-over' : ''].filter(Boolean).join(' ')}
-      style={drag.style(index)}
-      onPointerDown={(e) => drag.onPointerDown(e, index, state.selected)}
+      style={placeStyle({ y, lift })}
+      onPointerDown={(e) => onDragStart(e, index, state.selected)}
       onClick={(e) => editState(tabId, (s) => select(s, row.oid, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }))}
       onDoubleClick={() => startEditing(tabId, row.oid)}
     >
@@ -183,7 +185,7 @@ function Row({ tabId, row, index, state, g, chips, conflict, editing, drag }: {
       <span className="irebase-dot">{row.edited !== null && <span aria-label="Message edited">•</span>}</span>
     </li>
   );
-}
+});
 
 /** The chip being dragged, under the pointer (it ignores the pointer: the row under it is the drop). */
 function ChipGhost({ tabId }: { tabId: string }) {
@@ -214,13 +216,21 @@ export function RebaseEditor({ tabId }: CenterViewProps<object>) {
   useChipDragCleanup();
   useEffect(() => { root.current?.focus(); }, []);
   const baseShown = useBaseInspected(tabId, session?.state ?? NO_STATE);
-  if (!session) return null;
-  const { state, prediction, moved, editing } = session;
-  const g = grouping(state.rows);
+  // Kept across a drag's pointer moves (the rows are memoized on them): the plan changes only on
+  // an edit, the chips' preview only when the drop slot does.
+  const state = session?.state;
+  const g = useMemo(() => (state ? grouping(state.rows) : null), [state]);
+  const previewOids = drag.preview?.oids;
+  const previewTo = drag.preview?.to;
+  const chips = useMemo(() => {
+    if (!state || !g) return null;
+    const view = previewOids && previewTo !== undefined ? moveRows(state, previewOids, previewTo) : state;
+    return { state: view, g: view === state ? g : grouping(view.rows) };
+  }, [state, g, previewOids, previewTo]);
+  if (!session || !state || !g || !chips) return null;
+  const { prediction, moved, editing } = session;
   const why = problems(state, g);
   const edited = dirty(state);
-  const chipView = drag.preview ? moveRows(state, drag.preview.oids, drag.preview.to) : state;
-  const chips = { state: chipView, g: chipView === state ? g : grouping(chipView.rows) };
   return (
     <section ref={root} tabIndex={-1} className="irebase" aria-label="Interactive Rebase" data-testid="irebase">
       <header className="irebase-header">
@@ -245,7 +255,7 @@ export function RebaseEditor({ tabId }: CenterViewProps<object>) {
       )}
       <ol ref={list} className={`irebase-rows${drag.dragging ? ' dragging' : ''}${chipDragging ? ' chip-dragging' : ''}${prediction.status === 'pending' ? ' predicting' : ''}`} role="listbox" aria-multiselectable="true" aria-label="Commits, newest first">
         {state.rows.map((r, i) => (
-          <Row key={r.oid} tabId={tabId} row={r} index={i} state={state} g={g} chips={chips} conflict={prediction.byRow[r.oid]} editing={editing === r.oid} drag={drag} />
+          <Row key={r.oid} tabId={tabId} row={r} index={i} state={state} g={g} chips={chips} conflict={prediction.byRow[r.oid]} editing={editing === r.oid} y={drag.place(i).y} lift={drag.place(i).lift} count={drag.count(i)} onDragStart={drag.onPointerDown} />
         ))}
         {/* Not a row of the plan: a click shows the base in the details panel. */}
         <li className={`irebase-row irebase-base${baseShown ? ' is-selected' : ''}`} role="option" aria-selected={baseShown} onClick={() => inspectBase(tabId)}>

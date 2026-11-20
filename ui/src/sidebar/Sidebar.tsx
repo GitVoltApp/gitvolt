@@ -1,6 +1,6 @@
 
 import { ChevronLeft } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRepoContext } from '../app/repoContext';
 import { useRuntime } from '../app/runtime';
 import { useDiffOpen, useFocusZone } from '../app/seams1b';
@@ -85,7 +85,9 @@ export function Sidebar() {
   const base = useMemo(() => (payload ? sectionsOf(payload, view, picks, worktree) : null), [payload, view, picks, worktree]);
   const sections = useMemo(() => (base ? withMrSection(base, mrs) : []), [base, mrs]); // A poll rebuilds only the MR/PR section
   const collapsed = useMemo(() => new Set(rs.collapsed), [rs.collapsed]);
-  const panels = useMemo(() => buildPanels(sections, { filter, sort: rs.sidebarSort, collapsed }), [sections, filter, rs.sidebarSort, collapsed]);
+  // The box shows each key at once; the panels follow when the main thread is free (thousands of branches).
+  const shownFilter = useDeferredValue(filter);
+  const panels = useMemo(() => buildPanels(sections, { filter: shownFilter, sort: rs.sidebarSort, collapsed }), [sections, shownFilter, rs.sidebarSort, collapsed]);
   const specs = useMemo(() => panels.map((p) => ({ id: p.section.id, collapsed: p.collapsed, weight: weights[p.section.id] })), [panels, weights]);
   const heights = useMemo(() => layoutPanels(avail, specs), [avail, specs]);
   const targets = useMemo(() => dividerTargets(specs), [specs]);

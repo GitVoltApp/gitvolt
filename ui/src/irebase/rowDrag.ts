@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { registerKeys } from '../ui/keyRouter';
 import { DRAG_THRESHOLD, swallowNextClick, swallowReleaseClick } from './chipDrag';
 
@@ -32,16 +32,51 @@ export function groupTarget(heights: readonly number[], group: readonly number[]
 export function slotShifts(heights: readonly number[], group: readonly number[], to: number): number[] {
   const inGroup = new Set(group);
   const rest = heights.map((_, i) => i).filter((i) => !inGroup.has(i));
+  const top = offsets(heights);
   const out = heights.map(() => 0);
   let y = 0;
   for (const i of [...rest.slice(0, to), ...group, ...rest.slice(to)]) {
-    out[i] = y - sum(heights.slice(0, i));
+    out[i] = y - top[i];
     y += heights[i];
   }
   return out;
 }
 
+/** Each row's top in the list: `out[i]` is the sum of the heights above row `i`. */
+const offsets = (heights: readonly number[]) => {
+  const out = new Array<number>(heights.length + 1);
+  out[0] = 0;
+  for (let i = 0; i < heights.length; i++) out[i + 1] = out[i] + heights[i];
+  return out;
+};
+
 interface Drag { from: number; group: number[]; oids: string[]; to: number; dy: number; heights: number[] }
+
+/** Where a row sits during a drag: `y` px from its place, `lift` 2 for the pressed row, 1 for the
+ * rest of its group (both follow the pointer), 0 for the others (they slide). */
+export interface RowPlace { y: number; lift: 0 | 1 | 2 }
+const STILL: RowPlace = { y: 0, lift: 0 };
+
+/** Every row's place for `drag`, worked out once per pointer move rather than once per row. */
+function placesOf(drag: Drag): RowPlace[] {
+  const { heights, group, from, dy, to } = drag;
+  const top = offsets(heights);
+  const shifts = slotShifts(heights, group, to);
+  const inGroup = new Set(group);
+  const above = groupAbove(heights, group, from);
+  return heights.map((_, i) => {
+    if (!inGroup.has(i)) return shifts[i] ? { y: shifts[i], lift: 0 } : STILL;
+    // The group follows the pointer as it is, closed up around the pressed row.
+    const at = dy + Math.max(0, top[from] - top[i]) - Math.max(0, top[i] - top[from]) - above + groupAbove(heights, group, i);
+    return { y: at, lift: i === from ? 2 : 1 };
+  });
+}
+
+/** A row's style for its place: the group without a transition lag, the others sliding. */
+export function placeStyle({ y, lift }: RowPlace): CSSProperties | undefined {
+  if (lift) return { transform: `translateY(${y}px)`, zIndex: lift, transition: 'none' };
+  return y ? { transform: `translateY(${y}px)` } : undefined;
+}
 
 /** What a press on starts nothing of the row's: the row's controls (the action dropdown, the
  * message editor, a chip's × and "+", the new branch input). A free chip starts its own drag. */
@@ -53,9 +88,12 @@ const OWN_PRESS = 'button, input, textarea, select, a, [contenteditable="true"],
 export function useRowDrag(list: React.RefObject<HTMLElement | null>, onMove: (oids: string[], to: number) => void) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const off = useRef<(() => void) | null>(null);
+  const moveRef = useRef(onMove);
+  moveRef.current = onMove;
   useEffect(() => () => off.current?.(), []);
-  /** `selection`: the selected rows' oids; the group when the pressed row is one of them. */
-  const onPointerDown = (e: ReactPointerEvent<HTMLElement>, index: number, selection: readonly string[] = []) => {
+  /** `selection`: the selected rows' oids; the group when the pressed row is one of them. Stable,
+   * for the memoized rows. */
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLElement>, index: number, selection: readonly string[] = []) => {
     if (e.button !== 0 || !list.current) return;
     if (e.target instanceof Element && e.target.closest(OWN_PRESS)) return;
     const els = [...list.current.querySelectorAll<HTMLElement>('[data-irebase-row]')];
@@ -93,7 +131,7 @@ export function useRowDrag(list: React.RefObject<HTMLElement | null>, onMove: (o
       if (!active) return;
       swallowNextClick();
       // A scattered group dropped where it was still closes up (moveRows: no change otherwise).
-      if (to !== home || group.length > 1) onMove(oids, to);
+      if (to !== home || group.length > 1) moveRef.current(oids, to);
     };
     // The menu layer, above the editor's own keys (overlay): Esc puts the rows back and nothing else.
     const unkey = registerKeys('menu', (ev) => {
@@ -107,22 +145,13 @@ export function useRowDrag(list: React.RefObject<HTMLElement | null>, onMove: (o
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', stop);
     off.current = stop;
-  };
-  const style = (i: number): CSSProperties | undefined => {
-    if (!drag) return undefined;
-    const { heights, group, from, dy } = drag;
-    // The group follows the pointer as it is (no transition lag), closed up around the pressed
-    // row; the others slide.
-    if (group.includes(i)) {
-      const at = dy + sum(heights.slice(i, from)) - sum(heights.slice(from, i)) - groupAbove(heights, group, from) + groupAbove(heights, group, i);
-      return { transform: `translateY(${at}px)`, zIndex: i === from ? 2 : 1, transition: 'none' };
-    }
-    const s = slotShifts(heights, group, drag.to)[i];
-    return s ? { transform: `translateY(${s}px)` } : undefined;
-  };
+  }, [list]);
+  const places = useMemo(() => (drag ? placesOf(drag) : null), [drag]);
+  /** Row `i`'s place (see `placeStyle`). */
+  const place = (i: number): RowPlace => places?.[i] ?? STILL;
   /** The move the drag would make (the chips show where they'd end), null while none. */
   const preview = drag ? { oids: drag.oids, to: drag.to } : null;
   /** The pressed row's drag badge: how many rows it carries (null: one, or not that row). */
   const count = (i: number): number | null => (drag && drag.from === i && drag.group.length > 1 ? drag.group.length : null);
-  return { onPointerDown, style, dragging: drag !== null, preview, count };
+  return { onPointerDown, place, dragging: drag !== null, preview, count };
 }

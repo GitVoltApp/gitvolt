@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDownWideNarrow, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FolderOpen } from 'lucide-react';
-import { Fragment, memo, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react';
+import { Fragment, memo, useCallback, useDeferredValue, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { errorMessage } from '../api/client';
 import type { DiffSpec } from '../api/gen/DiffSpec';
 import type { FileChange } from '../api/gen/FileChange';
@@ -263,7 +263,8 @@ export function FileList({ list, spec, label, allFilesCommit: commitOf = null, a
   const slow = useLateFlag(allFilesLoading, BUSY_DELAY_MS, allFilesCommit ?? '');
   // The WIP's lists take the header's one filter; no box of their own.
   const wipQuery = useWipFilter((s) => { const f = wipFilterOf(s.byTab, tabIdOf(store)); return f.open ? f.text.trim().toLowerCase() : ''; });
-  const filterQuery = allFiles ? (sharedMode ? wipQuery : filterText.trim().toLowerCase()) : '';
+  // The box shows each key at once; the list follows when the main thread is free (thousands of files).
+  const filterQuery = useDeferredValue(allFiles ? (sharedMode ? wipQuery : filterText.trim().toLowerCase()) : '');
   const unchanged = useMemo(() => (allFiles && allFilesCommit && paths ? { commit: allFilesCommit, paths, worktree: allFilesWorktree ?? undefined } : null), [allFiles, allFilesCommit, paths, allFilesWorktree]);
   // The filter narrows both the changed and the unchanged files it's built from; a folder with no
   // surviving descendant just isn't in the tree `buildRows` builds from what's left.
