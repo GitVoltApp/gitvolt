@@ -24,6 +24,7 @@ export const UNTIMED: Record<string, string[]> = {
   forgeAccounts: ['[].account.addedAt', '[].account.storage', '[].account.versionCheckedAt'],
   forgeBranchMrs: ['fetchedAt', 'pollIntervalSecs'],
   forgeCachedMrs: ['savedAt', 'badges.fetchedAt', 'badges.pollIntervalSecs', 'list.fetchedAt', 'list.pollIntervalSecs'],
+  forgeMrCard: ['fetchedAt', 'notModified', 'pollIntervalSecs'],
   forgeMrDetail: ['fetchedAt', 'notModified', 'pollIntervalSecs'],
   forgeMrDiscussions: ['fetchedAt', 'notModified', 'pollIntervalSecs'],
   forgeMrList: ['fetchedAt', 'pollIntervalSecs', 'rateLimit'],

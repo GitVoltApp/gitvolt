@@ -29,7 +29,9 @@ const hurried = (m: ForgeMr) => isRunning(m.pipeline) || m.state === 'merging';
 const repoOf = (tabId: string) => useRuntime.getState().tabs[tabId]?.repo?.id;
 const fetchIntervalMs = () => clampFetchInterval(useAppState.getState().settings.fetchIntervalSecs) * 1000;
 
-const touch = (tabId: string, number: number) => forgeScratch.freshAt.set(`${tabId}:${number}`, Date.now());
+/** `card`: a hover card's lighter detail (`forgeMrCard`), fresh for cards only. */
+const freshKey = (tabId: string, number: number, card = false) => `${tabId}:${number}${card ? ':card' : ''}`;
+const touch = (tabId: string, number: number, card = false) => forgeScratch.freshAt.set(freshKey(tabId, number, card), Date.now());
 
 /** The visible MRs/PRs whose pipeline runs (the fast poll): the open MR/PR's, and the
  * list's while the sidebar's MR/PR section is expanded (`listShown`), as `<number>:<head>`. A
@@ -81,23 +83,25 @@ function outcome(tabId: string, serverIntervalMs: number | null): PollOutcome {
 }
 
 /** Stores a detail; one equal to the stored one leaves the store as it was. (Not by
- * `notModified`: a composite's other parts may change while its first request answers 304.) */
-function putDetail(tabId: string, number: number, value: ForgeMrDetail): void {
-  touch(tabId, number);
+ * `notModified`: a composite's other parts may change while its first request answers 304.)
+ * A hover card's (`card`) says nothing of the subscription: the one stored stays. */
+function putDetail(tabId: string, number: number, value: ForgeMrDetail, card = false): void {
+  touch(tabId, number, card);
   patchForge(tabId, (f) => {
     const have = f.details[number];
-    const same = have && keepSame(have.value, value) === have.value;
+    const next = card && have && value.subscribed === null ? { ...value, subscribed: have.value.subscribed } : value;
+    const same = have && keepSame(have.value, next) === have.value;
     let detailErrors = f.detailErrors;
     if (number in detailErrors) {
       detailErrors = { ...detailErrors };
       delete detailErrors[number];
     }
-    return { details: same ? f.details : { ...f.details, [number]: { value, at: Date.now() } }, detailErrors };
+    return { details: same ? f.details : { ...f.details, [number]: { value: next, at: Date.now() } }, detailErrors };
   });
 }
 
-const failed = (tabId: string, number: number, e: unknown) => {
-  touch(tabId, number);
+const failed = (tabId: string, number: number, e: unknown, card = false) => {
+  touch(tabId, number, card);
   patchForge(tabId, (f) => ({ detailErrors: f.detailErrors[number] === errorMessage(e) ? f.detailErrors : { ...f.detailErrors, [number]: errorMessage(e) } }));
 };
 
@@ -349,17 +353,20 @@ export function refreshListNow(tabId: string): Promise<void> {
   return refreshNow(tabId, 'list', async () => { await pollForge(tabId, 'write'); });
 }
 
-/** A hover card's detail: unless one younger than `maxAgeMs` is loaded; one request at a time. */
-export function loadMrDetail(tabId: string, number: number, maxAgeMs = DETAIL_MAX_AGE_MS): Promise<void> {
-  const key = `${tabId}:${number}`;
-  const at = forgeScratch.freshAt.get(key); // a failed load counts too
-  if (at !== undefined && Date.now() - at < maxAgeMs) return Promise.resolve();
-  const busy = forgeScratch.loading.get(key);
+/** An MR/PR's detail, unless one younger than `maxAgeMs` is loaded; one request at a time.
+ * `card`: a hover card's, lighter (`forgeMrCard`: no subscription, the list's pipeline), which a
+ * full detail also serves; a full one is never served by a card's. */
+export function loadMrDetail(tabId: string, number: number, maxAgeMs = DETAIL_MAX_AGE_MS, card = false): Promise<void> {
+  const keys = card ? [freshKey(tabId, number), freshKey(tabId, number, true)] : [freshKey(tabId, number)];
+  const young = (k: string) => { const at = forgeScratch.freshAt.get(k); return at !== undefined && Date.now() - at < maxAgeMs; }; // a failed load counts too
+  if (keys.some(young)) return Promise.resolve();
+  const busy = keys.map((k) => forgeScratch.loading.get(k)).find((p) => p !== undefined);
   if (busy) return busy;
   const repo = repoOf(tabId);
   if (repo === undefined) return Promise.resolve();
+  const key = freshKey(tabId, number, card);
   const epoch = writeEpoch(tabId);
-  const p = api.forgeMrDetail(repo, number).then((d) => { if (repoOf(tabId) !== undefined && writeEpoch(tabId) === epoch) putDetail(tabId, number, d.value); }, (e: unknown) => { if (repoOf(tabId) !== undefined) failed(tabId, number, e); }).finally(() => forgeScratch.loading.delete(key));
+  const p = (card ? api.forgeMrCard : api.forgeMrDetail)(repo, number).then((d) => { if (repoOf(tabId) !== undefined && writeEpoch(tabId) === epoch) putDetail(tabId, number, d.value, card); }, (e: unknown) => { if (repoOf(tabId) !== undefined) failed(tabId, number, e, card); }).finally(() => forgeScratch.loading.delete(key));
   forgeScratch.loading.set(key, p);
   return p;
 }

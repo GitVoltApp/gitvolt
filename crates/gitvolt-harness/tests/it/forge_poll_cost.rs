@@ -418,7 +418,7 @@ async fn the_poll_cost_on_a_big_gitlab_repo_without_etags() {
     steps.push(take(&s, "(f) 10 idle minutes, no pipeline"));
     print("GitLab without ETags", &steps);
     assert_eq!((steps[2].total, count(&steps[2], "updated_after")), (1, 1), "(b): the probe only: {:?}", steps[2].by);
-    assert_eq!(steps[3].total, 2, "(c): the probe, then the list: {:?}", steps[3].by);
+    assert_eq!(steps[3].total, 3, "(c): the probe, then the list and its pipelines (an MR changed): {:?}", steps[3].by);
     assert_eq!(steps[4].total, 10, "(f): a probe a minute");
 }
 

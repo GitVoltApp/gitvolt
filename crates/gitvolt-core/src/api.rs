@@ -1029,8 +1029,15 @@ pub enum Request {
     ForgeBranchMrs { repo: u32, refs: Vec<String> },
     /// The list and badges the last session left (`ForgeHub::cached_mrs`): no request.
     ForgeCachedMrs { repo: u32, refs: Vec<String>, filter: crate::forge::MrFilter },
-    /// One MR/PR's detail (hover card, MR/PR view): `Fresh<ForgeMrDetail>`.
+    /// One MR/PR's detail (the MR/PR view): `Fresh<ForgeMrDetail>`.
     ForgeMrDetail {
+        repo: u32,
+        #[ts(type = "number")]
+        number: u64,
+    },
+    /// A hover card's detail, lighter than `ForgeMrDetail` (`ForgeProvider::mr_card`): no
+    /// subscription, the list's pipeline when it has one. `Fresh<ForgeMrDetail>`.
+    ForgeMrCard {
         repo: u32,
         #[ts(type = "number")]
         number: u64,
@@ -1279,7 +1286,7 @@ impl Request {
             Request::ForgeAccounts | Request::AddForgeAccount { .. } | Request::RemoveForgeAccount { .. } | Request::ForgeTokenPage { .. } | Request::DetectForge { .. } => false,
             Request::ForgeRepoProjects { .. } | Request::ForgeProjectSettings { .. } | Request::ForgeForks { .. } => false,
             // --- forge calls and a read, never a repository write ---
-            Request::ForgeMrList { .. } | Request::ForgeBranchMrs { .. } | Request::ForgeCachedMrs { .. } | Request::ForgeMrDetail { .. } | Request::ForgeMrDiscussions { .. } | Request::ForgeRefresh { .. }
+            Request::ForgeMrList { .. } | Request::ForgeBranchMrs { .. } | Request::ForgeCachedMrs { .. } | Request::ForgeMrDetail { .. } | Request::ForgeMrCard { .. } | Request::ForgeMrDiscussions { .. } | Request::ForgeRefresh { .. }
             | Request::ForgeProjectByPath { .. } | Request::ForgeReply { .. } | Request::ForgeApprove { .. } | Request::ForgeRequestChanges { .. }
             | Request::ForgeMerge { .. } | Request::ForgeEditMr { .. } | Request::ForgeSetDraft { .. } | Request::MergeBase { .. } => false,
             Request::ForgeSetAutoMerge { .. } | Request::ForgeCancelAutoMerge { .. } | Request::ForgeUpdateBranch { .. } => false,
@@ -2868,6 +2875,10 @@ impl Api {
             Request::ForgeMrDetail { repo, number } => {
                 let list = self.forge_remotes_of(&*self.handle(repo)?);
                 to_json(self.forge_hub()?.mr_detail(&self.store, &list, number).await?)
+            }
+            Request::ForgeMrCard { repo, number } => {
+                let list = self.forge_remotes_of(&*self.handle(repo)?);
+                to_json(self.forge_hub()?.mr_card(&self.store, &list, number).await?)
             }
             Request::ForgeRefresh { repo } => {
                 let list = self.forge_remotes_of(&*self.handle(repo)?);
@@ -5284,6 +5295,7 @@ mod tests {
             json!({"method": "forgeBranchMrs", "params": {"repo": id, "refs": ["refs/remotes/origin/main"]}}),
             json!({"method": "forgeCachedMrs", "params": {"repo": id, "refs": ["refs/remotes/origin/main"], "filter": "all"}}),
             json!({"method": "forgeMrDetail", "params": {"repo": id, "number": 1}}),
+            json!({"method": "forgeMrCard", "params": {"repo": id, "number": 1}}),
             json!({"method": "forgeRefresh", "params": {"repo": id}}),
             json!({"method": "forgeMrDiscussions", "params": {"repo": id, "number": 1}}),
             json!({"method": "forgeProjectByPath", "params": {"repo": id, "path": "group/project"}}),
@@ -5570,7 +5582,7 @@ mod tests {
     /// Samples that fail by design here: the harness-less `Api` has no log folder, URL opener,
     /// openers or askpass, and the profile samples name no existing profile. Each refusal comes
     /// before any repository access.
-    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "authUseSsh", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeRefresh", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart", "relaunchApp"];
+    const EXPECTED_FAILURES: &[&str] = &["openLogsFolder", "openUrl", "openIn", "switchProfile", "deleteProfile", "authAnswer", "authUseSsh", "saveProfile", "addForgeAccount", "removeForgeAccount", "forgeProjectSettings", "forgeForks", "forgeMrList", "forgeBranchMrs", "forgeMrDetail", "forgeMrCard", "forgeRefresh", "forgeMrDiscussions", "forgeProjectByPath", "forgeReply", "forgeApprove", "forgeRequestChanges", "forgeMerge", "forgeEditMr", "forgeSetDraft", "forgeSetAutoMerge", "forgeCancelAutoMerge", "forgeUpdateBranch", "forgeReview", "forgePeopleLimits", "forgeSetSubscribed", "forgeReact", "forgeEditNote", "forgeDeleteNote", "forgeResolve", "forgeReviewDiff", "forgeReviewDrafts", "forgeAddDraft", "forgeEditDraft", "forgeDeleteDraft", "forgeSubmitReview", "forgeDiscardReview", "forgeCommentNow", "forgeCreateContext", "forgeSearchUsers", "forgeLabels", "forgeCreateMr", "forgeCompleteCreate", "forgeStack", "forgeSyncStack", "forgeRetarget", "forgeImage", "forgeVideo", "forgeOpenVideo", "updateCheck", "updateDownload", "updateInstall", "updateRestart", "relaunchApp"];
 
     #[tokio::test(flavor = "multi_thread")]
     async fn no_read_request_writes_to_the_repository() {

@@ -527,6 +527,7 @@ export const api = {
   forgeCachedMrs: (repo: number, refs: string[], filter: MrFilter) => call<CachedMrs | null>({ method: 'forgeCachedMrs', params: { repo, refs, filter } }),
   forgeRefresh: (repo: number) => call<null>({ method: 'forgeRefresh', params: { repo } }),
   forgeMrDetail: (repo: number, number: number) => call<Fresh<ForgeMrDetail>>({ method: 'forgeMrDetail', params: { repo, number } }),
+  forgeMrCard: (repo: number, number: number) => call<Fresh<ForgeMrDetail>>({ method: 'forgeMrCard', params: { repo, number } }),
   forgeMrDiscussions: (repo: number, number: number) => call<Fresh<ForgeDiscussion[]>>({ method: 'forgeMrDiscussions', params: { repo, number } }),
   forgeProjectByPath: (repo: number, path: string) => call<ForgeProject>({ method: 'forgeProjectByPath', params: { repo, path } }),
   forgeReply: (repo: number, number: number, discussion: string | null, body: string) => call<ForgeNote>({ method: 'forgeReply', params: { repo, number, discussion, body } }),

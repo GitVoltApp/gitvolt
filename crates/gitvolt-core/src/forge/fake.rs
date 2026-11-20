@@ -63,6 +63,8 @@ pub(crate) struct FakeProvider {
     pub limits: Mutex<PeopleLimits>,
     /// The next `edit` fails with this.
     pub edit_error: Mutex<Option<GbError>>,
+    /// What `export_responses` gives, and `responses_version`.
+    pub stored: Mutex<(u64, Vec<StoredResponse>)>,
 }
 
 impl FakeProvider {
@@ -78,7 +80,7 @@ impl FakeProvider {
             // --- review comments ---
             review_diffs: Mutex::default(), drafts: Mutex::default(),
             // --- end review comments ---
-            limits: Mutex::default(), edit_error: Mutex::default(),
+            limits: Mutex::default(), edit_error: Mutex::default(), stored: Mutex::default(),
         }
     }
 
@@ -114,6 +116,13 @@ impl ForgeProvider for FakeProvider {
     }
     fn expire_fresh(&self) {
         self.call("expire_fresh");
+    }
+    fn export_responses(&self, _project: &ForgeProject) -> Vec<StoredResponse> {
+        self.call("export_responses");
+        self.stored.lock().unwrap().1.clone()
+    }
+    fn responses_version(&self) -> u64 {
+        self.stored.lock().unwrap().0
     }
     fn check_token(&self) -> ForgeFuture<'_, TokenCheck> {
         self.call("check_token");

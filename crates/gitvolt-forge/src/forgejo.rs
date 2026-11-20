@@ -823,10 +823,10 @@ impl ForgejoProvider {
         }
         if with_checks {
             let now = unix_now();
-            let shas: Vec<String> = mrs.iter().filter_map(|m| m.head_sha.clone()).filter(|s| self.checks.needs([s.as_str()], now)).take(PIPELINE_LOOKUPS).collect();
-            for sha in shas {
+            let heads: Vec<(String, i64)> = mrs.iter().filter_map(|m| Some((m.head_sha.clone()?, m.updated_at))).filter(|(s, at)| self.checks.needs([(s.as_str(), *at)], now)).take(PIPELINE_LOOKUPS).collect();
+            for (sha, stamp) in heads {
                 match self.status_soft(project, &sha).await {
-                    Ok((p, _)) => self.checks.put(&sha, p, now),
+                    Ok((p, _)) => self.checks.put(&sha, p, stamp, now),
                     Err(e) if e.kind == GbErrorKind::RateLimited => break,
                     Err(e) => tracing::debug!("statuses of {sha}: {}", e.message),
                 }
@@ -1032,6 +1032,10 @@ impl ForgeProvider for ForgejoProvider {
 
     fn import_responses(&self, entries: Vec<StoredResponse>) {
         self.http.import(entries);
+    }
+
+    fn responses_version(&self) -> u64 {
+        self.http.stored_version()
     }
 
     fn take_request_stats(&self) -> RequestStats {

@@ -23,6 +23,42 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **Closing a repository's last tab frees its remote tags and its write queue.** Both stayed in
   memory for the rest of the session; the tags come back from disk when it opens again. Staging
   undo history is kept only for worktrees that have some, for the 32 used most recently.
+- **An open MR/PR asks the forge less every minute (performance).** With its view open, a quiet
+  minute cost GitHub 9 requests (11 in a review) and GitLab 6 (8): the PR's reviews were read
+  twice in two representations (three times in a review, and the PR or MR itself twice), and the
+  review threads (GitHub) or the comments' award emoji (GitLab) were asked by GraphQL every poll,
+  though no REST answer had changed; GitLab also asked the project's labels again whenever an MR
+  named one the project doesn't list. Now a quiet minute is GitHub 7 (7) and GitLab 4 (5), all
+  revalidations (304s): the reviews and the PR are read once, the threads and awards are asked
+  again only when the comments changed, after a write, or every 5 minutes (a thread resolved or
+  an award given on the forge changes no comment), and labels the project doesn't have are asked
+  for again after 30 minutes.
+- **A hover card reads only what it shows (performance).** It loaded the MR/PR's whole detail:
+  GitHub 5 requests (with the checks and a GraphQL query for your subscription), GitLab 3 (with
+  the project's labels). It now reads the MR/PR and its review: 2 requests, the pipeline from
+  the list's.
+- **A list over a megabyte is revalidated, not read again (performance).** An answer over 1 MB
+  (40 MRs with long descriptions) wasn't kept for its ETag, so every poll read it whole, twice
+  (the badges and the list), and the next launch had none to revalidate. Answers up to 8 MB are
+  kept now; a project's cache file may hold 16 MB, and gives up other answers before its open
+  list's.
+- **Avatar lookups no longer push the polls' answers out of the cache (performance).** Looking up
+  hundreds of commit authors (GitLab's avatar by email and user search, GitHub's commits by
+  author) filled the 256-entry ETag cache, so the next poll read every list again in full. Those
+  lookups keep their answers in the avatar cache and aren't kept twice.
+- **GraphQL queries no longer end the 5-second window in which a read answers from memory.**
+  Only a write (and a GraphQL mutation) does.
+- **GitHub's checks of a PR without any back off (performance).** A head with no checks was asked
+  again every 2 minutes, and one with finished checks every 10, each time with one GraphQL query
+  for every open PR. Now a head without checks waits 2, 4, 8, 16, then 30 minutes; finished
+  checks are asked again when the PR changes, or after 30 minutes (a re-run changes nothing
+  else). GitLab's and Forgejo's pipelines follow the same rule.
+- **A poll that changed nothing writes nothing to the MR/PR cache.** Each poll copied the kept
+  answers and serialized the project's cache file twice, to find it unchanged. A poll answered
+  all by 304s now skips both (the file is renewed once a day).
+- **A long session's forge memory stays bounded.** The reactions, review threads,
+  subscriptions, label colours and learned avatars each provider keeps now hold at most 2,000
+  entries, dropping the oldest.
 - **The background fetch connects to each remote once, not twice (performance).** After every
   fetch, GitVolt asked each remote for its whole tag list (`git ls-remote --tags`), for the tag
   chips' pushed-or-not icons: a second connection, SSH handshake and credential helper run per

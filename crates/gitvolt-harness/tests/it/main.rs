@@ -26,6 +26,7 @@ mod forge_poll_cost;
 mod forge_review;
 mod forge_seed;
 mod forge_stacks;
+mod forge_view_cost;
 mod golden;
 mod markdown_images;
 mod showcase;

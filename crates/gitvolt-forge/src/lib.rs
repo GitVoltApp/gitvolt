@@ -5,6 +5,7 @@ pub mod gravatar;
 
 pub mod tokens;
 pub mod avatar_cache;
+pub mod capped;
 pub mod endpoints;
 pub mod http;
 pub mod images;

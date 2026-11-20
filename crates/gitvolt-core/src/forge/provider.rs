@@ -227,6 +227,11 @@ pub trait ForgeProvider: Send + Sync {
     fn export_responses(&self, _project: &ForgeProject) -> Vec<StoredResponse> {
         Vec::new()
     }
+    /// A count that grows whenever a kept answer changed (a new body): `export_responses` gives
+    /// anything new only once it moved, so a poll answered all by 304s exports nothing.
+    fn responses_version(&self) -> u64 {
+        0
+    }
     /// Answers a previous run kept: the next request of each is conditional (`If-None-Match`).
     fn import_responses(&self, _entries: Vec<StoredResponse>) {}
     /// The client's counts since the last call (and starts them again).
@@ -257,6 +262,12 @@ pub trait ForgeProvider: Send + Sync {
     }
     fn mr_detail<'a>(&'a self, _project: &'a ForgeProject, _number: u64) -> ForgeFuture<'a, Fresh<ForgeMrDetail>> {
         unsupported("Merge request details")
+    }
+    /// A hover card's detail: what the card shows (state, review, pipeline, conflicts), leaving
+    /// out what costs requests and only the MR/PR view shows (GitHub's subscription, checks the
+    /// list already has, GitLab's label colours). The full detail unless a provider has a lighter one.
+    fn mr_card<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, Fresh<ForgeMrDetail>> {
+        self.mr_detail(project, number)
     }
     fn discussions<'a>(&'a self, _project: &'a ForgeProject, _number: u64) -> ForgeFuture<'a, Fresh<Vec<ForgeDiscussion>>> {
         unsupported("Reading discussions")

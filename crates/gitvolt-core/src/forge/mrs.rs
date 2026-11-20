@@ -305,13 +305,19 @@ impl ForgeHub {
         tracing::debug!(target: "gitvolt::forge::poll", host = %t.key.host, project = %t.project.path, requests = stats.sent, not_modified = stats.not_modified, from_memory = stats.fresh, rate_remaining = ?rate.remaining, rate_limit = ?rate.limit, ok = r.is_ok(), "forge poll");
         let f = r?;
         let key = cache_key(&t.key, &t.project.path);
-        let responses = t.provider.export_responses(&t.project);
-        self.cache.with(&key, |c| {
-            c.lists.insert(filter_name(filter).to_string(), StoredList { mrs: f.value.clone(), fetched_at: f.fetched_at });
+        let responses = self.responses_to_keep(&t, &key);
+        let changed = self.cache.with(&key, |c| {
+            let name = filter_name(filter);
+            let changed = responses.is_some() || c.project.as_ref() != Some(&t.project) || c.lists.get(name).is_none_or(|l| l.mrs != f.value);
+            c.lists.insert(name.to_string(), StoredList { mrs: f.value.clone(), fetched_at: f.fetched_at });
             c.project = Some(t.project.clone());
-            c.responses = responses;
+            if let Some((r, version)) = responses {
+                c.responses = r;
+                c.exported = Some(version);
+            }
+            changed
         });
-        self.cache.save(&key);
+        self.keep(&key, changed);
         Ok(MrList { kind: t.project.kind, remote: t.remote, project: t.project, filter, mrs: f.value, fetched_at: f.fetched_at, poll_interval_secs: f.poll_interval_secs, rate_limit: Some(t.provider.rate_limit()) })
     }
 
@@ -336,6 +342,7 @@ impl ForgeHub {
         // Everything else answers from the cache: no request per branch per poll.
         let key = cache_key(&t.key, &t.project.path);
         let (was_open, mut known) = self.cache.with(&key, |c| (std::mem::take(&mut c.open_refs), std::mem::take(&mut c.lookups)));
+        let known_before = known.clone();
         let now = self.now();
         let tips_of = |r: &str| repo.tips.get(r).cloned().unwrap_or_default();
         let mut ask: Vec<&(String, String, String)> = plan.wanted.iter().filter(|(full, _, _)| was_open.contains(full) || !known.get(full).is_some_and(|l| l.fresh(&tips_of(full), now))).collect();
@@ -360,16 +367,39 @@ impl ForgeHub {
         let asked: HashSet<&String> = plan.wanted.iter().map(|(f, _, _)| f).collect();
         known.retain(|r, _| asked.contains(r));
         let (mrs, history) = plan.place(&open.value, &known, repo);
-        let responses = t.provider.export_responses(&t.project);
-        self.cache.with(&key, |c| {
-            c.open_refs = plan.covered.into_iter().collect();
+        let responses = self.responses_to_keep(&t, &key);
+        let changed = self.cache.with(&key, |c| {
+            let open_refs: std::collections::BTreeSet<String> = plan.covered.into_iter().collect();
+            let changed = responses.is_some() || open_refs != was_open || known != known_before || c.project.as_ref() != Some(&t.project) || c.open.as_ref().is_none_or(|o| o.mrs != open.value);
+            c.open_refs = open_refs;
             c.lookups = known;
             c.open = Some(StoredList { mrs: open.value.clone(), fetched_at: open.fetched_at });
             c.project = Some(t.project.clone());
-            c.responses = responses;
+            if let Some((r, version)) = responses {
+                c.responses = r;
+                c.exported = Some(version);
+            }
+            changed
         });
-        self.cache.save(&key);
+        self.keep(&key, changed);
         Ok(BranchMrs { kind: t.project.kind, remote: t.remote, mrs, history, fetched_at: open.fetched_at, poll_interval_secs: open.poll_interval_secs })
+    }
+
+    /// The provider's responses to keep, with its `responses_version`: `None` when nothing new
+    /// was kept since the last export (every request a 304), so nothing is copied.
+    fn responses_to_keep(&self, t: &MrTarget, key: &crate::forge::cache::CacheKey) -> Option<(Vec<crate::forge::StoredResponse>, u64)> {
+        let version = t.provider.responses_version();
+        let exported = self.cache.with(key, |c| c.exported);
+        (exported != Some(version)).then(|| (t.provider.export_responses(&t.project), version))
+    }
+
+    /// Saves the project's state when a poll `changed` it; else only renews an old file.
+    fn keep(&self, key: &crate::forge::cache::CacheKey, changed: bool) {
+        if changed {
+            self.cache.save(key);
+        } else {
+            self.cache.renew(key);
+        }
     }
 
     /// A refresh (the button, not a poll): the target's provider forgets what it kept a moment
@@ -384,6 +414,14 @@ impl ForgeHub {
     pub async fn mr_detail(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], number: u64) -> Result<Fresh<ForgeMrDetail>, GbError> {
         let t = self.mr_target(store, remotes).await?;
         let r = t.provider.mr_detail(&t.project, number).await;
+        self.record(&t.key, &r);
+        r
+    }
+
+    /// A hover card's detail (`ForgeProvider::mr_card`).
+    pub async fn mr_card(&self, store: &Arc<SettingsStore>, remotes: &[RemotePayload], number: u64) -> Result<Fresh<ForgeMrDetail>, GbError> {
+        let t = self.mr_target(store, remotes).await?;
+        let r = t.provider.mr_card(&t.project, number).await;
         self.record(&t.key, &r);
         r
     }
@@ -668,6 +706,29 @@ mod tests {
         let (p, hub, store, remotes) = setup_at(NOW_MS + 24 * 3_600_000, dir.path(), PeopleLimits::default()).await;
         assert_eq!(hub.people_limits(&store, &remotes, "origin").await.unwrap(), PeopleLimits::default());
         assert_eq!(asked(&p), 1);
+    }
+
+    /// A poll answered all by 304s (no new body kept) with the same list copies no response and
+    /// serializes nothing; a new body or a changed list saves once.
+    #[tokio::test]
+    async fn a_poll_that_changed_nothing_exports_and_serializes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (p, hub, store, remotes) = setup_at(NOW_MS, dir.path(), PeopleLimits::default()).await;
+        p.mrs.lock().unwrap().push(mr(12, "group/project", "dev", MrState::Open));
+        let response = StoredResponse { key: "https://gitlab.example.com/api/v4/projects/1/merge_requests?state=opened".into(), etag: "W/\"1\"".into(), body: "[]".into(), next_page: None, last_page: None, poll_interval_secs: None };
+        *p.stored.lock().unwrap() = (1, vec![response]);
+        let exports = |p: &FakeProvider| p.calls().iter().filter(|c| *c == "export_responses").count();
+        hub.mr_list(&store, &remotes, MrFilter::All).await.unwrap();
+        let saved = hub.cache.serializations();
+        assert!(exports(&p) == 1 && saved >= 1);
+        hub.mr_list(&store, &remotes, MrFilter::All).await.unwrap();
+        assert_eq!((exports(&p), hub.cache.serializations()), (1, saved), "all 304s: nothing copied or serialized");
+        p.stored.lock().unwrap().0 = 2;
+        hub.mr_list(&store, &remotes, MrFilter::All).await.unwrap();
+        assert_eq!((exports(&p), hub.cache.serializations()), (2, saved + 1), "a new body: exported and saved");
+        p.mrs.lock().unwrap().push(mr(13, "group/project", "fix", MrState::Open));
+        hub.mr_list(&store, &remotes, MrFilter::All).await.unwrap();
+        assert_eq!((exports(&p), hub.cache.serializations()), (2, saved + 2), "a changed list: saved, nothing exported");
     }
 
     #[tokio::test]

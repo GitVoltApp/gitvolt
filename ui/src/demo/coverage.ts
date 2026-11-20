@@ -173,6 +173,7 @@ export const COVERAGE = {
   forgeCachedMrs: 'real',
   forgeRefresh: 'real',
   forgeMrDetail: 'real',
+  forgeMrCard: 'real',
   forgeMrDiscussions: 'real',
   forgeProjectByPath: 'real',
   forgeReply: 'real',

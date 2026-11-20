@@ -60,7 +60,7 @@ describe('the MR/PR badge on a branch chip', () => {
     const tip = await screen.findByRole('tooltip');
     expect(tip).toHaveTextContent('!12 Dev work');
     expect(tip).toHaveTextContent('Click to open');
-    await waitFor(() => expect(poll.loadMrDetail).toHaveBeenCalledWith('t', 12));
+    await waitFor(() => expect(poll.loadMrDetail).toHaveBeenCalledWith('t', 12, undefined, true));
   });
 
   it('shows nothing without a forge for the repo', () => {

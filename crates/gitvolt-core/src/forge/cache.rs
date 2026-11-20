@@ -10,6 +10,8 @@
 //!
 //! On disk: `<data dir>/forge-cache/<profile>/<account>/<project path>.json` (names
 //! percent-encoded), versioned, at most `MAX_FILE_BYTES`, ignored (and deleted) after `TTL_SECS`.
+//! A poll that changed nothing (every request a 304, the same lists) neither exports the
+//! provider's responses nor serializes the file (`renew`), until the file is `REWRITE_SECS` old.
 //! `<account>` is the host for the account a host had first (1.5.0's folder) and
 //! `<host>#<user id>` for the others (`ForgeAccount::id`), so each account's folder is its own.
 //! Never a token: the forge's own data, in the user's own data dir. Removing an account deletes
@@ -34,8 +36,9 @@ pub const CACHE_VERSION: u32 = 1;
 pub const TTL_SECS: i64 = 7 * 24 * 3600;
 /// An unchanged file is written again (its time renewed) once it's this old.
 pub const REWRITE_SECS: i64 = 24 * 3600;
-/// One project's file at most: the stored responses go first, then the lists but All's.
-pub const MAX_FILE_BYTES: usize = 2 * 1024 * 1024;
+/// One project's file at most: the stored responses go first (the open lists' last), then the
+/// lists but All's. Room for a list of several megabytes (long descriptions) and its badges'.
+pub const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
 
 /// One ref's lookup in any state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +90,10 @@ pub struct ProjectCache {
     pub open_refs: BTreeSet<String>,
     /// The lists' validators and bodies (`ForgeProvider::export_responses`).
     pub responses: Vec<StoredResponse>,
+    /// The provider's `responses_version` when `responses` were exported: not on disk (a run's
+    /// count), so a relaunch's first poll exports again.
+    #[serde(skip)]
+    pub exported: Option<u64>,
     /// How many reviewers and assignees its MRs may have, and when that was read (unix
     /// seconds): asked again after `PEOPLE_LIMITS_SECS`.
     pub people_limits: Option<(PeopleLimits, i64)>,
@@ -136,11 +143,13 @@ pub struct ForgeCache {
     /// What each file holds now (its JSON's hash, without the time) and when it was written: an
     /// unchanged state isn't written again, unless the file is a day old (it'd age out in use).
     written: Mutex<HashMap<CacheKey, (u64, i64)>>,
+    /// Times a state was serialized to be saved (the tests' count).
+    serialized: std::sync::atomic::AtomicU64,
 }
 
 impl ForgeCache {
     pub fn new(clock: Clock) -> Self {
-        Self { clock, dir: Mutex::default(), projects: Mutex::default(), written: Mutex::default() }
+        Self { clock, dir: Mutex::default(), projects: Mutex::default(), written: Mutex::default(), serialized: Default::default() }
     }
 
     fn now(&self) -> i64 {
@@ -197,6 +206,7 @@ impl ForgeCache {
         let Some(mut c) = self.projects.lock().expect("forge cache poisoned").get(key).cloned() else { return };
         c.version = CACHE_VERSION;
         c.saved_at = 0;
+        self.serialized.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let Ok(mut bytes) = serde_json::to_vec(&c) else { return };
         // The time alone changing isn't a change.
         let hash = hash_of(&bytes);
@@ -222,6 +232,21 @@ impl ForgeCache {
             }
             Err(e) => tracing::debug!("forge cache: couldn't write {}: {e}", path.display()),
         }
+    }
+
+    /// A state the caller knows is unchanged: nothing is serialized, unless its file is
+    /// `REWRITE_SECS` old (written again so it doesn't age out in use) or was never written.
+    pub fn renew(&self, key: &CacheKey) {
+        let now = self.now();
+        let due = self.written.lock().expect("forge cache poisoned").get(key).is_none_or(|(_, at)| now.saturating_sub(*at) >= REWRITE_SECS);
+        if due {
+            self.save(key);
+        }
+    }
+
+    /// How many times a state was serialized to be saved.
+    pub fn serializations(&self) -> u64 {
+        self.serialized.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// After a write to the forge: the lists may be out of date (the next poll reads them again;
@@ -253,10 +278,17 @@ impl ForgeCache {
     }
 }
 
-/// Under `MAX_FILE_BYTES`: the stored responses go first (largest first), then the lists but All's.
+/// An open list's response (GitHub's `state=open`, GitLab's `state=opened`): what the next
+/// poll revalidates first, so it's the last response a file too big gives up.
+fn is_open_list(r: &StoredResponse) -> bool {
+    r.key.split('\n').next().is_some_and(|u| u.contains("state=open"))
+}
+
+/// Under `MAX_FILE_BYTES`: the stored responses go first (the others before the open lists,
+/// largest first), then the lists but All's.
 fn shrink(c: &mut ProjectCache) {
     let size = |c: &ProjectCache| serde_json::to_vec(c).map_or(0, |b| b.len());
-    c.responses.sort_by_key(|r| std::cmp::Reverse(r.body.len()));
+    c.responses.sort_by_key(|r| (is_open_list(r), std::cmp::Reverse(r.body.len())));
     while size(c) > MAX_FILE_BYTES && !c.responses.is_empty() {
         c.responses.remove(0);
     }
@@ -376,6 +408,37 @@ mod tests {
         shrink(&mut c);
         assert!(serde_json::to_vec(&c).unwrap().len() <= MAX_FILE_BYTES);
         assert_eq!((c.responses.len(), c.lists.len()), (1, 1));
+    }
+
+    /// A big open list (long descriptions) is kept over smaller responses: the lookups go first.
+    #[test]
+    fn a_file_too_big_keeps_the_open_list_over_the_other_responses() {
+        let response = |key: &str, n: usize| StoredResponse { key: key.into(), etag: "e".into(), body: "x".repeat(n), next_page: None, last_page: None, poll_interval_secs: None };
+        let responses = vec![
+            response("https://h/api/v4/projects/1/merge_requests?state=opened&per_page=100", MAX_FILE_BYTES / 2),
+            response("https://h/api/v4/projects/1/merge_requests?source_branch=a&state=all", MAX_FILE_BYTES / 3),
+            response("https://h/api/v4/projects/1/merge_requests?source_branch=b&state=all", MAX_FILE_BYTES / 4),
+        ];
+        let mut c = ProjectCache { responses, ..Default::default() };
+        shrink(&mut c);
+        let kept: Vec<&str> = c.responses.iter().map(|r| r.key.as_str()).collect();
+        assert_eq!(kept, ["https://h/api/v4/projects/1/merge_requests?source_branch=b&state=all", "https://h/api/v4/projects/1/merge_requests?state=opened&per_page=100"]);
+    }
+
+    #[test]
+    fn an_unchanged_state_is_renewed_without_serializing_until_its_file_is_a_day_old() {
+        let tmp = tempfile::tempdir().unwrap();
+        let now = Arc::new(AtomicI64::new(1_000_000));
+        let a = cache(tmp.path(), &now);
+        a.with(&key(), |c| c.open_refs.insert("refs/remotes/origin/dev".into()));
+        a.renew(&key());
+        assert_eq!(a.serializations(), 1, "never written: written");
+        now.store(1_000_000 + REWRITE_SECS - 1, Ordering::SeqCst);
+        a.renew(&key());
+        assert_eq!(a.serializations(), 1, "nothing serialized");
+        now.store(1_000_000 + REWRITE_SECS, Ordering::SeqCst);
+        a.renew(&key());
+        assert_eq!(a.serializations(), 2, "a day old: written again");
     }
 
     #[test]

@@ -4,6 +4,7 @@
 //! emails only). The pull request methods are in their marked blocks.
 
 use crate::avatar_cache::{image_at, payload_of, DiskAvatarCache, Lookup};
+use crate::capped::Capped;
 use crate::known_names::{KnownNames, NameMatch};
 use crate::endpoints::HostEndpoints;
 use crate::http::{encode_component, ClientConfig, HttpClient, HttpResponse, Method};
@@ -13,7 +14,7 @@ use gitvolt_core::error::{GbError, GbErrorKind};
 use gitvolt_core::forge::*;
 use gitvolt_core::redact::Secret;
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 pub const GITHUB_HEADERS: [(&str, &str); 2] = [("Accept", "application/vnd.github+json"), ("X-GitHub-Api-Version", "2022-11-28")];
@@ -54,7 +55,7 @@ pub struct GitHubProvider {
     http: HttpClient,
     cache: Option<Arc<DiskAvatarCache>>,
     /// Lowercase email → avatar URL, from API data.
-    learned: Mutex<HashMap<String, String>>,
+    learned: Mutex<Capped<String, String>>,
       /// The token's user, once asked (Mine, Review requested).
       me: Mutex<Option<ForgeUser>>,
     /// When asking who the user is last failed (`me_soft`: not asked again for `ME_RETRY`).
@@ -63,7 +64,7 @@ pub struct GitHubProvider {
     checks: crate::pipelines::PipelineCache,
     // --- GitHub commit-author avatars ---
     /// Lowercase emails whose commit author was asked this session, answered or not.
-    authors_asked: Mutex<HashSet<String>>,
+    authors_asked: Mutex<Capped<String, ()>>,
     /// One commit-author lookup at a time.
     author_turn: tokio::sync::Mutex<()>,
     // --- end GitHub commit-author avatars ---
@@ -81,13 +82,14 @@ pub struct GitHubProvider {
     /// A comment's reactions URL → (its counts when read, its reactions with who and `mine`): read
     /// again only when the comment's counts change.
     reaction_lists: Mutex<ReactionLists>,
-    /// (repo, PR) → a review thread's first comment id → the thread's node id (what Resolve takes).
-    thread_ids: Mutex<HashMap<(String, u64), HashMap<u64, String>>>,
+    /// (repo, PR) → its review threads as last asked (`review_threads`): their node ids (what
+    /// Resolve takes) and states.
+    threads: Mutex<Capped<(String, u64), KeptThreads>>,
     // --- end comment actions ---
   }
 
 /// Reactions URL → (`counts`, the reactions).
-type ReactionLists = HashMap<String, (Vec<(String, u32)>, Vec<ForgeReaction>)>;
+type ReactionLists = Capped<String, (Vec<(String, u32)>, Vec<ForgeReaction>)>;
 
 /// The names and counts of `reactions`: what a comment's summary says.
 fn counts(reactions: &[ForgeReaction]) -> Vec<(String, u32)> {
@@ -95,7 +97,24 @@ fn counts(reactions: &[ForgeReaction]) -> Vec<(String, u32)> {
 }
 
 /// (repo, PR) → (its `updated_at` when asked, `viewerSubscription`).
-type Subscriptions = HashMap<(String, u64), (String, Option<bool>)>;
+type Subscriptions = Capped<(String, u64), (String, Option<bool>)>;
+
+/// A review thread's first comment id → (node id, resolved, by whom).
+type Threads = HashMap<u64, (String, bool, Option<String>)>;
+
+/// A PR's review threads as GraphQL answered them, and when: `threads_kept` says whether they
+/// still stand.
+struct KeptThreads {
+    threads: Threads,
+    at: std::time::Instant,
+    /// The client's write generation then (`HttpClient::writes`): a write since (a resolve, a
+    /// reply) asks again.
+    writes: u64,
+}
+
+/// A PR's review threads are asked again after this long even while its comments are unchanged:
+/// resolving a thread on GitHub changes no REST answer.
+pub const THREADS_REFRESH: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// The token's user's subscription to one PR.
 pub const SUBSCRIPTION_QUERY: &str = "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { viewerSubscription } } }";
@@ -105,7 +124,7 @@ impl GitHubProvider {
         let http = HttpClient::new(ClientConfig { host: host.into(), api_base: endpoints.api.trim_end_matches('/').into(), token: Some(token), headers: GITHUB_HEADERS.to_vec(), timeout: crate::http::REQUEST_TIMEOUT });
         let avatars_base = endpoints.avatars.clone().unwrap_or_else(|| "https://avatars.githubusercontent.com".into()).trim_end_matches('/').to_string();
         let image_bases = crate::images::default_github_image_bases(&endpoints.web, &avatars_base);
-        Self { host: host.into(), api_base: endpoints.api.trim_end_matches('/').into(), avatars_base, http, cache, learned: Mutex::default(), me: Mutex::new(None), me_failed: Mutex::new(None), checks: Default::default(), authors_asked: Mutex::default(), author_turn: tokio::sync::Mutex::new(()), names: KnownNames::default(), image_bases, subscriptions: Mutex::default(), reaction_lists: Mutex::default(), thread_ids: Mutex::default() }
+        Self { host: host.into(), api_base: endpoints.api.trim_end_matches('/').into(), avatars_base, http, cache, learned: Mutex::default(), me: Mutex::new(None), me_failed: Mutex::new(None), checks: Default::default(), authors_asked: Mutex::default(), author_turn: tokio::sync::Mutex::new(()), names: KnownNames::default(), image_bases, subscriptions: Mutex::default(), reaction_lists: Mutex::default(), threads: Mutex::default() }
     }
 
     /// The bases Markdown images load from without asking (`images::github_route`); the harness
@@ -747,6 +766,10 @@ impl ForgeProvider for GitHubProvider {
         self.http.import(entries);
     }
 
+    fn responses_version(&self) -> u64 {
+        self.http.stored_version()
+    }
+
     fn take_request_stats(&self) -> RequestStats {
         self.http.take_stats()
     }
@@ -897,16 +920,16 @@ impl ForgeProvider for GitHubProvider {
                 }
             }
             let low = |s: &Self| s.http.rate_limit().remaining.is_some_and(|n| n < AUTHOR_LOOKUP_FLOOR);
-            if low(self) || self.authors_asked.lock().expect("authors poisoned").contains(&email) {
+            if low(self) || self.authors_asked.lock().expect("authors poisoned").contains_key(&email) {
                 return Ok(None);
             }
             let _turn = self.author_turn.lock().await;
             // Checked again in turn: the request before this one may have spent the budget, or asked for this email.
-            if low(self) || !self.authors_asked.lock().expect("authors poisoned").insert(email.clone()) {
+            if low(self) || !self.authors_asked.lock().expect("authors poisoned").insert_new(email.clone(), ()) {
                 return Ok(None);
             }
             let path = format!("{}/commits?author={}&per_page=1", Self::repo_url(&project.path)?, encode_component(&email));
-            let items: Vec<Value> = self.http.get(&path).await?.json(&self.host)?;
+            let items: Vec<Value> = self.http.get_uncached(&path).await?.json(&self.host)?;
             let linked = items.first().and_then(|c| c["author"]["avatar_url"].as_str()).and_then(|u| avatar_fetch_url(u, &[&self.avatars_base]).filter(|u| !is_gravatar_url(u)));
             let Some(url) = linked else {
                 if let Some(cache) = &self.cache {
@@ -990,54 +1013,22 @@ impl ForgeProvider for GitHubProvider {
     }
 
     fn mr_detail<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, Fresh<ForgeMrDetail>> {
-        Box::pin(async move {
-            let repo = Self::repo_url(&project.path)?;
-            let r = self.http.get_as(&format!("{repo}/pulls/{number}"), GITHUB_FULL).await?;
-            let v: Value = r.json(&self.host)?;
-            let (reviews, reviews_same) = self.pages_fresh(&format!("{repo}/pulls/{number}/reviews?per_page=100"), COMMENT_PAGES).await?;
-            let mut mr = json::pr(&v).ok_or_else(|| unreadable(&self.host, "pull request"))?;
-            let mut checks_same = true;
-            if let Some(sha) = mr.head_sha.clone() {
-                (mr.pipeline, checks_same) = self.checks_soft(project, &sha).await?;
-            }
-            mr.review = json::review(&reviews, &v["requested_reviewers"]);
-            let reviewers = mr.review.reviews.iter().map(|x| x.user.clone()).collect();
-            // --- branch update: a fork's head is pushed to by its author (who the user is: asked once) ---
-            let fork = v["head"]["repo"]["full_name"] != v["base"]["repo"]["full_name"];
-            let me = if fork { self.me_soft().await } else { None };
-            // An open PR's is its test merge (`refs/pull/<n>/merge`), never on the base.
-            let merged_sha = if mr.state == MrState::Merged { json::text(&v["merge_commit_sha"]) } else { None };
-            let detail = ForgeMrDetail {
-                description: v["body"].as_str().unwrap_or_default().to_string(),
-                reviewers,
-                assignees: json::users(&v["assignees"]),
-                merge_status: json::merge_status(&v),
-                squash: None,
-                delete_source_branch: None,
-                base_sha: json::text(&v["base"]["sha"]),
-                subscribed: self.subscription(project, number, v["updated_at"].as_str().unwrap_or_default()).await,
-                mr,
-                body_html: json::text(&v["body_html"]),
-                update: json::update_offer(&v, me),
-                merged_sha,
-            };
-            self.names.learn_detail(&detail);
-            // Not modified only when the PR, its reviews and its checks all were (a 304 each).
-            let mut fresh = Self::fresh(detail, &r);
-            fresh.not_modified &= reviews_same && checks_same;
-            Ok(fresh)
-        })
+        Box::pin(self.detail(project, number, false))
+    }
+
+    fn mr_card<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, Fresh<ForgeMrDetail>> {
+        Box::pin(self.detail(project, number, true))
     }
 
     fn discussions<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, Fresh<Vec<ForgeDiscussion>>> {
         Box::pin(async move {
             let repo = Self::repo_url(&project.path)?;
-            let comments = self.http.get_pages_as(&format!("{repo}/issues/{number}/comments?per_page=100"), COMMENT_PAGES, GITHUB_FULL).await?;
-            let review_comments = self.http.get_pages_as(&format!("{repo}/pulls/{number}/comments?per_page=100"), COMMENT_PAGES, GITHUB_FULL).await?;
-            let reviews = self.http.get_pages_as(&format!("{repo}/pulls/{number}/reviews?per_page=100"), COMMENT_PAGES, GITHUB_FULL).await?;
+            let (comments, a) = self.pages_fresh(&format!("{repo}/issues/{number}/comments?per_page=100"), COMMENT_PAGES, Some(GITHUB_FULL)).await?;
+            let (review_comments, b) = self.pages_fresh(&format!("{repo}/pulls/{number}/comments?per_page=100"), COMMENT_PAGES, Some(GITHUB_FULL)).await?;
+            let (reviews, c) = self.pages_fresh(&format!("{repo}/pulls/{number}/reviews?per_page=100"), COMMENT_PAGES, Some(GITHUB_FULL)).await?;
             let mut ds = json::discussions(&comments, &review_comments, &reviews);
             self.fill_reactions(&repo, &mut ds).await;
-            self.fill_threads(project, number, &mut ds).await;
+            self.fill_threads(project, number, &mut ds, a && b && c).await;
             self.names.learn_discussions(&ds);
             Ok(Fresh::new(ds, unix_now()))
         })
@@ -1105,7 +1096,7 @@ impl ForgeProvider for GitHubProvider {
         Box::pin(async move {
             let root = discussion.strip_prefix("thread-").and_then(|r| r.parse::<u64>().ok()).ok_or_else(|| GbError::new(GbErrorKind::InvalidInput, "Only a review thread can be resolved"))?;
             let key = (project.path.clone(), number);
-            let known = |s: &Self| s.thread_ids.lock().expect("thread ids poisoned").get(&key).and_then(|m| m.get(&root)).cloned();
+            let known = |s: &Self| s.threads.lock().expect("threads poisoned").get(&key).and_then(|k| k.threads.get(&root)).map(|(id, _, _)| id.clone());
             let id = match known(self) {
                 Some(id) => id,
                 None => {
@@ -1601,9 +1592,9 @@ impl GitHubProvider {
     /// The PR's review threads, one GraphQL query (a page per 100 threads): each thread's first
     /// comment id → (node id, resolved, by whom). The node ids are kept for Resolve. `None`:
     /// GitHub didn't answer.
-    #[allow(clippy::type_complexity)]
-    async fn review_threads(&self, project: &ForgeProject, number: u64) -> Option<HashMap<u64, (String, bool, Option<String>)>> {
+    async fn review_threads(&self, project: &ForgeProject, number: u64) -> Option<Threads> {
         let (owner, name) = project.path.split_once('/')?;
+        let writes = self.http.writes();
         let mut out = HashMap::new();
         let mut after: Option<String> = None;
         for _ in 0..THREAD_PAGES {
@@ -1616,17 +1607,32 @@ impl GitHubProvider {
                 None => break,
             }
         }
-        let ids = out.iter().map(|(root, (id, _, _))| (*root, id.clone())).collect();
-        self.thread_ids.lock().expect("thread ids poisoned").insert((project.path.clone(), number), ids);
+        self.threads.lock().expect("threads poisoned").insert((project.path.clone(), number), KeptThreads { threads: out.clone(), at: std::time::Instant::now(), writes });
         Some(out)
     }
 
-    /// Marks the review threads resolvable, resolved and by whom (`review_threads`), when the PR has any.
-    async fn fill_threads(&self, project: &ForgeProject, number: u64, ds: &mut [ForgeDiscussion]) {
+    /// The PR's review threads as last asked, while they still stand: its comments and reviews
+    /// all came back unchanged (`rest_same`), no write since, and asked less than
+    /// `THREADS_REFRESH` ago (what REST can't see: a thread resolved on GitHub).
+    fn threads_kept(&self, project: &ForgeProject, number: u64, rest_same: bool) -> Option<Threads> {
+        let kept = self.threads.lock().expect("threads poisoned");
+        let k = kept.get(&(project.path.clone(), number))?;
+        (rest_same && k.writes == self.http.writes() && k.at.elapsed() < THREADS_REFRESH).then(|| k.threads.clone())
+    }
+
+    /// Marks the review threads resolvable, resolved and by whom (`review_threads`, or what's kept
+    /// while it stands: `threads_kept`), when the PR has any.
+    async fn fill_threads(&self, project: &ForgeProject, number: u64, ds: &mut [ForgeDiscussion], rest_same: bool) {
         if !ds.iter().any(|d| d.id.starts_with("thread-")) {
             return;
         }
-        let Some(threads) = self.review_threads(project, number).await else { return };
+        let threads = match self.threads_kept(project, number, rest_same) {
+            Some(t) => t,
+            None => match self.review_threads(project, number).await {
+                Some(t) => t,
+                None => return,
+            },
+        };
         for d in ds.iter_mut() {
             let Some((_, resolved, by)) = d.id.strip_prefix("thread-").and_then(|r| r.parse::<u64>().ok()).and_then(|r| threads.get(&r)) else { continue };
             d.resolvable = true;
@@ -1635,6 +1641,49 @@ impl GitHubProvider {
         }
     }
     // --- end comment actions ---
+
+    /// A PR's detail; `card` (a hover card): its checks from the list's when kept, and its
+    /// subscription only as kept (no GraphQL).
+    async fn detail(&self, project: &ForgeProject, number: u64, card: bool) -> Result<Fresh<ForgeMrDetail>, GbError> {
+        let repo = Self::repo_url(&project.path)?;
+        let r = self.http.get_as(&format!("{repo}/pulls/{number}"), GITHUB_FULL).await?;
+        let v: Value = r.json(&self.host)?;
+        // The `full` reviews, as the discussion and the review session read them: one copy, one ETag.
+        let (reviews, reviews_same) = self.pages_fresh(&format!("{repo}/pulls/{number}/reviews?per_page=100"), COMMENT_PAGES, Some(GITHUB_FULL)).await?;
+        let mut mr = json::pr(&v).ok_or_else(|| unreadable(&self.host, "pull request"))?;
+        let mut checks_same = true;
+        match mr.head_sha.clone() {
+            Some(sha) if card && self.checks.has(&sha) => mr.pipeline = self.checks.get(&sha),
+            Some(sha) => (mr.pipeline, checks_same) = self.checks_soft(project, &sha).await?,
+            None => {}
+        }
+        mr.review = json::review(&reviews, &v["requested_reviewers"]);
+        let reviewers = mr.review.reviews.iter().map(|x| x.user.clone()).collect();
+        // --- branch update: a fork's head is pushed to by its author (who the user is: asked once) ---
+        let fork = v["head"]["repo"]["full_name"] != v["base"]["repo"]["full_name"];
+        let me = if fork { self.me_soft().await } else { None };
+        // An open PR's is its test merge (`refs/pull/<n>/merge`), never on the base.
+        let merged_sha = if mr.state == MrState::Merged { json::text(&v["merge_commit_sha"]) } else { None };
+        let detail = ForgeMrDetail {
+            description: v["body"].as_str().unwrap_or_default().to_string(),
+            reviewers,
+            assignees: json::users(&v["assignees"]),
+            merge_status: json::merge_status(&v),
+            squash: None,
+            delete_source_branch: None,
+            base_sha: json::text(&v["base"]["sha"]),
+            subscribed: if card { self.kept_subscription(project, number) } else { self.subscription(project, number, v["updated_at"].as_str().unwrap_or_default()).await },
+            mr,
+            body_html: json::text(&v["body_html"]),
+            update: json::update_offer(&v, me),
+            merged_sha,
+        };
+        self.names.learn_detail(&detail);
+        // Not modified only when the PR, its reviews and its checks all were (a 304 each).
+        let mut fresh = Self::fresh(detail, &r);
+        fresh.not_modified &= reviews_same && checks_same;
+        Ok(fresh)
+    }
 
     /// The open PRs for `filter`, newest activity first; `with_checks`: the first PIPELINE_LOOKUPS
     /// with their checks (the list), else none (the badges).
@@ -1672,13 +1721,17 @@ impl GitHubProvider {
         Ok(Self::fresh(mrs, &r))
     }
 
-    /// Every page of a list (`HttpClient::get_pages`), and whether each page was a 304.
-    async fn pages_fresh(&self, path: &str, max_pages: usize) -> Result<(Vec<Value>, bool), GbError> {
+    /// Every page of a list (`HttpClient::get_pages`, or `get_pages_as` with `accept`), and
+    /// whether each page was a 304.
+    async fn pages_fresh(&self, path: &str, max_pages: usize, accept: Option<&'static str>) -> Result<(Vec<Value>, bool), GbError> {
         let (mut out, mut same) = (Vec::new(), true);
         let mut next = Some(path.to_string());
         for _ in 0..max_pages {
             let Some(p) = next.take() else { break };
-            let r = self.http.get(&p).await?;
+            let r = match accept {
+                Some(a) => self.http.get_as(&p, a).await?,
+                None => self.http.get(&p).await?,
+            };
             same &= r.not_modified;
             out.extend(r.json::<Vec<Value>>(&self.host)?);
             next = r.next_page;
@@ -1687,19 +1740,20 @@ impl GitHubProvider {
     }
 
     /// The listed PRs' checks, kept by head (`PipelineCache`): asked only when a head is new,
-    /// still running, or kept too long. One GraphQL query answers every open PR's; without it
+    /// still running, without checks and due again (backing off), or settled and its PR changed.
+    /// One GraphQL query answers every open PR's; without it
     /// (an error that isn't a limit), REST's two requests per head, for the first PIPELINE_LOOKUPS.
     /// Best effort: a failure keeps what's kept (only those pipelines wait), never the list.
     async fn refresh_checks(&self, project: &ForgeProject, mrs: &[ForgeMr]) {
         let now = unix_now();
-        let shas: Vec<&str> = mrs.iter().filter_map(|m| m.head_sha.as_deref()).collect();
-        if shas.is_empty() || !self.checks.needs(shas.iter().copied(), now) {
+        let heads: Vec<(&str, i64)> = mrs.iter().filter_map(|m| Some((m.head_sha.as_deref()?, m.updated_at))).collect();
+        if heads.is_empty() || !self.checks.needs(heads.iter().copied(), now) {
             return;
         }
         match self.rollups(project).await {
             Ok(found) => {
-                for sha in &shas {
-                    self.checks.put(sha, found.get(&sha.to_ascii_lowercase()).cloned().flatten(), now);
+                for (sha, stamp) in &heads {
+                    self.checks.put(sha, found.get(&sha.to_ascii_lowercase()).cloned().flatten(), *stamp, now);
                 }
             }
             Err(e) if matches!(e.kind, GbErrorKind::RateLimited | GbErrorKind::AuthFailed | GbErrorKind::Network) && !is_forbidden(&e) => {
@@ -1707,9 +1761,9 @@ impl GitHubProvider {
             }
             Err(e) => {
                 tracing::debug!("checks from {} by GraphQL: {}; asking REST", self.host, e.message);
-                for sha in shas.into_iter().filter(|s| self.checks.needs([*s], now)).take(PIPELINE_LOOKUPS) {
+                for (sha, stamp) in heads.into_iter().filter(|h| self.checks.needs([*h], now)).take(PIPELINE_LOOKUPS) {
                     match self.checks_soft(project, sha).await {
-                        Ok((p, _)) => self.checks.put(sha, p, now),
+                        Ok((p, _)) => self.checks.put(sha, p, stamp, now),
                         Err(e) if e.kind == GbErrorKind::RateLimited => break,
                         Err(e) => tracing::debug!("checks of {sha}: {}", e.message),
                     }
@@ -1871,8 +1925,15 @@ impl GitHubProvider {
         on
     }
 
+    /// The subscription as last asked, however old: a hover card asks no GraphQL.
+    fn kept_subscription(&self, project: &ForgeProject, number: u64) -> Option<bool> {
+        self.subscriptions.lock().expect("subscriptions poisoned").get(&(project.path.clone(), number)).and_then(|(_, v)| *v)
+    }
+
+    /// The `full` PR, as the detail reads it: one copy, one ETag (a review session's refresh in
+    /// the same poll answers from it).
     async fn pull_json(&self, project: &ForgeProject, number: u64) -> Result<Value, GbError> {
-        self.http.get(&format!("{}/pulls/{number}", Self::repo_url(&project.path)?)).await?.json(&self.host)
+        self.http.get_as(&format!("{}/pulls/{number}", Self::repo_url(&project.path)?), GITHUB_FULL).await?.json(&self.host)
     }
 
     /// The PR as it is now (after a write).
@@ -1887,7 +1948,7 @@ impl GitHubProvider {
     async fn pending_review(&self, project: &ForgeProject, number: u64) -> Result<Option<(u64, String)>, GbError> {
         let repo = Self::repo_url(&project.path)?;
         let me = self.me().await?;
-        let reviews = self.http.get_pages(&format!("{repo}/pulls/{number}/reviews?per_page=100"), COMMENT_PAGES).await?;
+        let reviews = self.http.get_pages_as(&format!("{repo}/pulls/{number}/reviews?per_page=100"), COMMENT_PAGES, GITHUB_FULL).await?;
         Ok(json::pending_review(&reviews, me.id))
     }
 
@@ -2423,6 +2484,36 @@ mod tests {
         let graphql: Vec<String> = s.heads.lock().unwrap().iter().filter(|h| h.starts_with("post /graphql")).cloned().collect();
         assert_eq!(graphql.len(), 2, "the threads once, then the mutation with the node id kept from it");
         assert!(p.resolve(&project, 3, "issue-41", true).await.is_err());
+    }
+
+    /// While the comments and reviews come back unchanged, the threads' states are what GraphQL
+    /// said last; a write (here a resolve) asks again.
+    #[tokio::test]
+    async fn review_threads_are_asked_again_only_once_something_changed() {
+        use crate::test_server::{Canned, TestServer};
+        let s = TestServer::start(|_, head| {
+            let line = head.lines().next().unwrap_or_default().to_string();
+            if line.starts_with("post /graphql ") {
+                Canned::json(200, r#"{"data": {"repository": {"pullRequest": {"reviewThreads": {"pageInfo": {"hasNextPage": false, "endCursor": null}, "nodes": [{"id": "PRRT_51", "isResolved": false, "resolvedBy": null, "comments": {"nodes": [{"databaseId": 51}]}}]}}}, "resolveReviewThread": {"thread": {"isResolved": true, "resolvedBy": {"login": "octocat"}}}}}"#)
+            } else if head.contains("if-none-match") {
+                Canned::json(304, "")
+            } else if line.contains("/pulls/3/comments") {
+                Canned::json(200, r#"[{"id": 51, "user": {"id": 3, "login": "hubot"}, "body": "Why?", "created_at": "2026-10-03T08:01:00Z", "path": "README.md", "line": 2, "side": "RIGHT", "diff_hunk": "@@ -1 +1,2 @@\n+x"}]"#).header("ETag", "\"c1\"")
+            } else {
+                Canned::json(200, "[]").header("ETag", "\"e1\"")
+            }
+        });
+        let ep = crate::endpoints::HostEndpoints { api: s.base.clone(), web: s.base.clone(), avatars: None };
+        let p = super::GitHubProvider::new("github.com", &ep, gitvolt_core::redact::Secret::new("ghp_FAKE-test-token"), None);
+        let (_other, _, project) = served();
+        let graphql = || s.heads.lock().unwrap().iter().filter(|h| h.starts_with("post /graphql")).count();
+        p.discussions(&project, 3).await.unwrap();
+        let again = p.discussions(&project, 3).await.unwrap().value;
+        assert!(again[0].resolvable && !again[0].resolved, "the kept states");
+        assert_eq!(graphql(), 1, "the comments unchanged: no second query");
+        p.resolve(&project, 3, "thread-51", true).await.unwrap();
+        p.discussions(&project, 3).await.unwrap();
+        assert_eq!(graphql(), 3, "the resolve, then the threads asked again after it");
     }
 
     #[tokio::test]

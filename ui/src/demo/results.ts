@@ -222,6 +222,7 @@ export interface DemoResults {
   forgeCachedMrs: CachedMrs | null;
   forgeRefresh: null;
   forgeMrDetail: Fresh<ForgeMrDetail>;
+  forgeMrCard: Fresh<ForgeMrDetail>;
   forgeMrDiscussions: Fresh<ForgeDiscussion[]>;
   forgeProjectByPath: ForgeProject;
   forgePeopleLimits: PeopleLimits;

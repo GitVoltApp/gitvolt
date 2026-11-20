@@ -2,6 +2,7 @@
 //! merge request methods are in this impl, in their marked blocks.
 
 use crate::avatar_cache::{image_at, payload_of, DiskAvatarCache, Lookup};
+use crate::capped::Capped;
 use crate::endpoints::HostEndpoints;
 use crate::http::{encode_component, under, ClientConfig, HttpClient, HttpResponse, Method};
 use crate::known_names::{normalize, KnownNames, NameMatch};
@@ -24,6 +25,30 @@ pub const LABELS_PER_PAGE: u32 = 50;
 /// every page was read.
 type KeptList = (Vec<Value>, i64, bool);
 
+/// A project's label colours (name → `#rrggbb`), the names its labels list didn't have when
+/// last asked (a label of a group past the first hundred, or deleted), and when that was.
+#[derive(Clone)]
+struct KeptLabels {
+    colors: HashMap<String, String>,
+    missing: HashSet<String>,
+    at: std::time::Instant,
+}
+
+/// A project's labels are asked again after this long (a colour changed), whatever its MRs name.
+pub const LABELS_REFRESH: std::time::Duration = std::time::Duration::from_secs(1800);
+
+/// An MR's notes' awards (note id → reactions), when GraphQL answered, and the REST client's
+/// write generation then: `fill_awards` says whether they still stand.
+struct KeptAwards {
+    found: HashMap<String, Vec<ForgeReaction>>,
+    at: std::time::Instant,
+    writes: u64,
+}
+
+/// An MR's awards are asked again after this long even while its discussions are unchanged: an
+/// award changes no discussion's REST answer.
+pub const AWARDS_REFRESH: std::time::Duration = std::time::Duration::from_secs(300);
+
 pub struct GitLabProvider {
     host: String,
     web: String,
@@ -36,8 +61,10 @@ pub struct GitLabProvider {
     me: Mutex<Option<ForgeUser>>,
     /// Project id → path: an MR names its source project by id only.
     paths: Mutex<HashMap<u64, String>>,
-    /// Project id → label name → `#rrggbb`, from `/projects/:id/labels` (`fill_label_colors`).
-    label_colors: Mutex<HashMap<u64, HashMap<String, String>>>,
+    /// Project id → its labels' colours, from `/projects/:id/labels` (`fill_label_colors`).
+    label_colors: Mutex<Capped<u64, KeptLabels>>,
+    /// (project, MR) → its notes' award emoji as GraphQL last answered (`fill_awards`).
+    awards: Mutex<Capped<(u64, u64), KeptAwards>>,
     /// The list's pipelines by head commit (`pipelines`): asked only for new or running heads.
     pipelines: crate::pipelines::PipelineCache,
     /// A GitLab that answers lists without an ETag (no 304s): each list's last body by path,
@@ -53,11 +80,11 @@ pub struct GitLabProvider {
     marks: Mutex<HashMap<u64, i64>>,
     // --- commit-author avatars by name ---
     /// Lowercase email → avatar URL, found for a commit author by name (`avatar_for_name`).
-    learned: Mutex<HashMap<String, String>>,
+    learned: Mutex<Capped<String, String>>,
     /// The people the API data showed, by name (`known_names`).
     names: KnownNames,
     /// Normalized names searched for this session (`/users?search=`), answered or not.
-    names_asked: Mutex<HashSet<String>>,
+    names_asked: Mutex<Capped<String, ()>>,
     /// One name search at a time.
     name_turn: tokio::sync::Mutex<()>,
     // --- end commit-author avatars by name ---
@@ -69,7 +96,7 @@ impl GitLabProvider {
         let gql_url = format!("{}/graphql", api.strip_suffix("/v4").unwrap_or(api));
         let gql = HttpClient::new(ClientConfig { host: host.into(), api_base: gql_url.clone(), token: Some(token.clone()), headers: Vec::new(), timeout: crate::http::REQUEST_TIMEOUT });
         let http = HttpClient::new(ClientConfig { host: host.into(), api_base: api.into(), token: Some(token), headers: Vec::new(), timeout: crate::http::REQUEST_TIMEOUT });
-        Self { host: host.into(), web: endpoints.web.trim_end_matches('/').into(), http, gql, gql_url, avatars, me: Mutex::new(None), paths: Mutex::default(), label_colors: Mutex::default(), pipelines: Default::default(), unconditional: Mutex::default(), unchanged: Mutex::default(), marks: Mutex::default(), learned: Mutex::default(), names: KnownNames::default(), names_asked: Mutex::default(), name_turn: tokio::sync::Mutex::new(()) } // Me, paths
+        Self { host: host.into(), web: endpoints.web.trim_end_matches('/').into(), http, gql, gql_url, avatars, me: Mutex::new(None), paths: Mutex::default(), label_colors: Mutex::default(), awards: Mutex::default(), pipelines: Default::default(), unconditional: Mutex::default(), unchanged: Mutex::default(), marks: Mutex::default(), learned: Mutex::default(), names: KnownNames::default(), names_asked: Mutex::default(), name_turn: tokio::sync::Mutex::new(()) } // Me, paths
     }
 
     /// The account's client, for the forge requests.
@@ -809,17 +836,17 @@ impl GitLabProvider {
     }
 
     /// The listed MRs' heads' pipelines, kept by commit (`PipelineCache`): the project's recent
-    /// pipelines are asked only when a head is new, still running, or kept too long. Best
-    /// effort: a failure keeps what's kept.
+    /// pipelines are asked only when a head is new, still running, without one and due again
+    /// (backing off), or finished and its MR changed. Best effort: a failure keeps what's kept.
     async fn refresh_pipelines(&self, project: &ForgeProject, list: &[Value]) {
         let now = unix_now();
-        let shas: Vec<&str> = list.iter().filter_map(|v| v["sha"].as_str()).collect();
-        if shas.is_empty() || !self.pipelines.needs(shas.iter().copied(), now) {
+        let heads: Vec<(&str, i64)> = list.iter().filter_map(|v| Some((v["sha"].as_str()?, v["updated_at"].as_str().and_then(parse_rfc3339).unwrap_or_default()))).collect();
+        if heads.is_empty() || !self.pipelines.needs(heads.iter().copied(), now) {
             return;
         }
         if let Some(found) = self.fetch_pipelines(project).await {
-            for sha in shas {
-                self.pipelines.put(sha, found.get(sha).cloned(), now);
+            for (sha, stamp) in heads {
+                self.pipelines.put(sha, found.get(sha).cloned(), stamp, now);
             }
         }
     }
@@ -930,26 +957,30 @@ impl GitLabProvider {
     }
 
     /// Colours for `mr`'s labels that came without one (a single MR's GET): from the project's
-    /// labels (its groups' included), kept per project for the session and asked again (an
-    /// ETag-revalidated GET) only when the MR names a label the kept map doesn't have. Best effort:
-    /// a failure leaves plain chips.
-    async fn fill_label_colors(&self, project: &ForgeProject, mr: &mut ForgeMr) {
+    /// labels (its groups' included), kept per project and asked again (an ETag-revalidated GET)
+    /// only when the MR names a label that was neither there nor missing at the last ask, or
+    /// after `LABELS_REFRESH`. `ask` false (a hover card): only what's kept. Best effort: a
+    /// failure leaves plain chips.
+    async fn fill_label_colors(&self, project: &ForgeProject, mr: &mut ForgeMr, ask: bool) {
         let wanted: Vec<String> = mr.labels.iter().filter(|l| !mr.label_colors.contains_key(*l)).cloned().collect();
         if wanted.is_empty() {
             return;
         }
         let kept = self.label_colors.lock().expect("label colours poisoned").get(&project.id).cloned();
+        let known = |k: &KeptLabels| k.at.elapsed() < LABELS_REFRESH && wanted.iter().all(|l| k.colors.contains_key(l) || k.missing.contains(l));
         let colors = match kept {
-            Some(c) if wanted.iter().all(|l| c.contains_key(l)) => c,
+            Some(k) if !ask || known(&k) => k.colors,
+            None if !ask => return,
             kept => match self.http.get(&format!("/projects/{}/labels?per_page=100", project.id)).await.and_then(|r| r.json::<Vec<Value>>(&self.host)) {
                 Ok(list) => {
-                    let c: HashMap<String, String> = list.iter().filter_map(json::label).filter_map(|l| Some((l.name, label_color(l.color.as_deref()?)?))).collect();
-                    self.label_colors.lock().expect("label colours poisoned").insert(project.id, c.clone());
-                    c
+                    let colors: HashMap<String, String> = list.iter().filter_map(json::label).filter_map(|l| Some((l.name, label_color(l.color.as_deref()?)?))).collect();
+                    let missing = wanted.iter().filter(|l| !colors.contains_key(*l)).cloned().collect();
+                    self.label_colors.lock().expect("label colours poisoned").insert(project.id, KeptLabels { colors: colors.clone(), missing, at: std::time::Instant::now() });
+                    colors
                 }
                 Err(e) => {
                     tracing::debug!("label colours from {}: {}", self.host, e.message);
-                    kept.unwrap_or_default()
+                    kept.map(|k| k.colors).unwrap_or_default()
                 }
             },
         };
@@ -960,8 +991,41 @@ impl GitLabProvider {
         }
     }
 
+    /// An MR's detail; `card` (a hover card): label colours only as kept.
+    async fn detail(&self, project: &ForgeProject, number: u64, card: bool) -> Result<Fresh<ForgeMrDetail>, GbError> {
+        let url = Self::mr_url(project, number);
+        let r = self.http.get(&Self::detail_url(project, number)).await?;
+        let v: Value = r.json(&self.host)?;
+        let source = self.source_of(project, &v).await;
+        // Every tier has `/approvals`; a 404 (an old GitLab) is "no approvals".
+        let (approvals, approvals_same) = match self.http.get(&format!("{url}/approvals")).await {
+            Ok(a) => (Some(a.json::<Value>(&self.host)?), a.not_modified),
+            Err(e) if e.kind == GbErrorKind::NotFound => (None, false),
+            Err(e) => return Err(e),
+        };
+        let mut d = json::detail(&v, &project.path, &source, approvals.as_ref()).ok_or_else(|| unreadable(&self.host, "merge request"))?;
+        // --- branch update: a fork's branch is pushed to by its author (asked only then) ---
+        let fork = v["source_project_id"].as_u64() != v["target_project_id"].as_u64();
+        let me = if fork { self.me().await.ok().map(|u| u.id) } else { None };
+        d.update = json::update_offer(&v, me);
+        // A single MR's GET has label names only (`with_labels_details` is for the lists).
+        self.fill_label_colors(project, &mut d.mr, !card).await;
+        self.names.learn_detail(&d);
+        // Not modified only when the MR and its approvals both were (a 304 each).
+        let mut fresh = Self::fresh(d, &r);
+        fresh.not_modified &= approvals_same;
+        Ok(fresh)
+    }
+
     fn mr_url(project: &ForgeProject, number: u64) -> String {
         format!("/projects/{}/merge_requests/{number}", project.id)
+    }
+
+    // --- branch update: how far behind its target, and whether GitLab is rebasing it ---
+    /// The MR as the detail reads it, and the review session too (one copy, one ETag: the
+    /// session's refresh in the same poll answers from it).
+    fn detail_url(project: &ForgeProject, number: u64) -> String {
+        format!("{}?include_diverged_commits_count=true&include_rebase_in_progress=true", Self::mr_url(project, number))
     }
 
     /// `…/draft_notes/<id>`; an id that isn't a number is never asked.
@@ -993,16 +1057,16 @@ impl GitLabProvider {
             return Ok(NameMatch::Unknown);
         }
         let low = |s: &Self| s.http.rate_limit().remaining.is_some_and(|n| n < NAME_SEARCH_FLOOR);
-        if low(self) || self.names_asked.lock().expect("names poisoned").contains(key) {
+        if low(self) || self.names_asked.lock().expect("names poisoned").contains_key(&key.to_string()) {
             return Ok(self.names.find(key));
         }
         let _turn = self.name_turn.lock().await;
         // Checked again in turn: the search before this one may have spent the budget, or asked this name.
-        if low(self) || !self.names_asked.lock().expect("names poisoned").insert(key.to_string()) {
+        if low(self) || !self.names_asked.lock().expect("names poisoned").insert_new(key.to_string(), ()) {
             return Ok(self.names.find(key));
         }
         let path = format!("/users?search={}&per_page={NAME_SEARCH_PER_PAGE}", encode_component(key));
-        let found: Vec<ForgeUser> = self.http.get(&path).await?.json::<Vec<Value>>(&self.host)?.iter().filter_map(json::user).collect();
+        let found: Vec<ForgeUser> = self.http.get_uncached(&path).await?.json::<Vec<Value>>(&self.host)?.iter().filter_map(json::user).collect();
         let exact: HashMap<u64, Option<String>> = found.iter().filter(|u| normalize(&u.name) == key || normalize(&u.username) == key).map(|u| (u.id, u.avatar_url.clone())).collect();
         self.names.learn_all(&found);
         if exact.len() == 1 {
@@ -1144,28 +1208,48 @@ impl GitLabProvider {
 
     // --- comment actions ---
     /// Each note's award emoji, from `NOTE_AWARDS_QUERY` (one request per 100 notes, not one per
-    /// note), best effort: a GitLab that can't answer it leaves them without.
-    async fn fill_awards(&self, project: &ForgeProject, number: u64, ds: &mut [ForgeDiscussion]) {
+    /// note), best effort: a GitLab that can't answer it leaves them without. What it answered
+    /// last stands while the discussions all came back unchanged (`rest_same`), nothing was
+    /// written since, and for `AWARDS_REFRESH` at most.
+    async fn fill_awards(&self, project: &ForgeProject, number: u64, ds: &mut [ForgeDiscussion], rest_same: bool) {
         if !ds.iter().any(|d| d.notes.iter().any(|n| !n.system)) {
             return;
         }
+        let kept = {
+            let kept = self.awards.lock().expect("awards poisoned");
+            kept.get(&(project.id, number)).filter(|k| rest_same && k.writes == self.http.writes() && k.at.elapsed() < AWARDS_REFRESH).map(|k| k.found.clone())
+        };
+        let mut found = match kept {
+            Some(f) => f,
+            None => match self.ask_awards(project, number).await {
+                Some(f) => f,
+                None => return,
+            },
+        };
+        for n in ds.iter_mut().flat_map(|d| d.notes.iter_mut()) {
+            if let Some(r) = found.remove(&n.id) {
+                n.reactions = r;
+            }
+        }
+    }
+
+    /// `NOTE_AWARDS_QUERY`'s pages: note id → its awards, kept (`awards`). `None`: GitLab didn't answer.
+    async fn ask_awards(&self, project: &ForgeProject, number: u64) -> Option<HashMap<String, Vec<ForgeReaction>>> {
+        let writes = self.http.writes();
         let me = self.me().await.ok().map(|u| u.id);
         let mut found: HashMap<String, Vec<ForgeReaction>> = HashMap::new();
         let mut after: Option<String> = None;
         for _ in 0..AWARD_PAGES {
-            let Ok(v) = self.graphql(NOTE_AWARDS_QUERY, json!({ "path": project.path, "iid": number.to_string(), "after": after })).await else { return };
-            let Some((page, next)) = json::note_awards(&v, me) else { return };
+            let v = self.graphql(NOTE_AWARDS_QUERY, json!({ "path": project.path, "iid": number.to_string(), "after": after })).await.ok()?;
+            let (page, next) = json::note_awards(&v, me)?;
             found.extend(page);
             match next {
                 Some(c) => after = Some(c),
                 None => break,
             }
         }
-        for n in ds.iter_mut().flat_map(|d| d.notes.iter_mut()) {
-            if let Some(r) = found.remove(&n.id) {
-                n.reactions = r;
-            }
-        }
+        self.awards.lock().expect("awards poisoned").insert((project.id, number), KeptAwards { found: found.clone(), at: std::time::Instant::now(), writes });
+        Some(found)
     }
 
     /// `…/merge_requests/<iid>/notes/<id>`: a note of any discussion.
@@ -1208,6 +1292,10 @@ impl ForgeProvider for GitLabProvider {
 
     fn import_responses(&self, entries: Vec<StoredResponse>) {
         self.http.import(entries);
+    }
+
+    fn responses_version(&self) -> u64 {
+        self.http.stored_version()
     }
 
     fn take_request_stats(&self) -> RequestStats {
@@ -1328,7 +1416,7 @@ impl ForgeProvider for GitLabProvider {
             let url = match learned {
                 Some(u) => Some(u),
                 None => {
-                    let r = self.http.get(&format!("/avatar?email={}&size=80", encode_component(email))).await?;
+                    let r = self.http.get_uncached(&format!("/avatar?email={}&size=80", encode_component(email))).await?;
                     r.json::<Value>(&self.host)?["avatar_url"].as_str().map(str::to_string)
                 }
             };
@@ -1419,44 +1507,33 @@ impl ForgeProvider for GitLabProvider {
     }
 
     fn mr_detail<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, Fresh<ForgeMrDetail>> {
-        Box::pin(async move {
-            let url = Self::mr_url(project, number);
-            // --- branch update: how far behind its target, and whether GitLab is rebasing it ---
-            let r = self.http.get(&format!("{url}?include_diverged_commits_count=true&include_rebase_in_progress=true")).await?;
-            let v: Value = r.json(&self.host)?;
-            let source = self.source_of(project, &v).await;
-            // Every tier has `/approvals`; a 404 (an old GitLab) is "no approvals".
-            let (approvals, approvals_same) = match self.http.get(&format!("{url}/approvals")).await {
-                Ok(a) => (Some(a.json::<Value>(&self.host)?), a.not_modified),
-                Err(e) if e.kind == GbErrorKind::NotFound => (None, false),
-                Err(e) => return Err(e),
-            };
-            let mut d = json::detail(&v, &project.path, &source, approvals.as_ref()).ok_or_else(|| unreadable(&self.host, "merge request"))?;
-            // --- branch update: a fork's branch is pushed to by its author (asked only then) ---
-            let fork = v["source_project_id"].as_u64() != v["target_project_id"].as_u64();
-            let me = if fork { self.me().await.ok().map(|u| u.id) } else { None };
-            d.update = json::update_offer(&v, me);
-            // A single MR's GET has label names only (`with_labels_details` is for the lists).
-            self.fill_label_colors(project, &mut d.mr).await;
-            self.names.learn_detail(&d);
-            // Not modified only when the MR and its approvals both were (a 304 each).
-            let mut fresh = Self::fresh(d, &r);
-            fresh.not_modified &= approvals_same;
-            Ok(fresh)
-        })
+        Box::pin(self.detail(project, number, false))
+    }
+
+    fn mr_card<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, Fresh<ForgeMrDetail>> {
+        Box::pin(self.detail(project, number, true))
     }
 
     fn discussions<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, Fresh<Vec<ForgeDiscussion>>> {
         Box::pin(async move {
             let url = Self::mr_url(project, number);
-            let raw = self.http.get_pages(&format!("{url}/discussions?per_page=100"), DISCUSSION_PAGES).await?;
+            // Every page, and whether each was a 304 (what `fill_awards` keeps by).
+            let (mut raw, mut same) = (Vec::new(), true);
+            let mut next = Some(format!("{url}/discussions?per_page=100"));
+            for _ in 0..DISCUSSION_PAGES {
+                let Some(p) = next.take() else { break };
+                let r = self.http.get(&p).await?;
+                same &= r.not_modified;
+                raw.extend(r.json::<Vec<Value>>(&self.host)?);
+                next = r.next_page;
+            }
             let mut ds: Vec<ForgeDiscussion> = raw.iter().filter_map(json::discussion).collect();
             if ds.iter().any(|d| d.notes.iter().any(|n| n.position.is_some())) {
                 // The snippets come from the MR's own diffs: best effort (no `/diffs` before GitLab 15.7).
                 let diffs = self.http.get_pages(&format!("{url}/diffs?per_page=100"), DIFF_PAGES).await.unwrap_or_default();
                 json::fill_snippets(&mut ds, &diffs);
             }
-            self.fill_awards(project, number, &mut ds).await;
+            self.fill_awards(project, number, &mut ds, same).await;
             self.names.learn_discussions(&ds);
             Ok(Fresh::new(ds, unix_now()))
         })
@@ -1708,7 +1785,7 @@ impl ForgeProvider for GitLabProvider {
     fn review_drafts<'a>(&'a self, project: &'a ForgeProject, number: u64) -> ForgeFuture<'a, ReviewDrafts> {
         Box::pin(async move {
             let url = Self::mr_url(project, number);
-            let mr: Value = self.http.get(&url).await?.json(&self.host)?;
+            let mr: Value = self.http.get(&Self::detail_url(project, number)).await?.json(&self.host)?;
             let refs = json::diff_refs(&mr);
             let list = match self.http.get_pages(&format!("{url}/draft_notes?per_page=100"), DRAFT_PAGES).await {
                 Ok(list) => list,
@@ -2441,7 +2518,7 @@ mod tests {
         use crate::test_server::Canned;
         let mr = r#"{"iid": 12, "diff_refs": {"base_sha": "b", "start_sha": "s", "head_sha": "h"}}"#;
         let (_s, p, project) = served_review(move |line| {
-            if line.starts_with("get /api/v4/projects/1/merge_requests/12 ") {
+            if line.starts_with("get /api/v4/projects/1/merge_requests/12?") {
                 Canned::json(200, mr)
             } else {
                 Canned::json(404, r#"{"message": "404 Not Found"}"#)

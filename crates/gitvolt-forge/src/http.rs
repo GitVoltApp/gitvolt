@@ -10,7 +10,10 @@
 //!   in all) and `User-Agent: GitVolt/<version>`; a timeout fails that request only (a request
 //!   waiting for one of the `PARALLEL` permits isn't timed);
 //! - a GET answered (or revalidated) less than `FRESH_SECS` ago answers from the cache without a
-//!   request (a poll's badges and list read the same list once); any write ends that at once;
+//!   request (a poll's badges and list read the same list once); any write ends that at once (a
+//!   GraphQL query isn't a write, only a mutation is);
+//! - a lookup that has its own cache (`get_uncached`: an avatar by email, a user search) neither
+//!   reads nor fills the ETag cache, so a burst of them never pushes out the poll's validators;
 //! - an unreachable API (no connection could be made: DNS, refused, connect timeout, TLS
 //!   handshake): its requests fail fast with the same `Network` error for
 //!   `NETWORK_COOLDOWN_SECS`, until one gets an answer. A slow API (a read timeout, an answer
@@ -31,7 +34,9 @@ use std::time::Duration;
 
 pub const ETAG_ENTRIES: usize = 256;
 pub const MAX_BODY: u64 = 8 * 1024 * 1024;
-pub const MAX_CACHED_BODY: usize = 1024 * 1024;
+/// The largest answer kept for its ETag: any answer (`MAX_BODY`). A long list of MRs with long
+/// descriptions passes a megabyte; `ETAG_BYTES` bounds them all.
+pub const MAX_CACHED_BODY: usize = MAX_BODY as usize;
 pub const MAX_IMAGE: u64 = 1024 * 1024;
 /// A video a Markdown body embeds (GitLab's `![clip](/uploads/…/clip.webm)`).
 pub const MAX_VIDEO: u64 = 100 * 1024 * 1024;
@@ -306,6 +311,8 @@ struct Inner {
     generation: std::sync::atomic::AtomicU64,
     /// Changes outside GitVolt's writes (the harness's fake forge reseeded): added to `generation`.
     changes: Option<ChangeCounter>,
+    /// Grows whenever a new body is kept (a 200 with an ETag): what `export` gives changed.
+    stored: std::sync::atomic::AtomicU64,
     /// Requests sent, 304s, and GETs answered from memory, since `take_stats`.
     sent: std::sync::atomic::AtomicU64,
     not_modified: std::sync::atomic::AtomicU64,
@@ -358,6 +365,7 @@ impl HttpClient {
                 epoch: std::time::Instant::now(),
                 generation: Default::default(),
                 changes: None,
+                stored: Default::default(),
                 sent: Default::default(),
                 not_modified: Default::default(),
                 fresh_hits: Default::default(),
@@ -431,6 +439,18 @@ impl HttpClient {
         gitvolt_core::forge::RequestStats { sent: self.inner.sent.swap(0, SeqCst), not_modified: self.inner.not_modified.swap(0, SeqCst), fresh: self.inner.fresh_hits.swap(0, SeqCst) }
     }
 
+    /// Grows whenever a kept answer changes (a new body): `export` would give something new only
+    /// once this moved.
+    pub fn stored_version(&self) -> u64 {
+        self.inner.stored.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// The write generation alone (writes and `expire_fresh`, not the harness's outside changes):
+    /// a kept answer REST can't revalidate is good while this hasn't moved.
+    pub fn writes(&self) -> u64 {
+        self.inner.generation.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// The kept answers whose cache key `wanted` takes (the cross-session cache's), JSON only.
     pub fn export(&self, wanted: impl Fn(&str) -> bool) -> Vec<gitvolt_core::forge::StoredResponse> {
         let etags = self.inner.etags.lock().expect("etags poisoned");
@@ -472,6 +492,13 @@ impl HttpClient {
     /// A conditional GET: a 304 answers from the ETag cache (`not_modified`).
     pub async fn get(&self, path: &str) -> Result<HttpResponse, GbError> {
         self.request(Method::Get, path, None, None).await
+    }
+
+    /// A GET outside the ETag cache: never conditional, never kept. For lookups that keep their
+    /// own answers (the avatar disk cache, asked-once sets): hundreds of them would otherwise push
+    /// the poll's validators out of the cache's `ETAG_ENTRIES`.
+    pub async fn get_uncached(&self, path: &str) -> Result<HttpResponse, GbError> {
+        self.request_with(Method::Get, path, None, None, false).await
     }
 
     /// A write: never cached, never conditional.
@@ -683,18 +710,25 @@ impl HttpClient {
     }
 
     async fn request(&self, method: Method, path: &str, body: Option<Vec<u8>>, accept: Option<&'static str>) -> Result<HttpResponse, GbError> {
+        self.request_with(method, path, body, accept, true).await
+    }
+
+    /// `cached`: a GET answers from (and fills) the ETag cache.
+    async fn request_with(&self, method: Method, path: &str, body: Option<Vec<u8>>, accept: Option<&'static str>, cached: bool) -> Result<HttpResponse, GbError> {
         let url = self.url(path);
         // Another representation (GitHub's `full`) of the same URL has its own ETag and body.
         let key = match accept {
             Some(a) => format!("{url}\n{a}"),
             None => url.clone(),
         };
-        let snapshot = if method == Method::Get { self.inner.etags.lock().expect("etags poisoned").map.get(&key).cloned() } else { None };
+        let snapshot = if method == Method::Get && cached { self.inner.etags.lock().expect("etags poisoned").map.get(&key).cloned() } else { None };
         if let Some(c) = snapshot.as_ref().filter(|c| self.is_fresh(c)) {
             self.inner.fresh_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(HttpResponse { status: 200, body: c.body.clone(), not_modified: true, poll_interval_secs: c.poll_interval_secs, next_page: c.next_page.clone(), last_page: c.last_page.clone(), oauth_scopes: c.oauth_scopes.clone(), etag: true });
         }
-        if method != Method::Get {
+        // A GraphQL query reads: only a mutation (or a REST write) ends what's fresh.
+        let write = method != Method::Get && !body.as_deref().is_some_and(|b| is_graphql_query(&url, b));
+        if write {
             self.expire_fresh();
         }
         let etag = snapshot.as_ref().map(|c| c.etag.clone());
@@ -708,11 +742,11 @@ impl HttpClient {
         if raw.status == 304 {
             self.inner.not_modified.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
-        if method != Method::Get {
+        if write {
             // Reads that started before the write's answer cache nothing fresh.
             self.expire_fresh();
         }
-        self.finish(method, key, raw, snapshot)
+        self.finish(method, key, raw, snapshot, cached)
     }
 
     /// An API request: refused unless under the API base, then redirects handled by hand.
@@ -806,7 +840,7 @@ impl HttpClient {
         }
     }
 
-    fn finish(&self, method: Method, key: String, raw: Raw, snapshot: Option<Arc<Cached>>) -> Result<HttpResponse, GbError> {
+    fn finish(&self, method: Method, key: String, raw: Raw, snapshot: Option<Arc<Cached>>, cached: bool) -> Result<HttpResponse, GbError> {
         let host = self.host();
         let get = |n: &str| raw.headers.get(n).cloned();
         self.observe(&raw)?;
@@ -837,12 +871,14 @@ impl HttpClient {
         let etag = get("etag");
         let has_etag = etag.is_some();
         if method == Method::Get
+            && cached
             && body.len() <= MAX_CACHED_BODY
             && let Some(etag) = etag
         {
             let c = Cached { etag, body: body.clone(), poll_interval_secs, next_page: next_page.clone(), last_page: last_page.clone(), oauth_scopes: oauth_scopes.clone(), validated_ms: Default::default(), generation: Default::default() };
             self.validated(&c);
             self.inner.etags.lock().expect("etags poisoned").put(key, c);
+            self.inner.stored.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
         tracing::debug!(target: "gitvolt_forge::http", host, method = method.as_str(), status = raw.status, "forge request");
         Ok(HttpResponse { status: raw.status, body, not_modified: false, poll_interval_secs, next_page, last_page, oauth_scopes, etag: has_etag })
@@ -901,6 +937,18 @@ fn resolve_location(from: &str, loc: &str) -> Option<String> {
     let (scheme, rest) = from.split_once("://")?;
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
     (loc.starts_with('/') && !loc.starts_with("//")).then(|| format!("{scheme}://{authority}{loc}"))
+}
+
+/// A POST to a GraphQL endpoint whose document is a query (`query …` or the `{ … }` shorthand),
+/// not a mutation: it reads, so it ends nothing fresh.
+fn is_graphql_query(url: &str, body: &[u8]) -> bool {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    if !path.ends_with("/graphql") {
+        return false;
+    }
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(body) else { return false };
+    let doc = v["query"].as_str().unwrap_or_default().trim_start();
+    doc.starts_with('{') || doc.strip_prefix("query").is_some_and(|rest| rest.starts_with(|c: char| !c.is_alphanumeric() && c != '_'))
 }
 
 fn is_redirect(status: u16) -> bool {
@@ -1147,6 +1195,56 @@ mod tests {
         let st = c.take_stats();
         assert_eq!((st.sent, st.not_modified, st.fresh), (4, 0, 1), "the poll's debug line counts");
         assert_eq!(c.take_stats(), Default::default(), "and starts again");
+    }
+
+    #[tokio::test]
+    async fn a_graphql_query_keeps_what_is_fresh_and_a_mutation_ends_it() {
+        let s = TestServer::start(|_, _| Canned::json(200, r#"{"a":1}"#).header("ETag", "\"v1\""));
+        let c = client(&s.base).with_fresh_window(Duration::from_secs(60));
+        c.get("/projects/1/merge_requests").await.unwrap();
+        c.send_json(Method::Post, "/graphql", &serde_json::json!({"query": "query($n: Int!) { a }", "variables": {"n": 1}})).await.unwrap();
+        c.send_json(Method::Post, "/graphql", &serde_json::json!({"query": "{ viewer { login } }"})).await.unwrap();
+        c.get("/projects/1/merge_requests").await.unwrap();
+        assert_eq!(s.hits(), 3, "the queries read: the list is still fresh");
+        c.send_json(Method::Post, "/graphql", &serde_json::json!({"query": "mutation($id: ID!) { resolve(id: $id) { ok } }"})).await.unwrap();
+        c.get("/projects/1/merge_requests").await.unwrap();
+        assert_eq!(s.hits(), 5, "a mutation writes: the read after asks");
+        assert!(!is_graphql_query("http://h/api/v4/notes", br#"{"query": "query { a }"}"#), "only a GraphQL endpoint");
+        assert!(!is_graphql_query("http://h/graphql", br#"{"query": "queryX { a }"}"#));
+    }
+
+    /// A burst of lookups with their own cache (avatars by email) doesn't push the poll's
+    /// validators out: the list's next GET is still conditional.
+    #[tokio::test]
+    async fn an_uncached_get_neither_answers_from_nor_fills_the_cache() {
+        let s = TestServer::start(|_, head| {
+            if head.contains("if-none-match: \"v1\"") { Canned::json(304, "") } else { Canned::json(200, r#"{"a":1}"#).header("ETag", "\"v1\"") }
+        });
+        let c = client(&s.base);
+        c.get("/projects/1/merge_requests").await.unwrap();
+        let before = c.stored_version();
+        for i in 0..ETAG_ENTRIES + 10 {
+            assert!(!c.get_uncached(&format!("/avatar?email=a{i}%40example.com")).await.unwrap().not_modified);
+        }
+        assert_eq!(c.stored_version(), before, "nothing new kept");
+        assert!(c.get("/projects/1/merge_requests").await.unwrap().not_modified, "the list's validator stayed");
+        c.get_uncached("/avatar?email=a0%40example.com").await.unwrap();
+        assert!(!s.heads.lock().unwrap().last().unwrap().contains("if-none-match"), "never conditional");
+    }
+
+    /// A list over a megabyte (long descriptions) is kept like any other: its next poll is a 304.
+    #[tokio::test]
+    async fn a_list_of_several_megabytes_is_kept_for_its_etag() {
+        let big = format!("[\"{}\"]", "x".repeat(3 * 1024 * 1024));
+        let s = TestServer::start(move |_, head| {
+            if head.contains("if-none-match") { Canned::json(304, "") } else { Canned::json(200, &big).header("ETag", "\"v1\"") }
+        });
+        let c = client(&s.base);
+        assert!(!c.get("/projects/1/merge_requests").await.unwrap().not_modified);
+        let again = c.get("/projects/1/merge_requests").await.unwrap();
+        assert!(again.not_modified);
+        assert_eq!(again.body.len(), 3 * 1024 * 1024 + 4);
+        assert_eq!(c.export(|_| true).len(), 1, "and kept across a restart");
     }
 
     #[tokio::test]
@@ -1416,9 +1514,9 @@ mod tests {
         c.put("b".into(), mk(1));
         c.put("a".into(), mk(1));
         assert_eq!(c.order, ["b", "a"]);
-        c.put("big1".into(), mk(MAX_CACHED_BODY));
+        c.put("big1".into(), mk(1024 * 1024));
         for i in 0..40 {
-            c.put(format!("k{i}"), mk(MAX_CACHED_BODY));
+            c.put(format!("k{i}"), mk(1024 * 1024));
         }
         assert!(c.bytes <= ETAG_BYTES);
         assert!(!c.map.contains_key("a"));

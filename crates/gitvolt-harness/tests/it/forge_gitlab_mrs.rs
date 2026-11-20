@@ -385,15 +385,19 @@ async fn label_colours_come_with_the_list_and_for_a_detail_from_the_projects_lab
     let detail = p.mr_detail(&g, 12).await.unwrap().value;
     assert_eq!((detail.mr.labels.clone(), detail.mr.label_colors), (vec!["bug".to_string(), "nope".to_string()], bug()));
     assert_eq!(labels_asked(&f), 1);
-    // `nope` isn't a project label (it may be new): asked again (ETag-revalidated, past the
-    // `FRESH_SECS` that answer from what's kept); `bug` stays.
+    // `nope` isn't a project label: known missing, not asked again on every detail (only after
+    // `LABELS_REFRESH`); `bug` stays.
     p.http().expire_fresh();
     assert_eq!(p.mr_detail(&g, 12).await.unwrap().value.mr.label_colors, bug());
-    assert_eq!(labels_asked(&f), 2);
-    // Every label known: kept for the session, no request.
-    p.edit(&g, 12, &MrEdit { title: None, description: None, labels: Some(vec!["bug".into()]), ..Default::default() }).await.unwrap();
+    assert_eq!(labels_asked(&f), 1, "a label the project doesn't list isn't asked every poll");
+    // A label the last ask didn't see either way (it may be new): asked.
+    p.edit(&g, 12, &MrEdit { title: None, description: None, labels: Some(vec!["bug".into(), "docs".into()]), ..Default::default() }).await.unwrap();
     assert_eq!(p.mr_detail(&g, 12).await.unwrap().value.mr.label_colors, bug());
-    assert_eq!(labels_asked(&f), 2, "kept for the session");
+    assert_eq!(labels_asked(&f), 2);
+    // Every label known: kept, no request.
+    p.http().expire_fresh();
+    p.mr_detail(&g, 12).await.unwrap();
+    assert_eq!(labels_asked(&f), 2, "kept");
 }
 
 #[tokio::test(flavor = "multi_thread")]

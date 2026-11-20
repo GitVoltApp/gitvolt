@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   forgeMrList: vi.fn(),
   forgeRefresh: vi.fn(),
   forgeMrDetail: vi.fn(),
+  forgeMrCard: vi.fn(),
   forgeMrDiscussions: vi.fn(),
   forgeCachedMrs: vi.fn(),
   forgeReviewDrafts: vi.fn(),
@@ -43,6 +44,7 @@ beforeEach(() => {
   api.forgeBranchMrs.mockResolvedValue({ kind: 'gitlab', remote: 'origin', mrs: [{ remoteRef: 'refs/remotes/origin/dev', mr: mrOf(12) }], history: [], fetchedAt: 1, pollIntervalSecs: 30 });
   api.forgeMrList.mockResolvedValue({ kind: 'gitlab', remote: 'origin', project, filter: 'all', mrs: [mrOf(12), running], fetchedAt: 1, pollIntervalSecs: null });
   api.forgeMrDetail.mockResolvedValue(fresh(detailOf(mrOf(12))));
+  api.forgeMrCard.mockResolvedValue(fresh(detailOf(mrOf(12))));
   api.forgeMrDiscussions.mockResolvedValue(fresh([]));
   api.forgeCachedMrs.mockResolvedValue(null);
   api.forgeRefresh.mockResolvedValue(null);
@@ -306,6 +308,28 @@ describe('opening and loading an MR/PR', () => {
     expect(api.forgeMrDetail).toHaveBeenCalledTimes(1);
     await loadMrDetail('t', 12, 0);
     expect(api.forgeMrDetail).toHaveBeenCalledTimes(2);
+  });
+
+  it("a hover card asks the lighter card detail, which a full one serves but never the other way", async () => {
+    await loadMrDetail('t', 12, undefined, true);
+    expect([api.forgeMrCard.mock.calls.length, api.forgeMrDetail.mock.calls.length]).toEqual([1, 0]);
+    await loadMrDetail('t', 12, undefined, true);
+    expect(api.forgeMrCard).toHaveBeenCalledTimes(1);
+    await loadMrDetail('t', 12);
+    expect(api.forgeMrDetail).toHaveBeenCalledTimes(1);
+    dropForge('t');
+    await loadMrDetail('t', 12);
+    await loadMrDetail('t', 12, undefined, true);
+    expect(api.forgeMrCard).toHaveBeenCalledTimes(1);
+  });
+
+  it("a card's detail keeps the subscription the view's detail read", async () => {
+    api.forgeMrDetail.mockResolvedValue(fresh({ ...detailOf(mrOf(12)), subscribed: true }));
+    api.forgeMrCard.mockResolvedValue(fresh({ ...detailOf(mrOf(12), { description: 'Edited.' }), subscribed: null }));
+    await loadMrDetail('t', 12);
+    await loadMrDetail('t', 12, 0, true);
+    expect(api.forgeMrCard).toHaveBeenCalledTimes(1);
+    expect(forgeOf('t').details[12]?.value).toMatchObject({ description: 'Edited.', subscribed: true });
   });
 });
 

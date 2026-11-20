@@ -137,10 +137,11 @@ const UNTIMED: &str = "<untimed>";
 /// Where a forge answer holds the recording's wall clock, its HTTP state or the harness's token
 /// storage, by method: dot-separated paths, `[]` for each item of a list. ui/src/demo/golden/
 /// normalise.ts drops the same fields on both sides (keep the two tables alike).
-const UNTIMED_FIELDS: [(&str, &[&str]); 6] = [
+const UNTIMED_FIELDS: [(&str, &[&str]); 7] = [
     ("forgeAccounts", &["[].account.addedAt", "[].account.storage", "[].account.versionCheckedAt"]),
     ("forgeBranchMrs", &["fetchedAt", "pollIntervalSecs"]),
     ("forgeCachedMrs", &["savedAt", "badges.fetchedAt", "badges.pollIntervalSecs", "list.fetchedAt", "list.pollIntervalSecs"]),
+    ("forgeMrCard", &["fetchedAt", "notModified", "pollIntervalSecs"]),
     ("forgeMrDetail", &["fetchedAt", "notModified", "pollIntervalSecs"]),
     ("forgeMrDiscussions", &["fetchedAt", "notModified", "pollIntervalSecs"]),
     ("forgeMrList", &["fetchedAt", "pollIntervalSecs", "rateLimit"]),
