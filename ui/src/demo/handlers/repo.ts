@@ -79,5 +79,6 @@ export const repoHandlers = {
   // The demo keeps its repositories: holding one changes nothing.
   holdRepo: async () => null,
   releaseRepo: async () => null,
+  releaseAll: async () => null,
   setDebugLogging: async () => null,
 } satisfies Partial<HandlerTable>;

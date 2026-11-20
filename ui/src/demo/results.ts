@@ -100,6 +100,7 @@ export interface DemoResults {
   unwatchRepo: null;
   holdRepo: null;
   releaseRepo: null;
+  releaseAll: null;
   unwatchAll: null;
   appInfo: AppInfoPayload;
   submodules: SubmoduleInfo[];

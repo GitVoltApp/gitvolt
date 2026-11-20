@@ -16,6 +16,7 @@ import { withActiveSidebar } from '../worktrees/active';
 import { noteViewport, unloadDue, type OlderState } from '../graph/olderWindow';
 import { basename, setTabRepo, tabForPath, touchRecent } from './tabs';
 import { viewSpecFor } from '../presets/store';
+import { holdRepo } from './watch';
 
 /** One tab's loaded repo (not persisted: the profile holds only the tab's path). */
 export interface TabRuntime {
@@ -173,8 +174,8 @@ export const useRuntime = create<RuntimeState>((set, get) => ({
       get().patch(tabId, { status: 'loading', error: null });
       try {
         const repo = await api.openRepo(path);
-        // Held before any drop below can let go of it (a lost hold only keeps the handle).
-        await api.holdRepo(tabId, repo.id).catch(() => {});
+        // Held before any drop below can let go of it (the tab's watch holds it again if lost).
+        await holdRepo(tabId, repo.id);
         const app = useAppState.getState();
         // Closed meanwhile: nothing to show it in, and it wasn't really opened (no Recent entry).
         if (!tabOpen(tabId)) return get().drop(tabId);

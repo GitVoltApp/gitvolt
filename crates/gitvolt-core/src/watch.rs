@@ -1251,6 +1251,7 @@ impl Api {
             // (`repo_holds.rs`). Under `repos`, so a let-go can't land between check and insert.
             let repos = self.repos.lock().expect("repos poisoned");
             if !repos.get(&id).is_some_and(|kept| Arc::ptr_eq(&kept.wip, &h.wip)) {
+                tracing::warn!("not watching repository {id}: no tab holds it");
                 return Ok(());
             }
             let mut watchers = self.watchers.lock().expect("watchers poisoned");

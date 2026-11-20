@@ -359,6 +359,8 @@ pub enum Request {
     HoldRepo { holder: String, repo: u32 },
     /// Tab `holder` closed: the last tab holding its repository lets go of it; `null`.
     ReleaseRepo { holder: String },
+    /// Every tab lets go (the UI's startup reset: a reload's tabs hold theirs again); `null`.
+    ReleaseAll,
     /// The action queue (spec #2 §3.6): `QueueStatePayload`.
     QueueState { repo: u32 },
     /// A queued item's ×: `true` if it was still queued.
@@ -1513,6 +1515,7 @@ impl Request {
             | Request::UnwatchAll
             | Request::HoldRepo { .. }
             | Request::ReleaseRepo { .. }
+            | Request::ReleaseAll
             | Request::FindText { .. }
             | Request::FindPaths { .. }
             | Request::LocateCommit { .. }
@@ -3260,6 +3263,10 @@ impl Api {
                 self.release_repo(&holder);
                 to_json(())
             }
+            Request::ReleaseAll => {
+                self.release_all();
+                to_json(())
+            }
             Request::QueueState { repo } => to_json(self.repo_writes(&*self.handle(repo)?).queue.state()),
             Request::QueueRemove { repo, id } => to_json(self.repo_writes(&*self.handle(repo)?).queue.remove(id)),
             Request::QueueResume { repo } => {
@@ -3687,8 +3694,9 @@ impl Api {
             .unwrap_or_else(|| Err(GbError::new(GbErrorKind::InvalidInput, format!("no open repository with id {id}"))))
     }
 
-    /// `old`, reopened: it replaces `old` unless the repository was closed meanwhile.
-    fn reopen(&self, id: u32, old: &RepoHandle) -> Result<Arc<RepoHandle>, GbError> {
+    /// `old`, reopened: it replaces `old` unless the repository was let go meanwhile (or let go
+    /// and opened again: the newer handle, with its own caches, stays).
+    pub(crate) fn reopen(&self, id: u32, old: &RepoHandle) -> Result<Arc<RepoHandle>, GbError> {
         // Before the open, so a change made while it reads the config still shows next time.
         let config = config_stamp(&old.common_dir);
         let repo = gix::ThreadSafeRepository::open_opts(&old.workdir, open_options()).map_err(crate::error::gix_err)?;
@@ -3704,7 +3712,9 @@ impl Api {
             config,
         });
         let mut repos = self.repos.lock().expect("repos poisoned");
-        if let Some(slot) = repos.get_mut(&id) {
+        if let Some(slot) = repos.get_mut(&id)
+            && Arc::ptr_eq(&slot.wip, &old.wip)
+        {
             *slot = fresh.clone();
         }
         Ok(fresh)
@@ -5637,6 +5647,7 @@ mod tests {
             // Last: letting go drops the handle, and the find samples need its snapshot.
             json!({"method": "holdRepo", "params": {"holder": "sample", "repo": id}}),
             json!({"method": "releaseRepo", "params": {"holder": "sample"}}),
+            json!({"method": "releaseAll"}),
         ]
     }
 

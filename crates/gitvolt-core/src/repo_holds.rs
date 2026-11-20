@@ -91,6 +91,16 @@ impl Api {
         self.let_go_unless_held(before);
     }
 
+    /// Every tab let go: the UI's startup reset, as `unwatch_all` (a reload's tabs are new, and
+    /// hold theirs again as they open). Every handle goes, held before or not; ids stay.
+    pub(crate) fn release_all(&self) {
+        self.holds.inner().holders.clear();
+        let ids: Vec<u32> = self.repos.lock().expect("repos poisoned").keys().copied().collect();
+        for id in ids {
+            self.let_go_unless_held(Some(id));
+        }
+    }
+
     fn let_go_unless_held(&self, id: Option<u32>) {
         let Some(id) = id else { return };
         // Checked under `repos`: a revive or a watch can't slip in between the check and the drop.
@@ -132,8 +142,11 @@ impl Api {
             config,
         });
         #[cfg(test)]
-        if let Some(f) = self.holds.during_open.lock().unwrap().take() {
-            f(self);
+        {
+            let during_open = self.holds.during_open.lock().unwrap().take();
+            if let Some(f) = during_open {
+                f(self);
+            }
         }
         // Whether a tab holds it is read only now, under `repos`: one may have let go during the
         // open (it found nothing to drop), and the handle would stay for nobody.
@@ -156,6 +169,7 @@ mod tests {
     use crate::api::Api;
     use crate::write::test_support::{api, call, repo};
     use serde_json::json;
+    use std::sync::{Arc, Mutex};
 
     async fn open(api: &Api, dir: &std::path::Path) -> u32 {
         let s = call(api, "openRepo", json!({ "path": dir.display().to_string() })).await.unwrap();
@@ -258,6 +272,67 @@ mod tests {
         call(&api, "watchRepo", json!({ "repo": id })).await.unwrap();
         assert!(api.watched_repos().is_empty());
         assert!(!is_open(&api, id));
+    }
+
+    /// Two requests reviving one held id at once (each opens it): one handle is kept, and both
+    /// get it.
+    #[tokio::test]
+    async fn two_revives_at_once_keep_one_handle() {
+        let r = repo();
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, r.path()).await;
+        hold(&api, "t1", id).await;
+        release(&api, "t1").await;
+        hold(&api, "t2", id).await;
+        let theirs = Arc::new(Mutex::new(None));
+        let slot = theirs.clone();
+        *api.holds.during_open.lock().unwrap() = Some(Box::new(move |api: &Api| *slot.lock().unwrap() = api.revive(id)));
+        let mine = api.revive(id).unwrap().unwrap();
+        let theirs = theirs.lock().unwrap().take().unwrap().unwrap();
+        let kept = api.repos.lock().unwrap()[&id].clone();
+        assert!(Arc::ptr_eq(&mine, &kept) && Arc::ptr_eq(&theirs, &kept));
+    }
+
+    /// A reopen (a config change) of a handle let go since, and opened again, doesn't replace
+    /// the newer handle with one built from the old handle's caches.
+    #[tokio::test]
+    async fn a_reopen_of_a_handle_let_go_keeps_the_newer_one() {
+        let r = repo();
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let id = open(&api, r.path()).await;
+        hold(&api, "t1", id).await;
+        let old = api.handle(id).unwrap();
+        release(&api, "t1").await;
+        assert_eq!(open(&api, r.path()).await, id);
+        hold(&api, "t2", id).await;
+        let newer = api.repos.lock().unwrap()[&id].clone();
+        api.reopen(id, &old).unwrap();
+        assert!(Arc::ptr_eq(&api.repos.lock().unwrap()[&id], &newer));
+        // The current handle's reopen still replaces it, caches kept.
+        let fresh = api.reopen(id, &newer).unwrap();
+        let now = api.repos.lock().unwrap()[&id].clone();
+        assert!(Arc::ptr_eq(&now, &fresh) && Arc::ptr_eq(&now.wip, &newer.wip));
+    }
+
+    /// The UI's startup reset: a reloaded page's tabs are new, so every hold goes, and with it
+    /// every handle (and watcher); the ids stay, and the tabs hold them again.
+    #[tokio::test]
+    async fn release_all_lets_go_of_every_repository() {
+        let (a, b) = (repo(), repo());
+        let data = tempfile::tempdir().unwrap();
+        let api = api(data.path());
+        let (ia, ib) = (open(&api, a.path()).await, open(&api, b.path()).await);
+        hold(&api, "t1", ia).await; // b: opened, never held
+        call(&api, "watchRepo", json!({ "repo": ia })).await.unwrap();
+        api.dispatch(crate::api::Request::ReleaseAll).await.unwrap();
+        assert_eq!(api.holds.holders_of(ia), 0);
+        assert!(!is_open(&api, ia) && !is_open(&api, ib));
+        assert!(api.watched_repos().is_empty());
+        assert_eq!(open(&api, a.path()).await, ia);
+        hold(&api, "t1", ia).await;
+        assert!(is_open(&api, ia));
     }
 
     #[tokio::test]
