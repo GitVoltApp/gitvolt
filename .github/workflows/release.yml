@@ -321,7 +321,9 @@ jobs:
     name: Build the Windows installers
     needs: plan
     if: needs.plan.outputs.build == 'true'
-    runs-on: windows-latest
+    # Not windows-latest: its Visual Studio 2026 image (windows-2025-vs2026) fails CEF's CMake
+    # compiler check (the linker's manifest step), so cef-dll-sys can't build.
+    runs-on: windows-2025
     timeout-minutes: 120
     permissions:
       contents: read
