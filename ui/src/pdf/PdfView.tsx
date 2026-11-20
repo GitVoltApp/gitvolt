@@ -6,6 +6,7 @@ import { nearestStepIndex, nextStepIndex, wheelAccumulator, ZOOM_STEPS } from '.
 import { columnHeight, currentPage, fitWidthScale, PAGE_GAP, pageTops, syncedScrollTop, visiblePages, type PageSize } from './layout';
 import { openPdf, PdfOpenError, type PdfDoc, type PdfPage, type PdfRender } from './pdfjs';
 import { RulerFrame } from '../diff/RulerFrame';
+import { releaseWhenHidden } from '../app/hiddenHold';
 import '../image/image.css';
 import './pdf.css';
 
@@ -19,10 +20,25 @@ type Loaded = { status: 'loading' } | { status: 'error'; message: string } | { s
 const SIZE_BATCH = 64;
 
 /** Opens `src`. The column has its full height at once: every page takes the first page's size
- * until its own is read, in batches (one render each), behind the first page's. */
-function usePdf(src: PdfSource | null): Loaded | null {
+ * until its own is read, in batches (one render each), behind the first page's. A hidden tab
+ * keeps the open document for the hold (`anchor`: an element of the view), so a quick return
+ * shows it as it was instead of opening it again. */
+function usePdf(src: PdfSource | null, anchor: RefObject<Element | null>): Loaded | null {
   const [state, setState] = useState<Loaded | null>(null);
+  const held = useRef<{ src: PdfSource; doc: PdfDoc; cancel: () => void } | null>(null);
   useEffect(() => {
+    const hold = (doc: PdfDoc, el: Element | null) => {
+      held.current = { src: src!, doc, cancel: releaseWhenHidden(el, () => { held.current = null; doc.destroy(); }) };
+    };
+    const kept = held.current;
+    held.current = null;
+    kept?.cancel();
+    if (kept && kept.src === src) {
+      // Shown again within the hold: the open document and its state stand.
+      const el = anchor.current;
+      return () => hold(kept.doc, el);
+    }
+    kept?.doc.destroy();
     if (!src) {
       setState(null);
       return;
@@ -30,6 +46,8 @@ function usePdf(src: PdfSource | null): Loaded | null {
     setState({ status: 'loading' });
     let live = true;
     let opened: PdfDoc | null = null;
+    let sized = false;
+    const el = anchor.current;
     // A slow open (a large PDF's parse) is stopped when the view moves on.
     const stop = new AbortController();
     // A copy: pdf.js takes the array it's given over to its worker (detaching it), and the
@@ -49,6 +67,7 @@ function usePdf(src: PdfSource | null): Loaded | null {
           batch.forEach((p, i) => { sizes[from - 1 + i] = p.size; });
           setState({ status: 'ready', doc, sizes });
         }
+        sized = live;
       })
       .catch((e: unknown) => {
         if (live) setState({ status: 'error', message: e instanceof PdfOpenError ? e.message : "This PDF couldn't be opened" });
@@ -56,9 +75,11 @@ function usePdf(src: PdfSource | null): Loaded | null {
     return () => {
       live = false;
       stop.abort();
-      opened?.destroy();
+      // Held only once every page's size is in: a walk cut short would leave guesses.
+      if (opened && sized) hold(opened, el);
+      else opened?.destroy();
     };
-  }, [src]);
+  }, [src]); // eslint-disable-line react-hooks/exhaustive-deps
   return state;
 }
 
@@ -67,6 +88,9 @@ function usePdf(src: PdfSource | null): Loaded | null {
 const Page = memo(function Page({ doc, n, size, scale, top }: { doc: PdfDoc; n: number; size: PageSize; scale: number; top: number }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const text = useRef<HTMLDivElement>(null);
+  // What the canvas holds: shown again within the hold, its drawing stands and only the text
+  // layer comes back (pdf.js clears a canvas it draws on, so a redraw would blank it a moment).
+  const drawn = useRef<{ doc: PdfDoc; scale: number } | null>(null);
   useEffect(() => {
     const c = canvas.current;
     const t = text.current;
@@ -77,9 +101,14 @@ const Page = memo(function Page({ doc, n, size, scale, top }: { doc: PdfDoc; n: 
     let running: PdfRender | null = null;
     void doc.page(n).then((page: PdfPage) => {
       if (!live) return;
-      running = page.render(c, scale);
-      return running.promise.then(() => {
+      const kept = drawn.current?.doc === doc && drawn.current.scale === scale && c.width > 0;
+      if (!kept) {
+        drawn.current = null;
+        running = page.render(c, scale);
+      }
+      return (kept ? Promise.resolve() : running!.promise).then(() => {
         if (!live) return;
+        drawn.current = { doc, scale };
         running = page.text(t, scale);
         return running.promise;
       });
@@ -90,6 +119,20 @@ const Page = memo(function Page({ doc, n, size, scale, top }: { doc: PdfDoc; n: 
       t.replaceChildren();
     };
   }, [doc, n, scale]);
+  // A tab hidden for a while (<Activity> hides by cleaning up its effects) gives the page's
+  // backing store back: a few MB a page at a high-DPI zoom, kept by every tab left on a PDF
+  // otherwise. Shown again within the hold, the page keeps its drawing; after, the PDF opens again
+  // and its pages draw afresh. A page scrolled out (unmounted), at once. Empty deps: a zoom's
+  // redraw keeps the old drawing up until the new one lands.
+  const heldCanvas = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    heldCanvas.current?.();
+    heldCanvas.current = null;
+    const c = canvas.current;
+    return () => {
+      if (c) heldCanvas.current = releaseWhenHidden(c, () => { c.width = c.height = 0; });
+    };
+  }, []);
   const w = Math.round(size.w * scale);
   const h = Math.round(size.h * scale);
   return (
@@ -168,8 +211,9 @@ const pagesText = (n: number | null) => (n === null ? '?' : `${n} ${n === 1 ? 'p
  */
 export function PdfView({ old, new: neu, single = null, source, onSourceChange }: { old: PdfSource | null; new: PdfSource | null; single?: 'added' | 'deleted' | null; source?: ReactNode; onSourceChange?: (on: boolean) => void }) {
   const both = old !== null && neu !== null;
-  const oldDoc = usePdf(old);
-  const newDoc = usePdf(neu);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const oldDoc = usePdf(old, stageRef);
+  const newDoc = usePdf(neu, stageRef);
   const [showSource, setSource] = useState(false);
   const setShowSource = (on: boolean) => {
     setSource(on);
@@ -182,7 +226,6 @@ export function PdfView({ old, new: neu, single = null, source, onSourceChange }
   const [fixed, setFixed] = useState<number | null>(null);
   const [paneWidth, setPaneWidth] = useState(0);
   const [page, setPage] = useState(0);
-  const stageRef = useRef<HTMLDivElement>(null);
   const oldPane = useRef<HTMLDivElement>(null);
   const newPane = useRef<HTMLDivElement>(null);
   const sizesOf = (l: Loaded | null): PageSize[] => (l?.status === 'ready' ? l.sizes : []);

@@ -3,6 +3,7 @@ import { Activity } from 'react';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { BlobPayload } from '../api/gen/BlobPayload';
 import type { DiffContentsPayload } from '../api/gen/DiffContentsPayload';
+import { HIDDEN_HOLD_MS } from '../app/hiddenHold';
 import { useImageBackground } from './background';
 import { ImageDiff } from './ImageDiff';
 import { ZOOM_STEPS } from './zoom';
@@ -385,6 +386,46 @@ describe('ImageDiff', () => {
     expect(onSourceChange).toHaveBeenLastCalledWith(false);
     view.rerender(ui('visible'));
     expect(onSourceChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("hidden on Difference, it keeps its drawing for the hold, then gives the canvas's backing store back, and draws it again when shown", async () => {
+    vi.stubGlobal('Image', FakeImage);
+    const ui = (mode: 'visible' | 'hidden') => <Activity mode={mode}><ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} /></Activity>;
+    const view = render(ui('visible'));
+    await waitFor(() => expect(screen.getByTestId('image-dims')).toHaveTextContent('4×4 → 6×4'));
+    fireEvent.click(screen.getByRole('button', { name: 'Difference' }));
+    const canvas = screen.getByTestId('image-difference') as HTMLCanvasElement;
+    await waitFor(() => expect([canvas.width, canvas.height]).toEqual([6, 4]));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    onTestFinished(() => { vi.useRealTimers(); });
+    // A quick look at another tab and back: the drawing stays.
+    view.rerender(ui('hidden'));
+    vi.advanceTimersByTime(HIDDEN_HOLD_MS - 1);
+    view.rerender(ui('visible'));
+    vi.advanceTimersByTime(HIDDEN_HOLD_MS);
+    expect([canvas.width, canvas.height]).toEqual([6, 4]);
+    // Left hidden past the hold: given back.
+    view.rerender(ui('hidden'));
+    vi.advanceTimersByTime(HIDDEN_HOLD_MS);
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
+    vi.useRealTimers();
+    view.rerender(ui('visible'));
+    await waitFor(() => expect([canvas.width, canvas.height]).toEqual([6, 4]));
+  });
+
+  it("an Amplify repaint while shown doesn't give the backing store back in between", async () => {
+    vi.stubGlobal('Image', FakeImage);
+    render(<ImageDiff old={{ url: 'blob:4x4', size: 60 }} new={{ url: 'blob:6x4', size: 70 }} />);
+    await waitFor(() => expect(screen.getByTestId('image-dims')).toHaveTextContent('4×4 → 6×4'));
+    fireEvent.click(screen.getByRole('button', { name: 'Difference' }));
+    const canvas = screen.getByTestId('image-difference') as HTMLCanvasElement;
+    await waitFor(() => expect(canvas.width).toBe(6));
+    const sizes: number[] = [];
+    const set = vi.spyOn(HTMLCanvasElement.prototype, 'width', 'set').mockImplementation(function (this: HTMLCanvasElement, v: number) { sizes.push(v); });
+    onTestFinished(() => set.mockRestore());
+    fireEvent.change(screen.getByRole('slider', { name: 'Amplify' }), { target: { value: '8' } });
+    await nextFrame();
+    expect(sizes).toEqual([6]);
   });
 
   it('shows a message in place of an image that fails to decode', async () => {

@@ -10,6 +10,7 @@ import { defaultMatch, matchedRect, rememberedMatch, rememberMatch, sizesDiffer,
 import type { ImageSource } from './sources';
 import { centered, clampSwipe, clampView, DEFAULT_STEP, fitScale, nearestStepIndex, nextStepIndex, pixelated, startView, stepLabel, wheelAccumulator, ZOOM_STEPS, zoomAround, type View } from './zoom';
 import { isWindowBlur, refocusWhenWindowReturns } from '../ui/windowBlur';
+import { releaseWhenHidden } from '../app/hiddenHold';
 import './image.css';
 import { ArrowGlyph } from '../ui/ArrowGlyph';
 import { Scaling } from 'lucide-react';
@@ -312,6 +313,21 @@ export function ImageDiff({ old, new: neu, source, sourceLabel = 'Source', onSou
     const raf = requestAnimationFrame(() => drawDifference(canvas, a, b, contentW, contentH, amplify, oldRect ?? oldImg.dim, newImg.dim));
     return () => cancelAnimationFrame(raf);
   }, [amplify, activeMode, contentW, contentH, oldImg.dim, newImg.dim, oldRect]);
+
+  // A tab hidden for a while (<Activity> hides by cleaning up its effects) gives the Difference
+  // canvas's backing store back: the images' full size at 4 bytes a pixel (48 MB for a 4000×3000
+  // screenshot), kept by every tab left on a Difference otherwise. Shown again within the hold, it
+  // keeps its drawing until the effects above redraw it; after, they draw it afresh. Left for
+  // another mode, or unmounted, at once. Keyed on the mode alone: Amplify's redraws don't reallocate.
+  const heldCanvas = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    heldCanvas.current?.();
+    heldCanvas.current = null;
+    const canvas = activeMode === 'difference' ? canvasRef.current : null;
+    return () => {
+      if (canvas) heldCanvas.current = releaseWhenHidden(canvas, () => { canvas.width = canvas.height = 0; });
+    };
+  }, [activeMode]);
 
   // Until every side has decoded (or failed), there's no size to place the images by, and a
   // later side's size moves the view again: they'd paint at the top left, then jump. Hidden until

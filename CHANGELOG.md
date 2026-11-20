@@ -242,7 +242,10 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
   again reads it afresh.
 - **Less memory with many tabs.** A hidden tab gives its graph canvas's memory back (a few MB
   each on a HiDPI screen; with 50 tabs, 333 MB → 161 MB) and redraws it before it shows again
-  (#29).
+  (#29). So do an image diff's Difference view (the images' full size, 4 bytes a pixel) and a
+  PDF's drawn pages and open document (several MB a page on a HiDPI screen), once the tab has
+  been hidden for 30 seconds: flipping between tabs to compare keeps them as they were, and a tab
+  shown after longer draws them again (#32).
 - **Push no longer asks where to push a branch the remote already has by its name.** A branch
   pushed without tracking it (from a terminal, without `-u`) shows as one chip with origin's
   branch of the same name, so it looked tracked, but Push opened the "Push to" panel. Push now
