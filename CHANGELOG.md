@@ -59,6 +59,16 @@ All notable changes to GitVolt (called GitBolt before 0.7.0) are listed here, ne
 - **A long session's forge memory stays bounded.** The reactions, review threads,
   subscriptions, label colours and learned avatars each provider keeps now hold at most 2,000
   entries, dropping the oldest.
+- **Reading files in a repository no longer wakes GitVolt's file watcher (Linux, performance).**
+  The watcher's inotify library subscribes to every file *open*, with no way to turn it off, so
+  each read in a watched folder woke it for an event it then dropped: every background fetch and
+  the ref reads around it (about 740 wakeups a minute on a repository with 120 branches and
+  tags, making it an idle app's busiest thread), and about 200 a second while a terminal ran
+  `git status` in a loop. On Linux the watcher now uses inotify directly and asks only for
+  writes, creates, deletes, renames and mode changes, and reads its events on the app's async
+  runtime instead of a thread of its own; a lock file's own events (`git status` takes and drops
+  `index.lock` on every run) are dropped before they reach the watch loop. macOS and Windows
+  never reported reads.
 - **The background fetch connects to each remote once, not twice (performance).** After every
   fetch, GitVolt asked each remote for its whole tag list (`git ls-remote --tags`), for the tag
   chips' pushed-or-not icons: a second connection, SSH handshake and credential helper run per

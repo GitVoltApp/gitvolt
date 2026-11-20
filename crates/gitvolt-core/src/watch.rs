@@ -11,11 +11,11 @@
 //! once inotify's own limit is hit, the watch is *degraded*: it keeps reporting what it does see,
 //! but its status cache is no longer trusted, so every graph build re-reads status.
 //!
-//! Never triggering itself: GitVolt's reads only open files (`IN_OPEN`/`IN_CLOSE_NOWRITE`, which
-//! are dropped here), `git status` runs with `GIT_OPTIONAL_LOCKS=0` and `git diff` with
-//! `diff.autoRefreshIndex=false`, so neither rewrites the index; `worktree`/`index` are only
-//! reported when a status digest actually changed. Those opens can still overflow the kernel
-//! queue on a big repo: an overflow arriving while (or just after) the watcher ran its own status
+//! Never triggering itself: reads (GitVolt's, git's, an editor's) only open files, which the
+//! Linux backend (`inotify`) doesn't even subscribe to, so they never wake it; `git status` runs
+//! with `GIT_OPTIONAL_LOCKS=0` and `git diff` with `diff.autoRefreshIndex=false`, so neither
+//! rewrites the index; `worktree`/`index` are only reported when a status digest actually changed.
+//! An overflow of the kernel queue arriving while (or just after) the watcher ran its own status
 //! is its own doing and is dropped, and any other overflow reports only what a status digest or
 //! a refs/HEAD/stash/config snapshot shows changed.
 
@@ -28,8 +28,8 @@ use crate::diff::wip_lists;
 use crate::snapshot::{WipCache, WipEntry, WipLists};
 use crate::status::{parse_porcelain_v2, status_raw, EntryKind};
 use crate::worktree::{list_worktrees, Worktree};
-use notify::event::{AccessKind, AccessMode, EventKind, ModifyKind, RemoveKind, RenameMode};
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::event::{AccessKind, AccessMode, CreateKind, EventKind, ModifyKind, RemoveKind, RenameMode};
+use notify::{RecursiveMode, Watcher};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -39,6 +39,13 @@ use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
+
+#[cfg(target_os = "linux")]
+mod inotify;
+#[cfg(target_os = "linux")]
+type Backend = inotify::QuietInotify;
+#[cfg(not(target_os = "linux"))]
+type Backend = notify::RecommendedWatcher;
 
 pub const DEBOUNCE: Duration = Duration::from_millis(150);
 pub const MAX_WAIT: Duration = Duration::from_secs(1);
@@ -68,10 +75,14 @@ pub struct Classified {
     pub worktree: Option<usize>,
 }
 
+fn is_lock(path: &Path) -> bool {
+    path.file_name().is_some_and(|n| n.to_string_lossy().ends_with(".lock"))
+}
+
 /// What a changed path means, or `None` for paths that don't matter (lock files, objects,
 /// `FETCH_HEAD`, reflogs other than the stash's, anything under a worktree's `.git`).
 pub fn classify(path: &Path, common_dir: &Path, worktrees: &[WatchedWorktree]) -> Option<Classified> {
-    if path.file_name().is_some_and(|n| n.to_string_lossy().ends_with(".lock")) {
+    if is_lock(path) {
         return None;
     }
     let by_git_dir = |g: &Path| worktrees.iter().position(|w| w.git_dir == g);
@@ -314,7 +325,7 @@ fn untracked_counts(lists: &WipLists, written: Option<&BTreeSet<String>>) -> Has
 
 /// The inotify watches actually in place.
 struct Watches {
-    w: RecommendedWatcher,
+    w: Backend,
     applied: WatchPlan,
     max: Option<usize>,
     /// inotify's watch limit was hit: no more watches are added.
@@ -404,9 +415,19 @@ fn add(paths: &mut dyn notify::PathsMut, full: &mut bool, watched: usize, max: O
     }
 }
 
-/// inotify also reports opens and reads (notify watches `IN_OPEN`); only writes matter.
-fn relevant(kind: &EventKind) -> bool {
-    match kind {
+/// Of the accesses, only a write matters (FSEvents and ReadDirectoryChangesW report no reads,
+/// and the Linux backend doesn't subscribe to them). Nor does a lock file's own creation, write
+/// or deletion (`classify` ignores it): a `git status` in a terminal takes and drops
+/// `index.lock` on every run, and those never wake the loop.
+fn relevant(ev: &notify::Event) -> bool {
+    let file_only = matches!(
+        ev.kind,
+        EventKind::Create(CreateKind::File) | EventKind::Remove(RemoveKind::File) | EventKind::Modify(ModifyKind::Data(_) | ModifyKind::Metadata(_)) | EventKind::Access(_)
+    );
+    if file_only && !ev.paths.is_empty() && ev.paths.iter().all(|p| is_lock(p)) {
+        return false;
+    }
+    match ev.kind {
         EventKind::Access(AccessKind::Close(AccessMode::Write)) => true,
         EventKind::Access(_) => false,
         _ => true,
@@ -688,14 +709,14 @@ fn watched_worktrees(list: &[Worktree]) -> Vec<WatchedWorktree> {
 /// Sets up inotify for `spec` and spawns the watch loop (blocking; see `RepoWatcher::start`).
 fn launch(spec: WatchSpec, cli: GitCli, wip: Arc<WipCache>, bus: EventBus, h: Handles, tuning: Tuning) -> Result<(), GbError> {
     let tx = h.tx.clone();
-    let w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| match res {
-        Ok(ev) if relevant(&ev.kind) => {
+    let handler = move |res: notify::Result<notify::Event>| match res {
+        Ok(ev) if relevant(&ev) => {
             let _ = tx.send(ev);
         }
         Ok(_) => {}
         Err(e) => tracing::warn!("file watcher: {e}"),
-    })
-    .map_err(|e| GbError::new(GbErrorKind::Io, format!("file watcher: {e}")))?;
+    };
+    let w = Backend::new(handler, notify::Config::default()).map_err(|e| GbError::new(GbErrorKind::Io, format!("file watcher: {e}")))?;
     let base = plan_capped(&spec.common_dir, &spec.worktrees, tuning.max_flat);
     let mut watches = Watches { w, applied: WatchPlan::default(), max: tuning.max_watches, full: false };
     watches.sync(&base);
@@ -1331,6 +1352,21 @@ mod tests {
         assert_eq!(changed_kinds(&before, &after), [ChangeKind::State].into_iter().collect());
     }
 
+    /// A terminal's `git status` takes and drops `index.lock` on every run: none of it reaches
+    /// the loop. Renaming a lock into place, a folder named `*.lock`, and an overflow still do.
+    #[test]
+    fn lock_files_alone_are_not_relevant() {
+        let ev = |kind, paths: &[&str]| paths.iter().fold(notify::Event::new(kind), |e, p| e.add_path(PathBuf::from(p)));
+        let lock = "/r/.git/index.lock";
+        for kind in [EventKind::Create(CreateKind::File), EventKind::Access(AccessKind::Close(AccessMode::Write)), EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Any)), EventKind::Remove(RemoveKind::File)] {
+            assert!(!relevant(&ev(kind, &[lock])), "{kind:?}");
+        }
+        assert!(relevant(&ev(EventKind::Access(AccessKind::Close(AccessMode::Write)), &["/r/.git/index"])));
+        assert!(relevant(&ev(EventKind::Modify(ModifyKind::Name(RenameMode::Both)), &[lock, "/r/.git/index"])));
+        assert!(relevant(&ev(EventKind::Remove(RemoveKind::Folder), &["/r/build.lock"])));
+        assert!(relevant(&overflow()));
+    }
+
     #[test]
     fn classifies_git_dir_and_worktree_paths() {
         let c = Path::new("/r/.git");
@@ -1528,6 +1564,37 @@ mod tests {
         }
         assert!(next_change(&mut rx, Duration::from_millis(1500)).await.is_none(), "GitVolt's own diff reads must not trigger events");
         assert_eq!(wakeups(&api, id), 0, "GitVolt's own diff reads must not even wake the watcher");
+    }
+
+    /// Reads from outside (an editor, a build, git reading refs and objects): every file in the
+    /// worktree and the git dir opened, read and listed, over and over, and git's read-only
+    /// commands run. No event, no wakeup, no status run; a write after them is still reported.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn reading_files_wakes_nothing() {
+        let r = TestRepo::new();
+        fixtures::basic(&r);
+        let (api, id, mut rx) = watched(&r).await;
+        let ran = last_git(&api);
+        fn read_all(dir: &Path) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                match e.file_type().unwrap().is_dir() {
+                    true => read_all(&e.path()),
+                    false => drop(std::fs::read(e.path()).unwrap()),
+                }
+            }
+        }
+        for _ in 0..20 {
+            read_all(r.path());
+        }
+        for args in [&["log", "--oneline"][..], &["for-each-ref"], &["rev-parse", "HEAD"], &["cat-file", "-p", "HEAD"]] {
+            r.git(args);
+        }
+        assert!(next_change(&mut rx, Duration::from_millis(1500)).await.is_none(), "reads must not trigger events");
+        assert_eq!(wakeups(&api, id), 0, "reads must not even wake the watcher");
+        assert_eq!(last_git(&api), ran, "no status run");
+        r.write("file_0.txt", "changed\n");
+        let (kinds, _) = next_change(&mut rx, Duration::from_secs(5)).await.expect("the write reported");
+        assert!(kinds.contains(&ChangeKind::Worktree), "{kinds:?}");
     }
 
     /// The watcher's own status run (after a real change) must not wake it again: one change,
