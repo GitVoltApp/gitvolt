@@ -321,9 +321,7 @@ jobs:
     name: Build the Windows installers
     needs: plan
     if: needs.plan.outputs.build == 'true'
-    # Not windows-latest: its Visual Studio 2026 image (windows-2025-vs2026) fails CEF's CMake
-    # compiler check (the linker's manifest step), so cef-dll-sys can't build.
-    runs-on: windows-2025
+    runs-on: windows-latest
     timeout-minutes: 120
     permissions:
       contents: read
@@ -394,6 +392,20 @@ jobs:
             ~/AppData/Local/tauri-cef/${{ steps.version.outputs.cef }}/cef_binary_*_windows64_minimal.tar.bz2
             target/windows-tools
           key: cef-${{ steps.version.outputs.cef }}-windows64-minimal-${{ hashFiles('scripts/package-windows.ps1') }}
+
+      # The restored target/ keeps cef-dll-sys's CMake cache, which names the linker by its full
+      # path: once a runner image moves MSVC to a newer version, CMake calls a link.exe that no
+      # longer exists. Such a cache is dropped, so the wrapper is configured afresh.
+      - name: Drop a stale CMake cache
+        run: |
+          Get-ChildItem target -Filter CMakeCache.txt -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            $m = Select-String -Path $_.FullName -Pattern '^CMAKE_LINKER:FILEPATH=(.+)$'
+            $linker = if ($m) { $m.Matches[0].Groups[1].Value } else { $null }
+            if ($linker -and -not (Test-Path $linker)) {
+              Remove-Item $_.FullName
+              "Dropped $($_.FullName): $linker is gone"
+            }
+          }
 
       # cef-dll-sys builds CEF's C++ wrapper with CMake and Ninja.
       - name: Ninja on PATH
